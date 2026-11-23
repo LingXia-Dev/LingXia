@@ -38,4 +38,6 @@ export interface SurfaceLayoutConfig {
   // surfaces may render host-authorized file URLs.
   urlCallback: boolean;
   browserTabId: string;
+  // A child of the side panel, which places and shows it.
+  inAside: boolean;
 }

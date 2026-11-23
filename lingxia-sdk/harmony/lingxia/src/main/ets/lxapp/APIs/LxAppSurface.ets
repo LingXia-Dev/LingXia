@@ -11,6 +11,7 @@ import { FloatSurfaceWindowManager } from './surface/FloatSurfaceWindow';
 import { SurfaceCloseButton } from './surface/SurfaceChrome';
 import { SurfaceLayoutConfig, SurfacePosition } from './surface/SurfaceModel';
 import { isExternalWindowUrl, isFileUrl, isHttpUrl, isSameOrigin, isSupportedUrl } from './surface/SurfaceUrlPolicy';
+import { AsideRegionModel, AsideSlotPlan, AsideState } from '../AsideRegion';
 
 const DOMAIN = 0x0000;
 const TAG = 'LingXia.Surface';
@@ -57,6 +58,7 @@ interface SurfacePlanFloat {
 interface SurfaceLayoutPlan {
   mains?: string[];
   asides?: SurfacePlanAside[];
+  asideSlots?: AsideSlotPlan[];
   floats?: SurfacePlanFloat[];
 }
 
@@ -132,6 +134,9 @@ export class LxAppSurface {
       return false;
     }
 
+    // A URL aside becomes a child of the side panel, which docks or covers the main by the
+    // window's size.
+    const inAside = role === ROLE_ASIDE && content === CONTENT_URL;
     const position = normalizePosition(positionValue);
     const dimensions = computeDimensions(
       parseSize(widthValue),
@@ -140,7 +145,8 @@ export class LxAppSurface {
       parseRatio(heightRatioValue),
       position,
       kind,
-      role
+      role,
+      inAside
     );
 
     let browserTabId = '';
@@ -178,7 +184,8 @@ export class LxAppSurface {
 	      fullHeight: dimensions.fullHeight,
 	      ephemeralWebData: ephemeralWebDataValue === 'true',
 	      urlCallback,
-        browserTabId
+        browserTabId,
+      inAside
     };
 
     const key = LxAppSurface.surfaceKey(id, appId);
@@ -233,6 +240,18 @@ export class LxAppSurface {
       if (content === CONTENT_PAGE) {
 	        LxAppSurface.showPageSurfaceWhenReady(layout);
 	      }
+      if (inAside) {
+        const host = hostOf(url);
+        AsideRegionModel.adopt(
+          id,
+          appId,
+          true,
+          () => LxAppSurface.managerRef?.titleOf(id, appId) || host || id,
+          () => {
+            LxAppSurface.close(id, appId, 'user');
+          }
+        );
+      }
 	    } else {
       LxAppSurface.layouts.delete(key);
       LxAppSurface.visibleSurfaceKeys.delete(key);
@@ -258,6 +277,9 @@ export class LxAppSurface {
       LxLog.e(TAG, `presentLayout failed to parse windowId=${windowId}: ${error}`);
       return false;
     }
+
+    // The side panel follows the plan's `panel` slot; it closes the children the plan dropped.
+    AsideRegionModel.applyPlan(plan.asideSlots);
 
     const desiredIds: Set<string> = new Set();
     const mains = plan.mains ?? [];
@@ -294,6 +316,9 @@ export class LxAppSurface {
 	    const normalizedReason = normalizeReason(reason);
     const key = LxAppSurface.surfaceKey(id, appId);
 	    const layout = LxAppSurface.layouts.get(key) ?? null;
+    if (layout?.inAside) {
+      AsideRegionModel.release(id);
+    }
 	    const manager = LxAppSurface.managerRef;
     if (layout && layout.role === ROLE_FLOAT && FloatSurfaceWindowManager.has(key)) {
       if (layout.content === CONTENT_PAGE) {
@@ -462,7 +487,8 @@ export class LxAppSurface {
 	  public static getActiveLayout(): SurfaceLayoutConfig | null {
     let active: SurfaceLayoutConfig | null = null;
     LxAppSurface.layouts.forEach((layout: SurfaceLayoutConfig) => {
-      if (LxAppSurface.visibleSurfaceKeys.has(LxAppSurface.surfaceKey(layout.id, layout.appId))) {
+      // A side panel's children collapse with the panel rather than close on Back.
+      if (!layout.inAside && LxAppSurface.visibleSurfaceKeys.has(LxAppSurface.surfaceKey(layout.id, layout.appId))) {
         active = layout;
       }
     });
@@ -571,6 +597,12 @@ function normalizeRole(value: string): number {
   return ROLE_FLOAT;
 }
 
+function hostOf(url: string): string {
+  const match = /^[a-z][a-z0-9+.-]*:\/\/([^/:?#]+)/i.exec(url);
+  const host = match ? match[1] : '';
+  return host.startsWith('www.') ? host.substring(4) : host;
+}
+
 function computeDimensions(
   widthValue: number,
   heightValue: number,
@@ -578,7 +610,8 @@ function computeDimensions(
   heightRatio: number,
   position: SurfacePosition,
   kind: number,
-  role: number
+  role: number,
+  inAside: boolean
 ): SurfaceDimensions {
   let screenWidth = 360;
   let screenHeight = 640;
@@ -589,6 +622,20 @@ function computeDimensions(
     screenHeight = Math.max(1, displayInfo.height / density);
   } catch (error) {
     hilog.warn(DOMAIN, TAG, `failed to read display metrics: ${error}`);
+  }
+  // The side panel sizes its children; they never take the full-screen treatment.
+  if (inAside) {
+    return {
+      screenWidthVp: screenWidth,
+      screenHeightVp: screenHeight,
+      widthVp: 0,
+      heightVp: 0,
+      leftVp: 0,
+      topVp: 0,
+      bottomInset: 0,
+      fullWidth: false,
+      fullHeight: false
+    };
   }
   if (kind === KIND_WINDOW || role === ROLE_ASIDE) {
     return {
@@ -747,6 +794,7 @@ function surfaceRenderState(layout: SurfaceLayoutConfig, isVisible: boolean, pag
     ephemeralWebData: layout.ephemeralWebData,
     urlCallback: layout.urlCallback,
     browserTabId: layout.browserTabId,
+    inAside: layout.inAside,
     isVisible,
     pageWebTag,
     appearanceDark: LxAppSurface.appearanceDarkForWebTag(pageWebTag)
@@ -756,6 +804,7 @@ function surfaceRenderState(layout: SurfaceLayoutConfig, isVisible: boolean, pag
 @Component
 export struct SurfaceManager {
   @State private surfaces: SurfaceRenderState[] = [];
+  @StorageProp('lxAsideState') private aside: AsideState = AsideRegionModel.emptyState();
   private pageControllers: Map<string, webview.WebviewController> = new Map();
   private webControllers: Map<string, webview.WebviewController> = new Map();
   private windowOpVersion: number = 0;
@@ -865,6 +914,20 @@ export struct SurfaceManager {
     return true;
   }
 
+  /** A URL surface's document title, for the side panel's tab. */
+  public titleOf(id: string, appId: string): string {
+    const controller = this.webControllers.get(this.surfaceKey(id, appId));
+    if (!controller) {
+      return '';
+    }
+    try {
+      const title = controller.getTitle();
+      return title && !title.startsWith('http') ? title : '';
+    } catch (error) {
+      return '';
+    }
+  }
+
   public hasSurface(id: string, appId: string): boolean {
     return this.findSurface(id, appId) !== null;
   }
@@ -937,145 +1000,44 @@ export struct SurfaceManager {
 
   @Builder
   private SurfaceLayer(surface: SurfaceRenderState): void {
+    if (surface.inAside) {
+      this.AsideSurfaceLayer(surface)
+    } else {
+      this.WindowSurfaceLayer(surface)
+    }
+  }
+
+  /** A side panel child: in the panel's content area while it is the slot's shown child. */
+  @Builder
+  private AsideSurfaceLayer(surface: SurfaceRenderState): void {
+    if (surface.isVisible && (!surface.browserTabId || surface.pageWebTag.length > 0)) {
+      Column() {
+        this.SurfaceContent(surface)
+      }
+      .width(this.asideChildShown(surface) ? this.aside.panelWidth : 1)
+      .height(this.asideChildShown(surface) ? Math.max(1, this.aside.height - this.aside.contentTop) : 1)
+      .backgroundColor(Color.White)
+      .position({
+        x: this.asideChildShown(surface) ? this.aside.panelX : -10000,
+        y: this.asideChildShown(surface) ? this.aside.contentTop : -10000
+      })
+      .hitTestBehavior(this.asideChildShown(surface) ? HitTestMode.Block : HitTestMode.None)
+    }
+  }
+
+  private asideChildShown(surface: SurfaceRenderState): boolean {
+    return this.aside.shown && this.aside.active === surface.id;
+  }
+
+  @Builder
+  private WindowSurfaceLayer(surface: SurfaceRenderState): void {
     if ((surface.content === CONTENT_URL && surface.isVisible && (!surface.browserTabId || surface.pageWebTag.length > 0)) || (surface.content === CONTENT_PAGE && surface.pageWebTag.length > 0)) {
       Stack() {
         if (surface.isVisible && (surface.modal || surface.dismissOnOutside)) {
           this.buildMaskLayer(surface)
         }
         Column() {
-          if (surface.content === CONTENT_URL && surface.browserTabId && surface.pageWebTag.length > 0) {
-            LingXiaWebView({
-              webTag: surface.pageWebTag,
-              controller: this.getWebController(surface),
-              appearanceDark: surface.appearanceDark,
-              openNewWindowExternally: surface.urlCallback,
-              renderVisibility: Visibility.Visible,
-              renderWidth: '100%',
-              renderHeight: '100%',
-              renderBorderRadius: this.getBorderRadius(surface),
-              renderClip: true,
-              renderZIndex: 0,
-              renderHitTest: surface.isVisible ? HitTestMode.Block : HitTestMode.None
-            })
-          } else if (surface.content === CONTENT_URL && !surface.browserTabId) {
-            Web({ src: '', controller: this.getWebController(surface), incognitoMode: surface.ephemeralWebData })
-              .domStorageAccess(true)
-              .javaScriptAccess(true)
-              .fileAccess(!surface.urlCallback)
-              .mixedMode(MixedMode.None)
-              .onLoadIntercept((event) => {
-                if (!event || !event.data) {
-                  return false;
-                }
-                const targetUrl = event.data.getRequestUrl();
-                if (!targetUrl) {
-                  return false;
-                }
-                // A registered URL-callback sentinel (e.g. an auth handoff) is
-                // consumed by the waiting Rust channel; cancel the load.
-                // URL surfaces host multi-origin journeys (an auth page may
-                // hop through an external IdP and back), so cross-origin
-                // http(s) navigation is allowed. Non-http(s) schemes are app
-                // deep links (dingtalk://, feishu://, ...) that IdP pages use
-                // to launch their native app; hand those to the system.
-                if (urlCallbackDispatch(targetUrl)) {
-                  return true;
-                }
-                if (isHttpUrl(targetUrl) || (!surface.urlCallback && isFileUrl(targetUrl))) {
-                  return false;
-                }
-                if (isFileUrl(targetUrl)) {
-                  return true;
-                }
-                Lingxia.launchWithUrl(targetUrl);
-                return true;
-              })
-              .multiWindowAccess(surface.urlCallback)
-              .allowWindowOpenMethod(surface.urlCallback)
-              .onWindowNew((event) => {
-                if (!surface.urlCallback || !event) {
-                  return;
-                }
-                try {
-                  event.handler.setWebController(null);
-                } catch (error) {
-                  hilog.warn(DOMAIN, TAG, `onWindowNew: setWebController(null) failed: ${error}`);
-                }
-                const targetUrl = event.targetUrl;
-                if (urlCallbackDispatch(targetUrl)) {
-                  return;
-                }
-                if (isExternalWindowUrl(targetUrl)) {
-                  Lingxia.launchWithUrl(targetUrl);
-                }
-              })
-              .onErrorReceive((event) => {
-                if (!event || !event.request || !event.error || !event.request.isMainFrame()) {
-                  return;
-                }
-                // Cancellation is control flow (superseded load, intercepted
-                // handoff), never an application-visible load error. It is
-                // reported as exactly ERR_ABORTED — substring matching would
-                // also swallow real failures like ERR_CONNECTION_ABORTED.
-                const info = (event.error.getErrorInfo() ?? '').toLowerCase();
-                if (info === 'err_aborted' || info === 'net::err_aborted') {
-                  return;
-                }
-                this.loadWebSurfaceError(
-                  this.getWebController(surface),
-                  event.request.getRequestUrl() ?? surface.url
-                );
-              })
-              .width('100%')
-              .height('100%')
-              .onAppear(() => {
-                const url = surface.url;
-                const controller = this.getWebController(surface);
-                const isEphemeral = surface.ephemeralWebData;
-                setTimeout(() => {
-                  try {
-                    if (isEphemeral) {
-                      // `incognitoMode` only stops on-disk persistence; the
-                      // incognito cookie/storage lives in a shared in-memory
-                      // store, so a prior IdP SSO session would carry into the
-                      // next lx.auth.add() and re-recognize the last account.
-                      // Wipe that store (synchronously, before loadUrl issues
-                      // the first request) so every login starts clean.
-                      try {
-                        webview.WebCookieManager.clearAllCookiesSync(true);
-                        webview.WebStorage.deleteAllData(true);
-                      } catch (clearErr) {
-                        LxLog.e(TAG, `failed to clear incognito web data: ${clearErr}`);
-                      }
-                    }
-                    hilog.info(DOMAIN, TAG, `load surface url=${url}`);
-                    controller.loadUrl(url);
-                  } catch (error) {
-                    LxLog.e(TAG, `failed to load surface URL: ${error}`);
-                  }
-                }, 0);
-              })
-              .onPageBegin((event) => {
-                hilog.info(DOMAIN, TAG, `surface page begin: ${event?.url ?? ''}`);
-              })
-              .onPageEnd((event) => {
-                hilog.info(DOMAIN, TAG, `surface page end: ${event?.url ?? ''}`);
-              })
-              .hitTestBehavior(surface.isVisible ? HitTestMode.Block : HitTestMode.None)
-          } else if (surface.pageWebTag.length > 0) {
-            LingXiaWebView({
-              webTag: surface.pageWebTag,
-              controller: this.getPageController(surface),
-              appearanceDark: surface.appearanceDark,
-              renderVisibility: Visibility.Visible,
-              renderWidth: '100%',
-              renderHeight: '100%',
-              renderBorderRadius: this.getBorderRadius(surface),
-              renderClip: true,
-              renderZIndex: 0,
-              renderHitTest: surface.isVisible ? HitTestMode.Block : HitTestMode.None
-            })
-          }
+          this.SurfaceContent(surface)
         }
         .width(surface.isVisible ? (surface.widthVp > 0 ? `${surface.widthVp}vp` : '90%') : 1)
         .height(surface.isVisible ? (surface.heightVp > 0 ? `${surface.heightVp}vp` : '60%') : 1)
@@ -1107,6 +1069,144 @@ export struct SurfaceManager {
         this.shouldUseFullscreenWindow(surface) ? [SafeAreaType.SYSTEM] : [],
         this.shouldUseFullscreenWindow(surface) ? [SafeAreaEdge.TOP, SafeAreaEdge.BOTTOM] : []
       )
+    }
+  }
+
+  /** A surface's content: a managed browser tab, a plain web document, or an lxapp page. */
+  @Builder
+  private SurfaceContent(surface: SurfaceRenderState): void {
+    if (surface.content === CONTENT_URL && surface.browserTabId && surface.pageWebTag.length > 0) {
+      LingXiaWebView({
+        webTag: surface.pageWebTag,
+        controller: this.getWebController(surface),
+        appearanceDark: surface.appearanceDark,
+        openNewWindowExternally: surface.urlCallback,
+        renderVisibility: Visibility.Visible,
+        renderWidth: '100%',
+        renderHeight: '100%',
+        renderBorderRadius: this.getBorderRadius(surface),
+        renderClip: true,
+        renderZIndex: 0,
+        renderHitTest: surface.isVisible ? HitTestMode.Block : HitTestMode.None
+      })
+    } else if (surface.content === CONTENT_URL && !surface.browserTabId) {
+      Web({ src: '', controller: this.getWebController(surface), incognitoMode: surface.ephemeralWebData })
+        .domStorageAccess(true)
+        .javaScriptAccess(true)
+        .fileAccess(!surface.urlCallback)
+        .mixedMode(MixedMode.None)
+        .onLoadIntercept((event) => {
+          if (!event || !event.data) {
+            return false;
+          }
+          const targetUrl = event.data.getRequestUrl();
+          if (!targetUrl) {
+            return false;
+          }
+          // A registered URL-callback sentinel (e.g. an auth handoff) is
+          // consumed by the waiting Rust channel; cancel the load.
+          // URL surfaces host multi-origin journeys (an auth page may
+          // hop through an external IdP and back), so cross-origin
+          // http(s) navigation is allowed. Non-http(s) schemes are app
+          // deep links (dingtalk://, feishu://, ...) that IdP pages use
+          // to launch their native app; hand those to the system.
+          if (urlCallbackDispatch(targetUrl)) {
+            return true;
+          }
+          if (isHttpUrl(targetUrl) || (!surface.urlCallback && isFileUrl(targetUrl))) {
+            return false;
+          }
+          if (isFileUrl(targetUrl)) {
+            return true;
+          }
+          Lingxia.launchWithUrl(targetUrl);
+          return true;
+        })
+        .multiWindowAccess(surface.urlCallback)
+        .allowWindowOpenMethod(surface.urlCallback)
+        .onWindowNew((event) => {
+          if (!surface.urlCallback || !event) {
+            return;
+          }
+          try {
+            event.handler.setWebController(null);
+          } catch (error) {
+            hilog.warn(DOMAIN, TAG, `onWindowNew: setWebController(null) failed: ${error}`);
+          }
+          const targetUrl = event.targetUrl;
+          if (urlCallbackDispatch(targetUrl)) {
+            return;
+          }
+          if (isExternalWindowUrl(targetUrl)) {
+            Lingxia.launchWithUrl(targetUrl);
+          }
+        })
+        .onErrorReceive((event) => {
+          if (!event || !event.request || !event.error || !event.request.isMainFrame()) {
+            return;
+          }
+          // Cancellation is control flow (superseded load, intercepted
+          // handoff), never an application-visible load error. It is
+          // reported as exactly ERR_ABORTED — substring matching would
+          // also swallow real failures like ERR_CONNECTION_ABORTED.
+          const info = (event.error.getErrorInfo() ?? '').toLowerCase();
+          if (info === 'err_aborted' || info === 'net::err_aborted') {
+            return;
+          }
+          this.loadWebSurfaceError(
+            this.getWebController(surface),
+            event.request.getRequestUrl() ?? surface.url
+          );
+        })
+        .width('100%')
+        .height('100%')
+        .onAppear(() => {
+          const url = surface.url;
+          const controller = this.getWebController(surface);
+          const isEphemeral = surface.ephemeralWebData;
+          setTimeout(() => {
+            try {
+              if (isEphemeral) {
+                // `incognitoMode` only stops on-disk persistence; the
+                // incognito cookie/storage lives in a shared in-memory
+                // store, so a prior IdP SSO session would carry into the
+                // next lx.auth.add() and re-recognize the last account.
+                // Wipe that store (synchronously, before loadUrl issues
+                // the first request) so every login starts clean.
+                try {
+                  webview.WebCookieManager.clearAllCookiesSync(true);
+                  webview.WebStorage.deleteAllData(true);
+                } catch (clearErr) {
+                  LxLog.e(TAG, `failed to clear incognito web data: ${clearErr}`);
+                }
+              }
+              hilog.info(DOMAIN, TAG, `load surface url=${url}`);
+              controller.loadUrl(url);
+            } catch (error) {
+              LxLog.e(TAG, `failed to load surface URL: ${error}`);
+            }
+          }, 0);
+        })
+        .onPageBegin((event) => {
+          hilog.info(DOMAIN, TAG, `surface page begin: ${event?.url ?? ''}`);
+        })
+        .onPageEnd((event) => {
+          hilog.info(DOMAIN, TAG, `surface page end: ${event?.url ?? ''}`);
+        })
+        .hitTestBehavior(surface.isVisible ? HitTestMode.Block : HitTestMode.None)
+    } else if (surface.pageWebTag.length > 0) {
+      LingXiaWebView({
+        webTag: surface.pageWebTag,
+        controller: this.getPageController(surface),
+        appearanceDark: surface.appearanceDark,
+        renderVisibility: Visibility.Visible,
+        renderWidth: '100%',
+        renderHeight: '100%',
+        renderBorderRadius: this.getBorderRadius(surface),
+        renderClip: true,
+        renderZIndex: 0,
+        renderHitTest: surface.isVisible ? HitTestMode.Block : HitTestMode.None
+      })
     }
   }
 
@@ -1249,8 +1349,9 @@ export struct SurfaceManager {
   }
 
   private hasVisibleSurface(): boolean {
+    // A side panel child blocks only its own rect; the main beside it stays touchable.
     for (let i = 0; i < this.surfaces.length; i++) {
-      if (this.surfaces[i].isVisible) {
+      if (this.surfaces[i].isVisible && !this.surfaces[i].inAside) {
         return true;
       }
     }
@@ -1290,7 +1391,7 @@ export struct SurfaceManager {
   }
 
   private getBorderRadius(surface: SurfaceRenderState): BorderRadiuses {
-    if (this.shouldUseFullscreenWindow(surface)) {
+    if (surface.inAside || this.shouldUseFullscreenWindow(surface)) {
       return { topLeft: 0, topRight: 0, bottomLeft: 0, bottomRight: 0 };
     }
     if (surface.widthVp > 0 && surface.heightVp > 0) {

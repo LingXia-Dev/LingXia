@@ -427,6 +427,27 @@ pub fn browser_tab_is_aside(tab_id: String) -> bool {
     crate::browser::tab_is_aside(&tab_id)
 }
 
+/// Runs a side panel command on `appid`'s window graph: `focus` a child, `collapse` /
+/// `restore` / `maximize` / `unmaximize` a slot, or `unregister` a host aside.
+#[napi]
+pub fn aside_command(appid: String, command: String, arg: String) -> bool {
+    let Some(app) = lxapp::try_get(&appid) else {
+        return false;
+    };
+    match command.as_str() {
+        "focus" => app.focus_shell_surface(&arg),
+        "collapse" => app.set_shell_slot_collapsed(&arg, true),
+        "restore" => app.set_shell_slot_collapsed(&arg, false),
+        "maximize" => app.set_shell_slot_maximized(&arg, true),
+        "unmaximize" => app.set_shell_slot_maximized(&arg, false),
+        "unregister" => {
+            app.unregister_host_aside(&arg);
+            true
+        }
+        _ => false,
+    }
+}
+
 #[napi]
 pub fn browser_tab_close(tab_id: String) -> bool {
     crate::browser::close(&tab_id).is_ok()
