@@ -3025,10 +3025,16 @@ class LxAppActivity : AppCompatActivity() {
     private var pendingRelease: Runnable? = null
     private val orientationHandler = android.os.Handler(android.os.Looper.getMainLooper())
 
+    /** What the host app's manifest declares for this activity: where a page without its own lands. */
+    private val hostOrientation: Int by lazy {
+        runCatching { packageManager.getActivityInfo(componentName, 0).screenOrientation }
+            .getOrDefault(ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED)
+    }
+
     private fun updateRequestedOrientation(orientation: Int) {
         val targetOrientation = resolveScreenOrientation(orientation)
         if (appliedOrientation == targetOrientation) return
-        val free = ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
+        val free = hostOrientation
         val wasFree = (appliedOrientation ?: free) == free
         appliedOrientation = targetOrientation
         val returning = pendingRelease != null
@@ -3084,8 +3090,7 @@ class LxAppActivity : AppCompatActivity() {
             NativeApi.ORIENTATION_LANDSCAPE -> ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
             NativeApi.ORIENTATION_REVERSE_PORTRAIT -> ActivityInfo.SCREEN_ORIENTATION_REVERSE_PORTRAIT
             NativeApi.ORIENTATION_REVERSE_LANDSCAPE -> ActivityInfo.SCREEN_ORIENTATION_REVERSE_LANDSCAPE
-            NativeApi.ORIENTATION_AUTO -> ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
-            else -> ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
+            else -> hostOrientation
         }
     }
 

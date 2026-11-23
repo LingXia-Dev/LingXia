@@ -22,11 +22,11 @@ pub enum PageRenderer {
 #[derive(Default)]
 pub enum PageOrientation {
     /// Portrait orientation (vertical)
-    #[default]
     Portrait,
     /// Landscape orientation (horizontal)
     Landscape,
-    /// Auto - follow device orientation
+    /// No orientation of its own: the host app's applies.
+    #[default]
     Auto,
 }
 
@@ -43,7 +43,7 @@ pub struct OrientationConfig {
 impl Default for OrientationConfig {
     fn default() -> Self {
         Self {
-            mode: PageOrientation::Portrait,
+            mode: PageOrientation::Auto,
             rotation: 0,
         }
     }
@@ -403,10 +403,10 @@ mod tests {
             let resolved = resolve_orientation(
                 None,
                 None,
-                page(PageOrientation::Auto),
+                page(PageOrientation::Portrait),
                 OrientationConfig::default(),
             );
-            assert_eq!(resolved.mode, PageOrientation::Auto);
+            assert_eq!(resolved.mode, PageOrientation::Portrait);
         }
 
         #[test]
