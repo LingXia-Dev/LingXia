@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { definePage, LxError, type, type PageLike } from "@lingxia/logic";
+import { definePage, defineStore, LxError, type, type PageLike } from "@lingxia/logic";
 import { createLxMock, mount, setLx, type LxMockOverrides } from "@lingxia/logic/testing";
 import { lxNow } from "./fixtures/lx-now.mjs";
 import attachPage from "./fixtures/attach-page.ts";
@@ -216,5 +216,43 @@ test("onShow gets a tab switch's params on that show only", async () => {
     assert.equal(Object.isFrozen(shown[0]), true);
   } finally {
     await mounted.unmount();
+  }
+});
+
+test("a store is one value for every page: an action's update reaches another page and a pick", async () => {
+  const cart = defineStore({ items: [] as string[] }, { name: "cart" });
+  const picks: number[] = [];
+  const count = cart.pick(c => c.items.length);
+  const stop = count.watch(n => picks.push(n));
+  const shop = definePage({
+    actions: () => ({
+      add(item: string) { cart.update(d => { d.items.push(item); }); },
+      clear() { cart.set({ items: [] }); },
+    }),
+  });
+  const writer = definePage({
+    data: { n: 0 },
+    actions: page => ({
+      inRecipe() { page.update(() => { cart.set({ items: ["x"] }); }); },
+    }),
+  });
+  const lx = createLxMock();
+  const a = await mount(shop, { lx });
+  const b = await mount(writer, { lx });
+  try {
+    a.actions.add("tea");
+    a.actions.add("tea");
+    assert.deepEqual(cart.get(), { items: ["tea", "tea"] });
+    assert.equal(Object.isFrozen(cart.get().items), true);
+    assert.throws(() => b.actions.inRecipe(), /cart: store\.set cannot be called inside a page\.update or store\.update recipe/);
+    a.actions.clear();
+    assert.deepEqual(picks, [0, 1, 2, 0]);
+    stop();
+    a.actions.add("milk");
+    assert.deepEqual(picks, [0, 1, 2, 0]);
+    assert.equal(count.get(), 1);
+  } finally {
+    await a.unmount();
+    await b.unmount();
   }
 });

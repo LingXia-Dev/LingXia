@@ -121,6 +121,9 @@ export async function mount(definition, options = {}) {
   const scope = Object.create(globalThis);
   scope.globalThis = scope;
   Object.defineProperty(scope, "lx", { get: () => importedLx });
+  // Stores live on the real global; they must see a page.update recipe in progress.
+  const recipeDepth = Symbol.for("lingxia.recipeDepth");
+  Object.defineProperty(scope, recipeDepth, { get: () => globalThis[recipeDepth], set: (n) => { globalThis[recipeDepth] = n; } });
   // The runtime's own setData batching keeps the real timers and clears its timer at unload.
   Object.assign(scope, realTimers);
   scope.PageSvc = class {

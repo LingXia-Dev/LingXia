@@ -388,11 +388,15 @@
         }
         const draft = createDraft(svc ? svc.data : initial);
         updating = true;
+        // Shared with stores: a store write inside this recipe is refused.
+        const depth = Symbol.for("lingxia.recipeDepth");
+        globalThis[depth] = (globalThis[depth] || 0) + 1;
         let returned;
         try {
           returned = recipe(draft.root);
         } finally {
           updating = false;
+          globalThis[depth] -= 1;
           draft.close();
         }
         // What a recipe returns is ignored (`d => d.list.push(x)`, `d => d.list.pop()`),
