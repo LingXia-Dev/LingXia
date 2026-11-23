@@ -1,7 +1,7 @@
 //! WebView2 composition hosting.
 //!
-//! Each webview owns a `LingXiaWebViewSurface` child HWND created on its
-//! dedicated UI thread, with a DirectComposition device/target/visual tree
+//! Each webview owns a `LingXiaWebViewSurface` child HWND created on the
+//! shared WebView UI thread, with a DirectComposition device/target/visual tree
 //! bound to it; WebView2 renders into the tree through `RootVisualTarget`.
 //! Reparenting moves the child HWND with Win32 `SetParent` — the DComp target
 //! travels with the window, so surfaces keep their frames across host

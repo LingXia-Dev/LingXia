@@ -810,6 +810,35 @@ suppressed in strict, allowed in browser.
 - LxApp pages are attached by `LxAppActivity`; browser tabs by
   `LxAppBrowserOverlay`.
 
+### Windows (WebView2)
+
+One STA thread, `lingxia-webview-ui`, owns every WebView2 controller and every
+WebView host window. The invariant is that **this thread never blocks on
+another thread**; other threads may block on it.
+
+- A thread per controller made host layout wait across UI threads. Two such
+  threads deadlocked until the 10 s command timeout, because a waiting thread
+  does not run its own queued commands (a white page on Back).
+- `WebViewInner::create()` runs creation on the UI thread. A caller on
+  another thread waits until the WebView is registered, because callers query
+  it immediately after.
+- Every command goes through the controller's FIFO queue.
+  - On the UI thread it runs in place, unless one of the same controller's
+    commands is already running further up the stack. Then it runs when that
+    command returns.
+  - A UI-thread caller that needs an asynchronous reply waits in a nested
+    message loop. It is refused (`SameThread`) only for a controller whose own
+    command is running up the stack.
+- Thread wake-ups go to a message-only dispatcher window, never to thread
+  messages: modal loops (menus, sizing, WebView2's creation pump) drop thread
+  messages.
+- `Shutdown` parks foreign controllers out of the parent, retrying every
+  100 ms for up to 10 s, then closes the controller and destroys the parent.
+- A same-tag replacement waits up to 2 s for the retiring generation to close.
+- Host windows created off the UI thread are created on it through
+  `run_on_webview_ui_thread`. `WM_QUIT` on the UI thread is ignored; the app
+  exits through the host message loop.
+
 ## Teardown Paths
 
 There are several teardown actions; they are **not** interchangeable. This table

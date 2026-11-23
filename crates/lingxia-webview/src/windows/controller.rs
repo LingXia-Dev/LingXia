@@ -1,13 +1,15 @@
 //! WebView controller: UI-thread lifecycle, command dispatch,
 //! the message loop, and the `WebViewController` implementation.
 
+use super::ui_thread;
 use super::*;
 use crate::events::normalizer;
 use async_trait::async_trait;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::cell::{Cell, RefCell};
+use std::collections::VecDeque;
+use std::rc::Rc;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Instant;
-
-pub(crate) const WM_LINGXIA_COMMAND: u32 = WM_APP + 0x154;
 
 pub(crate) const WEBVIEW_SCREENSHOT_TIMEOUT: Duration = Duration::from_secs(4);
 const BROWSER_EMULATION_TIMEOUT: Duration = Duration::from_secs(4);
@@ -18,86 +20,6 @@ const EVAL_TIMEOUT: Duration = Duration::from_secs(10);
 /// parking the document, so the whole navigation pipeline stalls behind it).
 const UI_COMMAND_TIMEOUT: Duration = Duration::from_secs(10);
 const WEBVIEW_UI_RETIRE_TIMEOUT: Duration = Duration::from_secs(2);
-
-#[derive(Default)]
-struct WebViewUiLifecycleState {
-    next_generation: u64,
-    active_generation: Option<u64>,
-}
-
-#[derive(Default)]
-struct WebViewUiLifecycleGate {
-    state: Mutex<WebViewUiLifecycleState>,
-    idle: std::sync::Condvar,
-}
-
-struct WebViewUiLifecycleGuard {
-    gate: Arc<WebViewUiLifecycleGate>,
-    generation: u64,
-}
-
-impl Drop for WebViewUiLifecycleGuard {
-    fn drop(&mut self) {
-        let mut state = self
-            .gate
-            .state
-            .lock()
-            .unwrap_or_else(|poisoned| poisoned.into_inner());
-        if state.active_generation == Some(self.generation) {
-            state.active_generation = None;
-            self.gate.idle.notify_all();
-        }
-    }
-}
-
-static WEBVIEW_UI_LIFECYCLE_GATES: OnceLock<
-    Mutex<HashMap<String, std::sync::Weak<WebViewUiLifecycleGate>>>,
-> = OnceLock::new();
-
-fn webview_ui_lifecycle_gate(webtag_key: &str) -> Arc<WebViewUiLifecycleGate> {
-    let gates = WEBVIEW_UI_LIFECYCLE_GATES.get_or_init(|| Mutex::new(HashMap::new()));
-    let mut gates = gates
-        .lock()
-        .unwrap_or_else(|poisoned| poisoned.into_inner());
-    gates.retain(|_, gate| gate.strong_count() > 0);
-    if let Some(gate) = gates.get(webtag_key).and_then(std::sync::Weak::upgrade) {
-        return gate;
-    }
-    let gate = Arc::new(WebViewUiLifecycleGate::default());
-    gates.insert(webtag_key.to_string(), Arc::downgrade(&gate));
-    gate
-}
-
-fn enter_webview_ui_lifecycle(webtag_key: &str, timeout: Duration) -> WebViewUiLifecycleGuard {
-    let gate = webview_ui_lifecycle_gate(webtag_key);
-    let deadline = std::time::Instant::now() + timeout;
-    let mut state = gate
-        .state
-        .lock()
-        .unwrap_or_else(|poisoned| poisoned.into_inner());
-    while state.active_generation.is_some() {
-        let Some(remaining) = deadline.checked_duration_since(std::time::Instant::now()) else {
-            break;
-        };
-        let (next_state, waited) = gate
-            .idle
-            .wait_timeout(state, remaining)
-            .unwrap_or_else(|poisoned| poisoned.into_inner());
-        state = next_state;
-        if waited.timed_out() && state.active_generation.is_some() {
-            log::warn!(
-                "Windows WebView UI teardown for {webtag_key} exceeded {:?}; starting the replacement generation",
-                timeout
-            );
-            break;
-        }
-    }
-    state.next_generation = state.next_generation.wrapping_add(1).max(1);
-    let generation = state.next_generation;
-    state.active_generation = Some(generation);
-    drop(state);
-    WebViewUiLifecycleGuard { gate, generation }
-}
 
 pub(crate) enum UiCommand {
     LoadUrl {
@@ -260,12 +182,9 @@ pub(crate) enum UiCommand {
         scale: f64,
         resp: Sender<StdResult<()>>,
     },
-    /// Phase one of teardown: the message loop starts retiring the parent
-    /// HWND off-thread and keeps pumping; it never reaches `handle_command`.
+    /// Starts retiring the parent HWND; commands keep running until foreign
+    /// controllers have left it and the controller is closed.
     Shutdown,
-    /// Phase two, sent by the retirement worker once foreign controllers
-    /// have left the parent: the loop exits and destroys the window.
-    ShutdownReady,
 }
 
 #[derive(Default)]
@@ -318,10 +237,11 @@ impl UiState {
     }
 }
 
+type CommandQueue = Arc<Mutex<VecDeque<UiCommand>>>;
+
 pub struct WebViewInner {
-    command_tx: Sender<UiCommand>,
-    thread_id: u32,
-    join_handle: Mutex<Option<JoinHandle<()>>>,
+    id: u64,
+    commands: CommandQueue,
     pub(crate) webtag: WebTag,
     pub(crate) native_view: isize,
     parent_window: Arc<Mutex<PublishedParent>>,
@@ -331,10 +251,240 @@ pub struct WebViewInner {
 impl std::fmt::Debug for WebViewInner {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("WebViewInner")
-            .field("thread_id", &self.thread_id)
+            .field("id", &self.id)
             .field("webtag", &self.webtag)
             .finish()
     }
+}
+
+/// A controller's UI-thread state. `state` is borrowed only while one of its
+/// commands runs; a command for it issued further up that stack stays queued
+/// until the running one returns.
+struct Slot {
+    state: RefCell<UiState>,
+    commands: CommandQueue,
+    retiring: Cell<bool>,
+    closed: Cell<bool>,
+}
+
+static NEXT_WEBVIEW_ID: AtomicU64 = AtomicU64::new(1);
+
+thread_local! {
+    static SLOTS: RefCell<HashMap<u64, Rc<Slot>>> = RefCell::new(HashMap::new());
+    /// Webtag keys whose previous controller is still retiring.
+    static RETIRING_TAGS: RefCell<HashMap<String, usize>> = RefCell::new(HashMap::new());
+}
+
+fn slot(id: u64) -> Option<Rc<Slot>> {
+    SLOTS.with(|slots| slots.borrow().get(&id).cloned())
+}
+
+fn slot_busy(id: u64) -> bool {
+    slot(id).is_some_and(|slot| slot.state.try_borrow_mut().is_err())
+}
+
+fn tag_retiring(key: &str) -> bool {
+    RETIRING_TAGS.with(|tags| tags.borrow().contains_key(key))
+}
+
+/// Runs queued commands for `id` in order. Must be called on the UI thread.
+fn drain(id: u64, commands: &CommandQueue) {
+    let Some(slot) = slot(id) else {
+        // Dropping the commands drops their reply senders: waiters see the
+        // controller as gone.
+        commands
+            .lock()
+            .unwrap_or_else(|err| err.into_inner())
+            .clear();
+        return;
+    };
+    loop {
+        if slot.closed.get() {
+            commands
+                .lock()
+                .unwrap_or_else(|err| err.into_inner())
+                .clear();
+            return;
+        }
+        let Ok(mut state) = slot.state.try_borrow_mut() else {
+            return;
+        };
+        let Some(command) = commands
+            .lock()
+            .unwrap_or_else(|err| err.into_inner())
+            .pop_front()
+        else {
+            return;
+        };
+        match command {
+            UiCommand::Shutdown => {
+                drop(state);
+                begin_retirement(id, &slot);
+            }
+            command => {
+                if let Err(err) = handle_command(&mut state, command) {
+                    log::error!("WebView command failed for {}: {err}", state.webtag_key);
+                }
+            }
+        }
+    }
+}
+
+/// Upper bound on waiting for foreign controllers to leave a retiring parent.
+/// Past it the parent is destroyed anyway: a stuck surface beats a leaked
+/// controller that never closes.
+const PARENT_RETIREMENT_DEADLINE: Duration = Duration::from_secs(10);
+const PARENT_RETIREMENT_POLL: Duration = Duration::from_millis(100);
+
+fn begin_retirement(id: u64, slot: &Slot) {
+    if slot.retiring.replace(true) {
+        return;
+    }
+    let key = slot.state.borrow().webtag_key.clone();
+    RETIRING_TAGS.with(|tags| *tags.borrow_mut().entry(key).or_default() += 1);
+    let deadline = Instant::now() + PARENT_RETIREMENT_DEADLINE;
+    ui_thread::post(Box::new(move || retire(id, deadline)));
+}
+
+fn retire(id: u64, deadline: Instant) {
+    let Some(slot) = slot(id) else {
+        return;
+    };
+    let Ok(view) = slot.state.try_borrow().map(|state| state.native_view) else {
+        ui_thread::post_after(PARENT_RETIREMENT_POLL, move || retire(id, deadline));
+        return;
+    };
+    let ready = match prepare_destroy_webview_parent(view) {
+        Ok(ParentRetirement::Ready) => true,
+        Ok(ParentRetirement::Deferred) => false,
+        Err(err) => {
+            log::warn!("Windows parent retirement could not park controllers: {err}");
+            false
+        }
+    };
+    if !ready {
+        if Instant::now() < deadline {
+            ui_thread::post_after(PARENT_RETIREMENT_POLL, move || retire(id, deadline));
+            return;
+        }
+        log::warn!("Windows parent retirement timed out; destroying the parent anyway");
+    }
+    let Ok(mut state) = slot.state.try_borrow_mut() else {
+        ui_thread::post_after(PARENT_RETIREMENT_POLL, move || retire(id, deadline));
+        return;
+    };
+    slot.closed.set(true);
+    slot.commands
+        .lock()
+        .unwrap_or_else(|err| err.into_inner())
+        .clear();
+    cleanup_state(&mut state);
+    let key = state.webtag_key.clone();
+    drop(state);
+    SLOTS.with(|slots| slots.borrow_mut().remove(&id));
+    RETIRING_TAGS.with(|tags| {
+        let mut tags = tags.borrow_mut();
+        if let Some(count) = tags.get_mut(&key) {
+            *count -= 1;
+            if *count == 0 {
+                tags.remove(&key);
+            }
+        }
+    });
+}
+
+/// `done` is dropped once creation has finished or failed; a caller off the
+/// UI thread waits on it.
+fn create_on_ui_thread(
+    webtag: WebTag,
+    effective_options: EffectiveWebViewCreateOptions,
+    sender: WebViewCreateSender,
+    requested: Instant,
+    done: Sender<()>,
+) {
+    if sender.is_destroyed() {
+        return;
+    }
+    // A relaunch can reuse a WebTag while the retired controller still closes.
+    // Prefer disjoint native lifetimes because overlapping controllers can
+    // wedge the replacement, but a stuck retirement must not block every
+    // later generation, so the wait is bounded.
+    if tag_retiring(webtag.key()) {
+        if requested.elapsed() < WEBVIEW_UI_RETIRE_TIMEOUT {
+            ui_thread::post_after(Duration::from_millis(20), move || {
+                create_on_ui_thread(webtag, effective_options, sender, requested, done)
+            });
+            return;
+        }
+        log::warn!(
+            "Windows WebView teardown for {} exceeded {:?}; starting the replacement generation",
+            webtag.key(),
+            WEBVIEW_UI_RETIRE_TIMEOUT
+        );
+    }
+
+    let native_view_id = sender.native_view_id();
+    let parent_window = Arc::new(Mutex::new(PublishedParent::default()));
+    let state = match build_ui_state(
+        webtag.clone(),
+        effective_options.clone(),
+        native_view_id,
+        parent_window.clone(),
+    ) {
+        Ok(state) => state,
+        Err(err) => {
+            log::error!("Windows WebView creation failed: {err}");
+            sender.fail(WebViewCreateStage::Requested, err);
+            return;
+        }
+    };
+    let id = NEXT_WEBVIEW_ID.fetch_add(1, Ordering::Relaxed);
+    let native_view = state.native_view.window;
+    let composition_hosted = matches!(state.hosting, HostingMode::Composition(_));
+    let commands = CommandQueue::default();
+    SLOTS.with(|slots| {
+        slots.borrow_mut().insert(
+            id,
+            Rc::new(Slot {
+                state: RefCell::new(state),
+                commands: commands.clone(),
+                retiring: Cell::new(false),
+                closed: Cell::new(false),
+            }),
+        )
+    });
+    let webview = Arc::new(crate::WebView::new(
+        WebViewInner {
+            id,
+            commands,
+            webtag,
+            native_view,
+            parent_window,
+            composition_hosted,
+        },
+        effective_options,
+        native_view_id,
+    ));
+    if sender.is_destroyed() {
+        log::info!(
+            "Windows WebView for {} was destroyed during creation; discarding",
+            webview.webtag().key()
+        );
+        return;
+    }
+    register_webview(webview.clone());
+    // Destruction can race the registry insertion. Re-check after
+    // registration so the destroyed generation never remains as a
+    // zombie that blocks a later same-tag reactivation.
+    if sender.is_destroyed() {
+        log::info!(
+            "Windows WebView for {} was destroyed during registration; discarding",
+            webview.webtag().key()
+        );
+        crate::webview::destroy_webview_if_matches(&webview.webtag(), &webview);
+        return;
+    }
+    sender.succeed(webview);
 }
 
 impl WebViewInner {
@@ -345,6 +495,7 @@ impl WebViewInner {
             .unwrap_or_else(|err| err.into_inner());
         parent.current == window || parent.pending == Some(window)
     }
+
     pub(crate) fn create(
         appid: &str,
         path: &str,
@@ -353,116 +504,59 @@ impl WebViewInner {
         sender: WebViewCreateSender,
     ) {
         let webtag = WebTag::new(appid, path, session_id);
-        let native_view_id = sender.native_view_id();
-        let webtag_for_thread = webtag.clone();
-        let effective_options_for_thread = effective_options.clone();
-        let (startup_tx, startup_rx) = mpsc::channel();
-        let parent_window = Arc::new(Mutex::new(PublishedParent::default()));
-        let parent_for_thread = parent_window.clone();
+        let requested = Instant::now();
+        let (done, finished) = mpsc::channel();
+        if ui_thread::is_ui_thread() {
+            create_on_ui_thread(webtag, effective_options, sender, requested, done);
+            return;
+        }
+        ui_thread::post(Box::new(move || {
+            create_on_ui_thread(webtag, effective_options, sender, requested, done)
+        }));
+        // Callers rely on the WebView being registered when this returns.
+        let _ = recv_reply_pumping(&finished, None);
+    }
 
-        let join_handle = thread::Builder::new()
-            .name(format!("lingxia-webview-{}", webtag.as_str()))
-            .spawn(move || {
-                if let Err(err) = run_ui_thread(
-                    webtag_for_thread,
-                    effective_options_for_thread,
-                    native_view_id,
-                    startup_tx,
-                    parent_for_thread,
-                ) {
-                    log::error!("Windows WebView UI thread failed: {}", err);
-                }
-            });
-
-        let join_handle = match join_handle {
-            Ok(handle) => handle,
-            Err(err) => {
-                sender.fail(
-                    WebViewCreateStage::Requested,
-                    WebViewError::WebView(format!(
-                        "Failed to spawn Windows WebView thread: {}",
-                        err
-                    )),
-                );
-                return;
-            }
-        };
-
-        match startup_rx.recv() {
-            Ok(Ok((command_tx, thread_id, native_view, composition_hosted))) => {
-                let webview = Arc::new(crate::WebView::new(
-                    WebViewInner {
-                        command_tx,
-                        thread_id,
-                        join_handle: Mutex::new(Some(join_handle)),
-                        webtag,
-                        native_view,
-                        parent_window,
-                        composition_hosted,
-                    },
-                    effective_options,
-                    native_view_id,
-                ));
-                if sender.is_destroyed() {
-                    log::info!(
-                        "Windows WebView for {} was destroyed during creation; discarding",
-                        webview.webtag().key()
-                    );
-                    return;
-                }
-                register_webview(webview.clone());
-                // Destruction can race the registry insertion. Re-check after
-                // registration so the destroyed generation never remains as a
-                // zombie that blocks a later same-tag reactivation.
-                if sender.is_destroyed() {
-                    log::info!(
-                        "Windows WebView for {} was destroyed during registration; discarding",
-                        webview.webtag().key()
-                    );
-                    crate::webview::destroy_webview_if_matches(&webview.webtag(), &webview);
-                    return;
-                }
-                sender.succeed(webview);
-            }
-            Ok(Err(err)) => {
-                sender.fail(WebViewCreateStage::Requested, err);
-                let _ = join_handle.join();
-            }
-            Err(err) => {
-                sender.fail(
-                    WebViewCreateStage::Requested,
-                    WebViewError::WebView(format!(
-                        "Windows WebView startup channel failed: {}",
-                        err
-                    )),
-                );
-                let _ = join_handle.join();
-            }
+    /// Queues `command` behind this controller's earlier commands. On the UI
+    /// thread it runs before returning unless one of this controller's
+    /// commands is already running further up the stack.
+    fn send(&self, command: UiCommand) {
+        self.commands
+            .lock()
+            .unwrap_or_else(|err| err.into_inner())
+            .push_back(command);
+        if ui_thread::is_ui_thread() {
+            drain(self.id, &self.commands);
+        } else {
+            let id = self.id;
+            let commands = self.commands.clone();
+            ui_thread::post(Box::new(move || drain(id, &commands)));
         }
     }
 
-    /// Send a command to the UI thread and synchronously wait for its reply.
+    /// Send a command to the UI thread and wait for its reply.
     ///
-    /// All synchronous dispatchers are built on this: it guards against
-    /// self-deadlock when called from the UI thread itself, wakes the UI
-    /// message loop, and waits for the response (optionally with a timeout).
+    /// On the UI thread the wait runs a nested message loop, so WebView2
+    /// completions and other controllers' work keep flowing. Only a command
+    /// for a controller whose own command is running further up the stack is
+    /// refused: its reply could never arrive.
     pub(super) fn dispatch_ui<T>(
         &self,
         make: impl FnOnce(Sender<T>) -> UiCommand,
         timeout: Option<Duration>,
     ) -> std::result::Result<T, UiDispatchError> {
-        if unsafe { Threading::GetCurrentThreadId() } == self.thread_id {
+        let on_ui_thread = ui_thread::is_ui_thread();
+        if on_ui_thread && slot_busy(self.id) {
             return Err(UiDispatchError::SameThread);
         }
-
         let (resp_tx, resp_rx) = mpsc::channel();
-        self.command_tx
-            .send(make(resp_tx))
-            .map_err(|_| UiDispatchError::Unavailable)?;
-
-        self.wake_ui_thread();
-
-        recv_reply_pumping(&resp_rx, timeout).map_err(|err| match err {
+        self.send(make(resp_tx));
+        let reply = if on_ui_thread {
+            ui_thread::pump_until(&resp_rx, timeout)
+        } else {
+            recv_reply_pumping(&resp_rx, timeout)
+        };
+        reply.map_err(|err| match err {
             mpsc::RecvTimeoutError::Timeout => UiDispatchError::NoReply(Some(err.to_string())),
             mpsc::RecvTimeoutError::Disconnected => UiDispatchError::NoReply(None),
         })
@@ -476,10 +570,9 @@ impl WebViewInner {
             .map_err(|err| err.into_webview_error("run synchronous WebView command"))?
     }
 
-    /// Queue a fire-and-forget command and wake the UI thread; when already
-    /// on that thread, skip the reply wait (waiting would deadlock — the
-    /// thread cannot pump the queue while blocked). Errors on the same-thread
-    /// path surface only in the UI thread's own logging.
+    /// Runs a command whose completion the caller need not await. On the UI
+    /// thread it returns the immediate result, or `Ok` when the command was
+    /// deferred or completes asynchronously.
     fn dispatch_command_same_thread_safe(
         &self,
         command: impl FnOnce(Sender<StdResult<()>>) -> UiCommand,
@@ -493,14 +586,14 @@ impl WebViewInner {
         timeout: Option<Duration>,
     ) -> StdResult<()> {
         let (resp_tx, resp_rx) = mpsc::channel();
-        self.command_tx
-            .send(command(resp_tx))
-            .map_err(|_| WebViewError::WebView("WebView UI thread is unavailable".to_string()))?;
+        self.send(command(resp_tx));
 
-        self.wake_ui_thread();
-
-        if unsafe { Threading::GetCurrentThreadId() } == self.thread_id {
-            return Ok(());
+        if ui_thread::is_ui_thread() {
+            return match resp_rx.try_recv() {
+                Ok(result) => result
+                    .map_err(|err| WebViewError::WebView(format!("run WebView command: {err}"))),
+                Err(_) => Ok(()),
+            };
         }
 
         recv_reply_pumping(&resp_rx, timeout)
@@ -539,18 +632,10 @@ impl WebViewInner {
     /// that call miss the bridge timeout after the preference is already saved.
     pub(crate) fn post_preferred_color_scheme(&self, scheme: WindowsPreferredColorScheme) {
         let (resp_tx, _resp_rx) = mpsc::channel();
-        if self
-            .command_tx
-            .send(UiCommand::SetPreferredColorScheme {
-                scheme,
-                resp: resp_tx,
-            })
-            .is_err()
-        {
-            log::warn!("WebView UI thread is unavailable for a color scheme change");
-            return;
-        }
-        self.wake_ui_thread();
+        self.send(UiCommand::SetPreferredColorScheme {
+            scheme,
+            resp: resp_tx,
+        });
     }
 
     pub(crate) fn set_browser_emulation_profile(
@@ -580,13 +665,9 @@ impl WebViewInner {
     }
 
     pub(crate) fn set_content_visible(&self, visible: bool) -> StdResult<()> {
-        // Layout dispatch: visibility is toggled from host layout passes, which
-        // on a desktop (non-framed) page run on this webview's OWN UI thread —
-        // the page's host window lives there. The plain synchronous dispatch
-        // rejects same-thread calls (`SameThread`), which left the controller
-        // permanently hidden after a same-page navigation: the reconcile's
-        // show failed, the visibility registry went stale, and every later
-        // layout pass failed the same way — a stuck white page.
+        // Host layout passes toggle visibility on the UI thread, sometimes
+        // while this controller's own command is running; a refusing dispatch
+        // there left the page permanently hidden (a stuck white page).
         self.dispatch_command_same_thread_safe(|resp| UiCommand::SetContentVisible {
             visible,
             resp,
@@ -612,28 +693,32 @@ impl WebViewInner {
         expected: isize,
         window: isize,
     ) -> StdResult<ParkOutcome> {
-        if unsafe { Threading::GetCurrentThreadId() } == self.thread_id {
-            return Err(WebViewError::WebView(
-                "Cannot synchronously park on the controller thread".to_string(),
-            ));
+        // A controller already closed has nothing left to protect, and
+        // retirement must not wait on it.
+        if ui_thread::is_ui_thread() && slot_busy(self.id) {
+            return Ok(ParkOutcome::Deferred);
         }
         let (resp, reply) = mpsc::channel();
-        // A controller whose UI thread already exited has nothing left to
-        // protect, and retirement must not wait on it.
-        if self
-            .command_tx
-            .send(UiCommand::ParkFromParent {
-                expected,
-                window,
-                resp,
+        self.send(UiCommand::ParkFromParent {
+            expected,
+            window,
+            resp,
+        });
+        let reply = if ui_thread::is_ui_thread() {
+            reply.try_recv().map_err(|err| match err {
+                mpsc::TryRecvError::Empty => mpsc::RecvTimeoutError::Timeout,
+                mpsc::TryRecvError::Disconnected => mpsc::RecvTimeoutError::Disconnected,
             })
-            .is_err()
-        {
-            return Ok(ParkOutcome::NotInParent);
+        } else {
+            recv_reply_pumping(&reply, Some(UI_COMMAND_TIMEOUT))
+        };
+        match reply {
+            Ok(outcome) => outcome,
+            Err(mpsc::RecvTimeoutError::Disconnected) => Ok(ParkOutcome::NotInParent),
+            Err(err) => Err(WebViewError::WebView(format!(
+                "Park WebView command: {err}"
+            ))),
         }
-        self.wake_ui_thread();
-        recv_reply_pumping(&reply, Some(UI_COMMAND_TIMEOUT))
-            .map_err(|err| WebViewError::WebView(format!("Park WebView command: {err}")))?
     }
 
     pub(crate) fn dispatch_screenshot_command(&self) -> StdResult<Vec<u8>> {
@@ -664,27 +749,6 @@ impl WebViewInner {
             scale,
             resp,
         })
-    }
-
-    fn wake_ui_thread(&self) {
-        unsafe {
-            let _ = WindowsAndMessaging::PostMessageW(
-                Some(hwnd_from_handle(self.native_view)),
-                WM_LINGXIA_COMMAND,
-                WPARAM::default(),
-                LPARAM::default(),
-            );
-            // A retired surface can destroy and quickly reuse the parent HWND
-            // while another Arc still owns this controller. Posting to that
-            // reused handle succeeds on the wrong queue, so always wake the
-            // recorded owner thread as well.
-            let _ = WindowsAndMessaging::PostThreadMessageW(
-                self.thread_id,
-                WM_LINGXIA_COMMAND,
-                WPARAM::default(),
-                LPARAM::default(),
-            );
-        }
     }
 
     pub(super) fn dispatch_eval_command(
@@ -760,8 +824,6 @@ impl WebViewInner {
 pub(crate) enum UiDispatchError {
     /// Called from the UI thread itself; blocking would self-deadlock.
     SameThread,
-    /// The UI thread command channel is closed.
-    Unavailable,
     /// The UI thread never replied (`Some` carries the timeout error detail).
     NoReply(Option<String>),
 }
@@ -772,7 +834,6 @@ impl UiDispatchError {
             UiDispatchError::SameThread => {
                 format!("Cannot {action} from WebView UI thread")
             }
-            UiDispatchError::Unavailable => "WebView UI thread is unavailable".to_string(),
             UiDispatchError::NoReply(detail) => detail
                 .map(|detail| format!("WebView UI thread did not reply: {detail}"))
                 .unwrap_or_else(|| "WebView UI thread did not reply".to_string()),
@@ -786,9 +847,7 @@ fn map_eval_dispatch_error(error: UiDispatchError) -> WebViewScriptError {
             "Cannot evaluate JavaScript from WebView UI thread".to_string(),
         ),
         UiDispatchError::NoReply(Some(_)) => WebViewScriptError::Timeout,
-        UiDispatchError::Unavailable | UiDispatchError::NoReply(None) => {
-            WebViewScriptError::Destroyed
-        }
+        UiDispatchError::NoReply(None) => WebViewScriptError::Destroyed,
     }
 }
 
@@ -820,22 +879,18 @@ impl WebViewController for WebViewInner {
         // emit a response. Queueing is the completion boundary here: the UI
         // thread rechecks both credentials immediately before native delivery.
         let (resp, _ignored) = mpsc::channel();
-        self.command_tx
-            .send(UiCommand::PostMessageToDocument {
-                expected_generation,
-                gate,
-                message: message.to_string(),
-                resp,
-            })
-            .map_err(|_| WebViewError::WebView("WebView UI thread is unavailable".to_string()))?;
-        self.wake_ui_thread();
+        self.send(UiCommand::PostMessageToDocument {
+            expected_generation,
+            gate,
+            message: message.to_string(),
+            resp,
+        });
         Ok(())
     }
 
     fn exec_js(&self, js: &str) -> StdResult<()> {
-        // Fire-and-forget script injection is called from delegate events,
-        // which are delivered on this webview's own UI thread — queue without
-        // waiting there so callers stay platform-innocent.
+        // Fire-and-forget: delegate events call this on the UI thread, which
+        // must not wait for the script to complete.
         self.dispatch_command_same_thread_safe_with_timeout(
             |resp| UiCommand::ExecJs {
                 js: js.to_string(),
@@ -1047,8 +1102,7 @@ impl WebViewController for WebViewInner {
 
 impl WebViewInner {
     pub(crate) fn request_shutdown(&self) {
-        let _ = self.command_tx.send(UiCommand::Shutdown);
-        self.wake_ui_thread();
+        self.send(UiCommand::Shutdown);
     }
 
     pub(crate) fn clear_profile_data(
@@ -1067,55 +1121,7 @@ impl WebViewInner {
 impl Drop for WebViewInner {
     fn drop(&mut self) {
         self.request_shutdown();
-        // Never block on the UI thread's exit: the dropping thread may itself
-        // own windows (another webview's UI thread running a layout callback),
-        // and the dying thread's WebView2 teardown can message those windows
-        // synchronously — a join would deadlock against that send. The thread
-        // exits on its own once it processes Shutdown.
-        if let Ok(mut guard) = self.join_handle.lock() {
-            drop(guard.take());
-        }
     }
-}
-
-/// Published once the UI thread is up: the command channel, the thread id,
-/// the native-view HWND handle, and whether composition hosting engaged.
-pub(crate) type WebViewStartup = (Sender<UiCommand>, u32, isize, bool);
-
-pub(crate) fn run_ui_thread(
-    webtag: WebTag,
-    effective_options: EffectiveWebViewCreateOptions,
-    native_view_id: NativeWebViewId,
-    startup_tx: Sender<StdResult<WebViewStartup>>,
-    parent_window: Arc<Mutex<PublishedParent>>,
-) -> StdResult<()> {
-    // A relaunch can reuse a WebTag as soon as the retired instance leaves the
-    // registry, while its WebView2 UI thread is still closing the controller.
-    // Prefer disjoint native lifetimes because overlapping controllers can
-    // wedge the replacement. A stuck WebView2 Close must not wedge every later
-    // generation too, so the lifecycle gate permits a bounded takeover.
-    let _lifecycle_guard = enter_webview_ui_lifecycle(webtag.key(), WEBVIEW_UI_RETIRE_TIMEOUT);
-
-    unsafe {
-        // OleInitialize = CoInitializeEx(STA) + OLE (clipboard/drag-drop);
-        // composition hosting registers the surface window as a drop target.
-        windows::Win32::System::Ole::OleInitialize(None)
-            .map_err(|err| WebViewError::WebView(format!("OleInitialize failed: {err}")))?;
-    }
-
-    let result = run_ui_thread_inner(
-        webtag,
-        effective_options,
-        native_view_id,
-        startup_tx,
-        parent_window,
-    );
-
-    unsafe {
-        windows::Win32::System::Ole::OleUninitialize();
-    }
-
-    result
 }
 
 /// The pieces produced while bringing up a WebView2 controller, returned from
@@ -1145,15 +1151,13 @@ impl Drop for EphemeralProfileGuard {
     }
 }
 
-pub(crate) fn run_ui_thread_inner(
+/// Creates the parent window and the WebView2 controller on the UI thread.
+fn build_ui_state(
     webtag: WebTag,
     effective_options: EffectiveWebViewCreateOptions,
     native_view_id: NativeWebViewId,
-    startup_tx: Sender<StdResult<WebViewStartup>>,
     parent_window: Arc<Mutex<PublishedParent>>,
-) -> StdResult<()> {
-    ensure_message_queue();
-
+) -> StdResult<UiState> {
     let native_view = create_webview_parent(&webtag)?;
     let hwnd = hwnd_from_handle(native_view.window);
     publish_parent_window(&parent_window, native_view.window);
@@ -1232,13 +1236,10 @@ pub(crate) fn run_ui_thread_inner(
         match setup {
             Ok(parts) => parts,
             Err(err) => {
-                let _ = startup_tx.send(Err(err.clone()));
                 destroy_webview_parent(webtag.key(), native_view);
                 return Err(err);
             }
         };
-
-    let (command_tx, command_rx) = mpsc::channel();
 
     // Page-log capture over CDP (console calls, uncaught exceptions,
     // browser-level messages) is wired before the message loop pumps any
@@ -1268,7 +1269,6 @@ pub(crate) fn run_ui_thread_inner(
     let default_user_agent = match user_agent(&webview) {
         Ok(user_agent) => user_agent,
         Err(err) => {
-            let _ = startup_tx.send(Err(err.clone()));
             unsafe {
                 let _ = controller.Close();
             }
@@ -1311,7 +1311,16 @@ pub(crate) fn run_ui_thread_inner(
                 profile,
                 profile_tx,
             );
-            wait_for_ui_reply(&profile_rx, BROWSER_EMULATION_TIMEOUT)??;
+            ui_thread::pump_until(&profile_rx, Some(BROWSER_EMULATION_TIMEOUT)).map_err(
+                |err| match err {
+                    mpsc::RecvTimeoutError::Timeout => {
+                        WebViewError::WebView("WebView2 browser emulation timed out".to_string())
+                    }
+                    mpsc::RecvTimeoutError::Disconnected => {
+                        WebViewError::WebView("WebView2 callback channel disconnected".to_string())
+                    }
+                },
+            )??;
         }
         // Appearance is a dev nicety, not a correctness precondition like UA
         // emulation: skip the neutral value and never let a failure (e.g. a
@@ -1327,86 +1336,18 @@ pub(crate) fn run_ui_thread_inner(
         Ok(())
     })();
     if let Err(err) = bootstrap {
-        let _ = startup_tx.send(Err(err.clone()));
         cleanup_state(&mut state);
         return Err(err);
     }
 
-    if startup_tx
-        .send(Ok((
-            command_tx.clone(),
-            unsafe { Threading::GetCurrentThreadId() },
-            native_view.window,
-            matches!(state.hosting, HostingMode::Composition(_)),
-        )))
-        .is_err()
-    {
-        cleanup_state(&mut state);
-        return Err(WebViewError::WebView(
-            "Failed to publish WebView startup".to_string(),
-        ));
-    }
-
-    message_loop(&mut state, command_rx, command_tx)
+    Ok(state)
 }
 
-/// Waits for a WebView2 callback before the regular message loop starts.
-/// Startup is not published until this completes, so a first navigation cannot
-/// overtake Runner UA/Client-Hints emulation.
-fn wait_for_ui_reply<T>(resp_rx: &Receiver<T>, timeout: Duration) -> StdResult<T> {
-    let deadline = std::time::Instant::now() + timeout;
-    loop {
-        match resp_rx.try_recv() {
-            Ok(reply) => return Ok(reply),
-            Err(mpsc::TryRecvError::Disconnected) => {
-                return Err(WebViewError::WebView(
-                    "WebView2 callback channel disconnected".to_string(),
-                ));
-            }
-            Err(mpsc::TryRecvError::Empty) => {}
-        }
-        if std::time::Instant::now() >= deadline {
-            return Err(WebViewError::WebView(
-                "WebView2 browser emulation timed out".to_string(),
-            ));
-        }
-
-        let mut dispatched = false;
-        unsafe {
-            let mut msg = MSG::default();
-            while WindowsAndMessaging::PeekMessageW(
-                &mut msg,
-                None,
-                0,
-                0,
-                WindowsAndMessaging::PM_REMOVE,
-            )
-            .as_bool()
-            {
-                dispatched = true;
-                if msg.message == WindowsAndMessaging::WM_QUIT {
-                    return Err(WebViewError::WebView(
-                        "WebView thread quit during browser emulation".to_string(),
-                    ));
-                }
-                if msg.message != WM_LINGXIA_COMMAND {
-                    let _ = WindowsAndMessaging::TranslateMessage(&msg);
-                    WindowsAndMessaging::DispatchMessageW(&msg);
-                }
-            }
-        }
-        if !dispatched {
-            std::thread::sleep(Duration::from_millis(1));
-        }
-    }
-}
-
-/// Waits for a dispatched command's reply while delivering incoming
-/// cross-thread sent messages (via `PeekMessageW(PM_NOREMOVE)`). A caller on
-/// a window-owning thread (e.g. the host window's UI thread) would otherwise
-/// deadlock: the WebView UI thread serving the command can itself block in a
-/// synchronous send back to one of the caller's windows.
-fn recv_reply_pumping<T>(
+/// Waits off the UI thread for a dispatched command's reply while delivering
+/// incoming cross-thread sent messages (via `PeekMessageW(PM_NOREMOVE)`). A
+/// caller that owns windows would otherwise deadlock: the UI thread serving
+/// the command can itself block in a synchronous send to one of them.
+pub(crate) fn recv_reply_pumping<T>(
     resp_rx: &Receiver<T>,
     timeout: Option<Duration>,
 ) -> std::result::Result<T, mpsc::RecvTimeoutError> {
@@ -1497,152 +1438,6 @@ fn com_window_for_current_thread() -> Option<isize> {
         }
         after = Some(window);
     }
-}
-
-pub(crate) fn ensure_message_queue() {
-    let mut msg = MSG::default();
-    unsafe {
-        let _ = WindowsAndMessaging::PeekMessageW(
-            &mut msg,
-            None,
-            0,
-            0,
-            WindowsAndMessaging::PM_NOREMOVE,
-        );
-    }
-}
-
-pub(crate) fn message_loop(
-    state: &mut UiState,
-    command_rx: Receiver<UiCommand>,
-    command_tx: Sender<UiCommand>,
-) -> StdResult<()> {
-    let mut msg = MSG::default();
-    let mut retiring = false;
-    let owner_alive = RetirementOwnerGuard(Arc::new(AtomicBool::new(true)));
-
-    loop {
-        while let Ok(command) = command_rx.try_recv() {
-            if matches!(command, UiCommand::Shutdown) {
-                begin_parent_retirement(
-                    state.native_view,
-                    &command_tx,
-                    &mut retiring,
-                    &owner_alive.0,
-                );
-                continue;
-            }
-            if handle_command(state, command)? {
-                cleanup_state(state);
-                return Ok(());
-            }
-        }
-
-        let status = unsafe { WindowsAndMessaging::GetMessageW(&mut msg, None, 0, 0).0 };
-        match status {
-            -1 => {
-                cleanup_state(state);
-                return Err(WebViewError::WebView(
-                    "GetMessageW failed in WebView loop".to_string(),
-                ));
-            }
-            0 => {
-                begin_parent_retirement(
-                    state.native_view,
-                    &command_tx,
-                    &mut retiring,
-                    &owner_alive.0,
-                );
-            }
-            _ => {
-                // Window messages still need normal dispatch; only the
-                // command wake is consumed by this loop.
-                if msg.message != WM_LINGXIA_COMMAND {
-                    unsafe {
-                        let _ = WindowsAndMessaging::TranslateMessage(&msg);
-                        WindowsAndMessaging::DispatchMessageW(&msg);
-                    }
-                }
-            }
-        }
-    }
-}
-
-struct RetirementOwnerGuard(Arc<AtomicBool>);
-
-impl Drop for RetirementOwnerGuard {
-    fn drop(&mut self) {
-        self.0.store(false, Ordering::SeqCst);
-    }
-}
-
-/// Upper bound on waiting for foreign controllers to leave a retiring parent.
-/// Past it the parent is destroyed anyway: a stuck surface beats a leaked
-/// UI thread that never exits.
-const PARENT_RETIREMENT_DEADLINE: Duration = Duration::from_secs(10);
-const PARENT_RETIREMENT_POLL: Duration = Duration::from_millis(100);
-
-/// Returns false only when the owner loop exited before retirement finished.
-fn wait_for_parent_retirement(
-    owner_alive: &AtomicBool,
-    deadline: Instant,
-    mut prepare: impl FnMut() -> StdResult<ParentRetirement>,
-) -> bool {
-    let mut deferred_logged = false;
-    while owner_alive.load(Ordering::SeqCst) {
-        match prepare() {
-            Ok(ParentRetirement::Ready) => return true,
-            Ok(ParentRetirement::Deferred) => {
-                if !deferred_logged {
-                    deferred_logged = true;
-                    log::debug!("Windows parent retirement waits for controllers to park");
-                }
-            }
-            Err(err) => log::warn!("Windows parent retirement could not park controllers: {err}"),
-        }
-        if Instant::now() >= deadline {
-            log::warn!("Windows parent retirement timed out; destroying the parent anyway");
-            return true;
-        }
-        thread::sleep(PARENT_RETIREMENT_POLL);
-    }
-    false
-}
-
-fn begin_parent_retirement(
-    view: WindowsWebViewNativeView,
-    commands: &Sender<UiCommand>,
-    retiring: &mut bool,
-    owner_alive: &Arc<AtomicBool>,
-) {
-    if std::mem::replace(retiring, true) {
-        return;
-    }
-    let commands = commands.clone();
-    let owner_alive = owner_alive.clone();
-    let thread_id = unsafe { Threading::GetCurrentThreadId() };
-    thread::Builder::new()
-        .name("lingxia-webview-retire".to_string())
-        .spawn(move || {
-            let deadline = Instant::now() + PARENT_RETIREMENT_DEADLINE;
-            if !wait_for_parent_retirement(&owner_alive, deadline, || {
-                prepare_destroy_webview_parent(view)
-            }) {
-                return;
-            }
-            if commands.send(UiCommand::ShutdownReady).is_err() {
-                return;
-            }
-            unsafe {
-                let _ = WindowsAndMessaging::PostThreadMessageW(
-                    thread_id,
-                    WM_LINGXIA_COMMAND,
-                    WPARAM(0),
-                    LPARAM(0),
-                );
-            }
-        })
-        .expect("Windows parent retirement worker");
 }
 
 pub(crate) fn handle_command(state: &mut UiState, command: UiCommand) -> StdResult<bool> {
@@ -2050,8 +1845,7 @@ pub(crate) fn handle_command(state: &mut UiState, command: UiCommand) -> StdResu
                 });
             let _ = resp.send(result);
         }
-        UiCommand::ShutdownReady => return Ok(true),
-        // Intercepted by `message_loop`; listed only for exhaustiveness.
+        // Intercepted by `drain`; listed only for exhaustiveness.
         UiCommand::Shutdown => {}
     }
 
@@ -2232,11 +2026,9 @@ mod tests {
 
     #[test]
     fn retirement_tracks_both_parents_until_transfer_finishes() {
-        let (commands, _) = super::mpsc::channel();
         let inner = super::WebViewInner {
-            command_tx: commands,
-            thread_id: 0,
-            join_handle: Default::default(),
+            id: 0,
+            commands: Default::default(),
             webtag: super::WebTag::new("parent-transfer-test", "home", None),
             native_view: 10,
             composition_hosted: true,
@@ -2261,150 +2053,22 @@ mod tests {
         assert!(inner.has_parent_window(20));
     }
 
-    #[test]
-    fn retirement_retries_deferral_and_failure_until_ready() {
-        use super::ParentRetirement::{Deferred, Ready};
-        let alive = super::AtomicBool::new(true);
-        let far = super::Instant::now() + super::Duration::from_secs(60);
-        let mut attempts = 0;
-        assert!(super::wait_for_parent_retirement(&alive, far, || {
-            attempts += 1;
-            match attempts {
-                1 => Ok(Deferred),
-                2 => Err(crate::WebViewError::WebView("temporary failure".into())),
-                _ => Ok(Ready),
-            }
-        }));
-        assert_eq!(attempts, 3);
-    }
+    use super::{UiDispatchError, map_eval_dispatch_error, should_update_parent, ui_thread};
+    use crate::WebViewScriptError;
+    use std::sync::mpsc;
 
     #[test]
-    fn retirement_stops_when_owner_exits() {
-        let alive = super::AtomicBool::new(true);
-        let far = super::Instant::now() + super::Duration::from_secs(60);
-        let mut attempts = 0;
-        assert!(!super::wait_for_parent_retirement(&alive, far, || {
-            attempts += 1;
-            alive.store(false, super::Ordering::SeqCst);
-            Ok(super::ParentRetirement::Deferred)
-        }));
-        assert_eq!(attempts, 1);
-    }
-
-    #[test]
-    fn retirement_proceeds_once_the_deadline_passes() {
-        let alive = super::AtomicBool::new(true);
-        let mut attempts = 0;
-        assert!(super::wait_for_parent_retirement(
-            &alive,
-            super::Instant::now(),
-            || {
-                attempts += 1;
-                Ok(super::ParentRetirement::Deferred)
-            }
-        ));
-        assert_eq!(attempts, 1, "an expired deadline must not keep polling");
-    }
-    use super::{
-        UiCommand, UiDispatchError, WebViewInner, enter_webview_ui_lifecycle,
-        map_eval_dispatch_error, should_update_parent, webview_ui_lifecycle_gate,
-    };
-    use crate::{
-        DocumentGeneration, DocumentOutboundGate, WebTag, WebViewController, WebViewScriptError,
-    };
-    use std::sync::{Arc, Mutex, mpsc};
-
-    struct AlwaysActive;
-
-    impl DocumentOutboundGate for AlwaysActive {
-        fn with_active(&self, action: &mut dyn FnMut()) -> bool {
-            action();
-            true
-        }
-    }
-
-    #[test]
-    fn retired_webview_requests_shutdown_before_final_drop() {
-        let (command_tx, command_rx) = mpsc::channel();
-        let inner = WebViewInner {
-            command_tx,
-            thread_id: 0,
-            join_handle: Mutex::new(None),
-            webtag: WebTag::new("lifecycle-test", "home", Some(1)),
-            native_view: 0,
-            parent_window: Default::default(),
-            composition_hosted: false,
-        };
-
-        inner.request_shutdown();
-
-        assert!(matches!(command_rx.recv().unwrap(), UiCommand::Shutdown));
-    }
-
-    #[test]
-    fn document_messages_enqueue_without_reply_wait_and_preserve_fifo() {
-        let (command_tx, command_rx) = mpsc::channel();
-        let inner = WebViewInner {
-            command_tx,
-            thread_id: 0,
-            join_handle: Mutex::new(None),
-            webtag: WebTag::new("document-queue-test", "home", Some(1)),
-            native_view: 0,
-            parent_window: Default::default(),
-            composition_hosted: false,
-        };
-
-        for (generation, message) in [(7, "helloAck"), (7, "ready")] {
-            inner
-                .post_message_to_document(
-                    DocumentGeneration::new(generation),
-                    Arc::new(AlwaysActive),
-                    message,
-                )
-                .unwrap();
-        }
-
-        for expected in ["helloAck", "ready"] {
-            let UiCommand::PostMessageToDocument {
-                expected_generation,
-                message,
-                ..
-            } = command_rx.try_recv().unwrap()
-            else {
-                panic!("expected a document-bound message command");
-            };
-            assert_eq!(expected_generation, DocumentGeneration::new(7));
-            assert_eq!(message, expected);
-        }
-    }
-
-    #[test]
-    fn same_tag_ui_lifetimes_share_a_gate() {
-        let first = webview_ui_lifecycle_gate("lifecycle-test:same-tag");
-        let second = webview_ui_lifecycle_gate("lifecycle-test:same-tag");
-        let other = webview_ui_lifecycle_gate("lifecycle-test:other-tag");
-
-        assert!(std::sync::Arc::ptr_eq(&first, &second));
-        assert!(!std::sync::Arc::ptr_eq(&first, &other));
-    }
-
-    #[test]
-    fn timed_out_ui_lifecycle_hands_ownership_to_the_new_generation() {
-        let first = enter_webview_ui_lifecycle(
-            "lifecycle-test:bounded-takeover",
-            std::time::Duration::ZERO,
-        );
-        let second = enter_webview_ui_lifecycle(
-            "lifecycle-test:bounded-takeover",
-            std::time::Duration::ZERO,
-        );
-        let gate = webview_ui_lifecycle_gate("lifecycle-test:bounded-takeover");
-
-        assert_eq!(gate.state.lock().unwrap().active_generation, Some(2));
-        drop(first);
-        assert_eq!(gate.state.lock().unwrap().active_generation, Some(2));
-        drop(second);
-        assert_eq!(gate.state.lock().unwrap().active_generation, None);
+    fn ui_thread_wait_runs_work_posted_behind_it() {
+        // A wait on the UI thread must run work queued after the waiting task;
+        // otherwise any reply produced by that work could never arrive.
+        let outcome = ui_thread::run_on_webview_ui_thread(|| {
+            let (tx, rx) = mpsc::channel();
+            ui_thread::post(Box::new(move || {
+                let _ = tx.send(ui_thread::is_ui_thread());
+            }));
+            ui_thread::pump_until(&rx, Some(std::time::Duration::from_secs(5)))
+        });
+        assert_eq!(outcome.map(|reply| reply.ok()), Some(Some(true)));
     }
 
     #[test]
@@ -2426,10 +2090,6 @@ mod tests {
     fn eval_dispatch_disconnect_is_reported_as_destroyed() {
         assert_eq!(
             map_eval_dispatch_error(UiDispatchError::NoReply(None)),
-            WebViewScriptError::Destroyed
-        );
-        assert_eq!(
-            map_eval_dispatch_error(UiDispatchError::Unavailable),
             WebViewScriptError::Destroyed
         );
     }

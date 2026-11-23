@@ -1,7 +1,7 @@
 //! Windows (WebView2) platform implementation.
 //!
 //! This module is strictly generic WebView2 hosting: controller lifecycle,
-//! the message loop, command dispatch, scheme/event plumbing, and WebView2
+//! the shared UI thread, command dispatch, scheme/event plumbing, and WebView2
 //! controller binding to a parent HWND supplied by the Windows UI layer.
 //!
 //! The implementation is split into focused submodules; this module
@@ -29,7 +29,7 @@ use std::io::Read;
 use std::path::PathBuf;
 use std::sync::mpsc::{self, Receiver, Sender};
 use std::sync::{Arc, Mutex, OnceLock};
-use std::thread::{self, JoinHandle};
+use std::thread;
 use std::time::Duration;
 use webview2_com::{Microsoft::Web::WebView2::Win32::*, *};
 use windows::{
@@ -61,6 +61,7 @@ mod input;
 mod native_view;
 mod network;
 mod scheme;
+mod ui_thread;
 
 pub(crate) use controller::WebViewInner;
 
@@ -82,6 +83,7 @@ pub use native_view::{
     WindowsWebViewNativeViewHost, find_webview_handler, set_webview_devtools_enabled,
     set_webview_native_view_host, set_webview_user_data_dir,
 };
+pub use ui_thread::{is_webview_ui_thread, run_on_webview_ui_thread};
 
 // Private glob re-imports so submodules can reach their siblings (and this
 // prelude) through a single `use super::*;`.
