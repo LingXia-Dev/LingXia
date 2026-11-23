@@ -284,9 +284,9 @@ pub struct PageState {
     config_load_error: Option<String>,
     // Pull-to-refresh enabled flag
     pub(crate) enable_pull_down_refresh: bool,
-    /// The View asked to confirm leaving (unsaved changes). Belongs to the
-    /// current document: a new document, or leaving the stack, clears it.
-    leave_guard: bool,
+    /// The View asked to confirm leaving. Belongs to the current document:
+    /// a new document, or leaving the stack, clears it.
+    leave_guard: LeaveGuard,
     /// Why the instance was disposed, for the result its opener receives.
     leave_reason: Option<crate::page::runtime::CloseReason>,
     // PageInstance orientation overrides
@@ -362,6 +362,15 @@ impl NavigationType {
             _ => AnimationType::None,
         }
     }
+}
+
+/// What the View holds against the user leaving its page.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct LeaveGuard {
+    /// A leave guard or back handler is mounted: a user back or home asks the View.
+    pub held: bool,
+    /// A back handler is among them, which alone takes Back on the home app's first page.
+    pub back: bool,
 }
 
 /// What the user did to leave a page.
@@ -547,7 +556,7 @@ impl PageInstance {
             navbar_state: page_config.create_navbar_state(),
             config_load_error,
             enable_pull_down_refresh: page_config.is_pull_down_refresh_enabled(),
-            leave_guard: false,
+            leave_guard: LeaveGuard::default(),
             leave_reason: None,
             presentation_orientation: None,
             orientation_lock: None,
@@ -1258,7 +1267,7 @@ impl PageInstance {
         state.bridge_ready = false;
         state.ready_dispatched = false;
         state.render_status = PageRenderStatus::Unstarted;
-        state.leave_guard = false;
+        state.leave_guard = LeaveGuard::default();
         state.presentation_orientation = None;
     }
 
@@ -1499,7 +1508,7 @@ impl PageInstance {
         state.entry = EntryPhase::Idle;
         state.bridge_ready = false;
         state.ready_dispatched = false;
-        state.leave_guard = false;
+        state.leave_guard = LeaveGuard::default();
         state.presentation_orientation = None;
     }
 
@@ -1629,7 +1638,9 @@ impl PageInstance {
                 _ => {}
             }
             if event == PageLifecycleEvent::OnUnload {
-                self.inner.unloaded_tx.send_modify(|v| *v = v.wrapping_add(1));
+                self.inner
+                    .unloaded_tx
+                    .send_modify(|v| *v = v.wrapping_add(1));
             }
 
             if let Err(e) = lxapp.executor.call_page_service_event(
@@ -2136,7 +2147,7 @@ impl PageInstance {
     pub fn notify_page_started(&self) {
         // A document the WebView loaded itself (reload, in-place navigation)
         // has no back-request listener yet; a stale guard would trap the user.
-        self.set_leave_guard(false);
+        self.set_leave_guard(LeaveGuard::default());
         if !self.inner.document_start_scripts.is_empty()
             && let Some(webview) = self.webview()
         {
@@ -2521,7 +2532,18 @@ impl PageInstance {
             .state
             .lock()
             .ok()
-            .map(|state| state.leave_guard)
+            .map(|state| state.leave_guard.held)
+            .unwrap_or(false)
+    }
+
+    /// Whether a back handler of the View takes Back, which a leave guard
+    /// alone does not on the home app's first page.
+    pub(crate) fn holds_back(&self) -> bool {
+        self.inner
+            .state
+            .lock()
+            .ok()
+            .map(|state| state.leave_guard.back)
             .unwrap_or(false)
     }
 
@@ -2540,9 +2562,9 @@ impl PageInstance {
             .and_then(|mut state| state.leave_reason.take())
     }
 
-    pub(crate) fn set_leave_guard(&self, enabled: bool) {
+    pub(crate) fn set_leave_guard(&self, guard: LeaveGuard) {
         if let Ok(mut state) = self.inner.state.lock() {
-            state.leave_guard = enabled;
+            state.leave_guard = guard;
         }
     }
 
@@ -2822,7 +2844,7 @@ impl PageInstance {
 
         for _ in 0..pages_to_pop {
             if let Some(page) = lxapp.pop_from_page_stack() {
-                page.set_leave_guard(false);
+                page.set_leave_guard(LeaveGuard::default());
                 page.dispatch_lifecycle_event(PageLifecycleEvent::OnUnload);
                 // `onUnload` means the instance ended. The WebView is retained
                 // for a warm re-entry, so reset the service and the document
@@ -3214,7 +3236,7 @@ mod tests {
             navbar_state: NavigationBarState::default(),
             config_load_error: None,
             enable_pull_down_refresh: false,
-            leave_guard: false,
+            leave_guard: LeaveGuard::default(),
             leave_reason: None,
             presentation_orientation: None,
             orientation_lock: None,
@@ -3231,14 +3253,18 @@ mod tests {
         // The guard is the old document's unsaved state; a reloaded or reset
         // document has none, and must not trap the user on the page.
         let mut state = test_page_state();
-        state.leave_guard = true;
+        let held = LeaveGuard {
+            held: true,
+            back: true,
+        };
+        state.leave_guard = held;
         PageInstance::invalidate_document_state(&mut state);
-        assert!(!state.leave_guard);
+        assert_eq!(state.leave_guard, LeaveGuard::default());
 
         let mut state = test_page_state();
-        state.leave_guard = true;
+        state.leave_guard = held;
         PageInstance::reset_webview_lifecycle_state(&mut state);
-        assert!(!state.leave_guard);
+        assert_eq!(state.leave_guard, LeaveGuard::default());
     }
 
     #[test]

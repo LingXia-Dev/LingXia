@@ -49,7 +49,7 @@ export { getHost, subscribeHost, type LxHost } from './host';
 export type { PlatformOS } from './types';
 export { registerCatalogues, t, type CompiledCatalogues, type MessageCall, type MessageKey } from './i18n';
 export { getLanguage, subscribeLanguage } from './runtime-env';
-export { holdLeaveGuard } from './leave-guard';
+export { holdBackHandler, holdLeaveGuard } from './leave-guard';
 export type { LxLeaveHandler, LxLeaveReason, LxLeaveRequest } from './leave-guard';
 export { renderErrorUI, renderPageFault, hasError, getErrorInfo } from './error';
 export { boot, bootWhenReady } from './boot';

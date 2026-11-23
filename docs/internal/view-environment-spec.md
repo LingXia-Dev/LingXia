@@ -790,7 +790,8 @@ it as `env.insets`. One rule on every page and platform:
   to extend to the physical screen edge beneath bars and cutouts.
 - `useBackHandler(enabled, onBack)`: while enabled, Back calls `onBack` and
   the page stays. The most recently mounted enabled handler takes the press.
-  Home is never intercepted.
+  Home is never intercepted. On the home app's first page only a back handler
+  takes Back; a leave guard there does not, and Back backgrounds the app.
 - A page with no `pageOrientation` does not lock the orientation; the host's
   declared orientation applies.
 

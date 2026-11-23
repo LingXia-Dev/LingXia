@@ -55,7 +55,8 @@ export function render({ data, env }: View) {
 - Columns and visibility by class: `grid-cols-1 regular:grid-cols-2`, `regular:hidden`.
   `regular:` follows the nearest `<SizeClassScope value>`, then `env.sizeClass`; the panes of
   `<ListDetail>` and `<Split>` set it, so a card inside a 360 px pane stays single-column.
-- `useBackHandler(enabled, onBack)` takes Back (never Home) while `enabled`, the latest first.
+- `useBackHandler(enabled, onBack)` takes Back (never Home) while `enabled`, the latest first; on
+  the home app's first page it is the only thing that does (a leave guard there lets Back background the app).
 
 ```tsx
 <ListDetail value={data.selectedId} onChange={actions.selectOrder} listLabel={t('orders')}>

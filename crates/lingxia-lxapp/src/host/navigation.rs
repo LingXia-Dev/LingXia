@@ -192,6 +192,9 @@ host_api_async!(
 #[derive(Deserialize)]
 struct SetLeaveGuardOptions {
     enabled: bool,
+    /// A back handler is mounted; absent from an older runtime.
+    #[serde(default)]
+    back: bool,
 }
 
 /// `navigation.setLeaveGuard({ enabled })`, scoped to the calling View's
@@ -208,7 +211,10 @@ impl super::HostHandler for SetLeaveGuard {
         Box::pin(async move {
             let options: SetLeaveGuardOptions = super::parse_input(input.as_deref())?;
             let result = calling_page(&invocation, "setLeaveGuard").map(|page| {
-                page.set_leave_guard(options.enabled);
+                page.set_leave_guard(crate::page::LeaveGuard {
+                    held: options.enabled,
+                    back: options.enabled && options.back,
+                });
             });
             super::serialize_result(result)
         })

@@ -127,3 +127,16 @@ test('hooks, JSX and commits outside their phase fail by code', () => {
   assert.throws(() => commit(), /^Error: UI_COMMIT: no candidate/);
   assert.throws(() => describe(() => { useLeaveGuard('draft', {}); return h('text', {}, 'x'); }, {}), /UI_LEAVE: expected \{ enabled: boolean \}/);
 });
+
+test('sync tells the host a back handler is mounted, and clears it with the last one', async () => {
+  const { guards, calls, resource } = setup();
+  const guard = resource(), first = guards.backHandler(), second = guards.backHandler();
+  guard.commit({ enabled: true }); await flush();
+  assert.deepEqual(calls.splice(0), [{ name: 'navigation.setLeaveGuard', params: { enabled: true } }]);
+  first.commit({ enabled: true, onBack() {} }); second.commit({ enabled: true, onBack() {} }); await flush();
+  assert.deepEqual(calls.splice(0), [{ name: 'navigation.setLeaveGuard', params: { enabled: true, back: true } }]);
+  first.dispose(); await flush();
+  assert.deepEqual(calls.splice(0), [], 'one back handler is still mounted');
+  second.commit({ enabled: false, onBack() {} }); await flush();
+  assert.deepEqual(calls.splice(0), [{ name: 'navigation.setLeaveGuard', params: { enabled: true } }]);
+});

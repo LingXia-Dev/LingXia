@@ -30,8 +30,11 @@ export type LxLeaveHandler = (request: LxLeaveRequest) => boolean | Promise<bool
 
 type GuardStore = {
   holders: LxLeaveHandler[];
+  /** Holders that are back handlers (`holdBackHandler`). */
+  backs: number;
   /** What the host was last told. */
   sent: boolean;
+  sentBack: boolean;
   /** Serializes host calls. */
   tail: Promise<void>;
   /** A request is being answered; further ones are dropped. */
@@ -41,7 +44,7 @@ type GuardStore = {
 type GuardWindow = Window & { __lxLeaveGuard?: GuardStore };
 
 function newStore(): GuardStore {
-  return { holders: [], sent: false, tail: Promise.resolve(), asking: false };
+  return { holders: [], backs: 0, sent: false, sentBack: false, tail: Promise.resolve(), asking: false };
 }
 
 const fallbackStore = newStore();
@@ -60,10 +63,16 @@ function syncGuard(): void {
   const s = store();
   s.tail = s.tail.then(() => {
     const want = s.holders.length > 0;
-    if (want === s.sent) return undefined;
+    const wantBack = s.backs > 0;
+    if (want === s.sent && wantBack === s.sentBack) return undefined;
+    const before = { sent: s.sent, sentBack: s.sentBack };
     s.sent = want;
-    return callHost('navigation.setLeaveGuard', { enabled: want }).catch((error) => {
-      s.sent = !want;
+    s.sentBack = wantBack;
+    // `back`: a back handler is held, so Back on the home root comes here too.
+    const input = wantBack ? { enabled: want, back: true } : { enabled: want };
+    return callHost('navigation.setLeaveGuard', input).catch((error) => {
+      s.sent = before.sent;
+      s.sentBack = before.sentBack;
       // A refused guard (bridge not ready, a runtime without the route)
       // leaves the page unguarded; say so rather than fail silently.
       console.warn('[lingxia] leave guard not applied; the page is not guarded', error);
@@ -119,15 +128,34 @@ if (typeof window !== 'undefined' && !window.__lingxiaDispatchLeaveRequest) {
  * reloaded document, or a page that has left the stack, starts unguarded.
  */
 export function holdLeaveGuard(onRequest: LxLeaveHandler): () => void {
+  return hold(onRequest, false);
+}
+
+/**
+ * Take Back (never home) until the returned function is called: `onBack` runs
+ * and the page stays. Unlike a leave guard, it also takes Back on the home
+ * app's first page, where Back otherwise sends the app to the background.
+ */
+export function holdBackHandler(onBack: () => void): () => void {
+  return hold((request) => {
+    if (request.reason !== 'back') return true;
+    onBack();
+    return false;
+  }, true);
+}
+
+function hold(onRequest: LxLeaveHandler, back: boolean): () => void {
   const s = store();
   // A wrapper, so the same function held twice is two holds.
   const handler: LxLeaveHandler = (request) => onRequest(request);
   s.holders.push(handler);
+  if (back) s.backs += 1;
   syncGuard();
   return () => {
     const index = s.holders.indexOf(handler);
     if (index < 0) return;
     s.holders.splice(index, 1);
+    if (back) s.backs -= 1;
     syncGuard();
   };
 }

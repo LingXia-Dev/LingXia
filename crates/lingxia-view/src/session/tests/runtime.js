@@ -2357,17 +2357,20 @@
 
   // src/runtime/leave-guard.js
   function createLeaveGuards(callHost, report2) {
-    const holders = /* @__PURE__ */ new Set();
-    let epoch2 = 0, sent = false, asking = false, tail = Promise.resolve();
+    const holders = /* @__PURE__ */ new Set(), backHolders = /* @__PURE__ */ new Set();
+    let epoch2 = 0, sent = false, sentBack = false, asking = false, tail = Promise.resolve();
     const sync = () => {
       const current = epoch2;
       tail = tail.then(async () => {
         if (current !== epoch2) return;
-        const want = holders.size > 0;
-        if (want === sent) return;
+        const want = holders.size > 0, wantBack = backHolders.size > 0;
+        if (want === sent && wantBack === sentBack) return;
         try {
-          await callHost("navigation.setLeaveGuard", { enabled: want });
-          if (current === epoch2) sent = want;
+          await callHost("navigation.setLeaveGuard", wantBack ? { enabled: want, back: true } : { enabled: want });
+          if (current === epoch2) {
+            sent = want;
+            sentBack = wantBack;
+          }
         } catch (error) {
           if (current !== epoch2) return;
           for (const holder of holders) holder.fail(error);
@@ -2399,7 +2402,9 @@
         epoch2++;
         for (const holder of holders) holder.cancel();
         holders.clear();
+        backHolders.clear();
         sent = false;
+        sentBack = false;
         asking = false;
         tail = Promise.resolve();
       },
@@ -2487,13 +2492,19 @@
             if (enabled === next.enabled && registeredEpoch === epoch2) return;
             registeredEpoch = epoch2;
             enabled = next.enabled;
-            if (enabled) holders.add(holder);
-            else holders.delete(holder);
+            if (enabled) {
+              holders.add(holder);
+              backHolders.add(holder);
+            } else {
+              holders.delete(holder);
+              backHolders.delete(holder);
+            }
             sync();
           },
           dispose() {
             enabled = false;
             callback = null;
+            backHolders.delete(holder);
             if (holders.delete(holder)) sync();
           }
         };

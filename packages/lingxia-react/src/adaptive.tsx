@@ -1,5 +1,5 @@
 import * as React from "react";
-import { getHost, holdLeaveGuard, subscribeHost } from "@lingxia/bridge";
+import { getHost, holdBackHandler, subscribeHost } from "@lingxia/bridge";
 
 export type SizeClass = "compact" | "regular";
 
@@ -246,11 +246,7 @@ export function useBackHandler(enabled: boolean, onBack: () => void): void {
   });
   React.useEffect(() => {
     if (!enabled) return undefined;
-    return holdLeaveGuard((request) => {
-      if (request.reason !== "back") return true;
-      latest.current();
-      return false;
-    });
+    return holdBackHandler(() => latest.current());
   }, [enabled]);
 }
 

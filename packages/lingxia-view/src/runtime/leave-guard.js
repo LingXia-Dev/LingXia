@@ -1,17 +1,18 @@
 import { resourceError } from './errors.js';
 
 export function createLeaveGuards(callHost, report) {
-  const holders = new Set();
-  let epoch = 0, sent = false, asking = false, tail = Promise.resolve();
+  const holders = new Set(), backHolders = new Set();
+  let epoch = 0, sent = false, sentBack = false, asking = false, tail = Promise.resolve();
   const sync = () => {
     const current = epoch;
     tail = tail.then(async () => {
       if (current !== epoch) return;
-      const want = holders.size > 0;
-      if (want === sent) return;
+      const want = holders.size > 0, wantBack = backHolders.size > 0;
+      if (want === sent && wantBack === sentBack) return;
       try {
-        await callHost('navigation.setLeaveGuard', { enabled: want });
-        if (current === epoch) sent = want;
+        // `back`: a back handler is mounted, so Back on the home root comes here too.
+        await callHost('navigation.setLeaveGuard', wantBack ? { enabled: want, back: true } : { enabled: want });
+        if (current === epoch) { sent = want; sentBack = wantBack; }
       } catch (error) {
         if (current !== epoch) return;
         for (const holder of holders) holder.fail(error);
@@ -42,7 +43,7 @@ export function createLeaveGuards(callHost, report) {
     reset() {
       epoch++;
       for (const holder of holders) holder.cancel();
-      holders.clear(); sent = false; asking = false; tail = Promise.resolve();
+      holders.clear(); backHolders.clear(); sent = false; sentBack = false; asking = false; tail = Promise.resolve();
     },
     resource(state) {
       let snapshot = state.value, answer, enabled = false, mounted = false, registeredEpoch = epoch;
@@ -103,11 +104,11 @@ export function createLeaveGuards(callHost, report) {
           if (enabled === next.enabled && registeredEpoch === epoch) return;
           registeredEpoch = epoch;
           enabled = next.enabled;
-          if (enabled) holders.add(holder);
-          else holders.delete(holder);
+          if (enabled) { holders.add(holder); backHolders.add(holder); }
+          else { holders.delete(holder); backHolders.delete(holder); }
           sync();
         },
-        dispose() { enabled = false; callback = null; if (holders.delete(holder)) sync(); },
+        dispose() { enabled = false; callback = null; backHolders.delete(holder); if (holders.delete(holder)) sync(); },
       };
     },
   };

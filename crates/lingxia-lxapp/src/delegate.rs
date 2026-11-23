@@ -595,10 +595,15 @@ impl LxApp {
         info!("BackPress trigered, page stack size: {}", stack_size).with_appid(self.appid.clone());
 
         if stack_size <= 1 {
-            if self
-                .current_page()
-                .is_ok_and(|page| page.is_leave_guarded())
-            {
+            // Back on the home root backgrounds the app and loses nothing, so only a
+            // back handler takes it; a leave guard is asked when an lxapp would close.
+            if self.current_page().is_ok_and(|page| {
+                if self.is_home_lxapp {
+                    page.holds_back()
+                } else {
+                    page.is_leave_guarded()
+                }
+            }) {
                 return self.user_leave(LeaveReason::Back).is_ok();
             }
             // The home root has nothing to leave: unhandled, so the host backgrounds the app.
@@ -673,6 +678,7 @@ impl LxApp {
                     .runtime
                     .hide_lxapp(self.appid.clone(), self.session_id());
             }
+            // The home root asked only its back handlers, which keep the page: nothing to leave.
             return Ok(());
         }
         self.leave(page, reason)
@@ -735,6 +741,7 @@ mod more_action_tests {
 mod back_press_tests {
     use crate::appservice::LxAppWorkers;
     use crate::lxapp::{AppSessionClass, LxApp, register_synthetic_lxapp};
+    use crate::page::LeaveGuard;
     use std::sync::Arc;
 
     #[test]
@@ -763,6 +770,46 @@ mod back_press_tests {
         assert!(app.get_page_stack_size() <= 1);
         assert!(!app.handle_back_press());
         assert!(!app.can_go_back());
+    }
+
+    #[test]
+    fn on_the_home_root_only_a_back_handler_takes_back() {
+        let root = tempfile::tempdir().unwrap();
+        let platform = Arc::new(
+            lingxia_platform::Platform::new(
+                root.path().join("data").display().to_string(),
+                root.path().join("cache").display().to_string(),
+                "en-US".to_string(),
+            )
+            .unwrap(),
+        );
+        let appid = format!("app.lingxia.home-guard.{}", uuid::Uuid::new_v4());
+        register_synthetic_lxapp(&appid);
+        let mut app = LxApp::new_with_session_class_for_test(
+            appid,
+            platform,
+            LxAppWorkers::init(1),
+            AppSessionClass::StandardApp,
+        )
+        .unwrap();
+        app.is_home_lxapp = true;
+        let app = Arc::new(app);
+        app.bind_arc();
+        let home = app.get_or_create_page("pages/home");
+        app.push_to_page_stack(&home).unwrap();
+
+        // Unsaved changes: backgrounding loses nothing, so the host takes Back.
+        home.set_leave_guard(LeaveGuard {
+            held: true,
+            back: false,
+        });
+        assert!(!app.handle_back_press());
+
+        home.set_leave_guard(LeaveGuard {
+            held: true,
+            back: true,
+        });
+        assert!(app.handle_back_press(), "the back handler is asked");
     }
 
     #[test]
