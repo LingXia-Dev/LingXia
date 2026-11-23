@@ -120,9 +120,10 @@ A JS-Logic lxapp that calls Rust routes is still B. B's id rule:
 | `@lingxia/html` | DOM helpers for HTML-only views | lxapp View (HTML) | `pageReady`, `getPage`, `subscribePage`, `getHost`, `subscribeHost` |
 | `@lingxia/elements` | Pure-JS custom elements (`<lx-picker>`, …) | rarely direct — react re-exports wrappers | `registerPickerComponent`, `LxPickerElement` |
 | `@lingxia/logic` | Logic's `lx`, `definePage`, `type`, `LxError` and every API type | lxapp Logic | [Install typing](./lxapp/core.md#install-typing) |
+| `@lingxia/types` | Generated API declarations; Logic globals, mocks, automation, page types | tsconfig `types`, mocks, tests | `import type { Mocks } from '@lingxia/types/mocks'` |
 | `@lingxia/test` | Test authoring SDK for `lxdev test` | lxapp tests | `import { test } from '@lingxia/test'` |
 | `@lingxia/bridge` | Bridge runtime + low-level helpers | rarely direct | types such as `LxStream`, `LxChannel` |
-| `@lingxia/native` | Virtual module for the CLI-generated native client | lxapp View | `import { native } from '@lingxia/native'` |
+| `@lingxia/native` | Virtual module for the CLI-generated native client | lxapp View (React) | `import { native } from '@lingxia/native'` |
 | `@lingxia/page-runtime` | Internal — shared impl behind react/html | **don't import directly** | — |
 
 The CLI and host ship `@lingxia/polyfills` and `@lingxia/terminal-settings`;
@@ -133,9 +134,9 @@ never add them to a project.
 | Need | File |
 |---|---|
 | **Loop** | |
-| `lingxia` commands: new, dev, build, package, devices, skill, upgrade | [cli/lingxia.md](./cli/lingxia.md) |
+| `lingxia` commands: new, template, dev, build, check, package, devices, api, ui, skill, upgrade, pin | [cli/lingxia.md](./cli/lingxia.md) |
 | Saving an lxapp, `lingxia dev listen`, attaching one the host does not declare | [cli/dev-reload.md](./cli/dev-reload.md) |
-| Drive a running session: `lxdev` lxapp/runner/host/browser/logs | [cli/lxdev.md](./cli/lxdev.md) |
+| Drive a running session: `lxdev` lxapp/runner/host/browser/mock/logs/desktop | [cli/lxdev.md](./cli/lxdev.md) |
 | Write and run tests (`@lingxia/test`, `lxdev test`) | [lxapp/testing.md](./lxapp/testing.md) |
 | Mocks and scenarios: `mocks/`, `lxdev mock`, `lingxia dev --mock`, `t.scenario.use` | [lxapp/mock.md](./lxapp/mock.md) |
 | **Lxapp** | |
@@ -155,23 +156,23 @@ never add them to a project.
 | Session classes: Control app vs control surface vs guest | [app/control-app.md](./app/control-app.md) |
 | Agent/CLI control of a shipped product (`appUse`, `computerUse`, `browserUse`) | [app/agent-control.md](./app/agent-control.md) |
 | Apple entry points and embedding | [app/apple-sdk.md](./app/apple-sdk.md) |
-| Android URL player engine | [app/android-sdk.md](./app/android-sdk.md) |
+| Android URL player engine and permission gate | [app/android-sdk.md](./app/android-sdk.md) |
 | Universal links / app links | [app/applinks.md](./app/applinks.md) |
 | **Native Rust** | |
 | `HostAddon`, `#[lingxia::native]`, audience, native client, facades, JS extensions | [native/development.md](./native/development.md) |
 | Network/privilege grants and the app registry | [native/permissions.md](./native/permissions.md) |
 | Campaign launch screen | [native/splash.md](./native/splash.md) |
 | **Ship** | |
-| Publish, update keys, signing, stores, `lingxia auth` | [cli/distribution.md](./cli/distribution.md) |
+| Publish, update keys, signing, stores, `lingxia auth`, `lingxia ds` | [cli/distribution.md](./cli/distribution.md) |
 
 ## Where code goes
 
 | Job | Lives in | Surface |
 |---|---|---|
 | UI rendering, page state | lxapp `pages/<name>/index.tsx` (or `.html`) | View |
-| Page lifecycle, state, actions (JS) | lxapp `pages/index.ts` | `definePage` Logic |
+| Page lifecycle, state, actions (JS) | lxapp `pages/<name>/index.ts` | `definePage` Logic |
 | Cross-page business helpers callable as `lx.X(...)` | host Rust crate | `lingxia::js` extension (needs `standard` feature) |
-| Page-scoped native UI (file/media picker, native browser) | host Rust crate | `#[lingxia::native]` route |
+| Page-scoped native UI (file/media picker, native browser) | host Rust crate | `#[lingxia::native]` route (WebView View; a GPU View goes through Logic) |
 | Background services (devtool, push, ipc) | host Rust crate | `HostAddon::start_services` |
 | Platform integrations needing predeclaration | `lingxia.yaml` | `capabilities`, `features` |
 | Surfaces (windows, asides, sidebar/tray, terminal) | `lingxia.yaml` | `surfaces` |
