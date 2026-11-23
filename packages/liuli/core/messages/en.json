@@ -1,0 +1,262 @@
+{
+  "@liuli.dismiss": {
+    "defaultMessage": "Dismiss",
+    "description": "Button that dismisses a banner or toast."
+  },
+  "@liuli.details": {
+    "defaultMessage": "Details",
+    "description": "Button that shows or hides a banner's details."
+  },
+  "@liuli.close": {
+    "defaultMessage": "Close",
+    "description": "Button that closes a viewer or sheet."
+  },
+  "@liuli.search": {
+    "defaultMessage": "Search",
+    "description": "Accessible name of a list's search field."
+  },
+  "@liuli.noMatches": {
+    "defaultMessage": "No matches",
+    "description": "Shown in place of a list when nothing matches the search."
+  },
+  "@liuli.stop": {
+    "defaultMessage": "Stop",
+    "description": "Button that stops a reply being written."
+  },
+  "@liuli.send": {
+    "defaultMessage": "Send",
+    "description": "Button that sends a message."
+  },
+  "@liuli.date": {
+    "defaultMessage": "Date",
+    "description": "Accessible name of the date part of a date and time field."
+  },
+  "@liuli.time": {
+    "defaultMessage": "Time",
+    "description": "Accessible name of the time part of a date and time field."
+  },
+  "@liuli.chooseFiles": {
+    "defaultMessage": "{multiple, select, yes {Choose files} other {Choose a file}}",
+    "description": "Button that opens the file picker; `multiple` is yes when it takes several files."
+  },
+  "@liuli.removeNamed": {
+    "defaultMessage": "Remove {name}",
+    "description": "Button that removes the item named `name`."
+  },
+  "@liuli.uploadingNamed": {
+    "defaultMessage": "Uploading {name}",
+    "description": "Progress ring of the file named `name` being sent."
+  },
+  "@liuli.add": {
+    "defaultMessage": "Add",
+    "description": "Button that adds an item to a list."
+  },
+  "@liuli.removeItem": {
+    "defaultMessage": "Remove item {number}",
+    "description": "Button that removes the list item at position `number`, from 1."
+  },
+  "@liuli.remove": {
+    "defaultMessage": "Remove",
+    "description": "Button that removes a token."
+  },
+  "@liuli.decrease": {
+    "defaultMessage": "Decrease",
+    "description": "Stepper button that lowers a number."
+  },
+  "@liuli.increase": {
+    "defaultMessage": "Increase",
+    "description": "Stepper button that raises a number."
+  },
+  "@liuli.page": {
+    "defaultMessage": "Page {page}",
+    "description": "A page button or dot; `page` from 1."
+  },
+  "@liuli.pictureOf": {
+    "defaultMessage": "{page} of {count}",
+    "description": "Which picture a viewer shows; `page` from 1."
+  },
+  "@liuli.itemOf": {
+    "defaultMessage": "{page} of {count}",
+    "description": "Which item a carousel shows; `page` from 1."
+  },
+  "@liuli.previousPage": {
+    "defaultMessage": "Previous page",
+    "description": "Pagination button."
+  },
+  "@liuli.nextPage": {
+    "defaultMessage": "Next page",
+    "description": "Pagination button."
+  },
+  "@liuli.clearSearch": {
+    "defaultMessage": "Clear search",
+    "description": "Button that empties a search field."
+  },
+  "@liuli.clear": {
+    "defaultMessage": "Clear",
+    "description": "Button that empties a text field."
+  },
+  "@liuli.hidePassword": {
+    "defaultMessage": "Hide password",
+    "description": "Button in a password field that hides the typed password again."
+  },
+  "@liuli.showPassword": {
+    "defaultMessage": "Show password",
+    "description": "Button in a password field that shows the typed password as text."
+  },
+  "@liuli.next": {
+    "defaultMessage": "Next",
+    "description": "Tour button to the next step."
+  },
+  "@liuli.back": {
+    "defaultMessage": "Back",
+    "description": "Tour button to the step before."
+  },
+  "@liuli.skip": {
+    "defaultMessage": "Skip",
+    "description": "Tour button that ends the tour early."
+  },
+  "@liuli.done": {
+    "defaultMessage": "Done",
+    "description": "Tour button on the last step."
+  },
+  "@liuli.stepOf": {
+    "defaultMessage": "{step} of {count}",
+    "description": "Where a tour is; `step` from 1."
+  },
+  "@liuli.monthName": {
+    "defaultMessage": "{month, select, jan {January} feb {February} mar {March} apr {April} may {May} jun {June} jul {July} aug {August} sep {September} oct {October} nov {November} dec {December} other {}}",
+    "description": "A month's name, as a date or a calendar title shows it."
+  },
+  "@liuli.weekdayName": {
+    "defaultMessage": "{weekday, select, sun {Sunday} mon {Monday} tue {Tuesday} wed {Wednesday} thu {Thursday} fri {Friday} sat {Saturday} other {}}",
+    "description": "A weekday's name, read with a calendar day."
+  },
+  "@liuli.weekdayInitial": {
+    "defaultMessage": "{weekday, select, sun {S} mon {M} tue {T} wed {W} thu {T} fri {F} sat {S} other {}}",
+    "description": "A calendar column's weekday heading, one letter or character."
+  },
+  "@liuli.calendar.title": {
+    "defaultMessage": "{monthName} {year}",
+    "description": "A calendar's month title; `monthName` is @liuli.monthName."
+  },
+  "@liuli.calendar.day": {
+    "defaultMessage": "{today, select, yes {Today, } other {}}{weekdayName} {day} {monthName} {year}",
+    "description": "A calendar day's accessible name; `today` is yes for today."
+  },
+  "@liuli.calendar.previousMonth": {
+    "defaultMessage": "Previous month",
+    "description": "Calendar button."
+  },
+  "@liuli.calendar.nextMonth": {
+    "defaultMessage": "Next month",
+    "description": "Calendar button."
+  },
+  "@liuli.timestamp.justNow": {
+    "defaultMessage": "Just now",
+    "description": "A moment less than a minute ago."
+  },
+  "@liuli.timestamp.minutesAgo": {
+    "defaultMessage": "{minutes, plural, one {# minute ago} other {# minutes ago}}",
+    "description": "A moment earlier today, in minutes."
+  },
+  "@liuli.timestamp.hoursAgo": {
+    "defaultMessage": "{hours, plural, one {# hour ago} other {# hours ago}}",
+    "description": "A moment earlier today, in hours."
+  },
+  "@liuli.timestamp.yesterday": {
+    "defaultMessage": "Yesterday",
+    "description": "Said with the time for a moment yesterday."
+  },
+  "@liuli.timestamp.date": {
+    "defaultMessage": "{day} {monthName}",
+    "description": "A date this year."
+  },
+  "@liuli.timestamp.dateWithYear": {
+    "defaultMessage": "{day} {monthName} {year}",
+    "description": "A date in another year."
+  },
+  "@liuli.timestamp.time12": {
+    "defaultMessage": "{hour}:{minute} {period, select, am {AM} other {PM}}",
+    "description": "A time on a 12-hour clock; `minute` has two digits."
+  },
+  "@liuli.timestamp.dateTime": {
+    "defaultMessage": "{date}, {time}",
+    "description": "A date and a time together."
+  },
+  "@liuli.video.auto": {
+    "defaultMessage": "Auto",
+    "description": "The quality choice that adapts to the connection."
+  },
+  "@liuli.video.exitFullscreen": {
+    "defaultMessage": "Exit full screen",
+    "description": "Button that leaves full screen."
+  },
+  "@liuli.video.failed": {
+    "defaultMessage": "This video cannot play right now",
+    "description": "Message when the video cannot play."
+  },
+  "@liuli.video.fullscreen": {
+    "defaultMessage": "Full screen",
+    "description": "Button that shows the video full screen."
+  },
+  "@liuli.video.live": {
+    "defaultMessage": "Live",
+    "description": "Badge on a live stream; any capitals come from its style."
+  },
+  "@liuli.video.loading": {
+    "defaultMessage": "Loading",
+    "description": "Spoken status while the video loads."
+  },
+  "@liuli.video.mute": {
+    "defaultMessage": "Mute",
+    "description": "Button that silences the video."
+  },
+  "@liuli.video.pause": {
+    "defaultMessage": "Pause",
+    "description": "Button that pauses the video."
+  },
+  "@liuli.video.play": {
+    "defaultMessage": "Play",
+    "description": "Button that starts the video."
+  },
+  "@liuli.video.quality": {
+    "defaultMessage": "Quality",
+    "description": "Menu heading for the video quality choices."
+  },
+  "@liuli.video.rate": {
+    "defaultMessage": "Playback speed",
+    "description": "Menu heading for the playback speed choices."
+  },
+  "@liuli.video.replay": {
+    "defaultMessage": "Replay",
+    "description": "Button that plays an ended video again."
+  },
+  "@liuli.video.retry": {
+    "defaultMessage": "Retry",
+    "description": "Button that tries to play a failed video again."
+  },
+  "@liuli.video.seek": {
+    "defaultMessage": "Seek",
+    "description": "Spoken name of the slider that moves through the video."
+  },
+  "@liuli.video.settings": {
+    "defaultMessage": "Playback settings",
+    "description": "Button that opens the playback settings menu."
+  },
+  "@liuli.video.unmute": {
+    "defaultMessage": "Unmute",
+    "description": "Button that turns the video sound back on."
+  },
+  "@liuli.step.done": {
+    "defaultMessage": "Done",
+    "description": "Spoken state of a finished step in a stepper."
+  },
+  "@liuli.step.current": {
+    "defaultMessage": "Current step",
+    "description": "Spoken state of the step in progress."
+  },
+  "@liuli.step.upcoming": {
+    "defaultMessage": "Not started",
+    "description": "Spoken state of a step not yet reached."
+  }
+}

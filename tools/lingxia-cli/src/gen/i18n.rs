@@ -91,6 +91,10 @@ const APPLE_DEFAULT_OUT: &str = "lingxia-sdk/apple/Sources/Resources";
 const HARMONY_DEFAULT_OUT: &str = "lingxia-sdk/harmony/lingxia/src/main/resources";
 const VIEW_DEFAULT_OUT: &str = "packages/lingxia-view/src/generated/words.js";
 const LIULI_DEFAULT_OUT: &str = "packages/liuli/core/src/i18n/words.ts";
+/// The source catalogue each package ships and names in `lingxia.messages`, so an app's
+/// overrides are checked against the version it installed.
+const VIEW_MESSAGES_OUT: &str = "packages/lingxia-view/messages/en.json";
+const LIULI_MESSAGES_OUT: &str = "packages/liuli/core/messages/en.json";
 /// The View's and Liuli's own words, in the lxapp catalogue format; `en` is the source.
 const VIEW_DIR: &str = "view";
 const LIULI_DIR: &str = "liuli";
@@ -735,6 +739,22 @@ pub fn run(config: I18nConfig) -> Result<()> {
         temp_path,
         true,
     );
+    let view_messages_plan = resolve_output_plan(
+        None,
+        config.no_view || config.view_out.is_some() || !config.input.join(VIEW_DIR).is_dir(),
+        VIEW_MESSAGES_OUT,
+        "view/messages/en.json",
+        temp_path,
+        true,
+    );
+    let liuli_messages_plan = resolve_output_plan(
+        None,
+        config.no_liuli || config.liuli_out.is_some() || !config.input.join(LIULI_DIR).is_dir(),
+        LIULI_MESSAGES_OUT,
+        "liuli/messages/en.json",
+        temp_path,
+        true,
+    );
 
     // 5. Share the (combined, keys) computation between Rust and TS — they
     // pull from the same scope set, so the data is identical.
@@ -797,6 +817,12 @@ pub fn run(config: I18nConfig) -> Result<()> {
     if let Some(plan) = &liuli_plan {
         generate_liuli_words(&config.input.join(LIULI_DIR), &plan.write_to)?;
     }
+    for (plan, dir) in [(&view_messages_plan, VIEW_DIR), (&liuli_messages_plan, LIULI_DIR)] {
+        if let Some(plan) = plan {
+            let source = config.input.join(dir).join(format!("{PACKAGE_SOURCE}.json"));
+            write_module(&plan.write_to, fs::read_to_string(&source)?)?;
+        }
+    }
 
     // 7. Verify mode: diff generated tempdir against checked-in expected.
     if config.check {
@@ -809,6 +835,8 @@ pub fn run(config: I18nConfig) -> Result<()> {
             &harmony_plan,
             &view_plan,
             &liuli_plan,
+            &view_messages_plan,
+            &liuli_messages_plan,
         ]
         .into_iter()
         .flatten()

@@ -189,6 +189,7 @@ pub fn check(dir: &Path, dev: bool) -> Result<Vec<(String, Catalogue)>> {
     };
 
     let mut problems: Vec<(String, Problem)> = Vec::new();
+    let packages = package_catalogues(dir)?;
     let mut catalogues = Vec::new();
     let mut files: Vec<_> = std::fs::read_dir(&i18n)?
         .filter_map(|entry| entry.ok().map(|entry| entry.path()))
@@ -207,7 +208,14 @@ pub fn check(dir: &Path, dev: bool) -> Result<Vec<(String, Catalogue)>> {
         };
         let is_source = tag == source_tag;
         match Catalogue::parse(&std::fs::read_to_string(&path)?, is_source) {
-            Ok(catalogue) => catalogues.push((file, tag.clone(), catalogue)),
+            Ok(catalogue) => {
+                problems.extend(
+                    overrides(&catalogue, &packages)
+                        .into_iter()
+                        .map(|problem| (file.clone(), problem)),
+                );
+                catalogues.push((file, tag.clone(), catalogue));
+            }
             Err(found) => problems.extend(found.into_iter().map(|problem| (file.clone(), problem))),
         }
     }
@@ -223,7 +231,9 @@ pub fn check(dir: &Path, dev: bool) -> Result<Vec<(String, Catalogue)>> {
         if tag == source_tag {
             continue;
         }
-        let (found, missing) = lingxia_i18n::check(&source_catalogue, catalogue);
+        let (found, mut missing) = lingxia_i18n::check(&source_catalogue, catalogue);
+        // An override of a package's word is the app's choice per language.
+        missing.retain(|key| !key.starts_with('@'));
         if dev {
             for problem in &found {
                 eprintln!("warning: {file}: {problem}; showing the source message");
@@ -265,6 +275,106 @@ pub fn check(dir: &Path, dev: bool) -> Result<Vec<(String, Catalogue)>> {
         return Ok(catalogues);
     }
     report(problems)
+}
+
+/// The source catalogue of each installed dependency that declares one
+/// (`"lingxia": { "messages": "<path>" }` in its package.json), by its keys' `@namespace`.
+fn package_catalogues(dir: &Path) -> Result<std::collections::BTreeMap<String, Catalogue>> {
+    let mut found = std::collections::BTreeMap::new();
+    let Ok(text) = std::fs::read_to_string(dir.join("package.json")) else {
+        return Ok(found);
+    };
+    let manifest: serde_json::Value =
+        serde_json::from_str(&text).context("package.json is not JSON")?;
+    let names = ["dependencies", "devDependencies"]
+        .iter()
+        .filter_map(|field| manifest[field].as_object())
+        .flat_map(|deps| deps.keys().cloned());
+    for name in names {
+        let root = dir.join("node_modules").join(&name);
+        let Ok(text) = std::fs::read_to_string(root.join("package.json")) else {
+            continue;
+        };
+        let package: serde_json::Value = serde_json::from_str(&text)
+            .with_context(|| format!("node_modules/{name}/package.json is not JSON"))?;
+        let Some(messages) = package["lingxia"]["messages"].as_str() else {
+            continue;
+        };
+        let path = root.join(messages);
+        let text = std::fs::read_to_string(&path)
+            .with_context(|| format!("{name} declares messages at {messages}, which it lacks"))?;
+        let catalogue = Catalogue::parse(&text, true).map_err(|problems| {
+            anyhow!("{name}'s {messages}: {}", problems[0])
+        })?;
+        let Some(namespace) = catalogue.entries.keys().next().and_then(|key| namespace(key)) else {
+            continue;
+        };
+        found.insert(namespace.to_string(), catalogue);
+    }
+    Ok(found)
+}
+
+/// `@view` of `@view.picker.done`.
+fn namespace(key: &str) -> Option<&str> {
+    key.starts_with('@').then(|| key.split('.').next()).flatten()
+}
+
+/// Each `@namespace.*` key must be a word of an installed package, with its arguments.
+fn overrides(
+    catalogue: &Catalogue,
+    packages: &std::collections::BTreeMap<String, Catalogue>,
+) -> Vec<Problem> {
+    let mut problems = Vec::new();
+    for (key, entry) in &catalogue.entries {
+        let Some(space) = namespace(key) else {
+            continue;
+        };
+        let at = |reason: String| Problem {
+            key: Some(key.clone()),
+            reason,
+        };
+        let Some(package) = packages.get(space) else {
+            let all = packages.values().flat_map(|catalogue| catalogue.entries.keys());
+            problems.push(at(match nearest(key, all) {
+                Some(near) => format!("no installed package has {space} words; did you mean '{near}'?"),
+                None => format!("no installed package has {space} words"),
+            }));
+            continue;
+        };
+        match package.entries.get(key) {
+            Some(word) => problems.extend(
+                lingxia_i18n::signature_drift(&word.signature, &entry.signature)
+                    .into_iter()
+                    .map(|drift| at(format!("{drift} (the package's word)"))),
+            ),
+            None => problems.push(at(match nearest(key, package.entries.keys()) {
+                Some(near) => format!("not a {space} word; did you mean '{near}'?"),
+                None => format!("not a {space} word"),
+            })),
+        }
+    }
+    problems
+}
+
+/// The candidate closest to `key` by edit distance.
+fn nearest<'a>(key: &str, candidates: impl Iterator<Item = &'a String>) -> Option<&'a str> {
+    let distance = |a: &str, b: &str| {
+        let b: Vec<char> = b.chars().collect();
+        let mut row: Vec<usize> = (0..=b.len()).collect();
+        for (i, ca) in a.chars().enumerate() {
+            let mut previous = row[0];
+            row[0] = i + 1;
+            for (j, cb) in b.iter().enumerate() {
+                let next = (row[j + 1] + 1).min(row[j] + 1).min(previous + usize::from(ca != *cb));
+                previous = row[j + 1];
+                row[j + 1] = next;
+            }
+        }
+        row[b.len()]
+    };
+    candidates
+        .min_by_key(|candidate| distance(key, candidate))
+        .map(String::as_str)
 }
 
 /// The keys page and Logic code passes to `t` or `lx.app.t` as a literal, with the file naming each.
@@ -493,6 +603,80 @@ const t = useText(); t('web.key')"
         check(root, false).unwrap();
         std::fs::write(root.join("lxapp.json"), manifest("tab.cart")).unwrap();
         assert!(check(root, true).is_err(), "a dev session has no source to fall back to");
+    }
+
+    /// An app at `root` with one installed package whose words are `@kit.ok` and `@kit.pageOf`.
+    fn app_with_package(root: &Path) {
+        std::fs::create_dir_all(root.join("i18n")).unwrap();
+        std::fs::create_dir_all(root.join("node_modules/@acme/kit/messages")).unwrap();
+        std::fs::write(
+            root.join("package.json"),
+            r#"{ "dependencies": { "@acme/kit": "1.0.0" } }"#,
+        )
+        .unwrap();
+        std::fs::write(
+            root.join("node_modules/@acme/kit/package.json"),
+            r#"{ "name": "@acme/kit", "lingxia": { "messages": "./messages/en.json" } }"#,
+        )
+        .unwrap();
+        std::fs::write(
+            root.join("node_modules/@acme/kit/messages/en.json"),
+            r#"{ "@kit.ok": { "defaultMessage": "OK", "description": "d" },
+                 "@kit.pageOf": { "defaultMessage": "{page} of {count}", "description": "d" } }"#,
+        )
+        .unwrap();
+        std::fs::write(
+            root.join("lxapp.json"),
+            r#"{ "languages": ["en-US", "de-DE"] }"#,
+        )
+        .unwrap();
+        std::fs::write(root.join("i18n/de-DE.json"), "{}").unwrap();
+    }
+
+    fn source(root: &Path, entries: &str) {
+        std::fs::write(root.join("i18n/en-US.json"), format!("{{ {entries} }}")).unwrap();
+    }
+
+    #[test]
+    fn a_package_word_override_is_checked_against_the_installed_package() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path();
+        app_with_package(root);
+        let word = |key: &str, text: &str| {
+            format!(r#""{key}": {{ "defaultMessage": "{text}", "description": "d" }}"#)
+        };
+        source(root, &word("@kit.ok", "Got it"));
+        assert!(check(root, false).is_ok(), "an override in one language only");
+        source(root, &word("@kit.okay", "Got it"));
+        let error = format!("{:#}", check(root, false).unwrap_err());
+        assert!(error.contains("problem"), "{error}");
+        assert_eq!(
+            overrides(
+                &Catalogue::parse(&format!("{{ {} }}", word("@kit.okay", "x")), true).unwrap(),
+                &package_catalogues(root).unwrap()
+            )[0]
+            .reason,
+            "not a @kit word; did you mean '@kit.ok'?"
+        );
+        let packages = package_catalogues(root).unwrap();
+        let problems = |entries: &str| {
+            overrides(&Catalogue::parse(&format!("{{ {entries} }}"), true).unwrap(), &packages)
+                .into_iter()
+                .map(|problem| problem.reason)
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(
+            problems(&word("@kat.ok", "x")),
+            ["no installed package has @kat words; did you mean '@kit.ok'?"]
+        );
+        assert_eq!(
+            problems(&word("@kit.pageOf", "{n} of {count}")),
+            [
+                "drops `page` (the package's word)",
+                "adds `n`, which the source does not take (the package's word)"
+            ]
+        );
+        assert!(problems(&word("@kit.pageOf", "{count}: {page}")).is_empty());
     }
 
     #[test]

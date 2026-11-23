@@ -14,6 +14,7 @@
     "!src/doc.ts",
     "!src/example.tsx",
     "!src/a11y",
+    "messages",
     "tokens.css",
     "tokens.names.json",
     "catalog.json",
@@ -21,6 +22,7 @@
     "skill"
   ],
   "lingxia": {
+    "messages": "./messages/en.json",
     "tokens": "./tokens.css",
     "names": "./tokens.names.json",
     "catalog": "./catalog.json",
