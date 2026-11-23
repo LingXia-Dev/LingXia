@@ -3,3 +3,6 @@ node_modules/
 .lingxia/
 .baseline/
 *.tsbuildinfo
+# Skills from npm dependencies
+.agents/skills/liuli/
+.claude/skills/liuli
