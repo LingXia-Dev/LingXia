@@ -10214,12 +10214,12 @@
           "description": "The row's main text, and its accessible name when it is pressable."
         },
         {
-          "name": "tone",
-          "type": "ItemTone",
+          "name": "variant",
+          "type": "ItemVariant",
           "required": false,
-          "description": "`danger` draws the label in the danger role, for a row that deletes or ends something.",
+          "description": "`destructive` draws the label in the danger role, for a row that deletes or ends something.",
           "values": [
-            "danger",
+            "destructive",
             "default"
           ],
           "default": "'default'"
@@ -10366,16 +10366,16 @@
             "description": ""
           },
           {
-            "name": "tone",
-            "type": "ItemSwipeTone",
+            "name": "variant",
+            "type": "ItemSwipeVariant",
             "required": false,
             "description": "",
             "values": [
-              "neutral",
               "accent",
-              "danger"
+              "destructive",
+              "default"
             ],
-            "default": "'neutral'"
+            "default": "'default'"
           },
           {
             "name": "onClick",
@@ -10502,7 +10502,7 @@
             "minimum": "4.5:1"
           },
           {
-            "what": "swipe action, neutral",
+            "what": "swipe action, default",
             "pair": [
               "text",
               "text/8"
@@ -10519,7 +10519,7 @@
             "minimum": "4.5:1"
           },
           {
-            "what": "swipe action, danger",
+            "what": "swipe action, destructive",
             "pair": [
               "on-danger-solid",
               "danger-solid"
@@ -10591,12 +10591,12 @@
         {
           "name": "Destructive",
           "title": "A destructive row",
-          "source": "import { Said } from '../example';\nimport { Item } from '@liulidesign/core/Item';\n\nconst notes = [\n  { id: 'n1', title: 'Groceries', updated: 'Edited today' },\n  { id: 'n2', title: 'Trip to the coast', updated: 'Edited yesterday' },\n  { id: 'n3', title: 'Reading list', updated: 'Edited last week' },\n] as const;\n\n/** A row that deletes or ends something; the danger tone marks it before it is pressed. */\nexport function Destructive() {\n  return (\n    <Said>\n      {say => (\n        <view className=\"overflow-hidden rounded-container border border-text/12 bg-surface\">\n          <Item label=\"Delete account\" description=\"Removes your notes from every device\" tone=\"danger\" hasChevron onClick={() => say('Opened Delete account')} data-testid=\"delete-row\" />\n        </view>\n      )}\n    </Said>\n  );\n}"
+          "source": "import { Said } from '../example';\nimport { Item } from '@liulidesign/core/Item';\n\nconst notes = [\n  { id: 'n1', title: 'Groceries', updated: 'Edited today' },\n  { id: 'n2', title: 'Trip to the coast', updated: 'Edited yesterday' },\n  { id: 'n3', title: 'Reading list', updated: 'Edited last week' },\n] as const;\n\n/** A row that deletes or ends something; the destructive variant marks it before it is pressed. */\nexport function Destructive() {\n  return (\n    <Said>\n      {say => (\n        <view className=\"overflow-hidden rounded-container border border-text/12 bg-surface\">\n          <Item label=\"Delete account\" description=\"Removes your notes from every device\" variant=\"destructive\" hasChevron onClick={() => say('Opened Delete account')} data-testid=\"delete-row\" />\n        </view>\n      )}\n    </Said>\n  );\n}"
         },
         {
           "name": "Swipe",
           "title": "Actions behind a row, and a list with a heading",
-          "source": "import { useLocal } from '@lingxia/view';\nimport { Said } from '../example';\nimport { Item, ItemList } from '@liulidesign/core/Item';\n\nconst inbox = [\n  { id: 'm1', from: 'Ana Lee', subject: 'Notes from Tuesday' },\n  { id: 'm2', from: 'Ben Okafor', subject: 'Invoice for October' },\n  { id: 'm3', from: 'Chloé Martin', subject: 'Photos from the coast' },\n] as const;\n\n/** Drag a row toward its start to show its actions; the list has a heading and a line under it. */\nexport function Swipe() {\n  const gone = useLocal<readonly string[]>('gone', []);\n  const flagged = useLocal<readonly string[]>('flagged', []);\n  return (\n    <Said>\n      {say => (\n        <ItemList title=\"Inbox\" description=\"Drag a message to the side to flag or delete it.\" data-testid=\"inbox\">\n          {inbox.filter(mail => !gone.value.includes(mail.id)).map(mail => (\n            <Item\n              key={mail.id}\n              label={mail.from}\n              description={mail.subject}\n              endContent={flagged.value.includes(mail.id) ? <text className=\"text-footnote text-muted\">Flagged</text> : undefined}\n              hasChevron\n              onClick={() => say(`Opened ${mail.subject}`)}\n              swipeActions={[\n                { key: 'flag', label: 'Flag', icon: 'flag', onClick: () => flagged.set(flagged.value.includes(mail.id) ? flagged.value.filter(id => id !== mail.id) : [...flagged.value, mail.id]) },\n                { key: 'delete', label: 'Delete', icon: 'delete', tone: 'danger', onClick: () => gone.set([...gone.value, mail.id]) },\n              ]}\n              data-testid={`mail-${mail.id}`}\n            />\n          ))}\n        </ItemList>\n      )}\n    </Said>\n  );\n}"
+          "source": "import { useLocal } from '@lingxia/view';\nimport { Said } from '../example';\nimport { Item, ItemList } from '@liulidesign/core/Item';\n\nconst inbox = [\n  { id: 'm1', from: 'Ana Lee', subject: 'Notes from Tuesday' },\n  { id: 'm2', from: 'Ben Okafor', subject: 'Invoice for October' },\n  { id: 'm3', from: 'Chloé Martin', subject: 'Photos from the coast' },\n] as const;\n\n/** Drag a row toward its start to show its actions; the list has a heading and a line under it. */\nexport function Swipe() {\n  const gone = useLocal<readonly string[]>('gone', []);\n  const flagged = useLocal<readonly string[]>('flagged', []);\n  return (\n    <Said>\n      {say => (\n        <ItemList title=\"Inbox\" description=\"Drag a message to the side to flag or delete it.\" data-testid=\"inbox\">\n          {inbox.filter(mail => !gone.value.includes(mail.id)).map(mail => (\n            <Item\n              key={mail.id}\n              label={mail.from}\n              description={mail.subject}\n              endContent={flagged.value.includes(mail.id) ? <text className=\"text-footnote text-muted\">Flagged</text> : undefined}\n              hasChevron\n              onClick={() => say(`Opened ${mail.subject}`)}\n              swipeActions={[\n                { key: 'flag', label: 'Flag', icon: 'flag', onClick: () => flagged.set(flagged.value.includes(mail.id) ? flagged.value.filter(id => id !== mail.id) : [...flagged.value, mail.id]) },\n                { key: 'delete', label: 'Delete', icon: 'delete', variant: 'destructive', onClick: () => gone.set([...gone.value, mail.id]) },\n              ]}\n              data-testid={`mail-${mail.id}`}\n            />\n          ))}\n        </ItemList>\n      )}\n    </Said>\n  );\n}"
         },
         {
           "name": "Compact",
@@ -10709,7 +10709,7 @@
             },
             {
               "name": "Destructive",
-              "title": "Danger tone, for a row that deletes"
+              "title": "Destructive, for a row that deletes"
             },
             {
               "name": "Swipe",

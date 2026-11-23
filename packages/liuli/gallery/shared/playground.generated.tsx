@@ -2703,12 +2703,12 @@ export const playgroundEntries: PlaygroundEntry[] = [
         "kind": "text"
       },
       {
-        "name": "tone",
+        "name": "variant",
         "required": false,
         "kind": "choice",
         "options": [
-          "danger",
-          "default"
+          "default",
+          "destructive"
         ]
       },
       {

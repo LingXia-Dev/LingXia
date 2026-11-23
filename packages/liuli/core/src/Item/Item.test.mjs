@@ -72,7 +72,7 @@ test('Disabled: takes no press and is described by the reason instead of its sec
   assert.equal(screen.queryAll(node => textOf(node) === 'Download every change as a file').length, 0);
 });
 
-test('Destructive: the danger tone colours the label only', async () => {
+test('Destructive: the variant colours the label only', async () => {
   const screen = await renderExample('Item/Item', 'Destructive');
   const row = screen.getByTestId('delete-row');
   assert.equal(row.props.accessibilityLabel, 'Delete account');

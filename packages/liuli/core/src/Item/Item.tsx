@@ -29,10 +29,11 @@ export type ItemAction =
     }
   | { onClick?: never; hasChevron?: never; isDisabled?: never; disabledMessage?: never; isSelected?: never };
 
-export type ItemTone = 'default' | 'danger';
+/** A row's kind: `destructive` for a row that deletes or ends something. */
+export type ItemVariant = 'default' | 'destructive';
 /** `compact` is for long lists read with a mouse: rows 40 px tall. */
 export type ItemDensity = 'comfortable' | 'compact';
-export type ItemSwipeTone = 'neutral' | 'accent' | 'danger';
+export type ItemSwipeVariant = 'default' | 'accent' | 'destructive';
 
 /**
  * One button at the row's end, its own control beside the row's press: a remove × on a row that
@@ -43,7 +44,7 @@ export type ItemEndAction = {
   label: string;
   icon: IconRef;
   /** `destructive` for an action that destroys or ends something at once, as a menu row's. @default 'default' */
-  variant?: 'default' | 'destructive';
+  variant?: ItemVariant;
   /** Shown but not pressable, so the row does not move; say why in `disabledMessage`. @default false */
   isDisabled?: boolean;
   /** Why it is disabled: read as its description while disabled; not drawn. */
@@ -58,8 +59,8 @@ export interface ItemSwipeAction {
   /** Drawn under the icon, and what a screen reader offers as the row's action. */
   label: string;
   icon?: IconRef;
-  /** @default 'neutral' */
-  tone?: ItemSwipeTone;
+  /** @default 'default' */
+  variant?: ItemSwipeVariant;
   /** Runs after the row has closed. */
   onClick: () => void;
 }
@@ -70,8 +71,8 @@ export const ItemDensityContext = createContext<ItemDensity | undefined>(undefin
 export type ItemProps = ItemAction & {
   /** The row's main text, and its accessible name when it is pressable. */
   label: string;
-  /** `danger` draws the label in the danger role, for a row that deletes or ends something. @default 'default' */
-  tone?: ItemTone;
+  /** `destructive` draws the label in the danger role, for a row that deletes or ends something. @default 'default' */
+  variant?: ItemVariant;
   /** A second line under the label; read as the row's description when it is pressable. */
   description?: string;
   /** Before the text: an icon or an avatar. Hidden from assistive tech on a pressable row. */
@@ -101,7 +102,7 @@ const swipeActionWidth = 72;
 
 /** One row of a list: a label, an optional second line, and content at either end. */
 export function Item(props: ItemProps) {
-  const { label, tone = 'default', description, startContent, startIcon, labelEnd, endContent, endAction, swipeActions, className, 'data-testid': testId } = props;
+  const { label, variant = 'default', description, startContent, startIcon, labelEnd, endContent, endAction, swipeActions, className, 'data-testid': testId } = props;
   const listDensity = useContext(ItemDensityContext);
   const screenDensity = useDensity();
   const density = props.density ?? listDensity ?? screenDensity;
@@ -122,7 +123,7 @@ export function Item(props: ItemProps) {
   const nameBox = useBox('name');
   const room = labelLine.value !== null && labelEndBox.value !== null ? labelLine.value.width - labelEndBox.value.width - 8 : null;
   const stacked = room !== null && nameBox.value !== null && nameBox.value.maxContentWidth > room && room < labelLine.value!.width / 2;
-  const name = <text box={labelEnd !== undefined ? nameBox : undefined} className={cx(r.label.base, r.label.tone[tone], isSelected && r.label.selected, labelEnd !== undefined && r.label.beside, stacked && r.label.stacked)}>{label}</text>;
+  const name = <text box={labelEnd !== undefined ? nameBox : undefined} className={cx(r.label.base, r.label.variant[variant], isSelected && r.label.selected, labelEnd !== undefined && r.label.beside, stacked && r.label.stacked)}>{label}</text>;
   const content = (
     <>
       {startIcon !== undefined && <view aria-hidden className={r.iconTile.base}><Glyph name={startIcon} className={r.iconTile.icon} /></view>}
@@ -180,7 +181,7 @@ export function Item(props: ItemProps) {
             id={actionId(action)}
             onClick={() => { open.set(0); action.onClick(); }}
             data-testid={testId === undefined ? undefined : `${testId}-${action.key}`}
-            className={cx(r.action.base, r.action.tone[action.tone ?? 'neutral'])}
+            className={cx(r.action.base, r.action.variant[action.variant ?? 'default'])}
           >
             {action.icon !== undefined && <Glyph name={action.icon} className={r.actionIcon.base} />}
             <text className={r.actionLabel.base}>{action.label}</text>

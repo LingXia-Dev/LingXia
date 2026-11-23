@@ -1,5 +1,5 @@
 import type { Layer } from '../internal/layer';
-import type { ItemDensity, ItemSwipeTone, ItemTone } from './Item';
+import type { ItemDensity, ItemSwipeVariant, ItemVariant } from './Item';
 
 export const itemParts = {
   group: 'view',
@@ -69,10 +69,10 @@ export const itemRecipe = {
   },
   label: {
     base: 'text-body break-words',
-    tone: {
+    variant: {
       default: 'text-text',
-      danger: 'text-danger',
-    } satisfies Record<ItemTone, string>,
+      destructive: 'text-danger',
+    } satisfies Record<ItemVariant, string>,
     selected: 'font-medium',
     /** Beside `labelEnd` the name keeps one line and truncates; the content after it stays whole. */
     beside: 'shrink min-w-0 truncate break-normal',
@@ -95,7 +95,7 @@ export const itemRecipe = {
   },
   endAction: {
     base: 'shrink-0',
-    variant: { default: 'text-muted', destructive: 'text-danger' } satisfies Record<'default' | 'destructive', string>,
+    variant: { default: 'text-muted', destructive: 'text-danger' } satisfies Record<ItemVariant, string>,
   },
   swipe: {
     base: 'relative self-stretch overflow-hidden',
@@ -109,11 +109,11 @@ export const itemRecipe = {
   },
   action: {
     base: 'w-[72px] items-center justify-center gap-0.5 px-1 transition-colors duration-fast ease-standard focus-visible:inset-ring-2 focus-visible:inset-ring-focus',
-    tone: {
-      neutral: 'bg-text/8 text-text hover:bg-text/12 active:bg-text/16',
+    variant: {
+      default: 'bg-text/8 text-text hover:bg-text/12 active:bg-text/16',
       accent: 'bg-accent-solid text-on-accent-solid hover:bg-accent-solid-hover active:bg-accent-solid-pressed',
-      danger: 'bg-danger-solid text-on-danger-solid hover:bg-danger-solid-hover active:bg-danger-solid-pressed',
-    } satisfies Record<ItemSwipeTone, string>,
+      destructive: 'bg-danger-solid text-on-danger-solid hover:bg-danger-solid-hover active:bg-danger-solid-pressed',
+    } satisfies Record<ItemSwipeVariant, string>,
   },
   actionIcon: {
     base: 'size-5 shrink-0',

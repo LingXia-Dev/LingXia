@@ -321,13 +321,13 @@ const notes = [
   { id: 'n3', title: 'Reading list', updated: 'Edited last week' },
 ] as const;
 
-/** A row that deletes or ends something; the danger tone marks it before it is pressed. */
+/** A row that deletes or ends something; the destructive variant marks it before it is pressed. */
 export function Destructive() {
   return (
     <Said>
       {say => (
         <view className="overflow-hidden rounded-container border border-text/12 bg-surface">
-          <Item label="Delete account" description="Removes your notes from every device" tone="danger" hasChevron onClick={() => say('Opened Delete account')} data-testid="delete-row" />
+          <Item label="Delete account" description="Removes your notes from every device" variant="destructive" hasChevron onClick={() => say('Opened Delete account')} data-testid="delete-row" />
         </view>
       )}
     </Said>
@@ -366,7 +366,7 @@ export function Swipe() {
               onClick={() => say(`Opened ${mail.subject}`)}
               swipeActions={[
                 { key: 'flag', label: 'Flag', icon: 'flag', onClick: () => flagged.set(flagged.value.includes(mail.id) ? flagged.value.filter(id => id !== mail.id) : [...flagged.value, mail.id]) },
-                { key: 'delete', label: 'Delete', icon: 'delete', tone: 'danger', onClick: () => gone.set([...gone.value, mail.id]) },
+                { key: 'delete', label: 'Delete', icon: 'delete', variant: 'destructive', onClick: () => gone.set([...gone.value, mail.id]) },
               ]}
               data-testid={`mail-${mail.id}`}
             />
@@ -415,7 +415,7 @@ export function Compact() {
 | `disabledMessage` | `string` |  | Shown in place of `description` while disabled. |
 | `isSelected` | `boolean` |  | The current choice among rows that select, such as a sidebar's open page: an accent wash and a heavier label, read as selected. Pass `false` on the other rows so they read as not selected. |
 | `label` (required) | `string` |  | The row's main text, and its accessible name when it is pressable. |
-| `tone` | `ItemTone` | `'default'` | `danger` draws the label in the danger role, for a row that deletes or ends something. |
+| `variant` | `ItemVariant` | `'default'` | `destructive` draws the label in the danger role, for a row that deletes or ends something. |
 | `description` | `string` |  | A second line under the label; read as the row's description when it is pressable. |
 | `startContent` | `Child` |  | Before the text: an icon or an avatar. Hidden from assistive tech on a pressable row. |
 | `startIcon` | `IconRef` |  | An icon before the text, by name or as a definition, in a quiet tinted square: for rows that name a place or a kind. Not read. |
@@ -447,7 +447,7 @@ export function Compact() {
 | `key` (required) | `string` |  | Identifies the action: its test id is `<row id>-<key>`. |
 | `label` (required) | `string` |  | Drawn under the icon, and what a screen reader offers as the row's action. |
 | `icon` | `IconRef` |  |  |
-| `tone` | `ItemSwipeTone` | `'neutral'` |  |
+| `variant` | `ItemSwipeVariant` | `'default'` |  |
 | `onClick` (required) | `() => void` |  | Runs after the row has closed. |
 
 ## Anatomy
@@ -469,7 +469,7 @@ export function Compact() {
 | swipe | `<view>` | no | Around a row with `swipeActions`: it clips the row as it slides. |
 | slide | `<view>` | no | The part that moves: the row on the list's surface, dragged between closed and open. |
 | actions | `<view>` | no | Behind the row's end: the actions, 72 px each. |
-| action | `<button>` | no | One action: an icon over its label, in its tone. |
+| action | `<button>` | no | One action: an icon over its label, in its variant. |
 
 ## What an app may override
 
@@ -505,9 +505,9 @@ export function Compact() {
 | second line and end values, selected | `text-muted` on `accent-soft` | 4.5:1 | 5.16:1 | 5.39:1 |
 | chevron, selected | `text-muted` on `accent-soft` | 3:1 | 5.16:1 | 5.39:1 |
 | list heading and the line under it | `text-muted` on `canvas` | 4.5:1 | 5.50:1 | 7.33:1 |
-| swipe action, neutral | `text` on `text/8` over `surface` | 4.5:1 | 13.91:1 | 11.29:1 |
+| swipe action, default | `text` on `text/8` over `surface` | 4.5:1 | 13.91:1 | 11.29:1 |
 | swipe action, accent | `on-accent-solid` on `accent-solid` | 4.5:1 | 5.62:1 | 4.80:1 |
-| swipe action, danger | `on-danger-solid` on `danger-solid` | 4.5:1 | 5.21:1 | 4.82:1 |
+| swipe action, destructive | `on-danger-solid` on `danger-solid` | 4.5:1 | 5.21:1 | 4.82:1 |
 
 Ratios are computed from @lingxia/view/theme and rounded down.
 

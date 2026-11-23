@@ -33,7 +33,7 @@ export function Content() {
         <Stage caption={"Holding its own control"} bare>
           <WithControl />
         </Stage>
-        <Stage caption={"Danger tone, for a row that deletes"} bare>
+        <Stage caption={"Destructive, for a row that deletes"} bare>
           <Destructive />
         </Stage>
         <Stage caption={"Drag a row aside for its actions; the list has a heading and a line under it"} bare>

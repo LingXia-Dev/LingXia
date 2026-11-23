@@ -97,7 +97,7 @@ export function Swipe() {
               onClick={() => say(`Opened ${mail.subject}`)}
               swipeActions={[
                 { key: 'flag', label: 'Flag', icon: 'flag', onClick: () => flagged.set(flagged.value.includes(mail.id) ? flagged.value.filter(id => id !== mail.id) : [...flagged.value, mail.id]) },
-                { key: 'delete', label: 'Delete', icon: 'delete', tone: 'danger', onClick: () => gone.set([...gone.value, mail.id]) },
+                { key: 'delete', label: 'Delete', icon: 'delete', variant: 'destructive', onClick: () => gone.set([...gone.value, mail.id]) },
               ]}
               data-testid={`mail-${mail.id}`}
             />
@@ -207,13 +207,13 @@ export function StateDisabled() {
   );
 }
 
-/** A row that deletes or ends something; the danger tone marks it before it is pressed. */
+/** A row that deletes or ends something; the destructive variant marks it before it is pressed. */
 export function Destructive() {
   return (
     <Said>
       {say => (
         <view className="overflow-hidden rounded-container border border-text/12 bg-surface">
-          <Item label="Delete account" description="Removes your notes from every device" tone="danger" hasChevron onClick={() => say('Opened Delete account')} data-testid="delete-row" />
+          <Item label="Delete account" description="Removes your notes from every device" variant="destructive" hasChevron onClick={() => say('Opened Delete account')} data-testid="delete-row" />
         </view>
       )}
     </Said>

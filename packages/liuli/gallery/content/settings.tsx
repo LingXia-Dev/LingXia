@@ -173,7 +173,7 @@ export function Content() {
           <Item
             label="Delete account"
             description="Removes your notes from every device"
-            tone="danger"
+            variant="destructive"
             hasChevron
             onClick={() => confirming.set(true)}
             data-testid="delete-account"
