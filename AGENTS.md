@@ -23,7 +23,7 @@ recoverable from the code alone.
 - [`webview-lifecycle.md`](docs/internal/webview-lifecycle.md) — WebView creation, presentation, and teardown across platforms.
 - [`lingxia-facade-boundary.md`](docs/internal/lingxia-facade-boundary.md) — what stays behind the `lingxia` crate facade.
 - [`crate-layout.md`](docs/internal/crate-layout.md) — crate layers, dependency rules, and which crate owns what. Read before adding a crate or moving code between crates.
-- [`shell-ui-spec.md`](docs/internal/shell-ui-spec.md) · [`view-environment-spec.md`](docs/internal/view-environment-spec.md) — surface layout and View environment contracts.
+- [`shell-ui-spec.md`](docs/internal/shell-ui-spec.md) · [`view-environment-spec.md`](docs/internal/view-environment-spec.md) — the shell surface model and its projections; host-chrome geometry (tab bar, capsule, insets) and how each page receives it.
 - [`launch-screen.md`](docs/internal/launch-screen.md) — `splash:`, the OS launch frame, the first-frame cover, dismissal and the campaign hook. Read before changing the CLI splash generation or an SDK's splash overlay.
 - [`theme.md`](docs/internal/theme.md) — theme packs, role tiers, scale slots and their run-time resolution, `palette`/`scales` delivery. Read before changing `lingxia-theme`, the schema's `roles`/`scales`, or scale lowering.
 - [`test-runner.md`](docs/internal/test-runner.md) — test isolation, deadlines, result schema, and interrupted-run reporting.
