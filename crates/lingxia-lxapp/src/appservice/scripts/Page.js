@@ -413,6 +413,16 @@
           for (const [segments, value] of changes) setValueBySegments(initial, segments, value);
         }
       },
+      // Shorthand for an update that assigns whole keys.
+      set(patch) {
+        if (patch === null || typeof patch !== "object" || Array.isArray(patch)) {
+          throw new TypeError("page.set takes an object of data keys: page.set({ n: 1 })");
+        }
+        if (updating) throw new Error("page.set cannot be called inside page.update");
+        page.update((d) => {
+          for (const key of Object.keys(patch)) d[key] = patch[key];
+        });
+      },
       flush() {
         return live().flush();
       },

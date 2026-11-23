@@ -1,5 +1,5 @@
 import { definePage, type, type ParamsOf, type ResultOf } from '../src/page.js';
-import type { PageDefinition } from '../src/page.js';
+import type { PageDefinition, PageLike } from '../src/page.js';
 
 type Order = { id: string; total: number };
 
@@ -51,6 +51,43 @@ definePage({
     },
   }),
 });
+
+definePage({
+  data: { n: 0, label: '', tags: [] as string[], box: { size: { w: 0, h: 0 }, ids: [] as number[] }, pair: [0, ''] as [number, string] },
+  setup: page => ({
+    actions: {
+      set() {
+        page.set({ n: 1 });
+        page.set({ label: 'a', tags: [] });
+        // Values read from page.data go back in whole.
+        page.set({ tags: page.data.tags.filter(Boolean), box: page.data.box, pair: page.data.pair });
+        page.set({ tags: page.data.tags });
+        // @ts-expect-error the read-only form still keeps each key's type
+        page.set({ pair: [page.data.pair[1], page.data.pair[0]] });
+        // @ts-expect-error a returned read-only value is not applied either
+        page.update(() => page.data);
+        // @ts-expect-error set takes the page's own keys
+        page.set({ other: 1 });
+        // @ts-expect-error set keeps each key's type
+        page.set({ n: 'one' });
+        // @ts-expect-error set takes JSON
+        page.set({ label: () => 'a' });
+        resetCount(page);
+      },
+    },
+  }),
+});
+// A helper takes any page whose data has the keys it touches.
+function resetCount(page: PageLike<{ n: number }>): number {
+  page.set({ n: 0 });
+  page.set({ n: page.data.n });
+  page.update(d => { d.n += 1; });
+  // @ts-expect-error a recipe is synchronous through PageLike too
+  page.update(async d => { d.n = 1; });
+  // @ts-expect-error data is readonly through PageLike too
+  page.data.n = 2;
+  return page.data.n;
+}
 
 definePage({
   result: type<{ status: 'done' }>(),

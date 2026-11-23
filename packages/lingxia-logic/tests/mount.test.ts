@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { LxError } from "@lingxia/logic";
+import { definePage, LxError, type PageLike } from "@lingxia/logic";
 import { createLxMock, mount, setLx, type LxMockOverrides } from "@lingxia/logic/testing";
 import { lxNow } from "./fixtures/lx-now.mjs";
 import attachPage from "./fixtures/attach-page.ts";
@@ -165,4 +165,33 @@ test("leakedTimers: 'allow' resolves unmount and still stops the interval", asyn
   const leaks = trace.filter(entry => entry === "leak").length;
   await sleep(30);
   assert.equal(trace.filter(entry => entry === "leak").length, leaks);
+});
+
+// A helper in `logic/` takes the page structurally, without `any`.
+function clearList(page: PageLike<{ list: number[] }>) {
+  page.set({ list: [] });
+}
+
+test("page.set assigns whole keys, leaves the others, and refuses inside page.update", async () => {
+  const setPage = definePage({
+    data: { n: 0, label: "a", list: [1, 2] as number[] },
+    actions: page => ({
+      assign() { page.set({ n: 2, label: "b" }); },
+      clear() { clearList(page); },
+      nested() { page.update(() => { page.set({ n: 3 }); }); },
+      notAnObject() { (page.set as (patch: unknown) => void)([1]); },
+    }),
+  });
+  const mounted = await mount(setPage, { lx: createLxMock() });
+  try {
+    mounted.actions.assign();
+    assert.deepEqual(mounted.data, { n: 2, label: "b", list: [1, 2] });
+    mounted.actions.clear();
+    assert.deepEqual(mounted.data.list, []);
+    assert.throws(() => mounted.actions.nested(), /page\.set cannot be called inside page\.update/);
+    assert.throws(() => mounted.actions.notAnObject(), /page\.set takes an object/);
+    assert.equal(mounted.data.n, 2);
+  } finally {
+    await mounted.unmount();
+  }
 });

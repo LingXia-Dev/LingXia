@@ -32,6 +32,8 @@ export default definePage({
 
 - `page.data` is read-only. `page.update` runs the recipe on a copy and sends
   the View only what changed, at any depth.
+- `page.set({ saving: false })` assigns whole keys, as an `update` would.
+  A helper in `logic/` takes `PageLike<Data>` (`data`, `set`, `update`) from `@lingxia/logic`.
 - The call is synchronous; replication is asynchronous. `await page.flush()`
   waits until the View has everything written so far.
 - `useLxPage().data` follows it reactively.

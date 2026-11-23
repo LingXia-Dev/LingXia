@@ -71,12 +71,31 @@ type SyncSetup<R> = R extends PromiseLike<unknown>
  */
 export type UpdateRecipe<Data, R = unknown> = (draft: Data) => R & RecipeReturn<R, Data>;
 
+type SyncReturn<R> = R extends PromiseLike<unknown>
+  ? { 'LingXia type error': 'a recipe is synchronous; await first, then update' }
+  : unknown;
+
+// A key's read-only form is accepted: `set` replaces whole keys, so `page.data` values can go back in.
+/** The keys `page.set` assigns, each as JSON data in its mutable or read-only form. */
+type SetPatch<Data> = Partial<DeepReadonly<Data>> & JsonData<Partial<DeepReadonly<Data>>>;
+
 type RecipeReturn<R, Data> = R extends PromiseLike<unknown>
   ? { 'LingXia type error': 'a recipe is synchronous; await first, then update' }
   : R extends readonly unknown[] ? unknown
   : R extends object
-    ? R extends Data ? { 'LingXia type error': 'change the draft in place; a returned object is not applied' } : unknown
+    ? R extends DeepReadonly<Data> ? { 'LingXia type error': 'change the draft in place; a returned object is not applied' } : unknown
     : unknown;
+
+/** What a helper in `logic/` needs of a page to read and change its data: `PageApi` without the rest. */
+export interface PageLike<Data> {
+  /** The page's current data. */
+  readonly data: DeepReadonly<Data>;
+  /** Change data through a draft, as `page.update` does; the recipe must be synchronous. */
+  // Only the synchronous check: one that compares the return with `Data` would refuse a page with more keys.
+  update<R>(recipe: (draft: Data) => R & SyncReturn<R>): void;
+  /** Assign whole keys, as `page.set` does. */
+  set(patch: SetPatch<Data>): void;
+}
 
 /** One page instance, as `setup` and everything it returns see it. */
 export interface PageApi<Data, Params, Result, Messages = never> {
@@ -88,6 +107,8 @@ export interface PageApi<Data, Params, Result, Messages = never> {
    * another `update`; ignored after the page unloads.
    */
   update<R>(recipe: UpdateRecipe<Data, R>): void;
+  /** Assign these keys, as `update` would: `page.set({ loading: false })`. Same rules as `update`. */
+  set(patch: SetPatch<Data>): void;
   /**
    * Resolves when the View has everything updated so far. Rejects on unload.
    * Throws while `setup` runs; call it from a hook or an action.
