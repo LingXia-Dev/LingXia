@@ -63,6 +63,7 @@ export const doc: ComponentDoc = {
     { name: 'Sizes', title: 'Sizes' },
   ],
   gaps: [],
+  limits: ['The picker\'s week starts on the user\'s own first weekday and takes no override; for a week that is the app\'s own, show a Calendar or a DateRangeInput with `firstWeekday`.'],
   playground: { props: { value: '', label: 'Start date' } },
   related: ['TimeInput', 'TextInput', 'Field'],
   gallery: {

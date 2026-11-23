@@ -166,4 +166,8 @@ Ratios are computed from @lingxia/view/theme and rounded down.
 - Don't: Parse the value as local midnight in Logic without a time zone; it is a calendar day.
 - Don't: Use it for a time of day; that is TimeInput.
 
+## Limits
+
+- The picker's week starts on the user's own first weekday and takes no override; for a week that is the app's own, show a Calendar or a DateRangeInput with `firstWeekday`.
+
 Related: TimeInput, TextInput, Field.

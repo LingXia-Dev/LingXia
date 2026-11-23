@@ -7,6 +7,9 @@ import { dataOf } from '../internal/data';
 
 export type { CalendarDate } from './dates';
 
+/** A day of the week as the environment counts it: 1 is Sunday, 7 is Saturday. */
+export type CalendarWeekday = 1 | 2 | 3 | 4 | 5 | 6 | 7;
+
 export interface CalendarRange {
   start: CalendarDate | null;
   end: CalendarDate | null;
@@ -42,6 +45,8 @@ export type CalendarProps = CalendarSelection & {
   isDateDisabled?: (date: CalendarDate) => boolean;
   /** The day marked as today, and the month shown when nothing is chosen. A View takes the time from its page, not from a clock. */
   today: CalendarDate;
+  /** The week's first day, 1 is Sunday to 7 is Saturday, for a week that is the app's own (a school timetable). @default the user's first weekday */
+  firstWeekday?: CalendarWeekday;
   className?: string;
   /** On the calendar; a day is `<id>-<YYYY-MM-DD>`, the month buttons `<id>-previous` and `<id>-next`. */
   'data-testid'?: string;
@@ -56,7 +61,8 @@ export const calendarWeekday = (date: CalendarDate) => weekdayOf(...parts(date))
  */
 export function Calendar(props: CalendarProps) {
   const { label, min, max, isDateDisabled, className, 'data-testid': testId } = props;
-  const firstDay = ((useView().env.firstWeekday ?? 1) - 1) % 7;
+  const userFirst = useView().env.firstWeekday;
+  const firstDay = ((props.firstWeekday ?? userFirst ?? 1) - 1) % 7;
   const now = props.today;
   const anchor = props.isRange ? props.value.start : props.value;
   const own = useLocal('month', (isDate(anchor) ? anchor : now).slice(0, 7));

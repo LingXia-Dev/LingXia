@@ -2410,6 +2410,22 @@
           "description": "The day marked as today, and the month shown when nothing is chosen. A View takes the time from its page, not from a clock."
         },
         {
+          "name": "firstWeekday",
+          "type": "CalendarWeekday",
+          "required": false,
+          "description": "The week's first day, 1 is Sunday to 7 is Saturday, for a week that is the app's own (a school timetable).",
+          "values": [
+            1,
+            2,
+            3,
+            4,
+            5,
+            6,
+            7
+          ],
+          "default": "the user's first weekday"
+        },
+        {
           "name": "className",
           "type": "string",
           "required": false,
@@ -2553,6 +2569,11 @@
           "name": "Weekdays",
           "title": "Days ruled out",
           "source": "import { useLocal } from '@lingxia/view';\nimport { Calendar, calendarWeekday } from '@liulidesign/core/Calendar';\n\nconst today = '2026-11-15';\nconst closed = (date: string) => calendarWeekday(date) % 6 === 0;\n\n/** Days the app rules out stay in the grid, dimmed: here the weekends. */\nexport function Weekdays() {\n  const day = useLocal<string | null>('day', null);\n  return <Calendar label=\"Appointment\" value={day.value} onChange={day.set} isDateDisabled={closed} today={today} month=\"2026-12\" data-testid=\"appointment\" />;\n}"
+        },
+        {
+          "name": "MondayFirst",
+          "title": "The app's own week",
+          "source": "import { useLocal } from '@lingxia/view';\nimport { Calendar } from '@liulidesign/core/Calendar';\n\nconst today = '2026-11-15';\n\n/** A school timetable: its week runs Monday to Sunday wherever the user lives. */\nexport function MondayFirst() {\n  const day = useLocal<string | null>('day', '2026-11-16');\n  return <Calendar label=\"Timetable\" value={day.value} onChange={day.set} firstWeekday={2} today={today} data-testid=\"timetable\" />;\n}"
         }
       ],
       "gaps": [
@@ -2623,6 +2644,10 @@
             {
               "name": "Weekdays",
               "title": "Days the app rules out are dimmed"
+            },
+            {
+              "name": "MondayFirst",
+              "title": "A timetable's week, Monday first for every user"
             }
           ]
         }
@@ -5782,6 +5807,9 @@
         }
       ],
       "gaps": [],
+      "limits": [
+        "The picker's week starts on the user's own first weekday and takes no override; for a week that is the app's own, show a Calendar or a DateRangeInput with `firstWeekday`."
+      ],
       "playground": {
         "props": {
           "value": "",
@@ -6015,6 +6043,22 @@
           "type": "((date: string) => boolean)",
           "required": false,
           "description": ""
+        },
+        {
+          "name": "firstWeekday",
+          "type": "CalendarWeekday",
+          "required": false,
+          "description": "The calendar's first day of the week, as Calendar's `firstWeekday`: 1 is Sunday to 7 is Saturday.",
+          "values": [
+            1,
+            2,
+            3,
+            4,
+            5,
+            6,
+            7
+          ],
+          "default": "the user's first weekday"
         },
         {
           "name": "hasCloseButton",

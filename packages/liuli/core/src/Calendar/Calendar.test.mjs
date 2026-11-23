@@ -80,3 +80,18 @@ test('Day: the days are one grid that turns the month on PageUp and PageDown', a
   const grid = screen.queryAll(node => node.props.role === 'grid')[0];
   assert.ok(grid.props.onPage ?? grid.props.onGridPage, JSON.stringify(Object.keys(grid.props)));
 });
+
+test('Day: the week starts on the user\'s first weekday, Sunday when unset, and never moves with the words alone', async () => {
+  const initials = async env => textOf((await renderExample('Calendar/Calendar', 'Day', { env })).queryAll(node => node.props.role === 'grid')[0].children[0]);
+  assert.equal(await initials({}), 'SMTWTFS', 'the default environment, en-US: Sunday');
+  assert.equal(await initials({ firstWeekday: 2 }), 'MTWTFSS', 'a Monday-first user');
+  assert.equal(await initials({ firstWeekday: 7 }), 'SSMTWTF', 'a Saturday-first user');
+  assert.equal(await initials({ language: 'zh-CN' }), '日一二三四五六', 'the words do not move the week: the user\'s first weekday does');
+});
+
+test('MondayFirst: the app\'s own week wins over the user\'s first weekday', async () => {
+  const initials = async env => textOf((await renderExample('Calendar/Calendar', 'MondayFirst', { env })).queryAll(node => node.props.role === 'grid')[0].children[0]);
+  assert.equal(await initials({}), 'MTWTFSS');
+  assert.equal(await initials({ firstWeekday: 1 }), 'MTWTFSS', 'a Sunday-first user');
+  assert.equal(await initials({ firstWeekday: 7 }), 'MTWTFSS', 'a Saturday-first user');
+});

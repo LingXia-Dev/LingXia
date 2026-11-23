@@ -63,6 +63,21 @@ export function Weekdays() {
 }
 ```
 
+### The app's own week
+
+```tsx
+import { useLocal } from '@lingxia/view';
+import { Calendar } from '@liulidesign/core/Calendar';
+
+const today = '2026-11-15';
+
+/** A school timetable: its week runs Monday to Sunday wherever the user lives. */
+export function MondayFirst() {
+  const day = useLocal<string | null>('day', '2026-11-16');
+  return <Calendar label="Timetable" value={day.value} onChange={day.set} firstWeekday={2} today={today} data-testid="timetable" />;
+}
+```
+
 ## Props
 
 | Prop | Type | Default | Description |
@@ -77,6 +92,7 @@ export function Weekdays() {
 | `max` | `string` |  |  |
 | `isDateDisabled` | `((date: string) => boolean)` |  | Days that cannot be chosen: closed days, taken days. |
 | `today` (required) | `string` |  | The day marked as today, and the month shown when nothing is chosen. A View takes the time from its page, not from a clock. |
+| `firstWeekday` | `CalendarWeekday` | `the user's first weekday` | The week's first day, 1 is Sunday to 7 is Saturday, for a week that is the app's own (a school timetable). |
 | `className` | `string` |  |  |
 | `data-testid` | `string` |  | On the calendar; a day is `<id>-<YYYY-MM-DD>`, the month buttons `<id>-previous` and `<id>-next`. |
 
@@ -139,9 +155,11 @@ Ratios are computed from @lingxia/view/theme and rounded down.
 - Do: Use it where the days themselves matter: seeing a span, weekdays against weekends, what is taken.
 - Do: Pass `today` from the page's Logic, which knows the time and the person's time zone; a View has no clock.
 - Do: Show the chosen span in words beside the calendar, as the app formats dates.
+- Do: Set `firstWeekday` only when the week is the app's own, such as a school timetable that runs Monday to Sunday everywhere.
 - Do: At large text, a day's circle widens to hold two digits, up to its seventh of the row; give the calendar the full width.
 - Don't: Use it for a birth date or any date far from today; DateInput's picker reaches a year faster.
 - Don't: Hide days that cannot be chosen; disable them.
+- Don't: Set `firstWeekday` for a personal date such as a due date or a stay; the user's own first weekday is right there.
 
 ## Not yet
 

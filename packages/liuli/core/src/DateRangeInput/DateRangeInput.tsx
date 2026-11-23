@@ -1,6 +1,6 @@
 import { cx, useId, useLocal, useView } from '@lingxia/view';
 import { useControlSize } from '../density';
-import { Calendar, type CalendarDate, type CalendarRange } from '../Calendar/Calendar';
+import { Calendar, type CalendarDate, type CalendarRange, type CalendarWeekday } from '../Calendar/Calendar';
 import { comboboxRecipe as c } from '../Combobox/Combobox.recipe';
 import { Field, type FieldOwnProps } from '../Field/Field';
 import { liuliText } from '../i18n/text';
@@ -23,6 +23,8 @@ export type DateRangeInputProps = FieldOwnProps & {
   min?: CalendarDate;
   max?: CalendarDate;
   isDateDisabled?: (date: CalendarDate) => boolean;
+  /** The calendar's first day of the week, as Calendar's `firstWeekday`: 1 is Sunday to 7 is Saturday. @default the user's first weekday */
+  firstWeekday?: CalendarWeekday;
   /** Shows a close button in the calendar's sheet; without it the sheet closes by a tap outside, a drag or Back. @default true */
   hasCloseButton?: boolean;
   /** Names the close button. Defaults to "Close" in the page's language. */
@@ -36,7 +38,7 @@ export type DateRangeInputProps = FieldOwnProps & {
 export function DateRangeInput(props: DateRangeInputProps) {
   const {
     label, isLabelHidden, description, status, isRequired, hasRequiredMark, optionalLabel, info, isDisabled = false, disabledMessage, size: ownSize,
-    value: range, onChange: onRangeChange, format, today, placeholder, min, max, isDateDisabled, hasCloseButton = true, closeLabel = liuliText('@liuli.close'), className, 'data-testid': testId,
+    value: range, onChange: onRangeChange, format, today, placeholder, min, max, isDateDisabled, firstWeekday, hasCloseButton = true, closeLabel = liuliText('@liuli.close'), className, 'data-testid': testId,
   } = props;
   const size = useControlSize(ownSize);
   const { env } = useView();
@@ -63,6 +65,7 @@ export function DateRangeInput(props: DateRangeInputProps) {
         min={min}
         max={max}
         isDateDisabled={isDateDisabled}
+        firstWeekday={firstWeekday}
         data-testid={testId && `${testId}-calendar`}
       />
     </LayerContext.Provider>

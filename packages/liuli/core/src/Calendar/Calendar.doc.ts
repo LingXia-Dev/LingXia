@@ -56,17 +56,20 @@ export const doc: ComponentDoc = {
       'Use it where the days themselves matter: seeing a span, weekdays against weekends, what is taken.',
       'Pass `today` from the page\'s Logic, which knows the time and the person\'s time zone; a View has no clock.',
       'Show the chosen span in words beside the calendar, as the app formats dates.',
+      'Set `firstWeekday` only when the week is the app\'s own, such as a school timetable that runs Monday to Sunday everywhere.',
       'At large text, a day\'s circle widens to hold two digits, up to its seventh of the row; give the calendar the full width.',
     ],
     dont: [
       'Use it for a birth date or any date far from today; DateInput\'s picker reaches a year faster.',
       'Hide days that cannot be chosen; disable them.',
+      'Set `firstWeekday` for a personal date such as a due date or a stay; the user\'s own first weekday is right there.',
     ],
   },
   examples: [
     { name: 'Day', title: 'One day' },
     { name: 'Stay', title: 'A span of days' },
     { name: 'Weekdays', title: 'Days ruled out' },
+    { name: 'MondayFirst', title: 'The app\'s own week' },
   ],
   gaps: [
     { missing: 'A field that opens the calendar, for a span typed into a form.', needs: 'nothing from the View', today: 'The calendar sits in the page; put it in a Popover or a BottomSheet.' },
@@ -85,6 +88,7 @@ export const doc: ComponentDoc = {
       variants: [
         { name: 'Stay', title: 'A span: the first press starts it, the second ends it; past days cannot be chosen' },
         { name: 'Weekdays', title: 'Days the app rules out are dimmed' },
+        { name: 'MondayFirst', title: 'A timetable\'s week, Monday first for every user' },
       ],
     },
   },

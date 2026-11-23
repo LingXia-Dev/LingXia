@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { textOf } from '@lingxia/view/testing';
-import { described, renderExample } from '../testing/harness.mjs';
+import { described, renderExample, renderPage } from '../testing/harness.mjs';
 
 const fine = { env: { pointer: 'fine' } };
 const panel = (screen, id) => screen.queryAll(node => node.testId === `${id}-panel`);
@@ -61,4 +61,15 @@ test('Empty and states: the placeholder is muted; an error marks the edge and is
   assert.deepEqual(described(invalid, invalid.getByTestId('invalid')), ['1 Dec – 5 Dec', 'These nights are taken.']);
   const disabled = (await renderExample('DateRangeInput/DateRangeInput', 'StateDisabled')).getByTestId('disabled');
   assert.equal(disabled.props.onClick, undefined);
+});
+
+test('firstWeekday: the calendar it opens starts its week where a standalone Calendar would', async () => {
+  const screen = await renderPage(`
+    import { DateRangeInput } from '@liulidesign/core/DateRangeInput';
+    export function render() {
+      return <page><DateRangeInput label="Term" value={{ start: null, end: null }} onChange={() => {}} format={day => day} today="2026-11-15" firstWeekday={2} data-testid="term" /></page>;
+    }
+  `, fine);
+  screen.press(screen.getByTestId('term'));
+  assert.equal(textOf(screen.queryAll(node => node.props.role === 'grid')[0].children[0]), 'MTWTFSS');
 });

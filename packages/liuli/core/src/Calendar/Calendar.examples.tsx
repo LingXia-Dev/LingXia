@@ -29,6 +29,12 @@ export function Weekdays() {
   return <Calendar label="Appointment" value={day.value} onChange={day.set} isDateDisabled={closed} today={today} month="2026-12" data-testid="appointment" />;
 }
 
+/** A school timetable: its week runs Monday to Sunday wherever the user lives. */
+export function MondayFirst() {
+  const day = useLocal<string | null>('day', '2026-11-16');
+  return <Calendar label="Timetable" value={day.value} onChange={day.set} firstWeekday={2} today={today} data-testid="timetable" />;
+}
+
 /** The home tile. */
 export function Specimen() {
   // A month at half size does not fit a tile: its head and first weeks, fading out where the tile cuts them.
