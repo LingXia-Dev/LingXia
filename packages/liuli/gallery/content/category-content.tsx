@@ -15,13 +15,14 @@ import { Specimen as TimerSpecimen } from '../../core/src/Timer/Timer.examples';
 import { Specimen as CodeSpecimen } from '../../core/src/Code/Code.examples';
 import { Specimen as TimestampSpecimen } from '../../core/src/Timestamp/Timestamp.examples';
 import { Specimen as MessageBubbleSpecimen } from '../../core/src/MessageBubble/MessageBubble.examples';
+import { Specimen as QRCodeSpecimen } from '../../core/src/QRCode/QRCode.examples';
 import { Category, Tile } from '../shared/Layout';
 
 export function Content({ onOpen }: { onOpen: (page: string) => void }) {
   return (
     <>
       <text className="text-body text-muted">{"Containers, rows and tables that hold what the app shows."}</text>
-      <Category title={"16 components"}>
+      <Category title={"17 components"}>
         <Tile
           name={"Card"}
           tagline={"Related content"}
@@ -149,6 +150,15 @@ export function Content({ onOpen }: { onOpen: (page: string) => void }) {
           testId={"open-message-bubble"}
         >
           <MessageBubbleSpecimen />
+        </Tile>
+        <Tile
+          name={"QRCode"}
+          tagline={"A code for a camera"}
+          isWide
+          onOpen={() => onOpen("qrcode")}
+          testId={"open-qrcode"}
+        >
+          <QRCodeSpecimen />
         </Tile>
       </Category>
     </>

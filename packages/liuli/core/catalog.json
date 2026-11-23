@@ -14423,6 +14423,163 @@
       }
     },
     {
+      "name": "QRCode",
+      "import": "@liulidesign/core/QRCode",
+      "exports": [
+        "QRCode"
+      ],
+      "category": "content",
+      "status": "preview",
+      "since": "2026-11-22",
+      "summary": "A code a phone camera reads",
+      "description": "QRCode draws a value as a QR code for a phone camera: a link to open, a network to join, a code to pair with. It is dark on light in both themes, with its quiet zone inside the tile, as readers expect. The value is encoded in Liuli; nothing is fetched.",
+      "keywords": [
+        "qr",
+        "qr code",
+        "barcode",
+        "scan",
+        "share",
+        "pair",
+        "join"
+      ],
+      "props": [
+        {
+          "name": "value",
+          "type": "string",
+          "required": true,
+          "description": "What the code holds: a link, a join code, Wi-Fi details. Text of any language."
+        },
+        {
+          "name": "label",
+          "type": "string",
+          "required": true,
+          "description": "What the code is for, read in its place: \"Code to join Heights Guest\"."
+        },
+        {
+          "name": "size",
+          "type": "QRCodeSize",
+          "required": false,
+          "description": "96, 160 or 240 points square.",
+          "values": [
+            "sm",
+            "md",
+            "lg"
+          ],
+          "default": "'md'"
+        },
+        {
+          "name": "level",
+          "type": "QRLevel",
+          "required": false,
+          "description": "How much of the code may be lost and still read: L 7 %, M 15 %, Q 25 %, H 30 %. Higher levels make denser codes.",
+          "values": [
+            "L",
+            "M",
+            "Q",
+            "H"
+          ],
+          "default": "'M'"
+        },
+        {
+          "name": "className",
+          "type": "string",
+          "required": false,
+          "description": ""
+        },
+        {
+          "name": "data-testid",
+          "type": "string",
+          "required": false,
+          "description": ""
+        }
+      ],
+      "otherProps": {},
+      "parts": {
+        "root": "view",
+        "code": "vector"
+      },
+      "accessibility": {
+        "pattern": null,
+        "name": "label",
+        "description": [],
+        "states": [],
+        "keyboard": [],
+        "target": {},
+        "contrast": [],
+        "notes": [
+          "It is an image named by `label`, which says what the code is for; its value is not read.",
+          "Put the value in words beside it when a person may need to type it instead."
+        ]
+      },
+      "examples": [
+        {
+          "name": "Join",
+          "title": "A network to join",
+          "source": "import { QRCode } from '@liulidesign/core/QRCode';\n\n/** A guest network to join: the code, and the same details in words for whoever cannot scan. */\nexport function Join() {\n  return (\n    <view className=\"flex-row items-center gap-4\">\n      <QRCode value=\"WIFI:T:WPA;S:Heights Guest;P:spring-4821;;\" label=\"Code to join Heights Guest\" data-testid=\"join\" />\n      <view className=\"shrink min-w-0 gap-1\">\n        <text className=\"text-callout font-semibold text-text\">Heights Guest</text>\n        <text className=\"text-footnote text-muted\">Password spring-4821</text>\n      </view>\n    </view>\n  );\n}"
+        },
+        {
+          "name": "Link",
+          "title": "A link to open",
+          "source": "import { QRCode } from '@liulidesign/core/QRCode';\n\n/** A link to open on a phone, with the address under it. */\nexport function Link() {\n  return (\n    <view className=\"items-start gap-2\">\n      <QRCode value=\"https://example.com/invite/7Q4M\" label=\"Code for the invite link\" size=\"sm\" data-testid=\"invite\" />\n      <text className=\"text-footnote text-muted\">example.com/invite/7Q4M</text>\n    </view>\n  );\n}"
+        },
+        {
+          "name": "Sizes",
+          "title": "The three sizes",
+          "source": "import { QRCode } from '@liulidesign/core/QRCode';\n\n/** The three sizes. */\nexport function Sizes() {\n  return (\n    <view className=\"flex-row flex-wrap items-end gap-4\">\n      <QRCode value=\"https://example.com\" label=\"Small code\" size=\"sm\" />\n      <QRCode value=\"https://example.com\" label=\"Medium code\" />\n      <QRCode value=\"https://example.com\" label=\"Large code\" size=\"lg\" />\n    </view>\n  );\n}"
+        }
+      ],
+      "gaps": [],
+      "limits": [
+        "Up to version 15: about 320 bytes at level M, 410 at L. A longer value throws.",
+        "Byte mode only, so digits and capitals take as much room as any text.",
+        "No logo in the middle."
+      ],
+      "playground": {
+        "props": {
+          "value": "https://example.com",
+          "label": "Code for the example site",
+          "size": "md",
+          "level": "M"
+        }
+      },
+      "theming": {
+        "classProps": [
+          {
+            "name": "className",
+            "on": "",
+            "description": ""
+          }
+        ],
+        "tokens": [
+          "--radius-control"
+        ],
+        "roles": []
+      },
+      "related": [
+        "Thumbnail",
+        "Code"
+      ],
+      "gallery": {
+        "specimen": "Specimen",
+        "tagline": "A code for a camera",
+        "order": 20,
+        "page": {
+          "lead": "Use a QR code to hand a link or a code to a phone held up to the screen.",
+          "hero": "Join",
+          "variants": [
+            {
+              "name": "Link",
+              "title": "A link, with the address under it"
+            },
+            {
+              "name": "Sizes",
+              "title": "Small, medium and large"
+            }
+          ]
+        }
+      }
+    },
+    {
       "name": "RadioGroup",
       "import": "@liulidesign/core/RadioGroup",
       "exports": [

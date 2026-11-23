@@ -211,6 +211,8 @@
     "./internal/doc": "./src/doc.ts",
     "./internal/contrast": "./scripts/contrast.mjs",
     "./internal/testing": "./src/testing/harness.mjs",
+    "./QRCode": "./src/QRCode/QRCode.tsx",
+    "./QRCode/recipe": "./src/QRCode/QRCode.recipe.ts",
     "./package.json": "./package.json",
     "./catalog.json": "./catalog.json",
     "./docs/*": "./docs/*"

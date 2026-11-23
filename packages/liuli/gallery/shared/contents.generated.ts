@@ -88,6 +88,7 @@ import { Content as Timer } from '../content/timer';
 import { Content as Code } from '../content/code';
 import { Content as Timestamp } from '../content/timestamp';
 import { Content as MessageBubble } from '../content/message-bubble';
+import { Content as Qrcode } from '../content/qrcode';
 import { Content as Stat } from '../content/stat';
 import { Content as Sparkline } from '../content/sparkline';
 import { Content as BarChart } from '../content/bar-chart';
@@ -199,6 +200,7 @@ export const contents: Record<string, GalleryContent> = {
   "code": Code,
   "timestamp": Timestamp,
   "message-bubble": MessageBubble,
+  "qrcode": Qrcode,
   "stat": Stat,
   "sparkline": Sparkline,
   "bar-chart": BarChart,

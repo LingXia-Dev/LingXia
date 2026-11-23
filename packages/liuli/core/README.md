@@ -46,7 +46,7 @@ that directory.
 ## Components
 
 <!-- components:start -->
-77 components. Import any of them from `@liulidesign/core`, or from its own path; a second component in a row (`AvatarGroup`, `Spinner`) has a path of its own too:
+78 components. Import any of them from `@liulidesign/core`, or from its own path; a second component in a row (`AvatarGroup`, `Spinner`) has a path of its own too:
 
 | Import | Exports | What it is |
 | --- | --- | --- |
@@ -121,6 +121,7 @@ that directory.
 | `@liulidesign/core/Code` | Code, CodeBlock | Code as it was written, in a sentence or as a block |
 | `@liulidesign/core/Timestamp` | formatTimestamp, Timestamp | When something happened, in the words people use |
 | `@liulidesign/core/MessageBubble` | MessageBubble, MessageReasoning | One message of a conversation |
+| `@liulidesign/core/QRCode` | QRCode | A code a phone camera reads |
 | `@liulidesign/core/VideoPlayer` | VideoPlayer | A video with its controls, over the picture or under it, and full screen |
 | `@liulidesign/core/VideoControls` | VideoControls | Play, seek, mute, speed, quality and full screen for a useVideo player |
 | `@liulidesign/core/Carousel` | Carousel | A few pages to swipe through, one at a time |

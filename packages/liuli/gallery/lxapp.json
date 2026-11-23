@@ -96,6 +96,7 @@
     { "name": "code", "path": "pages/code/index" },
     { "name": "timestamp", "path": "pages/timestamp/index" },
     { "name": "message-bubble", "path": "pages/message-bubble/index" },
+    { "name": "qrcode", "path": "pages/qrcode/index" },
     { "name": "stat", "path": "pages/stat/index" },
     { "name": "sparkline", "path": "pages/sparkline/index" },
     { "name": "bar-chart", "path": "pages/bar-chart/index" },

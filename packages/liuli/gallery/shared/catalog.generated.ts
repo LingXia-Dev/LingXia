@@ -1139,6 +1139,21 @@ export const entries: GalleryEntry[] = [
     ]
   },
   {
+    "name": "QRCode",
+    "page": "qrcode",
+    "category": "content",
+    "summary": "A code a phone camera reads",
+    "keywords": [
+      "qr",
+      "qr code",
+      "barcode",
+      "scan",
+      "share",
+      "pair",
+      "join"
+    ]
+  },
+  {
     "name": "Stat",
     "page": "stat",
     "category": "charts",
@@ -1440,7 +1455,7 @@ export const galleryCategories: GalleryCategory[] = [
     "icon": "rows",
     "description": "Cards, rows and tables",
     "page": "category-content",
-    "count": 16
+    "count": 17
   },
   {
     "id": "charts",

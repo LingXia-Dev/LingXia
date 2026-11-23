@@ -48,6 +48,7 @@ export * from './PageControl/PageControl';
 export * from './Pagination/Pagination';
 export * from './Popover/Popover';
 export * from './ProgressBar/ProgressBar';
+export * from './QRCode/QRCode';
 export * from './RadioGroup/RadioGroup';
 export * from './SearchField/SearchField';
 export * from './Section/Section';

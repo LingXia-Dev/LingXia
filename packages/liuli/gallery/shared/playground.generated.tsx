@@ -47,6 +47,7 @@ import { PageControl } from '@liulidesign/core/PageControl';
 import { Pagination } from '@liulidesign/core/Pagination';
 import { Popover } from '@liulidesign/core/Popover';
 import { ProgressBar } from '@liulidesign/core/ProgressBar';
+import { QRCode } from '@liulidesign/core/QRCode';
 import { RadioGroup } from '@liulidesign/core/RadioGroup';
 import { SearchField } from '@liulidesign/core/SearchField';
 import { Section } from '@liulidesign/core/Section';
@@ -3535,6 +3536,51 @@ export const playgroundEntries: PlaygroundEntry[] = [
     "binds": {}
   },
   {
+    "name": "QRCode",
+    "component": "QRCode",
+    "defaults": {
+      "value": "https://example.com",
+      "label": "Code for the example site",
+      "size": "md",
+      "level": "M"
+    },
+    "controls": [
+      {
+        "name": "value",
+        "required": true,
+        "kind": "text"
+      },
+      {
+        "name": "label",
+        "required": true,
+        "kind": "text"
+      },
+      {
+        "name": "size",
+        "required": false,
+        "kind": "choice",
+        "options": [
+          "sm",
+          "md",
+          "lg"
+        ]
+      },
+      {
+        "name": "level",
+        "required": false,
+        "kind": "choice",
+        "options": [
+          "H",
+          "L",
+          "M",
+          "Q"
+        ]
+      }
+    ],
+    "fixed": [],
+    "binds": {}
+  },
+  {
     "name": "RadioGroup",
     "component": "RadioGroup",
     "defaults": {
@@ -5141,6 +5187,7 @@ export function PlaygroundSubject({ name, props, set }: { name: string; props: P
   if (name === "Pagination") return <Pagination {...(PaginationFixture() as any)} {...(props as any)} onChange={(next: unknown) => set("value", next as PlaygroundValue)} />;
   if (name === "Popover") return <Popover {...(PopoverFixture() as any)} {...(props as any)} onOpenChange={(next: unknown) => set("isOpen", next as PlaygroundValue)} />;
   if (name === "ProgressBar") return <ProgressBar {...(props as any)} />;
+  if (name === "QRCode") return <QRCode {...(props as any)} />;
   if (name === "RadioGroup") return <RadioGroup {...(RadioGroupFixture() as any)} {...(props as any)} onChange={(next: unknown) => set("value", next as PlaygroundValue)} />;
   if (name === "SearchField") return <SearchField {...(props as any)} onChange={(next: unknown) => set("value", next as PlaygroundValue)} />;
   if (name === "Section") return <Section {...(SectionFixture() as any)} {...(props as any)} />;
