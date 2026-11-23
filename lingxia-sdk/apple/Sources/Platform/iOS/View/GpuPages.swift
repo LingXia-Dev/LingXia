@@ -472,9 +472,15 @@ final class GpuPageView: UIView {
     }
 
     @objc private func barChanged(_ note: Notification) {
-        guard let changed = note.object as? UIView,
-              raised?.covered.contains(where: { changed.isDescendant(of: $0) }) == true
-        else { return }
+        guard let changed = note.object as? UIView else { return }
+        if raised == nil {
+            // A bar over the page changed height (a phone turned): the inset follows once it is laid out.
+            if changed.superview === superview {
+                DispatchQueue.main.async { [weak self] in self?.report() }
+            }
+            return
+        }
+        guard raised?.covered.contains(where: { changed.isDescendant(of: $0) }) == true else { return }
         recaptureBars()
     }
 

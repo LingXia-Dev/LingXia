@@ -799,6 +799,8 @@ final class LxAppViewController: UIViewController, ObservableObject {
         super.viewSafeAreaInsetsDidChange()
         if let appId = LxAppCore.currentAppId {
             updateWebViewBottomInset(for: appId)
+            // The status band comes and goes as a notched phone turns; the page's top follows the bar.
+            updateWebViewConstraints(for: appId)
         }
     }
 

@@ -179,7 +179,14 @@ struct macOSNavigationBarView: View {
         if let state = state {
             let bgColor = state.show_navbar ? backgroundColor : Color.clear
 
-            // Main NavigationBar content - always show the structure
+            #if os(iOS)
+            // The host sizes the bar to the status band plus the bar and paints the band and
+            // the divider; the content sits on the bottom edge, so the band can never cover it.
+            navigationBarContent
+                .frame(height: NavigationBarState.DEFAULT_HEIGHT)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
+                .background(bgColor)
+            #else
             VStack(spacing: 0) {
                 Rectangle()
                     .fill(bgColor)
@@ -197,6 +204,7 @@ struct macOSNavigationBarView: View {
             .background(bgColor)
             .ignoresSafeArea(.container, edges: .top)
             .clipped()
+            #endif
         }
     }
 
@@ -319,6 +327,8 @@ class iOSNavigationBarView: UIView, NavigationBarProtocol {
     private var hostingController: UIHostingController<ReactiveNavigationBarView>?
     private var currentState: NavigationBarState?
     private var statusBarBackgroundView: UIView?
+    private var statusBarHeightConstraint: NSLayoutConstraint?
+    private let divider = UIView()
     var heightConstraint: NSLayoutConstraint?
 
     override init(frame: CGRect) {
@@ -344,11 +354,21 @@ class iOSNavigationBarView: UIView, NavigationBarProtocol {
         hostingController.view.clipsToBounds = false // Allow SwiftUI content to extend beyond bounds
 
         addSubview(hostingController.view)
+        // Buttons and title stay clear of the notch on whichever side it is.
         NSLayoutConstraint.activate([
             hostingController.view.topAnchor.constraint(equalTo: topAnchor),
-            hostingController.view.leadingAnchor.constraint(equalTo: leadingAnchor),
-            hostingController.view.trailingAnchor.constraint(equalTo: trailingAnchor),
+            hostingController.view.leadingAnchor.constraint(equalTo: safeAreaLayoutGuide.leadingAnchor),
+            hostingController.view.trailingAnchor.constraint(equalTo: safeAreaLayoutGuide.trailingAnchor),
             hostingController.view.bottomAnchor.constraint(equalTo: bottomAnchor)
+        ])
+
+        divider.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(divider)
+        NSLayoutConstraint.activate([
+            divider.leadingAnchor.constraint(equalTo: leadingAnchor),
+            divider.trailingAnchor.constraint(equalTo: trailingAnchor),
+            divider.bottomAnchor.constraint(equalTo: bottomAnchor),
+            divider.heightAnchor.constraint(equalToConstant: 0.5)
         ])
 
         self.hostingController = hostingController
@@ -366,20 +386,29 @@ class iOSNavigationBarView: UIView, NavigationBarProtocol {
 
         if let statusBarBg = statusBarBackgroundView {
             addSubview(statusBarBg)
+            let height = statusBarBg.heightAnchor.constraint(equalToConstant: LxAppTheme.getStatusBarHeight())
+            statusBarHeightConstraint = height
             NSLayoutConstraint.activate([
                 statusBarBg.topAnchor.constraint(equalTo: topAnchor),
                 statusBarBg.leadingAnchor.constraint(equalTo: leadingAnchor),
                 statusBarBg.trailingAnchor.constraint(equalTo: trailingAnchor),
-                statusBarBg.heightAnchor.constraint(equalToConstant: LxAppTheme.getStatusBarHeight())
+                height
             ])
         }
+    }
+
+    /// The status band is gone in a notched phone's landscape: the band and the bar's height
+    /// follow it together, on every turn and not only when the page's bar state changes.
+    override func safeAreaInsetsDidChange() {
+        super.safeAreaInsetsDidChange()
+        refreshHeight()
     }
 
     func updateWithState(_ state: NavigationBarState?) {
         NavigationBarStateManager.shared.currentState = state
 
         let showNavbar = state?.show_navbar ?? false
-        updateContainerHeight(showNavbar: showNavbar)
+        refreshHeight()
 
         // Set the visibility of the entire NavigationBar
         self.isHidden = !showNavbar
@@ -394,7 +423,10 @@ class iOSNavigationBarView: UIView, NavigationBarProtocol {
             isOpaque = true
             statusBarBackgroundView?.backgroundColor = color
             statusBarBackgroundView?.isHidden = false
+            divider.backgroundColor = UIColor(argb: state.divider_color)
+            divider.isHidden = false
         } else {
+            divider.isHidden = true
             // Make navbar completely transparent
             statusBarBackgroundView?.backgroundColor = UIColor.clear
             statusBarBackgroundView?.isHidden = true
@@ -404,12 +436,15 @@ class iOSNavigationBarView: UIView, NavigationBarProtocol {
         NotificationCenter.default.post(name: GpuHostChrome.barChanged, object: self)
     }
 
-    private func updateContainerHeight(showNavbar: Bool) {
-        guard let heightConstraint = heightConstraint else { return }
-
-        let newHeight = LxAppTheme.getStatusBarHeight() + NavigationBarState.DEFAULT_HEIGHT
-        if heightConstraint.constant != newHeight {
-            heightConstraint.constant = newHeight
+    private func refreshHeight() {
+        let status = LxAppTheme.getStatusBarHeight()
+        if statusBarHeightConstraint?.constant != status {
+            statusBarHeightConstraint?.constant = status
+        }
+        let total = status + NavigationBarState.DEFAULT_HEIGHT
+        if let heightConstraint, heightConstraint.constant != total {
+            heightConstraint.constant = total
+            NotificationCenter.default.post(name: GpuHostChrome.barChanged, object: self)
         }
     }
 
