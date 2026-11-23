@@ -328,11 +328,10 @@ public class SimulatorViewController: NSViewController, WKNavigationDelegate {
             RunnerSupport.TabBar.refresh(tabBar)
         }
 
-        // Follow the unified compact (< 600) / regular (>= 600) rule so foldable
-        // and tablet widths >= 600 never hard-lock compact tab-bar chrome.
+        // The bottom bar goes only where the short side reaches 600: a phone on its side keeps it.
         RunnerSupport.TabBar.setCompact(
             tabBarView,
-            compact: !simulatedDevice.isRegularWidth
+            compact: !simulatedDevice.hasRegularShortSide
         )
         RunnerSupport.TabBar.setDisplayScale(tabBarView, scale: displayScale)
 

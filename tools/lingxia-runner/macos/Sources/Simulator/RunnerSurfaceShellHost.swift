@@ -253,7 +253,7 @@ final class RunnerSurfaceShellHost {
         RunnerSupport.SurfaceShell.setTrafficLightsVisible(shell, visible: false)
         RunnerSupport.SurfaceShell.setDeviceCompactProjectionEnabled(
             shell,
-            enabled: !device.isResizableDesktop && !device.isRegularWidth
+            enabled: !device.isResizableDesktop && !device.hasRegularShortSide
         )
         window.maxSize = NSSize(
             width: CGFloat.greatestFiniteMagnitude,

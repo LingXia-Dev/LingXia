@@ -188,8 +188,11 @@ public struct MobileDeviceSize: Equatable, Hashable, Decodable, Sendable {
         fit > 0 ? width / fit : width
     }
 
-    public var isRegularWidth: Bool {
-        deviceWidth >= Self.regularWidthThreshold
+    /// A tablet or open foldable: its short side reaches the breakpoint, so turning it never
+    /// changes the chrome. A phone on its side reads `regular` but keeps a phone's chrome.
+    public var hasRegularShortSide: Bool {
+        let shortSide = fit > 0 ? min(width, height) / fit : min(width, height)
+        return shortSide >= Self.regularWidthThreshold
     }
 
     public var hasPostures: Bool {
@@ -234,7 +237,7 @@ public struct MobileDeviceSize: Equatable, Hashable, Decodable, Sendable {
         case .phone:
             return true
         case .fold:
-            return !isRegularWidth
+            return !hasRegularShortSide
         case .pad, .desktop:
             return false
         }
@@ -245,7 +248,7 @@ public struct MobileDeviceSize: Equatable, Hashable, Decodable, Sendable {
         case .phone:
             return false
         case .fold:
-            return isRegularWidth
+            return hasRegularShortSide
         case .pad, .desktop:
             return true
         }
