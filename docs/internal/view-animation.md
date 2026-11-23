@@ -33,8 +33,10 @@ easing}`. At each prepared frame, every node with a transition compares its *nat
 resolved* value (after `active:`/`hover:`/theme/RTL variants, read from the built scene)
 with the value last committed for its identity. A difference starts an implicit instance
 from that value, or from the in-flight sample at prepare time if one runs, to the new one.
-A node seen for the first time never animates; removal drops its state. No exit or
-presence animations yet.
+A node seen for the first time enters from its `starting:` values, or appears at its
+value without them. A removed node with `exit:` values leaves toward them as a ghost
+(only the outermost removed node, at most `ghosts` at once); without them removal drops
+its state.
 
 - Colours: premultiplied OKLab (black→white midpoint is rgb 99). A background fades in on
   a node that had none (the fill is injected with the node's radii); gradients jump.
@@ -136,6 +138,3 @@ queues `nativeAnimationPresented` on the same worker; it returns -1 (no wakeup),
   routes agree at fixed times; reduced motion lands in one frame; hidden pages park.
 - Host tests (`session/tests/host.rs`): a spinner presents once per vsync only while
   shown, nothing hidden, removed or after a one-shot completes, no timers left.
-- Device acceptance (`examples/lingxia-showcase/pages/motion-lab`, Pixel): fade,
-  interruption, press scale, spin at display rate, reduced motion, hidden pages and
-  CPU parity.
