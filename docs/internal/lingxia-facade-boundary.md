@@ -2,9 +2,7 @@
 
 > **Audience**: contributors working on the `lingxia` crate facade and its internal implementation crates (`lingxia-logic`, `lingxia-lxapp` and its bridge module, `lingxia-browser`, `rong`, proc-macro crates). If you're **building an app on LingXia**, the rule you need is simply "import from `lingxia::*` facades, never from internal crates" — this is restated in the skill at [`docs/skill/native/development.md`](../skill/native/development.md). This doc defines what stays behind the facade and why.
 
-This internal document defines the intended public Rust API boundary for LingXia application projects.
-
-The target state is simple:
+This internal document defines the public Rust API boundary for LingXia application projects:
 
 - app-facing Rust libraries depend on `lingxia`
 - app-facing Rust libraries do not depend directly on `lxapp`
@@ -69,7 +67,7 @@ App crates should not depend on `lxapp::lx` directly.
 
 `lingxia` should export the minimum set of runtime types an app author legitimately needs.
 
-Today that includes types such as:
+These include:
 
 - `lingxia::LxApp`
 - provider traits intended for app integration
@@ -95,7 +93,7 @@ Examples:
 These should be organized around product domains, not around internal crate ownership.
 
 Host app update should expose a complete check + install flow, not raw package
-data. The implemented surface is `lingxia::update::host_app`:
+data. The surface is `lingxia::update::host_app`:
 
 ```rust
 // Optional, once at startup; without this the platform default installer is used.
@@ -143,8 +141,8 @@ App code should not need to know internal routes such as `lingxia://settings`.
 ### 3. Download management
 
 Download history, pause, retry, and directory overrides are shell/logic product
-concerns today. They should stay in `lingxia-service`/`lingxia-transfer` until a
-clear host-app authoring use case exists. Native app code that simply needs to
+concerns. They stay in `lingxia-service`/`lingxia-transfer` and are not facade
+API without a clear host-app authoring use case. Native app code that simply needs to
 fetch a file should use `lingxia::file::download`.
 
 A host embedding its own browser controls uses `lingxia::embedded_browser`
@@ -194,7 +192,7 @@ Application crates should not directly depend on:
 
 - `lingxia-browser`
 
-Those crates can exist internally during transition, but they should not define the public authoring model.
+It is internal and does not define the public authoring model.
 
 ### 4. Macro implementation crates
 
@@ -204,9 +202,9 @@ Application crates should not directly depend on:
 
 These are implementation details behind `lingxia::native`.
 
-## Recommended Public Shape
+## Public Shape
 
-The long-term public API should look more like this:
+The top level of the public API reads like this (abridged):
 
 ```rust
 lingxia::
@@ -244,33 +242,20 @@ Application Rust libraries should not directly depend on:
 - `lingxia-browser`
 - `lingxia-native-macros`
 
-If an app crate currently needs one of those dependencies, that indicates the `lingxia` facade is still missing a required export or wrapper.
+An app crate that needs one of those dependencies means the `lingxia` facade is missing a required export or wrapper; add it to the facade.
 
-## Execution Plan
-
-To move the workspace to this model:
-
-1. Keep this document as the contract for public Rust API cleanup.
-2. Inventory every app/example crate that depends directly on `lxapp`, `lingxia-browser`, or macro crates.
-3. For each direct dependency, identify what public capability is missing from `lingxia`.
-4. Add the missing re-exports or facade APIs to `lingxia`.
-5. Remove the direct internal-crate dependency from the app crate.
-6. Repeat until all target app Rust libraries depend only on `lingxia`.
-
-## Current Direction
-
-The current architectural direction should be:
+## Layering
 
 - `lingxia` is the public facade crate
 - host-runtime crates sit above the facade as platform host entry points:
-  `lingxia-windows` is the Windows host entry, providing the binary-level
-  pieces (`WindowsApp` configuration, `init`, `run_message_loop`,
+  `lingxia-windows-sdk` is the Windows host entry, providing the binary-level
+  pieces (`WindowsApp` configuration, `init_runtime`, `run_message_loop`,
   `quick_start`), while `lingxia::windows` holds the facade-level Windows
   APIs (`Platform`, `init`, `open_home_app`, app-icon helpers) that
-  `lingxia-windows` builds on — hosts use `lingxia-windows` for binary
+  `lingxia-windows-sdk` builds on — hosts use `lingxia-windows-sdk` for binary
   entry and the message loop
 - `lxapp` is runtime core
 - browser and shell concerns stay behind `lingxia`
 - app authors only program against `lingxia`
 
-That is the boundary future refactors should preserve.
+Refactors preserve this boundary.
