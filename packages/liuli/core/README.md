@@ -86,7 +86,7 @@ that directory.
 | `@liulidesign/core/Link` | Link | A link among the words of a sentence |
 | `@liulidesign/core/PageControl` | PageControl | Dots for which page of a few is in view |
 | `@liulidesign/core/TreeList` | TreeList | Things inside things, opened in place |
-| `@liulidesign/core/TopBar` | TopBar | Custom page header row with leading, centered and trailing slots |
+| `@liulidesign/core/TopBar` | TopBar | A page's own header row: a way back, its title, a control at the middle, its actions at the end |
 | `@liulidesign/core/Badge` | Badge | A short status or category label in a tinted pill |
 | `@liulidesign/core/ProgressBar` | ProgressBar, Spinner | How much of a task is done, or a spinner while the amount is unknown |
 | `@liulidesign/core/Banner` | Banner | A message in the page about the page or the account, that stays until resolved |

@@ -604,14 +604,15 @@ export const entries: GalleryEntry[] = [
     "name": "TopBar",
     "page": "top-bar",
     "category": "navigation",
-    "summary": "Custom page header row with leading, centered and trailing slots",
+    "summary": "A page's own header row: a way back, its title, a control at the middle, its actions at the end",
     "keywords": [
       "top bar",
       "header",
       "navigation bar",
       "toolbar",
       "app bar",
-      "adaptive"
+      "page title",
+      "actions"
     ]
   },
   {

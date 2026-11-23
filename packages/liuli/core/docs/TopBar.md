@@ -2,32 +2,36 @@
 
 # TopBar
 
-Custom page header row with leading, centered and trailing slots. Status: preview.
+A page's own header row: a way back, its title, a control at the middle, its actions at the end. Status: preview.
 
 ```ts
 import { TopBar } from '@liulidesign/core/TopBar';
 ```
 
-TopBar renders a custom in-page header row (for example, a search bar or segmented filter) with centered title/content and optional leading and trailing slots. The page already keeps its content clear of system bars and host chrome, so the bar adds only its own padding and spans whatever pane it sits in; page code never measures chrome rects.
+TopBar is the header row a page draws itself, for a page that shows no host navigation bar (`navigationStyle: "custom"`). It holds a control at the start (a way back, a menu), the page's title as a heading, a control at the middle (a SearchField, a segmented control) and the page's actions at the end. The start and the end share the room left over, so the middle stays at the bar's middle while everything fits; past that the bar wraps. The page already keeps its content clear of system bars and host chrome, so the bar adds only its own padding.
 
 ## Examples
 
-### Page header with trailing action
+### A way back, the title and actions
 
 ```tsx
 import { Said } from '../example';
 import { IconButton } from '@liulidesign/core/IconButton';
 import { TopBar } from '@liulidesign/core/TopBar';
 
-/** A page header with a title and a trailing action. */
-export function StandardTopBar() {
+/** A page's header: a way back, its title, and its actions at the end. */
+export function Standard() {
   return (
     <Said>
       {say => (
         <view className="overflow-hidden rounded-container border border-text/12">
           <TopBar
-            title="Orders"
-            trailing={<IconButton icon="add" label="New order" onClick={() => say('Created new order')} />}
+            startContent={<IconButton icon="chevron-start" label="Back" variant="ghost" onClick={() => say('Went back')} data-testid="orders-back" />}
+            heading="Orders"
+            endContent={[
+              <IconButton key="filter" icon="filter" label="Filter" variant="ghost" onClick={() => say('Opened Filter')} data-testid="orders-filter" />,
+              <IconButton key="add" icon="add" label="New order" variant="ghost" onClick={() => say('Created a new order')} data-testid="orders-add" />,
+            ]}
             data-testid="orders-topbar"
           />
         </view>
@@ -37,14 +41,39 @@ export function StandardTopBar() {
 }
 ```
 
+### A search field at the middle
+
+```tsx
+import { useLocal } from '@lingxia/view';
+import { unused } from '../example';
+import { IconButton } from '@liulidesign/core/IconButton';
+import { SearchField } from '@liulidesign/core/SearchField';
+import { TopBar } from '@liulidesign/core/TopBar';
+
+/** A search field at the middle of the bar. */
+export function WithSearch() {
+  const query = useLocal('query', '');
+  return (
+    <view className="overflow-hidden rounded-container border border-text/12">
+      <TopBar
+        heading="Mail"
+        centerContent={<SearchField label="Search mail" bind={query} data-testid="mail-search" />}
+        endContent={<IconButton icon="add" label="New message" variant="ghost" onClick={unused} />}
+        data-testid="mail-topbar"
+      />
+    </view>
+  );
+}
+```
+
 ## Props
 
 | Prop | Type | Default | Description |
 | --- | --- | --- | --- |
-| `leading` | `Child` |  | Optional leading control (e.g. back button or filter). |
-| `title` | `string` |  | Centered title when no custom center children are provided. |
-| `children` | `Child` |  | Custom center content (e.g. a SearchField). |
-| `trailing` | `Child` |  | Optional trailing page actions. |
+| `heading` | `Child` |  | The page's title: a string is drawn as its heading; a node is drawn as given. It follows `startContent`. |
+| `startContent` | `Child` |  | At the start, before the heading: a way back, a menu. |
+| `centerContent` | `Child` |  | At the bar's middle while everything fits: a SearchField, a segmented control. |
+| `endContent` | `Child` |  | At the end: the page's actions, a row of IconButtons. |
 | `className` | `string` |  |  |
 | `data-testid` | `string` |  |  |
 
@@ -52,11 +81,11 @@ export function StandardTopBar() {
 
 | Part | Element | Required | Description |
 | --- | --- | --- | --- |
-| root | `<view>` | yes | 44 dp minimum height header row with bottom hairline. |
-| leading | `<view>` | no | Optional inline-start control slot. |
-| center | `<view>` | yes | Centered slot holding custom `children` or `title`. |
-| title | `<text>` | no | Truncated title text when `children` is omitted. |
-| trailing | `<view>` | no | Optional inline-end actions slot. |
+| root | `<view>` | yes | The row, at least 44 pt tall, with a hairline under it. |
+| start | `<view>` | yes | `startContent`, then the heading; it shares the room left over with `end`. |
+| heading | `<text>` | no | A string `heading`: the page's title, a heading, cut short when it does not fit. |
+| center | `<view>` | no | `centerContent`, at the bar's middle while everything fits. |
+| end | `<view>` | yes | `endContent`, held to the end. |
 
 ## What an app may override
 
@@ -70,17 +99,21 @@ export function StandardTopBar() {
 - Pattern: none.
 - Name: none; its content is read.
 - Description: none.
-- Leading and trailing slots are logical, so they swap sides in RTL.
+- A string `heading` is the page's heading at level 1, so a screen reader can jump to it.
+- Start and end follow the page's direction: in right-to-left the way back sits on the right.
+- Each action is its own button, reached in order after the heading.
 
 | Contrast | Pair | Minimum | Light | Dark |
 | --- | --- | --- | --- | --- |
-| title text | `text` on `surface` | 4.5:1 | 16.26:1 | 13.87:1 |
+| title | `text` on `surface` | 4.5:1 | 16.26:1 | 13.87:1 |
 
 Ratios are computed from @lingxia/view/theme and rounded down.
 
 ## Guidance
 
-- Do: Prefer declarative `<page title headerActions>` for standard titles; use `<TopBar>` when the center of the bar holds a custom control such as `<SearchField>`.
-- Don't: Place app-close or split-screen host controls inside `<TopBar>`; window and app lifecycle controls belong to the host shell.
+- Do: Draw either the host's navigation bar or a TopBar on a page, never both: set `navigationStyle: "custom"` on a page that draws its own.
+- Do: Name every icon-only action with its `label`.
+- Don't: Put app-close or window controls in it; those belong to the host.
+- Don't: Stack a second bar under the host's navigation bar for the page's actions; give the page a TopBar instead.
 
-Related: SearchField, IconButton.
+Related: IconButton, SearchField, ListDetail.

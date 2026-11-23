@@ -21687,40 +21687,41 @@
       "category": "navigation",
       "status": "preview",
       "since": "2026-11-18",
-      "summary": "Custom page header row with leading, centered and trailing slots",
-      "description": "TopBar renders a custom in-page header row (for example, a search bar or segmented filter) with centered title/content and optional leading and trailing slots. The page already keeps its content clear of system bars and host chrome, so the bar adds only its own padding and spans whatever pane it sits in; page code never measures chrome rects.",
+      "summary": "A page's own header row: a way back, its title, a control at the middle, its actions at the end",
+      "description": "TopBar is the header row a page draws itself, for a page that shows no host navigation bar (`navigationStyle: \"custom\"`). It holds a control at the start (a way back, a menu), the page's title as a heading, a control at the middle (a SearchField, a segmented control) and the page's actions at the end. The start and the end share the room left over, so the middle stays at the bar's middle while everything fits; past that the bar wraps. The page already keeps its content clear of system bars and host chrome, so the bar adds only its own padding.",
       "keywords": [
         "top bar",
         "header",
         "navigation bar",
         "toolbar",
         "app bar",
-        "adaptive"
+        "page title",
+        "actions"
       ],
       "props": [
         {
-          "name": "leading",
+          "name": "heading",
           "type": "Child",
           "required": false,
-          "description": "Optional leading control (e.g. back button or filter)."
+          "description": "The page's title: a string is drawn as its heading; a node is drawn as given. It follows `startContent`."
         },
         {
-          "name": "title",
-          "type": "string",
-          "required": false,
-          "description": "Centered title when no custom center children are provided."
-        },
-        {
-          "name": "children",
+          "name": "startContent",
           "type": "Child",
           "required": false,
-          "description": "Custom center content (e.g. a SearchField)."
+          "description": "At the start, before the heading: a way back, a menu."
         },
         {
-          "name": "trailing",
+          "name": "centerContent",
           "type": "Child",
           "required": false,
-          "description": "Optional trailing page actions."
+          "description": "At the bar's middle while everything fits: a SearchField, a segmented control."
+        },
+        {
+          "name": "endContent",
+          "type": "Child",
+          "required": false,
+          "description": "At the end: the page's actions, a row of IconButtons."
         },
         {
           "name": "className",
@@ -21738,10 +21739,10 @@
       "otherProps": {},
       "parts": {
         "root": "view",
-        "leading": "view",
+        "start": "view",
+        "heading": "text",
         "center": "view",
-        "title": "text",
-        "trailing": "view"
+        "end": "view"
       },
       "accessibility": {
         "pattern": null,
@@ -21751,7 +21752,7 @@
         "keyboard": [],
         "contrast": [
           {
-            "what": "title text",
+            "what": "title",
             "pair": [
               "text",
               "surface"
@@ -21760,14 +21761,21 @@
           }
         ],
         "notes": [
-          "Leading and trailing slots are logical, so they swap sides in RTL."
+          "A string `heading` is the page's heading at level 1, so a screen reader can jump to it.",
+          "Start and end follow the page's direction: in right-to-left the way back sits on the right.",
+          "Each action is its own button, reached in order after the heading."
         ]
       },
       "examples": [
         {
-          "name": "StandardTopBar",
-          "title": "Page header with trailing action",
-          "source": "import { Said } from '../example';\nimport { IconButton } from '@liulidesign/core/IconButton';\nimport { TopBar } from '@liulidesign/core/TopBar';\n\n/** A page header with a title and a trailing action. */\nexport function StandardTopBar() {\n  return (\n    <Said>\n      {say => (\n        <view className=\"overflow-hidden rounded-container border border-text/12\">\n          <TopBar\n            title=\"Orders\"\n            trailing={<IconButton icon=\"add\" label=\"New order\" onClick={() => say('Created new order')} />}\n            data-testid=\"orders-topbar\"\n          />\n        </view>\n      )}\n    </Said>\n  );\n}"
+          "name": "Standard",
+          "title": "A way back, the title and actions",
+          "source": "import { Said } from '../example';\nimport { IconButton } from '@liulidesign/core/IconButton';\nimport { TopBar } from '@liulidesign/core/TopBar';\n\n/** A page's header: a way back, its title, and its actions at the end. */\nexport function Standard() {\n  return (\n    <Said>\n      {say => (\n        <view className=\"overflow-hidden rounded-container border border-text/12\">\n          <TopBar\n            startContent={<IconButton icon=\"chevron-start\" label=\"Back\" variant=\"ghost\" onClick={() => say('Went back')} data-testid=\"orders-back\" />}\n            heading=\"Orders\"\n            endContent={[\n              <IconButton key=\"filter\" icon=\"filter\" label=\"Filter\" variant=\"ghost\" onClick={() => say('Opened Filter')} data-testid=\"orders-filter\" />,\n              <IconButton key=\"add\" icon=\"add\" label=\"New order\" variant=\"ghost\" onClick={() => say('Created a new order')} data-testid=\"orders-add\" />,\n            ]}\n            data-testid=\"orders-topbar\"\n          />\n        </view>\n      )}\n    </Said>\n  );\n}"
+        },
+        {
+          "name": "WithSearch",
+          "title": "A search field at the middle",
+          "source": "import { useLocal } from '@lingxia/view';\nimport { unused } from '../example';\nimport { IconButton } from '@liulidesign/core/IconButton';\nimport { SearchField } from '@liulidesign/core/SearchField';\nimport { TopBar } from '@liulidesign/core/TopBar';\n\n/** A search field at the middle of the bar. */\nexport function WithSearch() {\n  const query = useLocal('query', '');\n  return (\n    <view className=\"overflow-hidden rounded-container border border-text/12\">\n      <TopBar\n        heading=\"Mail\"\n        centerContent={<SearchField label=\"Search mail\" bind={query} data-testid=\"mail-search\" />}\n        endContent={<IconButton icon=\"add\" label=\"New message\" variant=\"ghost\" onClick={unused} />}\n        data-testid=\"mail-topbar\"\n      />\n    </view>\n  );\n}"
         }
       ],
       "gaps": [],
@@ -21788,16 +21796,17 @@
         ]
       },
       "related": [
+        "IconButton",
         "SearchField",
-        "IconButton"
+        "ListDetail"
       ],
       "gallery": {
         "specimen": "Specimen",
-        "tagline": "Custom page header",
+        "tagline": "A page's own header",
         "order": 9,
         "page": {
-          "lead": "Use TopBar when a page needs custom center header content, such as a search field.",
-          "hero": "StandardTopBar"
+          "lead": "Use TopBar on a page that draws its own header: a way back, its title, a search field or a filter at the middle, its actions at the end.",
+          "hero": "Standard"
         }
       }
     },

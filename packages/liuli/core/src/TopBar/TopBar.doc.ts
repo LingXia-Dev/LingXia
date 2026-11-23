@@ -5,19 +5,21 @@ export const doc: ComponentDoc = {
   category: 'navigation',
   status: 'preview',
   since: '2026-11-18',
-  summary: 'Custom page header row with leading, centered and trailing slots',
+  summary: 'A page\'s own header row: a way back, its title, a control at the middle, its actions at the end',
   description:
-    'TopBar renders a custom in-page header row (for example, a search bar or segmented filter) with centered title/content and optional leading and trailing slots. ' +
-    'The page already keeps its content clear of system bars and host chrome, so the bar adds only its own padding and spans whatever pane it sits in; page code never measures chrome rects.',
-  keywords: ['top bar', 'header', 'navigation bar', 'toolbar', 'app bar', 'adaptive'],
+    'TopBar is the header row a page draws itself, for a page that shows no host navigation bar (`navigationStyle: "custom"`). ' +
+    'It holds a control at the start (a way back, a menu), the page\'s title as a heading, a control at the middle (a SearchField, a segmented control) and the page\'s actions at the end. ' +
+    'The start and the end share the room left over, so the middle stays at the bar\'s middle while everything fits; past that the bar wraps. ' +
+    'The page already keeps its content clear of system bars and host chrome, so the bar adds only its own padding.',
+  keywords: ['top bar', 'header', 'navigation bar', 'toolbar', 'app bar', 'page title', 'actions'],
   propsType: 'TopBarProps',
   recipe: { map: 'topBarRecipe', parts: 'topBarParts' },
   anatomy: [
-    { part: 'root', required: true, description: '44 dp minimum height header row with bottom hairline.' },
-    { part: 'leading', required: false, description: 'Optional inline-start control slot.' },
-    { part: 'center', required: true, description: 'Centered slot holding custom `children` or `title`.' },
-    { part: 'title', required: false, description: 'Truncated title text when `children` is omitted.' },
-    { part: 'trailing', required: false, description: 'Optional inline-end actions slot.' },
+    { part: 'root', required: true, description: 'The row, at least 44 pt tall, with a hairline under it.' },
+    { part: 'start', required: true, description: '`startContent`, then the heading; it shares the room left over with `end`.' },
+    { part: 'heading', required: false, description: 'A string `heading`: the page\'s title, a heading, cut short when it does not fit.' },
+    { part: 'center', required: false, description: '`centerContent`, at the bar\'s middle while everything fits.' },
+    { part: 'end', required: true, description: '`endContent`, held to the end.' },
   ],
   accessibility: {
     pattern: null,
@@ -26,32 +28,37 @@ export const doc: ComponentDoc = {
     states: [],
     keyboard: [],
     contrast: [
-      { what: 'title text', pair: ['text', 'surface'], minimum: '4.5:1' },
+      { what: 'title', pair: ['text', 'surface'], minimum: '4.5:1' },
     ],
     notes: [
-      'Leading and trailing slots are logical, so they swap sides in RTL.',
+      'A string `heading` is the page\'s heading at level 1, so a screen reader can jump to it.',
+      'Start and end follow the page\'s direction: in right-to-left the way back sits on the right.',
+      'Each action is its own button, reached in order after the heading.',
     ],
   },
   guidance: {
     do: [
-      'Prefer declarative `<page title headerActions>` for standard titles; use `<TopBar>` when the center of the bar holds a custom control such as `<SearchField>`.',
+      'Draw either the host\'s navigation bar or a TopBar on a page, never both: set `navigationStyle: "custom"` on a page that draws its own.',
+      'Name every icon-only action with its `label`.',
     ],
     dont: [
-      'Place app-close or split-screen host controls inside `<TopBar>`; window and app lifecycle controls belong to the host shell.',
+      'Put app-close or window controls in it; those belong to the host.',
+      'Stack a second bar under the host\'s navigation bar for the page\'s actions; give the page a TopBar instead.',
     ],
   },
   examples: [
-    { name: 'StandardTopBar', title: 'Page header with trailing action' },
+    { name: 'Standard', title: 'A way back, the title and actions' },
+    { name: 'WithSearch', title: 'A search field at the middle' },
   ],
   gaps: [],
-  related: ['SearchField', 'IconButton'],
+  related: ['IconButton', 'SearchField', 'ListDetail'],
   gallery: {
     specimen: 'Specimen',
-    tagline: 'Custom page header',
+    tagline: 'A page\'s own header',
     order: 9,
     page: {
-      lead: 'Use TopBar when a page needs custom center header content, such as a search field.',
-      hero: 'StandardTopBar',
+      lead: 'Use TopBar on a page that draws its own header: a way back, its title, a search field or a filter at the middle, its actions at the end.',
+      hero: 'Standard',
     },
   },
 };

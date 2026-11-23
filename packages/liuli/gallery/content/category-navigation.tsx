@@ -81,7 +81,7 @@ export function Content({ onOpen }: { onOpen: (page: string) => void }) {
         </Tile>
         <Tile
           name={"TopBar"}
-          tagline={"Custom page header"}
+          tagline={"A page's own header"}
           isWide
           onOpen={() => onOpen("top-bar")}
           testId={"open-top-bar"}
