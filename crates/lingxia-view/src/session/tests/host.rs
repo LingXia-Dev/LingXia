@@ -702,6 +702,14 @@ fn removed_images_cancel_their_transport_and_failures_stop_input() {
     );
     assert_eq!(failure.message, RecoveryMessage::UpdateFailed);
     assert_eq!(failure.action, Some(RecoveryAction::Retry));
+    // Only a loud build (dev, or under automation) shows the error itself on the panel.
+    assert_eq!(failure.detail.is_some(), cfg!(feature = "dev"));
+    assert!(
+        failure
+            .detail
+            .as_deref()
+            .is_none_or(|detail| detail.contains("boom"))
+    );
     assert_eq!(last(&host), ["n 0"]);
     let frames = host.adapter().log.lock().unwrap().presented.len();
     host.retry();

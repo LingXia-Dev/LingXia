@@ -937,8 +937,9 @@ public enum GpuPages {
         MainActor.assumeIsolated { views[token]?.chromeSnapshot(generation) }
     }
 
-    static func recovery(token: Int64, message: Int32, action: Int32, covers: Bool, back: Bool) {
-        MainActor.assumeIsolated { views[token]?.showRecovery(message: message, action: action, covers: covers, back: back) }
+    static func recovery(token: Int64, message: Int32, action: Int32, covers: Bool, back: Bool, detail: RustStr) {
+        let detail = detail.toString()
+        MainActor.assumeIsolated { views[token]?.showRecovery(message: message, action: action, covers: covers, back: back, detail: detail) }
     }
 
     static func claim(token: Int64, exclusive: Bool) {

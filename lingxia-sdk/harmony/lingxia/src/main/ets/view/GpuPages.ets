@@ -54,6 +54,8 @@ export class GpuRecovery {
   action: number = -1;
   /** Offer Back: the user's back path leaves this page. */
   back: boolean = false;
+  /** The error itself, shown under the message in a dev build; empty otherwise. */
+  detail: string = '';
   /** Set on arrival: each panel the core shows gets its own nodes and automation source. */
   serial: number = 0;
 }
@@ -258,7 +260,7 @@ export class GpuPages {
           // The same panel again keeps its nodes: a new one would leave the chrome empty
           // until it lays out.
           if (shown !== null && shown.retained === recovery.retained && shown.message === recovery.message
-            && shown.action === recovery.action && shown.back === recovery.back) {
+            && shown.action === recovery.action && shown.back === recovery.back && shown.detail === recovery.detail) {
             break;
           }
           // A panel replaced or cleared before it laid out never drops itself; readers must not

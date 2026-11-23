@@ -524,6 +524,20 @@ export struct GpuPage {
           .textAlign(TextAlign.Center)
           .onAreaChange((_: Area, area: Area) => HostOverlays.place(this.recoverySource(recovery), 'message',
             () => this.appText(this.messages[recovery.message] ?? this.messages[3]), 'text', area))
+        if (recovery.detail.length > 0) {
+          // A dev build's error itself: small, monospaced, selectable, a few lines.
+          Text(recovery.detail)
+            .fontSize(12)
+            .fontFamily('monospace')
+            .fontColor(this.recoveryText())
+            .opacity(0.72)
+            .textAlign(TextAlign.Center)
+            .maxLines(6)
+            .textOverflow({ overflow: TextOverflow.Ellipsis })
+            .copyOption(CopyOptions.LocalDevice)
+            .margin({ top: 4 })
+            .id('lx-recovery-detail')
+        }
         if (recovery.back || recovery.action >= 0) {
           Row() {
             if (recovery.back) {

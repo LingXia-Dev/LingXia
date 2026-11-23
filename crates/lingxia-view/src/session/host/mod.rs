@@ -212,6 +212,9 @@ pub struct Failure {
     pub action: Option<RecoveryAction>,
     /// A presented frame stays under the chrome.
     pub retained: bool,
+    /// The error itself, shown under the message where failures are loud (a dev build or a host
+    /// under automation); `None` in a release build, whose panel never shows it.
+    pub detail: Option<String>,
 }
 
 impl Failure {
@@ -250,6 +253,7 @@ impl Failure {
             message,
             action,
             retained,
+            detail: None,
         }
     }
 }
@@ -2536,7 +2540,13 @@ impl<A: PlatformAdapter> Inner<A> {
             } else {
                 Vec::new()
             };
-            let failure = Failure::new(error, recovery, main.snapshot.is_some());
+            let mut failure = Failure::new(error, recovery, main.snapshot.is_some());
+            let loud = self
+                .automation_attached
+                .load(std::sync::atomic::Ordering::Relaxed);
+            if crate::session::loud_failures(loud) {
+                failure.detail = Some(failure.error.clone());
+            }
             main.failure = Some(failure.clone());
             main.failure_flight = main.next_flight;
             (failure, effects, main.failure_repeats, repeated)

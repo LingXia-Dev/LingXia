@@ -53,8 +53,9 @@ interface GpuPlatform {
     /** A frame reached the screen and its effects ran. */
     void presented();
     boolean restart(long connection);
-    /** Show recovery chrome; {@code message} -1 clears it, {@code action} -1 offers none. */
-    void recovery(int message, int action, boolean retained, String error);
+    /** Show recovery chrome; {@code message} -1 clears it, {@code action} -1 offers none;
+     *  {@code detail}, when not empty, is the error shown under the message (dev builds). */
+    void recovery(int message, int action, boolean retained, String error, String detail);
     /** Show the page from {@code GpuView.nativeReveal}; a held surface stays hidden until a later {@code revealed(false)}. */
     void revealed(boolean holdSurface);
     /** Colours for the host chrome around this page (ARGB), from the palette it renders with. */

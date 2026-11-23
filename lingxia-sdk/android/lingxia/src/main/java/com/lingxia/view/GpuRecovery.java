@@ -23,7 +23,7 @@ final class GpuRecovery {
     private final FrameLayout host;
     private LinearLayout panel;
     private boolean banner;
-    private TextView message;
+    private TextView message, detail;
     private Button action, back;
     private final android.graphics.Rect insets = new android.graphics.Rect();
     /** The system bars' overlap with the page's bottom edge (navigation bar, gesture strip). */
@@ -38,9 +38,10 @@ final class GpuRecovery {
 
     GpuRecovery(FrameLayout host) { this.host = host; }
 
-    /** {@code back}, when non-null, offers Back beside the action; false re-enables it. */
-    void show(boolean retained, int code, int actionCode, Runnable retry, java.util.function.BooleanSupplier back) {
-        String key = retained + ":" + code + ":" + (retry != null ? actionCode : -1) + ":" + (back != null);
+    /** {@code back}, when non-null, offers Back beside the action; false re-enables it.
+     *  {@code error}, when not empty, shows under the message: a dev build's own error text. */
+    void show(boolean retained, int code, int actionCode, String error, Runnable retry, java.util.function.BooleanSupplier back) {
+        String key = retained + ":" + code + ":" + (retry != null ? actionCode : -1) + ":" + (back != null) + ":" + error;
         retryCallback = retry;
         backCallback = back;
         if (panel != null && key.equals(shown)) {
@@ -80,6 +81,23 @@ final class GpuRecovery {
         label.setAccessibilityLiveRegion(View.ACCESSIBILITY_LIVE_REGION_POLITE);
         current.addView(label, new LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT,
             LinearLayout.LayoutParams.WRAP_CONTENT));
+        detail = null;
+        if (error != null && !error.isEmpty()) {
+            // Small, monospaced and selectable, a few lines: enough to read the code and the element.
+            TextView text = new TextView(context);
+            detail = text;
+            text.setText(error);
+            text.setTextSize(12);
+            text.setTypeface(android.graphics.Typeface.MONOSPACE);
+            text.setGravity(Gravity.CENTER);
+            text.setMaxLines(6);
+            text.setEllipsize(android.text.TextUtils.TruncateAt.END);
+            text.setTextIsSelectable(true);
+            LinearLayout.LayoutParams layout = new LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT);
+            layout.topMargin = Math.round(8 * density);
+            current.addView(text, layout);
+        }
         LinearLayout row = new LinearLayout(context);
         row.setOrientation(LinearLayout.HORIZONTAL);
         row.setGravity(Gravity.CENTER);
@@ -163,6 +181,8 @@ final class GpuRecovery {
         panel.setBackgroundColor(plate != null ? plate : dark ? Color.rgb(32, 34, 38) : Color.WHITE);
         if (line != null) line.setBackgroundColor(barLine != null ? barLine : dark ? Color.rgb(60, 62, 68) : Color.rgb(220, 222, 226));
         message.setTextColor(text != null ? text : dark ? Color.WHITE : Color.rgb(32, 34, 38));
+        if (detail != null) detail.setTextColor(message.getCurrentTextColor());
+        if (detail != null) detail.setAlpha(0.72f);
         int tint = accent != null ? accent : Color.rgb(0, 122, 255);
         for (Button button : new Button[] {back, action}) if (button != null) button.setTextColor(tint);
     }
@@ -205,7 +225,7 @@ final class GpuRecovery {
     void clear() {
         if (panel != null) {
             android.util.Log.i("LingXia.Chrome", "recovery panel removed " + shown);
-            host.removeView(panel); panel = null; message = null; action = null; back = null;
+            host.removeView(panel); panel = null; message = null; detail = null; action = null; back = null;
         }
         shown = null;
     }

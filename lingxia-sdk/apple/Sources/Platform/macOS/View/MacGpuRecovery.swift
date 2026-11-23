@@ -9,8 +9,11 @@ extension GpuPageView {
     private static let messages = ["update_required", "session_failed", "update_failed", "display_failed", "slow_load"]
     private static let actions = ["retry", "reload", "keep_waiting"]
     private static let keepWaiting = 2
+    private static let detailId = "lx-recovery-detail"
 
-    func showRecovery(message: Int32, action: Int32, covers: Bool, back: Bool) {
+    /// `detail`, when not empty, is the error itself (a dev build): small, monospaced and
+    /// selectable under the message.
+    func showRecovery(message: Int32, action: Int32, covers: Bool, back: Bool, detail: String = "") {
         recoveryPanel?.removeFromSuperview()
         recoveryPanel = nil
         recoveryCovers = false
@@ -24,7 +27,20 @@ extension GpuPageView {
         text.alignment = .center
         text.font = .systemFont(ofSize: 15)
         text.setAccessibilityIdentifier("lx-recovery-message")
-        let stack = NSStackView(views: [text])
+        var rows: [NSView] = [text]
+        var error: NSTextField?
+        if !detail.isEmpty {
+            let field = NSTextField(wrappingLabelWithString: detail)
+            field.alignment = .center
+            field.font = .monospacedSystemFont(ofSize: 11, weight: .regular)
+            field.isSelectable = true
+            field.maximumNumberOfLines = 6
+            field.lineBreakMode = .byTruncatingTail
+            field.setAccessibilityIdentifier(Self.detailId)
+            rows.append(field)
+            error = field
+        }
+        let stack = NSStackView(views: rows)
         stack.orientation = .vertical
         stack.spacing = 12
         stack.translatesAutoresizingMaskIntoConstraints = false
@@ -57,7 +73,7 @@ extension GpuPageView {
             stack.centerYAnchor.constraint(equalTo: panel.centerYAnchor),
             stack.widthAnchor.constraint(lessThanOrEqualTo: panel.widthAnchor, constant: -32),
             text.widthAnchor.constraint(lessThanOrEqualToConstant: 360),
-        ])
+        ] + (error.map { [$0.widthAnchor.constraint(lessThanOrEqualToConstant: 480)] } ?? []))
         recoveryPanel = panel
         recoveryCovers = covers
         recolorRecovery()
@@ -84,7 +100,10 @@ extension GpuPageView {
         guard let panel = recoveryPanel else { return }
         panel.layer?.backgroundColor = (chrome?.canvas ?? .windowBackgroundColor).cgColor
         func walk(_ view: NSView) {
-            if let label = view as? NSTextField { label.textColor = chrome?.content ?? .labelColor }
+            if let label = view as? NSTextField {
+                let ink = chrome?.content ?? .labelColor
+                label.textColor = label.accessibilityIdentifier() == Self.detailId ? ink.withAlphaComponent(0.72) : ink
+            }
             if let button = view as? NSButton { button.contentTintColor = chrome?.accent ?? .controlAccentColor }
             view.subviews.forEach(walk)
         }

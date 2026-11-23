@@ -10,8 +10,11 @@ extension GpuPageView {
     private static let actions = ["retry", "reload", "keep_waiting"]
     private static let keepWaiting = 2
     private static let hairline = "lx-recovery-line"
+    private static let detailId = "lx-recovery-detail"
 
-    func showRecovery(message: Int32, action: Int32, covers: Bool, back: Bool) {
+    /// `detail`, when not empty, is the error itself (a dev build): small, monospaced and
+    /// selectable under the message.
+    func showRecovery(message: Int32, action: Int32, covers: Bool, back: Bool, detail: String = "") {
         recoveryPanel?.removeFromSuperview()
         recoveryPanel = nil
         recoveryCovers = false
@@ -26,7 +29,25 @@ extension GpuPageView {
         text.font = .preferredFont(forTextStyle: .body)
         text.adjustsFontForContentSizeCategory = true
         text.accessibilityIdentifier = "lx-recovery-message"
-        let stack = UIStackView(arrangedSubviews: [text])
+        var rows: [UIView] = [text]
+        if !detail.isEmpty {
+            let error = UITextView()
+            error.text = detail
+            error.isEditable = false
+            error.isSelectable = true
+            error.isScrollEnabled = false
+            error.backgroundColor = .clear
+            error.textAlignment = .center
+            error.font = UIFontMetrics(forTextStyle: .footnote)
+                .scaledFont(for: .monospacedSystemFont(ofSize: 12, weight: .regular))
+            error.adjustsFontForContentSizeCategory = true
+            error.textContainer.maximumNumberOfLines = 6
+            error.textContainer.lineBreakMode = .byTruncatingTail
+            error.textContainerInset = .zero
+            error.accessibilityIdentifier = Self.detailId
+            rows.append(error)
+        }
+        let stack = UIStackView(arrangedSubviews: rows)
         stack.axis = .vertical
         stack.spacing = 12
         // The button row centres as a whole under the message, not stretched to its width.
@@ -130,6 +151,9 @@ extension GpuPageView {
             view.subviews.forEach(walk)
         }
         walk(panel)
+        if let error = panel.subviews.first?.subviews.compactMap({ $0 as? UITextView }).first {
+            error.textColor = (hostChrome?.content ?? .label).withAlphaComponent(0.72)
+        }
     }
 
     @objc private func recoveryAction(_ sender: UIButton) {

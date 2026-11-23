@@ -23,7 +23,7 @@ public class GpuRecoveryTest {
         GpuRecovery recovery = new GpuRecovery(host);
         recovery.setColors(0xFFF5F6FA, 0xFF141821, 0xFF008347);
         AtomicInteger waits = new AtomicInteger();
-        recovery.show(false, SLOW_LOAD, KEEP_WAITING, waits::incrementAndGet, () -> true);
+        recovery.show(false, SLOW_LOAD, KEEP_WAITING, "", waits::incrementAndGet, () -> true);
         LinearLayout panel = (LinearLayout)host.getChildAt(0);
         android.widget.TextView message = recovery.message();
         assertEquals("This page is taking longer than usual to load.", message.getText().toString());
@@ -44,11 +44,11 @@ public class GpuRecoveryTest {
         FrameLayout host = new FrameLayout(RuntimeEnvironment.getApplication());
         GpuRecovery recovery = new GpuRecovery(host);
         AtomicInteger calls = new AtomicInteger();
-        recovery.show(true, UPDATE_FAILED, RETRY, calls::incrementAndGet, null);
+        recovery.show(true, UPDATE_FAILED, RETRY, "", calls::incrementAndGet, null);
         Button retry = recovery.action();
         retry.performClick(); retry.performClick();
         assertEquals(1, calls.get());
-        recovery.show(true, UPDATE_FAILED, RETRY, calls::incrementAndGet, null);
+        recovery.show(true, UPDATE_FAILED, RETRY, "", calls::incrementAndGet, null);
         retry = recovery.action();
         recovery.clear();
         retry.performClick();
@@ -59,7 +59,7 @@ public class GpuRecoveryTest {
     @Test public void incompatibleHostsDoNotOfferAnImpossibleRetry() {
         FrameLayout host = new FrameLayout(RuntimeEnvironment.getApplication());
         GpuRecovery recovery = new GpuRecovery(host);
-        recovery.show(false, UPDATE_REQUIRED, NONE, () -> fail("Incompatible modules cannot be retried"), null);
+        recovery.show(false, UPDATE_REQUIRED, NONE, "", () -> fail("Incompatible modules cannot be retried"), null);
         assertNull(recovery.action());
         assertNull(recovery.back());
         assertTrue(recovery.message().getText().toString().contains("Update the app"));
@@ -69,7 +69,7 @@ public class GpuRecoveryTest {
         FrameLayout host = new FrameLayout(RuntimeEnvironment.getApplication());
         GpuRecovery recovery = new GpuRecovery(host);
         AtomicInteger backs = new AtomicInteger();
-        recovery.show(false, DISPLAY_FAILED, RETRY, () -> { }, () -> backs.incrementAndGet() > 1);
+        recovery.show(false, DISPLAY_FAILED, RETRY, "", () -> { }, () -> backs.incrementAndGet() > 1);
         assertNotNull(recovery.action());
         Button back = recovery.back();
         assertEquals("Go back", back.getText().toString());
@@ -78,7 +78,7 @@ public class GpuRecoveryTest {
         back.performClick();
         assertFalse(back.isEnabled());
         assertEquals(2, backs.get());
-        recovery.show(false, UPDATE_REQUIRED, NONE, null, null);
+        recovery.show(false, UPDATE_REQUIRED, NONE, "", null, null);
         assertNull("nowhere to go back to", recovery.back());
     }
 
@@ -86,7 +86,7 @@ public class GpuRecoveryTest {
         FrameLayout host = new FrameLayout(RuntimeEnvironment.getApplication());
         GpuRecovery recovery = new GpuRecovery(host);
         AtomicInteger restarts = new AtomicInteger();
-        recovery.show(true, SESSION_FAILED, RELOAD, restarts::incrementAndGet, null);
+        recovery.show(true, SESSION_FAILED, RELOAD, "", restarts::incrementAndGet, null);
         Button action = recovery.action();
         assertEquals("Reload page", action.getText().toString());
         action.performClick();
@@ -116,5 +116,28 @@ public class GpuRecoveryTest {
         assertEquals(1, loads.get());
         assertEquals(2, view.getChildCount());
         view.dispose();
+    }
+
+    @Test public void aDevBuildShowsTheErrorUnderTheMessageAndAReleaseBuildDoesNot() {
+        FrameLayout host = new FrameLayout(RuntimeEnvironment.getApplication());
+        GpuRecovery recovery = new GpuRecovery(host);
+        String error = "UI_HANDLER: onClick of <button data-testid=\"save\"> rejected: offline";
+        recovery.show(true, UPDATE_FAILED, RETRY, error, () -> { }, null);
+        LinearLayout panel = (LinearLayout)host.getChildAt(0);
+        android.widget.TextView detail = null;
+        for (int i = 0; i < panel.getChildCount(); i++) {
+            if (panel.getChildAt(i) instanceof android.widget.TextView && panel.getChildAt(i) != recovery.message()
+                    && !(panel.getChildAt(i) instanceof Button)) detail = (android.widget.TextView)panel.getChildAt(i);
+        }
+        assertNotNull("the error shows under the message", detail);
+        assertEquals(error, detail.getText().toString());
+        assertTrue("selectable", detail.isTextSelectable());
+        recovery.clear();
+        recovery.show(true, UPDATE_FAILED, RETRY, "", () -> { }, null);
+        panel = (LinearLayout)host.getChildAt(0);
+        for (int i = 0; i < panel.getChildCount(); i++) {
+            assertFalse("no error text without one", panel.getChildAt(i) instanceof android.widget.TextView
+                && panel.getChildAt(i) != recovery.message() && !(panel.getChildAt(i) instanceof Button));
+        }
     }
 }

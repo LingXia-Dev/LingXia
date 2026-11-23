@@ -882,17 +882,22 @@ impl HostEvents for AndroidAdapter {
         let (message, action) = failure.map_or((-1, -1), recovery_codes);
         let retained = failure.is_some_and(|f| !f.covers_page());
         let error = failure.map(|f| f.error.as_str()).unwrap_or_default();
+        let detail = failure
+            .and_then(|f| f.detail.as_deref())
+            .unwrap_or_default();
         self.java(|env, platform| {
             let error = env.new_string(error)?;
+            let detail = env.new_string(detail)?;
             env.call_method(
                 platform,
                 jni_str!("recovery"),
-                jni_sig!("(IIZLjava/lang/String;)V"),
+                jni_sig!("(IIZLjava/lang/String;Ljava/lang/String;)V"),
                 &[
                     JValue::Int(message),
                     JValue::Int(action),
                     JValue::Bool(retained),
                     JValue::Object(&error),
+                    JValue::Object(&detail),
                 ],
             )?;
             Ok(())

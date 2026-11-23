@@ -381,9 +381,17 @@ mod bridge {
         fn gpu_pages_accessibility_event(token: i64, kind: u8, id: u32, text: &str);
 
         // Show recovery chrome (`message`, `action`: the core's codes; -1 clears), covering
-        // the page or as a banner under a retained frame; `back` offers Back beside it.
+        // the page or as a banner under a retained frame; `back` offers Back beside it;
+        // `detail`, when not empty, is the error shown under the message (dev builds).
         #[swift_bridge(swift_name = "GpuPages.recovery")]
-        fn gpu_pages_recovery(token: i64, message: i32, action: i32, covers: bool, back: bool);
+        fn gpu_pages_recovery(
+            token: i64,
+            message: i32,
+            action: i32,
+            covers: bool,
+            back: bool,
+            detail: &str,
+        );
 
         // Call `gpuPageVsync` on the next display refresh; false without a display link.
         #[swift_bridge(swift_name = "GpuPages.requestVsync")]
@@ -1098,7 +1106,7 @@ mod live {
         ) {
             use lingxia_view_apple::lingxia_view::session::host::RecoveryAction;
             let Some(failure) = failure else {
-                return super::bridge::gpu_pages_recovery(token, -1, -1, false, false);
+                return super::bridge::gpu_pages_recovery(token, -1, -1, false, false, "");
             };
             log::warn!("GPU page {token} failed: {}", failure.error);
             super::bridge::gpu_pages_recovery(
@@ -1107,6 +1115,7 @@ mod live {
                 RecoveryAction::code(failure.action),
                 failure.covers_page(),
                 crate::gpu_page::can_go_back(token),
+                failure.detail.as_deref().unwrap_or_default(),
             );
         }
         fn load_image(

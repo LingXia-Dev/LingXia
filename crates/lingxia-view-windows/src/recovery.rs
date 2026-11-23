@@ -8,18 +8,19 @@ use std::collections::HashMap;
 use windows::Win32::Foundation::{COLORREF, HWND, LPARAM, LRESULT, RECT, WPARAM};
 use windows::Win32::Graphics::Gdi::{
     BeginPaint, CreateFontW, CreateSolidBrush, DT_CALCRECT, DT_CENTER, DT_WORDBREAK, DeleteObject,
-    DrawTextW, EndPaint, FillRect, GetDC, HFONT, HGDIOBJ, InvalidateRect, PAINTSTRUCT, ReleaseDC,
-    SelectObject, SetBkMode, SetTextColor, TRANSPARENT,
+    DrawTextW, EndPaint, FillRect, GetDC, HBRUSH, HDC, HFONT, HGDIOBJ, InvalidateRect, PAINTSTRUCT,
+    ReleaseDC, SelectObject, SetBkColor, SetBkMode, SetTextColor, TRANSPARENT,
 };
 use windows::Win32::System::LibraryLoader::GetModuleHandleW;
 use windows::Win32::UI::HiDpi::GetDpiForWindow;
 use windows::Win32::UI::Input::KeyboardAndMouse::EnableWindow;
 use windows::Win32::UI::WindowsAndMessaging::{
-    BS_PUSHBUTTON, CreateWindowExW, DefWindowProcW, DestroyWindow, GetClientRect, GetParent, HMENU,
-    HWND_TOP, IDC_ARROW, LoadCursorW, PostMessageW, RegisterClassW, SW_SHOWNOACTIVATE,
-    SWP_NOACTIVATE, SendMessageW, SetWindowPos, SetWindowTextW, ShowWindow, WINDOW_EX_STYLE,
-    WINDOW_STYLE, WM_APP, WM_COMMAND, WM_ERASEBKGND, WM_PAINT, WM_SETFONT, WNDCLASSW, WS_CHILD,
-    WS_CLIPSIBLINGS, WS_TABSTOP, WS_VISIBLE,
+    BS_PUSHBUTTON, CreateWindowExW, DefWindowProcW, DestroyWindow, ES_CENTER, ES_MULTILINE,
+    ES_READONLY, GetClientRect, GetParent, HMENU, HWND_TOP, IDC_ARROW, LoadCursorW, PostMessageW,
+    RegisterClassW, SW_SHOWNOACTIVATE, SWP_NOACTIVATE, SendMessageW, SetWindowPos, SetWindowTextW,
+    ShowWindow, WINDOW_EX_STYLE, WINDOW_STYLE, WM_APP, WM_COMMAND, WM_CTLCOLORSTATIC,
+    WM_ERASEBKGND, WM_PAINT, WM_SETFONT, WNDCLASSW, WS_CHILD, WS_CLIPSIBLINGS, WS_TABSTOP,
+    WS_VISIBLE,
 };
 use windows::core::{HSTRING, w};
 
@@ -31,6 +32,10 @@ const PADDING: f32 = 16.0;
 const TEXT_WIDTH: f32 = 360.0;
 const FONT: f32 = 15.0;
 const BUTTON: [f32; 2] = [140.0, 32.0];
+/// The error under the message: a smaller monospaced face, at most this many lines.
+const DETAIL_FONT: f32 = 12.0;
+const DETAIL_LINES: i32 = 6;
+const DETAIL_WIDTH: f32 = 480.0;
 
 /// Localized chrome text, the key the platform localizer knows and its English fallback.
 pub(crate) type Text<'a> = &'a dyn Fn(&str, &str) -> String;
@@ -46,6 +51,12 @@ struct Panel {
     covers: bool,
     dark: bool,
     font: HFONT,
+    /// A dev build's error text: a read-only edit, so it can be selected and copied.
+    detail: isize,
+    detail_text: Vec<u16>,
+    detail_font: HFONT,
+    /// Its laid-out height in pixels, which the message's centring includes.
+    detail_height: i32,
     /// The button's label while its action runs; `None` when the action clears the panel.
     retrying: Option<String>,
 }
@@ -173,6 +184,58 @@ pub(crate) fn show(
             0
         };
         let button = action.map_or(0, |label| make(label, BUTTON_ID));
+        let detail_text = failure.detail.as_deref().unwrap_or_default();
+        let detail_font = if detail_text.is_empty() {
+            HFONT::default()
+        } else {
+            CreateFontW(
+                -(DETAIL_FONT * scale).round() as i32,
+                0,
+                0,
+                0,
+                400,
+                0,
+                0,
+                0,
+                Default::default(),
+                Default::default(),
+                Default::default(),
+                Default::default(),
+                0,
+                w!("Consolas"),
+            )
+        };
+        let detail = if detail_text.is_empty() {
+            0
+        } else {
+            CreateWindowExW(
+                WINDOW_EX_STYLE(0),
+                w!("EDIT"),
+                &HSTRING::from(detail_text),
+                WS_CHILD
+                    | WS_VISIBLE
+                    | WS_TABSTOP
+                    | WINDOW_STYLE((ES_MULTILINE | ES_READONLY | ES_CENTER) as u32),
+                0,
+                0,
+                0,
+                0,
+                Some(window),
+                None,
+                Some(instance.into()),
+                None,
+            )
+            .ok()
+            .map_or(0, |edit| {
+                SendMessageW(
+                    edit,
+                    WM_SETFONT,
+                    Some(WPARAM(detail_font.0 as usize)),
+                    Some(LPARAM(1)),
+                );
+                edit.0 as isize
+            })
+        };
         PANELS.with(|panels| {
             panels.borrow_mut().insert(
                 page,
@@ -185,6 +248,10 @@ pub(crate) fn show(
                     covers: failure.covers_page(),
                     dark,
                     font,
+                    detail,
+                    detail_text: detail_text.encode_utf16().collect(),
+                    detail_font,
+                    detail_height: 0,
                     retrying: (!waits).then(|| text("gpu.retrying", "Retrying…")),
                 },
             )
@@ -212,6 +279,9 @@ fn clear(page: isize) {
     unsafe {
         let _ = DestroyWindow(HWND(panel.window as *mut _));
         let _ = DeleteObject(HGDIOBJ(panel.font.0));
+        if !panel.detail_font.is_invalid() {
+            let _ = DeleteObject(HGDIOBJ(panel.detail_font.0));
+        }
     }
     crate::composition::clip_above(page, None);
 }
@@ -224,8 +294,11 @@ pub(crate) fn covers(page: isize) -> bool {
 /// The page window went away: its panel's windows went with it.
 pub(crate) fn forget(page: isize) {
     if let Some(panel) = PANELS.with(|panels| panels.borrow_mut().remove(&page)) {
-        // SAFETY: a font this thread made.
+        // SAFETY: fonts this thread made.
         let _ = unsafe { DeleteObject(HGDIOBJ(panel.font.0)) };
+        if !panel.detail_font.is_invalid() {
+            let _ = unsafe { DeleteObject(HGDIOBJ(panel.detail_font.0)) };
+        }
     }
 }
 
@@ -240,7 +313,17 @@ fn scale(page: isize) -> f32 {
 
 /// Fit the panel to its page: the whole page when it covers it, else a bottom banner.
 pub(crate) fn layout(page: isize) {
-    let Some((window, button, back, covers, font, mut message)) = PANELS.with(|panels| {
+    let Some((
+        window,
+        button,
+        back,
+        covers,
+        font,
+        mut message,
+        detail,
+        detail_font,
+        mut detail_text,
+    )) = PANELS.with(|panels| {
         panels.borrow().get(&page).map(|p| {
             (
                 p.window,
@@ -249,9 +332,13 @@ pub(crate) fn layout(page: isize) {
                 p.covers,
                 p.font,
                 p.message.clone(),
+                p.detail,
+                p.detail_font,
+                p.detail_text.clone(),
             )
         })
-    }) else {
+    })
+    else {
         return;
     };
     let scale = scale(page);
@@ -259,11 +346,17 @@ pub(crate) fn layout(page: isize) {
     let (width, height) = view::client_size(page);
     let (width, height) = (width as i32, height as i32);
     let text_width = px(TEXT_WIDTH).min(width - 2 * px(PADDING)).max(1);
+    let detail_width = px(DETAIL_WIDTH).min(width - 2 * px(PADDING)).max(1);
     let mut measured = RECT {
         right: text_width,
         ..Default::default()
     };
-    // SAFETY: a screen DC measures the text with the panel's font.
+    let mut detail_measured = RECT {
+        right: detail_width,
+        ..Default::default()
+    };
+    let mut line = RECT::default();
+    // SAFETY: a screen DC measures the text with the panel's fonts.
     unsafe {
         let dc = GetDC(None);
         let old = SelectObject(dc, HGDIOBJ(font.0));
@@ -273,13 +366,36 @@ pub(crate) fn layout(page: isize) {
             &mut measured,
             DT_CALCRECT | DT_CENTER | DT_WORDBREAK,
         );
+        if detail != 0 {
+            SelectObject(dc, HGDIOBJ(detail_font.0));
+            DrawTextW(
+                dc,
+                &mut detail_text,
+                &mut detail_measured,
+                DT_CALCRECT | DT_CENTER | DT_WORDBREAK,
+            );
+            DrawTextW(dc, &mut [b'M' as u16], &mut line, DT_CALCRECT);
+        }
         SelectObject(dc, old);
         ReleaseDC(None, dc);
     }
     let text_height = measured.bottom;
     let gap = px(12.0);
+    let detail_height = if detail != 0 {
+        detail_measured
+            .bottom
+            .min(DETAIL_LINES * line.bottom.max(1))
+    } else {
+        0
+    };
+    let detail_block = if detail != 0 {
+        px(8.0) + detail_height
+    } else {
+        0
+    };
     let [bw, bh] = BUTTON.map(px);
     let stack = text_height
+        + detail_block
         + if button != 0 || back != 0 {
             gap + bh
         } else {
@@ -294,6 +410,7 @@ pub(crate) fn layout(page: isize) {
     PANELS.with(|panels| {
         if let Some(panel) = panels.borrow_mut().get_mut(&page) {
             panel.message = message;
+            panel.detail_height = detail_height;
         }
     });
     // SAFETY: this thread's windows.
@@ -315,9 +432,20 @@ pub(crate) fn layout(page: isize) {
                 HWND(button as *mut _),
                 None,
                 (width - row_width) / 2 + i as i32 * (bw + gap),
-                top + text_height + gap,
+                top + text_height + detail_block + gap,
                 bw,
                 bh,
+                SWP_NOACTIVATE,
+            );
+        }
+        if detail != 0 {
+            let _ = SetWindowPos(
+                HWND(detail as *mut _),
+                None,
+                (width - detail_width) / 2,
+                top + text_height + px(8.0),
+                detail_width,
+                detail_height,
                 SWP_NOACTIVATE,
             );
         }
@@ -342,6 +470,7 @@ fn page_of_panel(window: HWND) -> Option<isize> {
 unsafe extern "system" fn proc(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: LPARAM) -> LRESULT {
     match msg {
         WM_ERASEBKGND => LRESULT(1),
+        WM_CTLCOLORSTATIC => detail_colors(hwnd, HDC(wparam.0 as *mut _)),
         WM_PAINT => {
             paint(hwnd);
             LRESULT(0)
@@ -432,17 +561,51 @@ fn back_refused(window: HWND) {
     }
 }
 
+/// The panel's surface colours, background then text, as COLORREF values.
+fn colors(dark: bool) -> (u32, u32) {
+    if dark {
+        (0x0020_2020, 0x00f0_f0f0)
+    } else {
+        (0x00f3_f3f3, 0x001a_1a1a)
+    }
+}
+
+/// The read-only error text on the panel's plate, in a muted ink.
+fn detail_colors(hwnd: HWND, dc: HDC) -> LRESULT {
+    let dark = page_of_panel(hwnd)
+        .and_then(|page| PANELS.with(|panels| panels.borrow().get(&page).map(|p| p.dark)))
+        .unwrap_or(false);
+    let (background, _) = colors(dark);
+    let muted = if dark { 0x00b4_b4b4 } else { 0x0050_5050 };
+    thread_local! {
+        static BRUSHES: RefCell<HashMap<u32, isize>> = RefCell::new(HashMap::new());
+    }
+    // SAFETY: colours on the DC the edit paints with; one brush per colour lives for the thread.
+    unsafe {
+        SetTextColor(dc, COLORREF(muted));
+        SetBkColor(dc, COLORREF(background));
+        let brush = BRUSHES.with(|brushes| {
+            *brushes
+                .borrow_mut()
+                .entry(background)
+                .or_insert_with(|| CreateSolidBrush(COLORREF(background)).0 as isize)
+        });
+        LRESULT(HBRUSH(brush as *mut _).0 as isize)
+    }
+}
+
 fn paint(hwnd: HWND) {
     let Some(page) = page_of_panel(hwnd) else {
         return;
     };
-    let Some((mut message, dark, font, buttons)) = PANELS.with(|panels| {
+    let Some((mut message, dark, font, buttons, detail)) = PANELS.with(|panels| {
         panels.borrow().get(&page).map(|p| {
             (
                 p.message.clone(),
                 p.dark,
                 p.font,
                 p.button != 0 || p.back != 0,
+                if p.detail != 0 { p.detail_height } else { -1 },
             )
         })
     }) else {
@@ -450,11 +613,7 @@ fn paint(hwnd: HWND) {
     };
     let scale = scale(page);
     let px = |logical: f32| (logical * scale).round() as i32;
-    let (background, foreground) = if dark {
-        (0x0020_2020, 0x00f0_f0f0)
-    } else {
-        (0x00f3_f3f3, 0x001a_1a1a)
-    };
+    let (background, foreground) = colors(dark);
     // SAFETY: painting this thread's window inside BeginPaint/EndPaint.
     unsafe {
         let mut paint = PAINTSTRUCT::default();
@@ -480,7 +639,8 @@ fn paint(hwnd: HWND) {
             DT_CALCRECT | DT_CENTER | DT_WORDBREAK,
         );
         let gap = px(12.0);
-        let stack = measured.bottom + if buttons { gap + px(BUTTON[1]) } else { 0 };
+        let detail_block = if detail >= 0 { px(8.0) + detail } else { 0 };
+        let stack = measured.bottom + detail_block + if buttons { gap + px(BUTTON[1]) } else { 0 };
         let top = (client.bottom - stack) / 2;
         let left = (width - text_width) / 2;
         let mut area = RECT {

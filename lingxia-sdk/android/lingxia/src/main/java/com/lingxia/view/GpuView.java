@@ -872,12 +872,12 @@ public final class GpuView extends FrameLayout implements SurfaceHolder.Callback
         catch (UnsatisfiedLinkError cpuOnly) { attaching = false; }
     }
 
-    private void showFailure(int message, int action, boolean retained, String error) {
+    private void showFailure(int message, int action, boolean retained, String error, String detail) {
         if (message < 0) { recovery.clear(); return; }
         finishPresentation(false);
         Log.e("LingXia.UI", "Render failed: " + error);
         if (listener != null) listener.onError(new IllegalStateException(error));
-        recovery.show(retained, message, action, action < 0 ? null : () -> { if (!destroyed) nativeRetry(host); },
+        recovery.show(retained, message, action, detail, action < 0 ? null : () -> { if (!destroyed) nativeRetry(host); },
             listener != null && listener.canGoBack() ? () -> !destroyed && listener.onBack() : null);
     }
 
@@ -996,8 +996,8 @@ public final class GpuView extends FrameLayout implements SurfaceHolder.Callback
             finishPresentation(true);
         }); }
         @Override public boolean restart(long connection) { return listener != null && listener.onRestart(connection); }
-        @Override public void recovery(int message, int action, boolean retained, String error) { onMain(() -> {
-            showFailure(message, action, retained, error);
+        @Override public void recovery(int message, int action, boolean retained, String error, String detail) { onMain(() -> {
+            showFailure(message, action, retained, error, detail);
         }); }
         @Override public void copyText(String text) { onMain(() -> { if (!destroyed) writeClipboard(text); }); }
         @Override public void textMenu(String menu) { onMain(() -> {

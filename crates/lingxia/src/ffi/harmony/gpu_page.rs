@@ -140,6 +140,7 @@ impl Shell for Bridge {
                     "message": f.message.code(),
                     "action": RecoveryAction::code(f.action),
                     "back": gpu_page::can_go_back(token),
+                    "detail": f.detail.as_deref().unwrap_or_default(),
                 })
                 .to_string()
             })
