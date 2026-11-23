@@ -2,6 +2,7 @@ import { useLocal, useView, type View } from '@lingxia/view';
 import { Said, unused } from '../example';
 import { Button } from './Button';
 import { Item } from '../Item/Item';
+import { Card } from '../Card/Card';
 
 export function Variants() {
   return (
@@ -10,6 +11,7 @@ export function Variants() {
         <view className="flex-row flex-wrap gap-2">
           <Button label="Save changes" variant="primary" onClick={() => say('Saved changes')} data-testid="primary" />
           <Button label="Preview" onClick={() => say('Opened the preview')} />
+          <Button label="Turn off internet" variant="tonal" startIcon="pause" onClick={() => say('Turned off the internet')} data-testid="tonal" />
           <Button label="Skip" variant="ghost" onClick={() => say('Skipped')} />
           <Button label="Delete draft" variant="destructive" onClick={() => say('Deleted the draft')} />
         </view>
@@ -171,6 +173,27 @@ export function Floating() {
           <view className="absolute bottom-4 end-4">
             <Button label="New note" variant="primary" size="lg" startIcon="add" isFloating onClick={() => say('Created a note')} data-testid="floating" />
           </view>
+        </view>
+      )}
+    </Said>
+  );
+}
+
+/** A card's own action, filled but quiet beside the page's one primary button; off while it cannot run. */
+export function VariantTonal() {
+  return (
+    <Said>
+      {say => (
+        <view className="gap-3">
+          <Card>
+            <view className="gap-3">
+              <text className="text-body">Emily's devices are online.</text>
+              <view className="flex-row flex-wrap gap-2">
+                <Button label="Turn off internet" variant="tonal" startIcon="pause" onClick={() => say('Turned off the internet')} />
+                <Button label="Study time" variant="tonal" isDisabled disabledMessage="No schedule is set" />
+              </view>
+            </view>
+          </Card>
         </view>
       )}
     </Said>

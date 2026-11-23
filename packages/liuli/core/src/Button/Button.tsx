@@ -9,7 +9,7 @@ import { LayerContext } from '../internal/layer';
 import { dataOf } from '../internal/data';
 import { SharedRowContext } from '../internal/footer';
 
-export type ButtonVariant = 'primary' | 'secondary' | 'ghost' | 'link' | 'destructive';
+export type ButtonVariant = 'primary' | 'secondary' | 'tonal' | 'ghost' | 'link' | 'destructive';
 export type ButtonSize = 'sm' | 'md' | 'lg';
 export type ButtonWidth = 'content' | 'fill';
 export type ButtonEdge = 'start' | 'end';
@@ -18,7 +18,7 @@ export interface ButtonProps {
   /** The visible text and the accessible name. Name the outcome: "Save changes", not "OK". */
   label: string;
   /**
-   * In a ButtonGroup the group's variant, unless set here. `primary` for the one main action in view, `destructive` for an action that loses data, `link`
+   * In a ButtonGroup the group's variant, unless set here. `primary` for the one main action in view, `tonal` for a secondary action inside a card or row, filled without an edge, `destructive` for an action that loses data, `link`
    * for a quiet way out beside a form's main action ("Forgot password?").
    * @default 'secondary'
    */

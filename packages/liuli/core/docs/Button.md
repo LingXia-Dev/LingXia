@@ -25,8 +25,38 @@ export function Variants() {
         <view className="flex-row flex-wrap gap-2">
           <Button label="Save changes" variant="primary" onClick={() => say('Saved changes')} data-testid="primary" />
           <Button label="Preview" onClick={() => say('Opened the preview')} />
+          <Button label="Turn off internet" variant="tonal" startIcon="pause" onClick={() => say('Turned off the internet')} data-testid="tonal" />
           <Button label="Skip" variant="ghost" onClick={() => say('Skipped')} />
           <Button label="Delete draft" variant="destructive" onClick={() => say('Deleted the draft')} />
+        </view>
+      )}
+    </Said>
+  );
+}
+```
+
+### A quiet filled button for a card's own action
+
+```tsx
+import { Said } from '../example';
+import { Button } from '@liulidesign/core/Button';
+import { Card } from '@liulidesign/core/Card';
+
+/** A card's own action, filled but quiet beside the page's one primary button; off while it cannot run. */
+export function VariantTonal() {
+  return (
+    <Said>
+      {say => (
+        <view className="gap-3">
+          <Card>
+            <view className="gap-3">
+              <text className="text-body">Emily's devices are online.</text>
+              <view className="flex-row flex-wrap gap-2">
+                <Button label="Turn off internet" variant="tonal" startIcon="pause" onClick={() => say('Turned off the internet')} />
+                <Button label="Study time" variant="tonal" isDisabled disabledMessage="No schedule is set" />
+              </view>
+            </view>
+          </Card>
         </view>
       )}
     </Said>
@@ -172,7 +202,7 @@ export function Floating() {
 | Prop | Type | Default | Description |
 | --- | --- | --- | --- |
 | `label` (required) | `string` |  | The visible text and the accessible name. Name the outcome: "Save changes", not "OK". |
-| `variant` | `ButtonVariant` | `'secondary'` | In a ButtonGroup the group's variant, unless set here. `primary` for the one main action in view, `destructive` for an action that loses data, `link` for a quiet way out beside a form's main action ("Forgot password?"). |
+| `variant` | `ButtonVariant` | `'secondary'` | In a ButtonGroup the group's variant, unless set here. `primary` for the one main action in view, `tonal` for a secondary action inside a card or row, filled without an edge, `destructive` for an action that loses data, `link` for a quiet way out beside a form's main action ("Forgot password?"). |
 | `size` | `ButtonSize` | `'md'` | In a ButtonGroup the group's size, unless set here. |
 | `startIcon` | `IconRef` |  | An icon before the label, by name or as a definition; hidden from assistive tech, since the label names the button. |
 | `endIcon` | `IconRef` |  | An icon after the label: a chevron for a button that opens something, an arrow for one that goes on. |
@@ -223,6 +253,8 @@ export function Floating() {
 | destructive label | `on-danger-solid` on `danger-solid` | 4.5:1 | 5.21:1 | 4.82:1 |
 | secondary label | `text` on `surface` | 4.5:1 | 16.26:1 | 13.87:1 |
 | secondary boundary | `line-strong` on `surface` | 3:1 | 3.47:1 | 3.53:1 |
+| tonal label on its 6% ink fill, on the page | `text` on `text/6` over `canvas` | 4.5:1 | 13.54:1 | 13.46:1 |
+| tonal label on its 6% ink fill, on a card | `text` on `text/6` over `surface` | 4.5:1 | 14.47:1 | 11.94:1 |
 | link label | `accent` on `canvas` | 4.5:1 | 5.25:1 | 6.83:1 |
 | disabled label on its 6% ink fill, on the page | `text-muted` on `text/6` over `canvas` | 4.5:1 | 4.90:1 | 6.45:1 |
 | disabled label on its 6% ink fill, on a card | `text-muted` on `text/6` over `surface` | 4.5:1 | 5.24:1 | 5.72:1 |
@@ -233,6 +265,7 @@ Ratios are computed from @lingxia/view/theme and rounded down.
 
 - Do: Give a ghost or link button at the start or end of a row `edge`, so its label or icon lines up with the text above and below instead of sitting in by its padding.
 - Do: Use one primary button per view, for the action most people take.
+- Do: Use `tonal` for a secondary action inside a card or a row, where an outlined button adds a second edge inside the card's.
 - Do: Write the label as a verb phrase that names the outcome.
 - Do: Pass a Logic action to clickAction so the button shows progress by itself.
 - Do: Confirm destructive actions that cannot be undone with a Dialog.

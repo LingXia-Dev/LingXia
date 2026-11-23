@@ -1,5 +1,5 @@
 // Generated from the doc file by scripts/generate.mjs; do not edit.
-import { Hero, VariantsEveryday, VariantDestructive, VariantLink, WithIcons, Sizes, StateDefault, StateBusy, StateDisabled, StateSecondaryDisabled, DisabledWithReason, AsyncAction, Floating } from '../../core/src/Button/Button.examples';
+import { Hero, VariantsEveryday, VariantTonal, VariantDestructive, VariantLink, WithIcons, Sizes, StateDefault, StateBusy, StateDisabled, StateSecondaryDisabled, DisabledWithReason, AsyncAction, Floating } from '../../core/src/Button/Button.examples';
 import { Lead, PageSection, Stage, StageGrid } from '../shared/Layout';
 
 export function Content() {
@@ -11,6 +11,9 @@ export function Content() {
       <PageSection title={"Variants"}>
         <Stage caption={"Primary for the main action, secondary and ghost for the rest"}>
           <VariantsEveryday />
+        </Stage>
+        <Stage caption={"A quiet filled button for a card's own action"}>
+          <VariantTonal />
         </Stage>
         <Stage caption={"Destructive, for loss"}>
           <VariantDestructive />

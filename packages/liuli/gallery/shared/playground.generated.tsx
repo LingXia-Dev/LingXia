@@ -527,7 +527,8 @@ export const playgroundEntries: PlaygroundEntry[] = [
           "ghost",
           "link",
           "primary",
-          "secondary"
+          "secondary",
+          "tonal"
         ]
       },
       {
@@ -831,7 +832,8 @@ export const playgroundEntries: PlaygroundEntry[] = [
           "ghost",
           "link",
           "primary",
-          "secondary"
+          "secondary",
+          "tonal"
         ]
       },
       {
@@ -2573,7 +2575,8 @@ export const playgroundEntries: PlaygroundEntry[] = [
           "ghost",
           "link",
           "primary",
-          "secondary"
+          "secondary",
+          "tonal"
         ]
       },
       {

@@ -34,6 +34,8 @@ export const doc: ComponentDoc = {
       { what: 'destructive label', pair: ['on-danger-solid', 'danger-solid'], minimum: '4.5:1' },
       { what: 'secondary label', pair: ['text', 'surface'], minimum: '4.5:1' },
       { what: 'secondary boundary', pair: ['line-strong', 'surface'], minimum: '3:1' },
+      { what: 'tonal label on its 6% ink fill, on the page', pair: ['text', 'text/6'], over: 'canvas', minimum: '4.5:1' },
+      { what: 'tonal label on its 6% ink fill, on a card', pair: ['text', 'text/6'], over: 'surface', minimum: '4.5:1' },
       { what: 'link label', pair: ['accent', 'canvas'], minimum: '4.5:1' },
       { what: 'disabled label on its 6% ink fill, on the page', pair: ['text-muted', 'text/6'], over: 'canvas', minimum: '4.5:1' },
       { what: 'disabled label on its 6% ink fill, on a card', pair: ['text-muted', 'text/6'], over: 'surface', minimum: '4.5:1' },
@@ -48,6 +50,7 @@ export const doc: ComponentDoc = {
     do: [
       'Give a ghost or link button at the start or end of a row `edge`, so its label or icon lines up with the text above and below instead of sitting in by its padding.',
       'Use one primary button per view, for the action most people take.',
+      'Use `tonal` for a secondary action inside a card or a row, where an outlined button adds a second edge inside the card\'s.',
       'Write the label as a verb phrase that names the outcome.',
       'Pass a Logic action to clickAction so the button shows progress by itself.',
       'Confirm destructive actions that cannot be undone with a Dialog.',
@@ -62,6 +65,7 @@ export const doc: ComponentDoc = {
   },
   examples: [
     { name: 'Variants', title: 'Variants' },
+    { name: 'VariantTonal', title: "A quiet filled button for a card's own action" },
     { name: 'Sizes', title: 'Sizes' },
     { name: 'WithIcons', title: 'With icons' },
     { name: 'AsyncAction', title: 'Waiting on a Logic action' },
@@ -96,6 +100,7 @@ export const doc: ComponentDoc = {
       hero: 'Hero',
       variants: [
         { name: 'VariantsEveryday', title: 'Primary for the main action, secondary and ghost for the rest' },
+        { name: 'VariantTonal', title: "A quiet filled button for a card's own action" },
         { name: 'VariantDestructive', title: 'Destructive, for loss' },
         { name: 'VariantLink', title: 'Link, a quiet way out beside a form' },
         { name: 'WithIcons', title: 'An icon before the label for the kind of action, after it for where it leads' },

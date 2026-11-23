@@ -1726,11 +1726,12 @@
           "name": "variant",
           "type": "ButtonVariant",
           "required": false,
-          "description": "In a ButtonGroup the group's variant, unless set here. `primary` for the one main action in view, `destructive` for an action that loses data, `link` for a quiet way out beside a form's main action (\"Forgot password?\").",
+          "description": "In a ButtonGroup the group's variant, unless set here. `primary` for the one main action in view, `tonal` for a secondary action inside a card or row, filled without an edge, `destructive` for an action that loses data, `link` for a quiet way out beside a form's main action (\"Forgot password?\").",
           "values": [
             "link",
             "primary",
             "secondary",
+            "tonal",
             "ghost",
             "destructive"
           ],
@@ -1910,6 +1911,24 @@
             "minimum": "3:1"
           },
           {
+            "what": "tonal label on its 6% ink fill, on the page",
+            "pair": [
+              "text",
+              "text/6"
+            ],
+            "over": "canvas",
+            "minimum": "4.5:1"
+          },
+          {
+            "what": "tonal label on its 6% ink fill, on a card",
+            "pair": [
+              "text",
+              "text/6"
+            ],
+            "over": "surface",
+            "minimum": "4.5:1"
+          },
+          {
             "what": "link label",
             "pair": [
               "accent",
@@ -1946,7 +1965,12 @@
         {
           "name": "Variants",
           "title": "Variants",
-          "source": "import { Said } from '../example';\nimport { Button } from '@liulidesign/core/Button';\n\nexport function Variants() {\n  return (\n    <Said>\n      {say => (\n        <view className=\"flex-row flex-wrap gap-2\">\n          <Button label=\"Save changes\" variant=\"primary\" onClick={() => say('Saved changes')} data-testid=\"primary\" />\n          <Button label=\"Preview\" onClick={() => say('Opened the preview')} />\n          <Button label=\"Skip\" variant=\"ghost\" onClick={() => say('Skipped')} />\n          <Button label=\"Delete draft\" variant=\"destructive\" onClick={() => say('Deleted the draft')} />\n        </view>\n      )}\n    </Said>\n  );\n}"
+          "source": "import { Said } from '../example';\nimport { Button } from '@liulidesign/core/Button';\n\nexport function Variants() {\n  return (\n    <Said>\n      {say => (\n        <view className=\"flex-row flex-wrap gap-2\">\n          <Button label=\"Save changes\" variant=\"primary\" onClick={() => say('Saved changes')} data-testid=\"primary\" />\n          <Button label=\"Preview\" onClick={() => say('Opened the preview')} />\n          <Button label=\"Turn off internet\" variant=\"tonal\" startIcon=\"pause\" onClick={() => say('Turned off the internet')} data-testid=\"tonal\" />\n          <Button label=\"Skip\" variant=\"ghost\" onClick={() => say('Skipped')} />\n          <Button label=\"Delete draft\" variant=\"destructive\" onClick={() => say('Deleted the draft')} />\n        </view>\n      )}\n    </Said>\n  );\n}"
+        },
+        {
+          "name": "VariantTonal",
+          "title": "A quiet filled button for a card's own action",
+          "source": "import { Said } from '../example';\nimport { Button } from '@liulidesign/core/Button';\nimport { Card } from '@liulidesign/core/Card';\n\n/** A card's own action, filled but quiet beside the page's one primary button; off while it cannot run. */\nexport function VariantTonal() {\n  return (\n    <Said>\n      {say => (\n        <view className=\"gap-3\">\n          <Card>\n            <view className=\"gap-3\">\n              <text className=\"text-body\">Emily's devices are online.</text>\n              <view className=\"flex-row flex-wrap gap-2\">\n                <Button label=\"Turn off internet\" variant=\"tonal\" startIcon=\"pause\" onClick={() => say('Turned off the internet')} />\n                <Button label=\"Study time\" variant=\"tonal\" isDisabled disabledMessage=\"No schedule is set\" />\n              </view>\n            </view>\n          </Card>\n        </view>\n      )}\n    </Said>\n  );\n}"
         },
         {
           "name": "Sizes",
@@ -2055,6 +2079,10 @@
             {
               "name": "VariantsEveryday",
               "title": "Primary for the main action, secondary and ghost for the rest"
+            },
+            {
+              "name": "VariantTonal",
+              "title": "A quiet filled button for a card's own action"
             },
             {
               "name": "VariantDestructive",
@@ -2169,6 +2197,7 @@
             "link",
             "primary",
             "secondary",
+            "tonal",
             "ghost",
             "destructive"
           ]
@@ -9525,6 +9554,7 @@
             "link",
             "primary",
             "secondary",
+            "tonal",
             "ghost",
             "destructive"
           ],

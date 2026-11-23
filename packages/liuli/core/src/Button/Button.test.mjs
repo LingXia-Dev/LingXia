@@ -6,7 +6,7 @@ import { renderExample, renderPage } from '../testing/harness.mjs';
 test('Variants: each button is named by its label and is not busy at rest', async () => {
   const screen = await renderExample('Button/Button', 'Variants');
   const buttons = screen.queryAll(node => node.tag === 'button');
-  assert.deepEqual(buttons.map(node => node.props.accessibilityLabel), ['Save changes', 'Preview', 'Skip', 'Delete draft']);
+  assert.deepEqual(buttons.map(node => node.props.accessibilityLabel), ['Save changes', 'Preview', 'Turn off internet', 'Skip', 'Delete draft']);
   assert.ok(buttons.every(node => !node.props.stateBusy));
   const primary = screen.getByTestId('primary');
   assert.equal(primary.props.background, 'accent-solid');
@@ -152,4 +152,17 @@ test('secondary: the page\'s surface on a page, the overlay\'s in a dialog\'s fo
   assert.equal(screen.getByTestId('page').props.background, 'surface');
   assert.equal(screen.getByTestId('footer').props.background, 'surface-overlay');
   assert.equal(screen.getByTestId('primary').props.background, 'accent-solid', 'a solid keeps its own fill');
+});
+
+test('tonal: a soft ink fill with no edge or shadow, firmer pressed; disabled keeps the fill and mutes the label', async () => {
+  const screen = await renderExample('Button/Button', 'Variants');
+  const tonal = screen.getByTestId('tonal');
+  assert.equal(tonal.props.background, 'text/6');
+  assert.equal(tonal.props.borderColor, '#00000000');
+  assert.equal(tonal.props.boxShadow, undefined);
+  const disabled = await renderPage(`
+    import { Button } from '@liulidesign/core/Button';
+    export function render() { return <page><Button label="Turn off" variant="tonal" isDisabled data-testid="off" /></page>; }
+  `);
+  assert.equal(disabled.getByTestId('off').props.background, 'text/6');
 });

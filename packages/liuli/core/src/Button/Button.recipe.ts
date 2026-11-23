@@ -14,6 +14,8 @@ export const buttonRecipe = {
     variant: {
       primary: 'bg-accent-solid text-on-accent-solid border border-transparent shadow-control-solid hover:bg-accent-solid-hover active:bg-accent-solid-pressed',
       secondary: 'bg-surface text-text border border-text/12 shadow-control hover:bg-text/5 active:bg-text/8',
+      /** A soft ink fill, no edge or shadow: lighter than secondary, firmer than ghost. */
+      tonal: 'bg-text/6 text-text border border-transparent hover:bg-text/10 active:bg-text/14',
       ghost: 'bg-transparent text-text border border-transparent hover:bg-text/5 active:bg-text/8',
       link: 'bg-transparent text-accent border border-transparent hover:bg-accent/6 active:bg-accent/10',
       destructive: 'bg-danger-solid text-on-danger-solid border border-transparent shadow-control-solid hover:bg-danger-solid-hover active:bg-danger-solid-pressed',
@@ -27,6 +29,7 @@ export const buttonRecipe = {
     disabled: {
       primary: 'disabled:bg-text/6 disabled:text-muted disabled:border-transparent disabled:shadow-none',
       secondary: 'disabled:bg-text/6 disabled:text-muted disabled:border-transparent disabled:shadow-none',
+      tonal: 'disabled:text-muted',
       ghost: 'disabled:text-muted',
       link: 'disabled:text-muted',
       destructive: 'disabled:bg-text/6 disabled:text-muted disabled:border-transparent disabled:shadow-none',
@@ -83,7 +86,7 @@ export const buttonRecipe = {
   label: {
     base: 'text-start',
     /** A link reads as text in a sentence, so it keeps the regular weight. */
-    weight: { primary: 'font-medium', secondary: 'font-medium', ghost: 'font-medium', link: 'font-normal', destructive: 'font-medium' } satisfies Record<ButtonVariant, string>,
+    weight: { primary: 'font-medium', secondary: 'font-medium', tonal: 'font-medium', ghost: 'font-medium', link: 'font-normal', destructive: 'font-medium' } satisfies Record<ButtonVariant, string>,
     size: { sm: 'text-footnote', md: 'text-body', lg: 'text-callout' } satisfies Record<ButtonSize, string>,
   },
   /** The disabled reason: not drawn, read as the description. */
