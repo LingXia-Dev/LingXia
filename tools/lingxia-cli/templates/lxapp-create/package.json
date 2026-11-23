@@ -16,6 +16,6 @@
   },
   "devDependencies": {
     {{FRAMEWORK_DEV_DEPS_PREFIX}}{{FRAMEWORK_VITE_DEV_DEPS}}"@lingxia/test": "{{LINGXIA_FRAMEWORK_RANGE}}",
-    "typescript": "^5.9.3"
+    "typescript": "{{TYPESCRIPT_RANGE}}"
   }
 }

@@ -185,10 +185,7 @@ pub(crate) fn actions(
             composed[0].expression
         )
     })?;
-    let typescript = tsc
-        .parent()
-        .and_then(Path::parent)
-        .context("TypeScript install has no package directory")?;
+    let typescript = typecheck::supported_typescript(&tsc)?;
     let ts_version = std::fs::read(typescript.join("package.json"))
         .ok()
         .and_then(|bytes| serde_json::from_slice::<serde_json::Value>(&bytes).ok())

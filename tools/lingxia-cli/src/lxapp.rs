@@ -51,6 +51,8 @@ pub(crate) fn gpu_dev_inputs(
     ))
 }
 
+pub(crate) use typecheck::TYPESCRIPT_RANGE;
+
 pub(crate) fn skip_typecheck() {
     typecheck::skip();
 }

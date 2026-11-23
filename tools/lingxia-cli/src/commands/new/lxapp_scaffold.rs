@@ -149,6 +149,10 @@ pub(super) fn build_framework_vars(
         crate::versions::minor_tilde_range(lingxia_bridge_version),
     );
     vars.insert(
+        "TYPESCRIPT_RANGE".to_string(),
+        crate::lxapp::TYPESCRIPT_RANGE.to_string(),
+    );
+    vars.insert(
         "MIN_RUNTIME".to_string(),
         crate::versions::min_runtime_floor(),
     );

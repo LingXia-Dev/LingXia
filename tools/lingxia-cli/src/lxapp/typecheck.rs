@@ -63,10 +63,7 @@ process.stdout.write(wrap(path.join(root, 'tsconfig.json')));
 /// Every type error as `file:line:col: TSnnnn: message`; empty when the project checks clean.
 pub(crate) fn run(root: &Path) -> Result<Vec<String>> {
     let tsc = resolve_tsc(root)?;
-    let typescript = tsc
-        .parent()
-        .and_then(Path::parent)
-        .context("TypeScript install has no package directory")?;
+    let typescript = supported_typescript(&tsc)?;
     let wrapped = Command::new("node")
         .args(["--input-type=module", "--eval", WRAP_SCRIPT])
         .arg(root)
@@ -107,6 +104,48 @@ pub(crate) fn report(problems: &[String]) -> String {
         if count == 1 { "" } else { "s" },
         problems.join("\n")
     )
+}
+
+/// The TypeScript range the CLI drives through its JS API; `lingxia new` writes it into
+/// `package.json`. TypeScript 7 has no JS compiler API.
+pub(crate) const TYPESCRIPT_RANGE: &str = "^5.9.3";
+const TYPESCRIPT_MIN: (u64, u64, u64) = (5, 9, 3);
+
+/// The package directory of the TypeScript that `tsc` belongs to, once its version is in
+/// [`TYPESCRIPT_RANGE`].
+pub(crate) fn supported_typescript(tsc: &Path) -> Result<&Path> {
+    let package = tsc
+        .parent()
+        .and_then(Path::parent)
+        .context("TypeScript install has no package directory")?;
+    let version = std::fs::read(package.join("package.json"))
+        .ok()
+        .and_then(|bytes| serde_json::from_slice::<serde_json::Value>(&bytes).ok())
+        .and_then(|manifest| manifest["version"].as_str().map(str::to_owned))
+        .unwrap_or_default();
+    if !in_range(&version) {
+        bail!(
+            "TypeScript {} is installed here; LingXia supports {TYPESCRIPT_RANGE}: run `npm i -D typescript@{TYPESCRIPT_RANGE}`",
+            if version.is_empty() {
+                "of unknown version"
+            } else {
+                &version
+            }
+        );
+    }
+    Ok(package)
+}
+
+fn in_range(version: &str) -> bool {
+    let core = version.split(['-', '+']).next().unwrap_or("");
+    let parts: Vec<u64> = core
+        .split('.')
+        .filter_map(|part| part.parse().ok())
+        .collect();
+    let [major, minor, patch] = parts[..] else {
+        return false;
+    };
+    major == TYPESCRIPT_MIN.0 && (minor, patch) >= (TYPESCRIPT_MIN.1, TYPESCRIPT_MIN.2)
 }
 
 pub(crate) fn resolve_tsc(root: &Path) -> Result<PathBuf> {
@@ -178,5 +217,15 @@ Found 3 errors.\n";
         let error = resolve_tsc(temp.path()).unwrap_err().to_string();
         assert!(error.contains("npm install"), "{error}");
         assert!(error.contains("--no-typecheck"), "{error}");
+    }
+
+    #[test]
+    fn only_typescript_in_the_supported_range_is_driven() {
+        for version in ["5.9.3", "5.9.10", "5.12.0"] {
+            assert!(super::in_range(version), "{version}");
+        }
+        for version in ["5.9.2", "5.8.3", "6.0.0", "7.0.2", "", "5.9"] {
+            assert!(!super::in_range(version), "{version}");
+        }
     }
 }

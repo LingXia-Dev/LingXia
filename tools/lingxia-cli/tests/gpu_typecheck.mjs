@@ -216,6 +216,21 @@ try {
   fs.rmSync(helper, { force: true });
 }
 
+// A TypeScript outside the supported range is refused with the fix, never driven half-way.
+const realTypescript = path.join(modules, 'typescript');
+fs.renameSync(realTypescript, `${realTypescript}.real`);
+try {
+  fs.mkdirSync(path.join(realTypescript, 'bin'), { recursive: true });
+  fs.writeFileSync(path.join(realTypescript, 'package.json'), JSON.stringify({ name: 'typescript', version: '7.0.2' }));
+  fs.writeFileSync(path.join(realTypescript, 'bin/tsc'), '#!/usr/bin/env node\nprocess.exit(0);\n');
+  const refused = run(cli, ['check'], app);
+  assert.notEqual(refused.status, 0, refused.output);
+  assert.match(refused.output, /TypeScript 7\.0\.2 is installed here; LingXia supports \^5\.9\.3: run `npm i -D typescript@\^5\.9\.3`/, refused.output);
+} finally {
+  fs.rmSync(realTypescript, { recursive: true, force: true });
+  fs.renameSync(`${realTypescript}.real`, realTypescript);
+}
+
 for (const dir of lxapps) missingBase(path.resolve(dir));
 
 fs.rmSync(root, { recursive: true, force: true });

@@ -36,6 +36,10 @@ pub(super) fn build(project: &Project, dev: bool) -> Result<()> {
         std::fs::write(&output, serde_json::to_string(&pack)?)
             .with_context(|| format!("write {}", output.display()))?;
     }
+    // The page compiler loads the project's TypeScript too.
+    if let Ok(tsc) = crate::lxapp::typecheck::resolve_tsc(&project.root) {
+        crate::lxapp::typecheck::supported_typescript(&tsc)?;
+    }
     let catalogs = catalogs(project, &pages, dev)?;
     let script = "import { buildPages } from '@lingxia/view/compiler'; await buildPages(process.cwd(), JSON.parse(process.argv[1]), process.argv[2], JSON.parse(process.argv[3]), { dev: process.argv[4] === 'dev' });";
     let result = Command::new("node")

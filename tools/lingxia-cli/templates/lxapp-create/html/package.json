@@ -20,7 +20,7 @@
     "@lingxia/logic": "{{LINGXIA_FRAMEWORK_RANGE}}",
     "@lingxia/types": "{{LINGXIA_FRAMEWORK_RANGE}}",
     "@lingxia/test": "{{LINGXIA_FRAMEWORK_RANGE}}",
-    "typescript": "^5.9.3",
+    "typescript": "{{TYPESCRIPT_RANGE}}",
     "vite": "^8.2.1"
   }
 }
