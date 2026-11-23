@@ -1,4 +1,4 @@
-import { childrenToArray, createContext, cx, useContext, useLocal, type Child } from '@lingxia/view';
+import { childrenToArray, createContext, cx, useContext, useLocal, useView, type Child } from '@lingxia/view';
 import type { Hue } from '../hue';
 import { avatarRecipe as r } from './Avatar.recipe';
 import { dataOf } from '../internal/data';
@@ -40,6 +40,25 @@ export interface AvatarProps {
 }
 
 /** A person or team as a circle: their photo, or their initials. */
+/** Each size's side and its initials' size at the default text size, in points. */
+const sides = { xs: 24, sm: 32, md: 40, lg: 56 } satisfies Record<AvatarSize, number>;
+const letterSizes = { xs: 12, sm: 12, md: 13, lg: 17 } satisfies Record<AvatarSize, number>;
+/** An avatar keeps company with larger text up to this, so at large text it never takes a row's width from the name. */
+const maxGrowth = 1.3;
+
+/**
+ * The box and the initials at the current text size: the box grows with the text up to `maxGrowth` and stays
+ * square, photo or not; the initials stay the same share of it, so one or two always fit.
+ */
+function useScaled(size: AvatarSize) {
+  const scale = Math.max(1, useView().env.textScale ?? 1);
+  if (scale === 1) return { box: undefined, letters: undefined };
+  const growth = Math.min(scale, maxGrowth);
+  const side = Math.round(sides[size] * growth);
+  // Interim: the View grows every font by the device text size with no opt-out, so this divides that growth back out; it goes when text can ignore or cap it.
+  return { box: { width: side, height: side }, letters: { fontSize: Math.round((letterSizes[size] * growth / scale) * 10) / 10 } };
+}
+
 export function Avatar({ name, src, initials, hue, size, shape: ownShape, status, statusLabel, badge, surface, isDecorative = false, className, 'data-testid': testId, ...attributes }: AvatarProps) {
   const group = useContext(InGroup);
   const actual = size ?? group?.size ?? 'md';
@@ -48,14 +67,16 @@ export function Avatar({ name, src, initials, hue, size, shape: ownShape, status
   const letters = initials ?? initialsOf(name);
   const showImage = src !== undefined && !failed.value;
   const spoken = statusLabel === undefined ? name : `${name}, ${statusLabel}`;
+  const scaled = useScaled(actual);
   return (
     <view
       aria-hidden={isDecorative || undefined}
       data-testid={testId} {...dataOf(attributes)}
-      className={cx(r.root.base, r.root.shape[shape][actual], showImage ? r.root.photo[actual] : r.root.size[actual], hue !== undefined && r.root.hue[hue], group && r.root.inGroup[group.surface], className)}
+      style={scaled.box}
+      className={cx(r.root.base, r.root.shape[shape][actual], r.root.size[actual], hue !== undefined && r.root.hue[hue], group && r.root.inGroup[group.surface], className)}
     >
       {/* The initials stay under the photo, so a slow or failed load never shows an empty circle. */}
-      <text role={showImage ? undefined : 'img'} aria-label={showImage ? undefined : spoken} aria-hidden={showImage || undefined} className={cx(r.initials.base, r.initials.size[actual], hue !== undefined && r.initials.hue)}>{letters}</text>
+      <text role={showImage ? undefined : 'img'} aria-label={showImage ? undefined : spoken} aria-hidden={showImage || undefined} style={scaled.letters} className={cx(r.initials.base, r.initials.size[actual], hue !== undefined && r.initials.hue)}>{letters}</text>
       {showImage && <image src={src} alt={spoken} onError={() => failed.set(true)} className={cx(r.image.base, r.root.shape[shape][actual])} />}
       {status !== undefined && <view aria-hidden className={cx(r.status.base, r.status.size[actual], r.status.edge[surface ?? group?.surface ?? 'surface'], r.status.tone[status])} />}
       {badge !== undefined && <view className={r.badge.base}>{badge}</view>}
@@ -91,6 +112,7 @@ export function AvatarGroup({ label, children, max, overflowLabel, size = 'md', 
   const all = childrenToArray(children);
   const shown = max === undefined ? all : all.slice(0, max);
   const rest = all.length - shown.length;
+  const scaled = useScaled(size);
   return (
     <InGroup.Provider value={{ size, surface, shape }}>
       <view role="group" aria-label={label} data-testid={testId} {...dataOf(attributes)} className={cx(r.group.base, className)}>
@@ -98,8 +120,8 @@ export function AvatarGroup({ label, children, max, overflowLabel, size = 'md', 
           <view key={String(index)} className={cx(index > 0 && r.overlap.size[size])}>{child}</view>
         ))}
         {rest > 0 && (
-          <view data-testid={testId && `${testId}-overflow`} className={cx(r.root.base, r.root.shape[shape][size], r.root.size[size], r.root.inGroup[surface], r.overflow.base, r.overlap.size[size])}>
-            <text aria-label={overflowLabel?.(rest)} className={cx(r.initials.base, r.initials.size[size], r.overflow.text)}>{`+${rest}`}</text>
+          <view data-testid={testId && `${testId}-overflow`} style={scaled.box} className={cx(r.root.base, r.root.shape[shape][size], r.root.size[size], r.root.inGroup[surface], r.overflow.base, r.overlap.size[size])}>
+            <text aria-label={overflowLabel?.(rest)} style={scaled.letters} className={cx(r.initials.base, r.initials.size[size], r.overflow.text)}>{`+${rest}`}</text>
           </view>
         )}
       </view>

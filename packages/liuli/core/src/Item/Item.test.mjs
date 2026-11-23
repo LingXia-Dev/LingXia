@@ -158,14 +158,14 @@ test('At large text: the end content keeps its width; the text beside it yields 
   assert.equal(row.props.height, undefined, 'the row grows with its text');
 });
 
-test('At large text: the start slot holds an avatar at its own size, so grown initials widen it', async () => {
+test('At large text: the start slot holds an avatar at its own size, never clamping it', async () => {
   const screen = await renderPage(`
     import { Item } from '@liulidesign/core/Item';
     import { Avatar } from '@liulidesign/core/Avatar';
     export function render() { return <page><Item label="Ana Lima" startContent={<Avatar name="Ana Lima" isDecorative data-testid="al" />} /></page>; }
   `);
   const avatar = screen.getByTestId('al');
-  assert.deepEqual([avatar.props.widthKeyword, avatar.props.heightKeyword, avatar.props.minWidth], ['fit-content', 'fit-content', 40]);
+  assert.deepEqual([avatar.props.width, avatar.props.height], [40, 40]);
   const slot = screen.queryAll(node => node.children?.includes(avatar))[0];
   assert.deepEqual([slot.props.shrink, slot.props.width, slot.props.height, slot.props.overflow], [0, undefined, undefined, undefined], 'a slot that never shrinks and never clamps');
 });

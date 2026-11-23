@@ -116,11 +116,13 @@ export function Item(props: ItemProps) {
   const pressable = props.onClick !== undefined;
   if (pressable && (holdsControl(labelEnd) || holdsControl(endContent))) warnOnce(`Item "${typeof label === 'string' ? label : ''}": a control in labelEnd or endContent of a pressable row cannot be reached; use endAction for one button, or make the row not pressable`);
   const isSelected = props.isSelected ?? false;
-  // The name is the row: left under half the line it is cut to a few letters, so labelEnd takes its own line under it.
+  // labelEnd stays beside a name that fits whole, or that keeps at least half the line; a name left less is cut to a few letters, so labelEnd goes under it.
   const labelLine = useBox('labelLine');
   const labelEndBox = useBox('labelEnd');
-  const stacked = labelLine.value !== null && labelEndBox.value !== null && labelLine.value.width - labelEndBox.value.width - 8 < labelLine.value.width / 2;
-  const name = <text className={cx(r.label.base, r.label.tone[tone], isSelected && r.label.selected, labelEnd !== undefined && r.label.beside, stacked && r.label.stacked)}>{label}</text>;
+  const nameBox = useBox('name');
+  const room = labelLine.value !== null && labelEndBox.value !== null ? labelLine.value.width - labelEndBox.value.width - 8 : null;
+  const stacked = room !== null && nameBox.value !== null && nameBox.value.maxContentWidth > room && room < labelLine.value!.width / 2;
+  const name = <text box={labelEnd !== undefined ? nameBox : undefined} className={cx(r.label.base, r.label.tone[tone], isSelected && r.label.selected, labelEnd !== undefined && r.label.beside, stacked && r.label.stacked)}>{label}</text>;
   const content = (
     <>
       {startIcon !== undefined && <view aria-hidden className={r.iconTile.base}><Glyph name={startIcon} className={r.iconTile.icon} /></view>}

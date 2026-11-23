@@ -237,7 +237,7 @@ Ratios are computed from @lingxia/view/theme and rounded down.
 
 - Do: Mark an avatar decorative when the name sits next to it, so the name is not read twice.
 - Do: Cap a group with `max` and say what the count means in `overflowLabel`.
-- Do: At large text, the avatar grows with its initials into a round-ended shape, keeping their inset, in a row or an Item's start; give it a `size` as its least, not a fixed box.
+- Do: At large text, an avatar grows a little with the text, up to 1.3 times, and stays a circle or a square; its initials stay the same share of it, and a photo and initials beside it keep one size.
 - Don't: Use an avatar as the only way to tell people apart in a list; show names too.
 - Don't: Make an avatar a button on its own; put it inside an Item or Button that says what it opens.
 

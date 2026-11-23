@@ -20,19 +20,8 @@ export const avatarRecipe = {
       circle: { xs: 'rounded-full', sm: 'rounded-full', md: 'rounded-full', lg: 'rounded-full' },
       rounded: { xs: 'rounded-checkbox', sm: 'rounded-segment', md: 'rounded-control', lg: 'rounded-container' },
     } satisfies Record<AvatarShape, Record<AvatarSize, string>>,
-    /**
-     * The least size; at large text the initials widen and heighten it into a round-ended shape. Both axes
-     * fit their content, so a row's stretch never pulls it tall.
-     */
-    // The side padding is a fifth of the least size (less at xs, where two initials need the room), so grown initials keep their inset.
-    size: {
-      xs: 'w-fit h-fit min-w-6 min-h-6 px-0.5',
-      sm: 'w-fit h-fit min-w-8 min-h-8 px-1.5',
-      md: 'w-fit h-fit min-w-10 min-h-10 px-2',
-      lg: 'w-fit h-fit min-w-14 min-h-14 px-3',
-    } satisfies Record<AvatarSize, string>,
-    /** With a photo the initials are only underneath it, so the box keeps its size and never grows. */
-    photo: { xs: 'size-6', sm: 'size-8', md: 'size-10', lg: 'size-14' } satisfies Record<AvatarSize, string>,
+    /** A square at every text size; at large text it grows a little with the text (Avatar caps it), photo or initials alike. */
+    size: { xs: 'size-6', sm: 'size-8', md: 'size-10', lg: 'size-14' } satisfies Record<AvatarSize, string>,
     /** A hue's soft fill in place of the accent's, so people are told apart at a glance. */
     hue: { 1: 'bg-hue-1-soft', 2: 'bg-hue-2-soft', 3: 'bg-hue-3-soft', 4: 'bg-hue-4-soft', 5: 'bg-hue-5-soft', 6: 'bg-hue-6-soft', 7: 'bg-hue-7-soft', 8: 'bg-hue-8-soft' } satisfies Record<Hue, string>,
     /** In a group, a 2 px edge in the colour of the surface behind cuts each one out of the next. */
