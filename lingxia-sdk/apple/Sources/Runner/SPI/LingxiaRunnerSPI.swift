@@ -402,6 +402,15 @@ import WebKit
         }
     }
 
+    /// The side panel over the phone screen.
+    @MainActor
+    public enum PhoneAside {
+        /// The device's status bar height on the screen; the panel's strip starts below it.
+        public static func setStatusInset(_ inset: @escaping @MainActor () -> CGFloat) {
+            LxAppPhoneAsideRegion.statusInset = inset
+        }
+    }
+
     /// One viewport per lxapp reaches the core: the presenting host's.
     @MainActor
     public enum SurfaceViewport {
@@ -469,6 +478,18 @@ import WebKit
         /// whatever screen their window is on. Nil follows the window's screen.
         public static func setPixelRatio(_ ratio: CGFloat?) {
             GpuPages.simulatedPixelRatio = ratio
+        }
+
+        /// The simulated foldable device's local hinge JSON (`{x,y,width,height,orientation,posture}`),
+        /// or nil when no hinge intersects the screen.
+        public static func setHinge(_ hingeJson: String?) {
+            GpuPages.simulatedHinge = hingeJson
+        }
+
+        /// Window points above the simulated screen in a shell window, so a docked page's
+        /// hinge is measured from the screen's top rather than the window's.
+        public static func setScreenTopInset(_ inset: CGFloat) {
+            GpuPages.simulatedScreenTopInset = inset
         }
 
         /// The simulated device's system text size (a factor of the default) and its

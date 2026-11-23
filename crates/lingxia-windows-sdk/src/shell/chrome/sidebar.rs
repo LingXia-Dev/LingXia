@@ -110,20 +110,85 @@ fn draw_tab_bar_inner(
             continue;
         };
         let item_rect = tab_item_rect(rect, tabbar.position, count, slot);
-        let is_more = kind == BottomSlot::More;
-        let item = match kind {
-            BottomSlot::Tab(visible) => tabbar.items.get(visible),
-            BottomSlot::More => None,
-        };
         let selected = match kind {
-            BottomSlot::Tab(_) => {
-                item.is_some_and(|item| tabbar.selected_index == item.index as i32)
-            }
+            BottomSlot::Tab(visible) => tabbar
+                .items
+                .get(visible)
+                .is_some_and(|item| tabbar.selected_index == item.index as i32),
             BottomSlot::More => overflow_start.is_some_and(|start| {
                 tabbar.items[start..]
                     .iter()
                     .any(|item| tabbar.selected_index == item.index as i32)
             }),
+        };
+        draw_tab_cell(
+            hdc,
+            item_rect,
+            item_rect.top + tabbar.item_offset,
+            tabbar,
+            kind,
+            selected,
+            text_runs.as_deref_mut(),
+        );
+    }
+}
+
+/// Width of the single-main tab rail (Material's navigation rail).
+pub(super) fn tab_rail_width() -> i32 {
+    px(80)
+}
+
+/// Tab-rail cells stack low in the column, where a hand holding the device
+/// reaches them; a rail never stretches its items.
+pub(super) fn tab_rail_item_rect(rect: RECT, slot: usize, count: usize) -> RECT {
+    let height = px(60);
+    let pitch = height + px(4);
+    let block = count as i32 * pitch - px(4);
+    let first = (rect.bottom - px(24) - block).max(rect.top + px(12));
+    let top = first + slot as i32 * pitch;
+    RECT {
+        left: rect.left,
+        top,
+        right: rect.right,
+        bottom: top + height,
+    }
+}
+
+fn draw_tab_rail(hdc: HDC, rect: RECT, tabbar: &WindowsShellTabBarLayout) {
+    for (slot, item) in tabbar.items.iter().enumerate() {
+        let cell = tab_rail_item_rect(rect, slot, tabbar.items.len());
+        if cell.bottom > rect.bottom {
+            break;
+        }
+        let selected = tabbar.selected_index == item.index as i32;
+        draw_tab_cell(
+            hdc,
+            cell,
+            cell.top + px(4),
+            tabbar,
+            BottomSlot::Tab(slot),
+            selected,
+            None,
+        );
+    }
+}
+
+/// One icon-over-label tab cell, shared by the bottom bar, the tab rail, and
+/// the floating bar.
+pub(super) fn draw_tab_cell(
+    hdc: HDC,
+    item_rect: RECT,
+    item_top: i32,
+    tabbar: &WindowsShellTabBarLayout,
+    kind: BottomSlot,
+    selected: bool,
+    text_runs: Option<&mut Vec<LayeredTextRun>>,
+) {
+    {
+        let is_more = kind == BottomSlot::More;
+        let item = match kind {
+            BottomSlot::Tab(visible) => tabbar.items.get(visible),
+            BottomSlot::More => None,
         };
         let color = if selected {
             tabbar.selected_color
@@ -131,8 +196,7 @@ fn draw_tab_bar_inner(
             tabbar.color
         };
 
-        let item_top = item_rect.top + tabbar.item_offset;
-        let item_bottom = (item_rect.top + bottom_tab_item_height()).min(item_rect.bottom);
+        let item_bottom = (item_top + bottom_tab_item_height()).min(item_rect.bottom);
         let center_x = (item_rect.left + item_rect.right) / 2;
         let icon_top = item_top + bottom_tab_icon_top();
         let icon_rect = RECT {
@@ -161,7 +225,7 @@ fn draw_tab_bar_inner(
             );
             true
         } else {
-            let Some(item) = item else { continue };
+            let Some(item) = item else { return };
             // Phone tab cell: the item's single icon stacked over its label,
             // both centered.
             let icon_path = item.icon_path.as_str();
@@ -174,7 +238,7 @@ fn draw_tab_bar_inner(
         } else {
             match item {
                 Some(item) => item.text.clone(),
-                None => continue,
+                None => return,
             }
         };
 
@@ -191,7 +255,7 @@ fn draw_tab_bar_inner(
             bottom: item_bottom - px(2),
         };
         if tabbar.background_transparent {
-            if let Some(text_runs) = text_runs.as_deref_mut() {
+            if let Some(text_runs) = text_runs {
                 text_runs.push(LayeredTextRun {
                     rect: label_rect,
                     color,
@@ -233,8 +297,11 @@ fn draw_active_indicator(hdc: HDC, icon_rect: RECT, tabbar: &WindowsShellTabBarL
         right: center_x + active_indicator_size() / 2,
         bottom: center_y + active_indicator_size() / 2,
     };
-    // An immersive bar paints no plate of its own, so mix against the shell.
-    let behind = if tabbar.background_transparent {
+    // An immersive bar paints no plate of its own, and a tab rail sits on the
+    // sidebar, so both mix against the shell.
+    let behind = if tabbar.floating {
+        floating_tab_bar_fill()
+    } else if tabbar.background_transparent || tabbar.tab_rail {
         shell_palette().sidebar_background
     } else {
         tabbar.background_color
@@ -261,6 +328,11 @@ pub(super) fn draw_sidebar_tab_bar(
     // The app's tabbar background styles its expanded child strip on macOS;
     // it does not replace the whole desktop sidebar surface.
     fill_rect(hdc, rect, shell_palette().sidebar_background);
+
+    if tabbar.tab_rail {
+        draw_tab_rail(hdc, rect, tabbar);
+        return;
+    }
 
     // Icon-only rail: first-level entries only, centered in a compact column.
     if tabbar.collapsed || tabbar.icon_rail {

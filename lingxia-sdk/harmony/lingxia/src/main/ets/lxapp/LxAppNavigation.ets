@@ -17,6 +17,7 @@ import { PickerManager } from './APIs/LxAppPicker';
 import { DatePickerManager } from './APIs/LxAppDatePicker';
 import { ActionSheetManager } from './APIs/LxAppActionSheet';
 import { LxAppSurface, SurfaceManager } from './APIs/LxAppSurface';
+import { AsideRegion, AsideRegionModel } from './AsideRegion';
 import { MediaPreviewOverlay, MediaPreviewOverlayManager } from './APIs/media/MediaPreviewOverlay';
 import { CameraCaptureOverlay, CameraCaptureOverlayManager } from './APIs/media/CameraCaptureOverlay';
 import { PdfSinglePageViewerOverlay, PdfSingleViewerOverlayManager } from './APIs/document/PdfSinglePageViewerOverlay';
@@ -208,6 +209,13 @@ export struct LxAppNavigation {
       }
     } catch (error) {
       LxLog.e(TAG, `Error closing overlay LxAppSurface: ${error}`);
+    }
+
+    // A side panel over the main is put away whole; its children stay open.
+    if (AsideRegionModel.isOverlay()) {
+      hilog.info(DOMAIN, TAG, 'BackPress: collapsing the side panel');
+      AsideRegionModel.collapse();
+      return true;
     }
 
 	    return false;
@@ -721,6 +729,10 @@ export struct LxAppNavigation {
 
       DatePickerManager()
         .zIndex(10003)
+
+      // The side panel's chrome; its children render in SurfaceManager above it.
+      AsideRegion()
+        .zIndex(10004)
 
       SurfaceManager()
         .zIndex(10004)

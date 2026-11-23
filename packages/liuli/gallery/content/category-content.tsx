@@ -15,6 +15,8 @@ import { Specimen as TimerSpecimen } from '../../core/src/Timer/Timer.examples';
 import { Specimen as CodeSpecimen } from '../../core/src/Code/Code.examples';
 import { Specimen as TimestampSpecimen } from '../../core/src/Timestamp/Timestamp.examples';
 import { Specimen as MessageBubbleSpecimen } from '../../core/src/MessageBubble/MessageBubble.examples';
+import { Specimen as ListDetailSpecimen } from '../../core/src/ListDetail/ListDetail.examples';
+import { Specimen as SplitSpecimen } from '../../core/src/Split/Split.examples';
 import { Specimen as QRCodeSpecimen } from '../../core/src/QRCode/QRCode.examples';
 import { Category, Tile } from '../shared/Layout';
 
@@ -22,7 +24,7 @@ export function Content({ onOpen }: { onOpen: (page: string) => void }) {
   return (
     <>
       <text className="text-body text-muted">{"Containers, rows and tables that hold what the app shows."}</text>
-      <Category title={"17 components"}>
+      <Category title={"19 components"}>
         <Tile
           name={"Card"}
           tagline={"Related content"}
@@ -150,6 +152,22 @@ export function Content({ onOpen }: { onOpen: (page: string) => void }) {
           testId={"open-message-bubble"}
         >
           <MessageBubbleSpecimen />
+        </Tile>
+        <Tile
+          name={"ListDetail"}
+          tagline={"Master and detail"}
+          onOpen={() => onOpen("list-detail")}
+          testId={"open-list-detail"}
+        >
+          <ListDetailSpecimen />
+        </Tile>
+        <Tile
+          name={"Split"}
+          tagline={"Primary and aside"}
+          onOpen={() => onOpen("split")}
+          testId={"open-split"}
+        >
+          <SplitSpecimen />
         </Tile>
         <Tile
           name={"QRCode"}

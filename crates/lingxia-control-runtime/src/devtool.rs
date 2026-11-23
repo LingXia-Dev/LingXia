@@ -352,6 +352,7 @@ pub(crate) async fn lxapp_dev_restart(
                             appearance: Some(device.appearance),
                             text_scale: Some(device.text_scale),
                             contrast: Some(device.contrast),
+                            posture: device.posture.clone(),
                         })
                         .await
                         .map_err(|error| {

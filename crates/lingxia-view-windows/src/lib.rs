@@ -161,9 +161,79 @@ pub struct Simulation {
     /// System text size as a factor of the default.
     pub text_scale: f32,
     pub high_contrast: bool,
+    /// Simulated physical display hinge/crease in device logical pixels, if any.
+    pub hinge: Option<serde_json::Value>,
 }
 
 static SIMULATION: Mutex<Option<Simulation>> = Mutex::new(None);
+
+/// Where a page's window sits on the simulated screen, in device points.
+#[derive(Clone, Copy, Debug, PartialEq)]
+struct ScreenPlacement {
+    origin: [f32; 2],
+    size: [f32; 2],
+    /// Edges (top, right, bottom, left) that reach the screen's own edge.
+    edges: [bool; 4],
+}
+
+impl ScreenPlacement {
+    /// `page` is `[left, top, width, height]` in the screen window's client pixels.
+    fn new(screen: [f32; 2], page: [f32; 4], viewport: [f32; 2]) -> Option<Self> {
+        let per_point = screen[0] / viewport[0];
+        if !(per_point.is_finite() && per_point > 0.0) || page[2] <= 0.0 || page[3] <= 0.0 {
+            return None;
+        }
+        // Mid device switch the window still has the old screen's shape; until it matches the
+        // simulated viewport, the page measures the whole viewport.
+        let near = |a: f32, b: f32| (a - b).abs() <= 1.0;
+        if (screen[1] / per_point - viewport[1]).abs() > 2.0
+            || page[0] < -1.0
+            || page[1] < -1.0
+            || page[0] + page[2] > screen[0] + 1.0
+            || page[1] + page[3] > screen[1] + 1.0
+        {
+            return None;
+        }
+        Some(Self {
+            origin: [page[0] / per_point, page[1] / per_point],
+            size: [page[2] / per_point, page[3] / per_point],
+            edges: [
+                near(page[1], 0.0),
+                near(page[0] + page[2], screen[0]),
+                near(page[1] + page[3], screen[1]),
+                near(page[0], 0.0),
+            ],
+        })
+    }
+
+    /// The screen's hinge in page coordinates, clipped to the page; `None` when it misses it.
+    fn local_hinge(&self, hinge: &serde_json::Value) -> Option<serde_json::Value> {
+        let number = |key: &str| hinge[key].as_f64().map(|v| v as f32);
+        let x = number("x")? - self.origin[0];
+        let y = number("y")? - self.origin[1];
+        let (width, height) = (number("width")?, number("height")?);
+        let [page_width, page_height] = self.size;
+        let (left, top) = (x.max(0.0), y.max(0.0));
+        let (right, bottom) = ((x + width).min(page_width), (y + height).min(page_height));
+        // A zero-width crease crosses the page only strictly inside it, not along its edge.
+        if left > right
+            || top > bottom
+            || left >= page_width
+            || top >= page_height
+            || right <= 0.0
+            || bottom <= 0.0
+        {
+            return None;
+        }
+        let rounded = |v: f32| f64::from((v * 100.0).round() / 100.0);
+        let mut local = hinge.clone();
+        local["x"] = rounded(left).into();
+        local["y"] = rounded(top).into();
+        local["width"] = rounded(right - left).into();
+        local["height"] = rounded(bottom - top).into();
+        Some(local)
+    }
+}
 /// Every live page, for a change that reaches them all.
 static PAGES: Mutex<Vec<(isize, Dispatcher)>> = Mutex::new(Vec::new());
 
@@ -257,6 +327,8 @@ pub struct Page {
     settling: Cell<bool>,
     /// Size and corner radii from the host, device pixels.
     shape: Cell<(i32, i32, [i32; 4])>,
+    /// Top-left in the parent's client area, device pixels, as `set_bounds` last placed it.
+    origin: Cell<(i32, i32)>,
     /// Bumped to revoke a pending settle deadline.
     settle_epoch: Cell<u64>,
     /// Frames presented while settling.
@@ -309,6 +381,7 @@ impl Page {
             visible: Cell::new(true),
             settling: Cell::new(false),
             shape: Cell::new((0, 0, [0; 4])),
+            origin: Cell::new((0, 0)),
             settle_epoch: Cell::new(0),
             settle_presents: Cell::new(0),
             presented_once: Cell::new(false),
@@ -353,6 +426,7 @@ impl Page {
     /// `[top-left, top-right, bottom-right, bottom-left]`.
     pub fn set_bounds(&self, left: i32, top: i32, width: i32, height: i32, radii: [i32; 4]) {
         self.shape.set((width, height, radii));
+        self.origin.set((left, top));
         // SAFETY: this thread's window.
         unsafe {
             let _ = SetWindowPos(
@@ -622,14 +696,20 @@ impl Page {
             return;
         }
         let simulated = simulation();
+        let placement = simulated.as_ref().and_then(|s| self.screen_placement(s));
         let shown = self.shown_scale();
         let scale = simulated.as_ref().map_or(shown, |s| s.pixel_ratio);
         let (width, height) = match &simulated {
-            Some(s) => (
-                (s.viewport[0] * scale).round() as u32,
-                (s.viewport[1] * scale).round() as u32,
-            ),
+            Some(s) => {
+                let [w, h] = placement.map_or(s.viewport, |p| p.size);
+                ((w * scale).round() as u32, (h * scale).round() as u32)
+            }
             None => (window_width, window_height),
+        };
+        // Insets and bars belong to the screen's edges; an edge inside the screen has none.
+        let edges = placement.map_or([true; 4], |p| p.edges);
+        let on_edge = |insets: [f32; 4]| -> [f32; 4] {
+            std::array::from_fn(|i| if edges[i] { insets[i] } else { 0.0 })
         };
         let text_scale = simulated
             .as_ref()
@@ -643,10 +723,10 @@ impl Page {
             dark: self.dark(),
             system_insets: simulated
                 .as_ref()
-                .map_or([0.0; 4], |s| s.safe_area.map(|v| v * scale)),
+                .map_or([0.0; 4], |s| on_edge(s.safe_area).map(|v| v * scale)),
             chrome_insets: simulated.as_ref().map_or([0.0; 4], |s| {
                 let [navigation, tabs] = self.host.adapter().shell.bars(self.host.adapter().token);
-                [
+                on_edge([
                     if navigation {
                         s.safe_area[0] + s.navigation_bar
                     } else {
@@ -655,7 +735,7 @@ impl Page {
                     0.0,
                     if tabs { s.tab_bar_reach } else { 0.0 },
                     0.0,
-                ]
+                ])
                 .map(|v| v * scale)
             }),
             keyboard: 0.0,
@@ -672,6 +752,13 @@ impl Page {
             text_scale,
             hour_cycle: Some(environment::hour_cycle()),
             first_weekday: Some(environment::first_weekday()),
+            hinge: simulated.as_ref().and_then(|s| {
+                let hinge = s.hinge.as_ref()?;
+                match placement {
+                    Some(placement) => placement.local_hinge(hinge),
+                    None => Some(hinge.clone()),
+                }
+            }),
         };
         // A simulated device lays out at its own pixels; frames draw at the window's.
         let raster = simulated
@@ -702,10 +789,28 @@ impl Page {
         simulation().map_or_else(|| self.shown_scale(), |s| s.pixel_ratio)
     }
 
+    /// Where this page sits on the simulated screen: its parent's client area is the screen.
+    fn screen_placement(&self, simulation: &Simulation) -> Option<ScreenPlacement> {
+        let (screen_width, screen_height) = view::client_size(self.parent_window());
+        let (width, height, _) = self.shape.get();
+        let (left, top) = self.origin.get();
+        ScreenPlacement::new(
+            [screen_width as f32, screen_height as f32],
+            [left as f32, top as f32, width as f32, height as f32],
+            simulation.viewport,
+        )
+    }
+
     /// Window pixels per point of the page.
     pub(crate) fn shown_scale(&self) -> f32 {
         if let Some(s) = simulation() {
-            let (width, _) = view::client_size(self.hwnd);
+            // The screen sets pixels per point; a page narrower than it is narrower in points.
+            let (screen_width, _) = view::client_size(self.parent_window());
+            let width = if screen_width > 0 {
+                screen_width
+            } else {
+                view::client_size(self.hwnd).0
+            };
             if width > 0 {
                 return width as f32 / s.viewport[0];
             }
@@ -975,5 +1080,48 @@ fn corner_region(width: i32, height: i32, radii: [i32; 4]) -> Option<HRGN> {
             let _ = DeleteObject(arc.into());
         }
         Some(region)
+    }
+}
+
+#[cfg(test)]
+mod placement_tests {
+    use super::ScreenPlacement;
+    use serde_json::json;
+
+    // An unfolded 784 x 868 pt fold shown at 1.5 px per point.
+    const SCREEN: [f32; 2] = [1176.0, 1302.0];
+    const VIEWPORT: [f32; 2] = [784.0, 868.0];
+
+    fn crease() -> serde_json::Value {
+        json!({"x": 392, "y": 0, "width": 0, "height": 868, "orientation": "vertical", "posture": "flat"})
+    }
+
+    #[test]
+    fn a_page_past_the_rail_sees_the_crease_at_its_own_x() {
+        let main = ScreenPlacement::new(SCREEN, [84.0, 0.0, 1092.0, 1302.0], VIEWPORT).unwrap();
+        assert_eq!(main.size, [728.0, 868.0]);
+        assert_eq!(main.edges, [true, true, true, false]);
+        let hinge = main.local_hinge(&crease()).unwrap();
+        assert_eq!(
+            (hinge["x"].as_f64(), hinge["height"].as_f64()),
+            (Some(336.0), Some(868.0))
+        );
+    }
+
+    #[test]
+    fn a_window_still_shaped_like_the_previous_device_is_not_placed() {
+        // A 393 x 852 phone window at 3 px/pt while the viewport is already the fold's.
+        assert_eq!(
+            ScreenPlacement::new([1179.0, 2556.0], [0.0, 0.0, 1179.0, 2556.0], VIEWPORT),
+            None
+        );
+    }
+
+    #[test]
+    fn a_crease_along_a_page_edge_does_not_cross_it() {
+        let main = ScreenPlacement::new(SCREEN, [84.0, 0.0, 504.0, 1302.0], VIEWPORT).unwrap();
+        let aside = ScreenPlacement::new(SCREEN, [588.0, 0.0, 588.0, 1302.0], VIEWPORT).unwrap();
+        assert_eq!(main.local_hinge(&crease()), None);
+        assert_eq!(aside.local_hinge(&crease()), None);
     }
 }

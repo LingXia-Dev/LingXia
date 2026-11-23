@@ -77,6 +77,20 @@ pub struct WindowsDeviceFrameCutout {
     pub corner_radius: i32,
 }
 
+/// Optional optical hinge/crease overlay rendered over a simulated foldable screen.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct WindowsDeviceFrameHinge {
+    /// Hinge rect in screen logical pixels.
+    pub x: i32,
+    pub y: i32,
+    pub width: i32,
+    pub height: i32,
+    /// `true` for a vertical crease (side-by-side panes), `false` for horizontal (tabletop).
+    pub vertical: bool,
+    /// `true` when half-opened (tabletop / flex), rendering a slightly stronger dashed crease.
+    pub half_opened: bool,
+}
+
 /// Simulated iOS status bar across the top of the device screen: the time on
 /// the leading edge and the signal/battery glyphs on the trailing edge,
 /// flanking the cutout. The device frame draws it as an overlay above the
@@ -164,6 +178,8 @@ pub struct WindowsDeviceFrame {
     /// Optional top-centered screen cutout / Dynamic Island. `None` or empty
     /// dimensions leave the screen uninterrupted.
     pub cutout: Option<WindowsDeviceFrameCutout>,
+    /// Optional optical fold hinge/crease drawn over the screen (click-through).
+    pub hinge: Option<WindowsDeviceFrameHinge>,
     /// Optional simulated status bar (time + signal/battery) across the top.
     /// `None` leaves the screen's top edge bare.
     pub status_bar: Option<WindowsDeviceFrameStatusBar>,

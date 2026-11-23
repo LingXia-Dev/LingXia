@@ -1,0 +1,33 @@
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import { renderExample } from '../testing/harness.mjs';
+
+const regularWide = { env: { sizeClass: 'regular', viewport: { width: 1024, height: 768 } } };
+const tabletopFold = {
+  env: {
+    sizeClass: 'regular',
+    viewport: { width: 868, height: 784 },
+    hinge: { x: 0, y: 380, width: 868, height: 24, orientation: 'horizontal', posture: 'half-opened' },
+  },
+};
+const compact = { env: { sizeClass: 'compact', viewport: { width: 393, height: 852 } } };
+
+test('Split regular: docks companion aside at inline end', async () => {
+  const screen = await renderExample('Split/Split', 'LiveStreamSplit', regularWide);
+  assert.equal(screen.getByTestId('live-split').props.flexDirection, 'row');
+  assert.equal(screen.getByTestId('live-split-aside').props.width, 240);
+});
+
+test('Split tabletop fold: places primary on upper leaf and aside on lower leaf', async () => {
+  const screen = await renderExample('Split/Split', 'LiveStreamSplit', tabletopFold);
+  assert.equal(screen.getByTestId('live-split').props.flexDirection, 'column');
+  // 784 tall: the lower leaf runs from the crease's far edge (380 + 24) to the bottom.
+  assert.equal(screen.getByTestId('live-split-aside').props.height, 784 - 380 - 24);
+});
+
+test('Split compact="sheet": hides inline aside and opens BottomSheet on trigger press', async () => {
+  const screen = await renderExample('Split/Split', 'DocumentSheetSplit', compact);
+  assert.equal(screen.queryAll(n => n.testId === 'doc-split-aside').length, 0);
+  screen.press(screen.getByTestId('doc-open-comments'));
+  assert.ok(screen.getByTestId('doc-split-sheet'));
+});

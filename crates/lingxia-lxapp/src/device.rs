@@ -89,6 +89,9 @@ pub struct DeviceChange {
     /// the decimal a user wrote reads back as written.
     pub text_scale: Option<f64>,
     pub contrast: Option<Contrast>,
+    /// Posture id of a folding device (see [`DeviceEntry::postures`]); applies to `id`, or to
+    /// the current device when `id` is `None`.
+    pub posture: Option<String>,
 }
 
 impl DeviceChange {
@@ -115,7 +118,7 @@ pub struct DeviceEntry {
     pub id: String,
     /// Human-readable name.
     pub name: String,
-    /// Form-factor group ("phone" | "tablet" | "desktop").
+    /// Form-factor group ("phone" | "fold" | "tablet" | "desktop").
     pub group: String,
     /// Logical width in points; fractional where the device's pixels over its density are.
     pub width: f64,
@@ -127,6 +130,101 @@ pub struct DeviceEntry {
     pub pixel_ratio: f32,
     /// True for the currently selected device.
     pub current: bool,
+    /// The postures a folding device takes; empty for a flat one.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub postures: Vec<DevicePostureEntry>,
+}
+
+/// One posture of a folding device: its own screen size.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct DevicePostureEntry {
+    /// Stable posture id (`outer`, `open`, `dual`, `tabletop`).
+    pub id: String,
+    #[serde(default)]
+    pub label: String,
+    pub width: f64,
+    pub height: f64,
+}
+
+/// The adaptive presets a test names instead of a device id.
+pub const DEVICE_PRESETS: &[&str] = &["phone", "fold", "trifold", "pad", "desktop"];
+
+/// Resolve an adaptive preset to the Runner's device id: `fold` is a folding device without a
+/// `dual` posture, `trifold` one with it; with `posture`, one that has it. A preset or posture
+/// the host lacks is an error, never a silent fallback to another form factor.
+pub fn resolve_device_preset(preset: &str, posture: Option<&str>) -> Result<String, String> {
+    let devices = device_list()?;
+    let trifold = |entry: &DeviceEntry| entry.postures.iter().any(|p| p.id == "dual");
+    // The group aliases the Runner's device manifest accepts.
+    let folding = |entry: &DeviceEntry| matches!(entry.group.as_str(), "fold" | "foldable");
+    let matches = |entry: &DeviceEntry| match preset {
+        "phone" => entry.group == "phone",
+        "fold" => folding(entry) && !trifold(entry),
+        "trifold" => folding(entry) && trifold(entry),
+        "pad" => matches!(entry.group.as_str(), "tablet" | "pad"),
+        "desktop" => entry.group == "desktop",
+        _ => false,
+    };
+    if !DEVICE_PRESETS.contains(&preset) {
+        return Err(format!(
+            "unknown device preset '{preset}' (expected {})",
+            DEVICE_PRESETS.join("|")
+        ));
+    }
+    if !devices.iter().any(&matches) {
+        return Err(format!("this host has no '{preset}' device"));
+    }
+    let takes = |entry: &DeviceEntry| {
+        matches(entry)
+            && posture.is_none_or(|posture| entry.postures.iter().any(|p| p.id == posture))
+    };
+    // Repeating a preset keeps the device already chosen within it.
+    devices
+        .iter()
+        .find(|entry| entry.current && takes(entry))
+        .or_else(|| devices.iter().find(|entry| takes(entry)))
+        .map(|entry| entry.id.clone())
+        .ok_or_else(|| {
+            format!(
+                "no '{preset}' device has posture '{}'",
+                posture.unwrap_or_default()
+            )
+        })
+}
+
+/// Build a [`DeviceChange`] target from the adaptive options both automation front-ends take:
+/// an `id` or a `preset`, a `posture`, and `orientation` or `landscape`.
+#[allow(clippy::type_complexity)]
+pub fn adaptive_device_target(
+    id: Option<String>,
+    preset: Option<&str>,
+    posture: Option<String>,
+    orientation: Option<&str>,
+    landscape: Option<bool>,
+) -> Result<(Option<String>, Option<String>, Option<bool>), String> {
+    let id = match (id, preset) {
+        (Some(_), Some(_)) => return Err("pass either id or preset, not both".into()),
+        (Some(id), None) => Some(id),
+        (None, Some(preset)) => Some(resolve_device_preset(preset, posture.as_deref())?),
+        (None, None) => None,
+    };
+    let oriented = match orientation {
+        None => None,
+        Some("landscape") => Some(true),
+        Some("portrait") => Some(false),
+        Some(other) => {
+            return Err(format!(
+                "orientation must be 'landscape' or 'portrait', not '{other}'"
+            ));
+        }
+    };
+    let landscape = match (landscape, oriented) {
+        (Some(a), Some(b)) if a != b => {
+            return Err("landscape and orientation disagree".into());
+        }
+        (value, oriented) => value.or(oriented),
+    };
+    Ok((id, posture, landscape))
 }
 
 fn one() -> f32 {
@@ -164,6 +262,9 @@ pub struct DeviceState {
     /// Simulated system contrast.
     #[serde(default)]
     pub contrast: Contrast,
+    /// Active posture of a folding device.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub posture: Option<String>,
 }
 
 /// Host-provided controller for switching the simulated device. Implemented by
@@ -258,17 +359,20 @@ pub async fn device_set(change: DeviceChange) -> Result<DeviceState, String> {
 }
 
 /// Native UI entry: never block a platform's main thread waiting for Logic.
-pub fn request_device_set(id: String, landscape: Option<bool>) {
+pub fn request_device_change(change: DeviceChange) {
     std::mem::drop(crate::executor::spawn(async move {
-        let change = DeviceChange {
-            id: Some(id),
-            landscape,
-            ..Default::default()
-        };
         if let Err(error) = device_set(change).await {
             crate::error!("Runner device change failed: {error}");
         }
     }));
+}
+
+pub fn request_device_set(id: String, landscape: Option<bool>) {
+    request_device_change(DeviceChange {
+        id: Some(id),
+        landscape,
+        ..Default::default()
+    });
 }
 
 async fn apply_device(change: DeviceChange) -> Result<DeviceState, String> {
@@ -343,6 +447,7 @@ async fn change_device(change: DeviceChange) -> Result<DeviceState, String> {
             appearance: Some(previous.appearance),
             text_scale: Some(previous.text_scale),
             contrast: Some(previous.contrast),
+            posture: previous.posture,
         })
         .await
     {

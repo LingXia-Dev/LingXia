@@ -1848,7 +1848,10 @@ fn environment_is_atomic_immutable_and_survives_reset() {
     let frame = page.layout(900, 1200, 3.0).unwrap();
     let actual: serde_json::Value = serde_json::from_str(&frame.nodes[0].text).unwrap();
     assert_eq!(actual["theme"], "dark");
-    assert_eq!(actual["insets"], environment["insets"]);
+    assert_eq!(
+        actual["insets"],
+        serde_json::json!({"top":24,"right":0,"bottom":16,"left":0,"inlineStart":0,"inlineEnd":0})
+    );
     assert_eq!(actual["language"], "zh-CN");
     assert_eq!(actual["viewport"]["width"], 300.0);
     assert_eq!(actual["sizeClass"], "compact");

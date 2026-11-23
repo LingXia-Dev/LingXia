@@ -83,6 +83,15 @@ fn every_field_of_a_common_kind_decodes_without_an_arm_of_its_own() {
     }
 }
 
+// A free-text string field falls through to the colour grammar unless it has an arm of its own.
+#[test]
+fn a_page_title_is_text_not_a_colour() {
+    use crate::protocol::generated::{field, tag};
+    let check = |value: Value| super::super::values::check(tag::PAGE, field::PAGE_TITLE, &value);
+    assert!(check(json!("Adaptive Layout")).is_ok());
+    assert!(check(json!(1)).is_err());
+}
+
 fn step(name: &str, times: f64, plus: f64) -> Value {
     let slot = crate::protocol::SCALES
         .iter()

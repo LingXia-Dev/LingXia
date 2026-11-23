@@ -117,7 +117,7 @@ pub struct SafeArea {
     pub keyboard: f32,
 }
 
-fn margin(record: &Record, field: usize) -> LengthPercentageAuto {
+fn margin_with_bleed(record: &Record, field: usize, bleed_offset: f32) -> LengthPercentageAuto {
     match record
         .fields
         .iter()
@@ -127,9 +127,9 @@ fn margin(record: &Record, field: usize) -> LengthPercentageAuto {
         Some(value) if value.as_str() == Some("auto") => auto(),
         Some(value) => value
             .as_f64()
-            .map(|v| length(v as f32))
-            .unwrap_or(length(0.0)),
-        None => length(0.0),
+            .map(|v| length(v as f32 - bleed_offset))
+            .unwrap_or(length(-bleed_offset)),
+        None => length(-bleed_offset),
     }
 }
 
@@ -301,16 +301,27 @@ fn replaced_size<T: taffy::style_helpers::FromLength>(record: &Record, axis: usi
 }
 
 /// A page's last in-flow child when it scrolls: it reaches the page's bottom edge under the bars.
-fn page_bottom_scroll(records: &[Record]) -> Option<usize> {
+fn page_in_flow_child(records: &[Record], index: usize) -> bool {
+    let record = &records[index];
+    record.parent == Some(0)
+        && !matches!(record.string(field::POSITION), Some("absolute" | "fixed"))
+        && record.string(field::DISPLAY) != Some("none")
+}
+
+/// The first and last in-flow children of a page root: only they reach its top and bottom edges.
+fn page_flow_ends(records: &[Record]) -> Option<(usize, usize)> {
     if records.first()?.tag != tag::PAGE {
         return None;
     }
-    let last = (1..records.len()).rev().find(|&index| {
-        let record = &records[index];
-        record.parent == Some(0)
-            && !matches!(record.string(field::POSITION), Some("absolute" | "fixed"))
-            && record.string(field::DISPLAY) != Some("none")
-    })?;
+    let first = (1..records.len()).find(|&index| page_in_flow_child(records, index))?;
+    let last = (first..records.len())
+        .rev()
+        .find(|&index| page_in_flow_child(records, index))?;
+    Some((first, last))
+}
+
+fn page_bottom_scroll(records: &[Record]) -> Option<usize> {
+    let (_, last) = page_flow_ends(records)?;
     matches!(records[last].tag, tag::SCROLL | tag::LIST).then_some(last)
 }
 
@@ -326,8 +337,13 @@ pub(crate) fn node_style(
     let left = |physical, start, end| side(record, physical, start, end, true, rtl);
     let right = |physical, start, end| side(record, physical, start, end, false, rtl);
     let page = index == 0 && record.tag == tag::PAGE;
+    let keyboard_above = safe.keyboard > safe.insets[2];
+    let bleed_mode = (record.parent == Some(0) && records[0].tag == tag::PAGE)
+        .then(|| record.string(field::BLEED))
+        .flatten();
+    let out_of_flow = matches!(record.string(field::POSITION), Some("absolute" | "fixed"));
     // Fixed boxes measure their length insets from the page's safe content box:
-    // inside the system insets and above the keyboard.
+    // inside the system insets and above the keyboard, unless `bleed` extends that edge.
     let [safe_top, safe_right, safe_bottom, safe_left] =
         if records[0].tag == tag::PAGE && record.string(field::POSITION) == Some("fixed") {
             // A top-layer box already ends above the keyboard by its own bottom inset.
@@ -337,10 +353,26 @@ pub(crate) fn node_style(
                 .and_then(|layer| records[layer].number(field::INSET_BOTTOM))
                 .unwrap_or(0.0);
             [
-                safe.insets[0],
-                safe.insets[1],
-                (safe.insets[2].max(safe.keyboard) - lifted).max(0.0),
-                safe.insets[3],
+                if matches!(bleed_mode, Some("all" | "top")) {
+                    0.0
+                } else {
+                    safe.insets[0]
+                },
+                if matches!(bleed_mode, Some("all" | "horizontal")) {
+                    0.0
+                } else {
+                    safe.insets[1]
+                },
+                if matches!(bleed_mode, Some("all" | "bottom")) && !keyboard_above {
+                    0.0
+                } else {
+                    (safe.insets[2].max(safe.keyboard) - lifted).max(0.0)
+                },
+                if matches!(bleed_mode, Some("all" | "horizontal")) {
+                    0.0
+                } else {
+                    safe.insets[3]
+                },
             ]
         } else {
             [0.0; 4]
@@ -491,7 +523,35 @@ pub(crate) fn node_style(
             },
         )
     });
-    let keyboard_above = safe.keyboard > safe.insets[2];
+    let flow_ends = page_flow_ends(records);
+    let bleed_top = if !out_of_flow
+        && matches!(bleed_mode, Some("all" | "top"))
+        && flow_ends.is_some_and(|(first, _)| first == index)
+    {
+        safe.insets[0]
+    } else {
+        0.0
+    };
+    let bleed_right = if !out_of_flow && matches!(bleed_mode, Some("all" | "horizontal")) {
+        safe.insets[1]
+    } else {
+        0.0
+    };
+    let bleed_bottom = if !out_of_flow
+        && matches!(bleed_mode, Some("all" | "bottom"))
+        && flow_ends.is_some_and(|(_, last)| last == index)
+        && !keyboard_above
+        && page_bottom_scroll(records) != Some(index)
+    {
+        safe.insets[2]
+    } else {
+        0.0
+    };
+    let bleed_left = if !out_of_flow && matches!(bleed_mode, Some("all" | "horizontal")) {
+        safe.insets[3]
+    } else {
+        0.0
+    };
     if page {
         padding_top += safe.insets[0];
         padding_right += safe.insets[1];
@@ -503,6 +563,7 @@ pub(crate) fn node_style(
         };
         padding_left += safe.insets[3];
     } else if !keyboard_above
+        && !matches!(bleed_mode, Some("all" | "bottom"))
         && record.parent == Some(0)
         && page_bottom_scroll(records) == Some(index)
     {
@@ -528,15 +589,18 @@ pub(crate) fn node_style(
     let safe_for = |bit: u64, scrolling: bool| scrolling || asked & bit != 0;
     // A replaced element keeps its own size unless it asks to stretch across its line
     // (`self-stretch`), as an `<img>` does in CSS; a stretching parent alone leaves icons whole.
-    let stretched = matches!(record.tag, tag::VECTOR | tag::IMAGE)
-        && record.string(field::ALIGN_SELF) == Some("stretch");
+    // A direct `<page>` child with `bleed` (`"all"` or `"horizontal"`) also stretches across the page.
+    let bleed_horizontal = !out_of_flow && matches!(bleed_mode, Some("all" | "horizontal"));
+    let stretched = (matches!(record.tag, tag::VECTOR | tag::IMAGE)
+        && record.string(field::ALIGN_SELF) == Some("stretch"))
+        || bleed_horizontal;
     // Its line runs across a flex column; in a row or a grid cell, `align-self` is vertical.
     let stretched_across = stretched
         && !in_row
         && record
             .parent
             .is_some_and(|p| records[p].string(field::DISPLAY) != Some("grid"));
-    let stretched_down = stretched && !stretched_across;
+    let stretched_down = stretched && !bleed_horizontal && !stretched_across;
     let border = record.number(field::BORDER_WIDTH).unwrap_or(0.0);
     let [border_top, border_right, border_bottom, border_left] =
         border_edges(record, rtl).map(|id| record.number(id).unwrap_or(border));
@@ -691,7 +755,8 @@ pub(crate) fn node_style(
         align_self: record
             .string(field::ALIGN_SELF)
             .map(|value| cross_alignment(value, safe_for(safe::ALIGN_SELF, in_scroll)))
-            .or(inline.then_some(AlignItems::FLEX_START)),
+            .or(inline.then_some(AlignItems::FLEX_START))
+            .or(bleed_horizontal.then_some(AlignItems::STRETCH)),
         justify_content: record.string(field::JUSTIFY).map(|value| {
             match (value, safe_for(safe::JUSTIFY, scroll)) {
                 ("center", true) => JustifyContent::SAFE_CENTER,
@@ -787,27 +852,37 @@ pub(crate) fn node_style(
                 .unwrap_or(auto()),
         },
         size: Size {
-            width: dimension(record, field::WIDTH)
-                .or_else(|| keyword(record, field::WIDTH_KEYWORD))
-                .unwrap_or(if page || index == 0 {
-                    length(width as f32 / scale)
-                } else if spans(field::INSET_LEFT, field::INSET_RIGHT) || stretched_across {
-                    auto()
-                } else if record.tag == tag::VECTOR {
-                    length(24.0)
-                } else if record.tag == tag::IMAGE {
-                    length(64.0)
-                } else if record.tag == tag::VIDEO
-                    && dimension::<Dimension>(record, field::HEIGHT).is_none()
-                    && keyword(record, field::HEIGHT_KEYWORD).is_none()
-                {
-                    // Unsized, a video is a full-width 16:9 box; given a height, the ratio sets its width.
-                    percent(1.0)
-                } else if record.tag == tag::WEBVIEW {
-                    percent(1.0)
-                } else {
-                    auto()
-                }),
+            width: if bleed_horizontal
+                && record.number(field::WIDTH).is_none()
+                && keyword(record, field::WIDTH_KEYWORD).is_none()
+                && record
+                    .number(field::WIDTH_PERCENT)
+                    .is_none_or(|pct| (pct - 100.0).abs() < f32::EPSILON)
+            {
+                auto()
+            } else {
+                dimension(record, field::WIDTH)
+                    .or_else(|| keyword(record, field::WIDTH_KEYWORD))
+                    .unwrap_or(if page || index == 0 {
+                        length(width as f32 / scale)
+                    } else if spans(field::INSET_LEFT, field::INSET_RIGHT) || stretched_across {
+                        auto()
+                    } else if record.tag == tag::VECTOR {
+                        length(24.0)
+                    } else if record.tag == tag::IMAGE {
+                        length(64.0)
+                    } else if record.tag == tag::VIDEO
+                        && dimension::<Dimension>(record, field::HEIGHT).is_none()
+                        && keyword(record, field::HEIGHT_KEYWORD).is_none()
+                    {
+                        // Unsized, a video is a full-width 16:9 box; given a height, the ratio sets its width.
+                        percent(1.0)
+                    } else if record.tag == tag::WEBVIEW {
+                        percent(1.0)
+                    } else {
+                        auto()
+                    })
+            },
             height: dimension(record, field::HEIGHT)
                 .or_else(|| keyword(record, field::HEIGHT_KEYWORD))
                 .unwrap_or(if page {
@@ -877,25 +952,27 @@ pub(crate) fn node_style(
                 .and_then(|p| records[p].number(field::GAP))
             {
                 Some(gap) => length(gap),
-                None => margin(record, field::MARGIN_BOTTOM),
+                None => margin_with_bleed(record, field::MARGIN_BOTTOM, bleed_bottom),
             },
-            left: margin(
+            left: margin_with_bleed(
                 record,
                 left(
                     field::MARGIN_LEFT,
                     field::MARGIN_INLINE_START,
                     field::MARGIN_INLINE_END,
                 ),
+                bleed_left,
             ),
-            right: margin(
+            right: margin_with_bleed(
                 record,
                 right(
                     field::MARGIN_RIGHT,
                     field::MARGIN_INLINE_START,
                     field::MARGIN_INLINE_END,
                 ),
+                bleed_right,
             ),
-            top: margin(record, field::MARGIN_TOP),
+            top: margin_with_bleed(record, field::MARGIN_TOP, bleed_top),
         },
         aspect_ratio: record
             .number(field::ASPECT_RATIO)

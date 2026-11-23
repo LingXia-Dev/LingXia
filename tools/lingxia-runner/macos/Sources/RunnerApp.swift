@@ -65,6 +65,7 @@ public class RunnerApp {
     private let headlessWebTarget =
         ProcessInfo.processInfo.environment["LINGXIA_RUNNER_HEADLESS"] == "1"
     private(set) var selectedDeviceSize: MobileDeviceSize = .defaultDevice
+    private(set) var activePosture: RunnerDevicePosture? = MobileDeviceSize.defaultDevice.defaultPosture
     private(set) var deviceOrientation: RunnerDeviceOrientation = .portrait
     private(set) var deviceSize: MobileDeviceSize = .defaultDevice
     private(set) var simulatedAppearance: RunnerAppearance = .system
@@ -79,9 +80,13 @@ public class RunnerApp {
         .flatMap { $0.isEmpty ? nil : $0 }
     
     private init() {
-        deviceOrientation = Self.defaultOrientation(for: selectedDeviceSize)
+        activePosture = selectedDeviceSize.activePosture ?? selectedDeviceSize.defaultPosture
+        let initialDevice = selectedDeviceSize.withPosture(activePosture)
+        deviceOrientation = Self.defaultOrientation(for: initialDevice)
+        deviceSize = initialDevice.oriented(deviceOrientation)
         RunnerUserAgentPolicy.shared.setProfile(selectedDeviceSize.browserProfile)
         LingxiaRunnerSPI.GpuPage.setPixelRatio(selectedDeviceSize.pixelRatio)
+        LingxiaRunnerSPI.GpuPage.setHinge(Self.encodedHingeJSON(deviceSize.activeHinge))
         RunnerSupport.PageChrome.setCapsuleRectProvider { [weak self] appId in
             self?.windowController?.capsuleRect(for: appId)
         }
@@ -93,9 +98,13 @@ public class RunnerApp {
         }
     }
 
-    /// Pads and desktops read most naturally in landscape; phones in portrait.
+    /// Pads and desktops read most naturally in landscape; phones in portrait;
+    /// foldables follow their active posture's natural aspect ratio.
     private static func defaultOrientation(for device: MobileDeviceSize) -> RunnerDeviceOrientation {
         guard device.supportsOrientation else { return .portrait }
+        if let posture = device.activePosture {
+            return posture.width > posture.height ? .landscape : .portrait
+        }
         return (device.shape == .pad || device.shape == .desktop) ? .landscape : .portrait
     }
     
@@ -107,23 +116,56 @@ public class RunnerApp {
         size.id.withCString { requestDevice($0) }
     }
 
-    /// Apply a device and an optional explicit orientation as one host update.
+    /// Apply a device, optional posture, and optional explicit orientation as one host update.
     /// A nil orientation preserves the selector's existing family behavior.
     func applyDeviceSize(
         _ size: MobileDeviceSize,
-        orientation: RunnerDeviceOrientation?
+        orientation: RunnerDeviceOrientation?,
+        posture: RunnerDevicePosture? = nil
     ) {
         let shapeChanged = size.shape != selectedDeviceSize.shape
+        let deviceChanged = size.id != selectedDeviceSize.id
+        let resolvedPosture: RunnerDevicePosture?
+        if let posture {
+            resolvedPosture = size.posture(id: posture.id) ?? posture
+        } else if !deviceChanged, let current = activePosture, let kept = size.posture(id: current.id) {
+            resolvedPosture = kept
+        } else {
+            resolvedPosture = size.defaultPosture
+        }
+
+        let postureChanged = resolvedPosture?.id != activePosture?.id
         selectedDeviceSize = size
+        activePosture = resolvedPosture
         LingxiaRunnerSPI.GpuPage.setPixelRatio(size.pixelRatio)
-        if let orientation, size.supportsOrientation {
+
+        let postured = size.withPosture(resolvedPosture)
+        if let orientation, postured.supportsOrientation {
             deviceOrientation = orientation
-        } else if shapeChanged || !size.supportsOrientation {
-            // Reset to the shape's natural orientation on a device-family
-            // change; keep the user's rotation within the same family.
-            deviceOrientation = Self.defaultOrientation(for: size)
+        } else if shapeChanged || !postured.supportsOrientation || (postured.hasPostures && (deviceChanged || postureChanged)) {
+            // Reset to the shape's (or posture's) natural orientation on a
+            // device-family or foldable-posture change; keep rotation within a flat family.
+            deviceOrientation = Self.defaultOrientation(for: postured)
         }
         applyDeviceConfiguration()
+    }
+
+    /// Switch the active posture of the currently selected foldable device without
+    /// restarting the hosted lxapp.
+    public func setDevicePosture(_ posture: RunnerDevicePosture) {
+        guard let matched = selectedDeviceSize.posture(id: posture.id) else { return }
+        guard activePosture?.id != matched.id else { return }
+        activePosture = matched
+        let postured = selectedDeviceSize.withPosture(matched)
+        deviceOrientation = Self.defaultOrientation(for: postured)
+        applyDeviceConfiguration()
+    }
+
+    @discardableResult
+    public func setDevicePosture(id: String) -> Bool {
+        guard let matched = selectedDeviceSize.posture(id: id) else { return false }
+        setDevicePosture(matched)
+        return true
     }
 
     public func setDeviceOrientation(_ orientation: RunnerDeviceOrientation) {
@@ -191,21 +233,33 @@ public class RunnerApp {
         surfaceShellHost?.shell.window?.appearance = appearance
     }
 
+    private static func encodedHingeJSON(_ hinge: RunnerHingeSpec?) -> String? {
+        guard let hinge,
+              let data = try? JSONEncoder().encode(hinge),
+              let json = String(data: data, encoding: .utf8)
+        else {
+            return nil
+        }
+        return json
+    }
+
     private func applyDeviceConfiguration() {
         RunnerUserAgentPolicy.shared.setProfile(
             selectedDeviceSize.browserProfile
         )
+        let posturedDevice = selectedDeviceSize.withPosture(activePosture)
+        let effectiveDevice = posturedDevice.oriented(deviceOrientation)
+        LingxiaRunnerSPI.GpuPage.setHinge(Self.encodedHingeJSON(effectiveDevice.activeHinge))
         // Resolve `showOn` against the simulated machine rather than the Mac the
-        // runner happens to be. A tablet counts as mobile: an iPad build is
-        // `target_os = "ios"`, so a real one reports mobile, and the simulator
-        // has to agree with the device. Its desktop-like sidebar comes from the
-        // width, which `usesSurfaceShell` decides separately. `pad` widens the
-        // compact strip to the declaration cap when a product uses a bottom bar.
+        // runner happens to be. A tablet or foldable counts as mobile: an iPad
+        // build is `target_os = "ios"`, so a real one reports mobile, and the
+        // simulator has to agree with the device. Its desktop-like sidebar comes
+        // from the width (`>= 600`), which `usesSurfaceShell` decides separately.
         LingxiaRunnerSPI.Tabs.setSimulatedHostClass(
             mobile: selectedDeviceSize.shape != .desktop,
             pad: selectedDeviceSize.shape == .pad
+                || (selectedDeviceSize.shape == .fold && effectiveDevice.isRegularWidth)
         )
-        let effectiveDevice = selectedDeviceSize.oriented(deviceOrientation)
         deviceSize = effectiveDevice
         SimulatorWindowController.setWindowSize(effectiveDevice)
         configureOpenURLHandlingForCurrentShape()
@@ -213,8 +267,8 @@ public class RunnerApp {
             "Device size changed to: %@ %@",
             log: Self.log,
             type: .info,
-            selectedDeviceSize.displayName,
-            effectiveDevice.supportsOrientation ? deviceOrientation.displayName : ""
+            effectiveDevice.orientedDisplayName,
+            effectiveDevice.sizeDescription
         )
 
         if let webTarget {

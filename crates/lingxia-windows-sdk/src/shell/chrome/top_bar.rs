@@ -83,7 +83,7 @@ pub(super) fn top_bar_controls(
                 WindowsShellTabBarPosition::Left | WindowsShellTabBarPosition::Right
             )
     });
-    let compact_sidebar = tabbar.is_some_and(|tabbar| tabbar.collapsed || tabbar.icon_rail);
+    let compact_sidebar = tabbar.is_some_and(WindowsShellTabBarLayout::narrow_column);
 
     // App-menu button at the window's leading edge, beside the sidebar controls
     // when a sidebar exists. Otherwise it anchors the top bar. Only the product shell
@@ -104,21 +104,22 @@ pub(super) fn top_bar_controls(
         .filter(|_| has_sidebar_toggle && !compact_sidebar)
         .map(|tabbar| {
             let width = super::sidebar_column_width(tabbar);
+            let top = top_bar.top.max(client.top + layout.sidebar_top_inset);
             let sidebar_rect = match tabbar.position {
                 WindowsShellTabBarPosition::Right => {
                     let clearance = super::right_sidebar_caption_clearance(layout);
                     RECT {
                         left: client.right - width,
-                        top: top_bar.top + clearance,
+                        top: top + clearance,
                         right: client.right,
-                        bottom: top_bar.bottom + clearance,
+                        bottom: top + super::sidebar_header_height() + clearance,
                     }
                 }
                 _ => RECT {
                     left: client.left,
-                    top: top_bar.top,
+                    top,
                     right: client.left + width,
-                    bottom: top_bar.bottom,
+                    bottom: top + super::sidebar_header_height(),
                 },
             };
             super::sidebar_header_toggle_rect(sidebar_rect)

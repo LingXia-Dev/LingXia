@@ -1837,7 +1837,7 @@ export interface LxAppManager {
 export interface DeviceEntry {
   id: string;
   name: string;
-  /** Form-factor group: `phone` | `tablet` | `desktop`. */
+  /** Form-factor group: `phone` | `fold` | `tablet` | `desktop`. */
   group: string;
   /** Logical width in points. */
   width: number;
@@ -1847,6 +1847,8 @@ export interface DeviceEntry {
   pixelRatio: number;
   /** True for the currently selected device. */
   current: boolean;
+  /** A folding device's postures, each with its own screen size; absent on a flat one. */
+  postures?: { id: string; label: string; width: number; height: number }[];
 }
 
 /** The active device selection. */
@@ -1867,11 +1869,19 @@ export interface DeviceState {
   textScale: number;
   /** Simulated system contrast. */
   contrast: "standard" | "high";
+  /** Active posture of a folding device. */
+  posture?: string;
 }
 
 export interface DeviceSetOptions {
   /** Device preset id (see `list()`); omit to keep the current device. */
   id?: string;
+  /** Adaptive preset instead of `id` (`phone` | `fold` | `trifold` | `pad` | `desktop`). */
+  preset?: "phone" | "fold" | "trifold" | "pad" | "desktop";
+  /** Posture of a folding device (`outer` | `open` | `dual` | `tabletop`); one it lacks is an error. */
+  posture?: "open" | "dual" | "outer" | "tabletop";
+  /** `portrait` | `landscape`, the same as `landscape`. */
+  orientation?: "portrait" | "landscape";
   /** Force landscape (`true`) or portrait (`false`); omit to use the
    * runner's normal device-selection behavior. */
   landscape?: boolean;

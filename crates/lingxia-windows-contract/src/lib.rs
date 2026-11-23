@@ -839,6 +839,13 @@ pub enum WindowsChromeHit {
 pub trait WindowsChromeRenderer: Send + Sync {
     fn content_rect(&self, client: RECT, layout: &WindowsWindowLayout) -> RECT;
 
+    /// Whether `layout` draws a tab bar along the bottom; a regular shell carries the
+    /// tabs in its sidebar instead, so the page keeps no room for them.
+    fn bottom_tab_bar(&self, layout: &WindowsWindowLayout) -> bool {
+        let _ = layout;
+        true
+    }
+
     fn attached_layout(
         &self,
         client: RECT,

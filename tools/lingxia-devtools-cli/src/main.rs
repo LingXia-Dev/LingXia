@@ -83,6 +83,8 @@ enum Commands {
     /// Set the Runner's simulated device, orientation and appearance (Runner
     /// sessions only)
     Runner(runner::RunnerOptions),
+    /// Alias for `runner` — simulate device presets, fold postures and raw geometry
+    Device(runner::RunnerOptions),
     /// Automate the local desktop OS (needs no session)
     Desktop(lingxia_control_commands::desktop::DesktopOptions),
 }
@@ -208,7 +210,7 @@ fn run() -> Result<()> {
             let project_root = std::path::PathBuf::from(&info.project_root);
             lxapp::execute(&project_root, &info, options)
         }
-        Commands::Runner(options) => {
+        Commands::Runner(options) | Commands::Device(options) => {
             let info = resolve(&selector)?;
             runner::execute(&info, options)
         }

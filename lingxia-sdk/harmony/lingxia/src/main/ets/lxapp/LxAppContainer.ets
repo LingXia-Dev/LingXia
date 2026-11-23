@@ -1,4 +1,5 @@
 import { hilog } from '@kit.PerformanceAnalysisKit';
+import { AsideRegionModel, AsideState } from './AsideRegion';
 import { LxLog } from '../app/LxLog';
 import { webview } from '@kit.ArkWeb';
 import { window, display, FrameCallback, componentSnapshot, componentUtils } from '@kit.ArkUI';
@@ -172,6 +173,7 @@ export struct LxAppContainer {
   /** Kept mounted under another app or out of view: its tab bar is not on screen. */
   @Prop hidden: boolean = false
   @State path: string = ''
+  @StorageProp('lxAsideState') private asideState: AsideState = AsideRegionModel.emptyState()
 
   // Static registry for TabBar updates (simple and direct)
   private static activeContainers: Map<string, LxAppContainer> = new Map()
@@ -1042,6 +1044,8 @@ export struct LxAppContainer {
 	    }
 	    .width('100%')
 	    .height('100%')
+    // A docked side panel takes the trailing edge; the reported width stays the window's.
+    .padding({ right: this.asideState.dockWidth })
     .onAreaChange((_, newValue) => {
       try {
         this.reportShellWidth(Number(newValue.width) || 0);

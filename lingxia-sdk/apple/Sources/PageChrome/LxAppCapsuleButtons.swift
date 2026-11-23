@@ -19,6 +19,9 @@ class LxAppCapsuleButtons {
     #if os(iOS)
     private static weak var capsuleButtonView: UIView?
     private static var capsuleTopConstraint: NSLayoutConstraint?
+    private static var capsuleTrailingConstraint: NSLayoutConstraint?
+    /// How far a docked side panel pushes the capsule in from the trailing edge.
+    private static var trailingInset: CGFloat = 0
 
     static func addCapsuleButton(to viewController: UIViewController) {
         guard viewController.view.viewWithTag(CAPSULE_BUTTON_TAG) == nil else { return }
@@ -51,11 +54,16 @@ class LxAppCapsuleButtons {
             equalTo: viewController.view.topAnchor, constant: topMargin
         )
         capsuleTopConstraint = topConstraint
+        let trailingConstraint = hostingController.view.trailingAnchor.constraint(
+            equalTo: viewController.view.trailingAnchor,
+            constant: -(LxAppTheme.Metrics.capsuleTrailingMargin + trailingInset)
+        )
+        capsuleTrailingConstraint = trailingConstraint
 
         NSLayoutConstraint.activate([
             hostingController.view.widthAnchor.constraint(equalToConstant: LxAppTheme.Metrics.capsuleButtonWidth),
             hostingController.view.heightAnchor.constraint(equalToConstant: LxAppTheme.Metrics.capsuleButtonHeight),
-            hostingController.view.trailingAnchor.constraint(equalTo: viewController.view.trailingAnchor, constant: -LxAppTheme.Metrics.capsuleTrailingMargin),
+            trailingConstraint,
             topConstraint
         ])
 
@@ -63,6 +71,16 @@ class LxAppCapsuleButtons {
         let frame = hostingController.view.frame
         os_log("Actual capsule frame: x=%{public}.1f, y=%{public}.1f, width=%{public}.1f, height=%{public}.1f", log: capsuleLog, type: .info, frame.origin.x, frame.origin.y, frame.width, frame.height)
         os_log("statusBarHeight=%{public}.1f, topMargin=%{public}.1f", log: capsuleLog, type: .info, statusBarHeight, topMargin)
+    }
+
+    /// Keeps the capsule on the main beside a docked side panel.
+    static func setTrailingInset(_ inset: CGFloat) {
+        guard trailingInset != inset else { return }
+        trailingInset = inset
+        guard let constraint = capsuleTrailingConstraint else { return }
+        constraint.constant = -(LxAppTheme.Metrics.capsuleTrailingMargin + inset)
+        capsuleButtonView?.superview?.setNeedsLayout()
+        republishPageChrome()
     }
 
     static func syncCapsuleTop() {
@@ -89,6 +107,7 @@ class LxAppCapsuleButtons {
             capsuleButtonView = nil
         }
         capsuleTopConstraint = nil
+        capsuleTrailingConstraint = nil
     }
 
     /// Capsule in the current page's coordinate space (WebView CSS pixels or View points), or nil until laid out.

@@ -9,6 +9,7 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum SurfaceMenuBuiltinAction {
+    MoveToAside,
     Rename,
     ResetTitle,
     /// Closes a tab-like row: "Close Tab".
@@ -217,6 +218,8 @@ pub struct SurfaceMenuContext {
     pub revision: u64,
     pub surface_id: String,
     pub closable: bool,
+    /// The surface can dock as an aside here: false in compact, where an aside covers the main.
+    pub movable_to_aside: bool,
     pub renameable: bool,
     pub title_overridden: bool,
     pub has_other_closable: bool,
@@ -278,6 +281,14 @@ pub fn compose_surface_menu_parts(
     }
 
     let mut management = Vec::new();
+    // Content that places itself ("Open in Side Panel") owns that move; a second entry would
+    // skip the host's own re-hosting of the live page.
+    if context.closable && context.movable_to_aside && parts.placement.is_empty() {
+        management.push(SurfaceMenuItem::built_in(
+            SurfaceMenuBuiltinAction::MoveToAside,
+            SurfaceMenuItemRole::Normal,
+        ));
+    }
     if context.renameable {
         management.push(SurfaceMenuItem::built_in(
             SurfaceMenuBuiltinAction::Rename,
@@ -380,6 +391,7 @@ mod tests {
                 revision: 7,
                 surface_id: "home".into(),
                 closable: false,
+                movable_to_aside: false,
                 renameable: false,
                 title_overridden: false,
                 has_other_closable: true,
@@ -415,6 +427,7 @@ mod tests {
                 revision: 9,
                 surface_id: "terminal".into(),
                 closable: true,
+                movable_to_aside: false,
                 renameable: true,
                 title_overridden: true,
                 has_other_closable: true,
@@ -447,6 +460,7 @@ mod tests {
                 revision: 10,
                 surface_id: "middle".into(),
                 closable: true,
+                movable_to_aside: false,
                 renameable: false,
                 title_overridden: false,
                 has_other_closable: true,
@@ -483,6 +497,7 @@ mod tests {
                 revision: 3,
                 surface_id: "home".into(),
                 closable: false,
+                movable_to_aside: false,
                 renameable: false,
                 title_overridden: false,
                 has_other_closable: false,
@@ -529,6 +544,7 @@ mod tests {
                 has_other_closable: true,
                 has_closable_before: true,
                 has_closable_after: true,
+                movable_to_aside: false,
             },
             SurfaceMenuParts {
                 content: vec![vec![SurfaceMenuItem::lxapp(
@@ -553,6 +569,39 @@ mod tests {
                 SurfaceMenuSectionKind::Removal,
             ]
         );
+    }
+
+    #[test]
+    fn content_placement_replaces_the_generic_move_to_aside() {
+        let context = SurfaceMenuContext {
+            revision: 1,
+            surface_id: "guest".into(),
+            closable: true,
+            renameable: false,
+            title_overridden: false,
+            has_other_closable: false,
+            has_closable_before: false,
+            has_closable_after: false,
+            movable_to_aside: true,
+        };
+        let offers_move = |parts: SurfaceMenuParts| {
+            compose_surface_menu_parts(context.clone(), parts)
+                .sections
+                .iter()
+                .flat_map(|section| &section.items)
+                .any(|item| {
+                    item.action
+                        == SurfaceMenuAction::Switcher {
+                            action: SurfaceMenuBuiltinAction::MoveToAside,
+                        }
+                })
+        };
+
+        assert!(offers_move(SurfaceMenuParts::default()));
+        assert!(!offers_move(SurfaceMenuParts {
+            placement: vec![SurfaceMenuItem::lxapp(LxappSurfaceMenuAction::OpenInSide)],
+            ..Default::default()
+        }));
     }
 
     #[test]
@@ -589,6 +638,7 @@ mod tests {
             has_other_closable: false,
             has_closable_before: false,
             has_closable_after: false,
+            movable_to_aside: false,
         }
         .with_rows(&rows);
         assert!(context.has_other_closable);

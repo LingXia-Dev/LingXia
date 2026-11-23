@@ -44,6 +44,7 @@ Every Tailwind variant, tested against the native lowering. Supported variants m
 | `side-bottom:` | any element in an anchored popover, the popover included; while that popover sits below its anchor, after any flip; paint only |
 | `side-start:` | any element in an anchored popover, the popover included; while that popover sits at the inline start of its anchor (its left in LTR), after any flip; paint only |
 | `side-end:` | any element in an anchored popover, the popover included; while that popover sits at the inline end of its anchor (its right in LTR), after any flip; paint only |
+| `regular:` | any element; matches when the nearest `<SizeClassScope>` (or `env.sizeClass`) is `"regular"`, layout included |
 | `track:` | `<slider>` and `<switch>`; its track: `bg-*`, `h-*`, `rounded-*`, and `w-*` on a switch; after `active:` `hover:` `focus-visible:` or `disabled:`, and `checked:` on a switch (while it reads checked, bound or not; another state may not keep part of its paint on the same part), eased over 150 ms |
 | `range:` | `<slider>`; its range, min to value: `bg-*`, `h-*`, `rounded-*`; after `active:` `hover:` `focus-visible:` or `disabled:`, eased over 150 ms |
 | `secondary:` | `<slider>`; its secondary range, min to `secondaryValue`: `bg-*`, `h-*`, `rounded-*`; after `active:` `hover:` `focus-visible:` or `disabled:`, eased over 150 ms |

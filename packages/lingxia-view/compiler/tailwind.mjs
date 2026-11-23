@@ -192,6 +192,7 @@ export const viewExtensions = `@custom-variant exit (&:where(.lx-exit));
 @custom-variant side-bottom (&:where(.lx-side-bottom));
 @custom-variant side-start (&:where(.lx-side-start));
 @custom-variant side-end (&:where(.lx-side-end));
+@custom-variant regular (&:where(.lx-regular));
 @custom-variant track (&::-lx-track);
 @custom-variant range (&::-lx-range);
 @custom-variant secondary (&::-lx-secondary);
@@ -975,9 +976,17 @@ const unescape = name => name.replace(/\\([0-9a-f]{1,6})\s?|\\(.)/gi, (_, hex, c
 function selectorTarget(source) {
   // `rtl:`/`ltr:` match the node's inherited direction at runtime, like `dark:` does the theme.
   const dir = source.match(/:where\(:dir\((ltr|rtl)\), \[dir="\1"\], \[dir="\1"\] \*\)/);
-  const selector = dir ? source.replace(dir[0], '') : source;
+  let selector = dir ? source.replace(dir[0], '') : source;
+  // `regular:` matches the nearest SizeClassScope (or env.sizeClass) at runtime.
+  const regular = selector.includes(':where(.lx-regular)');
+  if (regular) selector = selector.replace(':where(.lx-regular)', '');
   const target = selectorParts(selector);
-  return target && dir ? { ...target, direction: dir[1] } : target;
+  if (!target) return target;
+  return {
+    ...target,
+    ...(dir ? { direction: dir[1] } : {}),
+    ...(regular ? { sizeClass: 'regular' } : {}),
+  };
 }
 
 // Variants that test DOM state the View does not have; name the TS-side way to say the same.
@@ -1098,6 +1107,7 @@ function compilerFor(theme) {
 
 /** Lowered rules for every candidate Tailwind generates; unsupported ones carry an error. */
 export async function compileUtilities(candidates, theme = '', { literalColors: literal = false } = {}) {
+  candidates = candidates instanceof Set ? candidates : new Set(candidates);
   const tokens = postcss.parse(theme);
   const converted = classRulesAsUtilities(tokens);
   validateTokens(tokens);
@@ -1135,7 +1145,7 @@ export async function compileUtilities(candidates, theme = '', { literalColors: 
       if (hoverMedia && target.state !== 'hover') unsupported('(hover: hover) outside a hover variant');
       if (target.part && (starting || media.reducedMotion !== undefined)) unsupported(`${target.part}: with starting: or motion-*`);
       const when = { ...media, ...(target.state ? { state: target.state } : {}), ...(target.presence ? { presence: target.presence } : {}), ...(target.part ? { part: target.part } : {}), ...(target.checked ? { checked: true } : {}), ...(target.children ? { children: true } : {}), ...(target.every ? { every: true } : {}),
-        ...(target.direction ? { direction: target.direction } : {}), ...(target.structure ? { structure: target.structure } : {}), ...(target.data ? { data: target.data } : {}), ...(target.indeterminate ? { indeterminate: true } : {}) };
+        ...(target.direction ? { direction: target.direction } : {}), ...(target.sizeClass ? { sizeClass: target.sizeClass } : {}), ...(target.structure ? { structure: target.structure } : {}), ...(target.data ? { data: target.data } : {}), ...(target.indeterminate ? { indeterminate: true } : {}) };
       const lower = vars => {
         const result = declarations(rule.nodes, vars, root);
         if (!Object.keys(result.style).length && Object.keys(result).length === 1) unsupported(inert(name));

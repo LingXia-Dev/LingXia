@@ -601,6 +601,20 @@ export const entries: GalleryEntry[] = [
     ]
   },
   {
+    "name": "TopBar",
+    "page": "top-bar",
+    "category": "navigation",
+    "summary": "Custom page header row with leading, centered and trailing slots",
+    "keywords": [
+      "top bar",
+      "header",
+      "navigation bar",
+      "toolbar",
+      "app bar",
+      "adaptive"
+    ]
+  },
+  {
     "name": "Badge",
     "page": "badge",
     "category": "feedback",
@@ -1139,6 +1153,37 @@ export const entries: GalleryEntry[] = [
     ]
   },
   {
+    "name": "ListDetail",
+    "page": "list-detail",
+    "category": "content",
+    "summary": "Master-detail list and record view: side-by-side on regular screens, single-pane drill-down on compact",
+    "keywords": [
+      "list detail",
+      "master detail",
+      "two pane",
+      "drill down",
+      "adaptive",
+      "foldable",
+      "hinge"
+    ]
+  },
+  {
+    "name": "Split",
+    "page": "split",
+    "category": "content",
+    "summary": "Primary canvas with a companion aside: side-by-side on regular, upper/lower on tabletop folds, stack or sheet on compact",
+    "keywords": [
+      "split",
+      "companion pane",
+      "supporting pane",
+      "aside",
+      "tabletop",
+      "foldable",
+      "bottom sheet",
+      "adaptive"
+    ]
+  },
+  {
     "name": "QRCode",
     "page": "qrcode",
     "category": "content",
@@ -1371,7 +1416,7 @@ export const entries: GalleryEntry[] = [
   },
   {
     "name": "List & detail",
-    "page": "list-detail",
+    "page": "list-and-detail",
     "category": "patterns",
     "summary": "A list of records beside the open one: two panes on a wide screen, one at a time on a phone",
     "keywords": []
@@ -1431,7 +1476,7 @@ export const galleryCategories: GalleryCategory[] = [
     "icon": "compass",
     "description": "Tabs, steps and pages",
     "page": "category-navigation",
-    "count": 8
+    "count": 9
   },
   {
     "id": "feedback",
@@ -1455,7 +1500,7 @@ export const galleryCategories: GalleryCategory[] = [
     "icon": "rows",
     "description": "Cards, rows and tables",
     "page": "category-content",
-    "count": 17
+    "count": 19
   },
   {
     "id": "charts",

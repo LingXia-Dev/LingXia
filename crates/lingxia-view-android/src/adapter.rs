@@ -498,6 +498,7 @@ impl EnvironmentSource for AndroidAdapter {
             first_weekday: facts["first_weekday"]
                 .as_u64()
                 .and_then(|day| u8::try_from(day).ok()),
+            hinge: facts.get("hinge").filter(|h| !h.is_null()).cloned(),
         }
         .environment()
     }

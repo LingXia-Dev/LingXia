@@ -8,11 +8,13 @@ _Generated from the View schema (`schema.json`) and the compiler; do not edit._
 | --- | --- | --- |
 | `theme` | `"light" \| "dark"` |  |
 | `viewport` | `Readonly<{ width: number; height: number }>` | The page surface in logical pixels. |
-| `insets` | `Readonly<{ top: number; right: number; bottom: number; left: number }>` | System bars and host chrome over the surface, logical pixels. |
-| `safeArea` | `Readonly<{ top: number; right: number; bottom: number; left: number }>` | The system bars alone (status bar, cutout, home indicator), as CSS `env(safe-area-inset-*)`; a dialog covering host chrome pads by these, logical pixels. |
+| `insets` | `Readonly<Edges>` | System bars and host chrome over the surface, logical pixels. |
+| `safeArea` | `Readonly<Edges>` | The system bars alone (status bar, cutout, home indicator), as CSS `env(safe-area-inset-*)`; a dialog covering host chrome pads by these, logical pixels. |
+| `hinge` | `Readonly<HingeRect> \| null` | Physical display hinge/crease intersecting this page canvas in local logical pixels; null when absent. |
 | `keyboard` | `Readonly<{ height: number }>` |  |
 | `capsule` | `Readonly<{ x: number; y: number; width: number; height: number }> \| null` | The host's capsule (the ··· and close control) where it floats over the page, in page coordinates, logical pixels; `null` when the host shows none or it sits in a nav bar. The same box Web pages read as `--lx-page-chrome-capsule-*`. |
 | `pointer` | `"fine" \| "coarse"` | `fine` pointers (mouse, trackpad) hover; `coarse` ones (touch) do not. |
+| `platform` | `"apple" \| "android" \| "harmony" \| "windows" \| "web"` | Host platform family (for rendering platform shortcut symbols only; never for layout branching). |
 | `os` | `string` |  |
 | `formFactor` | `string` | `phone` or `tablet` from the smallest screen width; other hosts may report their own. |
 | `sizeClass` | `"compact" \| "regular"` | `compact` below 600 logical pixels of page width, else `regular`. |

@@ -629,6 +629,7 @@ mod tests {
             outer_corner_radius: 60,
             screen_corner_radius: 56,
             cutout: None,
+            hinge: None,
             status_bar: None,
             tab_bar: None,
             bezel_color: 0,

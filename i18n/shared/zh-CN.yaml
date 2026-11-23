@@ -129,6 +129,7 @@ surface:
   close: "关闭标签页"
   close_others: "关闭其他"
   close_after: "关闭下方"
+  move_to_aside: "移到侧边栏"
 
 # 商店渠道的宿主更新提示（自动流程 + Android SDK 弹窗）
 update:
@@ -175,3 +176,12 @@ text_menu:
   select_all: "全选"
   undo: "撤销"
   redo: "重做"
+
+# 侧边面板：标签栏按钮、lxapp 在侧边与主区之间移动，以及收起后的把手。
+aside:
+  collapse: "收起侧边面板"
+  maximize: "最大化"
+  restore: "还原"
+  open_in_main: "在主区打开"
+  open_in_side: "在侧边面板打开"
+  show_content: "显示 {name}"

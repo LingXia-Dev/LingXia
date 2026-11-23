@@ -106,6 +106,7 @@ pub(crate) use chrome::{
 pub(crate) use chrome::{
     collapsed_aside_handle_hit, drag_ghost_colors, main_aside_drop_rect, sidebar_resize_edge,
 };
+pub(crate) use chrome::{floating_tabbar_overlay_rect, paint_floating_tabbar_overlay};
 pub(crate) use runtime::{
     aside_tab_drag_label, aside_tab_promotable, cancel_sidebar_drag, demote_lxapp_main,
     promote_aside_tab, set_sidebar_drag_width, sidebar_main_drag_label, sidebar_main_drag_source,
@@ -160,7 +161,8 @@ pub(crate) use runtime::open_declared_browser;
 pub(crate) use runtime::open_declared_terminal;
 pub(crate) use runtime::{
     configure_static_settings_source, open_home_app_with_target, open_self_browser,
-    prime_lxapp_shell_layout, set_shell_owner_app_id, update_surface_width,
+    prime_lxapp_shell_layout, set_shell_owner_app_id, update_surface_portrait,
+    update_surface_width,
 };
 pub(crate) use runtime::{restore_maximized_aside_from_keyboard, toggle_lxapp_aside_from_keyboard};
 

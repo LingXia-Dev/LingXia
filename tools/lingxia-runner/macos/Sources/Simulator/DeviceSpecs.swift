@@ -10,8 +10,58 @@ private struct RunnerDevicesManifest: Decodable {
 /// manifest group: the UI host changes by shape, not by arbitrary device ids.
 public enum RunnerDeviceShape: Equatable, Hashable, Sendable {
     case phone
+    case fold
     case pad
     case desktop
+}
+
+public enum RunnerHingeOrientation: String, Equatable, Hashable, Codable, Sendable {
+    case vertical
+    case horizontal
+}
+
+public enum RunnerHingePosture: String, Equatable, Hashable, Codable, Sendable {
+    case flat
+    case halfOpened = "half-opened"
+}
+
+public struct RunnerHingeSpec: Equatable, Hashable, Codable, Sendable {
+    public let x: CGFloat
+    public let y: CGFloat
+    public let width: CGFloat
+    public let height: CGFloat
+    public let orientation: RunnerHingeOrientation
+    public let posture: RunnerHingePosture
+
+    public func scaled(by scale: CGFloat) -> RunnerHingeSpec {
+        RunnerHingeSpec(
+            x: x * scale,
+            y: y * scale,
+            width: width * scale,
+            height: height * scale,
+            orientation: orientation,
+            posture: posture
+        )
+    }
+
+    public func rotated() -> RunnerHingeSpec {
+        RunnerHingeSpec(
+            x: y,
+            y: x,
+            width: height,
+            height: width,
+            orientation: orientation == .vertical ? .horizontal : .vertical,
+            posture: posture
+        )
+    }
+}
+
+public struct RunnerDevicePosture: Equatable, Hashable, Codable, Sendable {
+    public let id: String
+    public let label: String
+    public let width: CGFloat
+    public let height: CGFloat
+    public let hinge: RunnerHingeSpec?
 }
 
 public enum RunnerDeviceOrientation: String, Equatable, Hashable, CaseIterable, Sendable {
@@ -57,9 +107,15 @@ public struct MobileDeviceSize: Equatable, Hashable, Decodable, Sendable {
     /// What the device's host gives a page, in device points; nil for a shape the surface
     /// shell hosts.
     public let chrome: DeviceChrome?
+    /// Optional folding postures declared for multi-posture devices.
+    public let postures: [RunnerDevicePosture]?
     /// Window points per device point: below 1 once shrunk to fit a short screen. The skin
     /// draws the chrome at this; the page is told the device's own.
     public var fit: CGFloat = 1
+    /// Currently active posture for a foldable device; nil for flat devices.
+    public var activePosture: RunnerDevicePosture? = nil
+    /// Currently active hinge geometry (in the same coordinate space as `width`/`height`).
+    public var activeHinge: RunnerHingeSpec? = nil
 
     enum CodingKeys: String, CodingKey {
         case id
@@ -74,7 +130,11 @@ public struct MobileDeviceSize: Equatable, Hashable, Decodable, Sendable {
         case screenRadius
         case notchSpec = "notch"
         case chrome
+        case postures
     }
+
+    /// Unified adaptive breakpoint: `< 600` is compact, `>= 600` is regular.
+    public static let regularWidthThreshold: CGFloat = 600
 
     public static var iPhoneSE: MobileDeviceSize { device(id: "iphone-se") }
     public static var iPhone13Mini: MobileDeviceSize { device(id: "iphone-13-mini") }
@@ -93,10 +153,17 @@ public struct MobileDeviceSize: Equatable, Hashable, Decodable, Sendable {
         // the expanded/docked layout without clicking the device selector.
         if let override = ProcessInfo.processInfo.environment["LINGXIA_RUNNER_DEVICE"]?
             .trimmingCharacters(in: .whitespacesAndNewlines),
-            !override.isEmpty,
-            allCases.contains(where: { $0.id == override })
+            !override.isEmpty
         {
-            return device(id: override)
+            let sep = override.firstIndex(where: { $0 == ":" || $0 == "@" })
+            let deviceId = sep.map { String(override[..<$0]) } ?? override
+            let postureId = sep.map { String(override[override.index(after: $0)...]) }
+            if let matched = allCases.first(where: { $0.id == deviceId }) {
+                if let postureId, !postureId.isEmpty, let posture = matched.posture(id: postureId) {
+                    return matched.withPosture(posture)
+                }
+                return matched
+            }
         }
         return device(id: manifest.default)
     }
@@ -105,6 +172,8 @@ public struct MobileDeviceSize: Equatable, Hashable, Decodable, Sendable {
         switch group {
         case "phone":
             return .phone
+        case "fold", "foldable":
+            return .fold
         case "tablet", "pad":
             return .pad
         case "desktop":
@@ -114,12 +183,72 @@ public struct MobileDeviceSize: Equatable, Hashable, Decodable, Sendable {
         }
     }
 
+    /// Width in unscaled device points.
+    public var deviceWidth: CGFloat {
+        fit > 0 ? width / fit : width
+    }
+
+    public var isRegularWidth: Bool {
+        deviceWidth >= Self.regularWidthThreshold
+    }
+
+    public var hasPostures: Bool {
+        !(postures ?? []).isEmpty
+    }
+
+    /// Default posture when selecting a foldable device: prefers `"open"`, else first declared.
+    public var defaultPosture: RunnerDevicePosture? {
+        guard let postures, !postures.isEmpty else { return nil }
+        return postures.first(where: { $0.id.caseInsensitiveCompare("open") == .orderedSame })
+            ?? postures.first
+    }
+
+    public func posture(id: String) -> RunnerDevicePosture? {
+        postures?.first(where: { $0.id.caseInsensitiveCompare(id) == .orderedSame })
+    }
+
+    public func withPosture(_ posture: RunnerDevicePosture?) -> MobileDeviceSize {
+        guard let posture else { return self }
+        return MobileDeviceSize(
+            id: id,
+            group: group,
+            browserProfile: browserProfile,
+            name: name,
+            width: posture.width,
+            height: posture.height,
+            pixelRatio: pixelRatio,
+            bezelWidth: bezelWidth,
+            outerRadius: outerRadius,
+            screenRadius: screenRadius,
+            notchSpec: notchSpec,
+            chrome: chrome,
+            postures: postures,
+            fit: 1,
+            activePosture: posture,
+            activeHinge: posture.hinge
+        )
+    }
+
     public var usesPhoneChrome: Bool {
-        shape == .phone
+        switch shape {
+        case .phone:
+            return true
+        case .fold:
+            return !isRegularWidth
+        case .pad, .desktop:
+            return false
+        }
     }
 
     public var usesSurfaceShell: Bool {
-        shape == .pad || shape == .desktop
+        switch shape {
+        case .phone:
+            return false
+        case .fold:
+            return isRegularWidth
+        case .pad, .desktop:
+            return true
+        }
     }
 
     public var isResizableDesktop: Bool {
@@ -127,7 +256,7 @@ public struct MobileDeviceSize: Equatable, Hashable, Decodable, Sendable {
     }
 
     public var supportsOrientation: Bool {
-        shape == .phone || shape == .pad || shape == .desktop
+        shape == .phone || shape == .fold || shape == .pad || shape == .desktop
     }
 
     public var orientation: RunnerDeviceOrientation {
@@ -139,7 +268,10 @@ public struct MobileDeviceSize: Equatable, Hashable, Decodable, Sendable {
     }
 
     public var orientedDisplayName: String {
-        supportsOrientation ? "\(name) \(orientation.displayName)" : name
+        if let activePosture {
+            return "\(name) \(activePosture.label)"
+        }
+        return supportsOrientation ? "\(name) \(orientation.displayName)" : name
     }
 
     public var sizeDescription: String {
@@ -153,12 +285,15 @@ public struct MobileDeviceSize: Equatable, Hashable, Decodable, Sendable {
     public func oriented(_ orientation: RunnerDeviceOrientation) -> MobileDeviceSize {
         guard supportsOrientation else { return self }
 
+        let currentOrientation: RunnerDeviceOrientation = width > height ? .landscape : .portrait
+        let swapsDimensions = orientation != currentOrientation
         let portraitWidth = min(width, height)
         let portraitHeight = max(width, height)
         let targetWidth = orientation == .portrait ? portraitWidth : portraitHeight
         let targetHeight = orientation == .portrait ? portraitHeight : portraitWidth
         let targetNotchSpec: iPhoneNotchSpec =
             shape == .phone && orientation == .landscape ? .landscapePhone : notchSpec
+        let targetHinge = swapsDimensions ? activeHinge?.rotated() : activeHinge
 
         return MobileDeviceSize(
             id: id,
@@ -173,7 +308,10 @@ public struct MobileDeviceSize: Equatable, Hashable, Decodable, Sendable {
             screenRadius: screenRadius,
             notchSpec: targetNotchSpec,
             chrome: chrome,
-            fit: fit
+            postures: postures,
+            fit: fit,
+            activePosture: activePosture,
+            activeHinge: targetHinge
         )
     }
 
@@ -196,7 +334,10 @@ public struct MobileDeviceSize: Equatable, Hashable, Decodable, Sendable {
             screenRadius: screenRadius * scale,
             notchSpec: notchSpec.scaled(by: scale),
             chrome: chrome,
-            fit: fit * scale
+            postures: postures,
+            fit: fit * scale,
+            activePosture: activePosture,
+            activeHinge: activeHinge?.scaled(by: scale)
         )
     }
 

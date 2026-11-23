@@ -39,6 +39,9 @@ final class LxAppViewController: UIViewController, ObservableObject {
     private var currentWebViewBottomConstraint: NSLayoutConstraint?
 
     internal var rootContainer: UIView!
+    /// The main's trailing edge; a docked side panel insets it.
+    private var rootTrailingConstraint: NSLayoutConstraint?
+    private(set) var asideRegion: LxAppAsideRegion?
     private var overflowHostView: UIView?
     private var overflowHostBottom: NSLayoutConstraint?
     private var webViewContainer: UIView!
@@ -154,6 +157,23 @@ final class LxAppViewController: UIViewController, ObservableObject {
         super.viewDidLayoutSubviews()
         LxAppCapsuleButtons.syncCapsuleTop()
         reportSurfaceWidth()
+        asideRegion?.layout()
+    }
+
+    /// Makes room for a docked side panel at the trailing edge.
+    func setAsideInset(_ inset: CGFloat) {
+        guard let constraint = rootTrailingConstraint, constraint.constant != -inset else { return }
+        constraint.constant = -inset
+        LxAppCapsuleButtons.setTrailingInset(inset)
+        view.setNeedsLayout()
+    }
+
+    /// The app's accent, which the collapsed side panel's tongue takes.
+    var asideAccentColor: UIColor {
+        if let selected = currentTabBar?.config?.selected_color {
+            return PlatformColor(argb: selected)
+        }
+        return view.tintColor
     }
 
     /// Seed the adaptive surface graph with the current container width so the
@@ -198,6 +218,7 @@ final class LxAppViewController: UIViewController, ObservableObject {
         setupOverflowHost()
         setupGlobalNavigationBar()
         setupBackGestureRecognizer()
+        asideRegion = LxAppAsideRegion(owner: self)
     }
 
     /// The canvas transparent-mode pages rubber-band against; it must carry
@@ -236,10 +257,12 @@ final class LxAppViewController: UIViewController, ObservableObject {
         rootContainer.clipsToBounds = false  // 🎬 Allow animation to extend beyond bounds
         view.addSubview(rootContainer)
 
+        let trailing = rootContainer.trailingAnchor.constraint(equalTo: view.trailingAnchor)
+        rootTrailingConstraint = trailing
         NSLayoutConstraint.activate([
             rootContainer.topAnchor.constraint(equalTo: view.topAnchor),
             rootContainer.leadingAnchor.constraint(equalTo: view.leadingAnchor),
-            rootContainer.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            trailing,
             rootContainer.bottomAnchor.constraint(equalTo: view.bottomAnchor)
         ])
     }
@@ -816,6 +839,11 @@ final class LxAppViewController: UIViewController, ObservableObject {
 
             if translation > translationThreshold || velocity > velocityThreshold {
                 if (activeGpuView as? GpuPageView)?.closeRequest() == true {
+                    return
+                }
+                // A side panel over the main is put away whole; its children stay open.
+                if let region = asideRegion, region.overlay {
+                    region.collapse()
                     return
                 }
                 let _ = onLxappEvent(appId, LxAppEvent.backPress, "")

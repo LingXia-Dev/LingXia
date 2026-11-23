@@ -91,6 +91,8 @@ internal object LxAppSurface {
          * present as a page-like drill-in.
          */
         val immersive: Boolean,
+        /** Hosted as a tab of the activity's side panel, which owns its visibility. */
+        val inAside: Boolean = false,
         var windowSnapshot: ImmersiveWindowUi.Snapshot? = null,
     )
 
@@ -180,7 +182,7 @@ internal object LxAppSurface {
         if (content == CONTENT_URL && !isSupportedUrl(url, urlCallback)) return false
         if (content != CONTENT_PAGE && content != CONTENT_URL) return false
         val activity = LxApp.getCurrentActivity() ?: return false
-        if (activity.getAppId() != appId) {
+        if (activity.paneOf(appId) == null) {
             LxLog.w(TAG, "present: active appId=${activity.getAppId()} does not match $appId", appId = appId)
             return false
         }
@@ -243,6 +245,8 @@ internal object LxAppSurface {
         return true
     }
 
+    private var lastPlanSequence = 0L
+
     @JvmStatic
     fun presentLayout(windowId: String, layoutJson: String): Boolean {
         if (windowId.isBlank() || layoutJson.isBlank()) return false
@@ -259,12 +263,18 @@ internal object LxAppSurface {
         collectObjectIds(plan, "floats", desiredIds)
 
         val activity = LxApp.getCurrentActivity() ?: return false
+        val sequence = plan.optLong("sequence", 0L)
         activity.runOnUiThread {
+            // Plans hop to the UI thread; one committed earlier on another thread can land late.
+            if (sequence > 0L) {
+                if (sequence < lastPlanSequence) return@runOnUiThread
+                lastPlanSequence = sequence
+            }
+            activity.applyLayoutPlan(plan)
             val (entriesToClose, pendingToClose) = synchronized(stateLock) {
                 val mounted = entries.values
                     .filter { entry ->
-                        entry.fullScreen &&
-                            entry.overlay.visibility == View.VISIBLE &&
+                        (entry.inAside || entry.fullScreen && entry.overlay.visibility == View.VISIBLE) &&
                             !desiredIds.contains(entry.id)
                     }
                     .map { it.id to it.appId }
@@ -415,6 +425,11 @@ internal object LxAppSurface {
         }
         (contentView.parent as? ViewGroup)?.removeView(contentView)
 
+        if (request.role == ROLE_ASIDE && activity is LxAppActivity && activity.hasAsideRegion()) {
+            mountInAside(activity, request, contentView)
+            return
+        }
+
         val fillsScreen = isFullScreenRequest(request)
         val usesDrillInChrome = usesDrillInChrome(request)
         val immersive = fillsScreen && !usesDrillInChrome
@@ -564,6 +579,38 @@ internal object LxAppSurface {
         Log.d(TAG, "presented id=${request.id} appId=${request.appId} content=${request.logPath} fillsScreen=$fillsScreen immersive=$immersive role=${request.role}")
     }
 
+    /** An aside becomes a tab of the side panel, which docks or covers the main by the window's size. */
+    private fun mountInAside(activity: LxAppActivity, request: Request, contentView: View) {
+        val holder = FrameLayout(activity)
+        holder.addView(contentView, FrameLayout.LayoutParams(
+            FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT))
+        val entry = Entry(
+            id = request.id,
+            appId = request.appId,
+            pageInstanceId = request.pageInstanceId.takeIf { request.content == CONTENT_PAGE },
+            overlay = holder,
+            contentView = contentView,
+            browserTabId = request.browserTabId,
+            fullScreen = false,
+            modal = false,
+            immersive = false,
+            inAside = true,
+        )
+        synchronized(stateLock) { entries[request.id] = entry }
+        val host = request.url.takeIf { request.content == CONTENT_URL }
+            ?.let { Uri.parse(it).host?.removePrefix("www.") }
+        activity.aside.adopt(
+            request.id,
+            holder,
+            title = {
+                (contentView as? android.webkit.WebView)?.title?.takeIf { it.isNotBlank() && !it.startsWith("http") }
+                    ?: host ?: request.id
+            },
+            close = { close(request.id, request.appId, "user") },
+        )
+        Log.d(TAG, "presented id=${request.id} appId=${request.appId} content=${request.logPath} in side panel")
+    }
+
     /**
      * A surface counts as "full-screen" when both ratios are essentially 1.0.
      * We accept a small epsilon because JS sometimes sends 99/100 or 100/100
@@ -703,10 +750,11 @@ internal object LxAppSurface {
         }
     }
 
+    /** The top surface that Back closes; a side panel's tabs collapse with the panel instead. */
     @JvmStatic
     fun closeTopUser(): Boolean {
         val entry = synchronized(stateLock) {
-            entries.values.lastOrNull { it.overlay.visibility == View.VISIBLE }
+            entries.values.lastOrNull { !it.inAside && it.overlay.visibility == View.VISIBLE }
         } ?: return false
         return close(entry.id, entry.appId, "user")
     }
@@ -734,6 +782,7 @@ internal object LxAppSurface {
             entry.windowSnapshot = null
         }
 
+        if (entry.inAside) LxApp.getCurrentActivity()?.takeIf { it.hasAsideRegion() }?.aside?.release(id)
         (entry.contentView.parent as? ViewGroup)?.removeView(entry.contentView)
         (entry.overlay.parent as? ViewGroup)?.removeView(entry.overlay)
         LxApp.getCurrentActivity()?.let { updateModalAccessibility(it) }
@@ -790,6 +839,7 @@ internal object LxAppSurface {
         visible: Boolean,
         notifyLifecycle: Boolean = true
     ) {
+        if (entry.inAside) return
         val target = if (visible) View.VISIBLE else View.GONE
         // Defense in depth: the Rust JS-side closure already short-circuits
         // on no-op transitions, so under normal flow this guard is unreachable.

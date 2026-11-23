@@ -190,7 +190,7 @@ pub(in crate::shell::chrome) fn footer_action_rects(
             WindowsShellTabBarPosition::Left | WindowsShellTabBarPosition::Right
         )
     {
-        if tabbar.collapsed || tabbar.icon_rail {
+        if tabbar.narrow_column() {
             return rail_footer_action_rects(tabbar_rect, tabbar, &layout.footer_actions);
         }
         return expanded_footer_action_rects(
@@ -232,7 +232,7 @@ pub(in crate::shell::chrome) fn footer_action_max_scroll_row(
     tabbar: &WindowsShellTabBarLayout,
     footer_actions: &[WindowsShellFooterActionLayout],
 ) -> usize {
-    let rows = if tabbar.collapsed || tabbar.icon_rail {
+    let rows = if tabbar.narrow_column() {
         footer_actions.len()
     } else {
         footer_action_rows(rect_width(&tabbar_rect), footer_actions).len()
@@ -245,7 +245,7 @@ pub(in crate::shell::chrome) fn sidebar_navigation_viewport_bottom(
     tabbar: &WindowsShellTabBarLayout,
     footer_actions: &[WindowsShellFooterActionLayout],
 ) -> i32 {
-    if tabbar.collapsed || tabbar.icon_rail {
+    if tabbar.narrow_column() {
         return rail_footer_action_rects(tabbar_rect, tabbar, footer_actions)
             .first()
             .map(|(_, rect)| rect.top - footer_action_margin())
@@ -268,7 +268,7 @@ pub(in crate::shell::chrome) fn draw_footer_actions(
         matches!(
             tabbar.position,
             WindowsShellTabBarPosition::Left | WindowsShellTabBarPosition::Right
-        ) && !(tabbar.collapsed || tabbar.icon_rail)
+        ) && !tabbar.narrow_column()
     });
     for (panel_id, rect) in footer_action_rects(client, rects, layout) {
         let footer_action = layout

@@ -687,13 +687,17 @@ impl DeferredRequiredV3Cancellation {
 }
 
 fn gpu_view_control_route(route: &str) -> bool {
-    matches!(route, "navigation.setLeaveGuard" | "navigation.leave")
+    matches!(
+        route,
+        "navigation.setLeaveGuard" | "navigation.leave" | "navigation.setTitle"
+    )
 }
 
 #[test]
 fn gpu_leave_controls_are_an_exact_allowlist() {
     assert!(gpu_view_control_route("navigation.setLeaveGuard"));
     assert!(gpu_view_control_route("navigation.leave"));
+    assert!(gpu_view_control_route("navigation.setTitle"));
     for route in [
         "navigation.leave.extra",
         "navigation",

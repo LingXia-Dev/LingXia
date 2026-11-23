@@ -171,7 +171,7 @@ pub(crate) fn tabbar_overflow_hit(
 ///
 /// `None` when the host declares nothing, leaving the caller on its own system
 /// colour rather than guessing a page colour on the app's behalf.
-fn declared_page_background() -> Option<u32> {
+pub(super) fn declared_page_background() -> Option<u32> {
     let dark = crate::shell::theme::chrome_is_dark();
     let declared = lingxia_app_context::page_background_color(dark)?;
     let hex = declared.trim().trim_start_matches('#');
@@ -281,10 +281,13 @@ pub(crate) fn paint_tabbar_overflow(
 }
 
 #[cfg(test)]
-mod tests {
+pub(super) mod tests {
     use super::*;
 
-    fn tabbar(count: usize, selected_index: i32) -> WindowsShellTabBarLayout {
+    pub(in crate::shell::chrome) fn tabbar(
+        count: usize,
+        selected_index: i32,
+    ) -> WindowsShellTabBarLayout {
         WindowsShellTabBarLayout {
             visible: true,
             position: WindowsShellTabBarPosition::Bottom,
@@ -318,6 +321,8 @@ mod tests {
             collapsed: false,
             icon_rail: false,
             rail_expand_disabled: false,
+            tab_rail: false,
+            floating: false,
             items_api_hidden: false,
             items_collapsed: false,
             footer_action_height: 0,

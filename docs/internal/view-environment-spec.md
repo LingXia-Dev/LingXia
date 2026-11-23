@@ -764,6 +764,19 @@ it as `env.insets`. One rule on every page and platform:
   action sheet, with its scrim) is open or exiting, the host raises the whole
   page above both bars and hides them from assistive tech and chrome
   automation. Popovers stay below. Tab bar visibility is never changed.
+- Adaptive canvas contract (`view.env`):
+  - `sizeClass`: `'compact' | 'regular'` (`< 600 dp` vs `≥ 600 dp`, `±24 dp`
+    hysteresis), scoped to the nearest `<SizeClassScope>` when nested inside
+    `<ListDetail>` or `<Split>`.
+  - `insets` and `safeArea`: logical edges `{ top, bottom, inlineStart, inlineEnd }`
+    (alongside legacy `left`/`right` during migration).
+  - `hinge`: `{ x, y, width, height, orientation: 'vertical' | 'horizontal', posture: 'flat' | 'half-opened' } | null`
+    in page-local logical coordinates.
+  - `platform`: `'apple' | 'android' | 'harmony' | 'windows' | 'web'` (shortcut
+    glyphs only; never for layout branching).
+  - Declarative `<page title headerActions>` owns the page navigation bar;
+    direct `<page>` children may pass `bleed` (`boolean | 'top' | 'bottom' | 'horizontal'`)
+    to extend to the physical screen edge beneath bars and cutouts.
 
 ---
 

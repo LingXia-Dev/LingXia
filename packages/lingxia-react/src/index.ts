@@ -17,6 +17,21 @@ export type { DeepReadonly } from "@lingxia/page-runtime";
 export { LxMediaSwiper, type LxMediaSwiperProps, type LxMediaSwiperRef } from "./LxMediaSwiper.js";
 export { LxPicker, type LxPickerProps } from "./LxPicker.js";
 export { LxNavigator, type LxNavigatorProps } from "./LxNavigator.js";
+export {
+  SizeClassScope,
+  useLxViewEnvironment,
+  useBackHandler,
+  ListDetail,
+  Split,
+  TopBar,
+  type SizeClass,
+  type Edges,
+  type HingeRect,
+  type LxViewEnv,
+  type ListDetailProps,
+  type SplitProps,
+  type TopBarProps,
+} from "./adaptive.js";
 
 export type {
   LxMediaSwiperEventPayloads,

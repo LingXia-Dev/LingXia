@@ -386,7 +386,12 @@ impl Shell for Bridge {
             .is_some_and(|state| state.show_navbar);
         let tabs = lxapp::try_get(&page.appid())
             .and_then(|app| app.get_tabbar())
-            .is_some_and(|tabbar| tabbar.is_visible_on(&page.path()));
+            .is_some_and(|tabbar| tabbar.is_visible_on(&page.path()))
+            && lingxia_windows_contract::windows_chrome_renderer().is_none_or(|renderer| {
+                renderer.bottom_tab_bar(&lingxia_windows_contract::current_window_layout(
+                    page.webtag().key(),
+                ))
+            });
         [navigation, tabs]
     }
     fn load_image(

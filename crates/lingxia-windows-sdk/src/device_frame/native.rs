@@ -41,14 +41,15 @@ use windows::Win32::UI::WindowsAndMessaging::{self, WNDCLASSW, WNDPROC};
 use windows::core::{PCWSTR, w};
 
 use super::{
-    WindowsDeviceFrame, WindowsDeviceFrameSelectorEntry, WindowsDeviceFrameStatusBar,
-    WindowsDeviceFrameToolbar,
+    WindowsDeviceFrame, WindowsDeviceFrameHinge, WindowsDeviceFrameSelectorEntry,
+    WindowsDeviceFrameStatusBar, WindowsDeviceFrameToolbar,
 };
 
 mod capsule;
 mod corner_mask;
 mod cutout;
 mod frame_window;
+mod hinge;
 mod info_sheet;
 mod paint;
 mod status_bar;
@@ -65,6 +66,7 @@ use corner_mask::{
 };
 use cutout::{create_cutout_window, destroy_cutout, hide_cutout, reposition_cutout};
 use frame_window::create_frame_window;
+use hinge::{create_hinge_window, destroy_hinge, hide_hinge, repaint_hinge, reposition_hinge};
 pub(super) use info_sheet::{DeviceFrameInfoSheet, InfoSheetBadge, SheetAction};
 use paint::paint_frame_window;
 use status_bar::{
@@ -191,6 +193,12 @@ fn scale_spec(spec: &mut WindowsDeviceFrame, fit: f64) {
         cutout.width = scaled(cutout.width).max(1);
         cutout.height = scaled(cutout.height).max(1);
         cutout.corner_radius = scaled(cutout.corner_radius);
+    }
+    if let Some(hinge) = spec.hinge.as_mut() {
+        hinge.x = scaled(hinge.x);
+        hinge.y = scaled(hinge.y);
+        hinge.width = scaled(hinge.width);
+        hinge.height = scaled(hinge.height);
     }
     if let Some(status_bar) = spec.status_bar.as_mut() {
         status_bar.height = scaled(status_bar.height).max(1);
@@ -363,6 +371,8 @@ struct DeviceFrameState {
     capsule: isize,
     /// The top-centered phone screen cutout overlay (0 when absent).
     cutout: isize,
+    /// The click-through fold hinge/crease overlay (0 when absent).
+    hinge: isize,
     /// The overlay that rounds the screen corners over the WebView2
     /// surface (0 when the device keeps square corners).
     corner_mask: isize,
@@ -652,12 +662,14 @@ pub(super) fn set_frame_overlays_visible(content: isize, visible: bool) {
     if truly_visible {
         reposition_status_bar(hwnd);
         reposition_cutout(hwnd);
+        reposition_hinge(hwnd);
         reposition_corner_mask(hwnd);
         reposition_capsule(hwnd);
     } else {
         info_sheet::dismiss_info_sheet_for_content(content);
         hide_capsule(hwnd);
         hide_cutout(hwnd);
+        hide_hinge(hwnd);
         hide_corner_mask(hwnd);
         hide_status_bar(hwnd);
     }
@@ -682,6 +694,7 @@ fn hide_device_frame_chrome(content: HWND) {
     }
     hide_capsule(content);
     hide_cutout(content);
+    hide_hinge(content);
     hide_corner_mask(content);
     hide_status_bar(content);
     // Force the next active sync to re-pin everything after a hide.
@@ -881,6 +894,7 @@ fn apply_device_frame_inner(content: HWND, mut spec: WindowsDeviceFrame, sync_ho
         if capsule != 0 {
             reposition_capsule(content);
         }
+        repaint_hinge(content);
         info_sheet::restyle_info_sheets();
         return;
     }
@@ -893,11 +907,20 @@ fn apply_device_frame_inner(content: HWND, mut spec: WindowsDeviceFrame, sync_ho
             state.frame,
             state.capsule,
             state.cutout,
+            state.hinge,
             state.corner_mask,
             state.status_bar,
         )
     }) {
-        Some((saved, old_frame, old_capsule, old_cutout, old_corner_mask, old_status_bar)) => {
+        Some((
+            saved,
+            old_frame,
+            old_capsule,
+            old_cutout,
+            old_hinge,
+            old_corner_mask,
+            old_status_bar,
+        )) => {
             // Destroy only the old bezel window; keep the registry entry so the
             // window stays "framed" across the rebuild and the shell never
             // briefly un-suppresses its caption (the entry is overwritten with
@@ -909,6 +932,7 @@ fn apply_device_frame_inner(content: HWND, mut spec: WindowsDeviceFrame, sync_ho
             }
             destroy_capsule(old_capsule);
             destroy_cutout(old_cutout);
+            destroy_hinge(old_hinge);
             destroy_corner_mask(old_corner_mask);
             destroy_status_bar(old_status_bar);
             saved
@@ -992,6 +1016,7 @@ fn apply_device_frame_inner(content: HWND, mut spec: WindowsDeviceFrame, sync_ho
     };
     let capsule = create_capsule_window(content, &spec, fit).unwrap_or(0);
     let cutout = create_cutout_window(content, &spec).unwrap_or(0);
+    let hinge = create_hinge_window(content, &spec).unwrap_or(0);
     let corner_mask = if composition_corners {
         0
     } else {
@@ -1006,6 +1031,7 @@ fn apply_device_frame_inner(content: HWND, mut spec: WindowsDeviceFrame, sync_ho
                 frame: hwnd_handle(frame),
                 capsule,
                 cutout,
+                hinge,
                 corner_mask,
                 status_bar,
                 spec,
@@ -1049,6 +1075,10 @@ fn apply_device_frame_inner(content: HWND, mut spec: WindowsDeviceFrame, sync_ho
     );
     post_to_window_thread(
         handle,
+        Box::new(move || reposition_hinge(hwnd_from_handle(handle))),
+    );
+    post_to_window_thread(
+        handle,
         Box::new(move || reposition_corner_mask(hwnd_from_handle(handle))),
     );
     post_to_window_thread(
@@ -1077,6 +1107,7 @@ fn clear_device_frame(content: HWND) {
     }
     destroy_capsule(state.capsule);
     destroy_cutout(state.cutout);
+    destroy_hinge(state.hinge);
     destroy_corner_mask(state.corner_mask);
     destroy_status_bar(state.status_bar);
     unsafe {
@@ -1123,6 +1154,7 @@ fn remove_frame_window(content: isize) {
         }
         destroy_capsule(state.capsule);
         destroy_cutout(state.cutout);
+        destroy_hinge(state.hinge);
         destroy_corner_mask(state.corner_mask);
         destroy_status_bar(state.status_bar);
     }
@@ -1195,6 +1227,7 @@ fn sync_device_frame_for_content(content: HWND) {
     // order keeps the capsule from being clipped by the status bar.
     reposition_status_bar(content);
     reposition_cutout(content);
+    reposition_hinge(content);
     reposition_corner_mask(content);
     reposition_capsule(content);
     info_sheet::reposition_info_sheet(content);
@@ -1698,6 +1731,7 @@ mod tests {
             outer_corner_radius: 58,
             screen_corner_radius: 54,
             cutout: None,
+            hinge: None,
             status_bar: None,
             tab_bar: None,
             bezel_color: 0x141414,
@@ -1781,6 +1815,7 @@ mod scale_tests {
             outer_corner_radius: 60,
             screen_corner_radius: 56,
             cutout: None,
+            hinge: None,
             status_bar: None,
             tab_bar: None,
             bezel_color: 0,
@@ -1858,6 +1893,7 @@ mod scale_tests {
                 outer_corner_radius: 60,
                 screen_corner_radius: 56,
                 cutout: None,
+                hinge: None,
                 status_bar: None,
                 tab_bar: None,
                 bezel_color: 0,

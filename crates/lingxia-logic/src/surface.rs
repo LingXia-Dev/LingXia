@@ -1795,7 +1795,7 @@ async fn open_url_spec(
         Some("aside") => {
             let position = read_validated_edge(spec)?.unwrap_or_else(|| "right".to_string());
             let _ = parse_size(spec, SurfaceKind::Overlay)?;
-            if lxapp.aside_browser_is_compact() {
+            if compact_aside_opens_browser(&lxapp) {
                 return open_url_in_browser(&ctx, &lxapp, trimmed_url, true);
             }
             let url = validate_url_target(&lxapp, trimmed_url)?;
@@ -2507,13 +2507,13 @@ struct JSSurfaceContext {
 
 /// Adaptive context derived from this lxapp presentation's actual viewport.
 fn surface_context_for(lxapp: &LxApp) -> JSSurfaceContext {
-    use lingxia_surface::ContentSizeClass;
+    use lingxia_surface::SizeClass;
     let (width, height, viewport_class) = lxapp.surface_viewport().unwrap_or_else(|| {
         // No measured viewport yet: report the shell band, with zero dimensions.
         let size_class = lxapp
             .surface_derived_layout()
-            .map(|layout| layout.size_class.to_content())
-            .unwrap_or(ContentSizeClass::Compact);
+            .map(|layout| layout.size_class)
+            .unwrap_or(SizeClass::Compact);
         (0.0, 0.0, size_class)
     });
     JSSurfaceContext {
@@ -2555,17 +2555,28 @@ fn simulating_handheld_device() -> bool {
     )
 }
 
+/// Whether a URL aside opens in the compact aside browser rather than the side panel. Mobile
+/// side panels, and the macOS Runner's phone, cover the main where they cannot dock.
+fn compact_aside_opens_browser(lxapp: &LxApp) -> bool {
+    #[cfg(any(target_os = "ios", target_os = "android", target_env = "ohos"))]
+    {
+        let _ = lxapp;
+        false
+    }
+    #[cfg(not(any(target_os = "ios", target_os = "android", target_env = "ohos")))]
+    {
+        let simulated_phone = cfg!(target_os = "macos")
+            && matches!(lxapp::device::device_get(), Ok(state) if matches!(state.group.as_str(), "phone" | "fold"));
+        !simulated_phone && lxapp.aside_browser_is_compact()
+    }
+}
+
 /// Whether a docked aside region exists right now. Live: a desktop window
 /// dragged below the compact breakpoint loses its dock.
 pub(crate) fn can_dock(lxapp: &LxApp) -> bool {
     !lxapp.aside_browser_is_compact()
 }
 
-/// Compact has no dock region. A URL aside therefore uses the native in-app
-/// browser's aside projection instead of the generic URL-surface presenter.
-/// Treat an unavailable layout as compact: mobile hosts can receive an open
-/// before their first measured viewport, and showing desktop surface chrome in
-/// that interval is the more disruptive fallback.
 /// Open a URL as an in-app browser tab; `aside` selects compact aside chrome.
 /// Returns `{ tabId }` when the host named the tab, otherwise null so the
 /// handle reports `scope: 'group'`.

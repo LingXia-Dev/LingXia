@@ -1,10 +1,6 @@
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
-// AtomicU64 backs browser tab-sync/presentation generations and shell-created
-// terminal workspace identities.
-#[cfg(any(feature = "browser-runtime", feature = "terminal-runtime"))]
-use std::sync::atomic::AtomicU64;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, OnceLock};
 
 use super::{
@@ -31,7 +27,7 @@ use lingxia_shell::{
 };
 use lingxia_surface::{
     Edge, LayoutPresentationPlan, SizeClass, SlotKind, SurfaceIcon, SurfaceSwitcherItem,
-    SurfaceSwitcherSnapshot, SwitcherContentKind,
+    SurfaceSwitcherSnapshot, SwitcherContentKind, SwitcherForm,
 };
 use lingxia_webview::WebTag;
 #[cfg(feature = "browser-runtime")]
@@ -567,9 +563,9 @@ struct SidebarUiState {
     collapsed: bool,
     /// Sidebar shown as an icon-only rail (the macOS first-collapse state).
     icon_rail: bool,
-    /// Explicit reveal while the adaptive medium projection would otherwise
-    /// cap the sidebar at an icon rail. Reset on the next size-class crossing.
-    medium_expanded: bool,
+    /// Explicit reveal while the 820 DIP budget would otherwise cap the
+    /// sidebar at an icon rail. Reset on the next size-class crossing.
+    rail_overridden: bool,
     items_collapsed: bool,
     main_scroll_offset: i32,
     footer_action_scroll_row: usize,
@@ -583,7 +579,7 @@ static SIDEBAR_UI_STATE: OnceLock<Mutex<HashMap<String, SidebarUiState>>> = Once
 
 /// The group's live state, seeded from what the user last settled on.
 ///
-/// Only their own rail choice is restored; `medium_expanded` and the scroll
+/// Only their own rail choice is restored; `rail_overridden` and the scroll
 /// offsets are per-session, and the adaptive rail is re-derived from the window
 /// every launch. Startup writes to this state before the shell store is open —
 /// the size-class reset among others — so an entry can exist before it can be
@@ -648,7 +644,7 @@ pub(crate) fn set_sidebar_drag_width(width: i32, done: bool) {
     let clamped = logical.clamp(MIN_SIDEBAR_WIDTH, MAX_SIDEBAR_WIDTH);
     update_sidebar_ui_state(&group, |state| {
         state.collapsed = false;
-        state.medium_expanded = !rail;
+        state.rail_overridden = true;
         state.icon_rail = rail;
         state.seeded = true;
     });
@@ -873,19 +869,67 @@ fn resolved_shell_size_class(fallback: Option<&LxApp>) -> SizeClass {
         .and_then(|owner| owner.surface_derived_layout())
         .or_else(|| fallback.and_then(LxApp::surface_derived_layout))
         .map(|plan| plan.size_class)
-        .unwrap_or(SizeClass::Expanded)
+        .unwrap_or(SizeClass::Regular)
+}
+
+/// The window's last logical (DIP) content width, as f64 bits; 0 until the first `WM_SIZE`.
+static SHELL_LOGICAL_WIDTH: AtomicU64 = AtomicU64::new(0);
+
+/// The window is clearly taller than wide (at least 6:5): only then does a touch
+/// host float its tabs at the bottom. A near-square open foldable is held like a
+/// book, by its sides, so it takes the edge column as a landscape screen does.
+static SHELL_PORTRAIT: AtomicBool = AtomicBool::new(false);
+
+/// Records the window's shape, re-laying the shell out when it flips.
+pub(crate) fn update_surface_portrait(portrait: bool) {
+    if SHELL_PORTRAIT.swap(portrait, Ordering::AcqRel) != portrait
+        && let Some(appid) = shell_owner_appid()
+    {
+        sync_shell_layout(&appid);
+    }
+}
+
+fn resolved_shell_budget_requires_rail(fallback: Option<&LxApp>) -> bool {
+    shell_owner_appid()
+        .and_then(|appid| lxapp::try_get(&appid))
+        .and_then(|owner| owner.surface_derived_layout())
+        .or_else(|| fallback.and_then(LxApp::surface_derived_layout))
+        .is_some_and(|plan| sidebar_budget_requires_rail(&plan))
+}
+
+/// The core reports a switcher form only with several mains, but this sidebar also carries
+/// tabBar items and shell entries, so the 820 DIP budget is checked here too: the window
+/// minus its docked side asides.
+fn sidebar_budget_requires_rail(plan: &LayoutPresentationPlan) -> bool {
+    if plan.switcher_form == SwitcherForm::Rail {
+        return true;
+    }
+    let width = f64::from_bits(SHELL_LOGICAL_WIDTH.load(Ordering::Acquire));
+    if width <= 0.0 {
+        return false;
+    }
+    let docked: f64 = plan
+        .aside_slots
+        .iter()
+        .filter(|slot| slot.visible && !slot.overlay && !slot.collapsed)
+        .filter(|slot| !matches!(slot.edge, Some(Edge::Top | Edge::Bottom)))
+        .map(|_| f64::from(super::chrome::ATTACHED_PANEL_WIDTH_DIP))
+        .sum();
+    width - docked < lingxia_surface::SIDEBAR_EXPAND_MIN_FREE_WIDTH
 }
 
 /// Push the host window's logical (DIP) content width into the shell-owner
 /// app's adaptive surface graph so the size class - and therefore the aside
-/// projection (Compact overlay / Medium 1 / Expanded 3) - tracks the real window. Without
-/// this the graph stays at its seed width (permanently Medium), so a second
-/// aside evicts the first even on a wide window. Called from the host's
+/// projection (compact overlay / regular docked) - tracks the real window. Without
+/// this the graph stays at its seed width, so a second aside evicts the first
+/// even on a wide window. Called from the host's
 /// `WM_SIZE`.
 pub(crate) fn update_surface_width(logical_width: f64) {
     if logical_width <= 0.0 {
         return;
     }
+    let previous_budget = resolved_shell_budget_requires_rail(None);
+    SHELL_LOGICAL_WIDTH.store(logical_width.to_bits(), Ordering::Release);
     if let Some(appid) = shell_owner_appid() {
         let group_appid = preferred_sidebar_group_appid(
             shell_owner_appid(),
@@ -904,7 +948,7 @@ pub(crate) fn update_surface_width(logical_width: f64) {
             .map(|plan| plan.size_class);
         if previous_size_class != resolved_size_class {
             update_sidebar_ui_state(&group_appid, |state| {
-                state.medium_expanded = false;
+                state.rail_overridden = false;
             });
         }
 
@@ -921,7 +965,7 @@ pub(crate) fn update_surface_width(logical_width: f64) {
         // the width crossed a breakpoint, rebuild its cached chrome first;
         // otherwise that pass combines the new surface projection with the
         // previous size class's sidebar/phone bar until another shell event.
-        if size_class_changed {
+        if size_class_changed || resolved_shell_budget_requires_rail(None) != previous_budget {
             sync_shell_layout(&appid);
         }
     }
@@ -1811,8 +1855,12 @@ fn sync_app_shell_layout(appid: &str) {
         // color); a plain page keeps the chrome-colored strip with contrasting text.
         if is_active_content && let Some(window) = owner_window_handle(appid) {
             let navbar = app.get_navbar_state(&path);
-            let immersive = navbar.is_custom_navigation();
-            let (foreground, background) = if immersive {
+            let band = layout.top_inset > 0 && status_band_in(&layout);
+            let immersive = !band && navbar.is_custom_navigation();
+            let (foreground, background) = if band {
+                let sidebar = super::style::shell_palette().sidebar_background;
+                (contrasting_text_color(sidebar), sidebar)
+            } else if immersive {
                 let foreground = app
                     .resolved_navigation_bar_style(&path)
                     .foreground_color
@@ -2020,26 +2068,23 @@ fn build_window_layout_with_visible_main(
     // floats the clock/indicators over the page.
     // A presented browser tab is never immersive: its address row must sit
     // below the status-bar strip, not under the floating clock/cutout.
-    let immersive = address_bar.is_none() && app.get_navbar_state(path).is_custom_navigation();
-    let top_inset = if immersive {
-        0
-    } else {
-        owner_window
-            .map(device_frame_status_bar_height)
-            .unwrap_or(0)
-    };
+    let status_bar_height = owner_window
+        .map(device_frame_status_bar_height)
+        .unwrap_or(0);
     // A presented browser tab covers the phone tab bar, matching the macOS
     // runner's full-screen browser surface; side tab bars (sidebar) stay.
     // Tab pages follow the visible main, not the shell owner. Owner-first
     // lookup kept drawing home's (possibly collapsed) group after a switch.
     let tab_bar_app = tab_bar_owner_for_layout(app, owner_app.as_deref(), visible_main);
-    let tab_bar = build_tab_bar_layout(tab_bar_app, &footer_actions).filter(|tabbar| {
+    let (tab_bar, touch_tab_bar) = build_tab_bars(tab_bar_app, &footer_actions);
+    let tab_bar = tab_bar.filter(|tabbar| {
         address_bar.is_none() || !matches!(tabbar.position, WindowsShellTabBarPosition::Bottom)
     });
+    let touch_tab_bar = touch_tab_bar.filter(|_| address_bar.is_none());
     // The rail has no header row, so header actions (Settings, Downloads)
     // lead its action stack instead of vanishing (macOS parity).
     if let Some(tabbar) = tab_bar.as_ref().filter(|tabbar| {
-        (tabbar.collapsed || tabbar.icon_rail)
+        tabbar.narrow_column()
             && matches!(
                 tabbar.position,
                 WindowsShellTabBarPosition::Left | WindowsShellTabBarPosition::Right
@@ -2064,15 +2109,42 @@ fn build_window_layout_with_visible_main(
     let compact_browser_chrome = address_bar.is_some()
         && suppress_window_controls
         && resolved_shell_size_class(Some(shell_app)) == SizeClass::Compact;
+    let immersive = address_bar.is_none()
+        && app.get_navbar_state(path).is_custom_navigation()
+        && !tab_bar.as_ref().is_some_and(status_band_beside)
+        && !touch_tab_bar.as_ref().is_some_and(status_band_beside);
+    let top_inset = if immersive { 0 } else { status_bar_height };
     WindowsShellWindowLayout {
         navigation_bar,
         address_bar,
         tab_bar,
+        touch_tab_bar,
         footer_actions,
         compact_browser_chrome,
         top_inset,
+        sidebar_top_inset: status_bar_height,
         suppress_window_controls,
     }
+}
+
+/// A visible side column under a simulated status bar: the status bar becomes
+/// one neutral band over the column and the content, instead of taking the
+/// content's navigation-bar color across the whole width.
+fn status_band_in(layout: &WindowsShellWindowLayout) -> bool {
+    layout.tab_bar.as_ref().is_some_and(status_band_beside)
+        || layout
+            .touch_tab_bar
+            .as_ref()
+            .is_some_and(status_band_beside)
+}
+
+fn status_band_beside(tabbar: &WindowsShellTabBarLayout) -> bool {
+    tabbar.visible
+        && !tabbar.collapsed
+        && matches!(
+            tabbar.position,
+            WindowsShellTabBarPosition::Left | WindowsShellTabBarPosition::Right
+        )
 }
 
 /// Shell chrome for a browser/native main owned by a control lxapp without a
@@ -2110,6 +2182,7 @@ fn build_self_browser_window_layout(webtag: &WebTag) -> WindowsShellWindowLayout
             && resolved_shell_size_class(None) == SizeClass::Compact,
         suppress_window_controls,
         top_inset: window.map(device_frame_status_bar_height).unwrap_or(0),
+        sidebar_top_inset: window.map(device_frame_status_bar_height).unwrap_or(0),
         ..Default::default()
     }
 }
@@ -2164,6 +2237,8 @@ fn build_self_browser_tab_bar_layout() -> Option<WindowsShellTabBarLayout> {
         collapsed: ui_state.collapsed,
         icon_rail: ui_state.icon_rail,
         rail_expand_disabled: resolved_shell_size_class(None) == SizeClass::Compact,
+        tab_rail: false,
+        floating: false,
         items_api_hidden: false,
         items_collapsed: false,
         footer_action_height: 0,
@@ -2440,8 +2515,41 @@ fn build_tab_bar_layout(
     app: &LxApp,
     footer_actions: &[WindowsShellFooterActionLayout],
 ) -> Option<WindowsShellTabBarLayout> {
+    build_tab_bars(app, footer_actions).0
+}
+
+/// Most tabs a floating bar holds: five 60 dp cells clear a fold's crease
+/// beside the app rail. Longer lists stand in the tab column.
+const FLOATING_TAB_BAR_MAX_ITEMS: usize = 5;
+
+/// Height of the strip a floating tab bar keeps clear: its pill and margins.
+const FLOATING_TAB_STRIP_MIN_HEIGHT: i32 = 84;
+
+/// Width of a touch host's tab column (Material's navigation rail).
+const TAB_COLUMN_WIDTH: i32 = 80;
+
+/// An aside docks beside the main, so the main's own edge is its far side.
+fn docked_aside_present(app: &LxApp) -> bool {
+    app.surface_derived_layout().is_some_and(|plan| {
+        plan.aside_slots.iter().any(|slot| {
+            slot.visible
+                && !slot.overlay
+                && !slot.collapsed
+                && !matches!(slot.edge, Some(Edge::Top | Edge::Bottom))
+        })
+    })
+}
+
+/// The shell's side or bottom bar, and the visible main's touch tab bar.
+fn build_tab_bars(
+    app: &LxApp,
+    footer_actions: &[WindowsShellFooterActionLayout],
+) -> (
+    Option<WindowsShellTabBarLayout>,
+    Option<WindowsShellTabBarLayout>,
+) {
     if lxapp::open_region(&app.appid) == Some(lxapp::LxAppOpenRegion::Aside) {
-        return None;
+        return (None, None);
     }
     let tabbar = app.get_tabbar();
     // The tab matching the page currently shown, if any. Standard mini-app
@@ -2562,7 +2670,7 @@ fn build_tab_bar_layout(
         show_auxiliary_add,
     );
     if !sidebar_has_content {
-        return None;
+        return (None, None);
     }
     // Last-resort chrome mark when the host has no launcher icon yet. Draw
     // time prefers `current_app_icon_path` so Downloads/Settings and About/Exit
@@ -2580,11 +2688,13 @@ fn build_tab_bar_layout(
     // guest's own tabBar position — a mobile lxapp must not collapse the
     // desktop sidebar into a phone strip.
     let requested_position = tabbar_position(&switcher_app.appid);
+    let budget_requires_rail = resolved_shell_budget_requires_rail(Some(switcher_app));
     let (position, force_icon_rail, show_shell_entries) = adaptive_tabbar_projection(
         requested_position,
         size_class,
         device_framed && frame_status_bar_height > 0,
-        ui_state.medium_expanded,
+        budget_requires_rail,
+        ui_state.rail_overridden,
     );
     if !show_shell_entries {
         // Compact projects only the active lxapp's own tabbar at the bottom.
@@ -2602,7 +2712,7 @@ fn build_tab_bar_layout(
         && current_tab_index.is_none()
         && items.is_empty()
     {
-        return None;
+        return (None, None);
     }
     // `dimension` is the bar's cross-axis size: a sidebar's width, but a bottom
     // bar's *height*. A bottom bar is a compact icon+label strip, so it must not
@@ -2621,6 +2731,25 @@ fn build_tab_bar_layout(
         position,
         WindowsShellTabBarPosition::Left | WindowsShellTabBarPosition::Right
     );
+    // A touch host's tabs leave the sidebar: they float at the bottom, where
+    // the phone had them, and an app rail switches between several mains.
+    let touch_host = owner_window
+        .map(device_frame_owns_window_controls)
+        .unwrap_or(false);
+    let single_main = auxiliary_items.is_empty() && !show_auxiliary_add;
+    let floating =
+        desktop_sidebar && touch_host && size_class == SizeClass::Regular && !items.is_empty();
+    // Unless the screen is clearly portrait, or past what the bar holds, the tabs
+    // stand in a column at the screen's edge (Apple's iPhone Duo bar
+    // placement). It keeps that edge whatever the language, and yields it to
+    // a docked aside by moving to the main's other side.
+    let tab_column =
+        !SHELL_PORTRAIT.load(Ordering::Acquire) || items.len() > FLOATING_TAB_BAR_MAX_ITEMS;
+    let column_position = if docked_aside_present(switcher_app) {
+        WindowsShellTabBarPosition::Left
+    } else {
+        WindowsShellTabBarPosition::Right
+    };
     // Desktop sidebar never takes tabBar.style.backgroundColor (mobile-only);
     // yaml `windowBackgroundColor` shows through. Color/selectedColor still
     // apply on light host when the app declared them.
@@ -2633,7 +2762,7 @@ fn build_tab_bar_layout(
         && tabbar.as_ref().is_some_and(|tabbar| {
             tabbar.visibility == lxapp::page_chrome::TabBarVisibilityPreference::Hidden
         });
-    Some(WindowsShellTabBarLayout {
+    let layout = WindowsShellTabBarLayout {
         // Mobile navigation may flip `is_visible` on detail pages. Desktop
         // sidebar chrome is stable; only an explicit API hide affects its
         // child rows, never the sidebar or the parent lxapp tab itself.
@@ -2674,9 +2803,11 @@ fn build_tab_bar_layout(
             .map(|item| item.closable)
             .unwrap_or_else(|| main_lxapp_closable(&app.appid)),
         group_order_index,
-        collapsed: ui_state.collapsed,
-        icon_rail: ui_state.icon_rail || force_icon_rail,
+        collapsed: ui_state.collapsed && !floating,
+        icon_rail: ui_state.icon_rail || force_icon_rail || floating,
         rail_expand_disabled: size_class == SizeClass::Compact,
+        tab_rail: false,
+        floating: false,
         items_api_hidden,
         items_collapsed: items_api_hidden || items_ui_state.items_collapsed,
         footer_action_height: if desktop_sidebar {
@@ -2725,7 +2856,54 @@ fn build_tab_bar_layout(
         auxiliary_items,
         show_auxiliary_add,
         header_actions,
-    })
+    };
+    if !floating {
+        return (Some(layout), None);
+    }
+    let palette = super::style::shell_palette();
+    let floating_bar = WindowsShellTabBarLayout {
+        // Shown where the phone shows its bar: on a tab page of the presented main.
+        visible: group_active && current_tab_index.is_some() && app.tabbar_visible_now(),
+        position: if tab_column {
+            column_position
+        } else {
+            WindowsShellTabBarPosition::Bottom
+        },
+        dimension: if tab_column {
+            crate::dpi::px(TAB_COLUMN_WIDTH)
+        } else {
+            frame_tab_bar
+                .map(|(band, growth)| band + growth)
+                .unwrap_or(0)
+                .max(crate::dpi::px(FLOATING_TAB_STRIP_MIN_HEIGHT))
+        },
+        item_offset: 0,
+        color: resolved_style
+            .map(|style| style.foreground_color.rgba() >> 8)
+            .unwrap_or(palette.text_muted),
+        selected_color: resolved_style
+            .map(|style| style.selected_foreground_color.rgba() >> 8)
+            .unwrap_or(palette.accent),
+        paint_items_background: false,
+        overflow_start_index: -1,
+        collapsed: false,
+        icon_rail: false,
+        tab_rail: tab_column,
+        floating: !tab_column,
+        items_api_hidden: false,
+        items_collapsed: false,
+        footer_action_height: 0,
+        auxiliary_items: Vec::new(),
+        show_auxiliary_add: false,
+        header_actions: Vec::new(),
+        ..layout.clone()
+    };
+    // The rail lists apps only: its own group's pages are already in the bar.
+    let rail = (!single_main).then(|| WindowsShellTabBarLayout {
+        items: Vec::new(),
+        ..layout
+    });
+    (rail, Some(floating_bar))
 }
 
 fn sidebar_content_available(
@@ -2746,7 +2924,8 @@ fn adaptive_tabbar_projection(
     requested: WindowsShellTabBarPosition,
     size_class: SizeClass,
     device_framed: bool,
-    medium_expanded: bool,
+    budget_requires_rail: bool,
+    budget_expanded_by_user: bool,
 ) -> (WindowsShellTabBarPosition, bool, bool) {
     match size_class {
         SizeClass::Compact
@@ -2759,9 +2938,10 @@ fn adaptive_tabbar_projection(
             (requested, true, true)
         }
         SizeClass::Compact => (WindowsShellTabBarPosition::Bottom, false, false),
-        SizeClass::Medium
-            if !device_framed
-                && !medium_expanded
+        // A simulated fold or tablet is held to the same width budget as a desktop window.
+        SizeClass::Regular
+            if budget_requires_rail
+                && !budget_expanded_by_user
                 && matches!(
                     requested,
                     WindowsShellTabBarPosition::Left | WindowsShellTabBarPosition::Right
@@ -2769,37 +2949,39 @@ fn adaptive_tabbar_projection(
         {
             (requested, true, true)
         }
-        SizeClass::Medium | SizeClass::Expanded => (requested, false, true),
+        SizeClass::Regular => (requested, false, true),
     }
 }
 
 /// User toggle is two-state: expanded <-> icon rail. Fully hidden sidebars are
 /// controlled by content-driven auto-hide only.
 fn toggle_sidebar(appid: &str) {
-    let size_class = shell_owner_appid()
+    let (size_class, budget_requires_rail) = shell_owner_appid()
         .and_then(|owner| lxapp::try_get(&owner))
         .and_then(|app| app.surface_derived_layout())
-        .map(|plan| plan.size_class)
-        .unwrap_or(SizeClass::Expanded);
+        .map(|plan| (plan.size_class, sidebar_budget_requires_rail(&plan)))
+        .unwrap_or((SizeClass::Regular, false));
     update_sidebar_ui_state(appid, |state| {
-        toggle_sidebar_projection(state, size_class);
+        toggle_sidebar_projection(state, size_class, budget_requires_rail);
     });
     sync_shell_layout(appid);
 }
 
-fn toggle_sidebar_projection(state: &mut SidebarUiState, size_class: SizeClass) {
+fn toggle_sidebar_projection(
+    state: &mut SidebarUiState,
+    size_class: SizeClass,
+    budget_requires_rail: bool,
+) {
     if size_class == SizeClass::Compact {
         return;
     }
     state.collapsed = false;
-    if size_class == SizeClass::Medium {
-        // Medium is already projected as a rail, so the toggle reveals the full
-        // sidebar for this session rather than choosing a width to remember.
-        let currently_expanded = state.medium_expanded && !state.icon_rail;
-        state.medium_expanded = !currently_expanded;
+    if budget_requires_rail {
+        let currently_expanded = state.rail_overridden && !state.icon_rail;
+        state.rail_overridden = !currently_expanded;
         state.icon_rail = false;
     } else {
-        state.medium_expanded = false;
+        state.rail_overridden = false;
         state.icon_rail = !state.icon_rail;
         // The user has now chosen, so nothing may seed over it later.
         state.seeded = true;
@@ -6211,6 +6393,9 @@ fn surface_menu_entry(
             ),
         },
         SurfaceMenuAction::Switcher { action } => match action {
+            SurfaceMenuBuiltinAction::MoveToAside => {
+                (lingxia_logic::i18n::t(I18nKey::SurfaceMoveToAside), None)
+            }
             SurfaceMenuBuiltinAction::Rename => {
                 (lingxia_logic::i18n::t(I18nKey::SurfaceRename), None)
             }
@@ -8945,46 +9130,55 @@ mod tests {
         use WindowsShellTabBarPosition::{Bottom, Left, Right};
 
         assert_eq!(
-            adaptive_tabbar_projection(Left, SizeClass::Expanded, false, false),
+            adaptive_tabbar_projection(Left, SizeClass::Regular, false, false, false),
             (Left, false, true)
         );
         assert_eq!(
-            adaptive_tabbar_projection(Right, SizeClass::Medium, false, false),
+            adaptive_tabbar_projection(Right, SizeClass::Regular, false, true, false),
             (Right, true, true)
         );
         assert_eq!(
-            adaptive_tabbar_projection(Left, SizeClass::Compact, false, false),
+            adaptive_tabbar_projection(Left, SizeClass::Regular, false, true, true),
+            (Left, false, true)
+        );
+        assert_eq!(
+            adaptive_tabbar_projection(Left, SizeClass::Compact, false, false, false),
             (Left, true, true)
         );
         assert_eq!(
-            adaptive_tabbar_projection(Left, SizeClass::Compact, true, false),
+            adaptive_tabbar_projection(Left, SizeClass::Compact, true, false, false),
             (Bottom, false, false)
         );
         assert_eq!(
-            adaptive_tabbar_projection(Bottom, SizeClass::Medium, true, false),
+            adaptive_tabbar_projection(Bottom, SizeClass::Regular, true, true, false),
             (Bottom, false, true)
         );
         assert_eq!(
-            adaptive_tabbar_projection(Left, SizeClass::Medium, false, true),
-            (Left, false, true)
+            adaptive_tabbar_projection(Left, SizeClass::Regular, true, true, false),
+            (Left, true, true)
         );
 
         let mut state = SidebarUiState::default();
-        toggle_sidebar_projection(&mut state, SizeClass::Medium);
-        assert!(state.medium_expanded);
+        toggle_sidebar_projection(&mut state, SizeClass::Regular, false);
+        assert!(state.icon_rail);
+        toggle_sidebar_projection(&mut state, SizeClass::Regular, false);
         assert!(!state.icon_rail);
-        toggle_sidebar_projection(&mut state, SizeClass::Medium);
-        assert!(!state.medium_expanded);
-        assert!(!state.icon_rail);
+
+        let mut budgeted = SidebarUiState::default();
+        toggle_sidebar_projection(&mut budgeted, SizeClass::Regular, true);
+        assert!(budgeted.rail_overridden);
+        assert!(!budgeted.icon_rail);
+        toggle_sidebar_projection(&mut budgeted, SizeClass::Regular, true);
+        assert!(!budgeted.rail_overridden);
 
         let mut compact = SidebarUiState {
             icon_rail: true,
             seeded: true,
             ..SidebarUiState::default()
         };
-        toggle_sidebar_projection(&mut compact, SizeClass::Compact);
+        toggle_sidebar_projection(&mut compact, SizeClass::Compact, false);
         assert!(compact.icon_rail);
-        assert!(!compact.medium_expanded);
+        assert!(!compact.rail_overridden);
     }
 
     #[test]

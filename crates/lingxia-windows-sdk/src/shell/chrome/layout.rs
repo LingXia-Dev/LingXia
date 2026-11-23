@@ -104,6 +104,11 @@ impl WindowsShellTabBarLayout {
     }
 
     /// Folded badges still have to surface, so "more" aggregates them.
+    /// The column draws its narrow form: footer actions stack as icons.
+    pub fn narrow_column(&self) -> bool {
+        self.collapsed || self.icon_rail || self.tab_rail
+    }
+
     pub fn overflow_has_notification(&self) -> bool {
         self.bottom_overflow_start().is_some_and(|start| {
             self.items[start..]
@@ -207,6 +212,12 @@ pub struct WindowsShellTabBarLayout {
     /// Compact desktop keeps the rail expand glyph visible but rejects the
     /// click so a narrow window cannot persist an expanded sidebar choice.
     pub rail_expand_disabled: bool,
+    /// A touch tab bar standing as an edge column: one app's tab items, icon
+    /// over label, low in the column; no header, peek, or resize.
+    pub tab_rail: bool,
+    /// A touch tab bar as a pill floating at the main region's leading bottom
+    /// corner, over a strip the page keeps clear.
+    pub floating: bool,
     /// The lxapp explicitly hid its tabbar. Desktop keeps the group and the
     /// surrounding sidebar visible, but removes the child rows and disables
     /// the chevron until `visibility: 'auto'` clears this state.
@@ -294,6 +305,10 @@ pub struct WindowsShellWindowLayout {
     pub navigation_bar: Option<WindowsShellNavigationBarLayout>,
     pub address_bar: Option<WindowsShellAddressBarLayout>,
     pub tab_bar: Option<WindowsShellTabBarLayout>,
+    /// A touch host's tabs in Regular, apart from the sidebar: a floating bar
+    /// (`floating`, `Bottom`) or an edge column (`tab_rail`, `Left`/`Right`).
+    /// `tab_bar` then holds only an app rail, or nothing.
+    pub touch_tab_bar: Option<WindowsShellTabBarLayout>,
     pub footer_actions: Vec<WindowsShellFooterActionLayout>,
     /// The shared surface graph resolved the shell to Compact, so a presented
     /// browser projects its mobile browser controls at the bottom. This is
@@ -306,6 +321,9 @@ pub struct WindowsShellWindowLayout {
     /// Pixels reserved at the top for a device frame's simulated status bar, so
     /// the navigation bar + content sit below it. 0 for un-framed windows.
     pub top_inset: i32,
+    /// The status bar's height even under an immersive page: a sidebar never sits beneath the
+    /// clock and indicators, though a page may bleed up behind them.
+    pub sidebar_top_inset: i32,
 }
 
 #[cfg(test)]
@@ -350,6 +368,8 @@ mod click_index_tests {
             collapsed: false,
             icon_rail: false,
             rail_expand_disabled: false,
+            tab_rail: false,
+            floating: false,
             items_api_hidden: false,
             items_collapsed: false,
             footer_action_height: 0,

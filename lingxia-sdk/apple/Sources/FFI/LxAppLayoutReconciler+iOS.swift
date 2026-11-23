@@ -4,14 +4,15 @@ import OSLog
 #if os(iOS)
 import UIKit
 
-/// Adaptive Surface Layout — iOS full-screen aside reconciler.
+/// Adaptive Surface Layout — iOS aside reconciler.
 ///
 /// The shared Rust core owns the surface graph and, after every mutation,
-/// re-derives a `LayoutPresentationPlan` and hands it here. A phone has no
-/// side-by-side dock: an aside presents full-screen, the same way the primary
-/// lxapp page is shown. The plan keeps desired asides in `plan.asides` even
-/// under compact full-screen presentation so this reconciler can dismiss
-/// surfaces removed from the graph without treating `windowId` as an app id.
+/// re-derives a `LayoutPresentationPlan` and hands it here. The plan's `panel`
+/// slot drives `LxAppAsideRegion`, which docks its children beside the main
+/// on a regular-width window and covers the main otherwise. Other asides still
+/// present full-screen, the same way the primary lxapp page is shown; the plan
+/// keeps them in `plan.asides` so this reconciler can dismiss surfaces removed
+/// from the graph without treating `windowId` as an app id.
 ///
 /// The contract mirrors the macOS reconciler's desired-set vs presented-set:
 ///
@@ -32,7 +33,41 @@ enum LxAppLayoutReconcileriOS {
     /// The last committed plan sequence applied per window.
     private static var lastSequenceByWindow: [String: UInt64] = [:]
 
-    private struct LayoutPresentationPlan: Decodable {
+    /// Notification posted on every reconciled adaptive layout plan so iOS /
+    /// iPadOS / iPhone Duo shells switch between `compact` (`< 600 pt`) and
+    /// `regular` (`>= 600 pt` docked sidebar + multi-tab aside) purely by width.
+    static let layoutPlanDidUpdateNotification = Notification.Name("LxAppLayoutReconcileriOSPlanDidUpdate")
+
+    struct PlanHingeRect: Decodable {
+        let x: Double
+        let y: Double
+        let width: Double
+        let height: Double
+        let orientation: String
+        let posture: String
+    }
+
+    struct PlanAsideSlot: Decodable {
+        let kind: String
+        let edge: String?
+        let children: [String]
+        let activeChild: String?
+        let visible: Bool
+        let overlay: Bool
+        let collapsed: Bool
+        let maximized: Bool
+    }
+
+    struct PlanUnifiedAsideSlot: Decodable {
+        let tabs: [String]
+        let activeTab: String?
+        let visible: Bool
+        let overlay: Bool
+        let collapsed: Bool
+        let maximized: Bool
+    }
+
+    struct LayoutPresentationPlan: Decodable {
         let sequence: UInt64?
         let sizeClass: String
         let bottomOwner: String
@@ -41,19 +76,24 @@ enum LxAppLayoutReconcileriOS {
         let mains: [String]
         let activeMainId: String?
         let asides: [PlanAside]
+        let asideSlots: [PlanAsideSlot]?
+        let unifiedAsideSlot: PlanUnifiedAsideSlot?
         let floats: [PlanFloat]
         let tree: LxAppJSONValue?
+        let hinge: PlanHingeRect?
     }
 
-    private struct PlanAside: Decodable {
+    struct PlanAside: Decodable {
         let id: String
         let edge: String?
         let preferredSize: Double?
     }
 
-    private struct PlanFloat: Decodable {
+    struct PlanFloat: Decodable {
         let id: String
     }
+
+    private(set) static var latestPlanByWindow: [String: LayoutPresentationPlan] = [:]
 
     static func reconcile(windowId: String, json: String) -> Bool {
         guard let data = json.data(using: .utf8),
@@ -69,14 +109,20 @@ enum LxAppLayoutReconcileriOS {
             lastSequenceByWindow[windowId] = sequence
         }
 
-        // On iOS today every desired main/aside is a full-screen surface. The
-        // same plan.asides list also lets future iPad split skins keep desired
-        // asides alive without changing the bridge contract.
+        latestPlanByWindow[windowId] = plan
         let desiredIds = Set(plan.asides.map { $0.id }).union(plan.mains)
 
         for id in LxAppSurface.presentedFullScreenIds().subtracting(desiredIds) {
             LxAppSurface.dismissFullScreen(id: id)
         }
+        // The side panel follows the plan's `panel` slot; it closes the children the plan dropped.
+        LxAppAsideRegion.current?.apply(plan: plan.asideSlots)
+
+        NotificationCenter.default.post(
+            name: layoutPlanDidUpdateNotification,
+            object: nil,
+            userInfo: ["windowId": windowId, "sizeClass": plan.sizeClass, "switcherForm": plan.switcherForm]
+        )
 
         return true
     }

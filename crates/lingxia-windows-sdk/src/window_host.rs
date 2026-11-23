@@ -3133,10 +3133,17 @@ fn content_rect_for_window(hwnd: HWND, webtag_key: &str) -> RECT {
             return normalize_rect(rect);
         }
     }
+    let content = normalize_rect(renderer.content_rect(client, &current_window_layout(webtag_key)));
     if spans_screen(webtag_key) {
-        return client;
+        // Only the top and bottom bars draw over a spanning page; a side rail or sidebar
+        // takes its own width, so the page's left edge (and its env.hinge origin) starts past it.
+        return RECT {
+            left: content.left,
+            right: content.right,
+            ..client
+        };
     }
-    normalize_rect(renderer.content_rect(client, &current_window_layout(webtag_key)))
+    content
 }
 
 /// Per-corner composition rounding for a surface — clip radii plus the
@@ -3576,6 +3583,9 @@ unsafe extern "system" fn navigation_bar_overlay_proc(
 /// The bar is opaque: paint it, then make every pixel solid.
 #[cfg(feature = "shell-chrome")]
 fn upload_navigation_bar_overlay(hwnd: HWND, layout: &WindowsWindowLayout) {
+    let (radii, edge) = navigation_bar_overlay_entry(hwnd)
+        .map(|(host, rect)| overlay_screen_corners(host, rect))
+        .unwrap_or(([0; 4], 0));
     let mut client = RECT::default();
     if unsafe { WindowsAndMessaging::GetClientRect(hwnd, &mut client) }.is_err() {
         return;
@@ -3611,9 +3621,10 @@ fn upload_navigation_bar_overlay(hwnd: HWND, layout: &WindowsWindowLayout) {
             let _ = windows::Win32::Graphics::Gdi::GdiFlush();
             let pixels =
                 std::slice::from_raw_parts_mut(bits.cast::<u32>(), (width * height) as usize);
-            for pixel in pixels {
+            for pixel in pixels.iter_mut() {
                 *pixel |= 0xff00_0000;
             }
+            clip_overlay_corners(pixels, width, height, radii, Some(edge));
             let size = SIZE {
                 cx: width,
                 cy: height,
@@ -3648,6 +3659,123 @@ fn upload_navigation_bar_overlay(hwnd: HWND, layout: &WindowsWindowLayout) {
     }
 }
 
+/// Radii where an overlay at `rect` (in `owner` client pixels) meets a corner
+/// of the simulated screen: the frame's rounding never reaches an overlay
+/// window, so it has to cut those corners itself.
+#[cfg(all(feature = "shell-chrome", feature = "device-frame"))]
+fn overlay_screen_corners(owner: HWND, rect: RECT) -> ([i32; 4], u32) {
+    (|| {
+        let (_, radius) = crate::device_frame::device_frame_screen(hwnd_handle(owner))?;
+        let (_, edge) = crate::device_frame::device_frame_screen_clip_style(hwnd_handle(owner))?;
+        let mut client = RECT::default();
+        unsafe { WindowsAndMessaging::GetClientRect(owner, &mut client) }.ok()?;
+        Some((screen_corner_radii_for(rect, client, radius), edge))
+    })()
+    .unwrap_or(([0; 4], 0))
+}
+
+/// Like `workspace_corner_radii`, but a bar touching only one edge's corners
+/// keeps the full screen radius: halving it to the bar's height would draw a
+/// tighter arc than the screen's and cover the bezel ring.
+#[cfg(all(feature = "shell-chrome", any(test, feature = "device-frame")))]
+fn screen_corner_radii_for(surface: RECT, screen: RECT, radius: i32) -> [i32; 4] {
+    let (left, top) = (surface.left == screen.left, surface.top == screen.top);
+    let (right, bottom) = (
+        surface.right == screen.right,
+        surface.bottom == screen.bottom,
+    );
+    let corners = [left && top, right && top, right && bottom, left && bottom];
+    let width = (surface.right - surface.left).max(0);
+    let height = (surface.bottom - surface.top).max(0);
+    let room_x = if (corners[0] || corners[3]) && (corners[1] || corners[2]) {
+        width / 2
+    } else {
+        width
+    };
+    let room_y = if (corners[0] || corners[1]) && (corners[2] || corners[3]) {
+        height / 2
+    } else {
+        height
+    };
+    let radius = radius.min(room_x).min(room_y).max(0);
+    corners.map(|touches| if touches { radius } else { 0 })
+}
+
+#[cfg(all(feature = "shell-chrome", not(feature = "device-frame")))]
+fn overlay_screen_corners(_owner: HWND, _rect: RECT) -> ([i32; 4], u32) {
+    ([0; 4], 0)
+}
+
+/// Makes opaque pixels outside each rounded corner (top-left, top-right,
+/// bottom-right, bottom-left) transparent. With an `edge` (`0xAARRGGBB`, the
+/// bezel) the arc's edge pixels blend toward it rather than toward
+/// transparency: what lies under the overlay there is lighter content, which
+/// would show as a fringe.
+#[cfg(feature = "shell-chrome")]
+fn clip_overlay_corners(
+    pixels: &mut [u32],
+    width: i32,
+    height: i32,
+    radii: [i32; 4],
+    edge: Option<u32>,
+) {
+    for (corner, radius) in radii.into_iter().enumerate() {
+        let radius = radius.min(width).min(height);
+        if radius <= 0 {
+            continue;
+        }
+        let r = radius as f32;
+        let left = matches!(corner, 0 | 3);
+        let top = corner < 2;
+        let center_x = if left { r } else { width as f32 - r };
+        let center_y = if top { r } else { height as f32 - r };
+        let xs = if left {
+            0..radius
+        } else {
+            width - radius..width
+        };
+        let ys = if top {
+            0..radius
+        } else {
+            height - radius..height
+        };
+        for y in ys {
+            for x in xs.clone() {
+                let distance = ((x as f32 + 0.5 - center_x).powi(2)
+                    + (y as f32 + 0.5 - center_y).powi(2))
+                .sqrt();
+                let coverage = (r - distance + 0.5).clamp(0.0, 1.0);
+                if coverage >= 1.0 {
+                    continue;
+                }
+                let index = (y * width + x) as usize;
+                if coverage <= 0.0 {
+                    pixels[index] = 0;
+                    continue;
+                }
+                let pixel = pixels[index];
+                pixels[index] = match edge {
+                    Some(edge) => {
+                        let mix = |shift: u32| {
+                            let ours = ((pixel >> shift) & 0xff) as f32;
+                            let theirs = ((edge >> shift) & 0xff) as f32;
+                            (ours * coverage + theirs * (1.0 - coverage)).round() as u32
+                        };
+                        0xff00_0000 | (mix(16) << 16) | (mix(8) << 8) | mix(0)
+                    }
+                    None => scale_premultiplied(pixel, coverage),
+                };
+            }
+        }
+    }
+}
+
+#[cfg(feature = "shell-chrome")]
+fn scale_premultiplied(pixel: u32, factor: f32) -> u32 {
+    let scale = |shift: u32| (((pixel >> shift) & 0xff) as f32 * factor).round() as u32;
+    (scale(24) << 24) | (scale(16) << 16) | (scale(8) << 8) | scale(0)
+}
+
 #[cfg(feature = "shell-chrome")]
 fn sync_transparent_tabbar_overlay(hwnd: HWND, webtag_key: Option<&str>) {
     let handle = hwnd_handle(hwnd);
@@ -3679,7 +3807,8 @@ fn sync_transparent_tabbar_overlay(hwnd: HWND, webtag_key: Option<&str>) {
         }
         let layout = current_window_layout(webtag_key);
         // A page that spans the screen covers an opaque bar too, so that one draws over it.
-        crate::shell::transparent_tabbar_overlay_rect(client, &layout)
+        crate::shell::floating_tabbar_overlay_rect(client, &layout)
+            .or_else(|| crate::shell::transparent_tabbar_overlay_rect(client, &layout))
             .or_else(|| {
                 spans_screen(webtag_key)
                     .then(|| crate::shell::bottom_tabbar_rect(client, &layout))
@@ -3902,14 +4031,29 @@ fn upload_transparent_tabbar_overlay(hwnd: HWND, layout: &WindowsWindowLayout) {
             pixel_count * std::mem::size_of::<u32>(),
         );
         let pixels = std::slice::from_raw_parts_mut(bits.cast::<u32>(), pixel_count);
-        let opaque = crate::shell::paint_opaque_tabbar_overlay(dc, layout, width, height);
+        let floating_alpha = crate::shell::paint_floating_tabbar_overlay(dc, layout, width, height);
+        let floating = floating_alpha.is_some();
+        if let Some(alpha) = floating_alpha {
+            let _ = windows::Win32::Graphics::Gdi::GdiFlush();
+            for pixel in pixels.iter_mut() {
+                *pixel |= 0xff00_0000;
+            }
+            let radius = height / 2;
+            clip_overlay_corners(pixels, width, height, [radius; 4], None);
+            let alpha = alpha as f32 / 255.0;
+            for pixel in pixels.iter_mut() {
+                *pixel = scale_premultiplied(*pixel, alpha);
+            }
+        }
+        let opaque =
+            !floating && crate::shell::paint_opaque_tabbar_overlay(dc, layout, width, height);
         if opaque {
             let _ = windows::Win32::Graphics::Gdi::GdiFlush();
             for pixel in pixels.iter_mut() {
                 *pixel |= 0xff00_0000;
             }
         }
-        let text_runs = if opaque {
+        let text_runs = if opaque || floating {
             Vec::new()
         } else {
             crate::shell::paint_transparent_tabbar_overlay(dc, layout, width, height)
@@ -3928,7 +4072,7 @@ fn upload_transparent_tabbar_overlay(hwnd: HWND, layout: &WindowsWindowLayout) {
                 true,
             );
         }
-        for pixel in pixels {
+        for pixel in pixels.iter_mut().filter(|_| !floating) {
             if (*pixel >> 24) == 0 && (*pixel & 0x00ff_ffff) != 0 {
                 let r = (*pixel >> 16) & 0xff;
                 let g = (*pixel >> 8) & 0xff;
@@ -5770,6 +5914,10 @@ fn handle_window_position_changed(hwnd: HWND, lparam: LPARAM) {
     let moved = flags.0 & WindowsAndMessaging::SWP_NOMOVE.0 == 0;
     let sized = flags.0 & WindowsAndMessaging::SWP_NOSIZE.0 == 0;
     if sized {
+        // This pass runs before `WM_SIZE`: laid out against the previous width's sidebar, the
+        // page reports a viewport whose size class the hysteresis band then holds.
+        #[cfg(feature = "shell-chrome")]
+        report_shell_surface_width(hwnd);
         sync_window_layout(hwnd);
         if windows_chrome_renderer().is_some() {
             invalidate_window(hwnd);
@@ -9302,6 +9450,13 @@ fn window_logical_client_width(hwnd: HWND) -> f64 {
         return 0.0;
     }
     let physical = (client.right - client.left).max(0) as f64;
+    // A simulated device is shown at its fit scale, so its width comes out in device points.
+    #[cfg(feature = "device-frame")]
+    if let Some(scale) =
+        crate::device_frame::device_frame_fit_scale(hwnd_handle(hwnd)).filter(|scale| *scale > 0.0)
+    {
+        return physical / scale;
+    }
     let dpi = unsafe { windows::Win32::UI::HiDpi::GetDpiForWindow(hwnd) };
     let scale = if dpi == 0 { 1.0 } else { dpi as f64 / 96.0 };
     physical / scale
@@ -9343,6 +9498,12 @@ fn report_shell_surface_width(hwnd: HWND) {
     // desktop window lands anyway.
     if !is_window_visible(hwnd) {
         return;
+    }
+    let mut client = RECT::default();
+    if unsafe { WindowsAndMessaging::GetClientRect(hwnd, &mut client) }.is_ok() {
+        crate::shell::update_surface_portrait(
+            (client.bottom - client.top) * 5 >= (client.right - client.left) * 6,
+        );
     }
     crate::shell::update_surface_width(window_logical_client_width(hwnd));
 }
@@ -9744,9 +9905,9 @@ fn show_webview_window_replacing(
     }
 
     mark_active(webtag);
-    if !defer_initial_show {
-        notify_webtag_visibility(webtag.key(), true);
-    }
+    // Only the host stays hidden: the reveal waits on this page's `onReady`, which waits on its
+    // `onShow`.
+    notify_webtag_visibility(webtag.key(), true);
     hide_other_workspace_windows(target);
     Ok(())
 }
@@ -12924,6 +13085,36 @@ mod tests {
         assert_eq!(
             per_corner_region_row_span(393, 532, radii, 300),
             Some((0, 393))
+        );
+    }
+
+    #[test]
+    #[cfg(feature = "shell-chrome")]
+    fn a_landscape_navigation_bar_cuts_only_the_screen_corner_it_meets() {
+        let (width, height) = (40, 20);
+        let mut pixels = vec![0xff3b_82f6_u32; (width * height) as usize];
+        super::clip_overlay_corners(&mut pixels, width, height, [0, 10, 0, 0], Some(0xff14_1414));
+        let at = |x: i32, y: i32| pixels[(y * width + x) as usize];
+        assert_eq!(at(width - 1, 0) >> 24, 0);
+        assert_eq!(at(0, 0), 0xff3b_82f6);
+        assert_eq!(at(width - 1, height - 1), 0xff3b_82f6);
+        assert_eq!(at(width - 11, 0), 0xff3b_82f6);
+
+        let rect = |left, top, right, bottom| windows::Win32::Foundation::RECT {
+            left,
+            top,
+            right,
+            bottom,
+        };
+        let screen = rect(0, 0, 678, 466);
+        // A 38 px bar keeps the 32 px screen radius instead of half its height.
+        assert_eq!(
+            super::screen_corner_radii_for(rect(80, 0, 678, 38), screen, 32),
+            [0, 32, 0, 0]
+        );
+        assert_eq!(
+            super::screen_corner_radii_for(rect(0, 0, 678, 38), screen, 32),
+            [32, 32, 0, 0]
         );
     }
 

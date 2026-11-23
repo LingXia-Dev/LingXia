@@ -98,7 +98,7 @@ export function SettingsSpecimen() {
   );
 }
 
-export function ListDetailSpecimen() {
+export function ListAndDetailSpecimen() {
   return (
     <ItemList className="w-full">
       <Item label="Two more seats" description="Ana Lima" isSelected onClick={unused} />

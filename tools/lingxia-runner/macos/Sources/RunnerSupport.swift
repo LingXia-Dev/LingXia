@@ -99,6 +99,9 @@ enum RunnerSupport {
 
         static func attachLxApp(_ webView: WKWebView, to container: NSView) {
             LingxiaRunnerSPI.WebView.attachLxApp(webView, to: container)
+            LingxiaRunnerSPI.PhoneAside.setStatusInset {
+                SimulatorWindowController.Layout.systemStatusBarHeight
+            }
         }
 
         static func configureUserAgentOverride(

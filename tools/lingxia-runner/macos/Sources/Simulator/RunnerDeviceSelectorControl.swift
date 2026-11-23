@@ -7,7 +7,7 @@ import AppKit
 /// A plain button (device name + chevron) that pops its menu **downward** below
 /// the button — unlike `NSPopUpButton`, which centers the selected item over the
 /// button and pushes the menu up off the top of the window. The menu lists
-/// devices only, grouped by shape (iPhone / iPad / Desktop).
+/// devices only, grouped by shape (Phone / Foldable / Tablet / Desktop).
 @MainActor
 final class RunnerDeviceSelectorControl: NSButton {
     var onDeviceSelected: ((MobileDeviceSize) -> Void)?
@@ -82,8 +82,9 @@ final class RunnerDeviceSelectorControl: NSButton {
 
     private static func groupTitle(_ shape: RunnerDeviceShape) -> String {
         switch shape {
-        case .phone: return "iPhone"
-        case .pad: return "iPad"
+        case .phone: return "Phone"
+        case .fold: return "Foldable"
+        case .pad: return "Tablet"
         case .desktop: return "Desktop"
         }
     }

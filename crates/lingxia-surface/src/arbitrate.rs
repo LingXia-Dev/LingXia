@@ -25,6 +25,10 @@ pub enum Decision {
     /// repeat web URL / aside id, focused the existing tab). Asides form one
     /// region per slot kind — the side panel and native — with tabs inside.
     MergedIntoTabs,
+    /// The requested surface is already live under another role (for example,
+    /// user-dragged between main and aside). Focus it in place without
+    /// overriding the user's chosen placement.
+    FocusedExistingRole,
 }
 
 /// Result of opening a surface after reuse/arbitration has resolved its
@@ -67,13 +71,12 @@ impl PartialEq<Decision> for OpenOutcome {
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Policy {
-    pub max_asides_expanded: usize,
-    pub max_asides_medium: usize,
+    pub max_asides_regular: usize,
     pub max_asides_compact: usize,
     /// Physical admission tokens (§3.3): a slot is admitted only when the main
     /// keeps `main_min_width` and each admitted left/right slot keeps
     /// `aside_min_width` within the container. Size class is the *ceiling*, not
-    /// a guarantee — a technically-expanded but narrow window admits fewer.
+    /// a guarantee — a narrow regular window admits fewer.
     pub main_min_width: f64,
     pub aside_min_width: f64,
 }
@@ -82,8 +85,7 @@ impl Default for Policy {
     fn default() -> Self {
         Self {
             // One visible slot per aside kind: the side panel and native.
-            max_asides_expanded: 2,
-            max_asides_medium: 1,
+            max_asides_regular: 2,
             // Compact shows one active slot full-screen over the main. This is
             // a projection limit, not dock capacity.
             max_asides_compact: 1,
@@ -96,8 +98,7 @@ impl Default for Policy {
 impl Policy {
     pub fn max_asides(&self, size_class: SizeClass) -> usize {
         match size_class {
-            SizeClass::Expanded => self.max_asides_expanded,
-            SizeClass::Medium => self.max_asides_medium,
+            SizeClass::Regular => self.max_asides_regular,
             SizeClass::Compact => self.max_asides_compact,
         }
     }
@@ -123,6 +124,44 @@ pub fn arbitrate(
         return (
             next,
             OpenOutcome::new(Decision::DowngradedRole, request_id, Role::Main, false),
+        );
+    }
+
+    // Reopening a live lxapp under another role keeps its role and focuses it,
+    // so `openApp` never clobbers a user's drag-chosen placement. Lxapps move
+    // only through promote/demote; native and web surfaces still migrate by
+    // reopening with the new role.
+    if let Some(existing) = graph.get(&request_id)
+        && matches!(existing.content, SurfaceContent::Lxapp { .. })
+        && existing.role != request.role
+        && matches!(existing.role, Role::Main | Role::Aside)
+        && matches!(request.role, Role::Main | Role::Aside)
+    {
+        let existing_role = existing.role;
+        // The placement stays; the content the caller asked for (its path and query) applies.
+        if existing.content != request.content {
+            let mut updated = existing.clone();
+            updated.content = request.content;
+            next.insert(updated);
+        }
+        match existing_role {
+            Role::Main => {
+                next.set_active_main(&request_id);
+                next.set_focus(&request_id);
+            }
+            Role::Aside => {
+                next.set_focus(&request_id);
+            }
+            Role::Float => {}
+        }
+        return (
+            next,
+            OpenOutcome::new(
+                Decision::FocusedExistingRole,
+                request_id,
+                existing_role,
+                existing_role == Role::Aside && size_class == SizeClass::Compact,
+            ),
         );
     }
 

@@ -258,6 +258,12 @@ declare module 'liblingxia.so' {
   export function browserTabIsAside(tabId: string): boolean;
 
   /**
+   * Run a side panel command on the lxapp's window graph: `focus` (arg: child id),
+   * `collapse` / `restore` / `maximize` / `unmaximize` (arg: slot kind), `unregister`.
+   */
+  export function asideCommand(appid: string, command: string, arg: string): boolean;
+
+  /**
    * Close a managed internal browser tab.
    */
   export function browserTabClose(tabId: string): boolean;

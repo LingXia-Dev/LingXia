@@ -74,6 +74,7 @@ dependencies {
     implementation(libs.media3.ui)
     implementation(libs.media3.transformer)
     implementation(libs.androidx.exifinterface)
+    implementation(libs.androidx.window.java)
     testImplementation(libs.junit)
     testImplementation(libs.robolectric)
     androidTestImplementation(libs.androidxTestRunner)

@@ -45,6 +45,43 @@ export function render({ data, env }: View) {
 - Size-based availability is a product rule, not authorization: Logic still rejects
   unavailable actions.
 
+### Parts and variants
+
+- A list and the detail of the chosen item: `<ListDetail>` from `@liulidesign/core/ListDetail`,
+  driven by the selection (`value` with `onChange`, or `bind`). On `compact` it drills into the
+  detail and Back returns to the list; on `regular` the panes sit side by side.
+- A main area with a companion pane: `<Split aside={…}>` from `@liulidesign/core/Split`; on
+  `compact` the aside stacks below, or opens as a sheet with `compact="sheet"`.
+- Columns and visibility by class: `grid-cols-1 regular:grid-cols-2`, `regular:hidden`.
+  `regular:` follows the nearest `<SizeClassScope value>`, then `env.sizeClass`; the panes of
+  `<ListDetail>` and `<Split>` set it, so a card inside a 360 px pane stays single-column.
+- `useBackHandler(enabled, onBack)` takes Back (never Home) while `enabled`, the latest first.
+
+```tsx
+<ListDetail value={data.selectedId} onChange={actions.selectOrder} listLabel={t('orders')}>
+  <ListDetail.List>
+    <OrderList orders={data.orders} onSelect={actions.selectOrder} />
+  </ListDetail.List>
+  <ListDetail.Detail title={data.current?.title} placeholder={<EmptyState title={t('pickOrder')} />}>
+    {data.current && <OrderDetail order={data.current} />}
+  </ListDetail.Detail>
+</ListDetail>
+```
+
+### Title, bleed and folds
+
+- `<page title={…}>` sets the page's navigation bar title.
+- `bleed` (`true`, `'top'`, `'bottom'`, `'horizontal'`) on a direct child of `<page>` runs it to
+  the screen edge under bars and cutouts (a map, a video, a cover); elsewhere it throws
+  `UI_BLEED_PARENT`. Only the first in-flow child reaches the top and the last the bottom.
+- A custom header row is `<TopBar>` from `@liulidesign/core/TopBar`. The page already keeps
+  clear of host chrome: never pad a header by `env.insets`.
+- `env.insets` and `env.safeArea` also carry `inlineStart` and `inlineEnd`, which follow the
+  page's direction.
+- `env.hinge` is a fold's crease in page coordinates (`x`, `y`, `width`, `height`,
+  `orientation`, `posture: 'flat' | 'half-opened'`), or `null`. `<ListDetail>` and `<Split>`
+  already keep their seam on it; read it only for a layout of your own.
+
 ## Logic and WebView pages
 
 - Logic reads `page.env.get()` (`{ sizeClass, canDock }`) and calls `page.env.watch(cb)` only
@@ -90,4 +127,7 @@ test('lays out for compact and regular', async (t) => {
 - `device.set` is partial; `appearance: "light" | "dark" | "system"` pins the
   simulated scheme, `textScale` (0.5 to 3) and `contrast: "standard" | "high"` the
   system text size and contrast.
+- `t.device.set({ preset, posture, orientation })` picks a device by form factor
+  (`phone`, `fold`, `trifold`, `pad`, `desktop`) and a fold's posture (`outer`, `open`,
+  `dual`, `tabletop`); a posture the device lacks fails the step.
 - Assert that Logic-owned state survived the switch.

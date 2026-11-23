@@ -393,7 +393,8 @@ All keys are optional. `navigationStyle: "custom"` draws no native bar; on
 mobile the capsule stays over the page's header.
 `pageOrientation` (`portrait`, `landscape`, `auto`) applies unless the page
 calls `page.orientation.lock()`; the lock ends with `unlock()` or when that page
-unloads. `lx.device.orientation.get()` / `watch(cb)` report the orientation in effect.
+unloads. Unset (or `auto`), the page follows the host app's orientation: leave it
+unset unless the page only works one way. `lx.device.orientation.get()` / `watch(cb)` report the orientation in effect.
 
 ### Text in several languages
 

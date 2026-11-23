@@ -53,6 +53,7 @@ import { Content as Stepper } from '../content/stepper';
 import { Content as Link } from '../content/link';
 import { Content as PageControl } from '../content/page-control';
 import { Content as TreeList } from '../content/tree-list';
+import { Content as TopBar } from '../content/top-bar';
 import { Content as Badge } from '../content/badge';
 import { Content as ProgressBar } from '../content/progress-bar';
 import { Content as Banner } from '../content/banner';
@@ -88,6 +89,8 @@ import { Content as Timer } from '../content/timer';
 import { Content as Code } from '../content/code';
 import { Content as Timestamp } from '../content/timestamp';
 import { Content as MessageBubble } from '../content/message-bubble';
+import { Content as ListDetail } from '../content/list-detail';
+import { Content as Split } from '../content/split';
 import { Content as Qrcode } from '../content/qrcode';
 import { Content as Stat } from '../content/stat';
 import { Content as Sparkline } from '../content/sparkline';
@@ -104,7 +107,7 @@ import { Content as WebView } from '../content/web-view';
 import { Content as SignIn } from '../content/sign-in';
 import { Content as Settings } from '../content/settings';
 import { Content as Uploads } from '../content/uploads';
-import { Content as ListDetail } from '../content/list-detail';
+import { Content as ListAndDetail } from '../content/list-and-detail';
 import { Content as Dashboard } from '../content/dashboard';
 import { Content as Conversation } from '../content/conversation';
 
@@ -165,6 +168,7 @@ export const contents: Record<string, GalleryContent> = {
   "link": Link,
   "page-control": PageControl,
   "tree-list": TreeList,
+  "top-bar": TopBar,
   "badge": Badge,
   "progress-bar": ProgressBar,
   "banner": Banner,
@@ -200,6 +204,8 @@ export const contents: Record<string, GalleryContent> = {
   "code": Code,
   "timestamp": Timestamp,
   "message-bubble": MessageBubble,
+  "list-detail": ListDetail,
+  "split": Split,
   "qrcode": Qrcode,
   "stat": Stat,
   "sparkline": Sparkline,
@@ -216,7 +222,7 @@ export const contents: Record<string, GalleryContent> = {
   "sign-in": SignIn,
   "settings": Settings,
   "uploads": Uploads,
-  "list-detail": ListDetail,
+  "list-and-detail": ListAndDetail,
   "dashboard": Dashboard,
   "conversation": Conversation,
 };

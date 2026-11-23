@@ -215,15 +215,15 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
     private var userSidebarMode: LxAppShellPersistence.SidebarMode?
     private enum ShellSizeClass: String {
         case compact
-        case medium
-        case expanded
+        case regular
     }
-    private var surfaceSizeClass: ShellSizeClass = .expanded
+    private var surfaceSizeClass: ShellSizeClass = .regular
+    private var coreRequestsRail = false
     /// True only for a phone-framed Runner host. Desktop window resizing never
     /// opts into the mobile bottom-browser projection.
     private var deviceCompactProjectionEnabled = false
     private var isApplyingSurfaceSizeClass = false
-    private var mediumSidebarExpandedByUser = false
+    private var sidebarExpandedByUser = false
     private var panelFramePreservationGeneration: UInt = 0
     /// Our own `setFrame` also moves the window. That must not look like a drag.
     private var suppressFrameRestorationMove = false
@@ -667,18 +667,20 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
         _ = setSurfaceLayoutMetrics(appId, Double(windowWidth), Double(sidebarWidth))
     }
 
-    /// Apply the shared core's hysteresis-resolved shell size class. Compact
-    /// and medium preserve the icon rail so workspace switching never becomes
-    /// unreachable; medium still honors an explicit user reveal until the next
-    /// size-class crossing.
-    func applySurfaceLayoutProjection(_ rawValue: String) {
+    /// Apply the shared core's hysteresis-resolved shell size class (`compact` | `regular`)
+    /// and width-budgeted switcher form (`sidebar` | `rail` | `none`).
+    func applySurfaceLayoutProjection(_ rawValue: String, switcherForm: String? = nil) {
         guard let next = ShellSizeClass(rawValue: rawValue) else { return }
         browserCoordinator.setCompactProjection(
             deviceCompactProjectionEnabled && next == .compact
         )
-        guard next != surfaceSizeClass else { return }
-        mediumSidebarExpandedByUser = false
-        surfaceSizeClass = next
+        let nextCoreRail = switcherForm == "rail"
+        let projectionChanged = next != surfaceSizeClass || nextCoreRail != coreRequestsRail
+        if next != surfaceSizeClass {
+            sidebarExpandedByUser = false
+            surfaceSizeClass = next
+        }
+        coreRequestsRail = nextCoreRail
         isApplyingSurfaceSizeClass = true
         applyEffectiveSidebarProjection()
         isApplyingSurfaceSizeClass = false
@@ -686,7 +688,22 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
         // Sidebar width participates in physical aside admission. Re-report
         // once after the adaptive projection changes it; the repeated plan has
         // the same size class and therefore terminates here without recursion.
-        reportSurfaceWidth()
+        if projectionChanged {
+            reportSurfaceWidth()
+        }
+    }
+
+    /// Free horizontal budget (`windowWidth - visibleAsideWidth`) available for
+    /// sidebar + main. Expanding the sidebar requires `>= 820 pt` (`220 + 600`)
+    /// so the main pane stays `regular` (`>= 600 pt`).
+    private var sidebarBudgetRequiresRail: Bool {
+        if coreRequestsRail { return true }
+        guard let windowWidth = window?.contentView?.frame.width, windowWidth > 0 else {
+            return false
+        }
+        let dockedAsideWidth = max(0, cardLeadingPanelInset) + max(0, -(cardTrailingConstraint?.constant ?? 0))
+        let freeWidth = max(0, windowWidth - dockedAsideWidth)
+        return freeWidth < 820
     }
 
     // MARK: - Sidebar Interface Setup
@@ -1251,10 +1268,10 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
             targetWidth = 0
             iconRail = false
         } else if surfaceSizeClass == .compact
-                    || (surfaceSizeClass == .medium && !mediumSidebarExpandedByUser) {
+                    || (sidebarBudgetRequiresRail && !sidebarExpandedByUser) {
             targetWidth = sidebarView?.compactWidth ?? Layout.sidebarWidth
             iconRail = true
-        } else if userSidebarMode == .rail && surfaceSizeClass != .medium {
+        } else if userSidebarMode == .rail && !sidebarExpandedByUser {
             targetWidth = sidebarView?.compactWidth ?? Layout.sidebarWidth
             iconRail = true
         } else {
@@ -1384,15 +1401,15 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
     private func hideSidebar() {
         guard surfaceSizeClass != .compact else { return }
         endSidebarPeek(animated: false)
-        mediumSidebarExpandedByUser = false
+        sidebarExpandedByUser = false
         collapseSidebarToRail(animated: true)
     }
 
     private func showSidebar() {
         guard surfaceSizeClass != .compact else { return }
         userSidebarMode = .expanded
-        if surfaceSizeClass == .medium {
-            mediumSidebarExpandedByUser = true
+        if sidebarBudgetRequiresRail {
+            sidebarExpandedByUser = true
         }
         sidebarView?.setCompactMode(false)
         // Pinning a peek: the sidebar is already drawn expanded, so it holds
@@ -1412,7 +1429,7 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
             applyEffectiveSidebarProjection()
             return
         }
-        mediumSidebarExpandedByUser = false
+        sidebarExpandedByUser = false
         guard sidebarChromeEnabled, let sidebarView else {
             setSidebarVisible(false, animated: animated)
             return
@@ -1445,7 +1462,8 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
             // configuration passes (applySidebarMode at startup) must leave a
             // user-chosen rail alone.
             if visible,
-               surfaceSizeClass == .expanded,
+               surfaceSizeClass == .regular,
+               !sidebarBudgetRequiresRail,
                sidebarView?.isCompact == true,
                userSidebarMode != .rail {
                 sidebarView?.setCompactMode(false)
@@ -1464,11 +1482,11 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
         // Revealing always returns to the expanded layout. Reset while still
         // hidden (width 0) so the switch is invisible.
         if visible {
-            sidebarView?.setCompactMode(surfaceSizeClass == .medium)
+            sidebarView?.setCompactMode(sidebarBudgetRequiresRail)
         }
 
         let targetWidth: CGFloat = visible
-            ? (surfaceSizeClass == .medium
+            ? (sidebarBudgetRequiresRail
                 ? sidebarView?.compactWidth ?? Layout.sidebarWidth
                 : lastExpandedSidebarWidth)
             : 0
@@ -1498,11 +1516,11 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
     func updateSidebarWidth(_ width: CGFloat, animated: Bool) {
         guard let constraint = sidebarWidthConstraint else { return }
 
-        if surfaceSizeClass == .medium,
+        if sidebarBudgetRequiresRail,
            animated,
            width >= SidebarView.Layout.expandedWidth,
            sidebarView?.isCompact == false {
-            mediumSidebarExpandedByUser = true
+            sidebarExpandedByUser = true
         }
 
         // Remember only settled, genuinely-expanded widths — never the icon
@@ -1552,7 +1570,7 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
         syncSidebarHeaderButtonAlignment()
         window?.contentView?.layoutSubtreeIfNeeded()
         workspaceManager.relayoutPanels()
-        if surfaceSizeClass == .expanded && !isApplyingSurfaceSizeClass {
+        if surfaceSizeClass == .regular && !sidebarBudgetRequiresRail && !isApplyingSurfaceSizeClass {
             persistSidebarState()
         }
         reportSurfaceWidth()

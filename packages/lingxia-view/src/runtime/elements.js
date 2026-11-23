@@ -5,7 +5,7 @@ import { classElementProblem, gridProblem, gridRefuses, tagHint } from '../style
 import { lowerStyle, paintOnly, mergeStyle } from '../style/lower.js';
 import { h, readNode, isNode, isFragment, entries } from './nodes.js';
 import { render, page } from './state.js';
-import { cellOf, envOf } from './hooks.js';
+import { cellOf, envOf, scopedSizeClass } from './hooks.js';
 import { located } from './errors.js';
 import { pageFamily } from './fonts.js';
 import { requestNavigation } from './actions.js';
@@ -144,8 +144,12 @@ let loweredEnv = null, loweredClasses = classGeneration;
 const fresh = new Set();
 let seeded = null;
 // The only env fields lowering may read: each is in the key, so a seed from another isolate holds.
-const loweringFields = ['theme', 'viewport', 'pointer', 'reducedMotion', 'insets', 'keyboard'];
-const loweringEnv = env => Object.fromEntries(loweringFields.map(name => [name, env?.[name]]));
+const loweringFields = ['theme', 'viewport', 'pointer', 'reducedMotion', 'insets', 'keyboard', 'sizeClass'];
+const loweringEnv = (env, scoped) => {
+  const base = Object.fromEntries(loweringFields.map(name => [name, env?.[name]]));
+  if (scoped) base.sizeClass = scoped;
+  return base;
+};
 // A view's environment is frozen, so its key is computed once per environment, not per node.
 let keyedEnv = {}, keyedEnvKey;
 function envKey(env) {
@@ -197,8 +201,8 @@ export function seedLowered(text) {
   return true;
 }
 
-function nodeStyle(tag, props, data, extra, inherited, direction, structure, every) {
-  if (props.style !== undefined || extra !== undefined || every !== undefined || props.className === undefined) return lowerNodeStyle(tag, props, data, extra, inherited, direction, structure, every);
+function nodeStyle(tag, props, data, extra, inherited, direction, structure, every, sizeClass) {
+  if (props.style !== undefined || extra !== undefined || every !== undefined || props.className === undefined) return lowerNodeStyle(tag, props, data, extra, inherited, direction, structure, every, sizeClass);
   const environment = envKey(envOf(render.view));
   if (loweredClasses !== classGeneration) {
     // A new class table: what was lowered, here or by a previous isolate, read the old one.
@@ -213,10 +217,10 @@ function nodeStyle(tag, props, data, extra, inherited, direction, structure, eve
     if (seeded?.env === environment) for (const [key, style] of seeded.entries) lowered.set(key, style);
   }
   // An inherited line height may be a multiplier object; it keys by value, not as "[object Object]".
-  const key = `${tag}\u0000${props.className}\u0000${data ? JSON.stringify(data) : ''}\u0000${props.disabled === true}\u0000${mixedCheckbox(tag, props)}\u0000${direction}\u0000${(structure ?? []).join(",")}\u0000${inherited.fontSize}\u0000${JSON.stringify(inherited.lineHeight)}`;
+  const key = `${tag}\u0000${props.className}\u0000${data ? JSON.stringify(data) : ''}\u0000${props.disabled === true}\u0000${mixedCheckbox(tag, props)}\u0000${direction}\u0000${sizeClass ?? ''}\u0000${(structure ?? []).join(",")}\u0000${inherited.fontSize}\u0000${JSON.stringify(inherited.lineHeight)}`;
   let style = lowered.get(key);
   if (!style) {
-    style = lowerNodeStyle(tag, props, data, extra, inherited, direction, structure);
+    style = lowerNodeStyle(tag, props, data, extra, inherited, direction, structure, undefined, sizeClass);
     fresh.add(key);
     if (lowered.size >= 2048) lowered.delete(lowered.keys().next().value);
     lowered.set(key, style);
@@ -244,8 +248,8 @@ const videoBacking = { backgroundColor: '#000000' };
 const mixedCheckbox = (tag, props) => tag === 'checkbox' && props.indeterminate === true;
 
 // Classes, then the parent's child rule, then inline style; `disabled:` replaces the class cascade.
-function lowerNodeStyle(tag, props, data, extra, inherited, direction, structure, every) {
-  const env = { ...loweringEnv(envOf(render.view)), direction, structure, data, indeterminate: mixedCheckbox(tag, props) };
+function lowerNodeStyle(tag, props, data, extra, inherited, direction, structure, every, sizeClass) {
+  const env = { ...loweringEnv(envOf(render.view), sizeClass), direction, structure, data, indeterminate: mixedCheckbox(tag, props) };
   const classes = resolveClasses(props.className, env);
   // A run takes the size of `text-sm` but not the line height paired with it.
   if (classes?.pairedLeading && runTags.has(tag)) delete classes.base.lineHeight;
@@ -438,12 +442,18 @@ function resolveElement(tag, original, children, identity, depth, parent) {
   const own = props.dir === 'auto' && !editor ? strongDirection(children) : props.dir === 'auto' ? undefined : props.dir;
   if (props.dir === 'auto' && !editor) props.dir = own;
   const direction = own ?? parent.direction ?? (envOf(render.view)?.direction === 'rtl' ? 'rtl' : 'ltr');
-  const authored = entries(children), flat = authored.map(entry => entry.child);
+  const effectiveChildren =
+    tag === 'page' && props.headerActions !== undefined && props.headerActions !== null && props.headerActions !== false
+      // In flow above the content: the host bar draws no View content, and an overlay would cover the page's first row.
+      ? [h('view', { key: '__lx_page_header_actions', role: 'toolbar', 'aria-label': typeof props.title === 'string' && props.title.trim() ? props.title : undefined, style: { minHeight: 44, flexShrink: 0, flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-end', gap: 6, paddingInlineStart: 12, paddingInlineEnd: 12 } }, props.headerActions), ...(Array.isArray(children) ? children : [children])]
+      : children;
+  const authored = entries(effectiveChildren), flat = authored.map(entry => entry.child);
   // The data-* props as variants and automation read them; nothing below changes them.
   const data = dataOf(props);
   // The root takes the theme's `--font-sans`, as preflight gives the document's root; its classes and style still win.
   const rootFamily = !parent.typography && pageFamily && element.style.includes('fontFamily') ? { fontFamily: pageFamily } : undefined;
-  const style = nodeStyle(kind, props, data, parent.extra ?? rootFamily, parent.typography ?? { fontSize: 14 }, direction, structure(parent.sibling, flat), parent.every);
+  const scopedSize = scopedSizeClass(parent.contexts, false);
+  const style = nodeStyle(kind, props, data, parent.extra ?? rootFamily, parent.typography ?? { fontSize: 14 }, direction, structure(parent.sibling, flat), parent.every, scopedSize);
   const inline = child => typeof child === 'string' || typeof child === 'number';
   if (admission.tags[element.wire].parent === 'text' && !parent.inText) throw Error(`UI_TEXT: <${tag}> belongs inside <text>; wrap it in a <text>`);
   if (tag === 'link' && parent.inLink) throw Error('UI_TEXT: links do not nest');
@@ -459,6 +469,23 @@ function resolveElement(tag, original, children, identity, depth, parent) {
   const wire = (key, value) => { if (!dropped(key)) result.wire.push([key, value]); };
   const on = (key, callback, kind, isolated) => result.handlers.push([key, handle(), callbackOf(callback, kind, isolated, undefined, [key, tag, props.testId])]);
   if (disabled) wire('enabled', 0);
+  // Declarative `<page title>` sets the page's navigation bar title.
+  if (tag === 'page' && props.title !== undefined) {
+    if (typeof props.title !== 'string') throw Error('UI_PROP: <page> title must be a string');
+    // Commit also sends it to the host navigation bar.
+    wire('pageTitle', props.title);
+  }
+  // `bleed` lets a direct child of `<page>` extend to the physical screen edge.
+  if (props.bleed !== undefined && props.bleed !== false) {
+    if (parent.tag !== 'page') {
+      throw Error('UI_BLEED_PARENT: bleed is only allowed on direct children of <page>');
+    }
+    const mode = props.bleed === true ? 'all' : props.bleed;
+    if (!['all', 'top', 'bottom', 'horizontal'].includes(mode)) {
+      throw Error('UI_PROP: bleed must be boolean, "top", "bottom" or "horizontal"');
+    }
+    wire('bleed', mode);
+  }
   // Authored data-* props reach automation (getAttribute, [data-x] selectors), never semantics.
   if (data) wire('dataAttributes', JSON.stringify(data));
   if (props.dir !== undefined) wire('direction', props.dir);

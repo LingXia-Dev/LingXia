@@ -1,5 +1,5 @@
 // Generated from the doc file by scripts/generate.mjs; do not edit.
-import { SignInSpecimen, SettingsSpecimen, UploadsSpecimen, ListDetailSpecimen, DashboardSpecimen, ConversationSpecimen } from '../shared/Specimens';
+import { SignInSpecimen, SettingsSpecimen, UploadsSpecimen, ListAndDetailSpecimen, DashboardSpecimen, ConversationSpecimen } from '../shared/Specimens';
 import { Category, Tile } from '../shared/Layout';
 
 export function Content({ onOpen }: { onOpen: (page: string) => void }) {
@@ -34,10 +34,10 @@ export function Content({ onOpen }: { onOpen: (page: string) => void }) {
         <Tile
           name={"List & detail"}
           tagline={"A list and a record"}
-          onOpen={() => onOpen("list-detail")}
-          testId={"open-list-detail"}
+          onOpen={() => onOpen("list-and-detail")}
+          testId={"open-list-and-detail"}
         >
-          <ListDetailSpecimen />
+          <ListAndDetailSpecimen />
         </Tile>
         <Tile
           name={"Dashboard"}

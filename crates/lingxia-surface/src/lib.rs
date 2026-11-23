@@ -18,9 +18,12 @@ pub use arbitrate::{Decision, OpenOutcome, Policy, arbitrate, normalize_initial_
 pub use content::{SlotKind, SurfaceContent};
 pub use graph::SurfaceGraph;
 pub use layout::PlanAsideSlot;
+pub use layout::PlanUnifiedAsideSlot;
 pub use layout::{
-    Axis, BottomOwner, ContentSizeClass, DEFAULT_HYSTERESIS, DerivedLayout, LayoutPresentationPlan,
-    LayoutTree, PlanAside, PlanFloat, SizeClass, SplitForm, SwitcherForm,
+    Axis, BottomOwner, COMPACT_MAX, DEFAULT_HYSTERESIS, DerivedLayout, DevicePosture,
+    HingeOrientation, HingeRect, LayoutPresentationPlan, LayoutTree, PlanAside, PlanFloat,
+    SIDEBAR_EXPAND_MIN_FREE_WIDTH, SIDEBAR_EXPANDED_WIDTH, SIDEBAR_RAIL_WIDTH, SizeClass,
+    SplitForm, SwitcherForm,
 };
 pub use manager::SurfaceManager;
 pub use model::{
@@ -142,7 +145,7 @@ mod tests {
     fn single_main_no_switcher_no_split() {
         let mut g = SurfaceGraph::new();
         g.insert(main_s("home"));
-        let d = g.derive_layout(SizeClass::Expanded);
+        let d = g.derive_layout(SizeClass::Regular);
         assert_eq!(d.switcher_form, SwitcherForm::None);
         assert_eq!(d.split_form, SplitForm::None);
         assert!(matches!(d.layout_tree, Some(LayoutTree::Leaf { .. })));
@@ -153,12 +156,12 @@ mod tests {
         let mut g = SurfaceGraph::new();
         g.insert(main_s("a"));
         assert_eq!(
-            g.derive_layout(SizeClass::Expanded).switcher_form,
+            g.derive_layout(SizeClass::Regular).switcher_form,
             SwitcherForm::None
         );
         g.insert(main_s("b"));
         assert_eq!(
-            g.derive_layout(SizeClass::Expanded).switcher_form,
+            g.derive_layout(SizeClass::Regular).switcher_form,
             SwitcherForm::Sidebar
         );
     }
@@ -169,7 +172,7 @@ mod tests {
         g.insert(main_s("home"));
         g.insert(aside_s("assistant", Edge::Right));
         assert_eq!(
-            g.derive_layout(SizeClass::Expanded).split_form,
+            g.derive_layout(SizeClass::Regular).split_form,
             SplitForm::Split
         );
         assert_eq!(
@@ -186,6 +189,7 @@ mod tests {
 
         let plan = g.presentation_plan(
             SizeClass::Compact,
+            390.0,
             390.0,
             &crate::arbitrate::Policy::default(),
         );
@@ -221,83 +225,72 @@ mod tests {
         g.insert(main_s("a"));
         g.insert(main_s("b"));
         g.insert(aside_s("assistant", Edge::Right));
-        let tree = g.canonical_layout(SizeClass::Expanded).unwrap();
+        let tree = g.canonical_layout(SizeClass::Regular).unwrap();
         tree.validate().expect("canonical tree must be valid");
         // floats never appear in the tree.
         g.insert(Surface::native("toast", Role::Float, "toast"));
         let ids = g
-            .canonical_layout(SizeClass::Expanded)
+            .canonical_layout(SizeClass::Regular)
             .unwrap()
             .surface_ids();
         assert!(!ids.contains(&"toast".to_string()));
     }
 
-    // ---- sizeClass breakpoints + hysteresis (§6.1) ----
+    // ---- sizeClass breakpoints + hysteresis (single 600dp threshold) ----
 
     #[test]
-    fn breakpoints_align_to_material() {
+    fn breakpoints_use_single_600dp_threshold() {
         assert_eq!(SizeClass::from_width(599.0), SizeClass::Compact);
-        assert_eq!(SizeClass::from_width(600.0), SizeClass::Medium);
-        assert_eq!(SizeClass::from_width(840.0), SizeClass::Medium);
-        assert_eq!(SizeClass::from_width(841.0), SizeClass::Expanded);
+        assert_eq!(SizeClass::from_width(600.0), SizeClass::Regular);
+        assert_eq!(SizeClass::from_width(840.0), SizeClass::Regular);
+        assert_eq!(SizeClass::from_width(841.0), SizeClass::Regular);
+        assert_eq!(SizeClass::Compact.as_str(), "compact");
+        assert_eq!(SizeClass::Regular.as_str(), "regular");
     }
 
     #[test]
-    fn hysteresis_holds_class_near_boundary() {
-        // sitting just under the 600 boundary, within margin, keeps Medium.
-        let held = SizeClass::resolve(Some(SizeClass::Medium), 590.0, DEFAULT_HYSTERESIS);
-        assert_eq!(held, SizeClass::Medium);
+    fn hysteresis_holds_class_near_600dp_boundary() {
+        // sitting just under the 600 boundary, within margin, keeps Regular.
+        let held = SizeClass::resolve(Some(SizeClass::Regular), 590.0, DEFAULT_HYSTERESIS);
+        assert_eq!(held, SizeClass::Regular);
         // clearly past the boundary switches.
-        let switched = SizeClass::resolve(Some(SizeClass::Medium), 500.0, DEFAULT_HYSTERESIS);
+        let switched = SizeClass::resolve(Some(SizeClass::Regular), 500.0, DEFAULT_HYSTERESIS);
         assert_eq!(switched, SizeClass::Compact);
-    }
-
-    #[test]
-    fn hysteresis_does_not_hold_across_two_classes() {
+        // crossing 840 never flips size class.
         assert_eq!(
-            SizeClass::resolve(Some(SizeClass::Expanded), 590.0, DEFAULT_HYSTERESIS),
-            SizeClass::Compact
-        );
-        assert_eq!(
-            SizeClass::resolve(Some(SizeClass::Compact), 850.0, DEFAULT_HYSTERESIS),
-            SizeClass::Expanded
+            SizeClass::resolve(Some(SizeClass::Regular), 900.0, DEFAULT_HYSTERESIS),
+            SizeClass::Regular
         );
     }
 
     #[test]
-    fn content_class_collapses_medium_and_expanded() {
-        assert_eq!(
-            ContentSizeClass::from_width(599.0),
-            ContentSizeClass::Compact
-        );
-        assert_eq!(
-            ContentSizeClass::from_width(600.0),
-            ContentSizeClass::Regular
-        );
-        assert_eq!(
-            ContentSizeClass::from_width(840.0),
-            ContentSizeClass::Regular
-        );
-        assert_eq!(
-            ContentSizeClass::from_width(841.0),
-            ContentSizeClass::Regular
-        );
-        assert_eq!(SizeClass::Medium.to_content(), ContentSizeClass::Regular);
-        assert_eq!(SizeClass::Expanded.to_content(), ContentSizeClass::Regular);
+    fn reopening_live_surface_in_other_role_focuses_existing_role() {
+        let mut g = SurfaceGraph::new();
+        g.insert(main_s("home"));
+        g.insert(aside_s("orders", Edge::Right));
+        let (next, outcome) =
+            arbitrate(&g, main_s("orders"), &Policy::default(), SizeClass::Regular);
+        assert_eq!(outcome.decision, Decision::FocusedExistingRole);
+        assert_eq!(outcome.resolved_role, Role::Aside);
+        assert_eq!(next.role_of("orders"), Some(Role::Aside));
+        assert_eq!(next.focused_surface_id.as_deref(), Some("orders"));
     }
 
     #[test]
-    fn content_hysteresis_is_only_at_compact_boundary() {
-        let held =
-            ContentSizeClass::resolve(Some(ContentSizeClass::Regular), 590.0, DEFAULT_HYSTERESIS);
-        assert_eq!(held, ContentSizeClass::Regular);
-        let switched =
-            ContentSizeClass::resolve(Some(ContentSizeClass::Regular), 500.0, DEFAULT_HYSTERESIS);
-        assert_eq!(switched, ContentSizeClass::Compact);
-        assert_eq!(
-            ContentSizeClass::resolve(Some(ContentSizeClass::Regular), 900.0, DEFAULT_HYSTERESIS),
-            ContentSizeClass::Regular
-        );
+    fn reopening_live_surface_in_other_role_takes_the_new_content() {
+        let mut g = SurfaceGraph::new();
+        g.insert(main_s("home"));
+        g.insert(aside_s("orders", Edge::Right));
+        let mut request = main_s("orders");
+        let SurfaceContent::Lxapp { path, .. } = &mut request.content else {
+            panic!("main_s builds an lxapp surface");
+        };
+        *path = Some("pages/order/index?id=7".into());
+        let wanted = request.content.clone();
+        let (next, _) = arbitrate(&g, request, &Policy::default(), SizeClass::Regular);
+        let orders = next.get("orders").unwrap();
+        assert_eq!(orders.role, Role::Aside);
+        assert_eq!(orders.content, wanted);
     }
 
     // ---- arbitration (§3.4) ----
@@ -313,12 +306,12 @@ mod tests {
             &g,
             aside_s("a2", Edge::Right),
             &Policy::default(),
-            SizeClass::Expanded,
+            SizeClass::Regular,
         );
         assert_eq!(decision, Decision::MergedIntoTabs);
         assert!(next.get("a1").is_some());
         assert!(next.get("a2").is_some());
-        let slots = next.aside_slots(SizeClass::Expanded);
+        let slots = next.aside_slots(SizeClass::Regular);
         assert_eq!(slots.len(), 1);
         assert_eq!(slots[0].kind, SlotKind::Panel);
         assert_eq!(slots[0].children, vec!["a1".to_string(), "a2".to_string()]);
@@ -343,20 +336,20 @@ mod tests {
                 Decision::MergedIntoTabs,
             ),
         ] {
-            let (n, d) = arbitrate(&next, request, &Policy::default(), SizeClass::Expanded);
+            let (n, d) = arbitrate(&next, request, &Policy::default(), SizeClass::Regular);
             assert_eq!(d, expected);
             next = n;
         }
-        // Two kinds → two slots, both admitted on expanded.
-        let expanded = next.aside_slots(SizeClass::Expanded);
-        assert_eq!(expanded.len(), 2);
-        assert!(expanded.iter().all(|slot| slot.visible));
-        // Medium admits only the most recently used slot; the other stays
+        // Two kinds → two slots, both admitted on regular.
+        let regular = next.aside_slots(SizeClass::Regular);
+        assert_eq!(regular.len(), 2);
+        assert!(regular.iter().all(|slot| slot.visible));
+        // Compact admits only the most recently used slot; the other stays
         // alive hidden — the graph itself never shrinks.
-        let medium = next.aside_slots(SizeClass::Medium);
-        assert_eq!(medium.iter().filter(|slot| slot.visible).count(), 1);
+        let compact = next.aside_slots(SizeClass::Compact);
+        assert_eq!(compact.iter().filter(|slot| slot.visible).count(), 1);
         assert!(
-            medium
+            compact
                 .iter()
                 .find(|slot| slot.visible)
                 .is_some_and(|slot| slot.kind == SlotKind::Panel)
@@ -377,19 +370,19 @@ mod tests {
             web_aside_s("b1", "https://a.example", Edge::Right),
             terminal_aside_s("terminal", Edge::Right),
         ] {
-            let (n, _) = arbitrate(&next, request, &Policy::default(), SizeClass::Expanded);
+            let (n, _) = arbitrate(&next, request, &Policy::default(), SizeClass::Regular);
             next = n;
         }
         let policy = Policy::default(); // main_min 360, aside_min 240
 
         // Wide expanded (1200): main 360 + 2×240 = 840 ≤ 1200 → both right
         // slots fit.
-        let wide = next.aside_slots_admitted(SizeClass::Expanded, 1200.0, &policy);
+        let wide = next.aside_slots_admitted(SizeClass::Regular, 1200.0, &policy);
         assert_eq!(wide.iter().filter(|s| s.visible).count(), 2);
 
-        // Narrow expanded (700): the count ceiling says 2, but 360 + 240 =
+        // Narrow regular (700): the count ceiling says 2, but 360 + 240 =
         // 600 ≤ 700 fits ONE right slot.
-        let narrow = next.aside_slots_admitted(SizeClass::Expanded, 700.0, &policy);
+        let narrow = next.aside_slots_admitted(SizeClass::Regular, 700.0, &policy);
         assert_eq!(
             narrow.iter().filter(|s| s.visible).count(),
             1,
@@ -406,10 +399,10 @@ mod tests {
         graph.insert(aside_s("chat", Edge::Right));
         graph.insert(terminal_aside_s("terminal", Edge::Right));
 
-        // The terminal was opened last, so it initially owns Medium's one slot.
-        let medium = graph.aside_slots(SizeClass::Medium);
+        // The terminal was opened last, so it initially owns Compact's one slot.
+        let compact = graph.aside_slots(SizeClass::Compact);
         assert_eq!(
-            medium
+            compact
                 .iter()
                 .find(|slot| slot.visible)
                 .map(|slot| slot.kind),
@@ -418,9 +411,9 @@ mod tests {
 
         // Focusing an older slot makes it MRU without changing tab/open order.
         assert!(graph.set_focus("chat"));
-        let medium = graph.aside_slots(SizeClass::Medium);
+        let compact = graph.aside_slots(SizeClass::Compact);
         assert_eq!(
-            medium
+            compact
                 .iter()
                 .find(|slot| slot.visible)
                 .map(|slot| slot.kind),
@@ -428,13 +421,13 @@ mod tests {
         );
 
         let policy = Policy {
-            max_asides_expanded: 1,
+            max_asides_regular: 1,
             ..Policy::default()
         };
-        let expanded = graph.aside_slots_admitted(SizeClass::Expanded, 1200.0, &policy);
-        assert_eq!(expanded.iter().filter(|slot| slot.visible).count(), 1);
+        let regular = graph.aside_slots_admitted(SizeClass::Regular, 1200.0, &policy);
+        assert_eq!(regular.iter().filter(|slot| slot.visible).count(), 1);
         assert_eq!(
-            expanded
+            regular
                 .iter()
                 .find(|slot| slot.visible)
                 .map(|slot| slot.kind),
@@ -452,7 +445,7 @@ mod tests {
 
         // 700 fits main + one horizontal slot. The newest slot wins, even
         // though returned slots stay in stable first-open order.
-        let admitted = graph.aside_slots_admitted(SizeClass::Expanded, 700.0, &Policy::default());
+        let admitted = graph.aside_slots_admitted(SizeClass::Regular, 700.0, &Policy::default());
         let visible: Vec<_> = admitted
             .iter()
             .filter(|slot| slot.visible)
@@ -470,10 +463,10 @@ mod tests {
         graph.insert(terminal);
         graph.insert(aside_s("chat", Edge::Right));
 
-        // Medium admits one slot. The MRU right slot cannot fit beside main,
-        // so the older top overlay must be considered instead of leaving the
-        // entire aside area empty.
-        let admitted = graph.aside_slots_admitted(SizeClass::Medium, 500.0, &Policy::default());
+        // Narrow regular (500pt workspace): the MRU right slot cannot fit beside
+        // main, so the older top overlay must be considered instead of leaving
+        // the entire aside area empty.
+        let admitted = graph.aside_slots_admitted(SizeClass::Regular, 500.0, &Policy::default());
         let visible: Vec<_> = admitted
             .iter()
             .filter(|slot| slot.visible)
@@ -494,7 +487,7 @@ mod tests {
             &g,
             web_aside_s("browser-2", "https://b.example", Edge::Right),
             &Policy::default(),
-            SizeClass::Expanded,
+            SizeClass::Regular,
         );
         assert_eq!(decision, Decision::MergedIntoTabs);
         assert_eq!(decision.resolved_surface_id, "browser-2");
@@ -525,7 +518,7 @@ mod tests {
             graph.get("second").map(|surface| surface.state),
             Some(SurfaceState::Hidden)
         );
-        let slots = graph.aside_slots(SizeClass::Expanded);
+        let slots = graph.aside_slots(SizeClass::Regular);
         assert_eq!(slots[0].active_child.as_deref(), Some("first"));
 
         assert!(graph.show("second"));
@@ -553,7 +546,7 @@ mod tests {
         );
         assert_eq!(graph.focused_surface_id.as_deref(), Some("first"));
         assert_eq!(
-            graph.aside_slots(SizeClass::Expanded)[0]
+            graph.aside_slots(SizeClass::Regular)[0]
                 .active_child
                 .as_deref(),
             Some("first")
@@ -571,7 +564,7 @@ mod tests {
             &g,
             web_aside_s("browser-2", "https://a.example", Edge::Right),
             &Policy::default(),
-            SizeClass::Expanded,
+            SizeClass::Regular,
         );
         assert_eq!(decision, Decision::MergedIntoTabs);
         assert_eq!(decision.resolved_surface_id, "browser-1");
@@ -598,7 +591,7 @@ mod tests {
             &graph,
             non_reusable_web_aside_s("callback", "https://a.example", Edge::Right),
             &Policy::default(),
-            SizeClass::Expanded,
+            SizeClass::Regular,
         );
         assert_eq!(callback_outcome.resolved_surface_id, "callback");
         assert!(graph.get("ordinary").is_some());
@@ -608,7 +601,7 @@ mod tests {
             &graph,
             web_aside_s("ordinary-2", "https://a.example", Edge::Right),
             &Policy::default(),
-            SizeClass::Expanded,
+            SizeClass::Regular,
         );
         assert_eq!(ordinary_outcome.resolved_surface_id, "ordinary");
         assert!(graph.get("ordinary-2").is_none());
@@ -636,13 +629,13 @@ mod tests {
             &graph,
             web_aside_s("browser-1", "HTTPS://Example.COM:443", Edge::Right),
             &Policy::default(),
-            SizeClass::Expanded,
+            SizeClass::Regular,
         );
         let (graph, outcome) = arbitrate(
             &graph,
             web_aside_s("browser-2", "https://example.com/", Edge::Right),
             &Policy::default(),
-            SizeClass::Expanded,
+            SizeClass::Regular,
         );
         assert_eq!(outcome.resolved_surface_id, "browser-1");
         assert!(graph.get("browser-2").is_none());
@@ -668,7 +661,7 @@ mod tests {
                 &next,
                 web_aside_s(&format!("b{i}"), url, Edge::Right),
                 &Policy::default(),
-                SizeClass::Expanded,
+                SizeClass::Regular,
             );
             // Every web aside joins the side panel the lxapp already opened.
             assert_eq!(d, Decision::MergedIntoTabs);
@@ -696,13 +689,13 @@ mod tests {
             &g,
             web_aside_s("browser-1", "https://a.example", Edge::Left),
             &Policy::default(),
-            SizeClass::Expanded,
+            SizeClass::Regular,
         );
         assert_eq!(decision, Decision::MergedIntoTabs);
         assert!(next.get("assistant").is_some());
         assert!(next.get("browser-1").is_some());
         assert_eq!(next.asides().len(), 2);
-        let slots = next.aside_slots(SizeClass::Expanded);
+        let slots = next.aside_slots(SizeClass::Regular);
         assert_eq!(slots.len(), 1);
         assert_eq!(slots[0].kind, SlotKind::Panel);
         assert_eq!(slots[0].edge, Some(Edge::Left));
@@ -727,6 +720,7 @@ mod tests {
             next.presentation_plan(
                 SizeClass::Compact,
                 390.0,
+                390.0,
                 &crate::arbitrate::Policy::default()
             )
             .active_main_id
@@ -745,7 +739,7 @@ mod tests {
             &g,
             aside_s("assistant", Edge::Right),
             &Policy::default(),
-            SizeClass::Expanded,
+            SizeClass::Regular,
         );
         assert_eq!(decision, Decision::DowngradedRole);
         assert_eq!(next.role_of("assistant"), Some(Role::Main));
@@ -761,7 +755,7 @@ mod tests {
             &g,
             aside_s("x", Edge::Left),
             &Policy::default(),
-            SizeClass::Expanded,
+            SizeClass::Regular,
         );
         // original graph untouched (pure); result is valid.
         assert_eq!(g.surfaces().len(), before);

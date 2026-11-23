@@ -113,12 +113,21 @@ function projectOf(file) {
 /** What a phone reports by default; a test overrides any field through `view.env`. */
 export function defaultEnv(overrides = {}) {
   const viewport = overrides.viewport ?? { width: 390, height: 844 };
-  const edges = { top: 0, right: 0, bottom: 0, left: 0 };
+  const direction = overrides.direction ?? 'ltr';
+  const rtl = direction === 'rtl';
+  const toLogical = raw => ({
+    ...raw,
+    inlineStart: rtl ? raw.right : raw.left,
+    inlineEnd: rtl ? raw.left : raw.right,
+  });
+  const baseEdges = { top: 0, right: 0, bottom: 0, left: 0 };
+  const insets = toLogical(overrides.insets ?? baseEdges);
+  const safeArea = toLogical(overrides.safeArea ?? baseEdges);
   return {
-    theme: 'light', viewport, insets: edges, safeArea: edges, capsule: null, keyboard: { height: 0 }, pointer: 'coarse', os: 'node',
+    theme: 'light', viewport, capsule: null, keyboard: { height: 0 }, pointer: 'coarse', os: 'node', platform: 'web',
     formFactor: 'phone', sizeClass: viewport.width < 600 ? 'compact' : 'regular', language: 'en-US',
     reducedMotion: false, highContrast: false, animatorDurationScale: 1, hourCycle: 'h12', firstWeekday: 1,
-    direction: 'ltr', canDock: false, ...overrides,
+    direction, canDock: false, hinge: null, ...overrides, insets, safeArea,
   };
 }
 

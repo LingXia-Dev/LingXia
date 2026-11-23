@@ -289,6 +289,7 @@ final class GpuPageView: NSView {
             : WebViewManager.resolvedDarkAppearance(appId: appId)
         let live = liveScale
         gpuPageRaster(token, live == scale ? 0 : Float(live))
+        gpuPageSetSimulatedHinge(token, localSimulatedHingeJSON(in: window))
         gpuPageMeasured(
             token,
             UInt32((bounds.width * scale).rounded()),
@@ -321,6 +322,48 @@ final class GpuPageView: NSView {
                 UInt32((bounds.height * live).rounded())
             )
         }
+    }
+
+    /// Project the Runner's screen-space hinge into this page's local logical coordinates.
+    /// A zero-thickness crease still intersects the page it runs through.
+    private func localSimulatedHingeJSON(in window: NSWindow) -> String {
+        guard let hinge = GpuPages.parsedSimulatedHinge else { return "" }
+        // A simulated phone page is the whole simulated screen, in the device's points.
+        if simulation != nil {
+            return GpuPages.simulatedHinge ?? ""
+        }
+        guard let contentView = window.contentView, bounds.width > 0, bounds.height > 0 else { return "" }
+        let frame = convert(bounds, to: contentView)
+        // Screen space starts below the Runner's top accessory; AppKit's content view is bottom-up.
+        let top = (contentView.isFlipped ? frame.minY : contentView.bounds.height - frame.maxY)
+            - GpuPages.simulatedScreenTopInset
+        let left = frame.minX
+        // Window points to page points (equal unless the view's bounds are scaled).
+        let sx = Double(bounds.width / max(frame.width, 1))
+        let sy = Double(bounds.height / max(frame.height, 1))
+        let x0 = max(0, (hinge.x - Double(left)) * sx)
+        let y0 = max(0, (hinge.y - Double(top)) * sy)
+        let x1 = min(Double(bounds.width), (hinge.x + hinge.width - Double(left)) * sx)
+        let y1 = min(Double(bounds.height), (hinge.y + hinge.height - Double(top)) * sy)
+        let vertical = hinge.orientation == "vertical"
+        // Strictly inside along the crease's thin axis; a thin crease on the page's edge is not across it.
+        guard x1 >= x0, y1 >= y0,
+              vertical ? (x0 < Double(bounds.width) && x1 > 0) : (y0 < Double(bounds.height) && y1 > 0),
+              vertical ? y1 > y0 : x1 > x0
+        else { return "" }
+        let projected = GpuPages.SimulatedHinge(
+            x: x0, y: y0, width: x1 - x0, height: y1 - y0,
+            orientation: hinge.orientation, posture: hinge.posture)
+        guard let data = try? JSONEncoder().encode(projected),
+              let json = String(data: data, encoding: .utf8)
+        else { return "" }
+        return json
+    }
+
+    override func setFrameOrigin(_ newOrigin: NSPoint) {
+        super.setFrameOrigin(newOrigin)
+        // A page moved beside a resized sidebar or aside crosses the crease elsewhere.
+        if GpuPages.parsedSimulatedHinge != nil { report() }
     }
 
     /// Shows a frame `width` pixels wide across the layer, whichever space AppKit keeps the
@@ -654,6 +697,41 @@ public enum GpuPages {
 
     /// The view already made for a page token; never creates one.
     @MainActor static func existingView(for token: Int64) -> GpuPageView? { views[token] }
+
+    struct SimulatedHinge: Codable, Equatable {
+        let x: Double
+        let y: Double
+        let width: Double
+        let height: Double
+        let orientation: String
+        let posture: String
+    }
+
+    @MainActor fileprivate static var parsedSimulatedHinge: SimulatedHinge?
+
+    /// Window points above the simulated screen in a Runner shell window (its device toolbar).
+    @MainActor static var simulatedScreenTopInset: CGFloat = 0 {
+        didSet {
+            guard simulatedScreenTopInset != oldValue, parsedSimulatedHinge != nil else { return }
+            for view in views.values { view.report() }
+        }
+    }
+
+    /// The simulated foldable device's hinge JSON (Runner only); nil when flat/unfolded without crease.
+    @MainActor static var simulatedHinge: String? {
+        didSet {
+            guard simulatedHinge != oldValue else { return }
+            if let json = simulatedHinge,
+               let data = json.data(using: .utf8),
+               let parsed = try? JSONDecoder().decode(SimulatedHinge.self, from: data)
+            {
+                parsedSimulatedHinge = parsed
+            } else {
+                parsedSimulatedHinge = nil
+            }
+            for view in views.values { view.report() }
+        }
+    }
 
     /// The view for a page token, created on first use.
     @MainActor static func view(for token: Int64) -> GpuPageView {

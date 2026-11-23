@@ -288,17 +288,23 @@ class DevToolsPanel: NSView {
         switch device.shape {
         case .phone:
             typeLabel = "Phone"
+        case .fold:
+            typeLabel = "Foldable"
         case .pad:
             typeLabel = "Pad"
         case .desktop:
             typeLabel = "Desktop"
         }
-        let info = """
-        Device    \(device.displayName)
-        Type      \(typeLabel)
-        Viewport  \(Int(device.width)) × \(Int(device.height)) pt
-        Path      \(path ?? "(none)")
-        """
+        var lines = [
+            "Device    \(device.displayName)",
+            "Type      \(typeLabel)",
+        ]
+        if let posture = device.activePosture {
+            lines.append("Posture   \(posture.label) (\(posture.id))")
+        }
+        lines.append("Viewport  \(Int(device.width)) × \(Int(device.height)) pt")
+        lines.append("Path      \(path ?? "(none)")")
+        let info = lines.joined(separator: "\n")
         let attrs: [NSAttributedString.Key: Any] = [
             .font: NSFont.monospacedSystemFont(ofSize: 11, weight: .regular),
             .foregroundColor: NSColor(white: 0.8, alpha: 1.0),
