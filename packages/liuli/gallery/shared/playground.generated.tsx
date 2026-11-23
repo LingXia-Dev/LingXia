@@ -935,9 +935,19 @@ export const playgroundEntries: PlaygroundEntry[] = [
     },
     "controls": [
       {
+        "name": "index",
+        "required": false,
+        "kind": "number"
+      },
+      {
         "name": "label",
         "required": true,
         "kind": "text"
+      },
+      {
+        "name": "defaultIndex",
+        "required": false,
+        "kind": "number"
       },
       {
         "name": "dots",
@@ -2875,6 +2885,11 @@ export const playgroundEntries: PlaygroundEntry[] = [
     },
     "controls": [
       {
+        "name": "index",
+        "required": false,
+        "kind": "number"
+      },
+      {
         "name": "isOpen",
         "required": true,
         "kind": "boolean"
@@ -2883,6 +2898,11 @@ export const playgroundEntries: PlaygroundEntry[] = [
         "name": "label",
         "required": true,
         "kind": "text"
+      },
+      {
+        "name": "defaultIndex",
+        "required": false,
+        "kind": "number"
       },
       {
         "name": "closeLabel",

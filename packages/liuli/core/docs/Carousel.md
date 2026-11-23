@@ -39,7 +39,7 @@ export function Photos() {
 }
 ```
 
-### Pages moved by a button too
+### Pages held by the caller, moved by a button too
 
 ```tsx
 import { useLocal } from '@lingxia/view';
@@ -52,13 +52,13 @@ const steps = [
   ['Share what you choose', 'Each note is private until you invite someone.'],
 ] as const;
 
-/** Pages of content, with the page held outside so a button can move it. */
+/** Pages of content, with the page held by the caller (`index`, `onIndexChange`) so a button can move it. */
 export function Welcome() {
   const page = useLocal('step', 0);
   const isLast = Math.round(page.value) === steps.length - 1;
   return (
     <view className="gap-3">
-      <Carousel label="Welcome" bind={page} pageLabel={(at, count) => `Step ${at + 1} of ${count}`} data-testid="welcome">
+      <Carousel label="Welcome" index={page.value} onIndexChange={next => page.set(next)} pageLabel={(at, count) => `Step ${at + 1} of ${count}`} data-testid="welcome">
         {steps.map(([title, body]) => (
           <view key={title} className="gap-1 bg-surface-sunken p-5 min-h-28">
             <text className="text-callout font-semibold text-text">{title}</text>
@@ -153,9 +153,12 @@ export function Rail() {
 
 | Prop | Type | Default | Description |
 | --- | --- | --- | --- |
+| `bind` | `Local<number>` |  | A View-local cell holding the page, from 0, to read or set it from outside. |
+| `index` | `number` |  | The page in view, from 0, held by the caller: in Logic state, or to open at a deep link. |
+| `onIndexChange` | `((index: number) => void)` |  | Runs with the page a swipe, a dot or a button moves to. |
 | `label` (required) | `string` |  | Names the pages for assistive tech: "Photos of the house". |
 | `children` (required) | `Child` |  | The pages, one child each; every page is as wide as the carousel, or `itemWidth`. |
-| `bind` | `Local<number>` |  | A View-local cell holding the page, from 0, to read or set it from outside. |
+| `defaultIndex` | `number` | `0` | The page it starts on when the carousel holds it. |
 | `pageLabel` | `((page: number, count: number) => string)` |  | Each dot's accessible name, written by the app: `(page, count) => \`Photo ${page + 1} of ${count}\``. Defaults to "2 of 5" in the page's language. |
 | `dots` | `CarouselDots` | `'below'` | `over` lays the dots on the bottom edge of the pages, for pictures; `none` leaves paging to the swipe and the buttons. |
 | `itemWidth` | `number` |  | Each item's width in points: a rail of cards, several in view, that stops on each. Without it a page fills the carousel. |

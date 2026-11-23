@@ -7,13 +7,29 @@ import { dataOf } from '../internal/data';
 
 export type CarouselDots = 'below' | 'over' | 'none';
 
-export interface CarouselProps {
+/** Which page is in view: a View-local cell, or a value with its change handler, or neither (the carousel holds it). */
+export type CarouselIndex =
+  | {
+      /** A View-local cell holding the page, from 0, to read or set it from outside. */
+      bind?: Local<number>;
+      index?: never;
+      onIndexChange?: never;
+    }
+  | {
+      bind?: never;
+      /** The page in view, from 0, held by the caller: in Logic state, or to open at a deep link. */
+      index: number;
+      /** Runs with the page a swipe, a dot or a button moves to. */
+      onIndexChange: (index: number) => void;
+    };
+
+export type CarouselProps = CarouselIndex & {
   /** Names the pages for assistive tech: "Photos of the house". */
   label: string;
   /** The pages, one child each; every page is as wide as the carousel, or `itemWidth`. */
   children: Child;
-  /** A View-local cell holding the page, from 0, to read or set it from outside. */
-  bind?: Local<number>;
+  /** The page it starts on when the carousel holds it. @default 0 */
+  defaultIndex?: number;
   /** Each dot's accessible name, written by the app: `(page, count) => \`Photo ${page + 1} of ${count}\``. Defaults to "2 of 5" in the page's language. */
   pageLabel?: (page: number, count: number) => string;
   /** `over` lays the dots on the bottom edge of the pages, for pictures; `none` leaves paging to the swipe and the buttons. @default 'below' */
@@ -31,17 +47,20 @@ export interface CarouselProps {
   className?: string;
   /** On the root; the dots get `<testid>-dots`, the buttons `<testid>-previous` and `<testid>-next`. */
   'data-testid'?: string;
-}
+};
 
 // The rail's gap in points, as the recipe sets it.
 const railGap = 12;
 
 /** A few pages to swipe through, one at a time, with dots that follow; or a rail of cards. */
 export function Carousel({
-  label, children, bind, pageLabel = (page: number, count: number) => liuliText('@liuli.itemOf', { page: page + 1, count }), dots = 'below', itemWidth, hasButtons = false, hasLoop = false, previousLabel, nextLabel, className, 'data-testid': testId, ...attributes
+  label, children, bind, index, onIndexChange, defaultIndex = 0, pageLabel = (page: number, count: number) => liuliText('@liuli.itemOf', { page: page + 1, count }), dots = 'below', itemWidth, hasButtons = false, hasLoop = false, previousLabel, nextLabel, className, 'data-testid': testId, ...attributes
 }: CarouselProps) {
-  const local = useLocal('page', 0);
-  const page = bind ?? local;
+  const local = useLocal('page', defaultIndex);
+  const cell = bind ?? local;
+  const page = onIndexChange !== undefined ? { value: index ?? 0, set: onIndexChange } : cell;
+  const follow = onIndexChange !== undefined ? { snapIndex: index ?? 0, onSnapChange: onIndexChange } : { bind: cell };
+  const dotsFollow = onIndexChange !== undefined ? { value: index ?? 0, onChange: onIndexChange } : { bind: cell };
   const pages = childrenToArray(children);
   const box = useBox('rail');
   const isRail = itemWidth !== undefined;
@@ -75,7 +94,7 @@ export function Carousel({
   return (
     <view data-testid={testId} {...dataOf(attributes)} className={cx(r.root.base, className)}>
       <view className={r.frame.base}>
-        <scroll box={box} bind={page} className={r.scroll.base}>
+        <scroll box={box} {...follow} className={r.scroll.base}>
           <view role="list" aria-label={label} className={cx(r.track.base, isRail && r.track.rail)}>
             {pages.map((content, index) => (
               <view key={`page-${index}`} role="listitem" style={isRail ? { width: itemWidth } : undefined} className={cx(r.page.base, !isRail && r.page.full)}>
@@ -91,7 +110,7 @@ export function Carousel({
         <PageControl
           label={label}
           count={last + 1}
-          bind={page}
+          {...dotsFollow}
           pageLabel={index => pageLabel(index, last + 1)}
           tone={dots === 'over' ? 'on-media' : 'accent'}
           className={dots === 'over' ? r.dots.over : undefined}

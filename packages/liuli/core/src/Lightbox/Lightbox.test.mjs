@@ -33,3 +33,11 @@ test('Single: one picture has no count and no dots', async () => {
   screen.press(screen.getByTestId('one-open'));
   assert.equal(screen.queryAll(node => node.props.role === 'tablist').length, 0);
 });
+
+test('FromGrid: opens at the thumbnail pressed through `index`, and the scroll snaps there', async () => {
+  const screen = await renderExample('Lightbox/Lightbox', 'FromGrid');
+  screen.press(screen.getByTestId('open-2'));
+  const scroller = screen.queryAll(node => node.tag === 'scroll')[0];
+  assert.equal(scroller.props.snapIndex, 2);
+  assert.equal(scroller.props.bind, undefined);
+});
