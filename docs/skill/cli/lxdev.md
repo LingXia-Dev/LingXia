@@ -18,7 +18,7 @@ the tray or closing a mobile app does not.
 whose project contains the current directory; inside a project it never falls
 back to another project's session. Outside any project it uses the only live
 session; otherwise it refuses to guess and prints the candidates. `lxdev session` lists
-them (`#`, id, name, target, state, versions, project; `--json` for scripts).
+them (`#`, id, name, target, state, host version, start time, content; `--json` for scripts).
 The host version ends with its View wire (`view 1/231`): GPU pages need its ABI and at most its newest field.
 Pick one with `--session` (before the subcommand) or `LXDEV_SESSION`:
 
@@ -69,7 +69,7 @@ The simulated device and display language (Runner sessions only).
   system|light|dark`, and `--language TAG|auto`. The capsule follows the host:
   none on its home lxapp, always on every other.
 - `set --text-scale 1.3` / `--contrast standard|high` — the simulated system text size (0.5 to 3)
-  and contrast, which GPU pages read as `env`'s; macOS Runner only.
+  and contrast, which GPU pages read as `env`'s.
 - `set --preset phone|fold|trifold|pad|desktop [--posture outer|open|dual|tabletop]` — pick a
   device by form factor instead of `--id`; a posture the device lacks is an error. Folding
   devices are on the macOS and Windows Runners. `lxdev device …` is the same command.
@@ -147,7 +147,8 @@ Everything else: [Mocks](../lxapp/mock.md).
 ## `lxdev test`
 
 Runs the project's `tests/*.test.ts` in the session (`lingxia dev` starts it).
-`lxdev test list` lists tests, `presets` and `args` show `lxdev.json`, `cancel`
+`lxdev test list` lists tests, `presets` lists the `lxdev.json` presets, `args` prints
+the effective arguments, `cancel`
 releases a run left behind, `report` reprints one. Writing tests, presets,
 profiles, secrets, and exit codes: [Testing](../lxapp/testing.md).
 

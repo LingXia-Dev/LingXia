@@ -210,7 +210,7 @@ testers. Processing completion is not review approval.
 - Set the [Windows identities](../app/project.md#macos-and-windows) from
   Partner Center. The CLI uploads a ZIP containing the package. Existing pending
   submissions block uploads; finish or remove them in Partner Center.
-- Windows has no `--wait` / `--json` support yet.
+- `--wait` and `--json` are Apple and Harmony only.
 
 ```bash
 lingxia package --platform windows --env prod --format msix

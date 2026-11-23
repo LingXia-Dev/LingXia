@@ -179,8 +179,9 @@ ignored after a rebuild.
 
 ## `lingxia package`
 
-A release build staged for delivery: Android under `dist/android/`, macOS
-update zips under `dist/macos/`, Windows under `dist/windows/`.
+A release build (`--env prod` by default) staged for delivery under
+`dist/<platform>/`: Android APK or AAB, iOS IPA, HarmonyOS `.app`/`.hap`,
+macOS update zip, Windows installers.
 
 ```bash
 lingxia package -p windows                         # NSIS + update ZIP
@@ -201,7 +202,7 @@ update payload for `lingxia publish` (MSIX-only builds have none). More:
   latest build, an `.apk`/`.app`/`.ipa`/`.hap`, or a `lingxia package`
   `dist/<platform>` directory. iOS and HarmonyOS sign a copy for the device.
 - `lingxia uninstall` removes the app (id from `lingxia.yaml` by default).
-- `lingxia launch` starts it; `--restart` works on Android and iOS.
+- `lingxia launch` starts it; `--restart` stops a running instance first (Android, iOS, Windows).
 
 ## `lingxia icon`
 
@@ -226,23 +227,24 @@ Look up the Logic API instead of reading `logic.d.ts`: `lingxia api lx.network.d
 
 Look up a UI part before composing one: `lingxia ui search date range` lists parts by what the
 user sees (name, import, summary); `lingxia ui info Button` prints its import, props with their
-allowed values, and its doc. It reads the catalogues of the project's direct npm dependencies
+allowed values, and the path of its doc. It reads the catalogues of the project's direct npm dependencies
 (`lingxia.catalog` in their package.json). Exit 1 means nothing matched, 2 that no dependency
 declares a catalogue; `--json` for tools.
 
 ## `lingxia skill install`
 
 Writes the skill to `~/.agents/skills/lingxia/`; with Claude Code installed,
-`~/.claude/skills/lingxia/` links to it. A stale `AGENTS.md` pointer is
-reported with its replacement block (only `lingxia new` writes the pointer).
+`~/.claude/skills/lingxia/` links to it. `lingxia new` and `lingxia upgrade`
+write it too; every other `lingxia` command keeps an existing copy in step and
+never creates `~/.agents/skills`. A copy you linked, copied in by hand, or
+edited is kept and reported; `--force` replaces it. A stale `AGENTS.md`
+pointer is reported with its replacement block (only `lingxia new` writes the
+pointer).
+
 Inside a project it also installs the skills its direct npm dependencies offer
 (`lingxia.skill`, such as Liuli's) into `.agents/skills/<name>/`, kept out of
 git; `lingxia new` and `lingxia dev` do the same, other commands refresh copies
-already there, and nothing is written when `CI` is set. `lingxia new` and `lingxia upgrade` do
-this themselves; afterwards every `lingxia` command keeps an existing copy in
-step. A machine without `~/.agents/skills` (CI) is never written to.
-A copy you linked, copied in by hand, or edited is kept and reported;
-`--force` replaces it.
+already there, and those automatic runs write nothing when `CI` is set.
 
 ## `lingxia upgrade`
 

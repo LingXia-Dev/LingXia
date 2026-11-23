@@ -21,6 +21,10 @@ Saves under `mocks/` reload that lxapp's mocks only.
 
 ## What a save does
 
+An edit that touches only GPU page View code recompiles those pages and swaps
+them into the running app, keeping page and Logic state; a page that fails to
+compile keeps running. Anything else follows the rest of this section.
+
 The session rebuilds that lxapp with its `--release`, then
 restarts that app id. The instance has to still be in the runtime. It does
 not have to be the one on screen.
