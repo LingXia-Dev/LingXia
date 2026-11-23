@@ -13,8 +13,8 @@ Liuli parts are TSX source compiled with your GPU pages: import each from its ow
 
 ## 1. Look in Liuli first
 
-- Before drawing a control, a row or an overlay yourself, look for it by what the user sees in
-  `node_modules/@liulidesign/core/catalog.json` (`summary`, `keywords`, `exports`).
+- Before drawing a control, a row or an overlay yourself, look for it by what the user sees
+  (`lingxia ui search <words>`, or `node_modules/@liulidesign/core/catalog.json`).
 - A hand-built row loses what the part carries: its accessible name read in order, a 44 pt touch
   band around small controls, start/end mirroring for right-to-left languages, and a disabled
   reason read aloud (`disabledMessage`).
@@ -33,8 +33,9 @@ Liuli parts are TSX source compiled with your GPU pages: import each from its ow
 
 ## 3. Look a part up, do not guess its props
 
-Read `node_modules/@liulidesign/core/docs/<Name>.md` (props, allowed values, examples,
-accessibility) before the first use; never guess a `variant` or `size` value. Common slips:
+Before the first use, `lingxia ui info <Part>` prints its props with their allowed values and the
+path of `docs/<Name>.md` (examples, accessibility); never guess a `variant` or `size` value.
+Common slips:
 
 - Test ids are `data-testid`, never `testId`.
 - `Button` takes `label`, not children.
