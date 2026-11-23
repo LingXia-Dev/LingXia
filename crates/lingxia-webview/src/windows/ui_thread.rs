@@ -10,7 +10,6 @@
 use super::*;
 use std::cell::RefCell;
 use std::collections::VecDeque;
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Instant;
 use windows::Win32::UI::WindowsAndMessaging::{
     CreateWindowExW, DefWindowProcW, DispatchMessageW, GetMessageW, HWND_MESSAGE, KillTimer,
@@ -24,18 +23,33 @@ const DELAYED_TIMER_ID: usize = 1;
 const PUMP_SLICE: Duration = Duration::from_millis(10);
 
 type Task = Box<dyn FnOnce() + Send>;
+type LocalTask = Box<dyn FnOnce()>;
+type DelayedTask = (Instant, LocalTask);
 
 struct UiThread {
     thread_id: u32,
     dispatcher: isize,
 }
 
+struct TaskQueue {
+    tasks: VecDeque<Task>,
+    wake_pending: bool,
+}
+
+impl TaskQueue {
+    const fn new() -> Self {
+        Self {
+            tasks: VecDeque::new(),
+            wake_pending: false,
+        }
+    }
+}
+
 static UI_THREAD: OnceLock<UiThread> = OnceLock::new();
-static TASKS: Mutex<VecDeque<Task>> = Mutex::new(VecDeque::new());
-static WAKE_PENDING: AtomicBool = AtomicBool::new(false);
+static TASKS: Mutex<TaskQueue> = Mutex::new(TaskQueue::new());
 
 thread_local! {
-    static DELAYED: RefCell<Vec<(Instant, Box<dyn FnOnce()>)>> = const { RefCell::new(Vec::new()) };
+    static DELAYED: RefCell<Vec<DelayedTask>> = const { RefCell::new(Vec::new()) };
 }
 
 fn ui_thread() -> &'static UiThread {
@@ -48,22 +62,29 @@ pub(crate) fn is_ui_thread() -> bool {
         .is_some_and(|ui| ui.thread_id == unsafe { Threading::GetCurrentThreadId() })
 }
 
+fn wake_dispatcher() {
+    let ui = ui_thread();
+    unsafe {
+        let _ = PostMessageW(
+            Some(hwnd_from_handle(ui.dispatcher)),
+            WM_LINGXIA_RUN,
+            WPARAM(0),
+            LPARAM(0),
+        );
+    }
+}
+
 /// Queues `task` behind everything already posted to the UI thread.
 pub(crate) fn post(task: Task) {
-    TASKS
-        .lock()
-        .unwrap_or_else(|err| err.into_inner())
-        .push_back(task);
-    if !WAKE_PENDING.swap(true, Ordering::AcqRel) {
-        let ui = ui_thread();
-        unsafe {
-            let _ = PostMessageW(
-                Some(hwnd_from_handle(ui.dispatcher)),
-                WM_LINGXIA_RUN,
-                WPARAM(0),
-                LPARAM(0),
-            );
-        }
+    let need_wake = {
+        let mut queue = TASKS.lock().unwrap_or_else(|err| err.into_inner());
+        queue.tasks.push_back(task);
+        let wake = !queue.wake_pending;
+        queue.wake_pending = true;
+        wake
+    };
+    if need_wake {
+        wake_dispatcher();
     }
 }
 
@@ -172,12 +193,17 @@ fn spawn_ui_thread() -> UiThread {
 fn run_loop() -> ! {
     let mut msg = MSG::default();
     loop {
-        // WM_QUIT is ignored: closing the last host window posts it on this
-        // thread, but the app exits through the host's own message loop.
-        if unsafe { GetMessageW(&mut msg, None, 0, 0) }.0 > 0 {
-            unsafe {
+        // WM_QUIT is ignored: this thread outlives individual host windows,
+        // and the app exits through the host's own message loop.
+        match unsafe { GetMessageW(&mut msg, None, 0, 0) }.0 {
+            status if status > 0 => unsafe {
                 let _ = TranslateMessage(&msg);
                 DispatchMessageW(&msg);
+            },
+            0 => {}
+            _ => {
+                log::error!("GetMessageW failed in WebView UI loop");
+                thread::yield_now();
             }
         }
     }
@@ -234,29 +260,37 @@ unsafe extern "system" fn dispatcher_proc(
 }
 
 fn run_posted_tasks() {
-    WAKE_PENDING.store(false, Ordering::Release);
-    loop {
-        let task = TASKS
-            .lock()
-            .unwrap_or_else(|err| err.into_inner())
-            .pop_front();
-        let Some(task) = task else {
-            return;
-        };
+    // Pop one task per wake and re-post before running it so a task that
+    // enters `pump_until` or a modal loop never strands tasks queued behind it.
+    let (task, has_more) = {
+        let mut queue = TASKS.lock().unwrap_or_else(|err| err.into_inner());
+        let task = queue.tasks.pop_front();
+        let more = !queue.tasks.is_empty();
+        queue.wake_pending = more;
+        (task, more)
+    };
+    if has_more {
+        wake_dispatcher();
+    }
+    if let Some(task) = task {
         run_guarded(task);
     }
 }
 
 fn run_due_delayed_tasks() {
     let now = Instant::now();
-    let due = DELAYED.with(|delayed| {
+    let next_due = DELAYED.with(|delayed| {
         let mut delayed = delayed.borrow_mut();
-        let (due, pending): (Vec<_>, Vec<_>) = delayed.drain(..).partition(|(at, _)| *at <= now);
-        *delayed = pending;
-        due
+        let index = delayed
+            .iter()
+            .enumerate()
+            .filter(|(_, (at, _))| *at <= now)
+            .min_by_key(|(_, (at, _))| *at)
+            .map(|(index, _)| index)?;
+        Some(delayed.swap_remove(index).1)
     });
     arm_delayed_timer();
-    for (_, task) in due {
+    if let Some(task) = next_due {
         run_guarded(task);
     }
 }
@@ -268,12 +302,8 @@ fn arm_delayed_timer() {
         match next {
             Some(at) => {
                 let wait = at.saturating_duration_since(Instant::now()).as_millis();
-                SetTimer(
-                    Some(dispatcher),
-                    DELAYED_TIMER_ID,
-                    (wait as u32).max(1),
-                    None,
-                );
+                let wait_ms = u32::try_from(wait).unwrap_or(u32::MAX).max(1);
+                SetTimer(Some(dispatcher), DELAYED_TIMER_ID, wait_ms, None);
             }
             None => {
                 let _ = KillTimer(Some(dispatcher), DELAYED_TIMER_ID);

@@ -378,29 +378,34 @@ fn retire(id: u64, deadline: Instant) {
         .lock()
         .unwrap_or_else(|err| err.into_inner())
         .clear();
-    cleanup_state(&mut state);
     let key = state.webtag_key.clone();
-    drop(state);
     SLOTS.with(|slots| slots.borrow_mut().remove(&id));
-    RETIRING_TAGS.with(|tags| {
-        let mut tags = tags.borrow_mut();
-        if let Some(count) = tags.get_mut(&key) {
-            *count -= 1;
-            if *count == 0 {
-                tags.remove(&key);
-            }
+    struct RetiringTagGuard(String);
+    impl Drop for RetiringTagGuard {
+        fn drop(&mut self) {
+            RETIRING_TAGS.with(|tags| {
+                let mut tags = tags.borrow_mut();
+                if let Some(count) = tags.get_mut(&self.0) {
+                    *count -= 1;
+                    if *count == 0 {
+                        tags.remove(&self.0);
+                    }
+                }
+            });
         }
-    });
+    }
+    let _retiring_guard = RetiringTagGuard(key);
+    cleanup_state(&mut state);
+    drop(state);
 }
 
-/// `done` is dropped once creation has finished or failed; a caller off the
-/// UI thread waits on it.
+/// `_done` is dropped once creation has finished or failed; callers wait on it.
 fn create_on_ui_thread(
     webtag: WebTag,
     effective_options: EffectiveWebViewCreateOptions,
     sender: WebViewCreateSender,
     requested: Instant,
-    done: Sender<()>,
+    _done: Sender<()>,
 ) {
     if sender.is_destroyed() {
         return;
@@ -412,7 +417,7 @@ fn create_on_ui_thread(
     if tag_retiring(webtag.key()) {
         if requested.elapsed() < WEBVIEW_UI_RETIRE_TIMEOUT {
             ui_thread::post_after(Duration::from_millis(20), move || {
-                create_on_ui_thread(webtag, effective_options, sender, requested, done)
+                create_on_ui_thread(webtag, effective_options, sender, requested, _done)
             });
             return;
         }
@@ -508,6 +513,10 @@ impl WebViewInner {
         let (done, finished) = mpsc::channel();
         if ui_thread::is_ui_thread() {
             create_on_ui_thread(webtag, effective_options, sender, requested, done);
+            // If the previous generation is still retiring, creation deferred
+            // onto a timer; pump until it finishes so callers see the WebView
+            // registered when `create` returns.
+            let _ = ui_thread::pump_until(&finished, None);
             return;
         }
         ui_thread::post(Box::new(move || {
@@ -525,6 +534,9 @@ impl WebViewInner {
             .lock()
             .unwrap_or_else(|err| err.into_inner())
             .push_back(command);
+        if self.id == 0 {
+            return;
+        }
         if ui_thread::is_ui_thread() {
             drain(self.id, &self.commands);
         } else {
@@ -2053,9 +2065,76 @@ mod tests {
         assert!(inner.has_parent_window(20));
     }
 
-    use super::{UiDispatchError, map_eval_dispatch_error, should_update_parent, ui_thread};
-    use crate::WebViewScriptError;
-    use std::sync::mpsc;
+    use super::{
+        UiCommand, UiDispatchError, WebViewInner, map_eval_dispatch_error, should_update_parent,
+        ui_thread,
+    };
+    use crate::{
+        DocumentGeneration, DocumentOutboundGate, WebTag, WebViewController, WebViewScriptError,
+    };
+    use std::sync::{Arc, mpsc};
+
+    struct AlwaysActive;
+
+    impl DocumentOutboundGate for AlwaysActive {
+        fn with_active(&self, action: &mut dyn FnMut()) -> bool {
+            action();
+            true
+        }
+    }
+
+    #[test]
+    fn retired_webview_requests_shutdown_before_final_drop() {
+        let inner = WebViewInner {
+            id: 0,
+            commands: Default::default(),
+            webtag: WebTag::new("lifecycle-test", "home", Some(1)),
+            native_view: 0,
+            parent_window: Default::default(),
+            composition_hosted: false,
+        };
+
+        inner.request_shutdown();
+
+        let command = inner.commands.lock().unwrap().pop_front().unwrap();
+        assert!(matches!(command, UiCommand::Shutdown));
+    }
+
+    #[test]
+    fn document_messages_enqueue_without_reply_wait_and_preserve_fifo() {
+        let inner = WebViewInner {
+            id: 0,
+            commands: Default::default(),
+            webtag: WebTag::new("document-queue-test", "home", Some(1)),
+            native_view: 0,
+            parent_window: Default::default(),
+            composition_hosted: false,
+        };
+
+        for (generation, message) in [(7, "helloAck"), (7, "ready")] {
+            inner
+                .post_message_to_document(
+                    DocumentGeneration::new(generation),
+                    Arc::new(AlwaysActive),
+                    message,
+                )
+                .unwrap();
+        }
+
+        let mut queue = inner.commands.lock().unwrap();
+        for expected in ["helloAck", "ready"] {
+            let UiCommand::PostMessageToDocument {
+                expected_generation,
+                message,
+                ..
+            } = queue.pop_front().unwrap()
+            else {
+                panic!("expected a document-bound message command");
+            };
+            assert_eq!(expected_generation, DocumentGeneration::new(7));
+            assert_eq!(message, expected);
+        }
+    }
 
     #[test]
     fn ui_thread_wait_runs_work_posted_behind_it() {
@@ -2069,6 +2148,25 @@ mod tests {
             ui_thread::pump_until(&rx, Some(std::time::Duration::from_secs(5)))
         });
         assert_eq!(outcome.map(|reply| reply.ok()), Some(Some(true)));
+    }
+
+    #[test]
+    fn ui_thread_wait_runs_work_already_queued_behind_it() {
+        // Two tasks queued under a single wake must not deadlock when the first
+        // enters `pump_until` waiting for the second.
+        let outcome = ui_thread::run_on_webview_ui_thread(|| {
+            let (tx, rx) = mpsc::channel();
+            let (done_tx, done_rx) = mpsc::channel();
+            ui_thread::post(Box::new(move || {
+                let result = ui_thread::pump_until(&rx, Some(std::time::Duration::from_secs(5)));
+                let _ = done_tx.send(result.ok());
+            }));
+            ui_thread::post(Box::new(move || {
+                let _ = tx.send(ui_thread::is_ui_thread());
+            }));
+            ui_thread::pump_until(&done_rx, Some(std::time::Duration::from_secs(5)))
+        });
+        assert_eq!(outcome.and_then(|reply| reply.ok()), Some(Some(true)));
     }
 
     #[test]
