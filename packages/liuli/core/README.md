@@ -122,7 +122,7 @@ that directory.
 | `@liulidesign/core/Code` | Code, CodeBlock | Code as it was written, in a sentence or as a block |
 | `@liulidesign/core/Timestamp` | formatTimestamp, Timestamp | When something happened, in the words people use |
 | `@liulidesign/core/MessageBubble` | MessageBubble, MessageReasoning | One message of a conversation |
-| `@liulidesign/core/ListDetail` | ListDetailList, ListDetailDetail, ListDetail | Master-detail list and record view: side-by-side on regular screens, single-pane drill-down on compact |
+| `@liulidesign/core/ListDetail` | ListDetailList, ListDetailDetail, ListDetail | A list and the detail of the row chosen in it: side by side on a wide screen, one over the other on a phone |
 | `@liulidesign/core/Split` | Split | Primary canvas with a companion aside: side-by-side on regular, upper/lower on tabletop folds, stack or sheet on compact |
 | `@liulidesign/core/QRCode` | fitsQRCode, QRCode | A code a phone camera reads |
 | `@liulidesign/core/VideoPlayer` | VideoPlayer | A video with its controls, over the picture or under it, and full screen |

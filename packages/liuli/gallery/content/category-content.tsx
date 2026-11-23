@@ -155,7 +155,7 @@ export function Content({ onOpen }: { onOpen: (page: string) => void }) {
         </Tile>
         <Tile
           name={"ListDetail"}
-          tagline={"Master and detail"}
+          tagline={"List and detail"}
           onOpen={() => onOpen("list-detail")}
           testId={"open-list-detail"}
         >

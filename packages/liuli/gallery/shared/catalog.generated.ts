@@ -1156,15 +1156,16 @@ export const entries: GalleryEntry[] = [
     "name": "ListDetail",
     "page": "list-detail",
     "category": "content",
-    "summary": "Master-detail list and record view: side-by-side on regular screens, single-pane drill-down on compact",
+    "summary": "A list and the detail of the row chosen in it: side by side on a wide screen, one over the other on a phone",
     "keywords": [
       "list detail",
       "master detail",
       "two pane",
-      "drill down",
+      "split view",
+      "sidebar layout",
+      "workspace",
       "adaptive",
-      "foldable",
-      "hinge"
+      "foldable"
     ]
   },
   {

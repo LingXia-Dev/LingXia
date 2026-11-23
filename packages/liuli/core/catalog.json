@@ -11343,54 +11343,67 @@
       "category": "content",
       "status": "preview",
       "since": "2026-11-18",
-      "summary": "Master-detail list and record view: side-by-side on regular screens, single-pane drill-down on compact",
-      "description": "ListDetail pairs a selectable master list with its detail pane from one component tree. On regular screens (`>= 600 dp`) both panes appear side by side, snap to a vertical fold hinge when one crosses the page, and enter `<SizeClassScope value=\"compact\">` so nested cards stay single-column inside narrow panes. On compact screens (`< 600 dp`) choosing an item drills into the detail pane with a back header, keeps the list mounted so scroll position is preserved, and intercepts system Back (`useBackHandler`) without blocking Home.",
+      "summary": "A list and the detail of the row chosen in it: side by side on a wide screen, one over the other on a phone",
+      "description": "ListDetail lays out a list and the record chosen in it from one tree, driven by one value: the chosen row's id. On a wide screen the list sits at the start, `listWidth` wide, and the detail beside it, capped so lines stay readable; at a fold that crosses the page the list takes the start leaf and the detail the other. On a phone the list fills the screen; choosing a row opens its detail over it, under a way back, and Back returns to the list where it was scrolled. Each pane scrolls on its own, and the detail starts at its top for each new choice. A deep link that sets the value opens the record directly.",
       "keywords": [
         "list detail",
         "master detail",
         "two pane",
-        "drill down",
+        "split view",
+        "sidebar layout",
+        "workspace",
         "adaptive",
-        "foldable",
-        "hinge"
+        "foldable"
       ],
       "props": [
+        {
+          "name": "bind",
+          "type": "Local<string | null>",
+          "required": false,
+          "description": "A View-local cell holding the chosen row's id, `null` while none is."
+        },
         {
           "name": "value",
           "type": "string | null",
           "required": false,
-          "description": "Controlled selected item id (`null`/`undefined` means no selection)."
+          "description": "The chosen row's id, held by the caller: in Logic state, or from a deep link. `null` while none is."
         },
         {
           "name": "onChange",
           "type": "((value: string | null) => void)",
           "required": false,
-          "description": "Called when selection changes (including Back in compact mode)."
-        },
-        {
-          "name": "bind",
-          "type": "Local<string | null>",
-          "required": false,
-          "description": "Uncontrolled local selection cell (alternative to `value` + `onChange`)."
+          "description": "Runs with `null` when Back or the back button leaves the detail on a phone."
         },
         {
           "name": "listLabel",
           "type": "string",
           "required": true,
-          "description": "Accessible label for the list pane (also used as the compact back button label)."
+          "description": "Names the list pane: what it lists, \"Orders\". It is also the back button's label on a phone."
         },
         {
           "name": "listWidth",
           "type": "number",
           "required": false,
-          "description": "Default list pane width in `regular` when no vertical hinge is present.",
+          "description": "The list's width in pt beside the detail, when no fold crosses the page.",
           "default": "360"
+        },
+        {
+          "name": "contentWidth",
+          "type": "ListDetailContentWidth",
+          "required": false,
+          "description": "How wide the detail may grow; past it the surplus falls on the far side.",
+          "values": [
+            "full",
+            "prose",
+            "wide"
+          ],
+          "default": "'wide'"
         },
         {
           "name": "children",
           "type": "Child",
           "required": false,
-          "description": "`<ListDetail.List>` and `<ListDetail.Detail>` children."
+          "description": "`<ListDetail.List>` and `<ListDetail.Detail>`."
         },
         {
           "name": "className",
@@ -11402,7 +11415,7 @@
           "name": "data-testid",
           "type": "string",
           "required": false,
-          "description": ""
+          "description": "On the root; the panes get `<testid>-list` and `<testid>-detail`, the back button `<testid>-back`, the actions `<testid>-actions`."
         }
       ],
       "otherProps": {
@@ -11411,7 +11424,7 @@
             "name": "children",
             "type": "Child",
             "required": false,
-            "description": "The master list content, typically a `<scroll>` or `<List>` of rows."
+            "description": "The list, usually an ItemList of rows; it scrolls on its own."
           },
           {
             "name": "className",
@@ -11425,19 +11438,25 @@
             "name": "title",
             "type": "string",
             "required": false,
-            "description": "Detail header title shown in compact drill-down mode and used as the detail group name."
+            "description": "The chosen record's title: on a phone, the heading beside the back button; everywhere, the detail pane's name."
           },
           {
             "name": "placeholder",
             "type": "Child",
             "required": false,
-            "description": "Shown on regular screens when no item is selected."
+            "description": "Shown beside the list while nothing is chosen, on a wide screen: what choosing a row will show."
+          },
+          {
+            "name": "actions",
+            "type": "Child",
+            "required": false,
+            "description": "Actions on the chosen record, such as Approve: a row under the detail, outside its scroll, so they stay in view."
           },
           {
             "name": "children",
             "type": "Child",
             "required": false,
-            "description": "The selected item's detail content."
+            "description": "The chosen record's detail; it scrolls on its own and starts at its top for each new choice."
           },
           {
             "name": "className",
@@ -11449,10 +11468,15 @@
       },
       "parts": {
         "root": "view",
-        "listPane": "view",
-        "detailPane": "view",
-        "compactHeader": "view",
-        "compactTitle": "text"
+        "list": "view",
+        "detail": "view",
+        "back": "view",
+        "title": "text",
+        "scroll": "scroll",
+        "listInner": "view",
+        "detailInner": "view",
+        "placeholder": "view",
+        "actions": "view"
       },
       "accessibility": {
         "pattern": null,
@@ -11462,7 +11486,7 @@
         "keyboard": [],
         "contrast": [
           {
-            "what": "compact detail title",
+            "what": "record title on a phone",
             "pair": [
               "text",
               "canvas"
@@ -11471,18 +11495,33 @@
           }
         ],
         "notes": [
-          "Both panes expose named `group` landmarks so screen readers can jump between list and detail.",
-          "System Back in compact drill-down clears the selection via `useBackHandler` and returns to the list at its prior scroll position."
+          "Each pane is a group named by its label, so a screen reader can move between them; the detail's name follows the chosen record.",
+          "The chosen row says so itself: pass `isSelected` to its Item.",
+          "On a phone Back leaves the detail for the list, as the back button does; it is taken only with `bind`, or `value` with `onChange`."
         ]
       },
       "examples": [
         {
-          "name": "OrdersMasterDetail",
-          "title": "Master-detail order list",
-          "source": "import { useLocal } from '@lingxia/view';\nimport { EmptyState } from '@liulidesign/core/EmptyState';\nimport { Item, ItemList } from '@liulidesign/core/Item';\nimport { ListDetail } from '@liulidesign/core/ListDetail';\n\nconst orders = [\n  { id: 'ord-101', title: 'Order #101', summary: 'Express delivery · Paid' },\n  { id: 'ord-102', title: 'Order #102', summary: 'Warehouse pickup · Processing' },\n  { id: 'ord-103', title: 'Order #103', summary: 'Standard shipping · Shipped' },\n] as const;\n\n/** Master-detail orders list: two-pane on regular (snapping to vertical hinge), drill-down with Back interception on compact. */\nexport function OrdersMasterDetail() {\n  const selected = useLocal<string | null>('selected-order', null);\n  const current = orders.find(o => o.id === selected.value) ?? null;\n\n  return (\n    <view className=\"h-[360px] overflow-hidden rounded-container border border-text/12\">\n      <ListDetail bind={selected} listLabel=\"Orders\" data-testid=\"orders-list-detail\">\n        <ListDetail.List>\n          <scroll className=\"grow\">\n            <ItemList>\n              {orders.map(order => (\n                <Item\n                  key={order.id}\n                  label={order.title}\n                  description={order.summary}\n                  isSelected={selected.value === order.id}\n                  onClick={() => selected.set(order.id)}\n                  data-testid={`order-${order.id}`}\n                />\n              ))}\n            </ItemList>\n          </scroll>\n        </ListDetail.List>\n        <ListDetail.Detail\n          title={current?.title}\n          placeholder={<EmptyState title=\"Select an order\" description=\"Choose an item from the list to inspect its details.\" />}\n        >\n          {current && (\n            <view className=\"p-4 gap-2\" data-testid=\"order-detail-body\">\n              <text className=\"text-title font-semibold text-text\">{current.title}</text>\n              <text className=\"text-body text-muted\">{current.summary}</text>\n            </view>\n          )}\n        </ListDetail.Detail>\n      </ListDetail>\n    </view>\n  );\n}"
+          "name": "Orders",
+          "title": "Orders, with an action on the chosen one",
+          "source": "import { useLocal } from '@lingxia/view';\nimport { Button } from '@liulidesign/core/Button';\nimport { EmptyState } from '@liulidesign/core/EmptyState';\nimport { Item, ItemList } from '@liulidesign/core/Item';\nimport { ListDetail } from '@liulidesign/core/ListDetail';\n\nconst orders = [\n  { id: 'ord-101', title: 'Order #101', summary: 'Express delivery · Paid' },\n  { id: 'ord-102', title: 'Order #102', summary: 'Warehouse pickup · Processing' },\n  { id: 'ord-103', title: 'Order #103', summary: 'Standard shipping · Shipped' },\n] as const;\n\n/** Orders and the one chosen: side by side on a wide screen, the order over the list on a phone, where Back returns. */\nexport function Orders() {\n  const selected = useLocal<string | null>('selected-order', null);\n  const current = orders.find(order => order.id === selected.value) ?? null;\n  const shipped = useLocal<readonly string[]>('shipped', []);\n  const isShipped = current !== null && shipped.value.includes(current.id);\n  return (\n    // A window's worth of page: in an app it fills the page itself.\n    <view className=\"h-[360px] overflow-hidden rounded-container border border-text/12\">\n      <ListDetail bind={selected} listLabel=\"Orders\" data-testid=\"orders\">\n        <ListDetail.List>\n          <ItemList>\n            {orders.map(order => (\n              <Item\n                key={order.id}\n                label={order.title}\n                description={order.summary}\n                isSelected={selected.value === order.id}\n                onClick={() => selected.set(order.id)}\n                data-testid={`order-${order.id}`}\n              />\n            ))}\n          </ItemList>\n        </ListDetail.List>\n        <ListDetail.Detail\n          title={current?.title}\n          placeholder={<EmptyState title=\"Choose an order\" description=\"Its delivery and payment show here.\" />}\n          actions={<Button label={isShipped ? 'Shipped' : 'Mark as shipped'} variant=\"primary\" isDisabled={isShipped} onClick={() => current && shipped.set([...shipped.value, current.id])} data-testid=\"ship\" />}\n        >\n          {current && (\n            <view className=\"gap-2\" data-testid=\"order-detail\">\n              <text className=\"text-body text-text\">{current.summary}</text>\n              <text className=\"text-footnote text-muted\">Placed on 12 November, paid by card.</text>\n            </view>\n          )}\n        </ListDetail.Detail>\n      </ListDetail>\n    </view>\n  );\n}"
+        },
+        {
+          "name": "Workspace",
+          "title": "A mail workspace held by the caller",
+          "source": "import { useLocal } from '@lingxia/view';\nimport { Button } from '@liulidesign/core/Button';\nimport { NavList } from '@liulidesign/core/NavList';\nimport { ListDetail } from '@liulidesign/core/ListDetail';\n\nconst sections = [\n  { id: 'mail', items: [\n    { value: 'inbox', label: 'Inbox', endText: '12' },\n    { value: 'drafts', label: 'Drafts', endText: '3' },\n    { value: 'sent', label: 'Sent' },\n  ] },\n  { id: 'projects', title: 'Projects', items: [\n    { value: 'launch', label: 'Spring launch' },\n    { value: 'research', label: 'User research' },\n  ] },\n] as const;\nconst titles: Record<string, string> = { inbox: 'Inbox', drafts: 'Drafts', sent: 'Sent', launch: 'Spring launch', research: 'User research' };\n\n/** A mail workspace held by the caller: the mailboxes beside the open one, its reading width capped for prose. */\nexport function Workspace() {\n  const current = useLocal<string | null>('current', 'inbox');\n  const title = current.value === null ? undefined : titles[current.value];\n  const archived = useLocal<readonly string[]>('archived', []);\n  const isArchived = current.value !== null && archived.value.includes(current.value);\n  return (\n    // A window's worth of page: in an app it fills the page itself.\n    <view className=\"h-[360px] overflow-hidden rounded-container border border-text/12\">\n      <ListDetail value={current.value} onChange={next => current.set(next)} listLabel=\"Mail\" listWidth={200} contentWidth=\"prose\" data-testid=\"workspace\">\n        <ListDetail.List>\n          <NavList label=\"Mailboxes\" sections={sections} value={current.value ?? ''} onChange={next => current.set(next)} data-testid=\"workspace-nav\" />\n        </ListDetail.List>\n        <ListDetail.Detail title={title} actions={<Button label={isArchived ? 'Archived' : 'Archive all'} isDisabled={isArchived} onClick={() => current.value !== null && archived.set([...archived.value, current.value])} data-testid=\"archive\" />}>\n          <text role=\"heading\" headingLevel={1} className=\"text-title font-semibold text-text\" data-testid=\"workspace-title\">{title}</text>\n          <text className=\"text-body text-muted\">Each pane scrolls on its own. Beside the list the detail keeps a gutter from it; on a phone it takes the screen.</text>\n        </ListDetail.Detail>\n      </ListDetail>\n    </view>\n  );\n}"
         }
       ],
-      "gaps": [],
+      "gaps": [
+        {
+          "missing": "Dragging the hairline to resize the list",
+          "needs": "Pointer coordinates on an element (`onPointer`)",
+          "today": "A fixed `listWidth`"
+        }
+      ],
+      "limits": [
+        "At a fold, a start leaf narrower than 200 pt still gets a 200 pt list, which then reaches past the crease."
+      ],
       "theming": {
         "classProps": [
           {
@@ -11511,17 +11550,17 @@
       },
       "related": [
         "Split",
-        "SplitView",
-        "Item"
+        "Item",
+        "NavList"
       ],
       "gallery": {
         "specimen": "Specimen",
-        "tagline": "Master and detail",
+        "tagline": "List and detail",
         "order": 17,
         "page": {
-          "lead": "Use ListDetail when choosing an item in a list opens its record: side-by-side on wide and unfolded screens, drill-down with Back support on phones.",
+          "lead": "Use ListDetail when choosing a row in a list opens its record: side by side on a wide or unfolded screen, one over the other on a phone, with Back.",
           "stage": "bare",
-          "hero": "OrdersMasterDetail"
+          "hero": "Orders"
         }
       }
     },

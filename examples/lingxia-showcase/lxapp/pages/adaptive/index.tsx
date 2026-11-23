@@ -53,27 +53,25 @@ export function render({ data, actions }: View) {
           data-testid="adaptive-list-detail"
         >
           <ListDetail.List>
-            <scroll className="grow">
-              <ItemList>
-                {items.map(item => (
-                  <Item
-                    key={item.id}
-                    label={item.title}
-                    description={item.status}
-                    isSelected={selectedId === item.id}
-                    onClick={() => actions.selectItem({ id: item.id })}
-                    data-testid={`adaptive-item-${item.id}`}
-                  />
-                ))}
-              </ItemList>
-            </scroll>
+            <ItemList>
+              {items.map(item => (
+                <Item
+                  key={item.id}
+                  label={item.title}
+                  description={item.status}
+                  isSelected={selectedId === item.id}
+                  onClick={() => actions.selectItem({ id: item.id })}
+                  data-testid={`adaptive-item-${item.id}`}
+                />
+              ))}
+            </ItemList>
           </ListDetail.List>
           <ListDetail.Detail
             title={current?.title}
             placeholder={<EmptyState title="Select an order" description="Single-file adaptive page powered by <ListDetail>." />}
           >
             {current && (
-              <view className="p-4 gap-2" data-testid="adaptive-detail-body">
+              <view className="gap-2" data-testid="adaptive-detail-body">
                 <text className="text-base font-semibold text-text">{current.title}</text>
                 <text className="text-xs font-mono text-muted">{current.status}</text>
                 <text className="text-sm text-text">{current.detail}</text>
