@@ -73,6 +73,9 @@ export interface ButtonGroupState {
 export const ButtonGroupContext = createContext<ButtonGroupState | null>(null);
 
 /** Runs an action when pressed. */
+/** The glyph's side beside a label, in points; an icon-only button keeps its glyph at this size at any text size. */
+const glyphSides = { sm: 16, md: 18, lg: 20 } satisfies Record<ButtonSize, number>;
+
 export function Button({
   label,
   variant: ownVariant,
@@ -125,11 +128,11 @@ export function Button({
       {busy ? (
         <vector aria-hidden paths={spinner} viewBox={spinnerBox} className={cx(r.spinner.base, r.spinner.size[size])} />
       ) : (
-        startIcon !== undefined && <Glyph name={startIcon} className={r.glyph.size[size]} />
+        startIcon !== undefined && <Glyph name={startIcon} side={isIconOnly ? undefined : glyphSides[size]} className={r.glyph.size[size]} />
       )}
       {/* An icon-only button keeps its label as the name; nothing else is drawn beside the icon. */}
       {!isIconOnly && <text className={cx(r.label.base, r.label.weight[variant], r.label.size[size])}>{label}</text>}
-      {!isIconOnly && endIcon !== undefined && <Glyph name={endIcon} className={r.glyph.size[size]} />}
+      {!isIconOnly && endIcon !== undefined && <Glyph name={endIcon} side={glyphSides[size]} className={r.glyph.size[size]} />}
       {!isIconOnly && endContent !== undefined && <view aria-hidden className={r.icon.base}>{endContent}</view>}
       {hasReason && <text id={reasonId} aria-hidden className={r.reason.base}>{disabledMessage}</text>}
     </>

@@ -2,7 +2,7 @@ import { childrenToArray, createContext, cx, useBox, useContext, useId, useLocal
 import { useDensity } from '../density';
 import type { IconRef } from '../Icon/Icon';
 import { describedBy } from '../internal/describedBy';
-import { Glyph } from '../internal/Glyph';
+import { Glyph, useTextGrowth } from '../internal/Glyph';
 import { LayerContext } from '../internal/layer';
 import { itemRecipe as r } from './Item.recipe';
 import { dataOf } from '../internal/data';
@@ -110,6 +110,9 @@ const maxSwipeActions = 3;
 const swipeActionWidth = 72;
 
 /** One row of a list: a label, an optional second line, and content at either end. */
+/** The icon tile keeps company with larger text as an avatar does, up to this. */
+const tileGrowth = 1.3;
+
 export function Item(props: ItemProps) {
   const { label, variant = 'default', description, startContent, startIcon, labelEnd, endContent, endAction, swipeActions, className, 'data-testid': testId } = props;
   const listDensity = useContext(ItemDensityContext);
@@ -133,9 +136,10 @@ export function Item(props: ItemProps) {
   const room = labelLine.value !== null && labelEndBox.value !== null ? labelLine.value.width - labelEndBox.value.width - 8 : null;
   const stacked = room !== null && nameBox.value !== null && nameBox.value.maxContentWidth > room && room < labelLine.value!.width / 2;
   const name = <text box={labelEnd !== undefined ? nameBox : undefined} className={cx(r.label.base, r.label.variant[variant], isSelected && r.label.selected, labelEnd !== undefined && r.label.beside, stacked && r.label.stacked)}>{label}</text>;
+  const tile = useTextGrowth(32, tileGrowth);
   const content = (
     <>
-      {startIcon !== undefined && <view aria-hidden className={r.iconTile.base}><Glyph name={startIcon} className={r.iconTile.icon} /></view>}
+      {startIcon !== undefined && <view aria-hidden style={tile} className={r.iconTile.base}><Glyph name={startIcon} side={18} cap={tileGrowth} className={r.iconTile.icon} /></view>}
       {startContent !== undefined && <view aria-hidden={pressable || undefined} className={r.start.base}>{startContent}</view>}
       <view className={r.text.base}>
         {labelEnd === undefined ? name : (

@@ -52,7 +52,7 @@ export function Badge(props: BadgeProps) {
       : props.emphasis === 'solid' ? r.root.solid[props.tone] : r.root.soft[props.tone];
   return (
     <view data-testid={testId} {...dataOf(props)} className={cx(r.root.base, r.root.size[size], look, className)}>
-      {startIcon !== undefined && <Glyph name={startIcon} className={cx(r.icon.base, r.icon.size[size], hue !== undefined && r.icon.hue[hue])} />}
+      {startIcon !== undefined && <Glyph name={startIcon} side={size === 'sm' ? 12 : 14} className={cx(r.icon.base, r.icon.size[size], hue !== undefined && r.icon.hue[hue])} />}
       {startIcon === undefined && hue !== undefined && <view aria-hidden className={cx(r.dot.base, r.dot.size[size], r.dot.hue[hue])} />}
       <text className={cx(r.label.base, r.label.size[size])}>{label}</text>
     </view>
