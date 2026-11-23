@@ -4,7 +4,7 @@
 //! kept in `.lingxia/action-types.json` with a content hash of the module graph it was read
 //! from, so a dev save re-asks only the pages whose graph changed.
 
-use super::super::typecheck;
+use super::super::{page_types, typecheck};
 use crate::lxapp::framework::{PageAction, PageActionMode, page_base};
 use anyhow::{Context, Result, bail};
 use serde::{Deserialize, Serialize};
@@ -24,7 +24,7 @@ const logics = JSON.parse(logicJson);
 const key = file => path.resolve(file).toLowerCase();
 const seen = new Set();
 function project(config, logic) {
-  if (seen.has(config + logic)) return null;
+  if (seen.has(config + logic) || !ts.sys.fileExists(config)) return null;
   seen.add(config + logic);
   const read = ts.readConfigFile(config, ts.sys.readFile);
   if (read.error) throw Error(ts.flattenDiagnosticMessageText(read.error.messageText, ' '));
@@ -134,8 +134,6 @@ struct Cache {
 pub(crate) struct Composed<'a> {
     pub page: &'a str,
     pub logic: PathBuf,
-    /// What the page wrote for its actions, quoted when they cannot be known.
-    pub expression: String,
 }
 
 fn hash(file: &Path) -> Option<String> {
@@ -180,10 +178,7 @@ pub(crate) fn actions(
     }
     let first_page = page_base(composed[0].page);
     let tsc = typecheck::resolve_tsc(root).with_context(|| {
-        format!(
-            "{first_page}: its actions are composed (`{}`), so the build reads them with TypeScript",
-            composed[0].expression
-        )
+        format!("{first_page}: its actions are composed, so the build reads them with TypeScript")
     })?;
     let typescript = typecheck::supported_typescript(&tsc)?;
     let ts_version = std::fs::read(typescript.join("package.json"))
@@ -245,30 +240,76 @@ pub(crate) fn actions(
         }
         let _ = std::fs::write(&cache_path, serde_json::to_vec(&cache)?);
     }
-    composed
-        .iter()
-        .map(|page| {
-            let reply = answers
-                .remove(&page.logic)
-                .or_else(|| {
-                    cache
-                        .pages
-                        .get(&page.logic)
-                        .map(|cached| cached.reply.clone())
-                })
-                .with_context(|| {
-                    format!(
-                        "{}: TypeScript gave no answer for its actions",
-                        page_base(page.page)
-                    )
-                })?;
-            Ok((page.page.to_string(), answer(page, reply)?))
-        })
-        .collect()
+    let mut found = HashMap::new();
+    let (mut unprojected, mut problems) = (Vec::new(), Vec::new());
+    for page in composed {
+        let reply = answers.remove(&page.logic).or_else(|| {
+            cache
+                .pages
+                .get(&page.logic)
+                .map(|cached| cached.reply.clone())
+        });
+        let name = page_base(page.page);
+        match reply {
+            None => problems.push(format!("{name}: TypeScript gave no answer for its actions")),
+            Some(reply) if reply.error.as_deref() == Some("unprojected") => unprojected.push(page),
+            Some(reply) => match answer(&name, reply) {
+                Ok(actions) => {
+                    found.insert(page.page.to_string(), actions);
+                }
+                Err(problem) => problems.push(problem),
+            },
+        }
+    }
+    if !unprojected.is_empty() {
+        problems.push(unprojected_problem(root, &unprojected));
+    }
+    if !problems.is_empty() {
+        bail!("{}", problems.join("\n"));
+    }
+    Ok(found)
 }
 
-fn answer(page: &Composed<'_>, reply: Reply) -> Result<Vec<PageAction>> {
-    let (name, expression) = (page_base(page.page), &page.expression);
+/// Pages listed in one problem before the rest are counted.
+const LISTED: usize = 5;
+
+/// One problem for every page no tsconfig project reaches, with the fix for this project's wiring.
+fn unprojected_problem(root: &Path, pages: &[&Composed<'_>]) -> String {
+    let mut lines = vec![if pages.len() == 1 {
+        "A page composes its actions, which the build reads with TypeScript, \
+         but no tsconfig project includes its Logic module:"
+            .to_string()
+    } else {
+        format!(
+            "{} pages compose their actions, which the build reads with TypeScript, \
+             but no tsconfig project includes their Logic modules:",
+            pages.len()
+        )
+    }];
+    for page in pages.iter().take(LISTED) {
+        let file = page.logic.strip_prefix(root).unwrap_or(&page.logic);
+        lines.push(format!("  {} ({})", page_base(page.page), file.display()));
+    }
+    if pages.len() > LISTED {
+        lines.push(format!("  and {} more", pages.len() - LISTED));
+    }
+    lines.push(if page_types::has_logic_tsconfig(root) {
+        format!(
+            "Add {} to the Logic tsconfig's `include`.",
+            if pages.len() == 1 { "it" } else { "them" }
+        )
+    } else {
+        format!(
+            "This project has no Logic tsconfig: create `tsconfig.logic.json` with \
+             `{{ \"extends\": \"./{}\" }}` and add `{{ \"path\": \"./tsconfig.logic.json\" }}` \
+             to the `references` of `tsconfig.json`.",
+            page_types::LOGIC_BASE
+        )
+    });
+    lines.join("\n")
+}
+
+fn answer(name: &str, reply: Reply) -> std::result::Result<Vec<PageAction>, String> {
     match reply.error.as_deref() {
         None => Ok(reply
             .actions
@@ -282,26 +323,71 @@ fn answer(page: &Composed<'_>, reply: Reply) -> Result<Vec<PageAction>> {
                 },
             })
             .collect()),
-        Some("unknown") => bail!(
+        Some("unknown") => Err(format!(
             "{name}: actions must be statically known: write them in the object, or type the helper's return ({})",
             match reply.name {
-                Some(action) => format!("`{expression}`: `{action}` is not a function"),
-                None => format!("`{expression}` has no fixed names"),
+                Some(action) => format!("`{action}` is not a function"),
+                None => "the actions have no fixed names".to_string(),
             }
-        ),
-        Some("unprojected") => bail!(
-            "{name}: its actions are composed (`{expression}`), but no tsconfig project includes {}; add it to the Logic tsconfig's `include`",
-            page.logic.display()
-        ),
-        Some(_) => bail!(
+        )),
+        Some(_) => Err(format!(
             "{name}: the Logic module must `export default definePage({{ … }})` from '@lingxia/logic'"
-        ),
+        )),
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn unreached_pages_are_one_problem_with_the_wiring_fix() {
+        let dir = tempfile::tempdir().unwrap();
+        let names: Vec<String> = (0..7).map(|n| format!("pages/p{n}/index")).collect();
+        let pages: Vec<Composed<'_>> = names
+            .iter()
+            .map(|page| Composed {
+                page,
+                logic: dir.path().join(format!("{page}.ts")),
+            })
+            .collect();
+        let refs: Vec<&Composed<'_>> = pages.iter().collect();
+        let problem = unprojected_problem(dir.path(), &refs);
+        let lines: Vec<&str> = problem.lines().collect();
+        assert!(
+            lines[0].starts_with("7 pages compose their actions"),
+            "{problem}"
+        );
+        assert_eq!(
+            lines[1],
+            format!(
+                "  pages/p0/index ({})",
+                Path::new("pages/p0/index.ts").display()
+            )
+        );
+        assert_eq!(lines[6], "  and 2 more");
+        assert!(
+            lines[7].starts_with("This project has no Logic tsconfig"),
+            "{problem}"
+        );
+
+        std::fs::write(
+            dir.path().join("tsconfig.logic.json"),
+            r#"{ "extends": "./.lingxia/tsconfig.logic.json" }"#,
+        )
+        .unwrap();
+        std::fs::create_dir_all(dir.path().join(".lingxia")).unwrap();
+        std::fs::write(dir.path().join(page_types::LOGIC_BASE), "{}").unwrap();
+        let problem = unprojected_problem(dir.path(), &refs[..1]);
+        assert!(
+            problem.starts_with("A page composes its actions"),
+            "{problem}"
+        );
+        assert!(
+            problem.ends_with("Add it to the Logic tsconfig's `include`."),
+            "{problem}"
+        );
+    }
 
     #[test]
     fn an_answer_stands_only_while_its_graph_has_the_same_content() {

@@ -217,6 +217,45 @@ try {
   fs.rmSync(helper, { force: true });
 }
 
+// Composed pages no tsconfig project reaches are named together, with the fix for the project's wiring.
+const manifest = path.join(app, 'lxapp.json');
+const manifestSource = fs.readFileSync(manifest, 'utf8');
+const second = path.join(app, 'pages/second');
+const logicConfig = path.join(app, 'tsconfig.logic.json');
+const logicConfigSource = fs.readFileSync(logicConfig, 'utf8');
+const spread = `import { definePage } from '@lingxia/logic';\nconst shared = { async ping() { return 1; } };\nexport default definePage({ data: { greetCount: 0 }, actions: () => ({ ...shared }) });\n`;
+try {
+  fs.cpSync(path.join(app, 'pages/home'), second, { recursive: true });
+  for (const file of [logic, path.join(second, 'index.ts')]) fs.writeFileSync(file, spread);
+  const pages = JSON.parse(manifestSource);
+  pages.pages.push({ name: 'second', path: 'pages/second/index' });
+  fs.writeFileSync(manifest, JSON.stringify(pages, null, 2));
+  const unreached = output => {
+    assert.match(output, /2 pages compose their actions, which the build reads with TypeScript, but no tsconfig project includes their Logic modules:/, output);
+    assert.match(output, /  pages\/home\/index \(pages[\\/]home[\\/]index\.ts\)\n  pages\/second\/index \(pages[\\/]second[\\/]index\.ts\)/, output);
+    assert.doesNotMatch(output, /\.\.\.shared/, output);
+  };
+  // A Logic tsconfig that includes neither page: add them to its `include`.
+  fs.writeFileSync(logicConfig, JSON.stringify({ ...JSON.parse(logicConfigSource), include: [] }));
+  let refused = run(cli, ['build', '--release', '--no-typecheck'], app);
+  assert.notEqual(refused.status, 0, refused.output);
+  unreached(refused.output);
+  assert.match(refused.output, /Add them to the Logic tsconfig's `include`\./, refused.output);
+  // No Logic tsconfig at all: create one; `lingxia check` says so before a build does.
+  fs.rmSync(logicConfig);
+  for (const command of [['build', '--release', '--no-typecheck'], ['check']]) {
+    refused = run(cli, command, app);
+    assert.notEqual(refused.status, 0, refused.output);
+    unreached(refused.output);
+    assert.match(refused.output, /This project has no Logic tsconfig: create `tsconfig\.logic\.json` with `\{ "extends": "\.\/\.lingxia\/tsconfig\.logic\.json" \}` and add `\{ "path": "\.\/tsconfig\.logic\.json" \}` to the `references` of `tsconfig\.json`\./, refused.output);
+  }
+} finally {
+  fs.writeFileSync(logicConfig, logicConfigSource);
+  fs.writeFileSync(manifest, manifestSource);
+  fs.writeFileSync(logic, logicSource);
+  fs.rmSync(second, { recursive: true, force: true });
+}
+
 // A TypeScript outside the supported range is refused with the fix, never driven half-way.
 const realTypescript = path.join(modules, 'typescript');
 fs.renameSync(realTypescript, `${realTypescript}.real`);

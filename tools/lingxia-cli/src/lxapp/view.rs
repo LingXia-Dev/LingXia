@@ -690,10 +690,9 @@ pub(crate) fn page_actions(
             ActionsRead::Known(actions) => {
                 known.insert((*page).to_string(), actions);
             }
-            ActionsRead::Composed(expression) => composed.push(action_types::Composed {
+            ActionsRead::Composed(_) => composed.push(action_types::Composed {
                 page,
                 logic: logic.expect("composed actions come from a Logic file"),
-                expression,
             }),
         }
     }

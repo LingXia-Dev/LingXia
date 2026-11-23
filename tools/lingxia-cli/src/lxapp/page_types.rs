@@ -83,7 +83,7 @@ pub fn generate(project: &Project) -> Result<()> {
     Ok(())
 }
 
-const LOGIC_BASE: &str = ".lingxia/tsconfig.logic.json";
+pub(crate) const LOGIC_BASE: &str = ".lingxia/tsconfig.logic.json";
 const VIEW_BASE: &str = ".lingxia/tsconfig.view.json";
 /// Listed in the project's tsconfig `files`, so a `tsc -b` before generation names the fix.
 /// The emit options stay in the project's own files: a missing base must not emit JS beside the sources.
@@ -169,18 +169,8 @@ fn check_view_tsconfig(root: &Path, pages: &[String]) -> Result<()> {
     let Some(importer) = importer else {
         return Ok(());
     };
-    let mut configs: Vec<PathBuf> = fs::read_dir(root)?
-        .flatten()
-        .map(|entry| entry.path())
-        .filter(|path| {
-            path.file_name()
-                .and_then(|name| name.to_str())
-                .is_some_and(|name| name.starts_with("tsconfig") && name.ends_with(".json"))
-        })
-        .collect();
-    configs.sort();
     let base = root.join(VIEW_BASE);
-    for config in &configs {
+    for config in &root_configs(root) {
         if extends_chain_reaches(config, &base, 8) {
             return Ok(());
         }
@@ -190,6 +180,30 @@ fn check_view_tsconfig(root: &Path, pages: &[String]) -> Result<()> {
          Copy `tsconfig.view.json` and `tsconfig.logic.json` from a new `lingxia new` GPU project: they extend\n\
          `{VIEW_BASE}` and `{LOGIC_BASE}`, and the View references the Logic. Otherwise the View type-checks the Logic's source."
     )
+}
+
+/// Whether a tsconfig at the lxapp root extends the generated Logic base.
+pub(crate) fn has_logic_tsconfig(root: &Path) -> bool {
+    let base = root.join(LOGIC_BASE);
+    root_configs(root)
+        .iter()
+        .any(|config| extends_chain_reaches(config, &base, 8))
+}
+
+fn root_configs(root: &Path) -> Vec<PathBuf> {
+    let mut configs: Vec<PathBuf> = fs::read_dir(root)
+        .into_iter()
+        .flatten()
+        .flatten()
+        .map(|entry| entry.path())
+        .filter(|path| {
+            path.file_name()
+                .and_then(|name| name.to_str())
+                .is_some_and(|name| name.starts_with("tsconfig") && name.ends_with(".json"))
+        })
+        .collect();
+    configs.sort();
+    configs
 }
 
 fn extends_chain_reaches(config: &Path, target: &Path, depth: usize) -> bool {
