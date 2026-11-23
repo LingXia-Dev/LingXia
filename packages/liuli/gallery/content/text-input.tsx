@@ -1,5 +1,5 @@
 // Generated from the doc file by scripts/generate.mjs; do not edit.
-import { Bound, Plain, Search, Adornments, SignIn, ShareLink, RightToLeft, Sizes, StateEmpty, StateFilled, StateInvalid, StateDisabled, Checking, ReadOnly, Disabled } from '../../core/src/TextInput/TextInput.examples';
+import { Bound, Plain, Search, Adornments, SignIn, ShareLink, Sizes, StateEmpty, StateFilled, StateInvalid, StateDisabled, Checking, ReadOnly, Disabled } from '../../core/src/TextInput/TextInput.examples';
 import { Lead, PageSection, Stage, StageGrid } from '../shared/Layout';
 
 export function Content() {
@@ -23,9 +23,6 @@ export function Content() {
         </Stage>
         <Stage caption={"A copy button inside the box"}>
           <ShareLink />
-        </Stage>
-        <Stage caption={"On a right-to-left page: an address, an email and a phone number keep their own order"}>
-          <RightToLeft />
         </Stage>
       </PageSection>
       <PageSection title={"Sizes"}>

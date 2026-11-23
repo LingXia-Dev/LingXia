@@ -16,7 +16,7 @@ import type {
 } from './generated/logic.js';
 
 export type { JsonData } from './generated/logic.js';
-export { defineStore } from './store.js';
+export { defineStore, derive } from './store.js';
 export type { Store, StoreOptions } from './store.js';
 
 declare const typeTag: unique symbol;

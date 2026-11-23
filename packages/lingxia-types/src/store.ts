@@ -228,3 +228,57 @@ export function defineStore<T>(initial: T, ...rest: JsonGuard<T>): Store<T> {
   };
   return Object.freeze(store);
 }
+
+type LiveValues<Sources> = { [K in keyof Sources]: Sources[K] extends Live<infer V> ? V : never };
+
+/**
+ * A read-only `Live` computed from others (stores, picks, host `Live`s). It recomputes when a
+ * source changes and notifies only on a deep-unequal result; it holds its sources only while watched.
+ *
+ * ```ts
+ * export const language = derive([override, lx.app.language], (o, l) => o ?? l);
+ * ```
+ */
+export function derive<const Sources extends readonly Live<unknown>[], U>(
+  sources: Sources,
+  compute: (...values: LiveValues<Sources>) => U,
+): Live<U> {
+  if (!Array.isArray(sources) || sources.some((source) => !source || typeof source.get !== 'function' || typeof source.watch !== 'function')) {
+    throw new TypeError('derive takes an array of Live values and a function: derive([a, b], (a, b) => …)');
+  }
+  if (typeof compute !== 'function') throw new TypeError('derive takes a function: derive([a, b], (a, b) => …)');
+  const run = (values: unknown[]) => compute(...(values as LiveValues<Sources>));
+  let values: unknown[] = [];
+  let result: U;
+  let stops: (() => void)[] = [];
+  const watchers: Watchers<U> = new Watchers<U>(
+    () => {
+      values = sources.map((source) => source.get());
+      result = run(values);
+      let ready = false;
+      stops = sources.map((source, index) => source.watch((value) => {
+        values[index] = value;
+        if (!ready) return;
+        let next: U;
+        try {
+          next = run(values);
+        } catch (error) {
+          console.error('derive: the compute function threw', error);
+          return;
+        }
+        if (deepEqual(next, result)) return;
+        result = next;
+        watchers.notify(result, 'derive');
+      }));
+      ready = true;
+    },
+    () => {
+      for (const stop of stops) stop();
+      stops = [];
+    },
+  );
+  return Object.freeze({
+    get: () => (stops.length > 0 ? result : run(sources.map((source) => source.get()))),
+    watch: (callback: (value: U) => void, options?: SignalOptions) => watchers.add(() => result, callback, options),
+  });
+}

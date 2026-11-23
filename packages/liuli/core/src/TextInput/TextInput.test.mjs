@@ -137,11 +137,3 @@ test('ShareLink: endContent sits inside the box after the value', async () => {
   screen.press(copy);
   assert.equal(screen.queryAll(node => node.text === 'Copied.').length, 1);
 });
-
-test('RightToLeft: a value takes its own direction by type, and `dir` wins', async () => {
-  const screen = await renderExample('TextInput/TextInput', 'RightToLeft');
-  const direction = id => screen.getByTestId(id).props.direction;
-  assert.deepEqual(['rtl-address', 'rtl-address-he', 'rtl-email', 'rtl-phone', 'rtl-mac'].map(direction), ['auto', 'auto', 'ltr', 'ltr', 'ltr']);
-  const code = await renderExample('TextInput/TextInput', 'Plain');
-  assert.equal(code.queryAll(node => node.tag === 'input')[0].props.direction, 'auto');
-});

@@ -298,6 +298,7 @@
       "UpdateRecipe",
       "definePage",
       "defineStore",
+      "derive",
       "type"
     ],
     "@lingxia/types/error": [
@@ -596,6 +597,7 @@
       "WindowChrome",
       "definePage",
       "defineStore",
+      "derive",
       "isLxError",
       "lx",
       "type"
@@ -1091,6 +1093,38 @@
       "tags": {},
       "examples": [],
       "source": "src/store.ts:156"
+    },
+    {
+      "path": "derive",
+      "kind": "function",
+      "entry": "@lingxia/logic",
+      "summary": "A read-only `Live` computed from others (stores, picks, host `Live`s).",
+      "description": "A read-only `Live` computed from others (stores, picks, host `Live`s). It recomputes when a\nsource changes and notifies only on a deep-unequal result; it holds its sources only while watched.\n\n```ts\nexport const language = derive([override, lx.app.language], (o, l) => o ?? l);\n```",
+      "signatures": [
+        {
+          "text": "derive<const Sources extends readonly Live<unknown>[], U>(sources: Sources, compute: (...values: LiveValues<Sources>) => U): Live<U>",
+          "parameters": [
+            {
+              "name": "sources",
+              "type": "Sources",
+              "required": true
+            },
+            {
+              "name": "compute",
+              "type": "(...values: LiveValues<Sources>) => U",
+              "required": true
+            }
+          ],
+          "returns": "Live<U>"
+        }
+      ],
+      "types": [
+        "Live",
+        "SignalOptions"
+      ],
+      "tags": {},
+      "examples": [],
+      "source": "src/store.ts:242"
     },
     {
       "path": "isLxError",

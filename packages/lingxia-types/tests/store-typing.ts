@@ -42,3 +42,19 @@ defineStore({ run() {} });
 const asLive: Live<{ readonly items: readonly { readonly id: string; readonly qty: number }[]; readonly note: string | null }> = cart;
 const typed: Store<boolean> = flag;
 void count; void asLive; void typed;
+
+// derive: values typed from each source, a read-only Live.
+import { derive } from '../src/page.js';
+declare const hostLanguage: Live<string>;
+const override = defineStore(null as string | null);
+const language = derive([override, hostLanguage], (o, l) => o ?? l);
+const lang: Live<string> = language;
+const summary = derive([cart, count], (c, n) => `${c.note ?? ''}:${n}`);
+const s1: string = summary.get();
+// @ts-expect-error a derived value has no set
+language.set('en');
+// @ts-expect-error each argument has its source's type
+derive([count], (n: string) => n);
+// @ts-expect-error sources are Live values
+derive([1], (n) => n);
+void lang; void s1;

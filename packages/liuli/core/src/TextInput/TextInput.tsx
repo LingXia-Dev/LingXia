@@ -35,21 +35,12 @@ export type TextInputClear =
       clearLabel?: string;
     };
 
-// Values that are always written left to right: addresses, numbers, phone numbers.
-const leftToRightTypes = new Set(['email', 'number', 'tel', 'numeric', 'decimal']);
-
 export type TextInputProps = FieldOwnProps & TextInputBinding & TextInputClear & {
   /** A hint shown while empty; never a substitute for `label`. */
   placeholder?: string;
   /** `search` draws Liuli's magnifier, not the platform's, and defaults `enterKeyHint` to `search`. `password` hides the text and adds a button that shows it. @default 'text' */
   type?: 'text' | 'password' | 'email' | 'number' | 'tel' | 'search';
   inputMode?: 'text' | 'numeric' | 'decimal' | 'tel' | 'email';
-  /**
-   * The value's direction; the label and the box follow the page. `auto` takes the direction of the value's first letter,
-   * so an address or a name reads in its own order on a right-to-left page.
-   * @default 'ltr' for `email`, `number` and `tel`, or a numeric, tel or email `inputMode`; otherwise 'auto'
-   */
-  dir?: 'ltr' | 'rtl' | 'auto';
   autoComplete?: AutoComplete;
   /** The label of the keyboard's action key; `onSubmit` runs on it. */
   enterKeyHint?: 'enter' | 'done' | 'go' | 'next' | 'previous' | 'search' | 'send';
@@ -99,7 +90,6 @@ export function TextInput(props: TextInputProps) {
   // The platform search field draws its own magnifier at its own size and colour, so search is a
   // plain editor with Liuli's icon.
   const isSearch = type === 'search';
-  const dir = props.dir ?? (leftToRightTypes.has(type ?? 'text') || leftToRightTypes.has(inputMode ?? 'text') ? 'ltr' : 'auto');
   const isPassword = type === 'password';
   const revealed = useLocal('revealed', false);
   const editorType = isSearch || (isPassword && revealed.value) ? undefined : type;
@@ -137,7 +127,6 @@ export function TextInput(props: TextInputProps) {
               aria-required={control['aria-required']}
               data-testid={testId} {...dataOf(props)}
               placeholder={placeholder}
-              dir={dir}
               type={editorType}
               inputMode={inputMode}
               autoComplete={autoComplete}
@@ -164,7 +153,6 @@ export function TextInput(props: TextInputProps) {
               aria-required={control['aria-required']}
               data-testid={testId} {...dataOf(props)}
               placeholder={placeholder}
-              dir={dir}
               type={editorType}
               inputMode={inputMode}
               autoComplete={autoComplete}

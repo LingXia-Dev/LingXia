@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { definePage, defineStore, LxError, type, type PageLike } from "@lingxia/logic";
+import { definePage, defineStore, derive, LxError, type, type PageLike } from "@lingxia/logic";
 import { createLxMock, mount, setLx, type LxMockOverrides } from "@lingxia/logic/testing";
 import { lxNow } from "./fixtures/lx-now.mjs";
 import attachPage from "./fixtures/attach-page.ts";
@@ -252,6 +252,36 @@ test("a followed store is in the first data, follows each change, refuses page w
     mount(definePage({ data: { plan: "x" }, follow: { plan: session.pick(s => s.plan) } } as never), { lx: createLxMock() }),
     /'plan' is in both data and follow/,
   );
+});
+
+test("a derived Live recomputes from each source, notifies on a real change, and a page follows it", async () => {
+  const override = defineStore(null as string | null, { name: "override" });
+  const host = defineStore("en", { name: "host language" });
+  let runs = 0;
+  const language = derive([override, host], (o, l) => { runs += 1; return o ?? l; });
+  assert.equal(language.get(), "en");
+  const seen: string[] = [];
+  const stop = language.watch(l => seen.push(l));
+  host.set("fr");
+  override.set("de");
+  host.set("es");
+  override.set(null);
+  assert.deepEqual(seen, ["en", "fr", "de", "es"]);
+  stop();
+  const before = runs;
+  host.set("it");
+  assert.equal(runs, before, "an unwatched derive holds no source");
+  assert.equal(language.get(), "it");
+
+  const page = definePage({ follow: { language }, actions: {} });
+  const mounted = await mount(page, { lx: createLxMock() });
+  try {
+    assert.equal(mounted.data.language, "it");
+    override.set("ja");
+    assert.equal(mounted.data.language, "ja");
+  } finally {
+    await mounted.unmount();
+  }
 });
 
 test("a store is one value for every page: an action's update reaches another page and a pick", async () => {
