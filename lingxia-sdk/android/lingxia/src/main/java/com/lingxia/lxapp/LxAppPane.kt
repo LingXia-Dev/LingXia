@@ -63,7 +63,12 @@ import com.lingxia.lxapp.NativeComponents.NativeBridge
  * and the transitions between its pages. The window itself (insets, orientation, system
  * bars, input) stays with the activity.
  */
-internal class LxAppPane(val activity: LxAppActivity, val root: FrameLayout) {
+internal class LxAppPane(
+    val activity: LxAppActivity,
+    val root: FrameLayout,
+    /** The main region's pane owns the window: its bars, orientation and background. */
+    val isMain: Boolean = true,
+) {
     companion object {
         private const val TAG = "LingXia.WebView"
         /** GPU navigation stages, at debug level: transitions are timing-sensitive. */
@@ -87,6 +92,21 @@ internal class LxAppPane(val activity: LxAppActivity, val root: FrameLayout) {
     var navigationBar: NavigationBar? = null
 
     val hasAppId: Boolean get() = ::appId.isInitialized
+
+    /** The status bar over this pane's top; an aside's region already starts below it. */
+    fun statusInset(): Int = if (isMain) LxAppActivity.getStatusBarHeight(activity) else 0
+
+    /** Takes the pane's pages off screen without closing them: the runtime keeps them alive. */
+    fun detach() {
+        ++gpuTransitionVersion
+        clearGpuTransitionCover()
+        (currentWebView as? WebView)?.let { NativeBridge.notifyPageInactive(it) }
+        currentWebView?.pause()
+        currentWebView = null
+        if (hasWebViewContainer) webViewContainer.removeAllViews()
+        pullToRefreshHelper?.detach()
+        (root.parent as? ViewGroup)?.removeView(root)
+    }
     val hasWebViewContainer: Boolean get() = ::webViewContainer.isInitialized
 
     fun destroy() {
@@ -282,7 +302,7 @@ internal class LxAppPane(val activity: LxAppActivity, val root: FrameLayout) {
 
 
     internal fun shouldShowCapsuleButton(targetAppId: String, targetSessionId: Long): Boolean {
-        if (activity.isMediaFullscreen) return false
+        if (!isMain || activity.isMediaFullscreen) return false
         if (targetAppId.isBlank() || targetSessionId <= 0L) return false
 
         val homeAppId = LxApp.homeAppId ?: return false
@@ -299,7 +319,8 @@ internal class LxAppPane(val activity: LxAppActivity, val root: FrameLayout) {
             !hasAppId || appId.isBlank()
         ) return
         val density = activity.resources.displayMetrics.density
-        val shellWidthPx = (root.width - root.paddingLeft - root.paddingRight)
+        val window = activity.contentRoot()
+        val shellWidthPx = (window.width - window.paddingLeft - window.paddingRight)
             .coerceAtLeast(0)
         val viewportWidthPx = (webViewContainer.width - webViewContainer.paddingLeft - webViewContainer.paddingRight)
             .coerceAtLeast(0)
@@ -311,7 +332,7 @@ internal class LxAppPane(val activity: LxAppActivity, val root: FrameLayout) {
         val viewportWidthDp = (viewportWidthPx / density).toInt()
         val viewportHeightDp = (viewportHeightPx / density).toInt()
         runCatching {
-            if (shellWidthDp > 0 && shellWidthDp != lastReportedShellWidthDp) {
+            if (isMain && shellWidthDp > 0 && shellWidthDp != lastReportedShellWidthDp) {
                 lastReportedShellWidthDp = shellWidthDp
                 NativeApi.setSurfaceWidth(appId, shellWidthDp.toDouble())
             }
@@ -530,7 +551,7 @@ internal class LxAppPane(val activity: LxAppActivity, val root: FrameLayout) {
     internal fun touchTabBarShape(config: TabBarState): TabBarShape {
         val width = root.width
         val height = root.height
-        if (width <= 0 || height <= 0 || config.position != TabBarState.Position.BOTTOM) return TabBarShape.STRIP
+        if (!isMain || width <= 0 || height <= 0 || config.position != TabBarState.Position.BOTTOM) return TabBarShape.STRIP
         // A phone keeps its strip even on its side: only a large screen (an open foldable, a
         // tablet; Android's sw600dp) moves the tabs. The smallest width holds through rotation.
         if (activity.resources.configuration.smallestScreenWidthDp < com.lingxia.view.GpuFoldAdapter.COMPACT_MAX_DP) {
@@ -586,7 +607,8 @@ internal class LxAppPane(val activity: LxAppActivity, val root: FrameLayout) {
             }
         }
         layoutCapsuleButton()
-        if (column == 0) {
+        if (!isMain) return
+        if (column == 0 && !activity.asideDocked()) {
             val band = activity.statusBand?.takeIf { it.visibility == View.VISIBLE } ?: return
             band.visibility = View.GONE
             applyStatusBarGlyphs(NativeApi.getNavigationBarState(appId, currentWebView?.getCurrentPath() ?: ""))
@@ -595,14 +617,14 @@ internal class LxAppPane(val activity: LxAppActivity, val root: FrameLayout) {
                 activity.statusBand = it
                 root.addView(it, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0))
             }
-            val height = LxAppActivity.getStatusBarHeight(activity)
+            val height = statusInset()
             (band.layoutParams as FrameLayout.LayoutParams).let { lp ->
                 if (lp.height != height) {
                     lp.height = height
                     band.layoutParams = lp
                 }
             }
-            band.setBackgroundColor(tabBar?.config?.backgroundColor ?: Color.WHITE)
+            band.setBackgroundColor(statusBandColor())
             if (band.visibility != View.VISIBLE) {
                 band.visibility = View.VISIBLE
                 root.bringChildToFront(band)
@@ -610,6 +632,12 @@ internal class LxAppPane(val activity: LxAppActivity, val root: FrameLayout) {
             applyStatusBarGlyphs(null)
         }
     }
+
+    /** The band's colour: the tab column's beside one, else a neutral one beside a docked aside. */
+    fun statusBandColor(): Int = tabBar?.takeIf { tabColumnWidth() > 0 }?.config?.backgroundColor
+        ?: gpuChrome?.bar
+        ?: (navigationBar?.takeIf { it.visibility == View.VISIBLE }?.background as? android.graphics.drawable.ColorDrawable)?.color
+        ?: Color.WHITE
 
     internal fun applyTabBarLayoutParams(tabBar: TabBar, config: TabBarState) {
         val isVertical = config.position == TabBarState.Position.LEFT || config.position == TabBarState.Position.RIGHT
@@ -630,7 +658,7 @@ internal class LxAppPane(val activity: LxAppActivity, val root: FrameLayout) {
                     else -> Gravity.START
                 }
                 // Add top margin to avoid status bar for vertical TabBars
-                topMargin = LxAppActivity.getStatusBarHeight(activity)
+                topMargin = statusInset()
                 bottomMargin = 0
             } else {
                 width = ViewGroup.LayoutParams.MATCH_PARENT
@@ -650,7 +678,7 @@ internal class LxAppPane(val activity: LxAppActivity, val root: FrameLayout) {
                         else -> Gravity.START
                     }
                     // Add top margin to avoid status bar for vertical TabBars
-                    topMargin = LxAppActivity.getStatusBarHeight(activity)
+                    topMargin = statusInset()
                     bottomMargin = 0
                 }
             } else {
@@ -751,7 +779,7 @@ internal class LxAppPane(val activity: LxAppActivity, val root: FrameLayout) {
         return KeptPageGeometry.Bars(
             // The page starts below the navbar content and the status bar.
             navigationBar = if (navigation != null)
-                navigation.getCalculatedContentHeightPx() + LxAppActivity.getStatusBarHeight(activity) else 0,
+                navigation.getCalculatedContentHeightPx() + statusInset() else 0,
             tabBarHeight = tabBar?.layoutParams?.height ?: 0,
             tabBarWidth = tabBar?.layoutParams?.width ?: 0,
             tabBarTransparent = background == Color.TRANSPARENT ||
@@ -939,6 +967,10 @@ internal class LxAppPane(val activity: LxAppActivity, val root: FrameLayout) {
             }
         }
         // Prevent onStop() from dispatching onAppHide for a session that is already closed.
+        if (!isMain) {
+            activity.dropAside(appId)
+            return
+        }
         appId = ""
         currentSessionId = 0L
         activity.finish()
@@ -961,7 +993,7 @@ internal class LxAppPane(val activity: LxAppActivity, val root: FrameLayout) {
         updatePullToRefreshEnabledForPath(currentPath)
 
         // Apply page orientation
-        activity.applyPageOrientation(currentPath)
+        if (isMain) activity.applyPageOrientation(currentPath)
 
         // Trigger onPageShow for initial WebView (this is the single place for initial page show)
         val shown = webView.pageIdentity()
@@ -1001,7 +1033,7 @@ internal class LxAppPane(val activity: LxAppActivity, val root: FrameLayout) {
     internal fun pullToRefreshTopInset(): Int {
         if (activity.isMediaFullscreen || activity.isPageFullscreen) return 0
         if (navigationBar?.visibility == View.VISIBLE) return 0
-        return LxAppActivity.getStatusBarHeight(activity)
+        return statusInset()
     }
 
     internal fun ensurePullToRefreshHelper(): PullToRefreshHelper {
@@ -1082,7 +1114,7 @@ internal class LxAppPane(val activity: LxAppActivity, val root: FrameLayout) {
         if (!shouldShowCapsuleButton(appId, currentSessionId)) return
 
         val density = activity.resources.displayMetrics.density
-        val statusBarHeight = LxAppActivity.getStatusBarHeight(activity)
+        val statusBarHeight = statusInset()
         val capsuleHeightPx = (LxAppTheme.Metrics.CAPSULE_HEIGHT_DP * density).toInt()
         val capsuleTopMarginPx = LxAppTheme.Metrics.calculateCapsuleTopMargin(statusBarHeight, density)
 
@@ -1123,7 +1155,7 @@ internal class LxAppPane(val activity: LxAppActivity, val root: FrameLayout) {
         val capsule = root.findViewWithTag<View>("capsule_button") ?: return
         val lp = capsule.layoutParams as? FrameLayout.LayoutParams ?: return
         val density = activity.resources.displayMetrics.density
-        val top = LxAppTheme.Metrics.calculateCapsuleTopMargin(LxAppActivity.getStatusBarHeight(activity), density)
+        val top = LxAppTheme.Metrics.calculateCapsuleTopMargin(statusInset(), density)
         val trailing = (LxAppTheme.Metrics.CAPSULE_TRAILING_MARGIN_DP * density).toInt() + tabColumnWidth()
         if (lp.topMargin != top || lp.rightMargin != trailing) {
             lp.topMargin = top
@@ -1464,6 +1496,7 @@ internal class LxAppPane(val activity: LxAppActivity, val root: FrameLayout) {
      * the tabs ended in a white plate.
      */
     internal fun syncNavigationBarToTabBar(visible: Boolean) {
+        if (!isMain) return
         // While the launch cover is up it owns the whole window, bars included.
         // The home page's TabBar state lands well before the cover lifts, so
         // colouring the bar now paints the TabBar's colour along the bottom of
@@ -1654,7 +1687,7 @@ internal class LxAppPane(val activity: LxAppActivity, val root: FrameLayout) {
                     val pagePath = webView.getCurrentPath()!!
                     LxLog.d(NAV_TAG, "onPageShow ${webView.getWebTag()}")
                     NativeApi.onPageShow(webView.getAppId()!!, webView.pageIdentity() ?: pagePath)
-                    activity.applyPageOrientation(pagePath)
+                    if (isMain) activity.applyPageOrientation(pagePath)
                 }
             } catch (e: Exception) {
                 LxLog.e(TAG, "Failed to call nativeOnPageShow in performWebViewTransition: ${e.message}")
@@ -1886,6 +1919,7 @@ internal class LxAppPane(val activity: LxAppActivity, val root: FrameLayout) {
 
     /** Keep status bar glyphs legible against native chrome or custom content. */
     internal fun applyStatusBarGlyphs(navbarState: NavigationBarState?) {
+        if (!isMain) return
         val band = activity.statusBand?.takeIf { it.visibility == View.VISIBLE }
         val bandColor = (band?.background as? android.graphics.drawable.ColorDrawable)?.color
         val lightGlyphs = bandColor?.let { NavigationBar.ColorUtils.isColorDark(it) } ?: gpuChrome?.dark ?: if (navbarState?.showNavbar == true) {
@@ -1961,6 +1995,10 @@ internal class LxAppPane(val activity: LxAppActivity, val root: FrameLayout) {
      */
     internal fun applyCanvasBackground() {
         val themed = resolveCanvasColor() ?: return
+        if (!isMain) {
+            root.setBackgroundColor(themed)
+            return
+        }
         // While the launch cover is up, the canvas behind it belongs to the
         // launch, not to the app theme. It is not idle scenery either: a home
         // page that redirects on boot tears its WebView down and builds
@@ -2027,7 +2065,7 @@ internal class LxAppPane(val activity: LxAppActivity, val root: FrameLayout) {
         if (navigationBar != null) return
 
         try {
-            val statusBarHeight = LxAppActivity.getStatusBarHeight(activity)
+            val statusBarHeight = statusInset()
             navigationBar = NavigationBar(activity).apply {
                 gpuChrome?.let { setTheme(it.bar to it.content) }
                 val navBarContentHeight = getCalculatedContentHeightPx()

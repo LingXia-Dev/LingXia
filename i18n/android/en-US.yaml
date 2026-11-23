@@ -29,3 +29,9 @@ update:
   # download; the system installer fires only when the user confirms.
   ready_message: "A new version has been downloaded. Install it now?"
   ready_title: "Update ready"
+
+# Side panel chrome (AsideRegion): tab menu, strip buttons, collapsed tongue.
+aside:
+  collapse: "Collapse Side Panel"
+  maximize: "Maximize"
+  restore: "Restore"

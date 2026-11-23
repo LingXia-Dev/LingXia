@@ -169,3 +169,9 @@ text_menu:
   select_all: "全选"
   undo: "撤销"
   redo: "重做"
+
+# 侧边面板：lxapp 在侧边与主区之间移动，以及收起后的把手。
+aside:
+  open_in_main: "在主区打开"
+  open_in_side: "在侧边面板打开"
+  show_content: "显示 {name}"

@@ -169,3 +169,9 @@ text_menu:
   select_all: "Select All"
   undo: "Undo"
   redo: "Redo"
+
+# Side panel: moving an lxapp between it and the main area, and the collapsed slot's handle.
+aside:
+  open_in_main: "Open in Main Area"
+  open_in_side: "Open in Side Panel"
+  show_content: "Show {name}"

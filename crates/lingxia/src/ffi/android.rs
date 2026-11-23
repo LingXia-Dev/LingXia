@@ -1886,6 +1886,49 @@ pub extern "system" fn Java_com_lingxia_app_NativeApi_surfaceDerivedLayout<'a>(
     .resolve::<ThrowRuntimeExAndDefault>()
 }
 
+/// The aside slot's controls and the moves between main and aside, on the
+/// window graph `appid` reaches. `arg` is the surface id, slot kind or edge
+/// the command takes.
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_com_lingxia_app_NativeApi_asideCommand<'a>(
+    mut env: EnvUnowned<'a>,
+    _class: JClass<'a>,
+    appid: JString<'a>,
+    command: JString<'a>,
+    arg: JString<'a>,
+) -> jboolean {
+    env.with_env(|env| -> Result<jboolean, jni::errors::Error> {
+        let appid: String = appid.try_to_string(env)?;
+        let command: String = command.try_to_string(env)?;
+        let arg: String = arg.try_to_string(env)?;
+        let Some(app) = lxapp::try_get(&appid) else {
+            return Ok(false as jboolean);
+        };
+        let done = match command.as_str() {
+            "focus" => app.focus_shell_surface(&arg),
+            "collapse" => app.set_shell_slot_collapsed(&arg, true),
+            "restore" => app.set_shell_slot_collapsed(&arg, false),
+            "maximize" => app.set_shell_slot_maximized(&arg, true),
+            "unmaximize" => app.set_shell_slot_maximized(&arg, false),
+            "unregister" => {
+                app.unregister_host_aside(&arg);
+                true
+            }
+            "promote" => app
+                .promote_aside_to_main()
+                .inspect_err(|err| warn!("aside promotion refused for {appid}: {err}"))
+                .is_ok(),
+            "demote" => app
+                .demote_main_to_aside(&arg)
+                .inspect_err(|err| warn!("main demotion refused for {appid}: {err}"))
+                .is_ok(),
+            _ => false,
+        };
+        Ok(done as jboolean)
+    })
+    .resolve::<ThrowRuntimeExAndDefault>()
+}
+
 #[unsafe(no_mangle)]
 pub extern "system" fn Java_com_lingxia_app_NativeApi_urlCallbackDispatch<'a>(
     mut env: EnvUnowned<'a>,

@@ -157,11 +157,10 @@ class LxAppActivity : AppCompatActivity() {
         @JvmStatic
         fun updateTabBarUI(appId: String): Boolean {
             val activity = LxApp.getCurrentActivity()
-            if (activity != null && activity.appId == appId) {
+            if (activity != null && activity.paneOf(appId) != null) {
                 val updateTask = {
                     try {
-                        activity.mainPane.setupTabBar(NativeApi.getTabBarState(appId))
-                        true
+                        activity.paneOf(appId)?.setupTabBar(NativeApi.getTabBarState(appId)) != null
                     } catch (e: Exception) {
                         LxLog.e(TAG, "Failed to refresh TabBar from Rust: ${e.message}", e)
                         false
@@ -191,10 +190,11 @@ class LxAppActivity : AppCompatActivity() {
         @JvmStatic
         fun updateNavBarUI(appId: String): Boolean {
             val activity = LxApp.getCurrentActivity()
-            if (activity != null && activity.appId == appId) {
+            if (activity != null && activity.paneOf(appId) != null) {
                 activity.runOnUiThread {
-                    val currentPath = activity.mainPane.currentWebView?.getCurrentPath() ?: ""
-                    activity.mainPane.updateNavigationBar(null, false, true, currentPath)
+                    val pane = activity.paneOf(appId) ?: return@runOnUiThread
+                    val currentPath = pane.currentWebView?.getCurrentPath() ?: ""
+                    pane.updateNavigationBar(null, false, true, currentPath)
                 }
                 return true
             }
@@ -457,7 +457,11 @@ class LxAppActivity : AppCompatActivity() {
                 ViewGroup.LayoutParams.MATCH_PARENT
             )
         }
-        mainPane = LxAppPane(this, rootContainer)
+        // The main's own frame: a docked aside narrows it, and its bars with it.
+        val mainHost = FrameLayout(this)
+        rootContainer.addView(mainHost, FrameLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
+        mainPane = LxAppPane(this, mainHost)
 
         // Configure transparent system bars for edge-to-edge experience
         configureTransparentSystemBars(this)
@@ -496,7 +500,15 @@ class LxAppActivity : AppCompatActivity() {
         mainPane.observeGpuChromeInsets()
         rootContainer.addOnLayoutChangeListener { _, left, top, right, bottom, oldLeft, oldTop, oldRight, oldBottom ->
             if (right - left != oldRight - oldLeft || bottom - top != oldBottom - oldTop) {
-                rootContainer.post { mainPane.refitTabBarShape() }
+                rootContainer.post {
+                    if (::aside.isInitialized) aside.layout()
+                    mainPane.refitTabBarShape()
+                }
+            }
+        }
+        mainPane.root.addOnLayoutChangeListener { _, left, top, right, bottom, oldLeft, oldTop, oldRight, oldBottom ->
+            if (right - left != oldRight - oldLeft || bottom - top != oldBottom - oldTop) {
+                mainPane.root.post { mainPane.refitTabBarShape() }
             }
         }
 
@@ -516,6 +528,7 @@ class LxAppActivity : AppCompatActivity() {
 
         // Create global NavigationBar (always present, controlled by visibility)
         mainPane.createNavBar()
+        aside = AsideRegion(this, rootContainer)
 
         // Chrome views exist now; a persisted non-default scheme can apply.
         presenterReady = true
@@ -601,6 +614,11 @@ class LxAppActivity : AppCompatActivity() {
                         }
                         // A GPU page's open dialog or popover takes back before the page leaves.
                         if (com.lingxia.view.GpuView.closeRequest(this@LxAppActivity)) return
+                        // A side panel over the main is put away whole; its apps stay open.
+                        if (aside.overlay) {
+                            aside.collapse()
+                            return
+                        }
                         mainPane.currentWebView?.visibility = View.VISIBLE
                         NativeApi.onLxappEvent(appId, NativeApi.UI_EVENT_BACK_PRESS, "")
                     } catch (e: Exception) {
@@ -789,6 +807,7 @@ class LxAppActivity : AppCompatActivity() {
         mainPane.webViewContainer.visibility = View.VISIBLE
         // On a cold start the first screen is still being presented; it attaches itself.
         mainPane.currentWebView?.let(mainPane::attachWebViewToUI)
+        if (::aside.isInitialized) aside.onHostPaused(false)
         val currentPath = mainPane.currentWebView?.getCurrentPath()
         if (!currentPath.isNullOrEmpty()) {
             applyPageOrientation(currentPath)
@@ -936,6 +955,7 @@ class LxAppActivity : AppCompatActivity() {
         super.onPause()
         mainPane.currentWebView?.pause()
         mainPane.currentWebView?.let { (it as? WebView)?.let { NativeBridge.notifyPageInactive(it) } }
+        if (::aside.isInitialized) aside.onHostPaused(true)
     }
 
     override fun onStart() {
@@ -967,6 +987,85 @@ class LxAppActivity : AppCompatActivity() {
      * Notifies the native layer that the LxApp is being closed
      * Returns whether the close matches current runtime session.
      */
+    internal lateinit var aside: AsideRegion
+
+    fun contentRoot(): FrameLayout = rootContainer
+
+    internal fun hasAsideRegion(): Boolean = ::aside.isInitialized
+
+    internal fun asideDocked(): Boolean = ::aside.isInitialized && aside.docked && !isMediaFullscreen
+
+    /** The pane showing [appId]: the main's, or a side panel tab's. */
+    internal fun paneOf(appId: String): LxAppPane? = when {
+        hasAppId && mainPane.appId == appId -> mainPane
+        ::aside.isInitialized -> aside.panes[appId]
+        else -> null
+    }
+
+    /** Opens [appId] in the side panel; the core's next plan places it. */
+    internal fun openAside(appId: String, sessionId: Long) {
+        if (paneOf(appId) != null) return
+        aside.open(appId, sessionId)
+    }
+
+    internal fun dropAside(appId: String) {
+        aside.drop(appId)
+    }
+
+    /** The main gives a docked aside its room. */
+    internal fun onAsideLayoutChanged() {
+        val right = if (asideDocked()) aside.dockedWidth() else 0
+        (mainPane.root.layoutParams as? FrameLayout.LayoutParams)?.let { lp ->
+            if (lp.rightMargin != right) {
+                lp.rightMargin = right
+                mainPane.root.layoutParams = lp
+            }
+        }
+        if (mainPane.hasWebViewContainer) mainPane.updateLayoutMargins()
+    }
+
+    /**
+     * The core's plan for the window. The side panel follows its `panel` slot, and an lxapp the
+     * plan moved between main and aside is re-hosted: its pages stay alive in the runtime, so
+     * the move shows the page it was on.
+     */
+    internal fun applyLayoutPlan(plan: org.json.JSONObject) {
+        if (!::aside.isInitialized || !hasAppId) return
+        val slot = AsideRegion.Slot.parse(plan)
+        val activeMain = activeMainAppId(plan)
+        val current = mainPane.appId
+        if (activeMain != null && activeMain != current && aside.panes.containsKey(activeMain)) {
+            // Promoted: the aside's pages go to the main.
+            aside.drop(activeMain)
+            showInMain(activeMain)
+        } else if (current.isNotBlank() && slot?.children?.contains(current) == true) {
+            // Demoted: the main's pages go to the side panel; the successor takes the main.
+            val session = mainPane.currentSessionId
+            activeMain?.takeIf { it != current }?.let(::showInMain)
+            aside.open(current, session)
+        }
+        aside.apply(slot)
+    }
+
+    private fun showInMain(appId: String) {
+        val session = NativeApi.getLxAppSessionId(appId)
+        if (session <= 0L) return
+        if (NativeApi.onLxAppPageOpened(appId, "", session).isNotBlank()) mainPane.openLxApp(appId, session)
+    }
+
+    private fun activeMainAppId(plan: org.json.JSONObject): String? {
+        val id = plan.optString("activeMainId").takeIf { it.isNotEmpty() && !plan.isNull("activeMainId") }
+            ?: return null
+        val items = plan.optJSONObject("mainSwitcher")?.optJSONArray("items") ?: return id
+        for (index in 0 until items.length()) {
+            val item = items.optJSONObject(index) ?: continue
+            if (item.optString("surfaceId") != id) continue
+            val content = item.optJSONObject("content") ?: return null
+            return content.optString("appId").takeIf { content.optString("kind") == "lxapp" && it.isNotEmpty() }
+        }
+        return id
+    }
+
     internal fun beginBackHold(version: Long) {
         backHold = version
         // Bounded: whatever shows by then takes the held gesture.
@@ -976,6 +1075,15 @@ class LxAppActivity : AppCompatActivity() {
     internal fun navigate(webtag: String?, animationType: AnimationType): Boolean =
         mainPane.navigate(webtag, animationType)
     fun closeLxApp(sessionId: Long = currentSessionId) = mainPane.closeLxApp(sessionId)
+
+    /** Closes [appId] wherever it shows; an aside's slot lets it go. */
+    internal fun closeLxApp(appId: String, sessionId: Long) {
+        if (::aside.isInitialized && aside.panes.containsKey(appId)) {
+            if (aside.panes[appId]?.currentSessionId == sessionId) aside.close(appId)
+            return
+        }
+        mainPane.closeLxApp(sessionId)
+    }
     fun openLxApp(appId: String, sessionId: Long) = mainPane.openLxApp(appId, sessionId)
     fun getAppId(): String = appId
     fun getSessionId(): Long = currentSessionId
@@ -1045,9 +1153,9 @@ class LxAppActivity : AppCompatActivity() {
             overlayHost.translationY = 0f
             overlayHost.requestLayout()
         }
-        if (rootContainer.indexOfChild(mainPane.webViewContainer) != rootContainer.childCount - 1) {
+        if (mainPane.root.indexOfChild(mainPane.webViewContainer) != mainPane.root.childCount - 1) {
             shouldRestoreOverlayOrder = true
-            rootContainer.bringChildToFront(mainPane.webViewContainer)
+            mainPane.root.bringChildToFront(mainPane.webViewContainer)
         }
         if (navParent != null && navIndex >= 0) {
             navParent.removeView(navBar)
@@ -1083,7 +1191,7 @@ class LxAppActivity : AppCompatActivity() {
                     ViewGroup.LayoutParams.MATCH_PARENT,
                     ViewGroup.LayoutParams.WRAP_CONTENT
                 )
-                rootContainer.addView(navBar, state.navigationBarIndex, params)
+                mainPane.root.addView(navBar, state.navigationBarIndex, params)
                 navBar.visibility = navVisibility
             }
             val overlayHost = rootContainer.findViewWithTag<View>("ComponentOverlay")
@@ -1099,10 +1207,10 @@ class LxAppActivity : AppCompatActivity() {
         pendingNavBarVisibility = null
         mainPane.updateCapsuleButton()
         if (shouldRestoreOverlayOrder) {
-            mainPane.navigationBar?.let { rootContainer.bringChildToFront(it) }
-            mainPane.tabBar?.let { rootContainer.bringChildToFront(it) }
-            statusBand?.let { rootContainer.bringChildToFront(it) }
-            rootContainer.findViewWithTag<View>("capsule_button")?.let { rootContainer.bringChildToFront(it) }
+            mainPane.navigationBar?.let { mainPane.root.bringChildToFront(it) }
+            mainPane.tabBar?.let { mainPane.root.bringChildToFront(it) }
+            statusBand?.let { mainPane.root.bringChildToFront(it) }
+            mainPane.root.findViewWithTag<View>("capsule_button")?.let { mainPane.root.bringChildToFront(it) }
             shouldRestoreOverlayOrder = false
         }
         mainPane.updateLayoutMargins()

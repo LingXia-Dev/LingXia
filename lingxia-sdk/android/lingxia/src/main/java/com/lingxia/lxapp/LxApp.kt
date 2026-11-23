@@ -162,9 +162,26 @@ object LxApp {
      * instance the open is for; the activity presents the app's current page.
      */
     @JvmStatic
-    fun show(appId: String, webtag: String, sessionId: Long) {
+    fun show(appId: String, webtag: String, sessionId: Long, openMode: Int, panelId: String) {
+        if (openMode == OPEN_MODE_PANEL) {
+            val openAside = Runnable {
+                val activity = getCurrentActivity()
+                if (activity == null || sessionId <= 0L ||
+                    NativeApi.onLxAppPageOpened(appId, webtag, sessionId).isBlank()) {
+                    openInCurrentActivity(LxAppActivityStartGate.Open(appId, "", sessionId, webtag))
+                    return@Runnable
+                }
+                activity.openAside(appId, sessionId)
+            }
+            if (Looper.myLooper() == Looper.getMainLooper()) openAside.run()
+            else Handler(Looper.getMainLooper()).post(openAside)
+            return
+        }
         openInCurrentActivity(LxAppActivityStartGate.Open(appId, "", sessionId, webtag))
     }
+
+    /** `LxAppOpenMode::Panel`: the side panel. */
+    private const val OPEN_MODE_PANEL = 1
 
     @JvmStatic
     internal fun openHome() {
@@ -193,9 +210,9 @@ object LxApp {
             return
         }
         Log.d(TAG, "Closing LxApp with appId: $appId")
-        val activity = getCurrentActivity()?.takeIf { it.getAppId() == appId }
+        val activity = getCurrentActivity()?.takeIf { it.paneOf(appId) != null }
         if (activity != null) {
-            activity.runOnUiThread { activity.closeLxApp(sessionId) }
+            activity.runOnUiThread { activity.closeLxApp(appId, sessionId) }
         } else {
             Log.w(TAG, "No matching activity for appId: $appId")
         }
@@ -203,8 +220,8 @@ object LxApp {
 
     @JvmStatic
     fun close(appId: String) {
-        val activity = getCurrentActivity()?.takeIf { it.getAppId() == appId }
-        val sessionId = activity?.getSessionId() ?: NativeApi.getLxAppSessionId(appId)
+        val activity = getCurrentActivity()?.takeIf { it.paneOf(appId) != null }
+        val sessionId = activity?.paneOf(appId)?.currentSessionId ?: NativeApi.getLxAppSessionId(appId)
         if (sessionId <= 0L) {
             LxLog.e(TAG, "Missing valid session for close appId=$appId")
             return
@@ -223,9 +240,9 @@ object LxApp {
     fun navigate(appId: String, webtag: String, animationTypeInt: Int): Boolean {
         val animationType = AnimationType.fromInt(animationTypeInt)
         Log.d(TAG, "navigate called for appId: $appId, page: $webtag, type: $animationType")
-        val activity = getCurrentActivity()?.takeIf { it.getAppId() == appId }
+        val activity = getCurrentActivity()?.takeIf { it.paneOf(appId) != null }
         return if (activity != null) {
-            activity.runOnUiThread { activity.navigate(webtag, animationType) }
+            activity.runOnUiThread { activity.paneOf(appId)?.navigate(webtag, animationType) }
             true
         } else {
             Log.w(TAG, "No matching activity for appId: $appId")
@@ -274,7 +291,7 @@ object LxApp {
 
     @JvmStatic
     fun updateTabBarUI(appId: String): Boolean {
-        val activity = getCurrentActivity()?.takeIf { it.getAppId() == appId }
+        val activity = getCurrentActivity()?.takeIf { it.paneOf(appId) != null }
         return if (activity != null) {
             LxAppActivity.updateTabBarUI(appId)
         } else {
@@ -291,7 +308,7 @@ object LxApp {
      */
     @JvmStatic
     fun updateTabBarUIAsync(callbackId: Long, appId: String) {
-        val activity = getCurrentActivity()?.takeIf { it.getAppId() == appId }
+        val activity = getCurrentActivity()?.takeIf { it.paneOf(appId) != null }
         if (activity == null) {
             Log.d(TAG, "No matching activity for appId: $appId in updateTabBarUIAsync")
             NativeApi.onCallback(callbackId, false, PRESENTER_UNAVAILABLE)
@@ -309,7 +326,7 @@ object LxApp {
 
     @JvmStatic
     fun updateNavBarUI(appId: String): Boolean {
-        val activity = getCurrentActivity()?.takeIf { it.getAppId() == appId }
+        val activity = getCurrentActivity()?.takeIf { it.paneOf(appId) != null }
         return if (activity != null) {
             activity.runOnUiThread { LxAppActivity.updateNavBarUI(appId) }
             true
@@ -321,7 +338,7 @@ object LxApp {
 
     @JvmStatic
     fun updateOrientationUI(appId: String): Boolean {
-        val activity = getCurrentActivity()?.takeIf { it.getAppId() == appId }
+        val activity = getCurrentActivity()?.takeIf { it.paneOf(appId) != null }
         return if (activity != null) {
             activity.runOnUiThread { LxAppActivity.updateOrientationUI(appId) }
             true

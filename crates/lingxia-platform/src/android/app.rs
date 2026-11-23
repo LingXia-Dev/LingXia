@@ -468,6 +468,8 @@ impl AppRuntime for Platform {
             appid,
             webtag,
             session_id,
+            open_mode,
+            panel_id,
             ..
         } = request;
         let bridge_class: &JClass = super::get_cached_class(super::CachedClass::LxApp)
@@ -475,20 +477,27 @@ impl AppRuntime for Platform {
         with_env(|env| -> Result<(), PlatformError> {
             let appid_jstring = env.new_string(&appid)?;
             let webtag_jstring = env.new_string(&webtag)?;
+            let panel_jstring = env.new_string(&panel_id)?;
 
             env.call_static_method(
                 bridge_class,
                 jni_str!("show"),
-                jni_sig!("(Ljava/lang/String;Ljava/lang/String;J)V"),
+                jni_sig!("(Ljava/lang/String;Ljava/lang/String;JILjava/lang/String;)V"),
                 &[
                     JValue::Object(&appid_jstring),
                     JValue::Object(&webtag_jstring),
                     JValue::Long(session_id as i64),
+                    JValue::Int(open_mode as i32),
+                    JValue::Object(&panel_jstring),
                 ],
             )?;
             Ok(())
         })
         .map_err(|e| PlatformError::Platform(format!("Failed to show lxapp: {}", e)))
+    }
+
+    fn lxapp_region_moves(&self) -> crate::traits::app_runtime::LxAppRegionMoves {
+        crate::traits::app_runtime::LxAppRegionMoves::FromPlan
     }
 
     fn hide_lxapp(&self, appid: String, session_id: u64) -> Result<(), PlatformError> {

@@ -461,6 +461,14 @@ internal object NativeApi {
     external fun onSurfaceClosed(appId: String, id: String, reason: String): Boolean
 
     /**
+     * The aside slot's controls and the moves between main and aside: `focus` (arg: surface
+     * id), `collapse`/`restore`/`maximize`/`unmaximize` (arg: slot kind), `unregister` (arg:
+     * surface id), `promote` (this aside app to main), `demote` (this main app; arg: edge).
+     */
+    @JvmStatic
+    external fun asideCommand(appId: String, command: String, arg: String): Boolean
+
+    /**
      * Handle AppLink URL by passing the full URL to native layer.
      * @param applinkUrl The full AppLink URL (e.g., "https://www.lingxia.app/lxapp/shop/pages/detail?id=42")
      * @return 1 = handled, 0 = ignored, -1 = rejected
