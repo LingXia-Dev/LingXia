@@ -1,4 +1,4 @@
-import type { Lx } from "@lingxia/types";
+import type { Lx, UnhandledFailure } from "@lingxia/types";
 import type { PageApi, PageDefinition } from "@lingxia/types/page";
 
 export { createLxMock } from "@lingxia/types/testing";
@@ -35,6 +35,12 @@ export interface MountOptions<Params> {
    * @default 'fail'
    */
   leakedTimers?: "fail" | "allow";
+  /**
+   * `'allow'` lets `unmount` resolve after unhandled failures, for a test that asserts them through
+   * `failures`.
+   * @default 'fail'
+   */
+  unhandled?: "fail" | "allow";
 }
 
 /** A page `mount` opened in Node. */
@@ -54,6 +60,11 @@ export interface MountedPage<D extends PageDefinition> {
    * and settles before the next. `hide()` pauses `every`, `show()` resumes it.
    */
   advance(ms: number): Promise<void>;
+  /**
+   * Failures this page left unhandled (hooks, page timers), as `App.onError` would get them but
+   * never merged. `unmount` rejects listing them unless `unhandled: 'allow'`.
+   */
+  readonly failures: readonly UnhandledFailure[];
   /**
    * Abort `page.signal`, run `onUnload`, and put back the `lx` that was there before. A timer the
    * page started and left running leaks in the app, so it is stopped and `unmount` rejects naming

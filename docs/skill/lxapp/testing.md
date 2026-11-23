@@ -406,7 +406,9 @@ not give rejects `E_NOT_SUPPORTED`. A mock fails as the host does with `throw ne
 Pages mounted at once share one `lx`. `unmount()` aborts `page.signal` and runs `onUnload`; a timer the page left
 running leaks in the app, so unmount stops it and rejects naming where it started (use `page.every`/`page.after`, or
 stop it when `page.signal` aborts; `leakedTimers: 'allow'` opts out, rarely). Page timers run on the mount's clock:
-`await mounted.advance(ms)` runs what is due; `hide()`/`show()` pause and resume `every`.
+`await mounted.advance(ms)` runs what is due; `hide()`/`show()` pause and resume `every`. A hook or page timer that
+fails unhandled lands in `mounted.failures` (as `App.onError` would get it) and `unmount` rejects listing them; pass
+`unhandled: 'allow'` to assert them.
 
 A GPU View component is unit-tested in Node with `@lingxia/view/testing`: [GPU View tests](./gpu/testing.md#in-node).
 

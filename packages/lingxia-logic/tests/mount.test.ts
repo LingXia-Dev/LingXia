@@ -412,9 +412,6 @@ test("page.every waits for each run to end, pauses while hidden and runs a misse
 });
 
 test("page.after runs once, shown or not; whenHidden 'run' keeps every going; a failure is reported and the timer goes on; unload stops both", async () => {
-  const logged: unknown[][] = [];
-  const consoleError = console.error;
-  console.error = (...args: unknown[]) => { logged.push(args); };
   const seen: string[] = [];
   let stopLate!: () => void;
   let api!: PageLike<{}> & { after(ms: number, fn: () => void): () => void };
@@ -427,23 +424,44 @@ test("page.after runs once, shown or not; whenHidden 'run' keeps every going; a 
       return {};
     },
   });
-  const mounted = await mount(page, { lx: createLxMock() });
+  const mounted = await mount(page, { lx: createLxMock(), unhandled: "allow" });
   await mounted.hide();
   stopLate();
-  try {
-    await mounted.advance(250);
-  } finally {
-    console.error = consoleError;
-  }
+  await mounted.advance(250);
   assert.deepEqual(seen, ["after", "tick", "tick"]);
-  assert.equal(logged.length, 2);
-  assert.equal(/page\.every in 'page' failed/.test(String(logged[0][0])), true);
+  assert.deepEqual(mounted.failures.map(f => [f.source, f.error.message]), [
+    [{ kind: "hook", hook: "every" }, "flaky"],
+    [{ kind: "hook", hook: "every" }, "flaky"],
+  ]);
   await mounted.unmount();
   await mounted.advance(1000);
   assert.deepEqual(seen, ["after", "tick", "tick"], "unload stops every timer");
   api.after(10, () => { seen.push("after unload"); });
   await mounted.advance(100);
   assert.deepEqual(seen, ["after", "tick", "tick"], "a timer does not start after unload");
+});
+
+test("an unhandled hook failure is kept with its page, and unmount names it unless allowed", async () => {
+  const page = definePage({
+    setup: () => ({
+      async onHide() { throw new Error("save draft failed"); },
+    }),
+  });
+  const mounted = await mount(page, { lx: createLxMock(), name: "editor" });
+  await assert.rejects(mounted.hide(), /save draft failed/);
+  const [failure] = mounted.failures;
+  assert.deepEqual(failure.source, { kind: "hook", hook: "onHide" });
+  assert.equal(failure.page?.name, "editor");
+  assert.equal(typeof failure.page?.instance, "string");
+  assert.equal(failure.repeated, 0);
+  await assert.rejects(mounted.unmount(), (error: Error) =>
+    /pages\/editor\/index had 1 unhandled failure/.test(error.message)
+      && /hook onHide: save draft failed/.test(error.message));
+
+  const allowed = await mount(page, { lx: createLxMock(), unhandled: "allow" });
+  await assert.rejects(allowed.hide());
+  await allowed.unmount();
+  assert.equal(allowed.failures.length, 1);
 });
 
 test("a store is one value for every page: an action's update reaches another page and a pick", async () => {

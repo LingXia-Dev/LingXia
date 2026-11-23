@@ -378,9 +378,15 @@
       return globalThis.__LX_PAGE_CLOCK__ || { setTimeout, clearTimeout };
     }
     function reportTimerFailure(hook, error) {
+      reportHookFailure(hook, error);
+    }
+    function reportHookFailure(hook, error) {
       const report = globalThis.__LX_REPORT_FAILURE__;
-      if (typeof report === "function") report({ error, source: { kind: "hook", hook } }, page);
-      else console.error(`page.${hook} in '${page.name}' failed:`, error);
+      if (typeof report === "function") {
+        report({ error, source: { kind: "hook", hook } }, { name: page.name, instance: pageInstanceId });
+      } else {
+        console.error(`page.${hook} in '${page.name}' failed:`, error);
+      }
     }
     function runTimerFn(hook, fn) {
       try {
@@ -620,6 +626,27 @@
       shown = false;
       return userOnHide ? userOnHide() : undefined;
     };
+    // A hook has no caller to catch for it: report its failure, then fail as before.
+    for (const key of PAGE_HOOKS) {
+      const hook = config[key];
+      if (typeof hook !== "function") continue;
+      config[key] = function (...args) {
+        let result;
+        try {
+          result = hook.apply(this, args);
+        } catch (error) {
+          reportHookFailure(key, error);
+          throw error;
+        }
+        if (result && typeof result.then === "function") {
+          return result.then(undefined, (error) => {
+            reportHookFailure(key, error);
+            throw error;
+          });
+        }
+        return result;
+      };
+    }
     const actions = (returned && returned.actions) || {};
     if (typeof actions !== "object") {
       throw new TypeError("definePage: actions must be an object of functions");

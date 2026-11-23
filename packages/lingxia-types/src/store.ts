@@ -205,10 +205,19 @@ class Watchers<V> {
       try {
         callback(value);
       } catch (error) {
-        console.error(`${label}: a watcher threw`, error);
+        reportStoreFailure(`${label}: a watcher threw`, error);
       }
     }
   }
+}
+
+type FailureReporter = (failure: { error: unknown; source: { kind: 'app'; hook: 'store' } }, page: null) => void;
+
+// Through `App.onError` when the runtime has one; logged otherwise.
+function reportStoreFailure(message: string, error: unknown): void {
+  const report = (globalThis as { __LX_REPORT_FAILURE__?: FailureReporter }).__LX_REPORT_FAILURE__;
+  if (typeof report === 'function') report({ error, source: { kind: 'app', hook: 'store' } }, null);
+  else console.error(message, error);
 }
 
 function definedAt(): string {
@@ -415,7 +424,7 @@ export function derive<const Sources extends readonly Live<unknown>[], U>(
         try {
           next = run(values);
         } catch (error) {
-          console.error('derive: the compute function threw', error);
+          reportStoreFailure('derive: the compute function threw', error);
           return;
         }
         if (deepEqual(next, result)) return;

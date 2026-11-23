@@ -52,6 +52,58 @@ rong::js_api! {
     onHide?: (args?: AppLifecycleEventArgs) => void | Promise<void>;
     /** Runs after the person takes a screenshot while the lxapp is in front. */
     onScreenshot?: () => void | Promise<void>;
+    /**
+     * Sees each failure nothing handled, one call at a time and never inside the failing stack;
+     * it observes only (the return is ignored). Development builds still fail loudly. Its own
+     * throw is logged, not reported again.
+     */
+    onError?: (failure: UnhandledFailure) => void | Promise<void>;
+}"###;
+
+        /// A failure nothing handled, as `App.onError` receives it. The `action` and module-level
+        /// (`app` with `hook: null`) kinds fire only on an engine that reports unhandled rejections,
+        /// so their silence elsewhere does not mean there were none.
+        type UnhandledFailure = r###"{
+    /** What was thrown; a non-`Error` value is wrapped, the original in `cause`. */
+    error: Error;
+    /** The page it belongs to, also after that page unloaded; `null` for app-level failures. */
+    page: {
+        /** The page's name, as in `lx.nav.go({ page })`. */
+        name: string;
+        /** The page instance, one per open. */
+        instance: string;
+    } | null;
+    /** Where it went unhandled. */
+    source: UnhandledFailureSource;
+    /** Failures of the same kind merged into this one since the last report. */
+    repeated: number;
+}"###;
+
+        /// Where an unhandled failure happened.
+        type UnhandledFailureSource = r###"{
+    /** A View event handler threw or its promise rejected. */
+    kind: 'view_handler';
+    /** The handler's prop, such as `onPress`. */
+    prop: string;
+    /** The element's test id, if it has one. */
+    testId: string | null;
+    /** The action the handler called that failed, if that is where it came from. */
+    action: string | null;
+} | {
+    /** An action called from Logic rejected and nothing caught it. */
+    kind: 'action';
+    /** The action's name. */
+    action: string;
+} | {
+    /** A page hook or page timer threw or rejected. */
+    kind: 'hook';
+    /** `onLoad`, `onShow`, `onReady`, `onHide`, `onUnload`, `onRefresh`, `every` or `after`. */
+    hook: string;
+} | {
+    /** An App hook, a store callback, or module code. */
+    kind: 'app';
+    /** `onLaunch`, `onShow`, `onHide`, `onOpen`, `onScreenshot` or `store`; `null` when it cannot be placed. */
+    hook: string | null;
 }"###;
 
         /// Runtime-managed app download path, usually under `lx://userdata`.

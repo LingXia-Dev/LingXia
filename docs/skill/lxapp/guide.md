@@ -263,6 +263,9 @@ export default definePage({
   write it through its source, never `page.update`.
 - `persist` loads at definition and saves each change, one save at a time with the newest value;
   a change made before the load wins, and `saved` reports the last save.
+- `onError(failure)` in `App({})` sees each failure nothing handled (page hooks and timers, App hooks,
+  store callbacks), one call at a time; it only observes. Rejected actions and module-level rejections
+  reach it only on an engine that reports unhandled rejections; their silence elsewhere is not "none".
 - There is no `getApp()` or `globalData`; `App({ globalData })` throws. Plain module
   state is not reactive; share what pages show through a store.
 - Cold start: `App.onLaunch` → `App.onShow` → `Page.onLoad` → `Page.onShow`;

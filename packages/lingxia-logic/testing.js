@@ -98,6 +98,17 @@ function leakError(path, leaked) {
   );
 }
 
+function unhandledError(path, failures) {
+  const lines = failures.map((failure) => {
+    const where = failure.source.hook || failure.source.action || failure.source.prop || failure.source.kind;
+    const frame = (failure.error.stack || "").split("\n").find((line) => /^\s+at /.test(line));
+    return `\n  ${failure.source.kind} ${where}: ${failure.error.message}${frame ? ` (${frame.trim()})` : ""}`;
+  }).join("");
+  return new Error(
+    `${path} had ${failures.length} unhandled failure${failures.length === 1 ? "" : "s"}; read \`failures\` and pass \`unhandled: 'allow'\` to test one.${lines}`,
+  );
+}
+
 function untrackTimers() {
   if (live.size > 0) return;
   Object.assign(globalThis, realTimers);
@@ -152,7 +163,9 @@ function manualClock() {
 }
 
 export async function mount(definition, options = {}) {
-  const { params = {}, lx = importedLx, name = "page", leakedTimers = "fail" } = options;
+  const { params = {}, lx = importedLx, name = "page", leakedTimers = "fail", unhandled = "fail" } = options;
+  if (unhandled !== "fail" && unhandled !== "allow") throw new TypeError("mount: unhandled is 'fail' or 'allow'");
+  const failures = [];
   // Page.js runs in this realm, so page data keeps the test's `Object.prototype`,
   // but its globals land on this scope, not on the test's `globalThis`.
   const scope = Object.create(globalThis);
@@ -185,6 +198,13 @@ export async function mount(definition, options = {}) {
   };
   const clock = manualClock();
   scope.__LX_PAGE_CLOCK__ = clock;
+  // The same failures the runtime hands `App.onError`, kept in order and never merged.
+  scope.__LX_REPORT_FAILURE__ = (raw, page) => {
+    const error = raw.error instanceof Error
+      ? raw.error
+      : new Error(typeof raw.error === "string" ? raw.error : String(raw.error), { cause: raw.error });
+    failures.push(Object.freeze({ error, page, source: raw.source, repeated: 0 }));
+  };
   new Function("scope", `with (scope) {\n${pageRuntime()}\n}`)(scope);
   scope.__lxCaptureTimers();
 
@@ -245,6 +265,9 @@ export async function mount(definition, options = {}) {
     page: svc.page,
     show: (options = {}) => hook("onShow", options),
     advance: (ms) => clock.advance(ms),
+    get failures() {
+      return failures.slice();
+    },
     hide: () => hook("onHide"),
     async unmount() {
       if (unmounted) return;
@@ -258,6 +281,7 @@ export async function mount(definition, options = {}) {
       }
       // The runtime never stops a page's timers, so one left running here leaks in the app.
       if (leaked.length > 0 && leakedTimers !== "allow") throw leakError(path, leaked);
+      if (failures.length > 0 && unhandled !== "allow") throw unhandledError(path, failures);
     },
   };
 }
