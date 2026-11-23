@@ -881,6 +881,8 @@ final class LxAppViewController: UIViewController, ObservableObject {
             activeGpuView = view
         }
         LxAppCore.setCurrentPath(path, pageInstanceId: pageInstanceId)
+        // As for a WebView page: the lock of the page left behind ends here, and back restores its own.
+        _ = applyOrientationFromRuntime(for: appId)
         lingxia.onPageShow(appId, path)
         updateNavigationBar(appId: appId, path: path)
         updateTabBar(for: appId, path: path)
