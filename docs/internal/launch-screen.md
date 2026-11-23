@@ -71,5 +71,4 @@ renders. One shared `background` makes the frame read as the cover's entrance.
 - Desktop shells take no overlay. On macOS the ready signal is a no-op; on
   Windows it shows the first home window.
 
-Not implemented: a Windows launch screen, and any channel that downloads
-campaign art (hosts call `splash::store` themselves).
+Campaign art is stored by the host through `splash::store`; the runtime downloads none.
