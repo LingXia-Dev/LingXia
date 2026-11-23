@@ -122,6 +122,10 @@ There are three roles:
   once with different params, and opening a page creates a new instance.
 - The URL duplication policy affects browser-tab reuse only. Navigation and
   redirects never change a URL surface's identity.
+- A toast, modal, action sheet or picker is drawn above every surface open
+  when it is shown (main, aside, float or window), whichever page raised it.
+  The system-level viewers (media preview, camera, document viewer, file
+  chooser, the in-app browser) are drawn above those.
 
 ### 1.6 Crate boundaries
 
@@ -626,7 +630,8 @@ structure, spacing, selection and separation; only system controls differ.
 ```
 
 The main and the slots share the content layer, above the sidebar's base
-layer, with clear boundaries between regions.
+layer, with clear boundaries between regions. Floats sit above the content
+layer, and dialogs above every surface (§1.5).
 
 ### 7.2 Sidebar and main switcher
 
@@ -952,6 +957,7 @@ from reading the code; none was confirmed by running a host.
 | A page's viewport is its own region | as specified | not verified | as specified | not verified | differs: the window, also beside a docked panel | as specified | differs: the window; a docked panel is padding |
 | Moving a live lxapp (§3) | as specified; without the shell's move handler, refused | as specified | as specified | differs: no promote in the phone UI | not implemented: refused | differs: promote from the tab menu; no demote in the UI | not implemented: refused |
 | Hinge in the page environment | — | — | as specified (simulated) | as specified (simulated) | not implemented | as specified | as specified |
+| Dialogs above every open surface (§1.5) | not verified | not verified | not verified | not verified | not verified | as specified | differs: a float in its own sub-window covers them |
 | Rust shell writer (§12.5) | not implemented | not implemented | not implemented | not implemented | not implemented | not implemented | not implemented |
 
 ### 10.2 Desktop shell
