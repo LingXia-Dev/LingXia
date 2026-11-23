@@ -4,7 +4,7 @@
 
 ## Purpose
 
-This document describes the current logging mechanism in LingXia runtime. It focuses on capability and runtime behavior:
+This document describes the logging mechanism in the LingXia runtime. It focuses on capability and runtime behavior:
 
 - structured log model
 - in-memory buffering
@@ -267,7 +267,7 @@ platform logger:
 
 ## Invariants
 
-The current mechanism relies on these invariants:
+The mechanism relies on these invariants:
 
 1. Log dispatch must remain lightweight and synchronous.
 2. Provider realtime hook must not perform blocking work inline.
