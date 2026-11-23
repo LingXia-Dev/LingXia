@@ -5,7 +5,6 @@
 > `setData`, streams and channels as described in [`docs/skill/lxapp/bridge.md`](../skill/lxapp/bridge.md)
 > and never build frames.
 
-> Status: Active · Class: Normative internal specification
 > Scope: Logic/Host ↔ View, over both transports
 
 This document is the single authority for what crosses the bridge. When a draft, comment or
@@ -339,7 +338,7 @@ authority.
   the View worker straight to Logic's queue.
 - Logic → View (`GpuViewMessage`): replies, stream events, channel acks/data/close and requests,
   applied on the View worker in order with state writes.
-- Requests are `GpuViewRequest`, one nested enum per family (`Ui` today) answered by id. A new
+- Requests are `GpuViewRequest`, one nested enum per family (`Ui`, `Video`) answered by id. A new
   family is one variant with its `from_call` arm and a View handler; the transport is unchanged.
 - Hot swap and automation keep their own entry points; they are not on the per-frame path.
 
