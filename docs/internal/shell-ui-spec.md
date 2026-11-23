@@ -12,7 +12,7 @@ page reads about its own canvas (size class, viewport, insets, hinge) is in
 Signatures are not repeated here: `@lingxia/types` is the JS surface and the
 `lingxia` crate the Rust one. This document fixes the semantics both share.
 MUST, MUST NOT, SHOULD and MAY are normative. Each rule is stated once, for
-every host; §10 records which hosts implement it and how they differ.
+every host.
 
 ---
 
@@ -25,7 +25,7 @@ every host; §10 records which hosts implement it and how they differ.
 2. **Content, role and presentation are separate.** Content is what is shown,
    role is how it relates to the main content, and the shell derives the
    presentation from both and from the room it has.
-3. **One writer.** Shell chrome has exactly one writer (§12.5). One appId has
+3. **One writer.** Shell chrome has exactly one writer (§11.5). One appId has
    at most one live lxapp instance per main window.
 4. **Hide preserves, close destroys**, on every host.
 5. **User assets belong to the user.** An app cannot rewrite pins or the
@@ -223,12 +223,12 @@ covers several causes. Names are those of `@lingxia/types`.
 
 | Code | `reason` | When |
 |---|---|---|
-| `E_INVALID_ARG` | — | A malformed option, an unknown `as`, `edge` without an aside, a bad size, a URL that is not `https:` or an allowed `file:`, a reserved `lingxia:` URL, a malformed sidebar-action generation (§12.6) |
+| `E_INVALID_ARG` | — | A malformed option, an unknown `as`, `edge` without an aside, a bad size, a URL that is not `https:` or an allowed `file:`, a reserved `lingxia:` URL, a malformed sidebar-action generation (§11.6) |
 | `E_INVALID_ARG` | `tabAlreadyOpen`, `stackFull` | `lx.nav.go` to a tab already on the stack, or onto a stack of ten pages |
 | `E_PERMISSION_DENIED` | — | A composition call from an lxapp other than the Control app; a URL whose domain the lxapp's security policy does not allow |
 | `E_PERMISSION_DENIED` | `appUnderMaintenance`, `appSuspended` | The operator has taken the target lxapp down |
 | `E_NOT_FOUND` | — | No such declaration, page, tab or sidebar action |
-| `E_NOT_SUPPORTED` | `placementUnsupported` | The host cannot realize the placement: a window on a host without windows, or moving a live lxapp on a host that cannot (§10) |
+| `E_NOT_SUPPORTED` | `placementUnsupported` | The host cannot realize the placement: a window on a host without windows, or moving a live lxapp on a host that cannot |
 | `E_CAPABILITY_MISSING` | — | A `key` on a declaration whose provider has no keyed instances |
 | `E_SURFACE_CONFLICT` | `appOpenInOtherRole` | The lxapp is live in the other role and cannot move there: it is on another channel |
 | `E_SURFACE_CONFLICT` | — | The lxapp is live only inside another surface's app navigation; `lx.nav.go({ app })` to an lxapp docked as an aside |
@@ -745,7 +745,7 @@ translucent chip under the pointer — never a move or "not allowed" cursor.
 
 ### 7.4 Sidebar actions on screen
 
-The writer's declaration rules are in §12.6. Placement:
+The writer's declaration rules are in §11.6. Placement:
 
 - **Header**: at most two icon-only actions, in declaration order. A bootstrap
   Settings entry takes the first slot when configured; runtime actions beyond
@@ -808,7 +808,7 @@ The writer's declaration rules are in §12.6. Placement:
   smaller, and centred on the screen the user is on (Windows: the monitor under
   the cursor, at its DPI). `lingxia.yaml` has no field for it; a host that calls
   the platform's default-size API overrides the size, still fitted to the work
-  area. Later launches restore the persisted frame (§13).
+  area. Later launches restore the persisted frame (§12).
 
 ### 7.6 A `compact` desktop window
 
@@ -941,60 +941,9 @@ Floats are bottom sheets; a platform with a native popover MAY use one.
 
 ---
 
-## 10. Platform matrix
+## 10. `lingxia.yaml`
 
-What each host implements. A cell says "as specified", "differs:" and how,
-"not implemented", or "—" where the rule does not apply. Shared-code gaps are
-listed in every column they affect. A Runner with a desktop preset is a
-desktop host; its Windows or macOS column in §10.2 applies. Every cell comes
-from reading the code; none was confirmed by running a host.
-
-### 10.1 Every host
-
-| Rule | Windows | macOS | Windows Runner (frame) | macOS Runner (frame) | iOS | Android | HarmonyOS |
-|---|---|---|---|---|---|---|---|
-| Size class from the window width (§4.3) | as specified | as specified | as specified | as specified | as specified | as specified | as specified |
-| A page's viewport is its own region | as specified | not verified | as specified | not verified | differs: the window, also beside a docked panel | as specified | differs: the window; a docked panel is padding |
-| Moving a live lxapp (§3) | as specified; without the shell's move handler, refused | as specified | as specified | differs: no promote in the phone UI | not implemented: refused | differs: promote from the tab menu; no demote in the UI | not implemented: refused |
-| Hinge in the page environment | — | — | as specified (simulated) | as specified (simulated) | not implemented | as specified | as specified |
-| Dialogs above every open surface (§1.5) | not verified | not verified | not verified | not verified | not verified | as specified | differs: a float in its own sub-window covers them |
-| Rust shell writer (§12.5) | not implemented | not implemented | not implemented | not implemented | not implemented | not implemented | not implemented |
-
-### 10.2 Desktop shell
-
-| Rule | Windows | macOS |
-|---|---|---|
-| Sidebar budget and single-main rule (§4.3 step 4) | not verified | not verified |
-| Collapsed slot handle counts tabs | not implemented | as specified |
-| Cmd+Option+\ / Ctrl+Alt+\ | as specified; stands down where AltGr types `\` | as specified |
-| Window default 960 × 720 | not verified | as specified |
-| `frameless`, `controls`, writer window controls | not implemented | not implemented |
-| Persistence: frame, sidebar, pins | as specified | as specified |
-| Persistence: group collapse, aside geometry | not implemented | as specified |
-| Persistence: main session, lazy restore | not implemented | not implemented |
-
-### 10.3 Touch hosts
-
-| Rule | Windows Runner (frame) | macOS Runner (frame) | iOS | Android | HarmonyOS |
-|---|---|---|---|---|---|
-| Touch host test: smallest width ≥ 600 in `regular` (§8.1) | differs: window width, so a phone on its side is a touch host | differs: phone frames never; a foldable frame at least 600 wide takes the desktop shell | not implemented | differs: smallest width alone, without the size class | not implemented |
-| Floating tab bar and tab column (§8.3) | differs: the floating bar keeps the physical left in right-to-left languages | not implemented | differs: its own tab bar view, not `UITabBarController`; no touch shapes | differs: the portrait test measures the main pane, not the screen | not implemented |
-| Soft keyboard hides the floating bar | not implemented | — | — | not implemented | — |
-| App rail | as specified | not implemented | not implemented | not implemented | not implemented |
-| Status band | as specified | not implemented | not implemented | differs: the tab bar's background colour | not implemented |
-| Side panel split (§8.5) | differs: the desktop aside panel | differs: URL asides only, always over the screen | differs: URL asides only | as specified | differs: URL asides only |
-| Divider on a vertical hinge | not implemented | not implemented | not implemented | not implemented | not implemented |
-| Back collapses an overlaid side panel | not verified | not implemented | not implemented | as specified | as specified |
-| Collapsed handle counts tabs | not implemented | as specified | as specified | as specified | as specified |
-| Phone drawer for several mains (§9.1) | not implemented | not implemented | not implemented | not implemented | not implemented |
-| No top-right capsule in `regular` | not verified | not verified | not verified | not verified | not verified |
-| `openPage` window refused | — | — | as specified | as specified | as specified |
-
----
-
-## 11. `lingxia.yaml`
-
-### 11.1 Declarations
+### 10.1 Declarations
 
 A surface entry starts with its content key:
 
@@ -1027,7 +976,7 @@ registration gate for dynamic lxapps, pages or URLs. A native provider is
 reachable only through its declaration. `lingxia build` compiles declarations
 into the generated `ui.json`.
 
-### 11.2 Valid combinations
+### 10.2 Valid combinations
 
 | Content | Roles in YAML | Runtime placements |
 |---|---|---|
@@ -1058,9 +1007,9 @@ There is no `sidebar:` field. Sidebar entries come only from
 
 ---
 
-## 12. Runtime API
+## 11. Runtime API
 
-### 12.1 Calls
+### 11.1 Calls
 
 "Control app" marks calls only the home lxapp may make; others get
 `E_PERMISSION_DENIED`. The namespace is not the privilege.
@@ -1076,16 +1025,16 @@ There is no `sidebar:` field. Sidebar entries come only from
 | `lx.surface.declared(id, { key? })` | Control app | The live declaration's handle | — |
 | `lx.shell.openBuiltin('downloads')` | Control app | The browser's downloads page | `E_NOT_FOUND`, `E_PERMISSION_DENIED` |
 | `lx.shell.activate()` | Control app | Brings the product window forward without navigating | — |
-| `lx.shell.sidebarActions.replace / update / remove` | Control app | §12.6 | `E_INVALID_ARG`, `E_NOT_FOUND` |
+| `lx.shell.sidebarActions.replace / update / remove` | Control app | §11.6 | `E_INVALID_ARG`, `E_NOT_FOUND` |
 | `lx.shell.appDisplay.update(patch)` | Control app | The name and icon the shell shows for the app | `E_INVALID_ARG` |
-| `lx.nav.go({ app, page?, params?, channel?, version? })` | any lxapp | App navigation inside the current surface (§12.3) | `E_SURFACE_CONFLICT` |
+| `lx.nav.go({ app, page?, params?, channel?, version? })` | any lxapp | App navigation inside the current surface (§11.3) | `E_SURFACE_CONFLICT` |
 | `lx.nav.leaveApp()` | any lxapp | Back to the lxapp that opened this one | `E_INTERNAL` |
 | `lx.app.tabBar.update(patch)` | any lxapp | Its own tab bar (§6.1) | `E_INVALID_ARG`, `E_INVALID_STATE` (`tabBarNotDeclared`) |
 
 Process-level capabilities — update, exit, badge, autostart, tray,
 notifications — are on `lx.host`, never on `lx.shell`.
 
-### 12.2 Opening
+### 11.2 Opening
 
 - `openDeclared` without a `key` addresses the declaration's default instance. A
   non-empty `key` (1 to 128 UTF-8 bytes) selects or creates an additional
@@ -1124,7 +1073,7 @@ notifications — are on `lx.host`, never on `lx.shell`.
   destination. Handing a URL to the system still passes the host's scheme
   allowlist.
 
-### 12.3 App navigation and App Surfaces
+### 11.3 App navigation and App Surfaces
 
 | Operation | Changes | Switcher | Back | Returns |
 |---|---|---|---|---|
@@ -1139,7 +1088,7 @@ surface does not. Navigating to the lxapp already running is a no-op.
 Navigating to an lxapp docked as an aside fails with `E_SURFACE_CONFLICT` rather
 than moving or cloning it.
 
-### 12.4 Handles and messaging
+### 11.4 Handles and messaging
 
 - A handle is bound to its surface for life and reports `kind`, the live
   `realized` placement (updated when the surface moves or the user drags it),
@@ -1159,21 +1108,21 @@ than moving or cloning it.
   handle. A native surface has messaging only when its capability declares it.
 - Automation reads each runtime id's owner from `surfaceLayout().identities`.
 
-### 12.5 Shell writer
+### 11.5 Shell writer
 
 - On a host with Logic, the Control app is the writer, through `lx.shell` and
   the composition calls of `lx.surface`. Host Rust does not write the same state
   in parallel.
 - On a host without Logic, host Rust is the writer through an equivalent
   `lingxia` facade with the same states and errors.
-- The writer declares sidebar actions (§12.6); sets the name and icon the shell
+- The writer declares sidebar actions (§11.6); sets the name and icon the shell
   shows for its app (`appDisplay.update`: a name of 1 to 64 characters, an icon
   of at most 1 MiB and 4096 px a side, ranked above the registry and
   `lxapp.json`, kept per service environment); and, under `controls: content`,
   drives the window controls.
 - Where they do not render (touch hosts), writer declarations still validate.
 
-### 12.6 Sidebar actions
+### 11.6 Sidebar actions
 
 A sidebar action is a stateless command in the header or footer. The shell runs
 its callback and owns no target behaviour; it is not the sidebar and needs no
@@ -1218,7 +1167,7 @@ declared surface.
   `lx.nav.go({ app })`. Hosts never infer a target, open an lxapp, toggle a
   provider or draw a fallback glyph.
 
-### 12.7 Shell routes for trusted pages
+### 11.7 Shell routes for trusted pages
 
 Trusted browser pages (the browser web UI) and the Control app use these
 routes:
@@ -1242,7 +1191,7 @@ routes:
 
 ---
 
-## 13. Persistence
+## 12. Persistence
 
 | Data | Rule |
 |---|---|
@@ -1264,7 +1213,7 @@ routes:
 
 ---
 
-## 14. Naming
+## 13. Naming
 
 Code uses these roots; only the case changes between languages (Rust
 `snake_case`, TS `camelCase`, YAML lowercase). Synonyms are not used.
