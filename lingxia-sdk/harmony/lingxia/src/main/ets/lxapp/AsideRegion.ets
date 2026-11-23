@@ -1,6 +1,6 @@
 import { hilog } from '@kit.PerformanceAnalysisKit';
 import { window } from '@kit.ArkUI';
-import { asideCommand, getCurrentLxapp, getLxAppInfo, getTabBar } from 'liblingxia.so';
+import { asideCommand, getCurrentLxapp, getLxAppInfo, getTabBar, LxAppInfo, TabBarState } from 'liblingxia.so';
 
 const DOMAIN = 0x0000;
 const TAG = 'LingXia.Aside';
@@ -318,7 +318,8 @@ export class AsideRegionModel {
     if (child) {
       return child.title();
     }
-    const name = getLxAppInfo(id)?.appName ?? '';
+    const info: LxAppInfo | null = getLxAppInfo(id);
+    const name: string = info ? info.appName : '';
     return name.length > 0 ? name : id;
   }
 
@@ -354,7 +355,8 @@ export class AsideRegionModel {
       const title = AsideRegionModel.titleOf(slot?.activeChild ?? '');
       state.tongueLabel = AsideRegionModel.showContentFormat.replace('%1$s', title);
       const graph = AsideRegionModel.graphAppId();
-      const selected = graph ? getTabBar(graph)?.selectedColor : undefined;
+      const tabBar: TabBarState | null = graph ? getTabBar(graph) : null;
+      const selected: number | undefined = tabBar?.selectedColor;
       if (selected !== undefined) {
         state.accent = argbCss(selected);
       }
@@ -553,7 +555,7 @@ export struct AsideRegion {
 
   @Builder
   Divider() {
-    AsideDivider({ draggable: this.state.canResize })
+    AsideDivider({ resizable: this.state.canResize })
       .width(DIVIDER_HIT_VP)
       .height(Math.max(0, this.state.height - this.state.stripTop))
       .position({ x: this.state.panelX - DIVIDER_HIT_VP / 2, y: this.state.stripTop })
@@ -674,7 +676,7 @@ struct AsideGlyph {
 /** The docked divider: a hairline with a grip, dragged to size the slot. */
 @Component
 struct AsideDivider {
-  @Prop draggable: boolean = true;
+  @Prop resizable: boolean = true;
 
   build() {
     Stack() {
@@ -682,7 +684,7 @@ struct AsideDivider {
         .width(0.5)
         .height('100%')
         .backgroundColor('#1F000000')
-      if (this.draggable) {
+      if (this.resizable) {
         Column()
           .width(4)
           .height(36)
