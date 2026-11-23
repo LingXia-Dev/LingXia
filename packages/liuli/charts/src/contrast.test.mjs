@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
-import { appearances, format, needed, palette, ratio, roleNames } from '@liulidesign/core/contrast';
+import { appearances, format, needed, palette, ratio, roleNames } from '@liulidesign/core/internal/contrast';
 
 // Every contrast pair a doc file lists, computed for the default theme in light and dark.
 

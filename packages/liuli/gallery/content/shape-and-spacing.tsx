@@ -1,5 +1,5 @@
 import { DensityProvider } from '@liulidesign/core/density';
-import { Held, Said } from '@liulidesign/core/example';
+import { Held, Said } from '@liulidesign/core/internal/example';
 import { Item, ItemList } from '@liulidesign/core/Item';
 import { Select } from '@liulidesign/core/Select';
 import { TextInput } from '@liulidesign/core/TextInput';

@@ -1,5 +1,5 @@
 import { useLocal } from '@lingxia/view';
-import { Held } from '@liulidesign/core/example';
+import { Held } from '@liulidesign/core/internal/example';
 import { summarize } from '../summary/en';
 import { LineChart } from './LineChart';
 

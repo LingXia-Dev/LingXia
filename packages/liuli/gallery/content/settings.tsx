@@ -5,7 +5,7 @@ import { Button } from '@liulidesign/core/Button';
 import { Dialog } from '@liulidesign/core/Dialog';
 import { IconButton } from '@liulidesign/core/IconButton';
 import { DropdownMenu, DropdownMenuDivider, DropdownMenuItem, DropdownMenuRadioGroup, DropdownMenuRadioItem } from '@liulidesign/core/DropdownMenu';
-import { Said } from '@liulidesign/core/example';
+import { Said } from '@liulidesign/core/internal/example';
 import { Item, ItemList } from '@liulidesign/core/Item';
 import { RadioGroup } from '@liulidesign/core/RadioGroup';
 import { Slider } from '@liulidesign/core/Slider';

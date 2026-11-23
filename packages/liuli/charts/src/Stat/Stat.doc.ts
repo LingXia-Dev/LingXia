@@ -1,4 +1,4 @@
-import type { ComponentDoc } from '@liulidesign/core/doc';
+import type { ComponentDoc } from '@liulidesign/core/internal/doc';
 
 export const doc: ComponentDoc = {
   name: 'Stat',

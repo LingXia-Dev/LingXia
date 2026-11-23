@@ -2,7 +2,7 @@ import { useLocal } from '@lingxia/view';
 import { Button } from '@liulidesign/core/Button';
 import { Dialog } from '@liulidesign/core/Dialog';
 import { DropdownMenu, DropdownMenuItem } from '@liulidesign/core/DropdownMenu';
-import { Said } from '@liulidesign/core/example';
+import { Said } from '@liulidesign/core/internal/example';
 import { ProgressBar } from '@liulidesign/core/ProgressBar';
 import { PageSection, Stage } from '../shared/Layout';
 

@@ -6,7 +6,7 @@ import { Button } from '@liulidesign/core/Button';
 import { ButtonGroup } from '@liulidesign/core/ButtonGroup';
 import { Divider } from '@liulidesign/core/Divider';
 import { EmptyState } from '@liulidesign/core/EmptyState';
-import { Said } from '@liulidesign/core/example';
+import { Said } from '@liulidesign/core/internal/example';
 import { IconButton } from '@liulidesign/core/IconButton';
 import { Item, ItemList } from '@liulidesign/core/Item';
 import { Markdown } from '@liulidesign/core/Markdown';

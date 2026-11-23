@@ -141,6 +141,9 @@ Beside the components:
 | `@liulidesign/core/hue` | `Hue` and `hueFor(text)`: one of the theme's eight category colours, the same for the same text |
 | `@liulidesign/core/Icon/set` | The icon set provider, to swap the built-in icons for your own |
 
+`@liulidesign/core/internal/*` builds Liuli's own docs and tests: it is unsupported and absent from the
+published package. To test your own screens, render them with `@lingxia/view/testing`.
+
 ## Words
 
 Liuli's own words — "Close", "Next page", month names, "2 hours ago" — follow the page's language,

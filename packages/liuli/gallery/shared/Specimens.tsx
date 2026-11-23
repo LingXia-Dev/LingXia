@@ -1,6 +1,6 @@
 import { MessageBubble } from '@liulidesign/core/MessageBubble';
 import { Button } from '@liulidesign/core/Button';
-import { unused } from '@liulidesign/core/example';
+import { unused } from '@liulidesign/core/internal/example';
 import { Stat } from '@liulidesign/charts/Stat';
 import { Item, ItemList } from '@liulidesign/core/Item';
 import { ProgressBar } from '@liulidesign/core/ProgressBar';

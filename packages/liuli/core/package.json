@@ -5,6 +5,27 @@
   "description": "Liuli (\u7409\u7483): LingXia's design system for GPU pages, as TSX source components.",
   "type": "module",
   "sideEffects": false,
+  "files": [
+    "src",
+    "!src/**/*.test.mjs",
+    "!src/**/*.doc.ts",
+    "!src/**/*.examples.tsx",
+    "!src/testing",
+    "!src/doc.ts",
+    "!src/example.tsx",
+    "!src/a11y",
+    "tokens.css",
+    "tokens.names.json",
+    "catalog.json",
+    "docs",
+    "skill"
+  ],
+  "lingxia": {
+    "tokens": "./tokens.css",
+    "names": "./tokens.names.json",
+    "catalog": "./catalog.json",
+    "skill": "./skill"
+  },
   "exports": {
     ".": "./src/index.ts",
     "./Button": "./src/Button/Button.tsx",
@@ -186,15 +207,13 @@
     "./Icon/icons/*": "./src/Icon/icons/*.ts",
     "./density": "./src/density.tsx",
     "./hue": "./src/hue.ts",
-    "./example": "./src/example.tsx",
-    "./doc": "./src/doc.ts",
-    "./contrast": "./scripts/contrast.mjs",
-    "./testing": "./src/testing/harness.mjs",
-    "./package.json": "./package.json"
-  },
-  "lingxia": {
-    "tokens": "./tokens.css",
-    "names": "./tokens.names.json"
+    "./internal/example": "./src/example.tsx",
+    "./internal/doc": "./src/doc.ts",
+    "./internal/contrast": "./scripts/contrast.mjs",
+    "./internal/testing": "./src/testing/harness.mjs",
+    "./package.json": "./package.json",
+    "./catalog.json": "./catalog.json",
+    "./docs/*": "./docs/*"
   },
   "scripts": {
     "test": "node --test \"src/**/*.test.mjs\"",

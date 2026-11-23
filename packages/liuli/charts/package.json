@@ -5,6 +5,20 @@
   "description": "Liuli (\u7409\u7483) charts: figures and small charts for LingXia GPU pages, as TSX source components.",
   "type": "module",
   "sideEffects": false,
+  "files": [
+    "src",
+    "!src/**/*.test.mjs",
+    "!src/**/*.doc.ts",
+    "!src/**/*.examples.tsx",
+    "!src/testing",
+    "tokens.css",
+    "catalog.json",
+    "docs"
+  ],
+  "lingxia": {
+    "tokens": "./tokens.css",
+    "catalog": "./catalog.json"
+  },
   "exports": {
     "./Stat": "./src/Stat/Stat.tsx",
     "./Stat/recipe": "./src/Stat/Stat.recipe.ts",
@@ -20,10 +34,9 @@
     "./PieChart/recipe": "./src/PieChart/PieChart.recipe.ts",
     "./summary/en": "./src/summary/en.ts",
     "./summary/zh": "./src/summary/zh.ts",
-    "./package.json": "./package.json"
-  },
-  "lingxia": {
-    "tokens": "./tokens.css"
+    "./package.json": "./package.json",
+    "./catalog.json": "./catalog.json",
+    "./docs/*": "./docs/*"
   },
   "scripts": {
     "test": "node --test \"src/**/*.test.mjs\"",
