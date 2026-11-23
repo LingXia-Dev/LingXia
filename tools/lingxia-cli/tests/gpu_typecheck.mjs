@@ -154,7 +154,8 @@ fs.writeFileSync(rootConfig, JSON.stringify({
     noEmit: true, paths: { '@shared/*': ['../shared/*'] }, types: ['@lingxia/types', '@lingxia/types/logic-globals'] },
   include: ['lxapp.ts', 'pages/**/index.ts'],
 }));
-fs.writeFileSync(logic, `import { label as linkedLabel } from '../../linked/format';\nimport type { Label } from '@shared/format';\n${logicSource}\nexport const labels: Label[] = [linkedLabel(1)];\n`);
+// A value imported through the `paths` alias reaches the Logic bundle, not only its type.
+fs.writeFileSync(logic, `import { label as linkedLabel } from '../../linked/format';\nimport { label as aliasedLabel, type Label } from '@shared/format';\n${logicSource}\nexport const labels: Label[] = [linkedLabel(1), aliasedLabel(2)];\n`);
 try {
   assert.match(ok(cli, ['check'], app), /no problems/);
   ok(cli, ['build', '--release'], app);

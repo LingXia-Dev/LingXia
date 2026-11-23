@@ -9,7 +9,9 @@ use oxc_ast::ast::{
 };
 use oxc_codegen::{Codegen, CodegenOptions};
 use oxc_parser::Parser;
-use oxc_resolver::{ModuleType, ResolveOptions, Resolver};
+use oxc_resolver::{
+    ModuleType, ResolveOptions, Resolver, TsconfigDiscovery, TsconfigOptions, TsconfigReferences,
+};
 use oxc_semantic::SemanticBuilder;
 use oxc_span::{GetSpan, SourceType};
 use oxc_transformer::{TransformOptions, Transformer};
@@ -1314,6 +1316,15 @@ fn resolve_bare_import(
         ),
     ];
 
+    // A runtime import through a tsconfig `paths` alias resolves as the type check resolved it.
+    let config_file = project_root.join("tsconfig.json");
+    if config_file.is_file() {
+        options.tsconfig = Some(TsconfigDiscovery::Manual(TsconfigOptions {
+            config_file,
+            references: TsconfigReferences::Auto,
+        }));
+    }
+
     let resolver = Resolver::new(options);
     let resolution = resolver
         .resolve_file(from_module, specifier)
@@ -1941,6 +1952,36 @@ mod tests {
         assert_eq!(imports.len(), 1);
         assert!(imports[0].resolved_local.is_none());
         assert!(imports[0].bindings.iter().all(|binding| binding.type_only));
+    }
+
+    #[test]
+    fn a_paths_alias_resolves_through_the_project_reference_that_includes_the_file() {
+        let temp = TempDir::new().unwrap();
+        let module_path = temp.path().join("pages/home/index.ts");
+        fs::create_dir_all(module_path.parent().unwrap()).unwrap();
+        fs::create_dir_all(temp.path().join("shared")).unwrap();
+        fs::write(&module_path, "import { label } from '@shared/format';\n").unwrap();
+        fs::write(
+            temp.path().join("shared/format.ts"),
+            "export const label = 1;\n",
+        )
+        .unwrap();
+        fs::write(
+            temp.path().join("tsconfig.json"),
+            r#"{ "files": [], "references": [{ "path": "./tsconfig.logic.json" }] }"#,
+        )
+        .unwrap();
+        fs::write(
+            temp.path().join("tsconfig.logic.json"),
+            r#"{ "compilerOptions": { "composite": true, "paths": { "@shared/*": ["./shared/*"] } }, "include": ["pages/**/*.ts", "shared/**/*.ts"] }"#,
+        )
+        .unwrap();
+
+        let resolved = resolve_bare_import(&module_path, "@shared/format", temp.path()).unwrap();
+        assert_eq!(
+            resolved,
+            normalize_path(&temp.path().join("shared/format.ts")).unwrap()
+        );
     }
 
     #[test]
