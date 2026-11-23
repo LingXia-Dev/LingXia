@@ -163,7 +163,13 @@ and extension.
 Lists every problem in an lxapp in one run without building it: type errors, View authoring
 problems such as `UI_LX`, Logic page rules and the tsconfig wiring, as `file:line:col: CODE: message`.
 It drives the project's own TypeScript and needs the version `lingxia new` puts in `package.json`;
-with another it stops and prints the `npm i -D typescript@…` to run.
+with another it stops and prints the `npm i -D typescript@…` to run. Each catalogue's untranslated keys
+show as a count and the first few.
+
+## `lingxia i18n add <tag>`
+
+Declares a language in `lxapp.json` and writes an empty `i18n/<tag>.json`; `lingxia dev` shows the
+source text for each key until it is translated.
 
 ## `lingxia clean`
 

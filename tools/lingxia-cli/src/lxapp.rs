@@ -61,6 +61,11 @@ pub fn check_in_dir(cwd: &Path) -> Result<()> {
     build::check(cwd)
 }
 
+/// `lingxia i18n add`: declare `tag` and start its empty catalogue.
+pub fn add_language(dir: &Path, tag: &str) -> Result<()> {
+    i18n::add_language(dir, tag)
+}
+
 /// Dev sessions: the project type-check of the lxapp at `dir`, when it has one; `None` when
 /// it does not, else its problems as one report (empty when clean).
 pub(crate) fn dev_typecheck(dir: &Path) -> Option<Result<String>> {

@@ -409,8 +409,9 @@ put one catalogue per language in `i18n/<tag>.json`:
 
 Keys are dot-separated camelCase. The source catalogue needs a `description` per key; a translation
 has only `defaultMessage`. Messages are ICU MessageFormat: `{arg}`, `{n, number}`, `{d, date, short}`,
-`plural`, `selectordinal`, `select`, paired tags. `lingxia build` fails on a missing translation, an
-argument a translation adds or drops, and a catalogue for an undeclared language.
+`plural`, `selectordinal`, `select`, paired tags. `lingxia build` and `lingxia check` fail on a missing
+translation, an argument a translation adds or drops, and a catalogue for an undeclared language;
+`lingxia dev` warns about a translation's key and shows the source message for it.
 
 - View: `t('cart.items', { count })` from `@lingxia/view`, called while rendering; module-level code
   cannot call it. It follows a language switch.

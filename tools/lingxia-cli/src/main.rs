@@ -415,6 +415,12 @@ In a host project, it checks `lxapp/`.")]
         dir: Option<std::path::PathBuf>,
     },
 
+    /// An lxapp's message catalogues
+    I18n {
+        #[command(subcommand)]
+        command: I18nCommand,
+    },
+
     /// Remove generated build artifacts
     Clean,
 
@@ -715,6 +721,18 @@ struct PublishArgs {
     /// Also reads `LINGXIA_UPDATE_SIGNING_KEY`. Prefer the environment variable.
     #[arg(long, env = "LINGXIA_UPDATE_SIGNING_KEY", hide_env_values = true)]
     update_signing_key: Option<String>,
+}
+
+#[derive(Subcommand)]
+enum I18nCommand {
+    /// Declare a language and start its empty catalogue; `lingxia dev` shows the
+    /// source text for each key until it is translated, and `lingxia check` lists what is left
+    Add {
+        /// The BCP 47 tag, e.g. `ar-EG`
+        tag: String,
+        /// The lxapp directory (default: the current one)
+        dir: Option<std::path::PathBuf>,
+    },
 }
 
 #[derive(Subcommand)]
@@ -1136,6 +1154,22 @@ fn run() -> Result<()> {
                 dir
             };
             lxapp::check_in_dir(&dir)?;
+        }
+        Commands::I18n {
+            command: I18nCommand::Add { tag, dir },
+        } => {
+            let dir = match dir {
+                Some(dir) => dir,
+                None => std::env::current_dir()?,
+            };
+            let hosted = dir.join("lxapp");
+            let dir = if !dir.join("lxapp.json").is_file() && hosted.join("lxapp.json").is_file() {
+                hosted
+            } else {
+                dir
+            };
+            lxapp::add_language(&dir, &tag)?;
+            println!("Added {tag}: i18n/{tag}.json; `lingxia check` lists the keys left to translate.");
         }
         Commands::Clean => {
             commands::clean::execute()?;

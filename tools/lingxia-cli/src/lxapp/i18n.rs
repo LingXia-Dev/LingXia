@@ -1,13 +1,14 @@
 //! An lxapp's `i18n/<tag>.json` catalogues: checked against the languages its lxapp.json declares,
-//! where any problem stops the build, then compiled to `i18n/<tag>.js` in its output.
+//! then compiled to `i18n/<tag>.js` in its output. A problem stops the build, except that a dev
+//! session warns about a translation's key and shows the source message for it.
 
 use anyhow::{Context, Result, anyhow, bail};
 use lingxia_i18n::{Catalogue, Problem};
 use std::path::Path;
 
-/// `pseudo` adds `en-XA` (see `lingxia_i18n::pseudo`), for a dev session only.
-pub fn compile(dir: &Path, output: &Path, pseudo: bool) -> Result<()> {
-    let mut catalogues = check(dir)?;
+/// `dev` adds `en-XA` (see `lingxia_i18n::pseudo`) and lets a translation fall short per key.
+pub fn compile(dir: &Path, output: &Path, dev: bool) -> Result<()> {
+    let mut catalogues = check(dir, dev)?;
     // GPU pages bundle the messages from here; a stale copy would outlive a deleted i18n/.
     let generated = dir.join(".lingxia").join("i18n");
     if generated.exists() {
@@ -25,7 +26,7 @@ pub fn compile(dir: &Path, output: &Path, pseudo: bool) -> Result<()> {
     };
     let source = source.clone();
     let declarations = lingxia_i18n::dts::declarations(source_catalogue);
-    let pseudo = pseudo.then(|| lingxia_i18n::pseudo::catalogue(source_catalogue));
+    let pseudo = dev.then(|| lingxia_i18n::pseudo::catalogue(source_catalogue));
     if std::fs::read_to_string(&types).ok().as_deref() != Some(declarations.as_str()) {
         std::fs::create_dir_all(types.parent().unwrap())?;
         std::fs::write(&types, declarations)?;
@@ -56,11 +57,22 @@ pub fn compile(dir: &Path, output: &Path, pseudo: bool) -> Result<()> {
         let module = lingxia_i18n::js::module(catalogue);
         std::fs::write(out.join(format!("{tag}.js")), &module)?;
         std::fs::write(generated.join(format!("{tag}.js")), &module)?;
-        // Native text (Logic's `lx.app.t`, toasts) formats from the catalogue itself.
+        // Native text (Logic's `lx.app.t`, toasts) formats from the catalogue as checked.
         if tag != lingxia_i18n::pseudo::TAG {
-            std::fs::copy(
-                dir.join("i18n").join(format!("{tag}.json")),
+            let json: serde_json::Map<String, serde_json::Value> = catalogue
+                .entries
+                .iter()
+                .map(|(key, entry)| {
+                    let mut json = serde_json::json!({ "defaultMessage": entry.source });
+                    if let Some(description) = &entry.description {
+                        json["description"] = description.clone().into();
+                    }
+                    (key.clone(), json)
+                })
+                .collect();
+            std::fs::write(
                 out.join(format!("{tag}.json")),
+                serde_json::to_string_pretty(&json)?,
             )?;
         }
         index.push_str(&format!(
@@ -82,6 +94,48 @@ export const languages = {{ {} }};
     Ok(())
 }
 
+/// Appends `tag` to lxapp.json's `languages` and writes an empty `i18n/<tag>.json`.
+pub fn add_language(dir: &Path, tag: &str) -> Result<()> {
+    let well_formed = !tag.is_empty()
+        && tag
+            .split('-')
+            .all(|part| !part.is_empty() && part.len() <= 8 && part.chars().all(|c| c.is_ascii_alphanumeric()));
+    if !well_formed || !tag.as_bytes()[0].is_ascii_alphabetic() {
+        bail!("'{tag}' is not a language tag such as `ar-EG`");
+    }
+    let path = dir.join("lxapp.json");
+    let text = std::fs::read_to_string(&path)
+        .with_context(|| format!("no lxapp.json in {}", dir.display()))?;
+    let mut manifest: serde_json::Value =
+        serde_json::from_str(&text).with_context(|| format!("{} is not JSON", path.display()))?;
+    let Some(languages) = manifest["languages"].as_array_mut() else {
+        bail!("lxapp.json declares no `languages`; add the source language first");
+    };
+    if languages
+        .iter()
+        .any(|known| known.as_str().is_some_and(|known| known.eq_ignore_ascii_case(tag)))
+    {
+        bail!("lxapp.json already declares {tag}");
+    }
+    let catalogue = dir.join("i18n").join(format!("{tag}.json"));
+    if catalogue.exists() {
+        bail!("{} already exists", catalogue.display());
+    }
+    languages.push(tag.into());
+    std::fs::create_dir_all(catalogue.parent().unwrap())?;
+    std::fs::write(&catalogue, "{}\n")?;
+    std::fs::write(&path, serde_json::to_string_pretty(&manifest)? + "\n")?;
+    Ok(())
+}
+
+/// The first few of `keys`, after their count.
+fn untranslated(keys: &[String]) -> String {
+    const SHOWN: usize = 5;
+    let first = keys[..keys.len().min(SHOWN)].join(", ");
+    let more = if keys.len() > SHOWN { ", …" } else { "" };
+    format!("untranslated: {} key(s) ({first}{more})", keys.len())
+}
+
 /// A dev build's `en-XA` is a language the lxapp has, so the host narrows to it when chosen.
 pub fn declare_pseudo(output: &Path) -> Result<()> {
     if !output
@@ -101,7 +155,9 @@ pub fn declare_pseudo(output: &Path) -> Result<()> {
 }
 
 /// The declared languages' catalogues, the source first, each complete and true to the source.
-pub fn check(dir: &Path) -> Result<Vec<(String, Catalogue)>> {
+/// With `dev`, a translation's missing, drifted or unknown key is a warning and takes the source's
+/// entry (or is dropped), so every language reads complete.
+pub fn check(dir: &Path, dev: bool) -> Result<Vec<(String, Catalogue)>> {
     let i18n = dir.join("i18n");
     let manifest = dir.join("lxapp.json");
     if !manifest.is_file() {
@@ -162,21 +218,37 @@ pub fn check(dir: &Path) -> Result<Vec<(String, Catalogue)>> {
         }
         return report(problems);
     };
-    for (file, tag, catalogue) in &catalogues {
+    let source_catalogue = source.2.clone();
+    for (file, tag, catalogue) in &mut catalogues {
         if tag == source_tag {
             continue;
         }
-        let (found, missing) = lingxia_i18n::check(&source.2, catalogue);
+        let (found, missing) = lingxia_i18n::check(&source_catalogue, catalogue);
+        if dev {
+            for problem in &found {
+                eprintln!("warning: {file}: {problem}; showing the source message");
+            }
+            if !missing.is_empty() {
+                eprintln!(
+                    "warning: {file}: {}; showing the source messages",
+                    untranslated(&missing)
+                );
+            }
+            for key in found.iter().filter_map(|problem| problem.key.as_ref()).chain(&missing) {
+                match source_catalogue.entries.get(key) {
+                    Some(entry) => catalogue.entries.insert(key.clone(), entry.clone()),
+                    None => catalogue.entries.remove(key),
+                };
+            }
+            continue;
+        }
         problems.extend(found.into_iter().map(|problem| (file.clone(), problem)));
         if !missing.is_empty() {
-            problems.push((
-                file.clone(),
-                note(format!("untranslated: {}", missing.join(", "))),
-            ));
+            problems.push((file.clone(), note(untranslated(&missing))));
         }
     }
     for (file, key) in named {
-        if !source.2.entries.contains_key(&key) {
+        if !source_catalogue.entries.contains_key(&key) {
             problems.push((
                 file,
                 note(format!("names '{key}', which i18n/{source_tag}.json lacks")),
@@ -344,9 +416,9 @@ mod tests {
             r#"{ "cart.title": { "defaultMessage": "Cart" } }"#,
         )
         .unwrap();
-        check(root).unwrap();
+        check(root, false).unwrap();
         std::fs::write(root.join("i18n/ja-JP.json"), "{}").unwrap();
-        assert!(check(root).is_err());
+        assert!(check(root, false).is_err());
     }
 
     #[test]
@@ -418,8 +490,68 @@ const t = useText(); t('web.key')"
         )
         .unwrap();
         std::fs::write(root.join("lxapp.json"), manifest("tab.home")).unwrap();
-        check(root).unwrap();
+        check(root, false).unwrap();
         std::fs::write(root.join("lxapp.json"), manifest("tab.cart")).unwrap();
-        assert!(check(root).is_err());
+        assert!(check(root, true).is_err(), "a dev session has no source to fall back to");
+    }
+
+    #[test]
+    fn an_added_language_is_declared_and_left_to_translate() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path();
+        std::fs::create_dir(root.join("i18n")).unwrap();
+        std::fs::write(root.join("lxapp.json"), r#"{ "languages": ["en-US"] }"#).unwrap();
+        let keys: String = (1..=7)
+            .map(|n| format!(r#""k.m{n}": {{ "defaultMessage": "M{n}", "description": "d" }}"#))
+            .collect::<Vec<_>>()
+            .join(", ");
+        std::fs::write(root.join("i18n/en-US.json"), format!("{{ {keys} }}")).unwrap();
+        add_language(root, "ar-EG").unwrap();
+        assert!(add_language(root, "AR-eg").is_err(), "already declared");
+        assert!(add_language(root, "not a tag").is_err());
+        let manifest = std::fs::read_to_string(root.join("lxapp.json")).unwrap();
+        assert!(manifest.contains("ar-EG"), "{manifest}");
+        assert!(check(root, true).is_ok());
+        assert!(check(root, false).is_err());
+        let left = untranslated(&(1..=7).map(|n| format!("k.m{n}")).collect::<Vec<_>>());
+        assert_eq!(left, "untranslated: 7 key(s) (k.m1, k.m2, k.m3, k.m4, k.m5, …)");
+    }
+
+    #[test]
+    fn a_dev_session_shows_the_source_for_a_translation_gap_and_a_release_stops() {
+        let dir = tempfile::tempdir().unwrap();
+        let (root, output) = (dir.path().join("app"), dir.path().join("dist"));
+        std::fs::create_dir_all(root.join("i18n")).unwrap();
+        std::fs::write(
+            root.join("lxapp.json"),
+            r#"{ "languages": ["en-US", "de-DE"] }"#,
+        )
+        .unwrap();
+        std::fs::write(
+            root.join("i18n/en-US.json"),
+            r#"{ "cart.title": { "defaultMessage": "Cart", "description": "Heading." },
+                 "cart.items": { "defaultMessage": "{n, plural, one {# item} other {# items}}", "description": "Count." },
+                 "cart.empty": { "defaultMessage": "Empty", "description": "No items." } }"#,
+        )
+        .unwrap();
+        std::fs::write(
+            root.join("i18n/de-DE.json"),
+            r#"{ "cart.title": { "defaultMessage": "Warenkorb" },
+                 "cart.items": { "defaultMessage": "{count} Artikel" },
+                 "cart.old": { "defaultMessage": "Alt" } }"#,
+        )
+        .unwrap();
+        assert!(compile(&root, &output, false).is_err());
+
+        compile(&root, &output, true).unwrap();
+        let json = std::fs::read_to_string(output.join("i18n/de-DE.json")).unwrap();
+        let german = lingxia_i18n::Catalogue::parse(&json, false).unwrap();
+        let text = |key: &str| german.entries[key].source.as_str();
+        assert_eq!(text("cart.title"), "Warenkorb");
+        assert_eq!(text("cart.items"), "{n, plural, one {# item} other {# items}}");
+        assert_eq!(text("cart.empty"), "Empty");
+        assert!(!german.entries.contains_key("cart.old"));
+        let module = std::fs::read_to_string(output.join("i18n/de-DE.js")).unwrap();
+        assert!(module.contains("Empty") && !module.contains("Alt"), "{module}");
     }
 }
