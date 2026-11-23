@@ -3,6 +3,7 @@ import { limits } from '../generated/contract.js';
 import { fieldOptions } from '../generated/wire.js';
 import { checkKeys, keyPayload } from './keys.js';
 import { seriesProblem, isRole } from '../style/color.js';
+import { pathSegments, pathSegmentsProblem } from './vector-path.js';
 
 // Per-element value checks; native decoding re-validates everything it receives.
 export function label(value, code, required = false) {
@@ -46,6 +47,9 @@ export function vector(props, fit) {
   for (const path of props.paths) {
     if (!plain(path) || Object.keys(path).some(k => !pathKeys.includes(k)) ||
         typeof path.d !== 'string' || !path.d.length || path.d.length > limits.vectorPathBytes) throw Error('UI_VECTOR: invalid path');
+    // A segment takes at least one character, so a short `d` is within the limit uncounted.
+    const segments = path.d.length > limits.vectorPathSegments && pathSegmentsProblem(pathSegments(path.d));
+    if (segments) throw Error(segments);
     for (const key of ['fill', 'stroke']) {
       const value = path[key];
       if (value === undefined || value === 'none' || value === 'currentColor' || hexColor(value) || isRole(value)) continue;

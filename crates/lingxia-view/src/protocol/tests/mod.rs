@@ -750,6 +750,7 @@ fn contract_drift(schema: &Value) -> Vec<String> {
             ("gridTracks", limits::GRID_TRACKS),
             ("vectorSourceBytes", limits::VECTOR_SOURCE_BYTES),
             ("vectorPathBytes", limits::VECTOR_PATH_BYTES),
+            ("vectorPathSegments", limits::VECTOR_PATH_SEGMENTS),
             ("vectorPathWork", limits::VECTOR_PATH_WORK),
             ("vectorWork", limits::VECTOR_WORK),
             ("plotWork", limits::PLOT_WORK),

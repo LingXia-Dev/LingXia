@@ -358,6 +358,7 @@ const limitNotes = {
   gridTracks: 'Tracks one grid template expands to.',
   vectorSourceBytes: 'One `<vector>` source (paths, gradients, viewBox) as JSON.',
   vectorPathBytes: 'One path `d` string.',
+  vectorPathSegments: 'Segments of one path `d` (each move, line, curve and close; an arc may take several); past it the path fails at build when `d` is written out, at render otherwise. Split it into several paths.',
   vectorPathWork: 'Path elements one `<vector>` draws, strokes outlined.',
   vectorWork: 'Path elements all vectors of one frame draw.',
   plotWork: 'Geometry all plots of one frame draw.',

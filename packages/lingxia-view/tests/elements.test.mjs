@@ -136,6 +136,14 @@ test('vector paths carry SVG transforms, caps, joins, dash offsets and named gra
   ]) throwsOn(() => h('vector', { paths: [path], ...extra }), /UI_VECTOR/);
 });
 
+test('a path over the segment limit names its count, the limit and the fix; arcs count at least one', async () => {
+  const { pathSegments } = await import('../src/runtime/vector-path.js');
+  assert.equal(pathSegments('M0 0L1 1 2 2h3V4c1 1 1 1 1 1 2 2 2 2 2 2zA1 1 0 0 1 3 3'), 9);
+  const long = n => 'M0 0' + 'h1'.repeat(n - 1);
+  rendered(() => h('vector', { paths: [{ d: long(1024) }] }));
+  throwsOn(() => h('vector', { paths: [{ d: long(1025) }] }), /UI_VECTOR: a path has 1025 segments; the limit is 1024 per path: split it into several paths/);
+});
+
 test('vectors encode bounded path data, fit and dash patterns, and decorate composed buttons', () => {
   const paths = [{ d: 'M2 2h20v20H2z', fill: 'none', stroke: 'currentColor', strokeWidth: 1.5 }];
   const vector = rendered(() => h('vector', { paths }));

@@ -678,6 +678,7 @@ pub mod limits {
     pub const GRID_TRACKS: usize = 64;
     pub const VECTOR_SOURCE_BYTES: usize = 32768;
     pub const VECTOR_PATH_BYTES: usize = 16384;
+    pub const VECTOR_PATH_SEGMENTS: usize = 1024;
     pub const VECTOR_PATH_WORK: usize = 16384;
     pub const VECTOR_WORK: usize = 32768;
     pub const PLOT_WORK: usize = 16384;

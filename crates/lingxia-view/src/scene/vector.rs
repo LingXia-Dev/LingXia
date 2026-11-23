@@ -442,11 +442,14 @@ impl Vector {
             bounded_numbers(&path_source.d)?;
             let local =
                 BezPath::from_svg(&path_source.d).map_err(|_| "UI_VECTOR: invalid SVG path")?;
-            if local.elements().is_empty()
-                || local.elements().len() > 1024
-                || !local.is_finite()
-                || out_of_bounds(&local)
-            {
+            let segments = local.elements().len();
+            if segments > crate::protocol::limits::VECTOR_PATH_SEGMENTS {
+                return Err(format!(
+                    "UI_VECTOR: a path has {segments} segments; the limit is {} per path: split it into several paths",
+                    crate::protocol::limits::VECTOR_PATH_SEGMENTS
+                ));
+            }
+            if segments == 0 || !local.is_finite() || out_of_bounds(&local) {
                 return Err("UI_VECTOR: invalid path geometry".into());
             }
             let transform = path_source
@@ -974,6 +977,19 @@ mod tests {
 
     #[test]
     fn rejects_invalid_or_unbounded_geometry_before_drawing() {
+        let long = |segments: usize| format!("M0 0{}", "h1".repeat(segments - 1));
+        assert!(
+            Vector::parse(&json!({"viewBox":[0,0,24,24],"paths":[{"d":long(1024)}]}).to_string())
+                .is_ok()
+        );
+        let error =
+            Vector::parse(&json!({"viewBox":[0,0,24,24],"paths":[{"d":long(1025)}]}).to_string())
+                .err()
+                .unwrap();
+        assert_eq!(
+            error,
+            "UI_VECTOR: a path has 1025 segments; the limit is 1024 per path: split it into several paths"
+        );
         for d in [
             "",
             "M",

@@ -24,6 +24,7 @@ Page-wide bounds the runtime and the native decoder both enforce. Exceeding one 
 | `gridTracks` | 64 | Tracks one grid template expands to. |
 | `vectorSourceBytes` | 32768 (32 KiB) | One `<vector>` source (paths, gradients, viewBox) as JSON. |
 | `vectorPathBytes` | 16384 (16 KiB) | One path `d` string. |
+| `vectorPathSegments` | 1024 | Segments of one path `d` (each move, line, curve and close; an arc may take several); past it the path fails at build when `d` is written out, at render otherwise. Split it into several paths. |
 | `vectorPathWork` | 16384 | Path elements one `<vector>` draws, strokes outlined. |
 | `vectorWork` | 32768 | Path elements all vectors of one frame draw. |
 | `plotWork` | 16384 | Geometry all plots of one frame draw. |

@@ -921,3 +921,12 @@ test('JSX at module scope fails the build with the fix; inside a function or com
     await build();
   });
 });
+
+test('a written-out path over the segment limit fails the build at its d; a computed one is left to render', async () => {
+  const long = n => 'M0 0' + 'h1'.repeat(n - 1);
+  await project({ 'page.tsx': `const icon = [{ d: '${long(1025)}' }];\nexport function render(){return <vector paths={icon} />}` }, async (root, build) => {
+    await assert.rejects(build(), /page.tsx:1:20: UI_VECTOR: a path has 1025 segments; the limit is 1024 per path: split it into several paths/);
+    await writeFile(join(root, 'page.tsx'), `const icon = [{ d: '${long(1024)}' }, { d: 'M0 0' + 'h1'.repeat(2000) }];\nexport function render(){return <vector paths={icon} />}`);
+    await build();
+  });
+});
