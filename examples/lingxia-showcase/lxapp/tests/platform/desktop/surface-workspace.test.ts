@@ -407,7 +407,7 @@ async function parkPointerOverContent(
   ] });
 }
 
-async function expandMediumSidebar(
+async function revealRailSidebar(
   desktop: DesktopDriver,
   platform: string,
   host: DesktopWindowInfo,
@@ -434,7 +434,7 @@ async function expandMediumSidebar(
             && node.rect.w > 0
             && node.rect.h > 0
           ));
-        }, 'macOS medium sidebar expand control', 3_000);
+        }, 'macOS rail sidebar expand control', 3_000);
         await desktop.pointer.click({ at: regionCenter([
           button.rect.x,
           button.rect.y,
@@ -456,26 +456,26 @@ async function expandMediumSidebar(
 
       return await waitForValue(
         readExpanded,
-        `${platform} medium sidebar reveal attempt ${attempt}`,
+        `${platform} rail sidebar reveal attempt ${attempt}`,
         3_000,
       );
     } catch (error) {
       lastError = error;
     }
   }
-  throw lastError ?? new Error(`${platform} medium sidebar reveal failed`);
+  throw lastError ?? new Error(`${platform} rail sidebar reveal failed`);
 }
 
 async function ensureFullSidebar(
   desktop: DesktopDriver,
   host: DesktopWindowInfo,
 ): Promise<DesktopWindowInfo> {
-  // Expanded sizeClass is not the same as an expanded sidebar. Windows
+  // A wide regular window is not the same as an expanded sidebar. Windows
   // persists icon-rail; a 1200 DIP window can still paint the 44px rail.
   // Workspace-row geometry (ellipsis / close) only exists on the expanded
   // sidebar, not the icon rail.
   const current = await ensureHostForeground(desktop, host);
-  await expandMediumSidebar(desktop, 'windows', current, async () => {
+  await revealRailSidebar(desktop, 'windows', current, async () => {
     const latest = (await desktop.windows()).find((window) => window.id === current.id) ?? current;
     const main = visibleHostWebViews(latest, await desktop.windows())[0];
     if (!main) return undefined;
@@ -1290,7 +1290,7 @@ test('projects the declared terminal aside and restores its baseline state', {
   expect(topology(result.afterCleanup)).toEqual(topology(before));
 });
 
-test('gates medium sidebar reveal and compact aside chrome on every desktop', {
+test('gates rail sidebar reveal and compact aside chrome on every desktop', {
   skip: adaptiveDesktopSkip,
   id: 'DESKTOP-ADAPTIVE-001',
   timeout: DESKTOP_CASE_MS,
@@ -1324,9 +1324,10 @@ test('gates medium sidebar reveal and compact aside chrome on every desktop', {
   const originalPage = await app.nav.current();
   const browser = automation.browser;
   const browserTabsBefore = new Set((await browser.tabs()).map((tab) => tab.tab_id));
-  const mediumWidth = nativeWindowExtent(platform, host, 800);
+  // Both regular: below the 820 DIP sidebar budget the sidebar is an icon rail, above it full.
+  const railWindowWidth = nativeWindowExtent(platform, host, 800);
   const compactWidth = nativeWindowExtent(platform, host, 520);
-  const expandedWidth = nativeWindowExtent(platform, host, 1_000);
+  const sidebarWindowWidth = nativeWindowExtent(platform, host, 1_000);
   const testHeight = nativeWindowExtent(platform, host, 640);
   let chatOpened = false;
   let browserTabId: string | undefined;
@@ -1361,39 +1362,42 @@ test('gates medium sidebar reveal and compact aside chrome on every desktop', {
 
   try {
     await closeChatSurface(t, app);
-    host = await resizeHostOnScreen(desktop, host, expandedWidth, testHeight);
+    host = await resizeHostOnScreen(desktop, host, sidebarWindowWidth, testHeight);
     await waitForValue(async () => {
       const layout = await app.surfaceLayout();
-      return layout.sizeClass === 'expanded' && !containsSurface(layout, 'lingxia-showcase-web')
+      return layout.sizeClass === 'regular' && !containsSurface(layout, 'lingxia-showcase-web')
         ? layout
         : undefined;
-    }, `${platform} expanded root baseline`);
+    }, `${platform} wide regular root baseline`);
 
     await app.nav.go({ tab: 'api' });
     const api = await app.page({ name: 'api' }, { timeout: 30_000 });
     await api.view.css('body').waitFor({ state: 'attached', timeout: 30_000 });
 
-    // Cross from expanded into medium so the adaptive rail is freshly
+    // Cross below the sidebar budget so the adaptive rail is freshly
     // projected. Then use the real native expand control and prove the
     // content edge moves by a sidebar width; a state-only toggle cannot pass.
-    host = await resizeHostOnScreen(desktop, host, mediumWidth, testHeight);
+    host = await resizeHostOnScreen(desktop, host, railWindowWidth, testHeight);
     await waitForValue(async () => {
       const layout = await app.surfaceLayout();
-      return layout.sizeClass === 'medium' && !containsSurface(layout, 'lingxia-showcase-web')
+      return layout.sizeClass === 'regular' && !containsSurface(layout, 'lingxia-showcase-web')
         ? layout
         : undefined;
-    }, `${platform} medium adaptive rail`);
+    }, `${platform} narrow regular layout`);
     host = await ensureHostForeground(desktop, host);
-    const mediumNavbar = await waitForValue(
+    const railNavbar = await waitForValue(
       () => apiNavbarProbePoints(desktop, host!),
       `${platform} API navbar before sidebar reveal`,
     );
-    const navbarY = mediumNavbar[0][1];
-    const railNavbarLeft = await waitForValue(
-      () => apiNavbarLeftEdge(desktop, platform, host!, navbarY),
-      `${platform} API navbar edge beside medium rail`,
-    );
-    const expandedSidebarNavbarLeft = await expandMediumSidebar(
+    const navbarY = railNavbar[0][1];
+    // One main reports no switcher form, so the rail is read from the content edge it leaves.
+    const railNavbarLeft = await waitForValue(async () => {
+      const edge = await apiNavbarLeftEdge(desktop, platform, host!, navbarY);
+      return edge !== undefined && edge - host!.bounds.x <= nativeWindowExtent(platform, host!, 96)
+        ? edge
+        : undefined;
+    }, `${platform} API navbar edge beside the rail`);
+    const expandedSidebarNavbarLeft = await revealRailSidebar(
       desktop,
       platform,
       host,
@@ -1405,7 +1409,7 @@ test('gates medium sidebar reveal and compact aside chrome on every desktop', {
           : undefined;
       });
     expect(expandedSidebarNavbarLeft).toBeGreaterThan(railNavbarLeft);
-    expect((await app.surfaceLayout()).sizeClass).toBe('medium');
+    expect((await app.surfaceLayout()).sizeClass).toBe('regular');
 
     host = await resizeHostOnScreen(desktop, host, compactWidth, testHeight);
     const compactRoot = await waitForValue(async () => {
@@ -1491,16 +1495,16 @@ test('gates medium sidebar reveal and compact aside chrome on every desktop', {
     }, `${platform} compact Chat covers the Home API navbar`);
     await typeIntoChatThroughDesktop(`compact-overlay-${platform}`);
 
-    host = await resizeHostOnScreen(desktop, host, expandedWidth, testHeight);
+    host = await resizeHostOnScreen(desktop, host, sidebarWindowWidth, testHeight);
     const docked = await waitForValue(async () => {
       const layout = await app.surfaceLayout();
       const slot = layout.asideSlots.find((candidate) => (
         candidate.activeChild === 'lingxia-showcase-web'
       ));
-      return layout.sizeClass === 'expanded' && slot?.visible && !slot.overlay
+      return layout.sizeClass === 'regular' && slot?.visible && !slot.overlay
         ? layout
         : undefined;
-    }, `${platform} expanded Chat aside`);
+    }, `${platform} docked Chat aside`);
     expect(docked.activeMainId).toBe(SHOWCASE_APP_ID);
     host = await ensureHostForeground(desktop, host);
     await waitForValue(
@@ -1509,7 +1513,7 @@ test('gates medium sidebar reveal and compact aside chrome on every desktop', {
         : await apiNavbarProbePoints(desktop, host!),
       `${platform} Home API navbar restored beside Chat`,
     );
-    await typeIntoChatThroughDesktop(`expanded-aside-${platform}`);
+    await typeIntoChatThroughDesktop(`docked-aside-${platform}`);
 
     // Provider parity: a browser main uses the same shell size-class
     // projection as an lxapp main. Validate the physical WebView viewport, not
@@ -1531,39 +1535,41 @@ test('gates medium sidebar reveal and compact aside chrome on every desktop', {
     }, `${platform} second browser main`);
     secondaryBrowserTabId = downloadsTab.tab_id;
 
-    const expandedBrowserInset = await waitForValue(async () => {
+    const sidebarBrowserInset = await waitForValue(async () => {
       const viewport = await visibleBrowserViewportWidth(browser);
       if (viewport === undefined) return undefined;
       const inset = host!.bounds.w - viewport;
       return inset >= nativeWindowExtent(platform, host!, 120) ? inset : undefined;
-    }, `${platform} expanded browser keeps the full sidebar`);
+    }, `${platform} wide browser keeps the full sidebar`);
 
-    host = await resizeHostOnScreen(desktop, host, mediumWidth, testHeight);
-    await waitForValue(async () => (
-      (await app.surfaceLayout()).sizeClass === 'medium' ? true : undefined
-    ), `${platform} medium browser shell`);
-    let mediumBrowserSample: Record<string, number | undefined> = {};
-    let mediumBrowserInset: number;
+    host = await resizeHostOnScreen(desktop, host, railWindowWidth, testHeight);
+    // Several mains, so the core reports the budget's rail itself.
+    await waitForValue(async () => {
+      const layout = await app.surfaceLayout();
+      return layout.sizeClass === 'regular' && layout.switcherForm === 'rail' ? true : undefined;
+    }, `${platform} narrow browser shell`);
+    let railBrowserSample: Record<string, number | undefined> = {};
+    let railBrowserInset: number;
     try {
-      mediumBrowserInset = await waitForValue(async () => {
+      railBrowserInset = await waitForValue(async () => {
         const viewport = await visibleBrowserViewportWidth(browser);
         const inset = viewport === undefined ? undefined : host!.bounds.w - viewport;
-        mediumBrowserSample = {
+        railBrowserSample = {
           hostWidth: host!.bounds.w,
           viewport,
           inset,
-          expandedInset: expandedBrowserInset,
-          insetDelta: inset === undefined ? undefined : expandedBrowserInset - inset,
+          sidebarInset: sidebarBrowserInset,
+          insetDelta: inset === undefined ? undefined : sidebarBrowserInset - inset,
           scale: host!.scale,
         };
         return inset !== undefined
           && inset >= nativeWindowExtent(platform, host!, WINDOWS_RAIL_MIN_DIP)
-          && expandedBrowserInset - inset >= nativeWindowExtent(platform, host!, 60)
+          && sidebarBrowserInset - inset >= nativeWindowExtent(platform, host!, 60)
           ? inset
           : undefined;
-      }, `${platform} medium browser uses the icon rail`);
+      }, `${platform} narrow browser uses the icon rail`);
     } catch (error) {
-      throw new Error(`${String(error)}; last viewport sample: ${JSON.stringify(mediumBrowserSample)}`);
+      throw new Error(`${String(error)}; last viewport sample: ${JSON.stringify(railBrowserSample)}`);
     }
 
     host = await resizeHostOnScreen(desktop, host, compactWidth, testHeight);
@@ -1580,7 +1586,7 @@ test('gates medium sidebar reveal and compact aside chrome on every desktop', {
         const inset = host!.bounds.w - viewport;
         if (
           inset >= minimumRail
-          && Math.abs(mediumBrowserInset - inset) <= nativeWindowExtent(platform, host!, 20)
+          && Math.abs(railBrowserInset - inset) <= nativeWindowExtent(platform, host!, 20)
         ) {
           return inset;
         }
@@ -1675,46 +1681,46 @@ test('docks the footer Chat WebView physically beside the main after resize', {
   let host = windowsHost(await desktop.windows());
   if (!host) throw new Error('visible LingXia host window was not found');
   const originalBounds = { ...host.bounds };
-  // Medium begins above 600 DIP, while one horizontal aside needs 360 DIP for
-  // main + 240 DIP for aside after the rail allocation. 620 stays medium but
+  // Regular begins at 600 DIP, while one horizontal aside needs 360 DIP for
+  // main + 240 DIP for aside after the rail allocation. 620 stays regular but
   // leaves too little workspace, so the explicit Chat open must overlay.
   const overlayWidth = Math.round(620 * host.scale);
   const dockedWidth = Math.round(1_200 * host.scale);
   try {
     await closeChatSurface(t, app);
-    // Capture the root at the same expanded geometry used after the adaptive
-    // aside closes. Comparing against a medium-width baseline would accept or
+    // Capture the root at the same wide geometry used after the adaptive
+    // aside closes. Comparing against a narrow baseline would accept or
     // reject the wrong content rectangle merely because the sidebar changed
     // form during the resize.
     host = await resizeHostOnScreen(desktop, host, dockedWidth, 900);
     await waitForValue(async () => {
       const candidate = await app.surfaceLayout();
-      return candidate.sizeClass === 'expanded'
+      return candidate.sizeClass === 'regular'
         && !containsSurface(candidate, 'lingxia-showcase-web')
         ? candidate
         : undefined;
-    }, 'expanded root baseline');
-    const expandedBaselineMain = await waitForDesktopWindow(
+    }, 'wide root baseline');
+    const wideBaselineMain = await waitForDesktopWindow(
       () => desktop.windows(),
       (windows) => {
         const visible = visibleHostWebViews(host!, windows);
         return visible.length === 1 ? visible[0] : undefined;
       },
-      'expanded physical root baseline',
+      'wide physical root baseline',
     );
 
     // Window bounds are physical pixels while surface breakpoints are DIPs.
-    // Target explicit logical widths so this covers the same medium/expanded
+    // Target explicit logical widths so this covers the same rail/sidebar
     // handoff at every runner DPI.
     host = await resizeHostOnScreen(desktop, host, overlayWidth, 768);
 
     await waitForValue(async () => {
       const candidate = await app.surfaceLayout();
-      return candidate.sizeClass === 'medium'
+      return candidate.sizeClass === 'regular'
         && !containsSurface(candidate, 'lingxia-showcase-web')
         ? candidate
         : undefined;
-    }, 'medium root baseline');
+    }, 'narrow root baseline');
     const baselineWindows = await waitForValue(async () => {
       const candidate = await desktop.windows();
       const workspaceHosts = visibleWorkspaceHosts(host!, candidate);
@@ -1732,7 +1738,7 @@ test('docks the footer Chat WebView physically beside the main after resize', {
         && rightInset <= nativeWindowExtent('windows', host!, 24)
         ? candidate
         : undefined;
-    }, 'medium icon-rail physical root baseline');
+    }, 'narrow icon-rail physical root baseline');
     expectSingleWorkspaceHost(host, baselineWindows);
     const baselineWebViews = visibleHostWebViews(host, baselineWindows);
     expect(baselineWebViews.length).toBe(1);
@@ -1740,7 +1746,7 @@ test('docks the footer Chat WebView physically beside the main after resize', {
     const baselineWebViewIds = new Set(baselineWebViews.map((window) => window.id));
     host = await ensureHostForeground(desktop, host);
 
-    // Exercise the real native footer action. Medium projects the header
+    // Exercise the real native footer action. The rail projects the header
     // actions (Settings, Downloads) and then the footer actions into the icon
     // rail footer; Chat is the first footer action. Derive its
     // cell center from that production geometry so this cannot click the
@@ -1754,7 +1760,7 @@ test('docks the footer Chat WebView physically beside the main after resize', {
       const slot = layout.asideSlots.find((candidate) => (
         candidate.activeChild === 'lingxia-showcase-web'
       ));
-      return layout.sizeClass === 'medium' && slot?.visible && slot.overlay
+      return layout.sizeClass === 'regular' && slot?.visible && slot.overlay
         ? layout
         : undefined;
     };
@@ -1781,7 +1787,7 @@ test('docks the footer Chat WebView physically beside the main after resize', {
         && window.bounds.w > host!.bounds.w * 0.55
         && window.bounds.h > host!.bounds.h * 0.55
       )),
-      'Chat WebView in the physical medium overlay',
+      'Chat WebView in the physical narrow overlay',
     );
     const convergedOverlayWindows = await waitForValue(async () => {
       const candidate = await desktop.windows();
@@ -1833,10 +1839,10 @@ test('docks the footer Chat WebView physically beside the main after resize', {
       const slot = layout.asideSlots.find((candidate) => (
         candidate.children.includes('lingxia-showcase-web')
       ));
-      return layout.sizeClass === 'expanded' && slot?.visible && !slot.overlay
+      return layout.sizeClass === 'regular' && slot?.visible && !slot.overlay
         ? layout
         : undefined;
-    }, 'expanded docked Chat layout');
+    }, 'wide docked Chat layout');
     expect(dockedLayout.activeMainId).toBe(SHOWCASE_APP_ID);
 
     const chatWindow = await waitForDesktopWindow(
@@ -1881,7 +1887,7 @@ test('docks the footer Chat WebView physically beside the main after resize', {
     );
     await expectExactMainPresentation(
       host,
-      expandedBaselineMain,
+      wideBaselineMain,
       restoredMain,
       () => desktop.windows(),
     );
@@ -2351,11 +2357,11 @@ test('projects a pinned lxapp into a controllable sidebar workspace without cont
     host = await resizeHostOnScreen(desktop, host, dockedWidth, 900);
     await waitForValue(async () => {
       const candidate = await app.surfaceLayout();
-      return candidate.sizeClass === 'expanded'
+      return candidate.sizeClass === 'regular'
         && candidate.activeMainId === SHOWCASE_APP_ID
         ? candidate
         : undefined;
-    }, 'expanded main baseline');
+    }, 'wide main baseline');
     host = await ensureHostForeground(desktop, host);
     host = await ensureFullSidebar(desktop, host);
 
@@ -2389,7 +2395,7 @@ test('projects a pinned lxapp into a controllable sidebar workspace without cont
       const slot = candidate.asideSlots.find((item) => (
         item.activeChild === 'lingxia-showcase-web' && item.visible && !item.overlay
       ));
-      return candidate.sizeClass === 'expanded' && slot ? candidate : undefined;
+      return candidate.sizeClass === 'regular' && slot ? candidate : undefined;
     }, 'declared Chat right aside');
     expect(declaredAside.activeMainId).toBe(SHOWCASE_APP_ID);
     expect(switcherIds(declaredAside).includes('lingxia-showcase-web')).toBeFalsy();
@@ -2999,7 +3005,7 @@ async function asidePageTop(
 /** A bundled lxapp other than Chat, opened as a main beside the Chat aside. */
 const ASIDE_NAV_OTHER_APP_ID = 'app.lingxia.terminal-settings';
 
-/** The docked right aside begins past the middle of an expanded host. */
+/** The docked right aside begins past the middle of a wide host. */
 function inRightAside(host: DesktopWindowInfo, rect: { x: number; w: number }): boolean {
   return rect.x >= host.bounds.x + host.bounds.w / 2
     && rect.x + rect.w <= host.bounds.x + host.bounds.w + CHAT_INPUT_AX_SLOP_PX;
@@ -3021,7 +3027,7 @@ test('keeps an aside lxapp page stack and its floats inside the aside', {
   const chat = t.automation.lxapp('lingxia-showcase-web');
   try {
     await closeChatSurface(t, app);
-    // The same expanded geometry DESKTOP-ADAPTIVE-001 docks Chat at. It has to
+    // The same wide geometry DESKTOP-ADAPTIVE-001 docks Chat at. It has to
     // fit the CI display (1024x768 on macOS runners), where AppKit keeps the
     // window below the menu bar and a full-height request never settles.
     host = await resizeHostOnScreen(
@@ -3038,7 +3044,7 @@ test('keeps an aside lxapp page stack and its floats inside the aside', {
       const slot = layout.asideSlots.find((candidate) => (
         candidate.children.includes('lingxia-showcase-web')
       ));
-      return layout.sizeClass === 'expanded' && slot?.visible && !slot.overlay
+      return layout.sizeClass === 'regular' && slot?.visible && !slot.overlay
         ? layout
         : undefined;
     }, 'docked right Chat aside');
@@ -3337,7 +3343,7 @@ test('maximizes an aside over a main that keeps its frame and restores it on eve
     const docked = await waitForValue(async () => {
       const layout = await app.surfaceLayout();
       const slot = chatAsideSlot(layout);
-      return layout.sizeClass === 'expanded' && slot?.visible && !slot.overlay ? layout : undefined;
+      return layout.sizeClass === 'regular' && slot?.visible && !slot.overlay ? layout : undefined;
     }, 'docked right Chat aside');
     const chatInput = await waitForChatInput(desktop, host, 'Chat input in the aside');
     expect(inRightAside(host, chatInput.rect)).toBeTruthy();
