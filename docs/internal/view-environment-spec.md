@@ -12,7 +12,7 @@ Signatures are not repeated here: `@lingxia/types` is the Logic surface,
 
 Related specifications:
 
-- [`shell-ui-spec.md`](./shell-ui-spec.md) remains authoritative for shell
+- [`shell-ui-spec.md`](./shell-ui-spec.md) is authoritative for shell
   roles and desktop/mobile projection semantics; this document owns the page
   viewport and host-chrome geometry contract.
 - [`bridge-protocol.md`](./bridge-protocol.md) owns the Logic–View wire. Page
