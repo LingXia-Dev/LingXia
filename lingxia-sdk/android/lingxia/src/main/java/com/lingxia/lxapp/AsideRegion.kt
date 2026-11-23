@@ -76,21 +76,26 @@ internal class AsideRegion(private val activity: LxAppActivity, private val host
     var slot: Slot? = null
         private set
 
-    private val tabs = LinearLayout(activity).apply { orientation = LinearLayout.HORIZONTAL }
+    private val tabs = LinearLayout(activity).apply {
+        orientation = LinearLayout.HORIZONTAL
+        gravity = Gravity.CENTER_VERTICAL
+    }
     private val tabScroll = HorizontalScrollView(activity).apply {
         isHorizontalScrollBarEnabled = false
-        addView(tabs)
+        isFillViewport = true
+        addView(tabs, FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.MATCH_PARENT))
     }
-    private val leading = icon(R.drawable.icon_back, R.string.lx_aside_collapse) { collapse() }
-    private val maximize = icon(R.drawable.icon_sidebar_expand, R.string.lx_aside_maximize) { toggleMaximized() }
-    private val trailing = icon(R.drawable.icon_aside_collapse, R.string.lx_aside_collapse) { collapse() }
+    // The slot's controls, as on the desktop: one collapse (nothing closes) and, where the slot
+    // can also dock, maximize.
+    private val maximize = icon(R.drawable.icon_fullscreen_enter, R.string.lx_aside_maximize, size = CONTROL_DP) { toggleMaximized() }
+    private val collapseButton = icon(R.drawable.icon_aside_collapse, R.string.lx_aside_collapse, size = CONTROL_DP) { collapse() }
     private val strip = LinearLayout(activity).apply {
         orientation = LinearLayout.HORIZONTAL
         gravity = Gravity.CENTER_VERTICAL
-        addView(leading)
+        setPadding(dp(6f), 0, dp(6f), 0)
         addView(tabScroll, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT, 1f))
         addView(maximize)
-        addView(trailing)
+        addView(collapseButton)
     }
     /** The docked share of the window; dragging the divider sets it. */
     private var ratio = activity.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
@@ -247,11 +252,12 @@ internal class AsideRegion(private val activity: LxAppActivity, private val host
         view.setBackgroundColor(if (over) palette.surface else activity.mainPane.statusBandColor())
         view.elevation = if (over) dp(8f).toFloat() else 0f
         strip.setBackgroundColor(palette.surface)
-        leading.visibility = if (over) View.VISIBLE else View.GONE
-        trailing.visibility = if (over) View.GONE else View.VISIBLE
-        maximize.visibility = if (canDock() && slot?.overlay != true || slot?.maximized == true) View.VISIBLE else View.GONE
-        maximize.setImageResource(if (slot?.maximized == true) R.drawable.icon_sidebar_collapse else R.drawable.icon_sidebar_expand)
-        listOf(leading, maximize, trailing).forEach { it.setColorFilter(palette.body) }
+        val maximized = slot?.maximized == true
+        maximize.visibility = if (canDock() && slot?.overlay != true || maximized) View.VISIBLE else View.GONE
+        maximize.setImageResource(if (maximized) R.drawable.icon_fullscreen_exit else R.drawable.icon_fullscreen_enter)
+        maximize.contentDescription = Lingxia.localizedString(
+            activity, if (maximized) R.string.lx_aside_restore else R.string.lx_aside_maximize)
+        listOf(maximize, collapseButton).forEach { it.setColorFilter(palette.secondaryText) }
 
         (divider.layoutParams as FrameLayout.LayoutParams).apply {
             gravity = Gravity.END
@@ -273,6 +279,7 @@ internal class AsideRegion(private val activity: LxAppActivity, private val host
             ear.color = palette.body
             ear.fill = palette.surface
             ear.stroke = palette.separator
+            ear.pressedFill = palette.secondaryFill
             // Beside a tab column, not over it.
             (ear.layoutParams as FrameLayout.LayoutParams).apply {
                 rightMargin = activity.mainPane.tabColumnWidth()
@@ -283,36 +290,50 @@ internal class AsideRegion(private val activity: LxAppActivity, private val host
         activity.onAsideLayoutChanged()
     }
 
+    /**
+     * One tab per child. A single child reads as the panel's header (its name, no chip); a
+     * second child turns the strip into a tab row at the same height.
+     */
     private fun bindTabs() {
         val palette = OverlayPalette.of(activity)
         tabs.removeAllViews()
         val active = slot?.active
-        slot?.children.orEmpty().filter(::hosts).forEach { id ->
+        val ids = slot?.children.orEmpty().filter(::hosts)
+        val header = ids.size == 1
+        ids.forEach { id ->
             val selected = id == active
             val tab = LinearLayout(activity).apply {
                 orientation = LinearLayout.HORIZONTAL
                 gravity = Gravity.CENTER_VERTICAL
-                setPadding(dp(12f), 0, dp(4f), 0)
+                setPadding(dp(if (header) 6f else 10f), 0, dp(2f), 0)
                 background = GradientDrawable().apply {
                     cornerRadius = dp(8f).toFloat()
-                    setColor(if (selected) palette.secondaryFill else Color.TRANSPARENT)
+                    setColor(if (selected && !header) palette.secondaryFill else Color.TRANSPARENT)
                 }
                 setOnClickListener { if (!selected) command("focus", id) }
                 setOnLongClickListener { showTabMenu(this, id); true }
+            }
+            if (foreign.containsKey(id)) {
+                tab.addView(android.widget.ImageView(activity).apply {
+                    setImageResource(R.drawable.icon_globe)
+                    setColorFilter(palette.secondaryText)
+                }, LinearLayout.LayoutParams(dp(16f), dp(16f)).apply { marginEnd = dp(6f) })
             }
             tab.addView(TextView(activity).apply {
                 text = titleOf(id)
                 maxLines = 1
                 ellipsize = TextUtils.TruncateAt.END
-                maxWidth = dp(120f)
-                setTextSize(TypedValue.COMPLEX_UNIT_SP, 14f)
+                maxWidth = dp(if (header) 220f else 120f)
+                setTextSize(TypedValue.COMPLEX_UNIT_SP, if (header) 15f else 13f)
+                if (header || selected) setTypeface(typeface, android.graphics.Typeface.BOLD)
                 setTextColor(if (selected) palette.title else palette.secondaryText)
             })
             tab.addView(icon(R.drawable.icon_close_x, R.string.lx_common_close, size = 28f) { close(id) }.apply {
                 setColorFilter(palette.secondaryText)
+                alpha = if (selected) 1f else 0.65f
             })
-            tabs.addView(tab, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(34f)).apply {
-                marginStart = dp(4f)
+            tabs.addView(tab, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(TAB_DP)).apply {
+                marginEnd = dp(4f)
             })
             if (selected) tabScroll.post { tabScroll.requestChildRectangleOnScreen(tabs, android.graphics.Rect(tab.left, 0, tab.right, tab.height), false) }
         }
@@ -442,7 +463,11 @@ internal class AsideRegion(private val activity: LxAppActivity, private val host
             set(value) { field = value; invalidate() }
         var stroke = Color.LTGRAY
             set(value) { field = value; invalidate() }
+        var pressedFill = Color.LTGRAY
+            set(value) { field = value; invalidate() }
         private var pressed = false
+        private val corners = android.graphics.CornerPathEffect(density * 3f)
+        private val chevron = Path()
         private var downX = 0f
         private val paint = Paint(Paint.ANTI_ALIAS_FLAG)
         private val path = Path()
@@ -471,6 +496,8 @@ internal class AsideRegion(private val activity: LxAppActivity, private val host
         }
 
         override fun onDraw(canvas: Canvas) {
+            // The long side lies on the edge it came from; the slopes and the short side face
+            // the main, which is where it pulls out to.
             val outer = width.toFloat()
             val inner = outer - dp(TONGUE_W_DP)
             val top = (height - dp(TONGUE_H_DP)) / 2f
@@ -481,24 +508,32 @@ internal class AsideRegion(private val activity: LxAppActivity, private val host
             path.lineTo(inner, top + slope)
             path.lineTo(inner, bottom - slope)
             path.lineTo(outer, bottom)
-            path.close()
-            // Over arbitrary page content it needs its own ground to read.
+            paint.pathEffect = corners
             paint.style = Paint.Style.FILL
-            paint.color = fill
-            paint.setShadowLayer(dp(3f).toFloat(), 0f, 0f, Color.argb(48, 0, 0, 0))
+            paint.color = if (pressed) pressedFill else fill
+            paint.setShadowLayer(dp(4f).toFloat(), -density, 0f, Color.argb(40, 0, 0, 0))
             canvas.drawPath(path, paint)
             paint.clearShadowLayer()
             paint.style = Paint.Style.STROKE
-            paint.strokeWidth = density
+            paint.strokeWidth = density * 0.75f
             paint.color = stroke
             canvas.drawPath(path, paint)
-            paint.style = Paint.Style.FILL
+            paint.pathEffect = null
+
+            val cx = (inner + outer) / 2f
+            val cy = height / 2f
+            val reach = dp(2.5f).toFloat()
+            val half = dp(4f).toFloat()
+            paint.strokeWidth = density * 1.6f
+            paint.strokeCap = Paint.Cap.ROUND
+            paint.strokeJoin = Paint.Join.ROUND
             paint.color = color
-            paint.alpha = if (pressed) 200 else 120
-            val gx = (inner + outer) / 2f
-            val gh = dp(TONGUE_H_DP - 2 * TONGUE_SLOPE_DP - 16f) / 2f
-            val gw = density * 1.5f
-            canvas.drawRoundRect(gx - gw, height / 2f - gh, gx + gw, height / 2f + gh, gw, gw, paint)
+            paint.alpha = if (pressed) 255 else 190
+            chevron.reset()
+            chevron.moveTo(cx + reach, cy - half)
+            chevron.lineTo(cx - reach, cy)
+            chevron.lineTo(cx + reach, cy + half)
+            canvas.drawPath(chevron, paint)
         }
     }
 
@@ -508,9 +543,11 @@ internal class AsideRegion(private val activity: LxAppActivity, private val host
         private const val DEFAULT_RATIO = 0.5f
         private const val SNAP_DP = 24f
         private const val DIVIDER_HIT_DP = 24f
-        private const val TONGUE_W_DP = 12f
-        private const val TONGUE_H_DP = 56f
-        private const val TONGUE_SLOPE_DP = 8f
+        private const val TONGUE_W_DP = 14f
+        private const val TONGUE_H_DP = 64f
+        private const val TONGUE_SLOPE_DP = 10f
+        private const val CONTROL_DP = 36f
+        private const val TAB_DP = 32f
         private const val PULL_DP = 16f
         private const val TONGUE_HIT_W_DP = 28f
         private const val TONGUE_HIT_H_DP = 88f
