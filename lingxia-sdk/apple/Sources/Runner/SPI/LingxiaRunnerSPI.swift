@@ -442,6 +442,8 @@ import WebKit
 
         public static func attach(_ view: NSView, to container: NSView) {
             guard let view = view as? GpuPageView else { return }
+            // Surfaces find the phone's screen from here, as from a WebView page's container.
+            LxAppSurface.hostAnchorView = container
             GpuPageMount.attach(view, to: container)
         }
 
