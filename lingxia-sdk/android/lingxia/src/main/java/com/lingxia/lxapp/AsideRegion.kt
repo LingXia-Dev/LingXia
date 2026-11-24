@@ -298,16 +298,52 @@ internal class AsideRegion(private val activity: LxAppActivity, private val host
         placeEar()
     }
 
-    /** Beside a tab column, not over it; the column can refit after the region lays out. */
+    /**
+     * Beside a tab column, not over it; the column can refit after the region lays out. Flush with
+     * the edge at the clear position nearest the middle, else centred and inset past the cutout.
+     */
     fun placeEar() {
         val lp = ear.layoutParams as FrameLayout.LayoutParams
-        val right = activity.mainPane.trailingColumnWidth()
+        val column = activity.mainPane.trailingColumnWidth()
         val width = dp(if (ear.count > 1) TONGUE_HIT_W_COUNT_DP else TONGUE_HIT_W_DP)
-        if (lp.rightMargin != right || lp.width != width) {
+        val edge = rightEdge()
+        val offset = TonguePlacement.place(
+            host.height.toFloat(), edge.blocked, (edge.top + dp(BAR_RESERVE_DP)).toFloat(), (edge.bottom + dp(BAR_RESERVE_DP)).toFloat(),
+            dp(TONGUE_HIT_H_DP).toFloat(), dp(TONGUE_MARGIN_DP).toFloat())
+        val right = column + if (offset == null) edge.inset else 0
+        val gravity = Gravity.END or if (offset == null) Gravity.CENTER_VERTICAL else Gravity.TOP
+        val top = offset?.toInt() ?: 0
+        if (lp.rightMargin != right || lp.width != width || lp.gravity != gravity || lp.topMargin != top) {
             lp.rightMargin = right
             lp.width = width
+            lp.gravity = gravity
+            lp.topMargin = top
             ear.layoutParams = lp
         }
+    }
+
+    private class RightEdge(val blocked: List<Pair<Float, Float>>, val top: Int, val bottom: Int, val inset: Int)
+
+    /** What covers the host's right edge, in host pixels, from the window's cutout and system bars. */
+    private fun rightEdge(): RightEdge {
+        val insets = host.rootWindowInsets ?: return RightEdge(emptyList(), 0, 0, 0)
+        val bars = androidx.core.view.WindowInsetsCompat.toWindowInsetsCompat(insets, host)
+            .getInsets(androidx.core.view.WindowInsetsCompat.Type.systemBars())
+        val origin = IntArray(2).also { host.getLocationInWindow(it) }
+        val reachesRight = origin[0] + host.width >= host.rootView.width
+        if (!reachesRight) return RightEdge(emptyList(), bars.top, bars.bottom, 0)
+        val blocked = mutableListOf<Pair<Float, Float>>()
+        var inset = bars.right
+        // A side navigation bar takes the whole edge.
+        if (bars.right > 0) blocked += 0f to host.height.toFloat()
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
+            insets.displayCutout?.let { cutout ->
+                val rect = cutout.boundingRectRight
+                if (!rect.isEmpty) blocked += (rect.top - origin[1]).toFloat() to (rect.bottom - origin[1]).toFloat()
+                inset = maxOf(inset, cutout.safeInsetRight)
+            }
+        }
+        return RightEdge(blocked, maxOf(0, bars.top - origin[1]), bars.bottom, inset)
     }
 
     /**
@@ -508,7 +544,7 @@ internal class AsideRegion(private val activity: LxAppActivity, private val host
         }
         private var pressed = false
         private val corners = android.graphics.CornerPathEffect(density * 3f)
-        private val chevron = Path()
+        private val arrow = context.getDrawable(R.drawable.icon_aside_expand)!!.mutate()
         private var downX = 0f
         private val paint = Paint(Paint.ANTI_ALIAS_FLAG)
         private val path = Path()
@@ -572,18 +608,11 @@ internal class AsideRegion(private val activity: LxAppActivity, private val host
             val cx = (inner + outer) / 2f
             // With a count the chevron rises and the number sits under it.
             val cy = height / 2f - if (count > 1) dp(7f) else 0
-            val reach = dp(2.5f).toFloat()
-            val half = dp(4f).toFloat()
-            paint.strokeWidth = density * 1.6f
-            paint.strokeCap = Paint.Cap.ROUND
-            paint.strokeJoin = Paint.Join.ROUND
-            paint.color = color
-            paint.alpha = if (pressed) 255 else 190
-            chevron.reset()
-            chevron.moveTo(cx + reach, cy - half)
-            chevron.lineTo(cx - reach, cy)
-            chevron.lineTo(cx + reach, cy + half)
-            canvas.drawPath(chevron, paint)
+            val half = dp(TONGUE_ICON_DP) / 2
+            arrow.setBounds((cx - half).toInt(), (cy - half).toInt(), (cx + half).toInt(), (cy + half).toInt())
+            arrow.setTint(color)
+            arrow.alpha = if (pressed) 255 else 190
+            arrow.draw(canvas)
             if (count > 1) {
                 digits.color = color
                 val label = if (count > 9) "9+" else count.toString()
@@ -604,11 +633,15 @@ internal class AsideRegion(private val activity: LxAppActivity, private val host
         private const val TONGUE_HIT_W_COUNT_DP = 32f
         private const val TONGUE_H_DP = 64f
         private const val TONGUE_SLOPE_DP = 10f
+        private const val TONGUE_ICON_DP = 18f
         private const val CONTROL_DP = 36f
         private const val TAB_DP = 32f
         private const val PULL_DP = 16f
         private const val TONGUE_HIT_W_DP = 28f
         private const val TONGUE_HIT_H_DP = 88f
+        /** What a page's navigation or tab bar may take at either end of the edge, kept from the tongue. */
+        private const val BAR_RESERVE_DP = 56f
+        private const val TONGUE_MARGIN_DP = 8f
         private const val PREFS = "lingxia_aside"
         private const val PREF_RATIO = "dock_ratio"
     }
