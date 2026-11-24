@@ -784,6 +784,23 @@ test('UI_PERF row layers stay on for a prop the row computes and for a spread', 
   assert.deepEqual(await rowLayers(['<Chip flat {...{ flat: i === "a" }} />']), ['backdrop-blur-sm']);
 });
 
+test('UI_PERF ignores transparent and state-variant row opacity and warns on partial opacity', async () => {
+  assert.deepEqual(await rowLayers([
+    '<view className="opacity-0" />',
+    '<view className="sr-only" />',
+    '<view className="hover:opacity-0 dark:opacity-0 motion-safe:opacity-0" />',
+    '<view className="dark:sr-only motion-safe:sr-only" />',
+    '<view className="opacity-0 hover:opacity-60" />',
+    '<view style={{ opacity: 0 }} />',
+    '<view style={{ opacity: 1 }} />',
+  ]), []);
+  assert.deepEqual(await rowLayers([
+    '<view className="opacity-40" />',
+    '<view className="opacity-[0.3]" />',
+    '<view style={{ opacity: 0.4 }} />',
+  ]), ['opacity', 'opacity-40', 'opacity-[0.3]']);
+});
+
 test('UI_STYLE_STATIC warns on a style object of fixed values only; computed and style-only values stay quiet', async () => {
   await project({
     'page.tsx': `import { useView } from '@lingxia/view';

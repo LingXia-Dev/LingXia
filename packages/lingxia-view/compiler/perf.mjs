@@ -276,7 +276,7 @@ export async function perfWarnings(root, files, checker, rulesByName) {
           perRow.add(`${at(piece.node)}: UI_PERF: ${cls} composites a layer for every row; apply it once to the container, or use a translucent colour`);
     if (name === 'style' && expression && ts.isObjectLiteralExpression(expression))
       for (const prop of expression.properties)
-        if (ts.isPropertyAssignment(prop) && prop.name.getText().replace(/['"]/g, '') === 'opacity' && ts.isNumericLiteral(prop.initializer) && Number(prop.initializer.text) < 1)
+        if (ts.isPropertyAssignment(prop) && prop.name.getText().replace(/['"]/g, '') === 'opacity' && ts.isNumericLiteral(prop.initializer) && Number(prop.initializer.text) > 0 && Number(prop.initializer.text) < 1)
           perRow.add(`${at(prop)}: UI_PERF: opacity composites a layer for every row; apply it once to the container, or use a translucent colour`);
   });
   const images = [];
