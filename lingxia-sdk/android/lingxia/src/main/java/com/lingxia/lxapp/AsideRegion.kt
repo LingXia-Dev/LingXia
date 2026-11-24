@@ -257,7 +257,9 @@ internal class AsideRegion(private val activity: LxAppActivity, private val host
             view.layoutParams = this
         }
         // The region starts below the status bar; docked, the bar over it continues the main's band.
-        view.setPadding(0, status, 0, 0)
+        // Its fill runs under the side and bottom system bars and a cutout; its strip and pages stay clear.
+        val edges = barEdges()
+        view.setPadding(edges.left, status, edges.right, edges.bottom)
         view.setBackgroundColor(if (over) palette.surface else activity.mainPane.statusBandColor())
         view.elevation = if (over) dp(8f).toFloat() else 0f
         strip.setBackgroundColor(palette.surface)
@@ -320,6 +322,21 @@ internal class AsideRegion(private val activity: LxAppActivity, private val host
             lp.topMargin = top
             ear.layoutParams = lp
         }
+    }
+
+    /** The system bars and cutout over the host's left, right and bottom edges, where the host reaches them. */
+    private fun barEdges(): android.graphics.Rect {
+        val edges = android.graphics.Rect()
+        val insets = host.rootWindowInsets ?: return edges
+        val compat = androidx.core.view.WindowInsetsCompat.toWindowInsetsCompat(insets, host)
+        val bars = compat.getInsets(
+            androidx.core.view.WindowInsetsCompat.Type.systemBars() or androidx.core.view.WindowInsetsCompat.Type.displayCutout())
+        val origin = IntArray(2).also { host.getLocationInWindow(it) }
+        val root = host.rootView
+        if (origin[0] <= 0) edges.left = bars.left
+        if (origin[0] + host.width >= root.width) edges.right = bars.right
+        if (origin[1] + host.height >= root.height) edges.bottom = bars.bottom
+        return edges
     }
 
     private class RightEdge(val blocked: List<Pair<Float, Float>>, val top: Int, val bottom: Int, val inset: Int)
