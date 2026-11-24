@@ -24,6 +24,15 @@ const TONGUE_HIT_W_VP = 28;
 const TONGUE_HIT_W_COUNT_VP = 32;
 const TONGUE_HIT_H_VP = 88;
 const PULL_VP = 16;
+const STRIP_PAD_START_VP = 8;
+const STRIP_PAD_END_VP = 6;
+const CHIP_GAP_VP = 4;
+/** Globe, gaps, a few glyphs of title and the close: below this a chip says nothing. */
+const CHIP_MIN_VP = 96;
+/** Android's widest natural chip: a 120-vp title with its globe and close. */
+const CHIP_MAX_VP = 186;
+/** Narrower than this, a chip that is not selected gives its close's room to the title. */
+const CHIP_CLOSE_MIN_VP = 140;
 const TONGUE_ICON_VP = 18;
 const DEFAULT_ACCENT = 'rgba(22,119,255,1)';
 
@@ -481,10 +490,12 @@ export class AsideRegionModel {
 /** The region's chrome: the panel's backing and strip, the docked divider, and the tongue. */
 @Component
 export struct AsideRegion {
-  @StorageProp('lxAsideState') state: AsideState = emptyState();
+  @StorageProp('lxAsideState') @Watch('revealActive') state: AsideState = emptyState();
   /** The divider is its own layer above the panel's content, so its whole grip takes a drag. */
   @Prop dividerOnly: boolean = false;
   private dividerDragging: boolean = false;
+  private chipScroller: Scroller = new Scroller();
+  private revealed: string = '';
   private areaWidth: number = 0;
   private areaHeight: number = 0;
   private areaTop: number = 0;
@@ -506,6 +517,42 @@ export struct AsideRegion {
     }).catch((error: Error) => {
       hilog.warn(DOMAIN, TAG, `no window avoid area: ${error}`);
     });
+  }
+
+  /** The strip's width left of its controls, which the chips share. */
+  private chipRoom(): number {
+    const controls = CONTROL_VP * (this.state.maximizeVisible ? 2 : 1);
+    return this.state.panelWidth - STRIP_PAD_START_VP - STRIP_PAD_END_VP - controls;
+  }
+
+  /** How many whole chips the room holds at the minimum width. */
+  private chipsInView(): number {
+    return Math.max(1, Math.floor((this.chipRoom() + CHIP_GAP_VP) / (CHIP_MIN_VP + CHIP_GAP_VP)));
+  }
+
+  /**
+   * An equal share of the room up to Android's natural width. When the chips do not fit, they
+   * are sized so a whole number fills the room, and scrolling snaps to them: no chip is cut.
+   */
+  private chipWidth(): number {
+    const count = Math.max(1, this.state.tabs.length);
+    const shown = Math.min(count, this.chipsInView());
+    const share = (this.chipRoom() - CHIP_GAP_VP * (shown - 1)) / shown;
+    return count > shown ? share : Math.min(CHIP_MAX_VP, share);
+  }
+
+  /** When the chips scroll, keeps the selected one, and so its close, in view. */
+  revealActive(): void {
+    const count = this.state.tabs.length;
+    const index = this.state.tabs.findIndex((tab: AsideTab) => tab.id === this.state.active);
+    const key = `${this.state.active}:${count}:${this.state.panelWidth}`;
+    if (count < 2 || index < 0 || key === this.revealed) {
+      return;
+    }
+    this.revealed = key;
+    const shown = this.chipsInView();
+    const first = Math.max(0, Math.min(count - shown, index - Math.floor(shown / 2)));
+    this.chipScroller.scrollTo({ xOffset: first * (this.chipWidth() + CHIP_GAP_VP), yOffset: 0 });
   }
 
   aboutToAppear(): void {
@@ -574,8 +621,8 @@ export struct AsideRegion {
         if (this.state.tabs.length === 1) {
           this.HeaderTab(this.state.tabs[0])
         } else {
-          Scroll() {
-            Row({ space: 4 }) {
+          Scroll(this.chipScroller) {
+            Row({ space: CHIP_GAP_VP }) {
               ForEach(this.state.tabs, (tab: AsideTab) => {
                 this.TabChip(tab)
               }, (tab: AsideTab) => `${tab.id}:${tab.title}:${tab.id === this.state.active}`)
@@ -585,8 +632,13 @@ export struct AsideRegion {
           }
           .scrollable(ScrollDirection.Horizontal)
           .scrollBar(BarState.Off)
+          .scrollSnap({ snapAlign: ScrollSnapAlign.START, snapPagination: this.chipWidth() + CHIP_GAP_VP })
           .layoutWeight(1)
           .height('100%')
+          .onAppear(() => {
+            this.revealed = '';
+            setTimeout(() => this.revealActive(), 0);
+          })
         }
         if (this.state.maximizeVisible) {
           this.ControlIcon(
@@ -600,7 +652,7 @@ export struct AsideRegion {
       }
       .width('100%')
       .height(STRIP_VP)
-      .padding({ left: 8, right: 6 })
+      .padding({ left: STRIP_PAD_START_VP, right: STRIP_PAD_END_VP })
       .alignItems(VerticalAlign.Center)
       .border({ width: { bottom: 0.5 }, color: { bottom: asidePalette(this.state.dark).line } })
     }
@@ -646,11 +698,14 @@ export struct AsideRegion {
         .fontColor(tab.id === this.state.active ? asidePalette(this.state.dark).title : asidePalette(this.state.dark).muted)
         .maxLines(1)
         .textOverflow({ overflow: TextOverflow.Ellipsis })
-        .constraintSize({ maxWidth: 120 })
-      this.CloseButton(tab.id, tab.id === this.state.active)
+        .layoutWeight(1)
+      if (tab.id === this.state.active || this.chipWidth() >= CHIP_CLOSE_MIN_VP) {
+        this.CloseButton(tab.id, tab.id === this.state.active)
+      }
     }
+    .width(this.chipWidth())
+    .padding({ left: 10, right: tab.id === this.state.active || this.chipWidth() >= CHIP_CLOSE_MIN_VP ? 0 : 10 })
     .height(TAB_VP)
-    .padding({ left: 10 })
     .borderRadius(8)
     .backgroundColor(tab.id === this.state.active ? asidePalette(this.state.dark).chip : Color.Transparent)
     .alignItems(VerticalAlign.Center)
