@@ -550,6 +550,11 @@ jobs:
       - name: Verify the showcase native lockfile matches its manifest
         run: cargo metadata --locked --format-version 1 --manifest-path examples/lingxia-showcase/native/Cargo.toml > /dev/null
 
+      # Cargo reads [patch] only from the workspace root it builds, so each nested workspace
+      # carries a copy of the root's rong patch block.
+      - name: Verify nested workspaces carry the root's rong patch
+        run: node scripts/ci/rong-patch.mjs
+
       # docs/internal/crate-layout.md: a crate depends only on its own layer
       # or below, and every crate under crates/ has a layer.
       - name: Verify crate layers
