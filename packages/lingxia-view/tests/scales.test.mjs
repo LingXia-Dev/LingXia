@@ -1,4 +1,5 @@
 import { test } from 'node:test';
+import { readFileSync } from 'node:fs';
 import assert from 'node:assert/strict';
 import { h, prepare, commit, reset } from '../src/internal.js';
 import { compileUtilities } from '../compiler/tailwind.mjs';
@@ -24,6 +25,14 @@ test('theme steps compile to [slot, times, plus] references; literals stay numbe
   assert.equal(rules['p-[13px]'].style.paddingTop, 13, 'a literal does not follow the pack');
   assert.equal(rules['w-1/2'].style.width, '50%');
   assert.equal(rules['rounded-full'].style.borderRadius, 16384);
+});
+
+test('Liuli\'s token names lower to steps of the pack, not to numbers', async () => {
+  const liuli = readFileSync(new URL('../../liuli/core/tokens.css', import.meta.url), 'utf8');
+  const rules = Object.fromEntries((await compileUtilities(new Set(['min-h-control-md', 'size-control-sm', 'rounded-control']), liuli)).map(rule => [rule.name, rule]));
+  assert.deepEqual(rules['min-h-control-md'].style.minHeight, step('space', 10));
+  assert.deepEqual(rules['size-control-sm'].style.width, step('space', 8));
+  assert.deepEqual(rules['rounded-control'].style.borderRadius, step('radius.lg'));
 });
 
 test('em follows the text on padding, margin, gap and inset too, keeping a margin\'s sign', async () => {
