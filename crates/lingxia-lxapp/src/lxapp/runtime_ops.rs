@@ -242,6 +242,7 @@ pub fn close_lxapp(appid: &str) -> Result<(), LxAppError> {
     }
     app.shutdown()?;
     app.complete_programmatic_close(session_id);
+    app.close_window_surfaces(CloseReason::Programmatic);
     Ok(())
 }
 

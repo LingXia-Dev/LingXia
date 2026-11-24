@@ -3411,8 +3411,14 @@ impl LxApp {
     /// A runtime-driven shutdown leaves the platform no close gesture to report,
     /// so drop this app's switcher rows and asides before it goes away.
     pub(crate) fn close_window_surfaces_for_shutdown(&self) -> Vec<String> {
+        self.close_window_surfaces(CloseReason::AppClosed)
+    }
+
+    /// Drop this app's switcher rows and asides, as a user's close does, so a
+    /// later open presents a fresh surface instead of re-activating a dead one.
+    pub(crate) fn close_window_surfaces(&self, reason: CloseReason) -> Vec<String> {
         window_controller(PRIMARY_WINDOW, &self.runtime)
-            .close_surfaces_presenting(&self.appid, close_reason_str(CloseReason::AppClosed))
+            .close_surfaces_presenting(&self.appid, close_reason_str(reason))
     }
 
     pub fn forget_surface(&self, id: &str) -> bool {
@@ -4578,6 +4584,60 @@ mod tests {
             action: lingxia_shell::SurfaceMenuAction::Switcher { action },
             value: None,
         }
+    }
+
+    #[test]
+    fn a_programmatic_close_forgets_the_apps_window_surface() {
+        #[cfg(target_vendor = "apple")]
+        let _host = crate::apple_host_stubs::headless_lifecycle();
+        let root = tempfile::tempdir().unwrap();
+        let platform = Arc::new(
+            Platform::new(
+                root.path().join("data").display().to_string(),
+                root.path().join("cache").display().to_string(),
+                "en-US".to_string(),
+            )
+            .unwrap(),
+        );
+        let appid = format!("app.lingxia.close-forgets.{}", uuid::Uuid::new_v4());
+        register_synthetic_lxapp(&appid);
+        let app = Arc::new(
+            LxApp::new_with_session_class_for_test(
+                appid.clone(),
+                platform.clone(),
+                crate::appservice::LxAppWorkers::init(1),
+                AppSessionClass::StandardApp,
+            )
+            .unwrap(),
+        );
+        let controller = window_controller(PRIMARY_WINDOW, &platform);
+        {
+            let mut manager = controller.manager.lock().unwrap();
+            let home = format!("{appid}.home");
+            manager.open(lingxia_surface::Surface::lxapp(
+                home.as_str(),
+                lingxia_surface::Role::Main,
+                home.as_str(),
+            ));
+            manager.open(lingxia_surface::Surface::lxapp(
+                appid.as_str(),
+                lingxia_surface::Role::Main,
+                appid.as_str(),
+            ));
+        }
+
+        let removed = app.close_window_surfaces(CloseReason::Programmatic);
+
+        assert_eq!(removed, [appid.as_str()]);
+        assert!(
+            controller
+                .manager
+                .lock()
+                .unwrap()
+                .graph()
+                .get(&appid)
+                .is_none()
+        );
     }
 
     #[test]

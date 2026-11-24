@@ -1929,10 +1929,8 @@ fn lxapp_surface_handle(
                 }
                 lxapp::close_lxapp(&id)
                     .map_err(|err| surface_error(SurfaceErrorCode::Failed, err.to_string()))?;
-                // Closing the provider alone leaves a dead main/aside node in
-                // the window graph. Remove that shell identity as part of the
-                // same operation so the successor and every retained handle
-                // converge before the promise resolves.
+                // `close_lxapp` drops the window node; the shell still holds the
+                // surface record, so forget it before the promise resolves.
                 let _ = shell.forget_surface_with_reason(&surface_id, "programmatic");
                 emit_lxapp_handle_close(&handle, "programmatic")?;
                 let _ = notify_surface_closed(&surface_id, "programmatic");
