@@ -557,7 +557,7 @@ fn run_watch(
                     if let Some(root) = root {
                         type_checks.schedule(&app_id, &root.path);
                     }
-                    if reload_one(&state, &app_id, &options) == Reload::Deferred {
+                    if reload_one(&state, &app_id, &options, waited) == Reload::Deferred {
                         // A run started while it rebuilt: restart once it ends.
                         dirty.insert(app_id);
                         deferred = true;
@@ -736,16 +736,50 @@ enum Reload {
     Deferred,
 }
 
-fn reload_one(state: &DevServerState, app_id: &str, options: &LxAppWatchOptions) -> Reload {
+/// Where a full reload's time went, from the first save to the restart request.
+struct ReloadTimes {
+    waited: Duration,
+    build: Duration,
+    restart: Duration,
+}
+
+impl std::fmt::Display for ReloadTimes {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "{} ms (edit settled {} ms, build {} ms, restart request {} ms)",
+            (self.waited + self.build + self.restart).as_millis(),
+            self.waited.as_millis(),
+            self.build.as_millis(),
+            self.restart.as_millis()
+        )
+    }
+}
+
+fn reload_one(
+    state: &DevServerState,
+    app_id: &str,
+    options: &LxAppWatchOptions,
+    waited: Duration,
+) -> Reload {
     println!("  {} rebuilding {}...", "↻".cyan(), app_id.cyan());
+    let started = std::time::Instant::now();
     if let Err(err) = state.rebuild_lxapp(app_id, options.release) {
         eprintln!("  {} auto-reload {app_id} failed: {err:#}", "✗".red());
         return Reload::Done;
     }
     state.recheck_view_wire();
-    match state.restart_lxapp(app_id) {
+    let build = started.elapsed();
+    let outcome = state.restart_lxapp(app_id);
+    let times = ReloadTimes {
+        waited,
+        build,
+        restart: started.elapsed() - build,
+    };
+    match outcome {
         Ok(RestartOutcome::Restarted) => {
-            println!("  {} reloaded {}", "✓".green(), app_id.cyan());
+            // The restart itself runs in the app after this; its log shows the reopen.
+            println!("  {} reloaded {} in {times}", "✓".green(), app_id.cyan());
         }
         Ok(RestartOutcome::NotConnected) => {
             println!(
@@ -905,6 +939,19 @@ mod tests {
                 app_id: "chat".into(),
                 path: temp.path().to_path_buf(),
             }]
+        );
+    }
+
+    #[test]
+    fn a_reload_names_each_phase_and_their_sum() {
+        let times = ReloadTimes {
+            waited: Duration::from_millis(400),
+            build: Duration::from_millis(1520),
+            restart: Duration::from_millis(31),
+        };
+        assert_eq!(
+            times.to_string(),
+            "1951 ms (edit settled 400 ms, build 1520 ms, restart request 31 ms)"
         );
     }
 
