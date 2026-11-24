@@ -147,8 +147,6 @@ pub(crate) fn register_builtin_assets(authority: &lxapp::NativeControlPlaneAutho
 pub(crate) fn warmup() {
     #[cfg(feature = "browser-shell")]
     shell::warmup();
-    #[cfg(all(feature = "browser-runtime", not(feature = "browser-shell")))]
-    runtime::warmup();
 }
 
 #[cfg(all(test, feature = "browser-shell"))]

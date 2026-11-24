@@ -390,6 +390,12 @@ fn lxapp_bundle_source_for(appid: &str) -> Option<LxAppBundleSource> {
         .and_then(|guard| guard.get(appid).cloned())
 }
 
+/// Whether `appid` is a host-shipped bundle (its assets or its dev-served
+/// package), i.e. may run as a `ControlSurface`.
+pub fn is_host_bundled_lxapp(appid: &str) -> bool {
+    control_surface_bundle_source_allowed(lxapp_bundle_source_for(appid).as_ref())
+}
+
 /// A control surface must come from the host itself: its bundled assets, or
 /// the dev-served bundle of that same package. Installed, downloaded, and
 /// synthetic sources never qualify.

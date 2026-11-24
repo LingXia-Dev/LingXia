@@ -59,7 +59,6 @@ pub use lxapp::LxApp;
 pub use lxapp::host;
 pub use panel::{open_panel_lxapp, panel_item_for_id, panels_config_json};
 use serde::Deserialize;
-use std::collections::BTreeMap;
 use std::io::Read;
 
 const BROWSER_WEBUI_MANIFEST_ASSET_PATH: &str = "app.lingxia.browser/lxapp.json";
@@ -71,16 +70,6 @@ struct BrowserWebUiManifest {
     app_id: String,
     #[serde(default)]
     version: Option<String>,
-    #[serde(rename = "controlProtocolVersion")]
-    control_protocol_version: u32,
-    #[serde(default)]
-    pages: Vec<BrowserWebUiPage>,
-}
-
-#[derive(Debug, Deserialize)]
-struct BrowserWebUiPage {
-    name: String,
-    path: String,
 }
 
 fn parse_browser_webui_manifest(manifest_json: &str) -> Result<BrowserWebUiManifest, LxAppError> {
@@ -95,23 +84,7 @@ fn parse_browser_webui_manifest(manifest_json: &str) -> Result<BrowserWebUiManif
             manifest.app_id
         )));
     }
-    if manifest.control_protocol_version != lingxia_browser::CONTROL_PROTOCOL_VERSION {
-        return Err(LxAppError::InvalidJsonFile(format!(
-            "{}: controlProtocolVersion must be {}, got {}",
-            BROWSER_WEBUI_MANIFEST_ASSET_PATH,
-            lingxia_browser::CONTROL_PROTOCOL_VERSION,
-            manifest.control_protocol_version
-        )));
-    }
     Ok(manifest)
-}
-
-fn parse_internal_pages(manifest_json: &str) -> Result<BTreeMap<String, String>, LxAppError> {
-    Ok(parse_browser_webui_manifest(manifest_json)?
-        .pages
-        .into_iter()
-        .map(|page| (page.name, page.path))
-        .collect())
 }
 
 fn read_browser_asset_text(asset_path: &str) -> Result<String, LxAppError> {
@@ -128,11 +101,6 @@ fn read_browser_asset_text(asset_path: &str) -> Result<String, LxAppError> {
         .read_to_string(&mut content)
         .map_err(|err| LxAppError::IoError(format!("failed to read {}: {}", asset_path, err)))?;
     Ok(content)
-}
-
-fn bundled_internal_pages() -> Result<BTreeMap<String, String>, LxAppError> {
-    let manifest = read_browser_asset_text(BROWSER_WEBUI_MANIFEST_ASSET_PATH)?;
-    parse_internal_pages(&manifest)
 }
 
 pub(crate) fn bundled_webui_version() -> Option<String> {
@@ -176,8 +144,10 @@ pub fn register_runtime() {
 
 #[doc(hidden)]
 pub fn register_bundled_assets(native_authority: &lxapp::NativeControlPlaneAuthority) {
-    match bundled_internal_pages() {
-        Ok(_pages) => {
+    match read_browser_asset_text(BROWSER_WEBUI_MANIFEST_ASSET_PATH)
+        .and_then(|manifest| parse_browser_webui_manifest(&manifest))
+    {
+        Ok(_) => {
             // app.lingxia.browser is a host-bundled ControlSurface lxapp (GPU View + Rust Logic).
             lxapp::register_builtin_asset_bundle(lingxia_browser::BUILTIN_BROWSER_APPID);
         }
@@ -205,8 +175,8 @@ pub fn register_bundled_assets(native_authority: &lxapp::NativeControlPlaneAutho
             );
         }
     }
-    if let Err(err) = lingxia_browser::seal_control_registration(native_authority) {
-        panic!("failed to seal browser control registration: {err}");
+    if let Err(err) = lingxia_browser::seal_document_scripts(native_authority) {
+        panic!("failed to seal browser document scripts: {err}");
     }
 }
 
@@ -214,80 +184,21 @@ pub fn register_bundled_assets(native_authority: &lxapp::NativeControlPlaneAutho
 pub fn warmup() {
     #[cfg(all(any(target_os = "macos", target_os = "windows"), feature = "proxy"))]
     proxy::warmup();
-    lingxia_browser::warmup();
 }
 
 #[cfg(test)]
 mod tests {
-    use super::parse_internal_pages;
+    use super::parse_browser_webui_manifest;
 
     #[test]
-    fn parses_named_internal_pages_manifest() {
-        let pages = parse_internal_pages(
-            r#"{
-                "appId": "app.lingxia.browser",
-                "controlProtocolVersion": 3,
-                "pages": [
-                    { "name": "newtab", "path": "pages/newtab/index.html" },
-                    { "name": "history", "path": "pages/history/index.html" },
-                    { "name": "downloads", "path": "pages/downloads/index.html" },
-                    { "name": "settings", "path": "pages/settings/index.html" }
-                ]
-            }"#,
-        )
-        .expect("manifest should parse");
-        assert_eq!(
-            pages.get("newtab").map(String::as_str),
-            Some("pages/newtab/index.html")
-        );
-        assert_eq!(
-            pages.get("history").map(String::as_str),
-            Some("pages/history/index.html")
-        );
-        assert_eq!(
-            pages.get("downloads").map(String::as_str),
-            Some("pages/downloads/index.html")
-        );
-        assert_eq!(
-            pages.get("settings").map(String::as_str),
-            Some("pages/settings/index.html")
-        );
-    }
-
-    #[test]
-    fn rejects_legacy_ordered_pages_manifest() {
-        assert!(
-            parse_internal_pages(
-                r#"{
-                    "appId": "app.lingxia.browser",
-                    "controlProtocolVersion": 3,
-                    "pages": ["pages/newtab/index.html"]
-                }"#
-            )
-            .is_err()
-        );
-    }
-
-    #[test]
-    fn rejects_missing_old_and_future_control_protocol_versions() {
-        for version in [None, Some(2), Some(4)] {
-            let version = version
-                .map(|version| format!(r#", "controlProtocolVersion": {version}"#))
-                .unwrap_or_default();
-            let manifest = format!(r#"{{"appId":"app.lingxia.browser"{version},"pages":[]}}"#);
-            let error = parse_internal_pages(&manifest).unwrap_err().to_string();
-            assert!(error.contains("controlProtocolVersion"), "{error}");
-        }
-    }
-
-    #[test]
-    fn rejects_non_browser_app_id_even_at_protocol_v3() {
-        let error = parse_internal_pages(
-            r#"{"appId":"example.fake","controlProtocolVersion":3,"pages":[]}"#,
-        )
-        .unwrap_err()
-        .to_string();
-        assert!(error.contains("appId"), "{error}");
+    fn rejects_non_browser_app_id() {
+        let error = parse_browser_webui_manifest(r#"{"appId":"example.fake"}"#)
+            .unwrap_err()
+            .to_string();
         assert!(error.contains("app.lingxia.browser"), "{error}");
+        let manifest =
+            parse_browser_webui_manifest(r#"{"appId":"app.lingxia.browser","version":"2.0.0"}"#)
+                .unwrap();
+        assert_eq!(manifest.version.as_deref(), Some("2.0.0"));
     }
 }

@@ -32,11 +32,6 @@ pub(crate) fn register_bundled_app_once() {
     REGISTERED.get_or_init(lingxia_browser::register_bundled_app);
 }
 
-#[cfg(all(feature = "browser-runtime", not(feature = "browser-shell")))]
-pub(crate) fn warmup() {
-    lingxia_browser::warmup();
-}
-
 #[cfg(any(target_os = "ios", target_os = "macos"))]
 pub(crate) fn open(url: &str, tab_id: Option<&str>) -> Result<String, lxapp::LxAppError> {
     #[cfg(feature = "browser-runtime")]

@@ -3,7 +3,6 @@
   "appName": "LingXia Browser",
   "version": "2.0.0",
   "minRuntime": "0.30.0",
-  "controlProtocolVersion": 3,
   "languages": [
     "en-US",
     "zh-CN"

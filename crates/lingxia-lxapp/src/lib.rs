@@ -107,7 +107,7 @@ pub use lxapp::{
     ResolvedPage, SceneId, ShellPresence, ShellPresentation, ShellSurfaceIdentity, SurfaceKind,
     SurfacePosition, SurfaceRole, UrlCallbackSurface, UrlCallbackWaitError,
     add_display_language_effective_listener, await_page_webview, await_page_webview_then,
-    block_lxapp_admission, bundled_lxapp_asset_available,
+    block_lxapp_admission, bundled_lxapp_asset_available, is_host_bundled_lxapp,
     clear_active_display_language_session_override, clear_display_language_session_override,
     close_lxapp,
     config::LxAppInfo,
