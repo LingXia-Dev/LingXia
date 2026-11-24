@@ -150,8 +150,8 @@ export function Month() {
 | scale | `<text>` | no | The top of the scale, a round number, above a hairline; shown when the bars carry no figures. |
 | value | `<text>` | no | A bar's value, written over it (under it, below zero). |
 | plot | `<view>` | yes | The box the marks and the slots share. |
-| drawing | `<vector>` | yes | The bars: every bar of a series is one outline, rounded on its free end; one drawing above zero and one below, and a fainter pair for bars that stepped back. Hidden from assistive tech. |
-| baseline | `<view>` | yes | The zero line, the chart's only rule. |
+| drawing | `<vector>` | yes | The bars: every bar of a series is one outline, rounded on its free end; both sides of zero in one drawing, and a fainter one for bars that stepped back. Hidden from assistive tech. |
+| baseline | `<view>` | yes | The zero line, the chart's only rule; it moves with the bars when new data shifts zero. |
 | slots | `<view>` | yes | The row of categories over the drawing; a list for assistive tech when the bars cannot be pressed. |
 | slot | `<button>` | yes | One category at full height: its name and values for assistive tech, its press target, and its figure when bars carry them. |
 | labels | `<view>` | no | Category names under the bars: as many as fit side by side, each under its bar. |
@@ -180,7 +180,7 @@ export function Month() {
 - A category's press target is its full-height slot, as wide as the plot divided by the number of categories: 41 px for seven bars at 360 pt, under 10 px for thirty. Past 36 categories the bars are not buttons.
 - With `onChange`, a finger dragged across the bars chooses each it passes, and a vertical drag that starts on the chart still scrolls the page. Past 36 categories the plot is one keyboard stop instead: a tap chooses the bar it lifts on, and Left and Right or a screen reader's adjust step through the categories.
 - The zero line is a quiet rule with no contrast minimum: the bars' own feet show where zero is.
-- A chart is one element per category and about a dozen more, whatever the number of bars; the bars themselves are two to four drawings.
+- A chart is one element per category and about a dozen more, whatever the number of bars; the bars themselves are one or two drawings.
 - Series in a group differ by colour and by position, and the legend lists them in the order drawn.
 
 | Contrast | Pair | Minimum | Light | Dark |

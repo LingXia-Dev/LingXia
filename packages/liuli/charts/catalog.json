@@ -226,9 +226,8 @@
         "scale": "text",
         "plot": "view",
         "marks": "view",
-        "region": "view",
-        "wrap": "view",
         "drawing": "vector",
+        "zero": "view",
         "baseline": "view",
         "slots": "view",
         "slot": "button",
@@ -372,7 +371,7 @@
           "A category's press target is its full-height slot, as wide as the plot divided by the number of categories: 41 px for seven bars at 360 pt, under 10 px for thirty. Past 36 categories the bars are not buttons.",
           "With `onChange`, a finger dragged across the bars chooses each it passes, and a vertical drag that starts on the chart still scrolls the page. Past 36 categories the plot is one keyboard stop instead: a tap chooses the bar it lifts on, and Left and Right or a screen reader's adjust step through the categories.",
           "The zero line is a quiet rule with no contrast minimum: the bars' own feet show where zero is.",
-          "A chart is one element per category and about a dozen more, whatever the number of bars; the bars themselves are two to four drawings.",
+          "A chart is one element per category and about a dozen more, whatever the number of bars; the bars themselves are one or two drawings.",
           "Series in a group differ by colour and by position, and the legend lists them in the order drawn."
         ]
       },

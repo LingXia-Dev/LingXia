@@ -218,17 +218,6 @@ export function reach(width: number, height: number, inset: number, foot: number
 }
 
 /**
- * Lengths in data units as shares a layout can take: parts of 1000, whole, finite and never
- * negative. A layout number is a small figure; a data value may be millions or thousandths, and
- * neither is a size the View accepts or divides well.
- */
-export function shares(...lengths: number[]): number[] {
-  const sizes = lengths.map(length => (Number.isFinite(length) && length > 0 ? length : 0));
-  const total = sizes.reduce((sum, size) => sum + size, 0);
-  return total > 0 ? sizes.map(size => Math.round((size / total) * 1000)) : sizes.map(() => 1);
-}
-
-/**
  * A scale for the values between `low` and `high`: ticks at round numbers about `target` apart
  * in count, inside a range that reaches a quarter of a step past the data at most, so the
  * plot is not left half empty under a round top.

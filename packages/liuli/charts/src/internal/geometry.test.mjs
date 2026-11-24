@@ -4,7 +4,7 @@ import { readFileSync } from 'node:fs';
 import { transform } from 'esbuild';
 
 const { code } = await transform(readFileSync(new URL('./geometry.ts', import.meta.url), 'utf8'), { loader: 'ts', format: 'esm' });
-const { niceTicks, shares, domain } = await import(`data:text/javascript;base64,${Buffer.from(code).toString('base64')}`);
+const { niceTicks, domain } = await import(`data:text/javascript;base64,${Buffer.from(code).toString('base64')}`);
 
 // What a layout accepts as a flex number: whole, finite, never negative, and small.
 const layoutNumber = value => Number.isInteger(value) && value >= 0 && value <= 16384;
@@ -60,11 +60,3 @@ test('niceTicks: a range that is not a number, or upside down, still gives a sca
   }
 });
 
-test('shares: any lengths become whole parts of 1000, never negative, never all zero', () => {
-  for (const lengths of [[50000, 100000], [0, 0], [-4, 9], [NaN, 3], [1e-9, 2e-9], [Infinity, 1], [0.3, 0.7, 0], [141200, 8800]]) {
-    const parts = shares(...lengths);
-    assert.equal(parts.length, lengths.length);
-    assert.ok(parts.every(layoutNumber) && parts.some(part => part > 0), `${lengths} gives ${parts}`);
-  }
-  assert.deepEqual(shares(141200, 8800), [941, 59]);
-});

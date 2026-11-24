@@ -3,12 +3,16 @@ import assert from 'node:assert/strict';
 import { defaultEnv, textOf } from '@lingxia/view/testing';
 import { laidOut, renderExample, renderPage } from '../testing/harness.mjs';
 
-/** A chart's drawings, in order: bars above zero, those stepped back, bars below zero, those stepped back. */
-const drawings = chart => find(chart, node => node.tag === 'vector' && node.props.grow === 1 && node.props.opacity !== undefined)
-  .map(node => ({ ...JSON.parse(node.props.vectorSource), opacity: node.props.opacity, wrap: node.parent.props, region: node.parent.parent.props }));
+/** A chart's drawings, in order: the bars, then those stepped back. */
+const drawings = chart => find(chart, node => node.tag === 'vector' && node.props.opacity !== undefined)
+  .map(node => ({ ...JSON.parse(node.props.vectorSource), opacity: node.props.opacity, marks: node.parent.props }));
 const find = (node, test) => (test(node) ? [node] : node.children.flatMap(child => find(child, test)));
-/** Each bar outline of a path as [x, top or bottom, width]. */
-const bars = d => [...d.matchAll(/M([\d.]+) (?:100|0)V([\d.]+)h([\d.]+)/g)].map(match => match.slice(1).map(Number));
+/** Each bar outline of a path as [x, free end, width]. */
+const bars = d => [...d.matchAll(/M([\d.]+) [\d.]+V([\d.]+)h([\d.]+)V[\d.]+/g)].map(match => match.slice(1).map(Number));
+/** Where each bar of a path stands: its zero line. */
+const feet = d => [...d.matchAll(/M[\d.]+ ([\d.]+)V/g)].map(match => Number(match[1]));
+/** The box that carries the zero line down the marks. */
+const zeroBox = chart => find(chart, node => node.props.position === 'absolute' && node.children.length === 1 && node.children[0].props.background === 'text/20')[0];
 const slots = chart => find(chart, node => (node.tag === 'button' || node.props.role === 'listitem') && /: /.test(node.props.accessibilityLabel ?? ''));
 /** How far down a box is moved, as a percentage of its own height, to two places. */
 const down = node => Math.round(Number.parseFloat(JSON.parse(node.props.transform).translate[1]) * 100) / 100;
@@ -23,7 +27,7 @@ const page = (props, rows) => `
 `;
 const many = (length, value = 'index + 1') => `Array.from({ length: ${length} }, (_, index) => ({ k: String(index), v: ${value}, w: ${length} - index }))`;
 
-test('Orders: all seven bars are one outline in one drawing; each bar runs from its value to the foot', async () => {
+test('Orders: all seven bars are one outline in one drawing; each bar runs from its value to the foot and is open there', async () => {
   const screen = laidOut(await renderExample('BarChart/BarChart', 'Orders'));
   const chart = screen.getByTestId('orders');
   const [up, ...rest] = drawings(chart);
@@ -37,10 +41,10 @@ test('Orders: all seven bars are one outline in one drawing; each bar runs from 
   assert.equal(drawn.length, 7);
   assert.deepEqual(drawn[4], [60.71, 0, 7.14], 'Friday, the highest, reaches the top; a bar is half its slot wide');
   assert.deepEqual(drawn[3].slice(0, 2), [46.43, 12.83], 'Thursday: 163 of 187');
-  // The drawing is 3 pt taller than its region at the zero line and starts 3 pt down, so the
-  // stroke that rounds each corner ends exactly at the value and is hidden at the foot.
-  assert.deepEqual([up.wrap.insetTop, up.wrap.insetBottom, up.wrap.paddingTop], [0, -3, 3]);
-  assert.equal(up.region.overflow, 'hidden');
+  assert.ok(feet(outline.d).every(foot => foot === 100) && !/Z/.test(outline.d), 'unclosed at the foot, so the stroke stops flat there');
+  assert.equal(outline.strokeLinecap, undefined, 'butt ends');
+  // The marks start 3 pt under the figures' line, so the stroke that rounds a free end ends exactly at the value.
+  assert.deepEqual([up.marks.insetTop, up.marks.insetBottom], [23, 0]);
 });
 
 test('Orders: each weekday is a button named by its day and value, carrying its figure level with its bar', async () => {
@@ -55,7 +59,7 @@ test('Orders: each weekday is a button named by its day and value, carrying its 
   const line = mover.children[0];
   assert.deepEqual([line.props.height, line.props.accessibilityHidden, line.props.alignSafe], [20, 1, 1], 'the button already reads the value');
   assert.deepEqual([line.children[0].props.fontVariantNumeric, line.children[0].props.fontSize, line.children[0].props.color, line.children[0].props.whiteSpace], ['tabular-nums', 13, 'text-muted', 'nowrap']);
-  const marks = find(screen.getByTestId('orders'), node => node.props.position === 'absolute' && node.props.insetTop === 20)[0];
+  const marks = find(screen.getByTestId('orders'), node => node.props.position === 'absolute' && node.props.insetTop === 23)[0];
   assert.ok(marks, 'the drawing starts under the figures\' line, so a figure sits on its bar');
   assert.equal(screen.queryAll(node => node.props.role === 'status').length, 0, 'every bar carries its value, so there is no readout line');
   screen.getByText('7 values from Mon to Sun. Lowest 74 at Sun, highest 187 at Fri. Falling: 132 first, 74 last.');
@@ -107,21 +111,39 @@ test('Grouped: one outline per series, a pair closer than two groups; the scale\
   assert.equal(screen.getByTestId('channels-legend-online').props.statePressed, 0);
 });
 
-test('Signed: bars below zero hang from the same line in their own drawing, with their value under them', async () => {
+test('Signed: bars below zero hang from the same line in the same drawing, with their value under them', async () => {
   const screen = laidOut(await renderExample('BarChart/BarChart', 'Signed'));
   const chart = screen.getByTestId('cash');
-  const [up, down] = drawings(chart);
-  assert.deepEqual([up.region.grow, down.region.grow], [577, 423], 'fifteen above zero, eleven below, as parts of a thousand');
-  assert.deepEqual(bars(up.paths[0].d).map(bar => bar[1]), [20, 46.67, 80, 0], '12, 8, 3 and 15 of 15');
-  assert.deepEqual(bars(down.paths[0].d).map(bar => bar[1]), [45.45, 100], '5 and 11 of 11, measured down from the zero line');
-  assert.deepEqual([down.wrap.insetBottom, down.wrap.insetTop, down.wrap.paddingBottom], [0, -3, 3]);
-  const zero = up.region && find(chart, node => node.props.height === 1 && node.props.background === 'text/20');
-  assert.equal(zero.length, 1);
+  const [all, ...rest] = drawings(chart);
+  assert.equal(rest.length, 0, 'one drawing for both sides of zero');
+  assert.deepEqual(feet(all.paths[0].d), Array(6).fill(57.69), 'fifteen above zero and eleven below: zero lies 15 of 26 down');
+  assert.deepEqual(bars(all.paths[0].d).map(bar => bar[1]), [11.54, 76.92, 26.92, 100, 46.15, 0], '12, -5, 8, -11, 3 and 15 on one scale');
+  assert.deepEqual([all.marks.insetTop, all.marks.insetBottom], [23, 23], 'the corner\'s room at both free ends, inside the figures\' lines');
+  assert.equal(down(zeroBox(chart)), 57.69, 'the zero line stands where the bars stand');
   const slot = name => slots(chart).find(node => node.props.accessibilityLabel === name);
   assert.deepEqual([figure(slot('Jan: $12k')), slot('Jan: $12k').props.paddingBottom], [[11.54, '$12k'], 20]);
   assert.deepEqual([figure(slot('Apr: -$11k')), slot('Apr: -$11k').props.paddingTop], [[100, '-$11k'], 20]);
-  const marks = find(chart, node => node.props.position === 'absolute' && node.props.insetTop === 20)[0];
-  assert.equal(marks.props.insetBottom, 20, 'a figures\' line is kept on both sides');
+});
+
+test('new data that moves zero moves the zero line with the bars\' feet, on the bars\' own timing', async () => {
+  const page = linked => `import { BarChart } from ${JSON.stringify(`${linked}/src/BarChart/BarChart`)};
+import { useLocal } from '@lingxia/view';
+const data = [[{ d: 'Mon', v: 9 }, { d: 'Tue', v: -3 }], [{ d: 'Mon', v: 2 }, { d: 'Tue', v: -6 }]];
+export function render() {
+  const step = useLocal('step', 0);
+  return <page><button data-testid="next" onClick={() => step.set(1)}><text>Next</text></button><BarChart label="Net" rows={data[step.value]} x="d" y="v" data-testid="net" /></page>;
+}
+`;
+  const screen = laidOut(await renderPage(page));
+  const chart = () => screen.getByTestId('net');
+  const read = () => [down(zeroBox(chart())), ...new Set(feet(drawings(chart())[0].paths[0].d))];
+  assert.deepEqual(read(), [75, 75]);
+  screen.press(screen.getByTestId('next'));
+  assert.deepEqual(read(), [25, 25]);
+  const timing = node => { const { properties, ...rest } = JSON.parse(node.props.transition); return rest; };
+  const vector = find(chart(), node => node.tag === 'vector' && node.props.opacity !== undefined)[0];
+  assert.deepEqual(timing(zeroBox(chart())), timing(vector), 'one duration, easing and delay');
+  assert.ok(timing(vector).durationMs !== undefined && timing(vector).easing !== undefined, 'the pack\'s timing, not the default');
 });
 
 test('Month: thirty bars are still buttons, with a smaller corner, the top of the scale and, until the row is measured, the first and last day labelled', async () => {
@@ -133,7 +155,7 @@ test('Month: thirty bars are still buttons, with a smaller corner, the top of th
   assert.equal(screen.getByTestId('steps-14 Jun').props.statePressed, 1);
   const [chosen, others] = drawings(chart);
   assert.deepEqual([bars(chosen.paths[0].d).length, bars(others.paths[0].d).length], [1, 29]);
-  assert.deepEqual([chosen.paths[0].strokeWidth, chosen.wrap.insetBottom, chosen.wrap.paddingTop], [2, -1, 1]);
+  assert.deepEqual([chosen.paths[0].strokeWidth, chosen.marks.insetTop], [2, 1]);
   const labels = screen.queryAll(node => node.tag === 'text' && / Jun$/.test(node.text ?? '') && node.props.fontSize === 12 && node.props.opacity !== 0);
   assert.deepEqual(labels.map(label => label.text), ['1 Jun', '30 Jun']);
   screen.getByText('15000');
@@ -304,33 +326,30 @@ test('bars in the hundred thousands, and below zero, lay out with small numbers'
     const rows = [{ k: 'a', v: 98400 }, { k: 'b', v: -41200 }, { k: 'c', v: 141200 }];
     export function render() { return <page><BarChart rows={rows} x="k" y="v" label="Result by unit" valueLabels="always" data-testid="big" /></page>; }
   `);
-  const grows = screen.queryAll(node => node.tag !== 'vector' && node.props.grow !== undefined && node.props.grow !== 1).map(node => node.props.grow);
-  assert.ok(grows.length >= 2, 'the regions are placed by flex shares');
-  assert.ok(grows.every(value => Number.isFinite(value) && value >= 0 && value <= 1000), `flex shares are small, whole and never negative: ${grows}`);
   const placed = screen.queryAll(node => /transform/.test(node.props.transition ?? '')).map(down);
-  assert.equal(placed.length, 3, 'each figure by a share of the plot');
+  assert.equal(placed.length, 4, 'each figure and the zero line by a share of the plot');
   assert.ok(placed.every(value => Number.isFinite(value) && value >= 0 && value <= 100), `shares of the plot, never past it: ${placed}`);
 });
 
 test('At large text: figures grow their line, and figures that would touch give way to the scale at the ends', async () => {
   const screen = await renderExample('BarChart/BarChart', 'Orders');
   const ghost = () => screen.queryAll(node => node.tag === 'text' && node.props.opacity === 0 && node.props.fontSize === 13)[0];
-  const marks = () => find(screen.getByTestId('orders'), node => node.props.position === 'absolute' && node.props.accessibilityHidden && node.children.some(child => child.props.overflow === 'hidden'))[0];
+  const marks = () => drawings(screen.getByTestId('orders'))[0].marks;
   assert.equal(ghost().text, '132', 'the longest figure, laid out unseen');
   screen.layout(ghost().parent, { width: 308, height: 176 });
   screen.layout(ghost(), { width: 30, height: 34 });
-  assert.equal(marks().props.insetTop, 34, 'the drawing starts under a figure as tall as it is drawn');
+  assert.equal(marks().insetTop, 37, 'the drawing starts under a figure as tall as it is drawn');
   assert.equal(screen.getByTestId('orders-Thu').children[1].props.height, 34);
   screen.layout(ghost(), { width: 42, height: 34 });
   assert.equal(screen.queryAll(node => node.tag === 'text' && node.text === '163').length, 0, 'seven 42 pt figures do not fit in 308 pt');
-  assert.equal(marks().props.insetTop, 0);
+  assert.equal(marks().insetTop, 3);
   screen.getByText('200');
 });
 
 test('before the plot is laid out every bar stands at zero, keyed by its series, so the bars grow to their values', async () => {
   const screen = await renderExample('BarChart/BarChart', 'Orders');
   const [before] = drawings(screen.getByTestId('orders'));
-  assert.ok(before.paths[0].d.split('M').slice(1).every(bar => /^[\d.]+ 100V100h[\d.]+V100Z$/.test(bar)), before.paths[0].d.slice(0, 80));
+  assert.ok(before.paths[0].d.split('M').slice(1).every(bar => /^[\d.]+ 100V100h[\d.]+V100$/.test(bar)), before.paths[0].d.slice(0, 80));
   laidOut(screen);
   const [after] = drawings(screen.getByTestId('orders'));
   assert.equal(after.paths[0].key, before.paths[0].key);

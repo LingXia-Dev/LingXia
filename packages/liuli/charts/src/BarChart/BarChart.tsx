@@ -2,7 +2,7 @@ import { cx, useBox, type PointerEvent, type VectorPath } from '@lingxia/view';
 import { Chart, ChartLegend, ChartReadout, type ChartLegendPosition, type ChartRow, type ChartSeries, type ChartSize, type ChartSummarize } from '../Chart/Chart';
 import { colorOf, keyOf, numberOf, plain, roleOf, seriesFacts, seriesOf, textOf, type ChartColor } from '../internal/data';
 import { leftPressed, pressed, pressedIndex, pressedKey, scrubbing } from '../internal/gesture';
-import { box, indexAt, roundUp, shares } from '../internal/geometry';
+import { box, indexAt, roundUp } from '../internal/geometry';
 import { Ticks } from '../internal/Ticks';
 import { laidOutOnce, remember } from '../internal/memo';
 import { barChartRecipe as r } from './BarChart.recipe';
@@ -89,39 +89,39 @@ const share = { solo: 0.5, group: 0.62, gap: 0.1 };
 // The corner radius in points; narrow bars get a smaller one.
 const radius = { regular: 3, dense: 1 };
 
-interface BarPaths { up: VectorPath[]; upDimmed: VectorPath[]; down: VectorPath[]; downDimmed: VectorPath[] }
+interface BarPaths { full: VectorPath[]; dimmed: VectorPath[] }
 
 const at = (value: number) => String(Math.round(value * 100) / 100);
 
 /**
- * Every bar of a series as one outline per side of zero: above it a bar runs from its value down
- * to the box's foot, below it from the box's top down to its value. A round-joined stroke of
- * twice the radius, drawn at a constant width however the box stretches, rounds the corners;
- * the plot hides the stroke at the zero line, so only the free end is round.
+ * Every bar of a series as one outline in one box that runs from the top of the scale down to its
+ * foot, so the zero line is a point in the outlines and moves with them. Each bar is left open
+ * at zero: the fill closes it along the line, and a round-joined stroke of twice the radius, drawn
+ * at a constant width however the box stretches, rounds the free end and stops flat at zero.
  */
 function barPaths(
   rows: readonly ChartRow[], series: readonly { field: string; color: ChartColor }[], high: number, depth: number, chosen: number, corner: number, grown: boolean,
 ): BarPaths {
-  const out: BarPaths = { up: [], upDimmed: [], down: [], downDimmed: [] };
+  const out: BarPaths = { full: [], dimmed: [] };
   const slot = box / rows.length;
   const isSolo = series.length === 1;
   const inner = slot * (isSolo ? share.solo : share.group);
   const gap = isSolo ? 0 : slot * share.gap;
   const width = (inner - (series.length - 1) * gap) / series.length;
+  const span = high + depth > 0 ? high + depth : 1;
+  const level = (value: number) => at(((high - value) / span) * box);
   series.forEach((each, column) => {
-    const d = { up: '', upDimmed: '', down: '', downDimmed: '' };
+    const d = { full: '', dimmed: '' };
     rows.forEach((row, index) => {
       const value = numberOf(row, each.field);
       if (!Number.isFinite(value) || value === 0) return;
       // Before the first layout every bar stands at zero, so the bars grow to their values.
       const reach = grown ? value : 0;
       const x0 = slot * index + (slot - inner) / 2 + column * (width + gap);
-      const isDimmed = chosen >= 0 && chosen !== index;
-      if (value > 0) d[isDimmed ? 'upDimmed' : 'up'] += `M${at(x0)} ${box}V${at((1 - reach / high) * box)}h${at(width)}V${box}Z`;
-      else d[isDimmed ? 'downDimmed' : 'down'] += `M${at(x0)} 0V${at((-reach / depth) * box)}h${at(width)}V0Z`;
+      d[chosen >= 0 && chosen !== index ? 'dimmed' : 'full'] += `M${at(x0)} ${level(0)}V${level(reach)}h${at(width)}V${level(0)}`;
     });
     const role = roleOf(each.color);
-    for (const side of ['up', 'upDimmed', 'down', 'downDimmed'] as const)
+    for (const side of ['full', 'dimmed'] as const)
       if (d[side]) out[side].push({ key: each.field, d: d[side], fill: role, stroke: role, strokeWidth: corner * 2, strokeLinejoin: 'round', vectorEffect: 'non-scaling-stroke' });
   });
   return out;
@@ -154,8 +154,8 @@ export function BarChart({
   // With the ends of the scale written out, the plot's edges are round numbers.
   const [high, depth] = scale === 'ends' ? reach.map(roundUp) : reach;
   const isSigned = depth > 0;
-  // The plot above zero and under it, as shares of its height.
-  const [above, below] = shares(high > 0 ? high : 1, depth);
+  // How far down the plot zero lies, as a percentage of its height.
+  const zero = high + depth > 0 ? (high / (high + depth)) * 100 : 100;
   const isPressable = onSelect !== undefined && data.length <= maxPressable;
   const labels = xLabels ?? 'fit';
   const chosen = data.findIndex((row, index) => keyOf(row, keyField ?? x, index) === selectedKey);
@@ -164,8 +164,9 @@ export function BarChart({
   // Colours are role names, so the outlines outlive a theme change; they are rebuilt only for new data, encoding or choice.
   // Until the plot is first laid out the bars stand at zero; a chart that comes back does not grow them again.
   const grown = laidOutOnce(data, `bar:${label}`, plot.value !== null);
+  const corner = radius[density];
   const paths = remember(data, 'bars', JSON.stringify([shown.map(series => [series.field, series.color]), high, depth, chosen, density, grown]),
-    () => barPaths(data, shown, high, depth, chosen, radius[density], grown));
+    () => barPaths(data, shown, high, depth, chosen, corner, grown));
 
   const reading = (row: ChartRow) => shown
     .filter(series => Number.isFinite(numberOf(row, series.field)))
@@ -206,7 +207,7 @@ export function BarChart({
     const end = grown ? value : 0;
     const down = high + depth > 0 ? ((high - end) / (high + depth)) * 100 : 0;
     const figure = scale === 'each' && shown.length === 1 && Number.isFinite(value) && [
-      <view key="mover" className={r.mover.base} style={{ translate: [0, `${down}%`] }}>
+      <view key="mover" className={cx(r.mover.base, r.motion.base)} style={{ translate: [0, `${down}%`] }}>
         <view aria-hidden className={r.valueSlot.base} style={{ height: lane }}><text className={r.value.base}>{formatValue(value)}</text></view>
       </view>,
       <view key="lane" className={r.lane.base} style={{ height: lane }} />,
@@ -229,12 +230,12 @@ export function BarChart({
     );
   });
 
-  const drawing = (wrap: string, list: VectorPath[], isDimmed: boolean) => list.length > 0 && (
-    <view className={cx(r.wrap.base, wrap)}>
-      <vector paths={list} viewBox={[0, 0, box, box]} className={cx(r.drawing.base, isDimmed ? r.drawing.dimmed : r.drawing.full)} />
-    </view>
+  const drawing = (list: VectorPath[], isDimmed: boolean) => list.length > 0 && (
+    <vector paths={list} viewBox={[0, 0, box, box]} className={cx(r.drawing.base, r.motion.base, isDimmed ? r.drawing.dimmed : r.drawing.full)} />
   );
-  const [wrapUp, wrapDown] = [r.wrap.up[density], r.wrap.down[density]];
+  // The marks are the scale's box: the corner's stroke stands past it at the bars' free ends, and the figures' lines lie outside it.
+  const clear = scale === 'each' ? lane : 0;
+  const markBox = { top: clear + corner, bottom: isSigned ? clear + corner : 0 };
 
   const row = (which: 'all' | 'ends', className: string) => (which === 'all' ? (
     <view className={cx(className, r.labels.all)}>
@@ -293,19 +294,11 @@ export function BarChart({
       {scale === 'ends' && <text aria-hidden className={r.scale.base}>{formatValue(high)}</text>}
       <view box={plot} className={cx(r.plot.base, scale === 'ends' && r.plot.ruled, scale === 'ends' && isSigned && r.plot.floored)}>
         {isFigured && <text aria-hidden box={widest} className={cx(r.value.base, r.value.ghost)}>{longest}</text>}
-        {/* The marks: one drawing per side of zero, and a second, fainter one for bars that stepped back. */}
-        <view aria-hidden className={r.marks.base} style={scale === 'each' ? { top: lane, ...(isSigned ? { bottom: lane } : {}) } : undefined}>
-          <view className={r.region.base} style={{ flexGrow: above }}>
-            {drawing(wrapUp, paths.up, false)}
-            {drawing(wrapUp, paths.upDimmed, true)}
-          </view>
-          <view className={r.baseline.base} />
-          {isSigned && (
-            <view className={r.region.base} style={{ flexGrow: below }}>
-              {drawing(wrapDown, paths.down, false)}
-              {drawing(wrapDown, paths.downDimmed, true)}
-            </view>
-          )}
+        {/* The marks: one drawing, a second, fainter one for bars that stepped back, and the zero line, moved on the bars' timing. */}
+        <view aria-hidden className={r.marks.base} style={markBox}>
+          {drawing(paths.full, false)}
+          {drawing(paths.dimmed, true)}
+          <view className={cx(r.zero.base, r.motion.base)} style={{ translate: [0, `${zero}%`] }}><view className={r.baseline.base} /></view>
         </view>
         <view
           role={isPressable ? undefined : 'list'}

@@ -2,9 +2,8 @@ export const barChartParts = {
   scale: 'text',
   plot: 'view',
   marks: 'view',
-  region: 'view',
-  wrap: 'view',
   drawing: 'vector',
+  zero: 'view',
   baseline: 'view',
   slots: 'view',
   slot: 'button',
@@ -16,8 +15,8 @@ export const barChartParts = {
 
 /**
  * Bars are geometry: every bar of a series is one outline in one drawing, so a chart costs a
- * handful of elements however many bars it has. The drawing stretches to its region; a stroke of
- * constant width rounds each bar's corners, and each region hides the stroke at the zero line.
+ * handful of elements however many bars it has. The drawing stretches to the marks; a stroke of
+ * constant width rounds each bar's free end and stops flat at the zero line.
  * Over the drawing lies one transparent slot per category: its press target and its spoken name.
  */
 export const barChartRecipe = {
@@ -30,26 +29,25 @@ export const barChartRecipe = {
     floored: 'border-b border-text/8',
   },
   marks: {
-    // With figures, the figures' line is kept clear above the tallest bar, and below the deepest.
+    // Inset by the corner radius at the free ends, and with figures by the figures' line too.
     base: 'absolute inset-0',
   },
-  region: {
-    base: 'relative basis-0 overflow-hidden',
-  },
-  wrap: {
-    // Each drawing is taller than its region by the corner radius, on the zero line's side, so a
-    // bar's height is exact and the stroke there is hidden.
-    base: 'absolute start-0 end-0',
-    up: { regular: 'top-0 -bottom-[3px] pt-[3px]', dense: 'top-0 -bottom-px pt-px' },
-    down: { regular: 'bottom-0 -top-[3px] pb-[3px]', dense: 'bottom-0 -top-px pb-px' },
+  /** The one timing the bars, the zero line and the figures move on, so they arrive together. */
+  motion: {
+    base: 'duration-slow ease-standard',
   },
   drawing: {
-    base: 'w-full grow object-fill motion-safe:transition-[d] duration-slow ease-standard',
+    base: 'absolute inset-0 object-fill motion-safe:transition-[d]',
     full: 'opacity-85',
     dimmed: 'opacity-30',
   },
+  /** A box as tall as the marks, moved down to the zero line. */
+  zero: {
+    base: 'absolute inset-0 motion-safe:transition-transform',
+  },
+  /** Lies over the bars' last point at zero. */
   baseline: {
-    base: 'h-px shrink-0 bg-text/20',
+    base: 'h-px shrink-0 bg-text/20 -translate-y-full',
   },
   slots: {
     base: 'absolute inset-0 flex-row items-stretch',
@@ -60,7 +58,7 @@ export const barChartRecipe = {
   },
   /** A box as tall as the plot less the figure's line, moved down to the bar's free end on the bars' timing. */
   mover: {
-    base: 'grow self-stretch items-center motion-safe:transition-transform duration-slow ease-standard',
+    base: 'grow self-stretch items-center motion-safe:transition-transform',
   },
   /** The figure's line, kept clear at the foot so the mover is the plot's height. */
   lane: {
