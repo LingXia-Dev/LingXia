@@ -747,7 +747,8 @@
     "trait": {
       "popover": {"key": "popover", "on": ["view"], "props": ["open", "onToggle", "closeAfter", "anchor", "onCloseRequest"], "error": "{prop} belongs to a popover; add popover",
         "forms": [{"values": [true, "auto", "hint"]}, {"values": ["manual"], "without": {"onCloseRequest": "onCloseRequest belongs on a popover that is not manual; nothing but your code closes a manual one"}}]},
-      "drag": {"key": "drag", "on": ["view", "button", "dialog"], "props": ["dragSnapPoints", "bind", "snapIndex", "onSnapChange", "onDragStart", "onDragEnd", "aria-actions"], "error": "{prop} belongs to an element with drag; add drag=\"x\" or drag=\"y\""}
+      "drag": {"key": "drag", "on": ["view", "button", "dialog"], "props": ["dragSnapPoints", "bind", "snapIndex", "onSnapChange", "onDragStart", "onDragEnd", "aria-actions"], "error": "{prop} belongs to an element with drag; add drag=\"x\" or drag=\"y\""},
+      "pointer": {"key": "onPointer", "on": ["view", "button", "vector"], "props": ["pointerAxis"], "error": "onPointer takes a function; pointerAxis goes with it"}
     },
     "exclusive": {
       "snap": {"on": ["view", "button", "dialog", "scroll"], "props": ["bind", "snapIndex"], "with": {"snapIndex": ["onSnapChange"]},

@@ -40,7 +40,7 @@ Styles each element accepts are in [styles.md](styles.md).
 
 ## `<view>`
 
-Children: any elements and text. Renders as `column`. `open`, `onToggle`, `closeAfter`, `anchor`, `onCloseRequest` need `popover`; `onCloseRequest` not with `popover="manual"`: tsc and the build refuse them otherwise (`UI_PROP`). `dragSnapPoints`, `bind`, `snapIndex`, `onSnapChange`, `onDragStart`, `onDragEnd`, `aria-actions` need `drag`: tsc and the build refuse them otherwise (`UI_PROP`). At most one of `bind` or `snapIndex` (and its `onSnapChange`) (`UI_PROP`).
+Children: any elements and text. Renders as `column`. `open`, `onToggle`, `closeAfter`, `anchor`, `onCloseRequest` need `popover`; `onCloseRequest` not with `popover="manual"`: tsc and the build refuse them otherwise (`UI_PROP`). `dragSnapPoints`, `bind`, `snapIndex`, `onSnapChange`, `onDragStart`, `onDragEnd`, `aria-actions` need `drag`: tsc and the build refuse them otherwise (`UI_PROP`). `pointerAxis` need `onPointer`: tsc and the build refuse them otherwise (`UI_PROP`). At most one of `bind` or `snapIndex` (and its `onSnapChange`) (`UI_PROP`).
 
 | Prop | Type | Required |
 | --- | --- | --- |
@@ -92,7 +92,7 @@ Children: text, `<span>` and `<link>` runs.
 
 ## `<button>`
 
-Children: text, or noninteractive content elements (a composed control). `dragSnapPoints`, `bind`, `snapIndex`, `onSnapChange`, `onDragStart`, `onDragEnd`, `aria-actions` need `drag`: tsc and the build refuse them otherwise (`UI_PROP`). At most one of `bind` or `snapIndex` (and its `onSnapChange`) (`UI_PROP`).
+Children: text, or noninteractive content elements (a composed control). `dragSnapPoints`, `bind`, `snapIndex`, `onSnapChange`, `onDragStart`, `onDragEnd`, `aria-actions` need `drag`: tsc and the build refuse them otherwise (`UI_PROP`). `pointerAxis` need `onPointer`: tsc and the build refuse them otherwise (`UI_PROP`). At most one of `bind` or `snapIndex` (and its `onSnapChange`) (`UI_PROP`).
 
 | Prop | Type | Required |
 | --- | --- | --- |
@@ -327,7 +327,7 @@ Children: none.
 
 ## `<vector>`
 
-Children: none.
+Children: none. `pointerAxis` need `onPointer`: tsc and the build refuse them otherwise (`UI_PROP`).
 
 | Prop | Type | Required |
 | --- | --- | --- |
