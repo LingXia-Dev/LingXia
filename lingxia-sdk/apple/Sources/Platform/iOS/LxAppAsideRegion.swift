@@ -572,6 +572,10 @@ private final class DividerView: UIView {
 /// main brings the slot back.
 private final class TongueView: UIView {
     private static let arrowSize: CGFloat = 18
+    // A raised piece in both appearances: the panel's dark fill is near the page's, so the tongue sits a step above it.
+    private static let fill = UIColor { $0.userInterfaceStyle == .dark ? UIColor(red: 44 / 255, green: 44 / 255, blue: 46 / 255, alpha: 1) : .white }
+    private static let pressedFill = UIColor { $0.userInterfaceStyle == .dark ? UIColor(red: 58 / 255, green: 58 / 255, blue: 60 / 255, alpha: 1) : UIColor(white: 0.95, alpha: 1) }
+    private static let edge = UIColor { $0.userInterfaceStyle == .dark ? UIColor(white: 1, alpha: 0.18) : UIColor(white: 0, alpha: 0.14) }
     var onRestore: (() -> Void)?
     var accent: UIColor = .label { didSet { setNeedsDisplay() } }
     var count = 0 { didSet { setNeedsDisplay() } }
@@ -586,6 +590,9 @@ private final class TongueView: UIView {
         accessibilityTraits = .button
         addGestureRecognizer(UITapGestureRecognizer(target: self, action: #selector(tapped)))
         addGestureRecognizer(UIPanGestureRecognizer(target: self, action: #selector(pulled(_:))))
+        registerForTraitChanges([UITraitUserInterfaceStyle.self]) { (self: Self, _: UITraitCollection) in
+            self.setNeedsDisplay()
+        }
     }
 
     required init?(coder: NSCoder) { nil }
@@ -643,11 +650,11 @@ private final class TongueView: UIView {
         context.saveGState()
         context.setShadow(offset: CGSize(width: -1, height: 0), blur: 4, color: UIColor.black.withAlphaComponent(0.16).cgColor)
         context.addPath(path)
-        context.setFillColor((pressed ? UIColor.secondarySystemBackground : UIColor.systemBackground).cgColor)
+        context.setFillColor((pressed ? Self.pressedFill : Self.fill).resolvedColor(with: traitCollection).cgColor)
         context.fillPath()
         context.restoreGState()
         context.addPath(path)
-        context.setStrokeColor(UIColor.separator.cgColor)
+        context.setStrokeColor(Self.edge.resolvedColor(with: traitCollection).cgColor)
         context.setLineWidth(0.75)
         context.strokePath()
 
