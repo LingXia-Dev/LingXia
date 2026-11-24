@@ -142,10 +142,8 @@ size is `calc(var(--spacing) * N)`. A literal there lowers to a fixed number the
 
 ## Unsupported on purpose
 
-Skew and 3D transforms, filters other than `blur-*` and backdrop blur/saturation, linear, radial
-and conic masks (edge masks `mask-{t,r,b,l,x,y}-from/to-*` lower), text and drop shadows, inset
-shadows, outlines, per-edge border styles and colors, `*`, `**`, `in-*`, the selectors above,
-container queries and plugins. `docs/view/reference/utilities.md` (generated) lists every
-family as supported or refused with its reason. Each fails with
-`UI_CLASS_UNSUPPORTED` naming what to use, rather than rendering differently from CSS
-or compiling to nothing: a utility that lowers to no drawn style is refused.
+`docs/view/reference/utilities.md`, generated from the schema and the compiler, lists every
+Tailwind family as supported or refused with its reason; the selectors and variants are in
+`variants.md`. A refused utility fails with `UI_CLASS_UNSUPPORTED` naming what to use, rather than
+rendering differently from CSS or compiling to nothing: a utility that lowers to no drawn style is
+refused.
