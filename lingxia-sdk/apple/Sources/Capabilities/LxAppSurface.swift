@@ -112,6 +112,8 @@ enum LxAppSurface {
         let dockedBrowser: DockedBrowser?
         /// A child of the Runner phone's side panel, which shows and hides it.
         let inAside: Bool
+        let ephemeralWebData: Bool
+        let urlCallback: Bool
 
         init(
             id: String,
@@ -129,7 +131,9 @@ enum LxAppSurface {
             isFullScreen: Bool = false,
             dockedBrowser: DockedBrowser? = nil,
             browserTabId: String? = nil,
-            inAside: Bool = false
+            inAside: Bool = false,
+            ephemeralWebData: Bool = false,
+            urlCallback: Bool = false
         ) {
             self.id = id
             self.appId = appId
@@ -147,6 +151,8 @@ enum LxAppSurface {
             self.isFullScreen = isFullScreen
             self.dockedBrowser = dockedBrowser
             self.inAside = inAside
+            self.ephemeralWebData = ephemeralWebData
+            self.urlCallback = urlCallback
         }
     }
 
@@ -782,7 +788,9 @@ enum LxAppSurface {
                 parentWindow: nil,
                 delegate: delegate,
                 browserTabId: tabId,
-                inAside: true
+                inAside: true,
+                ephemeralWebData: ephemeralWebData,
+                urlCallback: urlCallback
             )
             attachManagedBrowserTab(id: id, tabId: tabId, to: container, attempt: 0)
         } else {
@@ -810,7 +818,19 @@ enum LxAppSurface {
                 inAside: true
             )
         }
-        let host = url.host.map { $0.hasPrefix("www.") ? String($0.dropFirst(4)) : $0 }
+        adoptInPhoneAside(id: id, appId: appId, container: container, url: url, screen: screen)
+        return true
+    }
+
+    private static func phoneAsideContainer() -> NSView {
+        let container = NSView()
+        container.wantsLayer = true
+        container.layer?.backgroundColor = NSColor.windowBackgroundColor.cgColor
+        return container
+    }
+
+    private static func adoptInPhoneAside(id: String, appId: String, container: NSView, url: URL?, screen: NSView) {
+        let host = url?.host.map { $0.hasPrefix("www.") ? String($0.dropFirst(4)) : $0 }
         LxAppPhoneAsideRegion.shared.adopt(
             id: id,
             appId: appId,
@@ -825,7 +845,95 @@ enum LxAppSurface {
             },
             close: { _ = close(id: id, appId: appId, reason: "user") }
         )
-        return true
+    }
+
+    /// Where the Runner shows its lxapp: the desktop shell, or the phone frame.
+    enum AsideHost {
+        case shell
+        case phone
+    }
+
+    /// Moves every live URL aside into `host` as it is: the same browser tab and webview, so
+    /// the page keeps its scroll, input and history, and nothing is closed or presented again.
+    /// The core's graph does not change; its plans place the children in their new host.
+    /// Into the shell: call once it is active and before the lxapp opens there, so the open's
+    /// plan finds the panel registered. Into the phone: the region shows its last plan on adopt.
+    static func moveAsides(to host: AsideHost, shell: LxAppShell) {
+        switch host {
+        case .phone: moveAsidesToPhone(from: shell, attempt: 0)
+        case .shell: moveAsidesToShell(shell)
+        }
+    }
+
+    private static func moveAsidesToPhone(from shell: LxAppShell, attempt: Int) {
+        guard let browser = shell.browserCoordinator.activeDockedBrowser,
+              !browser.tabSurfaceIds.isEmpty else { return }
+        // The phone's screen is found through its page, which attaches after the frame opens.
+        guard let screen = phoneDeviceScreenView(), screen.window != nil else {
+            guard attempt < 40 else {
+                LXLog.error("phone screen never came up; asides stay in the shell", category: "Surface")
+                return
+            }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { [weak shell] in
+                guard let shell, LxAppActiveHost.activeShell == nil else { return }
+                moveAsidesToPhone(from: shell, attempt: attempt + 1)
+            }
+            return
+        }
+        let anchor = entries.values.first { $0.dockedBrowser === browser && $0.dockedContainer != nil }
+        for id in browser.tabSurfaceIds {
+            guard let entry = entries[id], let tab = browser.handOverTab(surfaceId: id) else { continue }
+            let container = phoneAsideContainer()
+            entries[id] = Entry(
+                id: id,
+                appId: entry.appId,
+                pageInstanceId: "",
+                hostView: nil,
+                webView: nil,
+                navigationDelegate: nil,
+                window: nil,
+                parentWindow: nil,
+                delegate: entry.delegate,
+                browserTabId: tab.browserTabId,
+                inAside: true,
+                ephemeralWebData: tab.ephemeralWebData,
+                urlCallback: tab.urlCallback
+            )
+            attachManagedBrowserTab(id: id, tabId: tab.browserTabId, to: container, attempt: 0)
+            adoptInPhoneAside(id: id, appId: entry.appId, container: container, url: URL(string: tab.url), screen: screen)
+        }
+        guard browser.tabSurfaceIds.isEmpty else { return }
+        browser.tearDown()
+        shell.browserCoordinator.clearDockedBrowser()
+        if let anchor {
+            shell.hidePanel(id: anchor.id)
+            anchor.dockedContainer?.removeFromSuperview()
+        }
+    }
+
+    private static func moveAsidesToShell(_ shell: LxAppShell) {
+        let order = LxAppPhoneAsideRegion.shared.slot?.children ?? []
+        let moving = entries.values
+            .filter { $0.inAside && $0.browserTabId != nil }
+            .sorted { (order.firstIndex(of: $0.id) ?? .max) < (order.firstIndex(of: $1.id) ?? .max) }
+        for entry in moving {
+            guard let tabId = entry.browserTabId else { continue }
+            let url = entry.webView?.url?.absoluteString ?? ""
+            LxAppPhoneAsideRegion.shared.release(id: entry.id)
+            entry.webView?.removeFromSuperview()
+            _ = dockBrowserAside(
+                id: entry.id,
+                appId: entry.appId,
+                url: url,
+                adoptedBrowserTabId: tabId,
+                ephemeralWebData: entry.ephemeralWebData,
+                urlCallback: entry.urlCallback,
+                panelPosition: .right,
+                defaultSize: 360,
+                closeButton: false,
+                shell: shell
+            )
+        }
     }
 
     /// A drill-in back chevron pinned top-left, the phone affordance to dismiss a
@@ -890,119 +998,6 @@ enum LxAppSurface {
         browserTabId: String,
         shell: LxAppShell
     ) -> Bool {
-        let container = NSView()
-        container.wantsLayer = true
-        container.layer?.backgroundColor = NSColor.clear.cgColor
-
-        let pageInstanceId: String
-        let hostView: LxAppHostView?
-        let webView: WKWebView?
-        let navigationDelegate: WKNavigationDelegate?
-        let dockedBrowser: DockedBrowser?
-
-        switch content {
-        case .page(let instanceId, let path):
-            pageInstanceId = instanceId
-            let controller = LxAppActiveHost.activeController ?? LxAppController()
-            let lxHostView = LxAppHostView(controller: controller)
-            lxHostView.translatesAutoresizingMaskIntoConstraints = false
-            lxHostView.wantsLayer = true
-            lxHostView.layer?.backgroundColor = NSColor.clear.cgColor
-            container.addSubview(lxHostView)
-            pinToEdges(lxHostView, in: container)
-
-            let session = LxAppSession(
-                id: LxAppSessionID(rawValue: sessionId),
-                appId: appId,
-                path: path,
-                presentation: .normal,
-                userInfo: [
-                    "pageInstanceId": .string(pageInstanceId),
-                    "dynamicSurfaceId": .string(id),
-                ]
-            )
-            hostView = lxHostView
-            webView = nil
-            navigationDelegate = nil
-            dockedBrowser = nil
-            Task { @MainActor in
-                do {
-                    try await lxHostView.mount(session, notifyVisibleOnMount: true)
-                } catch {
-                    LXLog.error(
-                        "aside mount failed id=\(id) app=\(appId) path=\(path) error=\(String(describing: error))",
-                        category: "Surface", appId: appId, path: path
-                    )
-                    _ = close(id: id, appId: appId, reason: "failed")
-                }
-            }
-
-        case .url(let urlString):
-            guard let url = URL(string: urlString), supportsWebSurfaceURL(url, urlCallback: urlCallback) else {
-                LXLog.error("invalid web aside url id=\(id) url=\(urlString)", category: "Surface", appId: appId, path: urlString)
-                return false
-            }
-            // Every web-aside node is a tab in the single per-window browser
-            // panel. The FIRST node anchors the panel (docks its container +
-            // registers the shell slot); later nodes just add a tab (ordinary
-            // surfaces dedupe by URL) — no second dock. onCloseTab(sid) closes that one tab/node;
-            // onCloseAside closes the anchor, which cascades to every tab.
-            let onCloseTab: (String) -> Void = { sid in
-                _ = LxAppSurface.close(id: sid, appId: appId, reason: "user")
-            }
-            let onCloseAside: () -> Void = {
-                // Close every tab node, non-anchor first; the last close tears
-                // the panel down.
-                let ids = LxAppActiveHost.activeShell?.browserCoordinator
-                    .activeDockedBrowser?.tabSurfaceIds ?? [id]
-                for sid in ids.reversed() {
-                    _ = LxAppSurface.close(id: sid, appId: appId, reason: "user")
-                }
-            }
-            guard let opened = shell.browserCoordinator.openDockedAsideTab(
-                surfaceId: id,
-                url: url.absoluteString,
-                adoptedBrowserTabId: browserTabId.isEmpty ? nil : browserTabId,
-                ephemeralWebData: ephemeralWebData,
-                urlCallback: urlCallback,
-                onCloseTab: onCloseTab,
-                onCloseAside: onCloseAside
-            ) else {
-                LXLog.error("failed to open docked aside tab id=\(id) url=\(urlString)", category: "Surface", appId: appId, path: urlString)
-                return false
-            }
-            guard opened.isNew else {
-                // Added as a tab to the existing panel — this node owns no dock
-                // of its own. Track a lightweight entry so close() removes just
-                // this tab (dockedContainer/position nil ⇒ no panel to hide).
-                entries[id] = Entry(
-                    id: id,
-                    appId: appId,
-                    pageInstanceId: "",
-                    hostView: nil,
-                    webView: nil,
-                    navigationDelegate: nil,
-                    window: nil,
-                    parentWindow: nil,
-                    delegate: WindowDelegate(id: id, appId: appId),
-                    dockedBrowser: opened.browser
-                )
-                return true
-            }
-            pageInstanceId = ""
-            hostView = nil
-            webView = nil
-            navigationDelegate = nil
-            dockedBrowser = opened.browser
-            container.addSubview(opened.browser.containerView)
-            opened.browser.containerView.translatesAutoresizingMaskIntoConstraints = false
-            pinToEdges(opened.browser.containerView, in: container)
-        }
-
-        if closeButton {
-            addCloseButton(to: container, id: id, appId: appId)
-        }
-
         let defaultSize = dockDefaultSize(
             position: panelPosition,
             width: width,
@@ -1010,23 +1005,174 @@ enum LxAppSurface {
             widthRatio: widthRatio,
             heightRatio: heightRatio
         )
+        let pageInstanceId: String
+        let path: String
+        switch content {
+        case .page(let instanceId, let pagePath):
+            pageInstanceId = instanceId
+            path = pagePath
+        case .url(let urlString):
+            guard let url = URL(string: urlString), supportsWebSurfaceURL(url, urlCallback: urlCallback) else {
+                LXLog.error("invalid web aside url id=\(id) url=\(urlString)", category: "Surface", appId: appId, path: urlString)
+                return false
+            }
+            return dockBrowserAside(
+                id: id,
+                appId: appId,
+                url: url.absoluteString,
+                adoptedBrowserTabId: browserTabId.isEmpty ? nil : browserTabId,
+                ephemeralWebData: ephemeralWebData,
+                urlCallback: urlCallback,
+                panelPosition: panelPosition,
+                defaultSize: defaultSize,
+                closeButton: closeButton,
+                shell: shell
+            )
+        }
+
+        let container = NSView()
+        container.wantsLayer = true
+        container.layer?.backgroundColor = NSColor.clear.cgColor
+        let controller = LxAppActiveHost.activeController ?? LxAppController()
+        let lxHostView = LxAppHostView(controller: controller)
+        lxHostView.translatesAutoresizingMaskIntoConstraints = false
+        lxHostView.wantsLayer = true
+        lxHostView.layer?.backgroundColor = NSColor.clear.cgColor
+        container.addSubview(lxHostView)
+        pinToEdges(lxHostView, in: container)
+
+        let session = LxAppSession(
+            id: LxAppSessionID(rawValue: sessionId),
+            appId: appId,
+            path: path,
+            presentation: .normal,
+            userInfo: [
+                "pageInstanceId": .string(pageInstanceId),
+                "dynamicSurfaceId": .string(id),
+            ]
+        )
+        Task { @MainActor in
+            do {
+                try await lxHostView.mount(session, notifyVisibleOnMount: true)
+            } catch {
+                LXLog.error(
+                    "aside mount failed id=\(id) app=\(appId) path=\(path) error=\(String(describing: error))",
+                    category: "Surface", appId: appId, path: path
+                )
+                _ = close(id: id, appId: appId, reason: "failed")
+            }
+        }
+
+        if closeButton {
+            addCloseButton(to: container, id: id, appId: appId)
+        }
         entries[id] = Entry(
             id: id,
             appId: appId,
             pageInstanceId: pageInstanceId,
-            hostView: hostView,
-            webView: webView,
-            navigationDelegate: navigationDelegate,
+            hostView: lxHostView,
+            webView: nil,
+            navigationDelegate: nil,
+            window: nil,
+            parentWindow: nil,
+            delegate: WindowDelegate(id: id, appId: appId),
+            dockedPosition: panelPosition,
+            dockedContainer: container
+        )
+        // Only CREATE + REGISTER the aside content here (hidden). The Rust graph
+        // commit that follows `present_surface` pushes the layout plan; the
+        // reconciler is the sole authority for the aside's edge + visibility.
+        shell.registerPanelWithNativeContent(
+            id: id,
+            position: panelPosition,
+            contentView: container,
+            defaultSize: defaultSize
+        )
+        return true
+    }
+
+    /// Every web-aside node is a tab in the single per-window browser panel. The FIRST node
+    /// anchors the panel (docks its container + registers the shell slot); later nodes just add
+    /// a tab (ordinary surfaces dedupe by URL), no second dock. `adoptedBrowserTabId` is a live
+    /// tab moved in as it is.
+    private static func dockBrowserAside(
+        id: String,
+        appId: String,
+        url: String,
+        adoptedBrowserTabId: String?,
+        ephemeralWebData: Bool,
+        urlCallback: Bool,
+        panelPosition: PanelPosition,
+        defaultSize: CGFloat,
+        closeButton: Bool,
+        shell: LxAppShell
+    ) -> Bool {
+        // onCloseTab(sid) closes that one tab/node; onCloseAside closes the anchor, which
+        // cascades to every tab.
+        let onCloseTab: (String) -> Void = { sid in
+            _ = LxAppSurface.close(id: sid, appId: appId, reason: "user")
+        }
+        let onCloseAside: () -> Void = {
+            // Close every tab node, non-anchor first; the last close tears the panel down.
+            let ids = LxAppActiveHost.activeShell?.browserCoordinator
+                .activeDockedBrowser?.tabSurfaceIds ?? [id]
+            for sid in ids.reversed() {
+                _ = LxAppSurface.close(id: sid, appId: appId, reason: "user")
+            }
+        }
+        guard let opened = shell.browserCoordinator.openDockedAsideTab(
+            surfaceId: id,
+            url: url,
+            adoptedBrowserTabId: adoptedBrowserTabId,
+            ephemeralWebData: ephemeralWebData,
+            urlCallback: urlCallback,
+            onCloseTab: onCloseTab,
+            onCloseAside: onCloseAside
+        ) else {
+            LXLog.error("failed to open docked aside tab id=\(id) url=\(url)", category: "Surface", appId: appId, path: url)
+            return false
+        }
+        guard opened.isNew else {
+            // Added as a tab to the existing panel: this node owns no dock of its own, so
+            // close() removes just this tab.
+            entries[id] = Entry(
+                id: id,
+                appId: appId,
+                pageInstanceId: "",
+                hostView: nil,
+                webView: nil,
+                navigationDelegate: nil,
+                window: nil,
+                parentWindow: nil,
+                delegate: WindowDelegate(id: id, appId: appId),
+                dockedBrowser: opened.browser
+            )
+            return true
+        }
+        let container = NSView()
+        container.wantsLayer = true
+        container.layer?.backgroundColor = NSColor.clear.cgColor
+        container.addSubview(opened.browser.containerView)
+        opened.browser.containerView.translatesAutoresizingMaskIntoConstraints = false
+        pinToEdges(opened.browser.containerView, in: container)
+        if closeButton {
+            addCloseButton(to: container, id: id, appId: appId)
+        }
+        entries[id] = Entry(
+            id: id,
+            appId: appId,
+            pageInstanceId: "",
+            hostView: nil,
+            webView: nil,
+            navigationDelegate: nil,
             window: nil,
             parentWindow: nil,
             delegate: WindowDelegate(id: id, appId: appId),
             dockedPosition: panelPosition,
             dockedContainer: container,
-            dockedBrowser: dockedBrowser
+            dockedBrowser: opened.browser
         )
-        // Only CREATE + REGISTER the aside content here (hidden). The Rust graph
-        // commit that follows `present_surface` pushes the layout plan; the
-        // reconciler is the sole authority for the aside's edge + visibility.
+        // Create + register only (hidden); the layout plan places and shows it.
         shell.registerPanelWithNativeContent(
             id: id,
             position: panelPosition,

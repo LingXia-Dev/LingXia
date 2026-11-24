@@ -257,6 +257,10 @@ enum RunnerSupport {
             LingxiaRunnerSPI.SurfaceShell.activate(shell)
         }
 
+        static func moveAsides(_ shell: LxAppShell, intoPhone: Bool) {
+            LingxiaRunnerSPI.SurfaceShell.moveAsides(shell, intoPhone: intoPhone)
+        }
+
         static func setTrafficLightsVisible(_ shell: LxAppShell, visible: Bool) {
             LingxiaRunnerSPI.SurfaceShell.setTrafficLightsVisible(shell, visible: visible)
         }

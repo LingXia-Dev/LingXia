@@ -39,7 +39,8 @@ final class RunnerSurfaceShellHost {
         appId: String,
         path: String,
         sessionId: UInt64,
-        device: MobileDeviceSize
+        device: MobileDeviceSize,
+        movesAsides: Bool = false
     ) {
         self.shell = RunnerSupport.SurfaceShell.make(controller: controller)
         self.appId = appId
@@ -52,7 +53,7 @@ final class RunnerSurfaceShellHost {
         installDeviceSelector()
         configureWindow(for: device, center: true)
         if let window = shell.window { RunnerWindowPlacement.restore(window) }
-        open(appId: appId, path: path, sessionId: sessionId)
+        open(appId: appId, path: path, sessionId: sessionId, movesAsides: movesAsides)
     }
 
     init(
@@ -92,7 +93,8 @@ final class RunnerSurfaceShellHost {
         presentSurface()
     }
 
-    func open(appId: String, path: String, sessionId: UInt64) {
+    /// `movesAsides` brings the phone's side panel children over, before the open's layout.
+    func open(appId: String, path: String, sessionId: UInt64, movesAsides: Bool = false) {
         RunnerSupport.SurfaceShell.setBrowserBlankNewTabs(shell, enabled: false)
         RunnerSupport.SurfaceShell.setBrowserClosesWindowOnLastTab(shell, enabled: false)
         self.appId = appId
@@ -100,6 +102,9 @@ final class RunnerSurfaceShellHost {
         RunnerSupport.Runtime.setSessionId(sessionId, for: appId)
         RunnerSupport.Runtime.setCurrentApp(appId: appId, path: path)
         activate()
+        if movesAsides {
+            RunnerSupport.SurfaceShell.moveAsides(shell, intoPhone: false)
+        }
         RunnerSupport.SurfaceShell.open(shell, appId: appId, path: path, sessionId: sessionId)
         updateHingeOverlay(for: device)
         DevToolsLogger.shared.log("Opened \(appId) in SDK shell -> \(path)", level: .nav)

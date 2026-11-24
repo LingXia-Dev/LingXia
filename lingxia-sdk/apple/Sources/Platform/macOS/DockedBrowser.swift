@@ -333,6 +333,18 @@ final class DockedBrowser: NSObject {
         return tab.browserTabId
     }
 
+    /// Let the tab behind `surfaceId` leave for another host: it is removed from this panel
+    /// while the browser tab and its webview stay alive.
+    func handOverTab(
+        surfaceId: String
+    ) -> (browserTabId: String, url: String, ephemeralWebData: Bool, urlCallback: Bool)? {
+        guard let tab = tabs.first(where: { $0.surfaceId == surfaceId }) else { return nil }
+        tab.released = true
+        let handed = (tab.browserTabId, tab.webView?.url?.absoluteString ?? tab.url, tab.ephemeralWebData, tab.urlCallback)
+        removeTab(surfaceId: surfaceId)
+        return handed
+    }
+
     /// Undo `releaseTab` when the handover failed.
     func unreleaseTab(surfaceId: String) {
         tabs.first { $0.surfaceId == surfaceId }?.released = false

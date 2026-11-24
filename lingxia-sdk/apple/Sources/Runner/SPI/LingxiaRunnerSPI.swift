@@ -318,6 +318,13 @@ import WebKit
             RunnerBridge.activateSurfaceShell(shell)
         }
 
+        /// Moves the live URL asides between `shell` and the phone frame's side panel, page
+        /// state intact. Into the phone once its screen is up; into the shell once it is active
+        /// and before the lxapp opens there.
+        public static func moveAsides(_ shell: LxAppShell, intoPhone: Bool) {
+            LxAppSurface.moveAsides(to: intoPhone ? .phone : .shell, shell: shell)
+        }
+
         public static func setTrafficLightsVisible(_ shell: LxAppShell, visible: Bool) {
             RunnerBridge.setSurfaceShellTrafficLightsVisible(shell, visible: visible)
         }

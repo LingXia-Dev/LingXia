@@ -541,7 +541,7 @@ public class RunnerApp {
         refreshCapsulePageChrome(for: controller)
     }
 
-    private func openInSurfaceShell(appId: String, path: String, sessionId: UInt64) {
+    private func openInSurfaceShell(appId: String, path: String, sessionId: UInt64, movesAsides: Bool = false) {
         defer { applyAppearanceToHosts() }
         guard let controller else {
             os_log("Runner controller not configured", log: Self.log, type: .error)
@@ -553,7 +553,7 @@ public class RunnerApp {
 
         if let host = surfaceShellHost {
             host.applyDevice(deviceSize)
-            host.open(appId: appId, path: path, sessionId: sessionId)
+            host.open(appId: appId, path: path, sessionId: sessionId, movesAsides: movesAsides)
             return
         }
 
@@ -562,7 +562,8 @@ public class RunnerApp {
             appId: appId,
             path: path,
             sessionId: sessionId,
-            device: deviceSize
+            device: deviceSize,
+            movesAsides: movesAsides
         )
         host.onClose = { [weak self] closedHost in
             guard self?.surfaceShellHost === closedHost else { return }
@@ -908,7 +909,8 @@ public class RunnerApp {
         openInSurfaceShell(
             appId: current.appId,
             path: current.path,
-            sessionId: current.sessionId
+            sessionId: current.sessionId,
+            movesAsides: true
         )
     }
 
@@ -942,6 +944,10 @@ public class RunnerApp {
             path: current.path,
             sessionId: current.sessionId
         )
+        // The side panel's live pages follow the lxapp onto the phone.
+        if let shell = surfaceShellHost?.shell {
+            RunnerSupport.SurfaceShell.moveAsides(shell, intoPhone: true)
+        }
     }
 
     private func currentOpenApp() -> (appId: String, path: String, sessionId: UInt64)? {
