@@ -32,7 +32,7 @@ pub use lxapp::host::NativeDevtoolsAuthority;
 pub use lxapp::host::NativeHostRuntimeAuthority;
 
 pub use lxapp::host;
-pub use lxapp::host::{ChannelContext, ChannelMessage, StreamContext};
+pub use lxapp::host::{ChannelContext, ChannelMessage, PageState, StreamContext};
 /// Mark a development Runner host before SDK initialization.
 pub use lxapp::register_runner_host;
 // Required by expansions of `#[lingxia::native]`; host applications should
