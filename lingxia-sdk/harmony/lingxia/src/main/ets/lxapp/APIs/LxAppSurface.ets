@@ -1512,7 +1512,7 @@ export struct SurfaceManager {
             if (opVersion !== this.windowOpVersion) {
               return;
             }
-            return mainWindow.setPreferredOrientation(window.Orientation.UNSPECIFIED);
+            return mainWindow.setPreferredOrientation(Lingxia.hostOrientation());
           })
           .then(() => {
             if (opVersion !== this.windowOpVersion) {

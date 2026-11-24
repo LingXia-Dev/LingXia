@@ -10,6 +10,7 @@ import {
   VideoErrorDetail
 } from './player/LxNativeVideoPlayer';
 import { VideoControlsView, VideoControlSize } from './player/VideoControls';
+import { Lingxia } from '../../../app/Lingxia';
 import { LxMediaFrameCache } from './player/LxMediaFrameCache';
 import { isRemoteHttpUri, resolveLxUriForFileAccess } from './LxUri';
 import { LxLog } from '../../../app/LxLog';
@@ -380,7 +381,7 @@ export struct MediaPreviewOverlay {
             if (opVersion !== this.windowOpVersion) {
               return;
             }
-            return mainWindow.setPreferredOrientation(window.Orientation.UNSPECIFIED);
+            return mainWindow.setPreferredOrientation(Lingxia.hostOrientation());
           })
           .then(() => {
             if (opVersion !== this.windowOpVersion) {

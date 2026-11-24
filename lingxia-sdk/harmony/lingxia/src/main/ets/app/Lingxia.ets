@@ -9,7 +9,8 @@ import {
   Configuration,
   ConfigurationConstant,
   EnvironmentCallback,
-  ApplicationStateChangeCallback
+  ApplicationStateChangeCallback,
+  bundleManager
 } from '@kit.AbilityKit';
 import common from '@ohos.app.ability.common';
 import deviceInfo from '@ohos.deviceInfo';
@@ -90,7 +91,8 @@ export class Lingxia {
   private static lastGraceToken: number = 0;
   private static pendingNotificationWant: Want | null = null;
   // Last orientation asked of the window, and the shape it had when a force replaced the free one.
-  private static appliedOrientation: window.Orientation = window.Orientation.UNSPECIFIED;
+  private static appliedOrientation: window.Orientation | null = null;
+  private static declaredOrientation: window.Orientation | null = null;
   private static freeShape: window.Orientation | null = null;
   private static releaseTimer: number = -1;
   private static releaseListener: ((size: window.Size) => void) | null = null;
@@ -379,7 +381,7 @@ export class Lingxia {
     }
 
     const orientation: number = getPageOrientation(appId, path);
-    let targetOrientation: window.Orientation = window.Orientation.UNSPECIFIED;
+    let targetOrientation: window.Orientation = Lingxia.hostOrientation();
     if (orientation === 1 || orientation === 3) {
       targetOrientation = window.Orientation.PORTRAIT;
     } else if (orientation === 2 || orientation === 4) {
@@ -402,8 +404,8 @@ export class Lingxia {
 
   // A lifted force first turns the window back to the shape it had, since releasing alone leaves a flat phone where the force put it.
   private static applyOrientation(mainWindow: window.Window, target: window.Orientation): void {
-    const free: number = window.Orientation.UNSPECIFIED;
-    const wasFree: boolean = Lingxia.appliedOrientation === free;
+    const free: window.Orientation = Lingxia.hostOrientation();
+    const wasFree: boolean = (Lingxia.appliedOrientation ?? free) === free;
     if (target !== free) {
       const returning: boolean = Lingxia.releaseListener !== null;
       Lingxia.stopRelease(mainWindow);
@@ -436,7 +438,7 @@ export class Lingxia {
 
   private static release(mainWindow: window.Window): void {
     Lingxia.stopRelease(mainWindow);
-    Lingxia.setOrientation(mainWindow, window.Orientation.UNSPECIFIED);
+    Lingxia.setOrientation(mainWindow, Lingxia.hostOrientation());
   }
 
   private static stopRelease(mainWindow: window.Window): void {
@@ -451,6 +453,33 @@ export class Lingxia {
     if (Lingxia.releaseTimer !== -1) {
       clearTimeout(Lingxia.releaseTimer);
       Lingxia.releaseTimer = -1;
+    }
+  }
+
+  /** What the host's module declares for its ability: where a page without its own lands. */
+  public static hostOrientation(): window.Orientation {
+    if (Lingxia.declaredOrientation === null) {
+      Lingxia.declaredOrientation = Lingxia.windowOrientation(Lingxia.context?.abilityInfo.orientation);
+    }
+    return Lingxia.declaredOrientation;
+  }
+
+  private static windowOrientation(declared?: bundleManager.DisplayOrientation): window.Orientation {
+    switch (declared) {
+      case bundleManager.DisplayOrientation.PORTRAIT: return window.Orientation.PORTRAIT;
+      case bundleManager.DisplayOrientation.LANDSCAPE: return window.Orientation.LANDSCAPE;
+      case bundleManager.DisplayOrientation.PORTRAIT_INVERTED: return window.Orientation.PORTRAIT_INVERTED;
+      case bundleManager.DisplayOrientation.LANDSCAPE_INVERTED: return window.Orientation.LANDSCAPE_INVERTED;
+      case bundleManager.DisplayOrientation.AUTO_ROTATION: return window.Orientation.AUTO_ROTATION;
+      case bundleManager.DisplayOrientation.AUTO_ROTATION_PORTRAIT: return window.Orientation.AUTO_ROTATION_PORTRAIT;
+      case bundleManager.DisplayOrientation.AUTO_ROTATION_LANDSCAPE: return window.Orientation.AUTO_ROTATION_LANDSCAPE;
+      case bundleManager.DisplayOrientation.AUTO_ROTATION_RESTRICTED: return window.Orientation.AUTO_ROTATION_RESTRICTED;
+      case bundleManager.DisplayOrientation.AUTO_ROTATION_PORTRAIT_RESTRICTED:
+        return window.Orientation.AUTO_ROTATION_PORTRAIT_RESTRICTED;
+      case bundleManager.DisplayOrientation.AUTO_ROTATION_LANDSCAPE_RESTRICTED:
+        return window.Orientation.AUTO_ROTATION_LANDSCAPE_RESTRICTED;
+      case bundleManager.DisplayOrientation.LOCKED: return window.Orientation.LOCKED;
+      default: return window.Orientation.UNSPECIFIED;
     }
   }
 
