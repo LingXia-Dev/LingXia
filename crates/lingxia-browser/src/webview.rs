@@ -316,7 +316,7 @@ pub(crate) fn browser_create_webview(
     ));
     let delegate = Arc::new(BrowserTabDelegate {
         tab_id: tab_id_owned.clone(),
-        page_path: tab_path_owned.clone(),
+        page_path: tab_path_owned,
         session_id,
         create_token,
         data_mode,
@@ -442,20 +442,12 @@ pub(crate) fn browser_create_webview(
         .create();
 
     rong::RongExecutor::global().spawn(async move {
-        browser_on_webview_ready(
-            tab_path_owned,
-            session_id,
-            tab_id_owned,
-            create_token,
-            session,
-        )
-        .await;
+        browser_on_webview_ready(session_id, tab_id_owned, create_token, session).await;
     });
     Ok(())
 }
 
 async fn browser_on_webview_ready(
-    path: String,
     session_id: u64,
     tab_id: String,
     create_token: u64,

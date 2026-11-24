@@ -1034,10 +1034,10 @@ fn open_internal_browser_tab_with_scope(
     // still owns the first navigation, `pending_url` (set above) is the
     // request; loading here as well races that callback.
     if has_target_url {
-        let (create_token, create_in_flight) = lock_state()
+        let create_in_flight = lock_state()
             .tabs
             .get(&tab_id)
-            .map(|tab| (tab.create_token, tab.create_in_flight))
+            .map(|tab| tab.create_in_flight)
             .ok_or_else(|| {
                 LxAppError::ResourceNotFound(format!("browser tab not found: {tab_id}"))
             })?;
