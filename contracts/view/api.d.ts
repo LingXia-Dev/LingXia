@@ -457,6 +457,7 @@ export interface VectorGradient {
   units?: "objectBoundingBox" | "userSpaceOnUse"; spread?: "pad" | "reflect" | "repeat";
   stops: ReadonlyArray<{ offset: number; color: string; opacity?: number }>;
 }
-export interface RadioOption { readonly value: string; readonly label: string; readonly disabled?: boolean; readonly "data-testid"?: string }
+/** One choice of a `<radio>` or `<select>`. */
+export interface ChoiceOption { readonly value: string; readonly label: string; readonly disabled?: boolean; readonly "data-testid"?: string }
 /** HTML autocomplete tokens; Android maps them to autofill hints. */
 export type AutoComplete = "off" | "on" | "username" | "current-password" | "new-password" | "one-time-code" | "email" | "tel" | "name" | "given-name" | "family-name" | "street-address" | "postal-code" | "country" | "cc-number" | "cc-exp" | "cc-csc" | "bday";

@@ -258,7 +258,7 @@ Binding: `bind={local}` with a `useLocal<string>` cell, or `value` plus `onChang
 
 | Prop | Type | Required |
 | --- | --- | --- |
-| `options` | `readonly RadioOption[]` | yes |
+| `options` | `readonly ChoiceOption[]` | yes |
 | `aria-label` | `string` |  |
 | `disabled` | `boolean` |  |
 
@@ -368,7 +368,7 @@ Binding: `bind={local}` with a `useLocal<string>` cell, or `value` plus `onChang
 
 | Prop | Type | Required |
 | --- | --- | --- |
-| `options` | `readonly RadioOption[]` | yes |
+| `options` | `readonly ChoiceOption[]` | yes |
 | `defaultValue` | `string` |  |
 | `placeholder` | `string` |  |
 | `aria-label` | `string` |  |
