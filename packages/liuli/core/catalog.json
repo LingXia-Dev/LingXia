@@ -11438,7 +11438,7 @@
             "name": "title",
             "type": "string",
             "required": false,
-            "description": "The chosen record's title: on a phone, the heading beside the back button; everywhere, the detail pane's name."
+            "description": "The chosen record's title, as the detail pane's name; the detail shows its own heading."
           },
           {
             "name": "placeholder",
@@ -11471,7 +11471,6 @@
         "list": "view",
         "detail": "view",
         "back": "view",
-        "title": "text",
         "scroll": "scroll",
         "listInner": "view",
         "detailInner": "view",
@@ -11484,16 +11483,7 @@
         "description": [],
         "states": [],
         "keyboard": [],
-        "contrast": [
-          {
-            "what": "record title on a phone",
-            "pair": [
-              "text",
-              "canvas"
-            ],
-            "minimum": "4.5:1"
-          }
-        ],
+        "contrast": [],
         "notes": [
           "Each pane is a group named by its label, so a screen reader can move between them; the detail's name follows the chosen record.",
           "The chosen row says so itself: pass `isSelected` to its Item.",
@@ -11504,7 +11494,7 @@
         {
           "name": "Orders",
           "title": "Orders, with an action on the chosen one",
-          "source": "import { useLocal } from '@lingxia/view';\nimport { Button } from '@liulidesign/core/Button';\nimport { EmptyState } from '@liulidesign/core/EmptyState';\nimport { Item, ItemList } from '@liulidesign/core/Item';\nimport { ListDetail } from '@liulidesign/core/ListDetail';\n\nconst orders = [\n  { id: 'ord-101', title: 'Order #101', summary: 'Express delivery · Paid' },\n  { id: 'ord-102', title: 'Order #102', summary: 'Warehouse pickup · Processing' },\n  { id: 'ord-103', title: 'Order #103', summary: 'Standard shipping · Shipped' },\n] as const;\n\n/** Orders and the one chosen: side by side on a wide screen, the order over the list on a phone, where Back returns. */\nexport function Orders() {\n  const selected = useLocal<string | null>('selected-order', null);\n  const current = orders.find(order => order.id === selected.value) ?? null;\n  const shipped = useLocal<readonly string[]>('shipped', []);\n  const isShipped = current !== null && shipped.value.includes(current.id);\n  return (\n    // A window's worth of page: in an app it fills the page itself.\n    <view className=\"h-[360px] overflow-hidden rounded-container border border-text/12\">\n      <ListDetail bind={selected} listLabel=\"Orders\" data-testid=\"orders\">\n        <ListDetail.List>\n          <ItemList>\n            {orders.map(order => (\n              <Item\n                key={order.id}\n                label={order.title}\n                description={order.summary}\n                isSelected={selected.value === order.id}\n                onClick={() => selected.set(order.id)}\n                data-testid={`order-${order.id}`}\n              />\n            ))}\n          </ItemList>\n        </ListDetail.List>\n        <ListDetail.Detail\n          title={current?.title}\n          placeholder={<EmptyState title=\"Choose an order\" description=\"Its delivery and payment show here.\" />}\n          actions={<Button label={isShipped ? 'Shipped' : 'Mark as shipped'} variant=\"primary\" isDisabled={isShipped} onClick={() => current && shipped.set([...shipped.value, current.id])} data-testid=\"ship\" />}\n        >\n          {current && (\n            <view className=\"gap-2\" data-testid=\"order-detail\">\n              <text className=\"text-body text-text\">{current.summary}</text>\n              <text className=\"text-footnote text-muted\">Placed on 12 November, paid by card.</text>\n            </view>\n          )}\n        </ListDetail.Detail>\n      </ListDetail>\n    </view>\n  );\n}"
+          "source": "import { useLocal } from '@lingxia/view';\nimport { Button } from '@liulidesign/core/Button';\nimport { EmptyState } from '@liulidesign/core/EmptyState';\nimport { Item, ItemList } from '@liulidesign/core/Item';\nimport { ListDetail } from '@liulidesign/core/ListDetail';\n\nconst orders = [\n  { id: 'ord-101', title: 'Order #101', summary: 'Express delivery · Paid' },\n  { id: 'ord-102', title: 'Order #102', summary: 'Warehouse pickup · Processing' },\n  { id: 'ord-103', title: 'Order #103', summary: 'Standard shipping · Shipped' },\n] as const;\n\n/** Orders and the one chosen: side by side on a wide screen, the order over the list on a phone, where Back returns. */\nexport function Orders() {\n  const selected = useLocal<string | null>('selected-order', null);\n  const current = orders.find(order => order.id === selected.value) ?? null;\n  const shipped = useLocal<readonly string[]>('shipped', []);\n  const isShipped = current !== null && shipped.value.includes(current.id);\n  return (\n    // A window's worth of page: in an app it fills the page itself.\n    <view className=\"h-[360px] overflow-hidden rounded-container border border-text/12\">\n      <ListDetail bind={selected} listLabel=\"Orders\" data-testid=\"orders\">\n        <ListDetail.List>\n          <ItemList>\n            {orders.map(order => (\n              <Item\n                key={order.id}\n                label={order.title}\n                description={order.summary}\n                isSelected={selected.value === order.id}\n                onClick={() => selected.set(order.id)}\n                data-testid={`order-${order.id}`}\n              />\n            ))}\n          </ItemList>\n        </ListDetail.List>\n        <ListDetail.Detail\n          title={current?.title}\n          placeholder={<EmptyState title=\"Choose an order\" description=\"Its delivery and payment show here.\" />}\n          actions={<Button label={isShipped ? 'Shipped' : 'Mark as shipped'} variant=\"primary\" isDisabled={isShipped} onClick={() => current && shipped.set([...shipped.value, current.id])} data-testid=\"ship\" />}\n        >\n          {current && (\n            <view className=\"gap-2\" data-testid=\"order-detail\">\n              <text role=\"heading\" headingLevel={1} className=\"text-title font-semibold text-text\">{current.title}</text>\n              <text className=\"text-body text-text\">{current.summary}</text>\n              <text className=\"text-footnote text-muted\">Placed on 12 November, paid by card.</text>\n            </view>\n          )}\n        </ListDetail.Detail>\n      </ListDetail>\n    </view>\n  );\n}"
         },
         {
           "name": "Workspace",
@@ -11540,9 +11530,7 @@
             "description": ""
           }
         ],
-        "tokens": [
-          "--text-body"
-        ],
+        "tokens": [],
         "roles": [
           "canvas",
           "text"

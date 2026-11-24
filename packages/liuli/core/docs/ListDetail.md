@@ -58,6 +58,7 @@ export function Orders() {
         >
           {current && (
             <view className="gap-2" data-testid="order-detail">
+              <text role="heading" headingLevel={1} className="text-title font-semibold text-text">{current.title}</text>
               <text className="text-body text-text">{current.summary}</text>
               <text className="text-footnote text-muted">Placed on 12 November, paid by card.</text>
             </view>
@@ -138,7 +139,7 @@ export function Workspace() {
 
 | Prop | Type | Default | Description |
 | --- | --- | --- | --- |
-| `title` | `string` |  | The chosen record's title: on a phone, the heading beside the back button; everywhere, the detail pane's name. |
+| `title` | `string` |  | The chosen record's title, as the detail pane's name; the detail shows its own heading. |
 | `placeholder` | `Child` |  | Shown beside the list while nothing is chosen, on a wide screen: what choosing a row will show. |
 | `actions` | `Child` |  | Actions on the chosen record, such as Approve: a row under the detail, outside its scroll, so they stay in view. |
 | `children` | `Child` |  | The chosen record's detail; it scrolls on its own and starts at its top for each new choice. |
@@ -151,8 +152,7 @@ export function Workspace() {
 | root | `<view>` | yes | Fills its page: the two panes side by side, or the one a phone shows. |
 | list | `<view>` | yes | The list pane, a group named by `listLabel`, with a hairline at its end. On a phone it stays mounted while the detail covers it, so its scroll survives. |
 | detail | `<view>` | yes | The detail pane, a group named by `title`; on a phone it slides in from the end edge and out again, unless motion is reduced. |
-| back | `<view>` | no | Phone: the back button, named by `listLabel`, and the record's title as a heading, outside the detail's scroll. |
-| title | `<text>` | no | Phone: the record's title, a heading beside the back button. |
+| back | `<view>` | no | Phone: the back button, named by `listLabel`, alone in its row outside the detail's scroll. |
 | scroll | `<scroll>` | yes | In each pane, so the two scroll apart. |
 | listInner | `<view>` | yes | The list's padding. |
 | detailInner | `<view>` | yes | The detail's padding and cap, held to the start of its pane. |
@@ -165,7 +165,7 @@ export function Workspace() {
 - `className` on ListDetailList: classes merged after the recipe's, so they win.
 - `className` on ListDetailDetail: classes merged after the recipe's, so they win.
 - The recipe, `listDetailRecipe` from `@liulidesign/core/ListDetail/recipe`: the classes of each part, to style an element of your own to match. The component does not read a changed copy.
-- Scale tokens it reads, set in the app's stylesheet under `@theme`: `--text-body`.
+- It reads no Liuli scale token.
 - Colour roles it paints with, set by the theme pack: `canvas`, `text`.
 
 ## Accessibility
@@ -179,7 +179,6 @@ export function Workspace() {
 
 | Contrast | Pair | Minimum | Light | Dark |
 | --- | --- | --- | --- | --- |
-| record title on a phone | `text` on `canvas` | 4.5:1 | 15.19:1 | 15.31:1 |
 
 Ratios are computed from @lingxia/view/theme and rounded down.
 
@@ -188,6 +187,7 @@ Ratios are computed from @lingxia/view/theme and rounded down.
 - Do: Hold the choice in Logic with `value` and `onChange` when a deep link can open a record; use `bind` when the page alone knows it.
 - Do: Give `<ListDetail.Detail>` a `placeholder`, so a wide screen says what choosing a row will show.
 - Do: Put the actions on the chosen record in `actions`, so a long record never hides them.
+- Do: Start the detail with the record's own heading: the bar carries only Back, on a phone as on a wide screen, so the title shows once.
 - Do: Put it straight in a `<page>`: it sizes the panes to the page, and at a fold to its leaves.
 - Do: Use `contentWidth="prose"` for reading and `wide` for tables or examples.
 - Don't: Build a phone page and a wide page apart just to switch between one pane and two.

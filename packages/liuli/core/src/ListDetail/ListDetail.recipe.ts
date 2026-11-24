@@ -5,7 +5,6 @@ export const listDetailParts = {
   list: 'view',
   detail: 'view',
   back: 'view',
-  title: 'text',
   scroll: 'scroll',
   listInner: 'view',
   detailInner: 'view',
@@ -42,15 +41,12 @@ export const listDetailRecipe = {
     base: 'grow shrink basis-0 min-w-0 min-h-0 bg-canvas',
     compact: 'transition-transform duration-slow ease-standard motion-safe:starting:translate-x-full motion-safe:exit:translate-x-full rtl:motion-safe:starting:-translate-x-full rtl:motion-safe:exit:-translate-x-full',
   },
-  /** Phone: the way back and the record's title, over the detail and outside its scroll. */
+  /** Phone: the way back, over the detail and outside its scroll. */
   back: {
     // The pressed pill keeps 8 pt clear of the pane's edges; the chevron's stroke still starts on the
     // content's 16 pt edge: 8 + border 1 + padding 1.67 + the chevron's own inset in its box (5.33).
     base: 'shrink-0 flex-row items-center gap-2 ps-2 pe-4 pt-2',
     button: 'ps-[1.67px]',
-  },
-  title: {
-    base: 'grow shrink min-w-0 text-body font-semibold text-text truncate',
   },
   /** Each pane scrolls on its own. */
   scroll: {

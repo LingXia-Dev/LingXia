@@ -43,6 +43,7 @@ export function Orders() {
         >
           {current && (
             <view className="gap-2" data-testid="order-detail">
+              <text role="heading" headingLevel={1} className="text-title font-semibold text-text">{current.title}</text>
               <text className="text-body text-text">{current.summary}</text>
               <text className="text-footnote text-muted">Placed on 12 November, paid by card.</text>
             </view>

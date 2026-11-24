@@ -39,7 +39,7 @@ export interface ListDetailListProps {
 }
 
 export interface ListDetailDetailProps {
-  /** The chosen record's title: on a phone, the heading beside the back button; everywhere, the detail pane's name. */
+  /** The chosen record's title, as the detail pane's name; the detail shows its own heading. */
   title?: string;
   /** Shown beside the list while nothing is chosen, on a wide screen: what choosing a row will show. */
   placeholder?: Child;
@@ -122,7 +122,6 @@ export function ListDetailDetail({ title, placeholder, actions, children, classN
           {ctx.canGoBack && (
             <Button label={ctx.listLabel} startIcon="chevron-start" variant="ghost" size="sm" width="content" className={r.back.button} onClick={ctx.clearSelection} data-testid={ctx.testId && `${ctx.testId}-back`} />
           )}
-          {title !== undefined && <text role="heading" headingLevel={1} className={r.title.base}>{title}</text>}
         </view>
         <scroll key={ctx.selected ?? ''} className={r.scroll.base}>
           <view className={cx(r.detailInner.base, r.detailInner.compact)}>{children}</view>
