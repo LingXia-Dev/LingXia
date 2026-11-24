@@ -414,6 +414,10 @@ const measured = screen => {
     screen.layout(node, { width: textOf(node).length * 7, height: 16 });
   }
 };
+/** A reference path's gaps, in its own units: [slot, start, end], one per slot. */
+const gapsOf = d => [...d.matchAll(/H([\d.]+)M([\d.]+) /g)].map(([, start, end], slot) => [slot, Number(start), Number(end)]);
+/** The gaps with a width, in points on a 320 pt plot. */
+const openGaps = d => gapsOf(d).filter(([, start, end]) => end > start).map(([slot, start, end]) => [slot, start * 3.2, end * 3.2]);
 const referenceLabels = screen => screen.queryAll(node => node.tag === 'text' && node.props.insetInlineEnd !== undefined);
 const sideOf = label => (label.props.insetBottom === 0 ? 'above' : 'below');
 
@@ -426,14 +430,15 @@ test('Target: dashed lines on the bars\' timing, the range widened to hold them,
   const paths = JSON.parse(vector.props.vectorSource).paths;
   // 160 and 132 on a scale to 187. On a 320 by 160 plot the Target line passes through Mon's figure (132) and
   // Tue's (148), the Average line through Wed's (121): each breaks for that figure's text box, 2 pt wider each side.
-  assert.deepEqual(paths.map(path => path.d), ['M0 14.44H3.24M11.05 14.44H17.52M25.33 14.44H100', 'M0 29.41H31.81M39.62 29.41H100']);
-  const gaps = paths.flatMap(path => [...path.d.matchAll(/H([\d.]+)M([\d.]+)/g)].map(([, start, end]) => [Number(start) * 3.2, Number(end) * 3.2]));
-  // Mon, Tue and Wed, each figure three characters, measured at 7 pt a character.
-  gaps.forEach(([start, end], index) => {
-    const middle = (index + 0.5) * (320 / 7);
-    assert.ok(Math.abs(end - start - (3 * 7 + 4)) < 0.05 && Math.abs((start + end) / 2 - middle) < 0.05, `gap ${index}: ${start}..${end}`);
+  const gaps = paths.map(path => openGaps(path.d));
+  assert.deepEqual(gaps.map(each => each.map(([slot]) => slot)), [[0, 1], [2]], 'Target through Mon and Tue, Average through Wed');
+  // Each figure three characters, measured at 7 pt a character.
+  gaps.flat().forEach(([slot, start, end]) => {
+    const middle = (slot + 0.5) * (320 / 7);
+    assert.ok(Math.abs(end - start - (3 * 7 + 4)) < 0.05 && Math.abs((start + end) / 2 - middle) < 0.05, `gap at ${slot}: ${start}..${end}`);
   });
   assert.equal(vector.props.transition, vectors[1].props.transition, 'the lines move with the bars');
+  assert.ok(paths.every(path => gapsOf(path.d).length === 7), 'one gap per bar, empty ones too');
   const labels = referenceLabels(screen);
   assert.deepEqual(labels.map(textOf), ['Target 160', 'Average 132']);
   const timing = node => { const { durationMs, easing } = JSON.parse(node.props.transition); return JSON.stringify([durationMs, easing]); };
@@ -467,7 +472,8 @@ test('a reference line below zero breaks for the figure under a bar below zero',
   const vectors = find(screen.getByTestId('chart'), node => node.tag === 'vector');
   const [line] = JSON.parse(vectors[0].props.vectorSource).paths;
   assert.equal(line.key, 'reference-0');
-  const [[start, end]] = [...line.d.matchAll(/H([\d.]+)M([\d.]+)/g)].map(([, from, to]) => [Number(from) * 3.2, Number(to) * 3.2]);
+  const [[slot, start, end]] = openGaps(line.d);
+  assert.equal(slot, 0);
   assert.ok(Math.abs(end - start - (3 * 7 + 4)) < 0.05 && Math.abs((start + end) / 2 - 80) < 0.05, `"-50" is 21 pt wide at a's middle: ${start}..${end}`);
 });
 
@@ -495,4 +501,25 @@ export function render() {
   assert.deepEqual(ends(after).map(end => Math.sign(zeroAfter - end)), [-1, 1, -1], 'each bar now on the other side of zero');
   const { properties, durationMs } = JSON.parse(node().props.transition);
   assert.ok(properties.includes('d') && durationMs !== 0, node().props.transition);
+});
+
+test('new rows: each reference line keeps its commands, its gaps opening and closing on the bars\' transition, so it never snaps', async () => {
+  const page = linked => `import { BarChart } from ${JSON.stringify(`${linked}/src/BarChart/BarChart`)};
+import { useLocal } from '@lingxia/view';
+const data = [[{ m: 'Jan', v: 125 }, { m: 'Feb', v: 60 }, { m: 'Mar', v: 90 }, { m: 'Apr', v: 152 }], [{ m: 'Jan', v: 60 }, { m: 'Feb', v: 125 }, { m: 'Mar', v: 90 }, { m: 'Apr', v: 152 }]];
+export function render() {
+  const step = useLocal('step', 0);
+  return <page><button data-testid="next" onClick={() => step.set(1)}><text>Next</text></button><BarChart label="Net" rows={data[step.value]} x="m" y="v" references={[{ value: 140, label: 'Goal' }]} data-testid="net" /></page>;
+}
+`;
+  const screen = measured(laidOut(await renderPage(page)));
+  const line = () => find(screen.getByTestId('net'), node => node.tag === 'vector' && /reference-/.test(node.props.vectorSource))[0];
+  const commands = d => d.replace(/[\d.-]+/g, '').replace(/\s+/g, '');
+  const before = JSON.parse(line().props.vectorSource).paths[0].d;
+  screen.press(screen.getByTestId('next'));
+  measured(screen);
+  const after = JSON.parse(line().props.vectorSource).paths[0].d;
+  assert.deepEqual([openGaps(before).map(([slot]) => slot), openGaps(after).map(([slot]) => slot)], [[0], [1]], 'the gap moved from Jan to Feb');
+  assert.equal(commands(after), commands(before));
+  assert.ok(JSON.parse(line().props.transition).properties.includes('d'));
 });

@@ -96,15 +96,16 @@ test('placeReferences: blocked on both sides at the end edge, the name slides al
   assert.deepEqual(placeReferences([100], { width: 220, height: 200 }, label, taken, 2), [{ side: 'above', inset: 0, isShort: true }]);
 });
 
-test('knockOuts: a line breaks only at the labels its stroke touches, 2 pt wider on each side, overlapping gaps as one', () => {
+test('knockOuts: one gap per slot in order, a crossed label\'s span 2 pt wider each side, an empty gap at the middle of any other, never overlapping', () => {
+  const middles = [20, 60, 100, 140];
   const labels = [
-    { start: 60, end: 80, top: 40, bottom: 56 },
     { start: 10, end: 31, top: 40, bottom: 56 },
-    { start: 30, end: 50, top: 50, bottom: 66 },
-    { start: 100, end: 120, top: 70, bottom: 86 },
+    { start: 28, end: 92, top: 50, bottom: 66 },
+    undefined,
+    { start: 130, end: 150, top: 70, bottom: 86 },
   ];
-  assert.deepEqual(knockOuts(52, labels, 2), [[8, 52], [58, 82]], 'in start order; the two near the start joined');
-  assert.deepEqual(knockOuts(39.6, labels, 2), [[8, 33], [58, 82]], 'a hairline half a point above a box still touches it');
-  assert.deepEqual(knockOuts(39.4, labels, 2), []);
-  assert.deepEqual(knockOuts(90, labels, 2), []);
+  assert.deepEqual(knockOuts(52, labels, middles, 2), [[8, 33], [33, 94], [100, 100], [140, 140]], 'the second starts where the first ends');
+  assert.deepEqual(knockOuts(39.6, labels, middles, 2), [[8, 33], [60, 60], [100, 100], [140, 140]], 'a hairline half a point above a box still touches it');
+  assert.deepEqual(knockOuts(39.4, labels, middles, 2), middles.map(middle => [middle, middle]));
+  assert.equal(knockOuts(78, labels, middles, 2).length, 4, 'always one per slot');
 });

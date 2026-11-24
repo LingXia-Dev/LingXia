@@ -263,17 +263,20 @@ export function BarChart<Row extends ChartRecord<Row>>({
   }) : [];
   const refs = useReferences(references, formatValue, down, plotSize, figures);
   // Each figure's own text box, where a reference line breaks so it never crosses digits.
-  const figureTexts = figures.length > 0 && plotSize ? data.flatMap((each, index) => {
-    const value = numberOf(each, shown[0].field);
+  const slotWidth = (plotSize?.width ?? 0) / Math.max(1, data.length);
+  const middles = data.map((_, index) => (index + 0.5) * slotWidth);
+  const figureTexts = data.map((each, index) => {
+    const value = numberOf(each, shown[0]?.field ?? '');
     const size = figureBoxes[index].value;
-    if (!Number.isFinite(value) || !size) return [];
-    const [middle, y] = [(index + 0.5) * (plotSize.width / data.length), down(grown ? value : 0)];
+    if (figures.length === 0 || !Number.isFinite(value) || !size) return undefined;
+    const y = down(grown ? value : 0);
     const top = (value < 0 ? y + corner : y - corner - lane) + (lane - size.height) / 2;
-    return [{ start: middle - size.width / 2, end: middle + size.width / 2, top, bottom: top + size.height }];
-  }) : [];
+    return { start: middles[index] - size.width / 2, end: middles[index] + size.width / 2, top, bottom: top + size.height };
+  });
   const toBox = (at: number) => (at / (plotSize?.width || 1)) * box;
+  // One gap per bar, empty where no figure is crossed, so the line morphs with the bars.
   const referenceLines = references.map((each, index) => referencePath(index, Math.round(fall(each.value) * box * 100) / 100, 0, box,
-    knockOuts(down(each.value), figureTexts, knockOutPad).map(([start, end]) => [toBox(start), toBox(end)] as const)));
+    knockOuts(down(each.value), figureTexts, middles, knockOutPad).map(([start, end]) => [toBox(start), toBox(end)] as const)));
 
   const row = (which: 'all' | 'ends', className: string) => (which === 'all' ? (
     <view className={cx(className, r.labels.all)}>

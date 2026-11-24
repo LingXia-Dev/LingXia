@@ -65,20 +65,14 @@ export function ReferenceReading({ texts }: { texts: readonly ReferenceTexts[] }
   return <view className={r.referenceReading.base}>{texts.map((text, index) => <text key={`reference-${index}`}>{text.spoken}</text>)}</view>;
 }
 
-/** A dashed hairline across the drawing at height `y`, from `from` to `to` in its units, broken at each of `gaps`. */
+/** A dashed hairline across the drawing at height `y`, from `from` to `to` in its units, broken at each of `gaps` (in order). */
 export const referencePath = (index: number, y: number, from: number, to: number, gaps: ReadonlyArray<readonly [number, number]> = []): VectorPath => ({
   key: `reference-${index}`, d: segments(y, from, to, gaps), stroke: 'text-muted', strokeWidth: 1, strokeDasharray: [4, 3], fill: 'none', vectorEffect: 'non-scaling-stroke',
 });
 
 const round = (value: number) => Math.round(value * 100) / 100;
+// Every gap is drawn, an empty one too, so the path's commands depend only on how many there are.
 const segments = (y: number, from: number, to: number, gaps: ReadonlyArray<readonly [number, number]>) => {
-  let d = `M${from} ${y}`;
-  let at = from;
-  for (const [start, end] of gaps) {
-    if (end <= at || start >= to) continue;
-    if (start > at) d += `H${round(start)}`;
-    at = Math.min(to, end);
-    d += `M${round(at)} ${y}`;
-  }
-  return at < to ? `${d}H${to}` : d.slice(0, d.lastIndexOf('M'));
+  const clamp = (at: number) => round(Math.min(to, Math.max(from, at)));
+  return `M${from} ${y}${gaps.map(([start, end]) => `H${clamp(start)}M${clamp(end)} ${y}`).join('')}H${to}`;
 };

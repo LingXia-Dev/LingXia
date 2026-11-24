@@ -249,19 +249,20 @@ export function niceTicks([low, high]: readonly [number, number], target: number
 export interface Extent { start: number; end: number; top: number; bottom: number }
 
 /**
- * Where a line at height `y` passes behind labels: each crossed label's span, `pad` wider on both sides,
- * overlapping spans merged, in order. A label is crossed when the line's 1 pt stroke touches its box.
+ * Where a line at height `y` breaks: one gap per slot, in order, so the line keeps one shape while
+ * values change. A slot whose label the line's 1 pt stroke touches gets that label's span, `pad` wider
+ * on both sides; any other slot an empty gap at its `middle`. Gaps never overlap.
  */
-export function knockOuts(y: number, labels: readonly Extent[], pad: number): Array<[number, number]> {
-  const spans = labels.filter(label => label.top - 0.5 < y && y < label.bottom + 0.5)
-    .map((label): [number, number] => [label.start - pad, label.end + pad]).sort((a, b) => a[0] - b[0]);
-  const merged: Array<[number, number]> = [];
-  for (const span of spans) {
-    const last = merged[merged.length - 1];
-    if (last && span[0] <= last[1]) last[1] = Math.max(last[1], span[1]);
-    else merged.push([...span]);
-  }
-  return merged;
+export function knockOuts(y: number, labels: ReadonlyArray<Extent | undefined>, middles: readonly number[], pad: number): Array<[number, number]> {
+  let reached = -Infinity;
+  return middles.map((middle, index) => {
+    const label = labels[index];
+    const isCrossed = label !== undefined && label.top - 0.5 < y && y < label.bottom + 0.5;
+    const [start, end] = isCrossed ? [label.start - pad, label.end + pad] : [middle, middle];
+    const gap: [number, number] = [Math.max(start, reached), Math.max(end, reached)];
+    reached = gap[1];
+    return gap;
+  });
 }
 
 /**
