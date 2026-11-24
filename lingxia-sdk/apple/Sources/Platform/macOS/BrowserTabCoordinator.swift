@@ -18,9 +18,6 @@ protocol BrowserCoordinatorHost: AnyObject {
     var keepsBrowserRootWithoutTabs: Bool { get }
     /// Whether closing the final browser tab closes the containing window.
     var closesWindowOnLastBrowserTab: Bool { get }
-    /// Whether a user-created tab starts at about:blank instead of the bundled
-    /// browser new-tab page.
-    var usesBlankBrowserNewTabs: Bool { get }
     /// Returns owner (appId, sessionId) for creating a new browser tab.
     func browserOwnerForNewTab() -> (appId: String, sessionId: UInt64)?
     /// Called before a browser tab becomes active. Host should pause current VC.
@@ -276,7 +273,7 @@ final class BrowserTabCoordinator: NSObject {
     }
 
     func addTab() {
-        addTabWithURL(host?.usesBlankBrowserNewTabs == true ? "about:blank" : "")
+        addTabWithURL("about:blank")
     }
 
     func openBrowserLocalSettings() {
@@ -1661,9 +1658,6 @@ final class BrowserTabCoordinator: NSObject {
               let host = url.host?.lowercased() else {
             return nil
         }
-        if scheme == "lingxia" {
-            return "\(scheme)://\(host)"
-        }
         guard scheme == "http" || scheme == "https" else {
             return nil
         }
@@ -1676,23 +1670,7 @@ final class BrowserTabCoordinator: NSObject {
         return "\(scheme)://\(host)\(port)"
     }
 
-    /// Built-in `lingxia://` pages (settings, downloads, …) have no site
-    /// favicon. Use the host app's icon so those rows read as product chrome,
-    /// not the LingXia SDK mark shipped in the framework bundle.
-    private func bundledFavicon() -> NSImage? {
-        // Favicon rows draw their image unclipped, so hand them a pre-rounded
-        // tile; the raw host artwork is a full-bleed square.
-        LxIcon.hostAppImage().map { TabBarHelper.appTileIcon($0, size: 16) }
-    }
-
     private func fetchFavicon(for origin: String, tabId: String, webView: WKWebView) {
-        if origin.hasPrefix("lingxia://") {
-            guard let image = bundledFavicon() else { return }
-            tabFavicons[tabId] = image
-            host?.updateSidebarBrowserItems(sidebarItems(), activeId: activeTabId)
-            return
-        }
-
         // Page-declared icon first, /favicon.ico fallback (FaviconLoader waits
         // for the load to settle — the old fetch ran at navigation time and
         // only tried the default path, so most sites never got an icon).

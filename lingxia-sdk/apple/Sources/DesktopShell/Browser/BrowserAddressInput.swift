@@ -113,7 +113,7 @@ func handleBrowserAddressSubmission(
     let target: URL?
     if let url = URL(string: input),
        let scheme = url.scheme?.lowercased(),
-       scheme == "http" || scheme == "https" || scheme == "lingxia" {
+       scheme == "http" || scheme == "https" {
         target = url
     } else if !input.contains(" "), input.contains("."), let url = URL(string: "https://\(input)") {
         target = url

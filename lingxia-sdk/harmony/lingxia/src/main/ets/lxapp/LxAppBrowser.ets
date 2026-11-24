@@ -151,16 +151,6 @@ function browserUrlDisplay(rawUrl: string): BrowserUrlDisplay {
     return fallback;
   }
   const scheme = trimmed.substring(0, schemeEnd).toLowerCase();
-  if (scheme === 'lingxia') {
-    // The browser's own internal pages (settings / downloads): show the full
-    // lingxia:// address, no security chrome.
-    return {
-      text: trimmed,
-      iconPath: $rawfile('icons/icon_lock.svg'),
-      iconColor: '#666666',
-      iconVisible: false,
-    };
-  }
   if (scheme === 'http' || scheme === 'https') {
     const rest = trimmed.substring(schemeEnd + 1);
     if (!rest.startsWith('//')) {

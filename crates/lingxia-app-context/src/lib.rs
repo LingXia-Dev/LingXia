@@ -524,7 +524,7 @@ impl LingxiaServers {
 pub struct CapabilitiesConfig {
     #[serde(default)]
     pub notifications: bool,
-    /// The product in-app browser, with its newtab / settings / downloads pages
+    /// The product in-app browser, with its bookmarks / history / downloads / settings pages
     /// and browser shell runtime. Opt-in and cross-platform.
     #[serde(default)]
     pub browser: bool,

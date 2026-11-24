@@ -47,7 +47,6 @@ final class RunnerSurfaceShellHost {
         self.currentPath = path
         self.device = device
         self.headless = false
-        RunnerSupport.SurfaceShell.setBrowserBlankNewTabs(shell, enabled: false)
         RunnerSupport.SurfaceShell.setBrowserPageActionsVisible(shell, visible: false)
         observeClose()
         installDeviceSelector()
@@ -67,7 +66,6 @@ final class RunnerSurfaceShellHost {
         self.currentPath = webTarget.url.absoluteString
         self.device = device
         self.headless = headless
-        RunnerSupport.SurfaceShell.setBrowserBlankNewTabs(shell, enabled: true)
         RunnerSupport.SurfaceShell.setBrowserClosesWindowOnLastTab(shell, enabled: true)
         RunnerSupport.SurfaceShell.setBrowserPageActionsVisible(shell, visible: false)
         observeClose()
@@ -95,7 +93,6 @@ final class RunnerSurfaceShellHost {
 
     /// `movesAsides` brings the phone's side panel children over, before the open's layout.
     func open(appId: String, path: String, sessionId: UInt64, movesAsides: Bool = false) {
-        RunnerSupport.SurfaceShell.setBrowserBlankNewTabs(shell, enabled: false)
         RunnerSupport.SurfaceShell.setBrowserClosesWindowOnLastTab(shell, enabled: false)
         self.appId = appId
         self.currentPath = path
@@ -125,7 +122,6 @@ final class RunnerSurfaceShellHost {
     }
 
     func presentBrowserTab(id tabId: String) {
-        RunnerSupport.SurfaceShell.setBrowserBlankNewTabs(shell, enabled: true)
         RunnerSupport.SurfaceShell.presentBrowserTab(shell, tabId: tabId)
         updateHingeOverlay(for: device)
         if !headless {

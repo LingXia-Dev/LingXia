@@ -291,10 +291,6 @@ enum RunnerSupport {
             LingxiaRunnerSPI.SurfaceShell.setBrowserPageActionsVisible(shell, visible: visible)
         }
 
-        static func setBrowserBlankNewTabs(_ shell: LxAppShell, enabled: Bool) {
-            LingxiaRunnerSPI.SurfaceShell.setBrowserBlankNewTabs(shell, enabled: enabled)
-        }
-
         static func setBrowserClosesWindowOnLastTab(_ shell: LxAppShell, enabled: Bool) {
             LingxiaRunnerSPI.SurfaceShell.setBrowserClosesWindowOnLastTab(shell, enabled: enabled)
         }

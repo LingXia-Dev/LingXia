@@ -1187,12 +1187,10 @@ routes:
 - `bookmarks.reorder` orders the bookmark manager only.
   `browser.bookmarks: false` hides bookmark chrome; the bookmarks system page
   and `bookmarks.list` / `watch` stay available.
-- `tabs.recentlyClosed` lists the process's last 25 closed website tabs, newest
-  first; `tabs.reopen({ id? })` restores one, the latest when `id` is omitted.
-  Private tabs, aside tabs and window surfaces are not recorded.
-- A replacement web UI declares `controlProtocolVersion` in its `lxapp.json`,
-  equal to the runtime's control protocol version; a missing, older or unknown
-  value fails the build.
+- The host keeps the process's last 25 closed website tabs; the desktop
+  reopen-closed-tab shortcut (Cmd/Ctrl+Shift+T) restores the latest. Private tabs, aside tabs and
+  window surfaces are not recorded.
+- A replacement web UI is an lxapp whose `appId` is `app.lingxia.browser`.
 
 ---
 

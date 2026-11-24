@@ -27,14 +27,6 @@
     "defaultMessage": "暂无内容",
     "description": "Browser system UI string for common.empty"
   },
-  "nav.bookmarks": {
-    "defaultMessage": "书签",
-    "description": "Browser system UI string for nav.bookmarks"
-  },
-  "nav.history": {
-    "defaultMessage": "历史记录",
-    "description": "Browser system UI string for nav.history"
-  },
   "nav.downloads": {
     "defaultMessage": "下载",
     "description": "Browser system UI string for nav.downloads"
@@ -42,22 +34,6 @@
   "nav.settings": {
     "defaultMessage": "设置",
     "description": "Browser system UI string for nav.settings"
-  },
-  "newtab.placeholder": {
-    "defaultMessage": "输入网址...",
-    "description": "Browser system UI string for newtab.placeholder"
-  },
-  "newtab.go": {
-    "defaultMessage": "前往",
-    "description": "Browser system UI string for newtab.go"
-  },
-  "newtab.shortcuts": {
-    "defaultMessage": "书签快捷方式",
-    "description": "Browser system UI string for newtab.shortcuts"
-  },
-  "newtab.recentlyClosed": {
-    "defaultMessage": "最近关闭",
-    "description": "Browser system UI string for newtab.recentlyClosed"
   },
   "bookmarks.title": {
     "defaultMessage": "书签管理",

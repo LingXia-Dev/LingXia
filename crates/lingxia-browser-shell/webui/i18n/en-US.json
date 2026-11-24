@@ -27,14 +27,6 @@
     "defaultMessage": "Nothing here yet.",
     "description": "Browser system UI string for common.empty"
   },
-  "nav.bookmarks": {
-    "defaultMessage": "Bookmarks",
-    "description": "Browser system UI string for nav.bookmarks"
-  },
-  "nav.history": {
-    "defaultMessage": "History",
-    "description": "Browser system UI string for nav.history"
-  },
   "nav.downloads": {
     "defaultMessage": "Downloads",
     "description": "Browser system UI string for nav.downloads"
@@ -42,22 +34,6 @@
   "nav.settings": {
     "defaultMessage": "Settings",
     "description": "Browser system UI string for nav.settings"
-  },
-  "newtab.placeholder": {
-    "defaultMessage": "Enter URL or search...",
-    "description": "Browser system UI string for newtab.placeholder"
-  },
-  "newtab.go": {
-    "defaultMessage": "Go",
-    "description": "Browser system UI string for newtab.go"
-  },
-  "newtab.shortcuts": {
-    "defaultMessage": "Bookmarks",
-    "description": "Browser system UI string for newtab.shortcuts"
-  },
-  "newtab.recentlyClosed": {
-    "defaultMessage": "Recently Closed",
-    "description": "Browser system UI string for newtab.recentlyClosed"
   },
   "bookmarks.title": {
     "defaultMessage": "Bookmarks",

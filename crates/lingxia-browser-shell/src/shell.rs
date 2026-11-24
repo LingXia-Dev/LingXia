@@ -64,24 +64,8 @@ fn reorder_pins(_app: Arc<LxApp>, input: ReorderPinsInput) -> HostResult<ShellPi
 }
 
 pub(crate) fn register() {
-    lxapp::host::register_host_entry(recently_closed_host());
-    lxapp::host::register_host_entry(reopen_host());
     lxapp::host::register_host_entry(pins_host());
     lxapp::host::register_host_entry(reorder_pins_host());
-}
-
-#[lingxia::framework_native("tabs.recentlyClosed", audience = "control-surface-only")]
-fn recently_closed(_app: Arc<LxApp>) -> HostResult<Vec<lingxia_browser::ClosedBrowserTab>> {
-    Ok(lingxia_browser::recently_closed())
-}
-#[derive(serde::Deserialize)]
-struct ReopenInput {
-    #[serde(default)]
-    id: Option<String>,
-}
-#[lingxia::framework_native("tabs.reopen", audience = "control-surface-only")]
-fn reopen(_app: Arc<LxApp>, input: ReopenInput) -> HostResult<String> {
-    lingxia_browser::reopen_closed(input.id.as_deref())
 }
 
 #[cfg(test)]

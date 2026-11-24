@@ -10,10 +10,6 @@
   "logic": true,
   "pages": [
     {
-      "name": "newtab",
-      "path": "pages/newtab/index"
-    },
-    {
       "name": "bookmarks",
       "path": "pages/bookmarks/index"
     },

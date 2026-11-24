@@ -986,7 +986,7 @@ internal object LxAppBrowser {
         // Secure is the norm — no padlock (misread as "locked"); only insecure
         // pages get an icon.
         val scheme = runCatching { URI(cleanUrl).scheme?.lowercase() }.getOrNull()
-        if (scheme == "https" || scheme == "lingxia") {
+        if (scheme == "https") {
             icon.visibility = View.GONE
         } else {
             icon.visibility = View.VISIBLE

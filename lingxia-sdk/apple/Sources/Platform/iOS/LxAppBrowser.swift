@@ -850,14 +850,6 @@ private final class LxAppBrowserViewController: UIViewController, UIGestureRecog
             return BrowserUrlDisplay(text: "", iconName: nil, tintColor: BrowserPalette.secondaryIcon)
         }
         switch url.scheme?.lowercased() {
-        case "lingxia":
-            // The browser's own internal pages (newtab / settings / downloads):
-            // show the full lingxia:// address, no security chrome.
-            return BrowserUrlDisplay(
-                text: url.absoluteString,
-                iconName: nil,
-                tintColor: BrowserPalette.secondaryIcon
-            )
         case "https":
             return BrowserUrlDisplay(
                 text: url.host?.isEmpty == false ? url.host! : "Web page",
@@ -1031,7 +1023,7 @@ private final class LxAppBrowserViewController: UIViewController, UIGestureRecog
         }
         // Capture the input BEFORE resigning: resignFirstResponder fires
         // textFieldDidEndEditing synchronously, which rewrites the field to the
-        // current page URL (empty for a hidden newtab) — reading text after that
+        // current page URL — reading text after that
         // would lose what the user typed.
         let input = textField.text ?? ""
         textField.resignFirstResponder()
@@ -1047,7 +1039,7 @@ private final class LxAppBrowserViewController: UIViewController, UIGestureRecog
         guard !trimmed.isEmpty, let tabId = LxAppBrowser.activeTabId else { return }
         let target: URL?
         if let url = URL(string: trimmed),
-           let scheme = url.scheme?.lowercased(), scheme == "http" || scheme == "https" || scheme == "lingxia" {
+           let scheme = url.scheme?.lowercased(), scheme == "http" || scheme == "https" {
             target = url
         } else if !trimmed.contains(" "), trimmed.contains("."), let url = URL(string: "https://\(trimmed)") {
             target = url

@@ -310,10 +310,6 @@ enum RunnerBridge {
         shell.setBrowserRootVisible(visible)
     }
 
-    static func setSurfaceShellBrowserBlankNewTabs(_ shell: LxAppShell, enabled: Bool) {
-        shell.setBrowserBlankNewTabs(enabled)
-    }
-
     static func setSurfaceShellBrowserClosesWindowOnLastTab(
         _ shell: LxAppShell,
         enabled: Bool

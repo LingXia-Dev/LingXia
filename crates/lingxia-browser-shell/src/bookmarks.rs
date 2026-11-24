@@ -3,7 +3,7 @@
 //! Persistence mirrors proxy settings: one JSON file in the app state
 //! directory (`browser-bookmarks.json`). Every mutation goes through the
 //! store lock (load → mutate → replace save) and broadcasts the new snapshot
-//! so `bookmarks.watch` subscribers (newtab, bookmarks page) re-render live
+//! so `bookmarks.watch` subscribers (the bookmarks page) re-render live
 //! when the native chrome toggles a star.
 
 use crate::bookmarks_html::{ImportedBookmark, export_netscape_html, parse_netscape_html};
