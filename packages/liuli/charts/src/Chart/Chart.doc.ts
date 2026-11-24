@@ -54,6 +54,7 @@ export const doc: ComponentDoc = {
       'An error is an alert and is announced when it appears. While loading the group is busy and the skeleton is hidden.',
       'Legend swatches repeat the mark: a square for bars and slices, a stroke with the line\'s dash for lines, so a series is never named by colour alone.',
       'An inline legend entry is 18 px tall; on touch, prefer the list variant (36 px rows) when entries can be pressed.',
+      'Right to left, the plot and its axis keep their left-to-right order, as the data does; the title, legend and readout follow the page.',
     ],
   },
   guidance: {

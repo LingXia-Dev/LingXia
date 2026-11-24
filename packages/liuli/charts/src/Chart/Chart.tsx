@@ -137,7 +137,8 @@ export function Chart({
       {summary !== undefined && isReady && <text className={r.summary.base}>{summary}</text>}
       {hasLegend && legendPosition === 'top' && legend}
       {isReady && readout}
-      <view className={cx(r.plot.base, r.plot.size[size], !isReady && r.plot.state)}>
+      {/* Drawn data keeps its physical order in either direction: the marks, figures, slots and axis run left to right. */}
+      <view dir={isReady ? 'ltr' : undefined} className={cx(r.plot.base, r.plot.size[size], !isReady && r.plot.state)}>
         {isLoading && <LoadingPlot shape={plotShape} size={size} />}
         {!isLoading && error !== undefined && (
           // A mark and a way on, so a failure reads as a state the chart is in, not as nothing drawn.
@@ -164,7 +165,7 @@ export function Chart({
         )}
         {isReady && children}
       </view>
-      {isReady && axis !== undefined && <view aria-hidden className={r.axis.base}>{axis}</view>}
+      {isReady && axis !== undefined && <view aria-hidden dir="ltr" className={r.axis.base}>{axis}</view>}
       {hasLegend && legendPosition === 'bottom' && legend}
     </view>
   );

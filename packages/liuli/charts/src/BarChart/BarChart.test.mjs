@@ -457,7 +457,7 @@ test('a reference level with the last bar\'s figure moves its label below the li
   assert.deepEqual(referenceLabels(clear).map(sideOf), ['above'], 'the tall bar is at the start, away from the label');
 });
 
-test('references 2% apart on signed bars: the second below its line; right to left, the labels keep to the end edge', async () => {
+test('references 2% apart on signed bars: the second below its line; right to left too, the labels keep to the plot\'s end edge, its right', async () => {
   const rows = `[{ k: 'a', v: -50 }, { k: 'b', v: 10 }, { k: 'c', v: 20 }, { k: 'd', v: 30 }, { k: 'e', v: 40 }, { k: 'f', v: 50 }, { k: 'g', v: 60 }, { k: 'h', v: 70 }, { k: 'i', v: 80 }, { k: 'j', v: 30 }]`;
   for (const direction of ['ltr', 'rtl']) {
     const screen = measured(laidOut(await renderPage(page(`references={[{ value: 0, label: 'Plan' }, { value: -2.6, label: 'Last year' }]}`, rows), { env: { ...defaultEnv, direction } })));
@@ -522,4 +522,22 @@ export function render() {
   assert.deepEqual([openGaps(before).map(([slot]) => slot), openGaps(after).map(([slot]) => slot)], [[0], [1]], 'the gap moved from Jan to Feb');
   assert.equal(commands(after), commands(before));
   assert.ok(JSON.parse(line().props.transition).properties.includes('d'));
+});
+
+test('right to left, the plot keeps time left to right: bars, figures, press slots, x labels and a line\'s gaps all agree', async () => {
+  const direction = node => { for (let at = node; at; at = at.parent) if (at.props.direction) return at.props.direction; return 'page'; };
+  for (const env of [defaultEnv, { ...defaultEnv, direction: 'rtl' }]) {
+    const screen = measured(laidOut(await renderExample('BarChart/BarChart', 'Target', { env })));
+    const chart = screen.getByTestId('target');
+    const [slot] = slots(chart);
+    const ticks = screen.queryAll(node => node.tag === 'text' && textOf(node) === 'Mon');
+    assert.deepEqual([direction(slot), ...ticks.map(direction)], ['ltr', 'ltr', 'ltr'], `${env.direction ?? 'ltr'}: slots and labels in a left-to-right row`);
+    assert.deepEqual(slots(chart).map(each => each.props.accessibilityLabel.split(':')[0]), ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'], 'in time order');
+    // Slot i spans [i, i + 1] sevenths of the plot; bar i and its figure's gap are centred in it.
+    const [drawing] = drawings(chart);
+    const middles = bars(drawing.paths[0].d).map(([x, , width]) => x + width / 2);
+    middles.forEach((middle, index) => assert.ok(Math.abs(middle - ((index + 0.5) * 100) / 7) < 0.05, `bar ${index} at ${middle}`));
+    const line = JSON.parse(find(chart, node => node.tag === 'vector' && /reference-/.test(node.props.vectorSource))[0].props.vectorSource).paths[0];
+    for (const [index, start, end] of openGaps(line.d)) assert.ok(Math.abs((start + end) / 2 / 3.2 - middles[index]) < 0.05, `gap ${index}`);
+  }
 });

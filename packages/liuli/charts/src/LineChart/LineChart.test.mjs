@@ -473,3 +473,14 @@ test('a goal the latest value reaches exactly: the label keeps its name and slid
   // The point sits 4 pt in from the end edge and is kept 6 pt clear all round; the label stops 2 pt short of that.
   assert.deepEqual([textOf(label), label.props.insetBottom === 0 ? 'above' : 'below', label.props.insetInlineEnd], ['Goal 50', 'above', 4 + 6 + 2]);
 });
+
+test('right to left, the plot keeps time left to right: the line, its x labels, the latest figure and the reference labels share one direction', async () => {
+  const direction = node => { for (let at = node; at; at = at.parent) if (at.props.direction) return at.props.direction; return 'page'; };
+  const screen = laidOut(await renderExample('LineChart/LineChart', 'Goal', { env: { ...defaultEnv, direction: 'rtl' } }));
+  // What is drawn on the plot is hidden from assistive tech: the line, scale, x labels, latest figure, reference label.
+  const drawn = [lineVector(screen), ...screen.queryAll(node => node.tag === 'text' && unread(node))];
+  assert.ok(['13 Oct', 'Goal 70.0 kg'].every(text => drawn.some(node => node.tag === 'text' && textOf(node) === text)), drawn.map(textOf).join('|'));
+  assert.deepEqual([...new Set(drawn.map(direction))], ['ltr'], 'all in a left-to-right box');
+  const title = screen.getByText('Weight');
+  assert.equal(direction(title), 'page', 'the heading keeps the page\'s direction');
+});
