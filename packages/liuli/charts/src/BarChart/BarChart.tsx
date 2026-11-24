@@ -191,6 +191,9 @@ export function BarChart({
     }
     return index === chosen ? undefined : onSelect(keyAt(index));
   } : undefined;
+  // The plot scrubs only with a handler, so its axis travels with it.
+  const plotPointer: { onPointer: (event: PointerEvent) => void; pointerAxis: 'x'; 'data-testid'?: string } | { onPointer?: undefined; pointerAxis?: undefined } =
+    scrub ? { onPointer: scrub, pointerAxis: 'x', 'data-testid': testId === undefined ? undefined : `${testId}-plot` } : {};
 
   // One element per category: its name and values for assistive tech, and its press target.
   // With figures over the bars it also holds the figure, level with its bar's free end.
@@ -308,7 +311,7 @@ export function BarChart({
           role={isPressable ? undefined : 'list'}
           aria-label={isPressable ? undefined : label}
           className={r.slots.base}
-          {...(scrub ? { onPointer: scrub, pointerAxis: 'x' as const, 'data-testid': testId === undefined ? undefined : `${testId}-plot` } : {})}
+          {...plotPointer}
           {...(scrub && !isPressable ? { 'aria-valuenow': rest, 'aria-valuemin': 0, 'aria-valuemax': data.length - 1, 'aria-valuetext': `${textOf(data[rest], x)}: ${reading(data[rest])}` } : {})}
         >
           {slots}
