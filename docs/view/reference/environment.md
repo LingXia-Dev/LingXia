@@ -2,7 +2,7 @@ _Generated from the View schema (`schema.json`) and the compiler; do not edit._
 
 # Environment
 
-`view.env` (from `render(view)` or `useView()`): read-only, and a change re-renders the page.
+`view.env` (from `render(view)` or `useView()`, or `useEnv()` in a component): read-only, and a change re-renders the page.
 
 | Field | Type | Notes |
 | --- | --- | --- |

@@ -112,9 +112,24 @@ export function useView() {
   if (!render.active) throw Error('UI_SCOPE: useView outside render');
   render.readsView = true;
   noteView();
+  const scoped = scopedEnv();
+  if (!scoped) return render.view;
+  const scopedView = Object.freeze({ ...render.view, env: scoped.env });
+  rawEnvs.set(scopedView, scoped.base);
+  return scopedView;
+}
+
+/** The environment alone: a component that reads only it is kept across `view.data` changes. */
+export function useEnv() {
+  if (!render.active) throw Error('UI_SCOPE: useEnv outside render');
+  return scopedEnv()?.env ?? render.view.env;
+}
+
+// The environment under the nearest SizeClassScope, or undefined when no scope changes it.
+function scopedEnv() {
   const scoped = scopedSizeClass();
   const raw = envOf(render.view);
-  if (!scoped || !raw || raw.sizeClass === scoped) return render.view;
+  if (!scoped || !raw || raw.sizeClass === scoped) return undefined;
   const base = Object.freeze({ ...raw, sizeClass: scoped });
   const env = rawEnvs.has(render.view) ? new Proxy(base, {
     get(target, key, receiver) {
@@ -123,9 +138,7 @@ export function useView() {
       return Reflect.get(target, key, receiver);
     },
   }) : base;
-  const scopedView = Object.freeze({ ...render.view, env });
-  rawEnvs.set(scopedView, base);
-  return scopedView;
+  return { env, base };
 }
 
 // Before the catalog arrives a page renders with no actions; resources wait for it.

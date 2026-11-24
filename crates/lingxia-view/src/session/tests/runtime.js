@@ -48,6 +48,7 @@
     useBackHandler: () => useBackHandler,
     useBox: () => useBox,
     useChannel: () => useChannel,
+    useEnv: () => useEnv,
     useId: () => useId,
     useLeaveGuard: () => useLeaveGuard,
     useLocal: () => useLocal,
@@ -3879,9 +3880,20 @@
     if (!render.active) throw Error("UI_SCOPE: useView outside render");
     render.readsView = true;
     noteView();
+    const scoped = scopedEnv();
+    if (!scoped) return render.view;
+    const scopedView = Object.freeze({ ...render.view, env: scoped.env });
+    rawEnvs.set(scopedView, scoped.base);
+    return scopedView;
+  }
+  function useEnv() {
+    if (!render.active) throw Error("UI_SCOPE: useEnv outside render");
+    return scopedEnv()?.env ?? render.view.env;
+  }
+  function scopedEnv() {
     const scoped = scopedSizeClass();
     const raw = envOf(render.view);
-    if (!scoped || !raw || raw.sizeClass === scoped) return render.view;
+    if (!scoped || !raw || raw.sizeClass === scoped) return void 0;
     const base = Object.freeze({ ...raw, sizeClass: scoped });
     const env = rawEnvs.has(render.view) ? new Proxy(base, {
       get(target, key, receiver) {
@@ -3890,9 +3902,7 @@
         return Reflect.get(target, key, receiver);
       }
     }) : base;
-    const scopedView = Object.freeze({ ...render.view, env });
-    rawEnvs.set(scopedView, base);
-    return scopedView;
+    return { env, base };
   }
   function pageAction(action, code, mode) {
     if (action === void 0 && !Object.keys(render.view.actions).length) return void 0;

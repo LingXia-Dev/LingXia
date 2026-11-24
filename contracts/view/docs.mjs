@@ -422,7 +422,7 @@ function engineLimitsPage(schema) {
 async function environment(schema) {
   const members = Object.entries(schema.environment).filter(([, entry]) => !entry.internal);
   return [header, '# Environment', '',
-    '`view.env` (from `render(view)` or `useView()`): read-only, and a change re-renders the page.', '',
+    '`view.env` (from `render(view)` or `useView()`, or `useEnv()` in a component): read-only, and a change re-renders the page.', '',
     table(['Field', 'Type', 'Notes'], members.map(([name, entry]) => [code(name + (entry.absent ? '?' : '')), code(entry.type), entry.doc ?? ''])), ''].join('\n');
 }
 

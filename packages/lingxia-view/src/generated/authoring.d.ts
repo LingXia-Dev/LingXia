@@ -107,6 +107,8 @@ export interface PageView<A = Readonly<Record<string, (payload?: unknown) => Pro
 export type View<A = Readonly<Record<string, (payload?: unknown) => Promise<unknown>>>, D = Record<string, unknown>> =
   A extends { readonly __lxPage: unknown; readonly data: infer PD; readonly actions: infer PA } ? PageView<PA, PD> : PageView<A, D>;
 /** The View of the page being rendered; components needing typed data take it as props. */
+/** The page's environment alone: a component that reads only this re-runs when the environment changes, not when `view.data` does. */
+export declare function useEnv(): Env;
 export declare function useView<A = Readonly<Record<string, (payload?: unknown) => Promise<unknown>>>, D = Record<string, unknown>>(): View<A, D>;
 
 declare const localCell: unique symbol;

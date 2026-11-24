@@ -1,7 +1,7 @@
 import { test, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { decode } from './support/wire.mjs';
-import { h, List, describe, prepare, commit, discard, reset, dispatch, useLocal, useView, createView } from '../src/internal.js';
+import { h, List, describe, prepare, commit, discard, reset, dispatch, useLocal, useView, useEnv, createView } from '../src/internal.js';
 import { stableClosure } from '../src/runtime/memo.js';
 
 beforeEach(() => reset());
@@ -50,6 +50,19 @@ test('a component reading the View, or marked volatile, re-runs on every render'
   describe(render, view({ n: 1 }));
   assert.deepEqual(texts(describe(render, view({ n: 2 }))), ['2', 'now']);
   assert.deepEqual([reads, volatile], [2, 2]);
+});
+
+test('a component reading only useEnv() is kept across data changes and re-runs on a new environment', () => {
+  let runs = 0, seen;
+  function Theme() { runs++; seen = useEnv(); return h('text', {}, seen.theme); }
+  const render = ({ data }) => h('view', {}, h(Theme), h('text', {}, String(data.n)));
+  describe(render, view({ n: 1 }, { theme: 'light' }));
+  assert.deepEqual(texts(describe(render, view({ n: 2 }, { theme: 'light' }))), ['light', '2']);
+  assert.equal(runs, 1, 'a data change leaves it');
+  assert.deepEqual(texts(describe(render, view({ n: 2 }, { theme: 'dark' }))), ['dark', '2']);
+  assert.equal(runs, 2);
+  assert.ok(Object.isFrozen(seen));
+  assert.throws(() => useEnv(), /UI_SCOPE/);
 });
 
 test('callbacks in a recalled subtree still dispatch, and a discarded render keeps the committed one', () => {
