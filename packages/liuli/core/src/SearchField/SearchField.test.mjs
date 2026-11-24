@@ -61,3 +61,18 @@ test('states: a result kept for assistive tech stays out of sight; disabled take
   const disabled = (await renderExample('SearchField/SearchField', 'StateDisabled')).getByTestId('disabled');
   assert.equal(disabled.props.enabled, 0);
 });
+
+test('natural width: in a row the field is as wide as twenty characters of its text plus its edges and magnifier, as a native search input; in a column it fills', async () => {
+  const screen = await renderExample('SearchField/SearchField', 'Sizes');
+  const struts = screen.queryAll(node => node.tag === 'text' && node.text === '0'.repeat(20));
+  const editors = screen.queryAll(node => node.tag === 'input');
+  assert.equal(struts.length, editors.length);
+  struts.forEach((strut, index) => {
+    const { height, opacity, overflow, whiteSpace, paddingInlineStart, paddingInlineEnd, accessibilityHidden, fontSize } = strut.props;
+    assert.deepEqual([height, opacity, overflow, whiteSpace, accessibilityHidden], [0, 0, 'hidden', 'nowrap', 1], 'unseen, unread, no taller than nothing');
+    assert.deepEqual([paddingInlineStart, paddingInlineEnd], [37, 13], 'border, inset and magnifier before; inset and border after');
+    assert.equal(fontSize, editors[index].props.fontSize, 'the characters are the editor\'s, so the width grows with the text');
+    assert.deepEqual([strut.parent.props.alignSelf, strut.parent.props.minWidth], ['stretch', 0], 'fills a column; a row may shrink it');
+  });
+  assert.deepEqual([...new Set(struts.map(strut => strut.props.fontSize))].length, 3, 'three sizes');
+});

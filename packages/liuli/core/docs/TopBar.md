@@ -84,7 +84,7 @@ export function WithSearch() {
     <view className="h-[300px] overflow-hidden rounded-container border border-text/12 bg-canvas">
       <TopBar
         heading="Mail"
-        centerContent={<SearchField label="Search mail" isLabelHidden placeholder="Search mail" bind={query} className="w-[200px]" data-testid="mail-search" />}
+        centerContent={<SearchField label="Search mail" isLabelHidden placeholder="Search mail" bind={query} data-testid="mail-search" />}
         endContent={<IconButton icon="add" label="New message" variant="ghost" onClick={unused} />}
         data-testid="mail-topbar"
       />

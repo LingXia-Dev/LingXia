@@ -48,6 +48,7 @@ export const doc: ComponentDoc = {
       'Keep the field where it is while results change, so typing is never interrupted.',
       'To move focus to this field from code — after a failed submit, say — call `focus()` on the cell it is bound to: `query.focus()`.',
       'At large text, give the field a line of its own rather than squeezing it beside a button, where it shrinks to its magnifier.',
+      'In a column the field fills the width; in a row, a bar or toolbar, it is about twenty characters wide, as a native search input, and gives way when the row is short. Set a width with `className` only to change that.',
     ],
     dont: [
       'Use it to choose one value for a form; that is a Combobox.',

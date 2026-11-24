@@ -122,7 +122,7 @@ export function Sizes() {
 
 - `className`: classes merged after the recipe's, so they win.
 - The recipe, `searchFieldRecipe` from `@liulidesign/core/SearchField/recipe`: the classes of each part, to style an element of your own to match. The component does not read a changed copy.
-- Scale tokens it reads, set in the app's stylesheet under `@theme`: `--text-footnote`.
+- Scale tokens it reads, set in the app's stylesheet under `@theme`: `--text-footnote`, `--text-body`, `--text-callout`.
 - Colour roles it paints with, set by the theme pack: `text-muted`.
 
 ## Accessibility
@@ -156,6 +156,7 @@ Ratios are computed from @lingxia/view/theme and rounded down.
 - Do: Keep the field where it is while results change, so typing is never interrupted.
 - Do: To move focus to this field from code — after a failed submit, say — call `focus()` on the cell it is bound to: `query.focus()`.
 - Do: At large text, give the field a line of its own rather than squeezing it beside a button, where it shrinks to its magnifier.
+- Do: In a column the field fills the width; in a row, a bar or toolbar, it is about twenty characters wide, as a native search input, and gives way when the row is short. Set a width with `className` only to change that.
 - Don't: Use it to choose one value for a form; that is a Combobox.
 - Don't: Clear the text when a search finds nothing; let the person edit it.
 - Don't: Show a spinner for filtering that happens at once.

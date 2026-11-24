@@ -7,6 +7,9 @@ import { spinner, spinnerBox } from '../internal/spinner';
 import { searchFieldRecipe as r } from './SearchField.recipe';
 import { dataOf } from '../internal/data';
 
+// What a native search input holds at its natural width: 20 characters.
+const natural = '0'.repeat(20);
+
 export type SearchFieldBinding =
   | {
       /** A text cell (`useLocal('')`) the field reads and writes; its `focus()` focuses the field. Use it or `value` with `onChange`. */
@@ -74,6 +77,7 @@ export function SearchField(props: SearchFieldProps) {
   return (
     <view aria-busy={isLoading || undefined} className={cx(r.root.base, className)}>
       {props.bind ? <TextInput {...shared} bind={props.bind} /> : <TextInput {...shared} value={props.value} onChange={props.onChange} />}
+      <text aria-hidden className={cx(r.natural.base, r.natural.size[size])}>{natural}</text>
       {/* Always mounted: a status region announces a change, not its first appearance. */}
       <text role="status" data-testid={testId && `${testId}-results`} className={cx(r.results.base, (isResultsLabelHidden || resultsLabel === undefined) && r.results.hidden)}>
         {resultsLabel ?? ''}
