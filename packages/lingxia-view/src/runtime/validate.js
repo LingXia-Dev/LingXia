@@ -1,7 +1,7 @@
 import { utf8Bytes, has } from './data.js';
 import { limits } from '../generated/contract.js';
 import { fieldOptions } from '../generated/wire.js';
-import { checkKeys, keyPayload } from './keys.js';
+import { checkKeys, keyPayload, settled } from './keys.js';
 import { seriesProblem, isRole } from '../style/color.js';
 import { pathSegments, pathSegmentsProblem } from './vector-path.js';
 
@@ -210,7 +210,7 @@ export function listKeys(props) {
   if (props.itemKeys !== undefined) {
     if (!Array.isArray(props.itemKeys) || props.itemKeys.length !== props.count) throw Error('UI_LIST: itemKeys must match count');
     // A mutable array is copied so the checked keys are the ones encoded.
-    if (!Object.isFrozen(props.itemKeys)) props.itemKeys = Array.from(props.itemKeys);
+    if (!settled(props.itemKeys)) props.itemKeys = Array.from(props.itemKeys);
     checkKeys(props.itemKeys, checkKey);
     if (keyPayload(props.itemKeys).bytes > limits.itemKeyBytes) throw Error('UI_LIST: itemKeys budget exceeded');
   }

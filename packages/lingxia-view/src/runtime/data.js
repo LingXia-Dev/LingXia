@@ -1,13 +1,35 @@
 // JSON-shaped values cross the View boundary frozen; nothing else crosses it.
+
+// QuickJS answers Object.isFrozen by walking every own property, so a long array costs its length
+// on each ask; what the runtime froze, and anything once found frozen, is remembered instead.
+const frozen = new WeakSet();
+export function freeze(value) {
+  Object.freeze(value);
+  frozen.add(value);
+  return value;
+}
+export function isFrozen(value) {
+  if (value === null || typeof value !== 'object') return true;
+  if (frozen.has(value)) return true;
+  // Anything still extensible is not frozen, which the engine answers at once.
+  if (Object.isExtensible(value) || !Object.isFrozen(value)) return false;
+  frozen.add(value);
+  return true;
+}
+
+/** The array a patched array grew from by appends alone: each frozen array to the one it extends. */
+const extensions = new WeakMap();
+export const extended = items => extensions.get(items);
+
 export function immutable(value, depth = 0, omitUndefined = false, budget) {
   if (depth > 64) throw Error('UI_LOCAL: value too deep');
   // `budget` bounds what crosses to Logic about as its JSON text would, without encoding it.
   if (budget && (budget.left -= typeof value === 'string' ? value.length + 2 : 8) < 0) throw Error(`UI_LIMIT: ${budget.what} payload too large`);
   if (value === null || typeof value === 'string' || typeof value === 'boolean') return value;
   if (typeof value === 'number' && Number.isFinite(value)) return value;
-  if (Array.isArray(value)) return Object.freeze(value.map(v => immutable(v, depth + 1, omitUndefined, budget)));
+  if (Array.isArray(value)) return freeze(value.map(v => immutable(v, depth + 1, omitUndefined, budget)));
   if (value && Object.getPrototypeOf(value) === Object.prototype) {
-    return Object.freeze(Object.fromEntries(Object.entries(value)
+    return freeze(Object.fromEntries(Object.entries(value)
       .filter(([, v]) => !omitUndefined || v !== undefined)
       .map(([k, v]) => [k, immutable(v, depth + 1, omitUndefined, budget && ((budget.left -= k.length + 3), budget))])));
   }
@@ -24,7 +46,7 @@ export function shared(value, previous, depth = 0) {
     // An empty array over anything but an array is a change, not the old value.
     let same = Array.isArray(previous) && old.length === value.length;
     const next = value.map((v, i) => { const item = shared(v, old[i], depth + 1); same &&= item === old[i]; return item; });
-    return same ? previous : Object.freeze(next);
+    return same ? previous : freeze(next);
   }
   if (Object.getPrototypeOf(value) !== Object.prototype) return immutable(value, depth);
   const old = previous && typeof previous === 'object' && Object.getPrototypeOf(previous) === Object.prototype ? previous : null;
@@ -37,22 +59,26 @@ export function shared(value, previous, depth = 0) {
     same &&= had && item === old[key];
   }
   // fromEntries defines own keys, so a `__proto__` key stays data.
-  return same && entries.length === Object.keys(old).length ? old : Object.freeze(Object.fromEntries(entries));
+  return same && entries.length === Object.keys(old).length ? old : freeze(Object.fromEntries(entries));
 }
 
 /** Replays JSON Patch ops (add/replace/remove) the native replica already applied, copying only
  *  the containers on each op's path; everything else keeps its frozen identity. */
 export function applyPatch(root, ops) {
-  const fresh = new Set();
+  // Each copy made here maps to the array it copied, while every op on it appends at its end.
+  const fresh = new Map();
   for (const op of ops) {
     if (op.path === '') {
-      root = op.op === 'remove' ? Object.freeze({}) : shared(op.value, root);
+      root = op.op === 'remove' ? freeze({}) : shared(op.value, root);
       continue;
     }
     const tokens = op.path.slice(1).split('/').map(t => t.replace(/~1/g, '/').replace(/~0/g, '~'));
     root = patchAt(root, tokens, 0, op, fresh);
   }
-  for (const container of fresh) Object.freeze(container);
+  for (const [container, origin] of fresh) {
+    freeze(container);
+    if (origin) extensions.set(container, origin);
+  }
   return root;
 }
 
@@ -68,6 +94,7 @@ function patchAt(node, tokens, i, op, fresh) {
   const next = patchAt(child, tokens, i + 1, op, fresh);
   if (had && next === node[slot]) return node;
   const copy = mutable(node, fresh);
+  if (array) fresh.set(copy, null);
   define(copy, slot, next);
   if (!had) sortKeys(copy);
   return copy;
@@ -78,6 +105,7 @@ function patchLeaf(node, array, key, op, fresh) {
     const index = key === '-' ? node.length : Number(key);
     if (op.op === 'remove' && index >= node.length) return node;
     const copy = mutable(node, fresh);
+    if (op.op !== 'add' || index < copy.length) fresh.set(copy, null);
     if (op.op === 'add') copy.splice(Math.min(index, copy.length), 0, immutable(op.value));
     else if (op.op === 'remove') copy.splice(index, 1);
     else {
@@ -122,7 +150,7 @@ function mutable(node, fresh) {
   if (fresh.has(node)) return node;
   // fromEntries defines own keys, so a `__proto__` key stays data.
   const copy = Array.isArray(node) ? node.slice() : Object.fromEntries(Object.entries(node));
-  fresh.add(copy);
+  fresh.set(copy, Array.isArray(node) && frozen.has(node) ? node : null);
   return copy;
 }
 

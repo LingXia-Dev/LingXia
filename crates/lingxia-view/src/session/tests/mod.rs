@@ -7,6 +7,7 @@ mod flex_direction;
 mod host;
 mod images;
 mod invisible;
+mod list_append;
 mod list_end_resize;
 mod lowered;
 mod popover_room;

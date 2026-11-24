@@ -214,9 +214,9 @@
 
   // src/runtime/press.js
   var held = null;
-  function pressChange(identity, callback) {
-    if (held?.identity === identity) return;
-    held = { identity, callback };
+  function pressChange(identity2, callback) {
+    if (held?.identity === identity2) return;
+    held = { identity: identity2, callback };
     return callback(true);
   }
   function releasePress() {
@@ -232,17 +232,17 @@
     if (held && live.has(held.identity)) held.callback = live.get(held.identity);
   }
   var waiting = /* @__PURE__ */ new Map();
-  function changeEnd(identity, value, end) {
-    if (waiting.has(identity)) waiting.set(identity, { value });
+  function changeEnd(identity2, value, end) {
+    if (waiting.has(identity2)) waiting.set(identity2, { value });
     else end(value);
   }
-  function pressEnd(identity, pressed, end) {
+  function pressEnd(identity2, pressed, end) {
     if (pressed) {
-      waiting.set(identity, null);
+      waiting.set(identity2, null);
       return;
     }
-    const last = waiting.get(identity);
-    waiting.delete(identity);
+    const last = waiting.get(identity2);
+    waiting.delete(identity2);
     if (last) end(last.value);
   }
   var resetPresses = () => {
@@ -443,14 +443,29 @@
   }
 
   // src/runtime/data.js
+  var frozen = /* @__PURE__ */ new WeakSet();
+  function freeze(value) {
+    Object.freeze(value);
+    frozen.add(value);
+    return value;
+  }
+  function isFrozen(value) {
+    if (value === null || typeof value !== "object") return true;
+    if (frozen.has(value)) return true;
+    if (Object.isExtensible(value) || !Object.isFrozen(value)) return false;
+    frozen.add(value);
+    return true;
+  }
+  var extensions = /* @__PURE__ */ new WeakMap();
+  var extended = (items) => extensions.get(items);
   function immutable(value, depth = 0, omitUndefined = false, budget) {
     if (depth > 64) throw Error("UI_LOCAL: value too deep");
     if (budget && (budget.left -= typeof value === "string" ? value.length + 2 : 8) < 0) throw Error(`UI_LIMIT: ${budget.what} payload too large`);
     if (value === null || typeof value === "string" || typeof value === "boolean") return value;
     if (typeof value === "number" && Number.isFinite(value)) return value;
-    if (Array.isArray(value)) return Object.freeze(value.map((v) => immutable(v, depth + 1, omitUndefined, budget)));
+    if (Array.isArray(value)) return freeze(value.map((v) => immutable(v, depth + 1, omitUndefined, budget)));
     if (value && Object.getPrototypeOf(value) === Object.prototype) {
-      return Object.freeze(Object.fromEntries(Object.entries(value).filter(([, v]) => !omitUndefined || v !== void 0).map(([k, v]) => [k, immutable(v, depth + 1, omitUndefined, budget && (budget.left -= k.length + 3, budget))])));
+      return freeze(Object.fromEntries(Object.entries(value).filter(([, v]) => !omitUndefined || v !== void 0).map(([k, v]) => [k, immutable(v, depth + 1, omitUndefined, budget && (budget.left -= k.length + 3, budget))])));
     }
     throw Error("UI_LOCAL: expected JSON value");
   }
@@ -465,7 +480,7 @@
         same5 && (same5 = item === old2[i]);
         return item;
       });
-      return same5 ? previous : Object.freeze(next);
+      return same5 ? previous : freeze(next);
     }
     if (Object.getPrototypeOf(value) !== Object.prototype) return immutable(value, depth);
     const old = previous && typeof previous === "object" && Object.getPrototypeOf(previous) === Object.prototype ? previous : null;
@@ -477,19 +492,22 @@
       entries2.push([key, item]);
       same4 && (same4 = had && item === old[key]);
     }
-    return same4 && entries2.length === Object.keys(old).length ? old : Object.freeze(Object.fromEntries(entries2));
+    return same4 && entries2.length === Object.keys(old).length ? old : freeze(Object.fromEntries(entries2));
   }
   function applyPatch(root, ops) {
-    const fresh2 = /* @__PURE__ */ new Set();
+    const fresh2 = /* @__PURE__ */ new Map();
     for (const op of ops) {
       if (op.path === "") {
-        root = op.op === "remove" ? Object.freeze({}) : shared(op.value, root);
+        root = op.op === "remove" ? freeze({}) : shared(op.value, root);
         continue;
       }
       const tokens = op.path.slice(1).split("/").map((t) => t.replace(/~1/g, "/").replace(/~0/g, "~"));
       root = patchAt(root, tokens, 0, op, fresh2);
     }
-    for (const container2 of fresh2) Object.freeze(container2);
+    for (const [container2, origin] of fresh2) {
+      freeze(container2);
+      if (origin) extensions.set(container2, origin);
+    }
     return root;
   }
   function patchAt(node, tokens, i, op, fresh2) {
@@ -503,6 +521,7 @@
     const next = patchAt(child, tokens, i + 1, op, fresh2);
     if (had && next === node[slot]) return node;
     const copy2 = mutable(node, fresh2);
+    if (array) fresh2.set(copy2, null);
     define(copy2, slot, next);
     if (!had) sortKeys(copy2);
     return copy2;
@@ -512,6 +531,7 @@
       const index = key === "-" ? node.length : Number(key);
       if (op.op === "remove" && index >= node.length) return node;
       const copy3 = mutable(node, fresh2);
+      if (op.op !== "add" || index < copy3.length) fresh2.set(copy3, null);
       if (op.op === "add") copy3.splice(Math.min(index, copy3.length), 0, immutable(op.value));
       else if (op.op === "remove") copy3.splice(index, 1);
       else {
@@ -550,7 +570,7 @@
   function mutable(node, fresh2) {
     if (fresh2.has(node)) return node;
     const copy2 = Array.isArray(node) ? node.slice() : Object.fromEntries(Object.entries(node));
-    fresh2.add(copy2);
+    fresh2.set(copy2, Array.isArray(node) && frozen.has(node) ? node : null);
     return copy2;
   }
   function define(target, key, value) {
@@ -811,12 +831,12 @@
     if (x in vertical || y in horizontal) invalid("objectPosition", value, "one horizontal and one vertical position");
     return [x in horizontal ? horizontal[x] : fraction(x), y in vertical ? vertical[y] : fraction(y)];
   }
-  function lowerStyle(tag, style2, env, inherited = { fontSize: 14 }, warn) {
+  function lowerStyle(tag, style2, env, inherited2 = { fontSize: 14 }, warn) {
     admitStyle(tag, style2);
     const out = {};
     if (style2.fontSize !== void 0 && !isStep(style2.fontSize) && finite(style2.fontSize) && style2.fontSize <= 0) invalid("fontSize", style2.fontSize, "a number above 0");
-    const fontSize = style2.fontSize === void 0 ? inherited.fontSize : length("fontSize", style2.fontSize, void 0, warn);
-    let lineHeight = inherited.lineHeight;
+    const fontSize = style2.fontSize === void 0 ? inherited2.fontSize : length("fontSize", style2.fontSize, void 0, warn);
+    let lineHeight = inherited2.lineHeight;
     const transform = {}, lines = {}, safe = { bits: 0 };
     const names3 = Object.keys(style2).sort((a, b) => Number(shorthand(b)) - Number(shorthand(a)));
     for (const name of names3) {
@@ -1314,17 +1334,17 @@
     var _a;
     return (_a = render.candidate).topLayer ?? (_a.topLayer = { entries: [], popovers: /* @__PURE__ */ new Map(), invokers: [], interests: [] });
   }
-  function admitted(identity) {
+  function admitted(identity2) {
     const top = collected();
     if (top.entries.length >= limits.topLayer) {
-      if (!refused.has(identity)) {
-        refused.add(identity);
-        report(Error(`UI_BUDGET: more than ${limits.topLayer} dialogs and popovers open; ${identity} stays closed`));
+      if (!refused.has(identity2)) {
+        refused.add(identity2);
+        report(Error(`UI_BUDGET: more than ${limits.topLayer} dialogs and popovers open; ${identity2} stays closed`));
       }
       return false;
     }
-    refused.delete(identity);
-    if (!opened.has(identity)) opened.set(identity, ++sequence);
+    refused.delete(identity2);
+    if (!opened.has(identity2)) opened.set(identity2, ++sequence);
     return true;
   }
   function placement(props, env) {
@@ -1338,8 +1358,8 @@
     return margins;
   }
   var rtlOf = (parent, env) => (parent.direction ?? env?.direction) === "rtl";
-  function layerWith(style2, identity, env, ...children) {
-    return h("view", { style: { position: "absolute", top: 0, left: 0, right: 0, bottom: env?.keyboard?.height ?? 0, zIndex: layerZ + opened.get(identity) % 1e3, ...style2 } }, ...children);
+  function layerWith(style2, identity2, env, ...children) {
+    return h("view", { style: { position: "absolute", top: 0, left: 0, right: 0, bottom: env?.keyboard?.height ?? 0, zIndex: layerZ + opened.get(identity2) % 1e3, ...style2 } }, ...children);
   }
   var sides2 = ["Top", "Right", "Bottom", "Left"];
   function barInsets(env) {
@@ -1402,27 +1422,27 @@
       presence: { starting: { ...fades("starting"), ...classes?.backdrop?.starting }, exit: { ...fades("exit"), ...classes?.backdrop?.exit } }
     };
   }
-  function expand(tag, props, children, identity, parent) {
+  function expand(tag, props, children, identity2, parent) {
     if (props[panelMark]) return void 0;
-    if (tag === "dialog") return dialog(props, children, identity, parent);
-    if (popoverTags.has(tag) && props.popover !== void 0 && props.popover !== false) return popover(tag, props, children, identity, parent);
+    if (tag === "dialog") return dialog(props, children, identity2, parent);
+    if (popoverTags.has(tag) && props.popover !== void 0 && props.popover !== false) return popover(tag, props, children, identity2, parent);
     return void 0;
   }
   function common(props, parent, what) {
     if (parent.inControl) throw Error(`UI_BUTTON: a ${what} cannot sit inside a pressable control`);
     if (props.open !== void 0 && typeof props.open !== "boolean") throw Error("UI_PROP: open must be boolean");
   }
-  function dialog(props, children, identity, parent) {
+  function dialog(props, children, identity2, parent) {
     common(props, parent, "<dialog>");
     const { open: open2, onClose, closedby = "closerequest", ...rest } = props;
     if (onClose !== void 0 && typeof onClose !== "function") throw Error("UI_PROP: onClose");
     if (!closers.has(closedby)) throw Error('UI_PROP: closedby must be "any", "closerequest" or "none"');
-    const opening = !opened.has(identity);
-    if (!open2 || !admitted(identity)) return null;
+    const opening = !opened.has(identity2);
+    if (!open2 || !admitted(identity2)) return null;
     const bound = rest.drag !== void 0 && rest.bind !== void 0 ? cellOf(rest.bind) : void 0;
-    if (opening && bound && typeof bound.cell.value === "number") resting.set(identity, { ...bound, index: bound.cell.value });
+    if (opening && bound && typeof bound.cell.value === "number") resting.set(identity2, { ...bound, index: bound.cell.value });
     const close = () => onClose?.();
-    collected().entries.push({ identity, kind: "dialog", sequence: opened.get(identity), close: closedby === "none" ? null : close });
+    collected().entries.push({ identity: identity2, kind: "dialog", sequence: opened.get(identity2), close: closedby === "none" ? null : close });
     const env = envOf(render.view);
     const backdrop2 = backdropOf(resolveClasses(props.className, env));
     const testId = props["data-testid"];
@@ -1430,7 +1450,7 @@
     return {
       node: layerWith(
         docking.layer,
-        identity,
+        identity2,
         env,
         h("button", {
           key: "backdrop",
@@ -1449,7 +1469,7 @@
       }
     };
   }
-  function popover(tag, props, children, identity, parent) {
+  function popover(tag, props, children, identity2, parent) {
     common(props, parent, "popover");
     const { popover: type, id, open: open2, onToggle, onCloseRequest, closeAfter, anchor: anchorId, ...rest } = props;
     const kind = type === true || type === "" || type === "auto" ? "auto" : type === "manual" || type === "hint" ? type : null;
@@ -1468,7 +1488,7 @@
     const scope = parent.popovers ?? [];
     const entry = { kind, controlled, onToggle, open: false, ancestors: scope, anchorId };
     top.popovers.set(id, entry);
-    if (!shown || !admitted(identity)) {
+    if (!shown || !admitted(identity2)) {
       anchors.delete(id);
       submenus.delete(id);
       return null;
@@ -1476,7 +1496,7 @@
     entry.open = true;
     if (!anchors.has(id)) anchors.set(id, invoker?.id === id ? invoker.identity : null);
     const anchor = anchorId ?? anchors.get(id);
-    top.entries.push({ identity, kind, sequence: opened.get(identity), close: kind === "manual" ? null : () => {
+    top.entries.push({ identity: identity2, kind, sequence: opened.get(identity2), close: kind === "manual" ? null : () => {
       if (onCloseRequest?.() !== false) toggle(id, false);
     } });
     const env = envOf(render.view);
@@ -1488,7 +1508,7 @@
     const testId = props["data-testid"];
     const node = layerWith(
       docking.layer,
-      identity,
+      identity2,
       env,
       lit && h("button", {
         key: "backdrop",
@@ -1580,27 +1600,27 @@
     for (const [id, state] of top.popovers) if (state.kind === "hint" && state.open && !keep2.includes(id)) changed2 = toggle(id, false) || changed2;
     return changed2;
   }
-  function invokerHandler(props, identity, scope) {
+  function invokerHandler(props, identity2, scope) {
     const { popoverTarget: target, onClick, role, keepOpen } = props;
     if (keepOpen !== void 0 && typeof keepOpen !== "boolean") throw Error("UI_PROP: keepOpen is a boolean");
     if (target !== void 0) {
       if (typeof target !== "string" || !target.length) throw Error("UI_ID: popoverTarget names a popover id");
-      collected().invokers.push({ target, identity, scope });
+      collected().invokers.push({ target, identity: identity2, scope });
     }
     if (role === "menuitem" && !scope.length) throw Error('UI_PROP: role="menuitem" belongs inside a popover menu');
     if (target === void 0 && (role !== "menuitem" || keepOpen)) return onClick;
     return () => {
       onClick?.();
       const menu = role === "menuitem" ? scope[scope.length - 1] : void 0;
-      if (target !== void 0) toggle(target, !page.committed?.topLayer?.popovers.get(target)?.open, { identity, scope, menu });
+      if (target !== void 0) toggle(target, !page.committed?.topLayer?.popovers.get(target)?.open, { identity: identity2, scope, menu });
       else for (const id of menuChain(menu)) toggle(id, false);
     };
   }
-  function interestTrigger(props, identity, scope) {
+  function interestTrigger(props, identity2, scope) {
     const target = props.interestFor;
     if (target === void 0) return;
     if (typeof target !== "string" || !target.length || target.length > 256 || /\s/.test(target)) throw Error("UI_ID: interestFor names a popover id");
-    collected().interests.push({ target, identity, scope });
+    collected().interests.push({ target, identity: identity2, scope });
   }
   function interest(target, nth, show4) {
     const entry = page.committed?.topLayer?.interests.filter((candidate) => candidate.target === target)[nth];
@@ -1609,12 +1629,12 @@
   function finishTopLayer(tree) {
     var _a;
     const top = render.candidate.topLayer;
-    for (const identity of [...opened.keys()]) {
-      if (top?.entries.some((entry) => entry.identity === identity)) continue;
-      opened.delete(identity);
-      const rest = resting.get(identity);
+    for (const identity2 of [...opened.keys()]) {
+      if (top?.entries.some((entry) => entry.identity === identity2)) continue;
+      opened.delete(identity2);
+      const rest = resting.get(identity2);
       if (rest) {
-        resting.delete(identity);
+        resting.delete(identity2);
         ((_a = render.candidate).dragResets ?? (_a.dragResets = [])).push(rest);
       }
     }
@@ -3232,24 +3252,31 @@
   }
 
   // src/runtime/keys.js
+  var made = /* @__PURE__ */ new WeakSet();
   var parents = /* @__PURE__ */ new WeakMap();
   var checked = /* @__PURE__ */ new WeakMap();
   var payloads = /* @__PURE__ */ new WeakMap();
   var positions = /* @__PURE__ */ new WeakMap();
   var latest = null;
   var itemKeys = /* @__PURE__ */ new WeakMap();
+  var settled2 = (keys2) => made.has(keys2) || isFrozen(keys2);
   function keysOf(items, getKey) {
     const known = itemKeys.get(items);
     if (known) return known;
-    const frozen = Object.isFrozen(items);
-    if (frozen && latest && latest.getKey === getKey && sameKeys(items, latest, getKey)) {
+    const frozen2 = isFrozen(items);
+    const base = frozen2 && latest && extends_(items, latest.items) ? latest : null;
+    if (!base && frozen2 && latest && latest.getKey === getKey && sameKeys(items, latest, getKey)) {
       itemKeys.set(items, latest.keys);
       latest = { ...latest, items };
       return latest.keys;
     }
-    const base = frozen && latest && extendsArray(items, latest.items) ? latest : null;
-    const keys2 = base ? Object.freeze(base.keys.concat(items.slice(base.items.length).map((item, i) => getKey(item, base.items.length + i)))) : Object.freeze(items.map(getKey));
-    if (frozen) {
+    let keys2;
+    if (base) {
+      keys2 = base.keys.slice();
+      for (let i = base.items.length; i < items.length; i++) keys2.push(getKey(items[i], i));
+    } else keys2 = items.map(getKey);
+    if (frozen2) {
+      made.add(keys2);
       if (base && base.keys.length) parents.set(keys2, base.keys);
       itemKeys.set(items, keys2);
       latest = { items, keys: keys2, getKey };
@@ -3257,27 +3284,33 @@
     return keys2;
   }
   function sameKeys(items, { items: before, keys: keys2 }, getKey) {
-    if (items.length !== before.length || !Object.isFrozen(before)) return false;
+    if (items.length !== before.length || !isFrozen(before)) return false;
     for (let i = 0; i < items.length; i++) {
       if (items[i] !== before[i] && getKey(items[i], i) !== keys2[i]) return false;
     }
     return true;
   }
-  function extendsArray(items, prefix) {
-    if (items.length < prefix.length || !Object.isFrozen(prefix)) return false;
+  function extends_(items, prefix) {
+    if (items.length < prefix.length || !isFrozen(prefix)) return false;
+    for (let from = extended(items); from; from = extended(from)) if (from === prefix) return true;
     for (let i = 0; i < prefix.length; i++) if (items[i] !== prefix[i]) return false;
     return true;
+  }
+  function inherited(parent, table, rebuild) {
+    const entry = parent && table.get(parent);
+    if (!entry) return null;
+    return entry.size === parent.length ? entry : rebuild(parent);
   }
   function checkKeys(keys2, check) {
     if (checked.has(keys2)) return;
     const parent = parents.get(keys2);
-    const parentSeen = parent && checked.get(parent);
-    const seen = parentSeen ? new Set(parentSeen) : /* @__PURE__ */ new Set();
+    const parentSeen = inherited(parent, checked, (keys3) => new Set(keys3));
+    const seen = parentSeen ?? /* @__PURE__ */ new Set();
     for (let i = parentSeen ? parent.length : 0; i < keys2.length; i++) {
       check(keys2[i], seen);
       seen.add(keys2[i]);
     }
-    if (Object.isFrozen(keys2)) checked.set(keys2, seen);
+    if (settled2(keys2)) checked.set(keys2, seen);
   }
   function keyPayload(keys2) {
     let encoded = payloads.get(keys2);
@@ -3291,17 +3324,18 @@
       const payload2 = JSON.stringify(keys2);
       encoded = { payload: payload2, bytes: utf8Bytes(payload2, limits.itemKeyBytes) };
     }
-    if (Object.isFrozen(keys2)) payloads.set(keys2, encoded);
+    if (settled2(keys2)) payloads.set(keys2, encoded);
     return encoded;
   }
+  var identity = (key) => `key:${JSON.stringify(key)}`;
   function keyPositions(keys2) {
     let map = positions.get(keys2);
     if (map) return map;
     const parent = parents.get(keys2);
-    const base = parent && positions.get(parent);
-    map = base ? new Map(base) : /* @__PURE__ */ new Map();
-    for (let i = base ? parent.length : 0; i < keys2.length; i++) map.set(`key:${JSON.stringify(keys2[i])}`, i);
-    if (Object.isFrozen(keys2)) positions.set(keys2, map);
+    const base = inherited(parent, positions, (keys3) => new Map(keys3.map((key, i) => [identity(key), i])));
+    map = base ?? /* @__PURE__ */ new Map();
+    for (let i = base ? parent.length : 0; i < keys2.length; i++) map.set(identity(keys2[i]), i);
+    if (settled2(keys2)) positions.set(keys2, map);
     return map;
   }
 
@@ -3426,7 +3460,7 @@
     const writeNode = (node, parent, depth) => {
       if (depth > limits.depth || ++count > limits.nodes) throw Error("UI_LIMIT: candidate too large");
       deepest = Math.max(deepest, depth);
-      const { tag, props, identity, fields: fields3, states: states2, wire, handlers } = node;
+      const { tag, props, identity: identity2, fields: fields3, states: states2, wire, handlers } = node;
       const index = output.length;
       heads.push(index);
       output.push(tags[tag], parent, props.key ?? "", props.testId ?? "", node.text, 0);
@@ -3469,7 +3503,7 @@
       let window, seededAnchor = false;
       if (node.list) {
         lists++;
-        window = windows[identity] ?? node.list.window ?? initialWindow(props.count);
+        window = windows[identity2] ?? node.list.window ?? initialWindow(props.count);
         if (!Number.isSafeInteger(window.start) || !Number.isSafeInteger(window.end) || window.start < 0 || window.end < window.start || window.end > Math.max(props.count, node.list.previousCount) || ![window.leading, window.trailing].every((v) => Number.isFinite(v) && v >= 0 && v <= 16384e5)) throw Error("UI_LIST: invalid window");
         if (window.end > props.count) window = initialWindow(props.count);
         const typography = node.list.rowSource ? JSON.stringify(node.typography ?? null) : void 0;
@@ -3488,7 +3522,7 @@
         node.list.anchorCache = null;
         node.list.previousCount = props.count;
         node.list.window = { ...window };
-        put("listId", identity);
+        put("listId", identity2);
         put("listCount", props.count);
         put("listLeading", window.leading);
         put("listTrailing", window.trailing);
@@ -3499,7 +3533,7 @@
           put("listItemKeys", payload2);
         }
         if (props.anchor !== void 0) put("listAnchor", JSON.stringify(props.anchor));
-        candidate.lists.set(identity, node.list);
+        candidate.lists.set(identity2, node.list);
       }
       output[start - 1] = (output.length - start) / 2;
       if (!node.list) {
@@ -3562,11 +3596,11 @@
     }
   }
   function renderRowTimed(node, i, cells, depth) {
-    const { props, identity } = node;
+    const { props, identity: identity2 } = node;
     const suppliedKey = props.itemKeys?.[i];
     const previous = render.scope, outerContexts = render.contexts;
     render.contexts = node.list.contexts;
-    render.scope = suppliedKey === void 0 ? `${identity}/row:${i}` : `${identity}/row/key:${JSON.stringify(suppliedKey)}`;
+    render.scope = suppliedKey === void 0 ? `${identity2}/row:${i}` : `${identity2}/row/key:${JSON.stringify(suppliedKey)}`;
     try {
       const value = props.row(i);
       render.contexts = outerContexts;
@@ -3577,7 +3611,7 @@
       if (suppliedKey !== void 0 && declared2 !== void 0 && suppliedKey !== declared2) throw Error("UI_LIST: row key does not match itemKeys");
       const rowKey = suppliedKey ?? declared2;
       const key = rowKey === void 0 ? `index:${i}` : `key:${JSON.stringify(rowKey)}`;
-      render.scope = `${identity}/row/${key}`;
+      render.scope = `${identity2}/row/${key}`;
       const fields3 = {};
       if (props.height) {
         const height = props.height(i);
@@ -4163,18 +4197,18 @@
     const { actions: actions2, channels: channels2 } = currentActions();
     hostContextRead = false;
     const withCapsule = env && typeof env === "object" && !Object.hasOwn(env, "capsule") ? { ...env, capsule: null } : env;
-    const frozen = immutable(normalizeEnv(withCapsule));
-    const watched = frozen && typeof frozen === "object" ? new Proxy(frozen, {
+    const frozen2 = immutable(normalizeEnv(withCapsule));
+    const watched = frozen2 && typeof frozen2 === "object" ? new Proxy(frozen2, {
       get(target, key, receiver) {
         if (hostContextKeys.has(key)) hostContextRead = true;
         if (appearanceKeys.has(key)) appearanceRead = true;
         return Reflect.get(target, key, receiver);
       }
-    }) : frozen;
+    }) : frozen2;
     const view = Object.freeze({ data: data === void 0 ? lastData : shared(data, lastData), env: watched, actions: actions2, channels: channels2 });
     if (data !== void 0) lastRevision = typeof revision === "number" ? revision : null;
     lastData = view.data;
-    rawEnvs.set(view, frozen);
+    rawEnvs.set(view, frozen2);
     return view;
   }
   var envOf = (view) => (view && rawEnvs.get(view)) ?? view?.env;
@@ -4359,7 +4393,7 @@
     if (!Number.isSafeInteger(props.count) || props.count < 0 || props.count > limits.listRows || typeof props.row !== "function" || props.height !== void 0 && typeof props.height !== "function") throw Error("UI_LIST: invalid row description");
     if (props.itemKeys !== void 0) {
       if (!Array.isArray(props.itemKeys) || props.itemKeys.length !== props.count) throw Error("UI_LIST: itemKeys must match count");
-      if (!Object.isFrozen(props.itemKeys)) props.itemKeys = Array.from(props.itemKeys);
+      if (!settled2(props.itemKeys)) props.itemKeys = Array.from(props.itemKeys);
       checkKeys(props.itemKeys, checkKey);
       if (keyPayload(props.itemKeys).bytes > limits.itemKeyBytes) throw Error("UI_LIST: itemKeys budget exceeded");
     }
@@ -5136,13 +5170,13 @@
     if (fullscreenSession === null || webFullscreenDrawn()) return null;
     return h(BareWebFullscreen, { session: fullscreenSession, key: `lx-web-fullscreen:${fullscreenSession}` });
   }
-  function resolveWebView(props, identity, parent, wire, on) {
+  function resolveWebView(props, identity2, parent, wire, on) {
     var _a, _b;
     const bareSession = props[bareSessionMark];
     const name = props.web === void 0 ? void 0 : webSessionName(props.web);
     if (props.web !== void 0 && name === void 0)
       throw Error("UI_WEBVIEW: web takes the handle useWebView(name) returns");
-    const session = bareSession ?? (name === void 0 ? `el:${identity}` : `name:${name}`);
+    const session = bareSession ?? (name === void 0 ? `el:${identity2}` : `name:${name}`);
     const candidateSources = (_a = render.candidate).webSources ?? (_a.webSources = /* @__PURE__ */ new Map());
     if (props.src !== void 0) {
       candidateSources.set(session, props.src);
@@ -5230,9 +5264,9 @@
     return true;
   }
   var warnedPicker = /* @__PURE__ */ new Set();
-  function warnNoPicker(identity, tag, keyboard) {
-    if (warnedPicker.has(identity) || typeof globalThis.__lingxiaWarn !== "function") return;
-    warnedPicker.add(identity);
+  function warnNoPicker(identity2, tag, keyboard) {
+    if (warnedPicker.has(identity2) || typeof globalThis.__lingxiaWarn !== "function") return;
+    warnedPicker.add(identity2);
     globalThis.__lingxiaWarn(`UI_INPUT: showPicker() does nothing on <${tag}${keyboard ? ` type="${keyboard}"` : ""}>; only a date or time editor opens a picker`);
   }
   var interactiveTags = /* @__PURE__ */ new Set(["button", "link", "checkbox", "switch", "radio", "input", "textarea", "select", "slider", "webview"]);
@@ -5376,8 +5410,8 @@
   function resetStyleWarnings() {
     warnedClamp.clear();
   }
-  function nodeStyle(tag, props, data, extra, inherited, direction, structure2, every, sizeClass, identity) {
-    if (props.style !== void 0 || extra !== void 0 || every !== void 0 || props.className === void 0) return lowerNodeStyle(tag, props, data, extra, inherited, direction, structure2, every, sizeClass, identity);
+  function nodeStyle(tag, props, data, extra, inherited2, direction, structure2, every, sizeClass, identity2) {
+    if (props.style !== void 0 || extra !== void 0 || every !== void 0 || props.className === void 0) return lowerNodeStyle(tag, props, data, extra, inherited2, direction, structure2, every, sizeClass, identity2);
     const environment = envKey(envOf(render.view));
     if (loweredClasses !== classGeneration) {
       loweredClasses = classGeneration;
@@ -5390,16 +5424,16 @@
       loweredEnv = environment;
       if (seeded?.env === environment) for (const [key2, style3] of seeded.entries) lowered.set(key2, style3);
     }
-    const key = `${tag}\0${props.className}\0${data ? JSON.stringify(data) : ""}\0${props.disabled === true}\0${mixedCheckbox(tag, props)}\0${direction}\0${sizeClass ?? ""}\0${(structure2 ?? []).join(",")}\0${inherited.fontSize}\0${JSON.stringify(inherited.lineHeight)}`;
+    const key = `${tag}\0${props.className}\0${data ? JSON.stringify(data) : ""}\0${props.disabled === true}\0${mixedCheckbox(tag, props)}\0${direction}\0${sizeClass ?? ""}\0${(structure2 ?? []).join(",")}\0${inherited2.fontSize}\0${JSON.stringify(inherited2.lineHeight)}`;
     let style2 = lowered.get(key);
     if (!style2) {
-      style2 = lowerNodeStyle(tag, props, data, extra, inherited, direction, structure2, void 0, sizeClass, identity);
+      style2 = lowerNodeStyle(tag, props, data, extra, inherited2, direction, structure2, void 0, sizeClass, identity2);
       fresh.add(key);
       if (lowered.size >= 2048) lowered.delete(lowered.keys().next().value);
       lowered.set(key, style2);
     } else if (style2.clampWarnings?.length && typeof globalThis.__lingxiaWarn === "function") {
       for (const [name, message] of style2.clampWarnings) {
-        const warnKey = `${identity ?? ""}\0${name}`;
+        const warnKey = `${identity2 ?? ""}\0${name}`;
         if (warnedClamp.has(warnKey)) continue;
         warnedClamp.add(warnKey);
         globalThis.__lingxiaWarn(message);
@@ -5419,7 +5453,7 @@
   var disabledField = { color: "text-muted", backgroundColor: "surface-sunken", borderColor: "line" };
   var videoBacking = { backgroundColor: "#000000" };
   var mixedCheckbox = (tag, props) => tag === "checkbox" && props.indeterminate === true;
-  function lowerNodeStyle(tag, props, data, extra, inherited, direction, structure2, every, sizeClass, identity) {
+  function lowerNodeStyle(tag, props, data, extra, inherited2, direction, structure2, every, sizeClass, identity2) {
     const env = { ...loweringEnv(envOf(render.view), sizeClass), direction, structure: structure2, data, indeterminate: mixedCheckbox(tag, props) };
     const classes = resolveClasses(props.className, env);
     if (classes?.pairedLeading && runTags.has(tag)) delete classes.base.lineHeight;
@@ -5436,12 +5470,12 @@
     const clampWarnings = [];
     const warn = typeof globalThis.__lingxiaWarn === "function" ? (name, message) => {
       clampWarnings.push([name, message]);
-      const key = `${identity ?? ""}\0${name}`;
+      const key = `${identity2 ?? ""}\0${name}`;
       if (warnedClamp.has(key)) return;
       warnedClamp.add(key);
       globalThis.__lingxiaWarn(message);
     } : void 0;
-    const { fields: fields3, typography } = lowerStyle(tag, author, env, inherited, warn);
+    const { fields: fields3, typography } = lowerStyle(tag, author, env, inherited2, warn);
     const states2 = {};
     const state = (name, wire, allowed, requirement) => {
       const delta = classes?.[name];
@@ -5489,7 +5523,7 @@
     return { fields: fields3, states: states2, typography, author, children: classes?.children, every: classes?.every, descendants, release: classes?.release, ...clampWarnings.length ? { clampWarnings } : {} };
   }
   var listTag = Object.freeze({});
-  function resolveNode(node, identity, depth = 0, parent = {}) {
+  function resolveNode(node, identity2, depth = 0, parent = {}) {
     if (depth > limits.depth) throw Error("UI_LIMIT: children too deep");
     if (node == null || typeof node === "boolean" || node === "") return null;
     if (typeof node === "string" || typeof node === "number") node = h("text", {}, node);
@@ -5502,7 +5536,7 @@
     const tag = authored2 === listTag ? "list" : authored2;
     if (location) render.site = `${typeof tag === "function" ? tag.name || "<anonymous>" : `<${tag}>`} (${location})`;
     if (typeof tag === "function") {
-      const previous = render.scope, scope = `${identity}/component:${componentId(tag)}`;
+      const previous = render.scope, scope = `${identity2}/component:${componentId(tag)}`;
       render.scope = scope;
       const supplied = children.length === 0 ? void 0 : children.length === 1 ? children[0] : children;
       try {
@@ -5537,15 +5571,15 @@
     }
     try {
       if (!original[panelMark]) authoredRules(tag, original, parent);
-      let expansion = expand(tag, original, children, identity, parent);
+      let expansion = expand(tag, original, children, identity2, parent);
       if (expansion === null) return null;
       if (tag === "slider" && original.values !== void 0) expansion = rangeSlider(original);
       if (expansion) {
-        const result = resolveNode(expansion.node, identity, depth + 1, { ...parent, extra: void 0, every: void 0, sibling: void 0 });
+        const result = resolveNode(expansion.node, identity2, depth + 1, { ...parent, extra: void 0, every: void 0, sibling: void 0 });
         expansion.finish(result);
         return result;
       }
-      return resolveElement(tag, original, children, identity, depth, parent);
+      return resolveElement(tag, original, children, identity2, depth, parent);
     } catch (error) {
       throw located(error, `<${tag}>${location ? ` (${location})` : ""}`);
     }
@@ -5603,7 +5637,7 @@
     }
     if (state) props.accessibilityState = state;
   }
-  function resolveElement(tag, original, children, identity, depth, parent) {
+  function resolveElement(tag, original, children, identity2, depth, parent) {
     if (typeof tag !== "string" || !has(elements, tag)) throw Error(`UI_TAG: ${String(tag)}${tagHint(tag)}`);
     const block = tag === "link" && !parent.inText;
     const kind = block ? "link-box" : tag;
@@ -5629,7 +5663,7 @@
     const data = dataOf(props);
     const rootFamily = !parent.typography && pageFamily && element.style.includes("fontFamily") ? { fontFamily: pageFamily } : void 0;
     const scopedSize = scopedSizeClass(parent.contexts, false);
-    const style2 = nodeStyle(kind, props, data, parent.extra ?? rootFamily, parent.typography ?? { fontSize: 14 }, direction, structure(parent.sibling, flat), parent.every, scopedSize, identity);
+    const style2 = nodeStyle(kind, props, data, parent.extra ?? rootFamily, parent.typography ?? { fontSize: 14 }, direction, structure(parent.sibling, flat), parent.every, scopedSize, identity2);
     const inline = (child) => typeof child === "string" || typeof child === "number";
     if (admission.tags[element.wire].parent === "text" && !parent.inText) throw Error(`UI_TEXT: <${tag}> belongs inside <text>; wrap it in a <text>`);
     if (tag === "link" && parent.inLink) throw Error("UI_TEXT: links do not nest");
@@ -5646,7 +5680,7 @@
       fields: style2.fields,
       states: style2.states,
       typography: style2.typography,
-      identity,
+      identity: identity2,
       text: leaf ? flat.join("") : "",
       wire: [],
       handlers: [],
@@ -5674,12 +5708,12 @@
     if (data) wire("dataAttributes", JSON.stringify(data));
     if (props.dir !== void 0) wire("direction", props.dir);
     semantics(tag, props, wire);
-    if (props.drag !== void 0) dragElement(tag, props, wire, on, style2.release, `${identity}#drag`);
+    if (props.drag !== void 0) dragElement(tag, props, wire, on, style2.release, `${identity2}#drag`);
     if (tag === "scroll" && props.snapIndex !== void 0) {
       const { snapIndex, onSnapChange } = props;
       if (!Number.isInteger(snapIndex) || snapIndex < 0) throw Error("UI_PROP: snapIndex is a snap point index, an integer from 0");
       if (onSnapChange !== void 0 && typeof onSnapChange !== "function") throw Error("UI_PROP: onSnapChange takes a function");
-      const key = `${identity}#scroll`;
+      const key = `${identity2}#scroll`;
       wire("snapIndex", controlledSnap(key, snapIndex));
       if (onSnapChange) on("onSnapChange", (payload2) => {
         const index = Number(payload2);
@@ -5763,8 +5797,8 @@
         if (props.accessibilityLabel !== void 0) wire("accessibilityLabel", props.accessibilityLabel);
         const to = props.to === void 0 ? void 0 : linkTarget(props.to, props);
         if (!to && props.onClick === void 0 && props.popoverTarget === void 0 && props.interestFor === void 0) throw Error("UI_LINK: a <link> needs to, onClick, popoverTarget or interestFor, disabled or not; disabled only stops the press");
-        const click = to ? () => requestNavigation(to) : invokerHandler(props, identity, parent.popovers ?? []);
-        interestTrigger(props, identity, parent.popovers ?? []);
+        const click = to ? () => requestNavigation(to) : invokerHandler(props, identity2, parent.popovers ?? []);
+        interestTrigger(props, identity2, parent.popovers ?? []);
         if (props.interestFor !== void 0) wire("interestFor", props.interestFor);
         if (click && !disabled) on("onClick", click);
         break;
@@ -5773,8 +5807,8 @@
         label(props.accessibilityLabel, "UI_BUTTON");
         if (props.onClick !== void 0 && typeof props.onClick !== "function") throw Error("UI_PROP: onClick");
         if (props.accessibilityLabel !== void 0) wire("accessibilityLabel", props.accessibilityLabel);
-        const click = invokerHandler(props, identity, parent.popovers ?? []);
-        interestTrigger(props, identity, parent.popovers ?? []);
+        const click = invokerHandler(props, identity2, parent.popovers ?? []);
+        interestTrigger(props, identity2, parent.popovers ?? []);
         if (props.interestFor !== void 0) wire("interestFor", props.interestFor);
         if (click && !disabled) on("onClick", click);
         break;
@@ -5825,18 +5859,18 @@
           const next = within2(sliderValue(props, value));
           if (!unbound && next === props.value) return;
           onChange?.(next);
-          if (onChangeEnd) changeEnd(identity, next, onChangeEnd);
+          if (onChangeEnd) changeEnd(identity2, next, onChangeEnd);
         }, "number");
         if (onPressChange !== void 0 || onChangeEnd) {
           if (onPressChange !== void 0 && typeof onPressChange !== "function") throw Error("UI_SLIDER: onPressChange takes a function");
           const report2 = (pressed) => {
-            if (onChangeEnd) pressEnd(identity, pressed, onChangeEnd);
+            if (onChangeEnd) pressEnd(identity2, pressed, onChangeEnd);
             return onPressChange?.(pressed);
           };
           result.handlers.push([
             "onSliderPress",
             handle(),
-            callbackOf(() => pressChange(identity, report2), "void", false, { identity, callback: report2 })
+            callbackOf(() => pressChange(identity2, report2), "void", false, { identity: identity2, callback: report2 })
           ]);
         }
         break;
@@ -5871,7 +5905,7 @@
           const request = cellOf(props.bind).cell.picker;
           if (keyboard === "date" || keyboard === "time") {
             if (!disabled && props.readOnly !== true) wire("pickerRequest", request);
-          } else warnNoPicker(identity, tag, keyboard);
+          } else warnNoPicker(identity2, tag, keyboard);
         }
         for (const [key, value] of attributes) wire(key, value);
         if (tag === "textarea") {
@@ -5953,7 +5987,7 @@
         if (source3 === void 0 && name === void 0) throw Error(`UI_PROP: ${authoringRules.exclusive.videoSource.missing}`);
         if (props.src !== void 0) wire("videoSrc", props.src);
         if (props.sources !== void 0) wire("videoSources", JSON.stringify(props.sources.map(({ src, label: label2 }) => ({ src, label: label2 }))));
-        wire("videoPlayer", name === void 0 ? `el:${identity}` : `name:${name}`);
+        wire("videoPlayer", name === void 0 ? `el:${identity2}` : `name:${name}`);
         if (name !== void 0 && parent.inDialog) shownInDialog(name);
         if (props.poster !== void 0) wire("videoPoster", props.poster);
         if (source3 !== void 0) wire("videoPaused", +(props.paused ?? !props.autoPlay));
@@ -5982,7 +6016,7 @@
       case "webview":
         webview(props);
         wire("accessibilityLabel", props.accessibilityLabel);
-        resolveWebView(props, identity, parent, wire, on);
+        resolveWebView(props, identity2, parent, wire, on);
         break;
       case "vector": {
         const fit = result.fields.imageFit;
@@ -6014,7 +6048,7 @@
         label(props.accessibilityLabel, "UI_RADIO");
         if (props.value !== void 0 && (typeof props.value !== "string" || props.value.length > 256)) throw Error("UI_RADIO: invalid value");
         if (props.accessibilityLabel !== void 0) wire("accessibilityLabel", props.accessibilityLabel);
-        result.children = radioOptions(props, identity, result.fields, disabled);
+        result.children = radioOptions(props, identity2, result.fields, disabled);
         break;
     }
     if (tag === "scroll" || tag === "list") for (const name of ["onReachStart", "onReachEnd"]) {
@@ -6032,7 +6066,7 @@
     }
     if (tag === "list") {
       listKeys(props);
-      result.list = listState(props, identity, direction, parent.contexts);
+      result.list = listState(props, identity2, direction, parent.contexts);
       render.lists++;
     } else if (runs) {
       const extra = tag === "span" || tag === "link" ? style2.author : void 0;
@@ -6040,7 +6074,7 @@
       const runOf = (child, slot, key, inFragment, nesting) => {
         if (nesting > 128) throw Error("UI_LIMIT: children too deep");
         const part = slot === void 0 ? `key:${JSON.stringify(key)}` : `position:${slot}`;
-        const run = resolveNode(inline(child) ? h("span", {}, child) : child, `${identity}/${tag}/${part}`, depth + 1, {
+        const run = resolveNode(inline(child) ? h("span", {}, child) : child, `${identity2}/${tag}/${part}`, depth + 1, {
           tag,
           typography: style2.typography,
           direction,
@@ -6083,7 +6117,7 @@
         if (key !== void 0 && keys2.has(key)) throw Error("UI_KEY: duplicate sibling");
         if (key !== void 0) keys2.add(key);
         const part = key === void 0 ? `position:${at}` : `key:${JSON.stringify(key)}`;
-        const node = resolveNode(child, `${identity}/${tag}/${part}`, depth + 1, {
+        const node = resolveNode(child, `${identity2}/${tag}/${part}`, depth + 1, {
           tag,
           typography: style2.typography,
           direction,
@@ -6299,7 +6333,7 @@
       return option2.disabled ? { value: option2.value, label: option2.label, disabled: true } : { value: option2.value, label: option2.label };
     });
   }
-  function radioOptions(props, identity, fields3, disabled) {
+  function radioOptions(props, identity2, fields3, disabled) {
     if (!Array.isArray(props.options) || !props.options.length || props.options.length > 64) throw Error("UI_RADIO: expected 1..64 options");
     const values = /* @__PURE__ */ new Set();
     const style2 = Object.fromEntries(Object.entries(fields3).filter(([name]) => optionStyle.includes(name)));
@@ -6310,7 +6344,7 @@
       const child = {
         tag: "radio-option",
         element: "radio-option",
-        identity: `${identity}/radio/key:${JSON.stringify(value)}`,
+        identity: `${identity2}/radio/key:${JSON.stringify(value)}`,
         props: { key: value, testId: option2["data-testid"] },
         fields: style2,
         states: {},
@@ -6333,18 +6367,18 @@
     for (const i of old.pure) {
       if (!old.cache.has(i)) continue;
       const item = source3.items[i];
-      if (same4 || item === before.items[i] && (item === null || typeof item !== "object" || Object.isFrozen(item))) rows.set(i, old.cache.get(i));
+      if (same4 || item === before.items[i] && isFrozen(item)) rows.set(i, old.cache.get(i));
     }
     return rows.size ? { rows, typography: old.typography } : null;
   }
-  function listState(props, identity, direction, contexts) {
-    const old = page.committed?.lists.get(identity);
+  function listState(props, identity2, direction, contexts) {
+    const old = page.committed?.lists.get(identity2);
     const rowSource = props.row?.__lxRows, rowEnv = rowSource ? JSON.stringify(envOf(render.view) ?? null) : void 0;
     const anchor = props.anchor === void 0 ? null : JSON.stringify(props.anchor);
     const positions2 = props.itemKeys && old?.states?.size ? keyPositions(props.itemKeys) : null;
     const states2 = positions2 ? new Map([...old?.states ?? []].flatMap(([, state]) => positions2.has(state.key) ? [[positions2.get(state.key), state]] : [])) : new Map([...old?.states ?? []].filter(([i]) => i < props.count));
     const anchorChanged = Boolean(old && old.count === props.count && anchor !== null && anchor !== old.anchor);
-    if (anchorChanged && !props.anchor.duration) render.candidate?.movedAnchors?.set(identity, anchor);
+    if (anchorChanged && !props.anchor.duration) render.candidate?.movedAnchors?.set(identity2, anchor);
     return {
       count: props.count,
       previousCount: old?.count ?? props.count,
@@ -6420,8 +6454,8 @@
     const now2 = /* @__PURE__ */ new Date();
     return { year: now2.getFullYear(), month: now2.getMonth() + 1, day: now2.getDate() };
   };
-  function openPicker({ identity, kind, value, min, max, step, today: day, options: options2, selected, label: label2, anchorWidth } = {}) {
-    if (typeof identity !== "string" || !["date", "time", "select"].includes(kind)) return false;
+  function openPicker({ identity: identity2, kind, value, min, max, step, today: day, options: options2, selected, label: label2, anchorWidth } = {}) {
+    if (typeof identity2 !== "string" || !["date", "time", "select"].includes(kind)) return false;
     fixedToday = parseDate(day);
     const key = nextKey++;
     if (kind === "select") {
@@ -6436,7 +6470,7 @@
       picker = {
         kind,
         key,
-        identity,
+        identity: identity2,
         options: list,
         selected: chosen,
         pick: chosen,
@@ -6453,7 +6487,7 @@
       picker = {
         kind,
         key,
-        identity,
+        identity: identity2,
         min: low,
         max: high,
         value: parseDate(value),
@@ -6462,7 +6496,7 @@
         focus: clampDate(parseDate(value) ?? today(), low, high)
       };
     } else {
-      picker = { kind, key, identity, step: Number(step), value: parseTime(value) ?? { hour: 9, minute: 0 }, min: parseTime(min), max: parseTime(max) };
+      picker = { kind, key, identity: identity2, step: Number(step), value: parseTime(value) ?? { hour: 9, minute: 0 }, min: parseTime(min), max: parseTime(max) };
     }
     return true;
   }
@@ -6845,10 +6879,10 @@
 
   // src/runtime/tree.js
   function List({ items, getKey, renderItem, getItemHeight, ...props }) {
-    if (!Object.isFrozen(items) && typeof globalThis.__lingxiaWarn === "function") warnUnfrozen(props, renderItem);
+    if (!isFrozen(items) && typeof globalThis.__lingxiaWarn === "function") warnUnfrozen(props, renderItem);
     const itemKeys2 = keysOf(items, getKey);
     const row = (index) => renderItem(items[index], index);
-    if (typeof renderItem === "function" && Object.isFrozen(items)) row.__lxRows = { items, site: renderItem, height: getItemHeight };
+    if (typeof renderItem === "function" && isFrozen(items)) row.__lxRows = { items, site: renderItem, height: getItemHeight };
     return h(listTag, {
       ...props,
       count: items.length,

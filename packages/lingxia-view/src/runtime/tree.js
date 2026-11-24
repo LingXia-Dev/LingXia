@@ -3,7 +3,7 @@ import { render, page, outsideRender } from './state.js';
 import { h, resetArena, clearArena } from './nodes.js';
 import { resolveNode, listTag, resetStyleWarnings } from './elements.js';
 import { encodeTree, copyTree, retainCells, renderRow, wireReset } from './encode.js';
-import { validInputText } from './data.js';
+import { validInputText, isFrozen } from './data.js';
 import { report, failHandler, loudFailures, resetActions, actionEpochNow, hasActionEpoch, syncPageTitle } from './actions.js';
 import { sited } from './errors.js';
 import { overlayNode, decorateOverlay, resetOverlays } from './overlay.js';
@@ -22,12 +22,12 @@ import { now, spent } from './profile.js';
 // Candidate transactions: prepare renders and encodes without touching the
 // committed page; commit adopts the candidate, discard drops it.
 export function List({ items, getKey, renderItem, getItemHeight, ...props }) {
-  if (!Object.isFrozen(items) && typeof globalThis.__lingxiaWarn === 'function') warnUnfrozen(props, renderItem);
+  if (!isFrozen(items) && typeof globalThis.__lingxiaWarn === 'function') warnUnfrozen(props, renderItem);
   const itemKeys = keysOf(items, getKey);
   const row = index => renderItem(items[index], index);
   // The same renderItem over the same frozen items builds the same rows, save those that read state;
   // a row carries its height, so getItemHeight must be the same function too.
-  if (typeof renderItem === 'function' && Object.isFrozen(items)) row.__lxRows = { items, site: renderItem, height: getItemHeight };
+  if (typeof renderItem === 'function' && isFrozen(items)) row.__lxRows = { items, site: renderItem, height: getItemHeight };
   return h(listTag, { ...props, count: items.length,
     itemKeys, row,
     ...(getItemHeight ? { height: index => getItemHeight(items[index], index) } : {}) });

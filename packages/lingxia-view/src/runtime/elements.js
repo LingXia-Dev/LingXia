@@ -9,7 +9,7 @@ import { cellOf, envOf, scopedSizeClass } from './hooks.js';
 import { located } from './errors.js';
 import { pageFamily } from './fonts.js';
 import { requestNavigation } from './actions.js';
-import { has, validInputText } from './data.js';
+import { has, validInputText, isFrozen } from './data.js';
 import { fieldOptions, field as fieldIds, ignorableFields } from '../generated/wire.js';
 import * as check from './validate.js';
 import { defaultSeries } from '../style/color.js';
@@ -1189,7 +1189,7 @@ function reusableRows(old, props, rowEnv, direction) {
   for (const i of old.pure) {
     if (!old.cache.has(i)) continue;
     const item = source.items[i];
-    if (same || (item === before.items[i] && (item === null || typeof item !== 'object' || Object.isFrozen(item)))) rows.set(i, old.cache.get(i));
+    if (same || (item === before.items[i] && isFrozen(item))) rows.set(i, old.cache.get(i));
   }
   return rows.size ? { rows, typography: old.typography } : null;
 }
