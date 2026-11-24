@@ -101,7 +101,7 @@ pub fn swift_target_name_from_project_name(project_name: &str) -> String {
 
 /// Turn a project name into one segment of a package id.
 ///
-/// A project name may carry `-` (`h-app`); a package id may not, because
+/// A project name may carry `-` (`my-app`); a package id may not, because
 /// Android's is a Java package name. Pasting the name in unchanged produced a
 /// default id the CLI then refused — a new project that could not build until
 /// its id was edited by hand.
@@ -139,13 +139,13 @@ mod tests {
 
     #[test]
     fn a_dashed_project_name_still_derives_a_legal_default_id() {
-        assert_eq!(package_segment_from_project_name("h-app"), "h_app");
+        assert_eq!(package_segment_from_project_name("my-app"), "my_app");
         assert_eq!(package_segment_from_project_name("My App"), "my_app");
         assert_eq!(package_segment_from_project_name("2fast"), "_2fast");
         assert_eq!(package_segment_from_project_name("---"), "app");
         assert_eq!(package_segment_from_project_name("a--b"), "a_b");
         // Whatever it derives has to pass the id rule it feeds.
-        for name in ["h-app", "My App", "2fast", "---", "a--b"] {
+        for name in ["my-app", "My App", "2fast", "---", "a--b"] {
             let id = format!("app.lingxia.{}", package_segment_from_project_name(name));
             assert!(validate_package_id(&id).is_ok(), "{id}");
         }

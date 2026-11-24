@@ -40,15 +40,15 @@ mod app_id_tests {
     #[test]
     fn an_embedded_lxapp_is_named_after_the_host_and_itself() {
         assert_eq!(
-            embedded_lxapp_app_id("fusheng", "home"),
-            "lingxia.lxapp.fusheng.home"
+            embedded_lxapp_app_id("myapp", "home"),
+            "lingxia.lxapp.myapp.home"
         );
     }
 
     #[test]
     fn two_lxapps_in_one_host_get_distinct_ids() {
-        let home = embedded_lxapp_app_id("fusheng", "home");
-        let settings = embedded_lxapp_app_id("fusheng", "settings");
+        let home = embedded_lxapp_app_id("myapp", "home");
+        let settings = embedded_lxapp_app_id("myapp", "settings");
         assert_ne!(
             home, settings,
             "a host embedding two lxapps must not give them one id"
@@ -58,7 +58,7 @@ mod app_id_tests {
     #[test]
     fn the_same_lxapp_name_in_two_hosts_stays_distinct() {
         assert_ne!(
-            embedded_lxapp_app_id("fusheng", "home"),
+            embedded_lxapp_app_id("myapp", "home"),
             embedded_lxapp_app_id("showcase", "home")
         );
     }
@@ -66,14 +66,14 @@ mod app_id_tests {
     #[test]
     fn an_lxapp_carrying_the_project_name_does_not_repeat_it() {
         assert_eq!(
-            embedded_lxapp_app_id("fusheng", "fusheng"),
-            "lingxia.lxapp.fusheng"
+            embedded_lxapp_app_id("myapp", "myapp"),
+            "lingxia.lxapp.myapp"
         );
     }
 
     #[test]
     fn a_standalone_lxapp_is_still_named_after_its_project() {
-        assert_eq!(default_lxapp_app_id("Fusheng"), "lingxia.lxapp.fusheng");
+        assert_eq!(default_lxapp_app_id("MyApp"), "lingxia.lxapp.myapp");
     }
 }
 

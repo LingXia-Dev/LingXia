@@ -97,7 +97,7 @@ impl AppleTeamSlots {
         }
     }
 
-    /// `Heights Telecom LLC · Paid`, or `None` before any Apple ID login.
+    /// `Example Corp · Paid`, or `None` before any Apple ID login.
     pub fn label(&self) -> Option<String> {
         let name = self.info.name.as_deref()?;
         Some(match self.info.account_type.as_deref() {
@@ -106,7 +106,7 @@ impl AppleTeamSlots {
         })
     }
 
-    /// One line for listings: `3V2F5C8343  Heights Telecom LLC · Paid`.
+    /// One line for listings: `ABCDE12345  Example Corp · Paid`.
     pub fn display(&self) -> String {
         match self.label() {
             Some(label) => format!("{}  {label}", self.team_id),
@@ -805,7 +805,7 @@ mod tests {
             .save_apple_team_info(
                 "TEAMAAAAAA",
                 &AppleTeamInfo {
-                    name: Some("Heights".into()),
+                    name: Some("Example Corp".into()),
                     account_type: Some("Paid".into()),
                     apple_id: None,
                 },
@@ -821,7 +821,7 @@ mod tests {
             )
             .unwrap();
         let team = wallet.apple_team("TEAMAAAAAA").unwrap().unwrap();
-        assert_eq!(team.label().as_deref(), Some("Heights · Paid"));
+        assert_eq!(team.label().as_deref(), Some("Example Corp · Paid"));
         assert_eq!(team.info.apple_id.as_deref(), Some("a@b.com"));
     }
 

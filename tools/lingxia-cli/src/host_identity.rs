@@ -189,17 +189,17 @@ mod tests {
 
     #[test]
     fn the_shared_id_stays_a_java_package_name() {
-        let err = validate_package_id_field("app.packageId", "com.heights-t.h-app")
+        let err = validate_package_id_field("app.packageId", "com.example.my-app")
             .unwrap_err()
             .to_string();
         assert!(err.contains("Java package name"), "{err}");
-        assert!(validate_package_id_field("app.packageId", "com.heights_t.h_app").is_ok());
+        assert!(validate_package_id_field("app.packageId", "com.example.my_app").is_ok());
     }
 
     #[test]
     fn an_apple_override_keeps_its_dashes() {
         assert!(
-            validate_package_id_styled("ios.bundleId", "com.heights-t.h-app", IdStyle::AppleBundle)
+            validate_package_id_styled("ios.bundleId", "com.example.my-app", IdStyle::AppleBundle)
                 .is_ok()
         );
         // Everything else is still a Java package name.

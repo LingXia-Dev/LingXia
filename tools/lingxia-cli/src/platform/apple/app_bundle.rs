@@ -589,16 +589,16 @@ mod tests {
         let temp = tempfile::tempdir().unwrap();
         let package = temp.path().join("package");
         let build = temp.path().join("swift-build");
-        let payload = build.join("fusheng_fusheng.bundle/Resources/fusheng");
+        let payload = build.join("myapp_myapp.bundle/Resources/myapp");
         fs::create_dir_all(&package).unwrap();
         fs::create_dir_all(&payload).unwrap();
         fs::write(build.join(super::APP_RUNNER_TARGET), b"executable").unwrap();
-        fs::write(payload.join("lxapp.json"), b"{\"appId\":\"fusheng\"}").unwrap();
+        fs::write(payload.join("lxapp.json"), b"{\"appId\":\"myapp\"}").unwrap();
         let config = AppBundleConfig {
-            bundle_id: "com.julibits.fusheng".into(),
-            bundle_name: "fusheng".into(),
-            app_name: "Flourish".into(),
-            swift_product_name: "fusheng".into(),
+            bundle_id: "com.example.myapp".into(),
+            bundle_name: "myapp".into(),
+            app_name: "My App".into(),
+            swift_product_name: "myapp".into(),
             deployment_target: "17.0".into(),
             info_plist_path: None,
             splash_background: None,
@@ -606,13 +606,13 @@ mod tests {
         };
         let app =
             AppBundler::create_bundle_structure(&package, temp.path(), &build, &config).unwrap();
-        assert_eq!(app, temp.path().join("fusheng.app"));
+        assert_eq!(app, temp.path().join("myapp.app"));
         let info: Dictionary = plist::from_file(app.join("Info.plist")).unwrap();
         let executable = info["CFBundleExecutable"].as_string().unwrap();
         assert_eq!(fs::read(app.join(executable)).unwrap(), b"executable");
         assert_eq!(
-            fs::read(app.join("fusheng/lxapp.json")).unwrap(),
-            b"{\"appId\":\"fusheng\"}"
+            fs::read(app.join("myapp/lxapp.json")).unwrap(),
+            b"{\"appId\":\"myapp\"}"
         );
     }
 

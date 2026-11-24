@@ -1679,12 +1679,12 @@ mod tests {
         let started = super::process_start_time(other.id()).unwrap();
         fs::write(
             &slot.owner_file,
-            format!("{} {started} h-app-gpu", other.id()),
+            format!("{} {started} my-app-gpu", other.id()),
         )
         .unwrap();
         fs::write(&slot.pid_file, other.id().to_string()).unwrap();
         let err = slot.claim().unwrap_err().to_string();
-        assert!(err.contains("Session h-app-gpu"), "{err}");
+        assert!(err.contains("Session my-app-gpu"), "{err}");
         assert!(err.contains("LINGXIA_RUNNER_INSTANCE"), "{err}");
         assert!(slot.pid_file.exists());
         assert!(
@@ -1695,7 +1695,7 @@ mod tests {
         // Once that session is gone its Runner is a leftover: the claim ends it and takes the slot.
         fs::write(
             &slot.owner_file,
-            format!("{} {} h-app-gpu", other.id(), started + 1),
+            format!("{} {} my-app-gpu", other.id(), started + 1),
         )
         .unwrap();
         super::record_runner_start(&slot.pid_file);
@@ -1768,11 +1768,11 @@ mod tests {
     #[test]
     fn owner_records_parse() {
         assert_eq!(
-            parse_owner("12 34 h-app test"),
+            parse_owner("12 34 my-app test"),
             Some(RunnerOwner {
                 pid: 12,
                 started_at: 34,
-                label: "h-app test".into()
+                label: "my-app test".into()
             })
         );
         assert_eq!(parse_owner("garbage"), None);

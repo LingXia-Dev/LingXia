@@ -1313,7 +1313,7 @@ mod tests {
         let dir = temp.path().join("dist/macos");
         fs::create_dir_all(&dir).unwrap();
         let update = write_macos_package(&dir, "0.2.6");
-        let dmg = dir.join("Flourish-0.2.6.dmg");
+        let dmg = dir.join("MyApp-0.2.6.dmg");
         fs::write(&dmg, b"dmg").unwrap();
         // An older build left beside it is not what was packaged.
         write_macos_package(&dir, "0.2.5");
@@ -1621,22 +1621,19 @@ mod tests {
     }
 
     fn write_macos_package(dir: &std::path::Path, version: &str) -> std::path::PathBuf {
-        let path = dir.join(format!("Flourish-{version}-macos.zip"));
+        let path = dir.join(format!("MyApp-{version}-macos.zip"));
         let app_json =
             format!(r#"{{"lingxiaId":"demo","productVersion":"{version}","env":"prod"}}"#);
         write_zip(
             &path,
             &[
                 (
-                    "Flourish.app/Contents/Info.plist",
-                    &info_plist("Flourish", Some("universal")),
+                    "MyApp.app/Contents/Info.plist",
+                    &info_plist("MyApp", Some("universal")),
                 ),
+                ("MyApp.app/Contents/Resources/app.json", app_json.as_bytes()),
                 (
-                    "Flourish.app/Contents/Resources/app.json",
-                    app_json.as_bytes(),
-                ),
-                (
-                    "Flourish.app/Contents/MacOS/Flourish",
+                    "MyApp.app/Contents/MacOS/MyApp",
                     &fat_macho(&[CPU_TYPE_X86_64, CPU_TYPE_ARM64]),
                 ),
             ],
@@ -1714,7 +1711,7 @@ mod tests {
 
     #[test]
     fn host_publish_refuses_an_env_the_package_was_not_built_for() {
-        let package = std::path::Path::new("Flourish-0.2.6-macos.zip");
+        let package = std::path::Path::new("MyApp-0.2.6-macos.zip");
         reject_env_mismatch(None, package, AppEnv::Prod).unwrap();
         reject_env_mismatch(Some("prod"), package, AppEnv::Prod).unwrap();
         let error = reject_env_mismatch(Some("dev"), package, AppEnv::Prod)
