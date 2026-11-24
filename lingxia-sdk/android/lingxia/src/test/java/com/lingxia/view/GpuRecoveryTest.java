@@ -21,7 +21,7 @@ public class GpuRecoveryTest {
     @Test public void aSlowLoadOffersKeepWaitingAndBackOnThePagesCanvas() {
         FrameLayout host = new FrameLayout(RuntimeEnvironment.getApplication());
         GpuRecovery recovery = new GpuRecovery(host);
-        recovery.setColors(0xFFF5F6FA, 0xFF141821, 0xFF008347);
+        recovery.setColors(0xFFF5F6FA, 0xFFFFFFFF, 0xFFDCDEE2, 0xFF141821, 0xFF008347);
         AtomicInteger waits = new AtomicInteger();
         recovery.show(false, SLOW_LOAD, KEEP_WAITING, "", waits::incrementAndGet, () -> true);
         LinearLayout panel = (LinearLayout)host.getChildAt(0);
