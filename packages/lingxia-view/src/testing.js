@@ -1,6 +1,6 @@
 // Renders a compiled page in Node through the globals the native session calls, so a test runs the
 // runtime copy a device runs. No layout or semantics: roles and names come from the native projection.
-import { existsSync } from 'node:fs';
+import { existsSync, readFileSync, statSync } from 'node:fs';
 import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join, relative, resolve } from 'node:path';
@@ -89,9 +89,11 @@ export const textOf = node => (node.text ?? '') + node.children.map(textOf).join
 
 /**
  * Builds `page` with the View compiler and renders it. `root` is the project the page belongs to,
- * by default the nearest directory above it with a package.json or lxapp.json.
+ * by default the nearest directory above it with a package.json or lxapp.json. `messages` is what
+ * the page's `t` reads (relative to `root`): a compiled `index.js`, or a build's `.lingxia/i18n/build`,
+ * whose `current` names its copy. Without it `t` has no catalogue.
  */
-export async function render(page, view = {}, { root, points: resolved = false } = {}) {
+export async function render(page, view = {}, { root, points: resolved = false, messages = null } = {}) {
   const { buildPages } = await import('../compiler/index.mjs');
   const file = resolve(page);
   root = resolve(root ?? projectOf(file));
@@ -99,9 +101,16 @@ export async function render(page, view = {}, { root, points: resolved = false }
   const out = await mkdtemp(join(tmpdir(), 'lingxia-view-testing-'));
   try {
     // One self-contained module: the test host evaluates it without a chunk loader.
-    await buildPages(root, [entry], out, {}, { chunks: false });
+    await buildPages(root, [entry], out, {}, { chunks: false, messages: compiledIndex(root, messages), inputsRecord: join(out, 'gpu-inputs.json') });
     return screen(installHost(await readFile(join(out, entry.replace(/\.[jt]sx?$/, '.js')), 'utf8')), view, resolved);
   } finally { await rm(out, { recursive: true, force: true }); }
+}
+
+function compiledIndex(root, messages) {
+  if (messages === null) return null;
+  const path = resolve(root, messages);
+  if (!statSync(path).isDirectory()) return path;
+  return join(path, readFileSync(join(path, 'current'), 'utf8').trim(), 'index.js');
 }
 
 function projectOf(file) {

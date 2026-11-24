@@ -11,6 +11,6 @@ const repo = resolve(fileURLToPath(new URL('../../..', import.meta.url)));
 const [name = 'data', ticks = '200', state = '{}', rootArg = 'crates/lingxia-view/tests/bench'] = process.argv.slice(2);
 const root = resolve(repo, rootArg);
 const dist = join(repo, 'target/corpus/bench');
-await buildPages(root, [`${name}.tsx`], dist);
+await buildPages(root, [`${name}.tsx`], dist, {}, { messages: null, inputsRecord: `${dist}.gpu-inputs.json` });
 execFileSync('cargo', ['run', '-q', '--release', '-p', 'lingxia-view', '--example', 'bench', '--', join(dist, `${name}.js`), ticks, state],
   { cwd: repo, stdio: 'inherit' });

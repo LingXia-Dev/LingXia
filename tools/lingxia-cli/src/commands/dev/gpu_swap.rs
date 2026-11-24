@@ -14,23 +14,22 @@ type Inputs = BTreeMap<PathBuf, BTreeSet<String>>;
 /// Each project's last record: when it was written, its length, and what it resolved to.
 type ReadInputs = BTreeMap<PathBuf, (SystemTime, u64, Arc<Inputs>)>;
 
-/// The files the last dev build's GPU pages compiled from (`.lingxia/gpu-inputs.json`), resolved,
+/// The files the session's last build of `dir` compiled its GPU pages from (`record`), resolved,
 /// each with the pages it feeds. A linked package's files sit outside `dir` (`../kit/src/x.tsx`).
 /// Resolving them costs a file-system call per input of every page, and the watcher asks on
 /// every save: the answer is kept until the build writes the record again.
-fn inputs(dir: &Path) -> Option<Arc<Inputs>> {
+fn inputs(dir: &Path, record: &Path) -> Option<Arc<Inputs>> {
     static READ: Mutex<ReadInputs> = Mutex::new(BTreeMap::new());
-    let record = dir.join(".lingxia").join("gpu-inputs.json");
-    let written = std::fs::metadata(&record)
+    let written = std::fs::metadata(record)
         .and_then(|record| Ok((record.modified()?, record.len())))
         .ok()?;
     let mut read = READ.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
-    if let Some((modified, len, inputs)) = read.get(&record)
+    if let Some((modified, len, inputs)) = read.get(record)
         && (*modified, *len) == written
     {
         return Some(inputs.clone());
     }
-    let text = std::fs::read_to_string(&record).ok()?;
+    let text = std::fs::read_to_string(record).ok()?;
     let pages: BTreeMap<String, Vec<String>> = serde_json::from_str(&text).ok()?;
     let mut by_file = Inputs::new();
     for (page, files) in pages {
@@ -42,7 +41,7 @@ fn inputs(dir: &Path) -> Option<Arc<Inputs>> {
         }
     }
     let inputs = Arc::new(by_file);
-    read.insert(record, (written.0, written.1, inputs.clone()));
+    read.insert(record.to_path_buf(), (written.0, written.1, inputs.clone()));
     Some(inputs)
 }
 
@@ -54,9 +53,9 @@ fn built(dir: &Path, page: &str) -> bool {
 }
 
 /// The inputs of `dir`'s GPU pages that lie outside it: linked packages' sources and token files.
-pub(super) fn external_inputs(dir: &Path) -> BTreeSet<PathBuf> {
+pub(super) fn external_inputs(dir: &Path, record: &Path) -> BTreeSet<PathBuf> {
     let root = canonical(dir);
-    let Some(inputs) = inputs(dir) else {
+    let Some(inputs) = inputs(dir, record) else {
         return BTreeSet::new();
     };
     let mut pages: BTreeMap<&str, bool> = BTreeMap::new();
@@ -73,9 +72,9 @@ pub(super) fn external_inputs(dir: &Path) -> BTreeSet<PathBuf> {
 }
 
 /// The GPU pages to recompile for `changed`, or `None` when the edit needs a full rebuild.
-/// Inputs come from the last dev build (`.lingxia/gpu-inputs.json`).
-pub(super) fn plan(dir: &Path, changed: &BTreeSet<PathBuf>) -> Option<Vec<String>> {
-    let inputs = inputs(dir)?;
+/// Inputs come from the session's last build of `dir` (`record`).
+pub(crate) fn plan(dir: &Path, record: &Path, changed: &BTreeSet<PathBuf>) -> Option<Vec<String>> {
+    let inputs = inputs(dir, record)?;
     let mut pages = BTreeSet::new();
     for path in changed {
         // Editors save atomically: a temp file written, then renamed over the real one.
@@ -121,17 +120,19 @@ pub(super) fn canonical(path: &Path) -> PathBuf {
         })
 }
 
-// A `prime` request compiles into a scratch directory: it only fills the warm caches.
+// A `prime` request compiles into a scratch directory, its record too: it only fills the warm caches.
 const COMPILER: &str = "import { buildPages } from '@lingxia/view/compiler';
 import { createInterface } from 'node:readline';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 for await (const line of createInterface({ input: process.stdin })) {
-  const { pages, output, catalogs, prime } = JSON.parse(line);
+  const { pages, output, catalogs, prime, messages, inputsRecord } = JSON.parse(line);
   const target = prime ? await mkdtemp(join(tmpdir(), 'lingxia-prime-')) : output;
   try {
-    const { warm, analysed } = await buildPages(process.cwd(), pages, target, catalogs, { dev: true });
+    const { warm, analysed } = await buildPages(process.cwd(), pages, target, catalogs, {
+      dev: true, messages, inputsRecord: prime ? join(target, 'gpu-inputs.json') : inputsRecord,
+    });
     console.log(JSON.stringify({ ok: true, warm, analysed }));
   } catch (error) { console.log(JSON.stringify({ ok: false, error: String(error?.message ?? error) })); }
   finally { if (prime) await rm(target, { recursive: true, force: true }); }
@@ -141,6 +142,8 @@ for await (const line of createInterface({ input: process.stdin })) {
 pub(super) struct Compiler {
     dir: PathBuf,
     output: PathBuf,
+    /// The session build's inputs record, which each compile updates.
+    record: PathBuf,
     child: Child,
     stdin: ChildStdin,
     stdout: BufReader<ChildStdout>,
@@ -158,6 +161,7 @@ pub(super) struct Compiled {
 impl Compiler {
     /// A compiler for the lxapp at `dir` that writes into `output`, the session's build of it.
     pub(super) fn spawn(dir: &Path, output: &Path) -> Result<Self> {
+        let record = crate::lxapp::session_inputs_record(output);
         let mut child = Command::new("node")
             .args(["--input-type=module", "--eval", COMPILER])
             .current_dir(dir)
@@ -170,6 +174,7 @@ impl Compiler {
         let mut compiler = Self {
             dir: dir.to_path_buf(),
             output: output.to_path_buf(),
+            record,
             child,
             stdin,
             stdout,
@@ -182,7 +187,7 @@ impl Compiler {
     /// Compile every GPU page of the last dev build into a scratch directory in the background,
     /// so the first save of the session compiles warm.
     fn prime(&mut self) {
-        let inputs = std::fs::read_to_string(self.dir.join(".lingxia").join("gpu-inputs.json"))
+        let inputs = std::fs::read_to_string(&self.record)
             .ok()
             .and_then(|text| serde_json::from_str::<serde_json::Value>(&text).ok());
         let Some(pages) = inputs.as_ref().and_then(|v| v.as_object()) else {
@@ -199,7 +204,12 @@ impl Compiler {
         let Ok(catalogs) = crate::lxapp::gpu_dev_inputs(&self.dir, &pages) else {
             return;
         };
-        let request = serde_json::json!({ "pages": pages, "catalogs": catalogs, "prime": true });
+        let request = serde_json::json!({
+            "pages": pages,
+            "catalogs": catalogs,
+            "prime": true,
+            "messages": crate::lxapp::dev_messages(&self.dir),
+        });
         if writeln!(self.stdin, "{request}").is_ok() {
             self.pending += 1;
         }
@@ -212,8 +222,13 @@ impl Compiler {
     /// Recompile `pages` (`pages/x/index.tsx`) into the lxapp's build output.
     pub(super) fn compile(&mut self, pages: &[String]) -> Result<Compiled> {
         let catalogs = crate::lxapp::gpu_dev_inputs(&self.dir, pages)?;
-        let request =
-            serde_json::json!({ "pages": pages, "output": self.output, "catalogs": catalogs });
+        let request = serde_json::json!({
+            "pages": pages,
+            "output": self.output,
+            "catalogs": catalogs,
+            "messages": crate::lxapp::dev_messages(&self.dir),
+            "inputsRecord": self.record,
+        });
         writeln!(self.stdin, "{request}").context("GPU page compiler exited")?;
         let mut line = String::new();
         // A prime still running answers first; its result does not matter.
@@ -316,8 +331,9 @@ mod tests {
             "pages/a/index.tsx",
             "export function render() { return <view className=\"p-4 gap-2\"><text className=\"text-sm\">Hello</text></view>; }\n",
         );
+        // The session's record of its last build into `out`.
         write(
-            ".lingxia/gpu-inputs.json",
+            "out.gpu-inputs.json",
             r#"{"pages/a/index.tsx":["pages/a/index.tsx"]}"#,
         );
         let packages = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../packages/lingxia-view");
@@ -407,19 +423,27 @@ mod tests {
         .unwrap();
         let kit = canonical(&base.path().join("kit"));
         assert_eq!(
-            external_inputs(&app),
+            external_inputs(&app, &app.join(".lingxia/gpu-inputs.json")),
             BTreeSet::from([kit.join("src/chip.tsx"), kit.join("tokens.css")])
         );
         for file in ["kit/src/chip.tsx", "kit/tokens.css"] {
             assert_eq!(
-                plan(&app, &BTreeSet::from([base.path().join(file)])),
+                plan(
+                    &app,
+                    &app.join(".lingxia/gpu-inputs.json"),
+                    &BTreeSet::from([base.path().join(file)])
+                ),
                 Some(vec!["pages/a/index.tsx".to_owned()]),
                 "{file}"
             );
         }
         // Another file of the package is no page input: it rebuilds.
         assert_eq!(
-            plan(&app, &BTreeSet::from([base.path().join("kit/README.md")])),
+            plan(
+                &app,
+                &app.join(".lingxia/gpu-inputs.json"),
+                &BTreeSet::from([base.path().join("kit/README.md")])
+            ),
             None
         );
     }
@@ -441,12 +465,20 @@ mod tests {
             paths.iter().map(|path| dir.path().join(path)).collect()
         };
         assert_eq!(
-            plan(dir.path(), &changed(&["pages/a/index.tsx"])),
+            plan(
+                dir.path(),
+                &dir.path().join(".lingxia/gpu-inputs.json"),
+                &changed(&["pages/a/index.tsx"])
+            ),
             Some(vec!["pages/a/index.tsx".to_owned()])
         );
         // `pages/gone` was deleted after its last build: a shared edit no longer plans it.
         assert_eq!(
-            plan(dir.path(), &changed(&["shared/ui.tsx"])),
+            plan(
+                dir.path(),
+                &dir.path().join(".lingxia/gpu-inputs.json"),
+                &changed(&["shared/ui.tsx"])
+            ),
             Some(vec![
                 "pages/a/index.tsx".to_owned(),
                 "pages/b/index.tsx".to_owned()
@@ -455,6 +487,7 @@ mod tests {
         assert_eq!(
             plan(
                 dir.path(),
+                &dir.path().join(".lingxia/gpu-inputs.json"),
                 &changed(&["theme/index.css", "pages/a/index.tsx"])
             ),
             Some(vec!["pages/a/index.tsx".to_owned()])
@@ -466,7 +499,15 @@ mod tests {
             "lxapp.json",
             "pages/web/index.tsx",
         ] {
-            assert_eq!(plan(dir.path(), &changed(&[other])), None, "{other}");
+            assert_eq!(
+                plan(
+                    dir.path(),
+                    &dir.path().join(".lingxia/gpu-inputs.json"),
+                    &changed(&[other])
+                ),
+                None,
+                "{other}"
+            );
         }
         // An atomic save: the vanished temp file is skipped, the renamed-to page swaps.
         std::fs::create_dir_all(dir.path().join("pages/a")).unwrap();
@@ -474,6 +515,7 @@ mod tests {
         assert_eq!(
             plan(
                 dir.path(),
+                &dir.path().join(".lingxia/gpu-inputs.json"),
                 &changed(&[
                     "pages/a/.index.tsx.swp",
                     "pages/a/index.tsx~tmp",
@@ -486,6 +528,7 @@ mod tests {
         assert_eq!(
             plan(
                 tempfile::tempdir().unwrap().path(),
+                &dir.path().join("none.json"),
                 &changed(&["pages/a/index.tsx"])
             ),
             None
@@ -515,12 +558,15 @@ mod tests {
             serde_json::to_string(&record).unwrap(),
         )
         .unwrap();
-        let first = inputs(root).unwrap();
+        let first = inputs(root, &root.join(".lingxia/gpu-inputs.json")).unwrap();
         let edit = BTreeSet::from([root.join("pages/p7/index.tsx")]);
         for _ in 0..50 {
-            assert!(Arc::ptr_eq(&first, &inputs(root).unwrap()));
+            assert!(Arc::ptr_eq(
+                &first,
+                &inputs(root, &root.join(".lingxia/gpu-inputs.json")).unwrap()
+            ));
             assert_eq!(
-                plan(root, &edit),
+                plan(root, &root.join(".lingxia/gpu-inputs.json"), &edit),
                 Some(vec!["pages/p7/index.tsx".to_owned()])
             );
         }
@@ -531,7 +577,10 @@ mod tests {
             serde_json::to_string(&record).unwrap(),
         )
         .unwrap();
-        assert_eq!(plan(root, &edit), None);
+        assert_eq!(
+            plan(root, &root.join(".lingxia/gpu-inputs.json"), &edit),
+            None
+        );
     }
 
     #[test]
@@ -552,7 +601,7 @@ mod tests {
         .unwrap();
         let changed = BTreeSet::from([root.join("kit/button.tsx")]);
         assert_eq!(
-            plan(root, &changed),
+            plan(root, &root.join(".lingxia/gpu-inputs.json"), &changed),
             Some(vec![
                 "pages/a/index.tsx".to_owned(),
                 "pages/b/index.tsx".to_owned(),

@@ -38,13 +38,15 @@ Each session builds and serves from `.lingxia/dev/sessions/<session id>/` (`buil
 manifests, snapshots and blobs under `lxapp/`), never another session's; `dist/` is written only by
 `lingxia build`: a host session builds each embedded lxapp into its own `build/<appId>` and copies that
 into the host's assets (a prebuilt bundle is copied in from its `dist/`). That build is kept per profile
-in `.lingxia/dev/embed/<profile>/<appId>/entry` with a hash of its inputs (the bundle tree, linked
-`@lingxia/*` packages, the CLI build, and the files `gpu-inputs.json` names outside the bundle); a
-session whose inputs match copies it instead of building. An entry is replaced by rename under an
+in `.lingxia/dev/embed/<profile>/<appId>/entry` with its GPU inputs record and a hash of its inputs
+(the bundle tree, linked `@lingxia/*` packages, the CLI build, and the files that record names outside
+the bundle); a session whose inputs match copies it, and its record beside its build, instead of building. An entry is replaced by rename under an
 exclusive lock and copied under a shared one, so concurrent sessions never read half of one. The directory is removed
 when the session ends; at start, one whose `owner` (pid and start time) is proven gone is removed, and one
-with no readable owner is reported and left. Sessions of one project still share the generated inputs
-beside the sources (`.lingxia/i18n`, `.lingxia/gpu-inputs.json`).
+with no readable owner is reported and left. A session's build of an lxapp records its GPU pages' inputs
+beside it (`build/<appId>.gpu-inputs.json`), which the watcher plans hot swaps from. The compiled i18n is
+one copy per mode (`.lingxia/i18n/dev`, `.lingxia/i18n/build`): content-named directories and a `current`
+file naming one, replaced by rename, so sessions and builds of one project never read a partial copy.
 
 Printed hints (a failed spec's `Rerun:` line, the stop command) never carry a
 session id: they omit `--session` when not needed and otherwise use the name

@@ -4,17 +4,12 @@
 
 use anyhow::{Context, Result, anyhow, bail};
 use lingxia_i18n::{Catalogue, Problem};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 /// `dev` adds `en-XA` and `ar-XB` (see `lingxia_i18n::pseudo`) and lets a translation fall short
-/// per key.
-pub fn compile(dir: &Path, output: &Path, dev: bool) -> Result<()> {
+/// per key. Returns the compiled `index.js` GPU pages bundle, `None` without catalogues.
+pub fn compile(dir: &Path, output: &Path, dev: bool) -> Result<Option<PathBuf>> {
     let mut catalogues = check(dir, dev)?;
-    // GPU pages bundle the messages from here; a stale copy would outlive a deleted i18n/.
-    let generated = dir.join(".lingxia").join("i18n");
-    if generated.exists() {
-        std::fs::remove_dir_all(&generated)?;
-    }
     let types = dir
         .join(".lingxia")
         .join("types")
@@ -23,7 +18,8 @@ pub fn compile(dir: &Path, output: &Path, dev: bool) -> Result<()> {
         if types.exists() {
             std::fs::remove_file(&types)?;
         }
-        return Ok(());
+        generated::clear(&generated::mode_dir(dir, dev))?;
+        return Ok(None);
     };
     let source = source.clone();
     let declarations = lingxia_i18n::dts::declarations(source_catalogue);
@@ -47,7 +43,8 @@ pub fn compile(dir: &Path, output: &Path, dev: bool) -> Result<()> {
     }
     let out = output.join("i18n");
     std::fs::create_dir_all(&out)?;
-    std::fs::create_dir_all(&generated)?;
+    // The modules GPU pages bundle, published whole once all are known.
+    let mut modules: Vec<(String, String)> = Vec::new();
     for (tag, pseudo) in pseudo {
         let json: serde_json::Map<String, serde_json::Value> = pseudo
             .entries
@@ -65,12 +62,10 @@ pub fn compile(dir: &Path, output: &Path, dev: bool) -> Result<()> {
         )?;
         catalogues.push((tag.to_string(), pseudo));
     }
-    let mut index = String::new();
-    let mut entries = Vec::new();
-    for (n, (tag, catalogue)) in catalogues.iter().enumerate() {
+    for (tag, catalogue) in &catalogues {
         let module = lingxia_i18n::js::module(catalogue);
         std::fs::write(out.join(format!("{tag}.js")), &module)?;
-        std::fs::write(generated.join(format!("{tag}.js")), &module)?;
+        modules.push((format!("{tag}.js"), module));
         // Native text (Logic's `lx.app.t`, toasts) formats from the catalogue as checked.
         if !lingxia_i18n::pseudo::TAGS.contains(&tag.as_str()) {
             let json: serde_json::Map<String, serde_json::Value> = catalogue
@@ -89,23 +84,141 @@ pub fn compile(dir: &Path, output: &Path, dev: bool) -> Result<()> {
                 serde_json::to_string_pretty(&json)?,
             )?;
         }
-        index.push_str(&format!(
-            "import m{n} from './{tag}.js';
-"
-        ));
-        entries.push(format!("{}: m{n}", serde_json::to_string(tag)?));
     }
-    index.push_str(&format!(
-        "export const source = {};
-export const languages = {{ {} }};
-",
-        serde_json::to_string(&source)?,
-        entries.join(", ")
-    ));
     let tags: Vec<&str> = catalogues.iter().map(|(tag, _)| tag.as_str()).collect();
-    index.push_str(&lingxia_i18n::js::formatter(&tags));
-    std::fs::write(generated.join("index.js"), index)?;
-    Ok(())
+    let index = lingxia_i18n::js::index(&source, &tags);
+    modules.push(("index.js".to_string(), index));
+    let published = generated::publish(&generated::mode_dir(dir, dev), &modules)?;
+    Ok(Some(published.join("index.js")))
+}
+
+/// The compiled `index.js` of the lxapp at `dir` its last build in this mode published.
+pub fn compiled_messages(dir: &Path, dev: bool) -> Option<PathBuf> {
+    generated::current(&generated::mode_dir(dir, dev)).map(|published| published.join("index.js"))
+}
+
+/// One copy of the compiled modules per mode: `<mode>/<content hash>/` and a `current` file naming
+/// it. Sessions and builds of one lxapp write concurrently; a content dir is complete once it has
+/// its name and the pointer is replaced by a rename, so a reader never sees a partial copy.
+mod generated {
+    use anyhow::Result;
+    use sha2::Digest;
+    use std::path::{Path, PathBuf};
+
+    const POINTER: &str = "current";
+
+    pub(super) fn mode_dir(dir: &Path, dev: bool) -> PathBuf {
+        dir.join(".lingxia")
+            .join("i18n")
+            .join(if dev { "dev" } else { "build" })
+    }
+
+    pub(super) fn current(mode: &Path) -> Option<PathBuf> {
+        let name = std::fs::read_to_string(mode.join(POINTER)).ok()?;
+        let published = mode.join(name.trim());
+        published.is_dir().then_some(published)
+    }
+
+    /// Publish `files` as this mode's copy; nothing is written when it already is.
+    pub(super) fn publish(mode: &Path, files: &[(String, String)]) -> Result<PathBuf> {
+        let mut hasher = sha2::Sha256::new();
+        for (name, text) in files {
+            for part in [name.as_bytes(), text.as_bytes()] {
+                hasher.update((part.len() as u64).to_le_bytes());
+                hasher.update(part);
+            }
+        }
+        let name = hex(&hasher.finalize()[..12]);
+        let published = mode.join(&name);
+        let previous = std::fs::read_to_string(mode.join(POINTER)).ok();
+        write(mode, &published, files)?;
+        if previous.as_deref().map(str::trim) != Some(name.as_str()) {
+            let temp = mode.join(format!(".{POINTER}-{}", unique()));
+            std::fs::write(&temp, &name)?;
+            replace(&temp, &mode.join(POINTER))?;
+            prune(mode, &name, previous.as_deref().map(str::trim));
+            // Another writer's prune may have taken the copy before the pointer named it.
+            write(mode, &published, files)?;
+        }
+        Ok(published)
+    }
+
+    /// `published` with `files`, made complete under another name and renamed into place.
+    fn write(mode: &Path, published: &Path, files: &[(String, String)]) -> Result<()> {
+        if published.is_dir() {
+            return Ok(());
+        }
+        let staging = mode.join(format!(".staging-{}", unique()));
+        std::fs::create_dir_all(&staging)?;
+        for (file, text) in files {
+            std::fs::write(staging.join(file), text)?;
+        }
+        // Another writer may have published the same content first.
+        let renamed = std::fs::rename(&staging, published);
+        let _ = std::fs::remove_dir_all(&staging);
+        if renamed.is_err() && !published.is_dir() {
+            anyhow::bail!("could not publish {}", published.display());
+        }
+        Ok(())
+    }
+
+    /// Without catalogues there is nothing to bundle in this mode.
+    pub(super) fn clear(mode: &Path) -> Result<()> {
+        match std::fs::remove_file(mode.join(POINTER)) {
+            Err(error) if error.kind() != std::io::ErrorKind::NotFound => Err(error.into()),
+            _ => Ok(()),
+        }
+    }
+
+    /// A build that resolved the last pointer may still be reading its copy; older ones go.
+    fn prune(mode: &Path, keep: &str, previous: Option<&str>) {
+        let Ok(entries) = std::fs::read_dir(mode) else {
+            return;
+        };
+        for entry in entries.flatten() {
+            let name = entry.file_name();
+            let name = name.to_string_lossy();
+            let stale = name != keep && Some(&*name) != previous && !name.starts_with('.');
+            if stale && entry.path().is_dir() {
+                let _ = std::fs::remove_dir_all(entry.path());
+            }
+        }
+    }
+
+    /// A rename over the pointer; Windows refuses one while a reader has the file open.
+    fn replace(from: &Path, to: &Path) -> Result<()> {
+        let mut delay = std::time::Duration::from_millis(10);
+        loop {
+            match std::fs::rename(from, to) {
+                Ok(()) => return Ok(()),
+                Err(error)
+                    if cfg!(windows)
+                        && error.kind() == std::io::ErrorKind::PermissionDenied
+                        && delay < std::time::Duration::from_secs(1) =>
+                {
+                    std::thread::sleep(delay);
+                    delay *= 2;
+                }
+                Err(error) => {
+                    let _ = std::fs::remove_file(from);
+                    return Err(error.into());
+                }
+            }
+        }
+    }
+
+    fn unique() -> String {
+        static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+        format!(
+            "{}-{}",
+            std::process::id(),
+            NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+        )
+    }
+
+    fn hex(bytes: &[u8]) -> String {
+        bytes.iter().map(|byte| format!("{byte:02x}")).collect()
+    }
 }
 
 /// Appends `tag` to lxapp.json's `languages` and writes an empty `i18n/<tag>.json`.
@@ -591,13 +704,14 @@ const t = useText(); t('web.key')"
             r#"{ "cart.items": { "defaultMessage": "{n, plural, one {# item} other {# items}}", "description": "Count." } }"#,
         )
         .unwrap();
-        compile(&root, &output, true).unwrap();
+        let messages = compile(&root, &output, true).unwrap().unwrap();
+        assert_eq!(compiled_messages(&root, true), Some(messages.clone()));
         let source = lingxia_i18n::Catalogue::parse(
             &std::fs::read_to_string(root.join("i18n/en-US.json")).unwrap(),
             true,
         )
         .unwrap();
-        let index = std::fs::read_to_string(root.join(".lingxia/i18n/index.js")).unwrap();
+        let index = std::fs::read_to_string(&messages).unwrap();
         for (n, tag) in ["en-XA", "ar-XB"].into_iter().enumerate() {
             let json = std::fs::read_to_string(output.join(format!("i18n/{tag}.json"))).unwrap();
             let pseudo = lingxia_i18n::Catalogue::parse(&json, false).unwrap();
@@ -622,6 +736,134 @@ const t = useText(); t('web.key')"
         compile(&root, &output.join("release"), false).unwrap();
         assert!(!output.join("release/i18n/en-XA.json").exists());
         assert!(!output.join("release/i18n/ar-XB.json").exists());
+    }
+
+    /// An lxapp at `root` whose source catalogue says `title`.
+    fn catalogued(root: &Path, title: &str) {
+        std::fs::create_dir_all(root.join("i18n")).unwrap();
+        std::fs::write(root.join("lxapp.json"), r#"{ "languages": ["en-US"] }"#).unwrap();
+        std::fs::write(
+            root.join("i18n/en-US.json"),
+            format!(
+                r#"{{ "app.title": {{ "defaultMessage": "{title}", "description": "Title." }} }}"#
+            ),
+        )
+        .unwrap();
+    }
+
+    /// A dev session compiling the same lxapp before and after a build leaves the build's
+    /// modules and output free of the pseudo-languages.
+    #[test]
+    fn a_build_never_bundles_or_emits_the_pseudo_languages() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path().join("app");
+        catalogued(&root, "Shop");
+        compile(&root, &dir.path().join("session"), true).unwrap();
+        let built = compile(&root, &dir.path().join("dist"), false)
+            .unwrap()
+            .unwrap();
+        compile(&root, &dir.path().join("session"), true).unwrap();
+        for module in [built.clone(), compiled_messages(&root, false).unwrap()] {
+            let index = std::fs::read_to_string(&module).unwrap();
+            assert!(
+                !index.contains("en-XA") && !index.contains("ar-XB"),
+                "{index}"
+            );
+            assert!(!module.with_file_name("en-XA.js").exists());
+        }
+        let emitted: Vec<String> = std::fs::read_dir(dir.path().join("dist/i18n"))
+            .unwrap()
+            .flatten()
+            .map(|entry| entry.file_name().to_string_lossy().into_owned())
+            .collect();
+        assert!(
+            emitted.iter().all(|name| name.starts_with("en-US.")),
+            "{emitted:?}"
+        );
+    }
+
+    #[test]
+    fn unchanged_messages_are_not_written_again() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path().join("app");
+        catalogued(&root, "Shop");
+        let first = compile(&root, &dir.path().join("dist"), false)
+            .unwrap()
+            .unwrap();
+        let pointer = root.join(".lingxia/i18n/build/current");
+        let stamp = |path: &Path| std::fs::metadata(path).unwrap().modified().unwrap();
+        let (module, current) = (stamp(&first), stamp(&pointer));
+        std::thread::sleep(std::time::Duration::from_millis(20));
+        assert_eq!(
+            compile(&root, &dir.path().join("dist"), false)
+                .unwrap()
+                .unwrap(),
+            first
+        );
+        assert_eq!((stamp(&first), stamp(&pointer)), (module, current));
+
+        catalogued(&root, "Store");
+        let second = compile(&root, &dir.path().join("dist"), false)
+            .unwrap()
+            .unwrap();
+        assert_ne!(second, first);
+        // The copy a build may still be reading stays until the next change.
+        assert!(first.is_file());
+        catalogued(&root, "Market");
+        compile(&root, &dir.path().join("dist"), false).unwrap();
+        assert!(!first.exists() && second.is_file());
+    }
+
+    /// Two sessions publishing different messages while a third reads: the reader always finds
+    /// one complete copy.
+    #[test]
+    fn two_writers_and_a_reader_never_meet_a_partial_copy() {
+        let dir = tempfile::tempdir().unwrap();
+        let mode = dir.path().join("dev");
+        let copy = |text: &str| -> Vec<(String, String)> {
+            (0..8)
+                .map(|n| (format!("m{n}.js"), text.repeat(4096)))
+                .chain([("index.js".to_string(), text.to_string())])
+                .collect()
+        };
+        let copies = [copy("a"), copy("b")];
+        generated::publish(&mode, &copies[0]).unwrap();
+        let start = std::sync::Barrier::new(3);
+        std::thread::scope(|scope| {
+            for writer in 0..2 {
+                let (mode, copies, start) = (&mode, &copies, &start);
+                scope.spawn(move || {
+                    start.wait();
+                    for round in 0..40 {
+                        generated::publish(mode, &copies[(writer + round) % 2]).unwrap();
+                    }
+                });
+            }
+            let (mode, start) = (&mode, &start);
+            scope.spawn(move || {
+                start.wait();
+                for _ in 0..200 {
+                    // A copy pruned under the reader is resolved again, as a build retrying would.
+                    let Some(published) = generated::current(mode) else {
+                        panic!("no current copy");
+                    };
+                    let Ok(index) = std::fs::read_to_string(published.join("index.js")) else {
+                        continue;
+                    };
+                    let Ok(module) = std::fs::read_to_string(published.join("m7.js")) else {
+                        continue;
+                    };
+                    assert_eq!(module, index.repeat(4096), "a torn copy");
+                }
+            });
+        });
+        let leftovers: Vec<_> = std::fs::read_dir(&mode)
+            .unwrap()
+            .flatten()
+            .map(|entry| entry.file_name().to_string_lossy().into_owned())
+            .filter(|name| name.starts_with('.'))
+            .collect();
+        assert!(leftovers.is_empty(), "{leftovers:?}");
     }
 
     #[test]

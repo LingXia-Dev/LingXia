@@ -95,6 +95,31 @@ export function formatter(tag) {
 }
 "#;
 
+/// The compiled index beside each language's `<tag>.js`: `source`, `languages` and `formatter`.
+pub fn index(source: &str, tags: &[&str]) -> String {
+    let mut out = String::new();
+    for (n, tag) in tags.iter().enumerate() {
+        let _ = writeln!(out, "import m{n} from './{tag}.js';");
+    }
+    let languages: Vec<String> = tags
+        .iter()
+        .enumerate()
+        .map(|(n, tag)| format!("{}: m{n}", serde_json::to_string(tag).unwrap()))
+        .collect();
+    let _ = writeln!(
+        out,
+        "export const source = {};",
+        serde_json::to_string(source).unwrap()
+    );
+    let _ = writeln!(
+        out,
+        "export const languages = {{ {} }};",
+        languages.join(", ")
+    );
+    out.push_str(&formatter(tags));
+    out
+}
+
 pub fn module(catalogue: &Catalogue) -> String {
     let mut out = String::from("export default {\n");
     for (key, entry) in &catalogue.entries {

@@ -14,6 +14,11 @@ pub struct BuildOptions {
     /// Run the project type-check (`--no-typecheck` skips it); a dev session never blocks on it.
     pub typecheck: bool,
     pub progress: ProgressMode,
+    /// Where GPU pages record their inputs when a session gave the build its own output;
+    /// otherwise the project's copy for this mode.
+    pub inputs_record: Option<std::path::PathBuf>,
+    /// The compiled i18n `index.js` this build's pages bundle; set once i18n has compiled.
+    pub messages: Option<std::path::PathBuf>,
 }
 
 impl BuildOptions {
@@ -48,6 +53,8 @@ impl BuildOptions {
             package,
             typecheck,
             progress,
+            inputs_record: None,
+            messages: None,
         })
     }
 }

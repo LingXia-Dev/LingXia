@@ -80,9 +80,10 @@ export function defaultEnv(overrides?: Record<string, unknown>): Record<string, 
 
 /**
  * Builds a GPU page with the View compiler and renders it in Node. With `points`, every node's props
- * read in points under the built-in pack (see `points`), across re-renders.
+ * read in points under the built-in pack (see `points`), across re-renders. `messages` is what `t`
+ * reads: a compiled i18n `index.js`, or `.lingxia/i18n/build` after `lingxia build`.
  */
-export function render(page: string, view?: ViewInput, options?: { root?: string; points?: boolean }): Promise<Screen>;
+export function render(page: string, view?: ViewInput, options?: { root?: string; points?: boolean; messages?: string | null }): Promise<Screen>;
 export function installHost(source: string): Host;
 export function describePage(host: Host, view?: ViewInput): unknown[];
 export function dispatch(host: Host, handle: number, value?: unknown): boolean;

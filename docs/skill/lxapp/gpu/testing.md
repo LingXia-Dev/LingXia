@@ -11,6 +11,7 @@ test id, text or the props you wrote; every element event has a screen method (`
 `toggle`, `select`, `slide`, `escape`, …). Roles, names and layout need a device: use `lxdev test`.
 Theme steps (`p-4`, `text-sm`) reach the wire as `[slot, times, plus]`; `points(props)` resolves them
 under the built-in pack to compare with numbers, and `render(page, view, { points: true })` does so for every node.
+A page using `t` needs `render(page, view, { messages: '.lingxia/i18n/build' })` after `lingxia build`; without it `t` throws `UI_I18N`.
 
 ```js
 import { render, textOf } from '@lingxia/view/testing';

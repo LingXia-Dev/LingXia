@@ -106,7 +106,7 @@ pub fn build(
         vite_pipeline::build(&web, options, progress, install_duration_hint)?
     };
     let started = std::time::Instant::now();
-    gpu::build(project, gpu_dev_build(options))?;
+    gpu::build(project, options, gpu_dev_build(options))?;
     report.bundle_duration += started.elapsed();
     report.page_count = project.pages.len();
     Ok(report)
@@ -1065,6 +1065,8 @@ mod tests {
             package: false,
             typecheck: false,
             progress: crate::lxapp::options::ProgressMode::Plain,
+            inputs_record: None,
+            messages: None,
         };
         assert!(super::gpu_dev_build(&options(true, true)));
         assert!(super::gpu_dev_build(&options(false, false)));

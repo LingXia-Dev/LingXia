@@ -4374,6 +4374,7 @@ dependencies = [
  "glifo",
  "image",
  "libc",
+ "lingxia-i18n",
  "lingxia-theme",
  "log",
  "memmap2",

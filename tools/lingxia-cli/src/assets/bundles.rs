@@ -2,7 +2,7 @@ use super::browser_shell_webui::{
     APP_ID as BROWSER_SHELL_WEBUI_APP_ID, resolve_browser_shell_webui_dir,
 };
 use super::cache::{HostAssetsCache, LxAppBuildStamp};
-use super::embed_cache::{EmbedCache, embed_inputs};
+use super::embed_cache::EmbedCache;
 use super::hash::{hash_tree, path_key, sha256_hex};
 use super::lxapp_package::resolve_lxapp_package;
 use crate::config::{
@@ -392,14 +392,11 @@ fn prepare_lxapp_plan(
     );
     let inputs_hash = hash_resource_bundle_inputs(&plan)?;
     let mut needs_build = plan.build;
-    let embed = plan
-        .embed_cache
-        .as_ref()
-        .map(|cache| (cache, embed_inputs(&plan.bundle_dir, &inputs_hash)));
+    let embed = plan.embed_cache.as_ref();
 
-    if let Some((embed_cache, inputs)) = &embed {
+    if let Some(embed_cache) = embed {
         needs_build = !embed_cache
-            .seed(inputs, &plan.output_dir)
+            .seed(&plan.bundle_dir, &inputs_hash, &plan.output_dir)
             .unwrap_or_else(|error| {
                 eprintln!("  {} last embed build unreadable: {error:#}", "!".yellow());
                 false
@@ -466,8 +463,9 @@ fn prepare_lxapp_plan(
 
     let dist_hash = hash_tree(&plan.output_dir, &[])?;
     if needs_build
-        && let Some((embed_cache, inputs)) = &embed
-        && let Err(error) = embed_cache.store(inputs, &plan.output_dir, &dist_hash)
+        && let Some(embed_cache) = embed
+        && let Err(error) =
+            embed_cache.store(&plan.bundle_dir, &inputs_hash, &plan.output_dir, &dist_hash)
     {
         eprintln!(
             "  {} embed build not kept for the next session: {error:#}",
@@ -1026,21 +1024,30 @@ mod tests {
         temp
     }
 
-    /// Record `content` as the last embed build of `plan`'s current inputs.
-    fn record_build(plan: &ResourceBundlePlan, content: &str) {
+    /// Record `content` as the last embed build of `plan`'s current inputs, with `inputs` as
+    /// its GPU inputs record when given.
+    fn record_build_with(plan: &ResourceBundlePlan, content: &str, inputs: Option<&str>) {
         let built = plan.bundle_dir.with_file_name(format!("built-{content}"));
         fs::create_dir_all(&built).unwrap();
         fs::write(built.join("logic.js"), content).unwrap();
-        let inputs = embed_inputs(
-            &plan.bundle_dir,
-            &hash_resource_bundle_inputs(plan).unwrap(),
-        );
+        if let Some(inputs) = inputs {
+            fs::write(crate::lxapp::session_inputs_record(&built), inputs).unwrap();
+        }
         let dist = hash_tree(&built, &[]).unwrap();
         plan.embed_cache
             .as_ref()
             .unwrap()
-            .store(&inputs, &built, &dist)
+            .store(
+                &plan.bundle_dir,
+                &hash_resource_bundle_inputs(plan).unwrap(),
+                &built,
+                &dist,
+            )
             .unwrap();
+    }
+
+    fn record_build(plan: &ResourceBundlePlan, content: &str) {
+        record_build_with(plan, content, None);
     }
 
     fn prepare(plan: ResourceBundlePlan) -> Result<PreparedResourceBundle> {
@@ -1075,14 +1082,12 @@ mod tests {
         let temp = embed_project();
         let outside = temp.path().join("kit.tsx");
         fs::write(&outside, "kit v1").unwrap();
-        fs::create_dir_all(temp.path().join("app/.lingxia")).unwrap();
-        fs::write(
-            temp.path().join("app/.lingxia/gpu-inputs.json"),
-            r#"{"pages/home/index.tsx":["../kit.tsx"]}"#,
-        )
-        .unwrap();
         let plan = || session_plan(temp.path(), "aaaaaa", BuildProfile::Debug);
-        record_build(&plan(), "v1");
+        record_build_with(
+            &plan(),
+            "v1",
+            Some(r#"{"pages/home/index.tsx":["../kit.tsx"]}"#),
+        );
         prepare(plan()).unwrap();
 
         // A file the last build's GPU pages compiled from, outside the bundle.
@@ -1095,6 +1100,33 @@ mod tests {
         fs::write(temp.path().join("app/index.ts"), "export const edited = 1").unwrap();
         let error = prepare(plan()).err().unwrap();
         assert!(error.to_string().contains("No lxapp.json"), "{error:#}");
+    }
+
+    /// A session seeded from the cache hot-swaps on its first save: the record of the build it
+    /// copied lands beside its output, where the watcher plans from.
+    #[test]
+    fn a_seeded_session_plans_a_hot_swap_from_the_restored_record() {
+        let temp = embed_project();
+        let page = temp.path().join("app/pages/home/index.tsx");
+        fs::create_dir_all(page.parent().unwrap()).unwrap();
+        fs::write(&page, "export function render() {}").unwrap();
+        let record = r#"{"pages/home/index.tsx":["pages/home/index.tsx"]}"#;
+        record_build_with(
+            &session_plan(temp.path(), "aaaaaa", BuildProfile::Debug),
+            "v1",
+            Some(record),
+        );
+        let seeded = prepare(session_plan(temp.path(), "bbbbbb", BuildProfile::Debug)).unwrap();
+        let restored = crate::lxapp::session_inputs_record(&seeded.dist_dir);
+        assert_eq!(fs::read_to_string(&restored).unwrap(), record);
+        assert_eq!(
+            crate::commands::dev::gpu_swap::plan(
+                &temp.path().join("app"),
+                &restored,
+                &std::collections::BTreeSet::from([page]),
+            ),
+            Some(vec!["pages/home/index.tsx".to_owned()])
+        );
     }
 
     #[test]
@@ -1130,10 +1162,8 @@ mod tests {
         let temp = embed_project();
         let plan = session_plan(temp.path(), "writer", BuildProfile::Debug);
         let cache = plan.embed_cache.clone().unwrap();
-        let inputs = embed_inputs(
-            &plan.bundle_dir,
-            &hash_resource_bundle_inputs(&plan).unwrap(),
-        );
+        let tree = hash_resource_bundle_inputs(&plan).unwrap();
+        let bundle = plan.bundle_dir.clone();
         // Many files, so a copy that overlaps a replacement would be torn or vanish midway.
         let build = |name: &str| {
             let dir = temp.path().join(name);
@@ -1145,28 +1175,32 @@ mod tests {
             (dir, dist)
         };
         let builds = [build("one"), build("two")];
-        cache.store(&inputs, &builds[0].0, &builds[0].1).unwrap();
+        cache
+            .store(&bundle, &tree, &builds[0].0, &builds[0].1)
+            .unwrap();
 
         let start = std::sync::Barrier::new(4);
         std::thread::scope(|scope| {
             for writer in 0..2 {
-                let (cache, inputs, builds, start) = (&cache, &inputs, &builds, &start);
+                let (cache, bundle, tree, builds, start) =
+                    (&cache, &bundle, &tree, &builds, &start);
                 scope.spawn(move || {
                     start.wait();
                     for round in 0..20 {
                         let (dir, dist) = &builds[(writer + round) % 2];
-                        cache.store(inputs, dir, dist).unwrap();
+                        cache.store(bundle, tree, dir, dist).unwrap();
                     }
                 });
             }
             for reader in 0..2 {
-                let (cache, inputs, start, root) = (&cache, &inputs, &start, temp.path());
+                let (cache, bundle, tree, start, root) =
+                    (&cache, &bundle, &tree, &start, temp.path());
                 scope.spawn(move || {
                     start.wait();
                     for round in 0..20 {
                         let output = root.join(format!("seeded-{reader}-{round}"));
                         assert!(
-                            cache.seed(inputs, &output).unwrap(),
+                            cache.seed(bundle, tree, &output).unwrap(),
                             "seed {reader}/{round}"
                         );
                     }

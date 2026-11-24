@@ -35,6 +35,7 @@ fn run_with_context(
     let mut project = Project::discover(cwd)?;
     if let Some(output) = output {
         project.output_dir = output.to_path_buf();
+        options.inputs_record = Some(super::session_inputs_record(output));
     }
 
     if options.package && !options.release {
@@ -116,6 +117,8 @@ pub fn check(cwd: &Path) -> Result<()> {
         package: false,
         typecheck: wiring.is_ok(),
         progress: ProgressMode::Plain,
+        inputs_record: None,
+        messages: None,
     };
     let staging = sibling(&project.output_dir, "checking");
     if staging.exists() {
@@ -186,7 +189,11 @@ fn replace_dir(staging: &Path, output_dir: &Path) -> Result<()> {
 }
 
 fn build_output(project: &Project, options: &BuildOptions, reporter: &Reporter) -> Result<()> {
-    super::i18n::compile(&project.root, &project.output_dir, options.dev_session)?;
+    let messages = super::i18n::compile(&project.root, &project.output_dir, options.dev_session)?;
+    let options = &BuildOptions {
+        messages,
+        ..options.clone()
+    };
     reporter.start_parallel_tasks();
     let install_duration_hint = view::prepare_tooling(project, options, reporter.view_progress())?;
     let logic_progress = reporter.logic_progress();

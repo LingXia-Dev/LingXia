@@ -9,7 +9,7 @@ import { tmpdir } from 'node:os';
 import { join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import ts from 'typescript';
-import { buildPages } from '../compiler/index.mjs';
+import { build } from './support/build.mjs';
 import { maxField } from '../src/generated/wire.js';
 
 const packageRoot = fileURLToPath(new URL('..', import.meta.url));
@@ -94,8 +94,9 @@ test('the guide has examples', () => assert.ok(blocks.length > 0));
 
 for (const block of blocks) test(`${block.name} ${block.expected ? `fails with ${block.expected}` : 'compiles and renders'}`, () => project(block, async root => {
   const output = join(root, 'dist');
+  const options = { messages: block.messages ? join(root, '.lingxia', 'i18n', 'index.js') : null };
   if (!block.expected) {
-    await buildPages(root, ['page.tsx'], output);
+    await build(root, ['page.tsx'], output, {}, options);
     let records;
     try { records = await renderCompiled(root, block.data); }
     catch (error) { assert.fail(error.message.split('\n').slice(0, 6).join('\n')); }
@@ -103,7 +104,7 @@ for (const block of blocks) test(`${block.name} ${block.expected ? `fails with $
     return;
   }
   let failure;
-  try { await buildPages(root, ['page.tsx'], output); await renderCompiled(root, block.data); }
+  try { await build(root, ['page.tsx'], output, {}, options); await renderCompiled(root, block.data); }
   catch (error) { failure = error; }
   assert.ok(failure, `expected ${block.expected}, but the example compiled and rendered`);
   assert.match(String(failure.message), new RegExp(`\\b${block.expected}\\b`));

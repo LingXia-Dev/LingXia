@@ -5,6 +5,7 @@ import { existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { audit, buildPages, identify } from '../compiler/index.mjs';
+import { build } from './support/build.mjs';
 import { moduleBanner } from '../compiler/compatibility.mjs';
 import { stabilizeClosures } from '../compiler/stable-closures.mjs';
 import { runInNewContext } from 'node:vm';
@@ -19,7 +20,7 @@ async function project(files, run) {
   const root = await mkdtemp(join(tmpdir(), 'lingxia-view-compiler-'));
   try {
     for (const [name, contents] of Object.entries(files)) await writeFile(join(root, name), contents);
-    await run(root, page => buildPages(root, [page ?? 'page.tsx'], join(root, 'dist')));
+    await run(root, page => build(root, [page ?? 'page.tsx'], join(root, 'dist')));
   } finally { await rm(root, { recursive: true, force: true }); }
 }
 async function load(root, name = 'page') {
@@ -287,7 +288,7 @@ test('a link is a block link outside text, a run inside it, and needs to or onCl
 test('one build reports every page with problems, not only the first', async () => {
   const page = cls => `export function render() { return <view className="${cls}"><text>A</text></view>; }`;
   await project({ 'a.tsx': page('not-a-utility'), 'ok.tsx': page('p-4'), 'b.tsx': page('also-not-one') }, async root => {
-    const error = await buildPages(root, ['a.tsx', 'ok.tsx', 'b.tsx'], join(root, 'dist')).catch(error => error);
+    const error = await build(root, ['a.tsx', 'ok.tsx', 'b.tsx'], join(root, 'dist')).catch(error => error);
     assert.match(error.message, /^a.tsx: 1 authoring problem\na.tsx:1:\d+: UI_CLASS_UNKNOWN: not-a-utility/);
     assert.match(error.message, /\nb.tsx: 1 authoring problem\nb.tsx:1:\d+: UI_CLASS_UNKNOWN: also-not-one/);
   });
@@ -458,7 +459,7 @@ test('class usage follows cx arguments, class maps and template pieces', async (
 async function authorColumn(body, lineNumber) {
   let column;
   await project({ 'page.tsx': `${body}\nexport function render() {\n  return <view><Total/></view>;\n}` }, async root => {
-    await buildPages(root, ['page.tsx'], join(root, 'dist'), {}, { dev: true });
+    await build(root, ['page.tsx'], join(root, 'dist'), {}, { dev: true });
     await load(root);
     const error = (() => { try { describePage(); } catch (error) { return error; } })();
     column = Number(new RegExp(`\\n {2}at page\\.tsx:${lineNumber}:(\\d+)`).exec(error.message)?.[1]);
@@ -555,7 +556,7 @@ test('compiler emits executable ESM UI, carries the action catalog and preserves
     </view>; }`,
   }, async root => {
     const catalog = { __names: ['increment'], __modes: { increment: 'call' } };
-    await buildPages(root, ['page.tsx'], join(root, 'dist'), { 'page.tsx': catalog });
+    await build(root, ['page.tsx'], join(root, 'dist'), { 'page.tsx': catalog });
     const module = await load(root);
     assert.match(module, /^\/\/ LingXia UI module/);
     assert.deepEqual(globalThis.__lingxiaActionCatalog, catalog);
@@ -568,7 +569,7 @@ test('compiler emits executable ESM UI, carries the action catalog and preserves
     assert.equal(records.find(record => record.tag === 'slider').props.sliderValue, 40);
     assert.deepEqual(records.filter(record => record.tag === 'radio-option').map(record => record.text), ['Daily', 'Weekly']);
     assert.equal(JSON.parse(await readFile(join(root, 'dist/page.json'), 'utf8')).title, 'Hello');
-    await assert.rejects(buildPages(root, ['page.tsx'], join(root, 'dist'), { 'page.tsx': { __names: ['watch'], __modes: { watch: 'channel' } } }), /action metadata/);
+    await assert.rejects(build(root, ['page.tsx'], join(root, 'dist'), { 'page.tsx': { __names: ['watch'], __modes: { watch: 'channel' } } }), /action metadata/);
   });
 });
 
@@ -665,8 +666,8 @@ test('page colours are roles: palette classes, dark: colours and hex literals fa
 
 test('renderer test fixtures may keep literal colours only through the build option', async () => {
   await project({ 'page.tsx': `export function render() { return <view className="bg-[#ff0000] dark:bg-white" style={{ borderColor: '#0000ff' }} />; }` }, async root => {
-    await assert.rejects(buildPages(root, ['page.tsx'], join(root, 'dist')), /UI_COLOR/);
-    await buildPages(root, ['page.tsx'], join(root, 'dist'), {}, { literalColors: true });
+    await assert.rejects(build(root, ['page.tsx'], join(root, 'dist')), /UI_COLOR/);
+    await build(root, ['page.tsx'], join(root, 'dist'), {}, { literalColors: true });
     await load(root);
     assert.equal(tree(describePage()).props.background, '#ff0000ff');
   });
@@ -727,7 +728,7 @@ export function render() {
     <Total items={[{}]}/>
   </view>;
 }` }, async root => {
-    await buildPages(root, ['page.tsx'], join(root, 'dist'), {}, { dev: true });
+    await build(root, ['page.tsx'], join(root, 'dist'), {}, { dev: true });
     const source = await load(root);
     const inputs = JSON.parse(await readFile(join(root, '.lingxia/gpu-inputs.json'), 'utf8'));
     // Besides the page, only this workspace View's own sources.
@@ -735,20 +736,20 @@ export function render() {
     assert.match(source, /\nconfigureSourceMap\(\{/);
     const error = (() => { try { describePage(); } catch (error) { return error; } })();
     assert.match(error.message, /\n  at page.tsx:3:\d+\n  at Total \(page.tsx:8:5\)/);
-    await buildPages(root, ['page.tsx'], join(root, 'dist'));
+    await build(root, ['page.tsx'], join(root, 'dist'));
     assert.doesNotMatch(await readFile(join(root, 'dist/page.js'), 'utf8'), /\nconfigureSourceMap\(\{/);
     // A page deleted since its last dev build leaves the record, so no later edit plans it.
     await writeFile(join(root, 'gone.tsx'), 'export function render() { return <view />; }');
-    await buildPages(root, ['gone.tsx'], join(root, 'dist'), {}, { dev: true });
+    await build(root, ['gone.tsx'], join(root, 'dist'), {}, { dev: true });
     await rm(join(root, 'gone.tsx'));
-    await buildPages(root, ['page.tsx'], join(root, 'dist'), {}, { dev: true });
+    await build(root, ['page.tsx'], join(root, 'dist'), {}, { dev: true });
     assert.deepEqual(Object.keys(JSON.parse(await readFile(join(root, '.lingxia/gpu-inputs.json'), 'utf8'))), ['page.tsx']);
     // The record is a cache: a torn one (two writers raced) is rebuilt, never fails the build.
     await writeFile(join(root, '.lingxia/gpu-inputs.json'), '{"page.tsx": ["page.tsx"]}\n]}\n');
-    await buildPages(root, ['page.tsx'], join(root, 'dist'), {}, { dev: true });
+    await build(root, ['page.tsx'], join(root, 'dist'), {}, { dev: true });
     assert.deepEqual(Object.keys(JSON.parse(await readFile(join(root, '.lingxia/gpu-inputs.json'), 'utf8'))), ['page.tsx']);
     // Builds racing on one project leave a whole record and whole modules.
-    await Promise.all(Array.from({ length: 6 }, () => buildPages(root, ['page.tsx'], join(root, 'dist'), {}, { dev: true })));
+    await Promise.all(Array.from({ length: 6 }, () => build(root, ['page.tsx'], join(root, 'dist'), {}, { dev: true })));
     assert.deepEqual(Object.keys(JSON.parse(await readFile(join(root, '.lingxia/gpu-inputs.json'), 'utf8'))), ['page.tsx']);
     assert.deepEqual((await readdir(join(root, '.lingxia'))).filter(name => name.endsWith('.tmp')), []);
   });
@@ -761,10 +762,21 @@ export function render() { return <text>{t('hello')}</text>; }` }, async root =>
     await mkdir(join(session, 'i18n'), { recursive: true });
     await writeFile(join(session, 'i18n/index.js'), "export const source = 'en-US'; export const languages = { 'en-US': { hello: () => 'Hello from the session' } };\n");
     const inputsRecord = join(session, 'gpu-inputs.json');
-    await buildPages(root, ['page.tsx'], join(root, 'dist'), {}, { dev: true, messages: join(session, 'i18n/index.js'), inputsRecord });
+    await build(root, ['page.tsx'], join(root, 'dist'), {}, { dev: true, messages: join(session, 'i18n/index.js'), inputsRecord });
     assert.deepEqual(Object.keys(JSON.parse(await readFile(inputsRecord, 'utf8'))), ['page.tsx']);
     assert.equal(existsSync(join(root, '.lingxia/gpu-inputs.json')), false, 'the project-wide record is untouched');
     assert.match(await readFile(join(root, 'dist/page.js'), 'utf8'), /Hello from the session/);
+  });
+});
+
+test('a build names its messages and inputs record; a missing one is refused', async () => {
+  await project({ 'page.tsx': 'export function render() { return <text>Hi</text>; }' }, async root => {
+    const out = join(root, 'dist'), inputsRecord = join(root, 'record.json');
+    await assert.rejects(buildPages(root, ['page.tsx'], out, {}, { inputsRecord }), /`messages` is required/);
+    await assert.rejects(buildPages(root, ['page.tsx'], out, {}, { messages: null }), /`inputsRecord` is required/);
+    await assert.rejects(buildPages(root, ['page.tsx'], out, {}, { messages: 'gone/index.js', inputsRecord }), /no compiled messages/);
+    await buildPages(root, ['page.tsx'], out, {}, { messages: null, inputsRecord });
+    assert.ok(existsSync(join(out, 'page.js')));
   });
 });
 

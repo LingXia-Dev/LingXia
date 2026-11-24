@@ -5,7 +5,7 @@ import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { spawnSync } from 'node:child_process';
-import { buildPages } from '../compiler/index.mjs';
+import { build } from './support/build.mjs';
 
 async function makeApp(minRuntime) {
   const root = await mkdtemp(join(tmpdir(), 'lx-chunks-'));
@@ -27,7 +27,7 @@ test('two pages share one View chunk and neither page bundles the runtime', asyn
   const root = await makeApp('0.30.0');
   try {
     const out = join(root, 'dist');
-    await buildPages(root, ['pages/a/index.tsx', 'pages/b/index.tsx'], out);
+    await build(root, ['pages/a/index.tsx', 'pages/b/index.tsx'], out);
 
     const a = await readFile(join(out, 'pages', 'a', 'index.js'), 'utf8');
     const b = await readFile(join(out, 'pages', 'b', 'index.js'), 'utf8');
@@ -73,7 +73,7 @@ test('a third page using a @liulidesign part adds it to the shared chunk', async
     );
 
     const out = join(root, 'dist');
-    await buildPages(root, ['pages/a/index.tsx', 'pages/b/index.tsx', 'pages/c/index.tsx'], out);
+    await build(root, ['pages/a/index.tsx', 'pages/b/index.tsx', 'pages/c/index.tsx'], out);
 
     const c = await readFile(join(out, 'pages', 'c', 'index.js'), 'utf8');
     const match = c.match(/from\s*["'](lx:view\/([0-9a-f]{12}))["']/);
@@ -97,7 +97,7 @@ test('per-language catalogues are split out of the shared chunk into _view/<hash
       `import m0 from './en-US.js';\nimport m1 from './zh-CN.js';\nexport const source = "en-US";\nexport const languages = { "en-US": m0, "zh-CN": m1 };\nexport function formatter() { return { j: p => p.join('') }; }\n`,
     );
     const out = join(root, 'dist');
-    await buildPages(root, ['pages/a/index.tsx', 'pages/b/index.tsx'], out);
+    await build(root, ['pages/a/index.tsx', 'pages/b/index.tsx'], out, {}, { messages: join(root, '.lingxia', 'i18n', 'index.js') });
 
     const a = await readFile(join(out, 'pages', 'a', 'index.js'), 'utf8');
     const match = a.match(/from\s*["'](lx:view\/([0-9a-f]{12}))["']/);
@@ -138,7 +138,7 @@ test('incremental single-page dev build preserves sibling Liuli exports and chun
     );
     const out = join(root, 'dist');
     // Full dev build first.
-    await buildPages(root, ['pages/a/index.tsx', 'pages/b/index.tsx'], out, {}, { dev: true });
+    await build(root, ['pages/a/index.tsx', 'pages/b/index.tsx'], out, {}, { dev: true });
     const chunkBefore = await readFile(join(out, '_view', 'dev.js'), 'utf8');
     const buildIdBefore = JSON.parse(chunkBefore.split('\n')[0].replace('// LingXia UI module; ', '')).chunkBuildId;
 
@@ -147,7 +147,7 @@ test('incremental single-page dev build preserves sibling Liuli exports and chun
       join(root, 'pages', 'a', 'index.tsx'),
       `import { useLocal } from '@lingxia/view';\nexport function render() { const [n] = useLocal(99); return <text>A {n}</text>; }\n`,
     );
-    await buildPages(root, ['pages/a/index.tsx'], out, {}, { dev: true });
+    await build(root, ['pages/a/index.tsx'], out, {}, { dev: true });
     const chunkAfter = await readFile(join(out, '_view', 'dev.js'), 'utf8');
     const buildIdAfter = JSON.parse(chunkAfter.split('\n')[0].replace('// LingXia UI module; ', '')).chunkBuildId;
     assert.equal(buildIdAfter, buildIdBefore, 'chunkBuildId stays stable on single-page dev edit');
@@ -161,7 +161,7 @@ test('minRuntime below 0.30.0 stays single-file', async () => {
   const root = await makeApp('0.29.0');
   try {
     const out = join(root, 'dist');
-    await buildPages(root, ['pages/a/index.tsx', 'pages/b/index.tsx'], out);
+    await build(root, ['pages/a/index.tsx', 'pages/b/index.tsx'], out);
 
     const a = await readFile(join(out, 'pages', 'a', 'index.js'), 'utf8');
     assert.ok(!a.includes('lx:view/'), 'old minRuntime does not emit chunk imports');
@@ -197,8 +197,8 @@ test('a page styles and checks the chunk modules it reaches as a single-file bui
       join(root, 'pages', 'a', 'index.tsx'),
       `import { Button, store } from '@liulidesign/kit';\nexport function render() { return <view className="p-4"><Button label={String(store.count)} /></view>; }\n`,
     );
-    await buildPages(root, ['pages/a/index.tsx', 'pages/b/index.tsx'], join(root, 'chunked'));
-    await buildPages(root, ['pages/a/index.tsx', 'pages/b/index.tsx'], join(root, 'single'), {}, { chunks: false });
+    await build(root, ['pages/a/index.tsx', 'pages/b/index.tsx'], join(root, 'chunked'));
+    await build(root, ['pages/a/index.tsx', 'pages/b/index.tsx'], join(root, 'single'), {}, { chunks: false });
     const chunked = await readFile(join(root, 'chunked', 'pages', 'a', 'index.js'), 'utf8');
     const single = await readFile(join(root, 'single', 'pages', 'a', 'index.js'), 'utf8');
     assert.match(chunked, /lx:view\//);
@@ -208,7 +208,7 @@ test('a page styles and checks the chunk modules it reaches as a single-file bui
     assert.ok(!chunked.includes('count: 0'), 'stateful package module is not bundled into the page');
 
     await writeFile(join(root, 'node_modules', '@liulidesign', 'kit', 'Button', 'recipe.ts'), `export const recipe = { base: 'px-3 not-a-utility' };\n`);
-    await assert.rejects(buildPages(root, ['pages/a/index.tsx'], join(root, 'chunked')), /not-a-utility/);
+    await assert.rejects(build(root, ['pages/a/index.tsx'], join(root, 'chunked')), /not-a-utility/);
   } finally {
     await rm(root, { recursive: true, force: true });
   }
@@ -219,12 +219,12 @@ test('a dev page edit that moves the chunk rebuilds its siblings against the new
   try {
     await liuliKit(root);
     const out = join(root, 'dist');
-    await buildPages(root, ['pages/a/index.tsx', 'pages/b/index.tsx'], out, {}, { dev: true });
+    await build(root, ['pages/a/index.tsx', 'pages/b/index.tsx'], out, {}, { dev: true });
     await writeFile(
       join(root, 'pages', 'a', 'index.tsx'),
       `import { Button } from '@liulidesign/kit';\nexport function render() { return <Button label="A" />; }\n`,
     );
-    await buildPages(root, ['pages/a/index.tsx'], out, {}, { dev: true });
+    await build(root, ['pages/a/index.tsx'], out, {}, { dev: true });
     const chunk = header(await readFile(join(out, '_view', 'dev.js'), 'utf8')).chunkBuildId;
     for (const page of ['a', 'b'])
       assert.equal(header(await readFile(join(out, 'pages', page, 'index.js'), 'utf8')).chunkBuildId, chunk, page);
@@ -300,7 +300,7 @@ test('a release chunked page renders through its chunk with its classes and cata
     );
     await writeFile(join(root, 'pages', 'b', 'index.tsx'), `import { Button } from '@liulidesign/kit';\nexport function render() { return <Button label="B" />; }\n`);
     const out = join(root, 'dist');
-    await buildPages(root, ['pages/a/index.tsx', 'pages/b/index.tsx'], out);
+    await build(root, ['pages/a/index.tsx', 'pages/b/index.tsx'], out, {}, { messages: join(root, '.lingxia', 'i18n', 'index.js') });
     assert.deepEqual(renderChunked(out, 'pages/a/index.js').filter(text => text), ['Hello', 'Go']);
     assert.deepEqual(renderChunked(out, 'pages/a/index.js', 'zh-CN').filter(text => text), ['你好', 'Go']);
     assert.deepEqual(renderChunked(out, 'pages/b/index.js').filter(text => text), ['B']);

@@ -1,4 +1,4 @@
-use crate::lxapp::{framework::is_gpu_page, project::Project};
+use crate::lxapp::{framework::is_gpu_page, options::BuildOptions, project::Project};
 use anyhow::{Context, Result, bail};
 use std::process::{Command, Stdio};
 
@@ -16,7 +16,7 @@ pub(crate) fn catalogs(
 }
 
 /// `dev` keeps a source map in each page module so runtime errors name the author's line.
-pub(super) fn build(project: &Project, dev: bool) -> Result<()> {
+pub(super) fn build(project: &Project, options: &BuildOptions, dev: bool) -> Result<()> {
     let pages: Vec<&str> = project
         .pages
         .iter()
@@ -41,13 +41,24 @@ pub(super) fn build(project: &Project, dev: bool) -> Result<()> {
         crate::lxapp::typecheck::supported_typescript(&tsc)?;
     }
     let catalogs = catalogs(project, &pages, dev)?;
-    let script = "import { buildPages } from '@lingxia/view/compiler'; await buildPages(process.cwd(), JSON.parse(process.argv[1]), process.argv[2], JSON.parse(process.argv[3]), { dev: process.argv[4] === 'dev' });";
+    let inputs_record = options.inputs_record.clone().unwrap_or_else(|| {
+        let mode = if options.dev_session { "dev" } else { "build" };
+        project
+            .root
+            .join(".lingxia")
+            .join("view")
+            .join(mode)
+            .join("gpu-inputs.json")
+    });
+    let paths = serde_json::json!({ "messages": options.messages, "inputsRecord": inputs_record });
+    let script = "import { buildPages } from '@lingxia/view/compiler'; await buildPages(process.cwd(), JSON.parse(process.argv[1]), process.argv[2], JSON.parse(process.argv[3]), { dev: process.argv[4] === 'dev', ...JSON.parse(process.argv[5]) });";
     let result = Command::new("node")
         .args(["--input-type=module", "--eval", script])
         .arg(serde_json::to_string(&pages)?)
         .arg(&project.output_dir)
         .arg(serde_json::to_string(&catalogs)?)
         .arg(if dev { "dev" } else { "release" })
+        .arg(paths.to_string())
         .current_dir(&project.root)
         .stdout(Stdio::inherit())
         .stderr(Stdio::piped())

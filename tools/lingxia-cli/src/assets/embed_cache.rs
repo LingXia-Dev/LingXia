@@ -15,6 +15,8 @@ use std::sync::atomic::{AtomicU64, Ordering};
 const ENTRY: &str = "entry";
 const RECORD: &str = "record.json";
 const DIST: &str = "dist";
+/// The build's GPU inputs record: a seeded session plans hot swaps from it.
+const INPUTS: &str = "gpu-inputs.json";
 const LOCK: &str = "lock";
 const RETIRED_PREFIX: &str = ".old-";
 
@@ -24,7 +26,8 @@ struct Record {
     dist: String,
 }
 
-/// `<project>/.lingxia/dev/embed/<profile>/<appId>/`: `entry/` holds `record.json` and `dist/`.
+/// `<project>/.lingxia/dev/embed/<profile>/<appId>/`: `entry/` holds `record.json`, `dist/` and
+/// the build's `gpu-inputs.json`.
 /// An entry is replaced whole by a rename; readers hold the shared lock while they copy.
 #[derive(Debug, Clone)]
 pub(super) struct EmbedCache {
@@ -42,9 +45,10 @@ impl EmbedCache {
         Self { dir }
     }
 
-    /// Copy the entry built from `inputs` into `output`. False when there is none, or the
-    /// copy does not hash to what was recorded.
-    pub(super) fn seed(&self, inputs: &str, output: &Path) -> Result<bool> {
+    /// Copy the entry into `output`, with its inputs record beside it, when `bundle_dir` (whose
+    /// tree hashes to `tree`) is still what it was built from. False when there is none, or
+    /// the copy does not hash to what was recorded.
+    pub(super) fn seed(&self, bundle_dir: &Path, tree: &str, output: &Path) -> Result<bool> {
         let lock = self.lock_file()?;
         lock.lock_shared()
             .with_context(|| format!("Failed to lock {}", self.dir.display()))?;
@@ -55,21 +59,41 @@ impl EmbedCache {
         let Ok(record) = serde_json::from_slice::<Record>(&text) else {
             return Ok(false);
         };
-        if record.inputs != inputs {
+        if record.inputs != embed_inputs(bundle_dir, tree, &entry.join(INPUTS)) {
             return Ok(false);
         }
         let _ = fs::remove_dir_all(output);
         copy_dir_recursive(&entry.join(DIST), output)?;
+        let inputs_record = crate::lxapp::session_inputs_record(output);
+        match fs::copy(entry.join(INPUTS), &inputs_record) {
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+                let _ = fs::remove_file(&inputs_record);
+            }
+            copied => {
+                copied?;
+            }
+        }
         drop(lock);
         if hash_tree(output, &[])? == record.dist {
             return Ok(true);
         }
         let _ = fs::remove_dir_all(output);
+        let _ = fs::remove_file(&inputs_record);
         Ok(false)
     }
 
-    /// Record `output`, built from `inputs`, as this app's entry in place of the last one.
-    pub(super) fn store(&self, inputs: &str, output: &Path, dist: &str) -> Result<()> {
+    /// Record `output`, built from `bundle_dir` (whose tree hashes to `tree`), and the inputs
+    /// record beside it as this app's entry in place of the last one.
+    pub(super) fn store(
+        &self,
+        bundle_dir: &Path,
+        tree: &str,
+        output: &Path,
+        dist: &str,
+    ) -> Result<()> {
+        let inputs_record = crate::lxapp::session_inputs_record(output);
+        let inputs = embed_inputs(bundle_dir, tree, &inputs_record);
+        let inputs = inputs.as_str();
         fs::create_dir_all(&self.dir)
             .with_context(|| format!("Failed to create {}", self.dir.display()))?;
         let staging = self.dir.join(format!(".new-{}", unique()));
@@ -103,6 +127,10 @@ impl EmbedCache {
 
     fn stage(&self, staging: &Path, inputs: &str, output: &Path, dist: &str) -> Result<()> {
         copy_dir_recursive(output, &staging.join(DIST))?;
+        let inputs_record = crate::lxapp::session_inputs_record(output);
+        if inputs_record.is_file() {
+            fs::copy(&inputs_record, staging.join(INPUTS))?;
+        }
         let record = Record {
             inputs: inputs.to_string(),
             dist: dist.to_string(),
@@ -124,12 +152,12 @@ impl EmbedCache {
     }
 }
 
-/// `inputs` (the bundle tree and its linked packages) plus the files outside the bundle
-/// that its last build's GPU pages compiled from, the list the dev watcher follows.
-pub(super) fn embed_inputs(bundle_dir: &Path, inputs: &str) -> String {
+/// `tree` (the bundle tree and its linked packages) plus the files outside the bundle that the
+/// build's GPU pages compiled from (`record`), the list the dev watcher follows.
+fn embed_inputs(bundle_dir: &Path, tree: &str, record: &Path) -> String {
     let mut hasher = sha2::Sha256::new();
-    hasher.update(inputs.as_bytes());
-    for file in external_inputs(bundle_dir) {
+    hasher.update(tree.as_bytes());
+    for file in external_inputs(bundle_dir, record) {
         hasher.update(path_key(&file).as_bytes());
         hasher.update([0]);
         match fs::read(&file) {
@@ -144,11 +172,11 @@ pub(super) fn embed_inputs(bundle_dir: &Path, inputs: &str) -> String {
     sha256_hex(&hasher.finalize())
 }
 
-fn external_inputs(bundle_dir: &Path) -> BTreeSet<PathBuf> {
+fn external_inputs(bundle_dir: &Path, record: &Path) -> BTreeSet<PathBuf> {
     let root = bundle_dir
         .canonicalize()
         .unwrap_or_else(|_| bundle_dir.to_path_buf());
-    let Ok(text) = fs::read(bundle_dir.join(".lingxia").join("gpu-inputs.json")) else {
+    let Ok(text) = fs::read(record) else {
         return BTreeSet::new();
     };
     let Ok(pages) = serde_json::from_slice::<BTreeMap<String, Vec<String>>>(&text) else {

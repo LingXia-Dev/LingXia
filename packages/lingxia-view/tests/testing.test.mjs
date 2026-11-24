@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtemp, writeFile, rm } from 'node:fs/promises';
+import { mkdir, mkdtemp, writeFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { render, textOf } from '@lingxia/view/testing';
@@ -37,6 +37,29 @@ test('a compiled page renders, takes presses and re-renders with its local state
   assert.equal(textOf(screen.getByTestId('value')), 'Hits: 2');
   assert.ok(Array.isArray(screen.wire()));
 }));
+
+test('a page using t renders the catalogue text when given the compiled messages', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'lingxia-view-testing-messages-'));
+  try {
+    await writeFile(join(root, 'lxapp.json'), '{}');
+    await writeFile(join(root, 'page.tsx'), `import { t } from '@lingxia/view';
+export function render() { return <text data-testid="title">{t('cart.title')}</text>; }
+`);
+    // As `lingxia build` leaves it: a content-named copy and the `current` file naming it.
+    const build = join(root, '.lingxia/i18n/build');
+    await mkdir(join(build, 'c0ffee'), { recursive: true });
+    await writeFile(join(build, 'current'), 'c0ffee');
+    await writeFile(join(build, 'c0ffee/index.js'), `export const source = 'en-US';
+export const languages = { 'en-US': { 'cart.title': () => 'Your cart' } };
+export const formatter = () => ({ j: parts => parts.join('') });
+`);
+    for (const messages of ['.lingxia/i18n/build', '.lingxia/i18n/build/c0ffee/index.js']) {
+      const screen = await render(join(root, 'page.tsx'), {}, { messages });
+      assert.equal(textOf(screen.getByTestId('title')), 'Your cart', messages);
+    }
+    await assert.rejects(render(join(root, 'page.tsx')), /UI_I18N/);
+  } finally { await rm(root, { recursive: true, force: true }); }
+});
 
 test('each render has its own runtime', () => withPage(async page => {
   const first = await render(page), second = await render(page);

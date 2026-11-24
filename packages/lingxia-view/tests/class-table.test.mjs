@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { mkdtemp, writeFile, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { buildPages } from '../compiler/index.mjs';
+import { build } from './support/build.mjs';
 import { maxField } from '../src/generated/wire.js';
 
 globalThis.__lingxiaViewHost = { uiAbi: 1, maxField, features: ['candidate-transactions', 'bounded-jobs'] };
@@ -13,7 +13,7 @@ async function built(files) {
   const root = await mkdtemp(join(tmpdir(), 'lingxia-view-class-table-'));
   try {
     for (const [name, contents] of Object.entries(files)) await writeFile(join(root, name), contents);
-    await buildPages(root, ['page.tsx'], join(root, 'dist'));
+    await build(root, ['page.tsx'], join(root, 'dist'));
     const source = await readFile(join(root, 'dist/page.js'), 'utf8');
     const table = JSON.parse(source.match(/\nconfigureClasses\((.*)\);\n/)[1]).map(rule => rule.name);
     await import(`data:text/javascript;base64,${Buffer.from(source).toString('base64')}`);
@@ -108,7 +108,7 @@ async function classWarnings(files) {
   const root = await mkdtemp(join(tmpdir(), 'lingxia-view-class-warnings-'));
   try {
     for (const [name, contents] of Object.entries(files)) await writeFile(join(root, name), contents);
-    const { warnings } = await buildPages(root, ['page.tsx'], join(root, 'dist'));
+    const { warnings } = await build(root, ['page.tsx'], join(root, 'dist'));
     return warnings.filter(line => line.includes('UI_CLASS:'));
   } finally { await rm(root, { recursive: true, force: true }); }
 }

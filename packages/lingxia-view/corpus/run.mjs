@@ -65,7 +65,7 @@ const jobs = [], problems = [];
 for (const lane of lanes) {
   const pages = await lane.pages();
   const dist = join(out, lane.name);
-  try { await buildPages(lane.root, pages, dist); }
+  try { await buildPages(lane.root, pages, dist, {}, { messages: null, inputsRecord: `${dist}.gpu-inputs.json` }); }
   catch (error) { problems.push(`${lane.name}: build failed\n${error.message}`); continue; }
   for (const page of pages) {
     const name = pageName(page);

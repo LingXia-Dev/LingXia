@@ -93,7 +93,7 @@ export async function discoverSharedPackages(root, pages, {
 }) {
   const entryPoints = pages.map(page => resolve(root, page));
   if (!entryPoints.length) return [];
-  const i18nDir = dirname(compiledMessages).toLowerCase();
+  const i18nDir = compiledMessages && dirname(compiledMessages).toLowerCase();
   // `@lingxia/view` resolves to the compiler's own runtime, which is never a shared package module.
   const viewEntry = {
     name: 'lingxia-chunk-scan',
@@ -130,7 +130,7 @@ export async function discoverSharedPackages(root, pages, {
   const eligible = abs => {
     const lower = abs.toLowerCase();
     return scriptModule.test(abs) && !commonjs.has(abs) && !lower.startsWith(runtimeRoot)
-      && !lower.startsWith(i18nDir) && !authored(root, abs);
+      && !(i18nDir && lower.startsWith(i18nDir)) && !authored(root, abs);
   };
   const counts = new Map();
   for (const out of Object.values(scan.metafile?.outputs ?? {})) {
@@ -329,7 +329,7 @@ export async function buildSharedChunk(root, output, {
 
   // Emit per-language catalogue modules `_view/<chunkId>/<tag>.js` when i18n is present.
   let catalogueChunk, catalogueSource, catalogueLanguages = [];
-  if (existsSync(compiledMessages)) {
+  if (compiledMessages) {
     catalogueChunk = specifier;
     const i18nDir = dirname(compiledMessages);
     const indexSrc = await readFile(compiledMessages, 'utf8');

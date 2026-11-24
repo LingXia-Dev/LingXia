@@ -5,7 +5,7 @@ import { mkdtemp, mkdir, writeFile, readFile, rm, symlink, cp } from 'node:fs/pr
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { buildPages } from '../compiler/index.mjs';
+import { build } from './support/build.mjs';
 import { maxField } from '../src/generated/wire.js';
 import { decode } from './support/wire.mjs';
 
@@ -36,7 +36,7 @@ async function project(files, run, { install = 'link' } = {}) {
       if (install === 'link') await symlink(join(base, 'kit'), join(root, 'node_modules/view-kit'), 'junction');
       else await cp(join(base, 'kit'), join(root, 'node_modules/view-kit'), { recursive: true });
     }
-    await run(root, (options = {}) => buildPages(root, ['page.tsx'], join(root, 'dist'), {}, options));
+    await run(root, (options = {}) => build(root, ['page.tsx'], join(root, 'dist'), {}, options));
   } finally { await rm(base, { recursive: true, force: true }); }
 }
 async function load(root) {
@@ -188,18 +188,18 @@ test("tokens of a bundled package's peer dependencies load transitively, below t
     await symlink(join(base, 'pkg-b'), join(app, 'node_modules/pkg-b'), 'junction');
     // Missing peer: pkg-b peers on pkg-a, which is not installed yet.
     await assert.rejects(
-      buildPages(app, ['page.tsx'], join(app, 'dist')),
+      build(app, ['page.tsx'], join(app, 'dist')),
       /pkg-b\/package\.json: UI_MODULE:.*pkg-a.*pkg-b/,
     );
     // Install pkg-a: its tokens load for pkg-b.
     await symlink(join(base, 'pkg-a'), join(app, 'node_modules/pkg-a'), 'junction');
-    await buildPages(app, ['page.tsx'], join(app, 'dist'));
+    await build(app, ['page.tsx'], join(app, 'dist'));
     let source = await readFile(join(app, 'dist/page.js'), 'utf8');
     assert.deepEqual(rule(source, 'rounded-peer-card'), { borderRadius: 16 });
     // App's own tokens still win over peer tokens.
     await writeFile(join(app, 'theme.css'), '@theme {\n  --radius-peer-card: 2rem;\n}\n');
     await writeFile(join(app, 'page.tsx'), "import './theme.css';\nimport { Widget } from 'pkg-b';\nexport function render() { return <view><Widget /></view>; }\n");
-    await buildPages(app, ['page.tsx'], join(app, 'dist'));
+    await build(app, ['page.tsx'], join(app, 'dist'));
     source = await readFile(join(app, 'dist/page.js'), 'utf8');
     assert.deepEqual(rule(source, 'rounded-peer-card'), { borderRadius: 32 });
     // Transitive peer: pkg-c -> pkg-b -> pkg-a (and cycle pkg-a -> pkg-b does not loop).
@@ -209,7 +209,7 @@ test("tokens of a bundled package's peer dependencies load transitively, below t
     await writeFile(join(base, 'pkg-a/package.json'), JSON.stringify({ name: 'pkg-a', type: 'module', lingxia: { tokens: './tokens.css' }, peerDependencies: { 'pkg-b': '*' } }));
     await symlink(join(base, 'pkg-c'), join(app, 'node_modules/pkg-c'), 'junction');
     await writeFile(join(app, 'page.tsx'), "import { Outer } from 'pkg-c';\nexport function render() { return <view><Outer /></view>; }\n");
-    await buildPages(app, ['page.tsx'], join(app, 'dist'));
+    await build(app, ['page.tsx'], join(app, 'dist'));
     source = await readFile(join(app, 'dist/page.js'), 'utf8');
     assert.deepEqual(rule(source, 'rounded-peer-card'), { borderRadius: 16 });
     // Peer ordering: pkg-alpha peers on pkg-zeta (alphabetically later); pkg-alpha's @utility comes after pkg-zeta's and wins.
@@ -223,7 +223,7 @@ test("tokens of a bundled package's peer dependencies load transitively, below t
     await symlink(join(base, 'pkg-zeta'), join(app, 'node_modules/pkg-zeta'), 'junction');
     await symlink(join(base, 'pkg-alpha'), join(app, 'node_modules/pkg-alpha'), 'junction');
     await writeFile(join(app, 'page.tsx'), "import { Alpha } from 'pkg-alpha';\nexport function render() { return <view><Alpha /></view>; }\n");
-    await buildPages(app, ['page.tsx'], join(app, 'dist'));
+    await build(app, ['page.tsx'], join(app, 'dist'));
     source = await readFile(join(app, 'dist/page.js'), 'utf8');
     assert.equal(rule(source, 'peer-pad').paddingTop, 20);
   } finally { await rm(base, { recursive: true, force: true }); }

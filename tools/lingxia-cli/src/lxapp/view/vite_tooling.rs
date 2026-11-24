@@ -374,6 +374,8 @@ mod tests {
             package: false,
             typecheck: false,
             progress: crate::lxapp::options::ProgressMode::Task,
+            inputs_record: None,
+            messages: None,
         }
     }
 

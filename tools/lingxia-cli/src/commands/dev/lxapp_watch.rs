@@ -350,6 +350,11 @@ fn run_watch(
 ) -> Result<()> {
     let _ts_session = crate::lxapp::keep_ts_worker_alive();
     let mut roots: Vec<WatchRoot> = roots.into_iter().map(resolved_root).collect();
+    // Each app's GPU inputs, as the session's last build of it recorded them.
+    let record_state = state.clone();
+    let record = move |root: &WatchRoot| {
+        crate::lxapp::session_inputs_record(&record_state.build_dir(&root.app_id))
+    };
     let (tx, rx) = mpsc::channel();
     let mut watcher = RecommendedWatcher::new(tx, notify::Config::default())
         .context("Failed to create filesystem watcher")?;
@@ -378,7 +383,7 @@ fn run_watch(
     // Warm the page compiler up front where a dev build has run, so the first swap is fast too.
     let mut compilers: Vec<super::gpu_swap::Compiler> = roots
         .iter()
-        .filter(|root| root.path.join(".lingxia").join("gpu-inputs.json").is_file())
+        .filter(|root| record(root).is_file())
         .filter_map(|root| {
             super::gpu_swap::Compiler::spawn(&root.path, &state.build_dir(&root.app_id)).ok()
         })
@@ -388,7 +393,13 @@ fn run_watch(
     // are watched, and a save to one of those files counts as an edit of the app it feeds.
     let mut external: std::collections::BTreeMap<PathBuf, Vec<String>> = Default::default();
     let mut external_dirs: BTreeSet<PathBuf> = BTreeSet::new();
-    refresh_external(&mut watcher, &roots, &mut external, &mut external_dirs);
+    refresh_external(
+        &mut watcher,
+        &roots,
+        &record,
+        &mut external,
+        &mut external_dirs,
+    );
     // Saves under `mocks/` reload the mocks only: no rebuild, no restart.
     let mut mocks_dirty: BTreeSet<String> = BTreeSet::new();
     let mut deferred = false;
@@ -413,7 +424,13 @@ fn run_watch(
             applied = true;
         }
         if applied {
-            refresh_external(&mut watcher, &roots, &mut external, &mut external_dirs);
+            refresh_external(
+                &mut watcher,
+                &roots,
+                &record,
+                &mut external,
+                &mut external_dirs,
+            );
         }
         let swaps_only = mocks_dirty.is_empty()
             && dirty.iter().all(|app_id| {
@@ -421,7 +438,9 @@ fn run_watch(
                     .iter()
                     .find(|root| &root.app_id == app_id)
                     .zip(changed.get(app_id))
-                    .is_some_and(|(root, paths)| super::gpu_swap::plan(&root.path, paths).is_some())
+                    .is_some_and(|(root, paths)| {
+                        super::gpu_swap::plan(&root.path, &record(root), paths).is_some()
+                    })
             });
         let timeout = if dirty.is_empty() && mocks_dirty.is_empty() {
             IDLE_POLL
@@ -567,7 +586,13 @@ fn run_watch(
                     }
                 }
                 // A build or swap rewrites the inputs: a page may import another package file now.
-                refresh_external(&mut watcher, &roots, &mut external, &mut external_dirs);
+                refresh_external(
+                    &mut watcher,
+                    &roots,
+                    &record,
+                    &mut external,
+                    &mut external_dirs,
+                );
             }
             Err(RecvTimeoutError::Disconnected) => break,
         }
@@ -640,7 +665,8 @@ fn hot_swap(
     compilers: &mut Vec<super::gpu_swap::Compiler>,
     waited: Duration,
 ) -> bool {
-    let Some(pages) = super::gpu_swap::plan(dir, changed) else {
+    let record = crate::lxapp::session_inputs_record(&state.build_dir(app_id));
+    let Some(pages) = super::gpu_swap::plan(dir, &record, changed) else {
         return false;
     };
     let started = std::time::Instant::now();
@@ -861,10 +887,11 @@ fn subtree_change(
 fn refresh_external(
     watcher: &mut RecommendedWatcher,
     roots: &[WatchRoot],
+    record: &dyn Fn(&WatchRoot) -> PathBuf,
     external: &mut std::collections::BTreeMap<PathBuf, Vec<String>>,
     dirs: &mut BTreeSet<PathBuf>,
 ) {
-    *external = external_inputs(roots);
+    *external = external_inputs(roots, record);
     let wanted: BTreeSet<PathBuf> = external
         .keys()
         .filter_map(|file| file.parent().map(Path::to_path_buf))
@@ -882,10 +909,13 @@ fn refresh_external(
 
 /// Each GPU page input outside every root, with every app whose pages compile from it: two
 /// apps can share a linked package, and a save to it is an edit of both.
-fn external_inputs(roots: &[WatchRoot]) -> std::collections::BTreeMap<PathBuf, Vec<String>> {
+fn external_inputs(
+    roots: &[WatchRoot],
+    record: &dyn Fn(&WatchRoot) -> PathBuf,
+) -> std::collections::BTreeMap<PathBuf, Vec<String>> {
     let mut external: std::collections::BTreeMap<PathBuf, Vec<String>> = Default::default();
     for root in roots {
-        for file in super::gpu_swap::external_inputs(&root.path) {
+        for file in super::gpu_swap::external_inputs(&root.path, &record(root)) {
             if root_for_path(roots, &file).is_none() {
                 let apps = external.entry(file).or_default();
                 if !apps.contains(&root.app_id) {
@@ -919,6 +949,11 @@ fn strip_verbatim_prefix(path: &Path) -> &Path {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// These tests keep each app's record in the app itself.
+    fn record_in_root(root: &WatchRoot) -> PathBuf {
+        root.path.join(".lingxia/gpu-inputs.json")
+    }
     use std::fs;
 
     fn write(path: &Path, contents: &str) {
@@ -1240,12 +1275,18 @@ mod tests {
             path: base.join(dir),
         };
         // A file inside another watched root is that root's edit, not this app's.
-        let external = external_inputs(&[root("app", "app"), root("guest", "guest")]);
+        let external = external_inputs(
+            &[root("app", "app"), root("guest", "guest")],
+            &record_in_root,
+        );
         assert_eq!(
             external.into_iter().collect::<Vec<_>>(),
             vec![(base.join("kit/src/chip.tsx"), vec!["app".to_owned()])]
         );
-        assert_eq!(external_inputs(&[root("guest", "guest")]).len(), 0);
+        assert_eq!(
+            external_inputs(&[root("guest", "guest")], &record_in_root).len(),
+            0
+        );
     }
 
     #[test]
@@ -1267,14 +1308,26 @@ mod tests {
         let mut watcher = notify::recommended_watcher(|_| {}).unwrap();
         let mut external = Default::default();
         let mut dirs = BTreeSet::new();
-        refresh_external(&mut watcher, &roots, &mut external, &mut dirs);
+        refresh_external(
+            &mut watcher,
+            &roots,
+            &record_in_root,
+            &mut external,
+            &mut dirs,
+        );
         assert!(dirs.is_empty());
         // The attach's own build writes the record anew; the refresh after it watches the kit.
         write(
             &base.join("gallery/.lingxia/gpu-inputs.json"),
             r#"{"pages/g/index.tsx":["pages/g/index.tsx","../kit/src/new/chip.tsx"]}"#,
         );
-        refresh_external(&mut watcher, &roots, &mut external, &mut dirs);
+        refresh_external(
+            &mut watcher,
+            &roots,
+            &record_in_root,
+            &mut external,
+            &mut dirs,
+        );
         assert_eq!(
             dirs.into_iter().collect::<Vec<_>>(),
             vec![base.join("kit/src/new")]
@@ -1310,7 +1363,10 @@ mod tests {
             path: base.join(dir),
         };
         // The host app was there first; the gallery attached later still hears the shared file.
-        let external = external_inputs(&[root("host", "host"), root("gallery", "gallery")]);
+        let external = external_inputs(
+            &[root("host", "host"), root("gallery", "gallery")],
+            &record_in_root,
+        );
         assert_eq!(
             external[&base.join("kit/src/chip.tsx")],
             vec!["host".to_owned(), "gallery".to_owned()]

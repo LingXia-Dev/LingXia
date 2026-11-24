@@ -502,10 +502,12 @@ async function packageTokens(root, packages, problems) {
  */
 /**
  * `literalColors` admits hex and palette colours for renderer test fixtures whose probes read exact
- * pixels; app builds never set it. `messages` is the compiled i18n module to bundle and
- * `inputsRecord` the file a dev build records its inputs in; both default under `<root>/.lingxia`.
+ * pixels; app builds never set it. Required: `messages`, the compiled i18n `index.js` to bundle
+ * (`null` without catalogues), and `inputsRecord`, the file a dev build records its inputs in.
  */
 export async function buildPages(root, pages, output, catalogs = {}, { dev = false, literalColors = false, messages: messagesPath, inputsRecord, chunks, minRuntime } = {}) {
+  if (messagesPath === undefined || (messagesPath !== null && typeof messagesPath !== 'string')) throw TypeError('buildPages: `messages` is required: the compiled i18n index.js, or null');
+  if (typeof inputsRecord !== 'string') throw TypeError('buildPages: `inputsRecord` is required: the file a dev build records its inputs in');
   const { version } = JSON.parse(await readFile(new URL('../package.json', import.meta.url), 'utf8'));
   root = await realpath(resolve(root)); output = resolve(output);
   const { strictClasses } = appSettings(root);
@@ -519,8 +521,9 @@ export async function buildPages(root, pages, output, catalogs = {}, { dev = fal
   analysisHits = analysisMisses = 0;
   // The lxapp build compiles i18n/ here; registering it before the page module loads lets
   // `t` run in the first render.
-  const compiledMessages = messagesPath ? resolve(root, messagesPath) : join(root, '.lingxia', 'i18n', 'index.js');
-  const recordPath = inputsRecord ? resolve(root, inputsRecord) : join(root, '.lingxia', 'gpu-inputs.json');
+  const compiledMessages = messagesPath === null ? null : resolve(root, messagesPath);
+  if (compiledMessages && !existsSync(compiledMessages)) throw Error(`buildPages: no compiled messages at ${compiledMessages}`);
+  const recordPath = resolve(root, inputsRecord);
   const policy = await resolveChunkPolicy(root, { chunks, minRuntime });
   // Once per build; a dev session would repeat it on every save.
   if (policy.note && !dev) console.warn(policy.note);
@@ -545,7 +548,7 @@ export async function buildPages(root, pages, output, catalogs = {}, { dev = fal
     // Pages built against the chunk this one replaced would fail to load; build them too.
     if (chunk.replacedBuildId) pages = scanPages;
   }
-  const messages = !chunk && existsSync(compiledMessages)
+  const messages = !chunk && compiledMessages
     ? `import * as messages from ${JSON.stringify(compiledMessages)}; import { registerCatalogues } from ${JSON.stringify(runtime)}; registerCatalogues(messages);`
     : '';
   for (const page of pages) {
@@ -643,7 +646,7 @@ export async function buildPages(root, pages, output, catalogs = {}, { dev = fal
             return undefined;
           });
           builder.onLoad({ filter: scriptModule }, async ({ path }) => {
-            if (path.toLowerCase().startsWith(runtimeRoot) || path === compiledMessages || dirname(path) === dirname(compiledMessages)) return;
+            if (path.toLowerCase().startsWith(runtimeRoot) || (compiledMessages && dirname(path) === dirname(compiledMessages))) return;
             if (!authored(root, path)) {
               const owner = packageOf(path);
               if (owner) bundledPackages.set(owner.name, owner);

@@ -6,7 +6,7 @@ import { gunzipSync } from 'node:zlib';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { buildPages } from '../compiler/index.mjs';
+import { build } from './support/build.mjs';
 
 const packageRoot = resolve(fileURLToPath(new URL('..', import.meta.url)));
 const repoRoot = resolve(packageRoot, '../..');
@@ -35,7 +35,7 @@ const APPS = [
   {
     name: 'showcase',
     root: join(repoRoot, 'examples/lingxia-showcase/lxapp'),
-    required: ['node_modules', '.lingxia/i18n'],
+    required: ['node_modules'],
   },
   {
     name: 'gallery',
@@ -60,7 +60,7 @@ for (const app of APPS) for (const chunks of [false, true]) {
 
     const outDir = mkdtempSync(join(tmpdir(), `lx-real-app-${app.name}-`));
     try {
-      const result = await buildPages(app.root, pages, outDir, {}, { dev: false, chunks });
+      const result = await build(app.root, pages, outDir, {}, { dev: false, chunks });
       const uiErrors = result.warnings.filter(w => /UI_(?!PERF\b|INERT\b|STYLE_STATIC\b|BUDGET\b|POPOVER\b)/.test(w));
       assert.deepEqual(uiErrors, [], `${app.name} emitted unexpected UI_* diagnostics`);
       // Every className is followed to literals, so strictClasses would warn nowhere either.

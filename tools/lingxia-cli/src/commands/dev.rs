@@ -19,7 +19,7 @@ use std::time::Duration;
 use sysinfo::{ProcessesToUpdate, Signal, System};
 
 mod companion;
-mod gpu_swap;
+pub(crate) mod gpu_swap;
 pub(crate) mod log_store;
 mod lxapp_manifest;
 mod lxapp_watch;

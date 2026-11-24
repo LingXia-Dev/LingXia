@@ -61,6 +61,10 @@ windows = { workspace = true, features = ["Win32_Foundation", "Win32_System_Thre
 # The View JS budget measures the worker thread's CPU time.
 libc = { workspace = true }
 
+[dev-dependencies]
+# The showcase pages these tests build read their text through `t`.
+lingxia-i18n = { workspace = true }
+
 # Runs its own main: AVPlayer needs the main run loop.
 [[test]]
 name = "video_memory"

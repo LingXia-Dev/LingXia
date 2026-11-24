@@ -76,6 +76,20 @@ pub(crate) fn dev_typecheck(dir: &Path) -> Option<Result<String>> {
     })
 }
 
+/// Where a session's build of an lxapp records its GPU pages' inputs: beside that build.
+pub(crate) fn session_inputs_record(build_dir: &Path) -> std::path::PathBuf {
+    let name = build_dir
+        .file_name()
+        .map(|name| name.to_string_lossy().into_owned())
+        .unwrap_or_default();
+    build_dir.with_file_name(format!("{name}.gpu-inputs.json"))
+}
+
+/// The compiled i18n a dev build of the lxapp at `dir` last published, for a page recompile.
+pub(crate) fn dev_messages(dir: &Path) -> Option<std::path::PathBuf> {
+    i18n::compiled_messages(dir, true)
+}
+
 pub fn run_in_dir_for_dev(args: &[String], cwd: &Path, output: Option<&Path>) -> Result<()> {
     build::run_for_dev(args, cwd, output)
 }

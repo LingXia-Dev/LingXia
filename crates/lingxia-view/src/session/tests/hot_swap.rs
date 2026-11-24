@@ -130,10 +130,14 @@ pub(crate) fn showcase_page_module_edited(page: &str, edit: Option<(&str, &str, 
         source_root = copy;
     }
     let dist = out.join("dist");
+    let messages = compiled_messages(&lab, &out.join("i18n"));
     let script = format!(
         "const {{ buildPages }} = await import('{root}/packages/lingxia-view/compiler/index.mjs'); \
-         await buildPages({:?}, [{entry:?}], {:?}, {{}}, {{ dev: true, chunks: false }});",
-        source_root, dist
+         await buildPages({:?}, [{entry:?}], {:?}, {{}}, {{ dev: true, chunks: false, messages: {:?}, inputsRecord: {:?} }});",
+        source_root,
+        dist,
+        messages,
+        out.join("gpu-inputs.json")
     );
     let status = std::process::Command::new("node")
         .args(["--input-type=module", "--eval", &script])
@@ -143,6 +147,34 @@ pub(crate) fn showcase_page_module_edited(page: &str, edit: Option<(&str, &str, 
     let module = std::fs::read_to_string(dist.join(format!("pages/{page}/index.js"))).unwrap();
     let _ = std::fs::remove_dir_all(&out);
     module
+}
+
+/// The showcase's catalogues compiled into `out` as the CLI compiles them; its `index.js`.
+fn compiled_messages(lab: &std::path::Path, out: &std::path::Path) -> std::path::PathBuf {
+    let manifest: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(lab.join("lxapp.json")).unwrap()).unwrap();
+    let tags: Vec<&str> = manifest["languages"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|tag| tag.as_str().unwrap())
+        .collect();
+    std::fs::create_dir_all(out).unwrap();
+    for (n, tag) in tags.iter().enumerate() {
+        let json = std::fs::read_to_string(lab.join(format!("i18n/{tag}.json"))).unwrap();
+        let catalogue = lingxia_i18n::Catalogue::parse(&json, n == 0).unwrap();
+        std::fs::write(
+            out.join(format!("{tag}.js")),
+            lingxia_i18n::js::module(&catalogue),
+        )
+        .unwrap();
+    }
+    std::fs::write(
+        out.join("index.js"),
+        lingxia_i18n::js::index(tags[0], &tags),
+    )
+    .unwrap();
+    out.join("index.js")
 }
 
 /// `module` minified as a release package ships it: top-level identifiers mangled, with or

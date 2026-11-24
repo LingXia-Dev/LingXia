@@ -166,12 +166,11 @@ fn build_component_pages(
         );
         // Only a page with Logic ever receives state; one without mounts at once.
         let wait_for_state = project.logic_entry.is_some() && logic_path.is_some();
-        let messages = project.root.join(".lingxia").join("i18n").join("index.js");
-        let messages_import = if messages.is_file() {
-            Some(relative_import_path(&build_dir, &messages)?)
-        } else {
-            None
-        };
+        let messages_import = options
+            .messages
+            .as_deref()
+            .map(|messages| relative_import_path(&build_dir, messages))
+            .transpose()?;
         let scaffold = framework::scaffold(
             project.framework,
             &page_title,
