@@ -228,7 +228,7 @@ export function ToPage() {
 | `className` | `string` |  | Merged last, so its classes win over the recipe's. |
 | `data-testid` | `string` |  |  |
 | `onClick` | `(() => void)` |  | Runs on press, before `clickAction`. |
-| `clickAction` | `(() => Promise<unknown>)` |  | An async action, such as a Logic action. The button shows loading until it settles. |
+| `clickAction` | `(() => Promise<unknown>)` |  | An async action, such as a Logic action. The button shows loading until it settles; a rejection is logged with the label. |
 | `to` | `LinkTarget` |  | Makes it a link that goes there on press: `{ page, params }`, `{ tab }`, `{ back: 1 }`. Read as a link; Enter opens it and Space does not. |
 
 - `onClick` + `clickAction` | `to`: props from one side only.

@@ -1877,7 +1877,7 @@
           "name": "clickAction",
           "type": "(() => Promise<unknown>)",
           "required": false,
-          "description": "An async action, such as a Logic action. The button shows loading until it settles."
+          "description": "An async action, such as a Logic action. The button shows loading until it settles; a rejection is logged with the label."
         },
         {
           "name": "to",
@@ -9978,7 +9978,7 @@
           "name": "clickAction",
           "type": "(() => Promise<unknown>)",
           "required": false,
-          "description": "An async action, such as a Logic action. The button shows loading until it settles."
+          "description": "An async action, such as a Logic action. The button shows loading until it settles; a rejection is logged with the label."
         },
         {
           "name": "to",

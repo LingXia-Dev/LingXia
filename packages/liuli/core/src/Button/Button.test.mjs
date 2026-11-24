@@ -173,3 +173,33 @@ test('ToPage: with to the button is one block link, named by its label, that a p
   assert.equal(link.props.accessibilityLabel, 'Open settings');
   assert.equal(typeof link.props.onClick, 'number');
 });
+
+test('clickAction: a rejection is logged with the component and label, and the button is no longer busy', async () => {
+  const screen = await renderPage(`
+    import { Button } from '@liulidesign/core/Button';
+    import { IconButton } from '@liulidesign/core/IconButton';
+    const fail = () => Promise.reject(new Error('offline'));
+    export function render() {
+      return <page>
+        <Button label="Publish" clickAction={fail} data-testid="publish" />
+        <IconButton label="Refresh" icon="refresh" clickAction={fail} data-testid="refresh" />
+      </page>;
+    }
+  `);
+  const logged = [];
+  const original = console.error;
+  console.error = (...parts) => { logged.push(parts); };
+  try {
+    screen.press(screen.getByTestId('publish'));
+    screen.press(screen.getByTestId('refresh'));
+    for (let turn = 0; turn < 3; turn++) await new Promise(resolve => setImmediate(resolve));
+  } finally {
+    console.error = original;
+  }
+  screen.rerender({});
+  assert.deepEqual(logged.map(([message, error]) => [message, error?.message]), [
+    ['Liuli Button "Publish": the action failed', 'offline'],
+    ['Liuli IconButton "Refresh": the action failed', 'offline'],
+  ]);
+  assert.deepEqual(['publish', 'refresh'].map(id => screen.getByTestId(id).props.stateBusy), [undefined, undefined]);
+});

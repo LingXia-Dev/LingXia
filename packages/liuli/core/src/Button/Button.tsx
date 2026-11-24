@@ -3,7 +3,7 @@ import type { Press } from '../internal/press';
 import type { IconRef } from '../Icon/Icon';
 import { Glyph } from '../internal/Glyph';
 import { spinner, spinnerBox } from '../internal/spinner';
-import { settleFlag } from '../internal/settle';
+import { reportFailure, settleFlag } from '../internal/settle';
 import { registerPressable, identityOf, useTrigger } from '../internal/trigger';
 import { dataOf } from '../internal/data';
 import { buttonRecipe as r } from './Button.recipe';
@@ -55,7 +55,7 @@ export interface ButtonOwnProps {
 export interface ButtonActions {
   /** Runs on press, before `clickAction`. */
   onClick?: () => void;
-  /** An async action, such as a Logic action. The button shows loading until it settles. */
+  /** An async action, such as a Logic action. The button shows loading until it settles; a rejection is logged with the label. */
   clickAction?: () => Promise<unknown>;
 }
 
@@ -107,7 +107,6 @@ export function Button({
   const hasReason = isDisabled && disabledMessage !== undefined;
   const pending = useLocal('pending', false);
   const busy = isLoading || pending.value;
-  // Returning the promise lets the View report a rejected action as a handler error.
   const press = async () => {
     if (busy) return;
     onClick?.();
@@ -115,6 +114,9 @@ export function Button({
     pending.set(true);
     try {
       await clickAction();
+    } catch (error) {
+      // Logged here, in every build: nothing else would show that the action failed.
+      reportFailure(isIconOnly ? 'IconButton' : 'Button', label, error);
     } finally {
       settleFlag(pending, false);
     }
