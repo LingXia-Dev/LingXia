@@ -1652,15 +1652,15 @@ mod tests {
     fn runner_slots_are_per_project_and_instance() {
         let project = tempdir().unwrap();
         let default = RunnerSlot::new(project.path(), None);
-        let test = RunnerSlot::new(project.path(), Some("happ-test".into()));
+        let test = RunnerSlot::new(project.path(), Some("myapp-test".into()));
         assert_ne!(default.pid_file, test.pid_file);
         assert_ne!(default.owner_file, test.owner_file);
         assert_eq!(
             test.data_instance,
-            format!("{}-happ-test", default.data_instance)
+            format!("{}-myapp-test", default.data_instance)
         );
         let other = tempdir().unwrap();
-        let other_test = RunnerSlot::new(other.path(), Some("happ-test".into()));
+        let other_test = RunnerSlot::new(other.path(), Some("myapp-test".into()));
         assert_ne!(test.pid_file, other_test.pid_file);
         assert_ne!(test.data_instance, other_test.data_instance);
     }
