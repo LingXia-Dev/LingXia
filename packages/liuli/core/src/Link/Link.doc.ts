@@ -8,7 +8,7 @@ export const doc: ComponentDoc = {
   summary: 'A link among the words of a sentence',
   description:
     'Link is a run of text that goes somewhere: it sits inside a `<text>`, takes the size and weight of the words around it, and is told apart by the accent colour and an underline. ' +
-    'It calls `onClick`; the app opens the page or the address. A link that stands alone, outside a sentence, is a Button with `variant="link"`.',
+    'It calls `onClick`, where the app opens the page or the address, or goes to a page of the app itself with `to`. A link that stands alone, outside a sentence, is a Button with `variant="link"`.',
   keywords: ['link', 'anchor', 'hyperlink', 'inline', 'text'],
   propsType: 'LinkProps',
   recipe: { map: 'linkRecipe', parts: 'linkParts' },
@@ -50,6 +50,7 @@ export const doc: ComponentDoc = {
     { name: 'InSentence', title: 'In a sentence' },
     { name: 'InBody', title: 'In body text' },
     { name: 'Disabled', title: 'Not available yet' },
+    { name: 'ToPage', title: 'Going to a page of the app' },
   ],
   gaps: [],
   limits: [

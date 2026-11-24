@@ -46,3 +46,12 @@ export function Specimen() {
     </text>
   );
 }
+
+/** Words that go to a page of the app, with no handler of the page's own. */
+export function ToPage() {
+  return (
+    <text className="text-body text-text">
+      Change who can see your posts in <Link label="privacy settings" to={{ page: 'settings' }} data-testid="to-settings" />.
+    </text>
+  );
+}

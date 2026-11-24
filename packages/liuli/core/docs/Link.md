@@ -8,7 +8,7 @@ A link among the words of a sentence. Status: preview.
 import { Link } from '@liulidesign/core/Link';
 ```
 
-Link is a run of text that goes somewhere: it sits inside a `<text>`, takes the size and weight of the words around it, and is told apart by the accent colour and an underline. It calls `onClick`; the app opens the page or the address. A link that stands alone, outside a sentence, is a Button with `variant="link"`.
+Link is a run of text that goes somewhere: it sits inside a `<text>`, takes the size and weight of the words around it, and is told apart by the accent colour and an underline. It calls `onClick`, where the app opens the page or the address, or goes to a page of the app itself with `to`. A link that stands alone, outside a sentence, is a Button with `variant="link"`.
 
 ## Examples
 
@@ -69,14 +69,32 @@ export function Disabled() {
 }
 ```
 
+### Going to a page of the app
+
+```tsx
+import { Link } from '@liulidesign/core/Link';
+
+/** Words that go to a page of the app, with no handler of the page's own. */
+export function ToPage() {
+  return (
+    <text className="text-body text-text">
+      Change who can see your posts in <Link label="privacy settings" to={{ page: 'settings' }} data-testid="to-settings" />.
+    </text>
+  );
+}
+```
+
 ## Props
 
 | Prop | Type | Default | Description |
 | --- | --- | --- | --- |
 | `label` (required) | `string` |  | The linked words. They say where the link goes: "terms of service", never "here". |
-| `onClick` | `(() => void)` |  | Called when the link is pressed. The app opens the page or the address. |
 | `isDisabled` | `boolean` | `false` | Takes no press, is drawn faint and is read as unavailable. |
 | `data-testid` | `string` |  |  |
+| `onClick` | `(() => void)` |  | Called when the link is pressed: the app opens the page or the address. |
+| `to` | `LinkTarget` |  | Makes it a link that goes there on press: `{ page, params }`, `{ tab }`, `{ back: 1 }`. Read as a link; Enter opens it and Space does not. |
+
+- `onClick` | `to`: props from one side only.
 
 ## Anatomy
 

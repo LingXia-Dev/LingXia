@@ -15,3 +15,9 @@ test('Disabled: unavailable, in the faint colour, and takes no press', async () 
   const link = (await renderExample('Link/Link', 'Disabled')).getByTestId('resend');
   assert.deepEqual([link.props.enabled, link.props.color], [0, 'text-faint']);
 });
+
+test('ToPage: with to the link goes to the page itself, a run of its sentence', async () => {
+  const link = (await renderExample('Link/Link', 'ToPage')).getByTestId('to-settings');
+  assert.deepEqual([link.tag, textOf(link), link.props.color], ['link', 'privacy settings', 'accent']);
+  assert.equal(typeof link.props.onClick, 'number', 'the View presses it to the page');
+});

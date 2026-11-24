@@ -11376,7 +11376,7 @@
       "status": "preview",
       "since": "2026-11-15",
       "summary": "A link among the words of a sentence",
-      "description": "Link is a run of text that goes somewhere: it sits inside a `<text>`, takes the size and weight of the words around it, and is told apart by the accent colour and an underline. It calls `onClick`; the app opens the page or the address. A link that stands alone, outside a sentence, is a Button with `variant=\"link\"`.",
+      "description": "Link is a run of text that goes somewhere: it sits inside a `<text>`, takes the size and weight of the words around it, and is told apart by the accent colour and an underline. It calls `onClick`, where the app opens the page or the address, or goes to a page of the app itself with `to`. A link that stands alone, outside a sentence, is a Button with `variant=\"link\"`.",
       "keywords": [
         "link",
         "anchor",
@@ -11392,12 +11392,6 @@
           "description": "The linked words. They say where the link goes: \"terms of service\", never \"here\"."
         },
         {
-          "name": "onClick",
-          "type": "(() => void)",
-          "required": false,
-          "description": "Called when the link is pressed. The app opens the page or the address."
-        },
-        {
           "name": "isDisabled",
           "type": "boolean",
           "required": false,
@@ -11409,10 +11403,31 @@
           "type": "string",
           "required": false,
           "description": ""
+        },
+        {
+          "name": "onClick",
+          "type": "(() => void)",
+          "required": false,
+          "description": "Called when the link is pressed: the app opens the page or the address."
+        },
+        {
+          "name": "to",
+          "type": "LinkTarget",
+          "required": false,
+          "description": "Makes it a link that goes there on press: `{ page, params }`, `{ tab }`, `{ back: 1 }`. Read as a link; Enter opens it and Space does not."
         }
       ],
       "otherProps": {},
-      "choices": [],
+      "choices": [
+        [
+          [
+            "onClick"
+          ],
+          [
+            "to"
+          ]
+        ]
+      ],
       "parts": {
         "root": "link"
       },
@@ -11477,6 +11492,11 @@
           "name": "Disabled",
           "title": "Not available yet",
           "source": "import { unused } from '../example';\nimport { Link } from '@liulidesign/core/Link';\n\n/** A link that cannot be followed yet. */\nexport function Disabled() {\n  return (\n    <text className=\"text-footnote text-muted\">\n      No code yet? <Link label=\"Send it again\" onClick={unused} isDisabled data-testid=\"resend\" /> in 30 seconds.\n    </text>\n  );\n}"
+        },
+        {
+          "name": "ToPage",
+          "title": "Going to a page of the app",
+          "source": "import { Link } from '@liulidesign/core/Link';\n\n/** Words that go to a page of the app, with no handler of the page's own. */\nexport function ToPage() {\n  return (\n    <text className=\"text-body text-text\">\n      Change who can see your posts in <Link label=\"privacy settings\" to={{ page: 'settings' }} data-testid=\"to-settings\" />.\n    </text>\n  );\n}"
         }
       ],
       "gaps": [],
