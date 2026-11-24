@@ -242,6 +242,6 @@ variant applies. The system animation speed scales every duration and delay; 0 r
 
 ## Not supported
 
-Size transitions, shared-element transitions between pages, 3D transforms, `transition-behavior`, scroll-driven
+Shared-element transitions between pages, 3D transforms, `transition-behavior`, scroll-driven
 animations, View-side timers (`setTimeout`, `requestAnimationFrame`) and per-frame JavaScript
 animation. An inline `style.animation` fails with `UI_ANIMATION`; use `animate-*`.
