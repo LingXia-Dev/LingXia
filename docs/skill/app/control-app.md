@@ -31,27 +31,15 @@ are present for every lxapp and refuse a guest at the call.
 
 ## Control-app-only calls
 
-These act on the product, not on the calling lxapp:
+Calls that act on the product rather than the calling lxapp are the Control app's: most of
+`lx.host` (exit, badge, tray, cache, service environment, updates, autostart, the product's
+language and appearance preferences), `lx.shell`, and opening or finding other apps' surfaces
+(`lx.surface.openApp`). Each member's declaration says `Control app only`; `lingxia api <member>`
+shows it. `lx.host.update` is the host app's update; your bundle's is `lx.app.update.onReady`.
 
-- `lx.host.exit()`
-- `lx.host.badge.*` and `lx.host.tray.*`
-- `lx.host.cache` ([Host cache](../lxapp/files.md#host-cache))
-- `lx.host.serviceEnv.get()` / `set()`
-- `lx.host.update.*`, `lx.host.screenshot()`
-  — the host app, not your bundle (that is `lx.app.update.onReady`)
-- `lx.host.autostart.*`
-- `lx.host.displayLanguage` / `lx.host.appearance`: the product's preference, with
-  `set`; guests get `E_PERMISSION_DENIED` ([Product settings](../lxapp/core.md#product-settings))
-- `lx.shell.*`: sidebar actions, `appDisplay.get()/update()`, `activate()`
-- `lx.surface.app(appId)` / `lx.surface.declared(id)` to find a live app or declared surface
-- `lx.surface.openApp`, and `lx.surface.openDeclared` with `key`, `as` or
-  `edge`: other lxapps are refused at run time
-
-Reading the resolved settings (`lx.app.language.get()`,
-`lx.app.appearance.get()`) is open to every lxapp.
-
-`lx.host.notification` and `lx.host.banner` are open to every lxapp, scoped to the caller for guests;
-their declarations list a guest's limits.
+Open to every lxapp: reading the resolved settings (`lx.app.language.get()`,
+`lx.app.appearance.get()`), and `lx.host.notification` / `lx.host.banner`, scoped to the caller
+for guests.
 
 ## Control-surface-only calls
 

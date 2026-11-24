@@ -779,7 +779,7 @@ async fn open_app(
 }
 
 /// The handle of an lxapp live as a surface of its own, declared or not;
-/// `undefined` when it is not. A live lxapp has one handle: `lx.surface.openApp`,
+/// `undefined` when it is not. Control app only. A live lxapp has one handle: `lx.surface.openApp`,
 /// `lx.surface.app` and `lx.surface.declared` of the declaration that shows it return the same one.
 fn surface_app(ctx: JSContext, app_id: JSValue) -> JSResult<JSValue> {
     let (invocation, app_id) =
@@ -795,8 +795,8 @@ fn surface_app(ctx: JSContext, app_id: JSValue) -> JSResult<JSValue> {
 }
 
 /// The handle of a live declared surface, or of its keyed instance, the same
-/// object on every call; `undefined` when it is not live. A declaration that
-/// shows an lxapp answers with that app's `AppSurface`.
+/// object on every call; `undefined` when it is not live. Control app only. A declaration
+/// that shows an lxapp answers with that app's `AppSurface`.
 fn surface_declared(ctx: JSContext, id: JSValue, options: Optional<JSObject>) -> JSResult<JSValue> {
     let (invocation, (id, key)) =
         authorization::require_before_decode(&ctx, LogicRoute::SurfaceDeclared, || {

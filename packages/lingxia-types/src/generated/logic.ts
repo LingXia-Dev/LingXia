@@ -341,7 +341,7 @@ declare global {
     readonly env: HostAppEnv;
 
     /**
-     * Launch the host app when the user signs in.
+     * Launch the host app when the user signs in. Control app only.
      * @supports host.autostart
      * @throws {E_NOT_SUPPORTED} The host cannot register a startup item.
      */
@@ -407,7 +407,7 @@ declare global {
     readonly serviceEnv: HostServiceEnvApi;
 
     /**
-     * The menu-bar (macOS) or system-tray (Windows) item `lingxia.yaml` declares.
+     * The menu-bar (macOS) or system-tray (Windows) item `lingxia.yaml` declares. Control app only.
      * @supports host.tray
      * @throws {E_NOT_SUPPORTED} Off the desktop.
      */
@@ -4374,14 +4374,14 @@ declare global {
     get(key: string): PageSurface | TabSurface | undefined;
     /**
      * The handle of an lxapp live as a surface of its own, declared or not;
-     * `undefined` when it is not. A live lxapp has one handle: `lx.surface.openApp`,
+     * `undefined` when it is not. Control app only. A live lxapp has one handle: `lx.surface.openApp`,
      * `lx.surface.app` and `lx.surface.declared` of the declaration that shows it return the same one.
      */
     app(appId: string): AppSurface | undefined;
     /**
      * The handle of a live declared surface, or of its keyed instance, the same
-     * object on every call; `undefined` when it is not live. A declaration that
-     * shows an lxapp answers with that app's `AppSurface`.
+     * object on every call; `undefined` when it is not live. Control app only. A declaration
+     * that shows an lxapp answers with that app's `AppSurface`.
      */
     declared(id: string, options?: GetDeclaredOptions): DeclaredSurface | AppSurface | undefined;
   }

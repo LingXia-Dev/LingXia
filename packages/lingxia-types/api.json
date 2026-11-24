@@ -2982,7 +2982,7 @@
       "kind": "namespace",
       "entry": "global",
       "summary": "Launch the host app when the user signs in.",
-      "description": "Launch the host app when the user signs in.",
+      "description": "Launch the host app when the user signs in. Control app only.",
       "signatures": [],
       "types": [],
       "tags": {
@@ -4316,7 +4316,7 @@
       "kind": "namespace",
       "entry": "global",
       "summary": "The menu-bar (macOS) or system-tray (Windows) item `lingxia.yaml` declares.",
-      "description": "The menu-bar (macOS) or system-tray (Windows) item `lingxia.yaml` declares.",
+      "description": "The menu-bar (macOS) or system-tray (Windows) item `lingxia.yaml` declares. Control app only.",
       "signatures": [],
       "types": [],
       "tags": {
@@ -6517,7 +6517,7 @@
       "kind": "function",
       "entry": "global",
       "summary": "The handle of an lxapp live as a surface of its own, declared or not; `undefined` when it is not.",
-      "description": "The handle of an lxapp live as a surface of its own, declared or not;\n`undefined` when it is not. A live lxapp has one handle: `lx.surface.openApp`,\n`lx.surface.app` and `lx.surface.declared` of the declaration that shows it return the same one.",
+      "description": "The handle of an lxapp live as a surface of its own, declared or not;\n`undefined` when it is not. Control app only. A live lxapp has one handle: `lx.surface.openApp`,\n`lx.surface.app` and `lx.surface.declared` of the declaration that shows it return the same one.",
       "signatures": [
         {
           "text": "app(appId: string): AppSurface | undefined",
@@ -6547,7 +6547,7 @@
       "kind": "function",
       "entry": "global",
       "summary": "The handle of a live declared surface, or of its keyed instance, the same object on every call; `undefined` when it is not live.",
-      "description": "The handle of a live declared surface, or of its keyed instance, the same\nobject on every call; `undefined` when it is not live. A declaration that\nshows an lxapp answers with that app's `AppSurface`.",
+      "description": "The handle of a live declared surface, or of its keyed instance, the same\nobject on every call; `undefined` when it is not live. Control app only. A declaration\nthat shows an lxapp answers with that app's `AppSurface`.",
       "signatures": [
         {
           "text": "declared(id: string, options?: GetDeclaredOptions): DeclaredSurface | AppSurface | undefined",
@@ -10475,7 +10475,7 @@
           "type": "AutostartApi",
           "required": true,
           "summary": "Launch the host app when the user signs in.",
-          "description": "Launch the host app when the user signs in.",
+          "description": "Launch the host app when the user signs in. Control app only.",
           "tags": {
             "supports": [
               "host.autostart"
@@ -10609,7 +10609,7 @@
           "type": "TrayApi",
           "required": true,
           "summary": "The menu-bar (macOS) or system-tray (Windows) item `lingxia.yaml` declares.",
-          "description": "The menu-bar (macOS) or system-tray (Windows) item `lingxia.yaml` declares.",
+          "description": "The menu-bar (macOS) or system-tray (Windows) item `lingxia.yaml` declares. Control app only.",
           "tags": {
             "supports": [
               "host.tray"
