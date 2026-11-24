@@ -323,7 +323,7 @@
     "defaultMessage": "全局代理",
     "description": "Proxy mode."
   },
-  "settings.proxy.mode.gfw_list": {
+  "settings.proxy.mode.gfwList": {
     "defaultMessage": "自动（GFWList）",
     "description": "Proxy mode."
   },

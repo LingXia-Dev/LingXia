@@ -5,6 +5,12 @@ const choice = (selected: boolean) =>
   selected ? 'px-4 py-2 rounded-lg bg-accent text-on-accent text-sm' : 'px-4 py-2 rounded-lg bg-canvas border border-line text-sm';
 const secondary = 'px-4 py-2 rounded-lg bg-canvas border border-line text-sm';
 const danger = 'px-4 py-2 rounded-lg bg-danger-soft text-danger text-sm';
+// The wire value is the Rust enum's; the catalogue key is camelCase.
+const PROXY_MODES = [
+  ['direct', 'settings.proxy.mode.direct'],
+  ['global', 'settings.proxy.mode.global'],
+  ['gfw_list', 'settings.proxy.mode.gfwList'],
+] as const;
 const card = 'p-4 rounded-xl bg-surface border border-line gap-3';
 
 export function render({ data, actions }: View) {
@@ -168,9 +174,9 @@ export function render({ data, actions }: View) {
               <text className="text-base font-semibold">{t('settings.proxy')}</text>
               {data.proxy.statusMessage ? <text className="text-xs text-muted">{data.proxy.statusMessage}</text> : null}
               <view className="flex-row gap-2">
-                {(['direct', 'global', 'gfw_list'] as const).map((mode) => (
+                {PROXY_MODES.map(([mode, label]) => (
                   <button key={mode} onClick={() => { void updateProxy.run({ mode, host, port }); }} className={choice(data.proxy?.mode === mode)}>
-                    <text>{t(`settings.proxy.mode.${mode}` as MessageKey)}</text>
+                    <text>{t(label)}</text>
                   </button>
                 ))}
               </view>

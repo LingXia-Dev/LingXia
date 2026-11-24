@@ -323,7 +323,7 @@
     "defaultMessage": "Global",
     "description": "Proxy mode."
   },
-  "settings.proxy.mode.gfw_list": {
+  "settings.proxy.mode.gfwList": {
     "defaultMessage": "Auto (GFWList)",
     "description": "Proxy mode."
   },
