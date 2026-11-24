@@ -2351,6 +2351,7 @@ impl LxApp {
             state.page_instance_runtime.lock().unwrap().clear();
             state.page_chrome_layouts.clear();
         }
+        crate::host::page_state::clear_page_states(&page_instance_ids);
         for (webtag, webview) in &page_webviews {
             if let Some(webview) = webview {
                 destroy_webview_if_matches(webtag, webview);

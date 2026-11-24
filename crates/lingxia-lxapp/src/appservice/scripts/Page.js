@@ -558,7 +558,11 @@
       get native() {
         if (!pageNative) {
           const factory = globalThis.__lingxiaCreatePageNative;
-          pageNative = typeof factory === "function" ? factory(pageInstanceId) : Object.freeze({});
+          // The generated client installs the factory when a Logic module imports it.
+          if (typeof factory !== "function") {
+            throw new Error("page.native: no native client is loaded; import '@lingxia/native' in a Logic module");
+          }
+          pageNative = factory(pageInstanceId);
         }
         return pageNative;
       },

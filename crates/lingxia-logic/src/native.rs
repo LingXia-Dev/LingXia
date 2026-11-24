@@ -9,6 +9,7 @@
 //!
 //! Authority is always derived from `LxApp::from_ctx(&ctx)` and checked against each route's
 //! `RouteAudience` policy; callers cannot spoof session authority or another lxapp's page id.
+//! Async handlers run on the host runtime, never on the Logic thread.
 
 use std::sync::{Arc, Mutex};
 
@@ -16,7 +17,7 @@ use futures::StreamExt;
 use lxapp::host::{self, ChannelContext, HostInvocationContext, HostOutput, HostStreamItem};
 use rong::function::Optional;
 use rong::{HostError, JSContext, JSFunc, JSObject, JSResult, JSValue, Source};
-use tokio::sync::mpsc;
+use tokio::sync::{mpsc, oneshot};
 
 use crate::i18n::{js_error_from_lxapp_error, js_internal_error, js_invalid_parameter_error};
 
@@ -36,18 +37,9 @@ fn js_value_to_json(ctx: &JSContext, value: Option<JSValue>) -> JSResult<Option<
 }
 
 fn json_to_js_value(ctx: &JSContext, json: Option<&str>) -> JSResult<JSValue> {
-    let Some(json) = json else {
+    let Some(json) = json.filter(|json| !json.is_empty()) else {
         return Ok(JSValue::undefined(ctx));
     };
-    if json == "null" || json.is_empty() {
-        let json_global: JSObject = ctx.global().get("JSON")?;
-        let parse: JSFunc = json_global.get("parse")?;
-        return if json.is_empty() {
-            Ok(JSValue::undefined(ctx))
-        } else {
-            parse.call(None, (json,))
-        };
-    }
     let json_global: JSObject = ctx.global().get("JSON")?;
     let parse: JSFunc = json_global.get("parse")?;
     parse.call(None, (json,))
@@ -67,11 +59,14 @@ async fn invoke(
         )
     })?;
     let payload = js_value_to_json(&ctx, input.0)?;
-    let (_cancel_tx, cancel_rx, _guard) = host::track_page_call(invocation.page_id());
-    let output = handler
-        .call(invocation, payload, cancel_rx)
-        .await
-        .map_err(|e| js_error_from_lxapp_error(&e))?;
+    let (cancel, guard) = host::track_page_call(&invocation);
+    let output = host::__native::spawn(async move {
+        let _guard = guard;
+        handler.call(invocation, payload, cancel).await
+    })
+    .await
+    .map_err(|e| js_internal_error(format!("native route '{route}' did not finish: {e}")))?
+    .map_err(|e| js_error_from_lxapp_error(&e))?;
     match output {
         HostOutput::Json(json) => json_to_js_value(&ctx, Some(&json)),
         HostOutput::Stream(_) => Err(js_internal_error(format!(
@@ -98,9 +93,11 @@ fn invoke_sync(
     }
 }
 
-fn clear_page_state(_ctx: JSContext, page_id: String) -> JSResult<()> {
-    if !page_id.is_empty() {
-        host::clear_page_state(&page_id);
+/// Clears one of the caller's own live pages; any other id is ignored.
+fn clear_page_state(ctx: JSContext, page_id: String) -> JSResult<()> {
+    let invocation = HostInvocationContext::for_logic_context_with_page(&ctx, Some(page_id))?;
+    if let Some(page_id) = invocation.page_id() {
+        host::clear_page_state(page_id);
     }
     Ok(())
 }
@@ -122,17 +119,22 @@ fn stream(
         )
     })?;
     let payload = js_value_to_json(&ctx, input.0)?;
-    let (cancel_tx, cancel_rx, page_guard) = host::track_page_call(invocation.page_id());
+    let (page_cancel, page_guard) = host::track_page_call(&invocation);
+    let (cancel_tx, cancel_rx) = oneshot::channel::<()>();
     let cancel_slot = Arc::new(Mutex::new(Some(cancel_tx)));
+    let (handler_cancel_tx, handler_cancel) = oneshot::channel::<()>();
+    // `task.cancel()` and page removal both cancel the handler.
+    host::__native::spawn(async move {
+        let _ = futures::future::select(cancel_rx, page_cancel).await;
+        let _ = handler_cancel_tx.send(());
+    });
 
     let (ev_tx, ev_rx) = mpsc::unbounded_channel::<Result<HostStreamItem, lxapp::LxAppError>>();
     let ev_rx = Arc::new(tokio::sync::Mutex::new(ev_rx));
 
-    // Spawn the Rust stream handler; feed every event/return into `ev_tx`.
-    let route_name = route.clone();
     host::__native::spawn(async move {
         let _guard = page_guard;
-        match handler.call(invocation, payload, cancel_rx).await {
+        match handler.call(invocation, payload, handler_cancel).await {
             Ok(HostOutput::Stream(mut stream)) => {
                 let mut sent_return = false;
                 while let Some(item) = stream.next().await {
@@ -154,7 +156,6 @@ fn stream(
                 let _ = ev_tx.send(Err(err));
             }
         }
-        let _ = route_name;
     });
 
     // Build a JS-side `NativeTask` backed by `__next()` and `__cancel()` primitives so
@@ -297,6 +298,17 @@ async fn open_channel(
             "logic-ch-{}",
             uuid::Uuid::new_v4()
         ));
+    if invocation.page_id().is_some() {
+        // A `page.native` channel closes when its page is removed.
+        let (page_cancel, page_guard) = host::track_page_call(&invocation);
+        let close_on_unload = inbound_tx.clone();
+        host::__native::spawn(async move {
+            let _guard = page_guard;
+            if page_cancel.await.is_ok() {
+                close_on_unload.send_close(None, Some("page unloaded".to_string()));
+            }
+        });
+    }
     handler.on_open(invocation, channel_ctx, payload);
 
     let outbound_rx = Arc::new(tokio::sync::Mutex::new(outbound_rx));

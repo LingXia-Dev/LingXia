@@ -24,10 +24,7 @@ mod macros;
 
 mod device;
 pub mod page_state;
-pub use page_state::{
-    PageCallGuard, PageState, clear_page_state, clear_page_states, register_page_cancel,
-    track_page_call,
-};
+pub use page_state::{PageCallGuard, PageState, clear_page_state, track_page_call};
 #[cfg(feature = "automation")]
 mod embedded_document_probe;
 mod navigation;
@@ -1185,8 +1182,8 @@ pub fn dispatch_host_call_sync(
         registry.sync_host_for_caller(name, invocation.caller())
     };
     let Some(handler) = handler else {
-        return Err(LxAppError::Runtime(format!(
-            "sync native route '{name}' is not registered or not authorized for this caller"
+        return Err(LxAppError::ResourceNotFound(format!(
+            "sync native route '{name}' is not registered or not authorized"
         )));
     };
     let appid = invocation.lxapp().appid.clone();
