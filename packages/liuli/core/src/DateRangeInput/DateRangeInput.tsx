@@ -23,7 +23,7 @@ export type DateRangeInputProps = FieldOwnProps & {
   min?: CalendarDate;
   max?: CalendarDate;
   isDateDisabled?: (date: CalendarDate) => boolean;
-  /** The calendar's first day of the week, as Calendar's `firstWeekday`: 1 is Sunday to 7 is Saturday. @default the user's first weekday */
+  /** The calendar's first day of the week, as Calendar's `firstWeekday`: 1 is Monday to 7 is Sunday. @default the user's first weekday */
   firstWeekday?: CalendarWeekday;
   /** Shows a close button in the calendar's sheet; without it the sheet closes by a tap outside, a drag or Back. @default true */
   hasCloseButton?: boolean;

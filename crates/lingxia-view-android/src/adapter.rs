@@ -495,9 +495,10 @@ impl EnvironmentSource for AndroidAdapter {
             high_contrast: facts["high_contrast"].as_bool().unwrap_or(false),
             text_scale,
             hour_cycle: facts["hour_cycle"].as_str().map(str::to_owned),
+            // java.util.Calendar counts 1 = Sunday.
             first_weekday: facts["first_weekday"]
                 .as_u64()
-                .and_then(|day| u8::try_from(day).ok()),
+                .and_then(DeviceFacts::weekday_from_sunday_first),
             hinge: facts.get("hinge").filter(|h| !h.is_null()).cloned(),
         }
         .environment()

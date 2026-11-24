@@ -8,6 +8,8 @@ export type RunChild = TextChild | JSX.Element | readonly RunChild[];
 export type ComponentResult = JSX.Element | null | undefined | boolean;
 export type Component<P = {}> = (props: P) => ComponentResult;
 export type ComponentProps<C> = C extends (props: infer P) => unknown ? P : never;
+/** A day of the week, 1 = Monday … 7 = Sunday, as Temporal and ISO 8601; `Date.getDay()` counts 0 = Sunday. */
+export type Weekday = 1 | 2 | 3 | 4 | 5 | 6 | 7;
 /** Groups children without a box: `<>…</>`, or `<Fragment key>` to move a group together in a keyed list. */
 export declare function Fragment(props: { key?: string; children?: Child }): JSX.Element;
 export declare function childrenToArray(children: Child): readonly Exclude<Child, readonly Child[] | boolean | null | undefined>[];

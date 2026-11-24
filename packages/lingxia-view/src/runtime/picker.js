@@ -131,7 +131,7 @@ export function pickerKey(key, rtl = false) {
 // On touch the sheet's toolbar carries the month title; the body keeps the month arrows.
 function dateBody(words, env, titled) {
   const { focus, value, min, max } = picker;
-  const first = env?.firstWeekday ?? 1, now = today();
+  const first = env?.firstWeekday ?? 7, now = today();
   const shift = months => { picker.focus = clampDate(addMonths(picker.focus, months), min, max); };
   const iconButton = (testId, label, d, months) => h('button', { 'data-testid': testId, 'aria-label': label, onClick: () => shift(months),
     style: { width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center', color: 'text' } },

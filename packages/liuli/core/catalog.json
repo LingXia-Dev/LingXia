@@ -2464,9 +2464,9 @@
         },
         {
           "name": "firstWeekday",
-          "type": "CalendarWeekday",
+          "type": "Weekday",
           "required": false,
-          "description": "The week's first day, 1 is Sunday to 7 is Saturday, for a week that is the app's own (a school timetable).",
+          "description": "The week's first day, 1 is Monday to 7 is Sunday, for a week that is the app's own (a school timetable).",
           "values": [
             1,
             2,
@@ -2621,12 +2621,12 @@
         {
           "name": "Weekdays",
           "title": "Days ruled out",
-          "source": "import { useLocal } from '@lingxia/view';\nimport { Calendar, calendarWeekday } from '@liulidesign/core/Calendar';\n\nconst today = '2026-11-15';\nconst closed = (date: string) => calendarWeekday(date) % 6 === 0;\n\n/** Days the app rules out stay in the grid, dimmed: here the weekends. */\nexport function Weekdays() {\n  const day = useLocal<string | null>('day', null);\n  return <Calendar label=\"Appointment\" value={day.value} onChange={day.set} isDateDisabled={closed} today={today} month=\"2026-12\" data-testid=\"appointment\" />;\n}"
+          "source": "import { useLocal } from '@lingxia/view';\nimport { Calendar, calendarWeekday } from '@liulidesign/core/Calendar';\n\nconst today = '2026-11-15';\nconst closed = (date: string) => calendarWeekday(date) >= 6;\n\n/** Days the app rules out stay in the grid, dimmed: here the weekends. */\nexport function Weekdays() {\n  const day = useLocal<string | null>('day', null);\n  return <Calendar label=\"Appointment\" value={day.value} onChange={day.set} isDateDisabled={closed} today={today} month=\"2026-12\" data-testid=\"appointment\" />;\n}"
         },
         {
           "name": "MondayFirst",
           "title": "The app's own week",
-          "source": "import { useLocal } from '@lingxia/view';\nimport { Calendar } from '@liulidesign/core/Calendar';\n\nconst today = '2026-11-15';\n\n/** A school timetable: its week runs Monday to Sunday wherever the user lives. */\nexport function MondayFirst() {\n  const day = useLocal<string | null>('day', '2026-11-16');\n  return <Calendar label=\"Timetable\" value={day.value} onChange={day.set} firstWeekday={2} today={today} data-testid=\"timetable\" />;\n}"
+          "source": "import { useLocal } from '@lingxia/view';\nimport { Calendar } from '@liulidesign/core/Calendar';\n\nconst today = '2026-11-15';\n\n/** A school timetable: its week runs Monday to Sunday wherever the user lives. */\nexport function MondayFirst() {\n  const day = useLocal<string | null>('day', '2026-11-16');\n  return <Calendar label=\"Timetable\" value={day.value} onChange={day.set} firstWeekday={1} today={today} data-testid=\"timetable\" />;\n}"
         }
       ],
       "gaps": [
@@ -6150,9 +6150,9 @@
         },
         {
           "name": "firstWeekday",
-          "type": "CalendarWeekday",
+          "type": "Weekday",
           "required": false,
-          "description": "The calendar's first day of the week, as Calendar's `firstWeekday`: 1 is Sunday to 7 is Saturday.",
+          "description": "The calendar's first day of the week, as Calendar's `firstWeekday`: 1 is Monday to 7 is Sunday.",
           "values": [
             1,
             2,

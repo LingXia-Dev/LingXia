@@ -1,4 +1,4 @@
-import { cx, useLocal, useView } from '@lingxia/view';
+import { cx, useLocal, useView, type Weekday } from '@lingxia/view';
 import { liuliText, monthName, weekdayInitial, weekdayName } from '../i18n/text';
 import { IconButton } from '../IconButton/IconButton';
 import { calendarRecipe as r } from './Calendar.recipe';
@@ -8,7 +8,7 @@ import { dataOf } from '../internal/data';
 export type { CalendarDate } from './dates';
 
 /** A day of the week as the environment counts it: 1 is Sunday, 7 is Saturday. */
-export type CalendarWeekday = 1 | 2 | 3 | 4 | 5 | 6 | 7;
+export type CalendarWeekday = Weekday;
 
 export interface CalendarRange {
   start: CalendarDate | null;
@@ -45,15 +45,15 @@ export type CalendarProps = CalendarSelection & {
   isDateDisabled?: (date: CalendarDate) => boolean;
   /** The day marked as today, and the month shown when nothing is chosen. A View takes the time from its page, not from a clock. */
   today: CalendarDate;
-  /** The week's first day, 1 is Sunday to 7 is Saturday, for a week that is the app's own (a school timetable). @default the user's first weekday */
+  /** The week's first day, 1 is Monday to 7 is Sunday, for a week that is the app's own (a school timetable). @default the user's first weekday */
   firstWeekday?: CalendarWeekday;
   className?: string;
   /** On the calendar; a day is `<id>-<YYYY-MM-DD>`, the month buttons `<id>-previous` and `<id>-next`. */
   'data-testid'?: string;
 };
 
-/** A day's weekday, 0 for Sunday to 6 for Saturday: for an `isDateDisabled` that rules out weekends. */
-export const calendarWeekday = (date: CalendarDate) => weekdayOf(...parts(date));
+/** A day's weekday, 1 for Monday to 7 for Sunday: for an `isDateDisabled` that rules out weekends. */
+export const calendarWeekday = (date: CalendarDate) => ((weekdayOf(...parts(date)) + 6) % 7 + 1) as CalendarWeekday;
 
 /**
  * A month of days to choose one day or a span from, drawn in the page. Its words follow the page's
@@ -62,7 +62,8 @@ export const calendarWeekday = (date: CalendarDate) => weekdayOf(...parts(date))
 export function Calendar(props: CalendarProps) {
   const { label, min, max, isDateDisabled, className, 'data-testid': testId } = props;
   const userFirst = useView().env.firstWeekday;
-  const firstDay = ((props.firstWeekday ?? userFirst ?? 1) - 1) % 7;
+  // `weekdayOf` counts 0 = Sunday.
+  const firstDay = (props.firstWeekday ?? userFirst ?? 7) % 7;
   const now = props.today;
   const anchor = props.isRange ? props.value.start : props.value;
   const own = useLocal('month', (isDate(anchor) ? anchor : now).slice(0, 7));

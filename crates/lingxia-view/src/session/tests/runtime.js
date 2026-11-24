@@ -4880,15 +4880,15 @@
     return { year, month, day };
   }
   var compare = (a, b) => a.year - b.year || a.month - b.month || a.day - b.day;
-  function monthGrid({ year, month }, firstWeekday = 1) {
-    const lead = (weekday(year, month, 1) - (firstWeekday - 1) + 7) % 7;
+  function monthGrid({ year, month }, firstWeekday = 7) {
+    const lead = (weekday(year, month, 1) - firstWeekday % 7 + 7) % 7;
     const start = addDays({ year, month, day: 1 }, -lead);
     return Array.from({ length: 42 }, (_, index) => {
       const date = addDays(start, index);
       return { date, inMonth: date.month === month && date.year === year };
     });
   }
-  var weekdayOrder = (firstWeekday) => Array.from({ length: 7 }, (_, index) => (firstWeekday - 1 + index) % 7);
+  var weekdayOrder = (firstWeekday) => Array.from({ length: 7 }, (_, index) => (firstWeekday + index) % 7);
   function moveDate(date, key, rtl = false) {
     switch (key) {
       case "ArrowLeft":
@@ -6484,7 +6484,7 @@
   }
   function dateBody(words2, env, titled) {
     const { focus, value, min, max } = picker;
-    const first = env?.firstWeekday ?? 1, now2 = today();
+    const first = env?.firstWeekday ?? 7, now2 = today();
     const shift = (months) => {
       picker.focus = clampDate(addMonths(picker.focus, months), min, max);
     };

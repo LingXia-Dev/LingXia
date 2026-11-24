@@ -7,7 +7,7 @@ const days = screen => screen.queryAll(node => node.props.role === 'gridcell');
 const selected = screen => days(screen).filter(day => day.props.stateSelected === 1).map(textOf);
 
 test('Day: November 2026 from Monday, each day named in full, the chosen one selected and filled, today ringed', async () => {
-  const screen = await renderExample('Calendar/Calendar', 'Day', { env: { firstWeekday: 2 } });
+  const screen = await renderExample('Calendar/Calendar', 'Day', { env: { firstWeekday: 1 } });
   const calendar = screen.getByTestId('due');
   assert.deepEqual([calendar.props.role, calendar.props.accessibilityLabel], ['group', 'Due date']);
   const grid = screen.queryAll(node => node.props.role === 'grid')[0];
@@ -68,8 +68,10 @@ test('Weekdays and Chinese: ruled-out days are disabled in place; the locale giv
   assert.equal(textOf(screen.queryAll(node => node.props.role === 'status')[0]), 'December 2026', 'a controlled month');
   assert.equal(screen.getByTestId('appointment-2026-12-05').props.onClick, undefined, 'a Saturday');
   assert.notEqual(screen.getByTestId('appointment-2026-12-07').props.onClick, undefined, 'a Monday');
-  // The words follow the page's language; the week starts on the user's first weekday (2 = Monday).
-  const zh = await renderExample('Calendar/Calendar', 'Day', { env: { language: 'zh-CN', firstWeekday: 2 } });
+  assert.equal(screen.getByTestId('appointment-2026-12-06').props.onClick, undefined, 'a Sunday');
+  assert.notEqual(screen.getByTestId('appointment-2026-12-04').props.onClick, undefined, 'a Friday');
+  // The words follow the page's language; the week starts on the user's first weekday (1 = Monday).
+  const zh = await renderExample('Calendar/Calendar', 'Day', { env: { language: 'zh-CN', firstWeekday: 1 } });
   assert.equal(textOf(zh.queryAll(node => node.props.role === 'status')[0]), '2026年11月');
   assert.equal(zh.getByTestId('due-2026-11-19').props.accessibilityLabel, '2026年11月19日星期四');
   assert.equal(textOf(zh.queryAll(node => node.props.role === 'grid')[0].children[0]), '一二三四五六日');
@@ -84,14 +86,14 @@ test('Day: the days are one grid that turns the month on PageUp and PageDown', a
 test('Day: the week starts on the user\'s first weekday, Sunday when unset, and never moves with the words alone', async () => {
   const initials = async env => textOf((await renderExample('Calendar/Calendar', 'Day', { env })).queryAll(node => node.props.role === 'grid')[0].children[0]);
   assert.equal(await initials({}), 'SMTWTFS', 'the default environment, en-US: Sunday');
-  assert.equal(await initials({ firstWeekday: 2 }), 'MTWTFSS', 'a Monday-first user');
-  assert.equal(await initials({ firstWeekday: 7 }), 'SSMTWTF', 'a Saturday-first user');
+  assert.equal(await initials({ firstWeekday: 1 }), 'MTWTFSS', 'a Monday-first user');
+  assert.equal(await initials({ firstWeekday: 6 }), 'SSMTWTF', 'a Saturday-first user');
   assert.equal(await initials({ language: 'zh-CN' }), '日一二三四五六', 'the words do not move the week: the user\'s first weekday does');
 });
 
 test('MondayFirst: the app\'s own week wins over the user\'s first weekday', async () => {
   const initials = async env => textOf((await renderExample('Calendar/Calendar', 'MondayFirst', { env })).queryAll(node => node.props.role === 'grid')[0].children[0]);
   assert.equal(await initials({}), 'MTWTFSS');
-  assert.equal(await initials({ firstWeekday: 1 }), 'MTWTFSS', 'a Sunday-first user');
-  assert.equal(await initials({ firstWeekday: 7 }), 'MTWTFSS', 'a Saturday-first user');
+  assert.equal(await initials({ firstWeekday: 7 }), 'MTWTFSS', 'a Sunday-first user');
+  assert.equal(await initials({ firstWeekday: 6 }), 'MTWTFSS', 'a Saturday-first user');
 });

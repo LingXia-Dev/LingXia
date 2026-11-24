@@ -12,12 +12,15 @@ test('day arithmetic crosses months, years and leap days', () => {
 });
 
 test('a month grid is six weeks from the configured first weekday', () => {
-  const sunday = monthGrid({ year: 2026, month: 10 }, 1);
+  const sunday = monthGrid({ year: 2026, month: 10 }, 7);
   assert.equal(sunday.length, 42);
   assert.equal(iso(sunday[0].date), '2026-09-27');
   assert.equal(sunday.filter(cell => cell.inMonth).length, 31);
-  assert.equal(iso(monthGrid({ year: 2026, month: 10 }, 2)[0].date), '2026-09-28');
-  assert.deepEqual(weekdayOrder(2), [1, 2, 3, 4, 5, 6, 0]);
+  assert.equal(iso(monthGrid({ year: 2026, month: 10 }, 1)[0].date), '2026-09-28');
+  assert.equal(iso(monthGrid({ year: 2026, month: 10 }, 6)[0].date), '2026-09-26');
+  assert.deepEqual(weekdayOrder(1), [1, 2, 3, 4, 5, 6, 0]);
+  assert.deepEqual(weekdayOrder(7), [0, 1, 2, 3, 4, 5, 6]);
+  assert.deepEqual(weekdayOrder(6), [6, 0, 1, 2, 3, 4, 5]);
 });
 
 test('keys move by day, week and month, mirrored in RTL', () => {

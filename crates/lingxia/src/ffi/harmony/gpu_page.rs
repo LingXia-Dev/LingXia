@@ -560,9 +560,10 @@ pub fn gpu_page_measured(token: i64, facts: String, origin_x: f64, origin_y: f64
                 .collect()
         }),
         hour_cycle: facts["hour_cycle"].as_str().map(str::to_owned),
+        // i18n.Calendar counts 1 = Sunday.
         first_weekday: facts["first_weekday"]
             .as_u64()
-            .and_then(|d| u8::try_from(d).ok()),
+            .and_then(DeviceFacts::weekday_from_sunday_first),
         hinge: facts.get("hinge").filter(|h| !h.is_null()).cloned(),
     };
     with_page(token, |page| {

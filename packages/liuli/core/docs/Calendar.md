@@ -54,7 +54,7 @@ import { useLocal } from '@lingxia/view';
 import { Calendar, calendarWeekday } from '@liulidesign/core/Calendar';
 
 const today = '2026-11-15';
-const closed = (date: string) => calendarWeekday(date) % 6 === 0;
+const closed = (date: string) => calendarWeekday(date) >= 6;
 
 /** Days the app rules out stay in the grid, dimmed: here the weekends. */
 export function Weekdays() {
@@ -74,7 +74,7 @@ const today = '2026-11-15';
 /** A school timetable: its week runs Monday to Sunday wherever the user lives. */
 export function MondayFirst() {
   const day = useLocal<string | null>('day', '2026-11-16');
-  return <Calendar label="Timetable" value={day.value} onChange={day.set} firstWeekday={2} today={today} data-testid="timetable" />;
+  return <Calendar label="Timetable" value={day.value} onChange={day.set} firstWeekday={1} today={today} data-testid="timetable" />;
 }
 ```
 
@@ -92,7 +92,7 @@ export function MondayFirst() {
 | `max` | `string` |  |  |
 | `isDateDisabled` | `((date: string) => boolean)` |  | Days that cannot be chosen: closed days, taken days. |
 | `today` (required) | `string` |  | The day marked as today, and the month shown when nothing is chosen. A View takes the time from its page, not from a clock. |
-| `firstWeekday` | `CalendarWeekday` | `the user's first weekday` | The week's first day, 1 is Sunday to 7 is Saturday, for a week that is the app's own (a school timetable). |
+| `firstWeekday` | `Weekday` | `the user's first weekday` | The week's first day, 1 is Monday to 7 is Sunday, for a week that is the app's own (a school timetable). |
 | `className` | `string` |  |  |
 | `data-testid` | `string` |  | On the calendar; a day is `<id>-<YYYY-MM-DD>`, the month buttons `<id>-previous` and `<id>-next`. |
 
