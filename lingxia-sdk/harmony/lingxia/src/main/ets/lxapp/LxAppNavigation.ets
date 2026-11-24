@@ -17,7 +17,7 @@ import { PickerManager } from './APIs/LxAppPicker';
 import { DatePickerManager } from './APIs/LxAppDatePicker';
 import { ActionSheetManager } from './APIs/LxAppActionSheet';
 import { LxAppSurface, SurfaceManager } from './APIs/LxAppSurface';
-import { AsideRegion, AsideRegionModel } from './AsideRegion';
+import { AsidePart, AsideRegion, AsideRegionModel, AsideState, NO_TOUCH } from './AsideRegion';
 import { MediaPreviewOverlay, MediaPreviewOverlayManager } from './APIs/media/MediaPreviewOverlay';
 import { CameraCaptureOverlay, CameraCaptureOverlayManager } from './APIs/media/CameraCaptureOverlay';
 import { PdfSinglePageViewerOverlay, PdfSingleViewerOverlayManager } from './APIs/document/PdfSinglePageViewerOverlay';
@@ -73,6 +73,9 @@ export struct LxAppNavigation {
   @State homeWebTag: string = ''
   @State errorMessage: string = ''
 
+  // The touch areas of the full-window layers above the app containers.
+  @StorageProp('lxAsideState') private asideState: AsideState = AsideRegionModel.emptyState()
+  @StorageProp('lxSurfaceTouchArea') private surfaceTouchArea: Rectangle[] = NO_TOUCH
   // Splash: the launch face. Rendered as this component's very first frame —
   // before the runtime boots — so the OS start window exits straight onto
   // the cover.
@@ -733,14 +736,19 @@ export struct LxAppNavigation {
       // Surfaces and the side panel sit above the app containers and below toast and dialogs,
       // so a toast or modal raised from a page in them shows over it. The panel's chrome is
       // under its children, which render in SurfaceManager; the divider is above them.
+      // Each mount fills the window and blocks every layer under it, so each takes touches
+      // only where it draws something.
       AsideRegion()
         .zIndex(9000)
+        .responseRegion(AsideRegionModel.touchArea(this.asideState, AsidePart.Chrome))
 
       SurfaceManager()
         .zIndex(9001)
+        .responseRegion(this.surfaceTouchArea)
 
       AsideRegion({ dividerOnly: true })
         .zIndex(9002)
+        .responseRegion(AsideRegionModel.touchArea(this.asideState, AsidePart.Divider))
 
       // Integrated media preview overlay
       MediaPreviewOverlay()

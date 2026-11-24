@@ -97,6 +97,15 @@ export function asidePalette(dark: boolean): AsidePalette {
   return dark ? DARK : LIGHT;
 }
 
+/** The layers the side panel draws in: its chrome and tongue, its shown child, its divider. */
+export enum AsidePart { Chrome, Child, Divider }
+
+/** A response region that takes no touch, for a full-window layer with nothing to show. */
+export const NO_TOUCH: Rectangle[] = [{ x: -1, y: -1, width: 0, height: 0 }];
+
+/** The whole window, for a layer that covers it. */
+export const WHOLE_TOUCH: Rectangle[] = [{ x: 0, y: 0, width: '100%', height: '100%' }];
+
 function emptyState(): AsideState {
   return {
     shown: false,
@@ -157,6 +166,42 @@ export class AsideRegionModel {
 
   static emptyState(): AsideState {
     return emptyState();
+  }
+
+  /**
+   * Where a part's full-window layer takes touches. ArkUI wraps a mounted component in a node
+   * of its size that blocks every layer under it, so the layer must claim only what it draws.
+   */
+  static touchArea(state: AsideState, part: AsidePart): Rectangle[] {
+    if (part === AsidePart.Divider) {
+      if (!state.shown || state.overlay || !state.canResize) {
+        return NO_TOUCH;
+      }
+      return [{
+        x: state.panelX - DIVIDER_HIT_VP / 2, y: state.stripTop,
+        width: DIVIDER_HIT_VP, height: Math.max(0, state.height - state.stripTop)
+      }];
+    }
+    if (part === AsidePart.Child) {
+      if (!state.shown) {
+        return NO_TOUCH;
+      }
+      return [{
+        x: state.panelX, y: state.contentTop,
+        width: state.panelWidth, height: Math.max(0, state.height - state.contentTop)
+      }];
+    }
+    if (state.shown) {
+      return [{ x: state.panelX, y: 0, width: state.panelWidth, height: state.height }];
+    }
+    if (state.tongueShown) {
+      const width = state.tongueCount > 1 ? TONGUE_HIT_W_COUNT_VP : TONGUE_HIT_W_VP;
+      return [{
+        x: state.windowWidth - width, y: (state.height - TONGUE_HIT_H_VP) / 2,
+        width: width, height: TONGUE_HIT_H_VP
+      }];
+    }
+    return NO_TOUCH;
   }
 
   /** The window's size in vp, its status bar inset, and the strings the tongue speaks. */
@@ -540,7 +585,8 @@ export struct AsideRegion {
     .backgroundColor(asidePalette(this.state.dark).panel)
     .position({ x: this.state.panelX, y: 0 })
     .shadow(this.state.overlay ? { radius: 24, color: '#2E000000', offsetX: 0, offsetY: 0 } : { radius: 0, color: Color.Transparent })
-    .hitTestBehavior(HitTestMode.Block)
+    // Default, not Block: Block also keeps the touch from the strip's own buttons.
+    .hitTestBehavior(HitTestMode.Default)
   }
 
   @Builder

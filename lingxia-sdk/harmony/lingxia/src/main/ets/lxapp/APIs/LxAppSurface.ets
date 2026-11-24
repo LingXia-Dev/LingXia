@@ -11,7 +11,7 @@ import { FloatSurfaceWindowManager } from './surface/FloatSurfaceWindow';
 import { SurfaceCloseButton } from './surface/SurfaceChrome';
 import { SurfaceLayoutConfig, SurfacePosition } from './surface/SurfaceModel';
 import { isExternalWindowUrl, isFileUrl, isHttpUrl, isSameOrigin, isSupportedUrl } from './surface/SurfaceUrlPolicy';
-import { AsideRegionModel, AsideSlotPlan, AsideState, asidePalette } from '../AsideRegion';
+import { AsidePart, AsideRegionModel, AsideSlotPlan, AsideState, asidePalette, NO_TOUCH, WHOLE_TOUCH } from '../AsideRegion';
 
 const DOMAIN = 0x0000;
 const TAG = 'LingXia.Surface';
@@ -801,10 +801,13 @@ function surfaceRenderState(layout: SurfaceLayoutConfig, isVisible: boolean, pag
   };
 }
 
+/** Where `SurfaceManager`'s mount takes touches; `LxAppNavigation` reads it under this name. */
+export const SURFACE_TOUCH_AREA_KEY = 'lxSurfaceTouchArea';
+
 @Component
 export struct SurfaceManager {
-  @State private surfaces: SurfaceRenderState[] = [];
-  @StorageProp('lxAsideState') private aside: AsideState = AsideRegionModel.emptyState();
+  @State @Watch('publishTouchArea') private surfaces: SurfaceRenderState[] = [];
+  @StorageProp('lxAsideState') @Watch('publishTouchArea') private aside: AsideState = AsideRegionModel.emptyState();
   private pageControllers: Map<string, webview.WebviewController> = new Map();
   private webControllers: Map<string, webview.WebviewController> = new Map();
   private windowOpVersion: number = 0;
@@ -1021,7 +1024,8 @@ export struct SurfaceManager {
         x: this.asideChildShown(surface) ? this.aside.panelX : -10000,
         y: this.asideChildShown(surface) ? this.aside.contentTop : -10000
       })
-      .hitTestBehavior(this.asideChildShown(surface) ? HitTestMode.Block : HitTestMode.None)
+      // Default, not Block: Block also keeps the touch from the child's own content.
+      .hitTestBehavior(this.asideChildShown(surface) ? HitTestMode.Default : HitTestMode.None)
     }
   }
 
@@ -1346,6 +1350,20 @@ export struct SurfaceManager {
 
   private surfaceKey(id: string, appId: string): string {
     return `${appId}::${id}`;
+  }
+
+  /**
+   * The mount's touch area, which `LxAppNavigation` applies: the whole window while a window
+   * surface shows, the panel's content while a side panel child shows, else none.
+   */
+  private publishTouchArea(): void {
+    let area: Rectangle[] = NO_TOUCH;
+    if (this.hasVisibleSurface()) {
+      area = WHOLE_TOUCH;
+    } else if (this.surfaces.some((surface: SurfaceRenderState) => surface.isVisible && this.asideChildShown(surface))) {
+      area = AsideRegionModel.touchArea(this.aside, AsidePart.Child);
+    }
+    AppStorage.setOrCreate<Rectangle[]>(SURFACE_TOUCH_AREA_KEY, area);
   }
 
   private hasVisibleSurface(): boolean {
