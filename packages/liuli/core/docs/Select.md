@@ -109,6 +109,8 @@ export function Sizes() {
 | `className` | `string` |  |  |
 | `data-testid` | `string` |  | On the select. |
 
+- `bind` | `value` + `onChange`: props from one side only.
+
 ## Anatomy
 
 | Part | Element | Required | Description |

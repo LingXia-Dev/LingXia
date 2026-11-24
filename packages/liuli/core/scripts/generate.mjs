@@ -9,6 +9,7 @@ import { transform } from 'esbuild';
 import ts from 'typescript';
 import { appearances, format, needed, palette, ratio } from './contrast.mjs';
 import { galleryPackages } from './gallery-packages.mjs';
+import { choiceLine, choicesOf } from './choices.mjs';
 
 const packageArg = process.argv.slice(2).find(arg => !arg.startsWith('--'));
 const core = resolve(packageArg ?? resolve(dirname(fileURLToPath(import.meta.url)), '..'));
@@ -96,6 +97,13 @@ function props(name, typeName) {
       ...(fallback !== undefined ? { default: fallback } : {}),
     };
   });
+}
+
+/** Props of `typeName` that exclude each other, as groups: `[[['bind'], ['value', 'onChange']]]`. */
+function choices(name, typeName) {
+  const file = program.getSourceFile(join(src, name, `${name}.tsx`));
+  const declaration = file.statements.find(node => (ts.isInterfaceDeclaration(node) || ts.isTypeAliasDeclaration(node)) && node.name.text === typeName);
+  return declaration ? choicesOf(ts, checker, checker.getTypeAtLocation(declaration.name)) : [];
 }
 
 /**
@@ -282,6 +290,7 @@ function reference(doc, entry) {
       lines.push(`| \`${prop.name}\`${prop.required ? ' (required)' : ''} | \`${cell(prop.type)}\` | ${prop.default ? `\`${cell(prop.default)}\`` : ''} | ${cell(prop.description)} |`);
   };
   table('## Props', entry.props);
+  if (entry.choices.length) lines.push('', ...entry.choices.map(choice => `- ${choiceLine(choice)}.`));
   for (const [component, rows] of Object.entries(entry.otherProps)) {
     lines.push('');
     table(`## ${component} props`, rows);
@@ -561,6 +570,7 @@ for (const name of names) {
     keywords: doc.keywords,
     props: props(name, doc.propsType),
     otherProps: Object.fromEntries((doc.otherPropsTypes ?? []).map(type => [type.replace(/Props$/, ''), props(name, type)])),
+    choices: choices(name, doc.propsType),
     parts,
     accessibility: doc.accessibility,
     examples: doc.examples.map(example => ({ ...example, source: sources.get(example.name) ?? '' })),

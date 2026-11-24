@@ -128,6 +128,8 @@ export function Workspace() {
 | `className` | `string` |  |  |
 | `data-testid` | `string` |  | On the root; the panes get `<testid>-list` and `<testid>-detail`, the back button `<testid>-back`, the actions `<testid>-actions`. |
 
+- `bind` | `value` + `onChange`: props from one side only.
+
 ## ListDetailList props
 
 | Prop | Type | Default | Description |

@@ -158,6 +158,8 @@ export function Inline() {
 | `className` | `string` |  |  |
 | `data-testid` | `string` |  | On the group; each option gets `<testid>-<value>`. |
 
+- `bind` | `value` + `onChange`: props from one side only.
+
 ## Anatomy
 
 | Part | Element | Required | Description |

@@ -92,6 +92,8 @@ export function Empty() {
 | `className` | `string` |  |  |
 | `data-testid` | `string` |  | On the box; the add button gets `<testid>-add`, each option `<testid>-<value>`. |
 
+- `bind` | `value` + `onChange`: props from one side only.
+
 ## Anatomy
 
 | Part | Element | Required | Description |

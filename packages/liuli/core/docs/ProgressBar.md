@@ -184,6 +184,8 @@ export function SpinnerTones() {
 | `className` | `string` |  |  |
 | `data-testid` | `string` |  | On the progress bar. |
 
+- `value` + `max` | `progress`: props from one side only.
+
 ## Spinner props
 
 | Prop | Type | Default | Description |

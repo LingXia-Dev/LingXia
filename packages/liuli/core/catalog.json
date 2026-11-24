@@ -139,6 +139,7 @@
         }
       ],
       "otherProps": {},
+      "choices": [],
       "parts": {
         "root": "view",
         "image": "image",
@@ -551,6 +552,17 @@
         }
       ],
       "otherProps": {},
+      "choices": [
+        [
+          [
+            "tone",
+            "emphasis"
+          ],
+          [
+            "hue"
+          ]
+        ]
+      ],
       "parts": {
         "root": "view",
         "icon": "vector",
@@ -1016,6 +1028,7 @@
         }
       ],
       "otherProps": {},
+      "choices": [],
       "parts": {
         "root": "view",
         "icon": "vector",
@@ -1369,6 +1382,7 @@
         }
       ],
       "otherProps": {},
+      "choices": [],
       "parts": {
         "panel": "dialog",
         "grabber": "view",
@@ -1593,6 +1607,7 @@
           }
         ]
       },
+      "choices": [],
       "parts": {
         "root": "view",
         "item": "view",
@@ -1873,6 +1888,17 @@
         }
       ],
       "otherProps": {},
+      "choices": [
+        [
+          [
+            "onClick",
+            "clickAction"
+          ],
+          [
+            "to"
+          ]
+        ]
+      ],
       "parts": {
         "root": "button",
         "glyph": "vector",
@@ -2258,6 +2284,7 @@
         }
       ],
       "otherProps": {},
+      "choices": [],
       "parts": {
         "root": "view"
       },
@@ -2518,6 +2545,7 @@
           }
         ]
       },
+      "choices": [],
       "parts": {
         "root": "view",
         "header": "view",
@@ -2930,6 +2958,7 @@
           }
         ]
       },
+      "choices": [],
       "parts": {
         "root": "view",
         "description": "text",
@@ -3219,6 +3248,17 @@
         }
       ],
       "otherProps": {},
+      "choices": [
+        [
+          [
+            "bind"
+          ],
+          [
+            "index",
+            "onIndexChange"
+          ]
+        ]
+      ],
       "parts": {
         "root": "view",
         "frame": "view",
@@ -3472,6 +3512,17 @@
         }
       ],
       "otherProps": {},
+      "choices": [
+        [
+          [
+            "bind"
+          ],
+          [
+            "value",
+            "onChange"
+          ]
+        ]
+      ],
       "parts": {
         "root": "view",
         "control": "checkbox",
@@ -3778,6 +3829,17 @@
         }
       ],
       "otherProps": {},
+      "choices": [
+        [
+          [
+            "bind"
+          ],
+          [
+            "value",
+            "onChange"
+          ]
+        ]
+      ],
       "parts": {
         "root": "view",
         "label": "text",
@@ -4038,6 +4100,17 @@
         }
       ],
       "otherProps": {},
+      "choices": [
+        [
+          [
+            "value",
+            "max"
+          ],
+          [
+            "progress"
+          ]
+        ]
+      ],
       "parts": {
         "root": "view",
         "ring": "view",
@@ -4291,6 +4364,7 @@
         }
       ],
       "otherProps": {},
+      "choices": [],
       "parts": {
         "inline": "span",
         "block": "view",
@@ -4684,6 +4758,17 @@
         }
       ],
       "otherProps": {},
+      "choices": [
+        [
+          [
+            "bind"
+          ],
+          [
+            "value",
+            "onChange"
+          ]
+        ]
+      ],
       "parts": {
         "trigger": "button",
         "editor": "input",
@@ -5056,6 +5141,7 @@
         }
       ],
       "otherProps": {},
+      "choices": [],
       "parts": {
         "panel": "dialog",
         "search": "view",
@@ -5309,6 +5395,17 @@
         }
       ],
       "otherProps": {},
+      "choices": [
+        [
+          [
+            "bind"
+          ],
+          [
+            "value",
+            "onChange"
+          ]
+        ]
+      ],
       "parts": {
         "root": "view",
         "surface": "view",
@@ -5529,6 +5626,7 @@
         }
       ],
       "otherProps": {},
+      "choices": [],
       "parts": {
         "target": "view",
         "menu": "view",
@@ -5810,6 +5908,17 @@
         }
       ],
       "otherProps": {},
+      "choices": [
+        [
+          [
+            "bind"
+          ],
+          [
+            "value",
+            "onChange"
+          ]
+        ]
+      ],
       "parts": {
         "box": "view",
         "input": "input",
@@ -6202,6 +6311,7 @@
         }
       ],
       "otherProps": {},
+      "choices": [],
       "parts": {
         "value": "text",
         "icon": "vector",
@@ -6542,6 +6652,17 @@
         }
       ],
       "otherProps": {},
+      "choices": [
+        [
+          [
+            "bind"
+          ],
+          [
+            "value",
+            "onChange"
+          ]
+        ]
+      ],
       "parts": {
         "group": "view",
         "date": "DateInput",
@@ -6746,6 +6867,7 @@
         }
       ],
       "otherProps": {},
+      "choices": [],
       "parts": {
         "group": "view",
         "root": "view",
@@ -7035,6 +7157,7 @@
         }
       ],
       "otherProps": {},
+      "choices": [],
       "parts": {
         "panel": "dialog",
         "media": "view",
@@ -7271,6 +7394,7 @@
         }
       ],
       "otherProps": {},
+      "choices": [],
       "parts": {
         "line": "view",
         "labelled": "view",
@@ -7486,6 +7610,7 @@
         }
       ],
       "otherProps": {},
+      "choices": [],
       "parts": {
         "panel": "dialog",
         "header": "view",
@@ -7941,6 +8066,7 @@
           }
         ]
       },
+      "choices": [],
       "parts": {
         "menu": "view",
         "items": "view",
@@ -8288,6 +8414,7 @@
         }
       ],
       "otherProps": {},
+      "choices": [],
       "parts": {
         "root": "view",
         "media": "view",
@@ -8550,6 +8677,7 @@
         }
       ],
       "otherProps": {},
+      "choices": [],
       "parts": {
         "root": "view",
         "labelRow": "view",
@@ -8863,6 +8991,7 @@
         }
       ],
       "otherProps": {},
+      "choices": [],
       "parts": {
         "root": "view",
         "pick": "button",
@@ -9082,6 +9211,7 @@
           }
         ]
       },
+      "choices": [],
       "parts": {
         "root": "view",
         "fields": "view",
@@ -9230,6 +9360,7 @@
         }
       ],
       "otherProps": {},
+      "choices": [],
       "parts": {
         "trigger": "button",
         "card": "view"
@@ -9524,6 +9655,16 @@
           }
         ]
       },
+      "choices": [
+        [
+          [
+            "name"
+          ],
+          [
+            "icon"
+          ]
+        ]
+      ],
       "parts": {
         "box": "view",
         "glyph": "vector"
@@ -9799,6 +9940,17 @@
         }
       ],
       "otherProps": {},
+      "choices": [
+        [
+          [
+            "onClick",
+            "clickAction"
+          ],
+          [
+            "to"
+          ]
+        ]
+      ],
       "parts": {
         "root": "button"
       },
@@ -10052,6 +10204,7 @@
         }
       ],
       "otherProps": {},
+      "choices": [],
       "parts": {
         "trigger": "button",
         "icon": "vector",
@@ -10473,6 +10626,16 @@
           }
         ]
       },
+      "choices": [
+        [
+          [
+            "onClick"
+          ],
+          [
+            "to"
+          ]
+        ]
+      ],
       "parts": {
         "group": "view",
         "title": "text",
@@ -10906,6 +11069,7 @@
         }
       ],
       "otherProps": {},
+      "choices": [],
       "parts": {
         "root": "view",
         "key": "view",
@@ -11085,6 +11249,17 @@
         }
       ],
       "otherProps": {},
+      "choices": [
+        [
+          [
+            "bind"
+          ],
+          [
+            "index",
+            "onIndexChange"
+          ]
+        ]
+      ],
       "parts": {
         "panel": "dialog",
         "bar": "view",
@@ -11237,6 +11412,7 @@
         }
       ],
       "otherProps": {},
+      "choices": [],
       "parts": {
         "root": "link"
       },
@@ -11477,6 +11653,17 @@
           }
         ]
       },
+      "choices": [
+        [
+          [
+            "bind"
+          ],
+          [
+            "value",
+            "onChange"
+          ]
+        ]
+      ],
       "parts": {
         "root": "view",
         "list": "view",
@@ -11724,6 +11911,7 @@
         }
       ],
       "otherProps": {},
+      "choices": [],
       "parts": {
         "root": "view",
         "list": "view",
@@ -11925,6 +12113,7 @@
         }
       ],
       "otherProps": {},
+      "choices": [],
       "parts": {
         "root": "view",
         "heading": "text",
@@ -12300,6 +12489,7 @@
           }
         ]
       },
+      "choices": [],
       "parts": {
         "root": "view",
         "line": "view",
@@ -12570,6 +12760,7 @@
           }
         ]
       },
+      "choices": [],
       "parts": {
         "root": "view",
         "item": "view",
@@ -12828,6 +13019,17 @@
         }
       ],
       "otherProps": {},
+      "choices": [
+        [
+          [
+            "bind"
+          ],
+          [
+            "value",
+            "onChange"
+          ]
+        ]
+      ],
       "parts": {
         "box": "view",
         "placeholder": "text",
@@ -13032,6 +13234,7 @@
         }
       ],
       "otherProps": {},
+      "choices": [],
       "parts": {
         "root": "view",
         "group": "button",
@@ -13377,6 +13580,17 @@
         }
       ],
       "otherProps": {},
+      "choices": [
+        [
+          [
+            "bind"
+          ],
+          [
+            "value",
+            "onChange"
+          ]
+        ]
+      ],
       "parts": {
         "box": "view",
         "adornment": "text",
@@ -13673,6 +13887,17 @@
         }
       ],
       "otherProps": {},
+      "choices": [
+        [
+          [
+            "bind"
+          ],
+          [
+            "value",
+            "onChange"
+          ]
+        ]
+      ],
       "parts": {
         "root": "view",
         "dot": "button",
@@ -13925,6 +14150,7 @@
         }
       ],
       "otherProps": {},
+      "choices": [],
       "parts": {
         "root": "view",
         "pages": "view",
@@ -14201,6 +14427,7 @@
         }
       ],
       "otherProps": {},
+      "choices": [],
       "parts": {
         "panel": "view",
         "title": "text"
@@ -14502,6 +14729,17 @@
           }
         ]
       },
+      "choices": [
+        [
+          [
+            "value",
+            "max"
+          ],
+          [
+            "progress"
+          ]
+        ]
+      ],
       "parts": {
         "root": "view",
         "header": "view",
@@ -14832,6 +15070,7 @@
         }
       ],
       "otherProps": {},
+      "choices": [],
       "parts": {
         "root": "view",
         "code": "vector"
@@ -15077,6 +15316,17 @@
         }
       ],
       "otherProps": {},
+      "choices": [
+        [
+          [
+            "bind"
+          ],
+          [
+            "value",
+            "onChange"
+          ]
+        ]
+      ],
       "parts": {
         "field": "Field",
         "group": "view",
@@ -15420,6 +15670,17 @@
         }
       ],
       "otherProps": {},
+      "choices": [
+        [
+          [
+            "bind"
+          ],
+          [
+            "value",
+            "onChange"
+          ]
+        ]
+      ],
       "parts": {
         "root": "view",
         "spinner": "vector",
@@ -15671,6 +15932,7 @@
         }
       ],
       "otherProps": {},
+      "choices": [],
       "parts": {
         "root": "view",
         "header": "view",
@@ -15846,6 +16108,17 @@
         }
       ],
       "otherProps": {},
+      "choices": [
+        [
+          [
+            "bind"
+          ],
+          [
+            "value",
+            "onChange"
+          ]
+        ]
+      ],
       "parts": {
         "root": "view",
         "track": "view",
@@ -16142,6 +16415,17 @@
         }
       ],
       "otherProps": {},
+      "choices": [
+        [
+          [
+            "bind"
+          ],
+          [
+            "value",
+            "onChange"
+          ]
+        ]
+      ],
       "parts": {
         "field": "Field",
         "control": "select"
@@ -16395,6 +16679,7 @@
           }
         ]
       },
+      "choices": [],
       "parts": {
         "group": "view",
         "lines": "view",
@@ -16632,6 +16917,17 @@
         }
       ],
       "otherProps": {},
+      "choices": [
+        [
+          [
+            "bind"
+          ],
+          [
+            "value",
+            "onChange"
+          ]
+        ]
+      ],
       "parts": {
         "root": "view",
         "header": "view",
@@ -16945,6 +17241,17 @@
         }
       ],
       "otherProps": {},
+      "choices": [
+        [
+          [
+            "bind"
+          ],
+          [
+            "isOpen",
+            "onOpenChange"
+          ]
+        ]
+      ],
       "parts": {
         "root": "view",
         "primary": "view",
@@ -17101,6 +17408,7 @@
         }
       ],
       "otherProps": {},
+      "choices": [],
       "parts": {
         "root": "view",
         "dot": "view",
@@ -17431,6 +17739,7 @@
           }
         ]
       },
+      "choices": [],
       "parts": {
         "root": "view",
         "step": "view",
@@ -17688,6 +17997,17 @@
         }
       ],
       "otherProps": {},
+      "choices": [
+        [
+          [
+            "bind"
+          ],
+          [
+            "value",
+            "onChange"
+          ]
+        ]
+      ],
       "parts": {
         "root": "view",
         "control": "switch",
@@ -18042,6 +18362,7 @@
           }
         ]
       },
+      "choices": [],
       "parts": {
         "root": "view",
         "header": "view",
@@ -18338,6 +18659,7 @@
         }
       ],
       "otherProps": {},
+      "choices": [],
       "parts": {
         "root": "view",
         "frame": "view",
@@ -18793,6 +19115,17 @@
         }
       ],
       "otherProps": {},
+      "choices": [
+        [
+          [
+            "bind"
+          ],
+          [
+            "value",
+            "onChange"
+          ]
+        ]
+      ],
       "parts": {
         "box": "view",
         "editor": "textarea",
@@ -19311,6 +19644,17 @@
         }
       ],
       "otherProps": {},
+      "choices": [
+        [
+          [
+            "bind"
+          ],
+          [
+            "value",
+            "onChange"
+          ]
+        ]
+      ],
       "parts": {
         "box": "view",
         "icon": "view",
@@ -19650,6 +19994,7 @@
         }
       ],
       "otherProps": {},
+      "choices": [],
       "parts": {
         "root": "view",
         "image": "image"
@@ -19939,6 +20284,17 @@
         }
       ],
       "otherProps": {},
+      "choices": [
+        [
+          [
+            "bind"
+          ],
+          [
+            "value",
+            "onChange"
+          ]
+        ]
+      ],
       "parts": {
         "box": "view",
         "input": "input",
@@ -20197,6 +20553,7 @@
         }
       ],
       "otherProps": {},
+      "choices": [],
       "parts": {
         "root": "text"
       },
@@ -20351,6 +20708,7 @@
         }
       ],
       "otherProps": {},
+      "choices": [],
       "parts": {
         "root": "text"
       },
@@ -20507,6 +20865,7 @@
         }
       ],
       "otherProps": {},
+      "choices": [],
       "parts": {
         "region": "view",
         "toast": "view",
@@ -20723,6 +21082,7 @@
         }
       ],
       "otherProps": {},
+      "choices": [],
       "parts": {
         "root": "button",
         "label": "text"
@@ -21012,6 +21372,7 @@
         }
       ],
       "otherProps": {},
+      "choices": [],
       "parts": {
         "root": "view",
         "label": "text",
@@ -21375,6 +21736,7 @@
         }
       ],
       "otherProps": {},
+      "choices": [],
       "parts": {
         "bubble": "view",
         "text": "text"
@@ -21552,6 +21914,7 @@
         }
       ],
       "otherProps": {},
+      "choices": [],
       "parts": {
         "root": "view",
         "start": "view",
@@ -21715,6 +22078,7 @@
         }
       ],
       "otherProps": {},
+      "choices": [],
       "parts": {
         "callout": "view",
         "caret": "view",
@@ -21886,6 +22250,7 @@
         }
       ],
       "otherProps": {},
+      "choices": [],
       "parts": {
         "root": "view",
         "row": "button",
@@ -22221,6 +22586,7 @@
           }
         ]
       },
+      "choices": [],
       "parts": {
         "root": "view",
         "surface": "button",
@@ -22506,6 +22872,16 @@
         }
       ],
       "otherProps": {},
+      "choices": [
+        [
+          [
+            "src"
+          ],
+          [
+            "sources"
+          ]
+        ]
+      ],
       "parts": {
         "root": "view",
         "frame": "view",
@@ -22710,6 +23086,7 @@
         }
       ],
       "otherProps": {},
+      "choices": [],
       "parts": {
         "root": "view",
         "webview": "webview",

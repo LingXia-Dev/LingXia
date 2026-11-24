@@ -477,6 +477,8 @@ export function Compact() {
 | `className` | `string` |  |  |
 | `data-testid` | `string` |  |  |
 
+- `onClick` | `to`: props from one side only.
+
 ## ItemList props
 
 | Prop | Type | Default | Description |

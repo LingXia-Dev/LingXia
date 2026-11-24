@@ -128,6 +128,8 @@ export function InARow() {
 | `className` | `string` |  |  |
 | `data-testid` | `string` |  |  |
 
+- `tone` + `emphasis` | `hue`: props from one side only.
+
 ## Anatomy
 
 | Part | Element | Required | Description |

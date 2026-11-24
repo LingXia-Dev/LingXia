@@ -114,6 +114,8 @@ export function StateMixed() {
 | `className` | `string` |  |  |
 | `data-testid` | `string` |  | On the checkbox. |
 
+- `bind` | `value` + `onChange`: props from one side only.
+
 ## Anatomy
 
 | Part | Element | Required | Description |

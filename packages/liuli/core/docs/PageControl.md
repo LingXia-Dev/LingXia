@@ -71,6 +71,8 @@ export function OnMedia() {
 | `className` | `string` |  |  |
 | `data-testid` | `string` |  | On the row; each dot gets `<testid>-<page>`. |
 
+- `bind` | `value` + `onChange`: props from one side only.
+
 ## Anatomy
 
 | Part | Element | Required | Description |

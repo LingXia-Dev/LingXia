@@ -97,6 +97,8 @@ export function Narrow() {
 | `className` | `string` |  |  |
 | `data-testid` | `string` |  | On the group; the parts get `<testid>-date` and `<testid>-time`. |
 
+- `bind` | `value` + `onChange`: props from one side only.
+
 ## Anatomy
 
 | Part | Element | Required | Description |

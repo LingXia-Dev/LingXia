@@ -222,6 +222,7 @@
         }
       ],
       "otherProps": {},
+      "choices": [],
       "parts": {
         "scale": "text",
         "plot": "view",
@@ -762,6 +763,7 @@
           }
         ]
       },
+      "choices": [],
       "parts": {
         "root": "view",
         "header": "view",
@@ -1293,6 +1295,7 @@
         }
       ],
       "otherProps": {},
+      "choices": [],
       "parts": {
         "frame": "view",
         "scale": "view",
@@ -1754,6 +1757,7 @@
         }
       ],
       "otherProps": {},
+      "choices": [],
       "parts": {
         "plot": "view",
         "drawing": "vector",
@@ -2105,6 +2109,7 @@
         }
       ],
       "otherProps": {},
+      "choices": [],
       "parts": {
         "root": "view",
         "plot": "vector"
@@ -2402,6 +2407,7 @@
         }
       ],
       "otherProps": {},
+      "choices": [],
       "parts": {
         "root": "view",
         "label": "text",

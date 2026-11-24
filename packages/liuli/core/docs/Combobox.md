@@ -190,6 +190,8 @@ export function Shipping() {
 | `className` | `string` |  |  |
 | `data-testid` | `string` |  | On the trigger; the search field is `<id>-search`, an option `<id>-<value>`. |
 
+- `bind` | `value` + `onChange`: props from one side only.
+
 ## Anatomy
 
 | Part | Element | Required | Description |

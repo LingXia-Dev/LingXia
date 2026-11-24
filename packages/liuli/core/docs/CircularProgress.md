@@ -96,6 +96,8 @@ export function Tones() {
 | `className` | `string` |  |  |
 | `data-testid` | `string` |  |  |
 
+- `value` + `max` | `progress`: props from one side only.
+
 ## Anatomy
 
 | Part | Element | Required | Description |

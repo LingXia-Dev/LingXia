@@ -169,6 +169,8 @@ export function Rail() {
 | `className` | `string` |  |  |
 | `data-testid` | `string` |  | On the root; the dots get `<testid>-dots`, the buttons `<testid>-previous` and `<testid>-next`. |
 
+- `bind` | `index` + `onIndexChange`: props from one side only.
+
 ## Anatomy
 
 | Part | Element | Required | Description |

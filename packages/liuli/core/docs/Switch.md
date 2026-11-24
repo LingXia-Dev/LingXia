@@ -112,6 +112,8 @@ export function Applying() {
 | `className` | `string` |  |  |
 | `data-testid` | `string` |  | On the switch. |
 
+- `bind` | `value` + `onChange`: props from one side only.
+
 ## Anatomy
 
 | Part | Element | Required | Description |

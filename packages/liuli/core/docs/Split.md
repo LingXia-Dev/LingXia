@@ -184,6 +184,8 @@ export function DocumentSheetSplit() {
 | `className` | `string` |  |  |
 | `data-testid` | `string` |  | On the root; the panes get `<testid>-primary` and `<testid>-aside`, the sheet `<testid>-sheet`. |
 
+- `bind` | `isOpen` + `onOpenChange`: props from one side only.
+
 ## Anatomy
 
 | Part | Element | Required | Description |

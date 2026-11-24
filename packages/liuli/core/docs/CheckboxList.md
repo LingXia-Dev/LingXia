@@ -137,6 +137,8 @@ export function SelectAll() {
 | `className` | `string` |  |  |
 | `data-testid` | `string` |  | On the group; an option's checkbox is `<id>-<value>`. |
 
+- `bind` | `value` + `onChange`: props from one side only.
+
 ## Anatomy
 
 | Part | Element | Required | Description |

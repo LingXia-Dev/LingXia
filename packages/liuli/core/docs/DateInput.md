@@ -119,6 +119,8 @@ export function Sizes() {
 | `controlClassName` | `string` |  | Classes for the bordered box. |
 | `data-testid` | `string` |  | On the editor. |
 
+- `bind` | `value` + `onChange`: props from one side only.
+
 ## Anatomy
 
 | Part | Element | Required | Description |

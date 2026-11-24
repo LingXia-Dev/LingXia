@@ -88,6 +88,8 @@ export function Single() {
 | `pageLabel` | `((page: number, count: number) => string)` |  | Where the viewer is, written by the app: `(page, count) => \`${page + 1} of ${count}\``. Shown at the top, and each dot's name. Defaults to "2 of 5" in the page's language. |
 | `data-testid` | `string` |  |  |
 
+- `bind` | `index` + `onIndexChange`: props from one side only.
+
 ## Anatomy
 
 | Part | Element | Required | Description |

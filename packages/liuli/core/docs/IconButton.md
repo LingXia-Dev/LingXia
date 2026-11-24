@@ -125,6 +125,8 @@ export function InRows() {
 | `clickAction` | `(() => Promise<unknown>)` |  | An async action, such as a Logic action. The button shows loading until it settles. |
 | `to` | `LinkTarget` |  | Makes it a link that goes there on press: `{ page, params }`, `{ tab }`, `{ back: 1 }`. Read as a link; Enter opens it and Space does not. |
 
+- `onClick` + `clickAction` | `to`: props from one side only.
+
 ## Anatomy
 
 | Part | Element | Required | Description |

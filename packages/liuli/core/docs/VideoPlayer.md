@@ -67,6 +67,8 @@ export function UnderThePicture() {
 | `src` | `string` |  |  |
 | `sources` | `readonly VideoSource[]` |  |  |
 
+- `src` | `sources`: props from one side only.
+
 ## Anatomy
 
 | Part | Element | Required | Description |

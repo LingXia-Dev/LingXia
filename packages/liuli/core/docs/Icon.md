@@ -208,6 +208,8 @@ export function Everything() {
 | `className` | `string` |  |  |
 | `data-testid` | `string` |  |  |
 
+- `name` | `icon`: props from one side only.
+
 ## IconSetProvider props
 
 | Prop | Type | Default | Description |

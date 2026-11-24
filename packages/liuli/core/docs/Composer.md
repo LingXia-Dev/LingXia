@@ -163,6 +163,8 @@ export function Stoppable() {
 | `className` | `string` |  |  |
 | `data-testid` | `string` |  | On the field; the send button gets `<testid>-send`. |
 
+- `bind` | `value` + `onChange`: props from one side only.
+
 ## Anatomy
 
 | Part | Element | Required | Description |
