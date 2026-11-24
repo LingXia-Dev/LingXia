@@ -101,7 +101,7 @@ public class GpuImeTest {
         assertEquals(GpuIme.EDIT_APPLIED,ime.accessibilityEdit(node,12,"你好",0,0));
         JSONArray edits=host.requests.get(0).getJSONArray("edits");
         assertEquals(3,edits.length()); assertEquals("finish_composition",edits.getJSONObject(0).getString("op"));
-        assertEquals(4,edits.getJSONObject(1).getInt("focus"));
+        assertEquals("select_all",edits.getJSONObject(1).getString("op"));
         assertEquals("你好",edits.getJSONObject(2).getString("text"));
         assertEquals("你好",ime.menuText());
         // The core holds the next edit until a frame shows this one, so the mirror never refuses it.
