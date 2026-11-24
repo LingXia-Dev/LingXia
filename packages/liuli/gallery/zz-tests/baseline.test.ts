@@ -74,7 +74,7 @@ for (const page of pages) {
         }
         if (!shown) throw Error(`${page} has not come to rest at its end: its last row is not on screen`);
       }
-      // A kept page returns where it was left, and a theme change can move it; bring it back to its top.
+      // A kept page returns where it was left; bring it back to its top.
       const top = view.testId('page-start');
       if (!last && (await top.count()) > 0) {
         await top.scrollIntoView();
