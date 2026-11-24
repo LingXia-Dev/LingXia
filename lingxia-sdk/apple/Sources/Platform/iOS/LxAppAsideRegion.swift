@@ -345,10 +345,29 @@ final class LxAppAsideRegion {
         tabs.frame = CGRect(x: 0, y: (Self.stripHeight - Self.tabHeight) / 2, width: size.width, height: Self.tabHeight)
         tabScroll.contentSize = CGSize(width: size.width, height: Self.stripHeight)
         if let selectedTab {
-            DispatchQueue.main.async { [weak self] in
-                self?.tabScroll.scrollRectToVisible(selectedTab.frame.insetBy(dx: -8, dy: 0), animated: false)
-            }
+            DispatchQueue.main.async { [weak self] in self?.reveal(selectedTab) }
         }
+    }
+
+    /// Scrolls the strip only as far as the active chip needs, stopping at a chip's start so the
+    /// first chip in view is whole, except where the strip's end leaves less than a chip to scroll.
+    private func reveal(_ tab: UIView) {
+        let visible = tabScroll.bounds.width
+        let room = tabScroll.contentSize.width - visible
+        guard visible > 0, room > 0 else {
+            tabScroll.contentOffset.x = 0
+            return
+        }
+        let frame = tab.frame
+        var offset = tabScroll.contentOffset.x
+        if frame.minX < offset {
+            offset = frame.minX
+        } else if frame.maxX > offset + visible {
+            let needed = frame.maxX - visible
+            let starts = tabs.arrangedSubviews.map(\.frame.minX).filter { $0 >= needed }
+            offset = min(starts.min() ?? frame.minX, frame.minX)
+        }
+        tabScroll.contentOffset.x = min(max(0, offset), room)
     }
 
     private func makeTab(id: String, selected: Bool, header: Bool) -> UIView {
