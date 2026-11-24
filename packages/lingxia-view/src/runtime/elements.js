@@ -545,7 +545,8 @@ function resolveElement(tag, original, children, identity, depth, parent) {
   if (props.onPointer !== undefined || props.pointerAxis !== undefined) {
     if (!pointerTags.has(tag)) throw Error('UI_PROP: onPointer belongs to a <view>, <button> or <vector>');
     const { onPointer, pointerAxis = 'both' } = props;
-    if (typeof onPointer !== 'function') throw Error('UI_PROP: onPointer takes a function; pointerAxis goes with it');
+    if (onPointer === undefined) throw Error('UI_PROP: pointerAxis needs onPointer on the same element; add onPointer or remove pointerAxis');
+    if (typeof onPointer !== 'function') throw Error('UI_PROP: onPointer takes a function');
     if (!pointerAxes.has(pointerAxis)) throw Error('UI_PROP: pointerAxis must be "x", "y" or "both"');
     on('onPointer', payload => onPointer(Object.freeze(JSON.parse(payload))), 'text');
     if (pointerAxis !== 'both') wire('pointerAxis', pointerAxis);
