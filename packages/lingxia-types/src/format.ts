@@ -50,6 +50,8 @@ export interface DateShapes {
   readonly weekdayTime: true;
   /** Date and time: month, day and the time on the user's clock: "Nov 24, 9:05 PM". */
   readonly monthDayTime: true;
+  /** Date and time: the medium date and the time on the user's clock: "Nov 24, 2026, 9:05 PM". For timestamps in a list. */
+  readonly dateTime: true;
 }
 
 /** A date shape's name. */
@@ -191,6 +193,7 @@ const SHAPES: Record<DateShape, Options> = {
   weekday: { weekday: 'long' },
   weekdayTime: { weekday: 'short', hour: 'numeric', minute: '2-digit' },
   monthDayTime: { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' },
+  dateTime: { dateStyle: 'medium', timeStyle: 'short' },
 };
 const TIME_SHAPES: ReadonlySet<string> = new Set<TimeShape>(['time', 'timeSeconds', 'time24']);
 const DURATION_PARTS = [['days', 'day'], ['hours', 'hour'], ['minutes', 'minute'], ['seconds', 'second']] as const;
@@ -293,7 +296,7 @@ export function formatter(settings: FormatSettings): Format {
     } else ms = at;
     finite(ms, 'at');
     // `hour12` rather than `hourCycle: 'h12'` lets a language that counts 0–11 (ja) keep its clock.
-    const clock: Options = 'hour' in spec && !('hourCycle' in spec) ? (hourCycle === 'h12' ? { hour12: true } : { hourCycle: 'h23' }) : {};
+    const clock: Options = ('hour' in spec || 'timeStyle' in spec) && !('hourCycle' in spec) ? (hourCycle === 'h12' ? { hour12: true } : { hourCycle: 'h23' }) : {};
     return dateFormat(language, { ...spec, ...clock, timeZone }).format(ms);
   }
 
