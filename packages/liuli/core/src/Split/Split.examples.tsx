@@ -79,6 +79,7 @@ const comments = [
 export function DocumentSheetSplit() {
   const { env } = useView();
   const commentsOpen = useLocal('comments-open', false);
+  const reply = useLocal('reply', '');
   const isCompact = env.sizeClass !== 'regular';
   return (
     <view className="h-[440px] overflow-hidden rounded-container border border-text/12">
@@ -102,6 +103,7 @@ export function DocumentSheetSplit() {
                 </view>
               </view>
             ))}
+            <Composer bind={reply} label="Reply" placeholder="Add a comment" onSubmit={() => reply.set('')} data-testid="doc-reply" />
           </view>
         }
         data-testid="doc-split"

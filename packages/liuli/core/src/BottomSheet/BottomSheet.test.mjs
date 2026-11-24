@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { textOf } from '@lingxia/view/testing';
-import { renderExample } from '../testing/harness.mjs';
+import { renderExample, renderPage } from '../testing/harness.mjs';
 
 const sheet = (screen, testId) => screen.queryAll(node => node.testId === testId)[0];
 const drag = node => JSON.parse(node.props.drag);
@@ -48,6 +48,22 @@ test('Comments: an expandable sheet opens halfway, drags up, and reopens halfway
   assert.equal(sheet(screen, 'comments'), undefined);
   screen.press(screen.getByTestId('comments-open'));
   assert.equal(drag(sheet(screen, 'comments')).index, 1);
+});
+
+test('initialDetent full: an expandable sheet opens at its full detent, and reopens there', async () => {
+  const screen = await renderPage(`
+    import { useLocal } from '@lingxia/view';
+    import { BottomSheet } from '@liulidesign/core/BottomSheet';
+    export function render() {
+      const open = useLocal('open', true);
+      return <page><button data-testid="again" onClick={() => open.set(true)}><text>Open</text></button><BottomSheet isOpen={open.value} onOpenChange={open.set} label="Reply" detents="expandable" initialDetent="full" hasCloseButton data-testid="reply"><text>Body</text></BottomSheet></page>;
+    }
+  `);
+  assert.deepEqual([drag(sheet(screen, 'reply')).points, drag(sheet(screen, 'reply')).index], [[0, '45%', '100%'], 0]);
+  screen.drag(sheet(screen, 'reply'), { phase: 'settle', index: 1 });
+  screen.press(screen.getByTestId('reply-close'));
+  screen.press(screen.getByTestId('again'));
+  assert.equal(drag(sheet(screen, 'reply')).index, 0);
 });
 
 test('Required: with dismissOn none the sheet has no off-screen point and only its buttons close it', async () => {

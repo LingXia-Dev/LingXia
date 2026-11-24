@@ -46,6 +46,7 @@ export const doc: ComponentDoc = {
     do: [
       'Use it for a choice or a short task about what is under it, on touch layouts.',
       'Use `expandable` for a list that can grow long; `fit` for a few rows or a question.',
+      'Open an `expandable` sheet with `initialDetent="full"` when its working field sits at its bottom, a composer or a form: the half detent would hide it.',
       'Keep the main action in reach at the bottom.',
     ],
     dont: [

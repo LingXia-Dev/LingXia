@@ -33,6 +33,14 @@ test('Split compact="sheet": hides inline aside and opens BottomSheet on trigger
   assert.ok(screen.getByTestId('doc-split-sheet'));
 });
 
+test('Split compact="sheet" opens its sheet full, so a reply field at the aside\'s bottom is in view', async () => {
+  const screen = await renderExample('Split/Split', 'DocumentSheetSplit', compact);
+  screen.press(screen.getByTestId('doc-open-comments'));
+  const drag = JSON.parse(screen.getByTestId('doc-split-sheet').props.drag);
+  assert.deepEqual([drag.points, drag.index], [[0, '45%', '100%'], 0]);
+  assert.ok(screen.getByTestId('doc-reply'));
+});
+
 test('The aside is a group named by asideLabel; on a phone its sheet takes the same name', async () => {
   const wide = await renderExample('Split/Split', 'LiveStreamSplit', regularWide);
   const aside = wide.getByTestId('live-split-aside');

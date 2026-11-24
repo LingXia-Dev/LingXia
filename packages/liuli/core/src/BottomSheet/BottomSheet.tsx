@@ -36,6 +36,8 @@ export interface BottomSheetProps {
   dismissOn?: DialogDismissOn;
   /** @default 'fit' */
   detents?: BottomSheetDetents;
+  /** Where an `expandable` sheet opens: `full` when its working field sits at its bottom (a composer, a form), which `half` would hide. @default 'half' */
+  initialDetent?: 'full' | 'half';
   /** Classes for the panel. */
   className?: string;
   'data-testid'?: string;
@@ -66,6 +68,7 @@ export function BottomSheet({
   closeLabel = liuliText('@liuli.close'),
   dismissOn = 'any',
   detents = 'fit',
+  initialDetent = 'half',
   className,
   'data-testid': testId, ...attributes
 }: BottomSheetProps) {
@@ -75,10 +78,11 @@ export function BottomSheet({
   const bodyEdges = useBodyEdges();
   const descriptionId = `${useId()}-description`;
   const shape = points[detents];
-  const detent = useLocal(`detent-${detents}`, shape.open);
+  const opening = detents === 'expandable' && initialDetent === 'full' ? 0 : shape.open;
+  const detent = useLocal(`detent-${detents}-${opening}`, opening);
   const close = () => {
     // The next open starts at the opening detent, however this one ended.
-    detent.set(shape.open);
+    detent.set(opening);
     onOpenChange(false);
   };
   return (

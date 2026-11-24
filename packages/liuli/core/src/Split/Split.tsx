@@ -107,6 +107,7 @@ export function Split(props: SplitProps) {
             label={asideLabel}
             isLabelHidden
             detents="expandable"
+            initialDetent="full"
             data-testid={testId && `${testId}-sheet`}
           >
             {aside}

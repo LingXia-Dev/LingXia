@@ -186,6 +186,7 @@ export function Form() {
 | `closeLabel` | `string` |  | Names the close button. Defaults to "Close" in the page's language. |
 | `dismissOn` | `DialogDismissOn` | `'any'` | Which requests close it; with `none` it cannot be dragged off either. |
 | `detents` | `BottomSheetDetents` | `'fit'` |  |
+| `initialDetent` | `"full" \| "half"` | `'half'` | Where an `expandable` sheet opens: `full` when its working field sits at its bottom (a composer, a form), which `half` would hide. |
 | `className` | `string` |  | Classes for the panel. |
 | `data-testid` | `string` |  |  |
 
@@ -232,6 +233,7 @@ Ratios are computed from @lingxia/view/theme and rounded down.
 
 - Do: Use it for a choice or a short task about what is under it, on touch layouts.
 - Do: Use `expandable` for a list that can grow long; `fit` for a few rows or a question.
+- Do: Open an `expandable` sheet with `initialDetent="full"` when its working field sits at its bottom, a composer or a form: the half detent would hide it.
 - Do: Keep the main action in reach at the bottom.
 - Don't: Open a sheet from a sheet; finish or close the first.
 - Don't: Use `dismissOn="none"` unless the step must be answered.
