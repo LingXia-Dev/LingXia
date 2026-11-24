@@ -97,16 +97,17 @@ pub(crate) fn resolve_tsc(root: &Path) -> Result<PathBuf> {
         })
 }
 
-/// Locates a native TypeScript 7 (`tsgo`) binary when explicitly configured via `LINGXIA_TSGO`
-/// or installed in the project's `node_modules`.
+/// Locates a native TypeScript 7 (`tsgo`) binary: `LINGXIA_TSGO` names one (`0`, `false` or
+/// `off` keeps the project's `tsc`), else one installed in the project's `node_modules`.
 pub(crate) fn resolve_tsgo(root: &Path) -> Option<PathBuf> {
     if let Ok(value) = std::env::var("LINGXIA_TSGO") {
         let trimmed = value.trim();
-        if !trimmed.is_empty() && !matches!(trimmed, "0" | "false" | "off") {
-            let path = PathBuf::from(trimmed);
-            if path.is_file() || !trimmed.contains(['/', '\\']) {
-                return Some(path);
-            }
+        if matches!(trimmed, "0" | "false" | "off") {
+            return None;
+        }
+        let path = PathBuf::from(trimmed);
+        if !trimmed.is_empty() && (path.is_file() || !trimmed.contains(['/', '\\'])) {
+            return Some(path);
         }
     }
     let candidates: &[&str] = if cfg!(windows) {
