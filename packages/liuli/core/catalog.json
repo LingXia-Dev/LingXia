@@ -21270,6 +21270,7 @@
           "hue-8-soft",
           "on-accent-soft",
           "text",
+          "text-faint",
           "text-muted"
         ]
       },

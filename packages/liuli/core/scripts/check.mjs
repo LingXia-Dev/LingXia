@@ -34,6 +34,7 @@ const engineGlobals = new Set(['Intl', 'globalThis', 'window', 'document', 'navi
 const physical = /^(?:[a-z-]+:)*-?(?:pl|pr|ml|mr|left|right|border-l|border-r|rounded-l|rounded-r|rounded-tl|rounded-tr|rounded-bl|rounded-br|text-left|text-right|scroll-ml|scroll-mr)(?:-|$)/;
 // Raw steps of the pack's ramps and raw timings; a recipe uses Liuli's names, so a pack moves every component together.
 const rawStep = /^(?:[a-z-]+:)*(?:text-(?:xs|sm|base|lg|xl|[2-9]xl)|rounded(?:-(?:s|e|t|b|ss|se|es|ee))?-(?:sm|md|lg|xl|[23]xl)|duration-\d+|ease-(?:in|out|in-out|linear))$/;
+const translucentInk = /^(?:[a-z-]+:)*text-[a-z][a-z0-9-]*\/\d+$/;
 // The names every icon set answers to; an icon asked for by another name would have nothing to draw.
 const iconNames = new Set(Object.keys(JSON.parse(readFileSync(resolve(dirname(fileURLToPath(import.meta.url)), '../icons/icons.json'), 'utf8')).icons));
 const iconProps = new Set(['startIcon', 'endIcon']);
@@ -136,6 +137,9 @@ for (const path of files) {
       if (/(^|:)dark:/.test(token.text) || token.text.startsWith('dark:')) report(token.node, 'class', `${token.text}: colours follow the theme; no dark: in Liuli`);
       if (role === 'recipe' && physical.test(token.text)) report(token.node, 'rtl', `${token.text} is a physical side; use the logical form (ps-, me-, start-, text-start)`);
       if (role === 'recipe' && rawStep.test(token.text)) report(token.node, 'token', `${token.text} is a raw step; use Liuli's name (text-body, rounded-control, duration-fast, ease-standard)`);
+      // An ink with alpha lays each path of an icon on its own, so its crossings draw darker; a disabled ink is an opaque role.
+      if (role === 'recipe' && translucentInk.test(token.text) && (/(^|:)disabled:/.test(token.text) || token.node.parent.name?.getText() === 'disabled'))
+        report(token.node, 'disabled-ink', `${token.text}: a disabled text colour has no alpha; use text-faint or text-muted`);
     }
     ts.forEachChild(node, visit);
   };

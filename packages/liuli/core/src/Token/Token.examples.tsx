@@ -70,7 +70,7 @@ export function Sizes() {
 }
 
 export function StateDisabled() {
-  return <Token label="Locked" removeLabel="Remove Locked" onRemove={unused} isDisabled />;
+  return <Token label="Locked" removeLabel="Remove Locked" onRemove={unused} isDisabled data-testid="locked" />;
 }
 
 /** The home tile. */
