@@ -55,6 +55,7 @@ http-body-util = { workspace = true }
 redb = { workspace = true }
 tar = "0.4.46"
 zstd = "0.14"
+ring = "0.17.14"
 filetime = "0.2"
 uuid = { version = "1.26", features = ["v4"] }
 image = { version = "0.25.10", default-features = false, features = ["png", "jpeg", "webp"] }
