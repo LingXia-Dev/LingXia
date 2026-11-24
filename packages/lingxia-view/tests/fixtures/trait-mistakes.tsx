@@ -13,4 +13,3 @@ export const closeAndSnap = <view popover onCloseRequest={() => false} dragSnapP
 export const unheard = <scroll snapIndex={0}/>;
 export const silent = <video aria-label="Clip"/>;
 export const twice = <video src="a.mp4" sources={[{ src: 'b.mp4', label: '720p' }]}/>;
-export const unpointed = <view pointerAxis="x"/>;

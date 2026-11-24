@@ -1,9 +1,13 @@
-import { cx, List, useLocal, useRequest, useStream, useChannel, useLeaveGuard, useView, type Channel, type ChannelEndpoint, type Stream, type Props, type ViewProps, type View, type Local } from '../../src/index.js';
+import { cx, List, useLocal, useRequest, useStream, useChannel, useLeaveGuard, useView, type Channel, type ChannelEndpoint, type Stream, type Props, type ViewProps, type VectorProps, type ButtonProps, type View, type Local } from '../../src/index.js';
 
 // A role is typed per element, so a component forwarding to a <view> takes ViewProps.
 function Card(props: ViewProps) { return <view {...props}/>; }
 // @ts-expect-error Props carries every role, and a <view> takes only its own.
 function Loose(props: Props) { return <view {...props}/>; }
+// A wrapper that fixes some props forwards the rest, whatever companion rules they carry.
+function Icon({ name, ...props }: Omit<VectorProps, 'paths'> & { name: string }) { return <vector {...props} paths={[{ d: name }]}/>; }
+function Shell({ className, ...props }: ViewProps) { return <view {...props} className={cx('p-2', className)}/>; }
+function Press({ className, ...props }: ButtonProps) { return <button {...props} className={cx('p-2', className)}/>; }
 export function render(view: View<{ save(value: string): Promise<void> }, { title: string; rows: { text: string }[]; pair: [string, number] }>) {
   const draft = useLocal('draft', '');
   const checked = useLocal('checked', false);
@@ -280,5 +284,5 @@ export function handlers({ actions }: View<LogicActions>) {
   const wrapped = <button onClick={() => actions.open({ path: 'a.pdf' })}/>;
   const stream = useStream('progress', actions.progress, { onData: step => { const fraction: number = step.fraction; } });
   const path: string | undefined = stream.result?.path;
-  return <view>{handed}{missing}{wrapped}</view>;
+  return <view>{handed}{missing}{wrapped}<Icon name="M0 0L1 1" onPointer={() => {}} pointerAxis="x"/><Shell popover="manual" closeAfter={10}/><Press drag="x" dragSnapPoints={[0, 40]}/></view>;
 }

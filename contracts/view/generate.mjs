@@ -438,6 +438,13 @@ export function documented(schema) {
   return { ...schema, elements };
 }
 
+/**
+ * Whether a trait's rule can be a type union. A union keyed on a handler cannot survive
+ * `Omit<…Props, K>` and a spread (TypeScript tells union members apart only by literal keys), so
+ * a wrapper forwarding the props would fail; that rule is left to the build.
+ */
+export const typedTrait = (element, entry) => !/=>/.test(element.props[entry.key].type);
+
 /** `(without the key: its props never) | (one member per form of the key)`. */
 function traitUnion(element, entry) {
   const own = prop => element.props[prop];
@@ -526,7 +533,7 @@ function authoring(source, api) {
     const role = narrowed ? `role?: ${type}Role; ` : '';
     const omitted = ['style', 'children', ...(narrowed ? ['role'] : []), ...runOnly];
     // A trait's key and props move out of the flat props into a union: without the key they are `never`.
-    const traits = Object.values(table.trait).filter(entry => entry.on.includes(name));
+    const traits = Object.values(table.trait).filter(entry => entry.on.includes(name) && typedTrait(element, entry));
     const groups = Object.values(table.exclusive).filter(entry => entry.on.includes(name));
     const traitProps = new Set([...traits.flatMap(entry => [entry.key, ...entry.props]), ...groups.flatMap(entry => [...entry.props, ...Object.values(entry.with ?? {}).flat()])]);
     const flat = Object.entries(element.props).filter(([prop]) => !traitProps.has(prop)).map(([prop, entry]) => member(prop, entry));

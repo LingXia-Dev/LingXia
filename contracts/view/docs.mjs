@@ -4,7 +4,7 @@
 import { readFile, readdir, writeFile, mkdir } from 'node:fs/promises';
 import { dirname, join, relative, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { readSchema, documented, elementStyle, rules, generate, contractsRoot, packageRoot, repositoryRoot, resolveDependency, loadDependency } from './generate.mjs';
+import { readSchema, documented, typedTrait, elementStyle, rules, generate, contractsRoot, packageRoot, repositoryRoot, resolveDependency, loadDependency } from './generate.mjs';
 
 const ts = (await loadDependency('typescript')).default;
 const { build } = await loadDependency('esbuild');
@@ -72,7 +72,7 @@ async function elements(schema) {
     if (run) facts.push(`${element.block ? 'As a run it' : 'It'} takes, of the props every element takes, only ${run.filter(prop => prop !== 'children').map(code).join(', ')}; the rest go on its \`<text>\` (\`UI_PROP\`). Its \`data-testid\` finds the run itself: its rect is the run's own words, so a tap lands on them.`);
     for (const trait of Object.values(rules(schema).trait).filter(entry => entry.on.includes(name))) {
       const refused = (trait.forms ?? []).flatMap(form => Object.keys(form.without ?? {}).map(prop => `${code(prop)} not with ${form.values.map(value => code(`${trait.key}=${JSON.stringify(value)}`)).join(' or ')}`));
-      facts.push(`${trait.props.filter(prop => element.props[prop]).map(code).join(', ')} need ${code(trait.key)}${refused.length ? `; ${refused.join('; ')}` : ''}: tsc and the build refuse them otherwise (\`UI_PROP\`).`);
+      facts.push(`${trait.props.filter(prop => element.props[prop]).map(code).join(', ')} need ${code(trait.key)}${refused.length ? `; ${refused.join('; ')}` : ''}: ${typedTrait(element, trait) ? 'tsc and the build refuse' : 'the build refuses'} them otherwise (\`UI_PROP\`).`);
     }
     for (const group of Object.values(rules(schema).exclusive).filter(entry => entry.on.includes(name)))
       facts.push(`At most one of ${group.props.map(prop => `${code(prop)}${group.with?.[prop] ? ` (and its ${group.with[prop].map(code).join(', ')})` : ''}`).join(' or ')} (\`UI_PROP\`).`);

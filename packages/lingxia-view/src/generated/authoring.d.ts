@@ -1080,6 +1080,8 @@ export type ViewProps = Omit<Props, "style" | "children" | "role"> & { role?: Vi
   /** On a direct child of `<page>`: extend under the safe-area insets to the screen edge, on every side or the named ones. */ bleed?: BleedEdge;
   /** Called for PageUp and PageDown on a `role="grid"`. */ onPage?: (direction: "previous" | "next") => void;
   /** Called for a long press or a secondary click, with where it happened. */ onContextMenu?: (event: ContextMenuEvent) => void;
+  /** Reports a single pointer over the element: down, move, up, enter, leave and cancel. */ onPointer?: (event: PointerEvent) => void;
+  /** The axis `onPointer` keeps; the other is left to the page's scroll. */ pointerAxis?: "x" | "y" | "both";
   /** Called with its laid-out size after each change, one render behind. */ onLayout?: (box: BoxSize) => void;
   /** A `useBox` handle this element fills with its laid-out size. */ box?: Box;
   /** The accessible name, spoken in place of its text. */ "aria-label"?: string;
@@ -1120,10 +1122,6 @@ export type ViewProps = Omit<Props, "style" | "children" | "role"> & { role?: Vi
   /** Called when a drag starts. */ onDragStart?: never; 
   /** Called when a drag is released, with the snap index it heads for and its velocity. */ onDragEnd?: never; 
   /** Ids of buttons (space-separated) a screen reader offers as this element's actions, as for a swipe row. */ "aria-actions"?: never; }) & ({ 
-  /** Reports a single pointer over the element: down, move, up, enter, leave and cancel. */ onPointer: (event: PointerEvent) => void; 
-  /** The axis `onPointer` keeps; the other is left to the page's scroll. */ pointerAxis?: "x" | "y" | "both"; } | { 
-  /** Reports a single pointer over the element: down, move, up, enter, leave and cancel. */ onPointer?: undefined; 
-  /** The axis `onPointer` keeps; the other is left to the page's scroll. */ pointerAxis?: never; }) & ({ 
   /** The index of the snap point it rests on, with `onSnapChange`; not with `bind`. */ snapIndex: number; 
   /** Called with the snap point index it came to rest at after a drag or swipe. */ onSnapChange: (index: number) => void; 
   /** A number `useLocal` cell holding the index of the snap point it rests on. */ bind?: never; } | { 
@@ -1155,6 +1153,8 @@ export type ButtonStyle = StyleGroup.Box & StyleGroup.Padding & StyleGroup.Flex 
 export type ButtonRole = "heading" | "list" | "listitem" | "alert" | "status" | "grid" | "gridcell" | "listbox" | "option" | "menu" | "menuitem" | "progressbar" | "group" | "tooltip" | "tab" | "radio" | "treeitem" | "menuitemcheckbox" | "menuitemradio" | "combobox";
 export type ButtonProps = Omit<Props, "style" | "children" | "role"> & { role?: ButtonRole; style?: ButtonStyle; children?: Child;
   /** Called for a long press or a secondary click, with where it happened. */ onContextMenu?: (event: ContextMenuEvent) => void;
+  /** Reports a single pointer over the element: down, move, up, enter, leave and cancel. */ onPointer?: (event: PointerEvent) => void;
+  /** The axis `onPointer` keeps; the other is left to the page's scroll. */ pointerAxis?: "x" | "y" | "both";
   /** Called when it is pressed: a tap, a click, Enter or Space, or a screen reader's activation. */ onClick?: () => void;
   /** Refuses input and shows the disabled style; it stays in accessibility, marked unavailable. */ disabled?: boolean;
   /** The accessible name, spoken in place of its text. */ "aria-label"?: string;
@@ -1180,10 +1180,6 @@ export type ButtonProps = Omit<Props, "style" | "children" | "role"> & { role?: 
   /** Called when a drag starts. */ onDragStart?: never; 
   /** Called when a drag is released, with the snap index it heads for and its velocity. */ onDragEnd?: never; 
   /** Ids of buttons (space-separated) a screen reader offers as this element's actions, as for a swipe row. */ "aria-actions"?: never; }) & ({ 
-  /** Reports a single pointer over the element: down, move, up, enter, leave and cancel. */ onPointer: (event: PointerEvent) => void; 
-  /** The axis `onPointer` keeps; the other is left to the page's scroll. */ pointerAxis?: "x" | "y" | "both"; } | { 
-  /** Reports a single pointer over the element: down, move, up, enter, leave and cancel. */ onPointer?: undefined; 
-  /** The axis `onPointer` keeps; the other is left to the page's scroll. */ pointerAxis?: never; }) & ({ 
   /** The index of the snap point it rests on, with `onSnapChange`; not with `bind`. */ snapIndex: number; 
   /** Called with the snap point index it came to rest at after a drag or swipe. */ onSnapChange: (index: number) => void; 
   /** A number `useLocal` cell holding the index of the snap point it rests on. */ bind?: never; } | { 
@@ -1387,16 +1383,14 @@ export type VectorStyle = StyleGroup.Box & StyleGroup.Padding & StyleGroup.Accen
 export type VectorRole = "heading" | "list" | "listitem" | "alert" | "status" | "grid" | "gridcell" | "listbox" | "option" | "menu" | "progressbar" | "group" | "tooltip";
 export type VectorProps = Omit<Props, "style" | "children" | "role"> & { role?: VectorRole; style?: VectorStyle; children?: never;
   /** On a direct child of `<page>`: extend under the safe-area insets to the screen edge, on every side or the named ones. */ bleed?: BleedEdge;
+  /** Reports a single pointer over the element: down, move, up, enter, leave and cancel. */ onPointer?: (event: PointerEvent) => void;
+  /** The axis `onPointer` keeps; the other is left to the page's scroll. */ pointerAxis?: "x" | "y" | "both";
   /** Called with its laid-out size after each change, one render behind. */ onLayout?: (box: BoxSize) => void;
   /** A `useBox` handle this element fills with its laid-out size. */ box?: Box;
   /** The shapes to draw: SVG path data with a fill and a stroke each. */ paths: ReadonlyArray<VectorPath>;
   /** Up to 8 named gradients the paths use as `fill: 'url(#id)'`. */ gradients?: Readonly<Record<string, VectorGradient>>;
   /** The drawing's coordinate box, `[x, y, width, height]`, scaled to fit the element. */ viewBox?: readonly [number, number, number, number];
-} & ({ 
-  /** Reports a single pointer over the element: down, move, up, enter, leave and cancel. */ onPointer: (event: PointerEvent) => void; 
-  /** The axis `onPointer` keeps; the other is left to the page's scroll. */ pointerAxis?: "x" | "y" | "both"; } | { 
-  /** Reports a single pointer over the element: down, move, up, enter, leave and cancel. */ onPointer?: undefined; 
-  /** The axis `onPointer` keeps; the other is left to the page's scroll. */ pointerAxis?: never; });
+};
 export type SpanStyle = StyleGroup.Run;
 export type SpanProps = Omit<Props, "style" | "children" | "id" | "role" | "headingLevel" | "aria-valuenow" | "aria-valuemin" | "aria-valuemax" | "aria-valuetext" | "aria-activedescendant" | "aria-controls" | "aria-autocomplete" | "aria-modal" | "aria-live" | "aria-pressed" | "aria-selected" | "aria-expanded" | "aria-busy" | "aria-invalid" | "aria-required" | "aria-checked" | "aria-level" | "aria-describedby"> & { style?: SpanStyle; children?: RunChild;
 };
