@@ -2,21 +2,23 @@
   "name": "@lingxia/browser-shell-webui",
   "version": "0.30.0",
   "private": true,
-  "description": "Prebuilt LingXia browser shell webui lxapp bundle",
+  "description": "LingXia browser system pages (GPU View + Rust Logic)",
   "type": "module",
-  "repository": {
-    "type": "git",
-    "url": "https://github.com/LingXia-Dev/LingXia.git",
-    "directory": "crates/lingxia-browser-shell/webui"
-  },
   "files": [
     "dist",
     "lxapp.json"
   ],
   "scripts": {
-    "test": "node --test tests/i18n.test.mjs tests/theme.test.mjs",
     "build": "cargo run -p lingxia-cli -- build --release",
-    "prepublishOnly": "npm run build"
+    "typecheck": "cargo run -p lingxia-cli -- check"
+  },
+  "dependencies": {
+    "@lingxia/view": "file:../../../packages/lingxia-view"
+  },
+  "devDependencies": {
+    "@lingxia/logic": "file:../../../packages/lingxia-logic",
+    "@lingxia/types": "file:../../../packages/lingxia-types",
+    "typescript": "^5.7.2"
   },
   "license": "MIT"
 }

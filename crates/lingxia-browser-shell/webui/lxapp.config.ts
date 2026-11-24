@@ -1,4 +1,4 @@
 export default {
-  staticDirs: ["public"],
-  assetDir: "assets",
+  staticDirs: ['public'],
+  assetDir: 'assets',
 };

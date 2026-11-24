@@ -1,0 +1,246 @@
+{
+  "common.search": {
+    "defaultMessage": "Search...",
+    "description": "Browser system UI string for common.search"
+  },
+  "common.delete": {
+    "defaultMessage": "Delete",
+    "description": "Browser system UI string for common.delete"
+  },
+  "common.open": {
+    "defaultMessage": "Open",
+    "description": "Browser system UI string for common.open"
+  },
+  "common.cancel": {
+    "defaultMessage": "Cancel",
+    "description": "Browser system UI string for common.cancel"
+  },
+  "common.save": {
+    "defaultMessage": "Save",
+    "description": "Browser system UI string for common.save"
+  },
+  "common.loading": {
+    "defaultMessage": "Loading...",
+    "description": "Browser system UI string for common.loading"
+  },
+  "common.empty": {
+    "defaultMessage": "Nothing here yet.",
+    "description": "Browser system UI string for common.empty"
+  },
+  "nav.newtab": {
+    "defaultMessage": "New Tab",
+    "description": "Browser system UI string for nav.newtab"
+  },
+  "nav.bookmarks": {
+    "defaultMessage": "Bookmarks",
+    "description": "Browser system UI string for nav.bookmarks"
+  },
+  "nav.history": {
+    "defaultMessage": "History",
+    "description": "Browser system UI string for nav.history"
+  },
+  "nav.downloads": {
+    "defaultMessage": "Downloads",
+    "description": "Browser system UI string for nav.downloads"
+  },
+  "nav.settings": {
+    "defaultMessage": "Settings",
+    "description": "Browser system UI string for nav.settings"
+  },
+  "newtab.title": {
+    "defaultMessage": "LingXia",
+    "description": "Browser system UI string for newtab.title"
+  },
+  "newtab.placeholder": {
+    "defaultMessage": "Enter URL or search...",
+    "description": "Browser system UI string for newtab.placeholder"
+  },
+  "newtab.go": {
+    "defaultMessage": "Go",
+    "description": "Browser system UI string for newtab.go"
+  },
+  "newtab.shortcuts": {
+    "defaultMessage": "Bookmarks",
+    "description": "Browser system UI string for newtab.shortcuts"
+  },
+  "newtab.recentlyClosed": {
+    "defaultMessage": "Recently Closed",
+    "description": "Browser system UI string for newtab.recentlyClosed"
+  },
+  "bookmarks.title": {
+    "defaultMessage": "Bookmarks",
+    "description": "Browser system UI string for bookmarks.title"
+  },
+  "bookmarks.all": {
+    "defaultMessage": "All Bookmarks",
+    "description": "Browser system UI string for bookmarks.all"
+  },
+  "bookmarks.ungrouped": {
+    "defaultMessage": "Ungrouped",
+    "description": "Browser system UI string for bookmarks.ungrouped"
+  },
+  "bookmarks.addTitle": {
+    "defaultMessage": "Title",
+    "description": "Browser system UI string for bookmarks.addTitle"
+  },
+  "bookmarks.addUrl": {
+    "defaultMessage": "https://example.com",
+    "description": "Browser system UI string for bookmarks.addUrl"
+  },
+  "bookmarks.add": {
+    "defaultMessage": "Add Bookmark",
+    "description": "Browser system UI string for bookmarks.add"
+  },
+  "bookmarks.newGroup": {
+    "defaultMessage": "New Group",
+    "description": "Browser system UI string for bookmarks.newGroup"
+  },
+  "bookmarks.pin": {
+    "defaultMessage": "Pin",
+    "description": "Browser system UI string for bookmarks.pin"
+  },
+  "bookmarks.unpin": {
+    "defaultMessage": "Unpin",
+    "description": "Browser system UI string for bookmarks.unpin"
+  },
+  "bookmarks.import": {
+    "defaultMessage": "Import HTML",
+    "description": "Browser system UI string for bookmarks.import"
+  },
+  "bookmarks.export": {
+    "defaultMessage": "Export HTML",
+    "description": "Browser system UI string for bookmarks.export"
+  },
+  "history.title": {
+    "defaultMessage": "History",
+    "description": "Browser system UI string for history.title"
+  },
+  "history.clearAll": {
+    "defaultMessage": "Clear All",
+    "description": "Browser system UI string for history.clearAll"
+  },
+  "history.clearDay": {
+    "defaultMessage": "Clear 24h",
+    "description": "Browser system UI string for history.clearDay"
+  },
+  "downloads.title": {
+    "defaultMessage": "Downloads",
+    "description": "Browser system UI string for downloads.title"
+  },
+  "downloads.all": {
+    "defaultMessage": "All",
+    "description": "Browser system UI string for downloads.all"
+  },
+  "downloads.active": {
+    "defaultMessage": "Active",
+    "description": "Browser system UI string for downloads.active"
+  },
+  "downloads.completed": {
+    "defaultMessage": "Completed",
+    "description": "Browser system UI string for downloads.completed"
+  },
+  "downloads.clearCompleted": {
+    "defaultMessage": "Clear Completed",
+    "description": "Browser system UI string for downloads.clearCompleted"
+  },
+  "downloads.pause": {
+    "defaultMessage": "Pause",
+    "description": "Browser system UI string for downloads.pause"
+  },
+  "downloads.resume": {
+    "defaultMessage": "Resume",
+    "description": "Browser system UI string for downloads.resume"
+  },
+  "downloads.retry": {
+    "defaultMessage": "Retry",
+    "description": "Browser system UI string for downloads.retry"
+  },
+  "downloads.reveal": {
+    "defaultMessage": "Show in Folder",
+    "description": "Browser system UI string for downloads.reveal"
+  },
+  "settings.title": {
+    "defaultMessage": "Settings",
+    "description": "Browser system UI string for settings.title"
+  },
+  "settings.appearance": {
+    "defaultMessage": "Appearance",
+    "description": "Browser system UI string for settings.appearance"
+  },
+  "settings.appearance.auto": {
+    "defaultMessage": "System",
+    "description": "Browser system UI string for settings.appearance.auto"
+  },
+  "settings.appearance.light": {
+    "defaultMessage": "Light",
+    "description": "Browser system UI string for settings.appearance.light"
+  },
+  "settings.appearance.dark": {
+    "defaultMessage": "Dark",
+    "description": "Browser system UI string for settings.appearance.dark"
+  },
+  "settings.language": {
+    "defaultMessage": "Display Language",
+    "description": "Browser system UI string for settings.language"
+  },
+  "settings.language.auto": {
+    "defaultMessage": "System Default",
+    "description": "Browser system UI string for settings.language.auto"
+  },
+  "settings.downloads": {
+    "defaultMessage": "Downloads",
+    "description": "Browser system UI string for settings.downloads"
+  },
+  "settings.downloads.dir": {
+    "defaultMessage": "Download Directory",
+    "description": "Browser system UI string for settings.downloads.dir"
+  },
+  "settings.downloads.choose": {
+    "defaultMessage": "Choose...",
+    "description": "Browser system UI string for settings.downloads.choose"
+  },
+  "settings.downloads.reset": {
+    "defaultMessage": "Reset Default",
+    "description": "Browser system UI string for settings.downloads.reset"
+  },
+  "settings.privacy": {
+    "defaultMessage": "Privacy & Data",
+    "description": "Browser system UI string for settings.privacy"
+  },
+  "settings.privacy.clearCache": {
+    "defaultMessage": "Clear Cache",
+    "description": "Browser system UI string for settings.privacy.clearCache"
+  },
+  "settings.privacy.clearSiteData": {
+    "defaultMessage": "Clear All Site Data",
+    "description": "Browser system UI string for settings.privacy.clearSiteData"
+  },
+  "settings.privacy.clearCurrentSite": {
+    "defaultMessage": "Clear Site Data for Current Site",
+    "description": "Browser system UI string for settings.privacy.clearCurrentSite"
+  },
+  "settings.privacy.viewHistory": {
+    "defaultMessage": "View History",
+    "description": "Browser system UI string for settings.privacy.viewHistory"
+  },
+  "settings.proxy": {
+    "defaultMessage": "Proxy",
+    "description": "Browser system UI string for settings.proxy"
+  },
+  "settings.proxy.mode": {
+    "defaultMessage": "Mode",
+    "description": "Browser system UI string for settings.proxy.mode"
+  },
+  "settings.proxy.apply": {
+    "defaultMessage": "Apply Proxy Settings",
+    "description": "Browser system UI string for settings.proxy.apply"
+  },
+  "settings.proxy.refreshRules": {
+    "defaultMessage": "Refresh Rules",
+    "description": "Browser system UI string for settings.proxy.refreshRules"
+  },
+  "settings.about": {
+    "defaultMessage": "About",
+    "description": "Browser system UI string for settings.about"
+  }
+}
