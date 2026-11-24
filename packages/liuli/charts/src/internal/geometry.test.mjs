@@ -4,7 +4,7 @@ import { readFileSync } from 'node:fs';
 import { transform } from 'esbuild';
 
 const { code } = await transform(readFileSync(new URL('./geometry.ts', import.meta.url), 'utf8'), { loader: 'ts', format: 'esm' });
-const { niceTicks, domain, placeReferences } = await import(`data:text/javascript;base64,${Buffer.from(code).toString('base64')}`);
+const { niceTicks, domain, placeReferences, knockOuts } = await import(`data:text/javascript;base64,${Buffer.from(code).toString('base64')}`);
 
 // What a layout accepts as a flex number: whole, finite, never negative, and small.
 const layoutNumber = value => Number.isInteger(value) && value >= 0 && value <= 16384;
@@ -94,4 +94,17 @@ test('placeReferences: blocked on both sides at the end edge, the name slides al
   // Figures above and below, under the name's width but clear of the value's: too far in to slide the name past in a narrow plot.
   const taken = [{ start: 110, end: 130, top: 70, bottom: 98 }, { start: 110, end: 130, top: 101, bottom: 130 }];
   assert.deepEqual(placeReferences([100], { width: 220, height: 200 }, label, taken, 2), [{ side: 'above', inset: 0, isShort: true }]);
+});
+
+test('knockOuts: a line breaks only at the labels its stroke touches, 2 pt wider on each side, overlapping gaps as one', () => {
+  const labels = [
+    { start: 60, end: 80, top: 40, bottom: 56 },
+    { start: 10, end: 31, top: 40, bottom: 56 },
+    { start: 30, end: 50, top: 50, bottom: 66 },
+    { start: 100, end: 120, top: 70, bottom: 86 },
+  ];
+  assert.deepEqual(knockOuts(52, labels, 2), [[8, 52], [58, 82]], 'in start order; the two near the start joined');
+  assert.deepEqual(knockOuts(39.6, labels, 2), [[8, 33], [58, 82]], 'a hairline half a point above a box still touches it');
+  assert.deepEqual(knockOuts(39.4, labels, 2), []);
+  assert.deepEqual(knockOuts(90, labels, 2), []);
 });

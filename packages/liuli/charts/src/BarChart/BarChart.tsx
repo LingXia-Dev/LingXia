@@ -2,7 +2,7 @@ import { cx, useBox, type PointerEvent, type VectorPath } from '@lingxia/view';
 import { Chart, ChartLegend, ChartReadout, type ChartLegendPosition, type ChartField, type ChartRecord, type ChartReference, type ChartRow, type ChartSeries, type ChartSize, type ChartSummarize } from '../Chart/Chart';
 import { colorOf, keyOf, numberOf, plain, roleOf, seriesFacts, seriesOf, textOf, type ChartColor } from '../internal/data';
 import { leftPressed, pressed, pressedIndex, pressedKey, scrubbing } from '../internal/gesture';
-import { box, indexAt, roundUp } from '../internal/geometry';
+import { box, indexAt, knockOuts, roundUp } from '../internal/geometry';
 import { ReferenceLabels, ReferenceReading, referencePath, useReferences } from '../internal/References';
 import { Ticks } from '../internal/Ticks';
 import { laidOutOnce, remember } from '../internal/memo';
@@ -90,6 +90,8 @@ const maxValued = 8;
 // The least space between two figures, and the figures' line before one is measured.
 const figureGap = 4;
 const figureLine = 20;
+// A line's gap is this much wider than the figure on each side.
+const knockOutPad = 2;
 // The part of a category's width its bars' outlines take, and the gap between two bars of a group,
 // as parts of the slot. The stroke that rounds a bar adds its width on each side.
 const share = { solo: 0.5, group: 0.62, gap: 0.1 };
@@ -149,6 +151,7 @@ export function BarChart<Row extends ChartRecord<Row>>({
   const values = data.flatMap(row => shown.map(series => numberOf(row, series.field))).filter(Number.isFinite);
   const plot = useBox('plot');
   const widest = useBox('figure');
+  const figureBoxes = data.map((_, index) => useBox(`figure-${index}`));
   // The smallest plot holds nothing but the marks.
   const isNone = valueLabels === 'none' || (valueLabels === 'auto' && size === 'xs');
   const isFigured = !isNone && (valueLabels === 'always' || (data.length <= maxValued && shown.length === 1));
@@ -218,7 +221,7 @@ export function BarChart<Row extends ChartRecord<Row>>({
     const down = high + depth > 0 ? ((high - end) / (high + depth)) * 100 : 0;
     const figure = scale === 'each' && shown.length === 1 && Number.isFinite(value) && [
       <view key="mover" className={cx(r.mover.base, r.motion.base)} style={{ translate: [0, `${down}%`] }}>
-        <view aria-hidden className={r.valueSlot.base} style={{ height: lane }}><text className={r.value.base}>{formatValue(value)}</text></view>
+        <view aria-hidden className={r.valueSlot.base} style={{ height: lane }}><text box={figureBoxes[index]} className={r.value.base}>{formatValue(value)}</text></view>
       </view>,
       <view key="lane" className={r.lane.base} style={{ height: lane }} />,
     ];
@@ -259,7 +262,18 @@ export function BarChart<Row extends ChartRecord<Row>>({
     return [{ start: middle - figureWidth / 2, end: middle + figureWidth / 2, top, bottom }];
   }) : [];
   const refs = useReferences(references, formatValue, down, plotSize, figures);
-  const referenceLines = references.map((each, index) => referencePath(index, Math.round(fall(each.value) * box * 100) / 100, 0, box));
+  // Each figure's own text box, where a reference line breaks so it never crosses digits.
+  const figureTexts = figures.length > 0 && plotSize ? data.flatMap((each, index) => {
+    const value = numberOf(each, shown[0].field);
+    const size = figureBoxes[index].value;
+    if (!Number.isFinite(value) || !size) return [];
+    const [middle, y] = [(index + 0.5) * (plotSize.width / data.length), down(grown ? value : 0)];
+    const top = (value < 0 ? y + corner : y - corner - lane) + (lane - size.height) / 2;
+    return [{ start: middle - size.width / 2, end: middle + size.width / 2, top, bottom: top + size.height }];
+  }) : [];
+  const toBox = (at: number) => (at / (plotSize?.width || 1)) * box;
+  const referenceLines = references.map((each, index) => referencePath(index, Math.round(fall(each.value) * box * 100) / 100, 0, box,
+    knockOuts(down(each.value), figureTexts, knockOutPad).map(([start, end]) => [toBox(start), toBox(end)] as const)));
 
   const row = (which: 'all' | 'ends', className: string) => (which === 'all' ? (
     <view className={cx(className, r.labels.all)}>
@@ -318,12 +332,12 @@ export function BarChart<Row extends ChartRecord<Row>>({
       {scale === 'ends' && <text aria-hidden className={r.scale.base}>{formatValue(high)}</text>}
       <view box={plot} className={cx(r.plot.base, scale === 'ends' && r.plot.ruled, scale === 'ends' && isSigned && r.plot.floored)}>
         {isFigured && <text aria-hidden box={widest} className={cx(r.value.base, r.value.ghost)}>{longest}</text>}
-        {/* The marks: one drawing, a second, fainter one for bars that stepped back, and the zero line, moved on the bars' timing. */}
+        {/* Under everything the reference lines, then the marks: one drawing, a second, fainter one for bars that stepped back, and the zero line, moved on the bars' timing. */}
         <view aria-hidden className={r.marks.base} style={markBox}>
+          {referenceLines.length > 0 && <vector paths={referenceLines} viewBox={[0, 0, box, box]} className={cx(r.drawing.base, r.motion.base)} />}
           {drawing(paths.full, false)}
           {drawing(paths.dimmed, true)}
           <view className={cx(r.zero.base, r.motion.base)} style={{ translate: [0, `${zero}%`] }}><view className={r.baseline.base} /></view>
-          {referenceLines.length > 0 && <vector paths={referenceLines} viewBox={[0, 0, box, box]} className={cx(r.drawing.base, r.motion.base)} />}
           <ReferenceLabels texts={refs.texts} places={refs.places} shares={references.map(each => fall(each.value) * 100)} />
         </view>
         {refs.ghost}

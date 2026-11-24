@@ -420,10 +420,20 @@ const sideOf = label => (label.props.insetBottom === 0 ? 'above' : 'below');
 test('Target: dashed lines on the bars\' timing, the range widened to hold them, labels at the end clear of the last bars\' figures', async () => {
   const screen = measured(laidOut(await renderExample('BarChart/BarChart', 'Target')));
   const chart = screen.getByTestId('target');
-  const vector = find(chart, node => node.tag === 'vector' && /reference-/.test(node.props.vectorSource))[0];
+  const vectors = find(chart, node => node.tag === 'vector');
+  const vector = vectors.find(node => /reference-/.test(node.props.vectorSource));
+  assert.equal(vectors.indexOf(vector), 0, 'the lines lie under the bars and their figures');
   const paths = JSON.parse(vector.props.vectorSource).paths;
-  assert.deepEqual(paths.map(path => path.d), ['M0 14.44H100', 'M0 29.41H100'], '160 and 132 on a scale to 187');
-  assert.equal(vector.props.transition, find(chart, node => node.tag === 'vector')[0].props.transition, 'the lines move with the bars');
+  // 160 and 132 on a scale to 187. On a 320 by 160 plot the Target line passes through Mon's figure (132) and
+  // Tue's (148), the Average line through Wed's (121): each breaks for that figure's text box, 2 pt wider each side.
+  assert.deepEqual(paths.map(path => path.d), ['M0 14.44H3.24M11.05 14.44H17.52M25.33 14.44H100', 'M0 29.41H31.81M39.62 29.41H100']);
+  const gaps = paths.flatMap(path => [...path.d.matchAll(/H([\d.]+)M([\d.]+)/g)].map(([, start, end]) => [Number(start) * 3.2, Number(end) * 3.2]));
+  // Mon, Tue and Wed, each figure three characters, measured at 7 pt a character.
+  gaps.forEach(([start, end], index) => {
+    const middle = (index + 0.5) * (320 / 7);
+    assert.ok(Math.abs(end - start - (3 * 7 + 4)) < 0.05 && Math.abs((start + end) / 2 - middle) < 0.05, `gap ${index}: ${start}..${end}`);
+  });
+  assert.equal(vector.props.transition, vectors[1].props.transition, 'the lines move with the bars');
   const labels = referenceLabels(screen);
   assert.deepEqual(labels.map(textOf), ['Target 160', 'Average 132']);
   const timing = node => { const { durationMs, easing } = JSON.parse(node.props.transition); return JSON.stringify([durationMs, easing]); };
@@ -450,4 +460,39 @@ test('references 2% apart on signed bars: the second below its line; right to le
     assert.deepEqual(labels.map(label => [textOf(label), sideOf(label)]), [['Plan 0', 'above'], ['Last year -2.6', 'below']], direction);
     assert.ok(labels.every(label => label.props.insetInlineEnd === 0 && label.props.insetInlineStart === undefined));
   }
+});
+
+test('a reference line below zero breaks for the figure under a bar below zero', async () => {
+  const screen = measured(laidOut(await renderPage(page(`references={[{ value: -57, label: 'Floor' }]}`, `[{ k: 'a', v: -50 }, { k: 'b', v: 50 }]`))));
+  const vectors = find(screen.getByTestId('chart'), node => node.tag === 'vector');
+  const [line] = JSON.parse(vectors[0].props.vectorSource).paths;
+  assert.equal(line.key, 'reference-0');
+  const [[start, end]] = [...line.d.matchAll(/H([\d.]+)M([\d.]+)/g)].map(([, from, to]) => [Number(from) * 3.2, Number(to) * 3.2]);
+  assert.ok(Math.abs(end - start - (3 * 7 + 4)) < 0.05 && Math.abs((start + end) / 2 - 80) < 0.05, `"-50" is 21 pt wide at a's middle: ${start}..${end}`);
+});
+
+test('new signed rows: the bars\' outline keeps its commands, so each bar moves from its old value to its new one through zero, on a declared transition', async () => {
+  const page = linked => `import { BarChart } from ${JSON.stringify(`${linked}/src/BarChart/BarChart`)};
+import { useLocal } from '@lingxia/view';
+const data = [[{ m: 'Jan', v: 12 }, { m: 'Feb', v: -5 }, { m: 'Mar', v: 8 }], [{ m: 'Jan', v: -8 }, { m: 'Feb', v: 9 }, { m: 'Mar', v: -14 }]];
+export function render() {
+  const step = useLocal('step', 0);
+  return <page><button data-testid="next" onClick={() => step.set(1)}><text>Next</text></button><BarChart label="Net" rows={data[step.value]} x="m" y="v" data-testid="net" /></page>;
+}
+`;
+  const screen = laidOut(await renderPage(page));
+  const vector = () => drawings(screen.getByTestId('net'))[0];
+  const node = () => find(screen.getByTestId('net'), each => each.tag === 'vector' && each.props.opacity !== undefined)[0];
+  const commands = d => d.replace(/[\d.-]+/g, '').replace(/\s+/g, '');
+  const before = vector().paths[0].d;
+  screen.press(screen.getByTestId('next'));
+  const after = vector().paths[0].d;
+  assert.notEqual(after, before);
+  assert.equal(commands(after), commands(before), 'same commands, so the outline interpolates bar by bar');
+  const ends = d => bars(d).map(([, end]) => end);
+  const [zeroBefore, zeroAfter] = [feet(before)[0], feet(after)[0]];
+  assert.deepEqual(ends(before).map(end => Math.sign(zeroBefore - end)), [1, -1, 1]);
+  assert.deepEqual(ends(after).map(end => Math.sign(zeroAfter - end)), [-1, 1, -1], 'each bar now on the other side of zero');
+  const { properties, durationMs } = JSON.parse(node().props.transition);
+  assert.ok(properties.includes('d') && durationMs !== 0, node().props.transition);
 });

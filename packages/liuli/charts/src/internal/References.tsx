@@ -65,7 +65,20 @@ export function ReferenceReading({ texts }: { texts: readonly ReferenceTexts[] }
   return <view className={r.referenceReading.base}>{texts.map((text, index) => <text key={`reference-${index}`}>{text.spoken}</text>)}</view>;
 }
 
-/** A dashed hairline across the drawing at height `y`, from `from` to `to` in its units. */
-export const referencePath = (index: number, y: number, from: number, to: number): VectorPath => ({
-  key: `reference-${index}`, d: `M${from} ${y}H${to}`, stroke: 'text-muted', strokeWidth: 1, strokeDasharray: [4, 3], fill: 'none', vectorEffect: 'non-scaling-stroke',
+/** A dashed hairline across the drawing at height `y`, from `from` to `to` in its units, broken at each of `gaps`. */
+export const referencePath = (index: number, y: number, from: number, to: number, gaps: ReadonlyArray<readonly [number, number]> = []): VectorPath => ({
+  key: `reference-${index}`, d: segments(y, from, to, gaps), stroke: 'text-muted', strokeWidth: 1, strokeDasharray: [4, 3], fill: 'none', vectorEffect: 'non-scaling-stroke',
 });
+
+const round = (value: number) => Math.round(value * 100) / 100;
+const segments = (y: number, from: number, to: number, gaps: ReadonlyArray<readonly [number, number]>) => {
+  let d = `M${from} ${y}`;
+  let at = from;
+  for (const [start, end] of gaps) {
+    if (end <= at || start >= to) continue;
+    if (start > at) d += `H${round(start)}`;
+    at = Math.min(to, end);
+    d += `M${round(at)} ${y}`;
+  }
+  return at < to ? `${d}H${to}` : d.slice(0, d.lastIndexOf('M'));
+};

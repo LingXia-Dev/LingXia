@@ -249,6 +249,22 @@ export function niceTicks([low, high]: readonly [number, number], target: number
 export interface Extent { start: number; end: number; top: number; bottom: number }
 
 /**
+ * Where a line at height `y` passes behind labels: each crossed label's span, `pad` wider on both sides,
+ * overlapping spans merged, in order. A label is crossed when the line's 1 pt stroke touches its box.
+ */
+export function knockOuts(y: number, labels: readonly Extent[], pad: number): Array<[number, number]> {
+  const spans = labels.filter(label => label.top - 0.5 < y && y < label.bottom + 0.5)
+    .map((label): [number, number] => [label.start - pad, label.end + pad]).sort((a, b) => a[0] - b[0]);
+  const merged: Array<[number, number]> = [];
+  for (const span of spans) {
+    const last = merged[merged.length - 1];
+    if (last && span[0] <= last[1]) last[1] = Math.max(last[1], span[1]);
+    else merged.push([...span]);
+  }
+  return merged;
+}
+
+/**
  * Where a reference's label sits: above or below its line, `inset` points in from the end edge, with its
  * name or its value alone.
  */
