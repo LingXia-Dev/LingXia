@@ -1,6 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { renderExample, renderPage } from '../testing/harness.mjs';
+import { appearances, format, palette, ratio } from '../../scripts/contrast.mjs';
 
 const texts = (screen, root) => screen.queryAll(node => node.tag === 'text' && node.props.accessibilityLabel !== undefined);
 
@@ -127,4 +128,20 @@ test('People: a photo keeps the box its exact size; only initials grow it', asyn
   const screen = await renderExample('Avatar/Avatar', 'People');
   const ana = screen.getByTestId('ana');
   assert.deepEqual([ana.props.width, ana.props.height, ana.props.minWidth], [40, 40, undefined]);
+});
+
+test('Initials: the fill is a translucent neutral, a step off base, sunken, raised and canvas in light and dark, with no border; the initials read on it', async () => {
+  const screen = await renderExample('Avatar/Avatar', 'People');
+  const initials = screen.queryAll(node => node.props.role === 'img')[0];
+  const fill = initials.parent.props.background;
+  assert.deepEqual([fill, initials.props.color, initials.parent.props.borderWidth ?? 0], ['text/14', 'text', 0]);
+  const { roles } = await palette();
+  for (const appearance of appearances)
+    for (const surface of ['surface', 'surface-sunken', 'surface-raised', 'canvas']) {
+      const edge = ratio(roles[appearance], { pair: [fill, surface] }).value;
+      const ink = ratio(roles[appearance], { pair: [initials.props.color, fill], over: surface }).value;
+      // The reference's neutral sits about 1.2:1 off its surface in light, 1.7:1 in dark.
+      assert.ok(edge >= 1.3, `${appearance} ${surface}: fill ${format(edge)}`);
+      assert.ok(ink >= 4.5, `${appearance} ${surface}: initials ${format(ink)}`);
+    }
 });

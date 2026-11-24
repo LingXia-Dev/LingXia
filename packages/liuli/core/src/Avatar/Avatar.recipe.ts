@@ -11,10 +11,11 @@ export const avatarParts = {
   badge: 'view',
 } as const;
 
-/** A circle: the photo when it loads, else initials on the accent's soft step. */
+/** A circle: the photo when it loads, else initials on a translucent neutral fill. */
 export const avatarRecipe = {
   root: {
-    base: 'relative shrink-0 items-center-safe justify-center-safe bg-accent-soft',
+    /** Translucent, so the fill is a step off whatever surface it sits on, with no border. */
+    base: 'relative shrink-0 items-center-safe justify-center-safe bg-text/14',
     /** A rounded square's corner grows with its size, a quarter of it: the four smallest radius steps, by the names Liuli gives them. */
     shape: {
       circle: { xs: 'rounded-full', sm: 'rounded-full', md: 'rounded-full', lg: 'rounded-full' },
@@ -35,9 +36,7 @@ export const avatarRecipe = {
     base: 'absolute inset-0 size-full object-cover',
   },
   initials: {
-    base: 'font-semibold text-on-accent-soft',
-    /** On a hue's fill the initials take the text role, which every hue fill is proven against. */
-    hue: 'text-text',
+    base: 'font-semibold text-text',
     size: { xs: 'text-caption', sm: 'text-caption', md: 'text-footnote', lg: 'text-callout' } satisfies Record<AvatarSize, string>,
   },
   /** A dot on the circle's bottom end edge, cut out of the avatar by an edge in the surface's colour. */

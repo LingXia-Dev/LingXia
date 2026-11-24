@@ -13,7 +13,7 @@ export const doc: ComponentDoc = {
   propsType: 'AvatarProps',
   recipe: { map: 'avatarRecipe', parts: 'avatarParts' },
   anatomy: [
-    { part: 'root', required: true, description: 'The circle, on the accent\'s soft step.' },
+    { part: 'root', required: true, description: 'The circle, on a translucent neutral fill, or a hue\'s soft fill.' },
     { part: 'initials', required: true, description: 'Taken from `name`, or `initials`; under the picture, so a slow load never shows an empty circle.' },
     { part: 'image', required: false, description: 'The picture from `src`, named by `name`; dropped if it fails.' },
     { part: 'group', required: false, description: 'AvatarGroup: a named group, each one cut out of the next by a ring in the surface colour.' },
@@ -26,7 +26,7 @@ export const doc: ComponentDoc = {
     states: [],
     keyboard: [],
     contrast: [
-      { what: 'initials', pair: ['on-accent-soft', 'accent-soft'], minimum: '4.5:1' },
+      { what: 'initials', pair: ['text', 'text/14'], over: 'surface', minimum: '4.5:1' },
       { what: 'hue 1, initials on its fill', pair: ['text', 'hue-1-soft'], minimum: '4.5:1' },
       { what: 'hue 2, initials on its fill', pair: ['text', 'hue-2-soft'], minimum: '4.5:1' },
       { what: 'hue 3, initials on its fill', pair: ['text', 'hue-3-soft'], minimum: '4.5:1' },

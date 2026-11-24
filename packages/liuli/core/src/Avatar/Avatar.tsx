@@ -76,7 +76,7 @@ export function Avatar({ name, src, initials, hue, size, shape: ownShape, status
       className={cx(r.root.base, r.root.shape[shape][actual], r.root.size[actual], hue !== undefined && r.root.hue[hue], group && r.root.inGroup[group.surface], className)}
     >
       {/* The initials stay under the photo, so a slow or failed load never shows an empty circle. */}
-      <text role={showImage ? undefined : 'img'} aria-label={showImage ? undefined : spoken} aria-hidden={showImage || undefined} style={scaled.letters} className={cx(r.initials.base, r.initials.size[actual], hue !== undefined && r.initials.hue)}>{letters}</text>
+      <text role={showImage ? undefined : 'img'} aria-label={showImage ? undefined : spoken} aria-hidden={showImage || undefined} style={scaled.letters} className={cx(r.initials.base, r.initials.size[actual])}>{letters}</text>
       {showImage && <image src={src} alt={spoken} onError={() => failed.set(true)} className={cx(r.image.base, r.root.shape[shape][actual])} />}
       {status !== undefined && <view aria-hidden className={cx(r.status.base, r.status.size[actual], r.status.edge[surface ?? group?.surface ?? 'surface'], r.status.tone[status])} />}
       {badge !== undefined && <view className={r.badge.base}>{badge}</view>}

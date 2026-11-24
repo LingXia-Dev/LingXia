@@ -159,9 +159,10 @@
           {
             "what": "initials",
             "pair": [
-              "on-accent-soft",
-              "accent-soft"
+              "text",
+              "text/14"
             ],
+            "over": "surface",
             "minimum": "4.5:1"
           },
           {
@@ -362,7 +363,6 @@
           "--radius-segment"
         ],
         "roles": [
-          "accent-soft",
           "danger-mark",
           "hue-1-soft",
           "hue-2-soft",
@@ -373,7 +373,6 @@
           "hue-7-soft",
           "hue-8-soft",
           "line",
-          "on-accent-soft",
           "success-mark",
           "surface",
           "surface-raised",

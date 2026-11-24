@@ -189,7 +189,7 @@ export function Hues() {
 
 | Part | Element | Required | Description |
 | --- | --- | --- | --- |
-| root | `<view>` | yes | The circle, on the accent's soft step. |
+| root | `<view>` | yes | The circle, on a translucent neutral fill, or a hue's soft fill. |
 | initials | `<text>` | yes | Taken from `name`, or `initials`; under the picture, so a slow load never shows an empty circle. |
 | image | `<image>` | no | The picture from `src`, named by `name`; dropped if it fails. |
 | group | `<view>` | no | AvatarGroup: a named group, each one cut out of the next by a ring in the surface colour. |
@@ -200,7 +200,7 @@ export function Hues() {
 - `className`: classes merged after the recipe's, so they win.
 - The recipe, `avatarRecipe` from `@liulidesign/core/Avatar/recipe`: the classes of each part, to style an element of your own to match. The component does not read a changed copy.
 - Scale tokens it reads, set in the app's stylesheet under `@theme`: `--text-caption`, `--text-footnote`, `--text-callout`, `--radius-control`, `--radius-container`, `--radius-checkbox`, `--radius-segment`.
-- Colour roles it paints with, set by the theme pack: `accent-soft`, `danger-mark`, `hue-1-soft`, `hue-2-soft`, `hue-3-soft`, `hue-4-soft`, `hue-5-soft`, `hue-6-soft`, `hue-7-soft`, `hue-8-soft`, `line`, `on-accent-soft`, `success-mark`, `surface`, `surface-raised`, `surface-sunken`, `text`, `warning-mark`.
+- Colour roles it paints with, set by the theme pack: `danger-mark`, `hue-1-soft`, `hue-2-soft`, `hue-3-soft`, `hue-4-soft`, `hue-5-soft`, `hue-6-soft`, `hue-7-soft`, `hue-8-soft`, `line`, `success-mark`, `surface`, `surface-raised`, `surface-sunken`, `text`, `warning-mark`.
 
 ## Accessibility
 
@@ -214,7 +214,7 @@ export function Hues() {
 
 | Contrast | Pair | Minimum | Light | Dark |
 | --- | --- | --- | --- | --- |
-| initials | `on-accent-soft` on `accent-soft` | 4.5:1 | 8.54:1 | 9.49:1 |
+| initials | `text` on `text/14` over `surface` | 4.5:1 | 12.28:1 | 9.43:1 |
 | hue 1, initials on its fill | `text` on `hue-1-soft` | 4.5:1 | 14.25:1 | 11.24:1 |
 | hue 2, initials on its fill | `text` on `hue-2-soft` | 4.5:1 | 14.42:1 | 11.00:1 |
 | hue 3, initials on its fill | `text` on `hue-3-soft` | 4.5:1 | 14.23:1 | 11.31:1 |
