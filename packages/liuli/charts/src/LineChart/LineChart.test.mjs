@@ -451,3 +451,14 @@ test('two references 2% apart: the second label moves below its line, a third go
   assert.deepEqual(sides, [['Target 50', 'above'], ['Average 48', 'below'], ['49', 'above']]);
   for (const text of ['Target, 50', 'Average, 48', 'Median, 49']) screen.getByText(text);
 });
+
+test('a goal level with the last value: its label goes to the side of the line away from the latest point', async () => {
+  const sides = async last => referenceLabels(measured(laidOut(await renderPage(`
+    import { LineChart } from '@liulidesign/charts/LineChart';
+    const rows = [{ k: 'a', v: 0 }, { k: 'b', v: 100 }, { k: 'c', v: ${last} }];
+    export function render() { return <page><LineChart rows={rows} x="k" y="v" label="Chart" hasScale={false} references={[{ value: 50, label: 'Goal' }]} /></page>; }
+  `)))).map(label => [textOf(label), label.props.insetBottom === 0 ? 'above' : 'below']);
+  assert.deepEqual(await sides(56), [['Goal 50', 'below']], 'the latest point just above the line');
+  assert.deepEqual(await sides(44), [['Goal 50', 'above']], 'the latest point just below it');
+  assert.deepEqual(await sides(100), [['Goal 50', 'above']], 'far from it');
+});

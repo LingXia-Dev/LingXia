@@ -98,6 +98,8 @@ const dotWidth = 6;
 const selectedWidth = 8;
 // Half a marker: the drawing's first and last points sit this far inside the plot.
 const edge = 4;
+// Kept clear around a line's last point, past its dot: the latest value is what people look at first.
+const endClear = dotWidth / 2 + 3;
 // The plot's height at each size, until it has been measured.
 const heights = { xs: 64, sm: 112, md: 176, lg: 240 } as const;
 // Past this many rows a screen reader gets the summary alone; a longer list is not a reading.
@@ -178,7 +180,17 @@ export function LineChart<Row extends ChartRecord<Row>>({
   const plot = useBox('plot');
   const frame = reach(plot.value?.width ?? 300, plot.value?.height ?? heights[size], edge, isArea ? 0 : edge);
   const foot = isArea ? 0 : edge;
-  const refs = useReferences(references, formatValue, value => edge + (scaleY(value, range) / box) * ((plot.value?.height ?? 0) - edge - foot), plot.value);
+  const height = (value: number) => edge + (scaleY(value, range) / box) * ((plot.value?.height ?? 0) - edge - foot);
+  // Each line's last point, as a box a reference label keeps clear of.
+  const laid = plot.value;
+  const lastPoints = laid ? columns.flatMap(column => {
+    const last = column.reduce((found, value, index) => (Number.isFinite(value) ? index : found), -1);
+    if (last < 0) return [];
+    const across = data.length > 1 ? edge + (last / (data.length - 1)) * (laid.width - edge * 2) : laid.width / 2;
+    const y = height(column[last]);
+    return [{ start: across - endClear, end: across + endClear, top: y - endClear, bottom: y + endClear }];
+  }) : [];
+  const refs = useReferences(references, formatValue, height, laid, lastPoints);
   const referenceLines = references.map((each, index) => referencePath(index, scaleY(each.value, range), frame[0], frame[0] + frame[2]));
 
   // A line draws in along its length; a fill cannot follow it, so fills, and the dots that end the

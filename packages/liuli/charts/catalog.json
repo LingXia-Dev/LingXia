@@ -1466,7 +1466,7 @@
           "With `summarize`, a sentence per series with its range, lowest and highest values and trend is read first.",
           "Then every row is read as a list item: \"3 Nov: 71.2 kg\", or \"Apr: Free 492, Team 171, Pro 88\". Past 60 rows only the summary is read.",
           "The second to fifth lines are dashed, each differently, and the legend draws the same dash, so series survive without colour.",
-          "A reference (`references`) is a dashed line across the plot, named at the end edge with its value, and read after the values as \"Target, 150\". Its label sits above the line, below it when that is taken, and shows the value alone when both are; it never covers another label, a figure or the plot's edge. It takes no press or focus.",
+          "A reference (`references`) is a dashed line across the plot, named at the end edge with its value, and read after the values as \"Target, 150\". Its label sits above the line, below it when that is taken, and shows the value alone when both are; it never covers another label, a line's latest point or the plot's edge. It takes no press or focus.",
           "The scale and the end figure are hidden from assistive tech: the same numbers are in the summary and the list.",
           "The fill under an area, the hairlines and the rule on the chosen row are decoration with no contrast minimum.",
           "The lines are one drawing whatever the number of points, rebuilt only for a new `rows` array or encoding; the chosen row's rule and dots are a second, small drawing, so a scrub never redraws the lines.",
