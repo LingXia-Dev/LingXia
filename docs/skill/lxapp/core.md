@@ -133,5 +133,5 @@ does not say why, `e.reason` does (`'hostUpgradeRequired'`, `'stackFull'`, …):
 ## Logic and native APIs
 
 `lx.*` belongs to Logic. `#[lingxia::native]` routes are called through
-`@lingxia/native` from Logic (or `page.native`) and from a WebView View; a GPU View
-reaches them through a Logic action. [Native development](../native/development.md).
+`@lingxia/native` from Logic and from a WebView View; a GPU View reaches them
+through a Logic action. [Native development](../native/development.md).

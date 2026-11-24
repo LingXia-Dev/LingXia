@@ -547,7 +547,7 @@ declare global {
     readonly surface: SurfaceApi;
     /** Move between pages, tabs and lxapps. */
     readonly nav: NavApi;
-    /** The desktop shell: running apps, declared surfaces, builtins and sidebar actions. */
+    /** The desktop shell: running apps, declared surfaces and sidebar actions. */
     readonly shell: ShellApi;
     /** Dialogs, action sheets and toasts. */
     readonly ui: UiApi;

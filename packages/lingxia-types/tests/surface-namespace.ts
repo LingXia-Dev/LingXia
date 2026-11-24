@@ -134,6 +134,8 @@ const openedApp: Promise<unknown> = lx.surface.openApp("com.example.agent", {
 });
 // @ts-expect-error the startup query is params now
 lx.surface.openApp("com.example.agent", { query: { thread: "7" } });
+// @ts-expect-error browser pages open with lx.surface.openApp("app.lingxia.browser")
+lx.shell.openBuiltin;
 // @ts-expect-error the lookup is lx.surface.get
 lx.surface.getByKey;
 // @ts-expect-error moved to lx.surface.openApp
@@ -155,7 +157,6 @@ lx.shell.activate();
 export type SurfaceNamespaceGate = [
   typeof preferenceKeepsPerPlacementOptions,
   typeof floatTakesPercentageSize,
-  typeof builtinReportsIdentityOnly,
   typeof shellDeclared,
   typeof openedApp,
   typeof edgeToEdgeWindow,
