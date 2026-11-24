@@ -36,6 +36,7 @@ const SHAPE_OPTIONS = {
   weekday: { weekday: 'long' },
   weekdayTime: { weekday: 'short', hour: 'numeric', minute: '2-digit', clock: true },
   monthDayTime: { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', clock: true },
+  dateTime: { dateStyle: 'medium', timeStyle: 'short', clock: true },
 };
 
 function intlDate(settings, shape, timeZone = settings.timeZone) {
@@ -65,6 +66,8 @@ assert.equal(plain(enH12.date(instant, 'timeSeconds')), '9:05:30 PM');
 assert.match(plain(enH12.date(instant, 'weekdayTime')), /^Mon 9:05 PM$/);
 assert.equal(enH12.date(instant, 'medium'), 'Nov 23, 2026', 'date styles carry no time, in the bound zone');
 assert.ok(!/\d:\d/.test(enH12.date(instant, 'full')), 'full is date only');
+assert.equal(plain(enH12.date(instant, 'dateTime')), 'Nov 23, 2026, 9:05 PM');
+assert.equal(enH23.date(instant, 'dateTime'), 'Nov 23, 2026, 21:05');
 
 // A named zone across a DST change: New York skips 02:00–03:00 on 2026-03-08 and repeats 01:00–02:00 on 2026-11-01.
 assert.equal(enH23.date(at('2026-03-08T06:59:00Z'), 'time'), '01:59');
