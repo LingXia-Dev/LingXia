@@ -1,14 +1,14 @@
 // Writes everything derived from the doc files: the reference pages (docs/<Name>.md), catalog.json
 // for agents, and the gallery's component content and pages. `--check` writes nothing and fails on drift.
 // A package folder as the argument generates that Liuli package instead; only core's run writes
-// the gallery's index (catalog module, category pages, manifest), with every sibling package that
-// has a catalog.json.
+// the gallery's index (catalog module, category pages, manifest), with the packages gallery/packages.json lists.
 import { existsSync, readFileSync, readdirSync, statSync, writeFileSync, mkdirSync } from 'node:fs';
 import { basename, dirname, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { transform } from 'esbuild';
 import ts from 'typescript';
 import { appearances, format, needed, palette, ratio } from './contrast.mjs';
+import { galleryPackages } from './gallery-packages.mjs';
 
 const packageArg = process.argv.slice(2).find(arg => !arg.startsWith('--'));
 const core = resolve(packageArg ?? resolve(dirname(fileURLToPath(import.meta.url)), '..'));
@@ -622,10 +622,10 @@ if (existsSync(readmePath)) {
     outputs.set(readmePath, `${readme.slice(0, from)}${list}${readme.slice(to)}`);
   }
 }
-// The gallery's index holds every package's components, so core's run reads its siblings' catalogs.
+// The gallery's index holds every listed package's components, so core's run reads the others' catalogs.
 const folderOf = new Map(catalog.map(entry => [entry, folder]));
-const siblings = !isCore ? [] : readdirSync(resolve(core, '..')).filter(name => name !== folder && existsSync(resolve(core, '..', name, 'catalog.json'))).sort()
-  .flatMap(name => JSON.parse(readFileSync(resolve(core, '..', name, 'catalog.json'), 'utf8')).components.map(entry => (folderOf.set(entry, name), entry)));
+const siblings = !isCore ? [] : galleryPackages(resolve(core, '..'), folder)
+  .flatMap(({ name, catalog: path }) => JSON.parse(readFileSync(path, 'utf8')).components.map(entry => (folderOf.set(entry, name), entry)));
 for (const entry of siblings) if (!(entry.category in categoryTitles)) problems.push(`${folderOf.get(entry)}/catalog.json: ${entry.name}: category ${entry.category} is not in gallery/categories.json`);
 const shown = [...catalog, ...siblings];
 for (const category of Object.keys(categoryTitles)) {
