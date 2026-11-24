@@ -111,6 +111,7 @@ fn parse_host_attr(
 
     let mut mode = HostMode::Unary;
     let mut blocking = false;
+    let mut sync = false;
     let mut audience = None;
     for arg in args.iter().skip(1) {
         match arg {
@@ -141,6 +142,15 @@ fn parse_host_attr(
                 }
                 blocking = true;
             }
+            Expr::Path(path) if path.path.is_ident("sync") => {
+                if sync {
+                    return Err(syn::Error::new_spanned(
+                        arg,
+                        format!("duplicate sync flag in #[{macro_name}(...)]"),
+                    ));
+                }
+                sync = true;
+            }
             Expr::Assign(assign) if matches!(assign.left.as_ref(), Expr::Path(path) if path.path.is_ident("audience")) =>
             {
                 if audience.is_some() {
@@ -167,7 +177,7 @@ fn parse_host_attr(
                 return Err(syn::Error::new_spanned(
                     arg,
                     format!(
-                        "expected a mode flag (`blocking`, `stream`, or `channel`) or `audience = \"…\"` in #[{macro_name}(...)]"
+                        "expected a mode flag (`sync`, `blocking`, `stream`, or `channel`) or `audience = \"…\"` in #[{macro_name}(...)]"
                     ),
                 ));
             }
@@ -178,6 +188,12 @@ fn parse_host_attr(
         return Err(syn::Error::new_spanned(
             route_lit,
             format!("blocking is only supported for unary #[{macro_name}] handlers"),
+        ));
+    }
+    if sync && (!matches!(mode, HostMode::Unary) || blocking) {
+        return Err(syn::Error::new_spanned(
+            route_lit,
+            format!("sync is only supported for unary non-blocking #[{macro_name}] handlers"),
         ));
     }
 
@@ -197,6 +213,7 @@ fn parse_host_attr(
         HostOptions {
             mode,
             blocking,
+            sync,
             audience,
         },
     ))
@@ -270,6 +287,7 @@ impl RouteAudience {
 struct HostOptions {
     mode: HostMode,
     blocking: bool,
+    sync: bool,
     audience: RouteAudience,
 }
 
@@ -300,8 +318,52 @@ fn expand_host(
         )
         .to_compile_error();
     }
+    if options.sync && is_async {
+        return syn::Error::new_spanned(
+            input_fn.sig.asyncness,
+            "#[native(..., sync)] is only supported on non-async functions",
+        )
+        .to_compile_error();
+    }
 
-    let call_expr = call_plan.call_expr(&fn_ident, is_async, options.blocking);
+    if options.sync {
+        let call_expr = call_plan.call_expr(&fn_ident, false, false, true);
+        return quote! {
+            #input_fn
+
+            #[doc(hidden)]
+            #[allow(non_camel_case_types)]
+            pub struct #handler_ident;
+
+            impl ::lingxia::host::SyncHostHandler for #handler_ident {
+                fn call_sync(
+                    &self,
+                    __lingxia_invocation: ::lingxia::host::HostInvocationContext,
+                    __lingxia_input: Option<String>,
+                ) -> ::lingxia::host::HostResult<::lingxia::host::HostOutput> {
+                    let __lingxia_result = {
+                        let __lingxia_result = #call_expr;
+                        __lingxia_result.map_err(::std::convert::Into::into)
+                    };
+                    ::lingxia::host::serialize_result(__lingxia_result)
+                }
+            }
+
+            #[doc(hidden)]
+            pub fn #helper_ident() -> ::lingxia::host::HostRegistrationEntry {
+                ::lingxia::host::HostRegistrationEntry::SyncHandler(
+                    ::lingxia::host::SyncHostRegistration::new(
+                        #namespace_lit,
+                        #method_lit,
+                        #audience,
+                        std::sync::Arc::new(#handler_ident),
+                    )
+                )
+            }
+        };
+    }
+
+    let call_expr = call_plan.call_expr(&fn_ident, is_async, options.blocking, false);
     let ctor_ident = match options.mode {
         HostMode::Unary => format_ident!("new"),
         HostMode::Stream => format_ident!("stream"),
@@ -369,16 +431,25 @@ impl HostAuthorityArg {
     }
 }
 
+enum PlanArg {
+    LxApp,
+    Invocation,
+    Payload(Type),
+    PageState(Type),
+    Cancel,
+}
+
 struct HostFnPlan {
+    #[allow(dead_code)]
     authority: HostAuthorityArg,
-    input_ty: Option<Type>,
-    has_cancel: bool,
+    args: Vec<PlanArg>,
 }
 
 impl HostFnPlan {
     fn from_fn(input_fn: &ItemFn) -> syn::Result<Self> {
         let mut authority = HostAuthorityArg::None;
-        let mut input_ty = None;
+        let mut args = Vec::new();
+        let mut has_input = false;
         let mut has_cancel = false;
         let input_count = input_fn.sig.inputs.len();
 
@@ -393,12 +464,19 @@ impl HostFnPlan {
             if index == 0 {
                 if is_lxapp_arg(arg) {
                     authority = HostAuthorityArg::LxApp;
+                    args.push(PlanArg::LxApp);
                     continue;
                 }
                 if is_host_invocation_context_arg(arg) {
                     authority = HostAuthorityArg::Invocation;
+                    args.push(PlanArg::Invocation);
                     continue;
                 }
+            }
+
+            if is_page_state_arg(arg) {
+                args.push(PlanArg::PageState((*arg.ty).clone()));
+                continue;
             }
 
             if is_host_cancel_arg(arg) {
@@ -415,23 +493,21 @@ impl HostFnPlan {
                     ));
                 }
                 has_cancel = true;
+                args.push(PlanArg::Cancel);
                 continue;
             }
 
-            if input_ty.is_some() {
+            if has_input {
                 return Err(syn::Error::new_spanned(
                     arg,
                     "#[native] functions support at most one JSON payload argument",
                 ));
             }
-            input_ty = Some((*arg.ty).clone());
+            has_input = true;
+            args.push(PlanArg::Payload((*arg.ty).clone()));
         }
 
-        Ok(Self {
-            authority,
-            input_ty,
-            has_cancel,
-        })
+        Ok(Self { authority, args })
     }
 
     fn call_expr(
@@ -439,34 +515,51 @@ impl HostFnPlan {
         fn_ident: &syn::Ident,
         is_async: bool,
         blocking: bool,
+        is_sync_route: bool,
     ) -> proc_macro2::TokenStream {
-        let mut args = Vec::new();
+        let mut call_args = Vec::new();
         let mut prelude = Vec::new();
+        let mut state_idx = 0usize;
 
-        if let Some(authority) = self.authority.tokens() {
-            args.push(authority);
-        }
-
-        if let Some(input_ty) = &self.input_ty {
-            prelude.push(quote! {
-                let __lingxia_payload: #input_ty =
-                    ::lingxia::host::parse_input(__lingxia_input.as_deref())?;
-            });
-            args.push(quote! { __lingxia_payload });
-        }
-
-        if self.has_cancel {
-            args.push(quote! { __lingxia_cancel });
+        for arg in &self.args {
+            match arg {
+                PlanArg::LxApp => call_args.push(quote! { __lingxia_invocation.lxapp() }),
+                PlanArg::Invocation => call_args.push(quote! { __lingxia_invocation.clone() }),
+                PlanArg::Payload(input_ty) => {
+                    prelude.push(quote! {
+                        let __lingxia_payload: #input_ty =
+                            ::lingxia::host::parse_input(__lingxia_input.as_deref())?;
+                    });
+                    call_args.push(quote! { __lingxia_payload });
+                }
+                PlanArg::PageState(state_ty) => {
+                    let ident = format_ident!("__lingxia_page_state_{state_idx}");
+                    state_idx += 1;
+                    if is_sync_route {
+                        prelude.push(quote! {
+                            let #ident: #state_ty =
+                                <#state_ty>::acquire_sync(&__lingxia_invocation)?;
+                        });
+                    } else {
+                        prelude.push(quote! {
+                            let #ident: #state_ty =
+                                <#state_ty>::acquire_async(&__lingxia_invocation).await?;
+                        });
+                    }
+                    call_args.push(quote! { #ident });
+                }
+                PlanArg::Cancel => call_args.push(quote! { __lingxia_cancel }),
+            }
         }
 
         let invoke = if is_async {
-            quote! { #fn_ident(#(#args),*).await }
+            quote! { #fn_ident(#(#call_args),*).await }
         } else if blocking {
             quote! {
-                ::lingxia::host::__native::spawn_blocking(move || #fn_ident(#(#args),*)).await?
+                ::lingxia::host::__native::spawn_blocking(move || #fn_ident(#(#call_args),*)).await?
             }
         } else {
-            quote! { #fn_ident(#(#args),*) }
+            quote! { #fn_ident(#(#call_args),*) }
         };
 
         quote! {
@@ -476,6 +569,18 @@ impl HostFnPlan {
             }
         }
     }
+}
+
+fn is_page_state_arg(arg: &PatType) -> bool {
+    let Type::Path(type_path) = &*arg.ty else {
+        return false;
+    };
+    type_path
+        .path
+        .segments
+        .last()
+        .map(|segment| segment.ident == "PageState")
+        .unwrap_or(false)
 }
 
 fn is_lxapp_arg(arg: &PatType) -> bool {
@@ -1155,5 +1260,42 @@ mod tests {
                 .authority,
             HostAuthorityArg::Invocation
         ));
+    }
+
+    #[test]
+    fn sync_flag_rejects_async_and_supports_page_state() {
+        let sync_fn: ItemFn = syn::parse_quote! {
+            fn bump(mut state: lingxia::host::PageState<Counter>, delta: i32) -> Result<i32> {
+                Ok(delta)
+            }
+        };
+        let plan = HostFnPlan::from_fn(&sync_fn).expect("sync plan with PageState");
+        let tokens = plan
+            .call_expr(&sync_fn.sig.ident, false, false, true)
+            .to_string();
+        assert!(tokens.contains("acquire_sync"), "{tokens}");
+        assert!(tokens.contains("parse_input"), "{tokens}");
+
+        let async_fn: ItemFn = syn::parse_quote! {
+            async fn bad_sync() -> Result<()> { Ok(()) }
+        };
+        let options = HostOptions {
+            mode: HostMode::Unary,
+            blocking: false,
+            sync: true,
+            audience: RouteAudience::AppSessionOnly,
+        };
+        let out = expand_host(
+            LitStr::new("demo.bad", proc_macro2::Span::call_site()),
+            "demo",
+            "bad",
+            options,
+            async_fn,
+        )
+        .to_string();
+        assert!(
+            out.contains("only supported on non-async functions"),
+            "{out}"
+        );
     }
 }

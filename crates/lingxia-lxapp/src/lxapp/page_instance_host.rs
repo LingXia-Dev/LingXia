@@ -909,6 +909,7 @@ impl LxApp {
             instance_ids,
             "PageInstance removed while waiting for view response",
         );
+        crate::host::clear_page_states(instance_ids);
 
         let mut removed = Vec::new();
         if let Ok(state) = self.state.lock() {

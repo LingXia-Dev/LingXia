@@ -38,7 +38,7 @@ mod wifi;
 pub(crate) use app::request_windows_app_exit;
 pub use app::{
     Platform, current_locale, set_windows_activate_browser_tab_handler,
-    set_windows_app_exit_handler, set_windows_builtin_browser_downloads_handler,
+    set_windows_app_exit_handler, 
     set_windows_close_browser_tab_handler, set_windows_exclusive_update_ready_handler,
     set_windows_lxapp_hidden_handler, set_windows_lxapp_main_activation_handler,
     set_windows_lxapp_region_move_handler, set_windows_open_url_handler,

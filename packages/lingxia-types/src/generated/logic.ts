@@ -4304,7 +4304,6 @@ declare global {
      * @throws {E_NOT_FOUND} A page other than `downloads`.
      * @throws {E_PERMISSION_DENIED} From an lxapp other than the Control app.
      */
-    openBuiltin(page: BuiltinShellPage): Promise<BuiltinSurface>;
     /** Bring the product window forward without navigating. Control app only. */
     activate(): void;
     readonly appDisplay: AppDisplayApi;

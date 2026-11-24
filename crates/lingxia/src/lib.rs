@@ -32,7 +32,7 @@ pub use lxapp::host::NativeDevtoolsAuthority;
 pub use lxapp::host::NativeHostRuntimeAuthority;
 
 pub use lxapp::host;
-pub use lxapp::host::{ChannelContext, ChannelMessage, StreamContext};
+pub use lxapp::host::{ChannelContext, ChannelMessage, PageState, StreamContext};
 /// Mark a development Runner host before SDK initialization.
 pub use lxapp::register_runner_host;
 // Required by expansions of `#[lingxia::native]`; host applications should
@@ -93,6 +93,24 @@ impl RuntimeInfo {
         &self,
     ) -> std::result::Result<SettingsDestinationResolution, SettingsDestinationResolveError> {
         settings_destination::resolve_settings_destination()
+    }
+
+    #[cfg(feature = "browser-runtime")]
+    #[doc(hidden)]
+    pub fn open_browser_system_page(
+        &self,
+        page: &str,
+        query: Option<&serde_json::Value>,
+    ) -> std::result::Result<(String, u64), lxapp::LxAppError> {
+        let authority = crate::browser::native_control_authority()?;
+        let options = lxapp::LxAppStartupOptions::for_page(Some(page), query)
+            .map_err(lxapp::LxAppError::InvalidParameter)?;
+        let app = lxapp::open_control_surface_lxapp_page(
+            authority,
+            lingxia_browser::BUILTIN_BROWSER_APPID,
+            options,
+        )?;
+        Ok((app.appid.clone(), app.session_id()))
     }
 
     #[cfg(feature = "browser-runtime")]

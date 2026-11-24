@@ -241,6 +241,11 @@ export function audit(source, filename, { literalColors = false } = {}) {
       const values = clause && !clause.isTypeOnly && (clause.name || (clause.namedBindings && (ts.isNamespaceImport(clause.namedBindings) || clause.namedBindings.elements.some(element => !element.isTypeOnly))));
       if (values) report(node, "UI_LX: @lingxia/logic is Logic-only; a View imports its types with `import type`, and does a call in a Logic action");
     }
+    if (ts.isImportDeclaration(node) && ts.isStringLiteral(node.moduleSpecifier) && node.moduleSpecifier.text === '@lingxia/native') {
+      const clause = node.importClause;
+      const values = clause && !clause.isTypeOnly && (clause.name || (clause.namedBindings && (ts.isNamespaceImport(clause.namedBindings) || clause.namedBindings.elements.some(element => !element.isTypeOnly))));
+      if (values) report(node, "UI_LX: @lingxia/native is Logic-only; a GPU View cannot call native routes directly, call them from a Logic action");
+    }
     // `lx` is Logic's; a View reaches it only through an action. A local binding named lx is fine.
     if (ts.isIdentifier(node) && node.text === 'lx') {
       const parent = node.parent;

@@ -294,7 +294,7 @@ fn validate_with_inventory(
                     |audience| {
                         matches!(
                             audience,
-                            lxapp::host::RouteAudience::BrowserControlOnly
+                            lxapp::host::RouteAudience::ControlSurfaceOnly
                                 | lxapp::host::RouteAudience::ControlAppOrBrowserOnly
                         )
                     },
@@ -656,7 +656,7 @@ mod tests {
         _: &str,
     ) -> Result<Option<lxapp::host::EffectiveRoutePolicy>, lxapp::host::RoutePolicyConflict> {
         Ok(Some(lxapp::host::EffectiveRoutePolicy::new(
-            lxapp::host::RouteAudience::BrowserControlOnly,
+            lxapp::host::RouteAudience::ControlSurfaceOnly,
         )))
     }
 
@@ -933,7 +933,7 @@ mod tests {
                 &control_assets(),
                 |_| {
                     Ok(Some(lxapp::host::EffectiveRoutePolicy::new(
-                        lxapp::host::RouteAudience::BrowserControlOnly,
+                        lxapp::host::RouteAudience::ControlSurfaceOnly,
                     )))
                 },
                 false,
@@ -997,7 +997,7 @@ mod tests {
             lxapp::host::register_host_route(
                 "settings_target_policy_test",
                 "save",
-                lxapp::host::RouteAudience::BrowserControlOnly,
+                lxapp::host::RouteAudience::ControlSurfaceOnly,
                 Arc::new(TestHostHandler),
             );
         });

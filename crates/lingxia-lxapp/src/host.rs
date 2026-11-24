@@ -23,6 +23,11 @@ use tokio::sync::{mpsc, oneshot};
 mod macros;
 
 mod device;
+pub mod page_state;
+pub use page_state::{
+    PageCallGuard, PageState, clear_page_state, clear_page_states, register_page_cancel,
+    track_page_call,
+};
 #[cfg(feature = "automation")]
 mod embedded_document_probe;
 mod navigation;
@@ -680,11 +685,32 @@ impl HostInvocationContext {
     #[doc(hidden)]
     #[cfg(feature = "js-appservice")]
     pub fn for_logic_context(ctx: &rong::JSContext) -> rong::JSResult<Self> {
+        Self::for_logic_context_with_page(ctx, None)
+    }
+
+    /// Derive an invocation context from a live Logic worker context, optionally bound to
+    /// a page instance (`page.native`).
+    #[doc(hidden)]
+    #[cfg(feature = "js-appservice")]
+    pub fn for_logic_context_with_page(
+        ctx: &rong::JSContext,
+        page_id: Option<String>,
+    ) -> rong::JSResult<Self> {
         let lxapp = LxApp::from_ctx(ctx)?;
+        let page = match page_id {
+            Some(id) if !id.is_empty() => {
+                crate::page::PageInstanceId::parse(id).and_then(|parsed| {
+                    lxapp
+                        .get_page_by_instance_id(&parsed)
+                        .map(|p| p.instance_id())
+                })
+            }
+            _ => None,
+        };
         Ok(Self {
             caller: AuthenticatedCaller::for_lxapp(&lxapp),
             lxapp,
-            page: None,
+            page,
         })
     }
 
@@ -717,9 +743,14 @@ impl HostInvocationContext {
         Arc::clone(&self.lxapp)
     }
 
-    /// The page whose View made this call, while it is still alive.
+    /// The page whose View or `page.native` made this call, while it is still alive.
     pub(crate) fn page(&self) -> Option<crate::page::PageInstance> {
         self.lxapp.get_page_by_instance_id(self.page.as_ref()?)
+    }
+
+    /// The page instance id attached to this call, if any (`None` for module-level `native`).
+    pub fn page_id(&self) -> Option<&str> {
+        self.page.as_ref().map(|id| id.as_str())
     }
 }
 
@@ -744,7 +775,7 @@ pub fn authorize(caller: &AuthenticatedCaller, audience: RouteAudience) -> bool 
                 class: AppSessionClass::ControlSurface,
                 ..
             },
-            RouteAudience::ControlSurfaceOnly
+            RouteAudience::ControlSurfaceOnly | RouteAudience::ControlAppOrBrowserOnly
         ) | (
             AuthenticatedCallerSource::BrowserDocument { .. },
             RouteAudience::AnyAuthenticated
@@ -863,8 +894,61 @@ pub trait HostHandler: Send + Sync + 'static {
     ) -> HostFuture<'a>;
 }
 
+/// Synchronous host route handler (`#[lingxia::native("ns.method", sync)]`).
+/// Runs directly on the Logic JS thread: must be short, non-blocking, and I/O-free.
+pub trait SyncHostHandler: Send + Sync + 'static {
+    fn call_sync(
+        &self,
+        invocation: HostInvocationContext,
+        input: Option<String>,
+    ) -> HostResult<HostOutput>;
+}
+
+struct SyncAsAsyncHostHandler(Arc<dyn SyncHostHandler>);
+
+impl HostHandler for SyncAsAsyncHostHandler {
+    fn call<'a>(
+        &'a self,
+        invocation: HostInvocationContext,
+        input: Option<String>,
+        _cancel: HostCancel,
+    ) -> HostFuture<'a> {
+        let handler = Arc::clone(&self.0);
+        Box::pin(async move { handler.call_sync(invocation, input) })
+    }
+}
+
+/// Registration record for a synchronous native route.
+pub struct SyncHostRegistration {
+    namespace: &'static str,
+    method: &'static str,
+    handler: Arc<dyn SyncHostHandler>,
+    policy: EffectiveRoutePolicy,
+}
+
+impl SyncHostRegistration {
+    pub fn new(
+        namespace: &'static str,
+        method: &'static str,
+        audience: RouteAudience,
+        handler: Arc<dyn SyncHostHandler>,
+    ) -> Self {
+        Self {
+            namespace,
+            method,
+            handler,
+            policy: EffectiveRoutePolicy::new(audience),
+        }
+    }
+
+    pub const fn policy(&self) -> EffectiveRoutePolicy {
+        self.policy
+    }
+}
+
 enum RouteHandler {
     Host(Arc<dyn HostHandler>),
+    SyncHost(Arc<dyn SyncHostHandler>),
     Channel(Arc<dyn ChannelHandler>),
 }
 
@@ -922,7 +1006,25 @@ impl EffectiveRouteRegistry {
         }
         match &route.handler {
             RouteHandler::Host(handler) => Some(Arc::clone(handler)),
+            RouteHandler::SyncHost(handler) => {
+                Some(Arc::new(SyncAsAsyncHostHandler(Arc::clone(handler))))
+            }
             RouteHandler::Channel(_) => None,
+        }
+    }
+
+    fn sync_host_for_caller(
+        &self,
+        name: &str,
+        caller: &AuthenticatedCaller,
+    ) -> Option<Arc<dyn SyncHostHandler>> {
+        let route = self.routes.get(name)?;
+        if !authorize(caller, route.metadata.audience()) {
+            return None;
+        }
+        match &route.handler {
+            RouteHandler::SyncHost(handler) => Some(Arc::clone(handler)),
+            RouteHandler::Host(_) | RouteHandler::Channel(_) => None,
         }
     }
 
@@ -937,7 +1039,7 @@ impl EffectiveRouteRegistry {
         }
         match &route.handler {
             RouteHandler::Channel(handler) => Some(Arc::clone(handler)),
-            RouteHandler::Host(_) => None,
+            RouteHandler::Host(_) | RouteHandler::SyncHost(_) => None,
         }
     }
 }
@@ -1010,6 +1112,7 @@ pub fn register_host(registration: HostRegistration) {
 /// effective route inventory.
 pub enum HostRegistrationEntry {
     Handler(HostRegistration),
+    SyncHandler(SyncHostRegistration),
     Channel(ChannelRegistration),
 }
 
@@ -1017,6 +1120,7 @@ impl HostRegistrationEntry {
     pub const fn policy(&self) -> EffectiveRoutePolicy {
         match self {
             Self::Handler(registration) => registration.policy(),
+            Self::SyncHandler(registration) => registration.policy(),
             Self::Channel(registration) => registration.policy(),
         }
     }
@@ -1026,11 +1130,78 @@ impl HostRegistrationEntry {
     }
 }
 
+pub fn register_sync_host(registration: SyncHostRegistration) {
+    validate_host_namespace(registration.namespace);
+    let key = format!("{}.{}", registration.namespace, registration.method);
+    register_effective_route(
+        key,
+        EffectiveRouteRecord {
+            metadata: EffectiveRouteMetadata {
+                kind: HostRouteKind::Call,
+                policy: registration.policy,
+            },
+            handler: RouteHandler::SyncHost(registration.handler),
+        },
+    );
+}
+
 pub fn register_host_entry(entry: HostRegistrationEntry) {
     match entry {
         HostRegistrationEntry::Handler(reg) => register_host(reg),
+        HostRegistrationEntry::SyncHandler(reg) => register_sync_host(reg),
         HostRegistrationEntry::Channel(reg) => register_channel_handler(reg),
     }
+}
+
+/// Authorized lookup for Logic runtime native dispatch (unary or stream).
+#[doc(hidden)]
+pub fn lookup_host_for_caller(
+    name: &str,
+    caller: &AuthenticatedCaller,
+) -> Option<Arc<dyn HostHandler>> {
+    get_host_for_caller(name, caller)
+}
+
+/// Authorized lookup for Logic runtime native channel dispatch.
+#[doc(hidden)]
+pub fn lookup_channel_for_caller(
+    name: &str,
+    caller: &AuthenticatedCaller,
+) -> Option<Arc<dyn ChannelHandler>> {
+    let registry = get_route_registry().lock().unwrap();
+    registry.channel_for_caller(name, caller)
+}
+
+/// Synchronously executes a `#[lingxia::native("ns.method", sync)]` route on the caller thread.
+/// In debug/dev builds, warns if execution exceeds 8 ms.
+#[doc(hidden)]
+pub fn dispatch_host_call_sync(
+    name: &str,
+    invocation: HostInvocationContext,
+    input: Option<String>,
+) -> HostResult<HostOutput> {
+    let handler = {
+        let registry = get_route_registry().lock().unwrap();
+        registry.sync_host_for_caller(name, invocation.caller())
+    };
+    let Some(handler) = handler else {
+        return Err(LxAppError::Runtime(format!(
+            "sync native route '{name}' is not registered or not authorized for this caller"
+        )));
+    };
+    let appid = invocation.lxapp().appid.clone();
+    let started = std::time::Instant::now();
+    let result = handler.call_sync(invocation, input);
+    if cfg!(debug_assertions) {
+        let elapsed_ms = started.elapsed().as_millis();
+        if elapsed_ms > 8 {
+            crate::warn!(
+                "sync native route '{name}' took {elapsed_ms}ms (> 8ms budget); move I/O or heavy work to an async route"
+            )
+            .with_appid(appid);
+        }
+    }
+    result
 }
 
 pub(crate) fn get_host_for_caller(
@@ -1265,6 +1436,33 @@ pub(crate) enum ChannelOutbound {
     },
 }
 
+/// Outbound channel frame exposed to Logic runtime native channel dispatch.
+#[doc(hidden)]
+pub enum LogicChannelOutbound {
+    Data(String),
+    Close {
+        code: Option<String>,
+        reason: Option<String>,
+    },
+}
+
+/// Inbound channel sender held by Logic runtime native channel dispatch.
+#[doc(hidden)]
+#[derive(Clone)]
+pub struct LogicChannelInbound {
+    tx: mpsc::UnboundedSender<RawChannelInbound>,
+}
+
+impl LogicChannelInbound {
+    pub fn send_data(&self, json: String) {
+        let _ = self.tx.send(RawChannelInbound::Data(json));
+    }
+
+    pub fn send_close(&self, code: Option<String>, reason: Option<String>) {
+        let _ = self.tx.send(RawChannelInbound::Close { code, reason });
+    }
+}
+
 /// Context passed to a channel handler when a channel is opened.
 ///
 /// Handlers receive messages via [`recv`](Self::recv) and push messages back
@@ -1282,6 +1480,41 @@ impl<TIn, TOut> ChannelContext<TIn, TOut> {
     /// The channel identifier (matches the `id` field in the wire protocol).
     pub fn id(&self) -> &str {
         &self.id
+    }
+
+    /// Creates a `ChannelContext` pair for in-process Logic runtime native channel dispatch.
+    #[doc(hidden)]
+    pub fn for_logic(
+        id: String,
+    ) -> (
+        ChannelContext<JsonValue, JsonValue>,
+        LogicChannelInbound,
+        mpsc::UnboundedReceiver<LogicChannelOutbound>,
+    ) {
+        let (inbound_tx, inbound_rx) = mpsc::unbounded_channel();
+        let (outbound_tx, mut raw_outbound_rx) = mpsc::unbounded_channel();
+        let (logic_out_tx, logic_out_rx) = mpsc::unbounded_channel();
+        __native::spawn(async move {
+            while let Some(item) = raw_outbound_rx.recv().await {
+                let mapped = match item {
+                    ChannelOutbound::Data(json) => LogicChannelOutbound::Data(json),
+                    ChannelOutbound::Close { code, reason } => {
+                        LogicChannelOutbound::Close { code, reason }
+                    }
+                };
+                if logic_out_tx.send(mapped).is_err() {
+                    break;
+                }
+            }
+        });
+        let ctx = ChannelContext {
+            id,
+            inbound_rx,
+            outbound_tx,
+            close_on_drop: true,
+            _marker: PhantomData,
+        };
+        (ctx, LogicChannelInbound { tx: inbound_tx }, logic_out_rx)
     }
 
     #[doc(hidden)]
@@ -2278,7 +2511,7 @@ mod tests {
         );
         assert_eq!(
             audiences.map(|audience| authorize(&surface, audience)),
-            [true, true, false, true, false, false]
+            [true, true, false, true, false, true]
         );
         assert_eq!(
             audiences.map(|audience| authorize(&browser, audience)),

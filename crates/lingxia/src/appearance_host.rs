@@ -104,7 +104,7 @@ mod tests {
         let audience = set_appearance_preference_host().audience();
 
         assert!(!authorize(&standard, audience));
-        assert!(!authorize(&surface, audience));
+        assert!(authorize(&surface, audience));
         assert!(authorize(&control, audience));
         assert!(authorize(&browser, audience));
         assert!(

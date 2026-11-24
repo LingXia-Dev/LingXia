@@ -887,12 +887,12 @@ async fn refresh_gfwlist_result(app_data_dir: &Path) -> Result<ProxySettingsResu
     Ok(result)
 }
 
-#[lingxia::framework_native("proxy.getSettings", audience = "browser-control-only")]
+#[lingxia::framework_native("proxy.getSettings", audience = "control-surface-only")]
 fn get_proxy_settings(app: Arc<LxApp>) -> HostResult<ProxySettingsResult> {
     get_proxy_settings_result(&app.app_data_dir())
 }
 
-#[lingxia::framework_native("proxy.updateSettings", audience = "browser-control-only")]
+#[lingxia::framework_native("proxy.updateSettings", audience = "control-surface-only")]
 async fn update_proxy_settings(
     app: Arc<LxApp>,
     input: ProxySettingsInput,
@@ -932,7 +932,7 @@ async fn update_proxy_settings(
     }
 }
 
-#[lingxia::framework_native("proxy.refreshGfwList", audience = "browser-control-only")]
+#[lingxia::framework_native("proxy.refreshGfwList", audience = "control-surface-only")]
 async fn refresh_gfwlist(app: Arc<LxApp>) -> HostResult<ProxySettingsResult> {
     let result = refresh_gfwlist_result(&app.app_data_dir()).await;
     match &result {
@@ -951,7 +951,7 @@ async fn refresh_gfwlist(app: Arc<LxApp>) -> HostResult<ProxySettingsResult> {
     result
 }
 
-#[lingxia::framework_native("proxy.watch", stream, audience = "browser-control-only")]
+#[lingxia::framework_native("proxy.watch", stream, audience = "control-surface-only")]
 async fn watch_proxy_settings(
     app: Arc<LxApp>,
     mut stream: StreamContext<ProxySettingsResult>,
@@ -1054,7 +1054,7 @@ mod tests {
         ] {
             assert_eq!(
                 route.audience(),
-                lxapp::host::RouteAudience::BrowserControlOnly
+                lxapp::host::RouteAudience::ControlSurfaceOnly
             );
         }
     }

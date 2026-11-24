@@ -313,6 +313,7 @@
     let params = identity.params || {};
     let updating = false;
     let warnedUnloaded = false;
+    let pageNative = null;
 
     function live() {
       if (!svc) throw new Error("page: not available until setup has returned");
@@ -554,6 +555,13 @@
       env,
       after: timers.after,
       every: timers.every,
+      get native() {
+        if (!pageNative) {
+          const factory = globalThis.__lingxiaCreatePageNative;
+          pageNative = typeof factory === "function" ? factory(pageInstanceId) : Object.freeze({});
+        }
+        return pageNative;
+      },
     });
 
     // The first callback runs now, so the followed keys are in the first snapshot.
@@ -565,8 +573,16 @@
       }, { signal: lifetime.signal });
     }
 
-    const returned = def.setup ? def.setup(page)
-      : { actions: typeof def.actions === "function" ? def.actions(page) : def.actions };
+    let returned;
+    try {
+      returned = def.setup ? def.setup(page)
+        : { actions: typeof def.actions === "function" ? def.actions(page) : def.actions };
+    } catch (setupError) {
+      if (globalThis.__lingxiaNative && typeof globalThis.__lingxiaNative.clearPageState === "function") {
+        globalThis.__lingxiaNative.clearPageState(pageInstanceId);
+      }
+      throw setupError;
+    }
     if (!def.setup && returned.actions && typeof returned.actions.then === "function") {
       throw new TypeError("definePage: actions(page) returns the actions synchronously; start async work in an action");
     }

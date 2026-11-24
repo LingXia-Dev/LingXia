@@ -1310,9 +1310,6 @@ pub(super) fn install() {
         open_managed_native_surface_for_api,
     ));
     lingxia_platform::set_windows_sidebar_actions_handler(Arc::new(set_runtime_sidebar_actions));
-    lingxia_platform::set_windows_builtin_browser_downloads_handler(Arc::new(
-        open_builtin_browser_downloads,
-    ));
     lingxia_platform::set_windows_shell_pins_handler(Arc::new(set_runtime_shell_pins));
     lxapp::set_lxapp_open_blocked_listener(Box::new(|status| {
         show_lxapp_unavailable_notice(status);
@@ -2466,10 +2463,7 @@ fn browser_tab_display_url(tab: &BrowserTabSummary) -> String {
 fn browser_url_is_hidden(url: &str) -> bool {
     let url = url.trim().to_ascii_lowercase();
     let page = url.split(['?', '#']).next().unwrap_or_default();
-    matches!(
-        page.trim_end_matches('/'),
-        "about:blank" | "lingxia://newtab" | "lingxia:"
-    )
+    matches!(page.trim_end_matches('/'), "about:blank")
 }
 
 fn build_navigation_bar_layout(app: &LxApp, path: &str) -> WindowsShellNavigationBarLayout {
@@ -3702,23 +3696,6 @@ fn set_runtime_sidebar_actions(items: &[ResolvedShellSidebarAction]) -> bool {
         sync_shell_layout(&owner_appid);
     }
     true
-}
-
-fn open_builtin_browser_downloads() -> bool {
-    #[cfg(not(feature = "browser-runtime"))]
-    {
-        false
-    }
-    #[cfg(feature = "browser-runtime")]
-    {
-        let Some(appid) = shell_owner_appid() else {
-            return false;
-        };
-        let Some(app) = lxapp::try_get(&appid) else {
-            return false;
-        };
-        open_or_present_trusted_browser_page(&appid, app.session_id(), "lingxia://downloads")
-    }
 }
 
 fn runtime_sidebar_actions() -> Option<Vec<ResolvedShellSidebarAction>> {
@@ -5745,52 +5722,20 @@ fn present_current_lxapp_main(app: &LxApp) -> bool {
 /// and presents it once its webview is ready.
 #[cfg(feature = "browser-runtime")]
 fn handle_browser_new_tab(appid: &str, session_id: u64) {
-    // Without the browser webui there is no `lingxia://newtab` start page;
-    // a new tab is a blank page, like the macOS runner.
-    #[cfg(feature = "browser-shell")]
-    const NEW_TAB_URL: &str = "lingxia://newtab";
-    #[cfg(not(feature = "browser-shell"))]
     const NEW_TAB_URL: &str = "about:blank";
-    let trusted_runtime = HOST_RUNTIME.get();
     if SELF_BROWSER_HOST.load(Ordering::Acquire) {
-        let opened = if NEW_TAB_URL.starts_with("lingxia://") {
-            trusted_runtime
-                .ok_or_else(|| {
-                    lxapp::LxAppError::UnsupportedOperation(
-                        "native browser runtime authority is not initialized".to_string(),
-                    )
-                })
-                .and_then(|runtime| runtime.open_trusted_browser_page(NEW_TAB_URL, None))
-        } else {
-            lingxia_browser::open(NEW_TAB_URL, None)
-        };
-        match opened {
+        match lingxia_browser::open(NEW_TAB_URL, None) {
             Ok(tab_id) => present_browser_tab_when_ready_with_policy(
                 lingxia_browser::BUILTIN_BROWSER_APPID,
                 tab_id,
-                NEW_TAB_URL == "about:blank",
+                true,
             ),
             Err(err) => log::error!("failed to open browser-only tab: {err}"),
         }
         return;
     }
-    let opened = if NEW_TAB_URL.starts_with("lingxia://") {
-        trusted_runtime
-            .ok_or_else(|| {
-                lxapp::LxAppError::UnsupportedOperation(
-                    "native browser runtime authority is not initialized".to_string(),
-                )
-            })
-            .and_then(|runtime| {
-                runtime.open_trusted_browser_page_for_app(appid, session_id, NEW_TAB_URL, None)
-            })
-    } else {
-        lingxia_browser::open_for_app(appid, session_id, NEW_TAB_URL, None)
-    };
-    match opened {
-        Ok(tab_id) => {
-            present_browser_tab_when_ready_with_policy(appid, tab_id, NEW_TAB_URL == "about:blank")
-        }
+    match lingxia_browser::open_for_app(appid, session_id, NEW_TAB_URL, None) {
+        Ok(tab_id) => present_browser_tab_when_ready_with_policy(appid, tab_id, true),
         Err(err) => log::error!("failed to open new browser tab for {appid}: {err}"),
     }
 }
@@ -6127,7 +6072,6 @@ fn show_pinned_bookmark_context_menu(appid: &str, row_id: &str, screen_x: i32, s
             lingxia_logic::I18nKey::BrowserManagePinnedSites
         }),
     ];
-    let appid = appid.to_string();
     super::context_menu::show_context_menu_checked(
         window,
         (screen_x, screen_y),
@@ -6143,13 +6087,7 @@ fn show_pinned_bookmark_context_menu(appid: &str, row_id: &str, screen_x: i32, s
                 let _ = lingxia_browser_shell::bookmarks_command_json(&command.to_string());
             }
             1 => {
-                if let Some(app) = lxapp::try_get(&appid) {
-                    open_or_present_trusted_browser_page(
-                        &appid,
-                        app.session_id(),
-                        "lingxia://bookmarks",
-                    );
-                }
+                open_browser_system_page("bookmarks", None);
             }
             _ => {}
         }),
@@ -7576,17 +7514,8 @@ fn open_or_present_browser_page(appid: &str, session_id: u64, url: &str) -> bool
 }
 
 #[cfg(feature = "browser-runtime")]
-fn open_or_present_trusted_browser_page(appid: &str, session_id: u64, url: &str) -> bool {
-    open_or_present_browser_page_with_authority(
-        appid,
-        session_id,
-        url,
-        BrowserPageOpenAuthority::NativeControl,
-    )
-}
-
-#[cfg(feature = "browser-runtime")]
 #[derive(Clone, Copy)]
+#[allow(dead_code)]
 enum BrowserPageOpenAuthority {
     #[cfg(feature = "browser-shell")]
     AppSession,
@@ -7687,12 +7616,28 @@ fn open_or_present_browser_page_with_authority(
 }
 
 #[cfg(feature = "browser-shell")]
+fn open_browser_system_page(page: &str, query: Option<&serde_json::Value>) -> bool {
+    let Some(runtime) = HOST_RUNTIME.get() else {
+        log::error!("native browser runtime authority is not initialized");
+        return false;
+    };
+    match runtime.open_browser_system_page(page, query) {
+        Ok(_) => true,
+        Err(err) => {
+            log::error!("failed to open browser system page '{page}': {err}");
+            false
+        }
+    }
+}
+
+#[cfg(feature = "browser-shell")]
 fn open_or_present_browser_local_page(
-    appid: &str,
-    session_id: u64,
+    _appid: &str,
+    _session_id: u64,
     navigation: crate::browser_local_navigation::BrowserLocalNavigation<'_>,
 ) -> bool {
-    open_or_present_trusted_browser_page(appid, session_id, &navigation.url())
+    let query = navigation.query();
+    open_browser_system_page(navigation.page(), query.as_ref())
 }
 
 /// An internal page target that carries a query or fragment, e.g.
@@ -8214,22 +8159,10 @@ fn show_browser_page_menu(appid: &str, screen_x: i32, screen_y: i32) {
                 }
             }
             BrowserPageMenuAction::ManageBookmarks => {
-                if let Some(app) = lxapp::try_get(&appid) {
-                    open_or_present_trusted_browser_page(
-                        &appid,
-                        app.session_id(),
-                        "lingxia://bookmarks",
-                    );
-                }
+                open_browser_system_page("bookmarks", None);
             }
             BrowserPageMenuAction::History => {
-                if let Some(app) = lxapp::try_get(&appid) {
-                    open_or_present_trusted_browser_page(
-                        &appid,
-                        app.session_id(),
-                        "lingxia://history",
-                    );
-                }
+                open_browser_system_page("history", None);
             }
             BrowserPageMenuAction::Settings => {
                 if let Some(app) = lxapp::try_get(&appid) {
@@ -9280,10 +9213,9 @@ mod tests {
     #[test]
     fn blank_new_tab_urls_stay_out_of_the_address_editor() {
         assert!(browser_url_is_hidden("about:blank"));
-        assert!(browser_url_is_hidden(" LINGXIA://NEWTAB "));
-        assert!(browser_url_is_hidden("lingxia://"));
-        assert!(browser_url_is_hidden("lingxia://newtab/"));
-        assert!(browser_url_is_hidden("lingxia://newtab/?from=shortcut"));
+        assert!(!browser_url_is_hidden(" LINGXIA://NEWTAB "));
+        assert!(!browser_url_is_hidden("lingxia://"));
+        assert!(!browser_url_is_hidden("lingxia://newtab/"));
         assert!(!browser_url_is_hidden("lingxia://settings/"));
         assert!(!browser_url_is_hidden("https://example.com"));
     }

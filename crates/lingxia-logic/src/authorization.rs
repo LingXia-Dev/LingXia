@@ -43,13 +43,13 @@ pub(crate) enum LogicRoute {
     ShellSidebarUpdate,
     ShellSidebarRemove,
     SurfaceOpenApp,
-    ShellOpenBuiltin,
     SurfaceOpenDeclaredPlacement,
     SurfaceApp,
     SurfaceDeclared,
     ShellSetAppDisplay,
     ShellAppDisplayGet,
     ShellOpenHostTerminalSettings,
+    ShellOpenHostBrowserSurface,
     ShellActivate,
     TerminalSettingsGet,
     TerminalSettingsUpdate,
@@ -103,13 +103,13 @@ impl LogicRoute {
         Self::ShellSidebarUpdate,
         Self::ShellSidebarRemove,
         Self::SurfaceOpenApp,
-        Self::ShellOpenBuiltin,
         Self::SurfaceOpenDeclaredPlacement,
         Self::SurfaceApp,
         Self::SurfaceDeclared,
         Self::ShellSetAppDisplay,
         Self::ShellAppDisplayGet,
         Self::ShellOpenHostTerminalSettings,
+        Self::ShellOpenHostBrowserSurface,
         Self::ShellActivate,
         Self::TerminalSettingsGet,
         Self::TerminalSettingsUpdate,
@@ -165,14 +165,14 @@ impl LogicRoute {
             | Self::ShellSidebarUpdate
             | Self::ShellSidebarRemove
             | Self::SurfaceOpenApp
-            | Self::ShellOpenBuiltin
             | Self::SurfaceOpenDeclaredPlacement
             | Self::SurfaceApp
             | Self::SurfaceDeclared
             | Self::ShellSetAppDisplay
             | Self::ShellAppDisplayGet
             | Self::ShellActivate
-            | Self::ShellOpenHostTerminalSettings => RouteAudience::ControlAppOnly,
+            | Self::ShellOpenHostTerminalSettings
+            | Self::ShellOpenHostBrowserSurface => RouteAudience::ControlAppOnly,
             Self::DevicePermission
             | Self::DeviceRequestPermission
             | Self::AppNotificationShow
@@ -233,13 +233,13 @@ impl LogicRoute {
             Self::ShellSidebarUpdate => "lx.shell.sidebarActions.update",
             Self::ShellSidebarRemove => "lx.shell.sidebarActions.remove",
             Self::SurfaceOpenApp => "lx.surface.openApp",
-            Self::ShellOpenBuiltin => "lx.shell.openBuiltin",
             Self::SurfaceOpenDeclaredPlacement => "lx.surface.openDeclared.placement",
             Self::SurfaceApp => "lx.surface.app",
             Self::SurfaceDeclared => "lx.surface.declared",
             Self::ShellSetAppDisplay => "lx.shell.appDisplay.update",
             Self::ShellAppDisplayGet => "lx.shell.appDisplay.get",
             Self::ShellOpenHostTerminalSettings => "lx.surface.openApp.hostTerminalSettings",
+            Self::ShellOpenHostBrowserSurface => "lx.surface.openApp.hostBrowserSurface",
             Self::ShellActivate => "lx.shell.activate",
             Self::TerminalSettingsGet => "lx.host.terminal.settings.get",
             Self::TerminalSettingsUpdate => "lx.host.terminal.settings.update",

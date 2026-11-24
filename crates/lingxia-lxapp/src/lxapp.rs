@@ -112,7 +112,7 @@ pub use runtime_ops::{
     installed_lxapp_path, is_lxapp_open, is_pull_down_refresh_enabled, list_lxapps,
     mark_lxapp_active, notify_lxapp_host_visibility, notify_lxapp_host_visibility_by_session,
     notify_page_host_visibility, notify_page_host_visibility_by_webtag, notify_page_instance,
-    notify_page_instance_by_id, on_low_memory, open_control_lxapp_page, open_lxapp,
+    notify_page_instance_by_id, on_low_memory, open_control_lxapp_page, open_control_surface_lxapp_page, open_lxapp,
     open_lxapp_in_region, refresh_auto_appearances, restart_lxapp, show_lxapp_in_region,
     terminate_lxapp, uninstall_lxapp,
 };

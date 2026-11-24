@@ -1,6 +1,5 @@
 use lingxia_browser::{
     BrowserNavigationPolicyRequest, BrowserNavigationPolicyResponse, LxAppError,
-    is_lingxia_startup_url,
 };
 
 pub const APP_ID: &str = lingxia_browser::BUILTIN_BROWSER_APPID;
@@ -21,15 +20,11 @@ pub fn should_hide_url(raw: &str) -> bool {
         return true;
     }
     let lowered = trimmed.to_ascii_lowercase();
-    if lowered.starts_with("lx:")
+    lowered.starts_with("lx:")
         || lowered.starts_with("data:")
         || lowered.starts_with("javascript:")
         || lowered.starts_with("blob:")
         || lowered == "about:blank"
-    {
-        return true;
-    }
-    matches!(is_lingxia_startup_url(trimmed), Some(true))
 }
 
 pub fn open(url: &str, tab_id: Option<&str>) -> Result<String, LxAppError> {
@@ -108,15 +103,15 @@ mod tests {
 
     #[test]
     fn startup_page_url_is_hidden() {
-        assert!(should_hide_url("lingxia://newtab"));
-        assert!(should_hide_url("lingxia://"));
-        assert!(!should_hide_url("lingxia://downloads"));
+        assert!(should_hide_url("about:blank"));
+        assert!(should_hide_url(""));
+        assert!(!should_hide_url("https://example.com"));
     }
 
     #[test]
     fn nav_policy_json_round_trips() {
         let json = serde_json::to_string(&BrowserNavigationPolicyRequest {
-            raw_url: "lingxia://settings".to_string(),
+            raw_url: "https://example.com".to_string(),
             has_user_gesture: false,
             is_main_frame: true,
         })
