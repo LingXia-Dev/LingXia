@@ -678,6 +678,40 @@ fn a_fake_platform_hosts_frames_input_semantics_and_images() {
 }
 
 #[test]
+fn a_field_the_host_lacks_asks_for_an_update_without_a_retry() {
+    let worker = ViewWorker::spawn("test-view").unwrap();
+    let platform = Platform::new(&[&worker]);
+    // The encoder throws this when a render first writes a field past the host's; the host
+    // object is frozen, so the page throws the same error itself.
+    let host = platform.host(
+        &worker,
+        &source(
+            "function render(){const n=useLocal('n',0);if(n.value)throw Error('UI_COMPAT: aria-controls needs wire field 265 (ariaControls), but this app\\'s native View knows fields up to 264');return h('button',{onClick:()=>n.set(1),style:{height:60}},'go')}",
+        ),
+        false,
+    );
+    host.set_visible(true);
+    platform.settle(&[&host]);
+    tap(&host, 20.0, 20.0);
+    platform.settle(&[&host]);
+    let failure = host.failure().unwrap();
+    assert_eq!(
+        (failure.recovery.kind, failure.recovery.retry),
+        (FailureKind::Compatibility, Retry::None)
+    );
+    assert_eq!(failure.message, RecoveryMessage::UpdateRequired);
+    assert_eq!(failure.action, None);
+    assert_eq!(failure.detail.is_some(), cfg!(feature = "dev"));
+    assert!(
+        failure
+            .detail
+            .as_deref()
+            .is_none_or(|detail| detail.contains("aria-controls needs wire field 265"))
+    );
+    assert_eq!(last(&host), ["go"]);
+}
+
+#[test]
 fn removed_images_cancel_their_transport_and_failures_stop_input() {
     let worker = ViewWorker::spawn("test-view").unwrap();
     let platform = Platform::new(&[&worker]);

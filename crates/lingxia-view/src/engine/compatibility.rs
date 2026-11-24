@@ -80,6 +80,7 @@ pub(crate) fn install(context: &super::JSContext) -> Result<(), String> {
         .collect();
     let host = serde_json::json!({
         "uiAbi": ABI, "maxField": crate::protocol::FIELDS.len() - 1, "features": features,
+        "version": env!("CARGO_PKG_VERSION"),
     });
     context.eval::<()>(Source::from_bytes(format!(
         "Object.defineProperty(globalThis,'__lingxiaViewHost',{{value:Object.freeze({{...{host},features:Object.freeze({})}})}});",
