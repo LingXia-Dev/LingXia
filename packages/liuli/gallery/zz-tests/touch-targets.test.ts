@@ -42,7 +42,7 @@ const drawnSmall: Array<[page: string, testId: string, what: string]> = [
   ['token', 'person-kai-remove', 'a token\'s remove button'],
   ['page-control', 'welcome-1', 'a page dot'],
   ['info-tip', 'side', 'a small info button'],
-  ['item', 'device-ipad-remove', 'a row\'s own end action'],
+  ['item', 'device-tablet-remove', 'a row\'s own end action'],
 ];
 
 for (const [page, testId, what] of drawnSmall) {

@@ -25,6 +25,7 @@ mod lxapp_manifest;
 mod lxapp_watch;
 mod mocks;
 mod server;
+mod session_output;
 
 mod android;
 mod attach;
@@ -299,6 +300,7 @@ fn print_installed_waiting(app_id: &str, port: u16) {
 
 fn prepare_dev_host_assets(
     ctx: &DevContext,
+    server: &server::DevServerHandle,
     platforms_to_build: &[PlatformType],
     build_targets: &[String],
     dev_ws_url: Option<&str>,
@@ -314,10 +316,10 @@ fn prepare_dev_host_assets(
         true,
         dev_ws_url,
         &ctx.resolved_env,
+        Some(&|app_id: &str| server.build_dir(app_id)),
     )?;
     if dev_ws_url.is_some() {
-        let dev_manifests =
-            lxapp_manifest::write_configured_manifests(&ctx.project_root, &ctx.config)?;
+        let dev_manifests = server.publish_configured(&ctx.config)?;
         for manifest in &dev_manifests {
             println!(
                 "  {} dev manifest {} ({})",
@@ -1073,6 +1075,15 @@ fn stop_session(project_root: &Path, selector: Option<&str>) -> Result<()> {
                 }
             }
             println!("{message}");
+            // Each instance has its own broker, so its sessions are not listed above.
+            if selector.is_none() {
+                for instance in runner::other_live_instances(project_root) {
+                    println!(
+                        "A Runner session of this project runs under instance {instance:?}: \
+                         `LINGXIA_RUNNER_INSTANCE={instance} lingxia dev stop`"
+                    );
+                }
+            }
             Ok(())
         }
     }

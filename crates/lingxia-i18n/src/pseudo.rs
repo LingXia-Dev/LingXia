@@ -1,17 +1,30 @@
-//! `en-XA`, a pseudo-language generated from the source catalogue to find text the layout clips or
-//! leaves untranslated: accented, about 40% longer, and bracketed so a cut end shows. Never shipped.
+//! Pseudo-languages generated from the source catalogue in a dev build, never shipped: `en-XA` finds
+//! text the layout clips or leaves untranslated (accented, about 40% longer, bracketed so a cut end
+//! shows); `ar-XB` checks mirroring without a real right-to-left translation (each text run forced
+//! right-to-left, the page right-to-left by its language `ar`).
 
 use crate::catalogue::{Catalogue, Entry};
 use crate::message::{Arg, DateStyle, Message, NumberStyle, Part, PluralCategory, Selector};
 
 pub const TAG: &str = "en-XA";
+pub const RTL_TAG: &str = "ar-XB";
+/// Every pseudo-language a dev build adds.
+pub const TAGS: [&str; 2] = [TAG, RTL_TAG];
 
 pub fn catalogue(source: &Catalogue) -> Catalogue {
+    transformed(source, message)
+}
+
+pub fn rtl_catalogue(source: &Catalogue) -> Catalogue {
+    transformed(source, rtl_message)
+}
+
+fn transformed(source: &Catalogue, transform: fn(&Message) -> Message) -> Catalogue {
     let entries = source
         .entries
         .iter()
         .map(|(key, entry)| {
-            let message = message(&entry.message);
+            let message = transform(&entry.message);
             let entry = Entry {
                 source: icu(&message),
                 message,
@@ -33,6 +46,14 @@ fn message(source: &Message) -> Message {
     parts.push(Part::Text(format!("{pad}]")));
     Message {
         parts: merged(parts),
+    }
+}
+
+/// Each text run between right-to-left override and pop; arguments stay outside, so the runtime's
+/// own isolation of them is untouched.
+fn rtl_message(source: &Message) -> Message {
+    Message {
+        parts: map_text(&source.parts, &|text| format!("\u{202E}{text}\u{202C}")),
     }
 }
 
@@ -71,13 +92,18 @@ fn text_length(parts: &[Part]) -> usize {
 }
 
 fn accent(parts: &[Part]) -> Vec<Part> {
+    map_text(parts, &|text| text.chars().map(accented).collect())
+}
+
+/// `parts` with every text run, at any depth, replaced by `f` of it.
+fn map_text(parts: &[Part], f: &dyn Fn(&str) -> String) -> Vec<Part> {
     parts
         .iter()
         .map(|part| match part {
-            Part::Text(text) => Part::Text(text.chars().map(accented).collect()),
+            Part::Text(text) => Part::Text(f(text)),
             Part::Tag { name, children } => Part::Tag {
                 name: name.clone(),
-                children: accent(children),
+                children: map_text(children, f),
             },
             Part::Plural {
                 name,
@@ -90,14 +116,14 @@ fn accent(parts: &[Part]) -> Vec<Part> {
                 offset: *offset,
                 cases: cases
                     .iter()
-                    .map(|(selector, parts)| (*selector, accent(parts)))
+                    .map(|(selector, parts)| (*selector, map_text(parts, f)))
                     .collect(),
             },
             Part::Select { name, cases } => Part::Select {
                 name: name.clone(),
                 cases: cases
                     .iter()
-                    .map(|(key, parts)| (key.clone(), accent(parts)))
+                    .map(|(key, parts)| (key.clone(), map_text(parts, f)))
                     .collect(),
             },
             other => other.clone(),
@@ -227,5 +253,18 @@ mod tests {
         assert!(text.contains("# îţémš"), "{text}");
         assert_eq!(crate::parse(&text).unwrap(), pseudo, "{text}");
         assert_eq!(crate::parse(&icu(&source)).unwrap(), source);
+    }
+
+    #[test]
+    fn an_rtl_pseudo_message_forces_each_run_right_to_left_and_keeps_its_arguments() {
+        let source =
+            crate::parse("{n, plural, one {# item} other {# items}} in <b>{shop}</b>").unwrap();
+        let pseudo = rtl_message(&source);
+        let text = icu(&pseudo);
+        assert!(text.contains("#\u{202E} items\u{202C}"), "{text}");
+        assert!(text.contains("<b>{shop}</b>"), "{text}");
+        assert!(text.starts_with("{n, plural,"), "{text}");
+        assert_eq!(crate::parse(&text).unwrap(), pseudo, "{text}");
+        assert!(crate::direction::right_to_left(RTL_TAG));
     }
 }

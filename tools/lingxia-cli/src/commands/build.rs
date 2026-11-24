@@ -496,6 +496,7 @@ Specify one with `--platform <name>` or build all with `--all-platforms`."
         constrained_platforms,
         None,
         &resolved_env,
+        None,
     )?;
 
     // Phase 3: Build platform packages (Gradle / Swift / etc.).

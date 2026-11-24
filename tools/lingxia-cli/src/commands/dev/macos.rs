@@ -20,7 +20,7 @@ pub(super) fn execute_macos(ctx: DevContext) -> Result<()> {
 
     let run_result = (|| -> Result<()> {
         let platforms_to_build = vec![PlatformType::MacOs];
-        prepare_dev_host_assets(&ctx, &platforms_to_build, &[], Some(&ws_url))?;
+        prepare_dev_host_assets(&ctx, &server, &platforms_to_build, &[], Some(&ws_url))?;
 
         // Step 1: Build
         println!("{}", "Step 1/2: Building...".bold());

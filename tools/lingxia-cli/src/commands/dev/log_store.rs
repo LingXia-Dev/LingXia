@@ -32,6 +32,8 @@ const WS_COMMAND_TIMEOUT: Duration = Duration::from_secs(5);
 pub struct DevLogSession {
     pub session_id: String,
     pub log_file: PathBuf,
+    /// The session's own build output, once its server has claimed it.
+    pub output: Option<PathBuf>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -70,6 +72,7 @@ pub fn create_session(project_root: &Path) -> Result<DevLogSession> {
     Ok(DevLogSession {
         session_id: session_id.clone(),
         log_file: logs_dir.join(format!("{session_id}.jsonl")),
+        output: None,
     })
 }
 
@@ -191,6 +194,10 @@ pub fn register_session_with_content(
             .unwrap_or_default(),
         ws_url: ws_url.to_string(),
         log_file: session.log_file.display().to_string(),
+        output: session
+            .output
+            .as_ref()
+            .map(|output| output.display().to_string()),
         name: name.clone(),
         build: Some(env!("LINGXIA_BUILD_VERSION").to_string()),
         extra: Default::default(),
@@ -523,7 +530,14 @@ pub fn request_shutdown(info: &SessionInfo, taken_over_by: Option<&str>) -> Resu
         &DevSessionMessage::Request(ControlRequest {
             id: command_id.clone(),
             method: methods::session::SHUTDOWN.to_string(),
-            params: taken_over_by.map(|by| serde_json::json!({ "takenOverBy": by })),
+            params: taken_over_by.map(|by| {
+                serde_json::json!({
+                    "takenOverBy": by,
+                    "takenOverByExecutable": std::env::current_exe()
+                        .map(|path| path.display().to_string())
+                        .unwrap_or_default(),
+                })
+            }),
         }),
     )?;
 

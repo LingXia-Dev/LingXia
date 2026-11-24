@@ -7,10 +7,9 @@ use std::collections::BTreeSet;
 use std::fs;
 use std::path::{Path, PathBuf};
 
-const DEV_MANIFEST_DIR: &str = ".lingxia/dev/lxapp";
 const MANIFEST_FILE: &str = "manifest.json";
-/// Published file bytes by sha256, and the manifests that list them by dist hash: every
-/// session of a project writes `dist`, so bytes are served from here, never from `dist`.
+/// Published file bytes by sha256, and the manifests that list them by dist hash: a hot swap
+/// rewrites the build in place, so bytes are served from here, not from the build.
 const BLOBS_DIR: &str = "blobs";
 const SNAPSHOTS_DIR: &str = "snapshots";
 const KEPT_SNAPSHOTS: usize = 8;
@@ -34,9 +33,12 @@ pub(crate) struct DevLxAppManifestFile {
     pub size: u64,
 }
 
-pub(crate) fn write_configured_manifests(
+/// Each path bundle of the host, from the `dist` its embed build wrote: copied into the
+/// session's own build, then published from there.
+pub(crate) fn publish_configured(
     project_root: &Path,
     config: &LingXiaConfig,
+    output: &super::session_output::SessionOutput,
 ) -> Result<Vec<DevLxAppManifest>> {
     let Some(resources) = config.resources.as_ref() else {
         return Ok(Vec::new());
@@ -52,21 +54,29 @@ pub(crate) fn write_configured_manifests(
         else {
             continue;
         };
-        let dist_dir = project_root.join(bundle_path).join("dist");
-        if !dist_dir.join("lxapp.json").is_file() {
-            continue;
-        }
-        let manifest = build_manifest(&dist_dir)
-            .with_context(|| format!("Failed to build dev manifest for {}", dist_dir.display()))?;
+        // A bundle this session built is already in its directory; a prebuilt one is copied in.
+        let session_built = output.build_dir(&bundle.app_id);
+        let built = if session_built.join("lxapp.json").is_file() {
+            session_built
+        } else {
+            let dist_dir = project_root.join(bundle_path).join("dist");
+            if !dist_dir.join("lxapp.json").is_file() {
+                continue;
+            }
+            output.seed(&bundle.app_id, &dist_dir)?
+        };
+        let manifest = build_manifest(&built)
+            .with_context(|| format!("Failed to build dev manifest for {}", built.display()))?;
         if manifest.app_id != bundle.app_id {
+            output.remove_app(&bundle.app_id);
             return Err(anyhow!(
-                "resources.bundles[{}].appId does not match dist/lxapp.json appId '{}'",
+                "resources.bundles[{}].appId does not match its built lxapp.json appId '{}'",
                 bundle.app_id,
                 manifest.app_id
             ));
         }
-        let manifest = capture(project_root, &dist_dir, manifest)?;
-        write_manifest(project_root, &manifest)?;
+        let manifest = capture(&output.store(), &built, manifest)?;
+        write_manifest(&output.store(), &manifest)?;
         written.push(manifest);
     }
     Ok(written)
@@ -124,35 +134,25 @@ fn module_header(page: &Path) -> Option<serde_json::Value> {
 }
 
 /// Whether this session publishes `app_id`: its manifest has been written.
-pub(crate) fn is_published(project_root: &Path, app_id: &str) -> bool {
-    manifest_path(project_root, app_id).is_file()
+pub(crate) fn is_published(store: &Path, app_id: &str) -> bool {
+    manifest_path(store, app_id).is_file()
 }
 
-pub(crate) fn load_manifest(project_root: &Path, app_id: &str) -> Result<DevLxAppManifest> {
-    let path = manifest_path(project_root, app_id);
+pub(crate) fn load_manifest(store: &Path, app_id: &str) -> Result<DevLxAppManifest> {
+    let path = manifest_path(store, app_id);
     let bytes = fs::read(&path).with_context(|| format!("Failed to read {}", path.display()))?;
     serde_json::from_slice(&bytes).with_context(|| format!("Invalid JSON in {}", path.display()))
 }
 
-pub(crate) fn resolve_dist_file(
-    project_root: &Path,
-    app_id: &str,
-    relative_path: &str,
-) -> Result<PathBuf> {
-    let dist_dir = configured_dist_dir(project_root, app_id)?;
-    resolve_published_file(project_root, app_id, relative_path, &dist_dir)
-}
-
-/// A file from an attached lxapp. Its bytes live in that lxapp's `dist`, not
-/// in a `resources.bundles` path under the host project.
+/// A listed file from the session's build of `app_id`, when its captured bytes are gone.
 pub(crate) fn resolve_published_file(
-    project_root: &Path,
+    store: &Path,
     app_id: &str,
     relative_path: &str,
     dist_dir: &Path,
 ) -> Result<PathBuf> {
     validate_relative_path(relative_path)?;
-    let manifest = load_manifest(project_root, app_id)?;
+    let manifest = load_manifest(store, app_id)?;
     if !manifest.files.iter().any(|file| file.path == relative_path) {
         return Err(anyhow!(
             "file is not listed in dev manifest: {relative_path}"
@@ -171,16 +171,16 @@ pub(crate) fn resolve_published_file(
     Ok(resolved)
 }
 
-pub(crate) fn publish_dist(project_root: &Path, dist_dir: &Path) -> Result<DevLxAppManifest> {
+pub(crate) fn publish_dist(store: &Path, dist_dir: &Path) -> Result<DevLxAppManifest> {
     let manifest = build_manifest(dist_dir)
         .with_context(|| format!("Failed to build dev manifest for {}", dist_dir.display()))?;
-    let manifest = capture(project_root, dist_dir, manifest)?;
-    write_manifest(project_root, &manifest)?;
+    let manifest = capture(store, dist_dir, manifest)?;
+    write_manifest(store, &manifest)?;
     Ok(manifest)
 }
 
-pub(crate) fn remove_manifest(project_root: &Path, app_id: &str) -> Result<()> {
-    let path = manifest_path(project_root, app_id);
+pub(crate) fn remove_manifest(store: &Path, app_id: &str) -> Result<()> {
+    let path = manifest_path(store, app_id);
     if path.is_file() {
         fs::remove_file(&path).with_context(|| format!("Failed to remove {}", path.display()))?;
     }
@@ -232,14 +232,14 @@ pub(crate) fn declared_bundle_conflict(
     Ok(None)
 }
 
-fn write_manifest(project_root: &Path, manifest: &DevLxAppManifest) -> Result<()> {
-    let path = manifest_path(project_root, &manifest.app_id);
+fn write_manifest(store: &Path, manifest: &DevLxAppManifest) -> Result<()> {
+    let path = manifest_path(store, &manifest.app_id);
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent)
             .with_context(|| format!("Failed to create {}", parent.display()))?;
     }
     let bytes = serde_json::to_vec_pretty(manifest)?;
-    let snapshots = app_dir(project_root, &manifest.app_id).join(SNAPSHOTS_DIR);
+    let snapshots = app_dir(store, &manifest.app_id).join(SNAPSHOTS_DIR);
     fs::create_dir_all(&snapshots)
         .with_context(|| format!("Failed to create {}", snapshots.display()))?;
     write_atomic(
@@ -249,28 +249,26 @@ fn write_manifest(project_root: &Path, manifest: &DevLxAppManifest) -> Result<()
     if fs::read(&path).ok().as_deref() != Some(bytes.as_slice()) {
         write_atomic(&path, &bytes)?;
     }
-    prune(project_root, &manifest.app_id);
+    prune(store, &manifest.app_id);
     Ok(())
 }
 
-fn app_dir(project_root: &Path, app_id: &str) -> PathBuf {
-    project_root
-        .join(DEV_MANIFEST_DIR)
-        .join(sanitize_component(app_id))
+fn app_dir(store: &Path, app_id: &str) -> PathBuf {
+    store.join(sanitize_component(app_id))
 }
 
-fn manifest_path(project_root: &Path, app_id: &str) -> PathBuf {
-    app_dir(project_root, app_id).join(MANIFEST_FILE)
+fn manifest_path(store: &Path, app_id: &str) -> PathBuf {
+    app_dir(store, app_id).join(MANIFEST_FILE)
 }
 
 /// Copy each listed file into the blob store. A file rewritten since it was hashed is
 /// listed as the bytes captured, so the manifest always describes what will be served.
 fn capture(
-    project_root: &Path,
+    store: &Path,
     dist_dir: &Path,
     mut manifest: DevLxAppManifest,
 ) -> Result<DevLxAppManifest> {
-    let blobs = app_dir(project_root, &manifest.app_id).join(BLOBS_DIR);
+    let blobs = app_dir(store, &manifest.app_id).join(BLOBS_DIR);
     fs::create_dir_all(&blobs).with_context(|| format!("Failed to create {}", blobs.display()))?;
     let mut moved = false;
     for file in &mut manifest.files {
@@ -301,10 +299,9 @@ fn write_atomic(path: &Path, bytes: &[u8]) -> Result<()> {
     fs::rename(&temporary, path).with_context(|| format!("Failed to publish {}", path.display()))
 }
 
-/// Keep the newest snapshots and the blobs they list; best effort, as another session
-/// may prune the same store.
-fn prune(project_root: &Path, app_id: &str) {
-    let dir = app_dir(project_root, app_id);
+/// Keep the newest snapshots and the blobs they list; best effort.
+fn prune(store: &Path, app_id: &str) {
+    let dir = app_dir(store, app_id);
     let Ok(entries) = fs::read_dir(dir.join(SNAPSHOTS_DIR)) else {
         return;
     };
@@ -346,14 +343,14 @@ fn prune(project_root: &Path, app_id: &str) {
 
 /// The manifest published as `dist_hash`, while its snapshot is kept.
 pub(crate) fn load_snapshot(
-    project_root: &Path,
+    store: &Path,
     app_id: &str,
     dist_hash: &str,
 ) -> Result<Option<DevLxAppManifest>> {
     if !is_sha256(dist_hash) {
         return Ok(None);
     }
-    let path = app_dir(project_root, app_id)
+    let path = app_dir(store, app_id)
         .join(SNAPSHOTS_DIR)
         .join(format!("{dist_hash}.json"));
     match fs::read(&path) {
@@ -365,11 +362,11 @@ pub(crate) fn load_snapshot(
 }
 
 /// The captured bytes of a published file, by its sha256.
-pub(crate) fn read_blob(project_root: &Path, app_id: &str, hash: &str) -> Option<Vec<u8>> {
+pub(crate) fn read_blob(store: &Path, app_id: &str, hash: &str) -> Option<Vec<u8>> {
     if !is_sha256(hash) {
         return None;
     }
-    fs::read(app_dir(project_root, app_id).join(BLOBS_DIR).join(hash)).ok()
+    fs::read(app_dir(store, app_id).join(BLOBS_DIR).join(hash)).ok()
 }
 
 fn is_sha256(value: &str) -> bool {
@@ -377,34 +374,6 @@ fn is_sha256(value: &str) -> bool {
         && value
             .bytes()
             .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
-}
-
-fn configured_dist_dir(project_root: &Path, app_id: &str) -> Result<PathBuf> {
-    // A standalone session's own lxapp; a host project resolves its bundles.
-    if !project_root.join("lingxia.yaml").is_file()
-        && project_root.join("lxapp.json").is_file()
-        && super::lxapp_watch::read_app_id(project_root)? == app_id
-    {
-        return Ok(project_root.join("dist"));
-    }
-    let config = LingXiaConfig::load(project_root)?;
-    let bundle = config
-        .resources
-        .as_ref()
-        .and_then(|resources| {
-            resources
-                .bundles
-                .iter()
-                .find(|bundle| bundle.app_id == app_id)
-        })
-        .ok_or_else(|| anyhow!("No configured resource bundle for appId '{}'", app_id))?;
-    let path = bundle
-        .path
-        .as_deref()
-        .map(str::trim)
-        .filter(|value| !value.is_empty())
-        .ok_or_else(|| anyhow!("Resource bundle '{}' is not path-based", app_id))?;
-    Ok(project_root.join(path).join("dist"))
 }
 
 fn build_manifest(dist_dir: &Path) -> Result<DevLxAppManifest> {
@@ -609,7 +578,7 @@ mod tests {
     }
 
     #[test]
-    fn writes_manifest_outside_dist_for_path_bundle() {
+    fn a_path_bundle_is_published_from_the_sessions_copy_of_its_dist() {
         let temp = tempfile::tempdir().unwrap();
         let project = temp.path();
         let dist = project.join("app").join("dist");
@@ -652,14 +621,13 @@ mod tests {
             update: None,
         };
 
-        let manifests = write_configured_manifests(project, &config).unwrap();
+        let output = super::super::session_output::SessionOutput::at(project.join("session"));
+        let manifests = publish_configured(project, &config, &output).unwrap();
         assert_eq!(manifests.len(), 1);
-        assert!(
-            project
-                .join(".lingxia/dev/lxapp/demo/manifest.json")
-                .is_file()
-        );
+        assert!(output.store().join("demo/manifest.json").is_file());
+        assert!(output.build_dir("demo").join("logic.js").is_file());
         assert!(!dist.join("manifest.json").exists());
+        assert!(!project.join(".lingxia/dev/lxapp").exists());
         assert!(
             manifests[0]
                 .files

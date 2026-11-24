@@ -129,11 +129,18 @@ fn resolve_current_page(app: &Arc<LxApp>) -> Result<PageInstance, String> {
     app.current_page().map_err(|err| err.to_string())
 }
 
-/// Resolve a page's attached WebView, erroring while it is not ready.
+/// Resolve a page's attached WebView, erroring while it is not ready. A GPU page has none, which
+/// is not a readiness problem: the caller asked for something only a WebView page does.
 pub fn resolve_webview(app: &Arc<LxApp>, page_name: Option<&str>) -> Result<Arc<WebView>, String> {
     let (page, _) = resolve_page(app, page_name)?;
-    page.webview()
-        .ok_or_else(|| "page WebView is not ready".to_string())
+    attached_webview(page.renderer(), page.webview())
+}
+
+fn attached_webview<W>(renderer: crate::PageRenderer, webview: Option<W>) -> Result<W, String> {
+    if renderer == crate::PageRenderer::Gpu {
+        return Err("E_UNSUPPORTED: this needs a WebView page; this page renders on the GPU".into());
+    }
+    webview.ok_or_else(|| "page WebView is not ready".to_string())
 }
 
 /// Whether the target page renders on the GPU: its input travels in-process, never via a key window.
@@ -776,6 +783,16 @@ mod gpu_key_tests {
     use super::gpu_key_name;
     use lingxia_platform::traits::keyboard::AppKeyboardModifier;
 
+    /// A GPU page has no WebView by design; saying "not ready" sent authors after a readiness bug.
+    #[test]
+    fn a_webview_only_call_on_a_gpu_page_is_unsupported_not_unready() {
+        let gpu = super::attached_webview::<()>(crate::PageRenderer::Gpu, None).unwrap_err();
+        assert!(gpu.starts_with("E_UNSUPPORTED:"), "{gpu}");
+        let web = super::attached_webview::<()>(crate::PageRenderer::Webview, None).unwrap_err();
+        assert_eq!(web, "page WebView is not ready");
+        assert_eq!(super::attached_webview(crate::PageRenderer::Webview, Some(7)), Ok(7));
+    }
+
     #[test]
     fn window_key_names_map_to_the_gpu_page_vocabulary() {
         assert_eq!(gpu_key_name("return", &[]).unwrap(), "Enter");
@@ -1027,13 +1044,19 @@ pub async fn page_select_option(
     }
 }
 
-/// Scroll the target page WebView by a pixel delta.
+/// Scroll the target page WebView by a pixel delta. A GPU page has no one page scroller: reveal
+/// an element, or scroll as a person does.
 pub async fn page_scroll(
     app: &Arc<LxApp>,
     page_name: Option<&str>,
     dx: f64,
     dy: f64,
 ) -> Result<(), String> {
+    if page_is_gpu(app, page_name) {
+        return Err("E_UNSUPPORTED: scroll by an amount is for WebView pages; on a GPU page use \
+                    locator.scrollIntoView(), or view.swipe() / view.fling() to scroll as a person does"
+            .into());
+    }
     resolve_webview(app, page_name)?
         .scroll(dx, dy, lingxia_webview::ScrollOptions)
         .await

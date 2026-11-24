@@ -4,8 +4,19 @@ How to write lxapp pages: layout, Logic, `App({})`, navigation and page chrome. 
 a GPU View by default ([authoring](./gpu/authoring.md)); React or HTML in a WebView is the
 second path ([WebView pages](./webview/guide.md)). One kind per lxapp.
 
-**Where state lives:** what Logic reads or keeps goes in `data`; what only one
-piece of UI shows (a draft, an open menu) stays in the View (`useLocal`, `useState`).
+**Which one when** (GPU View names; React pages: [WebView pages](./webview/guide.md)):
+
+| Need | Use |
+| --- | --- |
+| State Logic reads or keeps | `data`; change it with `page.update(d => …)`, or `page.set({ key })` for whole keys |
+| State only one piece of UI shows (a draft, an open menu) | `useLocal` in the View |
+| State several pages show (session, cart) | `defineStore`, changed with its `set`/`update`; a page shows it with `follow: { key: store.pick(…) }` |
+| Wait or repeat | `page.after(ms, fn)` / `page.every(ms, fn)` in Logic; the View has no timers |
+| Call Logic from a handler | the action itself (`onClick={actions.refresh}`); add `useAction` to show `pending`/`error` |
+| Load when the component first renders, again when params change | `useRequest(name, actions.x, params)` |
+| Progress or streamed output | an `async *` action, with `useStream` |
+| A long-lived two-way line | a channel action, with `useChannel` |
+| Go to another page | `<link to={{ page, params }}>` in the View; `lx.nav.go` in Logic when it decides |
 
 ## Scaffold
 
@@ -264,8 +275,8 @@ export default definePage({
 - `persist` loads at definition and saves each change, one save at a time with the newest value;
   a change made before the load wins, and `saved` reports the last save.
 - `onError(failure)` in `App({})` sees each failure nothing handled (page hooks and timers, App hooks,
-  store callbacks), one call at a time; it only observes. Rejected actions and module-level rejections
-  reach it only on an engine that reports unhandled rejections; their silence elsewhere is not "none".
+  store callbacks), one call at a time; it only observes. A promise nothing awaited or caught reaches it
+  (`kind: 'app'`, `hook: null`) only on an engine that tracks rejections: not on iOS or macOS.
 - There is no `getApp()` or `globalData`; `App({ globalData })` throws. Plain module
   state is not reactive; share what pages show through a store.
 - Cold start: `App.onLaunch` → `App.onShow` → `Page.onLoad` → `Page.onShow`;
@@ -426,8 +437,9 @@ translation, an argument a translation adds or drops, and a catalogue for an und
 - A package with words of its own ships its source catalogue and names it in its `package.json`:
   `"lingxia": { "messages": "./messages/en.json" }`; every key starts with its `@namespace.`.
 - A dev session also builds `en-XA`: the source accented, ~40% longer and bracketed, to find
-  clipped or untranslated text. Pick it with `lx.host.displayLanguage.set('en-XA')` from
-  the Control app (`lxdev lxapp eval`); it never ships.
+  clipped or untranslated text; and `ar-XB`: the source forced right-to-left on a right-to-left
+  page, to check mirroring. Pick one with `lx.host.displayLanguage.set('ar-XB')` from
+  the Control app (`lxdev lxapp eval`); neither ships.
 - Keys and arguments are typed from the source catalogue: an unknown key, or a missing or wrong-kind
   argument, fails `tsc`, and a literal key the catalogue lacks fails the build. A key built at run
   time takes a cast, `` t(`state.${s}` as MessageKey) `` (`LxAppMessageKey` in Logic), and its

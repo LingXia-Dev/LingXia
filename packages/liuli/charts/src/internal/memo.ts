@@ -13,3 +13,19 @@ export function remember<T>(data: object, slot: string, key: string, build: () =
   slots.set(slot, { key, value });
   return value;
 }
+
+const shown = new WeakMap<object, Set<string>>();
+
+/**
+ * Whether the chart `who` of `data` has a laid-out plot now or had one before. A chart draws in
+ * once: one that comes back with the same rows, a list row scrolled back or a page returned to,
+ * shows whole from its first frame.
+ */
+export function laidOutOnce(data: object, who: string, isLaidOut: boolean): boolean {
+  let names = shown.get(data);
+  if (isLaidOut) {
+    if (!names) shown.set(data, (names = new Set()));
+    names.add(who);
+  }
+  return isLaidOut || names?.has(who) === true;
+}

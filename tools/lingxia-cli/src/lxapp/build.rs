@@ -13,19 +13,28 @@ use std::path::Path;
 use std::time::{Duration, Instant};
 
 pub fn run(args: &[String], cwd: &Path) -> Result<()> {
-    run_with_context(args, cwd, false)
+    run_with_context(args, cwd, false, None)
 }
 
-pub fn run_for_dev(args: &[String], cwd: &Path) -> Result<()> {
-    run_with_context(args, cwd, true)
+/// A dev session's build; `output` replaces the project's `dist` when given.
+pub fn run_for_dev(args: &[String], cwd: &Path, output: Option<&Path>) -> Result<()> {
+    run_with_context(args, cwd, true, output)
 }
 
-fn run_with_context(args: &[String], cwd: &Path, dev_session: bool) -> Result<()> {
+fn run_with_context(
+    args: &[String],
+    cwd: &Path,
+    dev_session: bool,
+    output: Option<&Path>,
+) -> Result<()> {
     let _preparation = crate::build_prepare::Scope::enter();
     let build_started = Instant::now();
     let mut options = BuildOptions::parse(args)?;
     options.dev_session = dev_session;
-    let project = Project::discover(cwd)?;
+    let mut project = Project::discover(cwd)?;
+    if let Some(output) = output {
+        project.output_dir = output.to_path_buf();
+    }
 
     if options.package && !options.release {
         return Err(anyhow!("--package requires --release"));

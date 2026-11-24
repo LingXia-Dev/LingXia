@@ -37,6 +37,7 @@ fn to_json(sessions: &[project::SessionInfo], probes: &[project::SessionProbe]) 
                     "started_at": s.started_at,
                     "ws_url": s.ws_url,
                     "log_file": s.log_file,
+                    "output": s.output,
                     "cli_build": s.build,
                     "cli_current": cli_current(s),
                     "host_build": probe.runtime_build,
@@ -105,6 +106,9 @@ fn render(sessions: &[project::SessionInfo], probes: &[project::SessionProbe]) -
         if !info.log_file.is_empty() {
             out.push_str(&format!("  log: {}\n", info.log_file));
         }
+        if let Some(output) = &info.output {
+            out.push_str(&format!("  build: {output} (not dist/)\n"));
+        }
         if !cli_current(info) {
             out.push_str(&format!(
                 "  note: {} was rebuilt after this session started; restart it to pick up CLI changes\n",
@@ -171,6 +175,7 @@ mod tests {
             "started_at": 0,
             "ws_url": "ws://127.0.0.1:1",
             "log_file": format!("/work/app/.lingxia/logs/{id}.jsonl"),
+            "output": format!("/work/app/.lingxia/dev/sessions/{id}"),
             "name": name,
         }))
         .unwrap()
@@ -211,11 +216,15 @@ mod tests {
         );
         assert!(lines[1].ends_with("/work/app"), "{table}");
         assert_eq!(lines[2], "  log: /work/app/.lingxia/logs/aaa111.jsonl");
+        assert_eq!(
+            lines[3],
+            "  build: /work/app/.lingxia/dev/sessions/aaa111 (not dist/)"
+        );
         assert!(
-            lines[3].starts_with("2  bbb222  -     macos   starting"),
+            lines[4].starts_with("2  bbb222  -     macos   starting"),
             "{table}"
         );
-        assert_eq!(lines[4], "  log: /work/app/.lingxia/logs/bbb222.jsonl");
+        assert_eq!(lines[5], "  log: /work/app/.lingxia/logs/bbb222.jsonl");
     }
 
     #[test]
@@ -236,6 +245,7 @@ mod tests {
             "started_at",
             "ws_url",
             "log_file",
+            "output",
             "cli_build",
             "host_build",
             "state",
@@ -272,14 +282,14 @@ mod tests {
         let table = render(&sessions, &probes);
         let lines: Vec<&str> = table.lines().collect();
         assert_eq!(
-            lines[3],
+            lines[4],
             format!(
                 "  note: {} was rebuilt after this session started; restart it to pick up CLI changes",
                 binary.display()
             ),
             "{table}"
         );
-        assert!(lines[4].starts_with("2  bbb222"), "{table}");
+        assert!(lines[5].starts_with("2  bbb222"), "{table}");
         let value = to_json(&sessions, &probes);
         assert_eq!(value[0]["cli_current"], false);
         assert_eq!(value[1]["cli_current"], true);

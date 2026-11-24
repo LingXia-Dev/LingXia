@@ -475,6 +475,7 @@ mod native_main_scaffold_tests {
                 package_id_suffix: Some(".dev".to_string()),
                 app_link_hosts: Vec::new(),
             },
+            None,
         )
         .unwrap();
 

@@ -5,7 +5,7 @@ import { accessibilityDemos } from './accessibility';
 import { appearanceDemos } from './appearance';
 import { controlDemos, drawingDemos, mediaDemos } from './elements';
 import { gestureDemos, pointerDemos } from './gestures';
-import { layoutDemos } from './layout';
+import { layoutDemos, pinnedRoom } from './layout';
 import { motionDemos } from './motion';
 import { overlayDemos } from './overlays';
 import { scrollingDemos } from './scrolling';
@@ -18,7 +18,7 @@ export function Group({ id }: { id: GroupId }) {
     case 'drawing': return <GroupPage id="drawing" bodies={drawingDemos} />;
     case 'media': return <GroupPage id="media" bodies={mediaDemos} />;
     case 'controls': return <GroupPage id="controls" bodies={controlDemos} />;
-    case 'layout': return <GroupPage id="layout" bodies={layoutDemos} />;
+    case 'layout': return <GroupPage id="layout" bodies={layoutDemos} endRoom={pinnedRoom} />;
     case 'text': return <GroupPage id="text" bodies={textDemos} />;
     case 'input': return <GroupPage id="input" bodies={inputDemos} />;
     case 'gestures': return <GroupPage id="gestures" bodies={gestureDemos} />;

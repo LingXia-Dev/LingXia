@@ -199,13 +199,13 @@ test('endAction with to: the action is a link of its own; the row keeps its own 
   const screen = await renderPage(`
     import { Item } from '@liulidesign/core/Item';
     export function render() {
-      return <page><Item label="Emily's iPad" onClick={() => {}} data-testid="row"
-        endAction={{ label: "Emily's iPad details", icon: 'info', to: { page: 'device' }, 'data-testid': 'details' }} /></page>;
+      return <page><Item label="Lena's tablet" onClick={() => {}} data-testid="row"
+        endAction={{ label: "Lena's tablet details", icon: 'info', to: { page: 'device' }, 'data-testid': 'details' }} /></page>;
     }
   `);
   const action = screen.getByTestId('details');
   assert.equal(action.tag, 'link-box');
-  assert.equal(action.props.accessibilityLabel, "Emily's iPad details");
+  assert.equal(action.props.accessibilityLabel, "Lena's tablet details");
   assert.equal(screen.getByTestId('row').tag, 'button');
 });
 
@@ -223,18 +223,18 @@ test('the second line comes first, then the end value; a value alone is the whol
   const screen = await renderPage(`
     import { Item, ItemList } from '@liulidesign/core/Item';
     export function render() {
-      return <page><ItemList label="Network"><Item label="Fixed addresses" description="Kept for these devices" endContent={<text>1 device</text>} onClick={() => {}} data-testid="fixed" /><Item label="Fixed addresses" endContent={<text>1 device</text>} onClick={() => {}} data-testid="value-only" /></ItemList></page>;
+      return <page><ItemList label="Inbox"><Item label="Saved replies" description="Kept for this inbox" endContent={<text>1 reply</text>} onClick={() => {}} data-testid="fixed" /><Item label="Saved replies" endContent={<text>1 reply</text>} onClick={() => {}} data-testid="value-only" /></ItemList></page>;
     }
   `);
-  assert.deepEqual(described(screen, screen.getByTestId('fixed')), ['Kept for these devices', '1 device']);
-  assert.deepEqual(described(screen, screen.getByTestId('value-only')), ['1 device'], 'a value alone: "Fixed addresses, 1 device"');
+  assert.deepEqual(described(screen, screen.getByTestId('fixed')), ['Kept for this inbox', '1 reply']);
+  assert.deepEqual(described(screen, screen.getByTestId('value-only')), ['1 reply'], 'a value alone: "Saved replies, 1 reply"');
 });
 
 test('WithStatus: the badge sits on the name\'s line, never shrinks, and is read after the name, before the second line', async () => {
   const screen = await renderExample('Item/Item', 'WithStatus');
   const row = screen.getByTestId('member-alexandra');
   assert.equal(row.props.accessibilityLabel, 'Alexandra-Charlotte Montgomery', 'the name alone');
-  assert.deepEqual(described(screen, row), ['No controls', 'Parental controls are off · 3 devices']);
+  assert.deepEqual(described(screen, row), ['Away', 'Back on Monday · 3 open tasks']);
   const name = screen.getByText('Alexandra-Charlotte Montgomery');
   assert.equal(name.parent.props.flexDirection, 'row');
   assert.deepEqual([name.props.whiteSpace, name.props.textOverflow, name.props.shrink], ['nowrap', 'ellipsis', 1], 'the name truncates');
@@ -258,25 +258,25 @@ test('on a row that is not pressable the badge is read where it stands, after th
 
 test('WithRemove: the end action is its own button, never the row: its own name, not hidden, not read as the row\'s description', async () => {
   const screen = await renderExample('Item/Item', 'WithRemove');
-  const row = screen.getByTestId('device-ipad');
-  const remove = screen.getByTestId('device-ipad-remove');
+  const row = screen.getByTestId('device-tablet');
+  const remove = screen.getByTestId('device-tablet-remove');
   assert.equal(remove.tag, 'button');
-  assert.equal(remove.props.accessibilityLabel, "Remove Emily's iPad");
+  assert.equal(remove.props.accessibilityLabel, "Remove Lena's tablet");
   assert.equal(remove.props.accessibilityHidden, undefined);
-  assert.equal(row.props.accessibilityLabel, "Emily's iPad");
+  assert.equal(row.props.accessibilityLabel, "Lena's tablet");
   assert.deepEqual(described(screen, row), ['Online · 2 h today'], 'the action is not part of the row\'s description');
   assert.notEqual(remove.props.onClick, row.props.onClick, 'two handlers: pressing the action is not pressing the row');
   screen.press(remove);
-  assert.ok(screen.getByText("Removed Emily's iPad"));
-  assert.equal(screen.queryAll(node => node.props.text === "Opened Emily's iPad").length, 0);
+  assert.ok(screen.getByText("Removed Lena's tablet"));
+  assert.equal(screen.queryAll(node => node.props.text === "Opened Lena's tablet").length, 0);
 });
 
 test('WithRemove: the action keeps 32 pt inside the row, reaches the touch minimum around it, and sits at the inline end, neutral', async () => {
   const screen = await renderExample('Item/Item', 'WithRemove');
-  const remove = screen.getByTestId('device-ipad-remove');
+  const remove = screen.getByTestId('device-tablet-remove');
   assert.deepEqual([remove.props.width, remove.props.height], [32, 32], 'the host grows the touch target to 44, not the row');
   assert.equal(remove.props.color, 'text-muted');
-  const row = screen.getByTestId('device-ipad');
+  const row = screen.getByTestId('device-tablet');
   const parts = row.children;
   assert.equal(parts.at(-1), remove, 'last in the row, so at the inline end in either direction');
 });
@@ -288,27 +288,27 @@ test('WithStop: an action that ends something at once is in danger', async () =>
 
 test('TitledLists: a list title and its note sit on the card\'s edge, with no inset of their own', async () => {
   const screen = await renderExample('Item/Item', 'TitledLists');
-  const title = screen.getByText('Other devices');
-  const note = screen.getByText('Controls only work while devices are on your home Wi-Fi.');
+  const title = screen.getByText('Unclaimed tasks');
+  const note = screen.getByText('Tasks wait here until someone on the team picks them up.');
   for (const node of [title, note]) assert.equal(node.props.paddingStart ?? node.props.paddingLeft ?? node.props.paddingHorizontal ?? 0, 0);
 });
 
 test('RightToLeft: the rows take the page direction; the action keeps its own name', async () => {
   const screen = await renderExample('Item/Item', 'RightToLeft');
   assert.equal(screen.getByTestId('rtl-family').props.direction, 'rtl');
-  const action = screen.queryAll(node => node.tag === 'button' && node.props.accessibilityLabel === 'הסרת האייפד של אמילי')[0];
+  const action = screen.queryAll(node => node.tag === 'button' && node.props.accessibilityLabel === 'הסרת הטאבלט של לנה')[0];
   assert.ok(action, 'the end action is its own button');
 });
 
 test('WithFacts: each fact is its own text, read in order as the row\'s description, after its name', async () => {
   const screen = await renderExample('Item/Item', 'WithFacts');
-  const row = screen.getByTestId('person-marcus');
+  const row = screen.getByTestId('person-ines');
   const [id] = row.props.ariaDescribedBy.split(' ');
   const [node] = screen.queryAll(other => other.props.elementId === id);
   const texts = [];
   const walk = at => at.tag === 'text' ? texts.push(textOf(at)) : at.children?.forEach(walk);
   walk(node);
-  assert.deepEqual(texts, ['marcus.w@example.com', 'Joined with an invitation from James Whitfield', 'Joined 23 days ago', 'Active yesterday']);
+  assert.deepEqual(texts, ['ines.l@example.com', 'Invited by Oskar Lind to the spring launch project', 'Joined 23 days ago', 'Active yesterday']);
   assert.equal(row.props.ariaDescribedBy.split(' ').length, 1, 'the facts are the whole description');
   assert.deepEqual([node.children.map(child => child.tag), node.props.gap], [['text', 'text', 'text', 'text'], 4], 'each fact its own text, 4 apart, so a wrapped line stays with its fact');
 });
@@ -329,7 +329,7 @@ test('WithFacts: the avatar centres on a row of two lines and moves to the first
     const [slot, text] = row.children;
     return { row, slot, strut: slot.children[0], text };
   };
-  for (const [id, height, along] of [['person-james', 40, 'center'], ['person-marcus', 98, 'start']]) {
+  for (const [id, height, along] of [['person-oskar', 40, 'center'], ['person-ines', 98, 'start']]) {
     const { strut } = parts(id);
     assert.deepEqual([strut.text, strut.props.accessibilityHidden], ['\u200B', 1], 'an unseen one-line strut in the label style');
     screen.layout(strut, { width: 0, height: 22 });

@@ -25,13 +25,22 @@ start instead of running unnamed.
 suffixed pipe on Windows): sessions of an export or second checkout register there, the build check
 replaces only that broker, and `lxdev` reaches them with the same variable or `--instance <name>`.
 Without it every build shares the default broker, and a different build replaces it.
+`LINGXIA_HOME` moves the broker with the rest of the state: the socket is `$LINGXIA_HOME/broker[-<instance>].sock`
+(a socket path past the platform limit, 103 bytes on macOS, is an error naming it), and on Windows the
+pipe name carries a hash of it. `lxdev` must run with the same `LINGXIA_HOME` to find those sessions.
 
 A macOS Runner session owns one slot per project and instance: `.lingxia/dev/runner[-<instance>].pid`, an
 `.owner` record (session pid and start time), and Runner data under `<project id>[-<instance>]`. A new
 session ends only a leftover Runner whose owner is gone; while the owner lives it refuses before building,
-naming that session. Takeover within one instance tells the old session who replaced it. Sessions of one
-project under different instances still share the source tree's build output (`dist`) and the rest of
-`.lingxia/`.
+naming that session. Takeover within one instance tells the old session who replaced it.
+
+Each session builds and serves from `.lingxia/dev/sessions/<session id>/` (`build/<appId>`, and the
+manifests, snapshots and blobs under `lxapp/`), never another session's; `dist/` is written only by
+`lingxia build`: a host session builds each embedded lxapp into its own `build/<appId>` and copies that
+into the host's assets (a prebuilt bundle is copied in from its `dist/`). The directory is removed
+when the session ends; at start, one whose `owner` (pid and start time) is proven gone is removed, and one
+with no readable owner is reported and left. Sessions of one project still share the generated inputs
+beside the sources (`.lingxia/i18n`, `.lingxia/gpu-inputs.json`).
 
 Printed hints (a failed spec's `Rerun:` line, the stop command) never carry a
 session id: they omit `--session` when not needed and otherwise use the name
@@ -81,6 +90,11 @@ The version-skew check also compares the CLI's commit with a locally built
 package that records one. A CLI built from a checkout needs a Runner built from
 the same commit (`tools/lingxia-runner/macos/install-local-runner.sh`, or
 `.ps1` on Windows).
+
+Runners install under `$LINGXIA_HOME/runner/<version>` (default `~/.lingxia`). Installing a release
+removes only older release downloads beyond the newest two that no process runs from; local builds
+and suffixed names are never touched. An agent lane, CI job or scripted test must set its own
+`LINGXIA_HOME` (and `LINGXIA_RUNNER_INSTANCE`), or it installs into the user's Runners.
 
 `dev -p harmony` from a fresh shell needs `OHOS_NDK_HOME` (command-line-tools
 `sdk/default/openharmony`), its `toolchains` and command-line-tools `bin` on

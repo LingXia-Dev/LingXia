@@ -13,7 +13,7 @@ its npm dependencies installed):
 lxdev --session <id> test ../../../packages/lingxia-test/showcase/flows/browser-control-navigation.test.ts --verbose
 ```
 
-The defaults match Fusheng. For another host, pass `--arg forwardSelector=…`,
+The defaults match a host with `lingxia://settings` and `lingxia://downloads` pages. For another host, pass `--arg forwardSelector=…`,
 `--arg backSelector=…`, `--arg fromUrl=…`, `--arg toUrl=…`, `--arg rpc=…`, and
 optionally `--arg cycles=10`. The selectors must identify real product links.
 Do not inject synthetic links or replace the clicks with repeated host opens:

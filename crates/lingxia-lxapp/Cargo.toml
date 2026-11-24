@@ -26,6 +26,9 @@ network-observer = [
     "rong_http?/network-observer",
     "lingxia-transfer/network-observer",
 ]
+# Report promise rejections nothing handled to `App.onError`. Needs the rong release that adds
+# rejection tracking (after 0.8.0); off until the workspace moves to it.
+rejection-tracking = ["js-appservice"]
 js-appservice = [
     "dep:rong",
     "dep:rong_modules",
@@ -115,4 +118,6 @@ swift-bridge = "0.1.59"
 
 [dev-dependencies]
 tempfile = "3"
+# The rejection tracker's test runs on QuickJS, which reports rejections on every host.
+rong = { workspace = true, features = ["quickjs"] }
 lingxia-webview = { workspace = true, features = ["test-support"] }

@@ -266,7 +266,11 @@ fn extract_route_info(route: &str, kind: RouteKind, item_fn: &ItemFn) -> NativeR
         };
         let ty_str = type_string(&pat_type.ty).replace(' ', "");
 
-        if ty_str.contains("LxApp") || ty_str.contains("HostCancel") {
+        // Dispatch supplies these; they are never part of the JSON input.
+        if ty_str.contains("LxApp")
+            || ty_str.contains("HostCancel")
+            || ty_str.contains("HostInvocationContext")
+        {
             continue;
         }
 
@@ -951,6 +955,30 @@ mod tests {
         assert!(generated.contains("editor"));
         assert!(!generated.contains("browser.watch"));
         assert!(!generated.contains("host.update"));
+    }
+
+    #[test]
+    fn an_invocation_context_is_not_the_input() {
+        let manifest = scan_source(
+            r#"
+            #[lingxia::native("notes.scoped")]
+            pub fn scoped(input: String, context: lingxia::host::HostInvocationContext) -> HostResult<()> { todo!() }
+
+            #[lingxia::native("notes.ping")]
+            pub fn ping(context: HostInvocationContext) -> HostResult<u32> { todo!() }
+        "#,
+        );
+        let input = |name: &str| {
+            manifest
+                .routes
+                .iter()
+                .find(|route| route.route == name)
+                .unwrap()
+                .input
+                .clone()
+        };
+        assert_eq!(input("notes.scoped").as_deref(), Some("String"));
+        assert_eq!(input("notes.ping"), None);
     }
 
     #[test]

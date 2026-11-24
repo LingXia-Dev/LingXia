@@ -6,7 +6,7 @@ import { renderExample, renderPage } from '../testing/harness.mjs';
 test('Variants: each button is named by its label and is not busy at rest', async () => {
   const screen = await renderExample('Button/Button', 'Variants');
   const buttons = screen.queryAll(node => node.tag === 'button');
-  assert.deepEqual(buttons.map(node => node.props.accessibilityLabel), ['Save changes', 'Preview', 'Turn off internet', 'Skip', 'Delete draft']);
+  assert.deepEqual(buttons.map(node => node.props.accessibilityLabel), ['Save changes', 'Preview', 'Pause sync', 'Skip', 'Delete draft']);
   assert.ok(buttons.every(node => !node.props.stateBusy));
   const primary = screen.getByTestId('primary');
   assert.equal(primary.props.background, 'accent-solid');

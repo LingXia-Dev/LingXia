@@ -564,6 +564,7 @@ mod tests {
             executable: String::new(),
             ws_url: "ws://127.0.0.1:1".to_string(),
             log_file: String::new(),
+            output: None,
             name: name.map(str::to_string),
             build: None,
             extra: Default::default(),

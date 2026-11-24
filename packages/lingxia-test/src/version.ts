@@ -1,4 +1,6 @@
-export const VERSION = "0.28.0";
+// Written from package.json by the build into an untracked file, so a build never
+// dirties the tree and the runtime never reports a version the package moved past.
+export { VERSION } from "./package-version.js";
 export const PACKAGE_NAME = "@lingxia/test";
 
 export const DEFAULT_ACTION_TIMEOUT_MS = 5_000;

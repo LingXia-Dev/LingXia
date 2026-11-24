@@ -29,6 +29,20 @@ export function render({ data, actions }: View) {
 The View holds no data of its own beyond `useLocal` cells. Everything else comes from Logic: as
 `view.data`, as the result of an action, or as messages on a stream or channel.
 
+## Which one when
+
+| Need | Use |
+| --- | --- |
+| State Logic reads or keeps | `data` in `definePage`; Logic changes it with `page.update(d => …)`, or `page.set({ key })` for whole keys |
+| State only one piece of UI shows (a draft, an open menu) | [`useLocal`](#uselocalinitial) |
+| State several pages show (session, cart) | a `defineStore` in Logic, changed with its `set`/`update`; a page shows it with `follow: { key: store.pick(…) }` |
+| Wait or repeat | `page.after(ms, fn)` / `page.every(ms, fn)` in Logic; the View has [no timers](#what-the-view-cannot-do) |
+| Call Logic from a handler | the [action](#actions) itself (`onClick={actions.refresh}`); add [`useAction`](#useactionaction) to show `pending`/`error` |
+| Load when the component first renders, again when params change | [`useRequest`](#userequestname-action-params) |
+| Progress or streamed output | an `async *` action, with [`useStream`](#usestreamname-action--ondata-) |
+| A long-lived two-way line | a channel action, with [`useChannel`](#usechannelname-action--params-ondata-) |
+| Go to another page | `<link to={{ page, params }}>` ([links](text.md#links)); `lx.nav.go` in Logic when it decides |
+
 ## `view.data`
 
 `view.data` is the Logic page's data (`definePage({ data })`, changed with `page.update`). It is deeply

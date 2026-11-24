@@ -124,6 +124,7 @@ for await (const line of createInterface({ input: process.stdin })) {
 /// A page compiler kept warm for the session: loading it costs seconds, a page does not.
 pub(super) struct Compiler {
     dir: PathBuf,
+    output: PathBuf,
     child: Child,
     stdin: ChildStdin,
     stdout: BufReader<ChildStdout>,
@@ -139,7 +140,8 @@ pub(super) struct Compiled {
 }
 
 impl Compiler {
-    pub(super) fn spawn(dir: &Path) -> Result<Self> {
+    /// A compiler for the lxapp at `dir` that writes into `output`, the session's build of it.
+    pub(super) fn spawn(dir: &Path, output: &Path) -> Result<Self> {
         let mut child = Command::new("node")
             .args(["--input-type=module", "--eval", COMPILER])
             .current_dir(dir)
@@ -151,6 +153,7 @@ impl Compiler {
         let stdout = BufReader::new(child.stdout.take().context("compiler stdout")?);
         let mut compiler = Self {
             dir: dir.to_path_buf(),
+            output: output.to_path_buf(),
             child,
             stdin,
             stdout,
@@ -170,7 +173,7 @@ impl Compiler {
             return;
         };
         let pages: Vec<String> = pages.keys().cloned().collect();
-        let Ok((_, catalogs)) = crate::lxapp::gpu_dev_inputs(&self.dir, &pages) else {
+        let Ok(catalogs) = crate::lxapp::gpu_dev_inputs(&self.dir, &pages) else {
             return;
         };
         let request = serde_json::json!({ "pages": pages, "catalogs": catalogs, "prime": true });
@@ -185,8 +188,9 @@ impl Compiler {
 
     /// Recompile `pages` (`pages/x/index.tsx`) into the lxapp's build output.
     pub(super) fn compile(&mut self, pages: &[String]) -> Result<Compiled> {
-        let (output, catalogs) = crate::lxapp::gpu_dev_inputs(&self.dir, pages)?;
-        let request = serde_json::json!({ "pages": pages, "output": output, "catalogs": catalogs });
+        let catalogs = crate::lxapp::gpu_dev_inputs(&self.dir, pages)?;
+        let request =
+            serde_json::json!({ "pages": pages, "output": self.output, "catalogs": catalogs });
         writeln!(self.stdin, "{request}").context("GPU page compiler exited")?;
         let mut line = String::new();
         // A prime still running answers first; its result does not matter.
@@ -308,7 +312,7 @@ mod tests {
     #[test]
     fn a_primed_compiler_compiles_the_first_save_warm() {
         let lxapp = gpu_lxapp();
-        let mut compiler = Compiler::spawn(lxapp.path()).unwrap();
+        let mut compiler = Compiler::spawn(lxapp.path(), &lxapp.path().join("out")).unwrap();
         assert_eq!(
             compiler.pending, 1,
             "spawning primes every GPU page of the last dev build"
@@ -323,7 +327,7 @@ mod tests {
             "the first save finds warm caches"
         );
         assert!(
-            lxapp.path().join("dist/pages/a/index.js").is_file(),
+            lxapp.path().join("out/pages/a/index.js").is_file(),
             "the compile still writes its output"
         );
     }
@@ -338,7 +342,7 @@ mod tests {
             "export function render() { return <view>missing</view; }\n",
         )
         .unwrap();
-        let mut compiler = Compiler::spawn(lxapp.path()).unwrap();
+        let mut compiler = Compiler::spawn(lxapp.path(), &lxapp.path().join("out")).unwrap();
         let batch = compiler
             .compile_each(vec![
                 "pages/a/index.tsx".to_owned(),

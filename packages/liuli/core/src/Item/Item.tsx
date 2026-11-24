@@ -43,10 +43,10 @@ export type ItemSwipeVariant = 'default' | 'accent' | 'destructive';
 
 /**
  * One button at the row's end, its own control beside the row's press: a remove × on a row that
- * opens its device. One, by its shape: more actions belong in `swipeActions` or a menu.
+ * opens its record. One, by its shape: more actions belong in `swipeActions` or a menu.
  */
 export type ItemEndAction = Press<{ onClick: () => void }> & {
-  /** The accessible name: what pressing it does, naming the row ("Remove Emily's iPad"). */
+  /** The accessible name: what pressing it does, naming the row ("Remove Lena's tablet"). */
   label: string;
   icon: IconRef;
   /** `destructive` for an action that destroys or ends something at once, as a menu row's. @default 'default' */

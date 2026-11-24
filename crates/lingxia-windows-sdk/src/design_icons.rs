@@ -4,7 +4,7 @@
 //! embeds are copied into `crates/lingxia-windows-sdk/icons/svg` so
 //! `cargo package` ships them —
 //! `include_bytes!("../../../design/...")` does not exist on crates.io
-//! (fusheng CI: os error 3 compiling `lingxia-windows-sdk` 0.16.0). The CLI
+//! (a Windows CI host: os error 3 compiling `lingxia-windows-sdk` 0.16.0). The CLI
 //! still renders Windows PNGs into each app's generated assets.
 
 use std::collections::HashMap;

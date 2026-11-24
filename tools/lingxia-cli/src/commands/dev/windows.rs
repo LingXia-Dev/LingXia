@@ -23,7 +23,7 @@ pub(super) fn execute_windows(ctx: DevContext) -> Result<()> {
 
     let run_result = (|| -> Result<()> {
         let platforms_to_build = vec![PlatformType::Windows];
-        prepare_dev_host_assets(&ctx, &platforms_to_build, &[], Some(&ws_url))?;
+        prepare_dev_host_assets(&ctx, &server, &platforms_to_build, &[], Some(&ws_url))?;
 
         println!("{}", "Step 1/2: Building...".bold());
         let build_config = BuildConfig {

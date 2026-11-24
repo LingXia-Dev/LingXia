@@ -43,8 +43,9 @@ export function Demo({ title, sentence, testId, children }: { title: string; sen
 }
 
 /** One group of the catalogue: its demos in order, then what the group does not show yet. */
-export function GroupPage<G extends GroupId>({ id, bodies }: { id: G; bodies: Record<keyof (typeof demos)[G], Component> }) {
+export function GroupPage<G extends GroupId>({ id, bodies, endRoom = 0 }: { id: G; bodies: Record<keyof (typeof demos)[G], Component>; endRoom?: number }) {
   const t = useSay();
+  const { safeArea } = useView().env;
   const words = demos[id] as Record<string, { testId: string; title: Words; try: Words }>;
   const drawn = bodies as Record<string, Component>;
   return (
@@ -59,6 +60,8 @@ export function GroupPage<G extends GroupId>({ id, bodies }: { id: G; bodies: Re
           {missing[id].map(item => <text key={item as string} className="text-xs text-faint">{t(item)}</text>)}
         </view>
       ) : null}
+      {/* A demo's fixed element sits over the screen's bottom edge; the page ends with room for it, past the safe area. */}
+      {endRoom > 0 ? <view data-testid="view-group-end-room" style={{ height: endRoom + safeArea.bottom }} /> : null}
     </Page>
   );
 }

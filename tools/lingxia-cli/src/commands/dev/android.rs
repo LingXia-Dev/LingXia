@@ -37,6 +37,7 @@ pub(super) fn execute_android(mut ctx: DevContext) -> Result<()> {
         let platforms_to_build = vec![PlatformType::Android];
         prepare_dev_host_assets(
             &ctx,
+            &server,
             &platforms_to_build,
             &build_targets,
             Some(&device_ws_url),

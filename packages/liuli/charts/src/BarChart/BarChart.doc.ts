@@ -9,7 +9,8 @@ export const doc: ComponentDoc = {
   description:
     'BarChart compares amounts across a few categories: orders by weekday, sales by quarter. ' +
     'It takes rows and the names of the fields to draw, so the same rows can feed another chart or a table. ' +
-    'Each category can be pressed to read its value, several series stand side by side, and values below zero hang from the same line.',
+    'Each category can be pressed to read its value, several series stand side by side, and values below zero hang from the same line. ' +
+    'Bars grow from zero once the plot is laid out and move to new values, their figures with them; with reduced motion they are drawn at once.',
   keywords: ['bar chart', 'column chart', 'bars', 'histogram', 'categories', 'compare', 'grouped bars', 'chart', 'graph'],
   propsType: 'BarChartProps',
   recipe: { map: 'barChartRecipe', parts: 'barChartParts' },

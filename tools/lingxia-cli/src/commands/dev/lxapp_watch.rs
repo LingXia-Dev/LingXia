@@ -4,8 +4,8 @@
 //! `resources.bundles[].path` that is a local lxapp. A host session also
 //! accepts one more directory while a standalone `lingxia dev listen` holds
 //! its connection; that root leaves when the connection closes. Build outputs
-//! (`dist`, `node_modules`, `.lingxia`, …) are not watched, so a rebuild
-//! cannot loop; neither are the lxapp's specs in `tests/`.
+//! (the session's under `.lingxia`, a `lingxia build`'s `dist`, `node_modules`, …) are not
+//! watched, so a rebuild cannot loop; neither are the lxapp's specs in `tests/`.
 
 use super::server::{DevServerState, RestartOutcome};
 use anyhow::{Context, Result};
@@ -324,6 +324,14 @@ pub(super) fn read_app_id(lxapp_dir: &Path) -> Result<String> {
         .ok_or_else(|| anyhow::anyhow!("lxapp.json is missing appId"))
 }
 
+/// The `lxapp.json` keys a dev reload cannot apply, joined for the message, or `None`. A reload
+/// recreates the lxapp from its rebuilt manifest, so every key applies except `appId`: the session
+/// and the build address the lxapp by the id it started with.
+fn relaunch_keys(root: &WatchRoot) -> Option<String> {
+    let app_id = read_app_id(&root.path).ok()?;
+    (app_id != root.app_id).then(|| "appId".to_string())
+}
+
 /// Events carry resolved paths (FSEvents on macOS), so a `../guest` bundle
 /// root must be resolved too or no save under it ever matches.
 fn resolved_root(mut root: WatchRoot) -> WatchRoot {
@@ -370,7 +378,9 @@ fn run_watch(
     let mut compilers: Vec<super::gpu_swap::Compiler> = roots
         .iter()
         .filter(|root| root.path.join(".lingxia").join("gpu-inputs.json").is_file())
-        .filter_map(|root| super::gpu_swap::Compiler::spawn(&root.path).ok())
+        .filter_map(|root| {
+            super::gpu_swap::Compiler::spawn(&root.path, &state.build_dir(&root.app_id)).ok()
+        })
         .collect();
     let mut attached: BTreeSet<String> = BTreeSet::new();
     // Linked packages' files the GPU pages compile from, outside every root: their directories
@@ -529,6 +539,16 @@ fn run_watch(
                         .map(|seen| seen.elapsed())
                         .unwrap_or_default();
                     let root = roots.iter().find(|root| root.app_id == app_id);
+                    if let Some(root) = root
+                        && let Some(keys) = relaunch_keys(root)
+                    {
+                        println!(
+                            "  {} {}: lxapp.json needs a relaunch: {keys} (restart `lingxia dev`)",
+                            "•".yellow(),
+                            app_id.cyan()
+                        );
+                        continue;
+                    }
                     // Any dev session swaps, `--release` included: the host's dev features decide.
                     if let Some(root) = root
                         && hot_swap(&state, &app_id, &root.path, &paths, &mut compilers, waited)
@@ -539,7 +559,7 @@ fn run_watch(
                     if let Some(root) = root {
                         type_checks.schedule(&app_id, &root.path);
                     }
-                    if reload_one(&state, &app_id, &options) == Reload::Deferred {
+                    if reload_one(&state, &app_id, &options, waited) == Reload::Deferred {
                         // A run started while it rebuilt: restart once it ends.
                         dirty.insert(app_id);
                         deferred = true;
@@ -624,7 +644,7 @@ fn hot_swap(
     };
     let started = std::time::Instant::now();
     if !compilers.iter().any(|compiler| compiler.dir() == dir) {
-        match super::gpu_swap::Compiler::spawn(dir) {
+        match super::gpu_swap::Compiler::spawn(dir, &state.build_dir(app_id)) {
             Ok(compiler) => compilers.push(compiler),
             Err(err) => {
                 eprintln!("  {} hot swap unavailable: {err:#}", "•".cyan());
@@ -718,16 +738,50 @@ enum Reload {
     Deferred,
 }
 
-fn reload_one(state: &DevServerState, app_id: &str, options: &LxAppWatchOptions) -> Reload {
+/// Where a full reload's time went, from the first save to the restart request.
+struct ReloadTimes {
+    waited: Duration,
+    build: Duration,
+    restart: Duration,
+}
+
+impl std::fmt::Display for ReloadTimes {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "{} ms (edit settled {} ms, build {} ms, restart request {} ms)",
+            (self.waited + self.build + self.restart).as_millis(),
+            self.waited.as_millis(),
+            self.build.as_millis(),
+            self.restart.as_millis()
+        )
+    }
+}
+
+fn reload_one(
+    state: &DevServerState,
+    app_id: &str,
+    options: &LxAppWatchOptions,
+    waited: Duration,
+) -> Reload {
     println!("  {} rebuilding {}...", "↻".cyan(), app_id.cyan());
+    let started = std::time::Instant::now();
     if let Err(err) = state.rebuild_lxapp(app_id, options.release) {
         eprintln!("  {} auto-reload {app_id} failed: {err:#}", "✗".red());
         return Reload::Done;
     }
     state.recheck_view_wire();
-    match state.restart_lxapp(app_id) {
+    let build = started.elapsed();
+    let outcome = state.restart_lxapp(app_id);
+    let times = ReloadTimes {
+        waited,
+        build,
+        restart: started.elapsed() - build,
+    };
+    match outcome {
         Ok(RestartOutcome::Restarted) => {
-            println!("  {} reloaded {}", "✓".green(), app_id.cyan());
+            // The restart itself runs in the app after this; its log shows the reopen.
+            println!("  {} reloaded {} in {times}", "✓".green(), app_id.cyan());
         }
         Ok(RestartOutcome::NotConnected) => {
             println!(
@@ -888,6 +942,39 @@ mod tests {
                 path: temp.path().to_path_buf(),
             }]
         );
+    }
+
+    #[test]
+    fn a_reload_names_each_phase_and_their_sum() {
+        let times = ReloadTimes {
+            waited: Duration::from_millis(400),
+            build: Duration::from_millis(1520),
+            restart: Duration::from_millis(31),
+        };
+        assert_eq!(
+            times.to_string(),
+            "1951 ms (edit settled 400 ms, build 1520 ms, restart request 31 ms)"
+        );
+    }
+
+    #[test]
+    fn a_changed_app_id_needs_a_relaunch_and_other_keys_do_not() {
+        let temp = tempfile::tempdir().unwrap();
+        let manifest = temp.path().join("lxapp.json");
+        let root = WatchRoot {
+            app_id: "chat".into(),
+            path: temp.path().to_path_buf(),
+        };
+        write(
+            &manifest,
+            r#"{"appId":"chat","appName":"Talk","languages":["fr"],"pages":[]}"#,
+        );
+        assert_eq!(relaunch_keys(&root), None);
+        write(&manifest, r#"{"appId":"chat2","pages":[]}"#);
+        assert_eq!(relaunch_keys(&root).as_deref(), Some("appId"));
+        // A manifest mid-save is not a relaunch: the next save decides.
+        write(&manifest, r#"{"appId":"#);
+        assert_eq!(relaunch_keys(&root), None);
     }
 
     #[test]
@@ -1091,7 +1178,7 @@ mod tests {
         assert!(is_ignored_path(Path::new("pages/dist/index.js")));
         assert!(is_ignored_path(Path::new("node_modules/foo/index.js")));
         assert!(is_ignored_path(Path::new(
-            ".lingxia/dev/lxapp/demo/manifest.json"
+            ".lingxia/dev/sessions/a1b2c3/build/demo/logic.js"
         )));
         assert!(is_ignored_path(Path::new("target/debug/lingxia.exe")));
         assert!(is_ignored_path(Path::new("pages/home/index.tsx~")));

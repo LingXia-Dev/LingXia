@@ -6,6 +6,7 @@ export const lineChartParts = {
   scrubber: 'view',
   rule: 'view',
   drawing: 'vector',
+  layer: 'view',
   reading: 'view',
   end: 'view',
   endLabel: 'text',
@@ -44,7 +45,17 @@ export const lineChartRecipe = {
   grid: {
     base: 'absolute inset-0',
   },
-  // A tick's place between two shares of the plot: no height of its own.
+  /** Holds the movers: the plot's height, out of which they take their share. */
+  track: {
+    base: 'grow self-stretch relative',
+  },
+  /** A box as tall as the plot, moved down by a value's share of it on the lines' timing. */
+  mover: {
+    base: 'motion-safe:transition-transform duration-slow ease-standard',
+    tick: 'absolute inset-0',
+    end: 'grow',
+  },
+  // A tick's line at the top of its mover: no height of its own.
   tick: {
     base: 'h-0 self-stretch items-end',
   },
@@ -56,16 +67,21 @@ export const lineChartRecipe = {
   },
   drawing: {
     base: 'w-full grow object-fill',
+    /** The lines draw in once laid out and move to new data; so does the marker, which a scrub replaces instead. */
+    moves: 'motion-safe:transition-[d] duration-slow ease-standard',
     over: 'absolute inset-0 h-full',
+  },
+  /** Fills under the lines and dots over them: they fade in once a line has drawn in. */
+  layer: {
+    base: 'absolute inset-0 motion-safe:transition-opacity duration-base delay-300 ease-standard',
+    waiting: 'opacity-0',
   },
   reading: {
     base: 'sr-only',
   },
   end: {
     base: 'shrink-0 ps-1.5',
-  },
-  space: {
-    base: 'basis-0',
+    arrives: 'motion-safe:transition-opacity duration-base delay-300 ease-standard',
   },
   endAnchor: {
     base: 'h-0',

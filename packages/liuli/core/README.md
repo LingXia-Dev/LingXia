@@ -124,7 +124,7 @@ that directory.
 | `@liulidesign/core/MessageBubble` | MessageBubble, MessageReasoning | One message of a conversation |
 | `@liulidesign/core/ListDetail` | ListDetailList, ListDetailDetail, ListDetail | Master-detail list and record view: side-by-side on regular screens, single-pane drill-down on compact |
 | `@liulidesign/core/Split` | Split | Primary canvas with a companion aside: side-by-side on regular, upper/lower on tabletop folds, stack or sheet on compact |
-| `@liulidesign/core/QRCode` | QRCode | A code a phone camera reads |
+| `@liulidesign/core/QRCode` | fitsQRCode, QRCode | A code a phone camera reads |
 | `@liulidesign/core/VideoPlayer` | VideoPlayer | A video with its controls, over the picture or under it, and full screen |
 | `@liulidesign/core/VideoControls` | VideoControls | Play, seek, mute, speed, quality and full screen for a useVideo player |
 | `@liulidesign/core/Carousel` | Carousel | A few pages to swipe through, one at a time |

@@ -33,6 +33,23 @@ struct ResourceBundlePlan {
     version: String,
     dev: bool,
     build: bool,
+    /// Built into the dev session's own directory rather than `<bundle>/dist`.
+    into_session: bool,
+}
+
+/// A bundle a dev session builds goes to that session's directory; a prebuilt bundle, an
+/// explicit build and packaging keep `<bundle>/dist`.
+fn embed_output_dir(
+    bundle_dir: &Path,
+    app_id: &str,
+    dev: bool,
+    build: bool,
+    dev_output: super::DevOutput<'_>,
+) -> (PathBuf, bool) {
+    match dev_output.filter(|_| dev && build) {
+        Some(output) => (output(app_id), true),
+        None => (bundle_dir.join("dist"), false),
+    }
 }
 
 pub(super) fn prepare_home_app_bundle(
@@ -41,6 +58,7 @@ pub(super) fn prepare_home_app_bundle(
     build_profile: BuildProfile,
     progress_override: Option<&str>,
     dev: bool,
+    dev_output: super::DevOutput<'_>,
     cache: &mut HostAssetsCache,
 ) -> Result<Option<PreparedResourceBundle>> {
     let app = config
@@ -61,6 +79,7 @@ pub(super) fn prepare_home_app_bundle(
             build_profile,
             progress_override,
             dev,
+            dev_output,
             cache,
         )
         .map(Some);
@@ -78,6 +97,7 @@ pub(super) fn prepare_resource_lxapp_bundles(
     build_profile: BuildProfile,
     progress_override: Option<&str>,
     dev: bool,
+    dev_output: super::DevOutput<'_>,
     cache: &mut HostAssetsCache,
 ) -> Result<Vec<PreparedResourceBundle>> {
     let home_app_id = config
@@ -110,6 +130,7 @@ pub(super) fn prepare_resource_lxapp_bundles(
             build_profile,
             progress_override,
             dev,
+            dev_output,
             cache,
         )?);
     }
@@ -172,6 +193,7 @@ fn prepare_resource_bundle(
     build_profile: BuildProfile,
     progress_override: Option<&str>,
     dev: bool,
+    dev_output: super::DevOutput<'_>,
     cache: &mut HostAssetsCache,
 ) -> Result<PreparedResourceBundle> {
     let source = resolve_resource_bundle_source(project_root, bundle)?;
@@ -184,6 +206,7 @@ fn prepare_resource_bundle(
         progress_override,
         dev,
         source.build,
+        dev_output,
         cache,
     )
 }
@@ -248,6 +271,7 @@ fn prepare_lxapp_bundle_dir(
     progress_override: Option<&str>,
     dev: bool,
     build: bool,
+    dev_output: super::DevOutput<'_>,
     cache: &mut HostAssetsCache,
 ) -> Result<PreparedResourceBundle> {
     if !bundle_dir.exists() {
@@ -281,13 +305,16 @@ fn prepare_lxapp_bundle_dir(
         ));
     }
 
+    let (output_dir, into_session) =
+        embed_output_dir(&bundle_dir, &metadata.app_id, dev, build, dev_output);
     let plan = ResourceBundlePlan {
         bundle_dir: bundle_dir.clone(),
         asset_name: metadata.app_id,
-        output_dir: bundle_dir.join("dist"),
+        output_dir,
         version: metadata.version,
         dev,
         build,
+        into_session,
     };
 
     prepare_lxapp_plan(plan, build_profile, progress_override, cache_kind, cache)
@@ -322,6 +349,7 @@ pub(super) fn prepare_browser_shell_webui_bundle(
         version: metadata.version,
         dev,
         build: source.build,
+        into_session: false,
     };
 
     let bundle = prepare_lxapp_plan(plan, build_profile, None, "browser-shell-webui", cache)?;
@@ -381,8 +409,10 @@ fn prepare_lxapp_plan(
             args.push("--progress".to_string());
             args.push(progress.to_string());
         }
-        if plan.dev {
-            lxapp::run_in_dir_for_dev(&args, &plan.bundle_dir)?;
+        if plan.into_session {
+            lxapp::run_in_dir_for_dev(&args, &plan.bundle_dir, Some(&plan.output_dir))?;
+        } else if plan.dev {
+            lxapp::run_in_dir_for_dev(&args, &plan.bundle_dir, None)?;
         } else {
             lxapp::run_in_dir(&args, &plan.bundle_dir)?;
         }
@@ -653,6 +683,33 @@ fn is_apple_junk_entry(name: &std::ffi::OsStr) -> bool {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn only_a_dev_session_build_leaves_the_bundle_dist() {
+        let bundle = Path::new("/p/lxapp");
+        let debug = |id: &str| PathBuf::from(format!("/p/.lingxia/dev/sessions/aaaaaa/build/{id}"));
+        let release =
+            |id: &str| PathBuf::from(format!("/p/.lingxia/dev/sessions/bbbbbb/build/{id}"));
+        let (a, into_a) = embed_output_dir(bundle, "demo", true, true, Some(&debug));
+        let (b, into_b) = embed_output_dir(bundle, "demo", true, true, Some(&release));
+        assert!(into_a && into_b);
+        assert_ne!(
+            a, b,
+            "two sessions of one project never write the same embed build"
+        );
+        assert_ne!(a, bundle.join("dist"));
+        // An explicit build, packaging and a prebuilt bundle keep `<bundle>/dist`.
+        for (dev, build, output) in [
+            (false, true, None),
+            (true, true, None),
+            (true, false, Some(&debug as &dyn Fn(&str) -> PathBuf)),
+        ] {
+            assert_eq!(
+                embed_output_dir(bundle, "demo", dev, build, output),
+                (bundle.join("dist"), false)
+            );
+        }
+    }
+
     use super::*;
 
     #[cfg(unix)]
@@ -744,6 +801,7 @@ mod tests {
         let install = |body: &str| crate::build_prepare::test_support::declare(root, body);
         install(&format!("printf x >> '{}/count'", marker.path().display()));
         let plan = || ResourceBundlePlan {
+            into_session: false,
             bundle_dir: root.to_path_buf(),
             asset_name: "app".into(),
             output_dir: root.join("dist"),
@@ -791,6 +849,7 @@ mod tests {
         fs::write(root.join("source.ts"), "old input").unwrap();
         crate::build_prepare::test_support::declare(root, "printf 'new input' > source.ts");
         let plan = ResourceBundlePlan {
+            into_session: false,
             bundle_dir: root.to_path_buf(),
             asset_name: "app".into(),
             output_dir: root.join("dist"),
@@ -828,6 +887,7 @@ mod tests {
         fs::write(root.join("dist/asset.txt"), "dev build").unwrap();
         crate::build_prepare::test_support::declare(root, "exit 7");
         let plan = ResourceBundlePlan {
+            into_session: false,
             bundle_dir: root.to_path_buf(),
             asset_name: "app".into(),
             output_dir: root.join("dist"),
@@ -864,6 +924,7 @@ mod tests {
         fs::write(package.join("compiler.mjs"), "export const target=1").unwrap();
         fs::write(root.join("dist/asset.txt"), "old bundle").unwrap();
         let plan = ResourceBundlePlan {
+            into_session: false,
             bundle_dir: root.to_path_buf(),
             asset_name: "app".into(),
             output_dir: root.join("dist"),
@@ -903,6 +964,7 @@ mod tests {
     fn state_cache_is_not_hashed() {
         let temp = tempfile::tempdir().unwrap();
         let plan = ResourceBundlePlan {
+            into_session: false,
             bundle_dir: temp.path().to_path_buf(),
             asset_name: "app".into(),
             output_dir: temp.path().join("dist"),
@@ -940,6 +1002,7 @@ mod tests {
             None,
             false,
             false,
+            None,
             &mut cache,
         )
         .unwrap();

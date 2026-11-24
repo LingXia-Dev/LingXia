@@ -176,12 +176,15 @@ pub(super) fn execute_runner_dev(
     let session = server.session().clone();
 
     let run_result = (|| -> Result<()> {
+        // What the Runner loads: this session's build, or a built bundle as it is.
+        let mut runnable = None;
         if let RunnerDevTarget::LxApp(lxapp_path) = &target {
             if crate::lxapp::is_built_bundle_dir(lxapp_path) {
                 println!(
                     "{}",
                     "Step 1/2: Built lxapp bundle detected — build skipped.".bold()
                 );
+                runnable = Some(lxapp_path.clone());
             } else {
                 println!("{}", "Step 1/2: Building lxapp...".bold());
                 let build_args = lxapp_runner_build_args(
@@ -189,7 +192,9 @@ pub(super) fn execute_runner_dev(
                     options.progress.as_deref(),
                     runner_env,
                 );
-                crate::lxapp::run_in_dir_for_dev(&build_args, lxapp_path)?;
+                let built = server.build_dir(&super::lxapp_watch::read_app_id(lxapp_path)?);
+                crate::lxapp::run_in_dir_for_dev(&build_args, lxapp_path, Some(&built))?;
+                runnable = Some(built);
             }
         }
 
@@ -216,17 +221,29 @@ pub(super) fn execute_runner_dev(
         println!();
         println!("{}", "Step 2/2: Launching Runner...".bold());
         let mut runner = match (&runner_host, &target) {
-            (LxAppRunnerHost::MacOs, RunnerDevTarget::LxApp(path)) => {
-                launch_runner_for_lxapp(path, &runner_slot, &ws_url, runner_env)?
-            }
+            (LxAppRunnerHost::MacOs, RunnerDevTarget::LxApp(path)) => launch_runner_for_lxapp(
+                path,
+                runnable.as_deref().unwrap_or(path),
+                &runner_slot,
+                &ws_url,
+                runner_env,
+            )?,
             (LxAppRunnerHost::Windows, RunnerDevTarget::LxApp(path)) => {
-                launch_windows_runner_for_lxapp(path, &session_root, &ws_url, runner_env)?
+                launch_windows_runner_for_lxapp(
+                    path,
+                    runnable.as_deref().unwrap_or(path),
+                    &session_root,
+                    &runner_slot,
+                    &ws_url,
+                    runner_env,
+                )?
             }
             (LxAppRunnerHost::MacOs, RunnerDevTarget::Web(url)) => {
                 launch_runner_for_web(&runner_slot, url, &ws_url, options.headless, runner_env)?
             }
             (LxAppRunnerHost::Windows, RunnerDevTarget::Web(url)) => launch_windows_runner_for_web(
                 &session_root,
+                &runner_slot,
                 url,
                 &ws_url,
                 options.headless,
@@ -325,8 +342,10 @@ fn ensure_valid_lxapp_dir(path: &Path) -> Result<()> {
     ))
 }
 
+/// `runnable` is the built lxapp the Runner loads; `lxapp_path` locates its host.
 fn launch_runner_for_lxapp(
     lxapp_path: &Path,
+    runnable: &Path,
     slot: &RunnerSlot,
     ws_url: &str,
     runner_env: crate::config::AppEnv,
@@ -354,7 +373,7 @@ fn launch_runner_for_lxapp(
 
     let mut command = Command::new(&executable_path);
     command.env(RUNNER_MARKER_ENV, "1");
-    command.env(RUNNER_LXAPP_PATH_ENV, lxapp_path);
+    command.env(RUNNER_LXAPP_PATH_ENV, runnable);
     command.env(RUNNER_DEV_WS_URL_ENV, ws_url);
     command.env(RUNNER_ENV_ENV, runner_env.as_str());
     command.env(RUNNER_PID_FILE_ENV, &pid_file);
@@ -366,7 +385,7 @@ fn launch_runner_for_lxapp(
     if let Some(server) = runner_lingxia_server(runner_env) {
         command.env(RUNNER_SERVER_ENV, server);
     }
-    match read_lxapp_app_id(lxapp_path)
+    match read_lxapp_app_id(runnable)
         .ok()
         .and_then(|app_id| host_home_app_id(lxapp_path, &app_id))
     {
@@ -468,8 +487,7 @@ fn launch_runner_for_web(
 }
 
 /// Identity of the lxapp the Windows runner hosts, read from the built
-/// bundle manifest (`dist/lxapp.json` preferred, project `lxapp.json`
-/// otherwise — same resolution as the runtime's dev bundle source).
+/// bundle it loads (its `dist/lxapp.json` when it has one, else its `lxapp.json`).
 struct WindowsRunnerLxAppIdentity {
     app_id: String,
     version: String,
@@ -553,20 +571,18 @@ fn read_windows_runner_lxapp_identity(lxapp_path: &Path) -> Result<WindowsRunner
     })
 }
 
-/// Prepares the Windows runner's host asset directory under
-/// `.lingxia/runner/windows-assets`: an `app.json` with the lxapp as home
+/// Prepares the Windows runner's host asset directory, `<slot>/windows-assets` (one per project
+/// and instance, so two instances never clear each other's): an `app.json` with the lxapp as home
 /// app and the embedded `bridge-runtime.js`. The lxapp bundle itself is not
-/// copied — the runner serves it live from the project's `dist/` via
+/// copied — the runner serves it live from the session's build via
 /// `LINGXIA_LXAPP_PATH` (same dev bundle source as the macOS Runner).
 fn prepare_windows_runner_assets(
-    session_root: &Path,
+    runner_dir: &Path,
     identity: &WindowsRunnerLxAppIdentity,
     ws_url: &str,
     runner_env: crate::config::AppEnv,
 ) -> Result<PathBuf> {
-    let assets_dir = log_store::dev_dir(session_root)
-        .join("runner")
-        .join("windows-assets");
+    let assets_dir = runner_dir.join("windows-assets");
     if assets_dir.exists() {
         std::fs::remove_dir_all(&assets_dir)
             .with_context(|| format!("Failed to clear {}", assets_dir.display()))?;
@@ -634,13 +650,12 @@ fn stage_windows_runner_common_assets(assets_dir: &Path) -> Result<()> {
 }
 
 fn prepare_windows_runner_web_assets(
-    session_root: &Path,
+    runner_dir: &Path,
+    slot_app_id: &str,
     ws_url: &str,
     runner_env: crate::config::AppEnv,
 ) -> Result<PathBuf> {
-    let assets_dir = log_store::dev_dir(session_root)
-        .join("runner")
-        .join("windows-assets");
+    let assets_dir = runner_dir.join("windows-assets");
     if assets_dir.exists() {
         std::fs::remove_dir_all(&assets_dir)
             .with_context(|| format!("Failed to clear {}", assets_dir.display()))?;
@@ -651,7 +666,7 @@ fn prepare_windows_runner_web_assets(
         "productName": RUNNER_WINDOWS_PRODUCT_NAME,
         "productVersion": REQUIRED_RUNNER_VERSION,
         "env": runner_env.as_str(),
-        "windowsAppId": format!("{RUNNER_WINDOWS_APP_ID}.{}", runner_instance_id(session_root)),
+        "windowsAppId": format!("{RUNNER_WINDOWS_APP_ID}.{}", slot_app_id),
         "devWsUrl": ws_url,
     });
     let app_json_path = assets_dir.join("app.json");
@@ -702,7 +717,9 @@ fn installed_windows_runner_exe_path() -> Result<PathBuf> {
 /// Host identity is generated into `app.json`.
 fn launch_windows_runner_for_lxapp(
     lxapp_path: &Path,
+    runnable: &Path,
     session_root: &Path,
+    slot: &RunnerSlot,
     ws_url: &str,
     runner_env: crate::config::AppEnv,
 ) -> Result<RunnerProcess> {
@@ -710,8 +727,8 @@ fn launch_windows_runner_for_lxapp(
     ensure_valid_lxapp_dir(lxapp_path)?;
     // This CLI's own Runner build (fetched for a release CLI, refused if stale).
     crate::runner_cache::ensure_matching_runner()?;
-    let identity = read_windows_runner_lxapp_identity(lxapp_path)?;
-    let assets_dir = prepare_windows_runner_assets(session_root, &identity, ws_url, runner_env)?;
+    let identity = read_windows_runner_lxapp_identity(runnable)?;
+    let assets_dir = prepare_windows_runner_assets(&slot.dir, &identity, ws_url, runner_env)?;
     let resource_lxapp_paths = windows_runner_resource_lxapp_paths(lxapp_path, &identity)?;
     let exe_path = installed_windows_runner_exe_path()?;
     terminate_existing_windows_runner_processes(&exe_path, ws_url)?;
@@ -721,11 +738,9 @@ fn launch_windows_runner_for_lxapp(
     }
     let lingxia_server = runner_lingxia_server(runner_env);
     let launch_args = windows_runner_launch_args(
-        lxapp_path,
+        runnable,
         &assets_dir,
-        &log_store::dev_dir(session_root)
-            .join("runner")
-            .join("state"),
+        &slot.dir.join("state"),
         ws_url,
         runner_env,
         &resource_lxapp_paths,
@@ -733,14 +748,13 @@ fn launch_windows_runner_for_lxapp(
         lingxia_server.as_deref(),
     )?;
 
+    // Only the Windows spawn paths use the session root.
+    #[cfg(not(target_os = "windows"))]
+    let _ = session_root;
     #[cfg(target_os = "windows")]
     let child = if windows_interactive::is_ssh_session() {
-        let launch = windows_interactive::launch_runner(
-            &exe_path,
-            session_root,
-            &launch_args,
-            &log_store::dev_dir(session_root).join("runner"),
-        )?;
+        let launch =
+            windows_interactive::launch_runner(&exe_path, session_root, &launch_args, &slot.dir)?;
         println!(
             "{} Bootstrapped Runner in the interactive Windows desktop",
             "[runner]".cyan()
@@ -778,6 +792,7 @@ fn launch_windows_runner_for_lxapp(
 
 fn launch_windows_runner_for_web(
     session_root: &Path,
+    slot: &RunnerSlot,
     url: &str,
     ws_url: &str,
     headless: bool,
@@ -785,12 +800,11 @@ fn launch_windows_runner_for_web(
 ) -> Result<RunnerProcess> {
     platform::host_support::ensure_supported_host(&PlatformType::Windows)?;
     crate::runner_cache::ensure_matching_runner()?;
-    let assets_dir = prepare_windows_runner_web_assets(session_root, ws_url, runner_env)?;
+    let assets_dir =
+        prepare_windows_runner_web_assets(&slot.dir, &slot.data_instance, ws_url, runner_env)?;
     let exe_path = installed_windows_runner_exe_path()?;
     terminate_existing_windows_runner_processes(&exe_path, ws_url)?;
-    let state_root = log_store::dev_dir(session_root)
-        .join("runner")
-        .join("state");
+    let state_root = slot.dir.join("state");
     let launch_args = windows_web_runner_launch_args(
         url,
         &state_root,
@@ -801,16 +815,14 @@ fn launch_windows_runner_for_web(
         runner_lingxia_server(runner_env).as_deref(),
     );
 
+    #[cfg(not(target_os = "windows"))]
+    let _ = session_root;
     #[cfg(target_os = "windows")]
     let child = if headless {
         spawn_windows_runner_headless(&exe_path, session_root, &launch_args)?
     } else if windows_interactive::is_ssh_session() {
-        let launch = windows_interactive::launch_runner(
-            &exe_path,
-            session_root,
-            &launch_args,
-            &log_store::dev_dir(session_root).join("runner"),
-        )?;
+        let launch =
+            windows_interactive::launch_runner(&exe_path, session_root, &launch_args, &slot.dir)?;
         RunnerProcess::WindowsShell(WindowsShellRunnerProcess { launch })
     } else {
         shell_execute_windows_runner(&exe_path, session_root, &launch_args)?
@@ -1332,6 +1344,8 @@ fn file_safe(value: &str) -> String {
 /// One Runner per project and broker instance: its pid file, the session that launched it, and
 /// its data subtree. Sessions under other instances never touch each other's slot.
 struct RunnerSlot {
+    /// Per-launch files of this slot's Runner (Windows assets and state).
+    dir: PathBuf,
     pid_file: PathBuf,
     owner_file: PathBuf,
     data_instance: String,
@@ -1346,6 +1360,7 @@ impl RunnerSlot {
         };
         let project = runner_instance_id(project_root);
         Self {
+            dir: dev_dir.join(&stem),
             pid_file: dev_dir.join(format!("{stem}.pid")),
             owner_file: dev_dir.join(format!("{stem}.owner")),
             // The user's instance is kept, after the project id, so two projects under one
@@ -1408,6 +1423,25 @@ struct RunnerOwner {
     pid: u32,
     started_at: u64,
     label: String,
+}
+
+/// Instances other than this process's whose Runner session of `project_root` is alive.
+pub(super) fn other_live_instances(project_root: &Path) -> Vec<String> {
+    let current = broker_instance();
+    let mut found: Vec<String> = std::fs::read_dir(log_store::dev_dir(project_root))
+        .into_iter()
+        .flatten()
+        .flatten()
+        .filter_map(|entry| {
+            let name = entry.file_name().into_string().ok()?;
+            let instance = name.strip_prefix("runner-")?.strip_suffix(".owner")?;
+            (Some(instance) != current.as_deref()
+                && read_owner(&entry.path()).is_some_and(|owner| owner_alive(&owner)))
+            .then(|| instance.to_string())
+        })
+        .collect();
+    found.sort();
+    found
 }
 
 fn read_owner(owner_file: &Path) -> Option<RunnerOwner> {
@@ -1623,27 +1657,58 @@ fn installed_runner_version(app_path: &Path) -> Result<Option<String>> {
 mod tests {
     use super::{
         RunnerDevTarget, RunnerOwner, RunnerSlot, WindowsRunnerLxAppIdentity,
-        is_standalone_lxapp_project, lxapp_runner_build_args, owner_alive, parse_owner,
-        prepare_windows_runner_assets, prepare_windows_runner_web_assets, resolve_dev_target,
-        windows_runner_launch_args, windows_runner_ui_json, windows_web_runner_launch_args,
+        is_standalone_lxapp_project, log_store, lxapp_runner_build_args, other_live_instances,
+        owner_alive, parse_owner, prepare_windows_runner_assets, prepare_windows_runner_web_assets,
+        process_start_time, resolve_dev_target, windows_runner_launch_args, windows_runner_ui_json,
+        windows_web_runner_launch_args,
     };
     use crate::config::HOST_CONFIG_FILE;
     use std::fs;
     use tempfile::tempdir;
 
     #[test]
+    fn another_instances_live_session_is_found_for_stop() {
+        let project = tempdir().unwrap();
+        let dev = log_store::dev_dir(project.path());
+        fs::create_dir_all(&dev).unwrap();
+        let me = std::process::id();
+        let started = process_start_time(me).unwrap();
+        fs::write(
+            dev.join("runner-alive.owner"),
+            format!("{me} {started} demo"),
+        )
+        .unwrap();
+        fs::write(
+            dev.join("runner-gone.owner"),
+            format!("{me} {} demo", started + 1),
+        )
+        .unwrap();
+        fs::write(dev.join("runner.owner"), format!("{me} {started} demo")).unwrap();
+        assert_eq!(
+            other_live_instances(project.path()),
+            vec!["alive".to_string()]
+        );
+    }
+
+    #[test]
     fn runner_slots_are_per_project_and_instance() {
         let project = tempdir().unwrap();
         let default = RunnerSlot::new(project.path(), None);
-        let test = RunnerSlot::new(project.path(), Some("happ-test".into()));
+        let test = RunnerSlot::new(project.path(), Some("myapp-test".into()));
+        // The default keeps today's Windows assets and state; an instance gets its own.
+        assert_eq!(
+            default.dir,
+            log_store::dev_dir(project.path()).join("runner")
+        );
+        assert_ne!(default.dir, test.dir);
         assert_ne!(default.pid_file, test.pid_file);
         assert_ne!(default.owner_file, test.owner_file);
         assert_eq!(
             test.data_instance,
-            format!("{}-happ-test", default.data_instance)
+            format!("{}-myapp-test", default.data_instance)
         );
         let other = tempdir().unwrap();
-        let other_test = RunnerSlot::new(other.path(), Some("happ-test".into()));
+        let other_test = RunnerSlot::new(other.path(), Some("myapp-test".into()));
         assert_ne!(test.pid_file, other_test.pid_file);
         assert_ne!(test.data_instance, other_test.data_instance);
     }
@@ -1662,12 +1727,12 @@ mod tests {
         let started = super::process_start_time(other.id()).unwrap();
         fs::write(
             &slot.owner_file,
-            format!("{} {started} h-app-gpu", other.id()),
+            format!("{} {started} my-app-gpu", other.id()),
         )
         .unwrap();
         fs::write(&slot.pid_file, other.id().to_string()).unwrap();
         let err = slot.claim().unwrap_err().to_string();
-        assert!(err.contains("Session h-app-gpu"), "{err}");
+        assert!(err.contains("Session my-app-gpu"), "{err}");
         assert!(err.contains("LINGXIA_RUNNER_INSTANCE"), "{err}");
         assert!(slot.pid_file.exists());
         assert!(
@@ -1678,7 +1743,7 @@ mod tests {
         // Once that session is gone its Runner is a leftover: the claim ends it and takes the slot.
         fs::write(
             &slot.owner_file,
-            format!("{} {} h-app-gpu", other.id(), started + 1),
+            format!("{} {} my-app-gpu", other.id(), started + 1),
         )
         .unwrap();
         super::record_runner_start(&slot.pid_file);
@@ -1706,7 +1771,11 @@ mod tests {
         let started = super::process_start_time(stranger.id()).unwrap();
         fs::write(&slot.owner_file, "1 1 gone-session").unwrap();
         fs::write(&slot.pid_file, stranger.id().to_string()).unwrap();
-        fs::write(super::runner_start_file(&slot.pid_file), (started + 7).to_string()).unwrap();
+        fs::write(
+            super::runner_start_file(&slot.pid_file),
+            (started + 7).to_string(),
+        )
+        .unwrap();
         slot.claim().unwrap();
         assert!(
             stranger.try_wait().unwrap().is_none(),
@@ -1732,7 +1801,10 @@ mod tests {
         let err = slot.claim().unwrap_err().to_string();
         assert!(err.contains(&format!("pid {}", runner.id())), "{err}");
         assert!(err.contains("older lingxia CLI"), "{err}");
-        assert!(runner.try_wait().unwrap().is_none(), "the older session's Runner was ended");
+        assert!(
+            runner.try_wait().unwrap().is_none(),
+            "the older session's Runner was ended"
+        );
         assert!(slot.pid_file.exists());
         let _ = runner.kill();
         let _ = runner.wait();
@@ -1744,11 +1816,11 @@ mod tests {
     #[test]
     fn owner_records_parse() {
         assert_eq!(
-            parse_owner("12 34 h-app test"),
+            parse_owner("12 34 my-app test"),
             Some(RunnerOwner {
                 pid: 12,
                 started_at: 34,
-                label: "h-app test".into()
+                label: "my-app test".into()
             })
         );
         assert_eq!(parse_owner("garbage"), None);
@@ -1853,6 +1925,7 @@ mod tests {
         let temp = tempdir().unwrap();
         let assets = prepare_windows_runner_web_assets(
             temp.path(),
+            "demo-0123",
             "ws://127.0.0.1:3000",
             crate::config::AppEnv::Dev,
         )

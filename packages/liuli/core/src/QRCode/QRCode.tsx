@@ -1,7 +1,8 @@
 import { cx } from '@lingxia/view';
 import { qrCodeRecipe as r } from './QRCode.recipe';
 import { dataOf } from '../internal/data';
-import { encodeQR, type QRLevel } from './encode';
+import { warnOnce } from '../internal/warn';
+import { encodeQR, qrRoom, type QRLevel } from './encode';
 
 export type QRCodeSize = 'sm' | 'md' | 'lg';
 export type { QRLevel };
@@ -9,7 +10,7 @@ export type { QRLevel };
 export interface QRCodeProps {
   /** What the code holds: a link, a join code, Wi-Fi details. Text of any language. */
   value: string;
-  /** What the code is for, read in its place: "Code to join Heights Guest". */
+  /** What the code is for, read in its place: "Code to join Harbour Café Guest". */
   label: string;
   /** 96, 160 or 240 points square. @default 'md' */
   size?: QRCodeSize;
@@ -54,12 +55,21 @@ function source(value: string, level: QRLevel) {
   return result;
 }
 
+/** Whether `value` fits a QRCode at `level`; branch on it before rendering a value that comes from data. */
+export function fitsQRCode(value: string, level: QRLevel = 'M'): boolean {
+  const { bytes, limit } = qrRoom(value, level, maxVersion);
+  return bytes <= limit;
+}
+
 /** A QR code for a phone camera to read: a link to open, a code to join with. */
 export function QRCode({ value, label, size = 'md', level = 'M', className, 'data-testid': testId, ...attributes }: QRCodeProps) {
-  const { viewBox, paths } = source(value, level);
+  const { bytes, limit } = qrRoom(value, level, maxVersion);
+  const fits = bytes <= limit;
+  if (!fits) warnOnce(`QRCode "${label}": the value is ${bytes} bytes; at level ${level} a code holds at most ${limit}. It is drawn empty; check with fitsQRCode().`);
+  const code = fits ? source(value, level) : null;
   return (
-    <view role="img" aria-label={label} data-testid={testId} {...dataOf(attributes)} className={cx(r.root.base, r.root.size[size], className)}>
-      <vector aria-hidden paths={paths} viewBox={viewBox} className={r.code.base} />
+    <view role="img" aria-label={label} data-testid={testId} {...dataOf(attributes)} className={cx(r.root.base, r.root.size[size], !code && r.root.empty, className)}>
+      {code && <vector aria-hidden paths={code.paths} viewBox={code.viewBox} className={r.code.base} />}
     </view>
   );
 }

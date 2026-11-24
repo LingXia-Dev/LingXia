@@ -153,7 +153,7 @@ export function Inline() {
 | `value` | `string \| null` |  | The chosen option's value; `null` while none is chosen. |
 | `onChange` | `((value: string) => void)` |  | Runs with the option chosen by a tap or by arrowing onto it. |
 | `items` (required) | `readonly RadioOption[]` |  | The choices, in order. |
-| `variant` | `RadioGroupVariant` | `'list'` | `list` stacks plain rows; `card` makes each option a bordered card, for plans and other choices with a second line. |
+| `variant` | `RadioGroupVariant` | `'list'` | `list` stacks plain rows; `card` makes each option a bordered card, for choices with a second line or trailing content. |
 | `orientation` | `RadioGroupOrientation` | `'vertical'` | `horizontal` sets two or three short options side by side; they wrap when the line is full. |
 | `className` | `string` |  |  |
 | `data-testid` | `string` |  | On the group; each option gets `<testid>-<value>`. |

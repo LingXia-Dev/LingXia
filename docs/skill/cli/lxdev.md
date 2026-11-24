@@ -18,7 +18,7 @@ the tray or closing a mobile app does not.
 whose project contains the current directory; inside a project it never falls
 back to another project's session. Outside any project it uses the only live
 session; otherwise it refuses to guess and prints the candidates. `lxdev session` lists
-them (`#`, id, name, target, state, host version, start time, content; `--json` for scripts).
+them (`#`, id, name, target, state, host version, start time, content, and the session's build directory; `--json` for scripts).
 The host version ends with its View wire (`view 1/231`): GPU pages need its ABI and at most its newest field.
 Pick one with `--session` (before the subcommand) or `LXDEV_SESSION`:
 
@@ -156,6 +156,7 @@ profiles, secrets, and exit codes: [Testing](../lxapp/testing.md).
 
 The session's log stream. Use `lxdev logs --help` for filtering and output
 options. An app filter matches the recorded app id, not the current live app.
+`--grep` matches text in any case; add `-E` to read it as a regular expression (`--grep 'ready|failed' -E`).
 Following ends with this session; it never attaches to a later session.
 
 ## `lxdev desktop`

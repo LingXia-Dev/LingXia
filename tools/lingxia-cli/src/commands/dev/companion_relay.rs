@@ -264,6 +264,9 @@ mod tests {
     fn state() -> DevServerState {
         DevServerState::new(
             std::env::temp_dir(),
+            crate::commands::dev::session_output::SessionOutput::at(std::path::PathBuf::from(
+                "unused-session",
+            )),
             Arc::new(AtomicBool::new(false)),
             None,
             false,

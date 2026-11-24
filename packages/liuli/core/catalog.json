@@ -1980,12 +1980,12 @@
         {
           "name": "Variants",
           "title": "Variants",
-          "source": "import { Said } from '../example';\nimport { Button } from '@liulidesign/core/Button';\n\nexport function Variants() {\n  return (\n    <Said>\n      {say => (\n        <view className=\"flex-row flex-wrap gap-2\">\n          <Button label=\"Save changes\" variant=\"primary\" onClick={() => say('Saved changes')} data-testid=\"primary\" />\n          <Button label=\"Preview\" onClick={() => say('Opened the preview')} />\n          <Button label=\"Turn off internet\" variant=\"tonal\" startIcon=\"pause\" onClick={() => say('Turned off the internet')} data-testid=\"tonal\" />\n          <Button label=\"Skip\" variant=\"ghost\" onClick={() => say('Skipped')} />\n          <Button label=\"Delete draft\" variant=\"destructive\" onClick={() => say('Deleted the draft')} />\n        </view>\n      )}\n    </Said>\n  );\n}"
+          "source": "import { Said } from '../example';\nimport { Button } from '@liulidesign/core/Button';\n\nexport function Variants() {\n  return (\n    <Said>\n      {say => (\n        <view className=\"flex-row flex-wrap gap-2\">\n          <Button label=\"Save changes\" variant=\"primary\" onClick={() => say('Saved changes')} data-testid=\"primary\" />\n          <Button label=\"Preview\" onClick={() => say('Opened the preview')} />\n          <Button label=\"Pause sync\" variant=\"tonal\" startIcon=\"pause\" onClick={() => say('Paused sync')} data-testid=\"tonal\" />\n          <Button label=\"Skip\" variant=\"ghost\" onClick={() => say('Skipped')} />\n          <Button label=\"Delete draft\" variant=\"destructive\" onClick={() => say('Deleted the draft')} />\n        </view>\n      )}\n    </Said>\n  );\n}"
         },
         {
           "name": "VariantTonal",
           "title": "A quiet filled button for a card's own action",
-          "source": "import { Said } from '../example';\nimport { Button } from '@liulidesign/core/Button';\nimport { Card } from '@liulidesign/core/Card';\n\n/** A card's own action, filled but quiet beside the page's one primary button; off while it cannot run. */\nexport function VariantTonal() {\n  return (\n    <Said>\n      {say => (\n        <view className=\"gap-3\">\n          <Card>\n            <view className=\"gap-3\">\n              <text className=\"text-body\">Emily's devices are online.</text>\n              <view className=\"flex-row flex-wrap gap-2\">\n                <Button label=\"Turn off internet\" variant=\"tonal\" startIcon=\"pause\" onClick={() => say('Turned off the internet')} />\n                <Button label=\"Study time\" variant=\"tonal\" isDisabled disabledMessage=\"No schedule is set\" />\n              </view>\n            </view>\n          </Card>\n        </view>\n      )}\n    </Said>\n  );\n}"
+          "source": "import { Said } from '../example';\nimport { Button } from '@liulidesign/core/Button';\nimport { Card } from '@liulidesign/core/Card';\n\n/** A card's own action, filled but quiet beside the page's one primary button; off while it cannot run. */\nexport function VariantTonal() {\n  return (\n    <Said>\n      {say => (\n        <view className=\"gap-3\">\n          <Card>\n            <view className=\"gap-3\">\n              <text className=\"text-body\">Your photos are syncing.</text>\n              <view className=\"flex-row flex-wrap gap-2\">\n                <Button label=\"Pause sync\" variant=\"tonal\" startIcon=\"pause\" onClick={() => say('Paused sync')} />\n                <Button label=\"Sync now\" variant=\"tonal\" isDisabled disabledMessage=\"Already syncing\" />\n              </view>\n            </view>\n          </Card>\n        </view>\n      )}\n    </Said>\n  );\n}"
         },
         {
           "name": "Sizes",
@@ -10638,17 +10638,17 @@
         {
           "name": "WithStatus",
           "title": "A status beside the name",
-          "source": "import { Said } from '../example';\nimport { Avatar } from '@liulidesign/core/Avatar';\nimport { Badge } from '@liulidesign/core/Badge';\nimport { Item, ItemList } from '@liulidesign/core/Item';\n\nconst members = [\n  { id: 'david', name: 'David', hue: 7, status: 'Internet on', tone: 'success', note: 'About 2 h 20 min left today' },\n  { id: 'emily', name: 'Emily', hue: 3, status: 'Internet on', tone: 'success', note: '4 devices' },\n  { id: 'alexandra', name: 'Alexandra-Charlotte Montgomery', hue: 5, status: 'No controls', tone: 'neutral', note: 'Parental controls are off · 3 devices' },\n] as const;\n\n/** A status beside the name: the name gives way first, and the badge is read after it. */\nexport function WithStatus() {\n  return (\n    <Said>\n      {say => (\n        <ItemList label=\"Family members\" data-testid=\"members\">\n          {members.map(member => (\n            <Item\n              key={member.id}\n              label={member.name}\n              labelEnd={member.tone === 'success' ? <Badge tone=\"success\" size=\"sm\" label={member.status} /> : <Badge size=\"sm\" label={member.status} />}\n              description={member.note}\n              startContent={<Avatar name={member.name} hue={member.hue} isDecorative />}\n              hasChevron\n              onClick={() => say(`Opened ${member.name}`)}\n              data-testid={`member-${member.id}`}\n            />\n          ))}\n        </ItemList>\n      )}\n    </Said>\n  );\n}"
+          "source": "import { Said } from '../example';\nimport { Avatar } from '@liulidesign/core/Avatar';\nimport { Badge } from '@liulidesign/core/Badge';\nimport { Item, ItemList } from '@liulidesign/core/Item';\n\nconst members = [\n  { id: 'lena', name: 'Lena', hue: 7, status: 'On shift', tone: 'success', note: 'Until 18:00 today' },\n  { id: 'omar', name: 'Omar', hue: 3, status: 'On shift', tone: 'success', note: '4 open tasks' },\n  { id: 'alexandra', name: 'Alexandra-Charlotte Montgomery', hue: 5, status: 'Away', tone: 'neutral', note: 'Back on Monday · 3 open tasks' },\n] as const;\n\n/** A status beside the name: the name gives way first, and the badge is read after it. */\nexport function WithStatus() {\n  return (\n    <Said>\n      {say => (\n        <ItemList label=\"Team members\" data-testid=\"members\">\n          {members.map(member => (\n            <Item\n              key={member.id}\n              label={member.name}\n              labelEnd={member.tone === 'success' ? <Badge tone=\"success\" size=\"sm\" label={member.status} /> : <Badge size=\"sm\" label={member.status} />}\n              description={member.note}\n              startContent={<Avatar name={member.name} hue={member.hue} isDecorative />}\n              hasChevron\n              onClick={() => say(`Opened ${member.name}`)}\n              data-testid={`member-${member.id}`}\n            />\n          ))}\n        </ItemList>\n      )}\n    </Said>\n  );\n}"
         },
         {
           "name": "WithFacts",
           "title": "Several facts under a name",
-          "source": "import { Said } from '../example';\nimport { Avatar } from '@liulidesign/core/Avatar';\nimport { Item, ItemList } from '@liulidesign/core/Item';\n\nconst people = [\n  { id: 'james', name: 'James Whitfield', hue: 2, facts: ['james@example.com', 'Joined Oct 6, 2025'] },\n  { id: 'marcus', name: 'Marcus Whitfield', hue: 4, facts: ['marcus.w@example.com', 'Joined with an invitation from James Whitfield', 'Joined 23 days ago', 'Active yesterday'] },\n] as const;\n\n/** Several facts under a name, one text each, so a fact wraps within itself. */\nexport function WithFacts() {\n  return (\n    <Said>\n      {say => (\n        <ItemList label=\"People\" data-testid=\"people\">\n          {people.map(person => (\n            <Item\n              key={person.id}\n              label={person.name}\n              description={<>{person.facts.map((fact, index) => <text key={`f${index}`}>{fact}</text>)}</>}\n              startContent={<Avatar name={person.name} hue={person.hue} isDecorative />}\n              hasChevron\n              onClick={() => say(`Opened ${person.name}`)}\n              data-testid={`person-${person.id}`}\n            />\n          ))}\n        </ItemList>\n      )}\n    </Said>\n  );\n}"
+          "source": "import { Said } from '../example';\nimport { Avatar } from '@liulidesign/core/Avatar';\nimport { Item, ItemList } from '@liulidesign/core/Item';\n\nconst people = [\n  { id: 'oskar', name: 'Oskar Lind', hue: 2, facts: ['oskar@example.com', 'Joined Oct 6, 2025'] },\n  { id: 'ines', name: 'Ines Lind', hue: 4, facts: ['ines.l@example.com', 'Invited by Oskar Lind to the spring launch project', 'Joined 23 days ago', 'Active yesterday'] },\n] as const;\n\n/** Several facts under a name, one text each, so a fact wraps within itself. */\nexport function WithFacts() {\n  return (\n    <Said>\n      {say => (\n        <ItemList label=\"People\" data-testid=\"people\">\n          {people.map(person => (\n            <Item\n              key={person.id}\n              label={person.name}\n              description={<>{person.facts.map((fact, index) => <text key={`f${index}`}>{fact}</text>)}</>}\n              startContent={<Avatar name={person.name} hue={person.hue} isDecorative />}\n              hasChevron\n              onClick={() => say(`Opened ${person.name}`)}\n              data-testid={`person-${person.id}`}\n            />\n          ))}\n        </ItemList>\n      )}\n    </Said>\n  );\n}"
         },
         {
           "name": "WithRemove",
           "title": "A row with a remove button of its own",
-          "source": "import { Said } from '../example';\nimport { Item, ItemList } from '@liulidesign/core/Item';\n\nconst devices = [\n  { id: 'ipad', name: \"Emily's iPad\", note: 'Online · 2 h today' },\n  { id: 'phone', name: \"Emily's phone\", note: 'Offline since 9:40' },\n] as const;\n\n/** A row that opens its device, with a remove button of its own at the end. */\nexport function WithRemove() {\n  return (\n    <Said>\n      {say => (\n        <ItemList label=\"Emily's devices\" data-testid=\"devices\">\n          {devices.map(device => (\n            <Item\n              key={device.id}\n              label={device.name}\n              description={device.note}\n              startIcon=\"phone\"\n              onClick={() => say(`Opened ${device.name}`)}\n              endAction={{ label: `Remove ${device.name}`, icon: 'close', onClick: () => say(`Removed ${device.name}`), 'data-testid': `device-${device.id}-remove` }}\n              data-testid={`device-${device.id}`}\n            />\n          ))}\n        </ItemList>\n      )}\n    </Said>\n  );\n}"
+          "source": "import { Said } from '../example';\nimport { Item, ItemList } from '@liulidesign/core/Item';\n\nconst devices = [\n  { id: 'tablet', name: \"Lena's tablet\", note: 'Online · 2 h today' },\n  { id: 'phone', name: \"Lena's phone\", note: 'Offline since 9:40' },\n] as const;\n\n/** A row that opens its device, with a remove button of its own at the end. */\nexport function WithRemove() {\n  return (\n    <Said>\n      {say => (\n        <ItemList label=\"Lena's devices\" data-testid=\"devices\">\n          {devices.map(device => (\n            <Item\n              key={device.id}\n              label={device.name}\n              description={device.note}\n              startIcon=\"phone\"\n              onClick={() => say(`Opened ${device.name}`)}\n              endAction={{ label: `Remove ${device.name}`, icon: 'close', onClick: () => say(`Removed ${device.name}`), 'data-testid': `device-${device.id}-remove` }}\n              data-testid={`device-${device.id}`}\n            />\n          ))}\n        </ItemList>\n      )}\n    </Said>\n  );\n}"
         },
         {
           "name": "WithStop",
@@ -10658,12 +10658,12 @@
         {
           "name": "RightToLeft",
           "title": "Rows on a right-to-left page",
-          "source": "import { unused } from '../example';\nimport { Avatar } from '@liulidesign/core/Avatar';\nimport { Badge } from '@liulidesign/core/Badge';\nimport { Item, ItemList } from '@liulidesign/core/Item';\n\n/** Rows on a right-to-left page: the avatar starts the row, the status follows the name, and the action ends it on the left. */\nexport function RightToLeft() {\n  return (\n    <view dir=\"rtl\" data-testid=\"rtl-family\">\n      <ItemList label=\"בני משפחה\">\n        <Item label=\"דוד\" labelEnd={<Badge tone=\"success\" size=\"sm\" label=\"אינטרנט פעיל\" />} description=\"נותרו כשעתיים היום\" startContent={<Avatar name=\"David\" hue={7} isDecorative />} hasChevron onClick={unused} />\n        <Item label=\"האייפד של אמילי\" description=\"מחובר\" startIcon=\"phone\" onClick={unused} endAction={{ label: 'הסרת האייפד של אמילי', icon: 'close', onClick: unused }} />\n        <Item label=\"אלכסנדרה-שרלוט מונטגומרי\" labelEnd={<Badge size=\"sm\" label=\"ללא בקרה\" />} description=\"בקרת הורים כבויה · 3 מכשירים\" startContent={<Avatar name=\"Alexandra\" hue={5} isDecorative />} hasChevron onClick={unused} />\n      </ItemList>\n    </view>\n  );\n}"
+          "source": "import { unused } from '../example';\nimport { Avatar } from '@liulidesign/core/Avatar';\nimport { Badge } from '@liulidesign/core/Badge';\nimport { Item, ItemList } from '@liulidesign/core/Item';\n\n/** Rows on a right-to-left page: the avatar starts the row, the status follows the name, and the action ends it on the left. */\nexport function RightToLeft() {\n  return (\n    <view dir=\"rtl\" data-testid=\"rtl-family\">\n      <ItemList label=\"חברי הצוות\">\n        <Item label=\"לנה\" labelEnd={<Badge tone=\"success\" size=\"sm\" label=\"במשמרת\" />} description=\"עד 18:00 היום\" startContent={<Avatar name=\"Lena\" hue={7} isDecorative />} hasChevron onClick={unused} />\n        <Item label=\"הטאבלט של לנה\" description=\"מחובר\" startIcon=\"phone\" onClick={unused} endAction={{ label: 'הסרת הטאבלט של לנה', icon: 'close', onClick: unused }} />\n        <Item label=\"אלכסנדרה-שרלוט מונטגומרי\" labelEnd={<Badge size=\"sm\" label=\"לא זמינה\" />} description=\"חוזרת ביום שני · 3 משימות פתוחות\" startContent={<Avatar name=\"Alexandra\" hue={5} isDecorative />} hasChevron onClick={unused} />\n      </ItemList>\n    </view>\n  );\n}"
         },
         {
           "name": "TitledLists",
           "title": "Lists under headings",
-          "source": "import { unused } from '../example';\nimport { Avatar } from '@liulidesign/core/Avatar';\nimport { Section } from '@liulidesign/core/Section';\nimport { Item, ItemList } from '@liulidesign/core/Item';\n\nconst members = [\n  { id: 'david', name: 'David', hue: 7, status: 'Internet on', tone: 'success', note: 'About 2 h 20 min left today' },\n  { id: 'emily', name: 'Emily', hue: 3, status: 'Internet on', tone: 'success', note: '4 devices' },\n  { id: 'alexandra', name: 'Alexandra-Charlotte Montgomery', hue: 5, status: 'No controls', tone: 'neutral', note: 'Parental controls are off · 3 devices' },\n] as const;\nconst devices = [\n  { id: 'ipad', name: \"Emily's iPad\", note: 'Online · 2 h today' },\n  { id: 'phone', name: \"Emily's phone\", note: 'Offline since 9:40' },\n] as const;\n\n/** Lists under headings: a list's own title and a Section's level-4 heading share the card's left edge. */\nexport function TitledLists() {\n  return (\n    <view className=\"gap-6\" data-testid=\"titled-lists\">\n      <Section title=\"Family members\" headingLevel={4}>\n        <ItemList label=\"Family members\">\n          <Item label=\"David\" description=\"4 devices\" startContent={<Avatar name=\"David\" hue={7} isDecorative />} hasChevron onClick={unused} />\n        </ItemList>\n      </Section>\n      <ItemList title=\"Other devices\" description=\"Controls only work while devices are on your home Wi-Fi.\">\n        <Item label=\"Not assigned\" description=\"2 devices aren't anyone's\" startIcon=\"info\" hasChevron onClick={unused} />\n        <Item label=\"Shared or guest\" description=\"No one's controls apply\" hasChevron onClick={unused} />\n      </ItemList>\n    </view>\n  );\n}"
+          "source": "import { unused } from '../example';\nimport { Avatar } from '@liulidesign/core/Avatar';\nimport { Section } from '@liulidesign/core/Section';\nimport { Item, ItemList } from '@liulidesign/core/Item';\n\nconst members = [\n  { id: 'lena', name: 'Lena', hue: 7, status: 'On shift', tone: 'success', note: 'Until 18:00 today' },\n  { id: 'omar', name: 'Omar', hue: 3, status: 'On shift', tone: 'success', note: '4 open tasks' },\n  { id: 'alexandra', name: 'Alexandra-Charlotte Montgomery', hue: 5, status: 'Away', tone: 'neutral', note: 'Back on Monday · 3 open tasks' },\n] as const;\n\n/** Lists under headings: a list's own title and a Section's level-4 heading share the card's left edge. */\nexport function TitledLists() {\n  return (\n    <view className=\"gap-6\" data-testid=\"titled-lists\">\n      <Section title=\"Team members\" headingLevel={4}>\n        <ItemList label=\"Team members\">\n          <Item label=\"Lena\" description=\"4 open tasks\" startContent={<Avatar name=\"Lena\" hue={7} isDecorative />} hasChevron onClick={unused} />\n        </ItemList>\n      </Section>\n      <ItemList title=\"Unclaimed tasks\" description=\"Tasks wait here until someone on the team picks them up.\">\n        <Item label=\"Not picked up\" description=\"2 tasks aren't anyone's yet\" startIcon=\"info\" hasChevron onClick={unused} />\n        <Item label=\"Shared\" description=\"Anyone on the team can close these\" hasChevron onClick={unused} />\n      </ItemList>\n    </view>\n  );\n}"
         },
         {
           "name": "WithControl",
@@ -14725,6 +14725,7 @@
       "name": "QRCode",
       "import": "@liulidesign/core/QRCode",
       "exports": [
+        "fitsQRCode",
         "QRCode"
       ],
       "category": "content",
@@ -14752,7 +14753,7 @@
           "name": "label",
           "type": "string",
           "required": true,
-          "description": "What the code is for, read in its place: \"Code to join Heights Guest\"."
+          "description": "What the code is for, read in its place: \"Code to join Harbour Café Guest\"."
         },
         {
           "name": "size",
@@ -14814,7 +14815,7 @@
         {
           "name": "Join",
           "title": "A network to join",
-          "source": "import { QRCode } from '@liulidesign/core/QRCode';\n\n/** A guest network to join: the code, and the same details in words for whoever cannot scan. */\nexport function Join() {\n  return (\n    <view className=\"flex-row items-center gap-4\">\n      <QRCode value=\"WIFI:T:WPA;S:Heights Guest;P:spring-4821;;\" label=\"Code to join Heights Guest\" data-testid=\"join\" />\n      <view className=\"shrink min-w-0 gap-1\">\n        <text className=\"text-callout font-semibold text-text\">Heights Guest</text>\n        <text className=\"text-footnote text-muted\">Password spring-4821</text>\n      </view>\n    </view>\n  );\n}"
+          "source": "import { QRCode } from '@liulidesign/core/QRCode';\n\n/** A guest network to join: the code, and the same details in words for whoever cannot scan. */\nexport function Join() {\n  return (\n    <view className=\"flex-row items-center gap-4\">\n      <QRCode value=\"WIFI:T:WPA;S:Harbour Café Guest;P:tide-pool-73;;\" label=\"Code to join Harbour Café Guest\" data-testid=\"join\" />\n      <view className=\"shrink min-w-0 gap-1\">\n        <text className=\"text-callout font-semibold text-text\">Harbour Café Guest</text>\n        <text className=\"text-footnote text-muted\">Password tide-pool-73</text>\n      </view>\n    </view>\n  );\n}"
         },
         {
           "name": "Link",
@@ -14829,7 +14830,7 @@
       ],
       "gaps": [],
       "limits": [
-        "Up to version 15: about 320 bytes at level M, 410 at L. A longer value throws.",
+        "Up to version 15: 520 bytes at level L, 412 at M, 292 at Q, 220 at H. A longer value draws an empty tile and warns once; `fitsQRCode(value, level)` answers before rendering.",
         "Byte mode only, so digits and capitals take as much room as any text.",
         "No logo in the middle."
       ],
@@ -14852,7 +14853,9 @@
         "tokens": [
           "--radius-control"
         ],
-        "roles": []
+        "roles": [
+          "text"
+        ]
       },
       "related": [
         "Thumbnail",
@@ -15004,7 +15007,7 @@
           "name": "variant",
           "type": "RadioGroupVariant",
           "required": false,
-          "description": "`list` stacks plain rows; `card` makes each option a bordered card, for plans and other choices with a second line.",
+          "description": "`list` stacks plain rows; `card` makes each option a bordered card, for choices with a second line or trailing content.",
           "values": [
             "list",
             "card"

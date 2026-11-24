@@ -1906,11 +1906,11 @@ mod dmg_tests {
 <plist version="1.0"><dict><key>system-entities</key><array>
   <dict><key>dev-entry</key><string>/dev/disk4</string></dict>
   <dict><key>dev-entry</key><string>/dev/disk4s1</string>
-        <key>mount-point</key><string>/Volumes/Fusheng 1</string></dict>
+        <key>mount-point</key><string>/Volumes/MyApp 1</string></dict>
 </array></dict></plist>"#;
         assert_eq!(
             attached_mount_point(output).unwrap(),
-            PathBuf::from("/Volumes/Fusheng 1")
+            PathBuf::from("/Volumes/MyApp 1")
         );
     }
 

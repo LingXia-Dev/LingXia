@@ -25,7 +25,13 @@ pub(super) fn execute_harmony(ctx: DevContext) -> Result<()> {
 
     let run_result = (|| -> Result<()> {
         let platforms_to_build = vec![PlatformType::Harmony];
-        prepare_dev_host_assets(&ctx, &platforms_to_build, &[], Some(&device_ws_url))?;
+        prepare_dev_host_assets(
+            &ctx,
+            &server,
+            &platforms_to_build,
+            &[],
+            Some(&device_ws_url),
+        )?;
 
         if let Some(installed) = ctx.installed {
             let bundle_name = ctx

@@ -57,7 +57,7 @@ test('At large text: one or two initials and a photo keep one square box, grown 
   for (const [textScale, side, letters] of [[1, 40, undefined], [1.3, 52, 13], [2, 52, 8.5]]) {
     const screen = await renderPage(`
       import { Avatar } from '@liulidesign/core/Avatar';
-      export function render() { return <page><Avatar name="Emily" data-testid="one" /><Avatar name="Alexandra Montgomery" data-testid="two" /><Avatar name="Kai Chen" src="kai.png" data-testid="photo" /></page>; }
+      export function render() { return <page><Avatar name="Lena" data-testid="one" /><Avatar name="Alexandra Montgomery" data-testid="two" /><Avatar name="Kai Chen" src="kai.png" data-testid="photo" /></page>; }
     `, { env: { textScale } });
     for (const id of ['one', 'two', 'photo']) {
       const { props } = screen.getByTestId(id);

@@ -231,9 +231,9 @@ export function Links() {
 }
 
 const members = [
-  { id: 'david', name: 'David', hue: 7, status: 'Internet on', tone: 'success', note: 'About 2 h 20 min left today' },
-  { id: 'emily', name: 'Emily', hue: 3, status: 'Internet on', tone: 'success', note: '4 devices' },
-  { id: 'alexandra', name: 'Alexandra-Charlotte Montgomery', hue: 5, status: 'No controls', tone: 'neutral', note: 'Parental controls are off · 3 devices' },
+  { id: 'lena', name: 'Lena', hue: 7, status: 'On shift', tone: 'success', note: 'Until 18:00 today' },
+  { id: 'omar', name: 'Omar', hue: 3, status: 'On shift', tone: 'success', note: '4 open tasks' },
+  { id: 'alexandra', name: 'Alexandra-Charlotte Montgomery', hue: 5, status: 'Away', tone: 'neutral', note: 'Back on Monday · 3 open tasks' },
 ] as const;
 
 /** A status beside the name: the name gives way first, and the badge is read after it. */
@@ -241,7 +241,7 @@ export function WithStatus() {
   return (
     <Said>
       {say => (
-        <ItemList label="Family members" data-testid="members">
+        <ItemList label="Team members" data-testid="members">
           {members.map(member => (
             <Item
               key={member.id}
@@ -261,8 +261,8 @@ export function WithStatus() {
 }
 
 const people = [
-  { id: 'james', name: 'James Whitfield', hue: 2, facts: ['james@example.com', 'Joined Oct 6, 2025'] },
-  { id: 'marcus', name: 'Marcus Whitfield', hue: 4, facts: ['marcus.w@example.com', 'Joined with an invitation from James Whitfield', 'Joined 23 days ago', 'Active yesterday'] },
+  { id: 'oskar', name: 'Oskar Lind', hue: 2, facts: ['oskar@example.com', 'Joined Oct 6, 2025'] },
+  { id: 'ines', name: 'Ines Lind', hue: 4, facts: ['ines.l@example.com', 'Invited by Oskar Lind to the spring launch project', 'Joined 23 days ago', 'Active yesterday'] },
 ] as const;
 
 /** Several facts under a name, one text each, so a fact wraps within itself. */
@@ -289,8 +289,8 @@ export function WithFacts() {
 }
 
 const devices = [
-  { id: 'ipad', name: "Emily's iPad", note: 'Online · 2 h today' },
-  { id: 'phone', name: "Emily's phone", note: 'Offline since 9:40' },
+  { id: 'tablet', name: "Lena's tablet", note: 'Online · 2 h today' },
+  { id: 'phone', name: "Lena's phone", note: 'Offline since 9:40' },
 ] as const;
 
 /** Downloads under way: stopping one ends it at once, with nothing to confirm, so the action is in danger. */
@@ -311,7 +311,7 @@ export function WithRemove() {
   return (
     <Said>
       {say => (
-        <ItemList label="Emily's devices" data-testid="devices">
+        <ItemList label="Lena's devices" data-testid="devices">
           {devices.map(device => (
             <Item
               key={device.id}
@@ -333,10 +333,10 @@ export function WithRemove() {
 export function RightToLeft() {
   return (
     <view dir="rtl" data-testid="rtl-family">
-      <ItemList label="בני משפחה">
-        <Item label="דוד" labelEnd={<Badge tone="success" size="sm" label="אינטרנט פעיל" />} description="נותרו כשעתיים היום" startContent={<Avatar name="David" hue={7} isDecorative />} hasChevron onClick={unused} />
-        <Item label="האייפד של אמילי" description="מחובר" startIcon="phone" onClick={unused} endAction={{ label: 'הסרת האייפד של אמילי', icon: 'close', onClick: unused }} />
-        <Item label="אלכסנדרה-שרלוט מונטגומרי" labelEnd={<Badge size="sm" label="ללא בקרה" />} description="בקרת הורים כבויה · 3 מכשירים" startContent={<Avatar name="Alexandra" hue={5} isDecorative />} hasChevron onClick={unused} />
+      <ItemList label="חברי הצוות">
+        <Item label="לנה" labelEnd={<Badge tone="success" size="sm" label="במשמרת" />} description="עד 18:00 היום" startContent={<Avatar name="Lena" hue={7} isDecorative />} hasChevron onClick={unused} />
+        <Item label="הטאבלט של לנה" description="מחובר" startIcon="phone" onClick={unused} endAction={{ label: 'הסרת הטאבלט של לנה', icon: 'close', onClick: unused }} />
+        <Item label="אלכסנדרה-שרלוט מונטגומרי" labelEnd={<Badge size="sm" label="לא זמינה" />} description="חוזרת ביום שני · 3 משימות פתוחות" startContent={<Avatar name="Alexandra" hue={5} isDecorative />} hasChevron onClick={unused} />
       </ItemList>
     </view>
   );
@@ -346,14 +346,14 @@ export function RightToLeft() {
 export function TitledLists() {
   return (
     <view className="gap-6" data-testid="titled-lists">
-      <Section title="Family members" headingLevel={4}>
-        <ItemList label="Family members">
-          <Item label="David" description="4 devices" startContent={<Avatar name="David" hue={7} isDecorative />} hasChevron onClick={unused} />
+      <Section title="Team members" headingLevel={4}>
+        <ItemList label="Team members">
+          <Item label="Lena" description="4 open tasks" startContent={<Avatar name="Lena" hue={7} isDecorative />} hasChevron onClick={unused} />
         </ItemList>
       </Section>
-      <ItemList title="Other devices" description="Controls only work while devices are on your home Wi-Fi.">
-        <Item label="Not assigned" description="2 devices aren't anyone's" startIcon="info" hasChevron onClick={unused} />
-        <Item label="Shared or guest" description="No one's controls apply" hasChevron onClick={unused} />
+      <ItemList title="Unclaimed tasks" description="Tasks wait here until someone on the team picks them up.">
+        <Item label="Not picked up" description="2 tasks aren't anyone's yet" startIcon="info" hasChevron onClick={unused} />
+        <Item label="Shared" description="Anyone on the team can close these" hasChevron onClick={unused} />
       </ItemList>
     </view>
   );

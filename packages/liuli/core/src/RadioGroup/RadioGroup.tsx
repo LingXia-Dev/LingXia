@@ -14,7 +14,7 @@ export interface RadioOption {
   label: string;
   /** A second line, read as the option's description. */
   description?: string;
-  /** Drawn at the end of the label's line, such as a plan's price; never shrinks, and is read after the label. */
+  /** Trailing content at the end of the label's line: a price, a size, a count. Never shrinks, and is read after the label. */
   endContent?: Child;
   /** @default false */
   isDisabled?: boolean;
@@ -40,7 +40,7 @@ export type RadioGroupOrientation = 'vertical' | 'horizontal';
 export type RadioGroupProps = FieldOwnProps & RadioGroupBinding & {
   /** The choices, in order. */
   items: readonly RadioOption[];
-  /** `list` stacks plain rows; `card` makes each option a bordered card, for plans and other choices with a second line. @default 'list' */
+  /** `list` stacks plain rows; `card` makes each option a bordered card, for choices with a second line or trailing content. @default 'list' */
   variant?: RadioGroupVariant;
   /** `horizontal` sets two or three short options side by side; they wrap when the line is full. @default 'vertical' */
   orientation?: RadioGroupOrientation;

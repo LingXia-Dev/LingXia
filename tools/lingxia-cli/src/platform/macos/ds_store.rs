@@ -310,7 +310,7 @@ mod tests {
         fs::create_dir(volume.path().join(".background")).unwrap();
         fs::write(volume.path().join(".background/background.tiff"), b"x").unwrap();
         let layout = DmgLayout {
-            volume_name: "Fusheng",
+            volume_name: "MyApp",
             app_bundle_name: "Alpha.app",
             app_position: (180, 190),
             applications_position: (480, 190),

@@ -20,9 +20,13 @@ pub struct LogsOptions {
     #[arg(value_name = "ORIGIN")]
     pub origin: Option<String>,
 
-    /// Only include entries whose message/path/appid contains this text
+    /// Only include entries whose message/path/appid contains this text (any case)
     #[arg(long)]
     pub grep: Option<String>,
+
+    /// Read `--grep` as a regular expression (any case), e.g. `--grep 'ready|failed' -E`
+    #[arg(long = "regex", short = 'E', requires = "grep")]
+    pub regex: bool,
 
     /// Only include entries at this level
     #[arg(long, value_parser = ["verbose", "debug", "info", "warn", "error"])]
@@ -64,8 +68,34 @@ struct Filters {
     level: Option<DevSessionLogLevel>,
     origin: Option<String>,
     app: Option<String>,
-    grep: Option<String>,
+    grep: Option<Grep>,
     path: Option<String>,
+}
+
+enum Grep {
+    /// Lowercased.
+    Text(String),
+    Regex(regex::Regex),
+}
+
+impl Grep {
+    fn parse(pattern: &str, regex: bool) -> Result<Self> {
+        if !regex {
+            return Ok(Self::Text(pattern.to_lowercase()));
+        }
+        regex::RegexBuilder::new(pattern)
+            .case_insensitive(true)
+            .build()
+            .map(Self::Regex)
+            .map_err(|err| anyhow!("--grep is not a valid regular expression: {err}"))
+    }
+
+    fn is_match(&self, hay: &str) -> bool {
+        match self {
+            Self::Text(text) => hay.to_lowercase().contains(text),
+            Self::Regex(regex) => regex.is_match(hay),
+        }
+    }
 }
 
 struct LogEntry {
@@ -91,7 +121,11 @@ pub fn execute(session: &SessionInfo, options: LogsOptions) -> Result<()> {
         level: options.level.as_deref().map(parse_level).transpose()?,
         origin: options.origin.as_deref().map(str::to_lowercase),
         app: options.app.as_deref().map(str::to_lowercase),
-        grep: options.grep.as_deref().map(str::to_lowercase),
+        grep: options
+            .grep
+            .as_deref()
+            .map(|pattern| Grep::parse(pattern, options.regex))
+            .transpose()?,
         path: options.path.as_deref().map(str::to_lowercase),
     };
     let render = RenderOpts {
@@ -386,21 +420,19 @@ fn matches_filters(entry: &LogEntry, filters: &Filters) -> bool {
             return false;
         }
     }
-    if let Some(grep) = filters.grep.as_deref() {
-        let mut haystacks = vec![
-            entry.log.message.to_lowercase(),
-            entry.event.origin.to_lowercase(),
+    if let Some(grep) = filters.grep.as_ref() {
+        let haystacks = [
+            Some(entry.log.message.as_str()),
+            Some(entry.event.origin.as_str()),
+            entry.log.path.as_deref(),
+            entry.log.appid.as_deref(),
+            entry.log.target.as_deref(),
         ];
-        if let Some(path) = entry.log.path.as_deref() {
-            haystacks.push(path.to_lowercase());
-        }
-        if let Some(appid) = entry.log.appid.as_deref() {
-            haystacks.push(appid.to_lowercase());
-        }
-        if let Some(target) = entry.log.target.as_deref() {
-            haystacks.push(target.to_lowercase());
-        }
-        if !haystacks.iter().any(|hay| hay.contains(grep)) {
+        if !haystacks
+            .into_iter()
+            .flatten()
+            .any(|hay| grep.is_match(hay))
+        {
             return false;
         }
     }
@@ -516,6 +548,25 @@ mod tests {
     }
 
     #[test]
+    fn grep_is_text_unless_it_is_asked_to_be_a_regular_expression() {
+        let mut filters = no_filters();
+        let hit = entry("lxview", "com.demo.app", "pages/home");
+        filters.grep = Some(Grep::parse("HI|nothing", false).unwrap());
+        assert!(
+            !matches_filters(&hit, &filters),
+            "plain text has no alternation"
+        );
+        filters.grep = Some(Grep::parse("nothing|HI", true).unwrap());
+        assert!(matches_filters(&hit, &filters), "alternation, any case");
+        filters.grep = Some(Grep::parse("^pages/(home|about)$", true).unwrap());
+        assert!(matches_filters(&hit, &filters), "matches the page path too");
+        filters.grep = Some(Grep::parse("^ages", true).unwrap());
+        assert!(!matches_filters(&hit, &filters));
+        assert!(Grep::parse("(", true).is_err());
+        assert!(matches!(Grep::parse("(", false), Ok(Grep::Text(_))));
+    }
+
+    #[test]
     fn origin_filter_accepts_dynamic_prefixes() {
         let mut filters = no_filters();
         filters.origin = Some("service".to_string());
@@ -596,6 +647,7 @@ mod tests {
             executable: std::env::current_exe().unwrap().display().to_string(),
             ws_url: String::new(),
             log_file: String::new(),
+            output: None,
             name: None,
             build: None,
             extra: Default::default(),

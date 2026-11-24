@@ -63,16 +63,9 @@ const failures = (() => {
     deliver(Object.freeze(failure));
   };
 })();
+// The host reports here too a promise rejection nothing handled, where the engine tracks them,
+// as `{ kind: "app", hook: null }`: the engine's event names no page or action.
 globalThis.__LX_REPORT_FAILURE__ = failures;
-
-// An engine that tracks unhandled rejections hands them over here; without one, the `action`
-// and module-level kinds never fire.
-if (typeof globalThis.__LX_TRACK_UNHANDLED__ === "function") {
-  globalThis.__LX_TRACK_UNHANDLED__((reason, page, action) => failures(
-    { error: reason, source: action ? { kind: "action", action } : { kind: "app", hook: null } },
-    page,
-  ));
-}
 
 // A thrown or rejected App hook is reported, then fails as before.
 function reportingHook(appInstance, name) {

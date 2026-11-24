@@ -1,12 +1,13 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { renderExample, renderPage } from '../testing/harness.mjs';
-import { encodeQR } from './encode.ts';
+import { textOf } from '@lingxia/view/testing';
+import { encodeQR, qrRoom } from './encode.ts';
 
 test('Join: an image named by what it is for; the modules are drawn, not read', async () => {
   const screen = await renderExample('QRCode/QRCode', 'Join');
   const code = screen.getByTestId('join');
-  assert.deepEqual([code.props.role, code.props.accessibilityLabel, code.props.width], ['img', 'Code to join Heights Guest', 160]);
+  assert.deepEqual([code.props.role, code.props.accessibilityLabel, code.props.width], ['img', 'Code to join Harbour Café Guest', 160]);
   const [vector] = code.children;
   assert.equal(vector.props.accessibilityHidden, 1);
   const source = JSON.parse(vector.props.vectorSource);
@@ -53,4 +54,57 @@ test('the rectangles cover exactly the dark modules, inside the quiet zone', asy
     }
   }
   assert.deepEqual(drawn, modules.map(row => row.map(dark => (dark ? 1 : 0))));
+});
+
+test('fitsQRCode answers at the limit the part draws to', async () => {
+  const limits = Object.fromEntries(['L', 'M', 'Q', 'H'].map(level => [level, qrRoom('', level, 15).limit]));
+  for (const [level, limit] of Object.entries(limits)) assert.equal(encodeQR('x'.repeat(limit), level, 15).length, 77, `the limit encodes at version 15, level ${level}`);
+  const screen = await renderPage(`
+    import { fitsQRCode } from '@liulidesign/core/QRCode';
+    const limits = ${JSON.stringify(limits)};
+    export function render() {
+      const answers = Object.entries(limits).map(([level, limit]) => [fitsQRCode('x'.repeat(limit), level), fitsQRCode('x'.repeat(limit + 1), level)]);
+      return <page><text data-testid="answers">{JSON.stringify([answers, fitsQRCode('é'.repeat(250))])}</text></page>;
+    }
+  `);
+  const [answers, accented] = JSON.parse(textOf(screen.getByTestId('answers')));
+  assert.deepEqual(answers, [[true, false], [true, false], [true, false], [true, false]], 'L, M, Q, H: the limit fits, one more byte does not');
+  assert.equal(accented, false, 'bytes, not characters: 250 accented letters are 500 bytes, over the 412 that level M holds');
+});
+
+test('a value too long for a code draws an empty tile, still named, and warns once with the numbers', async () => {
+  const warned = [];
+  const warn = console.warn;
+  console.warn = message => warned.push(message);
+  try {
+    const screen = await renderPage(`
+      import { QRCode } from '@liulidesign/core/QRCode';
+      export function render() { return <page><QRCode value={'x'.repeat(600)} label="Code for the report" data-testid="long" /><QRCode value={'x'.repeat(600)} label="Code for the report" /></page>; }
+    `);
+    const tile = screen.getByTestId('long');
+    assert.deepEqual([tile.props.role, tile.props.accessibilityLabel, tile.props.width, tile.children.length], ['img', 'Code for the report', 160, 0]);
+    const { limit } = qrRoom('', 'M', 15);
+    assert.deepEqual(warned.filter(m => m.includes('QRCode')), [`Liuli: QRCode "Code for the report": the value is 600 bytes; at level M a code holds at most ${limit}. It is drawn empty; check with fitsQRCode().`]);
+  } finally {
+    console.warn = warn;
+  }
+});
+
+test('the WIFI guidance: its example reads back to the name and password it says', async () => {
+  const { doc } = await import('./QRCode.doc.ts');
+  const line = doc.guidance.do.find(text => text.includes('WIFI:'));
+  for (const char of ['\\', ';', ',', '"', ':']) assert.ok(line.includes('`' + char + '`'), `names ${char}`);
+  assert.match(line, /hex digits in double quotes/);
+  const value = line.match(/`(WIFI:T:[^`]*)`/)[1];
+  // Fields end at an unescaped ';'; a backslash takes the next character as it is.
+  const fields = {};
+  for (let i = 'WIFI:'.length, key = '', text = '', inKey = true; i < value.length; i++) {
+    const char = value[i];
+    if (char === '\\') text += value[++i];
+    else if (inKey && char === ':') { key = text; text = ''; inKey = false; }
+    else if (char === ';') { if (key) fields[key] = text; key = ''; text = ''; inKey = true; }
+    else text += char;
+  }
+  assert.deepEqual(fields, { T: 'WPA', S: 'Harbour Café; Upstairs', P: 'tide:pool,73' });
+  assert.ok(line.includes('"Harbour Café; Upstairs"') && line.includes('"tide:pool,73"'), 'the words match the value');
 });

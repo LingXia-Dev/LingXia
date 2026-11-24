@@ -35,6 +35,11 @@ const RUNNER_WINDOWS_BIN_NAME: &str = "lingxia-runner";
 
 /// Root of the runner cache: `<state root>/runner`.
 fn runner_root() -> Result<PathBuf> {
+    // A test must never install into, or prune, the user's own Runners.
+    #[cfg(test)]
+    if crate::state_root::lingxia_home_override().is_none() {
+        bail!("LINGXIA_HOME is unset: a test may not use the user's ~/.lingxia/runner");
+    }
     Ok(crate::state_root::lingxia_dir()?.join("runner"))
 }
 
@@ -166,6 +171,11 @@ pub fn installed_build(dir: &Path) -> Option<RunnerBuild> {
 fn read_stamp(dir: &Path) -> Option<RunnerBuild> {
     let text = fs::read_to_string(dir.join(BUILD_STAMP)).ok()?;
     serde_json::from_str(&text).ok()
+}
+
+/// Whether `dir` holds a release download: only those are replaced or pruned.
+fn downloaded(dir: &Path) -> bool {
+    read_stamp(dir).is_some_and(|stamp| stamp.release)
 }
 
 fn write_stamp(dir: &Path, build: &RunnerBuild) -> Result<()> {
@@ -319,6 +329,8 @@ enum Verdict {
     Replace,
     /// A checkout CLI needs a Runner built from the checkout.
     Rebuild(String),
+    /// A release CLI cannot drive a Runner built elsewhere, and does not delete it.
+    NotOurs(String),
 }
 
 fn verdict(cli: &CliBuild, stamp: Option<&RunnerBuild>) -> Verdict {
@@ -329,7 +341,12 @@ fn verdict(cli: &CliBuild, stamp: Option<&RunnerBuild>) -> Verdict {
     let fits = build.version == cli.version && protocol.is_none_or(compat::speaks_dev_protocol);
     match (fits, cli.release) {
         (true, _) => Verdict::Run,
-        (false, true) => Verdict::Replace,
+        (false, true) if build.release => Verdict::Replace,
+        (false, true) => Verdict::NotOurs(format!(
+            "it is {}, which this CLI ({}) cannot drive, and a local build is never replaced",
+            build.describe(),
+            cli.version
+        )),
         (false, false) => Verdict::Rebuild(mismatch_message(cli, build, protocol)),
     }
 }
@@ -366,6 +383,15 @@ pub fn ensure_matching_runner() -> Result<PathBuf> {
                 ensure_runner(&cli.version, true)?
             }
             Verdict::Rebuild(message) => refuse_or_warn(message, runner_path(&dir))?,
+            Verdict::NotOurs(why) => refuse_or_warn(
+                format!(
+                    "The Runner at {} was not downloaded by this CLI: {why}. Remove that directory \
+                     to fetch the release Runner, or rebuild it with {}",
+                    dir.display(),
+                    local_install_command()
+                ),
+                runner_path(&dir),
+            )?,
         }
     } else {
         let path = ensure_runner(&cli.version, false)?;
@@ -375,6 +401,9 @@ pub fn ensure_matching_runner() -> Result<PathBuf> {
         }
     };
     let stamp = read_stamp(&dir);
+    if cli.release && !downloaded(&dir) {
+        eprintln!("Using the locally built Runner at {}", dir.display());
+    }
     if let Some(note) = foreign_build_note(&cli, stamp.as_ref())
         && claim_note(&dir, &note_key(&cli, stamp.as_ref()))
     {
@@ -403,6 +432,10 @@ pub fn installed_report() -> (String, std::result::Result<(), String>) {
         Verdict::Run => (label, Ok(())),
         Verdict::Replace => (format!("{label} (`lingxia dev` replaces it)"), Ok(())),
         Verdict::Rebuild(message) => (label, Err(message)),
+        Verdict::NotOurs(why) => (
+            label,
+            Err(format!("{why}: remove {} or rebuild it", dir.display())),
+        ),
     }
 }
 
@@ -419,6 +452,13 @@ pub fn ensure_runner(version: &str, force: bool) -> Result<PathBuf> {
     // atomic mv), so the app only ever appears fully-formed — its existence
     // alone means this version is installed. No separate ready-marker needed.
     if !force && path.exists() {
+        return Ok(path);
+    }
+    if path.exists() && !downloaded(&dir) {
+        eprintln!(
+            "Kept the locally built Runner at {}; the release Runner {version} was not installed over it",
+            dir.display()
+        );
         return Ok(path);
     }
 
@@ -496,25 +536,59 @@ pub fn ensure_runner(version: &str, force: bool) -> Result<PathBuf> {
     Ok(path)
 }
 
-/// Best-effort removal of other `~/.lingxia/runner/<version>/` dirs so the cache
-/// keeps just the current runner.
-fn prune_other_versions(keep: &str) {
+/// Removes release downloads older than the newest two that no process runs from.
+fn prune_other_versions(installed: &str) {
     let Ok(root) = runner_root() else {
         return;
     };
-    let Ok(entries) = fs::read_dir(&root) else {
-        return;
-    };
-    for entry in entries.flatten() {
-        let name = entry.file_name();
-        let name = name.to_string_lossy();
-        if name == keep || name.starts_with('.') {
-            continue;
-        }
-        if entry.path().is_dir() {
-            let _ = fs::remove_dir_all(entry.path());
+    let mut system = sysinfo::System::new();
+    system.refresh_processes_specifics(
+        sysinfo::ProcessesToUpdate::All,
+        true,
+        sysinfo::ProcessRefreshKind::nothing().with_exe(sysinfo::UpdateKind::Always),
+    );
+    let running: Vec<PathBuf> = system
+        .processes()
+        .values()
+        .filter_map(|process| process.exe().map(Path::to_path_buf))
+        .collect();
+    for dir in prunable(&root, installed, &running) {
+        if fs::remove_dir_all(&dir).is_ok() {
+            eprintln!("Removed the older release Runner {}", dir.display());
         }
     }
+}
+
+/// Only what [`ensure_runner`] put there is considered: a plain-version directory whose stamp
+/// says it is that version's release download. A local build, a suffixed name or a missing or
+/// unreadable stamp is never touched.
+fn prunable(root: &Path, installed: &str, running: &[PathBuf]) -> Vec<PathBuf> {
+    let Ok(installed) = semver::Version::parse(installed) else {
+        return Vec::new();
+    };
+    let mut older: Vec<(semver::Version, PathBuf)> = fs::read_dir(root)
+        .into_iter()
+        .flatten()
+        .flatten()
+        .filter_map(|entry| {
+            let name = entry.file_name().into_string().ok()?;
+            let version = semver::Version::parse(&name).ok()?;
+            if !version.pre.is_empty() || !version.build.is_empty() || version >= installed {
+                return None;
+            }
+            let path = entry.path();
+            let stamp = read_stamp(&path)?;
+            (stamp.release && stamp.version == name).then_some((version, path))
+        })
+        .collect();
+    older.sort_by(|a, b| b.0.cmp(&a.0));
+    older
+        .into_iter()
+        // The newest older release stays, so alternating CLIs do not download on every switch.
+        .skip(1)
+        .map(|(_, path)| path)
+        .filter(|path| !running.iter().any(|exe| exe.starts_with(path)))
+        .collect()
 }
 
 /// Extract a zip preserving paths, Unix modes, and symlinks (a notarized `.app`
@@ -663,9 +737,35 @@ mod tests {
         // No checkout to look an unrecorded protocol up in: the hello decides.
         assert!(matches!(verdict(&shipped, Some(&release())), Verdict::Run));
         assert!(matches!(
-            verdict(&shipped, Some(&speaking(local("1234567"), 1))),
+            verdict(&shipped, Some(&speaking(release(), 1))),
             Verdict::Replace
         ));
+    }
+
+    #[test]
+    fn a_release_build_never_replaces_a_local_build() {
+        let shipped = cli(Some("abcdef0123456789"), true);
+        assert!(matches!(
+            verdict(&shipped, Some(&speaking(local("1234567"), CURRENT))),
+            Verdict::Run
+        ));
+        let Verdict::NotOurs(why) = verdict(&shipped, Some(&speaking(local("1234567"), 1))) else {
+            panic!("a local build it cannot drive is refused, not replaced");
+        };
+        assert!(why.contains("never replaced"), "{why}");
+        assert!(matches!(verdict(&shipped, None), Verdict::Run));
+    }
+
+    #[test]
+    fn only_a_release_stamp_marks_a_download() {
+        let dir = tempfile::tempdir().unwrap();
+        assert!(!downloaded(dir.path()));
+        write_stamp(dir.path(), &local("abcdef0")).unwrap();
+        assert!(!downloaded(dir.path()));
+        fs::write(dir.path().join(BUILD_STAMP), "not json").unwrap();
+        assert!(!downloaded(dir.path()));
+        write_stamp(dir.path(), &release()).unwrap();
+        assert!(downloaded(dir.path()));
     }
 
     #[test]
@@ -703,6 +803,56 @@ mod tests {
         let other = note_key(&cli(Some("1234567890"), false), Some(&release()));
         assert!(claim_note(dir.path(), &other));
         assert_ne!(key, note_key(&dev, Some(&local("1234567"))));
+    }
+
+    fn runner_dir(root: &Path, name: &str, stamp: Option<RunnerBuild>) -> PathBuf {
+        let dir = root.join(name);
+        fs::create_dir_all(&dir).unwrap();
+        if let Some(stamp) = stamp {
+            write_stamp(&dir, &stamp).unwrap();
+        }
+        dir
+    }
+
+    fn release_of(version: &str) -> RunnerBuild {
+        RunnerBuild {
+            version: version.into(),
+            ..release()
+        }
+    }
+
+    #[test]
+    fn an_install_removes_only_older_release_downloads_beyond_the_newest_two() {
+        let root = tempfile::tempdir().unwrap();
+        let root = root.path();
+        runner_dir(root, "0.30.1", Some(release_of("0.30.1")));
+        runner_dir(root, "0.30.0", Some(release_of("0.30.0")));
+        let oldest = runner_dir(root, "0.28.0", Some(release_of("0.28.0")));
+        let local_build = RunnerBuild {
+            version: "0.29.0".into(),
+            ..local("abcdef0")
+        };
+        runner_dir(root, "0.29.0", Some(local_build));
+        runner_dir(root, "0.27.0", None);
+        fs::write(root.join("0.26.0"), "").unwrap();
+        runner_dir(root, "0.25.0", Some(release_of("0.24.0")));
+        runner_dir(root, "0.30.0-gpu-main", Some(release_of("0.30.0-gpu-main")));
+        runner_dir(root, "0.22.0-native", Some(local("abcdef0")));
+        runner_dir(root, ".prev-runner-0.10.1", Some(release_of("0.10.1")));
+        assert_eq!(prunable(root, "0.30.1", &[]), vec![oldest]);
+    }
+
+    #[test]
+    fn a_release_in_use_and_a_newer_one_survive() {
+        let root = tempfile::tempdir().unwrap();
+        let root = root.path();
+        runner_dir(root, "0.30.0", Some(release_of("0.30.0")));
+        let in_use = runner_dir(root, "0.28.0", Some(release_of("0.28.0")));
+        let unused = runner_dir(root, "0.27.0", Some(release_of("0.27.0")));
+        runner_dir(root, "0.31.0", Some(release_of("0.31.0")));
+        let exe = in_use.join("LingXia Runner.app/Contents/MacOS/LingXiaRunner");
+        assert_eq!(prunable(root, "0.30.1", &[exe]), vec![unused]);
+        assert!(prunable(root, "not-a-version", &[]).is_empty());
     }
 
     #[test]
