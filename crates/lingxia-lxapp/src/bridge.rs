@@ -14,11 +14,8 @@
 pub(crate) mod probe;
 mod protocol;
 
-#[allow(unused_imports)] // Re-exported for the next document-session binding step.
-pub(crate) use protocol::{
-    BoundV3Protocol, ChOpenMsg, HelloMsg, IncomingMessage, JsonPatchOp, NotifyMsg, ReqMsg,
-    V3InboundBinding,
-};
+#[cfg(feature = "js-appservice")]
+pub(crate) use protocol::JsonPatchOp;
 
 use protocol::*;
 
@@ -43,18 +40,6 @@ use tokio::sync::oneshot;
 enum BridgeMessageContext<'a> {
     Web(&'a WebMessageContext),
     Gpu,
-}
-
-/// Browser host-TCB lease used only to install a required V3 bridge binding.
-/// It may be current while bootstrap is pending, but its supplied outbound
-/// gate remains Active-only and is therefore safe to retain for later sends.
-#[doc(hidden)]
-pub trait RequiredV3DocumentGate: Send + Sync {
-    fn with_bootstrap_pending_current(
-        &self,
-        context: &WebMessageContext,
-        action: &mut dyn FnMut(crate::ControlDocumentAuthority, Arc<dyn DocumentOutboundGate>),
-    ) -> bool;
 }
 
 // AppServiceCommand — the bridge-level message routed to the JS runtime backend
@@ -272,10 +257,6 @@ fn serialize_seq_frame_with_payload(
     Ok(message_json)
 }
 
-fn protocol_for_binding(binding: Option<&V3OutboundBinding>) -> u8 {
-    if binding.is_some() { V3_PROTOCOL } else { 2 }
-}
-
 // RpcError
 #[derive(Debug, Clone)]
 pub(crate) struct RpcError {
@@ -299,7 +280,6 @@ impl RpcError {
 struct HandshakeState {
     session_id: Option<String>,
     ready: bool,
-    protocol: BridgeProtocol,
     connection: Option<Arc<BridgeConnection>>,
 }
 
@@ -328,7 +308,6 @@ pub(crate) enum OutboundContext {
     Document {
         expected_generation: DocumentGeneration,
         gate: Arc<dyn DocumentOutboundGate>,
-        binding: Option<V3OutboundBinding>,
     },
     Gpu {
         endpoint: std::sync::Weak<dyn crate::GpuPageView>,
@@ -380,19 +359,11 @@ impl OutboundContext {
         endpoint.deliver(*generation, message)
     }
 
-    fn binding(&self) -> Option<&V3OutboundBinding> {
-        match self {
-            Self::Document { binding, .. } => binding.as_ref(),
-            Self::Gpu { .. } => None,
-        }
-    }
-
     fn post<T: ViewTransport>(&self, transport: &T, message: String) -> Result<(), LxAppError> {
         match self {
             Self::Document {
                 expected_generation,
                 gate,
-                ..
             } => {
                 transport.post_message_to_document(*expected_generation, Arc::clone(gate), message)
             }
@@ -403,7 +374,7 @@ impl OutboundContext {
     }
 }
 
-/// One bridge lifetime, legacy or V3. Work must retain this exact connection
+/// One bridge lifetime. Work must retain this exact connection
 /// rather than consulting the mutable handshake again after an async boundary.
 struct BridgeConnection {
     work_id: SessionWorkId,
@@ -412,13 +383,13 @@ struct BridgeConnection {
 }
 
 #[cfg(any(target_os = "windows", test))]
-struct LegacySessionOutboundGate {
+struct SessionOutboundGate {
     handshake: std::sync::Weak<Mutex<HandshakeState>>,
     work_id: SessionWorkId,
 }
 
 #[cfg(any(target_os = "windows", test))]
-impl DocumentOutboundGate for LegacySessionOutboundGate {
+impl DocumentOutboundGate for SessionOutboundGate {
     fn with_active(&self, action: &mut dyn FnMut()) -> bool {
         let Some(handshake) = self.handshake.upgrade() else {
             return false;
@@ -455,7 +426,6 @@ struct CapturedSessionWork {
     work_id: Option<SessionWorkId>,
     outbound: Option<OutboundContext>,
     caller: Option<host::AuthenticatedCaller>,
-    execution_permit: Option<crate::RequiredV3ExecutionPermit>,
 }
 
 tokio::task_local! {
@@ -467,19 +437,7 @@ tokio::task_local! {
 struct DecodedIncoming {
     message: IncomingMessage,
     work: CapturedSessionWork,
-    bound_v3: bool,
     ready: bool,
-    session_id: Option<String>,
-}
-
-/// Opaque, single-use browser ingress prepared while BrowserDocumentSessions
-/// holds its exact Active lease. Its fields never leave this crate: execution
-/// cannot be re-authorized with a caller proof after the registry lock drops.
-#[doc(hidden)]
-pub struct PreparedRequiredV3Incoming {
-    incoming: IncomingWebMessage,
-    decoded: DecodedIncoming,
-    execution_gate: crate::RequiredV3ExecutionGate,
 }
 
 #[derive(Default)]
@@ -650,42 +608,6 @@ pub(crate) struct PageBridge {
     inner: Arc<PageBridgeState>,
 }
 
-/// Cancellation detached from a required-V3 connection replacement. Browser
-/// lifecycle must finish it only after releasing its document-session mutex:
-/// cancellation can synchronously close channels and reach an outbound gate.
-#[doc(hidden)]
-pub struct DeferredRequiredV3Cancellation {
-    bridge: PageBridge,
-    page: PageInstance,
-    previous: Option<Arc<BridgeConnection>>,
-}
-
-async fn wait_for_execution_permit_cancellation(permit: Option<crate::RequiredV3ExecutionPermit>) {
-    let Some(mut cancellation) = permit.map(|permit| permit.cancellation_receiver()) else {
-        std::future::pending::<()>().await;
-        return;
-    };
-    if *cancellation.borrow() {
-        return;
-    }
-    while cancellation.changed().await.is_ok() {
-        if *cancellation.borrow() {
-            return;
-        }
-    }
-    std::future::pending::<()>().await;
-}
-
-impl DeferredRequiredV3Cancellation {
-    #[doc(hidden)]
-    pub fn finish(self) {
-        if let Some(previous) = self.previous {
-            self.bridge
-                .cancel_work(&self.page, previous, "Session replaced");
-        }
-    }
-}
-
 fn gpu_view_control_route(route: &str) -> bool {
     matches!(
         route,
@@ -746,162 +668,6 @@ impl PageBridge {
         self.inner.handshake.lock().unwrap().ready
     }
 
-    #[doc(hidden)]
-    pub fn bind_required_v3_document(
-        &self,
-        native_authority: &crate::NativeControlPlaneAuthority,
-        page: &PageInstance,
-        context: &WebMessageContext,
-        pending: &dyn RequiredV3DocumentGate,
-    ) -> Result<(), LxAppError> {
-        if !native_authority.validate() {
-            return Err(LxAppError::UnsupportedOperation(
-                "browser document binding requires the live native host authority".to_string(),
-            ));
-        }
-        let mut outcome = Ok(());
-        let mut deferred = None;
-        let mut install = |authority: crate::ControlDocumentAuthority,
-                           outbound_gate: Arc<dyn DocumentOutboundGate>| {
-            match self.bind_required_v3_authority(
-                native_authority,
-                page,
-                context,
-                authority,
-                outbound_gate,
-            ) {
-                Ok(cancellation) => deferred = Some(cancellation),
-                Err(error) => outcome = Err(error),
-            }
-        };
-        if !pending.with_bootstrap_pending_current(context, &mut install) {
-            return Err(LxAppError::Bridge(
-                "required V3 document is no longer bootstrap-current".to_string(),
-            ));
-        }
-        outcome?;
-        if let Some(deferred) = deferred {
-            deferred.finish();
-        }
-        Ok(())
-    }
-
-    /// Install a required-V3 bridge while the browser session registry already
-    /// holds the matching BootstrapPending entry.  Browser host TCB must call
-    /// this only from that registry-held closure; this method intentionally
-    /// does not re-enter the registry through a lease.
-    #[doc(hidden)]
-    pub fn bind_required_v3_authority(
-        &self,
-        native_authority: &crate::NativeControlPlaneAuthority,
-        page: &PageInstance,
-        context: &WebMessageContext,
-        authority: crate::ControlDocumentAuthority,
-        outbound_gate: Arc<dyn DocumentOutboundGate>,
-    ) -> Result<DeferredRequiredV3Cancellation, LxAppError> {
-        if !native_authority.validate() {
-            return Err(LxAppError::UnsupportedOperation(
-                "browser document binding requires the live native host authority".to_string(),
-            ));
-        }
-        let expected_generation = match context.document() {
-            lingxia_webview::DocumentBinding::Bound(generation) => generation,
-            lingxia_webview::DocumentBinding::Unbound => {
-                return Err(LxAppError::Bridge(
-                    "required V3 document is unbound".to_string(),
-                ));
-            }
-        };
-        let protocol = BoundV3Protocol::new(authority.v3_inbound_binding())
-            .expect("native-generated control document binding must be valid");
-        let connection = Arc::new(BridgeConnection {
-            work_id: self.next_session_work_id(),
-            outbound: Some(OutboundContext::Document {
-                expected_generation,
-                gate: outbound_gate,
-                binding: Some(protocol.outbound_binding()),
-            }),
-            // Browser audience is a registry-held ingress scope, never a
-            // durable bridge property: `predecode_inbound` drops this field
-            // for bound-V3 frames, and each one is authorized against the
-            // browser document caller its own ingress establishes.
-            caller: host::AuthenticatedCaller::for_lxapp(&self.inner.lxapp),
-        });
-        let replaced = {
-            let mut handshake = self.inner.handshake.lock().unwrap();
-            // A trusted successor navigation is allowed to replace a ready
-            // predecessor. Begin and replacement share this lock; the old
-            // work is cancelled only after it has been detached.
-            self.begin_work_locked(page, connection.work_id)?;
-            let replaced = handshake.connection.replace(connection);
-            handshake.protocol = BridgeProtocol::BoundV3(protocol);
-            handshake.session_id = None;
-            handshake.ready = false;
-            replaced
-        };
-        Ok(DeferredRequiredV3Cancellation {
-            bridge: self.clone(),
-            page: page.clone(),
-            previous: replaced,
-        })
-    }
-
-    /// Remove exactly the required-V3 connection authenticated by `authority`.
-    /// Browser lifecycle calls this only after it has revoked the matching
-    /// registry entry and released that registry lock.
-    #[doc(hidden)]
-    pub fn revoke_required_v3_document(
-        &self,
-        native_authority: &crate::NativeControlPlaneAuthority,
-        page: &PageInstance,
-        authority: crate::ControlDocumentAuthority,
-    ) -> bool {
-        if !native_authority.validate() {
-            return false;
-        }
-        let binding = authority.v3_inbound_binding();
-        let previous = {
-            let mut handshake = self.inner.handshake.lock().unwrap();
-            let BridgeProtocol::BoundV3(protocol) = &handshake.protocol else {
-                return false;
-            };
-            if !protocol.authenticates(&binding) {
-                return false;
-            }
-            let previous = handshake.connection.take();
-            handshake.protocol = BridgeProtocol::default();
-            handshake.session_id = None;
-            handshake.ready = false;
-            previous
-        };
-        if let Some(previous) = previous {
-            self.cancel_work(page, previous, "Browser document revoked");
-        }
-        true
-    }
-
-    /// Validate an exact active browser document before its registry-held
-    /// ingress closure prepares its frame.
-    #[doc(hidden)]
-    pub fn promote_active_browser_document(
-        &self,
-        native_authority: &crate::NativeControlPlaneAuthority,
-        authority: crate::ControlDocumentAuthority,
-    ) -> bool {
-        if !native_authority.validate() {
-            return false;
-        }
-        let binding = authority.v3_inbound_binding();
-        let handshake = self.inner.handshake.lock().unwrap();
-        let BridgeProtocol::BoundV3(protocol) = &handshake.protocol else {
-            return false;
-        };
-        if !protocol.authenticates(&binding) {
-            return false;
-        }
-        handshake.connection.is_some()
-    }
-
     fn next_session_work_id(&self) -> SessionWorkId {
         let next = self
             .inner
@@ -911,10 +677,10 @@ impl PageBridge {
         SessionWorkId(next)
     }
 
-    /// Replace exactly the connection that admitted a legacy hello.  The
-    /// comparison, Begin enqueue, and replacement share the handshake lock:
-    /// a decoded stale V2 hello must never reset a V3 successor.
-    fn replace_with_legacy_session_work(
+    /// Replace exactly the connection that admitted a hello. The comparison,
+    /// Begin enqueue, and replacement share the handshake lock: a decoded
+    /// stale hello must never reset a successor.
+    fn replace_with_session_work(
         &self,
         page: &PageInstance,
         expected_work: Option<SessionWorkId>,
@@ -925,11 +691,10 @@ impl PageBridge {
         let outbound = match document {
             DocumentBinding::Bound(expected_generation) => Some(OutboundContext::Document {
                 expected_generation,
-                gate: Arc::new(LegacySessionOutboundGate {
+                gate: Arc::new(SessionOutboundGate {
                     handshake: Arc::downgrade(&self.inner.handshake),
                     work_id,
                 }),
-                binding: None,
             }),
             // Older platform adapters which cannot attest a generation retain
             // their existing V2 transport semantics. A bound message never
@@ -957,7 +722,6 @@ impl PageBridge {
             }
             self.begin_work_locked(page, connection.work_id)?;
             let replaced = handshake.connection.replace(Arc::clone(&connection));
-            handshake.protocol = BridgeProtocol::LegacyV2;
             handshake.session_id = None;
             handshake.ready = false;
             replaced
@@ -993,18 +757,6 @@ impl PageBridge {
             (None, None) => true,
             _ => false,
         }
-    }
-
-    fn work_effect_is_active(work: &CapturedSessionWork) -> bool {
-        work.execution_permit
-            .as_ref()
-            .is_none_or(crate::RequiredV3ExecutionPermit::is_active)
-    }
-
-    fn work_try_commit_effect(work: &CapturedSessionWork) -> bool {
-        work.execution_permit
-            .as_ref()
-            .is_none_or(crate::RequiredV3ExecutionPermit::try_commit_effect)
     }
 
     fn begin_work_locked(
@@ -1069,7 +821,6 @@ impl PageBridge {
         let previous = {
             let mut handshake = self.inner.handshake.lock().unwrap();
             self.begin_work_locked(page, work_id)?;
-            handshake.protocol = BridgeProtocol::LegacyV2;
             handshake.ready = false;
             handshake.session_id = None;
             handshake.connection.replace(connection)
@@ -1185,7 +936,6 @@ impl PageBridge {
                 work_id: Some(connection.work_id),
                 outbound: connection.outbound.clone(),
                 caller: Some(connection.caller.clone()),
-                execution_permit: None,
             };
             (work, handshake.ready)
         };
@@ -1274,7 +1024,7 @@ impl PageBridge {
                 &work,
             ),
             crate::GpuViewEvent::Reply { id, outcome } => {
-                if !self.is_current_work(work.work_id) || !Self::work_effect_is_active(&work) {
+                if !self.is_current_work(work.work_id) {
                     return Ok(());
                 }
                 let result = outcome.map_err(|error| RpcError {
@@ -1309,25 +1059,7 @@ impl PageBridge {
         let context = incoming.context();
         self.admit_incoming(page, context)?;
         let decoded = self.predecode_inbound(incoming.body())?;
-        if decoded.bound_v3 {
-            // A bound-V3 frame carries a browser document's audience, which
-            // only `prepare_required_v3_incoming` can establish. Dispatching
-            // one here would run it under whatever caller the connection was
-            // built with.
-            return Err(LxAppError::Bridge(
-                "bound V3 frames must enter through the browser document path".to_string(),
-            ));
-        }
-
-        self.execute_decoded_incoming(page, &BridgeMessageContext::Web(context), decoded)
-    }
-
-    fn execute_decoded_incoming(
-        &self,
-        page: &PageInstance,
-        context: &BridgeMessageContext,
-        decoded: DecodedIncoming,
-    ) -> Result<(), LxAppError> {
+        let context = &BridgeMessageContext::Web(context);
         match &decoded.message {
             IncomingMessage::Hello(msg) => self.handle_hello(page, context, msg, &decoded),
             IncomingMessage::Req(msg) => {
@@ -1354,154 +1086,28 @@ impl PageBridge {
         }
     }
 
-    /// Prepare an authenticated browser frame while BrowserDocumentSessions
-    /// holds its exact Active entry. This method performs no outbound send,
-    /// typed parameter decoding, handler clone, task creation, or handler
-    /// invocation. The returned opaque value must be executed after releasing
-    /// the registry lock.
-    #[doc(hidden)]
-    pub fn prepare_required_v3_incoming(
-        &self,
-        native_authority: &crate::NativeControlPlaneAuthority,
-        page: &PageInstance,
-        incoming: IncomingWebMessage,
-        authority: crate::ControlDocumentAuthority,
-        execution_gate: crate::RequiredV3ExecutionGate,
-    ) -> Result<PreparedRequiredV3Incoming, LxAppError> {
-        if !native_authority.validate() {
-            return Err(LxAppError::UnsupportedOperation(
-                "browser caller promotion requires the live native host authority".to_string(),
-            ));
-        }
-        self.admit_incoming(page, incoming.context())?;
-        let binding = authority.v3_inbound_binding();
-        {
-            let handshake = self.inner.handshake.lock().unwrap();
-            let BridgeProtocol::BoundV3(protocol) = &handshake.protocol else {
-                return Err(LxAppError::Bridge(
-                    "required V3 protocol is not bound".to_string(),
-                ));
-            };
-            if !protocol.authenticates(&binding) || handshake.connection.is_none() {
-                return Err(LxAppError::Bridge(
-                    "browser document binding is not current".to_string(),
-                ));
-            }
-        }
-        let mut decoded = self.predecode_inbound(incoming.body())?;
-        if !decoded.bound_v3 || !self.is_current_work(decoded.work.work_id) {
-            return Err(LxAppError::Bridge(
-                "browser document work was revoked".to_string(),
-            ));
-        }
-        let caller =
-            host::AuthenticatedCaller::active_browser_document(native_authority, authority)?;
-        self.pre_authorize_browser_route(&decoded.message, &caller)?;
-        decoded.work.caller = Some(caller);
-        Ok(PreparedRequiredV3Incoming {
-            incoming,
-            decoded,
-            execution_gate,
-        })
-    }
-
-    /// Execute a browser frame prepared under the lifecycle registry lock.
-    /// The first action rechecks exact session work before any side effect.
-    #[doc(hidden)]
-    pub fn execute_prepared_required_v3_incoming(
-        &self,
-        page: &PageInstance,
-        mut prepared: PreparedRequiredV3Incoming,
-    ) -> Result<(), LxAppError> {
-        // The browser registry flips this exact gate while it still owns its
-        // revoke transition. A prepared frame cannot start typed dispatch
-        // after that linearization point, even before Page cleanup runs.
-        let Some(execution_permit) = prepared.execution_gate.try_begin() else {
-            return Ok(());
-        };
-        prepared.decoded.work.execution_permit = Some(execution_permit);
-        if !self.is_current_work(prepared.decoded.work.work_id) {
-            return Ok(());
-        }
-        if !Self::work_try_commit_effect(&prepared.decoded.work) {
-            return Ok(());
-        }
-        self.execute_decoded_incoming(
-            page,
-            &BridgeMessageContext::Web(prepared.incoming.context()),
-            prepared.decoded,
-        )
-    }
-
     fn predecode_inbound(&self, frame: &str) -> Result<DecodedIncoming, LxAppError> {
-        let handshake = self.inner.handshake.lock().unwrap();
-        let bound_v3 = matches!(handshake.protocol, BridgeProtocol::BoundV3(_));
-        let message = handshake
-            .protocol
-            .predecode_inbound(frame)
+        let message = decode_v2_inbound(frame)
             .map_err(|_| LxAppError::Bridge("invalid bridge protocol envelope".to_string()))?;
-        let version = message
-            .version()
-            .ok_or_else(|| LxAppError::Bridge("invalid bridge protocol version".to_string()))?;
-        if !handshake.protocol.accepts_version(version) {
-            return Err(LxAppError::Bridge(format!(
-                "Unsupported protocol: {version}"
-            )));
-        }
+        let handshake = self.inner.handshake.lock().unwrap();
         let work = handshake
             .connection
             .as_ref()
             .map(|connection| CapturedSessionWork {
                 work_id: Some(connection.work_id),
                 outbound: connection.outbound.clone(),
-                // A bound-V3 connection is owned by a browser document, whose
-                // audience is established per frame. The owning lxapp's
-                // identity must never be inherited by one of its frames.
-                caller: (!bound_v3).then(|| connection.caller.clone()),
-                execution_permit: None,
+                caller: Some(connection.caller.clone()),
             })
             .unwrap_or(CapturedSessionWork {
                 work_id: None,
                 outbound: None,
                 caller: None,
-                execution_permit: None,
             });
         Ok(DecodedIncoming {
             message,
             work,
-            bound_v3,
             ready: handshake.ready,
-            session_id: handshake.protocol.session_id().map(str::to_owned),
         })
-    }
-
-    /// Consult immutable route policy while the browser lifecycle entry is
-    /// still held. Unknown routes remain eligible for the established
-    /// post-lock not-found response.
-    fn pre_authorize_browser_route(
-        &self,
-        message: &IncomingMessage,
-        caller: &host::AuthenticatedCaller,
-    ) -> Result<(), LxAppError> {
-        let authorized = match message {
-            IncomingMessage::Req(msg) if msg.method.starts_with("host.") => {
-                host::host_route_is_authorized(&msg.method["host.".len()..], caller)
-            }
-            IncomingMessage::Notify(msg) if msg.method.starts_with("host.") => {
-                host::host_route_is_authorized(&msg.method["host.".len()..], caller)
-            }
-            IncomingMessage::ChOpen(msg) if msg.topic.starts_with("host.") => {
-                host::channel_route_is_authorized(&msg.topic["host.".len()..], caller)
-            }
-            _ => true,
-        };
-        if authorized {
-            Ok(())
-        } else {
-            Err(LxAppError::Bridge(
-                "route audience rejected browser caller".to_string(),
-            ))
-        }
     }
 
     /// The single pre-decode admission seam. It intentionally permits every
@@ -1541,7 +1147,7 @@ impl PageBridge {
         msg: &ResMsg,
         work: &CapturedSessionWork,
     ) -> Result<(), LxAppError> {
-        if !self.is_current_work(work.work_id) || !Self::work_effect_is_active(work) {
+        if !self.is_current_work(work.work_id) {
             return Ok(());
         }
 
@@ -1584,7 +1190,7 @@ impl PageBridge {
         payload: Payload,
         work: &CapturedSessionWork,
     ) -> Result<(), LxAppError> {
-        if !self.is_current_work(work.work_id) || !Self::work_effect_is_active(work) {
+        if !self.is_current_work(work.work_id) {
             return Ok(());
         }
         let Some(work_id) = work.work_id else {
@@ -1611,7 +1217,7 @@ impl PageBridge {
         msg: &ChCloseMsg,
         work: &CapturedSessionWork,
     ) -> Result<(), LxAppError> {
-        if !self.is_current_work(work.work_id) || !Self::work_effect_is_active(work) {
+        if !self.is_current_work(work.work_id) {
             return Ok(());
         }
         let Some(work_id) = work.work_id else {
@@ -1641,7 +1247,6 @@ impl PageBridge {
     ) -> Result<(), LxAppError> {
         if let Some(work_id) = work.work_id
             && self.is_current_work(Some(work_id))
-            && Self::work_effect_is_active(work)
         {
             self.inner.pending_requests.cancel(work_id, &msg.id);
         }
@@ -1655,7 +1260,7 @@ impl PageBridge {
         msg: &StateAckMsg,
         work: &CapturedSessionWork,
     ) -> Result<(), LxAppError> {
-        if !self.is_current_work(work.work_id) || !Self::work_effect_is_active(work) {
+        if !self.is_current_work(work.work_id) {
             return Ok(());
         }
         self.forward_js_message(
@@ -1675,7 +1280,7 @@ impl PageBridge {
         unknown: &UnknownMsg,
         work: &CapturedSessionWork,
     ) -> Result<(), LxAppError> {
-        if !self.is_current_work(work.work_id) || !Self::work_effect_is_active(work) {
+        if !self.is_current_work(work.work_id) {
             return Ok(());
         }
         if let Some(id) = &unknown.id {
@@ -1721,9 +1326,6 @@ impl PageBridge {
         msg: &HelloMsg,
         decoded: &DecodedIncoming,
     ) -> Result<(), LxAppError> {
-        if decoded.bound_v3 {
-            return self.handle_bound_v3_hello(page, msg, decoded);
-        }
         if msg.v != 2 {
             return Err(LxAppError::Bridge(format!(
                 "Unsupported protocol: {}",
@@ -1749,11 +1351,9 @@ impl PageBridge {
 
         let session_id = self.new_session_id();
         let connection = match _context {
-            BridgeMessageContext::Web(context) => self.replace_with_legacy_session_work(
-                page,
-                decoded.work.work_id,
-                context.document(),
-            )?,
+            BridgeMessageContext::Web(context) => {
+                self.replace_with_session_work(page, decoded.work.work_id, context.document())?
+            }
             BridgeMessageContext::Gpu => {
                 return Err(LxAppError::Bridge(
                     "a GPU View connects without hello".into(),
@@ -1768,7 +1368,6 @@ impl PageBridge {
             work_id: Some(work_id),
             outbound: connection.outbound.clone(),
             caller: Some(host::AuthenticatedCaller::for_lxapp(&self.inner.lxapp)),
-            execution_permit: None,
         };
         self.send_hello_ack(
             page,
@@ -1801,75 +1400,7 @@ impl PageBridge {
             session_id.clone(),
             work.caller
                 .as_ref()
-                .expect("legacy session work always has a caller"),
-        )?;
-        Ok(())
-    }
-
-    fn handle_bound_v3_hello(
-        &self,
-        page: &PageInstance,
-        msg: &HelloMsg,
-        decoded: &DecodedIncoming,
-    ) -> Result<(), LxAppError> {
-        let work = &decoded.work;
-        if !self.is_current_work(work.work_id) || !Self::work_effect_is_active(work) {
-            return Ok(());
-        }
-        if msg.v != V3_PROTOCOL || !msg.protocols_supported.contains(&(V3_PROTOCOL as u32)) {
-            return Err(LxAppError::Bridge(
-                "V3 hello does not negotiate V3".to_string(),
-            ));
-        }
-        if msg.role != "view" {
-            return Err(LxAppError::Bridge("Unexpected V3 hello role".to_string()));
-        }
-        if let Some(expected) = page.bridge_nonce()
-            && expected != msg.nonce
-        {
-            return Err(LxAppError::Bridge("Nonce mismatch".to_string()));
-        }
-        let session_id = decoded
-            .session_id
-            .clone()
-            .ok_or_else(|| LxAppError::Bridge("missing V3 bridge binding".to_string()))?;
-        let first_hello = !decoded.ready;
-        if first_hello {
-            let Some(work_id) = work.work_id else {
-                return Ok(());
-            };
-            if !self.set_ready_if_current(work_id, session_id.clone()) {
-                return Ok(());
-            }
-            // Do this once only: a retransmitted authenticated hello must not
-            // cancel in-flight work or initialize the backend a second time.
-            if let Err(err) = self.forward_js_message(
-                page,
-                AppServiceCommand::Ready {
-                    work_id: work.work_id,
-                    outbound: work.outbound.clone(),
-                },
-            ) {
-                crate::warn!("bridge ready bootstrap failed: {}", err)
-                    .with_appid(page.appid())
-                    .with_path(page.path());
-            }
-        }
-        self.send_hello_ack(
-            page,
-            work.work_id,
-            work.outbound.as_ref(),
-            msg.nonce.clone(),
-            session_id.clone(),
-        )?;
-        self.send_ready(
-            page,
-            work.work_id,
-            work.outbound.as_ref(),
-            session_id,
-            work.caller
-                .as_ref()
-                .expect("bound session work always has a caller"),
+                .expect("session work always has a caller"),
         )?;
         Ok(())
     }
@@ -1903,7 +1434,7 @@ impl PageBridge {
         work: &CapturedSessionWork,
         ready: bool,
     ) -> Result<(), LxAppError> {
-        if !self.is_current_work(work.work_id) || !Self::work_effect_is_active(work) {
+        if !self.is_current_work(work.work_id) {
             return Ok(());
         }
         if !ready {
@@ -2025,7 +1556,7 @@ impl PageBridge {
         work: &CapturedSessionWork,
         ready: bool,
     ) -> Result<(), LxAppError> {
-        if !self.is_current_work(work.work_id) || !Self::work_effect_is_active(work) || !ready {
+        if !self.is_current_work(work.work_id) || !ready {
             return Ok(());
         }
 
@@ -2085,7 +1616,7 @@ impl PageBridge {
         work: &CapturedSessionWork,
         ready: bool,
     ) -> Result<(), LxAppError> {
-        if !self.is_current_work(work.work_id) || !Self::work_effect_is_active(work) {
+        if !self.is_current_work(work.work_id) {
             return Ok(());
         }
         if !ready {
@@ -2223,7 +1754,7 @@ impl PageBridge {
             result: Some(result),
             error: None,
         };
-        self.send_json_for_context(transport, work_id, outbound, V3OutboundKind::Res, &msg)
+        self.send_json_for_context(transport, work_id, outbound, &msg)
     }
 
     pub(crate) fn send_view_request_for_context<T: ViewTransport>(
@@ -2257,7 +1788,7 @@ impl PageBridge {
             params,
             cap,
         };
-        self.send_json_for_context(transport, work_id, outbound, V3OutboundKind::Req, &msg)
+        self.send_json_for_context(transport, work_id, outbound, &msg)
     }
 
     pub(crate) fn send_res_err_for_context<T: ViewTransport>(
@@ -2301,7 +1832,7 @@ impl PageBridge {
                 data,
             }),
         };
-        self.send_json_for_context(transport, work_id, outbound, V3OutboundKind::Res, &msg)
+        self.send_json_for_context(transport, work_id, outbound, &msg)
     }
 
     pub(crate) fn send_state_snapshot_for_context<T: ViewTransport>(
@@ -2329,13 +1860,7 @@ impl PageBridge {
             rev,
             state,
         };
-        self.send_json_for_context(
-            transport,
-            work_id,
-            outbound,
-            V3OutboundKind::StateSnapshot,
-            &msg,
-        )
+        self.send_json_for_context(transport, work_id, outbound, &msg)
     }
 
     /// A GPU page's state patch, typed and in process.
@@ -2375,13 +1900,7 @@ impl PageBridge {
             ops,
             ack,
         };
-        self.send_json_for_context(
-            transport,
-            work_id,
-            outbound,
-            V3OutboundKind::StatePatch,
-            &msg,
-        )
+        self.send_json_for_context(transport, work_id, outbound, &msg)
     }
 
     pub(crate) fn send_event_for_context<T: ViewTransport>(
@@ -2406,7 +1925,6 @@ impl PageBridge {
             transport,
             work_id,
             outbound,
-            V3OutboundKind::Event,
             "event",
             id.into(),
             seq,
@@ -2436,7 +1954,7 @@ impl PageBridge {
             ok: true,
             error: None,
         };
-        self.send_json_for_context(transport, work_id, outbound, V3OutboundKind::ChAck, &msg)
+        self.send_json_for_context(transport, work_id, outbound, &msg)
     }
 
     pub(crate) fn send_ch_ack_err_for_context<T: ViewTransport>(
@@ -2472,7 +1990,7 @@ impl PageBridge {
                 data,
             }),
         };
-        self.send_json_for_context(transport, work_id, outbound, V3OutboundKind::ChAck, &msg)
+        self.send_json_for_context(transport, work_id, outbound, &msg)
     }
 
     pub(crate) fn send_ch_data_for_context<T: ViewTransport>(
@@ -2497,7 +2015,6 @@ impl PageBridge {
             transport,
             work_id,
             outbound,
-            V3OutboundKind::ChData,
             "ch.data",
             id.into(),
             seq,
@@ -2530,7 +2047,7 @@ impl PageBridge {
             code,
             reason,
         };
-        self.send_json_for_context(transport, work_id, outbound, V3OutboundKind::ChClose, &msg)
+        self.send_json_for_context(transport, work_id, outbound, &msg)
     }
 
     /// A typed message for the current work's GPU View; `build` runs only for current work.
@@ -2551,29 +2068,12 @@ impl PageBridge {
         transport: &T,
         work_id: Option<SessionWorkId>,
         outbound: Option<&OutboundContext>,
-        kind: V3OutboundKind,
         msg: &S,
     ) -> Result<(), LxAppError> {
         if !self.is_current_work(work_id) {
             return Ok(());
         }
-        let serialized = if let Some(binding) = outbound.and_then(OutboundContext::binding) {
-            let mut payload = serde_json::to_value(msg)?;
-            let object = payload
-                .as_object_mut()
-                .ok_or_else(|| LxAppError::Bridge("invalid outbound bridge payload".to_string()))?;
-            // V2 model structs retain their exact serialization for the
-            // Legacy branch. Bound V3 owns protocol identity centrally.
-            object.remove("v");
-            object.remove("kind");
-            object.remove("sessionId");
-            serde_json::to_string(
-                &encode_v3_outbound_frame(binding, kind, payload)
-                    .map_err(|_| LxAppError::Bridge("invalid V3 outbound payload".to_string()))?,
-            )?
-        } else {
-            serde_json::to_string(msg)?
-        };
+        let serialized = serde_json::to_string(msg)?;
         if let Some(outbound) = outbound {
             outbound.post(transport, serialized)
         } else {
@@ -2586,7 +2086,6 @@ impl PageBridge {
         transport: &T,
         work_id: Option<SessionWorkId>,
         outbound: Option<&OutboundContext>,
-        v3_kind: V3OutboundKind,
         kind: &'static str,
         id: String,
         seq: u64,
@@ -2594,15 +2093,6 @@ impl PageBridge {
     ) -> Result<(), LxAppError> {
         if !self.is_current_work(work_id) {
             return Ok(());
-        }
-        if let Some(binding) = outbound.and_then(OutboundContext::binding) {
-            let payload: Value = serde_json::from_str(payload_json)
-                .map_err(|_| LxAppError::Bridge("invalid V3 outbound payload".to_string()))?;
-            let frame = serde_json::json!({ "id": id, "seq": seq, "payload": payload });
-            let frame = encode_v3_outbound_frame(binding, v3_kind, frame)
-                .map_err(|_| LxAppError::Bridge("invalid V3 outbound payload".to_string()))?;
-            let outbound = outbound.expect("V3 binding belongs to an outbound context");
-            return outbound.post(transport, serde_json::to_string(&frame)?);
         }
         let serialized = serialize_seq_frame_with_payload(kind, id, seq, payload_json)?;
         if let Some(outbound) = outbound {
@@ -2620,17 +2110,14 @@ impl PageBridge {
         nonce: String,
         session_id: String,
     ) -> Result<(), LxAppError> {
-        // The captured outbound binding, rather than mutable handshake state,
-        // identifies the protocol of the document receiving this frame.
-        let protocol = protocol_for_binding(outbound.and_then(OutboundContext::binding));
         let msg = HelloAck {
             v: 2,
             kind: "helloAck",
             nonce,
-            protocol,
+            protocol: 2,
             session_id,
         };
-        self.send_json_for_context(transport, work_id, outbound, V3OutboundKind::HelloAck, &msg)
+        self.send_json_for_context(transport, work_id, outbound, &msg)
     }
 
     fn send_ready<T: ViewTransport>(
@@ -2649,7 +2136,7 @@ impl PageBridge {
             host_methods: schema.methods,
             host_channels: schema.channels,
         };
-        self.send_json_for_context(transport, work_id, outbound, V3OutboundKind::Ready, &msg)
+        self.send_json_for_context(transport, work_id, outbound, &msg)
     }
 
     fn set_ready_if_current(&self, work_id: SessionWorkId, session_id: String) -> bool {
@@ -2673,10 +2160,6 @@ impl PageBridge {
             let mut handshake = self.inner.handshake.lock().unwrap();
             handshake.session_id = None;
             handshake.ready = false;
-            // The V3 binding belongs to the departing document. A successor
-            // must be explicitly bound again; otherwise its hello could be
-            // checked against revoked credentials.
-            handshake.protocol = BridgeProtocol::LegacyV2;
             handshake.connection.take()
         };
         if let Some(connection) = connection {
@@ -2885,7 +2368,7 @@ impl PageBridge {
             context,
             |context| self.admit_host_route(page, context, host_topic),
             || {
-                if !self.is_current_work(work.work_id) || !Self::work_effect_is_active(work) {
+                if !self.is_current_work(work.work_id) {
                     return Ok(());
                 }
                 let Some(caller) = work.caller.as_ref() else {
@@ -2912,7 +2395,7 @@ impl PageBridge {
                     self.register_host_channel(id.clone(), work_id, work.outbound.clone(), sender);
                 // Compensate for a revoke that happened after capture but
                 // before this channel entered the work registry.
-                if !self.is_current_work(Some(work_id)) || !Self::work_effect_is_active(work) {
+                if !self.is_current_work(Some(work_id)) {
                     if let Some(channel) = self.take_host_channel(&id, work_id, channel_token) {
                         channel.sender.send_close(
                             Some(BRIDGE_CANCELED.to_string()),
@@ -2985,7 +2468,7 @@ impl PageBridge {
 
                 // Call handler.on_open synchronously; the handler is expected to spawn
                 // its own async task if it needs to do long-running work.
-                if !self.is_current_work(Some(work_id)) || !Self::work_effect_is_active(work) {
+                if !self.is_current_work(Some(work_id)) {
                     if let Some(channel) = self.take_host_channel(&id, work_id, channel_token) {
                         channel.sender.send_close(
                             Some(BRIDGE_CANCELED.to_string()),
@@ -3025,7 +2508,7 @@ impl PageBridge {
             context,
             |context| self.admit_host_route(page, context, &route),
             || {
-                if !self.is_current_work(work.work_id) || !Self::work_effect_is_active(work) {
+                if !self.is_current_work(work.work_id) {
                     return Ok(());
                 }
                 let Some(caller) = work.caller.as_ref() else {
@@ -3062,7 +2545,7 @@ impl PageBridge {
                     self.inner.pending_requests.register(id.clone(), work_id);
                 // The revoke path may have completed its work-id sweep before
                 // this insertion. Do not start a handler in that gap.
-                if !self.is_current_work(Some(work_id)) || !Self::work_effect_is_active(work) {
+                if !self.is_current_work(Some(work_id)) {
                     drop(pending_request);
                     let _ = self.send_res_err_for_context(
                         &page,
@@ -3079,42 +2562,17 @@ impl PageBridge {
                 let task_host_method = host_method.clone();
                 let task_outbound = work.outbound.clone();
                 let task_work = work.clone();
-                let task_permit = work.execution_permit.clone();
 
                 crate::executor::spawn(async move {
                     HOST_EFFECT_WORK
                         .scope(task_work, async move {
                     let started_at = std::time::Instant::now();
-                    if !task_permit
-                        .as_ref()
-                        .is_none_or(crate::RequiredV3ExecutionPermit::is_active)
-                    {
-                        drop(pending_request);
-                        let _ = bridge.send_res_err_for_context(
-                            &task_page,
-                            Some(work_id),
-                            task_outbound.as_ref(),
-                            task_id.clone(),
-                            BRIDGE_CANCELED,
-                            Some(PAGE_UNLOADED.to_string()),
-                            None,
-                        );
-                        return;
-                    }
                     let (tx, rx) = oneshot::channel();
                     let mut host_cancel_tx = Some(tx);
                     let mut host_fut = handler.call(invocation, params_json, rx);
-                    let permit_cancel =
-                        wait_for_execution_permit_cancellation(task_permit.clone());
 
                     let initial_result: Result<HostOutput, RpcError> = tokio::select! {
                         biased;
-                        _ = permit_cancel => {
-                            if let Some(tx) = host_cancel_tx.take() {
-                                let _ = tx.send(());
-                            }
-                            Err(RpcError::new(BRIDGE_CANCELED, Some(PAGE_UNLOADED.to_string())))
-                        }
                         _ = &mut cancel_rx => {
                             if let Some(tx) = host_cancel_tx.take() {
                                 let _ = tx.send(());
@@ -3147,7 +2605,6 @@ impl PageBridge {
                                     stream,
                                     &mut cancel_rx,
                                     host_cancel_tx,
-                                    task_permit,
                                 )
                                 .await
                             {
@@ -3221,7 +2678,7 @@ impl PageBridge {
             context,
             |context| self.admit_host_route(page, context, &route),
             || {
-                if !self.is_current_work(work.work_id) || !Self::work_effect_is_active(work) {
+                if !self.is_current_work(work.work_id) {
                     return Ok(());
                 }
                 let Some(caller) = work.caller.as_ref() else {
@@ -3249,29 +2706,16 @@ impl PageBridge {
                     self.register_host_notify(work_id, work.outbound.clone());
                 // Same post-registration compensation as requests: a reset
                 // that won before insertion must not leave a live notify.
-                if !self.is_current_work(Some(work_id)) || !Self::work_effect_is_active(work) {
+                if !self.is_current_work(Some(work_id)) {
                     drop(notify_guard);
                     return Ok(());
                 }
                 let task_work = work.clone();
-                let task_permit = work.execution_permit.clone();
                 crate::executor::spawn(async move {
                     HOST_EFFECT_WORK
                         .scope(task_work, async move {
                             let _notify_guard = notify_guard;
-                            if !task_permit
-                                .as_ref()
-                                .is_none_or(crate::RequiredV3ExecutionPermit::is_active)
-                            {
-                                return;
-                            }
-                            let mut host_fut = handler.call(invocation, params_json, cancel_rx);
-                            let permit_cancel = wait_for_execution_permit_cancellation(task_permit);
-                            match tokio::select! {
-                                biased;
-                                _ = permit_cancel => Err(LxAppError::Bridge(PAGE_UNLOADED.to_string())),
-                                output = &mut host_fut => output,
-                            } {
+                            match handler.call(invocation, params_json, cancel_rx).await {
                                 Ok(HostOutput::Json(_)) => {}
                                 Ok(HostOutput::Stream(_)) => {
                                     crate::warn!(
@@ -3308,19 +2752,12 @@ impl PageBridge {
         mut stream: HostStream,
         cancel_rx: &mut oneshot::Receiver<()>,
         mut host_cancel_tx: Option<oneshot::Sender<()>>,
-        execution_permit: Option<crate::RequiredV3ExecutionPermit>,
     ) -> Result<String, RpcError> {
         let mut seq = 0u64;
 
         loop {
             let next_item = tokio::select! {
                 biased;
-                _ = wait_for_execution_permit_cancellation(execution_permit.clone()) => {
-                    if let Some(tx) = host_cancel_tx.take() {
-                        let _ = tx.send(());
-                    }
-                    return Err(RpcError::new(BRIDGE_CANCELED, Some(PAGE_UNLOADED.to_string())));
-                }
                 _ = &mut *cancel_rx => {
                     if let Some(tx) = host_cancel_tx.take() {
                         let _ = tx.send(());
@@ -3569,7 +3006,7 @@ mod tests {
     }
 
     #[test]
-    fn stale_legacy_hello_work_does_not_match_v3_successor() {
+    fn stale_hello_work_does_not_match_its_successor() {
         let successor = Arc::new(BridgeConnection {
             work_id: SessionWorkId::for_test(12),
             outbound: None,
@@ -3588,22 +3025,20 @@ mod tests {
     }
 
     #[test]
-    fn legacy_document_gate_accepts_current_unready_work_and_rejects_replacement() {
+    fn document_gate_accepts_current_unready_work_and_rejects_replacement() {
         let handshake = Arc::new(Mutex::new(HandshakeState {
             session_id: None,
             ready: false,
-            protocol: BridgeProtocol::LegacyV2,
             connection: Some(Arc::new(BridgeConnection {
                 work_id: SessionWorkId::for_test(20),
                 outbound: None,
                 caller: host::AuthenticatedCaller::standard_for_test(1),
             })),
         }));
-        let gate = Arc::new(LegacySessionOutboundGate {
+        let gate = Arc::new(SessionOutboundGate {
             handshake: Arc::downgrade(&handshake),
             work_id: SessionWorkId::for_test(20),
         });
-        assert_eq!(protocol_for_binding(None), 2);
 
         let mut deliveries = 0;
         assert!(gate.with_active(&mut || deliveries += 1));
@@ -3736,7 +3171,7 @@ mod tests {
     }
 
     #[test]
-    fn legacy_v2_view_request_wire_remains_byte_stable() {
+    fn v2_view_request_wire_is_byte_stable() {
         let frame = serde_json::to_string(&ViewReqOut {
             v: 2,
             kind: "req",
@@ -3753,7 +3188,7 @@ mod tests {
     }
 
     #[test]
-    fn legacy_v2_hello_ack_wire_remains_byte_stable() {
+    fn v2_hello_ack_wire_is_byte_stable() {
         let frame = serde_json::to_string(&HelloAck {
             v: 2,
             kind: "helloAck",

@@ -52,12 +52,12 @@ fn shell_pins() -> HostResult<ShellPins> {
     })
 }
 
-#[lingxia::framework_native("shell.pins", audience = "control-app-or-browser-only")]
+#[lingxia::framework_native("shell.pins", audience = "control-app-or-surface")]
 fn pins(_app: Arc<LxApp>) -> HostResult<ShellPins> {
     shell_pins()
 }
 
-#[lingxia::framework_native("shell.reorderPins", audience = "control-app-or-browser-only")]
+#[lingxia::framework_native("shell.reorderPins", audience = "control-app-or-surface")]
 fn reorder_pins(_app: Arc<LxApp>, input: ReorderPinsInput) -> HostResult<ShellPins> {
     lingxia_shell::reorder_pins(input.items).map_err(map_pin_error)?;
     shell_pins()

@@ -905,7 +905,6 @@ mod tests {
         assert!(html.contains(loader));
         assert!(html.find("polyfills.es5.js").unwrap() < html.find("bridge-runtime.js").unwrap());
         assert!(html.find("bridge-runtime.js").unwrap() < html.find("vite-legacy-entry").unwrap());
-        assert!(html.contains("data-lingxia-bridge-runtime=\"v3-bootstrap\""));
         assert!(!project.output_dir.join("pages/home/view.js").exists());
         assert!(
             !project

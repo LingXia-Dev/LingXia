@@ -162,7 +162,7 @@ fn set_account() -> lingxia::Result<()> {
     Ok(())
 }
 
-#[lingxia::native("host.watch", stream, audience = "control-app-or-browser-only")]
+#[lingxia::native("host.watch", stream, audience = "control-app-or-surface")]
 async fn watch_host(
     mut stream: lingxia::host::StreamContext<lingxia::host::JsonValue>,
 ) -> lingxia::Result<()> {
@@ -174,15 +174,13 @@ async fn watch_host(
 | String | Admits |
 | --- | --- |
 | `app-session-only` | any lxapp session (the default for `native`) |
-| `any-authenticated` | any lxapp session, plus a browser control document |
 | `control-app-only` | the ControlApp session only |
-| `control-surface-only` | the host-bundled control surface session only |
-| `browser-control-only` | a browser control document only |
-| `control-app-or-browser-only` | the ControlApp session, plus a browser control document |
+| `control-surface-only` | any host-bundled control surface session |
+| `control-app-or-surface` | the ControlApp session and every control surface session |
 
-The classes are disjoint: `control-app-only` excludes the control surface.
-`any-authenticated` limits the caller, not what the route may change. An
-unknown or duplicate `audience` is a compile error.
+`control-app-only` excludes control surfaces. An audience limits the caller,
+not what the route may change. An unknown or duplicate `audience` is a compile
+error.
 
 ### Cancellation
 
@@ -317,7 +315,8 @@ Call such routes through `page.native` in `setup(page)` or `actions`; module-lev
 ### Supported DTO types & serde attributes
 
 Unresolved or unsupported DTO types fail codegen with the type name and source
-location rather than emitting `unknown`.
+location rather than emitting `unknown`. That includes `&'static str` (use
+`String`), `serde_json::Map` (use `HashMap<String, Value>`) and generic structs.
 
 | Rust / serde | TypeScript |
 | --- | --- |

@@ -178,7 +178,7 @@ mod tests {
         assert!(!is_built_bundle_dir(temp.path()));
 
         let built = "<!DOCTYPE html>\n<html><head>\
-            <script data-lingxia-bridge-runtime=\"v3-bootstrap\" src=\"lx://assets/bridge-runtime.js\"></script>\
+            <script src=\"lx://assets/bridge-runtime.js\"></script>\
             </head><body>hi</body></html>";
         fs::write(temp.path().join("pages/home/index.html"), built).unwrap();
         assert!(is_built_bundle_dir(temp.path()));

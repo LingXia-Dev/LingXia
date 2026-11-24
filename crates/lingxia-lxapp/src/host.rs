@@ -3,7 +3,6 @@
 //! Built-in host capabilities and third-party host extensions share the same
 //! registry. External crates can define handlers and register them here.
 
-use crate::ControlDocumentAuthority;
 use crate::error::LxAppError;
 use crate::lxapp::{AppSessionClass, LxApp, LxAppSessionStatus};
 
@@ -94,21 +93,16 @@ pub enum HostRouteKind {
 /// payload or an app manifest.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum RouteAudience {
-    /// Any lxapp session, of any class.
+    /// Any lxapp session, of any class. Constrains the caller, not what the
+    /// route may change.
     AppSessionOnly,
-    /// Any lxapp session, plus a browser control document. Constrains the
-    /// caller class only; it does not make the route read-only.
-    AnyAuthenticated,
     /// The `ControlApp` session only.
     ControlAppOnly,
     /// Any host-bundled `ControlSurface` session (Terminal Settings, the browser
     /// system pages). Disjoint from `ControlAppOnly`.
     ControlSurfaceOnly,
-    /// A browser control document only.
-    BrowserControlOnly,
-    /// The `ControlApp` session, any `ControlSurface`, and a browser control
-    /// document.
-    ControlAppOrBrowserOnly,
+    /// The `ControlApp` session and every `ControlSurface` session.
+    ControlAppOrSurface,
 }
 
 /// A privileged native resource that may be assigned to one lxapp session.
@@ -529,11 +523,8 @@ impl AppScope {
     }
 }
 
-/// Authenticated source for a native route invocation.
-///
-/// Browser construction is reserved for the browser document lifecycle TCB:
-/// ordinary bridge frames derive only the `LxAppSession` variant from their
-/// owning native `LxApp` session.
+/// Authenticated source for a native route invocation: the native lxapp
+/// session that owns the calling bridge, never a value from the payload.
 #[derive(Clone)]
 pub struct AuthenticatedCaller {
     source: AuthenticatedCallerSource,
@@ -544,9 +535,6 @@ enum AuthenticatedCallerSource {
     LxAppSession {
         class: AppSessionClass,
         scope: AppScope,
-    },
-    BrowserDocument {
-        _authority: ControlDocumentAuthority,
     },
 }
 
@@ -560,47 +548,18 @@ impl AuthenticatedCaller {
         }
     }
 
-    /// Host-TCB constructor used only after the browser registry has promoted
-    /// the exact document binding to Active.
-    #[doc(hidden)]
-    pub fn active_browser_document(
-        native_authority: &crate::NativeControlPlaneAuthority,
-        authority: ControlDocumentAuthority,
-    ) -> Result<Self, LxAppError> {
-        if !native_authority.validate() {
-            return Err(LxAppError::UnsupportedOperation(
-                "browser caller promotion requires the live native host authority".to_string(),
-            ));
-        }
-        Ok(Self {
-            source: AuthenticatedCallerSource::BrowserDocument {
-                _authority: authority,
-            },
-        })
-    }
-
-    pub fn app_scope(&self) -> Option<&AppScope> {
+    pub fn app_scope(&self) -> &AppScope {
         match &self.source {
-            AuthenticatedCallerSource::LxAppSession { scope, .. } => Some(scope),
-            AuthenticatedCallerSource::BrowserDocument { .. } => None,
+            AuthenticatedCallerSource::LxAppSession { scope, .. } => scope,
         }
     }
 
-    /// The native-assigned class of an lxapp caller; `None` for a browser
-    /// document. For routes that admit every session and then scope what
-    /// each class may touch. It is not an authorization check.
-    pub fn session_class(&self) -> Option<AppSessionClass> {
+    /// The native-assigned class of the caller's session. For routes that
+    /// admit every session and then scope what each class may touch; it is
+    /// not an authorization check.
+    pub fn session_class(&self) -> AppSessionClass {
         match &self.source {
-            AuthenticatedCallerSource::LxAppSession { class, .. } => Some(*class),
-            AuthenticatedCallerSource::BrowserDocument { .. } => None,
-        }
-    }
-
-    #[cfg(test)]
-    fn app_session_for_test(&self) -> Option<(AppSessionClass, &AppScope)> {
-        match &self.source {
-            AuthenticatedCallerSource::LxAppSession { class, scope } => Some((*class, scope)),
-            AuthenticatedCallerSource::BrowserDocument { .. } => None,
+            AuthenticatedCallerSource::LxAppSession { class, .. } => *class,
         }
     }
 
@@ -647,17 +606,6 @@ impl AuthenticatedCaller {
             },
         }
     }
-
-    #[cfg(feature = "test-utils")]
-    pub(crate) fn browser_document_for_test() -> Self {
-        let native_authority = crate::NativeControlPlaneAuthority::for_test_harness();
-        let (_, authority) = crate::issue_control_document_bootstrap(
-            &native_authority,
-            &ring::rand::SystemRandom::new(),
-        )
-        .expect("native test entropy");
-        Self::active_browser_document(&native_authority, authority).expect("native test authority")
-    }
 }
 
 /// Authenticated, native-created context passed to every host handler.
@@ -676,8 +624,6 @@ pub struct HostInvocationContext {
 impl HostInvocationContext {
     /// Derive an invocation context from a live Logic worker context.
     ///
-    /// Browser documents do not carry the private app-service context, so this
-    /// cannot turn a browser invocation into its owning app's authority.
     #[doc(hidden)]
     #[cfg(feature = "js-appservice")]
     pub fn for_logic_context(ctx: &rong::JSContext) -> rong::JSResult<Self> {
@@ -731,7 +677,7 @@ impl HostInvocationContext {
         &self.caller
     }
 
-    pub fn app_scope(&self) -> Option<&AppScope> {
+    pub fn app_scope(&self) -> &AppScope {
         self.caller.app_scope()
     }
 
@@ -752,33 +698,16 @@ impl HostInvocationContext {
 
 /// The sole route-audience decision point.
 pub fn authorize(caller: &AuthenticatedCaller, audience: RouteAudience) -> bool {
-    matches!(
-        (&caller.source, audience),
-        (
-            AuthenticatedCallerSource::LxAppSession { .. },
-            RouteAudience::AppSessionOnly
-        ) | (
-            AuthenticatedCallerSource::LxAppSession { .. },
-            RouteAudience::AnyAuthenticated
-        ) | (
-            AuthenticatedCallerSource::LxAppSession {
-                class: AppSessionClass::ControlApp,
-                ..
-            },
-            RouteAudience::ControlAppOnly | RouteAudience::ControlAppOrBrowserOnly
-        ) | (
-            AuthenticatedCallerSource::LxAppSession {
-                class: AppSessionClass::ControlSurface,
-                ..
-            },
-            RouteAudience::ControlSurfaceOnly | RouteAudience::ControlAppOrBrowserOnly
-        ) | (
-            AuthenticatedCallerSource::BrowserDocument { .. },
-            RouteAudience::AnyAuthenticated
-                | RouteAudience::BrowserControlOnly
-                | RouteAudience::ControlAppOrBrowserOnly
-        )
-    )
+    let class = caller.session_class();
+    match audience {
+        RouteAudience::AppSessionOnly => true,
+        RouteAudience::ControlAppOnly => class == AppSessionClass::ControlApp,
+        RouteAudience::ControlSurfaceOnly => class == AppSessionClass::ControlSurface,
+        RouteAudience::ControlAppOrSurface => matches!(
+            class,
+            AppSessionClass::ControlApp | AppSessionClass::ControlSurface
+        ),
+    }
 }
 
 /// The admission policy resolved when a route is registered.
@@ -1207,23 +1136,6 @@ pub(crate) fn get_host_for_caller(
     let registry = get_route_registry();
     let registry = registry.lock().unwrap();
     registry.host_for_caller(name, caller)
-}
-
-/// Inspect only immutable route policy. Browser ingress uses this while its
-/// lifecycle registry lock is held; cloning a handler is deliberately deferred
-/// until after that lock is released.
-pub(crate) fn host_route_is_authorized(name: &str, caller: &AuthenticatedCaller) -> bool {
-    get_route_registry()
-        .lock()
-        .unwrap()
-        .routes
-        .get(name)
-        .is_none_or(|route| {
-            !matches!(
-                route.metadata.kind(),
-                HostRouteKind::Call | HostRouteKind::Stream
-            ) || authorize(caller, route.metadata.audience())
-        })
 }
 
 /// Returns a caller-filtered snapshot of production route metadata.
@@ -1729,20 +1641,6 @@ pub(crate) fn get_channel_handler_for_caller(
     registry.channel_for_caller(name, caller)
 }
 
-/// See [`host_route_is_authorized`]. Unknown channels remain eligible for the
-/// normal post-lock "not found" response.
-pub(crate) fn channel_route_is_authorized(name: &str, caller: &AuthenticatedCaller) -> bool {
-    get_route_registry()
-        .lock()
-        .unwrap()
-        .routes
-        .get(name)
-        .is_none_or(|route| {
-            route.metadata.kind() != HostRouteKind::Channel
-                || authorize(caller, route.metadata.audience())
-        })
-}
-
 /// Create a linked `(ChannelContext, ChannelContextSender, outbound_rx)` triple.
 ///
 /// - `ChannelContext` goes to the handler.
@@ -1959,10 +1857,8 @@ mod tests {
     }
 
     fn observe_scope(invocation: &HostInvocationContext) -> ObservedScope {
-        let (class, scope) = invocation
-            .caller()
-            .app_session_for_test()
-            .expect("expected lxapp caller");
+        let caller = invocation.caller();
+        let (class, scope) = (caller.session_class(), caller.app_scope());
         ObservedScope {
             class,
             app_id: scope.identity().app_id().to_string(),
@@ -2077,8 +1973,8 @@ mod tests {
         let (_root, standard, control) = same_app_id_with_different_classes();
         let standard_caller = AuthenticatedCaller::for_lxapp(&standard);
         let control_caller = AuthenticatedCaller::for_lxapp(&control);
-        let standard_scope = standard_caller.app_scope().expect("standard scope");
-        let control_scope = control_caller.app_scope().expect("control scope");
+        let standard_scope = standard_caller.app_scope();
+        let control_scope = control_caller.app_scope();
 
         assert_eq!(
             standard_scope.identity().app_id(),
@@ -2218,7 +2114,6 @@ mod tests {
 
         let scope = AuthenticatedCaller::for_lxapp(&standard)
             .app_scope()
-            .expect("app scope")
             .clone();
         assert!(
             scope
@@ -2335,7 +2230,7 @@ mod tests {
             register_channel_handler(ChannelRegistration::new(
                 "inventory_cross_family",
                 "same",
-                RouteAudience::BrowserControlOnly,
+                RouteAudience::ControlSurfaceOnly,
                 Arc::new(TestChannelHandler),
             ));
         }));
@@ -2387,16 +2282,16 @@ mod tests {
         let channel = HostRegistrationEntry::Channel(ChannelRegistration::new(
             "test",
             "channel",
-            RouteAudience::ControlAppOrBrowserOnly,
+            RouteAudience::ControlAppOrSurface,
             Arc::new(TestChannelHandler),
         ));
 
         assert_eq!(handler.audience(), RouteAudience::ControlAppOnly);
         assert_eq!(handler.policy().audience(), RouteAudience::ControlAppOnly);
-        assert_eq!(channel.audience(), RouteAudience::ControlAppOrBrowserOnly);
+        assert_eq!(channel.audience(), RouteAudience::ControlAppOrSurface);
         assert_eq!(
             channel.policy().audience(),
-            RouteAudience::ControlAppOrBrowserOnly
+            RouteAudience::ControlAppOrSurface
         );
     }
 
@@ -2478,73 +2373,49 @@ mod tests {
     fn audience_matrix_uses_authenticated_caller_class() {
         let standard = AuthenticatedCaller::standard_for_test(1);
         let control = AuthenticatedCaller::control_for_test(1);
-        let native_authority = crate::NativeControlPlaneAuthority::for_test();
-        let (_, authority) = crate::issue_control_document_bootstrap(
-            &native_authority,
-            &ring::rand::SystemRandom::new(),
-        )
-        .expect("native entropy");
-        let browser = AuthenticatedCaller::active_browser_document(&native_authority, authority)
-            .expect("native test authority");
-
         let surface = AuthenticatedCaller::surface_for_test(1);
 
         let audiences = [
             RouteAudience::AppSessionOnly,
-            RouteAudience::AnyAuthenticated,
             RouteAudience::ControlAppOnly,
             RouteAudience::ControlSurfaceOnly,
-            RouteAudience::BrowserControlOnly,
-            RouteAudience::ControlAppOrBrowserOnly,
+            RouteAudience::ControlAppOrSurface,
         ];
         assert_eq!(
             audiences.map(|audience| authorize(&standard, audience)),
-            [true, true, false, false, false, false]
+            [true, false, false, false]
         );
         assert_eq!(
             audiences.map(|audience| authorize(&control, audience)),
-            [true, true, true, false, false, true]
+            [true, true, false, true]
         );
         assert_eq!(
             audiences.map(|audience| authorize(&surface, audience)),
-            [true, true, false, true, false, true]
-        );
-        assert_eq!(
-            audiences.map(|audience| authorize(&browser, audience)),
-            [false, true, false, false, true, true]
+            [true, false, true, true]
         );
     }
 
     #[test]
     fn same_app_id_schema_and_all_dispatch_families_use_authenticated_caller_class() {
-        let native_authority = crate::NativeControlPlaneAuthority::for_test();
-        let (_, authority) = crate::issue_control_document_bootstrap(
-            &native_authority,
-            &ring::rand::SystemRandom::new(),
-        )
-        .expect("native entropy");
         let callers = [
-            AuthenticatedCaller {
-                source: AuthenticatedCallerSource::LxAppSession {
-                    class: AppSessionClass::StandardApp,
-                    scope: AppScope::for_test("same.app", 42),
-                },
+            AppSessionClass::StandardApp,
+            AppSessionClass::ControlApp,
+            AppSessionClass::ControlSurface,
+        ]
+        .into_iter()
+        .enumerate()
+        .map(|(index, class)| AuthenticatedCaller {
+            source: AuthenticatedCallerSource::LxAppSession {
+                class,
+                scope: AppScope::for_test("same.app", 42 + index as u64),
             },
-            AuthenticatedCaller {
-                source: AuthenticatedCallerSource::LxAppSession {
-                    class: AppSessionClass::ControlApp,
-                    scope: AppScope::for_test("same.app", 43),
-                },
-            },
-            AuthenticatedCaller::active_browser_document(&native_authority, authority)
-                .expect("native test authority"),
-        ];
+        })
+        .collect::<Vec<_>>();
         let audiences = [
             RouteAudience::AppSessionOnly,
-            RouteAudience::AnyAuthenticated,
             RouteAudience::ControlAppOnly,
-            RouteAudience::BrowserControlOnly,
-            RouteAudience::ControlAppOrBrowserOnly,
+            RouteAudience::ControlSurfaceOnly,
+            RouteAudience::ControlAppOrSurface,
         ];
         let mut registry = EffectiveRouteRegistry::new();
         for (index, audience) in audiences.into_iter().enumerate() {

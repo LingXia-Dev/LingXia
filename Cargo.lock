@@ -4045,7 +4045,6 @@ dependencies = [
  "lingxia-update",
  "lingxia-webview",
  "redb",
- "ring",
  "rong",
  "rong_console",
  "rong_event",

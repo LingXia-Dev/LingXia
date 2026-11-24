@@ -24,9 +24,8 @@ workspace version with the Rust crates and SDKs.
   versions that differ from `package.metadata.lingxia.{bridge,polyfills}-version`.
 - Types are not embedded. `lingxia new` uses `~M.m.0` to resolve the latest
   published patch on the base runtime's line.
-- Bridge and native `lingxia-lxapp` must share the [wire contract](bridge-protocol.md):
-  ordinary app documents use the page profile (`v: 2`); BrowserControlDocument uses
-  the non-downgradable document-bound profile (`v: 3`). Both release with the base runtime.
+- Bridge and native `lingxia-lxapp` must share the [wire contract](bridge-protocol.md)
+  (`v: 2`); both release with the base runtime.
 
 ### Tier 2 — framework libraries
 

@@ -1247,7 +1247,7 @@ pub enum AppSessionClass {
     /// app-control routes.
     ControlApp,
     /// A host-bundled control UI (Terminal Settings, the browser system pages).
-    /// Never home; admitted to `ControlSurfaceOnly` and `ControlAppOrBrowserOnly`.
+    /// Never home; admitted to `ControlSurfaceOnly` and `ControlAppOrSurface`.
     ControlSurface,
 }
 
@@ -5897,7 +5897,7 @@ mod manifest_reload_tests {
             struct RejectDocument;
             impl lingxia_webview::DocumentOutboundGate for RejectDocument {
                 fn with_active(&self, _: &mut dyn FnMut()) -> bool {
-                    panic!("GPU must not enter browser document gate");
+                    panic!("GPU must not enter a document gate");
                 }
             }
             let endpoint = Arc::new(Endpoint::default());
@@ -5918,7 +5918,7 @@ mod manifest_reload_tests {
                 page.post_message_to_document(
                     lingxia_webview::DocumentGeneration::for_test(1),
                     Arc::new(RejectDocument),
-                    "browser".into()
+                    "frame".into()
                 )
                 .is_err()
             );

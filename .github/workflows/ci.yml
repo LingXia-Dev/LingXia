@@ -721,7 +721,6 @@ jobs:
         run: |
           bash scripts/ci/cargo-test-required.sh -p lingxia-webview --lib windows_document::tests
           bash scripts/ci/cargo-test-required.sh -p lingxia-webview --lib windows::controller::tests::document_messages_enqueue_without_reply_wait_and_preserve_fifo
-          bash scripts/ci/cargo-test-required.sh -p lingxia-browser --lib document_session::tests
           # Aside layout bookkeeping the Windows host relies on: the one-wait-
           # per-surface registry, the plan ordering rule, and the Windows-only
           # surface tests (aside retargeting, focus transitions).

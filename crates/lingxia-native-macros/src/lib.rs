@@ -232,31 +232,25 @@ enum AudienceRequirement {
     Required,
 }
 
-// The `Only` suffix makes the security audience constraints explicit at call sites.
-#[allow(clippy::enum_variant_names)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum RouteAudience {
     AppSessionOnly,
-    AnyAuthenticated,
     ControlAppOnly,
     ControlSurfaceOnly,
-    BrowserControlOnly,
-    ControlAppOrBrowserOnly,
+    ControlAppOrSurface,
 }
 
 impl RouteAudience {
     fn parse(value: &LitStr, macro_name: &str) -> syn::Result<Self> {
         match value.value().as_str() {
             "app-session-only" => Ok(Self::AppSessionOnly),
-            "any-authenticated" => Ok(Self::AnyAuthenticated),
             "control-app-only" => Ok(Self::ControlAppOnly),
             "control-surface-only" => Ok(Self::ControlSurfaceOnly),
-            "browser-control-only" => Ok(Self::BrowserControlOnly),
-            "control-app-or-browser-only" => Ok(Self::ControlAppOrBrowserOnly),
+            "control-app-or-surface" => Ok(Self::ControlAppOrSurface),
             _ => Err(syn::Error::new_spanned(
                 value,
                 format!(
-                    "unknown audience `{}` in #[{macro_name}(...)]; expected one of `app-session-only`, `any-authenticated`, `control-app-only`, `control-surface-only`, `browser-control-only`, or `control-app-or-browser-only`",
+                    "unknown audience `{}` in #[{macro_name}(...)]; expected one of `app-session-only`, `control-app-only`, `control-surface-only`, or `control-app-or-surface`",
                     value.value()
                 ),
             )),
@@ -266,18 +260,12 @@ impl RouteAudience {
     fn tokens(self) -> proc_macro2::TokenStream {
         match self {
             Self::AppSessionOnly => quote!(::lingxia::host::RouteAudience::AppSessionOnly),
-            Self::AnyAuthenticated => {
-                quote!(::lingxia::host::RouteAudience::AnyAuthenticated)
-            }
             Self::ControlAppOnly => quote!(::lingxia::host::RouteAudience::ControlAppOnly),
             Self::ControlSurfaceOnly => {
                 quote!(::lingxia::host::RouteAudience::ControlSurfaceOnly)
             }
-            Self::BrowserControlOnly => {
-                quote!(::lingxia::host::RouteAudience::BrowserControlOnly)
-            }
-            Self::ControlAppOrBrowserOnly => {
-                quote!(::lingxia::host::RouteAudience::ControlAppOrBrowserOnly)
+            Self::ControlAppOrSurface => {
+                quote!(::lingxia::host::RouteAudience::ControlAppOrSurface)
             }
         }
     }
@@ -1170,27 +1158,18 @@ mod tests {
                 HostMode::Unary,
             ),
             (
-                quote!("demo.read", audience = "any-authenticated"),
-                RouteAudience::AnyAuthenticated,
-                HostMode::Unary,
-            ),
-            (
                 quote!("demo.host", audience = "control-app-only"),
                 RouteAudience::ControlAppOnly,
                 HostMode::Unary,
             ),
             (
-                quote!("demo.browser", stream, audience = "browser-control-only"),
-                RouteAudience::BrowserControlOnly,
+                quote!("demo.surface", stream, audience = "control-surface-only"),
+                RouteAudience::ControlSurfaceOnly,
                 HostMode::Stream,
             ),
             (
-                quote!(
-                    "demo.any",
-                    audience = "control-app-or-browser-only",
-                    channel
-                ),
-                RouteAudience::ControlAppOrBrowserOnly,
+                quote!("demo.any", audience = "control-app-or-surface", channel),
+                RouteAudience::ControlAppOrSurface,
                 HostMode::Channel,
             ),
         ];

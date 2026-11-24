@@ -25,11 +25,6 @@ pub(crate) extern "Rust" fn authenticated_caller(
     AuthenticatedCaller::lxapp_session_for_test(app_id, session_id, class)
 }
 
-#[unsafe(export_name = "lingxia_lxapp_test_browser_caller_v1")]
-pub(crate) extern "Rust" fn browser_caller() -> AuthenticatedCaller {
-    AuthenticatedCaller::browser_document_for_test()
-}
-
 #[unsafe(export_name = "lingxia_lxapp_test_terminal_authority_v1")]
 pub(crate) extern "Rust" fn terminal_authority(
     runtime: &Arc<Platform>,

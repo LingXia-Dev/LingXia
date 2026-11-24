@@ -11,20 +11,14 @@ struct SetPreferenceInput {
 
 /// The product's light/dark setting. A document renders in the scheme it is
 /// given; only the surface that edits the setting needs the preference.
-#[lingxia::framework_native(
-    "app.getAppearancePreference",
-    audience = "control-app-or-browser-only"
-)]
+#[lingxia::framework_native("app.getAppearancePreference", audience = "control-app-or-surface")]
 fn get_appearance_preference() -> HostResult<AppearancePreference> {
     Ok(lxapp::host_appearance_state().preference)
 }
 
 /// Product-wide light/dark. An lxapp that pinned its own scheme in its manifest
 /// keeps it; the rest, and the host's own chrome, follow this.
-#[lingxia::framework_native(
-    "app.setAppearancePreference",
-    audience = "control-app-or-browser-only"
-)]
+#[lingxia::framework_native("app.setAppearancePreference", audience = "control-app-or-surface")]
 fn set_appearance_preference(input: SetPreferenceInput) -> HostResult<AppearancePreference> {
     lxapp::set_host_appearance_preference(input.preference).map(|state| state.preference)
 }
@@ -32,7 +26,7 @@ fn set_appearance_preference(input: SetPreferenceInput) -> HostResult<Appearance
 #[lingxia::framework_native(
     "app.watchAppearancePreference",
     stream,
-    audience = "control-app-or-browser-only"
+    audience = "control-app-or-surface"
 )]
 async fn watch_appearance_preference(
     mut stream: StreamContext<AppearancePreference>,
@@ -70,7 +64,7 @@ mod tests {
         ] {
             assert_eq!(
                 route.audience(),
-                crate::host::RouteAudience::ControlAppOrBrowserOnly
+                crate::host::RouteAudience::ControlAppOrSurface
             );
         }
     }
@@ -87,8 +81,6 @@ mod tests {
                 session_id: u64,
                 class: AppSessionClass,
             ) -> AuthenticatedCaller;
-            #[link_name = "lingxia_lxapp_test_browser_caller_v1"]
-            fn test_browser_caller() -> AuthenticatedCaller;
         }
 
         register();
@@ -100,19 +92,17 @@ mod tests {
         let surface = unsafe {
             test_authenticated_caller("test.surface", 3, AppSessionClass::ControlSurface)
         };
-        let browser = unsafe { test_browser_caller() };
         let audience = set_appearance_preference_host().audience();
 
         assert!(!authorize(&standard, audience));
         assert!(authorize(&surface, audience));
         assert!(authorize(&control, audience));
-        assert!(authorize(&browser, audience));
         assert!(
             !host_route_schema(&standard)
                 .methods
                 .contains_key("app.setAppearancePreference")
         );
-        for caller in [&control, &browser] {
+        for caller in [&control, &surface] {
             assert!(
                 host_route_schema(caller)
                     .methods

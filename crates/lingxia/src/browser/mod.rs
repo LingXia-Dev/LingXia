@@ -168,7 +168,7 @@ mod tests {
                 matches!(
                     audience,
                     lxapp::host::RouteAudience::ControlSurfaceOnly
-                        | lxapp::host::RouteAudience::ControlAppOrBrowserOnly
+                        | lxapp::host::RouteAudience::ControlAppOrSurface
                 ),
                 "incompatible production Settings route {route}: {audience:?}"
             );

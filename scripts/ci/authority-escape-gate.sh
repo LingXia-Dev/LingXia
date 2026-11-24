@@ -13,7 +13,6 @@ BASE_EXPECTATIONS=(
   'E0425|let _ = lxapp::host::__install_app_resource_grant_resolver;'
   'E0425|let _ = lxapp::host::__install_devtools_resource_grant_resolver;'
   'E0599|let _ = lxapp::host::AuthenticatedCaller::LxAppSession;'
-  'E0599|let _ = lxapp::host::AuthenticatedCaller::BrowserDocument;'
   'E0425|let _ = lxapp::add_global_page_script;'
   'E0599|let _ = lxapp::LxApp::add_page_script;'
   'E0425|let _ = lingxia::__init_with_native_authority;'

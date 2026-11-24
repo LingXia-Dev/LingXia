@@ -49,12 +49,7 @@ impl NativeControlPlaneAuthority {
         self.validate()
     }
 
-    #[cfg(test)]
-    pub(crate) fn for_test() -> Self {
-        Self::for_test_harness()
-    }
-
-    #[cfg(any(test, feature = "test-utils"))]
+    #[cfg(feature = "test-utils")]
     pub(crate) fn for_test_harness() -> Self {
         Self {
             runtime: Weak::new(),
