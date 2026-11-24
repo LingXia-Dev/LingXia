@@ -207,6 +207,15 @@ test('a unitless lineHeight past the multiplier cap fails the build with both fi
   clean('const a = <text style={{lineHeight: "24px"}}>x</text>;');
   assert.deepEqual(audit('const a = <text style={{lineHeight: 24}}>x</text>;', 'page.tsx'),
     ['page.tsx:1:25: UI_STYLE_VALUE: lineHeight 24 is a multiple of the font size (24×), not points; write "24px", or a leading-* class']);
+  assert.deepEqual(audit('const a = <view style={{flexGrow: 20000, width: -1, flexBasis: 16385, padding: -1, marginTop: -20000}} />;', 'page.tsx'), [
+    'page.tsx:1:25: UI_STYLE_VALUE: flexGrow takes a number from 0 to 16384; got 20000',
+    'page.tsx:1:42: UI_STYLE_VALUE: width takes a number from 0 to 16384; got -1',
+    'page.tsx:1:53: UI_STYLE_VALUE: flexBasis takes a number from 0 to 16384; got 16385',
+    'page.tsx:1:71: UI_STYLE_VALUE: padding takes a number from 0 to 16384; got -1',
+    'page.tsx:1:84: UI_STYLE_VALUE: marginTop takes a number from -16384 to 16384; got -20000',
+  ]);
+  assert.deepEqual(audit('const big = 20000; const a = <view style={{padding: big}} />;', 'page.tsx'),
+    ['page.tsx:1:44: UI_STYLE_VALUE: padding takes a number from 0 to 16384; got 20000']);
 });
 
 test('a link is a block link outside text, a run inside it, and needs to or onClick in both forms', async () => {

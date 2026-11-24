@@ -83,23 +83,29 @@ const fold = value => isStep(value) && finite(scaleDefaults[value[0]]) ? value[1
 // `value` scaled by `factor`, a step staying a step.
 const times = (value, factor) => isStep(value) ? [value[0], value[1] * factor, value[2] * factor] : value * factor;
 
-function length(name, value, { signed = false, max = limits.styleNumber } = {}) {
+function length(name, value, { signed = false, max = limits.styleNumber, clamp = max === limits.styleNumber } = {}, warn) {
   if (isStep(value)) {
     // Steps are positive: a negative multiple with no positive offset can only resolve below 0.
     if (!signed && value[1] < 0 && value[2] <= 0) invalid(name, value, 'a step that resolves to 0 or more');
     return value;
   }
   const min = signed ? -max : 0;
-  if (!finite(value) || value > max || value < min) invalid(name, value, `a number from ${min} to ${max}`);
+  if (!finite(value)) invalid(name, value, `a number from ${min} to ${max}`);
+  if (value > max || value < min) {
+    if (!clamp) invalid(name, value, `a number from ${min} to ${max}`);
+    const bound = value < min ? min : max;
+    warn?.(name, `UI_STYLE_VALUE: ${name} takes a number from ${min} to ${max}; got ${value}; clamped to ${bound}`);
+    return bound;
+  }
   return value;
 }
 
-function dimension(name, value, env, out, key) {
+function dimension(name, value, env, out, key, warn) {
   const ch = typeof value === 'string' && value.match(/^(\d+(?:\.\d+)?)ch$/);
   if (ch) {
     // Widths only: a `ch` is the advance of the element's own `0`, which only the host can shape.
     if (!['width', 'minWidth', 'maxWidth'].includes(key)) invalid(name, value, 'points, a percentage or vw/vh; ch sizes widths only');
-    out[`${key}Ch`] = length(name, Number(ch[1]), { max: 4096 });
+    out[`${key}Ch`] = length(name, Number(ch[1]), { max: 4096 }, warn);
     return;
   }
   const viewport = typeof value === 'string' && value.match(/^(\d+(?:\.\d+)?)(vw|vh)$/);
@@ -110,12 +116,12 @@ function dimension(name, value, env, out, key) {
       ? env?.viewport?.width - (insets.left ?? 0) - (insets.right ?? 0)
       : env?.viewport?.height - (insets.top ?? 0) - Math.max(insets.bottom ?? 0, keyboard);
     if (!finite(extent)) invalid(name, value, 'vw/vh only once the page has a viewport');
-    out[key] = length(name, extent * Number(viewport[1]) / 100);
-  } else if (percent(value) !== undefined) out[`${key}Percent`] = length(name, percent(value));
+    out[key] = length(name, extent * Number(viewport[1]) / 100, undefined, warn);
+  } else if (percent(value) !== undefined) out[`${key}Percent`] = length(name, percent(value), undefined, warn);
   else if (value === 'auto' && key === 'height') out.heightAuto = 1;
   else if (value === 'auto' && key === 'width') { /* CSS default */ }
   else if (['fit-content', 'max-content', 'min-content'].includes(value) && ['width', 'height', 'minWidth', 'minHeight', 'maxWidth', 'maxHeight'].includes(key)) out[`${key}Keyword`] = value;
-  else out[key] = length(name, value);
+  else out[key] = length(name, value, undefined, warn);
 }
 
 const alignment = { 'flex-start': 'start', 'flex-end': 'end' };
@@ -281,32 +287,38 @@ function objectPosition(value) {
   return [x in horizontal ? horizontal[x] : fraction(x), y in vertical ? vertical[y] : fraction(y)];
 }
 
-export function lowerStyle(tag, style, env, inherited = { fontSize: 14 }) {
+export function lowerStyle(tag, style, env, inherited = { fontSize: 14 }, warn) {
   admitStyle(tag, style);
   const out = {};
-  const fontSize = style.fontSize === undefined ? inherited.fontSize : length('fontSize', style.fontSize);
-  if (style.fontSize !== undefined && !isStep(style.fontSize) && style.fontSize <= 0) invalid('fontSize', style.fontSize, 'a number above 0');
+  if (style.fontSize !== undefined && !isStep(style.fontSize) && finite(style.fontSize) && style.fontSize <= 0) invalid('fontSize', style.fontSize, 'a number above 0');
+  const fontSize = style.fontSize === undefined ? inherited.fontSize : length('fontSize', style.fontSize, undefined, warn);
   let lineHeight = inherited.lineHeight;
   const transform = {}, lines = {}, safe = { bits: 0 };
   const names = Object.keys(style).sort((a, b) => Number(shorthand(b)) - Number(shorthand(a)));
   for (const name of names) {
     const value = style[name], entry = table[name], key = entry.wire;
     switch (entry.lower) {
-      case 'dimension': dimension(name, value, env, out, key); break;
-      case 'margin':
-        if (value !== 'auto') length(name, value, { signed: true });
-        for (const side of [key].flat()) out[side] = value;
-        break;
-      case 'inset': {
-        const amount = percent(value) !== undefined ? percent(value) : value;
-        if (value !== 'anchor(center)') length(name, amount, { signed: true });
-        for (const side of [key].flat()) out[side] = value;
+      case 'dimension': dimension(name, value, env, out, key, warn); break;
+      case 'margin': {
+        const lowered = value === 'auto' ? value : length(name, value, { signed: true }, warn);
+        for (const side of [key].flat()) out[side] = lowered;
         break;
       }
-      case 'length':
-        length(name, value);
-        for (const side of [key].flat()) out[side] = value;
+      case 'inset': {
+        const pct = percent(value);
+        let lowered = value;
+        if (value !== 'anchor(center)') {
+          const clamped = length(name, pct !== undefined ? pct : value, { signed: true }, warn);
+          lowered = pct !== undefined ? `${clamped}%` : clamped;
+        }
+        for (const side of [key].flat()) out[side] = lowered;
         break;
+      }
+      case 'length': {
+        const lowered = length(name, value, undefined, warn);
+        for (const side of [key].flat()) out[side] = lowered;
+        break;
+      }
       case 'z-index':
         if (!Number.isInteger(value) || Math.abs(value) > 10000) invalid(name, value, 'a whole number from -10000 to 10000');
         out[key] = value; break;
@@ -324,7 +336,7 @@ export function lowerStyle(tag, style, env, inherited = { fontSize: 14 }) {
       case 'line-clamp':
         if (!Number.isInteger(value) || value < 1 || value > 1024) invalid(name, value, 'a whole number of lines from 1 to 1024');
         out[key] = value; break;
-      case 'number': out[key] = length(name, value); break;
+      case 'number': out[key] = length(name, value, undefined, warn); break;
       case 'opacity': if (!finite(value) || value < 0 || value > 1) invalid(name, value, 'a number from 0 to 1'); out[key] = value; break;
       case 'font-size': out[key] = fontSize; break;
       case 'font-weight': if (!finite(value) || value < 1 || value > 1000) invalid(name, value, 'a number from 1 to 1000'); out[key] = value; break;
@@ -355,9 +367,13 @@ export function lowerStyle(tag, style, env, inherited = { fontSize: 14 }) {
         if (!finite(value) || value <= 0 || value > 10000) invalid(name, value, 'auto or a ratio above 0 up to 10000');
         out[key] = value; break;
       case 'font-variant-numeric': out[key] = numericVariant(name, value); break;
-      case 'basis':
-        if (value !== 'auto') length(name, percent(value) ?? value);
-        out[key] = value; break;
+      case 'basis': {
+        if (value === 'auto') { out[key] = value; break; }
+        const pct = percent(value);
+        const clamped = length(name, pct !== undefined ? pct : value, undefined, warn);
+        out[key] = pct !== undefined ? `${clamped}%` : clamped;
+        break;
+      }
       case 'snap-type': {
         // `scroll-snap-type: y mandatory`: the axis snaps; every snap here is mandatory.
         const axis = String(value).trim().split(/\s+/)[0];
@@ -371,10 +387,12 @@ export function lowerStyle(tag, style, env, inherited = { fontSize: 14 }) {
       case 'family': out[key] = family(name, value); break;
       case 'line-height':
         if (isStep(value)) lineHeight = value;
-        else if (typeof value === 'string' && /^\d+(?:\.\d+)?px$/.test(value)) lineHeight = length(name, Number(value.slice(0, -2)));
+        else if (typeof value === 'string' && /^\d+(?:\.\d+)?px$/.test(value)) lineHeight = length(name, Number(value.slice(0, -2)), undefined, warn);
         else if (finite(value) && value > 0 && value <= limits.lineHeightMultiplier) lineHeight = { multiplier: value };
-        else if (finite(value) && lineHeightProblem(value)) throw Error(lineHeightProblem(value));
-        else invalid(name, value, `a multiplier above 0 up to ${limits.lineHeightMultiplier}, or <n>px`);
+        else if (finite(value) && lineHeightProblem(value)) {
+          warn?.(name, `${lineHeightProblem(value)}; clamped to ${limits.lineHeightMultiplier}`);
+          lineHeight = { multiplier: limits.lineHeightMultiplier };
+        } else invalid(name, value, `a multiplier above 0 up to ${limits.lineHeightMultiplier}, or <n>px`);
         break;
       case 'letter-spacing': {
         const em = typeof value === 'string' && value.match(/^(-?\d+(?:\.\d+)?)em$/);
@@ -406,8 +424,14 @@ export function lowerStyle(tag, style, env, inherited = { fontSize: 14 }) {
   }
   // A multiplier recomputes against each node's font size; pixels inherit natively.
   if (style.lineHeight !== undefined || (lineHeight && typeof lineHeight === 'object' && !isStep(lineHeight))) {
-    const pixels = lineHeight?.multiplier !== undefined ? times(fontSize, lineHeight.multiplier) : lineHeight;
-    if (!isStep(pixels) && !(pixels > 0 && pixels <= limits.styleNumber)) invalid('lineHeight', pixels, `a height above 0 up to ${limits.styleNumber} points`);
+    let pixels = lineHeight?.multiplier !== undefined ? times(fontSize, lineHeight.multiplier) : lineHeight;
+    if (!isStep(pixels)) {
+      if (!(pixels > 0)) invalid('lineHeight', pixels, `a height above 0 up to ${limits.styleNumber} points`);
+      if (pixels > limits.styleNumber) {
+        warn?.('lineHeight', `UI_STYLE_VALUE: lineHeight takes a height above 0 up to ${limits.styleNumber} points; got ${pixels}; clamped to ${limits.styleNumber}`);
+        pixels = limits.styleNumber;
+      }
+    }
     out.lineHeight = pixels;
   }
   // Each step goes only where its family applies: a radius step never sizes a padding.

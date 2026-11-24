@@ -1,7 +1,7 @@
 import { resetPresses, refreshPresses } from './press.js';
 import { render, page, outsideRender } from './state.js';
 import { h, resetArena, clearArena } from './nodes.js';
-import { resolveNode, listTag } from './elements.js';
+import { resolveNode, listTag, resetStyleWarnings } from './elements.js';
 import { encodeTree, copyTree, retainCells, renderRow, wireReset } from './encode.js';
 import { validInputText } from './data.js';
 import { report, failHandler, loudFailures, resetActions, actionEpochNow, hasActionEpoch, syncPageTitle } from './actions.js';
@@ -224,7 +224,7 @@ export function reset() {
   for (const resource of page.resources.values()) resource.dispose();
   page.resources.clear();
   resetActions();
-  resetOverlays(); resetPicker(); resetTopLayer(); resetFrameMeasures(); resetReveals(); resetEnvReads(); resetVideos(); resetWebViews(); resetSnaps();
+  resetOverlays(); resetPicker(); resetTopLayer(); resetFrameMeasures(); resetReveals(); resetEnvReads(); resetVideos(); resetWebViews(); resetSnaps(); resetStyleWarnings();
   wireReset();
 }
 

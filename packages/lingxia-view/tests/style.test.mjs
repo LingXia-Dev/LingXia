@@ -1,6 +1,6 @@
 import { test, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
-import { h, listTag, describe, configureClasses } from '../src/internal.js';
+import { h, listTag, describe, configureClasses, reset } from '../src/internal.js';
 import { rendered } from './support/wire.mjs';
 import { mergeStyle } from '../src/style/lower.js';
 
@@ -8,11 +8,27 @@ afterEach(() => configureClasses([]));
 const style = (value, tag = 'view') => rendered(() => h(tag, { style: value })).props;
 const rejects = (value, pattern, tag = 'view') => assert.throws(() => describe(() => h(tag, { style: value }), {}), pattern);
 
-test('a number out of range fails naming the property, the value and the range', () => {
-  rejects({ flexGrow: 20000 }, /^Error: UI_STYLE_VALUE: flexGrow takes a number from 0 to 16384; got 20000$/m);
-  rejects({ width: -1 }, /UI_STYLE_VALUE: width takes a number from 0 to 16384; got -1$/m);
+test('a number out of range clamps and warns once in dev, stays quiet in release; non-numbers and NaN still fail', () => {
+  reset();
+  const warnings = [];
+  globalThis.__lingxiaWarn = message => warnings.push(message);
+  try {
+    assert.equal(style({ flexGrow: 20000 }).grow, 16384);
+    assert.equal(style({ flexGrow: 20000 }).grow, 16384);
+    assert.equal(style({ width: -1 }).width, 0);
+    assert.equal(style({ marginTop: -20000 }).marginTop, -16384);
+    assert.deepEqual(warnings, [
+      'UI_STYLE_VALUE: flexGrow takes a number from 0 to 16384; got 20000; clamped to 16384',
+      'UI_STYLE_VALUE: width takes a number from 0 to 16384; got -1; clamped to 0',
+      'UI_STYLE_VALUE: marginTop takes a number from -16384 to 16384; got -20000; clamped to -16384',
+    ]);
+  } finally { delete globalThis.__lingxiaWarn; }
+  // Release build: no __lingxiaWarn, still clamps without throwing.
+  reset();
+  assert.equal(style({ flexGrow: 20000 }).grow, 16384);
   rejects({ flexGrow: 'big' }, /UI_STYLE_VALUE: flexGrow takes a number from 0 to 16384; got "big"$/m);
   rejects({ width: NaN }, /UI_STYLE_VALUE: width takes a number from 0 to 16384; got NaN$/m);
+  rejects({ width: Infinity }, /UI_STYLE_VALUE: width takes a number from 0 to 16384; got Infinity$/m);
 });
 
 test('any refused value names what the property takes and what it got', () => {
@@ -29,7 +45,9 @@ test('dimensions lower lengths, percentages, viewport units and sizing keywords'
   assert.equal(style({ width: 100 }).width, 100);
   for (const name of ['width', 'height', 'minWidth', 'minHeight', 'maxWidth', 'maxHeight']) {
     assert.equal(style({ [name]: '72%' })[`${name}Percent`], 72);
-    for (const value of [-1, NaN, Infinity, null, '-1%', '2px', '1e2%', '16385%', '50 %', '10%junk'])
+    assert.equal(style({ [name]: -1 })[name], 0);
+    assert.equal(style({ [name]: '16385%' })[`${name}Percent`], 16384);
+    for (const value of [NaN, Infinity, null, '-1%', '2px', '1e2%', '50 %', '10%junk'])
       rejects({ [name]: value }, /UI_STYLE_VALUE/);
   }
   assert.equal(style({ height: 'auto' }).heightAuto, 1);
@@ -44,7 +62,9 @@ test('dimensions lower lengths, percentages, viewport units and sizing keywords'
 
 test('flex basis encodes auto, logical lengths and percentages without mixing them', () => {
   for (const value of ['auto', '0%', '50%', 0, 48]) assert.equal(style({ flexBasis: value }).flexBasis, value);
-  for (const value of [-1, Infinity, NaN, 16385, '-1%', '1e2%', 'auto ', '10px', 'content', null]) rejects({ flexBasis: value }, /UI_STYLE_VALUE/);
+  assert.equal(style({ flexBasis: -1 }).flexBasis, 0);
+  assert.equal(style({ flexBasis: 16385 }).flexBasis, 16384);
+  for (const value of [Infinity, NaN, '-1%', '1e2%', 'auto ', '10px', 'content', null]) rejects({ flexBasis: value }, /UI_STYLE_VALUE/);
 });
 
 test('CSS names lower to the native box: colors, radii, flex factors and alignment', () => {
@@ -62,8 +82,12 @@ test('longhands win over shorthands regardless of declaration order', () => {
   const props = style({ paddingTop: 2, padding: 8, marginLeft: 'auto', margin: 4, borderBottomWidth: 3, borderWidth: 1 });
   assert.deepEqual([props.paddingTop, props.paddingRight, props.marginLeft, props.marginTop, props.borderBottomWidth, props.borderTopWidth],
     [2, 8, 'auto', 4, 3, 1]);
-  for (const name of ['padding', 'paddingTop', 'paddingRight', 'paddingBottom', 'paddingLeft'])
-    for (const value of [-1, 16385, Infinity, NaN, '12', null, true]) rejects({ [name]: value }, /UI_STYLE_VALUE/);
+  for (const name of ['padding', 'paddingTop', 'paddingRight', 'paddingBottom', 'paddingLeft']) {
+    const wire = name === 'padding' ? 'paddingTop' : name;
+    assert.equal(style({ [name]: -1 })[wire], 0);
+    assert.equal(style({ [name]: 16385 })[wire], 16384);
+    for (const value of [Infinity, NaN, '12', null, true]) rejects({ [name]: value }, /UI_STYLE_VALUE/);
+  }
   rejects({ margin: 'x' }, /UI_STYLE_VALUE/);
   assert.equal(style({ marginTop: -8 }).marginTop, -8);
 });
@@ -126,9 +150,16 @@ test('typography: CSS line-height multipliers inherit and recompute per font siz
   assert.equal(style({ fontFamily: 'monospace', fontWeight: 650 }, 'text').fontFamily, 'mono');
   for (const value of [{ fontWeight: 0 }, { fontWeight: 1001 }, { fontWeight: 'bold' }, { lineHeight: 0 }, { lineHeight: Infinity }, { lineHeight: '24' },
     { fontFamily: 'mono' }, { fontFamily: 'Brand, cursive' }]) rejects(value, /UI_STYLE_VALUE/, 'text');
-  // A unitless number is a multiple of the font size; past 4 it is almost always points without a unit.
+  // A unitless number is a multiple of the font size; past 4 it clamps at run time and warns once in dev.
   assert.equal(style({ fontSize: 10, lineHeight: 4 }, 'text').lineHeight, 40);
-  rejects({ lineHeight: 24 }, /UI_STYLE_VALUE: lineHeight 24 is a multiple of the font size \(24×\), not points; write "24px", or a leading-\* class/, 'text');
+  reset();
+  const lhWarnings = [];
+  globalThis.__lingxiaWarn = message => lhWarnings.push(message);
+  try {
+    assert.equal(style({ fontSize: 10, lineHeight: 24 }, 'text').lineHeight, 40);
+    assert.equal(style({ fontSize: 10, lineHeight: 24 }, 'text').lineHeight, 40);
+    assert.deepEqual(lhWarnings, ['UI_STYLE_VALUE: lineHeight 24 is a multiple of the font size (24×), not points; write "24px", or a leading-* class; clamped to 4']);
+  } finally { delete globalThis.__lingxiaWarn; }
   rejects({ fontFamily: 'Arial' }, /UI_FONT: Arial is not declared with @font-face/, 'text');
   assert.equal(style({ fontFamily: 'serif' }, 'text').fontFamily, 'serif');
   const text = style({ textTransform: 'uppercase', whiteSpace: 'nowrap', textOverflow: 'ellipsis', textDecorationLine: 'underline' }, 'text');

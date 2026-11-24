@@ -23,7 +23,7 @@ import { readFile, mkdir, writeFile, realpath, rename, rm } from 'node:fs/promis
 import { resolve, dirname, join, relative, isAbsolute, sep, basename } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { elements, kindOf, style as styleTable, commonProps, limits } from '../src/generated/contract.js';
-import { classElementProblem, appliesTo, gridProblem, gridRefuses, propHint, tagHint, lineHeightProblem } from '../src/style/hints.js';
+import { classElementProblem, appliesTo, gridProblem, gridRefuses, propHint, tagHint, styleValueProblem } from '../src/style/hints.js';
 
 const runtime = fileURLToPath(new URL('../src/internal.js', import.meta.url));
 const publicEntry = fileURLToPath(new URL('../src/index.js', import.meta.url));
@@ -119,6 +119,28 @@ function spoken(element) {
   });
 }
 
+function numericStyleLiterals(checker, node, seen = new Set()) {
+  while (node && (ts.isParenthesizedExpression(node) || ts.isAsExpression(node) || ts.isSatisfiesExpression(node) || ts.isNonNullExpression(node)))
+    node = node.expression;
+  if (!node || seen.has(node)) return [];
+  seen = new Set(seen).add(node);
+  if (ts.isNumericLiteral(node)) return [Number(node.text)];
+  if (ts.isPrefixUnaryExpression(node) && (node.operator === ts.SyntaxKind.MinusToken || node.operator === ts.SyntaxKind.PlusToken)) {
+    let inner = node.operand;
+    while (inner && ts.isParenthesizedExpression(inner)) inner = inner.expression;
+    if (inner && ts.isNumericLiteral(inner)) return [node.operator === ts.SyntaxKind.MinusToken ? -Number(inner.text) : Number(inner.text)];
+  }
+  if (ts.isConditionalExpression(node)) return [...numericStyleLiterals(checker, node.whenTrue, seen), ...numericStyleLiterals(checker, node.whenFalse, seen)];
+  if (ts.isIdentifier(node)) {
+    let sym = checker.getSymbolAtLocation(node);
+    if (sym && (sym.flags & ts.SymbolFlags.Alias)) sym = checker.getAliasedSymbol(sym);
+    const decl = sym?.valueDeclaration;
+    if (decl && ts.isVariableDeclaration(decl) && (decl.parent.flags & ts.NodeFlags.Const) && decl.initializer)
+      return numericStyleLiterals(checker, decl.initializer, seen);
+  }
+  return [];
+}
+
 // Whether a fragment is what the exported `render` returns: the page root must be one box.
 function pageRoot(node) {
   let at = node;
@@ -191,8 +213,11 @@ export function audit(source, filename, { literalColors = false } = {}) {
           const literal = ts.isPropertyAssignment(entry) && ts.isStringLiteralLike(entry.initializer) && entry.initializer.text;
           const colorIssue = !literalColors && literal !== false && styleTable[name]?.lower === 'color' && colorProblem(literal, name);
           if (colorIssue) report(entry, colorIssue);
-          const lineHeight = name === 'lineHeight' && ts.isPropertyAssignment(entry) && ts.isNumericLiteral(entry.initializer) && lineHeightProblem(Number(entry.initializer.text));
-          if (lineHeight) report(entry, lineHeight);
+          const valueExpr = ts.isPropertyAssignment(entry) ? entry.initializer : entry.name;
+          for (const number of numericStyleLiterals(checker, valueExpr)) {
+            const valueIssue = styleValueProblem(name, number);
+            if (valueIssue) report(entry, valueIssue);
+          }
         }
       }
     }

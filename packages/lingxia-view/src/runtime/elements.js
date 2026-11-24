@@ -201,8 +201,11 @@ export function seedLowered(text) {
   return true;
 }
 
-function nodeStyle(tag, props, data, extra, inherited, direction, structure, every, sizeClass) {
-  if (props.style !== undefined || extra !== undefined || every !== undefined || props.className === undefined) return lowerNodeStyle(tag, props, data, extra, inherited, direction, structure, every, sizeClass);
+const warnedClamp = new Set();
+export function resetStyleWarnings() { warnedClamp.clear(); }
+
+function nodeStyle(tag, props, data, extra, inherited, direction, structure, every, sizeClass, identity) {
+  if (props.style !== undefined || extra !== undefined || every !== undefined || props.className === undefined) return lowerNodeStyle(tag, props, data, extra, inherited, direction, structure, every, sizeClass, identity);
   const environment = envKey(envOf(render.view));
   if (loweredClasses !== classGeneration) {
     // A new class table: what was lowered, here or by a previous isolate, read the old one.
@@ -248,7 +251,7 @@ const videoBacking = { backgroundColor: '#000000' };
 const mixedCheckbox = (tag, props) => tag === 'checkbox' && props.indeterminate === true;
 
 // Classes, then the parent's child rule, then inline style; `disabled:` replaces the class cascade.
-function lowerNodeStyle(tag, props, data, extra, inherited, direction, structure, every, sizeClass) {
+function lowerNodeStyle(tag, props, data, extra, inherited, direction, structure, every, sizeClass, identity) {
   const env = { ...loweringEnv(envOf(render.view), sizeClass), direction, structure, data, indeterminate: mixedCheckbox(tag, props) };
   const classes = resolveClasses(props.className, env);
   // A run takes the size of `text-sm` but not the line height paired with it.
@@ -265,7 +268,13 @@ function lowerNodeStyle(tag, props, data, extra, inherited, direction, structure
   // A box is a flex column; `flex` alone asks for a row, as `display: flex` does in CSS.
   if ((tag === 'view' || tag === 'page') && (author?.display === 'flex' || author?.display === 'inline-flex') && author.flexDirection === undefined)
     author.flexDirection = 'row';
-  const { fields, typography } = lowerStyle(tag, author, env, inherited);
+  const warn = typeof globalThis.__lingxiaWarn === 'function' ? (name, message) => {
+    const key = `${identity ?? ''}\u0000${name}`;
+    if (warnedClamp.has(key)) return;
+    warnedClamp.add(key);
+    globalThis.__lingxiaWarn(message);
+  } : undefined;
+  const { fields, typography } = lowerStyle(tag, author, env, inherited, warn);
   const states = {};
   const state = (name, wire, allowed, requirement) => {
     const delta = classes?.[name];
@@ -453,7 +462,7 @@ function resolveElement(tag, original, children, identity, depth, parent) {
   // The root takes the theme's `--font-sans`, as preflight gives the document's root; its classes and style still win.
   const rootFamily = !parent.typography && pageFamily && element.style.includes('fontFamily') ? { fontFamily: pageFamily } : undefined;
   const scopedSize = scopedSizeClass(parent.contexts, false);
-  const style = nodeStyle(kind, props, data, parent.extra ?? rootFamily, parent.typography ?? { fontSize: 14 }, direction, structure(parent.sibling, flat), parent.every, scopedSize);
+  const style = nodeStyle(kind, props, data, parent.extra ?? rootFamily, parent.typography ?? { fontSize: 14 }, direction, structure(parent.sibling, flat), parent.every, scopedSize, identity);
   const inline = child => typeof child === 'string' || typeof child === 'number';
   if (admission.tags[element.wire].parent === 'text' && !parent.inText) throw Error(`UI_TEXT: <${tag}> belongs inside <text>; wrap it in a <text>`);
   if (tag === 'link' && parent.inLink) throw Error('UI_TEXT: links do not nest');

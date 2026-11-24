@@ -1,9 +1,37 @@
-import { elements, blocks, limits } from '../generated/contract.js';
+import { elements, blocks, limits, style } from '../generated/contract.js';
 
 /** A unitless lineHeight past the multiplier cap: almost always points written without a unit. */
 export function lineHeightProblem(value) {
   if (typeof value !== 'number' || !(value > limits.lineHeightMultiplier)) return undefined;
   return `UI_STYLE_VALUE: lineHeight ${value} is a multiple of the font size (${value}×), not points; write "${value}px", or a leading-* class`;
+}
+
+const unsignedStyleNumber = new Set(['dimension', 'length', 'number', 'basis']);
+const signedStyleNumber = new Set(['margin', 'inset']);
+
+/** Build-time range check for a numeric style literal governed by `limits.styleNumber` or `limits.lineHeightMultiplier`. */
+export function styleValueProblem(name, value) {
+  const entry = style[name];
+  if (!entry || typeof value !== 'number' || !Number.isFinite(value)) return undefined;
+  if (entry.lower === 'line-height') {
+    if (value > limits.lineHeightMultiplier) return lineHeightProblem(value);
+    if (value <= 0) return `UI_STYLE_VALUE: ${name} takes a multiplier above 0 up to ${limits.lineHeightMultiplier}, or <n>px; got ${value}`;
+    return undefined;
+  }
+  if (entry.lower === 'font-size') {
+    if (value <= 0) return `UI_STYLE_VALUE: ${name} takes a number above 0; got ${value}`;
+    if (value > limits.styleNumber) return `UI_STYLE_VALUE: ${name} takes a number from 0 to ${limits.styleNumber}; got ${value}`;
+    return undefined;
+  }
+  if (unsignedStyleNumber.has(entry.lower)) {
+    if (value < 0 || value > limits.styleNumber) return `UI_STYLE_VALUE: ${name} takes a number from 0 to ${limits.styleNumber}; got ${value}`;
+    return undefined;
+  }
+  if (signedStyleNumber.has(entry.lower)) {
+    if (value < -limits.styleNumber || value > limits.styleNumber) return `UI_STYLE_VALUE: ${name} takes a number from ${-limits.styleNumber} to ${limits.styleNumber}; got ${value}`;
+    return undefined;
+  }
+  return undefined;
 }
 
 const container = new Set(['alignItems', 'alignContent', 'justifyContent', 'justifyItems', 'flexDirection', 'flexWrap',
