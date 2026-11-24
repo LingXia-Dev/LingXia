@@ -8,7 +8,7 @@ Parts of one whole, as a ring or a solid pie, listed with their amounts in a leg
 import { PieChart } from '@liulidesign/charts/PieChart';
 ```
 
-PieChart shows how one total divides into a few parts: spending by category, storage by kind. By default it is a ring with the total in its hole. The parts are named in a legend under it, with their amounts and shares, and a legend row chooses its part: the slice grows, the others step back, and the hole shows the chosen part.
+PieChart shows how one total divides into a few parts: spending by category, storage by kind. Its `nameField`, `valueField` and `keyField` are fields of the rows' own type (`Row`), so a misspelt one fails to compile. By default it is a ring with the total in its hole. The parts are named in a legend under it, with their amounts and shares, and a legend row chooses its part: the slice grows, the others step back, and the hole shows the chosen part.
 
 ## Examples
 
@@ -102,10 +102,10 @@ export function Merged() {
 
 | Prop | Type | Default | Description |
 | --- | --- | --- | --- |
-| `rows` (required) | `readonly Readonly<Record<string, ChartDatum>>[]` |  | The rows, one per part, in the order drawn clockwise from the top. Parts without a positive number are left out. |
-| `nameField` (required) | `string` |  | The field that names each part: "category". |
-| `valueField` (required) | `string` |  | The field that holds each part's amount. |
-| `keyField` | `string` |  | The field that identifies a row across updates and in `value`. By default `nameField`. |
+| `rows` (required) | `readonly Row[]` |  | The rows, one per part, in the order drawn clockwise from the top. Parts without a positive number are left out. |
+| `nameField` (required) | `ChartField<Row>` |  | The field that names each part: "category". |
+| `valueField` (required) | `ChartField<Row>` |  | The field that holds each part's amount. |
+| `keyField` | `ChartField<Row>` |  | The field that identifies a row across updates and in `value`. By default `nameField`. |
 | `label` (required) | `string` |  | The chart's accessible name: "Spending by category". |
 | `title` | `string` |  |  |
 | `description` | `string` |  |  |

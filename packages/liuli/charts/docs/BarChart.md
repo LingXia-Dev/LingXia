@@ -8,7 +8,7 @@ Amounts by category, as bars on a zero line, with selection and grouped series. 
 import { BarChart } from '@liulidesign/charts/BarChart';
 ```
 
-BarChart compares amounts across a few categories: orders by weekday, sales by quarter. It takes rows and the names of the fields to draw, so the same rows can feed another chart or a table. Each category can be pressed to read its value, several series stand side by side, and values below zero hang from the same line. Bars grow from zero once the plot is laid out and move to new values, their figures with them; with reduced motion they are drawn at once.
+BarChart compares amounts across a few categories: orders by weekday, sales by quarter. It takes rows and the names of the fields to draw, so the same rows can feed another chart or a table; the names are fields of the rows' own type (`Row`), so a misspelt one fails to compile. Each category can be pressed to read its value, several series stand side by side, and values below zero hang from the same line. Bars grow from zero once the plot is laid out and move to new values, their figures with them; with reduced motion they are drawn at once.
 
 ## Examples
 
@@ -114,10 +114,10 @@ export function Month() {
 
 | Prop | Type | Default | Description |
 | --- | --- | --- | --- |
-| `rows` (required) | `readonly Readonly<Record<string, ChartDatum>>[]` |  | The rows, one per category, in the order drawn. |
-| `x` (required) | `string` |  | The field that names each category: "month". |
-| `y` (required) | `string \| readonly ChartSeries[]` |  | The field that holds the number, or several series to draw side by side in each category. |
-| `keyField` | `string` |  | The field that identifies a row across updates and in `value`. By default `x`. |
+| `rows` (required) | `readonly Row[]` |  | The rows, one per category, in the order drawn. |
+| `x` (required) | `ChartField<Row>` |  | The field that names each category: "month". |
+| `y` (required) | `ChartField<Row> \| readonly ChartSeries<Row>[]` |  | The field that holds the number, or several series to draw side by side in each category. |
+| `keyField` | `ChartField<Row>` |  | The field that identifies a row across updates and in `value`. By default `x`. |
 | `label` (required) | `string` |  | The chart's accessible name: "Orders by weekday". |
 | `title` | `string` |  |  |
 | `description` | `string` |  |  |

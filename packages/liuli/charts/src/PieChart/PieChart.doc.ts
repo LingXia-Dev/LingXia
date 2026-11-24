@@ -8,6 +8,7 @@ export const doc: ComponentDoc = {
   summary: 'Parts of one whole, as a ring or a solid pie, listed with their amounts in a legend that selects',
   description:
     'PieChart shows how one total divides into a few parts: spending by category, storage by kind. ' +
+    'Its `nameField`, `valueField` and `keyField` are fields of the rows\' own type (`Row`), so a misspelt one fails to compile. ' +
     'By default it is a ring with the total in its hole. The parts are named in a legend under it, with their amounts and shares, ' +
     'and a legend row chooses its part: the slice grows, the others step back, and the hole shows the chosen part.',
   keywords: ['pie chart', 'donut', 'doughnut', 'ring', 'share', 'proportion', 'parts of a whole', 'chart', 'graph'],

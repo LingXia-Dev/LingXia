@@ -8,7 +8,7 @@ export const doc: ComponentDoc = {
   summary: 'Amounts by category, as bars on a zero line, with selection and grouped series',
   description:
     'BarChart compares amounts across a few categories: orders by weekday, sales by quarter. ' +
-    'It takes rows and the names of the fields to draw, so the same rows can feed another chart or a table. ' +
+    'It takes rows and the names of the fields to draw, so the same rows can feed another chart or a table; the names are fields of the rows\' own type (`Row`), so a misspelt one fails to compile. ' +
     'Each category can be pressed to read its value, several series stand side by side, and values below zero hang from the same line. ' +
     'Bars grow from zero once the plot is laid out and move to new values, their figures with them; with reduced motion they are drawn at once.',
   keywords: ['bar chart', 'column chart', 'bars', 'histogram', 'categories', 'compare', 'grouped bars', 'chart', 'graph'],

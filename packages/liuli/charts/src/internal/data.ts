@@ -4,12 +4,16 @@
 export type ChartDatum = string | number | null | undefined;
 /** One record: a day, a product, a region. Charts read the fields their encoding names. */
 export type ChartRow = Readonly<Record<string, ChartDatum>>;
+/** A row type whose every field is a datum: an app's own record type, interfaces included. */
+export type ChartRecord<Row> = { readonly [K in keyof Row]: ChartDatum };
+/** A field of `Row` by name, so a misspelt column fails to compile. */
+export type ChartField<Row> = keyof Row & string;
 /** A series colour: the theme's `chart-1` to `chart-8`. */
 export type ChartColor = 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8;
 
-export interface ChartSeries {
+export interface ChartSeries<Row = ChartRow> {
   /** The row field that holds this series' number. */
-  field: string;
+  field: ChartField<Row>;
   /** Its name in the legend and in readings: "Online". */
   label: string;
   /** Its colour; by default series take the eight in order. */
@@ -68,7 +72,9 @@ export const textOf = (row: ChartRow, field: string): string => String(row[field
 /** A row's identity across updates: its key field, or its position when the field is empty. */
 export const keyOf = (row: ChartRow, field: string, index: number): string => String(row[field] ?? index);
 
-export const seriesOf = (y: string | readonly ChartSeries[]): readonly ChartSeries[] => (typeof y === 'string' ? [{ field: y, label: '' }] : y);
+// A series of any row type, its field a plain name; `ChartSeries<ChartRow>` would refuse one typed to a narrower row.
+type AnySeries = Omit<ChartSeries, 'field'> & { field: string };
+export const seriesOf = (y: string | readonly AnySeries[]): readonly ChartSeries[] => (typeof y === 'string' ? [{ field: y, label: '' }] : y);
 
 export const plain = (value: number) => String(value);
 

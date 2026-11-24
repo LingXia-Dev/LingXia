@@ -8,6 +8,7 @@ export const doc: ComponentDoc = {
   summary: 'A number over time, as a line that fits its data or an area from zero, for up to five series',
   description:
     'LineChart shows how a number moves: a weight over weeks, visits over a month, accounts by plan. ' +
+    'It takes rows and the names of their fields to draw, fields of the rows\' own type (`Row`), so a misspelt one fails to compile. ' +
     'A line fits the range of its data, so small changes show; an area is measured from zero, because its fill is an amount. ' +
     'Rows without a number are gaps, long series are reduced to the points that hold their shape, and several lines differ by dash as well as colour. ' +
     'A solid line draws in once the plot is laid out and moves to new data, and its end figure and the scale move with it; a dashed line appears whole. With reduced motion all of it is drawn at once.',

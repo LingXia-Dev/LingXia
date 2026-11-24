@@ -1,5 +1,5 @@
 import { cx, useBox, type PointerEvent, type VectorPath } from '@lingxia/view';
-import { Chart, ChartLegend, ChartReadout, type ChartLegendPosition, type ChartRow, type ChartSeries, type ChartSize, type ChartSummarize } from '../Chart/Chart';
+import { Chart, ChartLegend, ChartReadout, type ChartLegendPosition, type ChartField, type ChartRecord, type ChartRow, type ChartSeries, type ChartSize, type ChartSummarize } from '../Chart/Chart';
 import { colorOf, keyOf, numberOf, plain, roleOf, seriesFacts, seriesOf, textOf, type ChartColor } from '../internal/data';
 import { leftPressed, pressed, pressedIndex, pressedKey, scrubbing } from '../internal/gesture';
 import { box, indexAt, roundUp } from '../internal/geometry';
@@ -10,15 +10,16 @@ import { barChartRecipe as r } from './BarChart.recipe';
 export type BarChartLabels = 'fit' | 'all' | 'ends' | 'none';
 export type BarChartValueLabels = 'auto' | 'always' | 'none';
 
-export interface BarChartProps {
+/** `Row` is the app's own record type, so `x`, `y` and `keyField` name its fields and a typo fails to compile. */
+export interface BarChartProps<Row extends ChartRecord<Row> = ChartRow> {
   /** The rows, one per category, in the order drawn. */
-  rows: readonly ChartRow[];
+  rows: readonly Row[];
   /** The field that names each category: "month". */
-  x: string;
+  x: ChartField<Row>;
   /** The field that holds the number, or several series to draw side by side in each category. */
-  y: string | readonly ChartSeries[];
+  y: ChartField<Row> | readonly ChartSeries<Row>[];
   /** The field that identifies a row across updates and in `value`. By default `x`. */
-  keyField?: string;
+  keyField?: ChartField<Row>;
   /** The chart's accessible name: "Orders by weekday". */
   label: string;
   title?: string;
@@ -128,11 +129,12 @@ function barPaths(
 }
 
 /** Amounts by category, as bars that stand on a zero line. */
-export function BarChart({
-  rows: data, x, y, keyField, label, title, description, formatValue: format, summarize, xLabels, valueLabels = 'auto', legend = 'bottom', legendLabel,
+export function BarChart<Row extends ChartRecord<Row>>({
+  rows, x, y, keyField, label, title, description, formatValue: format, summarize, xLabels, valueLabels = 'auto', legend = 'bottom', legendLabel,
   value: selectedKey, onChange: onSelect, hiddenSeries = [], onHiddenSeriesChange, domainMin, domainMax, size = 'md',
   isLoading = false, error, emptyLabel, emptyHint, onRetry, retryLabel, className, 'data-testid': testId,
-}: BarChartProps) {
+}: BarChartProps<Row>) {
+  const data: readonly ChartRow[] = rows;
   const formatValue = format ?? plain;
   const all = seriesOf(y).map((series, index) => ({ ...series, color: colorOf(index, series.color) }));
   const shown = all.filter(series => !hiddenSeries.includes(series.field));

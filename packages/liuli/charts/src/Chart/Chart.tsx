@@ -6,7 +6,7 @@ import { roleOf, type ChartColor } from '../internal/data';
 import { circle } from '../internal/geometry';
 import { chartRecipe as r } from './Chart.recipe';
 
-export type { ChartColor, ChartDatum, ChartFacts, ChartPointFact, ChartRow, ChartSeries, ChartSeriesFacts, ChartSummarize } from '../internal/data';
+export type { ChartColor, ChartDatum, ChartFacts, ChartField, ChartPointFact, ChartRecord, ChartRow, ChartSeries, ChartSeriesFacts, ChartSummarize } from '../internal/data';
 
 export type ChartSize = 'xs' | 'sm' | 'md' | 'lg';
 /** `fit` is for a plot of your own that has its own height, such as a single bar. */

@@ -8,7 +8,7 @@ A number over time, as a line that fits its data or an area from zero, for up to
 import { LineChart } from '@liulidesign/charts/LineChart';
 ```
 
-LineChart shows how a number moves: a weight over weeks, visits over a month, accounts by plan. A line fits the range of its data, so small changes show; an area is measured from zero, because its fill is an amount. Rows without a number are gaps, long series are reduced to the points that hold their shape, and several lines differ by dash as well as colour. A solid line draws in once the plot is laid out and moves to new data, and its end figure and the scale move with it; a dashed line appears whole. With reduced motion all of it is drawn at once.
+LineChart shows how a number moves: a weight over weeks, visits over a month, accounts by plan. It takes rows and the names of their fields to draw, fields of the rows' own type (`Row`), so a misspelt one fails to compile. A line fits the range of its data, so small changes show; an area is measured from zero, because its fill is an amount. Rows without a number are gaps, long series are reduced to the points that hold their shape, and several lines differ by dash as well as colour. A solid line draws in once the plot is laid out and moves to new data, and its end figure and the scale move with it; a dashed line appears whole. With reduced motion all of it is drawn at once.
 
 ## Examples
 
@@ -85,6 +85,7 @@ export function Smooth() {
 
 ```tsx
 import { useLocal } from '@lingxia/view';
+import type { ChartSeries } from '@liulidesign/charts/Chart';
 import { summarize } from '@liulidesign/charts/summary';
 import { LineChart } from '@liulidesign/charts/LineChart';
 
@@ -92,7 +93,7 @@ const plans = [
   { month: 'Jan', free: 410, team: 120, pro: 64 }, { month: 'Feb', free: 455, team: 131, pro: 71 }, { month: 'Mar', free: 440, team: 150, pro: 83 },
   { month: 'Apr', free: 492, team: 171, pro: 88 }, { month: 'May', free: 530, team: 204, pro: 97 }, { month: 'Jun', free: 561, team: 236, pro: 121 },
 ];
-const series = [{ field: 'free', label: 'Free' }, { field: 'team', label: 'Team' }, { field: 'pro', label: 'Pro' }];
+const series: readonly ChartSeries<(typeof plans)[number]>[] = [{ field: 'free', label: 'Free' }, { field: 'team', label: 'Team' }, { field: 'pro', label: 'Pro' }];
 
 /** Three lines told apart by dash as well as colour; the legend shows and hides each. */
 export function Series() {
@@ -117,13 +118,14 @@ export function Series() {
 
 ```tsx
 import { useLocal } from '@lingxia/view';
+import type { ChartSeries } from '@liulidesign/charts/Chart';
 import { LineChart } from '@liulidesign/charts/LineChart';
 
 const plans = [
   { month: 'Jan', free: 410, team: 120, pro: 64 }, { month: 'Feb', free: 455, team: 131, pro: 71 }, { month: 'Mar', free: 440, team: 150, pro: 83 },
   { month: 'Apr', free: 492, team: 171, pro: 88 }, { month: 'May', free: 530, team: 204, pro: 97 }, { month: 'Jun', free: 561, team: 236, pro: 121 },
 ];
-const series = [{ field: 'free', label: 'Free' }, { field: 'team', label: 'Team' }, { field: 'pro', label: 'Pro' }];
+const series: readonly ChartSeries<(typeof plans)[number]>[] = [{ field: 'free', label: 'Free' }, { field: 'team', label: 'Team' }, { field: 'pro', label: 'Pro' }];
 
 /** Dragging across the plot, a mouse over it or the arrow keys choose the month the readout shows. */
 export function Selected() {
@@ -154,10 +156,10 @@ export function Gaps() {
 
 | Prop | Type | Default | Description |
 | --- | --- | --- | --- |
-| `rows` (required) | `readonly Readonly<Record<string, ChartDatum>>[]` |  | The rows, one per point in time, oldest first. |
-| `x` (required) | `string` |  | The field that names each point: "month". |
-| `y` (required) | `string \| readonly ChartSeries[]` |  | The field that holds the number, or up to five series drawn as separate lines. A row without a number is a gap. |
-| `keyField` | `string` |  | The field that identifies a row across updates and in `value`. By default `x`. |
+| `rows` (required) | `readonly Row[]` |  | The rows, one per point in time, oldest first. |
+| `x` (required) | `ChartField<Row>` |  | The field that names each point: "month". |
+| `y` (required) | `ChartField<Row> \| readonly ChartSeries<Row>[]` |  | The field that holds the number, or up to five series drawn as separate lines. A row without a number is a gap. |
+| `keyField` | `ChartField<Row>` |  | The field that identifies a row across updates and in `value`. By default `x`. |
 | `label` (required) | `string` |  | The chart's accessible name: "Weight by week". |
 | `title` | `string` |  |  |
 | `description` | `string` |  |  |

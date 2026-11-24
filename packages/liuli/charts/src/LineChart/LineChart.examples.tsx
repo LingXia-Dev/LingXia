@@ -1,5 +1,6 @@
 import { useLocal } from '@lingxia/view';
 import { Held } from '@liulidesign/core/internal/example';
+import type { ChartSeries } from '../Chart/Chart';
 import { summarize } from '../summary/en';
 import { LineChart } from './LineChart';
 
@@ -50,7 +51,7 @@ const plans = [
   { month: 'Jan', free: 410, team: 120, pro: 64 }, { month: 'Feb', free: 455, team: 131, pro: 71 }, { month: 'Mar', free: 440, team: 150, pro: 83 },
   { month: 'Apr', free: 492, team: 171, pro: 88 }, { month: 'May', free: 530, team: 204, pro: 97 }, { month: 'Jun', free: 561, team: 236, pro: 121 },
 ];
-const series = [{ field: 'free', label: 'Free' }, { field: 'team', label: 'Team' }, { field: 'pro', label: 'Pro' }];
+const series: readonly ChartSeries<(typeof plans)[number]>[] = [{ field: 'free', label: 'Free' }, { field: 'team', label: 'Team' }, { field: 'pro', label: 'Pro' }];
 
 /** Three lines told apart by dash as well as colour; the legend shows and hides each. */
 export function Series() {

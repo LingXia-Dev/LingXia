@@ -11,7 +11,7 @@
       "status": "preview",
       "since": "2026-11-14",
       "summary": "Amounts by category, as bars on a zero line, with selection and grouped series",
-      "description": "BarChart compares amounts across a few categories: orders by weekday, sales by quarter. It takes rows and the names of the fields to draw, so the same rows can feed another chart or a table. Each category can be pressed to read its value, several series stand side by side, and values below zero hang from the same line. Bars grow from zero once the plot is laid out and move to new values, their figures with them; with reduced motion they are drawn at once.",
+      "description": "BarChart compares amounts across a few categories: orders by weekday, sales by quarter. It takes rows and the names of the fields to draw, so the same rows can feed another chart or a table; the names are fields of the rows' own type (`Row`), so a misspelt one fails to compile. Each category can be pressed to read its value, several series stand side by side, and values below zero hang from the same line. Bars grow from zero once the plot is laid out and move to new values, their figures with them; with reduced motion they are drawn at once.",
       "keywords": [
         "bar chart",
         "column chart",
@@ -26,25 +26,25 @@
       "props": [
         {
           "name": "rows",
-          "type": "readonly Readonly<Record<string, ChartDatum>>[]",
+          "type": "readonly Row[]",
           "required": true,
           "description": "The rows, one per category, in the order drawn."
         },
         {
           "name": "x",
-          "type": "string",
+          "type": "ChartField<Row>",
           "required": true,
           "description": "The field that names each category: \"month\"."
         },
         {
           "name": "y",
-          "type": "string | readonly ChartSeries[]",
+          "type": "ChartField<Row> | readonly ChartSeries<Row>[]",
           "required": true,
           "description": "The field that holds the number, or several series to draw side by side in each category."
         },
         {
           "name": "keyField",
-          "type": "string",
+          "type": "ChartField<Row>",
           "required": false,
           "description": "The field that identifies a row across updates and in `value`. By default `x`."
         },
@@ -1065,7 +1065,7 @@
       "status": "preview",
       "since": "2026-11-14",
       "summary": "A number over time, as a line that fits its data or an area from zero, for up to five series",
-      "description": "LineChart shows how a number moves: a weight over weeks, visits over a month, accounts by plan. A line fits the range of its data, so small changes show; an area is measured from zero, because its fill is an amount. Rows without a number are gaps, long series are reduced to the points that hold their shape, and several lines differ by dash as well as colour. A solid line draws in once the plot is laid out and moves to new data, and its end figure and the scale move with it; a dashed line appears whole. With reduced motion all of it is drawn at once.",
+      "description": "LineChart shows how a number moves: a weight over weeks, visits over a month, accounts by plan. It takes rows and the names of their fields to draw, fields of the rows' own type (`Row`), so a misspelt one fails to compile. A line fits the range of its data, so small changes show; an area is measured from zero, because its fill is an amount. Rows without a number are gaps, long series are reduced to the points that hold their shape, and several lines differ by dash as well as colour. A solid line draws in once the plot is laid out and moves to new data, and its end figure and the scale move with it; a dashed line appears whole. With reduced motion all of it is drawn at once.",
       "keywords": [
         "line chart",
         "area chart",
@@ -1079,25 +1079,25 @@
       "props": [
         {
           "name": "rows",
-          "type": "readonly Readonly<Record<string, ChartDatum>>[]",
+          "type": "readonly Row[]",
           "required": true,
           "description": "The rows, one per point in time, oldest first."
         },
         {
           "name": "x",
-          "type": "string",
+          "type": "ChartField<Row>",
           "required": true,
           "description": "The field that names each point: \"month\"."
         },
         {
           "name": "y",
-          "type": "string | readonly ChartSeries[]",
+          "type": "ChartField<Row> | readonly ChartSeries<Row>[]",
           "required": true,
           "description": "The field that holds the number, or up to five series drawn as separate lines. A row without a number is a gap."
         },
         {
           "name": "keyField",
-          "type": "string",
+          "type": "ChartField<Row>",
           "required": false,
           "description": "The field that identifies a row across updates and in `value`. By default `x`."
         },
@@ -1432,12 +1432,12 @@
         {
           "name": "Series",
           "title": "Three series, with a legend that hides them",
-          "source": "import { useLocal } from '@lingxia/view';\nimport { summarize } from '@liulidesign/charts/summary';\nimport { LineChart } from '@liulidesign/charts/LineChart';\n\nconst plans = [\n  { month: 'Jan', free: 410, team: 120, pro: 64 }, { month: 'Feb', free: 455, team: 131, pro: 71 }, { month: 'Mar', free: 440, team: 150, pro: 83 },\n  { month: 'Apr', free: 492, team: 171, pro: 88 }, { month: 'May', free: 530, team: 204, pro: 97 }, { month: 'Jun', free: 561, team: 236, pro: 121 },\n];\nconst series = [{ field: 'free', label: 'Free' }, { field: 'team', label: 'Team' }, { field: 'pro', label: 'Pro' }];\n\n/** Three lines told apart by dash as well as colour; the legend shows and hides each. */\nexport function Series() {\n  const hidden = useLocal<readonly string[]>('hidden', []);\n  return (\n    <LineChart\n      rows={plans}\n      x=\"month\"\n      y={series}\n      label=\"Accounts by plan and month\"\n      title=\"Accounts by plan\"\n      summarize={summarize}\n      hiddenSeries={hidden.value}\n      onHiddenSeriesChange={hidden.set}\n      data-testid=\"plans\"\n    />\n  );\n}"
+          "source": "import { useLocal } from '@lingxia/view';\nimport type { ChartSeries } from '@liulidesign/charts/Chart';\nimport { summarize } from '@liulidesign/charts/summary';\nimport { LineChart } from '@liulidesign/charts/LineChart';\n\nconst plans = [\n  { month: 'Jan', free: 410, team: 120, pro: 64 }, { month: 'Feb', free: 455, team: 131, pro: 71 }, { month: 'Mar', free: 440, team: 150, pro: 83 },\n  { month: 'Apr', free: 492, team: 171, pro: 88 }, { month: 'May', free: 530, team: 204, pro: 97 }, { month: 'Jun', free: 561, team: 236, pro: 121 },\n];\nconst series: readonly ChartSeries<(typeof plans)[number]>[] = [{ field: 'free', label: 'Free' }, { field: 'team', label: 'Team' }, { field: 'pro', label: 'Pro' }];\n\n/** Three lines told apart by dash as well as colour; the legend shows and hides each. */\nexport function Series() {\n  const hidden = useLocal<readonly string[]>('hidden', []);\n  return (\n    <LineChart\n      rows={plans}\n      x=\"month\"\n      y={series}\n      label=\"Accounts by plan and month\"\n      title=\"Accounts by plan\"\n      summarize={summarize}\n      hiddenSeries={hidden.value}\n      onHiddenSeriesChange={hidden.set}\n      data-testid=\"plans\"\n    />\n  );\n}"
         },
         {
           "name": "Selected",
           "title": "Scrubbing chooses a row",
-          "source": "import { useLocal } from '@lingxia/view';\nimport { LineChart } from '@liulidesign/charts/LineChart';\n\nconst plans = [\n  { month: 'Jan', free: 410, team: 120, pro: 64 }, { month: 'Feb', free: 455, team: 131, pro: 71 }, { month: 'Mar', free: 440, team: 150, pro: 83 },\n  { month: 'Apr', free: 492, team: 171, pro: 88 }, { month: 'May', free: 530, team: 204, pro: 97 }, { month: 'Jun', free: 561, team: 236, pro: 121 },\n];\nconst series = [{ field: 'free', label: 'Free' }, { field: 'team', label: 'Team' }, { field: 'pro', label: 'Pro' }];\n\n/** Dragging across the plot, a mouse over it or the arrow keys choose the month the readout shows. */\nexport function Selected() {\n  const month = useLocal<string | null>('month', 'Apr');\n  return <LineChart rows={plans} x=\"month\" y={series} label=\"Accounts by plan and month\" value={month.value} onChange={month.set} legend=\"none\" size=\"sm\" data-testid=\"picked\" />;\n}"
+          "source": "import { useLocal } from '@lingxia/view';\nimport type { ChartSeries } from '@liulidesign/charts/Chart';\nimport { LineChart } from '@liulidesign/charts/LineChart';\n\nconst plans = [\n  { month: 'Jan', free: 410, team: 120, pro: 64 }, { month: 'Feb', free: 455, team: 131, pro: 71 }, { month: 'Mar', free: 440, team: 150, pro: 83 },\n  { month: 'Apr', free: 492, team: 171, pro: 88 }, { month: 'May', free: 530, team: 204, pro: 97 }, { month: 'Jun', free: 561, team: 236, pro: 121 },\n];\nconst series: readonly ChartSeries<(typeof plans)[number]>[] = [{ field: 'free', label: 'Free' }, { field: 'team', label: 'Team' }, { field: 'pro', label: 'Pro' }];\n\n/** Dragging across the plot, a mouse over it or the arrow keys choose the month the readout shows. */\nexport function Selected() {\n  const month = useLocal<string | null>('month', 'Apr');\n  return <LineChart rows={plans} x=\"month\" y={series} label=\"Accounts by plan and month\" value={month.value} onChange={month.set} legend=\"none\" size=\"sm\" data-testid=\"picked\" />;\n}"
         },
         {
           "name": "Gaps",
@@ -1560,7 +1560,7 @@
       "status": "preview",
       "since": "2026-11-14",
       "summary": "Parts of one whole, as a ring or a solid pie, listed with their amounts in a legend that selects",
-      "description": "PieChart shows how one total divides into a few parts: spending by category, storage by kind. By default it is a ring with the total in its hole. The parts are named in a legend under it, with their amounts and shares, and a legend row chooses its part: the slice grows, the others step back, and the hole shows the chosen part.",
+      "description": "PieChart shows how one total divides into a few parts: spending by category, storage by kind. Its `nameField`, `valueField` and `keyField` are fields of the rows' own type (`Row`), so a misspelt one fails to compile. By default it is a ring with the total in its hole. The parts are named in a legend under it, with their amounts and shares, and a legend row chooses its part: the slice grows, the others step back, and the hole shows the chosen part.",
       "keywords": [
         "pie chart",
         "donut",
@@ -1575,25 +1575,25 @@
       "props": [
         {
           "name": "rows",
-          "type": "readonly Readonly<Record<string, ChartDatum>>[]",
+          "type": "readonly Row[]",
           "required": true,
           "description": "The rows, one per part, in the order drawn clockwise from the top. Parts without a positive number are left out."
         },
         {
           "name": "nameField",
-          "type": "string",
+          "type": "ChartField<Row>",
           "required": true,
           "description": "The field that names each part: \"category\"."
         },
         {
           "name": "valueField",
-          "type": "string",
+          "type": "ChartField<Row>",
           "required": true,
           "description": "The field that holds each part's amount."
         },
         {
           "name": "keyField",
-          "type": "string",
+          "type": "ChartField<Row>",
           "required": false,
           "description": "The field that identifies a row across updates and in `value`. By default `nameField`."
         },

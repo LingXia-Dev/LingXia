@@ -1,5 +1,5 @@
 import { cx, useBox, type Child, type PointerEvent, type VectorPath } from '@lingxia/view';
-import { Chart, ChartLegend, ChartReadout, type ChartLegendPosition, type ChartRow, type ChartSeries, type ChartSize, type ChartSummarize } from '../Chart/Chart';
+import { Chart, ChartLegend, ChartReadout, type ChartLegendPosition, type ChartField, type ChartRecord, type ChartRow, type ChartSeries, type ChartSize, type ChartSummarize } from '../Chart/Chart';
 import { colorOf, keyOf, numberOf, plain, roleOf, seriesFacts, seriesOf, textOf } from '../internal/data';
 import { pressed, pressedKey, scrubbing } from '../internal/gesture';
 import { box, closed, domain, dot, indexAt, monotone, niceTicks, polyline, reach, runs, scaleY, thin, type Point } from '../internal/geometry';
@@ -9,15 +9,16 @@ import { lineChartRecipe as r } from './LineChart.recipe';
 
 export type LineChartLabels = 'fit' | 'ends' | 'none';
 
-export interface LineChartProps {
+/** `Row` is the app's own record type, so `x`, `y` and `keyField` name its fields and a typo fails to compile. */
+export interface LineChartProps<Row extends ChartRecord<Row> = ChartRow> {
   /** The rows, one per point in time, oldest first. */
-  rows: readonly ChartRow[];
+  rows: readonly Row[];
   /** The field that names each point: "month". */
-  x: string;
+  x: ChartField<Row>;
   /** The field that holds the number, or up to five series drawn as separate lines. A row without a number is a gap. */
-  y: string | readonly ChartSeries[];
+  y: ChartField<Row> | readonly ChartSeries<Row>[];
   /** The field that identifies a row across updates and in `value`. By default `x`. */
-  keyField?: string;
+  keyField?: ChartField<Row>;
   /** The chart's accessible name: "Weight by week". */
   label: string;
   title?: string;
@@ -97,11 +98,12 @@ const heights = { xs: 64, sm: 112, md: 176, lg: 240 } as const;
 const maxRead = 60;
 
 /** A number over time, as a line that fits its data, or as an area measured from zero. */
-export function LineChart({
-  rows: data, x, y, keyField, label, title, description, formatValue: format, summarize, isSmooth = false, hasArea = false,
+export function LineChart<Row extends ChartRecord<Row>>({
+  rows, x, y, keyField, label, title, description, formatValue: format, summarize, isSmooth = false, hasArea = false,
   hasScale, hasEndLabel = false, hasEndDot = hasEndLabel, xLabels, legend = 'bottom', legendLabel, value: selectedKey, onChange: onSelect, hiddenSeries = [], onHiddenSeriesChange,
   domainMin, domainMax, size = 'md', isLoading = false, error, emptyLabel, emptyHint, onRetry, retryLabel, className, 'data-testid': testId,
-}: LineChartProps) {
+}: LineChartProps<Row>) {
+  const data: readonly ChartRow[] = rows;
   const formatValue = format ?? plain;
   const all = seriesOf(y).map((series, index) => ({ ...series, color: colorOf(index, series.color), dash: dashes[index % dashes.length] }));
   const shown = all.filter(series => !hiddenSeries.includes(series.field));

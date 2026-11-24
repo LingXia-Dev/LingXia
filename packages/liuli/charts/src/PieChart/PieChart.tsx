@@ -1,5 +1,5 @@
 import { cx, useBox, type VectorPath } from '@lingxia/view';
-import { Chart, ChartLegend, type ChartColor, type ChartLegendPosition, type ChartRow, type ChartSize, type ChartSummarize } from '../Chart/Chart';
+import { Chart, ChartLegend, type ChartColor, type ChartField, type ChartLegendPosition, type ChartRecord, type ChartRow, type ChartSize, type ChartSummarize } from '../Chart/Chart';
 import { colorOf, keyOf, numberOf, plain, roleOf, seriesFacts, textOf } from '../internal/data';
 import { box, circle, sector } from '../internal/geometry';
 import { remember } from '../internal/memo';
@@ -7,15 +7,16 @@ import { pieChartRecipe as r } from './PieChart.recipe';
 
 export type PieChartVariant = 'donut' | 'pie';
 
-export interface PieChartProps {
+/** `Row` is the app's own record type, so the fields named are its own and a typo fails to compile. */
+export interface PieChartProps<Row extends ChartRecord<Row> = ChartRow> {
   /** The rows, one per part, in the order drawn clockwise from the top. Parts without a positive number are left out. */
-  rows: readonly ChartRow[];
+  rows: readonly Row[];
   /** The field that names each part: "category". */
-  nameField: string;
+  nameField: ChartField<Row>;
   /** The field that holds each part's amount. */
-  valueField: string;
+  valueField: ChartField<Row>;
   /** The field that identifies a row across updates and in `value`. By default `nameField`. */
-  keyField?: string;
+  keyField?: ChartField<Row>;
   /** The chart's accessible name: "Spending by category". */
   label: string;
   title?: string;
@@ -70,11 +71,12 @@ const maxSlices = 24;
 export const otherKey = '__other';
 
 /** Parts of one whole, as a ring with the total in its hole and the parts listed under it. */
-export function PieChart({
-  rows: data, nameField: name, valueField: value, keyField, label, title, description, formatValue: format, formatShare, summarize, variant = 'donut', totalLabel,
+export function PieChart<Row extends ChartRecord<Row>>({
+  rows, nameField: name, valueField: value, keyField, label, title, description, formatValue: format, formatShare, summarize, variant = 'donut', totalLabel,
   otherLabel, maxParts = 5, legend = 'bottom', legendLabel, value: selectedKey, onChange: onSelect, size = 'md',
   isLoading = false, error, emptyLabel, emptyHint, onRetry, retryLabel, className, 'data-testid': testId,
-}: PieChartProps) {
+}: PieChartProps<Row>) {
+  const data: readonly ChartRow[] = rows;
   const formatValue = format ?? plain;
   const listed = data
     .map((row, index) => ({ key: keyOf(row, keyField ?? name, index), name: textOf(row, name), amount: numberOf(row, value) }))
