@@ -1074,6 +1074,15 @@ fn stop_session(project_root: &Path, selector: Option<&str>) -> Result<()> {
                 }
             }
             println!("{message}");
+            // Each instance has its own broker, so its sessions are not listed above.
+            if selector.is_none() {
+                for instance in runner::other_live_instances(project_root) {
+                    println!(
+                        "A Runner session of this project runs under instance {instance:?}: \
+                         `LINGXIA_RUNNER_INSTANCE={instance} lingxia dev stop`"
+                    );
+                }
+            }
             Ok(())
         }
     }

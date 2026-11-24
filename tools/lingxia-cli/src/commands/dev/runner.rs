@@ -1427,6 +1427,25 @@ struct RunnerOwner {
     label: String,
 }
 
+/// Instances other than this process's whose Runner session of `project_root` is alive.
+pub(super) fn other_live_instances(project_root: &Path) -> Vec<String> {
+    let current = broker_instance();
+    let mut found: Vec<String> = std::fs::read_dir(log_store::dev_dir(project_root))
+        .into_iter()
+        .flatten()
+        .flatten()
+        .filter_map(|entry| {
+            let name = entry.file_name().into_string().ok()?;
+            let instance = name.strip_prefix("runner-")?.strip_suffix(".owner")?;
+            (Some(instance) != current.as_deref()
+                && read_owner(&entry.path()).is_some_and(|owner| owner_alive(&owner)))
+            .then(|| instance.to_string())
+        })
+        .collect();
+    found.sort();
+    found
+}
+
 fn read_owner(owner_file: &Path) -> Option<RunnerOwner> {
     parse_owner(&std::fs::read_to_string(owner_file).ok()?)
 }
@@ -1640,13 +1659,38 @@ fn installed_runner_version(app_path: &Path) -> Result<Option<String>> {
 mod tests {
     use super::{
         RunnerDevTarget, RunnerOwner, RunnerSlot, WindowsRunnerLxAppIdentity,
-        is_standalone_lxapp_project, lxapp_runner_build_args, owner_alive, parse_owner,
+        is_standalone_lxapp_project, log_store, lxapp_runner_build_args, other_live_instances,
+        owner_alive, parse_owner, process_start_time,
         prepare_windows_runner_assets, prepare_windows_runner_web_assets, resolve_dev_target,
         windows_runner_launch_args, windows_runner_ui_json, windows_web_runner_launch_args,
     };
     use crate::config::HOST_CONFIG_FILE;
     use std::fs;
     use tempfile::tempdir;
+
+    #[test]
+    fn another_instances_live_session_is_found_for_stop() {
+        let project = tempdir().unwrap();
+        let dev = log_store::dev_dir(project.path());
+        fs::create_dir_all(&dev).unwrap();
+        let me = std::process::id();
+        let started = process_start_time(me).unwrap();
+        fs::write(
+            dev.join("runner-alive.owner"),
+            format!("{me} {started} demo"),
+        )
+        .unwrap();
+        fs::write(
+            dev.join("runner-gone.owner"),
+            format!("{me} {} demo", started + 1),
+        )
+        .unwrap();
+        fs::write(dev.join("runner.owner"), format!("{me} {started} demo")).unwrap();
+        assert_eq!(
+            other_live_instances(project.path()),
+            vec!["alive".to_string()]
+        );
+    }
 
     #[test]
     fn runner_slots_are_per_project_and_instance() {
