@@ -324,6 +324,14 @@ pub(super) fn read_app_id(lxapp_dir: &Path) -> Result<String> {
         .ok_or_else(|| anyhow::anyhow!("lxapp.json is missing appId"))
 }
 
+/// The `lxapp.json` keys a dev reload cannot apply, joined for the message, or `None`. A reload
+/// recreates the lxapp from its rebuilt manifest, so every key applies except `appId`: the session
+/// and the build address the lxapp by the id it started with.
+fn relaunch_keys(root: &WatchRoot) -> Option<String> {
+    let app_id = read_app_id(&root.path).ok()?;
+    (app_id != root.app_id).then(|| "appId".to_string())
+}
+
 /// Events carry resolved paths (FSEvents on macOS), so a `../guest` bundle
 /// root must be resolved too or no save under it ever matches.
 fn resolved_root(mut root: WatchRoot) -> WatchRoot {
@@ -529,6 +537,16 @@ fn run_watch(
                         .map(|seen| seen.elapsed())
                         .unwrap_or_default();
                     let root = roots.iter().find(|root| root.app_id == app_id);
+                    if let Some(root) = root
+                        && let Some(keys) = relaunch_keys(root)
+                    {
+                        println!(
+                            "  {} {}: lxapp.json needs a relaunch: {keys} (restart `lingxia dev`)",
+                            "•".yellow(),
+                            app_id.cyan()
+                        );
+                        continue;
+                    }
                     // Any dev session swaps, `--release` included: the host's dev features decide.
                     if let Some(root) = root
                         && hot_swap(&state, &app_id, &root.path, &paths, &mut compilers, waited)
@@ -888,6 +906,26 @@ mod tests {
                 path: temp.path().to_path_buf(),
             }]
         );
+    }
+
+    #[test]
+    fn a_changed_app_id_needs_a_relaunch_and_other_keys_do_not() {
+        let temp = tempfile::tempdir().unwrap();
+        let manifest = temp.path().join("lxapp.json");
+        let root = WatchRoot {
+            app_id: "chat".into(),
+            path: temp.path().to_path_buf(),
+        };
+        write(
+            &manifest,
+            r#"{"appId":"chat","appName":"Talk","languages":["fr"],"pages":[]}"#,
+        );
+        assert_eq!(relaunch_keys(&root), None);
+        write(&manifest, r#"{"appId":"chat2","pages":[]}"#);
+        assert_eq!(relaunch_keys(&root).as_deref(), Some("appId"));
+        // A manifest mid-save is not a relaunch: the next save decides.
+        write(&manifest, r#"{"appId":"#);
+        assert_eq!(relaunch_keys(&root), None);
     }
 
     #[test]
