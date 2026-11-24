@@ -24,6 +24,7 @@ const TONGUE_HIT_W_VP = 28;
 const TONGUE_HIT_W_COUNT_VP = 32;
 const TONGUE_HIT_H_VP = 88;
 const PULL_VP = 16;
+const TONGUE_ICON_VP = 18;
 const DEFAULT_ACCENT = 'rgba(22,119,255,1)';
 
 function argbCss(color: number): string {
@@ -105,10 +106,17 @@ export function asidePalette(dark: boolean): AsidePalette {
 // matrix recolors any art, like a template image. Takes '#AARRGGBB'.
 function iconTint(argb: string): ColorFilter {
   const hex = argb.replace('#', '');
-  const a: number = parseInt(hex.substring(0, 2), 16) / 255;
-  const r: number = parseInt(hex.substring(2, 4), 16) / 255;
-  const g: number = parseInt(hex.substring(4, 6), 16) / 255;
-  const b: number = parseInt(hex.substring(6, 8), 16) / 255;
+  return tintMatrix(parseInt(hex.substring(2, 4), 16) / 255, parseInt(hex.substring(4, 6), 16) / 255,
+    parseInt(hex.substring(6, 8), 16) / 255, parseInt(hex.substring(0, 2), 16) / 255);
+}
+
+/** The same tint from a CSS `rgba(r,g,b,a)`, the form the accent is kept in. */
+function cssTint(rgba: string): ColorFilter {
+  const parts = rgba.replace(/[^0-9.,]/g, '').split(',').map((v: string) => Number(v));
+  return tintMatrix(parts[0] / 255, parts[1] / 255, parts[2] / 255, parts.length > 3 ? parts[3] : 1);
+}
+
+function tintMatrix(r: number, g: number, b: number, a: number): ColorFilter {
   return new ColorFilter([
     0, 0, 0, r, 0,
     0, 0, 0, g, 0,
@@ -583,11 +591,11 @@ export struct AsideRegion {
         if (this.state.maximizeVisible) {
           this.ControlIcon(
             this.state.maximized ? $rawfile('icons/icon_fullscreen_exit.svg') : $rawfile('icons/icon_fullscreen_enter.svg'),
-            CONTROL_VP, false, 1, this.label(this.state.maximized ? 'lx_aside_restore' : 'lx_aside_maximize'),
+            CONTROL_VP, 1, this.label(this.state.maximized ? 'lx_aside_restore' : 'lx_aside_maximize'),
             () => AsideRegionModel.toggleMaximized())
         }
-        // The chevron points at the trailing pane, so it turns with the layout direction.
-        this.ControlIcon($rawfile('icons/icon_aside_collapse.svg'), CONTROL_VP, true, 1,
+        // The panel stays at the right edge in either layout direction, so its arrows never flip.
+        this.ControlIcon($rawfile('icons/icon_aside_collapse.svg'), CONTROL_VP, 1,
           this.label('lx_aside_collapse'), () => AsideRegionModel.collapse())
       }
       .width('100%')
@@ -655,13 +663,12 @@ export struct AsideRegion {
 
   /** A strip control drawn from the design icon set, at Android's size and inset. */
   @Builder
-  ControlIcon(src: Resource, size: number, directional: boolean, opacity: number, label: string, action: () => void) {
+  ControlIcon(src: Resource, size: number, opacity: number, label: string, action: () => void) {
     Image(src)
       .width(size)
       .height(size)
       .padding(size / ICON_INSET_DIVISOR)
       .objectFit(ImageFit.Contain)
-      .matchTextDirection(directional)
       .colorFilter(iconTint(asidePalette(this.state.dark).muted))
       .opacity(opacity)
       .accessibilityText(label)
@@ -679,7 +686,7 @@ export struct AsideRegion {
 
   @Builder
   CloseButton(id: string, selected: boolean) {
-    this.ControlIcon($rawfile('icons/icon_close_x.svg'), CLOSE_VP, false, selected ? 1 : 0.65,
+    this.ControlIcon($rawfile('icons/icon_close_x.svg'), CLOSE_VP, selected ? 1 : 0.65,
       this.label('lx_common_close'), () => AsideRegionModel.close(id))
   }
 
@@ -802,16 +809,6 @@ struct AsideTongue {
     ctx.stroke();
 
     const cx = (inner + outer) / 2;
-    const cy = h / 2 - (counted ? 7 : 0);
-    ctx.beginPath();
-    ctx.moveTo(cx + 2.5, cy - 4);
-    ctx.lineTo(cx - 2.5, cy);
-    ctx.lineTo(cx + 2.5, cy + 4);
-    ctx.lineWidth = 1.6;
-    ctx.lineCap = 'round';
-    ctx.lineJoin = 'round';
-    ctx.strokeStyle = this.accent;
-    ctx.stroke();
     if (counted) {
       ctx.fillStyle = this.accent;
       ctx.font = 'bold 11vp sans-serif';
@@ -822,9 +819,30 @@ struct AsideTongue {
   }
 
   build() {
-    Canvas(this.ctx)
-      .width('100%')
-      .height('100%')
-      .onReady(() => this.draw())
+    Stack({ alignContent: Alignment.TopStart }) {
+      Canvas(this.ctx)
+        .width('100%')
+        .height('100%')
+        .onReady(() => this.draw())
+      // Centred on the tongue's face; with a count it rises to leave the number room.
+      Image($rawfile('icons/icon_aside_expand.svg'))
+        .width(TONGUE_ICON_VP)
+        .height(TONGUE_ICON_VP)
+        .objectFit(ImageFit.Contain)
+        .colorFilter(cssTint(this.accent))
+        .position({
+          x: this.faceCenter() - TONGUE_ICON_VP / 2,
+          y: TONGUE_HIT_H_VP / 2 - (this.count > 1 ? 7 : 0) - TONGUE_ICON_VP / 2
+        })
+    }
+    .width('100%')
+    .height('100%')
+  }
+
+  /** The middle of the tongue's face, between its slanted inner side and the window edge. */
+  private faceCenter(): number {
+    const counted = this.count > 1;
+    const outer = counted ? TONGUE_HIT_W_COUNT_VP : TONGUE_HIT_W_VP;
+    return (outer + outer - (counted ? 18 : 14)) / 2;
   }
 }
