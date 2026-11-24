@@ -53,6 +53,8 @@ fn a_rejection_fails_the_page_as_the_throw_would() {
     }
 }
 
+// A dev build fails the page for this too, so only a shipped build keeps it.
+#[cfg(not(feature = "dev"))]
 #[test]
 fn without_automation_a_failed_handler_is_logged_and_the_page_stays() {
     // A sync throw discards its turn's writes; an async handler's writes before it failed stay.
@@ -93,4 +95,22 @@ fn without_automation_a_failed_handler_is_logged_and_the_page_stays() {
             .collect();
         assert_eq!(logged.len(), 2, "{name}: once per tap: {warnings:?}");
     }
+}
+
+#[cfg(feature = "dev")]
+#[test]
+fn in_a_dev_build_a_failed_handler_fails_the_page_without_automation() {
+    let page = "function render(){return h('button',{'data-testid':'go',style:{width:100,height:40},onClick:()=>{throw Error('no seats')}},'go')}";
+    let worker = ViewWorker::spawn("test-handler-dev-throw").unwrap();
+    let platform = Platform::new(&[&worker]);
+    let host = platform.host(&worker, &source(page), false);
+    host.set_visible(true);
+    platform.settle(&[&host]);
+    tap(&host, 20.0, 20.0);
+    platform.settle(&[&host]);
+    let error = host.failure().expect("the page failed").error;
+    assert!(
+        error.starts_with("UI_HANDLER: onClick of <button data-testid=\"go\"> threw: no seats"),
+        "{error}"
+    );
 }
