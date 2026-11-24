@@ -1,9 +1,9 @@
-import { useLocal, type ReadonlyData } from '@lingxia/view';
+import { useLocal, type ColorRole, type ColorSeries, type ReadonlyData } from '@lingxia/view';
 import type { ChartData } from './stream-types';
 import { chartScale } from './chart-scale';
 import { chartPercentages } from './chart-percent';
 
-const palette = ['chart-1', 'chart-2', 'chart-3', 'chart-4', 'chart-5'];
+const palette: readonly ColorRole[] = ['chart-1', 'chart-2', 'chart-3', 'chart-4', 'chart-5'];
 const plotHeight = 128,
   axisTop = 12,
   axisSpan = 120;
@@ -23,7 +23,7 @@ export function Chart({ data }: { data: ReadonlyData<ChartData> }) {
   const scale = chartScale(values);
   const tickY = (value: number) => axisTop + ((scale.max - value) / (scale.max - scale.min)) * axisSpan;
   const axisNumber = (value: number) => String(Number(value.toPrecision(3)));
-  const colors = visible.map(index => {
+  const colors = visible.map((index): ColorSeries => {
     const color = pie ? palette[index % palette.length] : palette[0];
     // A selection dims the other bars and slices rather than recolouring the chosen one.
     return selected.value < 0 || index === selected.value || data.kind === 'line' ? color : `${color}/60`;

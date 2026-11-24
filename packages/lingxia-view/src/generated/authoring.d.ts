@@ -505,6 +505,15 @@ export interface Env {
   readonly textScale: number;
 }
 
+/** A theme colour role; it resolves per appearance, so `dark:` is never needed on one. */
+export type ColorRole = "canvas" | "surface" | "surface-raised" | "surface-sunken" | "line" | "text" | "text-muted" | "text-faint" | "accent" | "on-accent" | "accent-soft" | "on-accent-soft" | "danger" | "on-danger" | "danger-soft" | "success" | "on-success" | "success-soft" | "warning" | "on-warning" | "warning-soft" | "focus" | "scrim" | "chart-1" | "chart-2" | "chart-3" | "chart-4" | "chart-5" | "line-strong" | "selection" | "shadow" | "media" | "on-media" | "surface-overlay" | "knob" | "success-mark" | "warning-mark" | "danger-mark" | "media-canvas" | "info" | "on-info" | "info-soft" | "info-mark" | "hue-1" | "hue-2" | "hue-3" | "hue-4" | "hue-5" | "hue-6" | "hue-7" | "hue-8" | "hue-1-soft" | "hue-2-soft" | "hue-3-soft" | "hue-4-soft" | "hue-5-soft" | "hue-6-soft" | "hue-7-soft" | "hue-8-soft" | "chart-6" | "chart-7" | "chart-8" | "accent-solid" | "on-accent-solid" | "danger-solid" | "on-danger-solid" | "accent-solid-hover" | "accent-solid-pressed" | "danger-solid-hover" | "danger-solid-pressed";
+/** A role at an alpha percent, 0 to 100 (`'accent/12'`). */
+export type ColorAlpha = `${ColorRole}/${number}`;
+/** A page colour: a role, a role at an alpha percent, or `'transparent'`. */
+export type ColorValue = ColorRole | ColorAlpha | "transparent";
+/** A `<plot>` series colour: a role, usually `'chart-1'` to `'chart-8'`, or one at an alpha percent. */
+export type ColorSeries = ColorRole | ColorAlpha;
+
 /** CSS-named style; each element accepts the subset its `*Style` type lists. */
 export interface Style {
   width?: number | `${number}%` | `${number}vw` | `${number}vh` | `${number}ch` | "auto" | "fit-content" | "max-content" | "min-content";
@@ -545,7 +554,7 @@ export interface Style {
   order?: number;
   opacity?: number;
   overflow?: "visible" | "hidden";
-  backgroundColor?: string | "currentColor";
+  backgroundColor?: ColorValue | "currentColor";
   backgroundImage?: BackgroundGradient | "none";
   borderRadius?: number;
   borderTopLeftRadius?: number;
@@ -564,7 +573,7 @@ export interface Style {
   borderInlineStartWidth?: number;
   borderInlineEndWidth?: number;
   borderStyle?: "solid" | "dashed" | "dotted";
-  borderColor?: string | "currentColor";
+  borderColor?: ColorValue | "currentColor";
   boxShadow?: ReadonlyArray<BoxShadow> | "none";
   ring?: Ring | "none";
   backdropFilter?: string;
@@ -596,7 +605,7 @@ export interface Style {
   gridAutoRows?: string;
   gridAutoFlow?: "row" | "column" | "row dense" | "column dense";
   justifyItems?: "start" | "center" | "end" | "stretch" | "baseline" | "safe center" | "safe end";
-  color?: string;
+  color?: ColorValue;
   fontSize?: number;
   fontWeight?: number;
   fontFamily?: "sans-serif" | "monospace" | "serif" | (string & {});
@@ -608,7 +617,7 @@ export interface Style {
   textAlign?: "start" | "end" | "left" | "center" | "right" | "justify";
   textDecorationLine?: "none" | "line-through" | "underline";
   textDecorationStyle?: "solid" | "dashed" | "dotted";
-  textDecorationColor?: string | "currentColor";
+  textDecorationColor?: ColorValue | "currentColor";
   textTransform?: "none" | "uppercase" | "lowercase" | "capitalize";
   backgroundClip?: "border-box" | "text";
   whiteSpace?: "normal" | "nowrap" | "pre" | "pre-wrap" | "pre-line";
@@ -622,7 +631,7 @@ export interface Style {
   scrollSnapStop?: "normal" | "always";
   scrollSnapType?: "none" | "x" | "y";
   scrollSnapAlign?: "none" | "start" | "center" | "end";
-  placeholderColor?: string;
+  placeholderColor?: ColorValue;
   objectFit?: "cover" | "contain" | "fill";
   objectPosition?: string;
 }
@@ -686,7 +695,7 @@ export type DialogProps = Omit<Props, "style" | "children" | "role"> & { role?: 
 export type PlotStyle = Pick<Style, "width" | "height" | "minWidth" | "minHeight" | "maxWidth" | "aspectRatio" | "maxHeight" | "margin" | "marginTop" | "marginRight" | "marginBottom" | "marginLeft" | "marginInlineStart" | "marginInlineEnd" | "position" | "inset" | "top" | "right" | "bottom" | "left" | "insetInlineStart" | "insetInlineEnd" | "zIndex" | "positionArea" | "flexGrow" | "flexShrink" | "flexBasis" | "alignSelf" | "gridColumn" | "gridColumnStart" | "gridColumnEnd" | "gridRow" | "gridRowStart" | "gridRowEnd" | "justifySelf" | "order" | "opacity" | "overflow" | "backgroundColor" | "backgroundImage" | "borderRadius" | "borderTopLeftRadius" | "borderTopRightRadius" | "borderBottomRightRadius" | "borderBottomLeftRadius" | "borderStartStartRadius" | "borderStartEndRadius" | "borderEndStartRadius" | "borderEndEndRadius" | "borderWidth" | "borderTopWidth" | "borderRightWidth" | "borderBottomWidth" | "borderLeftWidth" | "borderInlineStartWidth" | "borderInlineEndWidth" | "borderStyle" | "borderColor" | "boxShadow" | "ring" | "backdropFilter" | "translate" | "rotate" | "scale" | "transformOrigin" | "filter" | "display" | "touchTarget" | "scrollSnapAlign">;
 /** The roles a `<plot>` takes; reference/elements.md says where the others go. */
 export type PlotRole = "heading" | "list" | "listitem" | "alert" | "status" | "grid" | "gridcell" | "listbox" | "option" | "menu" | "progressbar" | "group" | "tooltip";
-export type PlotProps = Omit<Props, "style" | "children" | "role"> & { role?: PlotRole; style?: PlotStyle; children?: never; onLayout?: (box: BoxSize) => void; box?: Box; kind: "bar" | "line" | "pie"; values: readonly number[]; colors: readonly string[]; "aria-label": string; smooth?: boolean; area?: boolean; selectedIndex?: number; domainMin?: number; domainMax?: number; onSelect?: (index: number) => void; pieLayout?: PieLayout; markerEmphasisScale?: number; };
+export type PlotProps = Omit<Props, "style" | "children" | "role"> & { role?: PlotRole; style?: PlotStyle; children?: never; onLayout?: (box: BoxSize) => void; box?: Box; kind: "bar" | "line" | "pie"; values: readonly number[]; colors: readonly ColorSeries[]; "aria-label": string; smooth?: boolean; area?: boolean; selectedIndex?: number; domainMin?: number; domainMax?: number; onSelect?: (index: number) => void; pieLayout?: PieLayout; markerEmphasisScale?: number; };
 export type VectorStyle = Pick<Style, "width" | "height" | "minWidth" | "minHeight" | "maxWidth" | "aspectRatio" | "maxHeight" | "margin" | "marginTop" | "marginRight" | "marginBottom" | "marginLeft" | "marginInlineStart" | "marginInlineEnd" | "position" | "inset" | "top" | "right" | "bottom" | "left" | "insetInlineStart" | "insetInlineEnd" | "zIndex" | "positionArea" | "flexGrow" | "flexShrink" | "flexBasis" | "alignSelf" | "gridColumn" | "gridColumnStart" | "gridColumnEnd" | "gridRow" | "gridRowStart" | "gridRowEnd" | "justifySelf" | "order" | "opacity" | "overflow" | "backgroundColor" | "backgroundImage" | "borderRadius" | "borderTopLeftRadius" | "borderTopRightRadius" | "borderBottomRightRadius" | "borderBottomLeftRadius" | "borderStartStartRadius" | "borderStartEndRadius" | "borderEndStartRadius" | "borderEndEndRadius" | "borderWidth" | "borderTopWidth" | "borderRightWidth" | "borderBottomWidth" | "borderLeftWidth" | "borderInlineStartWidth" | "borderInlineEndWidth" | "borderStyle" | "borderColor" | "boxShadow" | "ring" | "backdropFilter" | "translate" | "rotate" | "scale" | "transformOrigin" | "filter" | "display" | "touchTarget" | "scrollSnapAlign" | "padding" | "paddingTop" | "paddingRight" | "paddingBottom" | "paddingLeft" | "paddingInlineStart" | "paddingInlineEnd" | "color" | "objectFit">;
 /** The roles a `<vector>` takes; reference/elements.md says where the others go. */
 export type VectorRole = "heading" | "list" | "listitem" | "alert" | "status" | "grid" | "gridcell" | "listbox" | "option" | "menu" | "progressbar" | "group" | "tooltip";

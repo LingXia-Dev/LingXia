@@ -46,7 +46,7 @@ Numbers are logical pixels. **Paint** keys are the only ones `focus:`, `active:`
 | `order` | `number` | `order` |  | all but `<span>` `<link>` |
 | `opacity` | `number` | `opacity` | yes | all but `<span>` `<link>` |
 | `overflow` | `"visible" \| "hidden"` | `overflow` |  | all but `<span>` `<link>` |
-| `backgroundColor` | `string \| "currentColor"` | `background-color` | yes | every element |
+| `backgroundColor` | `ColorValue \| "currentColor"` | `background-color` | yes | every element |
 | `backgroundImage` | `BackgroundGradient \| "none"` |  | yes | all but `<span>` `<link>` |
 | `borderRadius` | `number` | `border-radius` |  | all but `<span>` `<link>` |
 | `borderTopLeftRadius` | `number` | `border-top-left-radius` |  | all but `<span>` `<link>` |
@@ -65,7 +65,7 @@ Numbers are logical pixels. **Paint** keys are the only ones `focus:`, `active:`
 | `borderInlineStartWidth` | `number` | `border-inline-start-width` |  | all but `<span>` `<link>` |
 | `borderInlineEndWidth` | `number` | `border-inline-end-width` |  | all but `<span>` `<link>` |
 | `borderStyle` | `"solid" \| "dashed" \| "dotted"` | `border-style` |  | all but `<span>` `<link>` |
-| `borderColor` | `string \| "currentColor"` | `border-color` | yes | all but `<span>` `<link>` |
+| `borderColor` | `ColorValue \| "currentColor"` | `border-color` | yes | all but `<span>` `<link>` |
 | `boxShadow` | `ReadonlyArray<BoxShadow> \| "none"` |  | yes | all but `<span>` `<link>` |
 | `ring` | `Ring \| "none"` |  | yes | all but `<span>` `<link>` |
 | `backdropFilter` | `string` |  |  | all but `<span>` `<link>` |
@@ -97,7 +97,7 @@ Numbers are logical pixels. **Paint** keys are the only ones `focus:`, `active:`
 | `gridAutoRows` | `string` | `grid-auto-rows` |  | `<view>` `<page>` `<button>` `<dialog>` |
 | `gridAutoFlow` | `"row" \| "column" \| "row dense" \| "column dense"` | `grid-auto-flow` |  | `<view>` `<page>` `<button>` `<dialog>` |
 | `justifyItems` | `"start" \| "center" \| "end" \| "stretch" \| "baseline" \| "safe center" \| "safe end"` | `justify-items` |  | `<view>` `<page>` `<button>` `<dialog>` |
-| `color` | `string` | `color` | yes | all but `<image>` `<plot>` `<video>` `<webview>` |
+| `color` | `ColorValue` | `color` | yes | all but `<image>` `<plot>` `<video>` `<webview>` |
 | `fontSize` | `number` | `font-size` |  | all but `<image>` `<slider>` `<plot>` `<vector>` `<video>` `<webview>` |
 | `fontWeight` | `number` | `font-weight` |  | all but `<image>` `<slider>` `<plot>` `<vector>` `<video>` `<webview>` |
 | `fontFamily` | `"sans-serif" \| "monospace" \| "serif" \| (string & {})` | `font-family` |  | all but `<image>` `<slider>` `<plot>` `<vector>` `<video>` `<webview>` |
@@ -109,7 +109,7 @@ Numbers are logical pixels. **Paint** keys are the only ones `focus:`, `active:`
 | `textAlign` | `"start" \| "end" \| "left" \| "center" \| "right" \| "justify"` | `text-align` |  | all but `<image>` `<slider>` `<plot>` `<vector>` `<span>` `<link>` `<video>` `<webview>` |
 | `textDecorationLine` | `"none" \| "line-through" \| "underline"` | `text-decoration-line` |  | all but `<image>` `<slider>` `<plot>` `<vector>` `<video>` `<webview>` |
 | `textDecorationStyle` | `"solid" \| "dashed" \| "dotted"` | `text-decoration-style` |  | all but `<image>` `<slider>` `<plot>` `<vector>` `<video>` `<webview>` |
-| `textDecorationColor` | `string \| "currentColor"` | `text-decoration-color` |  | all but `<image>` `<slider>` `<plot>` `<vector>` `<video>` `<webview>` |
+| `textDecorationColor` | `ColorValue \| "currentColor"` | `text-decoration-color` |  | all but `<image>` `<slider>` `<plot>` `<vector>` `<video>` `<webview>` |
 | `textTransform` | `"none" \| "uppercase" \| "lowercase" \| "capitalize"` | `text-transform` |  | all but `<image>` `<slider>` `<plot>` `<vector>` `<span>` `<link>` `<video>` `<webview>` |
 | `backgroundClip` | `"border-box" \| "text"` | `background-clip` |  | `<text>` `<select>` |
 | `whiteSpace` | `"normal" \| "nowrap" \| "pre" \| "pre-wrap" \| "pre-line"` | `white-space` |  | all but `<image>` `<slider>` `<plot>` `<vector>` `<span>` `<link>` `<video>` `<webview>` |
@@ -123,7 +123,7 @@ Numbers are logical pixels. **Paint** keys are the only ones `focus:`, `active:`
 | `scrollSnapStop` | `"normal" \| "always"` | `scroll-snap-stop` |  | `<scroll>` `<List>` |
 | `scrollSnapType` | `"none" \| "x" \| "y"` | `scroll-snap-type` |  | `<scroll>` `<List>` |
 | `scrollSnapAlign` | `"none" \| "start" \| "center" \| "end"` | `scroll-snap-align` |  | all but `<span>` `<link>` |
-| `placeholderColor` | `string` |  | yes | `<input>` `<textarea>` `<select>` |
+| `placeholderColor` | `ColorValue` |  | yes | `<input>` `<textarea>` `<select>` |
 | `objectFit` | `"cover" \| "contain" \| "fill"` | `object-fit` |  | `<image>` `<vector>` `<video>` |
 | `objectPosition` | `string` | `object-position` |  | `<image>` `<video>` |
 
@@ -220,7 +220,8 @@ Numbers are logical pixels. **Paint** keys are the only ones `focus:`, `active:`
 Every colour is one of these roles, optionally with an alpha percent (`accent/12`). The utility drops a `text-`
 prefix (`text-muted`, not `text-text-muted`). The theme pack resolves each role per appearance and proves the
 listed contrast minimums. `defaultPalette` from `@lingxia/view/theme` holds the default pack resolved for light and
-dark, derived accent roles included, for proving contrast in code.
+dark, derived accent roles included, for proving contrast in code. In TypeScript a role is `ColorRole`, a style
+colour `ColorValue` (a role, `role/NN` or `transparent`) and a `<plot>` series `ColorSeries`.
 
 A pack writes the authored roles. Fixed roles are the same in every pack, and derived roles are computed from the
 authored ones and the accent seed, unless a pack sets them.

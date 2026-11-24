@@ -314,7 +314,7 @@ Children: none.
 | `box` | `Box` |  |
 | `kind` | `"bar" \| "line" \| "pie"` | yes |
 | `values` | `readonly number[]` | yes |
-| `colors` | `readonly string[]` | yes |
+| `colors` | `readonly ColorSeries[]` | yes |
 | `aria-label` | `string` | yes |
 | `smooth` | `boolean` |  |
 | `area` | `boolean` |  |

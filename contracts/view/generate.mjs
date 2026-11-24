@@ -499,6 +499,15 @@ export interface Env {
 ${Object.entries(schema.environment).filter(([, entry]) => !entry.internal).map(([key, entry]) => `${entry.doc ? `  /** ${entry.doc} */\n` : ''}  readonly ${key}${entry.absent ? '?' : ''}: ${entry.type};`).join('\n')}
 }
 
+/** A theme colour role; it resolves per appearance, so \`dark:\` is never needed on one. */
+export type ColorRole = ${schema.roles.map(role => JSON.stringify(role.name)).join(' | ')};
+/** A role at an alpha percent, 0 to 100 (\`'accent/12'\`). */
+export type ColorAlpha = \`\${ColorRole}/\${number}\`;
+/** A page colour: a role, a role at an alpha percent, or \`'transparent'\`. */
+export type ColorValue = ColorRole | ColorAlpha | "transparent";
+/** A \`<plot>\` series colour: a role, usually \`'chart-1'\` to \`'chart-8'\`, or one at an alpha percent. */
+export type ColorSeries = ColorRole | ColorAlpha;
+
 /** CSS-named style; each element accepts the subset its \`*Style\` type lists. */
 export interface Style {
 ${style}
