@@ -2484,23 +2484,6 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
         controlSessionIndicator = nil
     }
 
-    /// Open a browser-local management surface as a main browser
-    /// tab via the unified switcher — same path as the sidebar buttons, so it
-    /// detaches the lxapp cleanly. Only explicit browser-local callers use this;
-    /// generic managed-surface declaration misses never fall through here.
-    func openBuiltinShellSurface(id: String) -> Bool {
-        switch id {
-        case "downloads":
-            browserCoordinator.openDownloads()
-            return true
-        case "bookmarks":
-            browserCoordinator.openBookmarks()
-            return true
-        default:
-            return false
-        }
-    }
-
     /// Present the "ready to update" card with release notes. Clicking Restart
     /// Now applies the staged update; Later dismisses. Reached by clicking the
     /// bottom-left "ready" sidebar callout.

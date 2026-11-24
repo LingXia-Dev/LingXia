@@ -6,9 +6,7 @@ use futures::{
     StreamExt,
     channel::{mpsc, oneshot},
 };
-use lingxia_platform::traits::app_runtime::{
-    AppRuntime, OpenUrlRequest, OpenUrlTarget,
-};
+use lingxia_platform::traits::app_runtime::{AppRuntime, OpenUrlRequest, OpenUrlTarget};
 use lingxia_platform::traits::ui::WindowChrome;
 use lingxia_platform::traits::ui::{SurfaceKind, SurfacePosition};
 use lxapp::{
@@ -657,7 +655,7 @@ pub(crate) async fn open_url_text(
     copy_options(&options, &spec, &["edge", "size"])?;
 
     let key = read_surface_key(&options)?;
-    let opened = open_url_spec(ctx.clone(), &spec, None).await?;
+    let opened = open_url_spec(ctx.clone(), &spec).await?;
     browser_tab_handle(&ctx, opened, &realized, key)
 }
 
@@ -1695,11 +1693,7 @@ fn page_surface_options(ctx: &JSContext, spec: &JSObject) -> JSResult<JSValue> {
 /// With `as: 'aside'` the url is docked beside the main as a closable browser
 /// tab strip on desktop. Compact hosts project the same request into the
 /// full-screen in-app browser with aside chrome.
-async fn open_url_spec(
-    ctx: JSContext,
-    spec: &JSObject,
-    _privileged_invocation: Option<&lxapp::host::HostInvocationContext>,
-) -> JSResult<JSValue> {
+async fn open_url_spec(ctx: JSContext, spec: &JSObject) -> JSResult<JSValue> {
     let raw_url = read_required_string(spec, "url")?;
     let lxapp = LxApp::from_ctx(&ctx)?;
     let trimmed_url = raw_url.trim_matches(|character: char| character.is_ascii_whitespace());
@@ -1761,7 +1755,6 @@ fn classify_logic_url(url: &str) -> LogicUrlClassification {
     }
     LogicUrlClassification::External
 }
-
 
 /// Hand a URL to the OS: `https` opens the system browser, `tel:` and
 /// `mailto:` their apps.
@@ -3723,18 +3716,12 @@ mod tests {
     }
 
     #[test]
-    fn downloads_is_reserved_for_the_fixed_shell_entry() {
-        assert_eq!(
-            classify_logic_url("lingxia://downloads"),
-            LogicUrlClassification::ReservedInternal
-        );
+    fn every_lingxia_url_is_reserved() {
         for rejected in [
+            "lingxia://downloads",
             "lingxia://settings",
             "Lingxia://settings",
-            "lingxia://settings/",
             "lingxia://settings?tab=privacy",
-            "lingxia://settings#clear-site-data?tabId=tab-1",
-            "lingxia://downloads#active",
             "lingxia://history",
         ] {
             assert_eq!(
@@ -3747,18 +3734,6 @@ mod tests {
             classify_logic_url("https://example.com"),
             LogicUrlClassification::External
         );
-    }
-
-    #[test]
-    fn settings_is_reserved_before_ordinary_or_control_caller_authorization() {
-        for caller_is_control in [false, true] {
-            let classification = classify_logic_url("lingxia://settings?tab=privacy");
-            assert_eq!(
-                classification,
-                LogicUrlClassification::ReservedInternal,
-                "caller_is_control={caller_is_control}"
-            );
-        }
     }
 
     #[test]

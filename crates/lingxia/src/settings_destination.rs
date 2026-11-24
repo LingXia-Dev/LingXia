@@ -89,9 +89,10 @@ pub enum SettingsDestinationResolution {
         app_id: String,
         session_id: u64,
     },
+    /// The `app.lingxia.browser` control surface, opened at a page.
     BrowserControlPage {
-        tab_id: String,
-        browser_session_id: u64,
+        app_id: String,
+        session_id: u64,
     },
     NativeAction {
         action_id: String,
@@ -108,7 +109,7 @@ pub enum SettingsDestinationResolveError {
     ControlAppIdentityMismatch { expected: String, actual: String },
     #[error("failed to open Settings control page: {0}")]
     ControlApp(String),
-    #[error("failed to navigate trusted browser Settings page: {0}")]
+    #[error("failed to open browser Settings page: {0}")]
     Browser(String),
     #[error("native Settings action '{action_id}' is not statically declared")]
     NativeActionNotDeclared { action_id: String },
@@ -126,8 +127,8 @@ struct ControlPageIdentity {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct BrowserPageIdentity {
-    tab_id: String,
-    browser_session_id: u64,
+    app_id: String,
+    session_id: u64,
 }
 
 trait SettingsDestinationRuntime {
@@ -191,15 +192,12 @@ impl SettingsDestinationRuntime for BootstrapSettingsDestinationRuntime {
         let authority = CONTROL_AUTHORITY
             .get()
             .ok_or_else(|| "native Settings control authority is not initialized".to_string())?;
-        let app = lxapp::open_control_surface_lxapp_page(
-            authority,
-            "app.lingxia.browser",
-            options,
-        )
-        .map_err(|error| error.to_string())?;
+        let app =
+            lxapp::open_control_surface_lxapp_page(authority, crate::browser::APP_ID, options)
+                .map_err(|error| error.to_string())?;
         Ok(BrowserPageIdentity {
-            tab_id: app.appid.clone(),
-            browser_session_id: app.session_id(),
+            app_id: app.appid.clone(),
+            session_id: app.session_id(),
         })
     }
 
@@ -263,8 +261,8 @@ fn resolve_from_snapshot(
                 .navigate_browser_control_page(&route, query.as_ref())
                 .map_err(SettingsDestinationResolveError::Browser)?;
             Ok(SettingsDestinationResolution::BrowserControlPage {
-                tab_id: identity.tab_id,
-                browser_session_id: identity.browser_session_id,
+                app_id: identity.app_id,
+                session_id: identity.session_id,
             })
         }
         SettingsDestination::NativeAction { action_id } => {
@@ -377,7 +375,7 @@ mod tests {
             query: Option<&BTreeMap<String, serde_json::Value>>,
         ) -> Result<BrowserPageIdentity, String> {
             let query = query_value(query);
-            let mut url = format!("lingxia://{}", route.trim_start_matches('/'));
+            let mut url = route.trim_start_matches('/').to_string();
             if let Some(query) = query {
                 url = lxapp::append_page_query(url, &query)?;
             }
@@ -396,8 +394,8 @@ mod tests {
             browser.document = FakeBrowserDocument::Internal(url.clone());
             self.browser_urls.borrow_mut().push(url);
             Ok(BrowserPageIdentity {
-                tab_id: "settings".to_string(),
-                browser_session_id: browser.current_session,
+                app_id: crate::browser::APP_ID.to_string(),
+                session_id: browser.current_session,
             })
         }
 
@@ -513,7 +511,7 @@ mod tests {
     }
 
     #[test]
-    fn browser_page_always_requests_fresh_trusted_navigation() {
+    fn browser_page_always_reopens_the_control_surface() {
         let runtime = FakeRuntime::default();
         runtime.set_browser(FakeBrowserState {
             current_session: 10,
@@ -526,15 +524,12 @@ mod tests {
         let first = resolve_from_snapshot(&browser_snapshot(), &runtime).unwrap();
         assert!(matches!(
             first,
-            SettingsDestinationResolution::BrowserControlPage {
-                browser_session_id: 10,
-                ..
-            }
+            SettingsDestinationResolution::BrowserControlPage { session_id: 10, .. }
         ));
         assert_eq!(runtime.browser_state().navigation_count, 1);
         assert_eq!(runtime.browser_state().generation, 1);
 
-        // Same stable tab and same URL still performs another trusted load.
+        // The same page and query still reopens.
         resolve_from_snapshot(&browser_snapshot(), &runtime).unwrap();
         assert_eq!(runtime.browser_state().navigation_count, 2);
 
@@ -543,7 +538,7 @@ mod tests {
         assert_eq!(runtime.browser_state().navigation_count, 3);
         assert!(matches!(
             runtime.browser_state().document,
-            FakeBrowserDocument::Internal(ref url) if url == "lingxia://settings?section=privacy"
+            FakeBrowserDocument::Internal(ref url) if url == "settings?section=privacy"
         ));
 
         runtime.browser.borrow_mut().as_mut().unwrap().document = FakeBrowserDocument::Discarded;
@@ -562,10 +557,7 @@ mod tests {
         let restarted = resolve_from_snapshot(&browser_snapshot(), &runtime).unwrap();
         assert!(matches!(
             restarted,
-            SettingsDestinationResolution::BrowserControlPage {
-                browser_session_id: 11,
-                ..
-            }
+            SettingsDestinationResolution::BrowserControlPage { session_id: 11, .. }
         ));
         assert_eq!(runtime.browser_state().generation, 3);
         assert_eq!(runtime.browser_state().navigation_count, 5);

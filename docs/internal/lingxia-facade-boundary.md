@@ -136,7 +136,7 @@ Examples:
 
 - `lingxia::open_product_surface(...)`
 
-App code should not need to know internal routes such as `lingxia://settings`.
+App code should not need to know the browser's internal app id or page names.
 
 ### 3. Download management
 

@@ -956,45 +956,8 @@ async fn browser_on_webview_ready(
             }
             // Replay a target that arrived while this load was still running.
             // Same-URL opens are not a second load: commit already dropped them.
-            let mut pending_url = pending_url;
-            if pending_url.is_none() {
-                // Startup page: attach WebView to the tab's headless PageInstance, then load with nonce.
-                if let Err(e) = browser_attach_tab_page(
-                    webview.clone(),
-                    &documents,
-                    &path,
-                    session_id,
-                    create_token,
-                    &tab_id,
-                    None,
-                )
-                .await
-                {
-                    lxapp::warn!(
-                        "[InternalBrowser] Failed to load startup page for tab {}: {}",
-                        tab_id,
-                        e
-                    );
-                    let _ = webview.load_url("about:blank");
-                } else {
-                    // Commit the real startup URL: document-kind gating reads
-                    // the committed URL, and platforms without URL-change
-                    // reporting never backfill it.
-                    let startup_url = format!("{}://newtab", LINGXIA_SCHEME);
-                    browser_commit_navigation_if_token_matches(
-                        &tab_id,
-                        session_id,
-                        create_token,
-                        Some(&startup_url),
-                    );
-                    pending_url = browser_pending_url_replaced(
-                        &tab_id,
-                        session_id,
-                        create_token,
-                        &startup_url,
-                    );
-                }
-            }
+            // A tab opened without a target starts blank.
+            let mut pending_url = pending_url.or_else(|| Some("about:blank".to_string()));
             while let Some(url) = pending_url {
                 // Internal browser pages (`lingxia://X`) need the startup bridge attached
                 // so they can communicate with the JS app service worker.

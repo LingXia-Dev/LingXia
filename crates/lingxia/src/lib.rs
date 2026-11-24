@@ -95,50 +95,14 @@ impl RuntimeInfo {
         settings_destination::resolve_settings_destination()
     }
 
-    #[cfg(feature = "browser-runtime")]
+    /// Opens a browser system page (`settings`, `downloads`, …) as its control surface.
     #[doc(hidden)]
     pub fn open_browser_system_page(
         &self,
         page: &str,
         query: Option<&serde_json::Value>,
-    ) -> std::result::Result<(String, u64), lxapp::LxAppError> {
-        let authority = crate::browser::native_control_authority()?;
-        let options = lxapp::LxAppStartupOptions::for_page(Some(page), query)
-            .map_err(lxapp::LxAppError::InvalidParameter)?;
-        let app = lxapp::open_control_surface_lxapp_page(
-            authority,
-            lingxia_browser::BUILTIN_BROWSER_APPID,
-            options,
-        )?;
-        Ok((app.appid.clone(), app.session_id()))
-    }
-
-    #[cfg(feature = "browser-runtime")]
-    #[doc(hidden)]
-    pub fn open_trusted_browser_page(
-        &self,
-        url: &str,
-        tab_id: Option<&str>,
-    ) -> std::result::Result<String, lxapp::LxAppError> {
-        lingxia_browser::open_trusted(crate::browser::native_control_authority()?, url, tab_id)
-    }
-
-    #[cfg(feature = "browser-runtime")]
-    #[doc(hidden)]
-    pub fn open_trusted_browser_page_for_app(
-        &self,
-        app_id: &str,
-        session_id: u64,
-        url: &str,
-        tab_id: Option<&str>,
-    ) -> std::result::Result<String, lxapp::LxAppError> {
-        lingxia_browser::open_trusted_for_app(
-            crate::browser::native_control_authority()?,
-            app_id,
-            session_id,
-            url,
-            tab_id,
-        )
+    ) -> std::result::Result<(), lxapp::LxAppError> {
+        crate::browser::open_system_page(page, query)
     }
 }
 

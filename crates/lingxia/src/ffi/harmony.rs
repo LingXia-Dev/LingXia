@@ -371,17 +371,10 @@ pub fn open_browser_tab(appid: String, session_id: i64, url: String) -> Option<S
     crate::browser::open_for_app(&appid, session_id as u64, &url, None).ok()
 }
 
+/// Native browser chrome only: the authority remains sealed in Rust.
 #[napi]
-pub fn open_trusted_browser_tab_with_id(
-    appid: String,
-    session_id: i64,
-    url: String,
-    tab_id: String,
-) -> Option<String> {
-    if session_id <= 0 {
-        return None;
-    }
-    crate::browser::open_trusted_for_app(&appid, session_id as u64, &url, Some(&tab_id)).ok()
+pub fn open_browser_system_page(page: String, query_json: String) -> bool {
+    crate::browser::open_system_page_json(&page, &query_json)
 }
 
 #[napi]

@@ -22,19 +22,11 @@ pub(crate) fn should_hide_url(raw: &str) -> bool {
             return true;
         }
         let lowered = trimmed.to_ascii_lowercase();
-        if lowered.starts_with("lx:")
+        lowered.starts_with("lx:")
             || lowered.starts_with("data:")
             || lowered.starts_with("javascript:")
             || lowered.starts_with("blob:")
             || lowered == "about:blank"
-        {
-            return true;
-        }
-        let host = lowered
-            .strip_prefix("lingxia://")
-            .map(|rest| rest.split('/').next().unwrap_or(""))
-            .unwrap_or("__not_lingxia__");
-        host.is_empty() || host == "newtab"
     }
 }
 

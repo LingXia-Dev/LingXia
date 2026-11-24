@@ -102,13 +102,12 @@ final class StaticSettingsSourceTests: XCTestCase {
         XCTAssertEqual(configured.first?.sidebarActionSource, .staticSettings)
     }
 
-    func testBrowserSettingsAndClearSiteDataRemainBrowserLocalRoutes() {
-        XCTAssertEqual(BrowserLocalNavigation.settings.url, "lingxia://settings")
-        XCTAssertEqual(BrowserLocalNavigation.settings.stableTabID, "settings")
-        XCTAssertEqual(
-            BrowserLocalNavigation.clearSiteData(tabID: "tab%201").url,
-            "lingxia://settings#clear-site-data?tabId=tab%201"
-        )
+    func testBrowserSettingsAndClearSiteDataOpenTheSettingsSystemPage() {
+        XCTAssertEqual(BrowserLocalNavigation.settings.page, "settings")
+        XCTAssertEqual(BrowserLocalNavigation.settings.queryJSON, "")
+        let clear = BrowserLocalNavigation.clearSiteData(tabID: "tab 1")
+        XCTAssertEqual(clear.page, "settings")
+        XCTAssertEqual(clear.queryJSON, #"{"section":"clear-site-data","tabId":"tab 1"}"#)
     }
 
     @MainActor

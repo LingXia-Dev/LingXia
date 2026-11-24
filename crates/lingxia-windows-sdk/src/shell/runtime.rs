@@ -2457,9 +2457,8 @@ fn browser_tab_display_url(tab: &BrowserTabSummary) -> String {
     url
 }
 
-/// Blank start pages show an empty address field (macOS parity). WebView2
-/// reports host-only URLs with a trailing slash (`lingxia://newtab/`), and a
-/// start page may carry a query, so compare the bare page identity.
+/// Blank start pages show an empty address field (macOS parity). A start page
+/// may carry a query or a trailing slash, so compare the bare page identity.
 fn browser_url_is_hidden(url: &str) -> bool {
     let url = url.trim().to_ascii_lowercase();
     let page = url.split(['?', '#']).next().unwrap_or_default();
@@ -3772,16 +3771,8 @@ fn activate_static_settings(item_id: &str) -> bool {
     })
 }
 
-fn present_static_settings_resolution(resolution: lingxia::SettingsDestinationResolution) {
-    #[cfg(feature = "browser-runtime")]
-    if let lingxia::SettingsDestinationResolution::BrowserControlPage { tab_id, .. } = resolution {
-        let owner_appid = shell_owner_appid()
-            .unwrap_or_else(|| lingxia_browser::BUILTIN_BROWSER_APPID.to_string());
-        present_browser_tab_when_ready(&owner_appid, tab_id);
-    }
-    #[cfg(not(feature = "browser-runtime"))]
-    let _ = resolution;
-}
+/// Every resolved destination is already open, the browser one as its control surface.
+fn present_static_settings_resolution(_resolution: lingxia::SettingsDestinationResolution) {}
 
 fn resolved_sidebar_actions_for_placement(
     _app: &LxApp,
@@ -5718,7 +5709,7 @@ fn present_current_lxapp_main(app: &LxApp) -> bool {
     }
 }
 
-/// Opens a new browser tab at `lingxia://newtab` owned by the shell app
+/// Opens a new blank browser tab owned by the shell app
 /// and presents it once its webview is ready.
 #[cfg(feature = "browser-runtime")]
 fn handle_browser_new_tab(appid: &str, session_id: u64) {
@@ -7460,12 +7451,6 @@ async fn browser_tab_first_content_ready(tab_id: &str, allow_intentional_blank: 
 
 #[cfg(feature = "browser-shell")]
 fn browser_page_urls_match(current: &str, target: &str) -> bool {
-    if let (Some(current_route), Some(target_route)) = (
-        browser_internal_page_key(current),
-        browser_internal_page_key(target),
-    ) {
-        return current_route == target_route;
-    }
     if target.starts_with("http://") || target.starts_with("https://") {
         lingxia_browser_shell::normalize_bookmark_url(current)
             == lingxia_browser_shell::normalize_bookmark_url(target)
@@ -7474,136 +7459,21 @@ fn browser_page_urls_match(current: &str, target: &str) -> bool {
     }
 }
 
-#[cfg(any(feature = "browser-shell", feature = "browser-runtime", test))]
-fn browser_internal_page_key(url: &str) -> Option<&'static str> {
-    let normalized = url.trim().to_ascii_lowercase();
-    let route = normalized
-        .strip_prefix("lingxia://")?
-        .split(['/', '?', '#'])
-        .next()?;
-    match route {
-        "settings" => Some("settings"),
-        "bookmarks" => Some("bookmarks"),
-        "history" => Some("history"),
-        "downloads" => Some("downloads"),
-        _ => None,
-    }
-}
-
-#[cfg(not(feature = "browser-shell"))]
-fn browser_page_urls_match(current: &str, target: &str) -> bool {
-    current == target
-}
-
 /// Presents `url` as a browser page: when a tab already shows it, that tab
 /// is activated and presented; otherwise a new tab opens at `url` (same
 /// flow as the sidebar "New Tab" row, just with a target URL).
-///
-/// Internal `lingxia://` pages match by route, so re-opening Settings finds
-/// the existing tab whatever query/fragment it carries. A bare re-open only
-/// presents it (keeping scroll and dialog state); a deep link (query or
-/// fragment on the target) navigates the tab so hash routing fires.
 #[cfg(feature = "browser-shell")]
 fn open_or_present_browser_page(appid: &str, session_id: u64, url: &str) -> bool {
-    open_or_present_browser_page_with_authority(
-        appid,
-        session_id,
-        url,
-        BrowserPageOpenAuthority::AppSession,
-    )
-}
-
-#[cfg(feature = "browser-runtime")]
-#[derive(Clone, Copy)]
-#[allow(dead_code)]
-enum BrowserPageOpenAuthority {
-    #[cfg(feature = "browser-shell")]
-    AppSession,
-    NativeControl,
-}
-
-#[cfg(feature = "browser-runtime")]
-#[derive(Debug, PartialEq, Eq)]
-enum NativeControlTabTarget<'a> {
-    ExistingRuntimeId(&'a str),
-    NewOwnerScoped,
-}
-
-#[cfg(feature = "browser-runtime")]
-fn native_control_tab_target(tab_id: Option<&str>) -> NativeControlTabTarget<'_> {
-    match tab_id {
-        Some(tab_id) => NativeControlTabTarget::ExistingRuntimeId(tab_id),
-        None => NativeControlTabTarget::NewOwnerScoped,
-    }
-}
-
-#[cfg(feature = "browser-runtime")]
-fn open_browser_page_with_authority(
-    appid: &str,
-    session_id: u64,
-    url: &str,
-    tab_id: Option<&str>,
-    authority: BrowserPageOpenAuthority,
-) -> Result<String, lxapp::LxAppError> {
-    match authority {
-        #[cfg(feature = "browser-shell")]
-        BrowserPageOpenAuthority::AppSession => {
-            lingxia_browser::open_for_app(appid, session_id, url, tab_id)
-        }
-        BrowserPageOpenAuthority::NativeControl => {
-            let runtime = HOST_RUNTIME.get().ok_or_else(|| {
-                lxapp::LxAppError::UnsupportedOperation(
-                    "native browser runtime authority is not initialized".to_string(),
-                )
-            })?;
-            match native_control_tab_target(tab_id) {
-                // `browser_tabs()` returns runtime ids, not owner-stable keys.
-                // Navigating it through `open_*_for_app` would scope it again
-                // and create a hidden sibling instead of updating this tab.
-                NativeControlTabTarget::ExistingRuntimeId(tab_id) => {
-                    runtime.open_trusted_browser_page(url, Some(tab_id))
-                }
-                NativeControlTabTarget::NewOwnerScoped
-                    if !SELF_BROWSER_HOST.load(Ordering::Acquire) =>
-                {
-                    runtime.open_trusted_browser_page_for_app(appid, session_id, url, None)
-                }
-                NativeControlTabTarget::NewOwnerScoped => {
-                    runtime.open_trusted_browser_page(url, None)
-                }
-            }
-        }
-    }
-}
-
-#[cfg(feature = "browser-runtime")]
-fn open_or_present_browser_page_with_authority(
-    appid: &str,
-    session_id: u64,
-    url: &str,
-    authority: BrowserPageOpenAuthority,
-) -> bool {
     let existing = browser_tabs().into_iter().find(|tab| {
         tab.current_url
             .as_deref()
             .is_some_and(|current| browser_page_urls_match(current, url))
     });
     if let Some(existing) = existing {
-        if browser_internal_page_deep_link(url)
-            && let Err(err) = open_browser_page_with_authority(
-                appid,
-                session_id,
-                url,
-                Some(&existing.tab_id),
-                authority,
-            )
-        {
-            log::error!("failed to navigate browser page {url}: {err}");
-        }
         handle_browser_tab_click(appid, &existing.tab_id);
         return true;
     }
-    match open_browser_page_with_authority(appid, session_id, url, None, authority) {
+    match lingxia_browser::open_for_app(appid, session_id, url, None) {
         Ok(tab_id) => {
             present_browser_tab_when_ready(appid, tab_id);
             true
@@ -7615,6 +7485,7 @@ fn open_or_present_browser_page_with_authority(
     }
 }
 
+/// Opens a browser system page (`app.lingxia.browser`) as its control surface.
 #[cfg(feature = "browser-shell")]
 fn open_browser_system_page(page: &str, query: Option<&serde_json::Value>) -> bool {
     let Some(runtime) = HOST_RUNTIME.get() else {
@@ -7622,29 +7493,12 @@ fn open_browser_system_page(page: &str, query: Option<&serde_json::Value>) -> bo
         return false;
     };
     match runtime.open_browser_system_page(page, query) {
-        Ok(_) => true,
+        Ok(()) => true,
         Err(err) => {
             log::error!("failed to open browser system page '{page}': {err}");
             false
         }
     }
-}
-
-#[cfg(feature = "browser-shell")]
-fn open_or_present_browser_local_page(
-    _appid: &str,
-    _session_id: u64,
-    navigation: crate::browser_local_navigation::BrowserLocalNavigation<'_>,
-) -> bool {
-    let query = navigation.query();
-    open_browser_system_page(navigation.page(), query.as_ref())
-}
-
-/// An internal page target that carries a query or fragment, e.g.
-/// `lingxia://settings#clear-site-data?tabId=t1`.
-#[cfg(any(feature = "browser-shell", feature = "browser-runtime", test))]
-fn browser_internal_page_deep_link(url: &str) -> bool {
-    browser_internal_page_key(url).is_some() && url.contains(['?', '#'])
 }
 
 /// Opens the app-menu popup under the top-bar app icon. The product shell adds
@@ -8165,24 +8019,15 @@ fn show_browser_page_menu(appid: &str, screen_x: i32, screen_y: i32) {
                 open_browser_system_page("history", None);
             }
             BrowserPageMenuAction::Settings => {
-                if let Some(app) = lxapp::try_get(&appid) {
-                    open_or_present_browser_local_page(
-                        &appid,
-                        app.session_id(),
-                        crate::browser_local_navigation::BrowserLocalNavigation::Settings,
-                    );
-                }
+                let navigation = crate::browser_local_navigation::BrowserLocalNavigation::Settings;
+                open_browser_system_page(navigation.page(), navigation.query().as_ref());
             }
             BrowserPageMenuAction::ClearSiteData if is_web_url => {
-                if let Some(app) = lxapp::try_get(&appid) {
-                    open_or_present_browser_local_page(
-                        &appid,
-                        app.session_id(),
-                        crate::browser_local_navigation::BrowserLocalNavigation::ClearSiteData {
-                            tab_id: &tab_id,
-                        },
-                    );
-                }
+                let navigation =
+                    crate::browser_local_navigation::BrowserLocalNavigation::ClearSiteData {
+                        tab_id: &tab_id,
+                    };
+                open_browser_system_page(navigation.page(), navigation.query().as_ref());
             }
             BrowserPageMenuAction::ToggleBookmark
             | BrowserPageMenuAction::TogglePin
@@ -8981,16 +8826,15 @@ mod tests {
     use super::{
         LxappContextMenuAction, LxappMainFocus, LxappShortcutAction, MainWorkspaceAddTarget,
         PresentationCompletion, SidebarUiState, adaptive_tabbar_projection, auxiliary_lxapp_id,
-        browser_internal_page_deep_link, browser_internal_page_key, browser_url_is_hidden,
-        build_lxapp_context_menu, chrome_command, chrome_command_is_page_scoped,
-        lxapp_main_focus_action, lxapp_shortcut_action, main_workspace_add_target_for_capabilities,
-        merge_related_shell_appids, preferred_sidebar_group_appid, sidebar_content_available,
-        toggle_sidebar_projection,
+        browser_url_is_hidden, build_lxapp_context_menu, chrome_command,
+        chrome_command_is_page_scoped, lxapp_main_focus_action, lxapp_shortcut_action,
+        main_workspace_add_target_for_capabilities, merge_related_shell_appids,
+        preferred_sidebar_group_appid, sidebar_content_available, toggle_sidebar_projection,
     };
     #[cfg(feature = "browser-runtime")]
     use super::{
-        NativeControlTabTarget, browser_tab_discard_candidates, is_browser_root_group_entry,
-        live_browser_tab_limit_for_memory, native_control_tab_target, touch_browser_tab_recency,
+        browser_tab_discard_candidates, is_browser_root_group_entry,
+        live_browser_tab_limit_for_memory, touch_browser_tab_recency,
     };
     use crate::shell::WindowsShellTabBarPosition;
     use lingxia_surface::{Role, SizeClass, Surface, SurfaceManager};
@@ -9170,52 +9014,9 @@ mod tests {
     }
 
     #[test]
-    fn internal_page_key_ignores_url_decoration() {
-        assert_eq!(
-            browser_internal_page_key("lingxia://settings"),
-            Some("settings")
-        );
-        assert_eq!(
-            browser_internal_page_key("lingxia://settings/#privacy"),
-            Some("settings")
-        );
-        assert_eq!(
-            browser_internal_page_key("LINGXIA://BOOKMARKS/?q=rust#top"),
-            Some("bookmarks")
-        );
-        assert_eq!(browser_internal_page_key("lingxia://newtab"), None);
-        assert_eq!(browser_internal_page_key("https://example.com"), None);
-    }
-
-    #[test]
-    fn deep_link_requires_query_or_fragment() {
-        assert!(browser_internal_page_deep_link(
-            "lingxia://settings#clear-site-data?tabId=t1"
-        ));
-        assert!(!browser_internal_page_deep_link("lingxia://settings"));
-        assert!(!browser_internal_page_deep_link("lingxia://settings/"));
-        assert!(!browser_internal_page_deep_link("https://example.com/?q=1"));
-    }
-
-    #[cfg(feature = "browser-runtime")]
-    #[test]
-    fn existing_native_control_tab_ids_are_not_owner_scoped_again() {
-        assert_eq!(
-            native_control_tab_target(Some("downloads-ownerhash")),
-            NativeControlTabTarget::ExistingRuntimeId("downloads-ownerhash")
-        );
-        assert_eq!(
-            native_control_tab_target(None),
-            NativeControlTabTarget::NewOwnerScoped
-        );
-    }
-
-    #[test]
     fn blank_new_tab_urls_stay_out_of_the_address_editor() {
         assert!(browser_url_is_hidden("about:blank"));
         assert!(!browser_url_is_hidden(" LINGXIA://NEWTAB "));
-        assert!(!browser_url_is_hidden("lingxia://"));
-        assert!(!browser_url_is_hidden("lingxia://newtab/"));
         assert!(!browser_url_is_hidden("lingxia://settings/"));
         assert!(!browser_url_is_hidden("https://example.com"));
     }

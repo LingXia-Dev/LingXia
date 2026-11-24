@@ -99,19 +99,10 @@ fn raise_floor(latest: &mut u64, finished: u64) {
     *latest = (*latest).max(finished);
 }
 
-/// Open an external URL, or the trusted new-tab page for empty input.
+/// Open an external URL, or a blank tab for empty input.
 pub fn open(url: &str, tab_id: Option<&str>) -> crate::Result<String> {
-    let result = if url.is_empty() {
-        lingxia_browser::open_trusted(
-            crate::browser::native_control_authority()
-                .map_err(|e| crate::Error::invalid_request(e.to_string()))?,
-            "lingxia://newtab",
-            tab_id,
-        )
-    } else {
-        lingxia_browser::open(url, tab_id)
-    };
-    match result {
+    let target = if url.is_empty() { "about:blank" } else { url };
+    match lingxia_browser::open(target, tab_id) {
         Err(lxapp::LxAppError::ResourceNotFound(_)) if tab_id.is_some() => open(url, None),
         result => result.map_err(|e| crate::Error::invalid_request(e.to_string())),
     }

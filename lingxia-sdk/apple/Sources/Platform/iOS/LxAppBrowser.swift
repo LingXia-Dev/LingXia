@@ -60,16 +60,15 @@ final class LxAppBrowser: NSObject {
         if activeTabId.map({ browserTabIsAside($0) }) ?? false {
             return false
         }
-        // Browser control documents have no ordinary lxapp session. The live
-        // host app owns the request; Rust supplies the sealed native authority.
+        // The live host app owns a new tab.
         guard let appId = LxAppCore.getHomeLxAppId() else { return false }
         let sessionId = getLxAppSessionId(appId)
         guard sessionId > 0 else {
             LXLog.error("openNewTab failed: no session for host app", category: "Browser")
             return false
         }
-        guard let newId = openTrustedBrowserTabWithId(
-            appId, sessionId, "lingxia://newtab", "tab-" + UUID().uuidString.lowercased()
+        guard let newId = openBrowserTabWithId(
+            appId, sessionId, "about:blank", "tab-" + UUID().uuidString.lowercased()
         )?.toString(),
               !normalizeTabId(newId).isEmpty else {
             LXLog.error("openNewTab failed: runtime returned no tab id", category: "Browser")
@@ -657,12 +656,12 @@ private final class LxAppBrowserViewController: UIViewController, UIGestureRecog
 
     @objc private func downloadsTapped() {
         dismissOverflowMenu()
-        navigateToInternalPage("lingxia://downloads")
+        openSystemPage("downloads")
     }
 
     @objc private func settingsTapped() {
         dismissOverflowMenu()
-        navigateToInternalPage("lingxia://settings")
+        openSystemPage("settings")
     }
 
     private func dismissOverflowMenu() {
@@ -670,17 +669,11 @@ private final class LxAppBrowserViewController: UIViewController, UIGestureRecog
         menuOverlay = nil
     }
 
-    /// Open one of the browser's own `lingxia://` pages in the active tab.
-    private func navigateToInternalPage(_ url: String) {
-        guard let tabId = LxAppBrowser.activeTabId else { return }
-        guard let appId = LxAppCore.getHomeLxAppId() else { return }
-        let sessionId = getLxAppSessionId(appId)
-        guard sessionId > 0,
-              openTrustedBrowserTabWithId(appId, sessionId, url, tabId) != nil else {
-            LXLog.error("Internal browser navigation failed", category: "Browser")
-            return
+    /// Open one of the browser's system pages (`app.lingxia.browser`).
+    private func openSystemPage(_ page: String) {
+        if !openBrowserSystemPage(page, "") {
+            LXLog.error("Failed to open browser system page \(page)", category: "Browser")
         }
-        displayActiveTab()
     }
 
     private func setupBackGestureRecognizer() {
@@ -827,8 +820,7 @@ private final class LxAppBrowserViewController: UIViewController, UIGestureRecog
         // URL KVO can fire repeatedly while a page redirects or a new tab is
         // attaching. Never replace text that the user is actively editing.
         guard !addressField.isFirstResponder else { return }
-        // A new/blank tab (lingxia://newtab) shows just the placeholder, like a
-        // fresh browser tab — never the raw internal URL.
+        // A new/blank tab shows just the placeholder, like a fresh browser tab.
         if let url, browserUrlIsHidden(url.absoluteString) {
             addressField.text = ""
             addressIcon.isHidden = true

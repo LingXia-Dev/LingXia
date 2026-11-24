@@ -42,18 +42,17 @@ pub(crate) use runtime::navigate;
 #[cfg(any(target_os = "ios", target_os = "macos"))]
 pub(crate) use runtime::open;
 pub(crate) use runtime::open_standalone_for_app;
+pub(crate) use runtime::open_system_page;
 #[cfg(any(
     target_os = "ios",
     target_os = "macos",
     target_os = "android",
     target_env = "ohos"
 ))]
-pub(crate) use runtime::open_trusted_for_app;
+pub(crate) use runtime::open_system_page_json;
 #[cfg(target_env = "ohos")]
 pub(crate) use runtime::tab_webtag;
-pub(crate) use runtime::{
-    APP_ID, close, mark_active, navigate_trusted_control_page, open_for_app, tab_path,
-};
+pub(crate) use runtime::{APP_ID, close, mark_active, open_for_app, tab_path};
 #[cfg(target_os = "windows")]
 pub(crate) use runtime::{
     BrowserTabSummary, activate, go_back, go_forward, navigate, reload, runtime_enabled,

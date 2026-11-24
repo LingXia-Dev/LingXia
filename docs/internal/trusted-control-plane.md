@@ -29,11 +29,13 @@ creation and sealed before that session's Logic starts.
    There is no setter, no promotion, and no route that returns one.
 
 2. **The classes are disjoint, not ordered.** `ControlApp` is not "a
-   ControlSurface with more". Neither reaches the other's routes.
-   `RouteAudience` therefore enumerates caller *sets*, and a variant named for
-   one class never silently includes another — which is why
-   `ControlAppOrBrowserOnly` spells out both rather than being called
-   "ControlOnly".
+   ControlSurface with more". Neither reaches the other's `*Only` routes.
+   `RouteAudience` therefore enumerates caller *sets*. The one shared set is
+   `ControlAppOrBrowserOnly` (appearance, display language): the `ControlApp`,
+   every `ControlSurface`, and a browser control document. Every
+   `ControlSurface` (Terminal Settings, the browser system pages
+   `app.lingxia.browser`) reaches every `ControlSurfaceOnly` route; no route
+   is scoped to one surface app.
 
 3. **One authorization seam.** `lxapp::host::authorize(caller, audience)` is
    the only place a caller class is compared to a route's audience. Route

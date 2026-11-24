@@ -112,9 +112,9 @@ pub use runtime_ops::{
     installed_lxapp_path, is_lxapp_open, is_pull_down_refresh_enabled, list_lxapps,
     mark_lxapp_active, notify_lxapp_host_visibility, notify_lxapp_host_visibility_by_session,
     notify_page_host_visibility, notify_page_host_visibility_by_webtag, notify_page_instance,
-    notify_page_instance_by_id, on_low_memory, open_control_lxapp_page, open_control_surface_lxapp_page, open_lxapp,
-    open_lxapp_in_region, refresh_auto_appearances, restart_lxapp, show_lxapp_in_region,
-    terminate_lxapp, uninstall_lxapp,
+    notify_page_instance_by_id, on_low_memory, open_control_lxapp_page,
+    open_control_surface_lxapp_page, open_lxapp, open_lxapp_in_region, refresh_auto_appearances,
+    restart_lxapp, show_lxapp_in_region, terminate_lxapp, uninstall_lxapp,
 };
 pub(crate) use runtime_registry::get_lxapps_manager;
 pub use runtime_registry::{
@@ -648,7 +648,7 @@ impl LxApps {
         })
     }
 
-    /// Host-bundled control surface (Terminal Settings). Only a bundle the host
+    /// Host-bundled control surface (Terminal Settings, the browser). Only a bundle the host
     /// ships itself qualifies, and never the home app id: that session is the
     /// ControlApp and must not be downgraded to a surface.
     pub(crate) fn ensure_lxapp_for_control_surface(
@@ -1240,8 +1240,8 @@ pub enum AppSessionClass {
     /// The one native-sealed home session; the only class admitted to
     /// app-control routes.
     ControlApp,
-    /// A host-bundled control UI (Terminal Settings) that the ControlApp opens.
-    /// Never home, and only its own `ControlSurfaceOnly` routes admit it.
+    /// A host-bundled control UI (Terminal Settings, the browser system pages).
+    /// Never home; admitted to `ControlSurfaceOnly` and `ControlAppOrBrowserOnly`.
     ControlSurface,
 }
 

@@ -101,14 +101,13 @@ pub enum RouteAudience {
     AnyAuthenticated,
     /// The `ControlApp` session only.
     ControlAppOnly,
-    /// Only the host-bundled `ControlSurface` session (Terminal Settings).
-    /// Deliberately disjoint from `ControlAppOnly`: neither class reaches the
-    /// other's routes.
+    /// Any host-bundled `ControlSurface` session (Terminal Settings, the browser
+    /// system pages). Disjoint from `ControlAppOnly`.
     ControlSurfaceOnly,
     /// A browser control document only.
     BrowserControlOnly,
-    /// The `ControlApp` session, plus a browser control document. The
-    /// `ControlSurface` is a distinct class and is not admitted.
+    /// The `ControlApp` session, any `ControlSurface`, and a browser control
+    /// document.
     ControlAppOrBrowserOnly,
 }
 

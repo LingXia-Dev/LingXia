@@ -178,8 +178,7 @@ pub fn register_runtime() {
 pub fn register_bundled_assets(native_authority: &lxapp::NativeControlPlaneAuthority) {
     match bundled_internal_pages() {
         Ok(_pages) => {
-            // Register app.lingxia.browser as a host-bundled ControlSurface lxapp
-            // (GPU View + Rust Logic); browser internal lingxia:// pages are removed.
+            // app.lingxia.browser is a host-bundled ControlSurface lxapp (GPU View + Rust Logic).
             lxapp::register_builtin_asset_bundle(lingxia_browser::BUILTIN_BROWSER_APPID);
         }
         Err(err) => {

@@ -966,10 +966,10 @@ fn browser_clear_pending_url(tab_id: &str) {
 // ---------------------------------------------------------------------------
 
 fn open_target_url(raw: &str) -> String {
-    // An explicit new-tab request must load its startup document even when
-    // reusing a website tab. Empty input still means focus-only reuse.
+    // An explicit new-tab request loads a blank page even when reusing a
+    // website tab. Empty input still means focus-only reuse.
     match is_lingxia_startup_url(raw.trim()) {
-        Some(true) => "lingxia://newtab".to_string(),
+        Some(true) => "about:blank".to_string(),
         _ => normalize_browser_target_url(raw),
     }
 }
@@ -1727,8 +1727,8 @@ mod tests {
 
     #[test]
     fn explicit_newtab_navigates_instead_of_only_focusing_a_website() {
-        assert_eq!(open_target_url("lingxia://newtab"), "lingxia://newtab");
-        assert_eq!(open_target_url(" lingxia:// "), "lingxia://newtab");
+        assert_eq!(open_target_url("lingxia://newtab"), "about:blank");
+        assert_eq!(open_target_url(" lingxia:// "), "about:blank");
         assert_eq!(open_target_url(""), "");
         assert_eq!(
             open_target_url("https://example.com"),

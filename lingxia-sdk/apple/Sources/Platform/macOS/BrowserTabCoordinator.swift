@@ -283,10 +283,6 @@ final class BrowserTabCoordinator: NSObject {
         openBrowserLocalNavigation(.settings)
     }
 
-    func openDownloads() {
-        openBrowserLocalNavigation(.downloads)
-    }
-
     /// Open the bookmarks manager page (the archive; pins are its subset).
     func openBookmarks() {
         openBrowserLocalNavigation(.bookmarks)
@@ -762,21 +758,20 @@ final class BrowserTabCoordinator: NSObject {
 
     // MARK: - Internal Tab Operations
 
-    @discardableResult
-    private func openBrowserLocalNavigation(_ navigation: BrowserLocalNavigation) -> String? {
-        addTabWithURL(
-            navigation.url,
-            stableTabId: navigation.stableTabID,
-            openAuthority: navigation.openAuthority
-        )
+    private func openBrowserLocalNavigation(_ navigation: BrowserLocalNavigation) {
+        if !openBrowserSystemPage(navigation.page, navigation.queryJSON) {
+            LXLog.error(
+                "Failed to open browser system page \(navigation.page)",
+                category: "BrowserTabCoordinator"
+            )
+        }
     }
 
     @discardableResult
     private func addTabWithURL(
         _ url: String,
         stableTabId: String? = nil,
-        declaredSurfaceID: String? = nil,
-        openAuthority: BrowserTabOpenAuthority = .appSession
+        declaredSurfaceID: String? = nil
     ) -> String? {
         let owner = host?.browserOwnerForNewTab()
             ?? (host?.keepsBrowserRootWithoutTabs == true ? retainedNewTabOwner : nil)
@@ -802,21 +797,8 @@ final class BrowserTabCoordinator: NSObject {
             return existingTabId
         }
 
-        if requestedStableTabId == nil, openAuthority != .appSession {
-            LXLog.error(
-                "Trusted browser navigation requires a stable native route",
-                category: "BrowserTabCoordinator"
-            )
-            return nil
-        }
-
         let openedTab = if let requestedStableTabId {
-            switch openAuthority {
-            case .appSession:
-                openBrowserTabWithId(owner.appId, owner.sessionId, url, requestedStableTabId)
-            case .nativeControl:
-                openTrustedBrowserTabWithId(owner.appId, owner.sessionId, url, requestedStableTabId)
-            }
+            openBrowserTabWithId(owner.appId, owner.sessionId, url, requestedStableTabId)
         } else {
             openBrowserTab(owner.appId, owner.sessionId, url)
         }
