@@ -54,6 +54,7 @@ export const demos = {
     measure: { testId: 'lab-box', title: 'lab.demo.layout.measure.title', try: 'lab.demo.layout.measure.try' },
     position: { testId: 'lab-structure', title: 'lab.demo.layout.position.title', try: 'lab.demo.layout.position.try' },
     section: { testId: 'lab-disclosure', title: 'lab.demo.layout.section.title', try: 'lab.demo.layout.section.try' },
+    adaptive: { testId: 'lab-adaptive', title: 'lab.demo.layout.adaptive.title', try: 'lab.demo.layout.adaptive.try' },
   },
   text: {
     paragraphs: { testId: 'lab-text', title: 'lab.demo.text.paragraphs.title', try: 'lab.demo.text.paragraphs.try' },
@@ -301,6 +302,8 @@ export const labels = {
   envOpen: 'lab.label.envOpen',
   envBack: 'lab.label.envBack',
   envOutline: 'lab.label.envOutline',
+  openListDetail: 'lab.label.openListDetail',
+  openMainCompanion: 'lab.label.openMainCompanion',
   tapForKeyboard: 'lab.label.tapForKeyboard',
   bills: 'lab.label.bills',
   billRows: 'lab.label.billRows',

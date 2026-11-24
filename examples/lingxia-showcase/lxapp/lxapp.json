@@ -29,8 +29,12 @@
       "path": "pages/surface/index"
     },
     {
-      "name": "adaptive",
-      "path": "pages/adaptive/index"
+      "name": "list-and-detail",
+      "path": "pages/list-and-detail/index"
+    },
+    {
+      "name": "main-and-companion",
+      "path": "pages/main-and-companion/index"
     },
     {
       "name": "feedback",

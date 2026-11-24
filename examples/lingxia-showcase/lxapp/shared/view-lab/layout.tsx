@@ -106,6 +106,17 @@ export function SectionDemo() {
   );
 }
 
+// The two adaptive parts, each on its own page so it can fill the window.
+export function AdaptiveDemo() {
+  const t = useSay();
+  return (
+    <view className="flex-row flex-wrap gap-2">
+      <Button testId="lab-open-list-detail" size="sm" variant="secondary" to={{ page: 'list-and-detail' }}>{t(labels.openListDetail)}</Button>
+      <Button testId="lab-open-main-companion" size="sm" variant="secondary" to={{ page: 'main-and-companion' }}>{t(labels.openMainCompanion)}</Button>
+    </view>
+  );
+}
+
 /** The Layout group: every demo the text table names, drawn by its body. */
 export const layoutDemos = {
   show: ShowDemo,
@@ -114,4 +125,5 @@ export const layoutDemos = {
   measure: MeasureDemo,
   position: PositionDemo,
   section: SectionDemo,
+  adaptive: AdaptiveDemo,
 };
