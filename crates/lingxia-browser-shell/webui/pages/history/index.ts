@@ -137,8 +137,10 @@ export default definePage({
         async removeEntry({ id }: { id: string }) {
           await invoke('history.remove', { id });
         },
-        async clearBrowsingData(input: ClearBrowsingDataInput): Promise<ClearBrowsingDataResult> {
-          return invoke<ClearBrowsingDataResult>('privacy.clearBrowsingData', input);
+        /** Answers the toast's text, translated here: the View's `t` works only while rendering. */
+        async clearBrowsingData(input: ClearBrowsingDataInput): Promise<string> {
+          const result = await invoke<ClearBrowsingDataResult>('privacy.clearBrowsingData', input);
+          return lx.app.t('privacy.cleared', { count: result.historyRemoved });
         },
         async openUrl({ url }: { url: string }) {
           await lx.surface.openUrl(url);

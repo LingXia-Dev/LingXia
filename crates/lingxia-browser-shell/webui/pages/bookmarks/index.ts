@@ -29,7 +29,8 @@ interface BookmarksData {
 }
 
 /** A toast for the View: a catalogue key and its count. */
-type Notice = { message: string; count: number };
+/** A toast's text, translated here: the View's `t` works only while rendering. */
+type Notice = { message: string };
 
 const initialData: BookmarksData = {
   groups: [],
@@ -142,11 +143,11 @@ export default definePage({
           const result = await invoke<{ imported: number } | null>('bookmarks.importHtml');
           if (!result) return null;
           await refresh();
-          return { message: 'bookmarks.status.imported', count: result.imported };
+          return { message: lx.app.t('bookmarks.status.imported', { count: result.imported }) };
         },
         async exportHtml(): Promise<Notice | null> {
           const result = await invoke<{ count: number } | null>('bookmarks.exportHtml');
-          return result ? { message: 'bookmarks.status.exported', count: result.count } : null;
+          return result ? { message: lx.app.t('bookmarks.status.exported', { count: result.count }) } : null;
         },
         async openUrl({ url }: { url: string }) {
           await lx.surface.openUrl(url);

@@ -176,7 +176,7 @@ function History({ data, actions }: View) {
         onOpenChange={(next) => clearing.set(next)}
         onClear={async (input) => {
           const outcome = await clearBrowsingData.run(input);
-          if (outcome.ok) toast.show({ message: t('privacy.cleared', { count: outcome.value.historyRemoved }), tone: 'success' });
+          if (outcome.ok) toast.show({ message: outcome.value, tone: 'success' });
         }}
       />
     </view>

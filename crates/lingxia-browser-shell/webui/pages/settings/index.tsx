@@ -18,7 +18,7 @@ const PROXY_MODES = [
   ['gfw_list', 'settings.proxy.mode.gfwList'],
 ] as const;
 
-type Notice = { message: string; count?: number; tone?: 'success' | 'warning' } | null;
+type Notice = { message: string; tone?: 'success' | 'warning' } | null;
 
 export function render(view: View) {
   return (
@@ -63,11 +63,11 @@ function Settings({ data, actions }: View) {
   const openDownloads = useAction(actions.openDownloads);
   const toast = useToast();
 
-  // Actions answer with a notice for the toast: a catalogue key, its count and tone.
+  // Actions answer with the toast's text, already translated.
   const run = async (outcome: Promise<{ ok: true; value: Notice } | { ok: false }>) => {
     const result = await outcome;
     const notice = result.ok ? result.value : null;
-    if (notice) toast.show({ message: t(notice.message as MessageKey, { count: notice.count ?? 0 }), tone: notice.tone ?? 'success', id: 'settings' });
+    if (notice) toast.show({ message: notice.message, tone: notice.tone ?? 'success', id: 'settings' });
   };
 
   const sections = (['appearance', 'downloads', 'privacy', 'proxy', 'about'] as const)

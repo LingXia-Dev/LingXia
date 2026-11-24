@@ -1,4 +1,4 @@
-import { List, t, useAction, useLocal, type MessageKey } from '@lingxia/view';
+import { List, t, useAction, useLocal } from '@lingxia/view';
 import { Button } from '@liulidesign/core/Button';
 import { ContextMenu } from '@liulidesign/core/ContextMenu';
 import { Dialog } from '@liulidesign/core/Dialog';
@@ -24,7 +24,7 @@ const UNGROUPED = '__ungrouped__';
 const ROW_HEIGHT = 56;
 
 type Bookmark = View['data']['entries'][number];
-type Notice = { message: string; count: number } | null;
+type Notice = { message: string } | null;
 
 export function render(view: View) {
   return (
@@ -64,7 +64,7 @@ function Bookmarks({ data, actions }: View) {
   const notify = async (outcome: Promise<{ ok: true; value: Notice } | { ok: false }>) => {
     const result = await outcome;
     if (result.ok && result.value) {
-      toast.show({ message: t(result.value.message as MessageKey, { count: result.value.count }), tone: 'success' });
+      toast.show({ message: result.value.message, tone: 'success' });
     }
   };
 

@@ -4,8 +4,8 @@ import type { ClearBrowsingDataInput } from '../../shared/privacy';
 
 type Section = 'appearance' | 'downloads' | 'privacy' | 'proxy' | 'about';
 type ProxyMode = 'direct' | 'global' | 'gfw_list';
-/** A toast for the View: a catalogue key, its count and tone. */
-type Notice = { message: string; count?: number; tone?: 'success' | 'warning' };
+/** A toast's text and tone, translated here: the View's `t` works only while rendering. */
+type Notice = { message: string; tone?: 'success' | 'warning' };
 
 interface AppInfo {
   productName: string;
@@ -147,21 +147,21 @@ export default definePage({
         async clearBrowsingData(input: ClearBrowsingDataInput): Promise<Notice> {
           const result = await invoke<{ historyRemoved: number }>('privacy.clearBrowsingData', input);
           await refreshUsage().catch(() => {});
-          return { message: 'privacy.cleared', count: result.historyRemoved };
+          return { message: lx.app.t('privacy.cleared', { count: result.historyRemoved }) };
         },
         async clearSite({ cache, siteData }: { cache: boolean; siteData: boolean }): Promise<Notice | null> {
           const tabId = page.data.siteTabId;
           if (!tabId) return null;
           await invoke('privacy.clearSiteData', { tabId, cache, siteData });
           await refreshUsage().catch(() => {});
-          return { message: 'settings.privacy.status.siteCleared' };
+          return { message: lx.app.t('settings.privacy.status.siteCleared') };
         },
         async updateProxy({ mode, host, port }: { mode: ProxyMode; host: string; port: string }): Promise<Notice | null> {
           const current = page.data.proxy;
           if (!current) return null;
           const socks5Port = Number(port);
           if (!Number.isInteger(socks5Port) || socks5Port < 1 || socks5Port > 65535) {
-            return { message: 'settings.proxy.status.invalidPort', tone: 'warning' };
+            return { message: lx.app.t('settings.proxy.status.invalidPort'), tone: 'warning' };
           }
           // The route replaces every field, so send the ones this page does not edit unchanged.
           const next = await invoke<ProxySettings>('proxy.updateSettings', {
@@ -174,12 +174,12 @@ export default definePage({
             autoSwitchRules: current.autoSwitchRules,
           });
           page.update((d) => { d.proxy = next; });
-          return { message: 'settings.proxy.status.updated' };
+          return { message: lx.app.t('settings.proxy.status.updated') };
         },
         async refreshGfwList(): Promise<Notice> {
           const next = await invoke<ProxySettings>('proxy.refreshGfwList');
           page.update((d) => { d.proxy = next; });
-          return { message: 'settings.proxy.status.rulesRefreshed' };
+          return { message: lx.app.t('settings.proxy.status.rulesRefreshed') };
         },
         async openHistory() {
           await lx.nav.go({ page: 'history' });
