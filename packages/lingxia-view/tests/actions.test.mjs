@@ -96,8 +96,11 @@ test('an action payload follows JSON for undefined and names what is not JSON',(
   actions.reserve({first:shared,second:shared}).catch(()=>{});
   assert.deepEqual(JSON.parse(takeActionRequests()[0]).params,{first:{a:1},second:{a:1}});
   const cyclic={node:{}};cyclic.node.parent=cyclic;
-  assert.throws(()=>actions.reserve(cyclic),{message:'UI_ACTION: argument.node.parent refers back to argument; send a value without cycles'});
-  assert.throws(()=>channels.open('ticker',cyclic),{message:'UI_CHANNEL: argument.node.parent refers back to argument; send a value without cycles'});
+  assert.throws(()=>actions.reserve(cyclic),{message:'UI_ACTION: reserve payload field argument.node.parent refers back to argument; send a value without cycles'});
+  assert.throws(()=>channels.open('ticker',cyclic),{message:'UI_CHANNEL: ticker payload field argument.node.parent refers back to argument; send a value without cycles'});
+  const cyclicArr=[];cyclicArr.push(cyclicArr);
+  assert.throws(()=>actions.reserve(cyclicArr),{message:'UI_ACTION: reserve payload field argument[0] refers back to argument; send a value without cycles'});
+  assert.throws(()=>channels.open('ticker',cyclicArr),{message:'UI_CHANNEL: ticker payload field argument[0] refers back to argument; send a value without cycles'});
   let deep={};for(let i=0;i<70;i++) deep={next:deep};
   assert.throws(()=>actions.reserve(deep),{message:'UI_LOCAL: value too deep'});
   assert.deepEqual(takeActionRequests(),[]);reset();

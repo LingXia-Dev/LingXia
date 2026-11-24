@@ -95,10 +95,10 @@ function payload(value, refuse, path, depth, budget, ancestors) {
   const array = Array.isArray(value);
   const plain = !array && value && typeof value === 'object' && Object.getPrototypeOf(value) === Object.prototype;
   if (array || plain) {
-    const here = path ? `argument.${path}` : 'argument';
+    const here = path ? (path.startsWith('[') ? `argument${path}` : `argument.${path}`) : 'argument';
     if (ancestors.has(value)) {
       const code = budget.what === 'action' ? 'UI_ACTION' : 'UI_CHANNEL';
-      throw Error(`${code}: ${here} refers back to ${ancestors.get(value)}; send a value without cycles`);
+      throw Error(`${code}: ${budget.who} payload field ${here} refers back to ${ancestors.get(value)}; send a value without cycles`);
     }
     ancestors.set(value, here);
     try {
@@ -117,7 +117,7 @@ function payload(value, refuse, path, depth, budget, ancestors) {
 }
 const bounded = (value, what, who) => payload(value, (path, kind) =>
   Error(`${what === 'action' ? 'UI_ACTION' : 'UI_CHANNEL'}: ${who} payload ${path ? `field ${path}` : 'value'} is not JSON (${kind})`),
-  '', 0, { left: 65536, what }, new Map());
+  '', 0, { left: 65536, what, who }, new Map());
 
 // Native supplies the same compiled action catalog used by WebView pages, after ready.
 export function configureActions(metadata) {
