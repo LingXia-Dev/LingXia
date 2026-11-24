@@ -140,7 +140,7 @@ internal class TabBar(context: Context) : LinearLayout(context) {
         const val FLOATING_STRIP_DP = FLOATING_CELL_DP + 2 * FLOATING_MARGIN_DP
         const val FLOATING_ALPHA = 240
         /** An immersive bar lets more of the page through, never so much that labels lose their plate. */
-        const val FLOATING_IMMERSIVE_ALPHA = 217
+        const val IMMERSIVE_PLATE_ALPHA = 217
         const val COLUMN_WIDTH_DP = 80
         private const val COLUMN_CELL_PITCH_DP = 64
         private const val COLUMN_BOTTOM_DP = 24
@@ -283,14 +283,16 @@ internal class TabBar(context: Context) : LinearLayout(context) {
             else Gravity.TOP or Gravity.START
     }
 
+    /** The see-through plate behind an immersive bar's labels, in the page theme's bar colour. */
+    private fun immersivePlate(): Int =
+        ((theme?.background ?: Color.WHITE) and 0x00FFFFFF) or (IMMERSIVE_PLATE_ALPHA shl 24)
+
     /** A rounded, slightly see-through plate: the page shows faintly around the tabs. */
     private fun floatingPill(state: TabBarState): Drawable = GradientDrawable().apply {
         val density = resources.displayMetrics.density
         cornerRadius = FLOATING_CELL_DP * density / 2f
         val immersive = state.isBackgroundTransparent()
-        val fill = if (immersive) theme?.background ?: Color.WHITE else state.backgroundColor
-        val alpha = if (immersive) FLOATING_IMMERSIVE_ALPHA else FLOATING_ALPHA
-        setColor((fill and 0x00FFFFFF) or (alpha shl 24))
+        setColor(if (immersive) immersivePlate() else (state.backgroundColor and 0x00FFFFFF) or (FLOATING_ALPHA shl 24))
         if (state.borderStyle != 0) setStroke(maxOf(1, density.toInt()), state.borderStyle)
     }
 
@@ -383,7 +385,9 @@ internal class TabBar(context: Context) : LinearLayout(context) {
         val tabBarBackgroundColor = when {
             shape == TabBarShape.FLOATING -> Color.TRANSPARENT
             shape == TabBarShape.COLUMN -> config.backgroundColor
-            config.backgroundColor == Color.TRANSPARENT -> Color.TRANSPARENT
+            // Immersive: the page runs under the bar, but its labels keep a plate.
+            config.backgroundColor == Color.TRANSPARENT ->
+                if (config.position.value == TabBarState.POSITION_BOTTOM) immersivePlate() else Color.TRANSPARENT
             config.position.value == TabBarState.POSITION_LEFT || config.position.value == TabBarState.POSITION_RIGHT -> VERTICAL_TABBAR_BACKGROUND_COLOR
             else -> config.backgroundColor
         }

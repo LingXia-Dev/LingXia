@@ -599,7 +599,9 @@ aggregate onto the group header.
   static `tabBar.style`, then the lxapp's appearance defaults for unset keys. It
   MUST NOT follow the system or host dark mode on its own: most lxapps have no
   dark page, and a dark bar on a light page is worse than a light bar on a dark
-  system. A light-pinned lxapp keeps its authored bar.
+  system. A light-pinned lxapp keeps its authored bar. An immersive bar lets the
+  page run under it but keeps a translucent plate in the bar colour: labels
+  never sit directly on the page.
 - **Desktop.** The rows are host chrome and follow the host `theme`.
   `backgroundColor` is touch-only and never paints the rows, even `#FFFFFF` on a
   light sidebar. Other style keys tint the rows while the host is light; while
