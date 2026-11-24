@@ -78,7 +78,7 @@ A `<checkbox>`, `<switch>`, `<slider>` or `<select>` with neither keeps its own 
 to its callbacks. It starts at `defaultChecked` or `defaultValue`, applied once, else unchecked, at `min` or with
 nothing chosen. `checked:` and `has-checked:` styles follow its state either way.
 
-`<scroll>` snapping and `drag` take `bind` only (a `number` cell). `bind` with `value` or the callback is refused. A `bind` cell must be mounted in the current render and
+`<scroll>` snapping takes `bind` (a `number` cell) or `snapIndex` with `onSnapChange(index)`; `drag` takes `bind`. `bind` with `value` or the callback is refused. A `bind` cell must be mounted in the current render and
 hold the control's type (`UI_INPUT`, `UI_CHECK`, `UI_RADIO`, `UI_SLIDER`).
 
 `onInput` receives every value change, as DOM `input` events do, including while an input method
