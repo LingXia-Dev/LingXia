@@ -1,4 +1,4 @@
-import { cx, useBox, type Child, type Local } from '@lingxia/view';
+import { cx, useBox, type Child, type LocalText } from '@lingxia/view';
 import { liuliText } from '../i18n/text';
 import { IconButton } from '../IconButton/IconButton';
 import { composerRecipe as r } from './Composer.recipe';
@@ -6,8 +6,8 @@ import { dataOf } from '../internal/data';
 
 export type ComposerBinding =
   | {
-      /** A View-local cell holding the draft; use it or `value` with `onChange`. */
-      bind: Local<string>;
+      /** A text cell (`useLocal('')`) holding the draft; its `focus()` focuses the field. Use it or `value` with `onChange`. */
+      bind: LocalText;
       value?: never;
       onChange?: never;
     }

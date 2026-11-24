@@ -146,7 +146,7 @@ export function Stoppable() {
 
 | Prop | Type | Default | Description |
 | --- | --- | --- | --- |
-| `bind` | `Local<string>` |  | A View-local cell holding the draft; use it or `value` with `onChange`. |
+| `bind` | `LocalText<string>` |  | A text cell (`useLocal('')`) holding the draft; its `focus()` focuses the field. Use it or `value` with `onChange`. |
 | `value` | `string` |  | The draft; pass `onChange` with it. |
 | `onChange` | `((value: string) => void)` |  |  |
 | `onStop` | `(() => void)` |  | While sending, the send button becomes a stop button that runs this, as when a reply is being written. |

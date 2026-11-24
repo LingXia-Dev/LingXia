@@ -210,7 +210,7 @@ export function ShareLink() {
 | `isDisabled` | `boolean` | `false` |  |
 | `disabledMessage` | `string` |  | Shown in place of `description` while disabled. |
 | `size` | `FieldSize` | `'md'` |  |
-| `bind` | `Local<string>` |  | A View-local cell the control reads and writes; use it or `value` with `onChange`. |
+| `bind` | `LocalText<string>` |  | A text cell (`useLocal('')`) the control reads and writes; its `focus()` focuses the field. Use it or `value` with `onChange`. |
 | `value` | `string` |  | The app's value; pass `onChange` with it. |
 | `onChange` | `((value: string) => void)` |  | Runs with the new value; the app passes it back as `value`. |
 | `hasClear` | `boolean` | `false` | A button that empties the text, shown while there is text. |

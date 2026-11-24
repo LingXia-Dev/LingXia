@@ -1,4 +1,4 @@
-import { cx, type Local } from '@lingxia/view';
+import { cx, type LocalText } from '@lingxia/view';
 import { liuliText } from '../i18n/text';
 import { useControlSize } from '../density';
 import type { FieldSize } from '../Field/Field';
@@ -9,8 +9,8 @@ import { dataOf } from '../internal/data';
 
 export type SearchFieldBinding =
   | {
-      /** A View-local cell the field reads and writes; use it or `value` with `onChange`. */
-      bind: Local<string>;
+      /** A text cell (`useLocal('')`) the field reads and writes; its `focus()` focuses the field. Use it or `value` with `onChange`. */
+      bind: LocalText;
       value?: never;
       onChange?: never;
     }

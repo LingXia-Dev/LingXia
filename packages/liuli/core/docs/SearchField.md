@@ -91,7 +91,7 @@ export function Sizes() {
 
 | Prop | Type | Default | Description |
 | --- | --- | --- | --- |
-| `bind` | `Local<string>` |  | A View-local cell the field reads and writes; use it or `value` with `onChange`. |
+| `bind` | `LocalText<string>` |  | A text cell (`useLocal('')`) the field reads and writes; its `focus()` focuses the field. Use it or `value` with `onChange`. |
 | `value` | `string` |  | The search text; pass `onChange` with it. |
 | `onChange` | `((value: string) => void)` |  | Runs with each change of the text. |
 | `label` (required) | `string` |  | The accessible name: what is searched ("Search notes"), drawn above the field unless `isLabelHidden`. |

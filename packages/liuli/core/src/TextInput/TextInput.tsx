@@ -1,4 +1,4 @@
-import { cx, useId, useLocal, type AutoComplete, type Child, type Local } from '@lingxia/view';
+import { cx, useId, useLocal, type AutoComplete, type Child, type LocalText } from '@lingxia/view';
 import { liuliText } from '../i18n/text';
 import { useControlSize } from '../density';
 import { Field, type FieldOwnProps } from '../Field/Field';
@@ -12,8 +12,8 @@ import { dataOf } from '../internal/data';
 /** Controlled by the app (`value` + `onChange`), or bound to a View-local cell (`bind`). */
 export type TextInputBinding =
   | {
-      /** A View-local cell the control reads and writes; use it or `value` with `onChange`. */
-      bind: Local<string>;
+      /** A text cell (`useLocal('')`) the control reads and writes; its `focus()` focuses the field. Use it or `value` with `onChange`. */
+      bind: LocalText;
       value?: never;
       onChange?: never;
     }

@@ -5200,9 +5200,9 @@
       "props": [
         {
           "name": "bind",
-          "type": "Local<string>",
+          "type": "LocalText<string>",
           "required": false,
-          "description": "A View-local cell holding the draft; use it or `value` with `onChange`."
+          "description": "A text cell (`useLocal('')`) holding the draft; its `focus()` focuses the field. Use it or `value` with `onChange`."
         },
         {
           "name": "value",
@@ -15302,9 +15302,9 @@
       "props": [
         {
           "name": "bind",
-          "type": "Local<string>",
+          "type": "LocalText<string>",
           "required": false,
-          "description": "A View-local cell the field reads and writes; use it or `value` with `onChange`."
+          "description": "A text cell (`useLocal('')`) the field reads and writes; its `focus()` focuses the field. Use it or `value` with `onChange`."
         },
         {
           "name": "value",
@@ -18628,9 +18628,9 @@
         },
         {
           "name": "bind",
-          "type": "Local<string>",
+          "type": "LocalText<string>",
           "required": false,
-          "description": "A View-local cell the control reads and writes; use it or `value` with `onChange`."
+          "description": "A text cell (`useLocal('')`) the control reads and writes; its `focus()` focuses the field. Use it or `value` with `onChange`."
         },
         {
           "name": "value",
@@ -19083,9 +19083,9 @@
         },
         {
           "name": "bind",
-          "type": "Local<string>",
+          "type": "LocalText<string>",
           "required": false,
-          "description": "A View-local cell the control reads and writes; use it or `value` with `onChange`."
+          "description": "A text cell (`useLocal('')`) the control reads and writes; its `focus()` focuses the field. Use it or `value` with `onChange`."
         },
         {
           "name": "value",
