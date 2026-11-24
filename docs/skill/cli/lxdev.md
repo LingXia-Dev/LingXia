@@ -152,6 +152,7 @@ profiles, secrets, and exit codes: [Testing](../lxapp/testing.md).
 
 The session's log stream. Use `lxdev logs --help` for filtering and output
 options. An app filter matches the recorded app id, not the current live app.
+`--grep` matches text in any case; add `-E` to read it as a regular expression (`--grep 'ready|failed' -E`).
 Following ends with this session; it never attaches to a later session.
 
 ## `lxdev desktop`
