@@ -1,10 +1,10 @@
 import { List, t, useAction, useLocal, type MessageKey } from '@lingxia/view';
-import { Badge } from '@liulidesign/core/Badge';
 import { Button } from '@liulidesign/core/Button';
 import { ContextMenu } from '@liulidesign/core/ContextMenu';
 import { Dialog } from '@liulidesign/core/Dialog';
 import { DropdownMenu, type DropdownMenuEntry } from '@liulidesign/core/DropdownMenu';
 import { EmptyState } from '@liulidesign/core/EmptyState';
+import { Icon } from '@liulidesign/core/Icon';
 import { IconButton } from '@liulidesign/core/IconButton';
 import { Item } from '@liulidesign/core/Item';
 import { NavList } from '@liulidesign/core/NavList';
@@ -120,7 +120,7 @@ function Bookmarks({ data, actions }: View) {
       <ContextMenu label={title} items={rowMenu(entry, index)} data-testid={`bookmark-${entry.id}`}>
         <Item
           label={title}
-          labelEnd={data.pinnedIds.includes(entry.id) ? <Badge label={t('bookmarks.pinned')} size="sm" /> : undefined}
+          labelEnd={data.pinnedIds.includes(entry.id) ? <Icon name="star" size="sm" label={t('bookmarks.pinned')} className="text-muted" /> : undefined}
           description={entry.url}
           descriptionLines={1}
           startContent={<SiteIcon host={hostOf(entry.url)} />}
