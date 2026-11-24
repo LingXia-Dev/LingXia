@@ -1,6 +1,6 @@
 import { build } from 'esbuild';
 import ts from 'typescript';
-import { collectClassUsage, elementKind, enclosingTags, stringLiterals } from './class-usage.mjs';
+import { collectClassAnalysis, elementKind, enclosingTags, stringLiterals } from './class-usage.mjs';
 import { admissionProblems } from './admission.mjs';
 import { perfWarnings } from './perf.mjs';
 import { stabilizeClosures, volatileComponent, ownDeclarations } from './stable-closures.mjs';
@@ -495,7 +495,8 @@ async function packageTokens(root, packages, problems) {
  * Views export `render`. Output is `<base>.js` beside a copy of the page config,
  * when the page has one; a page config naming a renderer is refused.
  * Returns the `UI_PERF`, `UI_STYLE_STATIC`, `UI_INERT` and entering/leaving `UI_TRANSFORM` warnings (also printed; they never stop the build), whether Tailwind ran
- * warm, and how many files were analysed afresh.
+ * warm, how many files were analysed afresh, and `untracedClasses`: each place a className cannot be
+ * followed to literals (`{ location, expression, reason }`).
  */
 /**
  * `literalColors` admits hex and palette colours for renderer test fixtures whose probes read exact
@@ -507,6 +508,8 @@ export async function buildPages(root, pages, output, catalogs = {}, { dev = fal
   root = await realpath(resolve(root)); output = resolve(output);
   // Every page's authoring problems are collected, so one build names all of them.
   const inputs = {}, warnings = [], failures = [];
+  // Each place a className cannot be followed to literals, once per build.
+  const untracedClasses = new Map();
   const tsconfig = viewTsconfig(root);
   // Whether the theme's Tailwind compile was warm, and how many files needed fresh analysis.
   let warm = true;
@@ -599,7 +602,11 @@ export async function buildPages(root, pages, output, catalogs = {}, { dev = fal
     const checker = moduleChecker(sourceFiles, checkerOptions(root));
     const rulesByName = new Map();
     for (const rule of classes) rulesByName.set(rule.name, [...(rulesByName.get(rule.name) ?? []), rule]);
-    const usages = sourceFiles.flatMap(file => collectClassUsage(file, checker));
+    const { usages, untraced } = collectClassAnalysis(sourceFiles, checker);
+    for (const place of untraced) {
+      const location = packageRelative(root, place.location);
+      untracedClasses.set(`${location}\0${place.reason}`, { ...place, location });
+    }
     const unknown = [...new Set(usages.flatMap(({ value }) => value.split(/\s+/)).filter(name => name && !rulesByName.has(name)))];
     const suggestions = await nearestSupported(unknown, theme);
     // A name the checks reach but the collection missed is a valid utility the table lacks, not a typo.
@@ -683,5 +690,5 @@ export async function buildPages(root, pages, output, catalogs = {}, { dev = fal
     await mkdir(dirname(path), { recursive: true });
     await writeAtomic(path, JSON.stringify({ ...previous, ...inputs }, null, 1) + '\n');
   }
-  return { warnings, warm, analysed: analysisMisses };
+  return { warnings, warm, analysed: analysisMisses, untracedClasses: [...untracedClasses.values()] };
 }
