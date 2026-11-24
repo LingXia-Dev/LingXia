@@ -1,7 +1,7 @@
 import { cx, type Child } from '@lingxia/view';
 import { codeRecipe as r } from './Code.recipe';
 import { diffKinds, type LineKind } from './diff';
-import { highlight, type CodeRun } from './highlight';
+import { highlight, type CodeRun, type TokenKind } from './highlight';
 import { dataOf } from '../internal/data';
 
 export interface CodeProps {
@@ -52,14 +52,18 @@ const signs: Record<LineKind, string> = { context: ' ', added: '+', removed: '-'
 // A <text> holds at most 256 runs; longer code is several texts, stacked line by line.
 const maxRuns = 256;
 
-interface Run { text: string; className?: string }
+/** A run of code and what colours it: a token's kind, a line's mark, or a diff header. No kind is plain text. */
+interface Run { text: string; token?: TokenKind; mark?: LineKind; isHeader?: boolean }
+
+const alike = (a: Run, b: Run) => a.token === b.token && a.mark === b.mark && a.isHeader === b.isHeader;
+const isPlain = (run: Run) => run.token === undefined && run.mark === undefined && !run.isHeader;
 
 /** Lines of runs as texts' runs: neighbours with one class merged, a new text started before one would pass the limit. */
 function chunks(lines: readonly (readonly Run[])[]): Run[][] {
   const out: Run[][] = [[]];
   const add = (into: Run[], run: Run) => {
     const last = into[into.length - 1];
-    if (last !== undefined && last.className === run.className) last.text += run.text;
+    if (last !== undefined && alike(last, run)) last.text += run.text;
     else into.push({ ...run });
   };
   for (const line of lines) {
@@ -67,7 +71,7 @@ function chunks(lines: readonly (readonly Run[])[]): Run[][] {
     // A single line past the limit keeps its first runs' colours and goes on plain.
     line.forEach((run, index) => add(merged, index < maxRuns - 1 ? run : { text: run.text }));
     let current = out[out.length - 1];
-    const joins = current.length > 0 && merged.length > 0 && current[current.length - 1].className === merged[0].className;
+    const joins = current.length > 0 && merged.length > 0 && alike(current[current.length - 1], merged[0]);
     if (current.length > 0 && current.length + merged.length - (joins ? 1 : 0) > maxRuns) {
       // The stack breaks the line, so a text ending on a break would show a blank line.
       const last = current[current.length - 1];
@@ -81,7 +85,10 @@ function chunks(lines: readonly (readonly Run[])[]): Run[][] {
   return out;
 }
 
-const shown = (runs: readonly Run[]) => runs.map((run, index) => (run.className === undefined ? run.text : <span key={`${index}`} className={run.className}>{run.text}</span>));
+// Classes are looked up here, by key, so the build can follow every one to the recipe.
+const shown = (runs: readonly Run[]) => runs.map((run, index) => (isPlain(run) ? run.text : (
+  <span key={`${index}`} className={cx(run.token && r.syntax[run.token], run.mark && r.mark[run.mark], run.isHeader && r.headerLine.base)}>{run.text}</span>
+)));
 
 /** Code's runs cut at its line breaks, each line keeping its break. */
 function linesOf(runs: readonly CodeRun[], count: number): CodeRun[][] {
@@ -129,8 +136,8 @@ export function CodeBlock({
   const colored = linesOf(highlight(read.join('\n'), language), lines.length);
   const codeLines: Run[][] = lines.map((line, index) => {
     const end = index < lines.length - 1 ? '\n' : '';
-    if (kinds[index] === 'header') return [{ text: line + end, className: r.headerLine.base }];
-    return colored[index].map(run => ({ text: run.text, className: run.kind === undefined ? undefined : r.syntax[run.kind] }));
+    if (kinds[index] === 'header') return [{ text: line + end, isHeader: true }];
+    return colored[index].map(run => ({ text: run.text, token: run.kind }));
   });
   const column = (className: string, lineRuns: readonly (readonly Run[])[], hidden?: boolean) => {
     const parts = chunks(lineRuns);
@@ -138,7 +145,7 @@ export function CodeBlock({
     return <view aria-hidden={hidden} className={r.chunks.base}>{parts.map((runs, index) => <text key={`${index}`} aria-hidden={hidden} className={className}>{shown(runs)}</text>)}</view>;
   };
   const marks = (each: (kind: LineKind, index: number) => string) =>
-    kinds.map((kind, index) => [{ text: `${each(kind, index)}${index < lines.length - 1 ? '\n' : ''}`, className: r.mark[kind] }]);
+    kinds.map((kind, index) => [{ text: `${each(kind, index)}${index < lines.length - 1 ? '\n' : ''}`, mark: kind }]);
   return (
     <view role="group" aria-label={label} data-testid={testId} {...dataOf(attributes)} className={cx(r.block.base, className)}>
       {(title !== undefined || action !== undefined) && (
