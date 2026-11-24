@@ -155,10 +155,12 @@ impl Lease {
         page: String,
         worker: String,
         pack: Option<lingxia_theme::Pack>,
+        chunks: Arc<dyn Fn(&str) -> Result<String, LxAppError> + Send + Sync>,
         factory: Arc<dyn NativeFactory>,
     ) -> Self {
         let mut holders = PACK_HOLDERS.lock().unwrap_or_else(|p| p.into_inner());
         *holders.entry(worker.clone()).or_default() += 1;
+        install_app_chunks(&worker, chunks);
         if let Some(pack) = pack {
             lingxia_theme::set_app_pack(&worker, Some(pack));
         }
@@ -368,12 +370,12 @@ impl GpuPageViewFactory for Binding {
             let token = NEXT.fetch_add(1, Ordering::Relaxed);
             let worker = worker_key(&page.appid(), page.app_session_id());
             // Hosts read the pack when they are created, so the first frame already carries it.
-            install_app_chunks(&worker, page.gpu_chunk_reader());
             let lease = Lease::new(
                 token,
                 page.instance_id_string(),
                 worker.clone(),
                 page.gpu_theme_pack().as_deref().and_then(bundled_pack),
+                page.gpu_chunk_reader(),
                 factory.clone(),
             );
             let (tx, rx) = oneshot::channel();

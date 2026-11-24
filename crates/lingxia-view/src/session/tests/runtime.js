@@ -1762,7 +1762,7 @@
   function lxappText(key, language, args) {
     if (!catalogues) return void 0;
     const { tag, messages } = catalogueFor(language);
-    const message = messages[key];
+    const message = messages?.[key];
     return message ? join(message(args ?? {}, formatter(tag))) : void 0;
   }
   var formatters = /* @__PURE__ */ new Map();

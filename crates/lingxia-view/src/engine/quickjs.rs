@@ -109,14 +109,18 @@ fn evaluate(
     };
     let (result, chunk_error) = super::chunks::with_loader(chunks, expected_dev_build_id, || {
         let started = std::time::Instant::now();
-        let key = bytecode::key(source);
+        let key = bytecode::key_for(filename, source);
         let cached = bytecode::load(&key).and_then(|(bytes, outcome)| {
             let module = unsafe { read(ctx, &bytes) };
-            if module.is_none() {
+            // Do not evict valid page bytecode when resolution failed inside the chunk loader.
+            if module.is_none() && !super::chunks::has_error() {
                 bytecode::forget(&key);
             }
             Some((module?, outcome, bytes.len()))
         });
+        if super::chunks::has_error() {
+            return Err("UI_MODULE: chunk resolution failed".into());
+        }
         let (module, outcome, size) = match cached {
             Some(cached) => cached,
             None => {
@@ -159,6 +163,43 @@ unsafe extern "C" fn normalize_module(
     unsafe { js_strdup(ctx, module_name) }
 }
 
+/// Extracts `*mut JSModuleDef` only when `val` is a module value, releasing the caller refcount
+/// (QuickJS's `ctx->loaded_modules` retains its own reference).
+unsafe fn into_module_def(
+    ctx: *mut rong_quickjs_sys::JSContext,
+    val: rong_quickjs_sys::JSValue,
+) -> Option<*mut rong_quickjs_sys::JSModuleDef> {
+    use rong_quickjs_sys as qjs;
+    #[cfg(target_pointer_width = "64")]
+    let ptr = {
+        if val.tag != qjs::JS_TAG_MODULE as i64 {
+            unsafe { qjs::JS_FreeValue(ctx, val) };
+            return None;
+        }
+        unsafe { val.u.ptr as *mut qjs::JSModuleDef }
+    };
+    #[cfg(target_pointer_width = "32")]
+    let ptr = {
+        let tag = (val >> 32) as i32;
+        if tag != qjs::JS_TAG_MODULE {
+            unsafe { qjs::JS_FreeValue(ctx, val) };
+            return None;
+        }
+        (val as usize) as *mut qjs::JSModuleDef
+    };
+    unsafe { qjs::JS_FreeValue(ctx, val) };
+    Some(ptr)
+}
+
+unsafe fn throw_loader_error(ctx: *mut rong_quickjs_sys::JSContext, message: &str) {
+    use rong_quickjs_sys as qjs;
+    let cmsg = std::ffi::CString::new(message)
+        .unwrap_or_else(|_| std::ffi::CString::new("UI_MODULE: module load failed").unwrap());
+    unsafe {
+        let _ = qjs::JS_ThrowTypeError(ctx, c"%s".as_ptr(), cmsg.as_ptr());
+    }
+}
+
 /// Resolves `lx:view/*` imports through the active chunk loader and per-module bytecode cache.
 unsafe extern "C" fn load_module(
     ctx: *mut rong_quickjs_sys::JSContext,
@@ -174,12 +215,13 @@ unsafe extern "C" fn load_module(
     let source = match super::chunks::load_active(&specifier) {
         Ok(source) => source,
         Err(err) => {
+            unsafe { throw_loader_error(ctx, &err) };
             super::chunks::record_error(err);
             return std::ptr::null_mut();
         }
     };
     let started = std::time::Instant::now();
-    let key = bytecode::key(&source);
+    let key = bytecode::key_for(&specifier, &source);
     if let Some((bytes, outcome)) = bytecode::load(&key) {
         let val = unsafe {
             qjs::JS_ReadObject(
@@ -190,15 +232,19 @@ unsafe extern "C" fn load_module(
             )
         };
         if !unsafe { qjs::QJS_IsException(ctx, val) } {
-            bytecode::report(outcome, bytes.len(), started.elapsed());
-            return unsafe { val.u.ptr as *mut qjs::JSModuleDef };
+            if let Some(ptr) = unsafe { into_module_def(ctx, val) } {
+                bytecode::report(outcome, bytes.len(), started.elapsed());
+                return ptr;
+            }
+        } else {
+            unsafe { qjs::JS_FreeValue(ctx, qjs::JS_GetException(ctx)) };
         }
-        unsafe { qjs::JS_FreeValue(ctx, qjs::JS_GetException(ctx)) };
         bytecode::forget(&key);
     }
     let val = match unsafe { compile(ctx, &specifier, &source) } {
         Ok(val) => val,
         Err(err) => {
+            unsafe { throw_loader_error(ctx, &err) };
             super::chunks::record_error(err);
             return std::ptr::null_mut();
         }
@@ -208,8 +254,14 @@ unsafe extern "C" fn load_module(
     if let Some(bytes) = bytes {
         bytecode::store(key, bytes);
     }
+    let Some(ptr) = (unsafe { into_module_def(ctx, val) }) else {
+        let err = "UI_MODULE: compiled chunk is not a module".to_string();
+        unsafe { throw_loader_error(ctx, &err) };
+        super::chunks::record_error(err);
+        return std::ptr::null_mut();
+    };
     bytecode::report(Outcome::Miss, size, started.elapsed());
-    unsafe { val.u.ptr as *mut qjs::JSModuleDef }
+    ptr
 }
 
 /// Parse and resolve without running; `run` evaluates the returned module.

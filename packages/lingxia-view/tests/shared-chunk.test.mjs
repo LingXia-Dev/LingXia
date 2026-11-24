@@ -110,6 +110,45 @@ test('per-language catalogues are split out of the shared chunk into _view/<hash
 
     const headerA = JSON.parse(a.split('\n')[0].replace('// LingXia UI module; ', ''));
     assert.equal(headerA.catalogueChunk, `lx:view/${hash}`);
+    assert.equal(headerA.catalogueSource, 'en-US');
+    assert.deepEqual(headerA.catalogueLanguages, ['en-US', 'zh-CN']);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test('incremental single-page dev build preserves sibling Liuli exports and chunkBuildId', async () => {
+  const root = await makeApp('0.30.0');
+  try {
+    await mkdir(join(root, 'node_modules', '@liulidesign', 'ui'), { recursive: true });
+    await writeFile(
+      join(root, 'node_modules', '@liulidesign', 'ui', 'package.json'),
+      JSON.stringify({ name: '@liulidesign/ui', type: 'module', main: './index.tsx' }),
+    );
+    await writeFile(
+      join(root, 'node_modules', '@liulidesign', 'ui', 'index.tsx'),
+      `export function Switch({ label }: { label: string }) { return <text>{label}</text>; }\nexport { Switch as switch };\n`,
+    );
+    await writeFile(
+      join(root, 'pages', 'b', 'index.tsx'),
+      `import { Switch } from '@liulidesign/ui';\nexport function render() { return <Switch label="On" />; }\n`,
+    );
+    const out = join(root, 'dist');
+    // Full dev build first.
+    await buildPages(root, ['pages/a/index.tsx', 'pages/b/index.tsx'], out, {}, { dev: true });
+    const chunkBefore = await readFile(join(out, '_view', 'dev.js'), 'utf8');
+    const buildIdBefore = JSON.parse(chunkBefore.split('\n')[0].replace('// LingXia UI module; ', '')).chunkBuildId;
+
+    // Incremental dev rebuild of only page A must keep page B's Liuli export and the same chunkBuildId.
+    await writeFile(
+      join(root, 'pages', 'a', 'index.tsx'),
+      `import { useLocal } from '@lingxia/view';\nexport function render() { const [n] = useLocal(99); return <text>A {n}</text>; }\n`,
+    );
+    await buildPages(root, ['pages/a/index.tsx'], out, {}, { dev: true });
+    const chunkAfter = await readFile(join(out, '_view', 'dev.js'), 'utf8');
+    const buildIdAfter = JSON.parse(chunkAfter.split('\n')[0].replace('// LingXia UI module; ', '')).chunkBuildId;
+    assert.equal(buildIdAfter, buildIdBefore, 'chunkBuildId stays stable on single-page dev edit');
+    assert.ok(chunkAfter.includes('Switch'), 'sibling page Liuli component preserved in dev chunk');
   } finally {
     await rm(root, { recursive: true, force: true });
   }

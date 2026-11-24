@@ -120,6 +120,14 @@ export async function discoverSharedPackages(root, pages, {
     const owner = packageOf(abs);
     const isLiuli = owner?.name?.startsWith('@liulidesign/');
     if (isLiuli || count >= 2) {
+      // Skip `export *` barrels so pages tree-shake only their actually imported leaf modules
+      // instead of pulling an entire barrel's re-exports and class candidates.
+      try {
+        const src = await readFile(abs, 'utf8');
+        if (/\bexport\s+\*\s+from\b/.test(src)) continue;
+      } catch {
+        continue;
+      }
       selected.push(abs);
     }
   }
@@ -215,7 +223,7 @@ export async function buildSharedChunk(root, output, {
         builder.onLoad({ filter: /\.[jt]sx?$/ }, async ({ path }) => {
           if (path.toLowerCase().startsWith(runtimeRoot)) return;
           const owner = packageOf(path);
-          if (owner?.tokens !== undefined) pkgTokenPackages.set(owner.name, owner);
+          if (owner?.tokens !== undefined) pkgTokenPackages.set(path.toLowerCase(), owner);
           const contents = await readFile(path, 'utf8');
           const loader = path.endsWith('.tsx') ? 'tsx' : path.endsWith('.ts') ? 'ts' : path.endsWith('.jsx') ? 'jsx' : 'js';
           const label = relative(root, path).split('\\').join('/');
@@ -231,15 +239,19 @@ export async function buildSharedChunk(root, output, {
   const rawBody = bundled.outputFiles[0].text;
   const contentHash = createHash('sha256').update(rawBody).digest('hex').slice(0, 12);
   const chunkId = dev ? 'dev' : contentHash;
-  const chunkBuildId = dev
-    ? createHash('sha256').update(rawBody).update(String(Date.now())).digest('hex').slice(0, 12)
-    : undefined;
+  // Deterministic content hash keeps untouched sibling pages valid across single-page dev swaps.
+  const chunkBuildId = dev ? contentHash : undefined;
   const specifier = `lx:view/${chunkId}`;
 
   const viewDir = join(output, '_view');
   await mkdir(viewDir, { recursive: true });
   const banner = moduleBanner(version, dev ? { chunkBuildId } : {});
-  await writeAtomic(join(viewDir, `${chunkId}.js`), `${banner}\n${rawBody}`);
+  const chunkOut = join(viewDir, `${chunkId}.js`);
+  const chunkContent = `${banner}\n${rawBody}`;
+  const existingChunk = existsSync(chunkOut) ? await readFile(chunkOut, 'utf8').catch(() => null) : null;
+  if (existingChunk !== chunkContent) {
+    await writeAtomic(chunkOut, chunkContent);
+  }
 
   // Collect chunk inputs for `.lingxia/gpu-inputs.json` (`"lx:view"`).
   const chunkInputs = new Set();
@@ -249,7 +261,7 @@ export async function buildSharedChunk(root, output, {
   }
 
   // Emit per-language catalogue modules `_view/<chunkId>/<tag>.js` when i18n is present.
-  let catalogueChunk;
+  let catalogueChunk, catalogueSource, catalogueLanguages = [];
   if (existsSync(compiledMessages)) {
     catalogueChunk = specifier;
     const i18nDir = dirname(compiledMessages);
@@ -257,8 +269,10 @@ export async function buildSharedChunk(root, output, {
     chunkInputs.add(relative(root, compiledMessages).split('\\').join('/'));
     const sourceMatch = indexSrc.match(/export\s+const\s+source\s*=\s*("[^"]+"|'[^']+')/);
     const sourceTag = sourceMatch ? JSON.parse(sourceMatch[1].replace(/^'|'$/g, '"')) : 'en-US';
+    catalogueSource = sourceTag;
     const langImports = [...indexSrc.matchAll(/import\s+\w+\s+from\s+['"]\.\/([^'"]+)\.js['"]\s*;/g)]
       .map(m => m[1]);
+    catalogueLanguages = langImports.filter(tag => existsSync(join(i18nDir, `${tag}.js`)));
     // Keep only the formatter helper (strip other languages' imports and the combined `languages` map).
     const formatterSrc = indexSrc
       .replace(/^\s*import\s+\w+\s+from\s+['"]\.\/[^'"]+['"]\s*;\s*$/gm, '')
@@ -287,10 +301,10 @@ export async function buildSharedChunk(root, output, {
     }
   }
 
-  // Write a tiny 1-line JSX inject shim so esbuild injects `h`, `Fragment`, `__lxFn` from the chunk.
+  // Reuse one JSX inject shim path so repeated builds do not accumulate temp files.
   const shimDir = join(root, '.lingxia');
   await mkdir(shimDir, { recursive: true });
-  const jsxShim = join(shimDir, `_view-jsx-${chunkId}.js`);
+  const jsxShim = join(shimDir, '_view-jsx.js');
   await writeAtomic(jsxShim, `export { h, Fragment, __lxFn } from ${JSON.stringify(specifier)};\n`);
 
   const sharedByPath = new Map(sharedPackages.map(entry => [entry.abs.toLowerCase(), entry]));
@@ -300,6 +314,8 @@ export async function buildSharedChunk(root, output, {
     specifier,
     chunkBuildId,
     catalogueChunk,
+    catalogueSource,
+    catalogueLanguages,
     jsxShim,
     sharedByPath,
     pkgCandidates,
@@ -309,14 +325,19 @@ export async function buildSharedChunk(root, output, {
   };
 }
 
-/** Generates a tiny ES module proxy that re-exports a shared package module from the View chunk. */
+const VALID_ID = /^[A-Za-z_$][A-Za-z0-9_$]*$/;
+
+/** Generates a tiny ES module proxy that re-exports a shared package module from the View chunk,
+ *  using alias bindings so reserved-word exports (e.g. `switch`) remain valid ESM. */
 export function packageProxySource(specifier, entry) {
   const ns = `__lxPkg_${entry.idx}`;
   const lines = [`import { ${ns} } from ${JSON.stringify(specifier)};`];
   const named = entry.exports.filter(name => name !== 'default');
-  if (named.length) {
-    lines.push(`export const { ${named.join(', ')} } = ${ns};`);
-  }
+  named.forEach((name, i) => {
+    const local = `__lxE_${i}`;
+    const exportName = VALID_ID.test(name) ? name : JSON.stringify(name);
+    lines.push(`const ${local} = ${ns}[${JSON.stringify(name)}]; export { ${local} as ${exportName} };`);
+  });
   if (entry.exports.includes('default')) {
     lines.push(`export default ${ns}.default;`);
   }

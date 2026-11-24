@@ -11,6 +11,8 @@ export function moduleBanner(compiler, extra = {}) {
     compiler,
     ...(extra.chunkBuildId ? { chunkBuildId: extra.chunkBuildId } : {}),
     ...(extra.catalogueChunk ? { catalogueChunk: extra.catalogueChunk } : {}),
+    ...(extra.catalogueSource ? { catalogueSource: extra.catalogueSource } : {}),
+    ...(extra.catalogueLanguages?.length ? { catalogueLanguages: extra.catalogueLanguages } : {}),
   };
   return `// LingXia UI module; ${JSON.stringify(manifest)}
 ;(function(required) {

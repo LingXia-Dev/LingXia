@@ -6,7 +6,7 @@
 //! single Node process otherwise. Wrapper configs under `.lingxia/typecheck/` are updated only
 //! when their content changes so incremental `.tsbuildinfo` survives across runs.
 
-use anyhow::{anyhow, bail, Context, Result};
+use anyhow::{Context, Result, anyhow, bail};
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
@@ -60,11 +60,16 @@ function handleTypecheck(root) {
   };
   const wrappers = new Map();
   const kept = new Set();
+  function normKey(p) {
+    const s = path.resolve(p).replace(/\\/g, '/');
+    return process.platform === 'win32' ? s.toLowerCase() : s;
+  }
   function wrap(config) {
-    if (wrappers.has(config)) return wrappers.get(config);
+    const k = normKey(config);
+    if (wrappers.has(k)) return wrappers.get(k);
     const name = `${wrappers.size}-${path.basename(config, '.json')}`;
     const wrapper = path.join(out, `${name}.json`);
-    wrappers.set(config, wrapper);
+    wrappers.set(k, wrapper);
     kept.add(`${name}.json`);
     const read = ts.readConfigFile(config, ts.sys.readFile);
     if (read.error) throw Error(ts.flattenDiagnosticMessageText(read.error.messageText, ' '));
@@ -117,8 +122,9 @@ function handleActionTypes(root, logics) {
   const key = file => path.resolve(file).toLowerCase();
   const seen = new Set();
   function project(config, logic) {
-    if (seen.has(config + logic) || !ts.sys.fileExists(config)) return null;
-    seen.add(config + logic);
+    const dedup = config + '\0' + logic;
+    if (seen.has(dedup) || !ts.sys.fileExists(config)) return null;
+    seen.add(dedup);
     const read = ts.readConfigFile(config, ts.sys.readFile);
     if (read.error) throw Error(ts.flattenDiagnosticMessageText(read.error.messageText, ' '));
     const parsed = ts.parseJsonConfigFileContent(read.config, ts.sys, path.dirname(config), undefined, config);
@@ -307,6 +313,13 @@ fn call<Req: Serialize, Res: DeserializeOwned>(
     let key = (canonical(root), canonical(typescript));
     let slot = {
         let mut pool = POOL.lock().unwrap_or_else(|p| p.into_inner());
+        if SESSIONS.load(Ordering::Acquire) == 0 {
+            drop(pool);
+            let mut worker = Worker::spawn(root, typescript)?;
+            let res = worker.request(req);
+            worker.shutdown();
+            return res;
+        }
         pool.entry(key)
             .or_insert_with(|| Arc::new(Mutex::new(None)))
             .clone()
@@ -324,7 +337,7 @@ fn call<Req: Serialize, Res: DeserializeOwned>(
     }
     let mut worker = Worker::spawn(root, typescript)?;
     let res = worker.request(req);
-    if res.is_ok() {
+    if res.is_ok() && SESSIONS.load(Ordering::Acquire) > 0 {
         *guard = Some(worker);
     } else {
         worker.shutdown();

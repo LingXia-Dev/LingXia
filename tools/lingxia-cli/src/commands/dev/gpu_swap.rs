@@ -188,7 +188,14 @@ impl Compiler {
         let Some(pages) = inputs.as_ref().and_then(|v| v.as_object()) else {
             return;
         };
-        let pages: Vec<String> = pages.keys().cloned().collect();
+        let pages: Vec<String> = pages
+            .keys()
+            .filter(|page| page.as_str() != CHUNK_KEY)
+            .cloned()
+            .collect();
+        if pages.is_empty() {
+            return;
+        }
         let Ok(catalogs) = crate::lxapp::gpu_dev_inputs(&self.dir, &pages) else {
             return;
         };

@@ -59,7 +59,7 @@ const join = text => Array.isArray(text) ? text.join('') : String(text);
 export function lxappText(key, language, args) {
   if (!catalogues) return undefined;
   const { tag, messages } = catalogueFor(language);
-  const message = messages[key];
+  const message = messages?.[key];
   return message ? join(message(args ?? {}, formatter(tag))) : undefined;
 }
 

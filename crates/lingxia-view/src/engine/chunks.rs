@@ -54,8 +54,34 @@ thread_local! {
     static ACTIVE: RefCell<Option<ActiveScope>> = const { RefCell::new(None) };
 }
 
+struct ScopeGuard {
+    previous: Option<ActiveScope>,
+    taken: bool,
+}
+
+impl ScopeGuard {
+    fn finish(mut self) -> Option<String> {
+        self.taken = true;
+        ACTIVE.with(|slot| {
+            let current = slot.borrow_mut().take();
+            *slot.borrow_mut() = self.previous.take();
+            current.and_then(|scope| scope.last_error)
+        })
+    }
+}
+
+impl Drop for ScopeGuard {
+    fn drop(&mut self) {
+        if !self.taken {
+            ACTIVE.with(|slot| {
+                *slot.borrow_mut() = self.previous.take();
+            });
+        }
+    }
+}
+
 /// Runs `f` with `loader` and optional dev `expected_dev_build_id` active for QuickJS's module
-/// loader callback on the current thread.
+/// loader callback on the current thread. Restores TLS even if `f` panics.
 pub(crate) fn with_loader<R>(
     loader: Option<ChunkLoader>,
     expected_dev_build_id: Option<String>,
@@ -68,12 +94,12 @@ pub(crate) fn with_loader<R>(
             last_error: None,
         })
     });
+    let guard = ScopeGuard {
+        previous,
+        taken: false,
+    };
     let result = f();
-    let error = ACTIVE.with(|slot| {
-        let current = slot.borrow_mut().take();
-        *slot.borrow_mut() = previous;
-        current.and_then(|scope| scope.last_error)
-    });
+    let error = guard.finish();
     (result, error)
 }
 
@@ -86,6 +112,15 @@ pub(crate) fn record_error(message: String) {
             scope.last_error = Some(message);
         }
     });
+}
+
+/// True when the active module loader already recorded a chunk resolution failure.
+pub(crate) fn has_error() -> bool {
+    ACTIVE.with(|slot| {
+        slot.borrow()
+            .as_ref()
+            .is_some_and(|scope| scope.last_error.is_some())
+    })
 }
 
 fn valid_segment(seg: &str) -> bool {
@@ -156,11 +191,10 @@ pub(crate) fn load_chunk(
     if let Some(expected) = expected_dev_build_id {
         let actual = crate::engine::compatibility::parse_manifest(&source)?
             .and_then(|manifest| manifest.chunk_build_id);
-        if let Some(actual) = actual
-            && actual != expected
-        {
+        if actual.as_deref() != Some(expected) {
+            let actual_display = actual.as_deref().unwrap_or("none");
             return Err(format!(
-                "UI_MODULE: this page was built against View chunk {expected}, the lxapp has {actual}; rebuild the page"
+                "UI_MODULE: this page was built against View chunk {expected}, the lxapp has {actual_display}; rebuild the page"
             ));
         }
     }
@@ -179,56 +213,70 @@ pub(crate) fn load_active(specifier: &str) -> Result<String, String> {
     load_chunk(specifier, loader.as_ref(), expected.as_deref())
 }
 
-/// Attempts to load a per-language catalogue module (`<prefix>/<lang>`), trying exact tag first
-/// and then its primary subtag (e.g. `zh-CN` -> `zh`). Returns `Ok(None)` when absent.
-pub(crate) fn load_language_module(
-    prefix: &str,
+/// Matches `language` against `declared` tags using the same rules as `i18n.js` (`catalogueFor`):
+/// case-insensitive exact match -> case-insensitive primary subtag match -> `source` fallback.
+pub(crate) fn resolve_catalogue_tag(
     language: &str,
+    declared: &[String],
+    source: Option<&str>,
+) -> Option<String> {
+    let lower = language.trim().replace('_', "-").to_ascii_lowercase();
+    if !declared.is_empty() {
+        if let Some(exact) = declared.iter().find(|t| t.to_ascii_lowercase() == lower) {
+            return Some(exact.clone());
+        }
+        let primary = lower.split('-').next().unwrap_or("");
+        if !primary.is_empty()
+            && let Some(by_primary) = declared
+                .iter()
+                .find(|t| t.to_ascii_lowercase().split('-').next() == Some(primary))
+        {
+            return Some(by_primary.clone());
+        }
+        return source
+            .map(str::to_owned)
+            .or_else(|| declared.first().cloned());
+    }
+    let trimmed = language.trim();
+    if !trimmed.is_empty() {
+        Some(trimmed.to_owned())
+    } else {
+        source.map(str::to_owned)
+    }
+}
+
+/// Loads a specific per-language catalogue module (`<prefix>/<tag>`).
+pub(crate) fn load_exact_language_module(
+    prefix: &str,
+    tag: &str,
     loader: &ChunkLoader,
     expected_dev_build_id: Option<&str>,
 ) -> Result<Option<(String, String)>, String> {
-    let trimmed = language.trim();
-    if trimmed.is_empty() {
+    if !valid_segment(tag) {
         return Ok(None);
     }
-    let mut candidates = vec![trimmed.to_owned()];
-    if let Some((primary, _)) = trimmed.split_once(['-', '_'])
-        && !primary.is_empty()
-        && primary != trimmed
-    {
-        candidates.push(primary.to_owned());
-    }
-    for tag in candidates {
-        if !valid_segment(&tag) {
-            continue;
-        }
-        let specifier = format!("{prefix}/{tag}");
-        let dist_path = specifier_to_dist_path(&specifier)?;
-        match loader(&dist_path) {
-            Ok(source) => {
-                crate::engine::compatibility::validate(&source)?;
-                if let Some(expected) = expected_dev_build_id {
-                    let actual = crate::engine::compatibility::parse_manifest(&source)?
-                        .and_then(|m| m.chunk_build_id);
-                    if let Some(actual) = actual
-                        && actual != expected
-                    {
-                        return Err(format!(
-                            "UI_MODULE: this page was built against View chunk {expected}, the lxapp has {actual}; rebuild the page"
-                        ));
-                    }
+    let specifier = format!("{prefix}/{tag}");
+    let dist_path = specifier_to_dist_path(&specifier)?;
+    match loader(&dist_path) {
+        Ok(source) => {
+            crate::engine::compatibility::validate(&source)?;
+            if let Some(expected) = expected_dev_build_id {
+                let actual = crate::engine::compatibility::parse_manifest(&source)?
+                    .and_then(|m| m.chunk_build_id);
+                if actual.as_deref() != Some(expected) {
+                    let actual_display = actual.as_deref().unwrap_or("none");
+                    return Err(format!(
+                        "UI_MODULE: this page was built against View chunk {expected}, the lxapp has {actual_display}; rebuild the page"
+                    ));
                 }
-                return Ok(Some((specifier, source)));
             }
-            Err(ChunkLoadError::NotFound) => continue,
-            Err(ChunkLoadError::IntegrityMismatch) => {
-                return Err(format!(
-                    "UI_MODULE: the View chunk {specifier} does not match this lxapp's build"
-                ));
-            }
+            Ok(Some((specifier, source)))
         }
+        Err(ChunkLoadError::NotFound) => Ok(None),
+        Err(ChunkLoadError::IntegrityMismatch) => Err(format!(
+            "UI_MODULE: the View chunk {specifier} does not match this lxapp's build"
+        )),
     }
-    Ok(None)
 }
 
 #[cfg(test)]
@@ -353,7 +401,7 @@ mod tests {
     #[test]
     fn shared_chunk_caches_bytecode_per_module_across_pages_and_edits() {
         let chunk = chunk_with_runtime("export const tag = 'shared-cache-v1';", None);
-        let chunk_key = bytecode::key(&chunk);
+        let chunk_key = bytecode::key_for("lx:view/cachetest1", &chunk);
         bytecode::forget(&chunk_key);
         let loads = Arc::new(AtomicUsize::new(0));
         let loads_ref = loads.clone();
@@ -444,5 +492,65 @@ mod tests {
 
         session.set_environment(env("zh-CN")).unwrap();
         assert_eq!(session.layout(320, 640, 1.0).unwrap().nodes[0].text, "你好");
+    }
+
+    #[test]
+    fn bcp47_language_matching_and_source_fallback_load_correctly() {
+        let chunk = chunk_with_runtime(
+            "globalThis.__cat = {}; globalThis.__lingxiaRegisterCatalogue = (tag, msgs) => { globalThis.__cat[tag] = msgs; };",
+            None,
+        );
+        let en = r#"// LingXia UI module; {"uiAbi":1,"minField":102,"requiredFeatures":["candidate-transactions","bounded-jobs"],"compiler":"0.30.0"}
+globalThis.__lingxiaRegisterCatalogue('en-US', { greet: 'Hello', onlyEn: 'Fallback' });
+"#;
+        let zh = r#"// LingXia UI module; {"uiAbi":1,"minField":102,"requiredFeatures":["candidate-transactions","bounded-jobs"],"compiler":"0.30.0"}
+globalThis.__lingxiaRegisterCatalogue('zh-CN', { greet: '你好' });
+"#;
+        let loader: ChunkLoader = Arc::new(move |path| match path {
+            "_view/i18nbcp.js" => Ok(chunk.clone()),
+            "_view/i18nbcp/en-US.js" => Ok(en.to_owned()),
+            "_view/i18nbcp/zh-CN.js" => Ok(zh.to_owned()),
+            _ => Err(ChunkLoadError::NotFound),
+        });
+        let manifest = serde_json::json!({
+            "uiAbi": crate::protocol::UI_ABI,
+            "minField": 102,
+            "requiredFeatures": ["candidate-transactions", "bounded-jobs", "view-chunks"],
+            "compiler": "0.30.0",
+            "catalogueChunk": "lx:view/i18nbcp",
+            "catalogueSource": "en-US",
+            "catalogueLanguages": ["en-US", "zh-CN"],
+        });
+        let page = format!(
+            "// LingXia UI module; {manifest}
+import {{ runtimeReady }} from 'lx:view/i18nbcp';
+if (!runtimeReady) throw Error('missing');
+globalThis.__lingxiaRender = () => h('text', {{}}, (globalThis.__cat['zh-CN']?.greet || '') + '|' + (globalThis.__cat['en-US']?.onlyEn || ''));
+"
+        );
+        let mut session = ViewSession::new_with_chunks(&page, false, loader).unwrap();
+        let env = |lang: &str| {
+            serde_json::json!({
+                "theme": "light",
+                "language": lang,
+                "insets": { "top": 0, "right": 0, "bottom": 0, "left": 0 },
+                "keyboard": { "height": 0 },
+                "os": "android",
+                "formFactor": "phone",
+                "canDock": false
+            })
+        };
+        // Unsupported locale still preloads source fallback (en-US).
+        session.set_environment(env("fr-FR")).unwrap();
+        assert_eq!(
+            session.layout(320, 640, 1.0).unwrap().nodes[0].text,
+            "|Fallback"
+        );
+        // BCP-47 script tag zh-Hans-CN matches declared zh-CN while keeping en-US fallback.
+        session.set_environment(env("zh-Hans-CN")).unwrap();
+        assert_eq!(
+            session.layout(320, 640, 1.0).unwrap().nodes[0].text,
+            "你好|Fallback"
+        );
     }
 }

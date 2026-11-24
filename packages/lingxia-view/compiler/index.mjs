@@ -459,7 +459,15 @@ export async function buildPages(root, pages, output, catalogs = {}, { dev = fal
   if (policy.note) console.warn(policy.note);
   let chunk = null;
   if (policy.split) {
-    const sharedPackages = await discoverSharedPackages(root, pages, {
+    // In incremental dev swaps, `pages` may be a subset; union with the recorded built GPU pages
+    // so `_view/dev.js` keeps sibling pages' shared/Liuli modules and stable `chunkBuildId`.
+    let scanPages = pages;
+    if (dev) {
+      const prior = await readRecord(join(root, '.lingxia', 'gpu-inputs.json'));
+      const known = Object.keys(prior).filter(p => p !== 'lx:view' && existsSync(resolve(root, p)));
+      scanPages = [...new Set([...known, ...pages])];
+    }
+    const sharedPackages = await discoverSharedPackages(root, scanPages, {
       tsconfig, runtimeRoot, publicEntry, jsx, compiledMessages,
     });
     chunk = await buildSharedChunk(root, output, {
@@ -492,6 +500,8 @@ export async function buildPages(root, pages, output, catalogs = {}, { dev = fal
           requiredFeatures: ['view-chunks'],
           ...(chunk.chunkBuildId ? { chunkBuildId: chunk.chunkBuildId } : {}),
           ...(chunk.catalogueChunk ? { catalogueChunk: chunk.catalogueChunk } : {}),
+          ...(chunk.catalogueSource ? { catalogueSource: chunk.catalogueSource } : {}),
+          ...(chunk.catalogueLanguages?.length ? { catalogueLanguages: chunk.catalogueLanguages } : {}),
         })
       : moduleBanner(version);
     try {
@@ -524,7 +534,8 @@ export async function buildPages(root, pages, output, catalogs = {}, { dev = fal
                 const entry = chunk.sharedByPath.get(path);
                 const names = chunk.pkgCandidates.get(entry.abs);
                 if (names) for (const n of names) candidates.add(n);
-                for (const [k, owner] of chunk.pkgTokenPackages) tokenPackages.set(k, owner);
+                const owner = chunk.pkgTokenPackages.get(path);
+                if (owner) tokenPackages.set(owner.name, owner);
                 return { contents: packageProxySource(chunk.specifier, entry), loader: 'js' };
               });
             }

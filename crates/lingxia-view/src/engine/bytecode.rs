@@ -36,7 +36,13 @@ pub(crate) fn cache_dir() -> Option<&'static Path> {
 }
 
 /// The source plus everything that decides whether bytecode compiled from it can be read back.
+#[cfg(test)]
 pub(crate) fn key(source: &str) -> Key {
+    key_for("page.js", source)
+}
+
+/// Key including the module's specifier/filename, which QuickJS serializes inside bytecode.
+pub(crate) fn key_for(specifier: &str, source: &str) -> Key {
     static ENGINE: LazyLock<String> = LazyLock::new(|| {
         // SAFETY: QuickJS returns a static NUL-terminated string.
         let version = unsafe { std::ffi::CStr::from_ptr(rong_quickjs_sys::JS_GetVersion()) };
@@ -50,6 +56,10 @@ pub(crate) fn key(source: &str) -> Key {
     let mut hash = Sha256::new();
     hash.update(ENGINE.as_bytes());
     hash.update([0]);
+    if specifier != "page.js" {
+        hash.update(specifier.as_bytes());
+        hash.update([0]);
+    }
     hash.update(source.as_bytes());
     hash.finalize().into()
 }

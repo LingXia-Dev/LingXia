@@ -53,6 +53,11 @@ impl ViewSession {
         std::mem::swap(&mut self.budget, &mut other.budget);
         std::mem::swap(&mut self.chunk_build_id, &mut other.chunk_build_id);
         std::mem::swap(&mut self.catalogue_chunk, &mut other.catalogue_chunk);
+        std::mem::swap(&mut self.catalogue_source, &mut other.catalogue_source);
+        std::mem::swap(
+            &mut self.catalogue_languages,
+            &mut other.catalogue_languages,
+        );
         std::mem::swap(&mut self.loaded_languages, &mut other.loaded_languages);
         // The buffers each isolate referenced are its own.
         self.wire.swap(&other.wire);

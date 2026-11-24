@@ -15,6 +15,10 @@ pub(crate) struct Manifest {
     pub(crate) chunk_build_id: Option<String>,
     #[serde(default)]
     pub(crate) catalogue_chunk: Option<String>,
+    #[serde(default)]
+    pub(crate) catalogue_source: Option<String>,
+    #[serde(default)]
+    pub(crate) catalogue_languages: Vec<String>,
 }
 
 pub(crate) fn parse_manifest(source: &str) -> Result<Option<Manifest>, String> {

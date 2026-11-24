@@ -74,6 +74,10 @@ pub struct ViewSession {
     chunk_build_id: Option<String>,
     /// Per-language catalogue specifier prefix (e.g. `lx:view/<hash>`), when split out of the chunk.
     catalogue_chunk: Option<String>,
+    /// Source fallback language tag (e.g. `en-US`), preloaded for missing-key fallback.
+    catalogue_source: Option<String>,
+    /// Declared catalogue language tags for BCP-47 resolution.
+    catalogue_languages: Vec<String>,
     /// Language tags already evaluated into this isolate.
     loaded_languages: std::collections::HashSet<String>,
     /// The first commit ran and its lowered styles are not yet offered to the cache.
@@ -337,6 +341,11 @@ impl ViewSession {
         let manifest = crate::engine::compatibility::parse_manifest(source)?;
         let chunk_build_id = manifest.as_ref().and_then(|m| m.chunk_build_id.clone());
         let catalogue_chunk = manifest.as_ref().and_then(|m| m.catalogue_chunk.clone());
+        let catalogue_source = manifest.as_ref().and_then(|m| m.catalogue_source.clone());
+        let catalogue_languages = manifest
+            .as_ref()
+            .map(|m| m.catalogue_languages.clone())
+            .unwrap_or_default();
         let context = runtime.context();
         let renderer = Renderer::default();
         let video_scope = renderer.videos.scope();
@@ -393,6 +402,8 @@ impl ViewSession {
             chunks,
             chunk_build_id,
             catalogue_chunk,
+            catalogue_source,
+            catalogue_languages,
             loaded_languages: std::collections::HashSet::new(),
             lowered_due: Cell::new(false),
             lowered_taken: Cell::new(false),

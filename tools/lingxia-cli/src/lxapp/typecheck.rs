@@ -104,7 +104,7 @@ pub(crate) fn resolve_tsgo(root: &Path) -> Option<PathBuf> {
         let trimmed = value.trim();
         if !trimmed.is_empty() && !matches!(trimmed, "0" | "false" | "off") {
             let path = PathBuf::from(trimmed);
-            if path.is_file() {
+            if path.is_file() || !trimmed.contains(['/', '\\']) {
                 return Some(path);
             }
         }
@@ -138,59 +138,140 @@ fn write_if_changed(path: &Path, content: &str) -> Result<()> {
     std::fs::write(path, content).with_context(|| format!("write {}", path.display()))
 }
 
-/// Writes `.lingxia/typecheck/` wrapper configs so `tsgo -b` checks with `noEmit: true` and
-/// incremental `.tsbuildinfo` without polluting the source tree.
+fn resolve_ref_config(base_dir: &Path, ref_path: &str) -> PathBuf {
+    let candidate = if Path::new(ref_path).is_absolute() {
+        PathBuf::from(ref_path)
+    } else {
+        base_dir.join(ref_path)
+    };
+    if candidate.is_dir()
+        || !candidate
+            .extension()
+            .is_some_and(|ext| ext.eq_ignore_ascii_case("json"))
+    {
+        candidate.join("tsconfig.json")
+    } else {
+        candidate
+    }
+}
+
+fn slash_path(path: &Path) -> String {
+    path.to_string_lossy().replace('\\', "/")
+}
+
+/// Recursively writes `.lingxia/typecheck/` wrapper configs matching `ts_worker.rs`:
+/// preserves nested `references`, keeps `rootDir` on `composite` configs, avoids `noEmit: true`
+/// on composite emit projects, and prunes stale wrapper files.
 fn write_typecheck_wrappers(root: &Path) -> Result<PathBuf> {
     let dir = root.join(".lingxia").join("typecheck");
     std::fs::create_dir_all(&dir)?;
-    let root_config = root.join("tsconfig.json");
-    let raw = std::fs::read_to_string(&root_config)
-        .with_context(|| format!("read {}", root_config.display()))?;
-    let parsed: serde_json::Value =
-        json5::from_str(&raw).with_context(|| format!("parse {}", root_config.display()))?;
-    let solution = dir.join("solution.json");
-    let refs = parsed
-        .get("references")
-        .and_then(|v| v.as_array())
-        .filter(|arr| !arr.is_empty());
-    if let Some(refs) = refs {
-        let mut wrapper_refs = Vec::with_capacity(refs.len());
-        for (index, entry) in refs.iter().enumerate() {
-            let Some(ref_path) = entry.get("path").and_then(|v| v.as_str()) else {
-                continue;
-            };
-            let normalized = ref_path.trim_start_matches("./");
-            let extends = format!("../../{normalized}");
-            let wrapper_name = format!("ref-{index}.json");
-            let wrapper_path = dir.join(&wrapper_name);
-            let wrapper = serde_json::json!({
-                "extends": extends,
-                "compilerOptions": {
-                    "noEmit": true,
-                    "incremental": true,
-                    "tsBuildInfoFile": format!("ref-{index}.tsbuildinfo"),
-                    "outDir": ".out"
-                }
-            });
-            write_if_changed(&wrapper_path, &serde_json::to_string_pretty(&wrapper)?)?;
-            wrapper_refs.push(serde_json::json!({ "path": format!("./{wrapper_name}") }));
+    let mut wrapped: std::collections::HashMap<String, PathBuf> = std::collections::HashMap::new();
+    let mut kept: std::collections::HashSet<String> = std::collections::HashSet::new();
+
+    fn wrap_one(
+        config_path: &Path,
+        dir: &Path,
+        is_root: bool,
+        wrapped: &mut std::collections::HashMap<String, PathBuf>,
+        kept: &mut std::collections::HashSet<String>,
+    ) -> Result<PathBuf> {
+        let canonical =
+            std::fs::canonicalize(config_path).unwrap_or_else(|_| config_path.to_path_buf());
+        let key = if cfg!(windows) {
+            slash_path(&canonical).to_ascii_lowercase()
+        } else {
+            slash_path(&canonical)
+        };
+        if let Some(existing) = wrapped.get(&key) {
+            return Ok(existing.clone());
         }
-        let content = serde_json::json!({
-            "files": [],
-            "references": wrapper_refs
-        });
-        write_if_changed(&solution, &serde_json::to_string_pretty(&content)?)?;
-    } else {
-        let content = serde_json::json!({
-            "extends": "../../tsconfig.json",
-            "compilerOptions": {
-                "noEmit": true,
-                "incremental": true,
-                "tsBuildInfoFile": "solution.tsbuildinfo",
-                "outDir": ".out"
+        let name = if is_root {
+            "solution.json".to_string()
+        } else {
+            format!("ref-{}.json", wrapped.len())
+        };
+        let target = dir.join(&name);
+        wrapped.insert(key, target.clone());
+        kept.insert(name.clone());
+
+        let parsed: serde_json::Value = std::fs::read_to_string(config_path)
+            .ok()
+            .and_then(|raw| json5::from_str(&raw).ok())
+            .unwrap_or_else(|| serde_json::json!({}));
+        let base_dir = config_path.parent().unwrap_or(dir);
+        let options = parsed.get("compilerOptions").and_then(|v| v.as_object());
+        let has_no_emit = options
+            .and_then(|o| o.get("noEmit"))
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false);
+        let is_composite = options
+            .and_then(|o| o.get("composite"))
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false);
+        let has_root_dir = options.and_then(|o| o.get("rootDir")).is_some();
+
+        let mut wrapper_refs = Vec::new();
+        if let Some(refs) = parsed.get("references").and_then(|v| v.as_array()) {
+            for entry in refs {
+                if let Some(ref_path) = entry.get("path").and_then(|v| v.as_str()) {
+                    let child_cfg = resolve_ref_config(base_dir, ref_path);
+                    let child_wrapper = wrap_one(&child_cfg, dir, false, wrapped, kept)?;
+                    let child_name = child_wrapper
+                        .file_name()
+                        .and_then(|n| n.to_str())
+                        .unwrap_or("ref.json");
+                    wrapper_refs.push(serde_json::json!({ "path": format!("./{child_name}") }));
+                }
             }
-        });
-        write_if_changed(&solution, &serde_json::to_string_pretty(&content)?)?;
+        }
+
+        let stem = name.trim_end_matches(".json");
+        let mut compiler_options = serde_json::Map::new();
+        compiler_options.insert("incremental".into(), serde_json::json!(true));
+        compiler_options.insert(
+            "tsBuildInfoFile".into(),
+            serde_json::json!(format!("./{stem}.tsbuildinfo")),
+        );
+        if is_composite && !has_root_dir {
+            compiler_options.insert("rootDir".into(), serde_json::json!(slash_path(base_dir)));
+        }
+        if !has_no_emit {
+            let out_dir = format!("./.out/{stem}");
+            compiler_options.insert("outDir".into(), serde_json::json!(out_dir));
+            compiler_options.insert("declarationDir".into(), serde_json::json!(out_dir));
+        }
+
+        let mut wrapper = serde_json::Map::new();
+        wrapper.insert("extends".into(), serde_json::json!(slash_path(config_path)));
+        wrapper.insert(
+            "compilerOptions".into(),
+            serde_json::Value::Object(compiler_options),
+        );
+        if !wrapper_refs.is_empty() {
+            wrapper.insert("references".into(), serde_json::Value::Array(wrapper_refs));
+        }
+        write_if_changed(
+            &target,
+            &serde_json::to_string_pretty(&serde_json::Value::Object(wrapper))?,
+        )?;
+        Ok(target)
+    }
+
+    let solution = wrap_one(
+        &root.join("tsconfig.json"),
+        &dir,
+        true,
+        &mut wrapped,
+        &mut kept,
+    )?;
+    if let Ok(entries) = std::fs::read_dir(&dir) {
+        for entry in entries.flatten() {
+            let file_name = entry.file_name();
+            let name = file_name.to_string_lossy();
+            if name.ends_with(".json") && !kept.contains(name.as_ref()) {
+                let _ = std::fs::remove_file(entry.path());
+            }
+        }
     }
     Ok(solution)
 }
@@ -334,6 +415,51 @@ Found 3 errors.\n";
         );
         // Wrappers were generated cleanly under .lingxia/typecheck/.
         assert!(root.join(".lingxia/typecheck/solution.json").is_file());
-        assert!(root.join(".lingxia/typecheck/ref-0.json").is_file());
+        assert!(root.join(".lingxia/typecheck/ref-1.json").is_file());
+    }
+
+    #[test]
+    fn tsgo_wrappers_preserve_composite_rootdir_nested_references_and_prune_stale() {
+        let temp = tempfile::tempdir().unwrap();
+        let root = temp.path();
+        std::fs::write(
+            root.join("tsconfig.json"),
+            r#"{"files":[],"references":[{"path":"./tsconfig.logic.json"},{"path":"./tsconfig.view.json"}]}"#,
+        )
+        .unwrap();
+        std::fs::write(
+            root.join("tsconfig.logic.json"),
+            r#"{"compilerOptions":{"composite":true}}"#,
+        )
+        .unwrap();
+        std::fs::write(
+            root.join("tsconfig.view.json"),
+            r#"{"compilerOptions":{"composite":true},"references":[{"path":"./tsconfig.logic.json"}]}"#,
+        )
+        .unwrap();
+        let stale = root.join(".lingxia/typecheck/ref-99.json");
+        std::fs::create_dir_all(stale.parent().unwrap()).unwrap();
+        std::fs::write(&stale, "{}").unwrap();
+
+        let solution = write_typecheck_wrappers(root).unwrap();
+        assert!(solution.is_file());
+        assert!(!stale.exists(), "stale wrapper must be pruned");
+        let view_wrapper: serde_json::Value = serde_json::from_str(
+            &std::fs::read_to_string(root.join(".lingxia/typecheck/ref-2.json")).unwrap(),
+        )
+        .unwrap();
+        assert!(
+            view_wrapper["compilerOptions"]["rootDir"].is_string(),
+            "composite config without rootDir must receive explicit rootDir"
+        );
+        assert!(
+            view_wrapper["compilerOptions"].get("noEmit").is_none(),
+            "composite emit config must not force noEmit: true"
+        );
+        assert_eq!(
+            view_wrapper["references"][0]["path"].as_str(),
+            Some("./ref-1.json"),
+            "nested reference must point to the wrapped logic config"
+        );
     }
 }

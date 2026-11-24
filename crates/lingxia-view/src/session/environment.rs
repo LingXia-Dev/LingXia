@@ -128,34 +128,50 @@ impl ViewSession {
         Ok(())
     }
 
-    /// Synchronously evaluates the per-language catalogue module (`lx:view/<id>/<lang>`) into
-    /// this isolate between frames when the page uses split catalogues.
+    /// Synchronously evaluates the active and source-fallback per-language catalogue modules
+    /// (`lx:view/<id>/<tag>`) into this isolate between frames when the page uses split catalogues.
     pub(super) fn ensure_language_catalogue(&mut self, language: &str) -> Result<(), String> {
-        let (Some(prefix), Some(loader)) = (&self.catalogue_chunk, &self.chunks) else {
+        let (Some(prefix), Some(loader)) = (self.catalogue_chunk.clone(), self.chunks.clone())
+        else {
             return Ok(());
         };
-        let trimmed = language.trim();
-        if trimmed.is_empty() || self.loaded_languages.contains(trimmed) {
-            return Ok(());
+        let mut tags_to_load: Vec<String> = Vec::with_capacity(2);
+        if let Some(source) = &self.catalogue_source {
+            tags_to_load.push(source.clone());
         }
-        if let Some((specifier, source)) = crate::engine::chunks::load_language_module(
-            prefix,
-            trimmed,
-            loader,
-            self.chunk_build_id.as_deref(),
-        )? {
-            let (outcome, _) =
-                self.budget
-                    .run(Duration::from_secs(1), Duration::from_secs(1), || {
+        if let Some(resolved) = crate::engine::chunks::resolve_catalogue_tag(
+            language,
+            &self.catalogue_languages,
+            self.catalogue_source.as_deref(),
+        ) && !tags_to_load.contains(&resolved)
+        {
+            tags_to_load.push(resolved);
+        }
+        for tag in tags_to_load {
+            if self.loaded_languages.contains(&tag) {
+                continue;
+            }
+            if let Some((specifier, source)) = crate::engine::chunks::load_exact_language_module(
+                &prefix,
+                &tag,
+                &loader,
+                self.chunk_build_id.as_deref(),
+            )? {
+                let (outcome, _) = self.budget.run(
+                    Duration::from_secs(1),
+                    Duration::from_secs(1),
+                    || {
                         <crate::engine::Active as crate::engine::Engine>::evaluate_auxiliary_module(
-                            &self.context,
-                            &specifier,
-                            &source,
-                        )?;
+                                &self.context,
+                                &specifier,
+                                &source,
+                            )?;
                         <crate::engine::Active as crate::engine::Engine>::drain_jobs(&self.context)
-                    });
-            outcome?;
-            self.loaded_languages.insert(trimmed.to_owned());
+                    },
+                );
+                outcome?;
+                self.loaded_languages.insert(tag);
+            }
         }
         Ok(())
     }
