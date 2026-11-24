@@ -1509,6 +1509,54 @@ fn states_lighten_where_deepening_would_lose_their_label() {
 }
 
 #[test]
+fn a_light_seed_keeps_its_fill_on_the_accent_solid_under_a_dark_ink() {
+    let seed = hex("#f2d14b");
+    let pack: Pack = serde_json::from_str(
+        r##"{"name":"buttercup","version":1,"accent":{"seed":"#f2d14b","derive":true}}"##,
+    )
+    .unwrap();
+    let pack = complete(pack);
+    assert_eq!(check(&pack), Vec::new());
+    every(|prefs, label| {
+        let theme = resolve(&pack, &prefs).unwrap();
+        let need = if prefs.high_contrast {
+            boosted(4.5)
+        } else {
+            4.5
+        };
+        let ink = theme.color(Role::OnAccentSolid);
+        assert_eq!(theme.color(Role::AccentSolid), seed, "{label}");
+        assert!(ink.oklch().l < 0.3, "{label}: {}", ink.hex());
+        for role in [
+            Role::AccentSolid,
+            Role::AccentSolidHover,
+            Role::AccentSolidPressed,
+        ] {
+            assert!(
+                contrast(ink, theme.color(role)) >= need,
+                "{label} {}",
+                role.name()
+            );
+        }
+        // Text on a surface still needs a deeper accent than the fill.
+        assert!(
+            contrast(theme.color(Role::Accent), theme.color(Role::Surface)) >= need,
+            "{label}"
+        );
+    });
+
+    // A mid tone deepens to carry white, even where white does not read on the seed itself.
+    for mid in ["#365cdd", "#0f9d58"] {
+        let prefs = Prefs {
+            accent: Some(hex(mid)),
+            ..Prefs::default()
+        };
+        let theme = resolve(&default_pack(), &prefs).unwrap();
+        assert_eq!(theme.color(Role::OnAccentSolid), hex("#ffffff"), "{mid}");
+    }
+}
+
+#[test]
 fn a_written_fill_neither_direction_holds_is_refused_with_the_nearest_that_passes() {
     // Deeper loses the dark label; lighter fades into the white surface.
     let pack: Pack = serde_json::from_str(

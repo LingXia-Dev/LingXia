@@ -219,6 +219,9 @@ pub(crate) fn nearest_passing(
     })
 }
 
+/// OKLab lightness from which an accent seed is light: a yellow or a pale tint keeps its colour
+/// on solids under dark ink, where a mid tone deepens to carry white.
+const LIGHT_SEED: f64 = 0.75;
 /// White on a dark-appearance solid fill: past the 4.5 it needs, so rounding never takes it under.
 const SOLID_WHITE: f64 = 4.8;
 
@@ -428,6 +431,17 @@ pub(crate) fn overlay(raised: Rgba, dark: bool) -> Rgba {
     .rgba(255)
 }
 
+/// The near-black text of `fill`'s hue that reads on it where white does not.
+fn ink_of(fill: Rgba) -> Rgba {
+    let tone = fill.oklch();
+    Oklch {
+        l: 0.16,
+        c: tone.c.min(0.03),
+        h: tone.h,
+    }
+    .rgba(255)
+}
+
 /// The lightest tone of `source`'s hue and chroma that white stands `ratio` off.
 fn carrying_white(source: Rgba, ratio: f64) -> Rgba {
     let Oklch { c, h, .. } = source.oklch();
@@ -509,11 +523,17 @@ impl Build<'_> {
         for [status, on, soft, mark] in STATUSES {
             self.family(status, on, soft, mark, tint, self.movable);
         }
-        self.solid(
-            [Role::Accent, Role::OnAccent],
-            [Role::AccentSolid, Role::OnAccentSolid],
-            seed,
-        );
+        match self.light_seed(seed) {
+            Some(ink) => {
+                self.put(Role::AccentSolid, seed);
+                self.put(Role::OnAccentSolid, ink);
+            }
+            None => self.solid(
+                [Role::Accent, Role::OnAccent],
+                [Role::AccentSolid, Role::OnAccentSolid],
+                seed,
+            ),
+        }
         let danger = self.get(Role::Danger);
         self.solid(
             [Role::Danger, Role::OnDanger],
@@ -578,13 +598,7 @@ impl Build<'_> {
             };
             return (fill, text);
         }
-        let tone = fill.oklch();
-        let ink = Oklch {
-            l: 0.16,
-            c: tone.c.min(0.03),
-            h: tone.h,
-        }
-        .rgba(255);
+        let ink = ink_of(fill);
         let mut texts = [WHITE, ink];
         if contrast(ink, fill) > contrast(WHITE, fill) * WHITE_BIAS {
             texts.swap(0, 1);
@@ -605,6 +619,21 @@ impl Build<'_> {
             .unwrap_or(tries[0])
     }
 
+    /// The dark ink for an accent solid that keeps a light `seed` as its fill, rather than
+    /// deepening it until white reads. `None` for a seed under [`LIGHT_SEED`], when the pack
+    /// wrote either solid, or when no ink reads on it.
+    fn light_seed(&self, seed: Rgba) -> Option<Rgba> {
+        if self.has(Role::AccentSolid)
+            || self.has(Role::OnAccentSolid)
+            || seed.oklch().l < LIGHT_SEED
+        {
+            return None;
+        }
+        let need = self.need(4.5);
+        let ink = ensure_contrast(ink_of(seed), seed, need);
+        (contrast(ink, seed) >= need).then_some(ink)
+    }
+
     /// Hover and pressed fills of `solid`: deeper, or lighter where deeper would leave its label
     /// hard to read. A derived solid moves to carry white first, so a derived press always deepens.
     /// A written one neither way holds keeps the deeper states and [`crate::check`] refuses it.
@@ -620,7 +649,7 @@ impl Build<'_> {
         if deeper.iter().all(|&shade| contrast(label, shade) >= need) {
             return deeper;
         }
-        if !self.has(solid) && !self.has(on) {
+        if !self.has(solid) && !self.has(on) && label == WHITE {
             let fill = carrying_white(fill, need.max(SOLID_WHITE));
             self.put(solid, fill);
             self.put(on, WHITE);

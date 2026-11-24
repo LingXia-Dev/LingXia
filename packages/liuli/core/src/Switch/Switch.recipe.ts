@@ -13,7 +13,7 @@ export const switchParts = {
 /**
  * The switch primitive holds the label and help text as its content and draws the track and thumb
  * at its end, so the whole block is the press target. The thumb is one white knob in every state;
- * on, the track is accent-solid, the fill that carries white marks (the knob holds 4.8:1 or more).
+ * on, the track is accent-solid, the fill a primary Button has.
  */
 export const switchRecipe = {
   root: {

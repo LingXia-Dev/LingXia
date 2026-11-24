@@ -289,7 +289,7 @@ authored ones and the accent seed, unless a pack sets them.
 | `chart-6` | derived | 3:1 on `surface`, 3:1 on `canvas` | Sixth categorical series. |
 | `chart-7` | derived | 3:1 on `surface`, 3:1 on `canvas` | Seventh categorical series. |
 | `chart-8` | derived | 3:1 on `surface`, 3:1 on `canvas` | Eighth categorical series. |
-| `accent-solid` | derived |  | Fill of a control that is pressed or switched and carries white marks: primary buttons, checked boxes and radios, switch tracks, a selected day, steppers, floating buttons; the accent in light, a deeper accent in dark. Accent text, icons, the focus ring and filled labels such as badges keep accent. |
+| `accent-solid` | derived |  | Fill of a control that is pressed or switched: primary buttons, checked boxes and radios, switch tracks, a selected day, steppers, floating buttons; the accent in light, a deeper accent in dark, under white marks. A light seed, such as a yellow, stays the fill in both, under dark marks. Accent text, icons, the focus ring and filled labels such as badges keep accent. |
 | `on-accent-solid` | derived | 4.5:1 on `accent-solid`, 4.5:1 on `accent-solid-hover`, 4.5:1 on `accent-solid-pressed` | Text and icons on accent-solid. |
 | `danger-solid` | derived |  | Fill of a destructive control that is pressed and carries white marks; danger in light, a deeper danger in dark. A danger badge or label keeps danger. |
 | `on-danger-solid` | derived | 4.5:1 on `danger-solid`, 4.5:1 on `danger-solid-hover`, 4.5:1 on `danger-solid-pressed` | Text and icons on danger-solid. |

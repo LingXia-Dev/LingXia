@@ -128,7 +128,7 @@ pub enum Role {
     Chart7 = 60,
     /// Eighth categorical series.
     Chart8 = 61,
-    /// Fill of a control that is pressed or switched and carries white marks: primary buttons, checked boxes and radios, switch tracks, a selected day, steppers, floating buttons; the accent in light, a deeper accent in dark. Accent text, icons, the focus ring and filled labels such as badges keep accent.
+    /// Fill of a control that is pressed or switched: primary buttons, checked boxes and radios, switch tracks, a selected day, steppers, floating buttons; the accent in light, a deeper accent in dark, under white marks. A light seed, such as a yellow, stays the fill in both, under dark marks. Accent text, icons, the focus ring and filled labels such as badges keep accent.
     AccentSolid = 62,
     /// Text and icons on accent-solid.
     OnAccentSolid = 63,
