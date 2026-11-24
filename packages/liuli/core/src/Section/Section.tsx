@@ -1,6 +1,7 @@
 import { cx, type Child } from '@lingxia/view';
 import { sectionRecipe as r } from './Section.recipe';
 import { dataOf } from '../internal/data';
+import { firstLineRecipe } from '../internal/firstLine.recipe';
 
 export interface SectionProps {
   /** The section's heading. */
@@ -25,7 +26,12 @@ export function Section({ title, description, action, headingLevel = 2, children
           <text role="heading" headingLevel={headingLevel} className={cx(r.title.base, r.title.level[headingLevel])}>{title}</text>
           {description !== undefined && <text className={r.description.base}>{description}</text>}
         </view>
-        {action !== undefined && <view className={cx(r.action.base, r.action.level[headingLevel])}>{action}</view>}
+        {action !== undefined && (
+          <view className={r.action.base}>
+            <text aria-hidden className={cx(r.title.base, r.title.level[headingLevel], firstLineRecipe.strut)}>{'\u200B'}</text>
+            <view className={r.actionControls.base}>{action}</view>
+          </view>
+        )}
       </view>
       {children}
     </view>

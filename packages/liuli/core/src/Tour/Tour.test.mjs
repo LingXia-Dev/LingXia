@@ -52,3 +52,14 @@ test('Welcome: the row around the search target wraps, so at large text the fiel
   assert.deepEqual([search.props.grow, search.props.flexBasis, search.props.minWidth], [1, 160, undefined]);
   assert.equal(search.parent.props.flexWrap, 'wrap');
 });
+
+test('Welcome: at large text the buttons wrap under the step count and stay at the end, each row of them wrapping too', async () => {
+  const screen = await renderExample('Tour/Tour', 'Welcome');
+  screen.press(screen.getByTestId('tour-start'));
+  screen.press(screen.getByTestId('tour-next'));
+  const actions = screen.getByTestId('tour-back').parent;
+  const footer = actions.parent;
+  assert.deepEqual([actions.children.length, footer.children.length], [3, 2], 'Skip, Back and Next beside the count');
+  assert.deepEqual([footer.props.flexWrap, actions.props.flexWrap, actions.props.justify], ['wrap', 'wrap', 'end']);
+  assert.equal(actions.props.marginInlineStart, 'auto', 'alone on its line, the row keeps to the end');
+});

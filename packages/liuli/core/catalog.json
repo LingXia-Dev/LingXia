@@ -16008,7 +16008,8 @@
         "heading": "view",
         "title": "text",
         "description": "text",
-        "action": "view"
+        "action": "view",
+        "actionControls": "view"
       },
       "accessibility": {
         "pattern": null,

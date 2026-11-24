@@ -5,6 +5,7 @@ export const sectionParts = {
   title: 'text',
   description: 'text',
   action: 'view',
+  actionControls: 'view',
 } as const;
 
 /** A heading over its content: the title a step above body, the action centred on its first line at the end. */
@@ -25,9 +26,12 @@ export const sectionRecipe = {
   description: {
     base: 'text-footnote text-muted whitespace-pre-line',
   },
+  /** As tall as the title's first line at any text size: a strut in the title's style sets it. */
   action: {
-    base: 'shrink-0 flex-row items-center gap-2',
-    /** The title's line height, so a taller control stands evenly above and below its first line. */
-    level: { 2: 'h-6', 3: 'h-[22px]', 4: 'h-[18px]' } satisfies Record<2 | 3 | 4, string>,
+    base: 'shrink-0 flex-row items-center',
+  },
+  /** No height of its own, so a taller control stands evenly above and below that line. */
+  actionControls: {
+    base: 'h-0 flex-row items-center gap-2',
   },
 } as const;

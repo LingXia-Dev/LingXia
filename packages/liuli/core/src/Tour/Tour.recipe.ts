@@ -37,14 +37,15 @@ export const tourRecipe = {
   text: {
     base: 'text-footnote text-surface whitespace-pre-line',
   },
+  /** At large text the buttons wrap under the count, kept at the end. */
   footer: {
-    base: 'flex-row items-center justify-between gap-3 pt-1',
+    base: 'flex-row flex-wrap items-center justify-between gap-x-3 gap-y-2 pt-1',
   },
   count: {
     base: 'text-caption text-surface/70 tabular-nums',
   },
   actions: {
-    base: 'flex-row items-center gap-1',
+    base: 'flex-row flex-wrap items-center justify-end gap-1 ms-auto',
   },
   /** Ghost buttons on the inverted surface take its text colour. */
   quiet: {

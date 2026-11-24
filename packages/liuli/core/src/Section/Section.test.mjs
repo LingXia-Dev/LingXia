@@ -9,10 +9,14 @@ test('Recent: a level-2 heading with its line, the action centred on the title\'
   const [heading, action] = header.children;
   assert.deepEqual([heading.children[0].props.role, heading.children[0].props.headingLevel, heading.children[0].text], ['heading', 2, 'Recent notes']);
   assert.equal(heading.children[1].text, 'Edited in the last week');
-  assert.equal(textOf(action), 'See all');
+  assert.equal(textOf(action.children[1]), 'See all');
   assert.equal(action.props.shrink, 0, 'the action keeps its width; the heading gives way');
-  // Level with the title's first line, not the description's last: a box one title line tall, the action centred in it.
-  assert.deepEqual([header.props.align, action.props.height, action.props.align], ['start', 24, 'center']);
+  // Level with the title's first line, not the description's last, at any text size: a strut in the title's style
+  // makes the box one title line tall, and the controls, with no height of their own, centre on it.
+  const [strut, controls] = action.children;
+  const title = heading.children[0];
+  assert.deepEqual([strut.props.fontSize, strut.props.lineHeight, strut.props.width, strut.props.accessibilityHidden], [title.props.fontSize, title.props.lineHeight, 0, 1]);
+  assert.deepEqual([header.props.align, action.props.align, controls.props.height, controls.props.align], ['start', 'center', 0, 'center']);
   assert.equal(content.props.role, 'list');
 });
 

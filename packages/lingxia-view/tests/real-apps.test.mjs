@@ -1,3 +1,4 @@
+// An intended class change in a real app (Liuli included) updates tests/fixtures/real-app-base-snapshot.json.gz in the same commit.
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { existsSync, readdirSync, readFileSync, mkdtempSync, rmSync } from 'node:fs';
