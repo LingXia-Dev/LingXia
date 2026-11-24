@@ -25,6 +25,9 @@ start instead of running unnamed.
 suffixed pipe on Windows): sessions of an export or second checkout register there, the build check
 replaces only that broker, and `lxdev` reaches them with the same variable or `--instance <name>`.
 Without it every build shares the default broker, and a different build replaces it.
+`LINGXIA_HOME` moves the broker with the rest of the state: the socket is `$LINGXIA_HOME/broker[-<instance>].sock`
+(a socket path past the platform limit, 103 bytes on macOS, is an error naming it), and on Windows the
+pipe name carries a hash of it. `lxdev` must run with the same `LINGXIA_HOME` to find those sessions.
 
 A macOS Runner session owns one slot per project and instance: `.lingxia/dev/runner[-<instance>].pid`, an
 `.owner` record (session pid and start time), and Runner data under `<project id>[-<instance>]`. A new

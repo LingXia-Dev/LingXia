@@ -6,7 +6,7 @@
 //! (and `lingxia dev stop`) query the broker instead of scanning a
 //! project-local sessions directory.
 //!
-//! Transport: Unix domain socket (macOS/Linux, `~/.lingxia/broker.sock`,
+//! Transport: Unix domain socket (macOS/Linux, `$LINGXIA_HOME` or `~/.lingxia` + `broker.sock`,
 //! 0600) or a per-user named pipe (Windows). Wire format: one JSON value per
 //! line, versioned; records are self-describing so older brokers pass through
 //! fields they do not know.
@@ -230,10 +230,29 @@ fn broker_name() -> std::io::Result<Name<'static>> {
 
 #[cfg(windows)]
 fn windows_broker_name(user_sid: &str) -> String {
-    match instance() {
-        Some(instance) => format!("lingxia-dev-broker-{user_sid}-{instance}"),
-        None => format!("lingxia-dev-broker-{user_sid}"),
+    pipe_name(user_sid, lingxia_home().as_deref(), instance().as_deref())
+}
+
+#[cfg(any(windows, test))]
+/// A pipe has no directory, so a `LINGXIA_HOME` is folded into its name.
+fn pipe_name(user_sid: &str, home: Option<&std::path::Path>, instance: Option<&str>) -> String {
+    let mut name = format!("lingxia-dev-broker-{user_sid}");
+    if let Some(home) = home {
+        // FNV-1a: stable across builds, so `lingxia` and `lxdev` agree.
+        let hash = home
+            .as_os_str()
+            .as_encoded_bytes()
+            .iter()
+            .fold(0xcbf2_9ce4_8422_2325_u64, |hash, byte| {
+                (hash ^ u64::from(*byte)).wrapping_mul(0x0100_0000_01b3)
+            });
+        name.push_str(&format!("-h{hash:016x}"));
     }
+    if let Some(instance) = instance {
+        name.push('-');
+        name.push_str(instance);
+    }
+    name
 }
 
 #[cfg(windows)]
@@ -320,6 +339,7 @@ fn instance_suffix(value: &str) -> Option<String> {
     (!suffix.is_empty()).then_some(suffix)
 }
 
+#[cfg(any(unix, test))]
 fn socket_file(instance: Option<&str>) -> String {
     match instance {
         Some(instance) => format!("broker-{instance}.sock"),
@@ -327,14 +347,49 @@ fn socket_file(instance: Option<&str>) -> String {
     }
 }
 
+/// The CLI's state root, so a `LINGXIA_HOME` keeps its broker with the rest of its state.
+pub const HOME_ENV: &str = "LINGXIA_HOME";
+
+fn lingxia_home() -> Option<std::path::PathBuf> {
+    std::env::var_os(HOME_ENV)
+        .filter(|value| !value.is_empty())
+        .map(std::path::PathBuf::from)
+}
+
 #[cfg(unix)]
 fn socket_path() -> std::io::Result<PathBuf> {
-    let home = std::env::var_os("HOME")
-        .map(PathBuf::from)
-        .ok_or_else(|| std::io::Error::other("HOME not set"))?;
-    let dir = home.join(".lingxia");
+    let dir = match lingxia_home() {
+        Some(home) => home,
+        None => std::env::var_os("HOME")
+            .map(|home| PathBuf::from(home).join(".lingxia"))
+            .ok_or_else(|| std::io::Error::other("HOME not set"))?,
+    };
+    let path = dir.join(socket_file(instance().as_deref()));
+    fits_socket_path(&path)?;
     std::fs::create_dir_all(&dir)?;
-    Ok(dir.join(socket_file(instance().as_deref())))
+    Ok(path)
+}
+
+#[cfg(any(unix, test))]
+/// `sun_path` holds the path and its NUL: 104 bytes on macOS and the BSDs, 108 on Linux.
+const SOCKET_PATH_MAX: usize = if cfg!(any(target_os = "linux", target_os = "android")) {
+    108
+} else {
+    104
+};
+
+#[cfg(any(unix, test))]
+/// A path too long to bind is an error naming it, never a silent move elsewhere.
+fn fits_socket_path(path: &std::path::Path) -> std::io::Result<()> {
+    let len = path.as_os_str().len();
+    if len < SOCKET_PATH_MAX {
+        return Ok(());
+    }
+    Err(std::io::Error::other(format!(
+        "the dev broker socket path {} is {len} bytes; this platform allows {}. Use a shorter {HOME_ENV}.",
+        path.display(),
+        SOCKET_PATH_MAX - 1
+    )))
 }
 
 fn write_json<W: Write, T: Serialize>(w: &mut W, value: &T) -> std::io::Result<()> {
@@ -531,6 +586,8 @@ fn connect_or_spawn(spawn_broker: &dyn Fn() -> std::io::Result<()>) -> std::io::
 /// List live sessions. Never spawns a broker: with no broker there are no
 /// registered sessions, which reads as an empty list.
 pub fn list_sessions() -> std::io::Result<Vec<SessionInfo>> {
+    // A broker path that cannot exist (too long, no home) is an error, not "no sessions".
+    broker_name()?;
     let stream = match connect() {
         Ok(stream) => stream,
         Err(_) => return Ok(Vec::new()),
@@ -705,6 +762,37 @@ pub fn register_session(
 
 #[cfg(test)]
 mod tests {
+
+    #[test]
+    fn an_over_long_socket_path_is_an_error_naming_it() {
+        let short = std::path::Path::new("/tmp/lx/broker.sock");
+        assert!(fits_socket_path(short).is_ok());
+        let long = std::path::PathBuf::from(format!("/{}/broker.sock", "h".repeat(120)));
+        let error = fits_socket_path(&long).unwrap_err().to_string();
+        assert!(error.contains(&long.display().to_string()), "{error}");
+        assert!(
+            error.contains(&format!("{} bytes", long.as_os_str().len())),
+            "{error}"
+        );
+        assert!(error.contains("shorter LINGXIA_HOME"), "{error}");
+    }
+
+    #[test]
+    fn a_lingxia_home_gets_its_own_pipe() {
+        let sid = "S-1-5-21-1-2-3-1001";
+        assert_eq!(
+            pipe_name(sid, None, None),
+            "lingxia-dev-broker-S-1-5-21-1-2-3-1001"
+        );
+        let a = pipe_name(sid, Some(std::path::Path::new("C:/lanes/a")), Some("x"));
+        let b = pipe_name(sid, Some(std::path::Path::new("C:/lanes/b")), Some("x"));
+        assert_ne!(a, b);
+        assert!(a.ends_with("-x"), "{a}");
+        assert_eq!(
+            a,
+            pipe_name(sid, Some(std::path::Path::new("C:/lanes/a")), Some("x"))
+        );
+    }
 
     #[test]
     fn an_instance_gets_its_own_broker_and_none_keeps_the_default() {
