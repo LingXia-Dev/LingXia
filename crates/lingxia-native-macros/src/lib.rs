@@ -341,7 +341,7 @@ fn expand_host(
             }
 
             #[doc(hidden)]
-            pub fn #helper_ident() -> ::lingxia::host::HostRegistrationEntry {
+            pub(crate) fn #helper_ident() -> ::lingxia::host::HostRegistrationEntry {
                 ::lingxia::host::HostRegistrationEntry::SyncHandler(
                     ::lingxia::host::SyncHostRegistration::new(
                         #namespace_lit,
@@ -392,7 +392,7 @@ fn expand_host(
         }
 
         #[doc(hidden)]
-        pub fn #helper_ident() -> ::lingxia::host::HostRegistrationEntry {
+        pub(crate) fn #helper_ident() -> ::lingxia::host::HostRegistrationEntry {
             ::lingxia::host::HostRegistrationEntry::Handler(
                 ::lingxia::host::HostRegistration::#ctor_ident(
                     #namespace_lit,
@@ -569,7 +569,7 @@ fn expand_stream(
         }
 
         #[doc(hidden)]
-        pub fn #helper_ident() -> ::lingxia::host::HostRegistrationEntry {
+        pub(crate) fn #helper_ident() -> ::lingxia::host::HostRegistrationEntry {
             ::lingxia::host::HostRegistrationEntry::Handler(
                 ::lingxia::host::HostRegistration::stream(
                     #namespace_lit,
@@ -641,7 +641,7 @@ fn expand_channel(
         }
 
         #[doc(hidden)]
-        pub fn #helper_ident() -> ::lingxia::host::HostRegistrationEntry {
+        pub(crate) fn #helper_ident() -> ::lingxia::host::HostRegistrationEntry {
             ::lingxia::host::HostRegistrationEntry::Channel(
                 ::lingxia::host::ChannelRegistration::new(
                     #namespace_lit,

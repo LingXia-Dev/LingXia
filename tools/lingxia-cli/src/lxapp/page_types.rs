@@ -139,6 +139,7 @@ fn render_logic_base() -> String {
 }
 
 /// The View has no DOM and no Logic globals; `rootDirs` lays `./$types` beside each page.
+/// `@lingxia/native` resolves so the native types in a page's Logic declarations stay typed.
 fn render_view_base() -> String {
     json_header()
         + r#"{
@@ -154,7 +155,10 @@ fn render_view_base() -> String {
     "forceConsistentCasingInFileNames": true,
     "resolveJsonModule": true,
     "isolatedModules": true,
-    "rootDirs": ["..", "./types"]
+    "rootDirs": ["..", "./types"],
+    "paths": {
+      "@lingxia/native": ["./native.logic.ts"]
+    }
   },
   "include": ["../pages/**/*.tsx", "../shared/**/*.tsx", "./types/**/*.d.ts", "./types/**/$types.ts"],
   "exclude": ["../node_modules", "../dist"]

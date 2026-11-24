@@ -9,6 +9,7 @@
 //! - `native.js` — the View client as a browser global, for plain HTML pages
 //! - `.rs` — Rust registry (`mod __lingxia_native { pub fn install() }`)
 
+mod external;
 pub mod syntax;
 
 use std::collections::{BTreeMap, BTreeSet};
@@ -61,7 +62,8 @@ pub fn generate_clients(
     dir: &Path,
     view: Option<ViewClient>,
 ) -> Result<Vec<String>> {
-    let manifest = scan_dir(rust_dir)?;
+    let mut manifest = scan_dir(rust_dir)?;
+    external::resolve(&mut manifest, rust_dir)?;
     let mut wanted = vec![(OutputKind::LogicTypeScript, LOGIC_CLIENT)];
     for client in ViewClient::ALL {
         if view == Some(client) {
@@ -79,6 +81,19 @@ pub fn generate_clients(
         }
     }
     wire_warnings(&manifest)
+}
+
+/// A route crate's whole build script: writes the registry its crate root `include!`s
+/// (`lingxia::host!` does that for a host crate).
+pub fn build() {
+    println!("cargo:rerun-if-changed=src");
+    let manifest_dir = std::env::var_os("CARGO_MANIFEST_DIR").expect("run from a build script");
+    let out_dir = std::env::var_os("OUT_DIR").expect("run from a build script");
+    let src = Path::new(&manifest_dir).join("src");
+    let out = Path::new(&out_dir).join("lingxia_native_handlers.rs");
+    if let Err(err) = generate_rust_registry(&src, &out) {
+        panic!("LingXia native routes: {err:#}");
+    }
 }
 
 /// Emit the Rust auto-register module that wraps every discovered handler's
@@ -168,6 +183,9 @@ struct NativeRoute {
     channel_in: Option<String>,
     channel_out: Option<String>,
     fn_ident: String,
+    /// Module path from the crate root, and the `#[cfg]`s on the fn itself.
+    module: Vec<String>,
+    cfgs: Vec<String>,
     loc: SourceLoc,
 }
 
@@ -303,9 +321,168 @@ struct TypeAliasDef {
 #[derive(Debug, Default)]
 struct NativeManifest {
     routes: Vec<NativeRoute>,
+    /// Every `mod` item, by its path from the crate root.
+    modules: BTreeMap<Vec<String>, ModDecl>,
     structs: BTreeMap<String, StructDef>,
     enums: BTreeMap<String, EnumDef>,
     aliases: BTreeMap<String, TypeAliasDef>,
+    /// What the native crate's `use` items import, by the name they bring in.
+    uses: BTreeMap<String, external::UsePath>,
+    /// DTO names defined twice with different shapes: an error once a route reaches one.
+    conflicts: BTreeMap<String, Vec<SourceLoc>>,
+}
+
+impl NativeManifest {
+    fn defines(&self, name: &str) -> bool {
+        self.structs.contains_key(name)
+            || self.enums.contains_key(name)
+            || self.aliases.contains_key(name)
+    }
+}
+
+enum Def {
+    Struct(StructDef),
+    Enum(EnumDef),
+    Alias(TypeAliasDef),
+}
+
+impl Def {
+    fn loc(&self) -> &SourceLoc {
+        match self {
+            Def::Struct(def) => &def.loc,
+            Def::Enum(def) => &def.loc,
+            Def::Alias(def) => &def.loc,
+        }
+    }
+
+    /// What a client sees of it; two definitions with one shape are the same DTO.
+    fn shape(&self) -> String {
+        match self {
+            Def::Struct(def) => format!("struct {:?}", def.kind),
+            Def::Enum(def) => format!("enum {:?} {:?}", def.tagging, def.variants),
+            Def::Alias(def) => format!("type {}", def.target),
+        }
+    }
+}
+
+/// DTOs are keyed by bare name, so a second definition of a name must have the same shape.
+fn insert_def(manifest: &mut NativeManifest, name: &str, def: Def) -> Result<()> {
+    let existing = if let Some(old) = manifest.structs.get(name) {
+        Some(Def::Struct(old.clone()))
+    } else if let Some(old) = manifest.enums.get(name) {
+        Some(Def::Enum(old.clone()))
+    } else {
+        manifest.aliases.get(name).cloned().map(Def::Alias)
+    };
+    if let Some(old) = existing {
+        if old.shape() != def.shape() {
+            let locs = manifest
+                .conflicts
+                .entry(name.to_string())
+                .or_insert_with(|| vec![old.loc().clone()]);
+            locs.push(def.loc().clone());
+        }
+        return Ok(());
+    }
+    match def {
+        Def::Struct(def) => manifest.structs.insert(name.to_string(), def).map(|_| ()),
+        Def::Enum(def) => manifest.enums.insert(name.to_string(), def).map(|_| ()),
+        Def::Alias(def) => manifest.aliases.insert(name.to_string(), def).map(|_| ()),
+    };
+    Ok(())
+}
+
+impl StructDef {
+    fn refs(&self, out: &mut BTreeSet<String>) {
+        match &self.kind {
+            StructDefKind::Named(fields) => {
+                for f in fields {
+                    collect_refs_from_type(&f.ty, out);
+                }
+            }
+            StructDefKind::Tuple(elems) => {
+                for e in elems {
+                    collect_refs_from_type(e, out);
+                }
+            }
+            StructDefKind::Unit => {}
+        }
+    }
+}
+
+impl EnumDef {
+    fn refs(&self, out: &mut BTreeSet<String>) {
+        for v in &self.variants {
+            match &v.payload {
+                VariantPayload::Unit => {}
+                VariantPayload::Newtype(t) => collect_refs_from_type(t, out),
+                VariantPayload::Tuple(ts) => {
+                    for t in ts {
+                        collect_refs_from_type(t, out);
+                    }
+                }
+                VariantPayload::Struct(fields) => {
+                    for f in fields {
+                        collect_refs_from_type(&f.ty, out);
+                    }
+                }
+            }
+        }
+    }
+}
+
+/// Every type name a route or a DTO of the native crate names.
+/// The type names route signatures use directly.
+fn route_refs(manifest: &NativeManifest) -> BTreeSet<String> {
+    let mut out = BTreeSet::new();
+    for r in &manifest.routes {
+        for ty in [&r.input, &r.output, &r.event, &r.channel_in, &r.channel_out]
+            .into_iter()
+            .flatten()
+        {
+            collect_refs_from_type(ty, &mut out);
+        }
+    }
+    out
+}
+
+/// The type names the native crate's own definition of `name` uses.
+fn def_refs(manifest: &NativeManifest, name: &str) -> BTreeSet<String> {
+    let mut out = BTreeSet::new();
+    if let Some(def) = manifest.structs.get(name) {
+        def.refs(&mut out);
+    }
+    if let Some(def) = manifest.enums.get(name) {
+        def.refs(&mut out);
+    }
+    if let Some(def) = manifest.aliases.get(name) {
+        collect_refs_from_type(&def.target, &mut out);
+    }
+    out
+}
+
+#[derive(Debug, Clone)]
+struct ModDecl {
+    vis: ModVis,
+    cfgs: Vec<String>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ModVis {
+    Private,
+    Super,
+    Crate,
+}
+
+impl ModVis {
+    fn of(vis: &syn::Visibility) -> Self {
+        match vis {
+            syn::Visibility::Public(_) => Self::Crate,
+            syn::Visibility::Restricted(r) if r.path.is_ident("crate") => Self::Crate,
+            syn::Visibility::Restricted(r) if r.path.is_ident("super") => Self::Super,
+            _ => Self::Private,
+        }
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -326,6 +503,10 @@ fn scan(src_dir: &Path) -> Result<NativeManifest> {
             .unwrap_or(file)
             .to_string_lossy()
             .replace('\\', "/");
+        // `main.rs` and `bin/` are other crates; their routes are not this library's.
+        if file_label == "main.rs" || file_label.starts_with("bin/") {
+            continue;
+        }
         scan_file_into(&source, &file_label, &mut manifest)?;
     }
 
@@ -351,13 +532,30 @@ fn find_item_line(source: &str, keyword: &str, ident: &str) -> usize {
 
 fn scan_file_into(source: &str, file_label: &str, manifest: &mut NativeManifest) -> Result<()> {
     let ast = syn::parse_file(source).with_context(|| format!("parse {file_label}"))?;
-    scan_items(&ast.items, source, file_label, manifest)
+    scan_items(
+        &ast.items,
+        source,
+        file_label,
+        &file_module(file_label),
+        manifest,
+    )
+}
+
+/// The module a file is by Rust's layout rules: `lib.rs` is the root, `a/mod.rs` and `a.rs` are `a`.
+fn file_module(file_label: &str) -> Vec<String> {
+    let stem = file_label.strip_suffix(".rs").unwrap_or(file_label);
+    let mut parts: Vec<String> = stem.split('/').map(str::to_string).collect();
+    if parts.last().is_some_and(|last| last == "mod") || (parts.len() == 1 && parts[0] == "lib") {
+        parts.pop();
+    }
+    parts
 }
 
 fn scan_items(
     items: &[syn::Item],
     source: &str,
     file_label: &str,
+    module: &[String],
     manifest: &mut NativeManifest,
 ) -> Result<()> {
     for item in items {
@@ -369,7 +567,8 @@ fn scan_items(
                         file: file_label.to_string(),
                         line: find_item_line(source, "fn", &ident),
                     };
-                    let route = extract_route_info(&route, kind, item_fn, loc)?;
+                    let mut route = extract_route_info(&route, kind, item_fn, loc)?;
+                    route.module = module.to_vec();
                     manifest.routes.push(route);
                 }
             }
@@ -380,7 +579,7 @@ fn scan_items(
                     line: find_item_line(source, "struct", &ident),
                 };
                 if let Some(def) = extract_struct_def(item_struct, loc) {
-                    manifest.structs.insert(ident, def);
+                    insert_def(manifest, &ident, Def::Struct(def))?;
                 }
             }
             syn::Item::Enum(item_enum) => {
@@ -390,7 +589,7 @@ fn scan_items(
                     line: find_item_line(source, "enum", &ident),
                 };
                 if let Some(def) = extract_enum_def(item_enum, loc) {
-                    manifest.enums.insert(ident, def);
+                    insert_def(manifest, &ident, Def::Enum(def))?;
                 }
             }
             syn::Item::Type(item_type) => {
@@ -399,18 +598,29 @@ fn scan_items(
                     file: file_label.to_string(),
                     line: find_item_line(source, "type", &ident),
                 };
-                manifest.aliases.insert(
-                    ident,
-                    TypeAliasDef {
-                        target: type_string(&item_type.ty).replace(' ', ""),
-                        loc,
-                    },
-                );
+                let target = type_string(&item_type.ty).replace(' ', "");
+                insert_def(manifest, &ident, Def::Alias(TypeAliasDef { target, loc }))?;
+            }
+            syn::Item::Use(item_use) => {
+                let mut imports = Vec::new();
+                external::flatten_use(&item_use.tree, &mut Vec::new(), &mut imports);
+                for (name, path) in imports {
+                    if !path.glob {
+                        manifest.uses.entry(name).or_insert(path);
+                    }
+                }
             }
             syn::Item::Mod(item_mod) => {
+                let mut inner = module.to_vec();
+                inner.push(item_mod.ident.unraw().to_string());
                 if let Some((_, sub_items)) = &item_mod.content {
-                    scan_items(sub_items, source, file_label, manifest)?;
+                    scan_items(sub_items, source, file_label, &inner, manifest)?;
                 }
+                let decl = ModDecl {
+                    vis: ModVis::of(&item_mod.vis),
+                    cfgs: cfgs(&item_mod.attrs),
+                };
+                manifest.modules.insert(inner, decl);
             }
             _ => {}
         }
@@ -535,8 +745,18 @@ fn extract_route_info(
         channel_in,
         channel_out,
         fn_ident: item_fn.sig.ident.to_string(),
+        module: Vec::new(),
+        cfgs: cfgs(&item_fn.attrs),
         loc,
     })
+}
+
+fn cfgs(attrs: &[Attribute]) -> Vec<String> {
+    attrs
+        .iter()
+        .filter(|attr| attr.path().is_ident("cfg"))
+        .map(|attr| quote::quote!(#attr).to_string())
+        .collect()
 }
 
 // ---------------------------------------------------------------------------
@@ -936,6 +1156,13 @@ fn collect_and_validate_types(manifest: &NativeManifest) -> Result<BTreeMap<Stri
             continue;
         }
         let dir = known.unwrap_or_default().union(dir);
+        if let Some(locs) = manifest.conflicts.get(&name) {
+            let locs: Vec<String> = locs.iter().map(SourceLoc::display).collect();
+            bail!(
+                "native DTO `{name}`, referenced by {owner}, is defined with different fields at {}; rename one",
+                locs.join(" and ")
+            );
+        }
         if let Some(def) = manifest.structs.get(&name) {
             resolved.insert(name.clone(), dir);
             let mut child_refs = BTreeSet::new();
@@ -1130,22 +1357,53 @@ fn render(manifest: &NativeManifest, output_kind: OutputKind) -> Result<String> 
 fn render_rust_module(manifest: &NativeManifest) -> Result<String> {
     let mut out = String::new();
     out.push_str("// Generated by `cargo build`. Do not edit by hand.\n");
-    out.push_str("//\n");
-    out.push_str("// Registers every `#[lingxia::native]` handler discovered in this crate.\n");
-    out.push_str("// `include!` this file into your crate root and call\n");
-    out.push_str("// `__lingxia_native::install()` from\n");
-    out.push_str("// `HostAddon::install_host_apis`.\n");
+    out.push_str("// Registers every `#[lingxia::native]` handler in this crate.\n");
     out.push_str("#[allow(non_snake_case)]\n");
     out.push_str("mod __lingxia_native {\n");
     out.push_str("    pub fn install() {\n");
     for r in &manifest.routes {
+        for cfg in registry_cfgs(manifest, r)? {
+            out.push_str(&format!("        {cfg}\n"));
+        }
+        let path: String = r.module.iter().map(|m| format!("{m}::")).collect();
         out.push_str(&format!(
-            "        ::lingxia::host::register_host_entry(crate::{}_host());\n",
+            "        ::lingxia::host::register_host_entry(crate::{path}{}_host());\n",
             r.fn_ident
         ));
     }
     out.push_str("    }\n");
     out.push_str("}\n");
+    Ok(out)
+}
+
+/// The `#[cfg]`s that gate a route: those on every `mod` above it, then its own. Fails when
+/// the crate root cannot name the route's module, which would otherwise surface as a privacy
+/// error inside generated code.
+fn registry_cfgs(manifest: &NativeManifest, route: &NativeRoute) -> Result<Vec<String>> {
+    let mut out = Vec::new();
+    for depth in 1..=route.module.len() {
+        let path = &route.module[..depth];
+        let name = path.join("::");
+        let Some(decl) = manifest.modules.get(path) else {
+            bail!(
+                "{}: `{}` is in `{name}`, which no `mod` declares (a `#[path]` module is not followed); the route cannot be registered",
+                route.loc.display(),
+                route.route
+            );
+        };
+        let reachable =
+            depth == 1 || decl.vis == ModVis::Crate || (decl.vis == ModVis::Super && depth == 2);
+        if !reachable {
+            bail!(
+                "{}: `{}` is in `{name}`, which the crate root cannot reach; declare it `pub(crate) mod {}`",
+                route.loc.display(),
+                route.route,
+                path[depth - 1]
+            );
+        }
+        out.extend(decl.cfgs.iter().cloned());
+    }
+    out.extend(route.cfgs.iter().cloned());
     Ok(out)
 }
 
@@ -1887,7 +2145,7 @@ mod tests {
 
     fn scan_source(source: &str) -> NativeManifest {
         let mut manifest = NativeManifest::default();
-        scan_file_into(source, "src/lib.rs", &mut manifest).unwrap();
+        scan_file_into(source, "lib.rs", &mut manifest).unwrap();
         manifest.routes.sort_by(|a, b| a.route.cmp(&b.route));
         manifest
     }
@@ -2019,7 +2277,7 @@ mod tests {
             .unwrap_err()
             .to_string();
         assert!(err.contains("MissingDto"), "{err}");
-        assert!(err.contains("src/lib.rs:"), "{err}");
+        assert!(err.contains("lib.rs:"), "{err}");
         assert!(err.contains("files.stat"), "{err}");
     }
 
@@ -2166,6 +2424,177 @@ mod tests {
         generate_clients(&src, &out, Some(ViewClient::BrowserGlobal)).unwrap();
         assert!(!exists(LOGIC_CLIENT) && !exists("native.js"));
         let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn dtos_reexported_from_workspace_crates_reach_the_client() {
+        let root = std::env::temp_dir().join(format!(
+            "lingxia-native-codegen-ws-{}-{:?}",
+            std::process::id(),
+            std::thread::current().id()
+        ));
+        let _ = fs::remove_dir_all(&root);
+        let write = |path: &str, text: &str| {
+            let path = root.join(path);
+            fs::create_dir_all(path.parent().unwrap()).unwrap();
+            fs::write(path, text).unwrap();
+        };
+        write(
+            "Cargo.toml",
+            "[workspace]\nmembers = [\"shell\", \"service\", \"transfer\"]\n[workspace.dependencies]\nmy-service = { path = \"service\" }\nserde = \"1\"\n",
+        );
+        write(
+            "shell/Cargo.toml",
+            "[package]\nname = \"shell\"\n[dependencies]\nmy-service = { workspace = true }\nserde = { workspace = true }\n",
+        );
+        write(
+            "shell/src/lib.rs",
+            r#"
+            use my_service::downloads::Snapshot;
+            use serde::Opaque;
+            #[derive(Serialize)] pub struct IdInput { pub id: String }
+            #[lingxia::native("downloads.list")]
+            fn list(input: IdInput) -> HostResult<Snapshot> { todo!() }
+            #[lingxia::native("downloads.raw")]
+            fn raw() -> HostResult<Opaque> { todo!() }
+            "#,
+        );
+        write(
+            "service/Cargo.toml",
+            "[package]\nname = \"my-service\"\n[dependencies]\ntransfer = { path = \"../transfer\" }\n",
+        );
+        write("service/src/lib.rs", "pub mod downloads;\n");
+        write("service/src/downloads.rs", "pub use transfer::*;\n");
+        write("transfer/Cargo.toml", "[package]\nname = \"transfer\"\n");
+        write(
+            "transfer/src/lib.rs",
+            "mod download;\npub use download::{Record, Snapshot};\n",
+        );
+        write(
+            "transfer/src/download.rs",
+            r#"
+            #[derive(Serialize)] #[serde(rename_all = "camelCase")]
+            pub struct Snapshot { pub has_active: bool, pub downloads: Vec<Record>, pub last: IdInput }
+            #[derive(Serialize)] pub struct Record { pub id: String }
+            #[derive(Serialize)] pub struct IdInput { pub id: String }
+            "#,
+        );
+        let (src, out) = (root.join("shell/src"), root.join("shell/.lingxia"));
+
+        let err = generate_clients(&src, &out, None).unwrap_err();
+        assert!(
+            format!("{err:#}").contains("`serde::Opaque`, a registry crate"),
+            "{err:#}"
+        );
+
+        write(
+            "shell/src/lib.rs",
+            r#"
+            use my_service::downloads::Snapshot;
+            use serde::Listener;
+            #[derive(Serialize)] pub struct IdInput { pub id: String }
+            struct Server { listener: Listener }
+            #[lingxia::native("downloads.list")]
+            fn list(input: IdInput) -> HostResult<Snapshot> { todo!() }
+            "#,
+        );
+        // `Server` holds a registry type, but no route reaches it.
+        generate_clients(&src, &out, None).unwrap();
+        let logic = fs::read_to_string(out.join(LOGIC_CLIENT)).unwrap();
+        assert!(logic.contains("hasActive: boolean"), "{logic}");
+        assert!(logic.contains("export interface Record"), "{logic}");
+
+        write(
+            "transfer/src/download.rs",
+            r#"
+            #[derive(Serialize)] #[serde(rename_all = "camelCase")]
+            pub struct Snapshot { pub has_active: bool, pub downloads: Vec<Record>, pub last: IdInput }
+            #[derive(Serialize)] pub struct Record { pub id: String }
+            #[derive(Serialize)] pub struct IdInput { pub key: u32 }
+            "#,
+        );
+        let err = generate_clients(&src, &out, None).unwrap_err();
+        let err = format!("{err:#}");
+        assert!(
+            err.contains("`IdInput`")
+                && err.contains("lib.rs")
+                && err.contains("transfer/src/download.rs"),
+            "{err}"
+        );
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    fn scan_files(files: &[(&str, &str)]) -> NativeManifest {
+        let mut manifest = NativeManifest::default();
+        for (label, source) in files {
+            scan_file_into(source, label, &mut manifest).unwrap();
+        }
+        manifest
+    }
+
+    #[test]
+    fn the_registry_names_each_route_by_its_module_and_keeps_its_cfgs() {
+        let manifest = scan_files(&[
+            (
+                "lib.rs",
+                r#"
+                #[cfg(feature = "net")]
+                mod net;
+                mod tools { pub(crate) mod inner {
+                    #[lingxia::native("tools.ping")]
+                    #[cfg(unix)]
+                    fn ping() -> HostResult<()> { todo!() }
+                } }
+            "#,
+            ),
+            ("net/mod.rs", "pub(crate) mod proxy;"),
+            (
+                "net/proxy.rs",
+                r#"
+                #[lingxia::framework_native("net.get", audience = "control-surface-only")]
+                fn get() -> HostResult<()> { todo!() }
+            "#,
+            ),
+        ]);
+        let registry = render(&manifest, OutputKind::RustModule).unwrap();
+        let net = registry
+            .find("crate::net::proxy::get_host()")
+            .expect(&registry);
+        let feature = registry
+            .find("# [cfg (feature = \"net\")]")
+            .expect(&registry);
+        assert!(feature < net, "{registry}");
+        let ping = registry
+            .find("crate::tools::inner::ping_host()")
+            .expect(&registry);
+        let unix = registry.find("# [cfg (unix)]").expect(&registry);
+        assert!(unix < ping && ping < feature, "{registry}");
+    }
+
+    #[test]
+    fn a_route_the_crate_root_cannot_reach_is_an_error_not_a_missing_route() {
+        let private = scan_files(&[
+            ("lib.rs", "mod net;"),
+            ("net.rs", "mod proxy;"),
+            (
+                "net/proxy.rs",
+                "#[lingxia::native(\"net.get\")]\nfn get() -> HostResult<()> { todo!() }",
+            ),
+        ]);
+        let err = render(&private, OutputKind::RustModule)
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("net/proxy.rs:2"), "{err}");
+        assert!(err.contains("pub(crate) mod proxy"), "{err}");
+
+        let undeclared = scan_files(&[(
+            "stray.rs",
+            "#[lingxia::native(\"stray.get\")]\nfn get() -> HostResult<()> { todo!() }",
+        )]);
+        let err = render(&undeclared, OutputKind::RustModule)
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("no `mod` declares"), "{err}");
     }
 
     #[test]

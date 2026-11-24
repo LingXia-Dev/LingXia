@@ -262,15 +262,6 @@ async fn get_site_data_context(
     Ok(SiteDataContext { url, host })
 }
 
-pub(crate) fn register() {
-    lxapp::host::register_host_entry(get_privacy_usage_host());
-    lxapp::host::register_host_entry(clear_cache_host());
-    lxapp::host::register_host_entry(clear_all_site_data_host());
-    lxapp::host::register_host_entry(clear_browsing_data_host());
-    lxapp::host::register_host_entry(clear_site_data_host());
-    lxapp::host::register_host_entry(get_site_data_context_host());
-}
-
 fn clear_favicons(since_ms: Option<u64>) -> HostResult<()> {
     use lingxia_platform::traits::app_runtime::AppRuntime;
     if let Some(runtime) = lxapp::get_platform() {

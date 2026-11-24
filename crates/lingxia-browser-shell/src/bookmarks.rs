@@ -1215,25 +1215,6 @@ async fn watch_bookmarks(
     }
 }
 
-pub(crate) fn register() {
-    lxapp::host::register_host_entry(list_bookmarks_host());
-    lxapp::host::register_host_entry(add_bookmark_host());
-    lxapp::host::register_host_entry(remove_bookmark_host());
-    lxapp::host::register_host_entry(toggle_bookmark_route_host());
-    lxapp::host::register_host_entry(bookmark_status_host());
-    lxapp::host::register_host_entry(rename_bookmark_host());
-    lxapp::host::register_host_entry(move_bookmark_host());
-    lxapp::host::register_host_entry(reorder_bookmarks_host());
-    lxapp::host::register_host_entry(set_pinned_host());
-    lxapp::host::register_host_entry(create_group_host());
-    lxapp::host::register_host_entry(rename_group_host());
-    lxapp::host::register_host_entry(delete_group_host());
-    lxapp::host::register_host_entry(reorder_groups_host());
-    lxapp::host::register_host_entry(import_html_bookmarks_host());
-    lxapp::host::register_host_entry(export_html_bookmarks_host());
-    lxapp::host::register_host_entry(watch_bookmarks_host());
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;

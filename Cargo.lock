@@ -3747,6 +3747,7 @@ dependencies = [
  "lingxia-app-context",
  "lingxia-browser",
  "lingxia-lxapp",
+ "lingxia-native-codegen",
  "lingxia-native-macros",
  "lingxia-platform",
  "lingxia-proxy",
@@ -4092,6 +4093,7 @@ dependencies = [
  "quote",
  "serde_json",
  "syn 2.0.119",
+ "toml",
 ]
 
 [[package]]

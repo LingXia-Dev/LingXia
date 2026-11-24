@@ -2,6 +2,7 @@ use std::process::Command;
 
 fn main() {
     println!("cargo:rerun-if-changed=build.rs");
+    lingxia_native_codegen::build();
     // Track HEAD so the embedded sha follows the checkout; absent for
     // published crates, where the sha is intentionally left empty.
     if let Some(head) = git_output(&["rev-parse", "--git-path", "HEAD"]) {

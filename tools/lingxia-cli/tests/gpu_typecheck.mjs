@@ -217,6 +217,34 @@ try {
   fs.rmSync(helper, { force: true });
 }
 
+// A Logic action typed by a native DTO keeps that type in the View: a wrong argument fails `check`.
+const crateManifest = path.join(app, 'Cargo.toml');
+const crateSrc = path.join(app, 'src');
+try {
+  fs.writeFileSync(crateManifest, '[package]\nname = "demo-native"\nversion = "0.1.0"\nedition = "2024"\n');
+  fs.mkdirSync(crateSrc);
+  fs.writeFileSync(path.join(crateSrc, 'lib.rs'), `#[derive(serde::Deserialize)]
+pub struct Rename { pub title: String }
+
+#[lingxia::native("notes.rename")]
+pub fn rename(input: Rename) -> lingxia::Result<String> { Ok(input.title) }
+`);
+  fs.writeFileSync(logic, `import type { Rename } from '@lingxia/native';\n${logicSource.replace('reset() {', 'async rename(input: Rename) { return input.title; },\n    reset() {')}`);
+  const call = arg => `${source}\nexport const rename = ({ actions }: View) => actions.rename(${arg});\n`;
+  fs.writeFileSync(view, call(`{ title: 'note' }`));
+  assert.match(ok(cli, ['check'], app), /no problems/);
+  fs.writeFileSync(view, call('{ title: 42 }'));
+  const wrong = run(cli, ['check'], app);
+  assert.notEqual(wrong.status, 0, wrong.output);
+  assert.match(wrong.output, /pages\/home\/index\.tsx:\d+:\d+: TS2322: Type 'number' is not assignable to type 'string'/, wrong.output);
+} finally {
+  fs.writeFileSync(view, source);
+  fs.writeFileSync(logic, logicSource);
+  fs.rmSync(crateManifest, { force: true });
+  fs.rmSync(crateSrc, { recursive: true, force: true });
+  ok(cli, ['gen', 'types'], app);
+}
+
 // Composed pages no tsconfig project reaches are named together, with the fix for the project's wiring.
 const manifest = path.join(app, 'lxapp.json');
 const manifestSource = fs.readFileSync(manifest, 'utf8');

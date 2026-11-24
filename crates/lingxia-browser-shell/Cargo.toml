@@ -43,3 +43,6 @@ tempfile = "3"
 
 [target.'cfg(target_vendor = "apple")'.dev-dependencies]
 swift-bridge = "0.1.59"
+
+[build-dependencies]
+lingxia-native-codegen = { workspace = true }

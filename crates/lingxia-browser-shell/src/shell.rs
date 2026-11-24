@@ -136,12 +136,6 @@ fn site_icons(app: Arc<LxApp>, input: SiteIconsInput) -> HostResult<SiteIcons> {
     Ok(SiteIcons { icons })
 }
 
-pub(crate) fn register() {
-    lxapp::host::register_host_entry(pins_host());
-    lxapp::host::register_host_entry(reorder_pins_host());
-    lxapp::host::register_host_entry(site_icons_host());
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;

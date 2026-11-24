@@ -107,19 +107,12 @@ pub(crate) fn bundled_webui_version() -> Option<String> {
     parse_browser_webui_manifest(&manifest).ok()?.version
 }
 
+include!(concat!(env!("OUT_DIR"), "/lingxia_native_handlers.rs"));
+
 #[doc(hidden)]
 pub fn register_route_inventory() {
     static REGISTERED: std::sync::OnceLock<()> = std::sync::OnceLock::new();
-    REGISTERED.get_or_init(|| {
-        downloads::register();
-        bookmarks::register();
-        shell::register();
-        history::register();
-        privacy::register();
-        #[cfg(all(any(target_os = "macos", target_os = "windows"), feature = "proxy"))]
-        proxy::register();
-        settings::register_routes();
-    });
+    REGISTERED.get_or_init(__lingxia_native::install);
 }
 
 #[doc(hidden)]
