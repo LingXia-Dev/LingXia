@@ -11,6 +11,10 @@ const COMPACT_MAX_VP = 600;
 const STRIP_VP = 44;
 const TAB_VP = 32;
 const CONTROL_VP = 36;
+const CLOSE_VP = 28;
+const GLOBE_VP = 16;
+/** A control's icon is inset by its size over this, as Android's strip does. */
+const ICON_INSET_DIVISOR = 4.4;
 const SIDE_MIN_VP = 320;
 const DEFAULT_RATIO = 0.5;
 const SNAP_VP = 24;
@@ -95,6 +99,22 @@ const DARK: AsidePalette = {
 
 export function asidePalette(dark: boolean): AsidePalette {
   return dark ? DARK : LIGHT;
+}
+
+// fillColor repaints only SVG fills and the design icons are strokes; a SRC_IN
+// matrix recolors any art, like a template image. Takes '#AARRGGBB'.
+function iconTint(argb: string): ColorFilter {
+  const hex = argb.replace('#', '');
+  const a: number = parseInt(hex.substring(0, 2), 16) / 255;
+  const r: number = parseInt(hex.substring(2, 4), 16) / 255;
+  const g: number = parseInt(hex.substring(4, 6), 16) / 255;
+  const b: number = parseInt(hex.substring(6, 8), 16) / 255;
+  return new ColorFilter([
+    0, 0, 0, r, 0,
+    0, 0, 0, g, 0,
+    0, 0, 0, b, 0,
+    0, 0, 0, a, 0
+  ]);
 }
 
 /** The layers the side panel draws in: its chrome and tongue, its shown child, its divider. */
@@ -561,17 +581,14 @@ export struct AsideRegion {
           .height('100%')
         }
         if (this.state.maximizeVisible) {
-          AsideGlyph({ kind: this.state.maximized ? 'restore' : 'maximize', dark: this.state.dark })
-            .width(CONTROL_VP)
-            .height(CONTROL_VP)
-            .accessibilityText(this.label(this.state.maximized ? 'lx_aside_restore' : 'lx_aside_maximize'))
-            .onClick(() => AsideRegionModel.toggleMaximized())
+          this.ControlIcon(
+            this.state.maximized ? $rawfile('icons/icon_fullscreen_exit.svg') : $rawfile('icons/icon_fullscreen_enter.svg'),
+            CONTROL_VP, false, 1, this.label(this.state.maximized ? 'lx_aside_restore' : 'lx_aside_maximize'),
+            () => AsideRegionModel.toggleMaximized())
         }
-        AsideGlyph({ kind: 'collapse', dark: this.state.dark })
-          .width(CONTROL_VP)
-          .height(CONTROL_VP)
-          .accessibilityText(this.label('lx_aside_collapse'))
-          .onClick(() => AsideRegionModel.collapse())
+        // The chevron points at the trailing pane, so it turns with the layout direction.
+        this.ControlIcon($rawfile('icons/icon_aside_collapse.svg'), CONTROL_VP, true, 1,
+          this.label('lx_aside_collapse'), () => AsideRegionModel.collapse())
       }
       .width('100%')
       .height(STRIP_VP)
@@ -593,7 +610,7 @@ export struct AsideRegion {
   HeaderTab(tab: AsideTab) {
     Row({ space: 6 }) {
       if (tab.isUrl) {
-        AsideGlyph({ kind: 'globe', dark: this.state.dark }).width(16).height(16)
+        this.Globe()
       }
       Text(tab.title)
         .fontSize(15)
@@ -613,7 +630,7 @@ export struct AsideRegion {
   TabChip(tab: AsideTab) {
     Row({ space: 6 }) {
       if (tab.isUrl) {
-        AsideGlyph({ kind: 'globe', dark: this.state.dark }).width(15).height(15)
+        this.Globe()
       }
       Text(tab.title)
         .fontSize(13)
@@ -636,18 +653,34 @@ export struct AsideRegion {
     })
   }
 
+  /** A strip control drawn from the design icon set, at Android's size and inset. */
+  @Builder
+  ControlIcon(src: Resource, size: number, directional: boolean, opacity: number, label: string, action: () => void) {
+    Image(src)
+      .width(size)
+      .height(size)
+      .padding(size / ICON_INSET_DIVISOR)
+      .objectFit(ImageFit.Contain)
+      .matchTextDirection(directional)
+      .colorFilter(iconTint(asidePalette(this.state.dark).muted))
+      .opacity(opacity)
+      .accessibilityText(label)
+      .onClick(action)
+  }
+
+  @Builder
+  Globe() {
+    Image($rawfile('icons/icon_globe.svg'))
+      .width(GLOBE_VP)
+      .height(GLOBE_VP)
+      .objectFit(ImageFit.Contain)
+      .colorFilter(iconTint(asidePalette(this.state.dark).muted))
+  }
+
   @Builder
   CloseButton(id: string, selected: boolean) {
-    Image($rawfile('icons/icon_close_x.svg'))
-      .width(12)
-      .height(12)
-      .fillColor(asidePalette(this.state.dark).muted)
-      .padding(8)
-      .width(28)
-      .height(28)
-      .opacity(selected ? 1 : 0.65)
-      .accessibilityText(this.label('lx_common_close'))
-      .onClick(() => AsideRegionModel.close(id))
+    this.ControlIcon($rawfile('icons/icon_close_x.svg'), CLOSE_VP, false, selected ? 1 : 0.65,
+      this.label('lx_common_close'), () => AsideRegionModel.close(id))
   }
 
   @Builder
@@ -692,82 +725,6 @@ export struct AsideRegion {
       .gesture(PanGesture({ direction: PanDirection.Left, distance: PULL_VP }).onActionStart(() => {
         AsideRegionModel.restore();
       }))
-  }
-}
-
-/** The strip's small glyphs, drawn so the panel needs no bundled icons beyond close. */
-@Component
-struct AsideGlyph {
-  @Prop @Watch('redraw') kind: string = 'collapse';
-  @Prop @Watch('redraw') dark: boolean = false;
-  private settings: RenderingContextSettings = new RenderingContextSettings(true);
-  private ctx: CanvasRenderingContext2D = new CanvasRenderingContext2D(this.settings);
-
-  redraw(): void {
-    this.draw();
-  }
-
-  private draw(): void {
-    const ctx = this.ctx;
-    const w = ctx.width;
-    const h = ctx.height;
-    if (!w || !h) {
-      return;
-    }
-    ctx.clearRect(0, 0, w, h);
-    ctx.strokeStyle = asidePalette(this.dark).muted;
-    ctx.lineWidth = 1.5;
-    ctx.lineCap = 'round';
-    ctx.lineJoin = 'round';
-    const cx = w / 2;
-    const cy = h / 2;
-    const s = Math.min(w, h) >= 30 ? 7 : Math.min(w, h) / 2 - 1;
-    ctx.beginPath();
-    if (this.kind === 'maximize') {
-      // Arrows out to two corners.
-      ctx.moveTo(cx - 2, cy - 2);
-      ctx.lineTo(cx - s, cy - s);
-      ctx.moveTo(cx - s, cy - s + 4);
-      ctx.lineTo(cx - s, cy - s);
-      ctx.lineTo(cx - s + 4, cy - s);
-      ctx.moveTo(cx + 2, cy + 2);
-      ctx.lineTo(cx + s, cy + s);
-      ctx.moveTo(cx + s, cy + s - 4);
-      ctx.lineTo(cx + s, cy + s);
-      ctx.lineTo(cx + s - 4, cy + s);
-    } else if (this.kind === 'restore') {
-      // Arrows in from two corners.
-      ctx.moveTo(cx - s, cy - s);
-      ctx.lineTo(cx - 2, cy - 2);
-      ctx.moveTo(cx - 2, cy - 6);
-      ctx.lineTo(cx - 2, cy - 2);
-      ctx.lineTo(cx - 6, cy - 2);
-      ctx.moveTo(cx + s, cy + s);
-      ctx.lineTo(cx + 2, cy + 2);
-      ctx.moveTo(cx + 2, cy + 6);
-      ctx.lineTo(cx + 2, cy + 2);
-      ctx.lineTo(cx + 6, cy + 2);
-    } else if (this.kind === 'globe') {
-      ctx.arc(cx, cy, s, 0, Math.PI * 2);
-      ctx.moveTo(cx - s, cy);
-      ctx.lineTo(cx + s, cy);
-      ctx.moveTo(cx, cy - s);
-      ctx.bezierCurveTo(cx + s * 0.7, cy - s * 0.5, cx + s * 0.7, cy + s * 0.5, cx, cy + s);
-      ctx.bezierCurveTo(cx - s * 0.7, cy + s * 0.5, cx - s * 0.7, cy - s * 0.5, cx, cy - s);
-    } else {
-      // A panel outline with its trailing pane: the slot's collapse.
-      ctx.rect(cx - s, cy - s + 1, s * 2, s * 2 - 2);
-      ctx.moveTo(cx + s * 0.3, cy - s + 1);
-      ctx.lineTo(cx + s * 0.3, cy + s - 1);
-    }
-    ctx.stroke();
-  }
-
-  build() {
-    Canvas(this.ctx)
-      .width('100%')
-      .height('100%')
-      .onReady(() => this.draw())
   }
 }
 
