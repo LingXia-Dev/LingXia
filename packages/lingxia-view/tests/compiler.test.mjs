@@ -1,6 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtemp, writeFile, readFile, readdir, rm } from 'node:fs/promises';
+import { mkdtemp, mkdir, writeFile, readFile, readdir, rm } from 'node:fs/promises';
+import { existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { audit, buildPages, identify } from '../compiler/index.mjs';
@@ -706,6 +707,20 @@ export function render() {
     await Promise.all(Array.from({ length: 6 }, () => buildPages(root, ['page.tsx'], join(root, 'dist'), {}, { dev: true })));
     assert.deepEqual(Object.keys(JSON.parse(await readFile(join(root, '.lingxia/gpu-inputs.json'), 'utf8'))), ['page.tsx']);
     assert.deepEqual((await readdir(join(root, '.lingxia'))).filter(name => name.endsWith('.tmp')), []);
+  });
+});
+
+test('a build reads the messages and records its inputs where it is told', async () => {
+  await project({ 'page.tsx': `import { t } from '@lingxia/view';
+export function render() { return <text>{t('hello')}</text>; }` }, async root => {
+    const session = join(root, '.lingxia/dev/sessions/a');
+    await mkdir(join(session, 'i18n'), { recursive: true });
+    await writeFile(join(session, 'i18n/index.js'), "export const source = 'en-US'; export const languages = { 'en-US': { hello: () => 'Hello from the session' } };\n");
+    const inputsRecord = join(session, 'gpu-inputs.json');
+    await buildPages(root, ['page.tsx'], join(root, 'dist'), {}, { dev: true, messages: join(session, 'i18n/index.js'), inputsRecord });
+    assert.deepEqual(Object.keys(JSON.parse(await readFile(inputsRecord, 'utf8'))), ['page.tsx']);
+    assert.equal(existsSync(join(root, '.lingxia/gpu-inputs.json')), false, 'the project-wide record is untouched');
+    assert.match(await readFile(join(root, 'dist/page.js'), 'utf8'), /Hello from the session/);
   });
 });
 

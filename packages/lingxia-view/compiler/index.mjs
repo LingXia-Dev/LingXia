@@ -472,9 +472,10 @@ async function packageTokens(root, packages, problems) {
  */
 /**
  * `literalColors` admits hex and palette colours for renderer test fixtures whose probes read exact
- * pixels; app builds never set it.
+ * pixels; app builds never set it. `messages` is the compiled i18n module to bundle and
+ * `inputsRecord` the file a dev build records its inputs in; both default under `<root>/.lingxia`.
  */
-export async function buildPages(root, pages, output, catalogs = {}, { dev = false, literalColors = false } = {}) {
+export async function buildPages(root, pages, output, catalogs = {}, { dev = false, literalColors = false, messages: messagesPath, inputsRecord } = {}) {
   const { version } = JSON.parse(await readFile(new URL('../package.json', import.meta.url), 'utf8'));
   root = await realpath(resolve(root)); output = resolve(output);
   // Every page's authoring problems are collected, so one build names all of them.
@@ -485,7 +486,7 @@ export async function buildPages(root, pages, output, catalogs = {}, { dev = fal
   analysisHits = analysisMisses = 0;
   // The lxapp build compiles i18n/ here; registering it before the page module loads lets
   // `t` run in the first render.
-  const compiledMessages = join(root, '.lingxia', 'i18n', 'index.js');
+  const compiledMessages = messagesPath ? resolve(root, messagesPath) : join(root, '.lingxia', 'i18n', 'index.js');
   const messages = existsSync(compiledMessages)
     ? `import * as messages from ${JSON.stringify(compiledMessages)}; import { registerCatalogues } from ${JSON.stringify(runtime)}; registerCatalogues(messages);`
     : '';
@@ -631,7 +632,7 @@ export async function buildPages(root, pages, output, catalogs = {}, { dev = fal
   }
   if (failures.length) throw Error(failures.join('\n'));
   if (Object.keys(inputs).length) {
-    const path = join(root, '.lingxia', 'gpu-inputs.json');
+    const path = inputsRecord ? resolve(root, inputsRecord) : join(root, '.lingxia', 'gpu-inputs.json');
     // A page deleted since its last build leaves the record; an edit it shared would plan it again.
     const previous = Object.fromEntries(Object.entries(await readRecord(path))
       .filter(([page, files]) => Array.isArray(files) && existsSync(resolve(root, page))));
