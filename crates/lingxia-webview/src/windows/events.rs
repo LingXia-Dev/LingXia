@@ -84,11 +84,9 @@ pub(crate) fn register_event_handlers(
     native_view_id: NativeWebViewId,
     registered_schemes: &[String],
     memory_pages: Arc<Mutex<HashMap<String, Vec<u8>>>>,
-    document_authority: Arc<document::WindowsDocumentAuthority>,
 ) -> StdResult<()> {
     let started_tag = webtag.clone();
     let started_native_view_id = native_view_id;
-    let started_document_authority = Arc::clone(&document_authority);
     unsafe {
         let mut token = 0;
         webview
@@ -105,34 +103,18 @@ pub(crate) fn register_event_handlers(
                     let mut navigation_id = 0u64;
                     args.NavigationId(&mut navigation_id)?;
 
-                    let trusted_start =
-                        started_document_authority.navigation_start(&uri, navigation_id);
-                    let host_issued_trusted = matches!(
-                        trusted_start,
-                        document::TrustedNavigationStart::Attest { .. }
-                            | document::TrustedNavigationStart::Coalesced(_)
-                    );
-
                     let cancelled =
                         current_native_callback_webview(&started_tag, started_native_view_id)
                             .is_some_and(|webview| {
                                 matches!(
-                                    webview.handle_navigation(
-                                        &crate::NavigationRequest::new(uri.clone(), false, true)
-                                            .with_host_issued_trusted(host_issued_trusted),
-                                    ),
+                                    webview.handle_navigation(&crate::NavigationRequest::new(
+                                        uri.clone(),
+                                        false,
+                                        true
+                                    )),
                                     NavigationPolicy::Cancel
                                 )
                             });
-                    if let Some(intent) =
-                        started_document_authority.resolve_policy(trusted_start, !cancelled)
-                    {
-                        normalizer::revoke_trusted_load(
-                            &started_tag,
-                            started_native_view_id,
-                            intent,
-                        );
-                    }
                     if cancelled {
                         // Policy rejected before loading: the follow-up
                         // completion for this key is expected and consumed.
@@ -147,48 +129,16 @@ pub(crate) fn register_event_handlers(
                         return Ok(());
                     }
 
-                    match trusted_start {
-                        document::TrustedNavigationStart::Attest {
-                            intent,
-                            navigation_key,
-                        } => {
-                            if !normalizer::start_trusted_navigation(
-                                &started_tag,
-                                started_native_view_id,
-                                intent,
-                                navigation_key,
-                                uri.clone(),
-                            ) {
-                                started_document_authority.revoke_if_matches(intent);
-                                normalizer::revoke_trusted_load(
-                                    &started_tag,
-                                    started_native_view_id,
-                                    intent,
-                                );
-                            }
-                        }
-                        document::TrustedNavigationStart::Revoke(_)
-                        | document::TrustedNavigationStart::Competing(_)
-                        | document::TrustedNavigationStart::Coalesced(_)
-                        | document::TrustedNavigationStart::Untrusted => {}
-                    }
-
                     // Redirect restarts reuse the native id; the tracker
                     // coalesces them into one attempt.
-                    if !matches!(
-                        trusted_start,
-                        document::TrustedNavigationStart::Attest { .. }
-                            | document::TrustedNavigationStart::Coalesced(_)
-                    ) {
-                        normalizer::submit(
-                            &started_tag,
-                            started_native_view_id,
-                            NativeSignal::NavigationStarted {
-                                key: Some(navigation_id),
-                                url: uri,
-                            },
-                        );
-                    }
+                    normalizer::submit(
+                        &started_tag,
+                        started_native_view_id,
+                        NativeSignal::NavigationStarted {
+                            key: Some(navigation_id),
+                            url: uri,
+                        },
+                    );
                     Ok(())
                 })),
                 &mut token,
@@ -233,7 +183,6 @@ pub(crate) fn register_event_handlers(
 
     let committed_tag = webtag.clone();
     let committed_native_view_id = native_view_id;
-    let committed_document_authority = Arc::clone(&document_authority);
     unsafe {
         let mut token = 0;
         webview
@@ -244,7 +193,6 @@ pub(crate) fn register_event_handlers(
                     };
                     let mut navigation_id = 0u64;
                     args.NavigationId(&mut navigation_id)?;
-                    committed_document_authority.navigation_finished(navigation_id);
                     // Commit evidence: the displayed document was replaced.
                     normalizer::submit(
                         &committed_tag,
@@ -262,7 +210,6 @@ pub(crate) fn register_event_handlers(
 
     let finished_tag = webtag.clone();
     let finished_native_view_id = native_view_id;
-    let finished_document_authority = Arc::clone(&document_authority);
     unsafe {
         let mut token = 0;
         webview
@@ -273,7 +220,6 @@ pub(crate) fn register_event_handlers(
                     };
                     let mut navigation_id = 0u64;
                     args.NavigationId(&mut navigation_id)?;
-                    finished_document_authority.navigation_finished(navigation_id);
                     let mut succeeded = BOOL::default();
                     args.IsSuccess(&mut succeeded)?;
                     let result = if succeeded.as_bool() {
@@ -343,18 +289,17 @@ pub(crate) fn register_event_handlers(
                     // without the callbacks needed to prove fresh authority.
                     // IsNewDocument=false is intentionally location-only so
                     // pushState, replaceState, and fragment changes survive.
-                    if document::source_change_requires_reproof(
+                    if document::source_change_restores_document(
                         is_new_document.as_bool(),
                         matches!(
                             webview.current_document_binding(),
                             crate::DocumentBinding::Bound(_)
                         ),
-                    ) && normalizer::invalidate_restored_document(
-                        &source_tag,
-                        source_native_view_id,
-                    ) && let Some(delegate) = webview.get_delegate()
-                    {
-                        delegate.on_document_restored(source_native_view_id, &source);
+                    ) {
+                        normalizer::invalidate_restored_document(
+                            &source_tag,
+                            source_native_view_id,
+                        );
                     }
                     normalizer::submit(
                         &source_tag,
@@ -672,7 +617,6 @@ pub(crate) fn register_event_handlers(
     }
 
     let failed_tag = webtag.clone();
-    let failed_document_authority = Arc::clone(&document_authority);
     unsafe {
         let mut token = 0;
         webview
@@ -685,9 +629,6 @@ pub(crate) fn register_event_handlers(
                     // or subframe exit does not terminate the main document.
                     if !process_failure_terminates_document(kind) {
                         return Ok(());
-                    }
-                    if let Some(intent) = failed_document_authority.revoke_pending() {
-                        normalizer::revoke_trusted_load(&failed_tag, native_view_id, intent);
                     }
                     normalizer::submit(
                         &failed_tag,

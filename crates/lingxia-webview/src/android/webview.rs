@@ -232,7 +232,6 @@ pub struct WebViewInner {
     java_webview: Option<Global<JObject<'static>>>,
     pub(crate) webtag: WebTag,
     native_view_id: NativeWebViewId,
-    pub(crate) trusted_load: crate::android_document::AndroidTrustedLoad,
 }
 
 impl WebViewInner {
@@ -308,7 +307,6 @@ impl WebViewInner {
     ) -> Self {
         WebViewInner {
             java_webview: Some(java_webview),
-            trusted_load: Default::default(),
             webtag,
             native_view_id,
         }
@@ -318,58 +316,6 @@ impl WebViewInner {
         self.java_webview
             .as_ref()
             .expect("Android WebView global reference is missing")
-    }
-
-    pub(crate) fn load_trusted_data(
-        &self,
-        intent: crate::TrustedLoadIntent,
-        request: LoadDataRequest<'_>,
-    ) -> Result<(), WebViewError> {
-        with_env(|env| -> Result<(), Box<dyn std::error::Error>> {
-            let data = env.new_string(request.data)?;
-            let base_url = env.new_string(request.base_url)?;
-            let history_url = env.new_string(request.history_url.unwrap_or(request.base_url))?;
-            let token = env
-                .call_method(
-                    self.get_java_webview(),
-                    jni_str!("allocateNavigationLoadToken"),
-                    jni_sig!("()J"),
-                    &[],
-                )?
-                .j()?;
-            if token <= 0 {
-                return Err("Android returned an invalid load token".into());
-            }
-            // Arm before queueing the UI work: onPageStarted can race this call's return.
-            if let Some(replaced) = self.trusted_load.arm(token as u64, intent) {
-                crate::events::normalizer::revoke_trusted_load(
-                    &self.webtag,
-                    self.native_view_id,
-                    replaced,
-                );
-            }
-            let result = env.call_method(
-                self.get_java_webview(),
-                jni_str!("loadTrustedHtmlData"),
-                jni_sig!("(JLjava/lang/String;Ljava/lang/String;Ljava/lang/String;)V"),
-                &[
-                    JValue::Long(token),
-                    (&data).into(),
-                    (&base_url).into(),
-                    (&history_url).into(),
-                ],
-            );
-            if result.is_err() {
-                self.trusted_load.take(token as u64);
-            }
-            result?;
-            Ok(())
-        })
-        .map_err(|error| {
-            WebViewError::WebView(format!(
-                "Failed to start trusted Android HTML load: {error:?}"
-            ))
-        })
     }
 
     pub(crate) fn exit_web_fullscreen(&self) {

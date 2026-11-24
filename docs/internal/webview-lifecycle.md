@@ -114,7 +114,7 @@ copy: a new rule or profile is added in that one `match`.
 | Profile | Builder | Content | Navigation policy | Page lifecycle |
 | --- | --- | --- | --- | --- |
 | `AppPage` | `WebViewBuilder::app_page(tag)` | LxApp pages served via the `lx://` scheme | Creator-registered scheme handlers serve `lx`; the creator navigation handler decides everything else (lxapp policy: allow `lx`/`data`/`blob`, cancel the rest — see below) | Full `onLoad` → `onShow` → `onReady` → `onHide` → `onUnload` |
-| `BrowserTab` | `WebViewBuilder::browser_tab(tag)` | External URLs (`https://`), browser internal pages via `lingxia://` | Normal web URLs load in-WebView; the creator's navigation/new-window/download/file-chooser handlers route the rest. No `https` interception | Only browser internal pages (headless `Page` bound via `BrowserTabDelegate`) |
+| `BrowserTab` | `WebViewBuilder::browser_tab(tag)` | Web content (`https://`, `about:blank`) and host-loaded HTML such as the load-error page | Normal web URLs load in-WebView; the creator's navigation/new-window/download/file-chooser handlers route the rest. No `https` interception | None: browser system pages are the `app.lingxia.browser` lxapp, not tab documents |
 | `Embedded` | `WebViewBuilder::embedded(tag)` | A third-party document shown inside an lxapp page | The creator's navigation handler decides every load and is required; a new window goes to the creator's new-window handler, which by default loads it in place | None: it is part of its page, never a page |
 
 ### The three profiles, rule by rule
@@ -124,11 +124,11 @@ code is right and this table is the bug.
 
 | Rule | AppPage | BrowserTab | Embedded |
 | --- | --- | --- | --- |
-| lxapp bridge transport in the page (`LingXia` handler and `lx-apple` on Apple; `LingXiaProxy` and the message port on Android and Harmony; `LingXiaProxy` and web messages on Windows) | yes | yes, admission decided downstream per message | **none** |
+| lxapp bridge transport in the page (`LingXia` handler and `lx-apple` on Apple; `LingXiaProxy` and the message port on Android and Harmony; `LingXiaProxy` and web messages on Windows) | yes | yes; the browser delegate drops every message | **none** |
 | One-way `window.lingxia.postMessage` mailbox | no | no | **yes** (main frame only, `<= 64 KiB` JSON) |
 | Native-component bridge | yes | no | no |
 | `lx` scheme | served by default | served by default | only what the creator registers |
-| Console | native hook to the delegate | bound bridge envelope only | not captured |
+| Console | native hook to the delegate | withheld from the delegate; an in-page recorder serves automation | not captured |
 | Baseline stylesheet and platform classes | injected | no | no |
 | `alert` / `confirm` / `prompt` | answered without UI | shown | answered without UI |
 | New window | creator's handler, else dropped | opens; creator's handler routes it | always the creator's handler (default: load in place, then the navigation handler) |
@@ -141,14 +141,15 @@ code is right and this table is the bug.
 | Browser user-agent tokens (iPhone) | no | yes | yes |
 | Scroll bars (Android, Harmony) | hidden | drawn | hidden |
 | Context menu (Windows) | editing items | full | editing items |
-| Document binding (Android, Harmony) | bound on commit or finish | bound on proven visible commit, port minted once | no port exists |
+| Document binding (Android, Harmony) | bound on commit or finish | bound on proven visible commit only; no Android port | no port exists |
 
 The embedded profile's gate is that the transports are **not installed**, one
 gate per backend. The other two install them and rely on downstream admission
 (see `trusted-control-plane.md`); that is not enough for a document nobody
 vouches for. What stays reachable from an embedded page and is not a bridge:
 on Apple the `LingXiaLifecycle` handler, which accepts the one string
-`bfcache-restored` and carries nothing to the lxapp.
+`bfcache-restored`, only clears the document binding, and carries nothing to
+the lxapp.
 
 ### Child tags and embedded documents
 
@@ -238,8 +239,7 @@ by who creates the instance and which profile is used.
 | LxApp page | `LxApp` via `get_or_create_page()` / `create_page_instance()` | `AppPage` | Page HTML via `lx://` | `PageInstance` | Full |
 | Surface (page target) | `LxApp::open_surface()` → `create_page_instance()` | `AppPage` | Page HTML via `lx://`, presented in overlay or window | `PageInstance` (isolated) | Full |
 | Surface (URL target) | `LxApp::open_surface()` → platform `present_surface()` | Platform-managed (or `BrowserTab` on Windows) | External URL passed as `SurfaceContent::Url` | None (Rust side) | None |
-| Browser tab (external URL) | `lingxia-browser` | `BrowserTab` | External `https://` URL | `BrowserTabDelegate` | None |
-| Browser tab (internal page) | `lingxia-browser` | `BrowserTab` | Browser shell UI via `lingxia://` | `BrowserTabDelegate` → headless `Page` | Full (headless page only) |
+| Browser tab | `lingxia-browser` | `BrowserTab` | Web content, `about:blank`, or the load-error page | `BrowserTabDelegate` | None |
 | Embedded `<webview>` | `PageInstance::open_embedded_document_typed()` | `Embedded` | Trusted `https://` URL or single-file `lx://` | `EmbeddedWebViewDelegate` | None |
 | Host-attached page | SDK container (Apple `LxAppHostView`) | An existing `AppPage` WebView reparented into the host's view hierarchy | LxApp page | The page's existing `PageInstance` | Full (attachment triggers `onPageShow`) |
 
@@ -423,7 +423,7 @@ readiness (`mark_webview_ready()` / `wait_webview_ready()` live in
      [Surface WebView](#surface-webview).
    - Surface (URL target): no Rust WebView; the platform receives the URL.
    - Browser tab: browser runtime stores tab state, delegate is
-     `BrowserTabDelegate`, the pending URL or internal page is loaded.
+     `BrowserTabDelegate`, the pending URL (or `about:blank`) is loaded.
 4. **Ready**: setup callback completes; `mark_webview_ready()` is called.
 5. **Rendering**: the backend submits native navigation signals; the
    per-WebView event normalizer delivers typed `NavigationEvent`s
@@ -561,25 +561,15 @@ Creation:
 
 1. Allocate a tab id and a browser-tab path; build the webtag.
 2. `WebViewBuilder::browser_tab(tag)`, delegate `BrowserTabDelegate`.
-3. Register handlers:
-   - `lx://` — routes back to the owning LxApp context.
-   - `lingxia://` — serves browser internal pages from the browser shell webui bundle.
+3. Register handlers (no scheme handlers; `lingxia://` input is rejected):
    - navigation — normal web URLs stay in-WebView; external schemes are forwarded
      to the host via `open_url(..., External)`.
    - new-window — creates a new managed browser tab.
    - download — starts the LingXia download flow.
    - file chooser — delegates to the platform/media chooser.
-4. When the session becomes ready:
-   - External URL → `webview.load_url(url)`; **no** LxApp page lifecycle, so
-     never `wait_webview_ready()` on such a tab.
-   - Internal browser page (`lingxia://`) **and** the no-URL startup case → bind a
-     headless `Page` and load HTML with the bridge. This headless page gets full
-     page lifecycle so the browser shell webui can use the LxApp bridge and appservice
-     APIs.
-
-> **Shared startup page.** All tabs share a single headless startup
-> `PageInstance`; the active tab's WebView is what backs that bridge. Closing a
-> tab only detaches the bridge when the closing tab currently backs it.
+4. When the session becomes ready, `webview.load_url(url)` (`about:blank`
+   without a target). A tab has **no** LxApp page lifecycle, so never
+   `wait_webview_ready()` on one.
 
 ### Tab state and teardown
 
@@ -597,9 +587,9 @@ returns `Missing` (tab closed during creation) or `Stale` (a newer create cycle
 took over); both destroy the orphaned WebView and bail without attaching — this
 is the in-flight reattach guard.
 
-Tab teardown (`close_browser_tab`) must: remove tab state, detach the page if it
-currently backs the shared bridge, destroy the matched tab WebView for its
-path/session, and reassign the active tab if the closed one was active.
+Tab teardown (`close_browser_tab`) must: remove tab state, destroy the matched
+tab WebView for its path/session, and reassign the active tab if the closed one
+was active.
 
 ### Browser tab discard and reactivation
 
@@ -754,9 +744,8 @@ entry but leaves a *delivered* one alone, so a reused instance does not
 re-request `onLoad` off the back of its existing bridge. `switchTab` consults
 that same clock and skips `onLoad` unless the tab is still `Idle`.
 
-Browser-profile WebViews only participate in this state machine when their
-delegate resolves to a bound headless `Page`. External-URL tabs and URL-target
-surfaces are WebView-lifecycle only — no app page lifecycle events fire.
+Browser tabs and URL-target surfaces never participate in this state machine:
+they are WebView-lifecycle only, and no app page lifecycle events fire.
 
 ## Renderer termination recovery
 
@@ -885,22 +874,19 @@ are suppressed unless `rules.jsDialogs`.
   error instead of staying pending.
 - JNI forwards page events (`onPageStarted`/`onPageFinished`) to the
   `WebViewDelegate`.
-- Direct native HTML loads receive an opaque, process-monotonic load token.
+- Host loads (`loadUrl`, `loadHtmlData`, `reload`) receive an opaque,
+  process-monotonic load token; a page-initiated start gets a fresh one.
   `onPageStarted` and `onPageCommitVisible` must match that token before the
   normalizer can mint a `DocumentGeneration`. The token identifies a native
   navigation attempt; the generation identifies its committed document, so
   neither may be substituted for the other.
-- Android may finish native HTML before its visible commit. For trusted browser
-  loads, hold that finish until the matching visible commit; otherwise finish
-  retires the native load attestation before the document can bind. A new
-  navigation discards the held finish. Finish alone never grants browser trust.
-- API 23+ creates a fresh `MessagePort` pair only after a matching top-level
-  commit. The pair is bound to that generation and is revoked on navigation,
-  reload, renderer loss, or teardown. Only this pair can prove top-level
-  BrowserControl traffic; `JavascriptInterface` traffic remains `Unproven`.
-- API 21/22 can render the internal browser UI but cannot prove document or
-  frame provenance. BrowserControl therefore fails closed and reports the
-  `android_api_below_23` degradation reason.
+- API 23+ creates a fresh `MessagePort` pair for an lxapp page only after a
+  matching top-level commit (never for a browser tab). The pair is bound to that
+  generation and is revoked on navigation, reload, renderer loss, or teardown.
+  Only this pair proves top-level traffic; `JavascriptInterface` traffic
+  remains `Unproven`.
+- API 21/22 has no commit callback, so no document binds and every frame is
+  `Unproven`.
 - Navigation: `LingXiaWebViewClient.shouldOverrideUrlLoading` →
   `handleNavigationPolicy` → the creator's navigation handler.
 - `Drop for WebViewInner` calls Java `destroy()`.
@@ -919,7 +905,7 @@ is the quickest way to keep them straight:
 | `destroy_current_webview(tag)` | Host-intent API: removes whichever instance currently owns the tag + clears its delegate | No | No | No | When last `Arc` released |
 | `dispose_page_instance_internal()` | Full page-instance teardown | Yes | Yes | Yes (both) | Yes (via the two edges) |
 | LRU eviction | Lightweight reclaim of an inactive page | **No** | Yes | **No** | Yes |
-| Browser tab discard | Destroys a background tab WebView but retains restorable tab state | No | Internal browser page only | No | Yes; recreated on activation |
+| Browser tab discard | Destroys a background tab WebView but retains restorable tab state | No | No | No | Yes; recreated on activation |
 | Lxapp page discard | Destroys a hidden-main tab WebView; keeps PageInstance, Logic, `data`, switcher row | **No** | Yes | **No** | Yes; recreated on show |
 
 ### PageInstance disposal
@@ -1256,22 +1242,15 @@ sequenceDiagram
   participant Core as webview.rs
   participant Backend as Platform WebViewInner
   participant SDK as Platform Browser UI
-  participant Page as Headless Page (internal/startup only)
 
   Browser->>Core: WebViewBuilder::browser_tab(tag).create()
   Core->>Backend: WebViewInner::create(...)
   Backend->>Core: register_webview(Arc<WebView>)
   Backend-->>Browser: oneshot Ok(webview)
   Browser->>Browser: validate creation token (Missing/Stale → destroy + bail)
-  alt external URL
-    Browser->>Backend: load_url(url)
-  else internal page or startup
-    Browser->>Page: bind headless Page + bridge nonce
-    Browser->>Backend: load internal page HTML
-  end
+  Browser->>Backend: load_url(url or about:blank)
   SDK->>Backend: attach/resume managed browser WebView
   Backend->>Browser: delegate callbacks via BrowserTabDelegate
-  Browser->>Page: forward callbacks only when a headless Page is bound
   Browser->>Core: close tab → destroy_webview_if_matches
   Core->>Backend: Drop when last Arc released
 ```

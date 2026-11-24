@@ -564,7 +564,7 @@ export struct LingXiaWebView {
         // about:blank, and not an end that names another URL (a late end for a
         // replaced document). Commit with the begin URL: native matches it
         // exactly, and a fragment-only difference must not revoke the load.
-        // BrowserControl keeps requiring visible-commit proof.
+        // The browser profile keeps requiring visible-commit proof.
         if (!this.documentCommitted
           && !this.rules().provenDocumentBinding
           && !this.mainFrameFailed

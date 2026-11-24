@@ -63,13 +63,11 @@
 -keep class com.lingxia.webview.LingXiaWebView {
     public static void requestWebView(...);
     public static java.lang.String applyHttpProxy(...);
-    long allocateNavigationLoadToken();
     void captureScreenshot(long);
     void clearBrowsingData();
     void completeFileChooserRequest(long, java.lang.String[]);
     void dispatchClickAt(float, float);
     void loadHtmlData(java.lang.String, java.lang.String, java.lang.String);
-    void loadTrustedHtmlData(long, java.lang.String, java.lang.String, java.lang.String);
     boolean postDocumentMessageNow(long, java.lang.String);
     void postMessageToWebView(java.lang.String);
     void scheduleDocumentMessage(long);

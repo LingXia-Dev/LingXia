@@ -9,38 +9,10 @@ import org.junit.Test;
 
 public final class AndroidDocumentBridgeStateTest {
     @Test
-    public void trustedFinishWaitsForVisibleCommitWithoutGrantingAPort() {
-        AndroidDocumentBridgeState state = new AndroidDocumentBridgeState();
-        state.prepareHostLoad(11L, true);
-        state.onPageStarted(100L, "lingxia://newtab");
-        assertTrue(state.awaitsTrustedVisibleCommit("lingxia://newtab"));
-        assertFalse(state.hasCommittedDocument());
-        assertFalse(state.mayInstallPort(11L, 1L, true));
-        assertTrue(state.bindCommit(11L, 1L));
-        assertFalse(state.awaitsTrustedVisibleCommit("lingxia://newtab"));
-        assertTrue(state.mayInstallPort(11L, 1L, true));
-    }
-
-    @Test
-    public void unrelatedFailedAndUntrustedFinishesAreNotDeferred() {
-        AndroidDocumentBridgeState state = new AndroidDocumentBridgeState();
-        state.prepareHostLoad(11L, true);
-        state.onPageStarted(100L, "lingxia://newtab");
-        assertFalse(state.awaitsTrustedVisibleCommit("https://example.com"));
-        state.recordMainFrameFailure(11L);
-        assertFalse(state.awaitsTrustedVisibleCommit("lingxia://newtab"));
-        state.prepareHostLoad(12L, false);
-        state.onPageStarted(101L, "https://example.com");
-        assertFalse(state.awaitsTrustedVisibleCommit("https://example.com"));
-        state.revoke();
-        assertFalse(state.awaitsTrustedVisibleCommit("https://example.com"));
-    }
-
-    @Test
     public void firstStartHasNoCommittedDocumentUntilBind() {
         AndroidDocumentBridgeState state = new AndroidDocumentBridgeState();
         assertFalse(state.hasCommittedDocument());
-        state.prepareHostLoad(11L, false);
+        state.prepareHostLoad(11L);
         assertFalse(state.hasCommittedDocument());
         AndroidDocumentBridgeState.Navigation started = state.onPageStarted(100L);
         assertFalse(state.hasCommittedDocument());
@@ -51,10 +23,10 @@ public final class AndroidDocumentBridgeStateTest {
     @Test
     public void staleNavigationCannotCommitOrReuseSuccessorPort() {
         AndroidDocumentBridgeState state = new AndroidDocumentBridgeState();
-        state.prepareHostLoad(11L, true);
+        state.prepareHostLoad(11L);
         AndroidDocumentBridgeState.Navigation first = state.onPageStarted(100L);
 
-        state.prepareHostLoad(12L, true);
+        state.prepareHostLoad(12L);
         AndroidDocumentBridgeState.Navigation second = state.onPageStarted(101L);
 
         assertFalse(state.bindCommit(first.loadToken, 1L));
@@ -64,23 +36,24 @@ public final class AndroidDocumentBridgeStateTest {
     }
 
     @Test
-    public void externalDocumentNeverInstallsBrowserControlPort() {
+    public void browserProfileNeverInstallsAPort() {
         AndroidDocumentBridgeState state = new AndroidDocumentBridgeState();
-        state.prepareHostLoad(21L, false);
-        AndroidDocumentBridgeState.Navigation external = state.onPageStarted(102L);
+        state.prepareHostLoad(21L);
+        AndroidDocumentBridgeState.Navigation started = state.onPageStarted(102L);
 
-        assertTrue(state.bindCommit(external.loadToken, 1L));
-        assertFalse(state.mayInstallPort(external.loadToken, 1L, true));
+        assertTrue(state.bindCommit(started.loadToken, 1L));
+        assertFalse(state.mayInstallPort(started.loadToken, 1L, true));
+        assertTrue(state.mayInstallPort(started.loadToken, 1L, false));
     }
 
     @Test
     public void reloadRevokesOldPortAndCreatesANewAttempt() {
         AndroidDocumentBridgeState state = new AndroidDocumentBridgeState();
-        state.prepareHostLoad(31L, true);
+        state.prepareHostLoad(31L);
         AndroidDocumentBridgeState.Navigation first = state.onPageStarted(103L);
         assertTrue(state.bindCommit(first.loadToken, 1L));
 
-        state.prepareHostLoad(32L, false);
+        state.prepareHostLoad(32L);
         assertFalse(state.acceptsPort(first.loadToken, 1L));
         AndroidDocumentBridgeState.Navigation reload = state.onPageStarted(103L);
 
@@ -92,7 +65,7 @@ public final class AndroidDocumentBridgeStateTest {
     @Test
     public void repeatedRedirectStartReusesOneAttemptUntilCommit() {
         AndroidDocumentBridgeState state = new AndroidDocumentBridgeState();
-        state.prepareHostLoad(41L, false);
+        state.prepareHostLoad(41L);
         AndroidDocumentBridgeState.Navigation first = state.onPageStarted(104L);
         AndroidDocumentBridgeState.Navigation redirect = state.onPageStarted(105L);
 
@@ -104,23 +77,9 @@ public final class AndroidDocumentBridgeStateTest {
     }
 
     @Test
-    public void externalStartCannotInheritDirectLoaderAttestation() {
-        AndroidDocumentBridgeState state = new AndroidDocumentBridgeState();
-        state.prepareHostLoad(45L, true);
-        AndroidDocumentBridgeState.Navigation direct = state.onPageStarted(104L);
-
-        AndroidDocumentBridgeState.Navigation external = state.onPageStarted(105L);
-
-        assertFalse(direct.loadToken == external.loadToken);
-        assertFalse(state.bindCommit(direct.loadToken, 1L));
-        assertTrue(state.bindCommit(external.loadToken, 1L));
-        assertFalse(state.mayInstallPort(external.loadToken, 1L, true));
-    }
-
-    @Test
     public void crashOrTeardownRevokesPortAndPendingCommit() {
         AndroidDocumentBridgeState state = new AndroidDocumentBridgeState();
-        state.prepareHostLoad(51L, true);
+        state.prepareHostLoad(51L);
         AndroidDocumentBridgeState.Navigation current = state.onPageStarted(106L);
         assertTrue(state.bindCommit(current.loadToken, 1L));
 
@@ -130,76 +89,12 @@ public final class AndroidDocumentBridgeStateTest {
         assertNull(state.pendingCommit());
     }
 
-    @Test
-    public void sameUrlHistoryRestoreWithoutCallbacksRevokesOldPortOnce() {
-        AndroidDocumentBridgeState state = new AndroidDocumentBridgeState();
-        state.prepareHostLoad(61L, true);
-        AndroidDocumentBridgeState.Navigation current = state.onPageStarted(107L);
-        assertTrue(state.bindCommit(current.loadToken, 3L));
-
-        assertFalse(state.historyRestoreNeedsReproof(true));
-        assertTrue(state.acceptsPort(current.loadToken, 3L));
-        // No new start/commit callbacks: a same-URL restore reports history
-        // against the already consumed proof.
-        assertTrue(state.historyRestoreNeedsReproof(true));
-        assertFalse(state.acceptsPort(current.loadToken, 3L));
-        assertFalse(state.historyRestoreNeedsReproof(true));
-    }
-
-    @Test
-    public void visitedHistoryBeforeCommitConsumesTheFreshProof() {
-        AndroidDocumentBridgeState state = new AndroidDocumentBridgeState();
-        state.prepareHostLoad(71L, true);
-        AndroidDocumentBridgeState.Navigation current = state.onPageStarted(108L);
-
-        assertFalse(state.historyRestoreNeedsReproof(true));
-        assertTrue(state.bindCommit(current.loadToken, 4L));
-        assertTrue(state.acceptsPort(current.loadToken, 4L));
-        assertTrue(state.historyRestoreNeedsReproof(true));
-        assertFalse(state.acceptsPort(current.loadToken, 4L));
-    }
-
-    @Test
-    public void freshTrustedReloadGetsNewProofAfterRestoreRevocation() {
-        AndroidDocumentBridgeState state = new AndroidDocumentBridgeState();
-        state.prepareHostLoad(81L, true);
-        AndroidDocumentBridgeState.Navigation old = state.onPageStarted(109L);
-        assertTrue(state.bindCommit(old.loadToken, 5L));
-        assertFalse(state.historyRestoreNeedsReproof(true));
-        assertTrue(state.historyRestoreNeedsReproof(true));
-
-        state.prepareHostLoad(82L, true);
-        AndroidDocumentBridgeState.Navigation fresh = state.onPageStarted(110L);
-        assertTrue(state.bindCommit(fresh.loadToken, 6L));
-        assertFalse(state.acceptsPort(old.loadToken, 5L));
-        assertTrue(state.acceptsPort(fresh.loadToken, 6L));
-        assertFalse(state.historyRestoreNeedsReproof(true));
-    }
-
-    @Test
-    public void ordinaryOrExternalDocumentsIgnoreHistoryReproofPolicy() {
-        AndroidDocumentBridgeState state = new AndroidDocumentBridgeState();
-        state.prepareHostLoad(91L, false);
-        AndroidDocumentBridgeState.Navigation external = state.onPageStarted(111L);
-        assertTrue(state.bindCommit(external.loadToken, 7L));
-
-        assertFalse(state.historyRestoreNeedsReproof(true));
-        assertFalse(state.historyRestoreNeedsReproof(true));
-
-        state.prepareHostLoad(92L, true);
-        AndroidDocumentBridgeState.Navigation ordinary = state.onPageStarted(112L);
-        assertTrue(state.bindCommit(ordinary.loadToken, 8L));
-        assertFalse(state.historyRestoreNeedsReproof(false));
-        assertFalse(state.historyRestoreNeedsReproof(false));
-        assertTrue(state.acceptsPort(ordinary.loadToken, 8L));
-    }
-
     private static final String HOME = "lx://app/pages/home/index.html";
 
     @Test
     public void finishedLoadBindsStrictDocumentWhenVisibleCommitIsSkipped() {
         AndroidDocumentBridgeState state = new AndroidDocumentBridgeState();
-        state.prepareHostLoad(101L, true);
+        state.prepareHostLoad(101L);
         AndroidDocumentBridgeState.Navigation current = state.onPageStarted(120L, HOME);
 
         AndroidDocumentBridgeState.Navigation finish = state.pendingFinishCommit(HOME, false);
@@ -215,7 +110,7 @@ public final class AndroidDocumentBridgeStateTest {
     @Test
     public void visibleCommitLeavesNothingForTheFinishFallback() {
         AndroidDocumentBridgeState state = new AndroidDocumentBridgeState();
-        state.prepareHostLoad(102L, true);
+        state.prepareHostLoad(102L);
         AndroidDocumentBridgeState.Navigation current = state.onPageStarted(121L, HOME);
 
         assertTrue(state.bindCommit(state.pendingCommit().loadToken, 10L));
@@ -226,7 +121,7 @@ public final class AndroidDocumentBridgeStateTest {
     @Test
     public void browserProfileNeverBindsFromAFinishedLoad() {
         AndroidDocumentBridgeState state = new AndroidDocumentBridgeState();
-        state.prepareHostLoad(103L, true);
+        state.prepareHostLoad(103L);
         state.onPageStarted(122L, "https://example.com/");
 
         assertNull(state.pendingFinishCommit("https://example.com/", true));
@@ -236,11 +131,11 @@ public final class AndroidDocumentBridgeStateTest {
     @Test
     public void lateFinishForAReplacedDocumentCannotBindTheNewAttempt() {
         AndroidDocumentBridgeState state = new AndroidDocumentBridgeState();
-        state.prepareHostLoad(104L, true);
+        state.prepareHostLoad(104L);
         AndroidDocumentBridgeState.Navigation first = state.onPageStarted(123L, "lx://app/a");
         assertTrue(state.bindCommit(first.loadToken, 11L));
 
-        state.prepareHostLoad(105L, true);
+        state.prepareHostLoad(105L);
         // Nothing is active between the host load and its start.
         assertNull(state.pendingFinishCommit("lx://app/a", false));
         AndroidDocumentBridgeState.Navigation next = state.onPageStarted(124L, "lx://app/b");
@@ -254,12 +149,12 @@ public final class AndroidDocumentBridgeStateTest {
     @Test
     public void sameUrlReloadWaitsForItsOwnStart() {
         AndroidDocumentBridgeState state = new AndroidDocumentBridgeState();
-        state.prepareHostLoad(106L, true);
+        state.prepareHostLoad(106L);
         AndroidDocumentBridgeState.Navigation first = state.onPageStarted(125L, HOME);
         assertTrue(state.bindCommit(first.loadToken, 12L));
 
         // WebView.reload() / a dev bundle reload prepares a fresh attempt.
-        state.prepareHostLoad(107L, false);
+        state.prepareHostLoad(107L);
         assertNull(state.pendingFinishCommit(HOME, false));
         AndroidDocumentBridgeState.Navigation reload = state.onPageStarted(126L, HOME);
 
@@ -273,7 +168,7 @@ public final class AndroidDocumentBridgeStateTest {
     @Test
     public void pageReloadingItselfIsANewAttemptJudgedOnItsOwnFinish() {
         AndroidDocumentBridgeState state = new AndroidDocumentBridgeState();
-        state.prepareHostLoad(108L, true);
+        state.prepareHostLoad(108L);
         AndroidDocumentBridgeState.Navigation first = state.onPageStarted(127L, HOME);
         assertTrue(state.bindCommit(first.loadToken, 14L));
 
@@ -289,13 +184,13 @@ public final class AndroidDocumentBridgeStateTest {
     @Test
     public void failedMainFrameLoadNeverBindsOnFinish() {
         AndroidDocumentBridgeState state = new AndroidDocumentBridgeState();
-        state.prepareHostLoad(109L, true);
+        state.prepareHostLoad(109L);
         AndroidDocumentBridgeState.Navigation failed = state.onPageStarted(129L, HOME);
         state.recordMainFrameFailure(failed.loadToken);
         assertNull(state.pendingFinishCommit(HOME, false));
 
         // A fresh attempt is judged on its own evidence.
-        state.prepareHostLoad(110L, true);
+        state.prepareHostLoad(110L);
         state.onPageStarted(130L, HOME);
         assertNotNull(state.pendingFinishCommit(HOME, false));
     }
@@ -303,9 +198,9 @@ public final class AndroidDocumentBridgeStateTest {
     @Test
     public void staleFailureReportCannotPoisonTheCurrentAttempt() {
         AndroidDocumentBridgeState state = new AndroidDocumentBridgeState();
-        state.prepareHostLoad(111L, true);
+        state.prepareHostLoad(111L);
         AndroidDocumentBridgeState.Navigation old = state.onPageStarted(131L, "lx://app/a");
-        state.prepareHostLoad(112L, true);
+        state.prepareHostLoad(112L);
         state.onPageStarted(132L, HOME);
 
         state.recordMainFrameFailure(old.loadToken);
@@ -315,7 +210,7 @@ public final class AndroidDocumentBridgeStateTest {
     @Test
     public void redirectRestartMovesTheExpectedUrl() {
         AndroidDocumentBridgeState state = new AndroidDocumentBridgeState();
-        state.prepareHostLoad(113L, false);
+        state.prepareHostLoad(113L);
         AndroidDocumentBridgeState.Navigation first = state.onPageStarted(133L, "lx://app/start");
         AndroidDocumentBridgeState.Navigation redirect = state.onPageStarted(134L, "lx://app/final");
 
@@ -327,11 +222,11 @@ public final class AndroidDocumentBridgeStateTest {
     @Test
     public void fragmentKeepsTheDocumentAndBlankNeverBinds() {
         AndroidDocumentBridgeState state = new AndroidDocumentBridgeState();
-        state.prepareHostLoad(114L, true);
+        state.prepareHostLoad(114L);
         state.onPageStarted(135L, HOME);
         assertNotNull(state.pendingFinishCommit(HOME + "#top", false));
 
-        state.prepareHostLoad(115L, true);
+        state.prepareHostLoad(115L);
         state.onPageStarted(136L, "about:blank");
         assertNull(state.pendingFinishCommit("about:blank", false));
     }
@@ -339,7 +234,7 @@ public final class AndroidDocumentBridgeStateTest {
     @Test
     public void teardownLeavesNothingToBindOnFinish() {
         AndroidDocumentBridgeState state = new AndroidDocumentBridgeState();
-        state.prepareHostLoad(116L, true);
+        state.prepareHostLoad(116L);
         state.onPageStarted(137L, HOME);
 
         state.revoke();

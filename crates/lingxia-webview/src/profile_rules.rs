@@ -66,8 +66,8 @@ pub(crate) struct ProfileRules {
     /// The whole context menu is kept. Otherwise only its editing items are
     /// (Windows).
     pub(crate) full_context_menu: bool,
-    /// A document is bound to the bridge only on proof of its visible commit,
-    /// and its port is minted once (Android, Harmony).
+    /// A document binds only on proof of its visible commit, never from a
+    /// finished load (Android, Harmony). Android mints it no document port.
     pub(crate) proven_document_binding: bool,
 }
 

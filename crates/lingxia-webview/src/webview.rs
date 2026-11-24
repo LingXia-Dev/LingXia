@@ -53,9 +53,8 @@ use crate::traits::{
 };
 use crate::{
     ClearSiteDataOptions, ClearSiteDataResult, IncomingWebMessage, LoadDataRequest,
-    NetworkCaptureSnapshot, TrustedLoadIntent, WebResourceResponse, WebViewController,
-    WebViewCookie, WebViewCookieSetRequest, WebViewDelegate, WebViewError, WebViewInputError,
-    WebViewScriptError,
+    NetworkCaptureSnapshot, WebResourceResponse, WebViewController, WebViewCookie,
+    WebViewCookieSetRequest, WebViewDelegate, WebViewError, WebViewInputError, WebViewScriptError,
 };
 use async_trait::async_trait;
 
@@ -536,9 +535,8 @@ pub(crate) enum SecurityProfile {
     Embedded,
 }
 
-/// Native console hooks are safe only for fixed-origin lxapp pages. A
-/// BrowserTab WebView can contain arbitrary external content, so its
-/// BrowserControl document must use the V3-bound main message transport.
+/// Native console hooks are safe only for fixed-origin lxapp pages. Other
+/// profiles can show arbitrary external content, so their console is withheld.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum PlatformConsoleBackend {
     #[cfg(any(target_os = "ios", target_os = "macos", test))]
@@ -554,7 +552,7 @@ pub(crate) enum PlatformConsoleBackend {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum PlatformConsoleDelivery {
     DirectDelegate,
-    RequiredV3Envelope,
+    Withheld,
 }
 
 pub(crate) const fn platform_console_delivery(
@@ -564,7 +562,7 @@ pub(crate) const fn platform_console_delivery(
     if profile.rules().native_console {
         PlatformConsoleDelivery::DirectDelegate
     } else {
-        PlatformConsoleDelivery::RequiredV3Envelope
+        PlatformConsoleDelivery::Withheld
     }
 }
 
@@ -1373,110 +1371,6 @@ pub struct WebView {
     message_ingress: Arc<WebMessageIngress>,
 }
 
-/// A one-shot reservation for a trusted native HTML load.
-///
-/// It is issued for one exact [`WebView`] and can neither be cloned nor moved
-/// to another view. Consumers register [`Self::intent`] with their own
-/// document state before calling [`Self::load`]. Dropping it, or a failed
-/// load, revokes the intent before it can become an admission.
-pub struct TrustedDataLoadReservation<'a> {
-    webview: &'a WebView,
-    webtag: WebTag,
-    native_view_id: NativeWebViewId,
-    intent: Option<TrustedLoadIntent>,
-}
-
-enum TrustedDataLoadEvidence {
-    #[cfg(any(target_os = "ios", target_os = "macos"))]
-    NativeKey(crate::events::normalizer::NativeKey),
-    #[cfg(any(
-        target_os = "android",
-        target_os = "windows",
-        all(target_os = "linux", target_env = "ohos")
-    ))]
-    PlatformAttested,
-}
-
-impl TrustedDataLoadReservation<'_> {
-    /// The opaque token to register before initiating the native load.
-    pub fn intent(&self) -> TrustedLoadIntent {
-        self.intent
-            .expect("trusted data load reservation must retain its intent until consumed")
-    }
-
-    /// Keep the issued token live without calling `load`. Used when the HTML is
-    /// delivered through a scheme handler for the same navigation.
-    pub fn disarm(mut self) -> TrustedLoadIntent {
-        self.intent
-            .take()
-            .expect("trusted data load reservation must retain its intent until consumed")
-    }
-
-    /// Consume this reservation and start its one native HTML load.
-    pub fn load(mut self, request: LoadDataRequest<'_>) -> Result<TrustedLoadIntent, WebViewError> {
-        let intent = self
-            .intent
-            .take()
-            .expect("trusted data load reservation must be consumed once");
-        let evidence = match self.webview.load_trusted_data_on_platform(intent, request) {
-            Ok(evidence) => evidence,
-            Err(error) => {
-                crate::events::normalizer::revoke_trusted_load(
-                    &self.webtag,
-                    self.native_view_id,
-                    intent,
-                );
-                return Err(error);
-            }
-        };
-
-        let attested = match evidence {
-            #[cfg(any(target_os = "ios", target_os = "macos"))]
-            TrustedDataLoadEvidence::NativeKey(key) => {
-                crate::events::normalizer::attest_trusted_load(
-                    &self.webtag,
-                    self.native_view_id,
-                    intent,
-                    key,
-                )
-            }
-            #[cfg(any(
-                target_os = "android",
-                target_os = "windows",
-                all(target_os = "linux", target_env = "ohos")
-            ))]
-            TrustedDataLoadEvidence::PlatformAttested => true,
-        };
-        if attested {
-            Ok(intent)
-        } else {
-            // A destroy/recreate or concurrent later direct load won between
-            // issuing and binding. The native load may still render, but it is
-            // intentionally ineligible for trusted admission.
-            crate::events::normalizer::revoke_trusted_load(
-                &self.webtag,
-                self.native_view_id,
-                intent,
-            );
-            Err(WebViewError::WebView(
-                "trusted data load lost its WebView lifecycle binding".to_string(),
-            ))
-        }
-    }
-}
-
-impl Drop for TrustedDataLoadReservation<'_> {
-    fn drop(&mut self) {
-        if let Some(intent) = self.intent.take() {
-            crate::events::normalizer::revoke_trusted_load(
-                &self.webtag,
-                self.native_view_id,
-                intent,
-            );
-        }
-    }
-}
-
 #[cfg_attr(
     not(any(
         target_os = "android",
@@ -1584,91 +1478,6 @@ impl WebView {
                 self.webtag()
             );
         }
-    }
-
-    /// Reserve a trusted native HTML load before starting the native operation.
-    ///
-    /// Register [`TrustedDataLoadReservation::intent`] with document state
-    /// before calling `load`; a native callback is permitted to arrive before
-    /// `load` returns. The reservation's Drop implementation revokes an
-    /// unused token. HTML and base URLs are resource-location inputs, never
-    /// authority.
-    pub fn prepare_trusted_data_load(
-        &self,
-    ) -> Result<TrustedDataLoadReservation<'_>, WebViewError> {
-        let webtag = self.webtag();
-        let native_view_id = self.native_view_id;
-        let intent = crate::events::normalizer::issue_trusted_load(&webtag, native_view_id)
-            .ok_or_else(|| {
-                WebViewError::WebView(
-                    "trusted data load requires a live matching WebView lifecycle".to_string(),
-                )
-            })?;
-        Ok(TrustedDataLoadReservation {
-            webview: self,
-            webtag,
-            native_view_id,
-            intent: Some(intent),
-        })
-    }
-
-    #[cfg(any(target_os = "ios", target_os = "macos"))]
-    fn load_trusted_data_on_platform(
-        &self,
-        _intent: TrustedLoadIntent,
-        request: LoadDataRequest<'_>,
-    ) -> Result<TrustedDataLoadEvidence, WebViewError> {
-        self.inner
-            .load_trusted_data(request)
-            .map(TrustedDataLoadEvidence::NativeKey)
-    }
-
-    #[cfg(target_os = "android")]
-    fn load_trusted_data_on_platform(
-        &self,
-        intent: TrustedLoadIntent,
-        request: LoadDataRequest<'_>,
-    ) -> Result<TrustedDataLoadEvidence, WebViewError> {
-        self.inner.load_trusted_data(intent, request)?;
-        Ok(TrustedDataLoadEvidence::PlatformAttested)
-    }
-
-    #[cfg(target_os = "windows")]
-    fn load_trusted_data_on_platform(
-        &self,
-        intent: TrustedLoadIntent,
-        request: LoadDataRequest<'_>,
-    ) -> Result<TrustedDataLoadEvidence, WebViewError> {
-        self.inner.load_trusted_data(intent, request)?;
-        Ok(TrustedDataLoadEvidence::PlatformAttested)
-    }
-
-    #[cfg(all(target_os = "linux", target_env = "ohos"))]
-    fn load_trusted_data_on_platform(
-        &self,
-        intent: TrustedLoadIntent,
-        request: LoadDataRequest<'_>,
-    ) -> Result<TrustedDataLoadEvidence, WebViewError> {
-        self.inner
-            .load_trusted_data(intent, request)
-            .map(|()| TrustedDataLoadEvidence::PlatformAttested)
-    }
-
-    #[cfg(not(any(
-        target_os = "ios",
-        target_os = "macos",
-        target_os = "windows",
-        target_os = "android",
-        all(target_os = "linux", target_env = "ohos")
-    )))]
-    fn load_trusted_data_on_platform(
-        &self,
-        _intent: TrustedLoadIntent,
-        _request: LoadDataRequest<'_>,
-    ) -> Result<TrustedDataLoadEvidence, WebViewError> {
-        Err(WebViewError::Unsupported(
-            "trusted direct HTML loads require a platform navigation key".to_string(),
-        ))
     }
 
     #[cfg_attr(
@@ -3965,7 +3774,7 @@ mod tests {
     fn assert_browser_console_is_bound(backend: PlatformConsoleBackend) {
         assert_eq!(
             platform_console_delivery(SecurityProfile::BrowserTab, backend),
-            PlatformConsoleDelivery::RequiredV3Envelope
+            PlatformConsoleDelivery::Withheld
         );
         assert_eq!(
             platform_console_delivery(SecurityProfile::AppPage, backend),

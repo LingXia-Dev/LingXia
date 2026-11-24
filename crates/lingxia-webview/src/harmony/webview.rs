@@ -1695,31 +1695,6 @@ impl WebViewInner {
         )
     }
 
-    pub(crate) fn load_trusted_data(
-        &self,
-        intent: crate::TrustedLoadIntent,
-        request: LoadDataRequest<'_>,
-    ) -> Result<(), WebViewError> {
-        let public_url = request.history_url.unwrap_or(request.base_url);
-        let armed = self
-            .document_authority
-            .arm(intent, public_url, &self.native_generation);
-        log::debug!(
-            "Armed Harmony trusted document load for {} key={}",
-            self.webtag,
-            armed.key
-        );
-        if let Some(replaced) = armed.replaced {
-            normalizer::revoke_trusted_load(&self.webtag, self.native_view_id, replaced);
-        }
-        if let Err(error) = self.load_data_with_history_url(request, &armed.platform_url) {
-            self.document_authority.invalidate();
-            normalizer::revoke_trusted_load(&self.webtag, self.native_view_id, intent);
-            return Err(error);
-        }
-        Ok(())
-    }
-
     async fn take_screenshot_once(&self) -> Result<Vec<u8>, WebViewError> {
         let request_id = NEXT_SCREENSHOT_REQUEST_ID.fetch_add(1, Ordering::Relaxed);
         let (tx, rx) = oneshot::channel();
@@ -2256,51 +2231,25 @@ pub fn on_page_begin(
     let Some(webview) = webview_for_native_generation(&webtag, native_generation) else {
         return false;
     };
-    let decision = webview.inner.document_authority.page_begin(url, page_epoch);
-    let (key, public_url) = match decision {
-        PageBegin::Attest {
-            intent,
-            key,
-            public_url,
-        } => {
-            normalizer::submit(
-                &webtag,
-                webview.native_view_id(),
-                NativeSignal::NavigationStarted {
-                    key: Some(key),
-                    url: public_url.clone(),
-                },
-            );
-            if !normalizer::attest_trusted_load(&webtag, webview.native_view_id(), intent, key) {
-                webview.inner.document_authority.invalidate();
-                return false;
-            }
-            (key, public_url)
-        }
-        PageBegin::Untrusted {
-            key,
-            public_url,
-            revoked,
-        } => {
-            if let Some(intent) = revoked {
-                normalizer::revoke_trusted_load(&webtag, webview.native_view_id(), intent);
-            }
-            normalizer::submit(
-                &webtag,
-                webview.native_view_id(),
-                NativeSignal::NavigationStarted {
-                    key: Some(key),
-                    url: public_url.clone(),
-                },
-            );
-            (key, public_url)
-        }
-        PageBegin::Invalid => return false,
+    let PageBegin::Started {
+        key,
+        url: begun_url,
+    } = webview.inner.document_authority.page_begin(url, page_epoch)
+    else {
+        return false;
     };
+    normalizer::submit(
+        &webtag,
+        webview.native_view_id(),
+        NativeSignal::NavigationStarted {
+            key: Some(key),
+            url: begun_url.clone(),
+        },
+    );
     // Revoking the previous document in the normalizer is the linearization
     // point for outbound delivery. Only then may its native ports be closed.
     webview.inner.cleanup_webmessage_ports();
-    record_map(&RECENT_NAV_URLS, &webtag, &public_url);
+    record_map(&RECENT_NAV_URLS, &webtag, &begun_url);
     log::debug!("Harmony top-level page begin {} key={key}", webtag);
     true
 }
@@ -2321,16 +2270,13 @@ pub fn on_document_commit(
         .document_commit(url, page_epoch)
     {
         DocumentCommit::Committed(committed) => committed,
-        DocumentCommit::Restored { public_url } => {
+        DocumentCommit::Restored => {
             normalizer::submit(
                 &webtag,
                 webview.native_view_id(),
                 NativeSignal::DocumentInvalidated,
             );
             webview.inner.cleanup_webmessage_ports();
-            if let Some(delegate) = webview.get_delegate() {
-                delegate.on_document_restored(webview.native_view_id(), &public_url);
-            }
             return true;
         }
         DocumentCommit::Invalid => return false,
@@ -2372,7 +2318,7 @@ pub fn on_document_commit(
         return false;
     }
     if webview.effective_options().rules().embed_mailbox
-        && let Some(origin) = crate::embed_mailbox::canonical_origin(&committed.public_url)
+        && let Some(origin) = crate::embed_mailbox::canonical_origin(&committed.url)
     {
         *lock_or_recover(&webview.inner.embed_origin, "harmony.embed_origin.commit") =
             Some((generation, origin));
@@ -2413,7 +2359,7 @@ pub fn on_page_end(webtag_str: &str, native_generation: &str, page_epoch: u64, u
         NativeSignal::NavigationFinished {
             key: Some(terminal.key),
             result: NativeNavigationResult::Succeeded {
-                final_url: terminal.public_url,
+                final_url: terminal.url,
             },
         },
     );
@@ -2425,9 +2371,7 @@ pub fn on_render_exited(webtag_str: &str, native_generation: &str) -> bool {
     let Some(webview) = webview_for_native_generation(&webtag, native_generation) else {
         return false;
     };
-    if let Some(intent) = webview.inner.document_authority.invalidate() {
-        normalizer::revoke_trusted_load(&webtag, webview.native_view_id(), intent);
-    }
+    webview.inner.document_authority.invalidate();
     normalizer::submit(
         &webtag,
         webview.native_view_id(),
@@ -2459,12 +2403,13 @@ pub fn notify_webview_state(
         return;
     };
     if !url.is_empty() {
-        let public_url = webview.inner.document_authority.public_url(url);
-        record_map(&LAST_LOCATIONS, &webtag, &public_url);
+        record_map(&LAST_LOCATIONS, &webtag, url);
         normalizer::submit(
             &webtag,
             webview.native_view_id(),
-            NativeSignal::LocationChanged { url: public_url },
+            NativeSignal::LocationChanged {
+                url: url.to_string(),
+            },
         );
     }
     if !title.is_empty() {
@@ -3112,7 +3057,7 @@ pub fn on_load_error(
         NativeNavigationResult::Cancelled(None)
     } else {
         NativeNavigationResult::Failed(LoadError {
-            failing_url: Some(terminal.public_url),
+            failing_url: Some(terminal.url),
             kind: harmony_load_error_kind(error_code, description),
             description: description.to_string(),
         })
