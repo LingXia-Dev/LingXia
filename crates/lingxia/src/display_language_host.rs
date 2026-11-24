@@ -109,15 +109,13 @@ mod tests {
         let browser = unsafe { test_browser_caller() };
         let audience = get_display_language_preference_host().audience();
 
-        for caller in [&standard, &surface] {
-            assert!(!authorize(caller, audience));
-            assert!(
-                !host_route_schema(caller)
-                    .methods
-                    .contains_key("app.getDisplayLanguagePreference")
-            );
-        }
-        for caller in [&control, &browser] {
+        assert!(!authorize(&standard, audience));
+        assert!(
+            !host_route_schema(&standard)
+                .methods
+                .contains_key("app.getDisplayLanguagePreference")
+        );
+        for caller in [&control, &surface, &browser] {
             assert!(authorize(caller, audience));
             assert!(
                 host_route_schema(caller)

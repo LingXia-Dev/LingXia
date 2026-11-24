@@ -1,9 +1,7 @@
 use crate::authorization;
-#[cfg(feature = "terminal")]
 use crate::authorization::LogicRoute;
 use crate::i18n::js_error_from_lxapp_error;
 use crate::update;
-#[cfg(feature = "terminal")]
 use lingxia_platform::traits::app_runtime::AppRuntime;
 use lxapp::host::HostInvocationContext;
 use lxapp::{self, Channel, LxApp, LxAppError, LxAppStartupOptions};
@@ -106,19 +104,22 @@ fn should_navigate_to_app(
     Ok(true)
 }
 
-#[cfg(feature = "terminal")]
+const BROWSER_SYSTEM_APP_ID: &str = "app.lingxia.browser";
+
 fn ensure_ordinary_app_target(appid: &str) -> Result<(), LxAppError> {
+    #[cfg(feature = "terminal")]
     if appid == lingxia_terminal_config::SETTINGS_APP_ID {
         return Err(LxAppError::UnsupportedOperation(
             "the host Terminal Settings control session is reserved; use lx.surface.openApp"
                 .to_string(),
         ));
     }
-    Ok(())
-}
-
-#[cfg(not(feature = "terminal"))]
-fn ensure_ordinary_app_target(_appid: &str) -> Result<(), LxAppError> {
+    if appid == BROWSER_SYSTEM_APP_ID {
+        return Err(LxAppError::UnsupportedOperation(
+            "the host Browser System control session is reserved; use lx.surface.openApp"
+                .to_string(),
+        ));
+    }
     Ok(())
 }
 
@@ -128,8 +129,8 @@ pub(crate) async fn prepare_app_open(
     control_invocation: Option<&HostInvocationContext>,
 ) -> JSResult<(LxAppStartupOptions, Channel)> {
     let target_appid = options.appid.clone();
-    let host_terminal_settings =
-        register_host_terminal_settings_bundle(lxapp, &target_appid, control_invocation)?;
+    let host_control_surface =
+        register_host_control_surface_bundle(lxapp, &target_appid, control_invocation)?;
     validate_page_selector(options).map_err(|e| js_error_from_lxapp_error(&e))?;
     let release_type = lxapp::resolve_open_channel(
         &target_appid,
@@ -142,9 +143,9 @@ pub(crate) async fn prepare_app_open(
         .map(str::trim)
         .filter(|value| !value.is_empty());
 
-    if host_terminal_settings && target_version.is_some() {
+    if host_control_surface && target_version.is_some() {
         return Err(js_error_from_lxapp_error(&LxAppError::InvalidParameter(
-            "the host-bundled Terminal Settings app does not support version".to_string(),
+            "host-bundled control surface apps do not support version".to_string(),
         )));
     }
 
@@ -152,7 +153,7 @@ pub(crate) async fn prepare_app_open(
         .await
         .map_err(|e| js_error_from_lxapp_error(&e))?;
 
-    if !host_terminal_settings {
+    if !host_control_surface {
         if let Some(target_version) = target_version {
             lxapp::ensure_target_version_ready(lxapp, &target_appid, release_type, target_version)
                 .await
@@ -162,7 +163,7 @@ pub(crate) async fn prepare_app_open(
         }
     }
 
-    let target_app = if host_terminal_settings {
+    let target_app = if host_control_surface {
         let authority = crate::native_control_authority().ok_or_else(|| {
             js_error_from_lxapp_error(&LxAppError::UnsupportedOperation(
                 "native control authority is not initialized".to_string(),
@@ -183,47 +184,53 @@ pub(crate) async fn prepare_app_open(
     Ok((startup_options, release_type))
 }
 
-#[cfg(feature = "terminal")]
-fn register_host_terminal_settings_bundle(
+fn register_host_control_surface_bundle(
     lxapp: &Arc<LxApp>,
     target_appid: &str,
     control_invocation: Option<&HostInvocationContext>,
 ) -> JSResult<bool> {
-    if target_appid != lingxia_terminal_config::SETTINGS_APP_ID {
+    let route_and_label: Option<(LogicRoute, &'static str)> = {
+        #[cfg(feature = "terminal")]
+        if target_appid == lingxia_terminal_config::SETTINGS_APP_ID {
+            Some((
+                LogicRoute::ShellOpenHostTerminalSettings,
+                "Terminal Settings",
+            ))
+        } else if target_appid == BROWSER_SYSTEM_APP_ID {
+            Some((LogicRoute::ShellOpenHostBrowserSurface, "Browser System"))
+        } else {
+            None
+        }
+        #[cfg(not(feature = "terminal"))]
+        if target_appid == BROWSER_SYSTEM_APP_ID {
+            Some((LogicRoute::ShellOpenHostBrowserSurface, "Browser System"))
+        } else {
+            None
+        }
+    };
+    let Some((route, label)) = route_and_label else {
         return Ok(false);
-    }
+    };
     let Some(invocation) = control_invocation else {
         return Err(js_error_from_lxapp_error(
-            &LxAppError::UnsupportedOperation(
-                "the host Terminal Settings control session is reserved; use lx.surface.openApp"
-                    .to_string(),
-            ),
+            &LxAppError::UnsupportedOperation(format!(
+                "the host {label} control session is reserved; use lx.surface.openApp"
+            )),
         ));
     };
-    if let Err(denied) =
-        authorization::authorize(invocation, LogicRoute::ShellOpenHostTerminalSettings)
-    {
+    if let Err(denied) = authorization::authorize(invocation, route) {
         // A caller that lacks the audience is denied, not unsupported: every
         // control-plane refusal reaches JS as E_PERMISSION_DENIED.
         return Err(authorization::denial_error(denied));
     }
     let manifest = format!("{target_appid}/lxapp.json");
     lxapp.runtime.read_asset(&manifest).map_err(|_| {
-        js_error_from_lxapp_error(&LxAppError::ResourceNotFound(
-            "Terminal Settings is not bundled by this host".to_string(),
-        ))
+        js_error_from_lxapp_error(&LxAppError::ResourceNotFound(format!(
+            "{label} is not bundled by this host"
+        )))
     })?;
     lxapp::register_builtin_asset_bundle(target_appid.to_string());
     Ok(true)
-}
-
-#[cfg(not(feature = "terminal"))]
-fn register_host_terminal_settings_bundle(
-    _lxapp: &Arc<LxApp>,
-    _target_appid: &str,
-    _control_invocation: Option<&HostInvocationContext>,
-) -> JSResult<bool> {
-    Ok(false)
 }
 
 async fn do_navigate_to_app(

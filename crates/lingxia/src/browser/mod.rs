@@ -169,7 +169,7 @@ mod tests {
             assert!(
                 matches!(
                     audience,
-                    lxapp::host::RouteAudience::BrowserControlOnly
+                    lxapp::host::RouteAudience::ControlSurfaceOnly
                         | lxapp::host::RouteAudience::ControlAppOrBrowserOnly
                 ),
                 "incompatible production Settings route {route}: {audience:?}"

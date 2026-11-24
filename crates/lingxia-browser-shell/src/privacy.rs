@@ -110,7 +110,7 @@ fn map_webview_error(action: &str, err: WebViewError) -> LxAppError {
     }
 }
 
-#[lingxia::framework_native("privacy.getUsage", audience = "browser-control-only")]
+#[lingxia::framework_native("privacy.getUsage", audience = "control-surface-only")]
 async fn get_privacy_usage(app: Arc<LxApp>) -> HostResult<PrivacyUsage> {
     let history_entries = crate::history::count_in(&app.app_data_dir())?;
     let cache_sites = lingxia_webview::data_store::cache_site_count()
@@ -127,7 +127,7 @@ async fn get_privacy_usage(app: Arc<LxApp>) -> HostResult<PrivacyUsage> {
     })
 }
 
-#[lingxia::framework_native("privacy.clearCache", audience = "browser-control-only")]
+#[lingxia::framework_native("privacy.clearCache", audience = "control-surface-only")]
 async fn clear_cache(_app: Arc<LxApp>) -> HostResult<()> {
     clear_favicons(None)?;
     lingxia_webview::data_store::clear_cache(None)
@@ -135,14 +135,14 @@ async fn clear_cache(_app: Arc<LxApp>) -> HostResult<()> {
         .map_err(|e| map_webview_error("privacy.clearCache", e))
 }
 
-#[lingxia::framework_native("privacy.clearAllSiteData", audience = "browser-control-only")]
+#[lingxia::framework_native("privacy.clearAllSiteData", audience = "control-surface-only")]
 async fn clear_all_site_data(_app: Arc<LxApp>) -> HostResult<()> {
     lingxia_webview::data_store::clear_all_site_data(None)
         .await
         .map_err(|e| map_webview_error("privacy.clearAllSiteData", e))
 }
 
-#[lingxia::framework_native("privacy.clearBrowsingData", audience = "browser-control-only")]
+#[lingxia::framework_native("privacy.clearBrowsingData", audience = "control-surface-only")]
 async fn clear_browsing_data(
     app: Arc<LxApp>,
     input: ClearBrowsingDataInput,
@@ -198,7 +198,7 @@ async fn clear_browsing_data(
 
 /// Clears data for the current site only, then reloads the tab so the page
 /// reflects the cleared state.
-#[lingxia::framework_native("privacy.clearSiteData", audience = "browser-control-only")]
+#[lingxia::framework_native("privacy.clearSiteData", audience = "control-surface-only")]
 async fn clear_site_data(
     _app: Arc<LxApp>,
     input: ClearSiteDataInput,
@@ -235,7 +235,7 @@ async fn clear_site_data(
     })
 }
 
-#[lingxia::framework_native("privacy.getSiteDataContext", audience = "browser-control-only")]
+#[lingxia::framework_native("privacy.getSiteDataContext", audience = "control-surface-only")]
 async fn get_site_data_context(
     _app: Arc<LxApp>,
     input: SiteDataContextInput,
@@ -296,7 +296,7 @@ mod tests {
         ] {
             assert_eq!(
                 route.audience(),
-                lxapp::host::RouteAudience::BrowserControlOnly
+                lxapp::host::RouteAudience::ControlSurfaceOnly
             );
         }
     }

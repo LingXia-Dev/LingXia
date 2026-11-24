@@ -50,6 +50,7 @@ pub(crate) enum LogicRoute {
     ShellSetAppDisplay,
     ShellAppDisplayGet,
     ShellOpenHostTerminalSettings,
+    ShellOpenHostBrowserSurface,
     ShellActivate,
     TerminalSettingsGet,
     TerminalSettingsUpdate,
@@ -110,6 +111,7 @@ impl LogicRoute {
         Self::ShellSetAppDisplay,
         Self::ShellAppDisplayGet,
         Self::ShellOpenHostTerminalSettings,
+        Self::ShellOpenHostBrowserSurface,
         Self::ShellActivate,
         Self::TerminalSettingsGet,
         Self::TerminalSettingsUpdate,
@@ -172,7 +174,8 @@ impl LogicRoute {
             | Self::ShellSetAppDisplay
             | Self::ShellAppDisplayGet
             | Self::ShellActivate
-            | Self::ShellOpenHostTerminalSettings => RouteAudience::ControlAppOnly,
+            | Self::ShellOpenHostTerminalSettings
+            | Self::ShellOpenHostBrowserSurface => RouteAudience::ControlAppOnly,
             Self::DevicePermission
             | Self::DeviceRequestPermission
             | Self::AppNotificationShow
@@ -240,6 +243,7 @@ impl LogicRoute {
             Self::ShellSetAppDisplay => "lx.shell.appDisplay.update",
             Self::ShellAppDisplayGet => "lx.shell.appDisplay.get",
             Self::ShellOpenHostTerminalSettings => "lx.surface.openApp.hostTerminalSettings",
+            Self::ShellOpenHostBrowserSurface => "lx.surface.openApp.hostBrowserSurface",
             Self::ShellActivate => "lx.shell.activate",
             Self::TerminalSettingsGet => "lx.host.terminal.settings.get",
             Self::TerminalSettingsUpdate => "lx.host.terminal.settings.update",

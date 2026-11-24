@@ -70,7 +70,7 @@ pub(crate) fn register() {
     lxapp::host::register_host_entry(reorder_pins_host());
 }
 
-#[lingxia::framework_native("tabs.recentlyClosed", audience = "browser-control-only")]
+#[lingxia::framework_native("tabs.recentlyClosed", audience = "control-surface-only")]
 fn recently_closed(_app: Arc<LxApp>) -> HostResult<Vec<lingxia_browser::ClosedBrowserTab>> {
     Ok(lingxia_browser::recently_closed())
 }
@@ -79,7 +79,7 @@ struct ReopenInput {
     #[serde(default)]
     id: Option<String>,
 }
-#[lingxia::framework_native("tabs.reopen", audience = "browser-control-only")]
+#[lingxia::framework_native("tabs.reopen", audience = "control-surface-only")]
 fn reopen(_app: Arc<LxApp>, input: ReopenInput) -> HostResult<String> {
     lingxia_browser::reopen_closed(input.id.as_deref())
 }

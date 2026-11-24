@@ -775,7 +775,7 @@ pub fn authorize(caller: &AuthenticatedCaller, audience: RouteAudience) -> bool 
                 class: AppSessionClass::ControlSurface,
                 ..
             },
-            RouteAudience::ControlSurfaceOnly
+            RouteAudience::ControlSurfaceOnly | RouteAudience::ControlAppOrBrowserOnly
         ) | (
             AuthenticatedCallerSource::BrowserDocument { .. },
             RouteAudience::AnyAuthenticated
@@ -2511,7 +2511,7 @@ mod tests {
         );
         assert_eq!(
             audiences.map(|audience| authorize(&surface, audience)),
-            [true, true, false, true, false, false]
+            [true, true, false, true, false, true]
         );
         assert_eq!(
             audiences.map(|audience| authorize(&browser, audience)),
