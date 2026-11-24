@@ -1,5 +1,5 @@
 {
-  "accepted": "2026-11-21",
+  "accepted": "2026-11-24",
   "presets": [
     "iphone-15-pro",
     "desktop-1280"
@@ -70,7 +70,7 @@
     "iphone-15-pro/button-dark.png": {
       "width": 1179,
       "height": 2556,
-      "sha256": "27fc9223f324c29ba2d5a70cb426a5f916a83429e501e402ba5cc82b8a6f1c7d"
+      "sha256": "977b06afc2a01ae009399e7f0eed092d822574d2cb0231245589b37a4c3f9ca5"
     },
     "iphone-15-pro/button-group-dark.png": {
       "width": 1179,
@@ -85,7 +85,7 @@
     "iphone-15-pro/button-light.png": {
       "width": 1179,
       "height": 2556,
-      "sha256": "a980a050dda82d4e43cd1cc9c28859ce4bfade88f21407883ca7a4085af0c246"
+      "sha256": "7e4b282e1fd07a7074dc030ca04825de0d63edab06fff34f1d8ca7e1f75b92c6"
     },
     "iphone-15-pro/calendar-dark.png": {
       "width": 1179,
@@ -510,12 +510,12 @@
     "iphone-15-pro/item-dark.png": {
       "width": 1179,
       "height": 2556,
-      "sha256": "6391a89b0519c732a65b106fa4db6db8ac3789b328552814fcbde1c230374c81"
+      "sha256": "8464dd5373fffb47f6d735442f44691af7996762ae7b9048b3c27d741b24148c"
     },
     "iphone-15-pro/item-light.png": {
       "width": 1179,
       "height": 2556,
-      "sha256": "2b270676dab43025e449c14bcbdcf37a92eec05eedb804baae3f40342917ee23"
+      "sha256": "f5a78abfe7ec7fc8e75c490bdf6cacc9561e3ebfa67100c5ea42da03f460955f"
     },
     "iphone-15-pro/kbd-dark.png": {
       "width": 1179,
@@ -1080,7 +1080,7 @@
     "desktop-1280/button-dark.png": {
       "width": 2536,
       "height": 1412,
-      "sha256": "b5befc2664e49867a1226c969cdd99922c36a0a18e1c336272c273c442e5aa87"
+      "sha256": "7ddbe418f501c2b2625003d1470879888fff37eb2db9cdc57f328065591caabc"
     },
     "desktop-1280/button-group-dark.png": {
       "width": 2536,
@@ -1095,7 +1095,7 @@
     "desktop-1280/button-light.png": {
       "width": 2536,
       "height": 1412,
-      "sha256": "af4f8f3d1a0f4140b9d39a2c05f1d228ba462dd37dd4d87734f1a3eeccebdc44"
+      "sha256": "9080f5bfc72e42f5b9d340b8a3b2ce0f53128a468f79cf07c26ed28f7dec86bd"
     },
     "desktop-1280/calendar-dark.png": {
       "width": 2536,
@@ -1520,12 +1520,12 @@
     "desktop-1280/item-dark.png": {
       "width": 2536,
       "height": 1412,
-      "sha256": "9408606c257d7a2f65185b772773a47019cddde1fec260dc162739c6a9793b4f"
+      "sha256": "2eb4f05a7b5b2278cc7136e92ce132dd44b16e1a364b128e815ec815f35f7bdc"
     },
     "desktop-1280/item-light.png": {
       "width": 2536,
       "height": 1412,
-      "sha256": "bf766f84f8aff8beb5b97823179ea3ab9c24424ca0d7549e02ab9a544d469a28"
+      "sha256": "9d22053716ff9e1b7a1e364210f6d269defec5a74642cd5d4e0dd50ffcf0ce46"
     },
     "desktop-1280/kbd-dark.png": {
       "width": 2536,
@@ -2026,6 +2026,26 @@
       "width": 2536,
       "height": 1412,
       "sha256": "5e40c78b1aa599397839046909c56000105a3ede2943559323c15724797713b9"
+    },
+    "iphone-15-pro/qrcode-dark.png": {
+      "width": 1179,
+      "height": 2556,
+      "sha256": "6fdb752093761e62c3b90f4049cdb0ebed8525a6acb3f94ce21f7f80f9cb0683"
+    },
+    "iphone-15-pro/qrcode-light.png": {
+      "width": 1179,
+      "height": 2556,
+      "sha256": "508379c4ee1d091e6a41a49ab5e307f2d7f0bd169579fbd05a6a6504929951ac"
+    },
+    "desktop-1280/qrcode-dark.png": {
+      "width": 2536,
+      "height": 1412,
+      "sha256": "cee69c7397cf0c872a2563cf02fa12450502325fc303f616288916bee46e3186"
+    },
+    "desktop-1280/qrcode-light.png": {
+      "width": 2536,
+      "height": 1412,
+      "sha256": "2becbe5b02a428837040104cd2dc8267307911b8f7f06010ca56c381effdf8e1"
     }
   }
 }
