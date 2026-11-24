@@ -945,7 +945,7 @@ export function render({ data }) {
 });
 
 test('classes in a map checked with `satisfies Record<…>` are traced like any other map', async () => {
-  const source = (map) => `type V = 'a' | 'b';\nconst m = { v: ${map} } as const;\nexport function render() { const k: V = 'a'; return <page className={m.v[k]} />; }\n`;
+  const source = (map) => `type V = 'a' | 'b';\nconst m = { v: ${map} } as const;\nexport function render(view) { const k: V = view.data.on ? 'a' : 'b'; return <page className={m.v[k]} />; }\n`;
   for (const map of ["{ a: 'p-4', b: 'bg-acent' } satisfies Record<V, string>", "{ a: 'p-4', b: 'bg-acent' } satisfies Partial<Record<V, string>>"]) {
     await project({ 'page.tsx': source(map) }, async (root, build) => {
       assert.match((await build().catch(error => error)).message ?? '', /page\.tsx:2:\d+: UI_CLASS_UNKNOWN: bg-acent/, map);

@@ -594,19 +594,22 @@ export async function buildPages(root, pages, output, catalogs = {}, { dev = fal
     // Packages' tokens sit below the app's own, so the app's stylesheet overrides any of them.
     const theme = [...await packageTokens(root, tokenPackages, problems), ...themes.values()].join('\n');
     warm &&= tailwindWarm(theme);
-    // `font-sans` lowers the theme's `--font-sans`; a non-default one is the page's family.
-    const classes = await compileUtilities(new Set([...candidates, 'font-sans']), theme, { literalColors });
-    const sans = classes.find(rule => rule.name === 'font-sans');
-    if (sans?.error && !candidates.has('font-sans')) problems.push(`${page}: UI_FONT: --font-sans: ${sans.error.message}`);
-    const pageFamily = sans?.style?.fontFamily === 'sans-serif' ? undefined : sans?.style?.fontFamily;
     const checker = moduleChecker(sourceFiles, checkerOptions(root));
-    const rulesByName = new Map();
-    for (const rule of classes) rulesByName.set(rule.name, [...(rulesByName.get(rule.name) ?? []), rule]);
     const { usages, untraced } = collectClassAnalysis(sourceFiles, checker);
     for (const place of untraced) {
       const location = packageRelative(root, place.location);
       untracedClasses.set(`${location}\0${place.reason}`, { ...place, location });
     }
+    // A className followed to literals in full adds its classes, though no single string spells them
+    // (a template over known parts, a cx map passed by name); one with any untraced part adds none.
+    for (const { value, complete } of usages) if (complete) for (const name of value.split(/\s+/)) if (name) candidates.add(name);
+    // `font-sans` lowers the theme's `--font-sans`; a non-default one is the page's family.
+    const classes = await compileUtilities(new Set([...candidates, 'font-sans']), theme, { literalColors });
+    const sans = classes.find(rule => rule.name === 'font-sans');
+    if (sans?.error && !candidates.has('font-sans')) problems.push(`${page}: UI_FONT: --font-sans: ${sans.error.message}`);
+    const pageFamily = sans?.style?.fontFamily === 'sans-serif' ? undefined : sans?.style?.fontFamily;
+    const rulesByName = new Map();
+    for (const rule of classes) rulesByName.set(rule.name, [...(rulesByName.get(rule.name) ?? []), rule]);
     const unknown = [...new Set(usages.flatMap(({ value }) => value.split(/\s+/)).filter(name => name && !rulesByName.has(name)))];
     const suggestions = await nearestSupported(unknown, theme);
     // A name the checks reach but the collection missed is a valid utility the table lacks, not a typo.
