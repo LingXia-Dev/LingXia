@@ -744,7 +744,12 @@ function resolveElement(tag, original, children, identity, depth, parent) {
       const options = selectOptions(props);
       if (props.value !== undefined && typeof props.value !== 'string') throw Error('UI_SELECT: value must be a string');
       if (props.placeholder !== undefined && !validInputText(props.placeholder)) {
-        const got = typeof props.placeholder === 'number' ? String(props.placeholder) : (JSON.stringify(props.placeholder) ?? typeof props.placeholder).slice(0, 40);
+        let got;
+        if (typeof props.placeholder === 'number') got = String(props.placeholder);
+        else {
+          try { got = (JSON.stringify(props.placeholder) ?? typeof props.placeholder).slice(0, 40); }
+          catch { got = typeof props.placeholder; }
+        }
         throw Error(`UI_SELECT: placeholder takes a UTF-8 string up to 65536 bytes; got ${got}`);
       }
       if (props.defaultValue !== undefined && (props.value !== undefined || !options.some(option => option.value === props.defaultValue)))

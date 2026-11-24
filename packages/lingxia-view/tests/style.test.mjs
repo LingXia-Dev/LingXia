@@ -39,6 +39,9 @@ test('any refused value names what the property takes and what it got', () => {
   rejects({ lineClamp: 0 }, /UI_STYLE_VALUE: lineClamp takes a whole number of lines from 1 to 1024; got 0$/m, 'text');
   rejects({ objectFit: 'stretch' }, /UI_STYLE_VALUE: objectFit takes cover, contain or fill; got "stretch"$/m, 'image');
   rejects({ gridColumn: '1 / 2 / 3' }, /UI_STYLE_VALUE: gridColumn takes start \/ end; got "1 \/ 2 \/ 3"$/m);
+  const cyclic = {}; cyclic.self = cyclic;
+  rejects({ width: 10n }, /UI_STYLE_VALUE: width takes a number from 0 to 16384; got bigint$/m);
+  rejects({ width: cyclic }, /UI_STYLE_VALUE: width takes a number from 0 to 16384; got object$/m);
 });
 
 test('dimensions lower lengths, percentages, viewport units and sizing keywords', () => {

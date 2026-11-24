@@ -72,7 +72,12 @@ export function admitStyle(tag, style) {
 
 // Names what the property takes and what it got: a bad value usually comes from data, far from the style.
 function invalid(name, value, takes) {
-  const got = typeof value === 'number' ? String(value) : (JSON.stringify(value) ?? typeof value).slice(0, 40);
+  let got;
+  if (typeof value === 'number') got = String(value);
+  else {
+    try { got = (JSON.stringify(value) ?? typeof value).slice(0, 40); }
+    catch { got = typeof value; }
+  }
   throw Error(`UI_STYLE_VALUE: ${name} takes ${takes}; got ${got}`);
 }
 
