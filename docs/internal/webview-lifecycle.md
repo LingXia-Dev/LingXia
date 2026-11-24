@@ -124,11 +124,11 @@ code is right and this table is the bug.
 
 | Rule | AppPage | BrowserTab | Embedded |
 | --- | --- | --- | --- |
-| lxapp bridge transport in the page (`LingXia` handler and `lx-apple` on Apple; `LingXiaProxy` and the message port on Android and Harmony; `LingXiaProxy` and web messages on Windows) | yes | yes; the browser delegate drops every message | **none** |
+| lxapp bridge transport in the page (`LingXia` handler and `lx-apple` on Apple; `LingXiaProxy` and the message port on Android and Harmony; `LingXiaProxy` and web messages on Windows) | yes | **none** | **none** |
 | One-way `window.lingxia.postMessage` mailbox | no | no | **yes** (main frame only, `<= 64 KiB` JSON) |
 | Native-component bridge | yes | no | no |
-| `lx` scheme | served by default | served by default | only what the creator registers |
-| Console | native hook to the delegate | withheld from the delegate; an in-page recorder serves automation | not captured |
+| `lx` scheme | served by default | only what the creator registers (none) | only what the creator registers |
+| Console | native hook to the delegate | withheld from the delegate; an in-page recorder (macOS, Windows) serves automation | not captured |
 | Baseline stylesheet and platform classes | injected | no | no |
 | `alert` / `confirm` / `prompt` | answered without UI | shown | answered without UI |
 | New window | creator's handler, else dropped | opens; creator's handler routes it | always the creator's handler (default: load in place, then the navigation handler) |
@@ -143,10 +143,10 @@ code is right and this table is the bug.
 | Context menu (Windows) | editing items | full | editing items |
 | Document binding (Android, Harmony) | bound on commit or finish | bound on proven visible commit only; no Android port | no port exists |
 
-The embedded profile's gate is that the transports are **not installed**, one
-gate per backend. The other two install them and rely on downstream admission
-(see `trusted-control-plane.md`); that is not enough for a document nobody
-vouches for. What stays reachable from an embedded page and is not a bridge:
+The browser-tab and embedded profiles' gate is that the transports are **not
+installed**, one gate per backend. `AppPage` installs them and relies on
+downstream admission (see `trusted-control-plane.md`); that is not enough for a
+document nobody vouches for. What stays reachable from an embedded page and is not a bridge:
 on Apple the `LingXiaLifecycle` handler, which accepts the one string
 `bfcache-restored`, only clears the document binding, and carries nothing to
 the lxapp.

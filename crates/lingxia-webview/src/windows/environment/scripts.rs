@@ -141,10 +141,6 @@ pub(crate) fn install_document_scripts(
     let script = if inject_platform_baseline {
         format!("{PLATFORM_BASELINE_SCRIPT}{script}")
     } else {
-        // Browser tabs keep their page console in the page for automation;
-        // CDP console capture stays off for them (see console.rs).
-        #[cfg(feature = "webview-input")]
-        let script = format!("{script}{}", crate::page_console::PAGE_CONSOLE_RECORDER);
         script.to_string()
     };
     AddScriptToExecuteOnDocumentCreatedCompletedHandler::wait_for_async_operation(
@@ -158,6 +154,24 @@ pub(crate) fn install_document_scripts(
     )
     .map_err(map_webview2_error)?;
 
+    Ok(())
+}
+
+/// The in-page console ring browser automation reads; CDP console capture
+/// stays off for browser tabs (see console.rs).
+#[cfg(feature = "webview-input")]
+pub(crate) fn install_page_console_recorder(webview: &ICoreWebView2) -> StdResult<()> {
+    let webview = webview.clone();
+    AddScriptToExecuteOnDocumentCreatedCompletedHandler::wait_for_async_operation(
+        Box::new(move |handler| unsafe {
+            let script = CoTaskMemPWSTR::from(crate::page_console::PAGE_CONSOLE_RECORDER);
+            webview
+                .AddScriptToExecuteOnDocumentCreated(*script.as_ref().as_pcwstr(), &handler)
+                .map_err(webview2_com::Error::WindowsError)
+        }),
+        Box::new(|result, _id| result),
+    )
+    .map_err(map_webview2_error)?;
     Ok(())
 }
 

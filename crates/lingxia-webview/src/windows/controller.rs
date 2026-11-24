@@ -1189,6 +1189,10 @@ pub(crate) fn run_ui_thread_inner(
         if effective_options.rules().embed_mailbox {
             install_embed_mailbox(&webview)?;
         }
+        #[cfg(feature = "webview-input")]
+        if effective_options.rules().page_console_recorder {
+            install_page_console_recorder(&webview)?;
+        }
         let memory_pages = Arc::new(Mutex::new(HashMap::new()));
         register_event_handlers(
             &env,

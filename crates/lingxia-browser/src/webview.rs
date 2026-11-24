@@ -76,28 +76,6 @@ impl BrowserTabDelegate {
             && !crate::tabs::is_standalone_tab(&self.tab_id)
     }
 
-    fn inject_document_scripts(&self) {
-        let scripts = crate::document_scripts::snapshot();
-        if scripts.is_empty() {
-            return;
-        }
-        // exec_js is same-thread-safe on every backend (the Windows
-        // controller queues without waiting on its own UI thread), so the
-        // delegate can inject directly from the event callback.
-        let Ok(webview) = browser_find_webview(&self.page_path, self.session_id) else {
-            return;
-        };
-        for js in &scripts {
-            if let Err(err) = webview.exec_js(js) {
-                lxapp::warn!(
-                    "[InternalBrowser] document script injection failed for tab {}: {}",
-                    self.tab_id,
-                    err
-                );
-            }
-        }
-    }
-
     fn show_load_error(&self, error: &LoadError) {
         let failing_url = error.failing_url.as_deref().unwrap_or_default();
         let title =
@@ -153,9 +131,6 @@ impl WebViewDelegate for BrowserTabDelegate {
                 if is_error_document_url(final_url) {
                     return;
                 }
-                // Browser-owned document scripts (context menu, …) run in
-                // every successfully loaded document.
-                self.inject_document_scripts();
                 // Persisted history: exactly one visit per success, keyed by
                 // the authoritative final URL.
                 if self.records_browser_history() {

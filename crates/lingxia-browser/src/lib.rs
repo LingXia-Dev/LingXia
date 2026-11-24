@@ -5,7 +5,6 @@ pub mod page;
 
 mod automation;
 mod chooser;
-mod document_scripts;
 mod downloads;
 mod policy;
 mod tabs;
@@ -57,24 +56,6 @@ pub fn set_title_changed_handler(handler: BrowserPageMetadataHandler) {
 }
 
 #[doc(hidden)]
-pub fn register_document_script(
-    native_authority: &lxapp::NativeControlPlaneAuthority,
-    js: impl Into<String>,
-) -> Result<(), LxAppError> {
-    require_native_control_authority(native_authority)?;
-    document_scripts::register(js)
-}
-
-#[doc(hidden)]
-pub fn seal_document_scripts(
-    native_authority: &lxapp::NativeControlPlaneAuthority,
-) -> Result<(), LxAppError> {
-    require_native_control_authority(native_authority)?;
-    document_scripts::seal();
-    Ok(())
-}
-
-#[doc(hidden)]
 pub fn install_runtime() {
     lingxia_transfer::runtime::register_browser_tab_path_resolver(tabs::browser_tab_path_for_id);
     lingxia_transfer::runtime::register_browser_retry_handler(
@@ -121,16 +102,6 @@ pub fn require_proxy_for_downloads() {
 /// Apply the host browser network policy to downloads; None is explicit direct.
 pub fn configure_download_proxy(proxy: Option<String>) {
     downloads::configure_proxy(proxy);
-}
-
-fn require_native_control_authority(
-    native_authority: &lxapp::NativeControlPlaneAuthority,
-) -> Result<(), LxAppError> {
-    native_authority.is_live().then_some(()).ok_or_else(|| {
-        LxAppError::UnsupportedOperation(
-            "browser document scripts require the live native host authority".to_string(),
-        )
-    })
 }
 
 /// The browser has no `lingxia://` pages; its system pages are the

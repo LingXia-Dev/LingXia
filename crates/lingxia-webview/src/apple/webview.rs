@@ -2872,11 +2872,8 @@ impl WebViewInner {
                 let _ = Retained::from_raw(hint_script);
             }
 
-            // Without the native console hook, automation reads the console
-            // from the in-page recorder. A page with no bridge is not ours to
-            // instrument.
             #[cfg(all(feature = "webview-input", target_os = "macos"))]
-            if !rules.native_console && rules.bridge_transport {
+            if rules.page_console_recorder {
                 let recorder = NSString::from_str(crate::page_console::PAGE_CONSOLE_RECORDER);
                 let recorder_script: *mut AnyObject = msg_send![user_script_class, alloc];
                 let recorder_script: *mut AnyObject = msg_send![recorder_script,

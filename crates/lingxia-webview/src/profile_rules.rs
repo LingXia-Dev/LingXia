@@ -31,6 +31,9 @@ pub(crate) struct ProfileRules {
     /// hook. Otherwise it travels only in a document-bound bridge envelope,
     /// and not at all without a bridge transport.
     pub(crate) native_console: bool,
+    /// An in-page ring records the console for browser automation to read by
+    /// script (macOS, Windows). It reaches no native code.
+    pub(crate) page_console_recorder: bool,
     /// The runtime's baseline stylesheet and platform classes are injected.
     pub(crate) platform_baseline: bool,
     /// `alert` / `confirm` / `prompt` show their UI. Otherwise they are
@@ -87,6 +90,7 @@ impl SecurityProfile {
                 native_component_bridge: true,
                 default_lx_scheme: true,
                 native_console: true,
+                page_console_recorder: false,
                 platform_baseline: true,
                 js_dialogs: false,
                 new_windows_without_handler: false,
@@ -104,11 +108,12 @@ impl SecurityProfile {
                 proven_document_binding: false,
             },
             SecurityProfile::BrowserTab => ProfileRules {
-                bridge_transport: true,
+                bridge_transport: false,
                 embed_mailbox: false,
                 native_component_bridge: false,
-                default_lx_scheme: true,
+                default_lx_scheme: false,
                 native_console: false,
+                page_console_recorder: true,
                 platform_baseline: false,
                 js_dialogs: true,
                 new_windows_without_handler: true,
@@ -131,6 +136,7 @@ impl SecurityProfile {
                 native_component_bridge: false,
                 default_lx_scheme: false,
                 native_console: false,
+                page_console_recorder: false,
                 platform_baseline: false,
                 js_dialogs: false,
                 new_windows_without_handler: false,
@@ -217,6 +223,7 @@ mod tests {
                 native_component_bridge: true,
                 default_lx_scheme: true,
                 native_console: true,
+                page_console_recorder: false,
                 platform_baseline: true,
                 js_dialogs: false,
                 new_windows_without_handler: false,
@@ -241,11 +248,12 @@ mod tests {
         assert_eq!(
             SecurityProfile::BrowserTab.rules(),
             ProfileRules {
-                bridge_transport: true,
+                bridge_transport: false,
                 embed_mailbox: false,
                 native_component_bridge: false,
-                default_lx_scheme: true,
+                default_lx_scheme: false,
                 native_console: false,
+                page_console_recorder: true,
                 platform_baseline: false,
                 js_dialogs: true,
                 new_windows_without_handler: true,
@@ -275,6 +283,7 @@ mod tests {
                 native_component_bridge: false,
                 default_lx_scheme: false,
                 native_console: false,
+                page_console_recorder: false,
                 platform_baseline: false,
                 js_dialogs: false,
                 new_windows_without_handler: false,
@@ -308,7 +317,6 @@ mod tests {
                 assert!(!rules.native_component_bridge, "{profile:?}");
                 assert!(!rules.native_console, "{profile:?}");
                 assert!(!rules.platform_baseline, "{profile:?}");
-                assert!(!rules.proven_document_binding, "{profile:?}");
             }
             assert!(
                 !(rules.downloads && rules.reports_blocked_downloads),
@@ -345,6 +353,7 @@ mod tests {
                 "native_console",
                 "new_window_https_upgrade",
                 "new_windows_without_handler",
+                "page_console_recorder",
                 "persistent_data",
                 "platform_baseline",
                 "proven_document_binding",

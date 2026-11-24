@@ -62,7 +62,6 @@ use serde::Deserialize;
 use std::io::Read;
 
 const BROWSER_WEBUI_MANIFEST_ASSET_PATH: &str = "app.lingxia.browser/lxapp.json";
-const BROWSER_CONTEXT_MENU_ASSET_PATH: &str = "app.lingxia.browser/public/browser-context-menu.js";
 
 #[derive(Debug, Deserialize)]
 struct BrowserWebUiManifest {
@@ -108,10 +107,6 @@ pub(crate) fn bundled_webui_version() -> Option<String> {
     parse_browser_webui_manifest(&manifest).ok()?.version
 }
 
-fn bundled_context_menu_script() -> Result<String, LxAppError> {
-    read_browser_asset_text(BROWSER_CONTEXT_MENU_ASSET_PATH)
-}
-
 #[doc(hidden)]
 pub fn register_route_inventory() {
     static REGISTERED: std::sync::OnceLock<()> = std::sync::OnceLock::new();
@@ -142,42 +137,19 @@ pub fn register_runtime() {
     });
 }
 
+/// Registers `app.lingxia.browser` as a host-bundled lxapp (GPU View + Rust
+/// Logic), so the browser can open it as a ControlSurface.
 #[doc(hidden)]
-pub fn register_bundled_assets(native_authority: &lxapp::NativeControlPlaneAuthority) {
-    match read_browser_asset_text(BROWSER_WEBUI_MANIFEST_ASSET_PATH)
+pub fn register_bundled_assets() {
+    if let Err(err) = read_browser_asset_text(BROWSER_WEBUI_MANIFEST_ASSET_PATH)
         .and_then(|manifest| parse_browser_webui_manifest(&manifest))
     {
-        Ok(_) => {
-            // app.lingxia.browser is a host-bundled ControlSurface lxapp (GPU View + Rust Logic).
-            lxapp::register_builtin_asset_bundle(lingxia_browser::BUILTIN_BROWSER_APPID);
-        }
-        Err(err) => {
-            panic!(
-                "browser-shell requires bundled browser webui manifest at {}: {}",
-                BROWSER_WEBUI_MANIFEST_ASSET_PATH, err
-            );
-        }
+        panic!(
+            "browser-shell requires bundled browser webui manifest at {}: {}",
+            BROWSER_WEBUI_MANIFEST_ASSET_PATH, err
+        );
     }
-
-    match bundled_context_menu_script() {
-        Ok(script) => {
-            if let Err(err) = lingxia_browser::register_document_script(native_authority, script) {
-                lxapp::warn!(
-                    "[InternalBrowser] failed to register browser document script: {}",
-                    err
-                );
-            }
-        }
-        Err(err) => {
-            lxapp::info!(
-                "[InternalBrowser] bundled browser context menu unavailable; skipping startup script: {}",
-                err
-            );
-        }
-    }
-    if let Err(err) = lingxia_browser::seal_document_scripts(native_authority) {
-        panic!("failed to seal browser document scripts: {err}");
-    }
+    lxapp::register_builtin_asset_bundle(lingxia_browser::BUILTIN_BROWSER_APPID);
 }
 
 #[doc(hidden)]

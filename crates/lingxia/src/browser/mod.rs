@@ -135,13 +135,11 @@ pub(crate) fn register_builtin_runtime() {
     });
 }
 
-pub(crate) fn register_builtin_assets(authority: &lxapp::NativeControlPlaneAuthority) {
+pub(crate) fn register_builtin_assets() {
     #[cfg(feature = "browser-shell")]
-    shell::register_bundled_assets(authority);
+    shell::register_bundled_assets();
     #[cfg(all(feature = "browser-runtime", not(feature = "browser-shell")))]
     runtime::register_bundled_app_once();
-    #[cfg(not(feature = "browser-shell"))]
-    let _ = authority;
 }
 
 pub(crate) fn warmup() {

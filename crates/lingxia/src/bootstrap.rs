@@ -455,7 +455,7 @@ pub(crate) fn init_with_platform(
         log::error!("Failed to initialize host shell state: {error}");
     }
     crate::update::install_auto_trigger(runtime.clone());
-    crate::browser::register_builtin_assets(&browser_registration_authority);
+    crate::browser::register_builtin_assets();
     crate::browser::install_native_control_authority(browser_registration_authority)
         .map_err(crate::Error::internal)?;
     crate::host_addon::run_after_init();
