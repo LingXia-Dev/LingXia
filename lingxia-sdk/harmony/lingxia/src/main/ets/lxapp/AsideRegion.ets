@@ -67,6 +67,11 @@ export interface AsideState {
   dockWidth: number;
   panelX: number;
   panelWidth: number;
+  /** The panel's strip and content, clear of a side cutout or navigation bar. */
+  innerX: number;
+  innerWidth: number;
+  /** The tongue's hit box, at the safe edge on the window's right. */
+  tongueX: number;
   stripTop: number;
   contentTop: number;
   height: number;
@@ -150,6 +155,9 @@ function emptyState(): AsideState {
     dockWidth: 0,
     panelX: 0,
     panelWidth: 0,
+    innerX: 0,
+    innerWidth: 0,
+    tongueX: 0,
     stripTop: 0,
     contentTop: 0,
     height: 0,
@@ -198,6 +206,8 @@ export class AsideRegionModel {
   private static width: number = 0;
   private static height: number = 0;
   private static statusTop: number = 0;
+  private static insetLeft: number = 0;
+  private static insetRight: number = 0;
   private static ratio: number = DEFAULT_RATIO;
   private static showContentFormat: string = 'Show %1$s';
 
@@ -224,8 +234,8 @@ export class AsideRegionModel {
         return NO_TOUCH;
       }
       return [{
-        x: state.panelX, y: state.contentTop,
-        width: state.panelWidth, height: Math.max(0, state.height - state.contentTop)
+        x: state.innerX, y: state.contentTop,
+        width: state.innerWidth, height: Math.max(0, state.height - state.contentTop)
       }];
     }
     if (state.shown) {
@@ -234,22 +244,25 @@ export class AsideRegionModel {
     if (state.tongueShown) {
       const width = state.tongueCount > 1 ? TONGUE_HIT_W_COUNT_VP : TONGUE_HIT_W_VP;
       return [{
-        x: state.windowWidth - width, y: (state.height - TONGUE_HIT_H_VP) / 2,
+        x: state.tongueX, y: (state.height - TONGUE_HIT_H_VP) / 2,
         width: width, height: TONGUE_HIT_H_VP
       }];
     }
     return NO_TOUCH;
   }
 
-  /** The window's size in vp, its status bar inset, and the strings the tongue speaks. */
-  static setWindow(width: number, height: number, statusTop: number): void {
+  /** The window's size in vp, its status bar inset, and its side insets in landscape. */
+  static setWindow(width: number, height: number, statusTop: number, insetLeft: number, insetRight: number): void {
     if (width === AsideRegionModel.width && height === AsideRegionModel.height &&
-      statusTop === AsideRegionModel.statusTop) {
+      statusTop === AsideRegionModel.statusTop && insetLeft === AsideRegionModel.insetLeft &&
+      insetRight === AsideRegionModel.insetRight) {
       return;
     }
     AsideRegionModel.width = width;
     AsideRegionModel.height = height;
     AsideRegionModel.statusTop = statusTop;
+    AsideRegionModel.insetLeft = insetLeft;
+    AsideRegionModel.insetRight = insetRight;
     AsideRegionModel.publish();
   }
 
@@ -466,6 +479,9 @@ export class AsideRegionModel {
       state.panelWidth = over ? width : AsideRegionModel.dockedWidth();
       state.panelX = width - state.panelWidth;
       state.dockWidth = over ? 0 : state.panelWidth;
+      const leading = over ? AsideRegionModel.insetLeft : 0;
+      state.innerX = state.panelX + leading;
+      state.innerWidth = Math.max(0, state.panelWidth - leading - AsideRegionModel.insetRight);
     }
     const ids = (slot?.children ?? []).filter((id: string) => AsideRegionModel.children.has(id));
     state.tabs = ids.map((id: string): AsideTab => {
@@ -473,6 +489,8 @@ export class AsideRegionModel {
     });
     state.tongueShown = !shown && !!slot?.activeChild && (slot?.collapsed === true || slot?.visible === false);
     state.tongueCount = ids.length;
+    state.tongueX = width - AsideRegionModel.insetRight -
+      (state.tongueCount > 1 ? TONGUE_HIT_W_COUNT_VP : TONGUE_HIT_W_VP);
     if (state.tongueShown) {
       const title = AsideRegionModel.titleOf(slot?.activeChild ?? '');
       state.tongueLabel = AsideRegionModel.showContentFormat.replace('%1$s', title);
@@ -501,18 +519,26 @@ export struct AsideRegion {
   private areaTop: number = 0;
   /** The status bar and cutout inset at the window's top, in vp. */
   private systemTop: number = 0;
+  /** The cutout or navigation bar on each side in landscape, in vp. */
+  private systemLeft: number = 0;
+  private systemRight: number = 0;
 
   /** The strip starts below the status bar where the region reaches under it. */
   private publishWindow(): void {
     const statusTop = Math.max(0, this.systemTop - this.areaTop);
-    AsideRegionModel.setWindow(this.areaWidth, this.areaHeight, statusTop);
+    AsideRegionModel.setWindow(this.areaWidth, this.areaHeight, statusTop, this.systemLeft, this.systemRight);
   }
 
   private readSystemTop(): void {
     window.getLastWindow(getContext(this)).then((win: window.Window) => {
       const system = win.getWindowAvoidArea(window.AvoidAreaType.TYPE_SYSTEM);
       const cutout = win.getWindowAvoidArea(window.AvoidAreaType.TYPE_CUTOUT);
+      const navigation = win.getWindowAvoidArea(window.AvoidAreaType.TYPE_NAVIGATION_INDICATOR);
       this.systemTop = Math.round(px2vp(Math.max(system.topRect.height, cutout.topRect.height)));
+      this.systemLeft = Math.round(px2vp(Math.max(system.leftRect.width, cutout.leftRect.width,
+        navigation.leftRect.width)));
+      this.systemRight = Math.round(px2vp(Math.max(system.rightRect.width, cutout.rightRect.width,
+        navigation.rightRect.width)));
       this.publishWindow();
     }).catch((error: Error) => {
       hilog.warn(DOMAIN, TAG, `no window avoid area: ${error}`);
@@ -522,7 +548,7 @@ export struct AsideRegion {
   /** The strip's width left of its controls, which the chips share. */
   private chipRoom(): number {
     const controls = CONTROL_VP * (this.state.maximizeVisible ? 2 : 1);
-    return this.state.panelWidth - STRIP_PAD_START_VP - STRIP_PAD_END_VP - controls;
+    return this.state.innerWidth - STRIP_PAD_START_VP - STRIP_PAD_END_VP - controls;
   }
 
   /** How many whole chips the room holds at the minimum width. */
@@ -652,7 +678,10 @@ export struct AsideRegion {
       }
       .width('100%')
       .height(STRIP_VP)
-      .padding({ left: STRIP_PAD_START_VP, right: STRIP_PAD_END_VP })
+      .padding({
+        left: STRIP_PAD_START_VP + this.state.innerX - this.state.panelX,
+        right: STRIP_PAD_END_VP + this.state.panelX + this.state.panelWidth - this.state.innerX - this.state.innerWidth
+      })
       .alignItems(VerticalAlign.Center)
       .border({ width: { bottom: 0.5 }, color: { bottom: asidePalette(this.state.dark).line } })
     }
@@ -778,7 +807,7 @@ export struct AsideRegion {
       .width(this.state.tongueCount > 1 ? TONGUE_HIT_W_COUNT_VP : TONGUE_HIT_W_VP)
       .height(TONGUE_HIT_H_VP)
       .position({
-        x: this.state.windowWidth - (this.state.tongueCount > 1 ? TONGUE_HIT_W_COUNT_VP : TONGUE_HIT_W_VP),
+        x: this.state.tongueX,
         y: (this.state.height - TONGUE_HIT_H_VP) / 2
       })
       .accessibilityText(this.state.tongueLabel)

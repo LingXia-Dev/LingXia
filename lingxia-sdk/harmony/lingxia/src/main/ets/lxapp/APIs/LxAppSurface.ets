@@ -1017,11 +1017,11 @@ export struct SurfaceManager {
       Column() {
         this.SurfaceContent(surface)
       }
-      .width(this.asideChildShown(surface) ? this.aside.panelWidth : 1)
+      .width(this.asideChildShown(surface) ? this.aside.innerWidth : 1)
       .height(this.asideChildShown(surface) ? Math.max(1, this.aside.height - this.aside.contentTop) : 1)
       .backgroundColor(asidePalette(this.aside.dark).panel)
       .position({
-        x: this.asideChildShown(surface) ? this.aside.panelX : -10000,
+        x: this.asideChildShown(surface) ? this.aside.innerX : -10000,
         y: this.asideChildShown(surface) ? this.aside.contentTop : -10000
       })
       // Default, not Block: Block also keeps the touch from the child's own content.
