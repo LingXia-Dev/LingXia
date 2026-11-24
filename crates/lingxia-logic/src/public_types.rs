@@ -948,7 +948,7 @@ rong::js_api! {
         /// its own is named `IMG_YYYYMMDD_HHMMSS.jpg` / `VID_…` (UTC). `name` is
         /// display-only and not unique.
         type PickedFile = r###"{
-    /** An `lx://temp` path this lxapp can read. */
+    /** `lx://temp/…`, or from `pick.file`/`files` the platform's reference to the original (`content://` on Android, `datashare://` on HarmonyOS), granted for this session. */
     path: string;
     /** The file's name as the person saw it. */
     name: string;

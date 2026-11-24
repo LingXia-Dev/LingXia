@@ -13741,8 +13741,8 @@
           "name": "path",
           "type": "string",
           "required": true,
-          "summary": "An `lx://temp` path this lxapp can read.",
-          "description": "An `lx://temp` path this lxapp can read."
+          "summary": "`lx://temp/…`, or from `pick.file`/`files` the platform's reference to the original (`content://` on Android, `datashare://` on HarmonyOS), granted for this session.",
+          "description": "`lx://temp/…`, or from `pick.file`/`files` the platform's reference to the original (`content://` on Android, `datashare://` on HarmonyOS), granted for this session."
         },
         {
           "name": "name",

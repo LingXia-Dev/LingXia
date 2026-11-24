@@ -2283,7 +2283,7 @@ export type PickedDirectory = {
  * display-only and not unique.
  */
 export type PickedFile = {
-    /** An `lx://temp` path this lxapp can read. */
+    /** `lx://temp/…`, or from `pick.file`/`files` the platform's reference to the original (`content://` on Android, `datashare://` on HarmonyOS), granted for this session. */
     path: string;
     /** The file's name as the person saw it. */
     name: string;
