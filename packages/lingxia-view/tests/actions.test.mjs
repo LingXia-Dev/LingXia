@@ -92,6 +92,14 @@ test('an action payload follows JSON for undefined and names what is not JSON',(
   assert.throws(()=>actions.reserve({s:new Set()}),{message:'UI_ACTION: reserve payload field s is not JSON (Set)'});
   assert.throws(()=>actions.reserve({n:Infinity}),{message:'UI_ACTION: reserve payload field n is not JSON (Infinity)'});
   assert.throws(()=>actions.reserve({c:new Custom()}),{message:'UI_ACTION: reserve payload field c is not JSON (Custom)'});
+  const shared={a:1};
+  actions.reserve({first:shared,second:shared}).catch(()=>{});
+  assert.deepEqual(JSON.parse(takeActionRequests()[0]).params,{first:{a:1},second:{a:1}});
+  const cyclic={node:{}};cyclic.node.parent=cyclic;
+  assert.throws(()=>actions.reserve(cyclic),{message:'UI_ACTION: argument.node.parent refers back to argument; send a value without cycles'});
+  assert.throws(()=>channels.open('ticker',cyclic),{message:'UI_CHANNEL: argument.node.parent refers back to argument; send a value without cycles'});
+  let deep={};for(let i=0;i<70;i++) deep={next:deep};
+  assert.throws(()=>actions.reserve(deep),{message:'UI_LOCAL: value too deep'});
   assert.deepEqual(takeActionRequests(),[]);reset();
 });
 test('an async handler whose action payload is refused surfaces UI_ACTION',async()=>{
