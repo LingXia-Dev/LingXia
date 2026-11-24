@@ -52,6 +52,7 @@ final class LxAppAsideRegion {
     private let tabs = UIStackView()
     private let maximizeButton = UIButton(type: .system)
     private let collapseButton = UIButton(type: .system)
+    private var maximizeShowsExit = false
     private let divider = DividerView()
     private let tongue = TongueView()
 
@@ -82,10 +83,10 @@ final class LxAppAsideRegion {
         tabScroll.showsHorizontalScrollIndicator = false
         tabScroll.addSubview(tabs)
 
-        configure(maximizeButton, symbol: "arrow.up.left.and.arrow.down.right", label: "lx_aside_maximize") { [weak self] in
+        configure(maximizeButton, icon: "icon_fullscreen_enter", label: "lx_aside_maximize") { [weak self] in
             self?.toggleMaximized()
         }
-        configure(collapseButton, symbol: "sidebar.right", label: "lx_aside_collapse") { [weak self] in
+        configure(collapseButton, icon: "icon_aside_collapse", label: "lx_aside_collapse") { [weak self] in
             self?.collapse()
         }
         let controls = UIStackView(arrangedSubviews: [maximizeButton, collapseButton])
@@ -249,9 +250,13 @@ final class LxAppAsideRegion {
         }
         let maximized = slot?.maximized == true
         maximizeButton.isHidden = !((canDock && slot?.overlay != true) || maximized)
-        maximizeButton.setImage(UIImage(systemName: maximized
-            ? "arrow.down.right.and.arrow.up.left"
-            : "arrow.up.left.and.arrow.down.right"), for: .normal)
+        // A new image each pass would invalidate the host's layout and loop.
+        if maximizeShowsExit != maximized {
+            maximizeShowsExit = maximized
+            maximizeButton.setImage(
+                Self.icon(maximized ? "icon_fullscreen_exit" : "icon_fullscreen_enter", Self.controlIconSize),
+                for: .normal)
+        }
         maximizeButton.accessibilityLabel = L10n.string(maximized ? "lx_aside_restore" : "lx_aside_maximize")
 
         let isDocked = shown && !over
@@ -357,13 +362,13 @@ final class LxAppAsideRegion {
         tab.layer.cornerRadius = 8
         tab.backgroundColor = selected && !header ? .secondarySystemFill : .clear
         if children[id]?.isURL == true {
-            let globe = UIImageView(image: UIImage(systemName: "globe"))
+            let globe = UIImageView(image: Self.icon("icon_globe", Self.globeSize))
             globe.tintColor = .secondaryLabel
             globe.contentMode = .scaleAspectFit
             globe.translatesAutoresizingMaskIntoConstraints = false
             NSLayoutConstraint.activate([
-                globe.widthAnchor.constraint(equalToConstant: 15),
-                globe.heightAnchor.constraint(equalToConstant: 15),
+                globe.widthAnchor.constraint(equalToConstant: Self.globeSize),
+                globe.heightAnchor.constraint(equalToConstant: Self.globeSize),
             ])
             tab.addArrangedSubview(globe)
         }
@@ -380,9 +385,7 @@ final class LxAppAsideRegion {
         }
         tab.addArrangedSubview(label)
         let close = UIButton(type: .system)
-        close.setImage(
-            UIImage(systemName: "xmark", withConfiguration: UIImage.SymbolConfiguration(pointSize: 11, weight: .medium)),
-            for: .normal)
+        close.setImage(Self.icon("icon_close_x", Self.closeIconSize), for: .normal)
         close.tintColor = .secondaryLabel
         close.alpha = selected ? 1 : 0.65
         close.accessibilityLabel = L10n.string("lx_common_close")
@@ -401,10 +404,15 @@ final class LxAppAsideRegion {
         return tab
     }
 
-    private func configure(_ button: UIButton, symbol: String, label: String, action: @escaping () -> Void) {
-        button.setImage(
-            UIImage(systemName: symbol, withConfiguration: UIImage.SymbolConfiguration(pointSize: 15, weight: .regular)),
-            for: .normal)
+    /// A strip icon from the design set, at Android's size: the control's side inset by a 4.4th on each edge.
+    private static func icon(_ name: String, _ side: CGFloat) -> UIImage? {
+        LxIcon.image(named: name, size: CGSize(width: side, height: side))
+    }
+
+    private func configure(
+        _ button: UIButton, icon: String, label: String, action: @escaping () -> Void
+    ) {
+        button.setImage(Self.icon(icon, Self.controlIconSize), for: .normal)
         button.tintColor = .secondaryLabel
         button.accessibilityLabel = L10n.string(label)
         button.addAction(UIAction { _ in action() }, for: .touchUpInside)
@@ -456,6 +464,9 @@ final class LxAppAsideRegion {
     private static let stripHeight: CGFloat = 44
     private static let tabHeight: CGFloat = 32
     private static let controlSize: CGFloat = 36
+    private static let controlIconSize: CGFloat = 20
+    private static let closeIconSize: CGFloat = 15
+    private static let globeSize: CGFloat = 16
     private static let sideMin: CGFloat = 320
     private static let defaultRatio: CGFloat = 0.5
     private static let snap: CGFloat = 24
@@ -541,6 +552,7 @@ private final class DividerView: UIView {
 /// chevron toward the main and, from two children, their count. A tap or a pull toward the
 /// main brings the slot back.
 private final class TongueView: UIView {
+    private static let arrowSize: CGFloat = 18
     var onRestore: (() -> Void)?
     var accent: UIColor = .label { didSet { setNeedsDisplay() } }
     var count = 0 { didSet { setNeedsDisplay() } }
@@ -622,15 +634,10 @@ private final class TongueView: UIView {
 
         let cx = (inner + outer) / 2
         let cy = bounds.midY - (counted ? 7 : 0)
-        let chevron = UIBezierPath()
-        chevron.move(to: CGPoint(x: cx + 2.5, y: cy - 4))
-        chevron.addLine(to: CGPoint(x: cx - 2.5, y: cy))
-        chevron.addLine(to: CGPoint(x: cx + 2.5, y: cy + 4))
-        chevron.lineWidth = 1.6
-        chevron.lineCapStyle = .round
-        chevron.lineJoinStyle = .round
-        accent.withAlphaComponent(pressed ? 1 : 0.75).setStroke()
-        chevron.stroke()
+        let side = Self.arrowSize
+        LxIcon.image(named: "icon_aside_expand", size: CGSize(width: side, height: side))?
+            .withTintColor(accent.withAlphaComponent(pressed ? 1 : 0.75), renderingMode: .alwaysOriginal)
+            .draw(in: CGRect(x: cx - side / 2, y: cy - side / 2, width: side, height: side))
 
         guard counted else { return }
         let label = count > 9 ? "9+" : String(count)
