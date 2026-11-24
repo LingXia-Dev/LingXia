@@ -87,6 +87,11 @@ package that records one. A CLI built from a checkout needs a Runner built from
 the same commit (`tools/lingxia-runner/macos/install-local-runner.sh`, or
 `.ps1` on Windows).
 
+Runners install under `$LINGXIA_HOME/runner/<version>` (default `~/.lingxia`). Installing a release
+removes only older release downloads beyond the newest two that no process runs from; local builds
+and suffixed names are never touched. An agent lane, CI job or scripted test must set its own
+`LINGXIA_HOME` (and `LINGXIA_RUNNER_INSTANCE`), or it installs into the user's Runners.
+
 `dev -p harmony` from a fresh shell needs `OHOS_NDK_HOME` (command-line-tools
 `sdk/default/openharmony`), its `toolchains` and command-line-tools `bin` on
 `PATH`, and a Java runtime on `PATH` (DevEco's `jbr/Contents/Home/bin`), or
