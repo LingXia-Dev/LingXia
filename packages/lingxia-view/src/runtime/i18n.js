@@ -1,6 +1,6 @@
 // `t(key, args)`: the lxapp's message in the page's language. The lxapp build compiles each
 // `i18n/<tag>.json` to one function per message and the page compiler registers them here.
-import { render } from './state.js';
+import { render, page } from './state.js';
 import { envOf } from './hooks.js';
 
 let catalogues = null;
@@ -27,11 +27,12 @@ function catalogueFor(language) {
 }
 
 export function t(key, args) {
-  if (!render.active) throw Error('UI_SCOPE: t outside render');
   if (!catalogues) throw Error(`UI_I18N: t('${key}') but the lxapp has no i18n/ catalogues`);
-  // The memo stamp covers the whole environment, so a language switch re-renders every caller.
-  const env = envOf(render.view);
-  const { tag, messages } = catalogueFor(env?.language);
+  // In render the memo stamp covers the whole environment, so a language switch re-renders every
+  // caller; elsewhere (a handler) it is a plain read in the shown page's language.
+  const view = render.active ? render.view : page.committed?.view;
+  if (!view) throw Error(`UI_SCOPE: t('${key}') before the page's first frame; call it in render or an event handler`);
+  const { tag, messages } = catalogueFor(envOf(view)?.language);
   const message = messages?.[key] ?? catalogues.languages[catalogues.source]?.[key];
   if (!message) throw Error(`UI_I18N: no message '${key}'`);
   return message(args ?? {}, formatter(tag));
