@@ -399,6 +399,38 @@
     "defaultMessage": "简体中文",
     "description": "The Simplified Chinese option, named in Chinese."
   },
+  "settings.saveFailed": {
+    "defaultMessage": "Couldn’t save this setting",
+    "description": "Browser system pages: settings.saveFailed"
+  },
+  "settings.downloads.default": {
+    "defaultMessage": "Default",
+    "description": "Browser system pages: settings.downloads.default"
+  },
+  "settings.downloads.custom": {
+    "defaultMessage": "Custom",
+    "description": "Browser system pages: settings.downloads.custom"
+  },
+  "settings.privacy.data": {
+    "defaultMessage": "Browsing data",
+    "description": "Browser system pages: settings.privacy.data"
+  },
+  "settings.privacy.historyCount": {
+    "defaultMessage": "{count, plural, =0 {No saved history} one {# page} other {# pages}}",
+    "description": "Browser system pages: settings.privacy.historyCount"
+  },
+  "settings.privacy.cacheSites": {
+    "defaultMessage": "{count, plural, =0 {Nothing cached} one {Cached files from # site} other {Cached files from # sites}}",
+    "description": "Browser system pages: settings.privacy.cacheSites"
+  },
+  "settings.privacy.cookies": {
+    "defaultMessage": "{count, plural, =0 {No cookies or site data} one {# cookie and site data from {sites, plural, one {# site} other {# sites}}} other {# cookies and site data from {sites, plural, one {# site} other {# sites}}}}",
+    "description": "Browser system pages: settings.privacy.cookies"
+  },
+  "settings.privacy.clearHint": {
+    "defaultMessage": "Choose a time range and what to remove.",
+    "description": "Browser system pages: settings.privacy.clearHint"
+  },
   "settings.downloads": {
     "defaultMessage": "Downloads",
     "description": "Browser system UI string for settings.downloads"
@@ -435,10 +467,6 @@
     "defaultMessage": "Show history",
     "description": "Browser system UI string for settings.privacy.viewHistory"
   },
-  "settings.privacy.usage": {
-    "defaultMessage": "{history} history entries · {cacheSites} sites with cache · {siteDataSites} sites with data · {cookies} cookies",
-    "description": "What clearing would affect."
-  },
   "settings.privacy.status.siteCleared": {
     "defaultMessage": "Site data cleared",
     "description": "After clearing the current site."
@@ -447,8 +475,216 @@
     "defaultMessage": "Proxy",
     "description": "Browser system UI string for settings.proxy"
   },
+  "settings.proxy.modeHint": {
+    "defaultMessage": "How browser traffic reaches the web.",
+    "description": "Browser system pages: settings.proxy.modeHint"
+  },
+  "settings.proxy.mode.directHint": {
+    "defaultMessage": "No proxy. Browser traffic goes out normally.",
+    "description": "Browser system pages: settings.proxy.mode.directHint"
+  },
+  "settings.proxy.mode.gfwListHint": {
+    "defaultMessage": "Sites on the rule list and your own rules go through the proxy; everything else stays direct.",
+    "description": "Browser system pages: settings.proxy.mode.gfwListHint"
+  },
+  "settings.proxy.mode.globalHint": {
+    "defaultMessage": "Send all browser traffic to the SOCKS server.",
+    "description": "Browser system pages: settings.proxy.mode.globalHint"
+  },
+  "settings.proxy.state.active": {
+    "defaultMessage": "Active",
+    "description": "Browser system pages: settings.proxy.state.active"
+  },
+  "settings.proxy.state.saved": {
+    "defaultMessage": "Saved",
+    "description": "Browser system pages: settings.proxy.state.saved"
+  },
+  "settings.proxy.state.pending": {
+    "defaultMessage": "Applying",
+    "description": "Browser system pages: settings.proxy.state.pending"
+  },
+  "settings.proxy.state.disabled": {
+    "defaultMessage": "Off",
+    "description": "Browser system pages: settings.proxy.state.disabled"
+  },
+  "settings.proxy.state.error": {
+    "defaultMessage": "Error",
+    "description": "Browser system pages: settings.proxy.state.error"
+  },
+  "settings.proxy.state.unsupported": {
+    "defaultMessage": "Unsupported",
+    "description": "Browser system pages: settings.proxy.state.unsupported"
+  },
+  "settings.proxy.state.via": {
+    "defaultMessage": "Running through {address}. New tabs use it.",
+    "description": "Browser system pages: settings.proxy.state.via"
+  },
+  "settings.proxy.state.directDetail": {
+    "defaultMessage": "The server settings stay saved but are not used.",
+    "description": "Browser system pages: settings.proxy.state.directDetail"
+  },
+  "settings.proxy.state.unsupportedDetail": {
+    "defaultMessage": "This device cannot route browser traffic through a proxy.",
+    "description": "Browser system pages: settings.proxy.state.unsupportedDetail"
+  },
+  "settings.proxy.server": {
+    "defaultMessage": "Proxy server",
+    "description": "Browser system pages: settings.proxy.server"
+  },
+  "settings.proxy.serverHint": {
+    "defaultMessage": "The SOCKS5 server Always Proxy and Auto Switch use.",
+    "description": "Browser system pages: settings.proxy.serverHint"
+  },
+  "settings.proxy.host": {
+    "defaultMessage": "SOCKS5 host",
+    "description": "Browser system pages: settings.proxy.host"
+  },
+  "settings.proxy.port": {
+    "defaultMessage": "Port",
+    "description": "Browser system pages: settings.proxy.port"
+  },
+  "settings.proxy.username": {
+    "defaultMessage": "Username",
+    "description": "Browser system pages: settings.proxy.username"
+  },
+  "settings.proxy.password": {
+    "defaultMessage": "Password",
+    "description": "Browser system pages: settings.proxy.password"
+  },
+  "settings.proxy.saveServer": {
+    "defaultMessage": "Save server",
+    "description": "Browser system pages: settings.proxy.saveServer"
+  },
+  "settings.proxy.status.hostRequired": {
+    "defaultMessage": "Enter the SOCKS5 host",
+    "description": "Browser system pages: settings.proxy.status.hostRequired"
+  },
+  "settings.proxy.status.serverSaved": {
+    "defaultMessage": "Proxy server saved",
+    "description": "Browser system pages: settings.proxy.status.serverSaved"
+  },
+  "settings.proxy.status.modeSaved": {
+    "defaultMessage": "Routing updated",
+    "description": "Browser system pages: settings.proxy.status.modeSaved"
+  },
+  "settings.proxy.rules": {
+    "defaultMessage": "Switch rules",
+    "description": "Browser system pages: settings.proxy.rules"
+  },
+  "settings.proxy.rulesHint": {
+    "defaultMessage": "Your rules are checked first, then the rule list, then everything else goes direct. A host pattern matches that host and its subdomains.",
+    "description": "Browser system pages: settings.proxy.rulesHint"
+  },
+  "settings.proxy.rules.list": {
+    "defaultMessage": "Rule list",
+    "description": "Browser system pages: settings.proxy.rules.list"
+  },
+  "settings.proxy.rules.listHint": {
+    "defaultMessage": "Any site on the downloaded list",
+    "description": "Browser system pages: settings.proxy.rules.listHint"
+  },
+  "settings.proxy.rules.default": {
+    "defaultMessage": "Everything else",
+    "description": "Browser system pages: settings.proxy.rules.default"
+  },
+  "settings.proxy.rules.defaultHint": {
+    "defaultMessage": "Sites no rule matches",
+    "description": "Browser system pages: settings.proxy.rules.defaultHint"
+  },
+  "settings.proxy.rules.viaProxy": {
+    "defaultMessage": "Proxy",
+    "description": "Browser system pages: settings.proxy.rules.viaProxy"
+  },
+  "settings.proxy.rules.viaDirect": {
+    "defaultMessage": "Direct",
+    "description": "Browser system pages: settings.proxy.rules.viaDirect"
+  },
+  "settings.proxy.rules.pattern": {
+    "defaultMessage": "Host pattern",
+    "description": "Browser system pages: settings.proxy.rules.pattern"
+  },
+  "settings.proxy.rules.route": {
+    "defaultMessage": "Route for {pattern}",
+    "description": "Browser system pages: settings.proxy.rules.route"
+  },
+  "settings.proxy.rules.remove": {
+    "defaultMessage": "Remove the rule for {pattern}",
+    "description": "Browser system pages: settings.proxy.rules.remove"
+  },
+  "settings.proxy.rules.add": {
+    "defaultMessage": "Add rule",
+    "description": "Browser system pages: settings.proxy.rules.add"
+  },
+  "settings.proxy.rules.saving": {
+    "defaultMessage": "Saving…",
+    "description": "Browser system pages: settings.proxy.rules.saving"
+  },
+  "settings.proxy.rules.saved": {
+    "defaultMessage": "Saved",
+    "description": "Browser system pages: settings.proxy.rules.saved"
+  },
+  "settings.proxy.rules.failed": {
+    "defaultMessage": "Couldn’t save the rules",
+    "description": "Browser system pages: settings.proxy.rules.failed"
+  },
+  "settings.proxy.list": {
+    "defaultMessage": "Rule list",
+    "description": "Browser system pages: settings.proxy.list"
+  },
+  "settings.proxy.list.url": {
+    "defaultMessage": "Rule list URL",
+    "description": "Browser system pages: settings.proxy.list.url"
+  },
+  "settings.proxy.list.urlHint": {
+    "defaultMessage": "An HTTPS address; the list downloads through the proxy server.",
+    "description": "Browser system pages: settings.proxy.list.urlHint"
+  },
+  "settings.proxy.list.updated": {
+    "defaultMessage": "Last updated",
+    "description": "Browser system pages: settings.proxy.list.updated"
+  },
+  "settings.proxy.list.never": {
+    "defaultMessage": "Never",
+    "description": "Browser system pages: settings.proxy.list.never"
+  },
+  "settings.proxy.list.download": {
+    "defaultMessage": "Download rules now",
+    "description": "Browser system pages: settings.proxy.list.download"
+  },
+  "settings.proxy.list.downloading": {
+    "defaultMessage": "Downloading the rule list…",
+    "description": "Browser system pages: settings.proxy.list.downloading"
+  },
+  "settings.proxy.list.ready": {
+    "defaultMessage": "Ready",
+    "description": "Browser system pages: settings.proxy.list.ready"
+  },
+  "settings.proxy.list.empty": {
+    "defaultMessage": "Not downloaded",
+    "description": "Browser system pages: settings.proxy.list.empty"
+  },
+  "settings.proxy.list.error": {
+    "defaultMessage": "Error",
+    "description": "Browser system pages: settings.proxy.list.error"
+  },
+  "settings.proxy.list.failed": {
+    "defaultMessage": "Couldn’t download the rule list",
+    "description": "Browser system pages: settings.proxy.list.failed"
+  },
+  "settings.proxy.list.failedHint": {
+    "defaultMessage": "Check the address, and that the proxy server is running.",
+    "description": "Browser system pages: settings.proxy.list.failedHint"
+  },
+  "settings.proxy.failedHint": {
+    "defaultMessage": "Check the proxy server settings.",
+    "description": "Browser system pages: settings.proxy.failedHint"
+  },
+  "settings.proxy.list.retry": {
+    "defaultMessage": "Try again",
+    "description": "Browser system pages: settings.proxy.list.retry"
+  },
   "settings.proxy.mode": {
-    "defaultMessage": "Proxy mode",
+    "defaultMessage": "Routing",
     "description": "Browser system pages: settings.proxy.mode"
   },
   "settings.proxy.mode.direct": {
@@ -456,39 +692,19 @@
     "description": "Proxy mode."
   },
   "settings.proxy.mode.global": {
-    "defaultMessage": "Global",
+    "defaultMessage": "Always Proxy",
     "description": "Proxy mode."
   },
   "settings.proxy.mode.gfwList": {
-    "defaultMessage": "Auto (GFWList)",
+    "defaultMessage": "Auto Switch",
     "description": "Proxy mode."
-  },
-  "settings.proxy.host": {
-    "defaultMessage": "SOCKS5 host",
-    "description": "Input label."
-  },
-  "settings.proxy.port": {
-    "defaultMessage": "Port",
-    "description": "Input label."
-  },
-  "settings.proxy.apply": {
-    "defaultMessage": "Apply",
-    "description": "Browser system UI string for settings.proxy.apply"
-  },
-  "settings.proxy.refreshRules": {
-    "defaultMessage": "Refresh rules",
-    "description": "Browser system UI string for settings.proxy.refreshRules"
   },
   "settings.proxy.status.invalidPort": {
     "defaultMessage": "Enter a port from 1 to 65535",
     "description": "Port validation."
   },
-  "settings.proxy.status.updated": {
-    "defaultMessage": "Proxy settings applied",
-    "description": "After saving proxy settings."
-  },
   "settings.proxy.status.rulesRefreshed": {
-    "defaultMessage": "Rules refreshed",
+    "defaultMessage": "Rule list downloaded",
     "description": "After refreshing GFWList."
   },
   "settings.about": {

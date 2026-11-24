@@ -399,6 +399,38 @@
     "defaultMessage": "简体中文",
     "description": "The Simplified Chinese option, named in Chinese."
   },
+  "settings.saveFailed": {
+    "defaultMessage": "无法保存此设置",
+    "description": "Browser system pages: settings.saveFailed"
+  },
+  "settings.downloads.default": {
+    "defaultMessage": "默认",
+    "description": "Browser system pages: settings.downloads.default"
+  },
+  "settings.downloads.custom": {
+    "defaultMessage": "自定义",
+    "description": "Browser system pages: settings.downloads.custom"
+  },
+  "settings.privacy.data": {
+    "defaultMessage": "浏览数据",
+    "description": "Browser system pages: settings.privacy.data"
+  },
+  "settings.privacy.historyCount": {
+    "defaultMessage": "{count, plural, =0 {没有保存的历史记录} other {# 个网页}}",
+    "description": "Browser system pages: settings.privacy.historyCount"
+  },
+  "settings.privacy.cacheSites": {
+    "defaultMessage": "{count, plural, =0 {没有缓存} other {来自 # 个网站的缓存文件}}",
+    "description": "Browser system pages: settings.privacy.cacheSites"
+  },
+  "settings.privacy.cookies": {
+    "defaultMessage": "{count, plural, =0 {没有 Cookie 或网站数据} other {来自 {sites} 个网站的 # 个 Cookie 和网站数据}}",
+    "description": "Browser system pages: settings.privacy.cookies"
+  },
+  "settings.privacy.clearHint": {
+    "defaultMessage": "选择时间范围和要删除的内容。",
+    "description": "Browser system pages: settings.privacy.clearHint"
+  },
   "settings.downloads": {
     "defaultMessage": "下载",
     "description": "Browser system UI string for settings.downloads"
@@ -435,10 +467,6 @@
     "defaultMessage": "查看历史记录",
     "description": "Browser system UI string for settings.privacy.viewHistory"
   },
-  "settings.privacy.usage": {
-    "defaultMessage": "{history} 条历史记录 · {cacheSites} 个网站有缓存 · {siteDataSites} 个网站有数据 · {cookies} 个 Cookie",
-    "description": "What clearing would affect."
-  },
   "settings.privacy.status.siteCleared": {
     "defaultMessage": "已清除网站数据",
     "description": "After clearing the current site."
@@ -447,8 +475,216 @@
     "defaultMessage": "代理",
     "description": "Browser system UI string for settings.proxy"
   },
+  "settings.proxy.modeHint": {
+    "defaultMessage": "浏览器流量如何访问网络。",
+    "description": "Browser system pages: settings.proxy.modeHint"
+  },
+  "settings.proxy.mode.directHint": {
+    "defaultMessage": "不使用代理，浏览器流量正常直连。",
+    "description": "Browser system pages: settings.proxy.mode.directHint"
+  },
+  "settings.proxy.mode.gfwListHint": {
+    "defaultMessage": "规则列表和自定义规则匹配的网站走代理，其余流量保持直连。",
+    "description": "Browser system pages: settings.proxy.mode.gfwListHint"
+  },
+  "settings.proxy.mode.globalHint": {
+    "defaultMessage": "所有浏览器流量都发送到 SOCKS 服务器。",
+    "description": "Browser system pages: settings.proxy.mode.globalHint"
+  },
+  "settings.proxy.state.active": {
+    "defaultMessage": "已启用",
+    "description": "Browser system pages: settings.proxy.state.active"
+  },
+  "settings.proxy.state.saved": {
+    "defaultMessage": "已保存",
+    "description": "Browser system pages: settings.proxy.state.saved"
+  },
+  "settings.proxy.state.pending": {
+    "defaultMessage": "正在应用",
+    "description": "Browser system pages: settings.proxy.state.pending"
+  },
+  "settings.proxy.state.disabled": {
+    "defaultMessage": "未使用",
+    "description": "Browser system pages: settings.proxy.state.disabled"
+  },
+  "settings.proxy.state.error": {
+    "defaultMessage": "错误",
+    "description": "Browser system pages: settings.proxy.state.error"
+  },
+  "settings.proxy.state.unsupported": {
+    "defaultMessage": "不支持",
+    "description": "Browser system pages: settings.proxy.state.unsupported"
+  },
+  "settings.proxy.state.via": {
+    "defaultMessage": "通过 {address} 运行，新标签页会使用它。",
+    "description": "Browser system pages: settings.proxy.state.via"
+  },
+  "settings.proxy.state.directDetail": {
+    "defaultMessage": "服务器设置会保留，但不会使用。",
+    "description": "Browser system pages: settings.proxy.state.directDetail"
+  },
+  "settings.proxy.state.unsupportedDetail": {
+    "defaultMessage": "此设备无法让浏览器流量走代理。",
+    "description": "Browser system pages: settings.proxy.state.unsupportedDetail"
+  },
+  "settings.proxy.server": {
+    "defaultMessage": "代理服务器",
+    "description": "Browser system pages: settings.proxy.server"
+  },
+  "settings.proxy.serverHint": {
+    "defaultMessage": "“始终使用代理”和“自动切换”使用的 SOCKS5 服务器。",
+    "description": "Browser system pages: settings.proxy.serverHint"
+  },
+  "settings.proxy.host": {
+    "defaultMessage": "SOCKS5 主机",
+    "description": "Browser system pages: settings.proxy.host"
+  },
+  "settings.proxy.port": {
+    "defaultMessage": "端口",
+    "description": "Browser system pages: settings.proxy.port"
+  },
+  "settings.proxy.username": {
+    "defaultMessage": "用户名",
+    "description": "Browser system pages: settings.proxy.username"
+  },
+  "settings.proxy.password": {
+    "defaultMessage": "密码",
+    "description": "Browser system pages: settings.proxy.password"
+  },
+  "settings.proxy.saveServer": {
+    "defaultMessage": "保存服务器",
+    "description": "Browser system pages: settings.proxy.saveServer"
+  },
+  "settings.proxy.status.hostRequired": {
+    "defaultMessage": "请输入 SOCKS5 主机",
+    "description": "Browser system pages: settings.proxy.status.hostRequired"
+  },
+  "settings.proxy.status.serverSaved": {
+    "defaultMessage": "代理服务器已保存",
+    "description": "Browser system pages: settings.proxy.status.serverSaved"
+  },
+  "settings.proxy.status.modeSaved": {
+    "defaultMessage": "路由模式已更新",
+    "description": "Browser system pages: settings.proxy.status.modeSaved"
+  },
+  "settings.proxy.rules": {
+    "defaultMessage": "切换规则",
+    "description": "Browser system pages: settings.proxy.rules"
+  },
+  "settings.proxy.rulesHint": {
+    "defaultMessage": "先检查自定义规则，再检查规则列表，其余流量直连。主机模式会匹配该主机及其子域名。",
+    "description": "Browser system pages: settings.proxy.rulesHint"
+  },
+  "settings.proxy.rules.list": {
+    "defaultMessage": "规则列表",
+    "description": "Browser system pages: settings.proxy.rules.list"
+  },
+  "settings.proxy.rules.listHint": {
+    "defaultMessage": "已下载列表中的任何网站",
+    "description": "Browser system pages: settings.proxy.rules.listHint"
+  },
+  "settings.proxy.rules.default": {
+    "defaultMessage": "其他所有流量",
+    "description": "Browser system pages: settings.proxy.rules.default"
+  },
+  "settings.proxy.rules.defaultHint": {
+    "defaultMessage": "未匹配任何规则的网站",
+    "description": "Browser system pages: settings.proxy.rules.defaultHint"
+  },
+  "settings.proxy.rules.viaProxy": {
+    "defaultMessage": "代理",
+    "description": "Browser system pages: settings.proxy.rules.viaProxy"
+  },
+  "settings.proxy.rules.viaDirect": {
+    "defaultMessage": "直连",
+    "description": "Browser system pages: settings.proxy.rules.viaDirect"
+  },
+  "settings.proxy.rules.pattern": {
+    "defaultMessage": "主机模式",
+    "description": "Browser system pages: settings.proxy.rules.pattern"
+  },
+  "settings.proxy.rules.route": {
+    "defaultMessage": "{pattern} 的路由",
+    "description": "Browser system pages: settings.proxy.rules.route"
+  },
+  "settings.proxy.rules.remove": {
+    "defaultMessage": "删除 {pattern} 的规则",
+    "description": "Browser system pages: settings.proxy.rules.remove"
+  },
+  "settings.proxy.rules.add": {
+    "defaultMessage": "添加规则",
+    "description": "Browser system pages: settings.proxy.rules.add"
+  },
+  "settings.proxy.rules.saving": {
+    "defaultMessage": "正在保存…",
+    "description": "Browser system pages: settings.proxy.rules.saving"
+  },
+  "settings.proxy.rules.saved": {
+    "defaultMessage": "已保存",
+    "description": "Browser system pages: settings.proxy.rules.saved"
+  },
+  "settings.proxy.rules.failed": {
+    "defaultMessage": "无法保存规则",
+    "description": "Browser system pages: settings.proxy.rules.failed"
+  },
+  "settings.proxy.list": {
+    "defaultMessage": "规则列表",
+    "description": "Browser system pages: settings.proxy.list"
+  },
+  "settings.proxy.list.url": {
+    "defaultMessage": "规则列表网址",
+    "description": "Browser system pages: settings.proxy.list.url"
+  },
+  "settings.proxy.list.urlHint": {
+    "defaultMessage": "HTTPS 网址；列表会通过代理服务器下载。",
+    "description": "Browser system pages: settings.proxy.list.urlHint"
+  },
+  "settings.proxy.list.updated": {
+    "defaultMessage": "上次更新",
+    "description": "Browser system pages: settings.proxy.list.updated"
+  },
+  "settings.proxy.list.never": {
+    "defaultMessage": "从未",
+    "description": "Browser system pages: settings.proxy.list.never"
+  },
+  "settings.proxy.list.download": {
+    "defaultMessage": "立即下载规则",
+    "description": "Browser system pages: settings.proxy.list.download"
+  },
+  "settings.proxy.list.downloading": {
+    "defaultMessage": "正在下载规则列表…",
+    "description": "Browser system pages: settings.proxy.list.downloading"
+  },
+  "settings.proxy.list.ready": {
+    "defaultMessage": "就绪",
+    "description": "Browser system pages: settings.proxy.list.ready"
+  },
+  "settings.proxy.list.empty": {
+    "defaultMessage": "未下载",
+    "description": "Browser system pages: settings.proxy.list.empty"
+  },
+  "settings.proxy.list.error": {
+    "defaultMessage": "错误",
+    "description": "Browser system pages: settings.proxy.list.error"
+  },
+  "settings.proxy.list.failed": {
+    "defaultMessage": "无法下载规则列表",
+    "description": "Browser system pages: settings.proxy.list.failed"
+  },
+  "settings.proxy.list.failedHint": {
+    "defaultMessage": "请检查网址，并确认代理服务器正在运行。",
+    "description": "Browser system pages: settings.proxy.list.failedHint"
+  },
+  "settings.proxy.failedHint": {
+    "defaultMessage": "请检查代理服务器设置。",
+    "description": "Browser system pages: settings.proxy.failedHint"
+  },
+  "settings.proxy.list.retry": {
+    "defaultMessage": "重试",
+    "description": "Browser system pages: settings.proxy.list.retry"
+  },
   "settings.proxy.mode": {
-    "defaultMessage": "代理模式",
+    "defaultMessage": "路由模式",
     "description": "Browser system pages: settings.proxy.mode"
   },
   "settings.proxy.mode.direct": {
@@ -456,39 +692,19 @@
     "description": "Proxy mode."
   },
   "settings.proxy.mode.global": {
-    "defaultMessage": "全局",
+    "defaultMessage": "始终使用代理",
     "description": "Proxy mode."
   },
   "settings.proxy.mode.gfwList": {
-    "defaultMessage": "自动（GFWList）",
+    "defaultMessage": "自动切换",
     "description": "Proxy mode."
-  },
-  "settings.proxy.host": {
-    "defaultMessage": "SOCKS5 主机",
-    "description": "Input label."
-  },
-  "settings.proxy.port": {
-    "defaultMessage": "端口",
-    "description": "Input label."
-  },
-  "settings.proxy.apply": {
-    "defaultMessage": "应用",
-    "description": "Browser system UI string for settings.proxy.apply"
-  },
-  "settings.proxy.refreshRules": {
-    "defaultMessage": "刷新规则",
-    "description": "Browser system UI string for settings.proxy.refreshRules"
   },
   "settings.proxy.status.invalidPort": {
     "defaultMessage": "请输入 1 到 65535 之间的端口",
     "description": "Port validation."
   },
-  "settings.proxy.status.updated": {
-    "defaultMessage": "代理设置已应用",
-    "description": "After saving proxy settings."
-  },
   "settings.proxy.status.rulesRefreshed": {
-    "defaultMessage": "规则已刷新",
+    "defaultMessage": "规则列表已下载",
     "description": "After refreshing GFWList."
   },
   "settings.about": {
