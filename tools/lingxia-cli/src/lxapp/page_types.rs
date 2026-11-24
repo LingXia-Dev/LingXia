@@ -12,7 +12,8 @@
 //!   `rootDirs` lays it beside the page, so `import type { View } from './$types'`
 //!   types the View from the page's Logic.
 //! - `.lingxia/tsconfig.logic.json` / `.lingxia/tsconfig.view.json`, for a GPU
-//!   lxapp: the bases the project's own tsconfig files extend.
+//!   lxapp or one whose tsconfig already extends them: the bases the project's own
+//!   tsconfig files extend.
 
 use crate::lxapp::framework::{is_gpu_page, page_base};
 use crate::lxapp::project::Project;
@@ -21,7 +22,7 @@ use anyhow::{Context, Result, bail};
 use serde_json::Value;
 use std::collections::BTreeMap;
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::{Component, Path, PathBuf};
 
 // Not a `.d.ts`: `skipLibCheck` would hide an unbuilt Logic reference and leave every type `unknown`.
 const VIEW_TYPES_FILE: &str = "$types.ts";
@@ -74,10 +75,12 @@ pub fn generate(project: &Project) -> Result<()> {
     )?;
     let gpu = !view_types.is_empty();
     write_view_types(&project.root.join(".lingxia/types"), &view_types)?;
-    if gpu {
+    if gpu || extends_a_base(&project.root) {
         write_if_changed(&project.root.join(LOGIC_BASE), &render_logic_base())?;
         write_if_changed(&project.root.join(VIEW_BASE), &render_view_base())?;
         write_if_changed(&project.root.join(GEN_MARKER), HEADER)?;
+    }
+    if gpu {
         check_view_tsconfig(&project.root, &project.pages)?;
     }
     Ok(())
@@ -182,6 +185,17 @@ fn check_view_tsconfig(root: &Path, pages: &[String]) -> Result<()> {
     )
 }
 
+/// A project set up for GPU pages before its first one exists still type-checks.
+fn extends_a_base(root: &Path) -> bool {
+    let configs = root_configs(root);
+    [LOGIC_BASE, VIEW_BASE].iter().any(|base| {
+        let base = root.join(base);
+        configs
+            .iter()
+            .any(|config| extends_chain_reaches(config, &base, 8))
+    })
+}
+
 /// Whether a tsconfig at the lxapp root extends the generated Logic base.
 pub(crate) fn has_logic_tsconfig(root: &Path) -> bool {
     let base = root.join(LOGIC_BASE);
@@ -235,8 +249,23 @@ fn extends_chain_reaches(config: &Path, target: &Path, depth: usize) -> bool {
 fn same_file(a: &Path, b: &Path) -> bool {
     match (a.canonicalize(), b.canonicalize()) {
         (Ok(a), Ok(b)) => a == b,
-        _ => false,
+        // A base not generated yet is still the one a config names.
+        _ => lexical(a) == lexical(b),
     }
+}
+
+fn lexical(path: &Path) -> PathBuf {
+    let mut out = PathBuf::new();
+    for component in path.components() {
+        match component {
+            Component::CurDir => {}
+            Component::ParentDir => {
+                out.pop();
+            }
+            other => out.push(other),
+        }
+    }
+    out
 }
 
 /// Writes each page's `$types.ts` and removes those of pages that are gone.
@@ -493,6 +522,22 @@ mod tests {
         )
         .unwrap();
         check_view_tsconfig(temp.path(), &["pages/home/index".into()]).unwrap();
+    }
+
+    #[test]
+    fn a_tsconfig_extending_a_base_not_yet_generated_asks_for_the_bases() {
+        let temp = tempfile::tempdir().unwrap();
+        let root = temp.path();
+        assert!(!extends_a_base(root));
+        fs::write(root.join("tsconfig.json"), r#"{ "files": [] }"#).unwrap();
+        assert!(!extends_a_base(root));
+        fs::write(
+            root.join("tsconfig.view.json"),
+            r#"{ "extends": "./.lingxia/tsconfig.view.json" }"#,
+        )
+        .unwrap();
+        assert!(!root.join(VIEW_BASE).exists());
+        assert!(extends_a_base(root));
     }
 
     #[test]
