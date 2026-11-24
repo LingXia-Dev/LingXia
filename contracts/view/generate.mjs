@@ -711,6 +711,29 @@ ${lines.join('\n')}
 `;
 }
 
+// Raw-value enums, so an adapter can switch over a role exhaustively.
+function swiftSemantics(schema) {
+  const { roles, liveRegions, events, actions, keys } = schema.semantics;
+  const keywords = new Set(['switch', 'default', 'case', 'class', 'enum', 'in', 'is', 'as', 'func', 'let', 'var', 'return', 'import', 'protocol', 'struct', 'self', 'Self', 'true', 'false', 'nil', 'where', 'while', 'for', 'if', 'else', 'do', 'repeat', 'break', 'continue', 'guard', 'throw', 'throws', 'try', 'operator', 'static', 'public', 'private', 'internal', 'extension', 'subscript', 'init', 'deinit', 'any', 'Any', 'Type']);
+  const camel = name => name.replace(/[-_]([a-z])/g, (_, letter) => letter.toUpperCase());
+  const member = (name, value) => {
+    const id = keywords.has(camel(name)) ? `\`${camel(name)}\`` : camel(name);
+    return camel(name) === value ? `        case ${id}` : `        case ${id} = ${JSON.stringify(value)}`;
+  };
+  const block = (name, doc, entries) => `    /// ${doc}\n    public enum ${name}: String, Sendable, CaseIterable {\n${entries.map(([key, value]) => member(key, value)).join('\n')}\n    }`;
+  return `${header}/// Semantic node roles, live-region kinds, event kinds and JSON keys of the shared projection.
+public enum GpuSemantics {
+${[
+    block('Role', 'A semantic node\'s role.', roles.map(role => [role, role])),
+    block('LiveRegion', 'How a live region announces a change.', liveRegions.map(kind => [kind, kind])),
+    block('Event', 'An event the projection raises.', events.map(kind => [kind, kind])),
+    block('Action', 'An action a node offers besides activation.', actions.map(kind => [kind, kind])),
+    block('Key', 'A JSON key of a semantic node.', Object.entries(keys)),
+  ].join('\n\n')}
+}
+`;
+}
+
 // Editor attributes the Android input connection maps onto EditorInfo and autofill.
 function androidInput(schema) {
   const { autofill, keys } = schema.input;
@@ -1047,6 +1070,7 @@ export async function generate(schema) {
     'lingxia-sdk/android/lingxia/src/main/java/com/lingxia/view/generated/GpuInput.java': androidInput(schema),
     'lingxia-sdk/android/lingxia/src/main/java/com/lingxia/view/generated/GpuFrame.java': frameJava(schema),
     'lingxia-sdk/apple/Sources/Platform/View/GpuFrame.swift': frameSwift(schema),
+    'lingxia-sdk/apple/Sources/Platform/View/GpuSemantics.swift': swiftSemantics(schema),
   };
   Object.assign(generated, (await import('./arkts.mjs')).arkts(schema));
   Object.assign(generated, await palette(schema));
