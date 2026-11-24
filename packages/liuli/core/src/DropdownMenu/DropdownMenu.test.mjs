@@ -272,3 +272,12 @@ test('items: rows key by their place, so two rows may share a label; two rows wi
     console.warn = warn;
   }
 });
+
+test('Basic: the menu is as wide as its widest item, at least 192 pt and at most 90 % of the screen; an item\'s label counts toward that width', async () => {
+  const screen = await renderExample('DropdownMenu/DropdownMenu', 'Basic');
+  screen.press(screen.getByTestId('sort'));
+  const [menu] = menus(screen);
+  assert.deepEqual([menu.props.minWidth, menu.props.maxWidth, menu.props.width], [192, 351, undefined], 'at least 192 pt, at most 90 % of the 390 pt screen');
+  const texts = screen.queryAll(node => node.tag === 'text' && ['Name', 'Size'].includes(node.text) && node.parent.parent.props.role === 'menuitem').map(label => label.parent);
+  assert.deepEqual(texts.map(text => [text.props.flexBasis, text.props.minWidth]), [[undefined, 0], [undefined, 0]]);
+});

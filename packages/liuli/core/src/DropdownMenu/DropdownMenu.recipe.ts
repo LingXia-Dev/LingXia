@@ -22,7 +22,8 @@ export const dropdownMenuParts = {
 /** The menu and its items; the trigger is the author's own Button. */
 export const dropdownMenuRecipe = {
   menu: {
-    base: 'min-w-48 p-1 gap-0.5 rounded-container border border-text/12 bg-surface-overlay shadow-raised transition duration-fast ease-standard starting:opacity-0 exit:opacity-0',
+    /** As wide as its widest item, at least 192 pt, up to 90 % of the screen; past that an item wraps and the menu grows taller. */
+    base: 'min-w-48 max-w-[90vw] p-1 gap-0.5 rounded-container border border-text/12 bg-surface-overlay shadow-raised transition duration-fast ease-standard starting:opacity-0 exit:opacity-0',
     /** The gap between the trigger and the menu, on the side the menu opens to. */
     offset: { bottom: 'mt-1 motion-safe:starting:-translate-y-1', top: 'mb-1 motion-safe:starting:translate-y-1' } satisfies Record<DropdownMenuPlacement, string>,
     /** A submenu overlaps its parent by the parent's padding, so the two read as one piece. */
@@ -43,8 +44,9 @@ export const dropdownMenuRecipe = {
     base: 'size-4 shrink-0',
     variant: { default: 'text-muted', destructive: 'text-danger' } satisfies Record<DropdownMenuItemVariant, string>,
   },
+  /** Its natural width counts toward the menu's, so a label sets the menu's width before it wraps. */
   itemText: {
-    base: 'grow basis-0 gap-0.5',
+    base: 'grow shrink min-w-0 gap-0.5',
   },
   itemLabel: {
     base: 'text-body',

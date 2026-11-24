@@ -40,8 +40,8 @@ export type SegmentedControlProps = SegmentedControlBinding & {
   'data-testid'?: string;
 };
 
-// A segment's side padding, both sides, in points: what its measured label leaves out.
-const segmentPadding = 8;
+// A segment's side padding, both sides, in points: what its measured label leaves out (`px-2`, `px-3`).
+const segmentPadding: Record<SegmentedControlSize, number> = { sm: 16, md: 24 };
 
 /**
  * One value from a few, as a row of segments with a thumb on the chosen one. A radio group: one Tab
@@ -65,7 +65,7 @@ export function SegmentedControl(props: SegmentedControlProps) {
   const extents = segmentBoxes.map(box => box.value?.width);
   const room = root.value?.width;
   const isStacked = room !== undefined && labels.every(each => each !== undefined)
-    && labels.reduce<number>((sum, each) => sum + (each ?? 0) + segmentPadding, 0) > room + 0.5;
+    && labels.reduce<number>((sum, each) => sum + (each ?? 0) + segmentPadding[size], 0) > room + 0.5;
   const isUneven = !isStacked && extents.every(each => each !== undefined) && extents.some(each => Math.abs((each ?? 0) - (extents[0] ?? 0)) > 0.5);
   const thumb = isStacked
     ? { height: `${share}%` as const, translate: [0, `${index * 100}%`] as const }

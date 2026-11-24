@@ -16,7 +16,7 @@ export const contextMenuRecipe = {
   menu: {
     base: 'transition duration-fast ease-standard starting:opacity-0 exit:opacity-0',
     /** Placed in its layer, never `fixed`: a fixed box in a top layer stops at the bottom safe area. */
-    point: 'absolute min-w-48 p-1 gap-0.5 rounded-container border border-text/12 bg-surface-overlay shadow-raised',
+    point: 'absolute min-w-48 max-w-[90vw] p-1 gap-0.5 rounded-container border border-text/12 bg-surface-overlay shadow-raised',
     /** It slides 4 px out from the point, downward or, in the lower part of the page, upward. */
     from: { below: 'motion-safe:starting:-translate-y-1', above: 'motion-safe:starting:translate-y-1' },
     /**

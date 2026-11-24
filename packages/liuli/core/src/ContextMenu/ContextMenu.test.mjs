@@ -54,3 +54,14 @@ test('Data: rows given as data open on the ask, with a submenu, and run their ac
   await new Promise(resolve => setImmediate(resolve));
   assert.equal(status(screen), 'Deleted Dunes at noon');
 });
+
+test('Rows: at a point the menu is as wide as its widest item, up to 90 % of the screen, so a long label sets its width before it wraps and the menu grows taller with it', async () => {
+  const screen = await renderExample('ContextMenu/ContextMenu', 'Rows');
+  await ask(screen, 'note-coast', 'mouse');
+  const menu = screen.getByTestId('note-coast-menu');
+  assert.deepEqual([menu.props.minWidth, menu.props.maxWidth, menu.props.width, menu.props.height], [192, 351, undefined, undefined], 'at least 192 pt, at most 90 % of the 390 pt screen');
+  const label = screen.queryAll(node => node.tag === 'text' && node.text === 'Pin to top')[0];
+  const text = label.parent;
+  assert.deepEqual([text.props.flexBasis, text.props.grow, text.props.minWidth], [undefined, 1, 0], 'the label\'s own width counts toward the menu\'s');
+  assert.equal(label.parent.parent.props.height, undefined, 'an item has no fixed height: a wrapped label makes it taller');
+});

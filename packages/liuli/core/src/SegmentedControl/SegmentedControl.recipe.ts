@@ -32,9 +32,9 @@ export const segmentedControlRecipe = {
     stacked: 'top-0 end-0',
   },
   segment: {
-    base: 'flex-row items-center-safe justify-center px-1 rounded-segment transition-colors duration-fast ease-standard focus-visible:ring-2 focus-visible:ring-focus focus-visible:ring-offset-2 disabled:opacity-40',
+    base: 'flex-row items-center-safe justify-center rounded-segment transition-colors duration-fast ease-standard focus-visible:ring-2 focus-visible:ring-focus focus-visible:ring-offset-2 disabled:opacity-40',
     /** With the root's padding, the row is control-sm or control-md tall, level with a Button or field of that size. */
-    size: { sm: 'h-7', md: 'h-9' } satisfies Record<SegmentedControlSize, string>,
+    size: { sm: 'h-7 px-2', md: 'h-9 px-3' } satisfies Record<SegmentedControlSize, string>,
     /** Equal shares, but never narrower than the label. */
     row: 'grow basis-0',
     stacked: '',

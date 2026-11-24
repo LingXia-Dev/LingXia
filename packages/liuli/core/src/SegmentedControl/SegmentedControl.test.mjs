@@ -54,11 +54,18 @@ test('Large text: a long label widens its segment and the thumb follows; a row t
   assert.deepEqual([box().props.width, JSON.parse(box().props.transform).translate], [124, [0, 0]]);
   screen.press(segment('mi'));
   assert.deepEqual([box().props.width, JSON.parse(box().props.transform).translate], [76, [124, 0]], 'after Kilometres');
-  screen.layout(group(), { width: 150, height: 36 });
-  assert.equal(group().props.flexDirection, 'column', 'Kilometres and Miles with padding need 156');
+  screen.layout(group(), { width: 180, height: 36 });
+  assert.equal(group().props.flexDirection, 'column', 'Kilometres and Miles with 12 pt each side need 188');
   assert.equal(Math.round(box().props.heightPercent), 50);
   assert.deepEqual(JSON.parse(box().props.transform).translate, [0, '100%']);
   assert.equal(segment('km').props.grow, undefined);
   screen.layout(group(), { width: 300, height: 72 });
   assert.equal(group().props.flexDirection, 'row', 'room again, a row again');
+});
+
+test('Sizes: a segment pads its label 8 pt each side when small and 12 pt at the default size, so a control sized to its labels never runs them together', async () => {
+  const screen = await renderExample('SegmentedControl/SegmentedControl', 'Sizes');
+  const groups = screen.queryAll(node => node.props.role === 'radiogroup');
+  const pads = groups.map(group => group.children.filter(child => child.props.role === 'radio').map(segment => [segment.props.paddingLeft ?? segment.props.paddingInlineStart, segment.props.paddingRight ?? segment.props.paddingInlineEnd]));
+  assert.deepEqual(pads.map(each => [...new Set(each.map(String))]), [['8,8'], ['12,12']]);
 });
