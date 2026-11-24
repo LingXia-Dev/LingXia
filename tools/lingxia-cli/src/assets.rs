@@ -151,6 +151,10 @@ fn any_path_bundle_loads_es5_polyfills(project_root: &Path, config: &LingXiaConf
     false
 }
 
+/// Where a dev session builds each embedded lxapp (by app id), so two sessions of one project
+/// never write the same output; `None` builds into `<bundle>/dist`.
+pub(crate) type DevOutput<'a> = Option<&'a dyn Fn(&str) -> PathBuf>;
+
 pub(crate) fn prepare_configured_host_assets(
     project_root: &Path,
     config: &LingXiaConfig,
@@ -162,6 +166,7 @@ pub(crate) fn prepare_configured_host_assets(
     _explicit_platforms: bool,
     dev_ws_url: Option<&str>,
     resolved_env: &crate::config::ResolvedEnv,
+    dev_output: DevOutput<'_>,
 ) -> Result<()> {
     let _preparation = crate::build_prepare::Scope::enter();
     let mut cache = HostAssetsCache::load(project_root);
@@ -189,6 +194,7 @@ pub(crate) fn prepare_configured_host_assets(
         build_profile,
         progress_override,
         dev,
+        dev_output,
         &mut cache,
     )?;
     let mut app_json =
@@ -208,6 +214,7 @@ pub(crate) fn prepare_configured_host_assets(
         build_profile,
         progress_override,
         dev,
+        dev_output,
         &mut cache,
     )?);
     if platforms

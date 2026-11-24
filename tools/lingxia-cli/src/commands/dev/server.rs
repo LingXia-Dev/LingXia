@@ -4063,6 +4063,33 @@ mod tests {
     }
 
     #[test]
+    fn a_debug_and_a_release_host_session_publish_their_own_embed_builds() {
+        let project = host_project();
+        let debug = session(project.path(), "aaaaaa");
+        let release = session(project.path(), "bbbbbb");
+        // What the embed build writes for each session: its own directory, not `lxapp/dist`.
+        for (state, body) in [(&debug, "debug embed"), (&release, "release embed")] {
+            let dir = state.build_dir("demo");
+            std::fs::create_dir_all(dir.join("pages")).unwrap();
+            std::fs::write(
+                dir.join("lxapp.json"),
+                r#"{"appId":"demo","version":"1.0.0","pages":{}}"#,
+            )
+            .unwrap();
+            std::fs::write(dir.join("pages/index.js"), body).unwrap();
+            publish_host(state);
+        }
+        assert_ne!(debug.build_dir("demo"), release.build_dir("demo"));
+        let path = "/__lingxia/dev/lxapp/demo/files/pages/index.js";
+        assert_eq!(get(&debug, path), b"debug embed");
+        assert_eq!(get(&release, path), b"release embed");
+        assert_eq!(
+            std::fs::read(project.path().join("lxapp/dist/pages/index.js")).unwrap(),
+            b"embedded build"
+        );
+    }
+
+    #[test]
     fn an_attached_lxapp_builds_into_the_host_session_not_its_own_dist() {
         let temp = tempfile::tempdir().unwrap();
         let project = temp.path().join("host");

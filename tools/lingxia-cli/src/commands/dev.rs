@@ -316,6 +316,7 @@ fn prepare_dev_host_assets(
         true,
         dev_ws_url,
         &ctx.resolved_env,
+        Some(&|app_id: &str| server.build_dir(app_id)),
     )?;
     if dev_ws_url.is_some() {
         let dev_manifests = server.publish_configured(&ctx.config)?;

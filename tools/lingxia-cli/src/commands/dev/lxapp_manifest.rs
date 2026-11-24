@@ -54,17 +54,23 @@ pub(crate) fn publish_configured(
         else {
             continue;
         };
-        let dist_dir = project_root.join(bundle_path).join("dist");
-        if !dist_dir.join("lxapp.json").is_file() {
-            continue;
-        }
-        let built = output.seed(&bundle.app_id, &dist_dir)?;
+        // A bundle this session built is already in its directory; a prebuilt one is copied in.
+        let session_built = output.build_dir(&bundle.app_id);
+        let built = if session_built.join("lxapp.json").is_file() {
+            session_built
+        } else {
+            let dist_dir = project_root.join(bundle_path).join("dist");
+            if !dist_dir.join("lxapp.json").is_file() {
+                continue;
+            }
+            output.seed(&bundle.app_id, &dist_dir)?
+        };
         let manifest = build_manifest(&built)
             .with_context(|| format!("Failed to build dev manifest for {}", built.display()))?;
         if manifest.app_id != bundle.app_id {
             output.remove_app(&bundle.app_id);
             return Err(anyhow!(
-                "resources.bundles[{}].appId does not match dist/lxapp.json appId '{}'",
+                "resources.bundles[{}].appId does not match its built lxapp.json appId '{}'",
                 bundle.app_id,
                 manifest.app_id
             ));
