@@ -220,20 +220,20 @@ function numericVariant(name, value) {
 // Up to four alpha fades to a side, intersected; `none` means no field.
 function maskValue(value) {
   if (value === 'none') return undefined;
-  const invalid = () => { throw Error('UI_STYLE_VALUE: maskImage'); };
+  const fail = () => invalid('maskImage', value, "'none' or 1..4 layers of { to: 'top'|'bottom'|'left'|'right', stops: 2..16 { alpha: 0..1, offset | px } }");
   const position = stop => (stop.offset !== undefined) !== (stop.px !== undefined) &&
     (stop.offset === undefined || (finite(stop.offset) && Math.abs(stop.offset) <= 16)) && (stop.px === undefined || (finite(stop.px) && Math.abs(stop.px) <= limits.styleNumber));
   if (!Array.isArray(value) || !value.length || value.length > 4 || value.some(layer => !layer || !['top', 'bottom', 'left', 'right'].includes(layer.to) ||
       Object.keys(layer).some(key => !['to', 'stops'].includes(key)) || !Array.isArray(layer.stops) || layer.stops.length < 2 || layer.stops.length > 16 ||
-      layer.stops.some(stop => !stop || Object.keys(stop).some(key => !['alpha', 'offset', 'px'].includes(key)) || !finite(stop.alpha) || stop.alpha < 0 || stop.alpha > 1 || !position(stop)))) invalid();
+      layer.stops.some(stop => !stop || Object.keys(stop).some(key => !['alpha', 'offset', 'px'].includes(key)) || !finite(stop.alpha) || stop.alpha < 0 || stop.alpha > 1 || !position(stop)))) fail();
   return JSON.stringify(value.map(({ to, stops }) => ({ to, stops: stops.map(({ alpha, offset, px }) => offset === undefined ? { px, alpha } : { offset, alpha }) })));
 }
 
 // One transition for the node's painted properties; `none` and an empty list mean no field.
 function transitionValue(value) {
   if (value === 'none') return undefined;
-  const invalid = () => { throw Error('UI_STYLE_VALUE: transition'); };
-  if (!value || typeof value !== 'object' || Object.keys(value).some(key => !['properties', 'durationMs', 'delayMs', 'easing'].includes(key))) invalid();
+  const fail = () => invalid('transition', value, `'none' or { properties, durationMs: 1..${limits.transitionMs}, delayMs?: 0..${limits.transitionMs}, easing?: 'linear'|'step-end'|[x1,y1,x2,y2]|{ spring: 0..0.9 } }`);
+  if (!value || typeof value !== 'object' || Object.keys(value).some(key => !['properties', 'durationMs', 'delayMs', 'easing'].includes(key))) fail();
   const { properties, delayMs = 0 } = value;
   let { durationMs, easing = [0.4, 0, 0.2, 1] } = value;
   const step = (ref, family) => isStep(ref) && scales[ref[0]].family === family && ref[1] === 1 && ref[2] === 0;
@@ -245,7 +245,7 @@ function transitionValue(value) {
       new Set(properties).size !== properties.length || properties.some(name => !options['transition-property'].includes(name)) ||
       !finite(durationMs) || durationMs <= 0 || durationMs > limits.transitionMs || !finite(delayMs) || delayMs < 0 || delayMs > limits.transitionMs ||
       !(easing === 'linear' || easing === 'step-end' || (Array.isArray(easing) && easing.length === 4 && easing.every(finite)) ||
-        (easing && typeof easing === 'object' && Object.keys(easing).join() === 'spring' && finite(easing.spring) && easing.spring >= 0 && easing.spring <= 0.9))) invalid();
+        (easing && typeof easing === 'object' && Object.keys(easing).join() === 'spring' && finite(easing.spring) && easing.spring >= 0 && easing.spring <= 0.9))) fail();
   return JSON.stringify({ properties, durationMs: durationStep ? value.durationMs : durationMs, delayMs, easing: easingStep ? value.easing : easing });
 }
 

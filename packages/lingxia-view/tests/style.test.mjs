@@ -118,6 +118,8 @@ test('outer shadows, gradients and backdrop filters are bounded composite values
   const filter = style({ backdropFilter: 'blur(12px) saturate(150%)' });
   assert.deepEqual([filter.backdropBlur, filter.backdropSaturation], [12, 1.5]);
   for (const value of ['blur(65px)', 'saturate(17)', 'blur(4)', 'invert(1)', 4, null]) rejects({ backdropFilter: value }, /UI_STYLE_VALUE/);
+  rejects({ maskImage: 'fade' }, /UI_STYLE_VALUE: maskImage takes 'none' or 1\.\.4 layers of .*?; got "fade"$/m);
+  rejects({ transition: { properties: ['opacity'], durationMs: 0 } }, /UI_STYLE_VALUE: transition takes 'none' or \{ properties, durationMs: 1\.\.\d+.*?; got \{"properties":\["opacity"\],"durationMs":0/m);
 });
 
 test('static transform style keys lower to one bounded wire transform', () => {
