@@ -5608,6 +5608,56 @@ fn a_date_editor_opens_the_views_picker_and_commits_through_the_editor() {
 }
 
 #[test]
+fn show_picker_opens_a_date_editors_picker_as_a_press_does_and_only_once() {
+    use crate::interaction::view::Key;
+    let worker = ViewWorker::spawn("test-show-picker").unwrap();
+    let platform = Platform::new(&[&worker]);
+    let host = platform.host(
+        &worker,
+        &source(
+            "function render(){const day=useLocal('day','2026-10-29'),off=useLocal('off','2026-10-29'),fixed=useLocal('fixed','2026-10-29'),n=useLocal('n',0);return h('view',{},h('input',{'data-testid':'day',type:'date',bind:day,'aria-label':'Day'}),h('input',{type:'date',bind:off,disabled:true,'aria-label':'Off'}),h('input',{type:'date',bind:fixed,readOnly:true,'aria-label':'Fixed'}),h('button',{'data-testid':'open',onClick:()=>day.showPicker()},'Open'),h('button',{'data-testid':'open-off',onClick:()=>off.showPicker()},'Off'),h('button',{'data-testid':'open-fixed',onClick:()=>fixed.showPicker()},'Fixed'),h('button',{'data-testid':'bump',onClick:()=>n.set(n.value+1)},String(n.value)))}",
+        ),
+        false,
+    );
+    host.set_visible(true);
+    platform.settle(&[&host]);
+    let open = || {
+        host.automation_request(
+            &serde_json::json!({"op":"query","css":"[data-testid=\"lx-picker\"]"}),
+        )
+        .unwrap()["exists"]
+            == true
+    };
+    let click = |id: &str| {
+        host.automation_request(&serde_json::json!({"op":"act","css":format!("[data-testid=\"{id}\"]"),"action":{"kind":"click"}}))
+            .unwrap();
+        platform.settle(&[&host]);
+    };
+    click("open");
+    assert!(open(), "showPicker opened the picker");
+    assert_eq!(
+        host.automation_request(
+            &serde_json::json!({"op":"query","css":"[data-testid=\"lx-picker-title\"]"})
+        )
+        .unwrap()["text"],
+        "October 2026",
+        "the same picker a press opens"
+    );
+    assert!(host.key(Key::Escape, false, false));
+    platform.settle(&[&host]);
+    assert!(!open());
+    click("bump");
+    assert!(!open(), "a later render does not open it again");
+    for id in ["open-off", "open-fixed"] {
+        click(id);
+        assert!(
+            !open(),
+            "{id}: a disabled or read-only editor opens nothing"
+        );
+    }
+}
+
+#[test]
 fn the_views_pickers_announce_grid_cells_and_options_and_take_a_tapped_time() {
     let worker = ViewWorker::spawn("test-view-picker-roles").unwrap();
     let platform = Platform::new(&[&worker]);

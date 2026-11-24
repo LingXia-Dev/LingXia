@@ -31,6 +31,9 @@ struct Entry {
     /// A `focus()` request moves focus here even from another editor.
     refocus: bool,
     focus_request: u64,
+    /// A `showPicker()` request opens this editor's picker once it is shown.
+    repick: bool,
+    picker_request: u64,
     /// Record order, which is reading order.
     order: usize,
     enter_key_hint: Option<String>,
@@ -144,6 +147,7 @@ impl Inputs {
             let controlled = record.string(field::INPUT_VALUE);
             let value = controlled.unwrap_or("");
             let focus_request = record.number(field::FOCUS_REQUEST).unwrap_or(0.0) as u64;
+            let picker_request = record.number(field::PICKER_REQUEST).unwrap_or(0.0) as u64;
             if !self.entries.contains_key(&id) {
                 self.entries.insert(
                     id.clone(),
@@ -155,6 +159,8 @@ impl Inputs {
                         autofocus: record.number(field::AUTO_FOCUS) == Some(1.0),
                         refocus: false,
                         focus_request,
+                        repick: false,
+                        picker_request,
                         order,
                         enter_key_hint: None,
                         on_input: None,
@@ -171,6 +177,10 @@ impl Inputs {
             if focus_request > entry.focus_request {
                 entry.focus_request = focus_request;
                 entry.refocus = true;
+            }
+            if picker_request > entry.picker_request {
+                entry.picker_request = picker_request;
+                entry.repick = true;
             }
             entry.rules = crate::interaction::input_rules::Rules::from_record(record);
             entry.on_input = record
@@ -280,6 +290,15 @@ impl Inputs {
             entry.refocus &= !entry.visible;
         }
         for node in &mut display.nodes {
+            // A shown, enabled date or time editor asks the host to open its picker, as a tap does.
+            if let (Some(input), Some(entry)) =
+                (&mut node.input, self.entries.get_mut(&*node.identity))
+                && entry.repick
+                && entry.visible
+            {
+                entry.repick = false;
+                input.show_picker = entry.enabled && input.attributes.picker.is_some();
+            }
             if let (Some(input), Some(entry)) = (&mut node.input, self.entries.get(&*node.identity))
             {
                 let snapshot = entry.editor.snapshot();

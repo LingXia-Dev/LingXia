@@ -695,6 +695,28 @@ impl ViewInteraction {
             edges,
             more,
         });
+        // A frame answering `showPicker()` opens the picker through the editor dispatch a tap
+        // takes; only the first presentation of its commit does, not its repaints.
+        if previous
+            .as_ref()
+            .is_none_or(|previous| previous.commit != next.commit)
+        {
+            for (node, snapshot) in next.nodes.iter().enumerate() {
+                if snapshot
+                    .input
+                    .as_ref()
+                    .is_some_and(|input| input.show_picker)
+                {
+                    self.dispatches.push(Dispatch::Editor {
+                        node,
+                        commit: next.commit,
+                        point: None,
+                        word: false,
+                        keyboard: false,
+                    });
+                }
+            }
+        }
         self.frame = Some(next);
         if let Some(point) = self.exploring {
             let target = self

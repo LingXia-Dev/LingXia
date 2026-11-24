@@ -122,6 +122,11 @@ export interface Local<T> { readonly [localCell]: true; readonly value: Readonly
 export interface LocalText<T extends string = string> extends Local<T> {
   /** Focus the editor this cell is bound to (`bind`), on the next frame. */
   focus(): void;
+  /**
+   * Open the picker of the date or time editor this cell is bound to, as a tap does, on the next
+   * frame; nothing while it is disabled or read-only. The picker closes itself.
+   */
+  showPicker(): void;
 }
 /** Local state keyed by call order in the component, as React's `useState`. */
 export declare function useLocal<T>(initial: T, ...invalid: [T] extends [LocalData<T>] ? [] : [never]): [T] extends [string] ? LocalText<T & string> : Local<T>;

@@ -354,7 +354,8 @@
     {"id": 278, "key": "sideStartStyle", "wire": "sideStartStyle", "kind": "state-style"},
     {"id": 279, "key": "sideEndStyle", "wire": "sideEndStyle", "kind": "state-style"},
     {"id": 280, "key": "bleed", "wire": "bleed", "kind": "bleed", "tags": ["column", "scroll", "list", "image", "video", "webview", "vector"], "parent": "page"},
-    {"id": 281, "key": "pageTitle", "wire": "title", "kind": "string", "tags": ["page"]}
+    {"id": 281, "key": "pageTitle", "wire": "title", "kind": "string", "tags": ["page"]},
+    {"id": 282, "key": "pickerRequest", "wire": "pickerRequest", "kind": "picker-request", "tags": ["input"]}
   ],
   "input": {
     "autofill": {"username": "username", "current-password": "password", "new-password": "newPassword", "one-time-code": "smsOTPCode", "email": "emailAddress", "tel": "phone", "name": "personName", "given-name": "personGivenName", "family-name": "personFamilyName", "street-address": "postalAddress", "postal-code": "postalCode", "country": "addressCountry", "cc-number": "creditCardNumber", "cc-exp": "creditCardExpirationDate", "cc-csc": "creditCardSecurityCode", "bday": "birthDateFull"},

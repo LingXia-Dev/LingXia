@@ -427,9 +427,9 @@ pub(super) fn check(tag: usize, id: usize, value: &Value) -> Result<(), String> 
             value.as_u64().is_some_and(|v| (1..=100).contains(&v)),
             "UI_INPUT: rows and maxRows must be 1..100",
         ),
-        field::FOCUS_REQUEST => ensure(
+        field::FOCUS_REQUEST | field::PICKER_REQUEST => ensure(
             value.as_u64().is_some_and(|v| v <= MAX_HANDLE),
-            "UI_INPUT: invalid focus request",
+            "UI_INPUT: invalid focus or picker request",
         ),
         field::ALIGN_SAFE => ensure(
             value.as_u64().is_some_and(|v| (1..=63).contains(&v)),

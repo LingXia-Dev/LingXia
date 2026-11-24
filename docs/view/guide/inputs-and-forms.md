@@ -163,6 +163,8 @@ start on `env.firstWeekday`), marks today and the value, and greys days outside 
 by day and week, Page Up/Down by month, Return picks, Escape cancels. The time picker has hour and minute
 columns (and AM/PM when `env.hourCycle` is `h12`) that snap as they scroll; `step` (seconds) sets the
 minutes offered, and typed digits fill `HH:MM`. Month and day names follow `env.language`.
+From a handler, `cell.showPicker()` on the bound cell opens the same picker, say from a calendar button;
+it does nothing while the field is disabled or read-only, and warns in development on any other editor.
 Choosing runs `onInput` then `onSubmit`, as typing and Return would. The value is ISO: `YYYY-MM-DD`, or
 `HH:MM` / `HH:MM:SS`. `min` and `max` take the same form; automation can `fill` the field directly.
 

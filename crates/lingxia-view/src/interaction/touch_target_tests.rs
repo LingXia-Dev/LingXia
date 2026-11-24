@@ -42,6 +42,7 @@ fn field(identity: &str, bounds: [f32; 4]) -> NodeSnapshot {
         scroll_offset: [0.0; 2],
         ime: Default::default(),
         raise_keyboard: false,
+        show_picker: false,
     });
     field
 }

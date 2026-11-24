@@ -45,6 +45,13 @@ function dropped(key) {
   }
   return true;
 }
+// Dev sessions: `showPicker()` on a cell whose editor opens no picker, once per editor.
+const warnedPicker = new Set();
+function warnNoPicker(identity, tag, keyboard) {
+  if (warnedPicker.has(identity) || typeof globalThis.__lingxiaWarn !== 'function') return;
+  warnedPicker.add(identity);
+  globalThis.__lingxiaWarn(`UI_INPUT: showPicker() does nothing on <${tag}${keyboard ? ` type="${keyboard}"` : ''}>; only a date or time editor opens a picker`);
+}
 // Elements that take input of their own; they may sit inside a pressable control.
 const interactiveTags = new Set(['button', 'link', 'checkbox', 'switch', 'radio', 'input', 'textarea', 'select', 'slider', 'webview']);
 const bindCodes = { input: 'UI_INPUT', textarea: 'UI_INPUT', checkbox: 'UI_CHECK', switch: 'UI_CHECK', slider: 'UI_SLIDER', radio: 'UI_RADIO', select: 'UI_SELECT' };
@@ -713,6 +720,11 @@ function resolveElement(tag, original, children, identity, depth, parent) {
       // A textarea whose Return key names an action submits instead of breaking the line.
       if (tag === 'textarea' && ['done', 'go', 'search', 'send'].includes(props.enterKeyHint)) wire('submitOnEnter', 1);
       if (props.bind !== undefined && cellOf(props.bind).cell.focus) wire('focusRequest', cellOf(props.bind).cell.focus);
+      if (props.bind !== undefined && cellOf(props.bind).cell.picker) {
+        const request = cellOf(props.bind).cell.picker;
+        if (keyboard === 'date' || keyboard === 'time') { if (!disabled && props.readOnly !== true) wire('pickerRequest', request); }
+        else warnNoPicker(identity, tag, keyboard);
+      }
       for (const [key, value] of attributes) wire(key, value);
       if (tag === 'textarea') {
         const { rows, maxRows } = props;

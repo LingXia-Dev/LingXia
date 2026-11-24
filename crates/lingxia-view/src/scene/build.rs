@@ -1930,6 +1930,7 @@ impl Renderer {
                         },
                         ime: Default::default(),
                         raise_keyboard: false,
+                        show_picker: false,
                     };
                     input.ime = crate::interaction::ime::ImeConfig::new(
                         &input,

@@ -218,3 +218,28 @@ test('a time field shows its ISO value in the user\'s clock and re-lowers when t
   assert.equal(field(nodes, 'at').displayValue, '9:30:15 AM');
   assert.equal(field(nodes, 'at').sizeText, '00:00:00 AM\n00:00:00 PM');
 });
+
+test('showPicker() asks a date editor for its picker and warns on an editor that has none', () => {
+  reset();
+  const warnings = [];
+  globalThis.__lingxiaWarn = message => warnings.push(message);
+  try {
+    const cells = {};
+    const view = () => {
+      cells.day = useLocal('day', '2026-10-29'); cells.off = useLocal('off', '2026-10-29'); cells.name = useLocal('name', '');
+      return h('view', {},
+        h('input', { 'data-testid': 'day', type: 'date', bind: cells.day, 'aria-label': 'Day' }),
+        h('input', { 'data-testid': 'off', type: 'date', bind: cells.off, disabled: true, 'aria-label': 'Off' }),
+        h('input', { 'data-testid': 'name', bind: cells.name, 'aria-label': 'Name' }));
+    };
+    const request = (nodes, id) => nodes.find(n => n.testId === id).props.pickerRequest;
+    let nodes = render(view, {});
+    assert.equal(request(nodes, 'day'), undefined);
+    cells.day.showPicker(); cells.off.showPicker(); cells.name.showPicker();
+    nodes = render(view, {});
+    assert.equal(request(nodes, 'day'), 1, 'the date editor carries the request');
+    assert.equal(request(nodes, 'off'), undefined, 'a disabled editor opens nothing');
+    assert.equal(request(nodes, 'name'), undefined);
+    assert.deepEqual(warnings, ['UI_INPUT: showPicker() does nothing on <input>; only a date or time editor opens a picker']);
+  } finally { delete globalThis.__lingxiaWarn; }
+});

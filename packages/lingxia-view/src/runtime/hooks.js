@@ -64,6 +64,12 @@ export function local(name, initial, resource = '', order) {
       cell.focus = (cell.focus ?? 0) + 1;
       page.updates.set(cell, page.updates.has(cell) ? page.updates.get(cell) : cell.value);
     },
+    showPicker() {
+      outsideRender('showPicker');
+      if (page.locals.get(key) !== cell) throw Error(`UI_LOCAL: ${JSON.stringify(name)} in ${scope} is no longer mounted`);
+      cell.picker = (cell.picker ?? 0) + 1;
+      page.updates.set(cell, page.updates.has(cell) ? page.updates.get(cell) : cell.value);
+    },
   });
   bindings.set(binding, { key, cell });
   return binding;

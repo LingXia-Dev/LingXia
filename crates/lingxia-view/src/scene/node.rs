@@ -385,6 +385,9 @@ pub struct InputSnapshot {
     /// The focused editor should bring up the keyboard; false for a focus the page
     /// made itself after the user ended editing.
     pub raise_keyboard: bool,
+    /// This frame answers a `showPicker()`: the host opens the editor's picker as a tap would.
+    #[serde(skip)]
+    pub show_picker: bool,
 }
 
 #[derive(Clone, Debug, Default, Serialize)]

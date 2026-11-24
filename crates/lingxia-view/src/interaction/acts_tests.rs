@@ -51,6 +51,7 @@ fn element(tag: &'static str, way: Way) -> NodeSnapshot {
             scroll_offset: [0.0; 2],
             ime: Default::default(),
             raise_keyboard: false,
+            show_picker: false,
         });
     }
     if let Some(range) = &mut node.range {
