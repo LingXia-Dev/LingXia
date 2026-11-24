@@ -37,7 +37,11 @@ naming that session. Takeover within one instance tells the old session who repl
 Each session builds and serves from `.lingxia/dev/sessions/<session id>/` (`build/<appId>`, and the
 manifests, snapshots and blobs under `lxapp/`), never another session's; `dist/` is written only by
 `lingxia build`: a host session builds each embedded lxapp into its own `build/<appId>` and copies that
-into the host's assets (a prebuilt bundle is copied in from its `dist/`). The directory is removed
+into the host's assets (a prebuilt bundle is copied in from its `dist/`). That build is kept per profile
+in `.lingxia/dev/embed/<profile>/<appId>/entry` with a hash of its inputs (the bundle tree, linked
+`@lingxia/*` packages, the CLI build, and the files `gpu-inputs.json` names outside the bundle); a
+session whose inputs match copies it instead of building. An entry is replaced by rename under an
+exclusive lock and copied under a shared one, so concurrent sessions never read half of one. The directory is removed
 when the session ends; at start, one whose `owner` (pid and start time) is proven gone is removed, and one
 with no readable owner is reported and left. Sessions of one project still share the generated inputs
 beside the sources (`.lingxia/i18n`, `.lingxia/gpu-inputs.json`).

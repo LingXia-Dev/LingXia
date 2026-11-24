@@ -36,6 +36,8 @@ mod cache;
 mod clean;
 #[path = "assets/destinations.rs"]
 mod destinations;
+#[path = "assets/embed_cache.rs"]
+mod embed_cache;
 #[path = "assets/hash.rs"]
 mod hash;
 #[path = "assets/icons.rs"]
