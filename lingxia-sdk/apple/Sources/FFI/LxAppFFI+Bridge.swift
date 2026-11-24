@@ -1098,21 +1098,6 @@ extension LxApp {
         #endif
     }
 
-    nonisolated static func openBuiltinBrowserPage(page: Int32) -> Bool {
-        return executeOnMain {
-            #if os(macOS)
-            guard let runtime = LxAppMacAppUIRuntime.active else { return false }
-            switch page {
-            case 1:
-                return runtime.shell.openBuiltinShellSurface(id: "downloads")
-            default:
-                return false
-            }
-            #else
-            return false
-            #endif
-        }
-    }
 
     nonisolated static func presentInternalBrowserTab(tab_id: RustStr) -> Bool {
         let tabId = tab_id.toString()

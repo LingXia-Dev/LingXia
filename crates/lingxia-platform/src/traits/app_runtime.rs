@@ -307,11 +307,6 @@ pub struct OpenUrlResult {
     pub tab_id: Option<String>,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum BuiltinBrowserPage {
-    Downloads = 1,
-}
-
 impl From<i32> for AnimationType {
     fn from(value: i32) -> Self {
         match value {
@@ -580,11 +575,6 @@ pub trait AppRuntime:
         Box::pin(async { Err(PlatformError::NotSupported("browser tab".to_string())) })
     }
 
-    fn open_builtin_browser_page(&self, _page: BuiltinBrowserPage) -> Result<(), PlatformError> {
-        Err(PlatformError::NotSupported(
-            "built-in browser pages".to_string(),
-        ))
-    }
 }
 
 #[cfg(test)]

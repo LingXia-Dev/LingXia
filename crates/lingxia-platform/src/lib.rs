@@ -250,7 +250,7 @@ pub use windows::{
     register_windows_video_command_dispatcher, remove_toast_registration,
     replay_windows_exclusive_update_ready, set_toast_activate_handler,
     set_windows_activate_browser_tab_handler, set_windows_app_exit_handler,
-    set_windows_builtin_browser_downloads_handler, set_windows_capsule_rect_provider,
+     set_windows_capsule_rect_provider,
     set_windows_close_browser_tab_handler, set_windows_exclusive_update_ready_handler,
     set_windows_home_first_ready_handler, set_windows_host_appearance_dark,
     set_windows_host_color_mode_handler, set_windows_layout_plan_handler,

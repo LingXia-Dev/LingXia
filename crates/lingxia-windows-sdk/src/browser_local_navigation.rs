@@ -7,12 +7,19 @@ pub(crate) enum BrowserLocalNavigation<'a> {
 }
 
 impl BrowserLocalNavigation<'_> {
-    pub(crate) fn url(&self) -> String {
+    pub(crate) fn page(&self) -> &'static str {
         match self {
-            Self::Settings => "lingxia://settings".to_string(),
-            Self::ClearSiteData { tab_id } => {
-                format!("lingxia://settings#clear-site-data?tabId={tab_id}")
-            }
+            Self::Settings | Self::ClearSiteData { .. } => "settings",
+        }
+    }
+
+    pub(crate) fn query(&self) -> Option<serde_json::Value> {
+        match self {
+            Self::Settings => None,
+            Self::ClearSiteData { tab_id } => Some(serde_json::json!({
+                "section": "clear-site-data",
+                "tabId": tab_id,
+            })),
         }
     }
 }
@@ -22,11 +29,14 @@ mod tests {
     use super::*;
 
     #[test]
-    fn browser_local_settings_and_clear_site_data_keep_private_routes() {
-        assert_eq!(BrowserLocalNavigation::Settings.url(), "lingxia://settings");
+    fn browser_local_settings_and_clear_site_data_target_control_surface_pages() {
+        assert_eq!(BrowserLocalNavigation::Settings.page(), "settings");
+        assert_eq!(BrowserLocalNavigation::Settings.query(), None);
+        let clear = BrowserLocalNavigation::ClearSiteData { tab_id: "tab-1" };
+        assert_eq!(clear.page(), "settings");
         assert_eq!(
-            BrowserLocalNavigation::ClearSiteData { tab_id: "tab-1" }.url(),
-            "lingxia://settings#clear-site-data?tabId=tab-1"
+            clear.query(),
+            Some(serde_json::json!({ "section": "clear-site-data", "tabId": "tab-1" }))
         );
     }
 }

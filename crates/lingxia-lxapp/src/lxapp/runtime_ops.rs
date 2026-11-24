@@ -521,3 +521,37 @@ pub fn is_lxapp_open(lxappid: &str) -> bool {
     }
     false
 }
+
+
+/// Native-host bootstrap and navigation for a host-bundled ControlSurface lxapp
+/// (e.g. `app.lingxia.browser` system pages).
+#[doc(hidden)]
+pub fn open_control_surface_lxapp_page(
+    authority: &crate::NativeControlPlaneAuthority,
+    appid: &str,
+    options: LxAppStartupOptions,
+) -> Result<Arc<LxApp>, LxAppError> {
+    if !authority.validate() {
+        return Err(LxAppError::UnsupportedOperation(
+            "control surface bootstrap requires the live native host authority".to_string(),
+        ));
+    }
+    let app = ensure_control_surface_lxapp(authority, appid, options.release_type)?;
+    if app.app_session_class() != AppSessionClass::ControlSurface {
+        return Err(LxAppError::Runtime(format!(
+            "current app session is not ControlSurface: {appid}"
+        )));
+    }
+    app.open(options)?;
+    let current = super::runtime_registry::try_get(appid).ok_or_else(|| {
+        LxAppError::Runtime(format!(
+            "control surface session disappeared after open: {appid}"
+        ))
+    })?;
+    if current.app_session_class() != AppSessionClass::ControlSurface {
+        return Err(LxAppError::Runtime(format!(
+            "current app session is not ControlSurface after open: {appid}"
+        )));
+    }
+    Ok(current)
+}

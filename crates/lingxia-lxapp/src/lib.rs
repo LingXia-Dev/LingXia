@@ -124,7 +124,7 @@ pub use lxapp::{
     notify_lxapp_host_visibility_by_session, notify_page_host_visibility,
     notify_page_host_visibility_by_webtag, notify_page_instance, notify_page_instance_by_id,
     observe_display_language_state, observe_host_appearance, on_low_memory,
-    open_control_lxapp_page, open_lxapp, open_lxapp_in_region, open_region, page_chrome,
+    open_control_lxapp_page, open_control_surface_lxapp_page, open_lxapp, open_lxapp_in_region, open_region, page_chrome,
     refresh_auto_appearances, refresh_display_language_system, refresh_host_appearance_system,
     register_builtin_asset_bundle, register_dev_bundle_source, register_runner_host,
     register_surface_active_main_observer, register_surface_close_observer,

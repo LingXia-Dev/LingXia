@@ -35,7 +35,7 @@ async function applyHostChrome(os: typeof lx.host.info.os) {
       icon: 'public/sidebar-downloads.svg',
       label: t('app.sidebar.downloads'),
       onSelect: () => {
-        void lx.shell.openBuiltin('downloads')
+        void lx.surface.openApp('app.lingxia.browser', { page: 'downloads' })
           .catch((error) => console.warn('downloads action failed', error));
       },
     },

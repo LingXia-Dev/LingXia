@@ -170,8 +170,6 @@ mod bridge {
         #[swift_bridge(swift_name = "LxApp.activateBrowserTab")]
         fn activate_browser_tab(tab_id: &str) -> bool;
 
-        #[swift_bridge(swift_name = "LxApp.openBuiltinBrowserPage")]
-        fn open_builtin_browser_page(page: i32) -> bool;
 
         #[swift_bridge(swift_name = "LxApp.share")]
         fn share(title: &str, text: &str, url: &str, files_json: &str, callback_id: u64) -> bool;
@@ -554,7 +552,7 @@ pub use bridge::{
     close_lxapp, close_surface, destroy_managed_surface, exit_app, hide_surface, hide_toast,
     host_appearance_dark, navigate, notification_cancel, notification_cancel_all,
     notification_last_error, notification_permission, notification_request_permission,
-    notification_show, on_home_first_ready, open_builtin_browser_page, open_document_external,
+    notification_show, on_home_first_ready, open_document_external,
     open_lxapp, open_managed_native_surface, open_url, present_layout, present_surface,
     preview_media, request_lxapp_main_activation, review_document, set_app_badge,
     set_host_color_mode, set_managed_surface_visible, set_shell_pins, set_sidebar_actions,

@@ -451,18 +451,6 @@ impl AppRuntime for Platform {
         })
     }
 
-    fn open_builtin_browser_page(
-        &self,
-        page: crate::traits::app_runtime::BuiltinBrowserPage,
-    ) -> Result<(), PlatformError> {
-        if ffi::open_builtin_browser_page(page as i32) {
-            Ok(())
-        } else {
-            Err(PlatformError::NotSupported(
-                "built-in browser page".to_string(),
-            ))
-        }
-    }
 }
 
 impl ShareService for Platform {

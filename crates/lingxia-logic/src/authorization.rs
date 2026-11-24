@@ -43,7 +43,6 @@ pub(crate) enum LogicRoute {
     ShellSidebarUpdate,
     ShellSidebarRemove,
     SurfaceOpenApp,
-    ShellOpenBuiltin,
     SurfaceOpenDeclaredPlacement,
     SurfaceApp,
     SurfaceDeclared,
@@ -104,7 +103,6 @@ impl LogicRoute {
         Self::ShellSidebarUpdate,
         Self::ShellSidebarRemove,
         Self::SurfaceOpenApp,
-        Self::ShellOpenBuiltin,
         Self::SurfaceOpenDeclaredPlacement,
         Self::SurfaceApp,
         Self::SurfaceDeclared,
@@ -167,7 +165,6 @@ impl LogicRoute {
             | Self::ShellSidebarUpdate
             | Self::ShellSidebarRemove
             | Self::SurfaceOpenApp
-            | Self::ShellOpenBuiltin
             | Self::SurfaceOpenDeclaredPlacement
             | Self::SurfaceApp
             | Self::SurfaceDeclared
@@ -236,7 +233,6 @@ impl LogicRoute {
             Self::ShellSidebarUpdate => "lx.shell.sidebarActions.update",
             Self::ShellSidebarRemove => "lx.shell.sidebarActions.remove",
             Self::SurfaceOpenApp => "lx.surface.openApp",
-            Self::ShellOpenBuiltin => "lx.shell.openBuiltin",
             Self::SurfaceOpenDeclaredPlacement => "lx.surface.openDeclared.placement",
             Self::SurfaceApp => "lx.surface.app",
             Self::SurfaceDeclared => "lx.surface.declared",

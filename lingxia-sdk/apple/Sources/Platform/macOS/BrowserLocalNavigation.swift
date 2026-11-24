@@ -15,20 +15,28 @@ enum BrowserLocalNavigation: Equatable {
     case bookmarks
     case history
 
+    static let appID = "app.lingxia.browser"
     static let settingsTabID = "settings"
 
-    var url: String {
+    var page: String {
         switch self {
-        case .settings:
-            return "lingxia://settings"
-        case .clearSiteData(let tabID):
-            return "lingxia://settings#clear-site-data?tabId=\(tabID)"
+        case .settings, .clearSiteData:
+            return "settings"
         case .downloads:
-            return "lingxia://downloads"
+            return "downloads"
         case .bookmarks:
-            return "lingxia://bookmarks"
+            return "bookmarks"
         case .history:
-            return "lingxia://history"
+            return "history"
+        }
+    }
+
+    var query: [String: String]? {
+        switch self {
+        case .clearSiteData(let tabID):
+            return ["section": "clear-site-data", "tabId": tabID]
+        case .settings, .downloads, .bookmarks, .history:
+            return nil
         }
     }
 

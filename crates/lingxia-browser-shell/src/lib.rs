@@ -177,20 +177,10 @@ pub fn register_runtime() {
 #[doc(hidden)]
 pub fn register_bundled_assets(native_authority: &lxapp::NativeControlPlaneAuthority) {
     match bundled_internal_pages() {
-        Ok(internal_pages) => {
-            // Upgrade the browser host from Synthetic to a real asset bundle so the
-            // lingxia:// scheme can serve newtab/settings/downloads pages.
+        Ok(_pages) => {
+            // Register app.lingxia.browser as a host-bundled ControlSurface lxapp
+            // (GPU View + Rust Logic); browser internal lingxia:// pages are removed.
             lxapp::register_builtin_asset_bundle(lingxia_browser::BUILTIN_BROWSER_APPID);
-            for (route, entry_asset) in internal_pages {
-                if let Err(err) =
-                    lingxia_browser::register_internal_page(native_authority, route, entry_asset)
-                {
-                    lxapp::warn!(
-                        "[InternalBrowser] failed to register bundled browser page: {}",
-                        err
-                    );
-                }
-            }
         }
         Err(err) => {
             panic!(

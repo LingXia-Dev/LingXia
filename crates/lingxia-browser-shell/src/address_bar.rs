@@ -6,7 +6,6 @@ use lingxia_browser::{
 use std::net::IpAddr;
 
 const DEFAULT_BROWSER_PREFERRED_SCHEME: &str = "https";
-const LINGXIA_SCHEME: &str = "lingxia";
 
 #[derive(Debug, Clone)]
 struct BrowserUrlResolution {
@@ -137,11 +136,8 @@ pub fn resolve_input(request: BrowserAddressInputRequest) -> BrowserAddressInput
         normalize_browser_preferred_scheme(request.context.preferred_scheme.as_deref());
     let trimmed = request.raw_input.trim();
 
-    // `lingxia://` (in-app) and `file://` (local files) navigate as-is.
-    if matches!(
-        extract_url_scheme(trimmed).as_deref(),
-        Some(LINGXIA_SCHEME) | Some("file")
-    ) {
+    // `file://` (local files) navigate as-is.
+    if matches!(extract_url_scheme(trimmed).as_deref(), Some("file")) {
         let url = trimmed.to_string();
         let action = match request.trigger {
             BrowserAddressInputTrigger::Submit => BrowserAddressAction::Navigate,
@@ -351,32 +347,16 @@ mod tests {
     }
 
     #[test]
-    fn address_input_submit_lingxia_newtab_navigates() {
-        let response = resolve_input(BrowserAddressInputRequest {
-            raw_input: "lingxia://newtab".to_string(),
-            trigger: BrowserAddressInputTrigger::Submit,
-            context: BrowserAddressInputContext::default(),
-        });
-        assert_eq!(response.action, BrowserAddressAction::Navigate);
-        assert_eq!(response.state.value_kind, BrowserAddressValueKind::Url);
-        assert_eq!(
-            response.navigation.as_ref().map(|n| n.url.as_str()),
-            Some("lingxia://newtab")
-        );
-    }
-
-    #[test]
-    fn address_input_submit_lingxia_transfer_navigates() {
-        let response = resolve_input(BrowserAddressInputRequest {
-            raw_input: "lingxia://downloads".to_string(),
-            trigger: BrowserAddressInputTrigger::Submit,
-            context: BrowserAddressInputContext::default(),
-        });
-        assert_eq!(response.action, BrowserAddressAction::Navigate);
-        assert_eq!(
-            response.navigation.as_ref().map(|n| n.url.as_str()),
-            Some("lingxia://downloads")
-        );
+    fn address_input_rejects_removed_lingxia_urls() {
+        for raw in ["lingxia://newtab", "lingxia://downloads", "lingxia://settings"] {
+            let response = resolve_input(BrowserAddressInputRequest {
+                raw_input: raw.to_string(),
+                trigger: BrowserAddressInputTrigger::Submit,
+                context: BrowserAddressInputContext::default(),
+            });
+            assert_eq!(response.action, BrowserAddressAction::Reject);
+            assert!(response.navigation.is_none());
+        }
     }
 
     #[test]

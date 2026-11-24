@@ -185,20 +185,21 @@ impl SettingsDestinationRuntime for BootstrapSettingsDestinationRuntime {
         route: &str,
         query: Option<&BTreeMap<String, serde_json::Value>>,
     ) -> Result<BrowserPageIdentity, String> {
-        let route = route.trim().trim_start_matches('/');
-        let mut url = format!("lingxia://{route}");
-        if let Some(query) = query_value(query) {
-            url = lxapp::append_page_query(url, &query)?;
-        }
+        let page = route.trim().trim_start_matches('/');
+        let query = query_value(query);
+        let options = lxapp::LxAppStartupOptions::for_page(Some(page), query.as_ref())?;
         let authority = CONTROL_AUTHORITY
             .get()
             .ok_or_else(|| "native Settings control authority is not initialized".to_string())?;
-        let (tab_id, browser_session_id) =
-            crate::browser::navigate_trusted_control_page(authority, &url)
-                .map_err(|error| error.to_string())?;
+        let app = lxapp::open_control_surface_lxapp_page(
+            authority,
+            "app.lingxia.browser",
+            options,
+        )
+        .map_err(|error| error.to_string())?;
         Ok(BrowserPageIdentity {
-            tab_id,
-            browser_session_id,
+            tab_id: app.appid.clone(),
+            browser_session_id: app.session_id(),
         })
     }
 
