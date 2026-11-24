@@ -278,6 +278,7 @@
   var takeFonts = () => JSON.stringify(declared);
 
   // src/generated/wire.js
+  var maxField = 282;
   var ignorableFields = ["stateInvalid", "stateRequired", "ariaDescribedBy", "ariaActiveDescendant"];
   var tags = { "column": 0, "reserved-1": 1, "text": 2, "button": 3, "reserved-4": 4, "scroll": 5, "list": 6, "image": 7, "input": 8, "textarea": 9, "checkbox": 10, "switch": 11, "radio": 12, "radio-option": 13, "search": 14, "slider": 15, "link-box": 16, "reserved-17": 17, "plot": 18, "vector": 19, "page": 20, "span": 21, "link": 22, "select": 23, "video": 24, "webview": 25 };
   var field = { "width": 0, "height": 1, "gap": 2, "padding": 3, "fontSize": 4, "color": 5, "background": 6, "grow": 7, "onClick": 8, "enabled": 9, "radius": 10, "listId": 11, "listCount": 12, "listLeading": 13, "listTrailing": 14, "listRowIndex": 15, "listAnchor": 16, "onReachStart": 17, "onReachEnd": 18, "imageSrc": 19, "imageFit": 20, "inputValue": 21, "placeholder": 22, "secure": 23, "keyboard": 24, "autoFocus": 25, "onInput": 26, "onSubmit": 27, "minWidth": 28, "minHeight": 29, "maxWidth": 30, "maxHeight": 31, "shrink": 32, "align": 33, "justify": 34, "alignSelf": 35, "fontWeight": 36, "lineHeight": 37, "fontFamily": 38, "checked": 39, "onCheckedChange": 40, "accessibilityLabel": 41, "sliderValue": 42, "sliderMin": 43, "sliderMax": 44, "sliderStep": 45, "onSliderChange": 46, "gridColumns": 47, "offsetX": 48, "offsetY": 49, "textLines": 50, "plotValues": 51, "plotKind": 52, "plotColors": 53, "plotSmooth": 54, "plotArea": 55, "onPlotSelect": 56, "plotSelectedIndex": 57, "opacity": 58, "paddingTop": 59, "paddingRight": 60, "paddingBottom": 61, "paddingLeft": 62, "wordBreak": 63, "overflowWrap": 64, "borderWidth": 65, "borderColor": 66, "borderTopWidth": 67, "borderRightWidth": 68, "borderBottomWidth": 69, "borderLeftWidth": 70, "textAlign": 71, "backgroundGradient": 72, "boxShadow": 73, "widthPercent": 74, "heightPercent": 75, "minWidthPercent": 76, "minHeightPercent": 77, "maxWidthPercent": 78, "maxHeightPercent": 79, "vectorSource": 80, "textDecorationLine": 81, "heightAuto": 82, "submitOnEnter": 83, "fontStyle": 84, "plotDomainMin": 85, "plotDomainMax": 86, "flexWrap": 87, "plotPieLayout": 88, "letterSpacing": 89, "radiusTopLeft": 90, "radiusTopRight": 91, "radiusBottomRight": 92, "radiusBottomLeft": 93, "plotMarkerEmphasisScale": 94, "backdropBlur": 95, "backdropSaturation": 96, "placeholderColor": 97, "focusStyle": 98, "flexBasis": 99, "scrollAxis": 100, "animation": 101, "listItemKeys": 102, "flexDirection": 103, "display": 104, "imageAlt": 105, "imageRetryKey": 106, "onImageLoad": 107, "onImageError": 108, "marginTop": 109, "marginRight": 110, "marginBottom": 111, "marginLeft": 112, "position": 113, "insetTop": 114, "insetRight": 115, "insetBottom": 116, "insetLeft": 117, "zIndex": 118, "overflow": 119, "rowGap": 120, "columnGap": 121, "textTransform": 122, "whiteSpace": 123, "textOverflow": 124, "pressedStyle": 125, "hoverStyle": 126, "widthKeyword": 127, "heightKeyword": 128, "borderStyle": 129, "transform": 130, "fontVariantNumeric": 131, "overscroll": 132, "aspectRatio": 133, "maxWidthCh": 134, "gridTemplateColumns": 135, "gridTemplateRows": 136, "gridAutoColumns": 137, "gridAutoRows": 138, "gridAutoFlow": 139, "gridColumn": 140, "gridRow": 141, "justifyItems": 142, "justifySelf": 143, "alignContent": 144, "order": 145, "direction": 146, "marginInlineStart": 147, "marginInlineEnd": 148, "paddingInlineStart": 149, "paddingInlineEnd": 150, "insetInlineStart": 151, "insetInlineEnd": 152, "borderInlineStartWidth": 153, "borderInlineEndWidth": 154, "radiusStartStart": 155, "radiusStartEnd": 156, "radiusEndStart": 157, "radiusEndEnd": 158, "role": 159, "headingLevel": 160, "accessibilityHidden": 161, "accessibilityLiveRegion": 162, "maxLength": 163, "autoComplete": 164, "enterKeyHint": 165, "autoCapitalize": 166, "spellCheck": 167, "inputMin": 168, "inputMax": 169, "inputStep": 170, "transition": 171, "userSelect": 172, "focusRequest": 173, "statePressed": 174, "stateSelected": 175, "stateExpanded": 176, "stateBusy": 177, "selectOptions": 178, "onSelect": 179, "rows": 180, "maxRows": 181, "imagePlaceholder": 182, "imagePosition": 183, "childSlot": 184, "startingStyle": 185, "exitStyle": 186, "focusWithinStyle": 187, "dataAttributes": 188, "backgroundClip": 189, "maskImage": 190, "filterBlur": 191, "groupPressedStyle": 192, "anchorTo": 193, "scrollSnap": 194, "snapAlign": 195, "topLayer": 196, "anchorArea": 197, "anchorName": 198, "drag": 199, "onDragEvent": 200, "dragScrim": 201, "elementId": 202, "ariaActions": 203, "snapStop": 204, "snapIndex": 205, "onSnapChange": 206, "videoSrc": 207, "videoPlayer": 208, "videoPoster": 209, "videoPaused": 210, "videoMuted": 211, "videoLoop": 212, "videoRate": 213, "videoVolume": 214, "onVideoEvent": 215, "videoSources": 216, "ariaValueNow": 217, "ariaValueMin": 218, "ariaValueMax": 219, "ariaValueText": 220, "stateInvalid": 221, "stateRequired": 222, "ariaDescribedBy": 223, "stateChecked": 224, "focusVisibleStyle": 225, "trackStyle": 226, "rangeStyle": 227, "secondaryStyle": 228, "thumbStyle": 229, "sliderSecondary": 230, "interestFor": 231, "onPointerEnter": 232, "onPointerLeave": 233, "ring": 234, "hint": 235, "onSliderPress": 236, "closeAfter": 237, "touchTarget": 238, "minWidthCh": 239, "widthCh": 240, "displayValue": 241, "sizeText": 242, "alignSafe": 243, "onLayout": 244, "onPointer": 245, "pointerAxis": 246, "onFocus": 247, "onBlur": 248, "readOnly": 249, "keyMap": 250, "onKeyDown": 251, "ariaActiveDescendant": 252, "mixed": 253, "onContextMenu": 254, "onPage": 255, "textDecorationStyle": 256, "textDecorationColor": 257, "sliderOther": 258, "sliderThumb": 259, "webSrc": 260, "webSession": 261, "onWebEvent": 262, "webHandlesDrags": 263, "onScrollEdge": 264, "ariaControls": 265, "ariaAutocomplete": 266, "scaleRefs": 267, "minWidthKeyword": 268, "minHeightKeyword": 269, "maxWidthKeyword": 270, "maxHeightKeyword": 271, "defaultValue": 272, "checkedStyle": 273, "hasCheckedStyle": 274, "modal": 275, "sideTopStyle": 276, "sideBottomStyle": 277, "sideStartStyle": 278, "sideEndStyle": 279, "bleed": 280, "pageTitle": 281, "pickerRequest": 282 };
@@ -3294,7 +3295,23 @@
   var structured = /* @__PURE__ */ new Set(["backgroundGradient", "boxShadow", "ring", "animation"]);
   var encodeValue = (key, value) => structured.has(key) && value !== "none" ? JSON.stringify(value) : value;
   var ignorable = new Set(ignorableFields);
-  var unknownToHost = (key) => ignorable.has(key) && field[key] > (globalThis.__lingxiaViewHost?.maxField ?? Infinity);
+  var authored;
+  function authoredName(key) {
+    if (!authored) {
+      authored = /* @__PURE__ */ new Map();
+      const camel = (name) => name.replace(/-([a-z])/g, (_, letter) => letter.toUpperCase());
+      for (const name of [...commonProps, ...Object.values(elements).flatMap((element) => Object.keys(element.props))]) authored.set(camel(name), name);
+    }
+    if (authored.has(key)) return authored.get(key);
+    if (Object.prototype.hasOwnProperty.call(style, key)) return `style ${key}`;
+    return key.endsWith("Style") ? `${key.slice(0, -5)}: classes` : key;
+  }
+  function unknownToHost(key, host) {
+    if (field[key] <= host.maxField) return false;
+    if (ignorable.has(key)) return true;
+    const name = authoredName(key);
+    throw Error(`UI_COMPAT: ${name} needs wire field ${field[key]} (${key}), but this app's native View${typeof host.version === "string" ? ` (LingXia ${host.version})` : ""} knows fields up to ${host.maxField}; rebuild the app with a LingXia SDK as new as this lxapp's toolchain, or leave ${name} out`);
+  }
   function copyTree(node) {
     let children = node.children;
     for (let i = 0; i < children.length; i++) {
@@ -3327,6 +3344,11 @@
   }
   function encodeTree(tree, windows) {
     const { candidate } = render;
+    const host = globalThis.__lingxiaViewHost;
+    const older = host && Number.isInteger(host.maxField) && host.maxField < maxField ? (key) => unknownToHost(key, host) : () => false;
+    const put = (key, value) => {
+      if (!older(key)) output.push(field[key], value);
+    };
     const serial = ++wireSerial;
     const output = [];
     let count = 0, plotWork = 0, animationBytes = 0, itemKeyBytes = 0, dataBytes = 0;
@@ -3401,13 +3423,13 @@
           animationBytes += utf8Bytes(JSON.stringify(value), 32768);
           if (animationBytes > limits.animationBytes) throw Error("UI_ANIMATION: page payload budget exceeded");
         }
-        if (unknownToHost(key)) continue;
+        if (older(key)) continue;
         output.push(field[key], encodeValue(key, value));
       }
       for (const key in states2) {
         const style2 = states2[key], pairs = [];
-        for (const name in style2) if (!unknownToHost(name)) pairs.push(field[name], encodeValue(name, style2[name]));
-        if (pairs.length) output.push(field[key], JSON.stringify(pairs));
+        for (const name in style2) if (!older(name)) pairs.push(field[name], encodeValue(name, style2[name]));
+        if (pairs.length) put(key, JSON.stringify(pairs));
       }
       for (let i = 0; i < wire.length; i++) {
         const key = wire[i][0], value = wire[i][1];
@@ -3415,10 +3437,11 @@
           dataBytes += utf8Bytes(value, limits.dataAttributeBytes);
           if (dataBytes > limits.dataAttributeBytes) throw Error("UI_PROP: data-* page budget exceeded");
         }
-        output.push(field[key], value);
+        put(key, value);
       }
       for (let i = 0; i < handlers.length; i++) {
         const handler = handlers[i];
+        if (older(handler[0])) continue;
         candidate.callbacks.set(handler[1], handler[2]);
         handled.push([handler[1], handler[2]]);
         output.push(field[handler[0]], handler[1]);
@@ -3427,8 +3450,8 @@
         plotWork += node.plotWork;
         if (plotWork > 16384) throw Error("UI_LIMIT: plot geometry budget exceeded");
       }
-      if (node.rowIndex !== void 0) output.push(field.listRowIndex, node.rowIndex);
-      if (node.slot !== void 0) output.push(field.childSlot, node.slot);
+      if (node.rowIndex !== void 0) put("listRowIndex", node.rowIndex);
+      if (node.slot !== void 0) put("childSlot", node.slot);
       let window, seededAnchor = false;
       if (node.list) {
         lists++;
@@ -3451,14 +3474,17 @@
         node.list.anchorCache = null;
         node.list.previousCount = props.count;
         node.list.window = { ...window };
-        output.push(field.listId, identity, field.listCount, props.count, field.listLeading, window.leading, field.listTrailing, window.trailing);
+        put("listId", identity);
+        put("listCount", props.count);
+        put("listLeading", window.leading);
+        put("listTrailing", window.trailing);
         if (props.itemKeys !== void 0) {
           const { payload: payload2, bytes } = keyPayload(props.itemKeys);
           itemKeyBytes += bytes;
           if (itemKeyBytes > limits.itemKeyBytes) throw Error("UI_LIST: itemKeys page budget exceeded");
-          output.push(field.listItemKeys, payload2);
+          put("listItemKeys", payload2);
         }
-        if (props.anchor !== void 0) output.push(field.listAnchor, JSON.stringify(props.anchor));
+        if (props.anchor !== void 0) put("listAnchor", JSON.stringify(props.anchor));
         candidate.lists.set(identity, node.list);
       }
       output[start - 1] = (output.length - start) / 2;
@@ -5457,9 +5483,9 @@
     if (isFragment(node)) return { fragment: entries([node]).map((entry) => entry.slot ? { ...entry, slot: entry.slot.slice(2) } : entry) };
     if (!isNode(node)) throw Error("UI_ROOT: expected one node");
     const record = readNode(node);
-    const authored = record[0], original = record[1], children = record[2], location = record[3];
-    if (authored === "list") throw located(Error("UI_TAG: <list> is not an element; use <List> from @lingxia/view"), `<list>${location ? ` (${location})` : ""}`);
-    const tag = authored === listTag ? "list" : authored;
+    const authored2 = record[0], original = record[1], children = record[2], location = record[3];
+    if (authored2 === "list") throw located(Error("UI_TAG: <list> is not an element; use <List> from @lingxia/view"), `<list>${location ? ` (${location})` : ""}`);
+    const tag = authored2 === listTag ? "list" : authored2;
     if (location) render.site = `${typeof tag === "function" ? tag.name || "<anonymous>" : `<${tag}>`} (${location})`;
     if (typeof tag === "function") {
       const previous = render.scope, scope = `${identity}/component:${componentId(tag)}`;
@@ -5548,18 +5574,18 @@
   ];
   function ariaProps(props) {
     for (let i = 0; i < ariaNames.length; i++) {
-      const authored = ariaNames[i][0];
-      if (authored in props) {
-        props[ariaNames[i][1]] = props[authored];
-        delete props[authored];
+      const authored2 = ariaNames[i][0];
+      if (authored2 in props) {
+        props[ariaNames[i][1]] = props[authored2];
+        delete props[authored2];
       }
     }
     let state;
     for (let i = 0; i < ariaStates.length; i++) {
-      const authored = ariaStates[i][0];
-      if (props[authored] === void 0) continue;
-      (state ?? (state = {}))[ariaStates[i][1]] = props[authored];
-      delete props[authored];
+      const authored2 = ariaStates[i][0];
+      if (props[authored2] === void 0) continue;
+      (state ?? (state = {}))[ariaStates[i][1]] = props[authored2];
+      delete props[authored2];
     }
     if (state) props.accessibilityState = state;
   }
@@ -5585,7 +5611,7 @@
     if (props.dir === "auto" && !editor2) props.dir = own2;
     const direction = own2 ?? parent.direction ?? (envOf(render.view)?.direction === "rtl" ? "rtl" : "ltr");
     const effectiveChildren = tag === "page" && props.headerActions !== void 0 && props.headerActions !== null && props.headerActions !== false ? [h("view", { key: "__lx_page_header_actions", role: "toolbar", "aria-label": typeof props.title === "string" && props.title.trim() ? props.title : void 0, style: { minHeight: 44, flexShrink: 0, flexDirection: "row", alignItems: "center", justifyContent: "flex-end", gap: 6, paddingInlineStart: 12, paddingInlineEnd: 12 } }, props.headerActions), ...Array.isArray(children) ? children : [children]] : children;
-    const authored = entries(effectiveChildren), flat = authored.map((entry) => entry.child);
+    const authored2 = entries(effectiveChildren), flat = authored2.map((entry) => entry.child);
     const data = dataOf(props);
     const rootFamily = !parent.typography && pageFamily && element.style.includes("fontFamily") ? { fontFamily: pageFamily } : void 0;
     const scopedSize = scopedSizeClass(parent.contexts, false);
@@ -6023,7 +6049,7 @@
           throw Error(`UI_TEXT: a component inside <${tag}> returns a <${run.element}> beside its text; with text it may return <span>, <link>, a popover or a <dialog>`);
         return (run.element === "span" || run.element === "link") && run.children.length ? run.children : [run];
       };
-      result.children = flat.flatMap((child, position) => runOf(child, authored[position].slot, authored[position].key, false, 0));
+      result.children = flat.flatMap((child, position) => runOf(child, authored2[position].slot, authored2[position].key, false, 0));
       if (lifted.length) result.lifted = lifted;
       if (tag === "link") result.children = result.children.map((piece, i) => ({
         ...piece,
@@ -6073,7 +6099,7 @@
           slots.push(void 0);
         }
       };
-      for (let position = 0; position < authored.length; position++) place(authored[position], position, 0);
+      for (let position = 0; position < authored2.length; position++) place(authored2[position], position, 0);
       result.children = placed;
       if ((tag === "button" || tag === "checkbox") && result.children.length === 1 && interactiveTags.has(result.children[0].tag))
         throw Error(`UI_BUTTON: <${tag}> holds only a <${result.children[0].tag}>; put the action on that control`);

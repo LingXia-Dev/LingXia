@@ -8,7 +8,7 @@ import { audit, buildPages, identify } from '../compiler/index.mjs';
 import { moduleBanner } from '../compiler/compatibility.mjs';
 import { stabilizeClosures } from '../compiler/stable-closures.mjs';
 import { runInNewContext } from 'node:vm';
-import { maxField, minField } from '../src/generated/wire.js';
+import { maxField, field } from '../src/generated/wire.js';
 import { tree, decode, points } from './support/wire.mjs';
 
 globalThis.__lingxiaViewHost = { uiAbi: 1, maxField, features: ['candidate-transactions', 'bounded-jobs'] };
@@ -30,19 +30,57 @@ async function load(root, name = 'page') {
 const describePage = (view = { data: {}, env: {} }) => globalThis.__lingxiaDescribe(globalThis.__lingxiaRender, view);
 
 test('compiled entry refuses old native and missing capabilities before author code runs', () => {
-  const source = moduleBanner('0.25.1') + '\nglobalThis.didRender = true;';
+  const source = moduleBanner('0.25.1', { minField: 200 }) + '\nglobalThis.didRender = true;';
   for (const host of [undefined, { uiAbi: 2, maxField, features: [] }, { uiAbi: 1, features: ['candidate-transactions', 'bounded-jobs'] },
-    { uiAbi: 1, maxField: minField - 1, features: ['candidate-transactions', 'bounded-jobs'] }, { uiAbi: 1, maxField, features: ['candidate-transactions'] }]) {
+    { uiAbi: 1, maxField: 199, features: ['candidate-transactions', 'bounded-jobs'] }, { uiAbi: 1, maxField, features: ['candidate-transactions'] }]) {
     const context = { __lingxiaViewHost: host };
     assert.throws(() => runInNewContext(source, context), /UI_COMPAT/);
     assert.equal(context.didRender, undefined);
   }
-  // A host below only ignorable fields runs the page; the runtime leaves those fields out.
-  for (const host of [globalThis.__lingxiaViewHost, { ...globalThis.__lingxiaViewHost, maxField: minField }]) {
+  for (const host of [globalThis.__lingxiaViewHost, { ...globalThis.__lingxiaViewHost, maxField: 200 }]) {
     const context = { __lingxiaViewHost: host };
     runInNewContext(source, context);
     assert.equal(context.didRender, true);
   }
+});
+
+const floorOf = source => JSON.parse(source.slice(source.indexOf('{'), source.indexOf('\n'))).minField;
+
+test('a page asks the host only for the fields its JSX names, not for words in strings or comments', async () => {
+  await project({
+    'plain.tsx': 'export function render() { return <text>Hello</text>; }',
+    'mentions.tsx': `// aria-controls, hover:bg-accent and pickerRequest are only words here.
+export function render() { const note = 'aria-controls hover:bg-accent pickerRequest'; return <text>{note}</text>; }`,
+    'combobox.tsx': 'export function render() { return <input aria-label="City" role="combobox" aria-controls="cities"/>; }',
+    'hover.tsx': 'export function render() { return <button onClick={() => {}} className="hover:bg-accent">Go</button>; }',
+  }, async (root, build) => {
+    for (const page of ['plain.tsx', 'mentions.tsx', 'combobox.tsx', 'hover.tsx']) await build(page);
+    const floor = async name => floorOf(await readFile(join(root, `dist/${name}.js`), 'utf8'));
+    // A plain page runs on any host of this ABI.
+    assert.equal(await floor('plain'), 0);
+    assert.equal(await floor('mentions'), 0);
+    assert.equal(await floor('combobox'), field.ariaControls);
+    assert.equal(await floor('hover'), field.hoverStyle);
+  });
+});
+
+test('a field the host lacks fails the render that first writes it, naming the prop, the field and the host', async () => {
+  const current = globalThis.__lingxiaViewHost;
+  // The prop arrives through a spread, so the banner cannot see it; the encoder still does.
+  await project({ 'page.tsx': `export function render(view) {
+  const extra = view.data.open ? { 'aria-controls': 'cities' } : {};
+  return <input aria-label="City" role="combobox" {...extra}/>;
+}` }, async (root, build) => {
+    await build();
+    assert.equal(floorOf(await readFile(join(root, 'dist/page.js'), 'utf8')), field.role);
+    globalThis.__lingxiaViewHost = { ...current, maxField: field.ariaControls - 1, version: '0.30.1' };
+    try {
+      await load(root);
+      assert.equal(tree(describePage({ data: { open: false }, env: {} })).props.role, 'combobox');
+      assert.throws(() => describePage({ data: { open: true }, env: {} }),
+        new RegExp(`^Error: UI_COMPAT: aria-controls needs wire field ${field.ariaControls} \\(ariaControls\\), but this app's native View \\(LingXia 0\\.30\\.1\\) knows fields up to ${field.ariaControls - 1}; rebuild the app with a LingXia SDK as new as this lxapp's toolchain, or leave aria-controls out$`));
+    } finally { globalThis.__lingxiaViewHost = current; }
+  });
 });
 
 test('audit collects every problem with its source position', () => {

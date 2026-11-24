@@ -1,8 +1,6 @@
 // Generated from contracts/view/schema.json; do not edit.
 export const uiAbi = 1;
 export const maxField = 282;
-// The oldest host a page runs on: one that knows every field above it is ignorable.
-export const minField = 282;
 // Accessibility-only fields a page drops, with one warning, on a host older than them.
 export const ignorableFields = ["stateInvalid","stateRequired","ariaDescribedBy","ariaActiveDescendant"];
 export const tags = {"column":0,"reserved-1":1,"text":2,"button":3,"reserved-4":4,"scroll":5,"list":6,"image":7,"input":8,"textarea":9,"checkbox":10,"switch":11,"radio":12,"radio-option":13,"search":14,"slider":15,"link-box":16,"reserved-17":17,"plot":18,"vector":19,"page":20,"span":21,"link":22,"select":23,"video":24,"webview":25};

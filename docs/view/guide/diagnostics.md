@@ -171,8 +171,11 @@ export function render() {
 
 ```text
 UI_COMPAT: this UI bundle requires a compatible native host (ABI <abi>, field <n>, candidate-transactions, bounded-jobs)
+UI_COMPAT: <prop> needs wire field <n> (<field>), but this app's native View (LingXia <version>) knows fields up to <m>; rebuild the app with a LingXia SDK as new as this lxapp's toolchain, or leave <prop> out
 ```
 
-The page was compiled for a newer host than the one installed. Nothing of the page runs. Update the host
-app (or the SDK it embeds); rebuilding the page does not help. See
+The page uses something newer than the installed host knows. The first form refuses the page before any
+of it runs; the second fails the render that first writes the field. The user sees "update the app",
+and a dev build shows the message under it. Update the host app (or the SDK it embeds); rebuilding the
+page does not help. See
 [Limits and compatibility](limits-and-compatibility.md).

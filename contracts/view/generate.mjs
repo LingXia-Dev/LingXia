@@ -306,8 +306,6 @@ function wire(schema) {
   const options = schema.fields.filter(field => schema.options[field.kind]).map(field => [field.key, schema.options[field.kind]]);
   return `${header}export const uiAbi = ${schema.uiAbi};
 export const maxField = ${schema.fields.length - 1};
-// The oldest host a page runs on: one that knows every field above it is ignorable.
-export const minField = ${Math.max(...schema.fields.filter(field => !field.ignorable).map(field => field.id))};
 // Accessibility-only fields a page drops, with one warning, on a host older than them.
 export const ignorableFields = ${JSON.stringify(schema.fields.filter(field => field.ignorable).map(field => field.key))};
 export const tags = ${object(schema.tags.map((name, id) => [name, id]))};

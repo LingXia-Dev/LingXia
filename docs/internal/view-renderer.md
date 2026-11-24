@@ -61,7 +61,8 @@ runtime: decode bounds strings, numbers, JSON payloads and tag applicability.
 
 Compiled modules start with `// LingXia UI module; {uiAbi, minField, requiredFeatures, compiler}`.
 The banner refuses hosts whose ABI, `maxField` or features do not satisfy it,
-before author code runs. Release hardening preserves that first line.
+before author code runs; `minField` is the page's lower bound, and the encoder
+refuses any later field the host lacks. Release hardening preserves that first line.
 
 ## Engines
 

@@ -1,12 +1,12 @@
-import { uiAbi, minField } from '../src/generated/wire.js';
+import { uiAbi } from '../src/generated/wire.js';
 
-// Requirements describe the bundled runtime, including fields it can emit after
-// state changes. Do not infer a lower baseline from the first frame.
+// `minField` is a lower bound from what the page's source names (`fieldFloor`); the runtime's encoder
+// refuses any later field the host lacks, so a page is never held to fields it does not write.
 export function moduleBanner(compiler, extra = {}) {
   const requiredFeatures = ['candidate-transactions', 'bounded-jobs', ...(extra.requiredFeatures ?? [])];
   const manifest = {
     uiAbi,
-    minField,
+    minField: extra.minField ?? 0,
     requiredFeatures,
     compiler,
     ...(extra.chunkBuildId ? { chunkBuildId: extra.chunkBuildId } : {}),

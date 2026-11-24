@@ -12,6 +12,7 @@ import { vectorPathProblems } from './vector-paths.mjs';
 import { transformedHolderProblems } from './transformed-holders.mjs';
 import { sourceChecker, moduleChecker, parseSource, scriptModule, scriptLoader } from './source.mjs';
 import { moduleBanner } from './compatibility.mjs';
+import { fieldFloor } from './field-floor.mjs';
 import { resolveChunkPolicy, discoverSharedPackages, buildSharedChunk, packageProxySource } from './chunks.mjs';
 import { compileUtilities, tailwindWarm } from './tailwind.mjs';
 import { nearestSupported } from './suggest.mjs';
@@ -563,15 +564,17 @@ export async function buildPages(root, pages, output, catalogs = {}, { dev = fal
     const pageEntry = chunk
       ? `import { render } from ${JSON.stringify(source)}; import { publishHost } from ${JSON.stringify(chunk.specifier)}; publishHost(render, ${JSON.stringify(catalog)}, ${JSON.stringify(base.split('\\').join('/'))});`
       : `${messages}import { render } from ${JSON.stringify(source)}; import { publishHost } from ${JSON.stringify(host)}; export { configureClasses, configureFonts, configureSourceMap, enableHotSwap } from ${JSON.stringify(runtime)}; publishHost(render, ${JSON.stringify(catalog)}, ${JSON.stringify(base.split('\\').join('/'))});`;
+    // The floor is known only after analysis; the banner keeps its lines when it is filled in.
+    const unknownFloor = 2 ** 31 - 1;
     const pageBanner = chunk
-      ? moduleBanner(version, {
+      ? moduleBanner(version, { minField: unknownFloor,
           requiredFeatures: ['view-chunks'],
           ...(chunk.chunkBuildId ? { chunkBuildId: chunk.chunkBuildId } : {}),
           ...(chunk.catalogueChunk ? { catalogueChunk: chunk.catalogueChunk } : {}),
           ...(chunk.catalogueSource ? { catalogueSource: chunk.catalogueSource } : {}),
           ...(chunk.catalogueLanguages?.length ? { catalogueLanguages: chunk.catalogueLanguages } : {}),
         })
-      : moduleBanner(version);
+      : moduleBanner(version, { minField: unknownFloor });
     try {
       bundled = await build({
         stdin: { contents: pageEntry, resolveDir: root },
@@ -733,7 +736,8 @@ export async function buildPages(root, pages, output, catalogs = {}, { dev = fal
     const map = bundled.outputFiles.find(file => file.path.endsWith('.map'));
     // A chunked page reaches these through the chunk: esbuild drops the entry's unused imports of them.
     const view = chunk ? '__lxView.' : '';
-    let module = code.text.replace(/\n\/\/# sourceMappingURL=.*\n?$/, '\n') +
+    const floor = fieldFloor(sourceFiles, usages, rulesByName);
+    let module = code.text.replace(/\n\/\/# sourceMappingURL=.*\n?$/, '\n').replaceAll(`"minField":${unknownFloor}`, `"minField":${floor}`) +
       (chunk ? `import * as __lxView from ${JSON.stringify(chunk.specifier)};\n` : '') +
       `\n${view}configureClasses(${JSON.stringify(classes)});\n` +
       (fonts.length || pageFamily ? `${view}configureFonts(${JSON.stringify(fonts)}${pageFamily ? `, ${JSON.stringify(pageFamily)}` : ''});\n` : '');

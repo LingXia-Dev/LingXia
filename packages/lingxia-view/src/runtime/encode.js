@@ -1,5 +1,5 @@
-import { tags, field, ignorableFields } from '../generated/wire.js';
-import { limits } from '../generated/contract.js';
+import { tags, field, ignorableFields, maxField } from '../generated/wire.js';
+import { limits, elements, commonProps, style as styleTable } from '../generated/contract.js';
 import { utf8Bytes } from './data.js';
 import { now, spent } from './profile.js';
 import { render } from './state.js';
@@ -11,9 +11,26 @@ import { finishTopLayerRow } from './toplayer.js';
 
 const structured = new Set(['backgroundGradient', 'boxShadow', 'ring', 'animation']);
 const encodeValue = (key, value) => structured.has(key) && value !== 'none' ? JSON.stringify(value) : value;
-// An older host refuses a field it lacks; an ignorable (accessibility-only) one is left out.
+// A host older than a field would refuse the frame: an ignorable (accessibility-only) field is left
+// out, and any other fails this render with UI_COMPAT, which the host shows as "update the app".
 const ignorable = new Set(ignorableFields);
-const unknownToHost = key => ignorable.has(key) && field[key] > (globalThis.__lingxiaViewHost?.maxField ?? Infinity);
+let authored;
+function authoredName(key) {
+  if (!authored) {
+    authored = new Map();
+    const camel = name => name.replace(/-([a-z])/g, (_, letter) => letter.toUpperCase());
+    for (const name of [...commonProps, ...Object.values(elements).flatMap(element => Object.keys(element.props))]) authored.set(camel(name), name);
+  }
+  if (authored.has(key)) return authored.get(key);
+  if (Object.prototype.hasOwnProperty.call(styleTable, key)) return `style ${key}`;
+  return key.endsWith('Style') ? `${key.slice(0, -5)}: classes` : key;
+}
+function unknownToHost(key, host) {
+  if (field[key] <= host.maxField) return false;
+  if (ignorable.has(key)) return true;
+  const name = authoredName(key);
+  throw Error(`UI_COMPAT: ${name} needs wire field ${field[key]} (${key}), but this app's native View${typeof host.version === 'string' ? ` (LingXia ${host.version})` : ''} knows fields up to ${host.maxField}; rebuild the app with a LingXia SDK as new as this lxapp's toolchain, or leave ${name} out`);
+}
 
 export function copyTree(node) {
   // Encoding mutates list windows/maps only; ordinary resolved nodes can be shared.
@@ -55,6 +72,9 @@ export function wireReset() { wireHeld = 0; }
 /** The flat wire buffer of a resolved tree; list rows render for the requested windows. */
 export function encodeTree(tree, windows) {
   const { candidate } = render;
+  const host = globalThis.__lingxiaViewHost;
+  const older = host && Number.isInteger(host.maxField) && host.maxField < maxField ? key => unknownToHost(key, host) : () => false;
+  const put = (key, value) => { if (!older(key)) output.push(field[key], value); };
   const serial = ++wireSerial;
   const output = []; let count = 0, plotWork = 0, animationBytes = 0, itemKeyBytes = 0, dataBytes = 0;
   // Header offsets, registered callbacks, lists written and the deepest level, for cutting slices.
@@ -115,13 +135,13 @@ export function encodeTree(tree, windows) {
         animationBytes += utf8Bytes(JSON.stringify(value), 32768);
         if (animationBytes > limits.animationBytes) throw Error('UI_ANIMATION: page payload budget exceeded');
       }
-      if (unknownToHost(key)) continue;
+      if (older(key)) continue;
       output.push(field[key], encodeValue(key, value));
     }
     for (const key in states) {
       const style = states[key], pairs = [];
-      for (const name in style) if (!unknownToHost(name)) pairs.push(field[name], encodeValue(name, style[name]));
-      if (pairs.length) output.push(field[key], JSON.stringify(pairs));
+      for (const name in style) if (!older(name)) pairs.push(field[name], encodeValue(name, style[name]));
+      if (pairs.length) put(key, JSON.stringify(pairs));
     }
     for (let i = 0; i < wire.length; i++) {
       const key = wire[i][0], value = wire[i][1];
@@ -129,18 +149,19 @@ export function encodeTree(tree, windows) {
         dataBytes += utf8Bytes(value, limits.dataAttributeBytes);
         if (dataBytes > limits.dataAttributeBytes) throw Error('UI_PROP: data-* page budget exceeded');
       }
-      output.push(field[key], value);
+      put(key, value);
     }
     for (let i = 0; i < handlers.length; i++) {
       const handler = handlers[i];
+      if (older(handler[0])) continue;
       candidate.callbacks.set(handler[1], handler[2]); handled.push([handler[1], handler[2]]); output.push(field[handler[0]], handler[1]);
     }
     if (node.plotWork) {
       plotWork += node.plotWork;
       if (plotWork > 16384) throw Error('UI_LIMIT: plot geometry budget exceeded');
     }
-    if (node.rowIndex !== undefined) output.push(field.listRowIndex, node.rowIndex);
-    if (node.slot !== undefined) output.push(field.childSlot, node.slot);
+    if (node.rowIndex !== undefined) put('listRowIndex', node.rowIndex);
+    if (node.slot !== undefined) put('childSlot', node.slot);
     let window, seededAnchor = false;
     if (node.list) {
       lists++;
@@ -170,14 +191,14 @@ export function encodeTree(tree, windows) {
       node.list.anchorCache = null;
       node.list.previousCount = props.count;
       node.list.window = { ...window };
-      output.push(field.listId, identity, field.listCount, props.count, field.listLeading, window.leading, field.listTrailing, window.trailing);
+      put('listId', identity); put('listCount', props.count); put('listLeading', window.leading); put('listTrailing', window.trailing);
       if (props.itemKeys !== undefined) {
         const { payload, bytes } = keyPayload(props.itemKeys);
         itemKeyBytes += bytes;
         if (itemKeyBytes > limits.itemKeyBytes) throw Error('UI_LIST: itemKeys page budget exceeded');
-        output.push(field.listItemKeys, payload);
+        put('listItemKeys', payload);
       }
-      if (props.anchor !== undefined) output.push(field.listAnchor, JSON.stringify(props.anchor));
+      if (props.anchor !== undefined) put('listAnchor', JSON.stringify(props.anchor));
       candidate.lists.set(identity, node.list);
     }
     output[start - 1] = (output.length - start) / 2;

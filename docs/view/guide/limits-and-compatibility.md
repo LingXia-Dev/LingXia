@@ -45,13 +45,14 @@ stated in each chapter and checked the same way.
 ## Host compatibility
 
 A compiled page starts with a banner naming the contract it needs: the wire ABI, the highest field id
-its runtime can emit, and the engine features it requires. The host checks the banner before running
-any of the page's code:
+its JSX props, style keys and classes name, and the engine features it requires. The host checks the
+banner before running any of the page's code:
 
 - A host at least as new as the page runs it. Element, prop and style ids are only ever appended, so new
-  hosts keep running old pages unchanged.
-- A host older than the page refuses it with `UI_COMPAT` instead of guessing at fields it does not know.
-  Update the host app or SDK; the page itself is fine.
+  hosts keep running old pages unchanged, and an older host runs a page that uses nothing newer.
+- A host older than the banner refuses the page with `UI_COMPAT`. A newer field the banner could not see
+  (a prop passed through a spread) fails the render that first writes it, with `UI_COMPAT` naming the
+  prop. Either way the user sees "update the app"; the page itself is fine.
 - An older host that lacks only accessibility details (`aria-describedby`, `aria-invalid`,
   `aria-required`, `aria-activedescendant`) runs the page without them and logs one `UI_COMPAT`
   warning in a dev session. Anything that changes layout, paint or behaviour needs the newer host.
