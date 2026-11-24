@@ -427,7 +427,7 @@ function packageRelative(root, line) {
  */
 async function packageTokens(root, packages, problems) {
   const sheets = [], owners = new Map();
-  for (const { dir, name, tokens } of [...packages.values()].sort((a, b) => a.name < b.name ? -1 : 1)) {
+  for (const { dir, name, tokens } of packages.values()) {
     const path = typeof tokens === 'string' ? resolve(dir, tokens) : '';
     const inside = relative(dir, path);
     if (!path || inside.startsWith('..') || isAbsolute(inside) || !existsSync(path)) {

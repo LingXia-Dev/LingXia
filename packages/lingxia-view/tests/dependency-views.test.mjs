@@ -189,7 +189,7 @@ test("tokens of a bundled package's peer dependencies load transitively, below t
     // Missing peer: pkg-b peers on pkg-a, which is not installed yet.
     await assert.rejects(
       buildPages(app, ['page.tsx'], join(app, 'dist')),
-      /pkg-b\/package\.json: UI_CSS:.*pkg-a.*pkg-b|pkg-b\/package\.json: UI_CSS:.*pkg-b.*pkg-a/,
+      /pkg-b\/package\.json: UI_MODULE:.*pkg-a.*pkg-b/,
     );
     // Install pkg-a: its tokens load for pkg-b.
     await symlink(join(base, 'pkg-a'), join(app, 'node_modules/pkg-a'), 'junction');
@@ -212,5 +212,19 @@ test("tokens of a bundled package's peer dependencies load transitively, below t
     await buildPages(app, ['page.tsx'], join(app, 'dist'));
     source = await readFile(join(app, 'dist/page.js'), 'utf8');
     assert.deepEqual(rule(source, 'rounded-peer-card'), { borderRadius: 16 });
+    // Peer ordering: pkg-alpha peers on pkg-zeta (alphabetically later); pkg-alpha's @utility comes after pkg-zeta's and wins.
+    await mkdir(join(base, 'pkg-zeta'), { recursive: true });
+    await writeFile(join(base, 'pkg-zeta/package.json'), JSON.stringify({ name: 'pkg-zeta', type: 'module', lingxia: { tokens: './tokens.css' } }));
+    await writeFile(join(base, 'pkg-zeta/tokens.css'), '@utility peer-pad { padding: 4px; }\n');
+    await mkdir(join(base, 'pkg-alpha'), { recursive: true });
+    await writeFile(join(base, 'pkg-alpha/package.json'), JSON.stringify({ name: 'pkg-alpha', type: 'module', exports: { '.': './index.tsx' }, lingxia: { tokens: './tokens.css' }, peerDependencies: { 'pkg-zeta': '*' } }));
+    await writeFile(join(base, 'pkg-alpha/tokens.css'), '@utility peer-pad { padding: 20px; }\n');
+    await writeFile(join(base, 'pkg-alpha/index.tsx'), 'export function Alpha() { return <view className="peer-pad" />; }\n');
+    await symlink(join(base, 'pkg-zeta'), join(app, 'node_modules/pkg-zeta'), 'junction');
+    await symlink(join(base, 'pkg-alpha'), join(app, 'node_modules/pkg-alpha'), 'junction');
+    await writeFile(join(app, 'page.tsx'), "import { Alpha } from 'pkg-alpha';\nexport function render() { return <view><Alpha /></view>; }\n");
+    await buildPages(app, ['page.tsx'], join(app, 'dist'));
+    source = await readFile(join(app, 'dist/page.js'), 'utf8');
+    assert.equal(rule(source, 'peer-pad').paddingTop, 20);
   } finally { await rm(base, { recursive: true, force: true }); }
 });

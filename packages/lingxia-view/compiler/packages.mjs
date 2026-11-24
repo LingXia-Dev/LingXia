@@ -90,14 +90,30 @@ export function peerTokenPackages(root, bundled, problems) {
       const peer = findInstalled(peerName, [root, pkg.dir]);
       if (!peer) {
         if (!pkg.optionalPeers.has(peerName))
-          problems.push(`${pkg.name}/package.json: UI_CSS: peer dependency ${peerName} of ${pkg.name} is not installed; install ${peerName}`);
+          problems.push(`${pkg.name}/package.json: UI_MODULE: peer dependency ${peerName} of ${pkg.name} is not installed; install ${peerName}`);
         continue;
       }
       visited.set(peer.name, peer);
       order.push(peer);
     }
   }
+  // Order peers before the packages that peer on them; break ties by package name.
+  const sorted = [];
+  const state = new Map();
+  const visit = name => {
+    if (state.get(name) === 2 || state.get(name) === 1) return;
+    state.set(name, 1);
+    const pkg = visited.get(name);
+    if (pkg) {
+      for (const peerName of [...pkg.peers].sort()) {
+        if (visited.has(peerName)) visit(peerName);
+      }
+      sorted.push(pkg);
+    }
+    state.set(name, 2);
+  };
+  for (const name of [...visited.keys()].sort()) visit(name);
   const tokens = new Map();
-  for (const pkg of visited.values()) if (pkg.tokens !== undefined) tokens.set(pkg.name, pkg);
+  for (const pkg of sorted) if (pkg.tokens !== undefined) tokens.set(pkg.name, pkg);
   return tokens;
 }
