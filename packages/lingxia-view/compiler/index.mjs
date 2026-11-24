@@ -383,6 +383,31 @@ function report(problems, page) {
 }
 
 // A warm dev compiler rebuilds the files of one page per save; unchanged ones keep their analysis.
+/** Whether a callee is `cx` from `@lingxia/view` in `file`, under any local or namespace name. */
+function cxCallee(file) {
+  const named = new Set(), namespaces = new Set();
+  for (const statement of file.statements) {
+    if (!ts.isImportDeclaration(statement) || !ts.isStringLiteral(statement.moduleSpecifier) || statement.moduleSpecifier.text !== '@lingxia/view') continue;
+    const bindings = statement.importClause?.namedBindings;
+    if (bindings && ts.isNamespaceImport(bindings)) namespaces.add(bindings.name.text);
+    else if (bindings) for (const element of bindings.elements) if ((element.propertyName ?? element.name).text === 'cx') named.add(element.name.text);
+  }
+  return callee => ts.isIdentifier(callee) ? named.has(callee.text)
+    : ts.isPropertyAccessExpression(callee) && ts.isIdentifier(callee.expression) && namespaces.has(callee.expression.text) && callee.name.text === 'cx';
+}
+
+// Identifier and shorthand keys of `cx` maps are class names no string literal spells; a computed key is run-time.
+function cxMapKeys(node, names) {
+  while (ts.isParenthesizedExpression(node) || ts.isAsExpression(node) || ts.isSatisfiesExpression(node) || ts.isNonNullExpression(node)) node = node.expression;
+  if (ts.isArrayLiteralExpression(node)) for (const element of node.elements) cxMapKeys(element, names);
+  else if (ts.isConditionalExpression(node)) { cxMapKeys(node.whenTrue, names); cxMapKeys(node.whenFalse, names); }
+  else if (ts.isBinaryExpression(node) && [ts.SyntaxKind.AmpersandAmpersandToken, ts.SyntaxKind.BarBarToken, ts.SyntaxKind.QuestionQuestionToken].includes(node.operatorToken.kind)) {
+    cxMapKeys(node.left, names); cxMapKeys(node.right, names);
+  } else if (ts.isObjectLiteralExpression(node))
+    for (const property of node.properties)
+      if ((ts.isPropertyAssignment(property) || ts.isShorthandPropertyAssignment(property)) && ts.isIdentifier(property.name)) names.add(property.name.text);
+}
+
 const analyses = new Map();
 let analysisHits = 0, analysisMisses = 0;
 // `label` names the file in source positions, `id` in component and closure ids.
@@ -394,9 +419,11 @@ function analyse(path, contents, label, id, loader, literalColors, dev) {
   analysisMisses++;
   const file = parseSource(path, contents);
   const names = new Set();
+  const cx = cxCallee(file);
   const collect = node => {
     if (ts.isStringLiteralLike(node) || ts.isTemplateHead(node) || ts.isTemplateMiddle(node) || ts.isTemplateTail(node))
       for (const name of node.text.split(/\s+/)) if (name) names.add(name);
+    if (ts.isCallExpression(node) && cx(node.expression)) for (const argument of node.arguments) cxMapKeys(argument, names);
     ts.forEachChild(node, collect);
   };
   collect(file);

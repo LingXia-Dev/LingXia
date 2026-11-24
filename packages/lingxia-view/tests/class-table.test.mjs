@@ -1,0 +1,54 @@
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import { mkdtemp, writeFile, readFile, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { buildPages } from '../compiler/index.mjs';
+import { maxField } from '../src/generated/wire.js';
+
+globalThis.__lingxiaViewHost = { uiAbi: 1, maxField, features: ['candidate-transactions', 'bounded-jobs'] };
+
+// Builds `files`, renders the page with `data.on` set, and returns the page's class names.
+async function built(files) {
+  const root = await mkdtemp(join(tmpdir(), 'lingxia-view-class-table-'));
+  try {
+    for (const [name, contents] of Object.entries(files)) await writeFile(join(root, name), contents);
+    await buildPages(root, ['page.tsx'], join(root, 'dist'));
+    const source = await readFile(join(root, 'dist/page.js'), 'utf8');
+    const table = JSON.parse(source.match(/\nconfigureClasses\((.*)\);\n/)[1]).map(rule => rule.name);
+    await import(`data:text/javascript;base64,${Buffer.from(source).toString('base64')}`);
+    globalThis.__lingxiaDescribe(globalThis.__lingxiaRender, { data: { on: true }, env: {} });
+    return table;
+  } finally { await rm(root, { recursive: true, force: true }); }
+}
+
+const cxPage = (imports, body, expression) =>
+  `${imports}\nexport function render(view){ ${body} return <text className={${expression}}>x</text> }`;
+
+for (const [name, imports, body, expression] of [
+  ['identifier', `import { cx } from '@lingxia/view';`, '', 'cx({ italic: view.data.on })'],
+  ['shorthand', `import { cx } from '@lingxia/view';`, 'const italic = view.data.on;', 'cx({ italic })'],
+  ['cx imported under another name', `import { cx as join } from '@lingxia/view';`, '', 'join({ italic: view.data.on })'],
+  ['cx through a namespace import', `import * as v from '@lingxia/view';`, '', 'v.cx({ italic: view.data.on })'],
+  ['in a nested array', `import { cx } from '@lingxia/view';`, '', `cx('p-1', [[{ italic: view.data.on }]])`],
+  ['in a conditional argument', `import { cx } from '@lingxia/view';`, '', `cx(view.data.on ? { italic: true } : 'p-1')`],
+  ['behind a logical argument', `import { cx } from '@lingxia/view';`, '', 'cx(view.data.on && { italic: true })'],
+])
+  test(`class table holds a cx map key: ${name}`, async () => {
+    assert.ok((await built({ 'page.tsx': cxPage(imports, body, expression) })).includes('italic'));
+  });
+
+test('class table leaves out a computed cx map key, which is known only at run time', async () => {
+  const page = cxPage(`import { cx } from '@lingxia/view';`, 'const italic = view.data.on ? "p-2" : "p-3";', 'cx({ [italic]: true }, "p-1")');
+  assert.ok(!(await built({ 'page.tsx': page })).includes('italic'));
+});
+
+test('class table does not take identifier keys of maps outside cx', async () => {
+  const page = cxPage('', 'const flags = { italic: view.data.on };', `flags.italic ? 'p-1' : 'p-2'`);
+  assert.ok(!(await built({ 'page.tsx': page })).includes('italic'));
+});
+
+test('class table holds the keys of a cx map built elsewhere and passed by name', { todo: 'needs the tracer to follow the binding' }, async () => {
+  const page = cxPage(`import { cx } from '@lingxia/view';`, 'const map = { italic: view.data.on };', 'cx(map)');
+  assert.ok((await built({ 'page.tsx': page })).includes('italic'));
+});
