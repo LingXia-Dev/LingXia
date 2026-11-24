@@ -121,9 +121,8 @@ impl ViewSession {
         {
             self.warm.set(true);
         }
-        if let Some(language) = value["language"].as_str() {
-            self.ensure_language_catalogue(language)?;
-        }
+        // Without a language the source catalogue still loads: `t` needs one in the first frame.
+        self.ensure_language_catalogue(value["language"].as_str().unwrap_or(""))?;
         self.environment = value;
         Ok(())
     }
@@ -151,27 +150,24 @@ impl ViewSession {
             if self.loaded_languages.contains(&tag) {
                 continue;
             }
-            if let Some((specifier, source)) = crate::engine::chunks::load_exact_language_module(
+            let (specifier, source) = crate::engine::chunks::load_language_module(
                 &prefix,
                 &tag,
                 &loader,
                 self.chunk_build_id.as_deref(),
-            )? {
-                let (outcome, _) = self.budget.run(
-                    Duration::from_secs(1),
-                    Duration::from_secs(1),
-                    || {
+            )?;
+            let (outcome, _) =
+                self.budget
+                    .run(Duration::from_secs(1), Duration::from_secs(1), || {
                         <crate::engine::Active as crate::engine::Engine>::evaluate_auxiliary_module(
-                                &self.context,
-                                &specifier,
-                                &source,
-                            )?;
+                        &self.context,
+                        &specifier,
+                        &source,
+                    )?;
                         <crate::engine::Active as crate::engine::Engine>::drain_jobs(&self.context)
-                    },
-                );
-                outcome?;
-                self.loaded_languages.insert(tag);
-            }
+                    });
+            outcome?;
+            self.loaded_languages.insert(tag);
         }
         Ok(())
     }

@@ -520,7 +520,8 @@ export async function buildPages(root, pages, output, catalogs = {}, { dev = fal
   const compiledMessages = messagesPath ? resolve(root, messagesPath) : join(root, '.lingxia', 'i18n', 'index.js');
   const recordPath = inputsRecord ? resolve(root, inputsRecord) : join(root, '.lingxia', 'gpu-inputs.json');
   const policy = await resolveChunkPolicy(root, { chunks, minRuntime });
-  if (policy.note) console.warn(policy.note);
+  // Once per build; a dev session would repeat it on every save.
+  if (policy.note && !dev) console.warn(policy.note);
   let chunk = null;
   if (policy.split) {
     // In incremental dev swaps, `pages` may be a subset; union with the recorded built GPU pages
@@ -536,9 +537,11 @@ export async function buildPages(root, pages, output, catalogs = {}, { dev = fal
     });
     chunk = await buildSharedChunk(root, output, {
       version, dev, literalColors, tsconfig, runtime, publicEntry, host, jsx, runtimeRoot,
-      compiledMessages, sharedPackages, analyse, writeAtomic,
+      compiledMessages, sharedPackages, analyse, writeAtomic, shimDir: dirname(recordPath),
     });
     if (dev && chunk.chunkInputs.length) inputs['lx:view'] = chunk.chunkInputs;
+    // Pages built against the chunk this one replaced would fail to load; build them too.
+    if (chunk.replacedBuildId) pages = scanPages;
   }
   const messages = !chunk && existsSync(compiledMessages)
     ? `import * as messages from ${JSON.stringify(compiledMessages)}; import { registerCatalogues } from ${JSON.stringify(runtime)}; registerCatalogues(messages);`
@@ -554,10 +557,10 @@ export async function buildPages(root, pages, output, catalogs = {}, { dev = fal
     const catalog = catalogs[page] ?? { __names: [], __modes: {} };
     if (!Array.isArray(catalog.__names) || catalog.__names.some(name => typeof name !== 'string' || !['call', 'stream'].includes(catalog.__modes?.[name])))
       throw Error(`${page}: invalid GPU action metadata`);
-    const candidates = new Set(), themes = new Map(), sourceFiles = [], problems = [], fonts = [], bundledPackages = new Map();
+    const candidates = new Set(), themes = new Map(), sourceFiles = [], problems = [], fonts = [], bundledPackages = new Map(), sharedModules = new Set();
     let bundled;
     const pageEntry = chunk
-      ? `import { render } from ${JSON.stringify(source)}; import { publishHost, configureClasses, configureFonts, configureSourceMap, enableHotSwap } from ${JSON.stringify(chunk.specifier)}; publishHost(render, ${JSON.stringify(catalog)}, ${JSON.stringify(base.split('\\').join('/'))});`
+      ? `import { render } from ${JSON.stringify(source)}; import { publishHost } from ${JSON.stringify(chunk.specifier)}; publishHost(render, ${JSON.stringify(catalog)}, ${JSON.stringify(base.split('\\').join('/'))});`
       : `${messages}import { render } from ${JSON.stringify(source)}; import { publishHost } from ${JSON.stringify(host)}; export { configureClasses, configureFonts, configureSourceMap, enableHotSwap } from ${JSON.stringify(runtime)}; publishHost(render, ${JSON.stringify(catalog)}, ${JSON.stringify(base.split('\\').join('/'))});`;
     const pageBanner = chunk
       ? moduleBanner(version, {
@@ -596,10 +599,15 @@ export async function buildPages(root, pages, output, catalogs = {}, { dev = fal
               });
               builder.onLoad({ filter: /.*/, namespace: 'lx-pkg' }, ({ path }) => {
                 const entry = chunk.sharedByPath.get(path);
-                const names = chunk.pkgCandidates.get(entry.abs);
-                if (names) for (const n of names) candidates.add(n);
-                const owner = chunk.pkgTokenPackages.get(path);
-                if (owner) bundledPackages.set(owner.name, owner);
+                // The page is checked and styled as if it bundled every chunk module it reaches.
+                for (const module of chunk.closure(entry.abs)) {
+                  if (sharedModules.has(module.path)) continue;
+                  sharedModules.add(module.path);
+                  for (const name of module.names) candidates.add(name);
+                  if (module.file) sourceFiles.push(module.file);
+                  problems.push(...module.problems);
+                  if (module.owner) bundledPackages.set(module.owner.name, module.owner);
+                }
                 return { contents: packageProxySource(chunk.specifier, entry), loader: 'js' };
               });
             }
@@ -719,8 +727,12 @@ export async function buildPages(root, pages, output, catalogs = {}, { dev = fal
     await mkdir(dirname(dest), { recursive: true });
     const code = bundled.outputFiles.find(file => !file.path.endsWith('.map'));
     const map = bundled.outputFiles.find(file => file.path.endsWith('.map'));
-    let module = code.text.replace(/\n\/\/# sourceMappingURL=.*\n?$/, '\n') + `\nconfigureClasses(${JSON.stringify(classes)});\n` +
-      (fonts.length || pageFamily ? `configureFonts(${JSON.stringify(fonts)}${pageFamily ? `, ${JSON.stringify(pageFamily)}` : ''});\n` : '');
+    // A chunked page reaches these through the chunk: esbuild drops the entry's unused imports of them.
+    const view = chunk ? '__lxView.' : '';
+    let module = code.text.replace(/\n\/\/# sourceMappingURL=.*\n?$/, '\n') +
+      (chunk ? `import * as __lxView from ${JSON.stringify(chunk.specifier)};\n` : '') +
+      `\n${view}configureClasses(${JSON.stringify(classes)});\n` +
+      (fonts.length || pageFamily ? `${view}configureFonts(${JSON.stringify(fonts)}${pageFamily ? `, ${JSON.stringify(pageFamily)}` : ''});\n` : '');
     if (map) {
       const { sources, mappings } = JSON.parse(map.text);
       // The lxapp's files and other packages' are named as in build problems; the View runtime stays anonymous.
@@ -728,8 +740,8 @@ export async function buildPages(root, pages, output, catalogs = {}, { dev = fal
         const file = resolve(root, path);
         return path === '<stdin>' || file.toLowerCase().startsWith(runtimeRoot) ? null : sourceLabel(root, file);
       });
-      module += `configureSourceMap(${JSON.stringify({ sources: named, mappings })});\n`;
-      module += 'enableHotSwap();\n';
+      module += `${view}configureSourceMap(${JSON.stringify({ sources: named, mappings })});\n`;
+      module += `${view}enableHotSwap();\n`;
     }
     await writeAtomic(dest, module);
     // Dev builds record each page's inputs so `lingxia dev` can rebuild only the pages an edit touches:

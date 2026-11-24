@@ -82,7 +82,8 @@ fn component_locals_survive_a_swap_whatever_order_components_first_rendered_in()
     assert_eq!(shown(&mut page), "Billing yearly");
 }
 
-/// Showcase page `page` (as `view-input`) built as `lingxia dev` builds it.
+/// Showcase page `page` (as `view-input`) built as `lingxia dev` builds it, as one module: these
+/// sessions have no chunk loader.
 pub(crate) fn showcase_page_module(page: &str) -> String {
     showcase_page_module_edited(page, None)
 }
@@ -131,7 +132,7 @@ pub(crate) fn showcase_page_module_edited(page: &str, edit: Option<(&str, &str, 
     let dist = out.join("dist");
     let script = format!(
         "const {{ buildPages }} = await import('{root}/packages/lingxia-view/compiler/index.mjs'); \
-         await buildPages({:?}, [{entry:?}], {:?}, {{}}, {{ dev: true }});",
+         await buildPages({:?}, [{entry:?}], {:?}, {{}}, {{ dev: true, chunks: false }});",
         source_root, dist
     );
     let status = std::process::Command::new("node")

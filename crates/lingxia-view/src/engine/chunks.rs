@@ -213,70 +213,38 @@ pub(crate) fn load_active(specifier: &str) -> Result<String, String> {
     load_chunk(specifier, loader.as_ref(), expected.as_deref())
 }
 
-/// Matches `language` against `declared` tags using the same rules as `i18n.js` (`catalogueFor`):
-/// case-insensitive exact match -> case-insensitive primary subtag match -> `source` fallback.
+/// Matches `language` against `declared` tags as `i18n.js` (`catalogueFor`) does:
+/// case-insensitive exact match, then primary subtag, then `source`.
 pub(crate) fn resolve_catalogue_tag(
     language: &str,
     declared: &[String],
     source: Option<&str>,
 ) -> Option<String> {
-    let lower = language.trim().replace('_', "-").to_ascii_lowercase();
-    if !declared.is_empty() {
-        if let Some(exact) = declared.iter().find(|t| t.to_ascii_lowercase() == lower) {
-            return Some(exact.clone());
-        }
-        let primary = lower.split('-').next().unwrap_or("");
-        if !primary.is_empty()
-            && let Some(by_primary) = declared
-                .iter()
-                .find(|t| t.to_ascii_lowercase().split('-').next() == Some(primary))
-        {
-            return Some(by_primary.clone());
-        }
-        return source
-            .map(str::to_owned)
-            .or_else(|| declared.first().cloned());
+    let lower = language.trim().to_ascii_lowercase();
+    if let Some(exact) = declared.iter().find(|t| t.to_ascii_lowercase() == lower) {
+        return Some(exact.clone());
     }
-    let trimmed = language.trim();
-    if !trimmed.is_empty() {
-        Some(trimmed.to_owned())
-    } else {
-        source.map(str::to_owned)
+    let primary = lower.split('-').next().unwrap_or("");
+    if !primary.is_empty()
+        && let Some(by_primary) = declared
+            .iter()
+            .find(|t| t.to_ascii_lowercase().split('-').next() == Some(primary))
+    {
+        return Some(by_primary.clone());
     }
+    source.map(str::to_owned)
 }
 
-/// Loads a specific per-language catalogue module (`<prefix>/<tag>`).
-pub(crate) fn load_exact_language_module(
+/// Loads one per-language catalogue module (`<prefix>/<tag>`); every declared tag was built.
+pub(crate) fn load_language_module(
     prefix: &str,
     tag: &str,
     loader: &ChunkLoader,
     expected_dev_build_id: Option<&str>,
-) -> Result<Option<(String, String)>, String> {
-    if !valid_segment(tag) {
-        return Ok(None);
-    }
+) -> Result<(String, String), String> {
     let specifier = format!("{prefix}/{tag}");
-    let dist_path = specifier_to_dist_path(&specifier)?;
-    match loader(&dist_path) {
-        Ok(source) => {
-            crate::engine::compatibility::validate(&source)?;
-            if let Some(expected) = expected_dev_build_id {
-                let actual = crate::engine::compatibility::parse_manifest(&source)?
-                    .and_then(|m| m.chunk_build_id);
-                if actual.as_deref() != Some(expected) {
-                    let actual_display = actual.as_deref().unwrap_or("none");
-                    return Err(format!(
-                        "UI_MODULE: this page was built against View chunk {expected}, the lxapp has {actual_display}; rebuild the page"
-                    ));
-                }
-            }
-            Ok(Some((specifier, source)))
-        }
-        Err(ChunkLoadError::NotFound) => Ok(None),
-        Err(ChunkLoadError::IntegrityMismatch) => Err(format!(
-            "UI_MODULE: the View chunk {specifier} does not match this lxapp's build"
-        )),
-    }
+    let source = load_chunk(&specifier, Some(loader), expected_dev_build_id)?;
+    Ok((specifier, source))
 }
 
 #[cfg(test)]
@@ -465,11 +433,21 @@ mod tests {
             "_view/i18ntest/zh-CN.js" => Ok(zh.to_owned()),
             _ => Err(ChunkLoadError::NotFound),
         });
-        let page = page_importing_chunk(
-            "lx:view/i18ntest",
-            "globalThis.__lingxiaRender = ({ env }) => h('text', {}, (globalThis.__cat[env.language]?.greet) || 'missing');",
-            None,
-            Some("lx:view/i18ntest"),
+        let manifest = serde_json::json!({
+            "uiAbi": crate::protocol::UI_ABI,
+            "minField": 102,
+            "requiredFeatures": ["candidate-transactions", "bounded-jobs", "view-chunks"],
+            "compiler": "0.30.0",
+            "catalogueChunk": "lx:view/i18ntest",
+            "catalogueSource": "en-US",
+            "catalogueLanguages": ["en-US", "zh-CN"],
+        });
+        let page = format!(
+            "// LingXia UI module; {manifest}
+import {{ runtimeReady }} from 'lx:view/i18ntest';
+if (!runtimeReady) throw Error('missing');
+globalThis.__lingxiaRender = ({{ env }}) => h('text', {{}}, (globalThis.__cat[env.language]?.greet) || 'missing');
+"
         );
 
         let mut session = ViewSession::new_with_chunks(&page, false, loader).unwrap();

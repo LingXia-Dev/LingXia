@@ -319,7 +319,8 @@ impl ViewSession {
         Self::with_runtime(runtime, budget, source, logic, None, None)
     }
 
-    pub fn new_with_chunks(
+    #[cfg(test)]
+    pub(crate) fn new_with_chunks(
         source: &str,
         logic: bool,
         chunks: crate::engine::chunks::ChunkLoader,

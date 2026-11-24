@@ -1786,17 +1786,13 @@
     catalogues = compiled;
     formatters.clear();
   }
-  function registerLanguageCatalogue(tag, messages, formatterFn, source3) {
-    if (!catalogues) catalogues = { source: source3 ?? tag, languages: {}, formatter: formatterFn };
-    else {
-      if (source3) catalogues.source = source3;
-      if (formatterFn) catalogues.formatter = formatterFn;
-    }
+  function registerLanguageCatalogue(tag, messages, formatter2, source3, declared2) {
+    catalogues ?? (catalogues = { source: source3, declared: declared2, languages: {}, formatter: formatter2 });
     catalogues.languages[tag] = messages;
     formatters.delete(tag);
   }
   function catalogueFor(language) {
-    const tags2 = Object.keys(catalogues.languages);
+    const tags2 = catalogues.declared ?? Object.keys(catalogues.languages);
     const lower = String(language ?? "").toLowerCase();
     const exact = tags2.find((tag2) => tag2.toLowerCase() === lower);
     const primary = lower.split("-")[0];

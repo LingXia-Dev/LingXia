@@ -38,7 +38,8 @@ impl ViewApp {
         })
     }
 
-    pub fn set_chunks(&mut self, chunks: Option<crate::engine::chunks::ChunkLoader>) {
+    #[cfg(test)]
+    pub(crate) fn set_chunks(&mut self, chunks: Option<crate::engine::chunks::ChunkLoader>) {
         self.chunks = chunks;
     }
 

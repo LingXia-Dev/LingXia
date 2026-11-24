@@ -98,7 +98,8 @@ export async function render(page, view = {}, { root, points: resolved = false }
   const entry = relative(root, file);
   const out = await mkdtemp(join(tmpdir(), 'lingxia-view-testing-'));
   try {
-    await buildPages(root, [entry], out);
+    // One self-contained module: the test host evaluates it without a chunk loader.
+    await buildPages(root, [entry], out, {}, { chunks: false });
     return screen(installHost(await readFile(join(out, entry.replace(/\.[jt]sx?$/, '.js')), 'utf8')), view, resolved);
   } finally { await rm(out, { recursive: true, force: true }); }
 }

@@ -28,9 +28,11 @@ impl ViewSession {
             self.eval(&format!(
                 "typeof __lingxiaImportState === 'function' && __lingxiaImportState({state})"
             ))?;
-            if let Some(language) = self.environment["language"].as_str().map(str::to_owned) {
-                self.ensure_language_catalogue(&language)?;
-            }
+            let language = self.environment["language"]
+                .as_str()
+                .unwrap_or("")
+                .to_owned();
+            self.ensure_language_catalogue(&language)?;
             if self.connected {
                 self.eval("__lingxiaConfigureActions(globalThis.__lingxiaActionCatalog)")?;
             }
