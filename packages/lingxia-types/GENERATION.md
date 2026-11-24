@@ -32,7 +32,7 @@ input, not a second public declaration tree.
 documentation, branded paths, overload resolution, and representative complex
 return types.
 
-`npm run gen:api` also writes `api.json`: every member of the Logic API (`lx.*`,
+`npm run gen:api` writes the API style baseline and `api.json`: every member of the Logic API (`lx.*`,
 `App`, `definePage` and `page.*`, the error helpers) and every named type, with
 signatures, docs, tags and a source line. `lingxia api` reads it; the build
 copies it to `dist/api.json`, and `check:quality` fails when it is stale.
