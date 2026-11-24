@@ -77,7 +77,6 @@ import { Content as Card } from '../content/card';
 import { Content as Item } from '../content/item';
 import { Content as Details } from '../content/details';
 import { Content as Avatar } from '../content/avatar';
-import { Content as SplitView } from '../content/split-view';
 import { Content as Icon } from '../content/icon';
 import { Content as Table } from '../content/table';
 import { Content as Markdown } from '../content/markdown';
@@ -192,7 +191,6 @@ export const contents: Record<string, GalleryContent> = {
   "item": Item,
   "details": Details,
   "avatar": Avatar,
-  "split-view": SplitView,
   "icon": Icon,
   "table": Table,
   "markdown": Markdown,

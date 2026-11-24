@@ -3,7 +3,6 @@ import { Specimen as CardSpecimen } from '../../core/src/Card/Card.examples';
 import { Specimen as ItemSpecimen } from '../../core/src/Item/Item.examples';
 import { Specimen as DetailsSpecimen } from '../../core/src/Details/Details.examples';
 import { Specimen as AvatarSpecimen } from '../../core/src/Avatar/Avatar.examples';
-import { Specimen as SplitViewSpecimen } from '../../core/src/SplitView/SplitView.examples';
 import { Specimen as IconSpecimen } from '../../core/src/Icon/Icon.examples';
 import { Specimen as TableSpecimen } from '../../core/src/Table/Table.examples';
 import { Specimen as MarkdownSpecimen } from '../../core/src/Markdown/Markdown.examples';
@@ -24,7 +23,7 @@ export function Content({ onOpen }: { onOpen: (page: string) => void }) {
   return (
     <>
       <text className="text-body text-muted">{"Containers, rows and tables that hold what the app shows."}</text>
-      <Category title={"19 components"}>
+      <Category title={"18 components"}>
         <Tile
           name={"Card"}
           tagline={"Related content"}
@@ -56,14 +55,6 @@ export function Content({ onOpen }: { onOpen: (page: string) => void }) {
           testId={"open-avatar"}
         >
           <AvatarSpecimen />
-        </Tile>
-        <Tile
-          name={"SplitView"}
-          tagline={"Sidebar and content"}
-          onOpen={() => onOpen("split-view")}
-          testId={"open-split-view"}
-        >
-          <SplitViewSpecimen />
         </Tile>
         <Tile
           name={"Icon"}
@@ -155,7 +146,7 @@ export function Content({ onOpen }: { onOpen: (page: string) => void }) {
         </Tile>
         <Tile
           name={"ListDetail"}
-          tagline={"Master and detail"}
+          tagline={"List and detail"}
           onOpen={() => onOpen("list-detail")}
           testId={"open-list-detail"}
         >
@@ -172,7 +163,6 @@ export function Content({ onOpen }: { onOpen: (page: string) => void }) {
         <Tile
           name={"QRCode"}
           tagline={"A code for a camera"}
-          isWide
           onOpen={() => onOpen("qrcode")}
           testId={"open-qrcode"}
         >

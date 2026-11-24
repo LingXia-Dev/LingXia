@@ -1,7 +1,9 @@
 import { useLocal } from '@lingxia/view';
+import { Button } from '../Button/Button';
 import { EmptyState } from '../EmptyState/EmptyState';
 import { unused } from '../example';
 import { Item, ItemList } from '../Item/Item';
+import { NavList } from '../NavList/NavList';
 import { ListDetail } from './ListDetail';
 
 const orders = [
@@ -10,38 +12,40 @@ const orders = [
   { id: 'ord-103', title: 'Order #103', summary: 'Standard shipping · Shipped' },
 ] as const;
 
-/** Master-detail orders list: two-pane on regular (snapping to vertical hinge), drill-down with Back interception on compact. */
-export function OrdersMasterDetail() {
+/** Orders and the one chosen: side by side on a wide screen, the order over the list on a phone, where Back returns. */
+export function Orders() {
   const selected = useLocal<string | null>('selected-order', null);
-  const current = orders.find(o => o.id === selected.value) ?? null;
-
+  const current = orders.find(order => order.id === selected.value) ?? null;
+  const shipped = useLocal<readonly string[]>('shipped', []);
+  const isShipped = current !== null && shipped.value.includes(current.id);
   return (
+    // A window's worth of page: in an app it fills the page itself.
     <view className="h-[360px] overflow-hidden rounded-container border border-text/12">
-      <ListDetail bind={selected} listLabel="Orders" data-testid="orders-list-detail">
+      <ListDetail bind={selected} listLabel="Orders" data-testid="orders">
         <ListDetail.List>
-          <scroll className="grow">
-            <ItemList>
-              {orders.map(order => (
-                <Item
-                  key={order.id}
-                  label={order.title}
-                  description={order.summary}
-                  isSelected={selected.value === order.id}
-                  onClick={() => selected.set(order.id)}
-                  data-testid={`order-${order.id}`}
-                />
-              ))}
-            </ItemList>
-          </scroll>
+          <ItemList>
+            {orders.map(order => (
+              <Item
+                key={order.id}
+                label={order.title}
+                description={order.summary}
+                isSelected={selected.value === order.id}
+                onClick={() => selected.set(order.id)}
+                data-testid={`order-${order.id}`}
+              />
+            ))}
+          </ItemList>
         </ListDetail.List>
         <ListDetail.Detail
           title={current?.title}
-          placeholder={<EmptyState title="Select an order" description="Choose an item from the list to inspect its details." />}
+          placeholder={<EmptyState title="Choose an order" description="Its delivery and payment show here." />}
+          actions={<Button label={isShipped ? 'Shipped' : 'Mark as shipped'} variant="primary" isDisabled={isShipped} onClick={() => current && shipped.set([...shipped.value, current.id])} data-testid="ship" />}
         >
           {current && (
-            <view className="p-4 gap-2" data-testid="order-detail-body">
-              <text className="text-title font-semibold text-text">{current.title}</text>
-              <text className="text-body text-muted">{current.summary}</text>
+            <view className="gap-2" data-testid="order-detail">
+              <text role="heading" headingLevel={1} className="text-title font-semibold text-text">{current.title}</text>
+              <text className="text-body text-text">{current.summary}</text>
+              <text className="text-footnote text-muted">Placed on 12 November, paid by card.</text>
             </view>
           )}
         </ListDetail.Detail>
@@ -50,7 +54,42 @@ export function OrdersMasterDetail() {
   );
 }
 
-/** Tile specimen showing a master list beside its selected detail record. */
+const sections = [
+  { id: 'mail', items: [
+    { value: 'inbox', label: 'Inbox', endText: '12' },
+    { value: 'drafts', label: 'Drafts', endText: '3' },
+    { value: 'sent', label: 'Sent' },
+  ] },
+  { id: 'projects', title: 'Projects', items: [
+    { value: 'launch', label: 'Spring launch' },
+    { value: 'research', label: 'User research' },
+  ] },
+] as const;
+const titles: Record<string, string> = { inbox: 'Inbox', drafts: 'Drafts', sent: 'Sent', launch: 'Spring launch', research: 'User research' };
+
+/** A mail workspace held by the caller: the mailboxes beside the open one, its reading width capped for prose. */
+export function Workspace() {
+  const current = useLocal<string | null>('current', 'inbox');
+  const title = current.value === null ? undefined : titles[current.value];
+  const archived = useLocal<readonly string[]>('archived', []);
+  const isArchived = current.value !== null && archived.value.includes(current.value);
+  return (
+    // A window's worth of page: in an app it fills the page itself.
+    <view className="h-[360px] overflow-hidden rounded-container border border-text/12">
+      <ListDetail value={current.value} onChange={next => current.set(next)} listLabel="Mail" listWidth={200} contentWidth="prose" data-testid="workspace">
+        <ListDetail.List>
+          <NavList label="Mailboxes" sections={sections} value={current.value ?? ''} onChange={next => current.set(next)} data-testid="workspace-nav" />
+        </ListDetail.List>
+        <ListDetail.Detail title={title} actions={<Button label={isArchived ? 'Archived' : 'Archive all'} isDisabled={isArchived} onClick={() => current.value !== null && archived.set([...archived.value, current.value])} data-testid="archive" />}>
+          <text role="heading" headingLevel={1} className="text-title font-semibold text-text" data-testid="workspace-title">{title}</text>
+          <text className="text-body text-muted">Each pane scrolls on its own. Beside the list the detail keeps a gutter from it; on a phone it takes the screen.</text>
+        </ListDetail.Detail>
+      </ListDetail>
+    </view>
+  );
+}
+
+/** The tile: a list's rows beside the chosen record, drawn at the tile's size. */
 export function Specimen() {
   return (
     <view className="w-full flex-row overflow-hidden rounded-control border border-text/12 bg-canvas">

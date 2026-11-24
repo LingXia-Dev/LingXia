@@ -7545,7 +7545,7 @@
       "gaps": [],
       "limits": [
         "It does not follow the finger; it opens and closes as a whole.",
-        "It is always modal: a panel that stays open beside the page is SplitView."
+        "It is always modal: a panel that stays open beside the page is the aside of a Split."
       ],
       "playground": {
         "props": {
@@ -7579,7 +7579,7 @@
       "related": [
         "Dialog",
         "BottomSheet",
-        "SplitView"
+        "Split"
       ],
       "gallery": {
         "specimen": "Specimen",
@@ -11343,54 +11343,67 @@
       "category": "content",
       "status": "preview",
       "since": "2026-11-18",
-      "summary": "Master-detail list and record view: side-by-side on regular screens, single-pane drill-down on compact",
-      "description": "ListDetail pairs a selectable master list with its detail pane from one component tree. On regular screens (`>= 600 dp`) both panes appear side by side, snap to a vertical fold hinge when one crosses the page, and enter `<SizeClassScope value=\"compact\">` so nested cards stay single-column inside narrow panes. On compact screens (`< 600 dp`) choosing an item drills into the detail pane with a back header, keeps the list mounted so scroll position is preserved, and intercepts system Back (`useBackHandler`) without blocking Home.",
+      "summary": "A list and the detail of the row chosen in it: side by side on a wide screen, one over the other on a phone",
+      "description": "ListDetail lays out a list and the record chosen in it from one tree, driven by one value: the chosen row's id. On a wide screen the list sits at the start, `listWidth` wide, and the detail beside it, capped so lines stay readable; at a fold that crosses the page the list takes the start leaf and the detail the other. On a phone the list fills the screen; choosing a row opens its detail over it, under a way back, and Back returns to the list where it was scrolled. Each pane scrolls on its own, and the detail starts at its top for each new choice. A deep link that sets the value opens the record directly.",
       "keywords": [
         "list detail",
         "master detail",
         "two pane",
-        "drill down",
+        "split view",
+        "sidebar layout",
+        "workspace",
         "adaptive",
-        "foldable",
-        "hinge"
+        "foldable"
       ],
       "props": [
+        {
+          "name": "bind",
+          "type": "Local<string | null>",
+          "required": false,
+          "description": "A View-local cell holding the chosen row's id, `null` while none is."
+        },
         {
           "name": "value",
           "type": "string | null",
           "required": false,
-          "description": "Controlled selected item id (`null`/`undefined` means no selection)."
+          "description": "The chosen row's id, held by the caller: in Logic state, or from a deep link. `null` while none is."
         },
         {
           "name": "onChange",
           "type": "((value: string | null) => void)",
           "required": false,
-          "description": "Called when selection changes (including Back in compact mode)."
-        },
-        {
-          "name": "bind",
-          "type": "Local<string | null>",
-          "required": false,
-          "description": "Uncontrolled local selection cell (alternative to `value` + `onChange`)."
+          "description": "Runs with `null` when Back or the back button leaves the detail on a phone."
         },
         {
           "name": "listLabel",
           "type": "string",
           "required": true,
-          "description": "Accessible label for the list pane (also used as the compact back button label)."
+          "description": "Names the list pane: what it lists, \"Orders\". It is also the back button's label on a phone."
         },
         {
           "name": "listWidth",
           "type": "number",
           "required": false,
-          "description": "Default list pane width in `regular` when no vertical hinge is present.",
+          "description": "The list's width in pt beside the detail, when no fold crosses the page.",
           "default": "360"
+        },
+        {
+          "name": "contentWidth",
+          "type": "ListDetailContentWidth",
+          "required": false,
+          "description": "How wide the detail may grow; past it the surplus falls on the far side.",
+          "values": [
+            "full",
+            "prose",
+            "wide"
+          ],
+          "default": "'wide'"
         },
         {
           "name": "children",
           "type": "Child",
           "required": false,
-          "description": "`<ListDetail.List>` and `<ListDetail.Detail>` children."
+          "description": "`<ListDetail.List>` and `<ListDetail.Detail>`."
         },
         {
           "name": "className",
@@ -11402,7 +11415,7 @@
           "name": "data-testid",
           "type": "string",
           "required": false,
-          "description": ""
+          "description": "On the root; the panes get `<testid>-list` and `<testid>-detail`, the back button `<testid>-back`, the actions `<testid>-actions`."
         }
       ],
       "otherProps": {
@@ -11411,7 +11424,7 @@
             "name": "children",
             "type": "Child",
             "required": false,
-            "description": "The master list content, typically a `<scroll>` or `<List>` of rows."
+            "description": "The list, usually an ItemList of rows; it scrolls on its own."
           },
           {
             "name": "className",
@@ -11425,19 +11438,25 @@
             "name": "title",
             "type": "string",
             "required": false,
-            "description": "Detail header title shown in compact drill-down mode and used as the detail group name."
+            "description": "The chosen record's title, as the detail pane's name; the detail shows its own heading."
           },
           {
             "name": "placeholder",
             "type": "Child",
             "required": false,
-            "description": "Shown on regular screens when no item is selected."
+            "description": "Shown beside the list while nothing is chosen, on a wide screen: what choosing a row will show."
+          },
+          {
+            "name": "actions",
+            "type": "Child",
+            "required": false,
+            "description": "Actions on the chosen record, such as Approve: a row under the detail, outside its scroll, so they stay in view."
           },
           {
             "name": "children",
             "type": "Child",
             "required": false,
-            "description": "The selected item's detail content."
+            "description": "The chosen record's detail; it scrolls on its own and starts at its top for each new choice."
           },
           {
             "name": "className",
@@ -11449,10 +11468,14 @@
       },
       "parts": {
         "root": "view",
-        "listPane": "view",
-        "detailPane": "view",
-        "compactHeader": "view",
-        "compactTitle": "text"
+        "list": "view",
+        "detail": "view",
+        "back": "view",
+        "scroll": "scroll",
+        "listInner": "view",
+        "detailInner": "view",
+        "placeholder": "view",
+        "actions": "view"
       },
       "accessibility": {
         "pattern": null,
@@ -11460,29 +11483,35 @@
         "description": [],
         "states": [],
         "keyboard": [],
-        "contrast": [
-          {
-            "what": "compact detail title",
-            "pair": [
-              "text",
-              "canvas"
-            ],
-            "minimum": "4.5:1"
-          }
-        ],
+        "contrast": [],
         "notes": [
-          "Both panes expose named `group` landmarks so screen readers can jump between list and detail.",
-          "System Back in compact drill-down clears the selection via `useBackHandler` and returns to the list at its prior scroll position."
+          "Each pane is a group named by its label, so a screen reader can move between them; the detail's name follows the chosen record.",
+          "The chosen row says so itself: pass `isSelected` to its Item.",
+          "On a phone Back leaves the detail for the list, as the back button does; it is taken only with `bind`, or `value` with `onChange`."
         ]
       },
       "examples": [
         {
-          "name": "OrdersMasterDetail",
-          "title": "Master-detail order list",
-          "source": "import { useLocal } from '@lingxia/view';\nimport { EmptyState } from '@liulidesign/core/EmptyState';\nimport { Item, ItemList } from '@liulidesign/core/Item';\nimport { ListDetail } from '@liulidesign/core/ListDetail';\n\nconst orders = [\n  { id: 'ord-101', title: 'Order #101', summary: 'Express delivery · Paid' },\n  { id: 'ord-102', title: 'Order #102', summary: 'Warehouse pickup · Processing' },\n  { id: 'ord-103', title: 'Order #103', summary: 'Standard shipping · Shipped' },\n] as const;\n\n/** Master-detail orders list: two-pane on regular (snapping to vertical hinge), drill-down with Back interception on compact. */\nexport function OrdersMasterDetail() {\n  const selected = useLocal<string | null>('selected-order', null);\n  const current = orders.find(o => o.id === selected.value) ?? null;\n\n  return (\n    <view className=\"h-[360px] overflow-hidden rounded-container border border-text/12\">\n      <ListDetail bind={selected} listLabel=\"Orders\" data-testid=\"orders-list-detail\">\n        <ListDetail.List>\n          <scroll className=\"grow\">\n            <ItemList>\n              {orders.map(order => (\n                <Item\n                  key={order.id}\n                  label={order.title}\n                  description={order.summary}\n                  isSelected={selected.value === order.id}\n                  onClick={() => selected.set(order.id)}\n                  data-testid={`order-${order.id}`}\n                />\n              ))}\n            </ItemList>\n          </scroll>\n        </ListDetail.List>\n        <ListDetail.Detail\n          title={current?.title}\n          placeholder={<EmptyState title=\"Select an order\" description=\"Choose an item from the list to inspect its details.\" />}\n        >\n          {current && (\n            <view className=\"p-4 gap-2\" data-testid=\"order-detail-body\">\n              <text className=\"text-title font-semibold text-text\">{current.title}</text>\n              <text className=\"text-body text-muted\">{current.summary}</text>\n            </view>\n          )}\n        </ListDetail.Detail>\n      </ListDetail>\n    </view>\n  );\n}"
+          "name": "Orders",
+          "title": "Orders, with an action on the chosen one",
+          "source": "import { useLocal } from '@lingxia/view';\nimport { Button } from '@liulidesign/core/Button';\nimport { EmptyState } from '@liulidesign/core/EmptyState';\nimport { Item, ItemList } from '@liulidesign/core/Item';\nimport { ListDetail } from '@liulidesign/core/ListDetail';\n\nconst orders = [\n  { id: 'ord-101', title: 'Order #101', summary: 'Express delivery · Paid' },\n  { id: 'ord-102', title: 'Order #102', summary: 'Warehouse pickup · Processing' },\n  { id: 'ord-103', title: 'Order #103', summary: 'Standard shipping · Shipped' },\n] as const;\n\n/** Orders and the one chosen: side by side on a wide screen, the order over the list on a phone, where Back returns. */\nexport function Orders() {\n  const selected = useLocal<string | null>('selected-order', null);\n  const current = orders.find(order => order.id === selected.value) ?? null;\n  const shipped = useLocal<readonly string[]>('shipped', []);\n  const isShipped = current !== null && shipped.value.includes(current.id);\n  return (\n    // A window's worth of page: in an app it fills the page itself.\n    <view className=\"h-[360px] overflow-hidden rounded-container border border-text/12\">\n      <ListDetail bind={selected} listLabel=\"Orders\" data-testid=\"orders\">\n        <ListDetail.List>\n          <ItemList>\n            {orders.map(order => (\n              <Item\n                key={order.id}\n                label={order.title}\n                description={order.summary}\n                isSelected={selected.value === order.id}\n                onClick={() => selected.set(order.id)}\n                data-testid={`order-${order.id}`}\n              />\n            ))}\n          </ItemList>\n        </ListDetail.List>\n        <ListDetail.Detail\n          title={current?.title}\n          placeholder={<EmptyState title=\"Choose an order\" description=\"Its delivery and payment show here.\" />}\n          actions={<Button label={isShipped ? 'Shipped' : 'Mark as shipped'} variant=\"primary\" isDisabled={isShipped} onClick={() => current && shipped.set([...shipped.value, current.id])} data-testid=\"ship\" />}\n        >\n          {current && (\n            <view className=\"gap-2\" data-testid=\"order-detail\">\n              <text role=\"heading\" headingLevel={1} className=\"text-title font-semibold text-text\">{current.title}</text>\n              <text className=\"text-body text-text\">{current.summary}</text>\n              <text className=\"text-footnote text-muted\">Placed on 12 November, paid by card.</text>\n            </view>\n          )}\n        </ListDetail.Detail>\n      </ListDetail>\n    </view>\n  );\n}"
+        },
+        {
+          "name": "Workspace",
+          "title": "A mail workspace held by the caller",
+          "source": "import { useLocal } from '@lingxia/view';\nimport { Button } from '@liulidesign/core/Button';\nimport { NavList } from '@liulidesign/core/NavList';\nimport { ListDetail } from '@liulidesign/core/ListDetail';\n\nconst sections = [\n  { id: 'mail', items: [\n    { value: 'inbox', label: 'Inbox', endText: '12' },\n    { value: 'drafts', label: 'Drafts', endText: '3' },\n    { value: 'sent', label: 'Sent' },\n  ] },\n  { id: 'projects', title: 'Projects', items: [\n    { value: 'launch', label: 'Spring launch' },\n    { value: 'research', label: 'User research' },\n  ] },\n] as const;\nconst titles: Record<string, string> = { inbox: 'Inbox', drafts: 'Drafts', sent: 'Sent', launch: 'Spring launch', research: 'User research' };\n\n/** A mail workspace held by the caller: the mailboxes beside the open one, its reading width capped for prose. */\nexport function Workspace() {\n  const current = useLocal<string | null>('current', 'inbox');\n  const title = current.value === null ? undefined : titles[current.value];\n  const archived = useLocal<readonly string[]>('archived', []);\n  const isArchived = current.value !== null && archived.value.includes(current.value);\n  return (\n    // A window's worth of page: in an app it fills the page itself.\n    <view className=\"h-[360px] overflow-hidden rounded-container border border-text/12\">\n      <ListDetail value={current.value} onChange={next => current.set(next)} listLabel=\"Mail\" listWidth={200} contentWidth=\"prose\" data-testid=\"workspace\">\n        <ListDetail.List>\n          <NavList label=\"Mailboxes\" sections={sections} value={current.value ?? ''} onChange={next => current.set(next)} data-testid=\"workspace-nav\" />\n        </ListDetail.List>\n        <ListDetail.Detail title={title} actions={<Button label={isArchived ? 'Archived' : 'Archive all'} isDisabled={isArchived} onClick={() => current.value !== null && archived.set([...archived.value, current.value])} data-testid=\"archive\" />}>\n          <text role=\"heading\" headingLevel={1} className=\"text-title font-semibold text-text\" data-testid=\"workspace-title\">{title}</text>\n          <text className=\"text-body text-muted\">Each pane scrolls on its own. Beside the list the detail keeps a gutter from it; on a phone it takes the screen.</text>\n        </ListDetail.Detail>\n      </ListDetail>\n    </view>\n  );\n}"
         }
       ],
-      "gaps": [],
+      "gaps": [
+        {
+          "missing": "Dragging the hairline to resize the list",
+          "needs": "Pointer coordinates on an element (`onPointer`)",
+          "today": "A fixed `listWidth`"
+        }
+      ],
+      "limits": [
+        "At a fold, a start leaf narrower than 200 pt still gets a 200 pt list, which then reaches past the crease."
+      ],
       "theming": {
         "classProps": [
           {
@@ -11501,9 +11530,7 @@
             "description": ""
           }
         ],
-        "tokens": [
-          "--text-body"
-        ],
+        "tokens": [],
         "roles": [
           "canvas",
           "text"
@@ -11511,17 +11538,17 @@
       },
       "related": [
         "Split",
-        "SplitView",
-        "Item"
+        "Item",
+        "NavList"
       ],
       "gallery": {
         "specimen": "Specimen",
-        "tagline": "Master and detail",
+        "tagline": "List and detail",
         "order": 17,
         "page": {
-          "lead": "Use ListDetail when choosing an item in a list opens its record: side-by-side on wide and unfolded screens, drill-down with Back support on phones.",
+          "lead": "Use ListDetail when choosing a row in a list opens its record: side by side on a wide or unfolded screen, one over the other on a phone, with Back.",
           "stage": "bare",
-          "hero": "OrdersMasterDetail"
+          "hero": "Orders"
         }
       }
     },
@@ -16826,8 +16853,8 @@
       "category": "content",
       "status": "preview",
       "since": "2026-11-18",
-      "summary": "Primary canvas with a companion aside: side-by-side on regular, upper/lower on tabletop folds, stack or sheet on compact",
-      "description": "Split pairs primary content (video, document, checkout items) with a companion `aside` pane (live chat, comments, inspector, summary). On flat regular screens (`>= 600 dp`) the companion docks at the inline end and snaps to any vertical fold hinge; when a foldable stands half-opened horizontally (`hinge.posture === \"half-opened\"`), primary automatically takes the upper leaf and `aside` takes the lower leaf. On compact screens (`< 600 dp`), `compact=\"stack\"` places `aside` underneath while `compact=\"sheet\"` turns it into a draggable `<BottomSheet>`.",
+      "summary": "The main content and a companion beside it: side by side on a wide screen, one above the other on a half-open fold, stacked or in a sheet on a phone",
+      "description": "Split pairs the main content (a video, a document, a basket) with a companion `aside` (a live chat, comments, an inspector, a summary). On a wide screen the aside sits at the end, `asideWidth` wide, and at a fold that crosses the page it takes the end leaf. On a foldable stood half open like a laptop, the main content takes the upper half and the aside the lower. On a phone, `compact=\"stack\"` puts the aside under the main content, and `compact=\"sheet\"` puts it in a bottom sheet the page opens.",
       "keywords": [
         "split",
         "companion pane",
@@ -16840,36 +16867,10 @@
       ],
       "props": [
         {
-          "name": "children",
-          "type": "Child",
-          "required": false,
-          "description": "Primary content (video, document, canvas)."
-        },
-        {
-          "name": "aside",
-          "type": "Child",
-          "required": true,
-          "description": "Companion aside content (live chat, comments, inspector)."
-        },
-        {
-          "name": "asideWidth",
-          "type": "number",
-          "required": false,
-          "description": "Aside pane width in `regular` flat mode when no vertical hinge is present.",
-          "default": "320"
-        },
-        {
-          "name": "asideTitle",
-          "type": "string",
-          "required": false,
-          "description": "Accessible title for the aside sheet when `compact=\"sheet\"`.",
-          "default": "'Details'"
-        },
-        {
           "name": "compact",
-          "type": "SplitCompactMode",
+          "type": "\"sheet\" | \"stack\"",
           "required": false,
-          "description": "How `aside` presents on `compact` screens: vertical stack or draggable BottomSheet.",
+          "description": "`stack` puts the aside under the main content; `sheet` puts it in a bottom sheet the page opens.",
           "values": [
             "stack",
             "sheet"
@@ -16877,23 +16878,47 @@
           "default": "'stack'"
         },
         {
+          "name": "bind",
+          "type": "Local<boolean>",
+          "required": false,
+          "description": "A View-local cell: whether the sheet is open."
+        },
+        {
           "name": "isOpen",
           "type": "boolean",
           "required": false,
-          "description": "Controlled open state for `compact=\"sheet\"`.",
-          "default": "false"
+          "description": "Whether the sheet is open."
         },
         {
           "name": "onOpenChange",
           "type": "((isOpen: boolean) => void)",
           "required": false,
-          "description": "Called when the compact sheet opens or closes."
+          "description": "Runs with `false` when the sheet is dismissed."
         },
         {
-          "name": "bindOpen",
-          "type": "Local<boolean>",
+          "name": "children",
+          "type": "Child",
           "required": false,
-          "description": "Uncontrolled local open state cell for `compact=\"sheet\"`."
+          "description": "The main content: a video, a document, a canvas."
+        },
+        {
+          "name": "aside",
+          "type": "Child",
+          "required": true,
+          "description": "The companion beside it: a live chat, comments, an inspector."
+        },
+        {
+          "name": "asideLabel",
+          "type": "string",
+          "required": true,
+          "description": "Names the companion for a screen reader in every form, beside, below or in a sheet: \"Live chat\", \"Comments\". Not drawn; start `aside` with its own heading."
+        },
+        {
+          "name": "asideWidth",
+          "type": "number",
+          "required": false,
+          "description": "The aside's width in pt beside the main content, when no fold crosses the page.",
+          "default": "320"
         },
         {
           "name": "className",
@@ -16905,7 +16930,7 @@
           "name": "data-testid",
           "type": "string",
           "required": false,
-          "description": ""
+          "description": "On the root; the panes get `<testid>-primary` and `<testid>-aside`, the sheet `<testid>-sheet`."
         }
       ],
       "otherProps": {},
@@ -16923,20 +16948,20 @@
         "keyboard": [],
         "contrast": [],
         "notes": [
-          "In `compact=\"sheet\"` mode, `asideTitle` names the modal `<BottomSheet>` dialog and Escape or Back closes it.",
-          "Physical hinge spacers are marked `aria-hidden` so assistive navigation skips them."
+          "The aside is a group named by `asideLabel`, so a screen reader can move to it; on a phone its sheet takes the same name, and Escape or Back closes it.",
+          "The strip over a fold's crease is hidden from assistive tech."
         ]
       },
       "examples": [
         {
           "name": "LiveStreamSplit",
-          "title": "Live stream with companion chat",
-          "source": "import { Split } from '@liulidesign/core/Split';\n\n/** Primary + companion split: side-by-side on regular, upper/lower leaves on half-opened tabletop folds, stacked on compact. */\nexport function LiveStreamSplit() {\n  return (\n    <view className=\"h-[320px] overflow-hidden rounded-container border border-text/12\">\n      <Split\n        asideWidth={240}\n        aside={\n          <view className=\"p-3 gap-2\">\n            <text className=\"text-footnote font-semibold text-text\">Live Chat</text>\n            <text className=\"text-caption text-muted\">Messages stay beside video on wide screens and below in compact or tabletop.</text>\n          </view>\n        }\n        data-testid=\"live-split\"\n      >\n        <view className=\"grow items-center justify-center bg-surface-sunken p-4\">\n          <text className=\"text-footnote font-semibold text-text\">Video Canvas</text>\n        </view>\n      </Split>\n    </view>\n  );\n}"
+          "title": "A live stream and its chat",
+          "source": "import { Split } from '@liulidesign/core/Split';\n\n/** Primary + companion split: side-by-side on regular, upper/lower leaves on half-opened tabletop folds, stacked on compact. */\nexport function LiveStreamSplit() {\n  return (\n    <view className=\"h-[320px] overflow-hidden rounded-container border border-text/12\">\n      <Split\n        asideWidth={240}\n        asideLabel=\"Live chat\"\n        aside={\n          <view className=\"p-3 gap-2\">\n            <text role=\"heading\" headingLevel={2} className=\"text-footnote font-semibold text-text\">Live chat</text>\n            <text className=\"text-caption text-muted\">Messages stay beside video on wide screens and below in compact or tabletop.</text>\n          </view>\n        }\n        data-testid=\"live-split\"\n      >\n        <view className=\"grow items-center justify-center bg-surface-sunken p-4\">\n          <text className=\"text-footnote font-semibold text-text\">Video Canvas</text>\n        </view>\n      </Split>\n    </view>\n  );\n}"
         },
         {
           "name": "DocumentSheetSplit",
-          "title": "Document with comments sheet",
-          "source": "import { useLocal, useView } from '@lingxia/view';\nimport { Button } from '@liulidesign/core/Button';\nimport { Split } from '@liulidesign/core/Split';\n\n/** Document + comments sheet: docked aside on regular, draggable BottomSheet on compact. */\nexport function DocumentSheetSplit() {\n  const { env } = useView();\n  const commentsOpen = useLocal('comments-open', false);\n  const isCompact = env.sizeClass !== 'regular';\n  return (\n    <view className=\"h-[320px] overflow-hidden rounded-container border border-text/12\">\n      <Split\n        compact=\"sheet\"\n        bindOpen={commentsOpen}\n        asideTitle=\"Comments\"\n        asideWidth={240}\n        aside={\n          <view className=\"p-3 gap-2\">\n            <text className=\"text-caption text-muted\">Review notes and inline discussion.</text>\n          </view>\n        }\n        data-testid=\"doc-split\"\n      >\n        <view className=\"grow p-4 gap-3\">\n          <text className=\"text-body font-semibold text-text\">Architecture Spec</text>\n          {isCompact && (\n            <Button\n              label=\"Open Comments\"\n              variant=\"secondary\"\n              width=\"content\"\n              onClick={() => commentsOpen.set(true)}\n              data-testid=\"doc-open-comments\"\n            />\n          )}\n        </view>\n      </Split>\n    </view>\n  );\n}"
+          "title": "A document and its comments",
+          "source": "import { useLocal, useView } from '@lingxia/view';\nimport { Button } from '@liulidesign/core/Button';\nimport { Split } from '@liulidesign/core/Split';\n\n/** Document + comments sheet: docked aside on regular, draggable BottomSheet on compact. */\nexport function DocumentSheetSplit() {\n  const { env } = useView();\n  const commentsOpen = useLocal('comments-open', false);\n  const isCompact = env.sizeClass !== 'regular';\n  return (\n    <view className=\"h-[320px] overflow-hidden rounded-container border border-text/12\">\n      <Split\n        compact=\"sheet\"\n        bind={commentsOpen}\n        asideLabel=\"Comments\"\n        asideWidth={240}\n        aside={\n          <view className=\"p-3 gap-2\">\n            <text role=\"heading\" headingLevel={2} className=\"text-footnote font-semibold text-text\">Comments</text>\n            <text className=\"text-caption text-muted\">Review notes and inline discussion.</text>\n          </view>\n        }\n        data-testid=\"doc-split\"\n      >\n        <view className=\"grow p-4 gap-3\">\n          <text className=\"text-body font-semibold text-text\">Architecture Spec</text>\n          {isCompact && (\n            <Button\n              label=\"Comments\"\n              variant=\"secondary\"\n              width=\"content\"\n              onClick={() => commentsOpen.set(true)}\n              data-testid=\"doc-open-comments\"\n            />\n          )}\n        </view>\n      </Split>\n    </view>\n  );\n}"
         }
       ],
       "gaps": [],
@@ -16957,207 +16982,22 @@
       "related": [
         "ListDetail",
         "BottomSheet",
-        "SplitView"
+        "Drawer"
       ],
       "gallery": {
         "specimen": "Specimen",
         "tagline": "Primary and aside",
         "order": 18,
         "page": {
-          "lead": "Use Split for a primary canvas and its companion pane: beside each other on wide screens, upper and lower on tabletop folds, stacked or in a BottomSheet on phones.",
+          "lead": "Use Split for the main content and a companion beside it: side by side on a wide screen, one above the other on a half-open fold, stacked or in a sheet on a phone.",
           "stage": "bare",
           "hero": "LiveStreamSplit",
           "variants": [
             {
               "name": "DocumentSheetSplit",
-              "title": "Secondary aside presented as a BottomSheet on compact"
+              "title": "Comments in a sheet on a phone"
             }
           ]
-        }
-      }
-    },
-    {
-      "name": "SplitView",
-      "import": "@liulidesign/core/SplitView",
-      "exports": [
-        "SplitView"
-      ],
-      "category": "content",
-      "status": "preview",
-      "since": "2026-11-14",
-      "summary": "A sidebar beside its content, each scrolling on its own; one pane at a time on a phone",
-      "description": "SplitView lays out a workspace: a fixed-width sidebar, usually a NavList, and the content it chooses beside it. Both sit on the canvas, parted by a hairline, and each pane scrolls on its own. The content is capped, so lines stay readable, and starts a fixed gutter from the sidebar: it reads from the sidebar outward, and a wider window adds room on the far side. In the compact size class there is no room for two panes, so it shows one: the sidebar, then the content `pane` asks for, under a back button that leads to the sidebar again.",
-      "keywords": [
-        "split view",
-        "sidebar layout",
-        "master detail",
-        "two pane",
-        "workspace",
-        "navigation split",
-        "app shell"
-      ],
-      "props": [
-        {
-          "name": "sidebar",
-          "type": "Child",
-          "required": true,
-          "description": "The sidebar's content, usually a NavList; it scrolls on its own."
-        },
-        {
-          "name": "children",
-          "type": "Child",
-          "required": true,
-          "description": "The content beside it; it scrolls on its own."
-        },
-        {
-          "name": "contentActions",
-          "type": "Child",
-          "required": false,
-          "description": "Actions on what the content shows, such as Approve: a row under the content, outside its scroll, so they stay in view."
-        },
-        {
-          "name": "sidebarLabel",
-          "type": "string",
-          "required": true,
-          "description": "Names the sidebar for assistive tech: what it lists, \"Mailboxes\", \"Components\"."
-        },
-        {
-          "name": "contentLabel",
-          "type": "string",
-          "required": true,
-          "description": "Names the content: the open page's title."
-        },
-        {
-          "name": "pane",
-          "type": "SplitViewPane",
-          "required": false,
-          "description": "On a compact screen one pane shows at a time: which. A regular screen shows both and ignores it.",
-          "values": [
-            "content",
-            "sidebar"
-          ],
-          "default": "'sidebar'"
-        },
-        {
-          "name": "onBack",
-          "type": "(() => void)",
-          "required": false,
-          "description": "On a compact screen: the back button over the content was pressed; show the sidebar."
-        },
-        {
-          "name": "backLabel",
-          "type": "string",
-          "required": false,
-          "description": "The back button's label: where it leads.",
-          "default": "`sidebarLabel`"
-        },
-        {
-          "name": "sidebarWidth",
-          "type": "number",
-          "required": false,
-          "description": "The sidebar's width in px, beside the content.",
-          "default": "264"
-        },
-        {
-          "name": "contentKey",
-          "type": "string",
-          "required": false,
-          "description": "Names what the content shows; a new key starts the content pane at its top, as opening a page does."
-        },
-        {
-          "name": "contentWidth",
-          "type": "SplitViewContentWidth",
-          "required": false,
-          "description": "How wide the content may grow; past it the surplus falls on the far side.",
-          "values": [
-            "full",
-            "prose",
-            "wide"
-          ],
-          "default": "'wide'"
-        },
-        {
-          "name": "className",
-          "type": "string",
-          "required": false,
-          "description": ""
-        },
-        {
-          "name": "data-testid",
-          "type": "string",
-          "required": false,
-          "description": "On the root; the panes get `<testid>-sidebar` and `<testid>-content`."
-        }
-      ],
-      "otherProps": {},
-      "parts": {
-        "root": "view",
-        "sidebar": "view",
-        "content": "view",
-        "pane": "view",
-        "back": "view",
-        "scroll": "scroll",
-        "sidebarInner": "view",
-        "contentInner": "view",
-        "actions": "view"
-      },
-      "accessibility": {
-        "pattern": null,
-        "name": null,
-        "description": [],
-        "states": [],
-        "keyboard": [],
-        "contrast": [],
-        "notes": [
-          "Each pane is a group named by its label, so a screen reader can move between them; the content's name should follow the open page.",
-          "Tab moves from the sidebar into the content in reading order.",
-          "The hairline is decoration; the panes are told apart by their names, not by the line."
-        ]
-      },
-      "examples": [
-        {
-          "name": "Workspace",
-          "title": "A mail workspace",
-          "source": "import { useLocal } from '@lingxia/view';\nimport { NavList } from '@liulidesign/core/NavList';\nimport { SplitView, type SplitViewPane } from '@liulidesign/core/SplitView';\n\nconst sections = [\n  { id: 'mail', items: [\n    { value: 'inbox', label: 'Inbox', endText: '12' },\n    { value: 'drafts', label: 'Drafts', endText: '3' },\n    { value: 'sent', label: 'Sent' },\n  ] },\n  { id: 'projects', title: 'Projects', items: [\n    { value: 'launch', label: 'Spring launch' },\n    { value: 'research', label: 'User research' },\n  ] },\n] as const;\nconst titles: Record<string, string> = { inbox: 'Inbox', drafts: 'Drafts', sent: 'Sent', launch: 'Spring launch', research: 'User research' };\n\n/** A mail workspace: the sidebar chooses a place, the content shows it at once; on a phone the place opens over the list, with a way back. */\nexport function Workspace() {\n  const current = useLocal<string>('current', 'inbox');\n  const pane = useLocal<SplitViewPane>('pane', 'sidebar');\n  const title = titles[current.value] ?? '';\n  return (\n    <view className=\"h-[360px] overflow-hidden rounded-container border border-text/12\">\n      <SplitView\n        sidebarLabel=\"Mail\"\n        contentLabel={title}\n        pane={pane.value}\n        onBack={() => pane.set('sidebar')}\n        sidebarWidth={200}\n        contentKey={current.value}\n        sidebar={<NavList label=\"Mailboxes\" sections={sections} value={current.value} onChange={next => { current.set(next); pane.set('content'); }} data-testid=\"workspace-nav\" />}\n        data-testid=\"workspace\"\n      >\n        <text role=\"heading\" headingLevel={1} className=\"text-title font-semibold text-text\" data-testid=\"workspace-title\">{title}</text>\n        <text className=\"text-body text-muted\">Each pane scrolls on its own. Beside the sidebar the content keeps a gutter from it; on a phone it takes the screen.</text>\n      </SplitView>\n    </view>\n  );\n}"
-        }
-      ],
-      "gaps": [
-        {
-          "missing": "The system back gesture leading from the content to the sidebar on a compact screen",
-          "needs": "A back request from the host",
-          "today": "The back button leads back"
-        },
-        {
-          "missing": "Dragging the hairline to resize the sidebar",
-          "needs": "Pointer coordinates on an element (`onPointer`)",
-          "today": "A fixed `sidebarWidth`"
-        }
-      ],
-      "theming": {
-        "classProps": [
-          {
-            "name": "className",
-            "on": "",
-            "description": ""
-          }
-        ],
-        "tokens": [],
-        "roles": [
-          "canvas",
-          "text"
-        ]
-      },
-      "related": [
-        "NavList"
-      ],
-      "gallery": {
-        "specimen": "Specimen",
-        "tagline": "Sidebar and content",
-        "order": 5,
-        "page": {
-          "lead": "Use a split view for a workspace with a sidebar: both panes on a wide window, one at a time on a phone.",
-          "stage": "bare",
-          "hero": "Workspace"
         }
       }
     },
@@ -21650,40 +21490,41 @@
       "category": "navigation",
       "status": "preview",
       "since": "2026-11-18",
-      "summary": "Custom page header row with leading, centered and trailing slots",
-      "description": "TopBar renders a custom in-page header row (for example, a search bar or segmented filter) with centered title/content and optional leading and trailing slots. The page already keeps its content clear of system bars and host chrome, so the bar adds only its own padding and spans whatever pane it sits in; page code never measures chrome rects.",
+      "summary": "A page's own header row: a way back, its title, a control at the middle, its actions at the end",
+      "description": "TopBar is the header row a page draws itself, for a page that shows no host navigation bar (`navigationStyle: \"custom\"`). It holds a control at the start (a way back, a menu), the page's title as a heading, a control at the middle (a SearchField, a segmented control) and the page's actions at the end. The start and the end share the room left over, so the middle stays at the bar's middle while everything fits; past that the bar wraps. The page already keeps its content clear of system bars and host chrome, so the bar adds only its own padding.",
       "keywords": [
         "top bar",
         "header",
         "navigation bar",
         "toolbar",
         "app bar",
-        "adaptive"
+        "page title",
+        "actions"
       ],
       "props": [
         {
-          "name": "leading",
+          "name": "heading",
           "type": "Child",
           "required": false,
-          "description": "Optional leading control (e.g. back button or filter)."
+          "description": "The page's title: a string is drawn as its heading; a node is drawn as given. It follows `startContent`."
         },
         {
-          "name": "title",
-          "type": "string",
-          "required": false,
-          "description": "Centered title when no custom center children are provided."
-        },
-        {
-          "name": "children",
+          "name": "startContent",
           "type": "Child",
           "required": false,
-          "description": "Custom center content (e.g. a SearchField)."
+          "description": "At the start, before the heading: a way back, a menu."
         },
         {
-          "name": "trailing",
+          "name": "centerContent",
           "type": "Child",
           "required": false,
-          "description": "Optional trailing page actions."
+          "description": "At the bar's middle while everything fits: a SearchField, a segmented control."
+        },
+        {
+          "name": "endContent",
+          "type": "Child",
+          "required": false,
+          "description": "At the end: the page's actions, a row of IconButtons."
         },
         {
           "name": "className",
@@ -21701,10 +21542,10 @@
       "otherProps": {},
       "parts": {
         "root": "view",
-        "leading": "view",
+        "start": "view",
+        "heading": "text",
         "center": "view",
-        "title": "text",
-        "trailing": "view"
+        "end": "view"
       },
       "accessibility": {
         "pattern": null,
@@ -21714,7 +21555,7 @@
         "keyboard": [],
         "contrast": [
           {
-            "what": "title text",
+            "what": "title",
             "pair": [
               "text",
               "surface"
@@ -21723,14 +21564,21 @@
           }
         ],
         "notes": [
-          "Leading and trailing slots are logical, so they swap sides in RTL."
+          "A string `heading` is the page's heading at level 1, so a screen reader can jump to it.",
+          "Start and end follow the page's direction: in right-to-left the way back sits on the right.",
+          "Each action is its own button, reached in order after the heading."
         ]
       },
       "examples": [
         {
-          "name": "StandardTopBar",
-          "title": "Page header with trailing action",
-          "source": "import { Said } from '../example';\nimport { IconButton } from '@liulidesign/core/IconButton';\nimport { TopBar } from '@liulidesign/core/TopBar';\n\n/** A page header with a title and a trailing action. */\nexport function StandardTopBar() {\n  return (\n    <Said>\n      {say => (\n        <view className=\"overflow-hidden rounded-container border border-text/12\">\n          <TopBar\n            title=\"Orders\"\n            trailing={<IconButton icon=\"add\" label=\"New order\" onClick={() => say('Created new order')} />}\n            data-testid=\"orders-topbar\"\n          />\n        </view>\n      )}\n    </Said>\n  );\n}"
+          "name": "Standard",
+          "title": "A way back, the title and actions",
+          "source": "import { Said } from '../example';\nimport { IconButton } from '@liulidesign/core/IconButton';\nimport { TopBar } from '@liulidesign/core/TopBar';\n\n/** A page's header: a way back, its title, and its actions at the end. */\nexport function Standard() {\n  return (\n    <Said>\n      {say => (\n        <view className=\"overflow-hidden rounded-container border border-text/12\">\n          <TopBar\n            startContent={<IconButton icon=\"chevron-start\" label=\"Back\" variant=\"ghost\" onClick={() => say('Went back')} data-testid=\"orders-back\" />}\n            heading=\"Orders\"\n            endContent={[\n              <IconButton key=\"filter\" icon=\"filter\" label=\"Filter\" variant=\"ghost\" onClick={() => say('Opened Filter')} data-testid=\"orders-filter\" />,\n              <IconButton key=\"add\" icon=\"add\" label=\"New order\" variant=\"ghost\" onClick={() => say('Created a new order')} data-testid=\"orders-add\" />,\n            ]}\n            data-testid=\"orders-topbar\"\n          />\n        </view>\n      )}\n    </Said>\n  );\n}"
+        },
+        {
+          "name": "WithSearch",
+          "title": "A search field at the middle",
+          "source": "import { useLocal } from '@lingxia/view';\nimport { unused } from '../example';\nimport { IconButton } from '@liulidesign/core/IconButton';\nimport { SearchField } from '@liulidesign/core/SearchField';\nimport { TopBar } from '@liulidesign/core/TopBar';\n\n/** A search field at the middle of the bar. */\nexport function WithSearch() {\n  const query = useLocal('query', '');\n  return (\n    <view className=\"overflow-hidden rounded-container border border-text/12\">\n      <TopBar\n        heading=\"Mail\"\n        centerContent={<SearchField label=\"Search mail\" isLabelHidden placeholder=\"Search mail\" bind={query} className=\"w-[200px]\" data-testid=\"mail-search\" />}\n        endContent={<IconButton icon=\"add\" label=\"New message\" variant=\"ghost\" onClick={unused} />}\n        data-testid=\"mail-topbar\"\n      />\n    </view>\n  );\n}"
         }
       ],
       "gaps": [],
@@ -21751,16 +21599,17 @@
         ]
       },
       "related": [
+        "IconButton",
         "SearchField",
-        "IconButton"
+        "ListDetail"
       ],
       "gallery": {
         "specimen": "Specimen",
-        "tagline": "Custom page header",
+        "tagline": "A page's own header",
         "order": 9,
         "page": {
-          "lead": "Use TopBar when a page needs custom center header content, such as a search field.",
-          "hero": "StandardTopBar"
+          "lead": "Use TopBar on a page that draws its own header: a way back, its title, a search field or a filter at the middle, its actions at the end.",
+          "hero": "Standard"
         }
       }
     },

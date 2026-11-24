@@ -5,19 +5,20 @@ export const doc: ComponentDoc = {
   category: 'content',
   status: 'preview',
   since: '2026-11-18',
-  summary: 'Primary canvas with a companion aside: side-by-side on regular, upper/lower on tabletop folds, stack or sheet on compact',
+  summary: 'The main content and a companion beside it: side by side on a wide screen, one above the other on a half-open fold, stacked or in a sheet on a phone',
   description:
-    'Split pairs primary content (video, document, checkout items) with a companion `aside` pane (live chat, comments, inspector, summary). ' +
-    'On flat regular screens (`>= 600 dp`) the companion docks at the inline end and snaps to any vertical fold hinge; when a foldable stands half-opened horizontally (`hinge.posture === "half-opened"`), primary automatically takes the upper leaf and `aside` takes the lower leaf. ' +
-    'On compact screens (`< 600 dp`), `compact="stack"` places `aside` underneath while `compact="sheet"` turns it into a draggable `<BottomSheet>`.',
+    'Split pairs the main content (a video, a document, a basket) with a companion `aside` (a live chat, comments, an inspector, a summary). ' +
+    'On a wide screen the aside sits at the end, `asideWidth` wide, and at a fold that crosses the page it takes the end leaf. ' +
+    'On a foldable stood half open like a laptop, the main content takes the upper half and the aside the lower. ' +
+    'On a phone, `compact="stack"` puts the aside under the main content, and `compact="sheet"` puts it in a bottom sheet the page opens.',
   keywords: ['split', 'companion pane', 'supporting pane', 'aside', 'tabletop', 'foldable', 'bottom sheet', 'adaptive'],
   propsType: 'SplitProps',
   recipe: { map: 'splitRecipe', parts: 'splitParts' },
   anatomy: [
-    { part: 'root', required: true, description: 'Row in regular flat mode; column in compact or half-opened tabletop posture.' },
-    { part: 'primary', required: true, description: 'The main content region; scoped by `<SizeClassScope>` to its own resolved column width.' },
-    { part: 'aside', required: true, description: 'The companion pane (or the body of the compact `<BottomSheet>` when `compact="sheet"`).' },
-    { part: 'hingeGap', required: false, description: 'Decorative spacer matching a physical display crease so content never crosses the hinge.' },
+    { part: 'root', required: true, description: 'Fills its page: a row on a wide screen, a column on a phone or a half-open fold.' },
+    { part: 'primary', required: true, description: 'The main content; what is inside it sizes itself to the pane\'s own width, not the screen\'s.' },
+    { part: 'aside', required: true, description: 'The companion, a group named by `asideLabel`; on a phone with `compact="sheet"`, the body of the sheet.' },
+    { part: 'hingeGap', required: false, description: 'An empty strip as wide as the fold\'s crease, so nothing is drawn across it.' },
   ],
   accessibility: {
     pattern: null,
@@ -27,36 +28,37 @@ export const doc: ComponentDoc = {
     keyboard: [],
     contrast: [],
     notes: [
-      'In `compact="sheet"` mode, `asideTitle` names the modal `<BottomSheet>` dialog and Escape or Back closes it.',
-      'Physical hinge spacers are marked `aria-hidden` so assistive navigation skips them.',
+      'The aside is a group named by `asideLabel`, so a screen reader can move to it; on a phone its sheet takes the same name, and Escape or Back closes it.',
+      'The strip over a fold\'s crease is hidden from assistive tech.',
     ],
   },
   guidance: {
     do: [
-      'Use `compact="stack"` when both panes must remain visible simultaneously on phones (such as live video above chat).',
-      'Use `compact="sheet"` with `bindOpen` and a compact-only trigger button when the companion pane is secondary (such as document comments or filters).',
-      'Let `<Split>` fill the page to its bottom edge and span its width: the seam is placed from those edges, so it meets the fold crease whatever sits above.',
+      'Use `compact="stack"` when both must stay in view on a phone, such as a live video above its chat.',
+      'Use `compact="sheet"`, with `bind` or `isOpen` and `onOpenChange`, and a button that shows only on a phone, when the companion can wait (comments, filters).',
+      'Start the companion with its own heading; `asideLabel` names it for a screen reader and the opening button, and is not drawn.',
+      'Let it fill the page to its bottom edge and across its width: the seam is placed from those edges, so it meets the crease whatever sits above.',
     ],
     dont: [
-      'Check `env.platform` or fold posture manually in page code to rearrange video and chat; `<Split>` handles tabletop folds automatically.',
+      'Read the fold or the platform in page code to move the video and the chat; Split does that.',
     ],
   },
   examples: [
-    { name: 'LiveStreamSplit', title: 'Live stream with companion chat' },
-    { name: 'DocumentSheetSplit', title: 'Document with comments sheet' },
+    { name: 'LiveStreamSplit', title: 'A live stream and its chat' },
+    { name: 'DocumentSheetSplit', title: 'A document and its comments' },
   ],
   gaps: [],
-  related: ['ListDetail', 'BottomSheet', 'SplitView'],
+  related: ['ListDetail', 'BottomSheet', 'Drawer'],
   gallery: {
     specimen: 'Specimen',
     tagline: 'Primary and aside',
     order: 18,
     page: {
-      lead: 'Use Split for a primary canvas and its companion pane: beside each other on wide screens, upper and lower on tabletop folds, stacked or in a BottomSheet on phones.',
+      lead: 'Use Split for the main content and a companion beside it: side by side on a wide screen, one above the other on a half-open fold, stacked or in a sheet on a phone.',
       stage: 'bare',
       hero: 'LiveStreamSplit',
       variants: [
-        { name: 'DocumentSheetSplit', title: 'Secondary aside presented as a BottomSheet on compact' },
+        { name: 'DocumentSheetSplit', title: 'Comments in a sheet on a phone' },
       ],
     },
   },

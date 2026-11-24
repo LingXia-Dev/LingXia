@@ -1178,6 +1178,12 @@
   "lab.demo.input.suggestions.try": {
     "defaultMessage": "输入以筛选。方向键移动，回车选择，Esc 关闭；列表贴着输入框打开。"
   },
+  "lab.demo.layout.adaptive.title": {
+    "defaultMessage": "随屏幕变化的布局"
+  },
+  "lab.demo.layout.adaptive.try": {
+    "defaultMessage": "打开每个页面，再把窗口拉宽或缩窄：手机上各部分上下排列，宽屏上并排显示。"
+  },
   "lab.demo.layout.grid.title": {
     "defaultMessage": "网格"
   },
@@ -1915,6 +1921,12 @@
   },
   "lab.label.openFailing": {
     "defaultMessage": "打开出错的页面"
+  },
+  "lab.label.openListDetail": {
+    "defaultMessage": "列表与详情"
+  },
+  "lab.label.openMainCompanion": {
+    "defaultMessage": "主内容与侧栏"
   },
   "lab.label.openPage": {
     "defaultMessage": "打开一个页面"

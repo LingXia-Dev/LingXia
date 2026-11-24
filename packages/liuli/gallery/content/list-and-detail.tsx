@@ -9,11 +9,11 @@ import { EmptyState } from '@liulidesign/core/EmptyState';
 import { Said } from '@liulidesign/core/internal/example';
 import { IconButton } from '@liulidesign/core/IconButton';
 import { Item, ItemList } from '@liulidesign/core/Item';
+import { ListDetail } from '@liulidesign/core/ListDetail';
 import { Markdown } from '@liulidesign/core/Markdown';
 import { MetadataList } from '@liulidesign/core/MetadataList';
 import { SearchField } from '@liulidesign/core/SearchField';
 import { Section } from '@liulidesign/core/Section';
-import { SplitView } from '@liulidesign/core/SplitView';
 
 interface Request {
   id: string;
@@ -148,29 +148,32 @@ export function Content() {
   );
 
   const split = (
-    // SplitView decides the form: both panes on a regular screen, one at a time on a compact one.
-    <SplitView
-      sidebar={list(isWide ? current?.id : undefined)}
-      sidebarLabel="Requests"
-      contentLabel={current?.subject ?? 'Request'}
-      pane={current ? 'content' : 'sidebar'}
-      onBack={() => open.set(null)}
-      sidebarWidth={340}
-      contentKey={current?.id}
+    // ListDetail decides the form: both panes on a wide screen, one at a time on a phone.
+    <ListDetail
+      value={current?.id ?? null}
+      onChange={open.set}
+      listLabel="Requests"
+      listWidth={340}
       contentWidth="prose"
-      // The decision stays in view under a record of any length.
-      contentActions={current ? (
-        <>
-          <Button label="Approve" variant="primary" isDisabled={current.status === 'Approved'} onClick={() => decide('Approved')} data-testid="approve" />
-          <Button label="Ask a question" onClick={() => decide('In review')} data-testid="ask" />
-        </>
-      ) : undefined}
       // On a phone the panes bring the page gutter themselves.
       className={isWide ? undefined : '-mx-4'}
       data-testid="requests"
     >
-      {current ? <Detail request={current} /> : <EmptyState title="No request selected" description="Choose a request from the list." />}
-    </SplitView>
+      <ListDetail.List>{list(isWide ? current?.id : undefined)}</ListDetail.List>
+      <ListDetail.Detail
+        title={current?.subject}
+        placeholder={<EmptyState title="No request selected" description="Choose a request from the list." />}
+        // The decision stays in view under a record of any length.
+        actions={current ? (
+          <>
+            <Button label="Approve" variant="primary" isDisabled={current.status === 'Approved'} onClick={() => decide('Approved')} data-testid="approve" />
+            <Button label="Ask a question" onClick={() => decide('In review')} data-testid="ask" />
+          </>
+        ) : undefined}
+      >
+        {current && <Detail request={current} />}
+      </ListDetail.Detail>
+    </ListDetail>
   );
 
   return (

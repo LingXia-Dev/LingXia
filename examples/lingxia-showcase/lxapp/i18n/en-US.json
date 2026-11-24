@@ -1571,6 +1571,14 @@
     "defaultMessage": "Type to filter. Arrows move, Enter chooses, Escape closes; the list opens against the field.",
     "description": "What to try in a View lab demo."
   },
+  "lab.demo.layout.adaptive.title": {
+    "defaultMessage": "Layouts that follow the screen",
+    "description": "A View lab demo heading."
+  },
+  "lab.demo.layout.adaptive.try": {
+    "defaultMessage": "Open each page, then widen or narrow the window: on a phone the parts stack; on a wide screen they sit side by side.",
+    "description": "What to try in a View lab demo."
+  },
   "lab.demo.layout.grid.title": {
     "defaultMessage": "Grid",
     "description": "A View lab demo heading."
@@ -2553,6 +2561,14 @@
   },
   "lab.label.openFailing": {
     "defaultMessage": "Open the failing page",
+    "description": "A label inside a View lab demo."
+  },
+  "lab.label.openListDetail": {
+    "defaultMessage": "List and detail",
+    "description": "A label inside a View lab demo."
+  },
+  "lab.label.openMainCompanion": {
+    "defaultMessage": "Main and companion",
     "description": "A label inside a View lab demo."
   },
   "lab.label.openPage": {

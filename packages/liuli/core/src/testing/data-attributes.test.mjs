@@ -13,7 +13,6 @@ const unseen = {};
 // Components with no playground entry, given here directly.
 const direct = {
   Link: `import { Link } from ${JSON.stringify(`${core}Link/Link`)};\nconst subject = (props: any) => <Link label="Terms" onClick={() => {}} {...props} />;`,
-  SplitView: `import { SplitView } from ${JSON.stringify(`${core}SplitView/SplitView`)};\nconst subject = (props: any) => <SplitView sidebarLabel="Mailboxes" sidebar={<text>Inbox</text>} {...props}><text>Message</text></SplitView>;`,
   Tour: `import { Tour } from ${JSON.stringify(`${core}Tour/Tour`)};\nconst subject = (props: any) => <view><view data-testid="target"><text>New</text></view><Tour steps={[{ target: 'target', targetLabel: 'The New button', title: 'New', text: 'Starts a note.' }]} value={0} onChange={() => {}} {...props} /></view>;`,
   VideoControls: `import { useVideo } from '@lingxia/view';\nimport { VideoControls } from ${JSON.stringify(`${core}VideoControls/VideoControls`)};\nconst subject = (props: any) => { const player = useVideo('probe'); return <view><video player={player} src="clip.mp4" aria-label="Clip" /><VideoControls player={player} {...props} /></view>; };`,
   VideoPlayer: `import { useVideo } from '@lingxia/view';\nimport { VideoPlayer } from ${JSON.stringify(`${core}VideoPlayer/VideoPlayer`)};\nconst subject = (props: any) => <VideoPlayer player={useVideo('probe')} label="Clip" src="clip.mp4" {...props} />;`,

@@ -604,14 +604,15 @@ export const entries: GalleryEntry[] = [
     "name": "TopBar",
     "page": "top-bar",
     "category": "navigation",
-    "summary": "Custom page header row with leading, centered and trailing slots",
+    "summary": "A page's own header row: a way back, its title, a control at the middle, its actions at the end",
     "keywords": [
       "top bar",
       "header",
       "navigation bar",
       "toolbar",
       "app bar",
-      "adaptive"
+      "page title",
+      "actions"
     ]
   },
   {
@@ -974,21 +975,6 @@ export const entries: GalleryEntry[] = [
     ]
   },
   {
-    "name": "SplitView",
-    "page": "split-view",
-    "category": "content",
-    "summary": "A sidebar beside its content, each scrolling on its own; one pane at a time on a phone",
-    "keywords": [
-      "split view",
-      "sidebar layout",
-      "master detail",
-      "two pane",
-      "workspace",
-      "navigation split",
-      "app shell"
-    ]
-  },
-  {
     "name": "Icon",
     "page": "icon",
     "category": "content",
@@ -1156,22 +1142,23 @@ export const entries: GalleryEntry[] = [
     "name": "ListDetail",
     "page": "list-detail",
     "category": "content",
-    "summary": "Master-detail list and record view: side-by-side on regular screens, single-pane drill-down on compact",
+    "summary": "A list and the detail of the row chosen in it: side by side on a wide screen, one over the other on a phone",
     "keywords": [
       "list detail",
       "master detail",
       "two pane",
-      "drill down",
+      "split view",
+      "sidebar layout",
+      "workspace",
       "adaptive",
-      "foldable",
-      "hinge"
+      "foldable"
     ]
   },
   {
     "name": "Split",
     "page": "split",
     "category": "content",
-    "summary": "Primary canvas with a companion aside: side-by-side on regular, upper/lower on tabletop folds, stack or sheet on compact",
+    "summary": "The main content and a companion beside it: side by side on a wide screen, one above the other on a half-open fold, stacked or in a sheet on a phone",
     "keywords": [
       "split",
       "companion pane",
@@ -1500,7 +1487,7 @@ export const galleryCategories: GalleryCategory[] = [
     "icon": "rows",
     "description": "Cards, rows and tables",
     "page": "category-content",
-    "count": 19
+    "count": 18
   },
   {
     "id": "charts",

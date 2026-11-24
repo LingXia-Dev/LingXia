@@ -46,7 +46,7 @@ that directory.
 ## Components
 
 <!-- components:start -->
-81 components. Import any of them from `@liulidesign/core`, or from its own path; a second component in a row (`AvatarGroup`, `Spinner`) has a path of its own too:
+80 components. Import any of them from `@liulidesign/core`, or from its own path; a second component in a row (`AvatarGroup`, `Spinner`) has a path of its own too:
 
 | Import | Exports | What it is |
 | --- | --- | --- |
@@ -86,7 +86,7 @@ that directory.
 | `@liulidesign/core/Link` | Link | A link among the words of a sentence |
 | `@liulidesign/core/PageControl` | PageControl | Dots for which page of a few is in view |
 | `@liulidesign/core/TreeList` | TreeList | Things inside things, opened in place |
-| `@liulidesign/core/TopBar` | TopBar | Custom page header row with leading, centered and trailing slots |
+| `@liulidesign/core/TopBar` | TopBar | A page's own header row: a way back, its title, a control at the middle, its actions at the end |
 | `@liulidesign/core/Badge` | Badge | A short status or category label in a tinted pill |
 | `@liulidesign/core/ProgressBar` | ProgressBar, Spinner | How much of a task is done, or a spinner while the amount is unknown |
 | `@liulidesign/core/Banner` | Banner | A message in the page about the page or the account, that stays until resolved |
@@ -110,7 +110,6 @@ that directory.
 | `@liulidesign/core/Item` | Item, ItemList | One row of a list: a label, a second line, and content at either end |
 | `@liulidesign/core/Details` | Details, DetailsGroup | A summary row that shows and hides the content under it |
 | `@liulidesign/core/Avatar` | Avatar, AvatarGroup | A person or team as a circle: their picture, or their initials |
-| `@liulidesign/core/SplitView` | SplitView | A sidebar beside its content, each scrolling on its own; one pane at a time on a phone |
 | `@liulidesign/core/Icon` | iconPaths, useIcon, Icon, IconSetProvider | An icon by what it means, from a set an app or theme can replace |
 | `@liulidesign/core/Table` | Table | Records in rows and fields in columns, under headings that stay in view |
 | `@liulidesign/core/Markdown` | Markdown | Markdown text drawn as Liuli type: a message, a note, a help page |
@@ -122,8 +121,8 @@ that directory.
 | `@liulidesign/core/Code` | Code, CodeBlock | Code as it was written, in a sentence or as a block |
 | `@liulidesign/core/Timestamp` | formatTimestamp, Timestamp | When something happened, in the words people use |
 | `@liulidesign/core/MessageBubble` | MessageBubble, MessageReasoning | One message of a conversation |
-| `@liulidesign/core/ListDetail` | ListDetailList, ListDetailDetail, ListDetail | Master-detail list and record view: side-by-side on regular screens, single-pane drill-down on compact |
-| `@liulidesign/core/Split` | Split | Primary canvas with a companion aside: side-by-side on regular, upper/lower on tabletop folds, stack or sheet on compact |
+| `@liulidesign/core/ListDetail` | ListDetailList, ListDetailDetail, ListDetail | A list and the detail of the row chosen in it: side by side on a wide screen, one over the other on a phone |
+| `@liulidesign/core/Split` | Split | The main content and a companion beside it: side by side on a wide screen, one above the other on a half-open fold, stacked or in a sheet on a phone |
 | `@liulidesign/core/QRCode` | fitsQRCode, QRCode | A code a phone camera reads |
 | `@liulidesign/core/VideoPlayer` | VideoPlayer | A video with its controls, over the picture or under it, and full screen |
 | `@liulidesign/core/VideoControls` | VideoControls | Play, seek, mute, speed, quality and full screen for a useVideo player |
