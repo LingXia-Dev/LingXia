@@ -17,6 +17,11 @@ const hexColor = value => typeof value === 'string' && /^#(?:[0-9a-f]{3}|[0-9a-f
 const pathKeys = ['key', 'd', 'fill', 'stroke', 'strokeWidth', 'strokeDasharray', 'strokeDashoffset', 'strokeLinecap', 'strokeLinejoin', 'transform', 'vectorEffect', 'pathLength'];
 const gradientKeys = ['type', 'x1', 'y1', 'x2', 'y2', 'cx', 'cy', 'r', 'fx', 'fy', 'fr', 'from', 'units', 'spread', 'stops'];
 const plain = value => value && typeof value === 'object' && !Array.isArray(value);
+const show = value => {
+  if (typeof value === 'number') return String(value);
+  try { return (JSON.stringify(value) ?? typeof value).slice(0, 40); }
+  catch { return typeof value; }
+};
 
 function vectorGradient(id, gradient) {
   const invalid = () => { throw Error(`UI_VECTOR: invalid gradient ${id}`); };
@@ -38,15 +43,17 @@ function vectorGradient(id, gradient) {
 export function vector(props, fit) {
   const box = props.viewBox ?? [0, 0, 24, 24];
   if (!Array.isArray(box) || box.length !== 4 || box.some(v => !finiteWithin(v, 16384)) || box[2] < 1 / 64 || box[3] < 1 / 64)
-    throw Error('UI_VECTOR: invalid viewBox');
-  if (!Array.isArray(props.paths) || !props.paths.length || props.paths.length > 32) throw Error('UI_VECTOR: invalid paths');
+    throw Error(`UI_VECTOR: viewBox takes [x, y, width, height] with finite numbers within ±16384 and width/height >= 1/64; got ${show(box)}`);
+  if (!Array.isArray(props.paths) || !props.paths.length || props.paths.length > 32)
+    throw Error(`UI_VECTOR: paths takes 1..32 path objects; got ${show(props.paths)}`);
   const gradients = props.gradients ?? {};
   if (!plain(gradients) || Object.keys(gradients).length > 8) throw Error('UI_VECTOR: at most 8 gradients');
   for (const [id, gradient] of Object.entries(gradients)) vectorGradient(id, gradient);
   const keys = new Set();
   for (const path of props.paths) {
     if (!plain(path) || Object.keys(path).some(k => !pathKeys.includes(k)) ||
-        typeof path.d !== 'string' || !path.d.length || path.d.length > limits.vectorPathBytes) throw Error('UI_VECTOR: invalid path');
+        typeof path.d !== 'string' || !path.d.length || path.d.length > limits.vectorPathBytes)
+      throw Error(`UI_VECTOR: path takes an object with non-empty d (<= ${limits.vectorPathBytes} chars) and valid path props; got ${show(path)}`);
     // A segment takes at least one character, so a short `d` is within the limit uncounted.
     const segments = path.d.length > limits.vectorPathSegments && pathSegmentsProblem(pathSegments(path.d));
     if (segments) throw Error(segments);
@@ -54,7 +61,7 @@ export function vector(props, fit) {
       const value = path[key];
       if (value === undefined || value === 'none' || value === 'currentColor' || hexColor(value) || isRole(value)) continue;
       const id = typeof value === 'string' && value.match(/^url\(#(.+)\)$/)?.[1];
-      if (!id) throw Error('UI_VECTOR: invalid color');
+      if (!id) throw Error(`UI_VECTOR: ${key} takes 'none', 'currentColor', a hex color, a theme role or url(#id); got ${show(value)}`);
       if (!has(gradients, id)) throw Error(`UI_VECTOR: unknown gradient ${id}`);
     }
     if (path.vectorEffect !== undefined && !['none', 'non-scaling-stroke'].includes(path.vectorEffect)) throw Error('UI_VECTOR: invalid vector effect');
@@ -66,11 +73,13 @@ export function vector(props, fit) {
     if (path.strokeLinejoin !== undefined && !['miter', 'round', 'bevel'].includes(path.strokeLinejoin)) throw Error('UI_VECTOR: invalid stroke-linejoin');
     if (path.strokeDashoffset !== undefined && !finiteWithin(path.strokeDashoffset, 16384)) throw Error('UI_VECTOR: invalid dash offset');
     if (path.transform !== undefined && (typeof path.transform !== 'string' || path.transform.length > 512 ||
-        !/^\s*(?:(?:matrix|translate|scale|rotate|skewX|skewY)\s*\([^()]*\)[\s,]*)+$/.test(path.transform))) throw Error('UI_VECTOR: invalid transform');
+        !/^\s*(?:(?:matrix|translate|scale|rotate|skewX|skewY)\s*\([^()]*\)[\s,]*)+$/.test(path.transform)))
+      throw Error(`UI_VECTOR: transform takes SVG transform functions (matrix/translate/scale/rotate/skewX/skewY) up to 512 chars; got ${show(path.transform)}`);
     if (path.strokeDasharray !== undefined && (!Array.isArray(path.strokeDasharray) || path.strokeDasharray.length > 16 ||
-        path.strokeDasharray.some(v => typeof v !== 'number' || !Number.isFinite(v) || v < 1 / 64 || v > 1024))) throw Error('UI_VECTOR: invalid dash pattern');
+        path.strokeDasharray.some(v => typeof v !== 'number' || !Number.isFinite(v) || v < 1 / 64 || v > 1024)))
+      throw Error(`UI_VECTOR: strokeDasharray takes up to 16 numbers from 1/64 to 1024; got ${show(path.strokeDasharray)}`);
     if (path.strokeWidth !== undefined && (typeof path.strokeWidth !== 'number' || !Number.isFinite(path.strokeWidth) || path.strokeWidth < 0 || path.strokeWidth > 1024))
-      throw Error('UI_VECTOR: invalid stroke width');
+      throw Error(`UI_VECTOR: strokeWidth takes a number from 0 to 1024; got ${show(path.strokeWidth)}`);
   }
   const source = JSON.stringify({ viewBox: box, paths: props.paths, ...(Object.keys(gradients).length ? { gradients } : {}), ...(fit === undefined ? {} : { fit }) });
   if (source.length > limits.vectorSourceBytes) throw Error('UI_VECTOR: source too large');
