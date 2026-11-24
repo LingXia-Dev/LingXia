@@ -1,5 +1,40 @@
 import Foundation
 
+struct IconCacheKey: Hashable {
+    let name: String
+    let width: CGFloat
+    let height: CGFloat
+    let scale: CGFloat
+
+    init(name: String, size: CGSize?, scale: CGFloat) {
+        self.name = name
+        width = size?.width ?? 0
+        height = size?.height ?? 0
+        self.scale = scale
+    }
+}
+
+/// Icons keyed by name, size and scale. Template images take their tint at draw time, so
+/// appearance is not part of the key.
+final class IconCache<Image: AnyObject>: @unchecked Sendable {
+    private let lock = NSLock()
+    private var images: [IconCacheKey: Image] = [:]
+
+    func image(for key: IconCacheKey) -> Image? {
+        lock.lock()
+        defer { lock.unlock() }
+        return images[key]
+    }
+
+    func store(_ image: Image, for key: IconCacheKey) -> Image {
+        lock.lock()
+        defer { lock.unlock() }
+        if let existing = images[key] { return existing }
+        images[key] = image
+        return image
+    }
+}
+
 #if os(iOS)
 import UIKit
 
@@ -7,19 +42,25 @@ import UIKit
 enum LxIcon {
     /// Load control icon by name from SDK bundle, optionally scaled to a specific size
     /// Icons are stored as PDF files generated from SVG sources
+    /// The same request returns the same image object, so setting an unchanged icon on a view
+    /// is a no-op; a fresh render each call would invalidate its layout every pass.
     static func image(named name: String, size: CGSize? = nil) -> UIImage? {
+        let key = IconCacheKey(name: name, size: size, scale: UIScreen.main.scale)
+        if let cached = cache.image(for: key) { return cached }
         guard let baseImage = loadImage(named: name) else { return nil }
 
         // If no size specified, return the base image
-        guard let targetSize = size else { return baseImage }
+        guard let targetSize = size else { return cache.store(baseImage, for: key) }
 
         // Scale to target size
         let renderer = UIGraphicsImageRenderer(size: targetSize)
         let scaledImage = renderer.image { _ in
             baseImage.draw(in: CGRect(origin: .zero, size: targetSize))
         }
-        return scaledImage.withRenderingMode(.alwaysTemplate)
+        return cache.store(scaledImage.withRenderingMode(.alwaysTemplate), for: key)
     }
+
+    private static let cache = IconCache<UIImage>()
 
     private static func loadImage(named name: String) -> UIImage? {
         #if SWIFT_PACKAGE
@@ -77,20 +118,27 @@ import AppKit
 enum LxIcon {
     /// Load control icon by name from SDK bundle, optionally scaled to a specific size
     /// Icons are stored as PDF files generated from SVG sources
+    /// The same request returns the same image object, so setting an unchanged icon on a view
+    /// is a no-op. Callers must not resize or retint the returned image.
     static func image(named name: String, size: CGSize? = nil) -> NSImage? {
+        let targetSize = normalizedSize(size)
+        let key = IconCacheKey(name: name, size: targetSize, scale: 1)
+        if let cached = cache.image(for: key) { return cached }
         guard let baseImage = loadImage(named: name) else { return nil }
-        guard let targetSize = normalizedSize(size) else { return baseImage }
+        guard let targetSize else { return cache.store(baseImage, for: key) }
 
         if let copiedImage = baseImage.copy() as? NSImage {
             copiedImage.size = targetSize
             copiedImage.isTemplate = true
-            return copiedImage
+            return cache.store(copiedImage, for: key)
         }
 
         baseImage.size = targetSize
         baseImage.isTemplate = true
-        return baseImage
+        return cache.store(baseImage, for: key)
     }
+
+    private static let cache = IconCache<NSImage>()
 
     private static func loadImage(named name: String) -> NSImage? {
         #if SWIFT_PACKAGE

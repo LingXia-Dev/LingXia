@@ -461,7 +461,9 @@ private final class AsideSlotTabItemView: NSView {
         let trailingInset = ChromeTabMetrics.tabFoot * 0.5 + 4
         // The icon-only form still keeps the title button (empty) as the
         // tab's click and drag target.
-        titleButton.title = fit == .icon ? "" : title
+        // Runs from the strip's layout pass: an unchanged title must not touch the button.
+        let shownTitle = fit == .icon ? "" : title
+        if titleButton.title != shownTitle { titleButton.title = shownTitle }
         moreButton.isHidden = fit != .full || !menuEnabled
         moreButton.alphaValue = (isHeader || hovered) ? 1 : 0
         switch fit {
