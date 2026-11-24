@@ -296,7 +296,7 @@ extension LxApp {
         // Render-only: the graph commit discards the result, so hop instead of
         // blocking the caller (often a JS worker) on the main queue.
         dispatchOnMain {
-            layoutPasses.submit((windowIdString, json)) { windowId, json in
+            layoutPasses.submit((windowIdString, json), for: windowIdString) { windowId, json in
                 #if os(macOS)
                 _ = LxAppLayoutReconciler.reconcile(windowId: windowId, json: json)
                 #elseif os(iOS)
@@ -309,7 +309,28 @@ extension LxApp {
         return true
     }
 
-    @MainActor private static let layoutPasses = LayoutPassQueue<(String, String)>()
+    @MainActor private static let layoutPasses = LayoutPassQueue<String, (String, String)>(
+        same: { planBody($0.1) == planBody($1.1) },
+        onBound: { previous, next in
+            LXLog.error(
+                "layout passes kept committing new plans for window \(next.0); deferring the rest: \(planDifference(previous.1, next.1))",
+                category: "LxAppFFI")
+        })
+
+    /// A plan without its sequence: two commits of the same layout compare equal.
+    private static func planBody(_ json: String) -> String {
+        json.replacingOccurrences(of: #""sequence":\s*\d+,?"#, with: "", options: .regularExpression)
+    }
+
+    /// Where two plans first differ, with a little context from each.
+    private static func planDifference(_ a: String, _ b: String) -> String {
+        let a = Array(planBody(a)), b = Array(planBody(b))
+        let common = zip(a, b).prefix { $0 == $1 }.count
+        guard common < max(a.count, b.count) else { return "identical apart from sequence" }
+        let start = max(0, common - 40)
+        let slice = { (chars: [Character]) in String(chars[min(start, chars.count)..<min(common + 80, chars.count)]) }
+        return "at \(common): …\(slice(a))… → …\(slice(b))…"
+    }
 
     /// Show or hide a host-declared top-level surface (e.g. the AI-chat panel or
     /// terminal). Empty `role` / `edge` values keep declaration defaults;
