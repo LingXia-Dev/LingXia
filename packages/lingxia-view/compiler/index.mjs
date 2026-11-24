@@ -16,7 +16,7 @@ import { compileUtilities, tailwindWarm } from './tailwind.mjs';
 import { nearestSupported } from './suggest.mjs';
 import { loadStylesheet, validateTokens, fontFaces } from './stylesheets.mjs';
 import { checkerOptions, viewTsconfig } from './tsconfig.mjs';
-import { authored, packageOf, sourceLabel } from './packages.mjs';
+import { authored, packageOf, sourceLabel, peerTokenPackages } from './packages.mjs';
 import { existsSync, statSync } from 'node:fs';
 import { colorProblem, seriesProblem } from '../src/style/color.js';
 import { readFile, mkdir, writeFile, realpath, rename, rm } from 'node:fs/promises';
@@ -468,7 +468,7 @@ export async function buildPages(root, pages, output, catalogs = {}, { dev = fal
     const catalog = catalogs[page] ?? { __names: [], __modes: {} };
     if (!Array.isArray(catalog.__names) || catalog.__names.some(name => typeof name !== 'string' || !['call', 'stream'].includes(catalog.__modes?.[name])))
       throw Error(`${page}: invalid GPU action metadata`);
-    const candidates = new Set(), themes = new Map(), sourceFiles = [], problems = [], fonts = [], tokenPackages = new Map();
+    const candidates = new Set(), themes = new Map(), sourceFiles = [], problems = [], fonts = [], bundledPackages = new Map();
     let bundled;
     try {
       bundled = await build({
@@ -499,7 +499,7 @@ export async function buildPages(root, pages, output, catalogs = {}, { dev = fal
             if (path.toLowerCase().startsWith(runtimeRoot) || path === compiledMessages || dirname(path) === dirname(compiledMessages)) return;
             if (!authored(root, path)) {
               const owner = packageOf(path);
-              if (owner?.tokens !== undefined) tokenPackages.set(owner.name, owner);
+              if (owner) bundledPackages.set(owner.name, owner);
             }
             const contents = await readFile(path, 'utf8');
             const loader = path.endsWith('.tsx') ? 'tsx' : path.endsWith('.ts') ? 'ts' : path.endsWith('.jsx') ? 'jsx' : 'js';
@@ -517,6 +517,7 @@ export async function buildPages(root, pages, output, catalogs = {}, { dev = fal
       if (!problems.length) throw error;
     }
     if (themes.size > 1) problems.push(`${page}: UI_CSS: import one shared @theme stylesheet per page`);
+    const tokenPackages = peerTokenPackages(root, bundledPackages, problems);
     // Packages' tokens sit below the app's own, so the app's stylesheet overrides any of them.
     const theme = [...await packageTokens(root, tokenPackages, problems), ...themes.values()].join('\n');
     warm &&= tailwindWarm(theme);
