@@ -87,7 +87,22 @@ test('an action payload follows JSON for undefined and names what is not JSON',(
   channels.open('ticker',{symbol:'MSFT',since:undefined}).catch?.(()=>{});
   assert.deepEqual(JSON.parse(takeActionRequests()[0]).params,{symbol:'MSFT'});
   assert.throws(()=>channels.open('ticker',{at:1n}),{message:'UI_CHANNEL: ticker payload field at is not JSON (bigint)'});
+  class Custom {}
+  assert.throws(()=>actions.reserve({s:Symbol('x')}),{message:'UI_ACTION: reserve payload field s is not JSON (symbol)'});
+  assert.throws(()=>actions.reserve({s:new Set()}),{message:'UI_ACTION: reserve payload field s is not JSON (Set)'});
+  assert.throws(()=>actions.reserve({n:Infinity}),{message:'UI_ACTION: reserve payload field n is not JSON (Infinity)'});
+  assert.throws(()=>actions.reserve({c:new Custom()}),{message:'UI_ACTION: reserve payload field c is not JSON (Custom)'});
   assert.deepEqual(takeActionRequests(),[]);reset();
+});
+test('an async handler whose action payload is refused surfaces UI_ACTION',async()=>{
+  configureActions({__names:['reserve'],__modes:{reserve:'call'}});setLoudFailures(false);
+  const flush=async()=>{for(let i=0;i<4;i++) await Promise.resolve();};
+  try {
+    const {actions}=createView({},{});
+    const node=describe(()=>h('button',{'data-testid':'go',onClick:async()=>{await actions.reserve({when:new Date(0)});}},'go'),{});
+    assert.equal(dispatch(node[7]),true);await flush();
+    assert.deepEqual(takeActionErrors(),['UI_HANDLER: onClick of <button data-testid="go"> rejected: UI_ACTION: reserve payload field when is not JSON (Date)']);
+  } finally { setLoudFailures(true);reset(); }
 });
 test('quiet, a failed handler is logged with its site and the page carries on',async()=>{
   configureActions(catalog);setLoudFailures(false);
