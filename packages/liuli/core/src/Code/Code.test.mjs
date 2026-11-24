@@ -1,6 +1,11 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { renderExample } from '../testing/harness.mjs';
+import { renderExample, renderPage } from '../testing/harness.mjs';
+import { palette, ratio } from '../../scripts/contrast.mjs';
+
+/** A text's runs as [text, colour], colour null for plain text. */
+const runs = node => (node.children.length ? node.children : [node]).map(child => [child.text, child.tag === 'span' ? child.props.color ?? null : null]);
+const textOf = node => runs(node).map(([text]) => text).join('');
 
 test('Command: a named group with its title, the app\'s copy action, and the code unwrapped in a sideways scroll', async () => {
   const screen = await renderExample('Code/Code', 'Command');
@@ -29,8 +34,8 @@ test('Numbered: numbers from the start line beside one selectable text, marked l
   const lines = block.children[1].children[0];
   const [tints, gutter, code] = lines.children;
   assert.equal(gutter.props.accessibilityHidden, 1, 'numbers are not read');
-  assert.equal(gutter.children.map(span => span.text.trim()).join(','), '41,42,43,44,45');
-  assert.equal(code.children.map(span => span.text).join(''), 'export function total(items: readonly Item[]) {\n  let sum = 0;\n  for (const item of items) sum += item.price * item.count;\n  return Math.round(sum * 100) / 100;\n}');
+  assert.equal(textOf(gutter), '41\n42\n43\n44\n45', 'one run while the lines are alike');
+  assert.equal(textOf(code), 'export function total(items: readonly Item[]) {\n  let sum = 0;\n  for (const item of items) sum += item.price * item.count;\n  return Math.round(sum * 100) / 100;\n}');
   assert.equal(tints.children.length, 5);
   assert.deepEqual(tints.children.map(row => row.props.background ?? null), [null, null, 'accent-soft', 'accent-soft', null]);
 });
@@ -38,9 +43,11 @@ test('Numbered: numbers from the start line beside one selectable text, marked l
 test('Diff: signs in their own column, the code without them, headers quiet', async () => {
   const block = (await renderExample('Code/Code', 'Diff')).getByTestId('diff');
   const [tints, signs, code] = block.children[1].children[0].children;
-  assert.equal(signs.children.map(span => span.text.replace('\n', '')).join(''), '     -+ ');
-  assert.equal(code.children[3].text, '  let sum = 0;\n');
-  assert.equal(code.children[6].text, '    sum += item.price * item.count;\n');
+  assert.equal(textOf(signs).replaceAll('\n', ''), '     -+ ');
+  const shown = textOf(code).split('\n');
+  assert.deepEqual([shown[0], shown[2], shown[3], shown[6]], ['--- a/cart.ts', '@@ -42,4 +42,4 @@', '  let sum = 0;', '    sum += item.price * item.count;'], 'headers whole, code lines without their sign');
+  assert.deepEqual(runs(code).slice(0, 1), [['--- a/cart.ts\n+++ b/cart.ts\n@@ -42,4 +42,4 @@\n', 'text-muted']], 'headers quiet, not read as code');
+  assert.ok(runs(code).some(([text, color]) => text === 'let' && color === 'accent'), 'the code is coloured by its language');
   assert.deepEqual(tints.children.map(row => row.props.background ?? null), ['text/6', 'text/6', 'text/6', null, null, 'danger-soft', 'success-soft', null]);
 });
 
@@ -48,4 +55,48 @@ test('diffKinds: a file header only before a hunk; a lone "---" line is a remova
   const { diffKinds } = await import('./diff.ts');
   assert.deepEqual(diffKinds(['--- a', '+++ b', '@@ -1 +1 @@', '-x', '+y', ' z']), ['header', 'header', 'header', 'removed', 'added', 'context']);
   assert.deepEqual(diffKinds(['--- not a header', 'y']), ['removed', 'context']);
+});
+
+test('Numbered: keywords, numbers and types take their colours; names and punctuation stay the text colour', async () => {
+  const block = (await renderExample('Code/Code', 'Numbered')).getByTestId('numbered');
+  const code = block.children[1].children[0].children[2];
+  const colored = runs(code).filter(([, color]) => color !== null);
+  assert.deepEqual(colored.slice(0, 6), [['export', 'accent'], ['function', 'accent'], ['readonly', 'accent'], ['Item', 'chart-7'], ['let', 'accent'], ['0', 'chart-4']]);
+  assert.ok(runs(code).some(([text, color]) => text.includes('total(items: ') && color === null));
+});
+
+test('an unknown language, or none, draws the code plain in one run', async () => {
+  for (const language of ['klingon', undefined]) {
+    const screen = await renderPage(`
+      import { CodeBlock } from '@liulidesign/core/Code';
+      export function render() { return <page><CodeBlock code={'const a = "x";\\nreturn a;'} ${language ? `language="${language}"` : ''} label="Sample" data-testid="block" /></page>; }
+    `);
+    const text = screen.getByTestId('block').children[0].children[0];
+    assert.deepEqual(runs(text), [['const a = "x";\nreturn a;', null]], String(language));
+  }
+});
+
+test('code past a text\'s 256 runs is several texts, stacked, together the whole code', async () => {
+  const code = Array.from({ length: 400 }, (_, index) => `const v${index} = ${index}; // n`).join('\n');
+  const screen = await renderPage(`
+    import { CodeBlock } from '@liulidesign/core/Code';
+    const code = ${JSON.stringify(code)};
+    export function render() { return <page><CodeBlock code={code} language="ts" hasLineNumbers label="Long" data-testid="block" /></page>; }
+  `);
+  const column = screen.getByTestId('block').children[0].children[0].children[2];
+  assert.equal(column.tag, 'column');
+  assert.ok(column.children.length > 1 && column.children.every(text => text.tag === 'text' && text.children.length <= 256), `${column.children.length} texts`);
+  assert.ok(column.children.every(text => !textOf(text).endsWith('\n')), 'no text ends on a blank line');
+  assert.equal(column.children.map(textOf).join('\n'), code);
+});
+
+test('every syntax colour reads at 4.5:1 on the block and on each line tint, light and dark', async () => {
+  const { roles } = await palette();
+  const grounds = [{ pair: ['', 'text/6'], over: 'surface' }, { pair: ['', 'success-soft'] }, { pair: ['', 'danger-soft'] }, { pair: ['', 'accent-soft'] }];
+  for (const appearance of ['light', 'dark'])
+    for (const role of ['accent', 'chart-5', 'chart-4', 'chart-7', 'text-muted'])
+      for (const ground of grounds) {
+        const { value } = ratio(roles[appearance], { ...ground, pair: [role, ground.pair[1]] });
+        assert.ok(value >= 4.5, `${role} on ${ground.pair[1]}, ${appearance}: ${value.toFixed(2)}`);
+      }
 });

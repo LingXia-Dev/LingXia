@@ -4281,7 +4281,7 @@
       "status": "preview",
       "since": "2026-11-15",
       "summary": "Code as it was written, in a sentence or as a block",
-      "description": "Code is a run inside a sentence, in the fixed-width face on a tint: a file name, a key, a value to type exactly. CodeBlock keeps lines of code as they were written: it never wraps a line, it scrolls sideways, and it can carry a title and one action, usually copy. It can number its lines, mark some of them, and show a change as a unified diff. Neither colours the code by language.",
+      "description": "Code is a run inside a sentence, in the fixed-width face on a tint: a file name, a key, a value to type exactly. CodeBlock keeps lines of code as they were written: it never wraps a line, it scrolls sideways, and it can carry a title and one action, usually copy. It can number its lines, mark some of them, show a change as a unified diff, and colour the code by its `language`: keywords, strings, numbers, types and comments, the rest in the text colour.",
       "keywords": [
         "code",
         "code block",
@@ -4309,6 +4309,12 @@
           "type": "string",
           "required": false,
           "description": "Shown over the code: a file name, a language."
+        },
+        {
+          "name": "language",
+          "type": "string",
+          "required": false,
+          "description": "Colours the code by its language's grammar: `ts`, `tsx`, `js`, `json`, `css`, `html`, `xml`, `python`, `bash`, `yaml`, `toml`, `rust`, `kotlin`, `swift`, `java`, `go`, `c`, `cpp` or `sql`, by name or file extension. Any other stays plain."
         },
         {
           "name": "action",
@@ -4378,7 +4384,9 @@
         "signs": "text",
         "mark": "span",
         "headerLine": "span",
-        "text": "text"
+        "text": "text",
+        "syntax": "span",
+        "chunks": "view"
       },
       "accessibility": {
         "pattern": null,
@@ -4462,6 +4470,42 @@
             ],
             "over": "surface",
             "minimum": "4.5:1"
+          },
+          {
+            "what": "a keyword",
+            "pair": [
+              "accent",
+              "text/6"
+            ],
+            "over": "surface",
+            "minimum": "4.5:1"
+          },
+          {
+            "what": "a string",
+            "pair": [
+              "chart-5",
+              "text/6"
+            ],
+            "over": "surface",
+            "minimum": "4.5:1"
+          },
+          {
+            "what": "a number or literal",
+            "pair": [
+              "chart-4",
+              "text/6"
+            ],
+            "over": "surface",
+            "minimum": "4.5:1"
+          },
+          {
+            "what": "a type",
+            "pair": [
+              "chart-7",
+              "text/6"
+            ],
+            "over": "surface",
+            "minimum": "4.5:1"
           }
         ],
         "notes": [
@@ -4476,22 +4520,22 @@
         {
           "name": "Command",
           "title": "A command to copy",
-          "source": "import { useLocal } from '@lingxia/view';\nimport { IconButton } from '@liulidesign/core/IconButton';\nimport { CodeBlock } from '@liulidesign/core/Code';\n\nconst install = `npm install @liulidesign/core\nnpx lingxia dev --platform ios`;\n\n/** A command to copy: the title says what it is, and the app copies it. */\nexport function Command() {\n  const copied = useLocal('copied', false);\n  return (\n    <view className=\"gap-2\">\n      <CodeBlock\n        code={install}\n        label=\"Install commands\"\n        title=\"Terminal\"\n        action={<IconButton label=\"Copy the commands\" icon=\"copy\" size=\"sm\" variant=\"ghost\" onClick={() => copied.set(true)} data-testid=\"copy\" />}\n        data-testid=\"install\"\n      />\n      {copied.value && <text role=\"status\" className=\"text-footnote text-muted\">Copied</text>}\n    </view>\n  );\n}"
+          "source": "import { useLocal } from '@lingxia/view';\nimport { IconButton } from '@liulidesign/core/IconButton';\nimport { CodeBlock } from '@liulidesign/core/Code';\n\nconst install = `npm install @liulidesign/core\nnpx lingxia dev --platform ios`;\n\n/** A command to copy: the title says what it is, and the app copies it. */\nexport function Command() {\n  const copied = useLocal('copied', false);\n  return (\n    <view className=\"gap-2\">\n      <CodeBlock\n        code={install}\n        language=\"bash\"\n        label=\"Install commands\"\n        title=\"Terminal\"\n        action={<IconButton label=\"Copy the commands\" icon=\"copy\" size=\"sm\" variant=\"ghost\" onClick={() => copied.set(true)} data-testid=\"copy\" />}\n        data-testid=\"install\"\n      />\n      {copied.value && <text role=\"status\" className=\"text-footnote text-muted\">Copied</text>}\n    </view>\n  );\n}"
         },
         {
           "name": "Plain",
           "title": "A block without a header",
-          "source": "import { CodeBlock } from '@liulidesign/core/Code';\n\nconst response = `{\n  \"id\": \"note_8f2c\",\n  \"title\": \"Trip to the coast\",\n  \"updatedAt\": \"2026-11-14T09:42:00Z\",\n  \"sharedWith\": [\"ana@example.com\", \"kai@example.com\"]\n}`;\n\n/** Without a header: an example response whose long line scrolls sideways. */\nexport function Plain() {\n  return <CodeBlock code={response} label=\"Example response\" data-testid=\"response\" />;\n}"
+          "source": "import { CodeBlock } from '@liulidesign/core/Code';\n\nconst response = `{\n  \"id\": \"note_8f2c\",\n  \"title\": \"Trip to the coast\",\n  \"updatedAt\": \"2026-11-14T09:42:00Z\",\n  \"sharedWith\": [\"ana@example.com\", \"kai@example.com\"]\n}`;\n\n/** Without a header: an example response whose long line scrolls sideways. */\nexport function Plain() {\n  return <CodeBlock code={response} language=\"json\" label=\"Example response\" data-testid=\"response\" />;\n}"
         },
         {
           "name": "Numbered",
           "title": "Line numbers and marked lines",
-          "source": "import { CodeBlock } from '@liulidesign/core/Code';\n\nconst excerpt = `export function total(items: readonly Item[]) {\n  let sum = 0;\n  for (const item of items) sum += item.price * item.count;\n  return Math.round(sum * 100) / 100;\n}`;\n\n/** An excerpt with its numbers in the file, two lines marked. */\nexport function Numbered() {\n  return <CodeBlock code={excerpt} label=\"total in cart.ts\" title=\"cart.ts\" hasLineNumbers startLineNumber={41} highlightLines={[43, 44]} data-testid=\"numbered\" />;\n}"
+          "source": "import { CodeBlock } from '@liulidesign/core/Code';\n\nconst excerpt = `export function total(items: readonly Item[]) {\n  let sum = 0;\n  for (const item of items) sum += item.price * item.count;\n  return Math.round(sum * 100) / 100;\n}`;\n\n/** An excerpt with its numbers in the file, two lines marked. */\nexport function Numbered() {\n  return <CodeBlock code={excerpt} language=\"ts\" label=\"total in cart.ts\" title=\"cart.ts\" hasLineNumbers startLineNumber={41} highlightLines={[43, 44]} data-testid=\"numbered\" />;\n}"
         },
         {
           "name": "Diff",
           "title": "A change as a diff",
-          "source": "import { CodeBlock } from '@liulidesign/core/Code';\n\nconst change = `--- a/cart.ts\n+++ b/cart.ts\n@@ -42,4 +42,4 @@\n   let sum = 0;\n   for (const item of items)\n-    sum += item.price;\n+    sum += item.price * item.count;\n   return Math.round(sum * 100) / 100;`;\n\n/** A change as a unified diff: each sign in its own column, added and removed lines tinted. */\nexport function Diff() {\n  return <CodeBlock code={change} label=\"Change to cart.ts\" title=\"cart.ts\" isDiff data-testid=\"diff\" />;\n}"
+          "source": "import { CodeBlock } from '@liulidesign/core/Code';\n\nconst change = `--- a/cart.ts\n+++ b/cart.ts\n@@ -42,4 +42,4 @@\n   let sum = 0;\n   for (const item of items)\n-    sum += item.price;\n+    sum += item.price * item.count;\n   return Math.round(sum * 100) / 100;`;\n\n/** A change as a unified diff: each sign in its own column, added and removed lines tinted. */\nexport function Diff() {\n  return <CodeBlock code={change} language=\"ts\" label=\"Change to cart.ts\" title=\"cart.ts\" isDiff data-testid=\"diff\" />;\n}"
         },
         {
           "name": "InSentence",
@@ -4501,9 +4545,10 @@
       ],
       "gaps": [],
       "limits": [
-        "No syntax colouring: the page carries no grammar for any language.",
+        "Colouring reads tokens, not meaning: a name is coloured as a type by its capital, and a regular expression in JavaScript is not told from division.",
         "With numbers, a diff or marked lines, a line is never wrapped, even at large text; it scrolls.",
-        "Copying is the app's: Liuli has no clipboard."
+        "Copying is the app's: Liuli has no clipboard.",
+        "Long coloured code is several texts, one under another; a selection stays inside one of them."
       ],
       "playground": {
         "props": {
@@ -4525,7 +4570,11 @@
           "--radius-control"
         ],
         "roles": [
+          "accent",
           "accent-soft",
+          "chart-4",
+          "chart-5",
+          "chart-7",
           "danger",
           "danger-soft",
           "success",

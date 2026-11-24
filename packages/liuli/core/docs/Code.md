@@ -8,7 +8,7 @@ Code as it was written, in a sentence or as a block. Status: preview.
 import { Code, CodeBlock } from '@liulidesign/core/Code';
 ```
 
-Code is a run inside a sentence, in the fixed-width face on a tint: a file name, a key, a value to type exactly. CodeBlock keeps lines of code as they were written: it never wraps a line, it scrolls sideways, and it can carry a title and one action, usually copy. It can number its lines, mark some of them, and show a change as a unified diff. Neither colours the code by language.
+Code is a run inside a sentence, in the fixed-width face on a tint: a file name, a key, a value to type exactly. CodeBlock keeps lines of code as they were written: it never wraps a line, it scrolls sideways, and it can carry a title and one action, usually copy. It can number its lines, mark some of them, show a change as a unified diff, and colour the code by its `language`: keywords, strings, numbers, types and comments, the rest in the text colour.
 
 ## Examples
 
@@ -29,6 +29,7 @@ export function Command() {
     <view className="gap-2">
       <CodeBlock
         code={install}
+        language="bash"
         label="Install commands"
         title="Terminal"
         action={<IconButton label="Copy the commands" icon="copy" size="sm" variant="ghost" onClick={() => copied.set(true)} data-testid="copy" />}
@@ -54,7 +55,7 @@ const response = `{
 
 /** Without a header: an example response whose long line scrolls sideways. */
 export function Plain() {
-  return <CodeBlock code={response} label="Example response" data-testid="response" />;
+  return <CodeBlock code={response} language="json" label="Example response" data-testid="response" />;
 }
 ```
 
@@ -71,7 +72,7 @@ const excerpt = `export function total(items: readonly Item[]) {
 
 /** An excerpt with its numbers in the file, two lines marked. */
 export function Numbered() {
-  return <CodeBlock code={excerpt} label="total in cart.ts" title="cart.ts" hasLineNumbers startLineNumber={41} highlightLines={[43, 44]} data-testid="numbered" />;
+  return <CodeBlock code={excerpt} language="ts" label="total in cart.ts" title="cart.ts" hasLineNumbers startLineNumber={41} highlightLines={[43, 44]} data-testid="numbered" />;
 }
 ```
 
@@ -91,7 +92,7 @@ const change = `--- a/cart.ts
 
 /** A change as a unified diff: each sign in its own column, added and removed lines tinted. */
 export function Diff() {
-  return <CodeBlock code={change} label="Change to cart.ts" title="cart.ts" isDiff data-testid="diff" />;
+  return <CodeBlock code={change} language="ts" label="Change to cart.ts" title="cart.ts" isDiff data-testid="diff" />;
 }
 ```
 
@@ -117,6 +118,7 @@ export function InSentence() {
 | `code` (required) | `string` |  | The code, with its own line breaks and indentation. |
 | `label` (required) | `string` |  | Names the block for assistive tech: "Shell command", "Example response". |
 | `title` | `string` |  | Shown over the code: a file name, a language. |
+| `language` | `string` |  | Colours the code by its language's grammar: `ts`, `tsx`, `js`, `json`, `css`, `html`, `xml`, `python`, `bash`, `yaml`, `toml`, `rust`, `kotlin`, `swift`, `java`, `go`, `c`, `cpp` or `sql`, by name or file extension. Any other stays plain. |
 | `action` | `Child` |  | At the end of the title's line: a Button or IconButton that copies the code. The app does the copying. |
 | `hasLineNumbers` | `boolean` | `false` | Numbers each line in a gutter before the code. |
 | `startLineNumber` | `number` | `1` | The first line's number, so an excerpt shows its lines' numbers in the file. Below 1 reads as 1. |
@@ -139,13 +141,14 @@ export function InSentence() {
 | gutter | `<text>` | no | The line numbers, before a hairline. |
 | signs | `<text>` | no | In a diff, each line's `+`, `-` or space, in its own column. |
 | text | `<text>` | no | The code, fixed-width, with its own line breaks. |
+| syntax | `<span>` | no | A token in its kind's colour: a keyword, a string, a number or literal, a type, a comment. |
 
 ## What an app may override
 
 - `className`: classes merged after the recipe's, so they win.
 - The recipe, `codeRecipe` from `@liulidesign/core/Code/recipe`: the classes of each part, to style an element of your own to match. The component does not read a changed copy.
 - Scale tokens it reads, set in the app's stylesheet under `@theme`: `--text-footnote`, `--radius-control`.
-- Colour roles it paints with, set by the theme pack: `accent-soft`, `danger`, `danger-soft`, `success`, `success-soft`, `text`, `text-muted`.
+- Colour roles it paints with, set by the theme pack: `accent`, `accent-soft`, `chart-4`, `chart-5`, `chart-7`, `danger`, `danger-soft`, `success`, `success-soft`, `text`, `text-muted`.
 
 ## Accessibility
 
@@ -170,6 +173,10 @@ export function InSentence() {
 | a sign and number on a removed line | `danger` on `danger-soft` | 4.5:1 | 4.53:1 | 4.77:1 |
 | a number on a marked line | `text-muted` on `accent-soft` | 4.5:1 | 5.16:1 | 5.39:1 |
 | a hunk or file header on its tint, over the block | `text-muted` on `text/12` over `surface` | 4.5:1 | 4.64:1 | 4.81:1 |
+| a keyword | `accent` on `text/6` over `surface` | 4.5:1 | 5.00:1 | 5.33:1 |
+| a string | `chart-5` on `text/6` over `surface` | 4.5:1 | 5.03:1 | 7.16:1 |
+| a number or literal | `chart-4` on `text/6` over `surface` | 4.5:1 | 5.17:1 | 6.12:1 |
+| a type | `chart-7` on `text/6` over `surface` | 4.5:1 | 7.38:1 | 7.04:1 |
 
 Ratios are computed from @lingxia/view/theme and rounded down.
 
@@ -182,8 +189,9 @@ Ratios are computed from @lingxia/view/theme and rounded down.
 
 ## Limits
 
-- No syntax colouring: the page carries no grammar for any language.
+- Colouring reads tokens, not meaning: a name is coloured as a type by its capital, and a regular expression in JavaScript is not told from division.
 - With numbers, a diff or marked lines, a line is never wrapped, even at large text; it scrolls.
 - Copying is the app's: Liuli has no clipboard.
+- Long coloured code is several texts, one under another; a selection stays inside one of them.
 
 Related: Markdown, Kbd.

@@ -12,6 +12,8 @@ export const codeParts = {
   mark: 'span',
   headerLine: 'span',
   text: 'text',
+  syntax: 'span',
+  chunks: 'view',
 } as const;
 
 /**
@@ -71,6 +73,22 @@ export const codeRecipe = {
   },
   headerLine: {
     base: 'text-muted',
+  },
+  /**
+   * A few kinds of token, each in one colour that reads at 4.5:1 on the block and on its line tints;
+   * names, operators and punctuation stay the text colour. Categorical hues, never status ones: a
+   * string is not a success.
+   */
+  syntax: {
+    keyword: 'text-accent',
+    string: 'text-chart-5',
+    number: 'text-chart-4',
+    type: 'text-chart-7',
+    comment: 'text-muted',
+  },
+  /** Code past one text's runs: its texts stacked, line under line. */
+  chunks: {
+    base: 'shrink-0',
   },
   text: {
     base: 'self-start font-mono text-footnote text-text whitespace-pre',

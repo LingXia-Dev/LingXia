@@ -9,7 +9,7 @@ export const doc: ComponentDoc = {
   description:
     'Code is a run inside a sentence, in the fixed-width face on a tint: a file name, a key, a value to type exactly. ' +
     'CodeBlock keeps lines of code as they were written: it never wraps a line, it scrolls sideways, and it can carry a title and one action, usually copy. ' +
-    'It can number its lines, mark some of them, and show a change as a unified diff. Neither colours the code by language.',
+    'It can number its lines, mark some of them, show a change as a unified diff, and colour the code by its `language`: keywords, strings, numbers, types and comments, the rest in the text colour.',
   keywords: ['code', 'code block', 'snippet', 'monospace', 'pre', 'terminal', 'command'],
   propsType: 'CodeBlockProps',
   recipe: { map: 'codeRecipe', parts: 'codeParts' },
@@ -23,6 +23,7 @@ export const doc: ComponentDoc = {
     { part: 'gutter', required: false, description: 'The line numbers, before a hairline.' },
     { part: 'signs', required: false, description: 'In a diff, each line\'s `+`, `-` or space, in its own column.' },
     { part: 'text', required: false, description: 'The code, fixed-width, with its own line breaks.' },
+    { part: 'syntax', required: false, description: 'A token in its kind\'s colour: a keyword, a string, a number or literal, a type, a comment.' },
   ],
   accessibility: {
     pattern: null,
@@ -41,6 +42,10 @@ export const doc: ComponentDoc = {
       { what: 'a sign and number on a removed line', pair: ['danger', 'danger-soft'], minimum: '4.5:1' },
       { what: 'a number on a marked line', pair: ['text-muted', 'accent-soft'], minimum: '4.5:1' },
       { what: 'a hunk or file header on its tint, over the block', pair: ['text-muted', 'text/12'], over: 'surface', minimum: '4.5:1' },
+      { what: 'a keyword', pair: ['accent', 'text/6'], over: 'surface', minimum: '4.5:1' },
+      { what: 'a string', pair: ['chart-5', 'text/6'], over: 'surface', minimum: '4.5:1' },
+      { what: 'a number or literal', pair: ['chart-4', 'text/6'], over: 'surface', minimum: '4.5:1' },
+      { what: 'a type', pair: ['chart-7', 'text/6'], over: 'surface', minimum: '4.5:1' },
     ],
     notes: [
       'A block is a group named by `label`; its code is read as text, line by line.',
@@ -69,9 +74,10 @@ export const doc: ComponentDoc = {
   ],
   gaps: [],
   limits: [
-    'No syntax colouring: the page carries no grammar for any language.',
+    'Colouring reads tokens, not meaning: a name is coloured as a type by its capital, and a regular expression in JavaScript is not told from division.',
     'With numbers, a diff or marked lines, a line is never wrapped, even at large text; it scrolls.',
     'Copying is the app\'s: Liuli has no clipboard.',
+    'Long coloured code is several texts, one under another; a selection stays inside one of them.',
   ],
   playground: { props: { code: 'npm run build', label: 'Build command', title: 'Terminal' } },
   related: ['Markdown', 'Kbd'],

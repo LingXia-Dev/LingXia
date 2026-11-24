@@ -1,6 +1,7 @@
 import { cx, type Child } from '@lingxia/view';
 import { codeRecipe as r } from './Code.recipe';
 import { diffKinds, type LineKind } from './diff';
+import { highlight, type CodeRun } from './highlight';
 import { dataOf } from '../internal/data';
 
 export interface CodeProps {
@@ -21,6 +22,11 @@ export interface CodeBlockProps {
   label: string;
   /** Shown over the code: a file name, a language. */
   title?: string;
+  /**
+   * Colours the code by its language's grammar: `ts`, `tsx`, `js`, `json`, `css`, `html`, `xml`, `python`, `bash`, `yaml`, `toml`,
+   * `rust`, `kotlin`, `swift`, `java`, `go`, `c`, `cpp` or `sql`, by name or file extension. Any other stays plain.
+   */
+  language?: string;
   /** At the end of the title's line: a Button or IconButton that copies the code. The app does the copying. */
   action?: Child;
   /** Numbers each line in a gutter before the code. @default false */
@@ -43,6 +49,55 @@ export interface CodeBlockProps {
 
 const signs: Record<LineKind, string> = { context: ' ', added: '+', removed: '-', header: ' ' };
 
+// A <text> holds at most 256 runs; longer code is several texts, stacked line by line.
+const maxRuns = 256;
+
+interface Run { text: string; className?: string }
+
+/** Lines of runs as texts' runs: neighbours with one class merged, a new text started before one would pass the limit. */
+function chunks(lines: readonly (readonly Run[])[]): Run[][] {
+  const out: Run[][] = [[]];
+  const add = (into: Run[], run: Run) => {
+    const last = into[into.length - 1];
+    if (last !== undefined && last.className === run.className) last.text += run.text;
+    else into.push({ ...run });
+  };
+  for (const line of lines) {
+    const merged: Run[] = [];
+    // A single line past the limit keeps its first runs' colours and goes on plain.
+    line.forEach((run, index) => add(merged, index < maxRuns - 1 ? run : { text: run.text }));
+    let current = out[out.length - 1];
+    const joins = current.length > 0 && merged.length > 0 && current[current.length - 1].className === merged[0].className;
+    if (current.length > 0 && current.length + merged.length - (joins ? 1 : 0) > maxRuns) {
+      // The stack breaks the line, so a text ending on a break would show a blank line.
+      const last = current[current.length - 1];
+      last.text = last.text.slice(0, -1);
+      if (last.text === '') current.pop();
+      current = [];
+      out.push(current);
+    }
+    merged.forEach(run => add(current, run));
+  }
+  return out;
+}
+
+const shown = (runs: readonly Run[]) => runs.map((run, index) => (run.className === undefined ? run.text : <span key={`${index}`} className={run.className}>{run.text}</span>));
+
+/** Code's runs cut at its line breaks, each line keeping its break. */
+function linesOf(runs: readonly CodeRun[], count: number): CodeRun[][] {
+  const lines: CodeRun[][] = [[]];
+  for (const run of runs) {
+    const parts = run.text.split('\n');
+    parts.forEach((part, index) => {
+      if (index > 0) lines.push([]);
+      const text = part + (index < parts.length - 1 ? '\n' : '');
+      if (text !== '') lines[lines.length - 1].push({ text, kind: run.kind });
+    });
+  }
+  while (lines.length < count) lines.push([]);
+  return lines;
+}
+
 /**
  * Lines of code as they were written: fixed-width, never wrapped, scrolling sideways. With numbers, a diff or
  * marked lines, each line's tint is a row behind the code, one line high, so the code stays one text to select.
@@ -51,6 +106,7 @@ export function CodeBlock({
   code,
   label,
   title,
+  language,
   action,
   hasLineNumbers = false,
   startLineNumber = 1,
@@ -68,6 +124,21 @@ export function CodeBlock({
   const kinds: LineKind[] = isDiff ? diffKinds(lines) : lines.map(() => 'context');
   const isLined = hasLineNumbers || isDiff || lines.some((_, index) => marked.has(first + index));
   const text = cx(r.text.base, isSelectable && r.text.selectable);
+  // A diff's header lines are not code: they are left out of the grammar's reading and drawn quiet.
+  const read = lines.map((line, index) => (kinds[index] === 'header' ? '' : isDiff ? line.slice(1) : line));
+  const colored = linesOf(highlight(read.join('\n'), language), lines.length);
+  const codeLines: Run[][] = lines.map((line, index) => {
+    const end = index < lines.length - 1 ? '\n' : '';
+    if (kinds[index] === 'header') return [{ text: line + end, className: r.headerLine.base }];
+    return colored[index].map(run => ({ text: run.text, className: run.kind === undefined ? undefined : r.syntax[run.kind] }));
+  });
+  const column = (className: string, lineRuns: readonly (readonly Run[])[], hidden?: boolean) => {
+    const parts = chunks(lineRuns);
+    if (parts.length === 1) return <text aria-hidden={hidden} className={className}>{shown(parts[0])}</text>;
+    return <view aria-hidden={hidden} className={r.chunks.base}>{parts.map((runs, index) => <text key={`${index}`} aria-hidden={hidden} className={className}>{shown(runs)}</text>)}</view>;
+  };
+  const marks = (each: (kind: LineKind, index: number) => string) =>
+    kinds.map((kind, index) => [{ text: `${each(kind, index)}${index < lines.length - 1 ? '\n' : ''}`, className: r.mark[kind] }]);
   return (
     <view role="group" aria-label={label} data-testid={testId} {...dataOf(attributes)} className={cx(r.block.base, className)}>
       {(title !== undefined || action !== undefined) && (
@@ -84,34 +155,14 @@ export function CodeBlock({
                 <view key={`${index}`} className={cx(r.tint.base, marked.has(first + index) && !isChange(kind) ? r.tint.highlighted : r.tint[kind])} />
               ))}
             </view>
-            {hasLineNumbers && (
-              <text aria-hidden className={r.gutter.base}>
-                {kinds.map((kind, index) => (
-                  <span key={`${index}`} className={r.mark[kind]}>{`${first + index}${index < lines.length - 1 ? '\n' : ''}`}</span>
-                ))}
-              </text>
-            )}
-            {isDiff && (
-              <text className={cx(r.signs.base, hasLineNumbers && r.signs.numbered)}>
-                {kinds.map((kind, index) => (
-                  <span key={`${index}`} className={r.mark[kind]}>{`${signs[kind]}${index < lines.length - 1 ? '\n' : ''}`}</span>
-                ))}
-              </text>
-            )}
-            <text className={cx(text, r.text.lined, isDiff ? r.text.afterSign : r.text.start)}>
-              {lines.map((line, index) => {
-                const shown = isDiff && kinds[index] !== 'header' ? line.slice(1) : line;
-                const end = index < lines.length - 1 ? '\n' : '';
-                return kinds[index] === 'header'
-                  ? <span key={`${index}`} className={r.headerLine.base}>{shown + end}</span>
-                  : <span key={`${index}`}>{shown + end}</span>;
-              })}
-            </text>
+            {hasLineNumbers && column(r.gutter.base, marks((_, index) => `${first + index}`), true)}
+            {isDiff && column(cx(r.signs.base, hasLineNumbers && r.signs.numbered), marks(kind => signs[kind]))}
+            {column(cx(text, r.text.lined, isDiff ? r.text.afterSign : r.text.start), codeLines)}
           </view>
         </scroll>
       ) : (
         <scroll className={r.scroll.base}>
-          <text className={text}>{code}</text>
+          {column(text, codeLines)}
         </scroll>
       )}
     </view>

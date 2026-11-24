@@ -19,6 +19,7 @@ export function Command() {
     <view className="gap-2">
       <CodeBlock
         code={install}
+        language="bash"
         label="Install commands"
         title="Terminal"
         action={<IconButton label="Copy the commands" icon="copy" size="sm" variant="ghost" onClick={() => copied.set(true)} data-testid="copy" />}
@@ -31,7 +32,7 @@ export function Command() {
 
 /** Without a header: an example response whose long line scrolls sideways. */
 export function Plain() {
-  return <CodeBlock code={response} label="Example response" data-testid="response" />;
+  return <CodeBlock code={response} language="json" label="Example response" data-testid="response" />;
 }
 
 const excerpt = `export function total(items: readonly Item[]) {
@@ -42,7 +43,7 @@ const excerpt = `export function total(items: readonly Item[]) {
 
 /** An excerpt with its numbers in the file, two lines marked. */
 export function Numbered() {
-  return <CodeBlock code={excerpt} label="total in cart.ts" title="cart.ts" hasLineNumbers startLineNumber={41} highlightLines={[43, 44]} data-testid="numbered" />;
+  return <CodeBlock code={excerpt} language="ts" label="total in cart.ts" title="cart.ts" hasLineNumbers startLineNumber={41} highlightLines={[43, 44]} data-testid="numbered" />;
 }
 
 const change = `--- a/cart.ts
@@ -56,7 +57,7 @@ const change = `--- a/cart.ts
 
 /** A change as a unified diff: each sign in its own column, added and removed lines tinted. */
 export function Diff() {
-  return <CodeBlock code={change} label="Change to cart.ts" title="cart.ts" isDiff data-testid="diff" />;
+  return <CodeBlock code={change} language="ts" label="Change to cart.ts" title="cart.ts" isDiff data-testid="diff" />;
 }
 
 /** In a sentence: a file name and a value to type exactly. */

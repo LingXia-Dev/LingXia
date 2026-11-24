@@ -1207,6 +1207,11 @@ export const playgroundEntries: PlaygroundEntry[] = [
         "kind": "text"
       },
       {
+        "name": "language",
+        "required": false,
+        "kind": "text"
+      },
+      {
         "name": "hasLineNumbers",
         "required": false,
         "kind": "boolean"
