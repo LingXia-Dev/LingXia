@@ -414,7 +414,7 @@ const measured = screen => {
     screen.layout(node, { width: textOf(node).length * 7, height: 16 });
   }
 };
-const referenceLabels = screen => screen.queryAll(node => node.tag === 'text' && node.props.insetInlineEnd === 0);
+const referenceLabels = screen => screen.queryAll(node => node.tag === 'text' && node.props.insetInlineEnd !== undefined);
 const sideOf = label => (label.props.insetBottom === 0 ? 'above' : 'below');
 
 test('Target: dashed lines on the bars\' timing, the range widened to hold them, labels at the end clear of the last bars\' figures', async () => {

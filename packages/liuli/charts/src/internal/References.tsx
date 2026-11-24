@@ -25,7 +25,7 @@ export function useReferences(
     ? placeReferences(references.map(each => lines(each.value)), plot, {
       full: boxes.map(([full]) => full.value?.width ?? 0), short: boxes.map(([, short]) => short.value?.width ?? 0), height,
     }, taken, gap)
-    : texts.map(() => ({ side: 'above', isShort: false }));
+    : texts.map(() => ({ side: 'above', inset: 0, isShort: false }));
   const ghost = texts.length > 0 && (
     <view aria-hidden className={r.references.ghost}>
       {texts.flatMap((text, index) => [
@@ -50,7 +50,7 @@ export function ReferenceLabels({ texts, places, shares, frame }: {
       {texts.map((text, index) => (
         <view key={`reference-${index}`} className={r.referenceMover.base} style={{ translate: [0, `${shares[index]}%`] }}>
           <view className={r.referenceAnchor.base}>
-            <text className={cx(r.referenceLabel.base, r.referenceLabel[places[index].side])}>{places[index].isShort ? text.short : text.full}</text>
+            <text className={cx(r.referenceLabel.base, r.referenceLabel[places[index].side])} style={{ insetInlineEnd: places[index].inset }}>{places[index].isShort ? text.short : text.full}</text>
           </view>
         </view>
       ))}

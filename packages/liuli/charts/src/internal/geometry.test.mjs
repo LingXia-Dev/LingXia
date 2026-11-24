@@ -61,32 +61,37 @@ test('niceTicks: a range that is not a number, or upside down, still gives a sca
 });
 
 
-test('placeReferences: a label above its line, the next one below when two lines are 2% apart, the value alone when both sides are taken', () => {
+test('placeReferences: a label above its line, the next one below when two lines are 2% apart, a third slid along its line past the first', () => {
   const plot = { width: 300, height: 200 };
   const label = { full: [80, 80, 80], short: [30, 30, 30], height: 16 };
   // Lines at 50%, 52% and 51% of the plot.
   const places = placeReferences([100, 104, 102], plot, label, [], 2);
-  assert.deepEqual(places, [{ side: 'above', isShort: false }, { side: 'below', isShort: false }, { side: 'above', isShort: true }]);
+  assert.deepEqual(places, [{ side: 'above', inset: 0, isShort: false }, { side: 'below', inset: 0, isShort: false }, { side: 'above', inset: 82, isShort: false }]);
+  // In a plot too narrow to slide the name past the others, the value alone: slid, or at the end edge when nothing fits.
+  assert.deepEqual(placeReferences([100, 104, 102], { width: 140, height: 200 }, label, [], 2)[2], { side: 'above', inset: 82, isShort: true });
+  assert.deepEqual(placeReferences([100, 104, 102], { width: 100, height: 200 }, label, [], 2)[2], { side: 'above', inset: 0, isShort: true });
 });
 
 test('placeReferences: never past the plot\'s edges; a line at the top puts its label below, at the foot above', () => {
   const plot = { width: 300, height: 200 };
   const label = { full: [80, 80], short: [30, 30], height: 16 };
-  assert.deepEqual(placeReferences([4, 198], plot, label, [], 2), [{ side: 'below', isShort: false }, { side: 'above', isShort: false }]);
+  assert.deepEqual(placeReferences([4, 198], plot, label, [], 2), [{ side: 'below', inset: 0, isShort: false }, { side: 'above', inset: 0, isShort: false }]);
 });
 
 test('placeReferences: a figure at the end edge sends the label to the other side; one clear of it across does not', () => {
   const plot = { width: 300, height: 200 };
   const label = { full: [80], short: [30], height: 16 };
   const figure = { start: 270, end: 290, top: 70, bottom: 98 };
-  assert.deepEqual(placeReferences([100], plot, label, [figure], 2), [{ side: 'below', isShort: false }]);
-  assert.deepEqual(placeReferences([100], plot, label, [{ ...figure, start: 20, end: 40 }], 2), [{ side: 'above', isShort: false }]);
+  assert.deepEqual(placeReferences([100], plot, label, [figure], 2), [{ side: 'below', inset: 0, isShort: false }]);
+  assert.deepEqual(placeReferences([100], plot, label, [{ ...figure, start: 20, end: 40 }], 2), [{ side: 'above', inset: 0, isShort: false }]);
 });
 
-test('placeReferences: the short value goes where only it fits, beside a figure the full label would reach', () => {
-  const plot = { width: 300, height: 200 };
+test('placeReferences: blocked on both sides at the end edge, the name slides along its line past the obstacle; the value alone only where it cannot', () => {
   const label = { full: [120], short: [30], height: 16 };
-  // A figure above and one below, both under the full label's width but clear of the value's.
-  const taken = [{ start: 190, end: 210, top: 70, bottom: 98 }, { start: 190, end: 210, top: 101, bottom: 130 }];
-  assert.deepEqual(placeReferences([100], plot, label, taken, 2), [{ side: 'above', isShort: true }]);
+  // A point on the line with room around it, as a line's latest value level with a goal.
+  const point = { start: 284, end: 296, top: 94, bottom: 106 };
+  assert.deepEqual(placeReferences([100], { width: 300, height: 200 }, label, [point], 2), [{ side: 'above', inset: 18, isShort: false }]);
+  // Figures above and below, under the name's width but clear of the value's: too far in to slide the name past in a narrow plot.
+  const taken = [{ start: 110, end: 130, top: 70, bottom: 98 }, { start: 110, end: 130, top: 101, bottom: 130 }];
+  assert.deepEqual(placeReferences([100], { width: 220, height: 200 }, label, taken, 2), [{ side: 'above', inset: 0, isShort: true }]);
 });

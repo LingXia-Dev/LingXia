@@ -419,7 +419,7 @@ const measured = screen => {
   }
 };
 const referencePaths = screen => screen.queryAll(node => node.tag === 'vector').flatMap(node => JSON.parse(node.props.vectorSource).paths.filter(path => path.key?.startsWith('reference-')).map(path => ({ ...path, vector: node })));
-const referenceLabels = screen => screen.queryAll(node => node.tag === 'text' && node.props.insetInlineEnd === 0);
+const referenceLabels = screen => screen.queryAll(node => node.tag === 'text' && node.props.insetInlineEnd !== undefined);
 
 test('Goal: the range widens to the goal, drawn as a dashed hairline and named at the end with its value, on the line\'s timing', async () => {
   const screen = measured(laidOut(await renderExample('LineChart/LineChart', 'Goal')));
@@ -441,14 +441,14 @@ test('Goal: the range widens to the goal, drawn as a dashed hairline and named a
   assert.equal(screen.queryAll(node => node.tag === 'button' || node.props.focusable).length, 0, 'nothing takes a press or focus');
 });
 
-test('two references 2% apart: the second label moves below its line, a third goes to its value alone, none overlapping', async () => {
+test('two references 2% apart: the second label moves below its line, a third slides along its line past the first', async () => {
   const screen = measured(laidOut(await renderPage(`
     import { LineChart } from '@liulidesign/charts/LineChart';
     const rows = [{ k: 'a', v: 0 }, { k: 'b', v: 100 }];
     export function render() { return <page><LineChart rows={rows} x="k" y="v" label="Chart" hasScale={false} references={[{ value: 50, label: 'Target' }, { value: 48, label: 'Average' }, { value: 49, label: 'Median' }]} /></page>; }
   `)));
-  const sides = referenceLabels(screen).map(label => [textOf(label), label.props.insetBottom === 0 ? 'above' : 'below']);
-  assert.deepEqual(sides, [['Target 50', 'above'], ['Average 48', 'below'], ['49', 'above']]);
+  const sides = referenceLabels(screen).map(label => [textOf(label), label.props.insetBottom === 0 ? 'above' : 'below', label.props.insetInlineEnd]);
+  assert.deepEqual(sides, [['Target 50', 'above', 0], ['Average 48', 'below', 0], ['Median 49', 'above', 'Target 50'.length * 7 + 2]]);
   for (const text of ['Target, 50', 'Average, 48', 'Median, 49']) screen.getByText(text);
 });
 
@@ -461,4 +461,15 @@ test('a goal level with the last value: its label goes to the side of the line a
   assert.deepEqual(await sides(56), [['Goal 50', 'below']], 'the latest point just above the line');
   assert.deepEqual(await sides(44), [['Goal 50', 'above']], 'the latest point just below it');
   assert.deepEqual(await sides(100), [['Goal 50', 'above']], 'far from it');
+});
+
+test('a goal the latest value reaches exactly: the label keeps its name and slides along the line, clear of the point', async () => {
+  const screen = measured(laidOut(await renderPage(`
+    import { LineChart } from '@liulidesign/charts/LineChart';
+    const rows = [{ k: 'a', v: 0 }, { k: 'b', v: 100 }, { k: 'c', v: 50 }];
+    export function render() { return <page><LineChart rows={rows} x="k" y="v" label="Chart" hasScale={false} references={[{ value: 50, label: 'Goal' }]} /></page>; }
+  `)));
+  const [label] = referenceLabels(screen);
+  // The point sits 4 pt in from the end edge and is kept 6 pt clear all round; the label stops 2 pt short of that.
+  assert.deepEqual([textOf(label), label.props.insetBottom === 0 ? 'above' : 'below', label.props.insetInlineEnd], ['Goal 50', 'above', 4 + 6 + 2]);
 });

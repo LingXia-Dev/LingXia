@@ -248,14 +248,18 @@ export function niceTicks([low, high]: readonly [number, number], target: number
 /** A box in points, across from the plot's start edge and down from its top. */
 export interface Extent { start: number; end: number; top: number; bottom: number }
 
-/** Where a reference's label sits: above or below its line, with its name or its value alone. */
-export interface ReferencePlace { side: 'above' | 'below'; isShort: boolean }
+/**
+ * Where a reference's label sits: above or below its line, `inset` points in from the end edge, with its
+ * name or its value alone.
+ */
+export interface ReferencePlace { side: 'above' | 'below'; inset: number; isShort: boolean }
 
 const overlaps = (a: Extent, b: Extent) => a.start < b.end && b.start < a.end && a.top < b.bottom && b.top < a.bottom;
 
 /**
- * Each reference label at the plot's end edge, in order: above its line, else below it, else its value
- * alone above, then below, so no label covers another, a figure in `taken`, or the plot's edge.
+ * Each reference label, in order, where it covers no other label, nothing in `taken` and no edge of the
+ * plot: at the end edge above its line, else below it; else slid along its line toward the start, just
+ * clear of what is in the way; only then its value alone, tried the same way.
  * `lines` are the lines' heights in points; widths and the line height are the labels' measured sizes.
  */
 export function placeReferences(
@@ -267,17 +271,25 @@ export function placeReferences(
     const extent = (place: ReferencePlace): Extent => {
       const width = (place.isShort ? label.short : label.full)[index] ?? 0;
       const top = place.side === 'above' ? y - gap - label.height : y + gap;
-      return { start: plot.width - width, end: plot.width, top, bottom: top + label.height };
+      return { start: plot.width - place.inset - width, end: plot.width - place.inset, top, bottom: top + label.height };
     };
-    const tries: ReferencePlace[] = [
-      { side: 'above', isShort: false }, { side: 'below', isShort: false }, { side: 'above', isShort: true }, { side: 'below', isShort: true },
-    ];
     const fits = (place: ReferencePlace) => {
       const box = extent(place);
-      return box.top >= 0 && box.bottom <= plot.height && !placed.some(other => overlaps(box, other));
+      return box.start >= 0 && box.top >= 0 && box.bottom <= plot.height && !placed.some(other => overlaps(box, other));
     };
-    // Nothing fits: the value alone, on the side the plot has room for.
-    const place = tries.find(fits) ?? { side: extent({ side: 'above', isShort: true }).top >= 0 ? 'above' : 'below', isShort: true };
+    // The insets that put the label's end just before something in its band, nearest the end edge first.
+    const slides = (side: ReferencePlace['side'], isShort: boolean) => {
+      const band = extent({ side, inset: 0, isShort });
+      return placed.filter(other => other.top < band.bottom && band.top < other.bottom)
+        .map(other => plot.width - other.start + gap).filter(inset => inset > 0).sort((a, b) => a - b)
+        .map(inset => ({ side, inset, isShort }));
+    };
+    const tries = (isShort: boolean): ReferencePlace[] => [
+      { side: 'above', inset: 0, isShort }, { side: 'below', inset: 0, isShort }, ...slides('above', isShort), ...slides('below', isShort),
+    ];
+    // Nothing fits: the value alone at the end edge, on the side the plot has room for.
+    const place = [...tries(false), ...tries(true)].find(fits)
+      ?? { side: extent({ side: 'above', inset: 0, isShort: true }).top >= 0 ? 'above' : 'below', inset: 0, isShort: true };
     placed.push(extent(place));
     return place;
   });
