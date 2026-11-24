@@ -21,8 +21,9 @@ Saves under `mocks/` reload that lxapp's mocks only.
 
 ## What a save does
 
-The session rebuilds that lxapp with its `--release`, then
-restarts that app id. The instance has to still be in the runtime. It does
+The session rebuilds that lxapp with its `--release` into its own directory
+(`.lingxia/dev/sessions/<id>/`, printed at start); `dist/` is written only by
+`lingxia build`. Then it restarts that app id. The instance has to still be in the runtime. It does
 not have to be the one on screen.
 
 - A guest that is not open stays closed. The build loads the next time it

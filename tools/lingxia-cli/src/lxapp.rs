@@ -37,18 +37,12 @@ pub fn run_in_dir(args: &[String], cwd: &Path) -> Result<()> {
 
 /// Dev sessions: the build output directory of the lxapp at `dir` and the action
 /// catalogs of the GPU `pages` (`pages/x/index.tsx`) it is about to recompile.
-pub(crate) fn gpu_dev_inputs(
-    dir: &Path,
-    pages: &[String],
-) -> Result<(std::path::PathBuf, serde_json::Value)> {
+pub(crate) fn gpu_dev_inputs(dir: &Path, pages: &[String]) -> Result<serde_json::Value> {
     let project = project::Project::discover(dir)?;
     let pages: Vec<&str> = pages.iter().map(String::as_str).collect();
     // Dev inputs serve a session, never a shipped bundle.
     let catalogs = view::gpu::catalogs(&project, &pages, true)?;
-    Ok((
-        project.output_dir.clone(),
-        serde_json::Value::Object(catalogs),
-    ))
+    Ok(serde_json::Value::Object(catalogs))
 }
 
 pub(crate) use typecheck::TYPESCRIPT_RANGE;
@@ -80,8 +74,8 @@ pub(crate) fn dev_typecheck(dir: &Path) -> Option<Result<String>> {
     })
 }
 
-pub fn run_in_dir_for_dev(args: &[String], cwd: &Path) -> Result<()> {
-    build::run_for_dev(args, cwd)
+pub fn run_in_dir_for_dev(args: &[String], cwd: &Path, output: Option<&Path>) -> Result<()> {
+    build::run_for_dev(args, cwd, output)
 }
 
 pub(crate) fn package_in_dir(cwd: &Path) -> Result<std::path::PathBuf> {

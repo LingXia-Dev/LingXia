@@ -4,8 +4,8 @@
 //! `resources.bundles[].path` that is a local lxapp. A host session also
 //! accepts one more directory while a standalone `lingxia dev listen` holds
 //! its connection; that root leaves when the connection closes. Build outputs
-//! (`dist`, `node_modules`, `.lingxia`, …) are not watched, so a rebuild
-//! cannot loop; neither are the lxapp's specs in `tests/`.
+//! (the session's under `.lingxia`, a `lingxia build`'s `dist`, `node_modules`, …) are not
+//! watched, so a rebuild cannot loop; neither are the lxapp's specs in `tests/`.
 
 use super::server::{DevServerState, RestartOutcome};
 use anyhow::{Context, Result};
@@ -378,7 +378,9 @@ fn run_watch(
     let mut compilers: Vec<super::gpu_swap::Compiler> = roots
         .iter()
         .filter(|root| root.path.join(".lingxia").join("gpu-inputs.json").is_file())
-        .filter_map(|root| super::gpu_swap::Compiler::spawn(&root.path).ok())
+        .filter_map(|root| {
+            super::gpu_swap::Compiler::spawn(&root.path, &state.build_dir(&root.app_id)).ok()
+        })
         .collect();
     let mut attached: BTreeSet<String> = BTreeSet::new();
     // Linked packages' files the GPU pages compile from, outside every root: their directories
@@ -642,7 +644,7 @@ fn hot_swap(
     };
     let started = std::time::Instant::now();
     if !compilers.iter().any(|compiler| compiler.dir() == dir) {
-        match super::gpu_swap::Compiler::spawn(dir) {
+        match super::gpu_swap::Compiler::spawn(dir, &state.build_dir(app_id)) {
             Ok(compiler) => compilers.push(compiler),
             Err(err) => {
                 eprintln!("  {} hot swap unavailable: {err:#}", "•".cyan());
@@ -1176,7 +1178,7 @@ mod tests {
         assert!(is_ignored_path(Path::new("pages/dist/index.js")));
         assert!(is_ignored_path(Path::new("node_modules/foo/index.js")));
         assert!(is_ignored_path(Path::new(
-            ".lingxia/dev/lxapp/demo/manifest.json"
+            ".lingxia/dev/sessions/a1b2c3/build/demo/logic.js"
         )));
         assert!(is_ignored_path(Path::new("target/debug/lingxia.exe")));
         assert!(is_ignored_path(Path::new("pages/home/index.tsx~")));

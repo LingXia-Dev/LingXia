@@ -29,9 +29,14 @@ Without it every build shares the default broker, and a different build replaces
 A macOS Runner session owns one slot per project and instance: `.lingxia/dev/runner[-<instance>].pid`, an
 `.owner` record (session pid and start time), and Runner data under `<project id>[-<instance>]`. A new
 session ends only a leftover Runner whose owner is gone; while the owner lives it refuses before building,
-naming that session. Takeover within one instance tells the old session who replaced it. Sessions of one
-project under different instances still share the source tree's build output (`dist`) and the rest of
-`.lingxia/`.
+naming that session. Takeover within one instance tells the old session who replaced it.
+
+Each session builds and serves from `.lingxia/dev/sessions/<session id>/` (`build/<appId>`, and the
+manifests, snapshots and blobs under `lxapp/`), never another session's; `dist/` is written only by
+`lingxia build`, and a host session starts from a copy of each bundle's embed build. The directory is removed
+when the session ends; at start, one whose `owner` (pid and start time) is proven gone is removed, and one
+with no readable owner is reported and left. Sessions of one project still share the generated inputs
+beside the sources (`.lingxia/i18n`, `.lingxia/gpu-inputs.json`).
 
 Printed hints (a failed spec's `Rerun:` line, the stop command) never carry a
 session id: they omit `--session` when not needed and otherwise use the name

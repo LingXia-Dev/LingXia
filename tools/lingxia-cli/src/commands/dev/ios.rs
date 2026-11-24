@@ -41,7 +41,13 @@ pub(super) fn execute_ios(ctx: DevContext) -> Result<()> {
 
     let run_result = (|| -> Result<()> {
         let platforms_to_build = vec![PlatformType::Ios];
-        prepare_dev_host_assets(&ctx, &platforms_to_build, &[], Some(&device_ws_url))?;
+        prepare_dev_host_assets(
+            &ctx,
+            &server,
+            &platforms_to_build,
+            &[],
+            Some(&device_ws_url),
+        )?;
 
         if let Some(installed) = ctx.installed {
             let bundle_id = ctx

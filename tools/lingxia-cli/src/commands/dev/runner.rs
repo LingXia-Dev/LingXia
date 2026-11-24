@@ -176,12 +176,15 @@ pub(super) fn execute_runner_dev(
     let session = server.session().clone();
 
     let run_result = (|| -> Result<()> {
+        // What the Runner loads: this session's build, or a built bundle as it is.
+        let mut runnable = None;
         if let RunnerDevTarget::LxApp(lxapp_path) = &target {
             if crate::lxapp::is_built_bundle_dir(lxapp_path) {
                 println!(
                     "{}",
                     "Step 1/2: Built lxapp bundle detected — build skipped.".bold()
                 );
+                runnable = Some(lxapp_path.clone());
             } else {
                 println!("{}", "Step 1/2: Building lxapp...".bold());
                 let build_args = lxapp_runner_build_args(
@@ -189,7 +192,9 @@ pub(super) fn execute_runner_dev(
                     options.progress.as_deref(),
                     runner_env,
                 );
-                crate::lxapp::run_in_dir_for_dev(&build_args, lxapp_path)?;
+                let built = server.build_dir(&super::lxapp_watch::read_app_id(lxapp_path)?);
+                crate::lxapp::run_in_dir_for_dev(&build_args, lxapp_path, Some(&built))?;
+                runnable = Some(built);
             }
         }
 
@@ -216,11 +221,21 @@ pub(super) fn execute_runner_dev(
         println!();
         println!("{}", "Step 2/2: Launching Runner...".bold());
         let mut runner = match (&runner_host, &target) {
-            (LxAppRunnerHost::MacOs, RunnerDevTarget::LxApp(path)) => {
-                launch_runner_for_lxapp(path, &runner_slot, &ws_url, runner_env)?
-            }
+            (LxAppRunnerHost::MacOs, RunnerDevTarget::LxApp(path)) => launch_runner_for_lxapp(
+                path,
+                runnable.as_deref().unwrap_or(path),
+                &runner_slot,
+                &ws_url,
+                runner_env,
+            )?,
             (LxAppRunnerHost::Windows, RunnerDevTarget::LxApp(path)) => {
-                launch_windows_runner_for_lxapp(path, &session_root, &ws_url, runner_env)?
+                launch_windows_runner_for_lxapp(
+                    path,
+                    runnable.as_deref().unwrap_or(path),
+                    &session_root,
+                    &ws_url,
+                    runner_env,
+                )?
             }
             (LxAppRunnerHost::MacOs, RunnerDevTarget::Web(url)) => {
                 launch_runner_for_web(&runner_slot, url, &ws_url, options.headless, runner_env)?
@@ -325,8 +340,10 @@ fn ensure_valid_lxapp_dir(path: &Path) -> Result<()> {
     ))
 }
 
+/// `runnable` is the built lxapp the Runner loads; `lxapp_path` locates its host.
 fn launch_runner_for_lxapp(
     lxapp_path: &Path,
+    runnable: &Path,
     slot: &RunnerSlot,
     ws_url: &str,
     runner_env: crate::config::AppEnv,
@@ -354,7 +371,7 @@ fn launch_runner_for_lxapp(
 
     let mut command = Command::new(&executable_path);
     command.env(RUNNER_MARKER_ENV, "1");
-    command.env(RUNNER_LXAPP_PATH_ENV, lxapp_path);
+    command.env(RUNNER_LXAPP_PATH_ENV, runnable);
     command.env(RUNNER_DEV_WS_URL_ENV, ws_url);
     command.env(RUNNER_ENV_ENV, runner_env.as_str());
     command.env(RUNNER_PID_FILE_ENV, &pid_file);
@@ -366,7 +383,7 @@ fn launch_runner_for_lxapp(
     if let Some(server) = runner_lingxia_server(runner_env) {
         command.env(RUNNER_SERVER_ENV, server);
     }
-    match read_lxapp_app_id(lxapp_path)
+    match read_lxapp_app_id(runnable)
         .ok()
         .and_then(|app_id| host_home_app_id(lxapp_path, &app_id))
     {
@@ -468,8 +485,7 @@ fn launch_runner_for_web(
 }
 
 /// Identity of the lxapp the Windows runner hosts, read from the built
-/// bundle manifest (`dist/lxapp.json` preferred, project `lxapp.json`
-/// otherwise — same resolution as the runtime's dev bundle source).
+/// bundle it loads (its `dist/lxapp.json` when it has one, else its `lxapp.json`).
 struct WindowsRunnerLxAppIdentity {
     app_id: String,
     version: String,
@@ -556,7 +572,7 @@ fn read_windows_runner_lxapp_identity(lxapp_path: &Path) -> Result<WindowsRunner
 /// Prepares the Windows runner's host asset directory under
 /// `.lingxia/runner/windows-assets`: an `app.json` with the lxapp as home
 /// app and the embedded `bridge-runtime.js`. The lxapp bundle itself is not
-/// copied — the runner serves it live from the project's `dist/` via
+/// copied — the runner serves it live from the session's build via
 /// `LINGXIA_LXAPP_PATH` (same dev bundle source as the macOS Runner).
 fn prepare_windows_runner_assets(
     session_root: &Path,
@@ -702,6 +718,7 @@ fn installed_windows_runner_exe_path() -> Result<PathBuf> {
 /// Host identity is generated into `app.json`.
 fn launch_windows_runner_for_lxapp(
     lxapp_path: &Path,
+    runnable: &Path,
     session_root: &Path,
     ws_url: &str,
     runner_env: crate::config::AppEnv,
@@ -710,7 +727,7 @@ fn launch_windows_runner_for_lxapp(
     ensure_valid_lxapp_dir(lxapp_path)?;
     // This CLI's own Runner build (fetched for a release CLI, refused if stale).
     crate::runner_cache::ensure_matching_runner()?;
-    let identity = read_windows_runner_lxapp_identity(lxapp_path)?;
+    let identity = read_windows_runner_lxapp_identity(runnable)?;
     let assets_dir = prepare_windows_runner_assets(session_root, &identity, ws_url, runner_env)?;
     let resource_lxapp_paths = windows_runner_resource_lxapp_paths(lxapp_path, &identity)?;
     let exe_path = installed_windows_runner_exe_path()?;
@@ -721,7 +738,7 @@ fn launch_windows_runner_for_lxapp(
     }
     let lingxia_server = runner_lingxia_server(runner_env);
     let launch_args = windows_runner_launch_args(
-        lxapp_path,
+        runnable,
         &assets_dir,
         &log_store::dev_dir(session_root)
             .join("runner")
@@ -1706,7 +1723,11 @@ mod tests {
         let started = super::process_start_time(stranger.id()).unwrap();
         fs::write(&slot.owner_file, "1 1 gone-session").unwrap();
         fs::write(&slot.pid_file, stranger.id().to_string()).unwrap();
-        fs::write(super::runner_start_file(&slot.pid_file), (started + 7).to_string()).unwrap();
+        fs::write(
+            super::runner_start_file(&slot.pid_file),
+            (started + 7).to_string(),
+        )
+        .unwrap();
         slot.claim().unwrap();
         assert!(
             stranger.try_wait().unwrap().is_none(),
@@ -1732,7 +1753,10 @@ mod tests {
         let err = slot.claim().unwrap_err().to_string();
         assert!(err.contains(&format!("pid {}", runner.id())), "{err}");
         assert!(err.contains("older lingxia CLI"), "{err}");
-        assert!(runner.try_wait().unwrap().is_none(), "the older session's Runner was ended");
+        assert!(
+            runner.try_wait().unwrap().is_none(),
+            "the older session's Runner was ended"
+        );
         assert!(slot.pid_file.exists());
         let _ = runner.kill();
         let _ = runner.wait();

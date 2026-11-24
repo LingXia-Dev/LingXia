@@ -382,7 +382,7 @@ fn prepare_lxapp_plan(
             args.push(progress.to_string());
         }
         if plan.dev {
-            lxapp::run_in_dir_for_dev(&args, &plan.bundle_dir)?;
+            lxapp::run_in_dir_for_dev(&args, &plan.bundle_dir, None)?;
         } else {
             lxapp::run_in_dir(&args, &plan.bundle_dir)?;
         }

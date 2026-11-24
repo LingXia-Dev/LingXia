@@ -25,6 +25,7 @@ mod lxapp_manifest;
 mod lxapp_watch;
 mod mocks;
 mod server;
+mod session_output;
 
 mod android;
 mod attach;
@@ -299,6 +300,7 @@ fn print_installed_waiting(app_id: &str, port: u16) {
 
 fn prepare_dev_host_assets(
     ctx: &DevContext,
+    server: &server::DevServerHandle,
     platforms_to_build: &[PlatformType],
     build_targets: &[String],
     dev_ws_url: Option<&str>,
@@ -316,8 +318,7 @@ fn prepare_dev_host_assets(
         &ctx.resolved_env,
     )?;
     if dev_ws_url.is_some() {
-        let dev_manifests =
-            lxapp_manifest::write_configured_manifests(&ctx.project_root, &ctx.config)?;
+        let dev_manifests = server.publish_configured(&ctx.config)?;
         for manifest in &dev_manifests {
             println!(
                 "  {} dev manifest {} ({})",

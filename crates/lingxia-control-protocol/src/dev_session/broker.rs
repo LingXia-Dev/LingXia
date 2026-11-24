@@ -66,6 +66,9 @@ pub struct SessionInfo {
     pub executable: String,
     pub ws_url: String,
     pub log_file: String,
+    /// Where the session builds and serves its lxapps; the project's `dist` is not it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub output: Option<String>,
     /// Stable alias given with `lingxia dev --name`; `--session` accepts it.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub name: Option<String>,
@@ -746,6 +749,7 @@ mod tests {
             executable: "/usr/local/bin/lingxia".to_string(),
             ws_url: "ws://127.0.0.1:1".to_string(),
             log_file: "/tmp/p/.lingxia/logs/x.jsonl".to_string(),
+            output: None,
             name: None,
             build: None,
             extra: Default::default(),

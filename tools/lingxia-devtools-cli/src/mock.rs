@@ -1681,6 +1681,7 @@ mod tests {
             executable: String::new(),
             ws_url: "ws://127.0.0.1:1".into(),
             log_file: String::new(),
+            output: None,
             name: None,
             build: None,
             extra: Default::default(),

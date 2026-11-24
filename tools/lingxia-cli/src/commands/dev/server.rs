@@ -75,6 +75,8 @@ pub struct DevServerHandle {
     companion: Option<super::companion::DevCompanion>,
     state: Arc<DevServerState>,
     watch: Option<super::lxapp_watch::LxAppWatch>,
+    /// Removes the session's build output when the session ends.
+    _output: super::session_output::RemoveOnDrop,
 }
 
 impl DevServerHandle {
@@ -104,6 +106,20 @@ impl DevServerHandle {
     /// Build `app_id` once and publish it, before anything is watched.
     pub fn rebuild_lxapp(&self, app_id: &str, release: bool) -> Result<()> {
         self.state.rebuild_lxapp(app_id, release)
+    }
+
+    /// Publish the host's path bundles from their embed build; see
+    /// [`DevServerState::publish_configured`].
+    pub(crate) fn publish_configured(
+        &self,
+        config: &crate::config::LingXiaConfig,
+    ) -> Result<Vec<super::lxapp_manifest::DevLxAppManifest>> {
+        self.state.publish_configured(config)
+    }
+
+    /// Where this session builds `app_id`.
+    pub fn build_dir(&self, app_id: &str) -> PathBuf {
+        self.state.build_dir(app_id)
     }
 
     /// Keep `app_id` open in the app; see [`DevServerState::present`].
@@ -191,6 +207,8 @@ mod companion_relay;
 
 pub(crate) struct DevServerState {
     pub(crate) project_root: PathBuf,
+    /// This session's builds and the store it serves them from.
+    output: super::session_output::SessionOutput,
     pub(crate) stop_flag: Arc<AtomicBool>,
     runtime_sender: Mutex<Option<(u64, Sender<DevSessionMessage>)>>,
     next_runtime_id: AtomicU64,
@@ -315,12 +333,14 @@ const MAX_WATCH_LEASE: Duration = Duration::from_secs(600);
 impl DevServerState {
     fn new(
         project_root: PathBuf,
+        output: super::session_output::SessionOutput,
         stop_flag: Arc<AtomicBool>,
         auth_token: Option<String>,
         end_on_runtime_gone: bool,
     ) -> Self {
         Self {
             project_root,
+            output,
             stop_flag,
             runtime_sender: Mutex::new(None),
             next_runtime_id: AtomicU64::new(1),
@@ -404,9 +424,13 @@ impl DevServerState {
             .cloned()
     }
 
-    fn attached_dist(&self, app_id: &str) -> Option<PathBuf> {
-        self.attached_spec(app_id)
-            .map(|item| item.source.join("dist"))
+    /// Where this session builds `app_id`, attached or the project's own.
+    pub(crate) fn build_dir(&self, app_id: &str) -> PathBuf {
+        self.output.build_dir(app_id)
+    }
+
+    fn store(&self) -> PathBuf {
+        self.output.store()
     }
 
     fn insert_attached(&self, spec: AttachedLxapp) -> Result<()> {
@@ -424,7 +448,8 @@ impl DevServerState {
     fn detach_attached(&self, app_id: &str) {
         self.lock_attached().retain(|item| item.app_id != app_id);
         self.lock_presented().retain(|item| item.app_id != app_id);
-        let _ = super::lxapp_manifest::remove_manifest(&self.project_root, app_id);
+        let _ = super::lxapp_manifest::remove_manifest(&self.store(), app_id);
+        self.output.remove_app(app_id);
         if let Some(sender) = self.watch_sender() {
             let _ = sender.send(super::lxapp_watch::WatchCmd::Remove(app_id.to_string()));
         }
@@ -740,14 +765,15 @@ impl DevServerState {
 
     /// The View wire each GPU lxapp this session serves was compiled for.
     fn view_needs(&self) -> Vec<(String, ViewWire)> {
-        let mut dists = self.configured_dists();
+        let mut app_ids = self.configured_app_ids();
         for item in self.lock_attached().iter() {
-            dists.push((item.app_id.clone(), item.source.join("dist")));
+            app_ids.push(item.app_id.clone());
         }
-        dists
+        app_ids
             .into_iter()
-            .filter_map(|(app_id, dist)| {
-                super::lxapp_manifest::view_requirement(&dist).map(|need| (app_id, need))
+            .filter_map(|app_id| {
+                super::lxapp_manifest::view_requirement(&self.build_dir(&app_id))
+                    .map(|need| (app_id, need))
             })
             .collect()
     }
@@ -755,14 +781,14 @@ impl DevServerState {
     fn expect_installed_host(&self) {
         self.installed_host.store(true, Ordering::Release);
         let mut stale = self.lock_stale();
-        for (app_id, _) in self.configured_dists() {
+        for app_id in self.configured_app_ids() {
             stale.insert(app_id);
         }
     }
 
-    /// Each lxapp the project serves, with its dist: the host's bundles, or the lxapp itself.
-    fn configured_dists(&self) -> Vec<(String, PathBuf)> {
-        let mut dists = Vec::new();
+    /// Each lxapp the project serves: the host's path bundles, or the lxapp itself.
+    fn configured_app_ids(&self) -> Vec<String> {
+        let mut app_ids = Vec::new();
         if self.project_root.join("lingxia.yaml").is_file() {
             if let Ok(config) = crate::config::LingXiaConfig::load(&self.project_root) {
                 for bundle in config
@@ -770,23 +796,19 @@ impl DevServerState {
                     .iter()
                     .flat_map(|resources| &resources.bundles)
                 {
-                    if let Some(path) = bundle
+                    if bundle
                         .path
                         .as_deref()
-                        .map(str::trim)
-                        .filter(|path| !path.is_empty())
+                        .is_some_and(|path| !path.trim().is_empty())
                     {
-                        dists.push((
-                            bundle.app_id.clone(),
-                            self.project_root.join(path).join("dist"),
-                        ));
+                        app_ids.push(bundle.app_id.clone());
                     }
                 }
             }
         } else if let Ok(app_id) = super::lxapp_watch::read_app_id(&self.project_root) {
-            dists.push((app_id, self.project_root.join("dist")));
+            app_ids.push(app_id);
         }
-        dists
+        app_ids
     }
 
     /// At a runtime's hello: say which served GPU lxapps its View cannot render, rather than
@@ -1232,11 +1254,21 @@ impl DevServerState {
             "appid": appid,
         });
         let _build = self.lock_build();
-        run_lxapp_build(&self.project_root, Some(&args))
+        run_lxapp_build(&self.project_root, &self.output, Some(&args))
     }
 
-    /// Build an attached lxapp with the release it was attached with, then
-    /// publish its dist on this host's dev HTTP server.
+    /// Each path bundle of the host from the `dist` its embed build wrote, copied into this
+    /// session's own build and published from there.
+    pub(super) fn publish_configured(
+        &self,
+        config: &crate::config::LingXiaConfig,
+    ) -> Result<Vec<super::lxapp_manifest::DevLxAppManifest>> {
+        let _build = self.lock_build();
+        super::lxapp_manifest::publish_configured(&self.project_root, config, &self.output)
+    }
+
+    /// Build an attached lxapp with the release it was attached with into this session's
+    /// build, then publish it on this host's dev HTTP server.
     fn build_attached(&self, app_id: &str) -> Result<()> {
         if self.attached_spec(app_id).is_none() {
             return Err(anyhow!("{app_id} is not attached"));
@@ -1245,14 +1277,14 @@ impl DevServerState {
         let Some(spec) = self.attached_spec(app_id) else {
             return Ok(());
         };
-        build_lxapp_dir(&spec.source, spec.release)?;
+        let built = self.build_dir(app_id);
+        build_lxapp_dir(&spec.source, spec.release, Some(&built))?;
         if self.attached_spec(app_id).is_none() {
             return Ok(());
         }
-        let manifest =
-            super::lxapp_manifest::publish_dist(&self.project_root, &spec.source.join("dist"))?;
+        let manifest = super::lxapp_manifest::publish_dist(&self.store(), &built)?;
         if manifest.app_id != app_id {
-            let _ = super::lxapp_manifest::remove_manifest(&self.project_root, &manifest.app_id);
+            let _ = super::lxapp_manifest::remove_manifest(&self.store(), &manifest.app_id);
             return Err(anyhow!(
                 "built appId '{}' does not match {app_id}",
                 manifest.app_id
@@ -1367,15 +1399,10 @@ impl DevServerState {
         }
     }
 
-    /// After a hot swap of `app_id`: an attached lxapp republishes its own dist, which the
-    /// project's bundles do not list, so the app does not keep its cached bundle.
+    /// After a hot swap of `app_id`: republish its build, so the app does not keep its cached
+    /// bundle.
     pub(super) fn refresh_manifests(&self, app_id: &str) -> Result<()> {
-        match self.attached_dist(app_id) {
-            Some(dist) => {
-                super::lxapp_manifest::publish_dist(&self.project_root, &dist).map(|_| ())
-            }
-            None => refresh_lxapp_manifests(&self.project_root),
-        }
+        super::lxapp_manifest::publish_dist(&self.store(), &self.build_dir(app_id)).map(|_| ())
     }
 
     fn forward_restart(&self, appid: &str) -> Result<RestartOutcome> {
@@ -1681,7 +1708,13 @@ fn start_server_on_with_roots(
     stop_flag: Arc<AtomicBool>,
     auth_token: Option<String>,
 ) -> Result<DevServerHandle> {
-    let session = create_session(session_root)?;
+    let mut session = create_session(session_root)?;
+    let (output, unowned) =
+        super::session_output::SessionOutput::create(content_root, &session.session_id)?;
+    // Held from here so a start that fails below leaves no directory behind.
+    let output_guard = super::session_output::RemoveOnDrop(output.clone());
+    report_session_output(&output, &unowned);
+    session.output = Some(output.root().to_path_buf());
     let attach_token = write_attach_token(&session.log_file)?;
     let listener = TcpListener::bind(bind_addr).context("Failed to bind dev websocket")?;
     listener
@@ -1706,6 +1739,7 @@ fn start_server_on_with_roots(
     )?;
     let state = Arc::new(DevServerState::new(
         content_root.to_path_buf(),
+        output.clone(),
         stop_flag.clone(),
         auth_token,
         end_on_runtime_gone,
@@ -1731,7 +1765,25 @@ fn start_server_on_with_roots(
         companion,
         state,
         watch: None,
+        _output: output_guard,
     })
+}
+
+/// Said once at start: during a session the project's `dist/` is not what is served.
+fn report_session_output(output: &super::session_output::SessionOutput, unowned: &[PathBuf]) {
+    use colored::Colorize;
+    println!(
+        "  {} session builds in {} (`dist/` is written only by `lingxia build`)",
+        "*".cyan(),
+        output.root().display()
+    );
+    for dir in unowned {
+        println!(
+            "  {} left {}: no session is recorded as its owner; delete it if none uses it",
+            "!".yellow(),
+            dir.display()
+        );
+    }
 }
 
 /// The session of `lingxia dev listen --port`. Bind `host:port` exactly:
@@ -2084,10 +2136,10 @@ fn handle_dev_lxapp_http_request(
 
     if let Some(app_id) = rest.strip_suffix("/manifest.json") {
         let app_id = decode_url_path_component(app_id)?;
-        if !super::lxapp_manifest::is_published(&state.project_root, &app_id) {
+        if !super::lxapp_manifest::is_published(&state.store(), &app_id) {
             return Ok(None);
         }
-        let manifest = super::lxapp_manifest::load_manifest(&state.project_root, &app_id)?;
+        let manifest = super::lxapp_manifest::load_manifest(&state.store(), &app_id)?;
         let body = serde_json::to_vec_pretty(&manifest)?;
         return Ok(Some(("application/json; charset=utf-8", body)));
     }
@@ -2104,14 +2156,14 @@ fn handle_dev_lxapp_http_request(
     }
 
     // A file by the hash its manifest lists: the bytes that manifest described, whatever
-    // another build has written to `dist` since.
+    // a later build or hot swap has written since.
     if let Some((app_id, hash)) = rest.split_once("/blob/") {
         let app_id = decode_url_path_component(app_id)?;
-        if !super::lxapp_manifest::is_published(&state.project_root, &app_id) {
+        if !super::lxapp_manifest::is_published(&state.store(), &app_id) {
             return Ok(None);
         }
         return Ok(
-            super::lxapp_manifest::read_blob(&state.project_root, &app_id, hash)
+            super::lxapp_manifest::read_blob(&state.store(), &app_id, hash)
                 .map(|body| ("application/octet-stream", body)),
         );
     }
@@ -2121,10 +2173,10 @@ fn handle_dev_lxapp_http_request(
     };
     let app_id = decode_url_path_component(app_id)?;
     let relative_path = decode_url_path_component(relative_path)?;
-    if !super::lxapp_manifest::is_published(&state.project_root, &app_id) {
+    if !super::lxapp_manifest::is_published(&state.store(), &app_id) {
         return Ok(None);
     }
-    let manifest = super::lxapp_manifest::load_manifest(&state.project_root, &app_id)?;
+    let manifest = super::lxapp_manifest::load_manifest(&state.store(), &app_id)?;
     let Some(listed) = manifest
         .files
         .iter()
@@ -2132,20 +2184,15 @@ fn handle_dev_lxapp_http_request(
     else {
         return Ok(None);
     };
-    if let Some(body) = super::lxapp_manifest::read_blob(&state.project_root, &app_id, &listed.hash)
-    {
+    if let Some(body) = super::lxapp_manifest::read_blob(&state.store(), &app_id, &listed.hash) {
         return Ok(Some((content_type_for_path(&relative_path), body)));
     }
-    let file_path = if let Some(dist) = state.attached_dist(&app_id) {
-        super::lxapp_manifest::resolve_published_file(
-            &state.project_root,
-            &app_id,
-            &relative_path,
-            &dist,
-        )?
-    } else {
-        super::lxapp_manifest::resolve_dist_file(&state.project_root, &app_id, &relative_path)?
-    };
+    let file_path = super::lxapp_manifest::resolve_published_file(
+        &state.store(),
+        &app_id,
+        &relative_path,
+        &state.build_dir(&app_id),
+    )?;
     let body = std::fs::read(&file_path)
         .with_context(|| format!("Failed to read {}", file_path.display()))?;
     Ok(Some((content_type_for_path(&relative_path), body)))
@@ -2160,25 +2207,24 @@ fn dev_lxapp_bundle_archive(
     app_id: &str,
     hash: &str,
 ) -> Result<Option<(&'static str, Vec<u8>)>> {
-    if !super::lxapp_manifest::is_published(&state.project_root, app_id) {
+    let store = state.store();
+    if !super::lxapp_manifest::is_published(&store, app_id) {
         return Ok(None);
     }
-    let current = super::lxapp_manifest::load_manifest(&state.project_root, app_id)?;
+    let current = super::lxapp_manifest::load_manifest(&store, app_id)?;
     let manifest = if current.dist_hash == hash {
         current
     } else {
         // A client that read an earlier manifest gets that manifest's bytes.
-        match super::lxapp_manifest::load_snapshot(&state.project_root, app_id, hash)? {
+        match super::lxapp_manifest::load_snapshot(&store, app_id, hash)? {
             Some(snapshot) => snapshot,
             None => return Ok(None),
         }
     };
-    let dist = state.attached_dist(app_id);
+    let built = state.build_dir(app_id);
     let mut archive = tar::Builder::new(Vec::new());
     for file in &manifest.files {
-        if let Some(body) =
-            super::lxapp_manifest::read_blob(&state.project_root, app_id, &file.hash)
-        {
+        if let Some(body) = super::lxapp_manifest::read_blob(&store, app_id, &file.hash) {
             let mut header = tar::Header::new_gnu();
             header.set_size(body.len() as u64);
             header.set_mode(0o644);
@@ -2187,17 +2233,8 @@ fn dev_lxapp_bundle_archive(
                 .with_context(|| format!("Failed to archive {}", file.path))?;
             continue;
         }
-        let file_path = match &dist {
-            Some(dist) => super::lxapp_manifest::resolve_published_file(
-                &state.project_root,
-                app_id,
-                &file.path,
-                dist,
-            )?,
-            None => {
-                super::lxapp_manifest::resolve_dist_file(&state.project_root, app_id, &file.path)?
-            }
-        };
+        let file_path =
+            super::lxapp_manifest::resolve_published_file(&store, app_id, &file.path, &built)?;
         let body = std::fs::read(&file_path)
             .with_context(|| format!("Failed to read {}", file_path.display()))?;
         let mut header = tar::Header::new_gnu();
@@ -2503,7 +2540,7 @@ fn handle_lxapp_attach(
         return finish_attach_error(&mut websocket, id, format!("{err:#}"));
     }
     // A View that predates the build's wire would refuse every page; a WebView lxapp needs none.
-    if let Some(need) = super::lxapp_manifest::view_requirement(&spec.source.join("dist"))
+    if let Some(need) = super::lxapp_manifest::view_requirement(&state.build_dir(&app_id))
         && let Some(have) = state.runtime_build().and_then(|build| build.view)
         && !have.renders(&need)
     {
@@ -2735,7 +2772,7 @@ fn handle_client_connection(
             Some(appid) => state.build_attached(appid),
             None => {
                 let _build = state.lock_build();
-                run_lxapp_build(&state.project_root, params.as_ref())
+                run_lxapp_build(&state.project_root, &state.output, params.as_ref())
             }
         };
         let payload = match built {
@@ -2986,15 +3023,19 @@ fn command_timeout(args: Option<&serde_json::Value>) -> Duration {
 /// project + build pipeline; this mirrors `lingxia build` run in a standalone
 /// lxapp dir. Output streams to the `lingxia dev` terminal; the client receives
 /// only ok/error.
-fn build_lxapp_dir(dir: &Path, release: bool) -> Result<()> {
+fn build_lxapp_dir(dir: &Path, release: bool, output: Option<&Path>) -> Result<()> {
     let mut build_args = vec!["build".to_string()];
     if release {
         build_args.push("--release".to_string());
     }
-    crate::lxapp::run_in_dir_for_dev(&build_args, dir)
+    crate::lxapp::run_in_dir_for_dev(&build_args, dir, output)
 }
 
-fn run_lxapp_build(project_root: &Path, args: Option<&serde_json::Value>) -> Result<()> {
+fn run_lxapp_build(
+    project_root: &Path,
+    output: &super::session_output::SessionOutput,
+    args: Option<&serde_json::Value>,
+) -> Result<()> {
     let release = args
         .and_then(|value| value.get("release"))
         .and_then(serde_json::Value::as_bool)
@@ -3002,23 +3043,16 @@ fn run_lxapp_build(project_root: &Path, args: Option<&serde_json::Value>) -> Res
     let appid = args
         .and_then(|value| value.get("appid"))
         .and_then(serde_json::Value::as_str);
-    build_lxapp_dir(&resolve_lxapp_dir(project_root, appid)?, release)?;
-
-    // Host dev sessions serve bundles through the generated manifest. Without
-    // refreshing it here, the runtime sees the previous dist hash and a
-    // successful in-place reload silently restarts stale assets.
-    refresh_lxapp_manifests(project_root)?;
-    Ok(())
-}
-
-fn refresh_lxapp_manifests(project_root: &Path) -> Result<()> {
-    if project_root.join("lingxia.yaml").is_file() {
-        let config = crate::config::LingXiaConfig::load(project_root)?;
-        super::lxapp_manifest::write_configured_manifests(project_root, &config)?;
-    } else if project_root.join("lxapp.json").is_file() {
-        // A standalone session (`listen --port`) serves its own lxapp.
-        super::lxapp_manifest::publish_dist(project_root, &project_root.join("dist"))?;
-    }
+    let dir = resolve_lxapp_dir(project_root, appid)?;
+    // A plugin has no app id and is not served.
+    let Ok(app_id) = super::lxapp_watch::read_app_id(&dir) else {
+        return build_lxapp_dir(&dir, release, None);
+    };
+    let built = output.build_dir(&app_id);
+    build_lxapp_dir(&dir, release, Some(&built))?;
+    // Without publishing here, the runtime sees the previous dist hash and a successful
+    // in-place reload silently restarts stale assets.
+    super::lxapp_manifest::publish_dist(&output.store(), &built)?;
     Ok(())
 }
 
@@ -3115,8 +3149,8 @@ where
 mod tests {
     use super::{
         AttachedLxapp, DevServerState, RelayWait, TEST_RUN_LEASE, accept_websocket, dev_port,
-        handle_watch_request, persist_runtime_events, read_wire_message, refresh_lxapp_manifests,
-        resolve_lxapp_dir, route_runtime_message, send_wire_message, wait_for_result,
+        handle_watch_request, persist_runtime_events, read_wire_message, resolve_lxapp_dir,
+        route_runtime_message, send_wire_message, wait_for_result,
     };
     use lingxia_control_protocol::dev_session::{
         DEV_SESSION_PROTOCOL_VERSION, DevSessionMessage, DevSessionRole, WatchPauseArgs,
@@ -3264,6 +3298,7 @@ mod tests {
         .unwrap();
         let state = Arc::new(DevServerState::new(
             root.path().to_path_buf(),
+            super::super::session_output::SessionOutput::at(PathBuf::from("unused-session")),
             Arc::new(AtomicBool::new(false)),
             None,
             false,
@@ -3391,6 +3426,7 @@ mod tests {
     fn authenticated_state() -> DevServerState {
         DevServerState::new(
             PathBuf::from("project"),
+            super::super::session_output::SessionOutput::at(PathBuf::from("unused-session")),
             Arc::new(AtomicBool::new(false)),
             Some("secret".to_string()),
             false,
@@ -3437,6 +3473,7 @@ mod tests {
     fn desktop_state(stop: Arc<AtomicBool>) -> Arc<DevServerState> {
         Arc::new(DevServerState::new(
             PathBuf::from("project"),
+            super::super::session_output::SessionOutput::at(PathBuf::from("unused-session")),
             stop,
             None,
             true,
@@ -3478,6 +3515,7 @@ mod tests {
         let stop = Arc::new(AtomicBool::new(false));
         let state = Arc::new(DevServerState::new(
             PathBuf::from("project"),
+            super::super::session_output::SessionOutput::at(PathBuf::from("unused-session")),
             stop.clone(),
             None,
             false,
@@ -3876,57 +3914,127 @@ mod tests {
         assert!(!state.test_run_active());
     }
 
-    #[test]
-    fn reload_manifest_refresh_tracks_rebuilt_dist() {
+    const HOST_YAML: &str = "app:\n  projectName: demo-host\n  packageId: app.example.demohost\n  productName: Demo Host\n  productVersion: 1.0.0\n  platforms: [windows]\n  homeAppId: demo\nresources:\n  bundles:\n    - type: lxapp\n      appId: demo\n      path: lxapp\n";
+
+    /// A host project whose embed build wrote `lxapp/dist`.
+    fn host_project() -> tempfile::TempDir {
         let temp = tempfile::tempdir().unwrap();
-        let project = temp.path();
-        let dist = project.join("lxapp/dist");
-        std::fs::create_dir_all(&dist).unwrap();
-        std::fs::write(
-            project.join("lingxia.yaml"),
-            "app:\n  projectName: demo-host\n  packageId: app.example.demohost\n  productName: Demo Host\n  productVersion: 1.0.0\n  platforms: [windows]\n  homeAppId: demo\nresources:\n  bundles:\n    - type: lxapp\n      appId: demo\n      path: lxapp\n",
-        )
-        .unwrap();
+        let dist = temp.path().join("lxapp/dist");
+        std::fs::create_dir_all(dist.join("pages")).unwrap();
+        std::fs::write(temp.path().join("lingxia.yaml"), HOST_YAML).unwrap();
         std::fs::write(
             dist.join("lxapp.json"),
             r#"{"appId":"demo","version":"1.0.0","pages":{}}"#,
         )
         .unwrap();
-        std::fs::write(dist.join("logic.js"), "Page({ value: 1 })").unwrap();
-
-        refresh_lxapp_manifests(project).unwrap();
-        let manifest_path = project.join(".lingxia/dev/lxapp/demo/manifest.json");
-        let first: serde_json::Value =
-            serde_json::from_slice(&std::fs::read(&manifest_path).unwrap()).unwrap();
-
-        std::fs::write(dist.join("logic.js"), "Page({ value: 2 })").unwrap();
-        refresh_lxapp_manifests(project).unwrap();
-        let second: serde_json::Value =
-            serde_json::from_slice(&std::fs::read(&manifest_path).unwrap()).unwrap();
-
-        assert_ne!(first["distHash"], second["distHash"]);
+        std::fs::write(dist.join("pages/index.js"), "embedded build").unwrap();
+        temp
     }
 
-    #[test]
-    fn a_hot_swap_republishes_an_attached_lxapps_dist() {
-        let temp = tempfile::tempdir().unwrap();
-        let project = temp.path().join("host");
-        let source = temp.path().join("kit");
-        let dist = source.join("dist");
-        std::fs::create_dir_all(&project).unwrap();
-        std::fs::create_dir_all(&dist).unwrap();
-        std::fs::write(
-            dist.join("lxapp.json"),
-            r#"{"appId":"kit","version":"1.0.0","pages":{}}"#,
-        )
-        .unwrap();
-        std::fs::write(dist.join("logic.js"), "Page({ value: 1 })").unwrap();
-        let state = DevServerState::new(
-            project.clone(),
+    /// A session of `project`, as `lingxia dev` starts one.
+    fn session(project: &std::path::Path, id: &str) -> DevServerState {
+        let (output, _) = super::super::session_output::SessionOutput::create(project, id).unwrap();
+        DevServerState::new(
+            project.to_path_buf(),
+            output,
             Arc::new(AtomicBool::new(false)),
             None,
             false,
+        )
+    }
+
+    fn publish_host(state: &DevServerState) {
+        let config = crate::config::LingXiaConfig::load(&state.project_root).unwrap();
+        state.publish_configured(&config).unwrap();
+    }
+
+    /// What a finished build leaves in the session's build of `app_id`, published as a
+    /// rebuild publishes it.
+    fn build(state: &DevServerState, app_id: &str, files: &[(&str, &str)]) {
+        let built = state.build_dir(app_id);
+        let _ = std::fs::remove_dir_all(&built);
+        std::fs::create_dir_all(&built).unwrap();
+        std::fs::write(
+            built.join("lxapp.json"),
+            format!(r#"{{"appId":"{app_id}","version":"1.0.0","pages":{{}}}}"#),
+        )
+        .unwrap();
+        for (path, text) in files {
+            let path = built.join(path);
+            std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+            std::fs::write(path, text).unwrap();
+        }
+        state.refresh_manifests(app_id).unwrap();
+    }
+
+    fn get(state: &DevServerState, target: &str) -> Vec<u8> {
+        super::handle_dev_lxapp_http_request(state, target)
+            .unwrap()
+            .expect(target)
+            .1
+    }
+
+    fn manifest(
+        state: &DevServerState,
+        app_id: &str,
+    ) -> super::super::lxapp_manifest::DevLxAppManifest {
+        serde_json::from_slice(&get(
+            state,
+            &format!("/__lingxia/dev/lxapp/{app_id}/manifest.json"),
+        ))
+        .unwrap()
+    }
+
+    fn archived(state: &DevServerState, app_id: &str, hash: &str, path: &str) -> Option<Vec<u8>> {
+        let body = get(
+            state,
+            &format!("/__lingxia/dev/lxapp/{app_id}/bundle/{hash}.tar.zst"),
         );
+        let mut decoder = zstd::stream::read::Decoder::new(body.as_slice()).unwrap();
+        decoder
+            .window_log_max(super::DEV_BUNDLE_WINDOW_LOG)
+            .unwrap();
+        let mut entries = tar::Archive::new(decoder);
+        for entry in entries.entries().unwrap() {
+            let mut entry = entry.unwrap();
+            if entry.path().unwrap().to_string_lossy() == path {
+                let mut bytes = Vec::new();
+                std::io::Read::read_to_end(&mut entry, &mut bytes).unwrap();
+                return Some(bytes);
+            }
+        }
+        None
+    }
+
+    #[test]
+    fn a_session_starts_from_a_copy_of_the_embed_build_and_publishes_its_rebuilds() {
+        let project = host_project();
+        let state = session(project.path(), "aaaaaa");
+        publish_host(&state);
+        let first = manifest(&state, "demo");
+        assert_eq!(
+            get(&state, "/__lingxia/dev/lxapp/demo/files/pages/index.js"),
+            b"embedded build"
+        );
+
+        build(&state, "demo", &[("pages/index.js", "rebuilt")]);
+        assert_ne!(manifest(&state, "demo").dist_hash, first.dist_hash);
+        assert_eq!(
+            std::fs::read(project.path().join("lxapp/dist/pages/index.js")).unwrap(),
+            b"embedded build",
+            "a session never writes dist"
+        );
+        assert!(!project.path().join(".lingxia/dev/lxapp").exists());
+    }
+
+    #[test]
+    fn an_attached_lxapp_builds_into_the_host_session_not_its_own_dist() {
+        let temp = tempfile::tempdir().unwrap();
+        let project = temp.path().join("host");
+        let source = temp.path().join("kit");
+        std::fs::create_dir_all(&project).unwrap();
+        std::fs::create_dir_all(&source).unwrap();
+        let state = session(&project, "aaaaaa");
         state
             .insert_attached(AttachedLxapp {
                 app_id: "kit".into(),
@@ -3934,128 +4042,119 @@ mod tests {
                 release: false,
             })
             .unwrap();
-        state.refresh_manifests("kit").unwrap();
-        let first = super::super::lxapp_manifest::load_manifest(&project, "kit").unwrap();
+        build(&state, "kit", &[("logic.js", "Page({ value: 1 })")]);
+        let first = manifest(&state, "kit");
+        build(&state, "kit", &[("logic.js", "Page({ value: 2 })")]);
+        assert_ne!(first.dist_hash, manifest(&state, "kit").dist_hash);
+        assert!(!source.join("dist").exists());
 
-        std::fs::write(dist.join("logic.js"), "Page({ value: 2 })").unwrap();
-        state.refresh_manifests("kit").unwrap();
-        let second = super::super::lxapp_manifest::load_manifest(&project, "kit").unwrap();
+        state.detach_attached("kit");
+        assert!(!state.build_dir("kit").exists());
+    }
 
-        assert_ne!(first.dist_hash, second.dist_hash);
+    /// Two instances of one project: one rebuilds while the other serves a page.
+    #[test]
+    fn two_sessions_of_one_project_never_serve_each_others_bytes() {
+        let project = host_project();
+        let (first, second) = (
+            session(project.path(), "aaaaaa"),
+            session(project.path(), "bbbbbb"),
+        );
+        publish_host(&first);
+        publish_host(&second);
+        let served = manifest(&first, "demo");
+        let page =
+            |state: &DevServerState| get(state, "/__lingxia/dev/lxapp/demo/files/pages/index.js");
+        assert_eq!(page(&first), b"embedded build");
+
+        // The other session rebuilds and publishes while this one serves.
+        build(
+            &second,
+            "demo",
+            &[("pages/index.js", "the second session's rebuild")],
+        );
+        assert_eq!(page(&second), b"the second session's rebuild");
+        assert_eq!(manifest(&first, "demo"), served);
+        assert_eq!(page(&first), b"embedded build");
+        assert_eq!(
+            archived(&first, "demo", &served.dist_hash, "pages/index.js").as_deref(),
+            Some(&b"embedded build"[..])
+        );
+
+        // This session's own hot swap rewrites its build before it publishes again.
+        std::fs::write(
+            first.build_dir("demo").join("pages/index.js"),
+            "a swap still compiling",
+        )
+        .unwrap();
+        assert_eq!(
+            page(&first),
+            b"embedded build",
+            "served from the published bytes"
+        );
+        let listed = served
+            .files
+            .iter()
+            .find(|file| file.path == "pages/index.js")
+            .unwrap();
+        assert_eq!(
+            get(
+                &first,
+                &format!("/__lingxia/dev/lxapp/demo/blob/{}", listed.hash)
+            ),
+            b"embedded build"
+        );
+        assert_eq!(page(&second), b"the second session's rebuild");
     }
 
     #[test]
-    fn a_second_session_rebuilding_dist_never_changes_the_bytes_a_manifest_lists() {
+    fn a_debug_and_a_release_session_of_one_lxapp_serve_their_own_builds() {
         let temp = tempfile::tempdir().unwrap();
         let project = temp.path();
-        let dist = project.join("lxapp/dist");
-        std::fs::create_dir_all(dist.join("pages")).unwrap();
         std::fs::write(
-            project.join("lingxia.yaml"),
-            "app:\n  projectName: demo-host\n  packageId: app.example.demohost\n  productName: Demo Host\n  productVersion: 1.0.0\n  platforms: [windows]\n  homeAppId: demo\nresources:\n  bundles:\n    - type: lxapp\n      appId: demo\n      path: lxapp\n",
+            project.join("lxapp.json"),
+            r#"{"appId":"solo","version":"1.0.0","pages":{}}"#,
         )
         .unwrap();
-        std::fs::write(
-            dist.join("lxapp.json"),
-            r#"{"appId":"demo","version":"1.0.0","pages":{}}"#,
-        )
-        .unwrap();
-        std::fs::write(dist.join("pages/index.js"), "release build").unwrap();
-        // Two sessions of one project share its dist and its published store.
-        let session = || {
-            DevServerState::new(
-                project.to_path_buf(),
-                Arc::new(AtomicBool::new(false)),
-                None,
-                false,
-            )
-        };
-        let (first, _second) = (session(), session());
-        refresh_lxapp_manifests(project).unwrap();
-        let get = |target: &str| super::handle_dev_lxapp_http_request(&first, target).unwrap();
-        let read: super::super::lxapp_manifest::DevLxAppManifest =
-            serde_json::from_slice(&get("/__lingxia/dev/lxapp/demo/manifest.json").unwrap().1)
-                .unwrap();
-        let listed = read
-            .files
-            .iter()
-            .find(|f| f.path == "pages/index.js")
-            .unwrap()
-            .clone();
+        let (debug, release) = (session(project, "aaaaaa"), session(project, "bbbbbb"));
+        build(
+            &debug,
+            "solo",
+            &[("logic.js", "debug build"), ("logic.js.map", "{}")],
+        );
+        build(&release, "solo", &[("logic.js", "release build")]);
+        build(
+            &debug,
+            "solo",
+            &[("logic.js", "debug rebuild"), ("logic.js.map", "{}")],
+        );
 
-        // The other session's build rewrites dist, then publishes the shared manifest.
-        std::fs::write(dist.join("pages/index.js"), "a dev-mode build, longer").unwrap();
-        let live = std::fs::read(dist.join("pages/index.js")).unwrap();
-        assert_ne!(
-            live.len() as u64,
-            listed.size,
-            "dist no longer holds what was listed"
-        );
-        let by_path = get("/__lingxia/dev/lxapp/demo/files/pages/index.js")
-            .unwrap()
-            .1;
+        let paths = |state: &DevServerState| -> Vec<String> {
+            manifest(state, "solo")
+                .files
+                .into_iter()
+                .map(|file| file.path)
+                .collect()
+        };
+        assert_eq!(paths(&debug), ["logic.js", "logic.js.map", "lxapp.json"]);
+        assert_eq!(paths(&release), ["logic.js", "lxapp.json"]);
         assert_eq!(
-            by_path.len() as u64,
-            listed.size,
-            "served from the published bytes, not dist"
+            get(&debug, "/__lingxia/dev/lxapp/solo/files/logic.js"),
+            b"debug rebuild"
         );
-        refresh_lxapp_manifests(project).unwrap();
-        let by_hash = get(&format!("/__lingxia/dev/lxapp/demo/blob/{}", listed.hash))
-            .unwrap()
-            .1;
-        assert_eq!(by_hash, b"release build");
-        let (_, archive) = get(&format!(
-            "/__lingxia/dev/lxapp/demo/bundle/{}.tar.zst",
-            read.dist_hash
-        ))
-        .expect("an earlier manifest's archive is still served");
-        let mut decoder = zstd::stream::read::Decoder::new(archive.as_slice()).unwrap();
-        decoder
-            .window_log_max(super::DEV_BUNDLE_WINDOW_LOG)
-            .unwrap();
-        let mut entries = tar::Archive::new(decoder);
-        let mut page = None;
-        for entry in entries.entries().unwrap() {
-            let mut entry = entry.unwrap();
-            if entry.path().unwrap().to_string_lossy() == "pages/index.js" {
-                let mut bytes = Vec::new();
-                std::io::Read::read_to_end(&mut entry, &mut bytes).unwrap();
-                page = Some(bytes);
-            }
-        }
-        assert_eq!(page.as_deref(), Some(&b"release build"[..]));
-        let current = super::super::lxapp_manifest::load_manifest(project, "demo").unwrap();
-        assert_ne!(
-            current.dist_hash, read.dist_hash,
-            "the new build is published too"
+        assert_eq!(
+            get(&release, "/__lingxia/dev/lxapp/solo/files/logic.js"),
+            b"release build"
         );
+        assert!(!project.join("dist").exists());
     }
 
     #[test]
     fn a_published_bundle_comes_as_one_archive_of_its_current_hash() {
-        let temp = tempfile::tempdir().unwrap();
-        let project = temp.path();
-        let dist = project.join("lxapp/dist");
-        std::fs::create_dir_all(dist.join("pages")).unwrap();
-        std::fs::write(
-            project.join("lingxia.yaml"),
-            "app:\n  projectName: demo-host\n  packageId: app.example.demohost\n  productName: Demo Host\n  productVersion: 1.0.0\n  platforms: [windows]\n  homeAppId: demo\nresources:\n  bundles:\n    - type: lxapp\n      appId: demo\n      path: lxapp\n",
-        )
-        .unwrap();
-        std::fs::write(
-            dist.join("lxapp.json"),
-            r#"{"appId":"demo","version":"1.0.0","pages":{}}"#,
-        )
-        .unwrap();
-        std::fs::write(dist.join("pages/index.js"), "Page({})").unwrap();
-        refresh_lxapp_manifests(project).unwrap();
-        let state = DevServerState::new(
-            project.to_path_buf(),
-            Arc::new(AtomicBool::new(false)),
-            None,
-            false,
-        );
-        let manifest = super::super::lxapp_manifest::load_manifest(project, "demo").unwrap();
+        let project = host_project();
+        let state = session(project.path(), "aaaaaa");
+        publish_host(&state);
+        let manifest = manifest(&state, "demo");
         let target = format!(
             "/__lingxia/dev/lxapp/demo/bundle/{}.tar.zst",
             manifest.dist_hash
@@ -4094,7 +4193,7 @@ mod tests {
                 .collect::<Vec<_>>(),
             expected
         );
-        assert!(entries.contains(&("pages/index.js".to_string(), b"Page({})".to_vec())));
+        assert!(entries.contains(&("pages/index.js".to_string(), b"embedded build".to_vec())));
         // A stale hash is a 404: the client then reads the manifest again or falls back per file.
         assert!(
             super::handle_dev_lxapp_http_request(

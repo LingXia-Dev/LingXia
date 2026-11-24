@@ -18,7 +18,7 @@ the tray or closing a mobile app does not.
 whose project contains the current directory; inside a project it never falls
 back to another project's session. Outside any project it uses the only live
 session; otherwise it refuses to guess and prints the candidates. `lxdev session` lists
-them (`#`, id, name, target, state, versions, project; `--json` for scripts).
+them (`#`, id, name, target, state, versions, project, and the session's build directory; `--json` for scripts).
 The host version ends with its View wire (`view 1/231`): GPU pages need its ABI and at most its newest field.
 Pick one with `--session` (before the subcommand) or `LXDEV_SESSION`:
 
