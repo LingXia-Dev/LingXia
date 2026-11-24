@@ -530,7 +530,14 @@ pub fn request_shutdown(info: &SessionInfo, taken_over_by: Option<&str>) -> Resu
         &DevSessionMessage::Request(ControlRequest {
             id: command_id.clone(),
             method: methods::session::SHUTDOWN.to_string(),
-            params: taken_over_by.map(|by| serde_json::json!({ "takenOverBy": by })),
+            params: taken_over_by.map(|by| {
+                serde_json::json!({
+                    "takenOverBy": by,
+                    "takenOverByExecutable": std::env::current_exe()
+                        .map(|path| path.display().to_string())
+                        .unwrap_or_default(),
+                })
+            }),
         }),
     )?;
 

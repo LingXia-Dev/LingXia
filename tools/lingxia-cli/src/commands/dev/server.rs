@@ -1769,6 +1769,19 @@ fn start_server_on_with_roots(
     })
 }
 
+/// What a session taken over prints: who took over, with which `lingxia`, and how to keep both.
+fn takeover_notice(by: &str, executable: Option<&str>) -> String {
+    let with = executable
+        .filter(|path| !path.is_empty())
+        .map(|path| format!(" ({path})"))
+        .unwrap_or_default();
+    format!(
+        "Taken over by session {by}{with}; stopping this one.\n\
+         To run both, start one under its own instance: \
+         `LINGXIA_RUNNER_INSTANCE=<name> lingxia dev …` (`lxdev --instance <name>` reaches it)."
+    )
+}
+
 /// Said once at start: during a session the project's `dist/` is not what is served.
 fn report_session_output(output: &super::session_output::SessionOutput, unowned: &[PathBuf]) {
     use colored::Colorize;
@@ -2824,8 +2837,12 @@ fn handle_client_connection(
             .and_then(|params| params.get("takenOverBy"))
             .and_then(serde_json::Value::as_str)
         {
+            let executable = params
+                .as_ref()
+                .and_then(|params| params.get("takenOverByExecutable"))
+                .and_then(serde_json::Value::as_str);
             eprintln!();
-            eprintln!("Taken over by session {by}; stopping this one.");
+            eprintln!("{}", takeover_notice(by, executable));
         }
         send_wire_message(&mut websocket, &DevSessionMessage::success(id, None))?;
         state.request_shutdown();
@@ -4004,6 +4021,24 @@ mod tests {
             }
         }
         None
+    }
+
+    #[test]
+    fn a_session_taken_over_names_the_binary_and_how_to_keep_both() {
+        let notice = super::takeover_notice("pid 42", Some("/opt/other/lingxia"));
+        assert!(
+            notice.starts_with("Taken over by session pid 42 (/opt/other/lingxia); stopping"),
+            "{notice}"
+        );
+        assert!(
+            notice.contains("LINGXIA_RUNNER_INSTANCE=<name>"),
+            "{notice}"
+        );
+        // An older CLI sends no executable.
+        assert!(
+            super::takeover_notice("demo", None)
+                .starts_with("Taken over by session demo; stopping")
+        );
     }
 
     #[test]
