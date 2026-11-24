@@ -329,7 +329,8 @@ location rather than emitting `unknown`.
 | `rename`, `rename_all`, `default`, `skip`, `skip_serializing_if`, `flatten` | applied to wire names, optionality, intersections |
 
 ```html
-<script src="lingxia://lxapp/.lingxia/native.js"></script>
+<!-- pages/<name>/index.html -->
+<script src="../../.lingxia/native.js"></script>
 <script>
   window.native.editor.pickDocument({ title: "meeting-notes" }).then(console.log);
 </script>
