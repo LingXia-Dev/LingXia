@@ -7,6 +7,7 @@ export function render({ data, actions }: View) {
   const newUrl = useLocal('newUrl', '');
   const newGroup = useLocal('newGroup', '');
   const renameTitle = useLocal('renameTitle', '');
+  const groupName = useLocal('groupName', '');
 
   const selectGroup = useAction(actions.selectGroup);
   const addBookmark = useAction(actions.addBookmark);
@@ -14,7 +15,12 @@ export function render({ data, actions }: View) {
   const setPinned = useAction(actions.setPinned);
   const startRename = useAction(actions.startRename);
   const renameBookmark = useAction(actions.renameBookmark);
+  const moveBookmark = useAction(actions.moveBookmark);
+  const shiftBookmark = useAction(actions.shiftBookmark);
   const createGroup = useAction(actions.createGroup);
+  const startGroupRename = useAction(actions.startGroupRename);
+  const renameGroup = useAction(actions.renameGroup);
+  const shiftGroup = useAction(actions.shiftGroup);
   const deleteGroup = useAction(actions.deleteGroup);
   const importHtml = useAction(actions.importHtml);
   const exportHtml = useAction(actions.exportHtml);
@@ -27,6 +33,20 @@ export function render({ data, actions }: View) {
     if (!q) return true;
     return entry.title.toLowerCase().includes(q) || entry.url.toLowerCase().includes(q);
   });
+
+  const selectedGroup = data.groups.find((group) => group.id === data.selectedGroupId);
+  const groupIndex = selectedGroup ? data.groups.indexOf(selectedGroup) : -1;
+  // Order is kept per group, so reorder only while one group's list shows in full.
+  const canReorder = data.selectedGroupId !== '__all__' && !q;
+  const moveOptions = [
+    { value: '__ungrouped__', label: t('bookmarks.ungrouped') },
+    ...data.groups.map((group) => ({ value: group.id, label: group.name })),
+  ];
+  const stepClass = (enabled: boolean) => (
+    enabled
+      ? 'px-2 py-1 rounded-md bg-canvas border border-line text-xs'
+      : 'px-2 py-1 rounded-md bg-canvas border border-line text-xs opacity-40'
+  );
 
   const submitAdd = async () => {
     if (!newUrl.value.trim()) return;
@@ -83,20 +103,13 @@ export function render({ data, actions }: View) {
             <text>{t('bookmarks.ungrouped')}</text>
           </button>
           {data.groups.map((group) => (
-            <view key={group.id} className="flex-row items-center gap-1">
-              <button
-                onClick={() => { void selectGroup.run({ groupId: group.id }); }}
-                className={data.selectedGroupId === group.id ? 'grow basis-0 px-3 py-2 rounded-lg bg-accent text-on-accent text-sm' : 'grow basis-0 px-3 py-2 rounded-lg bg-surface text-sm'}
-              >
-                <text>{group.name}</text>
-              </button>
-              <button
-                onClick={() => { void deleteGroup.run({ id: group.id }); }}
-                className="px-2 py-2 rounded-lg bg-transparent text-xs text-danger"
-              >
-                <text>{t('common.delete')}</text>
-              </button>
-            </view>
+            <button
+              key={group.id}
+              onClick={() => { void selectGroup.run({ groupId: group.id }); }}
+              className={data.selectedGroupId === group.id ? 'px-3 py-2 rounded-lg bg-accent text-on-accent text-sm' : 'px-3 py-2 rounded-lg bg-surface text-sm'}
+            >
+              <text>{group.name}</text>
+            </button>
           ))}
           <view className="flex-row gap-1 pt-2">
             <input
@@ -114,6 +127,58 @@ export function render({ data, actions }: View) {
         </view>
 
         <view className="grow basis-0 min-w-0 gap-3">
+          {selectedGroup ? (
+            <view className="flex-row items-center gap-2">
+              {data.editingGroupId === selectedGroup.id ? (
+                <input
+                  aria-label={t('bookmarks.renameGroup')}
+                  value={groupName.value}
+                  autoFocus
+                  onInput={(v) => groupName.set(v)}
+                  onSubmit={(v) => { void renameGroup.run({ id: selectedGroup.id, name: v }); }}
+                  className="grow basis-0 min-w-0 px-3 py-1.5 rounded-lg bg-surface border border-line text-sm"
+                />
+              ) : (
+                <text className="grow basis-0 min-w-0 text-base font-semibold">{selectedGroup.name}</text>
+              )}
+              {data.editingGroupId === selectedGroup.id ? (
+                <button
+                  onClick={() => { void renameGroup.run({ id: selectedGroup.id, name: groupName.value }); }}
+                  className="px-3 py-1.5 rounded-lg bg-accent text-on-accent text-sm"
+                >
+                  <text>{t('common.save')}</text>
+                </button>
+              ) : (
+                <button
+                  onClick={() => { groupName.set(selectedGroup.name); void startGroupRename.run({ id: selectedGroup.id }); }}
+                  className="px-3 py-1.5 rounded-lg bg-surface border border-line text-sm"
+                >
+                  <text>{t('bookmarks.renameGroup')}</text>
+                </button>
+              )}
+              <button
+                disabled={groupIndex <= 0}
+                onClick={() => { void shiftGroup.run({ id: selectedGroup.id, delta: -1 }); }}
+                className={groupIndex <= 0 ? 'px-3 py-1.5 rounded-lg bg-surface border border-line text-sm opacity-40' : 'px-3 py-1.5 rounded-lg bg-surface border border-line text-sm'}
+              >
+                <text>{t('bookmarks.moveGroupUp')}</text>
+              </button>
+              <button
+                disabled={groupIndex >= data.groups.length - 1}
+                onClick={() => { void shiftGroup.run({ id: selectedGroup.id, delta: 1 }); }}
+                className={groupIndex >= data.groups.length - 1 ? 'px-3 py-1.5 rounded-lg bg-surface border border-line text-sm opacity-40' : 'px-3 py-1.5 rounded-lg bg-surface border border-line text-sm'}
+              >
+                <text>{t('bookmarks.moveGroupDown')}</text>
+              </button>
+              <button
+                onClick={() => { void deleteGroup.run({ id: selectedGroup.id }); }}
+                className="px-3 py-1.5 rounded-lg bg-transparent text-sm text-danger"
+              >
+                <text>{t('bookmarks.deleteGroup')}</text>
+              </button>
+            </view>
+          ) : null}
+
           <view className="flex-row gap-2">
             <input
               aria-label={t('common.search')}
@@ -154,7 +219,7 @@ export function render({ data, actions }: View) {
                 <text className="text-sm text-muted">{data.loading ? t('common.loading') : t('common.empty')}</text>
               </view>
             ) : (
-              visible.map((entry) => (
+              visible.map((entry, index) => (
                 <view key={entry.id} className="flex-row items-center justify-between px-4 py-3 border-t border-line gap-3">
                   {data.editingId === entry.id ? (
                     <input
@@ -176,6 +241,34 @@ export function render({ data, actions }: View) {
                     </button>
                   )}
                   <view className="flex-row items-center gap-2">
+                    {canReorder ? (
+                      <button
+                        aria-label={t('bookmarks.moveUp')}
+                        disabled={index === 0}
+                        onClick={() => { void shiftBookmark.run({ id: entry.id, delta: -1 }); }}
+                        className={stepClass(index > 0)}
+                      >
+                        <text>↑</text>
+                      </button>
+                    ) : null}
+                    {canReorder ? (
+                      <button
+                        aria-label={t('bookmarks.moveDown')}
+                        disabled={index === visible.length - 1}
+                        onClick={() => { void shiftBookmark.run({ id: entry.id, delta: 1 }); }}
+                        className={stepClass(index < visible.length - 1)}
+                      >
+                        <text>↓</text>
+                      </button>
+                    ) : null}
+                    {data.groups.length > 0 ? (
+                      <select
+                        aria-label={t('bookmarks.moveTo')}
+                        value={entry.groupId ?? '__ungrouped__'}
+                        options={moveOptions}
+                        onChange={(value) => { void moveBookmark.run({ id: entry.id, groupId: value }); }}
+                      />
+                    ) : null}
                     {data.editingId === entry.id ? (
                       <button
                         onClick={() => { void renameBookmark.run({ id: entry.id, title: renameTitle.value }); }}

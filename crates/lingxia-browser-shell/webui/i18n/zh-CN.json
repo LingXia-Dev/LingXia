@@ -354,5 +354,33 @@
   "settings.about.commit": {
     "defaultMessage": "提交 {sha}",
     "description": "About card."
+  },
+  "bookmarks.renameGroup": {
+    "defaultMessage": "重命名分组",
+    "description": "Button that renames the selected bookmark group"
+  },
+  "bookmarks.deleteGroup": {
+    "defaultMessage": "删除分组",
+    "description": "Button that deletes the selected bookmark group"
+  },
+  "bookmarks.moveGroupUp": {
+    "defaultMessage": "上移",
+    "description": "Button that moves the selected group one place up in the group list"
+  },
+  "bookmarks.moveGroupDown": {
+    "defaultMessage": "下移",
+    "description": "Button that moves the selected group one place down in the group list"
+  },
+  "bookmarks.moveUp": {
+    "defaultMessage": "上移书签",
+    "description": "Accessible label of the arrow that moves a bookmark one place up in its group"
+  },
+  "bookmarks.moveDown": {
+    "defaultMessage": "下移书签",
+    "description": "Accessible label of the arrow that moves a bookmark one place down in its group"
+  },
+  "bookmarks.moveTo": {
+    "defaultMessage": "移动到分组",
+    "description": "Accessible label of the picker that moves a bookmark to another group"
   }
 }

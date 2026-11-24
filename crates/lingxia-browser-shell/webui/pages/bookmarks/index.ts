@@ -26,6 +26,7 @@ interface BookmarksData {
   pinnedIds: string[];
   selectedGroupId: string;
   editingId: string;
+  editingGroupId: string;
   loading: boolean;
   /** An i18n key the View renders; empty when there is nothing to say. */
   status: string;
@@ -38,6 +39,7 @@ const initialData: BookmarksData = {
   pinnedIds: [],
   selectedGroupId: '__all__',
   editingId: '',
+  editingGroupId: '',
   loading: true,
   status: '',
   statusCount: 0,
@@ -63,6 +65,16 @@ export default definePage({
       apply(await invoke<BookmarksView>('bookmarks.list'));
     }
 
+    /** The ids of `ids` with `id` swapped one step by `delta`, or null at an end. */
+    function shifted(ids: string[], id: string, delta: -1 | 1): string[] | null {
+      const from = ids.indexOf(id);
+      const to = from + delta;
+      if (from < 0 || to < 0 || to >= ids.length) return null;
+      const next = ids.slice();
+      [next[from], next[to]] = [next[to], next[from]];
+      return next;
+    }
+
     function report(status: string, count = 0) {
       page.update((d) => {
         d.status = status;
@@ -77,7 +89,10 @@ export default definePage({
       },
       actions: {
         async selectGroup({ groupId }: { groupId: string }) {
-          page.update((d) => { d.selectedGroupId = groupId; });
+          page.update((d) => {
+            d.selectedGroupId = groupId;
+            d.editingGroupId = '';
+          });
         },
         async addBookmark({ title, url, groupId }: { title: string; url: string; groupId: string }) {
           await invoke('bookmarks.add', {
@@ -99,6 +114,22 @@ export default definePage({
           await invoke('bookmarks.remove', { id });
           await refresh();
         },
+        async moveBookmark({ id, groupId }: { id: string; groupId: string }) {
+          await invoke('bookmarks.move', { id, groupId: groupId.startsWith('__') ? undefined : groupId });
+          await refresh();
+        },
+        async shiftBookmark({ id, delta }: { id: string; delta: -1 | 1 }) {
+          const entry = page.data.entries.find((item) => item.id === id);
+          if (!entry) return;
+          // The route reorders one group at a time: the entry's own group.
+          const scope = page.data.entries
+            .filter((item) => item.groupId === entry.groupId)
+            .map((item) => item.id);
+          const orderedIds = shifted(scope, id, delta);
+          if (!orderedIds) return;
+          await invoke('bookmarks.reorder', { groupId: entry.groupId, orderedIds });
+          await refresh();
+        },
         async setPinned({ id, pinned }: { id: string; pinned: boolean }) {
           await invoke('bookmarks.setPinned', { id, pinned });
           await refresh();
@@ -107,6 +138,22 @@ export default definePage({
           const trimmed = name.trim();
           if (!trimmed) return;
           await invoke('bookmarks.createGroup', { name: trimmed });
+          await refresh();
+        },
+        async startGroupRename({ id }: { id: string }) {
+          page.update((d) => { d.editingGroupId = id; });
+        },
+        async renameGroup({ id, name }: { id: string; name: string }) {
+          const trimmed = name.trim();
+          if (!trimmed) return;
+          await invoke('bookmarks.renameGroup', { id, name: trimmed });
+          page.update((d) => { d.editingGroupId = ''; });
+          await refresh();
+        },
+        async shiftGroup({ id, delta }: { id: string; delta: -1 | 1 }) {
+          const orderedIds = shifted(page.data.groups.map((group) => group.id), id, delta);
+          if (!orderedIds) return;
+          await invoke('bookmarks.reorderGroups', { orderedIds });
           await refresh();
         },
         async deleteGroup({ id }: { id: string }) {
