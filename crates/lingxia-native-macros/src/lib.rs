@@ -326,6 +326,19 @@ fn expand_host(
         .to_compile_error();
     }
 
+    if options.sync
+        && call_plan
+            .args
+            .iter()
+            .any(|arg| matches!(arg, PlanArg::Cancel))
+    {
+        return syn::Error::new_spanned(
+            &input_fn.sig,
+            "#[native(..., sync)] cannot take HostCancel: a sync route is never cancelled",
+        )
+        .to_compile_error();
+    }
+
     if options.sync {
         let call_expr = call_plan.call_expr(&fn_ident, false, false, true);
         return quote! {
@@ -440,14 +453,11 @@ enum PlanArg {
 }
 
 struct HostFnPlan {
-    #[allow(dead_code)]
-    authority: HostAuthorityArg,
     args: Vec<PlanArg>,
 }
 
 impl HostFnPlan {
     fn from_fn(input_fn: &ItemFn) -> syn::Result<Self> {
-        let mut authority = HostAuthorityArg::None;
         let mut args = Vec::new();
         let mut has_input = false;
         let mut has_cancel = false;
@@ -463,12 +473,10 @@ impl HostFnPlan {
 
             if index == 0 {
                 if is_lxapp_arg(arg) {
-                    authority = HostAuthorityArg::LxApp;
                     args.push(PlanArg::LxApp);
                     continue;
                 }
                 if is_host_invocation_context_arg(arg) {
-                    authority = HostAuthorityArg::Invocation;
                     args.push(PlanArg::Invocation);
                     continue;
                 }
@@ -507,7 +515,7 @@ impl HostFnPlan {
             args.push(PlanArg::Payload((*arg.ty).clone()));
         }
 
-        Ok(Self { authority, args })
+        Ok(Self { args })
     }
 
     fn call_expr(
@@ -801,6 +809,12 @@ impl StreamFnPlan {
                     continue;
                 }
             }
+            if is_page_state_arg(arg) {
+                return Err(syn::Error::new_spanned(
+                    arg,
+                    "PageState<T> is supported on unary routes only",
+                ));
+            }
             if input_ty.is_some() {
                 return Err(syn::Error::new_spanned(
                     arg,
@@ -979,6 +993,12 @@ impl ChannelFnPlan {
                     authority = HostAuthorityArg::Invocation;
                     continue;
                 }
+            }
+            if is_page_state_arg(arg) {
+                return Err(syn::Error::new_spanned(
+                    arg,
+                    "PageState<T> is supported on unary routes only",
+                ));
             }
             if input_ty.is_some() {
                 return Err(syn::Error::new_spanned(
@@ -1245,8 +1265,11 @@ mod tests {
         };
 
         assert!(matches!(
-            HostFnPlan::from_fn(&unary).expect("unary plan").authority,
-            HostAuthorityArg::Invocation
+            HostFnPlan::from_fn(&unary)
+                .expect("unary plan")
+                .args
+                .first(),
+            Some(PlanArg::Invocation)
         ));
         assert!(matches!(
             StreamFnPlan::from_fn(&stream)

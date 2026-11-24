@@ -22,74 +22,26 @@ use syn::{
 // Public API
 // ---------------------------------------------------------------------------
 
-/// Emit the TypeScript (or browser-global JS) client for every `#[native]`
-/// handler discovered under `rust_dir`.
-///
-/// When `out` is `<dir>/native.ts` or `<dir>/native.view.ts`, this also writes
-/// the companion `<dir>/native.logic.ts` so Logic and WebView View stay in sync.
-/// If no handlers are found, generated client files are removed.
+/// Emit the WebView View client at `out` (`.ts`, or browser-global `.js`) and the Logic client
+/// `native.logic.ts` beside it, for every `#[native]` handler discovered under `rust_dir`.
+/// If no handlers are found, both files are removed.
 pub fn generate_ts_client(rust_dir: &Path, out: &Path) -> Result<()> {
     let kind = output_kind(out);
-    debug_assert!(matches!(
+    if !matches!(
         kind,
-        OutputKind::LogicTypeScript | OutputKind::ViewTypeScript | OutputKind::BrowserGlobalJs
-    ));
+        OutputKind::ViewTypeScript | OutputKind::BrowserGlobalJs
+    ) {
+        bail!(
+            "native client output must be a View `.ts` or `.js` file: {}",
+            out.display()
+        );
+    }
+    let logic_out = out
+        .parent()
+        .map(|dir| dir.join("native.logic.ts"))
+        .ok_or_else(|| anyhow!("native client output has no directory: {}", out.display()))?;
     write_artifact(rust_dir, out, kind)?;
-    if matches!(kind, OutputKind::ViewTypeScript)
-        && let Some(parent) = out.parent()
-    {
-        let file_name = out.file_name().and_then(|n| n.to_str()).unwrap_or("");
-        if file_name.eq_ignore_ascii_case("native.ts")
-            || file_name.eq_ignore_ascii_case("native.view.ts")
-        {
-            write_artifact(
-                rust_dir,
-                &parent.join("native.logic.ts"),
-                OutputKind::LogicTypeScript,
-            )?;
-            if file_name.eq_ignore_ascii_case("native.ts") {
-                write_artifact(
-                    rust_dir,
-                    &parent.join("native.view.ts"),
-                    OutputKind::ViewTypeScript,
-                )?;
-            }
-        }
-    }
-    Ok(())
-}
-
-/// Emit both `.lingxia/native.logic.ts` and `.lingxia/native.view.ts` (and optionally
-/// `.lingxia/native.js`) from a single scan of `rust_dir`.
-pub fn generate_dual_ts_clients(
-    rust_dir: &Path,
-    out_dir: &Path,
-    include_browser_js: bool,
-) -> Result<()> {
-    if !rust_dir.exists() {
-        return Err(anyhow!(
-            "Native Rust API directory not found: {}",
-            rust_dir.display()
-        ));
-    }
-    let manifest = scan(rust_dir)?;
-    let logic_out = out_dir.join("native.logic.ts");
-    let view_out = out_dir.join("native.view.ts");
-    let js_out = out_dir.join("native.js");
-    if manifest.routes.is_empty() {
-        let _ = fs::remove_file(&logic_out);
-        let _ = fs::remove_file(&view_out);
-        if include_browser_js {
-            let _ = fs::remove_file(&js_out);
-        }
-        return Ok(());
-    }
-    write_if_changed(&logic_out, &render(&manifest, OutputKind::LogicTypeScript)?)?;
-    write_if_changed(&view_out, &render(&manifest, OutputKind::ViewTypeScript)?)?;
-    if include_browser_js {
-        write_if_changed(&js_out, &render(&manifest, OutputKind::BrowserGlobalJs)?)?;
-    }
-    Ok(())
+    write_artifact(rust_dir, &logic_out, OutputKind::LogicTypeScript)
 }
 
 /// Emit the Rust auto-register module that wraps every discovered handler's
@@ -1102,7 +1054,7 @@ fn render_rust_module(manifest: &NativeManifest) -> Result<String> {
     out.push_str("// Registers every `#[lingxia::native]` handler discovered in this crate.\n");
     out.push_str("// `include!` this file into your crate root and call\n");
     out.push_str("// `__lingxia_native::install()` from\n");
-    out.push_str("// `HostAddon::install_logic_extensions`.\n");
+    out.push_str("// `HostAddon::install_host_apis`.\n");
     out.push_str("#[allow(non_snake_case)]\n");
     out.push_str("mod __lingxia_native {\n");
     out.push_str("    pub fn install() {\n");
@@ -1343,8 +1295,8 @@ export interface NativeTask<E = unknown, R = void> extends AsyncIterable<E, R, v
 export interface NativeChannel<In = unknown, Out = In> {
   send(payload: In): void;
   onMessage(listener: (payload: Out) => void): () => void;
-  onClose(listener: (event: { code?: number; reason?: string }) => void): () => void;
-  close(code?: number, reason?: string): void;
+  onClose(listener: (event: { code?: string; reason?: string }) => void): () => void;
+  close(code?: string, reason?: string): void;
 }
 "#;
 

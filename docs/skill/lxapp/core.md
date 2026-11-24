@@ -132,6 +132,6 @@ does not say why, `e.reason` does (`'hostUpgradeRequired'`, `'stackFull'`, …):
 
 ## Logic and native APIs
 
-`lx.*` belongs to Logic. `#[lingxia::native]` routes are called from a WebView
-View through `@lingxia/native`; a `lingxia::js` extension adds `lx.<namespace>.*` to
-Logic, which is how a GPU View reaches Rust. Both: [Native development](../native/development.md).
+`lx.*` belongs to Logic. `#[lingxia::native]` routes are called through
+`@lingxia/native` from Logic (or `page.native`) and from a WebView View; a GPU View
+reaches them through a Logic action. [Native development](../native/development.md).

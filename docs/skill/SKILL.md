@@ -159,7 +159,7 @@ never add them to a project.
 | Android URL player engine and permission gate | [app/android-sdk.md](./app/android-sdk.md) |
 | Universal links / app links | [app/applinks.md](./app/applinks.md) |
 | **Native Rust** | |
-| `HostAddon`, `#[lingxia::native]`, audience, native client, facades, JS extensions | [native/development.md](./native/development.md) |
+| `HostAddon`, `#[lingxia::native]`, sync routes, `PageState`, audience, native client, facades | [native/development.md](./native/development.md) |
 | Network/privilege grants and the app registry | [native/permissions.md](./native/permissions.md) |
 | Campaign launch screen | [native/splash.md](./native/splash.md) |
 | **Ship** | |
@@ -171,8 +171,7 @@ never add them to a project.
 |---|---|---|
 | UI rendering, page state | lxapp `pages/<name>/index.tsx` (or `.html`) | View |
 | Page lifecycle, state, actions (JS) | lxapp `pages/<name>/index.ts` | `definePage` Logic |
-| Cross-page business helpers callable as `lx.X(...)` | host Rust crate | `lingxia::js` extension (needs `standard` feature) |
-| Page-scoped native UI (file/media picker, native browser) | host Rust crate | `#[lingxia::native]` route (WebView View; a GPU View goes through Logic) |
+| Rust helpers, host capabilities, per-page native state | host Rust crate | `#[lingxia::native]` route, called from Logic (`@lingxia/native`, `page.native`) or a WebView View |
 | Background services (devtool, push, ipc) | host Rust crate | `HostAddon::start_services` |
 | Platform integrations needing predeclaration | `lingxia.yaml` | `capabilities`, `features` |
 | Surfaces (windows, asides, sidebar/tray, terminal) | `lingxia.yaml` | `surfaces` |

@@ -298,22 +298,21 @@ export default definePage({
 
 ### Synchronous routes
 
-Use `#[lingxia::native("ns.method", sync)]` for short, non-blocking, I/O-free
-computation (formatting, validation, parsing). Synchronous routes run directly
-on the Logic JS thread and return `T` instead of `Promise<T>` in Logic.
-Applying `sync` to an `async fn` is a compile error; never call `block_on` or
-wait on contended async locks inside a `sync` route (dev builds warn above
-8 ms).
+`#[lingxia::native("ns.method", sync)]` runs a plain `fn` on the Logic JS thread
+and returns `T`, not `Promise<T>`, in Logic. Keep it short and I/O-free
+(formatting, validation, parsing); dev builds warn above 8 ms. It cannot take
+`HostCancel`.
 
 ### Per-page Rust state (`PageState<T>`)
 
-Add `mut state: lingxia::PageState<MyState>` (where `MyState: Default + Send + 'static`)
-to any async or sync route to hold mutable state scoped to one page instance.
-Calls on the same page targeting the same `T` serialize automatically. Call
-stateful routes via `page.native` (available in both `setup(page)` and
-`actions`); calling them via module-level `native` fails with an error pointing
-to `page.native`. State is dropped and in-flight `page.native` calls are
-cancelled (`HostCancel`) when the page unloads or `setup` throws.
+A unary route (async, blocking or `sync`) may take
+`mut state: lingxia::PageState<MyState>` (`MyState: Default + Send + 'static`):
+one value per page instance, and calls on the same page for the same `T`
+serialize; a `sync` route fails instead of waiting while an async call holds it.
+Call such routes through `page.native` in `setup(page)` or `actions`; module-level
+`native` fails. `page.native` exists once a Logic module imports
+`@lingxia/native`. Removing the page drops the state, cancels its in-flight calls
+(`HostCancel`) and closes its channels; so does a throwing `setup`.
 
 ### Supported DTO types & serde attributes
 
