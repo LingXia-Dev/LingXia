@@ -46,6 +46,15 @@ export function sourceLabel(root, file) {
   return owner ? `${owner.name}/${posix(relative(owner.dir, file))}` : posix(relative(root, file));
 }
 
+/** The lxapp's own View build settings, from `"lingxia"` in its `package.json`. */
+export function appSettings(root) {
+  let json;
+  try { json = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8')); } catch { return { strictClasses: false }; }
+  const strictClasses = json?.lingxia?.strictClasses ?? false;
+  if (typeof strictClasses !== 'boolean') throw Error(`package.json: lingxia.strictClasses is true or false, not ${JSON.stringify(strictClasses)}`);
+  return { strictClasses };
+}
+
 function readPackage(dir) {
   let json;
   try { json = JSON.parse(readFileSync(join(dir, 'package.json'), 'utf8')); } catch { return undefined; }

@@ -16,7 +16,7 @@ import { compileUtilities, tailwindWarm } from './tailwind.mjs';
 import { nearestSupported } from './suggest.mjs';
 import { loadStylesheet, validateTokens, fontFaces } from './stylesheets.mjs';
 import { checkerOptions, viewTsconfig } from './tsconfig.mjs';
-import { authored, packageOf, sourceLabel, peerTokenPackages } from './packages.mjs';
+import { appSettings, authored, packageOf, sourceLabel, peerTokenPackages } from './packages.mjs';
 import { existsSync, statSync } from 'node:fs';
 import { colorProblem, seriesProblem } from '../src/style/color.js';
 import { readFile, mkdir, writeFile, realpath, rename, rm } from 'node:fs/promises';
@@ -500,13 +500,13 @@ async function packageTokens(root, packages, problems) {
  */
 /**
  * `literalColors` admits hex and palette colours for renderer test fixtures whose probes read exact
- * pixels; app builds never set it. `strictClasses` warns at every className not followed to literals,
- * not only at those built at run time. `messages` is the compiled i18n module to bundle and
+ * pixels; app builds never set it. `messages` is the compiled i18n module to bundle and
  * `inputsRecord` the file a dev build records its inputs in; both default under `<root>/.lingxia`.
  */
-export async function buildPages(root, pages, output, catalogs = {}, { dev = false, literalColors = false, strictClasses = false, messages: messagesPath, inputsRecord } = {}) {
+export async function buildPages(root, pages, output, catalogs = {}, { dev = false, literalColors = false, messages: messagesPath, inputsRecord } = {}) {
   const { version } = JSON.parse(await readFile(new URL('../package.json', import.meta.url), 'utf8'));
   root = await realpath(resolve(root)); output = resolve(output);
+  const { strictClasses } = appSettings(root);
   // Every page's authoring problems are collected, so one build names all of them.
   const inputs = {}, warnings = [], failures = [];
   // Each place a className cannot be followed to literals, once per build.

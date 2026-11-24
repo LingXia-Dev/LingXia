@@ -57,6 +57,8 @@ export function render() {
 ```
 
 Choose between complete names instead: `size.value === 4 ? 'p-4' : 'p-8'`.
+The build warns (`UI_CLASS`) where a className is assembled at run time; `"lingxia": { "strictClasses": true }`
+in the app's `package.json` also warns wherever it cannot follow a className to literals.
 
 When two classes set the same property under the same variants, the one written later wins, as with
 tailwind-merge, so a caller's `className` overrides a component's: `cx('rounded-md px-4', 'rounded-full')`

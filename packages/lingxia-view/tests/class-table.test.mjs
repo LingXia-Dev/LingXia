@@ -103,11 +103,12 @@ test('UI_CLASS_UNKNOWN says a valid utility was not collected instead of offerin
 });
 
 // Builds `files` and returns the build's UI_CLASS warnings.
-async function classWarnings(files, options = {}) {
+const strict = JSON.stringify({ name: 'example', lingxia: { strictClasses: true } });
+async function classWarnings(files) {
   const root = await mkdtemp(join(tmpdir(), 'lingxia-view-class-warnings-'));
   try {
     for (const [name, contents] of Object.entries(files)) await writeFile(join(root, name), contents);
-    const { warnings } = await buildPages(root, ['page.tsx'], join(root, 'dist'), {}, options);
+    const { warnings } = await buildPages(root, ['page.tsx'], join(root, 'dist'));
     return warnings.filter(line => line.includes('UI_CLASS:'));
   } finally { await rm(root, { recursive: true, force: true }); }
 }
@@ -121,13 +122,18 @@ export function render(view){ return <view className={'gap-' + view.data.n}><Bad
   assert.match(warnings.join('\n'), /page\.tsx:3:\d+: UI_CLASS: `'gap-' \+ view\.data\.n` is computed with `\+` at run time; its classes exist only at run time/);
   assert.match(warnings.join('\n'), /page\.tsx:\d+:\d+: UI_CLASS: `view` comes from the page's View, known only at run time; its classes exist only at run time/);
   assert.match(warnings.join('\n'), /UI_CLASS: `view\.data\.size` is joined into a class name at run time, and its values are not known to the build/);
-  assert.deepEqual(await classWarnings({ 'page.tsx': page }, { strictClasses: true }), warnings);
+  assert.deepEqual(await classWarnings({ 'page.tsx': page, 'package.json': strict }), warnings);
 });
 
 test('UI_CLASS names a className the build cannot follow only under strictClasses', async () => {
   const page = `let tone = 'p-1';\nexport function render(view){ return <text className={tone}>x</text> }`;
   assert.deepEqual(await classWarnings({ 'page.tsx': page }), []);
-  const strict = await classWarnings({ 'page.tsx': page }, { strictClasses: true });
-  assert.equal(strict.length, 1, strict.join('\n'));
-  assert.match(strict[0], /^page\.tsx:2:\d+: UI_CLASS: `tone` is a `let` binding, which can be reassigned; write it where the build can follow it to literals$/);
+  const warned = await classWarnings({ 'page.tsx': page, 'package.json': strict });
+  assert.equal(warned.length, 1, warned.join('\n'));
+  assert.match(warned[0], /^page\.tsx:2:\d+: UI_CLASS: `tone` is a `let` binding, which can be reassigned; write it where the build can follow it to literals$/);
+});
+
+test('lingxia.strictClasses in the app package.json is true or false', async () => {
+  const error = await classWarnings({ 'page.tsx': 'export function render(){ return <page/> }', 'package.json': JSON.stringify({ lingxia: { strictClasses: 'yes' } }) }).catch(error => error);
+  assert.match(String(error?.message), /^package\.json: lingxia\.strictClasses is true or false, not "yes"$/);
 });
