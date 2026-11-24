@@ -6253,7 +6253,7 @@
   }
   function reusableRows(old, props, rowEnv, direction) {
     const source3 = props.row?.__lxRows, before = old?.rowSource;
-    if (!source3 || !before || before.site !== source3.site || old.count !== props.count || old.rowEnv !== rowEnv || old.direction !== direction || !old.pure?.size) return null;
+    if (!source3 || !before || before.site !== source3.site || before.height !== source3.height || old.count !== props.count || old.rowEnv !== rowEnv || old.direction !== direction || !old.pure?.size) return null;
     const same4 = before.items === source3.items;
     const rows = /* @__PURE__ */ new Map();
     for (const i of old.pure) {
@@ -6774,7 +6774,7 @@
     if (!Object.isFrozen(items) && typeof globalThis.__lingxiaWarn === "function") warnUnfrozen(props, renderItem);
     const itemKeys2 = keysOf(items, getKey);
     const row = (index) => renderItem(items[index], index);
-    if (typeof renderItem === "function" && !getItemHeight && Object.isFrozen(items)) row.__lxRows = { items, site: renderItem };
+    if (typeof renderItem === "function" && Object.isFrozen(items)) row.__lxRows = { items, site: renderItem, height: getItemHeight };
     return h(listTag, {
       ...props,
       count: items.length,

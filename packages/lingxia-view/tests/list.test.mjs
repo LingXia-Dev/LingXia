@@ -92,6 +92,23 @@ test('a pure row is reused while its items and environment are unchanged',()=>{
  assert.deepEqual(built,['b','c','d'],'a new environment renders them again');
 });
 
+test('rows with getItemHeight are reused while the height function is the same',()=>{
+ reset();let built=[],extra=0;
+ const items=Object.freeze(['a','b','c']);
+ const renderItem=Object.assign(item=>{built.push(item);return h('text',{'data-testid':item},item);},{__lxRow:'site'});
+ const tall=()=>48,short=()=>32;let getItemHeight=tall;
+ // A new testid re-runs List itself, so the rows come from the committed cache or not at all.
+ const page=()=>h(List,{items,getKey:String,renderItem,getItemHeight,'data-testid':`list-${extra}`});
+ const id=records(prepare(page,{})).find(r=>r.tag==='list').fields.get('listId');commit();
+ const win={[id]:{start:0,end:3,leading:0,trailing:0}};
+ prepare(page,{},win);commit();
+ built=[];extra=1;prepare(page,{},win);commit();
+ assert.deepEqual(built,[],'same items and height function, same rows');
+ built=[];getItemHeight=short;const heights=records(prepare(page,{},win)).map(r=>r.fields.get('height')).filter(Boolean);commit();
+ assert.deepEqual(built,['a','b','c'],'a new height function renders them again');
+ assert.deepEqual(heights,[32,32,32]);
+});
+
 test('rows with state or callbacks render on every full render',()=>{
  reset();let built=[];
  const items=Object.freeze(['x','y']);

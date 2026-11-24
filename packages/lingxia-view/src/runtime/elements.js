@@ -1170,7 +1170,7 @@ function radioOptions(props, identity, fields, disabled) {
  *  over new items (a patched data array), a row whose frozen item is the same object stands. */
 function reusableRows(old, props, rowEnv, direction) {
   const source = props.row?.__lxRows, before = old?.rowSource;
-  if (!source || !before || before.site !== source.site || old.count !== props.count ||
+  if (!source || !before || before.site !== source.site || before.height !== source.height || old.count !== props.count ||
       old.rowEnv !== rowEnv || old.direction !== direction || !old.pure?.size) return null;
   const same = before.items === source.items;
   const rows = new Map();

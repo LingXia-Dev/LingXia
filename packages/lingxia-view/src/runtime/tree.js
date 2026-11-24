@@ -25,8 +25,9 @@ export function List({ items, getKey, renderItem, getItemHeight, ...props }) {
   if (!Object.isFrozen(items) && typeof globalThis.__lingxiaWarn === 'function') warnUnfrozen(props, renderItem);
   const itemKeys = keysOf(items, getKey);
   const row = index => renderItem(items[index], index);
-  // The same renderItem over the same frozen items builds the same rows, save those that read state.
-  if (typeof renderItem === 'function' && !getItemHeight && Object.isFrozen(items)) row.__lxRows = { items, site: renderItem };
+  // The same renderItem over the same frozen items builds the same rows, save those that read state;
+  // a row carries its height, so getItemHeight must be the same function too.
+  if (typeof renderItem === 'function' && Object.isFrozen(items)) row.__lxRows = { items, site: renderItem, height: getItemHeight };
   return h(listTag, { ...props, count: items.length,
     itemKeys, row,
     ...(getItemHeight ? { height: index => getItemHeight(items[index], index) } : {}) });
