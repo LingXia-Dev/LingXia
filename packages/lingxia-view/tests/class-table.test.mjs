@@ -48,7 +48,19 @@ test('class table does not take identifier keys of maps outside cx', async () =>
   assert.ok(!(await built({ 'page.tsx': page })).includes('italic'));
 });
 
-test('class table holds the keys of a cx map built elsewhere and passed by name', { todo: 'needs the tracer to follow the binding' }, async () => {
+test('class table holds the classes of a template over known values', async () => {
+  const page = cxPage('', 'const n = 4; const tone = view.data.on ? "accent" : "muted";', '`p-${n} text-${tone}`');
+  const table = await built({ 'page.tsx': page });
+  for (const name of ['p-4', 'text-accent', 'text-muted']) assert.ok(table.includes(name), name);
+});
+
+test('class table adds nothing from a className with a part known only at run time', async () => {
+  const page = cxPage(`import { cx } from '@lingxia/view';`, 'const n = 4;', '`p-${n} ${view.data.more}`');
+  const error = await built({ 'page.tsx': page }).catch(error => error);
+  assert.match(String(error?.message ?? ''), /UI_CLASS_UNKNOWN: p-4 is a utility, but the build found it in no string/);
+});
+
+test('class table holds the keys of a cx map built elsewhere and passed by name', async () => {
   const page = cxPage(`import { cx } from '@lingxia/view';`, 'const map = { italic: view.data.on };', 'cx(map)');
   assert.ok((await built({ 'page.tsx': page })).includes('italic'));
 });
@@ -79,9 +91,10 @@ test('class table ignores a JSON file the page does not import', async () => {
 });
 
 test('UI_CLASS_UNKNOWN says a valid utility was not collected instead of offering it back', async () => {
-  // The declaration file names the class; the module that runs builds it, so no string spells it.
+  // The declaration file names the class, but the className also holds the page's data, so it is not
+  // followed in full and adds nothing to the table; the module that runs builds the name, so no string spells it.
   const error = await built({
-    'page.tsx': usesK('./h'),
+    'page.tsx': `import { cx } from '@lingxia/view'; import { k } from './h';\nexport function render(view){ return <text className={cx(k, view.data.more)}>x</text> }`,
     'h.js': `export const k = ['ital', 'ic'].join('');`,
     'h.d.ts': `export declare const k = 'italic';`,
   }).catch(error => error);
