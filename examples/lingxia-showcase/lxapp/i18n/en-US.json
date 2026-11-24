@@ -2112,7 +2112,7 @@
     "description": "A label inside a View lab demo."
   },
   "lab.label.addressEmail": {
-    "defaultMessage": "Write to ana.maria.lopez@example-mail.com for a copy.",
+    "defaultMessage": "Write to ana.maria.lopez@example.com for a copy.",
     "description": "A label inside a View lab demo."
   },
   "lab.label.addressLink": {

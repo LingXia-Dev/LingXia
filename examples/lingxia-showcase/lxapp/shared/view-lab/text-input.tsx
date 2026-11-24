@@ -284,7 +284,7 @@ export function FieldsDemo() {
   const amount = useLocal('amount', '');
   const day = useLocal('day', '');
   const time = useLocal('time', '');
-  const email = useLocal('email', 'accounts.payable.northwest@example-company-domain.com');
+  const email = useLocal('email', 'accounts.payable.northwest@billing.example.com');
   const t = useSay();
   const field = 'px-3 py-2 rounded-lg border border-line-strong bg-surface text-sm';
   return (

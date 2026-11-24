@@ -226,15 +226,15 @@ test('type appends, clears, and commits CJK through a composition', {
 }, async (t) => {
   const { browser, tab, ref, state } = await openForm(t);
   const email = ref('textbox', 'Email');
-  await browser.type({ tab, ref: email, text: 'a@b' });
-  await browser.type({ tab, ref: email, text: '.co' });
+  await browser.type({ tab, ref: email, text: 'a@example' });
+  await browser.type({ tab, ref: email, text: '.com' });
   await browser.type({ tab, ref: ref('textbox', 'Bio'), text: 'old' });
   await browser.type({ tab, ref: ref('textbox', 'Bio'), text: 'new', clear: true });
   await browser.type({ tab, ref: ref('textbox', 'IME'), text: '你好' });
   const s = await state<{ email: string; bio: string; ime: string; comp: string[] }>(
     "({ email: document.getElementById('email').value, bio: document.getElementById('bio').value, ime: document.getElementById('ime').value, comp: state.composition })",
   );
-  expect(s.email).toBe('a@b.co');
+  expect(s.email).toBe('a@example.com');
   expect(s.bio).toBe('new');
   expect(s.ime).toBe('你好');
   expect(s.comp).toContain('compositionend:你好');
