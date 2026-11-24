@@ -179,6 +179,14 @@
     "defaultMessage": "Remove {title} from history",
     "description": "Browser system pages: history.remove"
   },
+  "history.open": {
+    "defaultMessage": "Open",
+    "description": "Browser system pages: history.open"
+  },
+  "history.removeShort": {
+    "defaultMessage": "Remove",
+    "description": "Browser system pages: history.removeShort"
+  },
   "history.clearData": {
     "defaultMessage": "Clear browsing data…",
     "description": "Browser system pages: history.clearData"

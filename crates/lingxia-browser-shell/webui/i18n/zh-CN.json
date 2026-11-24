@@ -179,6 +179,14 @@
     "defaultMessage": "从历史记录中删除“{title}”",
     "description": "Browser system pages: history.remove"
   },
+  "history.open": {
+    "defaultMessage": "打开",
+    "description": "Browser system pages: history.open"
+  },
+  "history.removeShort": {
+    "defaultMessage": "删除",
+    "description": "Browser system pages: history.removeShort"
+  },
   "history.clearData": {
     "defaultMessage": "清除浏览数据…",
     "description": "Browser system pages: history.clearData"

@@ -7,6 +7,7 @@ import { formatTimestamp } from '@liulidesign/core/Timestamp';
 import { ToastRegion, useToast } from '@liulidesign/core/Toast';
 import { TopBar } from '@liulidesign/core/TopBar';
 import { ClearDataDialog } from '../../shared/ClearDataDialog';
+import { RowMenu, type MenuAsk } from '../../shared/RowMenu';
 import { SiteIcon } from '../../shared/SiteIcon';
 import type { View } from './$types';
 
@@ -27,57 +28,88 @@ export function render(view: View) {
   );
 }
 
+type MenuTarget = { id: string; url: string; title: string };
+
 function dayLabel(day: string, data: Data, isTwelveHour: boolean): string {
   if (day === data.today) return t('history.today');
   if (day === data.yesterday) return t('history.yesterday');
   return formatTimestamp(day, data.now, 'date', isTwelveHour);
 }
 
-function History({ data, actions }: View) {
-  const query = useLocal('query', '');
-  const clearing = useLocal('clearing', false);
-  const search = useAction(actions.search);
-  const removeEntry = useAction(actions.removeEntry);
-  const clearBrowsingData = useAction(actions.clearBrowsingData);
-  const openUrl = useAction(actions.openUrl);
-  const loadMore = useAction(actions.loadMore);
-  const toast = useToast();
-  const isTwelveHour = useView().env.hourCycle === 'h12';
+function DayRow({ label }: { label: string }) {
+  return (
+    <view className="h-12 justify-end px-4 pb-2">
+      <text role="heading" headingLevel={2} className="text-footnote font-semibold text-muted">{label}</text>
+    </view>
+  );
+}
 
-  const renderRow = (row: Row) => {
-    if (row.kind === 'day') {
-      return (
-        <view className="h-12 justify-end px-4 pb-2">
-          <text role="heading" headingLevel={2} className="text-footnote font-semibold text-muted">
-            {dayLabel(row.day, data, isTwelveHour)}
-          </text>
-        </view>
-      );
-    }
-    const title = row.title || row.url;
-    return (
-      <view className="h-11 flex-row items-center rounded-control hover:bg-text/4" data-testid={`history-row-${row.id}`}>
-        <button
-          aria-label={title}
-          onClick={() => { void openUrl.run({ url: row.url }); }}
-          className="grow shrink basis-0 min-w-0 self-stretch flex-row items-center gap-3 px-4 rounded-control bg-transparent text-start active:bg-text/7 focus-visible:inset-ring-2 focus-visible:inset-ring-focus"
-        >
-          <text className="w-20 shrink-0 text-footnote text-muted tabular-nums">{formatTimestamp(row.at, data.now, 'time', isTwelveHour)}</text>
-          <SiteIcon host={row.host} size="sm" />
-          <text className="shrink min-w-0 truncate text-body text-text">{title}</text>
-          <text className="shrink-[4] min-w-0 truncate text-footnote text-muted">{row.host}</text>
-        </button>
+/**
+ * One visit. Props are plain values, so a row whose visit did not change is not rendered again; the
+ * remove button mounts only under a hovering pointer, and the row's menu covers touch and keys.
+ */
+function VisitRow({ id, url, title, host, at, isTwelveHour, onOpen, onRemove, onMenu }: {
+  id: string;
+  url: string;
+  title: string;
+  host: string;
+  at: string;
+  isTwelveHour: boolean;
+  onOpen: (url: string) => void;
+  onRemove: (id: string) => void;
+  onMenu: (target: MenuTarget, at: MenuAsk) => void;
+}) {
+  const hovered = useLocal('hovered', false);
+  return (
+    <view
+      onPointerEnter={() => hovered.set(true)}
+      onPointerLeave={() => hovered.set(false)}
+      className="h-11 flex-row items-center rounded-control hover:bg-text/4"
+      data-testid={`history-row-${id}`}
+    >
+      <button
+        aria-label={title}
+        onClick={() => onOpen(url)}
+        onContextMenu={(event) => onMenu({ id, url, title }, event)}
+        className="grow shrink basis-0 min-w-0 self-stretch flex-row items-center gap-3 px-4 rounded-control bg-transparent text-start active:bg-text/7 focus-visible:inset-ring-2 focus-visible:inset-ring-focus"
+      >
+        <text className="w-20 shrink-0 text-footnote text-muted tabular-nums">{formatTimestamp(at, at, 'time', isTwelveHour)}</text>
+        <SiteIcon host={host} size="sm" />
+        <text className="shrink min-w-0 truncate text-body text-text">{title}</text>
+        <text className="shrink-[4] min-w-0 truncate text-footnote text-muted">{host}</text>
+      </button>
+      {hovered.value ? (
         <IconButton
           label={t('history.remove', { title })}
           icon="close"
           size="sm"
           className="me-2 text-muted"
-          onClick={() => { void removeEntry.run({ id: row.id }); }}
-          data-testid={`history-remove-${row.id}`}
+          onClick={() => onRemove(id)}
+          data-testid={`history-remove-${id}`}
         />
-      </view>
-    );
-  };
+      ) : null}
+    </view>
+  );
+}
+
+function History({ data, actions }: View) {
+  const query = useLocal('query', '');
+  const clearing = useLocal('clearing', false);
+  const menu = useLocal<{ target: MenuTarget; at: MenuAsk } | null>('menu', null);
+  const search = useAction(actions.search);
+  const clearBrowsingData = useAction(actions.clearBrowsingData);
+  const loadMore = useAction(actions.loadMore);
+  const toast = useToast();
+  const isTwelveHour = useView().env.hourCycle === 'h12';
+
+  // Rows call the actions themselves: a closure over them keeps its identity, so rows stay unrendered.
+  const open = (url: string) => { void actions.openUrl({ url }); };
+  const remove = (id: string) => { void actions.removeEntry({ id }); };
+  const ask = (target: MenuTarget, at: MenuAsk) => menu.set({ target, at });
+  const renderRow = (row: Row) => (row.kind === 'day'
+    ? <DayRow label={dayLabel(row.day, data, isTwelveHour)} />
+    : <VisitRow id={row.id} url={row.url} title={row.title || row.url} host={row.host} at={row.at} isTwelveHour={isTwelveHour} onOpen={open} onRemove={remove} onMenu={ask} />);
+  const target = menu.value?.target;
 
   return (
     <view className="grow min-h-0">
@@ -128,6 +160,17 @@ function History({ data, actions }: View) {
         )}
       </view>
       </view>
+      <RowMenu
+        label={target ? target.title : t('history.title')}
+        at={menu.value?.at ?? null}
+        items={target ? [
+          { label: t('history.open'), icon: 'external-link', onClick: () => open(target.url) },
+          { type: 'divider' },
+          { label: t('history.removeShort'), icon: 'delete', variant: 'destructive', onClick: () => remove(target.id) },
+        ] : []}
+        onClose={() => menu.set(null)}
+        data-testid="history-row-menu"
+      />
       <ClearDataDialog
         isOpen={clearing.value}
         onOpenChange={(next) => clearing.set(next)}

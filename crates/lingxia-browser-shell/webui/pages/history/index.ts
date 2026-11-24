@@ -47,6 +47,7 @@ const initialData: HistoryData = {
 };
 
 const PAGE = 200;
+const SEARCH_SETTLE_MS = 150;
 
 export default definePage({
   data: initialData,
@@ -91,10 +92,8 @@ export default definePage({
       });
     }
 
-    async function refresh() {
-      entries = (await invoke<{ entries: HistoryEntry[] }>('history.list')).entries;
-      publish();
-    }
+    // Type-ahead settles before the store is searched, so only the last query of a burst runs.
+    let pendingSearch: ReturnType<typeof setTimeout> | undefined;
 
     function apply(event: HistoryWatchEvent) {
       if (event.kind === 'snapshot') {
@@ -110,14 +109,18 @@ export default definePage({
 
     return {
       async onLoad() {
+        // The watch opens with a snapshot of the store, then follows each change.
         watch<HistoryWatchEvent>('history.watch', page.signal, apply);
-        await refresh().catch(() => page.update((d) => { d.loading = false; }));
       },
       actions: {
         async search({ query }: { query: string }) {
-          page.update((d) => { d.query = query; });
-          limit = PAGE;
-          publish();
+          if (pendingSearch !== undefined) clearTimeout(pendingSearch);
+          pendingSearch = setTimeout(() => {
+            pendingSearch = undefined;
+            page.update((d) => { d.query = query; });
+            limit = PAGE;
+            publish();
+          }, SEARCH_SETTLE_MS);
         },
         async loadMore() {
           if (!page.data.hasMore) return;
@@ -130,15 +133,12 @@ export default definePage({
             d.hasMore = shown > limit;
           });
         },
+        // The watch reports both, so the rows follow from it.
         async removeEntry({ id }: { id: string }) {
           await invoke('history.remove', { id });
-          entries = entries.filter((entry) => entry.id !== id);
-          publish();
         },
         async clearBrowsingData(input: ClearBrowsingDataInput): Promise<ClearBrowsingDataResult> {
-          const result = await invoke<ClearBrowsingDataResult>('privacy.clearBrowsingData', input);
-          await refresh();
-          return result;
+          return invoke<ClearBrowsingDataResult>('privacy.clearBrowsingData', input);
         },
         async openUrl({ url }: { url: string }) {
           await lx.surface.openUrl(url);
