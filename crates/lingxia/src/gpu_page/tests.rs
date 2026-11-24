@@ -92,10 +92,22 @@ impl NativeFactory for Factory {
     }
 }
 
+/// An lxapp that ships no shared View chunk.
+fn no_chunks() -> GpuChunkReader {
+    Arc::new(|path| Err(LxAppError::ResourceNotFound(path.to_owned())))
+}
+
 fn endpoint(factory: &Arc<Factory>, page: &str) -> (Arc<Endpoint>, Arc<Shell>, Token) {
     let token = NEXT.fetch_add(1, Ordering::Relaxed);
     let shell = Arc::new(Shell::default());
-    let lease = Lease::new(token, page.into(), "test".into(), None, factory.clone());
+    let lease = Lease::new(
+        token,
+        page.into(),
+        "test".into(),
+        None,
+        no_chunks(),
+        factory.clone(),
+    );
     (register(lease, shell.clone()), shell, token)
 }
 
@@ -391,6 +403,7 @@ fn an_app_pack_outlives_the_pages_a_relaunch_replaces() {
             format!("page-{token}"),
             worker.into(),
             pack(),
+            no_chunks(),
             factory.clone(),
         )
     };

@@ -15,7 +15,14 @@ fn a_thousand_page_lifetimes_leave_no_registry_or_pack_state() {
         let worker = format!("leak:{}", cycle / 3);
         let token = NEXT.fetch_add(1, Ordering::Relaxed);
         let page = format!("leak-page-{}", cycle % 7);
-        let lease = Lease::new(token, page, worker.clone(), pack(), shared.clone());
+        let lease = Lease::new(
+            token,
+            page,
+            worker.clone(),
+            pack(),
+            no_chunks(),
+            shared.clone(),
+        );
         match cycle % 3 {
             // Created, shown, disposed by lxapp, then dropped.
             0 => {
