@@ -23,6 +23,9 @@ const DIVIDER_HIT_VP = 24;
 const TONGUE_HIT_W_VP = 28;
 const TONGUE_HIT_W_COUNT_VP = 32;
 const TONGUE_HIT_H_VP = 88;
+/** What a page's navigation or tab bar may take at either end of the edge, kept from the tongue. */
+const BAR_RESERVE_VP = 56;
+const TONGUE_MARGIN_VP = 8;
 const PULL_VP = 16;
 const STRIP_PAD_START_VP = 8;
 const STRIP_PAD_END_VP = 6;
@@ -70,8 +73,9 @@ export interface AsideState {
   /** The panel's strip and content, clear of a side cutout or navigation bar. */
   innerX: number;
   innerWidth: number;
-  /** The tongue's hit box, at the safe edge on the window's right. */
+  /** The tongue's hit box on the window's right: flush where the edge is clear, else at the safe edge. */
   tongueX: number;
+  tongueY: number;
   stripTop: number;
   contentTop: number;
   height: number;
@@ -116,6 +120,38 @@ export function asidePalette(dark: boolean): AsidePalette {
   return dark ? DARK : LIGHT;
 }
 
+/**
+ * Where the tongue goes along an edge `length` long: the top of the clear position nearest the
+ * middle, or null when no clear stretch holds it and it insets instead. `blocked` are [from, to]
+ * stretches a cutout or bar covers, kept `margin` clear; `start` and `end` are reserved at the ends.
+ */
+export function placeTongue(length: number, blocked: number[][], start: number, end: number, size: number,
+  margin: number): number | null {
+  const middle = (length - size) / 2;
+  const clear: number[][] = [];
+  let from = start;
+  for (const block of blocked.slice().sort((a: number[], b: number[]) => a[0] - b[0])) {
+    if (block[0] - margin > from) {
+      clear.push([from, block[0] - margin]);
+    }
+    from = Math.max(from, block[1] + margin);
+  }
+  clear.push([from, length - end]);
+  let best = -1;
+  let found = false;
+  for (const range of clear) {
+    if (range[1] - range[0] < size) {
+      continue;
+    }
+    const at = Math.min(Math.max(middle, range[0]), range[1] - size);
+    if (!found || Math.abs(at - middle) < Math.abs(best - middle)) {
+      best = at;
+      found = true;
+    }
+  }
+  return found ? best : null;
+}
+
 // fillColor repaints only SVG fills and the design icons are strokes; a SRC_IN
 // matrix recolors any art, like a template image. Takes '#AARRGGBB'.
 function iconTint(argb: string): ColorFilter {
@@ -158,6 +194,7 @@ function emptyState(): AsideState {
     innerX: 0,
     innerWidth: 0,
     tongueX: 0,
+    tongueY: 0,
     stripTop: 0,
     contentTop: 0,
     height: 0,
@@ -208,6 +245,9 @@ export class AsideRegionModel {
   private static statusTop: number = 0;
   private static insetLeft: number = 0;
   private static insetRight: number = 0;
+  private static insetBottom: number = 0;
+  /** Stretches of the right edge, top to bottom in vp, that a cutout or system bar covers. */
+  private static rightBlocks: number[][] = [];
   private static ratio: number = DEFAULT_RATIO;
   private static showContentFormat: string = 'Show %1$s';
 
@@ -244,20 +284,27 @@ export class AsideRegionModel {
     if (state.tongueShown) {
       const width = state.tongueCount > 1 ? TONGUE_HIT_W_COUNT_VP : TONGUE_HIT_W_VP;
       return [{
-        x: state.tongueX, y: (state.height - TONGUE_HIT_H_VP) / 2,
+        x: state.tongueX, y: state.tongueY,
         width: width, height: TONGUE_HIT_H_VP
       }];
     }
     return NO_TOUCH;
   }
 
-  /** The window's size in vp, its status bar inset, and its side insets in landscape. */
-  static setWindow(width: number, height: number, statusTop: number, insetLeft: number, insetRight: number): void {
+  /**
+   * The window's size in vp, its status bar inset, its side insets in landscape, its bottom inset,
+   * and the stretches of the right edge a cutout or system bar covers.
+   */
+  static setWindow(width: number, height: number, statusTop: number, insetLeft: number, insetRight: number,
+    insetBottom: number, rightBlocks: number[][]): void {
     if (width === AsideRegionModel.width && height === AsideRegionModel.height &&
       statusTop === AsideRegionModel.statusTop && insetLeft === AsideRegionModel.insetLeft &&
-      insetRight === AsideRegionModel.insetRight) {
+      insetRight === AsideRegionModel.insetRight && insetBottom === AsideRegionModel.insetBottom &&
+      JSON.stringify(rightBlocks) === JSON.stringify(AsideRegionModel.rightBlocks)) {
       return;
     }
+    AsideRegionModel.insetBottom = insetBottom;
+    AsideRegionModel.rightBlocks = rightBlocks;
     AsideRegionModel.width = width;
     AsideRegionModel.height = height;
     AsideRegionModel.statusTop = statusTop;
@@ -489,8 +536,11 @@ export class AsideRegionModel {
     });
     state.tongueShown = !shown && !!slot?.activeChild && (slot?.collapsed === true || slot?.visible === false);
     state.tongueCount = ids.length;
-    state.tongueX = width - AsideRegionModel.insetRight -
-      (state.tongueCount > 1 ? TONGUE_HIT_W_COUNT_VP : TONGUE_HIT_W_VP);
+    const tongueWidth = state.tongueCount > 1 ? TONGUE_HIT_W_COUNT_VP : TONGUE_HIT_W_VP;
+    const offset = placeTongue(height, AsideRegionModel.rightBlocks, AsideRegionModel.statusTop + BAR_RESERVE_VP,
+      AsideRegionModel.insetBottom + BAR_RESERVE_VP, TONGUE_HIT_H_VP, TONGUE_MARGIN_VP);
+    state.tongueX = width - tongueWidth - (offset === null ? AsideRegionModel.insetRight : 0);
+    state.tongueY = offset ?? (height - TONGUE_HIT_H_VP) / 2;
     if (state.tongueShown) {
       const title = AsideRegionModel.titleOf(slot?.activeChild ?? '');
       state.tongueLabel = AsideRegionModel.showContentFormat.replace('%1$s', title);
@@ -522,11 +572,16 @@ export struct AsideRegion {
   /** The cutout or navigation bar on each side in landscape, in vp. */
   private systemLeft: number = 0;
   private systemRight: number = 0;
+  private systemBottom: number = 0;
+  /** What covers the window's right edge, top to bottom in window vp. */
+  private rightBlocks: number[][] = [];
 
   /** The strip starts below the status bar where the region reaches under it. */
   private publishWindow(): void {
     const statusTop = Math.max(0, this.systemTop - this.areaTop);
-    AsideRegionModel.setWindow(this.areaWidth, this.areaHeight, statusTop, this.systemLeft, this.systemRight);
+    const blocks = this.rightBlocks.map((block: number[]): number[] => [block[0] - this.areaTop, block[1] - this.areaTop]);
+    AsideRegionModel.setWindow(this.areaWidth, this.areaHeight, statusTop, this.systemLeft, this.systemRight,
+      this.systemBottom, blocks);
   }
 
   private readSystemTop(): void {
@@ -539,6 +594,10 @@ export struct AsideRegion {
         navigation.leftRect.width)));
       this.systemRight = Math.round(px2vp(Math.max(system.rightRect.width, cutout.rightRect.width,
         navigation.rightRect.width)));
+      this.systemBottom = Math.round(px2vp(Math.max(system.bottomRect.height, navigation.bottomRect.height)));
+      this.rightBlocks = [system.rightRect, cutout.rightRect, navigation.rightRect]
+        .filter((rect: window.Rect) => rect.width > 0 && rect.height > 0)
+        .map((rect: window.Rect): number[] => [px2vp(rect.top), px2vp(rect.top + rect.height)]);
       this.publishWindow();
     }).catch((error: Error) => {
       hilog.warn(DOMAIN, TAG, `no window avoid area: ${error}`);
@@ -806,10 +865,7 @@ export struct AsideRegion {
     AsideTongue({ count: this.state.tongueCount, accent: this.state.accent, dark: this.state.dark })
       .width(this.state.tongueCount > 1 ? TONGUE_HIT_W_COUNT_VP : TONGUE_HIT_W_VP)
       .height(TONGUE_HIT_H_VP)
-      .position({
-        x: this.state.tongueX,
-        y: (this.state.height - TONGUE_HIT_H_VP) / 2
-      })
+      .position({ x: this.state.tongueX, y: this.state.tongueY })
       .accessibilityText(this.state.tongueLabel)
       .hitTestBehavior(HitTestMode.Block)
       .onClick(() => AsideRegionModel.restore())

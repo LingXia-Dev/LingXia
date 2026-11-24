@@ -480,6 +480,14 @@ actions — bookmark, pin, copy link, open externally; an lxapp's More actions);
   8 pt, in the separator colour with the accent on hover and no icon. Its
   tooltip names the content; from two tabs it shows their count. Clicking it,
   or opening or focusing a child, restores the slot.
+- On a phone the tongue sits on the panel's edge, flush with the physical edge,
+  at the clear position nearest the middle: a housing or cutout on that edge
+  pushes it along the edge, past the bars and rounded corners reserved at each
+  end. Only when no clear stretch holds it does it centre and inset to the safe
+  area. Where the platform names the housing's side but not its extent (iOS),
+  that whole edge counts as blocked. Its hit area moves with it, and the move
+  is part of the rotation's layout. The strip and content keep their own
+  safe-area insets.
 - A slot with content but no room to dock is never silently absent: an explicit
   open shows it as an overlay over the main, and while hidden it keeps the same
   handle, whose click shows the overlay again. Widening the window docks it. A
