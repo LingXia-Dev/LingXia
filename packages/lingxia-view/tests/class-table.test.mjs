@@ -77,3 +77,14 @@ test('class table ignores a JSON file the page does not import', async () => {
   const table = await built({ 'page.tsx': `export function render(){ return <text className="p-1">x</text> }`, 'other.json': '{"k":"italic"}' });
   assert.ok(!table.includes('italic'));
 });
+
+test('UI_CLASS_UNKNOWN says a valid utility was not collected instead of offering it back', async () => {
+  // The declaration file names the class; the module that runs builds it, so no string spells it.
+  const error = await built({
+    'page.tsx': usesK('./h'),
+    'h.js': `export const k = ['ital', 'ic'].join('');`,
+    'h.d.ts': `export declare const k = 'italic';`,
+  }).catch(error => error);
+  assert.match(error.message, /UI_CLASS_UNKNOWN: italic is a utility, but the build found it in no string of this page's sources, so it was not compiled; write 'italic' as one whole word in a string literal/);
+  assert.doesNotMatch(error.message, /nearest supported: italic/);
+});
