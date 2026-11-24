@@ -170,8 +170,10 @@ there is no switch at run time.
 - A pack may go further and set surfaces, text, lines and status colours, as
   `../themes/warm/pack.json` does, or any role in `contracts/view/schema.json`; each role it sets is
   held to that role's contrast pairs.
-- A pack does not change Liuli's control heights, type sizes or corner radii yet. Those are
-  `tokens.css` in this package; an app retunes one by redefining the token in its own stylesheet.
+- The pack's `type`, `shape.radius` and `space.unit` reach Liuli too: its type sizes and corner radii
+  are names for steps of those ramps, and control heights are multiples of the spacing step
+  (`tokens.css`). An app points a name at another step in its own stylesheet
+  (`--radius-control: var(--radius-xl)`).
 - To see the gallery under a pack, as its own lxapp beside the default one:
   `node ../scripts/gallery-with-pack.mjs warm` prints the directory it wrote.
 

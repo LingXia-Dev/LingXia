@@ -137,6 +137,9 @@ app session's worker key before a page is created (`lingxia_theme::set_app_pack`
 seeds its first environment with it, and it is the palette unless the platform's measured
 environment carries one. A `theme` host-environment push replaces it later.
 
+A component package's `tokens.css` names steps, never values: an alias is `var(--<step>)` and a
+size is `calc(var(--spacing) * N)`. A literal there lowers to a fixed number the pack cannot reach.
+
 ## Unsupported on purpose
 
 Skew and 3D transforms, filters other than backdrop blur/saturation, masks, text and

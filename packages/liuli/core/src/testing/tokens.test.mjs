@@ -1,9 +1,10 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
+import { compileUtilities } from '../../../../lingxia-view/compiler/tailwind.mjs';
+import { scales } from '../../../../lingxia-view/src/generated/contract.js';
 
-// Liuli states the default theme pack's ramps so its names resolve without an app's generated
-// tokens. They are one source only while they are the pack's own values, which this proves.
+// Liuli names steps of the theme's ramps; the values are the pack's, decided at run time.
 const css = readFileSync(new URL('../../tokens.css', import.meta.url), 'utf8');
 const names = JSON.parse(readFileSync(new URL('../../tokens.names.json', import.meta.url), 'utf8'));
 const pack = JSON.parse(readFileSync(new URL('../../../../../crates/lingxia-theme/packs/default.json', import.meta.url), 'utf8'));
@@ -12,36 +13,25 @@ const token = name => {
   assert.ok(found, `tokens.css has no --${name}`);
   return found[1].trim();
 };
-const points = value => {
-  const rem = value.match(/^([\d.]+)rem$/);
-  const px = value.match(/^([\d.]+)px$/);
-  assert.ok(rem || px, `${value} is not a length`);
-  return rem ? Number(rem[1]) * 16 : Number(px[1]);
-};
 
-test('the type ramp is the default pack\'s, size and line height', () => {
-  for (const [step, size] of Object.entries(pack.type.scale)) {
-    assert.equal(points(token(`text-${step}`)), size, `text-${step}`);
-    assert.equal(points(token(`text-${step}--line-height`)), pack.type.leading[step], `text-${step} line height`);
-  }
-});
-
-test('the radius ramp is the default pack\'s', () => {
-  for (const [step, radius] of Object.entries(pack.shape.radius)) {
-    if (step === 'DEFAULT' || step === 'full') continue;
-    assert.equal(points(token(`radius-${step}`)), radius, `radius-${step}`);
-  }
-});
-
-test('motion is the default pack\'s', () => {
-  for (const step of ['fast', 'base', 'slow']) assert.equal(token(`transition-duration-${step}`), `${pack.motion[step]}ms`, `duration-${step}`);
-  for (const [name, key] of [['standard', 'easing'], ['enter', 'enter'], ['exit', 'exit']]) assert.equal(token(`ease-${name}`), pack.motion[key], `ease-${name}`);
+test('tokens.css states no value of a theme step: the pack decides them', () => {
+  const stated = [...css.matchAll(/^\s*--(text-[\w]+?(?:--line-height)?|radius-[\w]+|spacing|transition-duration-\w+|ease-\w+):\s*([^;]+);/gm)]
+    .filter(([, , value]) => !/var\(--/.test(value)).map(([, name]) => name);
+  assert.deepEqual(stated, []);
 });
 
 // tokens.names.json is the one statement of Liuli's names; `lingxia gen tokens --names` writes an
 // app's tokens from it, and tokens.css must say the same.
-test('control heights are the names map\'s units of the pack\'s spacing unit', () => {
-  for (const [size, units] of Object.entries(names.controlHeight)) assert.equal(points(token(`spacing-control-${size}`)), units * pack.space.unit, `control-${size}`);
+test('control heights are the names map\'s multiples of the spacing step', () => {
+  for (const [size, units] of Object.entries(names.controlHeight)) assert.equal(token(`spacing-control-${size}`), `calc(var(--spacing) * ${units})`, `control-${size}`);
+});
+
+test('a control height and a control radius lower to steps of the pack, not to numbers', async () => {
+  const slot = name => scales.findIndex(entry => entry.name === name);
+  const rules = Object.fromEntries((await compileUtilities(new Set(['min-h-control-md', 'size-control-sm', 'rounded-control']), css)).map(rule => [rule.name, rule]));
+  assert.deepEqual(rules['min-h-control-md'].style.minHeight, [slot('space'), 10, 0]);
+  assert.deepEqual(rules['size-control-sm'].style.width, [slot('space'), 8, 0]);
+  assert.deepEqual(rules['rounded-control'].style.borderRadius, [slot('radius.lg'), 1, 0]);
 });
 
 test('Liuli\'s own names are the names map\'s steps of those ramps, never lengths of their own', () => {
