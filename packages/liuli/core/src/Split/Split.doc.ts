@@ -37,6 +37,7 @@ export const doc: ComponentDoc = {
       'Use `compact="stack"` when both must stay in view on a phone, such as a live video above its chat.',
       'Use `compact="sheet"`, with `bind` or `isOpen` and `onOpenChange`, and a button that shows only on a phone, when the companion can wait (comments, filters).',
       'Start the companion with its own heading; `asideLabel` names it for a screen reader and the opening button, and is not drawn.',
+      'For an aside that ends in a field, such as a chat or comments with a reply: the list grows and scrolls, and the field is pinned last (`h-full` on the aside, a `grow min-h-0` scroll, then the field).',
       'Let it fill the page to its bottom edge and across its width: the seam is placed from those edges, so it meets the crease whatever sits above.',
     ],
     dont: [

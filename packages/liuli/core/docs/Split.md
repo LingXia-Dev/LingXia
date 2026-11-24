@@ -115,21 +115,27 @@ export function DocumentSheetSplit() {
         asideLabel="Comments"
         asideWidth={300}
         aside={
-          <view className="px-4 pt-3 pb-4 gap-4">
-            <text role="heading" headingLevel={2} className="text-callout font-semibold text-text">Comments</text>
-            {comments.map(comment => (
-              <view key={comment.name} className="flex-row gap-3">
-                <Avatar name={comment.name} size="sm" isDecorative />
-                <view className="grow shrink min-w-0 gap-0.5">
-                  <view className="flex-row items-baseline justify-between gap-2">
-                    <text className="text-footnote font-semibold text-text">{comment.name}</text>
-                    <text className="text-caption text-muted">{comment.time}</text>
+          <view className="h-full min-h-0">
+            <text role="heading" headingLevel={2} className="px-4 pt-3 pb-2 text-callout font-semibold text-text">Comments</text>
+            <scroll className="grow min-h-0">
+              <view className="px-4 pb-3 gap-4">
+                {comments.map(comment => (
+                  <view key={comment.name} className="flex-row gap-3">
+                    <Avatar name={comment.name} size="sm" isDecorative />
+                    <view className="grow shrink min-w-0 gap-0.5">
+                      <view className="flex-row items-baseline justify-between gap-2">
+                        <text className="text-footnote font-semibold text-text">{comment.name}</text>
+                        <text className="text-caption text-muted">{comment.time}</text>
+                      </view>
+                      <text className="text-footnote text-text">{comment.text}</text>
+                    </view>
                   </view>
-                  <text className="text-footnote text-text">{comment.text}</text>
-                </view>
+                ))}
               </view>
-            ))}
-            <Composer bind={reply} label="Reply" placeholder="Add a comment" onSubmit={() => reply.set('')} data-testid="doc-reply" />
+            </scroll>
+            <view className="px-4 pt-3 border-t border-text/8" data-testid="doc-reply-row">
+              <Composer bind={reply} label="Reply" placeholder="Add a comment" onSubmit={() => reply.set('')} data-testid="doc-reply" />
+            </view>
           </view>
         }
         data-testid="doc-split"
@@ -212,6 +218,7 @@ Ratios are computed from @lingxia/view/theme and rounded down.
 - Do: Use `compact="stack"` when both must stay in view on a phone, such as a live video above its chat.
 - Do: Use `compact="sheet"`, with `bind` or `isOpen` and `onOpenChange`, and a button that shows only on a phone, when the companion can wait (comments, filters).
 - Do: Start the companion with its own heading; `asideLabel` names it for a screen reader and the opening button, and is not drawn.
+- Do: For an aside that ends in a field, such as a chat or comments with a reply: the list grows and scrolls, and the field is pinned last (`h-full` on the aside, a `grow min-h-0` scroll, then the field).
 - Do: Let it fill the page to its bottom edge and across its width: the seam is placed from those edges, so it meets the crease whatever sits above.
 - Don't: Read the fold or the platform in page code to move the video and the chat; Split does that.
 

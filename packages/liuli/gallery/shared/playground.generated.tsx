@@ -464,6 +464,15 @@ export const playgroundEntries: PlaygroundEntry[] = [
           "expandable",
           "fit"
         ]
+      },
+      {
+        "name": "initialDetent",
+        "required": false,
+        "kind": "choice",
+        "options": [
+          "full",
+          "half"
+        ]
       }
     ],
     "fixed": [

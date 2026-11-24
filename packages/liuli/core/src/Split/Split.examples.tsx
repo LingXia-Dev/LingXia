@@ -89,21 +89,27 @@ export function DocumentSheetSplit() {
         asideLabel="Comments"
         asideWidth={300}
         aside={
-          <view className="px-4 pt-3 pb-4 gap-4">
-            <text role="heading" headingLevel={2} className="text-callout font-semibold text-text">Comments</text>
-            {comments.map(comment => (
-              <view key={comment.name} className="flex-row gap-3">
-                <Avatar name={comment.name} size="sm" isDecorative />
-                <view className="grow shrink min-w-0 gap-0.5">
-                  <view className="flex-row items-baseline justify-between gap-2">
-                    <text className="text-footnote font-semibold text-text">{comment.name}</text>
-                    <text className="text-caption text-muted">{comment.time}</text>
+          <view className="h-full min-h-0">
+            <text role="heading" headingLevel={2} className="px-4 pt-3 pb-2 text-callout font-semibold text-text">Comments</text>
+            <scroll className="grow min-h-0">
+              <view className="px-4 pb-3 gap-4">
+                {comments.map(comment => (
+                  <view key={comment.name} className="flex-row gap-3">
+                    <Avatar name={comment.name} size="sm" isDecorative />
+                    <view className="grow shrink min-w-0 gap-0.5">
+                      <view className="flex-row items-baseline justify-between gap-2">
+                        <text className="text-footnote font-semibold text-text">{comment.name}</text>
+                        <text className="text-caption text-muted">{comment.time}</text>
+                      </view>
+                      <text className="text-footnote text-text">{comment.text}</text>
+                    </view>
                   </view>
-                  <text className="text-footnote text-text">{comment.text}</text>
-                </view>
+                ))}
               </view>
-            ))}
-            <Composer bind={reply} label="Reply" placeholder="Add a comment" onSubmit={() => reply.set('')} data-testid="doc-reply" />
+            </scroll>
+            <view className="px-4 pt-3 border-t border-text/8" data-testid="doc-reply-row">
+              <Composer bind={reply} label="Reply" placeholder="Add a comment" onSubmit={() => reply.set('')} data-testid="doc-reply" />
+            </view>
           </view>
         }
         data-testid="doc-split"
