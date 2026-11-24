@@ -10,4 +10,4 @@ Warm paper surfaces, ink-brown text and a terracotta accent, for reading-heavy a
 - Type is one step larger than the default (body 17) with looser leading; corners are rounder (12).
   Family, spacing and motion are the default's.
 
-To see the gallery under it: `node ../../scripts/gallery-with-pack.mjs warm`.
+To see the gallery under it: `node ../scripts/gallery-with-theme.mjs warm`.

@@ -1,4 +1,4 @@
-//! `lingxia gen tokens`: a theme pack's numeric scales as Tailwind tokens for GPU pages.
+//! `lingxia gen tokens`: a theme's numeric scales as Tailwind tokens for GPU pages.
 //! Colours stay out: pages name roles, and the palette arrives at runtime.
 
 use anyhow::{Context, Result, bail};
@@ -7,14 +7,14 @@ use lingxia_theme::Pack;
 use std::fs;
 use std::path::{Path, PathBuf};
 
-/// Where an lxapp keeps its own pack; without one the built-in default applies.
-pub const PACK_PATH: &str = "theme/pack.json";
+/// Where an lxapp keeps its own theme; without one the built-in default applies.
+pub const THEME_PATH: &str = "theme.json";
 
 #[derive(Args, Debug, Clone)]
 pub struct TokensConfig {
-    /// Theme pack JSON. Defaults to `theme/pack.json`, else the built-in pack.
+    /// The theme file. Defaults to `theme.json`, else the built-in theme.
     #[arg(long)]
-    pub pack: Option<PathBuf>,
+    pub theme: Option<PathBuf>,
     /// The stylesheet to write.
     #[arg(short, long, default_value = "theme/tokens.css")]
     pub out: PathBuf,
@@ -25,9 +25,9 @@ pub struct TokensConfig {
 
 pub fn run(config: TokensConfig) -> Result<()> {
     let path = config
-        .pack
+        .theme
         .clone()
-        .or_else(|| Path::new(PACK_PATH).exists().then(|| PACK_PATH.into()));
+        .or_else(|| Path::new(THEME_PATH).exists().then(|| THEME_PATH.into()));
     let pack = load(path.as_deref())?;
     let css = stylesheet(&pack);
     if config.check {
@@ -48,7 +48,7 @@ pub fn run(config: TokensConfig) -> Result<()> {
     Ok(())
 }
 
-/// The pack at `path`, or the built-in one; fails listing every contrast or schema problem.
+/// The theme at `path`, or the built-in one; fails listing every contrast or schema problem.
 pub fn load(path: Option<&Path>) -> Result<Pack> {
     let pack = match path {
         None => lingxia_theme::default_pack(),
@@ -57,21 +57,17 @@ pub fn load(path: Option<&Path>) -> Result<Pack> {
                 fs::read_to_string(path).with_context(|| format!("read {}", path.display()))?;
             lingxia_theme::complete(
                 serde_json::from_str(&text)
-                    .with_context(|| format!("{} is not a theme pack", path.display()))?,
+                    .with_context(|| format!("{} is not a theme", path.display()))?,
             )
         }
     };
     let problems = lingxia_theme::check(&pack);
     if !problems.is_empty() {
         let list: Vec<String> = problems.iter().map(|p| format!("  {p}")).collect();
-        bail!(
-            "theme pack {} fails its checks:\n{}",
-            pack.name,
-            list.join("\n")
-        );
+        bail!("theme {} fails its checks:\n{}", pack.name, list.join("\n"));
     }
     for advice in lingxia_theme::advise(&pack) {
-        eprintln!("warning: theme pack {}: {advice}", pack.name);
+        eprintln!("warning: theme {}: {advice}", pack.name);
     }
     Ok(pack)
 }
@@ -209,15 +205,15 @@ mod tests {
     }
 
     #[test]
-    fn a_failing_pack_names_each_problem() {
-        let dir = std::env::temp_dir().join(format!("lingxia-pack-{}", std::process::id()));
+    fn a_failing_theme_names_each_problem() {
+        let dir = std::env::temp_dir().join(format!("lingxia-theme-{}", std::process::id()));
         fs::create_dir_all(&dir).unwrap();
         let mut pack = lingxia_theme::default_pack();
         pack.appearance.light.insert(
             "text-muted".into(),
             lingxia_theme::Rgba::parse("#dddddd").unwrap(),
         );
-        let path = dir.join("pack.json");
+        let path = dir.join("theme.json");
         fs::write(&path, serde_json::to_string(&pack).unwrap()).unwrap();
         let error = load(Some(&path)).unwrap_err().to_string();
         assert!(error.contains("light: text-muted on surface is"), "{error}");
@@ -226,11 +222,11 @@ mod tests {
 
     #[test]
     fn the_gpu_showcase_tokens_are_current() {
-        let theme = Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("../../examples/lingxia-showcase/lxapp/theme");
+        let lxapp =
+            Path::new(env!("CARGO_MANIFEST_DIR")).join("../../examples/lingxia-showcase/lxapp");
         assert_eq!(
-            fs::read_to_string(theme.join("tokens.css")).unwrap(),
-            stylesheet(&load(Some(&theme.join("pack.json"))).unwrap()),
+            fs::read_to_string(lxapp.join("theme/tokens.css")).unwrap(),
+            stylesheet(&load(Some(&lxapp.join(THEME_PATH))).unwrap()),
             "run `lingxia gen tokens` in the showcase lxapp"
         );
     }

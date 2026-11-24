@@ -1,24 +1,24 @@
 #!/usr/bin/env node
-// Assembles the gallery under one of Liuli's theme packs, as its own lxapp, outside the repository:
-//   node scripts/gallery-with-pack.mjs <pack> [--out <dir>]
-// then `lingxia build` or `lingxia dev listen` in the directory it prints. A pack belongs to an
-// lxapp (theme/pack.json) and is fixed when the app is built, so a second pack means a second app.
+// Assembles the gallery under one of Liuli's themes, as its own lxapp, outside the repository:
+//   node scripts/gallery-with-theme.mjs <theme> [--out <dir>]
+// then `lingxia build` or `lingxia dev listen` in the directory it prints. A theme belongs to an
+// lxapp (theme.json) and is fixed when the app is built, so a second theme means a second app.
 import { cpSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const liuli = resolve(dirname(fileURLToPath(import.meta.url)), '..');
-const packs = join(liuli, 'themes');
+const themes = join(liuli, 'themes');
 const [name, ...rest] = process.argv.slice(2);
-const known = existsSync(packs) ? readdirSync(packs).filter(each => existsSync(join(packs, each, 'pack.json'))) : [];
+const known = existsSync(themes) ? readdirSync(themes).filter(each => each.endsWith('.json')).map(each => each.slice(0, -5)) : [];
 if (!name || !known.includes(name)) {
-  console.error(`usage: gallery-with-pack.mjs <pack> [--out <dir>]\npacks: ${known.join(', ') || 'none'}`);
+  console.error(`usage: gallery-with-theme.mjs <theme> [--out <dir>]\nthemes: ${known.join(', ') || 'none'}`);
   process.exit(2);
 }
 const outFlag = rest.indexOf('--out');
 const out = resolve(outFlag >= 0 && rest[outFlag + 1] ? rest[outFlag + 1] : join(tmpdir(), `liuli-gallery-${name}`));
-const pack = JSON.parse(readFileSync(join(packs, name, 'pack.json'), 'utf8'));
+const theme = JSON.parse(readFileSync(join(themes, `${name}.json`), 'utf8'));
 
 rmSync(out, { recursive: true, force: true });
 mkdirSync(out, { recursive: true });
@@ -39,11 +39,10 @@ cpSync(join(liuli, 'gallery', 'zz-tests', 'baseline.test.ts'), join(gallery, 'zz
 const specConfig = JSON.parse(readFileSync(join(liuli, 'gallery', 'zz-tests', 'tsconfig.json'), 'utf8'));
 specConfig.compilerOptions.paths = { '@lingxia/test': [resolve(liuli, '..', 'lingxia-test', 'dist', 'index.d.ts')] };
 writeFileSync(join(gallery, 'zz-tests', 'tsconfig.json'), `${JSON.stringify(specConfig, null, 2)}\n`);
-mkdirSync(join(gallery, 'theme'), { recursive: true });
-writeFileSync(join(gallery, 'theme', 'pack.json'), `${JSON.stringify(pack, null, 2)}\n`);
+writeFileSync(join(gallery, 'theme.json'), `${JSON.stringify(theme, null, 2)}\n`);
 const manifestPath = join(gallery, 'lxapp.json');
 const manifest = JSON.parse(readFileSync(manifestPath, 'utf8'));
 manifest.appId = `${manifest.appId}-${name}`;
-manifest.appName = `${manifest.appName} (${pack.name})`;
+manifest.appName = `${manifest.appName} (${theme.name})`;
 writeFileSync(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`);
 console.log(gallery);

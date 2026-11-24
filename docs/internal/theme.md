@@ -90,7 +90,7 @@ pack seeded at session start. Older revisions are ignored.
 
 ## Ownership
 
-The pack belongs to the lxapp. `theme/pack.json` is completed and checked by `lingxia build`;
+The pack belongs to the lxapp. Its root `theme.json` is completed and checked by `lingxia build`;
 opening a page's lease registers it under the app session's worker before the
 page's host reads it. Leases count per worker: the pack stays registered while any page of that
 worker is live and is cleared when the last lease is disposed, so a relaunch that replaces pages

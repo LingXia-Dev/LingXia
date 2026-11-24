@@ -11,8 +11,8 @@
 //   --against <name>    check current (or --into) against gallery/.baseline/<name>, a capture kept
 //                       aside, with no manifest: a before and an after of one change
 //   --tolerance <n>, --share <x>   with --against: a finer or coarser comparison than the gate's
-//   --gallery <dir>     another copy of the gallery, such as one scripts/gallery-with-pack.mjs wrote
-//   --pack <name>       with --gallery: the copy is that pack's; its pictures go under
+//   --gallery <dir>     another copy of the gallery, such as one scripts/gallery-with-theme.mjs wrote
+//   --theme <name>      with --gallery: the copy is that theme's; its pictures go under
 //                       gallery/.baseline/<name> and its manifest is gallery/baseline.<name>.manifest.json
 //   --presets <a,b>     only these size presets, for a capture and what is accepted from it
 //   --pages <a,b>       only these gallery pages, by name: a capture shoots them, a check compares
@@ -41,11 +41,11 @@ const liuli = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const option = name => { const at = process.argv.indexOf(`--${name}`); return at > 0 ? process.argv[at + 1] : undefined; };
 const gallery = resolve(option('gallery') ?? join(liuli, 'gallery'));
 const into = option('into') ?? 'current';
-// A pack's gallery is a copy outside the repository; its pictures and manifest stay with Liuli's gallery.
-const pack = option('pack');
-if (pack && !option('gallery')) throw Error('--pack needs --gallery: the copy scripts/gallery-with-pack.mjs wrote');
-const root = pack ? join(liuli, 'gallery', '.baseline', pack) : join(gallery, '.baseline');
-const manifestPath = pack ? join(liuli, 'gallery', `baseline.${pack}.manifest.json`) : join(gallery, 'baseline.manifest.json');
+// A theme's gallery is a copy outside the repository; its pictures and manifest stay with Liuli's gallery.
+const theme = option('theme');
+if (theme && !option('gallery')) throw Error('--theme needs --gallery: the copy scripts/gallery-with-theme.mjs wrote');
+const root = theme ? join(liuli, 'gallery', '.baseline', theme) : join(gallery, '.baseline');
+const manifestPath = theme ? join(liuli, 'gallery', `baseline.${theme}.manifest.json`) : join(gallery, 'baseline.manifest.json');
 // A phone and a desk: the two forms every page has.
 const presets = option('presets')?.split(',') ?? ['iphone-15-pro', 'desktop-1280'];
 // `--except` names the pages left out, so every other page is named.

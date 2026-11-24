@@ -477,11 +477,11 @@ fn close_worker(key: &str) {
     let _ = key;
 }
 
-/// The lxapp's bundled pack; the host checks and resolves it, and a bad one keeps the
+/// The lxapp's bundled theme; the host checks and resolves it, and a bad one keeps the
 /// default palette.
 fn bundled_pack(pack: &str) -> Option<lingxia_theme::Pack> {
     serde_json::from_str(pack)
-        .inspect_err(|error| log::warn!("theme/pack.json is not a theme pack: {error}"))
+        .inspect_err(|error| log::warn!("theme.json is not a theme: {error}"))
         .ok()
 }
 

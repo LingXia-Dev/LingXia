@@ -20,6 +20,6 @@ test('README: every import path it names is exported, and every path and script 
   const exported = name => Object.keys(pkg.exports).some(key => key === `./${name}` || (key.endsWith('/*') && name.startsWith(key.slice(2, -1))));
   for (const [, name] of readme.matchAll(/`@liulidesign\/core\/([A-Za-z/]+)`/g)) assert.ok(exported(name), `@liulidesign/core/${name}`);
   for (const [, path] of readme.matchAll(/`(\.\.\/[\w./-]+|docs\/[\w./-]+|[\w-]+\.(?:json|css|md))`/g))
-    if (!path.includes('<')) assert.ok(existsSync(join(core, path)) || existsSync(join(core, '../gallery', path)) || /^(lxapp|pack)\.json$|^theme\//.test(path), path);
+    if (!path.includes('<')) assert.ok(existsSync(join(core, path)) || existsSync(join(core, '../gallery', path)) || /^(lxapp|theme)\.json$/.test(path), path);
   for (const [, script] of readme.matchAll(/^npm run ([\w:-]+)/gm)) assert.ok(script in pkg.scripts, `npm run ${script}`);
 });

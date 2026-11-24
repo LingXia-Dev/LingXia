@@ -15,9 +15,9 @@
   `text-caption|footnote|body|callout|title|display`, `rounded-checkbox|segment|control|container|dialog`, `*-control-sm|md|lg`.
   Arbitrary values (`p-[13px]`) stay fixed and do not follow the theme.
 
-## Theme pack
+## Theme
 
-- `theme/pack.json` gives the lxapp its own look: `{"name":"…","version":1,"accent":{"seed":"#…","derive":true}}`
+- `theme.json` at the lxapp root gives the lxapp its own look: `{"name":"…","version":1,"accent":{"seed":"#…","derive":true}}`
   derives every accent role from one colour; `appearance` may also set surfaces, lines, text and status colours
   for light and dark, and `type`, `shape.radius`, `space.unit` and `motion` retune the steps. Every other role
   is derived to pass its contrast pairs.

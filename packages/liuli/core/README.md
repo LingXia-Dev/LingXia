@@ -156,27 +156,27 @@ changes a word, or adds a language, by naming its `@liuli.*` key in its own `i18
 
 ## Theming
 
-Liuli has no colours of its own: every class names a role of your app's theme pack
-(`bg-surface`, `text-muted`), and the host resolves the pack for light, dark and high contrast.
+Liuli has no colours of its own: every class names a role of your app's theme
+(`bg-surface`, `text-muted`), and the host resolves the theme for light, dark and high contrast.
 
 ```json
 { "name": "brand", "version": 1, "accent": { "seed": "#0f9d58", "derive": true } }
 ```
 
-Save that as `theme/pack.json` in your lxapp and the accent, its soft step, their text colours and
+Save that as `theme.json` at your lxapp's root and the accent, its soft step, their text colours and
 the focus ring follow the seed in both appearances; everything you leave out comes from the built-in
-pack. `lingxia build` refuses a pack that misses a contrast pair, and the pack is fixed for the app:
+theme. `lingxia build` refuses a theme that misses a contrast pair, and the theme is fixed for the app:
 there is no switch at run time.
 
-- A pack may go further and set surfaces, text, lines and status colours, as
-  `../themes/warm/pack.json` does, or any role in `contracts/view/schema.json`; each role it sets is
+- A theme may go further and set surfaces, text, lines and status colours, as
+  `../themes/warm.json` does, or any role in `contracts/view/schema.json`; each role it sets is
   held to that role's contrast pairs.
-- The pack's `type`, `shape.radius` and `space.unit` reach Liuli too: its type sizes and corner radii
+- The theme's `type`, `shape.radius` and `space.unit` reach Liuli too: its type sizes and corner radii
   are names for steps of those ramps, and control heights are multiples of the spacing step
   (`tokens.css`). An app points a name at another step in its own stylesheet
   (`--radius-control: var(--radius-xl)`).
-- To see the gallery under a pack, as its own lxapp beside the default one:
-  `node ../scripts/gallery-with-pack.mjs warm` prints the directory it wrote.
+- To see the gallery under a theme, as its own lxapp beside the default one:
+  `node ../scripts/gallery-with-theme.mjs warm` prints the directory it wrote.
 
 ## Conventions
 

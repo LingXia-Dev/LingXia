@@ -2960,12 +2960,12 @@ impl LxApp {
             .map_err(|_| LxAppError::Runtime(format!("GPU chunk is not UTF-8: {path}")))
     }
 
-    /// The theme pack the lxapp bundles (`theme/pack.json`, completed by `lingxia build`).
+    /// The theme the lxapp bundles (`theme.json`, completed by `lingxia build`).
     pub(crate) fn read_theme_pack(&self) -> Option<String> {
         const LIMIT: usize = 64 * 1024;
-        let bytes = self.read_bytes("theme/pack.json").ok()?;
+        let bytes = self.read_bytes("theme.json").ok()?;
         if bytes.len() > LIMIT {
-            warn!("theme/pack.json is over {LIMIT} bytes; the default theme applies")
+            warn!("theme.json is over {LIMIT} bytes; the default theme applies")
                 .with_appid(self.appid.clone());
             return None;
         }

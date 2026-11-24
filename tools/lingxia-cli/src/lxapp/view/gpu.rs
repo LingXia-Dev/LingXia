@@ -26,13 +26,13 @@ pub(super) fn build(project: &Project, options: &BuildOptions, dev: bool) -> Res
     if pages.is_empty() {
         return Ok(());
     }
-    // A pack the lxapp ships must prove its contrast before any page builds against it; it
+    // A theme the lxapp ships must prove its contrast before any page builds against it; it
     // ships completed, so the runtime resolves it without the defaults it was written against.
-    let pack = project.root.join(crate::r#gen::tokens::PACK_PATH);
-    if pack.exists() {
-        let pack = crate::r#gen::tokens::load(Some(&pack))?;
-        let output = project.output_dir.join(crate::r#gen::tokens::PACK_PATH);
-        std::fs::create_dir_all(output.parent().context("theme pack output")?)?;
+    let theme = project.root.join(crate::r#gen::tokens::THEME_PATH);
+    if theme.exists() {
+        let pack = crate::r#gen::tokens::load(Some(&theme))?;
+        let output = project.output_dir.join(crate::r#gen::tokens::THEME_PATH);
+        std::fs::create_dir_all(output.parent().context("theme output")?)?;
         std::fs::write(&output, serde_json::to_string(&pack)?)
             .with_context(|| format!("write {}", output.display()))?;
     }

@@ -95,11 +95,11 @@ The system's increased-contrast setting (`env.highContrast`) resolves the pack's
 A black layer in a shadow token does the same; write `--alpha(var(--color-shadow) / 10%)` to say so explicitly.
 Any other literal colour in a layer stays as written.
 
-An lxapp sets its own look with `theme/pack.json`. A pack may name only an accent seed. Surfaces, text,
-lines and the three status colours it leaves out come from the default pack; every other role (text on
-fills, soft fills, marks, hues, chart series, info, the overlay surface) is computed from the pack's own
-colours, so it follows the pack's surfaces and accent. A derived role the pack does set is used as
-written. `lingxia build` proves the pack's contrast pairs and ships it; the host resolves it when a page
+An lxapp sets its own look with `theme.json` at its root. A theme may name only an accent seed. Surfaces, text,
+lines and the three status colours it leaves out come from the default theme; every other role (text on
+fills, soft fills, marks, hues, chart series, info, the overlay surface) is computed from the theme's own
+colours, so it follows the theme's surfaces and accent. A derived role the theme does set is used as
+written. `lingxia build` proves the theme's contrast pairs and ships it; the host resolves it when a page
 opens:
 
 ```json

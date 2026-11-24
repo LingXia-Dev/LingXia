@@ -900,7 +900,7 @@ fn hues_and_series_stand_apart_under_any_accent() {
 
 /// The packs that ship: the default and Liuli's warm.
 fn shipped_packs() -> [Pack; 2] {
-    let warm = include_str!("../../../packages/liuli/themes/warm/pack.json");
+    let warm = include_str!("../../../packages/liuli/themes/warm.json");
     [
         default_pack(),
         complete(serde_json::from_str(warm).unwrap()),
