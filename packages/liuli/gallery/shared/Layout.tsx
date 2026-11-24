@@ -13,7 +13,11 @@ export function GalleryPage({ children, isFilled = false }: { children: Child; i
         <view className="grow basis-0 min-h-0 px-4 pt-4 pb-3">{children}</view>
       ) : (
         <scroll className="grow">
-          <view className="px-4 pt-4 pb-10 gap-8">{children}</view>
+          <view className="px-4 pt-4 pb-10 gap-8">
+            {/* Test probe: the scroll's start, so a capture can bring the page back to its top. */}
+            <view aria-hidden data-testid="page-start" className="absolute start-0 top-0 size-px" />
+            {children}
+          </view>
         </scroll>
       )}
       {/* Test probe: specs read the bottom inset from its height (inset + 1); no handlers, so taps pass through. */}
