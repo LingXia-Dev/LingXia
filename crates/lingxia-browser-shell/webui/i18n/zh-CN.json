@@ -27,10 +27,6 @@
     "defaultMessage": "暂无内容",
     "description": "Browser system UI string for common.empty"
   },
-  "nav.newtab": {
-    "defaultMessage": "新标签页",
-    "description": "Browser system UI string for nav.newtab"
-  },
   "nav.bookmarks": {
     "defaultMessage": "书签",
     "description": "Browser system UI string for nav.bookmarks"
@@ -46,10 +42,6 @@
   "nav.settings": {
     "defaultMessage": "设置",
     "description": "Browser system UI string for nav.settings"
-  },
-  "newtab.title": {
-    "defaultMessage": "LingXia",
-    "description": "Browser system UI string for newtab.title"
   },
   "newtab.placeholder": {
     "defaultMessage": "输入网址...",
@@ -84,7 +76,7 @@
     "description": "Browser system UI string for bookmarks.addTitle"
   },
   "bookmarks.addUrl": {
-    "defaultMessage": "https://example.com",
+    "defaultMessage": "网址",
     "description": "Browser system UI string for bookmarks.addUrl"
   },
   "bookmarks.add": {
@@ -207,14 +199,6 @@
     "defaultMessage": "隐私与数据",
     "description": "Browser system UI string for settings.privacy"
   },
-  "settings.privacy.clearCache": {
-    "defaultMessage": "清除缓存",
-    "description": "Browser system UI string for settings.privacy.clearCache"
-  },
-  "settings.privacy.clearSiteData": {
-    "defaultMessage": "清除所有站点数据",
-    "description": "Browser system UI string for settings.privacy.clearSiteData"
-  },
   "settings.privacy.clearCurrentSite": {
     "defaultMessage": "清除当前站点数据",
     "description": "Browser system UI string for settings.privacy.clearCurrentSite"
@@ -227,10 +211,6 @@
     "defaultMessage": "网络代理",
     "description": "Browser system UI string for settings.proxy"
   },
-  "settings.proxy.mode": {
-    "defaultMessage": "模式",
-    "description": "Browser system UI string for settings.proxy.mode"
-  },
   "settings.proxy.apply": {
     "defaultMessage": "应用代理设置",
     "description": "Browser system UI string for settings.proxy.apply"
@@ -242,5 +222,161 @@
   "settings.about": {
     "defaultMessage": "关于",
     "description": "Browser system UI string for settings.about"
+  },
+  "bookmarks.addGroup": {
+    "defaultMessage": "添加",
+    "description": "Button that creates the group typed beside it."
+  },
+  "bookmarks.rename": {
+    "defaultMessage": "重命名",
+    "description": "Edits a bookmark title in place."
+  },
+  "bookmarks.status.imported": {
+    "defaultMessage": "已导入 {count} 个书签",
+    "description": "After an HTML import."
+  },
+  "bookmarks.status.exported": {
+    "defaultMessage": "已导出 {count} 个书签",
+    "description": "After an HTML export."
+  },
+  "downloads.status.downloading": {
+    "defaultMessage": "下载中",
+    "description": "A download row state."
+  },
+  "downloads.status.paused": {
+    "defaultMessage": "已暂停",
+    "description": "A download row state."
+  },
+  "downloads.status.completed": {
+    "defaultMessage": "已完成",
+    "description": "A download row state."
+  },
+  "downloads.status.failed": {
+    "defaultMessage": "失败",
+    "description": "A download row state."
+  },
+  "downloads.status.removed": {
+    "defaultMessage": "已移除",
+    "description": "A download row state."
+  },
+  "settings.language.en": {
+    "defaultMessage": "English",
+    "description": "The English option, named in English."
+  },
+  "settings.language.zh": {
+    "defaultMessage": "简体中文",
+    "description": "The Simplified Chinese option, named in Chinese."
+  },
+  "settings.privacy.site.title": {
+    "defaultMessage": "当前站点",
+    "description": "Card for clearing the site of the tab Settings was opened from."
+  },
+  "settings.privacy.clearData": {
+    "defaultMessage": "清除浏览数据",
+    "description": "Card title."
+  },
+  "settings.privacy.usage": {
+    "defaultMessage": "{history} 条历史记录 · {cacheSites} 个站点有缓存 · {siteDataSites} 个站点有数据 · {cookies} 个 Cookie",
+    "description": "What clearing would affect."
+  },
+  "settings.privacy.timeRange": {
+    "defaultMessage": "时间范围",
+    "description": "Picker label."
+  },
+  "settings.privacy.range.lastHour": {
+    "defaultMessage": "过去一小时",
+    "description": "Time range option."
+  },
+  "settings.privacy.range.last24Hours": {
+    "defaultMessage": "过去 24 小时",
+    "description": "Time range option."
+  },
+  "settings.privacy.range.last7Days": {
+    "defaultMessage": "过去 7 天",
+    "description": "Time range option."
+  },
+  "settings.privacy.range.last4Weeks": {
+    "defaultMessage": "过去 4 周",
+    "description": "Time range option."
+  },
+  "settings.privacy.range.allTime": {
+    "defaultMessage": "全部时间",
+    "description": "Time range option."
+  },
+  "settings.privacy.history": {
+    "defaultMessage": "浏览历史",
+    "description": "Checkbox: what to clear."
+  },
+  "settings.privacy.cache": {
+    "defaultMessage": "缓存的图片和文件",
+    "description": "Checkbox: what to clear."
+  },
+  "settings.privacy.siteData": {
+    "defaultMessage": "Cookie 和站点数据",
+    "description": "Checkbox: what to clear."
+  },
+  "settings.privacy.clear": {
+    "defaultMessage": "清除数据",
+    "description": "Runs the clear."
+  },
+  "settings.privacy.status.nothingSelected": {
+    "defaultMessage": "请选择要清除的内容",
+    "description": "When every checkbox is off."
+  },
+  "settings.privacy.status.cleared": {
+    "defaultMessage": "已清除（{count} 条历史记录）",
+    "description": "After clearing browsing data."
+  },
+  "settings.privacy.status.siteCleared": {
+    "defaultMessage": "已清除站点数据",
+    "description": "After clearing the current site."
+  },
+  "settings.proxy.host": {
+    "defaultMessage": "SOCKS5 主机",
+    "description": "Input label."
+  },
+  "settings.proxy.port": {
+    "defaultMessage": "端口",
+    "description": "Input label."
+  },
+  "settings.proxy.mode.direct": {
+    "defaultMessage": "直连",
+    "description": "Proxy mode."
+  },
+  "settings.proxy.mode.global": {
+    "defaultMessage": "全局代理",
+    "description": "Proxy mode."
+  },
+  "settings.proxy.mode.gfw_list": {
+    "defaultMessage": "自动（GFWList）",
+    "description": "Proxy mode."
+  },
+  "settings.proxy.status.invalidPort": {
+    "defaultMessage": "请输入 1 到 65535 之间的端口",
+    "description": "Port validation."
+  },
+  "settings.proxy.status.updated": {
+    "defaultMessage": "代理设置已应用",
+    "description": "After saving proxy settings."
+  },
+  "settings.proxy.status.rulesRefreshed": {
+    "defaultMessage": "规则已刷新",
+    "description": "After refreshing GFWList."
+  },
+  "settings.about.version": {
+    "defaultMessage": "版本 {version}",
+    "description": "About card."
+  },
+  "settings.about.sdk": {
+    "defaultMessage": "SDK {version}",
+    "description": "About card."
+  },
+  "settings.about.webui": {
+    "defaultMessage": "Web UI {version}",
+    "description": "About card."
+  },
+  "settings.about.commit": {
+    "defaultMessage": "提交 {sha}",
+    "description": "About card."
   }
 }

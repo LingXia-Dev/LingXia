@@ -1,4 +1,4 @@
-import { t, useAction, useLocal } from '@lingxia/view';
+import { t, useAction, useLocal, type MessageKey } from '@lingxia/view';
 import type { View } from './$types';
 
 export function render({ data, actions }: View) {
@@ -6,11 +6,14 @@ export function render({ data, actions }: View) {
   const newTitle = useLocal('newTitle', '');
   const newUrl = useLocal('newUrl', '');
   const newGroup = useLocal('newGroup', '');
+  const renameTitle = useLocal('renameTitle', '');
 
   const selectGroup = useAction(actions.selectGroup);
   const addBookmark = useAction(actions.addBookmark);
   const removeBookmark = useAction(actions.removeBookmark);
-  const togglePin = useAction(actions.togglePin);
+  const setPinned = useAction(actions.setPinned);
+  const startRename = useAction(actions.startRename);
+  const renameBookmark = useAction(actions.renameBookmark);
   const createGroup = useAction(actions.createGroup);
   const deleteGroup = useAction(actions.deleteGroup);
   const importHtml = useAction(actions.importHtml);
@@ -49,6 +52,7 @@ export function render({ data, actions }: View) {
       <view className="flex-row items-center justify-between gap-4">
         <text className="text-2xl font-semibold">{t('bookmarks.title')}</text>
         <view className="flex-row items-center gap-2">
+          {data.status ? <text className="text-xs text-accent">{t(data.status as MessageKey, { count: data.statusCount })}</text> : null}
           <button
             onClick={() => { void importHtml.run(); }}
             className="px-3 py-1.5 rounded-lg bg-surface border border-line text-sm"
@@ -90,7 +94,7 @@ export function render({ data, actions }: View) {
                 onClick={() => { void deleteGroup.run({ id: group.id }); }}
                 className="px-2 py-2 rounded-lg bg-transparent text-xs text-danger"
               >
-                <text>x</text>
+                <text>{t('common.delete')}</text>
               </button>
             </view>
           ))}
@@ -104,7 +108,7 @@ export function render({ data, actions }: View) {
               className="grow basis-0 min-w-0 px-2.5 py-1.5 rounded-lg bg-surface border border-line text-xs"
             />
             <button onClick={() => { void submitGroup(); }} className="px-2.5 py-1.5 rounded-lg bg-surface border border-line text-xs">
-              <text>+</text>
+              <text>{t('bookmarks.addGroup')}</text>
             </button>
           </view>
         </view>
@@ -152,19 +156,46 @@ export function render({ data, actions }: View) {
             ) : (
               visible.map((entry) => (
                 <view key={entry.id} className="flex-row items-center justify-between px-4 py-3 border-t border-line gap-3">
-                  <button
-                    onClick={() => { void openUrl.run({ url: entry.url }); }}
-                    className="grow basis-0 min-w-0 bg-transparent gap-0.5"
-                  >
-                    <text className="text-sm font-medium">{entry.title || entry.url}</text>
-                    <text className="text-xs text-muted">{entry.url}</text>
-                  </button>
-                  <view className="flex-row items-center gap-2">
+                  {data.editingId === entry.id ? (
+                    <input
+                      aria-label={t('bookmarks.rename')}
+                      value={renameTitle.value}
+                      placeholder={entry.url}
+                      autoFocus
+                      onInput={(v) => renameTitle.set(v)}
+                      onSubmit={(v) => { void renameBookmark.run({ id: entry.id, title: v }); }}
+                      className="grow basis-0 min-w-0 px-3 py-1.5 rounded-lg bg-canvas border border-line text-sm"
+                    />
+                  ) : (
                     <button
-                      onClick={() => { void togglePin.run({ id: entry.id, pinned: !entry.pinned }); }}
+                      onClick={() => { void openUrl.run({ url: entry.url }); }}
+                      className="grow basis-0 min-w-0 bg-transparent gap-0.5"
+                    >
+                      <text className="text-sm font-medium">{entry.title || entry.url}</text>
+                      <text className="text-xs text-muted">{entry.url}</text>
+                    </button>
+                  )}
+                  <view className="flex-row items-center gap-2">
+                    {data.editingId === entry.id ? (
+                      <button
+                        onClick={() => { void renameBookmark.run({ id: entry.id, title: renameTitle.value }); }}
+                        className="px-2.5 py-1 rounded-md bg-accent text-on-accent text-xs"
+                      >
+                        <text>{t('common.save')}</text>
+                      </button>
+                    ) : (
+                      <button
+                        onClick={() => { renameTitle.set(entry.title); void startRename.run({ id: entry.id }); }}
+                        className="px-2.5 py-1 rounded-md bg-canvas border border-line text-xs"
+                      >
+                        <text>{t('bookmarks.rename')}</text>
+                      </button>
+                    )}
+                    <button
+                      onClick={() => { void setPinned.run({ id: entry.id, pinned: !data.pinnedIds.includes(entry.id) }); }}
                       className="px-2.5 py-1 rounded-md bg-canvas border border-line text-xs"
                     >
-                      <text>{entry.pinned ? t('bookmarks.unpin') : t('bookmarks.pin')}</text>
+                      <text>{data.pinnedIds.includes(entry.id) ? t('bookmarks.unpin') : t('bookmarks.pin')}</text>
                     </button>
                     <button
                       onClick={() => { void removeBookmark.run({ id: entry.id }); }}

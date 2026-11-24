@@ -1,208 +1,207 @@
-import { browserNative } from '../../shared/native';
-import { definePage, lx } from '@lingxia/logic';
+import { invoke, watch } from '../../shared/native';
+import { definePage, lx, type } from '@lingxia/logic';
+
+type Section = 'appearance' | 'downloads' | 'privacy' | 'proxy' | 'about';
+type ProxyMode = 'direct' | 'global' | 'gfw_list';
+type TimeRange = 'lastHour' | 'last24Hours' | 'last7Days' | 'last4Weeks' | 'allTime';
 
 interface AppInfo {
-  appName: string;
+  productName: string;
   version: string;
-  gitSha?: string;
+  sdkVersion: string;
+  webuiVersion: string;
+  gitSha: string;
 }
 
 interface DownloadSettings {
-  directory: string;
-  isDefault: boolean;
+  downloadDir: string;
+  usesDefaultDir: boolean;
+  canChooseDirectory: boolean;
 }
 
 interface PrivacyUsage {
-  cacheBytes: number;
-  siteDataBytes: number;
+  historyEntries: number;
+  cacheSites: number;
+  siteDataSites: number;
+  cookies: number;
 }
 
-interface SiteDataContext {
-  origin: string;
-  host: string;
+interface AutoSwitchRule {
+  pattern?: string;
+  action: string;
+}
+
+interface ProxySettings {
+  mode: ProxyMode;
+  socks5Host: string;
+  socks5Port: number;
+  username: string;
+  password: string;
+  autoSwitchRules: AutoSwitchRule[];
+  gfwlistSourceUrl: string;
+  isActive: boolean;
+  statusMessage: string;
+  gfwlistReady: boolean;
 }
 
 interface SettingsData {
-  section: 'appearance' | 'downloads' | 'privacy' | 'proxy' | 'about';
+  section: Section;
   appearance: string;
   language: string;
-  downloadDir: string;
-  downloadDirIsDefault: boolean;
-  cacheBytes: number;
-  siteDataBytes: number;
-  siteContext: SiteDataContext | null;
-  proxyAvailable: boolean;
-  proxyMode: string;
-  proxyHost: string;
-  proxyPort: string;
-  appInfo: AppInfo;
-  statusMessage: string;
+  download: DownloadSettings | null;
+  usage: PrivacyUsage | null;
+  /** The tab whose site the clear-site-data card targets, from the opening query. */
+  siteTabId: string;
+  site: { url: string; host: string } | null;
+  proxy: ProxySettings | null;
+  appInfo: AppInfo | null;
+  /** An i18n key the View renders; empty when there is nothing to say. */
+  status: string;
+  statusCount: number;
 }
+
+const SECTIONS: readonly Section[] = ['appearance', 'downloads', 'privacy', 'proxy', 'about'];
 
 const initialData: SettingsData = {
   section: 'appearance',
   appearance: 'auto',
   language: 'auto',
-  downloadDir: '',
-  downloadDirIsDefault: true,
-  cacheBytes: 0,
-  siteDataBytes: 0,
-  siteContext: null,
-  proxyAvailable: false,
-  proxyMode: 'direct',
-  proxyHost: '127.0.0.1',
-  proxyPort: '7890',
-  appInfo: { appName: 'LingXia', version: '' },
-  statusMessage: '',
+  download: null,
+  usage: null,
+  siteTabId: '',
+  site: null,
+  proxy: null,
+  appInfo: null,
+  status: '',
+  statusCount: 0,
 };
 
 export default definePage({
   data: initialData,
+  // The browser opens Settings at a section, and for clear-site-data with the tab whose site it clears.
+  params: type<{ section?: string; tabId?: string }>(),
   setup(page) {
-    const native = browserNative(page);
-    let disposed = false;
-    const unwatchers: Array<() => void> = [];
+    function report(status: string, count = 0) {
+      page.update((d) => {
+        d.status = status;
+        d.statusCount = count;
+      });
+    }
+
+    async function refreshUsage() {
+      const usage = await invoke<PrivacyUsage>('privacy.getUsage');
+      page.update((d) => { d.usage = usage; });
+    }
+
+    function applyDownload(download: DownloadSettings) {
+      page.update((d) => { d.download = download; });
+    }
 
     return {
-      async onLoad(query?: Record<string, unknown>) {
-        if (query?.section === 'clear-site-data' || query?.section === 'privacy') {
-          page.update((d) => { d.section = 'privacy'; });
-        } else if (query?.section === 'downloads' || query?.section === 'proxy' || query?.section === 'about') {
-          page.update((d) => { d.section = query.section as SettingsData['section']; });
-        }
-
-        const [info, appearance, language, dl, privacy, proxy] = await Promise.all([
-          native.invoke<AppInfo>('app.getInfo').catch(() => null),
-          native.invoke<string>('app.getAppearancePreference').catch(() => 'auto'),
-          native.invoke<string>('app.getDisplayLanguagePreference').catch(() => 'auto'),
-          native.invoke<DownloadSettings>('downloads.getSettings').catch(() => null),
-          native.invoke<PrivacyUsage>('privacy.getUsage').catch(() => null),
-          native.invoke<{ settings?: { mode?: string; host?: string; port?: number } }>('proxy.getSettings').catch(() => null),
-        ]);
-
-        let siteContext: SiteDataContext | null = null;
-        if (typeof query?.tabId === 'string' && query.tabId) {
-          siteContext = await native
-            .invoke<SiteDataContext>('privacy.getSiteDataContext', { tabId: query.tabId })
-            .catch(() => null);
-        }
-
-        if (disposed) return;
+      async onLoad(params) {
+        const requested = params?.section === 'clear-site-data' ? 'privacy' : params?.section;
+        const tabId = typeof params?.tabId === 'string' ? params.tabId : '';
         page.update((d) => {
-          if (info) d.appInfo = info;
-          d.appearance = appearance ?? 'auto';
-          d.language = language ?? 'auto';
-          if (dl) {
-            d.downloadDir = dl.directory ?? '';
-            d.downloadDirIsDefault = !!dl.isDefault;
-          }
-          if (privacy) {
-            d.cacheBytes = privacy.cacheBytes ?? 0;
-            d.siteDataBytes = privacy.siteDataBytes ?? 0;
-          }
-          d.siteContext = siteContext;
-          if (proxy?.settings) {
-            d.proxyAvailable = true;
-            d.proxyMode = proxy.settings.mode ?? 'direct';
-            d.proxyHost = proxy.settings.host ?? '127.0.0.1';
-            d.proxyPort = String(proxy.settings.port ?? 7890);
-          }
+          if (SECTIONS.includes(requested as Section)) d.section = requested as Section;
+          d.siteTabId = tabId;
         });
 
-        try {
-          const apStream = native.stream<string>('app.watchAppearancePreference');
-          unwatchers.push(() => apStream.close());
-          (async () => {
-            for await (const pref of apStream) {
-              if (disposed) break;
-              page.update((d) => { d.appearance = pref; });
-            }
-          })().catch(() => {});
-        } catch {}
+        watch<string>('app.watchAppearancePreference', page.signal, (pref) => {
+          page.update((d) => { d.appearance = pref; });
+        });
+        watch<string>('app.watchDisplayLanguagePreference', page.signal, (pref) => {
+          page.update((d) => { d.language = pref; });
+        });
+        // Proxy routes exist only where the local proxy runs; without them the section stays hidden.
+        void invoke<ProxySettings>('proxy.getSettings').then((proxy) => {
+          page.update((d) => { d.proxy = proxy; });
+          watch<ProxySettings>('proxy.watch', page.signal, (next) => {
+            page.update((d) => { d.proxy = next; });
+          });
+        }, () => {});
 
-        try {
-          const langStream = native.stream<string>('app.watchDisplayLanguagePreference');
-          unwatchers.push(() => langStream.close());
-          (async () => {
-            for await (const pref of langStream) {
-              if (disposed) break;
-              page.update((d) => { d.language = pref; });
-            }
-          })().catch(() => {});
-        } catch {}
-      },
-      onUnload() {
-        disposed = true;
-        for (const fn of unwatchers) fn();
-        unwatchers.length = 0;
+        const [info, appearance, language, download, site] = await Promise.all([
+          invoke<AppInfo>('app.getInfo').catch(() => null),
+          invoke<string>('app.getAppearancePreference').catch(() => null),
+          invoke<string>('app.getDisplayLanguagePreference').catch(() => null),
+          invoke<DownloadSettings>('downloads.getSettings').catch(() => null),
+          tabId ? invoke<{ url: string; host: string }>('privacy.getSiteDataContext', { tabId }).catch(() => null) : null,
+        ]);
+        page.update((d) => {
+          d.appInfo = info;
+          if (appearance) d.appearance = appearance;
+          if (language) d.language = language;
+          d.download = download;
+          d.site = site;
+        });
+        await refreshUsage().catch(() => {});
       },
       actions: {
-        setSection({ section }: { section: SettingsData['section'] }) {
-          page.update((d) => { d.section = section; d.statusMessage = ''; });
+        async setSection({ section }: { section: Section }) {
+          page.update((d) => {
+            d.section = section;
+            d.status = '';
+          });
         },
         async setAppearance({ preference }: { preference: string }) {
-          const next = await native.invoke<string>('app.setAppearancePreference', { preference });
+          const next = await invoke<string>('app.setAppearancePreference', { preference });
           page.update((d) => { d.appearance = next; });
         },
         async setLanguage({ preference }: { preference: string }) {
-          const next = await native.invoke<string>('app.setDisplayLanguagePreference', { preference });
+          const next = await invoke<string>('app.setDisplayLanguagePreference', { preference });
           page.update((d) => { d.language = next; });
         },
         async chooseDownloadDir() {
-          const res = await native.invoke<DownloadSettings>('downloads.chooseDirectory');
-          if (res) {
-            page.update((d) => {
-              d.downloadDir = res.directory ?? d.downloadDir;
-              d.downloadDirIsDefault = !!res.isDefault;
-            });
-          }
+          applyDownload(await invoke<DownloadSettings>('downloads.chooseDirectory'));
         },
         async resetDownloadDir() {
-          const res = await native.invoke<DownloadSettings>('downloads.resetDirectory');
-          if (res) {
-            page.update((d) => {
-              d.downloadDir = res.directory ?? d.downloadDir;
-              d.downloadDirIsDefault = !!res.isDefault;
-            });
+          applyDownload(await invoke<DownloadSettings>('downloads.resetDirectory'));
+        },
+        async clearBrowsingData(input: { timeRange: TimeRange; history: boolean; cache: boolean; siteData: boolean }) {
+          if (!input.history && !input.cache && !input.siteData) {
+            report('settings.privacy.status.nothingSelected');
+            return;
           }
+          const result = await invoke<{ historyRemoved: number }>('privacy.clearBrowsingData', input);
+          await refreshUsage().catch(() => {});
+          report('settings.privacy.status.cleared', result.historyRemoved);
         },
-        async clearCache() {
-          await native.invoke('privacy.clearCache');
-          const usage = await native.invoke<PrivacyUsage>('privacy.getUsage').catch(() => null);
-          page.update((d) => {
-            if (usage) d.cacheBytes = usage.cacheBytes ?? 0;
-            d.statusMessage = 'Cache cleared';
-          });
+        async clearSite({ cache, siteData }: { cache: boolean; siteData: boolean }) {
+          const tabId = page.data.siteTabId;
+          if (!tabId) return;
+          if (!cache && !siteData) {
+            report('settings.privacy.status.nothingSelected');
+            return;
+          }
+          await invoke('privacy.clearSiteData', { tabId, cache, siteData });
+          await refreshUsage().catch(() => {});
+          report('settings.privacy.status.siteCleared');
         },
-        async clearAllSiteData() {
-          await native.invoke('privacy.clearAllSiteData');
-          const usage = await native.invoke<PrivacyUsage>('privacy.getUsage').catch(() => null);
-          page.update((d) => {
-            if (usage) d.siteDataBytes = usage.siteDataBytes ?? 0;
-            d.statusMessage = 'Site data cleared';
-          });
-        },
-        async clearCurrentSite() {
-          if (!page.data.siteContext?.origin) return;
-          await native.invoke('privacy.clearSiteData', { origin: page.data.siteContext.origin });
-          page.update((d) => { d.statusMessage = `Cleared ${d.siteContext?.host ?? ''}`; });
-        },
-        async updateProxy({ mode, host, port }: { mode: string; host: string; port: string }) {
-          await native.invoke('proxy.updateSettings', {
+        async updateProxy({ mode, host, port }: { mode: ProxyMode; host: string; port: string }) {
+          const current = page.data.proxy;
+          if (!current) return;
+          const socks5Port = Number(port);
+          if (!Number.isInteger(socks5Port) || socks5Port < 1 || socks5Port > 65535) {
+            report('settings.proxy.status.invalidPort');
+            return;
+          }
+          // The route replaces every field, so send the ones this page does not edit unchanged.
+          const next = await invoke<ProxySettings>('proxy.updateSettings', {
             mode,
-            host: host.trim(),
-            port: Number(port) || 7890,
+            socks5Host: host.trim(),
+            socks5Port,
+            username: current.username,
+            password: current.password,
+            gfwlistSourceUrl: current.gfwlistSourceUrl,
+            autoSwitchRules: current.autoSwitchRules,
           });
-          page.update((d) => {
-            d.proxyMode = mode;
-            d.proxyHost = host;
-            d.proxyPort = port;
-            d.statusMessage = 'Proxy updated';
-          });
+          page.update((d) => { d.proxy = next; });
+          report('settings.proxy.status.updated');
         },
         async refreshGfwList() {
-          await native.invoke('proxy.refreshGfwList');
-          page.update((d) => { d.statusMessage = 'Rules refreshed'; });
+          const next = await invoke<ProxySettings>('proxy.refreshGfwList');
+          page.update((d) => { d.proxy = next; });
+          report('settings.proxy.status.rulesRefreshed');
         },
         async openHistory() {
           await lx.nav.go({ page: 'history' });

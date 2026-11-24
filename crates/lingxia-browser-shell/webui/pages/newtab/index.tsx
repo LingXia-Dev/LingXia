@@ -1,4 +1,4 @@
-import { t, useAction, useLocal } from '@lingxia/view';
+import { t, useAction, useLocal, type MessageKey } from '@lingxia/view';
 import type { View } from './$types';
 
 export function render({ data, actions }: View) {
@@ -49,7 +49,7 @@ export function render({ data, actions }: View) {
               onClick={() => { void openPage.run({ page: name }); }}
               className="px-4 py-2 rounded-lg bg-surface border border-line text-sm"
             >
-              <text>{t(`nav.${name}`)}</text>
+              <text>{t(`nav.${name}` as MessageKey)}</text>
             </button>
           ))}
         </view>

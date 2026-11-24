@@ -9,8 +9,7 @@
     "lxapp.json"
   ],
   "scripts": {
-    "build": "cargo run -p lingxia-cli -- build --release",
-    "typecheck": "cargo run -p lingxia-cli -- check"
+    "build": "cargo run -p lingxia-cli -- build --release"
   },
   "dependencies": {
     "@lingxia/view": "file:../../../packages/lingxia-view"

@@ -1,19 +1,23 @@
-import { browserNative } from '../../shared/native';
+import { invoke, watch } from '../../shared/native';
 import { definePage, lx } from '@lingxia/logic';
+
+type DownloadStatus = 'downloading' | 'paused' | 'completed' | 'failed' | 'removed';
 
 interface DownloadRecord {
   taskId: string;
-  fileName: string;
   url: string;
-  status: string;
+  fileName: string;
+  status: DownloadStatus;
   downloadedBytes: number;
-  totalBytes?: number | null;
-  errorMessage?: string | null;
-  retry?: boolean;
+  totalBytes?: number;
+  retry: boolean;
+  error?: string;
 }
 
-interface DownloadsSnapshot {
-  downloads: DownloadRecord[];
+interface DownloadEvent {
+  kind: 'started' | 'progress' | 'paused' | 'completed' | 'failed' | 'removed' | 'cleared';
+  download?: DownloadRecord;
+  taskId?: string;
 }
 
 interface DownloadsData {
@@ -31,76 +35,65 @@ const initialData: DownloadsData = {
 export default definePage({
   data: initialData,
   setup(page) {
-    const native = browserNative(page);
-    let disposed = false;
-    let unwatch: (() => void) | null = null;
-
-    function applySnapshot(snap: DownloadsSnapshot) {
-      if (disposed) return;
+    async function refresh() {
+      const snap = await invoke<{ downloads: DownloadRecord[] }>('downloads.list');
       page.update((d) => {
-        d.downloads = snap?.downloads ?? [];
+        d.downloads = snap.downloads;
         d.loading = false;
       });
     }
 
-    async function refresh() {
-      const snap = await native.invoke<DownloadsSnapshot>('downloads.list');
-      applySnapshot(snap);
+    function apply(event: DownloadEvent) {
+      const record = event.download;
+      // Removals and clears carry no record; the list is the authority for them.
+      if (!record || event.kind === 'removed' || event.kind === 'cleared') {
+        void refresh().catch(() => {});
+        return;
+      }
+      page.update((d) => {
+        const index = d.downloads.findIndex((item) => item.taskId === record.taskId);
+        if (index >= 0) d.downloads[index] = record;
+        else d.downloads = [record, ...d.downloads];
+      });
+    }
+
+    async function run(route: string, taskId: string) {
+      await invoke(route, { taskId });
+      await refresh();
     }
 
     return {
       async onLoad() {
-        try {
-          await refresh();
-          const stream = native.stream<DownloadsSnapshot>('downloads.watch');
-          unwatch = () => stream.close();
-          (async () => {
-            for await (const snap of stream) {
-              if (disposed) break;
-              if (snap?.downloads) applySnapshot(snap);
-            }
-          })().catch(() => {});
-        } catch {
-          if (!disposed) page.update((d) => { d.loading = false; });
-        }
-      },
-      onUnload() {
-        disposed = true;
-        unwatch?.();
-        unwatch = null;
+        watch<DownloadEvent>('downloads.watch', page.signal, apply);
+        await refresh().catch(() => page.update((d) => { d.loading = false; }));
       },
       actions: {
-        setFilter({ filter }: { filter: 'all' | 'active' | 'completed' }) {
+        async setFilter({ filter }: { filter: DownloadsData['filter'] }) {
           page.update((d) => { d.filter = filter; });
         },
         async pause({ taskId }: { taskId: string }) {
-          await native.invoke('downloads.pause', { taskId });
-          await refresh();
+          await run('downloads.pause', taskId);
         },
         async resume({ taskId }: { taskId: string }) {
-          await native.invoke('downloads.resume', { taskId });
-          await refresh();
+          await run('downloads.resume', taskId);
         },
         async retry({ taskId }: { taskId: string }) {
-          await native.invoke('downloads.retry', { taskId });
-          await refresh();
+          await run('downloads.retry', taskId);
         },
         async cancel({ taskId }: { taskId: string }) {
-          await native.invoke('downloads.cancel', { taskId });
-          await refresh();
+          await run('downloads.cancel', taskId);
         },
         async remove({ taskId }: { taskId: string }) {
-          await native.invoke('downloads.remove', { taskId });
-          await refresh();
+          await run('downloads.remove', taskId);
         },
         async open({ taskId }: { taskId: string }) {
-          await native.invoke('downloads.open', { taskId });
+          await invoke('downloads.open', { taskId });
         },
         async reveal({ taskId }: { taskId: string }) {
-          await native.invoke('downloads.reveal', { taskId });
+          await invoke('downloads.reveal', { taskId });
         },
         async clearCompleted() {
-          await native.invoke('downloads.clearCompleted');
+          await invoke('downloads.clearCompleted');
           await refresh();
         },
         async openSettings() {

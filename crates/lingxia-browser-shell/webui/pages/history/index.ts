@@ -1,4 +1,4 @@
-import { browserNative } from '../../shared/native';
+import { invoke, watch } from '../../shared/native';
 import { definePage, lx } from '@lingxia/logic';
 
 interface HistoryEntry {
@@ -8,9 +8,10 @@ interface HistoryEntry {
   visitedAtMs: number;
 }
 
-interface HistorySnapshot {
-  entries: HistoryEntry[];
-}
+type HistoryWatchEvent =
+  | { kind: 'snapshot'; entries: HistoryEntry[] }
+  | { kind: 'upsert'; entry: HistoryEntry }
+  | { kind: 'remove'; id: string };
 
 interface HistoryData {
   entries: HistoryEntry[];
@@ -25,51 +26,41 @@ const initialData: HistoryData = {
 export default definePage({
   data: initialData,
   setup(page) {
-    const native = browserNative(page);
-    let disposed = false;
-    let unwatch: (() => void) | null = null;
-
-    function applySnapshot(snap: HistorySnapshot) {
-      if (disposed) return;
+    async function refresh() {
+      const snap = await invoke<{ entries: HistoryEntry[] }>('history.list');
       page.update((d) => {
-        d.entries = snap.entries ?? [];
+        d.entries = snap.entries;
+        d.loading = false;
+      });
+    }
+
+    function apply(event: HistoryWatchEvent) {
+      page.update((d) => {
+        if (event.kind === 'snapshot') {
+          d.entries = event.entries;
+        } else if (event.kind === 'upsert') {
+          const rest = d.entries.filter((entry) => entry.id !== event.entry.id);
+          d.entries = [event.entry, ...rest].sort((a, b) => b.visitedAtMs - a.visitedAtMs);
+        } else {
+          d.entries = d.entries.filter((entry) => entry.id !== event.id);
+        }
         d.loading = false;
       });
     }
 
     return {
       async onLoad() {
-        try {
-          const snap = await native.invoke<HistorySnapshot>('history.list');
-          applySnapshot(snap);
-          const stream = native.stream<HistorySnapshot>('history.watch');
-          unwatch = () => stream.close();
-          (async () => {
-            for await (const next of stream) {
-              if (disposed) break;
-              applySnapshot(next);
-            }
-          })().catch(() => {});
-        } catch {
-          if (!disposed) page.update((d) => { d.loading = false; });
-        }
-      },
-      onUnload() {
-        disposed = true;
-        unwatch?.();
-        unwatch = null;
+        watch<HistoryWatchEvent>('history.watch', page.signal, apply);
+        await refresh().catch(() => page.update((d) => { d.loading = false; }));
       },
       actions: {
         async removeEntry({ id }: { id: string }) {
-          const snap = await native.invoke<HistorySnapshot>('history.remove', { id });
-          applySnapshot(snap);
+          await invoke('history.remove', { id });
+          await refresh();
         },
         async clearRange({ sinceMs }: { sinceMs?: number }) {
-          const snap = await native.invoke<HistorySnapshot>(
-            'history.clear',
-            sinceMs !== undefined ? { sinceMs } : {},
-          );
-          applySnapshot(snap);
+          await invoke('history.clear', sinceMs !== undefined ? { sinceMs } : {});
+          await refresh();
         },
         async openUrl({ url }: { url: string }) {
           await lx.surface.openUrl(url);

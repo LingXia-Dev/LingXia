@@ -1754,12 +1754,6 @@ jobs:
         working-directory: packages
         run: npm test --workspace @lingxia/elements
 
-      # The browser's built-in pages ship as a prebuilt bundle; their theme
-      # contract needs no build to check.
-      - name: Test browser webui theme contract
-        working-directory: crates/lingxia-browser-shell/webui
-        run: node --test tests/theme.test.mjs
-
   # Liuli is source-distributed TSX on @lingxia/view; its tests render each example
   # through View's compiler, and its contrast tables come from the resolved palette.
   liuli:

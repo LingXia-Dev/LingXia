@@ -27,10 +27,6 @@
     "defaultMessage": "Nothing here yet.",
     "description": "Browser system UI string for common.empty"
   },
-  "nav.newtab": {
-    "defaultMessage": "New Tab",
-    "description": "Browser system UI string for nav.newtab"
-  },
   "nav.bookmarks": {
     "defaultMessage": "Bookmarks",
     "description": "Browser system UI string for nav.bookmarks"
@@ -46,10 +42,6 @@
   "nav.settings": {
     "defaultMessage": "Settings",
     "description": "Browser system UI string for nav.settings"
-  },
-  "newtab.title": {
-    "defaultMessage": "LingXia",
-    "description": "Browser system UI string for newtab.title"
   },
   "newtab.placeholder": {
     "defaultMessage": "Enter URL or search...",
@@ -84,7 +76,7 @@
     "description": "Browser system UI string for bookmarks.addTitle"
   },
   "bookmarks.addUrl": {
-    "defaultMessage": "https://example.com",
+    "defaultMessage": "URL",
     "description": "Browser system UI string for bookmarks.addUrl"
   },
   "bookmarks.add": {
@@ -207,14 +199,6 @@
     "defaultMessage": "Privacy & Data",
     "description": "Browser system UI string for settings.privacy"
   },
-  "settings.privacy.clearCache": {
-    "defaultMessage": "Clear Cache",
-    "description": "Browser system UI string for settings.privacy.clearCache"
-  },
-  "settings.privacy.clearSiteData": {
-    "defaultMessage": "Clear All Site Data",
-    "description": "Browser system UI string for settings.privacy.clearSiteData"
-  },
   "settings.privacy.clearCurrentSite": {
     "defaultMessage": "Clear Site Data for Current Site",
     "description": "Browser system UI string for settings.privacy.clearCurrentSite"
@@ -227,10 +211,6 @@
     "defaultMessage": "Proxy",
     "description": "Browser system UI string for settings.proxy"
   },
-  "settings.proxy.mode": {
-    "defaultMessage": "Mode",
-    "description": "Browser system UI string for settings.proxy.mode"
-  },
   "settings.proxy.apply": {
     "defaultMessage": "Apply Proxy Settings",
     "description": "Browser system UI string for settings.proxy.apply"
@@ -242,5 +222,161 @@
   "settings.about": {
     "defaultMessage": "About",
     "description": "Browser system UI string for settings.about"
+  },
+  "bookmarks.addGroup": {
+    "defaultMessage": "Add",
+    "description": "Button that creates the group typed beside it."
+  },
+  "bookmarks.rename": {
+    "defaultMessage": "Rename",
+    "description": "Edits a bookmark title in place."
+  },
+  "bookmarks.status.imported": {
+    "defaultMessage": "Imported {count} bookmarks",
+    "description": "After an HTML import."
+  },
+  "bookmarks.status.exported": {
+    "defaultMessage": "Exported {count} bookmarks",
+    "description": "After an HTML export."
+  },
+  "downloads.status.downloading": {
+    "defaultMessage": "Downloading",
+    "description": "A download row state."
+  },
+  "downloads.status.paused": {
+    "defaultMessage": "Paused",
+    "description": "A download row state."
+  },
+  "downloads.status.completed": {
+    "defaultMessage": "Completed",
+    "description": "A download row state."
+  },
+  "downloads.status.failed": {
+    "defaultMessage": "Failed",
+    "description": "A download row state."
+  },
+  "downloads.status.removed": {
+    "defaultMessage": "Removed",
+    "description": "A download row state."
+  },
+  "settings.language.en": {
+    "defaultMessage": "English",
+    "description": "The English option, named in English."
+  },
+  "settings.language.zh": {
+    "defaultMessage": "简体中文",
+    "description": "The Simplified Chinese option, named in Chinese."
+  },
+  "settings.privacy.site.title": {
+    "defaultMessage": "This Site",
+    "description": "Card for clearing the site of the tab Settings was opened from."
+  },
+  "settings.privacy.clearData": {
+    "defaultMessage": "Clear Browsing Data",
+    "description": "Card title."
+  },
+  "settings.privacy.usage": {
+    "defaultMessage": "{history} history entries · {cacheSites} sites with cache · {siteDataSites} sites with data · {cookies} cookies",
+    "description": "What clearing would affect."
+  },
+  "settings.privacy.timeRange": {
+    "defaultMessage": "Time range",
+    "description": "Picker label."
+  },
+  "settings.privacy.range.lastHour": {
+    "defaultMessage": "Last hour",
+    "description": "Time range option."
+  },
+  "settings.privacy.range.last24Hours": {
+    "defaultMessage": "Last 24 hours",
+    "description": "Time range option."
+  },
+  "settings.privacy.range.last7Days": {
+    "defaultMessage": "Last 7 days",
+    "description": "Time range option."
+  },
+  "settings.privacy.range.last4Weeks": {
+    "defaultMessage": "Last 4 weeks",
+    "description": "Time range option."
+  },
+  "settings.privacy.range.allTime": {
+    "defaultMessage": "All time",
+    "description": "Time range option."
+  },
+  "settings.privacy.history": {
+    "defaultMessage": "Browsing history",
+    "description": "Checkbox: what to clear."
+  },
+  "settings.privacy.cache": {
+    "defaultMessage": "Cached images and files",
+    "description": "Checkbox: what to clear."
+  },
+  "settings.privacy.siteData": {
+    "defaultMessage": "Cookies and site data",
+    "description": "Checkbox: what to clear."
+  },
+  "settings.privacy.clear": {
+    "defaultMessage": "Clear Data",
+    "description": "Runs the clear."
+  },
+  "settings.privacy.status.nothingSelected": {
+    "defaultMessage": "Select something to clear",
+    "description": "When every checkbox is off."
+  },
+  "settings.privacy.status.cleared": {
+    "defaultMessage": "Cleared ({count} history entries)",
+    "description": "After clearing browsing data."
+  },
+  "settings.privacy.status.siteCleared": {
+    "defaultMessage": "Site data cleared",
+    "description": "After clearing the current site."
+  },
+  "settings.proxy.host": {
+    "defaultMessage": "SOCKS5 host",
+    "description": "Input label."
+  },
+  "settings.proxy.port": {
+    "defaultMessage": "Port",
+    "description": "Input label."
+  },
+  "settings.proxy.mode.direct": {
+    "defaultMessage": "Direct",
+    "description": "Proxy mode."
+  },
+  "settings.proxy.mode.global": {
+    "defaultMessage": "Global",
+    "description": "Proxy mode."
+  },
+  "settings.proxy.mode.gfw_list": {
+    "defaultMessage": "Auto (GFWList)",
+    "description": "Proxy mode."
+  },
+  "settings.proxy.status.invalidPort": {
+    "defaultMessage": "Enter a port from 1 to 65535",
+    "description": "Port validation."
+  },
+  "settings.proxy.status.updated": {
+    "defaultMessage": "Proxy settings applied",
+    "description": "After saving proxy settings."
+  },
+  "settings.proxy.status.rulesRefreshed": {
+    "defaultMessage": "Rules refreshed",
+    "description": "After refreshing GFWList."
+  },
+  "settings.about.version": {
+    "defaultMessage": "Version {version}",
+    "description": "About card."
+  },
+  "settings.about.sdk": {
+    "defaultMessage": "SDK {version}",
+    "description": "About card."
+  },
+  "settings.about.webui": {
+    "defaultMessage": "Web UI {version}",
+    "description": "About card."
+  },
+  "settings.about.commit": {
+    "defaultMessage": "Commit {sha}",
+    "description": "About card."
   }
 }

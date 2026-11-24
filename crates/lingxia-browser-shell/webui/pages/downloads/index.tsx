@@ -1,4 +1,4 @@
-import { t, useAction, useLocal } from '@lingxia/view';
+import { t, useAction, useLocal, type MessageKey } from '@lingxia/view';
 import { formatBytes } from '../../shared/format';
 import type { View } from './$types';
 
@@ -51,7 +51,7 @@ export function render({ data, actions }: View) {
             onClick={() => { void setFilter.run({ filter: f }); }}
             className={data.filter === f ? 'px-3 py-1.5 rounded-lg bg-accent text-on-accent text-sm' : 'px-3 py-1.5 rounded-lg bg-surface border border-line text-sm'}
           >
-            <text>{t(`downloads.${f}`)}</text>
+            <text>{t(`downloads.${f}` as MessageKey)}</text>
           </button>
         ))}
         <input
@@ -77,7 +77,7 @@ export function render({ data, actions }: View) {
                   <text className="text-xs text-muted">
                     {formatBytes(item.downloadedBytes)}
                     {item.totalBytes ? ` / ${formatBytes(item.totalBytes)}` : ''}
-                    {` · ${item.status}`}
+                    {` · ${t(`downloads.status.${item.status}` as MessageKey)}`}
                   </text>
                 </view>
                 <view className="flex-row items-center gap-2">
