@@ -41,6 +41,9 @@ export type PickerFieldProps = FieldOwnProps & PickerBinding & {
   'data-testid'?: string;
 };
 
+/** The picker's mark, in points at the standard text size; it grows with the text as the value does. */
+export const pickerMark = 16;
+
 /** A Field around the View's date or time input, which opens the View's own picker. */
 export function PickerField(props: PickerFieldProps) {
   const {
@@ -83,7 +86,7 @@ export function PickerField(props: PickerFieldProps) {
         return (
           <view className={cx(r.box.base, r.box.size[size], status && r.box.status[status.type], isDisabled && r.box.disabled, controlClassName)}>
             {props.bind ? <input bind={props.bind} {...shared} /> : <input value={props.value} onInput={props.onChange} {...shared} />}
-            <Glyph name={icon} className={r.icon.base} />
+            <Glyph name={icon} side={pickerMark} className={r.icon.base} />
           </view>
         );
       }}

@@ -6,6 +6,8 @@ import { Field, type FieldOwnProps } from '../Field/Field';
 import { TimeInput } from '../TimeInput/TimeInput';
 import { dateTimeInputRecipe as r } from './DateTimeInput.recipe';
 import { dataOf } from '../internal/data';
+import { glyphGrowth, useTextGrowth } from '../internal/Glyph';
+import { pickerMark } from '../internal/PickerField';
 
 export type DateTimeInputBinding =
   | {
@@ -38,10 +40,10 @@ export type DateTimeInputProps = FieldOwnProps & DateTimeInputBinding & {
   'data-testid'?: string;
 };
 
-// A long date and time as the editors set them; a part needs its value's width plus this, for its padding, border and mark.
+// A long date and time as the editors set them; a part needs its value's width plus its padding, border, gap and mark.
 const longDate = 'Sep 30, 2026';
 const longTime = { h12: '12:00 PM', h23: '23:59' } as const;
-const [partChrome, partGap] = [50, 8];
+const [partFrame, partGap] = [34, 8];
 
 /** A day and a time of day as one value, under one label. */
 export function DateTimeInput(props: DateTimeInputProps) {
@@ -52,6 +54,8 @@ export function DateTimeInput(props: DateTimeInputProps) {
   const size = useControlSize(ownSize);
   const { env } = useView();
   const [groupBox, dateBox, timeBox] = [useBox('group'), useBox('date'), useBox('time')];
+  // Each part's mark grows with the text, so the room it takes does too.
+  const partChrome = partFrame + (useTextGrowth(pickerMark, glyphGrowth)?.width ?? pickerMark);
   const isStacked = groupBox.value !== null && dateBox.value !== null && timeBox.value !== null
     && dateBox.value.width + timeBox.value.width + partChrome * 2 + partGap > groupBox.value.width;
   const whole = props.bind ? props.bind.value : props.value;

@@ -93,7 +93,7 @@ export function Sizes() {
 | --- | --- | --- | --- |
 | box | `<view>` | yes | TextInput's bordered box; it takes the focus colour while the field is focused and the status colour otherwise. |
 | input | `<input>` | yes | The time editor; the time shows in the user's clock, and a tap opens the picker. |
-| icon | `<vector>` | yes | A clock mark at the end, hidden from assistive tech. |
+| icon | `<vector>` | yes | A clock mark at the end that grows with the text, hidden from assistive tech. |
 
 ## What an app may override
 

@@ -125,7 +125,7 @@ export function Sizes() {
 | --- | --- | --- | --- |
 | box | `<view>` | yes | TextInput's bordered box; it takes the focus colour while the field is focused and the status colour otherwise. |
 | input | `<input>` | yes | The date editor; the day shows in the user's language, and a tap opens the picker. |
-| icon | `<vector>` | yes | A calendar mark at the end, hidden from assistive tech. |
+| icon | `<vector>` | yes | A calendar mark at the end that grows with the text, hidden from assistive tech. |
 
 ## What an app may override
 

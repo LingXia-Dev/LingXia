@@ -2,12 +2,15 @@ import { cx, useView } from '@lingxia/view';
 import { iconGrid, iconPaths, useIcon, type IconRef } from '../Icon/Icon';
 import { iconRecipe } from '../Icon/Icon.recipe';
 
+/** How far an icon beside text grows with the text size: up to half again. */
+export const glyphGrowth = 1.5;
+
 /**
  * An icon inside a component: drawn from the set in use like `Icon`, but sized and coloured by
  * the component's own recipe, and never read. `weight` is the stroke on the 24-unit grid, for a
  * mark that must stay solid when small (a tick in a checkbox).
  */
-export function Glyph({ name, weight, className, side, cap = 1.5 }: {
+export function Glyph({ name, weight, className, side, cap = glyphGrowth }: {
   name: IconRef; weight?: number; className?: string;
   /** The icon's side in points at the default text size, for an icon beside text: it then grows with the text, up to half again. */
   side?: number;

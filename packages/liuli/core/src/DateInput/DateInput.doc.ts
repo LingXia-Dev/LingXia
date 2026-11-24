@@ -16,7 +16,7 @@ export const doc: ComponentDoc = {
   anatomy: [
     { part: 'box', required: true, description: 'TextInput\'s bordered box; it takes the focus colour while the field is focused and the status colour otherwise.' },
     { part: 'input', required: true, description: 'The date editor; the day shows in the user\'s language, and a tap opens the picker.' },
-    { part: 'icon', required: true, description: 'A calendar mark at the end, hidden from assistive tech.' },
+    { part: 'icon', required: true, description: 'A calendar mark at the end that grows with the text, hidden from assistive tech.' },
   ],
   accessibility: {
     pattern: 'textbox',

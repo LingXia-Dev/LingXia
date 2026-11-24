@@ -45,9 +45,24 @@ test('At large text: measured values that no longer fit side by side put the tim
     screen.layout(measured()[1], { width: time, height: 22 });
   };
   screen.layout(group(), { width: 296, height: 48 });
-  // Each part needs its value plus 50 pt of padding, border and mark; 8 pt between them.
+  // Each part needs its value plus 34 pt of padding, border and gap and its 16 pt mark; 8 pt between the parts.
   set(100, 70);
   assert.deepEqual(group().children.slice(0, 2).map(part => part.props.flexBasis), [160, 112], 'at the standard size they share the line');
   set(130, 92);
   assert.deepEqual(group().children.slice(0, 2).map(part => part.props.flexBasis), ['100%', '100%'], 'at 130 % the time moves under the date');
+});
+
+test('At large text: the parts\' marks grow too, so values that fit beside each other at the standard size stack', async () => {
+  const parts = async textScale => {
+    const screen = await renderExample('DateTimeInput/DateTimeInput', 'Reminder', { env: { textScale } });
+    const group = () => screen.getByTestId('remind');
+    const measured = () => group().children.at(-1).children;
+    screen.layout(group(), { width: 296, height: 48 });
+    screen.layout(measured()[0], { width: 100, height: 22 });
+    screen.layout(measured()[1], { width: 74, height: 22 });
+    return group().children.slice(0, 2).map(part => part.props.flexBasis);
+  };
+  // 100 + 74 + 2 × (34 + 16) + 8 = 282 fits 296; with 24 pt marks it is 298.
+  assert.deepEqual(await parts(1), [160, 112]);
+  assert.deepEqual(await parts(1.5), ['100%', '100%']);
 });
