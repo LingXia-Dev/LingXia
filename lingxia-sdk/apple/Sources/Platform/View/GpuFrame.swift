@@ -22,6 +22,12 @@ public enum GpuJSON: Decodable, Sendable, Equatable {
     }
 }
 
+/// `VideoOrientation` values.
+public enum GpuFrameVideoOrientation: String, Sendable {
+    case landscape = "landscape"
+    case portrait = "portrait"
+}
+
 /// `ScrollAxis` values.
 public enum GpuFrameScrollAxis: String, Sendable {
     case horizontal = "horizontal"
@@ -128,6 +134,13 @@ public struct GpuFrameFrameMetrics: Decodable, Sendable {
     public let droppedActivations: UInt64?
     public let composite: GpuFrameCompositeStats?
     public let backdropCache: GpuFrameBackdropCacheStats?
+    public let viewPhases: GpuFrameViewPhases?
+    public let videoOrientation: String?
+    public let topLayerOpen: Bool?
+    public let chromeSnapshot: UInt64?
+    public let renderer: String?
+    public let renderThread: Bool?
+    public let backend: String?
 
     enum CodingKeys: String, CodingKey {
         case generation = "generation"
@@ -155,6 +168,36 @@ public struct GpuFrameFrameMetrics: Decodable, Sendable {
         case droppedActivations = "droppedActivations"
         case composite = "composite"
         case backdropCache = "backdropCache"
+        case viewPhases = "viewPhases"
+        case videoOrientation = "videoOrientation"
+        case topLayerOpen = "topLayerOpen"
+        case chromeSnapshot = "chromeSnapshot"
+        case renderer = "renderer"
+        case renderThread = "renderThread"
+        case backend = "backend"
+    }
+}
+
+/// `ViewPhases` in the frame contract.
+public struct GpuFrameViewPhases: Decodable, Sendable {
+    public let render: UInt64
+    public let resolve: UInt64
+    public let recall: UInt64
+    public let rows: UInt64
+    public let encode: UInt64
+    public let windows: UInt64
+    public let commit: UInt64
+    public let h: UInt64
+
+    enum CodingKeys: String, CodingKey {
+        case render = "render"
+        case resolve = "resolve"
+        case recall = "recall"
+        case rows = "rows"
+        case encode = "encode"
+        case windows = "windows"
+        case commit = "commit"
+        case h = "h"
     }
 }
 
@@ -877,12 +920,27 @@ public struct GpuFrameAutomationFrame: Decodable, Sendable {
     public let imageCacheEntries: UInt64
     public let animationFrames: UInt64
     public let wakeups: UInt64
+    /// Raw: the reveal watchdog's diagnostics; no adapter reads it.
     public let reveal: GpuJSON
     public let hud: Bool
     public let nodes: UInt64?
     public let pacing: GpuFrameFramePacing
     public let composite: GpuFrameCompositeStats?
     public let backdropCache: GpuFrameBackdropCacheStats?
+    public let held: UInt64
+    public let failure: String?
+    public let stalled: Bool
+    public let budget: GpuFrameFrameBudget
+    public let chromeSnapshot: UInt64
+    /// Raw: a list of composite draw records when the frame composites, else per-pass timing pairs in µs; renderer diagnostics no adapter reads.
+    public let passes: GpuJSON?
+    public let pointer: String?
+    public let presentUs: [UInt64]?
+    public let profile: String
+    public let stagesMs: GpuFrameStageMedians?
+    public let transition: GpuFrameTransitionMetrics?
+    /// Raw: the GPU video players' diagnostics (first-frame phases, rebinds, quality switches); its shape follows the video renderer, and no adapter reads it.
+    public let video: GpuJSON?
 
     enum CodingKeys: String, CodingKey {
         case renderer = "renderer"
@@ -903,6 +961,116 @@ public struct GpuFrameAutomationFrame: Decodable, Sendable {
         case pacing = "pacing"
         case composite = "composite"
         case backdropCache = "backdropCache"
+        case held = "held"
+        case failure = "failure"
+        case stalled = "stalled"
+        case budget = "budget"
+        case chromeSnapshot = "chromeSnapshot"
+        case passes = "passes"
+        case pointer = "pointer"
+        case presentUs = "presentUs"
+        case profile = "profile"
+        case stagesMs = "stagesMs"
+        case transition = "transition"
+        case video = "video"
+    }
+}
+
+/// `FrameBudget` in the frame contract.
+public struct GpuFrameFrameBudget: Decodable, Sendable {
+    public let overruns: UInt64
+
+    enum CodingKeys: String, CodingKey {
+        case overruns = "overruns"
+    }
+}
+
+/// `StageMedians` in the frame contract.
+public struct GpuFrameStageMedians: Decodable, Sendable {
+    public let frames: UInt64
+    public let total: Double
+    public let view: Double
+    public let viewEval: Double
+    public let layout: Double
+    public let text: Double
+    public let compose: Double
+    public let build: Double
+    public let viewPasses: UInt64
+    public let layoutPasses: UInt64
+    public let queue: Double
+    public let worker: Double
+    public let wait: Double
+    public let main: Double
+    public let gpuScene: Double
+    public let gpuEncode: Double
+    public let gpuSubmit: Double
+    public let gpuPresent: Double
+    public let mainWork: Double
+    public let viewPhases: GpuFramePhaseMedians?
+
+    enum CodingKeys: String, CodingKey {
+        case frames = "frames"
+        case total = "total"
+        case view = "view"
+        case viewEval = "viewEval"
+        case layout = "layout"
+        case text = "text"
+        case compose = "compose"
+        case build = "build"
+        case viewPasses = "viewPasses"
+        case layoutPasses = "layoutPasses"
+        case queue = "queue"
+        case worker = "worker"
+        case wait = "wait"
+        case main = "main"
+        case gpuScene = "gpuScene"
+        case gpuEncode = "gpuEncode"
+        case gpuSubmit = "gpuSubmit"
+        case gpuPresent = "gpuPresent"
+        case mainWork = "mainWork"
+        case viewPhases = "viewPhases"
+    }
+}
+
+/// `PhaseMedians` in the frame contract.
+public struct GpuFramePhaseMedians: Decodable, Sendable {
+    public let frames: UInt64
+    public let eval: Double
+    public let render: Double
+    public let resolve: Double
+    public let recall: Double
+    public let rows: Double
+    public let encode: Double
+    public let vnodes: UInt64
+
+    enum CodingKeys: String, CodingKey {
+        case frames = "frames"
+        case eval = "eval"
+        case render = "render"
+        case resolve = "resolve"
+        case recall = "recall"
+        case rows = "rows"
+        case encode = "encode"
+        case vnodes = "vnodes"
+    }
+}
+
+/// `TransitionMetrics` in the frame contract.
+public struct GpuFrameTransitionMetrics: Decodable, Sendable {
+    public let kind: String
+    public let durationMs: Double?
+    public let frames: UInt64
+    public let movingFrames: UInt64
+    public let firstMoveMs: Double?
+    public let atMs: UInt64?
+
+    enum CodingKeys: String, CodingKey {
+        case kind = "kind"
+        case durationMs = "durationMs"
+        case frames = "frames"
+        case movingFrames = "movingFrames"
+        case firstMoveMs = "firstMoveMs"
+        case atMs = "atMs"
     }
 }
 

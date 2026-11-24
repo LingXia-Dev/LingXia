@@ -15,7 +15,7 @@ function frameType(ty) {
 
 /** `GpuFrame.ets`: one interface per contract type; JSON keys are kept, since `as` casts do no renaming. */
 export function frameArkTS(schema) {
-  const { types, messages } = schema.frame;
+  const { types, messages, fieldDocs = {} } = schema.frame;
   const prim = { string: 'string', bool: 'boolean', u8: 'number', u32: 'number', u64: 'number', usize: 'number', i64: 'number', f32: 'number', f64: 'number', any: 'Object' };
   const tsType = ty => {
     const t = frameType(ty);
@@ -27,9 +27,10 @@ export function frameArkTS(schema) {
     ? Object.fromEntries([[def.tagged, 'string'], ...Object.values(def.variants).flatMap(fields => Object.entries(fields).map(([k, v]) => [k, v.endsWith('?') ? v : `${v}?`]))])
     : def;
   const interfaces = Object.entries(types).filter(([, def]) => !def.enum).map(([name, def]) => {
-    const fields = Object.entries(fieldsOf(def)).filter(([key]) => key !== '...').map(([key, ty]) => {
+    const fields = Object.entries(fieldsOf(def)).map(([key, ty]) => {
       const { type, optional } = tsType(ty);
-      return optional ? `  ${key}?: ${type} | null;` : `  ${key}: ${type};`;
+      const note = fieldDocs[`${name}.${key}`] ? `  /** ${fieldDocs[`${name}.${key}`]} */\n` : '';
+      return note + (optional ? `  ${key}?: ${type} | null;` : `  ${key}: ${type};`);
     });
     return `/** \`${name}\` in the frame contract. */\nexport interface GpuFrame${name} {\n${fields.join('\n')}\n}`;
   });

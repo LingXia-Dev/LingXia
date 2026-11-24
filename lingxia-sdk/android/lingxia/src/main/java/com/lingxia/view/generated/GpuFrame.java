@@ -11,6 +11,8 @@ import org.json.JSONObject;
 public final class GpuFrame {
     private GpuFrame() {}
 
+    public static final String VIDEO_ORIENTATION_LANDSCAPE = "landscape";
+    public static final String VIDEO_ORIENTATION_PORTRAIT = "portrait";
     public static final String SCROLL_AXIS_HORIZONTAL = "horizontal";
     public static final String SCROLL_AXIS_VERTICAL = "vertical";
     public static final String KEYBOARD_TEXT = "text";
@@ -162,6 +164,41 @@ public final class GpuFrame {
         public CompositeStats composite() { JSONObject o = json.optJSONObject("composite"); return o == null ? null : new CompositeStats(o); }
         /** `backdropCache`: BackdropCacheStats? */
         public BackdropCacheStats backdropCache() { JSONObject o = json.optJSONObject("backdropCache"); return o == null ? null : new BackdropCacheStats(o); }
+        /** `viewPhases`: ViewPhases? */
+        public ViewPhases viewPhases() { JSONObject o = json.optJSONObject("viewPhases"); return o == null ? null : new ViewPhases(o); }
+        /** `videoOrientation`: VideoOrientation? */
+        public String videoOrientation() { return json.isNull("videoOrientation") ? null : json.optString("videoOrientation", null); }
+        /** `topLayerOpen`: bool? */
+        public Boolean topLayerOpen() { if (json.isNull("topLayerOpen")) return null; return json.optBoolean("topLayerOpen"); }
+        /** `chromeSnapshot`: u64? */
+        public Long chromeSnapshot() { if (json.isNull("chromeSnapshot")) return null; return json.optLong("chromeSnapshot"); }
+        /** `renderer`: string? */
+        public String renderer() { return json.isNull("renderer") ? null : json.optString("renderer", null); }
+        /** `renderThread`: bool? */
+        public Boolean renderThread() { if (json.isNull("renderThread")) return null; return json.optBoolean("renderThread"); }
+        /** `backend`: string? */
+        public String backend() { return json.isNull("backend") ? null : json.optString("backend", null); }
+    }
+
+    public static final class ViewPhases {
+        public final JSONObject json;
+        public ViewPhases(JSONObject json) { this.json = json; }
+        /** `render`: u64 */
+        public long render() { return json.optLong("render"); }
+        /** `resolve`: u64 */
+        public long resolve() { return json.optLong("resolve"); }
+        /** `recall`: u64 */
+        public long recall() { return json.optLong("recall"); }
+        /** `rows`: u64 */
+        public long rows() { return json.optLong("rows"); }
+        /** `encode`: u64 */
+        public long encode() { return json.optLong("encode"); }
+        /** `windows`: u64 */
+        public long windows() { return json.optLong("windows"); }
+        /** `commit`: u64 */
+        public long commit() { return json.optLong("commit"); }
+        /** `h`: u64 */
+        public long h() { return json.optLong("h"); }
     }
 
     public static final class FrameCost {
@@ -870,7 +907,7 @@ public final class GpuFrame {
         public long animationFrames() { return json.optLong("animationFrames"); }
         /** `wakeups`: u64 */
         public long wakeups() { return json.optLong("wakeups"); }
-        /** `reveal`: any */
+        /** `reveal`: any. Raw: the reveal watchdog's diagnostics; no adapter reads it. */
         public Object reveal() { return json.isNull("reveal") ? null : json.opt("reveal"); }
         /** `hud`: bool */
         public boolean hud() { return json.optBoolean("hud"); }
@@ -882,6 +919,120 @@ public final class GpuFrame {
         public CompositeStats composite() { JSONObject o = json.optJSONObject("composite"); return o == null ? null : new CompositeStats(o); }
         /** `backdropCache`: BackdropCacheStats? */
         public BackdropCacheStats backdropCache() { JSONObject o = json.optJSONObject("backdropCache"); return o == null ? null : new BackdropCacheStats(o); }
+        /** `held`: u64 */
+        public long held() { return json.optLong("held"); }
+        /** `failure`: string? */
+        public String failure() { return json.isNull("failure") ? null : json.optString("failure", null); }
+        /** `stalled`: bool */
+        public boolean stalled() { return json.optBoolean("stalled"); }
+        /** `budget`: FrameBudget */
+        public FrameBudget budget() { JSONObject o = json.optJSONObject("budget"); return o == null ? null : new FrameBudget(o); }
+        /** `chromeSnapshot`: u64 */
+        public long chromeSnapshot() { return json.optLong("chromeSnapshot"); }
+        /** `passes`: any?. Raw: a list of composite draw records when the frame composites, else per-pass timing pairs in µs; renderer diagnostics no adapter reads. */
+        public Object passes() { return json.isNull("passes") ? null : json.opt("passes"); }
+        /** `pointer`: string? */
+        public String pointer() { return json.isNull("pointer") ? null : json.optString("pointer", null); }
+        /** `presentUs`: u64[4]? */
+        public long[] presentUs() { return (long[]) GpuFrame.array(json.optJSONArray("presentUs"), 1, "long"); }
+        /** `profile`: string */
+        public String profile() { return json.isNull("profile") ? null : json.optString("profile", null); }
+        /** `stagesMs`: StageMedians? */
+        public StageMedians stagesMs() { JSONObject o = json.optJSONObject("stagesMs"); return o == null ? null : new StageMedians(o); }
+        /** `transition`: TransitionMetrics? */
+        public TransitionMetrics transition() { JSONObject o = json.optJSONObject("transition"); return o == null ? null : new TransitionMetrics(o); }
+        /** `video`: any?. Raw: the GPU video players' diagnostics (first-frame phases, rebinds, quality switches); its shape follows the video renderer, and no adapter reads it. */
+        public Object video() { return json.isNull("video") ? null : json.opt("video"); }
+    }
+
+    public static final class FrameBudget {
+        public final JSONObject json;
+        public FrameBudget(JSONObject json) { this.json = json; }
+        /** `overruns`: u64 */
+        public long overruns() { return json.optLong("overruns"); }
+    }
+
+    public static final class StageMedians {
+        public final JSONObject json;
+        public StageMedians(JSONObject json) { this.json = json; }
+        /** `frames`: usize */
+        public long frames() { return json.optLong("frames"); }
+        /** `total`: f64 */
+        public double total() { return json.optDouble("total"); }
+        /** `view`: f64 */
+        public double view() { return json.optDouble("view"); }
+        /** `viewEval`: f64 */
+        public double viewEval() { return json.optDouble("viewEval"); }
+        /** `layout`: f64 */
+        public double layout() { return json.optDouble("layout"); }
+        /** `text`: f64 */
+        public double text() { return json.optDouble("text"); }
+        /** `compose`: f64 */
+        public double compose() { return json.optDouble("compose"); }
+        /** `build`: f64 */
+        public double build() { return json.optDouble("build"); }
+        /** `viewPasses`: u64 */
+        public long viewPasses() { return json.optLong("viewPasses"); }
+        /** `layoutPasses`: u64 */
+        public long layoutPasses() { return json.optLong("layoutPasses"); }
+        /** `queue`: f64 */
+        public double queue() { return json.optDouble("queue"); }
+        /** `worker`: f64 */
+        public double worker() { return json.optDouble("worker"); }
+        /** `wait`: f64 */
+        public double wait() { return json.optDouble("wait"); }
+        /** `main`: f64 */
+        public double main() { return json.optDouble("main"); }
+        /** `gpuScene`: f64 */
+        public double gpuScene() { return json.optDouble("gpuScene"); }
+        /** `gpuEncode`: f64 */
+        public double gpuEncode() { return json.optDouble("gpuEncode"); }
+        /** `gpuSubmit`: f64 */
+        public double gpuSubmit() { return json.optDouble("gpuSubmit"); }
+        /** `gpuPresent`: f64 */
+        public double gpuPresent() { return json.optDouble("gpuPresent"); }
+        /** `mainWork`: f64 */
+        public double mainWork() { return json.optDouble("mainWork"); }
+        /** `viewPhases`: PhaseMedians? */
+        public PhaseMedians viewPhases() { JSONObject o = json.optJSONObject("viewPhases"); return o == null ? null : new PhaseMedians(o); }
+    }
+
+    public static final class PhaseMedians {
+        public final JSONObject json;
+        public PhaseMedians(JSONObject json) { this.json = json; }
+        /** `frames`: usize */
+        public long frames() { return json.optLong("frames"); }
+        /** `eval`: f64 */
+        public double eval() { return json.optDouble("eval"); }
+        /** `render`: f64 */
+        public double render() { return json.optDouble("render"); }
+        /** `resolve`: f64 */
+        public double resolve() { return json.optDouble("resolve"); }
+        /** `recall`: f64 */
+        public double recall() { return json.optDouble("recall"); }
+        /** `rows`: f64 */
+        public double rows() { return json.optDouble("rows"); }
+        /** `encode`: f64 */
+        public double encode() { return json.optDouble("encode"); }
+        /** `vnodes`: u64 */
+        public long vnodes() { return json.optLong("vnodes"); }
+    }
+
+    public static final class TransitionMetrics {
+        public final JSONObject json;
+        public TransitionMetrics(JSONObject json) { this.json = json; }
+        /** `kind`: string */
+        public String kind() { return json.isNull("kind") ? null : json.optString("kind", null); }
+        /** `durationMs`: f64? */
+        public Double durationMs() { if (json.isNull("durationMs")) return null; return json.optDouble("durationMs"); }
+        /** `frames`: u64 */
+        public long frames() { return json.optLong("frames"); }
+        /** `movingFrames`: u64 */
+        public long movingFrames() { return json.optLong("movingFrames"); }
+        /** `firstMoveMs`: f64? */
+        public Double firstMoveMs() { if (json.isNull("firstMoveMs")) return null; return json.optDouble("firstMoveMs"); }
+        /** `atMs`: u64? */
+        public Long atMs() { if (json.isNull("atMs")) return null; return json.optLong("atMs"); }
     }
 
     public static final class QueueTimes {
@@ -1245,6 +1396,7 @@ public final class GpuFrame {
             case "FrameSnapshot": return FrameSnapshot.class;
             case "ImageSource": return ImageSource.class;
             case "FrameMetrics": return FrameMetrics.class;
+            case "ViewPhases": return ViewPhases.class;
             case "FrameCost": return FrameCost.class;
             case "FeedbackStyle": return FeedbackStyle.class;
             case "Node": return Node.class;
@@ -1273,6 +1425,10 @@ public final class GpuFrame {
             case "AutomationElement": return AutomationElement.class;
             case "AutomationQueryAll": return AutomationQueryAll.class;
             case "AutomationFrame": return AutomationFrame.class;
+            case "FrameBudget": return FrameBudget.class;
+            case "StageMedians": return StageMedians.class;
+            case "PhaseMedians": return PhaseMedians.class;
+            case "TransitionMetrics": return TransitionMetrics.class;
             case "QueueTimes": return QueueTimes.class;
             case "CompositeStats": return CompositeStats.class;
             case "BackdropCacheStats": return BackdropCacheStats.class;
@@ -1300,6 +1456,7 @@ public final class GpuFrame {
             case "FrameSnapshot": return new FrameSnapshot(json);
             case "ImageSource": return new ImageSource(json);
             case "FrameMetrics": return new FrameMetrics(json);
+            case "ViewPhases": return new ViewPhases(json);
             case "FrameCost": return new FrameCost(json);
             case "FeedbackStyle": return new FeedbackStyle(json);
             case "Node": return new Node(json);
@@ -1328,6 +1485,10 @@ public final class GpuFrame {
             case "AutomationElement": return new AutomationElement(json);
             case "AutomationQueryAll": return new AutomationQueryAll(json);
             case "AutomationFrame": return new AutomationFrame(json);
+            case "FrameBudget": return new FrameBudget(json);
+            case "StageMedians": return new StageMedians(json);
+            case "PhaseMedians": return new PhaseMedians(json);
+            case "TransitionMetrics": return new TransitionMetrics(json);
             case "QueueTimes": return new QueueTimes(json);
             case "CompositeStats": return new CompositeStats(json);
             case "BackdropCacheStats": return new BackdropCacheStats(json);

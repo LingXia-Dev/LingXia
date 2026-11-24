@@ -747,7 +747,7 @@ function frameType(ty) {
 }
 
 function frameJava(schema) {
-  const { types, messages, doc } = schema.frame;
+  const { types, messages, doc, fieldDocs = {} } = schema.frame;
   const prim = { string: 'String', bool: 'boolean', u8: 'long', u32: 'long', u64: 'long', usize: 'long', i64: 'long', f32: 'float', f64: 'double', any: 'Object' };
   const boxed = { boolean: 'Boolean', long: 'Long', float: 'Float', double: 'Double' };
   const kindOf = base => prim[base] ? 'prim' : types[base]?.enum ? 'enum' : 'object';
@@ -793,9 +793,10 @@ function frameJava(schema) {
   for (const [name, def] of Object.entries(types)) {
     if (def.enum) { constants.push(...def.enum.map(value => `    public static final String ${constant(name)}_${constant(value)} = ${JSON.stringify(value)};`)); continue; }
     if (def.tagged) constants.push(...Object.keys(def.variants).map(value => `    public static final String ${constant(name)}_${constant(value)} = ${JSON.stringify(value)};`));
-    const methods = Object.entries(fieldsOf(def)).filter(([key]) => key !== '...').map(([key, ty]) => {
+    const methods = Object.entries(fieldsOf(def)).map(([key, ty]) => {
       const t = frameType(ty);
-      return `        /** \`${key}\`: ${ty} */\n        public ${javaType(t)} ${camel(key) === 'class' ? 'klass' : camel(key)}() { ${reader(key, t)} }`;
+      const note = fieldDocs[`${name}.${key}`];
+      return `        /** \`${key}\`: ${ty}${note ? `. ${note}` : ''} */\n        public ${javaType(t)} ${camel(key) === 'class' ? 'klass' : camel(key)}() { ${reader(key, t)} }`;
     });
     if (requests.has(name)) methods.push(...builders(name, def));
     classes.push(`    public static final class ${name} {
@@ -898,7 +899,7 @@ ${Object.entries(types).filter(([, def]) => !def.enum).map(([name]) => `        
 }
 
 function frameSwift(schema) {
-  const { types, messages } = schema.frame;
+  const { types, messages, fieldDocs = {} } = schema.frame;
   const prim = { string: 'String', bool: 'Bool', u8: 'UInt8', u32: 'UInt32', u64: 'UInt64', usize: 'UInt64', i64: 'Int64', f32: 'Float', f64: 'Double', any: 'GpuJSON' };
   const swiftType = ty => {
     const t = frameType(ty);
@@ -910,8 +911,8 @@ function frameSwift(schema) {
     ? Object.fromEntries([[def.tagged, 'string'], ...Object.values(def.variants).flatMap(fields => Object.entries(fields).map(([k, v]) => [k, v.endsWith('?') ? v : `${v}?`]))])
     : def;
   const structs = Object.entries(types).filter(([, def]) => !def.enum).map(([name, def]) => {
-    const fields = Object.entries(fieldsOf(def)).filter(([key]) => key !== '...');
-    const props = fields.map(([key, ty]) => `    public let ${camel(key)}: ${swiftType(ty)}`);
+    const fields = Object.entries(fieldsOf(def));
+    const props = fields.map(([key, ty]) => `${fieldDocs[`${name}.${key}`] ? `    /// ${fieldDocs[`${name}.${key}`]}\n` : ''}    public let ${camel(key)}: ${swiftType(ty)}`);
     const keys = fields.map(([key]) => `        case ${camel(key)} = ${JSON.stringify(key)}`);
     return `/// \`${name}\` in the frame contract.
 public struct GpuFrame${name}: Decodable, Sendable {

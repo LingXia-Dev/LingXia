@@ -99,16 +99,15 @@ fn object(
         problems.push(format!("{path}: expected an object"));
         return;
     };
-    let open = fields.contains_key("...");
     for (key, item) in object {
         match fields.get(key).and_then(Value::as_str) {
             Some(ty) => check(types, item, ty, &format!("{path}.{key}"), problems),
-            None if Some(key.as_str()) == tag || open => {}
+            None if Some(key.as_str()) == tag => {}
             None => problems.push(format!("{path}.{key}: not declared in the frame schema")),
         }
     }
     for (key, ty) in fields {
-        let optional = key == "..." || ty.as_str().is_some_and(|ty| ty.ends_with('?'));
+        let optional = ty.as_str().is_some_and(|ty| ty.ends_with('?'));
         if !optional && !object.contains_key(key) {
             problems.push(format!("{path}.{key}: required but missing"));
         }

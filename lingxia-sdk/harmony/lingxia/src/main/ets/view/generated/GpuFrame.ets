@@ -1,6 +1,12 @@
 // Generated from contracts/view/schema.json; do not edit.
 // The frame contract the Harmony SDK decodes: snapshot = FrameSnapshot, semanticNode = SemanticNode, automationRequest = AutomationRequest, automationElement = AutomationElement, automationQueryAll = AutomationQueryAll, automationTree = AutomationTree, automationFrame = AutomationFrame, automationCall = AutomationCall, automationResult = AutomationResult, inputRequest = InputRequest, inputReply = InputReply, copySelection = CopyReply, semanticRoots = SemanticRoots, textMenu = TextMenu.
 
+/** `VideoOrientation` values. */
+export class GpuFrameVideoOrientationValues {
+  static readonly LANDSCAPE: string = "landscape";
+  static readonly PORTRAIT: string = "portrait";
+}
+
 /** `ScrollAxis` values. */
 export class GpuFrameScrollAxisValues {
   static readonly HORIZONTAL: string = "horizontal";
@@ -164,6 +170,25 @@ export interface GpuFrameFrameMetrics {
   droppedActivations?: number | null;
   composite?: GpuFrameCompositeStats | null;
   backdropCache?: GpuFrameBackdropCacheStats | null;
+  viewPhases?: GpuFrameViewPhases | null;
+  videoOrientation?: string | null;
+  topLayerOpen?: boolean | null;
+  chromeSnapshot?: number | null;
+  renderer?: string | null;
+  renderThread?: boolean | null;
+  backend?: string | null;
+}
+
+/** `ViewPhases` in the frame contract. */
+export interface GpuFrameViewPhases {
+  render: number;
+  resolve: number;
+  recall: number;
+  rows: number;
+  encode: number;
+  windows: number;
+  commit: number;
+  h: number;
 }
 
 /** `FrameCost` in the frame contract. */
@@ -546,12 +571,78 @@ export interface GpuFrameAutomationFrame {
   imageCacheEntries: number;
   animationFrames: number;
   wakeups: number;
+  /** Raw: the reveal watchdog's diagnostics; no adapter reads it. */
   reveal: Object;
   hud: boolean;
   nodes?: number | null;
   pacing: GpuFrameFramePacing;
   composite?: GpuFrameCompositeStats | null;
   backdropCache?: GpuFrameBackdropCacheStats | null;
+  held: number;
+  failure?: string | null;
+  stalled: boolean;
+  budget: GpuFrameFrameBudget;
+  chromeSnapshot: number;
+  /** Raw: a list of composite draw records when the frame composites, else per-pass timing pairs in µs; renderer diagnostics no adapter reads. */
+  passes?: Object | null;
+  pointer?: string | null;
+  presentUs?: number[] | null;
+  profile: string;
+  stagesMs?: GpuFrameStageMedians | null;
+  transition?: GpuFrameTransitionMetrics | null;
+  /** Raw: the GPU video players' diagnostics (first-frame phases, rebinds, quality switches); its shape follows the video renderer, and no adapter reads it. */
+  video?: Object | null;
+}
+
+/** `FrameBudget` in the frame contract. */
+export interface GpuFrameFrameBudget {
+  overruns: number;
+}
+
+/** `StageMedians` in the frame contract. */
+export interface GpuFrameStageMedians {
+  frames: number;
+  total: number;
+  view: number;
+  viewEval: number;
+  layout: number;
+  text: number;
+  compose: number;
+  build: number;
+  viewPasses: number;
+  layoutPasses: number;
+  queue: number;
+  worker: number;
+  wait: number;
+  main: number;
+  gpuScene: number;
+  gpuEncode: number;
+  gpuSubmit: number;
+  gpuPresent: number;
+  mainWork: number;
+  viewPhases?: GpuFramePhaseMedians | null;
+}
+
+/** `PhaseMedians` in the frame contract. */
+export interface GpuFramePhaseMedians {
+  frames: number;
+  eval: number;
+  render: number;
+  resolve: number;
+  recall: number;
+  rows: number;
+  encode: number;
+  vnodes: number;
+}
+
+/** `TransitionMetrics` in the frame contract. */
+export interface GpuFrameTransitionMetrics {
+  kind: string;
+  durationMs?: number | null;
+  frames: number;
+  movingFrames: number;
+  firstMoveMs?: number | null;
+  atMs?: number | null;
 }
 
 /** `QueueTimes` in the frame contract. */

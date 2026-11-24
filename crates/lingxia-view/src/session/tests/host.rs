@@ -4521,16 +4521,23 @@ fn scrub(mut value: serde_json::Value) -> serde_json::Value {
         match value {
             serde_json::Value::Object(map) => {
                 for (key, item) in map.iter_mut() {
-                    if !(key.ends_with("Us") || key.ends_with("Ms")) {
+                    if key.ends_with("Us") || key.ends_with("Ms") {
+                        zero(item);
+                    } else {
                         walk(item);
-                    } else if item.is_number() {
-                        *item = serde_json::json!(0);
-                    } else if let Some(stats) = item.as_object_mut() {
-                        stats.values_mut().for_each(|v| *v = serde_json::json!(0));
                     }
                 }
             }
             serde_json::Value::Array(items) => items.iter_mut().for_each(walk),
+            _ => {}
+        }
+    }
+    // Timings vary run to run; their shape (null, nested stats) is part of the contract.
+    fn zero(value: &mut serde_json::Value) {
+        match value {
+            serde_json::Value::Number(_) => *value = serde_json::json!(0),
+            serde_json::Value::Object(map) => map.values_mut().for_each(zero),
+            serde_json::Value::Array(items) => items.iter_mut().for_each(zero),
             _ => {}
         }
     }
