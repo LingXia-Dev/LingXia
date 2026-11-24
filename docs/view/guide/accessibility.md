@@ -39,7 +39,7 @@ reader. Every element has a role from what it is; you add names, structural role
 | `<switch>`, `<link>` | `aria-label`, else its text |
 | `<input>`, `<textarea>` | `aria-label`; the placeholder is a hint, the value is the text |
 | `<radio>` | `aria-label` for the group; each option by its `label` |
-| `<slider>`, `<plot>` | `aria-label`, which is required |
+| `<slider>`, `<plot>`, `<select>`, `<dialog>`, `<webview>` | `aria-label`, which is required |
 | `<image>` | `alt`; `alt=""` hides a decorative image |
 | `<text>` | its text |
 
@@ -50,8 +50,8 @@ change what is painted.
 
 Controls, editors, scrolls, images and text get their roles automatically. Any other element can
 take one of the structural roles with `role`; on a control, `role` is ignored except the item roles
-below (`tab`, `radio`, `option`, `menuitem`, `menuitemcheckbox`, `menuitemradio`, `treeitem`) and
-`gridcell`, which a button may take.
+below (`tab`, `radio`, `option`, `menuitem`, `menuitemcheckbox`, `menuitemradio`, `treeitem`),
+`gridcell` and `combobox` on a `<button>`, and `combobox` or `spinbutton` on an `<input>`.
 
 | `role` | Use |
 | --- | --- |
