@@ -11,8 +11,8 @@ use super::{file, not_supported, surface, ui_update};
 use crate::AssetFileEntry;
 use crate::error::PlatformError;
 use crate::traits::app_runtime::{
-    AnimationType, AppRuntime, DesktopBannerOutcome, DesktopBannerShow,
-    LocalNotificationShow, LxAppOpenMode, OpenUrlRequest, OpenUrlResult, ShowLxApp,
+    AnimationType, AppRuntime, DesktopBannerOutcome, DesktopBannerShow, LocalNotificationShow,
+    LxAppOpenMode, OpenUrlRequest, OpenUrlResult, ShowLxApp,
 };
 use crate::traits::share::{ShareRequest, ShareResult, ShareService};
 use crate::traits::stream_decoder::{VideoStreamDecoderHandle, VideoStreamDecoderManager};
@@ -1101,5 +1101,4 @@ mod tests {
             extracted
         );
     }
-
 }

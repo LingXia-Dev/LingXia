@@ -522,7 +522,6 @@ pub fn is_lxapp_open(lxappid: &str) -> bool {
     false
 }
 
-
 /// Native-host bootstrap and navigation for a host-bundled ControlSurface lxapp
 /// (e.g. `app.lingxia.browser` system pages).
 #[doc(hidden)]

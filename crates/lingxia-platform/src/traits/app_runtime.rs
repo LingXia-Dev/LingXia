@@ -574,7 +574,6 @@ pub trait AppRuntime:
     fn activate_browser_tab(&self, _tab_id: String) -> PlatformFuture {
         Box::pin(async { Err(PlatformError::NotSupported("browser tab".to_string())) })
     }
-
 }
 
 #[cfg(test)]

@@ -450,7 +450,6 @@ impl AppRuntime for Platform {
             }
         })
     }
-
 }
 
 impl ShareService for Platform {

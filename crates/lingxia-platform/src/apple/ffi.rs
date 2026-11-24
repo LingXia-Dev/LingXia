@@ -170,7 +170,6 @@ mod bridge {
         #[swift_bridge(swift_name = "LxApp.activateBrowserTab")]
         fn activate_browser_tab(tab_id: &str) -> bool;
 
-
         #[swift_bridge(swift_name = "LxApp.share")]
         fn share(title: &str, text: &str, url: &str, files_json: &str, callback_id: u64) -> bool;
 
@@ -552,13 +551,13 @@ pub use bridge::{
     close_lxapp, close_surface, destroy_managed_surface, exit_app, hide_surface, hide_toast,
     host_appearance_dark, navigate, notification_cancel, notification_cancel_all,
     notification_last_error, notification_permission, notification_request_permission,
-    notification_show, on_home_first_ready, open_document_external,
-    open_lxapp, open_managed_native_surface, open_url, present_layout, present_surface,
-    preview_media, request_lxapp_main_activation, review_document, set_app_badge,
-    set_host_color_mode, set_managed_surface_visible, set_shell_pins, set_sidebar_actions,
-    set_tray_badge, set_tray_click_intercept, set_tray_icon, set_tray_menu, set_tray_title,
-    set_tray_visible, share, show_action_sheet, show_modal, show_splash_campaign, show_surface,
-    show_toast, take_opened_url_tab_id, update_navbar_ui, update_orientation_ui, update_tabbar_ui,
+    notification_show, on_home_first_ready, open_document_external, open_lxapp,
+    open_managed_native_surface, open_url, present_layout, present_surface, preview_media,
+    request_lxapp_main_activation, review_document, set_app_badge, set_host_color_mode,
+    set_managed_surface_visible, set_shell_pins, set_sidebar_actions, set_tray_badge,
+    set_tray_click_intercept, set_tray_icon, set_tray_menu, set_tray_title, set_tray_visible,
+    share, show_action_sheet, show_modal, show_splash_campaign, show_surface, show_toast,
+    take_opened_url_tab_id, update_navbar_ui, update_orientation_ui, update_tabbar_ui,
     update_tabbar_ui_async,
 };
 #[cfg(all(target_os = "macos", not(test)))]
