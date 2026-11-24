@@ -2,7 +2,6 @@
 
 use anyhow::{Context, Result, bail};
 use std::path::{Path, PathBuf};
-use std::process::Command;
 use std::sync::atomic::{AtomicBool, Ordering};
 
 static SKIPPED: AtomicBool = AtomicBool::new(false);
@@ -21,79 +20,11 @@ pub(crate) fn applies(root: &Path) -> bool {
     root.join("tsconfig.json").is_file()
 }
 
-/// Mirrors each project of the root's reference graph as a config under `.lingxia/typecheck/` that
-/// extends it, so build info and any emit land there: a write in the project tree would be an edit
-/// to a dev session's watcher, and the check would loop.
-const WRAP_SCRIPT: &str = r#"
-const { createRequire } = await import('node:module');
-const path = await import('node:path');
-const fs = await import('node:fs');
-const [root, typescript] = process.argv.slice(1);
-const ts = createRequire(path.join(typescript, 'package.json'))('typescript');
-const out = path.join(root, '.lingxia', 'typecheck');
-fs.rmSync(out, { recursive: true, force: true });
-fs.mkdirSync(out, { recursive: true });
-const rel = file => { const r = path.relative(out, file).split(path.sep).join('/'); return r.startsWith('.') ? r : `./${r}`; };
-const wrappers = new Map();
-function wrap(config) {
-  if (wrappers.has(config)) return wrappers.get(config);
-  const name = `${wrappers.size}-${path.basename(config, '.json')}`;
-  const wrapper = path.join(out, `${name}.json`);
-  wrappers.set(config, wrapper);
-  const read = ts.readConfigFile(config, ts.sys.readFile);
-  if (read.error) throw Error(ts.flattenDiagnosticMessageText(read.error.messageText, ' '));
-  const parsed = ts.parseJsonConfigFileContent(read.config, ts.sys, path.dirname(config), undefined, config);
-  const options = parsed.options;
-  const compilerOptions = { tsBuildInfoFile: `./${name}.tsbuildinfo` };
-  // Only where tsc has a root: a composite project's defaults to its config directory, which the
-  // wrapper's location would otherwise move. Sources linked in from outside must stay legal.
-  const rootDir = options.rootDir ?? (options.composite ? path.dirname(config) : undefined);
-  if (rootDir) compilerOptions.rootDir = rel(rootDir);
-  if (!options.noEmit) {
-    compilerOptions.outDir = `./${name}.out`;
-    if (options.declarationDir) compilerOptions.declarationDir = `./${name}.out`;
-  }
-  const references = (parsed.projectReferences ?? []).map(reference => ({ path: rel(wrap(ts.resolveProjectReferencePath(reference))) }));
-  fs.writeFileSync(wrapper, JSON.stringify({ extends: rel(config), compilerOptions, references }, null, 1));
-  return wrapper;
-}
-process.stdout.write(wrap(path.join(root, 'tsconfig.json')));
-"#;
-
 /// Every type error as `file:line:col: TSnnnn: message`; empty when the project checks clean.
 pub(crate) fn run(root: &Path) -> Result<Vec<String>> {
     let tsc = resolve_tsc(root)?;
     let typescript = supported_typescript(&tsc)?;
-    let wrapped = Command::new("node")
-        .args(["--input-type=module", "--eval", WRAP_SCRIPT])
-        .arg(root)
-        .arg(typescript)
-        .current_dir(root)
-        .output()
-        .context("Failed to start Node.js for the type check")?;
-    if !wrapped.status.success() {
-        bail!(
-            "Type check: cannot read the project's tsconfig:\n{}",
-            String::from_utf8_lossy(&wrapped.stderr).trim()
-        );
-    }
-    let entry = String::from_utf8_lossy(&wrapped.stdout).into_owned();
-    let output = Command::new("node")
-        .arg(&tsc)
-        .args(["-b", &entry, "--pretty", "false"])
-        .current_dir(root)
-        .output()
-        .context("Failed to start the TypeScript compiler; is Node.js installed?")?;
-    let text = format!(
-        "{}{}",
-        String::from_utf8_lossy(&output.stdout),
-        String::from_utf8_lossy(&output.stderr)
-    );
-    let problems = parse(&text);
-    if !output.status.success() && problems.is_empty() {
-        bail!("Type check failed:\n{}", text.trim());
-    }
-    Ok(problems)
+    super::ts_worker::typecheck(root, typescript)
 }
 
 /// The problems under one heading, in the shape of the build's other diagnostics.
@@ -160,6 +91,7 @@ pub(crate) fn resolve_tsc(root: &Path) -> Result<PathBuf> {
         })
 }
 
+#[cfg(test)]
 fn parse(text: &str) -> Vec<String> {
     let mut problems: Vec<String> = Vec::new();
     for line in text.lines() {
@@ -179,6 +111,7 @@ fn parse(text: &str) -> Vec<String> {
 }
 
 /// `file(line,col): error TSnnnn: message` as `file:line:col: TSnnnn: message`.
+#[cfg(test)]
 fn located(line: &str) -> Option<String> {
     let (head, message) = line.split_once("): error ")?;
     let (file, position) = head.rsplit_once('(')?;
