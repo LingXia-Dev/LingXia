@@ -28,6 +28,7 @@ fn run_with_context(
     output: Option<&Path>,
 ) -> Result<()> {
     let _preparation = crate::build_prepare::Scope::enter();
+    let _ts_session = super::ts_worker::keep_alive();
     let build_started = Instant::now();
     let mut options = BuildOptions::parse(args)?;
     options.dev_session = dev_session;
@@ -98,6 +99,7 @@ fn run_with_context(
 /// output is built aside and thrown away.
 pub fn check(cwd: &Path) -> Result<()> {
     let _preparation = crate::build_prepare::Scope::enter();
+    let _ts_session = super::ts_worker::keep_alive();
     let project = Project::discover(cwd)?;
     crate::build_prepare::prepare(&project.root)?;
     println!();

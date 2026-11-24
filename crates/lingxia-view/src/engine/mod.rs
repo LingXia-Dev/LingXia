@@ -1,6 +1,7 @@
 //! JavaScript engine adapters for View isolates.
 pub(crate) mod budget;
 pub(crate) mod bytecode;
+pub mod chunks;
 pub(crate) mod compatibility;
 pub(crate) mod console;
 mod quickjs;
@@ -17,6 +18,8 @@ pub enum Feature {
     CandidateTransactions,
     /// Microtasks drain inside the frame budget and a runaway job can be interrupted.
     BoundedJobs,
+    /// Shared per-lxapp View chunks and per-language catalogues via `lx:view/*`.
+    ViewChunks,
 }
 
 impl Feature {
@@ -24,6 +27,7 @@ impl Feature {
         match self {
             Self::CandidateTransactions => "candidate-transactions",
             Self::BoundedJobs => "bounded-jobs",
+            Self::ViewChunks => "view-chunks",
         }
     }
 }
@@ -34,7 +38,19 @@ pub(crate) trait Engine {
     /// Whether the budget watchdog can interrupt running script.
     const PREEMPTIBLE: bool;
     /// Returns the module's cache key, which also names what the module persists beside its bytecode.
-    fn evaluate_module(context: &JSContext, source: &str) -> Result<bytecode::Key, String>;
+    fn evaluate_module(
+        context: &JSContext,
+        source: &str,
+        chunks: Option<chunks::ChunkLoader>,
+        expected_dev_build_id: Option<String>,
+    ) -> Result<bytecode::Key, String>;
+    /// Evaluates an auxiliary ES module (e.g. a per-language catalogue) into an existing isolate,
+    /// using the same per-module bytecode cache.
+    fn evaluate_auxiliary_module(
+        context: &JSContext,
+        specifier: &str,
+        source: &str,
+    ) -> Result<bytecode::Key, String>;
     fn drain_jobs(context: &JSContext) -> Result<(), String>;
     /// Drain under interruption before dropping a failed context or running a sibling page.
     fn discard_jobs(context: &JSContext);

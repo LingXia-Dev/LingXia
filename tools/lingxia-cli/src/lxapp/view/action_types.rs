@@ -11,91 +11,8 @@ use serde::{Deserialize, Serialize};
 use sha2::Digest;
 use std::collections::{BTreeMap, HashMap};
 use std::path::{Path, PathBuf};
-use std::process::Command;
 
-/// Reads `__lxPage.actions` of each Logic module's default export through the project's own
-/// TypeScript, in the tsconfig project that includes the modules.
-const SCRIPT: &str = r#"
-const { createRequire } = await import('node:module');
-const path = await import('node:path');
-const [root, typescript, logicJson] = process.argv.slice(1);
-const ts = createRequire(path.join(typescript, 'package.json'))('typescript');
-const logics = JSON.parse(logicJson);
-const key = file => path.resolve(file).toLowerCase();
-const seen = new Set();
-function project(config, logic) {
-  if (seen.has(config + logic) || !ts.sys.fileExists(config)) return null;
-  seen.add(config + logic);
-  const read = ts.readConfigFile(config, ts.sys.readFile);
-  if (read.error) throw Error(ts.flattenDiagnosticMessageText(read.error.messageText, ' '));
-  const parsed = ts.parseJsonConfigFileContent(read.config, ts.sys, path.dirname(config), undefined, config);
-  if (parsed.fileNames.some(file => key(file) === key(logic))) return parsed;
-  for (const reference of parsed.projectReferences ?? []) {
-    const found = project(ts.resolveProjectReferencePath(reference), logic);
-    if (found) return found;
-  }
-  return null;
-}
-const pages = {};
-const groups = new Map();
-for (const logic of logics) {
-  const parsed = project(path.join(root, 'tsconfig.json'), logic);
-  if (!parsed) { pages[logic] = { error: 'unprojected', files: [] }; continue; }
-  const id = JSON.stringify(parsed.options) + parsed.fileNames.filter(f => f.endsWith('.d.ts')).join();
-  if (!groups.has(id)) groups.set(id, { parsed, logics: [] });
-  groups.get(id).logics.push(logic);
-}
-for (const { parsed, logics } of groups.values()) {
-  // The modules and the project's ambient declarations; their imports resolve from there.
-  const ambient = parsed.fileNames.filter(file => file.endsWith('.d.ts'));
-  const options = { ...parsed.options, noEmit: true, composite: false, incremental: false, declaration: false, emitDeclarationOnly: false };
-  const program = ts.createProgram({ rootNames: [...logics, ...ambient], options });
-  const checker = program.getTypeChecker();
-  const byKey = new Map(program.getSourceFiles().map(file => [key(file.fileName), file]));
-  const own = file => !file.fileName.split(/[\\/]/).includes('node_modules') && !program.isSourceFileDefaultLibrary(file);
-  // The project's own files a module reaches; a change to any of them can change its actions.
-  function graph(start) {
-    const files = new Set(ambient.map(file => path.resolve(file)));
-    const stack = [start];
-    while (stack.length) {
-      const file = stack.pop();
-      if (!file || !own(file) || files.has(path.resolve(file.fileName)) && file !== start) continue;
-      files.add(path.resolve(file.fileName));
-      for (const specifier of file.imports ?? []) {
-        const resolved = program.getResolvedModule?.(file, specifier.text, program.getModeForUsageLocation(file, specifier))?.resolvedModule;
-        if (resolved) stack.push(byKey.get(key(resolved.resolvedFileName)));
-      }
-    }
-    return [...files];
-  }
-  for (const logic of logics) {
-    const source = byKey.get(key(logic));
-    const files = source ? graph(source) : [];
-    const module = source && checker.getSymbolAtLocation(source);
-    const exported = module && checker.tryGetMemberInModuleExports('default', module);
-    const page = exported && checker.getTypeOfSymbol(exported).getProperty('__lxPage');
-    const declared = page && checker.getTypeOfSymbol(page).getProperty('actions');
-    if (!declared) { pages[logic] = { error: 'undefined', files }; continue; }
-    const actions = checker.getTypeOfSymbol(declared);
-    if (actions.flags & (ts.TypeFlags.Any | ts.TypeFlags.Unknown) || checker.getIndexInfosOfType(actions).length) {
-      pages[logic] = { error: 'unknown', files };
-      continue;
-    }
-    const found = [];
-    let bad;
-    for (const property of checker.getPropertiesOfType(actions)) {
-      const signatures = checker.getSignaturesOfType(checker.getTypeOfSymbol(property), ts.SignatureKind.Call);
-      if (!signatures.length) { bad = property.name; break; }
-      // As `View<typeof page>` types it: an action returning an async iterable streams.
-      const stream = signatures.some(signature => checker.getReturnTypeOfSignature(signature).getProperties()
-        .some(member => String(member.escapedName).startsWith('__@asyncIterator')));
-      found.push({ name: property.name, stream });
-    }
-    pages[logic] = bad ? { error: 'unknown', name: bad, files } : { actions: found, files };
-  }
-}
-process.stdout.write(JSON.stringify(pages));
-"#;
+use super::super::ts_worker;
 
 const CACHE: &str = "action-types.json";
 
@@ -201,21 +118,10 @@ pub(crate) fn actions(
     let mut answers: HashMap<PathBuf, Reply> = HashMap::new();
     if !stale.is_empty() {
         let logics: Vec<&Path> = stale.iter().map(|page| page.logic.as_path()).collect();
-        let output = Command::new("node")
-            .args(["--input-type=module", "--eval", SCRIPT])
-            .arg(root)
-            .arg(typescript)
-            .arg(serde_json::to_string(&logics)?)
-            .current_dir(root)
-            .output()
-            .context("Failed to start Node.js to read page actions")?;
-        if !output.status.success() {
-            bail!(
-                "{first_page}: cannot read page actions with TypeScript:\n{}",
-                String::from_utf8_lossy(&output.stderr).trim()
-            );
-        }
-        answers = serde_json::from_slice(&output.stdout).context("unreadable page action types")?;
+        let raw = ts_worker::action_types(root, typescript, &logics).map_err(|err| {
+            anyhow::anyhow!("{first_page}: cannot read page actions with TypeScript:\n{err}")
+        })?;
+        answers = serde_json::from_value(raw).context("unreadable page action types")?;
         let configs = configs(root);
         for page in &stale {
             let Some(reply) = answers.get(&page.logic) else {

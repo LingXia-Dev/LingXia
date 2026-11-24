@@ -16,6 +16,8 @@ pub struct ViewApp {
     budget: std::sync::Arc<crate::engine::budget::Budget>,
     next: u64,
     limit: usize,
+    worker_key: Option<String>,
+    chunks: Option<crate::engine::chunks::ChunkLoader>,
 }
 
 impl ViewApp {
@@ -31,7 +33,18 @@ impl ViewApp {
             budget,
             next: 1,
             limit: page_limit,
+            worker_key: None,
+            chunks: None,
         })
+    }
+
+    #[cfg(test)]
+    pub(crate) fn set_chunks(&mut self, chunks: Option<crate::engine::chunks::ChunkLoader>) {
+        self.chunks = chunks;
+    }
+
+    pub(crate) fn set_worker_key(&mut self, key: Option<String>) {
+        self.worker_key = key;
     }
 
     pub fn create(&mut self, source: &str, logic: bool) -> Result<ViewPageId, String> {
@@ -52,12 +65,18 @@ impl ViewApp {
             .next
             .checked_add(1)
             .ok_or("UI_LIMIT: page identities exhausted")?;
+        let chunks = self.chunks.clone().or_else(|| {
+            self.worker_key
+                .as_deref()
+                .and_then(crate::engine::chunks::app_chunks)
+        });
         let session = ViewSession::with_runtime(
             self.runtime.clone(),
             self.budget.clone(),
             source,
             logic,
             console,
+            chunks,
         )?;
         let id = ViewPageId(self.next);
         self.next = next;

@@ -138,7 +138,9 @@ pub fn resolve_webview(app: &Arc<LxApp>, page_name: Option<&str>) -> Result<Arc<
 
 fn attached_webview<W>(renderer: crate::PageRenderer, webview: Option<W>) -> Result<W, String> {
     if renderer == crate::PageRenderer::Gpu {
-        return Err("E_UNSUPPORTED: this needs a WebView page; this page renders on the GPU".into());
+        return Err(
+            "E_UNSUPPORTED: this needs a WebView page; this page renders on the GPU".into(),
+        );
     }
     webview.ok_or_else(|| "page WebView is not ready".to_string())
 }
@@ -790,7 +792,10 @@ mod gpu_key_tests {
         assert!(gpu.starts_with("E_UNSUPPORTED:"), "{gpu}");
         let web = super::attached_webview::<()>(crate::PageRenderer::Webview, None).unwrap_err();
         assert_eq!(web, "page WebView is not ready");
-        assert_eq!(super::attached_webview(crate::PageRenderer::Webview, Some(7)), Ok(7));
+        assert_eq!(
+            super::attached_webview(crate::PageRenderer::Webview, Some(7)),
+            Ok(7)
+        );
     }
 
     #[test]

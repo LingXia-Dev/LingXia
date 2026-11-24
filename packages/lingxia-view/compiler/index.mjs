@@ -12,6 +12,7 @@ import { vectorPathProblems } from './vector-paths.mjs';
 import { transformedHolderProblems } from './transformed-holders.mjs';
 import { sourceChecker, moduleChecker, parseSource, scriptModule, scriptLoader } from './source.mjs';
 import { moduleBanner } from './compatibility.mjs';
+import { resolveChunkPolicy, discoverSharedPackages, buildSharedChunk, packageProxySource } from './chunks.mjs';
 import { compileUtilities, tailwindWarm } from './tailwind.mjs';
 import { nearestSupported } from './suggest.mjs';
 import { loadStylesheet, validateTokens, fontFaces } from './stylesheets.mjs';
@@ -503,7 +504,7 @@ async function packageTokens(root, packages, problems) {
  * pixels; app builds never set it. `messages` is the compiled i18n module to bundle and
  * `inputsRecord` the file a dev build records its inputs in; both default under `<root>/.lingxia`.
  */
-export async function buildPages(root, pages, output, catalogs = {}, { dev = false, literalColors = false, messages: messagesPath, inputsRecord } = {}) {
+export async function buildPages(root, pages, output, catalogs = {}, { dev = false, literalColors = false, messages: messagesPath, inputsRecord, chunks, minRuntime } = {}) {
   const { version } = JSON.parse(await readFile(new URL('../package.json', import.meta.url), 'utf8'));
   root = await realpath(resolve(root)); output = resolve(output);
   const { strictClasses } = appSettings(root);
@@ -518,7 +519,32 @@ export async function buildPages(root, pages, output, catalogs = {}, { dev = fal
   // The lxapp build compiles i18n/ here; registering it before the page module loads lets
   // `t` run in the first render.
   const compiledMessages = messagesPath ? resolve(root, messagesPath) : join(root, '.lingxia', 'i18n', 'index.js');
-  const messages = existsSync(compiledMessages)
+  const recordPath = inputsRecord ? resolve(root, inputsRecord) : join(root, '.lingxia', 'gpu-inputs.json');
+  const policy = await resolveChunkPolicy(root, { chunks, minRuntime });
+  // Once per build; a dev session would repeat it on every save.
+  if (policy.note && !dev) console.warn(policy.note);
+  let chunk = null;
+  if (policy.split) {
+    // In incremental dev swaps, `pages` may be a subset; union with the recorded built GPU pages
+    // so `_view/dev.js` keeps sibling pages' shared/Liuli modules and stable `chunkBuildId`.
+    let scanPages = pages;
+    if (dev) {
+      const prior = await readRecord(recordPath);
+      const known = Object.keys(prior).filter(p => p !== 'lx:view' && existsSync(resolve(root, p)));
+      scanPages = [...new Set([...known, ...pages])];
+    }
+    const sharedPackages = await discoverSharedPackages(root, scanPages, {
+      tsconfig, runtimeRoot, publicEntry, jsx, compiledMessages,
+    });
+    chunk = await buildSharedChunk(root, output, {
+      version, dev, literalColors, tsconfig, runtime, publicEntry, host, jsx, runtimeRoot,
+      compiledMessages, sharedPackages, analyse, writeAtomic, shimDir: dirname(recordPath),
+    });
+    if (dev && chunk.chunkInputs.length) inputs['lx:view'] = chunk.chunkInputs;
+    // Pages built against the chunk this one replaced would fail to load; build them too.
+    if (chunk.replacedBuildId) pages = scanPages;
+  }
+  const messages = !chunk && existsSync(compiledMessages)
     ? `import * as messages from ${JSON.stringify(compiledMessages)}; import { registerCatalogues } from ${JSON.stringify(runtime)}; registerCatalogues(messages);`
     : '';
   for (const page of pages) {
@@ -532,17 +558,61 @@ export async function buildPages(root, pages, output, catalogs = {}, { dev = fal
     const catalog = catalogs[page] ?? { __names: [], __modes: {} };
     if (!Array.isArray(catalog.__names) || catalog.__names.some(name => typeof name !== 'string' || !['call', 'stream'].includes(catalog.__modes?.[name])))
       throw Error(`${page}: invalid GPU action metadata`);
-    const candidates = new Set(), themes = new Map(), sourceFiles = [], problems = [], fonts = [], bundledPackages = new Map();
+    const candidates = new Set(), themes = new Map(), sourceFiles = [], problems = [], fonts = [], bundledPackages = new Map(), sharedModules = new Set();
     let bundled;
+    const pageEntry = chunk
+      ? `import { render } from ${JSON.stringify(source)}; import { publishHost } from ${JSON.stringify(chunk.specifier)}; publishHost(render, ${JSON.stringify(catalog)}, ${JSON.stringify(base.split('\\').join('/'))});`
+      : `${messages}import { render } from ${JSON.stringify(source)}; import { publishHost } from ${JSON.stringify(host)}; export { configureClasses, configureFonts, configureSourceMap, enableHotSwap } from ${JSON.stringify(runtime)}; publishHost(render, ${JSON.stringify(catalog)}, ${JSON.stringify(base.split('\\').join('/'))});`;
+    const pageBanner = chunk
+      ? moduleBanner(version, {
+          requiredFeatures: ['view-chunks'],
+          ...(chunk.chunkBuildId ? { chunkBuildId: chunk.chunkBuildId } : {}),
+          ...(chunk.catalogueChunk ? { catalogueChunk: chunk.catalogueChunk } : {}),
+          ...(chunk.catalogueSource ? { catalogueSource: chunk.catalogueSource } : {}),
+          ...(chunk.catalogueLanguages?.length ? { catalogueLanguages: chunk.catalogueLanguages } : {}),
+        })
+      : moduleBanner(version);
     try {
       bundled = await build({
-        stdin: { contents: `${messages}import { render } from ${JSON.stringify(source)}; import { publishHost } from ${JSON.stringify(host)}; export { configureClasses, configureFonts, configureSourceMap, enableHotSwap } from ${JSON.stringify(runtime)}; publishHost(render, ${JSON.stringify(catalog)}, ${JSON.stringify(base.split('\\').join('/'))});`, resolveDir: root },
-        bundle: true, write: false, format: 'esm', target: 'es2020', jsxFactory: 'h', jsxFragment: 'Fragment', inject: [jsx], logLevel: 'silent',
+        stdin: { contents: pageEntry, resolveDir: root },
+        bundle: true, write: false, format: 'esm', target: 'es2020', jsxFactory: 'h', jsxFragment: 'Fragment',
+        inject: [chunk ? chunk.jsxShim : jsx],
+        ...(chunk ? { external: ['lx:view/*'], minify: !dev } : {}),
+        logLevel: 'silent',
         tsconfigRaw: tsconfig,
         // Dev builds keep a source map so runtime errors name the author's line.
         ...(dev ? { sourcemap: 'external', absWorkingDir: root, outfile: join(root, 'page.js'), metafile: true } : {}),
-        alias: { '@lingxia/view': publicEntry },
+        alias: chunk ? {} : { '@lingxia/view': publicEntry },
         plugins: [{ name: 'lingxia-view-language', setup(builder) {
+          if (chunk) {
+            builder.onResolve({ filter: /^@lingxia\/view$/ }, () => ({ path: chunk.specifier, external: true }));
+            if (chunk.sharedByPath.size) {
+              builder.onResolve({ filter: /.*/ }, async args => {
+                if (args.pluginData?.skipShared || args.path.startsWith('lx:view/') || args.namespace === 'lx-pkg') return;
+                const resolved = await builder.resolve(args.path, {
+                  resolveDir: args.resolveDir,
+                  kind: args.kind,
+                  pluginData: { skipShared: true },
+                });
+                if (!resolved.path) return;
+                const key = resolved.path.toLowerCase();
+                if (chunk.sharedByPath.has(key)) return { path: key, namespace: 'lx-pkg' };
+              });
+              builder.onLoad({ filter: /.*/, namespace: 'lx-pkg' }, ({ path }) => {
+                const entry = chunk.sharedByPath.get(path);
+                // The page is checked and styled as if it bundled every chunk module it reaches.
+                for (const module of chunk.closure(entry.abs)) {
+                  if (sharedModules.has(module.path)) continue;
+                  sharedModules.add(module.path);
+                  for (const name of module.names) candidates.add(name);
+                  if (module.file) sourceFiles.push(module.file);
+                  problems.push(...module.problems);
+                  if (module.owner) bundledPackages.set(module.owner.name, module.owner);
+                }
+                return { contents: packageProxySource(chunk.specifier, entry), loader: 'js' };
+              });
+            }
+          }
           builder.onLoad({ filter: /\.css$/ }, async ({ path }) => {
             const stylesheet = await loadStylesheet(path);
             validateTokens(stylesheet);
@@ -585,7 +655,7 @@ export async function buildPages(root, pages, output, catalogs = {}, { dev = fal
             return { contents: analysed.annotated, loader, resolveDir: dirname(path) };
           });
         } }],
-        banner: { js: moduleBanner(version) },
+        banner: { js: pageBanner },
       });
     } catch (error) {
       if (!problems.length) throw error;
@@ -661,8 +731,12 @@ export async function buildPages(root, pages, output, catalogs = {}, { dev = fal
     await mkdir(dirname(dest), { recursive: true });
     const code = bundled.outputFiles.find(file => !file.path.endsWith('.map'));
     const map = bundled.outputFiles.find(file => file.path.endsWith('.map'));
-    let module = code.text.replace(/\n\/\/# sourceMappingURL=.*\n?$/, '\n') + `\nconfigureClasses(${JSON.stringify(classes)});\n` +
-      (fonts.length || pageFamily ? `configureFonts(${JSON.stringify(fonts)}${pageFamily ? `, ${JSON.stringify(pageFamily)}` : ''});\n` : '');
+    // A chunked page reaches these through the chunk: esbuild drops the entry's unused imports of them.
+    const view = chunk ? '__lxView.' : '';
+    let module = code.text.replace(/\n\/\/# sourceMappingURL=.*\n?$/, '\n') +
+      (chunk ? `import * as __lxView from ${JSON.stringify(chunk.specifier)};\n` : '') +
+      `\n${view}configureClasses(${JSON.stringify(classes)});\n` +
+      (fonts.length || pageFamily ? `${view}configureFonts(${JSON.stringify(fonts)}${pageFamily ? `, ${JSON.stringify(pageFamily)}` : ''});\n` : '');
     if (map) {
       const { sources, mappings } = JSON.parse(map.text);
       // The lxapp's files and other packages' are named as in build problems; the View runtime stays anonymous.
@@ -670,8 +744,8 @@ export async function buildPages(root, pages, output, catalogs = {}, { dev = fal
         const file = resolve(root, path);
         return path === '<stdin>' || file.toLowerCase().startsWith(runtimeRoot) ? null : sourceLabel(root, file);
       });
-      module += `configureSourceMap(${JSON.stringify({ sources: named, mappings })});\n`;
-      module += 'enableHotSwap();\n';
+      module += `${view}configureSourceMap(${JSON.stringify({ sources: named, mappings })});\n`;
+      module += `${view}enableHotSwap();\n`;
     }
     await writeAtomic(dest, module);
     // Dev builds record each page's inputs so `lingxia dev` can rebuild only the pages an edit touches:
@@ -695,10 +769,10 @@ export async function buildPages(root, pages, output, catalogs = {}, { dev = fal
   }
   if (failures.length) throw Error(failures.join('\n'));
   if (Object.keys(inputs).length) {
-    const path = inputsRecord ? resolve(root, inputsRecord) : join(root, '.lingxia', 'gpu-inputs.json');
+    const path = recordPath;
     // A page deleted since its last build leaves the record; an edit it shared would plan it again.
     const previous = Object.fromEntries(Object.entries(await readRecord(path))
-      .filter(([page, files]) => Array.isArray(files) && existsSync(resolve(root, page))));
+      .filter(([page, files]) => Array.isArray(files) && (page === 'lx:view' || existsSync(resolve(root, page)))));
     await mkdir(dirname(path), { recursive: true });
     await writeAtomic(path, JSON.stringify({ ...previous, ...inputs }, null, 1) + '\n');
   }

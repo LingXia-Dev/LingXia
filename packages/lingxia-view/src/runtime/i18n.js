@@ -8,9 +8,17 @@ let catalogues = null;
 /** `{ source, languages: { [tag]: { [key]: (args, f) => text } }, formatter(tag) }`, from the page compiler. */
 export function registerCatalogues(compiled) { catalogues = compiled; formatters.clear(); }
 
+/** Registers one per-language catalogue module (`lx:view/<id>/<tag>`), evaluated by the host
+ *  before a frame needs it; `declared` is every tag the lxapp has, loaded or not. */
+export function registerLanguageCatalogue(tag, messages, formatter, source, declared) {
+  catalogues ??= { source, declared, languages: {}, formatter };
+  catalogues.languages[tag] = messages;
+  formatters.delete(tag);
+}
+
 /** The page's language narrowed to a catalogue: exact tag, then same language, then the source. */
 function catalogueFor(language) {
-  const tags = Object.keys(catalogues.languages);
+  const tags = catalogues.declared ?? Object.keys(catalogues.languages);
   const lower = String(language ?? '').toLowerCase();
   const exact = tags.find(tag => tag.toLowerCase() === lower);
   const primary = lower.split('-')[0];
@@ -24,7 +32,7 @@ export function t(key, args) {
   // The memo stamp covers the whole environment, so a language switch re-renders every caller.
   const env = envOf(render.view);
   const { tag, messages } = catalogueFor(env?.language);
-  const message = messages[key] ?? catalogues.languages[catalogues.source][key];
+  const message = messages?.[key] ?? catalogues.languages[catalogues.source]?.[key];
   if (!message) throw Error(`UI_I18N: no message '${key}'`);
   return message(args ?? {}, formatter(tag));
 }
@@ -48,7 +56,7 @@ const join = text => Array.isArray(text) ? text.join('') : String(text);
 export function lxappText(key, language, args) {
   if (!catalogues) return undefined;
   const { tag, messages } = catalogueFor(language);
-  const message = messages[key];
+  const message = messages?.[key];
   return message ? join(message(args ?? {}, formatter(tag))) : undefined;
 }
 

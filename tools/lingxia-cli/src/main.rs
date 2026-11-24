@@ -1169,7 +1169,9 @@ fn run() -> Result<()> {
                 dir
             };
             lxapp::add_language(&dir, &tag)?;
-            println!("Added {tag}: i18n/{tag}.json; `lingxia check` lists the keys left to translate.");
+            println!(
+                "Added {tag}: i18n/{tag}.json; `lingxia check` lists the keys left to translate."
+            );
         }
         Commands::Clean => {
             commands::clean::execute()?;

@@ -14,10 +14,10 @@ const snapshotPath = join(packageRoot, 'tests/fixtures/real-app-base-snapshot.js
 const snapshot = JSON.parse(gunzipSync(readFileSync(snapshotPath)).toString('utf8'));
 
 function extractPageTables(jsText) {
-  const clsMatch = jsText.match(/\nconfigureClasses\((.*)\);\n/);
+  const clsMatch = jsText.match(/\n(?:__lxView\.)?configureClasses\((.*)\);\n/);
   assert.ok(clsMatch, 'built page must emit configureClasses(...)');
   const classes = JSON.parse(clsMatch[1]);
-  const fontMatch = jsText.match(/\nconfigureFonts\((.*)\);\n/);
+  const fontMatch = jsText.match(/\n(?:__lxView\.)?configureFonts\((.*)\);\n/);
   const fonts = fontMatch ? JSON.parse(`[${fontMatch[1]}]`) : null;
   return { classes, fonts };
 }
@@ -43,8 +43,9 @@ const APPS = [
   },
 ];
 
-for (const app of APPS) {
-  test(`real-app snapshot: ${app.name} single-file class tables and theme values match base (${snapshot.baseCommit})`, async t => {
+// A shared-chunk build must give every page the class table and fonts a single-file build gives it.
+for (const app of APPS) for (const chunks of [false, true]) {
+  test(`real-app snapshot: ${app.name} ${chunks ? 'shared-chunk' : 'single-file'} class tables and theme values match base (${snapshot.baseCommit})`, async t => {
     const missing = app.required.filter(rel => !existsSync(join(app.root, rel)));
     if (missing.length) {
       t.skip(`${app.name} prerequisites missing under ${app.root}: ${missing.join(', ')}`);
@@ -58,7 +59,7 @@ for (const app of APPS) {
 
     const outDir = mkdtempSync(join(tmpdir(), `lx-real-app-${app.name}-`));
     try {
-      const result = await buildPages(app.root, pages, outDir, {}, { dev: false });
+      const result = await buildPages(app.root, pages, outDir, {}, { dev: false, chunks });
       const uiErrors = result.warnings.filter(w => /UI_(?!PERF\b|INERT\b|STYLE_STATIC\b|BUDGET\b|POPOVER\b)/.test(w));
       assert.deepEqual(uiErrors, [], `${app.name} emitted unexpected UI_* diagnostics`);
       // Every className is followed to literals, so strictClasses would warn nowhere either.
@@ -67,6 +68,7 @@ for (const app of APPS) {
       for (const page of pages) {
         const jsPath = join(outDir, page.replace(/\.tsx$/, '.js'));
         assert.ok(existsSync(jsPath), `${app.name} ${page} output exists`);
+        if (chunks) assert.match(readFileSync(jsPath, 'utf8'), /from\s*"lx:view\//, `${app.name} ${page} imports the shared chunk`);
         const actual = extractPageTables(readFileSync(jsPath, 'utf8'));
         const expected = expectedApp.pages[page];
         assert.deepEqual(actual.fonts, expected.fonts, `${app.name} ${page} theme/fonts differ from base`);

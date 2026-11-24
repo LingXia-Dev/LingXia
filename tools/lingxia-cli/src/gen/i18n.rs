@@ -817,9 +817,15 @@ pub fn run(config: I18nConfig) -> Result<()> {
     if let Some(plan) = &liuli_plan {
         generate_liuli_words(&config.input.join(LIULI_DIR), &plan.write_to)?;
     }
-    for (plan, dir) in [(&view_messages_plan, VIEW_DIR), (&liuli_messages_plan, LIULI_DIR)] {
+    for (plan, dir) in [
+        (&view_messages_plan, VIEW_DIR),
+        (&liuli_messages_plan, LIULI_DIR),
+    ] {
         if let Some(plan) = plan {
-            let source = config.input.join(dir).join(format!("{PACKAGE_SOURCE}.json"));
+            let source = config
+                .input
+                .join(dir)
+                .join(format!("{PACKAGE_SOURCE}.json"));
             write_module(&plan.write_to, fs::read_to_string(&source)?)?;
         }
     }

@@ -2936,6 +2936,23 @@ impl LxApp {
             .map_err(|_| LxAppError::Runtime(format!("GPU module is not UTF-8: {path}")))
     }
 
+    /// Reads a shared View chunk or per-language catalogue (`_view/<id>.js` or `_view/<id>/<lang>.js`)
+    /// through the same managed/integrity-verified resource source as page modules.
+    pub(crate) fn read_gpu_chunk(&self, path: &str) -> Result<String, LxAppError> {
+        if !path.starts_with("_view/")
+            || !path.ends_with(".js")
+            || path.contains("..")
+            || path.contains('\\')
+            || path.contains('\0')
+        {
+            return Err(LxAppError::InvalidParameter(format!(
+                "invalid GPU chunk path: {path}"
+            )));
+        }
+        String::from_utf8(self.read_bytes(path)?)
+            .map_err(|_| LxAppError::Runtime(format!("GPU chunk is not UTF-8: {path}")))
+    }
+
     /// The theme pack the lxapp bundles (`theme/pack.json`, completed by `lingxia build`).
     pub(crate) fn read_theme_pack(&self) -> Option<String> {
         const LIMIT: usize = 64 * 1024;

@@ -49,6 +49,9 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 use tokio::sync::watch;
 
+/// Reads one of an lxapp's shared View chunk files by its `_view/` path.
+pub type GpuChunkReader = Arc<dyn Fn(&str) -> Result<String, LxAppError> + Send + Sync>;
+
 /// How long an isolated page's setup waits for its opener to create the
 /// PageSvc. The opener does that in the same turn it awaits this page, so
 /// exceeding this means nobody is coming — an isolated instance created
@@ -2375,6 +2378,12 @@ impl PageInstance {
     /// The owning lxapp's bundled theme pack JSON, if it ships one.
     pub fn gpu_theme_pack(&self) -> Option<String> {
         self.owning_lxapp().read_theme_pack()
+    }
+
+    /// Returns a reader for this lxapp's shared View chunks (`_view/<id>.js`, `_view/<id>/<lang>.js`).
+    pub fn gpu_chunk_reader(&self) -> GpuChunkReader {
+        let app = self.owning_lxapp();
+        std::sync::Arc::new(move |path| app.read_gpu_chunk(path))
     }
 
     /// Resolve package or managed image bytes on the host's resource worker.

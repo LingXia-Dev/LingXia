@@ -5,8 +5,9 @@
 // Off Android it is compiled only for its tests, which exercise part of it.
 #![cfg_attr(not(target_os = "android"), allow(dead_code, unused_imports))]
 use lxapp::{
-    GpuPageView, GpuPageViewFactory, GpuStateSignal, GpuStateWrite, GpuViewCreation,
-    GpuViewGeneration, GpuViewMessage, LeaveReason, LxAppError, PageInstance, PageViewEnvironment,
+    GpuChunkReader, GpuPageView, GpuPageViewFactory, GpuStateSignal, GpuStateWrite,
+    GpuViewCreation, GpuViewGeneration, GpuViewMessage, LeaveReason, LxAppError, PageInstance,
+    PageViewEnvironment,
 };
 use std::{
     collections::HashMap,
@@ -155,10 +156,12 @@ impl Lease {
         page: String,
         worker: String,
         pack: Option<lingxia_theme::Pack>,
+        chunks: GpuChunkReader,
         factory: Arc<dyn NativeFactory>,
     ) -> Self {
         let mut holders = PACK_HOLDERS.lock().unwrap_or_else(|p| p.into_inner());
         *holders.entry(worker.clone()).or_default() += 1;
+        install_app_chunks(&worker, chunks);
         if let Some(pack) = pack {
             lingxia_theme::set_app_pack(&worker, Some(pack));
         }
@@ -182,6 +185,7 @@ impl Lease {
                 if *count == 0 {
                     holders.remove(&self.worker);
                     lingxia_theme::set_app_pack(&self.worker, None);
+                    clear_app_chunks(&self.worker);
                 }
             }
         }
@@ -372,6 +376,7 @@ impl GpuPageViewFactory for Binding {
                 page.instance_id_string(),
                 worker.clone(),
                 page.gpu_theme_pack().as_deref().and_then(bundled_pack),
+                page.gpu_chunk_reader(),
                 factory.clone(),
             );
             let (tx, rx) = oneshot::channel();
@@ -396,6 +401,60 @@ impl GpuPageViewFactory for Binding {
     fn app_closed(&self, appid: &str, session: u64) {
         close_worker(&worker_key(appid, session));
     }
+}
+
+/// Registers the lxapp's chunk reader for `key` so QuickJS resolves `lx:view/*` from dist.
+fn install_app_chunks(key: &str, reader: GpuChunkReader) {
+    #[cfg(target_os = "android")]
+    use lingxia_view_android::lingxia_view;
+    #[cfg(any(target_os = "ios", target_os = "macos"))]
+    use lingxia_view_apple::lingxia_view;
+    #[cfg(target_env = "ohos")]
+    use lingxia_view_harmony::lingxia_view;
+    #[cfg(windows)]
+    use lingxia_view_windows::lingxia_view;
+    #[cfg(any(
+        target_os = "android",
+        target_os = "ios",
+        target_os = "macos",
+        target_env = "ohos",
+        windows
+    ))]
+    {
+        let loader: lingxia_view::ChunkLoader = Arc::new(move |path| match reader(path) {
+            Ok(source) => Ok(source),
+            Err(LxAppError::ResourceNotFound(_)) => Err(lingxia_view::ChunkLoadError::NotFound),
+            Err(_) => Err(lingxia_view::ChunkLoadError::IntegrityMismatch),
+        });
+        lingxia_view::set_app_chunks(key, Some(loader));
+    }
+    #[cfg(not(any(
+        target_os = "android",
+        target_os = "ios",
+        target_os = "macos",
+        target_env = "ohos",
+        windows
+    )))]
+    let _ = (key, reader);
+}
+
+fn clear_app_chunks(key: &str) {
+    #[cfg(target_os = "android")]
+    lingxia_view_android::lingxia_view::set_app_chunks(key, None);
+    #[cfg(any(target_os = "ios", target_os = "macos"))]
+    lingxia_view_apple::lingxia_view::set_app_chunks(key, None);
+    #[cfg(target_env = "ohos")]
+    lingxia_view_harmony::lingxia_view::set_app_chunks(key, None);
+    #[cfg(windows)]
+    lingxia_view_windows::lingxia_view::set_app_chunks(key, None);
+    #[cfg(not(any(
+        target_os = "android",
+        target_os = "ios",
+        target_os = "macos",
+        target_env = "ohos",
+        windows
+    )))]
+    let _ = key;
 }
 
 /// Stops the session's View worker once its pages are gone instead of keeping it for a next page.

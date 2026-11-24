@@ -122,7 +122,8 @@ impl ViewWorker {
             .name(name.into())
             .spawn(move || {
                 let mut app = match ViewApp::new(PAGES) {
-                    Ok(app) => {
+                    Ok(mut app) => {
+                        app.set_worker_key(key.clone());
                         let _ = ready.send(Ok(()));
                         app
                     }
