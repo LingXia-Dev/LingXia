@@ -1158,4 +1158,68 @@ mod bleed {
         );
         assert_eq!(display.nodes[3].bounds[1], 44.0 + 40.0 + 100.0);
     }
+
+    #[test]
+    fn a_child_filling_a_scroll_at_a_fractional_position_ends_on_its_last_row() {
+        // An 80 pt gap and a half-point grabber put the scroll at 80.5; its last child once
+        // landed a point past the scroll's clip.
+        let records = vec![
+            node(tag::COLUMN, None, "page", &[]),
+            node(tag::COLUMN, Some(0), "gap", &[(field::HEIGHT, json!(80))]),
+            node(tag::COLUMN, Some(0), "panel", &[(field::GROW, json!(1))]),
+            node(
+                tag::COLUMN,
+                Some(2),
+                "grabber",
+                &[(field::HEIGHT, json!(0.5))],
+            ),
+            node(
+                tag::SCROLL,
+                Some(2),
+                "body",
+                &[(field::GROW, json!(1)), (field::MIN_HEIGHT, json!(0))],
+            ),
+            node(
+                tag::COLUMN,
+                Some(4),
+                "aside",
+                &[(field::HEIGHT_PERCENT, json!(100))],
+            ),
+            node(
+                tag::COLUMN,
+                Some(5),
+                "list",
+                &[(field::GROW, json!(1)), (field::MIN_HEIGHT, json!(0))],
+            ),
+            node(
+                tag::BUTTON,
+                Some(5),
+                "field",
+                &[(field::HEIGHT, json!(67)), (field::ON_CLICK, json!(1))],
+            ),
+        ];
+        let display = Renderer::default().layout(&records, 200, 852, 1.0).unwrap();
+        let bottom = |index: usize| display.nodes[index].bounds[1] + display.nodes[index].bounds[3];
+        assert_eq!(
+            display.nodes[4].scroll.as_ref().unwrap().max_offset,
+            0.0,
+            "it does not scroll"
+        );
+        assert_eq!(bottom(5), bottom(4), "the aside fills the scroll");
+        assert_eq!(
+            bottom(7),
+            bottom(4),
+            "the field's last row is inside the clip"
+        );
+        let frame = crate::interaction::frame::PresentedFrame::new(
+            crate::session::lifecycle::CommitTicket::new(1),
+            1.0,
+            display.nodes.clone(),
+        );
+        assert_eq!(
+            frame.hit([100.0, bottom(7) - 0.5]),
+            Some(7),
+            "a touch on its last row lands on it"
+        );
+    }
 }

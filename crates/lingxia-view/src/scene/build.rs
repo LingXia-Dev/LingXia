@@ -74,6 +74,10 @@ impl Renderer {
         let mut shadow_masks = std::collections::HashSet::new();
         let mut shadow_bytes = 0;
         let mut origins: Vec<(f32, f32)> = Vec::new();
+        // Taffy rounds sizes at page positions but locations per parent; summing rounded locations
+        // drifts a point, so a box sits at its rounded page position, transforms on top.
+        let mut exact: Vec<(f32, f32)> = Vec::with_capacity(records.len());
+        let mut shifts: Vec<(f32, f32)> = Vec::with_capacity(records.len());
         let mut nodes = Vec::with_capacity(records.len());
         let viewport = [0.0, 0.0, width as f32 / scale, height as f32 / scale];
         let mut ranges = Vec::new();
@@ -197,12 +201,20 @@ impl Renderer {
             layout.padding.right += layout.border.right;
             layout.padding.top += layout.border.top;
             layout.padding.bottom += layout.border.bottom;
-            let (px, py) = parents[index].map(|p| origins[p]).unwrap_or((0.0, 0.0));
             let [tx, ty] = transforms[index]
                 .map(|t| t.translation([layout.size.width, layout.size.height]))
                 .unwrap_or_default();
-            let x = px + layout.location.x + tx;
-            let y = py + layout.location.y + ty;
+            let ((ex, ey), (sx, sy)) = parents[index]
+                .map(|p| (exact[p], shifts[p]))
+                .unwrap_or_default();
+            let unrounded = tree.unrounded_layout(ids[index]).location;
+            let (ex, ey) = (ex + unrounded.x, ey + unrounded.y);
+            let (sx, sy) = (sx + tx, sy + ty);
+            exact.push((ex, ey));
+            shifts.push((sx, sy));
+            // Taffy's rounding: half up, also below zero.
+            let x = (ex + 0.5).floor() + sx;
+            let y = (ey + 0.5).floor() + sy;
             let identity = identities[index].clone();
             let bounds = [x, y, layout.size.width, layout.size.height];
             // Nested percentages can multiply otherwise bounded authored lengths.
