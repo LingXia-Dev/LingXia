@@ -15,9 +15,10 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result, anyhow, bail};
-use syntax::{Shape, classify};
+use syn::ext::IdentExt;
 use syn::punctuated::Punctuated;
-use syn::{Attribute, Expr, Fields, ItemEnum, ItemFn, ItemStruct, Lit, Meta, ReturnType, Token};
+use syn::{Attribute, Expr, Fields, ItemEnum, ItemFn, ItemStruct, Lit, ReturnType, Token};
+use syntax::{Shape, classify};
 
 // ---------------------------------------------------------------------------
 // Public API
@@ -25,8 +26,8 @@ use syn::{Attribute, Expr, Fields, ItemEnum, ItemFn, ItemStruct, Lit, Meta, Retu
 
 /// Emit the WebView View client at `out` (`.ts`, or browser-global `.js`) and the Logic client
 /// `native.logic.ts` beside it, for every `#[native]` handler discovered under `rust_dir`.
-/// If no handlers are found, both files are removed.
-pub fn generate_ts_client(rust_dir: &Path, out: &Path) -> Result<()> {
+/// If no handlers are found, both files are removed. Returns warnings for the build to print.
+pub fn generate_ts_client(rust_dir: &Path, out: &Path) -> Result<Vec<String>> {
     let kind = output_kind(out);
     if !matches!(
         kind,
@@ -41,8 +42,9 @@ pub fn generate_ts_client(rust_dir: &Path, out: &Path) -> Result<()> {
         .parent()
         .map(|dir| dir.join("native.logic.ts"))
         .ok_or_else(|| anyhow!("native client output has no directory: {}", out.display()))?;
-    write_artifact(rust_dir, out, kind)?;
-    write_artifact(rust_dir, &logic_out, OutputKind::LogicTypeScript)
+    let warnings = write_artifact(rust_dir, out, kind)?;
+    write_artifact(rust_dir, &logic_out, OutputKind::LogicTypeScript)?;
+    Ok(warnings)
 }
 
 /// Emit the Rust auto-register module that wraps every discovered handler's
@@ -51,7 +53,7 @@ pub fn generate_ts_client(rust_dir: &Path, out: &Path) -> Result<()> {
 pub fn generate_rust_registry(rust_dir: &Path, out: &Path) -> Result<()> {
     let kind = output_kind(out);
     debug_assert_eq!(kind, OutputKind::RustModule);
-    write_artifact(rust_dir, out, kind)
+    write_artifact(rust_dir, out, kind).map(drop)
 }
 
 fn write_if_changed(out: &Path, generated: &str) -> Result<()> {
@@ -68,7 +70,7 @@ fn write_if_changed(out: &Path, generated: &str) -> Result<()> {
     Ok(())
 }
 
-fn write_artifact(rust_dir: &Path, out: &Path, kind: OutputKind) -> Result<()> {
+fn write_artifact(rust_dir: &Path, out: &Path, kind: OutputKind) -> Result<Vec<String>> {
     if !rust_dir.exists() {
         return Err(anyhow!(
             "Native Rust API directory not found: {}",
@@ -78,10 +80,15 @@ fn write_artifact(rust_dir: &Path, out: &Path, kind: OutputKind) -> Result<()> {
     let manifest = scan(rust_dir)?;
     if manifest.routes.is_empty() && kind != OutputKind::RustModule {
         let _ = fs::remove_file(out);
-        return Ok(());
+        return Ok(Vec::new());
     }
     let generated = render(&manifest, kind)?;
-    write_if_changed(out, &generated)
+    write_if_changed(out, &generated)?;
+    Ok(if kind == OutputKind::RustModule {
+        Vec::new()
+    } else {
+        wire_warnings(&manifest)?
+    })
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -203,9 +210,39 @@ enum EnumTagging {
 #[derive(Debug, Clone)]
 struct StructField {
     name: String,
+    /// Snake_case on the wire only because no `rename_all` was written.
+    unasked_snake: bool,
     ty: String,
-    optional: bool,
+    /// `#[serde(default)]`: may be missing on input.
+    default: bool,
+    /// `skip_serializing_if`: may be missing on output.
+    skip_if: bool,
     flatten: bool,
+}
+
+/// Which way a DTO crosses the bridge; a field's optionality depends on it.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+struct Dir {
+    input: bool,
+    output: bool,
+}
+
+impl Dir {
+    const IN: Dir = Dir {
+        input: true,
+        output: false,
+    };
+    const OUT: Dir = Dir {
+        input: false,
+        output: true,
+    };
+
+    fn union(self, other: Dir) -> Dir {
+        Dir {
+            input: self.input || other.input,
+            output: self.output || other.output,
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -490,6 +527,7 @@ fn extract_route_info(
 #[derive(Default)]
 struct SerdeContainerAttrs {
     rename_all: Option<RenameRule>,
+    rename_all_fields: Option<RenameRule>,
     tag: Option<String>,
     content: Option<String>,
     untagged: bool,
@@ -498,6 +536,7 @@ struct SerdeContainerAttrs {
 #[derive(Default)]
 struct SerdeMemberAttrs {
     rename: Option<String>,
+    rename_all: Option<RenameRule>,
     default: bool,
     skip: bool,
     skip_serializing_if: bool,
@@ -516,6 +555,12 @@ fn parse_serde_container_attrs(attrs: &[Attribute]) -> SerdeContainerAttrs {
                     && let Ok(Lit::Str(s)) = value.parse::<Lit>()
                 {
                     out.rename_all = Some(RenameRule::parse(&s.value()));
+                }
+            } else if meta.path.is_ident("rename_all_fields") {
+                if let Ok(value) = meta.value()
+                    && let Ok(Lit::Str(s)) = value.parse::<Lit>()
+                {
+                    out.rename_all_fields = Some(RenameRule::parse(&s.value()));
                 }
             } else if meta.path.is_ident("tag") {
                 if let Ok(value) = meta.value()
@@ -555,6 +600,12 @@ fn parse_serde_member_attrs(attrs: &[Attribute]) -> SerdeMemberAttrs {
                 {
                     out.rename = Some(s.value());
                 }
+            } else if meta.path.is_ident("rename_all") {
+                if let Ok(value) = meta.value()
+                    && let Ok(Lit::Str(s)) = value.parse::<Lit>()
+                {
+                    out.rename_all = Some(RenameRule::parse(&s.value()));
+                }
             } else if meta.path.is_ident("default") {
                 out.default = true;
                 if meta.input.peek(Token![=]) {
@@ -585,7 +636,8 @@ fn parse_serde_member_attrs(attrs: &[Attribute]) -> SerdeMemberAttrs {
     out
 }
 
-fn extract_named_fields(fields: &syn::FieldsNamed, default_rule: RenameRule) -> Vec<StructField> {
+/// Wire names as serde derives them: `rule` when written, else the Rust name.
+fn extract_named_fields(fields: &syn::FieldsNamed, rule: Option<RenameRule>) -> Vec<StructField> {
     fields
         .named
         .iter()
@@ -594,17 +646,18 @@ fn extract_named_fields(fields: &syn::FieldsNamed, default_rule: RenameRule) -> 
             if serde.skip {
                 return None;
             }
-            let raw_name = field.ident.as_ref()?.to_string();
+            let raw_name = field.ident.as_ref()?.unraw().to_string();
+            let unasked_snake = serde.rename.is_none() && rule.is_none() && raw_name.contains('_');
             let name = serde
                 .rename
-                .unwrap_or_else(|| default_rule.apply(&raw_name));
+                .unwrap_or_else(|| rule.unwrap_or(RenameRule::None).apply(&raw_name));
             let ty_str = type_string(&field.ty).replace(' ', "");
-            let optional =
-                ty_str.starts_with("Option<") || serde.default || serde.skip_serializing_if;
             Some(StructField {
                 name,
+                unasked_snake,
                 ty: ty_str,
-                optional,
+                default: serde.default,
+                skip_if: serde.skip_serializing_if,
                 flatten: serde.flatten,
             })
         })
@@ -613,10 +666,10 @@ fn extract_named_fields(fields: &syn::FieldsNamed, default_rule: RenameRule) -> 
 
 fn extract_struct_def(item: &ItemStruct, loc: SourceLoc) -> Option<StructDef> {
     let container = parse_serde_container_attrs(&item.attrs);
-    // Preserve LingXia's existing camelCase convention when no explicit serde rename_all is set.
-    let rule = container.rename_all.unwrap_or(RenameRule::CamelCase);
     let kind = match &item.fields {
-        Fields::Named(named) => StructDefKind::Named(extract_named_fields(named, rule)),
+        Fields::Named(named) => {
+            StructDefKind::Named(extract_named_fields(named, container.rename_all))
+        }
         Fields::Unnamed(unnamed) => {
             let elems = unnamed
                 .unnamed
@@ -649,7 +702,7 @@ fn extract_enum_def(item: &ItemEnum, loc: SourceLoc) -> Option<EnumDef> {
         if member.skip {
             continue;
         }
-        let raw_name = variant.ident.to_string();
+        let raw_name = variant.ident.unraw().to_string();
         let wire_name = member.rename.unwrap_or_else(|| rule.apply(&raw_name));
         let payload = match &variant.fields {
             Fields::Unit => VariantPayload::Unit,
@@ -666,8 +719,7 @@ fn extract_enum_def(item: &ItemEnum, loc: SourceLoc) -> Option<EnumDef> {
                 }
             }
             Fields::Named(named) => {
-                let field_rule =
-                    has_serde_rename_all_fields(&variant.attrs).unwrap_or(RenameRule::CamelCase);
+                let field_rule = member.rename_all.or(container.rename_all_fields);
                 VariantPayload::Struct(extract_named_fields(named, field_rule))
             }
         };
@@ -678,24 +730,6 @@ fn extract_enum_def(item: &ItemEnum, loc: SourceLoc) -> Option<EnumDef> {
         variants,
         loc,
     })
-}
-
-fn has_serde_rename_all_fields(attrs: &[Attribute]) -> Option<RenameRule> {
-    for attr in attrs {
-        if !attr.path().is_ident("serde") {
-            continue;
-        }
-        if let Meta::List(list) = &attr.meta {
-            let text = list.tokens.to_string();
-            if let Some(rest) = text.split("rename_all").nth(1)
-                && let Some(start) = rest.find('"')
-                && let Some(end) = rest[start + 1..].find('"')
-            {
-                return Some(RenameRule::parse(&rest[start + 1..start + 1 + end]));
-            }
-        }
-    }
-    None
 }
 
 // ---------------------------------------------------------------------------
@@ -856,34 +890,35 @@ fn collect_refs_from_type(ty: &str, out: &mut BTreeSet<String>) {
 }
 
 /// Collects every transitively referenced user DTO type and fails if any type is unresolved.
-fn collect_and_validate_types(manifest: &NativeManifest) -> Result<BTreeSet<String>> {
-    let mut pending: Vec<(String, String, SourceLoc)> = Vec::new();
+/// Every DTO the routes reach, with the directions it travels in.
+fn collect_and_validate_types(manifest: &NativeManifest) -> Result<BTreeMap<String, Dir>> {
+    let mut pending: Vec<(String, Dir, String, SourceLoc)> = Vec::new();
     for r in &manifest.routes {
-        for ty in [
-            r.input.as_deref(),
-            r.output.as_deref(),
-            r.event.as_deref(),
-            r.channel_in.as_deref(),
-            r.channel_out.as_deref(),
-        ]
-        .into_iter()
-        .flatten()
-        {
+        for (ty, dir) in [
+            (r.input.as_deref(), Dir::IN),
+            (r.output.as_deref(), Dir::OUT),
+            (r.event.as_deref(), Dir::OUT),
+            (r.channel_in.as_deref(), Dir::IN),
+            (r.channel_out.as_deref(), Dir::OUT),
+        ] {
+            let Some(ty) = ty else { continue };
             let mut refs = BTreeSet::new();
             collect_refs_from_type(ty, &mut refs);
             for name in refs {
-                pending.push((name, format!("route `{}`", r.route), r.loc.clone()));
+                pending.push((name, dir, format!("route `{}`", r.route), r.loc.clone()));
             }
         }
     }
 
-    let mut resolved = BTreeSet::new();
-    while let Some((name, owner, loc)) = pending.pop() {
-        if resolved.contains(&name) {
+    let mut resolved: BTreeMap<String, Dir> = BTreeMap::new();
+    while let Some((name, dir, owner, loc)) = pending.pop() {
+        let known = resolved.get(&name).copied();
+        if known.is_some_and(|known| known.union(dir) == known) {
             continue;
         }
+        let dir = known.unwrap_or_default().union(dir);
         if let Some(def) = manifest.structs.get(&name) {
-            resolved.insert(name.clone());
+            resolved.insert(name.clone(), dir);
             let mut child_refs = BTreeSet::new();
             match &def.kind {
                 StructDefKind::Named(fields) => {
@@ -899,10 +934,10 @@ fn collect_and_validate_types(manifest: &NativeManifest) -> Result<BTreeSet<Stri
                 StructDefKind::Unit => {}
             }
             for child in child_refs {
-                pending.push((child, format!("struct `{name}`"), def.loc.clone()));
+                pending.push((child, dir, format!("struct `{name}`"), def.loc.clone()));
             }
         } else if let Some(def) = manifest.enums.get(&name) {
-            resolved.insert(name.clone());
+            resolved.insert(name.clone(), dir);
             let mut child_refs = BTreeSet::new();
             for v in &def.variants {
                 match &v.payload {
@@ -921,14 +956,14 @@ fn collect_and_validate_types(manifest: &NativeManifest) -> Result<BTreeSet<Stri
                 }
             }
             for child in child_refs {
-                pending.push((child, format!("enum `{name}`"), def.loc.clone()));
+                pending.push((child, dir, format!("enum `{name}`"), def.loc.clone()));
             }
         } else if let Some(def) = manifest.aliases.get(&name) {
-            resolved.insert(name.clone());
+            resolved.insert(name.clone(), dir);
             let mut child_refs = BTreeSet::new();
             collect_refs_from_type(&def.target, &mut child_refs);
             for child in child_refs {
-                pending.push((child, format!("type `{name}`"), def.loc.clone()));
+                pending.push((child, dir, format!("type `{name}`"), def.loc.clone()));
             }
         } else {
             bail!(
@@ -1022,6 +1057,48 @@ fn type_basename(ty: &str) -> &str {
 // Rendering
 // ---------------------------------------------------------------------------
 
+/// Route DTOs whose fields reach JS in snake_case only because no `rename_all` was written.
+fn wire_warnings(manifest: &NativeManifest) -> Result<Vec<String>> {
+    let snake = |fields: &[StructField]| {
+        let names: Vec<_> = fields
+            .iter()
+            .filter(|f| f.unasked_snake)
+            .map(|f| format!("`{}`", f.name))
+            .collect();
+        (!names.is_empty()).then(|| names.join(", "))
+    };
+    let mut out = Vec::new();
+    for name in collect_and_validate_types(manifest)?.into_keys() {
+        if let Some(def) = manifest.structs.get(&name)
+            && let StructDefKind::Named(fields) = &def.kind
+            && let Some(names) = snake(fields)
+        {
+            out.push(format!(
+                "{}: `{name}` sends {names} to JS in snake_case; add #[serde(rename_all = \"camelCase\")]",
+                def.loc.display()
+            ));
+        }
+        if let Some(def) = manifest.enums.get(&name) {
+            let names: Vec<_> = def
+                .variants
+                .iter()
+                .filter_map(|v| match &v.payload {
+                    VariantPayload::Struct(fields) => snake(fields),
+                    _ => None,
+                })
+                .collect();
+            if !names.is_empty() {
+                out.push(format!(
+                    "{}: `{name}` sends {} to JS in snake_case; add #[serde(rename_all_fields = \"camelCase\")]",
+                    def.loc.display(),
+                    names.join(", ")
+                ));
+            }
+        }
+    }
+    Ok(out)
+}
+
 fn render(manifest: &NativeManifest, output_kind: OutputKind) -> Result<String> {
     match output_kind {
         OutputKind::LogicTypeScript => render_logic_ts(manifest),
@@ -1053,14 +1130,14 @@ fn render_rust_module(manifest: &NativeManifest) -> Result<String> {
     Ok(out)
 }
 
-fn render_dto_types(manifest: &NativeManifest, used_types: &BTreeSet<String>) -> String {
+fn render_dto_types(manifest: &NativeManifest, used_types: &BTreeMap<String, Dir>) -> String {
     let mut out = String::new();
-    for ty in used_types {
+    for (ty, &dir) in used_types {
         if let Some(def) = manifest.structs.get(ty) {
-            out.push_str(&render_struct_ts(ty, def));
+            out.push_str(&render_struct_ts(ty, def, dir));
             out.push('\n');
         } else if let Some(def) = manifest.enums.get(ty) {
-            out.push_str(&render_enum_ts(ty, def));
+            out.push_str(&render_enum_ts(ty, def, dir));
             out.push('\n');
         } else if let Some(def) = manifest.aliases.get(ty) {
             out.push_str(&format!(
@@ -1072,27 +1149,31 @@ fn render_dto_types(manifest: &NativeManifest, used_types: &BTreeSet<String>) ->
     out
 }
 
-fn render_fields_inline(fields: &[StructField]) -> String {
-    let mut own = Vec::new();
-    let mut flattened = Vec::new();
-    for f in fields {
-        if f.flatten {
-            flattened.push(rust_to_ts(clean_option(&f.ty)));
-        } else {
-            let opt = if f.optional { "?" } else { "" };
-            let field_ty = if f.ty.starts_with("Option<") {
-                rust_to_ts(clean_option(&f.ty))
-            } else {
-                rust_to_ts(&f.ty)
-            };
-            own.push(format!(
-                "{}{}: {}",
-                safe_ts_property(&f.name),
-                opt,
-                field_ty
-            ));
-        }
-    }
+/// `name?: T | null` as serde reads it (input) or writes it (output).
+fn field_ts(f: &StructField, dir: Dir) -> String {
+    let option = f.ty.starts_with("Option<");
+    let optional = (dir.input && (option || f.default)) || (dir.output && f.skip_if);
+    let ty = if option {
+        format!("{} | null", rust_to_ts(clean_option(&f.ty)))
+    } else {
+        rust_to_ts(&f.ty)
+    };
+    let opt = if optional { "?" } else { "" };
+    format!("{}{opt}: {ty}", safe_ts_property(&f.name))
+}
+
+fn split_fields(fields: &[StructField], dir: Dir) -> (Vec<String>, Vec<String>) {
+    let (flat, own): (Vec<_>, Vec<_>) = fields.iter().partition(|f| f.flatten);
+    (
+        own.into_iter().map(|f| field_ts(f, dir)).collect(),
+        flat.into_iter()
+            .map(|f| rust_to_ts(clean_option(&f.ty)))
+            .collect(),
+    )
+}
+
+fn render_fields_inline(fields: &[StructField], dir: Dir) -> String {
+    let (own, flattened) = split_fields(fields, dir);
     let obj = format!("{{ {} }}", own.join("; "));
     if flattened.is_empty() {
         obj
@@ -1103,29 +1184,11 @@ fn render_fields_inline(fields: &[StructField]) -> String {
     }
 }
 
-fn render_struct_ts(name: &str, def: &StructDef) -> String {
+fn render_struct_ts(name: &str, def: &StructDef, dir: Dir) -> String {
     match &def.kind {
         StructDefKind::Named(fields) => {
-            let mut own = Vec::new();
-            let mut flattened = Vec::new();
-            for f in fields {
-                if f.flatten {
-                    flattened.push(rust_to_ts(clean_option(&f.ty)));
-                } else {
-                    let opt = if f.optional { "?" } else { "" };
-                    let field_ty = if f.ty.starts_with("Option<") {
-                        rust_to_ts(clean_option(&f.ty))
-                    } else {
-                        rust_to_ts(&f.ty)
-                    };
-                    own.push(format!(
-                        "  {}{}: {};\n",
-                        safe_ts_property(&f.name),
-                        opt,
-                        field_ty
-                    ));
-                }
-            }
+            let (own, flattened) = split_fields(fields, dir);
+            let own: Vec<_> = own.into_iter().map(|f| format!("  {f};\n")).collect();
             if flattened.is_empty() {
                 format!("export interface {name} {{\n{}}}\n", own.join(""))
             } else if own.is_empty() {
@@ -1150,7 +1213,7 @@ fn render_struct_ts(name: &str, def: &StructDef) -> String {
     }
 }
 
-fn render_enum_ts(name: &str, def: &EnumDef) -> String {
+fn render_enum_ts(name: &str, def: &EnumDef, dir: Dir) -> String {
     if def.variants.is_empty() {
         return format!("export type {name} = never;\n");
     }
@@ -1179,7 +1242,7 @@ fn render_enum_ts(name: &str, def: &EnumDef) -> String {
                     format!(
                         "{{ {}: {} }}",
                         safe_ts_property(&v.wire_name),
-                        render_fields_inline(fields)
+                        render_fields_inline(fields, dir)
                     )
                 }
             },
@@ -1195,26 +1258,9 @@ fn render_enum_ts(name: &str, def: &EnumDef) -> String {
                         format!("({{ {tag_prop}: {tag_lit} }} & [{}])", parts.join(", "))
                     }
                     VariantPayload::Struct(fields) => {
+                        let (fields, flattened) = split_fields(fields, dir);
                         let mut own = vec![format!("{tag_prop}: {tag_lit}")];
-                        let mut flattened = Vec::new();
-                        for f in fields {
-                            if f.flatten {
-                                flattened.push(rust_to_ts(clean_option(&f.ty)));
-                            } else {
-                                let opt = if f.optional { "?" } else { "" };
-                                let field_ty = if f.ty.starts_with("Option<") {
-                                    rust_to_ts(clean_option(&f.ty))
-                                } else {
-                                    rust_to_ts(&f.ty)
-                                };
-                                own.push(format!(
-                                    "{}{}: {}",
-                                    safe_ts_property(&f.name),
-                                    opt,
-                                    field_ty
-                                ));
-                            }
-                        }
+                        own.extend(fields);
                         let obj = format!("{{ {} }}", own.join("; "));
                         if flattened.is_empty() {
                             obj
@@ -1245,7 +1291,7 @@ fn render_enum_ts(name: &str, def: &EnumDef) -> String {
                     VariantPayload::Struct(fields) => {
                         format!(
                             "{{ {tag_prop}: {tag_lit}; {content_prop}: {} }}",
-                            render_fields_inline(fields)
+                            render_fields_inline(fields, dir)
                         )
                     }
                 }
@@ -1257,7 +1303,7 @@ fn render_enum_ts(name: &str, def: &EnumDef) -> String {
                     let parts: Vec<String> = ts.iter().map(|t| rust_to_ts(t)).collect();
                     format!("[{}]", parts.join(", "))
                 }
-                VariantPayload::Struct(fields) => render_fields_inline(fields),
+                VariantPayload::Struct(fields) => render_fields_inline(fields, dir),
             },
         };
         branches.push(branch);
@@ -1841,9 +1887,16 @@ mod tests {
         "#,
         );
         let view = render(&manifest, OutputKind::ViewTypeScript).unwrap();
-        assert!(view.contains("deviceId: string"));
-        assert!(view.contains("retryCount?: number"));
+        assert!(view.contains("device_id: string"), "{view}");
+        assert!(view.contains("retry_count?: number | null"), "{view}");
         assert!(view.contains("invoke<void, OpenDeviceInput>"));
+        let warnings = wire_warnings(&manifest).unwrap();
+        assert_eq!(warnings.len(), 1, "{warnings:?}");
+        assert!(
+            warnings[0].contains("`OpenDeviceInput` sends `device_id`, `retry_count`"),
+            "{warnings:?}"
+        );
+        assert!(warnings[0].contains("add #[serde(rename_all = \"camelCase\")]"));
 
         let logic = render(&manifest, OutputKind::LogicTypeScript).unwrap();
         assert!(logic.contains("export function createNative(pageId?: string)"));
@@ -1911,7 +1964,7 @@ mod tests {
         );
         assert!(logic.contains(r#"{ kind: "started" }"#), "{logic}");
         assert!(
-            logic.contains(r#"{ kind: "progress"; percent: number; note?: string }"#),
+            logic.contains(r#"{ kind: "progress"; percent: number; note: string }"#),
             "{logic}"
         );
         assert!(
@@ -1925,7 +1978,7 @@ mod tests {
         assert!(logic.contains("outPath: string;"), "{logic}");
         assert!(!logic.contains("internal_only"), "{logic}");
         assert!(
-            logic.contains("tags?: Record<string, FlexibleId>;"),
+            logic.contains("tags?: Record<string, FlexibleId> | null;"),
             "{logic}"
         );
         assert!(logic.contains("& BaseMeta;"), "{logic}");
@@ -1988,6 +2041,79 @@ mod tests {
         };
         assert_eq!(input("notes.scoped").as_deref(), Some("String"));
         assert_eq!(input("notes.ping"), None);
+    }
+
+    #[test]
+    fn field_names_follow_serde_and_only_unasked_snake_case_warns() {
+        let manifest = scan_source(
+            r#"
+            #[derive(Serialize)]
+            #[serde(rename_all = "camelCase")]
+            struct Page { page_size: u32, r#type: String }
+
+            #[derive(Serialize)]
+            #[serde(rename_all = "snake_case")]
+            struct Raw { wire_name: String }
+
+            #[derive(Serialize)]
+            #[serde(tag = "kind", rename_all_fields = "camelCase")]
+            enum Event { Moved { from_index: u32 }, #[serde(rename_all = "kebab-case")] Named { old_name: String } }
+
+            #[derive(Serialize)]
+            enum Loose { Moved { from_index: u32 } }
+
+            struct Unused { never_sent: u32 }
+
+            #[lingxia::native("list.page")]
+            pub fn page(input: (Page, Raw)) -> HostResult<(Event, Loose)> { todo!() }
+        "#,
+        );
+        let logic = render(&manifest, OutputKind::LogicTypeScript).unwrap();
+        for expected in [
+            "pageSize: number",
+            "type: string",
+            "wire_name: string",
+            "fromIndex: number",
+            "\"old-name\": string",
+            "from_index: number",
+        ] {
+            assert!(logic.contains(expected), "{expected}\n{logic}");
+        }
+        let warnings = wire_warnings(&manifest).unwrap();
+        assert_eq!(warnings.len(), 1, "{warnings:?}");
+        assert!(
+            warnings[0].contains("`Loose` sends `from_index`"),
+            "{warnings:?}"
+        );
+        assert!(warnings[0].contains("rename_all_fields"), "{warnings:?}");
+    }
+
+    #[test]
+    fn option_fields_are_optional_on_input_and_null_on_output() {
+        let manifest = scan_source(
+            r#"
+            struct Query { limit: Option<u32>, #[serde(default)] page: u32 }
+            struct Row { note: Option<String>, #[serde(skip_serializing_if = "Option::is_none")] tag: Option<String>, #[serde(default)] count: u32 }
+            struct Both { note: Option<String> }
+
+            #[lingxia::native("rows.list")]
+            pub fn list(query: Query) -> HostResult<Vec<Row>> { todo!() }
+
+            #[lingxia::native("rows.echo")]
+            pub fn echo(both: Both) -> HostResult<Both> { todo!() }
+        "#,
+        );
+        let logic = render(&manifest, OutputKind::LogicTypeScript).unwrap();
+        for expected in [
+            "limit?: number | null;",
+            "page?: number;",
+            "note: string | null;",
+            "tag?: string | null;",
+            "count: number;",
+            "interface Both {\n  note?: string | null;",
+        ] {
+            assert!(logic.contains(expected), "{expected}\n{logic}");
+        }
     }
 
     #[test]

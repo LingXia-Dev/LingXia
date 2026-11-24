@@ -323,11 +323,15 @@ location rather than emitting `unknown`. That includes `&'static str` (use
 | Rust / serde | TypeScript |
 | --- | --- |
 | `String`, `&str`, `char`, `bool`, numeric primitives, `()` | `string`, `boolean`, `number`, `void` |
-| `Option<T>`, `Vec<T>`, `HashSet<T>`, `BTreeSet<T>`, `[T; N]`, `(A, B)` | `T \| null` (or `?`), `T[]`, `[A, B]` |
+| `Option<T>`, `Vec<T>`, `HashSet<T>`, `BTreeSet<T>`, `[T; N]`, `(A, B)` | `T \| null`, `T[]`, `[A, B]` |
 | `HashMap<K, V>`, `BTreeMap<K, V>`, `serde_json::Value` | `Record<string, V>`, `unknown` |
 | `struct` (named, tuple, unit), `type` alias, path-qualified DTOs | `interface` / `type` |
 | `enum` (unit, external, `tag`, `tag + content`, `untagged`) | string literal or discriminated union |
-| `rename`, `rename_all`, `default`, `skip`, `skip_serializing_if`, `flatten` | applied to wire names, optionality, intersections |
+| `rename`, `rename_all`, `rename_all_fields`, `default`, `skip`, `skip_serializing_if`, `flatten` | applied to wire names, optionality, intersections |
+
+TS names are exactly serde's wire names: put `#[serde(rename_all = "camelCase")]`
+on multi-word DTOs (codegen warns when it is missing). `Option`/`default`
+fields are optional on input; output fields only with `skip_serializing_if`.
 
 ```html
 <!-- pages/<name>/index.html -->

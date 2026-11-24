@@ -16,8 +16,11 @@ fn main() {
         } else {
             manifest_dir.join(out)
         };
-        if let Err(err) = lingxia_native_codegen::generate_ts_client(&rust_dir, &out) {
-            panic!("failed to generate LingXia native client: {err:#}");
+        match lingxia_native_codegen::generate_ts_client(&rust_dir, &out) {
+            Ok(warnings) => warnings
+                .iter()
+                .for_each(|warning| println!("cargo:warning={warning}")),
+            Err(err) => panic!("failed to generate LingXia native client: {err:#}"),
         }
     }
 
