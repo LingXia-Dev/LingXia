@@ -372,8 +372,38 @@
     });
 
     // Page timers run on the page's clock: the runtime's timers, or a test's own through `mount`.
-    let shown = true;
+    // `page.visible`: on screen as setup runs when a navigation is bringing the page in.
+    let shown = identity.visible !== false;
     const resumers = new Set();
+    const visibleWatchers = new Set();
+    function setShown(value) {
+      if (shown === value) return;
+      shown = value;
+      for (const watcher of [...visibleWatchers]) watcher(value);
+    }
+    const visible = Object.freeze({
+      get() {
+        return shown;
+      },
+      watch(callback, options) {
+        if (typeof callback !== "function") {
+          throw new TypeError("page.visible.watch takes a callback");
+        }
+        const signal = subscriptionSignal(options);
+        if (lifetime.signal.aborted || (signal && signal.aborted)) return () => {};
+        const watcher = (value) => callback(value);
+        const stop = () => {
+          if (!visibleWatchers.delete(watcher)) return;
+          lifetime.signal.removeEventListener("abort", stop);
+          if (signal) signal.removeEventListener("abort", stop);
+        };
+        visibleWatchers.add(watcher);
+        lifetime.signal.addEventListener("abort", stop, { once: true });
+        if (signal) signal.addEventListener("abort", stop, { once: true });
+        callback(shown);
+        return stop;
+      },
+    });
     function clock() {
       return globalThis.__LX_PAGE_CLOCK__ || { setTimeout, clearTimeout };
     }
@@ -552,6 +582,7 @@
       },
       orientation,
       env,
+      visible,
       after: timers.after,
       every: timers.every,
     });
@@ -614,16 +645,28 @@
       return userOnLoad ? userOnLoad(params) : undefined;
     };
     const userOnShow = config.onShow;
+    // The opening show's params also reach onLoad; later ones reach only onShow.
+    let opened = false;
+    let warned = false;
     config.onShow = function (options) {
-      shown = true;
+      setShown(true);
+      const arrived = options && options.params !== undefined;
+      if (arrived) params = options.params;
       for (const resume of [...resumers]) resume();
-      if (!userOnShow) return undefined;
-      const handed = options && options.params !== undefined ? { params: options.params } : {};
-      return userOnShow(Object.freeze(handed));
+      const reshown = opened;
+      opened = true;
+      if (!userOnShow) {
+        if (arrived && reshown && identity.dev && !warned) {
+          warned = true;
+          console.warn(`${identity.name || pagePath}: shown with params, but it has no onShow to read them`);
+        }
+        return undefined;
+      }
+      return userOnShow(Object.freeze(arrived ? { params: options.params } : {}));
     };
     const userOnHide = config.onHide;
     config.onHide = function () {
-      shown = false;
+      setShown(false);
       return userOnHide ? userOnHide() : undefined;
     };
     // A hook has no caller to catch for it: report its failure, then fail as before.

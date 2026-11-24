@@ -99,6 +99,7 @@ but get no hook until first selected.
 | `lx.nav.go({ page })` | New instance: `onLoad` → `onShow` → `onReady` | `onHide`, `data` kept |
 | `go(…, { replace: true })` to another page | New instance: `onLoad` → `onShow` → `onReady` | `onUnload` |
 | `lx.nav.back` | `onShow` only, `data` kept | Each popped page: `onUnload` |
+| `go(…, { reuse: true })`, an instance open | `onShow` only, `data` kept | Each page above it: `onUnload` |
 | `go({ tab })`, first visit | `onLoad` → `onShow` → `onReady` | Left tab: `onHide`; pushed pages: `onUnload` |
 | `go({ tab })`, later visits | `onShow` only, `data` kept | Same |
 | `lx.nav.reset` | New instance: `onLoad` → `onShow` → `onReady` | Every loaded page, tabs included: `onUnload` |

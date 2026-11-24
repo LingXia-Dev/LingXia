@@ -157,7 +157,7 @@ const ORIENTATION_API = LIVE_API;
 const NETWORK_API = ['download', 'status', 'upload', 'wifi'] as const;
 const WIFI_API = ['connect', 'current', 'list', 'onConnected'] as const;
 const MEDIA_API = ['compressImage', 'compressVideo', 'imageInfo', 'preview', 'saveToLibrary', 'videoInfo', 'videoThumbnail'] as const;
-const NAV_API = ['back', 'go', 'leaveApp', 'reset'] as const;
+const NAV_API = ['back', 'current', 'go', 'leaveApp', 'reset'] as const;
 const TERMINAL_API = ['colorSchemes', 'conpty', 'fonts', 'settings'] as const;
 const TERMINAL_SETTINGS_API = ['get', 'onChange', 'reset', 'update'] as const;
 const TERMINAL_COLOR_SCHEMES_API = ['createPreview', 'import', 'list'] as const;
@@ -539,6 +539,7 @@ export const LX_RUNTIME_SURFACES = [
     layer: 'logic',
     expression: 'lx.nav',
     members: NAV_API,
+    properties: ['current'],
   },
   {
     name: 'lx.host.terminal',

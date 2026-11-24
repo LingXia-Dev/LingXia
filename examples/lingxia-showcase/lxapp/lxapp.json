@@ -1,7 +1,7 @@
 {
   "appId": "lingxia-showcase",
   "appName": "LingXia Showcase",
-  "version": "1.7.0",
+  "version": "1.7.1",
   "minRuntime": "0.30.0",
   "languages": [
     "en-US",
@@ -183,6 +183,10 @@
     {
       "name": "spec-stall",
       "path": "pages/spec-stall/index"
+    },
+    {
+      "name": "nav-lab",
+      "path": "pages/nav-lab/index"
     },
     {
       "name": "spec-break",

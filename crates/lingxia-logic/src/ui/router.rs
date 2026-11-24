@@ -5,14 +5,19 @@ use crate::message_port;
 use crate::navigator::{self, NavigateToAppOptions};
 use crate::open_gate::{OpenGate, canceled_open_error, canceled_result};
 use futures::channel::oneshot;
+use lxapp::nav_queue::{Admission, NavTicket};
 use lxapp::{LxApp, LxAppError, NavigationType, PageSvc, startup};
 use rong::{
-    FromJSObject, JSContext, JSFunc, JSObject, JSResult, JSValue, Promise, function::Optional,
+    FromJSObject, JSContext, JSFunc, JSObject, JSResult, JSValue, JsonToJSValue, Promise,
+    function::Optional,
 };
 use serde_json::Value;
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
+use std::collections::HashMap;
+use std::future::Future;
 use std::rc::Rc;
 use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, Ordering};
 
 #[derive(FromJSObject)]
 #[ts_skip]
@@ -32,6 +37,7 @@ const TARGET_KEYS: &[&str] = &["page", "tab", "app", "url", "params", "channel",
 #[ts_skip]
 struct GoOptions {
     replace: Option<bool>,
+    reuse: Option<bool>,
 }
 
 enum NavTarget {
@@ -209,6 +215,112 @@ async fn navigate_with_url(
     }
 }
 
+/// What each waiting `lx.nav` operation of this context returned, so an identical one issued
+/// right after it gets the same object.
+#[derive(Clone)]
+struct NavJoins {
+    /// Keeps joins inside one context: a Logic restart's operations never join the old ones.
+    context: u64,
+    waiting: Rc<RefCell<HashMap<u64, JSObject>>>,
+}
+
+impl rong::JSContextService for NavJoins {
+    fn on_shutdown(&self) {
+        self.waiting.borrow_mut().clear();
+    }
+}
+
+fn nav_joins(ctx: &JSContext) -> NavJoins {
+    static CONTEXTS: AtomicU64 = AtomicU64::new(0);
+    if let Some(joins) = ctx.get_service::<NavJoins>() {
+        return joins.clone();
+    }
+    let joins = NavJoins {
+        context: CONTEXTS.fetch_add(1, Ordering::Relaxed),
+        waiting: Rc::default(),
+    };
+    ctx.set_service(joins.clone());
+    joins
+}
+
+/// A queued operation's place: its ticket and how to publish what it returns for joins.
+struct Turn {
+    ticket: NavTicket,
+    joins: NavJoins,
+    started: Rc<Cell<bool>>,
+}
+
+impl Turn {
+    /// Waits for this operation's turn; from then on nothing joins it.
+    async fn wait(&mut self) {
+        self.ticket.turn().await;
+        self.started.set(true);
+        self.joins.waiting.borrow_mut().remove(&self.ticket.id());
+    }
+
+    fn publish(joins: NavJoins, id: u64, started: &Cell<bool>, object: &JSObject) {
+        if !started.get() {
+            joins.waiting.borrow_mut().insert(id, object.clone());
+        }
+    }
+}
+
+enum Queued {
+    Run(Turn),
+    Joined(JSObject),
+}
+
+/// Admit an operation to the stack's queue under `key` (its kind and resolved target).
+fn enqueue(ctx: &JSContext, lxapp: &LxApp, key: &str) -> JSResult<Queued> {
+    let joins = nav_joins(ctx);
+    match lxapp.nav_queue.admit(&format!("{}|{key}", joins.context)) {
+        Admission::Run(ticket) => Ok(Queued::Run(Turn {
+            ticket,
+            joins,
+            started: Rc::default(),
+        })),
+        Admission::Join(id) => joins
+            .waiting
+            .borrow()
+            .get(&id)
+            .cloned()
+            .map(Queued::Joined)
+            .ok_or_else(|| js_internal_error("the navigation it repeats is gone")),
+        Admission::Full => Err(rong::HostError::new(
+            rong::error::E_INVALID_STATE,
+            format!(
+                "{} navigations are already waiting; this one was dropped",
+                lxapp::nav_queue::MAX_WAITING
+            ),
+        )
+        .into()),
+    }
+}
+
+/// Run `operation` at its turn in the stack's queue and return its promise.
+fn queued<Fut>(
+    ctx: &JSContext,
+    key: &str,
+    operation: impl FnOnce() -> Fut + 'static,
+) -> JSResult<JSObject>
+where
+    Fut: Future<Output = JSResult<()>> + 'static,
+{
+    let lxapp = LxApp::from_ctx(ctx)?;
+    let mut turn = match enqueue(ctx, &lxapp, key)? {
+        Queued::Joined(object) => return Ok(object),
+        Queued::Run(turn) => turn,
+    };
+    let (joins, id, started) = (turn.joins.clone(), turn.ticket.id(), turn.started.clone());
+    let promise = Promise::from_future(ctx, None, async move {
+        turn.wait().await;
+        operation().await
+    })?
+    .into_object();
+    Turn::publish(joins, id, &started, &promise);
+    Ok(promise)
+}
+
 fn configured_page_url(lxapp: &LxApp, name: &str, params: Option<&JSObject>) -> JSResult<String> {
     let url = page_url(lxapp, name, params).map_err(|e| js_error_from_lxapp_error(&e))?;
     ensure_page_exists_js(lxapp, &url)?;
@@ -234,16 +346,28 @@ fn tab_url(lxapp: &LxApp, name: &str, params: Option<&JSObject>) -> JSResult<Str
 /// Push a page and return its handle at once. `opened` settles when the page
 /// is on screen and `result` when it leaves; a failed open rejects both. A
 /// `close()` before the page is on screen stops the open. A tab root pushes its
-/// one instance, refused while that instance is on the stack.
-fn push(ctx: &JSContext, name: String, params: Option<JSObject>) -> JSResult<JSObject> {
+/// one instance, refused while that instance is on the stack. With `queue`, it opens at its
+/// turn; without, it runs inside an operation that already holds the turn.
+fn push(
+    ctx: &JSContext,
+    name: String,
+    params: Option<JSObject>,
+    queue: bool,
+) -> JSResult<JSObject> {
     let lxapp = LxApp::from_ctx(ctx)?;
     let appid = lxapp.appid.clone();
     let target_url = configured_page_url(&lxapp, &name, params.as_ref())?;
-    // Refuse before resolving the target: a refused push must not touch the
-    // query or opener of a page already on the stack.
-    lxapp
-        .validate_navigation_entry(&target_url, NavigationType::Forward)
-        .map_err(|e| js_error_from_lxapp_error(&e))?;
+    let mut turn = if queue {
+        match enqueue(ctx, &lxapp, &format!("push:{target_url}"))? {
+            Queued::Joined(handle) => return Ok(handle),
+            Queued::Run(turn) => Some(turn),
+        }
+    } else {
+        None
+    };
+    let published = turn
+        .as_ref()
+        .map(|turn| (turn.joins.clone(), turn.ticket.id(), turn.started.clone()));
 
     let (handle, page_port) = message_port::pair(ctx)?;
     let pushed: Rc<RefCell<Option<PageSvc>>> = Rc::default();
@@ -254,12 +378,20 @@ fn push(ctx: &JSContext, name: String, params: Option<JSObject>) -> JSResult<JSO
     let open_slot = pushed.clone();
     let open_gate = gate.clone();
     let opened = Promise::from_future(ctx, None, async move {
+        if let Some(turn) = turn.as_mut() {
+            turn.wait().await;
+        }
         if open_gate.canceled() {
             open_gate.settle(false);
             let _ = result_tx.send(canceled_result(&open_ctx));
             return Err(canceled_open_error());
         }
         let opened = async {
+            // Refused before resolving the target: a refused push must not touch the
+            // query or opener of a page already on the stack.
+            lxapp
+                .validate_navigation_entry(&target_url, NavigationType::Forward)
+                .map_err(|e| js_error_from_lxapp_error(&e))?;
             let page_svc = lxapp
                 .create_page_for_entry_in_ctx(&open_ctx, &target_url)
                 .await
@@ -300,20 +432,24 @@ fn push(ctx: &JSContext, name: String, params: Option<JSObject>) -> JSResult<JSO
         }
     })?;
 
-    let close = JSFunc::new(ctx, move |ctx: JSContext| -> JSResult<Promise> {
+    let close = JSFunc::new(ctx, move |ctx: JSContext| -> JSResult<JSObject> {
         let open = pushed.borrow().clone();
         if let Some(page_svc) = open {
-            let left = page_svc
-                .leave_page()
-                .map_err(|e| js_error_from_lxapp_error(&e));
-            return Promise::from_future(&ctx, None, async move { left });
+            // At its turn the page may be gone already: closing it again does nothing.
+            let key = format!("close:{}", page_svc.get_page().instance_id_string());
+            return queued(&ctx, &key, move || async move {
+                page_svc
+                    .leave_page()
+                    .map_err(|e| js_error_from_lxapp_error(&e))
+            });
         }
         gate.cancel();
         let ended = gate.wait();
-        Promise::from_future(&ctx, None, async move {
+        Ok(Promise::from_future(&ctx, None, async move {
             let _ = ended.await;
             Ok(())
-        })
+        })?
+        .into_object())
     })?
     .name("close")?;
 
@@ -324,6 +460,9 @@ fn push(ctx: &JSContext, name: String, params: Option<JSObject>) -> JSResult<JSO
         lxapp::error!("lx.nav.go({{ page: '{name}' }}) did not open: {reason}")
             .with_appid(appid.clone());
     })?;
+    if let Some((joins, id, started)) = published {
+        Turn::publish(joins, id, &started, &handle);
+    }
     Ok(handle)
 }
 
@@ -397,6 +536,7 @@ async fn replace(ctx: &JSContext, name: String, params: Option<JSObject>) -> JSR
 async fn switch_tab(ctx: &JSContext, name: String, params: Option<JSObject>) -> JSResult<()> {
     let lxapp = LxApp::from_ctx(ctx)?;
     let target_url = tab_url(&lxapp, &name, params.as_ref())?;
+    lxapp.get_or_create_page(&target_url).mark_entering();
     let page_svc = lxapp.get_or_create_page_in_ctx(ctx, &target_url).await?;
     let _ = page_svc.clear_opener();
     navigate_with_url(lxapp.clone(), target_url, NavigationType::SwitchTab, false)
@@ -408,23 +548,44 @@ async fn switch_tab(ctx: &JSContext, name: String, params: Option<JSObject>) -> 
 /// move returns a promise.
 fn go(ctx: JSContext, target: JSValue, options: Optional<GoOptions>) -> JSResult<JSObject> {
     let target = nav_target(&target).map_err(|e| js_error_from_lxapp_error(&e))?;
-    let replace_current = options.0.and_then(|options| options.replace) == Some(true);
+    let (replace_current, reuse) = options.0.map_or((false, false), |options| {
+        (options.replace == Some(true), options.reuse == Some(true))
+    });
     if replace_current && !matches!(target, NavTarget::Page { .. }) {
         return Err(js_invalid("replace applies to a { page } target"));
     }
+    if reuse && !matches!(target, NavTarget::Page { .. }) {
+        return Err(js_invalid("reuse applies to a { page } target"));
+    }
     let task_ctx = ctx.clone();
+    let lxapp = LxApp::from_ctx(&ctx)?;
     let promise = match target {
-        NavTarget::Page { name, params } if !replace_current => return push(&ctx, name, params),
-        NavTarget::Page { name, params } => {
-            Promise::from_future(
-                &ctx,
-                None,
-                async move { replace(&task_ctx, name, params).await },
-            )?
+        NavTarget::Page { name, params } if reuse => {
+            let url = configured_page_url(&lxapp, &name, params.as_ref())?;
+            let key = format!("reuse:{replace_current}:{url}");
+            return queued(&ctx, &key, move || async move {
+                go_reuse(&task_ctx, name, params, replace_current).await
+            });
         }
-        NavTarget::Tab { name, params } => Promise::from_future(&ctx, None, async move {
-            switch_tab(&task_ctx, name, params).await
-        })?,
+        NavTarget::Page { name, params } if !replace_current => {
+            return push(&ctx, name, params, true);
+        }
+        NavTarget::Page { name, params } => {
+            let key = format!(
+                "replace:{}",
+                configured_page_url(&lxapp, &name, params.as_ref())?
+            );
+            return queued(&ctx, &key, move || async move {
+                replace(&task_ctx, name, params).await
+            });
+        }
+        NavTarget::Tab { name, params } => {
+            let key = format!("tab:{}", tab_url(&lxapp, &name, params.as_ref())?);
+            return queued(&ctx, &key, move || async move {
+                switch_tab(&task_ctx, name, params).await
+            });
+        }
+        // Another app or a URL leaves this stack alone, so it does not wait for it.
         NavTarget::App(options) => Promise::from_future(&ctx, None, async move {
             navigator::navigate_to_app(task_ctx, options).await
         })?,
@@ -437,16 +598,60 @@ fn go(ctx: JSContext, target: JSValue, options: Optional<GoOptions>) -> JSResult
     Ok(promise.into_object())
 }
 
+/// `go(target, { reuse: true })`: back to the topmost open instance of the page, or open it as
+/// a plain `go` would (pushed, or replacing the current page with `replace`).
+async fn go_reuse(
+    ctx: &JSContext,
+    name: String,
+    params: Option<JSObject>,
+    replace_current: bool,
+) -> JSResult<()> {
+    let lxapp = LxApp::from_ctx(ctx)?;
+    let target_url = configured_page_url(&lxapp, &name, params.as_ref())?;
+    if lxapp
+        .reuse_page(&target_url)
+        .map_err(|e| js_error_from_lxapp_error(&e))?
+    {
+        return wait_current_ready(&lxapp).await;
+    }
+    if replace_current {
+        return replace(ctx, name, params).await;
+    }
+    let handle = push(ctx, name, params, false)?;
+    let opened = handle.get::<_, Promise>("opened")?;
+    let _: JSValue = opened.into_future().await?;
+    Ok(())
+}
+
+async fn wait_current_ready(lxapp: &LxApp) -> JSResult<()> {
+    if let Some(path) = lxapp.peek_current_page()
+        && let Some(page) = lxapp.get_page(&path)
+    {
+        page.wait_webview_ready()
+            .await
+            .map_err(|error| js_error_from_lxapp_error(&LxAppError::WebView(error)))?;
+    }
+    Ok(())
+}
+
 /// Pop `n` pages (default one), stopping at the root. Resolves once the
 /// revealed page is ready.
-async fn back(ctx: JSContext, n: Optional<f64>) -> JSResult<()> {
+fn back(ctx: JSContext, n: Optional<f64>) -> JSResult<JSObject> {
     let n = n.0.unwrap_or(1.0);
     if !(n.is_finite() && n >= 1.0 && n.fract() == 0.0) {
         return Err(js_invalid(
             "back(n) takes a whole number of pages, at least 1",
         ));
     }
-    let lxapp = LxApp::from_ctx(&ctx)?;
+    let task_ctx = ctx.clone();
+    queued(&ctx, &format!("back:{n}"), move || async move {
+        back_now(&task_ctx, n).await
+    })
+}
+
+/// `back(n)` at its turn: the stack it pops is the one left by the operations before it.
+async fn back_now(ctx: &JSContext, n: f64) -> JSResult<()> {
+    let lxapp = LxApp::from_ctx(ctx)?;
     let depth = lxapp.get_page_stack().len().saturating_sub(1);
     let delta = (n as usize).min(depth);
     if delta == 0 {
@@ -458,19 +663,12 @@ async fn back(ctx: JSContext, n: Optional<f64>) -> JSResult<()> {
     })?;
     page.navigate_back(delta as u32)
         .map_err(|e| js_error_from_lxapp_error(&e))?;
-    if let Some(path) = lxapp.peek_current_page()
-        && let Some(page) = lxapp.get_page(&path)
-    {
-        page.wait_webview_ready()
-            .await
-            .map_err(|error| js_error_from_lxapp_error(&LxAppError::WebView(error)))?;
-    }
-    Ok(())
+    wait_current_ready(&lxapp).await
 }
 
 /// Clear the stack and start again at a page or tab. Every discarded page's
 /// result settles canceled.
-async fn reset(ctx: JSContext, target: JSValue) -> JSResult<()> {
+fn reset(ctx: JSContext, target: JSValue) -> JSResult<JSObject> {
     let lxapp = LxApp::from_ctx(&ctx)?;
     let target_url = match nav_target(&target).map_err(|e| js_error_from_lxapp_error(&e))? {
         NavTarget::Page { name, params } => configured_page_url(&lxapp, &name, params.as_ref())?,
@@ -479,10 +677,62 @@ async fn reset(ctx: JSContext, target: JSValue) -> JSResult<()> {
             return Err(js_invalid("reset takes a { page } or { tab } target"));
         }
     };
-    lxapp
-        .relaunch(&target_url)
-        .map(|_| ())
-        .map_err(|e| js_error_from_lxapp_error(&e))
+    queued(&ctx, &format!("reset:{target_url}"), move || async move {
+        lxapp
+            .relaunch(&target_url)
+            .map(|_| ())
+            .map_err(|e| js_error_from_lxapp_error(&e))
+    })
+}
+
+#[derive(FromJSObject)]
+#[ts_skip]
+struct CurrentEvent {
+    revision: u64,
+    current: JSValue,
+}
+
+/// `lx.nav.current.get()`: the main stack's top page as `{ page, params }`; `null` before the first.
+fn current_get(ctx: JSContext) -> JSResult<JSValue> {
+    let (_, current) = LxApp::from_ctx(&ctx)?.nav_current();
+    current.to_string().as_str().json_to_js_value(&ctx)
+}
+
+/// Follow `lx.nav.current`, starting with the current value: once per navigation.
+fn current_watch(ctx: JSContext, callback: JSFunc, options: Optional<JSValue>) -> JSResult<JSFunc> {
+    let scope = ctx.clone();
+    lxapp::lx::subscribe(&scope, options.0, move || {
+        let last_revision = Rc::new(std::cell::Cell::new(0u64));
+        let event_revision = last_revision.clone();
+        let event_callback = callback.clone();
+        let handler = JSFunc::new(&ctx, move |event: CurrentEvent| {
+            if event.revision <= event_revision.get() {
+                return;
+            }
+            event_revision.set(event.revision);
+            let _ = event_callback.call::<_, ()>(None, (event.current,));
+        })?;
+        // Register first, then snapshot: an event queued across this boundary carries a
+        // revision the snapshot already covers and is dropped.
+        let token = lxapp::register_app_handler(&ctx, lxapp::NAV_CURRENT_CHANGE_EVENT, handler)?;
+        let (revision, current) = LxApp::from_ctx(&ctx)?.nav_current();
+        if revision >= last_revision.get() {
+            last_revision.set(revision);
+            let value = current.to_string().as_str().json_to_js_value(&ctx)?;
+            let _ = callback.call::<_, ()>(None, (value,));
+        }
+        let off_ctx = ctx.clone();
+        let unsubscribed = std::cell::Cell::new(false);
+        JSFunc::new(&ctx, move || {
+            if !unsubscribed.replace(true) {
+                lxapp::unregister_app_handler_token(
+                    &off_ctx,
+                    lxapp::NAV_CURRENT_CHANGE_EVENT,
+                    token,
+                );
+            }
+        })
+    })
 }
 
 pub(crate) fn init(ctx: &JSContext) -> JSResult<()> {
@@ -496,6 +746,10 @@ fn nav_namespace(ctx: &JSContext) -> JSResult<JSObject> {
     namespace.set("go", JSFunc::new(ctx, go)?.name("go")?)?;
     namespace.set("back", JSFunc::new(ctx, back)?.name("back")?)?;
     namespace.set("reset", JSFunc::new(ctx, reset)?.name("reset")?)?;
+    let current = JSObject::new(ctx);
+    current.set("get", JSFunc::new(ctx, current_get)?.name("get")?)?;
+    current.set("watch", JSFunc::new(ctx, current_watch)?.name("watch")?)?;
+    namespace.set("current", current)?;
     namespace.set(
         "leaveApp",
         JSFunc::new(ctx, navigator::navigate_back_app)?.name("leaveApp")?,

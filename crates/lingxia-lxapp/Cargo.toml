@@ -121,3 +121,4 @@ tempfile = "3"
 # The rejection tracker's test runs on QuickJS, which reports rejections on every host.
 rong = { workspace = true, features = ["quickjs"] }
 lingxia-webview = { workspace = true, features = ["test-support"] }
+tokio = { workspace = true, features = ["test-util"] }

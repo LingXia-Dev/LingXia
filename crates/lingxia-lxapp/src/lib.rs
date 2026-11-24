@@ -29,6 +29,7 @@ pub mod lx;
 mod lxapp;
 mod native_authority;
 mod native_component;
+pub mod nav_queue;
 pub mod network_access;
 mod page;
 pub(crate) mod plugin;
@@ -52,8 +53,8 @@ pub const SDK_RUNTIME_VERSION: &str = env!("CARGO_PKG_VERSION");
 pub use appservice::PageSvc;
 pub use appservice::event_bus::{
     APPEARANCE_CHANGE_EVENT, BROWSER_TAB_CLOSED_EVENT, DISPLAY_LANGUAGE_CHANGE_EVENT,
-    DISPLAY_LANGUAGE_STATE_CHANGE_EVENT, HOST_APPEARANCE_CHANGE_EVENT, publish_app_event,
-    publish_page_event,
+    DISPLAY_LANGUAGE_STATE_CHANGE_EVENT, HOST_APPEARANCE_CHANGE_EVENT, NAV_CURRENT_CHANGE_EVENT,
+    publish_app_event, publish_page_event,
 };
 #[cfg(feature = "js-appservice")]
 pub use appservice::event_bus::{

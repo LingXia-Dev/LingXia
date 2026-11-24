@@ -41,8 +41,8 @@ type Hook = () => void | Promise<void>;
 /** What `onShow` receives. */
 export interface ShowOptions<Params> {
   /**
-   * The params of the `lx.nav.go({ tab, params })` that showed this tab page, on that show only
-   * (also when it was already the current tab); absent on every other show.
+   * The params this showing arrived with: an open, a tab switch or a reuse that carried params
+   * (also when the page was already on screen); absent on every other show.
    */
   readonly params?: Params;
 }
@@ -127,7 +127,7 @@ export interface PageApi<Data, Params, Result, Messages = never, Follow = {}> {
    * Throws while `setup` runs; call it from a hook or an action.
    */
   flush(): Promise<void>;
-  /** The params this instance was opened with. */
+  /** This instance's params: what it opened with, replaced by each showing that carries params. */
   readonly params: Params;
   /** This page's name in `lxapp.json`. */
   readonly name: string;
@@ -185,6 +185,11 @@ export interface PageApi<Data, Params, Result, Messages = never, Follow = {}> {
    * when the page unloads.
    */
   readonly env: Live<PageEnvContext>;
+  /**
+   * Whether the page is on screen: `onShow` and `onHide`, as a value. Already `true` as `setup`
+   * runs for a page that opens showing; `false` for a tab preloaded behind another.
+   */
+  readonly visible: Live<boolean>;
   /**
    * Run `fn` once after `ms`, shown or not; returns `stop()`. Stops when the page unloads, and does
    * not start after. A throw or rejection is reported as an unhandled failure.

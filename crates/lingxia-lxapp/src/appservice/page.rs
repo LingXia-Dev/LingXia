@@ -2020,12 +2020,14 @@ impl PageSvc {
         let definition_path =
             crate::resolve_page_path(&lxapp, path).unwrap_or_else(|| path.to_string());
         let gpu = lxapp.config().renderer == crate::PageRenderer::Gpu;
-        // `page.name` and `page.params`, which `setup` can read before onLoad.
+        // What `setup` reads before onLoad (`page.name`, `page.params`, `page.visible`), and
+        // whether the host is a dev build.
+        let instance = page_instance_id.and_then(|id| lxapp.get_page_by_instance_id_str(id));
         let identity = serde_json::json!({
             "name": lxapp.config().page_name_by_path(path),
-            "params": page_instance_id
-                .and_then(|id| lxapp.get_page_by_instance_id_str(id))
-                .map(|page| page.automation_state().query),
+            "params": instance.as_ref().map(|page| page.automation_state().query),
+            "visible": instance.as_ref().is_none_or(|page| page.opens_visible()),
+            "dev": cfg!(feature = "dev-bundles"),
         })
         .to_string();
 

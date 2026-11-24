@@ -179,7 +179,9 @@ impl LxAppDelegate for LxApp {
                     }
                 });
             }
+            page.mark_entering();
             let _ = self.push_to_page_stack(&page);
+            self.publish_current_page();
             // The landing page is the first entry. Handshake used to auto-boot
             // onLoad for every Idle page, which also fired it on preloaded
             // tabs the user had never opened.
@@ -231,6 +233,7 @@ impl LxAppDelegate for LxApp {
             // sits `unstarted` behind an attached but empty WebView — onLoad
             // is allowed to repeat for a re-navigation carrying new params.
             page.dispatch_lifecycle_event(PageLifecycleEvent::OnLoad);
+            self.publish_current_page();
         }
 
         // Ensure status reflects opened (both first open and reopen)

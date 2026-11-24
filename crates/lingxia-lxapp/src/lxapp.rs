@@ -1290,6 +1290,10 @@ pub struct LxApp {
     /// Whether `App.onLaunch` of the current Logic context has settled
     /// (returned, resolved or rejected). Reset whenever onLaunch is due again.
     pub(crate) launch_settled: tokio::sync::watch::Sender<bool>,
+    /// What `lx.nav.current` last reported; see `publish_current_page`.
+    pub(crate) nav_current: Mutex<page_instance_host::NavCurrent>,
+    /// The page stack's `lx.nav` operations, run one at a time in order.
+    pub nav_queue: Arc<crate::nav_queue::NavQueue>,
     admission: OnceLock<Arc<shutdown::Admission>>,
 
     // Mutable state - protected by mutex for fine-grained locking
@@ -2421,6 +2425,8 @@ impl LxApp {
             session,
             logic_contexts: tokio::sync::watch::channel(0).0,
             launch_settled: tokio::sync::watch::channel(false).0,
+            nav_current: Mutex::new(Default::default()),
+            nav_queue: Arc::default(),
             admission: OnceLock::new(),
             state: Mutex::new(LxAppState::new()),
             presentation_open_lock: Mutex::new(()),

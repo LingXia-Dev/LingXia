@@ -121,6 +121,7 @@ export default definePage({
 | `update(d => { d.count += 1; })` | The one way to change data. `page.data` changes at once; the View gets the changes once per turn. The recipe is synchronous and returns nothing: `await` first, then update. Throws inside another `update`; ignored after unload. |
 | `await flush()` | Resolves once every update so far reached the View; rejects if the page unloads first or a write was discarded. |
 | `params`, `name` | This instance's params, its page name. |
+| `visible` | `Live<boolean>` of `onShow`/`onHide`; already `true` in `setup` for a page that opens showing. |
 | `signal` | `AbortSignal` aborted as the page unloads, before `onUnload`. Pass it to work the page starts: `fetch(url, { signal: page.signal })`. |
 | `setResult(value)` / `close(value?)` | Return a JSON result to the opener. `close` also leaves: a pushed page goes back (top page only), a surface page closes its surface. The opener reads it from the handle's `result` (`lx.nav.go({ page })`, `lx.surface.openPage`): `{ status: 'ok', value }`, or `{ status: 'canceled', reason }` when the page left without one. |
 | `opener`, `surface` | The page that opened this one, or this page's surface; absent otherwise. |
@@ -132,7 +133,7 @@ Order across `App` and `Page`, and what each navigation fires: [Lifecycle](./lif
 | Hook | When it fires |
 | --- | --- |
 | `onLoad(options)` | Entering the page, with its query: each value keeps the JSON type it was passed with (`{ count: 3 }` arrives as `3`); validate what arrives from outside (an app link): it is usually strings. Non-string values are limited to 8 KB. |
-| `onShow({ params? })` | Becoming visible, on entry and every return. `params` only on the show a `go({ tab, params })` caused. |
+| `onShow({ params? })` | Becoming visible, on entry and every return. `params` only on the show a `go` with `params` caused: an open, a tab switch, a `reuse`. |
 | `onReady()` | The document finished rendering, after the first `onShow`. |
 | `onHide()` | Covered by another page, the lxapp went to the background, or the desktop aside it is docked in was collapsed. |
 | `onUnload()` | Left the stack (`lx.nav.back`, a replace, a tab switch that drops it, `lx.nav.reset`). |
@@ -367,14 +368,21 @@ await order.opened;                          // on screen; rejects if it could n
 const r = await order.result;                // { status: 'ok', value } | { status: 'canceled', reason }
 
 await lx.nav.go({ page: 'login' }, { replace: true }); // inherits this page's opener and result
+await lx.nav.go({ page: 'cart' }, { reuse: true }); // back to the open cart, or open one
 await lx.nav.go({ tab: 'profile' });
 await lx.nav.reset({ page: 'home' });        // new stack; discarded pages' results settle canceled
 await lx.nav.go({ app: 'lingxia-showcase-web', page: 'chat' });
 await lx.nav.leaveApp();                     // back to the lxapp that opened this one
 ```
 
-A tab's `params` reach its `onShow` for that switch only, also when it is already the current
-tab; read handoff data there (a tab not created yet also loads with them). A tab page cannot replace another page. `{ url }` opens the in-app browser and
+`reuse` goes to the topmost open instance, closing the pages above it as `back(n)` would; already
+on top, only `params` show it again. With none open it is a plain `go` (a replace with
+`replace: true`); with one open, `replace` is ignored. It returns no handle.
+`lx.nav.current` is a `Live` of the main stack's top page, `{ page, params } | null`.
+
+A page has one current `page.params`: a reuse or tab switch with `params` replaces it and hands it
+to that `onShow`; one without keeps it. A tab page cannot replace another page.
+Moves run one at a time in the order issued; past 8 waiting, another throws `E_INVALID_STATE`. `{ url }` opens the in-app browser and
 does not join the stack; `lx.openExternal(url)` hands a URL to the system.
 
 `lx.surface.openPage('detail', { as: 'float', params })` returns the same

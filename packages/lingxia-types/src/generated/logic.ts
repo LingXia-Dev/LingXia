@@ -156,6 +156,14 @@ export type PageTarget<N = ConfiguredPageName> = {
         params: NavParams<N>;
     });
 
+/** `lx.nav.current`: a page and its params, one member per configured page. */
+export type NavCurrent = { [N in ConfiguredPageName]: {
+    /** The page's name in `lxapp.json`. */
+    page: N;
+    /** The instance's current params. */
+    params: NavParams<N>;
+} }[ConfiguredPageName];
+
 /** A navigation target that switches to one of this lxapp's tabs. */
 export type TabTarget<N = TabName> = {
     /** A tab root of this lxapp. */
@@ -163,7 +171,7 @@ export type TabTarget<N = TabName> = {
     page?: never;
     app?: never;
     url?: never;
-    /** Handed to the tab page's `onShow` for this switch only; a tab not created yet also loads with them. */
+    /** The tab page's params from now on, handed to its `onShow` for this switch; a tab not created yet also loads with them. */
     params?: TabParams<N>;
 };
 
@@ -280,28 +288,45 @@ declare global {
   }
 
   /** `lx.nav`: move this lxapp's page stack, or leave it for a tab, another app or a URL. */
+  /**
+   * Stack moves (`go` to a page or tab, `back`, `reset`, a handle's `close`) run one at a time in
+   * the order issued, each on the stack the earlier ones left. A move identical to the one waiting
+   * just before it returns that move's handle or promise; one more past 8 waiting throws
+   * `E_INVALID_STATE`. Closing a page an earlier move closed does nothing.
+   */
   interface NavApi {
     /**
-     * Push a page. The handle is returned at once: `opened` settles when the
-     * page is on screen, and rejects only when the platform cannot show it;
-     * `result` settles when it leaves.
+     * Push a page. The handle is returned at once: `opened` settles when the page is on screen,
+     * `result` when it leaves.
      * @example
      * ```ts
      * const picker = lx.nav.go({ page: 'pick-contact' });
      * const contact = await picker.result;
      * ```
-     * @throws {E_INVALID_ARG} An unknown key, params over 8 KB as JSON, a tab already on the stack (`reason: 'tabAlreadyOpen'`), or ten pages stacked (`reason: 'stackFull'`).
+     * @throws {E_INVALID_ARG} An unknown key or params over 8 KB as JSON; `opened` rejects with it for a tab already on the stack (`reason: 'tabAlreadyOpen'`) or ten pages stacked (`reason: 'stackFull'`).
      * @throws {E_NOT_FOUND} A page the app does not declare.
+     * @throws {E_INVALID_STATE} 8 moves already waiting.
      */
     go<N extends ConfiguredPageName>(target: PageTarget<N>): PageHandle<NavResult<N>, NavMessages<N>>;
+    /** Back to the page's topmost open instance, or open it; settles once it is on screen. */
+    go<N extends ConfiguredPageName>(target: PageTarget<N>, options: {
+      /**
+       * Return to the topmost open instance: the pages above it close as `back(n)` closes them
+       * (`onUnload`, results canceled), and `params` become its params and reach the `onShow`
+       * that reveals it. Already on top: params show it again, none do nothing. With none open,
+       * a plain `go`. No handle: the instance keeps its opener.
+       */
+      reuse: true;
+      /** With no open instance, replace the current page instead of pushing; ignored when one is open. */
+      replace?: boolean;
+    }): Promise<void>;
     /** Replace the current page; the new page inherits its opener and pending result. */
     go<N extends ConfiguredPageName>(target: PageTarget<N>, options: {
       /** Replace instead of push. */
       replace: true;
     }): Promise<void>;
     /**
-     * Switch tabs. `params` reach the tab page's `onShow` for this switch only, also when it is
-     * the current tab; a tab not created yet also loads with them.
+     * Switch tabs; `params` become the tab's params and reach this switch's `onShow`.
      * @throws {E_NOT_FOUND} An undeclared tab.
      */
     go<T extends TabName>(target: TabTarget<T>): Promise<void>;
@@ -324,6 +349,16 @@ declare global {
      * @throws {E_INTERNAL} There is no lxapp to go back to, or it could not be shown.
      */
     leaveApp(): Promise<void>;
+    /**
+     * The page on top of this lxapp's main page stack, with its current params; `null` only
+     * before the first page. It changes once per navigation: a back over several pages reports
+     * where it lands. Narrow on `page` to get that page's params.
+     * @example
+     * ```ts
+     * lx.nav.current.watch((current) => console.log(current?.page));
+     * ```
+     */
+    readonly current: Live<NavCurrent | null>;
   }
 
   // HostAppApi/FileSystemApi members are emitted from the Rust js_api

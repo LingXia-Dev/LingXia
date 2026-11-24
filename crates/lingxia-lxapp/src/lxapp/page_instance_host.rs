@@ -459,9 +459,15 @@ impl LxApp {
                 .is_ok_and(|pins| pins.values().any(|pinned| pinned == id));
             (position, depth, pinned)
         };
-        match leave_refusal(position, depth, pinned) {
-            Some(detail) => Err(LxAppError::UnsupportedOperation(detail.to_string())),
-            None => self.current_page()?.navigate_back(1),
+        // Gone from the instance table, or unloaded and kept for a while.
+        let closed = position.is_none()
+            && self
+                .get_page_by_instance_id_str(id)
+                .is_none_or(|page| !page.owes_on_unload());
+        match leave_outcome(position, depth, pinned, closed) {
+            Leave::Back => self.current_page()?.navigate_back(1),
+            Leave::AlreadyClosed => Ok(()),
+            Leave::Refused(detail) => Err(LxAppError::UnsupportedOperation(detail.to_string())),
         }
     }
 
@@ -699,14 +705,14 @@ impl LxApp {
     pub fn get_or_create_page(&self, url: &str) -> PageInstance {
         let resolved = self.resolve_entry_route(url);
         let path = resolved.internal_path();
-        // A cached instance serves every URL on its route. Every requested URL
-        // must therefore replace the cached query, including the empty query;
-        // if it only updates on `Some`, a later `/page` navigation incorrectly
-        // inherits state from an earlier `/page?mode=...` visit.
+        // A cached instance serves every URL on its route, so a requested URL replaces its query,
+        // the empty one included. A tab keeps its params through a switch that carries none.
         let query = resolved.query.unwrap_or_default();
 
         if let Some(page) = self.get_page(&path) {
-            page.set_query(query);
+            if !(query.is_empty() && page.is_tabbar_page()) {
+                page.set_query(query);
+            }
             return page;
         }
 
@@ -743,6 +749,12 @@ impl LxApp {
     /// a fresh instance — two stack entries never share one — which is what
     /// lets the same route appear on the stack twice.
     pub fn create_page_for_entry(&self, url: &str) -> PageInstance {
+        let page = self.resolve_page_for_entry(url);
+        page.mark_entering();
+        page
+    }
+
+    fn resolve_page_for_entry(&self, url: &str) -> PageInstance {
         let resolved = self.resolve_entry_route(url);
         let path = resolved.internal_path();
         let query = resolved.query.unwrap_or_default();
@@ -773,6 +785,7 @@ impl LxApp {
         self.pin_if_tabbar_page(&page, &path);
         self.evict_inactive_pages_if_needed();
         page.set_query(query);
+        page.mark_entering();
         self.start_page_instance(&page);
         page
     }
@@ -1298,6 +1311,118 @@ impl LxApp {
         self.executor
             .call_app_service_event(self.clone_arc(), event, payload_json)
     }
+    /// Back to the topmost instance of `url`'s page on the stack, closing the pages above it as
+    /// a back by that many does (their results settle canceled); `url`'s params become its
+    /// params and reach the `onShow` that reveals it. `false` when no instance is on the stack:
+    /// the caller opens one.
+    pub fn reuse_page(&self, url: &str) -> Result<bool, LxAppError> {
+        let resolved = self.resolve_entry_route(url);
+        let path = resolved.internal_path().to_string();
+        let pages = self.get_page_stack_pages();
+        let paths: Vec<String> = pages.iter().map(|page| page.path()).collect();
+        let params = crate::startup::parse_query_string(&resolved.query.unwrap_or_default())
+            .ok()
+            .filter(|params| params.as_object().is_some_and(|p| !p.is_empty()));
+        let Some(plan) = reuse_plan(&paths, &path, params.is_some()) else {
+            return Ok(false);
+        };
+        let target = &pages[pages.len() - 1 - plan.depth()];
+        target.hand_off(params);
+        match plan {
+            ReusePlan::Stay => {}
+            ReusePlan::ShowAgain => {
+                target.dispatch_lifecycle_event(crate::lifecycle::PageLifecycleEvent::OnShow);
+                self.publish_current_page();
+            }
+            ReusePlan::Back(depth) => self.current_page()?.navigate_back(depth as u32)?,
+        }
+        Ok(true)
+    }
+
+    /// Report the stack top to `lx.nav.current` when it changed. Called once at the end of each
+    /// navigation, so a back over several pages reports only where it lands.
+    pub(crate) fn publish_current_page(&self) {
+        let Ok(top) = self.current_page() else {
+            return;
+        };
+        let instance = top.instance_id_string();
+        let value = serde_json::json!({
+            "page": self.config().page_name_by_path(&top.path()),
+            "params": top.automation_state().query,
+        });
+        let revision = {
+            let mut current = self.nav_current.lock().unwrap_or_else(|e| e.into_inner());
+            if !current.update(instance, value.clone()) {
+                return;
+            }
+            current.revision
+        };
+        crate::publish_app_event(
+            &self.appid,
+            crate::NAV_CURRENT_CHANGE_EVENT,
+            Some(serde_json::json!({ "revision": revision, "current": value }).to_string()),
+        );
+    }
+
+    /// `lx.nav.current` as last reported, with its revision; `null` before the first page.
+    pub fn nav_current(&self) -> (u64, serde_json::Value) {
+        let current = self.nav_current.lock().unwrap_or_else(|e| e.into_inner());
+        (
+            current.revision,
+            current.value.clone().unwrap_or(serde_json::Value::Null),
+        )
+    }
+}
+
+/// What `lx.nav.current` last reported.
+#[derive(Debug, Default)]
+pub(crate) struct NavCurrent {
+    revision: u64,
+    instance: Option<String>,
+    value: Option<serde_json::Value>,
+}
+
+impl NavCurrent {
+    /// Record the stack top; true when it differs from the last one reported.
+    fn update(&mut self, instance: String, value: serde_json::Value) -> bool {
+        if self.instance.as_deref() == Some(instance.as_str())
+            && self.value.as_ref() == Some(&value)
+        {
+            return false;
+        }
+        self.instance = Some(instance);
+        self.value = Some(value);
+        self.revision += 1;
+        true
+    }
+}
+
+#[derive(Debug, PartialEq)]
+enum ReusePlan {
+    /// Already on top and no params: nothing moves and nothing is shown.
+    Stay,
+    /// Already on top with params: shown again with them, without a navigation.
+    ShowAgain,
+    /// Close this many pages above it.
+    Back(usize),
+}
+
+impl ReusePlan {
+    fn depth(&self) -> usize {
+        match self {
+            Self::Stay | Self::ShowAgain => 0,
+            Self::Back(depth) => *depth,
+        }
+    }
+}
+
+/// How a reuse reaches the topmost stack entry on `path`; `None` when none is on the stack.
+fn reuse_plan(stack_paths: &[String], path: &str, carries_params: bool) -> Option<ReusePlan> {
+    match stack_paths.iter().rev().position(|entry| entry == path)? {
+        0 if carries_params => Some(ReusePlan::ShowAgain),
+        0 => Some(ReusePlan::Stay),
+        depth => Some(ReusePlan::Back(depth)),
+    }
 }
 
 fn isolated_page_waits_for_page_service(logic_enabled: bool) -> bool {
@@ -1388,23 +1513,34 @@ fn plugin_page_map_contains(
 
 /// Why a page at `position` on a stack `depth` deep cannot close itself. A tab
 /// page pushed over the root pops like any other page.
-fn leave_refusal(position: Option<usize>, depth: usize, pinned: bool) -> Option<&'static str> {
+#[derive(Debug, PartialEq)]
+enum Leave {
+    Back,
+    /// An earlier navigation closed it, so its result is settled; closing again does nothing.
+    AlreadyClosed,
+    Refused(&'static str),
+}
+
+fn leave_outcome(position: Option<usize>, depth: usize, pinned: bool, closed: bool) -> Leave {
     match position {
-        None | Some(0) if pinned => Some("a tab page cannot be closed; switch tabs instead"),
-        None => Some("this page is not on the page stack"),
-        Some(0) => Some("the root page cannot be closed"),
-        Some(index) if index + 1 != depth => {
-            Some("only the top page can close itself; a page under it cannot yet")
+        None | Some(0) if pinned => {
+            Leave::Refused("a tab page cannot be closed; switch tabs instead")
         }
-        Some(_) => None,
+        None if closed => Leave::AlreadyClosed,
+        None => Leave::Refused("this page is not on the page stack"),
+        Some(0) => Leave::Refused("the root page cannot be closed"),
+        Some(index) if index + 1 != depth => {
+            Leave::Refused("only the top page can close itself; a page under it cannot yet")
+        }
+        Some(_) => Leave::Back,
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::{
-        PAGE_STACK_MAX, PageInstanceLifecycleState, effective_page_instance_lifecycle,
-        find_matching_page_path, isolated_page_waits_for_page_service, leave_refusal,
+        Leave, PAGE_STACK_MAX, PageInstanceLifecycleState, effective_page_instance_lifecycle,
+        find_matching_page_path, isolated_page_waits_for_page_service, leave_outcome,
         validate_navigation_stack,
     };
     use crate::NavigationType;
@@ -1513,12 +1649,85 @@ mod tests {
     }
 
     #[test]
+    fn reuse_returns_to_the_topmost_instance_of_the_page() {
+        use super::{ReusePlan, reuse_plan};
+        let stack: Vec<String> = [
+            "pages/home",
+            "pages/cart",
+            "pages/item",
+            "pages/cart",
+            "pages/pay",
+        ]
+        .into_iter()
+        .map(str::to_string)
+        .collect();
+        assert_eq!(
+            reuse_plan(&stack, "pages/cart", false),
+            Some(ReusePlan::Back(1)),
+            "the upper of two, one page above it"
+        );
+        assert_eq!(
+            reuse_plan(&stack, "pages/home", true),
+            Some(ReusePlan::Back(4))
+        );
+        assert_eq!(
+            reuse_plan(&stack, "pages/other", true),
+            None,
+            "none open: a plain go"
+        );
+    }
+
+    #[test]
+    fn reusing_the_top_page_shows_it_again_only_with_params() {
+        use super::{ReusePlan, reuse_plan};
+        let stack = vec!["pages/home".to_string(), "pages/pay".to_string()];
+        assert_eq!(
+            reuse_plan(&stack, "pages/pay", true),
+            Some(ReusePlan::ShowAgain)
+        );
+        assert_eq!(
+            reuse_plan(&stack, "pages/pay", false),
+            Some(ReusePlan::Stay)
+        );
+    }
+
+    #[test]
+    fn nav_current_changes_once_per_landing() {
+        let mut current = super::NavCurrent::default();
+        let at = |page: &str, id: &str| serde_json::json!({ "page": page, "params": { "id": id } });
+        assert!(current.update("a".into(), at("home", "1")));
+        assert_eq!(current.revision, 1);
+        // The same instance and params again (a second report of one navigation): no change.
+        assert!(!current.update("a".into(), at("home", "1")));
+        // Replacing a page with itself and new params is a change.
+        assert!(current.update("a".into(), at("home", "2")));
+        // Another instance of the same page with the same params is a change too.
+        assert!(current.update("b".into(), at("home", "2")));
+        assert_eq!(current.revision, 3);
+    }
+
+    #[test]
     fn a_tab_page_pushed_over_the_root_closes_but_not_as_the_root() {
-        assert!(leave_refusal(Some(0), 1, true).is_some_and(|why| why.contains("tab page")));
-        assert!(leave_refusal(None, 1, true).is_some_and(|why| why.contains("tab page")));
-        assert_eq!(leave_refusal(Some(1), 2, true), None);
-        assert_eq!(leave_refusal(Some(1), 2, false), None);
-        assert!(leave_refusal(Some(1), 3, true).is_some());
-        assert!(leave_refusal(Some(0), 2, false).is_some());
+        let refused = |outcome| matches!(outcome, Leave::Refused(_));
+        assert!(
+            matches!(leave_outcome(Some(0), 1, true, false), Leave::Refused(why) if why.contains("tab page"))
+        );
+        assert!(
+            matches!(leave_outcome(None, 1, true, false), Leave::Refused(why) if why.contains("tab page"))
+        );
+        assert_eq!(leave_outcome(Some(1), 2, true, false), Leave::Back);
+        assert_eq!(leave_outcome(Some(1), 2, false, false), Leave::Back);
+        assert!(refused(leave_outcome(Some(1), 3, true, false)));
+        assert!(refused(leave_outcome(Some(0), 2, false, false)));
+    }
+
+    #[test]
+    fn closing_a_page_an_earlier_navigation_closed_does_nothing() {
+        assert_eq!(leave_outcome(None, 1, false, true), Leave::AlreadyClosed);
+        // Never on this stack (a surface's page) is still refused.
+        assert!(matches!(
+            leave_outcome(None, 1, false, false),
+            Leave::Refused(_)
+        ));
     }
 }

@@ -303,6 +303,8 @@ pub struct PageState {
     pub(crate) query: serde_json::Value,
     /// The params of the tab switch that showed this page; its next `onShow` takes them, once.
     handoff: Option<serde_json::Value>,
+    /// A navigation is bringing this instance on screen; `page.visible` starts true.
+    entering: bool,
 }
 
 impl PageState {
@@ -565,6 +567,7 @@ impl PageInstance {
             dev_hold_first_state: page_config.dev_hold_first_state,
             query: serde_json::json!({}),
             handoff: None,
+            entering: false,
         }
     }
 
@@ -1564,12 +1567,25 @@ impl PageInstance {
 
     /// A tab switch: its params are this page's handoff, never its entry query, so no later
     /// `onLoad` or `onShow` sees them again. A switch without params clears one still owed.
-    fn arm_handoff(state: &mut PageState) {
-        let query = std::mem::replace(&mut state.query, serde_json::json!({}));
-        state.handoff = query
+    /// A push or replace with params: the entry's first `onShow` gets them too, once; the query
+    /// stays for `onLoad` and `page.params`.
+    fn arm_entry_handoff(state: &mut PageState) {
+        state.handoff = state
+            .query
             .as_object()
             .is_some_and(|params| !params.is_empty())
-            .then_some(query);
+            .then(|| state.query.clone());
+    }
+
+    /// A tab switch: params it carried are the instance's params from now on and reach the show
+    /// it causes; a switch without params leaves them and withdraws any not yet shown.
+    fn arm_handoff(state: &mut PageState, carried: bool) {
+        state.handoff = (carried
+            && state
+                .query
+                .as_object()
+                .is_some_and(|params| !params.is_empty()))
+        .then(|| state.query.clone());
     }
 
     fn collect_hidden_or_unloaded_lifecycle_event(
@@ -2741,7 +2757,12 @@ impl PageInstance {
         let already_shown =
             nav_type == NavigationType::SwitchTab && target_page.inner.id == self.inner.id;
         if is_tab_switch && let Ok(mut state) = target_page.inner.state.lock() {
-            Self::arm_handoff(&mut state);
+            let carried = requested_url.contains('?');
+            Self::arm_handoff(&mut state, carried);
+        } else if matches!(nav_type, NavigationType::Forward | NavigationType::Replace)
+            && let Ok(mut state) = target_page.inner.state.lock()
+        {
+            Self::arm_entry_handoff(&mut state);
         }
 
         // 3. Handle UI state based on navigation type (TabBar, NavBar)
@@ -2813,6 +2834,7 @@ impl PageInstance {
             .map_err(LxAppError::from)?;
 
         lxapp.sync_host_ui();
+        lxapp.publish_current_page();
 
         // Do not dispatch OnReady here. WebViewDelegate::on_page_finished() will do it.
 
@@ -2876,6 +2898,7 @@ impl PageInstance {
             dest.dispatch_lifecycle_event(PageLifecycleEvent::OnShow);
             dest.mark_active();
             lxapp.sync_host_ui();
+            lxapp.publish_current_page();
             Ok(())
         } else {
             Err(LxAppError::UnsupportedOperation(
@@ -2888,6 +2911,46 @@ impl PageInstance {
         if let Ok(query_value) = parse_query_string(&query_str) {
             self.inner.state.lock().unwrap().query = query_value;
         }
+    }
+
+    /// A navigation is bringing this instance on screen.
+    pub fn mark_entering(&self) {
+        if let Ok(mut state) = self.inner.state.lock() {
+            state.entering = true;
+        }
+    }
+
+    /// Whether Logic's first view of this page is on screen: an entry in progress, the stack
+    /// top, or a surface's own page. A preloaded tab is not.
+    pub(crate) fn opens_visible(&self) -> bool {
+        let entering = self
+            .inner
+            .state
+            .lock()
+            .map(|mut state| std::mem::take(&mut state.entering))
+            .unwrap_or(false);
+        entering
+            || self.is_isolated()
+            || self
+                .owning_lxapp()
+                .current_page()
+                .is_ok_and(|top| top.inner.id == self.inner.id)
+    }
+
+    /// A reuse showing this instance again: params it carried replace the instance's params and
+    /// reach that show; without params the instance keeps its own and the show carries none.
+    pub(crate) fn hand_off(&self, params: Option<serde_json::Value>) {
+        if let Ok(mut state) = self.inner.state.lock() {
+            Self::arm_reuse(&mut state, params);
+        }
+    }
+
+    fn arm_reuse(state: &mut PageState, params: Option<serde_json::Value>) {
+        let params = params.filter(|params| params.as_object().is_some_and(|p| !p.is_empty()));
+        if let Some(params) = &params {
+            state.query = params.clone();
+        }
+        state.handoff = params;
     }
 
     /// Call a JavaScript function in the page's logic service
@@ -3245,6 +3308,7 @@ mod tests {
             dev_hold_first_state: false,
             query: serde_json::json!({}),
             handoff: None,
+            entering: false,
         }
     }
 
@@ -3475,10 +3539,14 @@ mod tests {
             .collect()
     }
 
-    /// A tab switch, as navigation resolves it: the URL's params become the query, then the handoff.
+    /// A tab switch, as navigation resolves it: params it carries replace the instance's, then arm
+    /// the handoff.
     fn switch_tab(state: &mut PageState, params: Option<serde_json::Value>) {
-        state.query = params.unwrap_or_else(|| serde_json::json!({}));
-        PageInstance::arm_handoff(state);
+        let carried = params.is_some();
+        if let Some(params) = params {
+            state.query = params;
+        }
+        PageInstance::arm_handoff(state, carried);
     }
 
     fn handed(params: &str) -> Vec<Option<String>> {
@@ -3550,9 +3618,10 @@ mod tests {
     fn reselecting_a_tab_without_params_shows_it_without_params() {
         for (label, mut state) in tabs() {
             switch_and_show(&mut state, label);
-            // Away to another tab and back, without params.
+            // Away to another tab and back, without params: it keeps the ones it has.
             step(&mut state, PageLifecycleEvent::OnHide);
             switch_tab(&mut state, None);
+            assert_eq!(state.query, serde_json::json!({ "item": "7" }), "{label}");
             assert_eq!(
                 shows(&step(&mut state, PageLifecycleEvent::OnShow)),
                 vec![None],
@@ -3569,14 +3638,18 @@ mod tests {
 
     #[test]
     fn a_switch_with_params_hands_them_over_only_on_the_switch_it_was_made_by() {
-        // Params owed to a tab that is not on screen yet: a later switch without params withdraws them.
+        // A later switch without params withdraws the show they were owed; they stay the tab's params.
         for (label, mut state) in tabs() {
             switch_tab(&mut state, Some(serde_json::json!({ "item": "7" })));
             switch_tab(&mut state, None);
+            assert_eq!(state.query, serde_json::json!({ "item": "7" }), "{label}");
             if PageInstance::switch_tab_should_request_on_load(state.entry) {
                 assert_eq!(
                     step(&mut state, PageLifecycleEvent::OnLoad),
-                    vec![(PageLifecycleEvent::OnLoad, Some("{}".to_string()))]
+                    vec![(
+                        PageLifecycleEvent::OnLoad,
+                        Some(r#"{"item":"7"}"#.to_string())
+                    )]
                 );
             }
             assert_eq!(
@@ -3606,8 +3679,91 @@ mod tests {
         }
     }
 
+    /// A pushed page with params, as navigation resolves it, then shown.
+    fn push_with(
+        state: &mut PageState,
+        params: serde_json::Value,
+    ) -> Vec<(PageLifecycleEvent, Option<String>)> {
+        state.bridge_ready = true;
+        state.render_status = PageRenderStatus::Finished;
+        state.query = params;
+        PageInstance::arm_entry_handoff(state);
+        let mut events = step(state, PageLifecycleEvent::OnLoad);
+        events.extend(step(state, PageLifecycleEvent::OnShow));
+        events
+    }
+
     #[test]
-    fn a_new_document_does_not_load_a_tab_with_params_it_already_had() {
+    fn a_page_opened_with_params_gets_them_on_its_first_show_only() {
+        let mut state = test_page_state();
+        let events = push_with(&mut state, serde_json::json!({ "id": "7" }));
+        assert_eq!(
+            events[0],
+            (
+                PageLifecycleEvent::OnLoad,
+                Some(r#"{"id":"7"}"#.to_string())
+            )
+        );
+        assert_eq!(shows(&events), handed(r#"{"id":"7"}"#));
+        // A page above it closes, the app returns to the front: no params again.
+        step(&mut state, PageLifecycleEvent::OnHide);
+        assert_eq!(
+            shows(&step(&mut state, PageLifecycleEvent::OnShow)),
+            vec![None]
+        );
+        assert_eq!(
+            state.query,
+            serde_json::json!({ "id": "7" }),
+            "page.params keeps them"
+        );
+    }
+
+    #[test]
+    fn a_page_opened_without_params_shows_without_them() {
+        let mut state = test_page_state();
+        let events = push_with(&mut state, serde_json::json!({}));
+        assert_eq!(shows(&events), vec![None]);
+    }
+
+    #[test]
+    fn a_reuse_with_params_replaces_the_instance_params_and_shows_with_them_once() {
+        let mut state = test_page_state();
+        push_with(&mut state, serde_json::json!({ "id": "1" }));
+        step(&mut state, PageLifecycleEvent::OnHide);
+        PageInstance::arm_reuse(&mut state, Some(serde_json::json!({ "id": "2" })));
+        assert_eq!(
+            shows(&step(&mut state, PageLifecycleEvent::OnShow)),
+            handed(r#"{"id":"2"}"#)
+        );
+        assert_eq!(
+            state.query,
+            serde_json::json!({ "id": "2" }),
+            "every reader sees the new params"
+        );
+        // Equal params are still a showing with params: the caller asked for this showing.
+        PageInstance::arm_reuse(&mut state, Some(serde_json::json!({ "id": "2" })));
+        assert_eq!(
+            shows(&step(&mut state, PageLifecycleEvent::OnShow)),
+            handed(r#"{"id":"2"}"#)
+        );
+        assert!(step(&mut state, PageLifecycleEvent::OnShow).is_empty());
+    }
+
+    #[test]
+    fn a_reuse_without_params_keeps_the_instance_params_and_shows_without_any() {
+        let mut state = test_page_state();
+        push_with(&mut state, serde_json::json!({ "id": "1" }));
+        step(&mut state, PageLifecycleEvent::OnHide);
+        PageInstance::arm_reuse(&mut state, None);
+        assert_eq!(
+            shows(&step(&mut state, PageLifecycleEvent::OnShow)),
+            vec![None]
+        );
+        assert_eq!(state.query, serde_json::json!({ "id": "1" }));
+    }
+
+    #[test]
+    fn a_new_document_loads_a_tab_with_its_current_params() {
         let [(_, mut state), _] = tabs();
         switch_and_show(&mut state, "not created");
         PageInstance::reset_webview_lifecycle_state(&mut state);
@@ -3616,7 +3772,10 @@ mod tests {
         let events = step(&mut state, PageLifecycleEvent::OnLoad);
         assert_eq!(
             events[0],
-            (PageLifecycleEvent::OnLoad, Some("{}".to_string()))
+            (
+                PageLifecycleEvent::OnLoad,
+                Some(r#"{"item":"7"}"#.to_string())
+            )
         );
         assert_eq!(shows(&events), vec![None]);
     }
