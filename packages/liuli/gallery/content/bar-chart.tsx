@@ -1,5 +1,5 @@
 // Generated from the doc file by scripts/generate.mjs; do not edit.
-import { Orders, Grouped, Signed, Month, Sizes, StateSelected, StateLoading, StateEmpty, StateError } from '../../charts/src/BarChart/BarChart.examples';
+import { Orders, Grouped, Signed, Month, Target, Sizes, StateSelected, StateLoading, StateEmpty, StateError } from '../../charts/src/BarChart/BarChart.examples';
 import { Lead, PageSection, Stage, StageGrid } from '../shared/Layout';
 
 export function Content() {
@@ -17,6 +17,9 @@ export function Content() {
         </Stage>
         <Stage caption={"Thirty bars: narrower, with the labels that fit"}>
           <Month />
+        </Stage>
+        <Stage caption={"A target and an average, their labels clear of the figures"}>
+          <Target />
         </Stage>
       </PageSection>
       <PageSection title={"Sizes"}>

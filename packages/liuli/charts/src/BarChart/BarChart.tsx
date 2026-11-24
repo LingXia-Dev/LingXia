@@ -1,8 +1,9 @@
 import { cx, useBox, type PointerEvent, type VectorPath } from '@lingxia/view';
-import { Chart, ChartLegend, ChartReadout, type ChartLegendPosition, type ChartField, type ChartRecord, type ChartRow, type ChartSeries, type ChartSize, type ChartSummarize } from '../Chart/Chart';
+import { Chart, ChartLegend, ChartReadout, type ChartLegendPosition, type ChartField, type ChartRecord, type ChartReference, type ChartRow, type ChartSeries, type ChartSize, type ChartSummarize } from '../Chart/Chart';
 import { colorOf, keyOf, numberOf, plain, roleOf, seriesFacts, seriesOf, textOf, type ChartColor } from '../internal/data';
 import { leftPressed, pressed, pressedIndex, pressedKey, scrubbing } from '../internal/gesture';
 import { box, indexAt, roundUp } from '../internal/geometry';
+import { ReferenceLabels, ReferenceReading, referencePath, useReferences } from '../internal/References';
 import { Ticks } from '../internal/Ticks';
 import { laidOutOnce, remember } from '../internal/memo';
 import { barChartRecipe as r } from './BarChart.recipe';
@@ -54,6 +55,11 @@ export interface BarChartProps<Row extends ChartRecord<Row> = ChartRow> {
   hiddenSeries?: readonly string[];
   /** Makes each legend entry a button that shows or hides its series. */
   onHiddenSeriesChange?: (fields: readonly string[]) => void;
+  /**
+   * Levels drawn across the plot as dashed lines, each named at the end edge with its value: a target,
+   * a limit. The range widens to hold them. @default []
+   */
+  references?: readonly ChartReference[];
   /** Widens the value range downward; zero is always in range. */
   domainMin?: number;
   /** Widens the value range upward, so charts that are compared share a scale. */
@@ -131,11 +137,12 @@ function barPaths(
 /** Amounts by category, as bars that stand on a zero line. */
 export function BarChart<Row extends ChartRecord<Row>>({
   rows, x, y, keyField, label, title, description, formatValue: format, summarize, xLabels, valueLabels = 'auto', legend = 'bottom', legendLabel,
-  value: selectedKey, onChange: onSelect, hiddenSeries = [], onHiddenSeriesChange, domainMin, domainMax, size = 'md',
+  value: selectedKey, onChange: onSelect, hiddenSeries = [], onHiddenSeriesChange, references: given = [], domainMin, domainMax, size = 'md',
   isLoading = false, error, emptyLabel, emptyHint, onRetry, retryLabel, className, 'data-testid': testId,
 }: BarChartProps<Row>) {
   const data: readonly ChartRow[] = rows;
   const formatValue = format ?? plain;
+  const references = given.filter(each => Number.isFinite(each.value));
   const all = seriesOf(y).map((series, index) => ({ ...series, color: colorOf(index, series.color) }));
   const shown = all.filter(series => !hiddenSeries.includes(series.field));
   const facts = shown.flatMap(series => seriesFacts(data, x, series, formatValue) ?? []);
@@ -152,7 +159,8 @@ export function BarChart<Row extends ChartRecord<Row>>({
   const scale = isNone ? 'none' : isFigured && !isCrowded ? 'each' : 'ends';
   // The figures' line is as tall as a figure, so a large one still sits on its bar.
   const lane = Math.max(figureLine, Math.ceil(widest.value?.height ?? 0));
-  const reach = [Math.max(0, domainMax ?? 0, ...values), Math.max(0, -(domainMin ?? 0), ...values.map(value => -value))];
+  const levels = references.map(each => each.value);
+  const reach = [Math.max(0, domainMax ?? 0, ...values, ...levels), Math.max(0, -(domainMin ?? 0), ...[...values, ...levels].map(value => -value))];
   // With the ends of the scale written out, the plot's edges are round numbers.
   const [high, depth] = scale === 'ends' ? reach.map(roundUp) : reach;
   const isSigned = depth > 0;
@@ -238,6 +246,20 @@ export function BarChart<Row extends ChartRecord<Row>>({
   // The marks are the scale's box: the corner's stroke stands past it at the bars' free ends, and the figures' lines lie outside it.
   const clear = scale === 'each' ? lane : 0;
   const markBox = { top: clear + corner, bottom: isSigned ? clear + corner : 0 };
+  const span = high + depth > 0 ? high + depth : 1;
+  const fall = (value: number) => (high - value) / span;
+  const plotSize = plot.value;
+  const down = (value: number) => markBox.top + fall(value) * ((plotSize?.height ?? 0) - markBox.top - markBox.bottom);
+  // The figures over the bars are taken; a reference label goes round them.
+  const figures = scale === 'each' && shown.length === 1 && plotSize ? data.flatMap((each, index) => {
+    const value = numberOf(each, shown[0].field);
+    if (!Number.isFinite(value)) return [];
+    const [middle, y] = [(index + 0.5) * (plotSize.width / data.length), down(grown ? value : 0)];
+    const [top, bottom] = value < 0 ? [y, y + lane + corner] : [y - lane - corner, y];
+    return [{ start: middle - figureWidth / 2, end: middle + figureWidth / 2, top, bottom }];
+  }) : [];
+  const refs = useReferences(references, formatValue, down, plotSize, figures);
+  const referenceLines = references.map((each, index) => referencePath(index, Math.round(fall(each.value) * box * 100) / 100, 0, box));
 
   const row = (which: 'all' | 'ends', className: string) => (which === 'all' ? (
     <view className={cx(className, r.labels.all)}>
@@ -301,7 +323,10 @@ export function BarChart<Row extends ChartRecord<Row>>({
           {drawing(paths.full, false)}
           {drawing(paths.dimmed, true)}
           <view className={cx(r.zero.base, r.motion.base)} style={{ translate: [0, `${zero}%`] }}><view className={r.baseline.base} /></view>
+          {referenceLines.length > 0 && <vector paths={referenceLines} viewBox={[0, 0, box, box]} className={cx(r.drawing.base, r.motion.base)} />}
+          <ReferenceLabels texts={refs.texts} places={refs.places} shares={references.map(each => fall(each.value) * 100)} />
         </view>
+        {refs.ghost}
         <view
           role={isPressable ? undefined : 'list'}
           aria-label={isPressable ? undefined : label}
@@ -311,6 +336,7 @@ export function BarChart<Row extends ChartRecord<Row>>({
         >
           {slots}
         </view>
+        <ReferenceReading texts={refs.texts} />
       </view>
       {scale === 'ends' && isSigned && <text aria-hidden className={r.scale.base}>{formatValue(-depth)}</text>}
     </Chart>

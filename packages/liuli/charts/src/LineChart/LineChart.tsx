@@ -1,8 +1,9 @@
 import { cx, useBox, type Child, type PointerEvent, type VectorPath } from '@lingxia/view';
-import { Chart, ChartLegend, ChartReadout, type ChartLegendPosition, type ChartField, type ChartRecord, type ChartRow, type ChartSeries, type ChartSize, type ChartSummarize } from '../Chart/Chart';
+import { Chart, ChartLegend, ChartReadout, type ChartLegendPosition, type ChartField, type ChartRecord, type ChartReference, type ChartRow, type ChartSeries, type ChartSize, type ChartSummarize } from '../Chart/Chart';
 import { colorOf, keyOf, numberOf, plain, roleOf, seriesFacts, seriesOf, textOf } from '../internal/data';
 import { pressed, pressedKey, scrubbing } from '../internal/gesture';
 import { box, closed, domain, dot, indexAt, monotone, niceTicks, polyline, reach, runs, scaleY, thin, type Point } from '../internal/geometry';
+import { ReferenceLabels, ReferenceReading, referencePath, useReferences } from '../internal/References';
 import { Ticks } from '../internal/Ticks';
 import { laidOutOnce, remember } from '../internal/memo';
 import { lineChartRecipe as r } from './LineChart.recipe';
@@ -63,6 +64,11 @@ export interface LineChartProps<Row extends ChartRecord<Row> = ChartRow> {
   hiddenSeries?: readonly string[];
   /** Makes each legend entry a button that shows or hides its series. */
   onHiddenSeriesChange?: (fields: readonly string[]) => void;
+  /**
+   * Levels drawn across the plot as dashed lines, each named at the end edge with its value: a target,
+   * an average. The range widens to hold them. @default []
+   */
+  references?: readonly ChartReference[];
   /** Widens the value range downward. A line fits its data; an area starts from zero. */
   domainMin?: number;
   /** Widens the value range upward, so charts that are compared share a scale. */
@@ -101,17 +107,18 @@ const maxRead = 60;
 export function LineChart<Row extends ChartRecord<Row>>({
   rows, x, y, keyField, label, title, description, formatValue: format, summarize, isSmooth = false, hasArea = false,
   hasScale, hasEndLabel = false, hasEndDot = hasEndLabel, xLabels, legend = 'bottom', legendLabel, value: selectedKey, onChange: onSelect, hiddenSeries = [], onHiddenSeriesChange,
-  domainMin, domainMax, size = 'md', isLoading = false, error, emptyLabel, emptyHint, onRetry, retryLabel, className, 'data-testid': testId,
+  references: given = [], domainMin, domainMax, size = 'md', isLoading = false, error, emptyLabel, emptyHint, onRetry, retryLabel, className, 'data-testid': testId,
 }: LineChartProps<Row>) {
   const data: readonly ChartRow[] = rows;
   const formatValue = format ?? plain;
+  const references = given.filter(each => Number.isFinite(each.value));
   const all = seriesOf(y).map((series, index) => ({ ...series, color: colorOf(index, series.color), dash: dashes[index % dashes.length] }));
   const shown = all.filter(series => !hiddenSeries.includes(series.field));
   const facts = shown.flatMap(series => seriesFacts(data, x, series, formatValue) ?? []);
   const columns = shown.map(series => data.map(row => numberOf(row, series.field)));
   const isArea = hasArea && shown.length === 1;
   const isScaled = hasScale ?? size !== 'xs';
-  const fitted = domain(columns.flat(), isArea, domainMin, domainMax);
+  const fitted = domain([...columns.flat(), ...references.map(each => each.value)], isArea, domainMin, domainMax);
   // With the scale written out, the plot's lines sit on round numbers: fewer of them in a short plot.
   const scaled = isScaled && facts.length ? niceTicks(fitted, size === 'sm' ? 2 : 4) : undefined;
   const range = scaled?.range ?? fitted;
@@ -170,6 +177,9 @@ export function LineChart<Row extends ChartRecord<Row>>({
   // side that has one: a dot on the first, last, highest or lowest value is whole.
   const plot = useBox('plot');
   const frame = reach(plot.value?.width ?? 300, plot.value?.height ?? heights[size], edge, isArea ? 0 : edge);
+  const foot = isArea ? 0 : edge;
+  const refs = useReferences(references, formatValue, value => edge + (scaleY(value, range) / box) * ((plot.value?.height ?? 0) - edge - foot), plot.value);
+  const referenceLines = references.map((each, index) => referencePath(index, scaleY(each.value, range), frame[0], frame[0] + frame[2]));
 
   // A line draws in along its length; a fill cannot follow it, so fills, and the dots that end the
   // lines, wait in their own layers and fade in as the line arrives.
@@ -272,10 +282,13 @@ export function LineChart<Row extends ChartRecord<Row>>({
             // A hairline on each tick; the one the values stand on is firmer.
             ? <view aria-hidden className={cx(r.grid.base, r.inset.base, !isArea && r.inset.open)}>{rungs(tick => <view className={tick.value === range[0] ? r.rule.foot : r.rule.line} />)}</view>
             : <view aria-hidden className={cx(r.rule.bottom, !isArea && r.rule.open)} />}
+          {referenceLines.length > 0 && <vector aria-hidden paths={referenceLines} viewBox={frame} className={cx(r.drawing.base, r.drawing.moves, r.drawing.over)} />}
           {layer(under, 'under')}
           {lines.length > 0 && <vector aria-hidden paths={drawIn(lines, drawn)} viewBox={frame} className={cx(r.drawing.base, r.drawing.moves)} />}
           {layer(over, 'over')}
           {marker.length > 0 && <vector aria-hidden paths={marker} viewBox={frame} className={cx(r.drawing.base, r.drawing.moves, r.drawing.over)} />}
+          {refs.ghost}
+          <ReferenceLabels texts={refs.texts} places={refs.places} shares={references.map(each => (scaleY(each.value, range) / box) * 100)} frame={cx(r.grid.base, r.inset.base, !isArea && r.inset.open)} />
           {/* Over the marks: it hears the pointer, and is the stop the arrow keys and a screen reader step. */}
           {scrub && (
             <view
@@ -295,6 +308,7 @@ export function LineChart<Row extends ChartRecord<Row>>({
               {data.map((row, index) => reading(row) !== '' && <text key={keyOf(row, keyField ?? x, index)} role="listitem">{named(row)}</text>)}
             </view>
           )}
+          <ReferenceReading texts={refs.texts} />
         </view>
         {latest && (
           // It arrives with the dot that ends the line, and moves with it.

@@ -403,3 +403,51 @@ test('with reduced motion a figure takes its bar\'s new place at once', async ()
   assert.deepEqual(screen.queryAll(node => /transform|"d"/.test(node.props.transition ?? '')).map(node => node.tag), []);
   assert.equal(figure(screen.getByTestId('orders-Thu'))[0], 12.83);
 });
+
+/** Gives every measured text a size, one at a time, as a host does: 7 pt a character, 16 pt high. */
+const measured = screen => {
+  const done = new Set();
+  for (;;) {
+    const node = screen.queryAll(each => each.tag === 'text' && each.props.onLayout !== undefined && !done.has(`${each.props.onLayout}:${textOf(each)}`))[0];
+    if (!node) return screen;
+    done.add(`${node.props.onLayout}:${textOf(node)}`);
+    screen.layout(node, { width: textOf(node).length * 7, height: 16 });
+  }
+};
+const referenceLabels = screen => screen.queryAll(node => node.tag === 'text' && node.props.insetInlineEnd === 0);
+const sideOf = label => (label.props.insetBottom === 0 ? 'above' : 'below');
+
+test('Target: dashed lines on the bars\' timing, the range widened to hold them, labels at the end clear of the last bars\' figures', async () => {
+  const screen = measured(laidOut(await renderExample('BarChart/BarChart', 'Target')));
+  const chart = screen.getByTestId('target');
+  const vector = find(chart, node => node.tag === 'vector' && /reference-/.test(node.props.vectorSource))[0];
+  const paths = JSON.parse(vector.props.vectorSource).paths;
+  assert.deepEqual(paths.map(path => path.d), ['M0 14.44H100', 'M0 29.41H100'], '160 and 132 on a scale to 187');
+  assert.equal(vector.props.transition, find(chart, node => node.tag === 'vector')[0].props.transition, 'the lines move with the bars');
+  const labels = referenceLabels(screen);
+  assert.deepEqual(labels.map(textOf), ['Target 160', 'Average 132']);
+  const timing = node => { const { durationMs, easing } = JSON.parse(node.props.transition); return JSON.stringify([durationMs, easing]); };
+  assert.ok(labels.every(label => timing(label.parent.parent) === timing(vector)), 'each label moves with its line');
+  // Sun's figure, 74, stands far below both lines; Sat's, 96, too: the labels keep their first place.
+  assert.deepEqual(labels.map(sideOf), ['above', 'above']);
+  screen.getByText('Target, 160');
+  screen.getByText('Average, 132');
+});
+
+test('a reference level with the last bar\'s figure moves its label below the line', async () => {
+  const rows = `[{ k: 'a', v: 40 }, { k: 'b', v: 60 }, { k: 'c', v: 100 }]`;
+  const screen = measured(laidOut(await renderPage(page(`references={[{ value: 98, label: 'Capacity' }]}`, rows))));
+  assert.deepEqual(referenceLabels(screen).map(label => [textOf(label), sideOf(label)]), [['Capacity 98', 'below']]);
+  const clear = measured(laidOut(await renderPage(page(`references={[{ value: 98, label: 'Capacity' }]}`, `[{ k: 'a', v: 100 }, { k: 'b', v: 60 }, { k: 'c', v: 40 }]`))));
+  assert.deepEqual(referenceLabels(clear).map(sideOf), ['above'], 'the tall bar is at the start, away from the label');
+});
+
+test('references 2% apart on signed bars: the second below its line; right to left, the labels keep to the end edge', async () => {
+  const rows = `[{ k: 'a', v: -50 }, { k: 'b', v: 10 }, { k: 'c', v: 20 }, { k: 'd', v: 30 }, { k: 'e', v: 40 }, { k: 'f', v: 50 }, { k: 'g', v: 60 }, { k: 'h', v: 70 }, { k: 'i', v: 80 }, { k: 'j', v: 30 }]`;
+  for (const direction of ['ltr', 'rtl']) {
+    const screen = measured(laidOut(await renderPage(page(`references={[{ value: 0, label: 'Plan' }, { value: -2.6, label: 'Last year' }]}`, rows), { env: { ...defaultEnv, direction } })));
+    const labels = referenceLabels(screen);
+    assert.deepEqual(labels.map(label => [textOf(label), sideOf(label)]), [['Plan 0', 'above'], ['Last year -2.6', 'below']], direction);
+    assert.ok(labels.every(label => label.props.insetInlineEnd === 0 && label.props.insetInlineStart === undefined));
+  }
+});

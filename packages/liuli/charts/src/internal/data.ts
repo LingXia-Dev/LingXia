@@ -20,6 +20,13 @@ export interface ChartSeries<Row = ChartRow> {
   color?: ChartColor;
 }
 
+/** A level drawn across the plot and named: a target, an average, a limit. */
+export interface ChartReference {
+  value: number;
+  /** What the level is: "Target". The chart writes its value after it. */
+  label: string;
+}
+
 export interface ChartPointFact {
   /** The row's category or slice name. */
   x: string;

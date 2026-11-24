@@ -10,6 +10,7 @@ export const doc: ComponentDoc = {
     'LineChart shows how a number moves: a weight over weeks, visits over a month, accounts by plan. ' +
     'It takes rows and the names of their fields to draw, fields of the rows\' own type (`Row`), so a misspelt one fails to compile. ' +
     'A line fits the range of its data, so small changes show; an area is measured from zero, because its fill is an amount. ' +
+    'A goal or an average can be drawn across the plot as a named reference line. ' +
     'Rows without a number are gaps, long series are reduced to the points that hold their shape, and several lines differ by dash as well as colour. ' +
     'A solid line draws in once the plot is laid out and moves to new data, and its end figure and the scale move with it; a dashed line appears whole. With reduced motion all of it is drawn at once.',
   keywords: ['line chart', 'area chart', 'trend', 'time series', 'series', 'history', 'chart', 'graph'],
@@ -33,6 +34,8 @@ export const doc: ComponentDoc = {
       { keys: 'Left and Right', effect: 'With `onChange`, on the plot: chooses the previous or next row' },
     ],
     contrast: [
+      { what: 'a reference\'s label', pair: ['text-muted', 'surface'], minimum: '4.5:1' },
+      { what: 'a reference\'s dashed line', pair: ['text-muted', 'surface'], minimum: '3:1' },
       { what: 'first mark colour', pair: ['chart-1', 'surface'], minimum: '3:1' },
       { what: 'second mark colour', pair: ['chart-2', 'surface'], minimum: '3:1' },
       { what: 'third mark colour', pair: ['chart-3', 'surface'], minimum: '3:1' },
@@ -47,6 +50,7 @@ export const doc: ComponentDoc = {
       'With `summarize`, a sentence per series with its range, lowest and highest values and trend is read first.',
       'Then every row is read as a list item: "3 Nov: 71.2 kg", or "Apr: Free 492, Team 171, Pro 88". Past 60 rows only the summary is read.',
       'The second to fifth lines are dashed, each differently, and the legend draws the same dash, so series survive without colour.',
+      'A reference (`references`) is a dashed line across the plot, named at the end edge with its value, and read after the values as "Target, 150". Its label sits above the line, below it when that is taken, and shows the value alone when both are; it never covers another label, a figure or the plot\'s edge. It takes no press or focus.',
       'The scale and the end figure are hidden from assistive tech: the same numbers are in the summary and the list.',
       'The fill under an area, the hairlines and the rule on the chosen row are decoration with no contrast minimum.',
       'The lines are one drawing whatever the number of points, rebuilt only for a new `rows` array or encoding; the chosen row\'s rule and dots are a second, small drawing, so a scrub never redraws the lines.',
@@ -71,6 +75,7 @@ export const doc: ComponentDoc = {
   },
   examples: [
     { name: 'Weight', title: 'A line that fits its data' },
+    { name: 'Goal', title: 'A goal drawn across the plot' },
     { name: 'Area', title: 'An area, from zero' },
     { name: 'Smooth', title: 'A smoothed line' },
     { name: 'Series', title: 'Three series, with a legend that hides them' },
@@ -96,6 +101,7 @@ export const doc: ComponentDoc = {
         { name: 'Smooth', title: 'Smoothed: through every reading, never beyond one' },
         { name: 'Series', title: 'Three series, told apart by dash and colour' },
         { name: 'Gaps', title: 'Missing readings stay gaps' },
+        { name: 'Goal', title: 'A goal across the plot, named with its value' },
       ],
       sizes: [{ name: 'Sizes', title: 'Small without labels, and large' }],
       statesTitle: 'Selected, loading, empty and error',

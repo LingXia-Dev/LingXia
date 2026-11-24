@@ -24,6 +24,11 @@ export const chartParts = {
   axis: 'view',
   ticks: 'view',
   tick: 'text',
+  references: 'view',
+  referenceMover: 'view',
+  referenceAnchor: 'view',
+  referenceLabel: 'text',
+  referenceReading: 'view',
   legend: 'view',
   legendItem: 'button',
   legendSwatch: 'view',
@@ -67,6 +72,29 @@ export const chartRecipe = {
     ghost: 'self-start opacity-0',
     placed: 'absolute top-0',
     align: { start: 'text-start', center: 'text-center', end: 'text-end' },
+  },
+  /** Reference labels over the plot: a box as tall as the scale, so each label's place is its value's share. */
+  references: {
+    base: 'grow self-stretch relative',
+    frame: 'absolute inset-0',
+    ghost: 'absolute top-0 start-0 h-0 overflow-hidden opacity-0',
+  },
+  /** Moved down to its line on the marks' timing, so the label and the line arrive together. */
+  referenceMover: {
+    base: 'absolute inset-0 motion-safe:transition-transform duration-slow ease-standard',
+  },
+  referenceAnchor: {
+    base: 'h-0 self-stretch',
+  },
+  /** At the end edge, a hair off its line; it never takes a press. */
+  referenceLabel: {
+    base: 'absolute end-0 text-caption text-muted tabular-nums whitespace-nowrap',
+    measure: 'self-start text-caption text-muted tabular-nums whitespace-nowrap',
+    above: 'bottom-0 pb-0.5',
+    below: 'top-0 pt-0.5',
+  },
+  referenceReading: {
+    base: 'sr-only',
   },
   readoutLabel: {
     base: 'text-footnote text-muted',

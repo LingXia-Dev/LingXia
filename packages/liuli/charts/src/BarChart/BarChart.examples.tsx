@@ -27,6 +27,22 @@ export function Orders() {
   );
 }
 
+/** A target and the week's average across the bars; each label keeps clear of the other and of the figures. */
+export function Target() {
+  return (
+    <BarChart
+      rows={week}
+      x="day"
+      y="orders"
+      label="Orders by weekday"
+      title="Orders"
+      description="This week"
+      references={[{ value: 160, label: 'Target' }, { value: 132, label: 'Average' }]}
+      data-testid="target"
+    />
+  );
+}
+
 const channels = [
   { quarter: 'Q1', online: 42, store: 31 }, { quarter: 'Q2', online: 48, store: 29 },
   { quarter: 'Q3', online: 55, store: 33 }, { quarter: 'Q4', online: 67, store: 38 },

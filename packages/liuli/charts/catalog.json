@@ -11,7 +11,7 @@
       "status": "preview",
       "since": "2026-11-14",
       "summary": "Amounts by category, as bars on a zero line, with selection and grouped series",
-      "description": "BarChart compares amounts across a few categories: orders by weekday, sales by quarter. It takes rows and the names of the fields to draw, so the same rows can feed another chart or a table; the names are fields of the rows' own type (`Row`), so a misspelt one fails to compile. Each category can be pressed to read its value, several series stand side by side, and values below zero hang from the same line. Bars grow from zero once the plot is laid out and move to new values, their figures with them; with reduced motion they are drawn at once.",
+      "description": "BarChart compares amounts across a few categories: orders by weekday, sales by quarter. It takes rows and the names of the fields to draw, so the same rows can feed another chart or a table; the names are fields of the rows' own type (`Row`), so a misspelt one fails to compile. Each category can be pressed to read its value, several series stand side by side, and values below zero hang from the same line. A target or an average can be drawn across the bars as a named reference line. Bars grow from zero once the plot is laid out and move to new values, their figures with them; with reduced motion they are drawn at once.",
       "keywords": [
         "bar chart",
         "column chart",
@@ -147,6 +147,13 @@
           "description": "Makes each legend entry a button that shows or hides its series."
         },
         {
+          "name": "references",
+          "type": "readonly ChartReference[]",
+          "required": false,
+          "description": "Levels drawn across the plot as dashed lines, each named at the end edge with its value: a target, a limit. The range widens to hold them.",
+          "default": "[]"
+        },
+        {
           "name": "domainMin",
           "type": "number",
           "required": false,
@@ -267,6 +274,22 @@
         ],
         "contrast": [
           {
+            "what": "a reference's label",
+            "pair": [
+              "text-muted",
+              "surface"
+            ],
+            "minimum": "4.5:1"
+          },
+          {
+            "what": "a reference's dashed line",
+            "pair": [
+              "text-muted",
+              "surface"
+            ],
+            "minimum": "3:1"
+          },
+          {
             "what": "first series, as a bar",
             "pair": [
               "chart-1/85",
@@ -367,6 +390,7 @@
           "Each category is read as its name and values: \"Thu: 163\", or \"Q3: Online $55k, In store $33k\". With `onChange` each is a button that reports pressed; without it the plot is a list.",
           "With `summarize`, a sentence with the range, the lowest and highest values and the trend is read before the bars.",
           "Choosing a category is reported as pressed on its button. Where the bars carry no figures (grouped bars, more than eight bars) a readout line above the plot shows the chosen category and announces it; where every bar carries its value there is no readout line.",
+          "A reference (`references`) is a dashed line across the plot, named at the end edge with its value, and read after the values as \"Target, 150\". Its label sits above the line, below it when that is taken, and shows the value alone when both are; it never covers another label, a figure or the plot's edge. It takes no press or focus.",
           "Figures over the bars and the scale label are hidden from assistive tech: each category already reads its values.",
           "The chosen category keeps its colour and the others step back to 30%, which is not a contrast claim: the pressed state and the readout say which is chosen.",
           "A category's press target is its full-height slot, as wide as the plot divided by the number of categories: 41 px for seven bars at 360 pt, under 10 px for thirty. Past 36 categories the bars are not buttons.",
@@ -391,6 +415,11 @@
           "name": "Signed",
           "title": "Values above and below zero",
           "source": "import { summarize } from '@liulidesign/charts/summary';\nimport { BarChart } from '@liulidesign/charts/BarChart';\n\nconst thousands = (value: number) => `${value < 0 ? '-' : ''}$${Math.abs(value)}k`;\nconst cash = [\n  { month: 'Jan', net: 12 }, { month: 'Feb', net: -5 }, { month: 'Mar', net: 8 }, { month: 'Apr', net: -11 },\n  { month: 'May', net: 3 }, { month: 'Jun', net: 15 },\n];\n\n/** Values on both sides of zero stand on one line. */\nexport function Signed() {\n  return <BarChart rows={cash} x=\"month\" y=\"net\" label=\"Net cash flow by month\" title=\"Net cash flow\" formatValue={thousands} summarize={summarize} data-testid=\"cash\" />;\n}"
+        },
+        {
+          "name": "Target",
+          "title": "A target and an average across the bars",
+          "source": "import { BarChart } from '@liulidesign/charts/BarChart';\n\nconst week = [\n  { day: 'Mon', orders: 132 }, { day: 'Tue', orders: 148 }, { day: 'Wed', orders: 121 }, { day: 'Thu', orders: 163 },\n  { day: 'Fri', orders: 187 }, { day: 'Sat', orders: 96 }, { day: 'Sun', orders: 74 },\n];\n\n/** A target and the week's average across the bars; each label keeps clear of the other and of the figures. */\nexport function Target() {\n  return (\n    <BarChart\n      rows={week}\n      x=\"day\"\n      y=\"orders\"\n      label=\"Orders by weekday\"\n      title=\"Orders\"\n      description=\"This week\"\n      references={[{ value: 160, label: 'Target' }, { value: 132, label: 'Average' }]}\n      data-testid=\"target\"\n    />\n  );\n}"
         },
         {
           "name": "Month",
@@ -467,6 +496,10 @@
             {
               "name": "Month",
               "title": "Thirty bars: narrower, with the labels that fit"
+            },
+            {
+              "name": "Target",
+              "title": "A target and an average, their labels clear of the figures"
             }
           ],
           "sizes": [
@@ -787,6 +820,11 @@
         "axis": "view",
         "ticks": "view",
         "tick": "text",
+        "references": "view",
+        "referenceMover": "view",
+        "referenceAnchor": "view",
+        "referenceLabel": "text",
+        "referenceReading": "view",
         "legend": "view",
         "legendItem": "button",
         "legendSwatch": "view",
@@ -1065,7 +1103,7 @@
       "status": "preview",
       "since": "2026-11-14",
       "summary": "A number over time, as a line that fits its data or an area from zero, for up to five series",
-      "description": "LineChart shows how a number moves: a weight over weeks, visits over a month, accounts by plan. It takes rows and the names of their fields to draw, fields of the rows' own type (`Row`), so a misspelt one fails to compile. A line fits the range of its data, so small changes show; an area is measured from zero, because its fill is an amount. Rows without a number are gaps, long series are reduced to the points that hold their shape, and several lines differ by dash as well as colour. A solid line draws in once the plot is laid out and moves to new data, and its end figure and the scale move with it; a dashed line appears whole. With reduced motion all of it is drawn at once.",
+      "description": "LineChart shows how a number moves: a weight over weeks, visits over a month, accounts by plan. It takes rows and the names of their fields to draw, fields of the rows' own type (`Row`), so a misspelt one fails to compile. A line fits the range of its data, so small changes show; an area is measured from zero, because its fill is an amount. A goal or an average can be drawn across the plot as a named reference line. Rows without a number are gaps, long series are reduced to the points that hold their shape, and several lines differ by dash as well as colour. A solid line draws in once the plot is laid out and moves to new data, and its end figure and the scale move with it; a dashed line appears whole. With reduced motion all of it is drawn at once.",
       "keywords": [
         "line chart",
         "area chart",
@@ -1220,6 +1258,13 @@
           "description": "Makes each legend entry a button that shows or hides its series."
         },
         {
+          "name": "references",
+          "type": "readonly ChartReference[]",
+          "required": false,
+          "description": "Levels drawn across the plot as dashed lines, each named at the end edge with its value: a target, an average. The range widens to hold them.",
+          "default": "[]"
+        },
+        {
           "name": "domainMin",
           "type": "number",
           "required": false,
@@ -1329,6 +1374,22 @@
         ],
         "contrast": [
           {
+            "what": "a reference's label",
+            "pair": [
+              "text-muted",
+              "surface"
+            ],
+            "minimum": "4.5:1"
+          },
+          {
+            "what": "a reference's dashed line",
+            "pair": [
+              "text-muted",
+              "surface"
+            ],
+            "minimum": "3:1"
+          },
+          {
             "what": "first mark colour",
             "pair": [
               "chart-1",
@@ -1405,6 +1466,7 @@
           "With `summarize`, a sentence per series with its range, lowest and highest values and trend is read first.",
           "Then every row is read as a list item: \"3 Nov: 71.2 kg\", or \"Apr: Free 492, Team 171, Pro 88\". Past 60 rows only the summary is read.",
           "The second to fifth lines are dashed, each differently, and the legend draws the same dash, so series survive without colour.",
+          "A reference (`references`) is a dashed line across the plot, named at the end edge with its value, and read after the values as \"Target, 150\". Its label sits above the line, below it when that is taken, and shows the value alone when both are; it never covers another label, a figure or the plot's edge. It takes no press or focus.",
           "The scale and the end figure are hidden from assistive tech: the same numbers are in the summary and the list.",
           "The fill under an area, the hairlines and the rule on the chosen row are decoration with no contrast minimum.",
           "The lines are one drawing whatever the number of points, rebuilt only for a new `rows` array or encoding; the chosen row's rule and dots are a second, small drawing, so a scrub never redraws the lines.",
@@ -1418,6 +1480,11 @@
           "name": "Weight",
           "title": "A line that fits its data",
           "source": "import { summarize } from '@liulidesign/charts/summary';\nimport { LineChart } from '@liulidesign/charts/LineChart';\n\nconst weight = [\n  { week: '6 Oct', kg: 72.4 }, { week: '13 Oct', kg: 72.1 }, { week: '20 Oct', kg: 72.3 }, { week: '27 Oct', kg: 71.6 },\n  { week: '3 Nov', kg: 71.2 }, { week: '10 Nov', kg: 71.4 }, { week: '17 Nov', kg: 70.8 }, { week: '24 Nov', kg: 70.5 },\n];\nconst kilos = (value: number) => `${value.toFixed(1)} kg`;\n\n/** A line fits its data: two kilos of change fill the plot. */\nexport function Weight() {\n  return (\n    <LineChart\n      rows={weight}\n      x=\"week\"\n      y=\"kg\"\n      label=\"Weight by week\"\n      title=\"Weight\"\n      description=\"Last 8 weeks\"\n      formatValue={kilos}\n      summarize={summarize}\n      hasEndLabel\n      data-testid=\"weight\"\n    />\n  );\n}"
+        },
+        {
+          "name": "Goal",
+          "title": "A goal drawn across the plot",
+          "source": "import { LineChart } from '@liulidesign/charts/LineChart';\n\nconst weight = [\n  { week: '6 Oct', kg: 72.4 }, { week: '13 Oct', kg: 72.1 }, { week: '20 Oct', kg: 72.3 }, { week: '27 Oct', kg: 71.6 },\n  { week: '3 Nov', kg: 71.2 }, { week: '10 Nov', kg: 71.4 }, { week: '17 Nov', kg: 70.8 }, { week: '24 Nov', kg: 70.5 },\n];\nconst kilos = (value: number) => `${value.toFixed(1)} kg`;\n\n/** A goal across the plot: the range widens to hold it, and its label names it with its value. */\nexport function Goal() {\n  return (\n    <LineChart\n      rows={weight}\n      x=\"week\"\n      y=\"kg\"\n      label=\"Weight by week\"\n      title=\"Weight\"\n      description=\"Last 8 weeks\"\n      formatValue={kilos}\n      references={[{ value: 70, label: 'Goal' }]}\n      data-testid=\"goal\"\n    />\n  );\n}"
         },
         {
           "name": "Area",
@@ -1512,6 +1579,10 @@
             {
               "name": "Gaps",
               "title": "Missing readings stay gaps"
+            },
+            {
+              "name": "Goal",
+              "title": "A goal across the plot, named with its value"
             }
           ],
           "sizes": [

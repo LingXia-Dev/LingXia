@@ -28,6 +28,23 @@ export function Weight() {
   );
 }
 
+/** A goal across the plot: the range widens to hold it, and its label names it with its value. */
+export function Goal() {
+  return (
+    <LineChart
+      rows={weight}
+      x="week"
+      y="kg"
+      label="Weight by week"
+      title="Weight"
+      description="Last 8 weeks"
+      formatValue={kilos}
+      references={[{ value: 70, label: 'Goal' }]}
+      data-testid="goal"
+    />
+  );
+}
+
 const visits = Array.from({ length: 30 }, (_, index) => ({ day: `${index + 1} Sep`, visits: Math.round(1800 + index * 46 + ((index * 53) % 17) * 38 - (index % 7 > 4 ? 520 : 0)) }));
 
 /** An area is an amount, so it is measured from zero. */

@@ -244,3 +244,41 @@ export function niceTicks([low, high]: readonly [number, number], target: number
   const gaps = [to - marks[marks.length - 1], ...marks.slice(1).map((mark, index) => mark - marks[index]).reverse(), marks[0] - from];
   return { ticks: marks.map(mark => exact(mark * fine)), range, gaps };
 }
+
+/** A box in points, across from the plot's start edge and down from its top. */
+export interface Extent { start: number; end: number; top: number; bottom: number }
+
+/** Where a reference's label sits: above or below its line, with its name or its value alone. */
+export interface ReferencePlace { side: 'above' | 'below'; isShort: boolean }
+
+const overlaps = (a: Extent, b: Extent) => a.start < b.end && b.start < a.end && a.top < b.bottom && b.top < a.bottom;
+
+/**
+ * Each reference label at the plot's end edge, in order: above its line, else below it, else its value
+ * alone above, then below, so no label covers another, a figure in `taken`, or the plot's edge.
+ * `lines` are the lines' heights in points; widths and the line height are the labels' measured sizes.
+ */
+export function placeReferences(
+  lines: readonly number[], plot: { width: number; height: number }, label: { full: readonly number[]; short: readonly number[]; height: number },
+  taken: readonly Extent[], gap: number,
+): ReferencePlace[] {
+  const placed: Extent[] = [...taken];
+  return lines.map((y, index) => {
+    const extent = (place: ReferencePlace): Extent => {
+      const width = (place.isShort ? label.short : label.full)[index] ?? 0;
+      const top = place.side === 'above' ? y - gap - label.height : y + gap;
+      return { start: plot.width - width, end: plot.width, top, bottom: top + label.height };
+    };
+    const tries: ReferencePlace[] = [
+      { side: 'above', isShort: false }, { side: 'below', isShort: false }, { side: 'above', isShort: true }, { side: 'below', isShort: true },
+    ];
+    const fits = (place: ReferencePlace) => {
+      const box = extent(place);
+      return box.top >= 0 && box.bottom <= plot.height && !placed.some(other => overlaps(box, other));
+    };
+    // Nothing fits: the value alone, on the side the plot has room for.
+    const place = tries.find(fits) ?? { side: extent({ side: 'above', isShort: true }).top >= 0 ? 'above' : 'below', isShort: true };
+    placed.push(extent(place));
+    return place;
+  });
+}

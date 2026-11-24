@@ -1,5 +1,5 @@
 // Generated from the doc file by scripts/generate.mjs; do not edit.
-import { Weight, Area, Smooth, Series, Gaps, Sizes, StateSingle, StateLoading, StateEmpty, StateError, Selected } from '../../charts/src/LineChart/LineChart.examples';
+import { Weight, Area, Smooth, Series, Gaps, Goal, Sizes, StateSingle, StateLoading, StateEmpty, StateError, Selected } from '../../charts/src/LineChart/LineChart.examples';
 import { Lead, PageSection, Stage, StageGrid } from '../shared/Layout';
 
 export function Content() {
@@ -20,6 +20,9 @@ export function Content() {
         </Stage>
         <Stage caption={"Missing readings stay gaps"}>
           <Gaps />
+        </Stage>
+        <Stage caption={"A goal across the plot, named with its value"}>
+          <Goal />
         </Stage>
       </PageSection>
       <PageSection title={"Sizes"}>

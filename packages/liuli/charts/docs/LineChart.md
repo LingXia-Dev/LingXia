@@ -8,7 +8,7 @@ A number over time, as a line that fits its data or an area from zero, for up to
 import { LineChart } from '@liulidesign/charts/LineChart';
 ```
 
-LineChart shows how a number moves: a weight over weeks, visits over a month, accounts by plan. It takes rows and the names of their fields to draw, fields of the rows' own type (`Row`), so a misspelt one fails to compile. A line fits the range of its data, so small changes show; an area is measured from zero, because its fill is an amount. Rows without a number are gaps, long series are reduced to the points that hold their shape, and several lines differ by dash as well as colour. A solid line draws in once the plot is laid out and moves to new data, and its end figure and the scale move with it; a dashed line appears whole. With reduced motion all of it is drawn at once.
+LineChart shows how a number moves: a weight over weeks, visits over a month, accounts by plan. It takes rows and the names of their fields to draw, fields of the rows' own type (`Row`), so a misspelt one fails to compile. A line fits the range of its data, so small changes show; an area is measured from zero, because its fill is an amount. A goal or an average can be drawn across the plot as a named reference line. Rows without a number are gaps, long series are reduced to the points that hold their shape, and several lines differ by dash as well as colour. A solid line draws in once the plot is laid out and moves to new data, and its end figure and the scale move with it; a dashed line appears whole. With reduced motion all of it is drawn at once.
 
 ## Examples
 
@@ -38,6 +38,35 @@ export function Weight() {
       summarize={summarize}
       hasEndLabel
       data-testid="weight"
+    />
+  );
+}
+```
+
+### A goal drawn across the plot
+
+```tsx
+import { LineChart } from '@liulidesign/charts/LineChart';
+
+const weight = [
+  { week: '6 Oct', kg: 72.4 }, { week: '13 Oct', kg: 72.1 }, { week: '20 Oct', kg: 72.3 }, { week: '27 Oct', kg: 71.6 },
+  { week: '3 Nov', kg: 71.2 }, { week: '10 Nov', kg: 71.4 }, { week: '17 Nov', kg: 70.8 }, { week: '24 Nov', kg: 70.5 },
+];
+const kilos = (value: number) => `${value.toFixed(1)} kg`;
+
+/** A goal across the plot: the range widens to hold it, and its label names it with its value. */
+export function Goal() {
+  return (
+    <LineChart
+      rows={weight}
+      x="week"
+      y="kg"
+      label="Weight by week"
+      title="Weight"
+      description="Last 8 weeks"
+      formatValue={kilos}
+      references={[{ value: 70, label: 'Goal' }]}
+      data-testid="goal"
     />
   );
 }
@@ -177,6 +206,7 @@ export function Gaps() {
 | `onChange` | `((key: string \| null) => void)` |  | Makes the plot a scrubber: a finger dragged across it, a tap, a mouse moving over it and the arrow keys choose the nearest row and run this with its key; a mouse leaving runs it with `null`. |
 | `hiddenSeries` | `readonly string[]` | `[]` | Series fields not drawn at present. |
 | `onHiddenSeriesChange` | `((fields: readonly string[]) => void)` |  | Makes each legend entry a button that shows or hides its series. |
+| `references` | `readonly ChartReference[]` | `[]` | Levels drawn across the plot as dashed lines, each named at the end edge with its value: a target, an average. The range widens to hold them. |
 | `domainMin` | `number` |  | Widens the value range downward. A line fits its data; an area starts from zero. |
 | `domainMax` | `number` |  | Widens the value range upward, so charts that are compared share a scale. |
 | `size` | `ChartSize` | `'md'` |  |
@@ -218,6 +248,7 @@ export function Gaps() {
 - With `summarize`, a sentence per series with its range, lowest and highest values and trend is read first.
 - Then every row is read as a list item: "3 Nov: 71.2 kg", or "Apr: Free 492, Team 171, Pro 88". Past 60 rows only the summary is read.
 - The second to fifth lines are dashed, each differently, and the legend draws the same dash, so series survive without colour.
+- A reference (`references`) is a dashed line across the plot, named at the end edge with its value, and read after the values as "Target, 150". Its label sits above the line, below it when that is taken, and shows the value alone when both are; it never covers another label, a figure or the plot's edge. It takes no press or focus.
 - The scale and the end figure are hidden from assistive tech: the same numbers are in the summary and the list.
 - The fill under an area, the hairlines and the rule on the chosen row are decoration with no contrast minimum.
 - The lines are one drawing whatever the number of points, rebuilt only for a new `rows` array or encoding; the chosen row's rule and dots are a second, small drawing, so a scrub never redraws the lines.
@@ -227,6 +258,8 @@ export function Gaps() {
 
 | Contrast | Pair | Minimum | Light | Dark |
 | --- | --- | --- | --- | --- |
+| a reference's label | `text-muted` on `surface` | 4.5:1 | 5.89:1 | 6.64:1 |
+| a reference's dashed line | `text-muted` on `surface` | 3:1 | 5.89:1 | 6.64:1 |
 | first mark colour | `chart-1` on `surface` | 3:1 | 5.62:1 | 6.19:1 |
 | second mark colour | `chart-2` on `surface` | 3:1 | 4.30:1 | 7.21:1 |
 | third mark colour | `chart-3` on `surface` | 3:1 | 4.36:1 | 7.60:1 |

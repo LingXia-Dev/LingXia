@@ -8,7 +8,7 @@ Amounts by category, as bars on a zero line, with selection and grouped series. 
 import { BarChart } from '@liulidesign/charts/BarChart';
 ```
 
-BarChart compares amounts across a few categories: orders by weekday, sales by quarter. It takes rows and the names of the fields to draw, so the same rows can feed another chart or a table; the names are fields of the rows' own type (`Row`), so a misspelt one fails to compile. Each category can be pressed to read its value, several series stand side by side, and values below zero hang from the same line. Bars grow from zero once the plot is laid out and move to new values, their figures with them; with reduced motion they are drawn at once.
+BarChart compares amounts across a few categories: orders by weekday, sales by quarter. It takes rows and the names of the fields to draw, so the same rows can feed another chart or a table; the names are fields of the rows' own type (`Row`), so a misspelt one fails to compile. Each category can be pressed to read its value, several series stand side by side, and values below zero hang from the same line. A target or an average can be drawn across the bars as a named reference line. Bars grow from zero once the plot is laid out and move to new values, their figures with them; with reduced motion they are drawn at once.
 
 ## Examples
 
@@ -95,6 +95,33 @@ export function Signed() {
 }
 ```
 
+### A target and an average across the bars
+
+```tsx
+import { BarChart } from '@liulidesign/charts/BarChart';
+
+const week = [
+  { day: 'Mon', orders: 132 }, { day: 'Tue', orders: 148 }, { day: 'Wed', orders: 121 }, { day: 'Thu', orders: 163 },
+  { day: 'Fri', orders: 187 }, { day: 'Sat', orders: 96 }, { day: 'Sun', orders: 74 },
+];
+
+/** A target and the week's average across the bars; each label keeps clear of the other and of the figures. */
+export function Target() {
+  return (
+    <BarChart
+      rows={week}
+      x="day"
+      y="orders"
+      label="Orders by weekday"
+      title="Orders"
+      description="This week"
+      references={[{ value: 160, label: 'Target' }, { value: 132, label: 'Average' }]}
+      data-testid="target"
+    />
+  );
+}
+```
+
 ### Thirty bars
 
 ```tsx
@@ -131,6 +158,7 @@ export function Month() {
 | `onChange` | `((key: string \| null) => void)` |  | Makes each category a button, up to 36 of them; runs with its key, or `null` when the chosen one is pressed again. A drag across the bars chooses each it passes. |
 | `hiddenSeries` | `readonly string[]` | `[]` | Series fields not drawn at present. |
 | `onHiddenSeriesChange` | `((fields: readonly string[]) => void)` |  | Makes each legend entry a button that shows or hides its series. |
+| `references` | `readonly ChartReference[]` | `[]` | Levels drawn across the plot as dashed lines, each named at the end edge with its value: a target, a limit. The range widens to hold them. |
 | `domainMin` | `number` |  | Widens the value range downward; zero is always in range. |
 | `domainMax` | `number` |  | Widens the value range upward, so charts that are compared share a scale. |
 | `size` | `ChartSize` | `'md'` |  |
@@ -175,6 +203,7 @@ export function Month() {
 - Each category is read as its name and values: "Thu: 163", or "Q3: Online $55k, In store $33k". With `onChange` each is a button that reports pressed; without it the plot is a list.
 - With `summarize`, a sentence with the range, the lowest and highest values and the trend is read before the bars.
 - Choosing a category is reported as pressed on its button. Where the bars carry no figures (grouped bars, more than eight bars) a readout line above the plot shows the chosen category and announces it; where every bar carries its value there is no readout line.
+- A reference (`references`) is a dashed line across the plot, named at the end edge with its value, and read after the values as "Target, 150". Its label sits above the line, below it when that is taken, and shows the value alone when both are; it never covers another label, a figure or the plot's edge. It takes no press or focus.
 - Figures over the bars and the scale label are hidden from assistive tech: each category already reads its values.
 - The chosen category keeps its colour and the others step back to 30%, which is not a contrast claim: the pressed state and the readout say which is chosen.
 - A category's press target is its full-height slot, as wide as the plot divided by the number of categories: 41 px for seven bars at 360 pt, under 10 px for thirty. Past 36 categories the bars are not buttons.
@@ -185,6 +214,8 @@ export function Month() {
 
 | Contrast | Pair | Minimum | Light | Dark |
 | --- | --- | --- | --- | --- |
+| a reference's label | `text-muted` on `surface` | 4.5:1 | 5.89:1 | 6.64:1 |
+| a reference's dashed line | `text-muted` on `surface` | 3:1 | 5.89:1 | 6.64:1 |
 | first series, as a bar | `chart-1/85` on `surface` | 3:1 | 4.20:1 | 4.85:1 |
 | second series, as a bar | `chart-2/85` on `surface` | 3:1 | 3.51:1 | 5.54:1 |
 | third series, as a bar | `chart-3/85` on `surface` | 3:1 | 3.39:1 | 5.85:1 |

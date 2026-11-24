@@ -4,7 +4,7 @@ import { readFileSync } from 'node:fs';
 import { transform } from 'esbuild';
 
 const { code } = await transform(readFileSync(new URL('./geometry.ts', import.meta.url), 'utf8'), { loader: 'ts', format: 'esm' });
-const { niceTicks, domain } = await import(`data:text/javascript;base64,${Buffer.from(code).toString('base64')}`);
+const { niceTicks, domain, placeReferences } = await import(`data:text/javascript;base64,${Buffer.from(code).toString('base64')}`);
 
 // What a layout accepts as a flex number: whole, finite, never negative, and small.
 const layoutNumber = value => Number.isInteger(value) && value >= 0 && value <= 16384;
@@ -60,3 +60,33 @@ test('niceTicks: a range that is not a number, or upside down, still gives a sca
   }
 });
 
+
+test('placeReferences: a label above its line, the next one below when two lines are 2% apart, the value alone when both sides are taken', () => {
+  const plot = { width: 300, height: 200 };
+  const label = { full: [80, 80, 80], short: [30, 30, 30], height: 16 };
+  // Lines at 50%, 52% and 51% of the plot.
+  const places = placeReferences([100, 104, 102], plot, label, [], 2);
+  assert.deepEqual(places, [{ side: 'above', isShort: false }, { side: 'below', isShort: false }, { side: 'above', isShort: true }]);
+});
+
+test('placeReferences: never past the plot\'s edges; a line at the top puts its label below, at the foot above', () => {
+  const plot = { width: 300, height: 200 };
+  const label = { full: [80, 80], short: [30, 30], height: 16 };
+  assert.deepEqual(placeReferences([4, 198], plot, label, [], 2), [{ side: 'below', isShort: false }, { side: 'above', isShort: false }]);
+});
+
+test('placeReferences: a figure at the end edge sends the label to the other side; one clear of it across does not', () => {
+  const plot = { width: 300, height: 200 };
+  const label = { full: [80], short: [30], height: 16 };
+  const figure = { start: 270, end: 290, top: 70, bottom: 98 };
+  assert.deepEqual(placeReferences([100], plot, label, [figure], 2), [{ side: 'below', isShort: false }]);
+  assert.deepEqual(placeReferences([100], plot, label, [{ ...figure, start: 20, end: 40 }], 2), [{ side: 'above', isShort: false }]);
+});
+
+test('placeReferences: the short value goes where only it fits, beside a figure the full label would reach', () => {
+  const plot = { width: 300, height: 200 };
+  const label = { full: [120], short: [30], height: 16 };
+  // A figure above and one below, both under the full label's width but clear of the value's.
+  const taken = [{ start: 190, end: 210, top: 70, bottom: 98 }, { start: 190, end: 210, top: 101, bottom: 130 }];
+  assert.deepEqual(placeReferences([100], plot, label, taken, 2), [{ side: 'above', isShort: true }]);
+});

@@ -10,6 +10,7 @@ export const doc: ComponentDoc = {
     'BarChart compares amounts across a few categories: orders by weekday, sales by quarter. ' +
     'It takes rows and the names of the fields to draw, so the same rows can feed another chart or a table; the names are fields of the rows\' own type (`Row`), so a misspelt one fails to compile. ' +
     'Each category can be pressed to read its value, several series stand side by side, and values below zero hang from the same line. ' +
+    'A target or an average can be drawn across the bars as a named reference line. ' +
     'Bars grow from zero once the plot is laid out and move to new values, their figures with them; with reduced motion they are drawn at once.',
   keywords: ['bar chart', 'column chart', 'bars', 'histogram', 'categories', 'compare', 'grouped bars', 'chart', 'graph'],
   propsType: 'BarChartProps',
@@ -35,6 +36,8 @@ export const doc: ComponentDoc = {
       { keys: 'Left and Right', effect: 'Past 36 categories, with `onChange`, on the plot: chooses the previous or next category' },
     ],
     contrast: [
+      { what: 'a reference\'s label', pair: ['text-muted', 'surface'], minimum: '4.5:1' },
+      { what: 'a reference\'s dashed line', pair: ['text-muted', 'surface'], minimum: '3:1' },
       { what: 'first series, as a bar', pair: ['chart-1/85', 'surface'], minimum: '3:1' },
       { what: 'second series, as a bar', pair: ['chart-2/85', 'surface'], minimum: '3:1' },
       { what: 'third series, as a bar', pair: ['chart-3/85', 'surface'], minimum: '3:1' },
@@ -52,6 +55,7 @@ export const doc: ComponentDoc = {
       'Each category is read as its name and values: "Thu: 163", or "Q3: Online $55k, In store $33k". With `onChange` each is a button that reports pressed; without it the plot is a list.',
       'With `summarize`, a sentence with the range, the lowest and highest values and the trend is read before the bars.',
       'Choosing a category is reported as pressed on its button. Where the bars carry no figures (grouped bars, more than eight bars) a readout line above the plot shows the chosen category and announces it; where every bar carries its value there is no readout line.',
+      'A reference (`references`) is a dashed line across the plot, named at the end edge with its value, and read after the values as "Target, 150". Its label sits above the line, below it when that is taken, and shows the value alone when both are; it never covers another label, a figure or the plot\'s edge. It takes no press or focus.',
       'Figures over the bars and the scale label are hidden from assistive tech: each category already reads its values.',
       'The chosen category keeps its colour and the others step back to 30%, which is not a contrast claim: the pressed state and the readout say which is chosen.',
       'A category\'s press target is its full-height slot, as wide as the plot divided by the number of categories: 41 px for seven bars at 360 pt, under 10 px for thirty. Past 36 categories the bars are not buttons.',
@@ -81,6 +85,7 @@ export const doc: ComponentDoc = {
     { name: 'Orders', title: 'One series, with selection' },
     { name: 'Grouped', title: 'Two series, with a legend that hides them' },
     { name: 'Signed', title: 'Values above and below zero' },
+    { name: 'Target', title: 'A target and an average across the bars' },
     { name: 'Month', title: 'Thirty bars' },
   ],
   gaps: [
@@ -102,6 +107,7 @@ export const doc: ComponentDoc = {
         { name: 'Grouped', title: 'Two series side by side; the legend shows and hides each' },
         { name: 'Signed', title: 'Above and below zero, on one line' },
         { name: 'Month', title: 'Thirty bars: narrower, with the labels that fit' },
+        { name: 'Target', title: 'A target and an average, their labels clear of the figures' },
       ],
       sizes: [{ name: 'Sizes', title: 'Small without labels, and large' }],
       statesTitle: 'Selected, loading, empty and error',

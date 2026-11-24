@@ -406,3 +406,48 @@ test('with reduced motion nothing that follows the data moves: lines, figure, ti
   assert.deepEqual(moving.map(node => node.tag), [], 'no transition of a place or a path');
   assert.ok(place(parts(screen).end.children[0]) >= 0, 'each still has its place');
 });
+
+/** Gives every measured text a size, as a host does: 7 pt a character, 16 pt high. */
+const measured = screen => {
+  // One at a time: each size re-renders the chart, which may replace the others.
+  const done = new Set();
+  for (;;) {
+    const node = screen.queryAll(each => each.tag === 'text' && each.props.onLayout !== undefined && !done.has(`${each.props.onLayout}:${textOf(each)}`))[0];
+    if (!node) return screen;
+    done.add(`${node.props.onLayout}:${textOf(node)}`);
+    screen.layout(node, { width: textOf(node).length * 7, height: 16 });
+  }
+};
+const referencePaths = screen => screen.queryAll(node => node.tag === 'vector').flatMap(node => JSON.parse(node.props.vectorSource).paths.filter(path => path.key?.startsWith('reference-')).map(path => ({ ...path, vector: node })));
+const referenceLabels = screen => screen.queryAll(node => node.tag === 'text' && node.props.insetInlineEnd === 0);
+
+test('Goal: the range widens to the goal, drawn as a dashed hairline and named at the end with its value, on the line\'s timing', async () => {
+  const screen = measured(laidOut(await renderExample('LineChart/LineChart', 'Goal')));
+  const [path] = referencePaths(screen);
+  const { d, stroke, strokeDasharray, vector } = path;
+  const [, y] = d.match(/^M-?[\d.]+ (-?[\d.]+)H-?[\d.]+$/).map(Number);
+  assert.deepEqual([stroke, strokeDasharray], ['text-muted', [4, 3]]);
+  assert.ok(y > 0 && y <= 100, `the goal lies in the plot: ${y}`);
+  assert.ok(screen.queryAll(node => node.tag === 'text' && textOf(node) === '70.0 kg' && !unread(node)).length === 0, 'the scale is hidden');
+  const [label] = referenceLabels(screen);
+  assert.equal(textOf(label), 'Goal 70.0 kg');
+  assert.ok(unread(label), 'the label is decoration; the reading says it');
+  const mover = label.parent.parent;
+  assert.equal(JSON.parse(mover.props.transform).translate[1], `${y}%`, 'the label stands at the line');
+  const timing = node => { const { durationMs, easing } = JSON.parse(node.props.transition); return JSON.stringify([durationMs, easing]); };
+  assert.equal(timing(mover), timing(vector), 'label and line move together');
+  assert.equal(timing(vector), timing(lineVector(screen)), 'and with the data');
+  screen.getByText('Goal, 70.0 kg');
+  assert.equal(screen.queryAll(node => node.tag === 'button' || node.props.focusable).length, 0, 'nothing takes a press or focus');
+});
+
+test('two references 2% apart: the second label moves below its line, a third goes to its value alone, none overlapping', async () => {
+  const screen = measured(laidOut(await renderPage(`
+    import { LineChart } from '@liulidesign/charts/LineChart';
+    const rows = [{ k: 'a', v: 0 }, { k: 'b', v: 100 }];
+    export function render() { return <page><LineChart rows={rows} x="k" y="v" label="Chart" hasScale={false} references={[{ value: 50, label: 'Target' }, { value: 48, label: 'Average' }, { value: 49, label: 'Median' }]} /></page>; }
+  `)));
+  const sides = referenceLabels(screen).map(label => [textOf(label), label.props.insetBottom === 0 ? 'above' : 'below']);
+  assert.deepEqual(sides, [['Target 50', 'above'], ['Average 48', 'below'], ['49', 'above']]);
+  for (const text of ['Target, 50', 'Average, 48', 'Median, 49']) screen.getByText(text);
+});
