@@ -98,3 +98,21 @@ test('screen.layout delivers a box to a compiled page and re-renders it', async 
     assert.equal(textOf(screen.getByTestId('out')), '343');
   } finally { await rm(root, { recursive: true, force: true }); }
 });
+
+const contentPage = `import { useBox } from '@lingxia/view';
+export function render() {
+  const box = useBox('row');
+  return <view><view box={box} data-testid="row" /><text data-testid="out">{box.value ? box.value.minContentWidth + '-' + box.value.maxContentWidth : 'none'}</text></view>;
+}
+`;
+
+test('screen.layout passes the content widths it is given', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'lingxia-view-box-'));
+  try {
+    await writeFile(join(root, 'lxapp.json'), '{}');
+    await writeFile(join(root, 'page.tsx'), contentPage);
+    const screen = await renderPage(join(root, 'page.tsx'));
+    screen.layout(screen.getByTestId('row'), { width: 200, height: 40, minContentWidth: 64, maxContentWidth: 300 });
+    assert.equal(textOf(screen.getByTestId('out')), '64-300');
+  } finally { await rm(root, { recursive: true, force: true }); }
+});

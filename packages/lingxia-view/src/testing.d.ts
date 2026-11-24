@@ -61,8 +61,8 @@ export interface Screen {
   blur(node: WireNode): void;
   /** An `onPointer` event at a point of the node's content box; `pointer` defaults to `touch`. */
   pointer(node: WireNode, event: { phase: "down" | "move" | "up" | "cancel" | "hover" | "leave" | "increment" | "decrement"; x: number; y: number; width: number; height: number; pointer?: "touch" | "mouse" | "pen" | "keyboard" }): void;
-  /** Lays the node out at this content size: its `onLayout` and `useBox` handle take it. */
-  layout(node: WireNode, box: { width: number; height: number }): void;
+  /** Lays the node out at this content size, with its content's min- and max-content widths when given: its `onLayout` and `useBox` handle take it. */
+  layout(node: WireNode, box: { width: number; height: number; minContentWidth?: number; maxContentWidth?: number }): void;
   /** A `drag` element's gesture: `start`, `end` (`index`, `velocity`) or `settle` (`index`, `hidden`). */
   drag(node: WireNode, event: { phase: "start" | "end" | "settle"; index?: number; velocity?: number; hidden?: boolean }): void;
   /** `<video>` events (`{ type: "play" }`, …) with the player's status. */

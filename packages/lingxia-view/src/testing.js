@@ -193,7 +193,7 @@ function screen(host, view, resolved) {
     key: (node, key) => fire(node, 'onKeyDown', key),
     focus: node => fire(node, 'onFocus'),
     blur: node => fire(node, 'onBlur'),
-    layout: (node, { width, height }) => json(node, 'onLayout', { width, height }),
+    layout: (node, { width, height, minContentWidth, maxContentWidth }) => json(node, 'onLayout', { width, height, minContentWidth, maxContentWidth }),
     pointer: (node, { phase, x, y, width, height, pointer = 'touch' }) => json(node, 'onPointer', { phase, x, y, width, height, pointer }),
     drag: (node, event) => json(node, 'onDragEvent', event),
     video: (node, status, events = []) => json(node, 'onVideoEvent', { status, events }),
