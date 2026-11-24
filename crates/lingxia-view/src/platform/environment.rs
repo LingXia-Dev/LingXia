@@ -277,7 +277,22 @@ mod weekday_tests {
 
     #[test]
     fn a_sunday_first_platform_day_becomes_iso() {
-        let iso: Vec<_> = (0..=8).map(DeviceFacts::weekday_from_sunday_first).collect();
-        assert_eq!(iso, [None, Some(7), Some(1), Some(2), Some(3), Some(4), Some(5), Some(6), None]);
+        let iso: Vec<_> = (0..=8)
+            .map(DeviceFacts::weekday_from_sunday_first)
+            .collect();
+        assert_eq!(
+            iso,
+            [
+                None,
+                Some(7),
+                Some(1),
+                Some(2),
+                Some(3),
+                Some(4),
+                Some(5),
+                Some(6),
+                None
+            ]
+        );
     }
 }
