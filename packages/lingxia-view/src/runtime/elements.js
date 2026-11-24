@@ -909,7 +909,6 @@ function resolveElement(tag, original, children, identity, depth, parent) {
       props: i === 0 && props.testId !== undefined ? { ...piece.props, testId: props.testId } : piece.props,
       wire: [...piece.wire, ...result.wire.filter(([key]) => i === 0 || key !== 'accessibilityLabel')],
     }));
-    if (tag === 'text' && result.children.length > limits.runs) throw Error(`UI_TEXT: more than ${limits.runs} runs`);
   } else if (!leaf && tag !== 'radio') {
     // Placed children and, for unkeyed ones, the slot they were authored at.
     const keys = new Set(), last = flat.length - 1, placed = [], slots = [];

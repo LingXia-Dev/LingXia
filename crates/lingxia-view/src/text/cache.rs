@@ -23,6 +23,8 @@ pub(crate) struct Key {
     nowrap: bool,
     features: String,
     rtl: bool,
+    /// Rich text: a hash of its run ranges and the run styles shaping reads; 0 for plain text.
+    runs: u64,
 }
 impl Key {
     pub(crate) fn new(
@@ -46,7 +48,13 @@ impl Key {
             nowrap,
             features: features.into(),
             rtl,
+            runs: 0,
         })
+    }
+
+    pub(crate) fn with_runs(mut self, runs: u64) -> Self {
+        self.runs = runs;
+        self
     }
 }
 

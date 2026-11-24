@@ -96,8 +96,8 @@ Use `tabular-nums` for columns of numbers and counters.
 ## Rich text
 
 A `<text>` may contain strings, `<span>` and `<link>`. Nested spans flatten into styled runs of one
-paragraph, so wrapping, alignment and selection treat the whole `<text>` as one block. A `<text>` holds
-at most 256 runs.
+paragraph, so wrapping, alignment and selection treat the whole `<text>` as one block. Its runs together
+hold at most 64 KiB of text (`textBytes`); each run is a node of the page's `nodes` bound.
 
 Runs take text paint only: color, size, weight, family, italic, letter spacing, decoration, numeric variants and a
 background color. Layout, padding and borders on a run are refused.

@@ -153,10 +153,13 @@ fn run_admission_and_budgets_are_native() {
             .unwrap_err()
             .contains("UI_TEXT")
     );
+    // Runs share one node's text bound; their count is bounded only by the page's nodes.
+    assert!(text((0..1024).map(|_| run(tag::SPAN)).collect(), "").is_ok());
+    let long = |kind: usize| json!([kind, 0, "", "", "x".repeat(limits::TEXT_BYTES / 2 + 1), 0]);
     assert!(
-        text((0..=limits::RUNS).map(|_| run(tag::SPAN)).collect(), "")
+        text(vec![long(tag::SPAN), long(tag::LINK)], "")
             .unwrap_err()
-            .contains("runs")
+            .contains("UI_TEXT")
     );
     // A link inside a button's text keeps its own target.
     let wire = json!([
@@ -278,5 +281,72 @@ fn fallback_faces_are_the_same_in_every_font_context() {
     let first = face();
     for _ in 0..12 {
         assert_eq!(face(), first);
+    }
+}
+
+#[test]
+fn equal_text_under_different_run_styles_is_shaped_apart() {
+    // All read "ab cd"; only the second run's size differs, so a shared shape is wrong.
+    let paragraph = |id: &str, size: u32| {
+        format!(
+            "h('text',{{'data-testid':'{id}',style:{{fontSize:20}}}},h('span',{{}},'ab '),h('span',{{style:{{fontSize:{size}}}}},'cd'))"
+        )
+    };
+    let display = layout(
+        &format!(
+            "h('view',{{style:{{flexDirection:'row',alignItems:'flex-start'}}}},{},{},{})",
+            paragraph("small", 12),
+            paragraph("large", 40),
+            paragraph("small2", 12)
+        ),
+        400,
+    );
+    let width = |id: &str| node(&display, id).bounds[2];
+    assert!(width("large") > width("small"));
+    assert_eq!(width("small"), width("small2"));
+}
+
+/// Shaping cost of one rich paragraph by run count and text size: the first layout shapes, the
+/// next ones (other widths) reuse the shaped paragraph when the cache holds it.
+#[test]
+#[ignore = "measurement; run with --release --ignored --nocapture"]
+fn measure_rich_text_shaping() {
+    // Font loading lands on the first layout of a process; keep it out of the numbers.
+    let warm = crate::session::tests::source(
+        "function render(){return h('page',{},h('text',{style:{fontFamily:'monospace'}},h('span',{},'warm'),'up'))}",
+    );
+    crate::ViewSession::new(&warm)
+        .unwrap()
+        .layout(400, 800, 1.0)
+        .unwrap();
+    for bytes in [2 * 1024, 8 * 1024, 64 * 1024 - 64] {
+        for runs in [256usize, 1024, 4000] {
+            let per = (bytes / runs).max(1);
+            let source = crate::session::tests::source(&format!(
+                "function render(){{const parts=[];for(let i=0;i<{runs};i++)parts.push(h('span',{{key:String(i),style:{{color:i%2?'#cc0000':'#0000cc',fontWeight:i%3?400:700}}}},'x'.repeat({per}-1)+' '));return h('page',{{}},h('text',{{style:{{fontFamily:'monospace'}}}},...parts))}}"
+            ));
+            let mut session = crate::ViewSession::new(&source).unwrap();
+            if let Err(error) = session.layout(400, 800, 1.0) {
+                println!("measure: {bytes} bytes, {runs} runs: {error}");
+                continue;
+            }
+            let first = session.frame_metrics().text_us;
+            let mut later = Vec::new();
+            for width in 401..406 {
+                if let Err(error) = session.layout(width, 800, 1.0) {
+                    println!("measure: {bytes} bytes, {runs} runs at width {width}: {error}");
+                    continue;
+                }
+                later.push(session.frame_metrics().text_us);
+            }
+            if later.is_empty() {
+                continue;
+            }
+            later.sort_unstable();
+            println!(
+                "measure: {bytes} bytes, {runs} runs: first {first} us, later median {} us",
+                later[later.len() / 2]
+            );
+        }
     }
 }

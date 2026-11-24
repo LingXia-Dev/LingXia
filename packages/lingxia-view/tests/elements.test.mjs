@@ -453,7 +453,7 @@ test('text flattens nested spans and links into styled runs under one paragraph'
   assert.deepEqual(pieces.map(piece => [piece.tag, piece.text, piece.props.fontWeight, piece.props.accessibilityLabel]), [['link', 'the ', undefined, 'Terms'], ['link', 'terms', 700, undefined]]);
   assert.equal(pieces[0].props.onClick, pieces[1].props.onClick);
   throwsOn(() => h('text', {}, h('span', { style: { padding: 4 } }, 'x')), /UI_STYLE: padding is not supported on <span>/);
-  throwsOn(() => h('text', {}, Array.from({ length: 257 }, (_, i) => h('span', { key: String(i) }, 'x'))), /UI_TEXT: more than 256 runs/);
+  assert.equal(rendered(() => h('text', {}, Array.from({ length: 1024 }, (_, i) => h('span', { key: String(i) }, 'x')))).children.length, 1024);
 });
 
 test('a link outside text is a block link: a pressable box of any content', () => {

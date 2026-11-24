@@ -9,6 +9,21 @@ use vello_cpu::Glyph;
 
 /// CSS `font-optical-sizing: auto`: a face with an `opsz` axis takes the drawn size, as
 /// CoreText does; its default is often a display cut (SF's is 28) that sets body text tight.
+/// What a rich paragraph's shaping reads from its runs: ranges and the run styles pushed per range.
+fn runs_hash(runs: &[(std::ops::Range<usize>, &TextStyle)]) -> u64 {
+    use std::hash::{Hash, Hasher};
+    if runs.is_empty() {
+        return 0;
+    }
+    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+    for (range, run) in runs {
+        (range.start, range.end).hash(&mut hasher);
+        (run.size.to_bits(), run.weight.to_bits(), run.italic).hash(&mut hasher);
+        (&run.family, run.letter_spacing.to_bits(), &run.features).hash(&mut hasher);
+    }
+    hasher.finish() | 1
+}
+
 fn optical_size<B: parley::Brush>(size: f32) -> StyleProperty<'static, B> {
     use parley::setting::{FontVariation, Tag};
     StyleProperty::FontVariations(parley::style::FontVariations::List(
@@ -197,21 +212,20 @@ impl Renderer {
         );
 
         let started = std::time::Instant::now();
-        // Rich text shapes per run; its key would have to carry every run style.
-        let key = (runs.is_empty()
-            && !matches!(record.tag, tag::INPUT | tag::TEXTAREA | tag::SEARCH))
-        .then(|| {
-            crate::text::cache::Key::new(
-                text,
-                (font_size, letter_spacing),
-                weight,
-                line_height,
-                (style.family.clone(), italic),
-                (word_break, overflow_wrap, style.nowrap, &style.features),
-                style.rtl,
-            )
-        })
-        .flatten();
+        let key = (!matches!(record.tag, tag::INPUT | tag::TEXTAREA | tag::SEARCH))
+            .then(|| {
+                crate::text::cache::Key::new(
+                    text,
+                    (font_size, letter_spacing),
+                    weight,
+                    line_height,
+                    (style.family.clone(), italic),
+                    (word_break, overflow_wrap, style.nowrap, &style.features),
+                    style.rtl,
+                )
+                .map(|key| key.with_runs(runs_hash(runs)))
+            })
+            .flatten();
         if let Some(cached) = key.as_ref().and_then(|key| self.text_cache.get(key)) {
             self.text_time += started.elapsed();
             return Some(cached);

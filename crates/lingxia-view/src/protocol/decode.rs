@@ -464,17 +464,18 @@ fn budgets(records: &[Record]) -> Result<(), String> {
             return Err("UI_STYLE: sticky takes pixel insets and no transform".into());
         }
     }
-    let mut runs: HashMap<usize, usize> = HashMap::new();
+    // Runs shape as one paragraph, so their text counts against one node's bound together.
+    let mut paragraphs: HashMap<usize, usize> = HashMap::new();
     for record in records
         .iter()
         .filter(|r| matches!(r.tag, tag::SPAN | tag::LINK))
     {
-        let count = runs.entry(record.parent.unwrap()).or_default();
-        *count += 1;
-        if *count > limits::RUNS {
+        let bytes = paragraphs.entry(record.parent.unwrap()).or_default();
+        *bytes += record.text.len();
+        if *bytes > limits::TEXT_BYTES {
             return Err(format!(
-                "UI_TEXT: more than {} runs in one text",
-                limits::RUNS
+                "UI_TEXT: the runs of one text hold more than {} bytes",
+                limits::TEXT_BYTES
             ));
         }
     }
