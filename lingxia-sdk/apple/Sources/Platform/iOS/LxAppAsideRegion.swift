@@ -278,9 +278,21 @@ final class LxAppAsideRegion {
             tongue.accent = owner.asideAccentColor
             tongue.count = slot?.children.filter { hosts($0) }.count ?? 0
             let width = tongue.count > 1 ? Self.tongueHitWidthCounted : Self.tongueHitWidth
-            tongue.frame = CGRect(
-                x: bounds.maxX - safe.right - width, y: (bounds.height - Self.tongueHitHeight) / 2,
-                width: width, height: Self.tongueHitHeight)
+            // iOS names the housing's side but not its extent, so that whole edge counts as blocked.
+            let housingRight = host.window?.windowScene?.interfaceOrientation == .landscapeLeft
+            let placement = TonguePlacement.place(
+                length: bounds.height, blocked: housingRight ? [0...bounds.height] : [],
+                start: safe.top + Self.barReserve, end: safe.bottom + Self.barReserve,
+                size: Self.tongueHitHeight, margin: Self.tongueMargin)
+            switch placement {
+            case .flush(let offset):
+                tongue.frame = CGRect(
+                    x: bounds.maxX - width, y: offset, width: width, height: Self.tongueHitHeight)
+            case .inset:
+                tongue.frame = CGRect(
+                    x: bounds.maxX - safe.right - width, y: (bounds.height - Self.tongueHitHeight) / 2,
+                    width: width, height: Self.tongueHitHeight)
+            }
         }
         host.bringSubviewToFront(panel)
         host.bringSubviewToFront(divider)
@@ -494,6 +506,9 @@ final class LxAppAsideRegion {
     private static let tongueHitWidth: CGFloat = 28
     private static let tongueHitWidthCounted: CGFloat = 32
     private static let tongueHitHeight: CGFloat = 88
+    /// What a page's navigation or tab bar may take at either end of the edge, kept from the tongue.
+    private static let barReserve: CGFloat = 56
+    private static let tongueMargin: CGFloat = 8
     private static let ratioKey = "lingxia_aside.dock_ratio"
     private static var hairline: CGFloat { 1 / UIScreen.main.scale }
 }
