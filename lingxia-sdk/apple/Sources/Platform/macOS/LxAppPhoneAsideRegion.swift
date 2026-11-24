@@ -84,9 +84,8 @@ final class LxAppPhoneAsideRegion {
 
         collapseButton.bezelStyle = .regularSquare
         collapseButton.isBordered = false
-        collapseButton.image = NSImage(
-            systemSymbolName: "sidebar.right",
-            accessibilityDescription: L10n.string("lx_aside_collapse"))
+        collapseButton.image = Self.icon("icon_aside_collapse", Self.controlIconSize)
+        collapseButton.setAccessibilityLabel(L10n.string("lx_aside_collapse"))
         collapseButton.contentTintColor = .secondaryLabelColor
         collapseButton.toolTip = L10n.string("lx_aside_collapse")
         collapseButton.target = self
@@ -283,12 +282,12 @@ final class LxAppPhoneAsideRegion {
                 : NSColor.clear.cgColor
         }
         if children[id]?.isURL == true {
-            let globe = NSImageView(image: NSImage(systemSymbolName: "globe", accessibilityDescription: nil) ?? NSImage())
+            let globe = NSImageView(image: Self.icon("icon_globe", Self.globeSize) ?? NSImage())
             globe.contentTintColor = .secondaryLabelColor
             globe.translatesAutoresizingMaskIntoConstraints = false
             NSLayoutConstraint.activate([
-                globe.widthAnchor.constraint(equalToConstant: 15),
-                globe.heightAnchor.constraint(equalToConstant: 15),
+                globe.widthAnchor.constraint(equalToConstant: Self.globeSize),
+                globe.heightAnchor.constraint(equalToConstant: Self.globeSize),
             ])
             tab.addArrangedSubview(globe)
         }
@@ -306,10 +305,8 @@ final class LxAppPhoneAsideRegion {
         let close = PhoneTabCloseButton()
         close.bezelStyle = .regularSquare
         close.isBordered = false
-        close.image = NSImage(
-            systemSymbolName: "xmark",
-            accessibilityDescription: L10n.string("lx_common_close"))?
-            .withSymbolConfiguration(.init(pointSize: 11, weight: .medium))
+        close.image = Self.icon("icon_close_x", Self.closeIconSize)
+        close.setAccessibilityLabel(L10n.string("lx_common_close"))
         close.contentTintColor = .secondaryLabelColor
         close.alphaValue = selected ? 1 : 0.65
         close.onClick = { [weak self] in self?.close(id: id) }
@@ -376,6 +373,14 @@ final class LxAppPhoneAsideRegion {
     private static let stripHeight: CGFloat = 44
     private static let tabHeight: CGFloat = 32
     private static let controlSize: CGFloat = 36
+    private static let controlIconSize: CGFloat = 20
+    private static let closeIconSize: CGFloat = 15
+    private static let globeSize: CGFloat = 16
+
+    /// A strip icon from the design set, at Android's size.
+    private static func icon(_ name: String, _ side: CGFloat) -> NSImage? {
+        LxIcon.image(named: name, size: CGSize(width: side, height: side))
+    }
     private static let tongueHitWidth: CGFloat = 28
     private static let tongueHitWidthCounted: CGFloat = 32
     private static let tongueHitHeight: CGFloat = 88
@@ -432,6 +437,7 @@ private final class PhoneTabCloseButton: NSButton {
 /// chevron toward the main and, from two children, their count. A click or a pull toward the
 /// main brings the slot back.
 private final class PhoneTongueView: NSView {
+    private static let arrowSize: CGFloat = 18
     var onRestore: (() -> Void)?
     var accent: NSColor = .controlAccentColor { didSet { needsDisplay = true } }
     var count = 0 { didSet { needsDisplay = true } }
@@ -509,15 +515,18 @@ private final class PhoneTongueView: NSView {
 
         let cx = (inner + outer) / 2
         let cy = bounds.midY - (counted ? 7 : 0)
-        let chevron = NSBezierPath()
-        chevron.move(to: NSPoint(x: cx + 2.5, y: cy - 4))
-        chevron.line(to: NSPoint(x: cx - 2.5, y: cy))
-        chevron.line(to: NSPoint(x: cx + 2.5, y: cy + 4))
-        chevron.lineWidth = 1.6
-        chevron.lineCapStyle = .round
-        chevron.lineJoinStyle = .round
-        accent.withAlphaComponent(pressed ? 1 : 0.75).setStroke()
-        chevron.stroke()
+        let side = Self.arrowSize
+        if let arrow = LxIcon.image(named: "icon_aside_expand", size: CGSize(width: side, height: side)) {
+            // A template image draws black; recolour it in its own context, not over the tongue.
+            let tint = accent.withAlphaComponent(pressed ? 1 : 0.75)
+            let tinted = NSImage(size: arrow.size, flipped: false) { rect in
+                arrow.draw(in: rect)
+                tint.set()
+                rect.fill(using: .sourceAtop)
+                return true
+            }
+            tinted.draw(in: NSRect(x: cx - side / 2, y: cy - side / 2, width: side, height: side))
+        }
 
         guard counted else { return }
         let label = count > 9 ? "9+" : String(count)
