@@ -114,6 +114,8 @@ export function render(view: View<{ save(value: string): Promise<void> }, { titl
   const imageRole = <image src="a.png" alt="" role="img"/>;
   // @ts-expect-error a <scroll> takes container roles only.
   const scrollRole = <scroll role="tab"/>;
+  // @ts-expect-error headingLevel goes on a <view> or <text>.
+  const buttonHeading = <button headingLevel={2} onClick={() => {}}>Go</button>;
   // @ts-expect-error a <dialog> keeps its own role.
   const dialogRole = <dialog role="group" aria-label="x"/>;
   // @ts-expect-error aria states are booleans.

@@ -39,8 +39,9 @@ test('the new roles and their properties refuse the wrong element and the wrong 
   reset();
   refuses(() => h('view', { role: 'combobox' }), /UI_PROP: role="combobox" belongs on an <input> or a <button>/);
   refuses(() => h('button', { role: 'spinbutton', onClick() {} }, 'B'), /UI_PROP: role="spinbutton" belongs on an <input>/);
-  refuses(() => h('button', { role: 'combobox', 'aria-valuenow': 2, onClick() {} }, 'B'), /UI_PROP: role="combobox" takes aria-valuetext only/);
-  refuses(() => h('button', { 'aria-activedescendant': 'x', onClick() {} }, 'B'), /UI_PROP: aria-activedescendant belongs on an <input> or <textarea>/);
+  refuses(() => h('input', { role: 'combobox', 'aria-label': 'City', 'aria-valuenow': 2 }), /UI_PROP: role="combobox" takes aria-valuetext only/);
+  refuses(() => h('button', { 'aria-activedescendant': 'x', onClick() {} }, 'B'), /UI_PROP: aria-activedescendant is not a property of <button>/);
+  refuses(() => h('textarea', { 'aria-label': 'Note', 'aria-activedescendant': 'x' }), /UI_PROP: aria-activedescendant is not a property of <textarea>/);
   refuses(() => h('input', { value: '', 'aria-label': 'A', 'aria-activedescendant': 'two words' }), /UI_ID: aria-activedescendant names an element id/);
   refuses(() => h('input', { value: '', 'aria-label': 'A', 'aria-controls': 'list' }), /UI_PROP: aria-controls and aria-autocomplete belong on role="combobox"/);
   refuses(() => h('input', { value: '', 'aria-label': 'A', role: 'combobox', 'aria-autocomplete': 'inline' }), /UI_PROP: aria-autocomplete is "list" or "none"/);

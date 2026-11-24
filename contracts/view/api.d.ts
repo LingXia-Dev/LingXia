@@ -35,27 +35,14 @@ export interface Props {
    * `dialog` goes on a popover `<view>` (with `aria-modal` for a modal one); a `<dialog>` has it already. */
   role?: "heading" | "list" | "listitem" | "dialog" | "alert" | "status" | "grid" | "gridcell" | "listbox" | "option" | "menu" | "menuitem" | "progressbar" | "alertdialog" | "group" | "tooltip"
     | "tablist" | "tab" | "tabpanel" | "radiogroup" | "radio" | "toolbar" | "tree" | "treeitem" | "row" | "menuitemcheckbox" | "menuitemradio" | "img" | "combobox" | "spinbutton";
-  headingLevel?: 1 | 2 | 3 | 4 | 5 | 6;
-  /** A progressbar's value between `aria-valuemin` (0) and `aria-valuemax` (100); leave it out while the amount is unknown. `aria-valuetext` replaces the spoken percentage. On an `onPointer` element it is the value arrows and a screen reader step. */
-  "aria-valuenow"?: number; "aria-valuemin"?: number; "aria-valuemax"?: number; "aria-valuetext"?: string;
-  /** On an `<input>` or `<textarea>`: the id of the option the editor's keys point at while focus stays in the text; a screen reader hears that option as it changes. */
-  "aria-activedescendant"?: string;
-  /** With `role="combobox"`: the ids (1..8, space-separated) of the list it opens, and `"list"` when typing filters that list. Assistive tech and automation read both; an id that names no element is left out. */
-  "aria-controls"?: string; "aria-autocomplete"?: "list" | "none";
   /** Removes the node and its subtree from accessibility. */
   "aria-hidden"?: boolean;
-  /** On a popover with `role="dialog"`: modal like a `<dialog>`, which always is. Tab stays inside, the rest of the page leaves accessibility, and the page shows over the host's bars. Without it the popover dialog is non-modal. */
-  "aria-modal"?: boolean;
   /** Announce changes; `alert` is assertive and `status` polite unless set. */
   "aria-live"?: "off" | "polite" | "assertive";
   /** States assistive input announces; leave one out when the element has no such state. */
   "aria-pressed"?: boolean; "aria-selected"?: boolean; "aria-expanded"?: boolean; "aria-busy"?: boolean;
   /** A field's error and required states; the error text belongs in `aria-describedby`. */
   "aria-invalid"?: boolean; "aria-required"?: boolean;
-  /** Checked state of a `radio`, `menuitemcheckbox` or `menuitemradio` item; `"mixed"` on a `menuitemcheckbox` that is partly checked. */
-  "aria-checked"?: boolean | "mixed";
-  /** A `treeitem`'s depth, 1..32; Left and Right walk between levels. */
-  "aria-level"?: number;
   /** Ids of elements (1..8, space-separated) whose text is read after the name, as a hint or error. */
   "aria-describedby"?: string;
 }

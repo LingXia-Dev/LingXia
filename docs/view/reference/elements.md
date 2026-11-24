@@ -15,16 +15,7 @@ Styles each element accepts are in [styles.md](styles.md).
 | `dir` | `"ltr" \| "rtl" \| "auto"` |  |
 | `id` | `string` | Unique on the page (`UI_ID`); what `popoverTarget` and `aria-actions` name. Build one with `useId()`. |
 | `role` | `"heading" \| "list" \| "listitem" \| "dialog" \| "alert" \| "status" \| "grid" \| "gridcell" \| "listbox" \| "option" \| "menu" \| "menuitem" \| "progressbar" \| "alertdialog" \| "group" \| "tooltip" \| "tablist" \| "tab" \| "tabpanel" \| "radiogroup" \| "radio" \| "toolbar" \| "tree" \| "treeitem" \| "row" \| "menuitemcheckbox" \| "menuitemradio" \| "img" \| "combobox" \| "spinbutton"` | Semantic role; controls keep their own. Headings take `headingLevel` 1..6; `alertdialog` goes on a `<dialog>` that interrupts. Composites move focus among their items with the arrow keys and take one Tab stop: `tablist` › `tab`, `radiogroup` › `radio`, `toolbar` › any control, `listbox` › `option`, `menu` › `menuitem`/`menuitemcheckbox`/`menuitemradio`, `tree` › `treeitem`. Item roles go on a `<button>`. `img` on a `<view>` or `<text>` with an `aria-label` speaks that label in place of its content. `dialog` goes on a popover `<view>` (with `aria-modal` for a modal one); a `<dialog>` has it already. |
-| `headingLevel` | `1 \| 2 \| 3 \| 4 \| 5 \| 6` |  |
-| `"aria-valuenow"` | `number` | A progressbar's value between `aria-valuemin` (0) and `aria-valuemax` (100); leave it out while the amount is unknown. `aria-valuetext` replaces the spoken percentage. On an `onPointer` element it is the value arrows and a screen reader step. |
-| `"aria-valuemin"` | `number` |  |
-| `"aria-valuemax"` | `number` |  |
-| `"aria-valuetext"` | `string` |  |
-| `"aria-activedescendant"` | `string` | On an `<input>` or `<textarea>`: the id of the option the editor's keys point at while focus stays in the text; a screen reader hears that option as it changes. |
-| `"aria-controls"` | `string` | With `role="combobox"`: the ids (1..8, space-separated) of the list it opens, and `"list"` when typing filters that list. Assistive tech and automation read both; an id that names no element is left out. |
-| `"aria-autocomplete"` | `"list" \| "none"` |  |
 | `"aria-hidden"` | `boolean` | Removes the node and its subtree from accessibility. |
-| `"aria-modal"` | `boolean` | On a popover with `role="dialog"`: modal like a `<dialog>`, which always is. Tab stays inside, the rest of the page leaves accessibility, and the page shows over the host's bars. Without it the popover dialog is non-modal. |
 | `"aria-live"` | `"off" \| "polite" \| "assertive"` | Announce changes; `alert` is assertive and `status` polite unless set. |
 | `"aria-pressed"` | `boolean` | States assistive input announces; leave one out when the element has no such state. |
 | `"aria-selected"` | `boolean` |  |
@@ -32,8 +23,6 @@ Styles each element accepts are in [styles.md](styles.md).
 | `"aria-busy"` | `boolean` |  |
 | `"aria-invalid"` | `boolean` | A field's error and required states; the error text belongs in `aria-describedby`. |
 | `"aria-required"` | `boolean` |  |
-| `"aria-checked"` | `boolean \| "mixed"` | Checked state of a `radio`, `menuitemcheckbox` or `menuitemradio` item; `"mixed"` on a `menuitemcheckbox` that is partly checked. |
-| `"aria-level"` | `number` | A `treeitem`'s depth, 1..32; Left and Right walk between levels. |
 | `"aria-describedby"` | `string` | Ids of elements (1..8, space-separated) whose text is read after the name, as a hint or error. |
 
 `style` takes the element's own style subset; `className` takes complete Tailwind utilities.
@@ -44,6 +33,12 @@ Children: any elements and text. Renders as `column`. `open`, `onToggle`, `close
 
 | Prop | Type | Required | Notes |
 | --- | --- | --- | --- |
+| `headingLevel` | `1 \| 2 \| 3 \| 4 \| 5 \| 6` |  | A heading's level, 1..6, with `role="heading"`. |
+| `aria-valuenow` | `number` |  | The value of a `progressbar`, a `spinbutton` or an `onPointer` element, between `aria-valuemin` and `aria-valuemax`; leave it out while a progressbar's amount is unknown. On an `onPointer` element it is the value arrows and a screen reader step. |
+| `aria-valuemin` | `number` |  | The lowest value; 0 unless set. |
+| `aria-valuemax` | `number` |  | The highest value; 100 unless set. |
+| `aria-valuetext` | `string` |  | Spoken in place of the number, such as "1:20 of 3:05". |
+| `aria-modal` | `boolean` |  | On a popover with `role="dialog"`: modal like a `<dialog>`. Tab stays inside, the rest of the page leaves accessibility, and the page shows over the host's bars; without it the popover dialog is non-modal. |
 | `bleed` | `BleedEdge` |  | On a direct child of `<page>`: extend under the safe-area insets to the screen edge, on every side or the named ones. |
 | `onPage` | `(direction: "previous" \| "next") => void` |  | Called for PageUp and PageDown on a `role="grid"`. |
 | `onContextMenu` | `(event: ContextMenuEvent) => void` |  | Called for a long press or a secondary click, with where it happened. |
@@ -85,6 +80,7 @@ Children: text, `<span>` and `<link>` runs.
 
 | Prop | Type | Required | Notes |
 | --- | --- | --- | --- |
+| `headingLevel` | `1 \| 2 \| 3 \| 4 \| 5 \| 6` |  | A heading's level, 1..6, with `role="heading"`. |
 | `onContextMenu` | `(event: ContextMenuEvent) => void` |  | Called for a long press or a secondary click, with where it happened. |
 | `onLayout` | `(box: BoxSize) => void` |  | Called with its laid-out size after each change, one render behind. |
 | `box` | `Box` |  | A `useBox` handle this element fills with its laid-out size. |
@@ -96,6 +92,10 @@ Children: text, or noninteractive content elements (a composed control). `dragSn
 
 | Prop | Type | Required | Notes |
 | --- | --- | --- | --- |
+| `aria-level` | `number` |  | A `treeitem`'s depth, 1..32; Left and Right walk between levels. |
+| `aria-controls` | `string` |  | With `role="combobox"`: the ids (1..8, space-separated) of the list it opens. Assistive tech and automation read them; an id that names no element is left out. |
+| `aria-valuetext` | `string` |  | With `role="combobox"`: what is chosen, spoken after the name. |
+| `aria-checked` | `boolean \| "mixed"` |  | Checked state of a `radio`, `menuitemcheckbox` or `menuitemradio` item; `"mixed"` on a `menuitemcheckbox` that is partly checked. |
 | `onContextMenu` | `(event: ContextMenuEvent) => void` |  | Called for a long press or a secondary click, with where it happened. |
 | `onPointer` | `(event: PointerEvent) => void` |  | Reports a single pointer over the element: down, move, up, enter, leave and cancel. |
 | `pointerAxis` | `"x" \| "y" \| "both"` |  | The axis `onPointer` keeps; the other is left to the page's scroll. |
@@ -175,6 +175,13 @@ Binding: `bind={local}` with a `useLocal<string>` cell, or `value` plus `onInput
 
 | Prop | Type | Required | Notes |
 | --- | --- | --- | --- |
+| `aria-valuenow` | `number` |  | The value of a `progressbar`, a `spinbutton` or an `onPointer` element, between `aria-valuemin` and `aria-valuemax`; leave it out while a progressbar's amount is unknown. On an `onPointer` element it is the value arrows and a screen reader step. |
+| `aria-valuemin` | `number` |  | The lowest value; 0 unless set. |
+| `aria-valuemax` | `number` |  | The highest value; 100 unless set. |
+| `aria-valuetext` | `string` |  | Spoken in place of the number, such as "1:20 of 3:05". |
+| `aria-activedescendant` | `string` |  | The id of the option the editor's keys point at while focus stays in the text; a screen reader hears that option as it changes. |
+| `aria-controls` | `string` |  | With `role="combobox"`: the ids (1..8, space-separated) of the list it opens. Assistive tech and automation read them; an id that names no element is left out. |
+| `aria-autocomplete` | `"list" \| "none"` |  | With `role="combobox"`: `"list"` when typing filters the list it opens. |
 | `onKeyDown` | `EditorKeys` |  | Keys the editor handles before typing: a map from key name to a handler returning `true` when it took the key. |
 | `readOnly` | `boolean` |  | The text can be selected and copied but not changed. |
 | `onFocus` | `() => void` |  | Called when the editor gains focus. |
@@ -292,6 +299,7 @@ Children: any elements and text. Renders as `column`. `dragSnapPoints`, `bind`, 
 
 | Prop | Type | Required | Notes |
 | --- | --- | --- | --- |
+| `aria-modal` | `boolean` |  | Always true for a `<dialog>`; `false` is refused. |
 | `open` | `boolean` |  | Whether the dialog is shown; with `onClose` to follow a close request. |
 | `onClose` | `() => void` |  | Called for a request to close: Escape, back, a backdrop tap or a sheet dragged off; it closes when you set `open` to false. |
 | `closedby` | `"any" \| "closerequest" \| "none"` |  | The close requests it takes: `closerequest` (default) Escape and back, `any` also a backdrop tap, `none` none. |

@@ -70,7 +70,6 @@ A literal combination that breaks one of these fails the build; a computed one f
 | `pointerAxis` | on `<view>`, `<button>`, `<vector>`: `pointerAxis needs onPointer on the same element; add onPointer or remove pointerAxis` |
 | `src` | on `<video>`: `src and sources both name the video; give src for one file, or sources for a choice of quality` |
 | `sources` | on `<video>`: `sources and src both name the video; give src for one file, or sources for a choice of quality` |
-| `aria-activedescendant` | `aria-activedescendant belongs on an <input> or <textarea>` |
 | `aria-valuenow` | `role="combobox" takes aria-valuetext only, a string` · `aria-valuenow, -valuemin, -valuemax and -valuetext belong on role="progressbar", "spinbutton" or "combobox", or an onPointer element` |
 | `aria-valuemin` | `role="combobox" takes aria-valuetext only, a string` · `aria-valuenow, -valuemin, -valuemax and -valuetext belong on role="progressbar", "spinbutton" or "combobox", or an onPointer element` |
 | `aria-valuemax` | `role="combobox" takes aria-valuetext only, a string` · `aria-valuenow, -valuemin, -valuemax and -valuetext belong on role="progressbar", "spinbutton" or "combobox", or an onPointer element` |

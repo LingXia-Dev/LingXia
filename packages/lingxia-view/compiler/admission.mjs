@@ -91,7 +91,8 @@ export function admissionProblems(node, file) {
   for (const [name, list] of Object.entries(rules.prop)) {
     const attribute = named.get(name);
     const set = attribute && attributeValues(attribute);
-    if (!attribute || (set && set.every(value => value === undefined))) continue;
+    // A prop the element does not take is reported as such, not by its rules.
+    if (!attribute || (set && set.every(value => value === undefined)) || !(commonProps.includes(name) || has(kindOf(kind).props, name))) continue;
     const broken = list.find(rule => (!rule.on || rule.on.includes(kind))
       && (!('value' in rule) || (set && set.includes(rule.value)))
       && roles.every(value => breaks(rule, value)));

@@ -31,9 +31,7 @@ export function inertControlWarnings(files) {
           const names = new Set(props.map(prop => prop.name.getText(file)));
           // A menu item closes its menu.
           const menuItem = props.some(prop => prop.name.getText(file) === 'role' && prop.initializer && ts.isStringLiteral(prop.initializer) && prop.initializer.text === 'menuitem');
-          // A button that hears the pointer and reports a value is stepped, not clicked.
-          const stepped = tag === 'button' && names.has('onPointer') && names.has('aria-valuenow');
-          if (!names.has('disabled') && !menuItem && !stepped && !acting[tag].some(name => names.has(name))) {
+          if (!names.has('disabled') && !menuItem && !acting[tag].some(name => names.has(name))) {
             const add = tag === 'button' ? 'onClick' : 'onChange or bind';
             warnings.push(`${at(node)}: ${code}: this <${tag}> does nothing: add ${add}, or mark it disabled`);
           }

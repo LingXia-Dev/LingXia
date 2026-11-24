@@ -159,9 +159,10 @@ test('a prop its role or element cannot carry fails the build with what it needs
     ['<view anchor="b"/>', 'anchor', 'anchor belongs to a popover; add popover'],
     ['<view onCloseRequest={g}/>', 'onCloseRequest', 'onCloseRequest belongs to a popover; add popover'],
     ['<view popover="manual" onCloseRequest={g}/>', 'onCloseRequest', 'onCloseRequest belongs on a popover that is not manual'],
-    ['<image src="a.png" alt="" aria-activedescendant="x"/>', 'aria-activedescendant', 'aria-activedescendant belongs on an <input> or <textarea>'],
     ['<view aria-valuenow={3}/>', 'aria-valuenow', 'aria-valuenow, -valuemin, -valuemax and -valuetext belong on role="progressbar"'],
-    ['<button role="combobox" aria-valuenow={3} onClick={f}>x</button>', 'aria-valuenow', 'role="combobox" takes aria-valuetext only'],
+    ['<view aria-checked/>', 'aria-checked', 'aria-checked is not a property of <view>'],
+    ['<textarea aria-label="Note" aria-activedescendant="o1"/>', 'aria-activedescendant', 'aria-activedescendant is not a property of <textarea>'],
+    ['<input aria-label="City" role="combobox" aria-valuenow={3}/>', 'aria-valuenow', 'role="combobox" takes aria-valuetext only'],
     ['<scroll onSnapChange={g}/>', 'onSnapChange', 'onSnapChange reports the snap index you pass in snapIndex'],
   ]) {
     const problems = audit(`const a = ${source};`, 'page.tsx');
@@ -851,7 +852,7 @@ export function render() {
   });
 });
 
-test('an element its props make a keyboard stop takes focus-visible:, and a stepped button is not inert', async () => {
+test('an element its props make a keyboard stop takes focus-visible:', async () => {
   await project({
     'page.tsx': `import { useLocal } from '@lingxia/view';
 export function render() {
@@ -859,7 +860,6 @@ export function render() {
   return <view>
     <view onPointer={() => {}} aria-label="Month" aria-valuenow={at.value} aria-valuemax={11} className="h-10 focus-visible:bg-danger" />
     <view drag="x" dragSnapPoints={[0, 40]} aria-label="Card" className="w-10 h-10 focus-visible:bg-danger" />
-    <button onPointer={() => {}} aria-label="Level" aria-valuenow={at.value}>Level</button>
   </view>;
 }`,
   }, async (root, build) => {

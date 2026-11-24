@@ -34,27 +34,14 @@ export interface Props {
    * `dialog` goes on a popover `<view>` (with `aria-modal` for a modal one); a `<dialog>` has it already. */
   role?: "heading" | "list" | "listitem" | "dialog" | "alert" | "status" | "grid" | "gridcell" | "listbox" | "option" | "menu" | "menuitem" | "progressbar" | "alertdialog" | "group" | "tooltip"
     | "tablist" | "tab" | "tabpanel" | "radiogroup" | "radio" | "toolbar" | "tree" | "treeitem" | "row" | "menuitemcheckbox" | "menuitemradio" | "img" | "combobox" | "spinbutton";
-  headingLevel?: 1 | 2 | 3 | 4 | 5 | 6;
-  /** A progressbar's value between `aria-valuemin` (0) and `aria-valuemax` (100); leave it out while the amount is unknown. `aria-valuetext` replaces the spoken percentage. On an `onPointer` element it is the value arrows and a screen reader step. */
-  "aria-valuenow"?: number; "aria-valuemin"?: number; "aria-valuemax"?: number; "aria-valuetext"?: string;
-  /** On an `<input>` or `<textarea>`: the id of the option the editor's keys point at while focus stays in the text; a screen reader hears that option as it changes. */
-  "aria-activedescendant"?: string;
-  /** With `role="combobox"`: the ids (1..8, space-separated) of the list it opens, and `"list"` when typing filters that list. Assistive tech and automation read both; an id that names no element is left out. */
-  "aria-controls"?: string; "aria-autocomplete"?: "list" | "none";
   /** Removes the node and its subtree from accessibility. */
   "aria-hidden"?: boolean;
-  /** On a popover with `role="dialog"`: modal like a `<dialog>`, which always is. Tab stays inside, the rest of the page leaves accessibility, and the page shows over the host's bars. Without it the popover dialog is non-modal. */
-  "aria-modal"?: boolean;
   /** Announce changes; `alert` is assertive and `status` polite unless set. */
   "aria-live"?: "off" | "polite" | "assertive";
   /** States assistive input announces; leave one out when the element has no such state. */
   "aria-pressed"?: boolean; "aria-selected"?: boolean; "aria-expanded"?: boolean; "aria-busy"?: boolean;
   /** A field's error and required states; the error text belongs in `aria-describedby`. */
   "aria-invalid"?: boolean; "aria-required"?: boolean;
-  /** Checked state of a `radio`, `menuitemcheckbox` or `menuitemradio` item; `"mixed"` on a `menuitemcheckbox` that is partly checked. */
-  "aria-checked"?: boolean | "mixed";
-  /** A `treeitem`'s depth, 1..32; Left and Right walk between levels. */
-  "aria-level"?: number;
   /** Ids of elements (1..8, space-separated) whose text is read after the name, as a hint or error. */
   "aria-describedby"?: string;
 }
@@ -1077,6 +1064,12 @@ export type ViewStyle = StyleGroup.Box & StyleGroup.Padding & StyleGroup.Flex & 
 /** The roles a `<view>` takes; reference/elements.md says where the others go. */
 export type ViewRole = "heading" | "list" | "listitem" | "dialog" | "alert" | "status" | "grid" | "gridcell" | "listbox" | "option" | "menu" | "progressbar" | "group" | "tooltip" | "tablist" | "tabpanel" | "radiogroup" | "toolbar" | "tree" | "row" | "img";
 export type ViewProps = Omit<Props, "style" | "children" | "role"> & { role?: ViewRole; style?: ViewStyle; children?: Child;
+  /** A heading's level, 1..6, with `role="heading"`. */ headingLevel?: 1 | 2 | 3 | 4 | 5 | 6;
+  /** The value of a `progressbar`, a `spinbutton` or an `onPointer` element, between `aria-valuemin` and `aria-valuemax`; leave it out while a progressbar's amount is unknown. On an `onPointer` element it is the value arrows and a screen reader step. */ "aria-valuenow"?: number;
+  /** The lowest value; 0 unless set. */ "aria-valuemin"?: number;
+  /** The highest value; 100 unless set. */ "aria-valuemax"?: number;
+  /** Spoken in place of the number, such as "1:20 of 3:05". */ "aria-valuetext"?: string;
+  /** On a popover with `role="dialog"`: modal like a `<dialog>`. Tab stays inside, the rest of the page leaves accessibility, and the page shows over the host's bars; without it the popover dialog is non-modal. */ "aria-modal"?: boolean;
   /** On a direct child of `<page>`: extend under the safe-area insets to the screen edge, on every side or the named ones. */ bleed?: BleedEdge;
   /** Called for PageUp and PageDown on a `role="grid"`. */ onPage?: (direction: "previous" | "next") => void;
   /** Called for a long press or a secondary click, with where it happened. */ onContextMenu?: (event: ContextMenuEvent) => void;
@@ -1143,6 +1136,7 @@ export type TextStyle = StyleGroup.Box & StyleGroup.Padding & StyleGroup.Text & 
 /** The roles a `<text>` takes; reference/elements.md says where the others go. */
 export type TextRole = "heading" | "listitem" | "alert" | "status" | "gridcell" | "option" | "tooltip" | "img";
 export type TextProps = Omit<Props, "style" | "children" | "role"> & { role?: TextRole; style?: TextStyle; children?: RunChild;
+  /** A heading's level, 1..6, with `role="heading"`. */ headingLevel?: 1 | 2 | 3 | 4 | 5 | 6;
   /** Called for a long press or a secondary click, with where it happened. */ onContextMenu?: (event: ContextMenuEvent) => void;
   /** Called with its laid-out size after each change, one render behind. */ onLayout?: (box: BoxSize) => void;
   /** A `useBox` handle this element fills with its laid-out size. */ box?: Box;
@@ -1152,6 +1146,10 @@ export type ButtonStyle = StyleGroup.Box & StyleGroup.Padding & StyleGroup.Flex 
 /** The roles a `<button>` takes; reference/elements.md says where the others go. */
 export type ButtonRole = "gridcell" | "option" | "menuitem" | "tab" | "radio" | "treeitem" | "menuitemcheckbox" | "menuitemradio" | "combobox";
 export type ButtonProps = Omit<Props, "style" | "children" | "role"> & { role?: ButtonRole; style?: ButtonStyle; children?: Child;
+  /** A `treeitem`'s depth, 1..32; Left and Right walk between levels. */ "aria-level"?: number;
+  /** With `role="combobox"`: the ids (1..8, space-separated) of the list it opens. Assistive tech and automation read them; an id that names no element is left out. */ "aria-controls"?: string;
+  /** With `role="combobox"`: what is chosen, spoken after the name. */ "aria-valuetext"?: string;
+  /** Checked state of a `radio`, `menuitemcheckbox` or `menuitemradio` item; `"mixed"` on a `menuitemcheckbox` that is partly checked. */ "aria-checked"?: boolean | "mixed";
   /** Called for a long press or a secondary click, with where it happened. */ onContextMenu?: (event: ContextMenuEvent) => void;
   /** Reports a single pointer over the element: down, move, up, enter, leave and cancel. */ onPointer?: (event: PointerEvent) => void;
   /** The axis `onPointer` keeps; the other is left to the page's scroll. */ pointerAxis?: "x" | "y" | "both";
@@ -1246,6 +1244,13 @@ export type InputStyle = StyleGroup.Box & StyleGroup.Padding & StyleGroup.Text &
 /** The roles a `<input>` takes; reference/elements.md says where the others go. */
 export type InputRole = "combobox" | "spinbutton";
 export type InputProps = Omit<Props, "style" | "children" | "role"> & { role?: InputRole; style?: InputStyle; children?: never;
+  /** The value of a `progressbar`, a `spinbutton` or an `onPointer` element, between `aria-valuemin` and `aria-valuemax`; leave it out while a progressbar's amount is unknown. On an `onPointer` element it is the value arrows and a screen reader step. */ "aria-valuenow"?: number;
+  /** The lowest value; 0 unless set. */ "aria-valuemin"?: number;
+  /** The highest value; 100 unless set. */ "aria-valuemax"?: number;
+  /** Spoken in place of the number, such as "1:20 of 3:05". */ "aria-valuetext"?: string;
+  /** The id of the option the editor's keys point at while focus stays in the text; a screen reader hears that option as it changes. */ "aria-activedescendant"?: string;
+  /** With `role="combobox"`: the ids (1..8, space-separated) of the list it opens. Assistive tech and automation read them; an id that names no element is left out. */ "aria-controls"?: string;
+  /** With `role="combobox"`: `"list"` when typing filters the list it opens. */ "aria-autocomplete"?: "list" | "none";
   /** Keys the editor handles before typing: a map from key name to a handler returning `true` when it took the key. */ onKeyDown?: EditorKeys;
   /** The text can be selected and copied but not changed. */ readOnly?: boolean;
   /** Called when the editor gains focus. */ onFocus?: () => void;
@@ -1331,6 +1336,7 @@ export type DialogStyle = StyleGroup.Box & StyleGroup.Padding & StyleGroup.Flex 
 /** The roles a `<dialog>` takes; reference/elements.md says where the others go. */
 export type DialogRole = "alertdialog";
 export type DialogProps = Omit<Props, "style" | "children" | "role"> & { role?: DialogRole; style?: DialogStyle; children?: Child;
+  /** Always true for a `<dialog>`; `false` is refused. */ "aria-modal"?: boolean;
   /** Whether the dialog is shown; with `onClose` to follow a close request. */ open?: boolean;
   /** Called for a request to close: Escape, back, a backdrop tap or a sheet dragged off; it closes when you set `open` to false. */ onClose?: () => void;
   /** The close requests it takes: `closerequest` (default) Escape and back, `any` also a backdrop tap, `none` none. */ closedby?: "any" | "closerequest" | "none";
@@ -1392,7 +1398,7 @@ export type VectorProps = Omit<Props, "style" | "children" | "role"> & { role?: 
   /** The drawing's coordinate box, `[x, y, width, height]`, scaled to fit the element. */ viewBox?: readonly [number, number, number, number];
 };
 export type SpanStyle = StyleGroup.Run;
-export type SpanProps = Omit<Props, "style" | "children" | "id" | "role" | "headingLevel" | "aria-valuenow" | "aria-valuemin" | "aria-valuemax" | "aria-valuetext" | "aria-activedescendant" | "aria-controls" | "aria-autocomplete" | "aria-modal" | "aria-live" | "aria-pressed" | "aria-selected" | "aria-expanded" | "aria-busy" | "aria-invalid" | "aria-required" | "aria-checked" | "aria-level" | "aria-describedby"> & { style?: SpanStyle; children?: RunChild;
+export type SpanProps = Omit<Props, "style" | "children" | "id" | "role" | "aria-live" | "aria-pressed" | "aria-selected" | "aria-expanded" | "aria-busy" | "aria-invalid" | "aria-required" | "aria-describedby"> & { style?: SpanStyle; children?: RunChild;
 };
 export type LinkStyle = StyleGroup.Run & StyleGroup.Box & StyleGroup.Padding & StyleGroup.Flex & StyleGroup.Align & StyleGroup.Direction & StyleGroup.Gap & StyleGroup.Text & StyleGroup.Grid;
 /** The roles a `<link>` takes; reference/elements.md says where the others go. */
