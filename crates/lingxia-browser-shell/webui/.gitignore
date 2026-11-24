@@ -1,1 +1,4 @@
 /__lingxia/
+# Skills from npm dependencies
+.agents/skills/liuli/
+.claude/skills/liuli

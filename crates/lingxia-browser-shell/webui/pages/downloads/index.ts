@@ -22,13 +22,11 @@ interface DownloadEvent {
 
 interface DownloadsData {
   downloads: DownloadRecord[];
-  filter: 'all' | 'active' | 'completed';
   loading: boolean;
 }
 
 const initialData: DownloadsData = {
   downloads: [],
-  filter: 'all',
   loading: true,
 };
 
@@ -68,9 +66,6 @@ export default definePage({
         await refresh().catch(() => page.update((d) => { d.loading = false; }));
       },
       actions: {
-        async setFilter({ filter }: { filter: DownloadsData['filter'] }) {
-          page.update((d) => { d.filter = filter; });
-        },
         async pause({ taskId }: { taskId: string }) {
           await run('downloads.pause', taskId);
         },

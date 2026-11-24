@@ -1,308 +1,333 @@
-import { t, useAction, useLocal, type MessageKey } from '@lingxia/view';
+import { List, t, useAction, useLocal, type MessageKey } from '@lingxia/view';
+import { Badge } from '@liulidesign/core/Badge';
+import { Button } from '@liulidesign/core/Button';
+import { ContextMenu } from '@liulidesign/core/ContextMenu';
+import { Dialog } from '@liulidesign/core/Dialog';
+import { DropdownMenu, type DropdownMenuEntry } from '@liulidesign/core/DropdownMenu';
+import { EmptyState } from '@liulidesign/core/EmptyState';
+import { IconButton } from '@liulidesign/core/IconButton';
+import { Item } from '@liulidesign/core/Item';
+import { NavList } from '@liulidesign/core/NavList';
+import { SearchField } from '@liulidesign/core/SearchField';
+import { Select } from '@liulidesign/core/Select';
+import { Switch } from '@liulidesign/core/Switch';
+import { TextInput } from '@liulidesign/core/TextInput';
+import { ToastRegion, useToast } from '@liulidesign/core/Toast';
+import { TopBar } from '@liulidesign/core/TopBar';
+import { hostOf } from '../../shared/format';
+import { SiteIcon } from '../../shared/SiteIcon';
 import type { View } from './$types';
 
-export function render({ data, actions }: View) {
-  const search = useLocal('search', '');
-  const newTitle = useLocal('newTitle', '');
-  const newUrl = useLocal('newUrl', '');
-  const newGroup = useLocal('newGroup', '');
-  const renameTitle = useLocal('renameTitle', '');
+const ALL = '__all__';
+const UNGROUPED = '__ungrouped__';
+// A fixed height lets the list place any of thousands of imported bookmarks without measuring them.
+const ROW_HEIGHT = 56;
+
+type Bookmark = View['data']['entries'][number];
+type Notice = { message: string; count: number } | null;
+
+export function render(view: View) {
+  return (
+    <page data-testid="bookmarks-page" className="bg-surface text-text">
+      <ToastRegion>
+        <Bookmarks {...view} />
+      </ToastRegion>
+    </page>
+  );
+}
+
+function Bookmarks({ data, actions }: View) {
+  const query = useLocal('query', '');
+  // Which dialog is open: '' for none, 'add', 'group', 'renameGroup', 'deleteGroup', or `edit:<id>`.
+  const dialog = useLocal('dialog', '');
+  const formTitle = useLocal('formTitle', '');
+  const formUrl = useLocal('formUrl', '');
+  const formGroup = useLocal<string>('formGroup', UNGROUPED);
+  const formPinned = useLocal('formPinned', false);
   const groupName = useLocal('groupName', '');
 
   const selectGroup = useAction(actions.selectGroup);
   const addBookmark = useAction(actions.addBookmark);
+  const updateBookmark = useAction(actions.updateBookmark);
   const removeBookmark = useAction(actions.removeBookmark);
   const setPinned = useAction(actions.setPinned);
-  const startRename = useAction(actions.startRename);
-  const renameBookmark = useAction(actions.renameBookmark);
-  const moveBookmark = useAction(actions.moveBookmark);
   const shiftBookmark = useAction(actions.shiftBookmark);
   const createGroup = useAction(actions.createGroup);
-  const startGroupRename = useAction(actions.startGroupRename);
   const renameGroup = useAction(actions.renameGroup);
   const shiftGroup = useAction(actions.shiftGroup);
   const deleteGroup = useAction(actions.deleteGroup);
   const importHtml = useAction(actions.importHtml);
   const exportHtml = useAction(actions.exportHtml);
   const openUrl = useAction(actions.openUrl);
+  const toast = useToast();
 
-  const q = search.value.trim().toLowerCase();
-  const visible = data.entries.filter((entry) => {
-    if (data.selectedGroupId === '__ungrouped__' && entry.groupId) return false;
-    if (!data.selectedGroupId.startsWith('__') && entry.groupId !== data.selectedGroupId) return false;
-    if (!q) return true;
-    return entry.title.toLowerCase().includes(q) || entry.url.toLowerCase().includes(q);
-  });
-
-  const selectedGroup = data.groups.find((group) => group.id === data.selectedGroupId);
-  const groupIndex = selectedGroup ? data.groups.indexOf(selectedGroup) : -1;
-  // Order is kept per group, so reorder only while one group's list shows in full.
-  const canReorder = data.selectedGroupId !== '__all__' && !q;
-  const moveOptions = [
-    { value: '__ungrouped__', label: t('bookmarks.ungrouped') },
-    ...data.groups.map((group) => ({ value: group.id, label: group.name })),
-  ];
-  const stepClass = (enabled: boolean) => (
-    enabled
-      ? 'px-2 py-1 rounded-md bg-canvas border border-line text-xs'
-      : 'px-2 py-1 rounded-md bg-canvas border border-line text-xs opacity-40'
-  );
-
-  const submitAdd = async () => {
-    if (!newUrl.value.trim()) return;
-    const res = await addBookmark.run({
-      title: newTitle.value,
-      url: newUrl.value,
-      groupId: data.selectedGroupId,
-    });
-    if (res.ok) {
-      newTitle.set('');
-      newUrl.set('');
+  const notify = async (outcome: Promise<{ ok: true; value: Notice } | { ok: false }>) => {
+    const result = await outcome;
+    if (result.ok && result.value) {
+      toast.show({ message: t(result.value.message as MessageKey, { count: result.value.count }), tone: 'success' });
     }
   };
 
-  const submitGroup = async () => {
-    if (!newGroup.value.trim()) return;
-    const res = await createGroup.run({ name: newGroup.value });
-    if (res.ok) newGroup.set('');
+  const q = query.value.trim().toLowerCase();
+  const visible = data.entries.filter((entry) => {
+    if (data.selectedGroupId === UNGROUPED && entry.groupId) return false;
+    if (!data.selectedGroupId.startsWith('__') && entry.groupId !== data.selectedGroupId) return false;
+    return !q || entry.title.toLowerCase().includes(q) || entry.url.toLowerCase().includes(q);
+  });
+  const selectedGroup = data.groups.find((group) => group.id === data.selectedGroupId);
+  const groupIndex = selectedGroup ? data.groups.indexOf(selectedGroup) : -1;
+  // Order is kept per group, so reorder only while one group's list shows in full.
+  const canReorder = data.selectedGroupId !== ALL && !q;
+  const heading = selectedGroup?.name ?? (data.selectedGroupId === UNGROUPED ? t('bookmarks.ungrouped') : t('bookmarks.all'));
+  const groupItems = [
+    { value: UNGROUPED, label: t('bookmarks.ungrouped') },
+    ...data.groups.map((group) => ({ value: group.id, label: group.name })),
+  ];
+  const editing = dialog.value.startsWith('edit:') ? data.entries.find((entry) => `edit:${entry.id}` === dialog.value) : undefined;
+
+  const close = () => dialog.set('');
+  const openAdd = () => {
+    formTitle.set('');
+    formUrl.set('');
+    dialog.set('add');
+  };
+  const openEdit = (entry: Bookmark) => {
+    formTitle.set(entry.title);
+    formGroup.set(entry.groupId ?? UNGROUPED);
+    formPinned.set(data.pinnedIds.includes(entry.id));
+    dialog.set(`edit:${entry.id}`);
   };
 
+  const rowMenu = (entry: Bookmark, index: number): DropdownMenuEntry[] => {
+    const pinned = data.pinnedIds.includes(entry.id);
+    return [
+      { label: t('bookmarks.open'), icon: 'external-link', onClick: () => { void openUrl.run({ url: entry.url }); } },
+      { label: t('bookmarks.edit'), icon: 'edit', onClick: () => openEdit(entry) },
+      { label: pinned ? t('bookmarks.unpin') : t('bookmarks.pin'), icon: 'star', onClick: () => { void setPinned.run({ id: entry.id, pinned: !pinned }); } },
+      ...(canReorder ? [
+        { label: t('bookmarks.moveUp'), icon: 'arrow-up', isDisabled: index === 0, onClick: () => { void shiftBookmark.run({ id: entry.id, delta: -1 }); } },
+        { label: t('bookmarks.moveDown'), icon: 'arrow-down', isDisabled: index === visible.length - 1, onClick: () => { void shiftBookmark.run({ id: entry.id, delta: 1 }); } },
+      ] satisfies DropdownMenuEntry[] : []),
+      { type: 'divider' },
+      { label: t('common.delete'), icon: 'delete', variant: 'destructive', onClick: () => { void removeBookmark.run({ id: entry.id }); } },
+    ];
+  };
+
+  const renderRow = (entry: Bookmark, index: number) => {
+    const title = entry.title || entry.url;
+    return (
+      <view className="h-14">
+      <ContextMenu label={title} items={rowMenu(entry, index)} data-testid={`bookmark-${entry.id}`}>
+        <Item
+          label={title}
+          labelEnd={data.pinnedIds.includes(entry.id) ? <Badge label={t('bookmarks.pinned')} size="sm" /> : undefined}
+          description={entry.url}
+          descriptionLines={1}
+          startContent={<SiteIcon host={hostOf(entry.url)} />}
+          density="compact"
+          onClick={() => { void openUrl.run({ url: entry.url }); }}
+          endAction={{ label: t('bookmarks.editNamed', { title }), icon: 'more', onClick: () => openEdit(entry), 'data-testid': `bookmark-edit-${entry.id}` }}
+          className="h-14 rounded-control"
+        />
+      </ContextMenu>
+      </view>
+    );
+  };
+
+  const groupMenu: DropdownMenuEntry[] = selectedGroup ? [
+    { label: t('bookmarks.renameGroup'), icon: 'edit', onClick: () => { groupName.set(selectedGroup.name); dialog.set('renameGroup'); } },
+    { label: t('bookmarks.moveGroupUp'), icon: 'arrow-up', isDisabled: groupIndex <= 0, onClick: () => { void shiftGroup.run({ id: selectedGroup.id, delta: -1 }); } },
+    { label: t('bookmarks.moveGroupDown'), icon: 'arrow-down', isDisabled: groupIndex >= data.groups.length - 1, onClick: () => { void shiftGroup.run({ id: selectedGroup.id, delta: 1 }); } },
+    { type: 'divider' },
+    { label: t('bookmarks.deleteGroup'), icon: 'delete', variant: 'destructive', onClick: () => dialog.set('deleteGroup') },
+  ] : [];
+
   return (
-    <page data-testid="bookmarks-page" className="bg-canvas text-text px-6 py-6 gap-4">
-      <view className="flex-row items-center justify-between gap-4">
-        <text className="text-2xl font-semibold">{t('bookmarks.title')}</text>
-        <view className="flex-row items-center gap-2">
-          {data.status ? <text className="text-xs text-accent">{t(data.status as MessageKey, { count: data.statusCount })}</text> : null}
-          <button
-            onClick={() => { void importHtml.run(); }}
-            className="px-3 py-1.5 rounded-lg bg-surface border border-line text-sm"
-          >
-            <text>{t('bookmarks.import')}</text>
-          </button>
-          <button
-            onClick={() => { void exportHtml.run(); }}
-            className="px-3 py-1.5 rounded-lg bg-surface border border-line text-sm"
-          >
-            <text>{t('bookmarks.export')}</text>
-          </button>
+    <view className="grow min-h-0">
+      <TopBar
+        heading={t('bookmarks.title')}
+        endContent={
+          <view className="flex-row items-center gap-2">
+            <Button label={t('bookmarks.add')} variant="primary" size="sm" startIcon="add" onClick={openAdd} data-testid="bookmarks-add" />
+            <DropdownMenu
+              label={t('bookmarks.more')}
+              size="sm"
+              alignment="end"
+              items={[
+                { label: t('bookmarks.import'), icon: 'upload', onClick: () => { void notify(importHtml.run()); } },
+                { label: t('bookmarks.export'), icon: 'download', onClick: () => { void notify(exportHtml.run()); } },
+              ]}
+            >
+              <IconButton label={t('bookmarks.more')} icon="more" size="sm" edge="end" data-testid="bookmarks-more" />
+            </DropdownMenu>
+          </view>
+        }
+        className="px-6"
+      />
+      <view className="grow min-h-0 flex-row bg-canvas">
+        <view className="w-[240px] shrink-0 px-3 py-4 gap-2 border-e border-text/8">
+          <NavList
+            label={t('bookmarks.title')}
+            sections={[
+              { id: 'library', items: [
+                { value: ALL, label: t('bookmarks.all'), endText: String(data.entries.length) },
+                { value: UNGROUPED, label: t('bookmarks.ungrouped') },
+              ] },
+              ...(data.groups.length ? [{ id: 'groups', title: t('bookmarks.groups'), items: data.groups.map((group) => ({
+                value: group.id,
+                label: group.name,
+                endText: String(data.entries.filter((entry) => entry.groupId === group.id).length),
+              })) }] : []),
+            ]}
+            value={data.selectedGroupId}
+            onChange={(groupId) => { void selectGroup.run({ groupId }); }}
+            data-testid="bookmarks-groups"
+          />
+          <view className="flex-row">
+            <Button label={t('bookmarks.newGroup')} variant="ghost" size="sm" startIcon="add" onClick={() => { groupName.set(''); dialog.set('group'); }} data-testid="bookmarks-new-group" />
+          </view>
+        </view>
+
+        <view className="grow basis-0 min-w-0 min-h-0 px-6 pt-4 gap-3">
+          <view className="flex-row items-center gap-2 min-h-control-md">
+            <text role="heading" headingLevel={2} className="grow shrink basis-0 min-w-0 truncate text-title font-semibold">{heading}</text>
+            {selectedGroup ? (
+              <DropdownMenu label={t('bookmarks.groupActions', { name: selectedGroup.name })} size="sm" alignment="end" items={groupMenu}>
+                <IconButton label={t('bookmarks.groupActions', { name: selectedGroup.name })} icon="more" size="sm" edge="end" data-testid="bookmarks-group-more" />
+              </DropdownMenu>
+            ) : null}
+          </view>
+          <SearchField label={t('bookmarks.search')} isLabelHidden placeholder={t('bookmarks.search')} bind={query} data-testid="bookmarks-search" />
+          {data.loading ? null : visible.length === 0 ? (
+            <EmptyState
+              title={q ? t('bookmarks.noMatches') : t('bookmarks.empty')}
+              description={q ? undefined : t('bookmarks.emptyHint')}
+              actions={q ? undefined : <Button label={t('bookmarks.add')} variant="secondary" startIcon="add" onClick={openAdd} />}
+              className="grow justify-center"
+              data-testid="bookmarks-empty"
+            />
+          ) : (
+            <List
+              items={visible}
+              getKey={(entry) => entry.id}
+              getItemHeight={() => ROW_HEIGHT}
+              renderItem={renderRow}
+              className="grow pb-6"
+              data-testid="bookmarks-list"
+            />
+          )}
         </view>
       </view>
 
-      <view className="flex-row gap-4 grow basis-0 min-h-0">
-        <view className="w-56 gap-2">
-          <button
-            onClick={() => { void selectGroup.run({ groupId: '__all__' }); }}
-            className={data.selectedGroupId === '__all__' ? 'px-3 py-2 rounded-lg bg-accent text-on-accent text-sm' : 'px-3 py-2 rounded-lg bg-surface text-sm'}
-          >
-            <text>{t('bookmarks.all')}</text>
-          </button>
-          <button
-            onClick={() => { void selectGroup.run({ groupId: '__ungrouped__' }); }}
-            className={data.selectedGroupId === '__ungrouped__' ? 'px-3 py-2 rounded-lg bg-accent text-on-accent text-sm' : 'px-3 py-2 rounded-lg bg-surface text-sm'}
-          >
-            <text>{t('bookmarks.ungrouped')}</text>
-          </button>
-          {data.groups.map((group) => (
-            <button
-              key={group.id}
-              onClick={() => { void selectGroup.run({ groupId: group.id }); }}
-              className={data.selectedGroupId === group.id ? 'px-3 py-2 rounded-lg bg-accent text-on-accent text-sm' : 'px-3 py-2 rounded-lg bg-surface text-sm'}
-            >
-              <text>{group.name}</text>
-            </button>
-          ))}
-          <view className="flex-row gap-1 pt-2">
-            <input
-              aria-label={t('bookmarks.newGroup')}
-              value={newGroup.value}
-              placeholder={t('bookmarks.newGroup')}
-              onInput={(v) => newGroup.set(v)}
-              onSubmit={() => { void submitGroup(); }}
-              className="grow basis-0 min-w-0 px-2.5 py-1.5 rounded-lg bg-surface border border-line text-xs"
+      <Dialog
+        isOpen={dialog.value === 'add'}
+        onOpenChange={(open) => { if (!open) close(); }}
+        label={t('bookmarks.add')}
+        size="sm"
+        data-testid="bookmarks-add-dialog"
+        actions={
+          <>
+            <Button label={t('common.cancel')} onClick={close} />
+            <Button
+              label={t('common.save')}
+              variant="primary"
+              isDisabled={!formUrl.value.trim()}
+              clickAction={async () => {
+                const result = await addBookmark.run({ title: formTitle.value, url: formUrl.value, groupId: data.selectedGroupId });
+                if (result.ok) close();
+              }}
+              data-testid="bookmarks-add-save"
             />
-            <button onClick={() => { void submitGroup(); }} className="px-2.5 py-1.5 rounded-lg bg-surface border border-line text-xs">
-              <text>{t('bookmarks.addGroup')}</text>
-            </button>
-          </view>
+          </>
+        }
+      >
+        <view className="gap-4">
+          <TextInput label={t('bookmarks.url')} bind={formUrl} type="text" inputMode="text" autoCapitalize="none" placeholder="https://" hasAutoFocus isRequired />
+          <TextInput label={t('bookmarks.name')} bind={formTitle} optionalLabel={t('common.optional')} />
         </view>
+      </Dialog>
 
-        <view className="grow basis-0 min-w-0 gap-3">
-          {selectedGroup ? (
-            <view className="flex-row items-center gap-2">
-              {data.editingGroupId === selectedGroup.id ? (
-                <input
-                  aria-label={t('bookmarks.renameGroup')}
-                  value={groupName.value}
-                  autoFocus
-                  onInput={(v) => groupName.set(v)}
-                  onSubmit={(v) => { void renameGroup.run({ id: selectedGroup.id, name: v }); }}
-                  className="grow basis-0 min-w-0 px-3 py-1.5 rounded-lg bg-surface border border-line text-sm"
-                />
-              ) : (
-                <text className="grow basis-0 min-w-0 text-base font-semibold">{selectedGroup.name}</text>
-              )}
-              {data.editingGroupId === selectedGroup.id ? (
-                <button
-                  onClick={() => { void renameGroup.run({ id: selectedGroup.id, name: groupName.value }); }}
-                  className="px-3 py-1.5 rounded-lg bg-accent text-on-accent text-sm"
-                >
-                  <text>{t('common.save')}</text>
-                </button>
-              ) : (
-                <button
-                  onClick={() => { groupName.set(selectedGroup.name); void startGroupRename.run({ id: selectedGroup.id }); }}
-                  className="px-3 py-1.5 rounded-lg bg-surface border border-line text-sm"
-                >
-                  <text>{t('bookmarks.renameGroup')}</text>
-                </button>
-              )}
-              <button
-                disabled={groupIndex <= 0}
-                onClick={() => { void shiftGroup.run({ id: selectedGroup.id, delta: -1 }); }}
-                className={groupIndex <= 0 ? 'px-3 py-1.5 rounded-lg bg-surface border border-line text-sm opacity-40' : 'px-3 py-1.5 rounded-lg bg-surface border border-line text-sm'}
-              >
-                <text>{t('bookmarks.moveGroupUp')}</text>
-              </button>
-              <button
-                disabled={groupIndex >= data.groups.length - 1}
-                onClick={() => { void shiftGroup.run({ id: selectedGroup.id, delta: 1 }); }}
-                className={groupIndex >= data.groups.length - 1 ? 'px-3 py-1.5 rounded-lg bg-surface border border-line text-sm opacity-40' : 'px-3 py-1.5 rounded-lg bg-surface border border-line text-sm'}
-              >
-                <text>{t('bookmarks.moveGroupDown')}</text>
-              </button>
-              <button
-                onClick={() => { void deleteGroup.run({ id: selectedGroup.id }); }}
-                className="px-3 py-1.5 rounded-lg bg-transparent text-sm text-danger"
-              >
-                <text>{t('bookmarks.deleteGroup')}</text>
-              </button>
-            </view>
-          ) : null}
-
-          <view className="flex-row gap-2">
-            <input
-              aria-label={t('common.search')}
-              value={search.value}
-              placeholder={t('common.search')}
-              onInput={(v) => search.set(v)}
-              className="grow basis-0 min-w-0 px-3 py-2 rounded-lg bg-surface border border-line text-sm"
+      <Dialog
+        isOpen={editing !== undefined}
+        onOpenChange={(open) => { if (!open) close(); }}
+        label={t('bookmarks.edit')}
+        description={editing?.url}
+        size="sm"
+        data-testid="bookmarks-edit-dialog"
+        actions={
+          <>
+            <Button
+              label={t('common.delete')}
+              variant="ghost"
+              className="me-auto"
+              clickAction={async () => { if (editing) await removeBookmark.run({ id: editing.id }); close(); }}
             />
-          </view>
-
-          <view className="flex-row gap-2">
-            <input
-              aria-label={t('bookmarks.addTitle')}
-              value={newTitle.value}
-              placeholder={t('bookmarks.addTitle')}
-              onInput={(v) => newTitle.set(v)}
-              className="w-44 px-3 py-2 rounded-lg bg-surface border border-line text-sm"
+            <Button label={t('common.cancel')} onClick={close} />
+            <Button
+              label={t('common.save')}
+              variant="primary"
+              clickAction={async () => {
+                if (!editing) return;
+                const result = await updateBookmark.run({ id: editing.id, title: formTitle.value, groupId: formGroup.value, pinned: formPinned.value });
+                if (result.ok) close();
+              }}
+              data-testid="bookmarks-edit-save"
             />
-            <input
-              aria-label={t('bookmarks.addUrl')}
-              value={newUrl.value}
-              placeholder={t('bookmarks.addUrl')}
-              onInput={(v) => newUrl.set(v)}
-              onSubmit={() => { void submitAdd(); }}
-              className="grow basis-0 min-w-0 px-3 py-2 rounded-lg bg-surface border border-line text-sm"
-            />
-            <button
-              onClick={() => { void submitAdd(); }}
-              className="px-4 py-2 rounded-lg bg-accent text-on-accent text-sm font-medium"
-            >
-              <text>{t('bookmarks.add')}</text>
-            </button>
-          </view>
-
-          <scroll className="grow basis-0 min-h-0 rounded-xl bg-surface border border-line">
-            {visible.length === 0 ? (
-              <view className="p-6 items-center">
-                <text className="text-sm text-muted">{data.loading ? t('common.loading') : t('common.empty')}</text>
-              </view>
-            ) : (
-              visible.map((entry, index) => (
-                <view key={entry.id} className="flex-row items-center justify-between px-4 py-3 border-t border-line gap-3">
-                  {data.editingId === entry.id ? (
-                    <input
-                      aria-label={t('bookmarks.rename')}
-                      value={renameTitle.value}
-                      placeholder={entry.url}
-                      autoFocus
-                      onInput={(v) => renameTitle.set(v)}
-                      onSubmit={(v) => { void renameBookmark.run({ id: entry.id, title: v }); }}
-                      className="grow basis-0 min-w-0 px-3 py-1.5 rounded-lg bg-canvas border border-line text-sm"
-                    />
-                  ) : (
-                    <button
-                      onClick={() => { void openUrl.run({ url: entry.url }); }}
-                      className="grow basis-0 min-w-0 bg-transparent gap-0.5"
-                    >
-                      <text className="text-sm font-medium">{entry.title || entry.url}</text>
-                      <text className="text-xs text-muted">{entry.url}</text>
-                    </button>
-                  )}
-                  <view className="flex-row items-center gap-2">
-                    {canReorder ? (
-                      <button
-                        aria-label={t('bookmarks.moveUp')}
-                        disabled={index === 0}
-                        onClick={() => { void shiftBookmark.run({ id: entry.id, delta: -1 }); }}
-                        className={stepClass(index > 0)}
-                      >
-                        <text>↑</text>
-                      </button>
-                    ) : null}
-                    {canReorder ? (
-                      <button
-                        aria-label={t('bookmarks.moveDown')}
-                        disabled={index === visible.length - 1}
-                        onClick={() => { void shiftBookmark.run({ id: entry.id, delta: 1 }); }}
-                        className={stepClass(index < visible.length - 1)}
-                      >
-                        <text>↓</text>
-                      </button>
-                    ) : null}
-                    {data.groups.length > 0 ? (
-                      <select
-                        aria-label={t('bookmarks.moveTo')}
-                        value={entry.groupId ?? '__ungrouped__'}
-                        options={moveOptions}
-                        onChange={(value) => { void moveBookmark.run({ id: entry.id, groupId: value }); }}
-                      />
-                    ) : null}
-                    {data.editingId === entry.id ? (
-                      <button
-                        onClick={() => { void renameBookmark.run({ id: entry.id, title: renameTitle.value }); }}
-                        className="px-2.5 py-1 rounded-md bg-accent text-on-accent text-xs"
-                      >
-                        <text>{t('common.save')}</text>
-                      </button>
-                    ) : (
-                      <button
-                        onClick={() => { renameTitle.set(entry.title); void startRename.run({ id: entry.id }); }}
-                        className="px-2.5 py-1 rounded-md bg-canvas border border-line text-xs"
-                      >
-                        <text>{t('bookmarks.rename')}</text>
-                      </button>
-                    )}
-                    <button
-                      onClick={() => { void setPinned.run({ id: entry.id, pinned: !data.pinnedIds.includes(entry.id) }); }}
-                      className="px-2.5 py-1 rounded-md bg-canvas border border-line text-xs"
-                    >
-                      <text>{data.pinnedIds.includes(entry.id) ? t('bookmarks.unpin') : t('bookmarks.pin')}</text>
-                    </button>
-                    <button
-                      onClick={() => { void removeBookmark.run({ id: entry.id }); }}
-                      className="px-2.5 py-1 rounded-md bg-transparent text-xs text-danger"
-                    >
-                      <text>{t('common.delete')}</text>
-                    </button>
-                  </view>
-                </view>
-              ))
-            )}
-          </scroll>
+          </>
+        }
+      >
+        <view className="gap-4">
+          <TextInput label={t('bookmarks.name')} bind={formTitle} placeholder={editing?.url} />
+          {data.groups.length ? <Select label={t('bookmarks.group')} bind={formGroup} items={groupItems} /> : null}
+          <Switch label={t('bookmarks.pinToSidebar')} bind={formPinned} />
         </view>
-      </view>
-    </page>
+      </Dialog>
+
+      <Dialog
+        isOpen={dialog.value === 'group' || dialog.value === 'renameGroup'}
+        onOpenChange={(open) => { if (!open) close(); }}
+        label={dialog.value === 'group' ? t('bookmarks.newGroup') : t('bookmarks.renameGroup')}
+        size="sm"
+        actions={
+          <>
+            <Button label={t('common.cancel')} onClick={close} />
+            <Button
+              label={t('common.save')}
+              variant="primary"
+              isDisabled={!groupName.value.trim()}
+              clickAction={async () => {
+                const result = dialog.value === 'group' || !selectedGroup
+                  ? await createGroup.run({ name: groupName.value })
+                  : await renameGroup.run({ id: selectedGroup.id, name: groupName.value });
+                if (result.ok) close();
+              }}
+              data-testid="bookmarks-group-save"
+            />
+          </>
+        }
+      >
+        <TextInput label={t('bookmarks.groupName')} bind={groupName} hasAutoFocus />
+      </Dialog>
+
+      <Dialog
+        isOpen={dialog.value === 'deleteGroup' && selectedGroup !== undefined}
+        onOpenChange={(open) => { if (!open) close(); }}
+        label={t('bookmarks.deleteGroupConfirm', { name: selectedGroup?.name ?? '' })}
+        description={t('bookmarks.deleteGroupHint')}
+        size="sm"
+        isAlert
+        dismissOn="closeRequest"
+        actions={
+          <>
+            <Button label={t('common.cancel')} onClick={close} />
+            <Button
+              label={t('bookmarks.deleteGroup')}
+              variant="destructive"
+              clickAction={async () => { if (selectedGroup) await deleteGroup.run({ id: selectedGroup.id }); close(); }}
+            />
+          </>
+        }
+      />
+    </view>
   );
 }

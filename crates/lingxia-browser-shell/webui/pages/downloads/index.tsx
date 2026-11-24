@@ -1,10 +1,24 @@
 import { t, useAction, useLocal, type MessageKey } from '@lingxia/view';
+import { Button } from '@liulidesign/core/Button';
+import { EmptyState } from '@liulidesign/core/EmptyState';
+import { IconButton } from '@liulidesign/core/IconButton';
+import { Item, ItemList } from '@liulidesign/core/Item';
+import { ProgressBar } from '@liulidesign/core/ProgressBar';
+import { SearchField } from '@liulidesign/core/SearchField';
+import { SegmentedControl } from '@liulidesign/core/SegmentedControl';
+import { TopBar } from '@liulidesign/core/TopBar';
 import { formatBytes } from '../../shared/format';
 import type { View } from './$types';
 
+type Download = View['data']['downloads'][number];
+
+const FILTERS = ['all', 'active', 'completed'] as const;
+
+const isActive = (item: Download) => item.status === 'downloading' || item.status === 'paused';
+
 export function render({ data, actions }: View) {
-  const search = useLocal('search', '');
-  const setFilter = useAction(actions.setFilter);
+  const query = useLocal('query', '');
+  const filter = useLocal<string>('filter', 'all');
   const pause = useAction(actions.pause);
   const resume = useAction(actions.resume);
   const retry = useAction(actions.retry);
@@ -15,109 +29,130 @@ export function render({ data, actions }: View) {
   const clearCompleted = useAction(actions.clearCompleted);
   const openSettings = useAction(actions.openSettings);
 
-  const q = search.value.trim().toLowerCase();
+  const q = query.value.trim().toLowerCase();
   const visible = data.downloads.filter((item) => {
-    if (data.filter === 'active' && item.status !== 'downloading' && item.status !== 'paused') return false;
-    if (data.filter === 'completed' && item.status !== 'completed') return false;
-    if (!q) return true;
-    return item.fileName.toLowerCase().includes(q) || item.url.toLowerCase().includes(q);
+    if (filter.value === 'active' && !isActive(item)) return false;
+    if (filter.value === 'completed' && item.status !== 'completed') return false;
+    return !q || item.fileName.toLowerCase().includes(q) || item.url.toLowerCase().includes(q);
   });
 
-  return (
-    <page data-testid="downloads-page" className="bg-canvas text-text px-6 py-6 gap-4">
-      <view className="flex-row items-center justify-between gap-4">
-        <text className="text-2xl font-semibold">{t('downloads.title')}</text>
-        <view className="flex-row items-center gap-2">
-          <button
-            onClick={() => { void clearCompleted.run(); }}
-            className="px-3 py-1.5 rounded-lg bg-surface border border-line text-sm"
-          >
-            <text>{t('downloads.clearCompleted')}</text>
-          </button>
-          <button
-            data-testid="downloads-settings-btn"
-            onClick={() => { void openSettings.run(); }}
-            className="px-3 py-1.5 rounded-lg bg-surface border border-line text-sm"
-          >
-            <text>{t('nav.settings')}</text>
-          </button>
-        </view>
-      </view>
+  const sizeText = (item: Download) => (item.totalBytes
+    ? t('downloads.size.of', { done: formatBytes(item.downloadedBytes), total: formatBytes(item.totalBytes) })
+    : formatBytes(item.downloadedBytes));
 
-      <view className="flex-row items-center gap-2">
-        {(['all', 'active', 'completed'] as const).map((f) => (
-          <button
-            key={f}
-            onClick={() => { void setFilter.run({ filter: f }); }}
-            className={data.filter === f ? 'px-3 py-1.5 rounded-lg bg-accent text-on-accent text-sm' : 'px-3 py-1.5 rounded-lg bg-surface border border-line text-sm'}
-          >
-            <text>{t(`downloads.${f}` as MessageKey)}</text>
-          </button>
-        ))}
-        <input
-          aria-label={t('common.search')}
-          value={search.value}
-          placeholder={t('common.search')}
-          onInput={(v) => search.set(v)}
-          className="grow basis-0 min-w-0 px-3 py-1.5 rounded-lg bg-surface border border-line text-sm"
+  const description = (item: Download) => {
+    const status = t(`downloads.status.${item.status}` as MessageKey);
+    if (!isActive(item)) {
+      const size = item.status === 'completed' ? formatBytes(item.totalBytes ?? item.downloadedBytes) : '';
+      return size ? `${size} · ${status}` : status;
+    }
+    return (
+      <view className="gap-1 pt-1">
+        <ProgressBar
+          label={item.fileName}
+          isLabelHidden
+          value={item.totalBytes ? item.downloadedBytes : undefined}
+          max={item.totalBytes ?? undefined}
+          valueLabel={sizeText(item)}
+          size="sm"
         />
+        <text className="text-footnote text-muted">{`${sizeText(item)} · ${status}`}</text>
       </view>
+    );
+  };
 
-      <scroll className="grow basis-0 min-h-0 rounded-xl bg-surface border border-line">
-        {visible.length === 0 ? (
-          <view className="p-6 items-center">
-            <text className="text-sm text-muted">{data.loading ? t('common.loading') : t('common.empty')}</text>
+  const controls = (item: Download) => (
+    <view className="flex-row items-center gap-1">
+      {item.status === 'downloading' ? (
+        <IconButton label={t('downloads.pause', { name: item.fileName })} icon="pause" size="sm" clickAction={() => pause.run({ taskId: item.taskId })} />
+      ) : null}
+      {item.status === 'paused' ? (
+        <IconButton label={t('downloads.resume', { name: item.fileName })} icon="play" size="sm" clickAction={() => resume.run({ taskId: item.taskId })} />
+      ) : null}
+      {isActive(item) ? (
+        <IconButton label={t('downloads.cancel', { name: item.fileName })} icon="stop" size="sm" clickAction={() => cancel.run({ taskId: item.taskId })} />
+      ) : null}
+      {item.status === 'failed' ? (
+        <Button label={t('downloads.retry')} size="sm" variant="secondary" clickAction={() => retry.run({ taskId: item.taskId })} />
+      ) : null}
+      {item.status === 'completed' ? (
+        <IconButton label={t('downloads.open', { name: item.fileName })} icon="external-link" size="sm" clickAction={() => open.run({ taskId: item.taskId })} />
+      ) : null}
+      {item.status === 'completed' ? (
+        <IconButton label={t('downloads.reveal', { name: item.fileName })} icon="folder" size="sm" clickAction={() => reveal.run({ taskId: item.taskId })} />
+      ) : null}
+      {isActive(item) ? null : (
+        <IconButton
+          label={t('downloads.remove', { name: item.fileName })}
+          icon="close"
+          size="sm"
+          edge="end"
+          clickAction={() => remove.run({ taskId: item.taskId })}
+          data-testid={`download-remove-${item.taskId}`}
+        />
+      )}
+    </view>
+  );
+
+  return (
+    <page data-testid="downloads-page" className="bg-surface text-text">
+      <TopBar
+        heading={t('downloads.title')}
+        endContent={
+          <view className="flex-row items-center gap-2">
+            <Button
+              label={t('downloads.clearCompleted')}
+              variant="secondary"
+              size="sm"
+              isDisabled={!data.downloads.some((item) => !isActive(item))}
+              clickAction={() => clearCompleted.run()}
+            />
+            <IconButton label={t('downloads.settings')} icon="settings" size="sm" clickAction={() => openSettings.run()} data-testid="downloads-settings-btn" />
           </view>
-        ) : (
-          visible.map((item) => (
-            <view key={item.taskId} className="px-4 py-3 border-t border-line gap-2">
-              <view className="flex-row items-center justify-between gap-3">
-                <view className="grow basis-0 min-w-0 gap-0.5">
-                  <text className="text-sm font-medium">{item.fileName}</text>
-                  <text className="text-xs text-muted">
-                    {formatBytes(item.downloadedBytes)}
-                    {item.totalBytes ? ` / ${formatBytes(item.totalBytes)}` : ''}
-                    {` · ${t(`downloads.status.${item.status}` as MessageKey)}`}
-                  </text>
-                </view>
-                <view className="flex-row items-center gap-2">
-                  {item.status === 'downloading' ? (
-                    <button onClick={() => { void pause.run({ taskId: item.taskId }); }} className="px-2.5 py-1 rounded-md bg-canvas border border-line text-xs">
-                      <text>{t('downloads.pause')}</text>
-                    </button>
-                  ) : null}
-                  {item.status === 'paused' ? (
-                    <button onClick={() => { void resume.run({ taskId: item.taskId }); }} className="px-2.5 py-1 rounded-md bg-canvas border border-line text-xs">
-                      <text>{t('downloads.resume')}</text>
-                    </button>
-                  ) : null}
-                  {item.status === 'failed' ? (
-                    <button onClick={() => { void retry.run({ taskId: item.taskId }); }} className="px-2.5 py-1 rounded-md bg-canvas border border-line text-xs">
-                      <text>{t('downloads.retry')}</text>
-                    </button>
-                  ) : null}
-                  {item.status === 'completed' ? (
-                    <view className="flex-row items-center gap-2">
-                      <button onClick={() => { void open.run({ taskId: item.taskId }); }} className="px-2.5 py-1 rounded-md bg-accent text-on-accent text-xs">
-                        <text>{t('common.open')}</text>
-                      </button>
-                      <button onClick={() => { void reveal.run({ taskId: item.taskId }); }} className="px-2.5 py-1 rounded-md bg-canvas border border-line text-xs">
-                        <text>{t('downloads.reveal')}</text>
-                      </button>
-                    </view>
-                  ) : (
-                    <button onClick={() => { void cancel.run({ taskId: item.taskId }); }} className="px-2.5 py-1 rounded-md bg-transparent text-xs text-danger">
-                      <text>{t('common.cancel')}</text>
-                    </button>
-                  )}
-                  <button onClick={() => { void remove.run({ taskId: item.taskId }); }} className="px-2.5 py-1 rounded-md bg-transparent text-xs text-danger">
-                    <text>{t('common.delete')}</text>
-                  </button>
-                </view>
-              </view>
-            </view>
-          ))
-        )}
+        }
+        className="px-6"
+      />
+      <scroll className="grow bg-canvas">
+        <view className="w-full max-w-[880px] self-center px-6 py-4 gap-4">
+          <view className="flex-row items-center gap-3">
+            <SegmentedControl
+              label={t('downloads.filter')}
+              bind={filter}
+              items={FILTERS.map((value) => ({ value, label: t(`downloads.filter.${value}` as MessageKey) }))}
+              size="sm"
+              data-testid="downloads-filter"
+            />
+            <SearchField
+              label={t('downloads.search')}
+              isLabelHidden
+              placeholder={t('downloads.search')}
+              bind={query}
+              size="sm"
+              className="grow basis-0 min-w-0"
+            />
+          </view>
+          {data.loading ? null : visible.length === 0 ? (
+            <EmptyState
+              title={data.downloads.length ? t('downloads.noMatches') : t('downloads.empty')}
+              description={data.downloads.length ? undefined : t('downloads.emptyHint')}
+              size="sm"
+              data-testid="downloads-empty"
+            />
+          ) : (
+            <ItemList label={t('downloads.title')}>
+              {visible.map((item) => (
+                <Item
+                  key={item.taskId}
+                  label={item.fileName}
+                  description={description(item)}
+                  startIcon={item.status === 'failed' ? 'error' : isActive(item) ? 'download' : 'file'}
+                  endContent={controls(item)}
+                  data-testid={`download-${item.taskId}`}
+                />
+              ))}
+            </ItemList>
+          )}
+        </view>
       </scroll>
     </page>
   );

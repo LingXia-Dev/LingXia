@@ -12,7 +12,8 @@
     "build": "cargo run -p lingxia-cli -- build --release"
   },
   "dependencies": {
-    "@lingxia/view": "file:../../../packages/lingxia-view"
+    "@lingxia/view": "file:../../../packages/lingxia-view",
+    "@liulidesign/core": "file:../../../packages/liuli/core"
   },
   "devDependencies": {
     "@lingxia/logic": "file:../../../packages/lingxia-logic",

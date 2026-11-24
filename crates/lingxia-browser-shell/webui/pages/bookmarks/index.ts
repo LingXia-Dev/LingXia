@@ -25,24 +25,18 @@ interface BookmarksData {
   entries: BookmarkEntry[];
   pinnedIds: string[];
   selectedGroupId: string;
-  editingId: string;
-  editingGroupId: string;
   loading: boolean;
-  /** An i18n key the View renders; empty when there is nothing to say. */
-  status: string;
-  statusCount: number;
 }
+
+/** A toast for the View: a catalogue key and its count. */
+type Notice = { message: string; count: number };
 
 const initialData: BookmarksData = {
   groups: [],
   entries: [],
   pinnedIds: [],
   selectedGroupId: '__all__',
-  editingId: '',
-  editingGroupId: '',
   loading: true,
-  status: '',
-  statusCount: 0,
 };
 
 export default definePage({
@@ -75,13 +69,6 @@ export default definePage({
       return next;
     }
 
-    function report(status: string, count = 0) {
-      page.update((d) => {
-        d.status = status;
-        d.statusCount = count;
-      });
-    }
-
     return {
       async onLoad() {
         watch<BookmarksView>('bookmarks.watch', page.signal, apply);
@@ -89,10 +76,7 @@ export default definePage({
       },
       actions: {
         async selectGroup({ groupId }: { groupId: string }) {
-          page.update((d) => {
-            d.selectedGroupId = groupId;
-            d.editingGroupId = '';
-          });
+          page.update((d) => { d.selectedGroupId = groupId; });
         },
         async addBookmark({ title, url, groupId }: { title: string; url: string; groupId: string }) {
           await invoke('bookmarks.add', {
@@ -102,20 +86,18 @@ export default definePage({
           });
           await refresh();
         },
-        async startRename({ id }: { id: string }) {
-          page.update((d) => { d.editingId = id; });
-        },
-        async renameBookmark({ id, title }: { id: string; title: string }) {
-          await invoke('bookmarks.rename', { id, title: title.trim() });
-          page.update((d) => { d.editingId = ''; });
+        /** Applies the edit form: only what changed goes to the store. */
+        async updateBookmark({ id, title, groupId, pinned }: { id: string; title: string; groupId: string; pinned: boolean }) {
+          const entry = page.data.entries.find((item) => item.id === id);
+          if (!entry) return;
+          const nextGroup = groupId.startsWith('__') ? undefined : groupId;
+          if (title.trim() !== entry.title) await invoke('bookmarks.rename', { id, title: title.trim() });
+          if (nextGroup !== entry.groupId) await invoke('bookmarks.move', { id, groupId: nextGroup });
+          if (pinned !== page.data.pinnedIds.includes(id)) await invoke('bookmarks.setPinned', { id, pinned });
           await refresh();
         },
         async removeBookmark({ id }: { id: string }) {
           await invoke('bookmarks.remove', { id });
-          await refresh();
-        },
-        async moveBookmark({ id, groupId }: { id: string; groupId: string }) {
-          await invoke('bookmarks.move', { id, groupId: groupId.startsWith('__') ? undefined : groupId });
           await refresh();
         },
         async shiftBookmark({ id, delta }: { id: string; delta: -1 | 1 }) {
@@ -140,14 +122,10 @@ export default definePage({
           await invoke('bookmarks.createGroup', { name: trimmed });
           await refresh();
         },
-        async startGroupRename({ id }: { id: string }) {
-          page.update((d) => { d.editingGroupId = id; });
-        },
         async renameGroup({ id, name }: { id: string; name: string }) {
           const trimmed = name.trim();
           if (!trimmed) return;
           await invoke('bookmarks.renameGroup', { id, name: trimmed });
-          page.update((d) => { d.editingGroupId = ''; });
           await refresh();
         },
         async shiftGroup({ id, delta }: { id: string; delta: -1 | 1 }) {
@@ -160,15 +138,15 @@ export default definePage({
           await invoke('bookmarks.deleteGroup', { id });
           await refresh();
         },
-        async importHtml() {
+        async importHtml(): Promise<Notice | null> {
           const result = await invoke<{ imported: number } | null>('bookmarks.importHtml');
-          if (!result) return;
+          if (!result) return null;
           await refresh();
-          report('bookmarks.status.imported', result.imported);
+          return { message: 'bookmarks.status.imported', count: result.imported };
         },
-        async exportHtml() {
+        async exportHtml(): Promise<Notice | null> {
           const result = await invoke<{ count: number } | null>('bookmarks.exportHtml');
-          if (result) report('bookmarks.status.exported', result.count);
+          return result ? { message: 'bookmarks.status.exported', count: result.count } : null;
         },
         async openUrl({ url }: { url: string }) {
           await lx.surface.openUrl(url);

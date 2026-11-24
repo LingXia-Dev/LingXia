@@ -1,131 +1,351 @@
 {
-  "common.search": {
-    "defaultMessage": "Search...",
-    "description": "Browser system UI string for common.search"
+  "common.cancel": {
+    "defaultMessage": "Cancel",
+    "description": "Browser system UI string for common.cancel"
   },
   "common.delete": {
     "defaultMessage": "Delete",
     "description": "Browser system UI string for common.delete"
   },
-  "common.open": {
-    "defaultMessage": "Open",
-    "description": "Browser system UI string for common.open"
-  },
-  "common.cancel": {
-    "defaultMessage": "Cancel",
-    "description": "Browser system UI string for common.cancel"
-  },
   "common.save": {
     "defaultMessage": "Save",
     "description": "Browser system UI string for common.save"
   },
-  "common.loading": {
-    "defaultMessage": "Loading...",
-    "description": "Browser system UI string for common.loading"
-  },
-  "common.empty": {
-    "defaultMessage": "Nothing here yet.",
-    "description": "Browser system UI string for common.empty"
-  },
-  "nav.downloads": {
-    "defaultMessage": "Downloads",
-    "description": "Browser system UI string for nav.downloads"
-  },
-  "nav.settings": {
-    "defaultMessage": "Settings",
-    "description": "Browser system UI string for nav.settings"
+  "common.optional": {
+    "defaultMessage": "optional",
+    "description": "Browser system pages: common.optional"
   },
   "bookmarks.title": {
     "defaultMessage": "Bookmarks",
     "description": "Browser system UI string for bookmarks.title"
   },
   "bookmarks.all": {
-    "defaultMessage": "All Bookmarks",
+    "defaultMessage": "All bookmarks",
     "description": "Browser system UI string for bookmarks.all"
   },
   "bookmarks.ungrouped": {
     "defaultMessage": "Ungrouped",
     "description": "Browser system UI string for bookmarks.ungrouped"
   },
-  "bookmarks.addTitle": {
-    "defaultMessage": "Title",
-    "description": "Browser system UI string for bookmarks.addTitle"
+  "bookmarks.groups": {
+    "defaultMessage": "Groups",
+    "description": "Browser system pages: bookmarks.groups"
   },
-  "bookmarks.addUrl": {
-    "defaultMessage": "URL",
-    "description": "Browser system UI string for bookmarks.addUrl"
+  "bookmarks.group": {
+    "defaultMessage": "Group",
+    "description": "Browser system pages: bookmarks.group"
   },
   "bookmarks.add": {
-    "defaultMessage": "Add Bookmark",
+    "defaultMessage": "Add bookmark",
     "description": "Browser system UI string for bookmarks.add"
   },
-  "bookmarks.newGroup": {
-    "defaultMessage": "New Group",
-    "description": "Browser system UI string for bookmarks.newGroup"
+  "bookmarks.url": {
+    "defaultMessage": "Address",
+    "description": "Browser system pages: bookmarks.url"
+  },
+  "bookmarks.name": {
+    "defaultMessage": "Name",
+    "description": "Browser system pages: bookmarks.name"
+  },
+  "bookmarks.edit": {
+    "defaultMessage": "Edit bookmark",
+    "description": "Browser system pages: bookmarks.edit"
+  },
+  "bookmarks.editNamed": {
+    "defaultMessage": "Edit {title}",
+    "description": "Browser system pages: bookmarks.editNamed"
+  },
+  "bookmarks.open": {
+    "defaultMessage": "Open",
+    "description": "Browser system pages: bookmarks.open"
   },
   "bookmarks.pin": {
-    "defaultMessage": "Pin",
+    "defaultMessage": "Pin to sidebar",
     "description": "Browser system UI string for bookmarks.pin"
   },
   "bookmarks.unpin": {
-    "defaultMessage": "Unpin",
+    "defaultMessage": "Unpin from sidebar",
     "description": "Browser system UI string for bookmarks.unpin"
   },
+  "bookmarks.pinned": {
+    "defaultMessage": "Pinned",
+    "description": "Browser system pages: bookmarks.pinned"
+  },
+  "bookmarks.pinToSidebar": {
+    "defaultMessage": "Show in the sidebar",
+    "description": "Browser system pages: bookmarks.pinToSidebar"
+  },
+  "bookmarks.moveUp": {
+    "defaultMessage": "Move up",
+    "description": "Accessible label of the arrow that moves a bookmark one place up in its group"
+  },
+  "bookmarks.moveDown": {
+    "defaultMessage": "Move down",
+    "description": "Accessible label of the arrow that moves a bookmark one place down in its group"
+  },
+  "bookmarks.more": {
+    "defaultMessage": "More bookmark actions",
+    "description": "Browser system pages: bookmarks.more"
+  },
   "bookmarks.import": {
-    "defaultMessage": "Import HTML",
+    "defaultMessage": "Import from HTML…",
     "description": "Browser system UI string for bookmarks.import"
   },
   "bookmarks.export": {
-    "defaultMessage": "Export HTML",
+    "defaultMessage": "Export to HTML…",
     "description": "Browser system UI string for bookmarks.export"
+  },
+  "bookmarks.search": {
+    "defaultMessage": "Search bookmarks",
+    "description": "Browser system pages: bookmarks.search"
+  },
+  "bookmarks.empty": {
+    "defaultMessage": "No bookmarks yet",
+    "description": "Browser system pages: bookmarks.empty"
+  },
+  "bookmarks.emptyHint": {
+    "defaultMessage": "Bookmark a page from the address bar, or add one here.",
+    "description": "Browser system pages: bookmarks.emptyHint"
+  },
+  "bookmarks.noMatches": {
+    "defaultMessage": "No bookmarks match",
+    "description": "Browser system pages: bookmarks.noMatches"
+  },
+  "bookmarks.newGroup": {
+    "defaultMessage": "New group",
+    "description": "Browser system UI string for bookmarks.newGroup"
+  },
+  "bookmarks.groupName": {
+    "defaultMessage": "Group name",
+    "description": "Browser system pages: bookmarks.groupName"
+  },
+  "bookmarks.groupActions": {
+    "defaultMessage": "Actions for {name}",
+    "description": "Browser system pages: bookmarks.groupActions"
+  },
+  "bookmarks.renameGroup": {
+    "defaultMessage": "Rename group",
+    "description": "Button that renames the selected bookmark group"
+  },
+  "bookmarks.moveGroupUp": {
+    "defaultMessage": "Move group up",
+    "description": "Button that moves the selected group one place up in the group list"
+  },
+  "bookmarks.moveGroupDown": {
+    "defaultMessage": "Move group down",
+    "description": "Button that moves the selected group one place down in the group list"
+  },
+  "bookmarks.deleteGroup": {
+    "defaultMessage": "Delete group",
+    "description": "Button that deletes the selected bookmark group"
+  },
+  "bookmarks.deleteGroupConfirm": {
+    "defaultMessage": "Delete {name}?",
+    "description": "Browser system pages: bookmarks.deleteGroupConfirm"
+  },
+  "bookmarks.deleteGroupHint": {
+    "defaultMessage": "Its bookmarks move to Ungrouped.",
+    "description": "Browser system pages: bookmarks.deleteGroupHint"
+  },
+  "bookmarks.status.imported": {
+    "defaultMessage": "{count, plural, one {Imported # bookmark} other {Imported # bookmarks}}",
+    "description": "After an HTML import."
+  },
+  "bookmarks.status.exported": {
+    "defaultMessage": "{count, plural, one {Exported # bookmark} other {Exported # bookmarks}}",
+    "description": "After an HTML export."
   },
   "history.title": {
     "defaultMessage": "History",
     "description": "Browser system UI string for history.title"
   },
-  "history.clearAll": {
-    "defaultMessage": "Clear All",
-    "description": "Browser system UI string for history.clearAll"
+  "history.search": {
+    "defaultMessage": "Search history",
+    "description": "Browser system pages: history.search"
   },
-  "history.clearDay": {
-    "defaultMessage": "Clear 24h",
-    "description": "Browser system UI string for history.clearDay"
+  "history.results": {
+    "defaultMessage": "{count, plural, one {# visit} other {# visits}}",
+    "description": "Browser system pages: history.results"
+  },
+  "history.today": {
+    "defaultMessage": "Today",
+    "description": "Browser system pages: history.today"
+  },
+  "history.yesterday": {
+    "defaultMessage": "Yesterday",
+    "description": "Browser system pages: history.yesterday"
+  },
+  "history.remove": {
+    "defaultMessage": "Remove {title} from history",
+    "description": "Browser system pages: history.remove"
+  },
+  "history.clearData": {
+    "defaultMessage": "Clear browsing data…",
+    "description": "Browser system pages: history.clearData"
+  },
+  "history.empty": {
+    "defaultMessage": "No history yet",
+    "description": "Browser system pages: history.empty"
+  },
+  "history.emptyHint": {
+    "defaultMessage": "Pages you visit show up here.",
+    "description": "Browser system pages: history.emptyHint"
+  },
+  "history.noMatches": {
+    "defaultMessage": "No visits match",
+    "description": "Browser system pages: history.noMatches"
   },
   "downloads.title": {
     "defaultMessage": "Downloads",
     "description": "Browser system UI string for downloads.title"
   },
-  "downloads.all": {
+  "downloads.filter": {
+    "defaultMessage": "Show",
+    "description": "Browser system pages: downloads.filter"
+  },
+  "downloads.filter.all": {
     "defaultMessage": "All",
-    "description": "Browser system UI string for downloads.all"
+    "description": "Browser system pages: downloads.filter.all"
   },
-  "downloads.active": {
-    "defaultMessage": "Active",
-    "description": "Browser system UI string for downloads.active"
+  "downloads.filter.active": {
+    "defaultMessage": "In progress",
+    "description": "Browser system pages: downloads.filter.active"
   },
-  "downloads.completed": {
-    "defaultMessage": "Completed",
-    "description": "Browser system UI string for downloads.completed"
+  "downloads.filter.completed": {
+    "defaultMessage": "Done",
+    "description": "Browser system pages: downloads.filter.completed"
+  },
+  "downloads.search": {
+    "defaultMessage": "Search downloads",
+    "description": "Browser system pages: downloads.search"
   },
   "downloads.clearCompleted": {
-    "defaultMessage": "Clear Completed",
+    "defaultMessage": "Clear finished",
     "description": "Browser system UI string for downloads.clearCompleted"
   },
+  "downloads.settings": {
+    "defaultMessage": "Download settings",
+    "description": "Browser system pages: downloads.settings"
+  },
+  "downloads.size.of": {
+    "defaultMessage": "{done} of {total}",
+    "description": "Browser system pages: downloads.size.of"
+  },
   "downloads.pause": {
-    "defaultMessage": "Pause",
+    "defaultMessage": "Pause {name}",
     "description": "Browser system UI string for downloads.pause"
   },
   "downloads.resume": {
-    "defaultMessage": "Resume",
+    "defaultMessage": "Resume {name}",
     "description": "Browser system UI string for downloads.resume"
+  },
+  "downloads.cancel": {
+    "defaultMessage": "Stop downloading {name}",
+    "description": "Browser system pages: downloads.cancel"
   },
   "downloads.retry": {
     "defaultMessage": "Retry",
     "description": "Browser system UI string for downloads.retry"
   },
+  "downloads.open": {
+    "defaultMessage": "Open {name}",
+    "description": "Browser system pages: downloads.open"
+  },
   "downloads.reveal": {
-    "defaultMessage": "Show in Folder",
+    "defaultMessage": "Show {name} in folder",
     "description": "Browser system UI string for downloads.reveal"
+  },
+  "downloads.remove": {
+    "defaultMessage": "Remove {name} from the list",
+    "description": "Browser system pages: downloads.remove"
+  },
+  "downloads.empty": {
+    "defaultMessage": "No downloads yet",
+    "description": "Browser system pages: downloads.empty"
+  },
+  "downloads.emptyHint": {
+    "defaultMessage": "Files you download show up here.",
+    "description": "Browser system pages: downloads.emptyHint"
+  },
+  "downloads.noMatches": {
+    "defaultMessage": "No downloads match",
+    "description": "Browser system pages: downloads.noMatches"
+  },
+  "downloads.status.downloading": {
+    "defaultMessage": "Downloading",
+    "description": "A download row state."
+  },
+  "downloads.status.paused": {
+    "defaultMessage": "Paused",
+    "description": "A download row state."
+  },
+  "downloads.status.completed": {
+    "defaultMessage": "Done",
+    "description": "A download row state."
+  },
+  "downloads.status.failed": {
+    "defaultMessage": "Failed",
+    "description": "A download row state."
+  },
+  "downloads.status.removed": {
+    "defaultMessage": "File deleted",
+    "description": "A download row state."
+  },
+  "privacy.clear.title": {
+    "defaultMessage": "Clear browsing data",
+    "description": "Browser system pages: privacy.clear.title"
+  },
+  "privacy.clear.open": {
+    "defaultMessage": "Clear browsing data…",
+    "description": "Browser system pages: privacy.clear.open"
+  },
+  "privacy.clear.confirm": {
+    "defaultMessage": "Clear data",
+    "description": "Browser system pages: privacy.clear.confirm"
+  },
+  "privacy.clear.nothingSelected": {
+    "defaultMessage": "Choose what to clear",
+    "description": "Browser system pages: privacy.clear.nothingSelected"
+  },
+  "privacy.timeRange": {
+    "defaultMessage": "Time range",
+    "description": "Browser system pages: privacy.timeRange"
+  },
+  "privacy.range.lastHour": {
+    "defaultMessage": "Last hour",
+    "description": "Browser system pages: privacy.range.lastHour"
+  },
+  "privacy.range.last24Hours": {
+    "defaultMessage": "Last 24 hours",
+    "description": "Browser system pages: privacy.range.last24Hours"
+  },
+  "privacy.range.last7Days": {
+    "defaultMessage": "Last 7 days",
+    "description": "Browser system pages: privacy.range.last7Days"
+  },
+  "privacy.range.last4Weeks": {
+    "defaultMessage": "Last 4 weeks",
+    "description": "Browser system pages: privacy.range.last4Weeks"
+  },
+  "privacy.range.allTime": {
+    "defaultMessage": "All time",
+    "description": "Browser system pages: privacy.range.allTime"
+  },
+  "privacy.history": {
+    "defaultMessage": "Browsing history",
+    "description": "Browser system pages: privacy.history"
+  },
+  "privacy.cache": {
+    "defaultMessage": "Cached images and files",
+    "description": "Browser system pages: privacy.cache"
+  },
+  "privacy.siteData": {
+    "defaultMessage": "Cookies and site data",
+    "description": "Browser system pages: privacy.siteData"
+  },
+  "privacy.cleared": {
+    "defaultMessage": "{count, plural, =0 {Browsing data cleared} one {Cleared, with # history entry} other {Cleared, with # history entries}}",
+    "description": "Browser system pages: privacy.cleared"
   },
   "settings.title": {
     "defaultMessage": "Settings",
@@ -134,6 +354,10 @@
   "settings.appearance": {
     "defaultMessage": "Appearance",
     "description": "Browser system UI string for settings.appearance"
+  },
+  "settings.appearance.hint": {
+    "defaultMessage": "System follows your device.",
+    "description": "Browser system pages: settings.appearance.hint"
   },
   "settings.appearance.auto": {
     "defaultMessage": "System",
@@ -148,92 +372,16 @@
     "description": "Browser system UI string for settings.appearance.dark"
   },
   "settings.language": {
-    "defaultMessage": "Display Language",
+    "defaultMessage": "Language",
     "description": "Browser system UI string for settings.language"
   },
+  "settings.language.hint": {
+    "defaultMessage": "The language of menus and pages.",
+    "description": "Browser system pages: settings.language.hint"
+  },
   "settings.language.auto": {
-    "defaultMessage": "System Default",
+    "defaultMessage": "System",
     "description": "Browser system UI string for settings.language.auto"
-  },
-  "settings.downloads": {
-    "defaultMessage": "Downloads",
-    "description": "Browser system UI string for settings.downloads"
-  },
-  "settings.downloads.dir": {
-    "defaultMessage": "Download Directory",
-    "description": "Browser system UI string for settings.downloads.dir"
-  },
-  "settings.downloads.choose": {
-    "defaultMessage": "Choose...",
-    "description": "Browser system UI string for settings.downloads.choose"
-  },
-  "settings.downloads.reset": {
-    "defaultMessage": "Reset Default",
-    "description": "Browser system UI string for settings.downloads.reset"
-  },
-  "settings.privacy": {
-    "defaultMessage": "Privacy & Data",
-    "description": "Browser system UI string for settings.privacy"
-  },
-  "settings.privacy.clearCurrentSite": {
-    "defaultMessage": "Clear Site Data for Current Site",
-    "description": "Browser system UI string for settings.privacy.clearCurrentSite"
-  },
-  "settings.privacy.viewHistory": {
-    "defaultMessage": "View History",
-    "description": "Browser system UI string for settings.privacy.viewHistory"
-  },
-  "settings.proxy": {
-    "defaultMessage": "Proxy",
-    "description": "Browser system UI string for settings.proxy"
-  },
-  "settings.proxy.apply": {
-    "defaultMessage": "Apply Proxy Settings",
-    "description": "Browser system UI string for settings.proxy.apply"
-  },
-  "settings.proxy.refreshRules": {
-    "defaultMessage": "Refresh Rules",
-    "description": "Browser system UI string for settings.proxy.refreshRules"
-  },
-  "settings.about": {
-    "defaultMessage": "About",
-    "description": "Browser system UI string for settings.about"
-  },
-  "bookmarks.addGroup": {
-    "defaultMessage": "Add",
-    "description": "Button that creates the group typed beside it."
-  },
-  "bookmarks.rename": {
-    "defaultMessage": "Rename",
-    "description": "Edits a bookmark title in place."
-  },
-  "bookmarks.status.imported": {
-    "defaultMessage": "Imported {count} bookmarks",
-    "description": "After an HTML import."
-  },
-  "bookmarks.status.exported": {
-    "defaultMessage": "Exported {count} bookmarks",
-    "description": "After an HTML export."
-  },
-  "downloads.status.downloading": {
-    "defaultMessage": "Downloading",
-    "description": "A download row state."
-  },
-  "downloads.status.paused": {
-    "defaultMessage": "Paused",
-    "description": "A download row state."
-  },
-  "downloads.status.completed": {
-    "defaultMessage": "Completed",
-    "description": "A download row state."
-  },
-  "downloads.status.failed": {
-    "defaultMessage": "Failed",
-    "description": "A download row state."
-  },
-  "downloads.status.removed": {
-    "defaultMessage": "Removed",
-    "description": "A download row state."
   },
   "settings.language.en": {
     "defaultMessage": "English",
@@ -243,77 +391,57 @@
     "defaultMessage": "简体中文",
     "description": "The Simplified Chinese option, named in Chinese."
   },
+  "settings.downloads": {
+    "defaultMessage": "Downloads",
+    "description": "Browser system UI string for settings.downloads"
+  },
+  "settings.downloads.dir": {
+    "defaultMessage": "Save files to",
+    "description": "Browser system UI string for settings.downloads.dir"
+  },
+  "settings.downloads.choose": {
+    "defaultMessage": "Change…",
+    "description": "Browser system UI string for settings.downloads.choose"
+  },
+  "settings.downloads.reset": {
+    "defaultMessage": "Use default",
+    "description": "Browser system UI string for settings.downloads.reset"
+  },
+  "settings.downloads.open": {
+    "defaultMessage": "Show downloads",
+    "description": "Browser system pages: settings.downloads.open"
+  },
+  "settings.privacy": {
+    "defaultMessage": "Privacy",
+    "description": "Browser system UI string for settings.privacy"
+  },
   "settings.privacy.site.title": {
-    "defaultMessage": "This Site",
+    "defaultMessage": "This site",
     "description": "Card for clearing the site of the tab Settings was opened from."
   },
-  "settings.privacy.clearData": {
-    "defaultMessage": "Clear Browsing Data",
-    "description": "Card title."
+  "settings.privacy.clearCurrentSite": {
+    "defaultMessage": "Clear data for this site",
+    "description": "Browser system UI string for settings.privacy.clearCurrentSite"
+  },
+  "settings.privacy.viewHistory": {
+    "defaultMessage": "Show history",
+    "description": "Browser system UI string for settings.privacy.viewHistory"
   },
   "settings.privacy.usage": {
     "defaultMessage": "{history} history entries · {cacheSites} sites with cache · {siteDataSites} sites with data · {cookies} cookies",
     "description": "What clearing would affect."
   },
-  "settings.privacy.timeRange": {
-    "defaultMessage": "Time range",
-    "description": "Picker label."
-  },
-  "settings.privacy.range.lastHour": {
-    "defaultMessage": "Last hour",
-    "description": "Time range option."
-  },
-  "settings.privacy.range.last24Hours": {
-    "defaultMessage": "Last 24 hours",
-    "description": "Time range option."
-  },
-  "settings.privacy.range.last7Days": {
-    "defaultMessage": "Last 7 days",
-    "description": "Time range option."
-  },
-  "settings.privacy.range.last4Weeks": {
-    "defaultMessage": "Last 4 weeks",
-    "description": "Time range option."
-  },
-  "settings.privacy.range.allTime": {
-    "defaultMessage": "All time",
-    "description": "Time range option."
-  },
-  "settings.privacy.history": {
-    "defaultMessage": "Browsing history",
-    "description": "Checkbox: what to clear."
-  },
-  "settings.privacy.cache": {
-    "defaultMessage": "Cached images and files",
-    "description": "Checkbox: what to clear."
-  },
-  "settings.privacy.siteData": {
-    "defaultMessage": "Cookies and site data",
-    "description": "Checkbox: what to clear."
-  },
-  "settings.privacy.clear": {
-    "defaultMessage": "Clear Data",
-    "description": "Runs the clear."
-  },
-  "settings.privacy.status.nothingSelected": {
-    "defaultMessage": "Select something to clear",
-    "description": "When every checkbox is off."
-  },
-  "settings.privacy.status.cleared": {
-    "defaultMessage": "Cleared ({count} history entries)",
-    "description": "After clearing browsing data."
-  },
   "settings.privacy.status.siteCleared": {
     "defaultMessage": "Site data cleared",
     "description": "After clearing the current site."
   },
-  "settings.proxy.host": {
-    "defaultMessage": "SOCKS5 host",
-    "description": "Input label."
+  "settings.proxy": {
+    "defaultMessage": "Proxy",
+    "description": "Browser system UI string for settings.proxy"
   },
-  "settings.proxy.port": {
-    "defaultMessage": "Port",
-    "description": "Input label."
+  "settings.proxy.mode": {
+    "defaultMessage": "Proxy mode",
+    "description": "Browser system pages: settings.proxy.mode"
   },
   "settings.proxy.mode.direct": {
     "defaultMessage": "Direct",
@@ -327,6 +455,22 @@
     "defaultMessage": "Auto (GFWList)",
     "description": "Proxy mode."
   },
+  "settings.proxy.host": {
+    "defaultMessage": "SOCKS5 host",
+    "description": "Input label."
+  },
+  "settings.proxy.port": {
+    "defaultMessage": "Port",
+    "description": "Input label."
+  },
+  "settings.proxy.apply": {
+    "defaultMessage": "Apply",
+    "description": "Browser system UI string for settings.proxy.apply"
+  },
+  "settings.proxy.refreshRules": {
+    "defaultMessage": "Refresh rules",
+    "description": "Browser system UI string for settings.proxy.refreshRules"
+  },
   "settings.proxy.status.invalidPort": {
     "defaultMessage": "Enter a port from 1 to 65535",
     "description": "Port validation."
@@ -339,48 +483,24 @@
     "defaultMessage": "Rules refreshed",
     "description": "After refreshing GFWList."
   },
+  "settings.about": {
+    "defaultMessage": "About",
+    "description": "Browser system UI string for settings.about"
+  },
   "settings.about.version": {
-    "defaultMessage": "Version {version}",
+    "defaultMessage": "Version",
     "description": "About card."
   },
   "settings.about.sdk": {
-    "defaultMessage": "SDK {version}",
+    "defaultMessage": "SDK",
     "description": "About card."
   },
   "settings.about.webui": {
-    "defaultMessage": "Web UI {version}",
+    "defaultMessage": "System pages",
     "description": "About card."
   },
   "settings.about.commit": {
-    "defaultMessage": "Commit {sha}",
+    "defaultMessage": "Commit",
     "description": "About card."
-  },
-  "bookmarks.renameGroup": {
-    "defaultMessage": "Rename group",
-    "description": "Button that renames the selected bookmark group"
-  },
-  "bookmarks.deleteGroup": {
-    "defaultMessage": "Delete group",
-    "description": "Button that deletes the selected bookmark group"
-  },
-  "bookmarks.moveGroupUp": {
-    "defaultMessage": "Move up",
-    "description": "Button that moves the selected group one place up in the group list"
-  },
-  "bookmarks.moveGroupDown": {
-    "defaultMessage": "Move down",
-    "description": "Button that moves the selected group one place down in the group list"
-  },
-  "bookmarks.moveUp": {
-    "defaultMessage": "Move bookmark up",
-    "description": "Accessible label of the arrow that moves a bookmark one place up in its group"
-  },
-  "bookmarks.moveDown": {
-    "defaultMessage": "Move bookmark down",
-    "description": "Accessible label of the arrow that moves a bookmark one place down in its group"
-  },
-  "bookmarks.moveTo": {
-    "defaultMessage": "Move to group",
-    "description": "Accessible label of the picker that moves a bookmark to another group"
   }
 }

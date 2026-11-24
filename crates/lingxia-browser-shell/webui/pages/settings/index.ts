@@ -1,9 +1,11 @@
 import { invoke, watch } from '../../shared/native';
 import { definePage, lx, type } from '@lingxia/logic';
+import type { ClearBrowsingDataInput } from '../../shared/privacy';
 
 type Section = 'appearance' | 'downloads' | 'privacy' | 'proxy' | 'about';
 type ProxyMode = 'direct' | 'global' | 'gfw_list';
-type TimeRange = 'lastHour' | 'last24Hours' | 'last7Days' | 'last4Weeks' | 'allTime';
+/** A toast for the View: a catalogue key, its count and tone. */
+type Notice = { message: string; count?: number; tone?: 'success' | 'warning' };
 
 interface AppInfo {
   productName: string;
@@ -55,9 +57,6 @@ interface SettingsData {
   site: { url: string; host: string } | null;
   proxy: ProxySettings | null;
   appInfo: AppInfo | null;
-  /** An i18n key the View renders; empty when there is nothing to say. */
-  status: string;
-  statusCount: number;
 }
 
 const SECTIONS: readonly Section[] = ['appearance', 'downloads', 'privacy', 'proxy', 'about'];
@@ -72,8 +71,6 @@ const initialData: SettingsData = {
   site: null,
   proxy: null,
   appInfo: null,
-  status: '',
-  statusCount: 0,
 };
 
 export default definePage({
@@ -81,13 +78,6 @@ export default definePage({
   // The browser opens Settings at a section, and for clear-site-data with the tab whose site it clears.
   params: type<{ section?: string; tabId?: string }>(),
   setup(page) {
-    function report(status: string, count = 0) {
-      page.update((d) => {
-        d.status = status;
-        d.statusCount = count;
-      });
-    }
-
     async function refreshUsage() {
       const usage = await invoke<PrivacyUsage>('privacy.getUsage');
       page.update((d) => { d.usage = usage; });
@@ -138,10 +128,7 @@ export default definePage({
       },
       actions: {
         async setSection({ section }: { section: Section }) {
-          page.update((d) => {
-            d.section = section;
-            d.status = '';
-          });
+          page.update((d) => { d.section = section; });
         },
         async setAppearance({ preference }: { preference: string }) {
           const next = await invoke<string>('app.setAppearancePreference', { preference });
@@ -157,33 +144,24 @@ export default definePage({
         async resetDownloadDir() {
           applyDownload(await invoke<DownloadSettings>('downloads.resetDirectory'));
         },
-        async clearBrowsingData(input: { timeRange: TimeRange; history: boolean; cache: boolean; siteData: boolean }) {
-          if (!input.history && !input.cache && !input.siteData) {
-            report('settings.privacy.status.nothingSelected');
-            return;
-          }
+        async clearBrowsingData(input: ClearBrowsingDataInput): Promise<Notice> {
           const result = await invoke<{ historyRemoved: number }>('privacy.clearBrowsingData', input);
           await refreshUsage().catch(() => {});
-          report('settings.privacy.status.cleared', result.historyRemoved);
+          return { message: 'privacy.cleared', count: result.historyRemoved };
         },
-        async clearSite({ cache, siteData }: { cache: boolean; siteData: boolean }) {
+        async clearSite({ cache, siteData }: { cache: boolean; siteData: boolean }): Promise<Notice | null> {
           const tabId = page.data.siteTabId;
-          if (!tabId) return;
-          if (!cache && !siteData) {
-            report('settings.privacy.status.nothingSelected');
-            return;
-          }
+          if (!tabId) return null;
           await invoke('privacy.clearSiteData', { tabId, cache, siteData });
           await refreshUsage().catch(() => {});
-          report('settings.privacy.status.siteCleared');
+          return { message: 'settings.privacy.status.siteCleared' };
         },
-        async updateProxy({ mode, host, port }: { mode: ProxyMode; host: string; port: string }) {
+        async updateProxy({ mode, host, port }: { mode: ProxyMode; host: string; port: string }): Promise<Notice | null> {
           const current = page.data.proxy;
-          if (!current) return;
+          if (!current) return null;
           const socks5Port = Number(port);
           if (!Number.isInteger(socks5Port) || socks5Port < 1 || socks5Port > 65535) {
-            report('settings.proxy.status.invalidPort');
-            return;
+            return { message: 'settings.proxy.status.invalidPort', tone: 'warning' };
           }
           // The route replaces every field, so send the ones this page does not edit unchanged.
           const next = await invoke<ProxySettings>('proxy.updateSettings', {
@@ -196,12 +174,12 @@ export default definePage({
             autoSwitchRules: current.autoSwitchRules,
           });
           page.update((d) => { d.proxy = next; });
-          report('settings.proxy.status.updated');
+          return { message: 'settings.proxy.status.updated' };
         },
-        async refreshGfwList() {
+        async refreshGfwList(): Promise<Notice> {
           const next = await invoke<ProxySettings>('proxy.refreshGfwList');
           page.update((d) => { d.proxy = next; });
-          report('settings.proxy.status.rulesRefreshed');
+          return { message: 'settings.proxy.status.rulesRefreshed' };
         },
         async openHistory() {
           await lx.nav.go({ page: 'history' });

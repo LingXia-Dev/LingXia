@@ -1,42 +1,22 @@
 {
-  "common.search": {
-    "defaultMessage": "搜索...",
-    "description": "Browser system UI string for common.search"
+  "common.cancel": {
+    "defaultMessage": "取消",
+    "description": "Browser system UI string for common.cancel"
   },
   "common.delete": {
     "defaultMessage": "删除",
     "description": "Browser system UI string for common.delete"
   },
-  "common.open": {
-    "defaultMessage": "打开",
-    "description": "Browser system UI string for common.open"
-  },
-  "common.cancel": {
-    "defaultMessage": "取消",
-    "description": "Browser system UI string for common.cancel"
-  },
   "common.save": {
     "defaultMessage": "保存",
     "description": "Browser system UI string for common.save"
   },
-  "common.loading": {
-    "defaultMessage": "加载中...",
-    "description": "Browser system UI string for common.loading"
-  },
-  "common.empty": {
-    "defaultMessage": "暂无内容",
-    "description": "Browser system UI string for common.empty"
-  },
-  "nav.downloads": {
-    "defaultMessage": "下载",
-    "description": "Browser system UI string for nav.downloads"
-  },
-  "nav.settings": {
-    "defaultMessage": "设置",
-    "description": "Browser system UI string for nav.settings"
+  "common.optional": {
+    "defaultMessage": "可选",
+    "description": "Browser system pages: common.optional"
   },
   "bookmarks.title": {
-    "defaultMessage": "书签管理",
+    "defaultMessage": "书签",
     "description": "Browser system UI string for bookmarks.title"
   },
   "bookmarks.all": {
@@ -47,165 +27,125 @@
     "defaultMessage": "未分组",
     "description": "Browser system UI string for bookmarks.ungrouped"
   },
-  "bookmarks.addTitle": {
-    "defaultMessage": "标题",
-    "description": "Browser system UI string for bookmarks.addTitle"
+  "bookmarks.groups": {
+    "defaultMessage": "分组",
+    "description": "Browser system pages: bookmarks.groups"
   },
-  "bookmarks.addUrl": {
-    "defaultMessage": "网址",
-    "description": "Browser system UI string for bookmarks.addUrl"
+  "bookmarks.group": {
+    "defaultMessage": "分组",
+    "description": "Browser system pages: bookmarks.group"
   },
   "bookmarks.add": {
     "defaultMessage": "添加书签",
     "description": "Browser system UI string for bookmarks.add"
   },
+  "bookmarks.url": {
+    "defaultMessage": "网址",
+    "description": "Browser system pages: bookmarks.url"
+  },
+  "bookmarks.name": {
+    "defaultMessage": "名称",
+    "description": "Browser system pages: bookmarks.name"
+  },
+  "bookmarks.edit": {
+    "defaultMessage": "编辑书签",
+    "description": "Browser system pages: bookmarks.edit"
+  },
+  "bookmarks.editNamed": {
+    "defaultMessage": "编辑“{title}”",
+    "description": "Browser system pages: bookmarks.editNamed"
+  },
+  "bookmarks.open": {
+    "defaultMessage": "打开",
+    "description": "Browser system pages: bookmarks.open"
+  },
+  "bookmarks.pin": {
+    "defaultMessage": "固定到侧边栏",
+    "description": "Browser system UI string for bookmarks.pin"
+  },
+  "bookmarks.unpin": {
+    "defaultMessage": "从侧边栏取消固定",
+    "description": "Browser system UI string for bookmarks.unpin"
+  },
+  "bookmarks.pinned": {
+    "defaultMessage": "已固定",
+    "description": "Browser system pages: bookmarks.pinned"
+  },
+  "bookmarks.pinToSidebar": {
+    "defaultMessage": "在侧边栏显示",
+    "description": "Browser system pages: bookmarks.pinToSidebar"
+  },
+  "bookmarks.moveUp": {
+    "defaultMessage": "上移",
+    "description": "Accessible label of the arrow that moves a bookmark one place up in its group"
+  },
+  "bookmarks.moveDown": {
+    "defaultMessage": "下移",
+    "description": "Accessible label of the arrow that moves a bookmark one place down in its group"
+  },
+  "bookmarks.more": {
+    "defaultMessage": "更多书签操作",
+    "description": "Browser system pages: bookmarks.more"
+  },
+  "bookmarks.import": {
+    "defaultMessage": "从 HTML 导入…",
+    "description": "Browser system UI string for bookmarks.import"
+  },
+  "bookmarks.export": {
+    "defaultMessage": "导出为 HTML…",
+    "description": "Browser system UI string for bookmarks.export"
+  },
+  "bookmarks.search": {
+    "defaultMessage": "搜索书签",
+    "description": "Browser system pages: bookmarks.search"
+  },
+  "bookmarks.empty": {
+    "defaultMessage": "还没有书签",
+    "description": "Browser system pages: bookmarks.empty"
+  },
+  "bookmarks.emptyHint": {
+    "defaultMessage": "可在地址栏收藏网页，或在这里添加。",
+    "description": "Browser system pages: bookmarks.emptyHint"
+  },
+  "bookmarks.noMatches": {
+    "defaultMessage": "没有匹配的书签",
+    "description": "Browser system pages: bookmarks.noMatches"
+  },
   "bookmarks.newGroup": {
     "defaultMessage": "新建分组",
     "description": "Browser system UI string for bookmarks.newGroup"
   },
-  "bookmarks.pin": {
-    "defaultMessage": "固定",
-    "description": "Browser system UI string for bookmarks.pin"
+  "bookmarks.groupName": {
+    "defaultMessage": "分组名称",
+    "description": "Browser system pages: bookmarks.groupName"
   },
-  "bookmarks.unpin": {
-    "defaultMessage": "取消固定",
-    "description": "Browser system UI string for bookmarks.unpin"
+  "bookmarks.groupActions": {
+    "defaultMessage": "“{name}”的操作",
+    "description": "Browser system pages: bookmarks.groupActions"
   },
-  "bookmarks.import": {
-    "defaultMessage": "导入 HTML",
-    "description": "Browser system UI string for bookmarks.import"
+  "bookmarks.renameGroup": {
+    "defaultMessage": "重命名分组",
+    "description": "Button that renames the selected bookmark group"
   },
-  "bookmarks.export": {
-    "defaultMessage": "导出 HTML",
-    "description": "Browser system UI string for bookmarks.export"
+  "bookmarks.moveGroupUp": {
+    "defaultMessage": "上移分组",
+    "description": "Button that moves the selected group one place up in the group list"
   },
-  "history.title": {
-    "defaultMessage": "历史记录",
-    "description": "Browser system UI string for history.title"
+  "bookmarks.moveGroupDown": {
+    "defaultMessage": "下移分组",
+    "description": "Button that moves the selected group one place down in the group list"
   },
-  "history.clearAll": {
-    "defaultMessage": "清空全部",
-    "description": "Browser system UI string for history.clearAll"
+  "bookmarks.deleteGroup": {
+    "defaultMessage": "删除分组",
+    "description": "Button that deletes the selected bookmark group"
   },
-  "history.clearDay": {
-    "defaultMessage": "清空 24 小时",
-    "description": "Browser system UI string for history.clearDay"
+  "bookmarks.deleteGroupConfirm": {
+    "defaultMessage": "删除“{name}”？",
+    "description": "Browser system pages: bookmarks.deleteGroupConfirm"
   },
-  "downloads.title": {
-    "defaultMessage": "下载管理",
-    "description": "Browser system UI string for downloads.title"
-  },
-  "downloads.all": {
-    "defaultMessage": "全部",
-    "description": "Browser system UI string for downloads.all"
-  },
-  "downloads.active": {
-    "defaultMessage": "进行中",
-    "description": "Browser system UI string for downloads.active"
-  },
-  "downloads.completed": {
-    "defaultMessage": "已完成",
-    "description": "Browser system UI string for downloads.completed"
-  },
-  "downloads.clearCompleted": {
-    "defaultMessage": "清除已完成",
-    "description": "Browser system UI string for downloads.clearCompleted"
-  },
-  "downloads.pause": {
-    "defaultMessage": "暂停",
-    "description": "Browser system UI string for downloads.pause"
-  },
-  "downloads.resume": {
-    "defaultMessage": "继续",
-    "description": "Browser system UI string for downloads.resume"
-  },
-  "downloads.retry": {
-    "defaultMessage": "重试",
-    "description": "Browser system UI string for downloads.retry"
-  },
-  "downloads.reveal": {
-    "defaultMessage": "打开所在文件夹",
-    "description": "Browser system UI string for downloads.reveal"
-  },
-  "settings.title": {
-    "defaultMessage": "设置",
-    "description": "Browser system UI string for settings.title"
-  },
-  "settings.appearance": {
-    "defaultMessage": "外观",
-    "description": "Browser system UI string for settings.appearance"
-  },
-  "settings.appearance.auto": {
-    "defaultMessage": "跟随系统",
-    "description": "Browser system UI string for settings.appearance.auto"
-  },
-  "settings.appearance.light": {
-    "defaultMessage": "浅色",
-    "description": "Browser system UI string for settings.appearance.light"
-  },
-  "settings.appearance.dark": {
-    "defaultMessage": "深色",
-    "description": "Browser system UI string for settings.appearance.dark"
-  },
-  "settings.language": {
-    "defaultMessage": "显示语言",
-    "description": "Browser system UI string for settings.language"
-  },
-  "settings.language.auto": {
-    "defaultMessage": "跟随系统",
-    "description": "Browser system UI string for settings.language.auto"
-  },
-  "settings.downloads": {
-    "defaultMessage": "下载设置",
-    "description": "Browser system UI string for settings.downloads"
-  },
-  "settings.downloads.dir": {
-    "defaultMessage": "下载目录",
-    "description": "Browser system UI string for settings.downloads.dir"
-  },
-  "settings.downloads.choose": {
-    "defaultMessage": "选择目录...",
-    "description": "Browser system UI string for settings.downloads.choose"
-  },
-  "settings.downloads.reset": {
-    "defaultMessage": "恢复默认",
-    "description": "Browser system UI string for settings.downloads.reset"
-  },
-  "settings.privacy": {
-    "defaultMessage": "隐私与数据",
-    "description": "Browser system UI string for settings.privacy"
-  },
-  "settings.privacy.clearCurrentSite": {
-    "defaultMessage": "清除当前站点数据",
-    "description": "Browser system UI string for settings.privacy.clearCurrentSite"
-  },
-  "settings.privacy.viewHistory": {
-    "defaultMessage": "查看历史记录",
-    "description": "Browser system UI string for settings.privacy.viewHistory"
-  },
-  "settings.proxy": {
-    "defaultMessage": "网络代理",
-    "description": "Browser system UI string for settings.proxy"
-  },
-  "settings.proxy.apply": {
-    "defaultMessage": "应用代理设置",
-    "description": "Browser system UI string for settings.proxy.apply"
-  },
-  "settings.proxy.refreshRules": {
-    "defaultMessage": "刷新规则列表",
-    "description": "Browser system UI string for settings.proxy.refreshRules"
-  },
-  "settings.about": {
-    "defaultMessage": "关于",
-    "description": "Browser system UI string for settings.about"
-  },
-  "bookmarks.addGroup": {
-    "defaultMessage": "添加",
-    "description": "Button that creates the group typed beside it."
-  },
-  "bookmarks.rename": {
-    "defaultMessage": "重命名",
-    "description": "Edits a bookmark title in place."
+  "bookmarks.deleteGroupHint": {
+    "defaultMessage": "其中的书签会移到“未分组”。",
+    "description": "Browser system pages: bookmarks.deleteGroupHint"
   },
   "bookmarks.status.imported": {
     "defaultMessage": "已导入 {count} 个书签",
@@ -215,8 +155,124 @@
     "defaultMessage": "已导出 {count} 个书签",
     "description": "After an HTML export."
   },
+  "history.title": {
+    "defaultMessage": "历史记录",
+    "description": "Browser system UI string for history.title"
+  },
+  "history.search": {
+    "defaultMessage": "搜索历史记录",
+    "description": "Browser system pages: history.search"
+  },
+  "history.results": {
+    "defaultMessage": "{count} 条记录",
+    "description": "Browser system pages: history.results"
+  },
+  "history.today": {
+    "defaultMessage": "今天",
+    "description": "Browser system pages: history.today"
+  },
+  "history.yesterday": {
+    "defaultMessage": "昨天",
+    "description": "Browser system pages: history.yesterday"
+  },
+  "history.remove": {
+    "defaultMessage": "从历史记录中删除“{title}”",
+    "description": "Browser system pages: history.remove"
+  },
+  "history.clearData": {
+    "defaultMessage": "清除浏览数据…",
+    "description": "Browser system pages: history.clearData"
+  },
+  "history.empty": {
+    "defaultMessage": "还没有历史记录",
+    "description": "Browser system pages: history.empty"
+  },
+  "history.emptyHint": {
+    "defaultMessage": "你访问过的网页会显示在这里。",
+    "description": "Browser system pages: history.emptyHint"
+  },
+  "history.noMatches": {
+    "defaultMessage": "没有匹配的记录",
+    "description": "Browser system pages: history.noMatches"
+  },
+  "downloads.title": {
+    "defaultMessage": "下载",
+    "description": "Browser system UI string for downloads.title"
+  },
+  "downloads.filter": {
+    "defaultMessage": "显示",
+    "description": "Browser system pages: downloads.filter"
+  },
+  "downloads.filter.all": {
+    "defaultMessage": "全部",
+    "description": "Browser system pages: downloads.filter.all"
+  },
+  "downloads.filter.active": {
+    "defaultMessage": "进行中",
+    "description": "Browser system pages: downloads.filter.active"
+  },
+  "downloads.filter.completed": {
+    "defaultMessage": "已完成",
+    "description": "Browser system pages: downloads.filter.completed"
+  },
+  "downloads.search": {
+    "defaultMessage": "搜索下载",
+    "description": "Browser system pages: downloads.search"
+  },
+  "downloads.clearCompleted": {
+    "defaultMessage": "清除已结束",
+    "description": "Browser system UI string for downloads.clearCompleted"
+  },
+  "downloads.settings": {
+    "defaultMessage": "下载设置",
+    "description": "Browser system pages: downloads.settings"
+  },
+  "downloads.size.of": {
+    "defaultMessage": "{done} / {total}",
+    "description": "Browser system pages: downloads.size.of"
+  },
+  "downloads.pause": {
+    "defaultMessage": "暂停“{name}”",
+    "description": "Browser system UI string for downloads.pause"
+  },
+  "downloads.resume": {
+    "defaultMessage": "继续“{name}”",
+    "description": "Browser system UI string for downloads.resume"
+  },
+  "downloads.cancel": {
+    "defaultMessage": "停止下载“{name}”",
+    "description": "Browser system pages: downloads.cancel"
+  },
+  "downloads.retry": {
+    "defaultMessage": "重试",
+    "description": "Browser system UI string for downloads.retry"
+  },
+  "downloads.open": {
+    "defaultMessage": "打开“{name}”",
+    "description": "Browser system pages: downloads.open"
+  },
+  "downloads.reveal": {
+    "defaultMessage": "在文件夹中显示“{name}”",
+    "description": "Browser system UI string for downloads.reveal"
+  },
+  "downloads.remove": {
+    "defaultMessage": "从列表中移除“{name}”",
+    "description": "Browser system pages: downloads.remove"
+  },
+  "downloads.empty": {
+    "defaultMessage": "还没有下载",
+    "description": "Browser system pages: downloads.empty"
+  },
+  "downloads.emptyHint": {
+    "defaultMessage": "你下载的文件会显示在这里。",
+    "description": "Browser system pages: downloads.emptyHint"
+  },
+  "downloads.noMatches": {
+    "defaultMessage": "没有匹配的下载",
+    "description": "Browser system pages: downloads.noMatches"
+  },
   "downloads.status.downloading": {
-    "defaultMessage": "下载中",
+    "defaultMessage": "正在下载",
     "description": "A download row state."
   },
   "downloads.status.paused": {
@@ -232,8 +288,100 @@
     "description": "A download row state."
   },
   "downloads.status.removed": {
-    "defaultMessage": "已移除",
+    "defaultMessage": "文件已删除",
     "description": "A download row state."
+  },
+  "privacy.clear.title": {
+    "defaultMessage": "清除浏览数据",
+    "description": "Browser system pages: privacy.clear.title"
+  },
+  "privacy.clear.open": {
+    "defaultMessage": "清除浏览数据…",
+    "description": "Browser system pages: privacy.clear.open"
+  },
+  "privacy.clear.confirm": {
+    "defaultMessage": "清除数据",
+    "description": "Browser system pages: privacy.clear.confirm"
+  },
+  "privacy.clear.nothingSelected": {
+    "defaultMessage": "请选择要清除的内容",
+    "description": "Browser system pages: privacy.clear.nothingSelected"
+  },
+  "privacy.timeRange": {
+    "defaultMessage": "时间范围",
+    "description": "Browser system pages: privacy.timeRange"
+  },
+  "privacy.range.lastHour": {
+    "defaultMessage": "过去一小时",
+    "description": "Browser system pages: privacy.range.lastHour"
+  },
+  "privacy.range.last24Hours": {
+    "defaultMessage": "过去 24 小时",
+    "description": "Browser system pages: privacy.range.last24Hours"
+  },
+  "privacy.range.last7Days": {
+    "defaultMessage": "过去 7 天",
+    "description": "Browser system pages: privacy.range.last7Days"
+  },
+  "privacy.range.last4Weeks": {
+    "defaultMessage": "过去 4 周",
+    "description": "Browser system pages: privacy.range.last4Weeks"
+  },
+  "privacy.range.allTime": {
+    "defaultMessage": "全部时间",
+    "description": "Browser system pages: privacy.range.allTime"
+  },
+  "privacy.history": {
+    "defaultMessage": "浏览历史",
+    "description": "Browser system pages: privacy.history"
+  },
+  "privacy.cache": {
+    "defaultMessage": "缓存的图片和文件",
+    "description": "Browser system pages: privacy.cache"
+  },
+  "privacy.siteData": {
+    "defaultMessage": "Cookie 和网站数据",
+    "description": "Browser system pages: privacy.siteData"
+  },
+  "privacy.cleared": {
+    "defaultMessage": "已清除，含 {count} 条历史记录",
+    "description": "Browser system pages: privacy.cleared"
+  },
+  "settings.title": {
+    "defaultMessage": "设置",
+    "description": "Browser system UI string for settings.title"
+  },
+  "settings.appearance": {
+    "defaultMessage": "外观",
+    "description": "Browser system UI string for settings.appearance"
+  },
+  "settings.appearance.hint": {
+    "defaultMessage": "“跟随系统”会随设备切换。",
+    "description": "Browser system pages: settings.appearance.hint"
+  },
+  "settings.appearance.auto": {
+    "defaultMessage": "跟随系统",
+    "description": "Browser system UI string for settings.appearance.auto"
+  },
+  "settings.appearance.light": {
+    "defaultMessage": "浅色",
+    "description": "Browser system UI string for settings.appearance.light"
+  },
+  "settings.appearance.dark": {
+    "defaultMessage": "深色",
+    "description": "Browser system UI string for settings.appearance.dark"
+  },
+  "settings.language": {
+    "defaultMessage": "语言",
+    "description": "Browser system UI string for settings.language"
+  },
+  "settings.language.hint": {
+    "defaultMessage": "菜单和页面使用的语言。",
+    "description": "Browser system pages: settings.language.hint"
+  },
+  "settings.language.auto": {
+    "defaultMessage": "跟随系统",
+    "description": "Browser system UI string for settings.language.auto"
   },
   "settings.language.en": {
     "defaultMessage": "English",
@@ -243,69 +391,69 @@
     "defaultMessage": "简体中文",
     "description": "The Simplified Chinese option, named in Chinese."
   },
+  "settings.downloads": {
+    "defaultMessage": "下载",
+    "description": "Browser system UI string for settings.downloads"
+  },
+  "settings.downloads.dir": {
+    "defaultMessage": "文件保存位置",
+    "description": "Browser system UI string for settings.downloads.dir"
+  },
+  "settings.downloads.choose": {
+    "defaultMessage": "更改…",
+    "description": "Browser system UI string for settings.downloads.choose"
+  },
+  "settings.downloads.reset": {
+    "defaultMessage": "恢复默认",
+    "description": "Browser system UI string for settings.downloads.reset"
+  },
+  "settings.downloads.open": {
+    "defaultMessage": "查看下载",
+    "description": "Browser system pages: settings.downloads.open"
+  },
+  "settings.privacy": {
+    "defaultMessage": "隐私",
+    "description": "Browser system UI string for settings.privacy"
+  },
   "settings.privacy.site.title": {
-    "defaultMessage": "当前站点",
+    "defaultMessage": "当前网站",
     "description": "Card for clearing the site of the tab Settings was opened from."
   },
-  "settings.privacy.clearData": {
-    "defaultMessage": "清除浏览数据",
-    "description": "Card title."
+  "settings.privacy.clearCurrentSite": {
+    "defaultMessage": "清除此网站的数据",
+    "description": "Browser system UI string for settings.privacy.clearCurrentSite"
+  },
+  "settings.privacy.viewHistory": {
+    "defaultMessage": "查看历史记录",
+    "description": "Browser system UI string for settings.privacy.viewHistory"
   },
   "settings.privacy.usage": {
-    "defaultMessage": "{history} 条历史记录 · {cacheSites} 个站点有缓存 · {siteDataSites} 个站点有数据 · {cookies} 个 Cookie",
+    "defaultMessage": "{history} 条历史记录 · {cacheSites} 个网站有缓存 · {siteDataSites} 个网站有数据 · {cookies} 个 Cookie",
     "description": "What clearing would affect."
   },
-  "settings.privacy.timeRange": {
-    "defaultMessage": "时间范围",
-    "description": "Picker label."
-  },
-  "settings.privacy.range.lastHour": {
-    "defaultMessage": "过去一小时",
-    "description": "Time range option."
-  },
-  "settings.privacy.range.last24Hours": {
-    "defaultMessage": "过去 24 小时",
-    "description": "Time range option."
-  },
-  "settings.privacy.range.last7Days": {
-    "defaultMessage": "过去 7 天",
-    "description": "Time range option."
-  },
-  "settings.privacy.range.last4Weeks": {
-    "defaultMessage": "过去 4 周",
-    "description": "Time range option."
-  },
-  "settings.privacy.range.allTime": {
-    "defaultMessage": "全部时间",
-    "description": "Time range option."
-  },
-  "settings.privacy.history": {
-    "defaultMessage": "浏览历史",
-    "description": "Checkbox: what to clear."
-  },
-  "settings.privacy.cache": {
-    "defaultMessage": "缓存的图片和文件",
-    "description": "Checkbox: what to clear."
-  },
-  "settings.privacy.siteData": {
-    "defaultMessage": "Cookie 和站点数据",
-    "description": "Checkbox: what to clear."
-  },
-  "settings.privacy.clear": {
-    "defaultMessage": "清除数据",
-    "description": "Runs the clear."
-  },
-  "settings.privacy.status.nothingSelected": {
-    "defaultMessage": "请选择要清除的内容",
-    "description": "When every checkbox is off."
-  },
-  "settings.privacy.status.cleared": {
-    "defaultMessage": "已清除（{count} 条历史记录）",
-    "description": "After clearing browsing data."
-  },
   "settings.privacy.status.siteCleared": {
-    "defaultMessage": "已清除站点数据",
+    "defaultMessage": "已清除网站数据",
     "description": "After clearing the current site."
+  },
+  "settings.proxy": {
+    "defaultMessage": "代理",
+    "description": "Browser system UI string for settings.proxy"
+  },
+  "settings.proxy.mode": {
+    "defaultMessage": "代理模式",
+    "description": "Browser system pages: settings.proxy.mode"
+  },
+  "settings.proxy.mode.direct": {
+    "defaultMessage": "直连",
+    "description": "Proxy mode."
+  },
+  "settings.proxy.mode.global": {
+    "defaultMessage": "全局",
+    "description": "Proxy mode."
+  },
+  "settings.proxy.mode.gfwList": {
+    "defaultMessage": "自动（GFWList）",
+    "description": "Proxy mode."
   },
   "settings.proxy.host": {
     "defaultMessage": "SOCKS5 主机",
@@ -315,17 +463,13 @@
     "defaultMessage": "端口",
     "description": "Input label."
   },
-  "settings.proxy.mode.direct": {
-    "defaultMessage": "直连",
-    "description": "Proxy mode."
+  "settings.proxy.apply": {
+    "defaultMessage": "应用",
+    "description": "Browser system UI string for settings.proxy.apply"
   },
-  "settings.proxy.mode.global": {
-    "defaultMessage": "全局代理",
-    "description": "Proxy mode."
-  },
-  "settings.proxy.mode.gfwList": {
-    "defaultMessage": "自动（GFWList）",
-    "description": "Proxy mode."
+  "settings.proxy.refreshRules": {
+    "defaultMessage": "刷新规则",
+    "description": "Browser system UI string for settings.proxy.refreshRules"
   },
   "settings.proxy.status.invalidPort": {
     "defaultMessage": "请输入 1 到 65535 之间的端口",
@@ -339,48 +483,24 @@
     "defaultMessage": "规则已刷新",
     "description": "After refreshing GFWList."
   },
+  "settings.about": {
+    "defaultMessage": "关于",
+    "description": "Browser system UI string for settings.about"
+  },
   "settings.about.version": {
-    "defaultMessage": "版本 {version}",
+    "defaultMessage": "版本",
     "description": "About card."
   },
   "settings.about.sdk": {
-    "defaultMessage": "SDK {version}",
+    "defaultMessage": "SDK",
     "description": "About card."
   },
   "settings.about.webui": {
-    "defaultMessage": "Web UI {version}",
+    "defaultMessage": "系统页面",
     "description": "About card."
   },
   "settings.about.commit": {
-    "defaultMessage": "提交 {sha}",
+    "defaultMessage": "提交",
     "description": "About card."
-  },
-  "bookmarks.renameGroup": {
-    "defaultMessage": "重命名分组",
-    "description": "Button that renames the selected bookmark group"
-  },
-  "bookmarks.deleteGroup": {
-    "defaultMessage": "删除分组",
-    "description": "Button that deletes the selected bookmark group"
-  },
-  "bookmarks.moveGroupUp": {
-    "defaultMessage": "上移",
-    "description": "Button that moves the selected group one place up in the group list"
-  },
-  "bookmarks.moveGroupDown": {
-    "defaultMessage": "下移",
-    "description": "Button that moves the selected group one place down in the group list"
-  },
-  "bookmarks.moveUp": {
-    "defaultMessage": "上移书签",
-    "description": "Accessible label of the arrow that moves a bookmark one place up in its group"
-  },
-  "bookmarks.moveDown": {
-    "defaultMessage": "下移书签",
-    "description": "Accessible label of the arrow that moves a bookmark one place down in its group"
-  },
-  "bookmarks.moveTo": {
-    "defaultMessage": "移动到分组",
-    "description": "Accessible label of the picker that moves a bookmark to another group"
   }
 }

@@ -1,5 +1,7 @@
 import { invoke, watch } from '../../shared/native';
+import { hostOf, localDateTime } from '../../shared/format';
 import { definePage, lx } from '@lingxia/logic';
+import type { ClearBrowsingDataInput, ClearBrowsingDataResult } from '../../shared/privacy';
 
 interface HistoryEntry {
   id: string;
@@ -13,39 +15,97 @@ type HistoryWatchEvent =
   | { kind: 'upsert'; entry: HistoryEntry }
   | { kind: 'remove'; id: string };
 
+/** A day heading, or one visit under it; `at` and `day` are local `YYYY-MM-DDTHH:mm`. */
+type HistoryRow =
+  | { kind: 'day'; key: string; day: string }
+  | { kind: 'visit'; key: string; id: string; url: string; title: string; host: string; at: string };
+
 interface HistoryData {
-  entries: HistoryEntry[];
+  rows: HistoryRow[];
+  /** Visits that match the search; `rows` holds the first of them and grows as the list nears its end. */
+  shown: number;
+  hasMore: boolean;
+  total: number;
+  /** The present and its day and the day before, for headings and times; refreshed with the rows. */
+  now: string;
+  today: string;
+  yesterday: string;
+  query: string;
   loading: boolean;
 }
 
 const initialData: HistoryData = {
-  entries: [],
+  rows: [],
+  shown: 0,
+  hasMore: false,
+  total: 0,
+  now: '',
+  today: '',
+  yesterday: '',
+  query: '',
   loading: true,
 };
+
+const PAGE = 200;
 
 export default definePage({
   data: initialData,
   setup(page) {
-    async function refresh() {
-      const snap = await invoke<{ entries: HistoryEntry[] }>('history.list');
+    // Newest first; the rows are rebuilt from it, so the View gets one ready list.
+    let entries: HistoryEntry[] = [];
+    // Rows go out a page at a time, so no update carries the whole history.
+    let limit = PAGE;
+
+    function build() {
+      const q = page.data.query.trim().toLowerCase();
+      const rows: HistoryRow[] = [];
+      let day = '';
+      let shown = 0;
+      for (const entry of entries) {
+        if (q && !entry.title.toLowerCase().includes(q) && !entry.url.toLowerCase().includes(q)) continue;
+        shown += 1;
+        if (shown > limit) continue;
+        const at = localDateTime(entry.visitedAtMs);
+        const entryDay = `${at.slice(0, 10)}T00:00`;
+        if (entryDay !== day) {
+          day = entryDay;
+          rows.push({ kind: 'day', key: `d${day}`, day });
+        }
+        rows.push({ kind: 'visit', key: entry.id, id: entry.id, url: entry.url, title: entry.title, host: hostOf(entry.url), at });
+      }
+      return { rows, shown };
+    }
+
+    function publish() {
+      const { rows, shown } = build();
       page.update((d) => {
-        d.entries = snap.entries;
+        d.rows = rows;
+        d.shown = shown;
+        d.hasMore = shown > limit;
+        d.total = entries.length;
+        const now = Date.now();
+        d.now = localDateTime(now);
+        d.today = `${d.now.slice(0, 10)}T00:00`;
+        d.yesterday = `${localDateTime(now - 86_400_000).slice(0, 10)}T00:00`;
         d.loading = false;
       });
     }
 
+    async function refresh() {
+      entries = (await invoke<{ entries: HistoryEntry[] }>('history.list')).entries;
+      publish();
+    }
+
     function apply(event: HistoryWatchEvent) {
-      page.update((d) => {
-        if (event.kind === 'snapshot') {
-          d.entries = event.entries;
-        } else if (event.kind === 'upsert') {
-          const rest = d.entries.filter((entry) => entry.id !== event.entry.id);
-          d.entries = [event.entry, ...rest].sort((a, b) => b.visitedAtMs - a.visitedAtMs);
-        } else {
-          d.entries = d.entries.filter((entry) => entry.id !== event.id);
-        }
-        d.loading = false;
-      });
+      if (event.kind === 'snapshot') {
+        entries = event.entries;
+      } else if (event.kind === 'upsert') {
+        entries = [event.entry, ...entries.filter((entry) => entry.id !== event.entry.id)]
+          .sort((a, b) => b.visitedAtMs - a.visitedAtMs);
+      } else {
+        entries = entries.filter((entry) => entry.id !== event.id);
+      }
+      publish();
     }
 
     return {
@@ -54,13 +114,31 @@ export default definePage({
         await refresh().catch(() => page.update((d) => { d.loading = false; }));
       },
       actions: {
+        async search({ query }: { query: string }) {
+          page.update((d) => { d.query = query; });
+          limit = PAGE;
+          publish();
+        },
+        async loadMore() {
+          if (!page.data.hasMore) return;
+          limit += PAGE;
+          const { rows, shown } = build();
+          // The new rows extend the old ones, so only they cross to the View.
+          const added = rows.slice(page.data.rows.length);
+          page.update((d) => {
+            d.rows.push(...added);
+            d.hasMore = shown > limit;
+          });
+        },
         async removeEntry({ id }: { id: string }) {
           await invoke('history.remove', { id });
-          await refresh();
+          entries = entries.filter((entry) => entry.id !== id);
+          publish();
         },
-        async clearRange({ sinceMs }: { sinceMs?: number }) {
-          await invoke('history.clear', sinceMs !== undefined ? { sinceMs } : {});
+        async clearBrowsingData(input: ClearBrowsingDataInput): Promise<ClearBrowsingDataResult> {
+          const result = await invoke<ClearBrowsingDataResult>('privacy.clearBrowsingData', input);
           await refresh();
+          return result;
         },
         async openUrl({ url }: { url: string }) {
           await lx.surface.openUrl(url);
