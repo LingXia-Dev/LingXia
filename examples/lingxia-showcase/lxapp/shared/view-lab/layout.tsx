@@ -4,6 +4,9 @@ import { Button } from '../ui';
 import { Readout, useSay } from './demo';
 import { labels, readouts } from './text';
 
+/** The room the Pinned badge needs at the page's end: its bottom-4 offset and its height. */
+export const pinnedRoom = 16 + 24;
+
 export function ShowDemo() {
   const shown = useLocal('shown', true);
   const t = useSay();
