@@ -194,6 +194,26 @@ export async function readonlyResources() {
   guard.answer(true);
   const current: View = useView();
   current.env.pointer satisfies 'fine' | 'coarse';
+  const typedView = useView<{ save(name: string): Promise<boolean>; bad(a: string, b: number): Promise<void>; watch(): AsyncGenerator<number, string, void>; feed: typeof updates }, { count: number }>();
+  typedView.data.count satisfies number;
+  // @ts-expect-error typed data refuses unknown fields
+  typedView.data.missing;
+  typedView.actions.save('ok') satisfies Promise<boolean>;
+  typedView.actions.watch() satisfies Stream<number, string>;
+  useChannel('typed-feed', typedView.actions.feed, {params: {room: 'a'}});
+  // @ts-expect-error actions with more than one argument are not callable from the View
+  typedView.actions.bad('a', 1);
+  const textCell = useLocal('hello');
+  textCell.focus();
+  const numCell = useLocal(0);
+  // @ts-expect-error focus belongs only on string cells an editor can bind
+  numCell.focus();
+  const boolCell = useLocal(false);
+  // @ts-expect-error focus belongs only on string cells an editor can bind
+  boolCell.focus();
+  const objCell = useLocal({ a: 1 });
+  // @ts-expect-error focus belongs only on string cells an editor can bind
+  objCell.focus();
   request.stale satisfies boolean;
   const direct = watch();
   // @ts-expect-error direct stream promise results are frozen

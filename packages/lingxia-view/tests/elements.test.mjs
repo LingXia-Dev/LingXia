@@ -160,7 +160,12 @@ test('vectors encode bounded path data, fit and dash patterns, and decorate comp
   assert.equal(fitted.fit, 'fill'); assert.deepEqual(fitted.paths[0].strokeDasharray, [4, 2, 1]);
   throwsOn(() => h('vector', { paths, style: { objectFit: 'cover' } }), /UI_STYLE_VALUE/);
   for (const strokeDasharray of [[0, 2], [-1], [1 / 128], [1025], [Infinity], [NaN], '4 2', Array(17).fill(1)])
-    throwsOn(() => h('vector', { paths: [{ ...stroke, strokeDasharray }] }), /UI_VECTOR/);
+    throwsOn(() => h('vector', { paths: [{ ...stroke, strokeDasharray }] }), /UI_VECTOR: strokeDasharray takes up to 16 numbers from 1\/64 to 1024; got /);
+  throwsOn(() => h('vector', { paths, viewBox: [0, 0, 0, 24] }), /UI_VECTOR: viewBox takes \[x, y, width, height\] with finite numbers within ±16384 and width\/height >= 1\/64; got \[0,0,0,24\]/);
+  throwsOn(() => h('vector', { paths: [] }), /UI_VECTOR: paths takes 1\.\.32 path objects; got \[\]/);
+  throwsOn(() => h('vector', { paths: [{ d: 'M0 0', fill: 'url(remote)' }] }), /UI_VECTOR: fill takes 'none', 'currentColor', a hex color, a theme role or url\(#id\); got "url\(remote\)"/);
+  throwsOn(() => h('vector', { paths: [{ d: 'M0 0', transform: 'perspective(1)' }] }), /UI_VECTOR: transform takes SVG transform functions .*?; got "perspective\(1\)"/);
+  throwsOn(() => h('vector', { paths: [{ d: 'M0 0', strokeWidth: Infinity }] }), /UI_VECTOR: strokeWidth takes a number from 0 to 1024; got Infinity/);
 });
 
 test('property admission stays local to each element and rejects prototype names', () => {
@@ -565,6 +570,10 @@ test('select sends its options and shows the chosen label or its placeholder', (
     assert.throws(() => describe(() => h('select', { options: bad, 'aria-label': 'Plan' }), {}), /UI_SELECT/);
   const loose = { value: 'm', set() {} };
   assert.throws(() => describe(() => h('select', { options, bind: loose, 'aria-label': 'Plan' }), {}), /^Error: UI_SELECT: bind requires a mounted string useLocal cell/);
+  assert.throws(() => describe(() => h('select', { options, placeholder: 123, 'aria-label': 'Plan' }), {}), /UI_SELECT: placeholder takes a UTF-8 string up to 65536 bytes; got 123/);
+  const cyclic = {}; cyclic.self = cyclic;
+  assert.throws(() => describe(() => h('select', { options, placeholder: 10n, 'aria-label': 'Plan' }), {}), /UI_SELECT: placeholder takes a UTF-8 string up to 65536 bytes; got bigint/);
+  assert.throws(() => describe(() => h('select', { options, placeholder: cyclic, 'aria-label': 'Plan' }), {}), /UI_SELECT: placeholder takes a UTF-8 string up to 65536 bytes; got object/);
 });
 
 test('a textarea takes rows and maxRows as an autosizing range', () => {

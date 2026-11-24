@@ -82,6 +82,7 @@ test('tsc blames the trait a mistake breaks, not another trait of the element', 
     ['unheard', /Property 'onSnapChange' is missing in type .* but required in type '\{ snapIndex: number; onSnapChange: /],
     ['silent', /Property 'player' is missing in type .* but required in type '\{ src\?: undefined; sources\?: undefined; player: Video; \}'/],
     ['twice', /^Types of property 'sources' are incompatible\. +Type '\{ src: string; label: string; \}\[\]' is not assignable to type 'undefined'\.$/],
+    ['unpointed', /Property 'onPointer' is missing in type .* but required in type '\{ onPointer: /],
   ]) assert.match(reasons.get(name) ?? 'no error', reason, name);
-  assert.equal(reasons.size, 12);
+  assert.equal(reasons.size, 13);
 });

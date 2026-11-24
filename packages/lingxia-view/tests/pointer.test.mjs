@@ -34,7 +34,7 @@ test('onPointer and pointerAxis refuse other elements and values', () => {
   const page = node => () => prepare(() => h('page', {}, node()), { env: {} });
   assert.throws(page(() => h('text', { onPointer() {} }, 'T')), /UI_PROP: onPointer is not a property of <text>/);
   assert.throws(page(() => h('view', { onPointer: true })), /UI_PROP: onPointer takes a function/);
-  assert.throws(page(() => h('view', { pointerAxis: 'x' })), /UI_PROP: onPointer takes a function; pointerAxis goes with it/);
+  assert.throws(page(() => h('view', { pointerAxis: 'x' })), /UI_PROP: pointerAxis needs onPointer on the same element; add onPointer or remove pointerAxis/);
   assert.throws(page(() => h('view', { onPointer() {}, pointerAxis: 'z' })), /UI_PROP: pointerAxis must be "x", "y" or "both"/);
 });
 

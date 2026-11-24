@@ -53,7 +53,8 @@ test('pending action limits and malformed replies cannot lose a live request',as
   const promises=Array.from({length:256},()=>actions.increment());
   assert.throws(()=>actions.increment(),/too many pending/);
   const frames=takeActionRequests().map(JSON.parse);
-  assert.throws(()=>receiveActionResponse({v:3,kind:'res',id:frames[0].id,ok:true}),/invalid response/);
+  assert.throws(()=>configureActions({__names:['a'],__modes:{}}),/UI_ACTION: action catalog takes \{ __names: 0\.\.256 unique non-empty strings.*?; got \{"__names":\["a"\],"__modes":\{\}\}/);
+  assert.throws(()=>receiveActionResponse({v:3,kind:'res',id:frames[0].id,ok:true}),/UI_ACTION: response takes \{ v: 2, kind: 'res'\|'event'.*?; got \{"v":3/);
   assert.throws(()=>receiveActionResponse({v:2,kind:'res',id:frames[0].id,ok:true,result:NaN}),/JSON/);
   for(const frame of frames) receiveActionResponse({v:2,kind:'res',id:frame.id,ok:true,result:42});
   assert.deepEqual(await Promise.all(promises),Array(256).fill(42));
@@ -87,7 +88,35 @@ test('an action payload follows JSON for undefined and names what is not JSON',(
   channels.open('ticker',{symbol:'MSFT',since:undefined}).catch?.(()=>{});
   assert.deepEqual(JSON.parse(takeActionRequests()[0]).params,{symbol:'MSFT'});
   assert.throws(()=>channels.open('ticker',{at:1n}),{message:'UI_CHANNEL: ticker payload field at is not JSON (bigint)'});
+  class Custom {}
+  assert.throws(()=>actions.reserve({s:Symbol('x')}),{message:'UI_ACTION: reserve payload field s is not JSON (symbol)'});
+  assert.throws(()=>actions.reserve({s:new Set()}),{message:'UI_ACTION: reserve payload field s is not JSON (Set)'});
+  assert.throws(()=>actions.reserve({n:Infinity}),{message:'UI_ACTION: reserve payload field n is not JSON (Infinity)'});
+  assert.throws(()=>actions.reserve({c:new Custom()}),{message:'UI_ACTION: reserve payload field c is not JSON (Custom)'});
+  const shared={a:1};
+  actions.reserve({first:shared,second:shared}).catch(()=>{});
+  assert.deepEqual(JSON.parse(takeActionRequests()[0]).params,{first:{a:1},second:{a:1}});
+  const cyclic={node:{}};cyclic.node.parent=cyclic;
+  assert.throws(()=>actions.reserve(cyclic),{message:'UI_ACTION: reserve payload field argument.node.parent refers back to argument; send a value without cycles'});
+  assert.throws(()=>channels.open('ticker',cyclic),{message:'UI_CHANNEL: ticker payload field argument.node.parent refers back to argument; send a value without cycles'});
+  const cyclicArr=[];cyclicArr.push(cyclicArr);
+  assert.throws(()=>actions.reserve(cyclicArr),{message:'UI_ACTION: reserve payload field argument[0] refers back to argument; send a value without cycles'});
+  assert.throws(()=>channels.open('ticker',cyclicArr),{message:'UI_CHANNEL: ticker payload field argument[0] refers back to argument; send a value without cycles'});
+  const spaced={};spaced['a b']=spaced;
+  assert.throws(()=>actions.reserve(spaced),{message:'UI_ACTION: reserve payload field argument["a b"] refers back to argument; send a value without cycles'});
+  let deep={};for(let i=0;i<70;i++) deep={next:deep};
+  assert.throws(()=>actions.reserve(deep),{message:'UI_LOCAL: value too deep'});
   assert.deepEqual(takeActionRequests(),[]);reset();
+});
+test('an async handler whose action payload is refused surfaces UI_ACTION',async()=>{
+  configureActions({__names:['reserve'],__modes:{reserve:'call'}});setLoudFailures(false);
+  const flush=async()=>{for(let i=0;i<4;i++) await Promise.resolve();};
+  try {
+    const {actions}=createView({},{});
+    const node=describe(()=>h('button',{'data-testid':'go',onClick:async()=>{await actions.reserve({when:new Date(0)});}},'go'),{});
+    assert.equal(dispatch(node[7]),true);await flush();
+    assert.deepEqual(takeActionErrors(),['UI_HANDLER: onClick of <button data-testid="go"> rejected: UI_ACTION: reserve payload field when is not JSON (Date)']);
+  } finally { setLoudFailures(true);reset(); }
 });
 test('quiet, a failed handler is logged with its site and the page carries on',async()=>{
   configureActions(catalog);setLoudFailures(false);

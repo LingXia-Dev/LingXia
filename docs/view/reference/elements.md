@@ -40,7 +40,7 @@ Styles each element accepts are in [styles.md](styles.md).
 
 ## `<view>`
 
-Children: any elements and text. Renders as `column`. `open`, `onToggle`, `closeAfter`, `anchor`, `onCloseRequest` need `popover`; `onCloseRequest` not with `popover="manual"`: tsc and the build refuse them otherwise (`UI_PROP`). `dragSnapPoints`, `bind`, `snapIndex`, `onSnapChange`, `onDragStart`, `onDragEnd`, `aria-actions` need `drag`: tsc and the build refuse them otherwise (`UI_PROP`). At most one of `bind` or `snapIndex` (and its `onSnapChange`) (`UI_PROP`).
+Children: any elements and text. Renders as `column`. `open`, `onToggle`, `closeAfter`, `anchor`, `onCloseRequest` need `popover`; `onCloseRequest` not with `popover="manual"`: tsc and the build refuse them otherwise (`UI_PROP`). `dragSnapPoints`, `bind`, `snapIndex`, `onSnapChange`, `onDragStart`, `onDragEnd`, `aria-actions` need `drag`: tsc and the build refuse them otherwise (`UI_PROP`). `pointerAxis` need `onPointer`: tsc and the build refuse them otherwise (`UI_PROP`). At most one of `bind` or `snapIndex` (and its `onSnapChange`) (`UI_PROP`).
 
 | Prop | Type | Required |
 | --- | --- | --- |
@@ -92,7 +92,7 @@ Children: text, `<span>` and `<link>` runs.
 
 ## `<button>`
 
-Children: text, or noninteractive content elements (a composed control). `dragSnapPoints`, `bind`, `snapIndex`, `onSnapChange`, `onDragStart`, `onDragEnd`, `aria-actions` need `drag`: tsc and the build refuse them otherwise (`UI_PROP`). At most one of `bind` or `snapIndex` (and its `onSnapChange`) (`UI_PROP`).
+Children: text, or noninteractive content elements (a composed control). `dragSnapPoints`, `bind`, `snapIndex`, `onSnapChange`, `onDragStart`, `onDragEnd`, `aria-actions` need `drag`: tsc and the build refuse them otherwise (`UI_PROP`). `pointerAxis` need `onPointer`: tsc and the build refuse them otherwise (`UI_PROP`). At most one of `bind` or `snapIndex` (and its `onSnapChange`) (`UI_PROP`).
 
 | Prop | Type | Required |
 | --- | --- | --- |
@@ -327,7 +327,7 @@ Children: none.
 
 ## `<vector>`
 
-Children: none.
+Children: none. `pointerAxis` need `onPointer`: tsc and the build refuse them otherwise (`UI_PROP`).
 
 | Prop | Type | Required |
 | --- | --- | --- |
@@ -408,7 +408,7 @@ Children: none. At most one of `src` or `sources` (`UI_PROP`).
 | `onQualityChange` | `(event: VideoQualityChange) => void` |  |
 | `onFullscreenChange` | `(event: { readonly fullscreen: boolean }) => void` |  |
 
-`src` plays one file; `sources` offers the same video at several qualities; not both (`UI_PROP`). Props apply when they change: a new `src` or `sources` starts over from the beginning, showing the last frame until the new first one; `paused`, `muted`, `loop`, `playbackRate` and `volume` apply only when their value changes, so a handle's `play()` or `pause()` stands until that prop itself changes. A named player is the advanced case: `player={useVideo(name)}` on the `<video>` that gives the source makes it the page's player, and another `<video player>` with no source, such as a full-screen one, shows that same player. A component that forwards a source types it with `VideoSourceProps` and spreads it whole.
+`src` plays one file; `sources` offers the same video at several qualities; not both (`UI_PROP`). Props apply when they change: a new `src` or `sources` starts over from the beginning, showing the last frame until the new first one; `paused`, `muted`, `loop`, `playbackRate` and `volume`: each applies on mount and when its value changes; writing the same value again does nothing, so a handle's `play()` or `pause()` stands until that prop itself changes. To act, use the player handle. A named player is the advanced case: `player={useVideo(name)}` on the `<video>` that gives the source makes it the page's player, and another `<video player>` with no source, such as a full-screen one, shows that same player. A component that forwards a source types it with `VideoSourceProps` and spreads it whole.
 
 ## `<webview>`
 

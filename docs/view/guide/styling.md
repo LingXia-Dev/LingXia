@@ -176,7 +176,7 @@ Colours and faces stay the app's; two packages giving one token different values
 | `sm:` … `xl:`, `min-[…]:`, `max-*:` | the View viewport width (`sm` = 640 px, `md` = 768, `lg` = 1024, `xl` = 1280) |
 | `rtl:`, `ltr:` | the node's inline direction ([RTL and i18n](rtl-and-i18n.md)) |
 | `first:` `last:` `only:` `odd:` `even:` `empty:` | the node's position among its rendered siblings; `empty:` a node with no children |
-| `active:` | a pressed `<button>`, `<checkbox>`, `<switch>`, `<radio>` or `<link>` |
+| `active:` | a pressed `<button>`, `<checkbox>`, `<switch>`, `<radio>`, `<slider>` or `<link>` |
 | `focus:` | a focused `<input>` or `<textarea>` |
 | `focus-visible:` | a focused editor, or a control focused by key, switch or assistive input; it replaces the default focus ring |
 | `hover:` | a hovered element, only when `env.pointer` is `fine` |
@@ -262,7 +262,7 @@ export function render() {
 Each of these fails the build with `UI_CLASS_UNSUPPORTED` rather than rendering differently from CSS:
 
 - Filters other than `blur-*` (`brightness-*`, `drop-shadow-*`, …); `backdrop-blur-*` and `backdrop-saturate-*` work.
-- Inset shadows, `ring-offset-*`, outlines, `text-shadow-*`, radial and conic masks, blend modes.
+- Inset shadows, outlines, `text-shadow-*`, radial and conic masks, blend modes.
 - Skew and 3D transforms (`skew-*`, `rotate-x-*`, `perspective-*`).
 - Per-edge border colors and styles (`border-t-red-500`); borders share one color and style.
 - `cursor-*` and `pointer-events-*`: there is no cursor, and hit testing follows the rules in [Interaction](interaction.md).

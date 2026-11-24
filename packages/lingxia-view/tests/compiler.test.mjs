@@ -207,6 +207,15 @@ test('a unitless lineHeight past the multiplier cap fails the build with both fi
   clean('const a = <text style={{lineHeight: "24px"}}>x</text>;');
   assert.deepEqual(audit('const a = <text style={{lineHeight: 24}}>x</text>;', 'page.tsx'),
     ['page.tsx:1:25: UI_STYLE_VALUE: lineHeight 24 is a multiple of the font size (24×), not points; write "24px", or a leading-* class']);
+  assert.deepEqual(audit('const a = <view style={{flexGrow: 20000, width: -1, flexBasis: 16385, padding: -1, marginTop: -20000}} />;', 'page.tsx'), [
+    'page.tsx:1:25: UI_STYLE_VALUE: flexGrow takes a number from 0 to 16384; got 20000',
+    'page.tsx:1:42: UI_STYLE_VALUE: width takes a number from 0 to 16384; got -1',
+    'page.tsx:1:53: UI_STYLE_VALUE: flexBasis takes a number from 0 to 16384; got 16385',
+    'page.tsx:1:71: UI_STYLE_VALUE: padding takes a number from 0 to 16384; got -1',
+    'page.tsx:1:84: UI_STYLE_VALUE: marginTop takes a number from -16384 to 16384; got -20000',
+  ]);
+  assert.deepEqual(audit('const big = 20000; const a = <view style={{padding: big}} />;', 'page.tsx'),
+    ['page.tsx:1:44: UI_STYLE_VALUE: padding takes a number from 0 to 16384; got 20000']);
 });
 
 test('a link is a block link outside text, a run inside it, and needs to or onClick in both forms', async () => {
@@ -784,6 +793,23 @@ test('UI_PERF row layers stay on for a prop the row computes and for a spread', 
   assert.deepEqual(await rowLayers(['<Chip flat {...{ flat: i === "a" }} />']), ['backdrop-blur-sm']);
 });
 
+test('UI_PERF ignores transparent and state-variant row opacity and warns on partial opacity', async () => {
+  assert.deepEqual(await rowLayers([
+    '<view className="opacity-0" />',
+    '<view className="sr-only" />',
+    '<view className="hover:opacity-0 dark:opacity-0 motion-safe:opacity-0" />',
+    '<view className="dark:sr-only motion-safe:sr-only" />',
+    '<view className="opacity-0 hover:opacity-60" />',
+    '<view style={{ opacity: 0 }} />',
+    '<view style={{ opacity: 1 }} />',
+  ]), []);
+  assert.deepEqual(await rowLayers([
+    '<view className="opacity-40" />',
+    '<view className="opacity-[0.3]" />',
+    '<view style={{ opacity: 0.4 }} />',
+  ]), ['opacity', 'opacity-40', 'opacity-[0.3]']);
+});
+
 test('UI_STYLE_STATIC warns on a style object of fixed values only; computed and style-only values stay quiet', async () => {
   await project({
     'page.tsx': `import { useView } from '@lingxia/view';
@@ -916,8 +942,28 @@ test('JSX at module scope fails the build with the fix; inside a function or com
   await project({ 'rows.tsx': 'export const header = <text>Head</text>;\nexport const row = () => <text>Row</text>;' }, async (root, build) => {
     await writeFile(join(root, 'page.tsx'), "import {header} from './rows'; export function render(){return <view>{header}</view>}");
     await assert.rejects(build(), /rows.tsx:1:23: UI_SCOPE: JSX at module scope runs when the page loads, outside render; build it inside the component, or make it a function/);
-    await writeFile(join(root, 'rows.tsx'), 'export const row = () => <text>Row</text>;\nexport class Rows { make() { return <text>Row</text>; } }');
-    await writeFile(join(root, 'page.tsx'), "import {row} from './rows'; const cached = () => <view/>; export function render(){return <view>{row()}{cached()}</view>}");
+    await writeFile(join(root, 'rows.tsx'), [
+      'declare const cond: boolean;',
+      'declare function register(x: unknown): void;',
+      'export const icon = <view />;',
+      'export const ROWS = [{ label: <text>A</text> }];',
+      'export const branch = cond ? <view /> : <text>B</text>;',
+      'register(<view />);',
+      'export class Box { static badge = <text>S</text>; }',
+    ].join('\n'));
+    await writeFile(join(root, 'page.tsx'), "import { icon, ROWS, branch, Box } from './rows'; export function render(){return <view>{icon}{ROWS[0].label}{branch}{Box.badge}</view>}");
+    const err = await build().catch(error => error);
+    const message = err?.message ?? '';
+    assert.match(message, /rows\.tsx:3:21, 4:31, 5:30, 5:41, 6:10, 7:35: UI_SCOPE:/);
+    await writeFile(join(root, 'rows.tsx'), [
+      'const memo = <T,>(fn: T) => fn;',
+      'export type Alias = { x: number };',
+      'export const row = () => <text>Row</text>;',
+      'export const Foo = memo(() => <view />);',
+      'export const obj = { get label() { return <text>G</text>; }, make() { return <text>M</text>; } };',
+      'export class Rows { make() { return <text>Row</text>; } get head() { return <text>H</text>; } }',
+    ].join('\n'));
+    await writeFile(join(root, 'page.tsx'), "import {row, Foo, obj, Rows} from './rows'; const cached = () => <view/>; export function render(){const r = new Rows(); return <view>{row()}{cached()}<Foo />{obj.label}{obj.make()}{r.make()}{r.head}</view>}");
     await build();
   });
 });

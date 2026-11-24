@@ -45,3 +45,75 @@ export function sourceLabel(root, file) {
   const owner = packageOf(file);
   return owner ? `${owner.name}/${posix(relative(owner.dir, file))}` : posix(relative(root, file));
 }
+
+function readPackage(dir) {
+  let json;
+  try { json = JSON.parse(readFileSync(join(dir, 'package.json'), 'utf8')); } catch { return undefined; }
+  if (typeof json?.name !== 'string' || !json.name) return undefined;
+  const peers = Object.keys(json.peerDependencies ?? {}).sort();
+  const optionalPeers = new Set(Object.entries(json.peerDependenciesMeta ?? {})
+    .filter(([, meta]) => meta?.optional)
+    .map(([name]) => name));
+  return { dir, name: json.name, tokens: json.lingxia?.tokens, peers, optionalPeers };
+}
+
+function findInstalled(name, fromDirs) {
+  const parts = name.split('/');
+  for (const start of fromDirs) {
+    let dir = start;
+    for (;;) {
+      const candidate = join(dir, 'node_modules', ...parts);
+      if (existsSync(join(candidate, 'package.json'))) return readPackage(candidate);
+      const up = dirname(dir);
+      if (up === dir) break;
+      dir = up;
+    }
+  }
+  return undefined;
+}
+
+/**
+ * Expand `bundled` packages transitively across `peerDependencies`, returning a map of every
+ * package that declares `lingxia.tokens`. Missing non-optional peers are recorded in `problems`.
+ */
+export function peerTokenPackages(root, bundled, problems) {
+  const visited = new Map();
+  const queue = [...bundled.values()].sort((a, b) => a.name < b.name ? -1 : 1);
+  for (const pkg of queue) visited.set(pkg.name, readPackage(pkg.dir) ?? { ...pkg, peers: [], optionalPeers: new Set() });
+  const order = [...visited.values()];
+  for (let i = 0; i < order.length; i++) {
+    const pkg = order[i];
+    for (const peerName of pkg.peers) {
+      // @lingxia/view is always supplied by the compiler itself and carries no tokens.
+      if (peerName === '@lingxia/view') continue;
+      if (visited.has(peerName)) continue;
+      const peer = findInstalled(peerName, [root, pkg.dir]);
+      if (!peer) {
+        if (!pkg.optionalPeers.has(peerName))
+          problems.push(`${pkg.name}/package.json: UI_MODULE: peer dependency ${peerName} of ${pkg.name} is not installed; install ${peerName}`);
+        continue;
+      }
+      visited.set(peer.name, peer);
+      order.push(peer);
+    }
+  }
+  // Order peers before the packages that peer on them; break ties by package name.
+  const sorted = [];
+  const state = new Map();
+  const visit = name => {
+    if (state.get(name) === 2 || state.get(name) === 1) return;
+    state.set(name, 1);
+    const pkg = visited.get(name);
+    if (pkg) {
+      for (const peerName of [...pkg.peers].sort()) {
+        if (visited.has(peerName)) visit(peerName);
+      }
+      sorted.push(pkg);
+    }
+    state.set(name, 2);
+  };
+  for (const name of [...visited.keys()].sort()) visit(name);
+  const tokens = new Map();
+  for (const pkg of sorted) if (pkg.tokens !== undefined) tokens.set(pkg.name, pkg);
+  return tokens;
+}

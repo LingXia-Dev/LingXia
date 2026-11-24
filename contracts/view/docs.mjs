@@ -110,7 +110,7 @@ const propNotes = {
   slider: '`defaultValue`: where a slider without `value` or `bind` starts, snapped to `step`; it applies once, and a later change does nothing.',
   select: '`defaultValue`: the option a select without `value` or `bind` starts on; it applies once, and a later change does nothing.',
   scroll: '`bind` and `snapIndex` are the index of the snap point a `scrollSnapType` scroll rests on, not its offset: `bind={local}` with a number `useLocal` cell, or `snapIndex={n}` with `onSnapChange(index)` to follow it from the page\'s or Logic\'s state. Not both (`UI_PROP`). After a swipe the element waits for the page\'s answer; if the page keeps its index, the element returns to it. The answer may come through a Logic action `onSnapChange` starts; the wait ends at 400 ms. Only actions the handler calls directly count: one started after an `await` or in a timer is not waited for, and the page is taken to keep its index after the next frame. The same holds on a dragged element.',
-  video: '`src` plays one file; `sources` offers the same video at several qualities; not both (`UI_PROP`). Props apply when they change: a new `src` or `sources` starts over from the beginning, showing the last frame until the new first one; `paused`, `muted`, `loop`, `playbackRate` and `volume` apply only when their value changes, so a handle\'s `play()` or `pause()` stands until that prop itself changes. A named player is the advanced case: `player={useVideo(name)}` on the `<video>` that gives the source makes it the page\'s player, and another `<video player>` with no source, such as a full-screen one, shows that same player. A component that forwards a source types it with `VideoSourceProps` and spreads it whole.',
+  video: '`src` plays one file; `sources` offers the same video at several qualities; not both (`UI_PROP`). Props apply when they change: a new `src` or `sources` starts over from the beginning, showing the last frame until the new first one; `paused`, `muted`, `loop`, `playbackRate` and `volume`: each applies on mount and when its value changes; writing the same value again does nothing, so a handle\'s `play()` or `pause()` stands until that prop itself changes. To act, use the player handle. A named player is the advanced case: `player={useVideo(name)}` on the `<video>` that gives the source makes it the page\'s player, and another `<video player>` with no source, such as a full-screen one, shows that same player. A component that forwards a source types it with `VideoSourceProps` and spreads it whole.',
   webview: '`handlesDrags`: the web page handles its own drags (a map, a canvas); a drag starting on it never passes to the page. Off by default. When the screen takes a drag the page had started, the page gets `pointercancel` and `touchcancel`; on HarmonyOS they are synthetic (`isTrusted` false), and the page\'s own overflow scrolling, fixed when the finger lands, keeps scrolling.',
 };
 
@@ -454,95 +454,23 @@ const untestable = {
   UI_FONT: "needs the platform's system font files",
 };
 
-const errorNotes = {
-  UI_A11Y: 'An image without `alt`, or a control, editor, plot, select, dialog or webview without an accessible name.',
-  UI_OVERRUN: 'A render ran past its time budget; the frame is dropped and the page renders again (`UI_TIMEOUT` after several in a row).',
-  UI_SELECT: 'Invalid `<select>` options, value or selection reply.',
-  UI_FONT: 'A family is not declared with `@font-face`, a declared face file is missing, outside the lxapp or too large, or a face or system font could not be read; text falls back to the next font.',
-  UI_FRAME: 'The platform presenter kept refusing frames prepared ahead; the page falls back to one frame at a time.',
-  UI_GPU_LOST: 'The GPU device failed mid-frame. The first time, every page moves to a new device and redraws; after a second, the page shows its recovery screen.',
-  UI_BUDGET: 'A warning, once per page and limit: a frame used at least three quarters of a page limit, or a dialog or popover past `topLayer` stayed closed.',
-  UI_ACTION: 'An action call was malformed or its reply invalid.',
-  UI_POPOVER: 'A dev warning, once per page: an anchored popover\'s height kept changing between capped and uncapped; it stays capped and the warning names it.',
-  UI_BACK: 'Invalid `useBackHandler` arguments.',
-  UI_BLEED_PARENT: '`bleed` was placed on an element that is not a direct child of `<page>`.',
-  UI_ANIMATION: 'An invalid or over-budget animation definition, or an inline `style.animation`.',
-  UI_BOOTSTRAP_TIMEOUT: 'Logic did not deliver the first page state in time.',
-  UI_BRIDGE: 'The View-Logic connection failed or was replaced.',
-  UI_BUFFER: 'A malformed wire buffer reached the native decoder.',
-  UI_BUTTON: 'Invalid button label, a scroll, list or webview inside a composed control, or a control whose only content is another control.',
-  UI_CHANNEL: 'Invalid `useChannel` call or channel failure.',
-  UI_CHECK: 'Invalid checkbox or switch value, label or binding.',
-  UI_CHROME: 'Invalid host chrome geometry from the platform adapter.',
-  UI_CHILD: 'An element has children it does not accept, or lacks its required parent.',
-  UI_CLASS: 'A class string is not a string, too long, or names a utility the build did not compile.',
-  UI_CLASS_ELEMENT: 'A supported utility on an element that does not render it, or a state variant the element never enters.',
-  UI_CLASS_UNKNOWN: 'Not a Tailwind utility; the message names the nearest supported one when close.',
-  UI_CLASS_UNSUPPORTED: 'Tailwind CSS the native renderer cannot draw.',
-  UI_COLOR: 'A colour is not a role (`surface`, `accent/12`), `currentColor` or `transparent`, or a colour class uses `dark:`; hex is legal only in vectors, complete gradients and shadow layers.',
-  UI_COMMIT: 'A commit without a prepared candidate.',
-  UI_COMPAT: 'The installed host is older than the compiled page; update the host app.',
-  UI_COMPOSITE: 'A composited effect (backdrop, opacity group) is out of bounds.',
-  UI_CONTEXT: 'A `createContext` call that is not a module-level const, a `Provider` without one element or a value, or a context value that is not plain data, functions or handles.',
-  UI_CSS: 'The page stylesheet has something other than tokens, or more than one is imported.',
-  UI_DOM: 'A DOM global (`window`, `document`, …) is used in View code.',
-  UI_LX: '`lx` is used in View code; call an action that does it in Logic.',
-  UI_ENVIRONMENT: 'The host reported an invalid environment.',
-  UI_ERROR: 'A failure without its own code.',
-  UI_FIELD: 'A wire field on a tag that does not accept it.',
-  UI_FIELDS: 'A malformed field list reached the native decoder.',
-  UI_FILTER: 'A backdrop filter outside its bounds.',
-  UI_FRAGMENT: 'A page that returns a fragment; the page root is one element.',
-  UI_ID: 'Two elements with one `id` (list rows included), a popover without an id, an id with spaces, or a `popoverTarget` naming no popover on the page.',
-  UI_GRADIENT: 'A gradient with geometry its kind does not take, or invalid stops.',
-  UI_GRID: 'An invalid grid track list or line.',
-  UI_HANDLER: 'An event handler threw or its promise rejected; it fails the page in a dev build or under automation, and is logged elsewhere.',
-  UI_IMAGE: 'Invalid image source, alt, retry key or callback, or a failed load.',
-  UI_VIDEO: 'Invalid `<video>` source.',
-  UI_WEBVIEW: 'Invalid `<webview>` source, session handle, label or callback.',
-  UI_INPUT: 'Invalid editor prop, binding or text.',
-  UI_KEY: 'A non-string or duplicate sibling key, or a component keyed by its own function name.',
-  UI_LEAVE: 'Invalid `useLeaveGuard` call or answer.',
-  UI_INERT: 'A build warning; the page still builds: a `<button>`, `<checkbox>`, `<switch>`, `<radio>`, `<select>` or `<slider>` with no handler, `bind` or `disabled`. It is enabled and focusable but does nothing; add the handler, or mark it disabled.',
-  UI_LIMIT: 'A page limit was exceeded.',
-  UI_LIST: 'Invalid list description, keys, anchor or row height.',
-  UI_LOCAL: 'A duplicate `useLocal` name in one component, or `set` on an unmounted cell.',
-  UI_MODULE: 'The compiled page module failed to load.',
-  UI_PAGE: 'A call reached a page that was already discarded.',
-  UI_STYLE_STATIC: 'A build warning; the page still builds: a `style` object whose every value is fixed. Write it as Tailwind classes; `style` is for computed values.',
-  UI_PERF: 'A build warning; the page still builds: literal rows above 50 outside `<List>`, an opacity or backdrop layer repeated per row, or a bundled image above 2048 px or 8 MiB.',
-  UI_PARENT: 'A node listed before its parent reached the native decoder.',
-  UI_PATCH: 'An invalid state patch from Logic.',
-  UI_PLOT: 'Invalid plot props.',
-  UI_PROP: 'A prop the element does not take, or an invalid value.',
-  UI_RADIO: 'Invalid radio options, value or label.',
-  UI_RENDER: 'A state change during render, or a recursive render.',
-  UI_REQUEST: 'Invalid `useRequest` call.',
-  UI_ROOT: 'The page did not return exactly one element.',
-  UI_SCALE: 'A value that combines a theme step with arithmetic it cannot follow at run time (two steps, a step times a step, min/max over steps), or a step on a field that does not take it.',
-  UI_SCOPE: 'A hook or JSX used outside render. JSX at module scope fails the build: build it inside the component, or make it a function.',
-  UI_I18N: '`t` names a key no catalogue has, or the lxapp has no `i18n/` catalogues.',
-  UI_SCROLL: 'Invalid scroll position from the host.',
-  UI_SESSION: 'A call reached a page session that is not loaded.',
-  UI_SHADOW: 'An invalid or over-budget box shadow.',
-  UI_SLIDER: 'Invalid slider range, step, value or label.',
-  UI_STALE: 'A candidate from another render.',
-  UI_STATE: 'Invalid page state from Logic.',
-  UI_STREAM: 'Invalid `useStream` call or stream failure.',
-  UI_STYLE: 'A style key the element does not render, or an invalid combination (sticky, state paint).',
-  UI_STYLE_VALUE: 'A style value out of range or of the wrong kind.',
-  UI_SURFACE: 'The platform surface was lost or resized mid-frame; the host recovers.',
-  UI_TAG: 'Not an element of the View language.',
-  UI_TEST_ID: 'An invalid `data-testid` reached the native decoder.',
-  UI_LINK: 'A `<link>` with no `to`, `onClick`, `popoverTarget` or `interestFor` (a disabled one too), or a block link (outside `<text>`) inside another.',
-  UI_TEXT: 'A `<span>` outside `<text>`, a bad link label, too many runs, or a component inside `<text>` returning something other than runs, a popover or a `<dialog>`.',
-  UI_TIMEOUT: 'View code exceeded its time budget; the page needs a reload.',
-  UI_TRANSFORM: 'A transform the element cannot take: at build, a box that scales or rotates holding an editor, scroll, slider or web view (one applied at run time shows a web view as its still picture); natively, a singular transform or a backdrop under an uneven or rotated one.',
-  UI_TRANSITION: 'An invalid transition definition.',
-  UI_VECTOR: 'Invalid vector paths, gradients or viewBox.',
-  UI_VIEWPORT: 'The host reported an invalid viewport.',
-  UI_WORKER: 'The View worker thread failed to start.',
+// Native modules keep their tests in a trailing `#[cfg(test)] mod … {`; only shipped code raises
+// codes. A `#[cfg(test)]` on a module declaration hides nothing.
+const shipped = (path, text) => {
+  if (path.endsWith('.rs')) return text.split(/^#\[cfg\(test\)\]\s*(?:pub(?:\(crate\))? )?mod \w+ \{/m)[0];
+  return text.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/[^\n]*/g, '');
 };
+
+// Only actual raises in JS: a code starting a string/template before `:` (or after `${...}: `),
+// or a standalone code literal passed to a helper. Prose mentioning a code does not count.
+export function raisedCodesInJs(text) {
+  const stripped = text.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/[^\n]*/g, '');
+  const codes = new Set();
+  for (const match of stripped.matchAll(/(?:["'`]|:\s+)(UI_[A-Z][A-Z0-9_]*[A-Z0-9])(?=:)|["'`](UI_[A-Z][A-Z0-9_]*[A-Z0-9])["'`]/g)) {
+    codes.add(match[1] ?? match[2]);
+  }
+  return codes;
+}
 
 async function files(dir, test) {
   const out = [];
@@ -553,10 +481,6 @@ async function files(dir, test) {
   }
   return out.sort();
 }
-
-// Native modules keep their tests in a trailing `#[cfg(test)] mod … {`; only shipped code raises
-// codes. A `#[cfg(test)]` on a module declaration hides nothing.
-const shipped = (path, text) => path.endsWith('.rs') ? text.split(/^#\[cfg\(test\)\]\s*(?:pub(?:\(crate\))? )?mod \w+ \{/m)[0] : text;
 
 // Test sources: Rust test modules and files, JS tests and the compiled docs examples.
 async function testText() {
@@ -574,36 +498,94 @@ async function testText() {
   return text;
 }
 
-async function errors() {
+const VALID_STAGES = new Set(['build', 'runtime', 'native']);
+const VALID_SEVERITIES = new Set(['error', 'warning', 'recovery']);
+
+export async function errors(schema) {
+  const tableEntries = schema.errors;
+  if (!tableEntries || typeof tableEntries !== 'object') throw Error('docs.mjs: schema.json is missing the errors map');
+  for (const [key, entry] of Object.entries(tableEntries)) {
+    if (!Array.isArray(entry.stages) || !entry.stages.length || entry.stages.some(stage => !VALID_STAGES.has(stage)))
+      throw Error(`docs.mjs: ${key} has invalid stages in schema.json`);
+    if (!VALID_SEVERITIES.has(entry.severity))
+      throw Error(`docs.mjs: ${key} has invalid severity in schema.json`);
+    if (typeof entry.when !== 'string' || !entry.when.trim() || typeof entry.fix !== 'string' || !entry.fix.trim())
+      throw Error(`docs.mjs: ${key} must have non-empty when and fix strings in schema.json`);
+  }
+
   const sources = [
     // The compatibility banner is emitted by the compiler but runs when the page loads.
     ['build', join(packageRoot, 'compiler'), name => name.endsWith('.mjs') && name !== 'compatibility.mjs'],
     ['runtime', join(packageRoot, 'compiler'), name => name === 'compatibility.mjs'],
     ['runtime', join(packageRoot, 'src'), name => name.endsWith('.js')],
     ['native', join(repositoryRoot, 'crates/lingxia-view/src'), name => name.endsWith('.rs') && !/tests?\.rs$|_tests\.rs$/.test(name)],
-    ['native', join(repositoryRoot, 'crates/lingxia/src/gpu_page'), name => name.endsWith('.rs') && !/tests?\.rs$/.test(name)],
+    ['native', join(repositoryRoot, 'crates/lingxia/src/gpu_page'), name => name.endsWith('.rs') && !/tests?\.rs$|_tests\.rs$/.test(name)],
   ];
   const found = new Map();
-  for (const [where, dir, test] of sources) for (const path of await files(dir, test)) {
-    const text = shipped(path, await readFile(path, 'utf8'));
-    for (const match of text.matchAll(/["'`](UI_[A-Z][A-Z0-9_]*[A-Z0-9])(?=[:"'`])/g)) {
-      const entry = found.get(match[1]) ?? { where: new Set() };
+  const scanFile = async (where, path) => {
+    const raw = await readFile(path, 'utf8');
+    const text = shipped(path, raw);
+    const codes = where === 'native'
+      ? [...text.matchAll(/["'`](UI_[A-Z][A-Z0-9_]*[A-Z0-9])(?=[:"'`])/g)].map(m => m[1])
+      : [...raisedCodesInJs(raw)];
+    for (const key of codes) {
+      const entry = found.get(key) ?? { where: new Set() };
       entry.where.add(where);
-      found.set(match[1], entry);
+      found.set(key, entry);
+    }
+    return text;
+  };
+  const sharedBuildSrc = new Set();
+  for (const [where, dir, test] of sources) for (const path of await files(dir, test)) {
+    const text = await scanFile(where, path);
+    if (where === 'build') {
+      for (const imp of text.matchAll(/from\s+['"](\.\.\/src\/[^'"]+\.js)['"]/g)) {
+        if (!imp[1].includes('/generated/')) sharedBuildSrc.add(join(packageRoot, imp[1].slice(3)));
+      }
     }
   }
-  for (const key of Object.keys(errorNotes)) if (!found.has(key)) throw Error(`docs.mjs: error note for ${key}, which no source raises`);
+  for (const path of sharedBuildSrc) await scanFile('build', path);
+
+  const missingInSchema = [...found.keys()].filter(key => !tableEntries[key]);
+  if (missingInSchema.length) throw Error(`docs.mjs: error codes raised in source but missing from schema.json: ${missingInSchema.join(', ')}`);
+
+  for (const [key, entry] of found) {
+    const declared = new Set(tableEntries[key].stages);
+    for (const stage of entry.where) {
+      if (stage !== 'native' && !declared.has(stage)) {
+        throw Error(`docs.mjs: ${key} is raised at ${stage} in JS but schema.json lists stages [${tableEntries[key].stages.join(', ')}]`);
+      }
+    }
+  }
+
+  const staleJsStages = [];
+  for (const [key, entry] of Object.entries(tableEntries)) {
+    const stages = found.get(key)?.where;
+    for (const stage of entry.stages) {
+      if (stage !== 'native' && !stages?.has(stage)) staleJsStages.push(`${key} (${stage})`);
+    }
+  }
+  if (staleJsStages.length) throw Error(`docs.mjs: schema.json lists JS error stages that no JS source raises: ${staleJsStages.join(', ')}`);
+
+  const unraised = Object.keys(tableEntries).filter(key => !found.has(key));
+  if (unraised.length) throw Error(`docs.mjs: schema.json lists error codes that no source raises: ${unraised.join(', ')}`);
+
   const tested = await testText();
-  const gaps = [...found.keys()].filter(key => !errorNotes[key] || (!tested.includes(key) && !untestable[key]));
-  if (gaps.length) throw Error(`docs.mjs: every error code needs a note and a test that names it: ${gaps.join(', ')}`);
+  const untested = [...found.keys()].filter(key => !tested.includes(key) && !untestable[key]);
+  if (untested.length) throw Error(`docs.mjs: every error code needs a test that names it: ${untested.join(', ')}`);
+
   const order = ['build', 'runtime', 'native'];
-  const rows = [...found].sort(([a], [b]) => a.localeCompare(b))
-    .map(([key, entry]) => [code(key), order.filter(where => entry.where.has(where)).join(', '), errorNotes[key] ?? '']);
+  const rows = Object.keys(tableEntries).sort((a, b) => a.localeCompare(b))
+    .map(key => {
+      const entry = tableEntries[key];
+      const stages = order.filter(stage => entry.stages.includes(stage)).join(', ');
+      return [code(key), stages, entry.severity, entry.when, entry.fix];
+    });
   return [header, '# Error codes', '',
     'Every message starts with its code: `CODE: detail`. **build** codes stop `lingxia build` with',
     '`file:line:col`; **runtime** codes come from the View runtime with the JSX trace (`at <tag> (file:line:col)`);',
     '**native** codes come from the host decoder, layout or renderer and keep the last good frame.', '',
-    table(['Code', 'Raised at', 'Meaning'], rows), ''].join('\n');
+    table(['Code', 'Raised at', 'Severity', 'When', 'Fix'], rows), ''].join('\n');
 }
 
 /**
@@ -624,7 +606,7 @@ export async function docs(schema, generated) {
     [`${base}/variants.md`]: variants(schema, system, rules),
     [`${base}/limits.md`]: limits(schema),
     'docs/internal/view-engine-limits.md': engineLimitsPage(schema),
-    [`${base}/errors.md`]: await errors(),
+    [`${base}/errors.md`]: await errors(schema),
     [`${base}/environment.md`]: await environment(schema),
     [`${base}/semantics.md`]: semantics(schema),
   };

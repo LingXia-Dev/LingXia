@@ -201,8 +201,11 @@ export function seedLowered(text) {
   return true;
 }
 
-function nodeStyle(tag, props, data, extra, inherited, direction, structure, every, sizeClass) {
-  if (props.style !== undefined || extra !== undefined || every !== undefined || props.className === undefined) return lowerNodeStyle(tag, props, data, extra, inherited, direction, structure, every, sizeClass);
+const warnedClamp = new Set();
+export function resetStyleWarnings() { warnedClamp.clear(); }
+
+function nodeStyle(tag, props, data, extra, inherited, direction, structure, every, sizeClass, identity) {
+  if (props.style !== undefined || extra !== undefined || every !== undefined || props.className === undefined) return lowerNodeStyle(tag, props, data, extra, inherited, direction, structure, every, sizeClass, identity);
   const environment = envKey(envOf(render.view));
   if (loweredClasses !== classGeneration) {
     // A new class table: what was lowered, here or by a previous isolate, read the old one.
@@ -220,10 +223,17 @@ function nodeStyle(tag, props, data, extra, inherited, direction, structure, eve
   const key = `${tag}\u0000${props.className}\u0000${data ? JSON.stringify(data) : ''}\u0000${props.disabled === true}\u0000${mixedCheckbox(tag, props)}\u0000${direction}\u0000${sizeClass ?? ''}\u0000${(structure ?? []).join(",")}\u0000${inherited.fontSize}\u0000${JSON.stringify(inherited.lineHeight)}`;
   let style = lowered.get(key);
   if (!style) {
-    style = lowerNodeStyle(tag, props, data, extra, inherited, direction, structure, undefined, sizeClass);
+    style = lowerNodeStyle(tag, props, data, extra, inherited, direction, structure, undefined, sizeClass, identity);
     fresh.add(key);
     if (lowered.size >= 2048) lowered.delete(lowered.keys().next().value);
     lowered.set(key, style);
+  } else if (style.clampWarnings?.length && typeof globalThis.__lingxiaWarn === 'function') {
+    for (const [name, message] of style.clampWarnings) {
+      const warnKey = `${identity ?? ''}\u0000${name}`;
+      if (warnedClamp.has(warnKey)) continue;
+      warnedClamp.add(warnKey);
+      globalThis.__lingxiaWarn(message);
+    }
   }
   // Callers may edit the fields of their node (an image's fit moves to its own field).
   return { ...style, fields: { ...style.fields } };
@@ -248,7 +258,7 @@ const videoBacking = { backgroundColor: '#000000' };
 const mixedCheckbox = (tag, props) => tag === 'checkbox' && props.indeterminate === true;
 
 // Classes, then the parent's child rule, then inline style; `disabled:` replaces the class cascade.
-function lowerNodeStyle(tag, props, data, extra, inherited, direction, structure, every, sizeClass) {
+function lowerNodeStyle(tag, props, data, extra, inherited, direction, structure, every, sizeClass, identity) {
   const env = { ...loweringEnv(envOf(render.view), sizeClass), direction, structure, data, indeterminate: mixedCheckbox(tag, props) };
   const classes = resolveClasses(props.className, env);
   // A run takes the size of `text-sm` but not the line height paired with it.
@@ -265,7 +275,15 @@ function lowerNodeStyle(tag, props, data, extra, inherited, direction, structure
   // A box is a flex column; `flex` alone asks for a row, as `display: flex` does in CSS.
   if ((tag === 'view' || tag === 'page') && (author?.display === 'flex' || author?.display === 'inline-flex') && author.flexDirection === undefined)
     author.flexDirection = 'row';
-  const { fields, typography } = lowerStyle(tag, author, env, inherited);
+  const clampWarnings = [];
+  const warn = typeof globalThis.__lingxiaWarn === 'function' ? (name, message) => {
+    clampWarnings.push([name, message]);
+    const key = `${identity ?? ''}\u0000${name}`;
+    if (warnedClamp.has(key)) return;
+    warnedClamp.add(key);
+    globalThis.__lingxiaWarn(message);
+  } : undefined;
+  const { fields, typography } = lowerStyle(tag, author, env, inherited, warn);
   const states = {};
   const state = (name, wire, allowed, requirement) => {
     const delta = classes?.[name];
@@ -316,7 +334,7 @@ function lowerNodeStyle(tag, props, data, extra, inherited, direction, structure
   const hasDisabled = classes?.hasDisabled && Object.keys(classes.hasDisabled).length ? classes.hasDisabled : undefined;
   if (hasDisabled) paintOnly('has-disabled', tag, hasDisabled);
   const descendants = hasDisabled ? lowerStyle(tag, hasDisabled, env, { fontSize: typography.fontSize }).fields : undefined;
-  return { fields, states, typography, author, children: classes?.children, every: classes?.every, descendants, release: classes?.release };
+  return { fields, states, typography, author, children: classes?.children, every: classes?.every, descendants, release: classes?.release, ...(clampWarnings.length ? { clampWarnings } : {}) };
 }
 
 /** The tag `List` renders; page code reaches the list element only through it. */
@@ -453,7 +471,7 @@ function resolveElement(tag, original, children, identity, depth, parent) {
   // The root takes the theme's `--font-sans`, as preflight gives the document's root; its classes and style still win.
   const rootFamily = !parent.typography && pageFamily && element.style.includes('fontFamily') ? { fontFamily: pageFamily } : undefined;
   const scopedSize = scopedSizeClass(parent.contexts, false);
-  const style = nodeStyle(kind, props, data, parent.extra ?? rootFamily, parent.typography ?? { fontSize: 14 }, direction, structure(parent.sibling, flat), parent.every, scopedSize);
+  const style = nodeStyle(kind, props, data, parent.extra ?? rootFamily, parent.typography ?? { fontSize: 14 }, direction, structure(parent.sibling, flat), parent.every, scopedSize, identity);
   const inline = child => typeof child === 'string' || typeof child === 'number';
   if (admission.tags[element.wire].parent === 'text' && !parent.inText) throw Error(`UI_TEXT: <${tag}> belongs inside <text>; wrap it in a <text>`);
   if (tag === 'link' && parent.inLink) throw Error('UI_TEXT: links do not nest');
@@ -527,7 +545,8 @@ function resolveElement(tag, original, children, identity, depth, parent) {
   if (props.onPointer !== undefined || props.pointerAxis !== undefined) {
     if (!pointerTags.has(tag)) throw Error('UI_PROP: onPointer belongs to a <view>, <button> or <vector>');
     const { onPointer, pointerAxis = 'both' } = props;
-    if (typeof onPointer !== 'function') throw Error('UI_PROP: onPointer takes a function; pointerAxis goes with it');
+    if (onPointer === undefined) throw Error('UI_PROP: pointerAxis needs onPointer on the same element; add onPointer or remove pointerAxis');
+    if (typeof onPointer !== 'function') throw Error('UI_PROP: onPointer takes a function');
     if (!pointerAxes.has(pointerAxis)) throw Error('UI_PROP: pointerAxis must be "x", "y" or "both"');
     on('onPointer', payload => onPointer(Object.freeze(JSON.parse(payload))), 'text');
     if (pointerAxis !== 'both') wire('pointerAxis', pointerAxis);
@@ -725,7 +744,15 @@ function resolveElement(tag, original, children, identity, depth, parent) {
       check.label(props.accessibilityLabel, 'UI_SELECT');
       const options = selectOptions(props);
       if (props.value !== undefined && typeof props.value !== 'string') throw Error('UI_SELECT: value must be a string');
-      if (props.placeholder !== undefined && !validInputText(props.placeholder)) throw Error('UI_SELECT: invalid placeholder');
+      if (props.placeholder !== undefined && !validInputText(props.placeholder)) {
+        let got;
+        if (typeof props.placeholder === 'number') got = String(props.placeholder);
+        else {
+          try { got = (JSON.stringify(props.placeholder) ?? typeof props.placeholder).slice(0, 40); }
+          catch { got = typeof props.placeholder; }
+        }
+        throw Error(`UI_SELECT: placeholder takes a UTF-8 string up to 65536 bytes; got ${got}`);
+      }
       if (props.defaultValue !== undefined && (props.value !== undefined || !options.some(option => option.value === props.defaultValue)))
         throw Error('UI_SELECT: defaultValue names an option of a select without value or bind');
       // The core takes the default once per element and shows each later choice itself.

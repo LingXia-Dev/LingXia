@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readSchema, drift, generate } from '../../../contracts/view/generate.mjs';
+import { errors, raisedCodesInJs } from '../../../contracts/view/docs.mjs';
 
 test('committed artifacts match a fresh generation from the contract schema', async () => {
   assert.deepEqual(await drift(await readSchema()), []);
@@ -85,4 +86,43 @@ test('element and style tables reach the authoring types and runtime admission t
   const stale = await drift(changed);
   for (const path of ['packages/lingxia-view/src/generated/contract.js', 'packages/lingxia-view/src/generated/authoring.d.ts', 'crates/lingxia-view/src/session/tests/runtime.js'])
     assert.ok(stale.includes(path), path);
+});
+
+test('error code reference is generated from schema.errors, ignores prose mentions, and rejects stage or code drift', async () => {
+  assert.deepEqual([...raisedCodesInJs(`
+    // UI_TIMEOUT in comment
+    /* UI_OVERRUN in block comment */
+    const note = "drops the frame (UI_TIMEOUT after several) or see UI_BUDGET: info";
+    const err = Error('UI_PROP: bad');
+    const tpl = \`\${loc}: UI_CLASS: dynamic\`;
+    const arg = label(v, 'UI_PLOT', true);
+  `)].sort(), ['UI_CLASS', 'UI_PLOT', 'UI_PROP']);
+
+  const schema = await readSchema();
+  const errorsPage = await errors(schema);
+  assert.match(errorsPage, /\| Code \| Raised at \| Severity \| When \| Fix \|/);
+  assert.match(errorsPage, /\| `UI_STYLE_VALUE` \| build, runtime, native \| error \|/);
+  assert.match(errorsPage, /\| `UI_VECTOR` \| build, runtime, native \| error \|/);
+  assert.match(errorsPage, /\| `UI_MODULE` \| build, native \| error \|/);
+
+  const missingStage = structuredClone(schema);
+  missingStage.errors.UI_VECTOR.stages = ['runtime', 'native'];
+  await assert.rejects(errors(missingStage), /UI_VECTOR is raised at build/);
+
+  const extraStage = structuredClone(schema);
+  extraStage.errors.UI_ACTION.stages = ['build', 'runtime', 'native'];
+  await assert.rejects(errors(extraStage), /UI_ACTION \(build\)/);
+
+  const missingCode = structuredClone(schema);
+  delete missingCode.errors.UI_CLASS;
+  await assert.rejects(errors(missingCode), /missing from schema\.json: UI_CLASS/);
+
+  const staleJsOnly = structuredClone(schema);
+  staleJsOnly.errors.UI_GHOST = {
+    stages: ['build'],
+    severity: 'error',
+    when: 'Never raised.',
+    fix: 'Remove it.',
+  };
+  await assert.rejects(errors(staleJsOnly), /UI_GHOST \(build\)/);
 });

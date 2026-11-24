@@ -87,27 +87,44 @@ const kindOf = value => value === null ? 'null' : typeof value === 'number' ? St
   : typeof value !== 'object' ? typeof value : Array.isArray(value) ? 'array' : value.constructor?.name ?? 'object';
 
 // JSON's rule: an `undefined` field is left out and an `undefined` element is `null`.
-function payload(value, refuse, path, depth, budget) {
+function payload(value, refuse, path, depth, budget, ancestors) {
   if (depth > 64) throw Error('UI_LOCAL: value too deep');
   if ((budget.left -= typeof value === 'string' ? value.length + 2 : 8) < 0) throw Error(`UI_LIMIT: ${budget.what} payload too large`);
   if (value === null || typeof value === 'string' || typeof value === 'boolean') return value;
   if (typeof value === 'number' && Number.isFinite(value)) return value;
-  if (Array.isArray(value)) return Object.freeze(Array.from(value, (v, i) =>
-    v === undefined ? null : payload(v, refuse, `${path}[${i}]`, depth + 1, budget)));
-  if (value && typeof value === 'object' && Object.getPrototypeOf(value) === Object.prototype) {
-    const out = {};
-    for (const [k, v] of Object.entries(value)) {
-      if (v === undefined) continue;
-      budget.left -= k.length + 3;
-      out[k] = payload(v, refuse, path ? `${path}.${k}` : k, depth + 1, budget);
+  const array = Array.isArray(value);
+  const plain = !array && value && typeof value === 'object' && Object.getPrototypeOf(value) === Object.prototype;
+  if (array || plain) {
+    const here = path ? (path.startsWith('[') ? `argument${path}` : `argument.${path}`) : 'argument';
+    if (ancestors.has(value)) {
+      const code = budget.what === 'action' ? 'UI_ACTION' : 'UI_CHANNEL';
+      throw Error(`${code}: ${budget.who} payload field ${here} refers back to ${ancestors.get(value)}; send a value without cycles`);
     }
-    return Object.freeze(out);
+    ancestors.set(value, here);
+    try {
+      if (array) return Object.freeze(Array.from(value, (v, i) =>
+        v === undefined ? null : payload(v, refuse, `${path}[${i}]`, depth + 1, budget, ancestors)));
+      const out = {};
+      for (const [k, v] of Object.entries(value)) {
+        if (v === undefined) continue;
+        budget.left -= k.length + 3;
+        const nextPath = /^[A-Za-z_$][A-Za-z0-9_$]*$/.test(k) ? (path ? `${path}.${k}` : k) : `${path}[${JSON.stringify(k)}]`;
+        out[k] = payload(v, refuse, nextPath, depth + 1, budget, ancestors);
+      }
+      return Object.freeze(out);
+    } finally { ancestors.delete(value); }
   }
   throw refuse(path, kindOf(value));
 }
 const bounded = (value, what, who) => payload(value, (path, kind) =>
   Error(`${what === 'action' ? 'UI_ACTION' : 'UI_CHANNEL'}: ${who} payload ${path ? `field ${path}` : 'value'} is not JSON (${kind})`),
-  '', 0, { left: 65536, what });
+  '', 0, { left: 65536, what, who }, new Map());
+
+const show = value => {
+  if (typeof value === 'number') return String(value);
+  try { return (JSON.stringify(value) ?? typeof value).slice(0, 40); }
+  catch { return typeof value; }
+};
 
 // Native supplies the same compiled action catalog used by WebView pages, after ready.
 export function configureActions(metadata) {
@@ -115,7 +132,8 @@ export function configureActions(metadata) {
   const names = metadata?.__names, modes = metadata?.__modes;
   if (!Array.isArray(names) || names.length > 256 || !modes || typeof modes !== 'object' ||
       names.some(name => typeof name !== 'string' || !name || name.length > 256 || !has(modes, name) || !['call', 'stream'].includes(modes[name])) ||
-      new Set(names).size !== names.length) throw Error('UI_ACTION: invalid action catalog');
+      new Set(names).size !== names.length)
+    throw Error(`UI_ACTION: action catalog takes { __names: 0..256 unique non-empty strings (<= 256 chars), __modes: Record<name, 'call'|'stream'> }; got ${show(metadata)}`);
   cancelActions();
   const epoch = actionEpoch, built = Object.create(null);
   const reportLive = cause => { if (epoch === actionEpoch) report(cause); };
@@ -277,7 +295,7 @@ export function receiveActionResponse(frame) {
   if (frame?.v !== 2 || !['res', 'event'].includes(frame.kind) || typeof frame.id !== 'string' ||
       (frame.kind === 'res' && typeof frame.ok !== 'boolean') ||
       (frame.kind === 'event' && (!Number.isSafeInteger(frame.seq) || frame.seq < 0)))
-    throw Error('UI_ACTION: invalid response');
+    throw Error(`UI_ACTION: response takes { v: 2, kind: 'res'|'event', id: string, ok: boolean | seq: integer >= 0 }; got ${show(frame)}`);
   const pending = pendingActions.get(frame.id);
   if (!pending) return false;
   if (frame.kind === 'event') {
@@ -303,7 +321,7 @@ function receiveChannelFrame(frame) {
       (frame.kind === 'ch.data' && (!Number.isSafeInteger(frame.seq) || frame.seq < 0)) ||
       (frame.kind === 'ch.close' && ((frame.code !== undefined && typeof frame.code !== 'string') ||
         (frame.reason !== undefined && typeof frame.reason !== 'string'))))
-    throw Error('UI_CHANNEL: invalid frame');
+    throw Error(`UI_CHANNEL: frame takes { v: 2, kind: 'ch.ack'|'ch.data'|'ch.close', id: string, ok?: boolean, seq?: integer >= 0, code?: string, reason?: string }; got ${show(frame)}`);
   const entry = activeChannels.get(frame.id);
   if (!entry) return false;
   if (frame.kind === 'ch.ack') {

@@ -1,0 +1,8 @@
+{
+  "name": "pkg-b",
+  "type": "module",
+  "exports": { ".": "./index.tsx" },
+  "peerDependencies": {
+    "pkg-a": "*"
+  }
+}

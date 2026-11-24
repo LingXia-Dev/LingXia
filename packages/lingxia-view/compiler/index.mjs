@@ -1,6 +1,6 @@
 import { build } from 'esbuild';
 import ts from 'typescript';
-import { collectClassUsage, elementKind, enclosingTags } from './class-usage.mjs';
+import { collectClassUsage, elementKind, enclosingTags, stringLiterals } from './class-usage.mjs';
 import { admissionProblems } from './admission.mjs';
 import { perfWarnings } from './perf.mjs';
 import { stabilizeClosures, volatileComponent, ownDeclarations } from './stable-closures.mjs';
@@ -16,14 +16,14 @@ import { compileUtilities, tailwindWarm } from './tailwind.mjs';
 import { nearestSupported } from './suggest.mjs';
 import { loadStylesheet, validateTokens, fontFaces } from './stylesheets.mjs';
 import { checkerOptions, viewTsconfig } from './tsconfig.mjs';
-import { authored, packageOf, sourceLabel } from './packages.mjs';
+import { authored, packageOf, sourceLabel, peerTokenPackages } from './packages.mjs';
 import { existsSync, statSync } from 'node:fs';
 import { colorProblem, seriesProblem } from '../src/style/color.js';
 import { readFile, mkdir, writeFile, realpath, rename, rm } from 'node:fs/promises';
 import { resolve, dirname, join, relative, isAbsolute, sep, basename } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { elements, kindOf, style as styleTable, commonProps, limits } from '../src/generated/contract.js';
-import { classElementProblem, appliesTo, gridProblem, gridRefuses, propHint, tagHint, lineHeightProblem } from '../src/style/hints.js';
+import { classElementProblem, appliesTo, gridProblem, gridRefuses, propHint, tagHint, styleValueProblem } from '../src/style/hints.js';
 
 const runtime = fileURLToPath(new URL('../src/internal.js', import.meta.url));
 const publicEntry = fileURLToPath(new URL('../src/index.js', import.meta.url));
@@ -119,6 +119,28 @@ function spoken(element) {
   });
 }
 
+function numericStyleLiterals(checker, node, seen = new Set()) {
+  while (node && (ts.isParenthesizedExpression(node) || ts.isAsExpression(node) || ts.isSatisfiesExpression(node) || ts.isNonNullExpression(node)))
+    node = node.expression;
+  if (!node || seen.has(node)) return [];
+  seen = new Set(seen).add(node);
+  if (ts.isNumericLiteral(node)) return [Number(node.text)];
+  if (ts.isPrefixUnaryExpression(node) && (node.operator === ts.SyntaxKind.MinusToken || node.operator === ts.SyntaxKind.PlusToken)) {
+    let inner = node.operand;
+    while (inner && ts.isParenthesizedExpression(inner)) inner = inner.expression;
+    if (inner && ts.isNumericLiteral(inner)) return [node.operator === ts.SyntaxKind.MinusToken ? -Number(inner.text) : Number(inner.text)];
+  }
+  if (ts.isConditionalExpression(node)) return [...numericStyleLiterals(checker, node.whenTrue, seen), ...numericStyleLiterals(checker, node.whenFalse, seen)];
+  if (ts.isIdentifier(node)) {
+    let sym = checker.getSymbolAtLocation(node);
+    if (sym && (sym.flags & ts.SymbolFlags.Alias)) sym = checker.getAliasedSymbol(sym);
+    const decl = sym?.valueDeclaration;
+    if (decl && ts.isVariableDeclaration(decl) && (decl.parent.flags & ts.NodeFlags.Const) && decl.initializer)
+      return numericStyleLiterals(checker, decl.initializer, seen);
+  }
+  return [];
+}
+
 // Whether a fragment is what the exported `render` returns: the page root must be one box.
 function pageRoot(node) {
   let at = node;
@@ -191,8 +213,18 @@ export function audit(source, filename, { literalColors = false } = {}) {
           const literal = ts.isPropertyAssignment(entry) && ts.isStringLiteralLike(entry.initializer) && entry.initializer.text;
           const colorIssue = !literalColors && literal !== false && styleTable[name]?.lower === 'color' && colorProblem(literal, name);
           if (colorIssue) report(entry, colorIssue);
-          const lineHeight = name === 'lineHeight' && ts.isPropertyAssignment(entry) && ts.isNumericLiteral(entry.initializer) && lineHeightProblem(Number(entry.initializer.text));
-          if (lineHeight) report(entry, lineHeight);
+          const valueExpr = ts.isPropertyAssignment(entry) ? entry.initializer : entry.name;
+          for (const number of numericStyleLiterals(checker, valueExpr)) {
+            const valueIssue = styleValueProblem(name, number);
+            if (valueIssue) report(entry, valueIssue);
+          }
+          for (const strNode of stringLiterals(checker, valueExpr)) {
+            const match = strNode.text.trim().match(/^(-?(?:\d+(?:\.\d+)?|\.\d+))%$/);
+            if (match) {
+              const valueIssue = styleValueProblem(name, Number(match[1]));
+              if (valueIssue) report(entry, valueIssue);
+            }
+          }
         }
       }
     }
@@ -395,7 +427,7 @@ function packageRelative(root, line) {
  */
 async function packageTokens(root, packages, problems) {
   const sheets = [], owners = new Map();
-  for (const { dir, name, tokens } of [...packages.values()].sort((a, b) => a.name < b.name ? -1 : 1)) {
+  for (const { dir, name, tokens } of packages.values()) {
     const path = typeof tokens === 'string' ? resolve(dir, tokens) : '';
     const inside = relative(dir, path);
     if (!path || inside.startsWith('..') || isAbsolute(inside) || !existsSync(path)) {
@@ -468,7 +500,7 @@ export async function buildPages(root, pages, output, catalogs = {}, { dev = fal
     const catalog = catalogs[page] ?? { __names: [], __modes: {} };
     if (!Array.isArray(catalog.__names) || catalog.__names.some(name => typeof name !== 'string' || !['call', 'stream'].includes(catalog.__modes?.[name])))
       throw Error(`${page}: invalid GPU action metadata`);
-    const candidates = new Set(), themes = new Map(), sourceFiles = [], problems = [], fonts = [], tokenPackages = new Map();
+    const candidates = new Set(), themes = new Map(), sourceFiles = [], problems = [], fonts = [], bundledPackages = new Map();
     let bundled;
     try {
       bundled = await build({
@@ -499,7 +531,7 @@ export async function buildPages(root, pages, output, catalogs = {}, { dev = fal
             if (path.toLowerCase().startsWith(runtimeRoot) || path === compiledMessages || dirname(path) === dirname(compiledMessages)) return;
             if (!authored(root, path)) {
               const owner = packageOf(path);
-              if (owner?.tokens !== undefined) tokenPackages.set(owner.name, owner);
+              if (owner) bundledPackages.set(owner.name, owner);
             }
             const contents = await readFile(path, 'utf8');
             const loader = path.endsWith('.tsx') ? 'tsx' : path.endsWith('.ts') ? 'ts' : path.endsWith('.jsx') ? 'jsx' : 'js';
@@ -517,6 +549,7 @@ export async function buildPages(root, pages, output, catalogs = {}, { dev = fal
       if (!problems.length) throw error;
     }
     if (themes.size > 1) problems.push(`${page}: UI_CSS: import one shared @theme stylesheet per page`);
+    const tokenPackages = peerTokenPackages(root, bundledPackages, problems);
     // Packages' tokens sit below the app's own, so the app's stylesheet overrides any of them.
     const theme = [...await packageTokens(root, tokenPackages, problems), ...themes.values()].join('\n');
     warm &&= tailwindWarm(theme);

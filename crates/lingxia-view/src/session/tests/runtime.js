@@ -257,7 +257,7 @@
   var admission = { "tags": { "column": { "children": "any", "content": true }, "reserved-1": { "children": "none" }, "text": { "children": "runs", "content": true }, "button": { "children": "content" }, "reserved-4": { "children": "none" }, "scroll": { "children": "any" }, "list": { "children": "rows", "requires": ["listId", "listCount", "listLeading", "listTrailing"] }, "image": { "children": "none", "content": true, "requires": ["imageSrc"] }, "input": { "children": "none" }, "textarea": { "children": "none" }, "checkbox": { "children": "content" }, "switch": { "children": "content" }, "radio": { "children": "options" }, "radio-option": { "children": "text", "parent": "radio", "keyed": true, "requires": ["checked"] }, "search": { "children": "none" }, "slider": { "children": "none" }, "link-box": { "children": "content" }, "reserved-17": { "children": "none" }, "plot": { "children": "none" }, "vector": { "children": "none", "content": true }, "page": { "children": "any", "root": true }, "span": { "children": "text", "content": true, "parent": "text" }, "link": { "children": "text", "parent": "text" }, "select": { "children": "text" }, "video": { "children": "none", "content": true }, "webview": { "children": "none", "content": true, "requires": ["webSrc", "webSession", "accessibilityLabel"] } }, "fields": { "onClick": ["button", "link", "link-box"], "enabled": ["button", "input", "textarea", "checkbox", "switch", "radio", "radio-option", "search", "slider", "select", "link", "link-box"], "listId": ["list"], "listCount": ["list"], "listLeading": ["list"], "listTrailing": ["list"], "listRowIndex": ["column"], "listAnchor": ["list"], "onReachStart": ["scroll", "list"], "onReachEnd": ["scroll", "list"], "imageSrc": ["image"], "imageFit": ["image", "video"], "inputValue": ["input", "textarea", "search", "select"], "placeholder": ["input", "textarea", "search", "select"], "secure": ["input", "textarea"], "keyboard": ["input", "textarea", "search"], "autoFocus": ["input", "textarea", "search"], "onInput": ["input", "textarea", "search"], "onSubmit": ["input", "textarea", "search"], "checked": ["checkbox", "switch", "radio-option"], "onCheckedChange": ["checkbox", "switch", "radio-option"], "accessibilityLabel": ["button", "input", "textarea", "checkbox", "switch", "radio", "search", "slider", "plot", "link", "column", "page", "text", "select", "video", "webview", "list", "link-box"], "sliderValue": ["slider"], "sliderMin": ["slider"], "sliderMax": ["slider"], "sliderStep": ["slider"], "onSliderChange": ["slider"], "textLines": ["text"], "plotValues": ["plot"], "plotKind": ["plot"], "plotColors": ["plot"], "plotSmooth": ["plot"], "plotArea": ["plot"], "onPlotSelect": ["plot"], "plotSelectedIndex": ["plot"], "vectorSource": ["vector"], "submitOnEnter": ["textarea"], "plotDomainMin": ["plot"], "plotDomainMax": ["plot"], "plotPieLayout": ["plot"], "plotMarkerEmphasisScale": ["plot"], "focusStyle": ["input", "textarea", "search", "select"], "scrollAxis": ["scroll"], "listItemKeys": ["list"], "flexDirection": ["column", "page", "button", "link-box"], "imageAlt": ["image"], "imageRetryKey": ["image"], "onImageLoad": ["image"], "onImageError": ["image"], "pressedStyle": ["button", "checkbox", "switch", "radio", "link", "slider", "link-box"], "overscroll": ["scroll", "list"], "maxLength": ["input", "textarea", "search"], "autoComplete": ["input", "textarea", "search"], "enterKeyHint": ["input", "textarea", "search"], "autoCapitalize": ["input", "textarea", "search"], "spellCheck": ["input", "textarea", "search"], "inputMin": ["input"], "inputMax": ["input"], "inputStep": ["input"], "focusRequest": ["input", "textarea", "search"], "selectOptions": ["select"], "onSelect": ["select"], "rows": ["textarea"], "maxRows": ["textarea"], "imagePlaceholder": ["image"], "imagePosition": ["image", "video"], "anchorTo": ["column"], "scrollSnap": ["scroll", "list"], "topLayer": ["column"], "anchorArea": ["column"], "drag": ["column", "button"], "onDragEvent": ["column", "button"], "dragScrim": ["button"], "elementId": ["column", "text", "button", "scroll", "list", "image", "input", "textarea", "checkbox", "switch", "radio", "search", "slider", "plot", "vector", "page", "select", "video", "webview", "link-box"], "ariaActions": ["column", "button"], "snapStop": ["scroll", "list"], "snapIndex": ["scroll"], "onSnapChange": ["scroll"], "videoSrc": ["video"], "videoPlayer": ["video"], "videoPoster": ["video"], "videoPaused": ["video"], "videoMuted": ["video"], "videoLoop": ["video"], "videoRate": ["video"], "videoVolume": ["video"], "onVideoEvent": ["video"], "videoSources": ["video"], "ariaDescribedBy": ["column", "text", "button", "link", "scroll", "list", "image", "input", "textarea", "checkbox", "switch", "radio", "search", "slider", "plot", "vector", "page", "select", "video", "webview", "link-box"], "focusVisibleStyle": ["button", "checkbox", "switch", "radio", "slider", "link", "select", "input", "textarea", "search", "link-box"], "sliderSecondary": ["slider"], "interestFor": ["button", "link", "link-box"], "onPointerEnter": ["column", "button", "link-box"], "onPointerLeave": ["column", "button", "link-box"], "hint": ["column"], "onSliderPress": ["slider"], "closeAfter": ["column"], "displayValue": ["input"], "sizeText": ["input"], "onLayout": ["column", "text", "vector", "plot", "scroll"], "onPointer": ["column", "button", "vector"], "pointerAxis": ["column", "button", "vector"], "onFocus": ["input", "textarea", "search"], "onBlur": ["input", "textarea", "search"], "readOnly": ["input", "textarea", "search"], "keyMap": ["input", "textarea", "search"], "onKeyDown": ["input", "textarea", "search"], "ariaActiveDescendant": ["input", "textarea", "search"], "mixed": ["checkbox", "button", "column"], "onContextMenu": ["column", "button", "link", "text", "link-box"], "onPage": ["column"], "sliderOther": ["slider"], "sliderThumb": ["slider"], "webSrc": ["webview"], "webSession": ["webview"], "onWebEvent": ["webview"], "webHandlesDrags": ["webview"], "onScrollEdge": ["scroll", "list"], "ariaControls": ["input", "button"], "ariaAutocomplete": ["input", "button"], "scaleRefs": ["page"], "defaultValue": ["checkbox", "switch", "slider", "select"], "checkedStyle": ["checkbox", "switch", "radio-option"], "modal": ["column"], "bleed": ["column", "scroll", "list", "image", "video", "webview", "vector"], "pageTitle": ["page"] } };
   var options = { "snap-stop": ["normal", "always"], "font-family": ["sans", "mono", "serif"], "font-style": ["normal", "italic"], "flex-wrap": ["nowrap", "wrap", "wrap-reverse"], "flex-direction": ["row", "column", "row-reverse", "column-reverse"], "display": ["flex", "grid", "none", "block", "inline-flex", "inline-block"], "scroll-axis": ["horizontal", "vertical"], "word-break": ["normal", "break-all", "keep-all"], "overflow-wrap": ["normal", "break-word", "anywhere"], "text-decoration-line": ["none", "line-through", "underline"], "text-alignment": ["start", "end", "left", "center", "right", "justify"], "alignment": ["start", "center", "end", "stretch", "baseline"], "justification": ["start", "center", "end", "between", "around", "evenly"], "position": ["relative", "absolute", "fixed", "sticky"], "overflow": ["visible", "hidden"], "text-transform": ["none", "uppercase", "lowercase", "capitalize"], "background-clip": ["border-box", "text"], "white-space": ["normal", "nowrap", "pre", "pre-wrap", "pre-line"], "text-overflow": ["clip", "ellipsis"], "sizing-keyword": ["fit-content", "max-content", "min-content"], "border-style": ["solid", "dashed", "dotted"], "slider-thumb": ["lower", "upper"], "overscroll": ["auto", "contain", "none"], "scroll-snap": ["none", "x", "y"], "snap-align": ["none", "start", "center", "end"], "grid-auto-flow": ["row", "column", "row-dense", "column-dense"], "align-content": ["start", "center", "end", "between", "around", "evenly", "stretch"], "direction": ["ltr", "rtl", "auto"], "role": ["heading", "list", "listitem", "dialog", "alert", "status", "grid", "gridcell", "listbox", "option", "menu", "menuitem", "progressbar", "alertdialog", "group", "tooltip", "tablist", "tab", "tabpanel", "radiogroup", "radio", "toolbar", "tree", "treeitem", "row", "menuitemcheckbox", "menuitemradio", "img", "combobox", "spinbutton"], "anchor-area": ["bottom span-inline-end", "bottom span-inline-start", "bottom", "top span-inline-end", "top span-inline-start", "top", "inline-end span-block-end", "inline-end span-block-start", "inline-end", "inline-start span-block-end", "inline-start span-block-start", "inline-start"], "live-region": ["off", "polite", "assertive"], "input-keyboard": ["text", "number", "email", "phone", "search", "date", "time", "decimal"], "auto-complete-mode": ["none", "list"], "auto-complete": ["off", "on", "username", "current-password", "new-password", "one-time-code", "email", "tel", "name", "given-name", "family-name", "street-address", "postal-code", "country", "cc-number", "cc-exp", "cc-csc", "bday"], "enter-key-hint": ["enter", "done", "go", "next", "previous", "search", "send"], "auto-capitalize": ["none", "sentences", "words", "characters"], "transition-property": ["opacity", "transform", "bg", "fg", "border", "shadow", "layout", "size", "d"], "user-select": ["none", "text", "all"], "touch-target": ["auto", "none"], "pointer-axis": ["x", "y", "both"], "bleed": ["all", "top", "bottom", "horizontal"] };
   var commonProps = ["style", "className", "key", "data-testid", "dir", "children", "id", "role", "headingLevel", "aria-valuenow", "aria-valuemin", "aria-valuemax", "aria-valuetext", "aria-activedescendant", "aria-controls", "aria-autocomplete", "aria-hidden", "aria-modal", "aria-live", "aria-pressed", "aria-selected", "aria-expanded", "aria-busy", "aria-invalid", "aria-required", "aria-checked", "aria-level", "aria-describedby"];
-  var authoringRules = { "role": { "tab": [{ "tags": ["button"], "error": 'role="tab" belongs on a <button>' }], "radio": [{ "tags": ["button"], "error": 'role="radio" belongs on a <button>' }], "menuitem": [{ "tags": ["button"], "error": 'role="menuitem" belongs on a <button>' }], "menuitemcheckbox": [{ "tags": ["button"], "error": 'role="menuitemcheckbox" belongs on a <button>' }], "menuitemradio": [{ "tags": ["button"], "error": 'role="menuitemradio" belongs on a <button>' }], "treeitem": [{ "tags": ["button"], "error": 'role="treeitem" belongs on a <button>' }], "tablist": [{ "tags": ["view"], "error": 'role="tablist" belongs on a <view>' }], "tabpanel": [{ "tags": ["view"], "error": 'role="tabpanel" belongs on a <view>' }], "radiogroup": [{ "tags": ["view"], "error": 'role="radiogroup" belongs on a <view>' }], "toolbar": [{ "tags": ["view"], "error": 'role="toolbar" belongs on a <view>' }], "tree": [{ "tags": ["view"], "error": 'role="tree" belongs on a <view>' }], "row": [{ "tags": ["view"], "error": 'role="row" belongs on a <view>' }], "combobox": [{ "tags": ["input", "button"], "error": 'role="combobox" belongs on an <input> or a <button>' }], "spinbutton": [{ "tags": ["input"], "error": 'role="spinbutton" belongs on an <input>' }], "alertdialog": [{ "tags": ["dialog"], "error": 'role="alertdialog" goes on a <dialog>' }], "img": [{ "tags": ["view", "text"], "with": ["aria-label"], "error": 'role="img" goes on a <view> or <text> with an aria-label, which is spoken in place of its content' }], "dialog": [{ "tags": ["view"], "with": ["popover"], "error": 'role="dialog" goes on a popover <view>, or is the <dialog> element' }] }, "elementRole": { "dialog": { "roles": ["alertdialog"], "implied": "dialog", "error": 'a <dialog> keeps its own role; only role="alertdialog" marks one that interrupts' } }, "prop": { "open": [{ "on": ["view"], "with": ["popover"], "error": "open belongs to a popover; add popover" }], "onToggle": [{ "on": ["view"], "with": ["popover"], "error": "onToggle belongs to a popover; add popover" }], "closeAfter": [{ "on": ["view"], "with": ["popover"], "error": "closeAfter belongs to a popover; add popover" }], "anchor": [{ "on": ["view"], "with": ["popover"], "error": "anchor belongs to a popover; add popover" }], "onCloseRequest": [{ "on": ["view"], "with": ["popover"], "error": "onCloseRequest belongs to a popover; add popover" }, { "on": ["view"], "not": { "popover": ["manual"] }, "error": "onCloseRequest belongs on a popover that is not manual; nothing but your code closes a manual one" }], "dragSnapPoints": [{ "on": ["view", "button", "dialog"], "with": ["drag"], "error": 'dragSnapPoints belongs to an element with drag; add drag="x" or drag="y"' }], "bind": [{ "on": ["view", "button", "dialog"], "with": ["drag"], "error": 'bind belongs to an element with drag; add drag="x" or drag="y"' }, { "on": ["view", "button", "dialog", "scroll"], "without": ["snapIndex"], "error": "bind and snapIndex both set the snap index; bind a useLocal cell, or pass snapIndex and update it from onSnapChange" }], "snapIndex": [{ "on": ["view", "button", "dialog"], "with": ["drag"], "error": 'snapIndex belongs to an element with drag; add drag="x" or drag="y"' }, { "on": ["view", "button", "dialog", "scroll"], "without": ["bind"], "error": "snapIndex and bind both set the snap index; bind a useLocal cell, or pass snapIndex and update it from onSnapChange" }, { "on": ["view", "button", "dialog", "scroll"], "with": ["onSnapChange"], "error": "snapIndex controls the position, so it needs onSnapChange to hear where a swipe settled; use bind to let the element keep the index itself" }], "onSnapChange": [{ "on": ["view", "button", "dialog"], "with": ["drag"], "error": 'onSnapChange belongs to an element with drag; add drag="x" or drag="y"' }, { "on": ["view", "button", "dialog", "scroll"], "with": ["snapIndex"], "error": "onSnapChange reports the snap index you pass in snapIndex; add snapIndex, or bind a useLocal cell instead" }], "onDragStart": [{ "on": ["view", "button", "dialog"], "with": ["drag"], "error": 'onDragStart belongs to an element with drag; add drag="x" or drag="y"' }], "onDragEnd": [{ "on": ["view", "button", "dialog"], "with": ["drag"], "error": 'onDragEnd belongs to an element with drag; add drag="x" or drag="y"' }], "aria-actions": [{ "on": ["view", "button", "dialog"], "with": ["drag"], "error": 'aria-actions belongs to an element with drag; add drag="x" or drag="y"' }], "src": [{ "on": ["video"], "without": ["sources"], "error": "src and sources both name the video; give src for one file, or sources for a choice of quality" }], "sources": [{ "on": ["video"], "without": ["src"], "error": "sources and src both name the video; give src for one file, or sources for a choice of quality" }], "aria-activedescendant": [{ "tags": ["input", "textarea"], "error": "aria-activedescendant belongs on an <input> or <textarea>" }], "aria-valuenow": [{ "not": { "role": ["combobox"] }, "error": 'role="combobox" takes aria-valuetext only, a string' }, { "any": [{ "role": ["progressbar", "spinbutton"] }, { "with": ["onPointer"] }], "error": 'aria-valuenow, -valuemin, -valuemax and -valuetext belong on role="progressbar", "spinbutton" or "combobox", or an onPointer element' }], "aria-valuemin": [{ "not": { "role": ["combobox"] }, "error": 'role="combobox" takes aria-valuetext only, a string' }, { "any": [{ "role": ["progressbar", "spinbutton"] }, { "with": ["onPointer"] }], "error": 'aria-valuenow, -valuemin, -valuemax and -valuetext belong on role="progressbar", "spinbutton" or "combobox", or an onPointer element' }], "aria-valuemax": [{ "not": { "role": ["combobox"] }, "error": 'role="combobox" takes aria-valuetext only, a string' }, { "any": [{ "role": ["progressbar", "spinbutton"] }, { "with": ["onPointer"] }], "error": 'aria-valuenow, -valuemin, -valuemax and -valuetext belong on role="progressbar", "spinbutton" or "combobox", or an onPointer element' }], "aria-valuetext": [{ "any": [{ "role": ["progressbar", "spinbutton", "combobox"] }, { "with": ["onPointer"] }, { "tags": ["slider"] }], "error": 'aria-valuenow, -valuemin, -valuemax and -valuetext belong on role="progressbar", "spinbutton" or "combobox", or an onPointer element' }], "headingLevel": [{ "role": ["heading"], "error": 'headingLevel belongs on role="heading"' }], "aria-level": [{ "role": ["treeitem"], "error": 'aria-level belongs on role="treeitem"' }], "aria-controls": [{ "role": ["combobox"], "error": 'aria-controls and aria-autocomplete belong on role="combobox"' }], "aria-autocomplete": [{ "role": ["combobox"], "error": 'aria-controls and aria-autocomplete belong on role="combobox"' }], "aria-checked": [{ "value": "mixed", "role": ["menuitemcheckbox"], "error": 'aria-checked="mixed" goes on role="menuitemcheckbox"; a <checkbox> takes indeterminate' }, { "role": ["radio", "menuitemcheckbox", "menuitemradio"], "error": 'aria-checked goes on role="radio", "menuitemcheckbox" or "menuitemradio"; a checkbox has its own checked' }], "aria-modal": [{ "role": ["dialog", "alertdialog"], "error": 'aria-modal belongs on a popover with role="dialog"' }, { "value": false, "tags": ["view"], "error": 'a <dialog> is always modal; a non-modal dialog is a popover with role="dialog"' }], "onPage": [{ "tags": ["view"], "role": ["grid"], "error": 'onPage belongs to a <view role="grid">' }], "keepOpen": [{ "role": ["menuitem", "menuitemcheckbox", "menuitemradio"], "error": 'keepOpen belongs on a menu item: role="menuitem", "menuitemcheckbox" or "menuitemradio"' }] }, "run": { "span": ["style", "className", "key", "data-testid", "dir", "aria-hidden", "children"], "link": ["style", "className", "key", "data-testid", "dir", "children", "aria-describedby"] }, "trait": { "popover": { "key": "popover", "on": ["view"], "props": ["open", "onToggle", "closeAfter", "anchor", "onCloseRequest"], "error": "{prop} belongs to a popover; add popover", "forms": [{ "values": [true, "auto", "hint"] }, { "values": ["manual"], "without": { "onCloseRequest": "onCloseRequest belongs on a popover that is not manual; nothing but your code closes a manual one" } }] }, "drag": { "key": "drag", "on": ["view", "button", "dialog"], "props": ["dragSnapPoints", "bind", "snapIndex", "onSnapChange", "onDragStart", "onDragEnd", "aria-actions"], "error": '{prop} belongs to an element with drag; add drag="x" or drag="y"' } }, "exclusive": { "snap": { "on": ["view", "button", "dialog", "scroll"], "props": ["bind", "snapIndex"], "with": { "snapIndex": ["onSnapChange"] }, "error": "{prop} and {other} both set the snap index; bind a useLocal cell, or pass snapIndex and update it from onSnapChange", "companion": "{prop} reports the snap index you pass in snapIndex; add snapIndex, or bind a useLocal cell instead", "needs": "{prop} controls the position, so it needs onSnapChange to hear where a swipe settled; use bind to let the element keep the index itself" }, "videoSource": { "on": ["video"], "props": ["src", "sources"], "orElse": "player", "error": "{prop} and {other} both name the video; give src for one file, or sources for a choice of quality", "missing": "a <video> needs a source: add src (one file) or sources (a choice of quality), or player={useVideo(name)} to show a player another <video> gives a source" } } };
+  var authoringRules = { "role": { "tab": [{ "tags": ["button"], "error": 'role="tab" belongs on a <button>' }], "radio": [{ "tags": ["button"], "error": 'role="radio" belongs on a <button>' }], "menuitem": [{ "tags": ["button"], "error": 'role="menuitem" belongs on a <button>' }], "menuitemcheckbox": [{ "tags": ["button"], "error": 'role="menuitemcheckbox" belongs on a <button>' }], "menuitemradio": [{ "tags": ["button"], "error": 'role="menuitemradio" belongs on a <button>' }], "treeitem": [{ "tags": ["button"], "error": 'role="treeitem" belongs on a <button>' }], "tablist": [{ "tags": ["view"], "error": 'role="tablist" belongs on a <view>' }], "tabpanel": [{ "tags": ["view"], "error": 'role="tabpanel" belongs on a <view>' }], "radiogroup": [{ "tags": ["view"], "error": 'role="radiogroup" belongs on a <view>' }], "toolbar": [{ "tags": ["view"], "error": 'role="toolbar" belongs on a <view>' }], "tree": [{ "tags": ["view"], "error": 'role="tree" belongs on a <view>' }], "row": [{ "tags": ["view"], "error": 'role="row" belongs on a <view>' }], "combobox": [{ "tags": ["input", "button"], "error": 'role="combobox" belongs on an <input> or a <button>' }], "spinbutton": [{ "tags": ["input"], "error": 'role="spinbutton" belongs on an <input>' }], "alertdialog": [{ "tags": ["dialog"], "error": 'role="alertdialog" goes on a <dialog>' }], "img": [{ "tags": ["view", "text"], "with": ["aria-label"], "error": 'role="img" goes on a <view> or <text> with an aria-label, which is spoken in place of its content' }], "dialog": [{ "tags": ["view"], "with": ["popover"], "error": 'role="dialog" goes on a popover <view>, or is the <dialog> element' }] }, "elementRole": { "dialog": { "roles": ["alertdialog"], "implied": "dialog", "error": 'a <dialog> keeps its own role; only role="alertdialog" marks one that interrupts' } }, "prop": { "open": [{ "on": ["view"], "with": ["popover"], "error": "open belongs to a popover; add popover" }], "onToggle": [{ "on": ["view"], "with": ["popover"], "error": "onToggle belongs to a popover; add popover" }], "closeAfter": [{ "on": ["view"], "with": ["popover"], "error": "closeAfter belongs to a popover; add popover" }], "anchor": [{ "on": ["view"], "with": ["popover"], "error": "anchor belongs to a popover; add popover" }], "onCloseRequest": [{ "on": ["view"], "with": ["popover"], "error": "onCloseRequest belongs to a popover; add popover" }, { "on": ["view"], "not": { "popover": ["manual"] }, "error": "onCloseRequest belongs on a popover that is not manual; nothing but your code closes a manual one" }], "dragSnapPoints": [{ "on": ["view", "button", "dialog"], "with": ["drag"], "error": 'dragSnapPoints belongs to an element with drag; add drag="x" or drag="y"' }], "bind": [{ "on": ["view", "button", "dialog"], "with": ["drag"], "error": 'bind belongs to an element with drag; add drag="x" or drag="y"' }, { "on": ["view", "button", "dialog", "scroll"], "without": ["snapIndex"], "error": "bind and snapIndex both set the snap index; bind a useLocal cell, or pass snapIndex and update it from onSnapChange" }], "snapIndex": [{ "on": ["view", "button", "dialog"], "with": ["drag"], "error": 'snapIndex belongs to an element with drag; add drag="x" or drag="y"' }, { "on": ["view", "button", "dialog", "scroll"], "without": ["bind"], "error": "snapIndex and bind both set the snap index; bind a useLocal cell, or pass snapIndex and update it from onSnapChange" }, { "on": ["view", "button", "dialog", "scroll"], "with": ["onSnapChange"], "error": "snapIndex controls the position, so it needs onSnapChange to hear where a swipe settled; use bind to let the element keep the index itself" }], "onSnapChange": [{ "on": ["view", "button", "dialog"], "with": ["drag"], "error": 'onSnapChange belongs to an element with drag; add drag="x" or drag="y"' }, { "on": ["view", "button", "dialog", "scroll"], "with": ["snapIndex"], "error": "onSnapChange reports the snap index you pass in snapIndex; add snapIndex, or bind a useLocal cell instead" }], "onDragStart": [{ "on": ["view", "button", "dialog"], "with": ["drag"], "error": 'onDragStart belongs to an element with drag; add drag="x" or drag="y"' }], "onDragEnd": [{ "on": ["view", "button", "dialog"], "with": ["drag"], "error": 'onDragEnd belongs to an element with drag; add drag="x" or drag="y"' }], "aria-actions": [{ "on": ["view", "button", "dialog"], "with": ["drag"], "error": 'aria-actions belongs to an element with drag; add drag="x" or drag="y"' }], "pointerAxis": [{ "on": ["view", "button", "vector"], "with": ["onPointer"], "error": "pointerAxis needs onPointer on the same element; add onPointer or remove pointerAxis" }], "src": [{ "on": ["video"], "without": ["sources"], "error": "src and sources both name the video; give src for one file, or sources for a choice of quality" }], "sources": [{ "on": ["video"], "without": ["src"], "error": "sources and src both name the video; give src for one file, or sources for a choice of quality" }], "aria-activedescendant": [{ "tags": ["input", "textarea"], "error": "aria-activedescendant belongs on an <input> or <textarea>" }], "aria-valuenow": [{ "not": { "role": ["combobox"] }, "error": 'role="combobox" takes aria-valuetext only, a string' }, { "any": [{ "role": ["progressbar", "spinbutton"] }, { "with": ["onPointer"] }], "error": 'aria-valuenow, -valuemin, -valuemax and -valuetext belong on role="progressbar", "spinbutton" or "combobox", or an onPointer element' }], "aria-valuemin": [{ "not": { "role": ["combobox"] }, "error": 'role="combobox" takes aria-valuetext only, a string' }, { "any": [{ "role": ["progressbar", "spinbutton"] }, { "with": ["onPointer"] }], "error": 'aria-valuenow, -valuemin, -valuemax and -valuetext belong on role="progressbar", "spinbutton" or "combobox", or an onPointer element' }], "aria-valuemax": [{ "not": { "role": ["combobox"] }, "error": 'role="combobox" takes aria-valuetext only, a string' }, { "any": [{ "role": ["progressbar", "spinbutton"] }, { "with": ["onPointer"] }], "error": 'aria-valuenow, -valuemin, -valuemax and -valuetext belong on role="progressbar", "spinbutton" or "combobox", or an onPointer element' }], "aria-valuetext": [{ "any": [{ "role": ["progressbar", "spinbutton", "combobox"] }, { "with": ["onPointer"] }, { "tags": ["slider"] }], "error": 'aria-valuenow, -valuemin, -valuemax and -valuetext belong on role="progressbar", "spinbutton" or "combobox", or an onPointer element' }], "headingLevel": [{ "role": ["heading"], "error": 'headingLevel belongs on role="heading"' }], "aria-level": [{ "role": ["treeitem"], "error": 'aria-level belongs on role="treeitem"' }], "aria-controls": [{ "role": ["combobox"], "error": 'aria-controls and aria-autocomplete belong on role="combobox"' }], "aria-autocomplete": [{ "role": ["combobox"], "error": 'aria-controls and aria-autocomplete belong on role="combobox"' }], "aria-checked": [{ "value": "mixed", "role": ["menuitemcheckbox"], "error": 'aria-checked="mixed" goes on role="menuitemcheckbox"; a <checkbox> takes indeterminate' }, { "role": ["radio", "menuitemcheckbox", "menuitemradio"], "error": 'aria-checked goes on role="radio", "menuitemcheckbox" or "menuitemradio"; a checkbox has its own checked' }], "aria-modal": [{ "role": ["dialog", "alertdialog"], "error": 'aria-modal belongs on a popover with role="dialog"' }, { "value": false, "tags": ["view"], "error": 'a <dialog> is always modal; a non-modal dialog is a popover with role="dialog"' }], "onPage": [{ "tags": ["view"], "role": ["grid"], "error": 'onPage belongs to a <view role="grid">' }], "keepOpen": [{ "role": ["menuitem", "menuitemcheckbox", "menuitemradio"], "error": 'keepOpen belongs on a menu item: role="menuitem", "menuitemcheckbox" or "menuitemradio"' }] }, "run": { "span": ["style", "className", "key", "data-testid", "dir", "aria-hidden", "children"], "link": ["style", "className", "key", "data-testid", "dir", "children", "aria-describedby"] }, "trait": { "popover": { "key": "popover", "on": ["view"], "props": ["open", "onToggle", "closeAfter", "anchor", "onCloseRequest"], "error": "{prop} belongs to a popover; add popover", "forms": [{ "values": [true, "auto", "hint"] }, { "values": ["manual"], "without": { "onCloseRequest": "onCloseRequest belongs on a popover that is not manual; nothing but your code closes a manual one" } }] }, "drag": { "key": "drag", "on": ["view", "button", "dialog"], "props": ["dragSnapPoints", "bind", "snapIndex", "onSnapChange", "onDragStart", "onDragEnd", "aria-actions"], "error": '{prop} belongs to an element with drag; add drag="x" or drag="y"' }, "pointer": { "key": "onPointer", "on": ["view", "button", "vector"], "props": ["pointerAxis"], "error": "pointerAxis needs onPointer on the same element; add onPointer or remove pointerAxis" } }, "exclusive": { "snap": { "on": ["view", "button", "dialog", "scroll"], "props": ["bind", "snapIndex"], "with": { "snapIndex": ["onSnapChange"] }, "error": "{prop} and {other} both set the snap index; bind a useLocal cell, or pass snapIndex and update it from onSnapChange", "companion": "{prop} reports the snap index you pass in snapIndex; add snapIndex, or bind a useLocal cell instead", "needs": "{prop} controls the position, so it needs onSnapChange to hear where a swipe settled; use bind to let the element keep the index itself" }, "videoSource": { "on": ["video"], "props": ["src", "sources"], "orElse": "player", "error": "{prop} and {other} both name the video; give src for one file, or sources for a choice of quality", "missing": "a <video> needs a source: add src (one file) or sources (a choice of quality), or player={useVideo(name)} to show a player another <video> gives a source" } } };
   var roles = ["canvas", "surface", "surface-raised", "surface-sunken", "line", "text", "text-muted", "text-faint", "accent", "on-accent", "accent-soft", "on-accent-soft", "danger", "on-danger", "danger-soft", "success", "on-success", "success-soft", "warning", "on-warning", "warning-soft", "focus", "scrim", "chart-1", "chart-2", "chart-3", "chart-4", "chart-5", "line-strong", "selection", "shadow", "media", "on-media", "surface-overlay", "knob", "success-mark", "warning-mark", "danger-mark", "media-canvas", "info", "on-info", "info-soft", "info-mark", "hue-1", "hue-2", "hue-3", "hue-4", "hue-5", "hue-6", "hue-7", "hue-8", "hue-1-soft", "hue-2-soft", "hue-3-soft", "hue-4-soft", "hue-5-soft", "hue-6-soft", "hue-7-soft", "hue-8-soft", "chart-6", "chart-7", "chart-8", "accent-solid", "on-accent-solid", "danger-solid", "on-danger-solid", "accent-solid-hover", "accent-solid-pressed", "danger-solid-hover", "danger-solid-pressed"];
   var scales = [{ "name": "text.xs", "family": "type" }, { "name": "text.sm", "family": "type" }, { "name": "text.base", "family": "type" }, { "name": "text.lg", "family": "type" }, { "name": "text.xl", "family": "type" }, { "name": "text.2xl", "family": "type" }, { "name": "text.3xl", "family": "type" }, { "name": "text.4xl", "family": "type" }, { "name": "leading.xs", "family": "leading" }, { "name": "leading.sm", "family": "leading" }, { "name": "leading.base", "family": "leading" }, { "name": "leading.lg", "family": "leading" }, { "name": "leading.xl", "family": "leading" }, { "name": "leading.2xl", "family": "leading" }, { "name": "leading.3xl", "family": "leading" }, { "name": "leading.4xl", "family": "leading" }, { "name": "radius.sm", "family": "radius" }, { "name": "radius.DEFAULT", "family": "radius" }, { "name": "radius.md", "family": "radius" }, { "name": "radius.lg", "family": "radius" }, { "name": "radius.xl", "family": "radius" }, { "name": "radius.2xl", "family": "radius" }, { "name": "radius.3xl", "family": "radius" }, { "name": "space", "family": "space" }, { "name": "duration.fast", "family": "duration" }, { "name": "duration.base", "family": "duration" }, { "name": "duration.slow", "family": "duration" }, { "name": "ease.standard", "family": "ease" }, { "name": "ease.enter", "family": "ease" }, { "name": "ease.exit", "family": "ease" }, { "name": "em", "family": "em" }];
   var scaleDefaults = [12, 13, 15, 17, 20, 24, 28, 34, 16, 18, 22, 24, 28, 32, 34, 40, 6, 8, 8, 10, 14, 20, 28, 4, 150, 200, 300, [0, 0, 0.2, 1], [0, 0, 0.2, 1], [0.4, 0, 1, 1], null];
@@ -300,10 +300,19 @@
   var defaultSeries = ["chart-1", "chart-2", "chart-3", "chart-4", "chart-5"];
 
   // src/style/shadow.js
+  var show = (value) => {
+    if (typeof value === "number") return String(value);
+    try {
+      return (JSON.stringify(value) ?? typeof value).slice(0, 40);
+    } catch {
+      return typeof value;
+    }
+  };
+  var COLOR_FORMS = "'currentColor', #RRGGBB/#RRGGBBAA or a theme role";
   function normalizeShadows(value) {
     if (value === "none") return value;
     const invalid2 = () => {
-      throw Error("UI_SHADOW: invalid box shadow");
+      throw Error(`UI_SHADOW: boxShadow takes 'none' or 0..8 layers of { offsetX?: -1024..1024, offsetY?: -1024..1024, blur?: 0..256, spread?: -1024..1024, color?: ${COLOR_FORMS} }; got ${show(value)}`);
     };
     if (!Array.isArray(value) || value.length > 8) invalid2();
     return value.map((shadow) => {
@@ -327,7 +336,7 @@
   function normalizeRing(value) {
     if (value === "none") return value;
     const invalid2 = () => {
-      throw Error("UI_SHADOW: invalid ring");
+      throw Error(`UI_SHADOW: ring takes 'none' or { outer?: { width: 0..1024, offset?: 0..1024, color?: ${COLOR_FORMS}, offsetColor?: ${COLOR_FORMS} }, inner?: { width: 0..1024, color?: ${COLOR_FORMS} } }; got ${show(value)}`);
     };
     const plain3 = (object, keys2) => object && typeof object === "object" && !Array.isArray(object) && Object.keys(object).every((key) => keys2.includes(key));
     const size = (number) => typeof number === "number" && Number.isFinite(number) && number >= 0 && number <= 1024;
@@ -622,26 +631,40 @@
     }
   }
   function invalid(name, value, takes) {
-    const got = typeof value === "number" ? String(value) : (JSON.stringify(value) ?? typeof value).slice(0, 40);
+    let got;
+    if (typeof value === "number") got = String(value);
+    else {
+      try {
+        got = (JSON.stringify(value) ?? typeof value).slice(0, 40);
+      } catch {
+        got = typeof value;
+      }
+    }
     throw Error(`UI_STYLE_VALUE: ${name} takes ${takes}; got ${got}`);
   }
   var isStep = (value) => Array.isArray(value) && value.length === 3 && Number.isInteger(value[0]) && scales[value[0]] !== void 0 && finite(value[1]) && finite(value[2]);
   var fold = (value) => isStep(value) && finite(scaleDefaults[value[0]]) ? value[1] * scaleDefaults[value[0]] + value[2] : value;
   var times = (value, factor) => isStep(value) ? [value[0], value[1] * factor, value[2] * factor] : value * factor;
-  function length(name, value, { signed = false, max = limits.styleNumber } = {}) {
+  function length(name, value, { signed = false, max = limits.styleNumber, clamp = max === limits.styleNumber } = {}, warn) {
     if (isStep(value)) {
       if (!signed && value[1] < 0 && value[2] <= 0) invalid(name, value, "a step that resolves to 0 or more");
       return value;
     }
     const min = signed ? -max : 0;
-    if (!finite(value) || value > max || value < min) invalid(name, value, `a number from ${min} to ${max}`);
+    if (!finite(value)) invalid(name, value, `a number from ${min} to ${max}`);
+    if (value > max || value < min) {
+      if (!clamp) invalid(name, value, `a number from ${min} to ${max}`);
+      const bound = value < min ? min : max;
+      warn?.(name, `UI_STYLE_VALUE: ${name} takes a number from ${min} to ${max}; got ${value}; clamped to ${bound}`);
+      return bound;
+    }
     return value;
   }
-  function dimension(name, value, env, out, key) {
+  function dimension(name, value, env, out, key, warn) {
     const ch = typeof value === "string" && value.match(/^(\d+(?:\.\d+)?)ch$/);
     if (ch) {
       if (!["width", "minWidth", "maxWidth"].includes(key)) invalid(name, value, "points, a percentage or vw/vh; ch sizes widths only");
-      out[`${key}Ch`] = length(name, Number(ch[1]), { max: 4096 });
+      out[`${key}Ch`] = length(name, Number(ch[1]), { max: 4096 }, warn);
       return;
     }
     const viewport = typeof value === "string" && value.match(/^(\d+(?:\.\d+)?)(vw|vh)$/);
@@ -649,12 +672,12 @@
       const insets = env?.insets ?? {}, keyboard = env?.keyboard?.height ?? 0;
       const extent = viewport[2] === "vw" ? env?.viewport?.width - (insets.left ?? 0) - (insets.right ?? 0) : env?.viewport?.height - (insets.top ?? 0) - Math.max(insets.bottom ?? 0, keyboard);
       if (!finite(extent)) invalid(name, value, "vw/vh only once the page has a viewport");
-      out[key] = length(name, extent * Number(viewport[1]) / 100);
-    } else if (percent(value) !== void 0) out[`${key}Percent`] = length(name, percent(value));
+      out[key] = length(name, extent * Number(viewport[1]) / 100, void 0, warn);
+    } else if (percent(value) !== void 0) out[`${key}Percent`] = length(name, percent(value), void 0, warn);
     else if (value === "auto" && key === "height") out.heightAuto = 1;
     else if (value === "auto" && key === "width") {
     } else if (["fit-content", "max-content", "min-content"].includes(value) && ["width", "height", "minWidth", "minHeight", "maxWidth", "maxHeight"].includes(key)) out[`${key}Keyword`] = value;
-    else out[key] = length(name, value);
+    else out[key] = length(name, value, void 0, warn);
   }
   var alignment = { "flex-start": "start", "flex-end": "end" };
   var justification = { "flex-start": "start", "flex-end": "end", "space-between": "between", "space-around": "around", "space-evenly": "evenly" };
@@ -737,26 +760,22 @@
   }
   function maskValue(value) {
     if (value === "none") return void 0;
-    const invalid2 = () => {
-      throw Error("UI_STYLE_VALUE: maskImage");
-    };
+    const fail = () => invalid("maskImage", value, "'none' or 1..4 layers of { to: 'top'|'bottom'|'left'|'right', stops: 2..16 { alpha: 0..1, offset | px } }");
     const position = (stop) => stop.offset !== void 0 !== (stop.px !== void 0) && (stop.offset === void 0 || finite(stop.offset) && Math.abs(stop.offset) <= 16) && (stop.px === void 0 || finite(stop.px) && Math.abs(stop.px) <= limits.styleNumber);
-    if (!Array.isArray(value) || !value.length || value.length > 4 || value.some((layer) => !layer || !["top", "bottom", "left", "right"].includes(layer.to) || Object.keys(layer).some((key) => !["to", "stops"].includes(key)) || !Array.isArray(layer.stops) || layer.stops.length < 2 || layer.stops.length > 16 || layer.stops.some((stop) => !stop || Object.keys(stop).some((key) => !["alpha", "offset", "px"].includes(key)) || !finite(stop.alpha) || stop.alpha < 0 || stop.alpha > 1 || !position(stop)))) invalid2();
+    if (!Array.isArray(value) || !value.length || value.length > 4 || value.some((layer) => !layer || !["top", "bottom", "left", "right"].includes(layer.to) || Object.keys(layer).some((key) => !["to", "stops"].includes(key)) || !Array.isArray(layer.stops) || layer.stops.length < 2 || layer.stops.length > 16 || layer.stops.some((stop) => !stop || Object.keys(stop).some((key) => !["alpha", "offset", "px"].includes(key)) || !finite(stop.alpha) || stop.alpha < 0 || stop.alpha > 1 || !position(stop)))) fail();
     return JSON.stringify(value.map(({ to, stops }) => ({ to, stops: stops.map(({ alpha, offset, px }) => offset === void 0 ? { px, alpha } : { offset, alpha }) })));
   }
   function transitionValue(value) {
     if (value === "none") return void 0;
-    const invalid2 = () => {
-      throw Error("UI_STYLE_VALUE: transition");
-    };
-    if (!value || typeof value !== "object" || Object.keys(value).some((key) => !["properties", "durationMs", "delayMs", "easing"].includes(key))) invalid2();
+    const fail = () => invalid("transition", value, `'none' or { properties: 1..${options["transition-property"].length} of ${options["transition-property"].join("|")}, durationMs: 1..${limits.transitionMs} or duration step, delayMs?: 0..${limits.transitionMs}, easing?: 'linear'|'step-end'|[x1,y1,x2,y2]|{ spring: 0..0.9 }|ease step }`);
+    if (!value || typeof value !== "object" || Object.keys(value).some((key) => !["properties", "durationMs", "delayMs", "easing"].includes(key))) fail();
     const { properties, delayMs = 0 } = value;
     let { durationMs, easing = [0.4, 0, 0.2, 1] } = value;
     const step = (ref, family2) => isStep(ref) && scales[ref[0]].family === family2 && ref[1] === 1 && ref[2] === 0;
     const durationStep = step(durationMs, "duration"), easingStep = step(easing, "ease");
     if (durationStep) durationMs = 1;
     if (easingStep) easing = "linear";
-    if (!Array.isArray(properties) || !properties.length || properties.length > options["transition-property"].length || new Set(properties).size !== properties.length || properties.some((name) => !options["transition-property"].includes(name)) || !finite(durationMs) || durationMs <= 0 || durationMs > limits.transitionMs || !finite(delayMs) || delayMs < 0 || delayMs > limits.transitionMs || !(easing === "linear" || easing === "step-end" || Array.isArray(easing) && easing.length === 4 && easing.every(finite) || easing && typeof easing === "object" && Object.keys(easing).join() === "spring" && finite(easing.spring) && easing.spring >= 0 && easing.spring <= 0.9)) invalid2();
+    if (!Array.isArray(properties) || !properties.length || properties.length > options["transition-property"].length || new Set(properties).size !== properties.length || properties.some((name) => !options["transition-property"].includes(name)) || !finite(durationMs) || durationMs <= 0 || durationMs > limits.transitionMs || !finite(delayMs) || delayMs < 0 || delayMs > limits.transitionMs || !(easing === "linear" || easing === "step-end" || Array.isArray(easing) && easing.length === 4 && easing.every(finite) || easing && typeof easing === "object" && Object.keys(easing).join() === "spring" && finite(easing.spring) && easing.spring >= 0 && easing.spring <= 0.9)) fail();
     return JSON.stringify({ properties, durationMs: durationStep ? value.durationMs : durationMs, delayMs, easing: easingStep ? value.easing : easing });
   }
   function animation(value) {
@@ -789,11 +808,11 @@
     if (x in vertical || y in horizontal) invalid("objectPosition", value, "one horizontal and one vertical position");
     return [x in horizontal ? horizontal[x] : fraction(x), y in vertical ? vertical[y] : fraction(y)];
   }
-  function lowerStyle(tag, style2, env, inherited = { fontSize: 14 }) {
+  function lowerStyle(tag, style2, env, inherited = { fontSize: 14 }, warn) {
     admitStyle(tag, style2);
     const out = {};
-    const fontSize = style2.fontSize === void 0 ? inherited.fontSize : length("fontSize", style2.fontSize);
-    if (style2.fontSize !== void 0 && !isStep(style2.fontSize) && style2.fontSize <= 0) invalid("fontSize", style2.fontSize, "a number above 0");
+    if (style2.fontSize !== void 0 && !isStep(style2.fontSize) && finite(style2.fontSize) && style2.fontSize <= 0) invalid("fontSize", style2.fontSize, "a number above 0");
+    const fontSize = style2.fontSize === void 0 ? inherited.fontSize : length("fontSize", style2.fontSize, void 0, warn);
     let lineHeight = inherited.lineHeight;
     const transform = {}, lines = {}, safe = { bits: 0 };
     const names3 = Object.keys(style2).sort((a, b) => Number(shorthand(b)) - Number(shorthand(a)));
@@ -801,22 +820,28 @@
       const value = style2[name], entry = style[name], key = entry.wire;
       switch (entry.lower) {
         case "dimension":
-          dimension(name, value, env, out, key);
+          dimension(name, value, env, out, key, warn);
           break;
-        case "margin":
-          if (value !== "auto") length(name, value, { signed: true });
-          for (const side of [key].flat()) out[side] = value;
-          break;
-        case "inset": {
-          const amount = percent(value) !== void 0 ? percent(value) : value;
-          if (value !== "anchor(center)") length(name, amount, { signed: true });
-          for (const side of [key].flat()) out[side] = value;
+        case "margin": {
+          const lowered2 = value === "auto" ? value : length(name, value, { signed: true }, warn);
+          for (const side of [key].flat()) out[side] = lowered2;
           break;
         }
-        case "length":
-          length(name, value);
-          for (const side of [key].flat()) out[side] = value;
+        case "inset": {
+          const pct = percent(value);
+          let lowered2 = value;
+          if (value !== "anchor(center)") {
+            const clamped = length(name, pct !== void 0 ? pct : value, { signed: true }, warn);
+            lowered2 = pct !== void 0 ? `${clamped}%` : clamped;
+          }
+          for (const side of [key].flat()) out[side] = lowered2;
           break;
+        }
+        case "length": {
+          const lowered2 = length(name, value, void 0, warn);
+          for (const side of [key].flat()) out[side] = lowered2;
+          break;
+        }
         case "z-index":
           if (!Number.isInteger(value) || Math.abs(value) > 1e4) invalid(name, value, "a whole number from -10000 to 10000");
           out[key] = value;
@@ -846,7 +871,7 @@
           out[key] = value;
           break;
         case "number":
-          out[key] = length(name, value);
+          out[key] = length(name, value, void 0, warn);
           break;
         case "opacity":
           if (!finite(value) || value < 0 || value > 1) invalid(name, value, "a number from 0 to 1");
@@ -914,10 +939,16 @@
         case "font-variant-numeric":
           out[key] = numericVariant(name, value);
           break;
-        case "basis":
-          if (value !== "auto") length(name, percent(value) ?? value);
-          out[key] = value;
+        case "basis": {
+          if (value === "auto") {
+            out[key] = value;
+            break;
+          }
+          const pct = percent(value);
+          const clamped = length(name, pct !== void 0 ? pct : value, void 0, warn);
+          out[key] = pct !== void 0 ? `${clamped}%` : clamped;
           break;
+        }
         case "snap-type": {
           const axis = String(value).trim().split(/\s+/)[0];
           out[key] = option(name, key, axis);
@@ -938,10 +969,12 @@
           break;
         case "line-height":
           if (isStep(value)) lineHeight = value;
-          else if (typeof value === "string" && /^\d+(?:\.\d+)?px$/.test(value)) lineHeight = length(name, Number(value.slice(0, -2)));
+          else if (typeof value === "string" && /^\d+(?:\.\d+)?px$/.test(value)) lineHeight = length(name, Number(value.slice(0, -2)), void 0, warn);
           else if (finite(value) && value > 0 && value <= limits.lineHeightMultiplier) lineHeight = { multiplier: value };
-          else if (finite(value) && lineHeightProblem(value)) throw Error(lineHeightProblem(value));
-          else invalid(name, value, `a multiplier above 0 up to ${limits.lineHeightMultiplier}, or <n>px`);
+          else if (finite(value) && lineHeightProblem(value)) {
+            warn?.(name, `${lineHeightProblem(value)}; clamped to ${limits.lineHeightMultiplier}`);
+            lineHeight = { multiplier: limits.lineHeightMultiplier };
+          } else invalid(name, value, `a multiplier above 0 up to ${limits.lineHeightMultiplier}, or <n>px`);
           break;
         case "letter-spacing": {
           const em = typeof value === "string" && value.match(/^(-?\d+(?:\.\d+)?)em$/);
@@ -976,8 +1009,14 @@
       out[`grid${axis}`] = end === "auto" ? start : `${start} / ${end}`;
     }
     if (style2.lineHeight !== void 0 || lineHeight && typeof lineHeight === "object" && !isStep(lineHeight)) {
-      const pixels2 = lineHeight?.multiplier !== void 0 ? times(fontSize, lineHeight.multiplier) : lineHeight;
-      if (!isStep(pixels2) && !(pixels2 > 0 && pixels2 <= limits.styleNumber)) invalid("lineHeight", pixels2, `a height above 0 up to ${limits.styleNumber} points`);
+      let pixels2 = lineHeight?.multiplier !== void 0 ? times(fontSize, lineHeight.multiplier) : lineHeight;
+      if (!isStep(pixels2)) {
+        if (!(pixels2 > 0)) invalid("lineHeight", pixels2, `a height above 0 up to ${limits.styleNumber} points`);
+        if (pixels2 > limits.styleNumber) {
+          warn?.("lineHeight", `UI_STYLE_VALUE: lineHeight takes a height above 0 up to ${limits.styleNumber} points; got ${pixels2}; clamped to ${limits.styleNumber}`);
+          pixels2 = limits.styleNumber;
+        }
+      }
       out.lineHeight = pixels2;
     }
     for (const key in out) {
@@ -1555,9 +1594,9 @@
     if (typeof target !== "string" || !target.length || target.length > 256 || /\s/.test(target)) throw Error("UI_ID: interestFor names a popover id");
     collected().interests.push({ target, identity, scope });
   }
-  function interest(target, nth, show) {
+  function interest(target, nth, show4) {
     const entry = page.committed?.topLayer?.interests.filter((candidate) => candidate.target === target)[nth];
-    return entry ? toggle(target, show, { identity: entry.identity, scope: entry.scope }) : false;
+    return entry ? toggle(target, show4, { identity: entry.identity, scope: entry.scope }) : false;
   }
   function finishTopLayer(tree) {
     const top = render.candidate.topLayer;
@@ -2661,20 +2700,33 @@
     }
   };
   var kindOf2 = (value) => value === null ? "null" : typeof value === "number" ? String(value) : typeof value !== "object" ? typeof value : Array.isArray(value) ? "array" : value.constructor?.name ?? "object";
-  function payload(value, refuse, path, depth, budget) {
+  function payload(value, refuse, path, depth, budget, ancestors) {
     if (depth > 64) throw Error("UI_LOCAL: value too deep");
     if ((budget.left -= typeof value === "string" ? value.length + 2 : 8) < 0) throw Error(`UI_LIMIT: ${budget.what} payload too large`);
     if (value === null || typeof value === "string" || typeof value === "boolean") return value;
     if (typeof value === "number" && Number.isFinite(value)) return value;
-    if (Array.isArray(value)) return Object.freeze(Array.from(value, (v, i) => v === void 0 ? null : payload(v, refuse, `${path}[${i}]`, depth + 1, budget)));
-    if (value && typeof value === "object" && Object.getPrototypeOf(value) === Object.prototype) {
-      const out = {};
-      for (const [k, v] of Object.entries(value)) {
-        if (v === void 0) continue;
-        budget.left -= k.length + 3;
-        out[k] = payload(v, refuse, path ? `${path}.${k}` : k, depth + 1, budget);
+    const array = Array.isArray(value);
+    const plain3 = !array && value && typeof value === "object" && Object.getPrototypeOf(value) === Object.prototype;
+    if (array || plain3) {
+      const here = path ? path.startsWith("[") ? `argument${path}` : `argument.${path}` : "argument";
+      if (ancestors.has(value)) {
+        const code = budget.what === "action" ? "UI_ACTION" : "UI_CHANNEL";
+        throw Error(`${code}: ${budget.who} payload field ${here} refers back to ${ancestors.get(value)}; send a value without cycles`);
       }
-      return Object.freeze(out);
+      ancestors.set(value, here);
+      try {
+        if (array) return Object.freeze(Array.from(value, (v, i) => v === void 0 ? null : payload(v, refuse, `${path}[${i}]`, depth + 1, budget, ancestors)));
+        const out = {};
+        for (const [k, v] of Object.entries(value)) {
+          if (v === void 0) continue;
+          budget.left -= k.length + 3;
+          const nextPath = /^[A-Za-z_$][A-Za-z0-9_$]*$/.test(k) ? path ? `${path}.${k}` : k : `${path}[${JSON.stringify(k)}]`;
+          out[k] = payload(v, refuse, nextPath, depth + 1, budget, ancestors);
+        }
+        return Object.freeze(out);
+      } finally {
+        ancestors.delete(value);
+      }
     }
     throw refuse(path, kindOf2(value));
   }
@@ -2683,12 +2735,22 @@
     (path, kind) => Error(`${what === "action" ? "UI_ACTION" : "UI_CHANNEL"}: ${who} payload ${path ? `field ${path}` : "value"} is not JSON (${kind})`),
     "",
     0,
-    { left: 65536, what }
+    { left: 65536, what, who },
+    /* @__PURE__ */ new Map()
   );
+  var show2 = (value) => {
+    if (typeof value === "number") return String(value);
+    try {
+      return (JSON.stringify(value) ?? typeof value).slice(0, 40);
+    } catch {
+      return typeof value;
+    }
+  };
   function configureActions(metadata) {
     outsideRender("configure actions");
     const names3 = metadata?.__names, modes = metadata?.__modes;
-    if (!Array.isArray(names3) || names3.length > 256 || !modes || typeof modes !== "object" || names3.some((name) => typeof name !== "string" || !name || name.length > 256 || !has(modes, name) || !["call", "stream"].includes(modes[name])) || new Set(names3).size !== names3.length) throw Error("UI_ACTION: invalid action catalog");
+    if (!Array.isArray(names3) || names3.length > 256 || !modes || typeof modes !== "object" || names3.some((name) => typeof name !== "string" || !name || name.length > 256 || !has(modes, name) || !["call", "stream"].includes(modes[name])) || new Set(names3).size !== names3.length)
+      throw Error(`UI_ACTION: action catalog takes { __names: 0..256 unique non-empty strings (<= 256 chars), __modes: Record<name, 'call'|'stream'> }; got ${show2(metadata)}`);
     cancelActions();
     const epoch2 = actionEpoch, built = /* @__PURE__ */ Object.create(null);
     const reportLive = (cause) => {
@@ -2871,7 +2933,7 @@
     outsideRender("response");
     if (frame?.v === 2 && ["ch.ack", "ch.data", "ch.close"].includes(frame.kind)) return receiveChannelFrame(frame);
     if (frame?.v !== 2 || !["res", "event"].includes(frame.kind) || typeof frame.id !== "string" || frame.kind === "res" && typeof frame.ok !== "boolean" || frame.kind === "event" && (!Number.isSafeInteger(frame.seq) || frame.seq < 0))
-      throw Error("UI_ACTION: invalid response");
+      throw Error(`UI_ACTION: response takes { v: 2, kind: 'res'|'event', id: string, ok: boolean | seq: integer >= 0 }; got ${show2(frame)}`);
     const pending3 = pendingActions.get(frame.id);
     if (!pending3) return false;
     if (frame.kind === "event") {
@@ -2892,7 +2954,7 @@
   }
   function receiveChannelFrame(frame) {
     if (typeof frame.id !== "string" || frame.kind === "ch.ack" && typeof frame.ok !== "boolean" || frame.kind === "ch.data" && (!Number.isSafeInteger(frame.seq) || frame.seq < 0) || frame.kind === "ch.close" && (frame.code !== void 0 && typeof frame.code !== "string" || frame.reason !== void 0 && typeof frame.reason !== "string"))
-      throw Error("UI_CHANNEL: invalid frame");
+      throw Error(`UI_CHANNEL: frame takes { v: 2, kind: 'ch.ack'|'ch.data'|'ch.close', id: string, ok?: boolean, seq?: integer >= 0, code?: string, reason?: string }; got ${show2(frame)}`);
     const entry = activeChannels.get(frame.id);
     if (!entry) return false;
     if (frame.kind === "ch.ack") {
@@ -4086,6 +4148,14 @@
   var pathKeys = ["key", "d", "fill", "stroke", "strokeWidth", "strokeDasharray", "strokeDashoffset", "strokeLinecap", "strokeLinejoin", "transform", "vectorEffect", "pathLength"];
   var gradientKeys = ["type", "x1", "y1", "x2", "y2", "cx", "cy", "r", "fx", "fy", "fr", "from", "units", "spread", "stops"];
   var plain2 = (value) => value && typeof value === "object" && !Array.isArray(value);
+  var show3 = (value) => {
+    if (typeof value === "number") return String(value);
+    try {
+      return (JSON.stringify(value) ?? typeof value).slice(0, 40);
+    } catch {
+      return typeof value;
+    }
+  };
   function vectorGradient(id, gradient) {
     const invalid2 = () => {
       throw Error(`UI_VECTOR: invalid gradient ${id}`);
@@ -4095,21 +4165,23 @@
   function vector(props, fit) {
     const box = props.viewBox ?? [0, 0, 24, 24];
     if (!Array.isArray(box) || box.length !== 4 || box.some((v) => !finiteWithin(v, 16384)) || box[2] < 1 / 64 || box[3] < 1 / 64)
-      throw Error("UI_VECTOR: invalid viewBox");
-    if (!Array.isArray(props.paths) || !props.paths.length || props.paths.length > 32) throw Error("UI_VECTOR: invalid paths");
+      throw Error(`UI_VECTOR: viewBox takes [x, y, width, height] with finite numbers within \xB116384 and width/height >= 1/64; got ${show3(box)}`);
+    if (!Array.isArray(props.paths) || !props.paths.length || props.paths.length > 32)
+      throw Error(`UI_VECTOR: paths takes 1..32 path objects; got ${show3(props.paths)}`);
     const gradients = props.gradients ?? {};
     if (!plain2(gradients) || Object.keys(gradients).length > 8) throw Error("UI_VECTOR: at most 8 gradients");
     for (const [id, gradient] of Object.entries(gradients)) vectorGradient(id, gradient);
     const keys2 = /* @__PURE__ */ new Set();
     for (const path of props.paths) {
-      if (!plain2(path) || Object.keys(path).some((k) => !pathKeys.includes(k)) || typeof path.d !== "string" || !path.d.length || path.d.length > limits.vectorPathBytes) throw Error("UI_VECTOR: invalid path");
+      if (!plain2(path) || Object.keys(path).some((k) => !pathKeys.includes(k)) || typeof path.d !== "string" || !path.d.length || path.d.length > limits.vectorPathBytes)
+        throw Error(`UI_VECTOR: path takes an object with non-empty d (<= ${limits.vectorPathBytes} chars) and valid path props; got ${show3(path)}`);
       const segments = path.d.length > limits.vectorPathSegments && pathSegmentsProblem(pathSegments(path.d));
       if (segments) throw Error(segments);
       for (const key of ["fill", "stroke"]) {
         const value = path[key];
         if (value === void 0 || value === "none" || value === "currentColor" || hexColor(value) || isRole(value)) continue;
         const id = typeof value === "string" && value.match(/^url\(#(.+)\)$/)?.[1];
-        if (!id) throw Error("UI_VECTOR: invalid color");
+        if (!id) throw Error(`UI_VECTOR: ${key} takes 'none', 'currentColor', a hex color, a theme role or url(#id); got ${show3(value)}`);
         if (!has(gradients, id)) throw Error(`UI_VECTOR: unknown gradient ${id}`);
       }
       if (path.vectorEffect !== void 0 && !["none", "non-scaling-stroke"].includes(path.vectorEffect)) throw Error("UI_VECTOR: invalid vector effect");
@@ -4120,10 +4192,12 @@
       if (path.strokeLinecap !== void 0 && !["butt", "round", "square"].includes(path.strokeLinecap)) throw Error("UI_VECTOR: invalid stroke-linecap");
       if (path.strokeLinejoin !== void 0 && !["miter", "round", "bevel"].includes(path.strokeLinejoin)) throw Error("UI_VECTOR: invalid stroke-linejoin");
       if (path.strokeDashoffset !== void 0 && !finiteWithin(path.strokeDashoffset, 16384)) throw Error("UI_VECTOR: invalid dash offset");
-      if (path.transform !== void 0 && (typeof path.transform !== "string" || path.transform.length > 512 || !/^\s*(?:(?:matrix|translate|scale|rotate|skewX|skewY)\s*\([^()]*\)[\s,]*)+$/.test(path.transform))) throw Error("UI_VECTOR: invalid transform");
-      if (path.strokeDasharray !== void 0 && (!Array.isArray(path.strokeDasharray) || path.strokeDasharray.length > 16 || path.strokeDasharray.some((v) => typeof v !== "number" || !Number.isFinite(v) || v < 1 / 64 || v > 1024))) throw Error("UI_VECTOR: invalid dash pattern");
+      if (path.transform !== void 0 && (typeof path.transform !== "string" || path.transform.length > 512 || !/^\s*(?:(?:matrix|translate|scale|rotate|skewX|skewY)\s*\([^()]*\)[\s,]*)+$/.test(path.transform)))
+        throw Error(`UI_VECTOR: transform takes SVG transform functions (matrix/translate/scale/rotate/skewX/skewY) up to 512 chars; got ${show3(path.transform)}`);
+      if (path.strokeDasharray !== void 0 && (!Array.isArray(path.strokeDasharray) || path.strokeDasharray.length > 16 || path.strokeDasharray.some((v) => typeof v !== "number" || !Number.isFinite(v) || v < 1 / 64 || v > 1024)))
+        throw Error(`UI_VECTOR: strokeDasharray takes up to 16 numbers from 1/64 to 1024; got ${show3(path.strokeDasharray)}`);
       if (path.strokeWidth !== void 0 && (typeof path.strokeWidth !== "number" || !Number.isFinite(path.strokeWidth) || path.strokeWidth < 0 || path.strokeWidth > 1024))
-        throw Error("UI_VECTOR: invalid stroke width");
+        throw Error(`UI_VECTOR: strokeWidth takes a number from 0 to 1024; got ${show3(path.strokeWidth)}`);
     }
     const source3 = JSON.stringify({ viewBox: box, paths: props.paths, ...Object.keys(gradients).length ? { gradients } : {}, ...fit === void 0 ? {} : { fit } });
     if (source3.length > limits.vectorSourceBytes) throw Error("UI_VECTOR: source too large");
@@ -4164,7 +4238,7 @@
     for (const [name, fallback] of [["min", 0], ["max", 100], ["step", 1]]) if (props[name] === void 0) props[name] = fallback;
     const { min, max, step, value } = props;
     if (![min, max, step, ...value === void 0 ? [] : [value]].every((v) => typeof v === "number" && Number.isFinite(v) && Math.abs(v) <= 1e9) || max <= min || step <= 0 || step > max - min || (max - min) / step > 1e6 || min + step === min || max - step === max)
-      throw Error("UI_SLIDER: invalid range or precision");
+      throw Error(`UI_SLIDER: range takes finite min < max within \xB11e9 and step > 0 (<= max - min, at most 1e6 steps); got min=${show3(min)}, max=${show3(max)}, step=${show3(step)}${value === void 0 ? "" : `, value=${show3(value)}`}`);
     label(props.accessibilityLabel, "UI_SLIDER", true);
     if (value !== void 0) props.value = sliderValue(props, value);
   }
@@ -5229,8 +5303,12 @@
     }
     return true;
   }
-  function nodeStyle(tag, props, data, extra, inherited, direction, structure2, every, sizeClass) {
-    if (props.style !== void 0 || extra !== void 0 || every !== void 0 || props.className === void 0) return lowerNodeStyle(tag, props, data, extra, inherited, direction, structure2, every, sizeClass);
+  var warnedClamp = /* @__PURE__ */ new Set();
+  function resetStyleWarnings() {
+    warnedClamp.clear();
+  }
+  function nodeStyle(tag, props, data, extra, inherited, direction, structure2, every, sizeClass, identity) {
+    if (props.style !== void 0 || extra !== void 0 || every !== void 0 || props.className === void 0) return lowerNodeStyle(tag, props, data, extra, inherited, direction, structure2, every, sizeClass, identity);
     const environment = envKey(envOf(render.view));
     if (loweredClasses !== classGeneration) {
       loweredClasses = classGeneration;
@@ -5246,10 +5324,17 @@
     const key = `${tag}\0${props.className}\0${data ? JSON.stringify(data) : ""}\0${props.disabled === true}\0${mixedCheckbox(tag, props)}\0${direction}\0${sizeClass ?? ""}\0${(structure2 ?? []).join(",")}\0${inherited.fontSize}\0${JSON.stringify(inherited.lineHeight)}`;
     let style2 = lowered.get(key);
     if (!style2) {
-      style2 = lowerNodeStyle(tag, props, data, extra, inherited, direction, structure2, void 0, sizeClass);
+      style2 = lowerNodeStyle(tag, props, data, extra, inherited, direction, structure2, void 0, sizeClass, identity);
       fresh.add(key);
       if (lowered.size >= 2048) lowered.delete(lowered.keys().next().value);
       lowered.set(key, style2);
+    } else if (style2.clampWarnings?.length && typeof globalThis.__lingxiaWarn === "function") {
+      for (const [name, message] of style2.clampWarnings) {
+        const warnKey = `${identity ?? ""}\0${name}`;
+        if (warnedClamp.has(warnKey)) continue;
+        warnedClamp.add(warnKey);
+        globalThis.__lingxiaWarn(message);
+      }
     }
     return { ...style2, fields: { ...style2.fields } };
   }
@@ -5265,7 +5350,7 @@
   var disabledField = { color: "text-muted", backgroundColor: "surface-sunken", borderColor: "line" };
   var videoBacking = { backgroundColor: "#000000" };
   var mixedCheckbox = (tag, props) => tag === "checkbox" && props.indeterminate === true;
-  function lowerNodeStyle(tag, props, data, extra, inherited, direction, structure2, every, sizeClass) {
+  function lowerNodeStyle(tag, props, data, extra, inherited, direction, structure2, every, sizeClass, identity) {
     const env = { ...loweringEnv(envOf(render.view), sizeClass), direction, structure: structure2, data, indeterminate: mixedCheckbox(tag, props) };
     const classes = resolveClasses(props.className, env);
     if (classes?.pairedLeading && runTags.has(tag)) delete classes.base.lineHeight;
@@ -5279,7 +5364,15 @@
     if (flexOnly) throw Error(gridProblem(authoredClass(props.className, flexOnly, env), flexOnly));
     if ((tag === "view" || tag === "page") && (author?.display === "flex" || author?.display === "inline-flex") && author.flexDirection === void 0)
       author.flexDirection = "row";
-    const { fields: fields3, typography } = lowerStyle(tag, author, env, inherited);
+    const clampWarnings = [];
+    const warn = typeof globalThis.__lingxiaWarn === "function" ? (name, message) => {
+      clampWarnings.push([name, message]);
+      const key = `${identity ?? ""}\0${name}`;
+      if (warnedClamp.has(key)) return;
+      warnedClamp.add(key);
+      globalThis.__lingxiaWarn(message);
+    } : void 0;
+    const { fields: fields3, typography } = lowerStyle(tag, author, env, inherited, warn);
     const states2 = {};
     const state = (name, wire, allowed, requirement) => {
       const delta = classes?.[name];
@@ -5324,7 +5417,7 @@
     const hasDisabled = classes?.hasDisabled && Object.keys(classes.hasDisabled).length ? classes.hasDisabled : void 0;
     if (hasDisabled) paintOnly("has-disabled", tag, hasDisabled);
     const descendants = hasDisabled ? lowerStyle(tag, hasDisabled, env, { fontSize: typography.fontSize }).fields : void 0;
-    return { fields: fields3, states: states2, typography, author, children: classes?.children, every: classes?.every, descendants, release: classes?.release };
+    return { fields: fields3, states: states2, typography, author, children: classes?.children, every: classes?.every, descendants, release: classes?.release, ...clampWarnings.length ? { clampWarnings } : {} };
   }
   var listTag = Object.freeze({});
   function resolveNode(node, identity, depth = 0, parent = {}) {
@@ -5467,7 +5560,7 @@
     const data = dataOf(props);
     const rootFamily = !parent.typography && pageFamily && element.style.includes("fontFamily") ? { fontFamily: pageFamily } : void 0;
     const scopedSize = scopedSizeClass(parent.contexts, false);
-    const style2 = nodeStyle(kind, props, data, parent.extra ?? rootFamily, parent.typography ?? { fontSize: 14 }, direction, structure(parent.sibling, flat), parent.every, scopedSize);
+    const style2 = nodeStyle(kind, props, data, parent.extra ?? rootFamily, parent.typography ?? { fontSize: 14 }, direction, structure(parent.sibling, flat), parent.every, scopedSize, identity);
     const inline = (child) => typeof child === "string" || typeof child === "number";
     if (admission.tags[element.wire].parent === "text" && !parent.inText) throw Error(`UI_TEXT: <${tag}> belongs inside <text>; wrap it in a <text>`);
     if (tag === "link" && parent.inLink) throw Error("UI_TEXT: links do not nest");
@@ -5545,7 +5638,8 @@
     if (props.onPointer !== void 0 || props.pointerAxis !== void 0) {
       if (!pointerTags.has(tag)) throw Error("UI_PROP: onPointer belongs to a <view>, <button> or <vector>");
       const { onPointer, pointerAxis = "both" } = props;
-      if (typeof onPointer !== "function") throw Error("UI_PROP: onPointer takes a function; pointerAxis goes with it");
+      if (onPointer === void 0) throw Error("UI_PROP: pointerAxis needs onPointer on the same element; add onPointer or remove pointerAxis");
+      if (typeof onPointer !== "function") throw Error("UI_PROP: onPointer takes a function");
       if (!pointerAxes.has(pointerAxis)) throw Error('UI_PROP: pointerAxis must be "x", "y" or "both"');
       on("onPointer", (payload2) => onPointer(Object.freeze(JSON.parse(payload2))), "text");
       if (pointerAxis !== "both") wire("pointerAxis", pointerAxis);
@@ -5737,7 +5831,18 @@
         label(props.accessibilityLabel, "UI_SELECT");
         const options2 = selectOptions(props);
         if (props.value !== void 0 && typeof props.value !== "string") throw Error("UI_SELECT: value must be a string");
-        if (props.placeholder !== void 0 && !validInputText(props.placeholder)) throw Error("UI_SELECT: invalid placeholder");
+        if (props.placeholder !== void 0 && !validInputText(props.placeholder)) {
+          let got;
+          if (typeof props.placeholder === "number") got = String(props.placeholder);
+          else {
+            try {
+              got = (JSON.stringify(props.placeholder) ?? typeof props.placeholder).slice(0, 40);
+            } catch {
+              got = typeof props.placeholder;
+            }
+          }
+          throw Error(`UI_SELECT: placeholder takes a UTF-8 string up to 65536 bytes; got ${got}`);
+        }
         if (props.defaultValue !== void 0 && (props.value !== void 0 || !options2.some((option2) => option2.value === props.defaultValue)))
           throw Error("UI_SELECT: defaultValue names an option of a select without value or bind");
         const chosen = options2.find((option2) => option2.value === (props.value ?? props.defaultValue));
@@ -6914,6 +7019,7 @@
     resetVideos();
     resetWebViews();
     resetSnaps();
+    resetStyleWarnings();
     wireReset();
   }
   var accepts2 = (kind, value) => kind === "number" ? typeof value === "number" && Number.isFinite(value) && Math.abs(value) <= 1e9 : kind === "text" ? validInputText(value) : kind === "check" ? value === void 0 || typeof value === "boolean" : value === void 0;

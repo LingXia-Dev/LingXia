@@ -4,6 +4,7 @@ import assert from 'node:assert/strict';
 import { mkdtemp, mkdir, writeFile, readFile, rm, symlink, cp } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { buildPages } from '../compiler/index.mjs';
 import { maxField } from '../src/generated/wire.js';
 import { decode } from './support/wire.mjs';
@@ -175,4 +176,55 @@ test("a dependency's build problems name its file by package, linked or installe
       assert.doesNotMatch(message, /\/(tmp|var|private)\//, install);
     }, { install });
   }
+});
+
+test("tokens of a bundled package's peer dependencies load transitively, below the app's own, and a missing peer fails the build", async () => {
+  const fixture = fileURLToPath(new URL('./fixtures/peer-tokens', import.meta.url));
+  const base = await mkdtemp(join(tmpdir(), 'lingxia-view-peers-'));
+  try {
+    await cp(fixture, base, { recursive: true });
+    const app = join(base, 'app');
+    await mkdir(join(app, 'node_modules'), { recursive: true });
+    await symlink(join(base, 'pkg-b'), join(app, 'node_modules/pkg-b'), 'junction');
+    // Missing peer: pkg-b peers on pkg-a, which is not installed yet.
+    await assert.rejects(
+      buildPages(app, ['page.tsx'], join(app, 'dist')),
+      /pkg-b\/package\.json: UI_MODULE:.*pkg-a.*pkg-b/,
+    );
+    // Install pkg-a: its tokens load for pkg-b.
+    await symlink(join(base, 'pkg-a'), join(app, 'node_modules/pkg-a'), 'junction');
+    await buildPages(app, ['page.tsx'], join(app, 'dist'));
+    let source = await readFile(join(app, 'dist/page.js'), 'utf8');
+    assert.deepEqual(rule(source, 'rounded-peer-card'), { borderRadius: 16 });
+    // App's own tokens still win over peer tokens.
+    await writeFile(join(app, 'theme.css'), '@theme {\n  --radius-peer-card: 2rem;\n}\n');
+    await writeFile(join(app, 'page.tsx'), "import './theme.css';\nimport { Widget } from 'pkg-b';\nexport function render() { return <view><Widget /></view>; }\n");
+    await buildPages(app, ['page.tsx'], join(app, 'dist'));
+    source = await readFile(join(app, 'dist/page.js'), 'utf8');
+    assert.deepEqual(rule(source, 'rounded-peer-card'), { borderRadius: 32 });
+    // Transitive peer: pkg-c -> pkg-b -> pkg-a (and cycle pkg-a -> pkg-b does not loop).
+    await mkdir(join(base, 'pkg-c'), { recursive: true });
+    await writeFile(join(base, 'pkg-c/package.json'), JSON.stringify({ name: 'pkg-c', type: 'module', exports: { '.': './index.tsx' }, peerDependencies: { 'pkg-b': '*' } }));
+    await writeFile(join(base, 'pkg-c/index.tsx'), 'export function Outer() { return <view className="rounded-peer-card" />; }\n');
+    await writeFile(join(base, 'pkg-a/package.json'), JSON.stringify({ name: 'pkg-a', type: 'module', lingxia: { tokens: './tokens.css' }, peerDependencies: { 'pkg-b': '*' } }));
+    await symlink(join(base, 'pkg-c'), join(app, 'node_modules/pkg-c'), 'junction');
+    await writeFile(join(app, 'page.tsx'), "import { Outer } from 'pkg-c';\nexport function render() { return <view><Outer /></view>; }\n");
+    await buildPages(app, ['page.tsx'], join(app, 'dist'));
+    source = await readFile(join(app, 'dist/page.js'), 'utf8');
+    assert.deepEqual(rule(source, 'rounded-peer-card'), { borderRadius: 16 });
+    // Peer ordering: pkg-alpha peers on pkg-zeta (alphabetically later); pkg-alpha's @utility comes after pkg-zeta's and wins.
+    await mkdir(join(base, 'pkg-zeta'), { recursive: true });
+    await writeFile(join(base, 'pkg-zeta/package.json'), JSON.stringify({ name: 'pkg-zeta', type: 'module', lingxia: { tokens: './tokens.css' } }));
+    await writeFile(join(base, 'pkg-zeta/tokens.css'), '@utility peer-pad { padding: 4px; }\n');
+    await mkdir(join(base, 'pkg-alpha'), { recursive: true });
+    await writeFile(join(base, 'pkg-alpha/package.json'), JSON.stringify({ name: 'pkg-alpha', type: 'module', exports: { '.': './index.tsx' }, lingxia: { tokens: './tokens.css' }, peerDependencies: { 'pkg-zeta': '*' } }));
+    await writeFile(join(base, 'pkg-alpha/tokens.css'), '@utility peer-pad { padding: 20px; }\n');
+    await writeFile(join(base, 'pkg-alpha/index.tsx'), 'export function Alpha() { return <view className="peer-pad" />; }\n');
+    await symlink(join(base, 'pkg-zeta'), join(app, 'node_modules/pkg-zeta'), 'junction');
+    await symlink(join(base, 'pkg-alpha'), join(app, 'node_modules/pkg-alpha'), 'junction');
+    await writeFile(join(app, 'page.tsx'), "import { Alpha } from 'pkg-alpha';\nexport function render() { return <view><Alpha /></view>; }\n");
+    await buildPages(app, ['page.tsx'], join(app, 'dist'));
+    source = await readFile(join(app, 'dist/page.js'), 'utf8');
+    assert.equal(rule(source, 'peer-pad').paddingTop, 20);
+  } finally { await rm(base, { recursive: true, force: true }); }
 });
