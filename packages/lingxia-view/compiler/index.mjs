@@ -10,7 +10,7 @@ import { inertControlWarnings } from './inert-controls.mjs';
 import { moduleJsxProblems } from './module-jsx.mjs';
 import { vectorPathProblems } from './vector-paths.mjs';
 import { transformedHolderProblems } from './transformed-holders.mjs';
-import { sourceChecker, moduleChecker, parseSource } from './source.mjs';
+import { sourceChecker, moduleChecker, parseSource, scriptModule, scriptLoader } from './source.mjs';
 import { moduleBanner } from './compatibility.mjs';
 import { compileUtilities, tailwindWarm } from './tailwind.mjs';
 import { nearestSupported } from './suggest.mjs';
@@ -305,7 +305,7 @@ export function stampIds(source, filename, log) {
  */
 export function identify(source, filename, label) {
   const file = parseSource(filename, source);
-  const module = label.replace(/\.[jt]sx?$/, '');
+  const module = label.replace(scriptModule, '');
   const names = [], volatile = [], moduleNames = ownDeclarations(file);
   for (const statement of file.statements) {
     if (ts.isFunctionDeclaration(statement) && statement.name && /^[A-Z]/.test(statement.name.text) && statement.body) {
@@ -329,7 +329,7 @@ export function identify(source, filename, label) {
 function classProblems(rule, name, tag, suggestions, grid, focusable = false) {
   if (!rule) {
     const nearest = suggestions.get(name);
-    return [`UI_CLASS_UNKNOWN: ${name} is not a Tailwind utility${nearest ? `; nearest supported: ${nearest}` : ''}`];
+    return [`UI_CLASS_UNKNOWN: ${name} is not a Tailwind utility${nearest && nearest !== name ? `; nearest supported: ${nearest}` : ''}`];
   }
   if (rule.error?.category === 'color') return [`UI_COLOR: ${name}: ${rule.error.message}`];
   if (rule.error) return [`UI_CLASS_UNSUPPORTED: ${name}: the native renderer does not support ${rule.error.message}`];
@@ -383,6 +383,31 @@ function report(problems, page) {
 }
 
 // A warm dev compiler rebuilds the files of one page per save; unchanged ones keep their analysis.
+/** Whether a callee is `cx` from `@lingxia/view` in `file`, under any local or namespace name. */
+function cxCallee(file) {
+  const named = new Set(), namespaces = new Set();
+  for (const statement of file.statements) {
+    if (!ts.isImportDeclaration(statement) || !ts.isStringLiteral(statement.moduleSpecifier) || statement.moduleSpecifier.text !== '@lingxia/view') continue;
+    const bindings = statement.importClause?.namedBindings;
+    if (bindings && ts.isNamespaceImport(bindings)) namespaces.add(bindings.name.text);
+    else if (bindings) for (const element of bindings.elements) if ((element.propertyName ?? element.name).text === 'cx') named.add(element.name.text);
+  }
+  return callee => ts.isIdentifier(callee) ? named.has(callee.text)
+    : ts.isPropertyAccessExpression(callee) && ts.isIdentifier(callee.expression) && namespaces.has(callee.expression.text) && callee.name.text === 'cx';
+}
+
+// Identifier and shorthand keys of `cx` maps are class names no string literal spells; a computed key is run-time.
+function cxMapKeys(node, names) {
+  while (ts.isParenthesizedExpression(node) || ts.isAsExpression(node) || ts.isSatisfiesExpression(node) || ts.isNonNullExpression(node)) node = node.expression;
+  if (ts.isArrayLiteralExpression(node)) for (const element of node.elements) cxMapKeys(element, names);
+  else if (ts.isConditionalExpression(node)) { cxMapKeys(node.whenTrue, names); cxMapKeys(node.whenFalse, names); }
+  else if (ts.isBinaryExpression(node) && [ts.SyntaxKind.AmpersandAmpersandToken, ts.SyntaxKind.BarBarToken, ts.SyntaxKind.QuestionQuestionToken].includes(node.operatorToken.kind)) {
+    cxMapKeys(node.left, names); cxMapKeys(node.right, names);
+  } else if (ts.isObjectLiteralExpression(node))
+    for (const property of node.properties)
+      if ((ts.isPropertyAssignment(property) || ts.isShorthandPropertyAssignment(property)) && ts.isIdentifier(property.name)) names.add(property.name.text);
+}
+
 const analyses = new Map();
 let analysisHits = 0, analysisMisses = 0;
 // `label` names the file in source positions, `id` in component and closure ids.
@@ -394,9 +419,11 @@ function analyse(path, contents, label, id, loader, literalColors, dev) {
   analysisMisses++;
   const file = parseSource(path, contents);
   const names = new Set();
+  const cx = cxCallee(file);
   const collect = node => {
     if (ts.isStringLiteralLike(node) || ts.isTemplateHead(node) || ts.isTemplateMiddle(node) || ts.isTemplateTail(node))
       for (const name of node.text.split(/\s+/)) if (name) names.add(name);
+    if (ts.isCallExpression(node) && cx(node.expression)) for (const argument of node.arguments) cxMapKeys(argument, names);
     ts.forEachChild(node, collect);
   };
   collect(file);
@@ -528,14 +555,24 @@ export async function buildPages(root, pages, output, catalogs = {}, { dev = fal
             }
             return { contents: '', loader: 'js' };
           });
-          builder.onLoad({ filter: /\.[jt]sx?$/ }, async ({ path }) => {
+          // A JSON file the page imports can hold class names; esbuild still loads it.
+          builder.onLoad({ filter: /\.json$/ }, async ({ path }) => {
+            const walk = value => {
+              if (typeof value === 'string') { for (const name of value.split(/\s+/)) if (name) candidates.add(name); }
+              else if (value && typeof value === 'object') Object.values(value).forEach(walk);
+            };
+            // Malformed JSON is esbuild's to report.
+            try { walk(JSON.parse(await readFile(path, 'utf8'))); } catch {}
+            return undefined;
+          });
+          builder.onLoad({ filter: scriptModule }, async ({ path }) => {
             if (path.toLowerCase().startsWith(runtimeRoot) || path === compiledMessages || dirname(path) === dirname(compiledMessages)) return;
             if (!authored(root, path)) {
               const owner = packageOf(path);
               if (owner) bundledPackages.set(owner.name, owner);
             }
             const contents = await readFile(path, 'utf8');
-            const loader = path.endsWith('.tsx') ? 'tsx' : path.endsWith('.ts') ? 'ts' : path.endsWith('.jsx') ? 'jsx' : 'js';
+            const loader = scriptLoader(path);
             const label = relative(root, path).split('\\').join('/');
             const analysed = analyse(path, contents, label, sourceLabel(root, path), loader, literalColors, dev);
             problems.push(...analysed.problems);
@@ -565,11 +602,18 @@ export async function buildPages(root, pages, output, catalogs = {}, { dev = fal
     const usages = sourceFiles.flatMap(file => collectClassUsage(file, checker));
     const unknown = [...new Set(usages.flatMap(({ value }) => value.split(/\s+/)).filter(name => name && !rulesByName.has(name)))];
     const suggestions = await nearestSupported(unknown, theme);
+    // A name the checks reach but the collection missed is a valid utility the table lacks, not a typo.
+    const uncollected = new Map(unknown.length ? (await compileUtilities(new Set(unknown), theme, { literalColors })).map(rule => [rule.name, rule]) : []);
     for (const { value, location, tag, focusable } of usages) {
       const names = value.split(/\s+/).filter(Boolean);
       const grid = names.includes('grid');
       for (const name of names) {
-        const found = rulesByName.get(name) ?? [undefined];
+        const late = rulesByName.has(name) ? undefined : uncollected.get(name);
+        if (late && !late.error) {
+          problems.push(`${location}: UI_CLASS_UNKNOWN: ${name} is a utility, but the build found it in no string of this page's sources, so it was not compiled; write '${name}' as one whole word in a string literal`);
+          continue;
+        }
+        const found = rulesByName.get(name) ?? [late];
         for (const problem of new Set(found.flatMap(rule => classProblems(rule, name, tag, suggestions, grid, focusable)))) problems.push(`${location}: ${problem}`);
       }
     }
