@@ -38,12 +38,12 @@ export const doc: ComponentDoc = {
       'Attach buttons of one kind and equal weight: undo and redo, zoom out and in.',
       'Name the group for what its buttons share: "Text style", "Message actions".',
       'Set `size` and `variant` on the group, and on a button only to make one stand out.',
-      'At large text, expect a group to wrap onto more lines, attached ones too; keep an attached group to two or three short labels so it stays one shape at standard sizes.',
+      'At large text, expect a group to wrap onto more lines; an attached group that no longer fits one line comes apart first, each button whole with a gap. Keep it to two or three short labels so it stays one shape at standard sizes.',
     ],
     dont: [
       'Attach a primary button to others; let it stand apart.',
       'Use a group to choose a value or a view; that is a SegmentedControl or Tabs.',
-      'Put more buttons in an attached group than fit one line; a wrapped attached group no longer reads as one shape.',
+      'Put more buttons in an attached group than fit one line; it comes apart and no longer reads as one shape.',
     ],
   },
   examples: [
@@ -57,7 +57,7 @@ export const doc: ComponentDoc = {
     {
       missing: 'An attached group that folds the buttons that do not fit into a menu.',
       needs: 'reading a laid-out box\'s size (`useBox`) to fold buttons into a menu',
-      today: 'An attached group that does not fit wraps onto another line; keep it short.',
+      today: 'An attached group that does not fit one line comes apart and wraps; keep it short.',
     },
     {
       missing: 'A vertical group.',

@@ -54,6 +54,24 @@ test('Toolbar: icon buttons in a quiet group, each named', async () => {
   ]);
 });
 
+test('An attached group too long for one line comes apart, each button rounded with a gap, and joins again once it fits', async () => {
+  const screen = await renderExample('ButtonGroup/ButtonGroup', 'Attached');
+  const group = () => screen.getByTestId('history');
+  const round = id => ['radiusStartStart', 'radiusStartEnd', 'radiusEndEnd', 'radiusEndStart'].map(corner => screen.getByTestId(id).props[corner] ?? screen.getByTestId(id).props.radius ?? 0);
+  // Joined, three buttons need 300 pt on one line; the card gives 200.
+  screen.layout(group(), { width: 200, height: 92, minContentWidth: 100, maxContentWidth: 300 });
+  assert.equal(group().props.columnGap ?? group().props.gap, 8, 'apart: a gap between buttons');
+  assert.deepEqual(round('redo'), [10, 10, 10, 10], 'the middle button is whole');
+  assert.equal(screen.getByTestId('redo').props.marginInlineStart ?? 0, 0, 'no overlap');
+  // Apart its one line is 300 + two 9 pt joins; at 310 joined it fits (300), apart it would not (318).
+  screen.layout(group(), { width: 310, height: 92, minContentWidth: 100, maxContentWidth: 318 });
+  assert.equal(group().props.columnGap, 0, 'joined again');
+  assert.deepEqual(round('redo'), [0, 0, 0, 0]);
+  // Joined and fitting, it stays joined.
+  screen.layout(group(), { width: 300, height: 40, minContentWidth: 100, maxContentWidth: 300 });
+  assert.equal(group().props.columnGap, 0);
+});
+
 test('At large text: a group wraps rather than run past its card, attached or apart, and its buttons keep their labels whole', async () => {
   for (const [example, id, gaps] of [['Attached', 'history', [0, 8]], ['Actions', 'actions', [8, 8]]]) {
     const screen = await renderExample('ButtonGroup/ButtonGroup', example);

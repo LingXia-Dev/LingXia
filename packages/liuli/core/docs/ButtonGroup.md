@@ -142,7 +142,7 @@ export function Toolbar() {
 | --- | --- | --- | --- |
 | `label` (required) | `string` |  | What the buttons have in common, read once as the group's name: "Text style". |
 | `children` (required) | `Child` |  | Button and IconButton elements. |
-| `isAttached` | `boolean` | `false` | Joins the buttons edge to edge, for actions of one kind. Apart, they keep a gap and wrap. |
+| `isAttached` | `boolean` | `false` | Joins the buttons edge to edge, for actions of one kind. A row too long for one line comes apart and wraps, each button whole, as apart ones do. |
 | `size` | `ButtonSize` |  | The size of every button that sets none. |
 | `variant` | `ButtonVariant` |  | The variant of every button that sets none. |
 | `isDisabled` | `boolean` | `false` | Disables every button in the group. |
@@ -186,16 +186,16 @@ Ratios are computed from @lingxia/view/theme and rounded down.
 - Do: Attach buttons of one kind and equal weight: undo and redo, zoom out and in.
 - Do: Name the group for what its buttons share: "Text style", "Message actions".
 - Do: Set `size` and `variant` on the group, and on a button only to make one stand out.
-- Do: At large text, expect a group to wrap onto more lines, attached ones too; keep an attached group to two or three short labels so it stays one shape at standard sizes.
+- Do: At large text, expect a group to wrap onto more lines; an attached group that no longer fits one line comes apart first, each button whole with a gap. Keep it to two or three short labels so it stays one shape at standard sizes.
 - Don't: Attach a primary button to others; let it stand apart.
 - Don't: Use a group to choose a value or a view; that is a SegmentedControl or Tabs.
-- Don't: Put more buttons in an attached group than fit one line; a wrapped attached group no longer reads as one shape.
+- Don't: Put more buttons in an attached group than fit one line; it comes apart and no longer reads as one shape.
 
 ## Not yet
 
 | Missing | Needs | Meanwhile |
 | --- | --- | --- |
-| An attached group that folds the buttons that do not fit into a menu. | reading a laid-out box's size (`useBox`) to fold buttons into a menu | An attached group that does not fit wraps onto another line; keep it short. |
+| An attached group that folds the buttons that do not fit into a menu. | reading a laid-out box's size (`useBox`) to fold buttons into a menu | An attached group that does not fit one line comes apart and wraps; keep it short. |
 | A vertical group. | nothing from the View | Rows only. |
 
 Related: Button, IconButton, SegmentedControl.

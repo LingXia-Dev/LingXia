@@ -2209,7 +2209,7 @@
           "name": "isAttached",
           "type": "boolean",
           "required": false,
-          "description": "Joins the buttons edge to edge, for actions of one kind. Apart, they keep a gap and wrap.",
+          "description": "Joins the buttons edge to edge, for actions of one kind. A row too long for one line comes apart and wraps, each button whole, as apart ones do.",
           "default": "false"
         },
         {
@@ -2323,7 +2323,7 @@
         {
           "missing": "An attached group that folds the buttons that do not fit into a menu.",
           "needs": "reading a laid-out box's size (`useBox`) to fold buttons into a menu",
-          "today": "An attached group that does not fit wraps onto another line; keep it short."
+          "today": "An attached group that does not fit one line comes apart and wraps; keep it short."
         },
         {
           "missing": "A vertical group.",
