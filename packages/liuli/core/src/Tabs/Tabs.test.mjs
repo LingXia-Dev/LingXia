@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { renderExample } from '../testing/harness.mjs';
+import { renderExample, renderPage } from '../testing/harness.mjs';
 
 const indicator = screen => screen.queryAll(node => node.props.widthPercent !== undefined)[0];
 
@@ -73,4 +73,22 @@ test('Large text: an equal tab is never narrower than its label; the indicator f
   assert.deepEqual(fades(), ['right', 'left'], 'mid-scroll: both edges fade');
   screen.fire(scroll(), 'onScrollEdge', JSON.stringify({ edge: 'end', at: true }));
   assert.deepEqual(fades(), ['right'], 'at the end: only the start edge fades');
+});
+
+test('A value longer than a box name still renders and measures its tab', async () => {
+  const long = 'https://example.com/projects/quarterly-planning/overview-of-the-whole-year';
+  const screen = await renderPage(`import { useLocal } from '@lingxia/view';
+import { Tabs } from '@liulidesign/core';
+export function render() {
+  const value = useLocal('value', ${JSON.stringify(long)});
+  return <page><Tabs label="Pages" data-testid="pages" tabWidth="content" value={value.value} onChange={value.set}
+    items={[{ value: ${JSON.stringify(long)}, label: 'Overview' }, { value: 'notes', label: 'Notes' }]} /></page>;
+}
+`);
+  const tab = value => screen.getByTestId(`pages-${value}`);
+  assert.equal(tab(long).props.stateSelected, 1);
+  screen.layout(tab(long).children[1], { width: 90, height: 40 });
+  screen.layout(tab('notes').children[1], { width: 60, height: 40 });
+  const bar = screen.queryAll(node => node.props.background === 'accent' && node.props.height === 2)[0];
+  assert.deepEqual([bar.props.width, JSON.parse(bar.props.transform).translate], [90, [0, 0]]);
 });

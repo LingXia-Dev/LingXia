@@ -45,7 +45,8 @@ export function Tabs({ label, items, value, onChange, variant = 'underline', tab
   const width: TabsWidth = segmented ? 'equal' : tabWidth;
   // Each tab is measured: a tab never narrower than its label leaves equal shares once one is long.
   const frame = useBox('frame');
-  const boxes = items.map(item => useBox(`tab-${item.value}`));
+  // Named by position: a value is any string, a box name at most 64 characters.
+  const boxes = items.map((_, at) => useBox(`tab-${at}`));
   const widths = boxes.map(box => box.value?.width);
   const isMeasured = widths.every(each => each !== undefined);
   const total = widths.reduce<number>((sum, each) => sum + (each ?? 0), 0);
