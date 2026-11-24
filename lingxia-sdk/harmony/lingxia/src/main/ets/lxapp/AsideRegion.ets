@@ -713,6 +713,9 @@ export struct AsideRegion {
               }, (tab: AsideTab) => `${tab.id}:${tab.title}:${tab.id === this.state.active}`)
             }
             .height('100%')
+            // A Scroll centres content narrower than itself; the chips start at the leading edge.
+            .constraintSize({ minWidth: '100%' })
+            .justifyContent(FlexAlign.Start)
             .alignItems(VerticalAlign.Center)
           }
           .scrollable(ScrollDirection.Horizontal)
