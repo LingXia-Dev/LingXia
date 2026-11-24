@@ -54,6 +54,8 @@ extern "C" fn apply_appearance(_appid: RustStr, _dark: bool) -> bool {
     true
 }
 host_stub!(host_appearance_dark() -> bool);
+host_stub!(start_pull_down_refresh(appid: RustStr, webtag: RustStr) -> bool);
+host_stub!(stop_pull_down_refresh(appid: RustStr, webtag: RustStr) -> bool);
 host_stub!(set_host_color_mode(mode: i32));
 host_stub!(get_capsule_rect(appid: RustStr, callback_id: u64));
 lifecycle_stub!(update_navbar_ui(appid: RustStr));
