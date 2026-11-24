@@ -36,7 +36,7 @@ export type SplitProps = SplitCompact & {
   children?: Child;
   /** The companion beside it: a live chat, comments, an inspector. */
   aside: Child;
-  /** Names the aside pane, and its sheet on a phone: "Live chat", "Comments". */
+  /** Names the companion for a screen reader in every form, beside, below or in a sheet: "Live chat", "Comments". Not drawn; start `aside` with its own heading. */
   asideLabel: string;
   /** The aside's width in pt beside the main content, when no fold crosses the page. @default 320 */
   asideWidth?: number;
@@ -105,6 +105,7 @@ export function Split(props: SplitProps) {
             isOpen={sheetOpen}
             onOpenChange={handleOpenChange}
             label={asideLabel}
+            isLabelHidden
             detents="expandable"
             data-testid={testId && `${testId}-sheet`}
           >

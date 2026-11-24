@@ -26,7 +26,7 @@ export function LiveStreamSplit() {
         asideLabel="Live chat"
         aside={
           <view className="p-3 gap-2">
-            <text className="text-footnote font-semibold text-text">Live chat</text>
+            <text role="heading" headingLevel={2} className="text-footnote font-semibold text-text">Live chat</text>
             <text className="text-caption text-muted">Messages stay beside video on wide screens and below in compact or tabletop.</text>
           </view>
         }
@@ -62,6 +62,7 @@ export function DocumentSheetSplit() {
         asideWidth={240}
         aside={
           <view className="p-3 gap-2">
+            <text role="heading" headingLevel={2} className="text-footnote font-semibold text-text">Comments</text>
             <text className="text-caption text-muted">Review notes and inline discussion.</text>
           </view>
         }
@@ -95,7 +96,7 @@ export function DocumentSheetSplit() {
 | `onOpenChange` | `((isOpen: boolean) => void)` |  | Runs with `false` when the sheet is dismissed. |
 | `children` | `Child` |  | The main content: a video, a document, a canvas. |
 | `aside` (required) | `Child` |  | The companion beside it: a live chat, comments, an inspector. |
-| `asideLabel` (required) | `string` |  | Names the aside pane, and its sheet on a phone: "Live chat", "Comments". |
+| `asideLabel` (required) | `string` |  | Names the companion for a screen reader in every form, beside, below or in a sheet: "Live chat", "Comments". Not drawn; start `aside` with its own heading. |
 | `asideWidth` | `number` | `320` | The aside's width in pt beside the main content, when no fold crosses the page. |
 | `className` | `string` |  |  |
 | `data-testid` | `string` |  | On the root; the panes get `<testid>-primary` and `<testid>-aside`, the sheet `<testid>-sheet`. |
@@ -133,7 +134,7 @@ Ratios are computed from @lingxia/view/theme and rounded down.
 
 - Do: Use `compact="stack"` when both must stay in view on a phone, such as a live video above its chat.
 - Do: Use `compact="sheet"`, with `bind` or `isOpen` and `onOpenChange`, and a button that shows only on a phone, when the companion can wait (comments, filters).
-- Do: Name the aside with `asideLabel`: it names the pane and, on a phone, the sheet.
+- Do: Start the companion with its own heading; `asideLabel` names it for a screen reader and the opening button, and is not drawn.
 - Do: Let it fill the page to its bottom edge and across its width: the seam is placed from those edges, so it meets the crease whatever sits above.
 - Don't: Read the fold or the platform in page code to move the video and the chat; Split does that.
 

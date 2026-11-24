@@ -124,6 +124,6 @@ export const layoutDemos = {
   sizes: SizesDemo,
   measure: MeasureDemo,
   position: PositionDemo,
-  section: SectionDemo,
   adaptive: AdaptiveDemo,
+  section: SectionDemo,
 };

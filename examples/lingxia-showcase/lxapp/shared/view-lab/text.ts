@@ -53,8 +53,8 @@ export const demos = {
     sizes: { testId: 'lab-sizing', title: 'lab.demo.layout.sizes.title', try: 'lab.demo.layout.sizes.try' },
     measure: { testId: 'lab-box', title: 'lab.demo.layout.measure.title', try: 'lab.demo.layout.measure.try' },
     position: { testId: 'lab-structure', title: 'lab.demo.layout.position.title', try: 'lab.demo.layout.position.try' },
-    section: { testId: 'lab-disclosure', title: 'lab.demo.layout.section.title', try: 'lab.demo.layout.section.try' },
     adaptive: { testId: 'lab-adaptive', title: 'lab.demo.layout.adaptive.title', try: 'lab.demo.layout.adaptive.try' },
+    section: { testId: 'lab-disclosure', title: 'lab.demo.layout.section.title', try: 'lab.demo.layout.section.try' },
   },
   text: {
     paragraphs: { testId: 'lab-text', title: 'lab.demo.text.paragraphs.title', try: 'lab.demo.text.paragraphs.try' },

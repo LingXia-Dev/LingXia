@@ -11,7 +11,7 @@ export function LiveStreamSplit() {
         asideLabel="Live chat"
         aside={
           <view className="p-3 gap-2">
-            <text className="text-footnote font-semibold text-text">Live chat</text>
+            <text role="heading" headingLevel={2} className="text-footnote font-semibold text-text">Live chat</text>
             <text className="text-caption text-muted">Messages stay beside video on wide screens and below in compact or tabletop.</text>
           </view>
         }
@@ -39,6 +39,7 @@ export function DocumentSheetSplit() {
         asideWidth={240}
         aside={
           <view className="p-3 gap-2">
+            <text role="heading" headingLevel={2} className="text-footnote font-semibold text-text">Comments</text>
             <text className="text-caption text-muted">Review notes and inline discussion.</text>
           </view>
         }

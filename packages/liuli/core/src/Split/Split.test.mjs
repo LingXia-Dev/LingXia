@@ -1,6 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { renderExample } from '../testing/harness.mjs';
+import { textOf } from '@lingxia/view/testing';
 
 const regularWide = { env: { sizeClass: 'regular', viewport: { width: 1024, height: 768 } } };
 const tabletopFold = {
@@ -40,3 +41,15 @@ test('The aside is a group named by asideLabel; on a phone its sheet takes the s
   screen.press(screen.getByTestId('doc-open-comments'));
   assert.equal(screen.getByTestId('doc-split-sheet').props.accessibilityLabel, 'Comments');
 });
+
+test('the sheet is named by asideLabel and draws no title of its own: the companion\'s heading is the one shown', async () => {
+  const screen = await renderExample('Split/Split', 'DocumentSheetSplit', compact);
+  screen.press(screen.getByTestId('doc-open-comments'));
+  const sheet = screen.getByTestId('doc-split-sheet');
+  assert.equal(sheet.props.accessibilityLabel, 'Comments');
+  const headings = [];
+  const walk = node => { if (node?.props?.role === 'heading') headings.push(textOf(node)); (node?.children ?? []).forEach(walk); };
+  walk(sheet);
+  assert.deepEqual(headings, ['Comments'], 'one heading, the companion\'s own');
+});
+

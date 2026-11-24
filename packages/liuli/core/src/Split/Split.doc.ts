@@ -36,7 +36,7 @@ export const doc: ComponentDoc = {
     do: [
       'Use `compact="stack"` when both must stay in view on a phone, such as a live video above its chat.',
       'Use `compact="sheet"`, with `bind` or `isOpen` and `onOpenChange`, and a button that shows only on a phone, when the companion can wait (comments, filters).',
-      'Name the aside with `asideLabel`: it names the pane and, on a phone, the sheet.',
+      'Start the companion with its own heading; `asideLabel` names it for a screen reader and the opening button, and is not drawn.',
       'Let it fill the page to its bottom edge and across its width: the seam is placed from those edges, so it meets the crease whatever sits above.',
     ],
     dont: [

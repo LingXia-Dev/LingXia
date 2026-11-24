@@ -19,7 +19,7 @@ export function render() {
         asideWidth={320}
         aside={
           <view className="p-4 gap-2">
-            <text className="text-sm font-semibold text-text">Live notes</text>
+            <text role="heading" headingLevel={2} className="text-sm font-semibold text-text">Live notes</text>
             <text className="text-xs text-muted">
               Beside the main content on a wide screen, below it at a tabletop fold, in a sheet on a phone.
             </text>
