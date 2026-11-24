@@ -87,8 +87,15 @@ export interface ChannelEndpoint<T = unknown, S = unknown> {
 }
 
 /** A page's actions as the View calls them: a Promise of the result, or a `Stream` for an `async *` action. */
-export type ViewActions<A> = { readonly [K in keyof A]: A[K] extends (...args: infer P) => AsyncGenerator<infer T, infer R, any> ? (...args: P) => Stream<T, R>
-  : A[K] extends (...args: infer P) => Promise<infer R> ? (...args: P) => Promise<ReadonlyData<R>> : A[K] };
+export type ViewActions<A> = { readonly [K in keyof A]:
+  A[K] extends (...args: infer P) => AsyncGenerator<infer T, infer R, any>
+    ? (P extends [] | [unknown?] ? (...args: P) => Stream<T, R> : never)
+  : A[K] extends (...args: infer P) => Promise<infer R>
+    ? (P extends [] | [unknown?] ? (...args: P) => Promise<ReadonlyData<R>>
+      : P extends [any, ChannelEndpoint<any, any>] ? A[K] : never)
+  : A[K] extends (...args: infer P) => unknown
+    ? (P extends [] | [unknown?] | [any, ChannelEndpoint<any, any>] ? A[K] : never)
+  : A[K] };
 export interface PageView<A = Readonly<Record<string, (payload?: unknown) => Promise<unknown>>>, D = Record<string, unknown>> {
   readonly data: ReadonlyData<D>; readonly actions: ViewActions<A>; readonly channels: Channels; readonly env: Env;
 }
@@ -99,7 +106,7 @@ export interface PageView<A = Readonly<Record<string, (payload?: unknown) => Pro
 export type View<A = Readonly<Record<string, (payload?: unknown) => Promise<unknown>>>, D = Record<string, unknown>> =
   A extends { readonly __lxPage: unknown; readonly data: infer PD; readonly actions: infer PA } ? PageView<PA, PD> : PageView<A, D>;
 /** The View of the page being rendered; components needing typed data take it as props. */
-export declare function useView(): View;
+export declare function useView<A = Readonly<Record<string, (payload?: unknown) => Promise<unknown>>>, D = Record<string, unknown>>(): View<A, D>;
 
 declare const localCell: unique symbol;
 /** JSON-shaped state; undefined object fields are omitted, including optional fields. */
@@ -107,9 +114,8 @@ export type LocalData<T> = T extends string | number | boolean | null ? T
   : T extends (...args: any[]) => any ? never
   : T extends readonly unknown[] ? { [K in keyof T]: LocalData<T[K]> }
   : T extends object ? { [K in keyof T]: T[K] extends undefined ? undefined : LocalData<T[K]> } : never;
-export interface Local<T> { readonly [localCell]: true; readonly value: ReadonlyData<T>; set(value: ReadonlyData<LocalData<T>>): void;
-  /** Focus the editor this cell is bound to (`bind`), on the next frame. */
-  focus(): void }
+export type Local<T> = { readonly [localCell]: true; readonly value: ReadonlyData<T>; set(value: ReadonlyData<LocalData<T>>): void }
+  & ([T] extends [string] ? { /** Focus the editor this cell is bound to (`bind`), on the next frame. */ focus(): void } : {});
 /** Local state keyed by call order in the component, as React's `useState`. */
 export declare function useLocal<T>(initial: T, ...invalid: [T] extends [LocalData<T>] ? [] : [never]): Local<T>;
 /** Local state keyed by `name`: it survives reordered calls and hot edits. */
