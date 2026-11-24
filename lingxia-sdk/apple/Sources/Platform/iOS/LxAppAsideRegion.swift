@@ -223,7 +223,8 @@ final class LxAppAsideRegion {
     func layout() {
         guard let owner, let host = owner.view else { return }
         let bounds = host.bounds
-        let top = host.safeAreaInsets.top
+        let safe = host.safeAreaInsets
+        let top = safe.top
         let shown = showing
         let over = overlay
 
@@ -231,11 +232,15 @@ final class LxAppAsideRegion {
         if shown {
             let width = over ? bounds.width : dockedWidth()
             panel.frame = CGRect(x: bounds.maxX - width, y: 0, width: width, height: bounds.height)
-            strip.frame = CGRect(x: 0, y: top, width: width, height: Self.stripHeight)
+            // The panel's fill reaches the screen edge; its strip and content stay clear of the
+            // sensor housing in landscape.
+            let leading = over ? safe.left : 0
+            let inner = max(0, width - leading - safe.right)
+            strip.frame = CGRect(x: leading, y: top, width: inner, height: Self.stripHeight)
             stripSeparator.frame = CGRect(
-                x: 0, y: Self.stripHeight - Self.hairline, width: width, height: Self.hairline)
+                x: 0, y: Self.stripHeight - Self.hairline, width: inner, height: Self.hairline)
             content.frame = CGRect(
-                x: 0, y: top + Self.stripHeight, width: width,
+                x: leading, y: top + Self.stripHeight, width: inner,
                 height: max(0, bounds.height - top - Self.stripHeight))
             panel.layer.shadowOpacity = over ? 0.18 : 0
             panel.layer.shadowRadius = 12
@@ -269,7 +274,7 @@ final class LxAppAsideRegion {
             tongue.count = slot?.children.filter { hosts($0) }.count ?? 0
             let width = tongue.count > 1 ? Self.tongueHitWidthCounted : Self.tongueHitWidth
             tongue.frame = CGRect(
-                x: bounds.maxX - width, y: (bounds.height - Self.tongueHitHeight) / 2,
+                x: bounds.maxX - safe.right - width, y: (bounds.height - Self.tongueHitHeight) / 2,
                 width: width, height: Self.tongueHitHeight)
         }
         host.bringSubviewToFront(panel)
