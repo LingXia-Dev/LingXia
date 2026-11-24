@@ -22,7 +22,7 @@ export const doc: ComponentDoc = {
     name: 'label',
     description: [],
     states: [
-      { state: 'pressed', from: 'value' },
+      { state: 'pressed', from: 'value or bind' },
       { state: 'disabled', from: 'isDisabled' },
     ],
     keyboard: [

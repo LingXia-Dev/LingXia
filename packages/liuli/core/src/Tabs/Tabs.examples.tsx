@@ -19,7 +19,7 @@ const summaries: Record<string, string> = {
 export function Sections() {
   const section = useLocal('section', 'overview');
   return (
-    <Tabs label="Project" items={sections} value={section.value} onChange={next => section.set(next)} data-testid="project">
+    <Tabs label="Project" items={sections} bind={section} data-testid="project">
       <text className="text-body text-muted">{summaries[section.value]}</text>
     </Tabs>
   );
@@ -34,7 +34,7 @@ const settings = [
 export function Fitted() {
   const tab = useLocal('tab', 'general');
   return (
-    <Tabs label="Settings" items={settings} value={tab.value} onChange={tab.set} tabWidth="content" data-testid="settings">
+    <Tabs label="Settings" items={settings} bind={tab} tabWidth="content" data-testid="settings">
       <text className="text-body text-muted">{settings.find(item => item.value === tab.value)?.label}</text>
     </Tabs>
   );
@@ -51,7 +51,7 @@ export function Segmented() {
   const range = useLocal('range', 'week');
   const totals: Record<string, string> = { day: '42 minutes', week: '5 hours 10 minutes', month: '21 hours' };
   return (
-    <Tabs label="Range" items={ranges} value={range.value} onChange={next => range.set(next)} variant="segmented" data-testid="range">
+    <Tabs label="Range" items={ranges} bind={range} variant="segmented" data-testid="range">
       <view className="gap-0.5">
         <text className="text-footnote text-muted">Time spent writing</text>
         <text className="text-title font-semibold text-text tabular-nums">{totals[range.value]}</text>
@@ -73,8 +73,7 @@ export function Filter() {
     <Tabs
       label="Show"
       items={[{ value: 'all', label: 'All' }, { value: 'pinned', label: 'Pinned' }, { value: 'shared', label: 'Shared' }]}
-      value={filter.value}
-      onChange={next => filter.set(next)}
+      bind={filter}
       variant="segmented"
       className="gap-3"
       data-testid="filter"

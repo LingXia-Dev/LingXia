@@ -28,7 +28,7 @@ export const doc: ComponentDoc = {
     name: 'label',
     description: [],
     states: [
-      { state: 'selected', from: 'value' },
+      { state: 'selected', from: 'value or bind' },
       { state: 'expanded', from: 'sections, open as `defaultOpenSections` lists them, then by a press on the heading' },
       { state: 'disabled', from: 'items[].isDisabled' },
     ],

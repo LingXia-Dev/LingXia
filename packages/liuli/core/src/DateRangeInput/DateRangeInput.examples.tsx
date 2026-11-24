@@ -14,8 +14,7 @@ export function Stay() {
     <DateRangeInput
       label="Stay"
       description="Check-in from 3 pm, check-out by 11 am."
-      value={stay.value}
-      onChange={stay.set}
+      bind={stay}
       format={short}
       today={today}
       min={today}
@@ -32,8 +31,7 @@ export function Empty() {
       label="Time off"
       placeholder="First and last day"
       isRequired
-      value={leave.value}
-      onChange={leave.set}
+      bind={leave}
       format={short}
       today={today}
       data-testid="leave"
@@ -46,7 +44,7 @@ const set = { start: '2026-12-01', end: '2026-12-05' };
 export function StateInvalid() {
   const stay = useLocal<CalendarRange>('taken', set);
   const isTaken = stay.value.start === set.start && stay.value.end === set.end;
-  return <DateRangeInput label="Stay" value={stay.value} onChange={stay.set} format={short} today={today} status={isTaken ? { type: 'error', message: 'These nights are taken.' } : undefined} data-testid="invalid" />;
+  return <DateRangeInput label="Stay" bind={stay} format={short} today={today} status={isTaken ? { type: 'error', message: 'These nights are taken.' } : undefined} data-testid="invalid" />;
 }
 
 export function StateDisabled() {

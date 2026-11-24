@@ -2446,15 +2446,21 @@
           "default": "false"
         },
         {
+          "name": "bind",
+          "type": "Local<string | null> | Local<CalendarRange>",
+          "required": false,
+          "description": "A View-local cell the control reads and writes; use it or `value` with `onChange`."
+        },
+        {
           "name": "value",
           "type": "string | CalendarRange | null",
-          "required": true,
+          "required": false,
           "description": "The chosen day, or `null`. The chosen span. A first press sets `start` and clears `end`; a second sets `end`, the earlier day first."
         },
         {
           "name": "onChange",
           "type": "((value: string) => void) | ((range: CalendarRange) => void)",
-          "required": true,
+          "required": false,
           "description": "Runs with the pressed day."
         },
         {
@@ -2544,7 +2550,17 @@
           }
         ]
       },
-      "choices": [],
+      "choices": [
+        [
+          [
+            "bind"
+          ],
+          [
+            "value",
+            "onChange"
+          ]
+        ]
+      ],
       "parts": {
         "root": "view",
         "header": "view",
@@ -2563,7 +2579,7 @@
         "states": [
           {
             "state": "selected",
-            "from": "value, or range"
+            "from": "value or bind, a day or a span"
           },
           {
             "state": "disabled",
@@ -2649,22 +2665,22 @@
         {
           "name": "Day",
           "title": "One day",
-          "source": "import { useLocal } from '@lingxia/view';\nimport { Calendar } from '@liulidesign/core/Calendar';\n\nconst today = '2026-11-15';\n\n/** One day: the chosen day is filled, today is ringed. */\nexport function Day() {\n  const day = useLocal<string | null>('day', '2026-11-19');\n  return <Calendar label=\"Due date\" value={day.value} onChange={day.set} today={today} data-testid=\"due\" />;\n}"
+          "source": "import { useLocal } from '@lingxia/view';\nimport { Calendar } from '@liulidesign/core/Calendar';\n\nconst today = '2026-11-15';\n\n/** One day: the chosen day is filled, today is ringed. */\nexport function Day() {\n  const day = useLocal<string | null>('day', '2026-11-19');\n  return <Calendar label=\"Due date\" bind={day} today={today} data-testid=\"due\" />;\n}"
         },
         {
           "name": "Stay",
           "title": "A span of days",
-          "source": "import { useLocal } from '@lingxia/view';\nimport { Calendar, type CalendarRange } from '@liulidesign/core/Calendar';\n\nconst today = '2026-11-15';\n\n/** A span: the first press starts it, the second ends it. Days before today cannot be chosen. */\nexport function Stay() {\n  const stay = useLocal<CalendarRange>('stay', { start: '2026-11-18', end: '2026-11-24' });\n  return (\n    <view className=\"gap-2\">\n      <Calendar label=\"Stay\" isRange value={stay.value} onChange={stay.set} min={today} today={today} data-testid=\"stay\" />\n      <text role=\"status\" className=\"px-2 text-footnote text-muted tabular-nums\">{`${stay.value.start ?? ''} – ${stay.value.end ?? ''}`}</text>\n    </view>\n  );\n}"
+          "source": "import { useLocal } from '@lingxia/view';\nimport { Calendar, type CalendarRange } from '@liulidesign/core/Calendar';\n\nconst today = '2026-11-15';\n\n/** A span: the first press starts it, the second ends it. Days before today cannot be chosen. */\nexport function Stay() {\n  const stay = useLocal<CalendarRange>('stay', { start: '2026-11-18', end: '2026-11-24' });\n  return (\n    <view className=\"gap-2\">\n      <Calendar label=\"Stay\" isRange bind={stay} min={today} today={today} data-testid=\"stay\" />\n      <text role=\"status\" className=\"px-2 text-footnote text-muted tabular-nums\">{`${stay.value.start ?? ''} – ${stay.value.end ?? ''}`}</text>\n    </view>\n  );\n}"
         },
         {
           "name": "Weekdays",
           "title": "Days ruled out",
-          "source": "import { useLocal } from '@lingxia/view';\nimport { Calendar, calendarWeekday } from '@liulidesign/core/Calendar';\n\nconst today = '2026-11-15';\nconst closed = (date: string) => calendarWeekday(date) >= 6;\n\n/** Days the app rules out stay in the grid, dimmed: here the weekends. */\nexport function Weekdays() {\n  const day = useLocal<string | null>('day', null);\n  return <Calendar label=\"Appointment\" value={day.value} onChange={day.set} isDateDisabled={closed} today={today} month=\"2026-12\" data-testid=\"appointment\" />;\n}"
+          "source": "import { useLocal } from '@lingxia/view';\nimport { Calendar, calendarWeekday } from '@liulidesign/core/Calendar';\n\nconst today = '2026-11-15';\nconst closed = (date: string) => calendarWeekday(date) >= 6;\n\n/** Days the app rules out stay in the grid, dimmed: here the weekends. */\nexport function Weekdays() {\n  const day = useLocal<string | null>('day', null);\n  return <Calendar label=\"Appointment\" bind={day} isDateDisabled={closed} today={today} month=\"2026-12\" data-testid=\"appointment\" />;\n}"
         },
         {
           "name": "MondayFirst",
           "title": "The app's own week",
-          "source": "import { useLocal } from '@lingxia/view';\nimport { Calendar } from '@liulidesign/core/Calendar';\n\nconst today = '2026-11-15';\n\n/** A school timetable: its week runs Monday to Sunday wherever the user lives. */\nexport function MondayFirst() {\n  const day = useLocal<string | null>('day', '2026-11-16');\n  return <Calendar label=\"Timetable\" value={day.value} onChange={day.set} firstWeekday={1} today={today} data-testid=\"timetable\" />;\n}"
+          "source": "import { useLocal } from '@lingxia/view';\nimport { Calendar } from '@liulidesign/core/Calendar';\n\nconst today = '2026-11-15';\n\n/** A school timetable: its week runs Monday to Sunday wherever the user lives. */\nexport function MondayFirst() {\n  const day = useLocal<string | null>('day', '2026-11-16');\n  return <Calendar label=\"Timetable\" bind={day} firstWeekday={1} today={today} data-testid=\"timetable\" />;\n}"
         }
       ],
       "gaps": [
@@ -6269,15 +6285,21 @@
           "default": "'md'"
         },
         {
+          "name": "bind",
+          "type": "Local<CalendarRange>",
+          "required": false,
+          "description": "A View-local cell the control reads and writes; use it or `value` with `onChange`."
+        },
+        {
           "name": "value",
           "type": "CalendarRange",
-          "required": true,
+          "required": false,
           "description": "The chosen span; both ends `null` shows the placeholder."
         },
         {
           "name": "onChange",
-          "type": "(range: CalendarRange) => void",
-          "required": true,
+          "type": "((range: CalendarRange) => void)",
+          "required": false,
           "description": "Runs with each press in the calendar: the first day alone, then the finished span."
         },
         {
@@ -6359,7 +6381,17 @@
         }
       ],
       "otherProps": {},
-      "choices": [],
+      "choices": [
+        [
+          [
+            "bind"
+          ],
+          [
+            "value",
+            "onChange"
+          ]
+        ]
+      ],
       "parts": {
         "value": "text",
         "icon": "vector",
@@ -6459,12 +6491,12 @@
         {
           "name": "Stay",
           "title": "A span of days",
-          "source": "import { useLocal } from '@lingxia/view';\nimport type { CalendarRange } from '@liulidesign/core/Calendar';\nimport { DateRangeInput } from '@liulidesign/core/DateRangeInput';\n\nconst today = '2026-11-15';\nconst short = (date: string) => `${Number(date.slice(8))} ${months[Number(date.slice(5, 7)) - 1]}`;\nconst set = { start: '2026-12-01', end: '2026-12-05' };\n\n/** A span of days in a form: pressing the field opens a calendar, and the second day closes it. */\nexport function Stay() {\n  const stay = useLocal<CalendarRange>('stay', { start: '2026-11-18', end: '2026-11-24' });\n  return (\n    <DateRangeInput\n      label=\"Stay\"\n      description=\"Check-in from 3 pm, check-out by 11 am.\"\n      value={stay.value}\n      onChange={stay.set}\n      format={short}\n      today={today}\n      min={today}\n      data-testid=\"stay\"\n    />\n  );\n}"
+          "source": "import { useLocal } from '@lingxia/view';\nimport type { CalendarRange } from '@liulidesign/core/Calendar';\nimport { DateRangeInput } from '@liulidesign/core/DateRangeInput';\n\nconst today = '2026-11-15';\nconst short = (date: string) => `${Number(date.slice(8))} ${months[Number(date.slice(5, 7)) - 1]}`;\n\n/** A span of days in a form: pressing the field opens a calendar, and the second day closes it. */\nexport function Stay() {\n  const stay = useLocal<CalendarRange>('stay', { start: '2026-11-18', end: '2026-11-24' });\n  return (\n    <DateRangeInput\n      label=\"Stay\"\n      description=\"Check-in from 3 pm, check-out by 11 am.\"\n      bind={stay}\n      format={short}\n      today={today}\n      min={today}\n      data-testid=\"stay\"\n    />\n  );\n}"
         },
         {
           "name": "Empty",
           "title": "Nothing chosen yet",
-          "source": "import { useLocal } from '@lingxia/view';\nimport type { CalendarRange } from '@liulidesign/core/Calendar';\nimport { DateRangeInput } from '@liulidesign/core/DateRangeInput';\n\nconst today = '2026-11-15';\nconst short = (date: string) => `${Number(date.slice(8))} ${months[Number(date.slice(5, 7)) - 1]}`;\nconst set = { start: '2026-12-01', end: '2026-12-05' };\n\n/** Nothing chosen yet, and required. */\nexport function Empty() {\n  const leave = useLocal<CalendarRange>('leave', { start: null, end: null });\n  return (\n    <DateRangeInput\n      label=\"Time off\"\n      placeholder=\"First and last day\"\n      isRequired\n      value={leave.value}\n      onChange={leave.set}\n      format={short}\n      today={today}\n      data-testid=\"leave\"\n    />\n  );\n}"
+          "source": "import { useLocal } from '@lingxia/view';\nimport type { CalendarRange } from '@liulidesign/core/Calendar';\nimport { DateRangeInput } from '@liulidesign/core/DateRangeInput';\n\nconst today = '2026-11-15';\nconst short = (date: string) => `${Number(date.slice(8))} ${months[Number(date.slice(5, 7)) - 1]}`;\n\n/** Nothing chosen yet, and required. */\nexport function Empty() {\n  const leave = useLocal<CalendarRange>('leave', { start: null, end: null });\n  return (\n    <DateRangeInput\n      label=\"Time off\"\n      placeholder=\"First and last day\"\n      isRequired\n      bind={leave}\n      format={short}\n      today={today}\n      data-testid=\"leave\"\n    />\n  );\n}"
         }
       ],
       "gaps": [
@@ -13259,6 +13291,24 @@
       ],
       "props": [
         {
+          "name": "bind",
+          "type": "Local<string | null>",
+          "required": false,
+          "description": "A View-local cell the control reads and writes; use it or `value` with `onChange`."
+        },
+        {
+          "name": "value",
+          "type": "string | null",
+          "required": false,
+          "description": "The current row's value, or `null` when none is current."
+        },
+        {
+          "name": "onChange",
+          "type": "((value: string) => void)",
+          "required": false,
+          "description": "Runs with the value of a row chosen by a tap, a click or Enter."
+        },
+        {
           "name": "label",
           "type": "string",
           "required": true,
@@ -13269,18 +13319,6 @@
           "type": "readonly NavListSection[]",
           "required": true,
           "description": "The rows, in sections."
-        },
-        {
-          "name": "value",
-          "type": "string | null",
-          "required": true,
-          "description": "The current row's value, or `null` when none is current."
-        },
-        {
-          "name": "onChange",
-          "type": "(value: string) => void",
-          "required": true,
-          "description": "Runs with the value of a row chosen by a tap, a click or Enter."
         },
         {
           "name": "defaultOpenSections",
@@ -13302,7 +13340,17 @@
         }
       ],
       "otherProps": {},
-      "choices": [],
+      "choices": [
+        [
+          [
+            "bind"
+          ],
+          [
+            "value",
+            "onChange"
+          ]
+        ]
+      ],
       "parts": {
         "root": "view",
         "group": "button",
@@ -13320,7 +13368,7 @@
         "states": [
           {
             "state": "selected",
-            "from": "value"
+            "from": "value or bind"
           },
           {
             "state": "expanded",
@@ -13394,12 +13442,12 @@
         {
           "name": "Sidebar",
           "title": "A sidebar",
-          "source": "import { useLocal } from '@lingxia/view';\nimport { NavList } from '@liulidesign/core/NavList';\n\nconst workspace = [\n  { id: 'mail', items: [\n    { value: 'inbox', label: 'Inbox', endText: '12' },\n    { value: 'drafts', label: 'Drafts', endText: '3' },\n    { value: 'sent', label: 'Sent' },\n  ] },\n  { id: 'projects', title: 'Projects', items: [\n    { value: 'launch', label: 'Spring launch' },\n    { value: 'research', label: 'User research' },\n    { value: 'archive', label: 'Archive', isDisabled: true },\n  ] },\n] as const;\n\n/** A sidebar: places first, then a section that closes; the current row is selected. */\nexport function Sidebar() {\n  const current = useLocal<string>('current', 'inbox');\n  return (\n    <view className=\"md:max-w-[264px] gap-4\">\n      <NavList label=\"Workspace\" sections={workspace} value={current.value} onChange={next => current.set(next)} data-testid=\"workspace\" />\n      <text className=\"text-footnote text-muted\" data-testid=\"workspace-current\">{`Showing ${current.value}`}</text>\n    </view>\n  );\n}"
+          "source": "import { useLocal } from '@lingxia/view';\nimport { NavList } from '@liulidesign/core/NavList';\n\nconst workspace = [\n  { id: 'mail', items: [\n    { value: 'inbox', label: 'Inbox', endText: '12' },\n    { value: 'drafts', label: 'Drafts', endText: '3' },\n    { value: 'sent', label: 'Sent' },\n  ] },\n  { id: 'projects', title: 'Projects', items: [\n    { value: 'launch', label: 'Spring launch' },\n    { value: 'research', label: 'User research' },\n    { value: 'archive', label: 'Archive', isDisabled: true },\n  ] },\n] as const;\n\n/** A sidebar: places first, then a section that closes; the current row is selected. */\nexport function Sidebar() {\n  const current = useLocal<string>('current', 'inbox');\n  return (\n    <view className=\"md:max-w-[264px] gap-4\">\n      <NavList label=\"Workspace\" sections={workspace} bind={current} data-testid=\"workspace\" />\n      <text className=\"text-footnote text-muted\" data-testid=\"workspace-current\">{`Showing ${current.value}`}</text>\n    </view>\n  );\n}"
         },
         {
           "name": "Closed",
           "title": "A section that starts closed",
-          "source": "import { useLocal } from '@lingxia/view';\nimport { NavList } from '@liulidesign/core/NavList';\n\nconst library = [\n  { id: 'inputs', title: 'Inputs', items: [{ value: 'text-input', label: 'TextInput' }, { value: 'date-input', label: 'DateInput' }] },\n  { id: 'feedback', title: 'Feedback', items: [{ value: 'badge', label: 'Badge' }, { value: 'toast', label: 'Toast' }] },\n] as const;\n\n/** Only the section in use starts open; each remembers being opened. */\nexport function Closed() {\n  const current = useLocal<string>('current', 'text-input');\n  return (\n    <view className=\"md:max-w-[264px]\">\n      <NavList label=\"Components\" sections={library} value={current.value} onChange={next => current.set(next)} defaultOpenSections={['inputs']} data-testid=\"library\" />\n    </view>\n  );\n}"
+          "source": "import { useLocal } from '@lingxia/view';\nimport { NavList } from '@liulidesign/core/NavList';\n\nconst library = [\n  { id: 'inputs', title: 'Inputs', items: [{ value: 'text-input', label: 'TextInput' }, { value: 'date-input', label: 'DateInput' }] },\n  { id: 'feedback', title: 'Feedback', items: [{ value: 'badge', label: 'Badge' }, { value: 'toast', label: 'Toast' }] },\n] as const;\n\n/** Only the section in use starts open; each remembers being opened. */\nexport function Closed() {\n  const current = useLocal<string>('current', 'text-input');\n  return (\n    <view className=\"md:max-w-[264px]\">\n      <NavList label=\"Components\" sections={library} bind={current} defaultOpenSections={['inputs']} data-testid=\"library\" />\n    </view>\n  );\n}"
         }
       ],
       "gaps": [
@@ -14100,16 +14148,28 @@
       ],
       "props": [
         {
-          "name": "label",
-          "type": "string",
-          "required": true,
-          "description": "Names the control for assistive tech: \"Pages\", \"Results pages\"."
+          "name": "bind",
+          "type": "Local<number>",
+          "required": false,
+          "description": "A View-local cell the control reads and writes; use it or `value` with `onChange`."
         },
         {
           "name": "value",
           "type": "number",
-          "required": true,
+          "required": false,
           "description": "The current page, from 1."
+        },
+        {
+          "name": "onChange",
+          "type": "((page: number) => void)",
+          "required": false,
+          "description": "Runs with the page chosen."
+        },
+        {
+          "name": "label",
+          "type": "string",
+          "required": true,
+          "description": "Names the control for assistive tech: \"Pages\", \"Results pages\"."
         },
         {
           "name": "pageCount",
@@ -14129,12 +14189,6 @@
           "required": false,
           "description": "With no count, as with a cursor: whether a page follows this one.",
           "default": "false"
-        },
-        {
-          "name": "onChange",
-          "type": "(page: number) => void",
-          "required": true,
-          "description": "Runs with the page chosen."
         },
         {
           "name": "pageLabel",
@@ -14218,7 +14272,17 @@
         }
       ],
       "otherProps": {},
-      "choices": [],
+      "choices": [
+        [
+          [
+            "bind"
+          ],
+          [
+            "value",
+            "onChange"
+          ]
+        ]
+      ],
       "parts": {
         "root": "view",
         "pages": "view",
@@ -14295,27 +14359,27 @@
         {
           "name": "Results",
           "title": "Under a list of results",
-          "source": "import { useLocal } from '@lingxia/view';\nimport { Pagination } from '@liulidesign/core/Pagination';\n\nconst words = { pageLabel: (page: number) => `Page ${page}`, previousLabel: 'Previous page', nextLabel: 'Next page' };\n\n/** Twelve pages: a finger gets the arrows and the position, a mouse the page numbers. */\nexport function Results() {\n  const page = useLocal('page', 3);\n  return (\n    <view className=\"gap-2\">\n      <Pagination label=\"Results pages\" value={page.value} pageCount={12} onChange={page.set} positionLabel={(at, of) => `Page ${at} of ${of}`} {...words} data-testid=\"results\" />\n      <text role=\"status\" className=\"text-footnote text-muted tabular-nums\">{`Showing ${(page.value - 1) * 20 + 1}–${page.value * 20} of 240`}</text>\n    </view>\n  );\n}"
+          "source": "import { useLocal } from '@lingxia/view';\nimport { Pagination } from '@liulidesign/core/Pagination';\n\nconst words = { pageLabel: (page: number) => `Page ${page}`, previousLabel: 'Previous page', nextLabel: 'Next page' };\n\n/** Twelve pages: a finger gets the arrows and the position, a mouse the page numbers. */\nexport function Results() {\n  const page = useLocal('page', 3);\n  return (\n    <view className=\"gap-2\">\n      <Pagination label=\"Results pages\" bind={page} pageCount={12} positionLabel={(at, of) => `Page ${at} of ${of}`} {...words} data-testid=\"results\" />\n      <text role=\"status\" className=\"text-footnote text-muted tabular-nums\">{`Showing ${(page.value - 1) * 20 + 1}–${page.value * 20} of 240`}</text>\n    </view>\n  );\n}"
         },
         {
           "name": "Pages",
           "title": "Page numbers",
-          "source": "import { useLocal } from '@lingxia/view';\nimport { Pagination } from '@liulidesign/core/Pagination';\n\nconst words = { pageLabel: (page: number) => `Page ${page}`, previousLabel: 'Previous page', nextLabel: 'Next page' };\n\n/** The page numbers, whatever the pointer: first, last, the current page and its neighbours. */\nexport function Pages() {\n  const page = useLocal('page', 6);\n  return <Pagination label=\"Pages\" variant=\"pages\" value={page.value} pageCount={12} onChange={page.set} {...words} data-testid=\"pages\" />;\n}"
+          "source": "import { useLocal } from '@lingxia/view';\nimport { Pagination } from '@liulidesign/core/Pagination';\n\nconst words = { pageLabel: (page: number) => `Page ${page}`, previousLabel: 'Previous page', nextLabel: 'Next page' };\n\n/** The page numbers, whatever the pointer: first, last, the current page and its neighbours. */\nexport function Pages() {\n  const page = useLocal('page', 6);\n  return <Pagination label=\"Pages\" variant=\"pages\" bind={page} pageCount={12} {...words} data-testid=\"pages\" />;\n}"
         },
         {
           "name": "Compact",
           "title": "Arrows and the position",
-          "source": "import { useLocal } from '@lingxia/view';\nimport { Pagination } from '@liulidesign/core/Pagination';\n\nconst words = { pageLabel: (page: number) => `Page ${page}`, previousLabel: 'Previous page', nextLabel: 'Next page' };\n\n/** The arrows and the position, whatever the pointer. */\nexport function Compact() {\n  const page = useLocal('page', 1);\n  return <Pagination label=\"Pages\" variant=\"compact\" value={page.value} pageCount={4} onChange={page.set} {...words} data-testid=\"compact\" />;\n}"
+          "source": "import { useLocal } from '@lingxia/view';\nimport { Pagination } from '@liulidesign/core/Pagination';\n\nconst words = { pageLabel: (page: number) => `Page ${page}`, previousLabel: 'Previous page', nextLabel: 'Next page' };\n\n/** The arrows and the position, whatever the pointer. */\nexport function Compact() {\n  const page = useLocal('page', 1);\n  return <Pagination label=\"Pages\" variant=\"compact\" bind={page} pageCount={4} {...words} data-testid=\"compact\" />;\n}"
         },
         {
           "name": "Narrow",
           "title": "Page numbers in a narrow row",
-          "source": "import { useLocal } from '@lingxia/view';\nimport { Pagination } from '@liulidesign/core/Pagination';\n\nconst words = { pageLabel: (page: number) => `Page ${page}`, previousLabel: 'Previous page', nextLabel: 'Next page' };\n\n/** Page numbers in a row too narrow for them: the neighbours go first, then the numbers give way to the position. */\nexport function Narrow() {\n  const page = useLocal('page', 6);\n  return (\n    <view className=\"gap-3\">\n      <view className=\"w-[280px]\"><Pagination label=\"Pages\" variant=\"pages\" value={page.value} pageCount={12} onChange={page.set} {...words} data-testid=\"narrow\" /></view>\n      <view className=\"w-[232px]\"><Pagination label=\"Pages\" variant=\"pages\" value={page.value} pageCount={12} onChange={page.set} {...words} data-testid=\"narrower\" /></view>\n    </view>\n  );\n}"
+          "source": "import { useLocal } from '@lingxia/view';\nimport { Pagination } from '@liulidesign/core/Pagination';\n\nconst words = { pageLabel: (page: number) => `Page ${page}`, previousLabel: 'Previous page', nextLabel: 'Next page' };\n\n/** Page numbers in a row too narrow for them: the neighbours go first, then the numbers give way to the position. */\nexport function Narrow() {\n  const page = useLocal('page', 6);\n  return (\n    <view className=\"gap-3\">\n      <view className=\"w-[280px]\"><Pagination label=\"Pages\" variant=\"pages\" bind={page} pageCount={12} {...words} data-testid=\"narrow\" /></view>\n      <view className=\"w-[232px]\"><Pagination label=\"Pages\" variant=\"pages\" bind={page} pageCount={12} {...words} data-testid=\"narrower\" /></view>\n    </view>\n  );\n}"
         },
         {
           "name": "Cursor",
           "title": "No count: a cursor",
-          "source": "import { useLocal } from '@lingxia/view';\nimport { Pagination } from '@liulidesign/core/Pagination';\n\nconst words = { pageLabel: (page: number) => `Page ${page}`, previousLabel: 'Previous page', nextLabel: 'Next page' };\n\n/** A feed read by cursor: no count, so the position and the arrows; Next stops where nothing follows. */\nexport function Cursor() {\n  const page = useLocal('page', 1);\n  return (\n    <Pagination\n      label=\"Activity pages\"\n      value={page.value}\n      hasMore={page.value < 3}\n      onChange={page.set}\n      positionLabel={at => `Page ${at}`}\n      {...words}\n      data-testid=\"cursor\"\n    />\n  );\n}"
+          "source": "import { useLocal } from '@lingxia/view';\nimport { Pagination } from '@liulidesign/core/Pagination';\n\nconst words = { pageLabel: (page: number) => `Page ${page}`, previousLabel: 'Previous page', nextLabel: 'Next page' };\n\n/** A feed read by cursor: no count, so the position and the arrows; Next stops where nothing follows. */\nexport function Cursor() {\n  const page = useLocal('page', 1);\n  return (\n    <Pagination\n      label=\"Activity pages\"\n      bind={page}\n      hasMore={page.value < 3}\n      positionLabel={at => `Page ${at}`}\n      {...words}\n      data-testid=\"cursor\"\n    />\n  );\n}"
         },
         {
           "name": "PageSize",
@@ -17724,7 +17788,7 @@
       "status": "preview",
       "since": "2026-11-15",
       "summary": "Where someone is in a task with a known number of steps",
-      "description": "Stepper shows the steps of a task that must be done in order: a checkout, a sign-up, an import. Finished steps carry a tick, the step in progress is ringed, and what is ahead is quiet. With `onChange` a finished step is a button that goes back to it. The app holds the step and shows its content.",
+      "description": "Stepper shows the steps of a task that must be done in order: a checkout, a sign-up, an import. Finished steps carry a tick, the step in progress is ringed, and what is ahead is quiet. With `bind` or `onChange` a finished step is a button that goes back to it. The app holds the step and shows its content.",
       "keywords": [
         "stepper",
         "steps",
@@ -17735,6 +17799,24 @@
         "onboarding"
       ],
       "props": [
+        {
+          "name": "bind",
+          "type": "Local<number>",
+          "required": false,
+          "description": "A View-local cell the control reads and writes; use it or `value` with `onChange`."
+        },
+        {
+          "name": "value",
+          "type": "number",
+          "required": false,
+          "description": "The index of the step in progress, from 0; `steps.length` when every step is done."
+        },
+        {
+          "name": "onChange",
+          "type": "((index: number) => void)",
+          "required": false,
+          "description": "Makes a finished step a button that goes back to it; runs with its index."
+        },
         {
           "name": "label",
           "type": "string",
@@ -17748,22 +17830,10 @@
           "description": "The steps, in order."
         },
         {
-          "name": "value",
-          "type": "number",
-          "required": true,
-          "description": "The index of the step in progress, from 0; `steps.length` when every step is done."
-        },
-        {
           "name": "stateLabels",
           "type": "Partial<Record<StepState, string>>",
           "required": false,
           "description": "What a screen reader hears for a step's state, instead of Liuli's \"Done\", \"Current step\" and \"Not started\" in the page's language."
-        },
-        {
-          "name": "onChange",
-          "type": "((index: number) => void)",
-          "required": false,
-          "description": "Makes a finished step a button that goes back to it; runs with its index."
         },
         {
           "name": "orientation",
@@ -17811,7 +17881,17 @@
           }
         ]
       },
-      "choices": [],
+      "choices": [
+        [
+          [
+            "bind"
+          ],
+          [
+            "value",
+            "onChange"
+          ]
+        ]
+      ],
       "parts": {
         "root": "view",
         "step": "view",
@@ -17890,7 +17970,7 @@
         {
           "name": "Checkout",
           "title": "A task in four steps",
-          "source": "import { useLocal } from '@lingxia/view';\nimport { Button } from '@liulidesign/core/Button';\nimport { Stepper } from '@liulidesign/core/Stepper';\n\nconst checkout = [\n  { key: 'cart', label: 'Cart', description: 'Three items' },\n  { key: 'address', label: 'Address', description: 'Where to deliver' },\n  { key: 'payment', label: 'Payment', description: 'Card or transfer' },\n  { key: 'review', label: 'Review', description: 'Check and place the order' },\n];\n\n/** A task in four steps: finished steps go back, the button moves on. */\nexport function Checkout() {\n  const at = useLocal('at', 1);\n  return (\n    <view className=\"gap-4\">\n      <Stepper label=\"Checkout steps\" steps={checkout} value={at.value} onChange={at.set} data-testid=\"checkout\" />\n      <Button label={at.value >= checkout.length - 1 ? 'Place order' : 'Continue'} variant=\"primary\" onClick={() => at.set(Math.min(checkout.length, at.value + 1))} data-testid=\"continue\" />\n    </view>\n  );\n}"
+          "source": "import { useLocal } from '@lingxia/view';\nimport { Button } from '@liulidesign/core/Button';\nimport { Stepper } from '@liulidesign/core/Stepper';\n\nconst checkout = [\n  { key: 'cart', label: 'Cart', description: 'Three items' },\n  { key: 'address', label: 'Address', description: 'Where to deliver' },\n  { key: 'payment', label: 'Payment', description: 'Card or transfer' },\n  { key: 'review', label: 'Review', description: 'Check and place the order' },\n];\n\n/** A task in four steps: finished steps go back, the button moves on. */\nexport function Checkout() {\n  const at = useLocal('at', 1);\n  return (\n    <view className=\"gap-4\">\n      <Stepper label=\"Checkout steps\" steps={checkout} bind={at} data-testid=\"checkout\" />\n      <Button label={at.value >= checkout.length - 1 ? 'Place order' : 'Continue'} variant=\"primary\" onClick={() => at.set(Math.min(checkout.length, at.value + 1))} data-testid=\"continue\" />\n    </view>\n  );\n}"
         },
         {
           "name": "Across",
@@ -18298,6 +18378,24 @@
       ],
       "props": [
         {
+          "name": "bind",
+          "type": "Local<string | null>",
+          "required": false,
+          "description": "A View-local cell the control reads and writes; use it or `value` with `onChange`."
+        },
+        {
+          "name": "value",
+          "type": "string | null",
+          "required": false,
+          "description": "The row drawn and read as selected."
+        },
+        {
+          "name": "onChange",
+          "type": "((key: string) => void)",
+          "required": false,
+          "description": "Makes each row one button; runs with its key."
+        },
+        {
           "name": "label",
           "type": "string",
           "required": true,
@@ -18356,18 +18454,6 @@
           "required": false,
           "description": "Holds the heading at the top of the scroll the table sits in while its rows pass under it. The table must be inside a `<scroll>`; without `maxHeight`.",
           "default": "false"
-        },
-        {
-          "name": "onChange",
-          "type": "((key: string) => void)",
-          "required": false,
-          "description": "Makes each row one button; runs with its key."
-        },
-        {
-          "name": "value",
-          "type": "string | null",
-          "required": false,
-          "description": "The row drawn and read as selected."
         },
         {
           "name": "emptyLabel",
@@ -18434,7 +18520,17 @@
           }
         ]
       },
-      "choices": [],
+      "choices": [
+        [
+          [
+            "bind"
+          ],
+          [
+            "value",
+            "onChange"
+          ]
+        ]
+      ],
       "parts": {
         "root": "view",
         "header": "view",
@@ -18526,7 +18622,7 @@
         {
           "name": "Pressable",
           "title": "Rows that open a record",
-          "source": "import { useLocal } from '@lingxia/view';\nimport { Badge } from '@liulidesign/core/Badge';\nimport { Table, type TableColumn, type TableRow } from '@liulidesign/core/Table';\n\nconst invoices = [\n  { id: 'INV-1042', customer: 'Northwind', due: '3 Nov', amount: 1280, status: 'Paid' },\n  { id: 'INV-1043', customer: 'Blue Harbor', due: '9 Nov', amount: 420.5, status: 'Due' },\n  { id: 'INV-1044', customer: 'Kestrel & Co', due: '12 Nov', amount: 96, status: 'Overdue' },\n  { id: 'INV-1045', customer: 'Lumen Studio', due: '20 Nov', amount: 3150, status: 'Due' },\n];\nconst money = (value: unknown) => `$${grouped(value, 2)}`;\nconst status = (row: TableRow) => (row.status === 'Paid' ? <Badge label=\"Paid\" tone=\"success\" size=\"sm\" />\n  : row.status === 'Overdue' ? <Badge label=\"Overdue\" tone=\"danger\" size=\"sm\" /> : <Badge label={String(row.status)} size=\"sm\" />);\nconst columns: TableColumn[] = [\n  { field: 'customer', header: 'Customer', width: '2fr' },\n  { field: 'due', header: 'Due' },\n  { field: 'amount', header: 'Amount', align: 'end', format: money },\n];\n\n/** Each row is one button that opens its record; the open one is selected. A cell can draw a badge. */\nexport function Pressable() {\n  const open = useLocal<string | null>('open', 'INV-1043');\n  return (\n    <Table\n      label=\"Invoices\"\n      columns={[{ field: 'customer', header: 'Customer', width: '2fr' }, { field: 'status', header: 'Status', cell: status }, { field: 'amount', header: 'Amount', align: 'end', format: money }]}\n      rows={invoices}\n      keyField=\"id\"\n      value={open.value}\n      onChange={open.set}\n      data-testid=\"pressable\"\n    />\n  );\n}"
+          "source": "import { useLocal } from '@lingxia/view';\nimport { Badge } from '@liulidesign/core/Badge';\nimport { Table, type TableColumn, type TableRow } from '@liulidesign/core/Table';\n\nconst invoices = [\n  { id: 'INV-1042', customer: 'Northwind', due: '3 Nov', amount: 1280, status: 'Paid' },\n  { id: 'INV-1043', customer: 'Blue Harbor', due: '9 Nov', amount: 420.5, status: 'Due' },\n  { id: 'INV-1044', customer: 'Kestrel & Co', due: '12 Nov', amount: 96, status: 'Overdue' },\n  { id: 'INV-1045', customer: 'Lumen Studio', due: '20 Nov', amount: 3150, status: 'Due' },\n];\nconst money = (value: unknown) => `$${grouped(value, 2)}`;\nconst status = (row: TableRow) => (row.status === 'Paid' ? <Badge label=\"Paid\" tone=\"success\" size=\"sm\" />\n  : row.status === 'Overdue' ? <Badge label=\"Overdue\" tone=\"danger\" size=\"sm\" /> : <Badge label={String(row.status)} size=\"sm\" />);\nconst columns: TableColumn[] = [\n  { field: 'customer', header: 'Customer', width: '2fr' },\n  { field: 'due', header: 'Due' },\n  { field: 'amount', header: 'Amount', align: 'end', format: money },\n];\n\n/** Each row is one button that opens its record; the open one is selected. A cell can draw a badge. */\nexport function Pressable() {\n  const open = useLocal<string | null>('open', 'INV-1043');\n  return (\n    <Table\n      label=\"Invoices\"\n      columns={[{ field: 'customer', header: 'Customer', width: '2fr' }, { field: 'status', header: 'Status', cell: status }, { field: 'amount', header: 'Amount', align: 'end', format: money }]}\n      rows={invoices}\n      keyField=\"id\"\n      bind={open}\n      data-testid=\"pressable\"\n    />\n  );\n}"
         },
         {
           "name": "Scrolling",
@@ -18666,6 +18762,24 @@
       ],
       "props": [
         {
+          "name": "bind",
+          "type": "Local<string>",
+          "required": false,
+          "description": "A View-local cell the control reads and writes; use it or `value` with `onChange`."
+        },
+        {
+          "name": "value",
+          "type": "string",
+          "required": false,
+          "description": "The chosen tab's value."
+        },
+        {
+          "name": "onChange",
+          "type": "((value: string) => void)",
+          "required": false,
+          "description": "Runs with the tab chosen by a tap or by arrowing onto it."
+        },
+        {
           "name": "label",
           "type": "string",
           "required": true,
@@ -18676,18 +18790,6 @@
           "type": "readonly TabItem[]",
           "required": true,
           "description": "The tabs, in order."
-        },
-        {
-          "name": "value",
-          "type": "string",
-          "required": true,
-          "description": "The chosen tab's value."
-        },
-        {
-          "name": "onChange",
-          "type": "(value: string) => void",
-          "required": true,
-          "description": "Runs with the tab chosen by a tap or by arrowing onto it."
         },
         {
           "name": "variant",
@@ -18731,7 +18833,17 @@
         }
       ],
       "otherProps": {},
-      "choices": [],
+      "choices": [
+        [
+          [
+            "bind"
+          ],
+          [
+            "value",
+            "onChange"
+          ]
+        ]
+      ],
       "parts": {
         "root": "view",
         "frame": "view",
@@ -18750,7 +18862,7 @@
         "states": [
           {
             "state": "selected",
-            "from": "value"
+            "from": "value or bind"
           },
           {
             "state": "disabled",
@@ -18826,22 +18938,22 @@
         {
           "name": "Sections",
           "title": "Sections of a page",
-          "source": "import { useLocal } from '@lingxia/view';\nimport { Tabs } from '@liulidesign/core/Tabs';\n\nconst sections = [\n  { value: 'overview', label: 'Overview' },\n  { value: 'activity', label: 'Activity' },\n  { value: 'members', label: 'Members' },\n];\nconst summaries: Record<string, string> = {\n  overview: 'Three notebooks, 128 notes, last edited this morning.',\n  activity: 'Ana edited \"Q3 plan\" and two others today.',\n  members: 'Ana Lima, Kai Chen and Mira Patel can edit.',\n};\n\n/** Sections of one page: the underline slides to the chosen tab. */\nexport function Sections() {\n  const section = useLocal('section', 'overview');\n  return (\n    <Tabs label=\"Project\" items={sections} value={section.value} onChange={next => section.set(next)} data-testid=\"project\">\n      <text className=\"text-body text-muted\">{summaries[section.value]}</text>\n    </Tabs>\n  );\n}"
+          "source": "import { useLocal } from '@lingxia/view';\nimport { Tabs } from '@liulidesign/core/Tabs';\n\nconst sections = [\n  { value: 'overview', label: 'Overview' },\n  { value: 'activity', label: 'Activity' },\n  { value: 'members', label: 'Members' },\n];\nconst summaries: Record<string, string> = {\n  overview: 'Three notebooks, 128 notes, last edited this morning.',\n  activity: 'Ana edited \"Q3 plan\" and two others today.',\n  members: 'Ana Lima, Kai Chen and Mira Patel can edit.',\n};\n\n/** Sections of one page: the underline slides to the chosen tab. */\nexport function Sections() {\n  const section = useLocal('section', 'overview');\n  return (\n    <Tabs label=\"Project\" items={sections} bind={section} data-testid=\"project\">\n      <text className=\"text-body text-muted\">{summaries[section.value]}</text>\n    </Tabs>\n  );\n}"
         },
         {
           "name": "Segmented",
           "title": "Modes of one view",
-          "source": "import { useLocal } from '@lingxia/view';\nimport { Tabs } from '@liulidesign/core/Tabs';\n\nconst ranges = [\n  { value: 'day', label: 'Day' },\n  { value: 'week', label: 'Week' },\n  { value: 'month', label: 'Month' },\n];\n\n/** Modes of one view: the thumb slides to the chosen segment. */\nexport function Segmented() {\n  const range = useLocal('range', 'week');\n  const totals: Record<string, string> = { day: '42 minutes', week: '5 hours 10 minutes', month: '21 hours' };\n  return (\n    <Tabs label=\"Range\" items={ranges} value={range.value} onChange={next => range.set(next)} variant=\"segmented\" data-testid=\"range\">\n      <view className=\"gap-0.5\">\n        <text className=\"text-footnote text-muted\">Time spent writing</text>\n        <text className=\"text-title font-semibold text-text tabular-nums\">{totals[range.value]}</text>\n      </view>\n    </Tabs>\n  );\n}"
+          "source": "import { useLocal } from '@lingxia/view';\nimport { Tabs } from '@liulidesign/core/Tabs';\n\nconst ranges = [\n  { value: 'day', label: 'Day' },\n  { value: 'week', label: 'Week' },\n  { value: 'month', label: 'Month' },\n];\n\n/** Modes of one view: the thumb slides to the chosen segment. */\nexport function Segmented() {\n  const range = useLocal('range', 'week');\n  const totals: Record<string, string> = { day: '42 minutes', week: '5 hours 10 minutes', month: '21 hours' };\n  return (\n    <Tabs label=\"Range\" items={ranges} bind={range} variant=\"segmented\" data-testid=\"range\">\n      <view className=\"gap-0.5\">\n        <text className=\"text-footnote text-muted\">Time spent writing</text>\n        <text className=\"text-title font-semibold text-text tabular-nums\">{totals[range.value]}</text>\n      </view>\n    </Tabs>\n  );\n}"
         },
         {
           "name": "Filter",
           "title": "A segmented filter over a list",
-          "source": "import { useLocal } from '@lingxia/view';\nimport { Item } from '@liulidesign/core/Item';\nimport { Tabs } from '@liulidesign/core/Tabs';\n\nconst notes = {\n  all: ['Q3 plan', 'Reading list', 'Interview notes'],\n  pinned: ['Q3 plan'],\n  shared: ['Interview notes'],\n};\n\n/** A list filtered by a segmented control above it. */\nexport function Filter() {\n  const filter = useLocal('filter', 'all');\n  return (\n    <Tabs\n      label=\"Show\"\n      items={[{ value: 'all', label: 'All' }, { value: 'pinned', label: 'Pinned' }, { value: 'shared', label: 'Shared' }]}\n      value={filter.value}\n      onChange={next => filter.set(next)}\n      variant=\"segmented\"\n      className=\"gap-3\"\n      data-testid=\"filter\"\n    >\n      <view className=\"-mx-5 -mb-5 divide-y divide-text/8 border-t border-text/8\">\n        {notes[filter.value as keyof typeof notes].map(note => <Item key={note} label={note} />)}\n      </view>\n    </Tabs>\n  );\n}"
+          "source": "import { useLocal } from '@lingxia/view';\nimport { Item } from '@liulidesign/core/Item';\nimport { Tabs } from '@liulidesign/core/Tabs';\n\nconst notes = {\n  all: ['Q3 plan', 'Reading list', 'Interview notes'],\n  pinned: ['Q3 plan'],\n  shared: ['Interview notes'],\n};\n\n/** A list filtered by a segmented control above it. */\nexport function Filter() {\n  const filter = useLocal('filter', 'all');\n  return (\n    <Tabs\n      label=\"Show\"\n      items={[{ value: 'all', label: 'All' }, { value: 'pinned', label: 'Pinned' }, { value: 'shared', label: 'Shared' }]}\n      bind={filter}\n      variant=\"segmented\"\n      className=\"gap-3\"\n      data-testid=\"filter\"\n    >\n      <view className=\"-mx-5 -mb-5 divide-y divide-text/8 border-t border-text/8\">\n        {notes[filter.value as keyof typeof notes].map(note => <Item key={note} label={note} />)}\n      </view>\n    </Tabs>\n  );\n}"
         },
         {
           "name": "Fitted",
           "title": "Tabs as wide as their labels, in a row that scrolls",
-          "source": "import { useLocal } from '@lingxia/view';\nimport { Tabs } from '@liulidesign/core/Tabs';\n\nconst settings = [\n  { value: 'general', label: 'General' }, { value: 'notifications', label: 'Notifications' }, { value: 'privacy', label: 'Privacy and security' },\n  { value: 'billing', label: 'Billing' }, { value: 'integrations', label: 'Integrations' }, { value: 'advanced', label: 'Advanced' },\n];\n\n/** More tabs than a phone has room for: each is as wide as its label and the row scrolls. */\nexport function Fitted() {\n  const tab = useLocal('tab', 'general');\n  return (\n    <Tabs label=\"Settings\" items={settings} value={tab.value} onChange={tab.set} tabWidth=\"content\" data-testid=\"settings\">\n      <text className=\"text-body text-muted\">{settings.find(item => item.value === tab.value)?.label}</text>\n    </Tabs>\n  );\n}"
+          "source": "import { useLocal } from '@lingxia/view';\nimport { Tabs } from '@liulidesign/core/Tabs';\n\nconst settings = [\n  { value: 'general', label: 'General' }, { value: 'notifications', label: 'Notifications' }, { value: 'privacy', label: 'Privacy and security' },\n  { value: 'billing', label: 'Billing' }, { value: 'integrations', label: 'Integrations' }, { value: 'advanced', label: 'Advanced' },\n];\n\n/** More tabs than a phone has room for: each is as wide as its label and the row scrolls. */\nexport function Fitted() {\n  const tab = useLocal('tab', 'general');\n  return (\n    <Tabs label=\"Settings\" items={settings} bind={tab} tabWidth=\"content\" data-testid=\"settings\">\n      <text className=\"text-body text-muted\">{settings.find(item => item.value === tab.value)?.label}</text>\n    </Tabs>\n  );\n}"
         }
       ],
       "gaps": [
@@ -21104,22 +21216,28 @@
       ],
       "props": [
         {
-          "name": "label",
-          "type": "string",
-          "required": true,
-          "description": "The text and the accessible name; it stays the same on and off (\"Unread\", not \"Show unread\"/\"Hide unread\")."
+          "name": "bind",
+          "type": "Local<boolean>",
+          "required": false,
+          "description": "A View-local cell the control reads and writes; use it or `value` with `onChange`."
         },
         {
           "name": "value",
           "type": "boolean",
-          "required": true,
+          "required": false,
           "description": "Whether it is on."
         },
         {
           "name": "onChange",
-          "type": "(isPressed: boolean) => void",
-          "required": true,
+          "type": "((isPressed: boolean) => void)",
+          "required": false,
           "description": "Runs with the new state on a press."
+        },
+        {
+          "name": "label",
+          "type": "string",
+          "required": true,
+          "description": "The text and the accessible name; it stays the same on and off (\"Unread\", not \"Show unread\"/\"Hide unread\")."
         },
         {
           "name": "size",
@@ -21154,7 +21272,17 @@
         }
       ],
       "otherProps": {},
-      "choices": [],
+      "choices": [
+        [
+          [
+            "bind"
+          ],
+          [
+            "value",
+            "onChange"
+          ]
+        ]
+      ],
       "parts": {
         "root": "button",
         "label": "text"
@@ -21166,7 +21294,7 @@
         "states": [
           {
             "state": "pressed",
-            "from": "value"
+            "from": "value or bind"
           },
           {
             "state": "disabled",
@@ -21237,12 +21365,12 @@
         {
           "name": "Filters",
           "title": "Filters over a list",
-          "source": "import { useLocal } from '@lingxia/view';\nimport { ToggleButton } from '@liulidesign/core/ToggleButton';\n\nconst notes = [\n  { title: 'Q3 plan', unread: true, starred: true },\n  { title: 'Reading list', unread: false, starred: true },\n  { title: 'Interview notes', unread: true, starred: false },\n  { title: 'Groceries', unread: false, starred: false },\n];\n\n/** Filters over a list: each one narrows it on its own. */\nexport function Filters() {\n  const unread = useLocal('unread', false);\n  const starred = useLocal('starred', false);\n  const shown = notes.filter(note => (!unread.value || note.unread) && (!starred.value || note.starred));\n  return (\n    <view className=\"gap-3\">\n      <view role=\"group\" aria-label=\"Filters\" className=\"flex-row flex-wrap gap-2\">\n        <ToggleButton label=\"Unread\" size=\"sm\" value={unread.value} onChange={next => unread.set(next)} data-testid=\"unread\" />\n        <ToggleButton label=\"Starred\" size=\"sm\" value={starred.value} onChange={next => starred.set(next)} data-testid=\"starred\" />\n      </view>\n      <text className=\"text-footnote text-muted\" data-testid=\"count\">{shown.length === 1 ? '1 note' : `${shown.length} notes`}</text>\n    </view>\n  );\n}"
+          "source": "import { useLocal } from '@lingxia/view';\nimport { ToggleButton } from '@liulidesign/core/ToggleButton';\n\nconst notes = [\n  { title: 'Q3 plan', unread: true, starred: true },\n  { title: 'Reading list', unread: false, starred: true },\n  { title: 'Interview notes', unread: true, starred: false },\n  { title: 'Groceries', unread: false, starred: false },\n];\n\n/** Filters over a list: each one narrows it on its own. */\nexport function Filters() {\n  const unread = useLocal('unread', false);\n  const starred = useLocal('starred', false);\n  const shown = notes.filter(note => (!unread.value || note.unread) && (!starred.value || note.starred));\n  return (\n    <view className=\"gap-3\">\n      <view role=\"group\" aria-label=\"Filters\" className=\"flex-row flex-wrap gap-2\">\n        <ToggleButton label=\"Unread\" size=\"sm\" bind={unread} data-testid=\"unread\" />\n        <ToggleButton label=\"Starred\" size=\"sm\" bind={starred} data-testid=\"starred\" />\n      </view>\n      <text className=\"text-footnote text-muted\" data-testid=\"count\">{shown.length === 1 ? '1 note' : `${shown.length} notes`}</text>\n    </view>\n  );\n}"
         },
         {
           "name": "WordWrap",
           "title": "A view option",
-          "source": "import { useLocal } from '@lingxia/view';\nimport { ToggleButton } from '@liulidesign/core/ToggleButton';\n\n/** One view option, beside the thing it changes. */\nexport function WordWrap() {\n  const wrap = useLocal('wrap', true);\n  return (\n    <view className=\"gap-3\">\n      <ToggleButton label=\"Wrap lines\" value={wrap.value} onChange={next => wrap.set(next)} className=\"self-start\" data-testid=\"wrap\" />\n      <text className={wrap.value ? 'text-body text-text' : 'text-body text-text truncate'} data-testid=\"sample\">\n        Every line of this note is long enough to reach past the edge of a phone held upright.\n      </text>\n    </view>\n  );\n}"
+          "source": "import { useLocal } from '@lingxia/view';\nimport { ToggleButton } from '@liulidesign/core/ToggleButton';\n\n/** One view option, beside the thing it changes. */\nexport function WordWrap() {\n  const wrap = useLocal('wrap', true);\n  return (\n    <view className=\"gap-3\">\n      <ToggleButton label=\"Wrap lines\" bind={wrap} className=\"self-start\" data-testid=\"wrap\" />\n      <text className={wrap.value ? 'text-body text-text' : 'text-body text-text truncate'} data-testid=\"sample\">\n        Every line of this note is long enough to reach past the edge of a phone held upright.\n      </text>\n    </view>\n  );\n}"
         },
         {
           "name": "Sizes",
@@ -22089,22 +22217,28 @@
       ],
       "props": [
         {
-          "name": "steps",
-          "type": "readonly TourStep[]",
-          "required": true,
-          "description": ""
+          "name": "bind",
+          "type": "Local<number | null>",
+          "required": false,
+          "description": "A View-local cell the control reads and writes; use it or `value` with `onChange`."
         },
         {
           "name": "value",
           "type": "number | null",
-          "required": true,
+          "required": false,
           "description": "The step in view, from 0, or null while the tour is not running. The app holds it."
         },
         {
           "name": "onChange",
-          "type": "(step: number | null) => void",
-          "required": true,
+          "type": "((step: number | null) => void)",
+          "required": false,
           "description": "Runs with the next step to show, and with null when the tour ends: finished, or skipped."
+        },
+        {
+          "name": "steps",
+          "type": "readonly TourStep[]",
+          "required": true,
+          "description": ""
         },
         {
           "name": "onFinish",
@@ -22150,7 +22284,17 @@
         }
       ],
       "otherProps": {},
-      "choices": [],
+      "choices": [
+        [
+          [
+            "bind"
+          ],
+          [
+            "value",
+            "onChange"
+          ]
+        ]
+      ],
       "parts": {
         "callout": "view",
         "caret": "view",
@@ -22199,7 +22343,7 @@
         {
           "name": "Welcome",
           "title": "Three steps",
-          "source": "import { useLocal } from '@lingxia/view';\nimport { Said } from '../example';\nimport { Button } from '@liulidesign/core/Button';\nimport { IconButton } from '@liulidesign/core/IconButton';\nimport { SearchField } from '@liulidesign/core/SearchField';\nimport { Tour, type TourStep } from '@liulidesign/core/Tour';\n\nconst steps: TourStep[] = [\n  { target: 'tour-new', targetLabel: 'The New note button', title: 'Start a note', text: 'A note opens ready to type, and saves as you go.' },\n  { target: 'tour-search', targetLabel: 'The search field', title: 'Find anything', text: 'Search reads every note, list and photo.' },\n  { target: 'tour-share', targetLabel: 'The Share button', title: 'Share what you choose', text: 'A note is private until you invite someone.' },\n];\n\n/** Three things on a small screen, shown one at a time; the tour can be skipped or stepped back. */\nexport function Welcome() {\n  const step = useLocal<number | null>('step', null);\n  const query = useLocal('query', '');\n  return (\n    <Said>\n      {say => (\n        <view className=\"gap-4\">\n          {/* At large text the field takes its own line rather than shrinking to its magnifier. */}\n          <view className=\"flex-row flex-wrap items-center gap-2\">\n            <view id=\"tour-new\"><Button label=\"New note\" variant=\"primary\" startIcon=\"add\" onClick={() => say('Created a note')} /></view>\n            <view id=\"tour-search\" className=\"grow basis-40\">\n              <SearchField label=\"Search notes\" isLabelHidden value={query.value} onChange={query.set} placeholder=\"Search\" clearLabel=\"Clear\" />\n            </view>\n          </view>\n          <view className=\"flex-row items-center justify-between gap-3\">\n            <text className=\"text-body text-text\">Trip to the coast</text>\n            <view id=\"tour-share\"><IconButton label=\"Share\" icon=\"share\" onClick={() => say('Shared Trip to the coast')} /></view>\n          </view>\n          <Button label=\"Show me around\" width=\"content\" onClick={() => step.set(0)} data-testid=\"tour-start\" />\n          {step.value !== null && <text role=\"status\" className=\"text-footnote text-muted\">{`On step ${step.value + 1}`}</text>}\n          <Tour\n            steps={steps}\n            value={step.value}\n            onChange={next => step.set(next)}\n            stepLabel={(at, count) => `${at + 1} of ${count}`}\n            data-testid=\"tour\"\n          />\n        </view>\n      )}\n    </Said>\n  );\n}"
+          "source": "import { useLocal } from '@lingxia/view';\nimport { Said } from '../example';\nimport { Button } from '@liulidesign/core/Button';\nimport { IconButton } from '@liulidesign/core/IconButton';\nimport { SearchField } from '@liulidesign/core/SearchField';\nimport { Tour, type TourStep } from '@liulidesign/core/Tour';\n\nconst steps: TourStep[] = [\n  { target: 'tour-new', targetLabel: 'The New note button', title: 'Start a note', text: 'A note opens ready to type, and saves as you go.' },\n  { target: 'tour-search', targetLabel: 'The search field', title: 'Find anything', text: 'Search reads every note, list and photo.' },\n  { target: 'tour-share', targetLabel: 'The Share button', title: 'Share what you choose', text: 'A note is private until you invite someone.' },\n];\n\n/** Three things on a small screen, shown one at a time; the tour can be skipped or stepped back. */\nexport function Welcome() {\n  const step = useLocal<number | null>('step', null);\n  const query = useLocal('query', '');\n  return (\n    <Said>\n      {say => (\n        <view className=\"gap-4\">\n          {/* At large text the field takes its own line rather than shrinking to its magnifier. */}\n          <view className=\"flex-row flex-wrap items-center gap-2\">\n            <view id=\"tour-new\"><Button label=\"New note\" variant=\"primary\" startIcon=\"add\" onClick={() => say('Created a note')} /></view>\n            <view id=\"tour-search\" className=\"grow basis-40\">\n              <SearchField label=\"Search notes\" isLabelHidden bind={query} placeholder=\"Search\" clearLabel=\"Clear\" />\n            </view>\n          </view>\n          <view className=\"flex-row items-center justify-between gap-3\">\n            <text className=\"text-body text-text\">Trip to the coast</text>\n            <view id=\"tour-share\"><IconButton label=\"Share\" icon=\"share\" onClick={() => say('Shared Trip to the coast')} /></view>\n          </view>\n          <Button label=\"Show me around\" width=\"content\" onClick={() => step.set(0)} data-testid=\"tour-start\" />\n          {step.value !== null && <text role=\"status\" className=\"text-footnote text-muted\">{`On step ${step.value + 1}`}</text>}\n          <Tour\n            steps={steps}\n            bind={step}\n            stepLabel={(at, count) => `${at + 1} of ${count}`}\n            data-testid=\"tour\"\n          />\n        </view>\n      )}\n    </Said>\n  );\n}"
         }
       ],
       "gaps": [],
@@ -22259,6 +22403,24 @@
       ],
       "props": [
         {
+          "name": "bind",
+          "type": "Local<string | null>",
+          "required": false,
+          "description": "A View-local cell the control reads and writes; use it or `value` with `onChange`."
+        },
+        {
+          "name": "value",
+          "type": "string | null",
+          "required": false,
+          "description": "The selected node's id, or null."
+        },
+        {
+          "name": "onChange",
+          "type": "((id: string) => void)",
+          "required": false,
+          "description": "Runs with the id of the row that was pressed; a branch is selected and toggled by the same press."
+        },
+        {
           "name": "label",
           "type": "string",
           "required": true,
@@ -22269,18 +22431,6 @@
           "type": "readonly TreeNode[]",
           "required": true,
           "description": ""
-        },
-        {
-          "name": "value",
-          "type": "string | null",
-          "required": true,
-          "description": "The selected node's id, or null."
-        },
-        {
-          "name": "onChange",
-          "type": "(id: string) => void",
-          "required": true,
-          "description": "Runs with the id of the row that was pressed; a branch is selected and toggled by the same press."
         },
         {
           "name": "openBranches",
@@ -22322,7 +22472,17 @@
         }
       ],
       "otherProps": {},
-      "choices": [],
+      "choices": [
+        [
+          [
+            "bind"
+          ],
+          [
+            "value",
+            "onChange"
+          ]
+        ]
+      ],
       "parts": {
         "root": "view",
         "row": "button",
@@ -22348,7 +22508,7 @@
           },
           {
             "state": "selected",
-            "from": "value"
+            "from": "value or bind"
           },
           {
             "state": "disabled",
@@ -22414,22 +22574,22 @@
         {
           "name": "Folders",
           "title": "Folders and notes",
-          "source": "import { useLocal } from '@lingxia/view';\nimport { TreeList, type TreeNode } from '@liulidesign/core/TreeList';\n\nconst folders: TreeNode[] = [\n  {\n    id: 'notes', label: 'Notes', icon: 'folder', endText: '48',\n    children: [\n      { id: 'travel', label: 'Travel', icon: 'folder', endText: '12', children: [\n        { id: 'coast', label: 'Trip to the coast', icon: 'file' },\n        { id: 'lisbon', label: 'Lisbon in March', icon: 'file' },\n      ] },\n      { id: 'recipes', label: 'Recipes', icon: 'folder', endText: '9', children: [\n        { id: 'bread', label: 'Weekend bread', icon: 'file' },\n      ] },\n      { id: 'reading', label: 'Reading list', icon: 'file' },\n    ],\n  },\n  { id: 'shared', label: 'Shared with me', icon: 'users', endText: '6', children: [\n    { id: 'plan', label: 'Q3 plan', icon: 'file' },\n  ] },\n  { id: 'archive', label: 'Archive', icon: 'folder', isDisabled: true },\n];\n\n/** Folders with their notes: a branch opens in place, and the row that was pressed is the current one. */\nexport function Folders() {\n  const current = useLocal<string | null>('current', 'coast');\n  return (\n    <view className=\"gap-2\">\n      <TreeList label=\"Folders\" items={folders} value={current.value} onChange={id => current.set(id)} defaultOpenBranches={['notes', 'travel']} data-testid=\"folders\" />\n      <text role=\"status\" className=\"text-footnote text-muted\">{`Current: ${current.value}`}</text>\n    </view>\n  );\n}"
+          "source": "import { useLocal } from '@lingxia/view';\nimport { TreeList, type TreeNode } from '@liulidesign/core/TreeList';\n\nconst folders: TreeNode[] = [\n  {\n    id: 'notes', label: 'Notes', icon: 'folder', endText: '48',\n    children: [\n      { id: 'travel', label: 'Travel', icon: 'folder', endText: '12', children: [\n        { id: 'coast', label: 'Trip to the coast', icon: 'file' },\n        { id: 'lisbon', label: 'Lisbon in March', icon: 'file' },\n      ] },\n      { id: 'recipes', label: 'Recipes', icon: 'folder', endText: '9', children: [\n        { id: 'bread', label: 'Weekend bread', icon: 'file' },\n      ] },\n      { id: 'reading', label: 'Reading list', icon: 'file' },\n    ],\n  },\n  { id: 'shared', label: 'Shared with me', icon: 'users', endText: '6', children: [\n    { id: 'plan', label: 'Q3 plan', icon: 'file' },\n  ] },\n  { id: 'archive', label: 'Archive', icon: 'folder', isDisabled: true },\n];\n\n/** Folders with their notes: a branch opens in place, and the row that was pressed is the current one. */\nexport function Folders() {\n  const current = useLocal<string | null>('current', 'coast');\n  return (\n    <view className=\"gap-2\">\n      <TreeList label=\"Folders\" items={folders} bind={current} defaultOpenBranches={['notes', 'travel']} data-testid=\"folders\" />\n      <text role=\"status\" className=\"text-footnote text-muted\">{`Current: ${current.value}`}</text>\n    </view>\n  );\n}"
         },
         {
           "name": "Outline",
           "title": "An outline, opened from outside",
-          "source": "import { useLocal } from '@lingxia/view';\nimport { TreeList, type TreeNode } from '@liulidesign/core/TreeList';\n\nconst outline: TreeNode[] = [\n  { id: 'intro', label: 'Introduction' },\n  { id: 'setup', label: 'Setting up', children: [\n    { id: 'install', label: 'Install' },\n    { id: 'first', label: 'Your first page', children: [{ id: 'layout', label: 'Layout' }, { id: 'state', label: 'State' }] },\n  ] },\n  { id: 'publish', label: 'Publishing' },\n];\n\n/** An outline without icons, opened from outside. */\nexport function Outline() {\n  const current = useLocal<string | null>('section', 'layout');\n  const open = useLocal<readonly string[]>('open', ['setup', 'first']);\n  return <TreeList label=\"Contents\" items={outline} value={current.value} onChange={id => current.set(id)} openBranches={open.value} onOpenBranchesChange={next => open.set(next)} data-testid=\"outline\" />;\n}"
+          "source": "import { useLocal } from '@lingxia/view';\nimport { TreeList, type TreeNode } from '@liulidesign/core/TreeList';\n\nconst outline: TreeNode[] = [\n  { id: 'intro', label: 'Introduction' },\n  { id: 'setup', label: 'Setting up', children: [\n    { id: 'install', label: 'Install' },\n    { id: 'first', label: 'Your first page', children: [{ id: 'layout', label: 'Layout' }, { id: 'state', label: 'State' }] },\n  ] },\n  { id: 'publish', label: 'Publishing' },\n];\n\n/** An outline without icons, opened from outside. */\nexport function Outline() {\n  const current = useLocal<string | null>('section', 'layout');\n  const open = useLocal<readonly string[]>('open', ['setup', 'first']);\n  return <TreeList label=\"Contents\" items={outline} bind={current} openBranches={open.value} onOpenBranchesChange={next => open.set(next)} data-testid=\"outline\" />;\n}"
         },
         {
           "name": "Guides",
           "title": "Line guides",
-          "source": "import { useLocal } from '@lingxia/view';\nimport { TreeList, type TreeNode } from '@liulidesign/core/TreeList';\n\nconst outline: TreeNode[] = [\n  { id: 'intro', label: 'Introduction' },\n  { id: 'setup', label: 'Setting up', children: [\n    { id: 'install', label: 'Install' },\n    { id: 'first', label: 'Your first page', children: [{ id: 'layout', label: 'Layout' }, { id: 'state', label: 'State' }] },\n  ] },\n  { id: 'publish', label: 'Publishing' },\n];\n\n/** The outline with guides: a hairline runs down from each open branch beside its children. */\nexport function Guides() {\n  const current = useLocal<string | null>('section', 'state');\n  return (\n    <TreeList\n      label=\"Contents\"\n      items={outline}\n      value={current.value}\n      onChange={id => current.set(id)}\n      defaultOpenBranches={['setup', 'first']}\n      hasLineGuides\n      data-testid=\"guides\"\n    />\n  );\n}"
+          "source": "import { useLocal } from '@lingxia/view';\nimport { TreeList, type TreeNode } from '@liulidesign/core/TreeList';\n\nconst outline: TreeNode[] = [\n  { id: 'intro', label: 'Introduction' },\n  { id: 'setup', label: 'Setting up', children: [\n    { id: 'install', label: 'Install' },\n    { id: 'first', label: 'Your first page', children: [{ id: 'layout', label: 'Layout' }, { id: 'state', label: 'State' }] },\n  ] },\n  { id: 'publish', label: 'Publishing' },\n];\n\n/** The outline with guides: a hairline runs down from each open branch beside its children. */\nexport function Guides() {\n  const current = useLocal<string | null>('section', 'state');\n  return (\n    <TreeList\n      label=\"Contents\"\n      items={outline}\n      bind={current}\n      defaultOpenBranches={['setup', 'first']}\n      hasLineGuides\n      data-testid=\"guides\"\n    />\n  );\n}"
         },
         {
           "name": "Described",
           "title": "A second line, and content at the end",
-          "source": "import { useLocal } from '@lingxia/view';\nimport { Badge } from '@liulidesign/core/Badge';\nimport { Said } from '../example';\nimport { IconButton } from '@liulidesign/core/IconButton';\nimport { TreeList, type TreeNode } from '@liulidesign/core/TreeList';\n\n/** Rows with a second line, and the row's own content at the end: a status, a button with its own action. */\nexport function Described() {\n  const current = useLocal<string | null>('current', 'cart');\n  return (\n    <Said>\n      {say => {\n        const project: TreeNode[] = [\n          { id: 'src', label: 'src', icon: 'folder', description: 'The app\\'s source', children: [\n            { id: 'cart', label: 'cart.ts', icon: 'file', description: 'Edited 2 minutes ago', endContent: <Badge label=\"Changed\" tone=\"warning\" size=\"sm\" /> },\n            { id: 'pay', label: 'pay.ts', icon: 'file', description: 'Edited yesterday' },\n          ] },\n          { id: 'tests', label: 'tests', icon: 'folder', description: '14 files', endContent: <IconButton label=\"Run the tests\" icon=\"play\" size=\"sm\" variant=\"ghost\" onClick={() => say('Ran the tests')} data-testid=\"run\" />, children: [] },\n        ];\n        return (\n          <TreeList label=\"Project\" items={project} value={current.value} onChange={id => current.set(id)} defaultOpenBranches={['src']} hasLineGuides data-testid=\"project\" />\n        );\n      }}\n    </Said>\n  );\n}"
+          "source": "import { useLocal } from '@lingxia/view';\nimport { Badge } from '@liulidesign/core/Badge';\nimport { Said } from '../example';\nimport { IconButton } from '@liulidesign/core/IconButton';\nimport { TreeList, type TreeNode } from '@liulidesign/core/TreeList';\n\n/** Rows with a second line, and the row's own content at the end: a status, a button with its own action. */\nexport function Described() {\n  const current = useLocal<string | null>('current', 'cart');\n  return (\n    <Said>\n      {say => {\n        const project: TreeNode[] = [\n          { id: 'src', label: 'src', icon: 'folder', description: 'The app\\'s source', children: [\n            { id: 'cart', label: 'cart.ts', icon: 'file', description: 'Edited 2 minutes ago', endContent: <Badge label=\"Changed\" tone=\"warning\" size=\"sm\" /> },\n            { id: 'pay', label: 'pay.ts', icon: 'file', description: 'Edited yesterday' },\n          ] },\n          { id: 'tests', label: 'tests', icon: 'folder', description: '14 files', endContent: <IconButton label=\"Run the tests\" icon=\"play\" size=\"sm\" variant=\"ghost\" onClick={() => say('Ran the tests')} data-testid=\"run\" />, children: [] },\n        ];\n        return (\n          <TreeList label=\"Project\" items={project} bind={current} defaultOpenBranches={['src']} hasLineGuides data-testid=\"project\" />\n        );\n      }}\n    </Said>\n  );\n}"
         }
       ],
       "gaps": [],

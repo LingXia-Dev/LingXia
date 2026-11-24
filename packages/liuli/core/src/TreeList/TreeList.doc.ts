@@ -30,7 +30,7 @@ export const doc: ComponentDoc = {
     description: [],
     states: [
       { state: 'expanded', from: 'openBranches, or defaultOpenBranches and the rows opened since' },
-      { state: 'selected', from: 'value' },
+      { state: 'selected', from: 'value or bind' },
       { state: 'disabled', from: 'isDisabled on a node' },
     ],
     keyboard: [

@@ -14,7 +14,7 @@ export function Checkout() {
   const at = useLocal('at', 1);
   return (
     <view className="gap-4">
-      <Stepper label="Checkout steps" steps={checkout} value={at.value} onChange={at.set} data-testid="checkout" />
+      <Stepper label="Checkout steps" steps={checkout} bind={at} data-testid="checkout" />
       <Button label={at.value >= checkout.length - 1 ? 'Place order' : 'Continue'} variant="primary" onClick={() => at.set(Math.min(checkout.length, at.value + 1))} data-testid="continue" />
     </view>
   );

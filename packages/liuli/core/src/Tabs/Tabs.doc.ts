@@ -26,7 +26,7 @@ export const doc: ComponentDoc = {
     name: 'label',
     description: [],
     states: [
-      { state: 'selected', from: 'value' },
+      { state: 'selected', from: 'value or bind' },
       { state: 'disabled', from: 'items[].isDisabled' },
     ],
     keyboard: [

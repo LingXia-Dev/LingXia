@@ -1,4 +1,4 @@
-import { cx, useId, useLocal, useView } from '@lingxia/view';
+import { cx, useId, useLocal, useView, type Local } from '@lingxia/view';
 import { useControlSize } from '../density';
 import { Calendar, type CalendarDate, type CalendarRange, type CalendarWeekday } from '../Calendar/Calendar';
 import { comboboxRecipe as c } from '../Combobox/Combobox.recipe';
@@ -9,11 +9,22 @@ import { LayerContext } from '../internal/layer';
 import { dateRangeInputRecipe as r } from './DateRangeInput.recipe';
 import { dataOf } from '../internal/data';
 
-export type DateRangeInputProps = FieldOwnProps & {
-  /** The chosen span; both ends `null` shows the placeholder. */
-  value: CalendarRange;
-  /** Runs with each press in the calendar: the first day alone, then the finished span. */
-  onChange: (range: CalendarRange) => void;
+export type DateRangeInputBinding =
+  | {
+      /** A View-local cell the control reads and writes; use it or `value` with `onChange`. */
+      bind: Local<CalendarRange>;
+      value?: never;
+      onChange?: never;
+    }
+  | {
+      bind?: never;
+      /** The chosen span; both ends `null` shows the placeholder. */
+      value: CalendarRange;
+      /** Runs with each press in the calendar: the first day alone, then the finished span. */
+      onChange: (range: CalendarRange) => void;
+    };
+
+export type DateRangeInputProps = FieldOwnProps & DateRangeInputBinding & {
   /** Turns a day into the text the field shows: "18 Nov". The app formats dates. */
   format: (date: CalendarDate) => string;
   /** Today, from the page's Logic. */
@@ -38,8 +49,10 @@ export type DateRangeInputProps = FieldOwnProps & {
 export function DateRangeInput(props: DateRangeInputProps) {
   const {
     label, isLabelHidden, description, status, isRequired, hasRequiredMark, optionalLabel, info, isDisabled = false, disabledMessage, size: ownSize,
-    value: range, onChange: onRangeChange, format, today, placeholder, min, max, isDateDisabled, firstWeekday, hasCloseButton = true, closeLabel = liuliText('@liuli.close'), className, 'data-testid': testId,
+    format, today, placeholder, min, max, isDateDisabled, firstWeekday, hasCloseButton = true, closeLabel = liuliText('@liuli.close'), className, 'data-testid': testId,
   } = props;
+  const range = props.bind ? props.bind.value : props.value;
+  const onRangeChange = (next: CalendarRange) => props.bind ? props.bind.set(next) : props.onChange(next);
   const size = useControlSize(ownSize);
   const { env } = useView();
   // A finger gets a sheet; a mouse gets the calendar in a panel under the field.

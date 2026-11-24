@@ -1,4 +1,4 @@
-import { cx, useId, useLocal, type Child } from '@lingxia/view';
+import { cx, useId, useLocal, type Child, type Local } from '@lingxia/view';
 import type { IconRef } from '../Icon/Icon';
 import { Glyph } from '../internal/Glyph';
 import { treeListRecipe as r } from './TreeList.recipe';
@@ -22,14 +22,25 @@ export interface TreeNode {
   isDisabled?: boolean;
 }
 
-export interface TreeListProps {
+export type TreeListBinding =
+  | {
+      /** A View-local cell the control reads and writes; use it or `value` with `onChange`. */
+      bind: Local<string | null>;
+      value?: never;
+      onChange?: never;
+    }
+  | {
+      bind?: never;
+      /** The selected node's id, or null. */
+      value: string | null;
+      /** Runs with the id of the row that was pressed; a branch is selected and toggled by the same press. */
+      onChange: (id: string) => void;
+    };
+
+export type TreeListProps = TreeListBinding & {
   /** Names the tree for assistive tech: "Folders". */
   label: string;
   items: readonly TreeNode[];
-  /** The selected node's id, or null. */
-  value: string | null;
-  /** Runs with the id of the row that was pressed; a branch is selected and toggled by the same press. */
-  onChange: (id: string) => void;
   /** The ids of the open branches, to hold them outside; pass `onOpenBranchesChange` with it. */
   openBranches?: readonly string[];
   /** Runs with the open branches' ids after a press opens or closes one. */
@@ -40,15 +51,17 @@ export interface TreeListProps {
   hasLineGuides?: boolean;
   className?: string;
   'data-testid'?: string;
-}
+};
 
 type Level = 1 | 2 | 3 | 4 | 5 | 6;
 type Guide = 1 | 2 | 3 | 4 | 5;
 
 /** Things inside things: folders, an outline, a file tree. Branches open in place. */
 export function TreeList({
-  label, items, value, onChange, openBranches, onOpenBranchesChange, defaultOpenBranches = [], hasLineGuides = false, className, 'data-testid': testId, ...attributes
+  label, items, bind, value: own, onChange: ownChange, openBranches, onOpenBranchesChange, defaultOpenBranches = [], hasLineGuides = false, className, 'data-testid': testId, ...attributes
 }: TreeListProps) {
+  const value = bind ? bind.value : own;
+  const onChange = (next: string) => bind ? bind.set(next) : ownChange?.(next);
   const id = useId();
   const local = useLocal<readonly string[]>('open', defaultOpenBranches);
   const shown = openBranches ?? local.value;

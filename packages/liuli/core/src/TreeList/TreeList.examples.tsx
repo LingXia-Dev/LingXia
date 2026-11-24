@@ -29,7 +29,7 @@ export function Folders() {
   const current = useLocal<string | null>('current', 'coast');
   return (
     <view className="gap-2">
-      <TreeList label="Folders" items={folders} value={current.value} onChange={id => current.set(id)} defaultOpenBranches={['notes', 'travel']} data-testid="folders" />
+      <TreeList label="Folders" items={folders} bind={current} defaultOpenBranches={['notes', 'travel']} data-testid="folders" />
       <text role="status" className="text-footnote text-muted">{`Current: ${current.value}`}</text>
     </view>
   );
@@ -48,7 +48,7 @@ const outline: TreeNode[] = [
 export function Outline() {
   const current = useLocal<string | null>('section', 'layout');
   const open = useLocal<readonly string[]>('open', ['setup', 'first']);
-  return <TreeList label="Contents" items={outline} value={current.value} onChange={id => current.set(id)} openBranches={open.value} onOpenBranchesChange={next => open.set(next)} data-testid="outline" />;
+  return <TreeList label="Contents" items={outline} bind={current} openBranches={open.value} onOpenBranchesChange={next => open.set(next)} data-testid="outline" />;
 }
 
 /** The outline with guides: a hairline runs down from each open branch beside its children. */
@@ -58,8 +58,7 @@ export function Guides() {
     <TreeList
       label="Contents"
       items={outline}
-      value={current.value}
-      onChange={id => current.set(id)}
+      bind={current}
       defaultOpenBranches={['setup', 'first']}
       hasLineGuides
       data-testid="guides"
@@ -81,7 +80,7 @@ export function Described() {
           { id: 'tests', label: 'tests', icon: 'folder', description: '14 files', endContent: <IconButton label="Run the tests" icon="play" size="sm" variant="ghost" onClick={() => say('Ran the tests')} data-testid="run" />, children: [] },
         ];
         return (
-          <TreeList label="Project" items={project} value={current.value} onChange={id => current.set(id)} defaultOpenBranches={['src']} hasLineGuides data-testid="project" />
+          <TreeList label="Project" items={project} bind={current} defaultOpenBranches={['src']} hasLineGuides data-testid="project" />
         );
       }}
     </Said>

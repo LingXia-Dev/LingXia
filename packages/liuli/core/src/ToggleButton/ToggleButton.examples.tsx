@@ -17,8 +17,8 @@ export function Filters() {
   return (
     <view className="gap-3">
       <view role="group" aria-label="Filters" className="flex-row flex-wrap gap-2">
-        <ToggleButton label="Unread" size="sm" value={unread.value} onChange={next => unread.set(next)} data-testid="unread" />
-        <ToggleButton label="Starred" size="sm" value={starred.value} onChange={next => starred.set(next)} data-testid="starred" />
+        <ToggleButton label="Unread" size="sm" bind={unread} data-testid="unread" />
+        <ToggleButton label="Starred" size="sm" bind={starred} data-testid="starred" />
       </view>
       <text className="text-footnote text-muted" data-testid="count">{shown.length === 1 ? '1 note' : `${shown.length} notes`}</text>
     </view>
@@ -30,7 +30,7 @@ export function WordWrap() {
   const wrap = useLocal('wrap', true);
   return (
     <view className="gap-3">
-      <ToggleButton label="Wrap lines" value={wrap.value} onChange={next => wrap.set(next)} className="self-start" data-testid="wrap" />
+      <ToggleButton label="Wrap lines" bind={wrap} className="self-start" data-testid="wrap" />
       <text className={wrap.value ? 'text-body text-text' : 'text-body text-text truncate'} data-testid="sample">
         Every line of this note is long enough to reach past the edge of a phone held upright.
       </text>

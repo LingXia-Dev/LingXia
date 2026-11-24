@@ -27,7 +27,7 @@ export const doc: ComponentDoc = {
     pattern: null,
     name: 'label',
     description: [],
-    states: [{ state: 'selected', from: 'value, or range' }, { state: 'disabled', from: 'min, max, isDateDisabled' }],
+    states: [{ state: 'selected', from: 'value or bind, a day or a span' }, { state: 'disabled', from: 'min, max, isDateDisabled' }],
     keyboard: [
       { keys: 'Tab', effect: 'To the month buttons, then into the days as one stop' },
       { keys: 'Arrow keys', effect: 'A day along the week, a week up and down; days that cannot be chosen are passed over' },

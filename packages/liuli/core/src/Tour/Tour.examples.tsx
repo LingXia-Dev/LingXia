@@ -23,7 +23,7 @@ export function Welcome() {
           <view className="flex-row flex-wrap items-center gap-2">
             <view id="tour-new"><Button label="New note" variant="primary" startIcon="add" onClick={() => say('Created a note')} /></view>
             <view id="tour-search" className="grow basis-40">
-              <SearchField label="Search notes" isLabelHidden value={query.value} onChange={query.set} placeholder="Search" clearLabel="Clear" />
+              <SearchField label="Search notes" isLabelHidden bind={query} placeholder="Search" clearLabel="Clear" />
             </view>
           </view>
           <view className="flex-row items-center justify-between gap-3">
@@ -34,8 +34,7 @@ export function Welcome() {
           {step.value !== null && <text role="status" className="text-footnote text-muted">{`On step ${step.value + 1}`}</text>}
           <Tour
             steps={steps}
-            value={step.value}
-            onChange={next => step.set(next)}
+            bind={step}
             stepLabel={(at, count) => `${at + 1} of ${count}`}
             data-testid="tour"
           />

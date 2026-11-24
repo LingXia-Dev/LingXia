@@ -1,4 +1,4 @@
-import { cx, useLocal, useView, type Weekday } from '@lingxia/view';
+import { cx, useLocal, useView, type Local, type Weekday } from '@lingxia/view';
 import { liuliText, monthName, weekdayInitial, weekdayName } from '../i18n/text';
 import { IconButton } from '../IconButton/IconButton';
 import { calendarRecipe as r } from './Calendar.recipe';
@@ -19,6 +19,14 @@ export type CalendarSelection =
   | {
       /** Chooses one day. @default false */
       isRange?: false;
+      /** A View-local cell the control reads and writes; use it or `value` with `onChange`. */
+      bind: Local<CalendarDate | null>;
+      value?: never;
+      onChange?: never;
+    }
+  | {
+      isRange?: false;
+      bind?: never;
       /** The chosen day, or `null`. */
       value: CalendarDate | null;
       /** Runs with the pressed day. */
@@ -27,6 +35,13 @@ export type CalendarSelection =
   | {
       /** Chooses a span of days. */
       isRange: true;
+      bind: Local<CalendarRange>;
+      value?: never;
+      onChange?: never;
+    }
+  | {
+      isRange: true;
+      bind?: never;
       /** The chosen span. A first press sets `start` and clears `end`; a second sets `end`, the earlier day first. */
       value: CalendarRange;
       onChange: (range: CalendarRange) => void;
@@ -65,7 +80,19 @@ export function Calendar(props: CalendarProps) {
   // `weekdayOf` counts 0 = Sunday.
   const firstDay = (props.firstWeekday ?? userFirst ?? 7) % 7;
   const now = props.today;
-  const anchor = props.isRange ? props.value.start : props.value;
+  const span = props.isRange ? (props.bind ? props.bind.value : props.value) : undefined;
+  const day = props.isRange ? null : props.bind ? props.bind.value : props.value;
+  const chooseDay = (next: CalendarDate) => {
+    if (props.isRange) return;
+    if (props.bind) props.bind.set(next);
+    else props.onChange(next);
+  };
+  const chooseSpan = (next: CalendarRange) => {
+    if (!props.isRange) return;
+    if (props.bind) props.bind.set(next);
+    else props.onChange(next);
+  };
+  const anchor = span ? span.start : day;
   const own = useLocal('month', (isDate(anchor) ? anchor : now).slice(0, 7));
   const shown = props.month ?? own.value;
   const [year, month] = [Number(shown.slice(0, 4)), Number(shown.slice(5, 7))];
@@ -75,13 +102,13 @@ export function Calendar(props: CalendarProps) {
     own.set(next);
     props.onMonthChange?.(next);
   };
-  const [start, end] = props.isRange ? [props.value.start, props.value.end] : [props.value, props.value];
+  const [start, end] = span ? [span.start, span.end] : [day, day];
   const press = (date: CalendarDate) => {
-    if (!props.isRange) return props.onChange(date);
-    const { start: from, end: to } = props.value;
+    if (!span) return chooseDay(date);
+    const { start: from, end: to } = span;
     // A span in progress is finished, the earlier day first; a finished or empty one starts over.
-    if (from !== null && to === null) return props.onChange(date < from ? { start: date, end: from } : { start: from, end: date });
-    return props.onChange({ start: date, end: null });
+    if (from !== null && to === null) return chooseSpan(date < from ? { start: date, end: from } : { start: from, end: date });
+    return chooseSpan({ start: date, end: null });
   };
   const ordered = Array.from({ length: 7 }, (_, index) => weekdayInitial((firstDay + index) % 7));
   const title = liuliText('@liuli.calendar.title', { monthName: monthName(month), year: String(year) });

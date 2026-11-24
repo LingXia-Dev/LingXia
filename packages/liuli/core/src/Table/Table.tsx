@@ -1,4 +1,4 @@
-import { cx, useBox, useContext, useView, type Child } from '@lingxia/view';
+import { cx, useBox, useContext, useView, type Child, type Local } from '@lingxia/view';
 import { useDensity } from '../density';
 import { LayerContext } from '../internal/layer';
 import { tableRecipe as r } from './Table.recipe';
@@ -32,7 +32,22 @@ export interface TableColumn {
   cell?: (row: TableRow) => Child;
 }
 
-export interface TableProps {
+export type TableBinding =
+  | {
+      /** A View-local cell the control reads and writes; use it or `value` with `onChange`. */
+      bind: Local<string | null>;
+      value?: never;
+      onChange?: never;
+    }
+  | {
+      bind?: never;
+      /** The row drawn and read as selected. */
+      value?: string | null;
+      /** Makes each row one button; runs with its key. */
+      onChange?: (key: string) => void;
+    };
+
+export type TableProps = TableBinding & {
   /** The table's accessible name: "Invoices". */
   label: string;
   columns: readonly TableColumn[];
@@ -50,16 +65,12 @@ export interface TableProps {
    * The table must be inside a `<scroll>`; without `maxHeight`. @default false
    */
   isHeaderSticky?: boolean;
-  /** Makes each row one button; runs with its key. */
-  onChange?: (key: string) => void;
-  /** The row drawn and read as selected. */
-  value?: string | null;
   /** Shown in place of the rows when there are none: "No invoices yet". */
   emptyLabel?: string;
   className?: string;
   /** On the table; a row is `<id>-<key>`. */
   'data-testid'?: string;
-}
+};
 
 // A text column narrower than this many characters breaks words, unless its values are shorter; the table stacks instead.
 const minText = 11;
@@ -88,8 +99,11 @@ const track = (column: TableColumn) => (typeof column.width === 'number' ? `${co
 
 /** Records in rows and fields in columns, under headings that stay in view. */
 export function Table({
-  label, columns, rows, keyField, layout = 'auto', density: ownDensity, maxHeight, isHeaderSticky = false, onChange: onRowClick, value: selectedKey, emptyLabel, className, 'data-testid': testId, ...attributes
+  label, columns, rows, keyField, layout = 'auto', density: ownDensity, maxHeight, isHeaderSticky = false, bind, onChange: ownChange, value: own, emptyLabel, className, 'data-testid': testId, ...attributes
 }: TableProps) {
+  const selectedKey = bind ? bind.value : own;
+  // Bound, each row is a button that selects it.
+  const onRowClick = bind ? (key: string) => bind.set(key) : ownChange;
   const screenDensity = useDensity();
   const density = ownDensity ?? screenDensity;
   const layer = useContext(LayerContext);

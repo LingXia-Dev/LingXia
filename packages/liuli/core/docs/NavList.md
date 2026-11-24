@@ -36,7 +36,7 @@ export function Sidebar() {
   const current = useLocal<string>('current', 'inbox');
   return (
     <view className="md:max-w-[264px] gap-4">
-      <NavList label="Workspace" sections={workspace} value={current.value} onChange={next => current.set(next)} data-testid="workspace" />
+      <NavList label="Workspace" sections={workspace} bind={current} data-testid="workspace" />
       <text className="text-footnote text-muted" data-testid="workspace-current">{`Showing ${current.value}`}</text>
     </view>
   );
@@ -59,7 +59,7 @@ export function Closed() {
   const current = useLocal<string>('current', 'text-input');
   return (
     <view className="md:max-w-[264px]">
-      <NavList label="Components" sections={library} value={current.value} onChange={next => current.set(next)} defaultOpenSections={['inputs']} data-testid="library" />
+      <NavList label="Components" sections={library} bind={current} defaultOpenSections={['inputs']} data-testid="library" />
     </view>
   );
 }
@@ -69,13 +69,16 @@ export function Closed() {
 
 | Prop | Type | Default | Description |
 | --- | --- | --- | --- |
+| `bind` | `Local<string \| null>` |  | A View-local cell the control reads and writes; use it or `value` with `onChange`. |
+| `value` | `string \| null` |  | The current row's value, or `null` when none is current. |
+| `onChange` | `((value: string) => void)` |  | Runs with the value of a row chosen by a tap, a click or Enter. |
 | `label` (required) | `string` |  | Names the list for assistive tech: "Mailboxes", "Components". |
 | `sections` (required) | `readonly NavListSection[]` |  | The rows, in sections. |
-| `value` (required) | `string \| null` |  | The current row's value, or `null` when none is current. |
-| `onChange` (required) | `(value: string) => void` |  | Runs with the value of a row chosen by a tap, a click or Enter. |
 | `defaultOpenSections` | `readonly string[]` |  | Sections open at first, by id; leave it out to open every section. After that each remembers its own state. |
 | `className` | `string` |  |  |
 | `data-testid` | `string` |  | On the list; each row gets `<testid>-<value>`, each section heading `<testid>-section-<id>`. |
+
+- `bind` | `value` + `onChange`: props from one side only.
 
 ## Anatomy
 
@@ -102,7 +105,7 @@ export function Closed() {
 - Pattern: tree.
 - Name: label.
 - Description: none.
-- States: selected (from value); expanded (from sections, open as `defaultOpenSections` lists them, then by a press on the heading); disabled (from items[].isDisabled).
+- States: selected (from value or bind); expanded (from sections, open as `defaultOpenSections` lists them, then by a press on the heading); disabled (from items[].isDisabled).
 - Tab: Into the list, on the current row; again, out of it..
 - Up, Down: The previous or next row or heading..
 - Home, End: The first or last row..

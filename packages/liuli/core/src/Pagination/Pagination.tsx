@@ -1,4 +1,4 @@
-import { cx, useBox, useView } from '@lingxia/view';
+import { cx, useBox, useView, type Local } from '@lingxia/view';
 import { liuliText } from '../i18n/text';
 import { IconButton } from '../IconButton/IconButton';
 import { Select } from '../Select/Select';
@@ -6,19 +6,30 @@ import { Glyph } from '../internal/Glyph';
 import { paginationRecipe as r } from './Pagination.recipe';
 import { dataOf } from '../internal/data';
 
-export interface PaginationProps {
+export type PaginationBinding =
+  | {
+      /** A View-local cell the control reads and writes; use it or `value` with `onChange`. */
+      bind: Local<number>;
+      value?: never;
+      onChange?: never;
+    }
+  | {
+      bind?: never;
+      /** The current page, from 1. */
+      value: number;
+      /** Runs with the page chosen. */
+      onChange: (page: number) => void;
+    };
+
+export type PaginationProps = PaginationBinding & {
   /** Names the control for assistive tech: "Pages", "Results pages". */
   label: string;
-  /** The current page, from 1. */
-  value: number;
   /** How many pages there are. Without it or `totalItems` the count is unknown and `hasMore` says whether there is a next page. */
   pageCount?: number;
   /** How many items there are, when the pages are counted from it and `pageSize`. */
   totalItems?: number;
   /** With no count, as with a cursor: whether a page follows this one. @default false */
   hasMore?: boolean;
-  /** Runs with the page chosen. */
-  onChange: (page: number) => void;
   /** A page button's accessible name: `page => \`Page ${page}\``. Defaults to "Page 2" in the page's language. */
   pageLabel?: (page: number) => string;
   previousLabel?: string;
@@ -40,7 +51,7 @@ export interface PaginationProps {
   className?: string;
   /** On the control; a page is `<id>-<n>`, the arrows `<id>-previous` and `<id>-next`. */
   'data-testid'?: string;
-}
+};
 
 /** The pages to show: the first, the last, the current one with its neighbours, and `null` where pages are left out. */
 export function pagesShown(page: number, pageCount: number, siblings: number): (number | null)[] {
@@ -57,9 +68,11 @@ const [arrows, pageWidth, gapWidth, between] = [88, 40, 24, 4];
 
 /** Moves through a long set a page at a time. */
 export function Pagination({
-  label, value: page, pageCount: counted, totalItems, hasMore = false, onChange, pageLabel = (page: number) => liuliText('@liuli.page', { page }), previousLabel = liuliText('@liuli.previousPage'), nextLabel = liuliText('@liuli.nextPage'), siblings = 1, variant = 'auto', positionLabel,
+  label, bind, value: own, pageCount: counted, totalItems, hasMore = false, onChange: ownChange, pageLabel = (page: number) => liuliText('@liuli.page', { page }), previousLabel = liuliText('@liuli.previousPage'), nextLabel = liuliText('@liuli.nextPage'), siblings = 1, variant = 'auto', positionLabel,
   pageSize = 20, pageSizes, onPageSizeChange, pageSizeLabel, className, 'data-testid': testId, ...attributes
 }: PaginationProps) {
+  const page = bind ? bind.value : own;
+  const onChange = (next: number) => bind ? bind.set(next) : ownChange?.(next);
   const pageCount = counted ?? (totalItems === undefined ? undefined : Math.max(1, Math.ceil(totalItems / Math.max(1, pageSize))));
   const { env } = useView();
   // A row of page numbers needs a pointer's precision and room; a finger gets the arrows and the position.

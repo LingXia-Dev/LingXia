@@ -1,4 +1,4 @@
-import { cx } from '@lingxia/view';
+import { cx, type Local } from '@lingxia/view';
 import { liuliText } from '../i18n/text';
 import { Glyph } from '../internal/Glyph';
 import { stepperRecipe as r } from './Stepper.recipe';
@@ -15,25 +15,39 @@ export interface StepperStep {
   description?: string;
 }
 
-export interface StepperProps {
+export type StepperBinding =
+  | {
+      /** A View-local cell the control reads and writes; use it or `value` with `onChange`. */
+      bind: Local<number>;
+      value?: never;
+      onChange?: never;
+    }
+  | {
+      bind?: never;
+      /** The index of the step in progress, from 0; `steps.length` when every step is done. */
+      value: number;
+      /** Makes a finished step a button that goes back to it; runs with its index. */
+      onChange?: (index: number) => void;
+    };
+
+export type StepperProps = StepperBinding & {
   /** Names the steps for assistive tech: "Checkout steps". */
   label: string;
   /** The steps, in order. */
   steps: readonly StepperStep[];
-  /** The index of the step in progress, from 0; `steps.length` when every step is done. */
-  value: number;
   /** What a screen reader hears for a step's state, instead of Liuli's "Done", "Current step" and "Not started" in the page's language. */
   stateLabels?: Partial<Record<StepState, string>>;
-  /** Makes a finished step a button that goes back to it; runs with its index. */
-  onChange?: (index: number) => void;
   /** `horizontal` suits up to four short labels; `vertical` any number, with descriptions. @default 'vertical' */
   orientation?: StepperOrientation;
   className?: string;
   'data-testid'?: string;
-}
+};
 
 /** Where someone is in a task with a known number of steps. */
-export function Stepper({ label, steps, value: current, stateLabels, onChange: onStepClick, orientation = 'vertical', className, 'data-testid': testId, ...attributes }: StepperProps) {
+export function Stepper({ label, steps, bind, value: own, stateLabels, onChange: ownChange, orientation = 'vertical', className, 'data-testid': testId, ...attributes }: StepperProps) {
+  const current = bind ? bind.value : own;
+  // Bound, a finished step is a button that goes back to it.
+  const onStepClick = bind ? (index: number) => bind.set(index) : ownChange;
   const isRow = orientation === 'horizontal';
   return (
     <view role="list" aria-label={label} data-testid={testId} {...dataOf(attributes)} className={cx(r.root.base, r.root.orientation[orientation], className)}>

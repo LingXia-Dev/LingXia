@@ -33,7 +33,7 @@ const summaries: Record<string, string> = {
 export function Sections() {
   const section = useLocal('section', 'overview');
   return (
-    <Tabs label="Project" items={sections} value={section.value} onChange={next => section.set(next)} data-testid="project">
+    <Tabs label="Project" items={sections} bind={section} data-testid="project">
       <text className="text-body text-muted">{summaries[section.value]}</text>
     </Tabs>
   );
@@ -57,7 +57,7 @@ export function Segmented() {
   const range = useLocal('range', 'week');
   const totals: Record<string, string> = { day: '42 minutes', week: '5 hours 10 minutes', month: '21 hours' };
   return (
-    <Tabs label="Range" items={ranges} value={range.value} onChange={next => range.set(next)} variant="segmented" data-testid="range">
+    <Tabs label="Range" items={ranges} bind={range} variant="segmented" data-testid="range">
       <view className="gap-0.5">
         <text className="text-footnote text-muted">Time spent writing</text>
         <text className="text-title font-semibold text-text tabular-nums">{totals[range.value]}</text>
@@ -87,8 +87,7 @@ export function Filter() {
     <Tabs
       label="Show"
       items={[{ value: 'all', label: 'All' }, { value: 'pinned', label: 'Pinned' }, { value: 'shared', label: 'Shared' }]}
-      value={filter.value}
-      onChange={next => filter.set(next)}
+      bind={filter}
       variant="segmented"
       className="gap-3"
       data-testid="filter"
@@ -116,7 +115,7 @@ const settings = [
 export function Fitted() {
   const tab = useLocal('tab', 'general');
   return (
-    <Tabs label="Settings" items={settings} value={tab.value} onChange={tab.set} tabWidth="content" data-testid="settings">
+    <Tabs label="Settings" items={settings} bind={tab} tabWidth="content" data-testid="settings">
       <text className="text-body text-muted">{settings.find(item => item.value === tab.value)?.label}</text>
     </Tabs>
   );
@@ -127,15 +126,18 @@ export function Fitted() {
 
 | Prop | Type | Default | Description |
 | --- | --- | --- | --- |
+| `bind` | `Local<string>` |  | A View-local cell the control reads and writes; use it or `value` with `onChange`. |
+| `value` | `string` |  | The chosen tab's value. |
+| `onChange` | `((value: string) => void)` |  | Runs with the tab chosen by a tap or by arrowing onto it. |
 | `label` (required) | `string` |  | Names the tab list for assistive tech: "Range", "Sections". |
 | `items` (required) | `readonly TabItem[]` |  | The tabs, in order. |
-| `value` (required) | `string` |  | The chosen tab's value. |
-| `onChange` (required) | `(value: string) => void` |  | Runs with the tab chosen by a tap or by arrowing onto it. |
 | `variant` | `TabsVariant` | `'underline'` | `underline` switches between sections of a page; `segmented` switches one view between modes. |
 | `tabWidth` | `TabsWidth` | `'equal'` | How wide a tab is. `content` suits many tabs or long labels; underline tabs only. |
 | `children` | `Child` |  | The chosen tab's panel. |
 | `className` | `string` |  |  |
 | `data-testid` | `string` |  | On the tab list; each tab gets `<testid>-<value>`, the panel `<testid>-panel`. |
+
+- `bind` | `value` + `onChange`: props from one side only.
 
 ## Anatomy
 
@@ -160,7 +162,7 @@ export function Fitted() {
 - Pattern: tabs.
 - Name: label.
 - Description: none.
-- States: selected (from value); disabled (from items[].isDisabled).
+- States: selected (from value or bind); disabled (from items[].isDisabled).
 - Tab: Into the row, on the chosen tab; again, on to the panel..
 - Left, Right: The previous or next tab, chosen on arrival; wraps at the ends..
 - Home, End: The first or last tab..

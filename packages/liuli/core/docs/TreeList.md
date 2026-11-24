@@ -43,7 +43,7 @@ export function Folders() {
   const current = useLocal<string | null>('current', 'coast');
   return (
     <view className="gap-2">
-      <TreeList label="Folders" items={folders} value={current.value} onChange={id => current.set(id)} defaultOpenBranches={['notes', 'travel']} data-testid="folders" />
+      <TreeList label="Folders" items={folders} bind={current} defaultOpenBranches={['notes', 'travel']} data-testid="folders" />
       <text role="status" className="text-footnote text-muted">{`Current: ${current.value}`}</text>
     </view>
   );
@@ -69,7 +69,7 @@ const outline: TreeNode[] = [
 export function Outline() {
   const current = useLocal<string | null>('section', 'layout');
   const open = useLocal<readonly string[]>('open', ['setup', 'first']);
-  return <TreeList label="Contents" items={outline} value={current.value} onChange={id => current.set(id)} openBranches={open.value} onOpenBranchesChange={next => open.set(next)} data-testid="outline" />;
+  return <TreeList label="Contents" items={outline} bind={current} openBranches={open.value} onOpenBranchesChange={next => open.set(next)} data-testid="outline" />;
 }
 ```
 
@@ -95,8 +95,7 @@ export function Guides() {
     <TreeList
       label="Contents"
       items={outline}
-      value={current.value}
-      onChange={id => current.set(id)}
+      bind={current}
       defaultOpenBranches={['setup', 'first']}
       hasLineGuides
       data-testid="guides"
@@ -128,7 +127,7 @@ export function Described() {
           { id: 'tests', label: 'tests', icon: 'folder', description: '14 files', endContent: <IconButton label="Run the tests" icon="play" size="sm" variant="ghost" onClick={() => say('Ran the tests')} data-testid="run" />, children: [] },
         ];
         return (
-          <TreeList label="Project" items={project} value={current.value} onChange={id => current.set(id)} defaultOpenBranches={['src']} hasLineGuides data-testid="project" />
+          <TreeList label="Project" items={project} bind={current} defaultOpenBranches={['src']} hasLineGuides data-testid="project" />
         );
       }}
     </Said>
@@ -140,16 +139,19 @@ export function Described() {
 
 | Prop | Type | Default | Description |
 | --- | --- | --- | --- |
+| `bind` | `Local<string \| null>` |  | A View-local cell the control reads and writes; use it or `value` with `onChange`. |
+| `value` | `string \| null` |  | The selected node's id, or null. |
+| `onChange` | `((id: string) => void)` |  | Runs with the id of the row that was pressed; a branch is selected and toggled by the same press. |
 | `label` (required) | `string` |  | Names the tree for assistive tech: "Folders". |
 | `items` (required) | `readonly TreeNode[]` |  |  |
-| `value` (required) | `string \| null` |  | The selected node's id, or null. |
-| `onChange` (required) | `(id: string) => void` |  | Runs with the id of the row that was pressed; a branch is selected and toggled by the same press. |
 | `openBranches` | `readonly string[]` |  | The ids of the open branches, to hold them outside; pass `onOpenBranchesChange` with it. |
 | `onOpenBranchesChange` | `((ids: readonly string[]) => void)` |  | Runs with the open branches' ids after a press opens or closes one. |
 | `defaultOpenBranches` | `readonly string[]` | `[]` | The branches open at first, when `openBranches` is not given. |
 | `hasLineGuides` | `boolean` | `false` | Hairlines down from each open branch's chevron beside its children, so deep levels read at a glance. |
 | `className` | `string` |  |  |
 | `data-testid` | `string` |  |  |
+
+- `bind` | `value` + `onChange`: props from one side only.
 
 ## Anatomy
 
@@ -177,7 +179,7 @@ export function Described() {
 - Pattern: tree.
 - Name: label.
 - Description: none.
-- States: expanded (from openBranches, or defaultOpenBranches and the rows opened since); selected (from value); disabled (from isDisabled on a node).
+- States: expanded (from openBranches, or defaultOpenBranches and the rows opened since); selected (from value or bind); disabled (from isDisabled on a node).
 - Up and Down: Move between the rows in view.
 - Right: Opens a closed branch; on an open one, moves to its first child (Left, right to left).
 - Left: Closes an open branch; on any other row, moves to its parent (Right, right to left).

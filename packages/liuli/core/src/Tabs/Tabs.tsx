@@ -1,4 +1,4 @@
-import { cx, reveal, useBox, useId, useLocal, type Child } from '@lingxia/view';
+import { cx, reveal, useBox, useId, useLocal, type Child, type Local } from '@lingxia/view';
 import { segmentedControlRecipe as s } from '../SegmentedControl/SegmentedControl.recipe';
 import { tabsRecipe as r } from './Tabs.recipe';
 import { dataOf } from '../internal/data';
@@ -16,15 +16,26 @@ export interface TabItem {
   isDisabled?: boolean;
 }
 
-export interface TabsProps {
+export type TabsBinding =
+  | {
+      /** A View-local cell the control reads and writes; use it or `value` with `onChange`. */
+      bind: Local<string>;
+      value?: never;
+      onChange?: never;
+    }
+  | {
+      bind?: never;
+      /** The chosen tab's value. */
+      value: string;
+      /** Runs with the tab chosen by a tap or by arrowing onto it. */
+      onChange: (value: string) => void;
+    };
+
+export type TabsProps = TabsBinding & {
   /** Names the tab list for assistive tech: "Range", "Sections". */
   label: string;
   /** The tabs, in order. */
   items: readonly TabItem[];
-  /** The chosen tab's value. */
-  value: string;
-  /** Runs with the tab chosen by a tap or by arrowing onto it. */
-  onChange: (value: string) => void;
   /** `underline` switches between sections of a page; `segmented` switches one view between modes. @default 'underline' */
   variant?: TabsVariant;
   /** How wide a tab is. `content` suits many tabs or long labels; underline tabs only. @default 'equal' */
@@ -34,10 +45,12 @@ export interface TabsProps {
   className?: string;
   /** On the tab list; each tab gets `<testid>-<value>`, the panel `<testid>-panel`. */
   'data-testid'?: string;
-}
+};
 
 /** Tabs over one panel: one Tab stop for the row, arrows move between tabs and choose on arrival. */
-export function Tabs({ label, items, value, onChange, variant = 'underline', tabWidth = 'equal', children, className, 'data-testid': testId, ...attributes }: TabsProps) {
+export function Tabs({ label, items, bind, value: own, onChange: ownChange, variant = 'underline', tabWidth = 'equal', children, className, 'data-testid': testId, ...attributes }: TabsProps) {
+  const value = bind ? bind.value : own;
+  const onChange = (next: string) => bind ? bind.set(next) : ownChange?.(next);
   const id = useId();
   const index = Math.max(0, items.findIndex(item => item.value === value));
   const chosen = items[index];

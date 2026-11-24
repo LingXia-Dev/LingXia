@@ -66,8 +66,7 @@ export function Pressable() {
       columns={[{ field: 'customer', header: 'Customer', width: '2fr' }, { field: 'status', header: 'Status', cell: status }, { field: 'amount', header: 'Amount', align: 'end', format: money }]}
       rows={invoices}
       keyField="id"
-      value={open.value}
-      onChange={open.set}
+      bind={open}
       data-testid="pressable"
     />
   );
@@ -164,6 +163,9 @@ export function MembersColumns() {
 
 | Prop | Type | Default | Description |
 | --- | --- | --- | --- |
+| `bind` | `Local<string \| null>` |  | A View-local cell the control reads and writes; use it or `value` with `onChange`. |
+| `value` | `string \| null` |  | The row drawn and read as selected. |
+| `onChange` | `((key: string) => void)` |  | Makes each row one button; runs with its key. |
 | `label` (required) | `string` |  | The table's accessible name: "Invoices". |
 | `columns` (required) | `readonly TableColumn[]` |  |  |
 | `rows` (required) | `readonly Readonly<Record<string, TableValue>>[]` |  |  |
@@ -172,11 +174,11 @@ export function MembersColumns() {
 | `density` | `TableDensity` | `'comfortable'` |  |
 | `maxHeight` | `number` |  | Caps the rows' height in points: the rows scroll under a heading that stays. |
 | `isHeaderSticky` | `boolean` | `false` | Holds the heading at the top of the scroll the table sits in while its rows pass under it. The table must be inside a `<scroll>`; without `maxHeight`. |
-| `onChange` | `((key: string) => void)` |  | Makes each row one button; runs with its key. |
-| `value` | `string \| null` |  | The row drawn and read as selected. |
 | `emptyLabel` | `string` |  | Shown in place of the rows when there are none: "No invoices yet". |
 | `className` | `string` |  |  |
 | `data-testid` | `string` |  | On the table; a row is `<id>-<key>`. |
+
+- `bind` | `value` + `onChange`: props from one side only.
 
 ## TableColumn props
 

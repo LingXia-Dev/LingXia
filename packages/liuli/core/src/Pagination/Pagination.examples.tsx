@@ -9,7 +9,7 @@ export function Results() {
   const page = useLocal('page', 3);
   return (
     <view className="gap-2">
-      <Pagination label="Results pages" value={page.value} pageCount={12} onChange={page.set} positionLabel={(at, of) => `Page ${at} of ${of}`} {...words} data-testid="results" />
+      <Pagination label="Results pages" bind={page} pageCount={12} positionLabel={(at, of) => `Page ${at} of ${of}`} {...words} data-testid="results" />
       <text role="status" className="text-footnote text-muted tabular-nums">{`Showing ${(page.value - 1) * 20 + 1}–${page.value * 20} of 240`}</text>
     </view>
   );
@@ -18,13 +18,13 @@ export function Results() {
 /** The page numbers, whatever the pointer: first, last, the current page and its neighbours. */
 export function Pages() {
   const page = useLocal('page', 6);
-  return <Pagination label="Pages" variant="pages" value={page.value} pageCount={12} onChange={page.set} {...words} data-testid="pages" />;
+  return <Pagination label="Pages" variant="pages" bind={page} pageCount={12} {...words} data-testid="pages" />;
 }
 
 /** The arrows and the position, whatever the pointer. */
 export function Compact() {
   const page = useLocal('page', 1);
-  return <Pagination label="Pages" variant="compact" value={page.value} pageCount={4} onChange={page.set} {...words} data-testid="compact" />;
+  return <Pagination label="Pages" variant="compact" bind={page} pageCount={4} {...words} data-testid="compact" />;
 }
 
 /** Page numbers in a row too narrow for them: the neighbours go first, then the numbers give way to the position. */
@@ -32,8 +32,8 @@ export function Narrow() {
   const page = useLocal('page', 6);
   return (
     <view className="gap-3">
-      <view className="w-[280px]"><Pagination label="Pages" variant="pages" value={page.value} pageCount={12} onChange={page.set} {...words} data-testid="narrow" /></view>
-      <view className="w-[232px]"><Pagination label="Pages" variant="pages" value={page.value} pageCount={12} onChange={page.set} {...words} data-testid="narrower" /></view>
+      <view className="w-[280px]"><Pagination label="Pages" variant="pages" bind={page} pageCount={12} {...words} data-testid="narrow" /></view>
+      <view className="w-[232px]"><Pagination label="Pages" variant="pages" bind={page} pageCount={12} {...words} data-testid="narrower" /></view>
     </view>
   );
 }
@@ -44,9 +44,8 @@ export function Cursor() {
   return (
     <Pagination
       label="Activity pages"
-      value={page.value}
+      bind={page}
       hasMore={page.value < 3}
-      onChange={page.set}
       positionLabel={at => `Page ${at}`}
       {...words}
       data-testid="cursor"

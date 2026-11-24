@@ -1,4 +1,4 @@
-import { cx, reveal, useId, useLocal } from '@lingxia/view';
+import { cx, reveal, useId, useLocal, type Local } from '@lingxia/view';
 import { Glyph } from '../internal/Glyph';
 import { navListRecipe as r } from './NavList.recipe';
 import { dataOf } from '../internal/data';
@@ -22,28 +22,41 @@ export interface NavListSection {
   items: readonly NavListItem[];
 }
 
-export interface NavListProps {
+export type NavListBinding =
+  | {
+      /** A View-local cell the control reads and writes; use it or `value` with `onChange`. */
+      bind: Local<string | null>;
+      value?: never;
+      onChange?: never;
+    }
+  | {
+      bind?: never;
+      /** The current row's value, or `null` when none is current. */
+      value: string | null;
+      /** Runs with the value of a row chosen by a tap, a click or Enter. */
+      onChange: (value: string) => void;
+    };
+
+export type NavListProps = NavListBinding & {
   /** Names the list for assistive tech: "Mailboxes", "Components". */
   label: string;
   /** The rows, in sections. */
   sections: readonly NavListSection[];
-  /** The current row's value, or `null` when none is current. */
-  value: string | null;
-  /** Runs with the value of a row chosen by a tap, a click or Enter. */
-  onChange: (value: string) => void;
   /** Sections open at first, by id; leave it out to open every section. After that each remembers its own state. */
   defaultOpenSections?: readonly string[];
   className?: string;
   /** On the list; each row gets `<testid>-<value>`, each section heading `<testid>-section-<id>`. */
   'data-testid'?: string;
-}
+};
 
 /**
  * A sidebar's list of places, read as a tree: one Tab stop, the arrows move between rows and Home and
  * End go to the ends; a section heading opens and closes its rows, and the current row sits on an
  * accent wash.
  */
-export function NavList({ label, sections, value, onChange, defaultOpenSections, className, 'data-testid': testId, ...attributes }: NavListProps) {
+export function NavList({ label, sections, bind, value: own, onChange: ownChange, defaultOpenSections, className, 'data-testid': testId, ...attributes }: NavListProps) {
+  const value = bind ? bind.value : own;
+  const onChange = (next: string) => bind ? bind.set(next) : ownChange?.(next);
   const closed = useLocal<readonly string[]>('closed', defaultOpenSections === undefined ? [] : sections.filter(section => !defaultOpenSections.includes(section.id)).map(section => section.id));
   const baseId = useId();
   const rowId = (row: string) => `${baseId}-${row}`;

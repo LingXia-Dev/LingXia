@@ -23,7 +23,7 @@ const today = '2026-11-15';
 /** One day: the chosen day is filled, today is ringed. */
 export function Day() {
   const day = useLocal<string | null>('day', '2026-11-19');
-  return <Calendar label="Due date" value={day.value} onChange={day.set} today={today} data-testid="due" />;
+  return <Calendar label="Due date" bind={day} today={today} data-testid="due" />;
 }
 ```
 
@@ -40,7 +40,7 @@ export function Stay() {
   const stay = useLocal<CalendarRange>('stay', { start: '2026-11-18', end: '2026-11-24' });
   return (
     <view className="gap-2">
-      <Calendar label="Stay" isRange value={stay.value} onChange={stay.set} min={today} today={today} data-testid="stay" />
+      <Calendar label="Stay" isRange bind={stay} min={today} today={today} data-testid="stay" />
       <text role="status" className="px-2 text-footnote text-muted tabular-nums">{`${stay.value.start ?? ''} – ${stay.value.end ?? ''}`}</text>
     </view>
   );
@@ -59,7 +59,7 @@ const closed = (date: string) => calendarWeekday(date) >= 6;
 /** Days the app rules out stay in the grid, dimmed: here the weekends. */
 export function Weekdays() {
   const day = useLocal<string | null>('day', null);
-  return <Calendar label="Appointment" value={day.value} onChange={day.set} isDateDisabled={closed} today={today} month="2026-12" data-testid="appointment" />;
+  return <Calendar label="Appointment" bind={day} isDateDisabled={closed} today={today} month="2026-12" data-testid="appointment" />;
 }
 ```
 
@@ -74,7 +74,7 @@ const today = '2026-11-15';
 /** A school timetable: its week runs Monday to Sunday wherever the user lives. */
 export function MondayFirst() {
   const day = useLocal<string | null>('day', '2026-11-16');
-  return <Calendar label="Timetable" value={day.value} onChange={day.set} firstWeekday={1} today={today} data-testid="timetable" />;
+  return <Calendar label="Timetable" bind={day} firstWeekday={1} today={today} data-testid="timetable" />;
 }
 ```
 
@@ -83,8 +83,9 @@ export function MondayFirst() {
 | Prop | Type | Default | Description |
 | --- | --- | --- | --- |
 | `isRange` | `boolean` | `false` | Chooses one day. Chooses a span of days. |
-| `value` (required) | `string \| CalendarRange \| null` |  | The chosen day, or `null`. The chosen span. A first press sets `start` and clears `end`; a second sets `end`, the earlier day first. |
-| `onChange` (required) | `((value: string) => void) \| ((range: CalendarRange) => void)` |  | Runs with the pressed day. |
+| `bind` | `Local<string \| null> \| Local<CalendarRange>` |  | A View-local cell the control reads and writes; use it or `value` with `onChange`. |
+| `value` | `string \| CalendarRange \| null` |  | The chosen day, or `null`. The chosen span. A first press sets `start` and clears `end`; a second sets `end`, the earlier day first. |
+| `onChange` | `((value: string) => void) \| ((range: CalendarRange) => void)` |  | Runs with the pressed day. |
 | `label` (required) | `string` |  | Names the calendar for assistive tech: "Due date", "Stay". |
 | `month` | `string` |  | The month shown, as `YYYY-MM`; pass it with `onMonthChange` to control it. By default the chosen day's month, else today's. |
 | `onMonthChange` | `((month: string) => void)` |  |  |
@@ -95,6 +96,8 @@ export function MondayFirst() {
 | `firstWeekday` | `Weekday` | `the user's first weekday` | The week's first day, 1 is Monday to 7 is Sunday, for a week that is the app's own (a school timetable). |
 | `className` | `string` |  |  |
 | `data-testid` | `string` |  | On the calendar; a day is `<id>-<YYYY-MM-DD>`, the month buttons `<id>-previous` and `<id>-next`. |
+
+- `bind` | `value` + `onChange`: props from one side only.
 
 ## CalendarRange props
 
@@ -127,7 +130,7 @@ export function MondayFirst() {
 - Pattern: none.
 - Name: label.
 - Description: none.
-- States: selected (from value, or range); disabled (from min, max, isDateDisabled).
+- States: selected (from value or bind, a day or a span); disabled (from min, max, isDateDisabled).
 - Tab: To the month buttons, then into the days as one stop.
 - Arrow keys: A day along the week, a week up and down; days that cannot be chosen are passed over.
 - Home and End: To the ends of the week.

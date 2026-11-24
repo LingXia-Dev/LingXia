@@ -33,8 +33,8 @@ export function Filters() {
   return (
     <view className="gap-3">
       <view role="group" aria-label="Filters" className="flex-row flex-wrap gap-2">
-        <ToggleButton label="Unread" size="sm" value={unread.value} onChange={next => unread.set(next)} data-testid="unread" />
-        <ToggleButton label="Starred" size="sm" value={starred.value} onChange={next => starred.set(next)} data-testid="starred" />
+        <ToggleButton label="Unread" size="sm" bind={unread} data-testid="unread" />
+        <ToggleButton label="Starred" size="sm" bind={starred} data-testid="starred" />
       </view>
       <text className="text-footnote text-muted" data-testid="count">{shown.length === 1 ? '1 note' : `${shown.length} notes`}</text>
     </view>
@@ -53,7 +53,7 @@ export function WordWrap() {
   const wrap = useLocal('wrap', true);
   return (
     <view className="gap-3">
-      <ToggleButton label="Wrap lines" value={wrap.value} onChange={next => wrap.set(next)} className="self-start" data-testid="wrap" />
+      <ToggleButton label="Wrap lines" bind={wrap} className="self-start" data-testid="wrap" />
       <text className={wrap.value ? 'text-body text-text' : 'text-body text-text truncate'} data-testid="sample">
         Every line of this note is long enough to reach past the edge of a phone held upright.
       </text>
@@ -83,13 +83,16 @@ export function Sizes() {
 
 | Prop | Type | Default | Description |
 | --- | --- | --- | --- |
+| `bind` | `Local<boolean>` |  | A View-local cell the control reads and writes; use it or `value` with `onChange`. |
+| `value` | `boolean` |  | Whether it is on. |
+| `onChange` | `((isPressed: boolean) => void)` |  | Runs with the new state on a press. |
 | `label` (required) | `string` |  | The text and the accessible name; it stays the same on and off ("Unread", not "Show unread"/"Hide unread"). |
-| `value` (required) | `boolean` |  | Whether it is on. |
-| `onChange` (required) | `(isPressed: boolean) => void` |  | Runs with the new state on a press. |
 | `size` | `ToggleButtonSize` | `'md'` |  |
 | `isDisabled` | `boolean` | `false` |  |
 | `className` | `string` |  |  |
 | `data-testid` | `string` |  |  |
+
+- `bind` | `value` + `onChange`: props from one side only.
 
 ## Anatomy
 
@@ -110,7 +113,7 @@ export function Sizes() {
 - Pattern: toggleButton.
 - Name: label.
 - Description: none.
-- States: pressed (from value); disabled (from isDisabled).
+- States: pressed (from value or bind); disabled (from isDisabled).
 - Enter, Space: Turns it on or off..
 - Press target: sm 32 px, md 40 px, lg 48 px.
 - The state is read as pressed and drawn as the fill and the edge, never as the label's colour alone.

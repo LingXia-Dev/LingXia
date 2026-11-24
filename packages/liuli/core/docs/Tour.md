@@ -40,7 +40,7 @@ export function Welcome() {
           <view className="flex-row flex-wrap items-center gap-2">
             <view id="tour-new"><Button label="New note" variant="primary" startIcon="add" onClick={() => say('Created a note')} /></view>
             <view id="tour-search" className="grow basis-40">
-              <SearchField label="Search notes" isLabelHidden value={query.value} onChange={query.set} placeholder="Search" clearLabel="Clear" />
+              <SearchField label="Search notes" isLabelHidden bind={query} placeholder="Search" clearLabel="Clear" />
             </view>
           </view>
           <view className="flex-row items-center justify-between gap-3">
@@ -51,8 +51,7 @@ export function Welcome() {
           {step.value !== null && <text role="status" className="text-footnote text-muted">{`On step ${step.value + 1}`}</text>}
           <Tour
             steps={steps}
-            value={step.value}
-            onChange={next => step.set(next)}
+            bind={step}
             stepLabel={(at, count) => `${at + 1} of ${count}`}
             data-testid="tour"
           />
@@ -67,9 +66,10 @@ export function Welcome() {
 
 | Prop | Type | Default | Description |
 | --- | --- | --- | --- |
+| `bind` | `Local<number \| null>` |  | A View-local cell the control reads and writes; use it or `value` with `onChange`. |
+| `value` | `number \| null` |  | The step in view, from 0, or null while the tour is not running. The app holds it. |
+| `onChange` | `((step: number \| null) => void)` |  | Runs with the next step to show, and with null when the tour ends: finished, or skipped. |
 | `steps` (required) | `readonly TourStep[]` |  |  |
-| `value` (required) | `number \| null` |  | The step in view, from 0, or null while the tour is not running. The app holds it. |
-| `onChange` (required) | `(step: number \| null) => void` |  | Runs with the next step to show, and with null when the tour ends: finished, or skipped. |
 | `onFinish` | `(() => void)` |  | Runs when the last step\'s button is pressed, before the tour ends. |
 | `nextLabel` | `string` |  | "Next". Defaults to "Next" in the page's language. |
 | `backLabel` | `string` |  | "Back". Defaults to "Back" in the page's language. |
@@ -77,6 +77,8 @@ export function Welcome() {
 | `doneLabel` | `string` |  | "Done": on the last step. Defaults to "Done" in the page's language. |
 | `stepLabel` | `((step: number, count: number) => string)` |  | Where the tour is, written by the app: `(step, count) => \`${step + 1} of ${count}\``. Defaults to "2 of 5" in the page's language. |
 | `data-testid` | `string` |  | On the callout. |
+
+- `bind` | `value` + `onChange`: props from one side only.
 
 ## Anatomy
 

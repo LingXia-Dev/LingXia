@@ -8,14 +8,14 @@ export const doc: ComponentDoc = {
   summary: 'Where someone is in a task with a known number of steps',
   description:
     'Stepper shows the steps of a task that must be done in order: a checkout, a sign-up, an import. Finished steps carry a tick, the step in progress is ringed, and what is ahead is quiet. ' +
-    'With `onChange` a finished step is a button that goes back to it. The app holds the step and shows its content.',
+    'With `bind` or `onChange` a finished step is a button that goes back to it. The app holds the step and shows its content.',
   keywords: ['stepper', 'steps', 'wizard', 'progress steps', 'multi-step', 'checkout', 'onboarding'],
   propsType: 'StepperProps',
   otherPropsTypes: ['StepperStep'],
   recipe: { map: 'stepperRecipe', parts: 'stepperParts' },
   anatomy: [
     { part: 'root', required: true, description: 'The steps, a list named by `label`.' },
-    { part: 'step', required: true, description: 'One step; a `button` when it is finished and `onChange` is set.' },
+    { part: 'step', required: true, description: 'One step; a `button` when it is finished and `bind` or `onChange` is set.' },
     { part: 'marker', required: true, description: 'A 24 px circle: a tick when done, the step\'s number otherwise.' },
     { part: 'line', required: false, description: 'Joins a step to the next; filled once the step is done.' },
     { part: 'label', required: true, description: 'The step\'s name; heavier on the step in progress.' },

@@ -21,7 +21,6 @@ import { DateRangeInput } from '@liulidesign/core/DateRangeInput';
 
 const today = '2026-11-15';
 const short = (date: string) => `${Number(date.slice(8))} ${months[Number(date.slice(5, 7)) - 1]}`;
-const set = { start: '2026-12-01', end: '2026-12-05' };
 
 /** A span of days in a form: pressing the field opens a calendar, and the second day closes it. */
 export function Stay() {
@@ -30,8 +29,7 @@ export function Stay() {
     <DateRangeInput
       label="Stay"
       description="Check-in from 3 pm, check-out by 11 am."
-      value={stay.value}
-      onChange={stay.set}
+      bind={stay}
       format={short}
       today={today}
       min={today}
@@ -50,7 +48,6 @@ import { DateRangeInput } from '@liulidesign/core/DateRangeInput';
 
 const today = '2026-11-15';
 const short = (date: string) => `${Number(date.slice(8))} ${months[Number(date.slice(5, 7)) - 1]}`;
-const set = { start: '2026-12-01', end: '2026-12-05' };
 
 /** Nothing chosen yet, and required. */
 export function Empty() {
@@ -60,8 +57,7 @@ export function Empty() {
       label="Time off"
       placeholder="First and last day"
       isRequired
-      value={leave.value}
-      onChange={leave.set}
+      bind={leave}
       format={short}
       today={today}
       data-testid="leave"
@@ -85,8 +81,9 @@ export function Empty() {
 | `isDisabled` | `boolean` | `false` |  |
 | `disabledMessage` | `string` |  | Shown in place of `description` while disabled. |
 | `size` | `FieldSize` | `'md'` |  |
-| `value` (required) | `CalendarRange` |  | The chosen span; both ends `null` shows the placeholder. |
-| `onChange` (required) | `(range: CalendarRange) => void` |  | Runs with each press in the calendar: the first day alone, then the finished span. |
+| `bind` | `Local<CalendarRange>` |  | A View-local cell the control reads and writes; use it or `value` with `onChange`. |
+| `value` | `CalendarRange` |  | The chosen span; both ends `null` shows the placeholder. |
+| `onChange` | `((range: CalendarRange) => void)` |  | Runs with each press in the calendar: the first day alone, then the finished span. |
 | `format` (required) | `(date: string) => string` |  | Turns a day into the text the field shows: "18 Nov". The app formats dates. |
 | `today` (required) | `string` |  | Today, from the page's Logic. |
 | `placeholder` | `string` |  | Shown while no day is chosen. |
@@ -98,6 +95,8 @@ export function Empty() {
 | `closeLabel` | `string` |  | Names the close button. Defaults to "Close" in the page's language. |
 | `className` | `string` |  |  |
 | `data-testid` | `string` |  | On the field's button; the calendar is `<id>-calendar`. |
+
+- `bind` | `value` + `onChange`: props from one side only.
 
 ## Anatomy
 

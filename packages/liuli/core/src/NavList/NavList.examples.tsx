@@ -20,7 +20,7 @@ export function Sidebar() {
   const current = useLocal<string>('current', 'inbox');
   return (
     <view className="md:max-w-[264px] gap-4">
-      <NavList label="Workspace" sections={workspace} value={current.value} onChange={next => current.set(next)} data-testid="workspace" />
+      <NavList label="Workspace" sections={workspace} bind={current} data-testid="workspace" />
       <text className="text-footnote text-muted" data-testid="workspace-current">{`Showing ${current.value}`}</text>
     </view>
   );
@@ -36,7 +36,7 @@ export function Closed() {
   const current = useLocal<string>('current', 'text-input');
   return (
     <view className="md:max-w-[264px]">
-      <NavList label="Components" sections={library} value={current.value} onChange={next => current.set(next)} defaultOpenSections={['inputs']} data-testid="library" />
+      <NavList label="Components" sections={library} bind={current} defaultOpenSections={['inputs']} data-testid="library" />
     </view>
   );
 }

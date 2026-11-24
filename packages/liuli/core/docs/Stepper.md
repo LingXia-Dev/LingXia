@@ -8,7 +8,7 @@ Where someone is in a task with a known number of steps. Status: preview.
 import { Stepper } from '@liulidesign/core/Stepper';
 ```
 
-Stepper shows the steps of a task that must be done in order: a checkout, a sign-up, an import. Finished steps carry a tick, the step in progress is ringed, and what is ahead is quiet. With `onChange` a finished step is a button that goes back to it. The app holds the step and shows its content.
+Stepper shows the steps of a task that must be done in order: a checkout, a sign-up, an import. Finished steps carry a tick, the step in progress is ringed, and what is ahead is quiet. With `bind` or `onChange` a finished step is a button that goes back to it. The app holds the step and shows its content.
 
 ## Examples
 
@@ -31,7 +31,7 @@ export function Checkout() {
   const at = useLocal('at', 1);
   return (
     <view className="gap-4">
-      <Stepper label="Checkout steps" steps={checkout} value={at.value} onChange={at.set} data-testid="checkout" />
+      <Stepper label="Checkout steps" steps={checkout} bind={at} data-testid="checkout" />
       <Button label={at.value >= checkout.length - 1 ? 'Place order' : 'Continue'} variant="primary" onClick={() => at.set(Math.min(checkout.length, at.value + 1))} data-testid="continue" />
     </view>
   );
@@ -53,14 +53,17 @@ export function Across() {
 
 | Prop | Type | Default | Description |
 | --- | --- | --- | --- |
+| `bind` | `Local<number>` |  | A View-local cell the control reads and writes; use it or `value` with `onChange`. |
+| `value` | `number` |  | The index of the step in progress, from 0; `steps.length` when every step is done. |
+| `onChange` | `((index: number) => void)` |  | Makes a finished step a button that goes back to it; runs with its index. |
 | `label` (required) | `string` |  | Names the steps for assistive tech: "Checkout steps". |
 | `steps` (required) | `readonly StepperStep[]` |  | The steps, in order. |
-| `value` (required) | `number` |  | The index of the step in progress, from 0; `steps.length` when every step is done. |
 | `stateLabels` | `Partial<Record<StepState, string>>` |  | What a screen reader hears for a step's state, instead of Liuli's "Done", "Current step" and "Not started" in the page's language. |
-| `onChange` | `((index: number) => void)` |  | Makes a finished step a button that goes back to it; runs with its index. |
 | `orientation` | `StepperOrientation` | `'vertical'` | `horizontal` suits up to four short labels; `vertical` any number, with descriptions. |
 | `className` | `string` |  |  |
 | `data-testid` | `string` |  |  |
+
+- `bind` | `value` + `onChange`: props from one side only.
 
 ## StepperStep props
 
@@ -75,7 +78,7 @@ export function Across() {
 | Part | Element | Required | Description |
 | --- | --- | --- | --- |
 | root | `<view>` | yes | The steps, a list named by `label`. |
-| step | `<view>` | yes | One step; a `button` when it is finished and `onChange` is set. |
+| step | `<view>` | yes | One step; a `button` when it is finished and `bind` or `onChange` is set. |
 | marker | `<view>` | yes | A 24 px circle: a tick when done, the step's number otherwise. |
 | line | `<view>` | no | Joins a step to the next; filled once the step is done. |
 | label | `<text>` | yes | The step's name; heavier on the step in progress. |
