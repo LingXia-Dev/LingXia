@@ -33,6 +33,7 @@ export const doc: ComponentDoc = {
     do: [
       'Say what scanning does in `label`: "Code to join Harbour Café Guest".',
       'Show the link or password beside the code for whoever cannot scan.',
+      'Check a value that comes from data with `fitsQRCode` and show it as text when it does not fit.',
     ],
     dont: [
       'Draw it smaller than `sm`; phone cameras read a 96 pt code at arm\'s length.',
@@ -46,7 +47,7 @@ export const doc: ComponentDoc = {
   ],
   gaps: [],
   limits: [
-    'Up to version 15: about 320 bytes at level M, 410 at L. A longer value throws.',
+    'Up to version 15: 520 bytes at level L, 412 at M, 292 at Q, 220 at H. A longer value draws an empty tile and warns once; `fitsQRCode(value, level)` answers before rendering.',
     'Byte mode only, so digits and capitals take as much room as any text.',
     'No logo in the middle.',
   ],

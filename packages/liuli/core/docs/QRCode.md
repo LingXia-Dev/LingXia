@@ -5,7 +5,7 @@
 A code a phone camera reads. Status: preview.
 
 ```ts
-import { QRCode } from '@liulidesign/core/QRCode';
+import { fitsQRCode, QRCode } from '@liulidesign/core/QRCode';
 ```
 
 QRCode draws a value as a QR code for a phone camera: a link to open, a network to join, a code to pair with. It is dark on light in both themes, with its quiet zone inside the tile, as readers expect. The value is encoded in Liuli; nothing is fetched.
@@ -87,7 +87,7 @@ export function Sizes() {
 - `className`: classes merged after the recipe's, so they win.
 - The recipe, `qrCodeRecipe` from `@liulidesign/core/QRCode/recipe`: the classes of each part, to style an element of your own to match. The component does not read a changed copy.
 - Scale tokens it reads, set in the app's stylesheet under `@theme`: `--radius-control`.
-- It paints with no colour role of its own.
+- Colour roles it paints with, set by the theme pack: `text`.
 
 ## Accessibility
 
@@ -107,12 +107,13 @@ Ratios are computed from @lingxia/view/theme and rounded down.
 
 - Do: Say what scanning does in `label`: "Code to join Harbour Café Guest".
 - Do: Show the link or password beside the code for whoever cannot scan.
+- Do: Check a value that comes from data with `fitsQRCode` and show it as text when it does not fit.
 - Don't: Draw it smaller than `sm`; phone cameras read a 96 pt code at arm's length.
 - Don't: Raise `level` without a reason; each step makes the code denser.
 
 ## Limits
 
-- Up to version 15: about 320 bytes at level M, 410 at L. A longer value throws.
+- Up to version 15: 520 bytes at level L, 412 at M, 292 at Q, 220 at H. A longer value draws an empty tile and warns once; `fitsQRCode(value, level)` answers before rendering.
 - Byte mode only, so digits and capitals take as much room as any text.
 - No logo in the middle.
 

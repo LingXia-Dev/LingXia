@@ -93,6 +93,11 @@ function alignmentPositions(version: number): number[] {
   return result;
 }
 
+/** The UTF-8 length of `text` and the most bytes version `maxVersion` holds at `level`. */
+export function qrRoom(text: string, level: QRLevel, maxVersion: number): { bytes: number; limit: number } {
+  return { bytes: utf8(text).length, limit: Math.floor((dataCodewords(maxVersion, level) * 8 - 4 - (maxVersion < 10 ? 8 : 16)) / 8) };
+}
+
 /** Encodes `text` at the smallest version from `minVersion` that holds it; throws when even version `maxVersion` cannot. */
 export function encodeQR(text: string, level: QRLevel = 'M', maxVersion = 40, minVersion = 1): boolean[][] {
   const bytes = utf8(text);

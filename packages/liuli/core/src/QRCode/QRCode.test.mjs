@@ -1,7 +1,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { renderExample, renderPage } from '../testing/harness.mjs';
-import { encodeQR } from './encode.ts';
+import { textOf } from '@lingxia/view/testing';
+import { encodeQR, qrRoom } from './encode.ts';
 
 test('Join: an image named by what it is for; the modules are drawn, not read', async () => {
   const screen = await renderExample('QRCode/QRCode', 'Join');
@@ -53,4 +54,38 @@ test('the rectangles cover exactly the dark modules, inside the quiet zone', asy
     }
   }
   assert.deepEqual(drawn, modules.map(row => row.map(dark => (dark ? 1 : 0))));
+});
+
+test('fitsQRCode answers at the limit the part draws to', async () => {
+  const limits = Object.fromEntries(['L', 'M', 'Q', 'H'].map(level => [level, qrRoom('', level, 15).limit]));
+  for (const [level, limit] of Object.entries(limits)) assert.equal(encodeQR('x'.repeat(limit), level, 15).length, 77, `the limit encodes at version 15, level ${level}`);
+  const screen = await renderPage(`
+    import { fitsQRCode } from '@liulidesign/core/QRCode';
+    const limits = ${JSON.stringify(limits)};
+    export function render() {
+      const answers = Object.entries(limits).map(([level, limit]) => [fitsQRCode('x'.repeat(limit), level), fitsQRCode('x'.repeat(limit + 1), level)]);
+      return <page><text data-testid="answers">{JSON.stringify([answers, fitsQRCode('é'.repeat(250))])}</text></page>;
+    }
+  `);
+  const [answers, accented] = JSON.parse(textOf(screen.getByTestId('answers')));
+  assert.deepEqual(answers, [[true, false], [true, false], [true, false], [true, false]], 'L, M, Q, H: the limit fits, one more byte does not');
+  assert.equal(accented, false, 'bytes, not characters: 250 accented letters are 500 bytes, over the 412 that level M holds');
+});
+
+test('a value too long for a code draws an empty tile, still named, and warns once with the numbers', async () => {
+  const warned = [];
+  const warn = console.warn;
+  console.warn = message => warned.push(message);
+  try {
+    const screen = await renderPage(`
+      import { QRCode } from '@liulidesign/core/QRCode';
+      export function render() { return <page><QRCode value={'x'.repeat(600)} label="Code for the report" data-testid="long" /><QRCode value={'x'.repeat(600)} label="Code for the report" /></page>; }
+    `);
+    const tile = screen.getByTestId('long');
+    assert.deepEqual([tile.props.role, tile.props.accessibilityLabel, tile.props.width, tile.children.length], ['img', 'Code for the report', 160, 0]);
+    const { limit } = qrRoom('', 'M', 15);
+    assert.deepEqual(warned.filter(m => m.includes('QRCode')), [`Liuli: QRCode "Code for the report": the value is 600 bytes; at level M a code holds at most ${limit}. It is drawn empty; check with fitsQRCode().`]);
+  } finally {
+    console.warn = warn;
+  }
 });

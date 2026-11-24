@@ -14532,6 +14532,7 @@
       "name": "QRCode",
       "import": "@liulidesign/core/QRCode",
       "exports": [
+        "fitsQRCode",
         "QRCode"
       ],
       "category": "content",
@@ -14636,7 +14637,7 @@
       ],
       "gaps": [],
       "limits": [
-        "Up to version 15: about 320 bytes at level M, 410 at L. A longer value throws.",
+        "Up to version 15: 520 bytes at level L, 412 at M, 292 at Q, 220 at H. A longer value draws an empty tile and warns once; `fitsQRCode(value, level)` answers before rendering.",
         "Byte mode only, so digits and capitals take as much room as any text.",
         "No logo in the middle."
       ],
@@ -14659,7 +14660,9 @@
         "tokens": [
           "--radius-control"
         ],
-        "roles": []
+        "roles": [
+          "text"
+        ]
       },
       "related": [
         "Thumbnail",
