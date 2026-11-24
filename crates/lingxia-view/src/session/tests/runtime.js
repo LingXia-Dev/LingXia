@@ -33,6 +33,7 @@
     readsHostContext: () => readsHostContext,
     receiveActionResponse: () => receiveActionResponse,
     registerCatalogues: () => registerCatalogues,
+    registerLanguageCatalogue: () => registerLanguageCatalogue,
     requestLeave: () => requestLeave,
     reset: () => reset,
     reveal: () => reveal,
@@ -1785,6 +1786,15 @@
     catalogues = compiled;
     formatters.clear();
   }
+  function registerLanguageCatalogue(tag, messages, formatterFn, source3) {
+    if (!catalogues) catalogues = { source: source3 ?? tag, languages: {}, formatter: formatterFn };
+    else {
+      if (source3) catalogues.source = source3;
+      if (formatterFn) catalogues.formatter = formatterFn;
+    }
+    catalogues.languages[tag] = messages;
+    formatters.delete(tag);
+  }
   function catalogueFor(language) {
     const tags2 = Object.keys(catalogues.languages);
     const lower = String(language ?? "").toLowerCase();
@@ -1797,7 +1807,7 @@
   function lxappText(key, language, args) {
     if (!catalogues) return void 0;
     const { tag, messages } = catalogueFor(language);
-    const message = messages[key];
+    const message = messages?.[key];
     return message ? join(message(args ?? {}, formatter(tag))) : void 0;
   }
   var formatters = /* @__PURE__ */ new Map();
@@ -7075,6 +7085,7 @@
   }
 
   // src/host.js
+  globalThis.__lingxiaRegisterCatalogue = registerLanguageCatalogue;
   function unboundFieldText(kind, iso3, opts) {
     if (typeof iso3 !== "string") return "";
     try {

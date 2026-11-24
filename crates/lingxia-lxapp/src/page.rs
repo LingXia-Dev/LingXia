@@ -2361,6 +2361,14 @@ impl PageInstance {
         self.owning_lxapp().read_theme_pack()
     }
 
+    /// Returns a reader for this lxapp's shared View chunks (`_view/<id>.js`, `_view/<id>/<lang>.js`).
+    pub fn gpu_chunk_reader(
+        &self,
+    ) -> std::sync::Arc<dyn Fn(&str) -> Result<String, LxAppError> + Send + Sync> {
+        let app = self.owning_lxapp();
+        std::sync::Arc::new(move |path| app.read_gpu_chunk(path))
+    }
+
     /// Resolve package or managed image bytes on the host's resource worker.
     pub fn gpu_image_bytes(&self, source: &str) -> Result<Vec<u8>, LxAppError> {
         if self.renderer() != PageRenderer::Gpu {

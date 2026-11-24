@@ -1,4 +1,5 @@
-//! The project type-check: `tsc -b` at the lxapp root, through the project's own TypeScript.
+//! The project type-check: `tsc -b` at the lxapp root, through the project's own TypeScript,
+//! or TypeScript 7's native `tsgo` binary when installed.
 
 use anyhow::{Context, Result, bail};
 use std::path::{Path, PathBuf};
@@ -21,79 +22,14 @@ pub(crate) fn applies(root: &Path) -> bool {
     root.join("tsconfig.json").is_file()
 }
 
-/// Mirrors each project of the root's reference graph as a config under `.lingxia/typecheck/` that
-/// extends it, so build info and any emit land there: a write in the project tree would be an edit
-/// to a dev session's watcher, and the check would loop.
-const WRAP_SCRIPT: &str = r#"
-const { createRequire } = await import('node:module');
-const path = await import('node:path');
-const fs = await import('node:fs');
-const [root, typescript] = process.argv.slice(1);
-const ts = createRequire(path.join(typescript, 'package.json'))('typescript');
-const out = path.join(root, '.lingxia', 'typecheck');
-fs.rmSync(out, { recursive: true, force: true });
-fs.mkdirSync(out, { recursive: true });
-const rel = file => { const r = path.relative(out, file).split(path.sep).join('/'); return r.startsWith('.') ? r : `./${r}`; };
-const wrappers = new Map();
-function wrap(config) {
-  if (wrappers.has(config)) return wrappers.get(config);
-  const name = `${wrappers.size}-${path.basename(config, '.json')}`;
-  const wrapper = path.join(out, `${name}.json`);
-  wrappers.set(config, wrapper);
-  const read = ts.readConfigFile(config, ts.sys.readFile);
-  if (read.error) throw Error(ts.flattenDiagnosticMessageText(read.error.messageText, ' '));
-  const parsed = ts.parseJsonConfigFileContent(read.config, ts.sys, path.dirname(config), undefined, config);
-  const options = parsed.options;
-  const compilerOptions = { tsBuildInfoFile: `./${name}.tsbuildinfo` };
-  // Only where tsc has a root: a composite project's defaults to its config directory, which the
-  // wrapper's location would otherwise move. Sources linked in from outside must stay legal.
-  const rootDir = options.rootDir ?? (options.composite ? path.dirname(config) : undefined);
-  if (rootDir) compilerOptions.rootDir = rel(rootDir);
-  if (!options.noEmit) {
-    compilerOptions.outDir = `./${name}.out`;
-    if (options.declarationDir) compilerOptions.declarationDir = `./${name}.out`;
-  }
-  const references = (parsed.projectReferences ?? []).map(reference => ({ path: rel(wrap(ts.resolveProjectReferencePath(reference))) }));
-  fs.writeFileSync(wrapper, JSON.stringify({ extends: rel(config), compilerOptions, references }, null, 1));
-  return wrapper;
-}
-process.stdout.write(wrap(path.join(root, 'tsconfig.json')));
-"#;
-
 /// Every type error as `file:line:col: TSnnnn: message`; empty when the project checks clean.
 pub(crate) fn run(root: &Path) -> Result<Vec<String>> {
+    if let Some(tsgo) = resolve_tsgo(root) {
+        return run_tsgo(root, &tsgo);
+    }
     let tsc = resolve_tsc(root)?;
     let typescript = supported_typescript(&tsc)?;
-    let wrapped = Command::new("node")
-        .args(["--input-type=module", "--eval", WRAP_SCRIPT])
-        .arg(root)
-        .arg(typescript)
-        .current_dir(root)
-        .output()
-        .context("Failed to start Node.js for the type check")?;
-    if !wrapped.status.success() {
-        bail!(
-            "Type check: cannot read the project's tsconfig:\n{}",
-            String::from_utf8_lossy(&wrapped.stderr).trim()
-        );
-    }
-    let entry = String::from_utf8_lossy(&wrapped.stdout).into_owned();
-    let output = Command::new("node")
-        .arg(&tsc)
-        .args(["-b", &entry, "--pretty", "false"])
-        .current_dir(root)
-        .output()
-        .context("Failed to start the TypeScript compiler; is Node.js installed?")?;
-    let text = format!(
-        "{}{}",
-        String::from_utf8_lossy(&output.stdout),
-        String::from_utf8_lossy(&output.stderr)
-    );
-    let problems = parse(&text);
-    if !output.status.success() && problems.is_empty() {
-        bail!("Type check failed:\n{}", text.trim());
-    }
-    Ok(problems)
+    super::ts_worker::typecheck(root, typescript)
 }
 
 /// The problems under one heading, in the shape of the build's other diagnostics.
@@ -107,7 +43,8 @@ pub(crate) fn report(problems: &[String]) -> String {
 }
 
 /// The TypeScript range the CLI drives through its JS API; `lingxia new` writes it into
-/// `package.json`. TypeScript 7 has no JS compiler API.
+/// `package.json`. TypeScript 7 (`tsgo`) has no JS compiler API and is driven as a native binary
+/// when installed.
 pub(crate) const TYPESCRIPT_RANGE: &str = "^5.9.3";
 const TYPESCRIPT_MIN: (u64, u64, u64) = (5, 9, 3);
 
@@ -158,6 +95,210 @@ pub(crate) fn resolve_tsc(root: &Path) -> Result<PathBuf> {
                 root.display()
             )
         })
+}
+
+/// Locates a native TypeScript 7 (`tsgo`) binary when explicitly configured via `LINGXIA_TSGO`
+/// or installed in the project's `node_modules`.
+pub(crate) fn resolve_tsgo(root: &Path) -> Option<PathBuf> {
+    if let Ok(value) = std::env::var("LINGXIA_TSGO") {
+        let trimmed = value.trim();
+        if !trimmed.is_empty() && !matches!(trimmed, "0" | "false" | "off") {
+            let path = PathBuf::from(trimmed);
+            if path.is_file() || !trimmed.contains(['/', '\\']) {
+                return Some(path);
+            }
+        }
+    }
+    let candidates: &[&str] = if cfg!(windows) {
+        &[
+            "node_modules/@typescript/native-preview/bin/tsgo.exe",
+            "node_modules/.bin/tsgo.exe",
+            "node_modules/.bin/tsgo.cmd",
+        ]
+    } else {
+        &[
+            "node_modules/@typescript/native-preview/bin/tsgo",
+            "node_modules/.bin/tsgo",
+        ]
+    };
+    root.ancestors()
+        .flat_map(|dir| candidates.iter().map(move |rel| dir.join(rel)))
+        .find(|candidate| candidate.is_file())
+}
+
+fn write_if_changed(path: &Path, content: &str) -> Result<()> {
+    if let Ok(existing) = std::fs::read_to_string(path)
+        && existing == content
+    {
+        return Ok(());
+    }
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    std::fs::write(path, content).with_context(|| format!("write {}", path.display()))
+}
+
+fn resolve_ref_config(base_dir: &Path, ref_path: &str) -> PathBuf {
+    let candidate = if Path::new(ref_path).is_absolute() {
+        PathBuf::from(ref_path)
+    } else {
+        base_dir.join(ref_path)
+    };
+    if candidate.is_dir()
+        || !candidate
+            .extension()
+            .is_some_and(|ext| ext.eq_ignore_ascii_case("json"))
+    {
+        candidate.join("tsconfig.json")
+    } else {
+        candidate
+    }
+}
+
+fn slash_path(path: &Path) -> String {
+    path.to_string_lossy().replace('\\', "/")
+}
+
+/// Recursively writes `.lingxia/typecheck/` wrapper configs matching `ts_worker.rs`:
+/// preserves nested `references`, keeps `rootDir` on `composite` configs, avoids `noEmit: true`
+/// on composite emit projects, and prunes stale wrapper files.
+fn write_typecheck_wrappers(root: &Path) -> Result<PathBuf> {
+    let dir = root.join(".lingxia").join("typecheck");
+    std::fs::create_dir_all(&dir)?;
+    let mut wrapped: std::collections::HashMap<String, PathBuf> = std::collections::HashMap::new();
+    let mut kept: std::collections::HashSet<String> = std::collections::HashSet::new();
+
+    fn wrap_one(
+        config_path: &Path,
+        dir: &Path,
+        is_root: bool,
+        wrapped: &mut std::collections::HashMap<String, PathBuf>,
+        kept: &mut std::collections::HashSet<String>,
+    ) -> Result<PathBuf> {
+        let canonical =
+            std::fs::canonicalize(config_path).unwrap_or_else(|_| config_path.to_path_buf());
+        let key = if cfg!(windows) {
+            slash_path(&canonical).to_ascii_lowercase()
+        } else {
+            slash_path(&canonical)
+        };
+        if let Some(existing) = wrapped.get(&key) {
+            return Ok(existing.clone());
+        }
+        let name = if is_root {
+            "solution.json".to_string()
+        } else {
+            format!("ref-{}.json", wrapped.len())
+        };
+        let target = dir.join(&name);
+        wrapped.insert(key, target.clone());
+        kept.insert(name.clone());
+
+        let parsed: serde_json::Value = std::fs::read_to_string(config_path)
+            .ok()
+            .and_then(|raw| json5::from_str(&raw).ok())
+            .unwrap_or_else(|| serde_json::json!({}));
+        let base_dir = config_path.parent().unwrap_or(dir);
+        let options = parsed.get("compilerOptions").and_then(|v| v.as_object());
+        let has_no_emit = options
+            .and_then(|o| o.get("noEmit"))
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false);
+        let is_composite = options
+            .and_then(|o| o.get("composite"))
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false);
+        let has_root_dir = options.and_then(|o| o.get("rootDir")).is_some();
+
+        let mut wrapper_refs = Vec::new();
+        if let Some(refs) = parsed.get("references").and_then(|v| v.as_array()) {
+            for entry in refs {
+                if let Some(ref_path) = entry.get("path").and_then(|v| v.as_str()) {
+                    let child_cfg = resolve_ref_config(base_dir, ref_path);
+                    let child_wrapper = wrap_one(&child_cfg, dir, false, wrapped, kept)?;
+                    let child_name = child_wrapper
+                        .file_name()
+                        .and_then(|n| n.to_str())
+                        .unwrap_or("ref.json");
+                    wrapper_refs.push(serde_json::json!({ "path": format!("./{child_name}") }));
+                }
+            }
+        }
+
+        let stem = name.trim_end_matches(".json");
+        let mut compiler_options = serde_json::Map::new();
+        compiler_options.insert("incremental".into(), serde_json::json!(true));
+        compiler_options.insert(
+            "tsBuildInfoFile".into(),
+            serde_json::json!(format!("./{stem}.tsbuildinfo")),
+        );
+        if is_composite && !has_root_dir {
+            compiler_options.insert("rootDir".into(), serde_json::json!(slash_path(base_dir)));
+        }
+        if !has_no_emit {
+            let out_dir = format!("./.out/{stem}");
+            compiler_options.insert("outDir".into(), serde_json::json!(out_dir));
+            compiler_options.insert("declarationDir".into(), serde_json::json!(out_dir));
+        }
+
+        let mut wrapper = serde_json::Map::new();
+        wrapper.insert("extends".into(), serde_json::json!(slash_path(config_path)));
+        wrapper.insert(
+            "compilerOptions".into(),
+            serde_json::Value::Object(compiler_options),
+        );
+        if !wrapper_refs.is_empty() {
+            wrapper.insert("references".into(), serde_json::Value::Array(wrapper_refs));
+        }
+        write_if_changed(
+            &target,
+            &serde_json::to_string_pretty(&serde_json::Value::Object(wrapper))?,
+        )?;
+        Ok(target)
+    }
+
+    let solution = wrap_one(
+        &root.join("tsconfig.json"),
+        &dir,
+        true,
+        &mut wrapped,
+        &mut kept,
+    )?;
+    if let Ok(entries) = std::fs::read_dir(&dir) {
+        for entry in entries.flatten() {
+            let file_name = entry.file_name();
+            let name = file_name.to_string_lossy();
+            if name.ends_with(".json") && !kept.contains(name.as_ref()) {
+                let _ = std::fs::remove_file(entry.path());
+            }
+        }
+    }
+    Ok(solution)
+}
+
+fn run_tsgo(root: &Path, tsgo: &Path) -> Result<Vec<String>> {
+    let solution = write_typecheck_wrappers(root)?;
+    let output = Command::new(tsgo)
+        .args(["-b", &solution.to_string_lossy(), "--pretty", "false"])
+        .current_dir(root)
+        .output()
+        .with_context(|| format!("run native TypeScript compiler {}", tsgo.display()))?;
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    let mut problems = parse(&stdout);
+    problems.extend(parse(&stderr));
+    if !output.status.success() && problems.is_empty() {
+        let detail = if !stderr.trim().is_empty() {
+            stderr.trim()
+        } else {
+            stdout.trim()
+        };
+        bail!(
+            "TypeScript native compiler ({}) failed: {detail}",
+            tsgo.display()
+        );
+    }
+    Ok(problems)
 }
 
 fn parse(text: &str) -> Vec<String> {
@@ -227,5 +368,98 @@ Found 3 errors.\n";
         for version in ["5.9.2", "5.8.3", "6.0.0", "7.0.2", "", "5.9"] {
             assert!(!super::in_range(version), "{version}");
         }
+    }
+
+    #[test]
+    fn tsgo_in_node_modules_runs_natively_without_node_and_parses_errors() {
+        let temp = tempfile::tempdir().unwrap();
+        let root = temp.path();
+        std::fs::write(
+            root.join("tsconfig.json"),
+            r#"{"files":[],"references":[{"path":"./tsconfig.view.json"}]}"#,
+        )
+        .unwrap();
+        let bin = root.join("node_modules").join(".bin");
+        std::fs::create_dir_all(&bin).unwrap();
+        #[cfg(windows)]
+        let tsgo = {
+            let p = bin.join("tsgo.cmd");
+            std::fs::write(
+                &p,
+                "@echo off\r\necho pages/home/index.tsx(4,9): error TS2322: Type 'number' is not assignable to type 'string'.\r\nexit /b 2\r\n",
+            )
+            .unwrap();
+            p
+        };
+        #[cfg(not(windows))]
+        let tsgo = {
+            use std::os::unix::fs::PermissionsExt;
+            let p = bin.join("tsgo");
+            std::fs::write(
+                &p,
+                "#!/bin/sh\necho \"pages/home/index.tsx(4,9): error TS2322: Type 'number' is not assignable to type 'string'.\"\nexit 2\n",
+            )
+            .unwrap();
+            let mut perms = std::fs::metadata(&p).unwrap().permissions();
+            perms.set_mode(0o755);
+            std::fs::set_permissions(&p, perms).unwrap();
+            p
+        };
+        assert_eq!(resolve_tsgo(root), Some(tsgo));
+        let problems = run(root).unwrap();
+        assert_eq!(
+            problems,
+            vec![
+                "pages/home/index.tsx:4:9: TS2322: Type 'number' is not assignable to type 'string'."
+            ]
+        );
+        // Wrappers were generated cleanly under .lingxia/typecheck/.
+        assert!(root.join(".lingxia/typecheck/solution.json").is_file());
+        assert!(root.join(".lingxia/typecheck/ref-1.json").is_file());
+    }
+
+    #[test]
+    fn tsgo_wrappers_preserve_composite_rootdir_nested_references_and_prune_stale() {
+        let temp = tempfile::tempdir().unwrap();
+        let root = temp.path();
+        std::fs::write(
+            root.join("tsconfig.json"),
+            r#"{"files":[],"references":[{"path":"./tsconfig.logic.json"},{"path":"./tsconfig.view.json"}]}"#,
+        )
+        .unwrap();
+        std::fs::write(
+            root.join("tsconfig.logic.json"),
+            r#"{"compilerOptions":{"composite":true}}"#,
+        )
+        .unwrap();
+        std::fs::write(
+            root.join("tsconfig.view.json"),
+            r#"{"compilerOptions":{"composite":true},"references":[{"path":"./tsconfig.logic.json"}]}"#,
+        )
+        .unwrap();
+        let stale = root.join(".lingxia/typecheck/ref-99.json");
+        std::fs::create_dir_all(stale.parent().unwrap()).unwrap();
+        std::fs::write(&stale, "{}").unwrap();
+
+        let solution = write_typecheck_wrappers(root).unwrap();
+        assert!(solution.is_file());
+        assert!(!stale.exists(), "stale wrapper must be pruned");
+        let view_wrapper: serde_json::Value = serde_json::from_str(
+            &std::fs::read_to_string(root.join(".lingxia/typecheck/ref-2.json")).unwrap(),
+        )
+        .unwrap();
+        assert!(
+            view_wrapper["compilerOptions"]["rootDir"].is_string(),
+            "composite config without rootDir must receive explicit rootDir"
+        );
+        assert!(
+            view_wrapper["compilerOptions"].get("noEmit").is_none(),
+            "composite emit config must not force noEmit: true"
+        );
+        assert_eq!(
+            view_wrapper["references"][0]["path"].as_str(),
+            Some("./ref-1.json"),
+            "nested reference must point to the wrapped logic config"
+        );
     }
 }

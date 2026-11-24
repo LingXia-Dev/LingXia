@@ -6,29 +6,44 @@ const ABI: u32 = crate::protocol::UI_ABI;
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
-struct Manifest {
-    ui_abi: u32,
-    min_field: usize,
-    required_features: Vec<String>,
-    compiler: String,
+pub(crate) struct Manifest {
+    pub(crate) ui_abi: u32,
+    pub(crate) min_field: usize,
+    pub(crate) required_features: Vec<String>,
+    pub(crate) compiler: String,
+    #[serde(default)]
+    pub(crate) chunk_build_id: Option<String>,
+    #[serde(default)]
+    pub(crate) catalogue_chunk: Option<String>,
+    #[serde(default)]
+    pub(crate) catalogue_source: Option<String>,
+    #[serde(default)]
+    pub(crate) catalogue_languages: Vec<String>,
 }
 
-pub(crate) fn validate(source: &str) -> Result<(), String> {
+pub(crate) fn parse_manifest(source: &str) -> Result<Option<Manifest>, String> {
     let Some(header) = source
         .lines()
         .next()
         .and_then(|line| line.strip_prefix(PREFIX))
     else {
-        return Ok(()); // Legacy modules predate capability manifests.
+        return Ok(None); // Legacy modules predate capability manifests.
     };
     if header.starts_with("schema ") {
-        return Ok(());
+        return Ok(None);
     }
     if header.len() > 4096 {
         return Err("UI_COMPAT: manifest exceeds 4096 bytes".into());
     }
     let manifest: Manifest = serde_json::from_str(header)
         .map_err(|error| format!("UI_COMPAT: invalid manifest: {error}"))?;
+    Ok(Some(manifest))
+}
+
+pub(crate) fn validate(source: &str) -> Result<(), String> {
+    let Some(manifest) = parse_manifest(source)? else {
+        return Ok(());
+    };
     if manifest.ui_abi != ABI {
         return Err(format!(
             "UI_COMPAT: UI ABI {} required, host provides {ABI}",
@@ -47,7 +62,7 @@ pub(crate) fn validate(source: &str) -> Result<(), String> {
     {
         return Err("UI_COMPAT: invalid compiler or feature inventory".into());
     }
-    for feature in manifest.required_features {
+    for feature in &manifest.required_features {
         if !super::features()
             .iter()
             .any(|known| known.name() == feature)

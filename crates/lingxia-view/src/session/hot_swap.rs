@@ -14,13 +14,23 @@ impl ViewSession {
             .map_err(|e| crate::engine::js_error(&self.context, e))?;
         let runtime = RongJS::runtime();
         let budget = crate::engine::budget::Budget::new(&runtime);
-        let mut fresh = Self::with_runtime(runtime, budget, source, false, self.console.clone())?;
+        let mut fresh = Self::with_runtime(
+            runtime,
+            budget,
+            source,
+            false,
+            self.console.clone(),
+            self.chunks.clone(),
+        )?;
         self.exchange_isolate(&mut fresh);
         let imported = (|| {
             let state = serde_json::to_string(&state).map_err(|e| e.to_string())?;
             self.eval(&format!(
                 "typeof __lingxiaImportState === 'function' && __lingxiaImportState({state})"
             ))?;
+            if let Some(language) = self.environment["language"].as_str().map(str::to_owned) {
+                self.ensure_language_catalogue(&language)?;
+            }
             if self.connected {
                 self.eval("__lingxiaConfigureActions(globalThis.__lingxiaActionCatalog)")?;
             }
@@ -41,6 +51,14 @@ impl ViewSession {
         std::mem::swap(&mut self.context, &mut other.context);
         std::mem::swap(&mut self._runtime, &mut other._runtime);
         std::mem::swap(&mut self.budget, &mut other.budget);
+        std::mem::swap(&mut self.chunk_build_id, &mut other.chunk_build_id);
+        std::mem::swap(&mut self.catalogue_chunk, &mut other.catalogue_chunk);
+        std::mem::swap(&mut self.catalogue_source, &mut other.catalogue_source);
+        std::mem::swap(
+            &mut self.catalogue_languages,
+            &mut other.catalogue_languages,
+        );
+        std::mem::swap(&mut self.loaded_languages, &mut other.loaded_languages);
         // The buffers each isolate referenced are its own.
         self.wire.swap(&other.wire);
         // Each keeps resolving against its own page's scales.

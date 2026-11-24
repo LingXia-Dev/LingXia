@@ -348,6 +348,7 @@ fn run_watch(
     stop_flag: Arc<AtomicBool>,
     commands: mpsc::Receiver<WatchCmd>,
 ) -> Result<()> {
+    let _ts_session = crate::lxapp::keep_ts_worker_alive();
     let mut roots: Vec<WatchRoot> = roots.into_iter().map(resolved_root).collect();
     let (tx, rx) = mpsc::channel();
     let mut watcher = RecommendedWatcher::new(tx, notify::Config::default())

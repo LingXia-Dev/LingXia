@@ -9,6 +9,7 @@ mod package;
 mod page_types;
 mod project;
 mod renderer;
+mod ts_worker;
 mod typecheck;
 mod view;
 
@@ -45,6 +46,7 @@ pub(crate) fn gpu_dev_inputs(dir: &Path, pages: &[String]) -> Result<serde_json:
     Ok(serde_json::Value::Object(catalogs))
 }
 
+pub(crate) use ts_worker::keep_alive as keep_ts_worker_alive;
 pub(crate) use typecheck::TYPESCRIPT_RANGE;
 
 pub(crate) fn skip_typecheck() {
