@@ -1133,7 +1133,7 @@ export type ViewProps = Omit<Props, "style" | "children" | "role"> & { role?: Vi
   /** Called with the snap point index it came to rest at after a drag or swipe. */ onSnapChange?: never; });
 export type PageStyle = StyleGroup.Box & StyleGroup.Padding & StyleGroup.Flex & StyleGroup.Align & StyleGroup.Direction & StyleGroup.Gap & StyleGroup.Text & StyleGroup.Grid;
 /** The roles a `<page>` takes; reference/elements.md says where the others go. */
-export type PageRole = "heading" | "list" | "listitem" | "alert" | "status" | "grid" | "gridcell" | "listbox" | "option" | "menu" | "progressbar" | "group" | "tooltip";
+export type PageRole = never;
 export type PageProps = Omit<Props, "style" | "children" | "role"> & { role?: PageRole; style?: PageStyle; children?: Child;
   /** The title the host navigation bar shows for the page. */ title?: string;
   /** Controls shown in a toolbar at the top of the page. */ headerActions?: Child;
@@ -1141,7 +1141,7 @@ export type PageProps = Omit<Props, "style" | "children" | "role"> & { role?: Pa
 };
 export type TextStyle = StyleGroup.Box & StyleGroup.Padding & StyleGroup.Text & StyleGroup.TextBlock;
 /** The roles a `<text>` takes; reference/elements.md says where the others go. */
-export type TextRole = "heading" | "list" | "listitem" | "alert" | "status" | "grid" | "gridcell" | "listbox" | "option" | "menu" | "progressbar" | "group" | "tooltip" | "img";
+export type TextRole = "heading" | "listitem" | "alert" | "status" | "gridcell" | "option" | "tooltip" | "img";
 export type TextProps = Omit<Props, "style" | "children" | "role"> & { role?: TextRole; style?: TextStyle; children?: RunChild;
   /** Called for a long press or a secondary click, with where it happened. */ onContextMenu?: (event: ContextMenuEvent) => void;
   /** Called with its laid-out size after each change, one render behind. */ onLayout?: (box: BoxSize) => void;
@@ -1150,7 +1150,7 @@ export type TextProps = Omit<Props, "style" | "children" | "role"> & { role?: Te
 };
 export type ButtonStyle = StyleGroup.Box & StyleGroup.Padding & StyleGroup.Flex & StyleGroup.Align & StyleGroup.Direction & StyleGroup.Gap & StyleGroup.Text & StyleGroup.Grid;
 /** The roles a `<button>` takes; reference/elements.md says where the others go. */
-export type ButtonRole = "heading" | "list" | "listitem" | "alert" | "status" | "grid" | "gridcell" | "listbox" | "option" | "menu" | "menuitem" | "progressbar" | "group" | "tooltip" | "tab" | "radio" | "treeitem" | "menuitemcheckbox" | "menuitemradio" | "combobox";
+export type ButtonRole = "gridcell" | "option" | "menuitem" | "tab" | "radio" | "treeitem" | "menuitemcheckbox" | "menuitemradio" | "combobox";
 export type ButtonProps = Omit<Props, "style" | "children" | "role"> & { role?: ButtonRole; style?: ButtonStyle; children?: Child;
   /** Called for a long press or a secondary click, with where it happened. */ onContextMenu?: (event: ContextMenuEvent) => void;
   /** Reports a single pointer over the element: down, move, up, enter, leave and cancel. */ onPointer?: (event: PointerEvent) => void;
@@ -1191,7 +1191,7 @@ export type ButtonProps = Omit<Props, "style" | "children" | "role"> & { role?: 
   /** Called with the snap point index it came to rest at after a drag or swipe. */ onSnapChange?: never; });
 export type ScrollStyle = StyleGroup.Box & StyleGroup.Padding & StyleGroup.Flex & StyleGroup.Align & StyleGroup.Gap & StyleGroup.Text & StyleGroup.Scroll & StyleGroup.Overscroll;
 /** The roles a `<scroll>` takes; reference/elements.md says where the others go. */
-export type ScrollRole = "heading" | "list" | "listitem" | "alert" | "status" | "grid" | "gridcell" | "listbox" | "option" | "menu" | "progressbar" | "group" | "tooltip";
+export type ScrollRole = "list" | "grid" | "listbox" | "menu" | "group" | "tree";
 export type ScrollProps = Omit<Props, "style" | "children" | "role"> & { role?: ScrollRole; style?: ScrollStyle; children?: Child;
   /** On a direct child of `<page>`: extend under the safe-area insets to the screen edge, on every side or the named ones. */ bleed?: BleedEdge;
   /** Called with its laid-out size after each change, one render behind. */ onLayout?: (box: BoxSize) => void;
@@ -1211,7 +1211,7 @@ export type ScrollProps = Omit<Props, "style" | "children" | "role"> & { role?: 
   /** Called with the snap point index it came to rest at after a drag or swipe. */ onSnapChange?: never; });
 export type ListStyle = StyleGroup.Box & StyleGroup.Padding & StyleGroup.Gap & StyleGroup.Text & StyleGroup.Overscroll;
 /** The roles a `<list>` takes; reference/elements.md says where the others go. */
-export type ListRole = "heading" | "list" | "listitem" | "alert" | "status" | "grid" | "gridcell" | "listbox" | "option" | "menu" | "progressbar" | "group" | "tooltip";
+export type ListRole = "list" | "grid" | "listbox" | "menu" | "group" | "tree";
 export type ListProps = Omit<Props, "style" | "children" | "role"> & { role?: ListRole; style?: ListStyle; children?: never;
   /** On a direct child of `<page>`: extend under the safe-area insets to the screen edge, on every side or the named ones. */ bleed?: BleedEdge;
   /** How many rows the list has. */ count: number;
@@ -1232,7 +1232,7 @@ export interface DataListProps<T> extends Omit<ListProps, "count" | "row" | "hei
 }
 export type ImageStyle = StyleGroup.Box & StyleGroup.Media & StyleGroup.ImagePlacement;
 /** The roles a `<image>` takes; reference/elements.md says where the others go. */
-export type ImageRole = "heading" | "list" | "listitem" | "alert" | "status" | "grid" | "gridcell" | "listbox" | "option" | "menu" | "progressbar" | "group" | "tooltip";
+export type ImageRole = never;
 export type ImageProps = Omit<Props, "style" | "children" | "role"> & { role?: ImageRole; style?: ImageStyle; children?: never;
   /** On a direct child of `<page>`: extend under the safe-area insets to the screen edge, on every side or the named ones. */ bleed?: BleedEdge;
   /** The picture: a package path, an `lx://` file, or a URL on an allowed host; PNG or JPEG. */ src: string;
@@ -1244,7 +1244,7 @@ export type ImageProps = Omit<Props, "style" | "children" | "role"> & { role?: I
 };
 export type InputStyle = StyleGroup.Box & StyleGroup.Padding & StyleGroup.Text & StyleGroup.Editor & StyleGroup.Ellipsis;
 /** The roles a `<input>` takes; reference/elements.md says where the others go. */
-export type InputRole = "heading" | "list" | "listitem" | "alert" | "status" | "grid" | "gridcell" | "listbox" | "option" | "menu" | "progressbar" | "group" | "tooltip" | "combobox" | "spinbutton";
+export type InputRole = "combobox" | "spinbutton";
 export type InputProps = Omit<Props, "style" | "children" | "role"> & { role?: InputRole; style?: InputStyle; children?: never;
   /** Keys the editor handles before typing: a map from key name to a handler returning `true` when it took the key. */ onKeyDown?: EditorKeys;
   /** The text can be selected and copied but not changed. */ readOnly?: boolean;
@@ -1268,7 +1268,7 @@ export type InputProps = Omit<Props, "style" | "children" | "role"> & { role?: I
 } & ({ bind: Local<string>; value?: never; onInput?: never } | { bind?: never; value?: string; onInput?: (value: string) => void });
 export type TextareaStyle = StyleGroup.Box & StyleGroup.Padding & StyleGroup.Text & StyleGroup.Editor;
 /** The roles a `<textarea>` takes; reference/elements.md says where the others go. */
-export type TextareaRole = "heading" | "list" | "listitem" | "alert" | "status" | "grid" | "gridcell" | "listbox" | "option" | "menu" | "progressbar" | "group" | "tooltip";
+export type TextareaRole = never;
 export type TextareaProps = Omit<Props, "style" | "children" | "role"> & { role?: TextareaRole; style?: TextareaStyle; children?: never;
   /** Keys the editor handles before typing: a map from key name to a handler returning `true` when it took the key. */ onKeyDown?: EditorKeys;
   /** The text can be selected and copied but not changed. */ readOnly?: boolean;
@@ -1290,7 +1290,7 @@ export type TextareaProps = Omit<Props, "style" | "children" | "role"> & { role?
 } & ({ bind: Local<string>; value?: never; onInput?: never } | { bind?: never; value?: string; onInput?: (value: string) => void });
 export type CheckboxStyle = StyleGroup.Box & StyleGroup.Padding & StyleGroup.Flex & StyleGroup.Align & StyleGroup.Gap & StyleGroup.Text;
 /** The roles a `<checkbox>` takes; reference/elements.md says where the others go. */
-export type CheckboxRole = "heading" | "list" | "listitem" | "alert" | "status" | "grid" | "gridcell" | "listbox" | "option" | "menu" | "progressbar" | "group" | "tooltip";
+export type CheckboxRole = never;
 export type CheckboxProps = Omit<Props, "style" | "children" | "role"> & { role?: CheckboxRole; style?: CheckboxStyle; children?: Child;
   /** Shows a mixed state, as for a parent of partly checked items; a press clears it. */ indeterminate?: boolean;
   /** Where an unbound control starts; it applies once. */ defaultChecked?: boolean;
@@ -1299,7 +1299,7 @@ export type CheckboxProps = Omit<Props, "style" | "children" | "role"> & { role?
 } & ({ bind: Local<boolean>; value?: never; onChange?: never } | { bind?: never; value?: boolean; onChange?: (value: ReadonlyData<boolean>) => void });
 export type SwitchStyle = StyleGroup.Box & StyleGroup.Padding & StyleGroup.Text;
 /** The roles a `<switch>` takes; reference/elements.md says where the others go. */
-export type SwitchRole = "heading" | "list" | "listitem" | "alert" | "status" | "grid" | "gridcell" | "listbox" | "option" | "menu" | "progressbar" | "group" | "tooltip";
+export type SwitchRole = never;
 export type SwitchProps = Omit<Props, "style" | "children" | "role"> & { role?: SwitchRole; style?: SwitchStyle; children?: Child;
   /** Where an unbound control starts; it applies once. */ defaultChecked?: boolean;
   /** The accessible name, spoken in place of its text. */ "aria-label"?: string;
@@ -1307,7 +1307,7 @@ export type SwitchProps = Omit<Props, "style" | "children" | "role"> & { role?: 
 } & ({ bind: Local<boolean>; value?: never; onChange?: never } | { bind?: never; value?: boolean; onChange?: (value: ReadonlyData<boolean>) => void });
 export type RadioStyle = StyleGroup.Box & StyleGroup.Padding & StyleGroup.Gap & StyleGroup.Text;
 /** The roles a `<radio>` takes; reference/elements.md says where the others go. */
-export type RadioRole = "heading" | "list" | "listitem" | "alert" | "status" | "grid" | "gridcell" | "listbox" | "option" | "menu" | "progressbar" | "group" | "tooltip";
+export type RadioRole = never;
 export type RadioProps = Omit<Props, "style" | "children" | "role"> & { role?: RadioRole; style?: RadioStyle; children?: never;
   /** The choices, each a value and a label. */ options: readonly ChoiceOption[];
   /** The accessible name, spoken in place of its text. */ "aria-label"?: string;
@@ -1315,7 +1315,7 @@ export type RadioProps = Omit<Props, "style" | "children" | "role"> & { role?: R
 } & ({ bind: Local<string>; value?: never; onChange?: never } | { bind?: never; value?: string; onChange?: (value: string) => void });
 export type SliderStyle = StyleGroup.Box & StyleGroup.Padding & StyleGroup.Accent;
 /** The roles a `<slider>` takes; reference/elements.md says where the others go. */
-export type SliderRole = "heading" | "list" | "listitem" | "alert" | "status" | "grid" | "gridcell" | "listbox" | "option" | "menu" | "progressbar" | "group" | "tooltip";
+export type SliderRole = never;
 export type SliderProps = Omit<Props, "style" | "children" | "role"> & { role?: SliderRole; style?: SliderStyle; children?: never;
   /** The lowest value it accepts. */ min?: number;
   /** The highest value it accepts. */ max?: number;
@@ -1361,7 +1361,7 @@ export type DialogProps = Omit<Props, "style" | "children" | "role"> & { role?: 
   /** Called with the snap point index it came to rest at after a drag or swipe. */ onSnapChange?: never; });
 export type PlotStyle = StyleGroup.Box;
 /** The roles a `<plot>` takes; reference/elements.md says where the others go. */
-export type PlotRole = "heading" | "list" | "listitem" | "alert" | "status" | "grid" | "gridcell" | "listbox" | "option" | "menu" | "progressbar" | "group" | "tooltip";
+export type PlotRole = never;
 export type PlotProps = Omit<Props, "style" | "children" | "role"> & { role?: PlotRole; style?: PlotStyle; children?: never;
   /** Called with its laid-out size after each change, one render behind. */ onLayout?: (box: BoxSize) => void;
   /** A `useBox` handle this element fills with its laid-out size. */ box?: Box;
@@ -1380,7 +1380,7 @@ export type PlotProps = Omit<Props, "style" | "children" | "role"> & { role?: Pl
 };
 export type VectorStyle = StyleGroup.Box & StyleGroup.Padding & StyleGroup.Accent & StyleGroup.Media;
 /** The roles a `<vector>` takes; reference/elements.md says where the others go. */
-export type VectorRole = "heading" | "list" | "listitem" | "alert" | "status" | "grid" | "gridcell" | "listbox" | "option" | "menu" | "progressbar" | "group" | "tooltip";
+export type VectorRole = never;
 export type VectorProps = Omit<Props, "style" | "children" | "role"> & { role?: VectorRole; style?: VectorStyle; children?: never;
   /** On a direct child of `<page>`: extend under the safe-area insets to the screen edge, on every side or the named ones. */ bleed?: BleedEdge;
   /** Reports a single pointer over the element: down, move, up, enter, leave and cancel. */ onPointer?: (event: PointerEvent) => void;
@@ -1396,7 +1396,7 @@ export type SpanProps = Omit<Props, "style" | "children" | "id" | "role" | "head
 };
 export type LinkStyle = StyleGroup.Run & StyleGroup.Box & StyleGroup.Padding & StyleGroup.Flex & StyleGroup.Align & StyleGroup.Direction & StyleGroup.Gap & StyleGroup.Text & StyleGroup.Grid;
 /** The roles a `<link>` takes; reference/elements.md says where the others go. */
-export type LinkRole = "heading" | "list" | "listitem" | "alert" | "status" | "grid" | "gridcell" | "listbox" | "option" | "menu" | "progressbar" | "group" | "tooltip";
+export type LinkRole = never;
 export type LinkProps = Omit<Props, "style" | "children" | "role"> & { role?: LinkRole; style?: LinkStyle; children?: Child;
   /** Called for a long press or a secondary click, with where it happened. */ onContextMenu?: (event: ContextMenuEvent) => void;
   /** Called when it is pressed: a tap, a click, Enter or Space, or a screen reader's activation. */ onClick?: () => void;
@@ -1408,7 +1408,7 @@ export type LinkProps = Omit<Props, "style" | "children" | "role"> & { role?: Li
 };
 export type SelectStyle = StyleGroup.Box & StyleGroup.Padding & StyleGroup.Text & StyleGroup.TextBlock & StyleGroup.Editor;
 /** The roles a `<select>` takes; reference/elements.md says where the others go. */
-export type SelectRole = "heading" | "list" | "listitem" | "alert" | "status" | "grid" | "gridcell" | "listbox" | "option" | "menu" | "progressbar" | "group" | "tooltip";
+export type SelectRole = never;
 export type SelectProps = Omit<Props, "style" | "children" | "role"> & { role?: SelectRole; style?: SelectStyle; children?: never;
   /** The choices, each a value and a label. */ options: readonly ChoiceOption[];
   /** The option an unbound select starts on; it applies once. */ defaultValue?: string;
@@ -1418,7 +1418,7 @@ export type SelectProps = Omit<Props, "style" | "children" | "role"> & { role?: 
 } & ({ bind: Local<string>; value?: never; onChange?: never } | { bind?: never; value?: string; onChange?: (value: string) => void });
 export type VideoStyle = StyleGroup.Box & StyleGroup.Media & StyleGroup.ImagePlacement;
 /** The roles a `<video>` takes; reference/elements.md says where the others go. */
-export type VideoRole = "heading" | "list" | "listitem" | "alert" | "status" | "grid" | "gridcell" | "listbox" | "option" | "menu" | "progressbar" | "group" | "tooltip";
+export type VideoRole = never;
 export type VideoProps = Omit<Props, "style" | "children" | "role"> & { role?: VideoRole; style?: VideoStyle; children?: never;
   /** On a direct child of `<page>`: extend under the safe-area insets to the screen edge, on every side or the named ones. */ bleed?: BleedEdge;
   /** A `useVideo` player: control it from code, or show the same player in another `<video>`. */ player?: Video;
@@ -1453,7 +1453,7 @@ export type VideoProps = Omit<Props, "style" | "children" | "role"> & { role?: V
   /** A `useVideo` player: control it from code, or show the same player in another `<video>`. */ player: Video; });
 export type WebviewStyle = StyleGroup.Box;
 /** The roles a `<webview>` takes; reference/elements.md says where the others go. */
-export type WebviewRole = "heading" | "list" | "listitem" | "alert" | "status" | "grid" | "gridcell" | "listbox" | "option" | "menu" | "progressbar" | "group" | "tooltip";
+export type WebviewRole = never;
 export type WebviewProps = Omit<Props, "style" | "children" | "role"> & { role?: WebviewRole; style?: WebviewStyle; children?: never;
   /** On a direct child of `<page>`: extend under the safe-area insets to the screen edge, on every side or the named ones. */ bleed?: BleedEdge;
   /** The page to load. */ src?: string;

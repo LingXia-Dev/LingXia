@@ -31,7 +31,7 @@ the `role` prop sets one of the authored roles on any non-control element.
 | `radiogroup` | `<view>` | `radio-group` |
 | `radio` | `<button>` | `undefined` |
 | `toolbar` | `<view>` | `toolbar` |
-| `tree` | `<view>` | `tree` |
+| `tree` | `<view>` or `<scroll>` or `<list>` | `tree` |
 | `treeitem` | `<button>` | `tree-item` |
 | `row` | `<view>` | `row` |
 | `menuitemcheckbox` | `<button>` | `menu-item-check-box` |
@@ -40,7 +40,14 @@ the `role` prop sets one of the authored roles on any non-control element.
 | `combobox` | `<input>` or `<button>` | `combo-box` |
 | `spinbutton` | `<input>` | `undefined` |
 
+A `<text>` takes only `heading`, `listitem`, `alert`, `status`, `tooltip`, `gridcell`, `option`, `img` (`UI_PROP`).
+A `<button>` takes only `tab`, `radio`, `option`, `gridcell`, `treeitem`, `menuitem`, `menuitemcheckbox`, `menuitemradio`, `combobox` (`UI_PROP`).
+A `<scroll>` takes only `list`, `listbox`, `grid`, `menu`, `group`, `tree` (`UI_PROP`).
+A `<List>` takes only `list`, `listbox`, `grid`, `menu`, `group`, `tree` (`UI_PROP`).
+A `<input>` takes only `combobox`, `spinbutton` (`UI_PROP`).
 A `<dialog>` takes only `alertdialog` (`UI_PROP`).
+
+`<page>`, `<image>`, `<vector>`, `<plot>`, `<textarea>`, `<checkbox>`, `<switch>`, `<radio>`, `<slider>`, `<select>`, `<video>`, `<webview>`, `<link>` keep their own role and take no `role` (`UI_PROP`).
 
 ## Props with conditions
 

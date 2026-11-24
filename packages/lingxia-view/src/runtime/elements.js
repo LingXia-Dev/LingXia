@@ -1023,9 +1023,10 @@ function authoredRules(tag, props, parent) {
   const only = authoringRules.elementRole[kind];
   const role = props.role ?? only?.implied;
   if (props.role !== undefined) {
-    if (only && !only.roles.includes(props.role)) throw Error(`UI_PROP: ${only.error}`);
+    // A role's own rule names where it goes, which says more than the element's list.
     for (const rule of has(authoringRules.role, role) ? authoringRules.role[role] : [])
       if (breaks(rule, kind, role, props)) throw Error(`UI_PROP: ${rule.error}`);
+    if (only && !only.roles.includes(props.role)) throw Error(`UI_PROP: ${only.error}`);
   }
   for (const name in authoringRules.prop) {
     const value = props[name];

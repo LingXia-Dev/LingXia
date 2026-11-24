@@ -79,9 +79,10 @@ export function admissionProblems(node, file) {
     || rule.without?.some(name => named.has(name) && alwaysSet(named.get(name)));
   for (const value of (role && attributeValues(role)) ?? []) {
     if (typeof value !== 'string') continue;
-    if (only && !only.roles.includes(value)) { problems.push([role, `UI_PROP: ${only.error}`]); continue; }
+    // A role's own rule names where it goes, which says more than the element's list.
     const broken = (has(rules.role, value) ? rules.role[value] : []).find(rule => breaks(rule, value));
     if (broken) problems.push([role, `UI_PROP: ${broken.error}`]);
+    else if (only && !only.roles.includes(value)) problems.push([role, `UI_PROP: ${only.error}`]);
   }
   // A group whose orElse prop stands in when none of it is set: only a spread may hide one.
   if (!spread) for (const group of Object.values(rules.exclusive))

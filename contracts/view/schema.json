@@ -852,7 +852,7 @@
       "tabpanel": [{"tags": ["view"]}],
       "radiogroup": [{"tags": ["view"]}],
       "toolbar": [{"tags": ["view"]}],
-      "tree": [{"tags": ["view"]}],
+      "tree": [{"tags": ["view", "scroll", "list"]}],
       "row": [{"tags": ["view"]}],
       "combobox": [{"tags": ["input", "button"]}],
       "spinbutton": [{"tags": ["input"]}],
@@ -861,6 +861,24 @@
       "dialog": [{"tags": ["view"], "with": ["popover"], "error": "role=\"dialog\" goes on a popover <view>, or is the <dialog> element"}]
     },
     "elementRole": {
+      "page": {"roles": [], "error": "the <page> keeps its own role; put a role on an element inside it"},
+      "text": {"roles": ["heading", "listitem", "alert", "status", "tooltip", "gridcell", "option", "img"], "error": "a <text> takes role heading, listitem, alert, status, tooltip, gridcell, option or img; put other roles on a <view> or <button>"},
+      "button": {"roles": ["tab", "radio", "option", "gridcell", "treeitem", "menuitem", "menuitemcheckbox", "menuitemradio", "combobox"], "error": "a <button> takes an item role (tab, radio, option, gridcell, treeitem, menuitem, menuitemcheckbox, menuitemradio) or combobox; put container roles on a <view>"},
+      "scroll": {"roles": ["list", "listbox", "grid", "menu", "group", "tree"], "error": "a <scroll> takes a container role: list, listbox, grid, menu, group or tree"},
+      "list": {"roles": ["list", "listbox", "grid", "menu", "group", "tree"], "error": "a <List> takes a container role: list, listbox, grid, menu, group or tree"},
+      "input": {"roles": ["combobox", "spinbutton"], "error": "an <input> takes role combobox or spinbutton only"},
+      "image": {"roles": [], "error": "an <image> keeps its own role"},
+      "vector": {"roles": [], "error": "a <vector> keeps its own role"},
+      "plot": {"roles": [], "error": "a <plot> keeps its own role"},
+      "textarea": {"roles": [], "error": "a <textarea> keeps its own role"},
+      "checkbox": {"roles": [], "error": "a <checkbox> keeps its own role"},
+      "switch": {"roles": [], "error": "a <switch> keeps its own role"},
+      "radio": {"roles": [], "error": "a <radio> keeps its own role"},
+      "slider": {"roles": [], "error": "a <slider> keeps its own role"},
+      "select": {"roles": [], "error": "a <select> keeps its own role"},
+      "video": {"roles": [], "error": "a <video> keeps its own role"},
+      "webview": {"roles": [], "error": "a <webview> keeps its own role"},
+      "link": {"roles": [], "error": "a <link> keeps its own role"},
       "dialog": {"roles": ["alertdialog"], "implied": "dialog", "error": "a <dialog> keeps its own role; only role=\"alertdialog\" marks one that interrupts"}
     },
     "trait": {

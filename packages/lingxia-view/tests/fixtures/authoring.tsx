@@ -108,6 +108,12 @@ export function render(view: View<{ save(value: string): Promise<void> }, { titl
   const both = (cell: Local<number>) => <scroll bind={cell} snapIndex={0}/>;
   // @ts-expect-error onSnapChange comes with snapIndex.
   const deaf = <scroll onSnapChange={() => {}}/>;
+  // @ts-expect-error a <text> takes no container role.
+  const textRole = <text role="tablist">x</text>;
+  // @ts-expect-error an <image> keeps its own role.
+  const imageRole = <image src="a.png" alt="" role="img"/>;
+  // @ts-expect-error a <scroll> takes container roles only.
+  const scrollRole = <scroll role="tab"/>;
   // @ts-expect-error a <dialog> keeps its own role.
   const dialogRole = <dialog role="group" aria-label="x"/>;
   // @ts-expect-error aria states are booleans.
