@@ -14559,7 +14559,7 @@
           "name": "label",
           "type": "string",
           "required": true,
-          "description": "What the code is for, read in its place: \"Code to join Heights Guest\"."
+          "description": "What the code is for, read in its place: \"Code to join Harbour Café Guest\"."
         },
         {
           "name": "size",
@@ -14621,7 +14621,7 @@
         {
           "name": "Join",
           "title": "A network to join",
-          "source": "import { QRCode } from '@liulidesign/core/QRCode';\n\n/** A guest network to join: the code, and the same details in words for whoever cannot scan. */\nexport function Join() {\n  return (\n    <view className=\"flex-row items-center gap-4\">\n      <QRCode value=\"WIFI:T:WPA;S:Heights Guest;P:spring-4821;;\" label=\"Code to join Heights Guest\" data-testid=\"join\" />\n      <view className=\"shrink min-w-0 gap-1\">\n        <text className=\"text-callout font-semibold text-text\">Heights Guest</text>\n        <text className=\"text-footnote text-muted\">Password spring-4821</text>\n      </view>\n    </view>\n  );\n}"
+          "source": "import { QRCode } from '@liulidesign/core/QRCode';\n\n/** A guest network to join: the code, and the same details in words for whoever cannot scan. */\nexport function Join() {\n  return (\n    <view className=\"flex-row items-center gap-4\">\n      <QRCode value=\"WIFI:T:WPA;S:Harbour Café Guest;P:tide-pool-73;;\" label=\"Code to join Harbour Café Guest\" data-testid=\"join\" />\n      <view className=\"shrink min-w-0 gap-1\">\n        <text className=\"text-callout font-semibold text-text\">Harbour Café Guest</text>\n        <text className=\"text-footnote text-muted\">Password tide-pool-73</text>\n      </view>\n    </view>\n  );\n}"
         },
         {
           "name": "Link",

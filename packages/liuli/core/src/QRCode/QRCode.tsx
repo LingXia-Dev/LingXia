@@ -9,7 +9,7 @@ export type { QRLevel };
 export interface QRCodeProps {
   /** What the code holds: a link, a join code, Wi-Fi details. Text of any language. */
   value: string;
-  /** What the code is for, read in its place: "Code to join Heights Guest". */
+  /** What the code is for, read in its place: "Code to join Harbour Café Guest". */
   label: string;
   /** 96, 160 or 240 points square. @default 'md' */
   size?: QRCodeSize;

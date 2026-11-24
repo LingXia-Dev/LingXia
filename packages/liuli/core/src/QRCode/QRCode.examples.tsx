@@ -4,10 +4,10 @@ import { QRCode } from './QRCode';
 export function Join() {
   return (
     <view className="flex-row items-center gap-4">
-      <QRCode value="WIFI:T:WPA;S:Heights Guest;P:spring-4821;;" label="Code to join Heights Guest" data-testid="join" />
+      <QRCode value="WIFI:T:WPA;S:Harbour Café Guest;P:tide-pool-73;;" label="Code to join Harbour Café Guest" data-testid="join" />
       <view className="shrink min-w-0 gap-1">
-        <text className="text-callout font-semibold text-text">Heights Guest</text>
-        <text className="text-footnote text-muted">Password spring-4821</text>
+        <text className="text-callout font-semibold text-text">Harbour Café Guest</text>
+        <text className="text-footnote text-muted">Password tide-pool-73</text>
       </view>
     </view>
   );

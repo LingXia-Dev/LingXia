@@ -21,10 +21,10 @@ import { QRCode } from '@liulidesign/core/QRCode';
 export function Join() {
   return (
     <view className="flex-row items-center gap-4">
-      <QRCode value="WIFI:T:WPA;S:Heights Guest;P:spring-4821;;" label="Code to join Heights Guest" data-testid="join" />
+      <QRCode value="WIFI:T:WPA;S:Harbour Café Guest;P:tide-pool-73;;" label="Code to join Harbour Café Guest" data-testid="join" />
       <view className="shrink min-w-0 gap-1">
-        <text className="text-callout font-semibold text-text">Heights Guest</text>
-        <text className="text-footnote text-muted">Password spring-4821</text>
+        <text className="text-callout font-semibold text-text">Harbour Café Guest</text>
+        <text className="text-footnote text-muted">Password tide-pool-73</text>
       </view>
     </view>
   );
@@ -69,7 +69,7 @@ export function Sizes() {
 | Prop | Type | Default | Description |
 | --- | --- | --- | --- |
 | `value` (required) | `string` |  | What the code holds: a link, a join code, Wi-Fi details. Text of any language. |
-| `label` (required) | `string` |  | What the code is for, read in its place: "Code to join Heights Guest". |
+| `label` (required) | `string` |  | What the code is for, read in its place: "Code to join Harbour Café Guest". |
 | `size` | `QRCodeSize` | `'md'` | 96, 160 or 240 points square. |
 | `level` | `QRLevel` | `'M'` | How much of the code may be lost and still read: L 7 %, M 15 %, Q 25 %, H 30 %. Higher levels make denser codes. |
 | `className` | `string` |  |  |
@@ -105,7 +105,7 @@ Ratios are computed from @lingxia/view/theme and rounded down.
 
 ## Guidance
 
-- Do: Say what scanning does in `label`: "Code to join Heights Guest".
+- Do: Say what scanning does in `label`: "Code to join Harbour Café Guest".
 - Do: Show the link or password beside the code for whoever cannot scan.
 - Don't: Draw it smaller than `sm`; phone cameras read a 96 pt code at arm's length.
 - Don't: Raise `level` without a reason; each step makes the code denser.

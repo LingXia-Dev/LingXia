@@ -6,7 +6,7 @@ import { encodeQR } from './encode.ts';
 test('Join: an image named by what it is for; the modules are drawn, not read', async () => {
   const screen = await renderExample('QRCode/QRCode', 'Join');
   const code = screen.getByTestId('join');
-  assert.deepEqual([code.props.role, code.props.accessibilityLabel, code.props.width], ['img', 'Code to join Heights Guest', 160]);
+  assert.deepEqual([code.props.role, code.props.accessibilityLabel, code.props.width], ['img', 'Code to join Harbour Café Guest', 160]);
   const [vector] = code.children;
   assert.equal(vector.props.accessibilityHidden, 1);
   const source = JSON.parse(vector.props.vectorSource);

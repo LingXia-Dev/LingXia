@@ -31,7 +31,7 @@ export const doc: ComponentDoc = {
   },
   guidance: {
     do: [
-      'Say what scanning does in `label`: "Code to join Heights Guest".',
+      'Say what scanning does in `label`: "Code to join Harbour Café Guest".',
       'Show the link or password beside the code for whoever cannot scan.',
     ],
     dont: [
