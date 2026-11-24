@@ -4,7 +4,7 @@ export const timeInputParts = { box: 'view', input: 'input', icon: 'vector' } as
 
 /**
  * TextInput's box: a 3:1 boundary that takes the focus colour, the editor borderless inside it. The
- * mark at the end says a tap opens a picker, not a keyboard.
+ * mark at the start says a tap opens a picker, not a keyboard.
  */
 export const timeInputRecipe = {
   box: {

@@ -5885,7 +5885,7 @@
             "minimum": "3:1"
           },
           {
-            "what": "end mark",
+            "what": "start mark",
             "pair": [
               "text-muted",
               "surface"
@@ -20014,7 +20014,7 @@
             "minimum": "3:1"
           },
           {
-            "what": "end mark",
+            "what": "start mark",
             "pair": [
               "text-muted",
               "surface"

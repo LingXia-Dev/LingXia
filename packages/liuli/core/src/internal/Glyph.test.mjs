@@ -35,3 +35,20 @@ test('An icon beside text grows with it, up to half again, a picker\'s mark too;
     assert.deepEqual([side(tile), side(vectors(tile)[0])], [[Math.round(32 * tileGrowth), Math.round(32 * tileGrowth)], [Math.round(18 * tileGrowth), Math.round(18 * tileGrowth)]], `tile at ${textScale}`);
   }
 });
+
+test('A picker\'s mark comes first, before the value, in both reading directions', async () => {
+  for (const direction of ['ltr', 'rtl']) {
+    const screen = await renderPage(`
+      import { DateInput } from '@liulidesign/core/DateInput';
+      import { TimeInput } from '@liulidesign/core/TimeInput';
+      export function render() {
+        return <page><DateInput label="Due" value="" onChange={() => {}} data-testid="date" /><TimeInput label="Starts" value="" onChange={() => {}} data-testid="time" /></page>;
+      }
+    `, { env: { direction } });
+    for (const id of ['date', 'time']) {
+      const box = screen.getByTestId(id).parent;
+      assert.deepEqual(box.children.map(node => node.tag), ['vector', 'input'], `${id}, ${direction}`);
+      assert.notEqual(box.props.flexDirection, 'row-reverse', 'the direction alone mirrors the row');
+    }
+  }
+});

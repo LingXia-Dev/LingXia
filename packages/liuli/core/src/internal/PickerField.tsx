@@ -85,8 +85,8 @@ export function PickerField(props: PickerFieldProps) {
         };
         return (
           <view className={cx(r.box.base, r.box.size[size], status && r.box.status[status.type], isDisabled && r.box.disabled, controlClassName)}>
-            {props.bind ? <input bind={props.bind} {...shared} /> : <input value={props.value} onInput={props.onChange} {...shared} />}
             <Glyph name={icon} side={pickerMark} className={r.icon.base} />
+            {props.bind ? <input bind={props.bind} {...shared} /> : <input value={props.value} onInput={props.onChange} {...shared} />}
           </view>
         );
       }}

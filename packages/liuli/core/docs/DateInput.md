@@ -125,7 +125,7 @@ export function Sizes() {
 | --- | --- | --- | --- |
 | box | `<view>` | yes | TextInput's bordered box; it takes the focus colour while the field is focused and the status colour otherwise. |
 | input | `<input>` | yes | The date editor; the day shows in the user's language, and a tap opens the picker. |
-| icon | `<vector>` | yes | A calendar mark at the end that grows with the text, hidden from assistive tech. |
+| icon | `<vector>` | yes | A calendar mark at the start, before the value in either direction, that grows with the text; hidden from assistive tech. |
 
 ## What an app may override
 
@@ -155,7 +155,7 @@ export function Sizes() {
 | value | `text` on `surface` | 4.5:1 | 16.26:1 | 13.87:1 |
 | placeholder | `text-muted` on `surface` | 4.5:1 | 5.89:1 | 6.64:1 |
 | box boundary | `line-strong` on `surface` | 3:1 | 3.47:1 | 3.53:1 |
-| end mark | `text-muted` on `surface` | 3:1 | 5.89:1 | 6.64:1 |
+| start mark | `text-muted` on `surface` | 3:1 | 5.89:1 | 6.64:1 |
 
 Ratios are computed from @lingxia/view/theme and rounded down.
 

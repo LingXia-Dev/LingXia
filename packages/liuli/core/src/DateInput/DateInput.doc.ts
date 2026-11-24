@@ -16,7 +16,7 @@ export const doc: ComponentDoc = {
   anatomy: [
     { part: 'box', required: true, description: 'TextInput\'s bordered box; it takes the focus colour while the field is focused and the status colour otherwise.' },
     { part: 'input', required: true, description: 'The date editor; the day shows in the user\'s language, and a tap opens the picker.' },
-    { part: 'icon', required: true, description: 'A calendar mark at the end that grows with the text, hidden from assistive tech.' },
+    { part: 'icon', required: true, description: 'A calendar mark at the start, before the value in either direction, that grows with the text; hidden from assistive tech.' },
   ],
   accessibility: {
     pattern: 'textbox',
@@ -38,7 +38,7 @@ export const doc: ComponentDoc = {
       { what: 'value', pair: ['text', 'surface'], minimum: '4.5:1' },
       { what: 'placeholder', pair: ['text-muted', 'surface'], minimum: '4.5:1' },
       { what: 'box boundary', pair: ['line-strong', 'surface'], minimum: '3:1' },
-      { what: 'end mark', pair: ['text-muted', 'surface'], minimum: '3:1' },
+      { what: 'start mark', pair: ['text-muted', 'surface'], minimum: '3:1' },
     ],
     notes: [
       'The picker is the View\'s own, drawn in the theme\'s roles: a popover under the field with a pointer, a sheet with Cancel and Done on touch.',
