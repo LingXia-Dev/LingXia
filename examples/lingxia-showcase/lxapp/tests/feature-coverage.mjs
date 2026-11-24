@@ -64,7 +64,7 @@ function testFiles(dir) {
 function specFiles() {
   const own = testFiles(join(lxapp, 'tests'));
   const source = join(repo, 'packages/lingxia-test/showcase');
-  const shared = ['pages', 'flows'].flatMap((dir) => testFiles(join(source, dir)));
+  const shared = ['pages'].flatMap((dir) => testFiles(join(source, dir)));
   const { skip } = json(join(lxapp, 'tests/shared-specs.json'));
   return [...own, ...shared.filter((file) => !(relative(source, file).split('\\').join('/') in skip))];
 }

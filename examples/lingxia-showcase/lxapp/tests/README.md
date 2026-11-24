@@ -5,7 +5,7 @@ Showcase. A passing suite must show that a public capability is present, works
 through its real boundary, reports failures predictably, and leaves no state
 behind.
 
-The page and flow specs shared with other apps, and their helpers, live in
+The page specs shared with other apps, and their helpers, live in
 `packages/lingxia-test/showcase` and are imported as `@lingxia/test/showcase/…`;
 `shared-specs.json` names the shared files this app skips, each with a reason.
 `node scripts/ci/check-example-imports.mjs` keeps examples from importing each other.

@@ -19,11 +19,6 @@ import type { AppSurface } from '@lingxia/types';
 
 test.configure({ skip: notDesktop });
 
-function isLocalizedSettingsLabel(name: string): boolean {
-  const trimmed = name.trim();
-  return trimmed === 'Settings' || trimmed === '设置';
-}
-
 function isLocalizedExpandSidebarLabel(name: string): boolean {
   const trimmed = name.trim();
   return trimmed === 'Expand sidebar' || trimmed === '展开侧栏';
@@ -96,41 +91,6 @@ async function desktopApp(t: Fixture): Promise<TestApp> {
     throw new Error(`requested ${targetPlatform}, but the running showcase reports ${actual}`);
   }
   return app;
-}
-
-async function openSettingsMain(
-  app: TestApp,
-  platform: string,
-  desktop: DesktopDriver,
-  host: DesktopWindowInfo,
-): Promise<void> {
-  if (platform === 'windows') {
-    const current = (await desktop.windows()).find((window) => window.id === host.id) ?? host;
-    await desktop.window.focus({ window: current.id });
-    const layout = await app.surfaceLayout();
-    await desktop.pointer.click({
-      at: staticSettingsActionPoint(current, layout.switcherForm === 'rail'),
-    });
-    return;
-  }
-
-  const current = (await desktop.windows()).find((window) => window.id === host.id) ?? host;
-  await desktop.window.focus({ window: current.id });
-  const buttons = await desktop.ax.query({
-    window: current.id,
-    match: 'role:button',
-    all: true,
-  });
-  const settings = buttons.filter((node) => (
-    node.role === 'button'
-    && node.enabled
-    && isLocalizedSettingsLabel(node.name)
-    && node.rect.w > 0
-    && node.rect.h > 0
-    && node.rect.x < current.bounds.x + Math.min(220, current.bounds.w * 0.3)
-  ));
-  expect(settings.length).toBe(1);
-  await desktop.ax.invoke({ window: current.id, match: `id:${settings[0].id}` });
 }
 
 function switcherIds(layout: SurfaceLayoutSnapshot): string[] {
@@ -358,10 +318,11 @@ async function visibleBrowserViewportWidth(
   browser: BrowserDriver,
 ): Promise<number | undefined> {
   try {
-    const body = await browser.query({ css: 'body', maxText: 1 });
-    return body.exists && body.visible && body.rect && body.rect.viewportWidth > 0
-      ? body.rect.viewportWidth
-      : undefined;
+    // A blank tab has a zero-height body, so read the window, not an element.
+    const width = await browser.eval<number>({
+      js: `document.visibilityState === 'visible' ? window.innerWidth : 0`,
+    });
+    return width > 0 ? width : undefined;
   } catch (error) {
     if (String(error).includes('browser tab is not ready')) return undefined;
     throw error;
@@ -738,27 +699,6 @@ function firstRailActionPoint(
     host.bounds.x + Math.round(railWidth / 2),
     host.bounds.y + firstTop + Math.round(cell / 2),
   ];
-}
-
-function staticSettingsActionPoint(
-  host: DesktopWindowInfo,
-  rail: boolean,
-): [number, number] {
-  if (!rail) {
-    // Typed Settings leads the header actions, right-aligned against the
-    // collapse toggle at the expanded sidebar's trailing edge.
-    const size = 24;
-    const gap = 4;
-    const toggleLeft = WINDOWS_SIDEBAR_DIP - 8 - size;
-    const settingsLeft = toggleLeft - gap
-      - DESKTOP_HEADER_ACTION_COUNT * size
-      - (DESKTOP_HEADER_ACTION_COUNT - 1) * gap;
-    return [
-      host.bounds.x + nativeWindowExtent('windows', host, settingsLeft + size / 2),
-      host.bounds.y + nativeWindowExtent('windows', host, 16),
-    ];
-  }
-  return railActionPoint(host, 0);
 }
 
 function firstLxappWorkspacePoint(
@@ -1294,7 +1234,7 @@ test('gates rail sidebar reveal and compact aside chrome on every desktop', {
   skip: adaptiveDesktopSkip,
   id: 'DESKTOP-ADAPTIVE-001',
   timeout: DESKTOP_CASE_MS,
-  covers: ['lx.surface.openDeclared', 'lx.shell.openBuiltin', 'TestApp.surfaceLayout'],
+  covers: ['lx.surface.openDeclared', 'BrowserDriver.open', 'TestApp.surfaceLayout'],
 }, async (t) => {
   const app = await desktopApp(t);
   const platform = await runtimePlatform(app);
@@ -1520,20 +1460,16 @@ test('gates rail sidebar reveal and compact aside chrome on every desktop', {
     // only graph state, so a sidebar that failed to reach its icon rail cannot pass.
     await closeChatSurface(t, app);
     chatOpened = false;
-    await openSettingsMain(app, platform, desktop, host);
-    const settingsTab = await waitForValue(async () => {
+    browserTabId = (await browser.open({ url: 'about:blank' })).tab;
+    await waitForValue(async () => {
       const current = await browser.current();
-      return current?.current_url?.startsWith('lingxia://settings') ? current : undefined;
-    }, `${platform} settings browser main`);
-    browserTabId = settingsTab.tab_id;
-    await app.logic.eval({ timeout: 20_000 }, async ({ lx }) => {
-      await lx.shell.openBuiltin('downloads');
-    });
-    const downloadsTab = await waitForValue(async () => {
+      return current?.tab_id === browserTabId ? current : undefined;
+    }, `${platform} first browser main`);
+    secondaryBrowserTabId = (await browser.open({ url: 'about:blank' })).tab;
+    await waitForValue(async () => {
       const current = await browser.current();
-      return current?.current_url?.startsWith('lingxia://downloads') ? current : undefined;
+      return current?.tab_id === secondaryBrowserTabId ? current : undefined;
     }, `${platform} second browser main`);
-    secondaryBrowserTabId = downloadsTab.tab_id;
 
     const sidebarBrowserInset = await waitForValue(async () => {
       const viewport = await visibleBrowserViewportWidth(browser);
@@ -1591,7 +1527,7 @@ test('gates rail sidebar reveal and compact aside chrome on every desktop', {
           return inset;
         }
       }
-      // Compact Windows can keep the builtin in a child WebView2 frame; the
+      // Compact Windows can keep the browser tab in a child WebView2 frame; the
       // rail is the gap between the host origin and that frame.
       if (platform !== 'windows') return undefined;
       const child = (await desktop.windows()).find((window) => (
@@ -2115,12 +2051,11 @@ test('keeps a dynamic app handle synchronized and closes its workspace atomicall
     // changing its lifecycle visibility. A retained handle.show() is an
     // explicit product-level activation request: it must replace that cover,
     // restore the same physical Chat WebView, and emit no duplicate show event.
-    await openSettingsMain(app, platform, desktop, host);
-    const browserMain = await waitForValue(async () => {
+    browserTabId = (await browser.open({ url: 'about:blank' })).tab;
+    await waitForValue(async () => {
       const current = await browser.current();
-      return current?.current_url?.startsWith('lingxia://settings') ? current : undefined;
+      return current?.tab_id === browserTabId ? current : undefined;
     }, `${platform} browser physically covers dynamic Chat`);
-    browserTabId = browserMain.tab_id;
     let browserCoverMain: DesktopWindowInfo | undefined;
     if (baselineMain && chatMain) {
       browserCoverMain = await waitForDesktopWindow(

@@ -157,7 +157,7 @@ async function restoreShowcaseSidebarActions(app: TestApp): Promise<void> {
     await lx.shell.sidebarActions.replace([
       {
         id: 'downloads', placement: 'header', icon: 'public/sidebar-downloads.svg', label: 'Downloads',
-        onSelect() { void lx.shell.openBuiltin('downloads'); },
+        onSelect() { void lx.surface.openApp('app.lingxia.browser', { page: 'downloads' }); },
       },
       {
         id: 'chat', placement: 'footer', icon: 'public/sidebar-chat.svg', label: 'chat',
@@ -184,13 +184,40 @@ async function restoreShowcaseSidebarActions(app: TestApp): Promise<void> {
   });
 }
 
+/** The browser's system pages: a host-bundled lxapp, opened as a control surface. */
+const BROWSER_APP_ID = 'app.lingxia.browser';
+
+/** The browser lxapp's live session and page, or `undefined` while it is not open. */
+async function browserSystemApp(t: Fixture): Promise<{ sessionId: number; page: string } | undefined> {
+  const info = (await t.automation.lxapps.list()).find((app) => app.appId === BROWSER_APP_ID);
+  if (!info || info.status === 'closed' || !info.currentPage) return undefined;
+  return { sessionId: info.sessionId, page: info.currentPage };
+}
+
+async function waitForBrowserSystemPage(
+  t: Fixture,
+  app: TestApp,
+  page: string,
+  describe: string,
+): Promise<{ sessionId: number; page: string }> {
+  const opened = await eventually(
+    () => browserSystemApp(t),
+    (state) => Boolean(state?.page.startsWith(`pages/${page}/index`)),
+    { describe, timeoutMs: 15_000 },
+  );
+  if (!opened) throw new Error(`${describe}: ${BROWSER_APP_ID} did not open`);
+  const layout = await app.surfaceLayout();
+  expect(Object.values(layout.identities).some((identity) => identity.appId === BROWSER_APP_ID)).toBeTruthy();
+  return opened;
+}
+
 test("restore rendered home content after closing covering web tabs", { id: "DESKTOP-BROWSER-001", covers: [
       'BrowserDriver.tabs',
       'BrowserDriver.close',
       'DesktopDriver.pointer',
       'DesktopAx.invoke',
       'LxAppDriver.surfaceLayout',
-      'lx.shell.openBuiltin',
+      'lx.surface.openApp',
     ], app: SHOWCASE_APP_ID }, async (t) => {
   const { app, defer } = bindFixture(t, "DESKTOP-BROWSER-001");
 
@@ -214,6 +241,9 @@ test("restore rendered home content after closing covering web tabs", { id: "DES
       const freshTabs = (await browser.tabs()).filter((tab) => !tabsBefore.has(tab.tab_id));
       for (const tab of freshTabs) await browser.close({ tab: tab.tab_id });
     });
+    defer(async () => {
+      if (await browserSystemApp(t)) await t.automation.lxapps.close({ app: BROWSER_APP_ID });
+    });
     defer(() => restoreShowcaseSidebarActions(app));
 
     await app.logic.eval(async ({ lx }) => {
@@ -230,58 +260,32 @@ test("restore rendered home content after closing covering web tabs", { id: "DES
     // Presentation strings may match, but the static click must never
     // dispatch their callbacks.
     await openHostSettings(t, app, platform, { header: 0, footer: 3 });
-    const settings = await eventually(
-      () => browser.current(),
-      (tab) => Boolean(tab?.current_url?.startsWith('lingxia://settings')),
-      { describe: 'static Settings destination to open', timeoutMs: 15_000 },
-    );
-    if (!settings) throw new Error('static Settings destination did not produce a current tab');
+    const settings = await waitForBrowserSystemPage(t, app, 'settings', 'static Settings destination to open');
     expect(await app.logic.eval(() => (globalThis as SpoofGlobals).__staticSettingsSpoofCalls)).toBe(0);
     await restoreShowcaseSidebarActions(app);
 
-    await browser.eval({
-      tab: settings.tab_id,
-      js: `globalThis.__staticSettingsReloadProbe = 'stale'`,
-    });
+    // A second click brings back the same session rather than starting another.
     await openHostSettings(t, app, platform);
-    await eventually(
-      () => browser.eval({
-        tab: settings.tab_id,
-        js: `typeof globalThis.__staticSettingsReloadProbe`,
-      }),
-      (value) => value === 'undefined',
-      { describe: 'same Settings target to receive a fresh trusted reload', timeoutMs: 15_000 },
-    );
-    expect((await browser.current())?.tab_id).toBe(settings.tab_id);
+    const again = await waitForBrowserSystemPage(t, app, 'settings', 'static Settings destination to reopen');
+    expect(again.sessionId).toBe(settings.sessionId);
 
-    await browser.open({ url: 'about:blank', tab: settings.tab_id });
-    await eventually(
-      () => browser.current(),
-      (tab) => tab?.current_url === 'about:blank',
-      { describe: 'external navigation away from Settings', timeoutMs: 15_000 },
-    );
-    await openHostSettings(t, app, platform);
-    const restored = await eventually(
-      () => browser.current(),
-      (tab) => Boolean(tab?.current_url?.startsWith('lingxia://settings')),
-      { describe: 'static Settings destination to restore trusted authority', timeoutMs: 15_000 },
-    );
-    if (!restored) throw new Error('static Settings destination did not restore a current tab');
-    expect(restored.tab_id).toBe(settings.tab_id);
-    await app.logic.eval({ timeout: 20_000 }, async ({ lx }) => {
-      await lx.shell.openBuiltin('downloads');
+    await app.logic.eval({ timeout: 20_000 }, async ({ lx }, appId) => {
+      await lx.surface.openApp(appId, { page: 'downloads' });
+    }, BROWSER_APP_ID);
+    const downloads = await waitForBrowserSystemPage(t, app, 'downloads', 'Downloads page to open');
+    expect(downloads.sessionId).toBe(settings.sessionId);
+
+    await t.automation.lxapps.close({ app: BROWSER_APP_ID });
+    await eventually(() => browserSystemApp(t), (state) => state === undefined, {
+      describe: 'browser system pages to close',
+      timeoutMs: 15_000,
     });
-    const downloads = await eventually(
-      () => browser.current(),
-      (tab) => Boolean(tab?.current_url?.startsWith('lingxia://downloads')),
-      { describe: 'authorized Downloads builtin to open', timeoutMs: 15_000 },
-    );
-    expect(downloads?.current_url?.startsWith('lingxia://downloads')).toBeTruthy();
 
+    for (let index = 0; index < 2; index += 1) await browser.open({ url: 'about:blank' });
     const opened = await eventually(
       async () => (await browser.tabs()).filter((tab) => !tabsBefore.has(tab.tab_id)),
-      (tabs) => tabs.length >= 1,
-      { describe: 'covering web tab to open', timeoutMs: 15_000 });
+      (tabs) => tabs.length >= 2,
+      { describe: 'covering web tabs to open', timeoutMs: 15_000 });
 
     for (const tab of opened) {
       await browser.close({ tab: tab.tab_id });
