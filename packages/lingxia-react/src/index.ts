@@ -21,16 +21,10 @@ export {
   SizeClassScope,
   useLxViewEnvironment,
   useBackHandler,
-  ListDetail,
-  Split,
-  TopBar,
   type SizeClass,
   type Edges,
   type HingeRect,
   type LxViewEnv,
-  type ListDetailProps,
-  type SplitProps,
-  type TopBarProps,
 } from "./adaptive.js";
 
 export type {
