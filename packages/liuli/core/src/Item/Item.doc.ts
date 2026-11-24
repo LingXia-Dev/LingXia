@@ -69,7 +69,7 @@ export const doc: ComponentDoc = {
     do: [
       'For a dense screen set `density` on the ItemList, or wrap the screen in a DensityProvider with `compact` so every list and table in it follows.',
       'Use `onClick` with `hasChevron` for a row that opens another page.',
-      'Give a row one control of its own with `endAction`, named for the row ("Remove Emily\'s iPad"); such a row rarely wants a chevron. It takes `onClick`, or `to` for a page of its own. Its `variant` stays `default` for a remove that asks first; `destructive` is for an action that destroys or ends something at once, with no confirmation.',
+      'Give a row one control of its own with `endAction`, named for the row ("Remove Lena\'s tablet"); such a row rarely wants a chevron. It takes `onClick`, or `to` for a page of its own. Its `variant` stays `default` for a remove that asks first; `destructive` is for an action that destroys or ends something at once, with no confirmation.',
       'Set `dir` on a value whose direction differs from the page\'s, such as a Latin "2 h" in a Hebrew row; a row does not isolate it.',
       'Keep the label short and put detail in `description`. For several facts pass one `<text>` per fact in a fragment, so a fact wraps within itself, 4 pt from the next; a screen reader still runs the facts together, with a space between.',
       'At large text, keep `endContent` to a short value or badge: it keeps its whole width and the label and description wrap beside it.',

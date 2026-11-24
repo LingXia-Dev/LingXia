@@ -129,9 +129,9 @@ import { Badge } from '@liulidesign/core/Badge';
 import { Item, ItemList } from '@liulidesign/core/Item';
 
 const members = [
-  { id: 'david', name: 'David', hue: 7, status: 'Internet on', tone: 'success', note: 'About 2 h 20 min left today' },
-  { id: 'emily', name: 'Emily', hue: 3, status: 'Internet on', tone: 'success', note: '4 devices' },
-  { id: 'alexandra', name: 'Alexandra-Charlotte Montgomery', hue: 5, status: 'No controls', tone: 'neutral', note: 'Parental controls are off · 3 devices' },
+  { id: 'lena', name: 'Lena', hue: 7, status: 'On shift', tone: 'success', note: 'Until 18:00 today' },
+  { id: 'omar', name: 'Omar', hue: 3, status: 'On shift', tone: 'success', note: '4 open tasks' },
+  { id: 'alexandra', name: 'Alexandra-Charlotte Montgomery', hue: 5, status: 'Away', tone: 'neutral', note: 'Back on Monday · 3 open tasks' },
 ] as const;
 
 /** A status beside the name: the name gives way first, and the badge is read after it. */
@@ -139,7 +139,7 @@ export function WithStatus() {
   return (
     <Said>
       {say => (
-        <ItemList label="Family members" data-testid="members">
+        <ItemList label="Team members" data-testid="members">
           {members.map(member => (
             <Item
               key={member.id}
@@ -167,8 +167,8 @@ import { Avatar } from '@liulidesign/core/Avatar';
 import { Item, ItemList } from '@liulidesign/core/Item';
 
 const people = [
-  { id: 'james', name: 'James Whitfield', hue: 2, facts: ['james@example.com', 'Joined Oct 6, 2025'] },
-  { id: 'marcus', name: 'Marcus Whitfield', hue: 4, facts: ['marcus.w@example.com', 'Joined with an invitation from James Whitfield', 'Joined 23 days ago', 'Active yesterday'] },
+  { id: 'oskar', name: 'Oskar Lind', hue: 2, facts: ['oskar@example.com', 'Joined Oct 6, 2025'] },
+  { id: 'ines', name: 'Ines Lind', hue: 4, facts: ['ines.l@example.com', 'Invited by Oskar Lind to the spring launch project', 'Joined 23 days ago', 'Active yesterday'] },
 ] as const;
 
 /** Several facts under a name, one text each, so a fact wraps within itself. */
@@ -202,8 +202,8 @@ import { Said } from '../example';
 import { Item, ItemList } from '@liulidesign/core/Item';
 
 const devices = [
-  { id: 'ipad', name: "Emily's iPad", note: 'Online · 2 h today' },
-  { id: 'phone', name: "Emily's phone", note: 'Offline since 9:40' },
+  { id: 'tablet', name: "Lena's tablet", note: 'Online · 2 h today' },
+  { id: 'phone', name: "Lena's phone", note: 'Offline since 9:40' },
 ] as const;
 
 /** A row that opens its device, with a remove button of its own at the end. */
@@ -211,7 +211,7 @@ export function WithRemove() {
   return (
     <Said>
       {say => (
-        <ItemList label="Emily's devices" data-testid="devices">
+        <ItemList label="Lena's devices" data-testid="devices">
           {devices.map(device => (
             <Item
               key={device.id}
@@ -262,10 +262,10 @@ import { Item, ItemList } from '@liulidesign/core/Item';
 export function RightToLeft() {
   return (
     <view dir="rtl" data-testid="rtl-family">
-      <ItemList label="בני משפחה">
-        <Item label="דוד" labelEnd={<Badge tone="success" size="sm" label="אינטרנט פעיל" />} description="נותרו כשעתיים היום" startContent={<Avatar name="David" hue={7} isDecorative />} hasChevron onClick={unused} />
-        <Item label="האייפד של אמילי" description="מחובר" startIcon="phone" onClick={unused} endAction={{ label: 'הסרת האייפד של אמילי', icon: 'close', onClick: unused }} />
-        <Item label="אלכסנדרה-שרלוט מונטגומרי" labelEnd={<Badge size="sm" label="ללא בקרה" />} description="בקרת הורים כבויה · 3 מכשירים" startContent={<Avatar name="Alexandra" hue={5} isDecorative />} hasChevron onClick={unused} />
+      <ItemList label="חברי הצוות">
+        <Item label="לנה" labelEnd={<Badge tone="success" size="sm" label="במשמרת" />} description="עד 18:00 היום" startContent={<Avatar name="Lena" hue={7} isDecorative />} hasChevron onClick={unused} />
+        <Item label="הטאבלט של לנה" description="מחובר" startIcon="phone" onClick={unused} endAction={{ label: 'הסרת הטאבלט של לנה', icon: 'close', onClick: unused }} />
+        <Item label="אלכסנדרה-שרלוט מונטגומרי" labelEnd={<Badge size="sm" label="לא זמינה" />} description="חוזרת ביום שני · 3 משימות פתוחות" startContent={<Avatar name="Alexandra" hue={5} isDecorative />} hasChevron onClick={unused} />
       </ItemList>
     </view>
   );
@@ -281,27 +281,23 @@ import { Section } from '@liulidesign/core/Section';
 import { Item, ItemList } from '@liulidesign/core/Item';
 
 const members = [
-  { id: 'david', name: 'David', hue: 7, status: 'Internet on', tone: 'success', note: 'About 2 h 20 min left today' },
-  { id: 'emily', name: 'Emily', hue: 3, status: 'Internet on', tone: 'success', note: '4 devices' },
-  { id: 'alexandra', name: 'Alexandra-Charlotte Montgomery', hue: 5, status: 'No controls', tone: 'neutral', note: 'Parental controls are off · 3 devices' },
-] as const;
-const devices = [
-  { id: 'ipad', name: "Emily's iPad", note: 'Online · 2 h today' },
-  { id: 'phone', name: "Emily's phone", note: 'Offline since 9:40' },
+  { id: 'lena', name: 'Lena', hue: 7, status: 'On shift', tone: 'success', note: 'Until 18:00 today' },
+  { id: 'omar', name: 'Omar', hue: 3, status: 'On shift', tone: 'success', note: '4 open tasks' },
+  { id: 'alexandra', name: 'Alexandra-Charlotte Montgomery', hue: 5, status: 'Away', tone: 'neutral', note: 'Back on Monday · 3 open tasks' },
 ] as const;
 
 /** Lists under headings: a list's own title and a Section's level-4 heading share the card's left edge. */
 export function TitledLists() {
   return (
     <view className="gap-6" data-testid="titled-lists">
-      <Section title="Family members" headingLevel={4}>
-        <ItemList label="Family members">
-          <Item label="David" description="4 devices" startContent={<Avatar name="David" hue={7} isDecorative />} hasChevron onClick={unused} />
+      <Section title="Team members" headingLevel={4}>
+        <ItemList label="Team members">
+          <Item label="Lena" description="4 open tasks" startContent={<Avatar name="Lena" hue={7} isDecorative />} hasChevron onClick={unused} />
         </ItemList>
       </Section>
-      <ItemList title="Other devices" description="Controls only work while devices are on your home Wi-Fi.">
-        <Item label="Not assigned" description="2 devices aren't anyone's" startIcon="info" hasChevron onClick={unused} />
-        <Item label="Shared or guest" description="No one's controls apply" hasChevron onClick={unused} />
+      <ItemList title="Unclaimed tasks" description="Tasks wait here until someone on the team picks them up.">
+        <Item label="Not picked up" description="2 tasks aren't anyone's yet" startIcon="info" hasChevron onClick={unused} />
+        <Item label="Shared" description="Anyone on the team can close these" hasChevron onClick={unused} />
       </ItemList>
     </view>
   );
@@ -569,7 +565,7 @@ Ratios are computed from @lingxia/view/theme and rounded down.
 
 - Do: For a dense screen set `density` on the ItemList, or wrap the screen in a DensityProvider with `compact` so every list and table in it follows.
 - Do: Use `onClick` with `hasChevron` for a row that opens another page.
-- Do: Give a row one control of its own with `endAction`, named for the row ("Remove Emily's iPad"); such a row rarely wants a chevron. It takes `onClick`, or `to` for a page of its own. Its `variant` stays `default` for a remove that asks first; `destructive` is for an action that destroys or ends something at once, with no confirmation.
+- Do: Give a row one control of its own with `endAction`, named for the row ("Remove Lena's tablet"); such a row rarely wants a chevron. It takes `onClick`, or `to` for a page of its own. Its `variant` stays `default` for a remove that asks first; `destructive` is for an action that destroys or ends something at once, with no confirmation.
 - Do: Set `dir` on a value whose direction differs from the page's, such as a Latin "2 h" in a Hebrew row; a row does not isolate it.
 - Do: Keep the label short and put detail in `description`. For several facts pass one `<text>` per fact in a fragment, so a fact wraps within itself, 4 pt from the next; a screen reader still runs the facts together, with a space between.
 - Do: At large text, keep `endContent` to a short value or badge: it keeps its whole width and the label and description wrap beside it.

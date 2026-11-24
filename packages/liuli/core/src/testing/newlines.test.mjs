@@ -10,14 +10,14 @@ test('a newline in a description or message breaks the line; a newline in a labe
     import { Item, ItemList } from '@liulidesign/core/Item';
     export function render() {
       return <page>
-        <ItemList label="Device"><Item label="Router" description={'Firmware 3.4.2\\nUptime 14 days 6 hr'} /></ItemList>
+        <ItemList label="Device"><Item label="Printer" description={'Firmware 2.1.0\\nUptime 3 days 4 hr'} /></ItemList>
         <Banner title="Update" message={'Restarting.\\nBack in a minute.'} />
         <Button label={'Save\\nnow'} onClick={() => {}} data-testid="save" />
       </page>;
     }
   `);
   const space = text => screen.queryAll(node => node.tag === 'text' && node.text === text)[0]?.props.whiteSpace;
-  assert.equal(space('Firmware 3.4.2\nUptime 14 days 6 hr'), 'pre-line');
+  assert.equal(space('Firmware 2.1.0\nUptime 3 days 4 hr'), 'pre-line');
   assert.equal(space('Restarting.\nBack in a minute.'), 'pre-line');
   const label = screen.queryAll(node => node.tag === 'text' && node.text === 'Save\nnow')[0];
   assert.ok(label, 'the label is drawn');

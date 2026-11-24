@@ -25,7 +25,7 @@ export function Variants() {
         <view className="flex-row flex-wrap gap-2">
           <Button label="Save changes" variant="primary" onClick={() => say('Saved changes')} data-testid="primary" />
           <Button label="Preview" onClick={() => say('Opened the preview')} />
-          <Button label="Turn off internet" variant="tonal" startIcon="pause" onClick={() => say('Turned off the internet')} data-testid="tonal" />
+          <Button label="Pause sync" variant="tonal" startIcon="pause" onClick={() => say('Paused sync')} data-testid="tonal" />
           <Button label="Skip" variant="ghost" onClick={() => say('Skipped')} />
           <Button label="Delete draft" variant="destructive" onClick={() => say('Deleted the draft')} />
         </view>
@@ -50,10 +50,10 @@ export function VariantTonal() {
         <view className="gap-3">
           <Card>
             <view className="gap-3">
-              <text className="text-body">Emily's devices are online.</text>
+              <text className="text-body">Your photos are syncing.</text>
               <view className="flex-row flex-wrap gap-2">
-                <Button label="Turn off internet" variant="tonal" startIcon="pause" onClick={() => say('Turned off the internet')} />
-                <Button label="Study time" variant="tonal" isDisabled disabledMessage="No schedule is set" />
+                <Button label="Pause sync" variant="tonal" startIcon="pause" onClick={() => say('Paused sync')} />
+                <Button label="Sync now" variant="tonal" isDisabled disabledMessage="Already syncing" />
               </view>
             </view>
           </Card>
