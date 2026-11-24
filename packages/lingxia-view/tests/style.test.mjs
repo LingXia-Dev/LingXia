@@ -251,3 +251,22 @@ test('space and divide rules style every child but the last, below the child own
   assert.deepEqual(root.children.map(child => child.props.marginBottom), [16, 4, undefined]);
   assert.deepEqual(root.children.map(child => child.props.borderBottomWidth), [1, 1, undefined]);
 });
+
+test('out-of-range percentage string literals fail audit, runtime values clamp, and className clamp warns per element', async () => {
+  const { audit } = await import('../compiler/index.mjs');
+  const problems = audit('export function render(){return <view style={{ width: "20000%", left: "-20000%" }} />}', 'page.tsx');
+  assert.match(problems.join('\n'), /UI_STYLE_VALUE: width takes a number from 0 to 16384; got 20000/);
+  assert.match(problems.join('\n'), /UI_STYLE_VALUE: left takes a number from -16384 to 16384; got -20000/);
+
+  rules([['w-huge', { width: 20000 }]]);
+  const warns = [];
+  const prev = globalThis.__lingxiaWarn;
+  globalThis.__lingxiaWarn = msg => warns.push(msg);
+  try {
+    rendered(() => h('view', {},
+      h('view', { key: 'a', className: 'w-huge' }),
+      h('view', { key: 'b', className: 'w-huge' }),
+    ));
+    assert.equal(warns.length, 2);
+  } finally { globalThis.__lingxiaWarn = prev; }
+});

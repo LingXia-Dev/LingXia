@@ -223,10 +223,17 @@ function nodeStyle(tag, props, data, extra, inherited, direction, structure, eve
   const key = `${tag}\u0000${props.className}\u0000${data ? JSON.stringify(data) : ''}\u0000${props.disabled === true}\u0000${mixedCheckbox(tag, props)}\u0000${direction}\u0000${sizeClass ?? ''}\u0000${(structure ?? []).join(",")}\u0000${inherited.fontSize}\u0000${JSON.stringify(inherited.lineHeight)}`;
   let style = lowered.get(key);
   if (!style) {
-    style = lowerNodeStyle(tag, props, data, extra, inherited, direction, structure, undefined, sizeClass);
+    style = lowerNodeStyle(tag, props, data, extra, inherited, direction, structure, undefined, sizeClass, identity);
     fresh.add(key);
     if (lowered.size >= 2048) lowered.delete(lowered.keys().next().value);
     lowered.set(key, style);
+  } else if (style.clampWarnings?.length && typeof globalThis.__lingxiaWarn === 'function') {
+    for (const [name, message] of style.clampWarnings) {
+      const warnKey = `${identity ?? ''}\u0000${name}`;
+      if (warnedClamp.has(warnKey)) continue;
+      warnedClamp.add(warnKey);
+      globalThis.__lingxiaWarn(message);
+    }
   }
   // Callers may edit the fields of their node (an image's fit moves to its own field).
   return { ...style, fields: { ...style.fields } };
@@ -268,7 +275,9 @@ function lowerNodeStyle(tag, props, data, extra, inherited, direction, structure
   // A box is a flex column; `flex` alone asks for a row, as `display: flex` does in CSS.
   if ((tag === 'view' || tag === 'page') && (author?.display === 'flex' || author?.display === 'inline-flex') && author.flexDirection === undefined)
     author.flexDirection = 'row';
+  const clampWarnings = [];
   const warn = typeof globalThis.__lingxiaWarn === 'function' ? (name, message) => {
+    clampWarnings.push([name, message]);
     const key = `${identity ?? ''}\u0000${name}`;
     if (warnedClamp.has(key)) return;
     warnedClamp.add(key);
@@ -325,7 +334,7 @@ function lowerNodeStyle(tag, props, data, extra, inherited, direction, structure
   const hasDisabled = classes?.hasDisabled && Object.keys(classes.hasDisabled).length ? classes.hasDisabled : undefined;
   if (hasDisabled) paintOnly('has-disabled', tag, hasDisabled);
   const descendants = hasDisabled ? lowerStyle(tag, hasDisabled, env, { fontSize: typography.fontSize }).fields : undefined;
-  return { fields, states, typography, author, children: classes?.children, every: classes?.every, descendants, release: classes?.release };
+  return { fields, states, typography, author, children: classes?.children, every: classes?.every, descendants, release: classes?.release, ...(clampWarnings.length ? { clampWarnings } : {}) };
 }
 
 /** The tag `List` renders; page code reaches the list element only through it. */

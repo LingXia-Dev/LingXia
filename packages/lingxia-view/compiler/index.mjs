@@ -1,6 +1,6 @@
 import { build } from 'esbuild';
 import ts from 'typescript';
-import { collectClassUsage, elementKind, enclosingTags } from './class-usage.mjs';
+import { collectClassUsage, elementKind, enclosingTags, stringLiterals } from './class-usage.mjs';
 import { admissionProblems } from './admission.mjs';
 import { perfWarnings } from './perf.mjs';
 import { stabilizeClosures, volatileComponent, ownDeclarations } from './stable-closures.mjs';
@@ -217,6 +217,13 @@ export function audit(source, filename, { literalColors = false } = {}) {
           for (const number of numericStyleLiterals(checker, valueExpr)) {
             const valueIssue = styleValueProblem(name, number);
             if (valueIssue) report(entry, valueIssue);
+          }
+          for (const strNode of stringLiterals(checker, valueExpr)) {
+            const match = strNode.text.trim().match(/^(-?(?:\d+(?:\.\d+)?|\.\d+))%$/);
+            if (match) {
+              const valueIssue = styleValueProblem(name, Number(match[1]));
+              if (valueIssue) report(entry, valueIssue);
+            }
           }
         }
       }
