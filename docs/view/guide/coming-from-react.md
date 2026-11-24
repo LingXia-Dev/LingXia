@@ -57,7 +57,7 @@ no React and no DOM. This page lists what changes.
 | `div` | `<view>` (`flex-row`, `grid` as in Tailwind) |
 | `p`, `h1`–`h6`, `span` with text | `<text>` (headings add `role="heading" headingLevel`) |
 | inline `span`, `strong`, `em`, `code` | `<span>` inside `<text>` |
-| `a` | `<link onClick>` inside `<text>`, or a `<button>` |
+| `a` | `<link to>` / `<link onClick>` inside `<text>` or as a block link outside `<text>` |
 | `img` | `<image>` |
 | `svg`, icon components | `<vector paths>` |
 | `ul`/`ol`/`li` | `<view role="list">` / `role="listitem"` |
@@ -78,7 +78,7 @@ Unknown tags fail the build (`UI_TAG`). Text must be inside `<text>`; a bare str
 | `useState` | `useLocal(initial)`, keyed by call order, or `useLocal(name, initial)`, keyed by name; JSON values only |
 | `useEffect` + `fetch` | `useRequest(name, action, params)` |
 | `useEffect` subscriptions, WebSockets | `useChannel`, `useStream` |
-| `useContext` | props, or `useView()` for the page data and environment |
+| `useContext` | `createContext` and `useContext`, or `useView()` for the page data and environment |
 | `useRef` to a DOM node | none: there are no nodes to hold |
 | `useMemo`, `useCallback`, `memo` | not needed: a component re-runs only when its props, the cells it reads or the environment change, and closures keep their identity while what they capture is unchanged |
 | `useReducer` | a `useLocal` cell and plain functions |
@@ -113,7 +113,7 @@ A render that throws keeps the previous frame on screen ([Diagnostics](diagnosti
   controls. There are no `onClick` handlers on containers; wrap the content in a `<button>`.
 - Handlers receive values (`onInput(text)`, `onChange(checked)`), not event objects. There is no bubbling,
   `preventDefault` or `stopPropagation`.
-- No pointer, touch, keyboard, focus or scroll events; use `onReachStart`/`onReachEnd`/`onScrollEdge`, anchors and state.
+- No multi-touch, swipe, pinch or scroll-offset events; use `onPointer` (with `pointerAxis`) for single-pointer scrubbing, `onContextMenu` for long-press/secondary menus, editor `onKeyDown`/`onFocus`/`onBlur`, and `onReachStart`/`onReachEnd`/`onScrollEdge`, anchors and state.
 
 ## Styling
 
@@ -128,7 +128,7 @@ A render that throws keeps the previous frame on screen ([Diagnostics](diagnosti
 - `data-*` variants match `data-*` props on the element itself; `has-*` covers checked, disabled and
   focused descendants; `group-active:` follows the enclosing pressed control. `aria-*`, other `group-*`,
   `peer-*` and container queries are refused: compute the condition in TypeScript and choose the class.
-- A shadcn-style theme ports by aliasing its colour names to roles in `@theme` (`--color-card:
+- A token-based theme ports by aliasing its colour names to roles in `@theme` (`--color-card:
   var(--color-surface)`), its classes become `@utility` rules ([Styling](styling.md#themes-and-tokens)).
   Two names are roles already and cannot be rebound: write its soft `bg-accent` as `bg-accent-soft` and its
   grey `bg-muted` as `bg-surface-sunken`.
