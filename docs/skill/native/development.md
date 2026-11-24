@@ -266,15 +266,12 @@ async fn editor_session(
 
 ## Generated native client
 
-The scaffolded native crate's `build.rs` runs `lingxia-native-codegen`, which
-scans `#[lingxia::native]` handlers and their DTOs and regenerates the client on
-every `cargo build`. A hand-rolled crate copies the template's `build.rs` and its
-build-dependency. Lxapps configure no Rust paths.
-
-When `lingxia build` or `lingxia dev` builds an Android, Apple, or HarmonyOS
-host, it generates the home lxapp's clients, both imported as `@lingxia/native`:
-`.lingxia/native.logic.ts` for Logic, and `.lingxia/native.ts` (React) or
+`lingxia build`, `check`, `dev` and `gen types` scan the routes and their DTOs
+and write the lxapp's clients, imported as `@lingxia/native`:
+`.lingxia/native.logic.ts` for Logic, and `.lingxia/native.view.ts` (React) or
 `.lingxia/native.js` (HTML, copied into `dist/.lingxia/`) for a WebView View.
+An lxapp listed in `lingxia.yaml` calls the `rustLibDir` crate; an lxapp inside
+a Cargo package calls that package. Lxapps configure no Rust paths.
 A GPU View (`.tsx`) cannot import `@lingxia/native`; call routes from a Logic
 action or `setup(page)`.
 

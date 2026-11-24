@@ -9,7 +9,7 @@ use oxc_span::SourceType;
 use serde_json::Value;
 use std::collections::BTreeSet;
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 #[derive(Debug, Default, Clone)]
 struct LxAppBuildConfig {
@@ -193,31 +193,17 @@ fn is_internal_lingxia_dir(relative_dir: &str) -> bool {
     )
 }
 
-pub(crate) fn native_client_output_path(
-    project_root: &Path,
-    framework: ProjectFramework,
-) -> PathBuf {
-    project_root.join(native_client_output_relative_path(framework))
-}
-
-fn native_client_output_relative_path(framework: ProjectFramework) -> &'static str {
-    match framework {
-        ProjectFramework::Html => ".lingxia/native.js",
-        ProjectFramework::React => ".lingxia/native.ts",
-    }
-}
-
+/// A plain HTML page loads its native client as a script; a React page has it bundled.
 fn copy_generated_native_client(project: &Project) -> Result<()> {
+    const HTML_CLIENT: &str = ".lingxia/native.js";
     if project.framework != ProjectFramework::Html {
         return Ok(());
     }
-    let source = native_client_output_path(project.root.as_path(), project.framework);
+    let source = project.root.join(HTML_CLIENT);
     if !source.exists() {
         return Ok(());
     }
-    let target = project
-        .output_dir
-        .join(native_client_output_relative_path(project.framework));
+    let target = project.output_dir.join(HTML_CLIENT);
     if let Some(parent) = target.parent() {
         fs::create_dir_all(parent)?;
     }
@@ -677,13 +663,13 @@ mod tests {
         project.framework = ProjectFramework::React;
         write_file(
             temp.path(),
-            ".lingxia/native.ts",
+            ".lingxia/native.view.ts",
             "export const native = {};",
         );
 
         copy_static_assets(&project, &build_options(false)).unwrap();
 
-        assert!(!project.output_dir.join(".lingxia/native.ts").exists());
+        assert!(!project.output_dir.join(".lingxia/native.view.ts").exists());
     }
 
     #[test]

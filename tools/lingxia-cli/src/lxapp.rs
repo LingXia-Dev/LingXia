@@ -4,6 +4,7 @@ mod framework;
 mod hardening;
 mod i18n;
 mod logic;
+mod native_client;
 mod options;
 mod package;
 mod page_types;
@@ -21,11 +22,15 @@ pub(crate) use bundle::is_built_bundle_dir;
 pub(crate) use framework::ProjectFramework;
 pub(crate) use framework::UI_MODULE_HEADER;
 pub(crate) use logic::{MocksBundle, build_mocks};
-pub(crate) use page_types::generate as generate_page_types;
 pub(crate) use project::Project;
-pub(crate) use view::native_client_output_path;
 pub(crate) use view::stamp_output_html;
 pub(crate) use view::{read_view_build_config, view_target_from_dir};
+
+/// What `.lingxia/` holds for editors and `tsc` before any build: page types and native clients.
+pub(crate) fn generate_types(project: &Project) -> Result<()> {
+    page_types::generate(project)?;
+    native_client::generate(project)
+}
 
 pub fn run(args: &[String]) -> Result<()> {
     let cwd = env::current_dir()?;

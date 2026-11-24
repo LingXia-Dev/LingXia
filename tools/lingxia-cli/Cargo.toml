@@ -35,6 +35,7 @@ anyhow = "1.0"
 lingxia-app-context = { workspace = true }
 lingxia-theme = { workspace = true }
 lingxia-i18n = { workspace = true }
+lingxia-native-codegen = { workspace = true }
 lingxia-update = { workspace = true }
 
 dialoguer = { version = "0.12", features = ["completion"] }

@@ -147,7 +147,7 @@ const lingxiaMocksGuard = {
 
 const alias = [
   { find: /^@\//, replacement: `${projectRoot}/` },
-  { find: /^@lingxia\/native$/, replacement: path.resolve(projectRoot, '.lingxia/native.ts') },
+  { find: /^@lingxia\/native$/, replacement: path.resolve(projectRoot, '.lingxia/native.view.ts') },
   { find: /^\/public\//, replacement: `${path.resolve(projectRoot, 'public')}/` },
   ...workspaceAliases,
   ...Object.entries(projectConfig.alias ?? {})

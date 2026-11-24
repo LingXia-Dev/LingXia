@@ -271,6 +271,31 @@ try {
   fs.renameSync(`${realTypescript}.real`, realTypescript);
 }
 
+// An lxapp inside a Cargo package calls its routes through a client named as serde puts them on
+// the wire: renaming a Rust DTO field fails the check at the page that reads the old name.
+const crate = path.join(work, 'Cargo.toml');
+const routes = path.join(work, 'src/lib.rs');
+const route = field => `#[derive(serde::Serialize)]\n#[serde(rename_all = "camelCase")]\npub struct Item {\n    ${field}: String,\n}\n\n#[lingxia::native("demo.item")]\npub fn item() -> lingxia::Result<Item> {\n    todo!()\n}\n`;
+fs.writeFileSync(crate, '[package]\nname = "demo-native"\nversion = "0.1.0"\n');
+fs.mkdirSync(path.dirname(routes));
+fs.writeFileSync(routes, route('display_name'));
+fs.writeFileSync(logic, `import type { PageNative } from '@lingxia/types/page';\n${logicSource}\nexport const shown = async (native: PageNative): Promise<string> => (await native.demo.item()).displayName;\n`);
+try {
+  assert.match(ok(cli, ['check'], app), /no problems/);
+  assert.match(fs.readFileSync(path.join(app, '.lingxia/native.logic.ts'), 'utf8'), /displayName: string;/);
+  fs.writeFileSync(routes, route('title'));
+  const renamed = run(cli, ['check'], app);
+  assert.notEqual(renamed.status, 0, renamed.output);
+  assert.match(renamed.output, /pages\/home\/index\.ts:\d+:\d+: TS2339: Property 'displayName' does not exist/, renamed.output);
+} finally {
+  fs.writeFileSync(logic, logicSource);
+  fs.rmSync(crate);
+  fs.rmSync(path.dirname(routes), { recursive: true, force: true });
+}
+// Outside any crate, the stale client is cleared.
+ok(cli, ['gen', 'types'], app);
+assert(!fs.existsSync(path.join(app, '.lingxia/native.logic.ts')), 'a client without a crate must be removed');
+
 for (const dir of lxapps) missingBase(path.resolve(dir));
 
 fs.rmSync(root, { recursive: true, force: true });

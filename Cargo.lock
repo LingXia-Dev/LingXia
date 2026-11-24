@@ -3799,6 +3799,7 @@ dependencies = [
  "lingxia-control-protocol",
  "lingxia-i18n",
  "lingxia-log",
+ "lingxia-native-codegen",
  "lingxia-theme",
  "lingxia-update",
  "notify",

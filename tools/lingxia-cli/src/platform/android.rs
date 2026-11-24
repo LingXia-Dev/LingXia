@@ -1,7 +1,6 @@
 use super::{
     BuildArtifacts, BuildConfig, Device, DeviceType, InstallConfig, Platform, RunConfig,
-    native_client_out_for_host_project, project_named_artifact, resolve_cargo_target_dir,
-    resolve_lingxia_target_dir, set_native_client_codegen_env,
+    project_named_artifact, resolve_cargo_target_dir, resolve_lingxia_target_dir,
 };
 use crate::commands::rust::run_cargo_rustc_for_target;
 use anyhow::{Context, Result, anyhow};
@@ -246,7 +245,6 @@ gradle.settingsEvaluated {{ settings ->
         };
 
         let target_dir = resolve_cargo_target_dir(project_root);
-        let native_client_out = native_client_out_for_host_project(project_root, lingxia_config)?;
         let bin_dir = toolchain_base.join("bin");
         let clang = bin_dir.join(if cfg!(windows) { "clang.exe" } else { "clang" });
         let resource_output = Command::new(&clang)
@@ -300,7 +298,6 @@ gradle.settingsEvaluated {{ settings ->
                 if !config.native_default_features {
                     cmd.arg("--no-default-features");
                 }
-                set_native_client_codegen_env(cmd, native_client_out.as_deref());
                 if !config.native_features.is_empty() {
                     cmd.arg("--features").arg(config.native_features.join(","));
                 }

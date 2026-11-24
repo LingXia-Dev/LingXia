@@ -9,7 +9,8 @@ pub struct TypesConfig {
     pub dir: PathBuf,
 }
 
-/// The `.lingxia/types` a build writes, for a fresh checkout or CI type-checking before any build.
+/// The `.lingxia/` types and native clients a build writes, for a fresh checkout or CI
+/// type-checking before any build.
 pub fn run(config: TypesConfig) -> Result<()> {
     if !config.dir.join("lxapp.json").is_file() {
         bail!(
@@ -18,5 +19,5 @@ pub fn run(config: TypesConfig) -> Result<()> {
         );
     }
     let project = crate::lxapp::Project::discover(&config.dir)?;
-    crate::lxapp::generate_page_types(&project)
+    crate::lxapp::generate_types(&project)
 }

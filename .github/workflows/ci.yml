@@ -164,6 +164,8 @@ jobs:
               - 'examples/lingxia-showcase-web/**'
               - 'tools/lingxia-cli/templates/lxapp-create/**'
               - 'tools/lingxia-cli/src/lxapp/page_types.rs'
+              - 'tools/lingxia-cli/src/lxapp/native_client.rs'
+              - 'crates/lingxia-native-codegen/**'
               - 'tools/lingxia-cli/tests/gpu_typecheck.mjs'
             # Runtime paths exercised by the Showcase end-to-end contracts on
             # both desktop JS engines. Platform-only implementations are

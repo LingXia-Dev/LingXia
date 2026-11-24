@@ -1,7 +1,6 @@
 use crate::lxapp::logic::{self, LogicBuildStatus};
 use crate::lxapp::options::{BuildOptions, ProgressMode};
 use crate::lxapp::package;
-use crate::lxapp::page_types;
 use crate::lxapp::project::Project;
 use crate::lxapp::typecheck;
 use crate::lxapp::view::{self, ViewProgress};
@@ -74,7 +73,7 @@ fn run_with_context(
 
     // Before either half builds: the page names are what a Logic author's
     // editor completes against, so they must exist even if the build then fails.
-    page_types::generate(&project)?;
+    crate::lxapp::generate_types(&project)?;
 
     let reporter = Reporter::new(options.progress);
     build_staged(&project.output_dir, |staging| {
@@ -110,7 +109,7 @@ pub fn check(cwd: &Path) -> Result<()> {
         style(project.root.display()).dim()
     );
     // Wiring that `tsc -b` cannot follow makes its errors misleading: report it instead of them.
-    let wiring = page_types::generate(&project);
+    let wiring = crate::lxapp::generate_types(&project);
     let options = BuildOptions {
         dev_session: false,
         release: false,

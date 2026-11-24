@@ -6,7 +6,6 @@ mod vite_html;
 mod vite_pipeline;
 mod vite_tooling;
 
-pub(crate) use vite_assets::native_client_output_path;
 pub(crate) use vite_html::{read_view_build_config, stamp_output_html, view_target_from_dir};
 
 use crate::lxapp::framework::{PageAction, PageActionMode, ProjectFramework};

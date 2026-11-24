@@ -2,7 +2,6 @@ use crate::config::{AppEnv, LingXiaConfig};
 use anyhow::{Context, Result};
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::process::Command;
 
 pub mod android;
 pub mod android_abis;
@@ -41,47 +40,6 @@ pub fn resolve_cargo_target_dir(project_root: &Path) -> PathBuf {
 
 pub fn resolve_lingxia_target_dir(project_root: &Path) -> PathBuf {
     resolve_cargo_target_dir(project_root).join("lingxia")
-}
-
-pub(crate) const NATIVE_CLIENT_OUT_ENV: &str = "LINGXIA_NATIVE_CLIENT_OUT";
-
-pub(crate) fn native_client_out_for_host_project(
-    project_root: &Path,
-    config: &LingXiaConfig,
-) -> Result<Option<PathBuf>> {
-    let Some(app) = config.app.as_ref() else {
-        return Ok(None);
-    };
-    let Some(resources) = config.resources.as_ref() else {
-        return Ok(None);
-    };
-    let Some(bundle) = resources
-        .bundles
-        .iter()
-        .find(|bundle| app.home_app_id.as_deref() == Some(bundle.app_id.as_str()))
-    else {
-        return Ok(None);
-    };
-    let Some(path) = bundle
-        .path
-        .as_deref()
-        .map(str::trim)
-        .filter(|path| !path.is_empty())
-    else {
-        return Ok(None);
-    };
-    let lxapp_root = project_root.join(path);
-    let project = crate::lxapp::Project::discover(&lxapp_root)?;
-    Ok(Some(crate::lxapp::native_client_output_path(
-        &lxapp_root,
-        project.framework,
-    )))
-}
-
-pub(crate) fn set_native_client_codegen_env(cmd: &mut Command, out: Option<&Path>) {
-    if let Some(out) = out {
-        cmd.env(NATIVE_CLIENT_OUT_ENV, out);
-    }
 }
 
 fn find_workspace_root(start: &Path) -> Option<PathBuf> {
@@ -429,60 +387,6 @@ impl Device {
 mod tests {
     use super::*;
     use tempfile::TempDir;
-
-    const AMBIGUOUS_MANIFEST: &str = r#"{
-        "appId": "showcase",
-        "version": "1.0.0",
-        "logic": false,
-        "pages": [{"name":"home","path":"pages/home/index"}]
-    }"#;
-
-    fn write_ambiguous_lxapp_fixture(temp: &TempDir) -> LingXiaConfig {
-        let lxapp_root = temp.path().join("showcase");
-        fs::create_dir_all(lxapp_root.join("pages/home")).unwrap();
-        fs::write(lxapp_root.join("lxapp.json"), AMBIGUOUS_MANIFEST).unwrap();
-        fs::write(lxapp_root.join("pages/home/index.tsx"), "export default 0;").unwrap();
-        fs::write(lxapp_root.join("pages/home/index.html"), "<!doctype html>").unwrap();
-        LingXiaConfig::new_android("demo", "com.example.demo", "showcase")
-    }
-
-    #[test]
-    fn native_client_out_errors_on_ambiguous_pages() {
-        let temp = TempDir::new().unwrap();
-        let config = write_ambiguous_lxapp_fixture(&temp);
-
-        let error = native_client_out_for_host_project(temp.path(), &config)
-            .unwrap_err()
-            .to_string();
-
-        assert!(error.contains("\"framework\""), "unexpected error: {error}");
-        assert!(!error.contains("--framework"), "unexpected error: {error}");
-    }
-
-    #[test]
-    fn native_client_out_follows_the_only_page_implementation() {
-        let temp = TempDir::new().unwrap();
-        let lxapp_root = temp.path().join("showcase");
-        fs::create_dir_all(lxapp_root.join("pages/home")).unwrap();
-        fs::write(
-            lxapp_root.join("lxapp.json"),
-            r#"{
-                "appId": "showcase",
-                "version": "1.0.0",
-                "logic": false,
-                "pages": [{"name":"home","path":"pages/home/index"}]
-            }"#,
-        )
-        .unwrap();
-        fs::write(lxapp_root.join("pages/home/index.tsx"), "export default 0;").unwrap();
-        let config = LingXiaConfig::new_android("demo", "com.example.demo", "showcase");
-
-        let out = native_client_out_for_host_project(temp.path(), &config)
-            .unwrap()
-            .expect("resources.bundles[0].path is set, so an output path must be returned");
-
-        assert_eq!(out, temp.path().join("showcase/.lingxia/native.ts"));
-    }
 
     #[test]
     fn is_inside_lingxia_workspace_requires_sdk_sibling() {

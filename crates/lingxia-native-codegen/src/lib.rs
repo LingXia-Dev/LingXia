@@ -1,12 +1,13 @@
 //! Code generation for `#[lingxia::native]` host handlers.
 //!
-//! Scans Rust source files for public `#[lingxia::native("route", ...)]` handlers
-//! and their DTO types (`struct`, `enum`, `type`), then emits one of:
+//! Scans Rust source files for `#[lingxia::native("route", ...)]` handlers and
+//! their DTO types (`struct`, `enum`, `type`). The lingxia CLI writes the clients
+//! an lxapp imports; the crate's build script writes the Rust registry:
 //!
-//! - `.logic.ts` — Logic runtime TypeScript client (with `sync`, `NativeTask`, `NativeChannel`, `createNative(pageId)`)
-//! - `.view.ts` / `.ts` — WebView View TypeScript client (`@lingxia/bridge` adapted to the same unified shapes)
-//! - `.js` — Browser global JS client (same unified shapes)
-//! - `.rs` — Rust auto-register module (`mod __lingxia_native { pub fn install() }`)
+//! - `native.logic.ts` — Logic client (`sync`, `NativeTask`, `NativeChannel`, `createNative(pageId)`)
+//! - `native.view.ts` — WebView View client over `@lingxia/bridge`, same shapes
+//! - `native.js` — the View client as a browser global, for plain HTML pages
+//! - `.rs` — Rust registry (`mod __lingxia_native { pub fn install() }`)
 
 pub mod syntax;
 
@@ -24,36 +25,77 @@ use syntax::{Shape, classify};
 // Public API
 // ---------------------------------------------------------------------------
 
-/// Emit the WebView View client at `out` (`.ts`, or browser-global `.js`) and the Logic client
-/// `native.logic.ts` beside it, for every `#[native]` handler discovered under `rust_dir`.
-/// If no handlers are found, both files are removed. Returns warnings for the build to print.
-pub fn generate_ts_client(rust_dir: &Path, out: &Path) -> Result<Vec<String>> {
-    let kind = output_kind(out);
-    if !matches!(
-        kind,
-        OutputKind::ViewTypeScript | OutputKind::BrowserGlobalJs
-    ) {
-        bail!(
-            "native client output must be a View `.ts` or `.js` file: {}",
-            out.display()
-        );
+/// The Logic client's file name; the WebView clients sit beside it.
+pub const LOGIC_CLIENT: &str = "native.logic.ts";
+
+/// The WebView client an lxapp's pages import, if they call natives from the WebView.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ViewClient {
+    TypeScript,
+    BrowserGlobal,
+}
+
+impl ViewClient {
+    const ALL: [ViewClient; 2] = [ViewClient::TypeScript, ViewClient::BrowserGlobal];
+
+    pub fn file_name(self) -> &'static str {
+        match self {
+            Self::TypeScript => "native.view.ts",
+            Self::BrowserGlobal => "native.js",
+        }
     }
-    let logic_out = out
-        .parent()
-        .map(|dir| dir.join("native.logic.ts"))
-        .ok_or_else(|| anyhow!("native client output has no directory: {}", out.display()))?;
-    let warnings = write_artifact(rust_dir, out, kind)?;
-    write_artifact(rust_dir, &logic_out, OutputKind::LogicTypeScript)?;
-    Ok(warnings)
+
+    fn kind(self) -> OutputKind {
+        match self {
+            Self::TypeScript => OutputKind::ViewTypeScript,
+            Self::BrowserGlobal => OutputKind::BrowserGlobalJs,
+        }
+    }
+}
+
+/// Writes the clients for every route under `rust_dir` into `dir`: the Logic client, and
+/// `view` if given. Stale clients, or all of them when there are no routes, are removed.
+/// Returns warnings for the caller to print.
+pub fn generate_clients(
+    rust_dir: &Path,
+    dir: &Path,
+    view: Option<ViewClient>,
+) -> Result<Vec<String>> {
+    let manifest = scan_dir(rust_dir)?;
+    let mut wanted = vec![(OutputKind::LogicTypeScript, LOGIC_CLIENT)];
+    for client in ViewClient::ALL {
+        if view == Some(client) {
+            wanted.push((client.kind(), client.file_name()));
+        } else {
+            remove_if_present(&dir.join(client.file_name()))?;
+        }
+    }
+    for (kind, name) in wanted {
+        let out = dir.join(name);
+        if manifest.routes.is_empty() {
+            remove_if_present(&out)?;
+        } else {
+            write_if_changed(&out, &render(&manifest, kind)?)?;
+        }
+    }
+    wire_warnings(&manifest)
 }
 
 /// Emit the Rust auto-register module that wraps every discovered handler's
 /// `register_host_entry(...)` call inside `mod __lingxia_native { pub fn install() }`.
 /// `out` must end in `.rs`.
 pub fn generate_rust_registry(rust_dir: &Path, out: &Path) -> Result<()> {
-    let kind = output_kind(out);
-    debug_assert_eq!(kind, OutputKind::RustModule);
-    write_artifact(rust_dir, out, kind).map(drop)
+    let manifest = scan_dir(rust_dir)?;
+    write_if_changed(out, &render(&manifest, OutputKind::RustModule)?)
+}
+
+fn remove_if_present(path: &Path) -> Result<()> {
+    match fs::remove_file(path) {
+        Err(err) if err.kind() != std::io::ErrorKind::NotFound => {
+            Err(err).with_context(|| format!("Failed to remove {}", path.display()))
+        }
+        _ => Ok(()),
+    }
 }
 
 fn write_if_changed(out: &Path, generated: &str) -> Result<()> {
@@ -70,25 +112,14 @@ fn write_if_changed(out: &Path, generated: &str) -> Result<()> {
     Ok(())
 }
 
-fn write_artifact(rust_dir: &Path, out: &Path, kind: OutputKind) -> Result<Vec<String>> {
+fn scan_dir(rust_dir: &Path) -> Result<NativeManifest> {
     if !rust_dir.exists() {
-        return Err(anyhow!(
+        bail!(
             "Native Rust API directory not found: {}",
             rust_dir.display()
-        ));
+        );
     }
-    let manifest = scan(rust_dir)?;
-    if manifest.routes.is_empty() && kind != OutputKind::RustModule {
-        let _ = fs::remove_file(out);
-        return Ok(Vec::new());
-    }
-    let generated = render(&manifest, kind)?;
-    write_if_changed(out, &generated)?;
-    Ok(if kind == OutputKind::RustModule {
-        Vec::new()
-    } else {
-        wire_warnings(&manifest)?
-    })
+    scan(rust_dir)
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -97,22 +128,6 @@ enum OutputKind {
     ViewTypeScript,
     BrowserGlobalJs,
     RustModule,
-}
-
-fn output_kind(out: &Path) -> OutputKind {
-    let name = out
-        .file_name()
-        .and_then(|n| n.to_str())
-        .unwrap_or("")
-        .to_ascii_lowercase();
-    if name.ends_with(".logic.ts") {
-        return OutputKind::LogicTypeScript;
-    }
-    match out.extension().and_then(|ext| ext.to_str()) {
-        Some(ext) if ext.eq_ignore_ascii_case("js") => OutputKind::BrowserGlobalJs,
-        Some(ext) if ext.eq_ignore_ascii_case("rs") => OutputKind::RustModule,
-        _ => OutputKind::ViewTypeScript,
-    }
 }
 
 // ---------------------------------------------------------------------------
@@ -418,7 +433,7 @@ fn collect_rs_files(dir: &Path, out: &mut Vec<PathBuf>) -> Result<(), String> {
 
 fn parse_attr(attrs: &[Attribute]) -> Option<(String, RouteKind)> {
     for attr in attrs {
-        if !is_public_native_attr(attr) {
+        if !is_native_attr(attr) {
             continue;
         }
         let parser = Punctuated::<Expr, Token![,]>::parse_terminated;
@@ -448,16 +463,20 @@ fn parse_attr(attrs: &[Attribute]) -> Option<(String, RouteKind)> {
     None
 }
 
-fn is_public_native_attr(attr: &Attribute) -> bool {
+/// `native` / `framework_native`, bare or as `lingxia::…`.
+fn is_native_attr(attr: &Attribute) -> bool {
     let path = attr.path();
-    if path.is_ident("native") {
-        return true;
-    }
     let mut segments = path.segments.iter().rev();
-    matches!(
-        (segments.next(), segments.next()),
-        (Some(last), Some(prefix)) if prefix.ident == "lingxia" && last.ident == "native"
-    )
+    let Some(last) = segments.next() else {
+        return false;
+    };
+    let named = last.ident == "native" || last.ident == "framework_native";
+    named
+        && match (segments.next(), segments.next()) {
+            (None, _) => true,
+            (Some(prefix), None) => prefix.ident == "lingxia",
+            _ => false,
+        }
 }
 
 fn is_stream_flag(expr: &Expr) -> bool {
@@ -1401,7 +1420,7 @@ const VIEW_ADAPTER_HELPER: &str = r#"function __toTask<E, R>(
 fn render_logic_ts(manifest: &NativeManifest) -> Result<String> {
     let used_types = collect_and_validate_types(manifest)?;
     let mut out = String::new();
-    out.push_str("// Generated by `cargo build`. Do not edit by hand.\n");
+    out.push_str("// Generated by the lingxia CLI from the native crate's routes. Do not edit.\n");
     out.push_str(SHARED_TS_TYPES);
     out.push('\n');
     out.push_str(LOGIC_DISPATCH_HELPER);
@@ -1422,7 +1441,7 @@ fn render_logic_ts(manifest: &NativeManifest) -> Result<String> {
 fn render_view_ts(manifest: &NativeManifest) -> Result<String> {
     let used_types = collect_and_validate_types(manifest)?;
     let mut out = String::new();
-    out.push_str("// Generated by `cargo build`. Do not edit by hand.\n");
+    out.push_str("// Generated by the lingxia CLI from the native crate's routes. Do not edit.\n");
     out.push_str("import { channel, invoke, stream } from \"@lingxia/bridge\";\n\n");
     out.push_str(SHARED_TS_TYPES);
     out.push('\n');
@@ -1448,7 +1467,7 @@ fn render_browser_global_js(manifest: &NativeManifest) -> Result<String> {
     Ok(out)
 }
 
-const NATIVE_CLIENT_JS_PREAMBLE: &str = r#"// Generated by `cargo build`. Do not edit by hand.
+const NATIVE_CLIENT_JS_PREAMBLE: &str = r#"// Generated by the lingxia CLI from the native crate's routes. Do not edit.
 (function (global) {
   function bridge() {
     if (!global.LingXiaBridge) throw new Error('window.LingXiaBridge is not available');
@@ -2114,6 +2133,39 @@ mod tests {
         ] {
             assert!(logic.contains(expected), "{expected}\n{logic}");
         }
+    }
+
+    #[test]
+    fn clients_follow_the_routes_and_the_requested_view_client() {
+        let root = std::env::temp_dir().join(format!(
+            "lingxia-native-codegen-{}-{:?}",
+            std::process::id(),
+            std::thread::current().id()
+        ));
+        let (src, out) = (root.join("src"), root.join(".lingxia"));
+        fs::create_dir_all(&src).unwrap();
+        fs::write(
+            src.join("lib.rs"),
+            r#"
+            #[lingxia::framework_native("shell.ping", audience = "control-surface-only")]
+            pub fn ping() -> HostResult<()> { todo!() }
+        "#,
+        )
+        .unwrap();
+        let exists = |name: &str| out.join(name).exists();
+
+        generate_clients(&src, &out, Some(ViewClient::TypeScript)).unwrap();
+        assert!(exists(LOGIC_CLIENT) && exists("native.view.ts"));
+        let logic = fs::read_to_string(out.join(LOGIC_CLIENT)).unwrap();
+        assert!(logic.contains("\"shell.ping\""), "{logic}");
+
+        generate_clients(&src, &out, None).unwrap();
+        assert!(exists(LOGIC_CLIENT) && !exists("native.view.ts"));
+
+        fs::write(src.join("lib.rs"), "pub fn plain() {}").unwrap();
+        generate_clients(&src, &out, Some(ViewClient::BrowserGlobal)).unwrap();
+        assert!(!exists(LOGIC_CLIENT) && !exists("native.js"));
+        let _ = fs::remove_dir_all(&root);
     }
 
     #[test]
