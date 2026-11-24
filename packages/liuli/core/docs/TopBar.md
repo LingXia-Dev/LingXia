@@ -32,7 +32,7 @@ export function Standard() {
   return (
     <Said>
       {say => (
-        <PageFrame>
+        <view className="h-[300px] overflow-hidden rounded-container border border-text/12 bg-canvas">
           <TopBar
             startContent={<IconButton icon="chevron-start" label="Back" variant="ghost" onClick={() => say('Went back')} data-testid="orders-back" />}
             heading="Orders"
@@ -54,7 +54,7 @@ export function Standard() {
               />
             ))}
           </ItemList>
-        </PageFrame>
+        </view>
       )}
     </Said>
   );
@@ -81,7 +81,7 @@ const mail = [
 export function WithSearch() {
   const query = useLocal('query', '');
   return (
-    <PageFrame>
+    <view className="h-[300px] overflow-hidden rounded-container border border-text/12 bg-canvas">
       <TopBar
         heading="Mail"
         centerContent={<SearchField label="Search mail" isLabelHidden placeholder="Search mail" bind={query} className="w-[200px]" data-testid="mail-search" />}
@@ -93,7 +93,7 @@ export function WithSearch() {
           <Item key={message.from} label={message.from} description={message.subject} endContent={<text className="text-footnote text-muted">{message.when}</text>} />
         ))}
       </ItemList>
-    </PageFrame>
+    </view>
   );
 }
 ```

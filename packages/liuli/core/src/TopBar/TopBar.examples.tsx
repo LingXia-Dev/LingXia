@@ -1,14 +1,9 @@
-import { useLocal, type Child } from '@lingxia/view';
+import { useLocal } from '@lingxia/view';
 import { Said, unused } from '../example';
 import { IconButton } from '../IconButton/IconButton';
 import { Item, ItemList } from '../Item/Item';
 import { SearchField } from '../SearchField/SearchField';
 import { TopBar } from './TopBar';
-
-/** A small page: the bar edge to edge at its top, the page's content under it. */
-function PageFrame({ children }: { children: Child }) {
-  return <view className="h-[300px] overflow-hidden rounded-container border border-text/12 bg-canvas">{children}</view>;
-}
 
 const orders = [
   { id: '104', items: '3 items · Paid', when: 'Today' },
@@ -22,7 +17,7 @@ export function Standard() {
   return (
     <Said>
       {say => (
-        <PageFrame>
+        <view className="h-[300px] overflow-hidden rounded-container border border-text/12 bg-canvas">
           <TopBar
             startContent={<IconButton icon="chevron-start" label="Back" variant="ghost" onClick={() => say('Went back')} data-testid="orders-back" />}
             heading="Orders"
@@ -44,7 +39,7 @@ export function Standard() {
               />
             ))}
           </ItemList>
-        </PageFrame>
+        </view>
       )}
     </Said>
   );
@@ -60,7 +55,7 @@ const mail = [
 export function WithSearch() {
   const query = useLocal('query', '');
   return (
-    <PageFrame>
+    <view className="h-[300px] overflow-hidden rounded-container border border-text/12 bg-canvas">
       <TopBar
         heading="Mail"
         centerContent={<SearchField label="Search mail" isLabelHidden placeholder="Search mail" bind={query} className="w-[200px]" data-testid="mail-search" />}
@@ -72,7 +67,7 @@ export function WithSearch() {
           <Item key={message.from} label={message.from} description={message.subject} endContent={<text className="text-footnote text-muted">{message.when}</text>} />
         ))}
       </ItemList>
-    </PageFrame>
+    </view>
   );
 }
 
