@@ -25,11 +25,51 @@ pub(crate) fn applies(root: &Path) -> bool {
 /// Every type error as `file:line:col: TSnnnn: message`; empty when the project checks clean.
 pub(crate) fn run(root: &Path) -> Result<Vec<String>> {
     if let Some(tsgo) = resolve_tsgo(root) {
+        announce(&tsgo, "tsgo", || {
+            Command::new(&tsgo)
+                .arg("--version")
+                .output()
+                .ok()
+                .filter(|output| output.status.success())
+                .map(|output| {
+                    let text = String::from_utf8_lossy(&output.stdout);
+                    text.trim().trim_start_matches("Version ").to_owned()
+                })
+                .unwrap_or_else(|| "of unknown version".to_owned())
+        });
         return run_tsgo(root, &tsgo);
     }
     let tsc = resolve_tsc(root)?;
     let typescript = supported_typescript(&tsc)?;
+    announce(typescript, "tsc", || package_version(typescript));
     super::ts_worker::typecheck(root, typescript)
+}
+
+/// Names the checker the first time this process uses it, so an installed `tsgo` never runs
+/// unannounced.
+fn announce(checker: &Path, name: &str, version: impl FnOnce() -> String) {
+    static SEEN: std::sync::Mutex<std::collections::BTreeSet<PathBuf>> =
+        std::sync::Mutex::new(std::collections::BTreeSet::new());
+    let first = SEEN
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+        .insert(checker.to_path_buf());
+    if first {
+        println!(
+            "{} {name} {} {}",
+            console::style("Type check").cyan(),
+            version(),
+            console::style(checker.display()).dim()
+        );
+    }
+}
+
+fn package_version(package: &Path) -> String {
+    std::fs::read(package.join("package.json"))
+        .ok()
+        .and_then(|bytes| serde_json::from_slice::<serde_json::Value>(&bytes).ok())
+        .and_then(|manifest| manifest["version"].as_str().map(str::to_owned))
+        .unwrap_or_default()
 }
 
 /// The problems under one heading, in the shape of the build's other diagnostics.
@@ -55,11 +95,7 @@ pub(crate) fn supported_typescript(tsc: &Path) -> Result<&Path> {
         .parent()
         .and_then(Path::parent)
         .context("TypeScript install has no package directory")?;
-    let version = std::fs::read(package.join("package.json"))
-        .ok()
-        .and_then(|bytes| serde_json::from_slice::<serde_json::Value>(&bytes).ok())
-        .and_then(|manifest| manifest["version"].as_str().map(str::to_owned))
-        .unwrap_or_default();
+    let version = package_version(package);
     if !in_range(&version) {
         bail!(
             "TypeScript {} is installed here; LingXia supports {TYPESCRIPT_RANGE}: run `npm i -D typescript@{TYPESCRIPT_RANGE}`",
@@ -156,6 +192,68 @@ fn resolve_ref_config(base_dir: &Path, ref_path: &str) -> PathBuf {
     }
 }
 
+/// A tsconfig's `extends` target: a relative or absolute file, with or without `.json`, or a
+/// package's file found in `node_modules` above `dir`.
+fn resolve_extends(dir: &Path, spec: &str) -> Option<PathBuf> {
+    let file = |base: PathBuf| {
+        [
+            base.clone(),
+            {
+                let mut json = base.clone().into_os_string();
+                json.push(".json");
+                PathBuf::from(json)
+            },
+            base.join("tsconfig.json"),
+        ]
+        .into_iter()
+        .find(|candidate| candidate.is_file())
+    };
+    if spec.starts_with('.') || Path::new(spec).is_absolute() {
+        return file(dir.join(spec));
+    }
+    dir.ancestors()
+        .find_map(|ancestor| file(ancestor.join("node_modules").join(spec)))
+}
+
+/// The options a wrapper must respect, as `config` gets them through its `extends` chain.
+#[derive(Default)]
+struct Inherited {
+    composite: Option<bool>,
+    no_emit: Option<bool>,
+    root_dir: bool,
+}
+
+fn inherited(config: &Path, depth: usize) -> Inherited {
+    let parsed: serde_json::Value = std::fs::read_to_string(config)
+        .ok()
+        .and_then(|raw| json5::from_str(&raw).ok())
+        .unwrap_or_else(|| serde_json::json!({}));
+    let mut merged = Inherited::default();
+    let bases: Vec<&str> = match parsed.get("extends") {
+        Some(serde_json::Value::String(base)) => vec![base.as_str()],
+        Some(serde_json::Value::Array(bases)) => {
+            bases.iter().filter_map(serde_json::Value::as_str).collect()
+        }
+        _ => Vec::new(),
+    };
+    let dir = config.parent().unwrap_or(Path::new("."));
+    // Later bases override earlier ones; a cycle stops at the depth limit.
+    for base in bases.into_iter().filter(|_| depth < 16) {
+        if let Some(path) = resolve_extends(dir, base) {
+            let parent = inherited(&path, depth + 1);
+            merged.composite = parent.composite.or(merged.composite);
+            merged.no_emit = parent.no_emit.or(merged.no_emit);
+            merged.root_dir |= parent.root_dir;
+        }
+    }
+    let options = parsed.get("compilerOptions");
+    let flag = |name: &str| options.and_then(|o| o.get(name)).and_then(|v| v.as_bool());
+    merged.composite = flag("composite").or(merged.composite);
+    merged.no_emit = flag("noEmit").or(merged.no_emit);
+    merged.root_dir |= options.and_then(|o| o.get("rootDir")).is_some();
+    merged
+}
+
 fn slash_path(path: &Path) -> String {
     path.to_string_lossy().replace('\\', "/")
 }
@@ -200,16 +298,10 @@ fn write_typecheck_wrappers(root: &Path) -> Result<PathBuf> {
             .and_then(|raw| json5::from_str(&raw).ok())
             .unwrap_or_else(|| serde_json::json!({}));
         let base_dir = config_path.parent().unwrap_or(dir);
-        let options = parsed.get("compilerOptions").and_then(|v| v.as_object());
-        let has_no_emit = options
-            .and_then(|o| o.get("noEmit"))
-            .and_then(|v| v.as_bool())
-            .unwrap_or(false);
-        let is_composite = options
-            .and_then(|o| o.get("composite"))
-            .and_then(|v| v.as_bool())
-            .unwrap_or(false);
-        let has_root_dir = options.and_then(|o| o.get("rootDir")).is_some();
+        let options = inherited(config_path, 0);
+        let has_no_emit = options.no_emit.unwrap_or(false);
+        let is_composite = options.composite.unwrap_or(false);
+        let has_root_dir = options.root_dir;
 
         let mut wrapper_refs = Vec::new();
         if let Some(refs) = parsed.get("references").and_then(|v| v.as_array()) {
@@ -417,6 +509,63 @@ Found 3 errors.\n";
         // Wrappers were generated cleanly under .lingxia/typecheck/.
         assert!(root.join(".lingxia/typecheck/solution.json").is_file());
         assert!(root.join(".lingxia/typecheck/ref-1.json").is_file());
+    }
+
+    #[test]
+    fn tsgo_wrappers_read_composite_noemit_and_rootdir_through_extends() {
+        let temp = tempfile::tempdir().unwrap();
+        let root = temp.path();
+        let write = |path: &str, text: &str| {
+            let path = root.join(path);
+            std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+            std::fs::write(path, text).unwrap();
+        };
+        write(
+            "tsconfig.json",
+            r#"{"files":[],"references":[{"path":"./tsconfig.view.json"},{"path":"./tsconfig.logic.json"},{"path":"./tsconfig.rooted.json"}]}"#,
+        );
+        write(
+            "configs/base.json",
+            r#"{"compilerOptions":{"composite":true,"noEmit":true}}"#,
+        );
+        write(
+            "node_modules/@acme/tsconfig/emit.json",
+            r#"{"compilerOptions":{"composite":true}}"#,
+        );
+        write(
+            "configs/rooted.json",
+            r#"{"extends":"./base","compilerOptions":{"rootDir":"../src"}}"#,
+        );
+        // Inherits composite and noEmit from a relative base named without `.json`.
+        write("tsconfig.view.json", r#"{"extends":"./configs/base"}"#);
+        // Inherits composite from a package; the later base's noEmit=false wins.
+        write(
+            "tsconfig.logic.json",
+            r#"{"extends":["./configs/base.json","@acme/tsconfig/emit.json"],"compilerOptions":{"noEmit":false}}"#,
+        );
+        write(
+            "tsconfig.rooted.json",
+            r#"{"extends":"./configs/rooted.json"}"#,
+        );
+
+        write_typecheck_wrappers(root).unwrap();
+        let wrapper = |name: &str| -> serde_json::Value {
+            serde_json::from_str(
+                &std::fs::read_to_string(root.join(".lingxia/typecheck").join(name)).unwrap(),
+            )
+            .unwrap()
+        };
+        let view = wrapper("ref-1.json");
+        assert!(view["compilerOptions"]["rootDir"].is_string(), "{view}");
+        assert!(view["compilerOptions"].get("outDir").is_none(), "{view}");
+        let logic = wrapper("ref-2.json");
+        assert!(logic["compilerOptions"]["rootDir"].is_string(), "{logic}");
+        assert!(logic["compilerOptions"]["outDir"].is_string(), "{logic}");
+        let rooted = wrapper("ref-3.json");
+        assert!(
+            rooted["compilerOptions"].get("rootDir").is_none(),
+            "an inherited rootDir stays the base's: {rooted}"
+        );
     }
 
     #[test]
