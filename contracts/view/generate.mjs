@@ -416,16 +416,36 @@ export function rules(schema, common) {
 }
 
 const propName = prop => /^[A-Za-z_$][\w$]*$/.test(prop) ? prop : JSON.stringify(prop);
-const member = (prop, entry) => `${propName(prop)}${entry.required ? '' : '?'}: ${entry.type};`;
+// TypeScript reads a JSDoc comment only when it starts a line.
+const jsdoc = entry => entry?.doc ? `\n  /** ${entry.doc} */ ` : '';
+const member = (prop, entry) => `${jsdoc(entry)}${propName(prop)}${entry.required ? '' : '?'}: ${entry.type};`;
+// A prop a form refuses keeps its doc, so the hover of a union member still has one.
+const refused = (prop, entry) => `${jsdoc(entry)}${propName(prop)}?: never;`;
+
+/** The schema with each element and component prop's `doc` resolved from `propDocs`; every prop and style key needs one. */
+export function documented(schema) {
+  const missing = [];
+  const elements = Object.fromEntries(Object.entries(schema.elements).map(([tag, element]) => {
+    const resolve = props => Object.fromEntries(Object.entries(props).map(([prop, entry]) => {
+      const doc = entry.doc ?? schema.propDocs[prop];
+      if (!doc) missing.push(`<${tag}> ${prop}`);
+      return [prop, { ...entry, doc }];
+    }));
+    return [tag, { ...element, props: resolve(element.props), ...(element.component ? { component: { ...element.component, props: resolve(element.component.props) } } : {}) }];
+  }));
+  for (const [key, entry] of Object.entries(schema.style)) if (!entry.internal && !entry.doc) missing.push(`style ${key}`);
+  if (missing.length) throw Error(`schema.json: needs a doc: ${missing.join(', ')}`);
+  return { ...schema, elements };
+}
 
 /** `(without the key: its props never) | (one member per form of the key)`. */
 function traitUnion(element, entry) {
   const own = prop => element.props[prop];
   const keyType = own(entry.key).type;
   const props = entry.props.filter(own);
-  const absent = `{ ${propName(entry.key)}?: ${/\bboolean\b/.test(keyType) ? 'false | undefined' : 'undefined'}; ${props.map(prop => `${propName(prop)}?: never;`).join(' ')} }`;
+  const absent = `{ ${jsdoc(own(entry.key))}${propName(entry.key)}?: ${/\bboolean\b/.test(keyType) ? 'false | undefined' : 'undefined'}; ${props.map(prop => refused(prop, own(prop))).join(' ')} }`;
   const forms = entry.forms ?? [{ values: null }];
-  const present = forms.map(form => `{ ${propName(entry.key)}: ${form.values ? form.values.map(value => JSON.stringify(value)).join(' | ') : keyType}; ${props.map(prop => form.without?.[prop] ? `${propName(prop)}?: never;` : member(prop, own(prop))).join(' ')} }`);
+  const present = forms.map(form => `{ ${jsdoc(own(entry.key))}${propName(entry.key)}: ${form.values ? form.values.map(value => JSON.stringify(value)).join(' | ') : keyType}; ${props.map(prop => form.without?.[prop] ? refused(prop, own(prop)) : member(prop, own(prop))).join(' ')} }`);
   // Absent last and the widest form just before it: TypeScript blames the last member a
   // mistake comes closest to, so `open` alone asks for `popover`, not for `popover="manual"`.
   return `(${[...present.reverse(), absent].join(' | ')})`;
@@ -434,7 +454,7 @@ function traitUnion(element, entry) {
 /** `(one member per prop with its companions, the others never) | (none set)`. */
 function exclusiveUnion(element, entry) {
   const companions = prop => entry.with?.[prop] ?? [];
-  const never = props => props.map(prop => `${propName(prop)}?: never;`).join(' ');
+  const never = props => props.map(prop => refused(prop, element.props[prop])).join(' ');
   const all = [...entry.props, ...entry.props.flatMap(companions)];
   const one = prop => `{ ${member(prop, { ...element.props[prop], required: true })} ${companions(prop).map(other => member(other, { ...element.props[other], required: true })).join(' ')} ${never(all.filter(other => other !== prop && !companions(prop).includes(other)))} }`;
   // `orElse`: with none of the group set, that prop is required.
@@ -480,14 +500,15 @@ function styleGroupKeys(schema) {
   return groups;
 }
 
-function authoring(schema, api) {
+function authoring(source, api) {
+  const schema = documented(source);
   const table = rules(schema), common = commonProps(api);
-  const style = Object.entries(schema.style).filter(([, entry]) => !entry.internal)
-    .map(([name, entry]) => `  ${name}?: ${entry.type};`).join('\n');
+  const styleMember = (key, indent) => `${indent}/** ${schema.style[key].doc} */\n${indent}${key}?: ${schema.style[key].type};`;
+  const style = Object.keys(schema.style).filter(key => !schema.style[key].internal).map(key => styleMember(key, '  ')).join('\n');
   const styleGroups = styleGroupKeys(schema);
   const groupName = name => `StyleGroup.${pascal(name)}`;
   const groupTypes = [...styleGroups].filter(([, keys]) => keys.length).map(([name, keys]) =>
-    `  /** ${styleGroupDocs[name]} */\n  export interface ${pascal(name)} {\n${keys.map(key => `    ${key}?: ${schema.style[key].type};`).join('\n')}\n  }`).join('\n');
+    `  /** ${styleGroupDocs[name]} */\n  export interface ${pascal(name)} {\n${keys.map(key => styleMember(key, '    ')).join('\n')}\n  }`).join('\n');
   const lines = [];
   for (const [name, element] of Object.entries(schema.elements)) {
     const type = pascal(name);
@@ -510,7 +531,7 @@ function authoring(schema, api) {
     const traitProps = new Set([...traits.flatMap(entry => [entry.key, ...entry.props]), ...groups.flatMap(entry => [...entry.props, ...Object.values(entry.with ?? {}).flat()])]);
     const flat = Object.entries(element.props).filter(([prop]) => !traitProps.has(prop)).map(([prop, entry]) => member(prop, entry));
     const unions = [...traits.map(entry => traitUnion(element, entry)), ...groups.map(entry => exclusiveUnion(element, entry))].join(' & ');
-    const base = `Omit<Props, ${omitted.map(prop => JSON.stringify(prop)).join(' | ')}> & { ${role}style?: ${type}Style; children?: ${children}${flat.length ? '; ' + flat.join(' ') : ''} }${unions ? ` & ${unions}` : ''}`;
+    const base = `Omit<Props, ${omitted.map(prop => JSON.stringify(prop)).join(' | ')}> & { ${role}style?: ${type}Style; children?: ${children};${flat.join('')}\n}${unions ? ` & ${unions}` : ''}`;
     const binding = element.binding;
     if (binding) {
       const payload = binding.type === 'string' ? 'string' : `ReadonlyData<${binding.type}>`;
@@ -525,6 +546,9 @@ function authoring(schema, api) {
         + (pair ? ` | { bind?: never; value?: never; ${pair.values}: ${both}; ${pair.labels}: readonly [string, string]; `
           + `${binding.event}?: (values: ${both}) => void${end ? `; ${end}?: (values: ${both}) => void` : ''} }` : '') + ');');
     } else lines.push(`export type ${type}Props = ${base};`);
+    // A component's props over the element's, generic in its item type.
+    if (element.component) lines.push(`export interface Data${element.component.name}Props<T> extends Omit<${type}Props, ${element.component.replaces.map(prop => JSON.stringify(prop)).join(' | ')}> {`,
+      ...Object.entries(element.component.props).map(([prop, entry]) => member(prop, entry).slice(1)), '}');
   }
   // An element behind a component (`<List>`) is not written as JSX.
   const intrinsics = Object.entries(schema.elements).filter(([, element]) => !element.component).map(([name]) => `      ${JSON.stringify(name)}: ${pascal(name)}Props;`).join('\n');

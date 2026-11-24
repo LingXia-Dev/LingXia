@@ -423,12 +423,6 @@ export type ClassValue = string | number | false | null | undefined | readonly C
 /** Joins class text, as `clsx`. The build checks every class it can see in the arguments. */
 export declare function cx(...values: ClassValue[]): string;
 
-export interface DataListProps<T> extends Omit<ListProps, "count" | "itemKeys" | "row" | "height"> {
-  items: readonly T[];
-  getKey: (item: T, index: number) => string;
-  renderItem: (item: T, index: number) => JSX.Element;
-  getItemHeight?: (item: T, index: number) => number;
-}
 export declare function List<T>(props: DataListProps<T>): JSX.Element;
 export interface BoxShadow { offsetX?: number; offsetY?: number; blur?: number; spread?: number; color?: string }
 /** Strokes around the box (`outer`, after an `offset` gap) and inside its border (`inner`); they never take layout space. */
@@ -524,123 +518,241 @@ export type ColorSeries = ColorRole | ColorAlpha;
 
 /** CSS-named style; each element accepts the subset its `*Style` type lists. */
 export interface Style {
+  /** Width in logical pixels, a percent of the parent, a viewport unit, `ch`, or an intrinsic size. */
   width?: number | `${number}%` | `${number}vw` | `${number}vh` | `${number}ch` | "auto" | "fit-content" | "max-content" | "min-content";
+  /** Height in logical pixels, a percent of the parent, a viewport unit, or an intrinsic size. */
   height?: number | `${number}%` | `${number}vw` | `${number}vh` | "auto" | "fit-content" | "max-content" | "min-content";
+  /** The smallest width layout may give it. */
   minWidth?: number | `${number}%` | `${number}vw` | `${number}vh` | `${number}ch` | "fit-content" | "max-content" | "min-content";
+  /** The smallest height layout may give it. */
   minHeight?: number | `${number}%` | `${number}vw` | `${number}vh` | "fit-content" | "max-content" | "min-content";
+  /** The largest width layout may give it. */
   maxWidth?: number | `${number}%` | `${number}vw` | `${number}vh` | `${number}ch` | "fit-content" | "max-content" | "min-content";
+  /** Width divided by height, kept when only one of them is set. */
   aspectRatio?: number | "auto";
+  /** The largest height layout may give it. */
   maxHeight?: number | `${number}%` | `${number}vw` | `${number}vh` | "fit-content" | "max-content" | "min-content";
+  /** Space outside the border on every side; `auto` takes the free space. */
   margin?: number | "auto";
+  /** Space outside the top border. */
   marginTop?: number | "auto";
+  /** Space outside the right border. */
   marginRight?: number | "auto";
+  /** Space outside the bottom border. */
   marginBottom?: number | "auto";
+  /** Space outside the left border. */
   marginLeft?: number | "auto";
+  /** Space outside the start border: left in left-to-right text, right in right-to-left. */
   marginInlineStart?: number | "auto";
+  /** Space outside the end border: right in left-to-right text, left in right-to-left. */
   marginInlineEnd?: number | "auto";
+  /** `relative` offsets it from its place; `absolute` places it in its parent; `fixed` in the screen; `sticky` sticks inside its scroll. */
   position?: "relative" | "absolute" | "fixed" | "sticky";
+  /** Offset of every edge from the containing box, for a positioned element. */
   inset?: number | `${number}%`;
+  /** Offset of the top edge; `anchor(center)` centres an anchored popover on its anchor. */
   top?: number | `${number}%` | "anchor(center)";
+  /** Offset of the right edge; `anchor(center)` centres an anchored popover on its anchor. */
   right?: number | `${number}%` | "anchor(center)";
+  /** Offset of the bottom edge; `anchor(center)` centres an anchored popover on its anchor. */
   bottom?: number | `${number}%` | "anchor(center)";
+  /** Offset of the left edge; `anchor(center)` centres an anchored popover on its anchor. */
   left?: number | `${number}%` | "anchor(center)";
+  /** Offset of the start edge, following the text direction. */
   insetInlineStart?: number | `${number}%` | "anchor(center)";
+  /** Offset of the end edge, following the text direction. */
   insetInlineEnd?: number | `${number}%` | "anchor(center)";
+  /** Paint order among siblings; higher paints over lower. */
   zIndex?: number;
+  /** Where an anchored popover sits against its anchor; it flips when that side lacks room. */
   positionArea?: "bottom span-inline-end" | "bottom span-inline-start" | "bottom" | "top span-inline-end" | "top span-inline-start" | "top" | "inline-end span-block-end" | "inline-end span-block-start" | "inline-end" | "inline-start span-block-end" | "inline-start span-block-start" | "inline-start";
+  /** Share of the free space along the main axis it takes. */
   flexGrow?: number;
+  /** Share of the overflow along the main axis it gives up; 0 keeps its size. */
   flexShrink?: number;
+  /** Main-axis size before free space is shared out. */
   flexBasis?: number | `${number}%` | "auto";
+  /** Cross-axis alignment of this item, overriding its parent's `alignItems`. */
   alignSelf?: "flex-start" | "start" | "center" | "flex-end" | "end" | "stretch" | "baseline" | "safe center" | "safe flex-end" | "safe end";
+  /** Grid columns it spans, as `start / end` or `span n`. */
   gridColumn?: number | string;
+  /** Grid line its column span starts at. */
   gridColumnStart?: number | string;
+  /** Grid line its column span ends at, or `span n`. */
   gridColumnEnd?: number | string;
+  /** Grid rows it spans, as `start / end` or `span n`. */
   gridRow?: number | string;
+  /** Grid line its row span starts at. */
   gridRowStart?: number | string;
+  /** Grid line its row span ends at, or `span n`. */
   gridRowEnd?: number | string;
+  /** Inline alignment of this grid item in its cell. */
   justifySelf?: "start" | "center" | "end" | "stretch" | "baseline" | "safe center" | "safe end";
+  /** Layout order among flex or grid siblings; lower comes first. */
   order?: number;
+  /** Opacity of the element and its subtree, 0..1. */
   opacity?: number;
+  /** `hidden` clips the subtree to the border box and its radius. */
   overflow?: "visible" | "hidden";
+  /** Fill behind the content, as a colour role. */
   backgroundColor?: ColorValue | "currentColor";
+  /** A linear, radial or conic gradient painted behind the content. */
   backgroundImage?: BackgroundGradient | "none";
+  /** Corner radius of every corner. */
   borderRadius?: number;
+  /** Radius of the top-left corner. */
   borderTopLeftRadius?: number;
+  /** Radius of the top-right corner. */
   borderTopRightRadius?: number;
+  /** Radius of the bottom-right corner. */
   borderBottomRightRadius?: number;
+  /** Radius of the bottom-left corner. */
   borderBottomLeftRadius?: number;
+  /** Radius of the top corner on the start side. */
   borderStartStartRadius?: number;
+  /** Radius of the top corner on the end side. */
   borderStartEndRadius?: number;
+  /** Radius of the bottom corner on the start side. */
   borderEndStartRadius?: number;
+  /** Radius of the bottom corner on the end side. */
   borderEndEndRadius?: number;
+  /** Border width on every side. */
   borderWidth?: number;
+  /** Width of the top border. */
   borderTopWidth?: number;
+  /** Width of the right border. */
   borderRightWidth?: number;
+  /** Width of the bottom border. */
   borderBottomWidth?: number;
+  /** Width of the left border. */
   borderLeftWidth?: number;
+  /** Width of the start-side border, following the text direction. */
   borderInlineStartWidth?: number;
+  /** Width of the end-side border, following the text direction. */
   borderInlineEndWidth?: number;
+  /** Line style of every border. */
   borderStyle?: "solid" | "dashed" | "dotted";
+  /** Colour of every border, as a colour role. */
   borderColor?: ColorValue | "currentColor";
+  /** Shadows painted outside the border box, up to the first listed on top. */
   boxShadow?: ReadonlyArray<BoxShadow> | "none";
+  /** A focus-style outline: an outer ring with an optional gap, and an inner ring. */
   ring?: Ring | "none";
+  /** Filter applied to what is behind it, such as `blur(12px)` for frosted glass. */
   backdropFilter?: string;
+  /** Moves it without changing layout, in pixels or percents of its own size. */
   translate?: number | `${number}%` | readonly [number | `${number}%`, number | `${number}%`];
+  /** Rotation in degrees around `transformOrigin`, without changing layout. */
   rotate?: number;
+  /** Scale, uniform or `[x, y]`, around `transformOrigin`, without changing layout. */
   scale?: number | readonly [number, number];
+  /** The point `rotate` and `scale` turn around, as fractions `[x, y]` of its box. */
   transformOrigin?: readonly [number, number];
+  /** Filter applied to its own pixels, such as `blur(4px)` or `grayscale(1)`. */
   filter?: string;
+  /** Space inside the border on every side. */
   padding?: number;
+  /** Space inside the top border. */
   paddingTop?: number;
+  /** Space inside the right border. */
   paddingRight?: number;
+  /** Space inside the bottom border. */
   paddingBottom?: number;
+  /** Space inside the left border. */
   paddingLeft?: number;
+  /** Space inside the start border, following the text direction. */
   paddingInlineStart?: number;
+  /** Space inside the end border, following the text direction. */
   paddingInlineEnd?: number;
+  /** `flex` (the default) or `grid` lays out children; `none` removes it from layout. */
   display?: "flex" | "grid" | "none" | "block" | "inline-flex" | "inline-block";
+  /** `none` keeps presses to its own box instead of widening it to the platform touch target. */
   touchTarget?: "auto" | "none";
+  /** Main axis of a flex container; `<view>` is a column unless set. */
   flexDirection?: "row" | "column" | "row-reverse" | "column-reverse";
+  /** Cross-axis alignment of the children. */
   alignItems?: "flex-start" | "start" | "center" | "flex-end" | "end" | "stretch" | "baseline" | "safe center" | "safe flex-end" | "safe end";
+  /** Main-axis placement of the children and the space between them. */
   justifyContent?: "flex-start" | "start" | "center" | "flex-end" | "end" | "space-between" | "space-around" | "space-evenly" | "safe center" | "safe flex-end" | "safe end";
+  /** Placement of wrapped lines or grid tracks in the cross axis. */
   alignContent?: "flex-start" | "start" | "center" | "flex-end" | "end" | "space-between" | "space-around" | "space-evenly" | "stretch" | "safe center" | "safe flex-end" | "safe end";
+  /** Whether children wrap onto more lines when they do not fit. */
   flexWrap?: "nowrap" | "wrap" | "wrap-reverse";
+  /** Space between children in both axes. */
   gap?: number;
+  /** Space between rows. */
   rowGap?: number;
+  /** Space between columns. */
   columnGap?: number;
+  /** Column tracks of a grid: a count of equal columns, or a track list. */
   gridTemplateColumns?: number | string;
+  /** Row tracks of a grid: a count of equal rows, or a track list. */
   gridTemplateRows?: number | string;
+  /** Size of columns the grid creates on its own. */
   gridAutoColumns?: string;
+  /** Size of rows the grid creates on its own. */
   gridAutoRows?: string;
+  /** Direction items without a place fill the grid in; `dense` fills earlier holes. */
   gridAutoFlow?: "row" | "column" | "row dense" | "column dense";
+  /** Inline alignment of every grid item in its cell. */
   justifyItems?: "start" | "center" | "end" | "stretch" | "baseline" | "safe center" | "safe end";
+  /** Text and icon colour, as a colour role; inherited. */
   color?: ColorValue;
+  /** Font size in logical pixels, scaled by the system text size; inherited. */
   fontSize?: number;
+  /** Font weight, 1..1000; inherited. */
   fontWeight?: number;
+  /** A generic family or a font the app declares; inherited. */
   fontFamily?: "sans-serif" | "monospace" | "serif" | (string & {});
+  /** Upright or italic; inherited. */
   fontStyle?: "normal" | "italic";
+  /** Line height as a multiple of the font size, or in pixels; inherited. */
   lineHeight?: number | `${number}px`;
+  /** Extra space between letters, in pixels or `em`; inherited. */
   letterSpacing?: number | `${number}em`;
+  /** Numeric glyph variants such as `tabular-nums`; inherited. */
   fontVariantNumeric?: string;
+  /** Whether its text can be selected and copied; inherited. */
   userSelect?: "none" | "text" | "all";
+  /** Horizontal alignment of lines; `start` and `end` follow the text direction. */
   textAlign?: "start" | "end" | "left" | "center" | "right" | "justify";
+  /** Underline or strike-through. */
   textDecorationLine?: "none" | "line-through" | "underline";
+  /** Line style of the decoration. */
   textDecorationStyle?: "solid" | "dashed" | "dotted";
+  /** Colour of the decoration, as a colour role. */
   textDecorationColor?: ColorValue | "currentColor";
+  /** Case change applied when shown; the text itself is unchanged. */
   textTransform?: "none" | "uppercase" | "lowercase" | "capitalize";
+  /** `text` paints the background through the glyphs only. */
   backgroundClip?: "border-box" | "text";
+  /** How spaces and newlines collapse and whether lines wrap. */
   whiteSpace?: "normal" | "nowrap" | "pre" | "pre-wrap" | "pre-line";
+  /** Where words may break: anywhere (`break-all`), or never inside CJK runs (`keep-all`). */
   wordBreak?: "normal" | "break-all" | "keep-all";
+  /** Whether a word longer than the line breaks inside rather than overflowing. */
   overflowWrap?: "normal" | "break-word" | "anywhere";
+  /** Lines shown at most; the rest is cut with an ellipsis. */
   lineClamp?: number;
+  /** `ellipsis` ends a cut line with an ellipsis. */
   textOverflow?: "clip" | "ellipsis";
+  /** `auto` scrolls a `<scroll>` horizontally. */
   overflowX?: "auto";
+  /** `auto` scrolls a `<scroll>` vertically. */
   overflowY?: "auto";
+  /** `contain` keeps a scroll at its edge from moving an outer one; `none` also drops the bounce. */
   overscrollBehavior?: "auto" | "contain" | "none";
+  /** `always` stops a swipe at each snap point instead of skipping past. */
   scrollSnapStop?: "normal" | "always";
+  /** Axis a scroll snaps along, to its children's `scrollSnapAlign`. */
   scrollSnapType?: "none" | "x" | "y";
+  /** Edge of this child a snapping scroll rests on. */
   scrollSnapAlign?: "none" | "start" | "center" | "end";
+  /** Colour of an editor's placeholder, as a colour role. */
   placeholderColor?: ColorValue;
+  /** How the picture fills its box: `cover` crops, `contain` letterboxes, `fill` stretches. */
   objectFit?: "cover" | "contain" | "fill";
+  /** Where the picture sits in its box when it does not fill it, such as `top` or `25% 75%`. */
   objectPosition?: string;
 }
 
@@ -648,184 +760,315 @@ export interface Style {
 export namespace StyleGroup {
   /** Size, margin, position, placement as an item, opacity, background, border, shadow, filters and transforms. */
   export interface Box {
+    /** Width in logical pixels, a percent of the parent, a viewport unit, `ch`, or an intrinsic size. */
     width?: number | `${number}%` | `${number}vw` | `${number}vh` | `${number}ch` | "auto" | "fit-content" | "max-content" | "min-content";
+    /** Height in logical pixels, a percent of the parent, a viewport unit, or an intrinsic size. */
     height?: number | `${number}%` | `${number}vw` | `${number}vh` | "auto" | "fit-content" | "max-content" | "min-content";
+    /** The smallest width layout may give it. */
     minWidth?: number | `${number}%` | `${number}vw` | `${number}vh` | `${number}ch` | "fit-content" | "max-content" | "min-content";
+    /** The smallest height layout may give it. */
     minHeight?: number | `${number}%` | `${number}vw` | `${number}vh` | "fit-content" | "max-content" | "min-content";
+    /** The largest width layout may give it. */
     maxWidth?: number | `${number}%` | `${number}vw` | `${number}vh` | `${number}ch` | "fit-content" | "max-content" | "min-content";
+    /** Width divided by height, kept when only one of them is set. */
     aspectRatio?: number | "auto";
+    /** The largest height layout may give it. */
     maxHeight?: number | `${number}%` | `${number}vw` | `${number}vh` | "fit-content" | "max-content" | "min-content";
+    /** Space outside the border on every side; `auto` takes the free space. */
     margin?: number | "auto";
+    /** Space outside the top border. */
     marginTop?: number | "auto";
+    /** Space outside the right border. */
     marginRight?: number | "auto";
+    /** Space outside the bottom border. */
     marginBottom?: number | "auto";
+    /** Space outside the left border. */
     marginLeft?: number | "auto";
+    /** Space outside the start border: left in left-to-right text, right in right-to-left. */
     marginInlineStart?: number | "auto";
+    /** Space outside the end border: right in left-to-right text, left in right-to-left. */
     marginInlineEnd?: number | "auto";
+    /** `relative` offsets it from its place; `absolute` places it in its parent; `fixed` in the screen; `sticky` sticks inside its scroll. */
     position?: "relative" | "absolute" | "fixed" | "sticky";
+    /** Offset of every edge from the containing box, for a positioned element. */
     inset?: number | `${number}%`;
+    /** Offset of the top edge; `anchor(center)` centres an anchored popover on its anchor. */
     top?: number | `${number}%` | "anchor(center)";
+    /** Offset of the right edge; `anchor(center)` centres an anchored popover on its anchor. */
     right?: number | `${number}%` | "anchor(center)";
+    /** Offset of the bottom edge; `anchor(center)` centres an anchored popover on its anchor. */
     bottom?: number | `${number}%` | "anchor(center)";
+    /** Offset of the left edge; `anchor(center)` centres an anchored popover on its anchor. */
     left?: number | `${number}%` | "anchor(center)";
+    /** Offset of the start edge, following the text direction. */
     insetInlineStart?: number | `${number}%` | "anchor(center)";
+    /** Offset of the end edge, following the text direction. */
     insetInlineEnd?: number | `${number}%` | "anchor(center)";
+    /** Paint order among siblings; higher paints over lower. */
     zIndex?: number;
+    /** Where an anchored popover sits against its anchor; it flips when that side lacks room. */
     positionArea?: "bottom span-inline-end" | "bottom span-inline-start" | "bottom" | "top span-inline-end" | "top span-inline-start" | "top" | "inline-end span-block-end" | "inline-end span-block-start" | "inline-end" | "inline-start span-block-end" | "inline-start span-block-start" | "inline-start";
+    /** Share of the free space along the main axis it takes. */
     flexGrow?: number;
+    /** Share of the overflow along the main axis it gives up; 0 keeps its size. */
     flexShrink?: number;
+    /** Main-axis size before free space is shared out. */
     flexBasis?: number | `${number}%` | "auto";
+    /** Cross-axis alignment of this item, overriding its parent's `alignItems`. */
     alignSelf?: "flex-start" | "start" | "center" | "flex-end" | "end" | "stretch" | "baseline" | "safe center" | "safe flex-end" | "safe end";
+    /** Grid columns it spans, as `start / end` or `span n`. */
     gridColumn?: number | string;
+    /** Grid line its column span starts at. */
     gridColumnStart?: number | string;
+    /** Grid line its column span ends at, or `span n`. */
     gridColumnEnd?: number | string;
+    /** Grid rows it spans, as `start / end` or `span n`. */
     gridRow?: number | string;
+    /** Grid line its row span starts at. */
     gridRowStart?: number | string;
+    /** Grid line its row span ends at, or `span n`. */
     gridRowEnd?: number | string;
+    /** Inline alignment of this grid item in its cell. */
     justifySelf?: "start" | "center" | "end" | "stretch" | "baseline" | "safe center" | "safe end";
+    /** Layout order among flex or grid siblings; lower comes first. */
     order?: number;
+    /** Opacity of the element and its subtree, 0..1. */
     opacity?: number;
+    /** `hidden` clips the subtree to the border box and its radius. */
     overflow?: "visible" | "hidden";
+    /** Fill behind the content, as a colour role. */
     backgroundColor?: ColorValue | "currentColor";
+    /** A linear, radial or conic gradient painted behind the content. */
     backgroundImage?: BackgroundGradient | "none";
+    /** Corner radius of every corner. */
     borderRadius?: number;
+    /** Radius of the top-left corner. */
     borderTopLeftRadius?: number;
+    /** Radius of the top-right corner. */
     borderTopRightRadius?: number;
+    /** Radius of the bottom-right corner. */
     borderBottomRightRadius?: number;
+    /** Radius of the bottom-left corner. */
     borderBottomLeftRadius?: number;
+    /** Radius of the top corner on the start side. */
     borderStartStartRadius?: number;
+    /** Radius of the top corner on the end side. */
     borderStartEndRadius?: number;
+    /** Radius of the bottom corner on the start side. */
     borderEndStartRadius?: number;
+    /** Radius of the bottom corner on the end side. */
     borderEndEndRadius?: number;
+    /** Border width on every side. */
     borderWidth?: number;
+    /** Width of the top border. */
     borderTopWidth?: number;
+    /** Width of the right border. */
     borderRightWidth?: number;
+    /** Width of the bottom border. */
     borderBottomWidth?: number;
+    /** Width of the left border. */
     borderLeftWidth?: number;
+    /** Width of the start-side border, following the text direction. */
     borderInlineStartWidth?: number;
+    /** Width of the end-side border, following the text direction. */
     borderInlineEndWidth?: number;
+    /** Line style of every border. */
     borderStyle?: "solid" | "dashed" | "dotted";
+    /** Colour of every border, as a colour role. */
     borderColor?: ColorValue | "currentColor";
+    /** Shadows painted outside the border box, up to the first listed on top. */
     boxShadow?: ReadonlyArray<BoxShadow> | "none";
+    /** A focus-style outline: an outer ring with an optional gap, and an inner ring. */
     ring?: Ring | "none";
+    /** Filter applied to what is behind it, such as `blur(12px)` for frosted glass. */
     backdropFilter?: string;
+    /** Moves it without changing layout, in pixels or percents of its own size. */
     translate?: number | `${number}%` | readonly [number | `${number}%`, number | `${number}%`];
+    /** Rotation in degrees around `transformOrigin`, without changing layout. */
     rotate?: number;
+    /** Scale, uniform or `[x, y]`, around `transformOrigin`, without changing layout. */
     scale?: number | readonly [number, number];
+    /** The point `rotate` and `scale` turn around, as fractions `[x, y]` of its box. */
     transformOrigin?: readonly [number, number];
+    /** Filter applied to its own pixels, such as `blur(4px)` or `grayscale(1)`. */
     filter?: string;
+    /** `flex` (the default) or `grid` lays out children; `none` removes it from layout. */
     display?: "flex" | "grid" | "none" | "block" | "inline-flex" | "inline-block";
+    /** `none` keeps presses to its own box instead of widening it to the platform touch target. */
     touchTarget?: "auto" | "none";
+    /** Edge of this child a snapping scroll rests on. */
     scrollSnapAlign?: "none" | "start" | "center" | "end";
   }
   /** Padding, physical and flow-relative. */
   export interface Padding {
+    /** Space inside the border on every side. */
     padding?: number;
+    /** Space inside the top border. */
     paddingTop?: number;
+    /** Space inside the right border. */
     paddingRight?: number;
+    /** Space inside the bottom border. */
     paddingBottom?: number;
+    /** Space inside the left border. */
     paddingLeft?: number;
+    /** Space inside the start border, following the text direction. */
     paddingInlineStart?: number;
+    /** Space inside the end border, following the text direction. */
     paddingInlineEnd?: number;
   }
   /** Whether a flex container wraps. */
   export interface Flex {
+    /** Whether children wrap onto more lines when they do not fit. */
     flexWrap?: "nowrap" | "wrap" | "wrap-reverse";
   }
   /** How a container aligns its children. */
   export interface Align {
+    /** Cross-axis alignment of the children. */
     alignItems?: "flex-start" | "start" | "center" | "flex-end" | "end" | "stretch" | "baseline" | "safe center" | "safe flex-end" | "safe end";
+    /** Main-axis placement of the children and the space between them. */
     justifyContent?: "flex-start" | "start" | "center" | "flex-end" | "end" | "space-between" | "space-around" | "space-evenly" | "safe center" | "safe flex-end" | "safe end";
+    /** Placement of wrapped lines or grid tracks in the cross axis. */
     alignContent?: "flex-start" | "start" | "center" | "flex-end" | "end" | "space-between" | "space-around" | "space-evenly" | "stretch" | "safe center" | "safe flex-end" | "safe end";
   }
   /** The main axis of a flex container. */
   export interface Direction {
+    /** Main axis of a flex container; `<view>` is a column unless set. */
     flexDirection?: "row" | "column" | "row-reverse" | "column-reverse";
   }
   /** Space between children. */
   export interface Gap {
+    /** Space between children in both axes. */
     gap?: number;
+    /** Space between rows. */
     rowGap?: number;
+    /** Space between columns. */
     columnGap?: number;
   }
   /** Text colour, font, line height, spacing, alignment, decoration, wrapping and selection; inherited. */
   export interface Text {
+    /** Text and icon colour, as a colour role; inherited. */
     color?: ColorValue;
+    /** Font size in logical pixels, scaled by the system text size; inherited. */
     fontSize?: number;
+    /** Font weight, 1..1000; inherited. */
     fontWeight?: number;
+    /** A generic family or a font the app declares; inherited. */
     fontFamily?: "sans-serif" | "monospace" | "serif" | (string & {});
+    /** Upright or italic; inherited. */
     fontStyle?: "normal" | "italic";
+    /** Line height as a multiple of the font size, or in pixels; inherited. */
     lineHeight?: number | `${number}px`;
+    /** Extra space between letters, in pixels or `em`; inherited. */
     letterSpacing?: number | `${number}em`;
+    /** Numeric glyph variants such as `tabular-nums`; inherited. */
     fontVariantNumeric?: string;
+    /** Whether its text can be selected and copied; inherited. */
     userSelect?: "none" | "text" | "all";
+    /** Horizontal alignment of lines; `start` and `end` follow the text direction. */
     textAlign?: "start" | "end" | "left" | "center" | "right" | "justify";
+    /** Underline or strike-through. */
     textDecorationLine?: "none" | "line-through" | "underline";
+    /** Line style of the decoration. */
     textDecorationStyle?: "solid" | "dashed" | "dotted";
+    /** Colour of the decoration, as a colour role. */
     textDecorationColor?: ColorValue | "currentColor";
+    /** Case change applied when shown; the text itself is unchanged. */
     textTransform?: "none" | "uppercase" | "lowercase" | "capitalize";
+    /** How spaces and newlines collapse and whether lines wrap. */
     whiteSpace?: "normal" | "nowrap" | "pre" | "pre-wrap" | "pre-line";
+    /** Where words may break: anywhere (`break-all`), or never inside CJK runs (`keep-all`). */
     wordBreak?: "normal" | "break-all" | "keep-all";
+    /** Whether a word longer than the line breaks inside rather than overflowing. */
     overflowWrap?: "normal" | "break-word" | "anywhere";
   }
   /** Grid tracks and auto placement. */
   export interface Grid {
+    /** Column tracks of a grid: a count of equal columns, or a track list. */
     gridTemplateColumns?: number | string;
+    /** Row tracks of a grid: a count of equal rows, or a track list. */
     gridTemplateRows?: number | string;
+    /** Size of columns the grid creates on its own. */
     gridAutoColumns?: string;
+    /** Size of rows the grid creates on its own. */
     gridAutoRows?: string;
+    /** Direction items without a place fill the grid in; `dense` fills earlier holes. */
     gridAutoFlow?: "row" | "column" | "row dense" | "column dense";
+    /** Inline alignment of every grid item in its cell. */
     justifyItems?: "start" | "center" | "end" | "stretch" | "baseline" | "safe center" | "safe end";
   }
   /** Line clamping, overflow and clipping a background to the text. */
   export interface TextBlock {
+    /** `text` paints the background through the glyphs only. */
     backgroundClip?: "border-box" | "text";
+    /** Lines shown at most; the rest is cut with an ellipsis. */
     lineClamp?: number;
+    /** `ellipsis` ends a cut line with an ellipsis. */
     textOverflow?: "clip" | "ellipsis";
   }
   /** Which axes scroll. */
   export interface Scroll {
+    /** `auto` scrolls a `<scroll>` horizontally. */
     overflowX?: "auto";
+    /** `auto` scrolls a `<scroll>` vertically. */
     overflowY?: "auto";
   }
   /** Overscroll hand-off and snapping. */
   export interface Overscroll {
+    /** `contain` keeps a scroll at its edge from moving an outer one; `none` also drops the bounce. */
     overscrollBehavior?: "auto" | "contain" | "none";
+    /** `always` stops a swipe at each snap point instead of skipping past. */
     scrollSnapStop?: "normal" | "always";
+    /** Axis a scroll snaps along, to its children's `scrollSnapAlign`. */
     scrollSnapType?: "none" | "x" | "y";
   }
   /** How an image or video fits its box. */
   export interface Media {
+    /** How the picture fills its box: `cover` crops, `contain` letterboxes, `fill` stretches. */
     objectFit?: "cover" | "contain" | "fill";
   }
   /** Where a fitted image or video sits in its box. */
   export interface ImagePlacement {
+    /** Where the picture sits in its box when it does not fill it, such as `top` or `25% 75%`. */
     objectPosition?: string;
   }
   /** The placeholder colour of an editor. */
   export interface Editor {
+    /** Colour of an editor's placeholder, as a colour role. */
     placeholderColor?: ColorValue;
   }
   /** How cut text ends. */
   export interface Ellipsis {
+    /** `ellipsis` ends a cut line with an ellipsis. */
     textOverflow?: "clip" | "ellipsis";
   }
   /** The accent colour of a control. */
   export interface Accent {
+    /** Text and icon colour, as a colour role; inherited. */
     color?: ColorValue;
   }
   /** Colour, font and decoration of a run inside text. */
   export interface Run {
+    /** Text and icon colour, as a colour role; inherited. */
     color?: ColorValue;
+    /** Font size in logical pixels, scaled by the system text size; inherited. */
     fontSize?: number;
+    /** Font weight, 1..1000; inherited. */
     fontWeight?: number;
+    /** A generic family or a font the app declares; inherited. */
     fontFamily?: "sans-serif" | "monospace" | "serif" | (string & {});
+    /** Upright or italic; inherited. */
     fontStyle?: "normal" | "italic";
+    /** Extra space between letters, in pixels or `em`; inherited. */
     letterSpacing?: number | `${number}em`;
+    /** Underline or strike-through. */
     textDecorationLine?: "none" | "line-through" | "underline";
+    /** Line style of the decoration. */
     textDecorationStyle?: "solid" | "dashed" | "dotted";
+    /** Colour of the decoration, as a colour role. */
     textDecorationColor?: ColorValue | "currentColor";
+    /** Numeric glyph variants such as `tabular-nums`; inherited. */
     fontVariantNumeric?: string;
+    /** Fill behind the content, as a colour role. */
     backgroundColor?: ColorValue | "currentColor";
   }
 }
@@ -833,85 +1076,402 @@ export namespace StyleGroup {
 export type ViewStyle = StyleGroup.Box & StyleGroup.Padding & StyleGroup.Flex & StyleGroup.Align & StyleGroup.Direction & StyleGroup.Gap & StyleGroup.Text & StyleGroup.Grid;
 /** The roles a `<view>` takes; reference/elements.md says where the others go. */
 export type ViewRole = "heading" | "list" | "listitem" | "dialog" | "alert" | "status" | "grid" | "gridcell" | "listbox" | "option" | "menu" | "progressbar" | "group" | "tooltip" | "tablist" | "tabpanel" | "radiogroup" | "toolbar" | "tree" | "row" | "img";
-export type ViewProps = Omit<Props, "style" | "children" | "role"> & { role?: ViewRole; style?: ViewStyle; children?: Child; bleed?: BleedEdge; onPage?: (direction: "previous" | "next") => void; onContextMenu?: (event: ContextMenuEvent) => void; onLayout?: (box: BoxSize) => void; box?: Box; "aria-label"?: string; onPointerEnter?: () => void; onPointerLeave?: () => void; } & ({ popover: "manual"; open?: boolean; onToggle?: (open: boolean) => void; closeAfter?: number; anchor?: string; onCloseRequest?: never; } | { popover: true | "auto" | "hint"; open?: boolean; onToggle?: (open: boolean) => void; closeAfter?: number; anchor?: string; onCloseRequest?: () => boolean | void; } | { popover?: false | undefined; open?: never; onToggle?: never; closeAfter?: never; anchor?: never; onCloseRequest?: never; }) & ({ drag: "x" | "y"; dragSnapPoints?: readonly (number | `${number}%`)[]; bind?: Local<number>; snapIndex?: number; onSnapChange?: (index: number) => void; onDragStart?: () => void; onDragEnd?: (info: { index: number; velocity: number }) => void; "aria-actions"?: string; } | { drag?: undefined; dragSnapPoints?: never; bind?: never; snapIndex?: never; onSnapChange?: never; onDragStart?: never; onDragEnd?: never; "aria-actions"?: never; }) & ({ onPointer: (event: PointerEvent) => void; pointerAxis?: "x" | "y" | "both"; } | { onPointer?: undefined; pointerAxis?: never; }) & ({ snapIndex: number; onSnapChange: (index: number) => void; bind?: never; } | { bind: Local<number>;  snapIndex?: never; onSnapChange?: never; } | { bind?: never; snapIndex?: never; onSnapChange?: never; });
+export type ViewProps = Omit<Props, "style" | "children" | "role"> & { role?: ViewRole; style?: ViewStyle; children?: Child;
+  /** On a direct child of `<page>`: extend under the safe-area insets to the screen edge, on every side or the named ones. */ bleed?: BleedEdge;
+  /** Called for PageUp and PageDown on a `role="grid"`. */ onPage?: (direction: "previous" | "next") => void;
+  /** Called for a long press or a secondary click, with where it happened. */ onContextMenu?: (event: ContextMenuEvent) => void;
+  /** Called with its laid-out size after each change, one render behind. */ onLayout?: (box: BoxSize) => void;
+  /** A `useBox` handle this element fills with its laid-out size. */ box?: Box;
+  /** The accessible name, spoken in place of its text. */ "aria-label"?: string;
+  /** Called when a mouse, stylus or trackpad pointer enters it. */ onPointerEnter?: () => void;
+  /** Called when that pointer leaves it. */ onPointerLeave?: () => void;
+} & ({ 
+  /** Makes it a popover in the top layer: `auto` light-dismisses, `manual` closes only when told, `hint` for a hover hint. */ popover: "manual"; 
+  /** Whether the popover is shown; with `onToggle` to follow its own closing. */ open?: boolean; 
+  /** Called with the new state when the popover opens or closes. */ onToggle?: (open: boolean) => void; 
+  /** On a `popover="manual"`: close it this many milliseconds (1..60000) after it opens, as a toast. */ closeAfter?: number; 
+  /** The id of the element a popover is placed against. */ anchor?: string; 
+  /** Called when Escape, back or a screen reader asks the popover to close; return `false` to keep it open. */ onCloseRequest?: never; } | { 
+  /** Makes it a popover in the top layer: `auto` light-dismisses, `manual` closes only when told, `hint` for a hover hint. */ popover: true | "auto" | "hint"; 
+  /** Whether the popover is shown; with `onToggle` to follow its own closing. */ open?: boolean; 
+  /** Called with the new state when the popover opens or closes. */ onToggle?: (open: boolean) => void; 
+  /** On a `popover="manual"`: close it this many milliseconds (1..60000) after it opens, as a toast. */ closeAfter?: number; 
+  /** The id of the element a popover is placed against. */ anchor?: string; 
+  /** Called when Escape, back or a screen reader asks the popover to close; return `false` to keep it open. */ onCloseRequest?: () => boolean | void; } | { 
+  /** Makes it a popover in the top layer: `auto` light-dismisses, `manual` closes only when told, `hint` for a hover hint. */ popover?: false | undefined; 
+  /** Whether the popover is shown; with `onToggle` to follow its own closing. */ open?: never; 
+  /** Called with the new state when the popover opens or closes. */ onToggle?: never; 
+  /** On a `popover="manual"`: close it this many milliseconds (1..60000) after it opens, as a toast. */ closeAfter?: never; 
+  /** The id of the element a popover is placed against. */ anchor?: never; 
+  /** Called when Escape, back or a screen reader asks the popover to close; return `false` to keep it open. */ onCloseRequest?: never; }) & ({ 
+  /** Lets the finger move it and its subtree along one axis, between its `dragSnapPoints`. */ drag: "x" | "y"; 
+  /** Up to 8 offsets, in pixels or percents of its size, a drag comes to rest at. */ dragSnapPoints?: readonly (number | `${number}%`)[]; 
+  /** A number `useLocal` cell holding the index of the snap point it rests on. */ bind?: Local<number>; 
+  /** The index of the snap point it rests on, with `onSnapChange`; not with `bind`. */ snapIndex?: number; 
+  /** Called with the snap point index it came to rest at after a drag or swipe. */ onSnapChange?: (index: number) => void; 
+  /** Called when a drag starts. */ onDragStart?: () => void; 
+  /** Called when a drag is released, with the snap index it heads for and its velocity. */ onDragEnd?: (info: { index: number; velocity: number }) => void; 
+  /** Ids of buttons (space-separated) a screen reader offers as this element's actions, as for a swipe row. */ "aria-actions"?: string; } | { 
+  /** Lets the finger move it and its subtree along one axis, between its `dragSnapPoints`. */ drag?: undefined; 
+  /** Up to 8 offsets, in pixels or percents of its size, a drag comes to rest at. */ dragSnapPoints?: never; 
+  /** A number `useLocal` cell holding the index of the snap point it rests on. */ bind?: never; 
+  /** The index of the snap point it rests on, with `onSnapChange`; not with `bind`. */ snapIndex?: never; 
+  /** Called with the snap point index it came to rest at after a drag or swipe. */ onSnapChange?: never; 
+  /** Called when a drag starts. */ onDragStart?: never; 
+  /** Called when a drag is released, with the snap index it heads for and its velocity. */ onDragEnd?: never; 
+  /** Ids of buttons (space-separated) a screen reader offers as this element's actions, as for a swipe row. */ "aria-actions"?: never; }) & ({ 
+  /** Reports a single pointer over the element: down, move, up, enter, leave and cancel. */ onPointer: (event: PointerEvent) => void; 
+  /** The axis `onPointer` keeps; the other is left to the page's scroll. */ pointerAxis?: "x" | "y" | "both"; } | { 
+  /** Reports a single pointer over the element: down, move, up, enter, leave and cancel. */ onPointer?: undefined; 
+  /** The axis `onPointer` keeps; the other is left to the page's scroll. */ pointerAxis?: never; }) & ({ 
+  /** The index of the snap point it rests on, with `onSnapChange`; not with `bind`. */ snapIndex: number; 
+  /** Called with the snap point index it came to rest at after a drag or swipe. */ onSnapChange: (index: number) => void; 
+  /** A number `useLocal` cell holding the index of the snap point it rests on. */ bind?: never; } | { 
+  /** A number `useLocal` cell holding the index of the snap point it rests on. */ bind: Local<number>;  
+  /** The index of the snap point it rests on, with `onSnapChange`; not with `bind`. */ snapIndex?: never; 
+  /** Called with the snap point index it came to rest at after a drag or swipe. */ onSnapChange?: never; } | { 
+  /** A number `useLocal` cell holding the index of the snap point it rests on. */ bind?: never; 
+  /** The index of the snap point it rests on, with `onSnapChange`; not with `bind`. */ snapIndex?: never; 
+  /** Called with the snap point index it came to rest at after a drag or swipe. */ onSnapChange?: never; });
 export type PageStyle = StyleGroup.Box & StyleGroup.Padding & StyleGroup.Flex & StyleGroup.Align & StyleGroup.Direction & StyleGroup.Gap & StyleGroup.Text & StyleGroup.Grid;
 /** The roles a `<page>` takes; reference/elements.md says where the others go. */
 export type PageRole = "heading" | "list" | "listitem" | "alert" | "status" | "grid" | "gridcell" | "listbox" | "option" | "menu" | "progressbar" | "group" | "tooltip";
-export type PageProps = Omit<Props, "style" | "children" | "role"> & { role?: PageRole; style?: PageStyle; children?: Child; title?: string; headerActions?: Child; "aria-label"?: string; };
+export type PageProps = Omit<Props, "style" | "children" | "role"> & { role?: PageRole; style?: PageStyle; children?: Child;
+  /** The title the host navigation bar shows for the page. */ title?: string;
+  /** Controls shown in a toolbar at the top of the page. */ headerActions?: Child;
+  /** The accessible name, spoken in place of its text. */ "aria-label"?: string;
+};
 export type TextStyle = StyleGroup.Box & StyleGroup.Padding & StyleGroup.Text & StyleGroup.TextBlock;
 /** The roles a `<text>` takes; reference/elements.md says where the others go. */
 export type TextRole = "heading" | "list" | "listitem" | "alert" | "status" | "grid" | "gridcell" | "listbox" | "option" | "menu" | "progressbar" | "group" | "tooltip" | "img";
-export type TextProps = Omit<Props, "style" | "children" | "role"> & { role?: TextRole; style?: TextStyle; children?: RunChild; onContextMenu?: (event: ContextMenuEvent) => void; onLayout?: (box: BoxSize) => void; box?: Box; "aria-label"?: string; };
+export type TextProps = Omit<Props, "style" | "children" | "role"> & { role?: TextRole; style?: TextStyle; children?: RunChild;
+  /** Called for a long press or a secondary click, with where it happened. */ onContextMenu?: (event: ContextMenuEvent) => void;
+  /** Called with its laid-out size after each change, one render behind. */ onLayout?: (box: BoxSize) => void;
+  /** A `useBox` handle this element fills with its laid-out size. */ box?: Box;
+  /** The accessible name, spoken in place of its text. */ "aria-label"?: string;
+};
 export type ButtonStyle = StyleGroup.Box & StyleGroup.Padding & StyleGroup.Flex & StyleGroup.Align & StyleGroup.Direction & StyleGroup.Gap & StyleGroup.Text & StyleGroup.Grid;
 /** The roles a `<button>` takes; reference/elements.md says where the others go. */
 export type ButtonRole = "heading" | "list" | "listitem" | "alert" | "status" | "grid" | "gridcell" | "listbox" | "option" | "menu" | "menuitem" | "progressbar" | "group" | "tooltip" | "tab" | "radio" | "treeitem" | "menuitemcheckbox" | "menuitemradio" | "combobox";
-export type ButtonProps = Omit<Props, "style" | "children" | "role"> & { role?: ButtonRole; style?: ButtonStyle; children?: Child; onContextMenu?: (event: ContextMenuEvent) => void; onClick?: () => void; disabled?: boolean; "aria-label"?: string; popoverTarget?: string; interestFor?: string; keepOpen?: boolean; onPointerEnter?: () => void; onPointerLeave?: () => void; } & ({ drag: "x" | "y"; dragSnapPoints?: readonly (number | `${number}%`)[]; bind?: Local<number>; snapIndex?: number; onSnapChange?: (index: number) => void; onDragStart?: () => void; onDragEnd?: (info: { index: number; velocity: number }) => void; "aria-actions"?: string; } | { drag?: undefined; dragSnapPoints?: never; bind?: never; snapIndex?: never; onSnapChange?: never; onDragStart?: never; onDragEnd?: never; "aria-actions"?: never; }) & ({ onPointer: (event: PointerEvent) => void; pointerAxis?: "x" | "y" | "both"; } | { onPointer?: undefined; pointerAxis?: never; }) & ({ snapIndex: number; onSnapChange: (index: number) => void; bind?: never; } | { bind: Local<number>;  snapIndex?: never; onSnapChange?: never; } | { bind?: never; snapIndex?: never; onSnapChange?: never; });
+export type ButtonProps = Omit<Props, "style" | "children" | "role"> & { role?: ButtonRole; style?: ButtonStyle; children?: Child;
+  /** Called for a long press or a secondary click, with where it happened. */ onContextMenu?: (event: ContextMenuEvent) => void;
+  /** Called when it is pressed: a tap, a click, Enter or Space, or a screen reader's activation. */ onClick?: () => void;
+  /** Refuses input and shows the disabled style; it stays in accessibility, marked unavailable. */ disabled?: boolean;
+  /** The accessible name, spoken in place of its text. */ "aria-label"?: string;
+  /** The id of a popover a press opens or closes. */ popoverTarget?: string;
+  /** The id of a `popover="hint"` shown while the pointer rests on it or it has focus. */ interestFor?: string;
+  /** On a menu item: run `onClick` and leave the menu open. */ keepOpen?: boolean;
+  /** Called when a mouse, stylus or trackpad pointer enters it. */ onPointerEnter?: () => void;
+  /** Called when that pointer leaves it. */ onPointerLeave?: () => void;
+} & ({ 
+  /** Lets the finger move it and its subtree along one axis, between its `dragSnapPoints`. */ drag: "x" | "y"; 
+  /** Up to 8 offsets, in pixels or percents of its size, a drag comes to rest at. */ dragSnapPoints?: readonly (number | `${number}%`)[]; 
+  /** A number `useLocal` cell holding the index of the snap point it rests on. */ bind?: Local<number>; 
+  /** The index of the snap point it rests on, with `onSnapChange`; not with `bind`. */ snapIndex?: number; 
+  /** Called with the snap point index it came to rest at after a drag or swipe. */ onSnapChange?: (index: number) => void; 
+  /** Called when a drag starts. */ onDragStart?: () => void; 
+  /** Called when a drag is released, with the snap index it heads for and its velocity. */ onDragEnd?: (info: { index: number; velocity: number }) => void; 
+  /** Ids of buttons (space-separated) a screen reader offers as this element's actions, as for a swipe row. */ "aria-actions"?: string; } | { 
+  /** Lets the finger move it and its subtree along one axis, between its `dragSnapPoints`. */ drag?: undefined; 
+  /** Up to 8 offsets, in pixels or percents of its size, a drag comes to rest at. */ dragSnapPoints?: never; 
+  /** A number `useLocal` cell holding the index of the snap point it rests on. */ bind?: never; 
+  /** The index of the snap point it rests on, with `onSnapChange`; not with `bind`. */ snapIndex?: never; 
+  /** Called with the snap point index it came to rest at after a drag or swipe. */ onSnapChange?: never; 
+  /** Called when a drag starts. */ onDragStart?: never; 
+  /** Called when a drag is released, with the snap index it heads for and its velocity. */ onDragEnd?: never; 
+  /** Ids of buttons (space-separated) a screen reader offers as this element's actions, as for a swipe row. */ "aria-actions"?: never; }) & ({ 
+  /** Reports a single pointer over the element: down, move, up, enter, leave and cancel. */ onPointer: (event: PointerEvent) => void; 
+  /** The axis `onPointer` keeps; the other is left to the page's scroll. */ pointerAxis?: "x" | "y" | "both"; } | { 
+  /** Reports a single pointer over the element: down, move, up, enter, leave and cancel. */ onPointer?: undefined; 
+  /** The axis `onPointer` keeps; the other is left to the page's scroll. */ pointerAxis?: never; }) & ({ 
+  /** The index of the snap point it rests on, with `onSnapChange`; not with `bind`. */ snapIndex: number; 
+  /** Called with the snap point index it came to rest at after a drag or swipe. */ onSnapChange: (index: number) => void; 
+  /** A number `useLocal` cell holding the index of the snap point it rests on. */ bind?: never; } | { 
+  /** A number `useLocal` cell holding the index of the snap point it rests on. */ bind: Local<number>;  
+  /** The index of the snap point it rests on, with `onSnapChange`; not with `bind`. */ snapIndex?: never; 
+  /** Called with the snap point index it came to rest at after a drag or swipe. */ onSnapChange?: never; } | { 
+  /** A number `useLocal` cell holding the index of the snap point it rests on. */ bind?: never; 
+  /** The index of the snap point it rests on, with `onSnapChange`; not with `bind`. */ snapIndex?: never; 
+  /** Called with the snap point index it came to rest at after a drag or swipe. */ onSnapChange?: never; });
 export type ScrollStyle = StyleGroup.Box & StyleGroup.Padding & StyleGroup.Flex & StyleGroup.Align & StyleGroup.Gap & StyleGroup.Text & StyleGroup.Scroll & StyleGroup.Overscroll;
 /** The roles a `<scroll>` takes; reference/elements.md says where the others go. */
 export type ScrollRole = "heading" | "list" | "listitem" | "alert" | "status" | "grid" | "gridcell" | "listbox" | "option" | "menu" | "progressbar" | "group" | "tooltip";
-export type ScrollProps = Omit<Props, "style" | "children" | "role"> & { role?: ScrollRole; style?: ScrollStyle; children?: Child; bleed?: BleedEdge; onLayout?: (box: BoxSize) => void; box?: Box; onReachStart?: () => void; onReachEnd?: () => void; onScrollEdge?: (event: ScrollEdgeEvent) => void; } & ({ snapIndex: number; onSnapChange: (index: number) => void; bind?: never; } | { bind: Local<number>;  snapIndex?: never; onSnapChange?: never; } | { bind?: never; snapIndex?: never; onSnapChange?: never; });
+export type ScrollProps = Omit<Props, "style" | "children" | "role"> & { role?: ScrollRole; style?: ScrollStyle; children?: Child;
+  /** On a direct child of `<page>`: extend under the safe-area insets to the screen edge, on every side or the named ones. */ bleed?: BleedEdge;
+  /** Called with its laid-out size after each change, one render behind. */ onLayout?: (box: BoxSize) => void;
+  /** A `useBox` handle this element fills with its laid-out size. */ box?: Box;
+  /** Called when the scroll reaches its start, as for loading older items. */ onReachStart?: () => void;
+  /** Called when the scroll reaches its end, as for loading more items. */ onReachEnd?: () => void;
+  /** Called when the scroll reaches or leaves either edge, and on mount with the edges it starts at. */ onScrollEdge?: (event: ScrollEdgeEvent) => void;
+} & ({ 
+  /** The index of the snap point a `scrollSnapType` scroll rests on, with `onSnapChange`; not with `bind`. */ snapIndex: number; 
+  /** Called with the snap point index it came to rest at after a drag or swipe. */ onSnapChange: (index: number) => void; 
+  /** A number `useLocal` cell holding the index of the snap point a `scrollSnapType` scroll rests on. */ bind?: never; } | { 
+  /** A number `useLocal` cell holding the index of the snap point a `scrollSnapType` scroll rests on. */ bind: Local<number>;  
+  /** The index of the snap point a `scrollSnapType` scroll rests on, with `onSnapChange`; not with `bind`. */ snapIndex?: never; 
+  /** Called with the snap point index it came to rest at after a drag or swipe. */ onSnapChange?: never; } | { 
+  /** A number `useLocal` cell holding the index of the snap point a `scrollSnapType` scroll rests on. */ bind?: never; 
+  /** The index of the snap point a `scrollSnapType` scroll rests on, with `onSnapChange`; not with `bind`. */ snapIndex?: never; 
+  /** Called with the snap point index it came to rest at after a drag or swipe. */ onSnapChange?: never; });
 export type ListStyle = StyleGroup.Box & StyleGroup.Padding & StyleGroup.Gap & StyleGroup.Text & StyleGroup.Overscroll;
 /** The roles a `<list>` takes; reference/elements.md says where the others go. */
 export type ListRole = "heading" | "list" | "listitem" | "alert" | "status" | "grid" | "gridcell" | "listbox" | "option" | "menu" | "progressbar" | "group" | "tooltip";
-export type ListProps = Omit<Props, "style" | "children" | "role"> & { role?: ListRole; style?: ListStyle; children?: never; bleed?: BleedEdge; count: number; row: (index: number) => JSX.Element; height?: (index: number) => number; anchor?: "end" | { index: number; align: "start" | "end"; seq?: number; duration?: number }; itemKeys?: readonly string[]; onReachStart?: () => void; onReachEnd?: () => void; onScrollEdge?: (event: ScrollEdgeEvent) => void; "aria-label"?: string; };
+export type ListProps = Omit<Props, "style" | "children" | "role"> & { role?: ListRole; style?: ListStyle; children?: never;
+  /** On a direct child of `<page>`: extend under the safe-area insets to the screen edge, on every side or the named ones. */ bleed?: BleedEdge;
+  /** How many rows the list has. */ count: number;
+  /** Renders the row at an index; only rows near the screen are rendered. */ row: (index: number) => JSX.Element;
+  /** The height of the row at an index, when rows differ; rows are measured otherwise. */ height?: (index: number) => number;
+  /** `"end"` starts at the last row; `{ index, align, seq }` scrolls there, again whenever `seq` changes. */ anchor?: "end" | { index: number; align: "start" | "end"; seq?: number; duration?: number };
+  /** A stable key per row, so state and position follow an item when rows move. */ itemKeys?: readonly string[];
+  /** Called when the scroll reaches its start, as for loading older items. */ onReachStart?: () => void;
+  /** Called when the scroll reaches its end, as for loading more items. */ onReachEnd?: () => void;
+  /** Called when the scroll reaches or leaves either edge, and on mount with the edges it starts at. */ onScrollEdge?: (event: ScrollEdgeEvent) => void;
+  /** The accessible name, spoken in place of its text. */ "aria-label"?: string;
+};
+export interface DataListProps<T> extends Omit<ListProps, "count" | "row" | "height" | "itemKeys"> {
+  /** The items, one row each; only rows near the screen are rendered. */ items: readonly T[];
+  /** A stable, short key for an item, so state and position follow it when items move. */ getKey: (item: T, index: number) => string;
+  /** Renders the row for an item. */ renderItem: (item: T, index: number) => JSX.Element;
+  /** The height of an item's row, when rows differ; rows are measured otherwise. */ getItemHeight?: (item: T, index: number) => number;
+}
 export type ImageStyle = StyleGroup.Box & StyleGroup.Media & StyleGroup.ImagePlacement;
 /** The roles a `<image>` takes; reference/elements.md says where the others go. */
 export type ImageRole = "heading" | "list" | "listitem" | "alert" | "status" | "grid" | "gridcell" | "listbox" | "option" | "menu" | "progressbar" | "group" | "tooltip";
-export type ImageProps = Omit<Props, "style" | "children" | "role"> & { role?: ImageRole; style?: ImageStyle; children?: never; bleed?: BleedEdge; src: string; placeholder?: string; alt?: string; retryKey?: string; onLoad?: () => void; onError?: () => void; };
+export type ImageProps = Omit<Props, "style" | "children" | "role"> & { role?: ImageRole; style?: ImageStyle; children?: never;
+  /** On a direct child of `<page>`: extend under the safe-area insets to the screen edge, on every side or the named ones. */ bleed?: BleedEdge;
+  /** The picture: a package path, an `lx://` file, or a URL on an allowed host; PNG or JPEG. */ src: string;
+  /** A picture shown until `src` has loaded, and if it fails. */ placeholder?: string;
+  /** What the image shows, spoken by a screen reader; empty for a decorative image. */ alt?: string;
+  /** Change it to load the same `src` again after an error. */ retryKey?: string;
+  /** Called once per `src` and `retryKey`, when the picture has loaded. */ onLoad?: () => void;
+  /** Called once per `src` and `retryKey`, when the picture fails to load. */ onError?: () => void;
+};
 export type InputStyle = StyleGroup.Box & StyleGroup.Padding & StyleGroup.Text & StyleGroup.Editor & StyleGroup.Ellipsis;
 /** The roles a `<input>` takes; reference/elements.md says where the others go. */
 export type InputRole = "heading" | "list" | "listitem" | "alert" | "status" | "grid" | "gridcell" | "listbox" | "option" | "menu" | "progressbar" | "group" | "tooltip" | "combobox" | "spinbutton";
-export type InputProps = Omit<Props, "style" | "children" | "role"> & { role?: InputRole; style?: InputStyle; children?: never; onKeyDown?: EditorKeys; readOnly?: boolean; onFocus?: () => void; onBlur?: () => void; "aria-label"?: string; placeholder?: string; type?: "text" | "password" | "email" | "number" | "tel" | "search" | "date" | "time"; inputMode?: "text" | "numeric" | "decimal" | "tel" | "email"; autoFocus?: boolean; disabled?: boolean; onSubmit?: (value: string) => void; maxLength?: number; autoComplete?: AutoComplete; enterKeyHint?: "enter" | "done" | "go" | "next" | "previous" | "search" | "send"; autoCapitalize?: "none" | "sentences" | "words" | "characters" | "off" | "on"; spellCheck?: boolean; min?: number | string; max?: number | string; step?: number; } & ({ bind: Local<string>; value?: never; onInput?: never } | { bind?: never; value?: string; onInput?: (value: string) => void });
+export type InputProps = Omit<Props, "style" | "children" | "role"> & { role?: InputRole; style?: InputStyle; children?: never;
+  /** Keys the editor handles before typing: a map from key name to a handler returning `true` when it took the key. */ onKeyDown?: EditorKeys;
+  /** The text can be selected and copied but not changed. */ readOnly?: boolean;
+  /** Called when the editor gains focus. */ onFocus?: () => void;
+  /** Called when the editor loses focus. */ onBlur?: () => void;
+  /** The accessible name, spoken in place of its text. */ "aria-label"?: string;
+  /** Shown while the value is empty. */ placeholder?: string;
+  /** The kind of value: picks the keyboard, masking, and the date or time picker. */ type?: "text" | "password" | "email" | "number" | "tel" | "search" | "date" | "time";
+  /** The on-screen keyboard to show, without changing what is accepted. */ inputMode?: "text" | "numeric" | "decimal" | "tel" | "email";
+  /** Focus the editor when it first appears. */ autoFocus?: boolean;
+  /** Refuses input and shows the disabled style; it stays in accessibility, marked unavailable. */ disabled?: boolean;
+  /** Called with the text for the keyboard's action key, or Enter on a single-line editor. */ onSubmit?: (value: string) => void;
+  /** The most characters it holds; typing stops there. */ maxLength?: number;
+  /** What the value is, so the system can offer saved or received values, such as a one-time code. */ autoComplete?: AutoComplete;
+  /** The label of the keyboard's action key. */ enterKeyHint?: "enter" | "done" | "go" | "next" | "previous" | "search" | "send";
+  /** Which letters the keyboard capitalises on its own. */ autoCapitalize?: "none" | "sentences" | "words" | "characters" | "off" | "on";
+  /** Whether misspellings are marked and corrected. */ spellCheck?: boolean;
+  /** The lowest value: a number for `type="number"`, a date or time string for a picker. */ min?: number | string;
+  /** The highest value: a number for `type="number"`, a date or time string for a picker. */ max?: number | string;
+  /** The interval a number snaps to. */ step?: number;
+} & ({ bind: Local<string>; value?: never; onInput?: never } | { bind?: never; value?: string; onInput?: (value: string) => void });
 export type TextareaStyle = StyleGroup.Box & StyleGroup.Padding & StyleGroup.Text & StyleGroup.Editor;
 /** The roles a `<textarea>` takes; reference/elements.md says where the others go. */
 export type TextareaRole = "heading" | "list" | "listitem" | "alert" | "status" | "grid" | "gridcell" | "listbox" | "option" | "menu" | "progressbar" | "group" | "tooltip";
-export type TextareaProps = Omit<Props, "style" | "children" | "role"> & { role?: TextareaRole; style?: TextareaStyle; children?: never; onKeyDown?: EditorKeys; readOnly?: boolean; onFocus?: () => void; onBlur?: () => void; rows?: number; maxRows?: number; "aria-label"?: string; placeholder?: string; inputMode?: "text" | "numeric" | "decimal" | "tel" | "email"; autoFocus?: boolean; disabled?: boolean; onSubmit?: (value: string) => void; maxLength?: number; autoComplete?: AutoComplete; enterKeyHint?: "enter" | "done" | "go" | "next" | "previous" | "search" | "send"; autoCapitalize?: "none" | "sentences" | "words" | "characters" | "off" | "on"; spellCheck?: boolean; } & ({ bind: Local<string>; value?: never; onInput?: never } | { bind?: never; value?: string; onInput?: (value: string) => void });
+export type TextareaProps = Omit<Props, "style" | "children" | "role"> & { role?: TextareaRole; style?: TextareaStyle; children?: never;
+  /** Keys the editor handles before typing: a map from key name to a handler returning `true` when it took the key. */ onKeyDown?: EditorKeys;
+  /** The text can be selected and copied but not changed. */ readOnly?: boolean;
+  /** Called when the editor gains focus. */ onFocus?: () => void;
+  /** Called when the editor loses focus. */ onBlur?: () => void;
+  /** Lines it shows when empty; it grows with its text up to `maxRows`. */ rows?: number;
+  /** Lines it grows to before it scrolls. */ maxRows?: number;
+  /** The accessible name, spoken in place of its text. */ "aria-label"?: string;
+  /** Shown while the value is empty. */ placeholder?: string;
+  /** The on-screen keyboard to show, without changing what is accepted. */ inputMode?: "text" | "numeric" | "decimal" | "tel" | "email";
+  /** Focus the editor when it first appears. */ autoFocus?: boolean;
+  /** Refuses input and shows the disabled style; it stays in accessibility, marked unavailable. */ disabled?: boolean;
+  /** Called with the text for the keyboard's action key, or Enter on a single-line editor. */ onSubmit?: (value: string) => void;
+  /** The most characters it holds; typing stops there. */ maxLength?: number;
+  /** What the value is, so the system can offer saved or received values, such as a one-time code. */ autoComplete?: AutoComplete;
+  /** The label of the keyboard's action key. */ enterKeyHint?: "enter" | "done" | "go" | "next" | "previous" | "search" | "send";
+  /** Which letters the keyboard capitalises on its own. */ autoCapitalize?: "none" | "sentences" | "words" | "characters" | "off" | "on";
+  /** Whether misspellings are marked and corrected. */ spellCheck?: boolean;
+} & ({ bind: Local<string>; value?: never; onInput?: never } | { bind?: never; value?: string; onInput?: (value: string) => void });
 export type CheckboxStyle = StyleGroup.Box & StyleGroup.Padding & StyleGroup.Flex & StyleGroup.Align & StyleGroup.Gap & StyleGroup.Text;
 /** The roles a `<checkbox>` takes; reference/elements.md says where the others go. */
 export type CheckboxRole = "heading" | "list" | "listitem" | "alert" | "status" | "grid" | "gridcell" | "listbox" | "option" | "menu" | "progressbar" | "group" | "tooltip";
-export type CheckboxProps = Omit<Props, "style" | "children" | "role"> & { role?: CheckboxRole; style?: CheckboxStyle; children?: Child; indeterminate?: boolean; defaultChecked?: boolean; "aria-label"?: string; disabled?: boolean; } & ({ bind: Local<boolean>; value?: never; onChange?: never } | { bind?: never; value?: boolean; onChange?: (value: ReadonlyData<boolean>) => void });
+export type CheckboxProps = Omit<Props, "style" | "children" | "role"> & { role?: CheckboxRole; style?: CheckboxStyle; children?: Child;
+  /** Shows a mixed state, as for a parent of partly checked items; a press clears it. */ indeterminate?: boolean;
+  /** Where an unbound control starts; it applies once. */ defaultChecked?: boolean;
+  /** The accessible name, spoken in place of its text. */ "aria-label"?: string;
+  /** Refuses input and shows the disabled style; it stays in accessibility, marked unavailable. */ disabled?: boolean;
+} & ({ bind: Local<boolean>; value?: never; onChange?: never } | { bind?: never; value?: boolean; onChange?: (value: ReadonlyData<boolean>) => void });
 export type SwitchStyle = StyleGroup.Box & StyleGroup.Padding & StyleGroup.Text;
 /** The roles a `<switch>` takes; reference/elements.md says where the others go. */
 export type SwitchRole = "heading" | "list" | "listitem" | "alert" | "status" | "grid" | "gridcell" | "listbox" | "option" | "menu" | "progressbar" | "group" | "tooltip";
-export type SwitchProps = Omit<Props, "style" | "children" | "role"> & { role?: SwitchRole; style?: SwitchStyle; children?: Child; defaultChecked?: boolean; "aria-label"?: string; disabled?: boolean; } & ({ bind: Local<boolean>; value?: never; onChange?: never } | { bind?: never; value?: boolean; onChange?: (value: ReadonlyData<boolean>) => void });
+export type SwitchProps = Omit<Props, "style" | "children" | "role"> & { role?: SwitchRole; style?: SwitchStyle; children?: Child;
+  /** Where an unbound control starts; it applies once. */ defaultChecked?: boolean;
+  /** The accessible name, spoken in place of its text. */ "aria-label"?: string;
+  /** Refuses input and shows the disabled style; it stays in accessibility, marked unavailable. */ disabled?: boolean;
+} & ({ bind: Local<boolean>; value?: never; onChange?: never } | { bind?: never; value?: boolean; onChange?: (value: ReadonlyData<boolean>) => void });
 export type RadioStyle = StyleGroup.Box & StyleGroup.Padding & StyleGroup.Gap & StyleGroup.Text;
 /** The roles a `<radio>` takes; reference/elements.md says where the others go. */
 export type RadioRole = "heading" | "list" | "listitem" | "alert" | "status" | "grid" | "gridcell" | "listbox" | "option" | "menu" | "progressbar" | "group" | "tooltip";
-export type RadioProps = Omit<Props, "style" | "children" | "role"> & { role?: RadioRole; style?: RadioStyle; children?: never; options: readonly ChoiceOption[]; "aria-label"?: string; disabled?: boolean; } & ({ bind: Local<string>; value?: never; onChange?: never } | { bind?: never; value?: string; onChange?: (value: string) => void });
+export type RadioProps = Omit<Props, "style" | "children" | "role"> & { role?: RadioRole; style?: RadioStyle; children?: never;
+  /** The choices, each a value and a label. */ options: readonly ChoiceOption[];
+  /** The accessible name, spoken in place of its text. */ "aria-label"?: string;
+  /** Refuses input and shows the disabled style; it stays in accessibility, marked unavailable. */ disabled?: boolean;
+} & ({ bind: Local<string>; value?: never; onChange?: never } | { bind?: never; value?: string; onChange?: (value: string) => void });
 export type SliderStyle = StyleGroup.Box & StyleGroup.Padding & StyleGroup.Accent;
 /** The roles a `<slider>` takes; reference/elements.md says where the others go. */
 export type SliderRole = "heading" | "list" | "listitem" | "alert" | "status" | "grid" | "gridcell" | "listbox" | "option" | "menu" | "progressbar" | "group" | "tooltip";
-export type SliderProps = Omit<Props, "style" | "children" | "role"> & { role?: SliderRole; style?: SliderStyle; children?: never; min?: number; max?: number; step?: number; defaultValue?: number; secondaryValue?: number; "aria-label": string; "aria-valuetext"?: string; disabled?: boolean; onPressChange?: (pressed: boolean) => void; } & ({ bind: Local<number>; value?: never; onChange?: never; onChangeEnd?: (value: ReadonlyData<number>) => void; values?: never; thumbLabels?: never } | { bind?: never; value?: number; onChange?: (value: ReadonlyData<number>) => void; onChangeEnd?: (value: ReadonlyData<number>) => void; values?: never; thumbLabels?: never } | { bind?: never; value?: never; values: readonly [number, number]; thumbLabels: readonly [string, string]; onChange?: (values: readonly [number, number]) => void; onChangeEnd?: (values: readonly [number, number]) => void });
+export type SliderProps = Omit<Props, "style" | "children" | "role"> & { role?: SliderRole; style?: SliderStyle; children?: never;
+  /** The lowest value it accepts. */ min?: number;
+  /** The highest value it accepts. */ max?: number;
+  /** The interval values snap to. */ step?: number;
+  /** Where an unbound slider starts, snapped to `step`; it applies once. */ defaultValue?: number;
+  /** A second range drawn behind the value, such as buffered media. */ secondaryValue?: number;
+  /** The accessible name, spoken in place of its text. */ "aria-label": string;
+  /** Spoken in place of the number, such as "1:20 of 3:05". */ "aria-valuetext"?: string;
+  /** Refuses input and shows the disabled style; it stays in accessibility, marked unavailable. */ disabled?: boolean;
+  /** Called with `true` when a finger or pointer takes the thumb and `false` when it lets go. */ onPressChange?: (pressed: boolean) => void;
+} & ({ bind: Local<number>; value?: never; onChange?: never; onChangeEnd?: (value: ReadonlyData<number>) => void; values?: never; thumbLabels?: never } | { bind?: never; value?: number; onChange?: (value: ReadonlyData<number>) => void; onChangeEnd?: (value: ReadonlyData<number>) => void; values?: never; thumbLabels?: never } | { bind?: never; value?: never; values: readonly [number, number]; thumbLabels: readonly [string, string]; onChange?: (values: readonly [number, number]) => void; onChangeEnd?: (values: readonly [number, number]) => void });
 export type DialogStyle = StyleGroup.Box & StyleGroup.Padding & StyleGroup.Flex & StyleGroup.Align & StyleGroup.Direction & StyleGroup.Gap & StyleGroup.Text & StyleGroup.Grid;
 /** The roles a `<dialog>` takes; reference/elements.md says where the others go. */
 export type DialogRole = "alertdialog";
-export type DialogProps = Omit<Props, "style" | "children" | "role"> & { role?: DialogRole; style?: DialogStyle; children?: Child; open?: boolean; onClose?: () => void; closedby?: "any" | "closerequest" | "none"; "aria-label": string; } & ({ drag: "x" | "y"; dragSnapPoints?: readonly (number | `${number}%`)[]; bind?: Local<number>; snapIndex?: number; onSnapChange?: (index: number) => void; onDragStart?: () => void; onDragEnd?: (info: { index: number; velocity: number }) => void; } | { drag?: undefined; dragSnapPoints?: never; bind?: never; snapIndex?: never; onSnapChange?: never; onDragStart?: never; onDragEnd?: never; }) & ({ snapIndex: number; onSnapChange: (index: number) => void; bind?: never; } | { bind: Local<number>;  snapIndex?: never; onSnapChange?: never; } | { bind?: never; snapIndex?: never; onSnapChange?: never; });
+export type DialogProps = Omit<Props, "style" | "children" | "role"> & { role?: DialogRole; style?: DialogStyle; children?: Child;
+  /** Whether the dialog is shown; with `onClose` to follow a close request. */ open?: boolean;
+  /** Called for a request to close: Escape, back, a backdrop tap or a sheet dragged off; it closes when you set `open` to false. */ onClose?: () => void;
+  /** The close requests it takes: `closerequest` (default) Escape and back, `any` also a backdrop tap, `none` none. */ closedby?: "any" | "closerequest" | "none";
+  /** The accessible name, spoken in place of its text. */ "aria-label": string;
+} & ({ 
+  /** Lets the finger move it and its subtree along one axis, between its `dragSnapPoints`. */ drag: "x" | "y"; 
+  /** Up to 8 offsets, in pixels or percents of its size, a drag comes to rest at. */ dragSnapPoints?: readonly (number | `${number}%`)[]; 
+  /** A number `useLocal` cell holding the index of the snap point it rests on. */ bind?: Local<number>; 
+  /** The index of the snap point it rests on, with `onSnapChange`; not with `bind`. */ snapIndex?: number; 
+  /** Called with the snap point index it came to rest at after a drag or swipe. */ onSnapChange?: (index: number) => void; 
+  /** Called when a drag starts. */ onDragStart?: () => void; 
+  /** Called when a drag is released, with the snap index it heads for and its velocity. */ onDragEnd?: (info: { index: number; velocity: number }) => void; } | { 
+  /** Lets the finger move it and its subtree along one axis, between its `dragSnapPoints`. */ drag?: undefined; 
+  /** Up to 8 offsets, in pixels or percents of its size, a drag comes to rest at. */ dragSnapPoints?: never; 
+  /** A number `useLocal` cell holding the index of the snap point it rests on. */ bind?: never; 
+  /** The index of the snap point it rests on, with `onSnapChange`; not with `bind`. */ snapIndex?: never; 
+  /** Called with the snap point index it came to rest at after a drag or swipe. */ onSnapChange?: never; 
+  /** Called when a drag starts. */ onDragStart?: never; 
+  /** Called when a drag is released, with the snap index it heads for and its velocity. */ onDragEnd?: never; }) & ({ 
+  /** The index of the snap point it rests on, with `onSnapChange`; not with `bind`. */ snapIndex: number; 
+  /** Called with the snap point index it came to rest at after a drag or swipe. */ onSnapChange: (index: number) => void; 
+  /** A number `useLocal` cell holding the index of the snap point it rests on. */ bind?: never; } | { 
+  /** A number `useLocal` cell holding the index of the snap point it rests on. */ bind: Local<number>;  
+  /** The index of the snap point it rests on, with `onSnapChange`; not with `bind`. */ snapIndex?: never; 
+  /** Called with the snap point index it came to rest at after a drag or swipe. */ onSnapChange?: never; } | { 
+  /** A number `useLocal` cell holding the index of the snap point it rests on. */ bind?: never; 
+  /** The index of the snap point it rests on, with `onSnapChange`; not with `bind`. */ snapIndex?: never; 
+  /** Called with the snap point index it came to rest at after a drag or swipe. */ onSnapChange?: never; });
 export type PlotStyle = StyleGroup.Box;
 /** The roles a `<plot>` takes; reference/elements.md says where the others go. */
 export type PlotRole = "heading" | "list" | "listitem" | "alert" | "status" | "grid" | "gridcell" | "listbox" | "option" | "menu" | "progressbar" | "group" | "tooltip";
-export type PlotProps = Omit<Props, "style" | "children" | "role"> & { role?: PlotRole; style?: PlotStyle; children?: never; onLayout?: (box: BoxSize) => void; box?: Box; kind: "bar" | "line" | "pie"; values: readonly number[]; colors: readonly ColorSeries[]; "aria-label": string; smooth?: boolean; area?: boolean; selectedIndex?: number; domainMin?: number; domainMax?: number; onSelect?: (index: number) => void; pieLayout?: PieLayout; markerEmphasisScale?: number; };
+export type PlotProps = Omit<Props, "style" | "children" | "role"> & { role?: PlotRole; style?: PlotStyle; children?: never;
+  /** Called with its laid-out size after each change, one render behind. */ onLayout?: (box: BoxSize) => void;
+  /** A `useBox` handle this element fills with its laid-out size. */ box?: Box;
+  /** The chart: bars, a line, or a pie. */ kind: "bar" | "line" | "pie";
+  /** The data, one number per bar, point or slice. */ values: readonly number[];
+  /** Chart colour roles, 1..16, cycled over bars and slices; a line uses the first. */ colors: readonly ColorSeries[];
+  /** The accessible name, spoken in place of its text. */ "aria-label": string;
+  /** Draw a line chart as a smooth curve. */ smooth?: boolean;
+  /** Fill under a line chart. */ area?: boolean;
+  /** The highlighted bar, point or slice; pass back what `onSelect` reports. */ selectedIndex?: number;
+  /** The lowest value the axis shows; it must contain zero and every value. */ domainMin?: number;
+  /** The highest value the axis shows; it must contain zero and every value. */ domainMax?: number;
+  /** Called with the index of the bar, point or slice a press picks. */ onSelect?: (index: number) => void;
+  /** The pie's centre and radii, as fractions of the box. */ pieLayout?: PieLayout;
+  /** How much larger the selected point's marker is drawn. */ markerEmphasisScale?: number;
+};
 export type VectorStyle = StyleGroup.Box & StyleGroup.Padding & StyleGroup.Accent & StyleGroup.Media;
 /** The roles a `<vector>` takes; reference/elements.md says where the others go. */
 export type VectorRole = "heading" | "list" | "listitem" | "alert" | "status" | "grid" | "gridcell" | "listbox" | "option" | "menu" | "progressbar" | "group" | "tooltip";
-export type VectorProps = Omit<Props, "style" | "children" | "role"> & { role?: VectorRole; style?: VectorStyle; children?: never; bleed?: BleedEdge; onLayout?: (box: BoxSize) => void; box?: Box; paths: ReadonlyArray<VectorPath>; gradients?: Readonly<Record<string, VectorGradient>>; viewBox?: readonly [number, number, number, number]; } & ({ onPointer: (event: PointerEvent) => void; pointerAxis?: "x" | "y" | "both"; } | { onPointer?: undefined; pointerAxis?: never; });
+export type VectorProps = Omit<Props, "style" | "children" | "role"> & { role?: VectorRole; style?: VectorStyle; children?: never;
+  /** On a direct child of `<page>`: extend under the safe-area insets to the screen edge, on every side or the named ones. */ bleed?: BleedEdge;
+  /** Called with its laid-out size after each change, one render behind. */ onLayout?: (box: BoxSize) => void;
+  /** A `useBox` handle this element fills with its laid-out size. */ box?: Box;
+  /** The shapes to draw: SVG path data with a fill and a stroke each. */ paths: ReadonlyArray<VectorPath>;
+  /** Up to 8 named gradients the paths use as `fill: 'url(#id)'`. */ gradients?: Readonly<Record<string, VectorGradient>>;
+  /** The drawing's coordinate box, `[x, y, width, height]`, scaled to fit the element. */ viewBox?: readonly [number, number, number, number];
+} & ({ 
+  /** Reports a single pointer over the element: down, move, up, enter, leave and cancel. */ onPointer: (event: PointerEvent) => void; 
+  /** The axis `onPointer` keeps; the other is left to the page's scroll. */ pointerAxis?: "x" | "y" | "both"; } | { 
+  /** Reports a single pointer over the element: down, move, up, enter, leave and cancel. */ onPointer?: undefined; 
+  /** The axis `onPointer` keeps; the other is left to the page's scroll. */ pointerAxis?: never; });
 export type SpanStyle = StyleGroup.Run;
-export type SpanProps = Omit<Props, "style" | "children" | "id" | "role" | "headingLevel" | "aria-valuenow" | "aria-valuemin" | "aria-valuemax" | "aria-valuetext" | "aria-activedescendant" | "aria-controls" | "aria-autocomplete" | "aria-modal" | "aria-live" | "aria-pressed" | "aria-selected" | "aria-expanded" | "aria-busy" | "aria-invalid" | "aria-required" | "aria-checked" | "aria-level" | "aria-describedby"> & { style?: SpanStyle; children?: RunChild };
+export type SpanProps = Omit<Props, "style" | "children" | "id" | "role" | "headingLevel" | "aria-valuenow" | "aria-valuemin" | "aria-valuemax" | "aria-valuetext" | "aria-activedescendant" | "aria-controls" | "aria-autocomplete" | "aria-modal" | "aria-live" | "aria-pressed" | "aria-selected" | "aria-expanded" | "aria-busy" | "aria-invalid" | "aria-required" | "aria-checked" | "aria-level" | "aria-describedby"> & { style?: SpanStyle; children?: RunChild;
+};
 export type LinkStyle = StyleGroup.Run & StyleGroup.Box & StyleGroup.Padding & StyleGroup.Flex & StyleGroup.Align & StyleGroup.Direction & StyleGroup.Gap & StyleGroup.Text & StyleGroup.Grid;
 /** The roles a `<link>` takes; reference/elements.md says where the others go. */
 export type LinkRole = "heading" | "list" | "listitem" | "alert" | "status" | "grid" | "gridcell" | "listbox" | "option" | "menu" | "progressbar" | "group" | "tooltip";
-export type LinkProps = Omit<Props, "style" | "children" | "role"> & { role?: LinkRole; style?: LinkStyle; children?: Child; onContextMenu?: (event: ContextMenuEvent) => void; onClick?: () => void; to?: LinkTarget; "aria-label"?: string; disabled?: boolean; popoverTarget?: string; interestFor?: string; };
+export type LinkProps = Omit<Props, "style" | "children" | "role"> & { role?: LinkRole; style?: LinkStyle; children?: Child;
+  /** Called for a long press or a secondary click, with where it happened. */ onContextMenu?: (event: ContextMenuEvent) => void;
+  /** Called when it is pressed: a tap, a click, Enter or Space, or a screen reader's activation. */ onClick?: () => void;
+  /** The page a press navigates to, with its params. */ to?: LinkTarget;
+  /** The accessible name, spoken in place of its text. */ "aria-label"?: string;
+  /** Refuses input and shows the disabled style; it stays in accessibility, marked unavailable. */ disabled?: boolean;
+  /** The id of a popover a press opens or closes. */ popoverTarget?: string;
+  /** The id of a `popover="hint"` shown while the pointer rests on it or it has focus. */ interestFor?: string;
+};
 export type SelectStyle = StyleGroup.Box & StyleGroup.Padding & StyleGroup.Text & StyleGroup.TextBlock & StyleGroup.Editor;
 /** The roles a `<select>` takes; reference/elements.md says where the others go. */
 export type SelectRole = "heading" | "list" | "listitem" | "alert" | "status" | "grid" | "gridcell" | "listbox" | "option" | "menu" | "progressbar" | "group" | "tooltip";
-export type SelectProps = Omit<Props, "style" | "children" | "role"> & { role?: SelectRole; style?: SelectStyle; children?: never; options: readonly ChoiceOption[]; defaultValue?: string; placeholder?: string; "aria-label"?: string; disabled?: boolean; } & ({ bind: Local<string>; value?: never; onChange?: never } | { bind?: never; value?: string; onChange?: (value: string) => void });
+export type SelectProps = Omit<Props, "style" | "children" | "role"> & { role?: SelectRole; style?: SelectStyle; children?: never;
+  /** The choices, each a value and a label. */ options: readonly ChoiceOption[];
+  /** The option an unbound select starts on; it applies once. */ defaultValue?: string;
+  /** Shown while the value is empty. */ placeholder?: string;
+  /** The accessible name, spoken in place of its text. */ "aria-label"?: string;
+  /** Refuses input and shows the disabled style; it stays in accessibility, marked unavailable. */ disabled?: boolean;
+} & ({ bind: Local<string>; value?: never; onChange?: never } | { bind?: never; value?: string; onChange?: (value: string) => void });
 export type VideoStyle = StyleGroup.Box & StyleGroup.Media & StyleGroup.ImagePlacement;
 /** The roles a `<video>` takes; reference/elements.md says where the others go. */
 export type VideoRole = "heading" | "list" | "listitem" | "alert" | "status" | "grid" | "gridcell" | "listbox" | "option" | "menu" | "progressbar" | "group" | "tooltip";
-export type VideoProps = Omit<Props, "style" | "children" | "role"> & { role?: VideoRole; style?: VideoStyle; children?: never; bleed?: BleedEdge; player?: Video; poster?: string; autoPlay?: boolean; paused?: boolean; muted?: boolean; loop?: boolean; playbackRate?: number; volume?: number; "aria-label"?: string; onLoadedMetadata?: (event: VideoMetadata) => void; onPlay?: () => void; onPlaying?: () => void; onPause?: (event: VideoPause) => void; onWaiting?: () => void; onSeeked?: (event: { readonly currentTime: number }) => void; onTimeUpdate?: (event: { readonly currentTime: number }) => void; onEnded?: () => void; onError?: (error: VideoError) => void; onRateChange?: (event: { readonly playbackRate: number }) => void; onVolumeChange?: (event: { readonly volume: number; readonly muted: boolean }) => void; onQualityChange?: (event: VideoQualityChange) => void; onFullscreenChange?: (event: { readonly fullscreen: boolean }) => void; } & ({ sources: readonly VideoSource[];  src?: never; } | { src: string;  sources?: never; } | { src?: never; sources?: never; player: Video; });
+export type VideoProps = Omit<Props, "style" | "children" | "role"> & { role?: VideoRole; style?: VideoStyle; children?: never;
+  /** On a direct child of `<page>`: extend under the safe-area insets to the screen edge, on every side or the named ones. */ bleed?: BleedEdge;
+  /** A `useVideo` player: control it from code, or show the same player in another `<video>`. */ player?: Video;
+  /** An image shown until the first frame. */ poster?: string;
+  /** Start playing once it can. */ autoPlay?: boolean;
+  /** Pause or play; applies on mount and when it changes. */ paused?: boolean;
+  /** Mute or unmute; applies on mount and when it changes. */ muted?: boolean;
+  /** Start over at the end. */ loop?: boolean;
+  /** Playback speed, 1 normal. */ playbackRate?: number;
+  /** Volume, 0..1. */ volume?: number;
+  /** The accessible name, spoken in place of its text. */ "aria-label"?: string;
+  /** Called when the duration and size are known. */ onLoadedMetadata?: (event: VideoMetadata) => void;
+  /** Called when playback is asked to start. */ onPlay?: () => void;
+  /** Called when frames start moving, after a start or a stall. */ onPlaying?: () => void;
+  /** Called when playback pauses, with why. */ onPause?: (event: VideoPause) => void;
+  /** Called when playback stalls for data. */ onWaiting?: () => void;
+  /** Called when a seek has finished, with the new time. */ onSeeked?: (event: { readonly currentTime: number }) => void;
+  /** Called as the playback time moves, a few times a second. */ onTimeUpdate?: (event: { readonly currentTime: number }) => void;
+  /** Called when playback reaches the end. */ onEnded?: () => void;
+  /** Called when the video fails to load or play. */ onError?: (error: VideoError) => void;
+  /** Called when the playback speed changes. */ onRateChange?: (event: { readonly playbackRate: number }) => void;
+  /** Called when the volume or mute changes. */ onVolumeChange?: (event: { readonly volume: number; readonly muted: boolean }) => void;
+  /** Called when a new quality is on screen. */ onQualityChange?: (event: VideoQualityChange) => void;
+  /** Called when it enters or leaves full screen. */ onFullscreenChange?: (event: { readonly fullscreen: boolean }) => void;
+} & ({ 
+  /** The same video at several qualities; not with `src`. */ sources: readonly VideoSource[];  
+  /** The video to play; not with `sources`. */ src?: never; } | { 
+  /** The video to play; not with `sources`. */ src: string;  
+  /** The same video at several qualities; not with `src`. */ sources?: never; } | { 
+  /** The video to play; not with `sources`. */ src?: never; 
+  /** The same video at several qualities; not with `src`. */ sources?: never; 
+  /** A `useVideo` player: control it from code, or show the same player in another `<video>`. */ player: Video; });
 export type WebviewStyle = StyleGroup.Box;
 /** The roles a `<webview>` takes; reference/elements.md says where the others go. */
 export type WebviewRole = "heading" | "list" | "listitem" | "alert" | "status" | "grid" | "gridcell" | "listbox" | "option" | "menu" | "progressbar" | "group" | "tooltip";
-export type WebviewProps = Omit<Props, "style" | "children" | "role"> & { role?: WebviewRole; style?: WebviewStyle; children?: never; bleed?: BleedEdge; src?: string; web?: WebView; "aria-label": string; handlesDrags?: boolean; onFullscreenChange?: (event: { readonly fullscreen: boolean }) => void; onLoad?: (event: WebViewLoad) => void; onMessage?: (message: WebViewMessage) => void; onBlocked?: (event: WebViewBlocked) => void; onError?: (error: WebViewError) => void; };
+export type WebviewProps = Omit<Props, "style" | "children" | "role"> & { role?: WebviewRole; style?: WebviewStyle; children?: never;
+  /** On a direct child of `<page>`: extend under the safe-area insets to the screen edge, on every side or the named ones. */ bleed?: BleedEdge;
+  /** The page to load. */ src?: string;
+  /** A `useWebView` document: pass the same one to each `<webview>` that shows it, keeping one live page. */ web?: WebView;
+  /** The accessible name, spoken in place of its text. */ "aria-label": string;
+  /** The web page handles its own drags (a map, a canvas); a drag starting on it never passes to the page. */ handlesDrags?: boolean;
+  /** Called when it enters or leaves full screen. */ onFullscreenChange?: (event: { readonly fullscreen: boolean }) => void;
+  /** Called when a page has loaded, with its address and title. */ onLoad?: (event: WebViewLoad) => void;
+  /** Called with what the web page posts through `window.lingxia.postMessage`. */ onMessage?: (message: WebViewMessage) => void;
+  /** Called with a navigation the host cancelled: outside trustedDomains, or not https. */ onBlocked?: (event: WebViewBlocked) => void;
+  /** Called when a page fails to load. */ onError?: (error: WebViewError) => void;
+};
 
 declare global {
   namespace JSX {

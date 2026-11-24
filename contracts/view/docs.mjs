@@ -4,7 +4,7 @@
 import { readFile, readdir, writeFile, mkdir } from 'node:fs/promises';
 import { dirname, join, relative, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { readSchema, elementStyle, rules, generate, contractsRoot, packageRoot, repositoryRoot, resolveDependency, loadDependency } from './generate.mjs';
+import { readSchema, documented, elementStyle, rules, generate, contractsRoot, packageRoot, repositoryRoot, resolveDependency, loadDependency } from './generate.mjs';
 
 const ts = (await loadDependency('typescript')).default;
 const { build } = await loadDependency('esbuild');
@@ -93,7 +93,7 @@ async function elements(schema) {
     if (element.component) out.push(`A component from \`@lingxia/view\`, rendered as the \`list\` element.`, '');
     const own = Object.entries(element.props).filter(([prop]) => !element.component?.replaces.includes(prop));
     const props = [...Object.entries(element.component?.props ?? {}), ...own];
-    if (props.length) out.push(table(['Prop', 'Type', 'Required'], props.map(([prop, entry]) => [code(prop), code(entry.type), entry.required ? 'yes' : ''])), '');
+    if (props.length) out.push(table(['Prop', 'Type', 'Required', 'Notes'], props.map(([prop, entry]) => [code(prop), code(entry.type), entry.required ? 'yes' : '', entry.doc])), '');
     else out.push('No element-specific props.', '');
     if (propNotes[name]) out.push(propNotes[name], '');
   }
@@ -123,11 +123,11 @@ function styles(schema) {
     'CSS-named keys of the `style` prop and the targets of every utility. A key is accepted only by the',
     'elements listed; anything else fails the build with `UI_STYLE` (inline) or `UI_CLASS_ELEMENT` (utility).',
     'Numbers are logical pixels. **Paint** keys are the only ones `focus:`, `active:` and `hover:` may change.', '',
-    table(['Key', 'Type', 'CSS', 'Paint', 'Accepted by'], Object.entries(schema.style).filter(([, entry]) => !entry.internal).map(([key, entry]) => {
+    table(['Key', 'Type', 'CSS', 'Paint', 'Accepted by', 'Notes'], Object.entries(schema.style).filter(([, entry]) => !entry.internal).map(([key, entry]) => {
       const by = names.filter(name => accepted[name].includes(key));
       return [code(key), code(entry.type), [entry.css ?? []].flat().map(code).join(', '), entry.paint ? 'yes' : '',
         by.length === names.length ? 'every element' : by.length > names.length / 2
-          ? `all but ${names.filter(name => !by.includes(name)).map(name => code(`<${shown(schema, name)}>`)).join(' ')}` : by.map(name => code(`<${shown(schema, name)}>`)).join(' ')];
+          ? `all but ${names.filter(name => !by.includes(name)).map(name => code(`<${shown(schema, name)}>`)).join(' ')}` : by.map(name => code(`<${shown(schema, name)}>`)).join(' '), entry.doc];
     })), '',
     '`transition` and `animation` are set only by the motion utilities (`transition-*`, `animate-*`).', '',
     '## By element', ''];
@@ -592,8 +592,9 @@ export async function errors(schema) {
  * Map of repository-relative path to generated reference page. `generated` is the
  * contract generation the pages describe; it defaults to a fresh one from `schema`.
  */
-export async function docs(schema, generated) {
-  generated ??= await generate(schema);
+export async function docs(source, generated) {
+  generated ??= await generate(source);
+  const schema = documented(source);
   const [system, { compileUtilities }] = await Promise.all([designSystem(), lowering(generated)]);
   // One lowering pass covers every utility and every variant probe.
   const names = system.getClassList().map(([name]) => name);

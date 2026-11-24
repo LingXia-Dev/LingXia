@@ -424,12 +424,6 @@ export type ClassValue = string | number | false | null | undefined | readonly C
 /** Joins class text, as `clsx`. The build checks every class it can see in the arguments. */
 export declare function cx(...values: ClassValue[]): string;
 
-export interface DataListProps<T> extends Omit<ListProps, "count" | "itemKeys" | "row" | "height"> {
-  items: readonly T[];
-  getKey: (item: T, index: number) => string;
-  renderItem: (item: T, index: number) => JSX.Element;
-  getItemHeight?: (item: T, index: number) => number;
-}
 export declare function List<T>(props: DataListProps<T>): JSX.Element;
 export interface BoxShadow { offsetX?: number; offsetY?: number; blur?: number; spread?: number; color?: string }
 /** Strokes around the box (`outer`, after an `offset` gap) and inside its border (`inner`); they never take layout space. */

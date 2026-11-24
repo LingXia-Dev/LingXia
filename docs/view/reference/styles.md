@@ -6,126 +6,126 @@ CSS-named keys of the `style` prop and the targets of every utility. A key is ac
 elements listed; anything else fails the build with `UI_STYLE` (inline) or `UI_CLASS_ELEMENT` (utility).
 Numbers are logical pixels. **Paint** keys are the only ones `focus:`, `active:` and `hover:` may change.
 
-| Key | Type | CSS | Paint | Accepted by |
-| --- | --- | --- | --- | --- |
-| `width` | `` number \| `${number}%` \| `${number}vw` \| `${number}vh` \| `${number}ch` \| "auto" \| "fit-content" \| "max-content" \| "min-content" `` | `width` |  | all but `<span>` `<link>` |
-| `height` | `` number \| `${number}%` \| `${number}vw` \| `${number}vh` \| "auto" \| "fit-content" \| "max-content" \| "min-content" `` | `height` |  | all but `<span>` `<link>` |
-| `minWidth` | `` number \| `${number}%` \| `${number}vw` \| `${number}vh` \| `${number}ch` \| "fit-content" \| "max-content" \| "min-content" `` | `min-width` |  | all but `<span>` `<link>` |
-| `minHeight` | `` number \| `${number}%` \| `${number}vw` \| `${number}vh` \| "fit-content" \| "max-content" \| "min-content" `` | `min-height` |  | all but `<span>` `<link>` |
-| `maxWidth` | `` number \| `${number}%` \| `${number}vw` \| `${number}vh` \| `${number}ch` \| "fit-content" \| "max-content" \| "min-content" `` | `max-width` |  | all but `<span>` `<link>` |
-| `aspectRatio` | `number \| "auto"` | `aspect-ratio` |  | all but `<span>` `<link>` |
-| `maxHeight` | `` number \| `${number}%` \| `${number}vw` \| `${number}vh` \| "fit-content" \| "max-content" \| "min-content" `` | `max-height` |  | all but `<span>` `<link>` |
-| `margin` | `number \| "auto"` |  |  | all but `<span>` `<link>` |
-| `marginTop` | `number \| "auto"` | `margin-top`, `margin-block-start` |  | all but `<span>` `<link>` |
-| `marginRight` | `number \| "auto"` | `margin-right` |  | all but `<span>` `<link>` |
-| `marginBottom` | `number \| "auto"` | `margin-bottom`, `margin-block-end` |  | all but `<span>` `<link>` |
-| `marginLeft` | `number \| "auto"` | `margin-left` |  | all but `<span>` `<link>` |
-| `marginInlineStart` | `number \| "auto"` | `margin-inline-start` |  | all but `<span>` `<link>` |
-| `marginInlineEnd` | `number \| "auto"` | `margin-inline-end` |  | all but `<span>` `<link>` |
-| `position` | `"relative" \| "absolute" \| "fixed" \| "sticky"` | `position` |  | all but `<span>` `<link>` |
-| `inset` | `` number \| `${number}%` `` |  |  | all but `<span>` `<link>` |
-| `top` | `` number \| `${number}%` \| "anchor(center)" `` | `top` |  | all but `<span>` `<link>` |
-| `right` | `` number \| `${number}%` \| "anchor(center)" `` | `right` |  | all but `<span>` `<link>` |
-| `bottom` | `` number \| `${number}%` \| "anchor(center)" `` | `bottom` |  | all but `<span>` `<link>` |
-| `left` | `` number \| `${number}%` \| "anchor(center)" `` | `left` |  | all but `<span>` `<link>` |
-| `insetInlineStart` | `` number \| `${number}%` \| "anchor(center)" `` | `inset-inline-start` |  | all but `<span>` `<link>` |
-| `insetInlineEnd` | `` number \| `${number}%` \| "anchor(center)" `` | `inset-inline-end` |  | all but `<span>` `<link>` |
-| `zIndex` | `number` | `z-index` |  | all but `<span>` `<link>` |
-| `positionArea` | `"bottom span-inline-end" \| "bottom span-inline-start" \| "bottom" \| "top span-inline-end" \| "top span-inline-start" \| "top" \| "inline-end span-block-end" \| "inline-end span-block-start" \| "inline-end" \| "inline-start span-block-end" \| "inline-start span-block-start" \| "inline-start"` | `position-area` |  | all but `<span>` `<link>` |
-| `flexGrow` | `number` | `flex-grow` |  | all but `<span>` `<link>` |
-| `flexShrink` | `number` | `flex-shrink` |  | all but `<span>` `<link>` |
-| `flexBasis` | `` number \| `${number}%` \| "auto" `` | `flex-basis` |  | all but `<span>` `<link>` |
-| `alignSelf` | `"flex-start" \| "start" \| "center" \| "flex-end" \| "end" \| "stretch" \| "baseline" \| "safe center" \| "safe flex-end" \| "safe end"` | `align-self` |  | all but `<span>` `<link>` |
-| `gridColumn` | `number \| string` | `grid-column` |  | all but `<span>` `<link>` |
-| `gridColumnStart` | `number \| string` | `grid-column-start` |  | all but `<span>` `<link>` |
-| `gridColumnEnd` | `number \| string` | `grid-column-end` |  | all but `<span>` `<link>` |
-| `gridRow` | `number \| string` | `grid-row` |  | all but `<span>` `<link>` |
-| `gridRowStart` | `number \| string` | `grid-row-start` |  | all but `<span>` `<link>` |
-| `gridRowEnd` | `number \| string` | `grid-row-end` |  | all but `<span>` `<link>` |
-| `justifySelf` | `"start" \| "center" \| "end" \| "stretch" \| "baseline" \| "safe center" \| "safe end"` | `justify-self` |  | all but `<span>` `<link>` |
-| `order` | `number` | `order` |  | all but `<span>` `<link>` |
-| `opacity` | `number` | `opacity` | yes | all but `<span>` `<link>` |
-| `overflow` | `"visible" \| "hidden"` | `overflow` |  | all but `<span>` `<link>` |
-| `backgroundColor` | `ColorValue \| "currentColor"` | `background-color` | yes | every element |
-| `backgroundImage` | `BackgroundGradient \| "none"` |  | yes | all but `<span>` `<link>` |
-| `borderRadius` | `number` | `border-radius` |  | all but `<span>` `<link>` |
-| `borderTopLeftRadius` | `number` | `border-top-left-radius` |  | all but `<span>` `<link>` |
-| `borderTopRightRadius` | `number` | `border-top-right-radius` |  | all but `<span>` `<link>` |
-| `borderBottomRightRadius` | `number` | `border-bottom-right-radius` |  | all but `<span>` `<link>` |
-| `borderBottomLeftRadius` | `number` | `border-bottom-left-radius` |  | all but `<span>` `<link>` |
-| `borderStartStartRadius` | `number` | `border-start-start-radius` |  | all but `<span>` `<link>` |
-| `borderStartEndRadius` | `number` | `border-start-end-radius` |  | all but `<span>` `<link>` |
-| `borderEndStartRadius` | `number` | `border-end-start-radius` |  | all but `<span>` `<link>` |
-| `borderEndEndRadius` | `number` | `border-end-end-radius` |  | all but `<span>` `<link>` |
-| `borderWidth` | `number` |  |  | all but `<span>` `<link>` |
-| `borderTopWidth` | `number` | `border-top-width`, `border-block-start-width` |  | all but `<span>` `<link>` |
-| `borderRightWidth` | `number` | `border-right-width` |  | all but `<span>` `<link>` |
-| `borderBottomWidth` | `number` | `border-bottom-width`, `border-block-end-width` |  | all but `<span>` `<link>` |
-| `borderLeftWidth` | `number` | `border-left-width` |  | all but `<span>` `<link>` |
-| `borderInlineStartWidth` | `number` | `border-inline-start-width` |  | all but `<span>` `<link>` |
-| `borderInlineEndWidth` | `number` | `border-inline-end-width` |  | all but `<span>` `<link>` |
-| `borderStyle` | `"solid" \| "dashed" \| "dotted"` | `border-style` |  | all but `<span>` `<link>` |
-| `borderColor` | `ColorValue \| "currentColor"` | `border-color` | yes | all but `<span>` `<link>` |
-| `boxShadow` | `ReadonlyArray<BoxShadow> \| "none"` |  | yes | all but `<span>` `<link>` |
-| `ring` | `Ring \| "none"` |  | yes | all but `<span>` `<link>` |
-| `backdropFilter` | `string` |  |  | all but `<span>` `<link>` |
-| `translate` | `` number \| `${number}%` \| readonly [number \| `${number}%`, number \| `${number}%`] `` |  | yes | all but `<span>` `<link>` |
-| `rotate` | `number` |  | yes | all but `<span>` `<link>` |
-| `scale` | `number \| readonly [number, number]` |  | yes | all but `<span>` `<link>` |
-| `transformOrigin` | `readonly [number, number]` |  | yes | all but `<span>` `<link>` |
-| `filter` | `string` |  |  | all but `<span>` `<link>` |
-| `padding` | `number` |  |  | all but `<image>` `<plot>` `<span>` `<link>` `<video>` `<webview>` |
-| `paddingTop` | `number` | `padding-top`, `padding-block-start` |  | all but `<image>` `<plot>` `<span>` `<link>` `<video>` `<webview>` |
-| `paddingRight` | `number` | `padding-right` |  | all but `<image>` `<plot>` `<span>` `<link>` `<video>` `<webview>` |
-| `paddingBottom` | `number` | `padding-bottom`, `padding-block-end` |  | all but `<image>` `<plot>` `<span>` `<link>` `<video>` `<webview>` |
-| `paddingLeft` | `number` | `padding-left` |  | all but `<image>` `<plot>` `<span>` `<link>` `<video>` `<webview>` |
-| `paddingInlineStart` | `number` | `padding-inline-start` |  | all but `<image>` `<plot>` `<span>` `<link>` `<video>` `<webview>` |
-| `paddingInlineEnd` | `number` | `padding-inline-end` |  | all but `<image>` `<plot>` `<span>` `<link>` `<video>` `<webview>` |
-| `display` | `"flex" \| "grid" \| "none" \| "block" \| "inline-flex" \| "inline-block"` | `display` |  | all but `<span>` `<link>` |
-| `touchTarget` | `"auto" \| "none"` |  |  | all but `<span>` `<link>` |
-| `flexDirection` | `"row" \| "column" \| "row-reverse" \| "column-reverse"` | `flex-direction` |  | `<view>` `<page>` `<button>` `<dialog>` |
-| `alignItems` | `"flex-start" \| "start" \| "center" \| "flex-end" \| "end" \| "stretch" \| "baseline" \| "safe center" \| "safe flex-end" \| "safe end"` | `align-items` |  | `<view>` `<page>` `<button>` `<scroll>` `<checkbox>` `<dialog>` |
-| `justifyContent` | `"flex-start" \| "start" \| "center" \| "flex-end" \| "end" \| "space-between" \| "space-around" \| "space-evenly" \| "safe center" \| "safe flex-end" \| "safe end"` | `justify-content` |  | `<view>` `<page>` `<button>` `<scroll>` `<checkbox>` `<dialog>` |
-| `alignContent` | `"flex-start" \| "start" \| "center" \| "flex-end" \| "end" \| "space-between" \| "space-around" \| "space-evenly" \| "stretch" \| "safe center" \| "safe flex-end" \| "safe end"` | `align-content` |  | `<view>` `<page>` `<button>` `<scroll>` `<checkbox>` `<dialog>` |
-| `flexWrap` | `"nowrap" \| "wrap" \| "wrap-reverse"` | `flex-wrap` |  | `<view>` `<page>` `<button>` `<scroll>` `<checkbox>` `<dialog>` |
-| `gap` | `number` |  |  | `<view>` `<page>` `<button>` `<scroll>` `<List>` `<checkbox>` `<radio>` `<dialog>` |
-| `rowGap` | `number` | `row-gap` |  | `<view>` `<page>` `<button>` `<scroll>` `<List>` `<checkbox>` `<radio>` `<dialog>` |
-| `columnGap` | `number` | `column-gap` |  | `<view>` `<page>` `<button>` `<scroll>` `<List>` `<checkbox>` `<radio>` `<dialog>` |
-| `gridTemplateColumns` | `number \| string` | `grid-template-columns` |  | `<view>` `<page>` `<button>` `<dialog>` |
-| `gridTemplateRows` | `number \| string` | `grid-template-rows` |  | `<view>` `<page>` `<button>` `<dialog>` |
-| `gridAutoColumns` | `string` | `grid-auto-columns` |  | `<view>` `<page>` `<button>` `<dialog>` |
-| `gridAutoRows` | `string` | `grid-auto-rows` |  | `<view>` `<page>` `<button>` `<dialog>` |
-| `gridAutoFlow` | `"row" \| "column" \| "row dense" \| "column dense"` | `grid-auto-flow` |  | `<view>` `<page>` `<button>` `<dialog>` |
-| `justifyItems` | `"start" \| "center" \| "end" \| "stretch" \| "baseline" \| "safe center" \| "safe end"` | `justify-items` |  | `<view>` `<page>` `<button>` `<dialog>` |
-| `color` | `ColorValue` | `color` | yes | all but `<image>` `<plot>` `<video>` `<webview>` |
-| `fontSize` | `number` | `font-size` |  | all but `<image>` `<slider>` `<plot>` `<vector>` `<video>` `<webview>` |
-| `fontWeight` | `number` | `font-weight` |  | all but `<image>` `<slider>` `<plot>` `<vector>` `<video>` `<webview>` |
-| `fontFamily` | `"sans-serif" \| "monospace" \| "serif" \| (string & {})` | `font-family` |  | all but `<image>` `<slider>` `<plot>` `<vector>` `<video>` `<webview>` |
-| `fontStyle` | `"normal" \| "italic"` | `font-style` |  | all but `<image>` `<slider>` `<plot>` `<vector>` `<video>` `<webview>` |
-| `lineHeight` | `` number \| `${number}px` `` | `line-height` |  | all but `<image>` `<slider>` `<plot>` `<vector>` `<span>` `<link>` `<video>` `<webview>` |
-| `letterSpacing` | `` number \| `${number}em` `` | `letter-spacing` |  | all but `<image>` `<slider>` `<plot>` `<vector>` `<video>` `<webview>` |
-| `fontVariantNumeric` | `string` |  |  | all but `<image>` `<slider>` `<plot>` `<vector>` `<video>` `<webview>` |
-| `userSelect` | `"none" \| "text" \| "all"` | `user-select` |  | all but `<image>` `<slider>` `<plot>` `<vector>` `<span>` `<link>` `<video>` `<webview>` |
-| `textAlign` | `"start" \| "end" \| "left" \| "center" \| "right" \| "justify"` | `text-align` |  | all but `<image>` `<slider>` `<plot>` `<vector>` `<span>` `<link>` `<video>` `<webview>` |
-| `textDecorationLine` | `"none" \| "line-through" \| "underline"` | `text-decoration-line` |  | all but `<image>` `<slider>` `<plot>` `<vector>` `<video>` `<webview>` |
-| `textDecorationStyle` | `"solid" \| "dashed" \| "dotted"` | `text-decoration-style` |  | all but `<image>` `<slider>` `<plot>` `<vector>` `<video>` `<webview>` |
-| `textDecorationColor` | `ColorValue \| "currentColor"` | `text-decoration-color` |  | all but `<image>` `<slider>` `<plot>` `<vector>` `<video>` `<webview>` |
-| `textTransform` | `"none" \| "uppercase" \| "lowercase" \| "capitalize"` | `text-transform` |  | all but `<image>` `<slider>` `<plot>` `<vector>` `<span>` `<link>` `<video>` `<webview>` |
-| `backgroundClip` | `"border-box" \| "text"` | `background-clip` |  | `<text>` `<select>` |
-| `whiteSpace` | `"normal" \| "nowrap" \| "pre" \| "pre-wrap" \| "pre-line"` | `white-space` |  | all but `<image>` `<slider>` `<plot>` `<vector>` `<span>` `<link>` `<video>` `<webview>` |
-| `wordBreak` | `"normal" \| "break-all" \| "keep-all"` | `word-break` |  | all but `<image>` `<slider>` `<plot>` `<vector>` `<span>` `<link>` `<video>` `<webview>` |
-| `overflowWrap` | `"normal" \| "break-word" \| "anywhere"` | `overflow-wrap` |  | all but `<image>` `<slider>` `<plot>` `<vector>` `<span>` `<link>` `<video>` `<webview>` |
-| `lineClamp` | `number` | `-webkit-line-clamp` |  | `<text>` `<select>` |
-| `textOverflow` | `"clip" \| "ellipsis"` | `text-overflow` |  | `<text>` `<input>` `<select>` |
-| `overflowX` | `"auto"` | `overflow-x` |  | `<scroll>` |
-| `overflowY` | `"auto"` | `overflow-y` |  | `<scroll>` |
-| `overscrollBehavior` | `"auto" \| "contain" \| "none"` | `overscroll-behavior`, `overscroll-behavior-x`, `overscroll-behavior-y` |  | `<scroll>` `<List>` |
-| `scrollSnapStop` | `"normal" \| "always"` | `scroll-snap-stop` |  | `<scroll>` `<List>` |
-| `scrollSnapType` | `"none" \| "x" \| "y"` | `scroll-snap-type` |  | `<scroll>` `<List>` |
-| `scrollSnapAlign` | `"none" \| "start" \| "center" \| "end"` | `scroll-snap-align` |  | all but `<span>` `<link>` |
-| `placeholderColor` | `ColorValue` |  | yes | `<input>` `<textarea>` `<select>` |
-| `objectFit` | `"cover" \| "contain" \| "fill"` | `object-fit` |  | `<image>` `<vector>` `<video>` |
-| `objectPosition` | `string` | `object-position` |  | `<image>` `<video>` |
+| Key | Type | CSS | Paint | Accepted by | Notes |
+| --- | --- | --- | --- | --- | --- |
+| `width` | `` number \| `${number}%` \| `${number}vw` \| `${number}vh` \| `${number}ch` \| "auto" \| "fit-content" \| "max-content" \| "min-content" `` | `width` |  | all but `<span>` `<link>` | Width in logical pixels, a percent of the parent, a viewport unit, `ch`, or an intrinsic size. |
+| `height` | `` number \| `${number}%` \| `${number}vw` \| `${number}vh` \| "auto" \| "fit-content" \| "max-content" \| "min-content" `` | `height` |  | all but `<span>` `<link>` | Height in logical pixels, a percent of the parent, a viewport unit, or an intrinsic size. |
+| `minWidth` | `` number \| `${number}%` \| `${number}vw` \| `${number}vh` \| `${number}ch` \| "fit-content" \| "max-content" \| "min-content" `` | `min-width` |  | all but `<span>` `<link>` | The smallest width layout may give it. |
+| `minHeight` | `` number \| `${number}%` \| `${number}vw` \| `${number}vh` \| "fit-content" \| "max-content" \| "min-content" `` | `min-height` |  | all but `<span>` `<link>` | The smallest height layout may give it. |
+| `maxWidth` | `` number \| `${number}%` \| `${number}vw` \| `${number}vh` \| `${number}ch` \| "fit-content" \| "max-content" \| "min-content" `` | `max-width` |  | all but `<span>` `<link>` | The largest width layout may give it. |
+| `aspectRatio` | `number \| "auto"` | `aspect-ratio` |  | all but `<span>` `<link>` | Width divided by height, kept when only one of them is set. |
+| `maxHeight` | `` number \| `${number}%` \| `${number}vw` \| `${number}vh` \| "fit-content" \| "max-content" \| "min-content" `` | `max-height` |  | all but `<span>` `<link>` | The largest height layout may give it. |
+| `margin` | `number \| "auto"` |  |  | all but `<span>` `<link>` | Space outside the border on every side; `auto` takes the free space. |
+| `marginTop` | `number \| "auto"` | `margin-top`, `margin-block-start` |  | all but `<span>` `<link>` | Space outside the top border. |
+| `marginRight` | `number \| "auto"` | `margin-right` |  | all but `<span>` `<link>` | Space outside the right border. |
+| `marginBottom` | `number \| "auto"` | `margin-bottom`, `margin-block-end` |  | all but `<span>` `<link>` | Space outside the bottom border. |
+| `marginLeft` | `number \| "auto"` | `margin-left` |  | all but `<span>` `<link>` | Space outside the left border. |
+| `marginInlineStart` | `number \| "auto"` | `margin-inline-start` |  | all but `<span>` `<link>` | Space outside the start border: left in left-to-right text, right in right-to-left. |
+| `marginInlineEnd` | `number \| "auto"` | `margin-inline-end` |  | all but `<span>` `<link>` | Space outside the end border: right in left-to-right text, left in right-to-left. |
+| `position` | `"relative" \| "absolute" \| "fixed" \| "sticky"` | `position` |  | all but `<span>` `<link>` | `relative` offsets it from its place; `absolute` places it in its parent; `fixed` in the screen; `sticky` sticks inside its scroll. |
+| `inset` | `` number \| `${number}%` `` |  |  | all but `<span>` `<link>` | Offset of every edge from the containing box, for a positioned element. |
+| `top` | `` number \| `${number}%` \| "anchor(center)" `` | `top` |  | all but `<span>` `<link>` | Offset of the top edge; `anchor(center)` centres an anchored popover on its anchor. |
+| `right` | `` number \| `${number}%` \| "anchor(center)" `` | `right` |  | all but `<span>` `<link>` | Offset of the right edge; `anchor(center)` centres an anchored popover on its anchor. |
+| `bottom` | `` number \| `${number}%` \| "anchor(center)" `` | `bottom` |  | all but `<span>` `<link>` | Offset of the bottom edge; `anchor(center)` centres an anchored popover on its anchor. |
+| `left` | `` number \| `${number}%` \| "anchor(center)" `` | `left` |  | all but `<span>` `<link>` | Offset of the left edge; `anchor(center)` centres an anchored popover on its anchor. |
+| `insetInlineStart` | `` number \| `${number}%` \| "anchor(center)" `` | `inset-inline-start` |  | all but `<span>` `<link>` | Offset of the start edge, following the text direction. |
+| `insetInlineEnd` | `` number \| `${number}%` \| "anchor(center)" `` | `inset-inline-end` |  | all but `<span>` `<link>` | Offset of the end edge, following the text direction. |
+| `zIndex` | `number` | `z-index` |  | all but `<span>` `<link>` | Paint order among siblings; higher paints over lower. |
+| `positionArea` | `"bottom span-inline-end" \| "bottom span-inline-start" \| "bottom" \| "top span-inline-end" \| "top span-inline-start" \| "top" \| "inline-end span-block-end" \| "inline-end span-block-start" \| "inline-end" \| "inline-start span-block-end" \| "inline-start span-block-start" \| "inline-start"` | `position-area` |  | all but `<span>` `<link>` | Where an anchored popover sits against its anchor; it flips when that side lacks room. |
+| `flexGrow` | `number` | `flex-grow` |  | all but `<span>` `<link>` | Share of the free space along the main axis it takes. |
+| `flexShrink` | `number` | `flex-shrink` |  | all but `<span>` `<link>` | Share of the overflow along the main axis it gives up; 0 keeps its size. |
+| `flexBasis` | `` number \| `${number}%` \| "auto" `` | `flex-basis` |  | all but `<span>` `<link>` | Main-axis size before free space is shared out. |
+| `alignSelf` | `"flex-start" \| "start" \| "center" \| "flex-end" \| "end" \| "stretch" \| "baseline" \| "safe center" \| "safe flex-end" \| "safe end"` | `align-self` |  | all but `<span>` `<link>` | Cross-axis alignment of this item, overriding its parent's `alignItems`. |
+| `gridColumn` | `number \| string` | `grid-column` |  | all but `<span>` `<link>` | Grid columns it spans, as `start / end` or `span n`. |
+| `gridColumnStart` | `number \| string` | `grid-column-start` |  | all but `<span>` `<link>` | Grid line its column span starts at. |
+| `gridColumnEnd` | `number \| string` | `grid-column-end` |  | all but `<span>` `<link>` | Grid line its column span ends at, or `span n`. |
+| `gridRow` | `number \| string` | `grid-row` |  | all but `<span>` `<link>` | Grid rows it spans, as `start / end` or `span n`. |
+| `gridRowStart` | `number \| string` | `grid-row-start` |  | all but `<span>` `<link>` | Grid line its row span starts at. |
+| `gridRowEnd` | `number \| string` | `grid-row-end` |  | all but `<span>` `<link>` | Grid line its row span ends at, or `span n`. |
+| `justifySelf` | `"start" \| "center" \| "end" \| "stretch" \| "baseline" \| "safe center" \| "safe end"` | `justify-self` |  | all but `<span>` `<link>` | Inline alignment of this grid item in its cell. |
+| `order` | `number` | `order` |  | all but `<span>` `<link>` | Layout order among flex or grid siblings; lower comes first. |
+| `opacity` | `number` | `opacity` | yes | all but `<span>` `<link>` | Opacity of the element and its subtree, 0..1. |
+| `overflow` | `"visible" \| "hidden"` | `overflow` |  | all but `<span>` `<link>` | `hidden` clips the subtree to the border box and its radius. |
+| `backgroundColor` | `ColorValue \| "currentColor"` | `background-color` | yes | every element | Fill behind the content, as a colour role. |
+| `backgroundImage` | `BackgroundGradient \| "none"` |  | yes | all but `<span>` `<link>` | A linear, radial or conic gradient painted behind the content. |
+| `borderRadius` | `number` | `border-radius` |  | all but `<span>` `<link>` | Corner radius of every corner. |
+| `borderTopLeftRadius` | `number` | `border-top-left-radius` |  | all but `<span>` `<link>` | Radius of the top-left corner. |
+| `borderTopRightRadius` | `number` | `border-top-right-radius` |  | all but `<span>` `<link>` | Radius of the top-right corner. |
+| `borderBottomRightRadius` | `number` | `border-bottom-right-radius` |  | all but `<span>` `<link>` | Radius of the bottom-right corner. |
+| `borderBottomLeftRadius` | `number` | `border-bottom-left-radius` |  | all but `<span>` `<link>` | Radius of the bottom-left corner. |
+| `borderStartStartRadius` | `number` | `border-start-start-radius` |  | all but `<span>` `<link>` | Radius of the top corner on the start side. |
+| `borderStartEndRadius` | `number` | `border-start-end-radius` |  | all but `<span>` `<link>` | Radius of the top corner on the end side. |
+| `borderEndStartRadius` | `number` | `border-end-start-radius` |  | all but `<span>` `<link>` | Radius of the bottom corner on the start side. |
+| `borderEndEndRadius` | `number` | `border-end-end-radius` |  | all but `<span>` `<link>` | Radius of the bottom corner on the end side. |
+| `borderWidth` | `number` |  |  | all but `<span>` `<link>` | Border width on every side. |
+| `borderTopWidth` | `number` | `border-top-width`, `border-block-start-width` |  | all but `<span>` `<link>` | Width of the top border. |
+| `borderRightWidth` | `number` | `border-right-width` |  | all but `<span>` `<link>` | Width of the right border. |
+| `borderBottomWidth` | `number` | `border-bottom-width`, `border-block-end-width` |  | all but `<span>` `<link>` | Width of the bottom border. |
+| `borderLeftWidth` | `number` | `border-left-width` |  | all but `<span>` `<link>` | Width of the left border. |
+| `borderInlineStartWidth` | `number` | `border-inline-start-width` |  | all but `<span>` `<link>` | Width of the start-side border, following the text direction. |
+| `borderInlineEndWidth` | `number` | `border-inline-end-width` |  | all but `<span>` `<link>` | Width of the end-side border, following the text direction. |
+| `borderStyle` | `"solid" \| "dashed" \| "dotted"` | `border-style` |  | all but `<span>` `<link>` | Line style of every border. |
+| `borderColor` | `ColorValue \| "currentColor"` | `border-color` | yes | all but `<span>` `<link>` | Colour of every border, as a colour role. |
+| `boxShadow` | `ReadonlyArray<BoxShadow> \| "none"` |  | yes | all but `<span>` `<link>` | Shadows painted outside the border box, up to the first listed on top. |
+| `ring` | `Ring \| "none"` |  | yes | all but `<span>` `<link>` | A focus-style outline: an outer ring with an optional gap, and an inner ring. |
+| `backdropFilter` | `string` |  |  | all but `<span>` `<link>` | Filter applied to what is behind it, such as `blur(12px)` for frosted glass. |
+| `translate` | `` number \| `${number}%` \| readonly [number \| `${number}%`, number \| `${number}%`] `` |  | yes | all but `<span>` `<link>` | Moves it without changing layout, in pixels or percents of its own size. |
+| `rotate` | `number` |  | yes | all but `<span>` `<link>` | Rotation in degrees around `transformOrigin`, without changing layout. |
+| `scale` | `number \| readonly [number, number]` |  | yes | all but `<span>` `<link>` | Scale, uniform or `[x, y]`, around `transformOrigin`, without changing layout. |
+| `transformOrigin` | `readonly [number, number]` |  | yes | all but `<span>` `<link>` | The point `rotate` and `scale` turn around, as fractions `[x, y]` of its box. |
+| `filter` | `string` |  |  | all but `<span>` `<link>` | Filter applied to its own pixels, such as `blur(4px)` or `grayscale(1)`. |
+| `padding` | `number` |  |  | all but `<image>` `<plot>` `<span>` `<link>` `<video>` `<webview>` | Space inside the border on every side. |
+| `paddingTop` | `number` | `padding-top`, `padding-block-start` |  | all but `<image>` `<plot>` `<span>` `<link>` `<video>` `<webview>` | Space inside the top border. |
+| `paddingRight` | `number` | `padding-right` |  | all but `<image>` `<plot>` `<span>` `<link>` `<video>` `<webview>` | Space inside the right border. |
+| `paddingBottom` | `number` | `padding-bottom`, `padding-block-end` |  | all but `<image>` `<plot>` `<span>` `<link>` `<video>` `<webview>` | Space inside the bottom border. |
+| `paddingLeft` | `number` | `padding-left` |  | all but `<image>` `<plot>` `<span>` `<link>` `<video>` `<webview>` | Space inside the left border. |
+| `paddingInlineStart` | `number` | `padding-inline-start` |  | all but `<image>` `<plot>` `<span>` `<link>` `<video>` `<webview>` | Space inside the start border, following the text direction. |
+| `paddingInlineEnd` | `number` | `padding-inline-end` |  | all but `<image>` `<plot>` `<span>` `<link>` `<video>` `<webview>` | Space inside the end border, following the text direction. |
+| `display` | `"flex" \| "grid" \| "none" \| "block" \| "inline-flex" \| "inline-block"` | `display` |  | all but `<span>` `<link>` | `flex` (the default) or `grid` lays out children; `none` removes it from layout. |
+| `touchTarget` | `"auto" \| "none"` |  |  | all but `<span>` `<link>` | `none` keeps presses to its own box instead of widening it to the platform touch target. |
+| `flexDirection` | `"row" \| "column" \| "row-reverse" \| "column-reverse"` | `flex-direction` |  | `<view>` `<page>` `<button>` `<dialog>` | Main axis of a flex container; `<view>` is a column unless set. |
+| `alignItems` | `"flex-start" \| "start" \| "center" \| "flex-end" \| "end" \| "stretch" \| "baseline" \| "safe center" \| "safe flex-end" \| "safe end"` | `align-items` |  | `<view>` `<page>` `<button>` `<scroll>` `<checkbox>` `<dialog>` | Cross-axis alignment of the children. |
+| `justifyContent` | `"flex-start" \| "start" \| "center" \| "flex-end" \| "end" \| "space-between" \| "space-around" \| "space-evenly" \| "safe center" \| "safe flex-end" \| "safe end"` | `justify-content` |  | `<view>` `<page>` `<button>` `<scroll>` `<checkbox>` `<dialog>` | Main-axis placement of the children and the space between them. |
+| `alignContent` | `"flex-start" \| "start" \| "center" \| "flex-end" \| "end" \| "space-between" \| "space-around" \| "space-evenly" \| "stretch" \| "safe center" \| "safe flex-end" \| "safe end"` | `align-content` |  | `<view>` `<page>` `<button>` `<scroll>` `<checkbox>` `<dialog>` | Placement of wrapped lines or grid tracks in the cross axis. |
+| `flexWrap` | `"nowrap" \| "wrap" \| "wrap-reverse"` | `flex-wrap` |  | `<view>` `<page>` `<button>` `<scroll>` `<checkbox>` `<dialog>` | Whether children wrap onto more lines when they do not fit. |
+| `gap` | `number` |  |  | `<view>` `<page>` `<button>` `<scroll>` `<List>` `<checkbox>` `<radio>` `<dialog>` | Space between children in both axes. |
+| `rowGap` | `number` | `row-gap` |  | `<view>` `<page>` `<button>` `<scroll>` `<List>` `<checkbox>` `<radio>` `<dialog>` | Space between rows. |
+| `columnGap` | `number` | `column-gap` |  | `<view>` `<page>` `<button>` `<scroll>` `<List>` `<checkbox>` `<radio>` `<dialog>` | Space between columns. |
+| `gridTemplateColumns` | `number \| string` | `grid-template-columns` |  | `<view>` `<page>` `<button>` `<dialog>` | Column tracks of a grid: a count of equal columns, or a track list. |
+| `gridTemplateRows` | `number \| string` | `grid-template-rows` |  | `<view>` `<page>` `<button>` `<dialog>` | Row tracks of a grid: a count of equal rows, or a track list. |
+| `gridAutoColumns` | `string` | `grid-auto-columns` |  | `<view>` `<page>` `<button>` `<dialog>` | Size of columns the grid creates on its own. |
+| `gridAutoRows` | `string` | `grid-auto-rows` |  | `<view>` `<page>` `<button>` `<dialog>` | Size of rows the grid creates on its own. |
+| `gridAutoFlow` | `"row" \| "column" \| "row dense" \| "column dense"` | `grid-auto-flow` |  | `<view>` `<page>` `<button>` `<dialog>` | Direction items without a place fill the grid in; `dense` fills earlier holes. |
+| `justifyItems` | `"start" \| "center" \| "end" \| "stretch" \| "baseline" \| "safe center" \| "safe end"` | `justify-items` |  | `<view>` `<page>` `<button>` `<dialog>` | Inline alignment of every grid item in its cell. |
+| `color` | `ColorValue` | `color` | yes | all but `<image>` `<plot>` `<video>` `<webview>` | Text and icon colour, as a colour role; inherited. |
+| `fontSize` | `number` | `font-size` |  | all but `<image>` `<slider>` `<plot>` `<vector>` `<video>` `<webview>` | Font size in logical pixels, scaled by the system text size; inherited. |
+| `fontWeight` | `number` | `font-weight` |  | all but `<image>` `<slider>` `<plot>` `<vector>` `<video>` `<webview>` | Font weight, 1..1000; inherited. |
+| `fontFamily` | `"sans-serif" \| "monospace" \| "serif" \| (string & {})` | `font-family` |  | all but `<image>` `<slider>` `<plot>` `<vector>` `<video>` `<webview>` | A generic family or a font the app declares; inherited. |
+| `fontStyle` | `"normal" \| "italic"` | `font-style` |  | all but `<image>` `<slider>` `<plot>` `<vector>` `<video>` `<webview>` | Upright or italic; inherited. |
+| `lineHeight` | `` number \| `${number}px` `` | `line-height` |  | all but `<image>` `<slider>` `<plot>` `<vector>` `<span>` `<link>` `<video>` `<webview>` | Line height as a multiple of the font size, or in pixels; inherited. |
+| `letterSpacing` | `` number \| `${number}em` `` | `letter-spacing` |  | all but `<image>` `<slider>` `<plot>` `<vector>` `<video>` `<webview>` | Extra space between letters, in pixels or `em`; inherited. |
+| `fontVariantNumeric` | `string` |  |  | all but `<image>` `<slider>` `<plot>` `<vector>` `<video>` `<webview>` | Numeric glyph variants such as `tabular-nums`; inherited. |
+| `userSelect` | `"none" \| "text" \| "all"` | `user-select` |  | all but `<image>` `<slider>` `<plot>` `<vector>` `<span>` `<link>` `<video>` `<webview>` | Whether its text can be selected and copied; inherited. |
+| `textAlign` | `"start" \| "end" \| "left" \| "center" \| "right" \| "justify"` | `text-align` |  | all but `<image>` `<slider>` `<plot>` `<vector>` `<span>` `<link>` `<video>` `<webview>` | Horizontal alignment of lines; `start` and `end` follow the text direction. |
+| `textDecorationLine` | `"none" \| "line-through" \| "underline"` | `text-decoration-line` |  | all but `<image>` `<slider>` `<plot>` `<vector>` `<video>` `<webview>` | Underline or strike-through. |
+| `textDecorationStyle` | `"solid" \| "dashed" \| "dotted"` | `text-decoration-style` |  | all but `<image>` `<slider>` `<plot>` `<vector>` `<video>` `<webview>` | Line style of the decoration. |
+| `textDecorationColor` | `ColorValue \| "currentColor"` | `text-decoration-color` |  | all but `<image>` `<slider>` `<plot>` `<vector>` `<video>` `<webview>` | Colour of the decoration, as a colour role. |
+| `textTransform` | `"none" \| "uppercase" \| "lowercase" \| "capitalize"` | `text-transform` |  | all but `<image>` `<slider>` `<plot>` `<vector>` `<span>` `<link>` `<video>` `<webview>` | Case change applied when shown; the text itself is unchanged. |
+| `backgroundClip` | `"border-box" \| "text"` | `background-clip` |  | `<text>` `<select>` | `text` paints the background through the glyphs only. |
+| `whiteSpace` | `"normal" \| "nowrap" \| "pre" \| "pre-wrap" \| "pre-line"` | `white-space` |  | all but `<image>` `<slider>` `<plot>` `<vector>` `<span>` `<link>` `<video>` `<webview>` | How spaces and newlines collapse and whether lines wrap. |
+| `wordBreak` | `"normal" \| "break-all" \| "keep-all"` | `word-break` |  | all but `<image>` `<slider>` `<plot>` `<vector>` `<span>` `<link>` `<video>` `<webview>` | Where words may break: anywhere (`break-all`), or never inside CJK runs (`keep-all`). |
+| `overflowWrap` | `"normal" \| "break-word" \| "anywhere"` | `overflow-wrap` |  | all but `<image>` `<slider>` `<plot>` `<vector>` `<span>` `<link>` `<video>` `<webview>` | Whether a word longer than the line breaks inside rather than overflowing. |
+| `lineClamp` | `number` | `-webkit-line-clamp` |  | `<text>` `<select>` | Lines shown at most; the rest is cut with an ellipsis. |
+| `textOverflow` | `"clip" \| "ellipsis"` | `text-overflow` |  | `<text>` `<input>` `<select>` | `ellipsis` ends a cut line with an ellipsis. |
+| `overflowX` | `"auto"` | `overflow-x` |  | `<scroll>` | `auto` scrolls a `<scroll>` horizontally. |
+| `overflowY` | `"auto"` | `overflow-y` |  | `<scroll>` | `auto` scrolls a `<scroll>` vertically. |
+| `overscrollBehavior` | `"auto" \| "contain" \| "none"` | `overscroll-behavior`, `overscroll-behavior-x`, `overscroll-behavior-y` |  | `<scroll>` `<List>` | `contain` keeps a scroll at its edge from moving an outer one; `none` also drops the bounce. |
+| `scrollSnapStop` | `"normal" \| "always"` | `scroll-snap-stop` |  | `<scroll>` `<List>` | `always` stops a swipe at each snap point instead of skipping past. |
+| `scrollSnapType` | `"none" \| "x" \| "y"` | `scroll-snap-type` |  | `<scroll>` `<List>` | Axis a scroll snaps along, to its children's `scrollSnapAlign`. |
+| `scrollSnapAlign` | `"none" \| "start" \| "center" \| "end"` | `scroll-snap-align` |  | all but `<span>` `<link>` | Edge of this child a snapping scroll rests on. |
+| `placeholderColor` | `ColorValue` |  | yes | `<input>` `<textarea>` `<select>` | Colour of an editor's placeholder, as a colour role. |
+| `objectFit` | `"cover" \| "contain" \| "fill"` | `object-fit` |  | `<image>` `<vector>` `<video>` | How the picture fills its box: `cover` crops, `contain` letterboxes, `fill` stretches. |
+| `objectPosition` | `string` | `object-position` |  | `<image>` `<video>` | Where the picture sits in its box when it does not fill it, such as `top` or `25% 75%`. |
 
 `transition` and `animation` are set only by the motion utilities (`transition-*`, `animate-*`).
 
