@@ -103,7 +103,8 @@ test('positioning, layering and clipping are native box properties', () => {
 test('outer shadows, gradients and backdrop filters are bounded composite values', () => {
   assert.deepEqual(JSON.parse(style({ boxShadow: [{ offsetY: 2, blur: 4 }] }).boxShadow), [{ offsetX: 0, offsetY: 2, blur: 4, spread: 0, color: 'currentColor' }]);
   for (const value of [null, {}, 'red', [{ inset: true }], [{ blur: -1 }], [{ blur: 257 }], [{ spread: 1025 }], [{ offsetX: null }], [{ color: 'red' }], Array(9).fill({})])
-    rejects({ boxShadow: value }, /UI_SHADOW/);
+    rejects({ boxShadow: value }, /UI_SHADOW: boxShadow takes 'none' or 0\.\.8 layers of .*?; got /);
+  rejects({ ring: { outer: { width: -1 } } }, /UI_SHADOW: ring takes 'none' or \{ outer\?: .*?; got \{"outer":\{"width":-1\}\}/);
   assert.equal(style({ boxShadow: 'none' }).boxShadow, 'none');
   const gradient = { direction: 'right', stops: [{ offset: 0, color: '#ff0000' }, { offset: 1, color: '#0000ff80' }] };
   assert.deepEqual(JSON.parse(style({ backgroundImage: gradient }).backgroundGradient), { ...gradient, colorSpace: 'srgb' });

@@ -743,7 +743,10 @@ function resolveElement(tag, original, children, identity, depth, parent) {
       check.label(props.accessibilityLabel, 'UI_SELECT');
       const options = selectOptions(props);
       if (props.value !== undefined && typeof props.value !== 'string') throw Error('UI_SELECT: value must be a string');
-      if (props.placeholder !== undefined && !validInputText(props.placeholder)) throw Error('UI_SELECT: invalid placeholder');
+      if (props.placeholder !== undefined && !validInputText(props.placeholder)) {
+        const got = typeof props.placeholder === 'number' ? String(props.placeholder) : (JSON.stringify(props.placeholder) ?? typeof props.placeholder).slice(0, 40);
+        throw Error(`UI_SELECT: placeholder takes a UTF-8 string up to 65536 bytes; got ${got}`);
+      }
       if (props.defaultValue !== undefined && (props.value !== undefined || !options.some(option => option.value === props.defaultValue)))
         throw Error('UI_SELECT: defaultValue names an option of a select without value or bind');
       // The core takes the default once per element and shows each later choice itself.

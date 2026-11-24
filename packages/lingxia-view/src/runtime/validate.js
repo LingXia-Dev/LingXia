@@ -135,7 +135,7 @@ export function slider(props) {
   const { min, max, step, value } = props;
   if (![min, max, step, ...(value === undefined ? [] : [value])].every(v => typeof v === 'number' && Number.isFinite(v) && Math.abs(v) <= 1e9) || max <= min || step <= 0 ||
       step > max - min || (max - min) / step > 1e6 || min + step === min || max - step === max)
-    throw Error('UI_SLIDER: invalid range or precision');
+    throw Error(`UI_SLIDER: range takes finite min < max within ±1e9 and step > 0 (<= max - min, at most 1e6 steps); got min=${show(min)}, max=${show(max)}, step=${show(step)}${value === undefined ? '' : `, value=${show(value)}`}`);
   label(props.accessibilityLabel, 'UI_SLIDER', true);
   if (value !== undefined) props.value = sliderValue(props, value);
 }

@@ -570,6 +570,7 @@ test('select sends its options and shows the chosen label or its placeholder', (
     assert.throws(() => describe(() => h('select', { options: bad, 'aria-label': 'Plan' }), {}), /UI_SELECT/);
   const loose = { value: 'm', set() {} };
   assert.throws(() => describe(() => h('select', { options, bind: loose, 'aria-label': 'Plan' }), {}), /^Error: UI_SELECT: bind requires a mounted string useLocal cell/);
+  assert.throws(() => describe(() => h('select', { options, placeholder: 123, 'aria-label': 'Plan' }), {}), /UI_SELECT: placeholder takes a UTF-8 string up to 65536 bytes; got 123/);
 });
 
 test('a textarea takes rows and maxRows as an autosizing range', () => {

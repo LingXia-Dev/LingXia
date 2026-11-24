@@ -1,7 +1,12 @@
 import { isRole } from './color.js';
+const show = value => {
+  if (typeof value === 'number') return String(value);
+  try { return (JSON.stringify(value) ?? typeof value).slice(0, 40); }
+  catch { return typeof value; }
+};
 export function normalizeShadows(value) {
   if (value === 'none') return value;
-  const invalid = () => { throw Error('UI_SHADOW: invalid box shadow'); };
+  const invalid = () => { throw Error(`UI_SHADOW: boxShadow takes 'none' or 0..8 layers of { offsetX?, offsetY?, blur?: 0..256, spread?, color? }; got ${show(value)}`); };
   if (!Array.isArray(value) || value.length > 8) invalid();
   return value.map(shadow => {
     if (!shadow || typeof shadow !== 'object' || Array.isArray(shadow) ||
@@ -28,7 +33,7 @@ const ringColor = (value, invalid) => {
 /** A ring as `{ outer?: { width, offset, color, offsetColor? }, inner?: { width, color } }`, or `'none'`. */
 export function normalizeRing(value) {
   if (value === 'none') return value;
-  const invalid = () => { throw Error('UI_SHADOW: invalid ring'); };
+  const invalid = () => { throw Error(`UI_SHADOW: ring takes 'none' or { outer?: { width: 0..1024, offset?: 0..1024, color?, offsetColor? }, inner?: { width: 0..1024, color? } }; got ${show(value)}`); };
   const plain = (object, keys) => object && typeof object === 'object' && !Array.isArray(object) && Object.keys(object).every(key => keys.includes(key));
   const size = number => typeof number === 'number' && Number.isFinite(number) && number >= 0 && number <= 1024;
   if (!plain(value, ['outer', 'inner'])) invalid();

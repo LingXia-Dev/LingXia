@@ -36,6 +36,7 @@ test('slider validates bounds, finite numeric binding, labels and disabled callb
   for (const props of [{ value: null }, { value: '1' }, { value: NaN }, { min: null }, { max: 0 }, { step: 0 }, { step: 101 }, { step: 0.00000001 },
     { min: 1e9, max: 1e9 + 1 }, { 'aria-label': '' }, { onChange: 1 }, { bind: { value: 1, set() {} } }])
     assert.throws(() => describe(() => h('slider', { 'aria-label': 'Range', ...props }), {}), /UI_SLIDER/);
+  assert.throws(() => describe(() => h('slider', { 'aria-label': 'Range', min: 10, max: 5, step: 1 }), {}), /UI_SLIDER: range takes finite min < max within ±1e9 and step > 0 .*?; got min=10, max=5, step=1/);
   assert.throws(() => describe(() => h('slider', { 'aria-label': 'Range', bind: useLocal('bad', '1') }), {}), /UI_SLIDER/);
   assert.throws(() => describe(() => h('slider', { 'aria-label': 'Range' }, 'label'), {}), /UI_CHILD/);
   const disabled = rendered(() => h('slider', { 'aria-label': 'Range', disabled: true, onChange() {} }));
