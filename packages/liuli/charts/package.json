@@ -11,12 +11,10 @@
     "!src/**/*.doc.ts",
     "!src/**/*.examples.tsx",
     "!src/testing",
-    "tokens.css",
     "catalog.json",
     "docs"
   ],
   "lingxia": {
-    "tokens": "./tokens.css",
     "catalog": "./catalog.json"
   },
   "exports": {

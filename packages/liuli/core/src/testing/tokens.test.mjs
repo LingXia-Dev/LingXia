@@ -69,10 +69,3 @@ test('every shadow layer is the theme\'s shadow role at an alpha', () => {
     for (const layer of layers) assert.match(layer, /--alpha\(var\(--color-shadow\) \/ \d+%\)$/, `${name}: ${layer.trim()}`);
   }
 });
-
-test('charts declares the same type scale as core, line for line', () => {
-  const charts = readFileSync(new URL('../../../charts/tokens.css', import.meta.url), 'utf8');
-  const declared = [...charts.matchAll(/^\s*--([\w-]+):\s*([^;]+);/gm)];
-  assert.ok(declared.length > 20, 'the ramp and its aliases');
-  for (const [, name, value] of declared) assert.equal(value.trim(), token(name), `charts --${name}`);
-});
