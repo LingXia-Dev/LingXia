@@ -30,7 +30,7 @@ const SAME_ELEMENTS = new Set(['filter', 'slice', 'sort', 'reverse', 'toSorted',
 
 function trace(checker, root, classes, known = NO_KNOWN, calls) {
   const pieces = [], untraced = [];
-  const miss = (node, reason) => untraced.push({ node, reason });
+  const miss = (node, reason, built = false) => untraced.push({ node, reason, built });
   const flow = calls?.flow ?? new Flow(checker, calls);
   const visit = (node, seen, k) => {
     if (!node) return;
@@ -59,12 +59,12 @@ function trace(checker, root, classes, known = NO_KNOWN, calls) {
         next(node.left);
         return next(node.right);
       }
-      return miss(node, `${quote(node)} is computed with \`${ts.tokenToString(operator)}\` at run time`);
+      return miss(node, `${quote(node)} is computed with \`${ts.tokenToString(operator)}\` at run time`, true);
     }
     if (ts.isIdentifier(node) || ts.isPropertyAccessExpression(node) || ts.isElementAccessExpression(node) || (ts.isCallExpression(node) && !isCx(checker, node.expression))) {
       if (!classes && ts.isCallExpression(node)) return;
       const found = flow.values(node, k);
-      if (found.why) return miss(found.at ?? node, found.why);
+      if (found.why) return miss(found.at ?? node, found.why, found.built);
       for (const value of found.values) (value.crossed ? elsewhere : next)(value.node);
       return;
     }
@@ -146,7 +146,7 @@ function trace(checker, root, classes, known = NO_KNOWN, calls) {
         if (!joins[index]) return;
         miss(expression, sets[index] && count > MAX_COMBINATIONS
           ? `${quote(node)} expands to ${count} class names (limit ${MAX_COMBINATIONS})`
-          : `${quote(expression)} is joined into a class name at run time${sets[index] ? '' : ', and its values are not known to the build'}`);
+          : `${quote(expression)} is joined into a class name at run time${sets[index] ? '' : ', and its values are not known to the build'}`, true);
       });
     }
     for (const [index, part] of parts.entries()) {
@@ -247,7 +247,7 @@ class Flow {
       const keys = memberKeys(node, known);
       const owners = this.objects(node.expression, known, seen);
       if (owners.array) return { why: `${quote(node)} is an array element, which the build does not follow` };
-      if (owners.why) return { why: owners.why, at: owners.at ?? node.expression };
+      if (owners.why) return { why: owners.why, at: owners.at ?? node.expression, built: owners.built };
       if (keys !== BY_KEY) return this.members(owners.values, keys, node, seen);
       // A computed key may read any member, so every one is checked: all of a map of class text,
       // or all of a map of maps that is indexed again.
@@ -339,7 +339,7 @@ class Flow {
     const out = [];
     for (const { node: owner, crossed } of owners) {
       const found = this.member(owner, keys, seen);
-      if (found.why) return { why: found.why, at };
+      if (found.why) return { why: found.why, at, built: found.built };
       out.push(...found.values.map(value => ({ node: value.node, crossed: crossed || value.crossed })));
     }
     return { values: out };
@@ -358,7 +358,7 @@ class Flow {
         if (inner.why) {
           // As on an element, an unread spread writes only the keys its type declares, not an index signature's.
           if (keys && !declares(this.checker, property.expression, keys)) continue;
-          return { why: inner.why };
+          return { why: inner.why, built: inner.built };
         }
         const values = this.members(inner.values, keys, property, seen);
         if (values.why) return values;
@@ -410,12 +410,12 @@ class Flow {
     if (callback) {
       if (index !== 0) return { why: `${quote(at)} is the index or array argument of a \`${callback.method}\` callback` };
       const elements = this.elements(callback.array);
-      if (elements.why) return { why: `${quote(at)} is an element of ${quote(callback.array)}, which the build cannot read`, at };
+      if (elements.why) return { why: `${quote(at)} is an element of ${quote(callback.array)}, which the build cannot read`, at, built: elements.built };
       return this.path(elements.values.map(value => ({ node: value.node, crossed: true })), path, at);
     }
     const uses = this.calls?.uses(fn);
     if (!uses) return { why: `${quote(at)} is a parameter; its value comes from each caller` };
-    if (uses.runtime) return { why: `${quote(at)} comes from the page's View, known only at run time`, at };
+    if (uses.runtime) return { why: `${quote(at)} comes from the page's View, known only at run time`, at, built: true };
     if (uses.escape) return { why: `${quote(at)} is a parameter of a function that is also used as a value (${location(uses.escape)}), so its callers are not known`, at };
     const roots = [...defaults];
     for (const use of uses.sites) {
@@ -462,7 +462,7 @@ class Flow {
           const found = this.item(value.node, key.index);
           return found.why ? found : { values: found.values.map(item => ({ ...item, crossed: item.crossed || value.crossed })) };
         }));
-        if (items.why) return { why: items.why, at: items.at ?? at };
+        if (items.why) return { why: items.why, at: items.at ?? at, built: items.built };
         values = items.values;
         continue;
       }
@@ -470,7 +470,7 @@ class Flow {
         const found = this.objects(value.node, NO_KNOWN);
         return found.why ? found : { values: found.values.map(owner => ({ ...owner, crossed: owner.crossed || value.crossed })) };
       }));
-      if (owners.why) return { why: owners.why, at: owners.at ?? at };
+      if (owners.why) return { why: owners.why, at: owners.at ?? at, built: owners.built };
       const next = this.members(owners.values, [key], at, new Set());
       if (next.why) return next;
       values = next.values;
@@ -815,7 +815,7 @@ function collectClassUsage(file, checker, untraced, calls) {
     // An unread spread carries classes only through a declared `className`, not an index signature.
     if (!values.why) for (const value of values.values) record(value.node, tag, true);
     else if (declares(checker, node.expression, ['className']))
-      untraced.push({ node: values.at ?? node.expression, reason: `the spread ${quote(node.expression)} may carry a className: ${values.why}` });
+      untraced.push({ node: values.at ?? node.expression, reason: `the spread ${quote(node.expression)} may carry a className: ${values.why}`, built: Boolean(values.built) });
   };
   try {
     const { classNames, spreads } = fileIndex(file);
@@ -854,18 +854,20 @@ function holds(kept, calls) {
 }
 
 /** Class usages across `files`, and each place the build cannot follow a className to literals,
- * as `{ location, expression, reason }`, once per place and reason. */
+ * as `{ location, expression, reason, built }`, once per place and reason. `built` marks a value
+ * assembled at run time (concatenation, a joined template hole, the page's data), whose classes the
+ * table may lack; any other place is whole words the tracer could not follow. */
 export function collectClassAnalysis(files, checker) {
   const untraced = [];
   const calls = callIndex(files, checker);
   calls.flow = new Flow(checker, calls);
   const usages = files.flatMap(file => collectClassUsage(file, checker, untraced, calls));
   const seen = new Set(), places = [];
-  for (const { node, reason } of untraced) {
+  for (const { node, reason, built = false } of untraced) {
     const at = location(node), key = `${at}\0${reason}`;
     if (seen.has(key)) continue;
     seen.add(key);
-    places.push({ location: at, expression: node.getText(node.getSourceFile()).replace(/\s+/g, ' '), reason });
+    places.push({ location: at, expression: node.getText(node.getSourceFile()).replace(/\s+/g, ' '), reason, built });
   }
   return { usages, untraced: places };
 }

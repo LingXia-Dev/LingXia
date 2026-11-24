@@ -61,8 +61,8 @@ for (const app of APPS) {
       const result = await buildPages(app.root, pages, outDir, {}, { dev: false });
       const uiErrors = result.warnings.filter(w => /UI_(?!PERF\b|INERT\b|STYLE_STATIC\b|BUDGET\b|POPOVER\b)/.test(w));
       assert.deepEqual(uiErrors, [], `${app.name} emitted unexpected UI_* diagnostics`);
-      const tracerFailures = result.untracedClasses.filter(place => /^the class tracer failed/.test(place.reason));
-      assert.deepEqual(tracerFailures, [], `${app.name}: the class tracer failed on some code`);
+      // Every className is followed to literals, so strictClasses would warn nowhere either.
+      assert.deepEqual(result.untracedClasses, [], `${app.name}: some className is not followed to literals`);
 
       for (const page of pages) {
         const jsPath = join(outDir, page.replace(/\.tsx$/, '.js'));

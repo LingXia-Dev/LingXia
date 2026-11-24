@@ -500,10 +500,11 @@ async function packageTokens(root, packages, problems) {
  */
 /**
  * `literalColors` admits hex and palette colours for renderer test fixtures whose probes read exact
- * pixels; app builds never set it. `messages` is the compiled i18n module to bundle and
+ * pixels; app builds never set it. `strictClasses` warns at every className not followed to literals,
+ * not only at those built at run time. `messages` is the compiled i18n module to bundle and
  * `inputsRecord` the file a dev build records its inputs in; both default under `<root>/.lingxia`.
  */
-export async function buildPages(root, pages, output, catalogs = {}, { dev = false, literalColors = false, messages: messagesPath, inputsRecord } = {}) {
+export async function buildPages(root, pages, output, catalogs = {}, { dev = false, literalColors = false, strictClasses = false, messages: messagesPath, inputsRecord } = {}) {
   const { version } = JSON.parse(await readFile(new URL('../package.json', import.meta.url), 'utf8'));
   root = await realpath(resolve(root)); output = resolve(output);
   // Every page's authoring problems are collected, so one build names all of them.
@@ -683,6 +684,14 @@ export async function buildPages(root, pages, output, catalogs = {}, { dev = fal
         .map(path => path.split('\\').join('/'));
     }
     if (config) await writeAtomic(join(output, `${base}.json`), await readFile(configPath));
+  }
+  // A value built at run time may name classes the table lacks; strictClasses also names each className not followed to literals.
+  const classWarnings = [...untracedClasses.values()].filter(place => place.built || strictClasses)
+    .map(place => `${place.location}: UI_CLASS: ${place.reason}; ${place.built ? 'its classes exist only at run time, so the table may lack them' : 'write it where the build can follow it to literals'}`);
+  if (classWarnings.length) {
+    const lines = report(classWarnings, '');
+    warnings.push(...lines.text.split('\n'));
+    console.warn(`${lines.count} class warning${lines.count === 1 ? '' : 's'}\n${lines.text}`);
   }
   if (failures.length) throw Error(failures.join('\n'));
   if (Object.keys(inputs).length) {
