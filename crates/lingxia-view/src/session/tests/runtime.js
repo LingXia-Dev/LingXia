@@ -32,6 +32,7 @@
     readsHostContext: () => readsHostContext,
     receiveActionResponse: () => receiveActionResponse,
     registerCatalogues: () => registerCatalogues,
+    registerLanguageCatalogue: () => registerLanguageCatalogue,
     requestLeave: () => requestLeave,
     reset: () => reset,
     reveal: () => reveal,
@@ -445,7 +446,7 @@
     if (previous === void 0 || value === null || typeof value !== "object") return immutable(value, depth);
     if (Array.isArray(value)) {
       const old2 = Array.isArray(previous) ? previous : [];
-      let same5 = old2.length === value.length;
+      let same5 = Array.isArray(previous) && old2.length === value.length;
       const next = value.map((v, i) => {
         const item = shared(v, old2[i], depth + 1);
         same5 && (same5 = item === old2[i]);
@@ -1739,6 +1740,15 @@
   function registerCatalogues(compiled) {
     catalogues = compiled;
     formatters.clear();
+  }
+  function registerLanguageCatalogue(tag, messages, formatterFn, source3) {
+    if (!catalogues) catalogues = { source: source3 ?? tag, languages: {}, formatter: formatterFn };
+    else {
+      if (source3) catalogues.source = source3;
+      if (formatterFn) catalogues.formatter = formatterFn;
+    }
+    catalogues.languages[tag] = messages;
+    formatters.delete(tag);
   }
   function catalogueFor(language) {
     const tags2 = Object.keys(catalogues.languages);
@@ -6797,6 +6807,7 @@
   }
 
   // src/host.js
+  globalThis.__lingxiaRegisterCatalogue = registerLanguageCatalogue;
   function unboundFieldText(kind, iso3, opts) {
     if (typeof iso3 !== "string") return "";
     try {

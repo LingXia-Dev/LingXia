@@ -1629,7 +1629,9 @@ impl PageInstance {
                 _ => {}
             }
             if event == PageLifecycleEvent::OnUnload {
-                self.inner.unloaded_tx.send_modify(|v| *v = v.wrapping_add(1));
+                self.inner
+                    .unloaded_tx
+                    .send_modify(|v| *v = v.wrapping_add(1));
             }
 
             if let Err(e) = lxapp.executor.call_page_service_event(
@@ -2348,6 +2350,14 @@ impl PageInstance {
     /// The owning lxapp's bundled theme pack JSON, if it ships one.
     pub fn gpu_theme_pack(&self) -> Option<String> {
         self.owning_lxapp().read_theme_pack()
+    }
+
+    /// Returns a reader for this lxapp's shared View chunks (`_view/<id>.js`, `_view/<id>/<lang>.js`).
+    pub fn gpu_chunk_reader(
+        &self,
+    ) -> std::sync::Arc<dyn Fn(&str) -> Result<String, LxAppError> + Send + Sync> {
+        let app = self.owning_lxapp();
+        std::sync::Arc::new(move |path| app.read_gpu_chunk(path))
     }
 
     /// Resolve package or managed image bytes on the host's resource worker.

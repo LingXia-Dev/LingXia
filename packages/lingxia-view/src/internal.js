@@ -11,7 +11,7 @@ export { useLocal, useView, useId, useAction, useRequest, useStream, useChannel,
 export { configureActions, takeActionRequests, receiveActionResponse, takeActionErrors, takeHandlerFailure, setLoudFailures, requestLeave } from './runtime/actions.js';
 export { measureFrames } from './runtime/frames.js';
 export { configureClasses } from './style/classes.js';
-export { registerCatalogues } from './runtime/i18n.js';
+export { registerCatalogues, registerLanguageCatalogue } from './runtime/i18n.js';
 export { configureFonts } from './runtime/fonts.js';
 export { configureSourceMap } from './runtime/errors.js';
 export { enableHotSwap } from './runtime/hot-swap.js';

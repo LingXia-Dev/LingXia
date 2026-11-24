@@ -68,6 +68,14 @@ pub struct ViewSession {
     eval_phases: bool,
     /// The module's cache key, under which its lowered styles persist for the next isolate.
     module: crate::engine::bytecode::Key,
+    /// Per-lxapp chunk loader for `lx:view/*` imports and per-language catalogues.
+    chunks: Option<crate::engine::chunks::ChunkLoader>,
+    /// Dev build id carried in the page's compatibility manifest, when present.
+    chunk_build_id: Option<String>,
+    /// Per-language catalogue specifier prefix (e.g. `lx:view/<hash>`), when split out of the chunk.
+    catalogue_chunk: Option<String>,
+    /// Language tags already evaluated into this isolate.
+    loaded_languages: std::collections::HashSet<String>,
     /// The first commit ran and its lowered styles are not yet offered to the cache.
     lowered_due: Cell<bool>,
     /// Lowered styles were offered once; later frames only add what the seed never serves.
@@ -304,7 +312,17 @@ impl ViewSession {
     pub fn new_with_logic(source: &str, logic: bool) -> Result<Self, String> {
         let runtime = RongJS::runtime();
         let budget = crate::engine::budget::Budget::new(&runtime);
-        Self::with_runtime(runtime, budget, source, logic, None)
+        Self::with_runtime(runtime, budget, source, logic, None, None)
+    }
+
+    pub fn new_with_chunks(
+        source: &str,
+        logic: bool,
+        chunks: crate::engine::chunks::ChunkLoader,
+    ) -> Result<Self, String> {
+        let runtime = RongJS::runtime();
+        let budget = crate::engine::budget::Budget::new(&runtime);
+        Self::with_runtime(runtime, budget, source, logic, None, Some(chunks))
     }
 
     pub(crate) fn with_runtime(
@@ -313,8 +331,12 @@ impl ViewSession {
         source: &str,
         logic: bool,
         console: Option<crate::engine::console::ConsoleSink>,
+        chunks: Option<crate::engine::chunks::ChunkLoader>,
     ) -> Result<Self, String> {
         crate::engine::compatibility::validate(source)?;
+        let manifest = crate::engine::compatibility::parse_manifest(source)?;
+        let chunk_build_id = manifest.as_ref().and_then(|m| m.chunk_build_id.clone());
+        let catalogue_chunk = manifest.as_ref().and_then(|m| m.catalogue_chunk.clone());
         let context = runtime.context();
         let renderer = Renderer::default();
         let video_scope = renderer.videos.scope();
@@ -325,8 +347,12 @@ impl ViewSession {
             crate::engine::console::install(&context, console.clone())?;
             video::install(&context, video_scope, video_orientation)?;
             crate::engine::defer_collections(&context);
-            let module =
-                <crate::engine::Active as crate::engine::Engine>::evaluate_module(&context, source)?;
+            let module = <crate::engine::Active as crate::engine::Engine>::evaluate_module(
+                &context,
+                source,
+                chunks.clone(),
+                chunk_build_id.clone(),
+            )?;
             let valid: bool = context.eval(Source::from_bytes(
                 "['Render','Prepare','Commit','Discard','Reset','Dispatch','CreateView'].every(name=>typeof globalThis['__lingxia'+name]==='function')"
             )).map_err(|e| e.to_string())?;
@@ -364,6 +390,10 @@ impl ViewSession {
             uncollected: Cell::new(0),
             eval_phases,
             module,
+            chunks,
+            chunk_build_id,
+            catalogue_chunk,
+            loaded_languages: std::collections::HashSet::new(),
             lowered_due: Cell::new(false),
             lowered_taken: Cell::new(false),
             overruns: Cell::new(0),

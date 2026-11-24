@@ -13,6 +13,9 @@ import { takeLowered, seedLowered } from './runtime/elements.js';
 import { closeAfterExpired, closeOrphans, closePassing, dismissHints, interest, ownedPopovers } from './runtime/toplayer.js';
 import { takeSpans } from './runtime/profile.js';
 import { fieldText } from './runtime/calendar.js';
+import { registerLanguageCatalogue } from './runtime/i18n.js';
+
+globalThis.__lingxiaRegisterCatalogue = registerLanguageCatalogue;
 
 // An unbound date or time field's own value in the user's clock and language, as a bound one
 // shows it. The core asks while it prepares a frame, before the commit, so its own language and

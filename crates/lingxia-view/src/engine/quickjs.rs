@@ -4,14 +4,27 @@ use super::{Engine, Feature};
 pub(crate) struct QuickJs;
 
 impl Engine for QuickJs {
-    const FEATURES: &'static [Feature] = &[Feature::CandidateTransactions, Feature::BoundedJobs];
+    const FEATURES: &'static [Feature] = &[
+        Feature::CandidateTransactions,
+        Feature::BoundedJobs,
+        Feature::ViewChunks,
+    ];
     const PREEMPTIBLE: bool = true;
 
     fn evaluate_module(
         context: &super::JSContext,
         source: &str,
+        chunks: Option<super::chunks::ChunkLoader>,
+        expected_dev_build_id: Option<String>,
     ) -> Result<super::bytecode::Key, String> {
-        evaluate(context, source)
+        evaluate(context, "page.js", source, chunks, expected_dev_build_id)
+    }
+    fn evaluate_auxiliary_module(
+        context: &super::JSContext,
+        specifier: &str,
+        source: &str,
+    ) -> Result<super::bytecode::Key, String> {
+        evaluate(context, specifier, source, None, None)
     }
     fn drain_jobs(context: &super::JSContext) -> Result<(), String> {
         drain_jobs(context)
@@ -70,62 +83,153 @@ fn discard_jobs(context: &super::JSContext) {
     }
 }
 
-fn evaluate(context: &super::JSContext, source: &str) -> Result<super::bytecode::Key, String> {
+fn evaluate(
+    context: &super::JSContext,
+    filename: &str,
+    source: &str,
+    chunks: Option<super::chunks::ChunkLoader>,
+    expected_dev_build_id: Option<String>,
+) -> Result<super::bytecode::Key, String> {
     use super::bytecode::{self, Outcome};
     use rong_core::engine::JSContextImpl;
     use rong_quickjs_sys as qjs;
 
     let ctx = *context.as_ref().as_raw();
+    let runtime = unsafe { qjs::JS_GetRuntime(ctx) };
     // The caller confines this context to its View worker and scopes the interrupt budget.
     // This isolate is renderer-owned; cleanup restores this same stack limit.
     unsafe {
-        qjs::JS_SetMaxStackSize(qjs::JS_GetRuntime(ctx), qjs::JS_DEFAULT_STACK_SIZE as usize)
+        qjs::JS_SetMaxStackSize(runtime, qjs::JS_DEFAULT_STACK_SIZE as usize);
+        qjs::JS_SetModuleLoaderFunc(
+            runtime,
+            Some(normalize_module),
+            Some(load_module),
+            std::ptr::null_mut(),
+        );
     };
-    let started = std::time::Instant::now();
-    let key = bytecode::key(source);
-    let cached = bytecode::load(&key).and_then(|(bytes, outcome)| {
-        let module = unsafe { read(ctx, &bytes) };
-        if module.is_none() {
-            bytecode::forget(&key);
-        }
-        Some((module?, outcome, bytes.len()))
-    });
-    let (module, outcome, size) = match cached {
-        Some(cached) => cached,
-        None => {
-            let module = unsafe { compile(ctx, source)? };
-            let bytes = unsafe { write(ctx, module) };
-            let size = bytes.as_ref().map_or(0, Vec::len);
-            if let Some(bytes) = bytes {
-                bytecode::store(key, bytes);
+    let (result, chunk_error) = super::chunks::with_loader(chunks, expected_dev_build_id, || {
+        let started = std::time::Instant::now();
+        let key = bytecode::key(source);
+        let cached = bytecode::load(&key).and_then(|(bytes, outcome)| {
+            let module = unsafe { read(ctx, &bytes) };
+            if module.is_none() {
+                bytecode::forget(&key);
             }
-            (module, Outcome::Miss, size)
-        }
-    };
-    bytecode::report(outcome, size, started.elapsed());
-    unsafe { run(ctx, module) }.map(|()| key)
+            Some((module?, outcome, bytes.len()))
+        });
+        let (module, outcome, size) = match cached {
+            Some(cached) => cached,
+            None => {
+                let module = unsafe { compile(ctx, filename, source)? };
+                let bytes = unsafe { write(ctx, module) };
+                let size = bytes.as_ref().map_or(0, Vec::len);
+                if let Some(bytes) = bytes {
+                    bytecode::store(key, bytes);
+                }
+                (module, Outcome::Miss, size)
+            }
+        };
+        bytecode::report(outcome, size, started.elapsed());
+        unsafe { run(ctx, module) }.map(|()| key)
+    });
+    match (result, chunk_error) {
+        (Ok(key), _) => Ok(key),
+        (Err(_), Some(err)) => Err(err),
+        (Err(err), None) => Err(err),
+    }
 }
 
 unsafe extern "C" {
     // Frees what `JS_WriteObject` allocated; the generated bindings leave it out.
     fn js_free(ctx: *mut rong_quickjs_sys::JSContext, ptr: *mut std::ffi::c_void);
+    fn js_strdup(
+        ctx: *mut rong_quickjs_sys::JSContext,
+        str_: *const std::os::raw::c_char,
+    ) -> *mut std::os::raw::c_char;
+}
+
+/// Preserves the raw specifier so `load_module` enforces the exact `lx:view/*` allowlist
+/// without QuickJS rewriting relative paths against `page.js`.
+unsafe extern "C" fn normalize_module(
+    ctx: *mut rong_quickjs_sys::JSContext,
+    _base_name: *const std::os::raw::c_char,
+    module_name: *const std::os::raw::c_char,
+    _opaque: *mut std::ffi::c_void,
+) -> *mut std::os::raw::c_char {
+    unsafe { js_strdup(ctx, module_name) }
+}
+
+/// Resolves `lx:view/*` imports through the active chunk loader and per-module bytecode cache.
+unsafe extern "C" fn load_module(
+    ctx: *mut rong_quickjs_sys::JSContext,
+    module_name: *const std::os::raw::c_char,
+    _opaque: *mut std::ffi::c_void,
+) -> *mut rong_quickjs_sys::JSModuleDef {
+    use super::bytecode::{self, Outcome};
+    use rong_quickjs_sys as qjs;
+
+    let specifier = unsafe { std::ffi::CStr::from_ptr(module_name) }
+        .to_string_lossy()
+        .into_owned();
+    let source = match super::chunks::load_active(&specifier) {
+        Ok(source) => source,
+        Err(err) => {
+            super::chunks::record_error(err);
+            return std::ptr::null_mut();
+        }
+    };
+    let started = std::time::Instant::now();
+    let key = bytecode::key(&source);
+    if let Some((bytes, outcome)) = bytecode::load(&key) {
+        let val = unsafe {
+            qjs::JS_ReadObject(
+                ctx,
+                bytes.as_ptr(),
+                bytes.len(),
+                qjs::JS_READ_OBJ_BYTECODE as i32,
+            )
+        };
+        if !unsafe { qjs::QJS_IsException(ctx, val) } {
+            bytecode::report(outcome, bytes.len(), started.elapsed());
+            return unsafe { val.u.ptr as *mut qjs::JSModuleDef };
+        }
+        unsafe { qjs::JS_FreeValue(ctx, qjs::JS_GetException(ctx)) };
+        bytecode::forget(&key);
+    }
+    let val = match unsafe { compile(ctx, &specifier, &source) } {
+        Ok(val) => val,
+        Err(err) => {
+            super::chunks::record_error(err);
+            return std::ptr::null_mut();
+        }
+    };
+    let bytes = unsafe { write(ctx, val) };
+    let size = bytes.as_ref().map_or(0, Vec::len);
+    if let Some(bytes) = bytes {
+        bytecode::store(key, bytes);
+    }
+    bytecode::report(Outcome::Miss, size, started.elapsed());
+    unsafe { val.u.ptr as *mut qjs::JSModuleDef }
 }
 
 /// Parse and resolve without running; `run` evaluates the returned module.
 unsafe fn compile(
     ctx: *mut rong_quickjs_sys::JSContext,
+    filename: &str,
     source: &str,
 ) -> Result<rong_quickjs_sys::JSValue, String> {
     use rong_quickjs_sys as qjs;
     let mut code = source.as_bytes().to_vec();
     // QuickJS requires a trailing NUL even when an explicit source length is supplied.
     code.push(0);
+    let fname = std::ffi::CString::new(filename)
+        .unwrap_or_else(|_| std::ffi::CString::new("page.js").unwrap());
     unsafe {
         let module = qjs::JS_Eval(
             ctx,
             code.as_ptr().cast(),
             source.len(),
-            c"page.js".as_ptr(),
+            fname.as_ptr(),
             (qjs::JS_EVAL_TYPE_MODULE | qjs::JS_EVAL_FLAG_COMPILE_ONLY) as i32,
         );
         if qjs::QJS_IsException(ctx, module) {

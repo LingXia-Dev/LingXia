@@ -12,6 +12,7 @@ import { vectorPathProblems } from './vector-paths.mjs';
 import { transformedHolderProblems } from './transformed-holders.mjs';
 import { sourceChecker, moduleChecker, parseSource } from './source.mjs';
 import { moduleBanner } from './compatibility.mjs';
+import { resolveChunkPolicy, discoverSharedPackages, buildSharedChunk, packageProxySource } from './chunks.mjs';
 import { compileUtilities, tailwindWarm } from './tailwind.mjs';
 import { nearestSupported } from './suggest.mjs';
 import { loadStylesheet, validateTokens, fontFaces } from './stylesheets.mjs';
@@ -442,7 +443,7 @@ async function packageTokens(root, packages, problems) {
  * `literalColors` admits hex and palette colours for renderer test fixtures whose probes read exact
  * pixels; app builds never set it.
  */
-export async function buildPages(root, pages, output, catalogs = {}, { dev = false, literalColors = false } = {}) {
+export async function buildPages(root, pages, output, catalogs = {}, { dev = false, literalColors = false, chunks, minRuntime } = {}) {
   const { version } = JSON.parse(await readFile(new URL('../package.json', import.meta.url), 'utf8'));
   root = await realpath(resolve(root)); output = resolve(output);
   // Every page's authoring problems are collected, so one build names all of them.
@@ -454,7 +455,20 @@ export async function buildPages(root, pages, output, catalogs = {}, { dev = fal
   // The lxapp build compiles i18n/ here; registering it before the page module loads lets
   // `t` run in the first render.
   const compiledMessages = join(root, '.lingxia', 'i18n', 'index.js');
-  const messages = existsSync(compiledMessages)
+  const policy = await resolveChunkPolicy(root, { chunks, minRuntime });
+  if (policy.note) console.warn(policy.note);
+  let chunk = null;
+  if (policy.split) {
+    const sharedPackages = await discoverSharedPackages(root, pages, {
+      tsconfig, runtimeRoot, publicEntry, jsx, compiledMessages,
+    });
+    chunk = await buildSharedChunk(root, output, {
+      version, dev, literalColors, tsconfig, runtime, publicEntry, host, jsx, runtimeRoot,
+      compiledMessages, sharedPackages, analyse, writeAtomic,
+    });
+    if (dev && chunk.chunkInputs.length) inputs['lx:view'] = chunk.chunkInputs;
+  }
+  const messages = !chunk && existsSync(compiledMessages)
     ? `import * as messages from ${JSON.stringify(compiledMessages)}; import { registerCatalogues } from ${JSON.stringify(runtime)}; registerCatalogues(messages);`
     : '';
   for (const page of pages) {
@@ -470,15 +484,51 @@ export async function buildPages(root, pages, output, catalogs = {}, { dev = fal
       throw Error(`${page}: invalid GPU action metadata`);
     const candidates = new Set(), themes = new Map(), sourceFiles = [], problems = [], fonts = [], tokenPackages = new Map();
     let bundled;
+    const pageEntry = chunk
+      ? `import { render } from ${JSON.stringify(source)}; import { publishHost, configureClasses, configureFonts, configureSourceMap, enableHotSwap } from ${JSON.stringify(chunk.specifier)}; publishHost(render, ${JSON.stringify(catalog)}, ${JSON.stringify(base.split('\\').join('/'))});`
+      : `${messages}import { render } from ${JSON.stringify(source)}; import { publishHost } from ${JSON.stringify(host)}; export { configureClasses, configureFonts, configureSourceMap, enableHotSwap } from ${JSON.stringify(runtime)}; publishHost(render, ${JSON.stringify(catalog)}, ${JSON.stringify(base.split('\\').join('/'))});`;
+    const pageBanner = chunk
+      ? moduleBanner(version, {
+          requiredFeatures: ['view-chunks'],
+          ...(chunk.chunkBuildId ? { chunkBuildId: chunk.chunkBuildId } : {}),
+          ...(chunk.catalogueChunk ? { catalogueChunk: chunk.catalogueChunk } : {}),
+        })
+      : moduleBanner(version);
     try {
       bundled = await build({
-        stdin: { contents: `${messages}import { render } from ${JSON.stringify(source)}; import { publishHost } from ${JSON.stringify(host)}; export { configureClasses, configureFonts, configureSourceMap, enableHotSwap } from ${JSON.stringify(runtime)}; publishHost(render, ${JSON.stringify(catalog)}, ${JSON.stringify(base.split('\\').join('/'))});`, resolveDir: root },
-        bundle: true, write: false, format: 'esm', target: 'es2020', jsxFactory: 'h', jsxFragment: 'Fragment', inject: [jsx], logLevel: 'silent',
+        stdin: { contents: pageEntry, resolveDir: root },
+        bundle: true, write: false, format: 'esm', target: 'es2020', jsxFactory: 'h', jsxFragment: 'Fragment',
+        inject: [chunk ? chunk.jsxShim : jsx],
+        ...(chunk ? { external: ['lx:view/*'], minify: !dev } : {}),
+        logLevel: 'silent',
         tsconfigRaw: tsconfig,
         // Dev builds keep a source map so runtime errors name the author's line.
         ...(dev ? { sourcemap: 'external', absWorkingDir: root, outfile: join(root, 'page.js'), metafile: true } : {}),
-        alias: { '@lingxia/view': publicEntry },
+        alias: chunk ? {} : { '@lingxia/view': publicEntry },
         plugins: [{ name: 'lingxia-view-language', setup(builder) {
+          if (chunk) {
+            builder.onResolve({ filter: /^@lingxia\/view$/ }, () => ({ path: chunk.specifier, external: true }));
+            if (chunk.sharedByPath.size) {
+              builder.onResolve({ filter: /.*/ }, async args => {
+                if (args.pluginData?.skipShared || args.path.startsWith('lx:view/') || args.namespace === 'lx-pkg') return;
+                const resolved = await builder.resolve(args.path, {
+                  resolveDir: args.resolveDir,
+                  kind: args.kind,
+                  pluginData: { skipShared: true },
+                });
+                if (!resolved.path) return;
+                const key = resolved.path.toLowerCase();
+                if (chunk.sharedByPath.has(key)) return { path: key, namespace: 'lx-pkg' };
+              });
+              builder.onLoad({ filter: /.*/, namespace: 'lx-pkg' }, ({ path }) => {
+                const entry = chunk.sharedByPath.get(path);
+                const names = chunk.pkgCandidates.get(entry.abs);
+                if (names) for (const n of names) candidates.add(n);
+                for (const [k, owner] of chunk.pkgTokenPackages) tokenPackages.set(k, owner);
+                return { contents: packageProxySource(chunk.specifier, entry), loader: 'js' };
+              });
+            }
+          }
           builder.onLoad({ filter: /\.css$/ }, async ({ path }) => {
             const stylesheet = await loadStylesheet(path);
             validateTokens(stylesheet);
@@ -511,7 +561,7 @@ export async function buildPages(root, pages, output, catalogs = {}, { dev = fal
             return { contents: analysed.annotated, loader, resolveDir: dirname(path) };
           });
         } }],
-        banner: { js: moduleBanner(version) },
+        banner: { js: pageBanner },
       });
     } catch (error) {
       if (!problems.length) throw error;
@@ -601,7 +651,7 @@ export async function buildPages(root, pages, output, catalogs = {}, { dev = fal
     const path = join(root, '.lingxia', 'gpu-inputs.json');
     // A page deleted since its last build leaves the record; an edit it shared would plan it again.
     const previous = Object.fromEntries(Object.entries(await readRecord(path))
-      .filter(([page, files]) => Array.isArray(files) && existsSync(resolve(root, page))));
+      .filter(([page, files]) => Array.isArray(files) && (page === 'lx:view' || existsSync(resolve(root, page)))));
     await mkdir(dirname(path), { recursive: true });
     await writeAtomic(path, JSON.stringify({ ...previous, ...inputs }, null, 1) + '\n');
   }

@@ -121,7 +121,42 @@ impl ViewSession {
         {
             self.warm.set(true);
         }
+        if let Some(language) = value["language"].as_str() {
+            self.ensure_language_catalogue(language)?;
+        }
         self.environment = value;
+        Ok(())
+    }
+
+    /// Synchronously evaluates the per-language catalogue module (`lx:view/<id>/<lang>`) into
+    /// this isolate between frames when the page uses split catalogues.
+    pub(super) fn ensure_language_catalogue(&mut self, language: &str) -> Result<(), String> {
+        let (Some(prefix), Some(loader)) = (&self.catalogue_chunk, &self.chunks) else {
+            return Ok(());
+        };
+        let trimmed = language.trim();
+        if trimmed.is_empty() || self.loaded_languages.contains(trimmed) {
+            return Ok(());
+        }
+        if let Some((specifier, source)) = crate::engine::chunks::load_language_module(
+            prefix,
+            trimmed,
+            loader,
+            self.chunk_build_id.as_deref(),
+        )? {
+            let (outcome, _) =
+                self.budget
+                    .run(Duration::from_secs(1), Duration::from_secs(1), || {
+                        <crate::engine::Active as crate::engine::Engine>::evaluate_auxiliary_module(
+                            &self.context,
+                            &specifier,
+                            &source,
+                        )?;
+                        <crate::engine::Active as crate::engine::Engine>::drain_jobs(&self.context)
+                    });
+            outcome?;
+            self.loaded_languages.insert(trimmed.to_owned());
+        }
         Ok(())
     }
 

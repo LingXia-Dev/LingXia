@@ -46,9 +46,11 @@ fn inputs(dir: &Path) -> Option<Arc<Inputs>> {
     Some(inputs)
 }
 
+const CHUNK_KEY: &str = "lx:view";
+
 /// A page deleted since its last build: the record outlives it until the next dev build.
 fn built(dir: &Path, page: &str) -> bool {
-    dir.join(page).is_file()
+    page == CHUNK_KEY || dir.join(page).is_file()
 }
 
 /// The inputs of `dir`'s GPU pages that lie outside it: linked packages' sources and token files.
@@ -88,7 +90,21 @@ pub(super) fn plan(dir: &Path, changed: &BTreeSet<PathBuf>) -> Option<Vec<String
             return None;
         }
         match inputs.get(&path) {
-            Some(touched) => pages.extend(touched.iter().filter(|page| built(dir, page)).cloned()),
+            Some(touched) => {
+                if touched.contains(CHUNK_KEY) {
+                    // A shared View chunk input changed: rebuild the chunk and swap all built GPU pages.
+                    for feeds in inputs.values() {
+                        pages.extend(
+                            feeds
+                                .iter()
+                                .filter(|page| page.as_str() != CHUNK_KEY && built(dir, page))
+                                .cloned(),
+                        );
+                    }
+                } else {
+                    pages.extend(touched.iter().filter(|page| built(dir, page)).cloned());
+                }
+            }
             None if !exists => continue,
             None => return None,
         }
@@ -509,5 +525,31 @@ mod tests {
         )
         .unwrap();
         assert_eq!(plan(root, &edit), None);
+    }
+
+    #[test]
+    fn editing_a_shared_view_chunk_input_plans_all_built_gpu_pages() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path();
+        std::fs::create_dir_all(root.join(".lingxia")).unwrap();
+        std::fs::create_dir_all(root.join("pages/a")).unwrap();
+        std::fs::create_dir_all(root.join("pages/b")).unwrap();
+        std::fs::create_dir_all(root.join("kit")).unwrap();
+        std::fs::write(root.join("pages/a/index.tsx"), "").unwrap();
+        std::fs::write(root.join("pages/b/index.tsx"), "").unwrap();
+        std::fs::write(root.join("kit/button.tsx"), "").unwrap();
+        std::fs::write(
+            root.join(".lingxia/gpu-inputs.json"),
+            r#"{"lx:view":["kit/button.tsx"],"pages/a/index.tsx":["pages/a/index.tsx"],"pages/b/index.tsx":["pages/b/index.tsx"]}"#,
+        )
+        .unwrap();
+        let changed = BTreeSet::from([root.join("kit/button.tsx")]);
+        assert_eq!(
+            plan(root, &changed),
+            Some(vec![
+                "pages/a/index.tsx".to_owned(),
+                "pages/b/index.tsx".to_owned(),
+            ])
+        );
     }
 }

@@ -2031,7 +2031,8 @@ fn console_lines_from_module_code_and_handlers_reach_the_host() {
     );
     let runtime = RongJS::runtime();
     let budget = crate::engine::budget::Budget::new(&runtime);
-    let mut page = ViewSession::with_runtime(runtime, budget, &module, false, Some(sink)).unwrap();
+    let mut page =
+        ViewSession::with_runtime(runtime, budget, &module, false, Some(sink), None).unwrap();
     let frame = page.layout(200, 200, 1.0).unwrap();
     let log = frame.nodes.iter().find_map(|n| n.on_click).unwrap();
     assert!(page.click(page.generation(), log).unwrap());
