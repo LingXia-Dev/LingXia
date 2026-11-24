@@ -70,7 +70,7 @@ export function render({ data, actions }: View) {
         <IconButton label={t('downloads.resume', { name: item.fileName })} icon="play" size="sm" clickAction={() => resume.run({ taskId: item.taskId })} />
       ) : null}
       {isActive(item) ? (
-        <IconButton label={t('downloads.cancel', { name: item.fileName })} icon="stop" size="sm" clickAction={() => cancel.run({ taskId: item.taskId })} />
+        <IconButton label={t('downloads.cancel', { name: item.fileName })} icon="cancel" size="sm" clickAction={() => cancel.run({ taskId: item.taskId })} />
       ) : null}
       {item.status === 'failed' ? (
         <Button label={t('downloads.retry')} size="sm" variant="secondary" clickAction={() => retry.run({ taskId: item.taskId })} />
@@ -120,6 +120,7 @@ export function render({ data, actions }: View) {
               bind={filter}
               items={FILTERS.map((value) => ({ value, label: t(`downloads.filter.${value}` as MessageKey) }))}
               size="sm"
+              className="w-72 shrink-0"
               data-testid="downloads-filter"
             />
             <SearchField
