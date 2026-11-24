@@ -116,12 +116,17 @@ export type LocalData<T> = T extends string | number | boolean | null ? T
   : T extends (...args: any[]) => any ? never
   : T extends readonly unknown[] ? { [K in keyof T]: LocalData<T[K]> }
   : T extends object ? { [K in keyof T]: T[K] extends undefined ? undefined : LocalData<T[K]> } : never;
-export type Local<T> = { readonly [localCell]: true; readonly value: ReadonlyData<T>; set(value: ReadonlyData<LocalData<T>>): void }
-  & ([T] extends [string] ? { /** Focus the editor this cell is bound to (`bind`), on the next frame. */ focus(): void } : {});
+/** A cell of component-local state: `useLocal`'s result, and what an element's `bind` takes. */
+export interface Local<T> { readonly [localCell]: true; readonly value: ReadonlyData<T>; set(value: ReadonlyData<LocalData<T>>): void }
+/** A text cell (`useLocal('')`): a `Local` an editor can bind, so it can focus that editor. */
+export interface LocalText<T extends string = string> extends Local<T> {
+  /** Focus the editor this cell is bound to (`bind`), on the next frame. */
+  focus(): void;
+}
 /** Local state keyed by call order in the component, as React's `useState`. */
-export declare function useLocal<T>(initial: T, ...invalid: [T] extends [LocalData<T>] ? [] : [never]): Local<T>;
+export declare function useLocal<T>(initial: T, ...invalid: [T] extends [LocalData<T>] ? [] : [never]): [T] extends [string] ? LocalText<T & string> : Local<T>;
 /** Local state keyed by `name`: it survives reordered calls and hot edits. */
-export declare function useLocal<T>(name: string, initial: T, ...invalid: [T] extends [LocalData<T>] ? [] : [never]): Local<T>;
+export declare function useLocal<T>(name: string, initial: T, ...invalid: [T] extends [LocalData<T>] ? [] : [never]): [T] extends [string] ? LocalText<T & string> : Local<T>;
 
 /** A value a `Provider` hands its subtree: plain data, functions or handles such as `Local`. */
 export interface Context<T> {
