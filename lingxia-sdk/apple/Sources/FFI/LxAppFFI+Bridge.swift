@@ -296,16 +296,20 @@ extension LxApp {
         // Render-only: the graph commit discards the result, so hop instead of
         // blocking the caller (often a JS worker) on the main queue.
         dispatchOnMain {
-            #if os(macOS)
-            _ = LxAppLayoutReconciler.reconcile(windowId: windowIdString, json: json)
-            #elseif os(iOS)
-            _ = LxAppLayoutReconcileriOS.reconcile(windowId: windowIdString, json: json)
-            #else
-            _ = json
-            #endif
+            layoutPasses.submit((windowIdString, json)) { windowId, json in
+                #if os(macOS)
+                _ = LxAppLayoutReconciler.reconcile(windowId: windowId, json: json)
+                #elseif os(iOS)
+                _ = LxAppLayoutReconcileriOS.reconcile(windowId: windowId, json: json)
+                #else
+                _ = (windowId, json)
+                #endif
+            }
         }
         return true
     }
+
+    @MainActor private static let layoutPasses = LayoutPassQueue<(String, String)>()
 
     /// Show or hide a host-declared top-level surface (e.g. the AI-chat panel or
     /// terminal). Empty `role` / `edge` values keep declaration defaults;
