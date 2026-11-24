@@ -738,11 +738,7 @@ pub extern "C" fn Java_com_lingxia_app_NativeApi_onLxappEvent(
         let Some(lxapp) = lxapp::try_get(&appid) else {
             return Ok(0);
         };
-        if lxapp.on_lxapp_event(ui_event_type, data_str) {
-            Ok(1)
-        } else {
-            Ok(0)
-        }
+        Ok(lxapp.on_lxapp_event_result(ui_event_type, data_str) as jint)
     })
     .resolve::<ThrowRuntimeExAndDefault>()
 }

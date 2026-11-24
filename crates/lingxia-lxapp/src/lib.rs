@@ -70,7 +70,7 @@ pub use control_document_bootstrap::{
     ControlDocumentAuthority, ControlDocumentBootstrap, ControlDocumentBootstrapError,
     RequiredV3ExecutionGate, RequiredV3ExecutionPermit, issue_control_document_bootstrap,
 };
-pub use delegate::{LxAppDelegate, LxAppUiEventType};
+pub use delegate::{LxAppDelegate, LxAppUiEventResult, LxAppUiEventType};
 pub use error::LxAppError;
 pub use lifecycle::{
     AppServiceEvent, AppServiceEventArgs, AppServiceEventReason, AppServiceEventSource,

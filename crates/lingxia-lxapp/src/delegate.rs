@@ -25,6 +25,35 @@ pub enum LxAppUiEventType {
     PullDownRefresh = 4,
 }
 
+/// Native UI dispatch result. The integer values are shared with Android JNI.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[repr(i32)]
+pub enum LxAppUiEventResult {
+    Unhandled = 0,
+    Handled = 1,
+    /// System Back reached the home app's entry page. The host may background
+    /// its task; this is not a request to destroy the app or kill its process.
+    BackgroundHost = 2,
+}
+
+impl LxAppUiEventResult {
+    /// Boolean delegates consume root Back until their host supports the
+    /// explicit background outcome. Errors must never imply leaving the app.
+    pub fn is_handled(self) -> bool {
+        self != Self::Unhandled
+    }
+}
+
+impl From<bool> for LxAppUiEventResult {
+    fn from(handled: bool) -> Self {
+        if handled {
+            Self::Handled
+        } else {
+            Self::Unhandled
+        }
+    }
+}
+
 pub trait LxAppDelegate {
     /// Called when lxapp is opened
     /// Returns the resolved path that should be used
@@ -358,14 +387,25 @@ impl LxAppDelegate for LxApp {
     }
 
     fn on_lxapp_event(self: &Arc<Self>, event_type: LxAppUiEventType, data: String) -> bool {
+        self.on_lxapp_event_result(event_type, data).is_handled()
+    }
+}
+
+impl LxApp {
+    /// Dispatch UI input while preserving the host action requested by root Back.
+    pub fn on_lxapp_event_result(
+        self: &Arc<Self>,
+        event_type: LxAppUiEventType,
+        data: String,
+    ) -> LxAppUiEventResult {
         info!("UI event received: {:?}, data: {}", event_type, data).with_appid(self.appid.clone());
 
         let handled = match event_type {
-            LxAppUiEventType::TabBarClick => self.handle_tabbar_click(data),
-            LxAppUiEventType::CapsuleClick => self.handle_capsule_click(data),
-            LxAppUiEventType::NavigationClick => self.handle_navigation_click(data),
+            LxAppUiEventType::TabBarClick => self.handle_tabbar_click(data).into(),
+            LxAppUiEventType::CapsuleClick => self.handle_capsule_click(data).into(),
+            LxAppUiEventType::NavigationClick => self.handle_navigation_click(data).into(),
             LxAppUiEventType::BackPress => self.handle_back_press(),
-            LxAppUiEventType::PullDownRefresh => self.handle_pull_down_refresh(data),
+            LxAppUiEventType::PullDownRefresh => self.handle_pull_down_refresh(data).into(),
         };
 
         self.sync_host_ui();
@@ -595,25 +635,35 @@ impl LxApp {
         }
     }
 
-    /// Handle back button press (system or navigation)
-    fn handle_back_press(self: &Arc<Self>) -> bool {
+    /// System Back: page history, guest dismissal, home tab, then host background.
+    fn handle_back_press(self: &Arc<Self>) -> LxAppUiEventResult {
         let stack_size = self.get_page_stack_size();
-        info!("BackPress trigered, page stack size: {}", stack_size).with_appid(self.appid.clone());
+        info!("BackPress triggered, page stack size: {}", stack_size)
+            .with_appid(self.appid.clone());
 
-        if stack_size <= 1 {
-            // If it's the last page, hide this LxApp (except home app)
-            if !self.is_home_lxapp {
-                if let Some(manager) = lxapp::get_lxapps_manager() {
-                    manager.remove_from_stack(&self.appid);
-                }
-                let _ = self
-                    .runtime
-                    .hide_lxapp(self.appid.clone(), self.session_id());
-            }
-            return true;
+        if stack_size > 1 {
+            return self.user_leave(LeaveReason::Back).is_ok().into();
         }
 
-        self.user_leave(LeaveReason::Back).is_ok()
+        if !self.is_home_lxapp {
+            if let Some(manager) = lxapp::get_lxapps_manager() {
+                manager.remove_from_stack(&self.appid);
+            }
+            let _ = self
+                .runtime
+                .hide_lxapp(self.appid.clone(), self.session_id());
+            return LxAppUiEventResult::Handled;
+        }
+
+        // Startup/teardown may have no page yet. Only a resolved home root
+        // authorizes leaving the host; an empty stack or failed navigation does not.
+        let Some(path) = self.peek_current_page_path() else {
+            return LxAppUiEventResult::Unhandled;
+        };
+        if path != self.config().get_initial_route() {
+            return self.go_home().is_ok().into();
+        }
+        LxAppUiEventResult::BackgroundHost
     }
 
     /// Leave the top page the way the user does: a pushed page whose View

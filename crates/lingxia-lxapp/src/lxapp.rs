@@ -62,6 +62,8 @@ pub use shutdown::{
 };
 pub(crate) mod security;
 mod surface;
+#[cfg(test)]
+mod system_back_tests;
 pub use security::{LxAppSecurityPrivilege, is_public_network_address};
 pub mod tabbar;
 #[cfg(test)]

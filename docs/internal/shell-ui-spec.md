@@ -974,6 +974,14 @@ The following rules apply to device-compact hosts (phone, tablet, and
 phone/tablet Runner):
 
 - Main is full screen; the active lxapp's tabbar returns to the bottom.
+- Android system Back handles overlays first, then the active lxapp's page
+  history and leave guard. At a guest root it dismisses that guest. At another
+  root page of the home lxapp it returns to the configured entry page; another
+  Back at that entry backgrounds the host task, preserving its session and
+  process. Only that explicit root outcome permits backgrounding: an empty
+  stack, missing app, or failed navigation must not leave the host. Navbar Back
+  remains page navigation. Three-button Back and the Android back gesture use
+  the same dispatcher; this does not implement predictive-back animations.
 - A tablet is still this column. `is_pad` only lays out the full tab-bar
   declaration (no **More** fold); it MUST NOT restore the sidebar, docked
   asides, or any other desktop shell chrome. Pad extra width is content

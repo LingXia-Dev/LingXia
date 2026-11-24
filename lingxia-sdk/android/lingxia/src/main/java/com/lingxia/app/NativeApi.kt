@@ -56,6 +56,11 @@ internal object NativeApi {
     const val UI_EVENT_BACK_PRESS = 3
     const val UI_EVENT_PULL_DOWN_REFRESH = 4
 
+    // Matches LxAppUiEventResult in the Rust UI delegate.
+    const val UI_EVENT_RESULT_UNHANDLED = 0
+    const val UI_EVENT_RESULT_HANDLED = 1
+    const val UI_EVENT_RESULT_BACKGROUND_HOST = 2
+
     // Key Event Type Constants
     const val KEY_EVENT_DOWN = 0
     const val KEY_EVENT_UP = 1
@@ -170,7 +175,7 @@ internal object NativeApi {
      * @param appId The ID of the app
      * @param eventType The type of UI event (use UI_EVENT_* constants)
      * @param data Event-specific data (e.g., tab index, button name)
-     * @return 1 if event was handled, 0 otherwise
+     * @return UI_EVENT_RESULT_*; only system Back at the home root requests BACKGROUND_HOST
      */
     @JvmStatic
     external fun onLxappEvent(appId: String, eventType: Int, data: String): Int

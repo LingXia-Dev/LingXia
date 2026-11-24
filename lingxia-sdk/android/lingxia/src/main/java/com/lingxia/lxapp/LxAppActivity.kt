@@ -42,7 +42,6 @@ import androidx.core.view.ViewCompat
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import android.content.pm.ActivityInfo
-import androidx.activity.OnBackPressedCallback
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import android.view.animation.AccelerateDecelerateInterpolator
@@ -584,26 +583,29 @@ class LxAppActivity : AppCompatActivity() {
         // Defer non-critical setup to post-layout
         rootContainer.post {
             // Setup back press handler
-            onBackPressedDispatcher.addCallback(object : OnBackPressedCallback(true) {
-                override fun handleOnBackPressed() {
-                    try {
+            onBackPressedDispatcher.addCallback(
+                this,
+                LxAppSystemBackCallback(
+                    activity = this,
+                    closeOverlay = {
                         // Close browser overlay first if showing (aligned with Harmony behavior)
                         if (LxAppBrowser.isShowing()) {
                             Log.d(TAG, "BackPress: dispatching to LxAppBrowser")
                             LxAppBrowser.handleBack()
-                            return
-                        }
-                        if (LxAppSurface.closeTopUser()) {
+                            true
+                        } else if (LxAppSurface.closeTopUser()) {
                             Log.d(TAG, "BackPress: closing top surface")
-                            return
+                            true
+                        } else {
+                            false
                         }
+                    },
+                    dispatchBack = {
                         currentWebView?.visibility = View.VISIBLE
                         NativeApi.onLxappEvent(appId, NativeApi.UI_EVENT_BACK_PRESS, "")
-                    } catch (e: Exception) {
-                        LxLog.e(TAG, "Error handling back press: ${e.message}")
-                    }
-                }
-            })
+                    },
+                ),
+            )
         }
     }
 
