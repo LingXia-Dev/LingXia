@@ -1775,6 +1775,11 @@ impl PageSvc {
         if self.terminated.get() {
             return;
         }
+        // The result belongs to the navigation that closed the page: it settles here, before the
+        // page revealed under it is shown, never after this page's teardown.
+        if settles_at_close(event) {
+            self.settle_result(ctx);
+        }
         self.lifecycle_queue.borrow_mut().push_back((event, args));
         if self.lifecycle_pump_running.get() {
             return;
@@ -1792,7 +1797,7 @@ impl PageSvc {
                     if page_svc.terminated.get() {
                         // The owed `onUnload` has run: nothing uses the
                         // retired service's JS values any more. Settling is
-                        // a no-op once that `onUnload` settled the result.
+                        // a no-op once its close settled the result.
                         page_svc.settle_result(&ctx);
                         page_svc.release_js();
                     }
@@ -1803,9 +1808,6 @@ impl PageSvc {
                     continue;
                 }
                 let outcome = page_svc.call_page_event(&ctx, event, args.as_deref()).await;
-                if event == PageLifecycleEvent::OnUnload {
-                    page_svc.settle_result(&ctx);
-                }
                 if let Err(e) = outcome {
                     let error = super::eval_error_from_rong(&ctx, e);
                     let page = page_svc.get_page();
@@ -2262,6 +2264,11 @@ pub(crate) fn capture_real_timers(ctx: &JSContext) -> JSResult<()> {
     ))
 }
 
+/// A page's result settles when its `onUnload` is dispatched, not after it runs.
+fn settles_at_close(event: PageLifecycleEvent) -> bool {
+    event == PageLifecycleEvent::OnUnload
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -2323,6 +2330,76 @@ mod tests {
         assert!(
             result.starts_with("true,true,") && result.ends_with(",true,rejected"),
             "{result}"
+        );
+        Ok(())
+    }
+
+    /// A close settles the opener's result at once; `setResult` from `onUnload` (after the close)
+    /// no longer changes it and, in a dev build, warns naming the page.
+    #[tokio::test(flavor = "current_thread")]
+    async fn a_result_settles_at_close_and_ignores_a_later_set_result() -> JSResult<()> {
+        assert!(settles_at_close(PageLifecycleEvent::OnUnload));
+        assert!(!settles_at_close(PageLifecycleEvent::OnHide));
+        tokio::task::LocalSet::new()
+            .run_until(result_settles_at_close())
+            .await
+    }
+
+    async fn result_settles_at_close() -> JSResult<()> {
+        use rong::{JSEngine, RongJS};
+        let runtime = RongJS::runtime();
+        let ctx = runtime.context();
+        rong_modules::init(&ctx, ["timer", "event", "exception", "abort", "console"])
+            .expect("Logic modules");
+        ctx.eval::<()>(Source::from_bytes(
+            "globalThis.PageSvc = class { constructor() {} _setData() {} };",
+        ))?;
+        ctx.eval::<()>(Source::from_bytes(include_str!("scripts/Page.js")))?;
+        capture_real_timers(&ctx)?;
+        let result: String = ctx
+            .eval_async(Source::from_bytes(
+                r#"
+            (async () => { try {
+              const warnings = [];
+              console.warn = (message) => warnings.push(String(message));
+              __registerDefinedPage("pages/pick", {
+                [Symbol.for("lingxia.page")]: true,
+                setup(page) { globalThis.thePage = page; return {}; },
+              });
+              const identity = JSON.stringify({ name: "pick", dev: true });
+              const svc = __LX_CREATE_PAGE__("pages/pick", null, "p1", false, identity);
+              const owed = svc._bindResult();
+              thePage.setResult({ id: 1 });
+              // The navigation closing the page settles it; onUnload runs after.
+              svc._settleResult("user");
+              thePage.setResult({ id: 2 });
+              const first = await owed;
+              // Pushed again, the instance owes a new result.
+              const again = svc._bindResult();
+              svc._settleResult("user");
+              const second = await again;
+              return JSON.stringify({ first, second, warnings });
+            } catch (error) { return `threw: ${error}`; } })()
+            "#,
+            ))
+            .await?;
+        let seen: serde_json::Value = serde_json::from_str(&result)
+            .map_err(|_| rong::HostError::new(rong::error::E_INTERNAL, result.clone()))?;
+        assert_eq!(
+            seen["first"],
+            serde_json::json!({ "status": "ok", "value": { "id": 1 } })
+        );
+        assert_eq!(
+            seen["second"],
+            serde_json::json!({ "status": "canceled", "reason": "user" })
+        );
+        let warnings = seen["warnings"].as_array().unwrap();
+        assert_eq!(warnings.len(), 1, "{warnings:?}");
+        assert!(
+            warnings[0]
+                .as_str()
+                .unwrap()
+                .starts_with("pick: setResult after the page closed")
         );
         Ok(())
     }

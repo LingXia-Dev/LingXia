@@ -186,7 +186,7 @@ export type PageHandle<R = JsonValue, M = never> = {
      * @throws {E_ABORT} `close()` was called first.
      */
     readonly opened: Promise<void>;
-    /** Settles once, after the page's `onUnload`; `canceled` when it never opened because of `close()`. */
+    /** Settles once, when the page is closed (before its `onUnload`); `canceled` when it never opened because of `close()`. */
     readonly result: Promise<{
         /** The page gave a result. */
         status: 'ok';

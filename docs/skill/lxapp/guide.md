@@ -123,7 +123,7 @@ export default definePage({
 | `params`, `name` | This instance's params, its page name. |
 | `visible` | `Live<boolean>` of `onShow`/`onHide`; already `true` in `setup` for a page that opens showing. |
 | `signal` | `AbortSignal` aborted as the page unloads, before `onUnload`. Pass it to work the page starts: `fetch(url, { signal: page.signal })`. |
-| `setResult(value)` / `close(value?)` | Return a JSON result to the opener. `close` also leaves: a pushed page goes back (top page only), a surface page closes its surface. The opener reads it from the handle's `result` (`lx.nav.go({ page })`, `lx.surface.openPage`): `{ status: 'ok', value }`, or `{ status: 'canceled', reason }` when the page left without one. |
+| `setResult(value)` / `close(value?)` | Return a JSON result to the opener. `close` also leaves: a pushed page goes back (top page only), a surface page closes its surface. The opener reads it from the handle's `result` (`lx.nav.go({ page })`, `lx.surface.openPage`): `{ status: 'ok', value }`, or `{ status: 'canceled', reason }` when the page left without one. It settles when the page is closed: a `setResult` in `onUnload` is ignored. |
 | `opener`, `surface` | The page that opened this one, or this page's surface; absent otherwise. |
 
 ### Lifecycle

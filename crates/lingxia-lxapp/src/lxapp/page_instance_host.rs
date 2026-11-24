@@ -705,14 +705,10 @@ impl LxApp {
     pub fn get_or_create_page(&self, url: &str) -> PageInstance {
         let resolved = self.resolve_entry_route(url);
         let path = resolved.internal_path();
-        // A cached instance serves every URL on its route, so a requested URL replaces its query,
-        // the empty one included. A tab keeps its params through a switch that carries none.
         let query = resolved.query.unwrap_or_default();
 
         if let Some(page) = self.get_page(&path) {
-            if !(query.is_empty() && page.is_tabbar_page()) {
-                page.set_query(query);
-            }
+            page.take_requested_query(query);
             return page;
         }
 
@@ -762,7 +758,7 @@ impl LxApp {
         // Path-pinned singletons (tab pages, headless services) always
         // re-enter their warm instance.
         if let Some(page) = self.pinned_page(&path) {
-            page.set_query(query);
+            page.take_requested_query(query);
             return page;
         }
 

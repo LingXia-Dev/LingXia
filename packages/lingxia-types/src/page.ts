@@ -139,7 +139,10 @@ export interface PageApi<Data, Params, Result, Messages = never, Follow = {}> {
    * pushed page that is not on top, and while `setup` runs.
    */
   close(value?: Result): Promise<void>;
-  /** What the opener's result is when this page leaves another way (Back, a dismiss). Throws while `setup` runs. */
+  /**
+   * What the opener's result is when this page leaves another way (Back, a dismiss). Throws while
+   * `setup` runs. The result settles when the page is closed, so a call from `onUnload` is ignored.
+   */
   setResult(value: Result): void;
   /**
    * The page that opened this one, by `lx.nav.go` or `lx.surface.openPage`;

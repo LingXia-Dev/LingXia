@@ -2916,6 +2916,15 @@ impl PageInstance {
         }
     }
 
+    /// A navigation's URL reaching a live instance: its query replaces the instance's, the empty
+    /// one included, except that a tab keeps its params through a switch that carries none.
+    pub(crate) fn take_requested_query(&self, query: String) {
+        if keeps_query(query.is_empty(), self.is_tabbar_page()) {
+            return;
+        }
+        self.set_query(query);
+    }
+
     pub(crate) fn set_query(&self, query_str: String) {
         if let Ok(query_value) = parse_query_string(&query_str) {
             self.inner.state.lock().unwrap().query = query_value;
@@ -3281,6 +3290,11 @@ fn file_url(path: &std::path::Path) -> String {
     } else {
         format!("file:///{joined}")
     }
+}
+
+/// Whether a live instance keeps its params when a navigation reaches it without any.
+fn keeps_query(requested_empty: bool, tab: bool) -> bool {
+    requested_empty && tab
 }
 
 #[cfg(test)]
@@ -3756,6 +3770,19 @@ mod tests {
             handed(r#"{"id":"2"}"#)
         );
         assert!(step(&mut state, PageLifecycleEvent::OnShow).is_empty());
+    }
+
+    #[test]
+    fn a_tab_keeps_its_params_and_any_other_page_takes_the_requested_query() {
+        assert!(keeps_query(true, true), "a tab switch without params");
+        assert!(
+            !keeps_query(false, true),
+            "a tab switch with params replaces them"
+        );
+        assert!(
+            !keeps_query(true, false),
+            "an empty query replaces a cached page's"
+        );
     }
 
     #[test]

@@ -1158,7 +1158,7 @@
       ],
       "tags": {},
       "examples": [],
-      "source": "src/page.ts:326"
+      "source": "src/page.ts:329"
     },
     {
       "path": "defineStore",
@@ -7138,7 +7138,7 @@
       "types": [],
       "tags": {},
       "examples": [],
-      "source": "src/page.ts:197"
+      "source": "src/page.ts:200"
     },
     {
       "path": "page.close",
@@ -7190,7 +7190,7 @@
       "types": [],
       "tags": {},
       "examples": [],
-      "source": "src/page.ts:187"
+      "source": "src/page.ts:190"
     },
     {
       "path": "page.env.get",
@@ -7278,7 +7278,7 @@
       ],
       "tags": {},
       "examples": [],
-      "source": "src/page.ts:203"
+      "source": "src/page.ts:206"
     },
     {
       "path": "page.flush",
@@ -7321,7 +7321,7 @@
       "types": [],
       "tags": {},
       "examples": [],
-      "source": "src/page.ts:158"
+      "source": "src/page.ts:161"
     },
     {
       "path": "page.navigationBar.update",
@@ -7349,7 +7349,7 @@
       ],
       "tags": {},
       "examples": [],
-      "source": "src/page.ts:160"
+      "source": "src/page.ts:163"
     },
     {
       "path": "page.opener",
@@ -7361,7 +7361,7 @@
       "types": [],
       "tags": {},
       "examples": [],
-      "source": "src/page.ts:149"
+      "source": "src/page.ts:152"
     },
     {
       "path": "page.opener.onMessage",
@@ -7393,7 +7393,7 @@
       ],
       "tags": {},
       "examples": [],
-      "source": "src/page.ts:153"
+      "source": "src/page.ts:156"
     },
     {
       "path": "page.opener.send",
@@ -7419,7 +7419,7 @@
       ],
       "tags": {},
       "examples": [],
-      "source": "src/page.ts:151"
+      "source": "src/page.ts:154"
     },
     {
       "path": "page.orientation",
@@ -7431,7 +7431,7 @@
       "types": [],
       "tags": {},
       "examples": [],
-      "source": "src/page.ts:176"
+      "source": "src/page.ts:179"
     },
     {
       "path": "page.orientation.lock",
@@ -7457,7 +7457,7 @@
       ],
       "tags": {},
       "examples": [],
-      "source": "src/page.ts:178"
+      "source": "src/page.ts:181"
     },
     {
       "path": "page.orientation.unlock",
@@ -7475,7 +7475,7 @@
       "types": [],
       "tags": {},
       "examples": [],
-      "source": "src/page.ts:180"
+      "source": "src/page.ts:183"
     },
     {
       "path": "page.params",
@@ -7506,7 +7506,7 @@
       "types": [],
       "tags": {},
       "examples": [],
-      "source": "src/page.ts:167"
+      "source": "src/page.ts:170"
     },
     {
       "path": "page.set",
@@ -7539,7 +7539,7 @@
       "kind": "function",
       "entry": "@lingxia/logic",
       "summary": "What the opener's result is when this page leaves another way (Back, a dismiss).",
-      "description": "What the opener's result is when this page leaves another way (Back, a dismiss). Throws while `setup` runs.",
+      "description": "What the opener's result is when this page leaves another way (Back, a dismiss). Throws while\n`setup` runs. The result settles when the page is closed, so a call from `onUnload` is ignored.",
       "signatures": [
         {
           "text": "setResult(value: Result): void",
@@ -7556,7 +7556,7 @@
       "types": [],
       "tags": {},
       "examples": [],
-      "source": "src/page.ts:143"
+      "source": "src/page.ts:146"
     },
     {
       "path": "page.signal",
@@ -7581,7 +7581,7 @@
       "types": [],
       "tags": {},
       "examples": [],
-      "source": "src/page.ts:156"
+      "source": "src/page.ts:159"
     },
     {
       "path": "page.surface.alive",
@@ -7850,7 +7850,7 @@
       ],
       "tags": {},
       "examples": [],
-      "source": "src/page.ts:169"
+      "source": "src/page.ts:172"
     },
     {
       "path": "page.visible",
@@ -7862,7 +7862,7 @@
       "types": [],
       "tags": {},
       "examples": [],
-      "source": "src/page.ts:192"
+      "source": "src/page.ts:195"
     },
     {
       "path": "page.visible.get",
@@ -10453,7 +10453,7 @@
       "summary": "A followed key that is also in `data`, as a type error.",
       "description": "A followed key that is also in `data`, as a type error.",
       "fields": [],
-      "source": "src/page.ts:291"
+      "source": "src/page.ts:294"
     },
     {
       "name": "FsCopyOptions",
@@ -11889,7 +11889,7 @@
       "description": "The messages a page definition declares.",
       "text": "P extends { readonly __lxPage: { readonly messages: infer T; }; } ? T : never",
       "fields": [],
-      "source": "src/page.ts:266"
+      "source": "src/page.ts:269"
     },
     {
       "name": "MisspelledLifecycle",
@@ -12671,7 +12671,7 @@
           "type": "(value: Result) => void",
           "required": true,
           "summary": "What the opener's result is when this page leaves another way (Back, a dismiss).",
-          "description": "What the opener's result is when this page leaves another way (Back, a dismiss). Throws while `setup` runs."
+          "description": "What the opener's result is when this page leaves another way (Back, a dismiss). Throws while\n`setup` runs. The result settles when the page is closed, so a call from `onUnload` is ignored."
         },
         {
           "name": "opener",
@@ -12773,7 +12773,7 @@
           "description": "Returns a function that removes the handler."
         }
       ],
-      "source": "src/page.ts:251"
+      "source": "src/page.ts:254"
     },
     {
       "name": "PageDeclarations",
@@ -12816,7 +12816,7 @@
           "description": "Data keys that show a `Live` (a store, `store.pick(…)`, a host `Live`), current from the first\nframe until the page unloads: `follow: { plan: session.pick(s => s.plan) }`. Read-only in\n`update` and `set`; change the source instead."
         }
       ],
-      "source": "src/page.ts:269"
+      "source": "src/page.ts:272"
     },
     {
       "name": "PageDefinition",
@@ -12845,7 +12845,7 @@
           "description": "What the page declares, for the type system only."
         }
       ],
-      "source": "src/page.ts:228"
+      "source": "src/page.ts:231"
     },
     {
       "name": "PageDefinition.__lxPage",
@@ -12881,7 +12881,7 @@
           "description": "The actions as written, which `mount` calls directly."
         }
       ],
-      "source": "src/page.ts:234"
+      "source": "src/page.ts:237"
     },
     {
       "name": "PageEnvContext",
@@ -12919,7 +12919,7 @@
           "default": "'pause'"
         }
       ],
-      "source": "src/page.ts:207"
+      "source": "src/page.ts:210"
     },
     {
       "name": "PageHandle",
@@ -12945,8 +12945,8 @@
           "name": "result",
           "type": "Promise<{ status: \"canceled\"; reason: \"user\" | \"opener\" | \"reclaimed\" | \"app_closed\"; } | { status: \"ok\"; value: NavResult<N>; }>",
           "required": true,
-          "summary": "Settles once, after the page's `onUnload`; `canceled` when it never opened because of `close()`.",
-          "description": "Settles once, after the page's `onUnload`; `canceled` when it never opened because of `close()`."
+          "summary": "Settles once, when the page is closed (before its `onUnload`); `canceled` when it never opened because of `close()`.",
+          "description": "Settles once, when the page is closed (before its `onUnload`); `canceled` when it never opened because of `close()`."
         },
         {
           "name": "send",
@@ -13250,8 +13250,8 @@
           "name": "result",
           "type": "Promise<{ status: \"canceled\"; reason: \"user\" | \"opener\" | \"reclaimed\" | \"app_closed\"; } | { status: \"ok\"; value: R; }>",
           "required": true,
-          "summary": "Settles once, after the page's `onUnload`; `canceled` when it never opened because of `close()`.",
-          "description": "Settles once, after the page's `onUnload`; `canceled` when it never opened because of `close()`."
+          "summary": "Settles once, when the page is closed (before its `onUnload`); `canceled` when it never opened because of `close()`.",
+          "description": "Settles once, when the page is closed (before its `onUnload`); `canceled` when it never opened because of `close()`."
         },
         {
           "name": "send",
@@ -13418,7 +13418,7 @@
       "description": "The params a page definition declares.",
       "text": "P extends { readonly __lxPage: { readonly params: infer T; }; } ? T : never",
       "fields": [],
-      "source": "src/page.ts:262"
+      "source": "src/page.ts:265"
     },
     {
       "name": "PermissionName",
@@ -14264,7 +14264,7 @@
       "description": "The result a page definition declares.",
       "text": "P extends { readonly __lxPage: { readonly result: infer T; }; } ? T : never",
       "fields": [],
-      "source": "src/page.ts:264"
+      "source": "src/page.ts:267"
     },
     {
       "name": "RouteTarget",
@@ -17051,7 +17051,7 @@
       "summary": "Page actions as the View calls them: each resolves to its result.",
       "description": "Page actions as the View calls them: each resolves to its result.",
       "fields": [],
-      "source": "src/page.ts:216"
+      "source": "src/page.ts:219"
     },
     {
       "name": "VisibilityPreference",
@@ -17329,7 +17329,7 @@
       "description": "A page's data with its followed keys.",
       "text": "[ keyof Follow ] extends [ never ] ? Data : Data & FollowedData<Follow>",
       "fields": [],
-      "source": "src/page.ts:299"
+      "source": "src/page.ts:302"
     },
     {
       "name": "definePage(definition)",
@@ -17351,7 +17351,7 @@
           "description": "Not with `setup`: `setup` returns the actions."
         }
       ],
-      "source": "src/page.ts:334"
+      "source": "src/page.ts:337"
     },
     {
       "name": "lx.clipboard.read()",

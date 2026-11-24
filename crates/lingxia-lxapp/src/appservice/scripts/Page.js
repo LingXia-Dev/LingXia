@@ -208,15 +208,18 @@
       });
     };
 
-    // What the opener's `result` resolves with. It settles once, after
-    // `onUnload`: `{ status: 'ok', value }` when a result was set, otherwise
-    // `{ status: 'canceled', reason }`.
+    // What the opener's `result` resolves with. It settles once, when the page is closed (before
+    // its `onUnload` runs): `{ status: 'ok', value }` when a result was set, otherwise
+    // `{ status: 'canceled', reason }`. `setResult` answers whether it still counts.
     let result = null;
     let settleOpener = null;
+    let closed = false;
 
     pageSvc.setResult = function (value) {
       assertPageData(value);
+      if (closed) return false;
       result = { value: cloneJsonValue(value) };
+      return true;
     };
 
     pageSvc.close = function (value) {
@@ -229,6 +232,7 @@
     pageSvc._bindResult = function () {
       if (settleOpener) settleOpener({ status: "canceled", reason: "opener" });
       result = null;
+      closed = false;
       return new Promise((resolve) => {
         settleOpener = resolve;
       });
@@ -246,12 +250,14 @@
     pageSvc._adopt = function (opener, settle) {
       if (settleOpener) settleOpener({ status: "canceled", reason: "opener" });
       result = null;
+      closed = false;
       settleOpener = settle;
       if (opener) pageSvc.opener = opener;
       else delete pageSvc.opener;
     };
 
     pageSvc._settleResult = function (reason) {
+      closed = true;
       const settle = settleOpener;
       settleOpener = null;
       if (!settle) return;
@@ -565,7 +571,9 @@
         return arguments.length > 0 ? live().close(value) : live().close();
       },
       setResult(value) {
-        live().setResult(value);
+        if (!live().setResult(value) && identity.dev) {
+          console.warn(`${identity.name || pagePath}: setResult after the page closed is ignored; its result settled when it was closed`);
+        }
       },
       get opener() {
         return svc ? svc.opener : undefined;
