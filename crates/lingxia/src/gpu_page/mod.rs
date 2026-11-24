@@ -5,8 +5,9 @@
 // Off Android it is compiled only for its tests, which exercise part of it.
 #![cfg_attr(not(target_os = "android"), allow(dead_code, unused_imports))]
 use lxapp::{
-    GpuPageView, GpuPageViewFactory, GpuStateSignal, GpuStateWrite, GpuViewCreation,
-    GpuViewGeneration, GpuViewMessage, LeaveReason, LxAppError, PageInstance, PageViewEnvironment,
+    GpuChunkReader, GpuPageView, GpuPageViewFactory, GpuStateSignal, GpuStateWrite,
+    GpuViewCreation, GpuViewGeneration, GpuViewMessage, LeaveReason, LxAppError, PageInstance,
+    PageViewEnvironment,
 };
 use std::{
     collections::HashMap,
@@ -155,7 +156,7 @@ impl Lease {
         page: String,
         worker: String,
         pack: Option<lingxia_theme::Pack>,
-        chunks: Arc<dyn Fn(&str) -> Result<String, LxAppError> + Send + Sync>,
+        chunks: GpuChunkReader,
         factory: Arc<dyn NativeFactory>,
     ) -> Self {
         let mut holders = PACK_HOLDERS.lock().unwrap_or_else(|p| p.into_inner());
@@ -403,10 +404,7 @@ impl GpuPageViewFactory for Binding {
 }
 
 /// Registers the lxapp's chunk reader for `key` so QuickJS resolves `lx:view/*` from dist.
-fn install_app_chunks(
-    key: &str,
-    reader: Arc<dyn Fn(&str) -> Result<String, LxAppError> + Send + Sync>,
-) {
+fn install_app_chunks(key: &str, reader: GpuChunkReader) {
     #[cfg(target_os = "android")]
     use lingxia_view_android::lingxia_view;
     #[cfg(any(target_os = "ios", target_os = "macos"))]
