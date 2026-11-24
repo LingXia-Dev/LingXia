@@ -6,7 +6,6 @@ import { Item, ItemList } from '@liulidesign/core/Item';
 import { ProgressBar } from '@liulidesign/core/ProgressBar';
 import { SearchField } from '@liulidesign/core/SearchField';
 import { SegmentedControl } from '@liulidesign/core/SegmentedControl';
-import { TopBar } from '@liulidesign/core/TopBar';
 import { formatBytes } from '../../shared/format';
 import type { View } from './$types';
 
@@ -95,23 +94,7 @@ export function render({ data, actions }: View) {
   );
 
   return (
-    <page data-testid="downloads-page" className="bg-surface text-text">
-      <TopBar
-        heading={t('downloads.title')}
-        endContent={
-          <view className="flex-row items-center gap-2">
-            <Button
-              label={t('downloads.clearCompleted')}
-              variant="secondary"
-              size="sm"
-              isDisabled={!data.downloads.some((item) => !isActive(item))}
-              clickAction={() => clearCompleted.run()}
-            />
-            <IconButton label={t('downloads.settings')} icon="settings" size="sm" clickAction={() => openSettings.run()} data-testid="downloads-settings-btn" />
-          </view>
-        }
-        className="px-6"
-      />
+    <page data-testid="downloads-page" className="bg-canvas text-text">
       <scroll className="grow bg-canvas">
         <view className="w-full max-w-[880px] self-center px-6 py-4 gap-4">
           <view className="flex-row items-center gap-3">
@@ -131,6 +114,14 @@ export function render({ data, actions }: View) {
               size="sm"
               className="grow basis-0 min-w-0"
             />
+            <Button
+              label={t('downloads.clearCompleted')}
+              variant="secondary"
+              size="sm"
+              isDisabled={!data.downloads.some((item) => !isActive(item))}
+              clickAction={() => clearCompleted.run()}
+            />
+            <IconButton label={t('downloads.settings')} icon="settings" size="sm" edge="end" clickAction={() => openSettings.run()} data-testid="downloads-settings-btn" />
           </view>
           {data.loading ? null : visible.length === 0 ? (
             <EmptyState

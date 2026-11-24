@@ -1,3 +1,5 @@
 {
-  "navigationStyle": "custom"
+  "navigationBar": {
+    "title": { "message": "history.title" }
+  }
 }

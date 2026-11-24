@@ -156,6 +156,8 @@ export default definePage({
 
     return {
       async onLoad(params) {
+        // System pages open in their own stack; the bar shows back only when a page is under them.
+        void page.navigationBar.update({ homeButton: 'hidden' });
         const requested = params?.section === 'clear-site-data' ? 'privacy' : params?.section;
         const tabId = typeof params?.tabId === 'string' ? params.tabId : '';
         page.update((d) => {

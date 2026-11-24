@@ -13,7 +13,6 @@ import { Select } from '@liulidesign/core/Select';
 import { Switch } from '@liulidesign/core/Switch';
 import { TextInput } from '@liulidesign/core/TextInput';
 import { ToastRegion, useToast } from '@liulidesign/core/Toast';
-import { TopBar } from '@liulidesign/core/TopBar';
 import { hostOf } from '../../shared/format';
 import { SiteIcon } from '../../shared/SiteIcon';
 import type { View } from './$types';
@@ -144,26 +143,6 @@ function Bookmarks({ data, actions }: View) {
 
   return (
     <view className="grow min-h-0">
-      <TopBar
-        heading={t('bookmarks.title')}
-        endContent={
-          <view className="flex-row items-center gap-2">
-            <Button label={t('bookmarks.add')} variant="primary" size="sm" startIcon="add" onClick={openAdd} data-testid="bookmarks-add" />
-            <DropdownMenu
-              label={t('bookmarks.more')}
-              size="sm"
-              alignment="end"
-              items={[
-                { label: t('bookmarks.import'), icon: 'upload', onClick: () => { void notify(importHtml.run()); } },
-                { label: t('bookmarks.export'), icon: 'download', onClick: () => { void notify(exportHtml.run()); } },
-              ]}
-            >
-              <IconButton label={t('bookmarks.more')} icon="more" size="sm" edge="end" data-testid="bookmarks-more" />
-            </DropdownMenu>
-          </view>
-        }
-        className="px-6"
-      />
       <view className="grow min-h-0 flex-row bg-canvas">
         <view className="w-[240px] shrink-0 px-3 py-4 gap-2 border-e border-text/8">
           <NavList
@@ -193,9 +172,21 @@ function Bookmarks({ data, actions }: View) {
             <text role="heading" headingLevel={2} className="grow shrink basis-0 min-w-0 truncate text-title font-semibold">{heading}</text>
             {selectedGroup ? (
               <DropdownMenu label={t('bookmarks.groupActions', { name: selectedGroup.name })} size="sm" alignment="end" items={groupMenu}>
-                <IconButton label={t('bookmarks.groupActions', { name: selectedGroup.name })} icon="more" size="sm" edge="end" data-testid="bookmarks-group-more" />
+                <IconButton label={t('bookmarks.groupActions', { name: selectedGroup.name })} icon="edit" size="sm" data-testid="bookmarks-group-more" />
               </DropdownMenu>
             ) : null}
+            <Button label={t('bookmarks.add')} variant="primary" size="sm" startIcon="add" onClick={openAdd} data-testid="bookmarks-add" />
+            <DropdownMenu
+              label={t('bookmarks.more')}
+              size="sm"
+              alignment="end"
+              items={[
+                { label: t('bookmarks.import'), icon: 'upload', onClick: () => { void notify(importHtml.run()); } },
+                { label: t('bookmarks.export'), icon: 'download', onClick: () => { void notify(exportHtml.run()); } },
+              ]}
+            >
+              <IconButton label={t('bookmarks.more')} icon="more" size="sm" edge="end" data-testid="bookmarks-more" />
+            </DropdownMenu>
           </view>
           <SearchField label={t('bookmarks.search')} isLabelHidden placeholder={t('bookmarks.search')} bind={query} data-testid="bookmarks-search" />
           {data.loading ? null : visible.length === 0 ? (

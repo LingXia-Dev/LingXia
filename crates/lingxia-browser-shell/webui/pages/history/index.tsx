@@ -5,7 +5,6 @@ import { IconButton } from '@liulidesign/core/IconButton';
 import { SearchField } from '@liulidesign/core/SearchField';
 import { formatTimestamp } from '@liulidesign/core/Timestamp';
 import { ToastRegion, useToast } from '@liulidesign/core/Toast';
-import { TopBar } from '@liulidesign/core/TopBar';
 import { ClearDataDialog } from '../../shared/ClearDataDialog';
 import { RowMenu, type MenuAsk } from '../../shared/RowMenu';
 import { SiteIcon } from '../../shared/SiteIcon';
@@ -113,22 +112,9 @@ function History({ data, actions }: View) {
 
   return (
     <view className="grow min-h-0">
-      <TopBar
-        heading={t('history.title')}
-        endContent={
-          <Button
-            label={t('history.clearData')}
-            variant="secondary"
-            size="sm"
-            onClick={() => clearing.set(true)}
-            data-testid="history-clear-data"
-          />
-        }
-        className="px-6"
-      />
       <view className="grow min-h-0 bg-canvas">
       <view className="grow min-h-0 w-full max-w-[880px] self-center px-4 pt-4 gap-2">
-        <view className="px-2">
+        <view className="flex-row items-center gap-3 px-2">
           <SearchField
             label={t('history.search')}
             isLabelHidden
@@ -138,6 +124,13 @@ function History({ data, actions }: View) {
             resultsLabel={query.value.trim() ? t('history.results', { count: data.shown }) : undefined}
             isResultsLabelHidden
             data-testid="history-search"
+            className="grow basis-0 min-w-0"
+          />
+          <Button
+            label={t('history.clearData')}
+            variant="secondary"
+            onClick={() => clearing.set(true)}
+            data-testid="history-clear-data"
           />
         </view>
         {data.loading ? null : data.rows.length === 0 ? (

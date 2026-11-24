@@ -109,6 +109,8 @@ export default definePage({
 
     return {
       async onLoad() {
+        // System pages open in their own stack; the bar shows back only when a page is under them.
+        void page.navigationBar.update({ homeButton: 'hidden' });
         // The watch opens with a snapshot of the store, then follows each change.
         watch<HistoryWatchEvent>('history.watch', page.signal, apply);
       },

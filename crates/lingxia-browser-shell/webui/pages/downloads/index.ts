@@ -62,6 +62,8 @@ export default definePage({
 
     return {
       async onLoad() {
+        // System pages open in their own stack; the bar shows back only when a page is under them.
+        void page.navigationBar.update({ homeButton: 'hidden' });
         watch<DownloadEvent>('downloads.watch', page.signal, apply);
         await refresh().catch(() => page.update((d) => { d.loading = false; }));
       },
@@ -92,7 +94,7 @@ export default definePage({
           await refresh();
         },
         async openSettings() {
-          await lx.nav.go({ page: 'settings' });
+          await lx.nav.go({ page: 'settings', params: { section: 'downloads' } });
         },
       },
     };
