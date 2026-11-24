@@ -89,8 +89,9 @@ A cell of JSON state that belongs to the component instance ([Pages and componen
 
 - `.value` is deeply read-only. `.set(next)` replaces it and re-renders; it is refused during render
   (`UI_RENDER`) and on a cell whose component has unmounted (`UI_LOCAL`).
-- `.focus()` focuses the editor bound to the cell with `bind`, from a handler (refused in render and
-  after unmount, as `.set`). See [after a server error](inputs-and-forms.md#after-a-server-error).
+- A text cell (`LocalText`, any cell whose type is `string`) has `.focus()`: it focuses the editor bound
+  to the cell with `bind`, from a handler (refused in render and after unmount, as `.set`). See
+  [after a server error](inputs-and-forms.md#after-a-server-error).
 - Values are JSON: strings, numbers, booleans, `null`, arrays and plain objects. Object fields that
   are `undefined` are dropped. Functions, `Date`, `Map` and class instances are refused.
 - A `set` made while a render is being prepared applies when that render commits. A frame the screen
