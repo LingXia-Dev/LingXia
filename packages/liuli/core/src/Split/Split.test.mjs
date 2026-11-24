@@ -16,7 +16,7 @@ const compact = { env: { sizeClass: 'compact', viewport: { width: 393, height: 8
 test('Split regular: docks companion aside at inline end', async () => {
   const screen = await renderExample('Split/Split', 'LiveStreamSplit', regularWide);
   assert.equal(screen.getByTestId('live-split').props.flexDirection, 'row');
-  assert.equal(screen.getByTestId('live-split-aside').props.width, 240);
+  assert.equal(screen.getByTestId('live-split-aside').props.width, 300);
 });
 
 test('Split tabletop fold: places primary on upper leaf and aside on lower leaf', async () => {

@@ -58,7 +58,11 @@ export const doc: ComponentDoc = {
     order: 9,
     page: {
       lead: 'Use TopBar on a page that draws its own header: a way back, its title, a search field or a filter at the middle, its actions at the end.',
+      stage: 'bare',
       hero: 'Standard',
+      variants: [
+        { name: 'WithSearch', title: 'A search field at the middle' },
+      ],
     },
   },
 };
