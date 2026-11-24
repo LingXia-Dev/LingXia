@@ -160,6 +160,14 @@ final class LxAppViewController: UIViewController, ObservableObject {
         asideRegion?.layout()
     }
 
+    private struct ReportedSurfaceSize: Equatable {
+        let appId: String
+        let width: CGFloat
+        let height: CGFloat
+    }
+
+    private var lastReportedSurfaceSize: ReportedSurfaceSize?
+
     /// Makes room for a docked side panel at the right edge.
     func setAsideInset(_ inset: CGFloat) {
         guard let constraint = rootRightConstraint, constraint.constant != -inset else { return }
@@ -182,11 +190,16 @@ final class LxAppViewController: UIViewController, ObservableObject {
     /// core can derive the adaptive context (sizeClass) and drive present_layout.
     /// macOS does this from the desktop shell; the phone host does it here, on
     /// every layout pass (covers first layout, rotation, and size changes).
-    private func reportSurfaceWidth() {
+    /// Reports only a size the core has not had for this app, as macOS guards its own: a
+    /// layout pass that repeats at one size must not reach the core each time.
+    private func reportSurfaceWidth(force: Bool = false) {
         guard let appId = LxAppCore.currentAppId, !appId.isEmpty else { return }
         let width = view.bounds.width
         let height = view.bounds.height
         guard width > 0, height > 0 else { return }
+        let size = ReportedSurfaceSize(appId: appId, width: width, height: height)
+        guard force || size != lastReportedSurfaceSize else { return }
+        lastReportedSurfaceSize = size
         _ = setSurfaceWidth(appId, Double(width))
         _ = setSurfaceViewport(appId, Double(width), Double(height))
     }
@@ -525,7 +538,7 @@ final class LxAppViewController: UIViewController, ObservableObject {
         }
         // The core keeps a viewport per session, and a new session in the
         // same view lays nothing out again.
-        if isViewLoaded { reportSurfaceWidth() }
+        if isViewLoaded { reportSurfaceWidth(force: true) }
 
         // Use unified navigation entry point
         navigate(appId: appId, to: path, pageInstanceId: pageInstanceId, with: .none)
