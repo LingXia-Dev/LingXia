@@ -89,3 +89,22 @@ test('a value too long for a code draws an empty tile, still named, and warns on
     console.warn = warn;
   }
 });
+
+test('the WIFI guidance: its example reads back to the name and password it says', async () => {
+  const { doc } = await import('./QRCode.doc.ts');
+  const line = doc.guidance.do.find(text => text.includes('WIFI:'));
+  for (const char of ['\\', ';', ',', '"', ':']) assert.ok(line.includes('`' + char + '`'), `names ${char}`);
+  assert.match(line, /hex digits in double quotes/);
+  const value = line.match(/`(WIFI:T:[^`]*)`/)[1];
+  // Fields end at an unescaped ';'; a backslash takes the next character as it is.
+  const fields = {};
+  for (let i = 'WIFI:'.length, key = '', text = '', inKey = true; i < value.length; i++) {
+    const char = value[i];
+    if (char === '\\') text += value[++i];
+    else if (inKey && char === ':') { key = text; text = ''; inKey = false; }
+    else if (char === ';') { if (key) fields[key] = text; key = ''; text = ''; inKey = true; }
+    else text += char;
+  }
+  assert.deepEqual(fields, { T: 'WPA', S: 'Harbour Café; Upstairs', P: 'tide:pool,73' });
+  assert.ok(line.includes('"Harbour Café; Upstairs"') && line.includes('"tide:pool,73"'), 'the words match the value');
+});

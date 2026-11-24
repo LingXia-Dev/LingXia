@@ -108,6 +108,7 @@ Ratios are computed from @lingxia/view/theme and rounded down.
 - Do: Say what scanning does in `label`: "Code to join Harbour Café Guest".
 - Do: Show the link or password beside the code for whoever cannot scan.
 - Do: Check a value that comes from data with `fitsQRCode` and show it as text when it does not fit.
+- Do: In a `WIFI:` value, put a backslash before every `\`, `;`, `,`, `"` and `:` in the name and password, and wrap a name or password made only of hex digits in double quotes, or readers take it as hex: `WIFI:T:WPA;S:Harbour Café\; Upstairs;P:tide\:pool\,73;;` joins "Harbour Café; Upstairs" with the password "tide:pool,73".
 - Don't: Draw it smaller than `sm`; phone cameras read a 96 pt code at arm's length.
 - Don't: Raise `level` without a reason; each step makes the code denser.
 
