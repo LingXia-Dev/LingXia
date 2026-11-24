@@ -2,6 +2,7 @@ use super::browser_shell_webui::{
     APP_ID as BROWSER_SHELL_WEBUI_APP_ID, resolve_browser_shell_webui_dir,
 };
 use super::cache::{HostAssetsCache, LxAppBuildStamp};
+use super::embed_cache::{EmbedCache, embed_inputs};
 use super::hash::{hash_tree, path_key, sha256_hex};
 use super::lxapp_package::resolve_lxapp_package;
 use crate::config::{
@@ -33,8 +34,9 @@ struct ResourceBundlePlan {
     version: String,
     dev: bool,
     build: bool,
-    /// Built into the dev session's own directory rather than `<bundle>/dist`.
-    into_session: bool,
+    /// Built into the dev session's own directory rather than `<bundle>/dist`, seeded from
+    /// and recorded in this cache.
+    embed_cache: Option<EmbedCache>,
 }
 
 /// A bundle a dev session builds goes to that session's directory; a prebuilt bundle, an
@@ -198,6 +200,7 @@ fn prepare_resource_bundle(
 ) -> Result<PreparedResourceBundle> {
     let source = resolve_resource_bundle_source(project_root, bundle)?;
     prepare_lxapp_bundle_dir(
+        project_root,
         source.bundle_dir,
         &bundle.app_id,
         &format!("resources.bundles[{}]", bundle.app_id),
@@ -263,6 +266,7 @@ fn resolve_resource_bundle_source(
 }
 
 fn prepare_lxapp_bundle_dir(
+    project_root: &Path,
     bundle_dir: PathBuf,
     expected_app_id: &str,
     config_key: &str,
@@ -307,6 +311,8 @@ fn prepare_lxapp_bundle_dir(
 
     let (output_dir, into_session) =
         embed_output_dir(&bundle_dir, &metadata.app_id, dev, build, dev_output);
+    let embed_cache =
+        into_session.then(|| EmbedCache::new(project_root, build_profile, &metadata.app_id));
     let plan = ResourceBundlePlan {
         bundle_dir: bundle_dir.clone(),
         asset_name: metadata.app_id,
@@ -314,7 +320,7 @@ fn prepare_lxapp_bundle_dir(
         version: metadata.version,
         dev,
         build,
-        into_session,
+        embed_cache,
     };
 
     prepare_lxapp_plan(plan, build_profile, progress_override, cache_kind, cache)
@@ -349,7 +355,7 @@ pub(super) fn prepare_browser_shell_webui_bundle(
         version: metadata.version,
         dev,
         build: source.build,
-        into_session: false,
+        embed_cache: None,
     };
 
     let bundle = prepare_lxapp_plan(plan, build_profile, None, "browser-shell-webui", cache)?;
@@ -386,8 +392,19 @@ fn prepare_lxapp_plan(
     );
     let inputs_hash = hash_resource_bundle_inputs(&plan)?;
     let mut needs_build = plan.build;
+    let embed = plan
+        .embed_cache
+        .as_ref()
+        .map(|cache| (cache, embed_inputs(&plan.bundle_dir, &inputs_hash)));
 
-    if plan.build
+    if let Some((embed_cache, inputs)) = &embed {
+        needs_build = !embed_cache
+            .seed(inputs, &plan.output_dir)
+            .unwrap_or_else(|error| {
+                eprintln!("  {} last embed build unreadable: {error:#}", "!".yellow());
+                false
+            });
+    } else if plan.build
         && let Some(stamp) = cache.lxapp_builds.get(&cache_key)
         && stamp.inputs_hash == inputs_hash
         && plan.output_dir.exists()
@@ -409,7 +426,7 @@ fn prepare_lxapp_plan(
             args.push("--progress".to_string());
             args.push(progress.to_string());
         }
-        if plan.into_session {
+        if embed.is_some() {
             lxapp::run_in_dir_for_dev(&args, &plan.bundle_dir, Some(&plan.output_dir))?;
         } else if plan.dev {
             lxapp::run_in_dir_for_dev(&args, &plan.bundle_dir, None)?;
@@ -417,7 +434,9 @@ fn prepare_lxapp_plan(
             lxapp::run_in_dir(&args, &plan.bundle_dir)?;
         }
     } else {
-        let message = if plan.build {
+        let message = if embed.is_some() {
+            "bundle unchanged, copied its last build"
+        } else if plan.build {
             "bundle unchanged, skip build"
         } else {
             "using prebuilt bundle"
@@ -446,6 +465,15 @@ fn prepare_lxapp_plan(
     })?;
 
     let dist_hash = hash_tree(&plan.output_dir, &[])?;
+    if needs_build
+        && let Some((embed_cache, inputs)) = &embed
+        && let Err(error) = embed_cache.store(inputs, &plan.output_dir, &dist_hash)
+    {
+        eprintln!(
+            "  {} embed build not kept for the next session: {error:#}",
+            "!".yellow()
+        );
+    }
     cache.lxapp_builds.insert(
         cache_key,
         LxAppBuildStamp {
@@ -651,7 +679,7 @@ pub(super) fn sync_resource_bundles(
     Ok(changed)
 }
 
-fn copy_dir_recursive(src: &Path, dest: &Path) -> Result<()> {
+pub(super) fn copy_dir_recursive(src: &Path, dest: &Path) -> Result<()> {
     if !dest.exists() {
         fs::create_dir_all(dest)?;
     }
@@ -801,7 +829,7 @@ mod tests {
         let install = |body: &str| crate::build_prepare::test_support::declare(root, body);
         install(&format!("printf x >> '{}/count'", marker.path().display()));
         let plan = || ResourceBundlePlan {
-            into_session: false,
+            embed_cache: None,
             bundle_dir: root.to_path_buf(),
             asset_name: "app".into(),
             output_dir: root.join("dist"),
@@ -849,7 +877,7 @@ mod tests {
         fs::write(root.join("source.ts"), "old input").unwrap();
         crate::build_prepare::test_support::declare(root, "printf 'new input' > source.ts");
         let plan = ResourceBundlePlan {
-            into_session: false,
+            embed_cache: None,
             bundle_dir: root.to_path_buf(),
             asset_name: "app".into(),
             output_dir: root.join("dist"),
@@ -887,7 +915,7 @@ mod tests {
         fs::write(root.join("dist/asset.txt"), "dev build").unwrap();
         crate::build_prepare::test_support::declare(root, "exit 7");
         let plan = ResourceBundlePlan {
-            into_session: false,
+            embed_cache: None,
             bundle_dir: root.to_path_buf(),
             asset_name: "app".into(),
             output_dir: root.join("dist"),
@@ -924,7 +952,7 @@ mod tests {
         fs::write(package.join("compiler.mjs"), "export const target=1").unwrap();
         fs::write(root.join("dist/asset.txt"), "old bundle").unwrap();
         let plan = ResourceBundlePlan {
-            into_session: false,
+            embed_cache: None,
             bundle_dir: root.to_path_buf(),
             asset_name: "app".into(),
             output_dir: root.join("dist"),
@@ -964,7 +992,7 @@ mod tests {
     fn state_cache_is_not_hashed() {
         let temp = tempfile::tempdir().unwrap();
         let plan = ResourceBundlePlan {
-            into_session: false,
+            embed_cache: None,
             bundle_dir: temp.path().to_path_buf(),
             asset_name: "app".into(),
             output_dir: temp.path().join("dist"),
@@ -976,6 +1004,182 @@ mod tests {
         fs::create_dir_all(temp.path().join(".lingxia/cache")).unwrap();
         fs::write(temp.path().join(".lingxia/cache/file"), "cache").unwrap();
         assert_eq!(initial, hash_resource_bundle_inputs(&plan).unwrap());
+    }
+
+    /// A host session's plan for `bundle`: no lxapp.json, so a build attempt fails visibly.
+    fn session_plan(project: &Path, session: &str, profile: BuildProfile) -> ResourceBundlePlan {
+        ResourceBundlePlan {
+            embed_cache: Some(EmbedCache::new(project, profile, "app")),
+            bundle_dir: project.join("app"),
+            asset_name: "app".into(),
+            output_dir: project.join(format!(".lingxia/dev/sessions/{session}/build/app")),
+            version: "1.0.0".into(),
+            dev: true,
+            build: true,
+        }
+    }
+
+    fn embed_project() -> tempfile::TempDir {
+        let temp = tempfile::tempdir().unwrap();
+        fs::create_dir_all(temp.path().join("app")).unwrap();
+        fs::write(temp.path().join("app/index.ts"), "export {}").unwrap();
+        temp
+    }
+
+    /// Record `content` as the last embed build of `plan`'s current inputs.
+    fn record_build(plan: &ResourceBundlePlan, content: &str) {
+        let built = plan.bundle_dir.with_file_name(format!("built-{content}"));
+        fs::create_dir_all(&built).unwrap();
+        fs::write(built.join("logic.js"), content).unwrap();
+        let inputs = embed_inputs(
+            &plan.bundle_dir,
+            &hash_resource_bundle_inputs(plan).unwrap(),
+        );
+        let dist = hash_tree(&built, &[]).unwrap();
+        plan.embed_cache
+            .as_ref()
+            .unwrap()
+            .store(&inputs, &built, &dist)
+            .unwrap();
+    }
+
+    fn prepare(plan: ResourceBundlePlan) -> Result<PreparedResourceBundle> {
+        prepare_lxapp_plan(
+            plan,
+            BuildProfile::Debug,
+            None,
+            "resource-lxapp",
+            &mut HostAssetsCache::default(),
+        )
+    }
+
+    #[test]
+    fn unchanged_embed_inputs_seed_a_session_without_building() {
+        let temp = embed_project();
+        record_build(
+            &session_plan(temp.path(), "aaaaaa", BuildProfile::Debug),
+            "v1",
+        );
+        for session in ["aaaaaa", "bbbbbb"] {
+            let prepared =
+                prepare(session_plan(temp.path(), session, BuildProfile::Debug)).unwrap();
+            assert_eq!(
+                fs::read_to_string(prepared.dist_dir.join("logic.js")).unwrap(),
+                "v1"
+            );
+        }
+    }
+
+    #[test]
+    fn a_changed_embed_input_builds() {
+        let temp = embed_project();
+        let outside = temp.path().join("kit.tsx");
+        fs::write(&outside, "kit v1").unwrap();
+        fs::create_dir_all(temp.path().join("app/.lingxia")).unwrap();
+        fs::write(
+            temp.path().join("app/.lingxia/gpu-inputs.json"),
+            r#"{"pages/home/index.tsx":["../kit.tsx"]}"#,
+        )
+        .unwrap();
+        let plan = || session_plan(temp.path(), "aaaaaa", BuildProfile::Debug);
+        record_build(&plan(), "v1");
+        prepare(plan()).unwrap();
+
+        // A file the last build's GPU pages compiled from, outside the bundle.
+        fs::write(&outside, "kit v2").unwrap();
+        let error = prepare(plan()).err().unwrap();
+        assert!(error.to_string().contains("No lxapp.json"), "{error:#}");
+
+        fs::write(&outside, "kit v1").unwrap();
+        prepare(plan()).unwrap();
+        fs::write(temp.path().join("app/index.ts"), "export const edited = 1").unwrap();
+        let error = prepare(plan()).err().unwrap();
+        assert!(error.to_string().contains("No lxapp.json"), "{error:#}");
+    }
+
+    #[test]
+    fn debug_and_release_keep_separate_embed_builds() {
+        let temp = embed_project();
+        record_build(
+            &session_plan(temp.path(), "aaaaaa", BuildProfile::Debug),
+            "debug",
+        );
+        let error = prepare(session_plan(temp.path(), "bbbbbb", BuildProfile::Release))
+            .err()
+            .unwrap();
+        assert!(error.to_string().contains("No lxapp.json"), "{error:#}");
+
+        record_build(
+            &session_plan(temp.path(), "bbbbbb", BuildProfile::Release),
+            "release",
+        );
+        for (session, profile, content) in [
+            ("cccccc", BuildProfile::Debug, "debug"),
+            ("dddddd", BuildProfile::Release, "release"),
+        ] {
+            let prepared = prepare(session_plan(temp.path(), session, profile)).unwrap();
+            assert_eq!(
+                fs::read_to_string(prepared.dist_dir.join("logic.js")).unwrap(),
+                content
+            );
+        }
+    }
+
+    #[test]
+    fn sessions_starting_at_once_never_read_a_half_written_embed_build() {
+        let temp = embed_project();
+        let plan = session_plan(temp.path(), "writer", BuildProfile::Debug);
+        let cache = plan.embed_cache.clone().unwrap();
+        let inputs = embed_inputs(
+            &plan.bundle_dir,
+            &hash_resource_bundle_inputs(&plan).unwrap(),
+        );
+        // Many files, so a copy that overlaps a replacement would be torn or vanish midway.
+        let build = |name: &str| {
+            let dir = temp.path().join(name);
+            for index in 0..64 {
+                fs::create_dir_all(dir.join(format!("pages/{index}"))).unwrap();
+                fs::write(dir.join(format!("pages/{index}/page.js")), name.repeat(512)).unwrap();
+            }
+            let dist = hash_tree(&dir, &[]).unwrap();
+            (dir, dist)
+        };
+        let builds = [build("one"), build("two")];
+        cache.store(&inputs, &builds[0].0, &builds[0].1).unwrap();
+
+        let start = std::sync::Barrier::new(4);
+        std::thread::scope(|scope| {
+            for writer in 0..2 {
+                let (cache, inputs, builds, start) = (&cache, &inputs, &builds, &start);
+                scope.spawn(move || {
+                    start.wait();
+                    for round in 0..20 {
+                        let (dir, dist) = &builds[(writer + round) % 2];
+                        cache.store(inputs, dir, dist).unwrap();
+                    }
+                });
+            }
+            for reader in 0..2 {
+                let (cache, inputs, start, root) = (&cache, &inputs, &start, temp.path());
+                scope.spawn(move || {
+                    start.wait();
+                    for round in 0..20 {
+                        let output = root.join(format!("seeded-{reader}-{round}"));
+                        assert!(
+                            cache.seed(inputs, &output).unwrap(),
+                            "seed {reader}/{round}"
+                        );
+                    }
+                });
+            }
+        });
+        let leftovers: Vec<_> = fs::read_dir(temp.path().join(".lingxia/dev/embed/debug/app"))
+            .unwrap()
+            .flatten()
+            .map(|entry| entry.file_name().to_string_lossy().into_owned())
+            .filter(|name| name.starts_with('.'))
+            .collect();
+        assert!(leftovers.is_empty(), "{leftovers:?}");
     }
 
     #[test]
@@ -994,6 +1198,7 @@ mod tests {
         crate::build_prepare::test_support::declare(&bundle_dir, "exit 7");
         let mut cache = HostAssetsCache::default();
         let prepared = prepare_lxapp_bundle_dir(
+            temp.path(),
             bundle_dir,
             "pkg-app",
             "resources.bundles[pkg-app]",
