@@ -448,17 +448,52 @@ function rolesOn(schema, table, tag) {
     && (table.role[name] ?? []).every(rule => !rule.tags || rule.tags.includes(tag)));
 }
 
+// One line per style group, shown on hover over `StyleGroup.<Name>`.
+const styleGroupDocs = {
+  box: 'Size, margin, position, placement as an item, opacity, background, border, shadow, filters and transforms.',
+  padding: 'Padding, physical and flow-relative.',
+  direction: 'The main axis of a flex container.',
+  align: 'How a container aligns its children.',
+  flex: 'Whether a flex container wraps.',
+  gap: 'Space between children.',
+  grid: 'Grid tracks and auto placement.',
+  text: 'Text colour, font, line height, spacing, alignment, decoration, wrapping and selection; inherited.',
+  textBlock: 'Line clamping, overflow and clipping a background to the text.',
+  scroll: 'Which axes scroll.',
+  overscroll: 'Overscroll hand-off and snapping.',
+  editor: 'The placeholder colour of an editor.',
+  parts: 'The parts of a control.',
+  media: 'How an image or video fits its box.',
+  imagePlacement: 'Where a fitted image or video sits in its box.',
+  accent: 'The accent colour of a control.',
+  ellipsis: 'How cut text ends.',
+  run: 'Colour, font and decoration of a run inside text.',
+};
+
+/** The authored keys of each style group, named as \`elements.*.style\` names them. */
+function styleGroupKeys(schema) {
+  const groups = new Map();
+  for (const name of new Set(Object.values(schema.elements).flatMap(element => [element, element.block].filter(Boolean).flatMap(form => form.style)))) {
+    if (!styleGroupDocs[name]) throw Error(`generate.mjs: style group ${name} needs a line in styleGroupDocs`);
+    groups.set(name, elementStyle(schema, { style: [name] }).filter(key => !schema.style[key].internal));
+  }
+  return groups;
+}
+
 function authoring(schema, api) {
   const table = rules(schema), common = commonProps(api);
   const style = Object.entries(schema.style).filter(([, entry]) => !entry.internal)
     .map(([name, entry]) => `  ${name}?: ${entry.type};`).join('\n');
+  const styleGroups = styleGroupKeys(schema);
+  const groupName = name => `StyleGroup.${pascal(name)}`;
+  const groupTypes = [...styleGroups].filter(([, keys]) => keys.length).map(([name, keys]) =>
+    `  /** ${styleGroupDocs[name]} */\n  export interface ${pascal(name)} {\n${keys.map(key => `    ${key}?: ${schema.style[key].type};`).join('\n')}\n  }`).join('\n');
   const lines = [];
   for (const [name, element] of Object.entries(schema.elements)) {
     const type = pascal(name);
     // An element with a block form (`<link>` outside `<text>`) takes either form's style and children.
-    const styleKeys = new Set([element, element.block].filter(Boolean).flatMap(form => elementStyle(schema, form)));
-    const keys = [...styleKeys].filter(key => !schema.style[key].internal).map(key => JSON.stringify(key)).join(' | ');
-    lines.push(`export type ${type}Style = Pick<Style, ${keys}>;`);
+    const accepted = [...new Set([element, element.block].filter(Boolean).flatMap(form => form.style))].filter(group => styleGroups.get(group).length);
+    lines.push(`export type ${type}Style = ${accepted.length ? accepted.map(groupName).join(' & ') : '{}'};`);
     const children = { any: 'Child', content: 'Child', text: 'TextChild', runs: 'RunChild', none: 'never' }[element.block?.children ?? element.children];
     // A run with no block form takes only its run props, so `<span id>` fails in tsc; a `<link>`
     // may be a block link, which takes them all, so its run props are checked at build.
@@ -511,6 +546,11 @@ export type ColorSeries = ColorRole | ColorAlpha;
 /** CSS-named style; each element accepts the subset its \`*Style\` type lists. */
 export interface Style {
 ${style}
+}
+
+/** Style keys by group; each element's \`*Style\` joins the groups it accepts. */
+export namespace StyleGroup {
+${groupTypes}
 }
 
 ${lines.join('\n')}
