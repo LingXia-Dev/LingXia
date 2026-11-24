@@ -436,8 +436,9 @@ translation, an argument a translation adds or drops, and a catalogue for an und
 - A package with words of its own ships its source catalogue and names it in its `package.json`:
   `"lingxia": { "messages": "./messages/en.json" }`; every key starts with its `@namespace.`.
 - A dev session also builds `en-XA`: the source accented, ~40% longer and bracketed, to find
-  clipped or untranslated text. Pick it with `lx.host.displayLanguage.set('en-XA')` from
-  the Control app (`lxdev lxapp eval`); it never ships.
+  clipped or untranslated text; and `ar-XB`: the source forced right-to-left on a right-to-left
+  page, to check mirroring. Pick one with `lx.host.displayLanguage.set('ar-XB')` from
+  the Control app (`lxdev lxapp eval`); neither ships.
 - Keys and arguments are typed from the source catalogue: an unknown key, or a missing or wrong-kind
   argument, fails `tsc`, and a literal key the catalogue lacks fails the build. A key built at run
   time takes a cast, `` t(`state.${s}` as MessageKey) `` (`LxAppMessageKey` in Logic), and its

@@ -441,10 +441,10 @@ fn generated_app_json_includes_dev_ws_url_when_configured() {
     let value: serde_json::Value = serde_json::from_str(&app_json).unwrap();
 
     assert_eq!(value["devWsUrl"], "ws://192.168.1.20:12345/?token=abc");
-    // The host must let a preference for the dev build's pseudo-language through to its lxapps.
+    // The host must let a preference for the dev build's pseudo-languages through to its lxapps.
     assert_eq!(
         value["languages"],
-        serde_json::json!(["en-US", "zh-CN", "en-XA"])
+        serde_json::json!(["en-US", "zh-CN", "en-XA", "ar-XB"])
     );
     assert_eq!(
         value["devBundleBaseUrl"],
