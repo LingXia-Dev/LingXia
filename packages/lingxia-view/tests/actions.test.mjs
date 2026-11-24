@@ -53,7 +53,8 @@ test('pending action limits and malformed replies cannot lose a live request',as
   const promises=Array.from({length:256},()=>actions.increment());
   assert.throws(()=>actions.increment(),/too many pending/);
   const frames=takeActionRequests().map(JSON.parse);
-  assert.throws(()=>receiveActionResponse({v:3,kind:'res',id:frames[0].id,ok:true}),/invalid response/);
+  assert.throws(()=>configureActions({__names:['a'],__modes:{}}),/UI_ACTION: action catalog takes \{ __names: 0\.\.256 unique non-empty strings.*?; got \{"__names":\["a"\],"__modes":\{\}\}/);
+  assert.throws(()=>receiveActionResponse({v:3,kind:'res',id:frames[0].id,ok:true}),/UI_ACTION: response takes \{ v: 2, kind: 'res'\|'event'.*?; got \{"v":3/);
   assert.throws(()=>receiveActionResponse({v:2,kind:'res',id:frames[0].id,ok:true,result:NaN}),/JSON/);
   for(const frame of frames) receiveActionResponse({v:2,kind:'res',id:frame.id,ok:true,result:42});
   assert.deepEqual(await Promise.all(promises),Array(256).fill(42));

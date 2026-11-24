@@ -28,7 +28,7 @@ test('channel establishment replays initial data and preserves independent seque
 test('malformed frames and duplicate ack leave the valid channel usable',async()=>{
   const {promise,frame}=start();
   assert.throws(()=>frame('ch.data',{seq:0,payload:1}),/before acknowledgement/);
-  assert.throws(()=>frame('ch.ack',{ok:'yes'}),/invalid frame/);
+  assert.throws(()=>frame('ch.ack',{ok:'yes'}),/UI_CHANNEL: frame takes \{ v: 2, kind: 'ch\.ack'\|'ch\.data'\|'ch\.close'.*?; got /);
   frame('ch.ack',{ok:true});const channel=await promise;
   assert.throws(()=>frame('ch.ack',{ok:true}),/duplicate/);
   assert.throws(()=>frame('ch.data',{seq:1,payload:1}),/sequence/);

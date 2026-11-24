@@ -45,7 +45,7 @@ test('iterator preserves ordered payloads and final result; early return cancels
 test('malformed ordering cannot consume the expected event; reset rejects pending reads', async () => {
   const {stream,event}=start(), iterator=stream[Symbol.asyncIterator]();
   assert.throws(()=>event(1,'bad'),/sequence/);
-  assert.throws(()=>event(-1,'bad'),/invalid response/);
+  assert.throws(()=>event(-1,'bad'),/UI_ACTION: response takes \{ v: 2, kind: 'res'\|'event'.*?; got /);
   assert.throws(()=>event(0,NaN),/JSON/);
   event(0,'good');assert.deepEqual(await iterator.next(),{done:false,value:'good'});
   assert.throws(()=>event(0,'duplicate'),/sequence/);
