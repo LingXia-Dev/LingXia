@@ -13,7 +13,7 @@ import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 
 @RunWith(RobolectricTestRunner::class)
-@Config(sdk = [28, 35], manifest = Config.NONE)
+@Config(sdk = [29, 35], manifest = Config.NONE)
 class LxAppSystemBackCallbackTest {
     class HostActivity : ComponentActivity() {
         var backgroundCalls = 0
