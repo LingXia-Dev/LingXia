@@ -52,3 +52,28 @@ test('class table holds the keys of a cx map built elsewhere and passed by name'
   const page = cxPage(`import { cx } from '@lingxia/view';`, 'const map = { italic: view.data.on };', 'cx(map)');
   assert.ok((await built({ 'page.tsx': page })).includes('italic'));
 });
+
+const usesK = specifier => `import { k } from '${specifier}';\nexport function render(){ return <text className={k}>x</text> }`;
+for (const [file, contents] of [
+  ['h.mjs', `export const k = 'italic';`],
+  ['h.cjs', `exports.k = 'italic';`],
+  ['h.mts', `export const k: string = 'italic';`],
+  ['h.cts', `export const k: string = 'italic';`],
+])
+  test(`class table holds a class written in a ${file.slice(1)} module`, async () => {
+    assert.ok((await built({ 'page.tsx': usesK(`./${file}`), [file]: contents })).includes('italic'));
+  });
+
+test('class table holds the string values of an imported JSON file, not its keys', async () => {
+  const table = await built({
+    'page.tsx': `import t from './t.json';\nexport function render(){ return <text className={t.k}>x</text> }`,
+    't.json': '{"k":"italic","underline":1}',
+  });
+  assert.ok(table.includes('italic'));
+  assert.ok(!table.includes('underline'));
+});
+
+test('class table ignores a JSON file the page does not import', async () => {
+  const table = await built({ 'page.tsx': `export function render(){ return <text className="p-1">x</text> }`, 'other.json': '{"k":"italic"}' });
+  assert.ok(!table.includes('italic'));
+});

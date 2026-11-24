@@ -10,9 +10,16 @@ let libFile;
 const lib = () => libFile ??= ts.createSourceFile(libPath, readFileSync(libPath, 'utf8'), ts.ScriptTarget.ES2020, true);
 const libOptions = { lib: ['lib.es5.d.ts'], types: [], noEmit: true };
 
+/** Script modules a page compiles from, whose string literals hold its classes. */
+export const scriptModule = /\.(?:[jt]sx?|[cm][jt]s)$/;
+
+/** The esbuild loader for a script module: `.mts`/`.cts` are TypeScript, `.mjs`/`.cjs` JavaScript. */
+export function scriptLoader(filename) {
+  return /\.tsx$/.test(filename) ? 'tsx' : /\.[cm]?ts$/.test(filename) ? 'ts' : /\.jsx$/.test(filename) ? 'jsx' : 'js';
+}
+
 export function parseSource(filename, source) {
-  const kind = filename.endsWith('.tsx') ? ts.ScriptKind.TSX : filename.endsWith('.jsx') ? ts.ScriptKind.JSX
-    : filename.endsWith('.ts') ? ts.ScriptKind.TS : ts.ScriptKind.JS;
+  const kind = { tsx: ts.ScriptKind.TSX, ts: ts.ScriptKind.TS, jsx: ts.ScriptKind.JSX, js: ts.ScriptKind.JS }[scriptLoader(filename)];
   return ts.createSourceFile(filename, source, ts.ScriptTarget.ES2020, true, kind);
 }
 

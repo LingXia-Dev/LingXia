@@ -10,7 +10,7 @@ import { inertControlWarnings } from './inert-controls.mjs';
 import { moduleJsxProblems } from './module-jsx.mjs';
 import { vectorPathProblems } from './vector-paths.mjs';
 import { transformedHolderProblems } from './transformed-holders.mjs';
-import { sourceChecker, moduleChecker, parseSource } from './source.mjs';
+import { sourceChecker, moduleChecker, parseSource, scriptModule, scriptLoader } from './source.mjs';
 import { moduleBanner } from './compatibility.mjs';
 import { compileUtilities, tailwindWarm } from './tailwind.mjs';
 import { nearestSupported } from './suggest.mjs';
@@ -305,7 +305,7 @@ export function stampIds(source, filename, log) {
  */
 export function identify(source, filename, label) {
   const file = parseSource(filename, source);
-  const module = label.replace(/\.[jt]sx?$/, '');
+  const module = label.replace(scriptModule, '');
   const names = [], volatile = [], moduleNames = ownDeclarations(file);
   for (const statement of file.statements) {
     if (ts.isFunctionDeclaration(statement) && statement.name && /^[A-Z]/.test(statement.name.text) && statement.body) {
@@ -555,14 +555,24 @@ export async function buildPages(root, pages, output, catalogs = {}, { dev = fal
             }
             return { contents: '', loader: 'js' };
           });
-          builder.onLoad({ filter: /\.[jt]sx?$/ }, async ({ path }) => {
+          // A JSON file the page imports can hold class names; esbuild still loads it.
+          builder.onLoad({ filter: /\.json$/ }, async ({ path }) => {
+            const walk = value => {
+              if (typeof value === 'string') { for (const name of value.split(/\s+/)) if (name) candidates.add(name); }
+              else if (value && typeof value === 'object') Object.values(value).forEach(walk);
+            };
+            // Malformed JSON is esbuild's to report.
+            try { walk(JSON.parse(await readFile(path, 'utf8'))); } catch {}
+            return undefined;
+          });
+          builder.onLoad({ filter: scriptModule }, async ({ path }) => {
             if (path.toLowerCase().startsWith(runtimeRoot) || path === compiledMessages || dirname(path) === dirname(compiledMessages)) return;
             if (!authored(root, path)) {
               const owner = packageOf(path);
               if (owner) bundledPackages.set(owner.name, owner);
             }
             const contents = await readFile(path, 'utf8');
-            const loader = path.endsWith('.tsx') ? 'tsx' : path.endsWith('.ts') ? 'ts' : path.endsWith('.jsx') ? 'jsx' : 'js';
+            const loader = scriptLoader(path);
             const label = relative(root, path).split('\\').join('/');
             const analysed = analyse(path, contents, label, sourceLabel(root, path), loader, literalColors, dev);
             problems.push(...analysed.problems);
