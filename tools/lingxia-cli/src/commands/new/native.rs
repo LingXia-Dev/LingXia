@@ -184,80 +184,6 @@ pub(super) fn create_rust_library(
     );
     vars.insert("LINGXIA_DEP_FEATURES".to_string(), "[]".to_string());
     vars.insert(
-        "APPLE_REEXPORT".to_string(),
-        if config.platforms.contains(&Platform::Ios)
-            || config.platforms.contains(&Platform::Macos)
-            || config.platforms.contains(&Platform::Windows)
-        {
-            let mut reexports = Vec::new();
-            if config.platforms.contains(&Platform::Ios)
-                || config.platforms.contains(&Platform::Macos)
-            {
-                reexports.push(
-                    "#[cfg(any(target_os = \"ios\", target_os = \"macos\"))]\npub use lingxia::apple::*;",
-                );
-            }
-            if config.platforms.contains(&Platform::Windows) {
-                reexports.push("#[cfg(target_os = \"windows\")]\npub use lingxia::windows::*;");
-            }
-            reexports.join("\n")
-        } else {
-            String::new()
-        },
-    );
-    vars.insert(
-        "HARMONY_REEXPORT".to_string(),
-        if config.platforms.contains(&Platform::Harmony) {
-            "#[cfg(target_env = \"ohos\")]\npub use lingxia::harmony::*;".to_string()
-        } else {
-            String::new()
-        },
-    );
-    vars.insert(
-        "ANDROID_EXPORT_BLOCK".to_string(),
-        if config.platforms.contains(&Platform::Android) {
-            format!(
-                "// Android: JNI export\n#[cfg(target_os = \"android\")]\nmod android {{\n    use jni::EnvUnowned;\n    use jni::objects::JClass;\n\n    #[unsafe(no_mangle)]\n    pub extern \"system\" fn Java_{}_MainActivity_nativeRegisterHostAddon(\n        _env: EnvUnowned,\n        _class: JClass,\n    ) {{\n        super::register_host_addons();\n    }}\n}}",
-                config.package_id.replace('.', "_")
-            )
-        } else {
-            String::new()
-        },
-    );
-    vars.insert(
-        "HARMONY_EXPORT_BLOCK".to_string(),
-        if config.platforms.contains(&Platform::Harmony) {
-            "// Harmony: NAPI export\n#[cfg(target_env = \"ohos\")]\n#[napi_derive_ohos::napi]\npub fn lingxia_register_host_addon() {\n    register_host_addons();\n}".to_string()
-        } else {
-            String::new()
-        },
-    );
-    vars.insert(
-        "APPLE_EXPORT_BLOCK".to_string(),
-        if config.platforms.contains(&Platform::Ios) || config.platforms.contains(&Platform::Macos)
-        {
-            "// iOS/macOS: C export\n#[cfg(any(target_os = \"ios\", target_os = \"macos\"))]\n#[unsafe(no_mangle)]\npub extern \"C\" fn lingxia_register_host_addon() {\n    register_host_addons();\n}".to_string()
-        } else {
-            String::new()
-        },
-    );
-    vars.insert(
-        "WINDOWS_EXPORT_BLOCK".to_string(),
-        if config.platforms.contains(&Platform::Windows) {
-            "// Windows: Rust host export\n#[cfg(target_os = \"windows\")]\npub fn lingxia_register_host_addon() {\n    register_host_addons();\n}".to_string()
-        } else {
-            String::new()
-        },
-    );
-    vars.insert(
-        "ANDROID_DEPS_BLOCK".to_string(),
-        if config.platforms.contains(&Platform::Android) {
-            "[target.'cfg(target_os = \"android\")'.dependencies]\njni = \"0.22.4\"".to_string()
-        } else {
-            String::new()
-        },
-    );
-    vars.insert(
         "HARMONY_DEPS_BLOCK".to_string(),
         if config.platforms.contains(&Platform::Harmony) {
             "[target.'cfg(target_env = \"ohos\")'.dependencies]\nnapi-ohos = \"1.2\"\nnapi-derive-ohos = \"1.2\"".to_string()
@@ -519,21 +445,12 @@ cloud = []
     }
 
     #[test]
-    fn native_template_registers_the_host_once_before_product_cli_parsing() {
+    fn native_template_registers_everything_through_host_macro() {
         let source = include_str!("../../../templates/native/src/lib.rs");
-        assert!(source.contains("static REGISTER: std::sync::Once"));
-
-        let wrapper = source
-            .split("pub fn run_cli_if_invoked() -> Option<i32>")
-            .nth(1)
-            .expect("native template must expose the Windows CLI wrapper");
-        let register = wrapper
-            .find("register_host_addons();")
-            .expect("CLI wrapper must register the host addon");
-        let parse = wrapper
-            .find("lingxia::product_cli::run_if_invoked()")
-            .expect("CLI wrapper must classify the invocation");
-        assert!(register < parse);
+        assert!(source.contains("lingxia::host!(AppHostAddon);"));
+        assert!(!source.contains("register_host_entry") && !source.contains("include!"));
+        let build = include_str!("../../../templates/native/build.rs");
+        assert!(build.contains("lingxia_native_codegen::build();"));
     }
 
     /// One declared capability must not need two SDK features kept in sync by

@@ -59,10 +59,10 @@ lingxia-device-io = { version = "0.30.0", optional = true, default-features = fa
 rong = { version = "0.8.0", default-features = false }
 log = "0.4.34"
 
-# Platform-specific dependencies for FFI
-[target.'cfg(target_os = "android")'.dependencies]
-jni = "0.22.4"
+[build-dependencies]
+lingxia-native-codegen = "0.30.0"
 
+# `lingxia::host!` exports Harmony's entrypoint through napi.
 [target.'cfg(target_env = "ohos")'.dependencies]
 napi-ohos = "1.2"
 napi-derive-ohos = "1.2"
@@ -178,6 +178,7 @@ lingxia-logic = { path = "../../../crates/lingxia-logic" }
 lingxia-lxapp = { path = "../../../crates/lingxia-lxapp" }
 lingxia-media = { path = "../../../crates/lingxia-media" }
 lingxia-messaging = { path = "../../../crates/lingxia-messaging" }
+lingxia-native-codegen = { path = "../../../crates/lingxia-native-codegen" }
 lingxia-native-macros = { path = "../../../crates/lingxia-native-macros" }
 lingxia-platform = { path = "../../../crates/lingxia-platform" }
 lingxia-provider = { path = "../../../crates/lingxia-provider" }

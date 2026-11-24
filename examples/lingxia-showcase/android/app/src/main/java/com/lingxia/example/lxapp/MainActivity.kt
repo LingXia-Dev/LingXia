@@ -9,8 +9,6 @@ import com.lingxia.app.Lingxia
 class MainActivity : AppCompatActivity() {
     private val TAG = "MainActivity"
 
-    private external fun nativeRegisterHostAddon()
-
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         // Default URL playback is ExoPlayer. To use host libmpv instead:
@@ -19,9 +17,7 @@ class MainActivity : AppCompatActivity() {
         // 3. Uncomment MpvNative.load() in ShowcaseApp
         // 4. Uncomment the factory line below (must stay before quickStart)
         // Lingxia.setUrlPlayerEngineFactory(MpvUrlPlayerEngineFactory())
-        Lingxia.quickStart(this) {
-            nativeRegisterHostAddon()
-        }
+        Lingxia.quickStart(this)
 
         Log.d(TAG, "Lingxia is ready")
     }

@@ -1,18 +1,10 @@
 import { hilog } from '@kit.PerformanceAnalysisKit';
 import { window } from '@kit.ArkUI';
 import { Lingxia, LingxiaBaseAbility } from 'lingxia';
-import { lingxiaRegisterHostAddon } from 'liblingxia.so';
 
 const DOMAIN = 0x0000;
 
 export default class EntryAbility extends LingxiaBaseAbility {
-  /**
-   * Register native host addon.
-   */
-  protected registerHostAddon(): void {
-    lingxiaRegisterHostAddon();
-  }
-
   onWindowStageCreate(windowStage: window.WindowStage): void {
     super.onWindowStageCreate(windowStage);
     hilog.info(DOMAIN, 'testTag', '%{public}s', 'Ability onWindowStageCreate');

@@ -5,7 +5,7 @@
 //! - platform bootstrap and FFI entry points for Android, Apple platforms
 //!   (iOS and macOS), HarmonyOS, and Windows;
 //! - the [`native`] macro for page-facing Rust APIs;
-//! - host addon registration through [`HostAddon`] and [`register_host_addon`];
+//! - host addon and route registration through [`host!`] and [`HostAddon`];
 //! - native service APIs such as [`app`], [`device`], [`wifi`], [`media`], [`task`],
 //!   and [`update`];
 //! - optional JS AppService extension APIs under [`js`] when the `standard`
@@ -23,7 +23,7 @@ extern crate self as lingxia;
 #[path = "../../lingxia-platform/tests/support/apple_host_stubs.rs"]
 mod apple_host_stubs;
 
-pub use host_addon::{HostAddon, register_host_addon};
+pub use host_addon::{__register_host, HostAddon, register_host_addon};
 #[doc(hidden)]
 pub use lingxia_native_macros::framework_native;
 pub use lingxia_native_macros::native;

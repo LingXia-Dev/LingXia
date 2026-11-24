@@ -19,7 +19,7 @@ Lingxia.setUrlPlayerEngineFactory(object : UrlPlayerEngineFactory {
         return MpvPlayerEngine(request)
     }
 })
-Lingxia.quickStart(this) { registerHostAddon() }
+Lingxia.quickStart(this)
 ```
 
 - `create() == null` keeps ExoPlayer for that surface. `INLINE` (media swiper)

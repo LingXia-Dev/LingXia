@@ -84,6 +84,7 @@ lingxia-logic = { path = "../../../crates/lingxia-logic" }
 lingxia-lxapp = { path = "../../../crates/lingxia-lxapp" }
 lingxia-media = { path = "../../../crates/lingxia-media" }
 lingxia-messaging = { path = "../../../crates/lingxia-messaging" }
+lingxia-native-codegen = { path = "../../../crates/lingxia-native-codegen" }
 lingxia-native-macros = { path = "../../../crates/lingxia-native-macros" }
 lingxia-platform = { path = "../../../crates/lingxia-platform" }
 lingxia-provider = { path = "../../../crates/lingxia-provider" }

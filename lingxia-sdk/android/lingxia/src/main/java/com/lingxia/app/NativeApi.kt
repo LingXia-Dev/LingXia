@@ -108,6 +108,10 @@ internal object NativeApi {
     @JvmStatic
     external fun setPad(pad: Boolean)
 
+    /** Registers the host crate's addon and routes; exported by its `lingxia::host!`. */
+    @JvmStatic
+    external fun registerHostAddon()
+
     /** Effective display language selected by the initialized runtime. */
     @JvmStatic
     external fun getDisplayLanguage(): String

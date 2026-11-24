@@ -1,11 +1,11 @@
-//! Native library for the example app (builds to .so/.a).
-//!
-//! This crate:
-//! 1. Links the core `lingxia` runtime into the final static/shared library
-//! 2. Exports host addon registration via platform FFI (JNI/NAPI/C)
+//! Native library for the example app (builds to .so/.a): its host addon, registered
+//! with every platform SDK by `lingxia::host!`.
 
 #[cfg(feature = "standard")]
 mod extension;
+mod routes;
+
+lingxia::host!(ExampleHostAddon);
 
 struct ExampleHostAddon;
 
@@ -95,70 +95,4 @@ impl lingxia::HostAddon for ExampleHostAddon {
             log::warn!("local control unavailable: {error}");
         }
     }
-}
-
-fn register_host_addon() {
-    static REGISTER: std::sync::Once = std::sync::Once::new();
-    REGISTER.call_once(|| lingxia::register_host_addon(Box::new(ExampleHostAddon)));
-}
-
-/// Answer as this product's command line if that is what this invocation is,
-/// and return the exit code. `None` means carry on and be the app.
-///
-/// The Windows executable calls this as the first thing in `main`.
-#[cfg(all(feature = "control", target_os = "windows"))]
-pub fn run_cli_if_invoked() -> Option<i32> {
-    register_host_addon();
-    lingxia::product_cli::run_if_invoked()
-}
-
-// Android: JNI export
-#[cfg(target_os = "android")]
-mod android {
-    use jni::EnvUnowned;
-    use jni::objects::JClass;
-
-    #[inline]
-    fn register_host_addon() {
-        super::register_host_addon();
-    }
-
-    #[unsafe(no_mangle)]
-    pub extern "system" fn Java_com_lingxia_example_lxapp_MainActivity_nativeRegisterHostAddon<
-        'local,
-    >(
-        _env: EnvUnowned<'local>,
-        _class: JClass<'local>,
-    ) {
-        register_host_addon();
-    }
-
-    // Backward-compatible symbol for older example app package IDs.
-    #[unsafe(no_mangle)]
-    pub extern "system" fn Java_com_julibits_lingxia_muke_MainActivity_nativeRegisterHostAddon<
-        'local,
-    >(
-        _env: EnvUnowned<'local>,
-        _class: JClass<'local>,
-    ) {
-        register_host_addon();
-    }
-}
-
-// Harmony: NAPI export
-#[cfg(target_env = "ohos")]
-#[napi_derive_ohos::napi]
-pub fn lingxia_register_host_addon() {
-    register_host_addon();
-}
-
-#[cfg(any(target_os = "ios", target_os = "macos"))]
-#[unsafe(no_mangle)]
-pub extern "C" fn lingxia_register_host_addon() {
-    register_host_addon();
-}
-
-#[cfg(target_os = "windows")]
-pub fn lingxia_register_host_addon() {
-    register_host_addon();
 }

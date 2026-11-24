@@ -9,13 +9,9 @@ import com.lingxia.app.Lingxia
 class MainActivity : AppCompatActivity() {
     private val TAG = "MainActivity"
 
-    private external fun nativeRegisterHostAddon()
-
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        Lingxia.quickStart(this) {
-            nativeRegisterHostAddon()
-        }
+        Lingxia.quickStart(this)
 
         Log.d(TAG, "LxApp is ready")
     }

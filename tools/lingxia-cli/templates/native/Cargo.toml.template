@@ -54,6 +54,5 @@ log = { version = "0.4", optional = true }
 [build-dependencies]
 lingxia-native-codegen = { workspace = true }
 
-# Platform-specific dependencies for FFI
-{{ANDROID_DEPS_BLOCK}}
+# `lingxia::host!` exports Harmony's entrypoint through napi.
 {{HARMONY_DEPS_BLOCK}}

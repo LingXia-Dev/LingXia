@@ -76,6 +76,7 @@ pub trait HostAddon: Send + Sync {
 }
 
 static HOST_ADDONS: OnceLock<Mutex<Vec<Arc<dyn HostAddon>>>> = OnceLock::new();
+static HOST_ROUTES: Mutex<Vec<fn()>> = Mutex::new(Vec::new());
 
 fn host_addons() -> &'static Mutex<Vec<Arc<dyn HostAddon>>> {
     HOST_ADDONS.get_or_init(|| Mutex::new(Vec::new()))
@@ -87,6 +88,95 @@ pub fn register_host_addon(addon: Box<dyn HostAddon>) {
         .lock()
         .unwrap_or_else(|poisoned| poisoned.into_inner());
     installed.push(Arc::from(addon));
+}
+
+/// `lingxia::host!`: the crate's generated route registry, installed before any addon's
+/// [`HostAddon::install_host_apis`], and its addon.
+#[doc(hidden)]
+pub fn __register_host(addon: Box<dyn HostAddon>, install_routes: fn()) {
+    HOST_ROUTES
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+        .push(install_routes);
+    register_host_addon(addon);
+}
+
+/// A host crate's whole registration, written once in its `lib.rs`:
+/// `lingxia::host!(AppHostAddon);`.
+///
+/// Installs every `#[lingxia::native]` route in the crate (the registry its `build.rs`
+/// writes with `lingxia_native_codegen::build()`), registers the addon, and exports the
+/// entrypoint each platform SDK calls. Harmony's needs `napi-derive-ohos` in the crate.
+#[macro_export]
+macro_rules! host {
+    ($addon:expr) => {
+        include!(concat!(env!("OUT_DIR"), "/lingxia_native_handlers.rs"));
+
+        #[cfg(target_os = "android")]
+        pub use $crate::android::*;
+        #[cfg(any(target_os = "ios", target_os = "macos"))]
+        pub use $crate::apple::*;
+        #[cfg(target_env = "ohos")]
+        pub use $crate::harmony::*;
+
+        #[doc(hidden)]
+        pub fn __lingxia_register_host() {
+            static REGISTER: ::std::sync::Once = ::std::sync::Once::new();
+            REGISTER.call_once(|| {
+                $crate::__register_host(::std::boxed::Box::new($addon), __lingxia_native::install)
+            });
+        }
+
+        #[cfg(any(target_os = "ios", target_os = "macos"))]
+        #[unsafe(no_mangle)]
+        pub extern "C" fn lingxia_register_host_addon() {
+            __lingxia_register_host();
+        }
+
+        #[cfg(target_os = "android")]
+        #[unsafe(no_mangle)]
+        pub extern "system" fn Java_com_lingxia_app_NativeApi_registerHostAddon(
+            _env: *mut ::core::ffi::c_void,
+            _class: *mut ::core::ffi::c_void,
+        ) {
+            __lingxia_register_host();
+        }
+
+        #[cfg(target_env = "ohos")]
+        #[napi_derive_ohos::napi]
+        pub fn lingxia_register_host_addon() {
+            __lingxia_register_host();
+        }
+
+        #[cfg(target_os = "windows")]
+        pub fn lingxia_register_host_addon() {
+            __lingxia_register_host();
+        }
+
+        $crate::__host_cli!();
+    };
+}
+
+/// The product's own command line, when the facade carries it.
+#[cfg(feature = "product-cli")]
+#[doc(hidden)]
+#[macro_export]
+macro_rules! __host_cli {
+    () => {
+        /// Answers as this product's command line if that is what this invocation is, and
+        /// returns the exit code; `None` means carry on and be the app. Call it first in `main`.
+        pub fn run_cli_if_invoked() -> Option<i32> {
+            __lingxia_register_host();
+            $crate::product_cli::run_if_invoked()
+        }
+    };
+}
+
+#[cfg(not(feature = "product-cli"))]
+#[doc(hidden)]
+#[macro_export]
+macro_rules! __host_cli {
+    () => {};
 }
 
 fn snapshot_host_addons() -> Vec<Arc<dyn HostAddon>> {
@@ -166,6 +256,13 @@ pub(crate) fn run_install_logic_extensions() {
 }
 
 pub(crate) fn run_install_host_apis() {
+    let routes = HOST_ROUTES
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+        .clone();
+    for install in routes {
+        install();
+    }
     let installed = snapshot_host_addons();
     for addon in installed.iter() {
         addon.install_host_apis();

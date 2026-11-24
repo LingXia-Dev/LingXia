@@ -3799,10 +3799,10 @@ dependencies = [
 name = "native"
 version = "0.1.0"
 dependencies = [
- "jni",
  "lingxia",
  "lingxia-control-runtime",
  "lingxia-device-io",
+ "lingxia-native-codegen",
  "log",
  "napi-derive-ohos",
  "napi-ohos",

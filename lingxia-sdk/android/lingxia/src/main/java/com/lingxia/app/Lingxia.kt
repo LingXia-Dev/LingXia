@@ -94,22 +94,17 @@ object Lingxia {
     private var startedActivities: Int = 0
 
     /**
-     * Product-app entry point. Initializes the runtime and opens the home LxApp.
-     *
-     * The SDK loads liblingxia before invoking [registerHostAddon], so host apps do not need to
-     * call System.loadLibrary themselves.
+     * Product-app entry point. Loads liblingxia, registers the host crate's addon and routes
+     * (its `lingxia::host!`), initializes the runtime and opens the home LxApp.
      *
      * Pass `deliverAppLinks = false` to take inbound links over natively: the SDK then hands no
      * https Intent to the runtime and leaves the Intent untouched for the host to read.
-     *
-     * [registerHostAddon] stays last so it can be passed as a trailing lambda.
      */
     @JvmStatic
     @JvmOverloads
     fun quickStart(
         activity: AppCompatActivity,
         deliverAppLinks: Boolean = true,
-        registerHostAddon: (() -> Unit)? = null,
     ) {
         appLinkDeliveryEnabled = deliverAppLinks
         if (LxApp.homeAppId != null) {
@@ -128,9 +123,9 @@ object Lingxia {
             if (!NativeApi.ensureLoaded()) {
                 throw IllegalStateException("Failed to load native library 'lingxia'")
             }
-            if (registerHostAddon != null && hostAddonInstalled.compareAndSet(false, true)) {
+            if (hostAddonInstalled.compareAndSet(false, true)) {
                 try {
-                    registerHostAddon()
+                    NativeApi.registerHostAddon()
                 } catch (error: Throwable) {
                     hostAddonInstalled.set(false)
                     throw error

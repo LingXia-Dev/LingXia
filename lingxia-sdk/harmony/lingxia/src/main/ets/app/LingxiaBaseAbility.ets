@@ -9,6 +9,7 @@ import {
   onAppHide,
   onUserCaptureScreen,
   onDeviceOrientationChanged,
+  lingxiaRegisterHostAddon,
   CurrentLxApp
 } from 'liblingxia.so';
 
@@ -32,12 +33,6 @@ export class LingxiaBaseAbility extends UIAbility {
   private screenshotListener: (() => void) | null = null;
   private sizeChangeListener: ((size: window.Size) => void) | null = null;
   private lastReportedDeviceOrientation: string = '';
-
-  /**
-   * Override to install native host addon.
-   */
-  protected registerHostAddon(): void {
-  }
 
   private disableSystemGestureBack(): void {
     if (!this.mainWindow || this.gestureBackConfigInProgress) {
@@ -211,9 +206,12 @@ export class LingxiaBaseAbility extends UIAbility {
     super.onWindowStageCreate(windowStage);
     this.unregisterWindowListeners();
 
-    // Register native host addon (once only)
+    // The host crate's `lingxia::host!` exports the addon and route registration.
     if (!LingxiaBaseAbility.hostAddonInstalled) {
-      this.registerHostAddon();
+      if (typeof lingxiaRegisterHostAddon !== 'function') {
+        throw new Error('liblingxia.so exports no lingxiaRegisterHostAddon; the host crate must call lingxia::host!');
+      }
+      lingxiaRegisterHostAddon();
       LingxiaBaseAbility.hostAddonInstalled = true;
     }
     this.attachMainWindow(windowStage);
