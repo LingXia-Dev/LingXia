@@ -72,8 +72,8 @@ time (see [view-authoring.md](view-authoring.md)) and again at runtime.
 - `border-dashed`/`border-dotted` follow `--tw-border-style`, so class order never
   matters; dashes are 3× the width (dots 1×) and divide each ring or edge evenly.
 - `rounded-full` lowers to the native 16,384 radius bound, clamped by paint.
-- Standard system sans/mono stacks lower to `sans-serif`/`monospace`;
-  custom faces and serif fail.
+- `font-sans`, `font-serif` and `font-mono` (and system stacks ending in their generic) lower to
+  the platform family; a stack naming a bundled `@font-face` lowers to that face.
 - `placeholder:text-*` lowers to `placeholderColor` (editors only).
 
 ## Direction
@@ -91,20 +91,20 @@ inline start (offset 0 = right edge) and advances leftward.
 
 ## State variants
 
-| Variant | Element | Wire | May change |
-| --- | --- | --- | --- |
-| `focus:` | input, textarea, search | `focusStyle` | paint |
-| `active:` | button, checkbox, switch, radio | `pressedStyle` | paint |
-| `hover:` | any; only for `pointer: 'fine'` | `hoverStyle` | paint |
-| `disabled:` | elements with `disabled` | replaces the base cascade | anything |
+`docs/view/reference/variants.md` (generated) lists every supported variant and the elements
+it applies to. Each paint-only state lowers to its own wire field (`focusStyle`, `pressedStyle`,
+`hoverStyle`, `focusVisibleStyle`, `focusWithinStyle`, `groupPressedStyle`, `hasCheckedStyle`, …);
+`starting:`/`exit:` lower to `startingStyle`/`exitStyle`; `disabled:` replaces
+the base cascade; `data-*` resolves in the isolate at render, so it may set any utility.
 
 Paint properties are color, background color/image, opacity, border color,
-box shadow and placeholder color. Native applies state deltas to a copy after
+box shadow, placeholder color and static transforms. Native applies state deltas to a copy after
 reconciliation, so a failed frame restores the previous state.
 
 `first:`, `last:`, `odd:`, `even:`, `only:` and `empty:` match a node's position among
 its rendered siblings (list rows: their row index of `count`) and combine with the
-state variants. `has-[…]`, `data-[…]` and `aria-*` fail: choose classes in TS.
+state variants. `aria-*`, `peer-*`, `group-*` other than `group-active:`, and `has-[…]`
+other than `has-checked:`/`has-disabled:`/`has-focus:` fail: choose classes in TS.
 
 ## Motion
 
@@ -142,8 +142,10 @@ size is `calc(var(--spacing) * N)`. A literal there lowers to a fixed number the
 
 ## Unsupported on purpose
 
-Skew and 3D transforms, filters other than backdrop blur/saturation, masks, text and
-drop shadows, inset shadows, ring offsets, per-edge border styles and colors, `*`, `**`,
-`in-*`, `group-*` and `peer-*` selectors, container queries and plugins. Each fails with
+Skew and 3D transforms, filters other than `blur-*` and backdrop blur/saturation, linear, radial
+and conic masks (edge masks `mask-{t,r,b,l,x,y}-from/to-*` lower), text and drop shadows, inset
+shadows, outlines, per-edge border styles and colors, `*`, `**`, `in-*`, the selectors above,
+container queries and plugins. `docs/view/reference/utilities.md` (generated) lists every
+family as supported or refused with its reason. Each fails with
 `UI_CLASS_UNSUPPORTED` naming what to use, rather than rendering differently from CSS
 or compiling to nothing: a utility that lowers to no drawn style is refused.
