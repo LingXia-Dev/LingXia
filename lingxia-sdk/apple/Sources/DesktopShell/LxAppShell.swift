@@ -654,7 +654,7 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
     /// Report the content width to the Adaptive Surface Layout core so it
     /// resolves the sizeClass (with hysteresis). This is what makes macOS
     /// drive the new shared-core model from real window geometry.
-    private func reportSurfaceWidth() {
+    func reportSurfaceWidth() {
         guard !isApplyingSurfaceSizeClass else { return }
         guard let appId = currentViewController?.appId ?? declaredBrowserOwnerAppId,
               let windowWidth = window?.contentView?.frame.width, windowWidth > 0,

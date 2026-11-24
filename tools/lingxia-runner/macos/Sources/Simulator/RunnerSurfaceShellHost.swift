@@ -105,6 +105,9 @@ final class RunnerSurfaceShellHost {
         if movesAsides {
             RunnerSupport.SurfaceShell.moveAsides(shell, intoPhone: false)
         }
+        // The core still holds the last host's viewport (the phone's, after an unfold): the
+        // open's plan must be laid out for this window, not corrected by a second one.
+        RunnerSupport.SurfaceShell.reportWidth(shell)
         RunnerSupport.SurfaceShell.open(shell, appId: appId, path: path, sessionId: sessionId)
         updateHingeOverlay(for: device)
         DevToolsLogger.shared.log("Opened \(appId) in SDK shell -> \(path)", level: .nav)

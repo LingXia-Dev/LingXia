@@ -325,6 +325,11 @@ import WebKit
             LxAppSurface.moveAsides(to: intoPhone ? .phone : .shell, shell: shell)
         }
 
+        /// Gives the core this shell's width now, so a commit that follows is laid out for it.
+        public static func reportWidth(_ shell: LxAppShell) {
+            shell.reportSurfaceWidth()
+        }
+
         public static func setTrafficLightsVisible(_ shell: LxAppShell, visible: Bool) {
             RunnerBridge.setSurfaceShellTrafficLightsVisible(shell, visible: visible)
         }

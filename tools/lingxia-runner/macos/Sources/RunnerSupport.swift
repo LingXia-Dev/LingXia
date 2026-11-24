@@ -261,6 +261,10 @@ enum RunnerSupport {
             LingxiaRunnerSPI.SurfaceShell.moveAsides(shell, intoPhone: intoPhone)
         }
 
+        static func reportWidth(_ shell: LxAppShell) {
+            LingxiaRunnerSPI.SurfaceShell.reportWidth(shell)
+        }
+
         static func setTrafficLightsVisible(_ shell: LxAppShell, visible: Bool) {
             LingxiaRunnerSPI.SurfaceShell.setTrafficLightsVisible(shell, visible: visible)
         }
