@@ -187,6 +187,9 @@ function rust(schema) {
     .map(([kind, values]) => `        ${JSON.stringify(kind)} => Some(&[${values.map(value => JSON.stringify(value)).join(', ')}]),`).join('\n');
   const tagConst = name => `tag::${screaming(name)}`;
   const fieldConst = key => `field::${screaming(key)}`;
+  const id = new Map(schema.fields.map(field => [field.key, field.id]));
+  // The fields some style keys lower to, once each, in wire order.
+  const wireFields = names => [...new Set(names.flatMap(name => [].concat(schema.style[name].wire)))].sort((a, b) => id.get(a) - id.get(b));
   const children = kind => kind.replace(/(^|-)([a-z])/g, (_, __, c) => c.toUpperCase());
   const admission = schema.tags.map(name => {
     const entry = schema.admission[name];
@@ -280,6 +283,11 @@ pub struct FieldAdmission {
 pub const SCALES: &[(&str, &str)] = &[
 ${schema.scales.map(slot => `    (${JSON.stringify(slot.name)}, ${JSON.stringify(slot.family)}),`).join('\n')}
 ];
+
+/// What a slider part record may carry: the wire fields of the \`part\` style group.
+pub const PART_FIELDS: &[usize] = &[${wireFields(schema.styleGroups.part).map(fieldConst).join(', ')}];
+/// Paint-only fields a state delta may carry: the wire fields of every \`paint\` style.
+pub const FOCUS_PAINT_FIELDS: &[usize] = &[${wireFields(Object.keys(schema.style).filter(name => schema.style[name].paint)).map(fieldConst).join(', ')}];
 
 /// Fields that take a \`[slot, times, plus]\` reference, by the family of the slot.
 pub const SCALED_FIELDS: &[(&str, &[usize])] = &[

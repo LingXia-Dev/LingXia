@@ -9,8 +9,9 @@ mod values;
 #[rustfmt::skip]
 mod generated;
 pub use generated::{
-    Children, ENVIRONMENT_KEYS, FIELD_ADMISSION, FIELDS, FieldAdmission, SCALED_FIELDS, SCALES,
-    TAG_ADMISSION, TAGS, TagAdmission, UI_ABI, check_environment, field, limits, options, tag,
+    Children, ENVIRONMENT_KEYS, FIELD_ADMISSION, FIELDS, FOCUS_PAINT_FIELDS, FieldAdmission,
+    PART_FIELDS, SCALED_FIELDS, SCALES, TAG_ADMISSION, TAGS, TagAdmission, UI_ABI,
+    check_environment, field, limits, options, tag,
 };
 
 pub use decode::{Wire, decode, decode_wire};
@@ -52,41 +53,6 @@ pub const PARTS: [usize; 4] = [
     field::TRACK_STYLE,
     field::SECONDARY_STYLE,
     field::RANGE_STYLE,
-    field::THUMB_STYLE,
-];
-/// What a slider part record may carry.
-pub const PART_FIELDS: [usize; 16] = [
-    field::BACKGROUND,
-    field::WIDTH,
-    field::HEIGHT,
-    field::RADIUS,
-    field::RADIUS_TOP_LEFT,
-    field::RADIUS_TOP_RIGHT,
-    field::RADIUS_BOTTOM_RIGHT,
-    field::RADIUS_BOTTOM_LEFT,
-    field::BORDER_TOP_WIDTH,
-    field::BORDER_RIGHT_WIDTH,
-    field::BORDER_BOTTOM_WIDTH,
-    field::BORDER_LEFT_WIDTH,
-    field::BORDER_COLOR,
-    field::BOX_SHADOW,
-    field::RING,
-    field::TRANSFORM,
-];
-/// Paint-only fields a state delta may carry; a slider's parts change only its drawing.
-pub const FOCUS_PAINT_FIELDS: [usize; 13] = [
-    field::COLOR,
-    field::BACKGROUND,
-    field::OPACITY,
-    field::BORDER_COLOR,
-    field::BACKGROUND_GRADIENT,
-    field::BOX_SHADOW,
-    field::RING,
-    field::PLACEHOLDER_COLOR,
-    field::TRANSFORM,
-    field::TRACK_STYLE,
-    field::RANGE_STYLE,
-    field::SECONDARY_STYLE,
     field::THUMB_STYLE,
 ];
 

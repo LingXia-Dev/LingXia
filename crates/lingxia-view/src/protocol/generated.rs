@@ -860,6 +860,11 @@ pub const SCALES: &[(&str, &str)] = &[
     ("em", "em"),
 ];
 
+/// What a slider part record may carry: the wire fields of the `part` style group.
+pub const PART_FIELDS: &[usize] = &[field::WIDTH, field::HEIGHT, field::BACKGROUND, field::RADIUS, field::BORDER_COLOR, field::BORDER_TOP_WIDTH, field::BORDER_RIGHT_WIDTH, field::BORDER_BOTTOM_WIDTH, field::BORDER_LEFT_WIDTH, field::BOX_SHADOW, field::RADIUS_TOP_LEFT, field::RADIUS_TOP_RIGHT, field::RADIUS_BOTTOM_RIGHT, field::RADIUS_BOTTOM_LEFT, field::TRANSFORM, field::RING];
+/// Paint-only fields a state delta may carry: the wire fields of every `paint` style.
+pub const FOCUS_PAINT_FIELDS: &[usize] = &[field::COLOR, field::BACKGROUND, field::OPACITY, field::BORDER_COLOR, field::BACKGROUND_GRADIENT, field::BOX_SHADOW, field::PLACEHOLDER_COLOR, field::TRANSFORM, field::TRACK_STYLE, field::RANGE_STYLE, field::SECONDARY_STYLE, field::THUMB_STYLE, field::RING];
+
 /// Fields that take a `[slot, times, plus]` reference, by the family of the slot.
 pub const SCALED_FIELDS: &[(&str, &[usize])] = &[
     ("type", &[field::FONT_SIZE, field::LINE_HEIGHT, field::LETTER_SPACING]),
