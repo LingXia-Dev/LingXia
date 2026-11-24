@@ -102,6 +102,8 @@ test('an action payload follows JSON for undefined and names what is not JSON',(
   const cyclicArr=[];cyclicArr.push(cyclicArr);
   assert.throws(()=>actions.reserve(cyclicArr),{message:'UI_ACTION: reserve payload field argument[0] refers back to argument; send a value without cycles'});
   assert.throws(()=>channels.open('ticker',cyclicArr),{message:'UI_CHANNEL: ticker payload field argument[0] refers back to argument; send a value without cycles'});
+  const spaced={};spaced['a b']=spaced;
+  assert.throws(()=>actions.reserve(spaced),{message:'UI_ACTION: reserve payload field argument["a b"] refers back to argument; send a value without cycles'});
   let deep={};for(let i=0;i<70;i++) deep={next:deep};
   assert.throws(()=>actions.reserve(deep),{message:'UI_LOCAL: value too deep'});
   assert.deepEqual(takeActionRequests(),[]);reset();

@@ -108,7 +108,8 @@ function payload(value, refuse, path, depth, budget, ancestors) {
       for (const [k, v] of Object.entries(value)) {
         if (v === undefined) continue;
         budget.left -= k.length + 3;
-        out[k] = payload(v, refuse, path ? `${path}.${k}` : k, depth + 1, budget, ancestors);
+        const nextPath = /^[A-Za-z_$][A-Za-z0-9_$]*$/.test(k) ? (path ? `${path}.${k}` : k) : `${path}[${JSON.stringify(k)}]`;
+        out[k] = payload(v, refuse, nextPath, depth + 1, budget, ancestors);
       }
       return Object.freeze(out);
     } finally { ancestors.delete(value); }

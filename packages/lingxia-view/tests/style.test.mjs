@@ -106,8 +106,8 @@ test('positioning, layering and clipping are native box properties', () => {
 test('outer shadows, gradients and backdrop filters are bounded composite values', () => {
   assert.deepEqual(JSON.parse(style({ boxShadow: [{ offsetY: 2, blur: 4 }] }).boxShadow), [{ offsetX: 0, offsetY: 2, blur: 4, spread: 0, color: 'currentColor' }]);
   for (const value of [null, {}, 'red', [{ inset: true }], [{ blur: -1 }], [{ blur: 257 }], [{ spread: 1025 }], [{ offsetX: null }], [{ color: 'red' }], Array(9).fill({})])
-    rejects({ boxShadow: value }, /UI_SHADOW: boxShadow takes 'none' or 0\.\.8 layers of .*?; got /);
-  rejects({ ring: { outer: { width: -1 } } }, /UI_SHADOW: ring takes 'none' or \{ outer\?: .*?; got \{"outer":\{"width":-1\}\}/);
+    rejects({ boxShadow: value }, /UI_SHADOW: boxShadow takes 'none' or 0\.\.8 layers of \{ offsetX\?: -1024\.\.1024.*#RRGGBB\/#RRGGBBAA or a theme role \}; got /);
+  rejects({ ring: { outer: { width: -1 } } }, /UI_SHADOW: ring takes 'none' or \{ outer\?: .*#RRGGBB\/#RRGGBBAA or a theme role.*?\}; got \{"outer":\{"width":-1\}\}/);
   assert.equal(style({ boxShadow: 'none' }).boxShadow, 'none');
   const gradient = { direction: 'right', stops: [{ offset: 0, color: '#ff0000' }, { offset: 1, color: '#0000ff80' }] };
   assert.deepEqual(JSON.parse(style({ backgroundImage: gradient }).backgroundGradient), { ...gradient, colorSpace: 'srgb' });
@@ -123,7 +123,7 @@ test('outer shadows, gradients and backdrop filters are bounded composite values
   assert.deepEqual([filter.backdropBlur, filter.backdropSaturation], [12, 1.5]);
   for (const value of ['blur(65px)', 'saturate(17)', 'blur(4)', 'invert(1)', 4, null]) rejects({ backdropFilter: value }, /UI_STYLE_VALUE/);
   rejects({ maskImage: 'fade' }, /UI_STYLE_VALUE: maskImage takes 'none' or 1\.\.4 layers of .*?; got "fade"$/m);
-  rejects({ transition: { properties: ['opacity'], durationMs: 0 } }, /UI_STYLE_VALUE: transition takes 'none' or \{ properties, durationMs: 1\.\.\d+.*?; got \{"properties":\["opacity"\],"durationMs":0/m);
+  rejects({ transition: { properties: ['opacity'], durationMs: 0 } }, /UI_STYLE_VALUE: transition takes 'none' or \{ properties: 1\.\.\d+ of .*?, durationMs: 1\.\.\d+ or duration step.*ease step \}; got \{"properties":\["opacity"\],"durationMs":0/m);
 });
 
 test('static transform style keys lower to one bounded wire transform', () => {

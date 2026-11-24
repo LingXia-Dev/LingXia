@@ -237,7 +237,7 @@ function maskValue(value) {
 // One transition for the node's painted properties; `none` and an empty list mean no field.
 function transitionValue(value) {
   if (value === 'none') return undefined;
-  const fail = () => invalid('transition', value, `'none' or { properties, durationMs: 1..${limits.transitionMs}, delayMs?: 0..${limits.transitionMs}, easing?: 'linear'|'step-end'|[x1,y1,x2,y2]|{ spring: 0..0.9 } }`);
+  const fail = () => invalid('transition', value, `'none' or { properties: 1..${options['transition-property'].length} of ${options['transition-property'].join('|')}, durationMs: 1..${limits.transitionMs} or duration step, delayMs?: 0..${limits.transitionMs}, easing?: 'linear'|'step-end'|[x1,y1,x2,y2]|{ spring: 0..0.9 }|ease step }`);
   if (!value || typeof value !== 'object' || Object.keys(value).some(key => !['properties', 'durationMs', 'delayMs', 'easing'].includes(key))) fail();
   const { properties, delayMs = 0 } = value;
   let { durationMs, easing = [0.4, 0, 0.2, 1] } = value;
