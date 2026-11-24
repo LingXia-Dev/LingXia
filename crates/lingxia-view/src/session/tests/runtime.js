@@ -3833,6 +3833,7 @@
         outsideRender("state mutation");
         if (page.locals.get(key) !== cell2 && render.candidate?.locals.get(key) !== cell2)
           throw Error(`UI_LOCAL: ${JSON.stringify(name)} in ${scope} is no longer mounted`);
+        if (typeof value === "function") value = value(page.updates.has(cell2) ? page.updates.get(cell2) : cell2.value);
         page.updates.set(cell2, immutable(value, 0, true));
       },
       focus() {

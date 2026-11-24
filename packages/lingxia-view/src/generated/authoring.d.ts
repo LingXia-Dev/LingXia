@@ -105,7 +105,13 @@ export type LocalData<T> = T extends string | number | boolean | null ? T
   : T extends readonly unknown[] ? { [K in keyof T]: LocalData<T[K]> }
   : T extends object ? { [K in keyof T]: T[K] extends undefined ? undefined : LocalData<T[K]> } : never;
 /** A cell of component-local state: `useLocal`'s result, and what an element's `bind` takes. */
-export interface Local<T> { readonly [localCell]: true; readonly value: ReadonlyData<T>; set(value: ReadonlyData<LocalData<T>>): void }
+export interface Local<T> {
+  readonly [localCell]: true; readonly value: ReadonlyData<T>;
+  /** Sets the value. */
+  set(value: ReadonlyData<LocalData<T>>): void;
+  /** Derives the value from the latest one: `count.set(n => n + 1)`. */
+  set(update: (latest: ReadonlyData<T>) => ReadonlyData<LocalData<T>>): void;
+}
 /** A text cell (`useLocal('')`): a `Local` an editor can bind, so it can focus that editor. */
 export interface LocalText<T extends string = string> extends Local<T> {
   /** Focus the editor this cell is bound to (`bind`), on the next frame. */

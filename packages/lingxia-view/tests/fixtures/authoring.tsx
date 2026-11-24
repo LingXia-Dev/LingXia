@@ -15,6 +15,12 @@ export function render(view: View<{ save(value: string): Promise<void> }, { titl
   const nested = useLocal('nested', {items: [{title: 'one'}], pair: ['one', 1] as [string, number]});
   nested.set(nested.value);
   nested.set({...nested.value, items: [...nested.value.items, {title: 'two'}]});
+  volume.set(level => level + 0.1);
+  nested.set(latest => ({...latest, items: [...latest.items, {title: 'three'}]}));
+  // @ts-expect-error an updater returns the cell's type
+  volume.set(level => String(level));
+  // @ts-expect-error the latest value an updater gets is immutable
+  nested.set(latest => { latest.items.push({title: 'four'}); return latest; });
   // @ts-expect-error local snapshots are recursively immutable
   nested.value.items.push({title: 'two'});
   // @ts-expect-error nested local records are immutable

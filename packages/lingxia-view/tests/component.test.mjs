@@ -161,6 +161,18 @@ test('local JSON domain omits optional object fields without admitting invalid a
     assert.throws(() => describe(() => { useLocal('invalid', initial); return h('text'); }, {}), /UI_LOCAL/);
 });
 
+test('set takes an updater that reads the latest value, including one not yet rendered', () => {
+  let count;
+  const render = () => { count = useLocal('count', 0); return h('text', {}, String(count.value)); };
+  describe(render, {});
+  count.set(n => n + 1); count.set(n => n + 1); count.set(5); count.set(n => n * 2);
+  assert.ok(describe(render, {}).includes('10'));
+  assert.equal(count.value, 10);
+  const list = (() => { let cell; describe(() => { cell = useLocal('items', ['a']); return h('text'); }, {}); return cell; })();
+  list.set(items => [...items, 'b']);
+  assert.throws(() => list.set(items => { items.push('c'); return items; }), TypeError);
+});
+
 test('fragments lay their children out in their place, keeping each child slot', () => {
   const text = (value, props = {}) => h('text', props, value);
   const inline = rendered(() => h('view', {}, text('a'), h(Fragment, null, false, text('b'), text('c')), text('d')));

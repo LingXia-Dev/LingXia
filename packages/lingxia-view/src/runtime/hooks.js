@@ -55,6 +55,7 @@ export function local(name, initial, resource = '', order) {
       // A cell of the prepared candidate takes the value when that candidate commits.
       if (page.locals.get(key) !== cell && render.candidate?.locals.get(key) !== cell)
         throw Error(`UI_LOCAL: ${JSON.stringify(name)} in ${scope} is no longer mounted`);
+      if (typeof value === 'function') value = value(page.updates.has(cell) ? page.updates.get(cell) : cell.value);
       page.updates.set(cell, immutable(value, 0, true));
     },
     focus() {
