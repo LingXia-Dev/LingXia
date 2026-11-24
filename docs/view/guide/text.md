@@ -108,7 +108,7 @@ export function render() {
 }
 ```
 
-`<span>` and `<link>` are valid only inside `<text>` (`UI_TEXT` elsewhere).
+`<span>` is valid only inside `<text>` (`UI_TEXT` elsewhere); `<link>` outside `<text>` is a block link ([Interaction](interaction.md#composed-controls)).
 
 An underline or a strike takes a line style and its own colour, on the element that draws the line:
 `underline decoration-dotted decoration-accent/50` (`decoration-dashed` too). Without a colour the line
@@ -120,8 +120,7 @@ follows the text. Thickness, offset and a wavy line are refused; an older host d
 `active:` while pressed, and exposed to accessibility as a link named by its text (or
 `aria-label`). Only the link's own line pieces respond to taps. `disabled` removes its handler.
 A link may contain `<span>` runs (`<link>Read the <span className="font-semibold">terms</span></link>`); the
-whole link is one target and one accessible name. Links do not nest. There is no `href`; navigate in
-`onClick` through a Logic action.
+whole link is one target and one accessible name. Links do not nest. Use `to={{ page, params }}` to navigate through Logic, `onClick` for an action, or `popoverTarget`/`interestFor` for an overlay; a `<link>` needs at least one of them (`UI_LINK`).
 
 ## Selection
 
