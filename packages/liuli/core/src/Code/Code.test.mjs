@@ -76,7 +76,7 @@ test('an unknown language, or none, draws the code plain in one run', async () =
   }
 });
 
-test('code past a text\'s 256 runs is several texts, stacked, together the whole code', async () => {
+test('code past about 800 coloured runs is several texts, stacked, together the whole code', async () => {
   const code = Array.from({ length: 400 }, (_, index) => `const v${index} = ${index}; // n`).join('\n');
   const screen = await renderPage(`
     import { CodeBlock } from '@liulidesign/core/Code';
@@ -85,8 +85,36 @@ test('code past a text\'s 256 runs is several texts, stacked, together the whole
   `);
   const column = screen.getByTestId('block').children[0].children[0].children[2];
   assert.equal(column.tag, 'column');
-  assert.ok(column.children.length > 1 && column.children.every(text => text.tag === 'text' && text.children.length <= 256), `${column.children.length} texts`);
+  const spans = column.children.map(text => text.children.length);
+  assert.ok(spans.length > 1 && column.children.every(text => text.tag === 'text') && spans.every(count => count <= 800), `spans per text: ${spans}`);
   assert.ok(column.children.every(text => !textOf(text).endsWith('\n')), 'no text ends on a blank line');
+  assert.equal(column.children.map(textOf).join('\n'), code);
+});
+
+test('a block that fits is one text: 120 coloured lines, under 800 spans', async () => {
+  const code = Array.from({ length: 120 }, (_, index) => `const v${index} = ${index}; // n`).join('\n');
+  const screen = await renderPage(`
+    import { CodeBlock } from '@liulidesign/core/Code';
+    const code = ${JSON.stringify(code)};
+    export function render() { return <page><CodeBlock code={code} language="ts" hasLineNumbers label="Fits" data-testid="block" /></page>; }
+  `);
+  const text = screen.getByTestId('block').children[0].children[0].children[2];
+  assert.equal(text.tag, 'text');
+  assert.ok(text.children.length > 256 && text.children.length <= 800, `${text.children.length} spans in one text`);
+  assert.equal(textOf(text), code);
+});
+
+test('plain code past 64 KiB is several texts, each within it', async () => {
+  const line = 'x'.repeat(99);
+  const code = Array.from({ length: 1000 }, () => line).join('\n');
+  const screen = await renderPage(`
+    import { CodeBlock } from '@liulidesign/core/Code';
+    const code = ${JSON.stringify(code)};
+    export function render() { return <page><CodeBlock code={code} label="Big" data-testid="block" /></page>; }
+  `);
+  const column = screen.getByTestId('block').children[0].children[0];
+  assert.equal(column.tag, 'column');
+  assert.ok(column.children.length === 2 && column.children.every(text => Buffer.byteLength(textOf(text)) <= 64 * 1024), `${column.children.length} texts`);
   assert.equal(column.children.map(textOf).join('\n'), code);
 });
 

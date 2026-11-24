@@ -77,7 +77,7 @@ export const doc: ComponentDoc = {
     'Colouring reads tokens, not meaning: a name is coloured as a type by its capital, and a regular expression in JavaScript is not told from division.',
     'With numbers, a diff or marked lines, a line is never wrapped, even at large text; it scrolls.',
     'Copying is the app\'s: Liuli has no clipboard.',
-    'Long coloured code is several texts, one under another; a selection stays inside one of them.',
+    'Code past 64 KiB or about 800 coloured runs is several texts, one under another; a selection stays inside one of them.',
   ],
   playground: { props: { code: 'npm run build', label: 'Build command', title: 'Terminal' } },
   related: ['Markdown', 'Kbd'],
