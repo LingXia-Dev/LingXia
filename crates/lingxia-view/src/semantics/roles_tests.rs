@@ -37,7 +37,7 @@ fn semantic(frame: &PresentedFrame, test_id: &str) -> Option<SemanticNode> {
 #[test]
 fn authored_roles_project_with_levels_positions_and_names() {
     let frame = frame(
-        "h('view',{},h('text',{'data-testid':'h',role:'heading',headingLevel:3},'Plans'),h('text',{'data-testid':'h2',role:'heading'},'Default'),h('view',{'data-testid':'list',role:'list','aria-label':'Bills'},h('view',{style:{flexDirection:'row'},'data-testid':'a',role:'listitem'},h('text',{},'Water')),h('view',{style:{flexDirection:'row'},'data-testid':'b',role:'listitem'},h('text',{},'Power'))),h('view',{'data-testid':'d',role:'menu','aria-label':'Confirm'},h('button',{'data-testid':'ok',role:'heading',onClick(){}},'OK')))",
+        "h('view',{},h('text',{'data-testid':'h',role:'heading',headingLevel:3},'Plans'),h('text',{'data-testid':'h2',role:'heading'},'Default'),h('view',{'data-testid':'list',role:'list','aria-label':'Bills'},h('view',{style:{flexDirection:'row'},'data-testid':'a',role:'listitem'},h('text',{},'Water')),h('view',{style:{flexDirection:'row'},'data-testid':'b',role:'listitem'},h('text',{},'Power'))),h('view',{'data-testid':'d',role:'menu','aria-label':'Confirm'},h('button',{'data-testid':'ok',onClick(){}},'OK')))",
     );
     let heading = semantic(&frame, "h").unwrap();
     assert_eq!(
