@@ -1,8 +1,8 @@
 import { expect, test, type Locator, type TestView } from '@lingxia/test';
 import { decodePng } from './png';
 
-// What is drawn, not the class asked for: a mark laid once has one tone, so nothing inside an icon
-// is darker than its strokes. Light theme: the ink is darker than its ground.
+// What is drawn, not the class asked for: an ink with alpha laid once per mark has one tone, so
+// nothing inside an icon is darker than its strokes. Light theme: the ink is darker than its ground.
 
 type Tone = number[];
 const sum = (tone: Tone) => tone[0] + tone[1] + tone[2];
@@ -34,6 +34,14 @@ async function boxOf(locator: Locator) {
 
 // A few levels of edge rounding between a full-cover pixel and the darkest one.
 const near = (a: Tone, b: Tone, by = 9) => Math.abs(sum(a) - sum(b)) <= by;
+
+test('an icon in an ink with alpha has one tone where its strokes cross', { start: { page: 'icon' } }, async (tc) => {
+  const view = tc.app.view;
+  await view.environment({ theme: 'light', still: true });
+  const { ground, ink, darkest } = await tones(view, await boxOf(view.testId('faded')));
+  expect(sum(ink)).toBeLessThan(sum(ground));
+  expect({ ink, darkest, alike: near(ink, darkest) }).toEqual(expect.objectContaining({ alike: true }));
+});
 
 test('a disabled token draws its remove mark in its label\'s tone', { start: { page: 'token' } }, async (tc) => {
   const view = tc.app.view;

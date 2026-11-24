@@ -14,9 +14,10 @@ test('Common: an icon is a 20 pt drawing on a 24 grid, stroked in the current co
   assert.deepEqual([icon.props.width, icon.props.height, icon.props.shrink, icon.props.accessibilityHidden], [20, 20, 0, 1]);
   const { viewBox, paths } = drawing(icon);
   assert.deepEqual(viewBox, [0, 0, 24, 24]);
-  assert.equal(paths.length, 2, 'the handle and the glass');
+  // One path for the handle and the glass, so an ink with alpha is laid once where they meet.
+  assert.equal(paths.length, 1);
   assert.ok(paths.every(path => path.fill === 'none' && path.stroke === 'currentColor' && path.strokeWidth === 1.8 && path.strokeLinecap === 'round'));
-  assert.match(paths[1].d, /^M3 11a8 8 0 1 0 16 0a8 8 0 1 0 -16 0z$/, 'a circle is drawn as two arcs');
+  assert.match(paths[0].d, /M3 11a8 8 0 1 0 16 0a8 8 0 1 0 -16 0z$/, 'a circle is drawn as two arcs');
 });
 
 test('Sizes: 16, 20 and 24', async () => {
@@ -82,7 +83,7 @@ test('a filled dot keeps its fill, and a rounded rectangle becomes arcs', async 
   `);
   const dot = drawing(screen.getByTestId('tag')).paths[1];
   assert.deepEqual([dot.fill, dot.stroke], ['currentColor', undefined]);
-  assert.ok(drawing(screen.getByTestId('calendar')).paths.some(path => /^M5 3h14a2 2 0 0 1 2 2v14a2 2 0 0 1 -2 2h-14a2 2 0 0 1 -2 -2v-14a2 2 0 0 1 2 -2z$/.test(path.d)));
+  assert.ok(drawing(screen.getByTestId('calendar')).paths.some(path => path.d.includes('M5 3h14a2 2 0 0 1 2 2v14a2 2 0 0 1 -2 2h-14a2 2 0 0 1 -2 -2v-14a2 2 0 0 1 2 -2z')));
 });
 
 test('the vendored set: one file per name in use, with its licence beside it', () => {

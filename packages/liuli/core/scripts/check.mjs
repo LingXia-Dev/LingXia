@@ -206,6 +206,17 @@ function checkProps(node, report) {
   }
 }
 
+// One path per paint in each icon: shapes in separate paths are each laid on their own, so with an ink that has alpha
+// their crossings draw darker. Icons are written by scripts/icons.mjs, which joins them.
+const iconDir = join(src, 'Icon', 'icons');
+for (const path of existsSync(iconDir) ? walk(iconDir).filter(path => path.endsWith('.ts')) : []) {
+  const text = readFileSync(path, 'utf8');
+  const list = /paths: \[(.*)\]/.exec(text)?.[1] ?? '';
+  const stroked = (list.match(/(?:^|, )'/g) ?? []).length;
+  const filled = (list.match(/fill: /g) ?? []).length;
+  if (stroked > 1 || filled > 1) problems.push(`${rel(path)}: icon: ${stroked} stroked and ${filled} filled paths; one path per paint, so an ink with alpha is laid once (node scripts/icons.mjs)`);
+}
+
 // Every component folder has its five files, a doc whose examples exist, and an export.
 const manifest = JSON.parse(readFileSync(join(core, 'package.json'), 'utf8'));
 for (const name of readdirSync(src)) {

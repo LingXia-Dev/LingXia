@@ -57,6 +57,10 @@ export function Colours() {
         <Icon name="error" size="sm" data-testid="tinted" />
         <text className="text-footnote">Upload failed</text>
       </view>
+      <view className="flex-row items-center gap-2 text-text/40">
+        <Icon name="close" size="sm" data-testid="faded" />
+        <text className="text-footnote">Cancelled</text>
+      </view>
     </view>
   );
 }

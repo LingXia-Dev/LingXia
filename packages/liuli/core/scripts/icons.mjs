@@ -36,6 +36,23 @@ function pathOf(tag, a) {
   return undefined;
 }
 
+const number = /^[\s,]*(-?(?:\d+\.?\d*|\.\d+)(?:e[-+]?\d+)?)/i;
+/** A shape's data made safe to follow another in one path: a leading relative move is from the origin, so it is written absolute. */
+function standalone(d) {
+  const text = d.trim();
+  if (text[0] !== 'm') return text;
+  let rest = text.slice(1);
+  const point = [];
+  for (const _ of [0, 1]) {
+    const match = number.exec(rest);
+    if (!match) return text;
+    point.push(match[1]);
+    rest = rest.slice(match[0].length);
+  }
+  // Pairs after a relative move are relative lines.
+  return number.test(rest) ? `M${point.join(' ')}l${rest.replace(/^[\s,]+/, '')}` : `M${point.join(' ')}${rest}`;
+}
+
 const camel = name => name.replace(/-([a-z0-9])/g, (_, letter) => letter.toUpperCase());
 const outputs = new Map();
 const names = Object.keys(source.icons);
@@ -45,15 +62,19 @@ for (const [name, entry] of Object.entries(source.icons)) {
   if (!existsSync(file)) { problems.push(`icons.json: ${name}: icons/${source.set}/${entry.lucide}.svg is missing`); continue; }
   const svg = readFileSync(file, 'utf8');
   if (!/viewBox="0 0 24 24"/.test(svg)) problems.push(`${entry.lucide}.svg: the grid is not 0 0 24 24`);
-  const paths = [];
+  // One path per paint, the shapes joined in it: an ink with alpha is then laid once, so where two strokes cross is no darker.
+  const stroked = [];
+  const filled = [];
   for (const [, tag, text] of svg.matchAll(/<(path|line|circle|rect|polyline|polygon|ellipse)\s([^>]*?)\/?>/g)) {
     const a = attrs(text);
     const d = pathOf(tag, a);
     if (!d) { problems.push(`${entry.lucide}.svg: <${tag}> is not converted; add it to scripts/icons.mjs`); continue; }
     // A shape with its own fill is a solid mark (a dot); the rest take the icon's stroke.
-    const quoted = `'${d}'`;
-    paths.push(entry.isFilled || (a.fill && a.fill !== 'none') ? `{ d: ${quoted}, fill: 'currentColor' }` : quoted);
+    (entry.isFilled || (a.fill && a.fill !== 'none') ? filled : stroked).push(standalone(d));
   }
+  const paths = [];
+  if (stroked.length) paths.push(`'${stroked.join('')}'`);
+  if (filled.length) paths.push(`{ d: '${filled.join('')}', fill: 'currentColor' }`);
   if (!paths.length) problems.push(`${entry.lucide}.svg: no shapes`);
   outputs.set(join(out, 'icons', `${name}.ts`), [
     `// ${generated}`,
