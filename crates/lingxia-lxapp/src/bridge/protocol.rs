@@ -40,7 +40,6 @@ pub struct HelloMsg {
 
 #[derive(Deserialize, Debug, Clone)]
 pub struct ReqMsg {
-    pub v: u8,
     pub id: String,
     pub method: String,
     pub params: Option<Box<RawValue>>,
@@ -50,7 +49,6 @@ pub struct ReqMsg {
 
 #[derive(Deserialize, Debug, Clone)]
 pub struct NotifyMsg {
-    pub v: u8,
     pub method: String,
     pub params: Option<Box<RawValue>>,
     #[serde(default)]
@@ -59,13 +57,11 @@ pub struct NotifyMsg {
 
 #[derive(Deserialize, Debug, Clone)]
 pub struct CancelMsg {
-    pub v: u8,
     pub id: String,
 }
 
 #[derive(Deserialize, Debug, Clone)]
 pub struct ChOpenMsg {
-    pub v: u8,
     pub id: String,
     pub topic: String,
     pub params: Option<Box<RawValue>>,
@@ -75,14 +71,12 @@ pub struct ChOpenMsg {
 
 #[derive(Deserialize, Debug, Clone)]
 pub struct ChDataMsg {
-    pub v: u8,
     pub id: String,
     pub payload: Box<RawValue>,
 }
 
 #[derive(Deserialize, Debug, Clone)]
 pub struct ChCloseMsg {
-    pub v: u8,
     pub id: String,
     pub code: Option<String>,
     pub reason: Option<String>,
@@ -90,14 +84,12 @@ pub struct ChCloseMsg {
 
 #[derive(Deserialize, Debug, Clone)]
 pub struct StateAckMsg {
-    pub v: u8,
     pub scope: Option<String>,
     pub rev: u64,
 }
 
 #[derive(Deserialize, Debug, Clone)]
 pub struct ResMsg {
-    pub v: u8,
     pub id: String,
     #[serde(default)]
     pub ok: bool,

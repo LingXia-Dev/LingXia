@@ -305,6 +305,9 @@ impl SessionWorkId {
 /// owns the final document/session check at the native JavaScript boundary.
 #[derive(Clone)]
 pub(crate) enum OutboundContext {
+    /// Queued delivery that rechecks the generation at the native boundary;
+    /// only Windows constructs it.
+    #[cfg_attr(not(target_os = "windows"), allow(dead_code))]
     Document {
         expected_generation: DocumentGeneration,
         gate: Arc<dyn DocumentOutboundGate>,
@@ -991,7 +994,7 @@ impl PageBridge {
                 self.handle_call(page, context, call, &work, ready)
             }
             crate::GpuViewEvent::Cancel { id } => {
-                self.handle_cancel(page, context, &CancelMsg { v: 2, id }, &work)
+                self.handle_cancel(page, context, &CancelMsg { id }, &work)
             }
             crate::GpuViewEvent::ChannelOpen { id, topic, params } => {
                 if topic.contains('.') {
@@ -1012,17 +1015,9 @@ impl PageBridge {
             crate::GpuViewEvent::ChannelData { id, payload } => {
                 self.handle_ch_data_parts(page, &id, Payload::Tree(payload), &work)
             }
-            crate::GpuViewEvent::ChannelClose { id, code, reason } => self.handle_ch_close(
-                page,
-                context,
-                &ChCloseMsg {
-                    v: 2,
-                    id,
-                    code,
-                    reason,
-                },
-                &work,
-            ),
+            crate::GpuViewEvent::ChannelClose { id, code, reason } => {
+                self.handle_ch_close(page, context, &ChCloseMsg { id, code, reason }, &work)
+            }
             crate::GpuViewEvent::Reply { id, outcome } => {
                 if !self.is_current_work(work.work_id) {
                     return Ok(());
@@ -2888,7 +2883,6 @@ mod tests {
             endpoint: Arc::downgrade(&endpoint),
             generation: crate::GpuViewGeneration(42),
         };
-        assert!(outbound.binding().is_none());
         assert!(outbound.post(&OtherTransport, "frame".into()).is_err());
         outbound
             .post_gpu(crate::GpuViewMessage::ChannelClose {
