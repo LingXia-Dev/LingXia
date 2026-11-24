@@ -338,7 +338,7 @@ declare global {
     readonly env: HostAppEnv;
 
     /**
-     * Launch the host app when the user signs in.
+     * Launch the host app when the user signs in. Control app only.
      * @supports host.autostart
      * @throws {E_NOT_SUPPORTED} The host cannot register a startup item.
      */
@@ -404,7 +404,7 @@ declare global {
     readonly serviceEnv: HostServiceEnvApi;
 
     /**
-     * The menu-bar (macOS) or system-tray (Windows) item `lingxia.yaml` declares.
+     * The menu-bar (macOS) or system-tray (Windows) item `lingxia.yaml` declares. Control app only.
      * @supports host.tray
      * @throws {E_NOT_SUPPORTED} Off the desktop.
      */
