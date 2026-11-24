@@ -21,7 +21,7 @@ impl Fixture {
             Platform::new(
                 root.path().join("data").display().to_string(),
                 root.path().join("cache").display().to_string(),
-                "en-US".into(),
+                "en-US".to_string(),
             )
             .unwrap(),
         );
@@ -101,6 +101,8 @@ fn home_back_requests_background_without_closing_or_resetting_the_session() {
 }
 
 #[test]
+// These navigation flows need the opt-in native host model.
+#[cfg(target_vendor = "apple")]
 fn details_pop_before_home_back_can_background_the_host() {
     let f = Fixture::new(true);
     f.push(OTHER);
@@ -129,15 +131,32 @@ fn a_guarded_detail_stays_in_front_instead_of_backgrounding() {
 }
 
 #[test]
+#[cfg(target_vendor = "apple")]
 fn another_home_tab_returns_home_on_the_first_back() {
     let f = Fixture::new(true);
     f.push(OTHER);
-    f.app.with_tabbar_mut(|tabbar| tabbar.set_selected_index(1));
+    f.app.with_tabbar_mut(|tabbar| {
+        tabbar.set_selected_index(1);
+    });
     assert_eq!(f.back(), LxAppUiEventResult::Handled);
     assert_eq!(f.app.peek_current_page_path().as_deref(), Some(HOME));
     assert_eq!(f.app.get_tabbar().unwrap().get_selected_index(), 0);
     assert_eq!(f.app.get_page_stack_size(), 1);
     assert_eq!(f.back(), LxAppUiEventResult::BackgroundHost);
+}
+
+#[test]
+#[cfg(all(target_os = "linux", not(target_env = "ohos")))]
+fn unsupported_native_navigation_never_requests_host_background() {
+    // Linux's unsupported platform returns an error from native navigation.
+    let f = Fixture::new(true);
+    f.push(OTHER);
+    assert_eq!(f.back(), LxAppUiEventResult::Unhandled);
+
+    let f = Fixture::new(true);
+    f.push(HOME);
+    f.push(DETAIL);
+    assert_eq!(f.back(), LxAppUiEventResult::Unhandled);
 }
 
 #[test]
