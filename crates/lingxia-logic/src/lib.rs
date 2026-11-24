@@ -19,6 +19,7 @@ mod lxapp;
 mod media;
 mod message_port;
 mod namespace;
+mod native;
 mod navigator;
 mod open_gate;
 mod pick;
@@ -49,6 +50,7 @@ impl LxLogicExtension for LxLogicRuntime {
     fn init(&self, ctx: &JSContext) -> JSResult<()> {
         errors::init(ctx)?;
         capability::init(ctx)?;
+        native::init(ctx)?;
         // The host-bundled Terminal Settings package is a focused control UI,
         // not a general-purpose lxapp. Keep its cold path to the one API it is
         // allowed to use instead of registering the full LingXia surface.

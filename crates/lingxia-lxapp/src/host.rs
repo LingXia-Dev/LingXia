@@ -1436,6 +1436,33 @@ pub(crate) enum ChannelOutbound {
     },
 }
 
+/// Outbound channel frame exposed to Logic runtime native channel dispatch.
+#[doc(hidden)]
+pub enum LogicChannelOutbound {
+    Data(String),
+    Close {
+        code: Option<String>,
+        reason: Option<String>,
+    },
+}
+
+/// Inbound channel sender held by Logic runtime native channel dispatch.
+#[doc(hidden)]
+#[derive(Clone)]
+pub struct LogicChannelInbound {
+    tx: mpsc::UnboundedSender<RawChannelInbound>,
+}
+
+impl LogicChannelInbound {
+    pub fn send_data(&self, json: String) {
+        let _ = self.tx.send(RawChannelInbound::Data(json));
+    }
+
+    pub fn send_close(&self, code: Option<String>, reason: Option<String>) {
+        let _ = self.tx.send(RawChannelInbound::Close { code, reason });
+    }
+}
+
 /// Context passed to a channel handler when a channel is opened.
 ///
 /// Handlers receive messages via [`recv`](Self::recv) and push messages back
@@ -1453,6 +1480,41 @@ impl<TIn, TOut> ChannelContext<TIn, TOut> {
     /// The channel identifier (matches the `id` field in the wire protocol).
     pub fn id(&self) -> &str {
         &self.id
+    }
+
+    /// Creates a `ChannelContext` pair for in-process Logic runtime native channel dispatch.
+    #[doc(hidden)]
+    pub fn for_logic(
+        id: String,
+    ) -> (
+        ChannelContext<JsonValue, JsonValue>,
+        LogicChannelInbound,
+        mpsc::UnboundedReceiver<LogicChannelOutbound>,
+    ) {
+        let (inbound_tx, inbound_rx) = mpsc::unbounded_channel();
+        let (outbound_tx, mut raw_outbound_rx) = mpsc::unbounded_channel();
+        let (logic_out_tx, logic_out_rx) = mpsc::unbounded_channel();
+        __native::spawn(async move {
+            while let Some(item) = raw_outbound_rx.recv().await {
+                let mapped = match item {
+                    ChannelOutbound::Data(json) => LogicChannelOutbound::Data(json),
+                    ChannelOutbound::Close { code, reason } => {
+                        LogicChannelOutbound::Close { code, reason }
+                    }
+                };
+                if logic_out_tx.send(mapped).is_err() {
+                    break;
+                }
+            }
+        });
+        let ctx = ChannelContext {
+            id,
+            inbound_rx,
+            outbound_tx,
+            close_on_drop: true,
+            _marker: PhantomData,
+        };
+        (ctx, LogicChannelInbound { tx: inbound_tx }, logic_out_rx)
     }
 
     #[doc(hidden)]

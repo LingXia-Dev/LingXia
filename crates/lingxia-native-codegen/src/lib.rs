@@ -1432,6 +1432,8 @@ fn render_logic_ts(manifest: &NativeManifest) -> Result<String> {
     out.push_str(";\n}\n\n");
     out.push_str("export const native = createNative();\n");
     out.push_str("export type NativeClient = typeof native;\n");
+    out.push_str("(globalThis as { __lingxiaCreatePageNative?: typeof createNative }).__lingxiaCreatePageNative = createNative;\n");
+    out.push_str("declare module \"@lingxia/types/page\" {\n  interface PageNativeRegistry {\n    native: NativeClient;\n  }\n}\n");
     Ok(out)
 }
 

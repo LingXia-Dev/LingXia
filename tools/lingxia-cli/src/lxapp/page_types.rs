@@ -118,7 +118,10 @@ fn render_logic_base() -> String {
     "resolveJsonModule": true,
     "isolatedModules": true,
     "allowSyntheticDefaultImports": true,
-    "paths": { "@lingxia/page-types/*": ["./types/*"] }
+    "paths": {
+      "@lingxia/page-types/*": ["./types/*"],
+      "@lingxia/native": ["./native.logic.ts"]
+    }
   },
   "include": [
     "../lxapp.ts",
@@ -127,7 +130,8 @@ fn render_logic_base() -> String {
     "../shared/**/*.ts",
     "../mocks/**/*.ts",
     "./types/**/*.d.ts",
-    "./logic-types/**/*.d.ts"
+    "./logic-types/**/*.d.ts",
+    "./native.logic.ts"
   ],
   "exclude": ["../node_modules", "../dist", "../pages/**/entry.ts"]
 }
