@@ -81,3 +81,13 @@ test('Plans: a price at the end of the name\'s line, read after the name, before
   assert.equal(end.parent.children[0].text, 'Plus', 'it shares the label\'s line');
   assert.equal(end.parent.props.flexDirection, 'row');
 });
+
+test('props are described by what they are, not by one product\'s use', async () => {
+  const { readFile } = await import('node:fs/promises');
+  const source = await readFile(new URL('./RadioGroup.tsx', import.meta.url), 'utf8');
+  assert.match(source, /\/\*\* Trailing content at the end of the label's line: a price, a size, a count\. [^\n]*\*\/\n\s*endContent\?/);
+  const catalog = JSON.parse(await readFile(new URL('../../catalog.json', import.meta.url), 'utf8'));
+  const radio = (catalog.components ?? catalog).find(part => part.name === 'RadioGroup');
+  const variant = radio.props.find(prop => prop.name === 'variant');
+  assert.doesNotMatch(variant.description, /plan/i);
+});
