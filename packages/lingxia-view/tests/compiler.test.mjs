@@ -916,8 +916,28 @@ test('JSX at module scope fails the build with the fix; inside a function or com
   await project({ 'rows.tsx': 'export const header = <text>Head</text>;\nexport const row = () => <text>Row</text>;' }, async (root, build) => {
     await writeFile(join(root, 'page.tsx'), "import {header} from './rows'; export function render(){return <view>{header}</view>}");
     await assert.rejects(build(), /rows.tsx:1:23: UI_SCOPE: JSX at module scope runs when the page loads, outside render; build it inside the component, or make it a function/);
-    await writeFile(join(root, 'rows.tsx'), 'export const row = () => <text>Row</text>;\nexport class Rows { make() { return <text>Row</text>; } }');
-    await writeFile(join(root, 'page.tsx'), "import {row} from './rows'; const cached = () => <view/>; export function render(){return <view>{row()}{cached()}</view>}");
+    await writeFile(join(root, 'rows.tsx'), [
+      'declare const cond: boolean;',
+      'declare function register(x: unknown): void;',
+      'export const icon = <view />;',
+      'export const ROWS = [{ label: <text>A</text> }];',
+      'export const branch = cond ? <view /> : <text>B</text>;',
+      'register(<view />);',
+      'export class Box { static badge = <text>S</text>; }',
+    ].join('\n'));
+    await writeFile(join(root, 'page.tsx'), "import { icon, ROWS, branch, Box } from './rows'; export function render(){return <view>{icon}{ROWS[0].label}{branch}{Box.badge}</view>}");
+    const err = await build().catch(error => error);
+    const message = err?.message ?? '';
+    assert.match(message, /rows\.tsx:3:21, 4:31, 5:30, 5:41, 6:10, 7:35: UI_SCOPE:/);
+    await writeFile(join(root, 'rows.tsx'), [
+      'const memo = <T,>(fn: T) => fn;',
+      'export type Alias = { x: number };',
+      'export const row = () => <text>Row</text>;',
+      'export const Foo = memo(() => <view />);',
+      'export const obj = { get label() { return <text>G</text>; }, make() { return <text>M</text>; } };',
+      'export class Rows { make() { return <text>Row</text>; } get head() { return <text>H</text>; } }',
+    ].join('\n'));
+    await writeFile(join(root, 'page.tsx'), "import {row, Foo, obj, Rows} from './rows'; const cached = () => <view/>; export function render(){const r = new Rows(); return <view>{row()}{cached()}<Foo />{obj.label}{obj.make()}{r.make()}{r.head}</view>}");
     await build();
   });
 });
