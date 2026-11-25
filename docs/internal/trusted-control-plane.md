@@ -52,7 +52,7 @@ creation and sealed before that session's Logic starts.
 | Class | Constructor | Gate |
 |---|---|---|
 | `ControlApp` | `LxApp::new_as_home` | `home_app_id()` equals the app id. Set once from `lingxia.yaml` into a `OnceLock`. |
-| `ControlSurface` | `LxApp::new_control_surface` | Host-bundled bundle source, and **not** the home id. |
+| `ControlSurface` | `LxApp::new_control_surface` | Host-bundled bundle source, **not** the home id, and the live native control authority. |
 | `StandardApp` | `LxApp::new` | Default. |
 
 **The class follows the identity, not the live map.** `LxApps::session_class_for`
@@ -61,8 +61,14 @@ happens to be in `lxapps`. This matters because the home session *is* removed
 from that map — by LRU eviction, by uninstall, and by the 30-minute delayed
 destroy — and reading the class off the map would rebuild the product's own
 home as a guest, with no way back short of a process restart. `ControlSurface` is not
-an identity (a host-bundled lxapp is a surface only while the Control app keeps
-one open), so it stays inherited from the live session.
+an identity (a host-bundled lxapp is a surface only while native code holds it
+open as one), so it stays inherited from the live session.
+
+Only native code opens a surface: the browser runtime opens `app.lingxia.browser`
+as its tab owner and for host chrome's system pages, and the Control app's
+`lx.surface.openApp` reaches Terminal Settings or the browser through the
+`ControlAppOnly` `ShellOpenHost*` routes. Any other `openApp` of those ids is
+refused, so a guest cannot start one as a `StandardApp` session.
 
 ## Which class reaches which audience
 

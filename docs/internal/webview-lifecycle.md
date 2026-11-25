@@ -571,6 +571,15 @@ Creation:
    without a target). A tab has **no** LxApp page lifecycle, so never
    `wait_webview_ready()` on one.
 
+A failed main-frame load shows the load-error page: host HTML loaded with
+`load_data` at `about:blank`, with a Retry link to the failing URL. The delegate
+marks the first load after the failure as that document by state, not URL, since
+engines report it differently and a user's own `about:blank` must not match.
+While it shows, the tab shows the failing URL under the error's title, page
+URL and title changes are ignored, and no visit is recorded. Windows sends
+`about:blank` HTML through `NavigateToString`, because `WebResourceRequested`
+never sees `about:blank`.
+
 ### Tab state and teardown
 
 `BrowserTabState` holds the WebView creation state (`session_id`, `create_token`,
@@ -609,10 +618,8 @@ Live -> Discarded -> Recreating -> Live
 2. Advances `create_token` **before** destruction. An older in-flight create
    callback then resolves as `Stale` and cannot remove or reattach the retained
    tab.
-3. Detaches the tab from the shared startup bridge and removes any per-tab
-   internal `Page`.
-4. Calls `destroy_webview_if_matches` for the tab path/session.
-5. Keeps the tab map entry, sets `discarded = true`, clears
+3. Calls `browser_destroy_webview_if_matches` for the tab's WebView.
+4. Keeps the tab map entry, sets `discarded = true`, clears
    `create_in_flight`, and preserves `pending_url` (falling back to
    `current_url`) as the restore target.
 
@@ -720,7 +727,8 @@ Compact hosts warm strip slots.
   through `NavigationProgress`) → calls `handle_loaded()`, which sets render status
   `Finished`, injects page scripts, then dispatches `OnReady` **via**
   `dispatch_lifecycle_event` (so `OnReady` is gated, not unconditional).
-- `on_load_error()` → reports a `LoadError` (default no-op).
+- `on_navigation_event(Failed)` for the current attempt → logs the failure;
+  no lifecycle event follows.
 
 `dispatch_lifecycle_event()` enforces ordering:
 - `OnLoad` is ignored before render starts.
@@ -778,11 +786,11 @@ invalidate the main document or restart its session.
 
 1. `WebViewInner::create()` dispatches to the main thread, builds a
    `WKWebViewConfiguration`, creates the `WKWebView`.
-2. Registers the reserved `lx-apple` bridge scheme plus the schemes the creator
-   registered (for a strict lxapp page that is `lx`; the `lingxia` scheme appears
-   only for browser tabs, because `lingxia-browser` adds it to its registered
-   schemes — it is **not** hardcoded here). Also installs the navigation delegate
-   and the script message handlers named `LingXia` and `LingXiaConsole`.
+2. Registers the reserved `lx-apple` bridge scheme where the profile has a
+   bridge, plus the schemes the creator registered (`lx` by default for a strict
+   lxapp page; a browser tab registers none). Installs the navigation delegate,
+   the `LingXia` handler only where the profile has a bridge, `LingXiaConsole`
+   where it hooks the console, and `LingXiaLifecycle` always.
 3. Profile policy:
    - `AppPage`: non-persistent `WKWebsiteDataStore`; the navigation
      delegate additionally carries an Apple-only `intercept_https_navigation`

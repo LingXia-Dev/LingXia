@@ -81,7 +81,9 @@ details; JS does not pick a provider by kind.
 
 JS opens by subject: a declaration (`openDeclared`), another lxapp
 (`openApp`), its own page (`openPage`), or a URL (`openUrl`). The browser's
-system pages are the `app.lingxia.browser` lxapp, opened with `openApp`. There
+system pages (bookmarks, history, downloads, settings) are the host-bundled
+`app.lingxia.browser` lxapp on a control surface: host chrome opens a page
+natively, and only the Control app may `openApp` it. There
 is no `native` selector: a native provider is reached only through its
 declaration. Every handle carries a `kind` (`page`, `declared`, `app`, `tab`) and the
 `realized` placement (`main`, `aside`, `float`, `window`).
@@ -804,6 +806,8 @@ The writer's declaration rules are in §11.6. Placement:
 
 - The top system region belongs to the shell. A browser main may put its
   address bar there; an lxapp's navigation bar lives inside the main content.
+  Browser system pages use that host navigation bar (title from the page's
+  `navigationBar`, Back), not an address bar.
 - `window: { frameless: true }` affects the main window only. With the default
   `controls: shell` the shell draws a persistent control strip and its own drag
   region, whatever the main.
@@ -1076,10 +1080,11 @@ notifications — are on `lx.host`, never on `lx.shell`.
 - An explicit `as` changes only the live instance, never the declaration or the
   role later opens default to.
 - URLs are `https:` or a host-authorized `file:`, and their domain must pass the
-  lxapp's security policy. Every `lingxia:` URL fails with `E_INVALID_ARG`;
-  the browser's pages open with `lx.surface.openApp('app.lingxia.browser',
-  { page })`. Host-wide Settings is native chrome, never a Logic destination. Handing a URL to the system still passes the host's scheme
-  allowlist.
+  lxapp's security policy; any other scheme fails with `E_INVALID_ARG`. The
+  Control app opens the browser's pages with
+  `lx.surface.openApp('app.lingxia.browser', { page })`. Host-wide Settings is
+  native chrome, never a Logic destination. Handing a URL to the system still
+  passes the host's scheme allowlist.
 
 ### 11.3 App navigation and App Surfaces
 
@@ -1177,8 +1182,9 @@ declared surface.
 
 ### 11.7 Shell routes for trusted pages
 
-Trusted browser pages (the browser web UI) and the Control app use these
-routes:
+The browser's system pages and the Control app use these routes. `shell.pins`
+and `shell.reorderPins` are `ControlAppOrSurface`; `bookmarks.*` and the other
+browser routes are `ControlSurfaceOnly`:
 
 - `shell.pins` returns `{ items, max }`: the ordered `{ kind: 'lxapp' |
   'bookmark', key }` list and the combined limit. Read `max` rather than
@@ -1193,7 +1199,8 @@ routes:
 - The host keeps the process's last 25 closed website tabs; the desktop
   reopen-closed-tab shortcut (Cmd/Ctrl+Shift+T) restores the latest. Private tabs, aside tabs and
   window surfaces are not recorded.
-- A replacement web UI is an lxapp whose `appId` is `app.lingxia.browser`.
+- A replacement web UI is a host-bundled lxapp whose `appId` is
+  `app.lingxia.browser`; a downloaded one is never a control surface.
 
 ---
 
