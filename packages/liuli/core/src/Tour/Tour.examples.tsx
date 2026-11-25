@@ -22,7 +22,7 @@ export function Welcome() {
           {/* At large text the field takes its own line rather than shrinking to its magnifier. */}
           <view className="flex-row flex-wrap items-center gap-2">
             <view id="tour-new"><Button label="New note" variant="primary" startIcon="add" onClick={() => say('Created a note')} /></view>
-            <view id="tour-search" className="grow basis-40">
+            <view id="tour-search" className="grow basis-40 min-w-0">
               <SearchField label="Search notes" isLabelHidden bind={query} placeholder="Search" clearLabel="Clear" />
             </view>
           </view>

@@ -49,7 +49,7 @@ test('Welcome: the callout is anchored to its target with a margin; four carets 
 test('Welcome: the row around the search target wraps, so at large text the field takes its own line instead of shrinking', async () => {
   const screen = await renderExample('Tour/Tour', 'Welcome');
   const search = screen.queryAll(node => node.props.elementId === 'tour-search')[0];
-  assert.deepEqual([search.props.grow, search.props.flexBasis, search.props.minWidth], [1, 160, undefined]);
+  assert.deepEqual([search.props.grow, search.props.flexBasis, search.props.minWidth], [1, 160, 0]);
   assert.equal(search.parent.props.flexWrap, 'wrap');
 });
 
