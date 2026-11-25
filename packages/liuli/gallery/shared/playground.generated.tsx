@@ -1482,6 +1482,11 @@ export const playgroundEntries: PlaygroundEntry[] = [
         "kind": "text"
       },
       {
+        "name": "hasIconColumn",
+        "required": false,
+        "kind": "boolean"
+      },
+      {
         "name": "isDisabled",
         "required": false,
         "kind": "boolean"
@@ -2167,6 +2172,11 @@ export const playgroundEntries: PlaygroundEntry[] = [
           "end",
           "start"
         ]
+      },
+      {
+        "name": "hasIconColumn",
+        "required": false,
+        "kind": "boolean"
       }
     ],
     "fixed": [

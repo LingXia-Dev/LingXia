@@ -5832,6 +5832,13 @@
           "description": "The rows as data, as DropdownMenu's `items` takes them."
         },
         {
+          "name": "hasIconColumn",
+          "type": "boolean",
+          "required": false,
+          "description": "Keeps an icon's width at the start of every row, as DropdownMenu's does; `items` set it themselves.",
+          "default": "false"
+        },
+        {
           "name": "isDisabled",
           "type": "boolean",
           "required": false,
@@ -8241,6 +8248,13 @@
           "description": "Classes for the menu panel."
         },
         {
+          "name": "hasIconColumn",
+          "type": "boolean",
+          "required": false,
+          "description": "Keeps an icon's width at the start of every row, so all labels share one edge. Rows given as `items` set it themselves when any row has an icon; set it on `menu` rows, whose props the menu cannot read.",
+          "default": "false"
+        },
+        {
           "name": "data-testid",
           "type": "string",
           "required": false,
@@ -8278,7 +8292,14 @@
             "name": "onClick",
             "type": "(() => void)",
             "required": false,
-            "description": "Runs on choice, with nothing; the menu then closes. A row that keeps the menu open is a checkable row, composed in `menu`. Leave it out on a submenu."
+            "description": "Runs on choice, with nothing; the menu then closes, unless `isRepeatable`. Leave it out on a submenu."
+          },
+          {
+            "name": "isRepeatable",
+            "type": "boolean",
+            "required": false,
+            "description": "A row pressed again and again, \"Zoom in\": it runs `onClick` and leaves the menu open. Not with `to` or `items`.",
+            "default": "false"
           },
           {
             "name": "to",
@@ -8328,13 +8349,20 @@
             "name": "onClick",
             "type": "(() => void)",
             "required": false,
-            "description": "Runs on choice; the menu then closes."
+            "description": "Runs on choice; the menu then closes, unless `isRepeatable`."
           },
           {
             "name": "to",
             "type": "LinkTarget",
             "required": false,
             "description": "Makes it a link that goes there on press: `{ page, params }`, `{ tab }`, `{ back: 1 }`. Read as a link; Enter opens it and Space does not."
+          },
+          {
+            "name": "isRepeatable",
+            "type": "boolean",
+            "required": false,
+            "description": "A row pressed again and again, \"Zoom in\": it runs `onClick` and leaves the menu open. Not with `to`.",
+            "default": "false"
           },
           {
             "name": "label",
@@ -8578,6 +8606,9 @@
           "Sizes sm (32) and md (40) are shorter than the 44 pt touch minimum; a finger still reaches them in a 44 pt band around the box, which the host adds without changing what is drawn.",
           "A tap outside, Escape and back close the menu; that tap reaches nothing else.",
           "On a narrow screen the row that opens a submenu and the row that goes back are menu items that keep the menu open, so the arrow keys reach them; Escape and back go up one level before they close the menu.",
+          "While a submenu takes the panel the menu is named by the submenu, so a screen reader says where it is; the back row's menu name is bidi-isolated, so a name in the other direction keeps its order.",
+          "An `isRepeatable` item runs and leaves the menu open, as checkbox and radio items do.",
+          "When a row has an icon, every row in that panel keeps an icon's width at its start, so the labels share one edge: `items` work it out, `menu` rows need `hasIconColumn`, whose rows' props the menu cannot read.",
           "Checkbox and radio items are read as checked or not, and keep the menu open so the change can be seen."
         ]
       },
@@ -8631,6 +8662,11 @@
           "name": "Submenu",
           "title": "A submenu",
           "source": "import { useLocal } from '@lingxia/view';\nimport { DropdownMenu, DropdownMenuDivider, DropdownMenuItem, DropdownMenuSubmenu } from '@liulidesign/core/DropdownMenu';\nimport { Said } from '../example';\nimport { Button } from '@liulidesign/core/Button';\n\n/** A submenu for a few choices under one name; it opens at the item's side. */\nexport function Submenu() {\n  const moved = useLocal('moved', 'Notes');\n  return (\n    <Said>\n      {say => (\n        <view className=\"items-start gap-2\">\n          <DropdownMenu label=\"Note\" menu={<>\n            <DropdownMenuItem label=\"Rename\" onClick={() => say('Chose Rename')} />\n            <DropdownMenuSubmenu label=\"Move to\" data-testid=\"move\">\n              {['Notes', 'Travel', 'Recipes', 'Archive'].map(folder => (\n                <DropdownMenuItem key={folder} label={folder} onClick={() => moved.set(folder)} data-testid={`move-${folder.toLowerCase()}`} />\n              ))}\n            </DropdownMenuSubmenu>\n            <DropdownMenuDivider />\n            <DropdownMenuItem label=\"Delete\" variant=\"destructive\" onClick={() => say('Chose Delete')} />\n          </>}>\n            <Button label=\"Note\" endIcon=\"chevron-down\" data-testid=\"note-menu\" />\n          </DropdownMenu>\n          <text role=\"status\" className=\"text-footnote text-muted\">{`In ${moved.value}`}</text>\n        </view>\n      )}\n    </Said>\n  );\n}"
+        },
+        {
+          "name": "Repeatable",
+          "title": "Rows that keep the menu open",
+          "source": "import { useLocal } from '@lingxia/view';\nimport { DropdownMenu } from '@liulidesign/core/DropdownMenu';\nimport { Button } from '@liulidesign/core/Button';\n\n/** Rows that change what is beside the menu keep it open, so a second press needs no reopening; Reset closes it. Reset has no icon, so it keeps the icon's space and its label lines up with the others. */\nexport function Repeatable() {\n  const zoom = useLocal('zoom', 100);\n  return (\n    <view className=\"flex-row items-center gap-3\">\n      <DropdownMenu label=\"Zoom\" items={[\n        { id: 'in', label: 'Zoom in', icon: 'add', isRepeatable: true, onClick: () => zoom.set(Math.min(200, zoom.value + 10)), 'data-testid': 'zoom-in' },\n        { id: 'out', label: 'Zoom out', icon: 'remove', isRepeatable: true, onClick: () => zoom.set(Math.max(50, zoom.value - 10)), 'data-testid': 'zoom-out' },\n        { type: 'divider' },\n        { id: 'reset', label: 'Reset to 100%', onClick: () => zoom.set(100), 'data-testid': 'zoom-reset' },\n      ]}>\n        <Button label=\"Zoom\" endIcon=\"chevron-down\" data-testid=\"zoom\" />\n      </DropdownMenu>\n      <text role=\"status\" className=\"text-footnote text-muted tabular-nums\">{`${zoom.value}%`}</text>\n    </view>\n  );\n}"
         },
         {
           "name": "Data",
@@ -8734,6 +8770,10 @@
             {
               "name": "Submenu",
               "title": "A submenu at the side of its item, one level deep"
+            },
+            {
+              "name": "Repeatable",
+              "title": "Rows that keep the menu open while a value beside it changes"
             },
             {
               "name": "Data",

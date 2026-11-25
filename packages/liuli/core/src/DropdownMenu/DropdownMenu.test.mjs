@@ -163,12 +163,15 @@ test('Submenu, narrow: the submenu takes the panel under a row that goes back; c
   assert.deepEqual(labels(), ['Rename', 'Move to', 'Delete']);
   screen.press(screen.getByTestId('move'));
   assert.equal(menus(screen).length, 1, 'the same panel');
-  assert.deepEqual(labels(), ['Back to Note', 'Move to'], 'the back row names the menu it goes back to, then the submenu as a group');
-  assert.equal(textOf(screen.getByTestId('move-back')), 'Back to Note', 'it reads as it is named');
+  const isolated = 'Back to \u2068Note\u2069';
+  assert.deepEqual(labels(), [isolated, 'Move to'], 'the back row names the menu it goes back to, isolated, then the submenu as a group');
+  assert.equal(textOf(screen.getByTestId('move-back')), isolated, 'it reads as it is named');
+  assert.equal(menus(screen)[0].props.accessibilityLabel, 'Move to', 'the menu is named by the submenu it shows');
   assert.equal(screen.getByTestId('move-back').props.stateExpanded, 1);
   assert.equal(screen.getByTestId('move-back').props.role, 'menuitem', 'reached by the arrow keys like any row');
   screen.press(screen.getByTestId('move-back'));
   assert.deepEqual(labels(), ['Rename', 'Move to', 'Delete']);
+  assert.equal(menus(screen)[0].props.accessibilityLabel, 'Note', 'back at the top, the menu\'s own name');
   screen.press(screen.getByTestId('move'));
   screen.press(screen.getByTestId('move-recipes'));
   assert.equal(menus(screen).length, 0);
@@ -325,4 +328,57 @@ test('to: a data row with both onClick and to is refused', async () => {
     `),
     /takes onClick or to, not both/,
   );
+});
+
+test('Repeatable: a repeatable row runs and leaves the menu open; a plain row closes it', async () => {
+  const screen = await renderExample('DropdownMenu/DropdownMenu', 'Repeatable');
+  screen.press(screen.getByTestId('zoom'));
+  const zoomIn = screen.getByTestId('zoom-in');
+  screen.press(zoomIn);
+  screen.press(screen.getByTestId('zoom-in'));
+  assert.equal(menus(screen).length, 1, 'still open');
+  screen.getByText('120%');
+  screen.press(screen.getByTestId('zoom-reset'));
+  assert.equal(menus(screen).length, 0);
+  screen.getByText('100%');
+});
+
+test('isRepeatable with to is refused, naming why', async () => {
+  await assert.rejects(async () => {
+    await renderPage(`
+      import { DropdownMenu } from '@liulidesign/core/DropdownMenu';
+      export function render() {
+        return <page><DropdownMenu label="Go" items={[{ label: 'Home', to: { tab: 'home' }, isRepeatable: true }]}><text>Go</text></DropdownMenu></page>;
+      }
+    `);
+  }, /isRepeatable is for onClick/);
+});
+
+test('icon column: a row without an icon keeps the icon\'s space when another row has one, so the labels share a start edge', async () => {
+  const screen = await renderExample('DropdownMenu/DropdownMenu', 'Repeatable');
+  screen.press(screen.getByTestId('zoom'));
+  const lead = id => screen.getByTestId(id).children[0];
+  const reset = lead('zoom-reset');
+  const box = node => [node.props.width, node.props.height, node.props.shrink];
+  assert.deepEqual([reset.tag, reset.props.accessibilityHidden], ['column', 1], 'a hidden space first');
+  assert.deepEqual(box(reset), box(lead('zoom-in')), 'as wide as the icon');
+});
+
+test('icon column: a menu with no icons keeps no space, and a JSX menu keeps it when told', async () => {
+  const screen = await renderPage(`
+    import { DropdownMenu, DropdownMenuItem } from '@liulidesign/core/DropdownMenu';
+    export function render() {
+      return <page>
+        <DropdownMenu label="Plain" data-testid="plain" items={[{ label: 'Copy', onClick: () => {}, 'data-testid': 'copy' }]}><text>Plain</text></DropdownMenu>
+        <DropdownMenu label="Told" data-testid="told" hasIconColumn menu={<>
+          <DropdownMenuItem label="Share" icon="share" onClick={() => {}} />
+          <DropdownMenuItem label="Rename" onClick={() => {}} data-testid="rename" />
+        </>}><text>Told</text></DropdownMenu>
+      </page>;
+    }
+  `);
+  screen.press(screen.getByTestId('plain'));
+  assert.notEqual(screen.getByTestId('copy').children[0].props.accessibilityHidden, 1, 'the label first');
+  screen.press(screen.getByTestId('told'));
+  assert.equal(screen.getByTestId('rename').children[0].props.accessibilityHidden, 1);
 });

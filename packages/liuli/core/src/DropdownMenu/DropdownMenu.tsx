@@ -36,14 +36,21 @@ export interface DropdownMenuProps {
   alignment?: DropdownMenuAlignment;
   /** Classes for the menu panel. */
   menuClassName?: string;
+  /**
+   * Keeps an icon's width at the start of every row, so all labels share one edge. Rows given as `items` set it
+   * themselves when any row has an icon; set it on `menu` rows, whose props the menu cannot read. @default false
+   */
+  hasIconColumn?: boolean;
   /** On the trigger: the wrapper, or a Button or Link child without a test id of its own. The menu gets `<testid>-menu`. */
   'data-testid'?: string;
 }
 
 export type DropdownMenuItemProps = Press<{
-  /** Runs on choice; the menu then closes. */
+  /** Runs on choice; the menu then closes, unless `isRepeatable`. */
   onClick: () => void;
 }> & {
+  /** A row pressed again and again, "Zoom in": it runs `onClick` and leaves the menu open. Not with `to`. @default false */
+  isRepeatable?: boolean;
   /** The item's text and its accessible name. */
   label: string;
   /** A second line, read as the item's description. */
@@ -107,8 +114,10 @@ export interface DropdownMenuItemData {
   description?: string;
   /** An icon by name from the set, or a definition, before the label; hidden from assistive tech. */
   icon?: IconRef;
-  /** Runs on choice, with nothing; the menu then closes. A row that keeps the menu open is a checkable row, composed in `menu`. Leave it out on a submenu. */
+  /** Runs on choice, with nothing; the menu then closes, unless `isRepeatable`. Leave it out on a submenu. */
   onClick?: () => void;
+  /** A row pressed again and again, "Zoom in": it runs `onClick` and leaves the menu open. Not with `to` or `items`. @default false */
+  isRepeatable?: boolean;
   /** Goes to a page instead of running `onClick`: `{ page, params }`, `{ tab }`, `{ back: 1 }`. Read as a menu item that is a link. Not on a submenu. */
   to?: LinkTarget;
   /** At the row's trailing edge, muted: a shortcut as a `Kbd`, or a count. Not on a submenu. */
@@ -137,16 +146,38 @@ const areas = {
 
 /** The items' height; set by whatever holds them: a DropdownMenu or a ContextMenu. */
 export const MenuSize = createContext<ButtonSize | null>(null);
+/** Whether the panel's rows keep an icon's width at their start; shared with ContextMenu, not public. */
+export const IconColumn = createContext(false);
+/** Whether any row of these entries, in a group too, has an icon: a submenu's own rows are its own panel. */
+export const hasIcons = (entries: readonly DropdownMenuEntry[] | undefined): boolean =>
+  entries !== undefined && entries.some(entry => 'type' in entry ? entry.type === 'group' && hasIcons(entry.items) : entry.icon !== undefined);
+/** The space an icon takes, on a row without one in a panel whose rows have them. */
+const IconSpace = () => useContext(IconColumn) ? <view aria-hidden className={r.itemIcon.base} /> : null;
 /** Which submenu has taken over the panel, where there is no room to open one beside its item. */
 interface DrillState {
   open: string | null;
-  set: (id: string | null) => void;
+  /** Shows a submenu in the panel, by its id and its name; `null` goes back to the menu. */
+  set: (submenu: DrilledTo | null) => void;
   isCompact: boolean;
   /** The menu's name, which the back row names as where it goes. */
   parent: string;
 }
 /** Shared with ContextMenu, not public: a const, so the catalogue does not list it. */
 export const Drill = createContext<DrillState | null>(null);
+interface DrilledTo { id: string; label: string }
+/**
+ * A menu's drill state: which submenu took the panel, and the menu's name meanwhile, the submenu's, so a screen
+ * reader says where it is. Shared with ContextMenu, not public.
+ */
+export const useDrill = (label: string, isCompact: boolean) => {
+  const drilled = useLocal<DrilledTo | null>('drilled', null);
+  return {
+    state: { open: drilled.value?.id ?? null, set: drilled.set, isCompact, parent: label } satisfies DrillState,
+    name: drilled.value?.label ?? label,
+    isDrilled: drilled.value !== null,
+    reset: () => drilled.set(null),
+  };
+};
 /** Whether a submenu has replaced this item in the panel. */
 const isReplaced = (drill: DrillState | null) => drill !== null && drill.open !== null;
 
@@ -169,11 +200,12 @@ export function DropdownMenu({
   placement = 'bottom',
   alignment = 'start',
   menuClassName,
+  hasIconColumn = false,
   'data-testid': testId, ...attributes
 }: DropdownMenuProps) {
   const id = useId();
-  const drilled = useLocal<string | null>('drilled', null);
   const isCompact = useView().env.sizeClass === 'compact';
+  const drill = useDrill(label, isCompact);
   const rows = menuRows('DropdownMenu', menu, items);
   return (
     <>
@@ -183,18 +215,20 @@ export function DropdownMenu({
           id={id}
           popover
           role="menu"
-          aria-label={label}
+          aria-label={drill.name}
           open={isOpen}
           // A menu that closes forgets which submenu it was showing.
-          onToggle={next => { if (!next) drilled.set(null); onOpenChange?.(next); }}
+          onToggle={next => { if (!next) drill.reset(); onOpenChange?.(next); }}
           // Escape or back inside a submenu that took the panel goes up one level; from the top it closes the menu.
-          onCloseRequest={() => { if (drilled.value === null) return true; drilled.set(null); return false; }}
+          onCloseRequest={() => { if (!drill.isDrilled) return true; drill.reset(); return false; }}
           data-testid={testId && `${testId}-menu`}
           style={{ positionArea: areas[placement][alignment] }}
           className={cx(r.menu.base, r.menu.offset[placement], isCompact && r.menu.drill, menuClassName)}
         >
-          <Drill.Provider value={{ open: drilled.value, set: drilled.set, isCompact, parent: label }}>
-            <view className={r.items.base}>{rows}</view>
+          <Drill.Provider value={drill.state}>
+            <IconColumn.Provider value={hasIconColumn || hasIcons(items)}>
+              <view className={r.items.base}>{rows}</view>
+            </IconColumn.Provider>
           </Drill.Provider>
         </view>
       </MenuSize.Provider>
@@ -241,7 +275,7 @@ function entryRow(owner: string, entry: DropdownMenuEntry, key: string): Child {
 function itemRow(owner: string, item: DropdownMenuItemData, key: string): Child {
   if (item.items !== undefined) {
     return (
-      <DropdownMenuSubmenu key={key} label={item.label} icon={item.icon} isDisabled={item.isDisabled} data-testid={item['data-testid']}>
+      <DropdownMenuSubmenu key={key} label={item.label} icon={item.icon} hasIconColumn={hasIcons(item.items)} isDisabled={item.isDisabled} data-testid={item['data-testid']}>
         {rowsOf(owner, item.items)}
       </DropdownMenuSubmenu>
     );
@@ -249,10 +283,11 @@ function itemRow(owner: string, item: DropdownMenuItemData, key: string): Child 
   const shared = { label: item.label, description: item.description, icon: item.icon, endContent: item.endContent, isDisabled: item.isDisabled, variant: item.variant, 'data-testid': item['data-testid'] };
   if (item.to !== undefined) {
     if (item.onClick !== undefined) throw Error(`${owner}: "${item.label}" takes onClick or to, not both`);
+    if (item.isRepeatable) throw Error(`${owner}: "${item.label}" goes to a page, which closes the menu; isRepeatable is for onClick`);
     return <DropdownMenuItem key={key} {...shared} to={item.to} />;
   }
   if (item.onClick === undefined) throw Error(`${owner}: "${item.label}" needs onClick, to or items`);
-  return <DropdownMenuItem key={key} {...shared} onClick={item.onClick} />;
+  return <DropdownMenuItem key={key} {...shared} onClick={item.onClick} isRepeatable={item.isRepeatable} />;
 }
 
 /** One action in a DropdownMenu, or with `to` a way to a page. */
@@ -266,7 +301,7 @@ export function DropdownMenuItem(props: DropdownMenuItemProps) {
   if (isReplaced(drill)) return null;
   const content = (
     <>
-      {icon !== undefined && <Glyph name={icon} className={cx(r.itemIcon.base, r.itemIcon.variant[variant])} />}
+      {icon !== undefined ? <Glyph name={icon} className={cx(r.itemIcon.base, r.itemIcon.variant[variant])} /> : <IconSpace />}
       <view className={r.itemText.base}>
         <text className={cx(r.itemLabel.base, r.itemLabel.variant[variant])}>{label}</text>
         {description !== undefined && <text id={descriptionId} className={r.itemDescription.base}>{description}</text>}
@@ -284,8 +319,12 @@ export function DropdownMenuItem(props: DropdownMenuItemProps) {
     className: cx(r.item.base, r.item.size[size]),
   } as const;
   // A link row takes no press of its own: the engine closes a menu when one of its items is chosen.
-  if (props.to !== undefined) return <link {...shared} to={props.to}>{content}</link>;
-  const { onClick } = props;
+  if (props.to !== undefined) {
+    if (props.isRepeatable) throw Error(`DropdownMenuItem "${label}": a link closes the menu; isRepeatable is for onClick`);
+    return <link {...shared} to={props.to}>{content}</link>;
+  }
+  const { onClick, isRepeatable = false } = props;
+  if (isRepeatable) return <button {...shared} keepOpen onClick={onClick}>{content}</button>;
   return <button {...shared} onClick={() => { onClick(); close?.(); }}>{content}</button>;
 }
 
@@ -363,6 +402,7 @@ function CheckableItem(props: {
       data-testid={props.testId}
       className={cx(r.item.base, r.item.size[size])}
     >
+      <IconSpace />
       <view className={r.itemText.base}>
         <text className={r.itemLabel.base}>{props.label}</text>
         {props.description !== undefined && <text id={descriptionId} className={r.itemDescription.base}>{props.description}</text>}
@@ -380,6 +420,11 @@ export interface DropdownMenuSubmenuProps {
   icon?: IconRef;
   /** The submenu's items. One level only: a submenu holds no submenu. */
   children: Child;
+  /**
+   * Keeps an icon's width at the start of every row, so all labels share one edge. Set it when one of
+   * `children` has an icon; a submenu given as data sets it itself. @default false
+   */
+  hasIconColumn?: boolean;
   /** @default false */
   isDisabled?: boolean;
   /** On the item; the submenu gets `<testid>-menu`. */
@@ -387,14 +432,14 @@ export interface DropdownMenuSubmenuProps {
 }
 
 /** An item that opens a second menu at its side, for a few choices that belong under one name: "Move to". */
-export function DropdownMenuSubmenu({ label, icon, children, isDisabled = false, 'data-testid': testId, ...attributes }: DropdownMenuSubmenuProps) {
+export function DropdownMenuSubmenu({ label, icon, children, hasIconColumn = false, isDisabled = false, 'data-testid': testId, ...attributes }: DropdownMenuSubmenuProps) {
   const size = useContext(MenuSize);
   const drill = useContext(Drill);
   const id = useId();
   if (size === null) throw Error('DropdownMenuSubmenu: place it inside a DropdownMenu');
   const row = (
     <>
-      {icon !== undefined && <Glyph name={icon} className={cx(r.itemIcon.base, r.itemIcon.variant.default)} />}
+      {icon !== undefined ? <Glyph name={icon} className={cx(r.itemIcon.base, r.itemIcon.variant.default)} /> : <IconSpace />}
       <view className={r.itemText.base}>
         <text className={r.itemLabel.base}>{label}</text>
       </view>
@@ -404,7 +449,8 @@ export function DropdownMenuSubmenu({ label, icon, children, isDisabled = false,
   // No room beside the item: the submenu takes the panel, under a row back to the menu, as the reference does.
   if (drill?.isCompact) {
     if (drill.open === id) {
-      const back = liuliText('@liuli.backTo', { parent: drill.parent });
+      // The menu's name sits in a sentence of the UI's language: isolated, so a name in the other direction keeps its order.
+      const back = liuliText('@liuli.backTo', { parent: `\u2068${drill.parent}\u2069` });
       return (
         <>
           <button role="menuitem" keepOpen aria-label={back} aria-expanded onClick={() => drill.set(null)} data-testid={testId && `${testId}-back`} className={cx(r.item.base, r.item.size[size], r.back.base)}>
@@ -413,7 +459,9 @@ export function DropdownMenuSubmenu({ label, icon, children, isDisabled = false,
           </button>
           <view aria-hidden className={r.divider.base} />
           <Drill.Provider value={{ ...drill, open: null }}>
-            <view role="group" aria-label={label} data-testid={testId && `${testId}-menu`} className={r.group.base}>{children}</view>
+            <IconColumn.Provider value={hasIconColumn}>
+              <view role="group" aria-label={label} data-testid={testId && `${testId}-menu`} className={r.group.base}>{children}</view>
+            </IconColumn.Provider>
           </Drill.Provider>
         </>
       );
@@ -421,7 +469,7 @@ export function DropdownMenuSubmenu({ label, icon, children, isDisabled = false,
     if (drill.open !== null) return null;
     // A menu item that keeps its menu open, so the arrow keys reach it like any other row.
     return (
-      <button role="menuitem" keepOpen aria-label={label} aria-expanded={false} disabled={isDisabled} onClick={() => drill.set(id)} data-testid={testId} {...dataOf(attributes)} className={cx(r.item.base, r.item.size[size])}>
+      <button role="menuitem" keepOpen aria-label={label} aria-expanded={false} disabled={isDisabled} onClick={() => drill.set({ id, label })} data-testid={testId} {...dataOf(attributes)} className={cx(r.item.base, r.item.size[size])}>
         {row}
       </button>
     );
@@ -431,18 +479,20 @@ export function DropdownMenuSubmenu({ label, icon, children, isDisabled = false,
       <button role="menuitem" popoverTarget={id} aria-label={label} disabled={isDisabled} data-testid={testId} {...dataOf(attributes)} className={cx(r.item.base, r.item.size[size])}>
         {row}
       </button>
-      <view
-        id={id}
-        popover
-        role="menu"
-        aria-label={label}
-        data-testid={testId && `${testId}-menu`}
-        // Beside the item, tops lined up; it flips to the other side, or drops below, for room.
-        style={{ positionArea: 'inline-end span-block-end' }}
-        className={cx(r.menu.base, r.menu.side)}
-      >
-        {children}
-      </view>
+      <IconColumn.Provider value={hasIconColumn}>
+        <view
+          id={id}
+          popover
+          role="menu"
+          aria-label={label}
+          data-testid={testId && `${testId}-menu`}
+          // Beside the item, tops lined up; it flips to the other side, or drops below, for room.
+          style={{ positionArea: 'inline-end span-block-end' }}
+          className={cx(r.menu.base, r.menu.side)}
+        >
+          {children}
+        </view>
+      </IconColumn.Provider>
     </>
   );
 }

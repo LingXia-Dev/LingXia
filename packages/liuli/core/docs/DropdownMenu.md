@@ -333,6 +333,32 @@ export function Submenu() {
 }
 ```
 
+### Rows that keep the menu open
+
+```tsx
+import { useLocal } from '@lingxia/view';
+import { DropdownMenu } from '@liulidesign/core/DropdownMenu';
+import { Button } from '@liulidesign/core/Button';
+
+/** Rows that change what is beside the menu keep it open, so a second press needs no reopening; Reset closes it. Reset has no icon, so it keeps the icon's space and its label lines up with the others. */
+export function Repeatable() {
+  const zoom = useLocal('zoom', 100);
+  return (
+    <view className="flex-row items-center gap-3">
+      <DropdownMenu label="Zoom" items={[
+        { id: 'in', label: 'Zoom in', icon: 'add', isRepeatable: true, onClick: () => zoom.set(Math.min(200, zoom.value + 10)), 'data-testid': 'zoom-in' },
+        { id: 'out', label: 'Zoom out', icon: 'remove', isRepeatable: true, onClick: () => zoom.set(Math.max(50, zoom.value - 10)), 'data-testid': 'zoom-out' },
+        { type: 'divider' },
+        { id: 'reset', label: 'Reset to 100%', onClick: () => zoom.set(100), 'data-testid': 'zoom-reset' },
+      ]}>
+        <Button label="Zoom" endIcon="chevron-down" data-testid="zoom" />
+      </DropdownMenu>
+      <text role="status" className="text-footnote text-muted tabular-nums">{`${zoom.value}%`}</text>
+    </view>
+  );
+}
+```
+
 ### The rows as data
 
 ```tsx
@@ -423,6 +449,7 @@ export function InSentence() {
 | `placement` | `DropdownMenuPlacement` | `'bottom'` | Which side of the trigger the menu opens on. |
 | `alignment` | `DropdownMenuAlignment` | `'start'` | Which edge of the trigger the menu lines up with. |
 | `menuClassName` | `string` |  | Classes for the menu panel. |
+| `hasIconColumn` | `boolean` | `false` | Keeps an icon's width at the start of every row, so all labels share one edge. Rows given as `items` set it themselves when any row has an icon; set it on `menu` rows, whose props the menu cannot read. |
 | `data-testid` | `string` |  | On the trigger: the wrapper, or a Button or Link child without a test id of its own. The menu gets `<testid>-menu`. |
 
 ## DropdownMenuItemData props
@@ -433,7 +460,8 @@ export function InSentence() {
 | `label` (required) | `string` |  | The row's text and its accessible name. |
 | `description` | `string` |  | A second line, read as the row's description. Not on a submenu. |
 | `icon` | `IconRef` |  | An icon by name from the set, or a definition, before the label; hidden from assistive tech. |
-| `onClick` | `(() => void)` |  | Runs on choice, with nothing; the menu then closes. A row that keeps the menu open is a checkable row, composed in `menu`. Leave it out on a submenu. |
+| `onClick` | `(() => void)` |  | Runs on choice, with nothing; the menu then closes, unless `isRepeatable`. Leave it out on a submenu. |
+| `isRepeatable` | `boolean` | `false` | A row pressed again and again, "Zoom in": it runs `onClick` and leaves the menu open. Not with `to` or `items`. |
 | `to` | `LinkTarget` |  | Goes to a page instead of running `onClick`: `{ page, params }`, `{ tab }`, `{ back: 1 }`. Read as a menu item that is a link. Not on a submenu. |
 | `endContent` | `Child` |  | At the row's trailing edge, muted: a shortcut as a `Kbd`, or a count. Not on a submenu. |
 | `items` | `readonly DropdownMenuItemData[]` |  | Makes the row a submenu of these actions, one level deep. |
@@ -445,8 +473,9 @@ export function InSentence() {
 
 | Prop | Type | Default | Description |
 | --- | --- | --- | --- |
-| `onClick` | `(() => void)` |  | Runs on choice; the menu then closes. |
+| `onClick` | `(() => void)` |  | Runs on choice; the menu then closes, unless `isRepeatable`. |
 | `to` | `LinkTarget` |  | Makes it a link that goes there on press: `{ page, params }`, `{ tab }`, `{ back: 1 }`. Read as a link; Enter opens it and Space does not. |
+| `isRepeatable` | `boolean` | `false` | A row pressed again and again, "Zoom in": it runs `onClick` and leaves the menu open. Not with `to`. |
 | `label` (required) | `string` |  | The item's text and its accessible name. |
 | `description` | `string` |  | A second line, read as the item's description. |
 | `icon` | `IconRef` |  | An icon by name from the set, or a definition, before the label; hidden from assistive tech. |
@@ -520,6 +549,9 @@ export function InSentence() {
 - Sizes sm (32) and md (40) are shorter than the 44 pt touch minimum; a finger still reaches them in a 44 pt band around the box, which the host adds without changing what is drawn.
 - A tap outside, Escape and back close the menu; that tap reaches nothing else.
 - On a narrow screen the row that opens a submenu and the row that goes back are menu items that keep the menu open, so the arrow keys reach them; Escape and back go up one level before they close the menu.
+- While a submenu takes the panel the menu is named by the submenu, so a screen reader says where it is; the back row's menu name is bidi-isolated, so a name in the other direction keeps its order.
+- An `isRepeatable` item runs and leaves the menu open, as checkbox and radio items do.
+- When a row has an icon, every row in that panel keeps an icon's width at its start, so the labels share one edge: `items` work it out, `menu` rows need `hasIconColumn`, whose rows' props the menu cannot read.
 - Checkbox and radio items are read as checked or not, and keep the menu open so the change can be seen.
 
 | Contrast | Pair | Minimum | Light | Dark |

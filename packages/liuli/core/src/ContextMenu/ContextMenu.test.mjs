@@ -72,7 +72,7 @@ test('Data: from a finger the docked sheet has no room beside a row, so a submen
   screen.press(screen.getByTestId('add-album'));
   assert.equal(menus(screen).length, 1, 'one menu in the tree: no second popover');
   const back = screen.getByTestId('add-album-back');
-  assert.deepEqual([back.props.accessibilityLabel, back.props.role], ['Back to Dunes at noon', 'menuitem']);
+  assert.deepEqual([back.props.accessibilityLabel, back.props.role], ['Back to \u2068Dunes at noon\u2069', 'menuitem']);
   assert.equal(screen.getByTestId('add-album-menu').props.accessibilityLabel, 'Add to album');
   assert.equal(screen.queryAll(node => node.tag === 'text' && node.text === 'Share').length, 0, 'the sheet\'s rows give way');
   screen.escape();

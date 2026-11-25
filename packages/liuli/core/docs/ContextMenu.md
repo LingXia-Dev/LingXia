@@ -96,6 +96,7 @@ export function Data() {
 | `children` (required) | `Child` |  | What the menu is for: a row, a card, a picture. A long press or a secondary click on it asks for the menu. |
 | `menu` | `Child` |  | `DropdownMenuItem`s, dividers and groups, in order. Give this or `items`, not both. The same actions must be reachable another way. |
 | `items` | `readonly DropdownMenuEntry[]` |  | The rows as data, as DropdownMenu's `items` takes them. |
+| `hasIconColumn` | `boolean` | `false` | Keeps an icon's width at the start of every row, as DropdownMenu's does; `items` set it themselves. |
 | `isDisabled` | `boolean` | `false` |  |
 | `className` | `string` |  | Classes for the wrapper around `children`. |
 | `data-testid` | `string` |  | On the wrapper; the menu gets `<testid>-menu`. |

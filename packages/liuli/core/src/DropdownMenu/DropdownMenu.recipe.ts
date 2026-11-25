@@ -87,7 +87,8 @@ export const dropdownMenuRecipe = {
   /** The first row of a submenu that has taken the panel: it names the submenu and goes back. */
   back: {
     base: 'gap-2',
-    label: 'grow basis-0 min-w-0 truncate text-body font-medium',
+    /** Sized by its words and wrapping, never cut: it names where the row goes. */
+    label: 'grow shrink min-w-0 text-body font-medium',
   },
   divider: {
     base: 'h-px -mx-1 my-1 bg-line',
