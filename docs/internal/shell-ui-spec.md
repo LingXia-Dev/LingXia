@@ -316,7 +316,7 @@ how each host draws the result.
 | Sidebar width (budget) | 220 dp/pt | What the budget reserves for an expanded sidebar |
 | Rail width | 56 dp/pt | Icon rail and app rail |
 | Sidebar budget | 820 dp/pt | Sidebar width plus the compact boundary: the free width an expanded sidebar needs |
-| Main minimum | 320 × 240 dp/pt | Size aside admission always leaves the main |
+| Main minimum | 360 dp/pt wide | Width aside admission always leaves the main (`lingxia-surface` `Policy`; hosts read this value) |
 | Aside minimum | 240 dp/pt wide; 180 high at top or bottom | Narrowest docked aside |
 | Visible slots | 2 in `regular`, 1 in `compact` | Ceiling on docked slots |
 | Portrait ratio | 1.2 | Height over width at which a touch host is clearly portrait |
@@ -381,8 +381,8 @@ than its host's maximum (§7.2).
    the tab column. On a phone: the bottom tab bar.
 7. **Status band** (touch hosts). Present while a side column — the tab column,
    the app rail or an expanded sidebar — is visible.
-8. **Hinge.** A docked side panel beside a vertical hinge puts its divider on
-   the hinge. A horizontal hinge in the `half-opened` posture reaches the page
+8. **Hinge.** When the host reports a vertical hinge, a docked side panel
+   beside it puts its divider on the hinge. A horizontal hinge in the `half-opened` posture reaches the page
    unchanged; the host does not crop the page to one half.
 
 Outputs: the size class; `canDock`, which is true when the size class is
@@ -411,7 +411,7 @@ width, 683 dp, and the tab column moves to the main's left edge. The main's
 pages are 683 − 80 = 603 dp wide and read `regular`.
 
 **Open foldable, 784 × 820 dp, vertical hinge at x = 392, one main, a side
-panel open.** W = 784: `regular`. Smallest width 784: touch host in `regular`.
+panel open, the host reporting the hinge.** W = 784: `regular`. Smallest width 784: touch host in `regular`.
 One main: no rail. H / W = 1.05 < 1.2: the tab column, 80 dp. The side panel
 docks with its divider on the hinge, so it takes the right leaf (392 dp) and
 the main the left; the tab column moves to the main's left edge. The main pane
@@ -891,8 +891,8 @@ The side panel holds lxapp and URL asides. It docks at the right of the main
 when the display's smallest width is at least 600, and shares the content area
 with it through a divider instead of taking a requested width: half each by
 default, each side at least the touch side panel minimum, the ratio persisted.
-The divider shows a grip only where there is room to drag it. Beside a vertical
-hinge the divider sits on the hinge. Where the panel cannot dock, or when
+The divider shows a grip only where there is room to drag it. When the host
+reports a vertical hinge, the divider sits on it. Where the panel cannot dock, or when
 maximized, it covers the main. Collapsed, it leaves the edge handle of §5.4.
 System Back collapses an overlaid side panel before it reaches the main. While
 a page is in media full screen, the panel and the tab column hide. Promote and
@@ -1209,15 +1209,10 @@ routes:
 | Main window | Normal size and position and the maximized state, saved at the end of a move or resize, on close and on quit; on restore clamped to the nearest screen's work area, then maximized again on first show |
 | Sidebar | Width and expanded / rail state |
 | Pins | The user's ordered mixed list |
-| Main session | Tab content keys, session entry ids, order and selection |
 | lxapp groups | The user's collapse; an API hide is rebuilt by the app |
 | Aside geometry | Each slot's edge and size; on a touch host the side panel's divider ratio |
 | Sidebar actions | Not persisted |
 
-- Main sessions restore lazily: placeholders appear at once, and the live
-  surface and its runtime id are created on first selection. A failed restore
-  shows a retry / close placeholder. Session entry ids and runtime ids are never
-  confused.
 - Asides restore their geometry, never their content. After a restart the
   writer decides what to reopen; the shell does not bring back companion content
   with side effects on its own.
@@ -1236,7 +1231,6 @@ Code uses these roots; only the case changes between languages (Rust
 | surface key | `key` | `key` | `SurfaceKey` | instanceKey, workspaceId |
 | runtime id | `surface_id` | not in Logic; automation `surfaceLayout().identities` | `SurfaceId` | — |
 | app navigation | `navigate_to_app / navigate_back_app` | `nav.go({ app })`, `nav.leaveApp` | same roots | navigateToLxApp, openApp |
-| session entry id | `session_entry` | `sessionEntryId` | `SessionEntryId` | the runtime id |
 | role | `role` | `SurfacePlacement` (with `window`) | `Role` | mode, kind |
 | main | `main` | `'main'` | `Role::Main` | primary, home tab |
 | aside, slot | `aside / slot` | `'aside'` | `Role::Aside`, `SlotKind` | panel as a role |
