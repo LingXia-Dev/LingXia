@@ -28,7 +28,7 @@ recoverable from the code alone.
 - [`theme.md`](docs/internal/theme.md) — theme packs, role tiers, scale slots and their run-time resolution, `palette`/`scales` delivery. Read before changing `lingxia-theme`, the schema's `roles`/`scales`, or scale lowering.
 - [`test-runner.md`](docs/internal/test-runner.md) — test isolation, deadlines, result schema, and interrupted-run reporting.
 - [`companion-protocol.md`](docs/internal/companion-protocol.md) — how scenario `function` rules and the Function half of mocks reach the dev session's companion: capabilities, `scenario.*` and `mock.*` messages, owners and their lifetime. Read before changing the relay or implementing a companion.
-- [`dev-session.md`](docs/internal/dev-session.md) — `lingxia dev` session registration, dev websocket transport, and `lxdev` platform details.
+- [`dev-session.md`](docs/internal/dev-session.md) — `lingxia dev` session broker and files, dev websocket transport, bundle sync, mock readiness, and CLI/Runner version checks.
 - [`storage.md`](docs/internal/storage.md) · [`update-pipeline.md`](docs/internal/update-pipeline.md) — managed file storage and cache maintenance, update signing and installation.
 - [`i18n.md`](docs/internal/i18n.md) — who owns the language, the three text stores, catalogues and fallback, formatting, SDK strings. Read before touching language resolution or any catalogue.
 - [`logging.md`](docs/internal/logging.md) · [`env-version.md`](docs/internal/env-version.md) · [`release-versioning.md`](docs/internal/release-versioning.md) — log pipeline, host env vs lxapp channel, release version rules.

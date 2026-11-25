@@ -1,6 +1,36 @@
 # Test runner
 
-`@lingxia/test` executes sequential tests in the host automation context.
+`lxdev test` runs an lxapp's `*.test.ts` specs inside the target host (phone,
+desktop app or Runner), against the real app, and reports the results back to
+the development machine. This doc covers the runner's design and the reasons
+behind it; the sections after **Reference** are lookup material for flags,
+presets, tags and the OpenAPI check.
+
+| Layer | Code | Role |
+| --- | --- | --- |
+| `@lingxia/test` | `packages/lingxia-test/src` | Authoring API (`test`, `expect`, fixtures) and the runner (`runtime.ts`) that executes in the host's test JS context |
+| Host automation runtime | `crates/lingxia-automation` | Raw drivers, the run manager (`runtime/manager.rs`), attempts, test clock, profiles |
+| Network layer | `crates/lingxia-network-dev` | Routes, scenarios, mocks, call log, recordings, contract capture |
+| `lxdev test` | `tools/lingxia-devtools-cli` | Bundles specs, starts and polls the run, journals events, writes reports |
+| `lingxia dev` | `tools/lingxia-cli/src/commands/dev` | Relays `session.test.*`, holds watch leases, loads mocks, talks to the companion |
+
+Core invariants (each is detailed below):
+
+1. The CLI never executes test bodies; tests and their `fetch` run in the host.
+2. A session holds one active run; a run nobody polls is cancelled.
+3. Tests share one JS context and the product's state. Once test code is
+   abandoned, the run stops: nothing proves the next test would be isolated.
+4. Everything a test installs (routes, scenarios, clocks, dialog watches)
+   belongs to its attempt and is reclaimed when the test ends.
+5. Every wait has a deadline inside the test's own. JS deadlines stop waiting;
+   they never undo a side effect already started.
+6. Actionability is checked before dispatch, and an ambiguous input failure is
+   never retried.
+7. Events are persisted before they are consumed, and a partial result never
+   passes.
+8. Data isolation, snapshot and restore happen in the host, never in the app
+   under test.
+9. Secrets are masked at the data level, before anything renders them.
 
 Entry points: `@lingxia/test` is what a test imports (`test`, `expect`,
 errors, fixture types); `@lingxia/test/runner` holds the runner (`run`,
@@ -11,7 +41,79 @@ through the global `__LINGXIA_TEST__` controller instead. The host contract
 never reaches the authoring entry's declarations; and
 `@lingxia/test/report` is types only (`JsonReport` and the records in it).
 `session.test` validates the framework result; `lxdev` journals events and writes
-received artifacts. Keep the following invariants when changing these layers:
+received artifacts.
+
+## Execution model
+
+Tests run where the app runs, so they exercise the real platform: its WebViews,
+its network stack and its timing.
+
+```text
+Development machine: lxdev collects/bundles tests → sends them over dev websocket
+Target App/Runner:   test JS worker → automation → Logic / WebViews / host / HTTP
+Development machine: lxdev receives progress, results, and artifacts
+```
+
+- The CLI never executes test bodies. On a phone, tests and their `fetch` run
+  on the phone; with a desktop Runner, in that Runner on the PC.
+- The host reuses one automation worker and creates a fresh JS context per
+  run. Tests execute sequentially and await async hooks and bodies.
+- App under test: `describeSubject` resolves the host's current lxapp at run
+  start and every test pins it by appid (`pinApp(item.app ?? subject.appid)`),
+  never "current" again. A host whose runtime just started or reconnected may
+  have no app in front: `lxapp::automation::resolve_lxapp("current")` then
+  falls back to the home app (`current_or_home`), and `describeSubject`
+  waits up to `SUBJECT_WAIT_MS` for `no current lxapp` to clear and opens an
+  app the host names as `lxapp is not active: <id>`.
+- Before each test that runs, the runtime lists the lxapps; if the app under
+  test (`test.app`, else the app `describeSubject` saw at run start) is
+  missing or `closed` (a `closing` one gets 5 s), it opens it, relaunches its
+  home page, emits a `diagnostic` with `phase: "recovery"` naming the previous
+  case and its status, and records an `app.reopen` step on the new case. A
+  failed reopen is recorded the same way and the test then fails on its own.
+- Cleanup order: `test.afterEach`, then LIFO `t.defer`; `timeoutCleanup`
+  bounds both. `restoreProfile`'s rollback is the first defer (so it runs
+  last) and drops its checkpoint whether or not the rollback succeeded.
+- Run end: after the last test, unless the run stopped (`contaminated`), the
+  runtime runs the same `reopenAppUnderTest` it runs
+  before each test. A failed reopen (there or per test) is a `diagnostic`
+  with `phase: "recovery_failed"`; lxdev sets `Outcome.app_not_live` from it
+  and prints the `Recover:` line, as it does for a `timed_out` or
+  `internal_error` run that was not interrupted.
+- The host holds one active run per session. Validate anything local (output
+  directory) before `session.test.start`; once a run exists, every way the
+  client stops without a terminal poll cancels it (`ActiveRun` in lxdev).
+- `session.test.active` names the run holding the slot (`run_id`, `age_ms`,
+  `since_last_poll_ms`); a refused `session.test.start` carries the same as
+  error `data` under code `automation_run_in_progress`. `--cancel-active`
+  refuses a run polled within the last 15s: its client is alive.
+- A Runner-side run holds the single automation slot. The run manager cancels
+  a run nobody has polled for `CONTROLLER_LEASE` (180s, above lxdev's longest
+  poll gap) through the normal cancel path. `lingxia dev` likewise holds its
+  source watcher while a run is on (below).
+- Watch pause: before it bundles, `lxdev test` takes a `session.watch.pause`
+  lease (`{ lease, ttl_ms: 300000 }`) from the dev server, and after
+  `session.test.start` renews it with the run's id. The server (not the
+  runtime) holds leases: a relayed `session.test.*` response for the bound
+  run renews it while `running` and removes it on any other state, a lease
+  not renewed within its TTL lapses (a `kill -9`'d client), and `lxdev`
+  sends `session.watch.resume` from the guard's `Drop` and from the second
+  Ctrl-C before `exit(130)`. `watch_paused()` = any live lease; a session
+  that cannot pause fails the run before it bundles. The watcher keeps the
+  dirty set while paused and rebuilds once when it clears. `restart_lxapp`
+  repeats the check under the command lock every relayed request holds
+  until its response is observed, so a run whose lease was taken during the
+  (seconds-long) rebuild defers the restart instead of having its app
+  replaced mid-test.
+- Dev session: a runtime disconnect while `lingxia dev` relays an active run
+  (seen from `session.test` responses within the lease) moves the run to
+  `interrupted_test_run` and uses a 30 s gone-grace instead of 1 s. A poll for
+  that run meanwhile gets error `runtime_reconnecting`; lxdev treats it as a
+  pause, journals `runtime_disconnected`/`runtime_reconnected` events
+  (`source: "lxdev"`), and a reconnect restores the run as active. After the
+  grace the session ends.
+
+## Isolation between tests
 
 - New test contexts do not reset product state. Retrying requires a file-scoped
   `test.reset` hook.
@@ -34,106 +136,132 @@ received artifacts. Keep the following invariants when changing these layers:
   `LiveFixture.pendingCalls()`. Runner-internal timers must use
   `runnerSetTimeout`/`runnerClearTimeout` so they are never reported or
   cancelled as test work.
+- Every fixture call runs through `LiveFixture.track` (`act`, the locator
+  and poll retries): it is in `inFlight` until it settles, with an `Error`
+  captured at its start for the test line. Public fixture methods return
+  that tracked promise itself, never an `async` wrapper around it. When the
+  body settles with calls still in flight, `runtime.ts` stops them
+  (`stopUnsettled`: marks their promises handled, sets the abort flag so each
+  fails at its next guard or retry, waits up to 2 s, then clears the flag so
+  cleanup can use the fixture) — and, when the body resolved, fails the test
+  (phase `body`) listing up to five calls with their lines. A call that does
+  not settle in time counts as stuck test code: the test is abandoned (above).
+- A `t.waitFor` read its deadline dropped is marked `detached`: it settles on
+  its own and never counts as a call the body did not await.
+- Test attempts (`runtime/authority.rs`, host `beginAttempt()`,
+  `endAttempt(token)`, `revoke(reason)`): the runner opens one attempt per
+  executed test; routes, run scenarios and test-clock leases installed while
+  it is open carry its token (`Route::attempt`, `InstalledScenario::attempt`,
+  `Lease::attempt`; admission is the scope's `admit`, checked under the route
+  table lock). Closing it removes them (`Registry::reclaim_attempt`, the
+  companion's function rules via `clear_functions_checked`, a Logic
+  `clock.uninstall()` per clock) and refuses installs until the next opens;
+  what a program installs before its first attempt belongs to the whole run.
+  A dialog watch (`dialogs/mod.rs`, `lxapp().dialogs.watch()`, keyed by
+  appid) belongs to the attempt that opened it the same way and ends with it
+  (`dialogs::reclaim_attempt`), which also wakes a pending `unanswered()`
+  with `null`. The runner opens it for the app under test before the test's
+  hooks, races `unanswered()` against the body, and `unwatch()`s it after
+  cleanup to fail a passing test on answers no dialog used. Interception is
+  opt-in per kind: until the test queues a modal (action sheet) answer, the
+  hook answers `DialogDecision::Draw(id)`, Logic presents the dialog and
+  reports its close (`modal_closed` / `action_sheet_closed`), which becomes
+  the record's `answer` (`drawn: true`), so a test that taps the drawn
+  modal works. After the first queued answer of that kind the hook
+  answers from the queue, and one with no answer left refuses and resolves
+  `unanswered()`, failing the test at once. Logic reaches the watch through
+  `lxapp::dialogs::DialogHook`: toasts are reported after the host accepted
+  them, dialogs and `lx.ui.actionSheet` ask first (sheets the runtime opens
+  itself, the media source picker, do not).
+- Dialog watch setup, observation and unwatch errors fail the case; teardown
+  failures stop the run. Only an absent driver is treated as unsupported.
+- Diagnostics carry an optional `level`: `info` is expected housekeeping
+  (the timers a test's own `t.app.clock` dropped when it ended or
+  uninstalled), which lxdev prints only with `--verbose`; anything else is a
+  warning, e.g. a clock the host swept at the attempt's end because it was
+  installed outside `t.app.clock`.
+  The runner ends an abandoned test's attempt like any other; per-test
+  refusal of its drivers is the JS grant (above). `revoke`, used only when
+  the run stops, also makes `HostAutomationAuthority::check` — every
+  `require_host_context`/`require_target_context` and `lx.automation()` —
+  refuse with `E_AUTOMATION_PRIVILEGE`.
+- Framework reclamation is not user cleanup: after `afterEach`/`t.defer`
+  (which still skip a body that did not settle), the runner stops the
+  `--record-network` recording, runs `LiveFixture.reclaim()` (routes,
+  scenario, clocks through their handles; one already gone counts as
+  removed) and `endAttempt` — whether or not the body settled (with test
+  code still running, the attempt stays open until the revoke). Any failure
+  is a cleanup error on that case (phase `defer`) and stops the run with a
+  `run_stopped` diagnostic; nothing is left for the run end.
+
+## Deadlines
+
 - The test, cleanup, evidence, run, and transport have separate deadlines.
   Cleanup has a hard timer around arbitrary user promises, not just checks in
   driver methods. JS deadlines stop waiting, not arbitrary external side effects.
-- `schema_version: 1` results retain the six case statuses, source identity,
-  assertions, steps, attachments, attempts, and structured error fields through
-  the host adapter. Results with only three case statuses remain readable. Validate counts
-  by status before grading; partial results never pass.
-- Persist events before consuming them. Missing final reports, terminal timeout,
-  cancellation and connection loss need client-side partial reports. A JUnit run
-  error represents an incomplete run even when every completed case passed.
-- lxdev finishes a run in one order: run-level work first
-  (`--record-network` scenarios, `--profile-save` export and atomic write),
-  then every report once (`write_reports`), then `latest`. A failure of the
-  run-level work is an `Outcome.run_errors` entry: `run_errors` in report.json
-  and the `--json` envelope, a `run error` testcase in JUnit, a banner at the
-  top of the framework's report.html, a `run error:` line on stderr, and exit
-  code 1 — case verdicts stay. A host result error (e.g. a failed profile
-  teardown) is carried the same way. When a report cannot be written (a full
-  disk; the event journal or an artifact failing ends polling as an
-  `internal_error` outcome instead of an error), `write_minimal_report` writes
-  the smallest `report.json` — counts, no cases, `error` and `run_errors`
-  saying why.
-- The host holds one active run per session. Validate anything local (output
-  directory) before `session.test.start`; once a run exists, every way the
-  client stops without a terminal poll cancels it (`ActiveRun` in lxdev).
-- `session.test.active` names the run holding the slot (`run_id`, `age_ms`,
-  `since_last_poll_ms`); a refused `session.test.start` carries the same as
-  error `data` under code `automation_run_in_progress`. `--cancel-active`
-  refuses a run polled within the last 15s: its client is alive.
-- `session.test.start` sends `args` (user `--arg`/`--secret-arg`, what the
-  test's `t.arg()` reads) and `control` (grep, id, ids, shard, retries, passWithNoTests,
-  forbidOnly, platform, secretArgs) separately. The host exposes `control` on
-  `__LINGXIA_AUTOMATION_HOST__` only when non-empty; without it the framework
-  reads those keys from `args`, as an lxdev without `control` sends them.
-  Reports put controls in `meta.run`. An lxdev that sends `control` to a host
-  that drops it loses its filters; the two ship together.
-- `t.skip()` throws the internal `SkipSignal`; from `beforeEach` or the body it
-  grades `skipped` (also under `test.fail`) and skips failure forensics. During
-  cleanup (`t.defer`, `afterEach`) it rejects, and the case fails in the
-  `defer` phase. `test.fail` without `expected` inverts any body failure; with
-  `expected` (`code`, `message` string or RegExp) only a matching one, and a
-  mismatch is `failed` with what was expected prepended. Setup failures and
-  timeouts keep their status.
-- Secrets: `--secret-arg` values (≥ 4 chars) are masked by `@lingxia/test` in
-  events, case records, `meta` and `t.attach`/forensics attachments, at the
-  data level before rendering. A `--arg` key whose last word names a
-  credential (`redact.ts` `looksSecretKey`, the only copy of the heuristic)
-  is masked in `meta.args` only, never searched for in content. The masked
-  args ride on `run_started`; lxdev uses them for reports it writes itself and
-  for rerun hints (`key=<key>` placeholders), hiding every value when it never
-  saw them. lxdev also scrubs declared values from every polled event (JSON
-  re-serialized, text replaced) and withholds an HTML/XML artifact that still
-  carries one, then renders its own report pages from the scrubbed JSON.
-- Retry artifacts have attempt-specific paths. Do not overwrite the first failure
-  with the successful attempt. Terminal output is a presentation of the report,
-  not an alternate result model.
-- A Runner-side run holds the single automation slot. The run manager cancels
-  a run nobody has polled for `CONTROLLER_LEASE` (180s, above lxdev's longest
-  poll gap) through the normal cancel path. `lingxia dev` likewise holds its
-  source watcher while a run is on (below).
-- Fixture nav (`t.app.nav.*` and the `start` relaunch) sends `waitUntil: 'ready'`
-  unless the test chose `waitUntil`. The driver then polls the landed instance's
-  `ready_dispatched` (`lxapp::automation::wait_page_runtime_ready`) off the Logic
-  thread; Logic-side `lx.automation()` rejects `'ready'` because awaiting its own
-  `onReady` would deadlock. The raw driver default stays `'commit'`. The
-  `start` relaunch ignores only the "disposed before ready" rejection (the
-  page's own hand-off); a ready timeout still fails the test.
-- Raw `page.waitFor` states follow `lxdev lxapp page wait` on the first match
-  (`hidden` = exists and not visible). Locator states in `@lingxia/test` are
-  uniqueness-aware (`attached`/`visible`/`inViewport` need exactly one match,
-  `hidden` includes no match). Keep both documented contracts when changing
-  either.
-- The page query payload (`lxapp::automation::build_query_script`) reports
-  `visible` as rendered — non-empty box, not `display:none`,
-  `visibility:hidden` or `opacity:0` — independent of scroll, and
-  `inViewport` as rendered and intersecting `window.inner*` (the one
-  camelCase field of that otherwise snake_case record; the fixture also reads
-  `in_viewport`). `@lingxia/test` treats a missing `inViewport` (a runtime
-  that does not report it) as `visible`. The Browser driver's own query
-  script reports a viewport-aware `visible`. Native input paths keep
-  their own viewport + hit-test refusal, which is actionability, not
-  visibility.
-- `force` on click/fill: the locator skips stability and the actionability
-  eval and requires only one enabled (for fill, editable) match. The native
-  side routes a forced click through `WebView::click_via_js(…, force)` on
-  every platform — DOM events on the element, no viewport or
-  `elementFromPoint` check, still refusing a disabled element — and a forced
-  fill through `type_via_js` (Windows otherwise types through a native click
-  at the element center).
-- `filter({ hasText })`/`first()`/`last()` narrow the `all: true` query
-  client-side; each item keeps its DOM index, which is what query, the
-  actionability probe and dispatch address. `toHaveAttribute` reads
-  attributes with a read-only page eval inside the retry loop; nothing is
-  written to the page.
 - The test timeout is a timer on the test JS worker; it cannot fire while a
   driver call blocks that thread in native code. The manager's run deadline and
   lease run off-worker and interrupt JS, and a worker still stuck after the
   grace period is declared wedged.
-- Check actionability before dispatch. Never retry an ambiguous input transport
-  failure: the original click may already have had its side effect.
+- Action deadlines (`deadline.ts` `ActionDeadline`): locator `click/fill/type/
+  press/waitFor`, locator matchers and `expect.poll` clamp their timeout to
+  `LiveFixture.budgetRoom()` — the test deadline less a reporting margin
+  (`min(250ms, 5%)`), or the cleanup deadline during cleanup — and put the
+  clamp in the failure message. Every driver call in those loops (query,
+  actionability eval, dispatch, the poll `read`) is raced against the rest of
+  the action budget and rejects with a `TimeoutError` naming the call, the
+  action and its location, so the action fails before the test timer. Raw
+  driver calls (`t.app.logic.eval`, nav) carry their own driver timeouts instead.
+  The race only stops waiting: a native call that blocks the JS thread cannot
+  be preempted from JS, and an abandoned call may still complete in the app.
+- `t.waitFor` records one `waitFor` action and silences the reads inside it,
+  like `expect.poll`. Its timeout is clamped to the test budget left since
+  the fixture was built, minus a 100 ms margin, so its own error (last
+  value/error) wins over the bare test timeout.
+  Browser navigation eval returns `{ value, navigation }`; waits require exactly
+  one condition. Preserve automation error codes and JSON data in test reports.
+- `t.app.nav` is the fixture's own `TestNav`: fixture option names
+  (`timeout`), `waitUntil: 'ready'` by default, and the ready bound (default
+  15000, the driver's) clamped to `budgetRoom()` and sent as `timeoutMs`; a
+  `timeoutMs` key is refused. `LiveFixture.act` passes every rejection
+  through `asFixtureTimeout` (`deadline.ts`): `E_AUTOMATION_TIMEOUT` and
+  `E_EVAL_TIMEOUT` become a `TimeoutError` (`E_TIMEOUT`) with the driver's
+  error as `cause` and `data.driverCode`, so a test meets one timeout code;
+  `TestErrorCode` and `TEST_ERROR_CODES` leave the two driver codes out.
+  A Logic/View eval (`E_EVAL_TIMEOUT`) or page action
+  (`E_AUTOMATION_TIMEOUT`) that timed out may still run in the app: the case
+  fails even if the body caught it, and `forceRelaunchNext` relaunches the
+  app before the next test; the run goes on.
+- Public unary page actions have no bridge timer. Test page actions use the
+  remaining test budget, so dialogs and pickers are not cut off at five seconds.
+- Run budget: without `--timeout-secs`, lxdev sends `budgetPerSpecMs`
+  (30 s), `budgetMinMs` (300 s) and `budgetMaxMs` (3600 s) as controls and
+  asks the host for the 3600 s ceiling, because only the runtime knows the
+  selection. The runtime computes max(min, planned executions × per-test),
+  capped at max, and checks it between tests; with `--timeout-secs` it gets
+  `budgetMs` and the host deadline is the same value. Once spent, the rest
+  are skipped with a "not run" reason, a `diagnostic` (`phase: "budget"`) is
+  emitted, `meta.budget.exhausted_after` records N of `planned`, and the
+  report is partial. A test cut off by the host deadline instead ends the run
+  `timeout`; lxdev then derives N/M from the streamed cases
+  (`budget_exhaustion`). A runtime without budget controls ignores them and
+  runs to the host ceiling.
+
+## Registration and selection
+
+- Directory input collects `*.test.ts` recursively, follows static imports, and
+  strips TypeScript types into one JS script with a source map, reading sources
+  without writing a temporary entry into the project. A `.json` import becomes
+  a module whose `default` export is the parsed value (validated with line and
+  column on error), shared by every importer.
+- A test, `test.configure()` or hook belongs to the file of the nearest test
+  frame on its registration stack, mapped through the bundle map. Engines may
+  evaluate the bundle behind lines of their own (Rong's JavaScriptCore backend
+  prepends `"use strict";\n`, so frames arrive one line low). The bundle's
+  line 3 measures that shift (`LINE_PROBE_LINE`), prepends as many empty
+  lines to the map it installs for `@lingxia/test`, and moves a thrown error's
+  frames back to bundle lines before lxdev maps them. A registration that
+  still maps to no file fails the run; it is never left file-less.
 - Hook scope: `test.reset/beforeEach/afterEach` keep their raw registration
   frames (the bundle map is installed after the modules run). At run start the
   owner is the nearest mapped frame in a file that declares tests
@@ -149,203 +277,23 @@ received artifacts. Keep the following invariants when changing these layers:
   generated id another test already holds gets a suffix from its file's hash
   and a `collect` warning naming both files; duplicate authored ids or slugs
   still stop the run, naming both files.
-- Action deadlines (`deadline.ts` `ActionDeadline`): locator `click/fill/type/
-  press/waitFor`, locator matchers and `expect.poll` clamp their timeout to
-  `LiveFixture.budgetRoom()` — the test deadline less a reporting margin
-  (`min(250ms, 5%)`), or the cleanup deadline during cleanup — and put the
-  clamp in the failure message. Every driver call in those loops (query,
-  actionability eval, dispatch, the poll `read`) is raced against the rest of
-  the action budget and rejects with a `TimeoutError` naming the call, the
-  action and its location, so the action fails before the test timer. Raw
-  driver calls (`t.app.logic.eval`, nav) carry their own driver timeouts instead.
-  The race only stops waiting: a native call that blocks the JS thread cannot
-  be preempted from JS, and an abandoned call may still complete in the app.
-- Transient page errors (`isTransientPageError`: code `E_PAGE_NOT_ACTIVE` or
-  `E_PAGE_NOT_READY`; for hosts that send no code, the messages of
-  `is_transient_page_error` in `lingxia-automation/src/page.rs`: `page is not
-  active:`, `page WebView is not ready`, `WebView not ready`, `no current page`,
-  WebView2 `0x8007139F`) are retried by locator actions and `waitFor` until the
-  action budget ends; other errors fail at once. Dispatch retries only the
-  page-resolution subset (`isPreDispatchPageError`, never the WebView2 code,
-  which can come from a script that already ran) and element refusals
-  (`isElementRefusal`: `E_ELEMENT_NOT_FOUND`/`E_ELEMENT_NOT_INTERACTABLE`, or
-  the `Element not found|not interactable:` messages). Keep the lists in step
-  with the Rust helpers. An action that times out on such a rejection carries
-  its `code`/`data` on the `AssertionError`, so `test.fail({ expected: { code
-  } })` can pin it.
-- Failure diagnostics: `LiveFixture` remembers the last failed recorded action
-  with its error; the case's `error.failedAction` is set only when the case
-  failed with that same error object (or the test timed out while it ran), so
-  an action a test expected to reject is never blamed. `error.page` is the
-  current page from the forensics `nav.current()` (`{ name, instanceId }`),
-  else the rejection's `data.current`. `report.json` keeps `cases` and adds a
-  flat `failures[]` (`id, title, file, line, phase, code, message,
-  failedAction, page, screenshot`); lxdev rebuilds it for reports it writes or
-  completes itself (`failure_records`) and prints the same one-line summary as
-  the HTML report (`failed_at` / `failedAt`).
-
-## Execution and bundling
-
-```text
-Development machine: lxdev collects/bundles tests → sends them over dev websocket
-Target App/Runner:   test JS worker → automation → Logic / WebViews / host / HTTP
-Development machine: lxdev receives progress, results, and artifacts
-```
-
-- The CLI never executes test bodies. On a phone, tests and their `fetch` run
-  on the phone; with a desktop Runner, in that Runner on the PC.
-- The host reuses one automation worker and creates a fresh JS context per
-  run. Tests execute sequentially and await async hooks and bodies.
-- Directory input collects `*.test.ts` recursively, follows static imports, and
-  strips TypeScript types into one JS script with a source map, reading sources
-  without writing a temporary entry into the project. A `.json` import becomes
-  a module whose `default` export is the parsed value (validated with line and
-  column on error), shared by every importer.
-- A test, `test.configure()` or hook belongs to the file of the nearest test
-  frame on its registration stack, mapped through the bundle map. Engines may
-  evaluate the bundle behind lines of their own (Rong's JavaScriptCore backend
-  prepends `"use strict";\n`, so frames arrive one line low). The bundle's
-  line 3 measures that shift (`LINE_PROBE_LINE`), prepends as many empty
-  lines to the map it installs for `@lingxia/test`, and moves a thrown error's
-  frames back to bundle lines before lxdev maps them. A registration that
-  still maps to no file fails the run; it is never left file-less.
-- Cleanup order: `test.afterEach`, then LIFO `t.defer`; `timeoutCleanup`
-  bounds both. `restoreProfile`'s rollback is the first defer (so it runs
-  last) and drops its checkpoint whether or not the rollback succeeded.
-- App under test: `describeSubject` resolves the host's current lxapp at run
-  start and every test pins it by appid (`pinApp(item.app ?? subject.appid)`),
-  never "current" again. A host whose runtime just started or reconnected may
-  have no app in front: `lxapp::automation::resolve_lxapp("current")` then
-  falls back to the home app (`current_or_home`), and `describeSubject`
-  waits up to `SUBJECT_WAIT_MS` for `no current lxapp` to clear and opens an
-  app the host names as `lxapp is not active: <id>`.
-- Before each test that runs, the runtime lists the lxapps; if the app under
-  test (`test.app`, else the app `describeSubject` saw at run start) is
-  missing or `closed` (a `closing` one gets 5 s), it opens it, relaunches its
-  home page, emits a `diagnostic` with `phase: "recovery"` naming the previous
-  case and its status, and records an `app.reopen` step on the new case. A
-  failed reopen is recorded the same way and the test then fails on its own.
-- Watch pause: before it bundles, `lxdev test` takes a `session.watch.pause`
-  lease (`{ lease, ttl_ms: 300000 }`) from the dev server, and after
-  `session.test.start` renews it with the run's id. The server (not the
-  runtime) holds leases: a relayed `session.test.*` response for the bound
-  run renews it while `running` and removes it on any other state, a lease
-  not renewed within its TTL lapses (a `kill -9`'d client), and `lxdev`
-  sends `session.watch.resume` from the guard's `Drop` and from the second
-  Ctrl-C before `exit(130)`. `watch_paused()` = any live lease; a session
-  that cannot pause fails the run before it bundles. The watcher keeps the
-  dirty set while paused and rebuilds once when it clears. `restart_lxapp`
-  repeats the check under the command lock every relayed request holds
-  until its response is observed, so a run whose lease was taken during the
-  (seconds-long) rebuild defers the restart instead of having its app
-  replaced mid-test.
-- Run end: after the last test, unless the run stopped (`contaminated`), the
-  runtime runs the same `reopenAppUnderTest` it runs
-  before each test. A failed reopen (there or per test) is a `diagnostic`
-  with `phase: "recovery_failed"`; lxdev sets `Outcome.app_not_live` from it
-  and prints the `Recover:` line, as it does for a `timed_out` or
-  `internal_error` run that was not interrupted.
-- Version check: `lingxia_control_protocol::dev_session::compat` (pure);
-  reading a project from disk is its `project` feature, which only the CLI
-  binaries enable. The tool
-  builds lines in `[BUILD_TARGET_FLOOR, its base line]`. A host's SDK pins
-  (Cargo `lingxia*`, the Android gradle fallback, a Windows SDK tag) must
-  agree and sit in that window. Each path-bundle lxapp's `minRuntime` must
-  sit in the window and not above the host line; its installed `@lingxia/*`
-  packages must be on that `minRuntime` line. A live peer
-  (`PeerBuild.protocol` from the runtime `hello`) must speak a dev protocol
-  in `[MIN_DEV_SESSION_PROTOCOL_VERSION, DEV_SESSION_PROTOCOL_VERSION]`.
-  Commits are printed by doctor and are not a gate.
-- Session selection: `dev_session::select` (broker feature) is the one
-  resolver; `hint_selector` returns the shortest selector that resolves back
-  to the same session from the same directory (none, name, target,
-  `target@dir-name`, `target@path`) for printed hints. `SessionInfo.name` /
-  `.build` are optional fields. `SessionInfo.extra` (`serde(flatten)`) keeps
-  fields a build does not know, so a broker passes newer fields through; a
-  broker without `extra` drops them, which is why a session with a
-  `--name` verifies its registration (below).
-- Runner identity: every install writes `runner-build.json` beside the app —
-  `{version, commit, protocol}` from `install-local-runner.sh`/`.ps1`,
-  `{version, release: true, protocol}` when a release CLI's
-  `runner_cache::ensure_runner` unpacks a release asset (a checkout download
-  leaves `protocol` empty). `ensure_matching_runner` runs a Runner of this
-  CLI's version whose protocol is in range, including the release asset. A
-  stamp without `protocol` is read as the constant committed at its commit or
-  `lingxia-cli-v<version>` tag (`git show` in the CLI's checkout — the object,
-  not the working tree). Out of range: a release CLI re-downloads, a checkout
-  CLI must rebuild. A checkout CLI running a Runner not built from its commit
-  prints a one-line note, once per CLI/Runner pair (`.foreign-build-noted`
-  beside the Runner); other source drift is not a gate.
-  `LINGXIA_SKIP_COMPAT=1` (`compat::SKIP_ENV`) turns the project, Runner and
-  `lxdev` session pre-checks into warnings; no check error names it, and the
-  dev-session handshake (`speaks_dev_protocol`) still refuses. `doctor --project`
-  shows the same verdict for a standalone lxapp.
-- Session lifecycle: `lingxia dev` starts and stops sessions; `lxdev` never
-  starts one. `lingxia dev --background` runs `run_background_owner`: it
-  spawns the owner (`lingxia dev …` minus `--background`/`--json`, its own
-  process group, output appended to `.lingxia/background/dev-<ms>.log`)
-  and polls for a session of this project registered after the spawn whose
-  runtime answers `echo` with `runtimeConnected`. The owner exiting, the
-  timeout (`BACKGROUND_START_TIMEOUT`, 1800 s) or Ctrl-C (a `ctrlc` flag)
-  ends the wait: the owner's process tree is terminated
-  (`terminate_process_tree`) unless it already exited, and the error carries
-  the log path and its last 30 non-empty lines (`\r`-redrawn progress
-  collapsed to its last frame). The readiness probe is a closure, so unit
-  tests drive it with `sh` owners and a seconds-long timeout.
-- `lingxia dev stop [SESSION]`: `plan_stop` maps `select`'s result —
-  `NoSessions` and `NoMatch` are "nothing to stop" (exit 0), `Ambiguous` is an
-  error with the candidate table; a broker that cannot be queried or a
-  session that will not die is an error too.
-- Locator actions wait for a unique match, enabled/editable state, stable
-  geometry, and an unobscured hit point (after `scrollIntoView`), retrying
-  while a navigation is still replacing the page.
-- Run budget: without `--timeout-secs`, lxdev sends `budgetPerSpecMs`
-  (30 s), `budgetMinMs` (300 s) and `budgetMaxMs` (3600 s) as controls and
-  asks the host for the 3600 s ceiling, because only the runtime knows the
-  selection. The runtime computes max(min, planned executions × per-test),
-  capped at max, and checks it between tests; with `--timeout-secs` it gets
-  `budgetMs` and the host deadline is the same value. Once spent, the rest
-  are skipped with a "not run" reason, a `diagnostic` (`phase: "budget"`) is
-  emitted, `meta.budget.exhausted_after` records N of `planned`, and the
-  report is partial. A test cut off by the host deadline instead ends the run
-  `timeout`; lxdev then derives N/M from the streamed cases
-  (`budget_exhaustion`). A runtime without budget controls ignores them and
-  runs to the host ceiling.
-- Display (macOS): each run declares user activity
-  (`IOPMAssertionDeclareUserActivity`, as `caffeinate -u` does), which wakes a
-  display that is already asleep, and holds an `NSProcessInfo` activity with
-  `NSActivityIdleDisplaySleepDisabled`, which keeps it on; both end with the
-  run. Neither unlocks the screen.
-- Display (HarmonyOS): each run holds the app window's keep-screen-on flag
-  (`setWindowKeepScreenOn`) and clears it when the run ends. An off screen
-  stops ArkUI building new pages (a relaunch waits until the screen is back)
-  and pauses media. It does not wake an off screen or unlock one.
-- Locked screen: the host's `screenLocked()` answers from
-  `CGSessionCopyCurrentDictionary` (`CGSSessionScreenIsLocked`) on macOS and
-  `undefined` elsewhere. The runtime asks before each test; the first `true`
-  emits one `diagnostic` (`phase: "screen_locked"`), skips the rest with a
-  "not run" reason, and makes the report partial. It does not wait for an
-  unlock: nothing but a person can unlock, a wait would outlast lxdev's hang
-  watchdog between cases, and results on a hidden page are not results. A
-  test whose wait times out on a hidden page while the screen is locked
-  names the lock instead of the observation.
-- Hidden-page evidence belongs to failure forensics, under its separate budget:
-  read the page's `visibilityState` and whether an animation frame arrives
-  within 300 ms. Report the observation, and covered windows or sleeping
-  displays only as likely causes. Locator deadlines never raise a window or
-  run an extra probe after expiry. The note explains only a locator failure
-  (a locator action or read in `failedAction`, or a timed-out locator
-  assertion); any other failure, and every contract-phase failure, drops it.
-  When the failed locator is bound to an instance that is not the current
-  page, that — not visibility — is the note.
-- `--shuffle[=SEED]` sends `control.shuffle` (lxdev draws a u32 when no seed
-  is given and prints it); the runtime shuffles the planned executions with a
-  seeded Fisher–Yates (mulberry32), after `--repeat-each` expansion.
-  `--repeat-each N` (`control.repeatEach`) plans each selected test N times,
-  adjacent unless shuffled; each execution is its own case (`repeat`,
-  `[repeat k/N]` in `full_name`, attachment path `…/repeat-k/attempt-n`), and
-  retries key attempts by id and repeat. `run_started` lists every planned
-  execution, and lxdev fills the next unstarted entry with a matching name.
+- `test.configure` options and a test's own options are validated at
+  registration but settled at run start (`settle` in `runtime.ts`), once the
+  bundle map attributes each call to its file: own options win, `tags`,
+  `covers` and `requires` merge. An unmet `requires` skips the case before a
+  fixture exists, with the reason in `case.reason`.
+- Host capabilities (`requires.chrome | refreshIndicator | hostInput`) come
+  from the platform's `host_capabilities()` via `page.gesture.capabilities()`,
+  read once per run. A step that hits `E_UNSUPPORTED` stays a failure: only a
+  declared requirement skips, so an unexpected loss of support surfaces as a
+  regression instead of a quiet skip.
+- `t.skip()` throws the internal `SkipSignal`; from `beforeEach` or the body it
+  grades `skipped` (also under `test.fail`) and skips failure forensics. During
+  cleanup (`t.defer`, `afterEach`) it rejects, and the case fails in the
+  `defer` phase. `test.fail` without `expected` inverts any body failure; with
+  `expected` (`code`, `message` string or RegExp) only a matching one, and a
+  mismatch is `failed` with what was expected prepended. Setup failures and
+  timeouts keep their status.
 - Test calls are found by name: the bundler (`test_spec_check.rs`) refuses
   any project module that reaches `@lingxia/test`'s `test` other than by a
   direct call under that name — a value use (alias, ternary, argument), a
@@ -359,6 +307,21 @@ Development machine: lxdev receives progress, results, and artifacts
   ranges, `null` for a file given whole. The runtime keeps a test only when
   its registration frame (source-mapped) is in its file's ranges; a test
   registered from a file that is not a key is dropped.
+- `session.test.start` sends `args` (user `--arg`/`--secret-arg`, what the
+  test's `t.arg()` reads) and `control` (grep, id, ids, shard, retries, passWithNoTests,
+  forbidOnly, platform, secretArgs) separately. The host exposes `control` on
+  `__LINGXIA_AUTOMATION_HOST__` only when non-empty; without it the framework
+  reads those keys from `args`, as an lxdev without `control` sends them.
+  Reports put controls in `meta.run`. An lxdev that sends `control` to a host
+  that drops it loses its filters; the two ship together.
+- `--shuffle[=SEED]` sends `control.shuffle` (lxdev draws a u32 when no seed
+  is given and prints it); the runtime shuffles the planned executions with a
+  seeded Fisher–Yates (mulberry32), after `--repeat-each` expansion.
+  `--repeat-each N` (`control.repeatEach`) plans each selected test N times,
+  adjacent unless shuffled; each execution is its own case (`repeat`,
+  `[repeat k/N]` in `full_name`, attachment path `…/repeat-k/attempt-n`), and
+  retries key attempts by id and repeat. `run_started` lists every planned
+  execution, and lxdev fills the next unstarted entry with a matching name.
 - `lxdev test list` bundles with `Purpose::List`: the bundle calls the framework's
   `list()` instead of `run()`, and throws when there is none, so a
   `@lingxia/test` without `list()` fails rather than running the suite. `list()` selects as
@@ -383,6 +346,66 @@ Development machine: lxdev receives progress, results, and artifacts
 - Rerun lines: `meta.reruns` maps each failed id to its command. `FILE:LINE`
   when the id is generated (`generated_id`), the file was one of the run's,
   and no other id shares that line; `--id` on the run's paths otherwise.
+
+## Locators and input
+
+- Locator actions wait for a unique match, enabled/editable state, stable
+  geometry, and an unobscured hit point (after `scrollIntoView`), retrying
+  while a navigation is still replacing the page.
+- Check actionability before dispatch. Never retry an ambiguous input transport
+  failure: the original click may already have had its side effect.
+- Locator queries, probes, and dispatch carry the same page and match index.
+  Multiple matches remain ambiguous even if only one is visible. A locator
+  targets either the current page on every operation (`t.app.view`) or the one
+  live instance a `t.app.page()` handle bound; there is no by-name target that
+  follows remounts. Binding by name waits for an instance and refuses a name
+  with several live instances.
+- A fixed `app.page<Contract>(selector)` uses one instance id for data, public
+  bridge actions and View. It never follows a replacement or accepts a
+  per-operation target override. Name lookup rejects ambiguous stack entries.
+- The page query payload (`lxapp::automation::build_query_script`) reports
+  `visible` as rendered — non-empty box, not `display:none`,
+  `visibility:hidden` or `opacity:0` — independent of scroll, and
+  `inViewport` as rendered and intersecting `window.inner*` (the one
+  camelCase field of that otherwise snake_case record; the fixture also reads
+  `in_viewport`). `@lingxia/test` treats a missing `inViewport` (a runtime
+  that does not report it) as `visible`. The Browser driver's own query
+  script reports a viewport-aware `visible`. Native input paths keep
+  their own viewport + hit-test refusal, which is actionability, not
+  visibility.
+- Raw `page.waitFor` states follow `lxdev lxapp page wait` on the first match
+  (`hidden` = exists and not visible). Locator states in `@lingxia/test` are
+  uniqueness-aware (`attached`/`visible`/`inViewport` need exactly one match,
+  `hidden` includes no match). Keep both documented contracts when changing
+  either.
+- `force` on click/fill: the locator skips stability and the actionability
+  eval and requires only one enabled (for fill, editable) match. The native
+  side routes a forced click through `WebView::click_via_js(…, force)` on
+  every platform — DOM events on the element, no viewport or
+  `elementFromPoint` check, still refusing a disabled element — and a forced
+  fill through `type_via_js` (Windows otherwise types through a native click
+  at the element center).
+- `filter({ hasText })`/`first()`/`last()` narrow the `all: true` query
+  client-side; each item keeps its DOM index, which is what query, the
+  actionability probe and dispatch address. `toHaveAttribute` reads
+  attributes with a read-only page eval inside the retry loop; nothing is
+  written to the page.
+- Transient page errors (`isTransientPageError`: code `E_PAGE_NOT_ACTIVE` or
+  `E_PAGE_NOT_READY`; for hosts that send no code, the messages of
+  `is_transient_page_error` in `lingxia-automation/src/page.rs`: `page is not
+  active:`, `page WebView is not ready`, `WebView not ready`, `no current page`,
+  WebView2 `0x8007139F`) are retried by locator actions and `waitFor` until the
+  action budget ends; other errors fail at once. Dispatch retries only the
+  page-resolution subset (`isPreDispatchPageError`, never the WebView2 code,
+  which can come from a script that already ran) and element refusals
+  (`isElementRefusal`: `E_ELEMENT_NOT_FOUND`/`E_ELEMENT_NOT_INTERACTABLE`, or
+  the `Element not found|not interactable:` messages). Keep the lists in step
+  with the Rust helpers. An action that times out on such a rejection carries
+  its `code`/`data` on the `AssertionError`, so `test.fail({ expected: { code
+  } })` can pin it.
+- Remote DOM TypeErrors and nested locator timeouts are retryable reads; local
+  programming and JSON boundary errors fail immediately. Error-code matchers
+  accept a timeout's preserved driver cause as well as its public E_TIMEOUT.
 - `PageInfo.ready` means `onReady` ran; `webviewAttached` means the page has a
   WebView. `start` relaunches wait for ready but accept a page that hands off
   to another page.
@@ -421,6 +444,17 @@ Development machine: lxdev receives progress, results, and artifacts
   (`fixture.ts`) that resolve the getter chain on each call, so the read
   never throws and the call rejects; a proxy is not a thenable (`then` reads
   `undefined`).
+- `LxAppDriver.network` never throws on access: the driver authorizes per
+  call. The same holds for every driver property (`lxapps`, `browser`,
+  `desktop`, `page`, `nav`, `cookies`, desktop sub-drivers, …): each method
+  re-checks the calling context (`require_host_context` /
+  `upgrade_authorized`) and rejects with `E_AUTOMATION_PRIVILEGE`. The
+  network drivers live in `lingxia-network-dev` and take that check and
+  the error codes from the `Policy` automation installs (`set_policy`);
+  without one every call is refused. Builds without the `runtime` feature
+  compile automation's `network/unavailable.rs`,
+  a driver whose calls all reject; from app Logic, calls reject for lack of a
+  run scope.
 - Fixture shapes (`@lingxia/test`) differ from the raw drivers on purpose,
   so `TestApp` is not assignable to `LxAppDriver`: removers resolve
   `undefined`; `network.ts` maps `NetworkRouteRequest` (`routeCall`; a plain
@@ -460,23 +494,6 @@ Development machine: lxdev receives progress, results, and artifacts
   has no runtime import of `@lingxia/types` — and a compile-time check fails
   when `TestErrorCode` gains a code the list lacks. Codes that reach a test
   are `E_*`; lxdev's snake_case run errors stay in the CLI.
-- Trace events are best effort: `emitTrace` resends a failed
-  `step_started`/`step_finished` once and drops it, so a transport hiccup
-  never fails an action (the report comes from the fixture's records).
-  Idempotent reads (`IDEMPOTENT_READS`, `app.info/pages/surfaceLayout`,
-  `view.screenshot`, locator queries) retry `isTransientTransportError`
-  (`E_TRANSPORT`, `os error 11/35/54/104`, reset, broken pipe, closed
-  channel/WebSocket) twice with backoff; input dispatch never does.
-- `test.configure` options and a test's own options are validated at
-  registration but settled at run start (`settle` in `runtime.ts`), once the
-  bundle map attributes each call to its file: own options win, `tags`,
-  `covers` and `requires` merge. An unmet `requires` skips the case before a
-  fixture exists, with the reason in `case.reason`.
-- Host capabilities (`requires.chrome | refreshIndicator | hostInput`) come
-  from the platform's `host_capabilities()` via `page.gesture.capabilities()`,
-  read once per run. A step that hits `E_UNSUPPORTED` stays a failure: only a
-  declared requirement skips, so an unexpected loss of support surfaces as a
-  regression instead of a quiet skip.
 - `t.app` and `t.automation` (including `t.automation.lxapp(id)`) share
   fixture guards and tracing.
 - A fixture app wraps an `AppRef` (`{ appid, driver }`), one per app id, and
@@ -492,12 +509,6 @@ Development machine: lxdev receives progress, results, and artifacts
 - Native Rong class instances are callable (`typeof === "function"`). Keep the
   original receiver for native getters and methods; getter-returned drivers must
   be wrapped as namespaces, not rebound as functions.
-- Locator queries, probes, and dispatch carry the same page and match index.
-  Multiple matches remain ambiguous even if only one is visible. A locator
-  targets either the current page on every operation (`t.app.view`) or the one
-  live instance a `t.app.page()` handle bound; there is no by-name target that
-  follows remounts. Binding by name waits for an instance and refuses a name
-  with several live instances.
 - `eval<T>` declares the caller's expected result, not runtime validation.
   Fixture `eval` and `page.actions` results are `Jsonable<R>`: structural,
   so interfaces without index signatures pass; function members drop out,
@@ -521,6 +532,10 @@ Development machine: lxdev receives progress, results, and artifacts
   a note that `fn` cannot close over test state; `t.waitFor` then fails fast.
   A page eval's `TypeError` stays retryable (the DOM may not have rendered);
   a Logic one does not.
+- JSON argument/result checks share one codec. Arguments are parsed as JSON
+  in the target context, preserving own `__proto__` fields. Only a top-level
+  result may be void; nested undefined, accessors and class instances fail.
+  Page `data()` reads instead use JSON snapshot semantics, matching the View.
 - `page.actions.x(payload)` goes through the driver's `page.action`, which
   the page runtime answers through the same bridge path the View's actions
   take; the SDK knows no bridge internals.
@@ -534,36 +549,134 @@ Development machine: lxdev receives progress, results, and artifacts
   function passed by name is checked where it is declared. Files under
   `node_modules` are not checked. Helper parameters typed with imported fixture
   types (including aliased and namespace imports) carry the same provenance.
-- `t.app.nav` is the fixture's own `TestNav`: fixture option names
-  (`timeout`), `waitUntil: 'ready'` by default, and the ready bound (default
-  15000, the driver's) clamped to `budgetRoom()` and sent as `timeoutMs`; a
-  `timeoutMs` key is refused. `LiveFixture.act` passes every rejection
-  through `asFixtureTimeout` (`deadline.ts`): `E_AUTOMATION_TIMEOUT` and
-  `E_EVAL_TIMEOUT` become a `TimeoutError` (`E_TIMEOUT`) with the driver's
-  error as `cause` and `data.driverCode`, so a test meets one timeout code;
-  `TestErrorCode` and `TEST_ERROR_CODES` leave the two driver codes out.
-  A Logic/View eval (`E_EVAL_TIMEOUT`) or page action
-  (`E_AUTOMATION_TIMEOUT`) that timed out may still run in the app: the case
-  fails even if the body caught it, and `forceRelaunchNext` relaunches the
-  app before the next test; the run goes on.
-- A `t.waitFor` read its deadline dropped is marked `detached`: it settles on
-  its own and never counts as a call the body did not await.
-- Every fixture call runs through `LiveFixture.track` (`act`, the locator
-  and poll retries): it is in `inFlight` until it settles, with an `Error`
-  captured at its start for the test line. Public fixture methods return
-  that tracked promise itself, never an `async` wrapper around it. When the
-  body settles with calls still in flight, `runtime.ts` stops them
-  (`stopUnsettled`: marks their promises handled, sets the abort flag so each
-  fails at its next guard or retry, waits up to 2 s, then clears the flag so
-  cleanup can use the fixture) — and, when the body resolved, fails the test
-  (phase `body`) listing up to five calls with their lines. A call that does
-  not settle in time counts as stuck test code: the test is abandoned (above).
-- `t.waitFor` records one `waitFor` action and silences the reads inside it,
-  like `expect.poll`. Its timeout is clamped to the test budget left since
-  the fixture was built, minus a 100 ms margin, so its own error (last
-  value/error) wins over the bare test timeout.
-  Browser navigation eval returns `{ value, navigation }`; waits require exactly
-  one condition. Preserve automation error codes and JSON data in test reports.
+- Fixture nav (`t.app.nav.*` and the `start` relaunch) sends `waitUntil: 'ready'`
+  unless the test chose `waitUntil`. The driver then polls the landed instance's
+  `ready_dispatched` (`lxapp::automation::wait_page_runtime_ready`) off the Logic
+  thread; Logic-side `lx.automation()` rejects `'ready'` because awaiting its own
+  `onReady` would deadlock. The raw driver default stays `'commit'`. The
+  `start` relaunch ignores only the "disposed before ready" rejection (the
+  page's own hand-off); a ready timeout still fails the test.
+- Trace events are best effort: `emitTrace` resends a failed
+  `step_started`/`step_finished` once and drops it, so a transport hiccup
+  never fails an action (the report comes from the fixture's records).
+  Idempotent reads (`IDEMPOTENT_READS`, `app.info/pages/surfaceLayout`,
+  `view.screenshot`, locator queries) retry `isTransientTransportError`
+  (`E_TRANSPORT`, `os error 11/35/54/104`, reset, broken pipe, closed
+  channel/WebSocket) twice with backoff; input dispatch never does.
+- Automation errors (`lingxia-automation/src/error.rs`): the lower half returns
+  strings that clients without codes parse, so messages never change; `code_for` /
+  `eval_code_for` map them to stable codes (`E_AUTOMATION_PRIVILEGE`,
+  `E_PAGE_NOT_ACTIVE`, `E_PAGE_NOT_READY`, `E_PAGE_FAILED`, `E_ELEMENT_NOT_FOUND`,
+  `E_ELEMENT_NOT_INTERACTABLE`, `E_AUTOMATION_TIMEOUT`, `E_EVAL_SCRIPT`,
+  `E_EVAL_TIMEOUT`), else `E_AUTOMATION`. Page-driver failures carry `data:
+  { page, instanceId?, current? }` read when they fail. The TS list is
+  `AUTOMATION_ERROR_CODES` in `@lingxia/types/automation`; change both
+  together. `PageInfo.instanceId` comes from the resolved `PageInstance`.
+
+## Results and reporting
+
+- `schema_version: 1` results retain the six case statuses, source identity,
+  assertions, steps, attachments, attempts, and structured error fields through
+  the host adapter. Results with only three case statuses remain readable. Validate counts
+  by status before grading; partial results never pass.
+- Persist events before consuming them. Missing final reports, terminal timeout,
+  cancellation and connection loss need client-side partial reports. A JUnit run
+  error represents an incomplete run even when every completed case passed.
+- lxdev finishes a run in one order: run-level work first
+  (`--record-network` scenarios, `--profile-save` export and atomic write),
+  then every report once (`write_reports`), then `latest`. A failure of the
+  run-level work is an `Outcome.run_errors` entry: `run_errors` in report.json
+  and the `--json` envelope, a `run error` testcase in JUnit, a banner at the
+  top of the framework's report.html, a `run error:` line on stderr, and exit
+  code 1 — case verdicts stay. A host result error (e.g. a failed profile
+  teardown) is carried the same way. When a report cannot be written (a full
+  disk; the event journal or an artifact failing ends polling as an
+  `internal_error` outcome instead of an error), `write_minimal_report` writes
+  the smallest `report.json` — counts, no cases, `error` and `run_errors`
+  saying why.
+- Retry artifacts have attempt-specific paths. Do not overwrite the first failure
+  with the successful attempt. Terminal output is a presentation of the report,
+  not an alternate result model.
+- Secrets: `--secret-arg` values (≥ 4 chars) are masked by `@lingxia/test` in
+  events, case records, `meta` and `t.attach`/forensics attachments, at the
+  data level before rendering. A `--arg` key whose last word names a
+  credential (`redact.ts` `looksSecretKey`, the only copy of the heuristic)
+  is masked in `meta.args` only, never searched for in content. The masked
+  args ride on `run_started`; lxdev uses them for reports it writes itself and
+  for rerun hints (`key=<key>` placeholders), hiding every value when it never
+  saw them. lxdev also scrubs declared values from every polled event (JSON
+  re-serialized, text replaced) and withholds an HTML/XML artifact that still
+  carries one, then renders its own report pages from the scrubbed JSON.
+- Failure diagnostics: `LiveFixture` remembers the last failed recorded action
+  with its error; the case's `error.failedAction` is set only when the case
+  failed with that same error object (or the test timed out while it ran), so
+  an action a test expected to reject is never blamed. `error.page` is the
+  current page from the forensics `nav.current()` (`{ name, instanceId }`),
+  else the rejection's `data.current`. `report.json` keeps `cases` and adds a
+  flat `failures[]` (`id, title, file, line, phase, code, message,
+  failedAction, page, screenshot`); lxdev rebuilds it for reports it writes or
+  completes itself (`failure_records`) and prints the same one-line summary as
+  the HTML report (`failed_at` / `failedAt`).
+- Results root: `TestOptions::results_root` is `--output-root`, else
+  `test_preset::results_root(cwd)` — `test.outputDir` or `test-results`
+  joined to the directory of `lxdev.json` — else `./test-results`. A run
+  writes `<root>/<run-id>` unless `--output-dir` names its directory;
+  `update_latest(root, run_dir)` skips a run directory equal to the root.
+  `resolve_report_path(path, root)` reads `latest` from that root, for
+  `--last-failed` and `lxdev test report` (which takes `--output-root` too).
+- `--last-failed`: `record_rerun` writes `meta.run_settings`
+  (`preset`, `profile` — a PATH made absolute — and `profile_save`) into
+  report.json. Before preset expansion, `test_preset::carry_last_failed`
+  reads them from the report `--last-failed` names and splices `--preset`,
+  `--profile`, `--profile-save=` right after `test` (after `args`, so it
+  shows them; after `list`, the preset only), each only when the
+  command line (`scan`) lacks it (profile also not when it gives
+  `--preset`, or when the carried preset sets the same profile), and a
+  preset only if it would not add a second entry. It does
+  nothing when the report cannot be read or has no failed case. After
+  parsing, `test::nothing_to_rerun` (before a session is resolved) prints
+  `No failed tests in <run>; nothing to rerun` — `kind: "result"`,
+  `state: "nothing_to_rerun"` for `--format json|jsonl` — and exits 0.
+- `lxdev test args` also prints `ArgSources` (environment and
+  `--secrets-file`) as `# --flag KEY=VALUE  (from SOURCE)` lines, secret
+  values `***` and credential-named `LXDEV_ARG_` values masked; JSON has
+  them under `external`.
+
+## Host conditions during a run
+
+- Display (macOS): each run declares user activity
+  (`IOPMAssertionDeclareUserActivity`, as `caffeinate -u` does), which wakes a
+  display that is already asleep, and holds an `NSProcessInfo` activity with
+  `NSActivityIdleDisplaySleepDisabled`, which keeps it on; both end with the
+  run. Neither unlocks the screen.
+- Display (HarmonyOS): each run holds the app window's keep-screen-on flag
+  (`setWindowKeepScreenOn`) and clears it when the run ends. An off screen
+  stops ArkUI building new pages (a relaunch waits until the screen is back)
+  and pauses media. It does not wake an off screen or unlock one.
+- Locked screen: the host's `screenLocked()` answers from
+  `CGSessionCopyCurrentDictionary` (`CGSSessionScreenIsLocked`) on macOS and
+  `undefined` elsewhere. The runtime asks before each test; the first `true`
+  emits one `diagnostic` (`phase: "screen_locked"`), skips the rest with a
+  "not run" reason, and makes the report partial. It does not wait for an
+  unlock: nothing but a person can unlock, a wait would outlast lxdev's hang
+  watchdog between cases, and results on a hidden page are not results. A
+  test whose wait times out on a hidden page while the screen is locked
+  names the lock instead of the observation.
+- Hidden-page evidence belongs to failure forensics, under its separate budget:
+  read the page's `visibilityState` and whether an animation frame arrives
+  within 300 ms. Report the observation, and covered windows or sleeping
+  displays only as likely causes. Locator deadlines never raise a window or
+  run an extra probe after expiry. The note explains only a locator failure
+  (a locator action or read in `failedAction`, or a timed-out locator
+  assertion); any other failure, and every contract-phase failure, drops it.
+  When the failed locator is bound to an instance that is not the current
+  page, that — not visibility — is the note.
+
+## Network routes and scenarios
+
+- Product scenarios belong to `t.scenario`, one per test/run across apps. Its
+  `use(definition, { app?, variant? })` chooses the HTTP app; Function rules
+  share the same owner. App-local overrides remain on `app.network`.
 - `LxAppDriver.network` routes are owned by one host run: installation needs
   the context's run scope and checks the run is non-terminal under the route
   table lock; `RunShared::finalize` clears them after releasing its state lock
@@ -647,49 +760,6 @@ Development machine: lxdev receives progress, results, and artifacts
   `@lingxia/test`'s `ScenarioScope` tracks the test's handle, takes the
   failure evidence (`report()`, before the defers) and removes it when the
   test ends (framework reclamation, below).
-- Test attempts (`runtime/authority.rs`, host `beginAttempt()`,
-  `endAttempt(token)`, `revoke(reason)`): the runner opens one attempt per
-  executed test; routes, run scenarios and test-clock leases installed while
-  it is open carry its token (`Route::attempt`, `InstalledScenario::attempt`,
-  `Lease::attempt`; admission is the scope's `admit`, checked under the route
-  table lock). Closing it removes them (`Registry::reclaim_attempt`, the
-  companion's function rules via `clear_functions_checked`, a Logic
-  `clock.uninstall()` per clock) and refuses installs until the next opens;
-  what a program installs before its first attempt belongs to the whole run.
-  A dialog watch (`dialogs/mod.rs`, `lxapp().dialogs.watch()`, keyed by
-  appid) belongs to the attempt that opened it the same way and ends with it
-  (`dialogs::reclaim_attempt`), which also wakes a pending `unanswered()`
-  with `null`. The runner opens it for the app under test before the test's
-  hooks, races `unanswered()` against the body, and `unwatch()`s it after
-  cleanup to fail a passing test on answers no dialog used. Interception is
-  opt-in per kind: until the test queues a modal (action sheet) answer, the
-  hook answers `DialogDecision::Draw(id)`, Logic presents the dialog and
-  reports its close (`modal_closed` / `action_sheet_closed`), which becomes
-  the record's `answer` (`drawn: true`), so a test that taps the drawn
-  modal works. After the first queued answer of that kind the hook
-  answers from the queue, and one with no answer left refuses and resolves
-  `unanswered()`, failing the test at once. Logic reaches the watch through
-  `lxapp::dialogs::DialogHook`: toasts are reported after the host accepted
-  them, dialogs and `lx.ui.actionSheet` ask first (sheets the runtime opens
-  itself, the media source picker, do not).
-- Diagnostics carry an optional `level`: `info` is expected housekeeping
-  (the timers a test's own `t.app.clock` dropped when it ended or
-  uninstalled), which lxdev prints only with `--verbose`; anything else is a
-  warning, e.g. a clock the host swept at the attempt's end because it was
-  installed outside `t.app.clock`.
-  The runner ends an abandoned test's attempt like any other; per-test
-  refusal of its drivers is the JS grant (above). `revoke`, used only when
-  the run stops, also makes `HostAutomationAuthority::check` — every
-  `require_host_context`/`require_target_context` and `lx.automation()` —
-  refuse with `E_AUTOMATION_PRIVILEGE`.
-- Framework reclamation is not user cleanup: after `afterEach`/`t.defer`
-  (which still skip a body that did not settle), the runner stops the
-  `--record-network` recording, runs `LiveFixture.reclaim()` (routes,
-  scenario, clocks through their handles; one already gone counts as
-  removed) and `endAttempt` — whether or not the body settled (with test
-  code still running, the attempt stays open until the revoke). Any failure
-  is a cleanup error on that case (phase `defer`) and stops the run with a
-  `run_stopped` diagnostic; nothing is left for the run end.
 - SSE answers (`RouteAction::Sse`) carry frames and fields per step. The
   `fetch` wrapper builds a `ReadableStream` (JS `start` + `setTimeout`) that
   enqueues frames, honours `delayMs`, closes on `drop`, and otherwise polls
@@ -757,6 +827,9 @@ Development machine: lxdev receives progress, results, and artifacts
 - The companion side of `function` rules and of the Function half of mocks
   (dev server relay, owner lifecycle, runtime upstream) and its wire
   contract: [companion-protocol.md](companion-protocol.md).
+- Scenario transitions close new Logic fetch/SSE admission until the HTTP
+  and Function halves both commit; the steps and failure outcomes are in
+  [companion-protocol.md](companion-protocol.md#coordinated-scenario-changes).
 
 ### Mocks
 
@@ -822,74 +895,6 @@ Development machine: lxdev receives progress, results, and artifacts
 - Guard: `LogicBundler::compile_module` refuses a dependency under
   `<root>/mocks/` from a module outside it, in every build; the Vite config
   template carries the same check (`lingxia-mocks-guard`).
-- Automation errors (`lingxia-automation/src/error.rs`): the lower half returns
-  strings that clients without codes parse, so messages never change; `code_for` /
-  `eval_code_for` map them to stable codes (`E_AUTOMATION_PRIVILEGE`,
-  `E_PAGE_NOT_ACTIVE`, `E_PAGE_NOT_READY`, `E_PAGE_FAILED`, `E_ELEMENT_NOT_FOUND`,
-  `E_ELEMENT_NOT_INTERACTABLE`, `E_AUTOMATION_TIMEOUT`, `E_EVAL_SCRIPT`,
-  `E_EVAL_TIMEOUT`), else `E_AUTOMATION`. Page-driver failures carry `data:
-  { page, instanceId?, current? }` read when they fail. The TS list is
-  `AUTOMATION_ERROR_CODES` in `@lingxia/types/automation`; change both
-  together. `PageInfo.instanceId` comes from the resolved `PageInstance`.
-- `LxAppDriver.network` never throws on access: the driver authorizes per
-  call. The same holds for every driver property (`lxapps`, `browser`,
-  `desktop`, `page`, `nav`, `cookies`, desktop sub-drivers, …): each method
-  re-checks the calling context (`require_host_context` /
-  `upgrade_authorized`) and rejects with `E_AUTOMATION_PRIVILEGE`. The
-  network drivers live in `lingxia-network-dev` and take that check and
-  the error codes from the `Policy` automation installs (`set_policy`);
-  without one every call is refused. Builds without the `runtime` feature
-  compile automation's `network/unavailable.rs`,
-  a driver whose calls all reject; from app Logic, calls reject for lack of a
-  run scope.
-- Dev session: a runtime disconnect while `lingxia dev` relays an active run
-  (seen from `session.test` responses within the lease) moves the run to
-  `interrupted_test_run` and uses a 30 s gone-grace instead of 1 s. A poll for
-  that run meanwhile gets error `runtime_reconnecting`; lxdev treats it as a
-  pause, journals `runtime_disconnected`/`runtime_reconnected` events
-  (`source: "lxdev"`), and a reconnect restores the run as active. After the
-  grace the session ends.
-- Results root: `TestOptions::results_root` is `--output-root`, else
-  `test_preset::results_root(cwd)` — `test.outputDir` or `test-results`
-  joined to the directory of `lxdev.json` — else `./test-results`. A run
-  writes `<root>/<run-id>` unless `--output-dir` names its directory;
-  `update_latest(root, run_dir)` skips a run directory equal to the root.
-  `resolve_report_path(path, root)` reads `latest` from that root, for
-  `--last-failed` and `lxdev test report` (which takes `--output-root` too).
-- `--last-failed`: `record_rerun` writes `meta.run_settings`
-  (`preset`, `profile` — a PATH made absolute — and `profile_save`) into
-  report.json. Before preset expansion, `test_preset::carry_last_failed`
-  reads them from the report `--last-failed` names and splices `--preset`,
-  `--profile`, `--profile-save=` right after `test` (after `args`, so it
-  shows them; after `list`, the preset only), each only when the
-  command line (`scan`) lacks it (profile also not when it gives
-  `--preset`, or when the carried preset sets the same profile), and a
-  preset only if it would not add a second entry. It does
-  nothing when the report cannot be read or has no failed case. After
-  parsing, `test::nothing_to_rerun` (before a session is resolved) prints
-  `No failed tests in <run>; nothing to rerun` — `kind: "result"`,
-  `state: "nothing_to_rerun"` for `--format json|jsonl` — and exits 0.
-- `lxdev test args` also prints `ArgSources` (environment and
-  `--secrets-file`) as `# --flag KEY=VALUE  (from SOURCE)` lines, secret
-  values `***` and credential-named `LXDEV_ARG_` values masked; JSON has
-  them under `external`.
-- Dev broker: `lingxia dev-broker` answers `info` with its `BrokerBuild`
-  (CLI version, executable path, executable mtime at start) and live session
-  count, and `shutdown` by exiting only when no session is registered (the
-  check holds the session lock). `log_store::ensure_current_broker` probes
-  it before registering (and, with `--name`, before the build in the
-  foreground `lingxia dev`) and replaces any mismatched
-  broker: an idle one is asked to `shutdown`; a busy one is terminated by the
-  pid `info` reported (its sessions' `register_session` threads reconnect a
-  second later and re-register); one that does not answer `info` is found by
-  a process scan (`<lingxia*> dev-broker`, same user). The current build is
-  spawned right after, before those sessions come back, and must answer
-  `info` as this build. If replacing fails, `--name` makes it an
-  error; after registering, `verify_registered_name` lists the broker and
-  fails the session if its record lacks the name.
-- Dev WebSocket frame/message limits must fit both poll events (24 MiB) and the
-  final result (8 MiB). A valid 16 MiB decoded attachment exceeds a 16 MiB frame
-  after base64 encoding; both relay and CLI receiver need the shared limit.
 
 ## Network observation
 
@@ -1094,7 +1099,7 @@ test: no test writes into its storage and app code has no test branch.
 - Snapshots travel only over `session.profile.*` (≤ 4 MiB decoded chunks,
   offset-checked, sha256), never the artifact channel, so they stay out of
   `output_dir`, reports and secret scrubbing. lxdev refuses isolation unless
-  `session.test.capabilities` reports `profile`: an older host ignores the
+  `session.test.capabilities` reports `profile`: a host without it ignores the
   start field and would run on real data. `meta.run` gets `profile` and
   `profile_seed` (`<name>@<sha256[:8]>`), never paths or contents.
 - A profile switch reopens the app as a new instance; drivers hold a `Weak`
@@ -1113,8 +1118,8 @@ test: no test writes into its storage and app code has no test branch.
   checkpoint's values of a kept key. Values are copied as opaque bytes from
   the rong_storage table (`"storage"`, `&str → &[u8]`, `STORAGE_FORMAT`).
   Files are never kept. The driver resolves `{ kept }` (keys carried over);
-  `LiveFixture` refuses `keep` on a host without `LxAppDriver.clock` (they
-  shipped together) before calling restore, because an older host would
+  `LiveFixture` refuses `keep` on a host without `LxAppDriver.clock` (the
+  two come together) before calling restore, because such a host would
   silently ignore it.
 - Profile switches and development rebuilds: a dev bundle is read straight
   from the build output, which a rebuild empties first. `lingxia dev` holds
@@ -1130,7 +1135,9 @@ test: no test writes into its storage and app code has no test branch.
 - Not isolated: downloads and `downloads.redb`, other lxapps opened in
   the run, and browser-profile WebViews. Mobile hosts share the Rust path.
 
-## Logic context lifetime
+## Memory across runs
+
+### Logic contexts
 
 A profile switch, a dev reload and a restart each replace the app's Logic
 context on a pooled worker VM, hundreds of times in a long run. A retired
@@ -1168,7 +1175,7 @@ Host side:
   Replaying line by line, scrolling after each, on the main thread at every
   reopen, would make each profile rollback slower than the last.
 
-## Automation run lifetime
+### Automation runs
 
 - The automation worker evaluates each run in a fresh context. What the
   context can reach — `console`, `attach`, `emit`, `logs` — holds the run's
@@ -1234,7 +1241,7 @@ automation context, page WebViews and native code keep real time.
   100), so promise chains and immediately-completing native futures (routed
   `fetch`, `Response.json`, storage) progress before the next timer. A turn
   is `host_turn`, a round trip through `RongExecutor::global()`, not a real
-  `setTimeout(0)`: `rong_timer` 0.6.0 can drop a one-shot timer whose tick is
+  `setTimeout(0)`: Rong's timer registry can drop a one-shot timer whose tick is
   still queued when its spawn task finishes (likely at delay 0), which would
   stall the settle loop. `tick` caps at 10000 firings, `runAll` at
   `maxTimers`.
@@ -1262,7 +1269,29 @@ automation context, page WebViews and native code keep real time.
   Observation, recording and capture use no timers; scenario time templates
   read the host's wall clock.
 
-## Presets
+## Gestures
+
+- Gestures go through `AppGesture` (`lingxia-platform`): a timed path
+  (`GestureShape` → points) injected into the host window, never into the DOM
+  or the View core, so page chrome (pull to refresh, scroll edges) sees what a
+  finger produces. `page.gesture` (specs) and `app.gesture` (`lxdev host
+  gesture`) share the shapes.
+- Android injects with `Instrumentation.sendPointerSync` into the app's own
+  window (`delivered: window`); only if that is refused does it dispatch
+  through the activity (`view`). A held finger keeps the screen origin of its
+  down: re-reading it per segment would make a pull chase the page it moves.
+  Edge back is `E_UNSUPPORTED`: injected input never reaches the System UI
+  gesture monitor.
+- macOS posts queued mouse events stamped with `systemUptime` (AppKit and
+  WebKit derive velocity from timestamps) and continuous scroll events with
+  phases and momentum for the trackpad.
+- Every case records its gestures with `delivered` and the page renderers
+  its locators read (`gestures`, `renderers` in report.json). A `view`
+  delivery is a fallback, never silent.
+
+## Reference
+
+### Presets
 
 `lxdev test --preset NAME` (`tools/lingxia-devtools-cli/src/test_preset.rs`)
 is expanded before clap sees the command line: `main` calls `expand` on
@@ -1298,7 +1327,7 @@ snapshot it was read from, a rolling one). The base command (without
 `@lingxia/test` (`schemas/`); `tests/schemas.test.mjs` checks them against
 the same cases the Rust parsers reject.
 
-## Tags, coverage manifest and OpenAPI contract
+### Tags and coverage manifest
 
 - Tags: `TestOptions.tags` plus `test.configure({ tags })`, which is
   file-scoped like the hooks (`resolveOwner` at run start; a call with no
@@ -1366,27 +1395,7 @@ the same cases the Rust parsers reject.
   schema, not JSON, empty, truncated) are only counted. A host that cannot
   capture responses fails every case: there is no contract run without them.
 
-## Gestures
-
-- Gestures go through `AppGesture` (`lingxia-platform`): a timed path
-  (`GestureShape` → points) injected into the host window, never into the DOM
-  or the View core, so page chrome (pull to refresh, scroll edges) sees what a
-  finger produces. `page.gesture` (specs) and `app.gesture` (`lxdev host
-  gesture`) share the shapes.
-- Android injects with `Instrumentation.sendPointerSync` into the app's own
-  window (`delivered: window`); only if that is refused does it dispatch
-  through the activity (`view`). A held finger keeps the screen origin of its
-  down: re-reading it per segment would make a pull chase the page it moves.
-  Edge back is `E_UNSUPPORTED`: injected input never reaches the System UI
-  gesture monitor.
-- macOS posts queued mouse events stamped with `systemUptime` (AppKit and
-  WebKit derive velocity from timestamps) and continuous scroll events with
-  phases and momentum for the trackpad.
-- Every case records its gestures with `delivered` and the page renderers
-  its locators read (`gestures`, `renderers` in report.json). A `view`
-  delivery is a fallback, never silent.
-
-## Shared suites and readiness
+### Shared suites and readiness
 
 - The GPU showcase runs the React showcase's page and flow specs
   (`tests/shared.test.ts`). `shared-specs.json` skips files with a reason
@@ -1409,31 +1418,3 @@ the same cases the Rust parsers reject.
   watchdog unlocks the phone whenever the keyguard returns mid-run and
   records the running case (`keyguard.jsonl`, `lockTainted` in the summary):
   a failure under a lock is not a product result.
-
-## Scenario, page and deadline boundaries
-
-- Product scenarios belong to `t.scenario`, one per test/run across apps. Its
-  `use(definition, { app?, variant? })` chooses the HTTP app; Function rules
-  share the same owner. App-local overrides remain on `app.network`.
-- Scenario transitions close new Logic fetch/SSE admission until both halves
-  commit. Unknown outcomes revoke a test run; CLI transitions stay blocked
-  until clear/reinstall. Generation checks reject commits after clear; local
-  CLI mutations hold an OS file lock across their multiple requests. Neither
-  mechanism rolls back requests already dispatched outside the transition.
-- A fixed `app.page<Contract>(selector)` uses one instance id for data, public
-  bridge actions and View. It never follows a replacement or accepts a
-  per-operation target override. Name lookup rejects ambiguous stack entries.
-- Action/wait deadlines include all retries. Expiry does not raise a window,
-  run an extra visibility probe or create another retry budget. Visibility
-  evidence, when requested, is a separate bounded diagnostic.
-- Dialog watch setup, observation and unwatch errors fail the case; teardown
-  failures stop the run. Only an absent driver is treated as unsupported.
-- JSON argument/result checks share one codec. Arguments are parsed as JSON
-  in the target context, preserving own `__proto__` fields. Only a top-level
-  result may be void; nested undefined, accessors and class instances fail.
-  Page `data()` reads instead use JSON snapshot semantics, matching the View.
-- Remote DOM TypeErrors and nested locator timeouts are retryable reads; local
-  programming and JSON boundary errors fail immediately. Error-code matchers
-  accept a timeout's preserved driver cause as well as its public E_TIMEOUT.
-- Public unary page actions have no bridge timer. Test page actions use the
-  remaining test budget, so dialogs and pickers are not cut off at five seconds.
