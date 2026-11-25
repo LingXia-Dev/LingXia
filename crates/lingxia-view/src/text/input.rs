@@ -314,13 +314,17 @@ impl Editor {
                 }
                 self.controlled = value.clone();
                 if self.focused {
-                    // Logic changed the value itself (a submit clearing it): show it now, ending
-                    // any composition, with the caret at the end; no input event.
+                    // Logic changed the value itself (a submit clearing it, a format applied):
+                    // show it now, ending any composition; no input event. The caret keeps its
+                    // place outside the changed span and lands after the new text inside it.
                     if value != self.visual.raw_text() {
                         self.unechoed.clear();
                         self.echoed.clear();
+                        let selection = self
+                            .selection
+                            .map(|at| map_through_change(self.visual.raw_text(), &value, at));
                         self.install_value(value);
-                        self.selection = [self.visual.raw_text().len(); 2];
+                        self.selection = selection;
                     }
                 } else {
                     self.install_value(value);
@@ -507,6 +511,32 @@ fn check_size(text: &str) -> Result<(), Error> {
         Err(Error::TooLong)
     } else {
         Ok(())
+    }
+}
+
+/// Where byte offset `at` of `old` lands in `new`, the change being what their common prefix
+/// and suffix leave: a caret at the start of replaced text stays before it.
+fn map_through_change(old: &str, new: &str, at: usize) -> usize {
+    let shorter = old.len().min(new.len());
+    let prefix = old
+        .char_indices()
+        .zip(new.chars())
+        .find(|((_, a), b)| a != b)
+        .map_or(shorter, |((byte, _), _)| byte);
+    let mut suffix = 0;
+    for (a, b) in old[prefix..].chars().rev().zip(new[prefix..].chars().rev()) {
+        if a != b || suffix + a.len_utf8() > shorter - prefix {
+            break;
+        }
+        suffix += a.len_utf8();
+    }
+    let end = old.len() - suffix;
+    if at <= prefix && at < end {
+        at
+    } else if at >= end {
+        at + new.len() - old.len()
+    } else {
+        new.len() - suffix
     }
 }
 
@@ -786,6 +816,46 @@ mod tests {
         assert!(!shown.can_undo, "an external value starts a new history");
         // Typing continues after it.
         assert_eq!(client.replace("s", false).input.as_deref(), Some("drafts"));
+    }
+
+    #[test]
+    fn a_value_from_code_that_inserts_before_the_caret_moves_it_with_its_text() {
+        let mut client = Client::new("hello world");
+        client
+            .edit(Edit::Selection {
+                anchor: 6,
+                focus: 8,
+            })
+            .unwrap();
+        let change = client.edit(Edit::Value("**hello** world".into())).unwrap();
+        assert_eq!(change.snapshot.selection, [10, 12], "still on \"wo\"");
+        // Text after the selection changing leaves it where it was.
+        let change = client
+            .edit(Edit::Value("**hello** wo\u{1f600}".into()))
+            .unwrap();
+        assert_eq!(change.snapshot.selection, [10, 12]);
+    }
+
+    #[test]
+    fn a_value_from_code_that_replaces_the_caret_span_leaves_the_caret_after_it() {
+        let mut client = Client::new("hello world");
+        client
+            .edit(Edit::Selection {
+                anchor: 8,
+                focus: 8,
+            })
+            .unwrap();
+        let change = client.edit(Edit::Value("hello there!".into())).unwrap();
+        assert_eq!(change.snapshot.selection, [12, 12]);
+        // A selection over the replaced text covers its replacement.
+        client
+            .edit(Edit::Selection {
+                anchor: 0,
+                focus: 5,
+            })
+            .unwrap();
+        let change = client.edit(Edit::Value("hi there!".into())).unwrap();
+        assert_eq!(change.snapshot.selection, [0, 2]);
     }
 
     #[test]

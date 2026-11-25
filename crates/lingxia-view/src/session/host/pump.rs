@@ -353,7 +353,7 @@ impl<A: PlatformAdapter> Inner<A> {
                 {
                     inner.main().frame_measures.extend(measures);
                 }
-                if session.boxes_due() {
+                if session.frame_events_due() {
                     inner.main().boxes_due = true;
                 }
                 // A handler's `reveal(id)` waits for this frame: it may be the one that mounts the element.
@@ -382,7 +382,11 @@ impl<A: PlatformAdapter> Inner<A> {
                 }
                 // After this frame: the page renders again only if a callback changed state.
                 if std::mem::take(&mut inner.main().boxes_due) {
-                    inner.activate(page, false, Box::new(|session| session.report_boxes()));
+                    inner.activate(
+                        page,
+                        false,
+                        Box::new(|session| session.report_frame_events()),
+                    );
                 }
                 let (current, missed) = {
                     let mut main = inner.main();

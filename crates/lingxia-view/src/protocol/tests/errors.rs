@@ -164,9 +164,10 @@ fn a_scale_step_outside_its_family_fails_with_the_slot_name() {
         error(field::RADIUS, step("em", 1.0, 0.0)),
         "UI_SCALE: radius does not take em"
     );
+    // A field no family lists reads an array by its own grammar.
     assert_eq!(
         error(field::COLOR, step("space", 1.0, 0.0)),
-        "UI_SCALE: color does not take space"
+        "UI_STYLE: expected color"
     );
     let slots = crate::protocol::SCALES.len();
     for bad in [
@@ -210,9 +211,41 @@ fn a_state_style_holds_paint_only_so_no_scale_step() {
     use crate::protocol::field;
     let pairs = json!([field::OPACITY, step("space", 1.0, 0.0)]).to_string();
     assert_eq!(
-        wire(json!([3, -1, "", "", "", 1, field::PRESSED_STYLE, pairs])).unwrap_err(),
-        "UI_SCALE: opacity does not take space"
+        code(wire(json!([
+            3,
+            -1,
+            "",
+            "",
+            "",
+            1,
+            field::PRESSED_STYLE,
+            pairs
+        ]))),
+        "UI_STYLE"
     );
+}
+
+#[test]
+fn an_array_on_a_field_no_scale_lists_reaches_the_session_unchanged() {
+    use crate::protocol::{SCALE_STEP_FIELDS, field, tag};
+    assert!(!SCALE_STEP_FIELDS.contains(&field::SELECTION_REQUEST));
+    let request = json!([1, 0, 5]);
+    let records = wire(json!([
+        tag::INPUT,
+        -1,
+        "",
+        "",
+        "",
+        1,
+        field::SELECTION_REQUEST,
+        request.clone()
+    ]))
+    .unwrap();
+    assert_eq!(
+        records[0].fields.as_slice(),
+        &[(field::SELECTION_REQUEST, request)]
+    );
+    assert!(records[0].fields.steps().is_empty());
 }
 
 #[test]

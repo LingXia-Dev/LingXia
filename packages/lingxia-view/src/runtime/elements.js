@@ -723,6 +723,7 @@ function resolveElement(tag, original, children, identity, depth, parent) {
       // A textarea whose Return key names an action submits instead of breaking the line.
       if (tag === 'textarea' && ['done', 'go', 'search', 'send'].includes(props.enterKeyHint)) wire('submitOnEnter', 1);
       if (props.bind !== undefined && cellOf(props.bind).cell.focus) wire('focusRequest', cellOf(props.bind).cell.focus);
+      if (props.bind !== undefined && cellOf(props.bind).cell.selection) wire('selectionRequest', cellOf(props.bind).cell.selection);
       if (props.bind !== undefined && cellOf(props.bind).cell.picker) {
         const request = cellOf(props.bind).cell.picker;
         if (keyboard === 'date' || keyboard === 'time') { if (!disabled && props.readOnly !== true) wire('pickerRequest', request); }
@@ -747,6 +748,14 @@ function resolveElement(tag, original, children, identity, depth, parent) {
           wire('keyMap', keys.join(' '));
           on('onKeyDown', key => { if (Object.hasOwn(map, key)) map[key](); }, 'text');
         }
+      }
+      if (props.onSelectionChange !== undefined) {
+        if (typeof props.onSelectionChange !== 'function') throw Error('UI_INPUT: onSelectionChange takes a function');
+        const { onSelectionChange } = props;
+        if (!disabled) on('onSelectionChange', payload => {
+          const { start, end } = JSON.parse(payload);
+          onSelectionChange({ start, end });
+        }, 'text');
       }
       // The caret entered or left the editor.
       for (const name of ['onFocus', 'onBlur']) {

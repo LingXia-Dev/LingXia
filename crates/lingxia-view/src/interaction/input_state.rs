@@ -34,6 +34,14 @@ struct Entry {
     /// A `showPicker()` request opens this editor's picker once it is shown.
     repick: bool,
     picker_request: u64,
+    selection_request: u64,
+    /// A `setSelection`/`replaceRange` range (UTF-16) an unfocused editor takes when focused.
+    pending_selection: Option<[u32; 2]>,
+    /// This focus took a requested selection: keyboard entry leaves it in place.
+    chose_selection: bool,
+    on_selection_change: Option<u64>,
+    /// The ordered range `onSelectionChange` last reported.
+    reported_selection: [u32; 2],
     /// Record order, which is reading order.
     order: usize,
     enter_key_hint: Option<String>,
@@ -55,6 +63,8 @@ pub(crate) struct Inputs {
     /// The platform ended editing: a focus the page makes itself (autoFocus,
     /// `focus()`) shows no keyboard until the user focuses an editor again.
     keyboard_held: bool,
+    /// `onSelectionChange` calls queued for the session: handle and range.
+    selection_due: Vec<(u64, [u32; 2])>,
 }
 
 /// A static-text selection: byte offsets into the node's display text.
@@ -148,11 +158,26 @@ impl Inputs {
             let value = controlled.unwrap_or("");
             let focus_request = record.number(field::FOCUS_REQUEST).unwrap_or(0.0) as u64;
             let picker_request = record.number(field::PICKER_REQUEST).unwrap_or(0.0) as u64;
+            let selection_request = record
+                .fields
+                .iter()
+                .find(|(id, _)| *id == field::SELECTION_REQUEST)
+                .and_then(|(_, v)| {
+                    let [seq, start, end] = v.as_array()?.as_slice() else {
+                        return None;
+                    };
+                    Some((
+                        seq.as_u64()?,
+                        [start.as_u64()? as u32, end.as_u64()? as u32],
+                    ))
+                });
             if !self.entries.contains_key(&id) {
+                let editor = Editor::new(value).map_err(|e| format!("UI_INPUT: {e:?}"))?;
+                let reported_selection = ordered(editor.snapshot().selection);
                 self.entries.insert(
                     id.clone(),
                     Entry {
-                        editor: Editor::new(value).map_err(|e| format!("UI_INPUT: {e:?}"))?,
+                        editor,
                         enabled: true,
                         visible: false,
                         sized: false,
@@ -161,6 +186,11 @@ impl Inputs {
                         focus_request,
                         repick: false,
                         picker_request,
+                        selection_request: selection_request.map_or(0, |(seq, _)| seq),
+                        pending_selection: None,
+                        chose_selection: false,
+                        on_selection_change: None,
+                        reported_selection,
                         order,
                         enter_key_hint: None,
                         on_input: None,
@@ -193,9 +223,26 @@ impl Inputs {
                 .iter()
                 .find(|(id, _)| *id == field::ON_SUBMIT)
                 .and_then(|(_, v)| v.as_u64());
+            entry.on_selection_change = record
+                .fields
+                .iter()
+                .find(|(id, _)| *id == field::ON_SELECTION_CHANGE)
+                .and_then(|(_, v)| v.as_u64());
             entry.editor.set_uncontrolled(controlled.is_none());
             if let Some(value) = controlled {
                 renderer.edit_text(&mut entry.editor, &[Edit::Value(value.into())])?;
+            }
+            // After the value: `replaceRange` sends its text and the caret after it together.
+            if let Some((seq, range)) = selection_request
+                && seq > entry.selection_request
+            {
+                entry.selection_request = seq;
+                entry.pending_selection = Some(range);
+            }
+            if self.focused.as_deref() == Some(id.as_str())
+                && let Some(range) = entry.pending_selection.take()
+            {
+                select(&mut entry.editor, range, renderer)?;
             }
             if !entry.enabled && self.focused.as_deref() == Some(&id) {
                 self.blur(renderer)?;
@@ -315,6 +362,7 @@ impl Inputs {
                     && !input.attributes.read_only;
             }
         }
+        self.note_selection();
         display.decorate_inputs();
         if let Some(selection) = &self.text_selection
             && !display.decorate_selection(selection)
@@ -360,12 +408,40 @@ impl Inputs {
         self.blur(renderer)?;
         self.advance()?;
         self.text_selection = None;
-        renderer.edit_text(
-            &mut self.entries.get_mut(id).unwrap().editor,
-            &[Edit::Focus],
-        )?;
+        let entry = self.entries.get_mut(id).unwrap();
+        renderer.edit_text(&mut entry.editor, &[Edit::Focus])?;
+        entry.chose_selection = entry.pending_selection.is_some();
+        if let Some(range) = entry.pending_selection.take() {
+            select(&mut entry.editor, range, renderer)?;
+        }
         self.focused = Some(id.into());
         Ok(true)
+    }
+
+    /// Queues `onSelectionChange` when the focused editor's selection moved since it last reported.
+    pub fn note_selection(&mut self) {
+        let Some(entry) = self
+            .focused
+            .as_ref()
+            .and_then(|id| self.entries.get_mut(id))
+        else {
+            return;
+        };
+        let range = ordered(entry.editor.snapshot().selection);
+        if range != entry.reported_selection {
+            entry.reported_selection = range;
+            if let Some(handle) = entry.on_selection_change {
+                self.selection_due.push((handle, range));
+            }
+        }
+    }
+
+    pub fn selection_due(&self) -> bool {
+        !self.selection_due.is_empty()
+    }
+
+    pub fn take_selection_changes(&mut self) -> Vec<(u64, [u32; 2])> {
+        std::mem::take(&mut self.selection_due)
     }
 
     /// Where keyboard focus arriving in editor `id` leaves the selection: all of it, or the end.
@@ -378,6 +454,9 @@ impl Inputs {
         let Some(entry) = self.entries.get_mut(id) else {
             return Ok(());
         };
+        if std::mem::take(&mut entry.chose_selection) {
+            return Ok(());
+        }
         let end = entry.editor.snapshot().text.encode_utf16().count() as u32;
         let anchor = if select_all { 0 } else { end };
         renderer.edit_text(&mut entry.editor, &[Edit::Selection { anchor, focus: end }])?;
@@ -556,6 +635,39 @@ impl Inputs {
             Ok(())
         }
     }
+}
+
+fn ordered([anchor, focus]: [u32; 2]) -> [u32; 2] {
+    [anchor.min(focus), anchor.max(focus)]
+}
+
+/// Selects a requested UTF-16 range, each end moved back to a character boundary: the page
+/// checked it against its value, which typing may since have changed.
+fn select(
+    editor: &mut Editor,
+    [start, end]: [u32; 2],
+    renderer: &mut Renderer,
+) -> Result<(), String> {
+    let text = editor.snapshot().text;
+    let boundary = |at: u32| {
+        let mut units = 0;
+        for ch in text.chars() {
+            let next = units + ch.len_utf16() as u32;
+            if next > at {
+                break;
+            }
+            units = next;
+        }
+        units
+    };
+    renderer.edit_text(
+        editor,
+        &[Edit::Selection {
+            anchor: boundary(start),
+            focus: boundary(end),
+        }],
+    )?;
+    Ok(())
 }
 
 /// Merge a node's paint-only state delta (focus, pressed or hover) into its record.

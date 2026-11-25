@@ -10,8 +10,8 @@ mod values;
 mod generated;
 pub use generated::{
     Children, ENVIRONMENT_KEYS, FIELD_ADMISSION, FIELDS, FOCUS_PAINT_FIELDS, FieldAdmission,
-    PART_FIELDS, SCALED_FIELDS, SCALES, TAG_ADMISSION, TAGS, TagAdmission, UI_ABI,
-    check_environment, field, limits, options, tag,
+    PART_FIELDS, SCALE_STEP_FIELDS, SCALED_FIELDS, SCALES, TAG_ADMISSION, TAGS, TagAdmission,
+    UI_ABI, check_environment, field, limits, options, tag,
 };
 
 pub use decode::{Wire, decode, decode_wire};

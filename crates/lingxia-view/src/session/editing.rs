@@ -96,6 +96,9 @@ impl ViewSession {
             // A keyboard already up does not change again: the newly focused field clears it now.
             self.reveal_input = true;
         }
+        if self.selection_events(&mut inputs)? {
+            self.input_rebuild = true;
+        }
         for (handle, text) in inputs.take_committed() {
             self.text_event(self.generation, handle, &text)?;
             self.input_rebuild = true;
@@ -368,6 +371,7 @@ impl ViewSession {
             self.text_event(self.generation, handle, &text)?;
             rebuild = true;
         }
+        rebuild |= self.selection_events(&mut inputs)?;
         if let Some(next) = moved_to {
             let mut reply = inputs.reply(&next, rebuild);
             reply.moved_to = Some(next);
@@ -415,6 +419,20 @@ impl ViewSession {
         self.inputs = inputs;
         self.input_dirty = true;
         Ok(true)
+    }
+
+    /// Calls `onSelectionChange` for the focused editor's moved selection; true when one ran.
+    fn selection_events(
+        &mut self,
+        inputs: &mut crate::interaction::input_state::Inputs,
+    ) -> Result<bool, String> {
+        inputs.note_selection();
+        let mut ran = false;
+        for (handle, [start, end]) in inputs.take_selection_changes() {
+            let payload = format!(r#"{{"start":{start},"end":{end}}}"#);
+            ran |= self.text_event(self.generation, handle, &payload)?;
+        }
+        Ok(ran)
     }
 
     fn read_only(&self, identity: &str) -> bool {

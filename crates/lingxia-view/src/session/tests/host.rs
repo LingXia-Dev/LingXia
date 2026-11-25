@@ -1662,6 +1662,97 @@ fn a_keeps_focus_button_leaves_the_field_editing() {
     );
 }
 
+/// `setSelection`/`replaceRange` from a format bar move the focused editor's selection, an
+/// unfocused editor takes its requested range at its next focus, and each move is reported.
+#[test]
+fn a_bound_cell_sets_the_editor_selection_and_hears_it_move() {
+    let worker = ViewWorker::spawn("test-view").unwrap();
+    let platform = Platform::new(&[&worker]);
+    let host = platform.host(
+        &worker,
+        &source(
+            "function render(){const v=useLocal('v','hello world');const sel=useLocal('sel','none');return h('page',null,h('textarea',{'data-testid':'f',bind:v,'aria-label':'Body',onSelectionChange:r=>sel.set(r.start+'-'+r.end),style:{height:48}}),h('button',{'data-testid':'pick',keepsFocus:true,onClick:()=>v.setSelection(0,5)},'P'),h('button',{'data-testid':'bold',keepsFocus:true,onClick:()=>v.replaceRange(0,5,'**hello**')},'B'),h('button',{'data-testid':'later',onClick:()=>v.setSelection(10,15)},'L'),h('text',{'data-testid':'sel'},sel.value))}",
+        ),
+        false,
+    );
+    host.set_visible(true);
+    platform.settle(&[&host]);
+    let focus = || {
+        let current: serde_json::Value =
+            serde_json::from_str(host.snapshot().unwrap().json()).unwrap();
+        let identity = current["nodes"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|node| node["test_id"] == "f")
+            .unwrap()["identity"]
+            .clone();
+        host.input(
+            serde_json::json!({"op": "focus", "identity": identity, "generation": current["generation"]})
+                .to_string(),
+            |_| {},
+        );
+        platform.settle(&[&host]);
+        run_frames(&platform, &host, 2);
+    };
+    let click = |id: &str| {
+        host.automation_request(&serde_json::json!({"op": "act", "css": format!("[data-testid=\"{id}\"]"), "action": {"kind": "click"}}))
+            .unwrap();
+        platform.settle(&[&host]);
+        run_frames(&platform, &host, 3);
+    };
+    let editor = || {
+        let current: serde_json::Value =
+            serde_json::from_str(host.snapshot().unwrap().json()).unwrap();
+        let edit = current["nodes"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|node| node["test_id"] == "f")
+            .unwrap()["input"]["edit"]
+            .clone();
+        (
+            edit["text"].as_str().unwrap().to_owned(),
+            edit["selection"].clone(),
+        )
+    };
+    let reported = || {
+        host.automation_request(&serde_json::json!({"op": "query", "css": "[data-testid=\"sel\"]"}))
+            .unwrap()["text"]
+            .clone()
+    };
+    focus();
+    click("pick");
+    assert_eq!(editor(), ("hello world".into(), serde_json::json!([0, 5])));
+    assert_eq!(reported(), "0-5");
+    click("bold");
+    assert_eq!(
+        editor(),
+        ("**hello** world".into(), serde_json::json!([9, 9])),
+        "the caret after the new text"
+    );
+    assert_eq!(reported(), "9-9");
+    // Unfocused, the editor keeps the range for its next focus.
+    host.automation_request(
+        &serde_json::json!({"op": "act", "css": "[data-testid=\"f\"]", "action": {"kind": "blur"}}),
+    )
+    .unwrap();
+    platform.settle(&[&host]);
+    run_frames(&platform, &host, 2);
+    click("later");
+    assert_eq!(
+        editor().1,
+        serde_json::json!([9, 9]),
+        "not shown while unfocused"
+    );
+    focus();
+    assert_eq!(
+        editor(),
+        ("**hello** world".into(), serde_json::json!([10, 15]))
+    );
+    assert_eq!(reported(), "10-15");
+}
+
 #[test]
 fn hiding_a_page_drops_its_text_selection_from_the_kept_frame() {
     let worker = ViewWorker::shared("test:hide-selection").unwrap();

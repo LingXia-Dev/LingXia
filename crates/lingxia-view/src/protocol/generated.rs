@@ -321,6 +321,8 @@ pub mod field {
     pub const ARIA_LEVEL: usize = 283;
     pub const ARIA_CURRENT: usize = 284;
     pub const KEEPS_FOCUS: usize = 285;
+    pub const SELECTION_REQUEST: usize = 286;
+    pub const ON_SELECTION_CHANGE: usize = 287;
 }
 
 pub const TAGS: &[&str] = &["column", "reserved-1", "text", "button", "reserved-4", "scroll", "list", "image", "input", "textarea", "checkbox", "switch", "radio", "radio-option", "search", "slider", "link-box", "reserved-17", "plot", "vector", "page", "span", "link", "select", "video", "webview"];
@@ -613,6 +615,8 @@ pub const FIELDS: &[(&str, &str)] = &[
     ("ariaLevel", "aria-level"),
     ("ariaCurrent", "aria-current"),
     ("keepsFocus", "flag"),
+    ("selectionRequest", "selection-request"),
+    ("onSelectionChange", "handle"),
 ];
 
 /// Enumerated values accepted for an option-valued field kind.
@@ -878,6 +882,8 @@ pub const SCALED_FIELDS: &[(&str, &[usize])] = &[
     ("duration", &[field::TRANSITION]),
     ("ease", &[field::TRANSITION]),
 ];
+/// Every field a scaled family lists; decode resolves array values of these only.
+pub const SCALE_STEP_FIELDS: &[usize] = &[field::WIDTH, field::HEIGHT, field::GAP, field::FONT_SIZE, field::RADIUS, field::MIN_WIDTH, field::MIN_HEIGHT, field::MAX_WIDTH, field::MAX_HEIGHT, field::LINE_HEIGHT, field::PADDING_TOP, field::PADDING_RIGHT, field::PADDING_BOTTOM, field::PADDING_LEFT, field::LETTER_SPACING, field::RADIUS_TOP_LEFT, field::RADIUS_TOP_RIGHT, field::RADIUS_BOTTOM_RIGHT, field::RADIUS_BOTTOM_LEFT, field::FLEX_BASIS, field::MARGIN_TOP, field::MARGIN_RIGHT, field::MARGIN_BOTTOM, field::MARGIN_LEFT, field::INSET_TOP, field::INSET_RIGHT, field::INSET_BOTTOM, field::INSET_LEFT, field::ROW_GAP, field::COLUMN_GAP, field::MARGIN_INLINE_START, field::MARGIN_INLINE_END, field::PADDING_INLINE_START, field::PADDING_INLINE_END, field::INSET_INLINE_START, field::INSET_INLINE_END, field::RADIUS_START_START, field::RADIUS_START_END, field::RADIUS_END_START, field::RADIUS_END_END, field::TRANSITION];
 
 pub const FIELD_ADMISSION: &[FieldAdmission] = &[
     FieldAdmission { tags: None, parent: None },
@@ -1166,4 +1172,6 @@ pub const FIELD_ADMISSION: &[FieldAdmission] = &[
     FieldAdmission { tags: None, parent: None },
     FieldAdmission { tags: Some(&[tag::BUTTON, tag::LINK, tag::LINK_BOX]), parent: None },
     FieldAdmission { tags: Some(&[tag::BUTTON]), parent: None },
+    FieldAdmission { tags: Some(&[tag::INPUT, tag::TEXTAREA, tag::SEARCH]), parent: None },
+    FieldAdmission { tags: Some(&[tag::INPUT, tag::TEXTAREA, tag::SEARCH]), parent: None },
 ];

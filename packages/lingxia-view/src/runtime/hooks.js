@@ -71,9 +71,40 @@ export function local(name, initial, resource = '', order) {
       cell.picker = (cell.picker ?? 0) + 1;
       page.updates.set(cell, page.updates.has(cell) ? page.updates.get(cell) : cell.value);
     },
+    setSelection(start, end) {
+      outsideRender('setSelection');
+      const value = editorValue(key, cell, name, scope, 'setSelection');
+      selectionRange(value, start, end, 'setSelection');
+      cell.selection = [(cell.selection?.[0] ?? 0) + 1, start, end];
+      page.updates.set(cell, value);
+    },
+    replaceRange(start, end, text) {
+      outsideRender('replaceRange');
+      const value = editorValue(key, cell, name, scope, 'replaceRange');
+      selectionRange(value, start, end, 'replaceRange');
+      if (typeof text !== 'string') throw Error('UI_LOCAL: replaceRange takes (start, end, text) with text a string');
+      const at = start + text.length;
+      cell.selection = [(cell.selection?.[0] ?? 0) + 1, at, at];
+      page.updates.set(cell, immutable(value.slice(0, start) + text + value.slice(end), 0, true));
+    },
   });
   bindings.set(binding, { key, cell });
   return binding;
+}
+
+// A text cell's latest value, for the selection calls on the editor bound to it.
+function editorValue(key, cell, name, scope, call) {
+  if (page.locals.get(key) !== cell) throw Error(`UI_LOCAL: ${JSON.stringify(name)} in ${scope} is no longer mounted`);
+  const value = page.updates.has(cell) ? page.updates.get(cell) : cell.value;
+  if (typeof value !== 'string') throw Error(`UI_LOCAL: ${call} belongs to a text cell bound to an editor`);
+  return value;
+}
+
+// UTF-16 offsets that keep a surrogate pair whole, as the editor's own selection does.
+function selectionRange(value, start, end, call) {
+  const splits = at => at > 0 && at < value.length && /[\uD800-\uDBFF]/.test(value[at - 1]) && /[\uDC00-\uDFFF]/.test(value[at]);
+  if (!Number.isInteger(start) || !Number.isInteger(end) || start < 0 || start > end || end > value.length || splits(start) || splits(end))
+    throw Error(`UI_LOCAL: ${call} takes UTF-16 offsets 0 <= start <= end <= ${value.length} that split no character; got ${start}, ${end}`);
 }
 
 /** `useLocal(initial)` keys the cell by call order; `useLocal(name, initial)` by name, which keeps it across reorders and edits. */

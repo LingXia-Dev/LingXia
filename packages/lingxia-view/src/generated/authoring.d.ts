@@ -128,6 +128,16 @@ export interface LocalText<T extends string = string> extends Local<T> {
    * frame; nothing while it is disabled or read-only. The picker closes itself.
    */
   showPicker(): void;
+  /**
+   * Select `start..end` (UTF-16 offsets, `start <= end`; equal for a caret) in the editor this cell
+   * is bound to. A focused editor shows it on the next frame; an unfocused one keeps it for its next focus.
+   */
+  setSelection(start: number, end: number): void;
+  /**
+   * Replace `start..end` of the value with `text` and leave the caret after it, as typing over a
+   * selection would; the value changes at once, the editor's caret on the next frame.
+   */
+  replaceRange(start: number, end: number, text: string): void;
 }
 /** Local state keyed by call order in the component, as React's `useState`. */
 export declare function useLocal<T>(initial: T, ...invalid: [T] extends [LocalData<T>] ? [] : [never]): [T] extends [string] ? LocalText<T & string> : Local<T>;
@@ -351,6 +361,8 @@ export interface BoxSize {
   readonly width: number; readonly height: number;
   readonly minContentWidth: number; readonly maxContentWidth: number;
 }
+/** An editor's selection as UTF-16 offsets into its value, `start <= end`; equal for a caret. */
+export interface EditorSelection { readonly start: number; readonly end: number }
 /** A scroll or list reached (`at: true`) or left an edge. Fires once per change, and on mount with the edges its content starts at: both when the content fits. */
 export interface ScrollEdgeEvent { readonly edge: "start" | "end"; readonly at: boolean }
 /** The size of the element that takes this handle as `box`; `null` until its first layout, then one render behind a change. */
@@ -1266,6 +1278,7 @@ export type InputProps = Omit<Props, "style" | "children" | "role"> & { role?: I
   /** The text can be selected and copied but not changed. */ readOnly?: boolean;
   /** Called when the editor gains focus. */ onFocus?: () => void;
   /** Called when the editor loses focus. */ onBlur?: () => void;
+  /** Called when the caret moves or the selection changes, typed or set from code: `start` and `end` are UTF-16 offsets, as `value.slice(start, end)` reads them. Needs `bind` for `setSelection` and `replaceRange` on the cell. */ onSelectionChange?: (selection: EditorSelection) => void;
   /** The accessible name, spoken in place of its text. */ "aria-label"?: string;
   /** Shown while the value is empty. */ placeholder?: string;
   /** The kind of value: picks the keyboard, masking, and the date or time picker. */ type?: "text" | "password" | "email" | "number" | "tel" | "search" | "date" | "time";
@@ -1290,6 +1303,7 @@ export type TextareaProps = Omit<Props, "style" | "children" | "role"> & { role?
   /** The text can be selected and copied but not changed. */ readOnly?: boolean;
   /** Called when the editor gains focus. */ onFocus?: () => void;
   /** Called when the editor loses focus. */ onBlur?: () => void;
+  /** Called when the caret moves or the selection changes, typed or set from code: `start` and `end` are UTF-16 offsets, as `value.slice(start, end)` reads them. Needs `bind` for `setSelection` and `replaceRange` on the cell. */ onSelectionChange?: (selection: EditorSelection) => void;
   /** Lines it shows when empty; it grows with its text up to `maxRows`. */ rows?: number;
   /** Lines it grows to before it scrolls. */ maxRows?: number;
   /** The accessible name, spoken in place of its text. */ "aria-label"?: string;

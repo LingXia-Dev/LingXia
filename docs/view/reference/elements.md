@@ -187,6 +187,7 @@ Binding: `bind={local}` with a `useLocal<string>` cell, or `value` plus `onInput
 | `readOnly` | `boolean` |  | The text can be selected and copied but not changed. |
 | `onFocus` | `() => void` |  | Called when the editor gains focus. |
 | `onBlur` | `() => void` |  | Called when the editor loses focus. |
+| `onSelectionChange` | `(selection: EditorSelection) => void` |  | Called when the caret moves or the selection changes, typed or set from code: `start` and `end` are UTF-16 offsets, as `value.slice(start, end)` reads them. Needs `bind` for `setSelection` and `replaceRange` on the cell. |
 | `aria-label` | `string` |  | The accessible name, spoken in place of its text. |
 | `placeholder` | `string` |  | Shown while the value is empty. |
 | `type` | `"text" \| "password" \| "email" \| "number" \| "tel" \| "search" \| "date" \| "time"` |  | The kind of value: picks the keyboard, masking, and the date or time picker. |
@@ -215,6 +216,7 @@ Binding: `bind={local}` with a `useLocal<string>` cell, or `value` plus `onInput
 | `readOnly` | `boolean` |  | The text can be selected and copied but not changed. |
 | `onFocus` | `() => void` |  | Called when the editor gains focus. |
 | `onBlur` | `() => void` |  | Called when the editor loses focus. |
+| `onSelectionChange` | `(selection: EditorSelection) => void` |  | Called when the caret moves or the selection changes, typed or set from code: `start` and `end` are UTF-16 offsets, as `value.slice(start, end)` reads them. Needs `bind` for `setSelection` and `replaceRange` on the cell. |
 | `rows` | `number` |  | Lines it shows when empty; it grows with its text up to `maxRows`. |
 | `maxRows` | `number` |  | Lines it grows to before it scrolls. |
 | `aria-label` | `string` |  | The accessible name, spoken in place of its text. |

@@ -311,6 +311,8 @@ pub const FOCUS_PAINT_FIELDS: &[usize] = &[${wireFields(Object.keys(schema.style
 pub const SCALED_FIELDS: &[(&str, &[usize])] = &[
 ${Object.entries(schema.scaledFields).map(([family, keys]) => `    (${JSON.stringify(family)}, &[${keys.map(fieldConst).join(', ')}]),`).join('\n')}
 ];
+/// Every field a scaled family lists; decode resolves array values of these only.
+pub const SCALE_STEP_FIELDS: &[usize] = &[${[...new Set(Object.values(schema.scaledFields).flat())].sort((a, b) => id.get(a) - id.get(b)).map(fieldConst).join(', ')}];
 
 pub const FIELD_ADMISSION: &[FieldAdmission] = &[
 ${fieldAdmission}

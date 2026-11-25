@@ -1,6 +1,6 @@
 //! The record walk: header, parent links, fields and page-wide budgets.
 use super::scales::{self, Scales};
-use super::{FIELDS, Record, TAGS, admission, field, limits, tag, values};
+use super::{FIELDS, Record, SCALE_STEP_FIELDS, TAGS, admission, field, limits, tag, values};
 use serde_json::Value;
 use std::collections::{HashMap, HashSet};
 
@@ -204,7 +204,12 @@ fn walk(
                 }
                 _ => values::check(tag, id, value)?,
             }
-            match scales::resolve(tag, id, value, scales)? {
+            let resolved = if SCALE_STEP_FIELDS.contains(&id) {
+                scales::resolve(tag, id, value, scales)?
+            } else {
+                None
+            };
+            match resolved {
                 Some((resolved, step)) => {
                     fields.push((id, resolved));
                     steps.push((id, step));

@@ -1,5 +1,8 @@
 //! Value grammars shared by decode and layout: lengths, colors, bases and paint deltas.
-use super::{FIELDS, FOCUS_PAINT_FIELDS, PART_FIELDS, SCALED_FIELDS, SCALES, field, limits, tag};
+use super::{
+    FIELDS, FOCUS_PAINT_FIELDS, PART_FIELDS, SCALE_STEP_FIELDS, SCALED_FIELDS, SCALES, field,
+    limits, tag,
+};
 use serde_json::Value;
 
 /// Largest callback handle a JS number represents exactly.
@@ -140,7 +143,9 @@ fn bounded_str(value: &Value, max: usize) -> bool {
 /// already admitted on `tag`; page-budgeted and cross-record fields are
 /// checked by the record walk.
 pub(super) fn check(tag: usize, id: usize, value: &Value) -> Result<(), String> {
-    if let Some(step) = value.as_array() {
+    if let Some(step) = value.as_array()
+        && SCALE_STEP_FIELDS.contains(&id)
+    {
         return scale_step(id, step).map(drop);
     }
     if let Some(options) = super::options(FIELDS[id].1) {
@@ -430,6 +435,17 @@ pub(super) fn check(tag: usize, id: usize, value: &Value) -> Result<(), String> 
         field::ROWS | field::MAX_ROWS => ensure(
             value.as_u64().is_some_and(|v| (1..=100).contains(&v)),
             "UI_INPUT: rows and maxRows must be 1..100",
+        ),
+        // `[request, start, end]`: a counter and a UTF-16 range.
+        field::SELECTION_REQUEST => ensure(
+            value.as_array().is_some_and(|parts| {
+                parts.len() == 3
+                    && parts
+                        .iter()
+                        .all(|v| v.as_u64().is_some_and(|v| v <= MAX_HANDLE))
+                    && parts[1].as_u64() <= parts[2].as_u64()
+            }),
+            "UI_INPUT: invalid selection request",
         ),
         field::FOCUS_REQUEST | field::PICKER_REQUEST => ensure(
             value.as_u64().is_some_and(|v| v <= MAX_HANDLE),

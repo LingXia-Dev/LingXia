@@ -253,14 +253,20 @@ impl ViewSession {
         self.boxes_due.sort_by(|a, b| a.0.cmp(&b.0));
     }
 
-    pub(crate) fn boxes_due(&self) -> bool {
-        !self.boxes_due.is_empty()
+    /// A frame left `onLayout` or `onSelectionChange` calls to make once it lands.
+    pub(crate) fn frame_events_due(&self) -> bool {
+        !self.boxes_due.is_empty() || self.inputs.selection_due()
     }
 
-    /// Calls `onLayout` for each changed box, through the element's current callback; true when
-    /// one ran.
-    pub fn report_boxes(&mut self) -> Result<bool, String> {
+    /// Calls `onSelectionChange` for a selection a render moved (a value or `setSelection` from
+    /// code), then `onLayout` for each changed box through the element's current callback; true
+    /// when one ran.
+    pub fn report_frame_events(&mut self) -> Result<bool, String> {
         let mut ran = false;
+        for (handle, [start, end]) in self.inputs.take_selection_changes() {
+            let payload = format!(r#"{{"start":{start},"end":{end}}}"#);
+            ran |= self.text_event(self.generation, handle, &payload)?;
+        }
         for (identity, size) in std::mem::take(&mut self.boxes_due) {
             let handle = self
                 .retained
