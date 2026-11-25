@@ -56,7 +56,9 @@ fn bidi_isolation_measurement() {
     for (text, part, base) in cases {
         let (plain, _) = visual(text, base);
         let (isolated, marks) = visual(&isolate(text, part), base);
-        println!("{base:?} {text:?} part {part:?}\n  plain    {plain:?}\n  isolated {isolated:?}  marks {marks}px");
+        println!(
+            "{base:?} {text:?} part {part:?}\n  plain    {plain:?}\n  isolated {isolated:?}  marks {marks}px"
+        );
     }
     let lines: Vec<String> = (0..2000)
         .map(|i| format!("מהירות {i} Mbps, זמן {} h, שם Example {i}", i % 24))
@@ -66,7 +68,10 @@ fn bidi_isolation_measurement() {
         .enumerate()
         .map(|(i, line)| {
             isolate(
-                &isolate(&isolate(line, &format!("{i} Mbps")), &format!("{} h", i % 24)),
+                &isolate(
+                    &isolate(line, &format!("{i} Mbps")),
+                    &format!("{} h", i % 24),
+                ),
                 &format!("Example {i}"),
             )
         })

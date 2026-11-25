@@ -340,7 +340,9 @@ fn text_content(nodes: &[NodeSnapshot], index: usize) -> String {
     let node = &nodes[index];
     let has_descendants = |at: usize| {
         let prefix = format!("{}/", nodes[at].identity);
-        nodes.get(at + 1).is_some_and(|next| next.identity.starts_with(&prefix))
+        nodes
+            .get(at + 1)
+            .is_some_and(|next| next.identity.starts_with(&prefix))
     };
     // A leaf control keeps its snapshot text: its content is not kept apart from its label.
     if (!named_by_label(node) || !has_descendants(index))
