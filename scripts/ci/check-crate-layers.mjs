@@ -32,6 +32,7 @@ export const LAYERS = {
   "view-android": 3,
   "view-apple": 3,
   "view-harmony": 3,
+  "view-windows": 3,
   logic: 3,
   service: 3,
   transfer: 2,
