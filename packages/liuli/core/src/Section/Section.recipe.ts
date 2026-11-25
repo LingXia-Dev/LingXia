@@ -15,9 +15,12 @@ export const sectionRecipe = {
   },
   header: {
     base: 'flex-row items-start gap-3',
+    /** At large text: the action under the heading, at the start. */
+    stacked: 'items-start gap-2',
   },
   heading: {
     base: 'grow shrink basis-0 min-w-0 gap-0.5',
+    stacked: 'self-stretch gap-0.5',
   },
   title: {
     base: 'font-semibold text-text',
@@ -29,6 +32,7 @@ export const sectionRecipe = {
   /** As tall as the title's first line at any text size: a strut in the title's style sets it. */
   action: {
     base: 'shrink-0 flex-row items-center',
+    stacked: 'items-start gap-2',
   },
   /** No height of its own, so a taller control stands evenly above and below that line. */
   actionControls: {

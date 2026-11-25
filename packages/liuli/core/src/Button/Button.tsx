@@ -2,6 +2,7 @@ import { createContext, cx, useContext, useId, useLocal, type Child, type LinkTa
 import type { Press } from '../internal/press';
 import type { IconRef } from '../Icon/Icon';
 import { Glyph } from '../internal/Glyph';
+import { ActionEdge } from '../internal/actionEdge';
 import { spinner, spinnerBox } from '../internal/spinner';
 import { reportFailure, settleFlag } from '../internal/settle';
 import { registerPressable, identityOf, useTrigger } from '../internal/trigger';
@@ -86,7 +87,7 @@ export function Button({
   endContent,
   isFloating = false,
   width,
-  edge,
+  edge: ownEdge,
   isDisabled: ownDisabled = false,
   disabledMessage,
   isLoading = false,
@@ -102,6 +103,10 @@ export function Button({
   const trigger = useTrigger();
   const variant = ownVariant ?? group?.variant ?? 'secondary';
   const size = ownSize ?? group?.size ?? 'md';
+  // A link has no chrome of its own, so where a part sets an edge its text lines up with the content.
+  const placedEdge = useContext(ActionEdge);
+  const flush = ownEdge === undefined && variant === 'link' && placedEdge !== null ? placedEdge : undefined;
+  const edge = ownEdge;
   const isDisabled = ownDisabled || group?.isDisabled === true;
   const reasonId = `${useId()}-reason`;
   const hasReason = isDisabled && disabledMessage !== undefined;
@@ -123,7 +128,7 @@ export function Button({
   };
   const classes = cx(
     r.root.base, r.root.variant[variant], variant === 'secondary' && layer === 'overlay' && r.root.overlay, r.root.disabled[variant], isIconOnly ? r.root.square[size] : r.root.size[size],
-    group?.isAttached && r.root.attached, isFloating && !isDisabled && r.root.floating, width && r.root.width[width], shares && r.root.share, edge && r.root.edge[edge][isIconOnly ? 'square' : (edge === 'end' ? endIcon : startIcon) ? 'icon' : 'label'][size], className,
+    flush && r.root.flush[flush], group?.isAttached && r.root.attached, isFloating && !isDisabled && r.root.floating, width && r.root.width[width], shares && r.root.share, edge && r.root.edge[edge][isIconOnly ? 'square' : (edge === 'end' ? endIcon : startIcon) ? 'icon' : 'label'][size], className,
   );
   const content = (
     <>

@@ -26,3 +26,17 @@ test('Nested: an inner section\'s heading is a level down and smaller', async ()
   assert.deepEqual([title('outer').props.headingLevel, title('inner').props.headingLevel], [2, 3]);
   assert.ok(title('outer').props.fontSize > title('inner').props.fontSize);
 });
+
+test('Recent at large text: the action stands under the heading, a link\'s text flush with the title', async () => {
+  for (const [textScale, isStacked] of [[1.4, false], [1.5, true], [2, true]]) {
+    const screen = await renderExample('Section/Section', 'Recent', { env: { textScale } });
+    const [header] = screen.getByTestId('recent').children;
+    const [heading, action] = header.children;
+    assert.equal(header.props.flexDirection === 'row', !isStacked, `the header at ${textScale}`);
+    if (!isStacked) continue;
+    assert.equal(heading.props.alignSelf, 'stretch');
+    const link = action.children[0];
+    assert.equal(textOf(link), 'See all');
+    assert.equal(link.props.paddingInlineStart ?? link.props.paddingLeft, 0, 'no padding before the text');
+  }
+});

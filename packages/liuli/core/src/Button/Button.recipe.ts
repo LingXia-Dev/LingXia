@@ -67,6 +67,8 @@ export const buttonRecipe = {
         square: { sm: '-me-[11.33px]', md: '-me-[14.75px]', lg: '-me-[18.17px]' },
       },
     } satisfies Record<ButtonEdge, Record<'label' | 'icon' | 'square', Record<ButtonSize, string>>>,
+    /** A link where a part sets an edge: no padding on that side, so its text meets the content edge. */
+    flush: { start: 'ps-0', end: 'pe-0' } satisfies Record<ButtonEdge, string>,
     /**
      * In an attached group: neighbours share an edge and only the group's ends are round. The focus
      * ring is drawn inside the button, where the next button cannot cover it.
