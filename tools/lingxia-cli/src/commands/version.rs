@@ -108,13 +108,7 @@ mod tests {
                 "missing {expected} in:\n{output}"
             );
         }
-        for internal in [
-            "release:",
-            "polyfills:",
-            "types:",
-            "browser-shell-webui:",
-            "resource-bundle:",
-        ] {
+        for internal in ["release:", "polyfills:", "types:", "resource-bundle:"] {
             assert!(
                 !output.contains(internal),
                 "unexpected {internal} in:\n{output}"

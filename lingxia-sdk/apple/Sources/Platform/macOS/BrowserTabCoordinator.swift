@@ -1102,7 +1102,7 @@ final class BrowserTabCoordinator: NSObject {
         pageActionsVisible = visible
         starButton.isHidden = !visible || !browserBookmarksEnabled()
         pinButton.isHidden = !visible
-        bookmarksButton.isHidden = !visible || !browserBookmarksEnabled()
+        bookmarksButton.isHidden = !visible || !showsBookmarksManager
         menuButton.isHidden = !visible
     }
 
@@ -1140,33 +1140,41 @@ final class BrowserTabCoordinator: NSObject {
         toggleActivePin()
     }
 
+    /// The toolbar's manager button opens the Bookmarks system page.
+    private var showsBookmarksManager: Bool {
+        browserBookmarksEnabled() && browserSystemPagesEnabled()
+    }
+
     @objc private func bookmarksClicked() {
         openBookmarks()
     }
 
     @objc private func menuClicked() {
         let url = activePageURL()
-        let context = BrowserPageMenu.Context(
+        var context = BrowserPageMenu.Context(
             url: url,
             title: activePageTitle(),
             toastHost: webContainer,
             onBookmarkChanged: { [weak self] _ in
                 self?.updatePageSaveButtons(for: url)
-            },
-            onOpenBookmarks: { [weak self] in
+            }
+        )
+        // Bookmarks, History, Settings and site data are the browser's system pages.
+        if browserSystemPagesEnabled() {
+            context.onOpenBookmarks = { [weak self] in
                 self?.openBookmarks()
-            },
-            onOpenHistory: { [weak self] in
+            }
+            context.onOpenHistory = { [weak self] in
                 self?.openHistory()
-            },
-            onOpenSettings: { [weak self] in
+            }
+            context.onOpenSettings = { [weak self] in
                 self?.openBrowserLocalSettings()
-            },
-            onClearSiteData: { [weak self] in
+            }
+            context.onClearSiteData = { [weak self] in
                 guard let self, let tabId = self.activeTabId else { return }
                 self.openBrowserLocalClearSiteData(tabId: tabId)
             }
-        )
+        }
         let menu = BrowserPageMenu.menu(for: context)
         menu.popUp(
             positioning: nil,
@@ -1188,7 +1196,7 @@ final class BrowserTabCoordinator: NSObject {
             toggleActiveBookmark()
             return true
         }
-        if flags == [.command], key == "y" {
+        if flags == [.command], key == "y", browserSystemPagesEnabled() {
             openHistory()
             return true
         }
@@ -1340,7 +1348,7 @@ final class BrowserTabCoordinator: NSObject {
         bookmarksButton.toolTip = L10n.string("lx_browser_manage_bookmarks")
         bookmarksButton.setAccessibilityLabel(bookmarksButton.toolTip ?? "")
         toolbar.addSubview(bookmarksButton)
-        bookmarksButton.isHidden = !pageActionsVisible || !browserBookmarksEnabled()
+        bookmarksButton.isHidden = !pageActionsVisible || !showsBookmarksManager
 
         configureButton(menuButton, iconName: "icon_page_menu", action: #selector(menuClicked))
         menuButton.toolTip = L10n.string("lx_browser_page_menu")
@@ -1416,11 +1424,11 @@ final class BrowserTabCoordinator: NSObject {
 
             bookmarksButton.trailingAnchor.constraint(
                 equalTo: menuButton.leadingAnchor,
-                constant: pageActionsVisible && browserBookmarksEnabled() ? -4 : 0
+                constant: pageActionsVisible && showsBookmarksManager ? -4 : 0
             ),
             bookmarksCenterY,
             bookmarksButton.widthAnchor.constraint(
-                equalToConstant: pageActionsVisible && browserBookmarksEnabled() ? Layout.buttonSize : 0
+                equalToConstant: pageActionsVisible && showsBookmarksManager ? Layout.buttonSize : 0
             ),
             bookmarksButton.heightAnchor.constraint(equalToConstant: Layout.buttonSize),
 

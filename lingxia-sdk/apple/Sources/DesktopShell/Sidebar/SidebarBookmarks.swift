@@ -278,10 +278,13 @@ final class SidebarPinTileView: NSView {
                     action: #selector(closeTabsBelowClicked)))
             }
         }
-        menu.addItem(.separator())
-        menu.addItem(tileItem(
-            browserBookmarksEnabled() ? "lx_browser_manage_bookmarks" : "lx_browser_manage_pinned_sites",
-            iconName: "icon_bookmarks", action: #selector(manageClicked)))
+        // The manager is the Bookmarks system page, which only a host with `browser.webui` has.
+        if browserSystemPagesEnabled() {
+            menu.addItem(.separator())
+            menu.addItem(tileItem(
+                browserBookmarksEnabled() ? "lx_browser_manage_bookmarks" : "lx_browser_manage_pinned_sites",
+                iconName: "icon_bookmarks", action: #selector(manageClicked)))
+        }
 
         return menu
     }

@@ -21,8 +21,8 @@ devtool = ["lxapp/automation", "lxapp/dev-bundles", "lingxia-view-android/hot-sw
 # browser UI/chrome on top of this.
 browser-runtime = ["dep:lingxia-browser"]
 browser-core = ["browser-runtime"]
-# Product browser shell: browser core + browser shell webui/settings/downloads/address
-# bar support.
+# Product browser shell: browser core + settings/downloads/address bar support and the
+# routes behind a host's `browser.webui` system pages.
 browser-shell = ["browser-runtime", "dep:lingxia-browser-shell"]
 proxy = ["browser-shell", "lingxia-browser-shell/proxy"]
 terminal-runtime = [

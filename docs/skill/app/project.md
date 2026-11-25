@@ -9,7 +9,7 @@ macOS/Windows terminal/browser with native control. UI is a flat, adaptive
 `lingxia new -t native-app` ([forms](../cli/lingxia.md#lingxia-new)). The default uses one lxapp
 for the main UI and host control. `--main terminal|browser` defaults to native control: no
 `lxapp/`, `homeAppId`, or `resources`; the matching capability is enabled and
-`appService: false`. A browser main still needs [`browser.webui`](#browser) before it builds.
+`appService: false`.
 
 The scaffold defines the layout:
 
@@ -263,10 +263,12 @@ permission when called and need no entry here.
 ## `browser`
 
 Requires `capabilities.browser: true`. `bookmarks` (default `true`) shows
-bookmark chrome. `webui` is required: the browser's own UI (new tab, settings,
-downloads), which the host supplies as a project-relative `path:` (CLI-built) or
-an npm `package:` you publish with prebuilt `lxapp.json` + `dist/` (optional
-`version:`). LingXia ships none; the build fails without it.
+bookmark chrome. `webui` is the browser's system pages (History, Bookmarks,
+Downloads, its Settings), an `app.lingxia.browser` lxapp the host supplies as a
+project-relative `path:` (CLI-built) or an npm `package:` you publish with prebuilt
+`lxapp.json` + `dist/` (optional `version:`). LingXia ships none; without it the
+chrome hides those entries, and `settingsDestination: browserControlPage` is a
+config error.
 `platforms` limits the browser runtime to the listed targets; omit it or use an
 empty list for all targets. A mobile-only browser uses `[ios, android, harmony]`.
 
@@ -274,7 +276,7 @@ empty list for all targets. A mobile-only browser uses `[ios, android, harmony]`
 browser:
   platforms: [ios, android, harmony]
   webui:
-    path: vendor/browser-shell-webui
+    path: browser
 ```
 
 `homeAppId` is the product control app, never the browser UI.

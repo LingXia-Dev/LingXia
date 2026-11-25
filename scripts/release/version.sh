@@ -38,7 +38,6 @@ With --component all (default), this updates:
   - example native host Cargo.lock LingXia package versions
   - example and built-in lxapp.json minRuntime (raised to the new major.minor line)
   - package versions under packages/*
-  - @lingxia/browser-shell-webui (crates/lingxia-browser-shell/webui)
   - internal @lingxia/* package dependency versions in published package.json files
 EOF
 }
@@ -331,8 +330,9 @@ def key(version):
 manifests = (
     sorted(root.glob("examples/*/lxapp.json"))
     + sorted(root.glob("examples/*/lxapp/lxapp.json"))
+    + sorted(root.glob("examples/*/browser/lxapp.json"))
     # Built-in lxapps ship inside the SDK of the same line.
-    + [root / "crates/lingxia-browser-shell/webui/lxapp.json", root / "packages/lingxia-terminal-settings/lxapp.json"]
+    + [root / "packages/lingxia-terminal-settings/lxapp.json"]
 )
 pattern = re.compile(r'("minRuntime"\s*:\s*")([^"]+)(")')
 for manifest in manifests:
@@ -383,7 +383,6 @@ version = sys.argv[2]
 dry_run = sys.argv[3] == "1"
 
 sources = sorted(root.glob("packages/*/package.json"))
-sources.append(root / "crates/lingxia-browser-shell/webui/package.json")
 names = set()
 dirs = set()
 for source in sources:
@@ -515,8 +514,6 @@ else
   while IFS= read -r package_json; do
     update_package_json "$package_json"
   done < <(find "$ROOT_DIR/packages" -mindepth 2 -maxdepth 2 -name package.json | sort)
-  # Lives next to the crate, not under packages/, so the glob above misses it.
-  update_package_json "$ROOT_DIR/crates/lingxia-browser-shell/webui/package.json"
   update_linked_package_locks
   update_root_lock
 fi

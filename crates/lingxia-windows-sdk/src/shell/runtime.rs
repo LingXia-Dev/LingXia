@@ -6055,14 +6055,17 @@ fn show_pinned_bookmark_context_menu(appid: &str, row_id: &str, screen_x: i32, s
     let Some(window) = owner_window_handle(appid) else {
         return;
     };
-    let items = vec![
-        lingxia_logic::i18n::t(lingxia_logic::I18nKey::BrowserUnpin),
-        lingxia_logic::i18n::t(if lingxia_app_context::browser_bookmarks_enabled() {
-            lingxia_logic::I18nKey::BrowserManageBookmarks
-        } else {
-            lingxia_logic::I18nKey::BrowserManagePinnedSites
-        }),
-    ];
+    let mut items = vec![lingxia_logic::i18n::t(lingxia_logic::I18nKey::BrowserUnpin)];
+    // The manager is the Bookmarks system page, which only a host with `browser.webui` has.
+    if lingxia_app_context::browser_system_pages_enabled() {
+        items.push(lingxia_logic::i18n::t(
+            if lingxia_app_context::browser_bookmarks_enabled() {
+                lingxia_logic::I18nKey::BrowserManageBookmarks
+            } else {
+                lingxia_logic::I18nKey::BrowserManagePinnedSites
+            },
+        ));
+    }
     super::context_menu::show_context_menu_checked(
         window,
         (screen_x, screen_y),
@@ -7867,8 +7870,19 @@ enum BrowserPageMenuAction {
 
 #[cfg(feature = "browser-shell")]
 impl BrowserPageMenuAction {
-    fn is_visible(self, bookmarks_enabled: bool) -> bool {
-        bookmarks_enabled || !matches!(self, Self::ToggleBookmark | Self::ManageBookmarks)
+    /// Bookmarks, History, Settings and site data open the browser's system pages, which only a
+    /// host with `browser.webui` has; their separators go with them.
+    fn is_visible(self, bookmarks_enabled: bool, system_pages: bool) -> bool {
+        (bookmarks_enabled || !matches!(self, Self::ToggleBookmark | Self::ManageBookmarks))
+            && (system_pages
+                || !matches!(
+                    self,
+                    Self::Separator
+                        | Self::ManageBookmarks
+                        | Self::History
+                        | Self::Settings
+                        | Self::ClearSiteData
+                ))
     }
 }
 
@@ -7981,9 +7995,10 @@ fn show_browser_page_menu(appid: &str, screen_x: i32, screen_y: i32) {
         ),
     ];
     let bookmarks_enabled = lingxia_app_context::browser_bookmarks_enabled();
+    let system_pages = lingxia_app_context::browser_system_pages_enabled();
     let (actions, items): (Vec<_>, Vec<_>) = items
         .into_iter()
-        .filter(|(action, _)| action.is_visible(bookmarks_enabled))
+        .filter(|(action, _)| action.is_visible(bookmarks_enabled, system_pages))
         .unzip();
     let appid = appid.to_string();
     let title = browser_tab_display_title(&tab);
@@ -8853,6 +8868,38 @@ mod tests {
         completion.finish(Err(lingxia_platform::error::PlatformError::CallbackDropped));
         drop(completion);
         assert_eq!(calls.load(std::sync::atomic::Ordering::Relaxed), 1);
+    }
+
+    #[cfg(feature = "browser-shell")]
+    #[test]
+    fn page_menu_hides_system_pages_a_host_does_not_bundle() {
+        use super::BrowserPageMenuAction as Action;
+        let visible = |system_pages| {
+            [
+                Action::ToggleBookmark,
+                Action::TogglePin,
+                Action::CopyLink,
+                Action::OpenExternal,
+                Action::Separator,
+                Action::ManageBookmarks,
+                Action::History,
+                Action::Settings,
+                Action::ClearSiteData,
+            ]
+            .into_iter()
+            .filter(|action| action.is_visible(true, system_pages))
+            .collect::<Vec<_>>()
+        };
+        assert_eq!(visible(true).len(), 9);
+        assert_eq!(
+            visible(false),
+            [
+                Action::ToggleBookmark,
+                Action::TogglePin,
+                Action::CopyLink,
+                Action::OpenExternal
+            ]
+        );
     }
 
     #[test]

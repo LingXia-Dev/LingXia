@@ -7,7 +7,6 @@
 - `lingxia-html`: Public HTML package for lxapp pages.
 - `lingxia-page-runtime`: Shared implementation package behind the public framework packages.
 - `lingxia-terminal-settings`: SDK-owned settings app for the desktop terminal.
-- `@lingxia/browser-shell-webui` lives next to its crate at `crates/lingxia-browser-shell/webui` (not in this workspace). It is still released by `scripts/release/npm.sh`.
 - `lingxia-types`: Shared TypeScript type definitions for lxapp logic code and runtime contracts.
 - `lingxia-test`: Authoring SDK and clock for lxapp tests (`test`, locators, `expect`). Run by `lxdev test`.
 
@@ -31,7 +30,6 @@ scripts/release/npm.sh --package react --publish
 scripts/release/npm.sh --package html --publish
 scripts/release/npm.sh --package page-runtime --publish
 scripts/release/npm.sh --package terminal-settings --publish
-scripts/release/npm.sh --package browser-shell-webui --publish
 scripts/release/npm.sh --package types --publish
 scripts/release/npm.sh --package test --publish
 ```

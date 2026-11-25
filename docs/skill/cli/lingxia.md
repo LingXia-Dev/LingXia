@@ -37,8 +37,7 @@ lingxia new . -t lxapp -y                                          # in the curr
 - `--main lxapp|terminal|browser` picks a host's main experience (default
   `lxapp`); `--control lxapp|native` picks where host control lives. Terminal
   and browser mains are macOS/Windows and default to native control. Both flags
-  are host-only, and native control with an lxapp main is rejected. A browser
-  main builds only once [`browser.webui`](../app/project.md#browser) is set.
+  are host-only, and native control with an lxapp main is rejected.
 - `--template <name>` scaffolds an lxapp from an installed template provider;
   arguments after `--` go to the template:
 

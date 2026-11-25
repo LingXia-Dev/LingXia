@@ -92,7 +92,10 @@ pub(super) fn build_app_json_from_config(
     if let Some(browser) = config.browser.as_ref() {
         obj.insert(
             "browser".to_string(),
-            serde_json::json!({ "bookmarks": browser.bookmarks }),
+            serde_json::json!({
+                "bookmarks": browser.bookmarks,
+                "systemPages": config.browser_system_pages_enabled(),
+            }),
         );
     }
     if let Some(storage) = config.storage.as_ref() {

@@ -1394,17 +1394,27 @@ fn panel_position_name(position: PanelPosition) -> &'static str {
 pub struct BrowserChromeConfig {
     #[serde(default = "bookmarks_default")]
     pub bookmarks: bool,
+    /// The host bundles `app.lingxia.browser` (`browser.webui`); without it the chrome hides
+    /// History, Bookmarks, Downloads and the browser's own Settings.
+    #[serde(rename = "systemPages", default)]
+    pub system_pages: bool,
 }
 fn bookmarks_default() -> bool {
     true
 }
 impl Default for BrowserChromeConfig {
     fn default() -> Self {
-        Self { bookmarks: true }
+        Self {
+            bookmarks: true,
+            system_pages: false,
+        }
     }
 }
 pub fn browser_bookmarks_enabled() -> bool {
     app_config().is_none_or(|config| config.browser.bookmarks)
+}
+pub fn browser_system_pages_enabled() -> bool {
+    app_config().is_some_and(|config| config.browser.system_pages)
 }
 
 #[cfg(test)]
@@ -1417,6 +1427,15 @@ mod browser_chrome_tests {
         let disabled: BrowserChromeConfig = serde_json::from_str(r#"{"bookmarks":false}"#).unwrap();
         assert!(!disabled.bookmarks);
         assert_eq!(serde_json::to_value(disabled).unwrap()["bookmarks"], false);
+    }
+
+    #[test]
+    fn system_pages_default_off_and_explicit_true_roundtrips() {
+        let default: BrowserChromeConfig = serde_json::from_str("{}").unwrap();
+        assert!(!default.system_pages);
+        let bundled: BrowserChromeConfig = serde_json::from_str(r#"{"systemPages":true}"#).unwrap();
+        assert!(bundled.system_pages);
+        assert_eq!(serde_json::to_value(bundled).unwrap()["systemPages"], true);
     }
 }
 

@@ -48,9 +48,11 @@ capabilities:
   computerUse: true
   browserUse: true
 
+# The browser's system pages (History, Bookmarks, Downloads, Settings) are this demo's
+# own lxapp; a host without `browser.webui` shows none of them.
 browser:
   webui:
-    path: ../../crates/lingxia-browser-shell/webui
+    path: browser
 
 # Host-owned Settings chrome resolves this sealed destination on every click.
 settingsDestination:

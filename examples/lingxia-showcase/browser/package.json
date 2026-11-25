@@ -1,15 +1,11 @@
 {
-  "name": "@lingxia/browser-shell-webui",
-  "version": "0.30.0",
+  "name": "lingxia-showcase-browser",
   "private": true,
-  "description": "LingXia browser system pages (GPU View + Rust Logic)",
+  "description": "The showcase browser's system pages (GPU View + Rust Logic)",
   "type": "module",
-  "files": [
-    "dist",
-    "lxapp.json"
-  ],
   "scripts": {
-    "build": "cargo run -p lingxia-cli -- build --release"
+    "build": "lingxia build",
+    "typecheck": "lingxia check"
   },
   "dependencies": {
     "@lingxia/view": "file:../../../packages/lingxia-view",

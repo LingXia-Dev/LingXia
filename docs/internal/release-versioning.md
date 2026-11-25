@@ -83,7 +83,7 @@ When publishing its CLI release, pass `0.20.1` from
 `tools/lingxia-cli/Cargo.toml`, rather than the workspace version.
 
 CLI metadata pins embedded or downloaded assets (`bridge`, `polyfills`,
-`rust-crate`, `sdk`). App npm packages and browser-shell-webui
+`rust-crate`, `sdk`). App npm packages
 resolve via `~M.m.0`; Cargo dependencies use `~M.m.P`, floored at the base patch
 so they cannot resolve older than the paired SDK. A new minor requires a new CLI;
 `lingxia new` warns when GitHub has a newer release.

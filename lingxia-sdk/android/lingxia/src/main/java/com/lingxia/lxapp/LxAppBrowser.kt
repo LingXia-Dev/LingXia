@@ -515,6 +515,7 @@ internal object LxAppBrowser {
         actionRow.addView(plusBtn)
         actionRow.addView(tabsBtn)
         actionRow.addView(menuBtn)
+        if (!NativeApi.browserSystemPagesEnabled()) menuBtn.visibility = View.GONE
         actionRow.addView(closeBtn)
         bar.addView(actionRow)
 
@@ -1043,7 +1044,9 @@ internal object LxAppBrowser {
         }
         addressRow?.visibility = if (aside) View.GONE else View.VISIBLE
         plusButton?.visibility = if (aside) View.GONE else View.VISIBLE
-        menuButton?.visibility = if (aside) View.GONE else View.VISIBLE
+        // Downloads and Settings are the browser's system pages; a host without them has no menu.
+        menuButton?.visibility =
+            if (aside || !NativeApi.browserSystemPagesEnabled()) View.GONE else View.VISIBLE
         asideRefreshButton?.visibility = if (aside) View.VISIBLE else View.GONE
         updateTabsBadge()
         overlayContainer?.let(ViewCompat::requestApplyInsets)

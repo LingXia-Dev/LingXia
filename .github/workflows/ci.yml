@@ -153,7 +153,6 @@ jobs:
               - 'examples/lingxia-showcase/**'
               - 'lingxia-sdk/android/tests/gpu/**'
               - 'crates/lingxia-lxapp/src/appservice/scripts/**'
-              - 'crates/lingxia-browser-shell/webui/**'
             # Source of truth for the generated @lingxia/types Logic API.
             typegen_src:
               - 'crates/lingxia-logic/**'
@@ -236,6 +235,7 @@ jobs:
             automation_showcase:
               - 'examples/lingxia-showcase/lingxia.yaml'
               - 'examples/lingxia-showcase/lxapp/**'
+              - 'examples/lingxia-showcase/browser/**'
               - 'examples/lingxia-showcase/native/**'
             automation_ci:
               - '.github/workflows/ci.yml'

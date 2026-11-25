@@ -641,6 +641,8 @@ mod bridge {
 
         #[swift_bridge(swift_name = "browserBookmarksEnabled")]
         fn browser_bookmarks_enabled() -> bool;
+        #[swift_bridge(swift_name = "browserSystemPagesEnabled")]
+        fn browser_system_pages_enabled() -> bool;
 
         #[swift_bridge(swift_name = "browserReopenClosedTab")]
         fn browser_reopen_closed_tab() -> String;
@@ -3174,6 +3176,10 @@ pub fn terminal_session_close(id: u64) {
 
 pub fn browser_bookmarks_enabled() -> bool {
     lingxia_app_context::browser_bookmarks_enabled()
+}
+
+pub fn browser_system_pages_enabled() -> bool {
+    lingxia_app_context::browser_system_pages_enabled()
 }
 
 pub fn browser_reopen_closed_tab() -> String {

@@ -1588,6 +1588,15 @@ pub extern "system" fn Java_com_lingxia_app_NativeApi_openBrowserTab<'a>(
     .resolve::<ThrowRuntimeExAndDefault>()
 }
 
+/// Browser chrome shows its system-page entries only when the host bundles them.
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_com_lingxia_app_NativeApi_browserSystemPagesEnabled(
+    _env: EnvUnowned,
+    _class: JClass,
+) -> jboolean {
+    lingxia_app_context::browser_system_pages_enabled()
+}
+
 /// Native browser chrome only: the authority remains sealed in Rust.
 #[unsafe(no_mangle)]
 pub extern "system" fn Java_com_lingxia_app_NativeApi_openBrowserSystemPage<'a>(

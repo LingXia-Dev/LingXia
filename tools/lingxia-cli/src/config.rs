@@ -1889,7 +1889,7 @@ impl LingXiaConfig {
     }
 
     /// The in-app browser capability — cross-platform and opt-in. Gates the
-    /// browser runtime/feature and the bundling of its webui pages everywhere.
+    /// browser runtime/feature everywhere.
     pub fn browser_enabled(&self) -> bool {
         self.capabilities
             .as_ref()
@@ -1967,6 +1967,16 @@ impl LingXiaConfig {
             .unwrap_or(false)
     }
 
+    /// The host bundles `app.lingxia.browser` from `browser.webui`; a browser without it has no
+    /// system pages, and its chrome hides them.
+    pub fn browser_system_pages_enabled(&self) -> bool {
+        self.browser_enabled()
+            && self
+                .browser
+                .as_ref()
+                .is_some_and(|browser| browser.webui.is_some())
+    }
+
     /// `browser_enabled` narrowed by `browser.platforms`; an empty list keeps
     /// every target.
     pub fn browser_enabled_for(&self, platform: &str) -> bool {
@@ -1981,8 +1991,7 @@ impl LingXiaConfig {
         if self.app_service_enabled() {
             features.push("standard".to_string());
         }
-        // The browser capability brings its runtime and webui system pages on
-        // every platform it is enabled for.
+        // The browser capability brings its runtime on every platform it is enabled for.
         if self.browser_enabled_for(platform) {
             features.push("browser-shell".to_string());
         }
@@ -2196,6 +2205,15 @@ impl LingXiaConfig {
         validate_capability_dependencies(self.capabilities.as_ref())?;
         if let Some(destination) = self.settings_destination.as_ref() {
             destination.validate().map_err(|message| anyhow!(message))?;
+            if matches!(destination, SettingsDestination::BrowserControlPage { .. })
+                && !self.browser_system_pages_enabled()
+            {
+                return Err(anyhow!(
+                    "settingsDestination `browserControlPage` opens a browser system page, \
+                     but browser.webui is not set (or capabilities.browser is off). Set \
+                     browser.webui, or use `controlAppPage` or `nativeAction`."
+                ));
+            }
         }
         if let Some(app) = &self.app {
             if app.project_name.trim().is_empty() {
@@ -3416,7 +3434,40 @@ android: {}
             route: "/settings".to_string(),
             query: None,
         });
+        let missing = config.validate().unwrap_err().to_string();
+        assert!(
+            missing.contains("browserControlPage") && missing.contains("browser.webui"),
+            "{missing}"
+        );
+        config.capabilities.as_mut().unwrap().browser = true;
+        config.browser = Some(BrowserConfig {
+            platforms: Vec::new(),
+            bookmarks: true,
+            webui: Some(BrowserWebUiConfig {
+                path: Some("./browser".to_string()),
+                package: None,
+                version: None,
+            }),
+        });
         config.validate().expect("valid browser destination");
+        // Destinations that leave the browser's pages alone work without them.
+        config.browser.as_mut().unwrap().webui = None;
+        for destination in [
+            SettingsDestination::ControlAppPage {
+                app_id: "my-app".to_string(),
+                page: "settings".to_string(),
+                query: None,
+            },
+            SettingsDestination::NativeAction {
+                action_id: "openPreferences".to_string(),
+            },
+        ] {
+            config.settings_destination = Some(destination);
+            config
+                .validate()
+                .expect("destination without browser.webui");
+        }
+        config.browser = None;
 
         config.settings_destination = Some(SettingsDestination::NativeAction {
             action_id: "openPreferences".to_string(),
@@ -5182,6 +5233,7 @@ app:
   platforms: [windows]
   homeAppId: home
 capabilities: { browser: true }
+browser: { webui: { path: ./browser } }
 settingsDestination: { kind: browserControlPage, route: /settings }
 surfaces: [{ native: browser, role: main, launch: true }]
 "#,
@@ -5214,6 +5266,7 @@ app:
   platforms: [windows]
   homeAppId: home
 capabilities: { browser: true }
+browser: { webui: { path: ./browser } }
 settingsDestination: { kind: browserControlPage, route: /settings }
 surfaces: [{ url: https://example.com, role: main, launch: true }]
 "#,

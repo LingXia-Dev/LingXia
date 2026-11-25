@@ -100,11 +100,12 @@ capabilities:
 # Raw host assets. Use resources.bundles for lxapps.
 # assets: assets
 
-# Required when capabilities.browser is true. `path` builds from source;
+# The browser's system pages (History, Bookmarks, Downloads, its Settings); without
+# them the browser chrome hides those entries. `path` builds from source;
 # `package` / `version` fetch a prebuilt bundle from npm.
 # browser:
 #   webui:
-#     path: vendor/browser-shell-webui
+#     path: browser
 
 {{SHELL_SECTION}}
 {{APP_LINKS_SECTION}}

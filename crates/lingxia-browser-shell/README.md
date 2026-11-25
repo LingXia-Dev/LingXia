@@ -8,7 +8,7 @@ Browser shell product module and host registration crate for LingXia.
 - Download/settings host APIs
 - Proxy settings, Auto Switch rules, and local proxy runtime
 - Address-bar resolution and navigation helpers
-- Embedded browser Web UI assets and internal pages
+- The routes behind the host's `browser.webui` system pages (`app.lingxia.browser`), registered only when the host bundles them
 - Panel-related helpers for shell-hosted lxapps
 
 ## Key APIs

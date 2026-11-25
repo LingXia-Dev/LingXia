@@ -471,6 +471,7 @@ private final class LxAppBrowserViewController: UIViewController, UIGestureRecog
             menuButton.heightAnchor.constraint(equalToConstant: 36),
         ])
         actionRow.addArrangedSubview(menuButton)
+        menuButton.isHidden = !browserSystemPagesEnabled()
 
         configureIconButton(closeButton, iconName: "icon_close_x", iconSize: 20, tintColor: BrowserPalette.icon, action: #selector(closeTapped))
         actionRow.addArrangedSubview(closeButton)
@@ -547,7 +548,8 @@ private final class LxAppBrowserViewController: UIViewController, UIGestureRecog
     private func applyActiveModeChrome() {
         let aside = LxAppBrowser.activeTabIsAside
         newTabButton.isHidden = aside
-        menuButton.isHidden = aside
+        // Downloads and Settings are the browser's system pages; a host without them has no menu.
+        menuButton.isHidden = aside || !browserSystemPagesEnabled()
         asideRefreshButton.isHidden = !aside
         if aside, addressField.isFirstResponder {
             addressField.resignFirstResponder()

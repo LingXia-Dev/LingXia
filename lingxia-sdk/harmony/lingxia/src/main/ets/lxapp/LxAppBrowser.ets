@@ -24,6 +24,7 @@ import {
 	  browserTabIsAside,
 	  browserTabNavigate,
 	  browserUrlIsHidden as nativeBrowserUrlIsHidden,
+	  browserSystemPagesEnabled,
 	  getBuiltinBrowserAppId,
 	  openBrowserSystemPage,
 	  getLxappSessionId,
@@ -542,6 +543,8 @@ export struct LxAppBrowser {
   @State private tabCount: number = 0;
 	  @State private showTabSwitcher: boolean = false;
 	  @State private showOverflowMenu: boolean = false;
+  // Downloads and Settings are the browser's system pages; a host without them has no menu.
+  @State private systemPages: boolean = false;
 	  @State private tabRows: Array<BrowserTabRow> = [];
   @State private keyboardOffsetVp: number = 0;
   @State private appearanceDark: boolean = false;
@@ -557,6 +560,7 @@ export struct LxAppBrowser {
   private keyboardWindow: window.Window | null = null;
 
   aboutToAppear() {
+    this.systemPages = Boolean(browserSystemPagesEnabled());
     this.listener = () => {
       const visible = LxAppBrowserManager.isShowing();
       this.isVisible = visible;
@@ -1362,7 +1366,7 @@ export struct LxAppBrowser {
           })
 
           // Overflow menu (downloads / settings) — self tabs only.
-          if (!this.isAsideActive) {
+          if (!this.isAsideActive && this.systemPages) {
             Stack({ alignContent: Alignment.Center }) {
               this.ToolbarMenuIcon()
             }

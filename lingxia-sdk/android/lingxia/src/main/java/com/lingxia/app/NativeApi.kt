@@ -298,6 +298,10 @@ internal object NativeApi {
     @JvmStatic
     external fun openBrowserTab(appId: String, sessionId: Long, url: String): String?
 
+    /** Whether the host bundles the browser's system pages; chrome hides their entries otherwise. */
+    @JvmStatic
+    external fun browserSystemPagesEnabled(): Boolean
+
     /**
      * Browser chrome only: open a browser system page (`settings`, `downloads`)
      * with a JSON object query, or empty for none.

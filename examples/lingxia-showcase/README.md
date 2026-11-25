@@ -9,10 +9,15 @@ Every page is a GPU View: a page's View is `index.tsx` beside its Logic in
 (the design system) and `lxapp/shared` (charts, types). WebView pages live in
 `../lingxia-showcase-web`.
 
+`browser/` demos a browser host's system pages (History, Bookmarks, Downloads,
+Settings): the `app.lingxia.browser` lxapp that `browser.webui` in `lingxia.yaml`
+bundles, served by `lingxia-browser-shell`'s routes. A host without it hides them.
+
 ## Run
 
 ```bash
 cd lxapp && npm install && cd ..
+cd browser && npm install && cd ..
 # From this directory; pick a platform
 lingxia dev --platform macos
 lingxia dev --platform windows

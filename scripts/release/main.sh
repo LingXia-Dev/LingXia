@@ -159,7 +159,6 @@ EOF
     printf 'NPM %-24s %s\n' "$name" "$version"
   done < <(
     find "$ROOT_DIR/packages" -mindepth 2 -maxdepth 2 -name package.json | sort
-    echo "$ROOT_DIR/crates/lingxia-browser-shell/webui/package.json"
   )
 
   cat <<EOF

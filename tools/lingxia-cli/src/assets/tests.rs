@@ -150,6 +150,35 @@ fn browser_bookmarks_survives_yaml_to_runtime_config() {
 }
 
 #[test]
+fn browser_system_pages_follow_the_declared_webui() {
+    let mut config = LingXiaConfig::new_android("demo", "com.example.demo", "home");
+    config.capabilities.as_mut().unwrap().browser = true;
+    let system_pages = |config: &LingXiaConfig| {
+        let json = build_app_json_from_config(config, None, None, &test_resolved_env()).unwrap();
+        lingxia_app_context::AppConfig::parse_and_validate(&json)
+            .unwrap()
+            .browser
+            .system_pages
+    };
+    let mut browser = crate::config::BrowserConfig {
+        platforms: Vec::new(),
+        bookmarks: true,
+        webui: None,
+    };
+    config.browser = Some(browser.clone());
+    assert!(!system_pages(&config));
+    browser.webui = Some(crate::config::BrowserWebUiConfig {
+        path: Some("./browser".to_string()),
+        package: None,
+        version: None,
+    });
+    config.browser = Some(browser);
+    assert!(system_pages(&config));
+    config.capabilities.as_mut().unwrap().browser = false;
+    assert!(!system_pages(&config));
+}
+
+#[test]
 fn generated_app_json_embeds_update_trusted_public_keys() {
     let mut config = LingXiaConfig::new_android("demo", "com.example.demo", "home");
     config.update = Some(UpdateSigningConfig {
@@ -393,6 +422,7 @@ fn showcase_generated_app_json_uses_the_static_browser_settings_page() {
             "route": "/settings"
         })
     );
+    assert_eq!(generated["browser"]["systemPages"], true);
 }
 
 #[test]

@@ -371,6 +371,12 @@ pub fn open_browser_tab(appid: String, session_id: i64, url: String) -> Option<S
     crate::browser::open_for_app(&appid, session_id as u64, &url, None).ok()
 }
 
+/// Browser chrome shows its system-page entries only when the host bundles them.
+#[napi]
+pub fn browser_system_pages_enabled() -> bool {
+    lingxia_app_context::browser_system_pages_enabled()
+}
+
 /// Native browser chrome only: the authority remains sealed in Rust.
 #[napi]
 pub fn open_browser_system_page(page: String, query_json: String) -> bool {

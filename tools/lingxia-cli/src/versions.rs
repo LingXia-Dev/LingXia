@@ -5,9 +5,8 @@
 //! - embedded `@lingxia/bridge` / `@lingxia/polyfills` (the JS the CLI ships)
 //! - Rong (a different product version)
 //!
-//! What is not: `@lingxia/react|html|types`, browser-shell-webui, or
-//! terminal-settings. Those resolve to the latest published patch on this
-//! line (`~M.m.0`) at `lingxia new` / first fetch. Scaffolded crate deps use
+//! What is not: `@lingxia/react|html|types` or terminal-settings. Those resolve to
+//! the latest published patch on this line (`~M.m.0`) at `lingxia new` / first fetch. Scaffolded crate deps use
 //! the same idea with the base patch as the floor (`~M.m.P`).
 
 /// LingXia component versions used in project templates

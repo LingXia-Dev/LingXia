@@ -131,9 +131,13 @@ pub fn register_runtime() {
 }
 
 /// Registers `app.lingxia.browser` as a host-bundled lxapp (GPU View + Rust
-/// Logic), so the browser can open it as a ControlSurface.
+/// Logic), so the browser can open it as a ControlSurface. A host without
+/// `browser.webui` has no system pages to register.
 #[doc(hidden)]
 pub fn register_bundled_assets() {
+    if !lingxia_app_context::browser_system_pages_enabled() {
+        return;
+    }
     if let Err(err) = read_browser_asset_text(BROWSER_WEBUI_MANIFEST_ASSET_PATH)
         .and_then(|manifest| parse_browser_webui_manifest(&manifest))
     {
