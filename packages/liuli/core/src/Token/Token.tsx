@@ -2,7 +2,7 @@ import { cx, type Child } from '@lingxia/view';
 import { liuliText } from '../i18n/text';
 import type { Hue } from '../hue';
 import type { IconRef } from '../Icon/Icon';
-import { Glyph } from '../internal/Glyph';
+import { Glyph, glyphGrowth, useTextGrowth } from '../internal/Glyph';
 import { tokenRecipe as r } from './Token.recipe';
 import { dataOf } from '../internal/data';
 
@@ -37,18 +37,26 @@ export type TokenProps = TokenRemove & {
   'data-testid'?: string;
 };
 
+/** Glyph sides and the remove target in points at the default text size, as the recipe's `size-*`. */
+const iconSides = { sm: 14, md: 16 } satisfies Record<TokenSize, number>;
+const removeSides = { sm: 12, md: 14 } satisfies Record<TokenSize, number>;
+const removeTargets = { sm: 24, md: 32 } satisfies Record<TokenSize, number>;
+
 /** One chosen thing as a pill: a recipient, a tag, a filter that can be taken away. */
 export function Token({ label, startIcon, hue, onClick, isSelected = false, size = 'md', isDisabled = false, onRemove, removeLabel, className, 'data-testid': testId, ...attributes }: TokenProps) {
+  // The remove target grows by what its glyph grows, as an icon-only button does.
+  const cross = useTextGrowth(removeSides[size], glyphGrowth);
+  const removeSide = cross && removeTargets[size] + cross.width - removeSides[size];
   const content = (
     <>
-      {startIcon !== undefined && <Glyph name={startIcon} className={cx(r.icon.size[size], hue !== undefined && !isDisabled && r.icon.hue[hue])} />}
+      {startIcon !== undefined && <Glyph name={startIcon} side={iconSides[size]} className={cx(r.icon.size[size], hue !== undefined && !isDisabled && r.icon.hue[hue])} />}
       {startIcon === undefined && hue !== undefined && <view aria-hidden className={cx(r.dot.base, isDisabled ? r.dot.disabled : r.dot.hue[hue])} />}
       <text className={cx(r.label.base, r.label.size[size])}>{label}</text>
     </>
   );
   const remove = onRemove !== undefined && (
-    <button aria-label={removeLabel ?? liuliText('@liuli.removeNamed', { name: label })} disabled={isDisabled} onClick={onRemove} data-testid={testId && `${testId}-remove`} className={cx(r.remove.base, r.remove.size[size])}>
-      <Glyph name="close" weight={2.5} className={r.removeIcon.size[size]} />
+    <button aria-label={removeLabel ?? liuliText('@liuli.removeNamed', { name: label })} disabled={isDisabled} onClick={onRemove} data-testid={testId && `${testId}-remove`} style={removeSide ? { width: removeSide, height: removeSide } : undefined} className={cx(r.remove.base, r.remove.size[size])}>
+      <Glyph name="close" weight={2.5} side={removeSides[size]} className={r.removeIcon.size[size]} />
     </button>
   );
   const classes = cx(r.root.base, r.root.size[size], onRemove === undefined && r.root.plain[size], !isDisabled && hue !== undefined && r.root.hue[hue], !isDisabled && isSelected && r.root.selected, isDisabled && r.root.disabled, className);

@@ -40,3 +40,12 @@ test('StateDisabled: faded by an opaque colour, remove button too', async () => 
   const remove = screen.queryAll(node => node.tag === 'button' && node.props.accessibilityLabel === 'Remove Locked')[0];
   assert.equal(remove.props.color, 'text-faint');
 });
+
+test('Recipients at large text: the icon and the remove cross grow with the label, up to half again, the target with them', async () => {
+  for (const [textScale, growth] of [[1, 1], [2, 1.5]]) {
+    const screen = await renderExample('Token/Token', 'Recipients', { env: { textScale } });
+    const remove = screen.getByTestId('person-ana-remove');
+    const cross = Math.round(14 * growth);
+    assert.deepEqual([remove.props.width ?? 32, remove.children[0].props.width ?? 14], [32 + cross - 14, cross], `at ${textScale}`);
+  }
+});

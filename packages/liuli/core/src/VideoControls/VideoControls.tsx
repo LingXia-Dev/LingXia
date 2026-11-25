@@ -1,6 +1,7 @@
 import { cx, Fragment, useLocal, useView, type Video, type VectorPath } from '@lingxia/view';
 import { liuliText } from '../i18n/text';
 import { dataOf } from '../internal/data';
+import { glyphGrowth, useTextGrowth } from '../internal/Glyph';
 import { videoControlsRecipe as r } from './VideoControls.recipe';
 
 export type VideoControlsVariant = 'overlay' | 'bar';
@@ -121,6 +122,10 @@ interface ControlsProps {
   data?: Record<string, unknown>;
 }
 
+// As the recipe's `glyph` and `button` sizes, in points.
+const glyphSides = { inline: 20, full: 22 };
+const buttonSides = { inline: 44, full: 48 };
+
 function Controls({ player, labels: say, variant, isFull = false, className, testId, data }: ControlsProps) {
   const id = (part: string) => testId && `${testId}-${part}`;
   const held = useLocal<{ value: number } | null>('held', null);
@@ -131,6 +136,10 @@ function Controls({ player, labels: say, variant, isFull = false, className, tes
   const shown = useLocal('shown', { since: player.currentTime, hidden: false });
   const menu = useLocal('menu', false);
   const env = useView().env;
+  // Each icon grows with the text, as an icon button's does; under the picture its target grows by as much,
+  // over it the 44 pt target already holds the grown glyph and the row must stay inside the picture.
+  const glyph = useTextGrowth(glyphSides[isFull ? 'full' : 'inline'], glyphGrowth);
+  const target = glyph && variant !== 'overlay' ? buttonSides[isFull ? 'full' : 'inline'] + glyph.width - glyphSides[isFull ? 'full' : 'inline'] : undefined;
   const { paused, ended, muted, duration, readyState, qualities, buffering, seeking, error, fullscreen } = player;
   const live = duration === null && readyState !== 'empty';
   const known = typeof duration === 'number' && duration > 0;
@@ -168,8 +177,8 @@ function Controls({ player, labels: say, variant, isFull = false, className, tes
   const size = isFull ? 'full' : 'inline';
   const tone = overlay ? 'overlay' : 'bar';
   const iconButton = (part: string, label: string, icon: Icon, onClick: () => unknown, extra: Record<string, unknown> = {}) => (
-    <button data-testid={id(part)} aria-label={label} onClick={onClick} {...extra} className={cx(r.button.base, r.button[size], r.button[tone])}>
-      <vector aria-hidden paths={icons[icon]} viewBox={box} className={r.glyph[size]} />
+    <button data-testid={id(part)} aria-label={label} onClick={onClick} {...extra} style={target ? { width: target, height: target } : undefined} className={cx(r.button.base, r.button[size], r.button[tone])}>
+      <vector aria-hidden paths={icons[icon]} viewBox={box} style={glyph} className={r.glyph[size]} />
     </button>
   );
   const play = iconButton('play', ended ? say.replay : still ? say.play : say.pause, ended ? 'replay' : still ? 'play' : 'pause', toggle, { 'aria-busy': loading || buffering });

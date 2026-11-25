@@ -1,7 +1,7 @@
 import { createContext, cx, useContext, useId, useLocal, type Child, type LinkTarget } from '@lingxia/view';
 import type { Press } from '../internal/press';
 import type { IconRef } from '../Icon/Icon';
-import { Glyph } from '../internal/Glyph';
+import { Glyph, glyphGrowth, useTextGrowth } from '../internal/Glyph';
 import { ActionEdge } from '../internal/actionEdge';
 import { spinner, spinnerBox } from '../internal/spinner';
 import { reportFailure, settleFlag } from '../internal/settle';
@@ -74,8 +74,10 @@ export interface ButtonGroupState {
 export const ButtonGroupContext = createContext<ButtonGroupState | null>(null);
 
 /** Runs an action when pressed. */
-/** The glyph's side beside a label, in points; an icon-only button keeps its glyph at this size at any text size. */
+/** The glyph's side in points at the default text size; it grows with the text, up to half again. */
 const glyphSides = { sm: 16, md: 18, lg: 20 } satisfies Record<ButtonSize, number>;
+/** An icon-only button's square in points, as `size-control-*`. */
+const squareSides = { sm: 32, md: 40, lg: 48 } satisfies Record<ButtonSize, number>;
 
 export function Button({
   label,
@@ -107,6 +109,13 @@ export function Button({
   const placedEdge = useContext(ActionEdge);
   const flush = ownEdge === undefined && variant === 'link' && placedEdge !== null ? placedEdge : undefined;
   const edge = ownEdge;
+  // An icon-only square grows by what its glyph grows, keeping its padding; so does a hanging edge.
+  const glyph = useTextGrowth(glyphSides[size], glyphGrowth);
+  const square = isIconOnly && glyph ? squareSides[size] + glyph.width - glyphSides[size] : undefined;
+  const squareStyle = square === undefined ? undefined : {
+    width: square, height: square,
+    ...(edge && { [edge === 'start' ? 'marginInlineStart' : 'marginInlineEnd']: -((square - glyph!.width) / 2 + glyph!.width * 5 / 24) }),
+  };
   const isDisabled = ownDisabled || group?.isDisabled === true;
   const reasonId = `${useId()}-reason`;
   const hasReason = isDisabled && disabledMessage !== undefined;
@@ -135,7 +144,7 @@ export function Button({
       {busy ? (
         <vector aria-hidden paths={spinner} viewBox={spinnerBox} className={cx(r.spinner.base, r.spinner.size[size])} />
       ) : (
-        startIcon !== undefined && <Glyph name={startIcon} side={isIconOnly ? undefined : glyphSides[size]} className={r.glyph.size[size]} />
+        startIcon !== undefined && <Glyph name={startIcon} side={glyphSides[size]} className={r.glyph.size[size]} />
       )}
       {/* An icon-only button keeps its label as the name; nothing else is drawn beside the icon. */}
       {!isIconOnly && <text className={cx(r.label.base, r.label.weight[variant], r.label.size[size])}>{label}</text>}
@@ -147,7 +156,7 @@ export function Button({
   if (to !== undefined) {
     if (onClick !== undefined || clickAction !== undefined || trigger) throw Error(`Button "${label}": give to or an action, not both`);
     return (
-      <link to={to} data-testid={testId} {...dataOf(attributes)} aria-label={label} aria-describedby={hasReason ? reasonId : undefined} disabled={isDisabled} className={classes}>
+      <link to={to} data-testid={testId} {...dataOf(attributes)} aria-label={label} aria-describedby={hasReason ? reasonId : undefined} disabled={isDisabled} style={squareStyle} className={classes}>
         {content}
       </link>
     );
@@ -162,6 +171,7 @@ export function Button({
       popoverTarget={trigger?.popoverTarget}
       interestFor={trigger?.interestFor}
       onClick={press}
+      style={squareStyle}
       className={classes}
     >
       {content}
