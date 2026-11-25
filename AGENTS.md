@@ -49,7 +49,7 @@ is the bare-renderer smoke fixture every platform's smoke harness loads. Read `d
 The View contract lives in `contracts/view/`; after editing `schema.json` or `api.d.ts`, run
 `node contracts/view/generate.mjs` (CI runs it with `--check`).
 
-- Rust gate: `cargo check --workspace --all-targets` (CI runs clippy on the same scope). The workspace default feature set skips the Windows browser shell — cover it with `cargo clippy -p lingxia-windows-sdk --features browser-shell`.
+- Rust gate: `cargo check --workspace --all-targets`. Run clippy without `--all-targets` (`cargo clippy --workspace`, or `-p <crate>`). The workspace default feature set skips the Windows browser shell — cover it with `cargo clippy -p lingxia-windows-sdk --features browser-shell`.
 - JS deps live in the `packages/` npm workspace (repo root is not a workspace). `lingxia-cli`'s `build.rs` embeds JS from `packages/lingxia-bridge` and `packages/lingxia-polyfills`, so `npm install` there before the first cargo build; each example project also needs its own `npm install`.
 - CLIs: `cargo build -p lingxia-cli -p lingxia-devtools-cli` → `target/debug/lingxia(.exe)` and `lxdev(.exe)`; neither is on PATH. For day-to-day use, copy both into `~/.local/bin` (ensure it's on PATH) so they survive `target/` churn and work from any directory. Re-copy after changing CLI code — a stale copy silently mismatches the repo.
 - Run the showcase on desktop: from `examples/lingxia-showcase`, `lingxia dev -p windows|macos --release`, then drive it with `lxdev` (`lxdev browser …`, `lxdev lxapp eval …`, `lxdev logs --grep X`). A plain `cargo build` of the host produces an app without the dev websocket — always launch via `lingxia dev`.
