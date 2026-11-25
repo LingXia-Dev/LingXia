@@ -15,7 +15,7 @@ never imports them; release builds contain none.
 |---|---|
 | `mocks/config.json` | the project default |
 | `lingxia dev --mock all\|none` | this session, from its first request; also CI |
-| `lxdev mock all\|none [TARGET…]` | live, temporary; `lxdev mock reset` drops it |
+| `lxdev mock all\|none [TARGET…]` | live, temporary; `lxdev mock reset` returns to the session's start |
 
 With none of them, everything is real. Tests see the first two (live changes
 stand aside during a run) and add scenario states with
@@ -99,10 +99,10 @@ lxdev mock all orders.submit              # a Worker Function (the companion swi
 lxdev mock use checkout:unknown [--watch] # a scenario state on top
 lxdev mock clear                          # drop the scenario (the selection stays)
 lxdev mock list                           # scenarios and their variants
-lxdev mock reset                          # project defaults, no scenario, fresh state
+lxdev mock reset                          # the selection the session started with, no scenario, fresh state
 ```
 
-Every change applies to later calls: pages already loaded keep their data,
+A partial reset fails and reports the unfinished phases. Every change applies to later calls: pages already loaded keep their data,
 and `lxdev lxapp restart` reloads them. `lingxia dev` and `lxdev mock` print
 the effective selection and its source:
 
@@ -122,21 +122,13 @@ GET https://api.example.com/qoe/summary → 200  answered by: real · live targe
 
 ## In tests
 
-```ts
-import checkout from '../scenarios/checkout.json';
-
-const scenario = await t.scenario.use(checkout, { variant: 'unknown' });
-// { name, variant, rules, calls(filter?), waitForCall(target), remove() }
-```
-
 - A test answers from the session's selection (`mocks/config.json`, over it
   `lingxia dev --mock`). To run a whole suite against mocks:
   `lingxia dev --background --mock all`, then `lxdev test`.
-- Each test starts with fresh handler state and no scenario; a second `use`
-  replaces the first; the test's end removes it.
+- Each test starts with fresh handler state. A test adds a scenario with
+  `t.scenario.use`: [Scenarios in tests](./testing.md#scenarios-in-tests).
 - With `lxdev test --openapi`, a handler's answer is checked like a routed
   one: off the contract, it fails the test with `E_OPENAPI_CONTRACT`.
-- More: [Scenarios in tests](./testing.md#scenarios-in-tests).
 
 ## Scenarios
 
