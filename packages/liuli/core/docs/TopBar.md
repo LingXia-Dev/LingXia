@@ -32,7 +32,7 @@ export function Standard() {
   return (
     <Said>
       {say => (
-        <view className="h-[300px] overflow-hidden rounded-container border border-text/12 bg-canvas">
+        <view className="overflow-hidden rounded-container border border-text/12 bg-canvas">
           <TopBar
             startContent={<IconButton icon="chevron-start" label="Back" variant="ghost" onClick={() => say('Went back')} data-testid="orders-back" />}
             heading="Orders"
@@ -81,7 +81,7 @@ const mail = [
 export function WithSearch() {
   const query = useLocal('query', '');
   return (
-    <view className="h-[300px] overflow-hidden rounded-container border border-text/12 bg-canvas">
+    <view className="overflow-hidden rounded-container border border-text/12 bg-canvas">
       <TopBar
         heading="Mail"
         centerContent={<SearchField label="Search mail" isLabelHidden placeholder="Search mail" bind={query} data-testid="mail-search" />}

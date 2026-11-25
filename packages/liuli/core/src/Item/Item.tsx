@@ -9,6 +9,7 @@ import { itemRecipe as r } from './Item.recipe';
 import { dataOf } from '../internal/data';
 import { IconButton } from '../IconButton/IconButton';
 import { holdsControl } from '../internal/trigger';
+import { useLargeText } from '../internal/largeText';
 import { warnOnce } from '../internal/warn';
 import type { Press } from '../internal/press';
 
@@ -143,6 +144,10 @@ export function Item(props: ItemProps) {
   const textBox = useBox('text');
   const tall = line.value !== null && textBox.value !== null && textBox.value.height > line.value.height * 2 + 1;
   const strut = cx(r.label.base, r.label.variant[variant]);
+  // At large text a trailing detail squeezes the name and description: it goes under them; a control stays at the end.
+  const isLarge = useLargeText();
+  const isEndUnder = isLarge && endContent !== undefined && !holdsControl(endContent);
+  const end = endContent !== undefined && <view id={pressable ? valueId : undefined} aria-hidden={pressable || undefined} className={isEndUnder ? r.end.under : r.end.base}>{endContent}</view>;
   const content = (
     <>
       {startIcon !== undefined && (
@@ -165,8 +170,9 @@ export function Item(props: ItemProps) {
         {help !== undefined && (typeof help === 'string'
           ? <text id={pressable ? descriptionId : undefined} className={r.description.base} style={props.descriptionLines !== undefined ? { lineClamp: props.descriptionLines } : undefined}>{help}</text>
           : <view id={pressable ? descriptionId : undefined} className={r.description.node}>{help}</view>)}
+        {isEndUnder && end}
       </view>
-      {endContent !== undefined && <view id={pressable ? valueId : undefined} aria-hidden={pressable || undefined} className={r.end.base}>{endContent}</view>}
+      {!isEndUnder && end}
       {props.hasChevron && <Glyph name="chevron-end" className={cx(r.chevron.base, isSelected && r.chevron.selected)} />}
       {/* Outermost: the chevron belongs to the row's press, the action is a control of its own at the edge. */}
       {endAction !== undefined && (

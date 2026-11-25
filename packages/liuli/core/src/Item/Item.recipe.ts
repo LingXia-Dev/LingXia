@@ -93,6 +93,7 @@ export const itemRecipe = {
   },
   end: {
     base: 'shrink-0 flex-row items-center gap-2 text-muted',
+    under: 'flex-row flex-wrap items-center gap-2 text-muted',
   },
   endAction: {
     base: 'shrink-0',

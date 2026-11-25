@@ -125,3 +125,14 @@ test('Overlay ring: a host pause, an error or a second tap leaves no ring behind
   assert.equal(play(screen, 'overlay-controls').props.accessibilityLabel, 'Play');
   assert.deepEqual(screen.ops.slice(-2), ['play', 'pause']);
 });
+
+test('Bar at large text: the scrubber on its own row, the controls under it, every icon and target grown', async () => {
+  const screen = await renderExample('VideoControls/VideoControls', 'Bar', { env: { textScale: 2 } });
+  const scrub = screen.getByTestId('bar-controls-scrub');
+  const settings = screen.getByTestId('bar-controls-settings');
+  const rowOf = node => screen.queryAll(row => (row.children ?? []).includes(node))[0];
+  assert.notEqual(rowOf(scrub), rowOf(settings), 'the scrubber is not in the controls row');
+  assert.equal(rowOf(screen.getByTestId('bar-controls-time')), rowOf(settings));
+  // 20 pt glyphs grow to 30, their 44 pt targets by as much.
+  assert.deepEqual([settings.props.width, settings.props.height, settings.children[0].props.width], [54, 54, 30]);
+});

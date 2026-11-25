@@ -2,6 +2,7 @@ import { cx, Fragment, useLocal, useView, type Video, type VectorPath } from '@l
 import { liuliText } from '../i18n/text';
 import { dataOf } from '../internal/data';
 import { glyphGrowth, useTextGrowth } from '../internal/Glyph';
+import { useLargeText } from '../internal/largeText';
 import { videoControlsRecipe as r } from './VideoControls.recipe';
 
 export type VideoControlsVariant = 'overlay' | 'bar';
@@ -140,6 +141,7 @@ function Controls({ player, labels: say, variant, isFull = false, className, tes
   // over it the 44 pt target already holds the grown glyph and the row must stay inside the picture.
   const glyph = useTextGrowth(glyphSides[isFull ? 'full' : 'inline'], glyphGrowth);
   const target = glyph && variant !== 'overlay' ? buttonSides[isFull ? 'full' : 'inline'] + glyph.width - glyphSides[isFull ? 'full' : 'inline'] : undefined;
+  const isLarge = useLargeText();
   const { paused, ended, muted, duration, readyState, qualities, buffering, seeking, error, fullscreen } = player;
   const live = duration === null && readyState !== 'empty';
   const known = typeof duration === 'number' && duration > 0;
@@ -226,14 +228,29 @@ function Controls({ player, labels: say, variant, isFull = false, className, tes
           </view>
         )}
         {menu.value && <view data-testid={id('menu')} role="group" aria-label={say.settings} className={r.barRow.menu}>{groups}</view>}
-        <view className={r.barRow.base}>
-          {play}
-          {live ? <text data-testid={id('live')} className={cx(r.live.base, r.live.bar)}>{say.live}</text> : <slider {...seek} className={r.barRow.slider} />}
-          {!live && <text data-testid={id('time')} className={r.time.bar}>{valueText}</text>}
-          {settings}
-          {mute}
-          {screen}
-        </view>
+        {isLarge ? (
+          // At large text the scrubber takes a row of its own, and the controls go under it.
+          <>
+            {!live && <view className={r.barRow.scrub}><slider {...seek} className={r.barRow.slider} /></view>}
+            <view className={r.barRow.base}>
+              {play}
+              {live ? <text data-testid={id('live')} className={cx(r.live.base, r.live.bar)}>{say.live}</text> : <text data-testid={id('time')} className={cx(r.time.bar, r.time.shrinks)}>{valueText}</text>}
+              <view className={r.barRow.spacer} />
+              {settings}
+              {mute}
+              {screen}
+            </view>
+          </>
+        ) : (
+          <view className={r.barRow.base}>
+            {play}
+            {live ? <text data-testid={id('live')} className={cx(r.live.base, r.live.bar)}>{say.live}</text> : <slider {...seek} className={r.barRow.slider} />}
+            {!live && <text data-testid={id('time')} className={r.time.bar}>{valueText}</text>}
+            {settings}
+            {mute}
+            {screen}
+          </view>
+        )}
       </view>
     );
   }

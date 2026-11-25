@@ -339,3 +339,15 @@ test('WithFacts: the avatar centres on a row of two lines and moves to the first
     assert.equal(row.children.at(-1).props.alignSelf, undefined, 'the chevron follows the row, centred');
   }
 });
+
+test('At large text a trailing detail goes under the name; a control stays at the end', async () => {
+  for (const [textScale, isUnder] of [[1.4, false], [2, true]]) {
+    const values = await renderExample('Item/Item', 'Values', { env: { textScale } });
+    const row = values.getByTestId('version');
+    const end = row.children.at(-1);
+    assert.equal(textOf(end) === '2.4.1', !isUnder, `the row's last part at ${textScale}`);
+    assert.ok(textOf(row).includes('2.4.1'));
+    const control = await renderExample('Item/Item', 'WithControl', { env: { textScale } });
+    assert.equal(textOf(control.getByTestId('account').children.at(-1)), textOf(control.getByTestId('account-action')), `the control at ${textScale}`);
+  }
+});

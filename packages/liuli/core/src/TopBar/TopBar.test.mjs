@@ -17,7 +17,18 @@ test('The start and the end share the room left over, so the centre sits at the 
   const screen = await renderExample('TopBar/TopBar', 'WithSearch');
   const [start, center, end] = screen.getByTestId('mail-topbar').children;
   assert.deepEqual([start.props.grow, start.props.flexBasis, end.props.grow, end.props.flexBasis], [1, 0, 1, 0]);
-  assert.equal(center.props.shrink, 0);
+  assert.equal(center.props.minWidth, 0, 'alone on a line it gives way, never runs past the bar');
+});
+
+test('WithSearch at large text: the search field takes its own row under the title and the actions', async () => {
+  for (const [textScale, isStacked] of [[1.4, false], [2, true]]) {
+    const screen = await renderExample('TopBar/TopBar', 'WithSearch', { env: { textScale } });
+    const [, second, third] = screen.getByTestId('mail-topbar').children;
+    const center = isStacked ? third : second;
+    const holds = (node, target) => node === target || (node.children ?? []).some(child => holds(child, target));
+    assert.ok(holds(center, screen.getByTestId('mail-search')), `the search field in the centre at ${textScale}`);
+    assert.equal(center.props.flexBasis, isStacked ? '100%' : undefined, `a full row at ${textScale}`);
+  }
 });
 
 // The page pads its content by `env.insets`; a bar that added them again would double the gap.
