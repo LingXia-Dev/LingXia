@@ -278,8 +278,8 @@ pub fn focus_by_key(token: i64) {
 }
 
 /// The localized phrases the accessibility provider speaks; ArkTS reads them from resources.
-pub fn set_accessibility_strings(suggestions: String) {
-    accessibility::set_suggestions_hint(suggestions);
+pub fn set_accessibility_strings(suggestions: String, level: String) {
+    accessibility::set_strings(suggestions, level);
 }
 
 /// A drag an embedded `<webview>` yielded at its page's edge, which the page takes from where

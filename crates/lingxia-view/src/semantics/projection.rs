@@ -814,7 +814,12 @@ impl Projection<'_> {
             position,
             actions,
             heading_level: node.heading_level.or((role == Role::Heading).then_some(2)),
-            level: node.aria_level.or((role == Role::TreeItem).then_some(1)),
+            level: if role == Role::TreeItem {
+                self.nested_tree(index)
+                    .then(|| node.aria_level.unwrap_or(1))
+            } else {
+                node.aria_level
+            },
             live_region: node.live_region.clone(),
             text_selection: node.selection_range,
             pressed: node.states[0],
@@ -843,6 +848,23 @@ impl Projection<'_> {
             autocomplete: node.autocomplete.clone(),
             invalid: node.states[4],
             required: node.states[5],
+        })
+    }
+
+    /// Whether tree item `index` sits in a tree with more than one level; a flat one speaks none.
+    fn nested_tree(&self, index: usize) -> bool {
+        use crate::interaction::composite::{Composite, Composites};
+        let composites = Composites::new(self.frame);
+        let Some((tree, Composite::Tree)) = composites.container_of(index) else {
+            return self.frame.nodes[index]
+                .aria_level
+                .is_some_and(|level| level > 1);
+        };
+        (0..self.frame.nodes.len()).any(|item| {
+            composites.container_of(item) == Some((tree, Composite::Tree))
+                && self.frame.nodes[item]
+                    .aria_level
+                    .is_some_and(|level| level > 1)
         })
     }
 

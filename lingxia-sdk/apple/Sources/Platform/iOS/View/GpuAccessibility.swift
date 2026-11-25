@@ -79,7 +79,10 @@ final class GpuAccessibilityElement: UIAccessibilityElement {
     @MainActor func apply(_ node: GpuFrameSemanticNode) {
         accessibilityIdentifier = node.testId.isEmpty ? nil : node.testId
         accessibilityLabel = node.name.isEmpty ? (node.textField?.hint ?? node.text) : node.name
-        accessibilityValue = Self.value(node)
+        // UIKit has no item depth: a tree item speaks its level with its value.
+        let level = node.level.map { L10n.string("lx_gpu_a11y_level", String($0)) }
+        let value = [Self.value(node), level].compactMap { $0 }
+        accessibilityValue = value.isEmpty ? nil : value.joined(separator: ", ")
         accessibilityTraits = Self.traits(node)
         // UIKit has no `aria-controls` relation: a field driving a suggestion list says so.
         let suggests = ["list", "both"].contains(node.autocomplete ?? "") && !(node.controls ?? []).isEmpty

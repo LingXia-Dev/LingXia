@@ -167,6 +167,8 @@ gpu:
   a11y_busy: "Busy"
   # Read after a GPU page field whose suggestions list follows (aria-controls + aria-autocomplete).
   a11y_suggestions: "Suggestions available"
+  # A GPU page tree item's depth, where the platform reader has no level of its own.
+  a11y_level: "Level {level}"
 
 # The floating menu over a GPU page's text selection and editors, in `MenuAction` order
 # (Harmony shell and the Windows SDK; Android and Apple label theirs from system strings).

@@ -108,6 +108,12 @@ final class GpuAccessibility {
         if (!name.isEmpty() && !name.equals(text(node.text()))) info.setContentDescription(name);
         // A select's chosen label (or placeholder) is its state, spoken after the name.
         String value = text(node.value());
+        // Android has no item depth: a tree item speaks its level with its state.
+        Long level = node.level();
+        if (level != null) {
+            String spoken = host.getContext().getString(com.lingxia.lxapp.R.string.lx_gpu_a11y_level, String.valueOf(level));
+            value = value.isEmpty() ? spoken : value + ", " + spoken;
+        }
         if (!value.isEmpty()) {
             if (Build.VERSION.SDK_INT >= 30) info.setStateDescription(value);
             else if (!name.isEmpty()) info.setContentDescription(name + ", " + value);

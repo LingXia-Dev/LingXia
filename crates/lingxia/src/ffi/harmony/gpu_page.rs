@@ -694,8 +694,8 @@ pub fn gpu_page_back(token: i64) -> bool {
 
 /// The localized phrases GPU page accessibility speaks, from ArkTS resources.
 #[napi]
-pub fn gpu_page_accessibility_strings(suggestions: String) {
-    lingxia_view_harmony::set_accessibility_strings(suggestions);
+pub fn gpu_page_accessibility_strings(suggestions: String, level: String) {
+    lingxia_view_harmony::set_accessibility_strings(suggestions, level);
 }
 
 /// A drag ArkWeb yielded at its page's edge (`phase` 0 down, 1 move, 2 up, 3 cancel), vp.

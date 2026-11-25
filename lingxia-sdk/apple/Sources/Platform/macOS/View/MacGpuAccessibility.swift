@@ -98,6 +98,8 @@ final class MacGpuAccessibilityElement: NSAccessibilityElement {
         setAccessibilityRequired(node.required == true)
         setAccessibilityEnabled(node.enabled)
         setAccessibilitySelected(node.selected == true || node.checked == true)
+        // An outline row's depth counts from 0.
+        setAccessibilityDisclosureLevel(max(Int(node.level ?? 1) - 1, 0))
         // A swipe row's `aria-actions`: the same actions VoiceOver's rotor and automation perform.
         let token = self.token, id = self.id
         setAccessibilityCustomActions(node.actions.compactMap { action in

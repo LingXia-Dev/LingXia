@@ -641,7 +641,9 @@ pub fn tree(projection: &Projection) -> Value {
                 out.insert(key.into(), json!(state));
             }
         }
-        if let Some(level) = node.heading_level.or(node.level) {
+        // Readers hear no level in a flat tree; queries still match its items at level 1.
+        let flat = (node.role == Role::TreeItem).then_some(1);
+        if let Some(level) = node.heading_level.or(node.level).or(flat) {
             out.insert("level".into(), json!(level));
         }
         if let Some(description) = &node.description {

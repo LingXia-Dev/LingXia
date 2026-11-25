@@ -15,10 +15,12 @@ const HOST_PARENT: i32 = -2_100_000;
 
 /// What a field driving a suggestion list adds to its description, in the system language;
 /// ArkTS sets it from its resources.
-static SUGGESTIONS: std::sync::Mutex<String> = std::sync::Mutex::new(String::new());
+/// Spoken phrases in the current language: the suggestions hint and the level template.
+static STRINGS: std::sync::Mutex<(String, String)> =
+    std::sync::Mutex::new((String::new(), String::new()));
 
-pub(crate) fn set_suggestions_hint(text: String) {
-    *SUGGESTIONS.lock().unwrap_or_else(|p| p.into_inner()) = text;
+pub(crate) fn set_strings(suggestions: String, level: String) {
+    *STRINGS.lock().unwrap_or_else(|p| p.into_inner()) = (suggestions, level);
 }
 
 /// ArkUI component types; the screen reader speaks the role from these.
@@ -151,18 +153,20 @@ unsafe fn populate(
         // relation: a field driving a suggestion list says so there too.
         let suggests = matches!(node.autocomplete.as_deref(), Some("list" | "both"))
             && !node.controls.is_empty();
+        let (suggestions, level) = STRINGS.lock().unwrap_or_else(|p| p.into_inner()).clone();
+        // Nor has it an item depth: a tree item speaks its level first.
+        let level = node
+            .level
+            .filter(|_| !level.is_empty())
+            .map(|depth| level.replace("%1$s", &depth.to_string()));
         let hint = suggests
-            .then(|| {
-                SUGGESTIONS
-                    .lock()
-                    .unwrap_or_else(|p| p.into_inner())
-                    .clone()
-            })
+            .then_some(suggestions)
             .filter(|hint| !hint.is_empty());
-        let description = match (&node.description, hint) {
-            (Some(description), Some(hint)) => Some(format!("{description}, {hint}")),
-            (description, hint) => description.clone().or(hint),
-        };
+        let parts: Vec<String> = [level, node.description.clone(), hint]
+            .into_iter()
+            .flatten()
+            .collect();
+        let description = (!parts.is_empty()).then(|| parts.join(", "));
         if let Some(description) = &description {
             let description = c(description);
             sys::OH_ArkUI_AccessibilityElementInfoSetAccessibilityDescription(

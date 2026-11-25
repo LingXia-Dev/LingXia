@@ -138,6 +138,7 @@ export const I18N_KEYS = [
   "file_chooser_select_file",
   "file_chooser_select_folder",
   "gpu_a11y_busy",
+  "gpu_a11y_level",
   "gpu_a11y_link",
   "gpu_a11y_suggestions",
   "gpu_back",

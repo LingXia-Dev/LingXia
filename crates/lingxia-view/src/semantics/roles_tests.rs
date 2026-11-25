@@ -440,3 +440,33 @@ fn a_block_link_in_a_menu_is_a_menu_item_and_elsewhere_a_link() {
     assert_eq!(semantic(&frame, "nav").unwrap().role, Role::MenuItem);
     assert_eq!(semantic(&frame, "plain").unwrap().role, Role::Link);
 }
+
+#[test]
+fn a_flat_tree_speaks_no_level_and_still_queries_at_level_one() {
+    let frame = frame(
+        "h('page',{},h('view',{role:'tree','aria-label':'Files'},h('button',{role:'treeitem',onClick(){},'data-testid':'a'},'a.rs'),h('button',{role:'treeitem','aria-level':1,onClick(){},'data-testid':'b'},'b.rs')))",
+    );
+    assert_eq!(semantic(&frame, "a").unwrap().level, None);
+    assert_eq!(semantic(&frame, "b").unwrap().level, None);
+    let mut ids = SemanticIds::default();
+    ids.update(frame.nodes.iter().map(|n| n.identity.as_ref()));
+    let tree = crate::semantics::query::tree(&Projection {
+        frame: &frame,
+        ids: &ids,
+        keyboard_focus: None,
+        inert: false,
+        drags: None,
+        obscured: [0.0; 4],
+        touch_target: 0.0,
+    });
+    fn find<'a>(nodes: &'a serde_json::Value, id: &str) -> Option<&'a serde_json::Value> {
+        nodes.as_array()?.iter().find_map(|node| {
+            (node["testId"] == id)
+                .then_some(node)
+                .or_else(|| find(&node["children"], id))
+        })
+    }
+    for id in ["a", "b"] {
+        assert_eq!(find(&tree["nodes"], id).unwrap()["level"], 1, "{tree}");
+    }
+}

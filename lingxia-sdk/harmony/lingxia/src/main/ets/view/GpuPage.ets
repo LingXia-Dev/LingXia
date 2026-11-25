@@ -442,7 +442,8 @@ export struct GpuPage {
 
   /** Phrases the native accessibility provider speaks, in the current language. */
   private accessibilityStrings(): void {
-    gpuPageAccessibilityStrings(this.text($r('app.string.lx_gpu_a11y_suggestions')));
+    gpuPageAccessibilityStrings(this.text($r('app.string.lx_gpu_a11y_suggestions')),
+      this.text($r('app.string.lx_gpu_a11y_level')));
   }
 
   private appText(name: string): string {

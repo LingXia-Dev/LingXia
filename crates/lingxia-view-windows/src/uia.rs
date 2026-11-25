@@ -356,6 +356,9 @@ impl IRawElementProviderSimple_Impl for Element_Impl {
             UIA_HeadingLevelPropertyId => node.heading_level.map_or_else(VARIANT::default, |l| {
                 VARIANT::from(HeadingLevel1.0 + i32::from(l.clamp(1, 9)) - 1)
             }),
+            UIA_LevelPropertyId => node
+                .level
+                .map_or_else(VARIANT::default, |level| VARIANT::from(i32::from(level))),
             UIA_LiveSettingPropertyId => match node.live_region.as_deref() {
                 Some("assertive") => VARIANT::from(Assertive.0),
                 Some(_) => VARIANT::from(Polite.0),
