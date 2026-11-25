@@ -1,6 +1,6 @@
 import { useLocal } from '@lingxia/view';
 import { Badge } from '../Badge/Badge';
-import { Table, type TableColumn, type TableRow, type TableProps } from './Table';
+import { Table, type TableColumn, type TableRow, type TableProps, type TableSort } from './Table';
 
 const invoices = [
   { id: 'INV-1042', customer: 'Northwind', due: '3 Nov', amount: 1280, status: 'Paid' },
@@ -66,6 +66,37 @@ const cities = [
   ['Lagos', 'Nigeria', 15.4], ['Cairo', 'Egypt', 10.0], ['Kinshasa', 'DR Congo', 9.5], ['Johannesburg', 'South Africa', 5.6], ['Nairobi', 'Kenya', 4.4],
   ['Addis Ababa', 'Ethiopia', 3.9], ['Casablanca', 'Morocco', 3.7], ['Accra', 'Ghana', 2.6], ['Dakar', 'Senegal', 1.3], ['Kigali', 'Rwanda', 1.2],
 ].map(([city, country, people]) => ({ city, country, people }));
+
+const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+const day = (value: unknown) => { const [, m, d] = String(value).split('-').map(Number); return `${d} ${months[m - 1]}`; };
+const bills = [
+  { id: 'INV-1042', customer: 'Northwind', dueOn: '2026-11-03', amount: 1280 },
+  { id: 'INV-1043', customer: 'Blue Harbor', dueOn: '2026-11-09', amount: 420.5 },
+  { id: 'INV-1044', customer: 'Kestrel & Co', dueOn: '2026-10-28', amount: 96 },
+  { id: 'INV-1045', customer: 'Lumen Studio', dueOn: '2026-11-20', amount: 3150 },
+  { id: 'INV-1046', customer: 'Atlas Freight', dueOn: '2026-11-14', amount: null },
+];
+const sortableColumns: TableColumn[] = [
+  { field: 'customer', header: 'Customer', width: '2fr', isSortable: true },
+  { field: 'dueOn', header: 'Due', format: day, isSortable: true },
+  { field: 'amount', header: 'Amount', align: 'end', format: value => (value === null ? '—' : money(value)), isSortable: true },
+];
+
+/** Headings that order the rows: a press sorts by that column, a second press the other way. A row without an amount stays last. */
+export function Sortable() {
+  return <Table label="Invoices" columns={sortableColumns} rows={bills} keyField="id" data-testid="sortable" />;
+}
+
+/** The order held by the page, here starting with the latest due date, so it can be kept or sent to a server. */
+export function SortControlled() {
+  const sort = useLocal<TableSort>('sort', { field: 'dueOn', direction: 'descending' });
+  return <Table label="Invoices" columns={sortableColumns} rows={bills} keyField="id" sort={sort.value} onSortChange={sort.set} data-testid="sort-controlled" />;
+}
+
+/** On a phone the records stack, and the order is set from one menu above them. */
+export function SortStacked() {
+  return <Table label="Invoices" columns={sortableColumns} rows={bills} keyField="id" layout="stacked" data-testid="sort-stacked" />;
+}
 
 /** Compact rows that scroll under a heading that stays. */
 export function Scrolling() {

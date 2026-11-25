@@ -5,6 +5,9 @@ export const tableParts = {
   root: 'view',
   header: 'view',
   heading: 'text',
+  sortHeading: 'button',
+  sortMark: 'view',
+  sortBar: 'view',
   body: 'view',
   rowgroup: 'view',
   row: 'view',
@@ -43,6 +46,22 @@ export const tableRecipe = {
   heading: {
     base: 'text-footnote font-medium text-muted',
     align: { start: 'text-start', end: 'text-end' } satisfies Record<TableAlign, string>,
+    /** The column the rows are ordered by reads in the text colour. */
+    sorted: 'text-text',
+  },
+  /** A heading that orders the rows: its words and a mark, the whole heading height pressable, padded into the row's inset. */
+  sortHeading: {
+    base: 'flex-row items-center gap-1 self-stretch -mx-1 px-1 rounded-control hover:bg-text/4 active:bg-text/7 focus-visible:inset-ring-2 focus-visible:inset-ring-focus',
+    align: { start: 'justify-start', end: 'justify-end' } satisfies Record<TableAlign, string>,
+  },
+  sortMark: {
+    base: 'size-3.5 shrink-0',
+    on: 'text-text',
+    off: 'text-faint',
+  },
+  /** Stacked: the sort menu's trigger and the order's button at the top of the records, over the hairline the heading would draw. */
+  sortBar: {
+    base: 'flex-row items-center gap-1 px-4 py-1 border-b border-line self-stretch',
   },
   body: {
     base: 'self-stretch divide-y divide-line',
@@ -77,10 +96,12 @@ export const tableRecipe = {
     density: { comfortable: 'min-h-[44px] py-2.5 justify-center', compact: 'min-h-[36px] py-1.5 justify-center' } satisfies Record<TableDensity, string>,
   },
   lead: {
-    base: 'flex-row items-baseline gap-x-3 self-stretch',
+    // items-start, not items-baseline: View bug, a wrapped <text> in a baseline row is painted on one line.
+    base: 'flex-row items-start gap-x-3 self-stretch',
   },
   leadCell: {
-    base: 'grow shrink basis-0 min-w-0 items-stretch',
+    // No basis-0: View bug, a zero-basis grow child keeps no width after its keyed row moves.
+    base: 'grow shrink min-w-0 items-stretch',
   },
   figure: {
     base: 'shrink-0',

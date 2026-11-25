@@ -71,13 +71,17 @@ export const doc: ComponentDoc = {
   examples: [
     { name: 'Invoices', title: 'Records with a number column' },
     { name: 'Pressable', title: 'Rows that open a record' },
+    { name: 'Sortable', title: 'Headings that sort the rows' },
+    { name: 'SortControlled', title: 'The order held by the page' },
+    { name: 'SortStacked', title: 'Sorting stacked records from a menu' },
     { name: 'Scrolling', title: 'Compact rows under a heading that stays' },
     { name: 'Members', title: 'Four columns, stacked where they do not fit' },
     { name: 'MembersColumns', title: 'The same table held in columns' },
   ],
   gaps: [
     { missing: 'Columns as wide as their content.', needs: 'text measurement before layout', today: 'A width in points or a share of the table; rows are separate grids, so a track sized by content would not line up.' },
-    { missing: 'Sorting by a column, and choosing several rows.', needs: 'nothing from the View', today: 'The app sorts `rows`; one row can be selected.' },
+    { missing: 'Choosing several rows.', needs: 'nothing from the View', today: 'One row can be selected.' },
+    { missing: 'A sorted column read as sorted by its header role.', needs: 'a column header role with `aria-sort`', today: 'A sortable heading is a button whose name carries the order: "Amount, sorted ascending".' },
     { missing: 'Sideways scrolling with the first column held.', needs: 'a sticky box on the horizontal axis', today: 'Columns share the table\'s width, and the table stacks its records where they would be too narrow.' },
     { missing: 'Rows drawn only while in view.', needs: 'grid rows inside a `<List>`', today: 'Every row is laid out; page a long set.' },
     { missing: 'Column headings read as headers by a screen reader.', needs: 'a column header role', today: 'Each cell is named with its heading.' },
@@ -94,6 +98,9 @@ export const doc: ComponentDoc = {
       hero: 'Invoices',
       variants: [
         { name: 'Pressable', title: 'Rows that open a record, the open one selected; a cell drawn as a badge' },
+        { name: 'Sortable', title: 'Headings that sort the rows, a second press the other way' },
+        { name: 'SortControlled', title: 'The order held by the page' },
+        { name: 'SortStacked', title: 'Stacked records, sorted from one menu' },
         { name: 'Scrolling', title: 'Compact rows that scroll under the headings' },
         { name: 'Members', title: 'Four columns: stacked where they do not fit, in columns where they do' },
         { name: 'MembersColumns', title: 'The same table held in columns; on a phone its text columns are too narrow' },

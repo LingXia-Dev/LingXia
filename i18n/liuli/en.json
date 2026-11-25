@@ -282,5 +282,29 @@
   "@liuli.copied": {
     "defaultMessage": "Copied",
     "description": "Shown for a moment after a code block's code is copied; also the copy button's name meanwhile."
+  },
+  "@liuli.sort": {
+    "defaultMessage": "Sort",
+    "description": "The sort control's name in a stacked Table, and its menu's; the trigger's label before a column is chosen."
+  },
+  "@liuli.sortBy": {
+    "defaultMessage": "Sort by {column}",
+    "description": "A sortable Table heading's name while the rows are not ordered by it; `column` is the heading."
+  },
+  "@liuli.sortedAscending": {
+    "defaultMessage": "{column}, sorted ascending",
+    "description": "A Table heading's name while the rows are ordered by it, smallest or first first; `column` is the heading."
+  },
+  "@liuli.sortedDescending": {
+    "defaultMessage": "{column}, sorted descending",
+    "description": "A Table heading's name while the rows are ordered by it, largest or last first; `column` is the heading."
+  },
+  "@liuli.sortAscending": {
+    "defaultMessage": "Sort ascending",
+    "description": "Button beside a stacked Table's sort menu while the order is descending: turns it round."
+  },
+  "@liuli.sortDescending": {
+    "defaultMessage": "Sort descending",
+    "description": "Button beside a stacked Table's sort menu while the order is ascending: turns it round."
   }
 }

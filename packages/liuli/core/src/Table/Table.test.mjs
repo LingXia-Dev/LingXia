@@ -119,3 +119,65 @@ test('At large text: measured wider type stacks the records; a number is never c
   const headings = columns.getByTestId('members-columns').children[0].children;
   assert.ok(headings.every(heading => heading.props.numberOfLines === undefined && heading.props.textOverflow === undefined), 'a heading wraps; it is never cut');
 });
+
+const order = (screen, id) => rows(screen).map(row => row.testId ?? row.children[0]?.testId).map(key => key.slice(id.length + 1));
+
+test('Sortable: a heading is a button named by its order; a press sorts ascending, a second descending; the row without an amount stays last', async () => {
+  const screen = await renderExample('Table/Table', 'Sortable');
+  const heading = field => screen.getByTestId(`sortable-sort-${field}`);
+  const header = screen.getByTestId('sortable').children[0];
+  assert.notEqual(header.props.accessibilityHidden, 1, 'the headings that sort are reached');
+  assert.equal(heading('amount').tag, 'button');
+  assert.equal(heading('amount').props.accessibilityLabel, 'Sort by Amount');
+  assert.deepEqual(order(screen, 'sortable'), ['INV-1042', 'INV-1043', 'INV-1044', 'INV-1045', 'INV-1046'], 'as given until a heading is pressed');
+  screen.press(heading('amount'));
+  assert.equal(heading('amount').props.accessibilityLabel, 'Amount, sorted ascending');
+  assert.deepEqual(order(screen, 'sortable'), ['INV-1044', 'INV-1043', 'INV-1042', 'INV-1045', 'INV-1046']);
+  screen.press(heading('amount'));
+  assert.equal(heading('amount').props.accessibilityLabel, 'Amount, sorted descending');
+  assert.deepEqual(order(screen, 'sortable'), ['INV-1045', 'INV-1042', 'INV-1043', 'INV-1044', 'INV-1046'], 'empty last both ways');
+  screen.press(heading('customer'));
+  assert.equal(heading('amount').props.accessibilityLabel, 'Sort by Amount', 'one column orders the rows');
+  assert.deepEqual(order(screen, 'sortable'), ['INV-1046', 'INV-1043', 'INV-1044', 'INV-1045', 'INV-1042']);
+});
+
+test('SortControlled: the page holds the order; the table sorts by it and asks for the next', async () => {
+  const screen = await renderExample('Table/Table', 'SortControlled');
+  assert.deepEqual(order(screen, 'sort-controlled'), ['INV-1045', 'INV-1046', 'INV-1043', 'INV-1042', 'INV-1044'], 'latest due first');
+  assert.equal(screen.getByTestId('sort-controlled-sort-dueOn').props.accessibilityLabel, 'Due, sorted descending');
+  screen.press(screen.getByTestId('sort-controlled-sort-dueOn'));
+  assert.deepEqual(order(screen, 'sort-controlled'), ['INV-1044', 'INV-1042', 'INV-1043', 'INV-1046', 'INV-1045']);
+});
+
+test('text sorts as the language does: case aside and numbers inside it by value; a column compare wins', async () => {
+  const { renderPage } = await import('../testing/harness.mjs');
+  const screen = await renderPage(`
+    import { Table } from '@liulidesign/core/Table';
+    const rows = [{ name: 'item 10', rank: 'b' }, { name: 'Item 9', rank: 'c' }, { name: 'apple', rank: 'a' }];
+    export function render() {
+      return <page><Table label="Things" data-testid="t" layout="columns" columns={[
+        { field: 'name', header: 'Name', isSortable: true },
+        { field: 'rank', header: 'Rank', isSortable: true, compare: (a, b) => (a.rank < b.rank ? 1 : a.rank > b.rank ? -1 : 0) },
+      ]} rows={rows} keyField="name" /></page>;
+    }
+  `);
+  screen.press(screen.getByTestId('t-sort-name'));
+  assert.deepEqual(order(screen, 't'), ['apple', 'Item 9', 'item 10']);
+  screen.press(screen.getByTestId('t-sort-rank'));
+  assert.deepEqual(order(screen, 't'), ['Item 9', 'item 10', 'apple'], 'compare reversed: c, b, a ascending');
+});
+
+test('SortStacked: a menu above the records picks the column; the button beside it turns the order round', async () => {
+  const screen = await renderExample('Table/Table', 'SortStacked');
+  const trigger = () => screen.getByTestId('sort-stacked-sort');
+  assert.equal(trigger().parent.props.accessibilityLabel, 'Sort', 'a group named Sort');
+  assert.equal(trigger().props.accessibilityLabel, 'Sort');
+  assert.equal(screen.queryAll(node => node.testId === 'sort-stacked-direction').length, 0, 'no order before a column');
+  screen.press(trigger());
+  screen.press(screen.queryAll(node => node.props.role === 'menuitemradio' && node.props.accessibilityLabel === 'Amount')[0]);
+  assert.equal(trigger().props.accessibilityLabel, 'Amount');
+  assert.equal(screen.getByTestId('sort-stacked-direction').props.accessibilityLabel, 'Sort descending');
+  screen.press(screen.getByTestId('sort-stacked-direction'));
+  assert.equal(screen.getByTestId('sort-stacked-direction').props.accessibilityLabel, 'Sort ascending');
+  assert.deepEqual(order(screen, 'sort-stacked'), ['INV-1045', 'INV-1042', 'INV-1043', 'INV-1044', 'INV-1046']);
+});

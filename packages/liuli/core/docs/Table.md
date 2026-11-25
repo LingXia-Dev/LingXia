@@ -73,6 +73,95 @@ export function Pressable() {
 }
 ```
 
+### Headings that sort the rows
+
+```tsx
+import { Table, type TableColumn } from '@liulidesign/core/Table';
+
+const columns: TableColumn[] = [
+  { field: 'customer', header: 'Customer', width: '2fr' },
+  { field: 'due', header: 'Due' },
+  { field: 'amount', header: 'Amount', align: 'end', format: money },
+];
+const bills = [
+  { id: 'INV-1042', customer: 'Northwind', dueOn: '2026-11-03', amount: 1280 },
+  { id: 'INV-1043', customer: 'Blue Harbor', dueOn: '2026-11-09', amount: 420.5 },
+  { id: 'INV-1044', customer: 'Kestrel & Co', dueOn: '2026-10-28', amount: 96 },
+  { id: 'INV-1045', customer: 'Lumen Studio', dueOn: '2026-11-20', amount: 3150 },
+  { id: 'INV-1046', customer: 'Atlas Freight', dueOn: '2026-11-14', amount: null },
+];
+const sortableColumns: TableColumn[] = [
+  { field: 'customer', header: 'Customer', width: '2fr', isSortable: true },
+  { field: 'dueOn', header: 'Due', format: day, isSortable: true },
+  { field: 'amount', header: 'Amount', align: 'end', format: value => (value === null ? '—' : money(value)), isSortable: true },
+];
+
+/** Headings that order the rows: a press sorts by that column, a second press the other way. A row without an amount stays last. */
+export function Sortable() {
+  return <Table label="Invoices" columns={sortableColumns} rows={bills} keyField="id" data-testid="sortable" />;
+}
+```
+
+### The order held by the page
+
+```tsx
+import { useLocal } from '@lingxia/view';
+import { Table, type TableColumn, type TableSort } from '@liulidesign/core/Table';
+
+const columns: TableColumn[] = [
+  { field: 'customer', header: 'Customer', width: '2fr' },
+  { field: 'due', header: 'Due' },
+  { field: 'amount', header: 'Amount', align: 'end', format: money },
+];
+const bills = [
+  { id: 'INV-1042', customer: 'Northwind', dueOn: '2026-11-03', amount: 1280 },
+  { id: 'INV-1043', customer: 'Blue Harbor', dueOn: '2026-11-09', amount: 420.5 },
+  { id: 'INV-1044', customer: 'Kestrel & Co', dueOn: '2026-10-28', amount: 96 },
+  { id: 'INV-1045', customer: 'Lumen Studio', dueOn: '2026-11-20', amount: 3150 },
+  { id: 'INV-1046', customer: 'Atlas Freight', dueOn: '2026-11-14', amount: null },
+];
+const sortableColumns: TableColumn[] = [
+  { field: 'customer', header: 'Customer', width: '2fr', isSortable: true },
+  { field: 'dueOn', header: 'Due', format: day, isSortable: true },
+  { field: 'amount', header: 'Amount', align: 'end', format: value => (value === null ? '—' : money(value)), isSortable: true },
+];
+
+/** The order held by the page, here starting with the latest due date, so it can be kept or sent to a server. */
+export function SortControlled() {
+  const sort = useLocal<TableSort>('sort', { field: 'dueOn', direction: 'descending' });
+  return <Table label="Invoices" columns={sortableColumns} rows={bills} keyField="id" sort={sort.value} onSortChange={sort.set} data-testid="sort-controlled" />;
+}
+```
+
+### Sorting stacked records from a menu
+
+```tsx
+import { Table, type TableColumn } from '@liulidesign/core/Table';
+
+const columns: TableColumn[] = [
+  { field: 'customer', header: 'Customer', width: '2fr' },
+  { field: 'due', header: 'Due' },
+  { field: 'amount', header: 'Amount', align: 'end', format: money },
+];
+const bills = [
+  { id: 'INV-1042', customer: 'Northwind', dueOn: '2026-11-03', amount: 1280 },
+  { id: 'INV-1043', customer: 'Blue Harbor', dueOn: '2026-11-09', amount: 420.5 },
+  { id: 'INV-1044', customer: 'Kestrel & Co', dueOn: '2026-10-28', amount: 96 },
+  { id: 'INV-1045', customer: 'Lumen Studio', dueOn: '2026-11-20', amount: 3150 },
+  { id: 'INV-1046', customer: 'Atlas Freight', dueOn: '2026-11-14', amount: null },
+];
+const sortableColumns: TableColumn[] = [
+  { field: 'customer', header: 'Customer', width: '2fr', isSortable: true },
+  { field: 'dueOn', header: 'Due', format: day, isSortable: true },
+  { field: 'amount', header: 'Amount', align: 'end', format: value => (value === null ? '—' : money(value)), isSortable: true },
+];
+
+/** On a phone the records stack, and the order is set from one menu above them. */
+export function SortStacked() {
+  return <Table label="Invoices" columns={sortableColumns} rows={bills} keyField="id" layout="stacked" data-testid="sort-stacked" />;
+}
+```
+
 ### Compact rows under a heading that stays
 
 ```tsx
@@ -175,6 +264,8 @@ export function MembersColumns() {
 | `maxHeight` | `number` |  | Caps the rows' height in points: the rows scroll under a heading that stays. |
 | `isHeaderSticky` | `boolean` | `false` | Holds the heading at the top of the scroll the table sits in while its rows pass under it. The table must be inside a `<scroll>`; without `maxHeight`. |
 | `emptyLabel` | `string` |  | Shown in place of the rows when there are none: "No invoices yet". |
+| `sort` | `TableSort \| null` |  | The order the rows are shown in; the table sorts `rows` by it. Leave it out to let the headings own it, starting from `rows` as given. |
+| `onSortChange` | `((sort: TableSort) => void)` |  | Runs when a heading asks for another order, with it. |
 | `className` | `string` |  |  |
 | `data-testid` | `string` |  | On the table; a row is `<id>-<key>`. |
 
@@ -190,6 +281,8 @@ export function MembersColumns() {
 | `width` | `number \| `${number}fr`` | `'1fr'` | The column's width in points, or its share of what is left: `'2fr'`. |
 | `format` | `((value: TableValue, row: Readonly<Record<string, TableValue>>) => string)` |  | Turns the field's value into the text shown and read. By default the value as written. |
 | `cell` | `((row: Readonly<Record<string, TableValue>>) => Child)` |  | Draws the cell in place of its text: a Badge, an Avatar. The text is still what is read. |
+| `isSortable` | `boolean` | `false` | Its heading orders the rows by it, ascending, then descending on a second press. |
+| `compare` | `((a: Readonly<Record<string, TableValue>>, b: Readonly<Record<string, TableValue>>) => number)` |  | Orders two rows for this column, ascending; by default numbers by value and text as the reader's language sorts it, numbers inside text by value, with empty values last either way. |
 
 ## Anatomy
 
@@ -210,8 +303,8 @@ export function MembersColumns() {
 
 - `className`: classes merged after the recipe's, so they win.
 - The recipe, `tableRecipe` from `@liulidesign/core/Table/recipe`: the classes of each part, to style an element of your own to match. The component does not read a changed copy.
-- Scale tokens it reads, set in the app's stylesheet under `@theme`: `--spacing-control-sm`, `--spacing-control-md`, `--text-footnote`, `--text-body`, `--radius-container`.
-- Colour roles it paints with, set by the theme pack: `accent`, `accent-soft`, `focus`, `line`, `surface`, `surface-overlay`, `text`, `text-muted`.
+- Scale tokens it reads, set in the app's stylesheet under `@theme`: `--spacing-control-sm`, `--spacing-control-md`, `--text-footnote`, `--text-body`, `--radius-control`, `--radius-container`.
+- Colour roles it paints with, set by the theme pack: `accent`, `accent-soft`, `focus`, `line`, `surface`, `surface-overlay`, `text`, `text-faint`, `text-muted`.
 
 ## Accessibility
 
@@ -256,7 +349,8 @@ Ratios are computed from @lingxia/view/theme and rounded down.
 | Missing | Needs | Meanwhile |
 | --- | --- | --- |
 | Columns as wide as their content. | text measurement before layout | A width in points or a share of the table; rows are separate grids, so a track sized by content would not line up. |
-| Sorting by a column, and choosing several rows. | nothing from the View | The app sorts `rows`; one row can be selected. |
+| Choosing several rows. | nothing from the View | One row can be selected. |
+| A sorted column read as sorted by its header role. | a column header role with `aria-sort` | A sortable heading is a button whose name carries the order: "Amount, sorted ascending". |
 | Sideways scrolling with the first column held. | a sticky box on the horizontal axis | Columns share the table's width, and the table stacks its records where they would be too narrow. |
 | Rows drawn only while in view. | grid rows inside a `<List>` | Every row is laid out; page a long set. |
 | Column headings read as headers by a screen reader. | a column header role | Each cell is named with its heading. |

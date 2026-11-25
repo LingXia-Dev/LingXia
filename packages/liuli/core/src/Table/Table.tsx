@@ -1,4 +1,9 @@
-import { cx, useBox, useContext, useView, type Child, type Local } from '@lingxia/view';
+import { cx, useBox, useContext, useLocal, useView, type Child, type Local } from '@lingxia/view';
+import { Button } from '../Button/Button';
+import { DropdownMenu, DropdownMenuRadioGroup, DropdownMenuRadioItem } from '../DropdownMenu/DropdownMenu';
+import { IconButton } from '../IconButton/IconButton';
+import { liuliText } from '../i18n/text';
+import { Glyph } from '../internal/Glyph';
 import { useDensity } from '../density';
 import { LayerContext } from '../internal/layer';
 import { tableRecipe as r } from './Table.recipe';
@@ -16,6 +21,12 @@ export type TableDensity = 'comfortable' | 'compact';
  * would be too narrow to read.
  */
 export type TableLayout = 'auto' | 'columns' | 'stacked';
+export type TableSortDirection = 'ascending' | 'descending';
+/** The column the rows are ordered by, and which way. */
+export interface TableSort {
+  field: string;
+  direction: TableSortDirection;
+}
 
 export interface TableColumn {
   /** The row field this column shows. */
@@ -30,6 +41,13 @@ export interface TableColumn {
   format?: (value: TableValue, row: TableRow) => string;
   /** Draws the cell in place of its text: a Badge, an Avatar. The text is still what is read. */
   cell?: (row: TableRow) => Child;
+  /** Its heading orders the rows by it, ascending, then descending on a second press. @default false */
+  isSortable?: boolean;
+  /**
+   * Orders two rows for this column, ascending; by default numbers by value and text as the reader's
+   * language sorts it, numbers inside text by value, with empty values last either way.
+   */
+  compare?: (a: TableRow, b: TableRow) => number;
 }
 
 export type TableBinding =
@@ -67,6 +85,13 @@ export type TableProps = TableBinding & {
   isHeaderSticky?: boolean;
   /** Shown in place of the rows when there are none: "No invoices yet". */
   emptyLabel?: string;
+  /**
+   * The order the rows are shown in; the table sorts `rows` by it. Leave it out to let the headings own it,
+   * starting from `rows` as given.
+   */
+  sort?: TableSort | null;
+  /** Runs when a heading asks for another order, with it. */
+  onSortChange?: (sort: TableSort) => void;
   className?: string;
   /** On the table; a row is `<id>-<key>`. */
   'data-testid'?: string;
@@ -95,13 +120,42 @@ function isCramped(columns: readonly TableColumn[], width: number, char: number,
   });
 }
 
+const isEmpty = (value: TableValue) => value === null || value === undefined || value === '';
+const compareValues = (a: TableValue, b: TableValue) => (typeof a === 'number' && typeof b === 'number'
+  ? a - b
+  : String(a).localeCompare(String(b), undefined, { numeric: true, sensitivity: 'base' }));
+
+/** `rows` in `sort`'s order, stable, with empty values last both ways; as given while nothing sorts them. */
+function sorted(rows: readonly TableRow[], columns: readonly TableColumn[], sort: TableSort | null | undefined): readonly TableRow[] {
+  const column = sort ? columns.find(each => each.field === sort.field && each.isSortable) : undefined;
+  if (!sort || !column) return rows;
+  const way = sort.direction === 'ascending' ? 1 : -1;
+  const order = (a: TableRow, b: TableRow) => {
+    if (column.compare) return way * column.compare(a, b);
+    const [x, y] = [a[column.field], b[column.field]];
+    if (isEmpty(x) || isEmpty(y)) return Number(isEmpty(x)) - Number(isEmpty(y));
+    return way * compareValues(x, y);
+  };
+  return rows.map((row, at) => ({ row, at })).sort((a, b) => order(a.row, b.row) || a.at - b.at).map(each => each.row);
+}
+
+/** The next order a heading asks for: ascending first, then the other way. */
+const nextSort = (field: string, sort: TableSort | null | undefined): TableSort => ({
+  field,
+  direction: sort?.field === field && sort.direction === 'ascending' ? 'descending' : 'ascending',
+});
+
 const track = (column: TableColumn) => (typeof column.width === 'number' ? `${column.width}px` : `minmax(0,${column.width ?? '1fr'})`);
 
 /** Records in rows and fields in columns, under headings that stay in view. */
 export function Table({
-  label, columns, rows, keyField, layout = 'auto', density: ownDensity, maxHeight, isHeaderSticky = false, bind, onChange: ownChange, value: own, emptyLabel, className, 'data-testid': testId, ...attributes
+  label, columns, rows, keyField, layout = 'auto', density: ownDensity, maxHeight, isHeaderSticky = false, bind, onChange: ownChange, value: own, emptyLabel, sort: ownSort, onSortChange, className, 'data-testid': testId, ...attributes
 }: TableProps) {
   const selectedKey = bind ? bind.value : own;
+  const localSort = useLocal<TableSort | null>('sort', null);
+  const sort = ownSort !== undefined ? ownSort : localSort.value;
+  const setSort = (next: TableSort) => { if (ownSort === undefined) localSort.set(next); onSortChange?.(next); };
+  const isSortable = columns.some(column => column.isSortable);
   // Bound, each row is a button that selects it.
   const onRowClick = bind ? (key: string) => bind.set(key) : ownChange;
   const screenDensity = useDensity();
@@ -130,14 +184,53 @@ export function Table({
   const keyOf = (row: TableRow, index: number) => String(row[keyField ?? columns[0]?.field ?? ''] ?? index);
   const line = cx(r.row.base, r.row.density[density]);
 
+  const directionOf = (column: TableColumn) => (sort?.field === column.field ? sort.direction : undefined);
+  // Its state is in its name until the View reads a column's sort.
+  const sortName = (column: TableColumn) => {
+    const direction = directionOf(column);
+    if (direction === 'ascending') return liuliText('@liuli.sortedAscending', { column: column.header });
+    if (direction === 'descending') return liuliText('@liuli.sortedDescending', { column: column.header });
+    return liuliText('@liuli.sortBy', { column: column.header });
+  };
+  const heading = (column: TableColumn) => {
+    const align = column.align ?? 'start';
+    // Each cell is read with its heading, so a heading that only names its column is not read on its own.
+    if (!column.isSortable) return <text key={column.field} aria-hidden className={cx(r.heading.base, r.heading.align[align])}>{column.header}</text>;
+    const direction = directionOf(column);
+    return (
+      <button key={column.field} aria-label={sortName(column)} onClick={() => setSort(nextSort(column.field, sort))} data-testid={testId && `${testId}-sort-${column.field}`} className={cx(r.sortHeading.base, r.sortHeading.align[align])}>
+        <text className={cx(r.heading.base, direction && r.heading.sorted)}>{column.header}</text>
+        <Glyph name={direction === 'descending' ? 'arrow-down' : direction === 'ascending' ? 'arrow-up' : 'sort'} className={cx(r.sortMark.base, direction ? r.sortMark.on : r.sortMark.off)} />
+      </button>
+    );
+  };
   const header = (
-    // Each cell is read with its heading, so the headings are not read on their own.
-    <view aria-hidden style={tracks} className={cx(r.header.base, r.header.density[density], r.header.layer[layer], isHeaderSticky && maxHeight === undefined && r.header.sticky)}>
-      {columns.map(column => <text key={column.field} className={cx(r.heading.base, r.heading.align[column.align ?? 'start'])}>{column.header}</text>)}
+    <view aria-hidden={!isSortable || undefined} style={tracks} className={cx(r.header.base, r.header.density[density], r.header.layer[layer], isHeaderSticky && maxHeight === undefined && r.header.sticky)}>
+      {columns.map(heading)}
+    </view>
+  );
+  // Stacked there are no headings to press: a menu picks the column, a button beside it turns the order round.
+  const sortable = columns.filter(column => column.isSortable);
+  const active = sortable.find(column => column.field === sort?.field);
+  const sortBar = isSortable && (
+    <view role="group" aria-label={liuliText('@liuli.sort')} className={r.sortBar.base}>
+      <DropdownMenu label={liuliText('@liuli.sort')} menu={
+        <DropdownMenuRadioGroup value={active?.field ?? null} onChange={field => setSort({ field, direction: sort?.direction ?? 'ascending' })}>
+          {sortable.map(column => <DropdownMenuRadioItem key={column.field} value={column.field} label={column.header} />)}
+        </DropdownMenuRadioGroup>
+      }>
+        <Button variant="ghost" size="sm" edge="start" startIcon="sort" endIcon="chevron-down" label={active?.header ?? liuliText('@liuli.sort')} data-testid={testId && `${testId}-sort`} />
+      </DropdownMenu>
+      {active && sort && (
+        <IconButton size="sm" icon={sort.direction === 'descending' ? 'arrow-down' : 'arrow-up'}
+          label={liuliText(sort.direction === 'descending' ? '@liuli.sortAscending' : '@liuli.sortDescending')}
+          onClick={() => setSort({ field: active.field, direction: sort.direction === 'descending' ? 'ascending' : 'descending' })}
+          data-testid={testId && `${testId}-direction`} />
+      )}
     </view>
   );
 
-  const body = rows.map((row, index) => {
+  const body = sorted(rows, columns, sort).map((row, index) => {
     const key = keyOf(row, index);
     const isSelected = selectedKey === key;
     const drawn = (column: TableColumn, isRead: boolean, className: string) => (column.cell
@@ -187,7 +280,7 @@ export function Table({
   return (
     <view box={box} role="grid" aria-label={label} data-testid={testId} {...dataOf(attributes)} className={cx(r.root.base, r.root.layer[layer], className)}>
       {/* Stacked, every field is beside its own heading or needs none. */}
-      {!isStacked && header}
+      {isStacked ? sortBar : header}
       {rows.length === 0 && emptyLabel !== undefined && <text className={r.empty.base}>{emptyLabel}</text>}
       {rows.length > 0 && (maxHeight === undefined
         ? <view className={r.body.base}>{body}</view>

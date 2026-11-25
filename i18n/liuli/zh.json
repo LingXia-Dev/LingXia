@@ -211,5 +211,23 @@
   },
   "@liuli.copied": {
     "defaultMessage": "已复制"
+  },
+  "@liuli.sort": {
+    "defaultMessage": "排序"
+  },
+  "@liuli.sortBy": {
+    "defaultMessage": "按{column}排序"
+  },
+  "@liuli.sortedAscending": {
+    "defaultMessage": "{column}，升序"
+  },
+  "@liuli.sortedDescending": {
+    "defaultMessage": "{column}，降序"
+  },
+  "@liuli.sortAscending": {
+    "defaultMessage": "升序排列"
+  },
+  "@liuli.sortDescending": {
+    "defaultMessage": "降序排列"
   }
 }

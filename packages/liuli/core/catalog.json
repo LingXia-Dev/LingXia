@@ -18983,6 +18983,18 @@
           "description": "Shown in place of the rows when there are none: \"No invoices yet\"."
         },
         {
+          "name": "sort",
+          "type": "TableSort | null",
+          "required": false,
+          "description": "The order the rows are shown in; the table sorts `rows` by it. Leave it out to let the headings own it, starting from `rows` as given."
+        },
+        {
+          "name": "onSortChange",
+          "type": "((sort: TableSort) => void)",
+          "required": false,
+          "description": "Runs when a heading asks for another order, with it."
+        },
+        {
           "name": "className",
           "type": "string",
           "required": false,
@@ -19038,6 +19050,19 @@
             "type": "((row: Readonly<Record<string, TableValue>>) => Child)",
             "required": false,
             "description": "Draws the cell in place of its text: a Badge, an Avatar. The text is still what is read."
+          },
+          {
+            "name": "isSortable",
+            "type": "boolean",
+            "required": false,
+            "description": "Its heading orders the rows by it, ascending, then descending on a second press.",
+            "default": "false"
+          },
+          {
+            "name": "compare",
+            "type": "((a: Readonly<Record<string, TableValue>>, b: Readonly<Record<string, TableValue>>) => number)",
+            "required": false,
+            "description": "Orders two rows for this column, ascending; by default numbers by value and text as the reader's language sorts it, numbers inside text by value, with empty values last either way."
           }
         ]
       },
@@ -19056,6 +19081,9 @@
         "root": "view",
         "header": "view",
         "heading": "text",
+        "sortHeading": "button",
+        "sortMark": "view",
+        "sortBar": "view",
         "body": "view",
         "rowgroup": "view",
         "row": "view",
@@ -19146,6 +19174,21 @@
           "source": "import { useLocal } from '@lingxia/view';\nimport { Badge } from '@liulidesign/core/Badge';\nimport { Table, type TableColumn, type TableRow } from '@liulidesign/core/Table';\n\nconst invoices = [\n  { id: 'INV-1042', customer: 'Northwind', due: '3 Nov', amount: 1280, status: 'Paid' },\n  { id: 'INV-1043', customer: 'Blue Harbor', due: '9 Nov', amount: 420.5, status: 'Due' },\n  { id: 'INV-1044', customer: 'Kestrel & Co', due: '12 Nov', amount: 96, status: 'Overdue' },\n  { id: 'INV-1045', customer: 'Lumen Studio', due: '20 Nov', amount: 3150, status: 'Due' },\n];\nconst money = (value: unknown) => `$${grouped(value, 2)}`;\nconst status = (row: TableRow) => (row.status === 'Paid' ? <Badge label=\"Paid\" tone=\"success\" size=\"sm\" />\n  : row.status === 'Overdue' ? <Badge label=\"Overdue\" tone=\"danger\" size=\"sm\" /> : <Badge label={String(row.status)} size=\"sm\" />);\nconst columns: TableColumn[] = [\n  { field: 'customer', header: 'Customer', width: '2fr' },\n  { field: 'due', header: 'Due' },\n  { field: 'amount', header: 'Amount', align: 'end', format: money },\n];\n\n/** Each row is one button that opens its record; the open one is selected. A cell can draw a badge. */\nexport function Pressable() {\n  const open = useLocal<string | null>('open', 'INV-1043');\n  return (\n    <Table\n      label=\"Invoices\"\n      columns={[{ field: 'customer', header: 'Customer', width: '2fr' }, { field: 'status', header: 'Status', cell: status }, { field: 'amount', header: 'Amount', align: 'end', format: money }]}\n      rows={invoices}\n      keyField=\"id\"\n      bind={open}\n      data-testid=\"pressable\"\n    />\n  );\n}"
         },
         {
+          "name": "Sortable",
+          "title": "Headings that sort the rows",
+          "source": "import { Table, type TableColumn } from '@liulidesign/core/Table';\n\nconst columns: TableColumn[] = [\n  { field: 'customer', header: 'Customer', width: '2fr' },\n  { field: 'due', header: 'Due' },\n  { field: 'amount', header: 'Amount', align: 'end', format: money },\n];\nconst bills = [\n  { id: 'INV-1042', customer: 'Northwind', dueOn: '2026-11-03', amount: 1280 },\n  { id: 'INV-1043', customer: 'Blue Harbor', dueOn: '2026-11-09', amount: 420.5 },\n  { id: 'INV-1044', customer: 'Kestrel & Co', dueOn: '2026-10-28', amount: 96 },\n  { id: 'INV-1045', customer: 'Lumen Studio', dueOn: '2026-11-20', amount: 3150 },\n  { id: 'INV-1046', customer: 'Atlas Freight', dueOn: '2026-11-14', amount: null },\n];\nconst sortableColumns: TableColumn[] = [\n  { field: 'customer', header: 'Customer', width: '2fr', isSortable: true },\n  { field: 'dueOn', header: 'Due', format: day, isSortable: true },\n  { field: 'amount', header: 'Amount', align: 'end', format: value => (value === null ? '—' : money(value)), isSortable: true },\n];\n\n/** Headings that order the rows: a press sorts by that column, a second press the other way. A row without an amount stays last. */\nexport function Sortable() {\n  return <Table label=\"Invoices\" columns={sortableColumns} rows={bills} keyField=\"id\" data-testid=\"sortable\" />;\n}"
+        },
+        {
+          "name": "SortControlled",
+          "title": "The order held by the page",
+          "source": "import { useLocal } from '@lingxia/view';\nimport { Table, type TableColumn, type TableSort } from '@liulidesign/core/Table';\n\nconst columns: TableColumn[] = [\n  { field: 'customer', header: 'Customer', width: '2fr' },\n  { field: 'due', header: 'Due' },\n  { field: 'amount', header: 'Amount', align: 'end', format: money },\n];\nconst bills = [\n  { id: 'INV-1042', customer: 'Northwind', dueOn: '2026-11-03', amount: 1280 },\n  { id: 'INV-1043', customer: 'Blue Harbor', dueOn: '2026-11-09', amount: 420.5 },\n  { id: 'INV-1044', customer: 'Kestrel & Co', dueOn: '2026-10-28', amount: 96 },\n  { id: 'INV-1045', customer: 'Lumen Studio', dueOn: '2026-11-20', amount: 3150 },\n  { id: 'INV-1046', customer: 'Atlas Freight', dueOn: '2026-11-14', amount: null },\n];\nconst sortableColumns: TableColumn[] = [\n  { field: 'customer', header: 'Customer', width: '2fr', isSortable: true },\n  { field: 'dueOn', header: 'Due', format: day, isSortable: true },\n  { field: 'amount', header: 'Amount', align: 'end', format: value => (value === null ? '—' : money(value)), isSortable: true },\n];\n\n/** The order held by the page, here starting with the latest due date, so it can be kept or sent to a server. */\nexport function SortControlled() {\n  const sort = useLocal<TableSort>('sort', { field: 'dueOn', direction: 'descending' });\n  return <Table label=\"Invoices\" columns={sortableColumns} rows={bills} keyField=\"id\" sort={sort.value} onSortChange={sort.set} data-testid=\"sort-controlled\" />;\n}"
+        },
+        {
+          "name": "SortStacked",
+          "title": "Sorting stacked records from a menu",
+          "source": "import { Table, type TableColumn } from '@liulidesign/core/Table';\n\nconst columns: TableColumn[] = [\n  { field: 'customer', header: 'Customer', width: '2fr' },\n  { field: 'due', header: 'Due' },\n  { field: 'amount', header: 'Amount', align: 'end', format: money },\n];\nconst bills = [\n  { id: 'INV-1042', customer: 'Northwind', dueOn: '2026-11-03', amount: 1280 },\n  { id: 'INV-1043', customer: 'Blue Harbor', dueOn: '2026-11-09', amount: 420.5 },\n  { id: 'INV-1044', customer: 'Kestrel & Co', dueOn: '2026-10-28', amount: 96 },\n  { id: 'INV-1045', customer: 'Lumen Studio', dueOn: '2026-11-20', amount: 3150 },\n  { id: 'INV-1046', customer: 'Atlas Freight', dueOn: '2026-11-14', amount: null },\n];\nconst sortableColumns: TableColumn[] = [\n  { field: 'customer', header: 'Customer', width: '2fr', isSortable: true },\n  { field: 'dueOn', header: 'Due', format: day, isSortable: true },\n  { field: 'amount', header: 'Amount', align: 'end', format: value => (value === null ? '—' : money(value)), isSortable: true },\n];\n\n/** On a phone the records stack, and the order is set from one menu above them. */\nexport function SortStacked() {\n  return <Table label=\"Invoices\" columns={sortableColumns} rows={bills} keyField=\"id\" layout=\"stacked\" data-testid=\"sort-stacked\" />;\n}"
+        },
+        {
           "name": "Scrolling",
           "title": "Compact rows under a heading that stays",
           "source": "import { Table, type TableColumn } from '@liulidesign/core/Table';\n\nconst columns: TableColumn[] = [\n  { field: 'customer', header: 'Customer', width: '2fr' },\n  { field: 'due', header: 'Due' },\n  { field: 'amount', header: 'Amount', align: 'end', format: money },\n];\nconst cities = [\n  ['Lagos', 'Nigeria', 15.4], ['Cairo', 'Egypt', 10.0], ['Kinshasa', 'DR Congo', 9.5], ['Johannesburg', 'South Africa', 5.6], ['Nairobi', 'Kenya', 4.4],\n  ['Addis Ababa', 'Ethiopia', 3.9], ['Casablanca', 'Morocco', 3.7], ['Accra', 'Ghana', 2.6], ['Dakar', 'Senegal', 1.3], ['Kigali', 'Rwanda', 1.2],\n].map(([city, country, people]) => ({ city, country, people }));\n\n/** Compact rows that scroll under a heading that stays. */\nexport function Scrolling() {\n  return (\n    <Table\n      label=\"Cities by population\"\n      columns={[{ field: 'city', header: 'City' }, { field: 'country', header: 'Country' }, { field: 'people', header: 'Millions', align: 'end', width: 72, format: value => Number(value).toFixed(1) }]}\n      rows={cities}\n      density=\"compact\"\n      maxHeight={216}\n      data-testid=\"cities\"\n    />\n  );\n}"
@@ -19168,9 +19211,14 @@
           "today": "A width in points or a share of the table; rows are separate grids, so a track sized by content would not line up."
         },
         {
-          "missing": "Sorting by a column, and choosing several rows.",
+          "missing": "Choosing several rows.",
           "needs": "nothing from the View",
-          "today": "The app sorts `rows`; one row can be selected."
+          "today": "One row can be selected."
+        },
+        {
+          "missing": "A sorted column read as sorted by its header role.",
+          "needs": "a column header role with `aria-sort`",
+          "today": "A sortable heading is a button whose name carries the order: \"Amount, sorted ascending\"."
         },
         {
           "missing": "Sideways scrolling with the first column held.",
@@ -19208,6 +19256,7 @@
           "--spacing-control-md",
           "--text-footnote",
           "--text-body",
+          "--radius-control",
           "--radius-container"
         ],
         "roles": [
@@ -19218,6 +19267,7 @@
           "surface",
           "surface-overlay",
           "text",
+          "text-faint",
           "text-muted"
         ]
       },
@@ -19238,6 +19288,18 @@
             {
               "name": "Pressable",
               "title": "Rows that open a record, the open one selected; a cell drawn as a badge"
+            },
+            {
+              "name": "Sortable",
+              "title": "Headings that sort the rows, a second press the other way"
+            },
+            {
+              "name": "SortControlled",
+              "title": "The order held by the page"
+            },
+            {
+              "name": "SortStacked",
+              "title": "Stacked records, sorted from one menu"
             },
             {
               "name": "Scrolling",
