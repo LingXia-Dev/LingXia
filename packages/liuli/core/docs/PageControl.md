@@ -46,11 +46,14 @@ export function Welcome() {
 import { useLocal } from '@lingxia/view';
 import { PageControl } from '@liulidesign/core/PageControl';
 
+const photo = (n: number) => `public/photos/photo-${n}.png`;
+
 /** Over a picture, in the colour that reads on media. */
 export function OnMedia() {
   const page = useLocal('photo', 1);
   return (
-    <view className="h-40 justify-end rounded-container bg-media pb-1">
+    <view className="relative h-40 justify-end overflow-hidden rounded-container bg-media pb-1">
+      <image src={photo(page.value + 1)} alt="" className="absolute inset-0 size-full object-cover" />
       <PageControl label="Photos" count={5} bind={page} tone="on-media" pageLabel={at => `Photo ${at + 1} of 5`} data-testid="photos" />
     </view>
   );
