@@ -9,7 +9,7 @@ pub enum PlotSelection {
 }
 
 #[derive(Clone, serde::Serialize, serde::Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[serde(rename_all = "camelCase")]
 pub struct PieLayout {
     pub center: [f64; 2],
     pub inner_radius: f64,

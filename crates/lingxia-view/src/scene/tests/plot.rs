@@ -251,7 +251,6 @@ fn pie_layout_rejects_invalid_geometry_and_non_pies() {
         "null",
         r#"{"center":[0.5,0.5],"innerRadius":0.8,"outerRadius":0.6}"#,
         r#"{"center":[-1,0.5],"innerRadius":0.4,"outerRadius":0.6}"#,
-        r#"{"center":[0.5,0.5],"innerRadius":0.4,"outerRadius":0.6,"extra":1}"#,
     ] {
         assert!(PieLayout::parse(source).is_err());
     }
@@ -752,5 +751,13 @@ fn native_decode_and_reference_pixels_cover_each_plot_kind() {
         crate::protocol::decode(&many)
             .unwrap_err()
             .contains("plot geometry budget")
+    );
+}
+
+#[test]
+fn a_pie_layout_key_this_host_does_not_know_is_ignored() {
+    assert!(
+        PieLayout::parse(r#"{"center":[0.5,0.5],"innerRadius":0.5,"outerRadius":0.9,"later":1}"#)
+            .is_ok()
     );
 }

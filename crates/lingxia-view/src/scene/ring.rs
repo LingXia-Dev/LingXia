@@ -5,7 +5,6 @@ use crate::scene::paint::Paint;
 use serde::Deserialize;
 
 #[derive(Clone, Debug, Default, Deserialize, PartialEq)]
-#[serde(deny_unknown_fields)]
 pub(crate) struct Ring {
     #[serde(default)]
     outer: Option<Outer>,
@@ -14,7 +13,7 @@ pub(crate) struct Ring {
 }
 
 #[derive(Clone, Debug, Deserialize, PartialEq)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[serde(rename_all = "camelCase")]
 struct Outer {
     width: f32,
     #[serde(default)]
@@ -26,7 +25,6 @@ struct Outer {
 }
 
 #[derive(Clone, Debug, Deserialize, PartialEq)]
-#[serde(deny_unknown_fields)]
 struct Inner {
     width: f32,
     #[serde(default = "current_color")]
@@ -235,10 +233,19 @@ mod tests {
             r#"{"outer":{"width":-1}}"#,
             r#"{"outer":{"width":2,"offset":2000}}"#,
             r#"{"inner":{"width":2,"color":"nope-role"}}"#,
-            r#"{"outer":{"width":2},"spread":1}"#,
         ] {
             assert!(Ring::parse(source).is_err(), "{source}");
         }
         assert_eq!(Ring::parse("none").unwrap(), None);
+    }
+
+    #[test]
+    fn a_key_this_host_does_not_know_is_ignored() {
+        assert!(
+            Ring::parse(
+                r#"{"outer":{"width":2,"later":1},"inner":{"width":1,"later":1},"later":1}"#
+            )
+            .is_ok_and(|ring| ring.is_some())
+        );
     }
 }

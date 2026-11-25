@@ -55,7 +55,7 @@ pub enum Timing {
 }
 
 #[derive(Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[serde(rename_all = "camelCase")]
 struct Wire {
     properties: Vec<String>,
     duration_ms: f64,
@@ -1111,7 +1111,6 @@ mod tests {
             r#"{"properties":["bg"],"durationMs":0,"delayMs":0,"easing":"linear"}"#,
             r#"{"properties":["bg"],"durationMs":10001,"delayMs":0,"easing":"linear"}"#,
             r#"{"properties":["bg"],"durationMs":200,"delayMs":0,"easing":"bounce"}"#,
-            r#"{"properties":["bg"],"durationMs":200,"delayMs":0,"easing":"linear","x":1}"#,
         ] {
             assert!(TransitionDef::decode(broken).is_err(), "{broken}");
         }
@@ -1361,5 +1360,11 @@ mod tests {
             (p.x - 5.0).abs() < 1e-9 && (p.y - 7.0).abs() < 1e-9,
             "{p:?}"
         );
+    }
+
+    #[test]
+    fn a_key_this_host_does_not_know_is_ignored() {
+        let later = r#"{"properties":["opacity"],"durationMs":200,"delayMs":0,"easing":[0.4,0,0.2,1],"later":1}"#;
+        assert!(TransitionDef::decode(later).is_ok());
     }
 }

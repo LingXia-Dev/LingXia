@@ -2,7 +2,7 @@ use serde::Deserialize;
 use vello_cpu::kurbo::{BezPath, Rect, RoundedRect, Shape};
 
 #[derive(Clone, Debug, Deserialize, PartialEq)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[serde(rename_all = "camelCase")]
 pub(crate) struct BoxShadow {
     #[serde(default)]
     pub offset_x: f32,
@@ -435,7 +435,6 @@ mod tests {
             r#"[{"blur":-1}]"#,
             r#"[{"blur":257}]"#,
             r#"[{"spread":1025}]"#,
-            r#"[{"inset":true}]"#,
             r#"[{"color":"red"}]"#,
         ] {
             assert!(BoxShadow::parse(source).is_err(), "{source}");
@@ -513,5 +512,13 @@ mod tests {
                 );
             }
         }
+    }
+
+    #[test]
+    fn a_key_this_host_does_not_know_is_ignored() {
+        assert_eq!(
+            BoxShadow::parse(r#"[{"blur":8,"later":1}]"#).unwrap().len(),
+            1
+        );
     }
 }

@@ -7,7 +7,7 @@ use vello_cpu::kurbo::{Affine, BezPath, Cap, Join, Shape, Stroke, StrokeOpts, st
 use vello_cpu::peniko::{Extend, Gradient};
 
 #[derive(Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[serde(rename_all = "camelCase")]
 struct Path {
     key: Option<String>,
     d: String,
@@ -24,7 +24,6 @@ struct Path {
 }
 
 #[derive(Deserialize)]
-#[serde(deny_unknown_fields)]
 struct GradientStop {
     offset: f64,
     color: String,
@@ -32,7 +31,6 @@ struct GradientStop {
 }
 
 #[derive(Deserialize)]
-#[serde(deny_unknown_fields)]
 struct VectorGradient {
     r#type: String,
     x1: Option<f64>,
@@ -53,7 +51,7 @@ struct VectorGradient {
 }
 
 #[derive(Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[serde(rename_all = "camelCase")]
 struct Source {
     view_box: [f64; 4],
     paths: Vec<Path>,
@@ -1009,7 +1007,6 @@ mod tests {
         for extra in [
             json!({"d":"M0 0h2","strokeWidth":-1}),
             json!({"d":"M0 0h2","fill":"red"}),
-            json!({"d":"M0 0h2","filter":"url(x)"}),
         ] {
             assert!(
                 Vector::parse(&json!({"viewBox":[0,0,24,24],"paths":[extra]}).to_string()).is_err()
@@ -1138,5 +1135,12 @@ mod tests {
         assert!(
             Vector::parse(&json!({"viewBox":[0,0,24,24],"gradients":{"c":{"type":"conic","r":1,"stops":[{"offset":0,"color":"#000000"}]}},"paths":[{"d":"M0 0h1","fill":"url(#c)"}]}).to_string()).is_err()
         );
+    }
+
+    #[test]
+    fn a_key_this_host_does_not_know_is_ignored() {
+        let later = json!({"viewBox":[0,0,1,1],"later":1,"paths":[{"d":"M0 0H1V1z","fill":"url(#g)","later":1}],
+            "gradients":{"g":{"type":"linear","later":1,"stops":[{"offset":0,"color":"#000000","later":1},{"offset":1,"color":"#ffffff"}]}}});
+        assert!(Vector::parse(&later.to_string()).is_ok());
     }
 }

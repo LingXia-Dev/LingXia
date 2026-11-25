@@ -7,7 +7,7 @@ use serde::Deserialize;
 use std::{num::NonZeroU32, time::Duration};
 
 #[derive(Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[serde(rename_all = "camelCase")]
 struct Wire {
     name: String,
     duration_ms: f64,
@@ -26,7 +26,6 @@ struct Wire {
 }
 
 #[derive(Deserialize)]
-#[serde(deny_unknown_fields)]
 struct Axes {
     x: Vec<Key>,
     y: Vec<Key>,
@@ -68,7 +67,6 @@ pub(crate) enum Ease {
 }
 
 #[derive(Deserialize)]
-#[serde(deny_unknown_fields)]
 struct Key {
     offset: f64,
     value: f64,
@@ -77,7 +75,7 @@ struct Key {
 }
 
 #[derive(Deserialize)]
-#[serde(tag = "kind", rename_all = "lowercase", deny_unknown_fields)]
+#[serde(tag = "kind", rename_all = "lowercase")]
 enum Transform {
     Scale {
         x: Vec<Key>,
@@ -370,12 +368,6 @@ mod tests {
                 "{path}: {payload}"
             );
         }
-        let mut unknown = original.clone();
-        unknown["fillMode"] = json!("forwards");
-        assert!(decode_definition(&unknown.to_string()).is_err());
-        let mut unknown = original.clone();
-        unknown["opacity"][0]["ignored"] = json!(true);
-        assert!(decode_definition(&unknown.to_string()).is_err());
         let mut empty = original.clone();
         empty["opacity"] = Value::Null;
         empty["transforms"] = json!([]);
@@ -391,11 +383,9 @@ mod tests {
             ("spin", "/transforms/0/angle/1/value", json!(36001)),
             ("spin", "/transforms/0/angle/1/easing", json!("linear")),
             ("spin", "/transforms/0/angle/0/easing", json!("bounce")),
-            ("spin", "/transforms/0/x", json!([])),
             ("bounce", "/transforms/0/y/0/value", json!(10.5)),
             ("bounce", "/transforms/0/relative", json!("yes")),
             ("ping", "/transforms/0/x/1/value", json!(-2)),
-            ("ping", "/transforms/0/relative", json!(true)),
             ("pulse", "/whenReduced", json!("sometimes")),
             ("pulse", "/whenReduced", json!(null)),
         ] {
@@ -412,5 +402,15 @@ mod tests {
                 "{name}{path}: {payload}"
             );
         }
+    }
+
+    #[test]
+    fn a_key_this_host_does_not_know_is_ignored() {
+        let mut later = fixtures()["chart-in"].clone();
+        later["later"] = json!(1);
+        later["opacity"][0]["later"] = json!(1);
+        later["transforms"][0]["later"] = json!(1);
+        later["backgroundPosition"] = json!({"x":[{"offset":0,"value":0},{"offset":1,"value":1}],"y":[{"offset":0,"value":0},{"offset":1,"value":1}],"later":1});
+        assert!(decode_definition(&later.to_string()).is_ok());
     }
 }

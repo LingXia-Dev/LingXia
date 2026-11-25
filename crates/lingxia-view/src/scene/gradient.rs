@@ -50,7 +50,7 @@ enum Extent {
 
 /// A CSS `linear-`, `radial-` or `conic-gradient` background.
 #[derive(Clone, Debug, Deserialize, PartialEq)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[serde(rename_all = "camelCase")]
 pub(crate) struct BackgroundGradient {
     #[serde(default)]
     kind: Kind,
@@ -105,7 +105,6 @@ enum Space {
 }
 
 #[derive(Clone, Debug, Deserialize, PartialEq)]
-#[serde(deny_unknown_fields)]
 struct Stop {
     offset: f64,
     color: String,
@@ -531,5 +530,11 @@ mod tests {
         ] {
             assert!(BackgroundGradient::parse(&source).unwrap().is_some());
         }
+    }
+
+    #[test]
+    fn a_key_this_host_does_not_know_is_ignored() {
+        let later = r##"{"later":1,"stops":[{"offset":0,"color":"#000000","later":1},{"offset":1,"color":"#ffffff"}]}"##;
+        assert!(BackgroundGradient::parse(later).is_ok_and(|gradient| gradient.is_some()));
     }
 }

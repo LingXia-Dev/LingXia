@@ -18,7 +18,6 @@ enum Side {
 }
 
 #[derive(Clone, Debug, Deserialize, PartialEq)]
-#[serde(deny_unknown_fields)]
 struct Stop {
     #[serde(default)]
     offset: Option<f64>,
@@ -29,7 +28,6 @@ struct Stop {
 
 /// One fade: alpha stops along the box toward `to`, at fractions or pixels from the start.
 #[derive(Clone, Debug, Deserialize, PartialEq)]
-#[serde(deny_unknown_fields)]
 pub(crate) struct MaskLayer {
     to: Side,
     stops: Vec<Stop>,
@@ -147,5 +145,10 @@ mod tests {
         ] {
             assert!(parse(broken).is_err(), "{broken}");
         }
+    }
+
+    #[test]
+    fn a_key_this_host_does_not_know_is_ignored() {
+        assert!(parse(r#"[{"to":"bottom","later":1,"stops":[{"px":0,"alpha":0,"later":1},{"px":16,"alpha":1}]}]"#).is_ok());
     }
 }
