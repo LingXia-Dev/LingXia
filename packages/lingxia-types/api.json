@@ -281,6 +281,7 @@
       "isLxError"
     ],
     "@lingxia/types/page": [
+      "ChannelError",
       "DateParts",
       "Declared",
       "JsonData",
@@ -360,6 +361,7 @@
       "CancelableTask",
       "CanceledResult",
       "CaptureOptions",
+      "ChannelError",
       "ClipboardApi",
       "ClipboardItem",
       "ClipboardReadOptions",
@@ -1145,7 +1147,7 @@
       ],
       "tags": {},
       "examples": [],
-      "source": "src/page.ts:343"
+      "source": "src/page.ts:355"
     },
     {
       "path": "defineStore",
@@ -9065,6 +9067,42 @@
       "source": "src/generated/logic.ts:1158"
     },
     {
+      "name": "ChannelError",
+      "summary": "A channel that ended in failure: an `E_*` or app code, English `message`, and the business `reason`.",
+      "description": "A channel that ended in failure: an `E_*` or app code, English `message`, and the business `reason`.",
+      "fields": [
+        {
+          "name": "code",
+          "type": "string",
+          "required": true,
+          "summary": "The `E_*` or app code to branch on.",
+          "description": "The `E_*` or app code to branch on."
+        },
+        {
+          "name": "message",
+          "type": "string",
+          "required": true,
+          "summary": "English for a log line.",
+          "description": "English for a log line."
+        },
+        {
+          "name": "reason",
+          "type": "string | undefined",
+          "required": false,
+          "summary": "The business case, when the code alone does not say it.",
+          "description": "The business case, when the code alone does not say it."
+        },
+        {
+          "name": "data",
+          "type": "unknown",
+          "required": false,
+          "summary": "Structured facts about the failure.",
+          "description": "Structured facts about the failure."
+        }
+      ],
+      "source": "src/page.ts:279"
+    },
+    {
       "name": "ClipboardApi",
       "summary": "`lx.clipboard`: the system clipboard: text, images, and what it holds.",
       "description": "`lx.clipboard`: the system clipboard: text, images, and what it holds.",
@@ -10362,7 +10400,7 @@
       "summary": "A followed key that is also in `data`, as a type error.",
       "description": "A followed key that is also in `data`, as a type error.",
       "fields": [],
-      "source": "src/page.ts:308"
+      "source": "src/page.ts:320"
     },
     {
       "name": "FsCopyOptions",
@@ -11784,7 +11822,7 @@
       "description": "The messages a page definition declares.",
       "text": "P extends { readonly __lxPage: { readonly messages: infer T; }; } ? T : never",
       "fields": [],
-      "source": "src/page.ts:283"
+      "source": "src/page.ts:295"
     },
     {
       "name": "MisspelledLifecycle",
@@ -12662,17 +12700,17 @@
         },
         {
           "name": "close",
-          "type": "(code?: string, reason?: string) => void",
+          "type": "(error?: ChannelError) => void",
           "required": true,
-          "summary": "End the channel; the View sees `code` and `reason`.",
-          "description": "End the channel; the View sees `code` and `reason`."
+          "summary": "End the channel; pass `error` when it ends in failure, and the View's close event carries it.",
+          "description": "End the channel; pass `error` when it ends in failure, and the View's close event carries it."
         },
         {
           "name": "on",
-          "type": "{ (event: \"data\", handler: (payload: Receive) => void): () => void; (event: \"close\", handler: (info: { code: string; reason: string; }) => void): () => void; }",
+          "type": "{ (event: \"data\", handler: (payload: Receive) => void): () => void; (event: \"close\", handler: (event: { error?: ChannelError; }) => void): () => void; }",
           "required": true,
           "summary": "Returns a function that removes the handler.",
-          "description": "Returns a function that removes the handler."
+          "description": "Returns a function that removes the handler. `error` is set when the View closed it in failure."
         }
       ],
       "source": "src/page.ts:268"
@@ -12718,7 +12756,7 @@
           "description": "Data keys that show a `Live` (a store, `store.pick(…)`, a host `Live`), current from the first\nframe until the page unloads: `follow: { plan: session.pick(s => s.plan) }`. Read-only in\n`update` and `set`; change the source instead."
         }
       ],
-      "source": "src/page.ts:286"
+      "source": "src/page.ts:298"
     },
     {
       "name": "PageDefinition",
@@ -13335,7 +13373,7 @@
       "description": "The params a page definition declares.",
       "text": "P extends { readonly __lxPage: { readonly params: infer T; }; } ? T : never",
       "fields": [],
-      "source": "src/page.ts:279"
+      "source": "src/page.ts:291"
     },
     {
       "name": "PermissionName",
@@ -14181,7 +14219,7 @@
       "description": "The result a page definition declares.",
       "text": "P extends { readonly __lxPage: { readonly result: infer T; }; } ? T : never",
       "fields": [],
-      "source": "src/page.ts:281"
+      "source": "src/page.ts:293"
     },
     {
       "name": "RouteTarget",
@@ -17227,7 +17265,7 @@
       "description": "A page's data with its followed keys.",
       "text": "[ keyof Follow ] extends [ never ] ? Data : Data & FollowedData<Follow>",
       "fields": [],
-      "source": "src/page.ts:316"
+      "source": "src/page.ts:328"
     },
     {
       "name": "definePage(definition)",
@@ -17249,7 +17287,7 @@
           "description": "Not with `setup`: `setup` returns the actions."
         }
       ],
-      "source": "src/page.ts:351"
+      "source": "src/page.ts:363"
     },
     {
       "name": "lx.clipboard.read()",

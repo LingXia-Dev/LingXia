@@ -121,8 +121,7 @@ fn messages_and_state_reach_the_shell_only_for_the_current_connection() {
     let (endpoint, shell, _) = endpoint(&factory, "gate");
     let close = |id: &str| GpuViewMessage::ChannelClose {
         id: id.into(),
-        code: None,
-        reason: None,
+        error: None,
     };
     endpoint.deliver(generation(1), close("early")).unwrap();
     endpoint.connect(generation(2)).unwrap();
@@ -143,7 +142,7 @@ fn messages_and_state_reach_the_shell_only_for_the_current_connection() {
         shell.calls(),
         [
             "connect 2",
-            "deliver 2 ChannelClose { id: \"current\", code: None, reason: None }",
+            "deliver 2 ChannelClose { id: \"current\", error: None }",
             "state 2 Snapshot { rev: 2, state: Object {} }",
             "leave 2 back",
             "park"
@@ -164,8 +163,7 @@ fn a_lease_disposes_once_and_leaves_no_index_behind() {
             generation(3),
             GpuViewMessage::ChannelClose {
                 id: "late".into(),
-                code: None,
-                reason: None,
+                error: None,
             },
         )
         .unwrap();

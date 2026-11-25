@@ -157,10 +157,13 @@ after `cancel` or `ch.close`.
 { "v": 2, "kind": "ch.ack", "id": "<channel-id>", "ok": true }
 { "v": 2, "kind": "ch.ack", "id": "<channel-id>", "ok": false, "error": { "code": "BRIDGE_TOPIC_NOT_FOUND", "message": "..." } }
 { "v": 2, "kind": "ch.data", "id": "<channel-id>", "seq": 0, "payload": {} }
-{ "v": 2, "kind": "ch.close", "id": "<channel-id>", "code": "done", "reason": "optional" }
+{ "v": 2, "kind": "ch.close", "id": "<channel-id>" }
+{ "v": 2, "kind": "ch.close", "id": "<channel-id>", "error": { "code": "E_ABORT", "message": "...", "reason": "optional", "data": {} } }
 ```
 - After `ch.ack` with `ok: false`, no `ch.data` or `ch.close` is valid for that id.
 - After sending `ch.close`, the sender MUST stop sending `ch.data` on that id.
+- `ch.close` without `error` is a clean end; with `error` (the failed-`res` shape) the channel
+  ended in failure. Every close event, in each runtime, is `{ error? }` carrying that object.
 
 ### State (WebView only)
 ```json

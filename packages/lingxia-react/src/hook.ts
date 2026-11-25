@@ -106,9 +106,9 @@ type ChannelMethod = (...args: any[]) => Promise<LxChannel<any, any>>;
 /** The Logic end of a page channel, shaped as `PageChannel<Send, Receive>`. */
 interface PageChannelEnd<Send, Receive> {
   send(payload: Send): void;
-  close(code?: string, reason?: string): void;
+  close(error?: { code: string; message: string; reason?: string; data?: unknown }): void;
   on(event: "data", handler: (payload: Receive) => void): () => void;
-  on(event: "close", handler: (info: { code: string; reason: string }) => void): () => void;
+  on(event: "close", handler: (event: { error?: { code: string; message: string; reason?: string; data?: unknown } }) => void): () => void;
 }
 
 export type LxStreamOptions<TMethod> = ParamsOption<TMethod, ParamsSource<MethodParams<TMethod>>> & {
@@ -280,7 +280,8 @@ export interface LxChannelState<TData, TOut = TData> {
   connected: boolean;
   /** Sends when connected; `false` when there is no open channel to send on. */
   send: (payload: TOut) => boolean;
-  close: (code?: string, reason?: string) => void;
+  /** Ends the channel; pass `error` when it ends in failure. */
+  close: (error?: LxBridgeError) => void;
   reopen: () => void;
 }
 
@@ -344,9 +345,9 @@ export function useLxChannel(
     return true;
   }, []);
 
-  const close = React.useCallback((code?: string, reason?: string) => {
+  const close = React.useCallback((error?: LxBridgeError) => {
     runIdRef.current += 1;
-    chRef.current?.close(code, reason);
+    chRef.current?.close(error);
     chRef.current = null;
     setState((prev) => ({ ...prev, connecting: false, connected: false }));
   }, []);
@@ -379,10 +380,10 @@ export function useLxChannel(
           if (runIdRef.current !== runId) return;
           setState((prev) => ({ ...prev, last: payload as TIn }));
         });
-        ch.on("close", () => {
+        ch.on("close", ({ error }) => {
           if (runIdRef.current !== runId) return;
           chRef.current = null;
-          setState((prev) => ({ ...prev, connecting: false, connected: false }));
+          setState((prev) => ({ ...prev, ...(error ? { error } : {}), connecting: false, connected: false }));
         });
         ch.on("error", (err: LxBridgeError) => {
           if (runIdRef.current !== runId) return;

@@ -41,10 +41,10 @@ pub enum ToLogic {
         id: String,
         payload: Value,
     },
+    /// `error` is set when the channel ended in failure.
     ChannelClose {
         id: String,
-        code: Option<String>,
-        reason: Option<String>,
+        error: Option<BridgeError>,
     },
     /// The answer to a Logic request into the View.
     Reply {
@@ -69,17 +69,11 @@ fn string(object: &JSObject, key: &str) -> JSResult<String> {
     value.into_value().try_into()
 }
 
-fn optional_string(object: &JSObject, key: &str) -> JSResult<Option<String>> {
-    let value: JSValue = object.get(key)?;
-    if value.is_undefined() || value.is_null() {
-        return Ok(None);
-    }
-    string(object, key).map(Some)
-}
-
 /// An absent or `undefined` field is `None`; anything else is walked.
 fn tree(object: &JSObject, key: &str) -> JSResult<Option<Value>> {
-    let value: JSValue = object.get(key)?;
+    let Some(value) = object.get_opt::<_, JSValue>(key)? else {
+        return Ok(None);
+    };
     if value.is_undefined() {
         return Ok(None);
     }
@@ -112,8 +106,12 @@ impl ToLogic {
             },
             "ch.close" => Self::ChannelClose {
                 id,
-                code: optional_string(&object, "code")?,
-                reason: optional_string(&object, "reason")?,
+                error: match tree(&object, "error")? {
+                    None | Some(Value::Null) => None,
+                    Some(error) => {
+                        Some(serde_json::from_value(error).map_err(|_| invalid("error"))?)
+                    }
+                },
             },
             "res" => {
                 let ok: JSValue = object.get("ok")?;
@@ -153,8 +151,9 @@ impl ToLogic {
             Self::ChannelData { id, payload } => {
                 json!({"v":2,"kind":"ch.data","id":id,"payload":payload})
             }
-            Self::ChannelClose { id, code, reason } => {
-                json!({"v":2,"kind":"ch.close","id":id,"code":code,"reason":reason})
+            Self::ChannelClose { id, error } => {
+                let error = error.as_ref().map(|error| json!({"code":error.code,"message":error.message,"reason":error.reason,"data":error.data}));
+                json!({"v":2,"kind":"ch.close","id":id,"error":error})
             }
             Self::Reply {
                 id,
@@ -195,10 +194,10 @@ pub enum ToView {
         seq: u64,
         payload: Value,
     },
+    /// `error` is set when the channel ended in failure.
     ChannelClose {
         id: String,
-        code: Option<String>,
-        reason: Option<String>,
+        error: Option<BridgeError>,
     },
     /// Answered by [`ToLogic::Reply`] under the same id.
     Request { id: String, request: ViewRequest },
@@ -331,11 +330,13 @@ impl ToView {
                 .set("id", id.as_str())?
                 .set("seq", *seq as f64)?
                 .tree("payload", payload)?,
-            Self::ChannelClose { id, code, reason } => frame
-                .set("kind", "ch.close")?
-                .set("id", id.as_str())?
-                .some("code", code.as_deref())?
-                .some("reason", reason.as_deref())?,
+            Self::ChannelClose { id, error } => {
+                let frame = frame.set("kind", "ch.close")?.set("id", id.as_str())?;
+                match error {
+                    Some(error) => frame.error(error)?,
+                    None => frame,
+                }
+            }
             Self::Request { .. } => return Err(invalid("request is not a frame")),
         }
         .done())
@@ -420,7 +421,6 @@ impl ToView {
             reason: frame["error"]["reason"].as_str().map(str::to_owned),
             data: frame["error"].get("data").cloned().map(Box::new),
         };
-        let text = |key: &str| frame[key].as_str().map(str::to_owned);
         match frame["kind"].as_str().unwrap_or_default() {
             "res" if frame["ok"] == true => Self::Reply {
                 id,
@@ -450,8 +450,10 @@ impl ToView {
             },
             "ch.close" => Self::ChannelClose {
                 id,
-                code: text("code"),
-                reason: text("reason"),
+                error: frame
+                    .get("error")
+                    .filter(|error| !error.is_null())
+                    .map(|_| error()),
             },
             "req" => {
                 let params = &frame["params"];

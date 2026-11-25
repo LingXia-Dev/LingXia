@@ -229,7 +229,7 @@ fn native_channel_macro_closes_on_handler_error() {
     ))
     .expect("read lingxia-native-macros lib.rs");
     assert!(macro_src.contains("let __lingxia_close = __lingxia_ctx.close_handle();"));
-    assert!(macro_src.contains("__lingxia_close.close_with(\"HOST_ERROR\", err.to_string())"));
+    assert!(macro_src.contains("Err(err) => __lingxia_close.close_with(err),"));
 }
 
 #[test]

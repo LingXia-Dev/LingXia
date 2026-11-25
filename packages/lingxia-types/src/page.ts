@@ -268,11 +268,23 @@ export interface PageDefinition<Data = unknown, Actions = unknown, Params = unkn
 export interface PageChannel<Send = unknown, Receive = unknown> {
   /** Send one payload to the View. */
   send(payload: Send): void;
-  /** End the channel; the View sees `code` and `reason`. */
-  close(code?: string, reason?: string): void;
-  /** Returns a function that removes the handler. */
+  /** End the channel; pass `error` when it ends in failure, and the View's close event carries it. */
+  close(error?: ChannelError): void;
+  /** Returns a function that removes the handler. `error` is set when the View closed it in failure. */
   on(event: 'data', handler: (payload: Receive) => void): () => void;
-  on(event: 'close', handler: (info: { code: string; reason: string }) => void): () => void;
+  on(event: 'close', handler: (event: { error?: ChannelError }) => void): () => void;
+}
+
+/** A channel that ended in failure: an `E_*` or app code, English `message`, and the business `reason`. */
+export interface ChannelError {
+  /** The `E_*` or app code to branch on. */
+  code: string;
+  /** English for a log line. */
+  message: string;
+  /** The business case, when the code alone does not say it. */
+  reason?: string;
+  /** Structured facts about the failure. */
+  data?: unknown;
 }
 
 /** The params a page definition declares. */

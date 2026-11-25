@@ -20,8 +20,8 @@ test('channel establishment replays initial data and preserves independent seque
   channel.send({symbol:'MSFT'});channel.send({symbol:'TSLA'});
   assert.deepEqual(takeActionRequests().map(JSON.parse).map(x=>[x.kind,x.seq,x.payload.symbol]),[['ch.data',0,'MSFT'],['ch.data',1,'TSLA']]);
   frame('ch.data',{seq:2,payload:{type:'tick'}});
-  assert.equal(seen.length,2);channel.close('done','finished');
-  assert.equal(takeActionRequests().map(JSON.parse)[0].kind,'ch.close');
+  assert.equal(seen.length,2);channel.close({code:'E_ABORT',message:'finished',reason:'userCanceled'});
+  assert.deepEqual(takeActionRequests().map(JSON.parse)[0],{v:2,kind:'ch.close',id:request.id,error:{code:'E_ABORT',message:'finished',reason:'userCanceled'}});
   assert.equal(frame('ch.data',{seq:3,payload:'late'}),false);
   assert.throws(()=>channel.send({}),{code:'STREAM_CLOSED'});
 });
@@ -35,8 +35,10 @@ test('malformed frames and duplicate ack leave the valid channel usable',async()
   assert.throws(()=>frame('ch.data',{seq:0,payload:NaN}),/JSON/);
   const reader=channel[Symbol.asyncIterator](),next=reader.next();
   frame('ch.data',{seq:0,payload:'valid'});assert.deepEqual(await next,{done:false,value:'valid'});
-  let closes=0;channel.on('close',()=>closes++);
-  frame('ch.close',{code:'done'});assert.equal(closes,1);channel.close();assert.equal(closes,1);
+  let closes=0,closed;channel.on('close',event=>{closes++;closed=event;});
+  frame('ch.close',{error:{code:'E_NOT_FOUND',message:'gone',reason:'tabAlreadyOpen'}});assert.equal(closes,1);channel.close();assert.equal(closes,1);
+  assert.deepEqual([closed.error.code,closed.error.message,closed.error.reason],['E_NOT_FOUND','gone','tabAlreadyOpen']);
+  assert.throws(()=>frame('ch.close',{error:'gone'}),/UI_CHANNEL: frame takes/);
   assert.deepEqual(await reader.next(),{done:true,value:undefined});
 });
 test('rejected opens and resets settle pending promises and invalidate old handles',async()=>{
@@ -83,7 +85,7 @@ test('a failed send does not consume sequence and iterator return closes once',a
 test('remote close preserves already accepted iterator messages before EOF',async()=>{
   const {promise,frame}=start();frame('ch.ack',{ok:true});const channel=await promise;
   const reader=channel[Symbol.asyncIterator]();
-  frame('ch.data',{seq:0,payload:'last'});frame('ch.close',{code:'done'});
+  frame('ch.data',{seq:0,payload:'last'});frame('ch.close',{});
   assert.deepEqual(await reader.next(),{done:false,value:'last'});
   assert.deepEqual(await reader.next(),{done:true,value:undefined});
 });

@@ -35,8 +35,7 @@ fn host_inputs_outside_their_contract_fail_by_code() {
         code(
             page.receive_logic(crate::session::logic::ToView::ChannelClose {
                 id: "c".into(),
-                code: None,
-                reason: None,
+                error: None,
             })
         ),
         "UI_BRIDGE"

@@ -3098,7 +3098,7 @@
         report2(cause);
       }
     };
-    const finish = (cause, code, reason, discard2 = false) => {
+    const finish = (cause, failed, discard2 = false) => {
       if (closed) return;
       closed = true;
       failure2 = cause;
@@ -3111,7 +3111,8 @@
         else read.resolve({ done: true, value: void 0 });
       }
       if (cause) for (const fn of [...listeners.error]) invoke(fn, cause);
-      for (const fn of [...listeners.close]) invoke(fn, code, reason);
+      const event = Object.freeze(failed === void 0 ? {} : { error: failed });
+      for (const fn of [...listeners.close]) invoke(fn, event);
       for (const bucket of Object.values(listeners)) bucket.clear();
     };
     const handle2 = Object.freeze({
@@ -3120,8 +3121,8 @@
         if (closed) throw error("STREAM_CLOSED", "Channel is closed");
         send(payload2);
       },
-      close(code = "done", reason = "") {
-        if (!closed) close(code, reason);
+      close(failed) {
+        if (!closed) close(failed);
       },
       on(kind, fn) {
         if (!Object.prototype.hasOwnProperty.call(listeners, kind) || typeof fn !== "function")
@@ -3163,15 +3164,16 @@
     });
     return {
       handle: handle2,
-      finish: (code, reason, discard2) => finish(void 0, code, reason, discard2),
-      reject: (cause) => finish(cause, cause.code, cause.message),
+      finish: (failed, discard2) => finish(void 0, failed, discard2),
+      reject: (cause) => finish(cause, cause),
       push(value) {
         if (closed) return;
         if (reads.length) reads.shift().resolve({ done: false, value });
         else if (iterator || !listeners.data.size) {
           const size = JSON.stringify(value).length * 2;
           if (queue.length >= 256 || bytes + size > 1048576) {
-            close("UI_LIMIT", "Channel consumer queue exceeded", error("UI_LIMIT", "Channel consumer queue exceeded"));
+            const limit = error("UI_LIMIT", "Channel consumer queue exceeded");
+            close(limit, limit);
             return;
           }
           queue.push({ value, bytes: size });
@@ -3611,16 +3613,15 @@
           if (requests.length >= 256) throw Error("UI_LIMIT: too many pending channel frames");
           requests.push({ kind: "ch.data", id, seq: outgoing, payload: bounded(payload2, "channel", topic) });
           outgoing++;
-        }, (code, reason, cause) => {
+        }, (failed, cause) => {
           outsideRender("channel close");
           if (!activeChannels.has(id)) return;
-          if (typeof code !== "string" || code.length > 256 || typeof reason !== "string" || reason.length > 2048)
-            throw Error("UI_CHANNEL: invalid close reason");
+          const wire = failed === void 0 ? void 0 : closeError(failed);
           if (requests.length >= 512) throw Error("UI_LIMIT: too many pending cancellations");
-          requests.push({ kind: "ch.close", id, code, reason });
+          requests.push(wire === void 0 ? { kind: "ch.close", id } : { kind: "ch.close", id, error: wire });
           activeChannels.delete(id);
           if (cause) channel.reject(cause);
-          else channel.finish(code, reason, true);
+          else channel.finish(failed, true);
         }, reportLive, bridgeError);
         const promise = new Promise((resolve, reject) => activeChannels.set(id, { channel, resolve, reject, open: false, sequence: -1 }));
         promise.catch(() => {
@@ -3717,6 +3718,12 @@
   function actionEpochNow() {
     return actionEpoch;
   }
+  function closeError(failed) {
+    const { code, message, reason, data } = failed ?? {};
+    if (typeof code !== "string" || code.length > 256 || message !== void 0 && (typeof message !== "string" || message.length > 2048) || reason !== void 0 && (typeof reason !== "string" || reason.length > 256))
+      throw Error("UI_CHANNEL: close takes { code: string, message?: string, reason?: string, data? }");
+    return { code, message: message ?? code, ...reason === void 0 ? {} : { reason }, ...data === void 0 ? {} : { data: bounded(data, "channel", "close") } };
+  }
   var failure = ({ error }) => bridgeError(
     typeof error?.code === "string" ? error.code : "E_INTERNAL",
     typeof error?.message === "string" ? error.message : void 0,
@@ -3747,8 +3754,8 @@
     return true;
   }
   function receiveChannelFrame(frame) {
-    if (typeof frame.id !== "string" || frame.kind === "ch.ack" && typeof frame.ok !== "boolean" || frame.kind === "ch.data" && (!Number.isSafeInteger(frame.seq) || frame.seq < 0) || frame.kind === "ch.close" && (frame.code !== void 0 && typeof frame.code !== "string" || frame.reason !== void 0 && typeof frame.reason !== "string"))
-      throw Error(`UI_CHANNEL: frame takes { v: 2, kind: 'ch.ack'|'ch.data'|'ch.close', id: string, ok?: boolean, seq?: integer >= 0, code?: string, reason?: string }; got ${show2(frame)}`);
+    if (typeof frame.id !== "string" || frame.kind === "ch.ack" && typeof frame.ok !== "boolean" || frame.kind === "ch.data" && (!Number.isSafeInteger(frame.seq) || frame.seq < 0) || frame.kind === "ch.close" && frame.error !== void 0 && typeof frame.error?.code !== "string")
+      throw Error(`UI_CHANNEL: frame takes { v: 2, kind: 'ch.ack'|'ch.data'|'ch.close', id: string, ok?: boolean, seq?: integer >= 0, error?: { code: string, message?: string, reason?: string, data? } }; got ${show2(frame)}`);
     const entry = activeChannels.get(frame.id);
     if (!entry) return false;
     if (frame.kind === "ch.ack") {
@@ -3767,7 +3774,7 @@
     if (!entry.open) throw Error("UI_CHANNEL: frame before acknowledgement");
     if (frame.kind === "ch.close") {
       activeChannels.delete(frame.id);
-      entry.channel.finish(frame.code, frame.reason);
+      entry.channel.finish(frame.error === void 0 ? void 0 : failure(frame));
     } else {
       if (frame.seq <= entry.sequence || entry.sequence === -1 && frame.seq !== 0)
         throw Error("UI_CHANNEL: invalid sequence");
@@ -3957,10 +3964,10 @@
         opened2.on("error", (error) => {
           if (mounted && current2 === ticket) update({ error: resourceError(error) });
         });
-        opened2.on("close", () => {
+        opened2.on("close", ({ error }) => {
           if (mounted && current2 === ticket) {
             channel = void 0;
-            update({ connecting: false, connected: false });
+            update({ connecting: false, connected: false, ...error ? { error: resourceError(error) } : {} });
           }
         });
       } catch (error) {

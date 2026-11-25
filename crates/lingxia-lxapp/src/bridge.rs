@@ -87,8 +87,7 @@ pub(crate) enum AppServiceCommand {
     ChClose {
         work_id: Option<SessionWorkId>,
         id: String,
-        code: Option<String>,
-        reason: Option<String>,
+        error: Option<RpcError>,
     },
     StateAck {
         work_id: Option<SessionWorkId>,
@@ -283,6 +282,64 @@ impl From<lingxia_error::Error> for RpcError {
             message: Some(error.message().to_string()),
             reason: error.reason().map(Into::into),
             data: error.data().cloned().map(Box::new),
+        }
+    }
+}
+
+impl From<&ResError> for RpcError {
+    fn from(error: &ResError) -> Self {
+        Self {
+            code: error.normalized_code(),
+            message: error.message.clone(),
+            reason: error.reason.clone(),
+            data: error.data.clone(),
+        }
+    }
+}
+
+impl From<crate::GpuBridgeError> for RpcError {
+    fn from(error: crate::GpuBridgeError) -> Self {
+        Self {
+            code: error.code,
+            message: error.message,
+            reason: error.reason.map(Into::into),
+            data: error.data.map(Box::new),
+        }
+    }
+}
+
+impl From<RpcError> for crate::GpuBridgeError {
+    fn from(error: RpcError) -> Self {
+        Self {
+            code: error.code,
+            message: error.message,
+            reason: error.reason.map(String::from),
+            data: error.data.map(|data| *data),
+        }
+    }
+}
+
+impl From<RpcError> for BridgeError {
+    fn from(error: RpcError) -> Self {
+        Self {
+            code: error.code,
+            message: error.message,
+            reason: error.reason.map(String::from),
+            data: error.data.map(|data| *data),
+        }
+    }
+}
+
+impl From<RpcError> for lingxia_error::Error {
+    fn from(error: RpcError) -> Self {
+        let message = error.message.unwrap_or_else(|| error.code.clone());
+        let mut built = lingxia_error::Error::new(error.code, message);
+        if let Some(reason) = error.reason {
+            built = built.with_reason(String::from(reason));
+        }
+        match error.data {
+            Some(data) => built.with_data(*data),
+            None => built,
         }
     }
 }
@@ -1038,19 +1095,15 @@ impl PageBridge {
             crate::GpuViewEvent::ChannelData { id, payload } => {
                 self.handle_ch_data_parts(page, &id, Payload::Tree(payload), &work)
             }
-            crate::GpuViewEvent::ChannelClose { id, code, reason } => {
-                self.handle_ch_close(page, context, &ChCloseMsg { id, code, reason }, &work)
+            crate::GpuViewEvent::ChannelClose { id, error } => {
+                let error = error.map(RpcError::from);
+                self.close_channel_from_view(page, id, error, &work)
             }
             crate::GpuViewEvent::Reply { id, outcome } => {
                 if !self.is_current_work(work.work_id) {
                     return Ok(());
                 }
-                let result = outcome.map_err(|error| RpcError {
-                    code: error.code,
-                    message: error.message,
-                    reason: error.reason.map(Into::into),
-                    data: error.data.map(Box::new),
-                });
+                let result = outcome.map_err(RpcError::from);
                 let page_instance_id = page.instance_id_string();
                 crate::view_call::resolve_view_call(
                     &id,
@@ -1089,7 +1142,8 @@ impl PageBridge {
             }
             IncomingMessage::ChData(msg) => self.handle_ch_data(page, context, msg, &decoded.work),
             IncomingMessage::ChClose(msg) => {
-                self.handle_ch_close(page, context, msg, &decoded.work)
+                let error = msg.error.as_ref().map(RpcError::from);
+                self.close_channel_from_view(page, msg.id.clone(), error, &decoded.work)
             }
             IncomingMessage::Cancel(msg) => self.handle_cancel(page, context, msg, &decoded.work),
             IncomingMessage::StateAck(msg) => {
@@ -1226,11 +1280,11 @@ impl PageBridge {
         )
     }
 
-    fn handle_ch_close(
+    fn close_channel_from_view(
         &self,
         page: &PageInstance,
-        _context: &BridgeMessageContext,
-        msg: &ChCloseMsg,
+        id: String,
+        error: Option<RpcError>,
         work: &CapturedSessionWork,
     ) -> Result<(), LxAppError> {
         if !self.is_current_work(work.work_id) {
@@ -1239,17 +1293,15 @@ impl PageBridge {
         let Some(work_id) = work.work_id else {
             return Ok(());
         };
-        if self.close_host_channel_from_view(&msg.id, work_id, msg.code.clone(), msg.reason.clone())
-        {
+        let Some(error) = self.close_host_channel_from_view(&id, work_id, error) else {
             return Ok(());
-        }
+        };
         self.forward_js_message(
             page,
             AppServiceCommand::ChClose {
                 work_id: work.work_id,
-                id: msg.id.clone(),
-                code: msg.code.clone(),
-                reason: msg.reason.clone(),
+                id,
+                error,
             },
         )
     }
@@ -2040,15 +2092,13 @@ impl PageBridge {
         work_id: Option<SessionWorkId>,
         outbound: Option<&OutboundContext>,
         id: impl Into<String>,
-        code: Option<String>,
-        reason: Option<String>,
+        error: Option<RpcError>,
     ) -> Result<(), LxAppError> {
         if let Some(outbound) = gpu(outbound) {
             return self.post_gpu(work_id, outbound, || {
                 Ok(crate::GpuViewMessage::ChannelClose {
                     id: id.into(),
-                    code,
-                    reason,
+                    error: error.map(Into::into),
                 })
             });
         }
@@ -2056,8 +2106,7 @@ impl PageBridge {
             v: 2,
             kind: "ch.close",
             id: id.into(),
-            code,
-            reason,
+            error: error.map(Into::into),
         };
         self.send_json_for_context(transport, work_id, outbound, &msg)
     }
@@ -2197,17 +2246,15 @@ impl PageBridge {
                 .collect::<Vec<_>>()
         };
         for (id, channel) in active_host_channels {
+            let error = RpcError::new(code::ABORT, Some(reason.to_string()));
             let _ = self.send_ch_close_for_context(
                 page,
                 Some(channel.work_id),
                 channel.outbound.as_ref(),
                 id,
-                Some(code::ABORT.to_string()),
-                Some(reason.to_string()),
+                Some(error.clone()),
             );
-            channel
-                .sender
-                .send_close(Some(code::ABORT.to_string()), Some(reason.to_string()));
+            channel.sender.send_close(Some(error.into()));
         }
     }
 
@@ -2244,10 +2291,9 @@ impl PageBridge {
             },
         );
         if let Some(replaced) = replaced {
-            replaced.sender.send_close(
-                Some(code::ABORT.to_string()),
-                Some("Channel replaced".to_string()),
-            );
+            replaced
+                .sender
+                .send_close(Some(lingxia_error::Error::aborted("Channel replaced")));
         }
         token
     }
@@ -2344,26 +2390,26 @@ impl PageBridge {
         }
     }
 
-    /// Forward a View-initiated `ch.close` to the matching host channel sender.
-    /// Removes the sender from the map and returns `true` if found.
+    /// Forward a View-initiated `ch.close` to the matching host channel sender, removing it.
+    /// Hands `error` back when no host channel has this id.
     fn close_host_channel_from_view(
         &self,
         id: &str,
         work_id: SessionWorkId,
-        code: Option<String>,
-        reason: Option<String>,
-    ) -> bool {
+        error: Option<RpcError>,
+    ) -> Option<Option<RpcError>> {
         let channel = self
             .inner
             .active_host_channels
             .lock()
             .unwrap()
             .remove(&(work_id, id.to_owned()));
-        if let Some(channel) = channel {
-            channel.sender.send_close(code, reason);
-            true
-        } else {
-            false
+        match channel {
+            Some(channel) => {
+                channel.sender.send_close(error.map(Into::into));
+                None
+            }
+            None => Some(error),
         }
     }
 
@@ -2410,10 +2456,9 @@ impl PageBridge {
                 // before this channel entered the work registry.
                 if !self.is_current_work(Some(work_id)) {
                     if let Some(channel) = self.take_host_channel(&id, work_id, channel_token) {
-                        channel.sender.send_close(
-                            Some(code::ABORT.to_string()),
-                            Some(PAGE_UNLOADED.to_string()),
-                        );
+                        channel
+                            .sender
+                            .send_close(Some(lingxia_error::Error::aborted(PAGE_UNLOADED)));
                     }
                     return Ok(());
                 }
@@ -2459,7 +2504,7 @@ impl PageBridge {
                                 }
                                 seq += 1;
                             }
-                            host::ChannelOutbound::Close { code, reason } => {
+                            host::ChannelOutbound::Close { error } => {
                                 if bridge
                                     .take_host_channel(&task_id, work_id, channel_token)
                                     .is_some()
@@ -2469,8 +2514,7 @@ impl PageBridge {
                                         Some(work_id),
                                         task_outbound.as_ref(),
                                         task_id.clone(),
-                                        code,
-                                        reason,
+                                        error.map(RpcError::from),
                                     );
                                 }
                                 break;
@@ -2483,10 +2527,9 @@ impl PageBridge {
                 // its own async task if it needs to do long-running work.
                 if !self.is_current_work(Some(work_id)) {
                     if let Some(channel) = self.take_host_channel(&id, work_id, channel_token) {
-                        channel.sender.send_close(
-                            Some(code::ABORT.to_string()),
-                            Some(PAGE_UNLOADED.to_string()),
-                        );
+                        channel
+                            .sender
+                            .send_close(Some(lingxia_error::Error::aborted(PAGE_UNLOADED)));
                     }
                     return Ok(());
                 }
@@ -2885,8 +2928,7 @@ mod tests {
         outbound
             .post_gpu(crate::GpuViewMessage::ChannelClose {
                 id: "c".into(),
-                code: None,
-                reason: None,
+                error: None,
             })
             .unwrap();
         let reply = target.0.lock().unwrap()[0].clone();
@@ -2923,8 +2965,7 @@ mod tests {
             outbound
                 .post_gpu(crate::GpuViewMessage::ChannelClose {
                     id: "late".into(),
-                    code: None,
-                    reason: None,
+                    error: None,
                 })
                 .is_err()
         );

@@ -145,10 +145,10 @@ pub enum GpuViewMessage {
         seq: u64,
         payload: serde_json::Value,
     },
+    /// `error` is set when the channel ended in failure.
     ChannelClose {
         id: String,
-        code: Option<String>,
-        reason: Option<String>,
+        error: Option<GpuBridgeError>,
     },
     /// Answered by [`GpuViewEvent::Reply`] under the same id.
     Request { id: String, request: GpuViewRequest },
@@ -284,10 +284,10 @@ pub enum GpuViewEvent {
         id: String,
         payload: serde_json::Value,
     },
+    /// `error` is set when the channel ended in failure.
     ChannelClose {
         id: String,
-        code: Option<String>,
-        reason: Option<String>,
+        error: Option<GpuBridgeError>,
     },
     /// The answer to a Logic call into the View.
     Reply {

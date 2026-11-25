@@ -298,9 +298,9 @@ function serveChannels(host, served) {
           receive({ v: 2, kind: 'ch.ack', id: message.id, ok: true });
           served[message.topic]({
             send(payload) { if (open.has(message.id)) receive({ v: 2, kind: 'ch.data', id: message.id, seq: seq++, payload: copy(payload) }); },
-            close(code = 'closed', reason = '') {
+            close(error) {
               if (!open.delete(message.id)) return;
-              receive({ v: 2, kind: 'ch.close', id: message.id, code, reason });
+              receive(error === undefined ? { v: 2, kind: 'ch.close', id: message.id } : { v: 2, kind: 'ch.close', id: message.id, error: copy(error) });
             },
             on(event, listener) {
               if (!listeners[event]) throw Error(`channel.on: "data" or "close", not ${JSON.stringify(event)}`);
@@ -313,7 +313,8 @@ function serveChannels(host, served) {
         } else if (message.kind === 'ch.close') {
           const listeners = open.get(message.id);
           open.delete(message.id);
-          for (const listener of [...listeners?.close ?? []]) listener({ code: message.code, reason: message.reason });
+          const event = message.error === undefined ? {} : { error: copy(message.error) };
+          for (const listener of [...listeners?.close ?? []]) listener(event);
         } else unanswered.push(copy(message));
       }
     },

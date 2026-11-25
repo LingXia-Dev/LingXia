@@ -139,23 +139,25 @@ export interface NativeStream<TEvent = unknown, TResult = void> {
 export interface LxChannel<TIn = unknown, TOut = TIn> extends AsyncIterable<TIn> {
   send(payload: TOut): void;
   on(event: 'data', listener: (payload: TIn) => void): this;
-  on(event: 'close', listener: (code?: string, reason?: string) => void): this;
+  on(event: 'close', listener: (event: ChannelCloseEvent<LxBridgeError>) => void): this;
   on(event: 'error', listener: (error: LxBridgeError) => void): this;
-  close(code?: string, reason?: string): void;
+  /** Ends the channel; pass `error` when it ends in failure. */
+  close(error?: LxBridgeError): void;
   [Symbol.asyncIterator](): AsyncIterator<TIn, void, void>;
   readonly id: string;
 }
 
-export interface ChannelCloseEvent {
-  code?: string;
-  reason?: string;
+/** `error` is set when the channel ended in failure. */
+export interface ChannelCloseEvent<E = NativeError> {
+  error?: E;
 }
 
 export interface NativeChannel<TIn = unknown, TOut = unknown> {
   send(message: TIn): void;
   onMessage(listener: (message: TOut) => void): () => void;
   onClose(listener: (event: ChannelCloseEvent) => void): () => void;
-  close(code?: string, reason?: string): void;
+  /** Ends the channel; pass `error` when it ends in failure. */
+  close(error?: NativeError): void;
 }
 
 declare global {

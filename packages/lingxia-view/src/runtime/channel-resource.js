@@ -26,10 +26,10 @@ export function channelResource(state, report) {
       opened.on('error', error => {
         if (mounted && current === ticket) update({ error: resourceError(error) });
       });
-      opened.on('close', () => {
+      opened.on('close', ({ error }) => {
         if (mounted && current === ticket) {
           channel = undefined;
-          update({ connecting: false, connected: false });
+          update({ connecting: false, connected: false, ...(error ? { error: resourceError(error) } : {}) });
         }
       });
     } catch (error) {

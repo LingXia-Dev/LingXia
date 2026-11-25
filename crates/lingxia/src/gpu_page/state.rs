@@ -69,18 +69,23 @@ pub(crate) fn event_from_view(message: ToLogic) -> GpuViewEvent {
             GpuViewEvent::ChannelOpen { id, topic, params }
         }
         ToLogic::ChannelData { id, payload } => GpuViewEvent::ChannelData { id, payload },
-        ToLogic::ChannelClose { id, code, reason } => {
-            GpuViewEvent::ChannelClose { id, code, reason }
-        }
+        ToLogic::ChannelClose { id, error } => GpuViewEvent::ChannelClose {
+            id,
+            error: error.map(error_from_view),
+        },
         ToLogic::Reply { id, outcome } => GpuViewEvent::Reply {
             id,
-            outcome: outcome.map_err(|error| GpuBridgeError {
-                code: error.code,
-                message: error.message,
-                reason: error.reason,
-                data: error.data.map(|data| *data),
-            }),
+            outcome: outcome.map_err(error_from_view),
         },
+    }
+}
+
+fn error_from_view(error: BridgeError) -> GpuBridgeError {
+    GpuBridgeError {
+        code: error.code,
+        message: error.message,
+        reason: error.reason,
+        data: error.data.map(|data| *data),
     }
 }
 
@@ -109,9 +114,10 @@ pub(crate) fn message_to_view(message: GpuViewMessage) -> ToView {
         GpuViewMessage::ChannelData { id, seq, payload } => {
             ToView::ChannelData { id, seq, payload }
         }
-        GpuViewMessage::ChannelClose { id, code, reason } => {
-            ToView::ChannelClose { id, code, reason }
-        }
+        GpuViewMessage::ChannelClose { id, error } => ToView::ChannelClose {
+            id,
+            error: error.map(error_to_view),
+        },
         GpuViewMessage::Request { id, request } => ToView::Request {
             id,
             request: match request {

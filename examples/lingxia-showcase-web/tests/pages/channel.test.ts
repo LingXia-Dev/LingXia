@@ -42,16 +42,16 @@ test('closing a real channel ends reads and rejects subsequent sends', {
     const bridge = window.LingXiaBridge as LingXiaBridgeInterface;
     const channel = await bridge.raw.channel.open('tickerSession');
     const errors: string[] = [];
-    const closes: Array<{ code: string; reason: string }> = [];
+    const closes: Array<{ code: string; message: string }> = [];
     // Consume the initial ticker snapshot before asking for a pending read.
     channel.on('data', () => {});
     channel.on('error', (error) => errors.push(String(error.code)));
-    channel.on('close', (code, reason) => closes.push({ code: code ?? '', reason: reason ?? '' }));
+    channel.on('close', ({ error }) => closes.push({ code: error?.code ?? '', message: error?.message ?? '' }));
     try {
       const iterator = channel[Symbol.asyncIterator]();
       const pending = iterator.next();
-      channel.close('done', 'test finished');
-      channel.close('duplicate', 'must be ignored');
+      channel.close({ code: 'E_ABORT', message: 'test finished' });
+      channel.close({ code: 'E_ABORT', message: 'must be ignored' });
       const ended = await pending;
       channel.send({ type: 'subscribe', symbol: 'MSFT' });
       const after = await iterator.next();
@@ -67,7 +67,7 @@ test('closing a real channel ends reads and rejects subsequent sends', {
       channel.close();
     }
   });
-  expect(result.closes).toEqual([{ code: 'done', reason: 'test finished' }]);
+  expect(result.closes).toEqual([{ code: 'E_ABORT', message: 'test finished' }]);
   expect(result.errors).toEqual(['BRIDGE_STREAM_CLOSED']);
   expect(result.ended).toBe(true);
   expect(result.after).toBe(true);

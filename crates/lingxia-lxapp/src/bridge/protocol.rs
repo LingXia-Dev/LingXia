@@ -78,8 +78,7 @@ pub struct ChDataMsg {
 #[derive(Deserialize, Debug, Clone)]
 pub struct ChCloseMsg {
     pub id: String,
-    pub code: Option<String>,
-    pub reason: Option<String>,
+    pub error: Option<ResError>,
 }
 
 #[derive(Deserialize, Debug, Clone)]
@@ -288,9 +287,7 @@ pub(super) struct ChCloseOut {
     pub kind: &'static str,
     pub id: String,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub code: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub reason: Option<String>,
+    pub error: Option<BridgeError>,
 }
 
 #[cfg(test)]

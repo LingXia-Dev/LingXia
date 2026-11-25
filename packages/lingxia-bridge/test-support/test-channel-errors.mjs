@@ -59,9 +59,10 @@ async function openChannel() {
 for (const initiator of ['client', 'host']) {
   const channel = await openChannel();
   let closeCount = 0;
+  const closes = [];
   const errors = [];
   const data = [];
-  channel.on('close', () => closeCount++);
+  channel.on('close', (event) => { closeCount++; closes.push(event); });
   channel.on('error', (error) => errors.push(error.code));
   channel.on('data', (value) => data.push(value));
   channel.send('before');
@@ -69,11 +70,12 @@ for (const initiator of ['client', 'host']) {
   const iterator = channel[Symbol.asyncIterator]();
   const read = iterator.next();
   const beforeClose = frames('ch.close').length;
-  if (initiator === 'client') channel.close('done', 'finished');
-  else receive({ kind: 'ch.close', id: channel.id, code: 'done', reason: 'finished' });
+  const failure = { code: 'E_NOT_FOUND', message: 'quote gone', reason: 'tabAlreadyOpen', data: { symbol: 'X' } };
+  if (initiator === 'client') channel.close(failure);
+  else receive({ kind: 'ch.close', id: channel.id, error: failure });
   assert.equal((await read).done, true, `${initiator} close settles a pending read`);
   channel.close();
-  receive({ kind: 'ch.close', id: channel.id, code: 'duplicate' });
+  receive({ kind: 'ch.close', id: channel.id, error: { code: 'E_ABORT', message: 'duplicate' } });
   receive({ kind: 'ch.data', id: channel.id, seq: 1, payload: 'late' });
   const beforeSend = frames('ch.data').length;
   channel.send('after');
@@ -81,6 +83,9 @@ for (const initiator of ['client', 'host']) {
   assert.equal(frames('ch.data').length, beforeSend, 'closed send never reaches transport');
   assert.equal(frames('ch.close').length - beforeClose, initiator === 'client' ? 1 : 0);
   assert.equal(closeCount, 1);
+  const { code, message, reason, data: detailData } = closes[0].error;
+  assert.equal(JSON.stringify({ code, message, reason, data: detailData }), JSON.stringify(failure), `${initiator} close carries the error`);
+  if (initiator === 'client') assert.equal(JSON.stringify(frames('ch.close').at(-1).error), JSON.stringify(failure));
   assert.deepEqual(data, []);
   assert.equal((await iterator.next()).done, true);
 }

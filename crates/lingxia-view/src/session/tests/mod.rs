@@ -858,6 +858,8 @@ fn channel_bridge_opens_delivers_and_sends_on_the_bound_endpoint() {
         .unwrap();
     let closed: serde_json::Value = page.take_action_requests().unwrap()[0].frame();
     assert_eq!(closed["kind"], "ch.close");
+    // A clean close carries no `error`.
+    assert!(closed.get("error").is_none(), "{closed}");
     assert!(!page.receive_frame(&message).unwrap().changed);
 }
 

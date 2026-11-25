@@ -91,7 +91,7 @@ export function render() {
     await screen.settle();
     assert.deepEqual(heard, ['hi']);
     assert.equal(textOf(screen.getByTestId('state')), 'open: welcome,echo hi');
-    logic.close('done', 'bye');
+    logic.close();
     await screen.settle();
     assert.equal(textOf(screen.getByTestId('state')), 'closed: welcome,echo hi');
     screen.press(screen.getByTestId('away'));

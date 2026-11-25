@@ -3,7 +3,8 @@ export function createChannel(id, send, close, report, error) {
   const queue = [], reads = [];
   const listeners = { data: new Set(), close: new Set(), error: new Set() };
   const invoke = (fn, ...values) => { try { fn(...values); } catch (cause) { report(cause); } };
-  const finish = (cause, code, reason, discard = false) => {
+  // The close event is `{ error? }`; `error` is set when the channel ended in failure.
+  const finish = (cause, failed, discard = false) => {
     if (closed) return;
     closed = true; failure = cause;
     if (cause || discard) { queue.length = 0; bytes = 0; }
@@ -11,7 +12,8 @@ export function createChannel(id, send, close, report, error) {
       if (cause) read.reject(cause); else read.resolve({ done: true, value: undefined });
     }
     if (cause) for (const fn of [...listeners.error]) invoke(fn, cause);
-    for (const fn of [...listeners.close]) invoke(fn, code, reason);
+    const event = Object.freeze(failed === undefined ? {} : { error: failed });
+    for (const fn of [...listeners.close]) invoke(fn, event);
     for (const bucket of Object.values(listeners)) bucket.clear();
   };
   const handle = Object.freeze({
@@ -20,7 +22,7 @@ export function createChannel(id, send, close, report, error) {
       if (closed) throw error('STREAM_CLOSED', 'Channel is closed');
       send(payload);
     },
-    close(code = 'done', reason = '') { if (!closed) close(code, reason); },
+    close(failed) { if (!closed) close(failed); },
     on(kind, fn) {
       if (!Object.prototype.hasOwnProperty.call(listeners, kind) || typeof fn !== 'function')
         throw Error('UI_CHANNEL: invalid listener');
@@ -54,15 +56,16 @@ export function createChannel(id, send, close, report, error) {
   });
   return {
     handle,
-    finish: (code, reason, discard) => finish(undefined, code, reason, discard),
-    reject: cause => finish(cause, cause.code, cause.message),
+    finish: (failed, discard) => finish(undefined, failed, discard),
+    reject: cause => finish(cause, cause),
     push(value) {
       if (closed) return;
       if (reads.length) reads.shift().resolve({ done: false, value });
       else if (iterator || !listeners.data.size) {
         const size = JSON.stringify(value).length * 2;
         if (queue.length >= 256 || bytes + size > 1048576) {
-          close('UI_LIMIT', 'Channel consumer queue exceeded', error('UI_LIMIT', 'Channel consumer queue exceeded'));
+          const limit = error('UI_LIMIT', 'Channel consumer queue exceeded');
+          close(limit, limit);
           return;
         }
         queue.push({ value, bytes: size }); bytes += size;

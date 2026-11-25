@@ -1320,27 +1320,27 @@ pub async fn await_or_cancel<T>(
 /// Inbound message from the View layer delivered to the channel handler.
 pub(crate) enum RawChannelInbound {
     Data(String),
+    /// `error` is set when the channel ended in failure.
     Close {
-        code: Option<String>,
-        reason: Option<String>,
+        error: Option<lingxia_error::Error>,
     },
 }
 
 /// Typed inbound message received from [`ChannelContext::recv_json`].
 pub enum ChannelMessage<T> {
     Data(T),
+    /// `error` is set when the channel ended in failure.
     Close {
-        code: Option<String>,
-        reason: Option<String>,
+        error: Option<lingxia_error::Error>,
     },
 }
 
 /// Outbound message from the channel handler to the View layer.
 pub(crate) enum ChannelOutbound {
     Data(String),
+    /// `error` is set when the channel ended in failure.
     Close {
-        code: Option<String>,
-        reason: Option<String>,
+        error: Option<lingxia_error::Error>,
     },
 }
 
@@ -1348,9 +1348,9 @@ pub(crate) enum ChannelOutbound {
 #[doc(hidden)]
 pub enum LogicChannelOutbound {
     Data(String),
+    /// `error` is set when the channel ended in failure.
     Close {
-        code: Option<String>,
-        reason: Option<String>,
+        error: Option<lingxia_error::Error>,
     },
 }
 
@@ -1366,8 +1366,8 @@ impl LogicChannelInbound {
         let _ = self.tx.send(RawChannelInbound::Data(json));
     }
 
-    pub fn send_close(&self, code: Option<String>, reason: Option<String>) {
-        let _ = self.tx.send(RawChannelInbound::Close { code, reason });
+    pub fn send_close(&self, error: Option<lingxia_error::Error>) {
+        let _ = self.tx.send(RawChannelInbound::Close { error });
     }
 }
 
@@ -1406,9 +1406,7 @@ impl<TIn, TOut> ChannelContext<TIn, TOut> {
             while let Some(item) = raw_outbound_rx.recv().await {
                 let mapped = match item {
                     ChannelOutbound::Data(json) => LogicChannelOutbound::Data(json),
-                    ChannelOutbound::Close { code, reason } => {
-                        LogicChannelOutbound::Close { code, reason }
-                    }
+                    ChannelOutbound::Close { error } => LogicChannelOutbound::Close { error },
                 };
                 if logic_out_tx.send(mapped).is_err() {
                     break;
@@ -1485,9 +1483,7 @@ where
                 })?;
                 Ok(Some(ChannelMessage::Data(payload)))
             }
-            Some(RawChannelInbound::Close { code, reason }) => {
-                Ok(Some(ChannelMessage::Close { code, reason }))
-            }
+            Some(RawChannelInbound::Close { error }) => Ok(Some(ChannelMessage::Close { error })),
             None => Ok(None),
         }
     }
@@ -1504,18 +1500,16 @@ impl<TIn, TOut> ChannelContext<TIn, TOut> {
     /// Close the channel cleanly from the Logic side.
     pub fn close(mut self) {
         self.close_on_drop = false;
-        let _ = self.outbound_tx.send(ChannelOutbound::Close {
-            code: None,
-            reason: None,
-        });
+        let _ = self
+            .outbound_tx
+            .send(ChannelOutbound::Close { error: None });
     }
 
-    /// Close the channel with an error code and human-readable reason.
-    pub fn close_with(mut self, code: impl Into<String>, reason: impl Into<String>) {
+    /// Close the channel because it failed; the View's close event carries `error`.
+    pub fn close_with(mut self, error: impl Into<lingxia_error::Error>) {
         self.close_on_drop = false;
         let _ = self.outbound_tx.send(ChannelOutbound::Close {
-            code: Some(code.into()),
-            reason: Some(reason.into()),
+            error: Some(error.into()),
         });
     }
 }
@@ -1525,10 +1519,9 @@ impl<TIn, TOut> Drop for ChannelContext<TIn, TOut> {
         if !self.close_on_drop {
             return;
         }
-        let _ = self.outbound_tx.send(ChannelOutbound::Close {
-            code: None,
-            reason: None,
-        });
+        let _ = self
+            .outbound_tx
+            .send(ChannelOutbound::Close { error: None });
     }
 }
 
@@ -1539,16 +1532,14 @@ pub struct ChannelCloseHandle {
 
 impl ChannelCloseHandle {
     pub fn close(&self) {
-        let _ = self.outbound_tx.send(ChannelOutbound::Close {
-            code: None,
-            reason: None,
-        });
+        let _ = self
+            .outbound_tx
+            .send(ChannelOutbound::Close { error: None });
     }
 
-    pub fn close_with(&self, code: impl Into<String>, reason: impl Into<String>) {
+    pub fn close_with(&self, error: impl Into<lingxia_error::Error>) {
         let _ = self.outbound_tx.send(ChannelOutbound::Close {
-            code: Some(code.into()),
-            reason: Some(reason.into()),
+            error: Some(error.into()),
         });
     }
 }
@@ -1564,10 +1555,8 @@ impl ChannelContextSender {
         let _ = self.inbound_tx.send(RawChannelInbound::Data(payload_json));
     }
 
-    pub(crate) fn send_close(&self, code: Option<String>, reason: Option<String>) {
-        let _ = self
-            .inbound_tx
-            .send(RawChannelInbound::Close { code, reason });
+    pub(crate) fn send_close(&self, error: Option<lingxia_error::Error>) {
+        let _ = self.inbound_tx.send(RawChannelInbound::Close { error });
     }
 }
 

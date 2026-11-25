@@ -195,15 +195,14 @@ export function configureActions(metadata) {
         if (requests.length >= 256) throw Error('UI_LIMIT: too many pending channel frames');
         requests.push({ kind: 'ch.data', id, seq: outgoing, payload: bounded(payload, 'channel', topic) });
         outgoing++;
-      }, (code, reason, cause) => {
+      }, (failed, cause) => {
         outsideRender('channel close');
         if (!activeChannels.has(id)) return;
-        if (typeof code !== 'string' || code.length > 256 || typeof reason !== 'string' || reason.length > 2048)
-          throw Error('UI_CHANNEL: invalid close reason');
+        const wire = failed === undefined ? undefined : closeError(failed);
         if (requests.length >= 512) throw Error('UI_LIMIT: too many pending cancellations');
-        requests.push({ kind: 'ch.close', id, code, reason });
+        requests.push(wire === undefined ? { kind: 'ch.close', id } : { kind: 'ch.close', id, error: wire });
         activeChannels.delete(id);
-        if (cause) channel.reject(cause); else channel.finish(code, reason, true);
+        if (cause) channel.reject(cause); else channel.finish(failed, true);
       }, reportLive, bridgeError);
       const promise = new Promise((resolve, reject) => activeChannels.set(id, { channel, resolve, reject, open: false, sequence: -1 }));
       promise.catch(() => {});
@@ -284,6 +283,15 @@ export function actionPending(serial) { return pendingActions.has(`ui-action:${s
 export function hasActionEpoch(epoch) { return epoch === actionEpoch; }
 export function actionEpochNow() { return actionEpoch; }
 
+// A View-side `channel.close(error)`: the `{ code, message, reason?, data? }` sent to Logic.
+function closeError(failed) {
+  const { code, message, reason, data } = failed ?? {};
+  if (typeof code !== 'string' || code.length > 256 || (message !== undefined && (typeof message !== 'string' || message.length > 2048)) ||
+      (reason !== undefined && (typeof reason !== 'string' || reason.length > 256)))
+    throw Error('UI_CHANNEL: close takes { code: string, message?: string, reason?: string, data? }');
+  return { code, message: message ?? code, ...(reason === undefined ? {} : { reason }), ...(data === undefined ? {} : { data: bounded(data, 'channel', 'close') }) };
+}
+
 // A reply's `code` is the `E_` string; `reason` names the business case.
 const failure = ({ error }) => bridgeError(
   typeof error?.code === 'string' ? error.code : 'E_INTERNAL',
@@ -321,9 +329,8 @@ function receiveChannelFrame(frame) {
   if (typeof frame.id !== 'string' ||
       (frame.kind === 'ch.ack' && typeof frame.ok !== 'boolean') ||
       (frame.kind === 'ch.data' && (!Number.isSafeInteger(frame.seq) || frame.seq < 0)) ||
-      (frame.kind === 'ch.close' && ((frame.code !== undefined && typeof frame.code !== 'string') ||
-        (frame.reason !== undefined && typeof frame.reason !== 'string'))))
-    throw Error(`UI_CHANNEL: frame takes { v: 2, kind: 'ch.ack'|'ch.data'|'ch.close', id: string, ok?: boolean, seq?: integer >= 0, code?: string, reason?: string }; got ${show(frame)}`);
+      (frame.kind === 'ch.close' && frame.error !== undefined && typeof frame.error?.code !== 'string'))
+    throw Error(`UI_CHANNEL: frame takes { v: 2, kind: 'ch.ack'|'ch.data'|'ch.close', id: string, ok?: boolean, seq?: integer >= 0, error?: { code: string, message?: string, reason?: string, data? } }; got ${show(frame)}`);
   const entry = activeChannels.get(frame.id);
   if (!entry) return false;
   if (frame.kind === 'ch.ack') {
@@ -337,7 +344,7 @@ function receiveChannelFrame(frame) {
   }
   if (!entry.open) throw Error('UI_CHANNEL: frame before acknowledgement');
   if (frame.kind === 'ch.close') {
-    activeChannels.delete(frame.id); entry.channel.finish(frame.code, frame.reason);
+    activeChannels.delete(frame.id); entry.channel.finish(frame.error === undefined ? undefined : failure(frame));
   } else {
     if (frame.seq <= entry.sequence || (entry.sequence === -1 && frame.seq !== 0))
       throw Error('UI_CHANNEL: invalid sequence');

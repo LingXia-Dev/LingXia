@@ -247,6 +247,43 @@ impl Drop for ChannelTurn {
     }
 }
 
+/// The `{ error? }` a channel's close listener receives; `error` is set when it ended in failure.
+fn close_info(ctx: &JSContext, error: Option<&RpcError>) -> JSObject {
+    let info = JSObject::new(ctx);
+    if let Some(error) = error.and_then(|error| error_object(ctx, error).ok()) {
+        let _ = info.set("error", error);
+    }
+    info
+}
+
+fn error_object(ctx: &JSContext, error: &RpcError) -> JSResult<JSObject> {
+    let object = JSObject::new(ctx);
+    object.set("code", error.code.clone())?;
+    let message = error.message.clone().unwrap_or_else(|| error.code.clone());
+    object.set("message", message)?;
+    if let Some(reason) = &error.reason {
+        object.set("reason", reason.to_string())?;
+    }
+    if let Some(data) = &error.data {
+        object.set("data", crate::appservice::js_tree::to_js(ctx, data)?)?;
+    }
+    Ok(object)
+}
+
+/// The error a Logic `ch.close(error?)` passes; `undefined` or `null` closes cleanly.
+fn close_error(value: JSValue) -> Option<RpcError> {
+    let value = crate::appservice::js_tree::from_js(value).ok()?;
+    let object = value.as_object()?;
+    let text = |key: &str| object.get(key).and_then(|v| v.as_str()).map(str::to_string);
+    let code = text("code").unwrap_or_else(|| code::INTERNAL.to_string());
+    Some(RpcError {
+        message: Some(text("message").unwrap_or_else(|| code.clone())),
+        code,
+        reason: text("reason").map(Into::into),
+        data: object.get("data").cloned().map(Box::new),
+    })
+}
+
 fn rpc_error_from_rong(err: RongJSError) -> RpcError {
     RpcError::from(&LxAppError::from(err))
 }
@@ -849,8 +886,7 @@ impl PageSvc {
         &self,
         work_id: Option<SessionWorkId>,
         id: &str,
-        code: Option<&str>,
-        reason: Option<&str>,
+        error: Option<RpcError>,
     ) {
         let Some(work_id) = work_id else {
             return;
@@ -864,8 +900,6 @@ impl PageSvc {
         };
         let page_svc = self.clone();
         let key_for_task = key.clone();
-        let code = code.unwrap_or_default().to_string();
-        let reason = reason.unwrap_or_default().to_string();
         let Some(ctx) = self.get_ctx() else {
             return;
         };
@@ -878,9 +912,7 @@ impl PageSvc {
                         .take_channel_on_close_if_token(&key_for_task, turn.token)
                         .await
                 {
-                    let info = JSObject::new(&ctx);
-                    let _ = info.set("code", code);
-                    let _ = info.set("reason", reason);
+                    let info = close_info(&ctx, error.as_ref());
                     let _ = await_channel_call_or_cancel(
                         &mut turn.cancel_rx,
                         on_close.call_async::<_, ()>(None, (info,)),
@@ -943,7 +975,7 @@ impl PageSvc {
     /// Retire local channel callbacks during PageSvc teardown. Connection
     /// teardown owns protocol close frames; this must never consult or post to
     /// a successor document.
-    pub(crate) async fn close_channels(&self, code: &str, reason: &str) {
+    pub(crate) async fn close_channels(&self, error: RpcError) {
         let channels = {
             let mut state = self.state.lock().await;
             std::mem::take(&mut state.channels)
@@ -955,19 +987,14 @@ impl PageSvc {
                 callbacks.push((key.work_id, channel.outbound, callback));
             }
         }
-        let code = code.to_string();
-        let reason = reason.to_string();
         let Some(ctx) = self.get_ctx() else {
             return;
         };
         for (work_id, outbound, callback) in callbacks {
-            let code = code.clone();
-            let reason = reason.clone();
+            let error = error.clone();
             super::context_lifecycle::spawn(&ctx, move |ctx| {
                 with_document_callback_work(Some(work_id), outbound, async move {
-                    let info = JSObject::new(&ctx);
-                    let _ = info.set("code", code);
-                    let _ = info.set("reason", reason);
+                    let info = close_info(&ctx, Some(&error));
                     let _ = callback.call_async::<_, ()>(None, (info,)).await;
                 })
             });
@@ -1551,70 +1578,61 @@ impl PageSvc {
             .set("send", send_fn)
             .map_err(rpc_error_from_rong)?;
 
-        // ch.close(code?, reason?)
+        // ch.close(error?)
         let channel_key = key;
         let page_svc_close = self.clone();
         let outbound_close = outbound;
-        let close_fn = JSFunc::new(
-            &ctx,
-            move |code: Optional<String>, reason: Optional<String>| {
-                let page_svc = page_svc_close.clone();
-                let channel_key = channel_key.clone();
-                let outbound = outbound_close.clone();
-                async move {
-                    if !page_svc
-                        .session_work_is_active(Some(channel_key.work_id))
-                        .await
-                    {
-                        return Ok(());
-                    }
-                    let on_close = {
-                        let mut state = page_svc.state.lock().await;
-                        state
-                            .channels
-                            .get(&channel_key)
-                            .is_some_and(|channel| channel.token == token)
-                            .then(|| state.channels.remove(&channel_key))
-                            .flatten()
-                            .and_then(|channel| channel.listeners.borrow_mut().on_close.take())
-                    };
-                    if let Some(on_close) = on_close
-                        && let Some(ctx) = page_svc.get_ctx()
-                    {
-                        let callback_code = code.0.clone();
-                        let callback_reason = reason.0.clone();
-                        let _ = with_document_callback_work(
-                            Some(channel_key.work_id),
-                            outbound.clone(),
-                            async move {
-                                let info = JSObject::new(&ctx);
-                                let _ = info.set("code", callback_code.unwrap_or_default());
-                                let _ = info.set("reason", callback_reason.unwrap_or_default());
-                                on_close.call_async::<_, ()>(None, (info,)).await
-                            },
-                        )
-                        .await;
-                    }
-                    page_svc
-                        .bridge()
-                        .send_ch_close_for_context(
-                            &page_svc,
-                            Some(channel_key.work_id),
-                            outbound.as_ref(),
-                            channel_key.id,
-                            code.0,
-                            reason.0,
-                        )
-                        .map_err(|e| {
-                            RongJSError::from(HostError::new(
-                                rong::error::E_INTERNAL,
-                                e.to_string(),
-                            ))
-                        })?;
-                    Ok(())
+        let close_fn = JSFunc::new(&ctx, move |error: Optional<JSValue>| {
+            let error = error.0.and_then(close_error);
+            let page_svc = page_svc_close.clone();
+            let channel_key = channel_key.clone();
+            let outbound = outbound_close.clone();
+            async move {
+                if !page_svc
+                    .session_work_is_active(Some(channel_key.work_id))
+                    .await
+                {
+                    return Ok(());
                 }
-            },
-        )
+                let on_close = {
+                    let mut state = page_svc.state.lock().await;
+                    state
+                        .channels
+                        .get(&channel_key)
+                        .is_some_and(|channel| channel.token == token)
+                        .then(|| state.channels.remove(&channel_key))
+                        .flatten()
+                        .and_then(|channel| channel.listeners.borrow_mut().on_close.take())
+                };
+                if let Some(on_close) = on_close
+                    && let Some(ctx) = page_svc.get_ctx()
+                {
+                    let callback_error = error.clone();
+                    let _ = with_document_callback_work(
+                        Some(channel_key.work_id),
+                        outbound.clone(),
+                        async move {
+                            let info = close_info(&ctx, callback_error.as_ref());
+                            on_close.call_async::<_, ()>(None, (info,)).await
+                        },
+                    )
+                    .await;
+                }
+                page_svc
+                    .bridge()
+                    .send_ch_close_for_context(
+                        &page_svc,
+                        Some(channel_key.work_id),
+                        outbound.as_ref(),
+                        channel_key.id,
+                        error,
+                    )
+                    .map_err(|e| {
+                        RongJSError::from(HostError::new(rong::error::E_INTERNAL, e.to_string()))
+                    })?;
+                Ok(())
+            }
+        })
         .map_err(rpc_error_from_rong)?;
         channel_ctx
             .set("close", close_fn)

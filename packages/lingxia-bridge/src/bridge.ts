@@ -307,7 +307,7 @@ function disposeAppleDownstream(reason: string): void {
 function closeActiveChannelsFromTransport(reason: string): void {
   for (const [id, channel] of Array.from(activeChannels.entries())) {
     activeChannels.delete(id);
-    channel._emitClose(BRIDGE_ERROR.STREAM_CLOSED, reason);
+    channel._emitClose({ error: { code: BRIDGE_ERROR.STREAM_CLOSED, message: reason } });
   }
 }
 
@@ -757,8 +757,7 @@ type ChClose = {
   v: 2;
   kind: "ch.close";
   id: string;
-  code?: string;
-  reason?: string;
+  error?: LxBridgeError;
   trace?: Trace;
 };
 type Incoming =
@@ -787,7 +786,7 @@ type BridgeListenerBuckets = {
   data: Set<(payload: unknown) => void>;
   end: Set<(result: unknown) => void>;
   error: Set<(error: LxBridgeError) => void>;
-  close: Set<(code?: string, reason?: string) => void>;
+  close: Set<(event: ChannelCloseEvent<LxBridgeError>) => void>;
 };
 
 function createListenerBuckets(): BridgeListenerBuckets {
@@ -932,7 +931,7 @@ function createStreamHandle(
 
 type InternalChannel = LxChannel & {
   _emitData: (payload: unknown) => void;
-  _emitClose: (code?: string, reason?: string) => void;
+  _emitClose: (event: ChannelCloseEvent<LxBridgeError>) => void;
   _reject: (err: LxBridgeError) => void;
   _markOpen: () => void;
   _isOpen: () => boolean;
@@ -942,7 +941,7 @@ type InternalChannel = LxChannel & {
 function createChannel(
   id: string,
   sendFn: (payload: unknown, seq: number) => void,
-  closeFn: (code?: string, reason?: string) => void,
+  closeFn: (error?: LxBridgeError) => void,
 ): InternalChannel {
   const listeners = createListenerBuckets();
   let open = false;
@@ -973,7 +972,7 @@ function createChannel(
       event: "data" | "close" | "error",
       listener:
         | ((payload: unknown) => void)
-        | ((code?: string, reason?: string) => void)
+        | ((event: ChannelCloseEvent<LxBridgeError>) => void)
         | ((error: LxBridgeError) => void),
     ) {
       if (event === "data") {
@@ -994,9 +993,7 @@ function createChannel(
         }
       }
       if (event === "close")
-        listeners.close.add(
-          listener as (code?: string, reason?: string) => void,
-        );
+        listeners.close.add(listener as (event: ChannelCloseEvent<LxBridgeError>) => void);
       if (event === "error")
         listeners.error.add(listener as (error: LxBridgeError) => void);
       return this;
@@ -1028,11 +1025,11 @@ function createChannel(
         },
       };
     },
-    close(code?: string, reason?: string): void {
+    close(error?: LxBridgeError): void {
       if (!open) return;
       open = false;
-      closeFn(code, reason);
-      channel._emitClose(code, reason);
+      closeFn(error);
+      channel._emitClose(error === undefined ? {} : { error });
     },
     _emitData(payload: unknown): void {
       if (!open) return;
@@ -1049,7 +1046,7 @@ function createChannel(
         }
       }
     },
-    _emitClose(code?: string, reason?: string): void {
+    _emitClose(event: ChannelCloseEvent<LxBridgeError>): void {
       // One close notification, whichever side closed first.
       open = false;
       closed = true;
@@ -1060,7 +1057,7 @@ function createChannel(
       }
       for (const listener of listeners.close) {
         try {
-          listener(code, reason);
+          listener(event);
         } catch (e) {
           warn("Channel close listener failed:", e);
         }
@@ -1708,16 +1705,21 @@ function handleIncomingMessage(msg: unknown): void {
     case "ch.close": {
       const pendingChannel = pendingChannels.get(message.id);
       if (pendingChannel) {
-        rejectPendingChannel(message.id, {
-          code: message.code ?? BRIDGE_ERROR.STREAM_CLOSED,
-          message: message.reason ?? "Channel closed before opening",
-        });
+        rejectPendingChannel(
+          message.id,
+          message.error ?? {
+            code: BRIDGE_ERROR.STREAM_CLOSED,
+            message: "Channel closed before opening",
+          },
+        );
         return;
       }
       const channel = activeChannels.get(message.id);
       if (!channel) return;
       activeChannels.delete(message.id);
-      channel._emitClose(message.code, message.reason);
+      channel._emitClose(
+        message.error === undefined ? {} : { error: toBridgeError(message.error) },
+      );
       return;
     }
 
@@ -2009,13 +2011,13 @@ const rawBridge = {
           (payload, seq) => {
             send({ v: 2, kind: "ch.data", id, seq, payload } as ChData);
           },
-          (code, reason) => {
+          (error) => {
             const pending = pendingChannels.get(id);
             if (pending && pending.timerId !== null)
               clearTimeout(pending.timerId);
             pendingChannels.delete(id);
             activeChannels.delete(id);
-            send({ v: 2, kind: "ch.close", id, code, reason } as ChClose);
+            send({ v: 2, kind: "ch.close", id, ...(error === undefined ? {} : { error }) } as ChClose);
           },
         ) as InternalChannel & LxChannel<TIn, TOut>;
         pendingChannels.set(id, {
@@ -2249,9 +2251,9 @@ function wrapNativeChannel<TIn, TOut>(
     }
     for (const listener of messageListeners) listener(message);
   });
-  channel.on("close", (code, reason) => {
-    const event = { code, reason };
-    for (const listener of closeListeners) listener(event);
+  channel.on("close", (event) => {
+    const closed = event.error === undefined ? {} : { error: toNativeError(event.error) };
+    for (const listener of closeListeners) listener(closed);
   });
   return {
     send(message: TIn): void {
@@ -2272,8 +2274,8 @@ function wrapNativeChannel<TIn, TOut>(
         closeListeners.delete(listener);
       };
     },
-    close(code?: string, reason?: string): void {
-      channel.close(code, reason);
+    close(error?: NativeError): void {
+      channel.close(error);
     },
   };
 }

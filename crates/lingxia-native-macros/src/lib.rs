@@ -461,7 +461,7 @@ impl Plan {
                             let __lingxia_payload: #input_ty = match #parse {
                                 Ok(v) => v,
                                 Err(e) => {
-                                    __lingxia_close.close_with("INVALID_PARAMS", e.to_string());
+                                    __lingxia_close.close_with(e);
                                     return;
                                 }
                             };
@@ -634,7 +634,7 @@ fn expand_channel(
                     .map_err(::std::convert::Into::into);
                     match __lingxia_result {
                         Ok(()) => __lingxia_close.close(),
-                        Err(err) => __lingxia_close.close_with("HOST_ERROR", err.to_string()),
+                        Err(err) => __lingxia_close.close_with(err),
                     }
                 });
             }

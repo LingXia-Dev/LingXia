@@ -17,11 +17,11 @@ export type Host = object;
 export interface ServedChannel {
   /** Delivers `payload` to the page's `onData`. */
   send(payload: unknown): void;
-  /** Closes the channel from Logic's side. */
-  close(code?: string, reason?: string): void;
-  /** `data`: what the page's `send` sent; `close`: the page closed it. Returns an unsubscribe. */
+  /** Closes the channel from Logic's side; pass `error` when it ends in failure. */
+  close(error?: { code: string; message: string; reason?: string; data?: unknown }): void;
+  /** `data`: what the page's `send` sent; `close`: the page closed it (`error` when in failure). Returns an unsubscribe. */
   on(event: "data", listener: (payload: unknown) => void): () => void;
-  on(event: "close", listener: (closed: { code: string; reason: string }) => void): () => void;
+  on(event: "close", listener: (closed: { error?: { code: string; message: string; reason?: string; data?: unknown } }) => void): () => void;
 }
 
 /**

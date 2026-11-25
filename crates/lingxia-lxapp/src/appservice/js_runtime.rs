@@ -669,18 +669,11 @@ async fn handle_bridge_source(
             }
             Ok(())
         }
-        AppServiceCommand::ChClose {
-            work_id,
-            id,
-            code,
-            reason,
-        } => {
+        AppServiceCommand::ChClose { work_id, id, error } => {
             if !page_svc.session_work_is_active(work_id).await {
                 return Ok(());
             }
-            page_svc
-                .handle_ch_close(work_id, &id, code.as_deref(), reason.as_deref())
-                .await;
+            page_svc.handle_ch_close(work_id, &id, error).await;
             Ok(())
         }
         AppServiceCommand::StateAck {
@@ -1055,7 +1048,10 @@ async fn handle_service_message(
                 if let Some(page_svc) = page_svc {
                     page_svc.mark_terminated();
                     page_svc
-                        .close_channels(code::ABORT, "Page terminated")
+                        .close_channels(bridge::RpcError::new(
+                            code::ABORT,
+                            Some("Page terminated".to_string()),
+                        ))
                         .await;
                     // Instance-scoped: terminating one instance must not clear
                     // a same-path sibling's subscriptions.

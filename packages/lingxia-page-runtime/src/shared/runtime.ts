@@ -28,7 +28,7 @@ export type PageOf<TData, TActions extends ActionMap> = TData extends {
   ? { data: DeepReadonly<D>; actions: PageActions<A> }
   : { data: DeepReadonly<TData>; actions: PageActions<TActions> };
 /** The Logic end of a channel (`PageChannel`): such an action opens with `useLxChannel`. */
-type PageChannelLike = { send(payload: never): void; close(code?: string, reason?: string): void };
+type PageChannelLike = { send(payload: never): void; close(error?: never): void };
 type ViewActionResult<R> =
   R extends LxStream<any, any>
     ? R

@@ -305,7 +305,7 @@ async fn open_channel(
         host::__native::spawn(async move {
             let _guard = page_guard;
             if page_cancel.await.is_ok() {
-                close_on_unload.send_close(None, Some("page unloaded".to_string()));
+                close_on_unload.send_close(Some(lingxia_error::Error::aborted("page unloaded")));
             }
         });
     }
@@ -323,13 +323,15 @@ async fn open_channel(
     )?;
 
     let close_tx = inbound_tx;
-    let close_fn = JSFunc::new(
-        &ctx,
-        move |code: Optional<String>, reason: Optional<String>| -> JSResult<()> {
-            close_tx.send_close(code.0, reason.0);
-            Ok(())
-        },
-    )?;
+    let close_fn = JSFunc::new(&ctx, move |error: Optional<String>| -> JSResult<()> {
+        let error = error
+            .0
+            .map(|json| serde_json::from_str::<lingxia_error::Error>(&json))
+            .transpose()
+            .map_err(|e| js_invalid_parameter_error(format!("close error: {e}")))?;
+        close_tx.send_close(error);
+        Ok(())
+    })?;
 
     let pull_rx = Arc::clone(&outbound_rx);
     let pull_fn = JSFunc::new(&ctx, move |ctx: JSContext| {
@@ -342,13 +344,12 @@ async fn open_channel(
                     obj.set("kind", "data")?;
                     obj.set("value", json_to_js_value(&ctx, Some(&json))?)?;
                 }
-                Some(host::LogicChannelOutbound::Close { code, reason }) => {
+                Some(host::LogicChannelOutbound::Close { error }) => {
                     obj.set("kind", "close")?;
-                    if let Some(code) = code {
-                        obj.set("code", code)?;
-                    }
-                    if let Some(reason) = reason {
-                        obj.set("reason", reason)?;
+                    if let Some(error) = error {
+                        let json = serde_json::to_string(&error)
+                            .map_err(|e| js_internal_error(e.to_string()))?;
+                        obj.set("error", json_to_js_value(&ctx, Some(&json))?)?;
                     }
                 }
                 None => {
@@ -375,7 +376,7 @@ const CHANNEL_WRAPPER_JS: &str = r#"(function(doSend, doClose, pullNext) {
         msgListeners.slice().forEach((fn) => fn(item.value));
       } else {
         closed = true;
-        const ev = { code: item.code, reason: item.reason };
+        const ev = item.error === undefined ? {} : { error: item.error };
         closeListeners.slice().forEach((fn) => fn(ev));
         break;
       }
@@ -391,10 +392,13 @@ const CHANNEL_WRAPPER_JS: &str = r#"(function(doSend, doClose, pullNext) {
       closeListeners.push(listener);
       return () => { closeListeners = closeListeners.filter((f) => f !== listener); };
     },
-    close(code, reason) {
+    close(error) {
       if (closed) return;
       closed = true;
-      doClose(code !== undefined ? String(code) : undefined, reason);
+      doClose(error == null ? undefined : JSON.stringify({
+        code: String(error.code ?? "E_INTERNAL"), message: String(error.message ?? ""),
+        reason: error.reason, data: error.data,
+      }));
     },
   };
 })"#;

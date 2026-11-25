@@ -63,9 +63,12 @@ export interface Stream<T = unknown, R = unknown> extends AsyncIterable<Readonly
   on(kind: "error", listener: (error: Error & { code?: string }) => void): this;
 }
 export interface Channel<T = unknown, S = unknown> extends AsyncIterable<ReadonlyData<T>> {
-  readonly id: string; send(payload: S): void; close(code?: string, reason?: string): void;
+  readonly id: string; send(payload: S): void;
+  /** Ends the channel; pass `error` when it ends in failure. */
+  close(error?: ChannelError): void;
   on(kind: "data", listener: (value: ReadonlyData<T>) => void): this;
-  on(kind: "close", listener: (code?: string, reason?: string) => void): this;
+  /** `error` is set when the channel ended in failure. */
+  on(kind: "close", listener: (event: { readonly error?: ResourceError }) => void): this;
   on(kind: "error", listener: (error: Error & { code?: string }) => void): this;
 }
 export interface Channels { open<T = unknown, S = unknown>(topic: string, params?: unknown): Promise<Channel<T, S>>; }
@@ -73,10 +76,12 @@ export interface Channels { open<T = unknown, S = unknown>(topic: string, params
 /** The Logic side of a channel: sends `T` to the View and receives `S`. */
 export interface ChannelEndpoint<T = unknown, S = unknown> {
   send(payload: T): void;
-  close(code?: string, reason?: string): void;
+  close(error?: ChannelError): void;
   on(event: "data", handler: (payload: S) => void): () => void;
-  on(event: "close", handler: (info: { code: string; reason: string }) => void): () => void;
+  on(event: "close", handler: (event: { error?: ChannelError }) => void): () => void;
 }
+/** A channel that ended in failure. */
+export interface ChannelError { code: string; message: string; reason?: string; data?: unknown }
 
 /** A page's actions as the View calls them: a Promise of the result, or a `Stream` for an `async *` action. */
 export type ViewActions<A> = { readonly [K in keyof A]:
