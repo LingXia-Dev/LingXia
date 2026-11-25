@@ -300,12 +300,17 @@ fn replaced_size<T: taffy::style_helpers::FromLength>(record: &Record, axis: usi
     record.number(axis).map(length)
 }
 
-/// A page's last in-flow child when it scrolls: it reaches the page's bottom edge under the bars.
-fn page_in_flow_child(records: &[Record], index: usize) -> bool {
-    let record = &records[index];
-    record.parent == Some(0)
+/// Whether a child keeps its parent's flow: the top layer, positioned and hidden boxes leave it.
+fn in_flow(record: &Record) -> bool {
+    record.number(field::TOP_LAYER).is_none()
         && !matches!(record.string(field::POSITION), Some("absolute" | "fixed"))
         && record.string(field::DISPLAY) != Some("none")
+}
+
+/// `parent`'s in-flow children, in order.
+fn in_flow_children(records: &[Record], parent: usize) -> impl Iterator<Item = usize> + '_ {
+    (parent + 1..records.len())
+        .filter(move |&index| records[index].parent == Some(parent) && in_flow(&records[index]))
 }
 
 /// The first and last in-flow children of a page root: only they reach its top and bottom edges.
@@ -313,16 +318,60 @@ fn page_flow_ends(records: &[Record]) -> Option<(usize, usize)> {
     if records.first()?.tag != tag::PAGE {
         return None;
     }
-    let first = (1..records.len()).find(|&index| page_in_flow_child(records, index))?;
+    let first = in_flow_children(records, 0).next()?;
     let last = (first..records.len())
         .rev()
-        .find(|&index| page_in_flow_child(records, index))?;
+        .find(|&index| records[index].parent == Some(0) && in_flow(&records[index]))?;
     Some((first, last))
 }
 
+/// The scroll that ends a page under its bottom bars: the last in-flow page child, or the one
+/// in-flow child of each wrapper down from it.
 fn page_bottom_scroll(records: &[Record]) -> Option<usize> {
-    let (_, last) = page_flow_ends(records)?;
-    matches!(records[last].tag, tag::SCROLL | tag::LIST).then_some(last)
+    let (_, mut at) = page_flow_ends(records)?;
+    loop {
+        if matches!(records[at].tag, tag::SCROLL | tag::LIST) {
+            return Some(at);
+        }
+        let mut children = in_flow_children(records, at);
+        let only = children.next()?;
+        if children.next().is_some() {
+            return None;
+        }
+        at = only;
+    }
+}
+
+/// A dev hint when the page's bottom wrapper holds a scroll beside other in-flow content, so
+/// the scroll stops above the bottom bars instead of running on under them.
+pub(crate) fn page_bottom_wrapper_hint(records: &[Record]) -> Option<String> {
+    if page_bottom_scroll(records).is_some() {
+        return None;
+    }
+    let (_, mut at) = page_flow_ends(records)?;
+    loop {
+        let children: Vec<usize> = in_flow_children(records, at).collect();
+        match children.as_slice() {
+            [only] => at = *only,
+            [] => return None,
+            many => {
+                let scroll = many
+                    .iter()
+                    .find(|&&child| matches!(records[child].tag, tag::SCROLL | tag::LIST))?;
+                let record = &records[*scroll];
+                let tag = crate::protocol::TAGS.get(record.tag).unwrap_or(&"scroll");
+                let name = match record.key.as_str() {
+                    "" => format!("<{tag}>"),
+                    key => format!("<{tag} key=\"{key}\">"),
+                };
+                return Some(format!(
+                    "UI_LAYOUT: {name} ends the page beside other in-flow content, so it stops \
+                     above the bottom bars; make it the wrapper's only in-flow child (position the \
+                     rest absolute) to let it run on under them"
+                ));
+            }
+        }
+    }
 }
 
 /// Taffy style for one record; the root fills the viewport and a page root keeps out of the safe area.
@@ -544,7 +593,7 @@ pub(crate) fn node_style(
         && matches!(bleed_mode, Some("all" | "bottom"))
         && flow_ends.is_some_and(|(_, last)| last == index)
         && !keyboard_above
-        && page_bottom_scroll(records) != Some(index)
+        && page_bottom_scroll(records).is_none()
     {
         safe.insets[2]
     } else {
@@ -566,9 +615,11 @@ pub(crate) fn node_style(
         };
         padding_left += safe.insets[3];
     } else if !keyboard_above
-        && !matches!(bleed_mode, Some("all" | "bottom"))
-        && record.parent == Some(0)
+        && matches!(record.tag, tag::SCROLL | tag::LIST)
         && page_bottom_scroll(records) == Some(index)
+        && !page_flow_ends(records).is_some_and(|(_, last)| {
+            matches!(records[last].string(field::BLEED), Some("all" | "bottom"))
+        })
     {
         // It runs on under the bottom bars, which show it through; its end still clears them.
         padding_bottom += safe.insets[2];

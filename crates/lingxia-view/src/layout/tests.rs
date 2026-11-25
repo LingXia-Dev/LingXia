@@ -959,6 +959,74 @@ mod box_model {
             "content below it keeps the inset"
         );
     }
+
+    #[test]
+    fn a_wrapped_page_bottom_scroll_still_runs_under_the_bottom_bars() {
+        let records = |toolbar: bool| {
+            let mut records = vec![
+                node(tag::PAGE, None, "page", &[]),
+                node(tag::COLUMN, Some(0), "wrap", &[(field::GROW, json!(1))]),
+                node(tag::SCROLL, Some(1), "content", &[(field::GROW, json!(1))]),
+                node(tag::COLUMN, Some(2), "rows", &[(field::HEIGHT, json!(600))]),
+                node(
+                    tag::COLUMN,
+                    Some(1),
+                    "fab",
+                    &[(field::POSITION, json!("absolute"))],
+                ),
+                node(
+                    tag::COLUMN,
+                    Some(0),
+                    "sheet",
+                    &[(field::TOP_LAYER, json!(1))],
+                ),
+            ];
+            if toolbar {
+                records.push(node(
+                    tag::COLUMN,
+                    Some(1),
+                    "toolbar",
+                    &[(field::HEIGHT, json!(40))],
+                ));
+            }
+            records
+        };
+        let layout = |records: &[crate::protocol::Record]| {
+            let mut renderer = Renderer {
+                safe_area: SafeArea {
+                    insets: [24.0, 0.0, 80.0, 0.0],
+                    keyboard: 0.0,
+                },
+                ..Default::default()
+            };
+            renderer.layout(records, 200, 400, 1.0).unwrap()
+        };
+        let plain = records(false);
+        let display = layout(&plain);
+        assert_eq!(
+            display.nodes[2].bounds,
+            [0.0, 24.0, 200.0, 376.0],
+            "through the wrapper, past the top layer, down to the bottom edge"
+        );
+        assert_eq!(
+            display.nodes[2].scroll.as_ref().unwrap().max_offset,
+            600.0 + 80.0 - 376.0,
+            "the last row scrolls clear of the bars"
+        );
+        assert_eq!(crate::layout::style::page_bottom_wrapper_hint(&plain), None);
+        let crowded = records(true);
+        let display = layout(&crowded);
+        assert_eq!(
+            display.nodes[2].bounds[3],
+            400.0 - 24.0 - 80.0 - 40.0,
+            "beside other in-flow content it stops above the bars"
+        );
+        let hint = crate::layout::style::page_bottom_wrapper_hint(&crowded).unwrap();
+        assert!(
+            hint.starts_with("UI_LAYOUT: <scroll key=\"content\">"),
+            "{hint}"
+        );
+    }
 }
 
 #[path = "tests/display.rs"]

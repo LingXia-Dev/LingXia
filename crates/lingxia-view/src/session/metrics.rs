@@ -143,6 +143,16 @@ impl crate::ViewSession {
                 ));
             }
         }
+        // Asked once per page: the hint walks the records.
+        if !self.budget_warned.contains("pageBottomWrapper")
+            && let Some(hint) = self
+                .paint_records
+                .as_deref()
+                .and_then(crate::layout::style::page_bottom_wrapper_hint)
+        {
+            self.budget_warned.insert("pageBottomWrapper");
+            self.budget_warnings.push(hint);
+        }
     }
 
     /// Budget warnings and dev diagnostics since the last call, for the host to log.
