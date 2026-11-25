@@ -91,7 +91,8 @@ export function StageGrid({ children, stack = false }: { children: Child; stack?
       <view aria-hidden className="h-0 overflow-hidden">
         <text box={em} className="self-start text-body">M</text>
       </view>
-      <StageFit.Provider value={report}>
+      {/* One to a row, the stages stop measuring, so a specimen wraps to its stage instead of running past the screen. */}
+      <StageFit.Provider value={isOneUp ? null : report}>
         <view key={key} box={grid} className={isOneUp ? 'grid grid-cols-1 gap-y-6' : stack ? 'grid grid-cols-1 md:grid-cols-2 gap-x-3 gap-y-6' : 'grid grid-cols-2 gap-x-3 gap-y-6'}>{children}</view>
       </StageFit.Provider>
     </view>
