@@ -6,12 +6,25 @@ lifecycle of the template the session root's `.lingxia/template.json` names
 the app's Worker Functions during development. LingXia knows nothing about
 Workers — it never parses Function Definitions, a Worker project's files, or
 its mock configuration. It reaches the companion only through the messages
-below. This note is the contract a companion implements; it has two optional
-parts, each behind a capability:
+below, so a Worker platform can change without a LingXia release. This note is
+the contract a companion implements; it has two optional parts, each behind a
+capability:
 
 - `scenario.function`: scenario `function` rules (`scenario.*`).
 - `mock`: the Function half of the mock selection (`mock.*`, and the
   `session.prepare` `mock` param).
+
+Invariants:
+
+- Nothing of a part is sent without its capability, and nothing is claimed
+  partially: a request LingXia cannot carry out in full is refused.
+- Rule and selection semantics are exactly those of LingXia's HTTP half, so
+  one scenario file or mock command means the same thing for both halves.
+- A test owner always sits above `dev`, so a dev scenario or mock never steers
+  a test.
+- A failed change leaves the previous rules answering, or keeps Logic network
+  admission closed when the outcome is unknown; it never leaves a half-applied
+  scenario serving calls.
 
 ## Capabilities
 
@@ -287,29 +300,33 @@ owner: from then until it is dropped, `dev` stands aside.
 
 ## Coordinated scenario changes
 
-The CLI validates locally, pauses new Logic network calls with a host-issued
-scenario generation, updates the companion, then commits HTTP rules with that
-generation. Clear invalidates the generation. `invalid_rules`,
-`companion_unsupported` and `companion_not_sent`
-(`scenario::companion::left_previous_rules`) leave the companion's previous
-rules answering: the change fails, the previous scenario stays whole and
-admission reopens (`session.network.scenario.resume` with the generation; in
-test runs without revoking the context). Any other failure — an in-flight
-disconnect (`connection_lost`), a timeout, a generic `unavailable` — may follow
-an applied request and keeps admission closed. `lxdev mock clear` asks the
-companion first, then always clears the host, reopening admission; a companion
-that did not confirm makes the clear partial (`partial_clear`, nonzero exit,
-per-phase results). CLI mutations are serialized per session across local CLI
-processes. Host-run scenario changes, and attempt reclamation, serialize per
-run on its scenario lock and revoke the context on an unknown outcome;
-reclamation reopens only the admission it closed itself. Clearing the rules of
-a scenario that is being removed still needs an acknowledgement:
-`companion_not_sent` there is a failure. An absent companion is
-`companion_unsupported`, for which clearing is a no-op.
-There is one product scenario per run, not one Function owner
-per app; replacing its HTTP target replaces the previous app's rules too.
-This covers new Logic fetch/SSE calls; it cannot undo requests already sent or
-coordinate unrelated clients talking directly to the companion.
+A scenario has an HTTP half (in the host) and a Function half (in the
+companion), and they must switch together. A change runs in four steps:
+
+1. The CLI validates the file locally.
+2. It pauses new Logic network calls with a host-issued scenario generation.
+3. It updates the companion.
+4. It commits the HTTP rules with that generation. A clear invalidates the
+   generation.
+
+| Companion outcome | Meaning | Effect |
+| --- | --- | --- |
+| `invalid_rules`, `companion_unsupported`, `companion_not_sent` (`scenario::companion::left_previous_rules`) | The previous rules still answer | The change fails, the previous scenario stays whole, admission reopens (`session.network.scenario.resume` with the generation; in test runs without revoking the context). |
+| Anything else (`connection_lost`, a timeout, `unavailable`) | The request may have applied | Admission stays closed; a host run revokes the context. |
+
+- `lxdev mock clear` asks the companion first, then always clears the host,
+  reopening admission. A companion that did not confirm makes the clear
+  partial (`partial_clear`, nonzero exit, per-phase results).
+- Clearing the rules of a scenario that is being removed still needs an
+  acknowledgement: `companion_not_sent` there is a failure. An absent
+  companion is `companion_unsupported`, for which clearing is a no-op.
+- CLI mutations are serialized per session across local CLI processes.
+  Host-run scenario changes and attempt reclamation serialize per run on its
+  scenario lock; reclamation reopens only the admission it closed itself.
+- There is one product scenario per run, not one Function owner per app;
+  replacing its HTTP target replaces the previous app's rules too.
+- This covers new Logic fetch/SSE calls. It cannot undo requests already sent
+  or coordinate unrelated clients talking directly to the companion.
 
 `lxdev mock reset` requires every participating phase to succeed. A refused
 handler reset returns a nonzero exit code and per-phase results; absence of the
