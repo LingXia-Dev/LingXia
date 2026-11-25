@@ -385,6 +385,8 @@ export interface VisibleChangeEvent extends TimeStamped { readonly items: readon
 /** The size of the element that takes this handle as `box`; `null` until its first layout, then one render behind a change. */
 export interface Box { readonly value: BoxSize | null }
 export declare function useBox(name: string): Box;
+/** The wall clock in epoch ms, floored to the `second` or `minute`. The page re-renders when it steps, only while shown; a test's pinned `now` holds it. */
+export declare function useNow(granularity: "second" | "minute"): number;
 /**
  * From a handler: scrolls the element with this `id` into view inside its `<scroll>`s, once the
  * render the handler causes is on screen. A `<List>` row that is not rendered has no element; use

@@ -8,6 +8,7 @@ import { envOf } from './hooks.js';
 import { handlesIssued, skipHandle } from './elements.js';
 import { sliceable } from './encode.js';
 import { lookup } from './context.js';
+import { noteClock } from './clock.js';
 
 // Comparing two prop sets stops after this many objects; past it they count as different.
 const compareBudget = 256;
@@ -124,6 +125,7 @@ function recallTimed(scope, tag, props, children, parent) {
     for (const key of record.env.keys()) frame.env.add(key);
     passContexts(record.contextReads, parent.contexts, frame);
   }
+  for (const cell of record.reads) noteClock(cell);
   for (const [key, cell] of record.cells) {
     render.candidate.locals.set(key, cell);
     for (const collector of render.collectors) collector.set(key, cell);

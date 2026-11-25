@@ -8209,3 +8209,65 @@ fn a_list_reports_its_rows_by_key() {
         .clone();
     assert_eq!(reported, "row-0:0:1 row-1:1:1 row-2:2:0.4 @row-0");
 }
+
+/// A test's `now` pins `useNow` and press `timeStamp`s; moving the pin renders the new minute at
+/// once, and a page reading the clock unpinned arms one timer to its next step.
+#[test]
+fn use_now_follows_a_pinned_clock_and_ticks_only_when_read() {
+    let worker = ViewWorker::spawn("test-view").unwrap();
+    let platform = Platform::new(&[&worker]);
+    let host = platform.host(
+        &worker,
+        &source(
+            "function render(){const stamp=useLocal('stamp',0);return h('view',{},h('text',{'data-testid':'clock'},new Date(useNow('minute')).toISOString().slice(11,16)),h('button',{'data-testid':'tap',style:{height:40},onClick:e=>stamp.set(e.timeStamp)},'Tap'),h('text',{'data-testid':'stamp'},String(stamp.value)))}",
+        ),
+        false,
+    );
+    host.set_visible(true);
+    platform.settle(&[&host]);
+    let text = |id: &str| {
+        host.automation_request(
+            &serde_json::json!({"op": "query", "css": format!("[data-testid=\"{id}\"]")}),
+        )
+        .unwrap()["text"]
+            .as_str()
+            .unwrap()
+            .to_owned()
+    };
+    let step = Duration::from_millis(60_002);
+    assert!(
+        platform
+            .timers
+            .lock()
+            .unwrap()
+            .iter()
+            .any(|(delay, _)| *delay <= step),
+        "a shown page reading the minute arms a tick"
+    );
+    let at = 1_767_261_630_000_u64; // 2026-01-01T10:00:30Z
+    let pin = |now: u64| {
+        let answer = host
+            .automation_request(&serde_json::json!({"op": "environment", "now": now}))
+            .unwrap();
+        assert_eq!(answer["now"], now);
+        platform.settle(&[&host]);
+        run_frames(&platform, &host, 3);
+    };
+    pin(at);
+    assert_eq!(text("clock"), "10:00");
+    tap(&host, 20.0, 50.0);
+    platform.settle(&[&host]);
+    run_frames(&platform, &host, 3);
+    assert_eq!(
+        text("stamp"),
+        at.to_string(),
+        "a press carries the pinned time"
+    );
+    pin(at + 60_000);
+    assert_eq!(text("clock"), "10:01");
+    assert!(
+        host.automation_request(&serde_json::json!({"op": "environment", "now": -1}))
+            .unwrap_err()
+            .starts_with("E_INVALID_ARG")
+    );
+}

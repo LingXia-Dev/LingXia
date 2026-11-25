@@ -24,8 +24,8 @@ pub(super) struct HostEnvironment {
 /// The text scale held to before the lxapp's limit arrives, and when it names none.
 const DEFAULT_MAX_TEXT_SCALE: f32 = 2.0;
 
-/// What a test run pins for a page: its theme, stillness (no motion, a steady caret), the
-/// system text size and the contrast setting. `None` leaves a fact as measured.
+/// What a test run pins for a page: its theme, stillness (no motion, a steady caret, a stopped
+/// clock), the system text size, the contrast setting and the clock. `None` leaves a fact as measured.
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub(super) struct TestOverride {
     /// `Some(true)` dark, `Some(false)` light.
@@ -34,6 +34,8 @@ pub(super) struct TestOverride {
     /// Every text size multiplied by this.
     pub(super) text_scale: Option<f32>,
     pub(super) high_contrast: Option<bool>,
+    /// The clock `useNow` and event `timeStamp`s read, epoch ms; it stands still.
+    pub(super) now: Option<u64>,
 }
 
 /// The text sizes a test may pin, as factors of the default.

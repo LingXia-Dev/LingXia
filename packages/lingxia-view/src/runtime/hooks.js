@@ -6,6 +6,7 @@ import { channelResource } from './channel-resource.js';
 import { noteRead, noteView, noteContext, noteEnv } from './memo.js';
 import { classesReadTheme, classesReadSizeClass } from '../style/classes.js';
 import { createContext, lookup } from './context.js';
+import { clockStep } from './clock.js';
 import { h } from './nodes.js';
 
 const SIZE_CLASS_CONTEXT_ID = '@lingxia/view:SizeClassScope';
@@ -397,6 +398,7 @@ export function createView(data, env, revision) {
 export const envOf = view => (view && rawEnvs.get(view)) ?? view?.env;
 /** Whether the View read a host-context key since its view was created. */
 export const readsHostContext = () => hostContextRead;
-/** What of the environment the page depends on, for the host: 1 host context, 2 the appearance (page code read `theme` or `highContrast`, or a class has a theme condition). */
-export const envReads = () => ((hostContextRead || classesReadSizeClass()) ? 1 : 0) | (appearanceRead || classesReadTheme() ? 2 : 0);
+/** What of the environment the page depends on, for the host: 1 host context, 2 the appearance (page code read `theme` or `highContrast`, or a class has a theme condition), 4 the clock by the second, 8 by the minute. */
+export const envReads = () => ((hostContextRead || classesReadSizeClass()) ? 1 : 0) | (appearanceRead || classesReadTheme() ? 2 : 0)
+  | (clockStep() === 1000 ? 4 : clockStep() ? 8 : 0);
 export function resetEnvReads() { appearanceRead = false; }

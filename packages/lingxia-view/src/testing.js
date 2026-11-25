@@ -49,7 +49,7 @@ export const describePage = (host, view = {}) =>
   host.__lingxiaDescribe(host.__lingxiaRender, { data: {}, env: {}, ...view });
 
 /** False when the handle is stale or the value is the wrong kind. */
-export const dispatch = (host, handle, value) => host.__lingxiaDispatch(handle, value);
+export const dispatch = (host, handle, value, timeStamp) => host.__lingxiaDispatch(handle, value, timeStamp);
 
 export function decode(buffer) {
   const nodes = [], offsets = new Map();
@@ -143,12 +143,15 @@ export function defaultEnv(overrides = {}) {
 
 function screen(host, view, resolved) {
   let given = view.env ?? {};
-  const { channels: served, ...rest } = view;
+  const { channels: served, now: pinned, ...rest } = view;
   let current = { data: {}, ...rest, env: defaultEnv(given) };
+  // The test's clock: pinned by `now`, still until `advance`.
+  let clock = typeof pinned === 'number' ? pinned : Date.now();
   const bridge = served ? serveChannels(host, served) : null;
   if (bridge) current = { ...current, actions: { ...current.actions, ...bridge.actions }, channels: bridge.channels };
   // With `points`, every node's props read in points, as the built-in pack resolves them.
   const read = () => {
+    host.__lingxiaSetNow?.(clock);
     const decoded = decode(describePage(host, current));
     if (resolved) for (const node of decoded) node.props = points(node.props);
     return decoded;
@@ -170,7 +173,7 @@ function screen(host, view, resolved) {
   const fire = (node, prop, value) => {
     const handle = node.props[prop];
     if (handle === undefined || handle === 0) throw Error(`${label(node)} has no ${prop}`);
-    if (!dispatch(host, handle, value)) throw Error(`${label(node)} refused ${prop}(${value === undefined ? '' : JSON.stringify(value)})`);
+    if (!dispatch(host, handle, value, clock)) throw Error(`${label(node)} refused ${prop}(${value === undefined ? '' : JSON.stringify(value)})`);
     bridge?.pump();
     refresh();
   };
@@ -202,7 +205,7 @@ function screen(host, view, resolved) {
     slide: (node, value) => fire(node, 'onSliderChange', value),
     select: (node, value) => fire(node, 'onSelect', value),
     selectPoint: (node, index) => fire(node, 'onPlotSelect', index),
-    visible: (node, items) => json(node, 'onVisibleChange', { items }),
+    visible: (node, items) => json(node, 'onVisibleChange', { items, timeStamp: clock }),
     reach: (node, edge) => fire(node, edge === 'start' ? 'onReachStart' : 'onReachEnd'),
     image: (node, outcome) => fire(node, outcome === 'error' ? 'onImageError' : 'onImageLoad'),
     snap: (node, index) => fire(node, 'onSnapChange', String(index)),
@@ -216,8 +219,18 @@ function screen(host, view, resolved) {
     webview: (node, events = []) => json(node, 'onWebEvent', { events }),
     /** The Back or Escape a device sends: closes the topmost overlay; false when none was open. */
     escape() { const closed = host.__lingxiaEscape(); refresh(); return closed; },
+    /** Moves the clock on by `ms`; a page showing `useNow` re-renders when its step changes. */
+    advance(ms) {
+      if (!Number.isFinite(ms) || ms < 0) throw Error('advance takes a duration in ms, 0 or more');
+      clock += ms;
+      if (host.__lingxiaSetNow?.(clock)) refresh();
+    },
+    get now() { return clock; },
     rerender(next = {}) {
       if (next.channels) throw Error('rerender: channels are served from the first render');
+      const { now: moved, ...view } = next;
+      if (typeof moved === 'number') clock = moved;
+      next = view;
       given = { ...given, ...next.env };
       current = { ...current, ...next, data: { ...current.data, ...next.data }, env: defaultEnv(given) };
       refresh();

@@ -1601,13 +1601,15 @@ export class LiveFixture implements Fixture {
           || (pin.theme !== undefined && pin.theme !== null && pin.theme !== "light" && pin.theme !== "dark")
           || (pin.still !== undefined && typeof pin.still !== "boolean")
           || (pin.textScale !== undefined && pin.textScale !== null && !(typeof pin.textScale === "number" && pin.textScale >= 0.5 && pin.textScale <= 3))
-          || (pin.contrast !== undefined && pin.contrast !== null && pin.contrast !== "standard" && pin.contrast !== "high"))) {
-          throw new TypeError("view.environment() takes { theme?: 'light' | 'dark' | null, still?: boolean, textScale?: number (0.5 to 3) | null, contrast?: 'standard' | 'high' | null } or null");
+          || (pin.contrast !== undefined && pin.contrast !== null && pin.contrast !== "standard" && pin.contrast !== "high")
+          || (pin.now !== undefined && pin.now !== null && !(typeof pin.now === "number" && Number.isFinite(pin.now) && pin.now >= 0)))) {
+          throw new TypeError("view.environment() takes { theme?: 'light' | 'dark' | null, still?: boolean, textScale?: number (0.5 to 3) | null, contrast?: 'standard' | 'high' | null, now?: epoch ms | null } or null");
         }
         // The host binding's fields are optional but not nullable: a device fact is an absent one.
         const options = pin === null ? { clear: true as const }
           : { ...(pin.theme ? { theme: pin.theme } : {}), still: pin.still ?? false,
-            ...(pin.textScale != null ? { textScale: pin.textScale } : {}), ...(pin.contrast ? { contrast: pin.contrast } : {}) };
+            ...(pin.textScale != null ? { textScale: pin.textScale } : {}), ...(pin.contrast ? { contrast: pin.contrast } : {}),
+            ...(pin.now != null ? { now: pin.now } : {}) };
         await page().environment({ ...options, ...target });
         this.viewPin = pin;
       }),

@@ -115,6 +115,8 @@ pub struct TestEnvironment {
     pub text_scale: Option<f32>,
     /// `Some(true)` increased contrast, `Some(false)` standard, `None` the device's.
     pub high_contrast: Option<bool>,
+    /// The clock `useNow` and event `timeStamp`s read, epoch ms, standing still; `None` the wall clock.
+    pub now: Option<u64>,
 }
 
 type Registry = Mutex<HashMap<String, Weak<dyn GpuPageAutomation>>>;

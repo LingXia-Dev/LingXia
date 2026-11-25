@@ -687,6 +687,8 @@ export interface PageTestEnvironment {
   theme: "light" | "dark" | null;
   still: boolean;
   contrast: "standard" | "high" | null;
+  /** The pinned clock, epoch ms; `null`: the wall clock (or, with `still`, stopped where it was). */
+  now: number | null;
   /** The platform's text-size curve, `[authored, rendered]` rows; `null` at the default size. */
   textScale: Array<[number, number]> | null;
   /** The page's `env.language`. */
@@ -743,7 +745,7 @@ export interface PageDriver {
    * for this test run, or `clear`; device settings are untouched. The attempt's
    * end and the run's end clear it. Only inside a host automation run, except `{ read: true }`.
    */
-  environment(options: PageTarget & ({ theme?: "light" | "dark"; still?: boolean; textScale?: number; contrast?: "standard" | "high" } | { clear: true } | { read: true })): Promise<PageTestEnvironment>;
+  environment(options: PageTarget & ({ theme?: "light" | "dark"; still?: boolean; textScale?: number; contrast?: "standard" | "high"; now?: number } | { clear: true } | { read: true })): Promise<PageTestEnvironment>;
   /**
    * Hold the `index`th match of `css` on a GPU page hovered, as a resting pointer would (its
    * `hover:` look, an `interestFor` hint after the usual rest), or lift it with `hover: false`.

@@ -530,6 +530,8 @@ export interface ViewEnvironment {
   textScale?: number | null;
   /** The system contrast setting; `null`: the device's. */
   contrast?: "standard" | "high" | null;
+  /** The clock `useNow` and event `timeStamp`s read, epoch ms, standing still; `null`: the wall clock. `still` alone stops it where it is. */
+  now?: number | null;
 }
 
 export interface TestView {
@@ -561,8 +563,8 @@ export interface TestView {
   settled(options?: ViewSettledOptions): Promise<void>;
   /**
    * Show the GPU page in `theme` (`null`: the device's), at `textScale` times the
-   * system text size, under `contrast` and, with `still`, with reduced motion
-   * and a steady caret, for this spec only; `null` clears it.
+   * system text size, under `contrast`, at the clock `now` and, with `still`, with reduced
+   * motion, a steady caret and a stopped clock, for this spec only; `null` clears it.
    * Device and app settings are untouched; the spec's end clears it.
    */
   environment(pin: ViewEnvironment | null): Promise<void>;

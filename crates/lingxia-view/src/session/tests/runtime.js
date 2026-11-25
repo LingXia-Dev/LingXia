@@ -53,6 +53,7 @@
     useId: () => useId,
     useLeaveGuard: () => useLeaveGuard,
     useLocal: () => useLocal,
+    useNow: () => useNow,
     useRequest: () => useRequest,
     useStream: () => useStream,
     useVideo: () => useVideo,
@@ -1475,8 +1476,8 @@
     if (node.list) return { ...node, children, list: { ...node.list, states: new Map(node.list.states), cache: new Map(node.list.cache), pure: new Set(node.list.pure) } };
     return children === node.children ? node : { ...node, children };
   }
-  function retainCells(cells) {
-    for (const [key, cell2] of cells) {
+  function retainCells(cells2) {
+    for (const [key, cell2] of cells2) {
       render.candidate.locals.set(key, cell2);
       for (const collector of render.collectors) collector.set(key, cell2);
     }
@@ -1659,17 +1660,17 @@
       node.list.pure.delete(i);
     }
     for (let i = window.start; i < window.end; i++) {
-      const cells = /* @__PURE__ */ new Map();
-      render.collectors.push(cells);
+      const cells2 = /* @__PURE__ */ new Map();
+      render.collectors.push(cells2);
       try {
         let row = node.list.cache.get(i), key = node.list.states.get(i)?.key;
         if (!row) {
           const { candidate } = render, handles2 = handlesIssued(), declarations = candidate.declarations.size, resources = candidate.resources.size;
           const reads = render.cellReads, contextReads = render.contextReads;
           render.readsView = false;
-          ({ row, key } = renderRow(node, i, cells, depth));
+          ({ row, key } = renderRow(node, i, cells2, depth));
           finishTopLayerRow(row);
-          const pure = cells.size === 0 && !render.readsView && handlesIssued() === handles2 && render.cellReads === reads && render.contextReads === contextReads && candidate.declarations.size === declarations && candidate.resources.size === resources;
+          const pure = cells2.size === 0 && !render.readsView && handlesIssued() === handles2 && render.cellReads === reads && render.contextReads === contextReads && candidate.declarations.size === declarations && candidate.resources.size === resources;
           if (pure) node.list.pure.add(i);
           else node.list.pure.delete(i);
         } else {
@@ -1681,7 +1682,7 @@
         sliceable.add(row);
         write(row, index, depth + 1);
         node.list.cache.set(i, row);
-        node.list.states.set(i, { key, locals: cells });
+        node.list.states.set(i, { key, locals: cells2 });
       } finally {
         render.collectors.pop();
       }
@@ -1691,15 +1692,15 @@
       else if (i < window.start || i >= window.end) node.list.states.delete(i);
     }
   }
-  function renderRow(node, i, cells, depth) {
+  function renderRow(node, i, cells2, depth) {
     const since = now();
     try {
-      return renderRowTimed(node, i, cells, depth);
+      return renderRowTimed(node, i, cells2, depth);
     } finally {
       spent("rows", since);
     }
   }
-  function renderRowTimed(node, i, cells, depth) {
+  function renderRowTimed(node, i, cells2, depth) {
     const { props, identity: identity2 } = node;
     const suppliedKey = props.itemKeys?.[i];
     const previous = render.scope, outerContexts = render.contexts;
@@ -1710,7 +1711,7 @@
       render.contexts = outerContexts;
       const declared2 = isNode(value) ? readNode(value)[1].key : void 0;
       if (declared2 !== void 0 && typeof declared2 !== "string") throw Error("UI_KEY: expected string");
-      if (suppliedKey === void 0 && declared2 !== void 0 && cells.size > 0)
+      if (suppliedKey === void 0 && declared2 !== void 0 && cells2.size > 0)
         throw Error("UI_LIST: keyed row factory hooks require itemKeys; alternatively move hooks into a keyed component");
       if (suppliedKey !== void 0 && declared2 !== void 0 && suppliedKey !== declared2) throw Error("UI_LIST: row key does not match itemKeys");
       const rowKey = suppliedKey ?? declared2;
@@ -1800,6 +1801,49 @@
     const result = resolve(child, { id: contextId(tag.__lxContext), value: props.value, next: chain });
     if (result?.fragment) throw Error("UI_CONTEXT: a Provider wraps one element");
     return result;
+  }
+
+  // src/runtime/clock.js
+  var steps = { second: 1e3, minute: 6e4 };
+  var cells = Object.fromEntries(Object.entries(steps).map(([name, step]) => [name, { value: null, clockStep: step }]));
+  var now2 = null;
+  var floored = (ms, step) => Math.floor(ms / step) * step;
+  var current = (cell2) => page.updates.has(cell2) ? page.updates.get(cell2) : cell2.value;
+  function noteClock(cell2) {
+    if (cell2.clockStep && !(render.clockStep > 0 && render.clockStep <= cell2.clockStep)) render.clockStep = cell2.clockStep;
+  }
+  function useNow(granularity) {
+    const cell2 = cells[granularity];
+    if (!cell2) throw Error('UI_PROP: useNow takes "second" or "minute"');
+    if (!render.active) throw Error("UI_SCOPE: useNow is called during render");
+    if (now2 === null) setNow(Date.now());
+    noteRead(cell2);
+    noteClock(cell2);
+    return current(cell2);
+  }
+  function setNow(ms) {
+    if (typeof ms !== "number" || !Number.isFinite(ms)) return false;
+    now2 = ms;
+    let moved = false;
+    for (const cell2 of Object.values(cells)) {
+      const next = floored(ms, cell2.clockStep);
+      if (current(cell2) === next) continue;
+      const shown = cell2.value !== null && clockStep() > 0 && cell2.clockStep >= clockStep();
+      if (!shown) cell2.value = next;
+      else {
+        page.updates.set(cell2, next);
+        moved = true;
+      }
+    }
+    return moved;
+  }
+  var clockStep = () => render.clockStep ?? 0;
+  function commitClock() {
+    for (const cell2 of Object.values(cells)) if (page.updates.has(cell2)) cell2.value = page.updates.get(cell2);
+  }
+  function resetClock() {
+    now2 = null;
+    for (const cell2 of Object.values(cells)) cell2.value = null;
   }
 
   // src/runtime/memo.js
@@ -1900,6 +1944,7 @@
       for (const key of record.env.keys()) frame.env.add(key);
       passContexts(record.contextReads, parent.contexts, frame);
     }
+    for (const cell2 of record.reads) noteClock(cell2);
     for (const [key, cell2] of record.cells) {
       render.candidate.locals.set(key, cell2);
       for (const collector of render.collectors) collector.set(key, cell2);
@@ -3147,19 +3192,19 @@
     const holders = /* @__PURE__ */ new Set(), backHolders = /* @__PURE__ */ new Set();
     let epoch2 = 0, sent = false, sentBack = false, asking = false, tail = Promise.resolve();
     const sync = () => {
-      const current = epoch2;
+      const current2 = epoch2;
       tail = tail.then(async () => {
-        if (current !== epoch2) return;
+        if (current2 !== epoch2) return;
         const want = holders.size > 0, wantBack = backHolders.size > 0;
         if (want === sent && wantBack === sentBack) return;
         try {
           await callHost("navigation.setLeaveGuard", wantBack ? { enabled: want, back: true } : { enabled: want });
-          if (current === epoch2) {
+          if (current2 === epoch2) {
             sent = want;
             sentBack = wantBack;
           }
         } catch (error) {
-          if (current !== epoch2) return;
+          if (current2 !== epoch2) return;
           for (const holder of holders) holder.fail(error);
           report2(error);
         }
@@ -3169,17 +3214,17 @@
       if (!["back", "home"].includes(reason)) throw Error("UI_LEAVE: invalid reason");
       if (asking) return;
       asking = true;
-      const current = epoch2, pending3 = [...holders].reverse();
+      const current2 = epoch2, pending3 = [...holders].reverse();
       (async () => {
         try {
           for (const holder of pending3) {
-            if (current !== epoch2 || !holders.has(holder) || !await holder.ask(reason)) return;
+            if (current2 !== epoch2 || !holders.has(holder) || !await holder.ask(reason)) return;
           }
-          if (current === epoch2) await callHost("navigation.leave", { reason });
+          if (current2 === epoch2) await callHost("navigation.leave", { reason });
         } catch (error) {
-          if (current === epoch2) report2(error);
+          if (current2 === epoch2) report2(error);
         } finally {
-          if (current === epoch2) asking = false;
+          if (current2 === epoch2) asking = false;
         }
       })();
     };
@@ -3330,8 +3375,8 @@
     if (record.ids.some(actionPending)) return true;
     return render.view?.data === record.data;
   }
-  function snapSettled(key, index, current, heard) {
-    if (index === current) {
+  function snapSettled(key, index, current2, heard) {
+    if (index === current2) {
       settled2.delete(key);
       return;
     }
@@ -3341,7 +3386,7 @@
     } finally {
       const ids = [];
       for (let serial = first; serial < actionSerial(); serial++) ids.push(serial);
-      const record = { index, from: current, ids, rejected: false, sent: false, data: page.committed?.view?.data, deadline: clock2() + CEILING_MS };
+      const record = { index, from: current2, ids, rejected: false, sent: false, data: page.committed?.view?.data, deadline: clock2() + CEILING_MS };
       settled2.set(key, record);
       page.invalidated = true;
       if (ids.length) requestWake(CEILING_MS, () => {
@@ -3764,13 +3809,13 @@
       start(...params) {
         if (!mounted) return;
         cancel();
-        const current = ++ticket;
+        const current2 = ++ticket;
         update({ status: "streaming", error: null, result: null, data: null });
         try {
           if (!definition.action) throw Error("UI_STREAM: bridge not ready");
           stream = definition.action(...params);
           stream.on("data", (value) => {
-            if (!mounted || current !== ticket) return;
+            if (!mounted || current2 !== ticket) return;
             update({ data: value ?? null });
             try {
               definition.onData?.(value);
@@ -3780,11 +3825,11 @@
             }
           });
           stream.result.then((value) => {
-            if (!mounted || current !== ticket) return;
+            if (!mounted || current2 !== ticket) return;
             stream = void 0;
             update({ status: "completed", result: value ?? null });
           }, (error) => {
-            if (!mounted || current !== ticket) return;
+            if (!mounted || current2 !== ticket) return;
             if (error.code === "BRIDGE_CANCELED") {
               stream = void 0;
               update({ status: "canceled", error: resourceError(error) });
@@ -3816,13 +3861,13 @@
     };
     const reload = async () => {
       if (!mounted || !definition.action) return;
-      const current = ++ticket;
+      const current2 = ++ticket;
       update({ pending: true, stale: snapshot.value !== null, error: null });
       try {
         const value = await definition.action(...definition.params === void 0 ? [] : [definition.params]);
-        if (mounted && current === ticket) update({ pending: false, stale: false, value, error: null });
+        if (mounted && current2 === ticket) update({ pending: false, stale: false, value, error: null });
       } catch (error) {
-        if (mounted && current === ticket) update({ pending: false, stale: snapshot.value !== null, error: resourceError(error) });
+        if (mounted && current2 === ticket) update({ pending: false, stale: snapshot.value !== null, error: resourceError(error) });
       }
     };
     return {
@@ -3859,15 +3904,15 @@
       async run(...params) {
         if (params.length > 1) throw Error("UI_ACTION: expected at most one JSON payload");
         if (!mounted || !definition.action) return Object.freeze({ ok: false, error: Object.freeze({ code: "UI_ACTION", message: "the component is no longer mounted" }) });
-        const current = ++ticket;
+        const current2 = ++ticket;
         update({ pending: true, error: null });
         try {
           const value = await definition.action(...params);
-          if (mounted && current === ticket) update({ pending: false });
+          if (mounted && current2 === ticket) update({ pending: false });
           return Object.freeze({ ok: true, value });
         } catch (error) {
           const failure2 = resourceError(error);
-          if (mounted && current === ticket) update({ pending: false, error: failure2 });
+          if (mounted && current2 === ticket) update({ pending: false, error: failure2 });
           return Object.freeze({ ok: false, error: failure2 });
         }
       },
@@ -3899,30 +3944,30 @@
     };
     const connect = async () => {
       if (!mounted || !definition.topic || snapshot.connecting || snapshot.connected) return;
-      const current = ++ticket;
+      const current2 = ++ticket;
       update({ connecting: true, connected: false, error: null });
       try {
         const opened2 = await definition.channels.open(definition.topic, definition.params);
-        if (!mounted || current !== ticket) {
+        if (!mounted || current2 !== ticket) {
           opened2.close();
           return;
         }
         channel = opened2;
         update({ connecting: false, connected: true });
         if (definition.onData) opened2.on("data", (value) => {
-          if (mounted && current === ticket) definition.onData(value);
+          if (mounted && current2 === ticket) definition.onData(value);
         });
         opened2.on("error", (error) => {
-          if (mounted && current === ticket) update({ error: resourceError(error) });
+          if (mounted && current2 === ticket) update({ error: resourceError(error) });
         });
         opened2.on("close", () => {
-          if (mounted && current === ticket) {
+          if (mounted && current2 === ticket) {
             channel = void 0;
             update({ connecting: false, connected: false });
           }
         });
       } catch (error) {
-        if (mounted && current === ticket) {
+        if (mounted && current2 === ticket) {
           update({ connecting: false, connected: false, error: resourceError(error) });
         }
       }
@@ -4353,7 +4398,7 @@
   }
   var envOf = (view) => (view && rawEnvs.get(view)) ?? view?.env;
   var readsHostContext = () => hostContextRead;
-  var envReads = () => (hostContextRead || classesReadSizeClass() ? 1 : 0) | (appearanceRead || classesReadTheme() ? 2 : 0);
+  var envReads = () => (hostContextRead || classesReadSizeClass() ? 1 : 0) | (appearanceRead || classesReadTheme() ? 2 : 0) | (clockStep() === 1e3 ? 4 : clockStep() ? 8 : 0);
   function resetEnvReads() {
     appearanceRead = false;
   }
@@ -4831,8 +4876,8 @@
         named.delete(reader);
         continue;
       }
-      const current = reader.binding.value;
-      if ([...reader.read].some((field2) => !same2(current[field2], next[field2]))) reader.binding.set(next);
+      const current2 = reader.binding.value;
+      if ([...reader.read].some((field2) => !same2(current2[field2], next[field2]))) reader.binding.set(next);
       else cell2.value = next;
     }
   }
@@ -5191,8 +5236,8 @@
         named.delete(reader);
         continue;
       }
-      const current = reader.binding.value;
-      if (page.updates.has(cell2) || [...reader.read].some((field2) => !same3(current[field2], next[field2]))) reader.binding.set(next);
+      const current2 = reader.binding.value;
+      if (page.updates.has(cell2) || [...reader.read].some((field2) => !same3(current2[field2], next[field2]))) reader.binding.set(next);
       else cell2.value = next;
     }
   }
@@ -5512,11 +5557,11 @@
   }
   function visibleEvent({ items = [], timeStamp }, keys2) {
     const shown = items.map(({ id, index, ratio, top }) => Object.freeze(index === void 0 ? { id: String(id), ratio, top } : { id: keys2 ? String(keys2[index]) : String(index), index, ratio, top }));
-    let current = shown[0];
-    for (const item of shown) if (item.top <= 0) current = item;
+    let current2 = shown[0];
+    for (const item of shown) if (item.top <= 0) current2 = item;
     return Object.freeze({
       items: Object.freeze(shown),
-      ...current ? { current: current.id } : {},
+      ...current2 ? { current: current2.id } : {},
       timeStamp: typeof timeStamp === "number" ? timeStamp : Date.now()
     });
   }
@@ -6343,9 +6388,9 @@
     return out;
   }
   function progressValues(role, props, wire, tag) {
-    const { ariaValueNow: now2, ariaValueMin: min, ariaValueMax: max, ariaValueText: text2 } = props;
-    if (now2 === void 0 && min === void 0 && max === void 0 && text2 === void 0) return;
-    if (tag === "slider" && now2 === void 0 && min === void 0 && max === void 0) {
+    const { ariaValueNow: now3, ariaValueMin: min, ariaValueMax: max, ariaValueText: text2 } = props;
+    if (now3 === void 0 && min === void 0 && max === void 0 && text2 === void 0) return;
+    if (tag === "slider" && now3 === void 0 && min === void 0 && max === void 0) {
       if (typeof text2 !== "string") throw Error("UI_PROP: aria-valuetext must be a string");
       wire("ariaValueText", text2);
       return;
@@ -6358,12 +6403,12 @@
     const number = (value, name) => {
       if (value !== void 0 && (typeof value !== "number" || !Number.isFinite(value))) throw Error(`UI_PROP: ${name} must be a finite number`);
     };
-    number(now2, "aria-valuenow");
+    number(now3, "aria-valuenow");
     number(min, "aria-valuemin");
     number(max, "aria-valuemax");
     if ((min ?? 0) >= (max ?? 100)) throw Error("UI_PROP: aria-valuemin must be below aria-valuemax");
     if (text2 !== void 0 && typeof text2 !== "string") throw Error("UI_PROP: aria-valuetext must be a string");
-    if (now2 !== void 0) wire("ariaValueNow", now2);
+    if (now3 !== void 0) wire("ariaValueNow", now3);
     if (min !== void 0) wire("ariaValueMin", min);
     if (max !== void 0) wire("ariaValueMax", max);
     if (text2 !== void 0) wire("ariaValueText", text2);
@@ -6422,10 +6467,10 @@
         wire("ariaAutocomplete", props["aria-autocomplete"]);
       }
     }
-    const current = props["aria-current"];
-    if (current !== void 0 && current !== false) {
-      if (current !== true && current !== "page" && current !== "step") throw Error('UI_PROP: aria-current is "page", "step" or a boolean');
-      wire("ariaCurrent", String(current));
+    const current2 = props["aria-current"];
+    if (current2 !== void 0 && current2 !== false) {
+      if (current2 !== true && current2 !== "page" && current2 !== "step") throw Error('UI_PROP: aria-current is "page", "step" or a boolean');
+      wire("ariaCurrent", String(current2));
     }
     if (headingLevel !== void 0) {
       if (!Number.isInteger(headingLevel) || headingLevel < 1 || headingLevel > 6) throw Error("UI_PROP: headingLevel is an integer 1..6");
@@ -6626,8 +6671,8 @@
   var fixedToday = null;
   var today = () => {
     if (fixedToday) return fixedToday;
-    const now2 = /* @__PURE__ */ new Date();
-    return { year: now2.getFullYear(), month: now2.getMonth() + 1, day: now2.getDate() };
+    const now3 = /* @__PURE__ */ new Date();
+    return { year: now3.getFullYear(), month: now3.getMonth() + 1, day: now3.getDate() };
   };
   function openPicker({ identity: identity2, kind, value, min, max, step, today: day, options: options2, selected, label: label2, anchorWidth } = {}) {
     if (typeof identity2 !== "string" || !["date", "time", "select"].includes(kind)) return false;
@@ -6717,9 +6762,9 @@
       return true;
     }
     if (key.length === 1) {
-      const now2 = Date.now();
-      picker.typed = (now2 - picker.typedAt < 1e3 ? picker.typed : "") + key.toLowerCase();
-      picker.typedAt = now2;
+      const now3 = Date.now();
+      picker.typed = (now3 - picker.typedAt < 1e3 ? picker.typed : "") + key.toLowerCase();
+      picker.typedAt = now3;
       const found = options2.findIndex((o) => o.enabled && o.label.toLowerCase().startsWith(picker.typed));
       if (found >= 0) picker.focus = found;
       return true;
@@ -6767,7 +6812,7 @@
   }
   function dateBody(words2, env, titled) {
     const { focus, value, min, max } = picker;
-    const first = env?.firstWeekday ?? 7, now2 = today();
+    const first = env?.firstWeekday ?? 7, now3 = today();
     const shift = (months) => {
       picker.focus = clampDate(addMonths(picker.focus, months), min, max);
     };
@@ -6786,12 +6831,12 @@
       })
     );
     const title = words2.title(words2.months[focus.month - 1], focus.year);
-    const cells = monthGrid(focus, first);
-    const rows = Array.from({ length: 6 }, (_, week) => cells.slice(week * 7, week * 7 + 7));
+    const cells2 = monthGrid(focus, first);
+    const rows = Array.from({ length: 6 }, (_, week) => cells2.slice(week * 7, week * 7 + 7));
     const cell2 = ({ date, inMonth }) => {
       const id = iso2(date), enabled = within(date, min, max);
       const selected = titled ? value && compare(date, value) === 0 : picker.pick !== null && compare(date, picker.pick) === 0;
-      const focused = (titled || picker.keyed) && compare(date, focus) === 0, isToday = compare(date, now2) === 0;
+      const focused = (titled || picker.keyed) && compare(date, focus) === 0, isToday = compare(date, now3) === 0;
       const name = words2.full(date.day, words2.months[date.month - 1], date.year, words2.longDays[weekday(date.year, date.month, date.day)]);
       return h(
         "button",
@@ -7119,6 +7164,7 @@
   function prepare(renderPage, view, windows = {}, deferAnchors = false) {
     return runCandidate(view, null, (candidate) => {
       if (deferAnchors) candidate.movedAnchors = /* @__PURE__ */ new Map();
+      render.clockStep = 0;
       let since = now();
       const root = renderPage(view);
       spent("render", since);
@@ -7219,6 +7265,7 @@
     if (!candidate) throw Error("UI_COMMIT: no candidate");
     const previous = page.committed;
     for (const cell2 of candidate.locals.values()) if (page.updates.has(cell2)) cell2.value = page.updates.get(cell2);
+    commitClock();
     page.locals = candidate.locals;
     page.callbacks = candidate.callbacks;
     page.committed = candidate;
@@ -7265,10 +7312,10 @@
           const { window } = node.list;
           for (let i = 0; i < Math.min(node.props.count, probeRows); i++) {
             if (window && i >= window.start && i < window.end) continue;
-            const cells = /* @__PURE__ */ new Map();
-            render.collectors.push(cells);
+            const cells2 = /* @__PURE__ */ new Map();
+            render.collectors.push(cells2);
             try {
-              if (holds(renderRow(node, i, cells, depth).row)) return { list: node.identity, index: i };
+              if (holds(renderRow(node, i, cells2, depth).row)) return { list: node.identity, index: i };
             } catch {
             } finally {
               render.collectors.pop();
@@ -7308,6 +7355,7 @@
     resetWebViews();
     resetSnaps();
     resetStyleWarnings();
+    resetClock();
     wireReset();
   }
   var accepts2 = (kind, value) => kind === "number" ? typeof value === "number" && Number.isFinite(value) && Math.abs(value) <= 1e9 : kind === "text" ? validInputText(value) : kind === "check" ? value === void 0 || typeof value === "boolean" : value === void 0;
@@ -7411,6 +7459,7 @@
       __lingxiaRequestLeave: requestLeave,
       __lingxiaReadsHostContext: readsHostContext,
       __lingxiaEnvReads: envReads,
+      __lingxiaSetNow: setNow,
       __lingxiaAutomationAction: automationAction,
       __lingxiaTakeAutomationResults: takeAutomationResults,
       __lingxiaViewCall: viewCall,

@@ -12,6 +12,7 @@ test id, text or the props you wrote; every element event has a screen method (`
 Theme steps (`p-4`, `text-sm`) reach the wire as `[slot, times, plus]`; `points(props)` resolves them
 under the built-in pack to compare with numbers, and `render(page, view, { points: true })` does so for every node.
 A page using `t` needs `render(page, view, { messages: '.lingxia/i18n/build' })` after `lingxia build`; without it `t` throws `UI_I18N`.
+`render(page, { now })` pins the clock `useNow` and event `timeStamp`s read (default: when `render` ran); it moves only by `screen.advance(ms)`.
 A page's `useChannel` is served by `render(page, { channels: { feed(channel, params) { … } } })`: `channel.send`, `channel.on('data' | 'close')`, `channel.close`; `await screen.settle()` after a step lets the frames run.
 
 ```js

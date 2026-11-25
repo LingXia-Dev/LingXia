@@ -359,6 +359,7 @@ impl<A: PlatformAdapter> Inner<A> {
                 if session.visibility_unsettled() {
                     inner.main().visible_unsettled = true;
                 }
+                inner.main().clock.step = session.clock_step();
                 // A handler's `reveal(id)` waits for this frame: it may be the one that mounts the element.
                 if rebuild
                     && let Ok(ids) = session.take_reveals()
@@ -394,6 +395,7 @@ impl<A: PlatformAdapter> Inner<A> {
                 if std::mem::take(&mut inner.main().visible_unsettled) {
                     inner.settle_visible_later(page);
                 }
+                inner.sync_clock();
                 let (current, missed) = {
                     let mut main = inner.main();
                     let current = main.in_flight.is_some_and(|f| f.id == flight.id);

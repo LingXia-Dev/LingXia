@@ -11,6 +11,36 @@ impl ViewSession {
         self.reads_appearance
     }
 
+    /// The finest `useNow` step the View's last run read, in ms; 0 when it read none.
+    pub fn clock_step(&self) -> u64 {
+        self.clock_step
+    }
+
+    /// The View's clock, epoch ms: the wall clock unless a test pinned it.
+    pub(crate) fn clock_now(&self) -> u64 {
+        self.clock_pin.unwrap_or_else(|| {
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map_or(0, |since| since.as_millis() as u64)
+        })
+    }
+
+    pub(crate) fn set_clock_pin(&mut self, pin: Option<u64>) {
+        self.clock_pin = pin;
+    }
+
+    /// Moves `useNow` to the clock; true when a step the page shows changed, so it renders.
+    pub fn clock_tick(&mut self) -> Result<bool, String> {
+        let now = self.clock_now();
+        self.execute(|| {
+            self.context
+                .eval::<bool>(Source::from_bytes(
+                    format!("__lingxiaSetNow({now})").as_bytes(),
+                ))
+                .map_err(|e| crate::engine::js_error(&self.context, e))
+        })
+    }
+
     /// Native measurements are sampled with the frame; viewport stays renderer-owned.
     pub fn set_environment(&mut self, mut value: serde_json::Value) -> Result<(), String> {
         // Hover styles apply only to fine pointers; adapters that cannot tell report touch.

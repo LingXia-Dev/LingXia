@@ -113,11 +113,9 @@ impl ViewSession {
         }
     }
 
-    /// When an event reached the page, in epoch ms: its handler's `timeStamp`.
+    /// When an event reached the page, in epoch ms, on the View's clock: its handler's `timeStamp`.
     pub(crate) fn event_time(&self) -> u64 {
-        std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .map_or(0, |since| since.as_millis() as u64)
+        self.clock_now()
     }
 
     pub(super) fn dispatch_handle(&mut self, handle: u64) -> Result<bool, String> {

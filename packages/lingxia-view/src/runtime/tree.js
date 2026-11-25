@@ -18,6 +18,7 @@ import { fullscreenFallback, fullscreenDrawn, resolveBare } from './fullscreen.j
 import { resetVideos } from './video.js';
 import { webFullscreenFallback, webFullscreenDrawn, resolveBareWeb, resetWebViews } from './webview.js';
 import { now, spent } from './profile.js';
+import { commitClock, resetClock } from './clock.js';
 
 // Candidate transactions: prepare renders and encodes without touching the
 // committed page; commit adopts the candidate, discard drops it.
@@ -73,6 +74,7 @@ export function takeMovedAnchors() { const moved = movedAnchors; movedAnchors = 
 export function prepare(renderPage, view, windows = {}, deferAnchors = false) {
   return runCandidate(view, null, candidate => {
     if (deferAnchors) candidate.movedAnchors = new Map();
+    render.clockStep = 0;
     let since = now();
     const root = renderPage(view);
     spent('render', since);
@@ -159,6 +161,7 @@ function commitCandidate() {
   if (!candidate) throw Error('UI_COMMIT: no candidate');
   const previous = page.committed;
   for (const cell of candidate.locals.values()) if (page.updates.has(cell)) cell.value = page.updates.get(cell);
+  commitClock();
   page.locals = candidate.locals; page.callbacks = candidate.callbacks;
   page.committed = candidate; render.candidate = null; page.updates.clear(); page.invalidated = candidate.invalidateAfterCommit === true;
   // A closed dialog's bound drag cell goes back to its opening detent, unless its component went away.
@@ -231,7 +234,7 @@ export function reset() {
   for (const resource of page.resources.values()) resource.dispose();
   page.resources.clear();
   resetActions();
-  resetOverlays(); resetPicker(); resetTopLayer(); resetFrameMeasures(); resetReveals(); resetEnvReads(); resetVideos(); resetWebViews(); resetSnaps(); resetStyleWarnings();
+  resetOverlays(); resetPicker(); resetTopLayer(); resetFrameMeasures(); resetReveals(); resetEnvReads(); resetVideos(); resetWebViews(); resetSnaps(); resetStyleWarnings(); resetClock();
   wireReset();
 }
 

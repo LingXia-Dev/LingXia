@@ -295,6 +295,8 @@ struct JSEnvironmentOptions {
     #[cfg_attr(not(feature = "runtime"), allow(dead_code))]
     contrast: Option<String>,
     #[cfg_attr(not(feature = "runtime"), allow(dead_code))]
+    now: Option<f64>,
+    #[cfg_attr(not(feature = "runtime"), allow(dead_code))]
     clear: Option<bool>,
     read: Option<bool>,
 }
@@ -356,6 +358,7 @@ async fn set_environment(
             options.still,
             options.text_scale,
             options.contrast.as_deref(),
+            options.now,
         )?)
     };
     let (instance, page) = auto::page_gpu(app, options.page.as_deref())?;

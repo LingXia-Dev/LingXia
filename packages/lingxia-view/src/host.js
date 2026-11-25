@@ -14,6 +14,7 @@ import { closeAfterExpired, closeOrphans, closePassing, dismissHints, interest, 
 import { takeSpans } from './runtime/profile.js';
 import { fieldText } from './runtime/calendar.js';
 import { registerLanguageCatalogue } from './runtime/i18n.js';
+import { setNow } from './runtime/clock.js';
 
 globalThis.__lingxiaRegisterCatalogue = registerLanguageCatalogue;
 
@@ -50,7 +51,7 @@ export function publishHost(render, catalog, page) {
     __lingxiaConfigureActions: configureActions, __lingxiaTakeViewEvents: takeViewEvents,
     __lingxiaReceiveActionResponse: receiveActionResponse, __lingxiaTakeActionErrors: takeActionErrors, __lingxiaTakeHandlerFailure: takeHandlerFailure, __lingxiaSetLoudFailures: setLoudFailures,
     __lingxiaHasLocalUpdates: hasLocalUpdates, __lingxiaReleasePress: releasePress, __lingxiaRequestLeave: requestLeave,
-    __lingxiaReadsHostContext: readsHostContext, __lingxiaEnvReads: envReads,
+    __lingxiaReadsHostContext: readsHostContext, __lingxiaEnvReads: envReads, __lingxiaSetNow: setNow,
     __lingxiaAutomationAction: automationAction, __lingxiaTakeAutomationResults: takeAutomationResults,
     __lingxiaViewCall: viewCall, __lingxiaOverlayTimer: overlayTimer, __lingxiaTakeOverlayTimers: takeOverlayTimers,
     __lingxiaEscape: escapeOverlay, __lingxiaPageLeft: pageLeft, __lingxiaInterest: interest, __lingxiaDismissHints: dismissHints, __lingxiaCloseAfter: closeAfterExpired, __lingxiaFonts: takeFonts, __lingxiaProbeListRow: probeListRow,

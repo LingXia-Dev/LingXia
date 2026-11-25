@@ -58,7 +58,8 @@ export function render({ data, actions }: View) {
 - `useLocal(value)` state is keyed by call order and component identity; `useLocal(name, value)` by name (survives reorders and hot edits).
 - No effects: a handler acts, also after an `await` — `if (!(await signIn.run(form)).ok) password.focus()` (or `.set`, `reveal`). Its closure keeps the old render's `data`, so let the action's result answer, not `data` read after the await.
 - A handler that throws or rejects fails the page in a `lingxia dev` build and under test; a shipped app logs it (`UI_HANDLER: onClick of <button data-testid=…> rejected: …`) and the page stays. A sync throw discards that turn's writes; an async handler's writes made before it failed stay. Prefer `useAction(...).run`, which answers `{ ok: false }`; bare `await actions.x()` rejects — handle it or it is reported.
-- `onClick(event)` and `<video>` events carry `event.timeStamp`, epoch ms when the host took the event: stamp observations with it, not `Date.now()`.
+- `onClick(event)`, `<video>` and `onVisibleChange` events carry `event.timeStamp`, epoch ms when the host took the event: stamp observations with it, not `Date.now()`.
+- `useNow('second' | 'minute')` (from `@lingxia/view`) is the wall clock in epoch ms, floored to that step; only what reads it re-renders, on the boundary. The host ticks it only while the page is shown, never wakes Logic, re-delivers at once on resume or a clock/time-zone change. For clocks and relative times; never `Date.now()` in render.
 - In a component, `useEnv()` re-runs it only when an env field it read changes, not on every `view.data` change (`useView()` does).
 - `cell.focus()` (text cells only, `LocalText`) focuses the editor bound (`bind`) to that cell; from a handler, never in render.
   `cell.showPicker()` opens a bound date or time editor's picker the same way (nothing if disabled or read-only).

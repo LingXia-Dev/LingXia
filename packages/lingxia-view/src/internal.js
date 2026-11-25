@@ -6,6 +6,7 @@ export { List, prepare, prepareWindows, takeMovedAnchors, takeThrown, commit, di
 export { useVideo } from './runtime/video.js';
 export { useWebView } from './runtime/webview.js';
 export { useBox } from './runtime/box.js';
+export { useNow } from './runtime/clock.js';
 export { reveal } from './runtime/reveal.js';
 export { useLocal, useView, useEnv, useId, useAction, useRequest, useStream, useChannel, useLeaveGuard, useBackHandler, SizeClassScope, hasLocalUpdates, createView, readsHostContext } from './runtime/hooks.js';
 export { configureActions, takeActionRequests, receiveActionResponse, takeActionErrors, takeHandlerFailure, setLoudFailures, requestLeave } from './runtime/actions.js';

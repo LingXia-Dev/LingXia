@@ -9,4 +9,5 @@ export { t, packageText } from './runtime/i18n.js';
 export { useVideo } from './runtime/video.js';
 export { useWebView } from './runtime/webview.js';
 export { useBox } from './runtime/box.js';
+export { useNow } from './runtime/clock.js';
 export { reveal } from './runtime/reveal.js';

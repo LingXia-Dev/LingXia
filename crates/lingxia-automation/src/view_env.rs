@@ -48,13 +48,19 @@ fn with_leases<T>(f: impl FnOnce(&mut Leases) -> T) -> T {
 }
 
 /// Parse `{ theme?: 'light' | 'dark' | null, still?: boolean, textScale?: number | null,
-/// contrast?: 'standard' | 'high' | null }`. The page checks the scale's range.
+/// contrast?: 'standard' | 'high' | null, now?: number }`. The page checks the scale's range.
 pub(crate) fn parse_pin(
     theme: Option<&str>,
     still: Option<bool>,
     text_scale: Option<f64>,
     contrast: Option<&str>,
+    now: Option<f64>,
 ) -> Result<TestEnvironment, String> {
+    let now = match now {
+        None => None,
+        Some(ms) if ms.is_finite() && ms >= 0.0 => Some(ms as u64),
+        Some(_) => return Err("E_INVALID_ARG: now is epoch milliseconds, 0 or more".into()),
+    };
     let high_contrast = match contrast {
         None => None,
         Some("standard") => Some(false),
@@ -80,6 +86,7 @@ pub(crate) fn parse_pin(
         still: still.unwrap_or(false),
         text_scale: text_scale.map(|scale| scale as f32),
         high_contrast,
+        now,
     })
 }
 
@@ -323,6 +330,7 @@ pub(crate) mod tests {
         still: true,
         text_scale: None,
         high_contrast: None,
+        now: None,
     };
 
     pub(crate) fn pin(run_id: &str, attempt: Option<u64>, instance: &str) -> Arc<FakePage> {
@@ -334,19 +342,24 @@ pub(crate) mod tests {
 
     #[test]
     fn pins_parse_strictly() {
-        assert_eq!(parse_pin(Some("dark"), Some(true), None, None), Ok(DARK));
         assert_eq!(
-            parse_pin(None, None, Some(1.3), Some("high")),
+            parse_pin(Some("dark"), Some(true), None, None, None),
+            Ok(DARK)
+        );
+        assert_eq!(
+            parse_pin(None, None, Some(1.3), Some("high"), None),
             Ok(TestEnvironment {
                 dark: None,
                 still: false,
                 text_scale: Some(1.3),
                 high_contrast: Some(true),
+                now: None,
             })
         );
         for bad in [
-            parse_pin(Some("sepia"), None, None, None),
-            parse_pin(None, None, None, Some("more")),
+            parse_pin(Some("sepia"), None, None, None, None),
+            parse_pin(None, None, None, Some("more"), None),
+            parse_pin(None, None, None, None, Some(-1.0)),
         ] {
             assert!(bad.unwrap_err().starts_with("E_INVALID_ARG"));
         }

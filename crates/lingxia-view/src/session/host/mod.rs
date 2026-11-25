@@ -17,6 +17,7 @@ use std::time::Duration;
 
 mod bridge;
 mod clipboard;
+mod clock;
 pub(crate) mod decode;
 mod dispatch;
 mod drag;
@@ -478,6 +479,7 @@ struct Main<F> {
     act_fill: bool,
     virtual_rows: virtual_rows::VirtualRows,
     snaps: snap::Snaps,
+    clock: clock::Clock,
     drags: drag::Drags,
     /// User activations reported dropped, and clicks that ran a callback, for frame metrics.
     dropped_activations: u64,
@@ -719,6 +721,7 @@ impl<A: PlatformAdapter> ViewHost<A> {
                     act_fill: false,
                     virtual_rows: Default::default(),
                     snaps: Default::default(),
+                    clock: Default::default(),
                     drags: Default::default(),
                     dropped_activations: 0,
                     activations: 0,
@@ -821,6 +824,13 @@ impl<A: PlatformAdapter> ViewHost<A> {
         }
         self.inner.set_visible(visible);
         self.inner.sync_autoclose();
+        self.inner.sync_clock();
+    }
+
+    /// The wall clock or time zone changed (the platform's significant-time-change signal):
+    /// a page reading `useNow` hears the new time at once.
+    pub fn time_changed(&self) {
+        self.inner.clock_changed();
     }
 
     /// A new presentation target bound after [`Self::surface_lost`]: platforms create one only
@@ -887,6 +897,7 @@ impl<A: PlatformAdapter> ViewHost<A> {
     pub fn window_visible(&self, visible: bool) {
         self.inner.window_visible(visible);
         self.inner.sync_autoclose();
+        self.inner.sync_clock();
     }
 
     /// The platform slides this page in on a push or pop; `frame_metrics` reports the slide.
@@ -899,6 +910,7 @@ impl<A: PlatformAdapter> ViewHost<A> {
     pub fn window_covered(&self, covered: bool) {
         self.inner.window_covered(covered, false);
         self.inner.sync_autoclose();
+        self.inner.sync_clock();
     }
 
     /// [`Self::window_covered`] for a window something still reads while covered (a dev
@@ -906,6 +918,7 @@ impl<A: PlatformAdapter> ViewHost<A> {
     pub fn window_covered_watched(&self, covered: bool) {
         self.inner.window_covered(covered, true);
         self.inner.sync_autoclose();
+        self.inner.sync_clock();
     }
 
     /// The presentation target is gone; nothing presents until it returns.
@@ -1748,6 +1761,15 @@ impl<A: PlatformAdapter> ViewHost<A> {
                         })? as f32,
                 ),
             };
+            let now = match &request["now"] {
+                serde_json::Value::Null => None,
+                now => Some(
+                    now.as_f64()
+                        .filter(|ms| ms.is_finite() && *ms >= 0.0)
+                        .ok_or("E_INVALID_ARG: environment now is epoch milliseconds, 0 or more")?
+                        as u64,
+                ),
+            };
             let high_contrast = match &request["contrast"] {
                 serde_json::Value::Null => None,
                 contrast if contrast == "high" => Some(true),
@@ -1763,9 +1785,10 @@ impl<A: PlatformAdapter> ViewHost<A> {
                 still,
                 text_scale,
                 high_contrast,
+                now,
             })
         };
-        let (changed, restart) = {
+        let (changed, restart, repin) = {
             let mut main = self.inner.main();
             // A pin the cap would clamp would test a text size the page never shows.
             let max = main.host_environment.max_text_scale();
@@ -1778,6 +1801,13 @@ impl<A: PlatformAdapter> ViewHost<A> {
                 ));
             }
             let was_still = main.host_environment.still();
+            // A pinned clock stands; `still` alone stops the clock where it is.
+            let pin = match test {
+                Some(environment::TestOverride { now: Some(now), .. }) => Some(now),
+                Some(test) if test.still => main.clock.pin.or_else(|| Some(clock::wall_ms())),
+                _ => None,
+            };
+            let repin = (pin != main.clock.pin).then_some(pin);
             let changed = main.host_environment.set_test(test);
             let still = main.host_environment.still();
             if still {
@@ -1788,8 +1818,11 @@ impl<A: PlatformAdapter> ViewHost<A> {
                 main.caret.timer += 1;
                 main.caret.timer
             });
-            (changed, restart)
+            (changed, restart, repin)
         };
+        if let Some(pin) = repin {
+            self.inner.pin_clock(pin);
+        }
         if let Some(timer) = restart {
             self.inner.blink(timer);
         }
@@ -1811,6 +1844,7 @@ impl<A: PlatformAdapter> ViewHost<A> {
         serde_json::json!({
             "theme": test.and_then(|test| test.dark).map(theme),
             "still": test.is_some_and(|test| test.still),
+            "now": test.and_then(|test| test.now),
             "contrast": test
                 .and_then(|test| test.high_contrast)
                 .map(|high| if high { "high" } else { "standard" }),

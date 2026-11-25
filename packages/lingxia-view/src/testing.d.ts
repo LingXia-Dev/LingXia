@@ -32,6 +32,8 @@ export interface ServedChannel {
 export interface ViewInput {
   data?: Record<string, unknown>; env?: Record<string, unknown>; actions?: Record<string, unknown>;
   channels?: Record<string, (channel: ServedChannel, params: unknown) => void>;
+  /** The clock `useNow` and event `timeStamp`s read, epoch ms; it moves only by `advance`. Defaults to when `render` ran. */
+  now?: number;
 }
 
 export interface Screen {
@@ -91,6 +93,10 @@ export interface Screen {
   webview(node: WireNode, events?: ReadonlyArray<{ type: string; [detail: string]: unknown }>): void;
   /** The Back or Escape a device sends: closes the topmost overlay; false when none was open. */
   escape(): boolean;
+  /** Moves the clock on by `ms`; a page showing `useNow` re-renders when its step changes. */
+  advance(ms: number): void;
+  /** The test's clock, epoch ms. */
+  readonly now: number;
   /** Merges `data` and `env` into the current view and re-renders; local state is kept. */
   rerender(view: ViewInput): void;
   /** Re-renders until the page's channel frames and the promises they settle have run out. */

@@ -152,6 +152,7 @@ impl GpuPageAutomation for GpuAutomation {
                 "contrast": pin
                     .high_contrast
                     .map(|high| if high { "high" } else { "standard" }),
+                "now": pin.now,
             }),
             None => json!({"op": "environment", "clear": true}),
         })

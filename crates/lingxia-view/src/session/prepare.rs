@@ -1102,8 +1102,10 @@ impl ViewSession {
         }
         let environment =
             serde_json::to_string(&environment.to_string()).map_err(|e| e.to_string())?;
+        // The clock is set before every render, so each one reads the time it ran at.
         Ok(format!(
-            "__lingxiaPrepare(__lingxiaRender, __lingxiaCreateView({data}, JSON.parse({environment}), {revision}), JSON.parse({encoded_windows}), true)",
+            "__lingxiaSetNow({now}),__lingxiaPrepare(__lingxiaRender, __lingxiaCreateView({data}, JSON.parse({environment}), {revision}), JSON.parse({encoded_windows}), true)",
+            now = self.clock_now(),
             revision = self.state.revision(),
         ))
     }
@@ -1172,6 +1174,11 @@ impl ViewSession {
         })?;
         self.reads_host_context = reads & 1 != 0;
         self.reads_appearance = reads & 2 != 0;
+        self.clock_step = match reads & 12 {
+            0 => 0,
+            4 => 1000,
+            _ => 60_000,
+        };
         Ok(records)
     }
 

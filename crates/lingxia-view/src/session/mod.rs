@@ -149,6 +149,10 @@ pub struct ViewSession {
     /// The View depends on the appearance: its code read `env.theme` or `env.highContrast`, or a
     /// class has a theme condition. True until it has run.
     reads_appearance: bool,
+    /// The finest `useNow` step the View's last run read, in ms; 0 when none.
+    clock_step: u64,
+    /// The clock a test pinned or `still` froze, epoch ms.
+    clock_pin: Option<u64>,
     input_rebuild: bool,
     reveal_input: bool,
     /// The editor keyboard focus is starting, and whether it selects all its text on arrival.
@@ -448,6 +452,8 @@ impl ViewSession {
             pointer_dirty: false,
             reads_host_context: true,
             reads_appearance: true,
+            clock_step: 0,
+            clock_pin: None,
             input_rebuild: false,
             reveal_input: false,
             keyboard_entry: None,
