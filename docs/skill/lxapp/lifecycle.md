@@ -61,7 +61,7 @@ Every `onShow` / `onHide` receives `{ source, reason }`:
 | Screenshot, where the platform reports it | `onScreenshot` | — | — |
 
 - **An aside does not hide the main.** `lx.surface.openApp(id, { as: 'aside' })`
-  opens beside the main, which gets no `onHide`. Collapsing a docked aside is
+  (Control app only) opens beside the main, which gets no `onHide`. Collapsing a docked aside is
   a page event, not an App event: the aside lxapp's App hooks stay quiet (see
   Navigation below). Reopening it while docked brings it back in place; route
   from the `path` / `query` in App `onShow`.
@@ -69,7 +69,8 @@ Every `onShow` / `onHide` receives `{ source, reason }`:
   onto the sidebar, clicking its Pin, or `lx.surface.openApp(id, { as })` naming
   the other role moves the live lxapp: no `onLaunch`, page stack and state
   kept; the previous main gets `onHide` (`switch_away`). Desktop only: mobile
-  hosts reject with `E_NOT_SUPPORTED`, the root main with `E_SURFACE_ROLE_LOCKED`.
+  hosts reject with `E_NOT_SUPPORTED`, the root main with `E_SURFACE_ROLE_LOCKED`,
+  and an app already open in the other role with `E_SURFACE_CONFLICT`.
 - **AppLink arrives once.** Route it in `App.onOpen(link)` and return a
   target: cold, it runs after `onLaunch` settles; warm, before `onShow`
   (`reason: 'switch_back'`). No other hook sees the link.

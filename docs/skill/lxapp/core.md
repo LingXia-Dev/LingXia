@@ -40,9 +40,10 @@ Keep that in `tsconfig.logic.json`; the View has its own config, and the root
   (and, for other apps, `host`) [grant](../native/permissions.md).
 - Navigation takes a configured **page name**, never a path. A name computed at
   runtime needs `page as ConfiguredPageName`; another lxapp's page is a plain string.
-- Calls live in namespaces by subject: `lx.nav`, `lx.ui`, `lx.app`, `lx.host`,
-  `lx.device`, `lx.media`, `lx.network`, `lx.pick`, `lx.fs`, `lx.clipboard`,
-  `lx.storage`, `lx.surface`, `lx.shell`.
+- Calls live in namespaces by subject (`nav`, `ui`, `app`, `host`, `device`, `media`,
+  `network`, `pick`, `fs`, `clipboard`, `storage`, `surface`, `shell`); a few sit on
+  `lx` itself (`share`, `openFile`, `openExternal`, `supports`). `lx.app.info` is this
+  lxapp's id, version, channel and `role`.
 - Page-addressed calls live on `page`, not on `lx`: its data, params, signal,
   result, opener and navigation bar ([Page API](./guide.md)).
 
