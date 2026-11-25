@@ -270,5 +270,9 @@
   "@liuli.actionFailed": {
     "defaultMessage": "That didn't work. Try again.",
     "description": "Shown in a confirmation dialog when its action fails."
+  },
+  "@liuli.clearField": {
+    "defaultMessage": "Clear {label}",
+    "description": "Button inside a choice field that empties it; `label` is the field's label."
   }
 }

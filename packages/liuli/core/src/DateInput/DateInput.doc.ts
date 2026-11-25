@@ -58,6 +58,7 @@ export const doc: ComponentDoc = {
   },
   examples: [
     { name: 'DueDate', title: 'A due date' },
+    { name: 'Clearable', title: 'Clearable: the clear button empties the day' },
     { name: 'Trip', title: 'A return tied to its departure' },
     { name: 'Meeting', title: 'A day and a time in one row' },
     { name: 'Sizes', title: 'Sizes' },
@@ -73,6 +74,7 @@ export const doc: ComponentDoc = {
     page: {
       lead: 'Use a date field to take one day, picked from a month.',
       hero: 'DueDate',
+      variants: [{ name: 'Clearable', title: 'Clearable: the clear button empties the day' }],
       sizes: [{ name: 'Sizes', title: 'Small, medium and large' }],
       statesLayout: 'stack',
       states: [

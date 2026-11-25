@@ -2,12 +2,13 @@ import { cx, useId, useLocal, useView, type Local } from '@lingxia/view';
 import { useControlSize } from '../density';
 import { Calendar, type CalendarDate, type CalendarRange, type CalendarWeekday } from '../Calendar/Calendar';
 import { comboboxRecipe as c } from '../Combobox/Combobox.recipe';
-import { Field, type FieldOwnProps } from '../Field/Field';
+import { Field, type FieldOwnProps, type FieldControl } from '../Field/Field';
 import { liuliText } from '../i18n/text';
 import { Glyph } from '../internal/Glyph';
 import { LayerContext } from '../internal/layer';
 import { dateRangeInputRecipe as r } from './DateRangeInput.recipe';
 import { dataOf } from '../internal/data';
+import { ClearButton, useClearDock } from '../internal/ClearButton';
 
 export type DateRangeInputBinding =
   | {
@@ -31,6 +32,10 @@ export type DateRangeInputProps = FieldOwnProps & DateRangeInputBinding & {
   today: CalendarDate;
   /** Shown while no day is chosen. */
   placeholder?: string;
+  /** A button at the box's end that empties the span, shown while a day is chosen and the field is enabled. @default false */
+  hasClear?: boolean;
+  /** Names the clear button. Defaults to "Clear" and the field's label, in the page's language. */
+  clearLabel?: string;
   min?: CalendarDate;
   max?: CalendarDate;
   isDateDisabled?: (date: CalendarDate) => boolean;
@@ -49,7 +54,7 @@ export type DateRangeInputProps = FieldOwnProps & DateRangeInputBinding & {
 export function DateRangeInput(props: DateRangeInputProps) {
   const {
     label, isLabelHidden, description, status, isRequired, hasRequiredMark, optionalLabel, info, isDisabled = false, disabledMessage, size: ownSize,
-    format, today, placeholder, min, max, isDateDisabled, firstWeekday, hasCloseButton = true, closeLabel = liuliText('@liuli.close'), className, 'data-testid': testId,
+    format, today, placeholder, hasClear = false, clearLabel, min, max, isDateDisabled, firstWeekday, hasCloseButton = true, closeLabel = liuliText('@liuli.close'), className, 'data-testid': testId,
   } = props;
   const range = props.bind ? props.bind.value : props.value;
   const onRangeChange = (next: CalendarRange) => props.bind ? props.bind.set(next) : props.onChange(next);
@@ -83,6 +88,23 @@ export function DateRangeInput(props: DateRangeInputProps) {
       />
     </LayerContext.Provider>
   );
+  const dock = useClearDock(16);
+  const trigger = (control: FieldControl, clearable: boolean) => (
+    <button
+      popoverTarget={isSheet ? undefined : panelId}
+      onClick={isSheet ? () => open.set(true) : undefined}
+      aria-label={control['aria-label']}
+      // The chosen span is read after the name, as a field's value is, then the help text.
+      aria-describedby={control['aria-describedby'] ? `${valueId} ${control['aria-describedby']}` : valueId}
+      aria-expanded={isSheet ? open.value : undefined}
+      disabled={control.disabled}
+      data-testid={testId} {...dataOf(props)}
+      className={cx(c.trigger.base, c.trigger.size[size], c.trigger.pressable, status && c.trigger.status[status.type])}
+    >
+      <text id={valueId} className={cx(isEmpty ? c.value.placeholder : c.value.base, c.value.size[size], r.value.base, isDisabled && c.value.disabled, clearable && c.clear.lane)}>{shown}</text>
+      <Glyph name="calendar" side={16} className={r.icon.base} />
+    </button>
+  );
   return (
     <Field
       label={label}
@@ -100,20 +122,16 @@ export function DateRangeInput(props: DateRangeInputProps) {
     >
       {control => (
         <>
-          <button
-            popoverTarget={isSheet ? undefined : panelId}
-            onClick={isSheet ? () => open.set(true) : undefined}
-            aria-label={control['aria-label']}
-            // The chosen span is read after the name, as a field's value is, then the help text.
-            aria-describedby={control['aria-describedby'] ? `${valueId} ${control['aria-describedby']}` : valueId}
-            aria-expanded={isSheet ? open.value : undefined}
-            disabled={control.disabled}
-            data-testid={testId} {...dataOf(props)}
-            className={cx(c.trigger.base, c.trigger.size[size], c.trigger.pressable, status && c.trigger.status[status.type])}
-          >
-            <text id={valueId} className={cx(isEmpty ? c.value.placeholder : c.value.base, c.value.size[size], r.value.base, isDisabled && c.value.disabled)}>{shown}</text>
-            <Glyph name="calendar" side={16} className={r.icon.base} />
-          </button>
+          {!hasClear ? trigger(control, false) : (
+            <view className={c.clear.wrap}>
+              {trigger(control, true)}
+              {!isEmpty && !isDisabled && (
+                <view className={c.clear.dock} style={dock}>
+                  <ClearButton label={label} clearLabel={clearLabel} onClear={() => onRangeChange({ start: null, end: null })} testId={testId} className={c.clear.base} iconClassName={c.clear.icon} />
+                </view>
+              )}
+            </view>
+          )}
           {isSheet ? (
             <dialog
               open={open.value}

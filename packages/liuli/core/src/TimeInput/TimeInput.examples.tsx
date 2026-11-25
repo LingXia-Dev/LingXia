@@ -45,6 +45,12 @@ export function StateDisabled() {
   return <TimeInput label="Start" value="14:45" onChange={unused} isDisabled />;
 }
 
+/** A time that can be taken back: the clear button empties the field. */
+export function Clearable() {
+  const at = useLocal('at', '09:30');
+  return <TimeInput bind={at} label="Remind me at" placeholder="No reminder" hasClear data-testid="clearable" />;
+}
+
 /** The home tile. */
 export function Specimen() {
   return <TimeInput label="Start" isLabelHidden value="09:30" onChange={unused} size="sm" className="w-28" />;

@@ -39,6 +39,23 @@ export function Stay() {
 }
 ```
 
+### Clearable: the clear button empties the span
+
+```tsx
+import { useLocal } from '@lingxia/view';
+import type { CalendarRange } from '@liulidesign/core/Calendar';
+import { DateRangeInput } from '@liulidesign/core/DateRangeInput';
+
+const today = '2026-11-15';
+const short = (date: string) => `${Number(date.slice(8))} ${months[Number(date.slice(5, 7)) - 1]}`;
+
+/** A span that can be taken back: the clear button empties it. */
+export function Clearable() {
+  const stay = useLocal<CalendarRange>('stay', { start: '2026-11-18', end: '2026-11-24' });
+  return <DateRangeInput label="Stay" bind={stay} format={short} today={today} placeholder="Any dates" hasClear data-testid="clearable" />;
+}
+```
+
 ### Nothing chosen yet
 
 ```tsx
@@ -87,6 +104,8 @@ export function Empty() {
 | `format` (required) | `(date: string) => string` |  | Turns a day into the text the field shows: "18 Nov". The app formats dates. |
 | `today` (required) | `string` |  | Today, from the page's Logic. |
 | `placeholder` | `string` |  | Shown while no day is chosen. |
+| `hasClear` | `boolean` | `false` | A button at the box's end that empties the span, shown while a day is chosen and the field is enabled. |
+| `clearLabel` | `string` |  | Names the clear button. Defaults to "Clear" and the field's label, in the page's language. |
 | `min` | `string` |  |  |
 | `max` | `string` |  |  |
 | `isDateDisabled` | `((date: string) => boolean)` |  |  |

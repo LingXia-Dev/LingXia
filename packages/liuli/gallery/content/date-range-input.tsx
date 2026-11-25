@@ -1,5 +1,5 @@
 // Generated from the doc file by scripts/generate.mjs; do not edit.
-import { Stay, Empty, StateInvalid, StateDisabled } from '../../core/src/DateRangeInput/DateRangeInput.examples';
+import { Stay, Clearable, Empty, StateInvalid, StateDisabled } from '../../core/src/DateRangeInput/DateRangeInput.examples';
 import { Lead, PageSection, Stage, StageGrid } from '../shared/Layout';
 
 export function Content() {
@@ -9,6 +9,9 @@ export function Content() {
         <Stay />
       </Lead>
       <PageSection title={"Variants"}>
+        <Stage caption={"Clearable: the clear button empties the span"}>
+          <Clearable />
+        </Stage>
         <Stage caption={"Nothing chosen yet, with a placeholder"}>
           <Empty />
         </Stage>

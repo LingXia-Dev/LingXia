@@ -30,6 +30,19 @@ export function Reminder() {
 }
 ```
 
+### Clearable: the clear button empties the time
+
+```tsx
+import { useLocal } from '@lingxia/view';
+import { TimeInput } from '@liulidesign/core/TimeInput';
+
+/** A time that can be taken back: the clear button empties the field. */
+export function Clearable() {
+  const at = useLocal('at', '09:30');
+  return <TimeInput bind={at} label="Remind me at" placeholder="No reminder" hasClear data-testid="clearable" />;
+}
+```
+
 ### Every 15 minutes, within the evening
 
 ```tsx
@@ -83,6 +96,8 @@ export function Sizes() {
 | `max` | `string` |  | The latest time offered, `HH:MM`. |
 | `step` | `number` | `60` | Seconds between the times offered: 300 offers every 5 minutes. |
 | `onSubmit` | `((value: string) => void)` |  | Runs with the time picked, after `onChange`. |
+| `hasClear` | `boolean` | `false` | A button at the end that empties the field, shown while it holds a time and is enabled. |
+| `clearLabel` | `string` |  | Names the clear button. Defaults to "Clear" and the field's label, in the page's language. |
 | `className` | `string` |  | Classes for the field column. |
 | `controlClassName` | `string` |  | Classes for the bordered box. |
 | `data-testid` | `string` |  | On the editor. |
@@ -103,7 +118,7 @@ export function Sizes() {
 - `controlClassName`: Classes for the bordered box.
 - The recipe, `timeInputRecipe` from `@liulidesign/core/TimeInput/recipe`: the classes of each part, to style an element of your own to match. The component does not read a changed copy.
 - Scale tokens it reads, set in the app's stylesheet under `@theme`: `--spacing-control-sm`, `--spacing-control-md`, `--spacing-control-lg`, `--text-footnote`, `--text-body`, `--text-callout`, `--radius-control`.
-- Colour roles it paints with, set by the theme pack: `accent`, `danger`, `line-strong`, `surface`, `text`, `text-faint`, `text-muted`, `warning`.
+- Colour roles it paints with, set by the theme pack: `accent`, `danger`, `focus`, `line-strong`, `surface`, `text`, `text-faint`, `text-muted`, `warning`.
 
 ## Accessibility
 

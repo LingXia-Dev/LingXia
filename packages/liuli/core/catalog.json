@@ -4767,6 +4767,19 @@
           "description": "Shown in the box while nothing is chosen."
         },
         {
+          "name": "hasClear",
+          "type": "boolean",
+          "required": false,
+          "description": "A button at the box's end that empties it, shown while something is chosen and the field is enabled.",
+          "default": "false"
+        },
+        {
+          "name": "clearLabel",
+          "type": "string",
+          "required": false,
+          "description": "Names the clear button. Defaults to \"Clear\" and the field's label, in the page's language."
+        },
+        {
           "name": "searchLabel",
           "type": "string",
           "required": false,
@@ -4846,6 +4859,7 @@
         "editor": "input",
         "value": "text",
         "chevron": "vector",
+        "clear": "button",
         "popover": "view",
         "sheet": "dialog",
         "grabber": "view",
@@ -4992,6 +5006,11 @@
           "source": "import { useLocal } from '@lingxia/view';\nimport { Combobox } from '@liulidesign/core/Combobox';\n\nconst countries = [\n  'Argentina', 'Australia', 'Brazil', 'Canada', 'Chile', 'China', 'Egypt', 'France', 'Germany', 'India', 'Indonesia', 'Italy', 'Japan',\n  'Kenya', 'Mexico', 'Morocco', 'Netherlands', 'Nigeria', 'Norway', 'Peru', 'Portugal', 'South Africa', 'South Korea', 'Spain', 'Sweden', 'Türkiye',\n  'United Kingdom', 'United States', 'Vietnam',\n].map(name => ({ value: name.toLowerCase().replace(/[^a-z]+/g, '-'), label: name }));\n\n/** A long list found by typing: the field opens a search over its options. */\nexport function Country() {\n  const country = useLocal('country', '');\n  return (\n    <Combobox\n      label=\"Country\"\n      bind={country}\n      items={countries}\n      placeholder=\"Choose a country\"\n      searchLabel=\"Search countries\"\n      searchPlaceholder=\"Search\"\n      emptyLabel=\"No country matches\"\n      hasCloseButton\n      data-testid=\"country\"\n    />\n  );\n}"
         },
         {
+          "name": "Clearable",
+          "title": "Clearable: the clear button takes the choice back",
+          "source": "import { useLocal } from '@lingxia/view';\nimport { Combobox } from '@liulidesign/core/Combobox';\n\nconst countries = [\n  'Argentina', 'Australia', 'Brazil', 'Canada', 'Chile', 'China', 'Egypt', 'France', 'Germany', 'India', 'Indonesia', 'Italy', 'Japan',\n  'Kenya', 'Mexico', 'Morocco', 'Netherlands', 'Nigeria', 'Norway', 'Peru', 'Portugal', 'South Africa', 'South Korea', 'Spain', 'Sweden', 'Türkiye',\n  'United Kingdom', 'United States', 'Vietnam',\n].map(name => ({ value: name.toLowerCase().replace(/[^a-z]+/g, '-'), label: name }));\n\n/** A choice that can be taken back: the clear button empties it. */\nexport function Clearable() {\n  const country = useLocal('country', 'portugal');\n  return <Combobox label=\"Country\" bind={country} items={countries} placeholder=\"Choose a country\" hasClear data-testid=\"clearable\" />;\n}"
+        },
+        {
           "name": "Assignee",
           "title": "Options with a second line",
           "source": "import { useLocal } from '@lingxia/view';\nimport { Combobox } from '@liulidesign/core/Combobox';\n\nconst people = [\n  { value: 'ana', label: 'Ana Lee', description: 'Design' },\n  { value: 'ben', label: 'Ben Okafor', description: 'Engineering' },\n  { value: 'chloe', label: 'Chloé Martin', description: 'Engineering' },\n  { value: 'dev', label: 'Dev Patel', description: 'On leave until June', isDisabled: true },\n  { value: 'emi', label: 'Emi Sato', description: 'Research' },\n];\n\n/** A second line tells apart options with similar names; one that cannot be chosen stays in the list, dimmed. */\nexport function Assignee() {\n  const person = useLocal('person', 'ben');\n  return (\n    <Combobox\n      label=\"Assignee\"\n      description=\"They are notified when the task changes.\"\n      bind={person}\n      items={people}\n      searchLabel=\"Search people\"\n      emptyLabel=\"Nobody by that name\"\n      data-testid=\"assignee\"\n    />\n  );\n}"
@@ -5088,6 +5107,10 @@
           "lead": "Use a combobox to choose one option from a list too long to scan, by typing part of its name.",
           "hero": "Country",
           "variants": [
+            {
+              "name": "Clearable",
+              "title": "Clearable: the clear button takes the choice back"
+            },
             {
               "name": "Assignee",
               "title": "A second line for options with similar names; one that cannot be chosen is dimmed"
@@ -5963,6 +5986,19 @@
           "description": "Runs with the day picked, after `onChange`."
         },
         {
+          "name": "hasClear",
+          "type": "boolean",
+          "required": false,
+          "description": "A button at the end that empties the field, shown while it holds a day and is enabled.",
+          "default": "false"
+        },
+        {
+          "name": "clearLabel",
+          "type": "string",
+          "required": false,
+          "description": "Names the clear button. Defaults to \"Clear\" and the field's label, in the page's language."
+        },
+        {
           "name": "className",
           "type": "string",
           "required": false,
@@ -5996,7 +6032,8 @@
       "parts": {
         "box": "view",
         "input": "input",
-        "icon": "vector"
+        "icon": "vector",
+        "clear": "button"
       },
       "accessibility": {
         "pattern": "textbox",
@@ -6089,6 +6126,11 @@
           "source": "import { useLocal } from '@lingxia/view';\nimport { DateInput } from '@liulidesign/core/DateInput';\n\n/** A due date, bound to a View-local cell. */\nexport function DueDate() {\n  const due = useLocal('due', '');\n  return (\n    <view className=\"gap-2\">\n      <DateInput bind={due} label=\"Due date\" placeholder=\"Choose a date\" data-testid=\"due\" />\n      <text className=\"text-footnote text-muted\" data-testid=\"due-value\">{due.value === '' ? 'No due date' : `Due ${due.value}`}</text>\n    </view>\n  );\n}"
         },
         {
+          "name": "Clearable",
+          "title": "Clearable: the clear button empties the day",
+          "source": "import { useLocal } from '@lingxia/view';\nimport { DateInput } from '@liulidesign/core/DateInput';\n\n/** A day that can be taken back: the clear button empties the field. */\nexport function Clearable() {\n  const due = useLocal('due', '2026-12-18');\n  return <DateInput bind={due} label=\"Due date\" placeholder=\"No due date\" hasClear data-testid=\"clearable\" />;\n}"
+        },
+        {
           "name": "Trip",
           "title": "A return tied to its departure",
           "source": "import { useLocal } from '@lingxia/view';\nimport { DateInput } from '@liulidesign/core/DateInput';\n\n/** A trip: the return cannot come before the departure. */\nexport function Trip() {\n  const leave = useLocal('leave', '2026-12-18');\n  const back = useLocal('back', '2026-12-27');\n  const isBefore = back.value !== '' && back.value < leave.value;\n  return (\n    <view className=\"gap-4\">\n      <DateInput bind={leave} label=\"Leave\" min=\"2026-11-12\" data-testid=\"leave\" />\n      <DateInput\n        bind={back}\n        label=\"Return\"\n        min={leave.value}\n        status={isBefore ? { type: 'error', message: 'Return after you leave.' } : undefined}\n        data-testid=\"back\"\n      />\n    </view>\n  );\n}"
@@ -6139,6 +6181,7 @@
         "roles": [
           "accent",
           "danger",
+          "focus",
           "line-strong",
           "surface",
           "text",
@@ -6159,6 +6202,12 @@
         "page": {
           "lead": "Use a date field to take one day, picked from a month.",
           "hero": "DueDate",
+          "variants": [
+            {
+              "name": "Clearable",
+              "title": "Clearable: the clear button empties the day"
+            }
+          ],
           "sizes": [
             {
               "name": "Sizes",
@@ -6329,6 +6378,19 @@
           "type": "string",
           "required": false,
           "description": "Shown while no day is chosen."
+        },
+        {
+          "name": "hasClear",
+          "type": "boolean",
+          "required": false,
+          "description": "A button at the box's end that empties the span, shown while a day is chosen and the field is enabled.",
+          "default": "false"
+        },
+        {
+          "name": "clearLabel",
+          "type": "string",
+          "required": false,
+          "description": "Names the clear button. Defaults to \"Clear\" and the field's label, in the page's language."
         },
         {
           "name": "min",
@@ -6504,6 +6566,11 @@
           "source": "import { useLocal } from '@lingxia/view';\nimport type { CalendarRange } from '@liulidesign/core/Calendar';\nimport { DateRangeInput } from '@liulidesign/core/DateRangeInput';\n\nconst today = '2026-11-15';\nconst short = (date: string) => `${Number(date.slice(8))} ${months[Number(date.slice(5, 7)) - 1]}`;\n\n/** A span of days in a form: pressing the field opens a calendar, and the second day closes it. */\nexport function Stay() {\n  const stay = useLocal<CalendarRange>('stay', { start: '2026-11-18', end: '2026-11-24' });\n  return (\n    <DateRangeInput\n      label=\"Stay\"\n      description=\"Check-in from 3 pm, check-out by 11 am.\"\n      bind={stay}\n      format={short}\n      today={today}\n      min={today}\n      data-testid=\"stay\"\n    />\n  );\n}"
         },
         {
+          "name": "Clearable",
+          "title": "Clearable: the clear button empties the span",
+          "source": "import { useLocal } from '@lingxia/view';\nimport type { CalendarRange } from '@liulidesign/core/Calendar';\nimport { DateRangeInput } from '@liulidesign/core/DateRangeInput';\n\nconst today = '2026-11-15';\nconst short = (date: string) => `${Number(date.slice(8))} ${months[Number(date.slice(5, 7)) - 1]}`;\n\n/** A span that can be taken back: the clear button empties it. */\nexport function Clearable() {\n  const stay = useLocal<CalendarRange>('stay', { start: '2026-11-18', end: '2026-11-24' });\n  return <DateRangeInput label=\"Stay\" bind={stay} format={short} today={today} placeholder=\"Any dates\" hasClear data-testid=\"clearable\" />;\n}"
+        },
+        {
           "name": "Empty",
           "title": "Nothing chosen yet",
           "source": "import { useLocal } from '@lingxia/view';\nimport type { CalendarRange } from '@liulidesign/core/Calendar';\nimport { DateRangeInput } from '@liulidesign/core/DateRangeInput';\n\nconst today = '2026-11-15';\nconst short = (date: string) => `${Number(date.slice(8))} ${months[Number(date.slice(5, 7)) - 1]}`;\n\n/** Nothing chosen yet, and required. */\nexport function Empty() {\n  const leave = useLocal<CalendarRange>('leave', { start: null, end: null });\n  return (\n    <DateRangeInput\n      label=\"Time off\"\n      placeholder=\"First and last day\"\n      isRequired\n      bind={leave}\n      format={short}\n      today={today}\n      data-testid=\"leave\"\n    />\n  );\n}"
@@ -6564,6 +6631,10 @@
           "lead": "Use a date range input when a form needs a first and a last day.",
           "hero": "Stay",
           "variants": [
+            {
+              "name": "Clearable",
+              "title": "Clearable: the clear button empties the span"
+            },
             {
               "name": "Empty",
               "title": "Nothing chosen yet, with a placeholder"
@@ -6729,6 +6800,19 @@
           "default": "60"
         },
         {
+          "name": "hasClear",
+          "type": "boolean",
+          "required": false,
+          "description": "A button at the end of the time part that empties both parts, shown while either holds a value and the field is enabled.",
+          "default": "false"
+        },
+        {
+          "name": "clearLabel",
+          "type": "string",
+          "required": false,
+          "description": "Names the clear button. Defaults to \"Clear\" and the field's label, in the page's language."
+        },
+        {
           "name": "className",
           "type": "string",
           "required": false,
@@ -6797,6 +6881,11 @@
           "source": "import { useLocal } from '@lingxia/view';\nimport { DateTimeInput } from '@liulidesign/core/DateTimeInput';\n\n/** When a reminder goes off: one value, two parts. */\nexport function Reminder() {\n  const when = useLocal('when', '2026-11-20T09:00');\n  return (\n    <view className=\"gap-2\">\n      <DateTimeInput bind={when} label=\"Remind me\" dateLabel=\"Reminder date\" timeLabel=\"Reminder time\" description=\"In your own time zone.\" data-testid=\"remind\" />\n      {when.value !== '' && <text role=\"status\" className=\"text-footnote text-muted\">{`Set for ${when.value.replace('T', ' at ')}`}</text>}\n    </view>\n  );\n}"
         },
         {
+          "name": "Clearable",
+          "title": "Clearable: one clear button for both parts",
+          "source": "import { useLocal } from '@lingxia/view';\nimport { DateTimeInput } from '@liulidesign/core/DateTimeInput';\n\n/** A moment that can be taken back: the clear button empties both parts. */\nexport function Clearable() {\n  const when = useLocal('when', '2026-11-20T09:00');\n  return <DateTimeInput bind={when} label=\"Remind me\" dateLabel=\"Reminder date\" timeLabel=\"Reminder time\" hasClear data-testid=\"clearable\" />;\n}"
+        },
+        {
           "name": "Required",
           "title": "Required, with an error",
           "source": "import { useLocal } from '@lingxia/view';\nimport { DateTimeInput } from '@liulidesign/core/DateTimeInput';\n\n/** Empty and required, after a send with no time. */\nexport function Required() {\n  const starts = useLocal('starts', '');\n  return (\n    <DateTimeInput\n      bind={starts}\n      label=\"Starts\"\n      dateLabel=\"Start date\"\n      timeLabel=\"Start time\"\n      isRequired\n      minDate=\"2026-11-15\"\n      status={starts.value === '' ? { type: 'error', message: 'Choose a day and a time.' } : undefined}\n      data-testid=\"starts\"\n    />\n  );\n}"
@@ -6848,6 +6937,10 @@
           "lead": "Use a date-time input when a day and a time are one answer.",
           "hero": "Reminder",
           "variants": [
+            {
+              "name": "Clearable",
+              "title": "Clearable: one clear button for both parts"
+            },
             {
               "name": "Required",
               "title": "Empty and required, with an error"
@@ -20583,6 +20676,19 @@
           "description": "Runs with the time picked, after `onChange`."
         },
         {
+          "name": "hasClear",
+          "type": "boolean",
+          "required": false,
+          "description": "A button at the end that empties the field, shown while it holds a time and is enabled.",
+          "default": "false"
+        },
+        {
+          "name": "clearLabel",
+          "type": "string",
+          "required": false,
+          "description": "Names the clear button. Defaults to \"Clear\" and the field's label, in the page's language."
+        },
+        {
           "name": "className",
           "type": "string",
           "required": false,
@@ -20616,7 +20722,8 @@
       "parts": {
         "box": "view",
         "input": "input",
-        "icon": "vector"
+        "icon": "vector",
+        "clear": "button"
       },
       "accessibility": {
         "pattern": "textbox",
@@ -20709,6 +20816,11 @@
           "source": "import { useLocal } from '@lingxia/view';\nimport { TimeInput } from '@liulidesign/core/TimeInput';\n\n/** A daily reminder, bound to a View-local cell. */\nexport function Reminder() {\n  const at = useLocal('at', '09:00');\n  return (\n    <view className=\"gap-2\">\n      <TimeInput bind={at} label=\"Remind me at\" description=\"Every weekday.\" data-testid=\"remind\" />\n      <text className=\"text-footnote text-muted\" data-testid=\"remind-value\">{`Set for ${at.value}`}</text>\n    </view>\n  );\n}"
         },
         {
+          "name": "Clearable",
+          "title": "Clearable: the clear button empties the time",
+          "source": "import { useLocal } from '@lingxia/view';\nimport { TimeInput } from '@liulidesign/core/TimeInput';\n\n/** A time that can be taken back: the clear button empties the field. */\nexport function Clearable() {\n  const at = useLocal('at', '09:30');\n  return <TimeInput bind={at} label=\"Remind me at\" placeholder=\"No reminder\" hasClear data-testid=\"clearable\" />;\n}"
+        },
+        {
           "name": "QuietHours",
           "title": "Every 15 minutes, within the evening",
           "source": "import { useLocal } from '@lingxia/view';\nimport { TimeInput } from '@liulidesign/core/TimeInput';\n\n/** Quiet hours: every 15 minutes, within the evening. */\nexport function QuietHours() {\n  const from = useLocal('from', '22:00');\n  return <TimeInput bind={from} label=\"Quiet from\" step={900} min=\"18:00\" max=\"23:45\" data-testid=\"quiet\" />;\n}"
@@ -20751,6 +20863,7 @@
         "roles": [
           "accent",
           "danger",
+          "focus",
           "line-strong",
           "surface",
           "text",
@@ -20771,6 +20884,12 @@
         "page": {
           "lead": "Use a time field to take a time of day, in the user's own clock.",
           "hero": "Reminder",
+          "variants": [
+            {
+              "name": "Clearable",
+              "title": "Clearable: the clear button empties the time"
+            }
+          ],
           "sizes": [
             {
               "name": "Sizes",

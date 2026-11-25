@@ -1302,6 +1302,16 @@ export const playgroundEntries: PlaygroundEntry[] = [
         "kind": "text"
       },
       {
+        "name": "hasClear",
+        "required": false,
+        "kind": "boolean"
+      },
+      {
+        "name": "clearLabel",
+        "required": false,
+        "kind": "text"
+      },
+      {
         "name": "searchLabel",
         "required": false,
         "kind": "text"
@@ -1538,6 +1548,16 @@ export const playgroundEntries: PlaygroundEntry[] = [
         "name": "max",
         "required": false,
         "kind": "text"
+      },
+      {
+        "name": "hasClear",
+        "required": false,
+        "kind": "boolean"
+      },
+      {
+        "name": "clearLabel",
+        "required": false,
+        "kind": "text"
       }
     ],
     "fixed": [],
@@ -1610,6 +1630,16 @@ export const playgroundEntries: PlaygroundEntry[] = [
       },
       {
         "name": "placeholder",
+        "required": false,
+        "kind": "text"
+      },
+      {
+        "name": "hasClear",
+        "required": false,
+        "kind": "boolean"
+      },
+      {
+        "name": "clearLabel",
         "required": false,
         "kind": "text"
       },
@@ -1726,6 +1756,16 @@ export const playgroundEntries: PlaygroundEntry[] = [
         "name": "timeStep",
         "required": false,
         "kind": "number"
+      },
+      {
+        "name": "hasClear",
+        "required": false,
+        "kind": "boolean"
+      },
+      {
+        "name": "clearLabel",
+        "required": false,
+        "kind": "text"
       }
     ],
     "fixed": [],
@@ -4830,6 +4870,16 @@ export const playgroundEntries: PlaygroundEntry[] = [
         "name": "step",
         "required": false,
         "kind": "number"
+      },
+      {
+        "name": "hasClear",
+        "required": false,
+        "kind": "boolean"
+      },
+      {
+        "name": "clearLabel",
+        "required": false,
+        "kind": "text"
       }
     ],
     "fixed": [],

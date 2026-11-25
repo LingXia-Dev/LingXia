@@ -1,6 +1,6 @@
 import type { FieldSize, FieldStatusType } from '../Field/Field';
 
-export const timeInputParts = { box: 'view', input: 'input', icon: 'vector' } as const;
+export const timeInputParts = { box: 'view', input: 'input', icon: 'vector', clear: 'button' } as const;
 
 /**
  * TextInput's box: a 3:1 boundary that takes the focus colour, the editor borderless inside it. The
@@ -21,5 +21,10 @@ export const timeInputRecipe = {
   },
   icon: {
     base: 'size-4 shrink-0 text-muted',
+  },
+  /** `hasClear`: TextInput's clear button, at the box's end. */
+  clear: {
+    base: 'size-8 -me-1.5 shrink-0 items-center justify-center rounded-full text-muted hover:bg-text/5 active:bg-text/8 focus-visible:ring-2 focus-visible:ring-focus focus-visible:ring-offset-2',
+    icon: 'size-4',
   },
 } as const;

@@ -5,6 +5,7 @@ export const comboboxParts = {
   editor: 'input',
   value: 'text',
   chevron: 'vector',
+  clear: 'button',
   popover: 'view',
   sheet: 'dialog',
   grabber: 'view',
@@ -50,6 +51,17 @@ export const comboboxRecipe = {
     // Select's chevron as the engine draws it: 10 by 5 pt with a 1.75 pt stroke, in the same lane.
     base: 'size-5 shrink-0 text-muted',
     disabled: 'text-faint',
+  },
+  /**
+   * `hasClear`: a button that empties the field, beside the value and before the chevron, so the chevron
+   * keeps its place. Where the box is itself a button it lies over the box, in a lane the value keeps free.
+   */
+  clear: {
+    base: 'size-8 shrink-0 items-center justify-center rounded-full text-muted hover:bg-text/5 active:bg-text/8 focus-visible:ring-2 focus-visible:ring-focus focus-visible:ring-offset-2',
+    icon: 'size-4',
+    wrap: 'relative',
+    lane: 'me-8',
+    dock: 'absolute inset-y-0 flex-row items-center',
   },
   popover: {
     // As wide as the field once that is measured. It holds the suggestions' scroll, which the View never

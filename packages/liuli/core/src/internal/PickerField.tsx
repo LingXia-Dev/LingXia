@@ -4,6 +4,7 @@ import { Field, type FieldOwnProps, type FieldSize, type FieldStatusType } from 
 import type { IconRef } from '../Icon/Icon';
 import { Glyph } from './Glyph';
 import { dataOf } from './data';
+import { ClearButton } from './ClearButton';
 
 /** Controlled by the app (`value` + `onChange`), or bound to a View-local cell (`bind`); ISO text, `''` while empty. */
 export type PickerBinding =
@@ -25,6 +26,7 @@ interface PickerRecipe {
   box: { base: string; size: Record<FieldSize, string>; status: Record<FieldStatusType, string>; disabled: string };
   input: { base: string; size: Record<FieldSize, string> };
   icon: { base: string };
+  clear: { base: string; icon: string };
 }
 
 export type PickerFieldProps = FieldOwnProps & PickerBinding & {
@@ -36,6 +38,10 @@ export type PickerFieldProps = FieldOwnProps & PickerBinding & {
   max?: string;
   step?: number;
   onSubmit?: (value: string) => void;
+  hasClear?: boolean;
+  clearLabel?: string;
+  /** A clear button that empties more than this field: a DateTimeInput's, in its time part. Replaces `hasClear`. */
+  clearsGroup?: { isShown: boolean; label: string; onClear: () => void; testId?: string };
   className?: string;
   controlClassName?: string;
   'data-testid'?: string;
@@ -48,8 +54,10 @@ export const pickerMark = 16;
 export function PickerField(props: PickerFieldProps) {
   const {
     label, isLabelHidden, description, status, isRequired, hasRequiredMark, optionalLabel, info, isDisabled = false, disabledMessage, size: ownSize,
-    type, icon, recipe: r, placeholder, min, max, step, onSubmit, className, controlClassName, 'data-testid': testId,
+    type, icon, recipe: r, placeholder, min, max, step, onSubmit, hasClear = false, clearLabel, clearsGroup, className, controlClassName, 'data-testid': testId,
   } = props;
+  const value = props.bind ? props.bind.value : props.value;
+  const clear = () => (props.bind ? props.bind.set('') : props.onChange(''));
   const size = useControlSize(ownSize);
   const inputClass = cx(r.input.base, r.input.size[size]);
   return (
@@ -87,6 +95,11 @@ export function PickerField(props: PickerFieldProps) {
           <view className={cx(r.box.base, r.box.size[size], status && r.box.status[status.type], isDisabled && r.box.disabled, controlClassName)}>
             <Glyph name={icon} side={pickerMark} className={r.icon.base} />
             {props.bind ? <input bind={props.bind} {...shared} /> : <input value={props.value} onInput={props.onChange} {...shared} />}
+            {clearsGroup ? clearsGroup.isShown && (
+              <ClearButton label={clearsGroup.label} clearLabel={clearLabel} onClear={clearsGroup.onClear} testId={clearsGroup.testId} className={r.clear.base} iconClassName={r.clear.icon} />
+            ) : hasClear && value !== '' && !isDisabled && (
+              <ClearButton label={label} clearLabel={clearLabel} onClear={clear} testId={testId} className={r.clear.base} iconClassName={r.clear.icon} />
+            )}
           </view>
         );
       }}

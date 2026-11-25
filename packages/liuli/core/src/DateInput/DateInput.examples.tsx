@@ -71,6 +71,12 @@ export function StateDisabled() {
   return <DateInput label="Start" value="2026-01-04" onChange={unused} isDisabled />;
 }
 
+/** A day that can be taken back: the clear button empties the field. */
+export function Clearable() {
+  const due = useLocal('due', '2026-12-18');
+  return <DateInput bind={due} label="Due date" placeholder="No due date" hasClear data-testid="clearable" />;
+}
+
 /** The home tile. */
 export function Specimen() {
   return <DateInput label="Due date" isLabelHidden value="2026-12-18" onChange={unused} size="sm" className="w-32" />;

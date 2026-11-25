@@ -28,3 +28,11 @@ test('the editor leaves its width to the View, with or without seconds, and cuts
   screen.type(screen.getByTestId('remind'), '07:30:15');
   assert.equal(screen.getByTestId('remind').props.minWidthCh, undefined);
 });
+
+test('Clearable: a clear button named "Clear Remind me at" empties the field, and is gone once it is empty', async () => {
+  const screen = await renderExample('TimeInput/TimeInput', 'Clearable');
+  const clear = screen.getByTestId('clearable-clear');
+  assert.equal(clear.props.accessibilityLabel, 'Clear Remind me at');
+  screen.press(clear);
+  assert.equal(screen.queryAll(node => node.testId === 'clearable-clear').length, 0, 'gone once empty');
+});

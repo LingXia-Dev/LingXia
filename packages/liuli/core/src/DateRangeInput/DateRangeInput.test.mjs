@@ -73,3 +73,11 @@ test('firstWeekday: the calendar it opens starts its week where a standalone Cal
   screen.press(screen.getByTestId('term'));
   assert.equal(textOf(screen.queryAll(node => node.props.role === 'grid')[0].children[0]), 'MTWTFSS');
 });
+
+test('Clearable: a clear button named "Clear Stay" empties the field, and is gone once it is empty', async () => {
+  const screen = await renderExample('DateRangeInput/DateRangeInput', 'Clearable');
+  const clear = screen.getByTestId('clearable-clear');
+  assert.equal(clear.props.accessibilityLabel, 'Clear Stay');
+  screen.press(clear);
+  assert.equal(screen.queryAll(node => node.testId === 'clearable-clear').length, 0, 'gone once empty');
+});

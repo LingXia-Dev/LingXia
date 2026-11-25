@@ -58,6 +58,7 @@ export const doc: ComponentDoc = {
   },
   examples: [
     { name: 'Reminder', title: 'A daily reminder' },
+    { name: 'Clearable', title: 'Clearable: the clear button empties the time' },
     { name: 'QuietHours', title: 'Every 15 minutes, within the evening' },
     { name: 'Sizes', title: 'Sizes' },
   ],
@@ -71,6 +72,7 @@ export const doc: ComponentDoc = {
     page: {
       lead: 'Use a time field to take a time of day, in the user\'s own clock.',
       hero: 'Reminder',
+      variants: [{ name: 'Clearable', title: 'Clearable: the clear button empties the time' }],
       sizes: [{ name: 'Sizes', title: 'Small, medium and large' }],
       statesLayout: 'stack',
       states: [

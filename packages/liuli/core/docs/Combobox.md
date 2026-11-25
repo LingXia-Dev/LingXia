@@ -43,6 +43,25 @@ export function Country() {
 }
 ```
 
+### Clearable: the clear button takes the choice back
+
+```tsx
+import { useLocal } from '@lingxia/view';
+import { Combobox } from '@liulidesign/core/Combobox';
+
+const countries = [
+  'Argentina', 'Australia', 'Brazil', 'Canada', 'Chile', 'China', 'Egypt', 'France', 'Germany', 'India', 'Indonesia', 'Italy', 'Japan',
+  'Kenya', 'Mexico', 'Morocco', 'Netherlands', 'Nigeria', 'Norway', 'Peru', 'Portugal', 'South Africa', 'South Korea', 'Spain', 'Sweden', 'Türkiye',
+  'United Kingdom', 'United States', 'Vietnam',
+].map(name => ({ value: name.toLowerCase().replace(/[^a-z]+/g, '-'), label: name }));
+
+/** A choice that can be taken back: the clear button empties it. */
+export function Clearable() {
+  const country = useLocal('country', 'portugal');
+  return <Combobox label="Country" bind={country} items={countries} placeholder="Choose a country" hasClear data-testid="clearable" />;
+}
+```
+
 ### Options with a second line
 
 ```tsx
@@ -179,6 +198,8 @@ export function Shipping() {
 | `onChange` | `((value: string) => void)` |  | Runs with the chosen option's value. |
 | `items` (required) | `readonly ComboboxOption[]` |  | The choices. By default the list shows those whose label contains what was typed, whatever its case. |
 | `placeholder` | `string` |  | Shown in the box while nothing is chosen. |
+| `hasClear` | `boolean` | `false` | A button at the box's end that empties it, shown while something is chosen and the field is enabled. |
+| `clearLabel` | `string` |  | Names the clear button. Defaults to "Clear" and the field's label, in the page's language. |
 | `searchLabel` | `string` |  | The search field's accessible name: "Search countries". Defaults to "Search" in the page's language. |
 | `searchPlaceholder` | `string` |  | Shown in the search field while it is empty. |
 | `emptyLabel` | `string` |  | Shown in place of the list when no option matches: "No country matches". Defaults to "No matches" in the page's language. |

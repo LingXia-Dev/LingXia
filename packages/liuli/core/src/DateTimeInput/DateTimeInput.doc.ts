@@ -46,6 +46,7 @@ export const doc: ComponentDoc = {
   },
   examples: [
     { name: 'Reminder', title: 'A reminder' },
+    { name: 'Clearable', title: 'Clearable: one clear button for both parts' },
     { name: 'Required', title: 'Required, with an error' },
     { name: 'Narrow', title: 'In a narrow place' },
   ],
@@ -62,7 +63,7 @@ export const doc: ComponentDoc = {
     page: {
       lead: 'Use a date-time input when a day and a time are one answer.',
       hero: 'Reminder',
-      variants: [
+      variants: [{ name: 'Clearable', title: 'Clearable: one clear button for both parts' }, 
         { name: 'Required', title: 'Empty and required, with an error' },
         { name: 'StateDisabled', title: 'Disabled, with the reason' },
         { name: 'Narrow', title: 'In a narrow place the time goes under the date' },

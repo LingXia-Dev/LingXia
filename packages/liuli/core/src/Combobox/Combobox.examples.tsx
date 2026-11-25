@@ -135,6 +135,12 @@ export function Shipping() {
   );
 }
 
+/** A choice that can be taken back: the clear button empties it. */
+export function Clearable() {
+  const country = useLocal('country', 'portugal');
+  return <Combobox label="Country" bind={country} items={countries} placeholder="Choose a country" hasClear data-testid="clearable" />;
+}
+
 /** The home tile. */
 export function Specimen() {
   return <Combobox label="Country" isLabelHidden value="kenya" onChange={unused} items={countries} size="sm" searchLabel="Search countries" emptyLabel="No country matches" className="w-32" />;

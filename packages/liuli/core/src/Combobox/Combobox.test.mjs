@@ -209,3 +209,13 @@ test('Shipping: the chosen value is what the form saves', async () => {
   screen.press(screen.getByTestId('save-address'));
   assert.equal(textOf(screen.getByTestId('saved')), 'Saved: sweden');
 });
+
+test('Clearable: a clear button named "Clear Country" empties the field, and is gone once it is empty', async () => {
+  for (const env of [{}, { env: { pointer: 'fine' } }]) {
+    const screen = await renderExample('Combobox/Combobox', 'Clearable', env);
+    const clear = screen.getByTestId('clearable-clear');
+    assert.equal(clear.props.accessibilityLabel, 'Clear Country');
+    screen.press(clear);
+    assert.equal(screen.queryAll(node => node.testId === 'clearable-clear').length, 0, 'gone once empty');
+  }
+});

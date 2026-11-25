@@ -34,3 +34,11 @@ test('Meeting: a day and a time share a row, each growing from zero beside the o
   assert.equal(screen.getByTestId('meeting-time').props.keyboard, 'time');
   assert.equal(screen.getByTestId('meeting-day').props.minWidthCh, undefined);
 });
+
+test('Clearable: a clear button named "Clear Due date" empties the field, and is gone once it is empty', async () => {
+  const screen = await renderExample('DateInput/DateInput', 'Clearable');
+  const clear = screen.getByTestId('clearable-clear');
+  assert.equal(clear.props.accessibilityLabel, 'Clear Due date');
+  screen.press(clear);
+  assert.equal(screen.queryAll(node => node.testId === 'clearable-clear').length, 0, 'gone once empty');
+});

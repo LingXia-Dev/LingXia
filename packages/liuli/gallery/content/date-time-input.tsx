@@ -1,5 +1,5 @@
 // Generated from the doc file by scripts/generate.mjs; do not edit.
-import { Reminder, Required, StateDisabled, Narrow } from '../../core/src/DateTimeInput/DateTimeInput.examples';
+import { Reminder, Clearable, Required, StateDisabled, Narrow } from '../../core/src/DateTimeInput/DateTimeInput.examples';
 import { Lead, PageSection, Stage } from '../shared/Layout';
 
 export function Content() {
@@ -9,6 +9,9 @@ export function Content() {
         <Reminder />
       </Lead>
       <PageSection title={"Variants"}>
+        <Stage caption={"Clearable: one clear button for both parts"}>
+          <Clearable />
+        </Stage>
         <Stage caption={"Empty and required, with an error"}>
           <Required />
         </Stage>

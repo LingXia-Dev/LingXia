@@ -23,6 +23,14 @@ export const dateTimeInputRecipe = {
   time: {
     base: 'grow basis-28',
   },
+  /**
+   * `hasClear`: the time part holds the clear button, so it starts wider and the date narrower; the two
+   * still start at the plain pair's width, so the pair wraps where a plain one does unless the values need more.
+   */
+  clearable: {
+    date: 'grow-[2] basis-32',
+    time: 'grow basis-36',
+  },
   /** Measured as wide as their values: each part on its own line. */
   stacked: 'basis-full',
   /** A long date and time in the editor's type, measured and never seen. */

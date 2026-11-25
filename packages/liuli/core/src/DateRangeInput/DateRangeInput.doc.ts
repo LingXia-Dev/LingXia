@@ -56,6 +56,7 @@ export const doc: ComponentDoc = {
   },
   examples: [
     { name: 'Stay', title: 'A span of days' },
+    { name: 'Clearable', title: 'Clearable: the clear button empties the span' },
     { name: 'Empty', title: 'Nothing chosen yet' },
   ],
   gaps: [
@@ -72,7 +73,7 @@ export const doc: ComponentDoc = {
     page: {
       lead: 'Use a date range input when a form needs a first and a last day.',
       hero: 'Stay',
-      variants: [{ name: 'Empty', title: 'Nothing chosen yet, with a placeholder' }],
+      variants: [{ name: 'Clearable', title: 'Clearable: the clear button empties the span' }, { name: 'Empty', title: 'Nothing chosen yet, with a placeholder' }],
       statesLayout: 'stack',
       states: [
         { name: 'StateInvalid', title: 'Invalid' },

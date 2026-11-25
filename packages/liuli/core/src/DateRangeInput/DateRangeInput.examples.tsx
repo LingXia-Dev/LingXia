@@ -51,6 +51,12 @@ export function StateDisabled() {
   return <DateRangeInput label="Stay" value={set} onChange={unused} format={short} today={today} isDisabled data-testid="disabled" />;
 }
 
+/** A span that can be taken back: the clear button empties it. */
+export function Clearable() {
+  const stay = useLocal<CalendarRange>('stay', { start: '2026-11-18', end: '2026-11-24' });
+  return <DateRangeInput label="Stay" bind={stay} format={short} today={today} placeholder="Any dates" hasClear data-testid="clearable" />;
+}
+
 /** The home tile. */
 export function Specimen() {
   return <DateRangeInput label="Stay" isLabelHidden size="sm" value={set} onChange={unused} format={short} today={today} className="w-36" />;

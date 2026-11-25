@@ -1,5 +1,5 @@
 // Generated from the doc file by scripts/generate.mjs; do not edit.
-import { DueDate, Sizes, StateEmpty, StateFilled, StateInvalid, StateDisabled, Trip, Meeting } from '../../core/src/DateInput/DateInput.examples';
+import { DueDate, Clearable, Sizes, StateEmpty, StateFilled, StateInvalid, StateDisabled, Trip, Meeting } from '../../core/src/DateInput/DateInput.examples';
 import { Lead, PageSection, Stage, StageGrid } from '../shared/Layout';
 
 export function Content() {
@@ -8,6 +8,11 @@ export function Content() {
       <Lead text={"Use a date field to take one day, picked from a month."}>
         <DueDate />
       </Lead>
+      <PageSection title={"Variants"}>
+        <Stage caption={"Clearable: the clear button empties the day"}>
+          <Clearable />
+        </Stage>
+      </PageSection>
       <PageSection title={"Sizes"}>
         <Stage caption={"Small, medium and large"}>
           <Sizes />

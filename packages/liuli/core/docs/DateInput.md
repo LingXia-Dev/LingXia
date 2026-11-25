@@ -30,6 +30,19 @@ export function DueDate() {
 }
 ```
 
+### Clearable: the clear button empties the day
+
+```tsx
+import { useLocal } from '@lingxia/view';
+import { DateInput } from '@liulidesign/core/DateInput';
+
+/** A day that can be taken back: the clear button empties the field. */
+export function Clearable() {
+  const due = useLocal('due', '2026-12-18');
+  return <DateInput bind={due} label="Due date" placeholder="No due date" hasClear data-testid="clearable" />;
+}
+```
+
 ### A return tied to its departure
 
 ```tsx
@@ -115,6 +128,8 @@ export function Sizes() {
 | `min` | `string` |  | The earliest day offered, `YYYY-MM-DD`; earlier days are greyed in the picker. |
 | `max` | `string` |  | The latest day offered, `YYYY-MM-DD`. |
 | `onSubmit` | `((value: string) => void)` |  | Runs with the day picked, after `onChange`. |
+| `hasClear` | `boolean` | `false` | A button at the end that empties the field, shown while it holds a day and is enabled. |
+| `clearLabel` | `string` |  | Names the clear button. Defaults to "Clear" and the field's label, in the page's language. |
 | `className` | `string` |  | Classes for the field column. |
 | `controlClassName` | `string` |  | Classes for the bordered box. |
 | `data-testid` | `string` |  | On the editor. |
@@ -135,7 +150,7 @@ export function Sizes() {
 - `controlClassName`: Classes for the bordered box.
 - The recipe, `dateInputRecipe` from `@liulidesign/core/DateInput/recipe`: the classes of each part, to style an element of your own to match. The component does not read a changed copy.
 - Scale tokens it reads, set in the app's stylesheet under `@theme`: `--spacing-control-sm`, `--spacing-control-md`, `--spacing-control-lg`, `--text-footnote`, `--text-body`, `--text-callout`, `--radius-control`.
-- Colour roles it paints with, set by the theme pack: `accent`, `danger`, `line-strong`, `surface`, `text`, `text-faint`, `text-muted`, `warning`.
+- Colour roles it paints with, set by the theme pack: `accent`, `danger`, `focus`, `line-strong`, `surface`, `text`, `text-faint`, `text-muted`, `warning`.
 
 ## Accessibility
 

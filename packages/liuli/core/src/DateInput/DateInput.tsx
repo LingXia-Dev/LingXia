@@ -11,6 +11,10 @@ export type DateInputProps = FieldOwnProps & PickerBinding & {
   max?: string;
   /** Runs with the day picked, after `onChange`. */
   onSubmit?: (value: string) => void;
+  /** A button at the end that empties the field, shown while it holds a day and is enabled. @default false */
+  hasClear?: boolean;
+  /** Names the clear button. Defaults to "Clear" and the field's label, in the page's language. */
+  clearLabel?: string;
   /** Classes for the field column. */
   className?: string;
   /** Classes for the bordered box. */

@@ -1,4 +1,4 @@
-import { cx, reveal, useBox, useId, useLocal, useView, type Local } from '@lingxia/view';
+import { cx, reveal, useBox, useId, useLocal, useView, type Child, type Local } from '@lingxia/view';
 import { liuliText } from '../i18n/text';
 import { useControlSize } from '../density';
 import { Field, type FieldOwnProps, type FieldSize } from '../Field/Field';
@@ -8,6 +8,7 @@ import { LayerContext } from '../internal/layer';
 import { spinner, spinnerBox } from '../internal/spinner';
 import { comboboxRecipe as r } from './Combobox.recipe';
 import { dataOf } from '../internal/data';
+import { ClearButton, useClearDock } from '../internal/ClearButton';
 
 export interface ComboboxOption {
   /** What `value` and `onChange` carry. */
@@ -40,6 +41,10 @@ export type ComboboxProps = FieldOwnProps & ComboboxBinding & {
   items: readonly ComboboxOption[];
   /** Shown in the box while nothing is chosen. */
   placeholder?: string;
+  /** A button at the box's end that empties it, shown while something is chosen and the field is enabled. @default false */
+  hasClear?: boolean;
+  /** Names the clear button. Defaults to "Clear" and the field's label, in the page's language. */
+  clearLabel?: string;
   /** The search field's accessible name: "Search countries". Defaults to "Search" in the page's language. */
   searchLabel?: string;
   /** Shown in the search field while it is empty. */
@@ -197,6 +202,8 @@ interface TypeaheadProps {
   onQueryChange?: (query: string) => void;
   isLoading: boolean;
   testId?: string;
+  hasClear: boolean;
+  clearLabel?: string;
   onChange: (value: string) => void;
 }
 
@@ -205,7 +212,7 @@ interface TypeaheadProps {
  * under it while focus stays in the text; the arrow keys move through the list and Return chooses.
  */
 function ComboboxTypeahead({
-  control, label, items, current, size, statusType, isDisabled, placeholder, emptyLabel, moreLabel, onQueryChange, isLoading, testId, onChange,
+  control, label, items, current, size, statusType, isDisabled, placeholder, emptyLabel, moreLabel, onQueryChange, isLoading, testId, hasClear, clearLabel, onChange,
 }: TypeaheadProps) {
   const id = useId();
   const [boxId, listId, panelId] = [`${id}-box`, `${id}-list`, `${id}-panel`];
@@ -265,6 +272,9 @@ function ComboboxTypeahead({
           data-testid={testId}
           className={cx(r.editor.base, r.value.size[size])}
         />
+        {hasClear && current !== '' && !isDisabled && (
+          <ClearButton label={label} clearLabel={clearLabel} onClear={() => choose('')} testId={testId} className={r.clear.base} iconClassName={r.clear.icon} />
+        )}
         <Glyph name="chevron-down" weight={chevronWeight} side={20} className={cx(r.chevron.base, isDisabled && r.chevron.disabled)} />
       </view>
       {/* A manual popover takes no focus and has no backdrop, so the text keeps the keys while the list is open. */}
@@ -295,7 +305,7 @@ function ComboboxTypeahead({
 export function Combobox(props: ComboboxProps) {
   const {
     label, isLabelHidden, description, status, isRequired, hasRequiredMark, optionalLabel, info, isDisabled = false, disabledMessage, size: ownSize,
-    items, placeholder, searchLabel = liuliText('@liuli.search'), searchPlaceholder, emptyLabel = liuliText('@liuli.noMatches'), moreLabel, hasCloseButton = false, closeLabel = liuliText('@liuli.close'), onQueryChange, isLoading = false,
+    items, placeholder, hasClear = false, clearLabel, searchLabel = liuliText('@liuli.search'), searchPlaceholder, emptyLabel = liuliText('@liuli.noMatches'), moreLabel, hasCloseButton = false, closeLabel = liuliText('@liuli.close'), onQueryChange, isLoading = false,
     className, 'data-testid': testId,
   } = props;
   const size = useControlSize(ownSize);
@@ -312,6 +322,18 @@ export function Combobox(props: ComboboxProps) {
     else props.onChange(value);
     open.set(false);
   };
+  // The sheet's trigger is a button, so the clear button lies over it, in the lane its value keeps free.
+  const dock = useClearDock(20);
+  const withClear = (trigger: Child) => !hasClear ? trigger : (
+    <view className={r.clear.wrap}>
+      {trigger}
+      {current !== '' && !isDisabled && (
+        <view className={r.clear.dock} style={dock}>
+          <ClearButton label={label} clearLabel={clearLabel} onClear={() => choose('')} testId={testId} className={r.clear.base} iconClassName={r.clear.icon} />
+        </view>
+      )}
+    </view>
+  );
   return (
     <Field
       label={label}
@@ -342,25 +364,29 @@ export function Combobox(props: ComboboxProps) {
           onQueryChange={onQueryChange}
           isLoading={isLoading}
           testId={testId}
+          hasClear={hasClear}
+          clearLabel={clearLabel}
           onChange={choose}
         />
       ) : (
         <>
-          <button
-            onClick={() => open.set(true)}
-            aria-label={control['aria-label']}
-            // The chosen option is read after the name, as a field's value is, then the help text.
-            aria-describedby={control['aria-describedby'] ? `${valueId} ${control['aria-describedby']}` : valueId}
-            aria-expanded={open.value}
-            disabled={control.disabled}
-            data-testid={testId} {...dataOf(props)}
-            className={cx(r.trigger.base, r.trigger.size[size], r.trigger.pressable, status && r.trigger.status[status.type])}
-          >
-            <text id={valueId} className={cx(chosen ? r.value.base : r.value.placeholder, r.value.size[size], isDisabled && r.value.disabled)}>
-              {chosen?.label ?? placeholder ?? ''}
-            </text>
-            <Glyph name="chevron-down" weight={chevronWeight} side={20} className={cx(r.chevron.base, isDisabled && r.chevron.disabled)} />
-          </button>
+          {withClear(
+            <button
+              onClick={() => open.set(true)}
+              aria-label={control['aria-label']}
+              // The chosen option is read after the name, as a field's value is, then the help text.
+              aria-describedby={control['aria-describedby'] ? `${valueId} ${control['aria-describedby']}` : valueId}
+              aria-expanded={open.value}
+              disabled={control.disabled}
+              data-testid={testId} {...dataOf(props)}
+              className={cx(r.trigger.base, r.trigger.size[size], r.trigger.pressable, status && r.trigger.status[status.type])}
+            >
+              <text id={valueId} className={cx(chosen ? r.value.base : r.value.placeholder, r.value.size[size], isDisabled && r.value.disabled, hasClear && r.clear.lane)}>
+                {chosen?.label ?? placeholder ?? ''}
+              </text>
+              <Glyph name="chevron-down" weight={chevronWeight} side={20} className={cx(r.chevron.base, isDisabled && r.chevron.disabled)} />
+            </button>
+          )}
           <dialog
             open={open.value}
             onClose={() => open.set(false)}

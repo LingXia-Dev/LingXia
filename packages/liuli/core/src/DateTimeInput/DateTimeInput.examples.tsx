@@ -44,6 +44,12 @@ export function Narrow() {
   );
 }
 
+/** A moment that can be taken back: the clear button empties both parts. */
+export function Clearable() {
+  const when = useLocal('when', '2026-11-20T09:00');
+  return <DateTimeInput bind={when} label="Remind me" dateLabel="Reminder date" timeLabel="Reminder time" hasClear data-testid="clearable" />;
+}
+
 /** The home tile. */
 export function Specimen() {
   return <DateTimeInput value="2026-11-20T09:00" onChange={unused} label="When" isLabelHidden size="sm" className="w-full max-w-36" data-testid="tile-when" />;

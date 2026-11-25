@@ -1,5 +1,5 @@
 // Generated from the doc file by scripts/generate.mjs; do not edit.
-import { Country, Assignee, OwnMatching, Sizes, StateEmpty, StateChosen, StateInvalid, StateDisabled, Shipping } from '../../core/src/Combobox/Combobox.examples';
+import { Country, Clearable, Assignee, OwnMatching, Sizes, StateEmpty, StateChosen, StateInvalid, StateDisabled, Shipping } from '../../core/src/Combobox/Combobox.examples';
 import { Lead, PageSection, Stage, StageGrid } from '../shared/Layout';
 
 export function Content() {
@@ -9,6 +9,9 @@ export function Content() {
         <Country />
       </Lead>
       <PageSection title={"Variants"}>
+        <Stage caption={"Clearable: the clear button takes the choice back"}>
+          <Clearable />
+        </Stage>
         <Stage caption={"A second line for options with similar names; one that cannot be chosen is dimmed"}>
           <Assignee />
         </Stage>

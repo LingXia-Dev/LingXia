@@ -78,6 +78,7 @@ export const doc: ComponentDoc = {
   },
   examples: [
     { name: 'Country', title: 'A long list, found by typing' },
+    { name: 'Clearable', title: 'Clearable: the clear button takes the choice back' },
     { name: 'Assignee', title: 'Options with a second line' },
     { name: 'OwnMatching', title: 'The app does the matching' },
     { name: 'Sizes', title: 'Sizes' },
@@ -109,7 +110,7 @@ export const doc: ComponentDoc = {
     page: {
       lead: 'Use a combobox to choose one option from a list too long to scan, by typing part of its name.',
       hero: 'Country',
-      variants: [
+      variants: [{ name: 'Clearable', title: 'Clearable: the clear button takes the choice back' }, 
         { name: 'Assignee', title: 'A second line for options with similar names; one that cannot be chosen is dimmed' },
         { name: 'OwnMatching', title: 'The app matches by its own rule: a code finds its airport' },
       ],

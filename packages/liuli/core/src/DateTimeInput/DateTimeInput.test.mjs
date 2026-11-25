@@ -66,3 +66,11 @@ test('At large text: the parts\' marks grow too, so values that fit beside each 
   assert.deepEqual(await parts(1), [160, 112]);
   assert.deepEqual(await parts(1.5), ['100%', '100%']);
 });
+
+test('Clearable: a clear button named "Clear Remind me" empties the field, and is gone once it is empty', async () => {
+  const screen = await renderExample('DateTimeInput/DateTimeInput', 'Clearable');
+  const clear = screen.getByTestId('clearable-clear');
+  assert.equal(clear.props.accessibilityLabel, 'Clear Remind me');
+  screen.press(clear);
+  assert.equal(screen.queryAll(node => node.testId === 'clearable-clear').length, 0, 'gone once empty');
+});

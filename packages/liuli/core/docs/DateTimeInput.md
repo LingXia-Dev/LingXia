@@ -30,6 +30,19 @@ export function Reminder() {
 }
 ```
 
+### Clearable: one clear button for both parts
+
+```tsx
+import { useLocal } from '@lingxia/view';
+import { DateTimeInput } from '@liulidesign/core/DateTimeInput';
+
+/** A moment that can be taken back: the clear button empties both parts. */
+export function Clearable() {
+  const when = useLocal('when', '2026-11-20T09:00');
+  return <DateTimeInput bind={when} label="Remind me" dateLabel="Reminder date" timeLabel="Reminder time" hasClear data-testid="clearable" />;
+}
+```
+
 ### Required, with an error
 
 ```tsx
@@ -94,6 +107,8 @@ export function Narrow() {
 | `minDate` | `string` |  | The earliest day, as `YYYY-MM-DD`. |
 | `maxDate` | `string` |  | The latest day, as `YYYY-MM-DD`. |
 | `timeStep` | `number` | `60` | The time's step in seconds. |
+| `hasClear` | `boolean` | `false` | A button at the end of the time part that empties both parts, shown while either holds a value and the field is enabled. |
+| `clearLabel` | `string` |  | Names the clear button. Defaults to "Clear" and the field's label, in the page's language. |
 | `className` | `string` |  |  |
 | `data-testid` | `string` |  | On the group; the parts get `<testid>-date` and `<testid>-time`. |
 
