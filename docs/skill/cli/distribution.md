@@ -200,6 +200,10 @@ Readable artifact identities are checked against `lingxia.yaml` before login;
 unsupported formats print a note. The CLI never submits for review or invites
 testers. Processing completion is not review approval.
 
+`--platform` takes `ios`, `macos`, `harmony`, `windows`, and the Android stores `googleplay`,
+`xiaomi`, `oppo`, `honor` (records in `android.googlePlayStore` / `xiaomiStore` / `oppoStore` /
+`honorStore`, credentials from the matching `lingxia auth login`).
+
 ### Microsoft Store
 
 - Partner Center: create the app and complete an initial submission with age
@@ -238,8 +242,8 @@ lingxia store submit --platform ios --wait --json
 
 AppTest uploads to the test area, waits for package parsing, then
 creates and binds an invitation-test draft. `--release-notes` supplies its
-description (1–50 characters); `--test-version-id <id>` reuses an existing
-draft. Configure testers and submit test review in AppGallery Connect:
+description (1–50 characters); `--test-version-id <id>` (with `--track apptest --wait`)
+reuses an existing draft. Configure testers and submit test review in AppGallery Connect:
 
 ```bash
 lingxia store submit --platform harmony --track apptest --wait --json

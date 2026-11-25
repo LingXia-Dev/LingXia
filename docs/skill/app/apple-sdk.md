@@ -100,7 +100,7 @@ The contract is these symbols plus their request/event/id types:
 
 | Symbol | Role |
 |---|---|
-| `Lingxia` | `runProductCommandIfInvoked()`, `quickStart()`, `handleAppActivation()`, `initializeRuntime()`, `activate(controller:)`, `enableWebViewDebugging()`, `handleAppLink(url:)`, `displayLanguage` |
+| `Lingxia` | `runProductCommandIfInvoked()`, `quickStart()`, `handleAppActivation()`, `initializeRuntime()`, `activate(controller:)`, `enableWebViewDebugging()`, `handleAppLink(url:)`, `installNotificationDelegate()`, `displayLanguage` |
 | `LxAppController` | Sessions for advanced embedding: `open` / `openHomeApp` / `navigate` / `close`, `events` stream, interceptors |
 | `LxAppHostView` | Embeddable view: `mount` / `unmount` / `dispatch`, `events` stream (`LxAppHostViewRepresentable` for SwiftUI) |
 | `L10n` | SDK strings for host-owned native chrome: `L10n.AppMenu.*`, `L10n.Browser.*` |
@@ -119,6 +119,8 @@ Do not touch `LxAppRuntime.shared`; both entry points wrap it.
   `didFinishLoading`, `didFail`) come from the mounted WebView;
   `dispatch(.triggerCapsuleAction(...))` forwards a capsule action to the
   mounted session.
+- `installNotificationDelegate()` belongs in the iOS `App.init()` (before any view appears):
+  later, a notification tap that cold-launched the app is lost and the app opens on home.
 - `Lingxia.displayLanguage` is the effective display language (saved setting,
   else the system locale). `L10n` strings follow it.
 - `PermissionGate` (iOS): App Review rejects an explanation screen with a way
