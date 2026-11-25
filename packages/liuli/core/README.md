@@ -95,7 +95,7 @@ that directory.
 | `@liulidesign/core/Toast` | Toast, useToast, ToastRegion | A short message about something that just happened, over the bottom of the screen |
 | `@liulidesign/core/CircularProgress` | CircularProgress, CircularProgressGroup | How much is done, as a ring |
 | `@liulidesign/core/StatusDot` | StatusDot | How something stands, as a dot and a word |
-| `@liulidesign/core/Dialog` | Dialog | Modal panel over the page for a decision or a short task |
+| `@liulidesign/core/Dialog` | Dialog, AlertDialog | Modal panel over the page for a decision or a short task |
 | `@liulidesign/core/DropdownMenu` | DropdownMenu, DropdownMenuItem, DropdownMenuCheckboxItem, DropdownMenuGroup, DropdownMenuRadioGroup, DropdownMenuRadioItem, DropdownMenuSubmenu, DropdownMenuDivider | A short menu of actions that opens from its trigger |
 | `@liulidesign/core/Tooltip` | Tooltip | A short hint naming its trigger, shown on hover, focus or a long press |
 | `@liulidesign/core/InfoTip` | InfoTip | An info button that opens a short note about what is beside it |
