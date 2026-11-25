@@ -523,7 +523,10 @@ pub(crate) fn node_style(
             },
         )
     });
-    let flow_ends = page_flow_ends(records);
+    // Only a bleeding page child asks: the scan walks the last child's subtree.
+    let flow_ends = (!out_of_flow && bleed_mode.is_some())
+        .then(|| page_flow_ends(records))
+        .flatten();
     let bleed_top = if !out_of_flow
         && matches!(bleed_mode, Some("all" | "top"))
         && flow_ends.is_some_and(|(first, _)| first == index)
