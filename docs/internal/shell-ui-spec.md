@@ -1,4 +1,4 @@
-# LingXia Shell UI Specification
+# Shell UI
 
 The surface model of the host shell and how each kind of host projects it.
 Read before changing `crates/lingxia-surface` (the surface graph, arbitration
@@ -7,7 +7,8 @@ surface menus), the lxapp presentation code in
 `crates/lingxia-lxapp/src/lxapp/surface.rs`, the `lx.surface` / `lx.shell`
 bindings in `crates/lingxia-logic/src/surface.rs`, or a platform shell. What a
 page reads about its own canvas (size class, viewport, insets, hinge) is in
-`view-environment-spec.md`; the launch screen is in `launch-screen.md`.
+[view-environment-spec.md](view-environment-spec.md); the launch screen is in
+[launch-screen.md](launch-screen.md).
 
 Signatures are not repeated here: `@lingxia/types` is the JS surface and the
 `lingxia` crate the Rust one. This document fixes the semantics both share.
@@ -388,7 +389,7 @@ Outputs: the size class; `canDock`, which is true when the size class is
 `regular` and false otherwise or before a layout exists; the sidebar or rail
 form; each slot's visibility, size and overlay state; the tab bar shape; the
 status band; and each page's viewport. What a page reads of them is in
-`view-environment-spec.md`. A page's own size class comes from its own
+[view-environment-spec.md](view-environment-spec.md). A page's own size class comes from its own
 viewport, so a narrow aside in a `regular` window reads `compact`. Crossing
 the sidebar budget never changes a size class.
 
