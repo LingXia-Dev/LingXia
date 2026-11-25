@@ -226,6 +226,25 @@ impl Error {
         self
     }
 
+    /// What a `#[derive(NativeError)]` enum sends: its serde `code` tag, the rest as `data`.
+    #[doc(hidden)]
+    pub fn __app(error: &impl Serialize, message: String) -> Self {
+        let mut fields = match serde_json::to_value(error) {
+            Ok(Value::Object(fields)) => fields,
+            Ok(_) => return Self::internal(message),
+            Err(err) => return Self::internal(format!("{message} (unsendable: {err})")),
+        };
+        let Some(Value::String(code)) = fields.remove("code") else {
+            return Self::internal(message);
+        };
+        let error = Self::new(code, message);
+        if fields.is_empty() {
+            error
+        } else {
+            error.with_data(Value::Object(fields))
+        }
+    }
+
     pub fn code(&self) -> &str {
         &self.code
     }
@@ -348,6 +367,21 @@ impl From<serde_json::Error> for Error {
     }
 }
 
+/// A `lingxia::Error` inside comes back as it was; anything else is `E_INTERNAL`.
+impl From<anyhow::Error> for Error {
+    fn from(error: anyhow::Error) -> Self {
+        match error.downcast::<Error>() {
+            Ok(error) => error,
+            Err(error) => {
+                let mut built = Self::internal(format!("{error:#}"));
+                let source: Box<dyn std::error::Error + Send + Sync> = error.into();
+                built.extra().source = Some(Arc::from(source));
+                built
+            }
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -372,6 +406,33 @@ mod tests {
             (back.code(), back.reason(), back.data()),
             (full.code(), full.reason(), full.data())
         );
+    }
+
+    #[test]
+    fn an_app_error_sends_its_tag_as_code_and_its_fields_as_data() {
+        #[derive(Serialize)]
+        #[serde(tag = "code", rename_all = "SCREAMING_SNAKE_CASE")]
+        enum NotesError {
+            NotFound { id: i64 },
+            Locked,
+        }
+        let error = Error::__app(&NotesError::NotFound { id: 7 }, "note 7 not found".into());
+        assert_eq!(
+            serde_json::to_value(&error).unwrap(),
+            serde_json::json!({ "code": "NOT_FOUND", "message": "note 7 not found", "data": { "id": 7 } })
+        );
+        let error = Error::__app(&NotesError::Locked, "locked".into());
+        assert_eq!((error.code(), error.data()), ("LOCKED", None));
+    }
+
+    #[test]
+    fn anyhow_keeps_a_coded_error_and_makes_the_rest_internal() {
+        let coded = anyhow::Error::new(Error::not_found("note 7"));
+        assert_eq!(Error::from(coded).code(), code::NOT_FOUND);
+        let other = Error::from(anyhow::anyhow!("disk full").context("saving note"));
+        assert_eq!(other.code(), code::INTERNAL);
+        assert_eq!(other.message(), "saving note: disk full");
+        assert!(std::error::Error::source(&other).is_some());
     }
 
     #[test]

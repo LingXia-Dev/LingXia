@@ -10,6 +10,7 @@
 //! - `.rs` — Rust registry (`mod __lingxia_native { pub fn install() }`)
 
 mod external;
+pub mod native_error;
 pub mod syntax;
 
 use std::collections::{BTreeMap, BTreeSet};
@@ -330,6 +331,8 @@ struct NativeManifest {
     uses: BTreeMap<String, external::UsePath>,
     /// DTO names defined twice with different shapes: an error once a route reaches one.
     conflicts: BTreeMap<String, Vec<SourceLoc>>,
+    /// `#[derive(NativeError)]` enums; each becomes a union in the clients.
+    native_errors: BTreeSet<String>,
 }
 
 impl NativeManifest {
@@ -443,6 +446,7 @@ fn route_refs(manifest: &NativeManifest) -> BTreeSet<String> {
             collect_refs_from_type(ty, &mut out);
         }
     }
+    out.extend(manifest.native_errors.iter().cloned());
     out
 }
 
@@ -588,6 +592,11 @@ fn scan_items(
                     file: file_label.to_string(),
                     line: find_item_line(source, "enum", &ident),
                 };
+                if native_error::derives_native_error(&item_enum.attrs) {
+                    native_error::read(item_enum)
+                        .map_err(|err| anyhow!("{}: `{ident}`: {err}", loc.display()))?;
+                    manifest.native_errors.insert(ident.clone());
+                }
                 if let Some(def) = extract_enum_def(item_enum, loc) {
                     insert_def(manifest, &ident, Def::Enum(def))?;
                 }
@@ -1148,6 +1157,12 @@ fn collect_and_validate_types(manifest: &NativeManifest) -> Result<BTreeMap<Stri
             }
         }
     }
+    for name in &manifest.native_errors {
+        if let Some(def) = manifest.enums.get(name) {
+            let owner = format!("native error `{name}`");
+            pending.push((name.clone(), Dir::OUT, owner, def.loc.clone()));
+        }
+    }
 
     let mut resolved: BTreeMap<String, Dir> = BTreeMap::new();
     while let Some((name, dir, owner, loc)) = pending.pop() {
@@ -1414,7 +1429,11 @@ fn render_dto_types(manifest: &NativeManifest, used_types: &BTreeMap<String, Dir
             out.push_str(&render_struct_ts(ty, def, dir));
             out.push('\n');
         } else if let Some(def) = manifest.enums.get(ty) {
-            out.push_str(&render_enum_ts(ty, def, dir));
+            if manifest.native_errors.contains(ty) {
+                out.push_str(&render_native_error_ts(ty, def));
+            } else {
+                out.push_str(&render_enum_ts(ty, def, dir));
+            }
             out.push('\n');
         } else if let Some(def) = manifest.aliases.get(ty) {
             out.push_str(&format!(
@@ -1588,6 +1607,69 @@ fn render_enum_ts(name: &str, def: &EnumDef, dir: Dir) -> String {
     format!("export type {name} = {};\n", branches.join(" | "))
 }
 
+/// One branch per app code; the variant's fields arrive as `data`.
+fn render_native_error_ts(name: &str, def: &EnumDef) -> String {
+    let mut branches: Vec<String> = def
+        .variants
+        .iter()
+        .map(|v| {
+            let data = match &v.payload {
+                VariantPayload::Unit => None,
+                VariantPayload::Struct(fields) if fields.is_empty() => None,
+                VariantPayload::Struct(fields) => {
+                    let optional = fields.iter().all(|f| f.skip_if);
+                    let opt = if optional { "?" } else { "" };
+                    Some(format!(
+                        "data{opt}: {}",
+                        render_fields_inline(fields, Dir::OUT)
+                    ))
+                }
+                VariantPayload::Newtype(t) => Some(format!("data: {}", rust_to_ts(t))),
+                VariantPayload::Tuple(_) => None,
+            };
+            let data = data.map(|d| format!("; {d}")).unwrap_or_default();
+            format!(
+                "{{ code: {}; message: string; reason?: string{data} }}",
+                json_string(&v.wire_name)
+            )
+        })
+        .collect();
+    branches.push("FrameworkError".to_string());
+    format!("export type {name} = {};\n", branches.join(" | "))
+}
+
+/// `isNativeError(e, code)` narrows to the errors with that code, app or framework.
+fn render_native_error_guard(manifest: &NativeManifest) -> String {
+    let app = if manifest.native_errors.is_empty() {
+        "never".to_string()
+    } else {
+        manifest
+            .native_errors
+            .iter()
+            .map(|name| format!("Exclude<{name}, FrameworkError>"))
+            .collect::<Vec<_>>()
+            .join(" | ")
+    };
+    format!(
+        r#"export type AppNativeError = {app};
+export type NativeErrorCode = AppNativeError["code"] | FrameworkError["code"];
+export type NativeErrorOf<C extends NativeErrorCode> = C extends FrameworkError["code"]
+  ? FrameworkError & {{ code: C }}
+  : Extract<AppNativeError, {{ code: C }}>;
+
+export function isNativeError<C extends NativeErrorCode = NativeErrorCode>(
+  error: unknown,
+  code?: C,
+): error is NativeErrorOf<C> {{
+  if (!error || typeof error !== "object") return false;
+  const candidate = error as {{ code?: unknown; message?: unknown }};
+  if (typeof candidate.code !== "string" || typeof candidate.message !== "string") return false;
+  return code === undefined || candidate.code === code;
+}}
+"#
+    )
+}
+
 const SHARED_TS_TYPES: &str = r#"export type NativeVoid = void;
 
 export interface NativeCallOptions {
@@ -1604,6 +1686,11 @@ export interface NativeError {
   message: string;
   reason?: string;
   data?: unknown;
+}
+
+/** A failure the framework raised: invalid input, cancel, timeout, an internal error. */
+export interface FrameworkError extends NativeError {
+  code: `E_${string}`;
 }
 
 export interface NativeChannel<In = unknown, Out = In> {
@@ -1692,6 +1779,8 @@ fn render_logic_ts(manifest: &NativeManifest) -> Result<String> {
     out.push_str(LOGIC_DISPATCH_HELPER);
     out.push('\n');
     out.push_str(&render_dto_types(manifest, &used_types));
+    out.push_str(&render_native_error_guard(manifest));
+    out.push('\n');
 
     let tree = RouteNode::build(&manifest.routes)?;
     out.push_str("export function createNative(pageId?: string) {\n  return ");
@@ -1714,6 +1803,8 @@ fn render_view_ts(manifest: &NativeManifest) -> Result<String> {
     out.push_str(VIEW_ADAPTER_HELPER);
     out.push('\n');
     out.push_str(&render_dto_types(manifest, &used_types));
+    out.push_str(&render_native_error_guard(manifest));
+    out.push('\n');
 
     let tree = RouteNode::build(&manifest.routes)?;
     out.push_str("export const native = ");
@@ -2639,6 +2730,91 @@ mod tests {
         assert!(err.contains("src/apps.rs:"), "{err}");
         assert!(err.contains("`apps.pair`"), "{err}");
         assert!(err.contains("one payload argument"), "{err}");
+    }
+
+    #[test]
+    fn a_native_error_enum_becomes_a_union_with_its_data_and_a_guard() {
+        let manifest = scan_source(
+            r#"
+            #[derive(Debug, thiserror::Error, Serialize, lingxia::NativeError)]
+            #[serde(tag = "code", rename_all = "SCREAMING_SNAKE_CASE")]
+            enum NotesError {
+                #[error("note {id} not found")]
+                NotFound { id: i64 },
+                #[error("locked")]
+                Locked,
+                #[error(transparent)]
+                #[serde(skip)]
+                #[native_error(internal)]
+                Db(#[from] DbError),
+            }
+
+            #[lingxia::native("notes.delete")]
+            pub async fn delete(id: i64) -> Result<(), NotesError> { todo!() }
+        "#,
+        );
+        for kind in [OutputKind::LogicTypeScript, OutputKind::ViewTypeScript] {
+            let ts = render(&manifest, kind).unwrap();
+            assert!(
+                ts.contains(
+                    "export type NotesError = { code: \"NOT_FOUND\"; message: string; reason?: string; data: { id: number } } \
+                     | { code: \"LOCKED\"; message: string; reason?: string } | FrameworkError;"
+                ),
+                "{ts}"
+            );
+            assert!(
+                ts.contains("export type AppNativeError = Exclude<NotesError, FrameworkError>;"),
+                "{ts}"
+            );
+            assert!(
+                ts.contains("export function isNativeError<C extends NativeErrorCode"),
+                "{ts}"
+            );
+            assert!(ts.contains("code: `E_${string}`;"), "{ts}");
+        }
+    }
+
+    #[test]
+    fn a_native_error_enum_the_derive_would_reject_fails_with_its_location() {
+        let cases = [
+            ("enum E { A }", "needs `#[serde(tag = \"code\")]`"),
+            (
+                "#[serde(tag = \"code\")] enum E { #[serde(rename = \"E_GONE\")] Gone }",
+                "belong to the framework",
+            ),
+            (
+                "#[serde(tag = \"code\")] enum E { #[native_error(internal)] Db(DbError) }",
+                "add `#[serde(skip)]`",
+            ),
+            (
+                "#[serde(tag = \"code\")] enum E { #[serde(skip)] Db(DbError) }",
+                "mark it `#[native_error(internal)]`",
+            ),
+            (
+                "#[serde(tag = \"code\")] enum E { Pair(u8, u8) }",
+                "use named fields",
+            ),
+        ];
+        for (body, expected) in cases {
+            let source = format!("#[derive(serde::Serialize, lingxia::NativeError)] {body}");
+            let err = scan_file_into(&source, "src/errors.rs", &mut NativeManifest::default())
+                .unwrap_err()
+                .to_string();
+            assert!(err.contains("src/errors.rs:"), "{err}");
+            assert!(err.contains(expected), "{body}: {err}");
+        }
+    }
+
+    #[test]
+    fn without_native_errors_the_guard_narrows_framework_codes_only() {
+        let manifest = scan_source(
+            r#"
+            #[lingxia::native("device.close")]
+            pub fn close_device() -> HostResult<()> { todo!() }
+        "#,
+        );
+        let ts = render(&manifest, OutputKind::LogicTypeScript).unwrap();
+        assert!(ts.contains("export type AppNativeError = never;"), "{ts}");
     }
 
     #[test]

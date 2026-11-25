@@ -3627,6 +3627,7 @@ name = "lingxia"
 version = "0.30.0"
 dependencies = [
  "android_logger",
+ "anyhow",
  "base64 0.23.1",
  "futures-core",
  "jni",
@@ -3975,6 +3976,7 @@ dependencies = [
 name = "lingxia-error"
 version = "0.30.0"
 dependencies = [
+ "anyhow",
  "serde",
  "serde_json",
 ]

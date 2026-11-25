@@ -118,5 +118,6 @@ swift-bridge-build = "0.1.59"
 napi-build-ohos = "1.2.0"
 
 [dev-dependencies]
+anyhow = "1.0"
 lxapp = { workspace = true, default-features = false, features = ["test-utils"] }
 tempfile = "3"

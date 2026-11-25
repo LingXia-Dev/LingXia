@@ -102,8 +102,78 @@ fn facade_control_or_surface() -> lingxia::Result<()> {
     Ok(())
 }
 
+#[derive(Debug, thiserror::Error, serde::Serialize, lingxia::NativeError)]
+#[serde(tag = "code", rename_all = "SCREAMING_SNAKE_CASE")]
+enum NotesError {
+    #[error("note {id} not found")]
+    NotFound { id: i64 },
+    #[error("notes are locked")]
+    Locked,
+    #[error(transparent)]
+    #[serde(skip)]
+    #[native_error(internal)]
+    Io(#[from] std::io::Error),
+}
+
+#[lingxia::native("facade.appError")]
+fn facade_app_error(id: i64) -> Result<(), NotesError> {
+    Err(NotesError::NotFound { id })
+}
+
+#[lingxia::native("facade.anyhowError", stream)]
+async fn facade_anyhow_error(
+    _stream: lingxia::host::StreamContext<StreamEvent, String>,
+) -> anyhow::Result<()> {
+    anyhow::bail!("disk full")
+}
+
+/// The derive's helper attribute must not clash with an imported route macro.
+mod imported_native {
+    use lingxia::native;
+
+    #[derive(Debug, thiserror::Error, serde::Serialize, lingxia::NativeError)]
+    #[serde(tag = "code")]
+    pub enum ImportedError {
+        #[error("busy")]
+        Busy,
+        #[error(transparent)]
+        #[serde(skip)]
+        #[native_error(internal)]
+        Io(#[from] std::io::Error),
+    }
+
+    #[native("facade.importedError")]
+    pub fn facade_imported_error() -> Result<(), ImportedError> {
+        Err(ImportedError::Busy)
+    }
+}
+
+#[test]
+fn native_error_sends_its_code_and_data_and_hides_internals() {
+    let error = lingxia::Error::from(NotesError::NotFound { id: 7 });
+    assert_eq!(
+        serde_json::to_value(&error).unwrap(),
+        serde_json::json!({ "code": "NOT_FOUND", "message": "note 7 not found", "data": { "id": 7 } })
+    );
+    assert_eq!(lingxia::Error::from(NotesError::Locked).code(), "LOCKED");
+    let io = std::io::Error::other("disk full");
+    let internal = lingxia::Error::from(NotesError::from(io));
+    assert_eq!(
+        (internal.code(), internal.message()),
+        ("E_INTERNAL", "disk full")
+    );
+    assert!(std::error::Error::source(&internal).is_some());
+}
+
 #[test]
 fn native_macro_accepts_lingxia_result_handlers() {
+    let _ = facade_app_error_host();
+    let _ = facade_anyhow_error_host();
+    let _ = imported_native::facade_imported_error_host();
+    assert_eq!(
+        lingxia::Error::from(imported_native::ImportedError::Busy).code(),
+        "Busy"
+    );
     let _ = facade_echo_host();
     let _ = facade_blocking_echo_host();
     let _ = facade_scope_host();

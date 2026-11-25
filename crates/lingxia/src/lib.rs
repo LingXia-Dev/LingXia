@@ -24,6 +24,7 @@ extern crate self as lingxia;
 mod apple_host_stubs;
 
 pub use host_addon::{__register_host, HostAddon, register_host_addon};
+pub use lingxia_native_macros::NativeError;
 #[doc(hidden)]
 pub use lingxia_native_macros::framework_native;
 pub use lingxia_native_macros::native;

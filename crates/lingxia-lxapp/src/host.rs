@@ -59,6 +59,11 @@ pub mod __native {
         crate::executor::spawn(future)
     }
 
+    /// A route's own error, whatever type it returns.
+    pub fn route_error(error: impl Into<lingxia_error::Error>) -> LxAppError {
+        LxAppError::Coded(error.into())
+    }
+
     pub async fn spawn_blocking<F, R>(f: F) -> HostResult<R>
     where
         F: FnOnce() -> R + Send + 'static,

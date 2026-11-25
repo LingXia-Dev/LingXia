@@ -26,6 +26,43 @@ pub fn framework_native(attr: TokenStream, item: TokenStream) -> TokenStream {
     )
 }
 
+/// An app error a route returns: each variant's serde `code` tag is its code, its fields
+/// arrive as `data`, and a `#[native_error(internal)]` variant is sent as `E_INTERNAL`.
+#[proc_macro_derive(NativeError, attributes(native_error))]
+pub fn derive_native_error(item: TokenStream) -> TokenStream {
+    let item = parse_macro_input!(item as syn::ItemEnum);
+    match expand_native_error(&item) {
+        Ok(tokens) => tokens.into(),
+        Err(err) => err.to_compile_error().into(),
+    }
+}
+
+fn expand_native_error(item: &syn::ItemEnum) -> syn::Result<proc_macro2::TokenStream> {
+    let variants = lingxia_native_codegen::native_error::read(item)?;
+    let ident = &item.ident;
+    let internal: Vec<_> = variants
+        .iter()
+        .filter(|v| v.code.is_none())
+        .map(|v| &v.ident)
+        .collect();
+    let internal_arm = (!internal.is_empty()).then(|| {
+        quote! {
+            if matches!(error, #( #ident::#internal { .. } )|*) {
+                return ::lingxia::Error::internal(message).with_source(error);
+            }
+        }
+    });
+    Ok(quote! {
+        impl ::std::convert::From<#ident> for ::lingxia::Error {
+            fn from(error: #ident) -> Self {
+                let message = ::std::string::ToString::to_string(&error);
+                #internal_arm
+                ::lingxia::Error::__app(&error, message)
+            }
+        }
+    })
+}
+
 fn expand_host_attribute(
     attr: TokenStream,
     item: TokenStream,
@@ -334,7 +371,7 @@ fn expand_host(
                 ) -> ::lingxia::host::HostResult<::lingxia::host::HostOutput> {
                     let __lingxia_result = {
                         let __lingxia_result = #call_expr;
-                        __lingxia_result.map_err(::std::convert::Into::into)
+                        __lingxia_result.map_err(::lingxia::host::__native::route_error)
                     };
                     ::lingxia::host::serialize_result(__lingxia_result)
                 }
@@ -384,7 +421,7 @@ fn expand_host(
                 Box::pin(async move {
                     let __lingxia_result = {
                         let __lingxia_result = #call_expr;
-                        __lingxia_result.map_err(::std::convert::Into::into)
+                        __lingxia_result.map_err(::lingxia::host::__native::route_error)
                     };
                     #serialize_expr
                 })
@@ -557,7 +594,7 @@ fn expand_stream(
                             let __lingxia_stream = __lingxia_stream;
                             #call_expr
                         }
-                        .map_err(::std::convert::Into::into);
+                        .map_err(::lingxia::host::__native::route_error);
                         if let Err(err) = __lingxia_result {
                             let _ = __lingxia_error_tx.send(Err(err));
                         }
@@ -631,7 +668,7 @@ fn expand_channel(
                     let __lingxia_result: ::lingxia::host::HostResult<()> = {
                         #call_expr
                     }
-                    .map_err(::std::convert::Into::into);
+                    .map_err(::lingxia::host::__native::route_error);
                     match __lingxia_result {
                         Ok(()) => __lingxia_close.close(),
                         Err(err) => __lingxia_close.close_with(err),

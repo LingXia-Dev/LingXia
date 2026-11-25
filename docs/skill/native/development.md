@@ -87,7 +87,8 @@ Parameters are recognized by type, in any order, all optional:
 - anything else is the JSON payload (`serde::Deserialize`). Only one: a
   second is a compile error, so put multiple values in one struct.
 
-Return `lingxia::Result<T>` with `T: serde::Serialize`.
+Return `lingxia::Result<T>` with `T: serde::Serialize`; `anyhow::Result<T>`
+fails as `E_INTERNAL`.
 
 `HostInvocationContext` comes from dispatch, never from JSON. Treat a payload
 id only as a selector and authorize it against `app_scope()`:
@@ -105,6 +106,35 @@ async fn open_granted_document(
     Ok(path.to_string_lossy().into_owned())
 }
 ```
+
+### Errors
+
+A failure reaches Logic and a WebView as `{ code, message, reason?, data? }`.
+`lingxia::Error` carries the framework's `E_*` codes; for the app's own, derive
+`lingxia::NativeError` on an enum tagged `code`:
+
+```rust
+#[derive(Debug, thiserror::Error, serde::Serialize, lingxia::NativeError)]
+#[serde(tag = "code", rename_all = "SCREAMING_SNAKE_CASE")]
+enum NotesError {
+    #[error("note {id} not found")]
+    NotFound { id: i64 },
+    #[error(transparent)]
+    #[serde(skip)]
+    #[native_error(internal)]
+    Io(#[from] std::io::Error),
+}
+
+#[lingxia::native("notes.delete")]
+async fn delete_note(id: i64) -> Result<(), NotesError> {
+    Err(NotesError::NotFound { id })
+}
+```
+
+Fields arrive as `data`; a `#[native_error(internal)]` variant is sent as
+`E_INTERNAL`; a code starting with `E_` is a compile error. The client exports `NotesError` as a
+union, and `isNativeError(e, "NOT_FOUND")` narrows `e.data` to `{ id: number }`.
+`message` is English for developers: show users text chosen by `code`.
 
 ### Registration
 
