@@ -8,10 +8,15 @@ import { Glyph } from './Glyph';
  * A form control's validation message, and the element its control names in `aria-describedby`.
  * Always mounted: a live region announces changes, not its first appearance.
  */
-export function StatusRegion({ id, status, className }: { id: string; status: FieldStatus | undefined; className?: string }) {
+export function StatusRegion({ id, status, isQuiet = false, className }: {
+  id?: string; status: FieldStatus | undefined;
+  /** Drawn only, not read: the control it belongs to announces and describes it itself. */
+  isQuiet?: boolean;
+  className?: string;
+}) {
   const message = status?.message;
   return (
-    <view id={id} role="status" className={cx(status && message ? r.status.shown : r.status.empty, className)}>
+    <view id={id} role={isQuiet ? undefined : 'status'} aria-hidden={isQuiet || undefined} className={cx(status && message ? r.status.shown : r.status.empty, className)}>
       {status && message ? (
         <>
           <view aria-hidden className={r.statusLine.base}>

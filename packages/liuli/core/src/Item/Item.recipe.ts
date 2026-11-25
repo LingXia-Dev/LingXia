@@ -15,6 +15,7 @@ export const itemParts = {
   label: 'text',
   labelEnd: 'view',
   description: 'text',
+  status: 'view',
   end: 'view',
   endAction: 'button',
   chevron: 'vector',
@@ -86,6 +87,10 @@ export const itemRecipe = {
   },
   labelEnd: {
     base: 'shrink-0 flex-row items-center gap-1',
+  },
+  /** A label-hidden control's failure, under the row's words, until its next change. */
+  status: {
+    base: 'mt-0.5',
   },
   description: {
     base: 'text-footnote text-muted break-words whitespace-pre-line',

@@ -9,6 +9,8 @@ export const switchParts = {
   label: 'text',
   description: 'text',
   failed: 'view',
+  failedMark: 'view',
+  alert: 'view',
 } as const;
 
 /**
@@ -20,6 +22,8 @@ export const switchRecipe = {
   root: {
     base: '',
     variant: { standalone: '', row: 'self-stretch px-4 py-2.5 min-h-control-lg justify-center' } satisfies Record<SwitchVariant, string>,
+    /** Label hidden, with an action: a failure's mark sits before the track. */
+    hidden: 'flex-row items-center gap-2',
   },
   control: {
     base: 'min-h-8 track:rounded-full track:bg-line-strong/45 checked:track:bg-accent-solid thumb:rounded-full thumb:bg-knob thumb:border thumb:border-line thumb:shadow-contact disabled:track:bg-text/12 disabled:checked:track:bg-text/20',
@@ -59,5 +63,14 @@ export const switchRecipe = {
   /** A failed `changeAction`, under the label, until the next change. */
   failed: {
     base: 'text-footnote',
+  },
+  /** Label hidden: a failure marked before the track, named by its words, until the next change. */
+  failedMark: {
+    base: 'shrink-0',
+    icon: 'text-danger',
+  },
+  /** Label hidden: the failure's words, read at once and as the switch's description, never drawn. */
+  alert: {
+    base: 'sr-only',
   },
 } as const;

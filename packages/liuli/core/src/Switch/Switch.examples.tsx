@@ -94,3 +94,23 @@ export function Saved() {
     </view>
   );
 }
+
+/**
+ * Label hidden, the failure has no line of its own: it is announced, describes the switch and is marked before
+ * the track; in an Item it is drawn under the row's words instead. Both fail here, so flipping shows it.
+ */
+export function SavedLabelHidden() {
+  const pinned = useLocal('pinned', false);
+  const backup = useLocal('backup', false);
+  const offline = async () => { throw Error('offline'); };
+  return (
+    // The stage's padding is undone so both rows take an Item's insets and line up.
+    <view className="-m-5 divide-y divide-line">
+      <view className="flex-row items-center gap-3 px-4 py-2.5 min-h-control-lg">
+        <text className="grow text-body text-text">Keep this chat at the top</text>
+        <Switch bind={pinned} label="Pin chat" isLabelHidden changeAction={offline} data-testid="pin-saved" />
+      </view>
+      <Item label="Back up photos" description="Over Wi-Fi only." endContent={<Switch bind={backup} label="Back up photos" isLabelHidden changeAction={offline} data-testid="backup-saved" />} data-testid="backup-row" />
+    </view>
+  );
+}

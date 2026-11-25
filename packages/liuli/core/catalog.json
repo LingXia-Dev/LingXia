@@ -11096,6 +11096,7 @@
         "label": "text",
         "labelEnd": "view",
         "description": "text",
+        "status": "view",
         "end": "view",
         "endAction": "button",
         "chevron": "vector",
@@ -18638,7 +18639,9 @@
         "spinner": "vector",
         "label": "text",
         "description": "text",
-        "failed": "view"
+        "failed": "view",
+        "failedMark": "view",
+        "alert": "view"
       },
       "accessibility": {
         "pattern": "switch",
@@ -18706,7 +18709,8 @@
           "The off track is decorative and has no contrast minimum: off is carried by the thumb at the start and the missing accent.",
           "Disabled and on, the track keeps its accent at reduced strength, so the state still reads.",
           "The thumb is the `knob` role, white in both appearances; the on track is `accent-solid`, the fill made to carry white.",
-          "Keyboard focus rings a standalone switch; on a row it rings the row and its help text."
+          "Keyboard focus rings a standalone switch; on a row it rings the row and its help text.",
+          "A failed `changeAction` with the label hidden is announced as an alert and describes the switch until the next change; it is marked before the track, or, in an Item, drawn under the row's words."
         ]
       },
       "examples": [
@@ -18739,6 +18743,11 @@
           "name": "Saved",
           "title": "Saved by an action, undone if it fails",
           "source": "import { useLocal, useView, type View } from '@lingxia/view';\nimport { Switch } from '@liulidesign/core/Switch';\n\ntype Actions = { publish(): Promise<void> };\n\n/** `changeAction` saves the change elsewhere: the switch flips at once and is busy meanwhile; a failure flips it back and says so. */\nexport function Saved() {\n  const { actions } = useView() as View<Actions>;\n  const share = useLocal('share', false);\n  const fail = useLocal('fail', true);\n  return (\n    <view className=\"gap-4\">\n      <Switch label=\"Fail the request\" bind={fail} data-testid=\"saved-fail\" />\n      <Switch\n        label=\"Share usage data\"\n        description=\"Saved to your account, on every device.\"\n        bind={share}\n        changeAction={async () => {\n          await actions.publish();\n          if (fail.value) throw Error('offline');\n        }}\n        data-testid=\"saved\"\n      />\n    </view>\n  );\n}"
+        },
+        {
+          "name": "SavedLabelHidden",
+          "title": "A failure with the label hidden, alone and in an Item",
+          "source": "import { useLocal } from '@lingxia/view';\nimport { Item } from '@liulidesign/core/Item';\nimport { Switch } from '@liulidesign/core/Switch';\n\n/**\n * Label hidden, the failure has no line of its own: it is announced, describes the switch and is marked before\n * the track; in an Item it is drawn under the row's words instead. Both fail here, so flipping shows it.\n */\nexport function SavedLabelHidden() {\n  const pinned = useLocal('pinned', false);\n  const backup = useLocal('backup', false);\n  const offline = async () => { throw Error('offline'); };\n  return (\n    // The stage's padding is undone so both rows take an Item's insets and line up.\n    <view className=\"-m-5 divide-y divide-line\">\n      <view className=\"flex-row items-center gap-3 px-4 py-2.5 min-h-control-lg\">\n        <text className=\"grow text-body text-text\">Keep this chat at the top</text>\n        <Switch bind={pinned} label=\"Pin chat\" isLabelHidden changeAction={offline} data-testid=\"pin-saved\" />\n      </view>\n      <Item label=\"Back up photos\" description=\"Over Wi-Fi only.\" endContent={<Switch bind={backup} label=\"Back up photos\" isLabelHidden changeAction={offline} data-testid=\"backup-saved\" />} data-testid=\"backup-row\" />\n    </view>\n  );\n}"
         }
       ],
       "gaps": [
@@ -18771,6 +18780,7 @@
         ],
         "roles": [
           "accent-solid",
+          "danger",
           "focus",
           "knob",
           "line",
@@ -18807,6 +18817,10 @@
             {
               "name": "LabelHidden",
               "title": "With its label hidden, in a row that names it"
+            },
+            {
+              "name": "SavedLabelHidden",
+              "title": "Label hidden, when the action fails: a mark beside it, or a line in its Item"
             }
           ],
           "sizes": [

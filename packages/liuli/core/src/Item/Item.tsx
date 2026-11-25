@@ -10,6 +10,8 @@ import { dataOf } from '../internal/data';
 import { IconButton } from '../IconButton/IconButton';
 import { holdsControl } from '../internal/trigger';
 import { useLargeText } from '../internal/largeText';
+import { ItemStatusContext } from '../internal/itemStatus';
+import { StatusRegion } from '../internal/StatusRegion';
 import { warnOnce } from '../internal/warn';
 import type { Press } from '../internal/press';
 
@@ -123,6 +125,15 @@ export function Item(props: ItemProps) {
   const layer = useContext(LayerContext);
   const baseId = useId();
   const open = useLocal('open', 0);
+  // A label-hidden control's failure, drawn under the row's words; the control reads it itself.
+  const status = useLocal<string | null>('status', null);
+  const report = (message: string | null) => {
+    try {
+      status.set(message);
+    } catch (error) {
+      if (!(error instanceof Error) || !error.message.startsWith('UI_LOCAL:')) throw error;
+    }
+  };
   const descriptionId = `${baseId}-description`;
   const valueId = `${baseId}-value`;
   const besideId = `${baseId}-beside`;
@@ -170,6 +181,7 @@ export function Item(props: ItemProps) {
         {help !== undefined && (typeof help === 'string'
           ? <text id={pressable ? descriptionId : undefined} className={r.description.base} style={props.descriptionLines !== undefined ? { lineClamp: props.descriptionLines } : undefined}>{help}</text>
           : <view id={pressable ? descriptionId : undefined} className={r.description.node}>{help}</view>)}
+        {status.value !== null && <StatusRegion isQuiet status={{ type: 'error', message: status.value }} className={r.status.base} />}
         {isEndUnder && end}
       </view>
       {!isEndUnder && end}
@@ -218,7 +230,7 @@ export function Item(props: ItemProps) {
       {content}
     </button>
   );
-  if (actions.length === 0) return row;
+  if (actions.length === 0) return <ItemStatusContext.Provider value={report}>{row}</ItemStatusContext.Provider>;
   const actionId = (action: ItemSwipeAction) => `${baseId}-${action.key}`;
   return (
     <view className={cx(r.swipe.base, className)}>
@@ -246,7 +258,7 @@ export function Item(props: ItemProps) {
         data-testid={testId === undefined ? undefined : `${testId}-swipe`}
         className={cx(r.slide.base, r.slide.layer[layer])}
       >
-        {row}
+        <ItemStatusContext.Provider value={report}>{row}</ItemStatusContext.Provider>
       </view>
     </view>
   );

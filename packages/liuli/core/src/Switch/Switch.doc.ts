@@ -16,6 +16,8 @@ export const doc: ComponentDoc = {
     { part: 'control', required: true, description: 'The switch primitive: its content at the start, the track and thumb at the end, and the accessible node.' },
     { part: 'label', required: true, description: 'The visible label, also the name.' },
     { part: 'description', required: false, description: 'Help text under the label, inside the press target, read as the description.' },
+    { part: 'failedMark', required: false, description: 'Label hidden, after a failed `changeAction`: an error mark before the track, named by the failure, until the next change. In an Item the row draws the failure under its words instead.' },
+    { part: 'alert', required: false, description: 'Label hidden: the failure\'s words, announced at once and read as the switch\'s description; not drawn.' },
   ],
   accessibility: {
     pattern: 'switch',
@@ -40,6 +42,7 @@ export const doc: ComponentDoc = {
       'Disabled and on, the track keeps its accent at reduced strength, so the state still reads.',
       'The thumb is the `knob` role, white in both appearances; the on track is `accent-solid`, the fill made to carry white.',
       'Keyboard focus rings a standalone switch; on a row it rings the row and its help text.',
+      'A failed `changeAction` with the label hidden is announced as an alert and describes the switch until the next change; it is marked before the track, or, in an Item, drawn under the row\'s words.',
     ],
   },
   guidance: {
@@ -59,6 +62,7 @@ export const doc: ComponentDoc = {
     { name: 'LabelHidden', title: 'With its label hidden, in a row that names it' },
     { name: 'Applying', title: 'Waiting for the app to apply it' },
     { name: 'Saved', title: 'Saved by an action, undone if it fails' },
+    { name: 'SavedLabelHidden', title: 'A failure with the label hidden, alone and in an Item' },
   ],
   gaps: [
     {
@@ -81,6 +85,7 @@ export const doc: ComponentDoc = {
         { name: 'Applying', title: 'While the app applies the change' },
         { name: 'Saved', title: 'Saved by an action: busy while it runs, undone with a note if it fails' },
         { name: 'LabelHidden', title: 'With its label hidden, in a row that names it' },
+        { name: 'SavedLabelHidden', title: 'Label hidden, when the action fails: a mark beside it, or a line in its Item' },
       ],
       sizes: [{ name: 'Sizes', title: 'Small (36 by 20) for dense rows, medium (44 by 26) by default' }],
       states: [

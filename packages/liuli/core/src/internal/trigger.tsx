@@ -19,9 +19,15 @@ export function registerPressable(component: unknown) {
   pressables.add(component);
 }
 
+/** Liuli's other controls (a Switch), which a row keeps at its end but an overlay does not wire. */
+const controls = new Set<unknown>();
+export function registerControl(component: unknown) {
+  controls.add(component);
+}
+
 /** Whether any top-level node of `children` is a control: a Liuli pressable or a plain button. */
 export function holdsControl(children: Child): boolean {
-  return childrenToArray(children).some(child => typeof child === 'object' && child !== null && (pressables.has(elementType(child)) || elementType(child) === 'button'));
+  return childrenToArray(children).some(child => typeof child === 'object' && child !== null && (pressables.has(elementType(child)) || controls.has(elementType(child)) || elementType(child) === 'button'));
 }
 
 /**

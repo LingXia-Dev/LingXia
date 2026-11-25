@@ -1,10 +1,13 @@
-import { cx, useId, type Local } from '@lingxia/view';
+import { cx, useContext, useId, type Local } from '@lingxia/view';
 import { describedBy } from '../internal/describedBy';
 import { StatusRegion } from '../internal/StatusRegion';
+import { Glyph } from '../internal/Glyph';
+import { ItemStatusContext } from '../internal/itemStatus';
 import { spinner, spinnerBox } from '../internal/spinner';
 import { switchRecipe as r } from './Switch.recipe';
 import { dataOf } from '../internal/data';
 import { useChangeAction } from '../internal/changeAction';
+import { registerControl } from '../internal/trigger';
 
 export type SwitchVariant = 'standalone' | 'row';
 
@@ -60,10 +63,13 @@ export function Switch(props: SwitchProps) {
   const failedId = `${id}-failed`;
   const value = props.bind ? props.bind.value : props.value;
   const apply = (next: boolean) => (props.bind ? props.bind.set(next) : props.onChange(next));
-  const { isPending, failure, change } = useChangeAction('Switch', label, apply, changeAction, failedMessage);
+  // Label-hidden inside an Item, the row draws the failure under its own words.
+  const toRow = useContext(ItemStatusContext);
+  const inRow = isLabelHidden && toRow !== undefined;
+  const { isPending, failure, change } = useChangeAction('Switch', label, apply, changeAction, failedMessage, inRow ? toRow : undefined);
   const semantics = {
     'aria-label': label,
-    'aria-describedby': describedBy(description !== undefined && !isLabelHidden && helpId, failure !== undefined && !isLabelHidden && failedId),
+    'aria-describedby': describedBy(description !== undefined && !isLabelHidden && helpId, failure !== undefined && failedId),
     disabled: isDisabled || isLoading,
     // An action's wait is silent, like the platform switches: busy to assistive tech, no spinner, no reflow.
     'aria-busy': isLoading || isPending || undefined,
@@ -85,14 +91,26 @@ export function Switch(props: SwitchProps) {
       <vector aria-hidden paths={spinner} viewBox={spinnerBox} className={r.spinner.base} />
     </view>
   ) : words;
+  const control = props.bind && !changeAction ? (
+    <switch key="control" bind={props.bind} {...semantics}>{content}</switch>
+  ) : (
+    <switch key="control" value={value} onChange={next => void change(next)} {...semantics}>{content}</switch>
+  );
+  if (!isLabelHidden || !changeAction) {
+    // With an action the switch goes through `change`, which holds off a second flip while one runs.
+    return <view className={cx(r.root.base, r.root.variant[variant], className)}>{control}</view>;
+  }
+  // No words to put a failure under: it is announced, describes the switch, and is marked beside it (or in the Item's row).
   return (
-    <view className={cx(r.root.base, r.root.variant[variant], className)}>
-      {/* With an action the switch goes through `change`, which holds off a second flip while one runs. */}
-      {props.bind && !changeAction ? (
-        <switch bind={props.bind} {...semantics}>{content}</switch>
-      ) : (
-        <switch value={value} onChange={next => void change(next)} {...semantics}>{content}</switch>
+    <view className={cx(r.root.base, r.root.variant[variant], r.root.hidden, className)}>
+      {failure !== undefined && !inRow && (
+        <view key="mark" role="img" aria-label={failure} data-testid={testId && `${testId}-failed`} className={r.failedMark.base}>
+          <Glyph name="error" side={18} className={r.failedMark.icon} />
+        </view>
       )}
+      {control}
+      <view key="alert" id={failedId} role="alert" className={r.alert.base}>{failure !== undefined && <text>{failure}</text>}</view>
     </view>
   );
 }
+registerControl(Switch);

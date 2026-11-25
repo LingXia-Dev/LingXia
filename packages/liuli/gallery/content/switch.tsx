@@ -1,5 +1,5 @@
 // Generated from the doc file by scripts/generate.mjs; do not edit.
-import { Basic, InList, Applying, Saved, LabelHidden, Sizes, StateOff, StateOn, StateDisabledOff, StateDisabledOn } from '../../core/src/Switch/Switch.examples';
+import { Basic, InList, Applying, Saved, LabelHidden, SavedLabelHidden, Sizes, StateOff, StateOn, StateDisabledOff, StateDisabledOn } from '../../core/src/Switch/Switch.examples';
 import { Lead, PageSection, Stage, StageGrid } from '../shared/Layout';
 
 export function Content() {
@@ -20,6 +20,9 @@ export function Content() {
         </Stage>
         <Stage caption={"With its label hidden, in a row that names it"}>
           <LabelHidden />
+        </Stage>
+        <Stage caption={"Label hidden, when the action fails: a mark beside it, or a line in its Item"}>
+          <SavedLabelHidden />
         </Stage>
       </PageSection>
       <PageSection title={"Sizes"}>

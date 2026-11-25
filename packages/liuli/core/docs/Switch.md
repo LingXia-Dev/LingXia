@@ -126,6 +126,34 @@ export function Saved() {
 }
 ```
 
+### A failure with the label hidden, alone and in an Item
+
+```tsx
+import { useLocal } from '@lingxia/view';
+import { Item } from '@liulidesign/core/Item';
+import { Switch } from '@liulidesign/core/Switch';
+
+/**
+ * Label hidden, the failure has no line of its own: it is announced, describes the switch and is marked before
+ * the track; in an Item it is drawn under the row's words instead. Both fail here, so flipping shows it.
+ */
+export function SavedLabelHidden() {
+  const pinned = useLocal('pinned', false);
+  const backup = useLocal('backup', false);
+  const offline = async () => { throw Error('offline'); };
+  return (
+    // The stage's padding is undone so both rows take an Item's insets and line up.
+    <view className="-m-5 divide-y divide-line">
+      <view className="flex-row items-center gap-3 px-4 py-2.5 min-h-control-lg">
+        <text className="grow text-body text-text">Keep this chat at the top</text>
+        <Switch bind={pinned} label="Pin chat" isLabelHidden changeAction={offline} data-testid="pin-saved" />
+      </view>
+      <Item label="Back up photos" description="Over Wi-Fi only." endContent={<Switch bind={backup} label="Back up photos" isLabelHidden changeAction={offline} data-testid="backup-saved" />} data-testid="backup-row" />
+    </view>
+  );
+}
+```
+
 ## Props
 
 | Prop | Type | Default | Description |
@@ -154,13 +182,15 @@ export function Saved() {
 | control | `<switch>` | yes | The switch primitive: its content at the start, the track and thumb at the end, and the accessible node. |
 | label | `<text>` | yes | The visible label, also the name. |
 | description | `<text>` | no | Help text under the label, inside the press target, read as the description. |
+| failedMark | `<view>` | no | Label hidden, after a failed `changeAction`: an error mark before the track, named by the failure, until the next change. In an Item the row draws the failure under its words instead. |
+| alert | `<view>` | no | Label hidden: the failure's words, announced at once and read as the switch's description; not drawn. |
 
 ## What an app may override
 
 - `className`: classes merged after the recipe's, so they win.
 - The recipe, `switchRecipe` from `@liulidesign/core/Switch/recipe`: the classes of each part, to style an element of your own to match. The component does not read a changed copy.
 - Scale tokens it reads, set in the app's stylesheet under `@theme`: `--spacing-control-lg`, `--text-footnote`, `--text-body`, `--shadow-contact`.
-- Colour roles it paints with, set by the theme pack: `accent-solid`, `focus`, `knob`, `line`, `line-strong`, `text`, `text-faint`, `text-muted`.
+- Colour roles it paints with, set by the theme pack: `accent-solid`, `danger`, `focus`, `knob`, `line`, `line-strong`, `text`, `text-faint`, `text-muted`.
 
 ## Accessibility
 
@@ -176,6 +206,7 @@ export function Saved() {
 - Disabled and on, the track keeps its accent at reduced strength, so the state still reads.
 - The thumb is the `knob` role, white in both appearances; the on track is `accent-solid`, the fill made to carry white.
 - Keyboard focus rings a standalone switch; on a row it rings the row and its help text.
+- A failed `changeAction` with the label hidden is announced as an alert and describes the switch until the next change; it is marked before the track, or, in an Item, drawn under the row's words.
 
 | Contrast | Pair | Minimum | Light | Dark |
 | --- | --- | --- | --- | --- |

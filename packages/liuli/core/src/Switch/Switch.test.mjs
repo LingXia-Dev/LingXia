@@ -107,3 +107,75 @@ test('changeAction: a failure flips back and is said under the label, as a descr
   screen.toggle(screen.getByTestId('saved'), true);
   assert.deepEqual(described(screen, screen.getByTestId('saved')), ['Saved to your account.']);
 });
+
+const quietly = async run => {
+  const original = console.error;
+  console.error = () => {};
+  try { await run(); } finally { console.error = original; }
+};
+
+test('SavedLabelHidden alone: the failure is an alert, describes the switch, and is marked before the track', async () => {
+  const screen = await renderExample('Switch/Switch', 'SavedLabelHidden');
+  await quietly(async () => {
+    screen.toggle(screen.getByTestId('pin-saved'), true);
+    await new Promise(resolve => setImmediate(resolve));
+    screen.rerender({});
+  });
+  const control = screen.getByTestId('pin-saved');
+  assert.equal(control.props.checked, 0);
+  assert.deepEqual(described(screen, control), ["That didn't work. Try again."]);
+  const mark = screen.getByTestId('pin-saved-failed');
+  assert.deepEqual([mark.props.role, mark.props.accessibilityLabel], ['img', "That didn't work. Try again."]);
+  assert.equal(screen.queryAll(node => node.props.role === 'alert').length, 2, 'each label-hidden switch with an action keeps its alert mounted');
+  assert.equal(screen.queryAll(node => node.props.role === 'alert' && node.children.some(child => child.text === "That didn't work. Try again.")).length, 1, 'only the failed one says it');
+});
+
+test('SavedLabelHidden in an Item: the row draws the failure under its words, quietly; the switch still reads it', async () => {
+  const screen = await renderExample('Switch/Switch', 'SavedLabelHidden');
+  await quietly(async () => {
+    screen.toggle(screen.getByTestId('backup-saved'), true);
+    await new Promise(resolve => setImmediate(resolve));
+    screen.rerender({});
+  });
+  const control = screen.getByTestId('backup-saved');
+  assert.deepEqual(described(screen, control), ["That didn't work. Try again."]);
+  assert.throws(() => screen.getByTestId('backup-saved-failed'), 'no mark beside it in a row');
+  const said = screen.queryAll(node => node.text === "That didn't work. Try again.");
+  assert.equal(said.length, 2, 'once in the switch\'s alert, once drawn in the row');
+});
+
+test('label hidden: the mark and the row\'s line go with the next change', async () => {
+  const screen = await renderPage(`
+    import { useLocal } from '@lingxia/view';
+    import { Switch } from '@liulidesign/core/Switch';
+    import { Item } from '@liulidesign/core/Item';
+    let fail = true;
+    const action = async () => { if (fail) throw Error('offline'); };
+    export function render() {
+      const a = useLocal('a', false);
+      const b = useLocal('b', false);
+      return <page>
+        <Switch label="Pin" isLabelHidden bind={a} changeAction={action} data-testid="alone" />
+        <Item label="Back up" endContent={<Switch label="Back up" isLabelHidden bind={b} changeAction={action} data-testid="inrow" />} />
+        <button data-testid="heal" onClick={() => { fail = false; }}>Heal</button>
+      </page>;
+    }
+  `);
+  const settle = async () => { await new Promise(resolve => setImmediate(resolve)); screen.rerender({}); };
+  await quietly(async () => {
+    screen.toggle(screen.getByTestId('alone'), true);
+    screen.toggle(screen.getByTestId('inrow'), true);
+    await settle();
+  });
+  screen.getByTestId('alone-failed');
+  assert.equal(screen.queryAll(node => node.text === "That didn't work. Try again.").length, 3, 'two alerts and the row\'s line');
+  screen.press(screen.getByTestId('heal'));
+  await settle();
+  // The mark goes before the switch, so the harness's positional re-lookup in toggle() would miss it: fire and look again by id.
+  screen.fire(screen.getByTestId('alone'), 'onCheckedChange');
+  screen.toggle(screen.getByTestId('inrow'), true);
+  await settle();
+  assert.equal(screen.getByTestId('alone').props.checked, 1);
+  assert.throws(() => screen.getByTestId('alone-failed'));
+  assert.equal(screen.queryAll(node => node.text === "That didn't work. Try again.").length, 0);
+});
