@@ -1,4 +1,4 @@
-import { createContext, cx, useContext, useId, useLocal, type Local } from '@lingxia/view';
+import { createContext, cx, useContext, useId, useLocal, useView, type Local } from '@lingxia/view';
 import { liuliText } from '../i18n/text';
 import type { BannerTone } from '../Banner/Banner';
 import { Button } from '../Button/Button';
@@ -170,6 +170,7 @@ function Shown({ entry, regionId, position, inset, dismissLabel, duration, toast
   const run = actions.get(entry.id);
   // The host counts only while nothing holds the toast (a press, a resting pointer, focus inside)
   // and closes it through onToggle; a toast with an action waits to be closed.
+  const isTouch = useView().env.pointer !== 'fine';
   const closeAfter = entry.action !== null ? undefined : Math.min(60000, Math.max(1, Math.round(entry.duration ?? duration)));
   return (
     <view
@@ -179,7 +180,7 @@ function Shown({ entry, regionId, position, inset, dismissLabel, duration, toast
       closeAfter={closeAfter}
       onToggle={open => { if (!open) close(); }}
       style={inset && edges(inset)}
-      className={cx(r.region.base, r.region.position[position])}
+      className={cx(r.region.base, r.region.position[position], r.region.width[isTouch ? 'touch' : 'pointer'])}
     >
       <view
         drag="x"

@@ -91,6 +91,10 @@ test('like the reference, the toast sits in the bottom end corner on any screen,
     const screen = await renderExample('Toast/Toast', 'Tones', { env: { pointer } });
     screen.press(screen.getByTestId('show-info'));
     assert.deepEqual([region(screen).props.justify, region(screen).props.align, region(screen).props.paddingBottom], ['end', 'end', 16], pointer);
+    // The top-layer box is the corner, not the page: on a touch screen the bottom row, with a pointer the card and its gap.
+    const { insetTop, insetBottom, insetInlineStart, insetInlineEnd, insetLeft, insetRight } = region(screen).props;
+    assert.deepEqual([insetTop, insetBottom, insetInlineStart, insetInlineEnd], [undefined, 0, undefined, 0], pointer);
+    assert.deepEqual([insetLeft, insetRight], pointer === 'fine' ? [undefined, undefined] : [0, 0], pointer);
     const card = screen.getByTestId('toast').parent;
     assert.deepEqual([card.props.widthPercent ?? card.props.width, card.props.maxWidth], [100, 400], pointer);
   }
@@ -152,4 +156,34 @@ test('a toast\'s own duration overrides the region\'s', async () => {
   const screen = await renderExample('Toast/Toast', 'Tones');
   screen.press(screen.getByTestId('show-warning'));
   assert.equal(layer(screen).props.closeAfter, 8000);
+});
+
+test('a showing toast leaves the rest of the page pressable: its top-layer box never covers the page', async () => {
+  const { renderPage } = await import('../testing/harness.mjs');
+  for (const position of ['bottomEnd', 'topStart']) for (const pointer of ['coarse', 'fine']) {
+    const screen = await renderPage(`
+      import { useLocal } from '@lingxia/view';
+      import { Button } from '@liulidesign/core/Button';
+      import { ToastRegion, useToast } from '@liulidesign/core/Toast';
+      function Page() {
+        const toast = useToast();
+        const count = useLocal('count', 0);
+        return <view>
+          <Button label="Save" onClick={() => toast.show({ message: 'Saved', action: { label: 'Undo', onClick: () => {} } })} data-testid="save" />
+          <Button label="Count" onClick={() => count.set(count.value + 1)} data-testid="count" />
+          <text data-testid="counted">{String(count.value)}</text>
+        </view>;
+      }
+      export function render() { return <page><ToastRegion position="${position}"><Page /></ToastRegion></page>; }
+    `, { env: { pointer } });
+    screen.press(screen.getByTestId('save'));
+    assert.equal(shown(screen).length, 1);
+    // A box that met all four edges would sit over the whole page, and a press there would never reach it.
+    const props = region(screen).props;
+    const edges = ['insetTop', 'insetBottom'].filter(edge => props[edge] === 0).length + (props.insetLeft === 0 && props.insetRight === 0 ? 2 : [props.insetInlineStart, props.insetInlineEnd].filter(edge => edge === 0).length);
+    assert.ok(edges < 4, `${position} ${pointer}: the region meets ${edges} edges`);
+    screen.press(screen.getByTestId('count'));
+    assert.equal(screen.getByTestId('counted').text ?? screen.getByTestId('counted').children?.[0]?.text, '1', `${position} ${pointer}: the press reached the page`);
+    assert.equal(shown(screen).length, 1, 'and the undo toast stays');
+  }
 });

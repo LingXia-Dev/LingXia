@@ -15,15 +15,23 @@ export const toastParts = {
  * otherwise. It moves in a little from its edge as it fades in; under reduced motion it only fades.
  */
 export const toastRecipe = {
-  /** The top-layer box the toast sits in. It meets every edge, so the layer adds the bars to its 16 px gap. */
+  /**
+   * The top-layer box the toast sits in: only the toast and its 16 px gap, never the page, since a
+   * press on a top-layer box never reaches what is under it. It meets its corner's edges, so the layer adds the bars there.
+   */
   region: {
-    base: 'absolute inset-0 m-0 p-4 transition duration-base ease-standard starting:opacity-0 exit:opacity-0',
+    base: 'absolute m-0 p-4 max-w-full transition duration-base ease-standard starting:opacity-0 exit:opacity-0',
     position: {
-      bottomEnd: 'justify-end items-end motion-safe:starting:translate-y-2 motion-safe:exit:translate-y-2',
-      bottomStart: 'justify-end items-start motion-safe:starting:translate-y-2 motion-safe:exit:translate-y-2',
-      topEnd: 'justify-start items-end motion-safe:starting:-translate-y-2 motion-safe:exit:-translate-y-2',
-      topStart: 'justify-start items-start motion-safe:starting:-translate-y-2 motion-safe:exit:-translate-y-2',
+      bottomEnd: 'bottom-0 end-0 justify-end items-end motion-safe:starting:translate-y-2 motion-safe:exit:translate-y-2',
+      bottomStart: 'bottom-0 start-0 justify-end items-start motion-safe:starting:translate-y-2 motion-safe:exit:translate-y-2',
+      topEnd: 'top-0 end-0 justify-start items-end motion-safe:starting:-translate-y-2 motion-safe:exit:-translate-y-2',
+      topStart: 'top-0 start-0 justify-start items-start motion-safe:starting:-translate-y-2 motion-safe:exit:-translate-y-2',
     } satisfies Record<ToastPosition, string>,
+    /**
+     * A definite width, so the card's message wraps inside it: on a touch screen the whole row, the card
+     * taking it up to its 400 pt; with a pointer the 400 pt card and its gap.
+     */
+    width: { touch: 'inset-x-0 w-full', pointer: 'w-[432px]' },
   },
   toast: {
     base: 'flex-row items-center gap-3 min-h-12 ps-4 pe-1.5 py-1.5 rounded-container border border-text/12 bg-surface-overlay shadow-raised transition-transform duration-slow ease-standard',
