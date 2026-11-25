@@ -256,7 +256,8 @@ function JinshuCodeBlockView({ block, ctx }: { block: CodeBlock; ctx: BlockRende
 }
 
 /** A table's frame, shared by the reader and the editor: wider than the frame, the grid scrolls sideways and fades at each edge it runs under. */
-export function TableFrame({ blockId, columns, id, testId, children }: { blockId: string; columns: number; id?: string; testId?: string; children: Child }) {
+export function TableFrame({ table, id, testId, children }: { table: TableBlock; id?: string; testId?: string; children: Child }) {
+  const blockId = table.id;
   const frame = useBox(`tbl-frame-${blockId}`);
   const grid = useBox(`tbl-grid-${blockId}`);
   const edges = useLocal(`tbl-edges-${blockId}`, { start: true, end: false });
@@ -264,7 +265,6 @@ export function TableFrame({ blockId, columns, id, testId, children }: { blockId
   const need = grid.value?.width;
   const overflows = room !== undefined && need !== undefined && need > room + 0.5;
   const under = !edges.value.start && !edges.value.end ? 'both' : !edges.value.start ? 'start' : !edges.value.end ? 'end' : undefined;
-  const span = Math.min(8, Math.max(1, columns)) as keyof typeof r.table.span;
   return (
     <view id={id} data-testid={testId} box={frame} className={r.table.frame}>
       <scroll
@@ -272,7 +272,7 @@ export function TableFrame({ blockId, columns, id, testId, children }: { blockId
         className={cx(r.table.scroll, overflows && under && r.table.more[under])}
         onScrollEdge={({ edge, at }) => edges.set({ ...edges.value, [edge]: at })}
       >
-        <view box={grid} className={cx(r.table.grid, r.table.span[span])}>
+        <view box={grid} className={r.table.grid} style={{ minWidth: tableMinWidth(table) }}>
           {children}
         </view>
       </scroll>
@@ -643,9 +643,64 @@ function JinshuColumnsBlockView({ block, ctx }: { block: ColumnsBlock; ctx: Bloc
   );
 }
 
-/** One column's share of the row: its weight, from nothing, so every row splits the same way. */
+// A wide character (CJK, fullwidth) is about two `ch`; everything else about one.
+const WIDE = /[\u1100-\u115f\u2e80-\ua4cf\uac00-\ud7a3\uf900-\ufaff\ufe30-\ufe4f\uff00-\uff60\uffe0-\uffe6]/u;
+const chWidth = (text: string) => {
+  let n = 0;
+  for (const c of text) n += WIDE.test(c) ? 2 : 1;
+  return n;
+};
+/** The widest piece that cannot break: a word, where a wide character is a piece of its own. */
+const longestPiece = (text: string) => {
+  let most = 0;
+  for (const word of text.split(/\s+/)) {
+    if (WIDE.test(word)) most = Math.max(most, 2);
+    for (const run of word.split(new RegExp(WIDE.source, 'gu'))) most = Math.max(most, chWidth(run));
+  }
+  return most;
+};
+
+const CELL_PAD_CH = 3;
+const MIN_COL_CH = 6;
+const MAX_MIN_CH = 16;
+const MAX_IDEAL_CH = 48;
+const columnSizes = new WeakMap<TableBlock, { readonly min: readonly number[]; readonly ideal: readonly number[] }>();
+
+/**
+ * Column sizes from content, in `ch`, as an auto table layout does: `ideal` is a column's longest cell
+ * on one line, `min` its widest unbreakable piece. Counted once per table object.
+ */
+export function tableColumnSizes(block: TableBlock): { readonly min: readonly number[]; readonly ideal: readonly number[] } {
+  const hit = columnSizes.get(block);
+  if (hit) return hit;
+  const n = tableColumnCount(block);
+  const min = Array.from({ length: n }, () => MIN_COL_CH);
+  const ideal = Array.from({ length: n }, () => MIN_COL_CH);
+  for (const row of block.rows) {
+    row.cells.forEach((cell, c) => {
+      if (c >= n) return;
+      const text = plainText(cell);
+      ideal[c] = Math.max(ideal[c], Math.min(MAX_IDEAL_CH, chWidth(text)));
+      min[c] = Math.max(min[c], Math.min(MAX_MIN_CH, longestPiece(text)));
+    });
+  }
+  const sizes = { min: min.map(m => m + CELL_PAD_CH), ideal: ideal.map((w, c) => Math.max(w, min[c]) + CELL_PAD_CH) };
+  columnSizes.set(block, sizes);
+  return sizes;
+}
+
+/**
+ * One column's share of the row, the same in every row: space goes by content (or the table's own
+ * `widths`), and no column goes below its widest word, so a cell is never clipped while others have room.
+ */
 export function tableColumnFlex(block: TableBlock, column: number) {
-  return { flexGrow: block.widths?.[column] ?? 1, flexBasis: 0 };
+  const sizes = tableColumnSizes(block);
+  return { flexGrow: block.widths?.[column] ?? sizes.ideal[column] ?? 1, flexBasis: 0, flexShrink: 0, minWidth: `${sizes.min[column] ?? MIN_COL_CH}ch` as const };
+}
+
+/** The width under which the table scrolls sideways: every column at its minimum. */
+export function tableMinWidth(block: TableBlock): `${number}ch` {
+  return `${tableColumnSizes(block).min.reduce((a, b) => a + b, 0)}ch`;
 }
 
 /** Renders a single `JinshuBlock` with contextual spacing and error isolation. */
@@ -710,9 +765,10 @@ export function renderBlock(
       const c = block as CalloutBlock;
       inner = (
         <view id={blockDomId(c.id, ctx)} data-testid={blockTestId(c.id, ctx)} className={cx(r.callout.base, r.callout.tone[c.tone])}>
-          {c.title && c.title.length > 0 && (
-            <text className={r.callout.title[c.tone]}>{renderInlineRuns(c.title, inlineOpts)}</text>
-          )}
+          {/* Without a title the tone names itself, so a tint is never the only sign of what it is. */}
+          <text className={r.callout.title[c.tone]}>
+            {c.title && c.title.length > 0 ? renderInlineRuns(c.title, inlineOpts) : jinshuText('@jinshu.calloutTone', { tone: c.tone })}
+          </text>
           <view className={r.callout.body}>
             {c.blocks.map((child, idx) => renderBlock(child, idx > 0 ? c.blocks[idx - 1].type : null, ctx))}
           </view>
@@ -772,7 +828,7 @@ export function renderBlock(
     case 'math': {
       const m = block as MathBlock;
       inner = (
-        <view id={blockDomId(m.id, ctx)} data-testid={blockTestId(m.id, ctx)} aria-label={m.latex} className={r.math.root}>
+        <view id={blockDomId(m.id, ctx)} data-testid={blockTestId(m.id, ctx)} aria-label={m.latex || undefined} className={r.math.root}>
           <scroll className={r.math.scroll}>
             <view className={r.math.inner}>
               <MathFormulaView latex={m.latex} />
@@ -786,7 +842,7 @@ export function renderBlock(
     case 'table': {
       const t = block as TableBlock;
       inner = (
-        <TableFrame blockId={t.id} columns={tableColumnCount(t)} id={blockDomId(t.id, ctx)} testId={blockTestId(t.id, ctx)}>
+        <TableFrame table={t} id={blockDomId(t.id, ctx)} testId={blockTestId(t.id, ctx)}>
           {t.rows.map((row, rIdx) => {
             const isHeader = rIdx === 0 && t.headerRow === true;
             return (

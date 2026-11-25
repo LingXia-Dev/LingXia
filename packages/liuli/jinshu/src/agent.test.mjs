@@ -244,7 +244,7 @@ describe('Shared sources', () => {
     const res = await toolsOver({ w3: source }).call('jinshu_edit', { doc: 'w3', base: 1, ops: [{ op: 'edit', id: 'p2', find: 'Second', replace: 'Later' }] });
     assert.equal(res.status, 'ok');
     const next = fakeChannel();
-    source.serve(next);
+    source.serve(next, { doc: 'w3', role: 'editor' });
     const away = next.sent.find(m => m.t === 'agentBatches');
     assert.equal(away.batches[0].away, true);
     assert.deepEqual(away.batches[0].blockIds, ['p2']);

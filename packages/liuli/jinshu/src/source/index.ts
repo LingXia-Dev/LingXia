@@ -5,3 +5,4 @@ export * from './sources';
 export * from './tools';
 export * from './page';
 export type { AbortSignalLike } from './signal';
+export { formatProblemWords } from '../i18n/logicText';

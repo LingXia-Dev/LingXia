@@ -1,3 +1,5 @@
+import type { Problem } from '../schema/types';
+import { formatWordsWith } from './formatWords';
 import generated from './words';
 
 const words = generated as unknown as {
@@ -17,4 +19,9 @@ export function logicText(language: string, key: `@jinshu.${string}`, args?: Rea
   if (!message) throw Error(`UI_I18N: no package word '${key}'`);
   const text = message(args ?? {}, words.formatter(tag));
   return Array.isArray(text) ? text.join('') : String(text);
+}
+
+/** What `FORMAT` problems lose, as distinct words in `language` for a person ("Highlight", "Audio"); agents keep `message`. */
+export function formatProblemWords(problems: readonly Problem[], language: string): string[] {
+  return formatWordsWith(problems, (key, args) => logicText(language, key, args));
 }

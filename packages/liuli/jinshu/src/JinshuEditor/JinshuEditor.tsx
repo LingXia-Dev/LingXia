@@ -32,17 +32,23 @@ import {
   plainText,
   quote,
   table,
+  walkBlocks,
 } from '../schema/helpers';
 import { normalizeInlines } from '../schema/validate';
+import { checkMarkdownProfile, documentToMarkdown, formatAllows, markdownToBlocks, markdownToDocument } from '../schema/index';
 import type {
   AnyJinshuOp,
   BlockInput,
+  CalloutTone,
   ConflictItem,
   FilePolicy,
   HeadingLevel,
   HistoryEntry,
+  Inline,
+  Position,
   JinshuBlock,
   JinshuDocument,
+  JinshuFormat,
   MediaPolicy,
   NoteWord,
   OpBatch,
@@ -56,6 +62,7 @@ import { useJinshuChannelContext, type JinshuChannelAction } from '../internal/c
 import { MathFormulaView } from '../internal/MathView';
 import type { JinshuNavHandle } from '../internal/nav';
 import { jinshuViewRecipe as r } from '../JinshuView/JinshuView.recipe';
+import { formatLineWith, formatWordsWith } from '../i18n/formatWords';
 import { jinshuText } from '../i18n/text';
 import {
   CalloutBlockEditor,
@@ -111,6 +118,8 @@ export interface JinshuEditorProps {
   readonly nav?: JinshuNavHandle;
   /** A top-level block to open at, once: where an agent's change landed (a tool result's `page`). */
   readonly openAt?: string;
+  /** The document's file format; on a live `channel` the source's. In `markdown` the editor offers only what Markdown holds. */
+  readonly format?: JinshuFormat;
   /** As on JinshuView. */
   readonly filePolicy?: FilePolicy;
   /** As on JinshuView. */
@@ -139,6 +148,7 @@ interface EditorLiveState {
   readonly canRedo: boolean;
   readonly filePolicy?: FilePolicy;
   readonly hasMedia?: boolean;
+  readonly format?: JinshuFormat;
   /** Upload progress by block id, 0–1, while a picked file uploads. */
   readonly uploads?: Readonly<Record<string, number>>;
   readonly saveRequest?: { readonly origin: Origin; readonly summary?: string } | null;
@@ -185,6 +195,106 @@ const SLASH_ITEMS: readonly SlashItem[] = [
   { id: 'divider', keywords: 'hr divider line 分割线 fgx', badge: '—' },
 ];
 
+/** The callout tone each `> [!KIND]` line start makes. */
+const ALERT_TONES: Readonly<Record<string, CalloutTone>> = { note: 'info', important: 'info', tip: 'tip', warning: 'warning', caution: 'danger' };
+
+/** A row of cells between pipes, `| a | b |`, read as a table's header. */
+function pipeRow(text: string): string[] | null {
+  const m = /^\|(.+)\|\s*$/.exec(text.trim());
+  if (!m) return null;
+  const cells = m[1].split('|').map(c => c.trim());
+  return cells.length >= 1 && cells.length <= 12 ? cells : null;
+}
+
+const CJK = /[\u3040-\u30ff\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff\uac00-\ud7af]/g;
+
+/** How long `text` is: a CJK character counts as one, other text by runs of letters and digits. */
+function countWords(text: string): number {
+  const cjk = text.match(CJK)?.length ?? 0;
+  const words = text.replace(CJK, ' ').match(/[\p{L}\p{N}][\p{L}\p{N}\p{M}'’_-]*/gu)?.length ?? 0;
+  return cjk + words;
+}
+
+// Counted once per revision (or per document object without a channel), not on every render.
+const wordCounts = new Map<string, { readonly stamp: unknown; readonly count: number }>();
+function cachedWords(key: string, stamp: unknown, doc: JinshuDocument): number {
+  const hit = wordCounts.get(key);
+  if (hit && hit.stamp === stamp) return hit.count;
+  const count = documentWords(doc);
+  wordCounts.set(key, { stamp, count });
+  return count;
+}
+
+/** The document's readable text, block by block; code, math and media metadata do not count. */
+function documentWords(doc: JinshuDocument): number {
+  let total = 0;
+  const runs = (inlines: readonly Inline[] | undefined) => {
+    if (inlines) total += countWords(plainText(inlines));
+  };
+  walkBlocks(doc.blocks, block => {
+    if (block.type === 'paragraph' || block.type === 'heading') runs(block.runs);
+    else if (block.type === 'list') for (const item of block.items) runs(item.runs);
+    else if (block.type === 'table') for (const row of block.rows) for (const cell of row.cells) runs(cell);
+    else if (block.type === 'callout') runs(block.title);
+    else if (block.type === 'details') runs(block.summary);
+  });
+  return total;
+}
+
+/**
+ * The ops that turn `prev` into `next`, block by block: an unchanged block is left alone, so an agent's
+ * work elsewhere and the history stay as they were.
+ */
+function sourceEditOps(prev: JinshuDocument, next: JinshuDocument): AnyJinshuOp[] {
+  const ops: AnyJinshuOp[] = [];
+  if ((next.title ?? '') !== (prev.title ?? '')) ops.push({ op: 'setMeta', title: next.title ?? '' });
+  const frontMatter = (d: JinshuDocument) => (d.meta as { frontMatter?: unknown } | undefined)?.frontMatter;
+  if (frontMatter(next) !== frontMatter(prev)) ops.push({ op: 'setMeta', meta: { frontMatter: frontMatter(next) } });
+  const before = new Map(prev.blocks.map(b => [b.id, b]));
+  const kept = new Set(next.blocks.map(b => b.id).filter(id => before.has(id)));
+  const order = prev.blocks.map(b => b.id).filter(id => kept.has(id));
+  for (const b of prev.blocks) if (!kept.has(b.id)) ops.push({ op: 'delete', id: b.id });
+  let anchor: string | null = null;
+  for (const block of next.blocks) {
+    const at: Position = anchor ? { after: anchor } : { start: 'doc' };
+    const old = before.get(block.id);
+    if (!old) {
+      ops.push({ op: 'insert', at, blocks: [block] });
+      order.splice(anchor ? order.indexOf(anchor) + 1 : 0, 0, block.id);
+    } else {
+      const want = anchor ? order.indexOf(anchor) + 1 : 0;
+      if (order.indexOf(block.id) !== want) {
+        ops.push({ op: 'move', id: block.id, to: at });
+        order.splice(order.indexOf(block.id), 1);
+        order.splice(anchor ? order.indexOf(anchor) + 1 : 0, 0, block.id);
+      }
+      if (JSON.stringify(old) !== JSON.stringify(block)) ops.push({ op: 'replace', id: block.id, blocks: [block] });
+    }
+    anchor = block.id;
+  }
+  return ops;
+}
+
+interface SourceState {
+  readonly text: string;
+  /** The document and revision source mode started from: the person's edits are measured against them. */
+  readonly entered: JinshuDocument;
+  readonly enteredText: string;
+  readonly base: number;
+  /** Waiting for the source's file text. */
+  readonly fetching?: boolean;
+  /** What parsing could not keep exactly, as words, shown before applying. */
+  readonly warnings?: readonly string[];
+  readonly warningCount?: number;
+  /** The batch sent on leaving, until the source answers. */
+  readonly pending?: string;
+  /** The source refused the batch: someone changed those blocks meanwhile (`stale`), or what it could not hold. */
+  readonly refused?: { readonly stale: boolean; readonly words: readonly string[] };
+}
+
+/** Fields a new block may carry that some formats cannot hold. */
+const OPTIONAL_FIELDS = ['title', 'caption', 'filename', 'size', 'width', 'height'] as const;
+
 /** Every type a text block can turn into, in one place for the format bar and the block handle. */
 const TURN_INTO: readonly { readonly id: string; readonly badge: string }[] = [
   { id: 'paragraph', badge: 'T' },
@@ -202,8 +312,8 @@ const TURN_INTO: readonly { readonly id: string; readonly badge: string }[] = [
 
 /** A block type's name, as the slash menu, insert panel and turn-into menu show it. During render only. */
 function blockTypeLabel(id: string): string {
-  if (/^h\d$/.test(id)) return jinshuText('@jinshu.editor.blockType.heading', { level: Number(id.slice(1)) });
-  return jinshuText(`@jinshu.editor.blockType.${id}`);
+  if (/^h\d$/.test(id)) return jinshuText('@jinshu.blockType', { type: 'heading', level: Number(id.slice(1)) });
+  return jinshuText('@jinshu.blockType', { type: id });
 }
 
 /** A history note the reader words in their own language. */
@@ -287,8 +397,16 @@ function isInlineTextBlock(block: JinshuBlock): boolean {
   return block.type === 'paragraph' || block.type === 'heading' || block.type === 'math';
 }
 
-function shorthandOf(block: JinshuBlock): string {
-  if (block.type === 'paragraph' || block.type === 'heading') return inlinesToShorthand(block.runs);
+/** The block type a menu kind makes: `h2` is a heading, `task` a list. */
+function blockOfKind(kind: string): string {
+  if (/^h\d$/.test(kind)) return 'heading';
+  return kind === 'bullet' || kind === 'ordered' || kind === 'task' ? 'list' : kind;
+}
+
+type Dialect = { readonly dialect: 'jinshu' | 'markdown' };
+
+function shorthandOf(block: JinshuBlock, dialect: Dialect): string {
+  if (block.type === 'paragraph' || block.type === 'heading') return inlinesToShorthand(block.runs, dialect);
   if (block.type === 'math') return block.latex;
   return '';
 }
@@ -453,12 +571,15 @@ function PaletteButton({ badge, label, onClick }: { readonly badge: string; read
 function InsertBlockPanel({
   nameKey,
   hasMedia,
+  allows,
   onPickBlock,
   onPickMedia,
   onPickTable,
 }: {
   readonly nameKey: string;
   readonly hasMedia: boolean;
+  /** Whether the document's format holds a block of this menu kind. */
+  readonly allows: (kind: string) => boolean;
   readonly onPickBlock: (kind: string) => void;
   readonly onPickMedia: (kind: MediaKind) => void;
   readonly onPickTable: (rows: number, cols: number) => void;
@@ -466,8 +587,8 @@ function InsertBlockPanel({
   const hoverGrid = useLocal<{ readonly r: number; readonly c: number }>(`jinshu-tbl-pick-${nameKey}`, { r: 2, c: 3 });
   const gr = hoverGrid.value.r;
   const gc = hoverGrid.value.c;
-  const blocks = SLASH_ITEMS.filter(item => !item.media && item.id !== 'table' && item.id !== 'paragraph');
-  const media = SLASH_ITEMS.filter(item => item.media);
+  const blocks = SLASH_ITEMS.filter(item => !item.media && item.id !== 'table' && item.id !== 'paragraph' && allows(item.id));
+  const media = SLASH_ITEMS.filter(item => item.media && allows(item.id));
 
   return (
     <view className={e.insertPanel.base}>
@@ -477,7 +598,7 @@ function InsertBlockPanel({
           {blocks.map(item => <PaletteButton key={item.id} badge={item.badge} label={blockTypeLabel(item.id)} onClick={() => onPickBlock(item.id)} />)}
         </view>
       </view>
-      {hasMedia && (
+      {hasMedia && media.length > 0 && (
         <view className={e.insertPanel.section}>
           <text className={e.insertPanel.heading}>{jinshuText('@jinshu.editor.insert.media')}</text>
           <view className={e.insertPanel.grid}>
@@ -487,7 +608,7 @@ function InsertBlockPanel({
       )}
       <view className={e.tablePicker.base}>
         <view className={e.tablePicker.header}>
-          <text className={e.tablePicker.title}>{jinshuText('@jinshu.editor.blockType.table')}</text>
+          <text className={e.tablePicker.title}>{blockTypeLabel('table')}</text>
           <text className={e.tablePicker.size}>{`${gr} × ${gc}`}</text>
         </view>
         <view className={e.tablePicker.grid}>
@@ -517,7 +638,7 @@ function InsertBlockPanel({
  * Publication-grade block editor & AI co-authoring workspace:
  * - Sticky single-row icon formatting ribbon (`isToolbarSticky`), zero layout shift on block focus.
  * - Floating `<Popover>` / `<DropdownMenu>` for block handles (`+` / `⋮`), Link insertion, Formula live preview, History, and `+ Add` Table Grid Picker.
- * - Direct in-place editing with auto-growing `<textarea maxRows>`, `quiet-md`-style table edge bars & danger preview, and in-place AI suggestion diff review.
+ * - Direct in-place editing with auto-growing `<textarea maxRows>`, table edge bars with a danger preview, and in-place AI suggestion diff review.
  */
 export function JinshuEditor(props: JinshuEditorProps) {
   const { env } = useView();
@@ -561,6 +682,9 @@ export function JinshuEditor(props: JinshuEditorProps) {
   // The selected block shows its inspector only after "properties".
   const inspecting = useLocal<boolean>(`jinshu-ed-inspect-${docKey}`, false);
   const previewId = useLocal<string | null>(`jinshu-ed-preview-${docKey}`, null);
+  // Source mode: the whole document as one Markdown text, parsed back on leaving.
+  // `useLocal` cannot type a document (open records), so the state is held as `any` and read through SourceState.
+  const source = useLocal<any>(`jinshu-ed-source-${docKey}`, null) as { value: SourceState | null; set(next: SourceState | null): void };
 
   // Link & Equation popover state (triggers own open/close via native popoverTarget; incrementing epoch closes after insert)
   const popEpoch = useLocal<number>(`jinshu-ed-pop-ep-${docKey}`, 0);
@@ -571,7 +695,7 @@ export function JinshuEditor(props: JinshuEditorProps) {
 
   const chan = activeChannel
     ? useChannel(`jinshu-editor-${docKey}`, activeChannel, {
-        params: { doc: docKey },
+        params: { doc: docKey, role: 'editor' },
         onData(msg: ChannelServerMsg) {
           const cur = live.value as EditorLiveState;
           if (msg.t === 'snapshot') {
@@ -581,6 +705,7 @@ export function JinshuEditor(props: JinshuEditorProps) {
               revision: msg.revision,
               filePolicy: msg.policy?.filePolicy ?? cur.filePolicy,
               hasMedia: msg.policy?.hasMedia ?? cur.hasMedia,
+              format: msg.policy?.format ?? cur.format,
             });
           } else if (msg.t === 'suggestions') {
             live.set({ ...cur, suggestions: msg.suggestions as Suggestion[] });
@@ -616,6 +741,15 @@ export function JinshuEditor(props: JinshuEditorProps) {
             if (msg.ratio >= 1) delete uploads[msg.blockId];
             else uploads[msg.blockId] = msg.ratio;
             live.set({ ...cur, uploads });
+          } else if (msg.t === 'file' && source.value?.fetching) {
+            source.set({ text: msg.text, entered: cur.doc as JinshuDocument, enteredText: msg.text, base: msg.revision });
+          } else if (msg.t === 'ack' && source.value?.pending === msg.batchId) {
+            source.set(null);
+          } else if (msg.t === 'reject' && source.value?.pending === msg.batchId) {
+            // The text stays: the person decides what to do with it.
+            const stale = msg.problems.some(p => p.code === 'STALE_BLOCK');
+            source.set({ ...source.value, pending: undefined, refused: { stale, words: formatWordsWith(msg.problems, jinshuText) } });
+            if (msg.snapshot) live.set({ ...cur, doc: msg.snapshot as JinshuDocument, revision: msg.revision ?? cur.revision });
           } else if (msg.t === 'reject' && msg.snapshot) {
             live.set({
               ...cur,
@@ -645,32 +779,39 @@ export function JinshuEditor(props: JinshuEditorProps) {
   const stickyToolbar = props.isToolbarSticky !== false;
   const isDesktop = env.pointer === 'fine' && env.sizeClass === 'regular';
   const isCoarse = env.pointer === 'coarse';
+  const docFormat: JinshuFormat = props.format ?? liveState.format ?? 'json';
+  const allows = (what: Parameters<typeof formatAllows>[1]) => formatAllows(docFormat, what);
+  const dialect: Dialect = { dialect: docFormat === 'markdown' ? 'markdown' : 'jinshu' };
+
+  /** A new block without the fields the format cannot hold, such as a callout's title in Markdown. */
+  const fitFormat = (blk: BlockInput): BlockInput => {
+    if (docFormat === 'json') return blk;
+    const out: Record<string, unknown> = { ...blk };
+    for (const field of OPTIONAL_FIELDS) if (field in out && !allows({ block: blk.type, field })) delete out[field];
+    return out as unknown as BlockInput;
+  };
 
   const sendMsg = (msg: ChannelClientMsg) => {
     chan?.send(msg);
   };
 
-  const dispatchOps = (ops: readonly AnyJinshuOp[]) => {
-    if (readOnly || ops.length === 0) return;
+  /** Sends one human batch; returns its id on a live channel. */
+  const dispatchOps = (ops: readonly AnyJinshuOp[], base = liveState.revision): string | undefined => {
+    if (readOnly || ops.length === 0) return undefined;
     if (chan) {
-      const batch: OpBatch = {
-        batchId: newBlockId('ed'),
-        origin: HUMAN_ORIGIN,
-        base: liveState.revision,
-        ops,
-        mode: 'direct',
-      };
+      const batch: OpBatch = { batchId: newBlockId('ed'), origin: HUMAN_ORIGIN, base, ops, mode: 'direct' };
       sendMsg({ t: 'ops', batch });
-    } else {
-      props.onOps?.(ops);
+      return batch.batchId;
     }
+    props.onOps?.(ops);
+    return undefined;
   };
 
   const commitActiveDraft = (block: JinshuBlock, nextValue: string) => {
-    const prevValue = shorthandOf(block);
+    const prevValue = shorthandOf(block, dialect);
     if (nextValue === prevValue) return;
     if (block.type === 'paragraph' || block.type === 'heading') {
-      const runs = shorthandToInlines(nextValue, { inHeading: block.type === 'heading', existingAtoms: atomsIn(block.runs) });
+      const runs = shorthandToInlines(nextValue, { inHeading: block.type === 'heading', existingAtoms: atomsIn(block.runs), ...dialect });
       // A draft that reads back to the same runs (e.g. only escapes differ) is no edit.
       if (JSON.stringify(normalizeInlines(runs)) === JSON.stringify(normalizeInlines(block.runs))) return;
       dispatchOps([
@@ -706,7 +847,7 @@ export function JinshuEditor(props: JinshuEditorProps) {
     slashIndex.set(0);
     selectBlock(null);
     activeId.set(block.id);
-    draftText.set(shorthandOf(block));
+    draftText.set(shorthandOf(block, dialect));
     sendMsg({ t: 'focus', blockIds: [block.id] });
   };
 
@@ -726,7 +867,29 @@ export function JinshuEditor(props: JinshuEditorProps) {
     sendMsg({ t: 'media', action: 'pick', kind, at: afterId ? { after: afterId } : { end: 'doc' }, ...(replacingId ? { replacingId } : {}) });
   };
 
+  /**
+   * Enter never reaches the field, so a line break arriving as input is a paste. Text that reads as
+   * several blocks, or as one that is not a paragraph, replaces the block in one undo step.
+   */
+  const pastedBlocks = (block: JinshuBlock, next: string): boolean => {
+    if (!next.includes('\n') || (block.type !== 'paragraph' && block.type !== 'heading')) return false;
+    const blocks = markdownToBlocks(next, { format: docFormat });
+    if (blocks.length === 0 || (blocks.length === 1 && blocks[0].type === 'paragraph')) return false;
+    // The block being edited becomes the first of them, so its id and the person's place survive.
+    const placed = blocks.map((b, i) => (i === 0 ? { ...b, id: block.id } : b));
+    dispatchOps([{ op: 'replace', id: block.id, blocks: placed, noteWord: note('@jinshu.note.paste', { count: placed.length }) }]);
+    const last = placed[placed.length - 1];
+    if (last.type === 'paragraph' || last.type === 'heading') {
+      activeId.set(last.id);
+      draftText.set(shorthandOf(last, dialect));
+    } else {
+      activeId.set(null);
+    }
+    return true;
+  };
+
   const handleLiveInput = (block: JinshuBlock, next: string) => {
+    if (pastedBlocks(block, next)) return;
     if (block.type === 'paragraph' && next.startsWith('/')) {
       draftText.set(next);
       slashAfterId.set(block.id);
@@ -746,14 +909,15 @@ export function JinshuEditor(props: JinshuEditorProps) {
         const level = hMatch[1].length as HeadingLevel;
         const rest = hMatch[2];
         dispatchOps([
-          { op: 'replace', id: block.id, blocks: [{ id: block.id, type: 'heading', level, runs: shorthandToInlines(rest, { inHeading: true, existingAtoms: atomsIn(block.runs) }) }], noteWord: note('@jinshu.note.turnInto', { kind: 'heading', level }) },
+          { op: 'replace', id: block.id, blocks: [{ id: block.id, type: 'heading', level, runs: shorthandToInlines(rest, { inHeading: true, existingAtoms: atomsIn(block.runs), ...dialect }) }], noteWord: note('@jinshu.note.turnInto', { kind: 'heading', level }) },
         ]);
         draftText.set(rest);
         return;
       }
-      if (next.startsWith('- [ ] ') || next.startsWith('[] ')) {
-        const rest = next.replace(/^(?:- \[ \] |\[\] )/, '');
-        dispatchOps([{ op: 'replace', id: block.id, blocks: [list('task', [listItem(rest || seed.task, { checked: false })], { id: block.id })], noteWord: note('@jinshu.note.turnInto', { kind: 'task' }) }]);
+      const task = /^(?:- \[( |x|X)\] |\[\] )(.*)$/.exec(next);
+      if (task) {
+        const checked = task[1] === 'x' || task[1] === 'X';
+        dispatchOps([{ op: 'replace', id: block.id, blocks: [list('task', [listItem(task[2] || seed.task, { checked })], { id: block.id })], noteWord: note('@jinshu.note.turnInto', { kind: 'task' }) }]);
         activeId.set(null);
         return;
       }
@@ -763,19 +927,34 @@ export function JinshuEditor(props: JinshuEditorProps) {
         activeId.set(null);
         return;
       }
-      if (next.startsWith('1. ')) {
-        const rest = next.slice(3);
-        dispatchOps([{ op: 'replace', id: block.id, blocks: [list('ordered', [listItem(rest || seed.firstItem)], { id: block.id })], noteWord: note('@jinshu.note.turnInto', { kind: 'ordered' }) }]);
+      const ordered = /^(\d{1,4})[.)] (.*)$/.exec(next);
+      if (ordered) {
+        const start = Number(ordered[1]);
+        const blk = list('ordered', [listItem(ordered[2] || seed.firstItem)], { id: block.id, ...(start !== 1 ? { start } : {}) });
+        dispatchOps([{ op: 'replace', id: block.id, blocks: [blk], noteWord: note('@jinshu.note.turnInto', { kind: 'ordered' }) }]);
         activeId.set(null);
         return;
       }
-      if (next.startsWith('!> ')) {
-        const rest = next.slice(3);
-        dispatchOps([{ op: 'replace', id: block.id, blocks: [callout('info', [paragraph(rest || seed.calloutText)], { id: block.id, title: seed.calloutTitle })], noteWord: note('@jinshu.note.turnInto', { kind: 'callout' }) }]);
+      if (next === '$$') {
+        dispatchOps([{ op: 'replace', id: block.id, blocks: [mathBlock('', block.id)], noteWord: note('@jinshu.note.turnInto', { kind: 'math' }) }]);
+        draftText.set('');
+        return;
+      }
+      const alert = /^> \[!(note|tip|important|warning|caution)\] (.*)$/i.exec(next);
+      if (alert) {
+        const tone = ALERT_TONES[alert[1].toLowerCase()];
+        dispatchOps([{ op: 'replace', id: block.id, blocks: [callout(tone, [paragraph(alert[2] || seed.calloutText)], { id: block.id })], noteWord: note('@jinshu.note.turnInto', { kind: 'callout' }) }]);
         activeId.set(null);
         return;
       }
-      if (next.startsWith('> ')) {
+      if (docFormat === 'json' && next.startsWith('!> ')) {
+        const rest = next.slice(3);
+        dispatchOps([{ op: 'replace', id: block.id, blocks: [fitFormat(callout('info', [paragraph(rest || seed.calloutText)], { id: block.id, title: seed.calloutTitle }))], noteWord: note('@jinshu.note.turnInto', { kind: 'callout' }) }]);
+        activeId.set(null);
+        return;
+      }
+      // `> [!NOTE]` is typed one key at a time: wait while the text after `> ` could still become it.
+      if (next.startsWith('> ') && !/^(?:\[(?:!\w*\]?)?)?$/.test(next.slice(2))) {
         const rest = next.slice(2);
         dispatchOps([{ op: 'replace', id: block.id, blocks: [quote([paragraph(rest || seed.quote)], block.id)], noteWord: note('@jinshu.note.turnInto', { kind: 'quote' }) }]);
         activeId.set(null);
@@ -799,7 +978,8 @@ export function JinshuEditor(props: JinshuEditorProps) {
     draftText.set(next);
   };
 
-  const insertBlockAt = (afterBlockId: string | null, blk: BlockInput, replaceTarget = false) => {
+  const insertBlockAt = (afterBlockId: string | null, input: BlockInput, replaceTarget = false) => {
+    const blk = fitFormat(input);
     if (replaceTarget && afterBlockId) {
       dispatchOps([{ op: 'replace', id: afterBlockId, blocks: [blk], noteWord: note('@jinshu.note.turnInto', kindOf(blk)) }]);
       if (blk.type === 'paragraph' || blk.type === 'heading' || blk.type === 'math') {
@@ -856,12 +1036,13 @@ export function JinshuEditor(props: JinshuEditorProps) {
       commitActiveDraft(blk, next);
       return;
     }
-    const nextP = paragraph(shorthandToInlines(snippet));
+    const nextP = paragraph(shorthandToInlines(snippet, dialect));
     dispatchOps([{ op: 'insert', at: { end: 'doc' }, blocks: [nextP], noteWord: note('@jinshu.note.insertText') }]);
   };
 
   const blockCb: BlockEditorCallbacks = {
     testScope: props['data-testid'],
+    format: docFormat,
     dispatchOps,
     onFocusBlock(blockId) {
       activeId.set(blockId);
@@ -870,10 +1051,8 @@ export function JinshuEditor(props: JinshuEditorProps) {
     onBlurBlock() {
       sendMsg({ t: 'focus', blockIds: [] });
     },
-    onCreateParagraphAfter(afterId) {
-      const nextP = paragraph('');
-      dispatchOps([{ op: 'insert', at: { after: afterId }, blocks: [nextP] }]);
-      activeId.set(nextP.id);
+    onEditParagraph(blockId) {
+      activeId.set(blockId);
       draftText.set('');
     },
   };
@@ -922,6 +1101,7 @@ export function JinshuEditor(props: JinshuEditorProps) {
   const uploads = liveState.uploads ?? {};
   const filteredSlash = SLASH_ITEMS.filter(item => {
     if (item.media && !hasMedia) return false;
+    if (!allows({ block: blockOfKind(item.id) })) return false;
     const q = slashQuery.value.toLowerCase();
     return q === '' || blockTypeLabel(item.id).toLowerCase().includes(q) || item.keywords.includes(q);
   });
@@ -945,6 +1125,8 @@ export function JinshuEditor(props: JinshuEditorProps) {
           : jinshuText('@jinshu.editor.save.saved');
 
   const hasGutter = !readOnly && isDesktop;
+  // Quiet, and left out on a phone, where the toolbar has no room for it.
+  const wordCount = doc && isDesktop ? <text className={e.wordCount.base}>{jinshuText('@jinshu.editor.wordCount', { count: cachedWords(docKey, activeChannel ? liveState.revision : doc, doc) })}</text> : null;
 
   // AI suggestions grouped under anchor block
   const sugByBlock = new Map<string, Suggestion[]>();
@@ -1110,7 +1292,8 @@ export function JinshuEditor(props: JinshuEditorProps) {
   const turnIntoValue = currentTurnInto(activeBlock);
   const canTurnInto = turnIntoValue !== null;
   const turnIntoLabel = blockTypeLabel(TURN_INTO.find(t => t.id === turnIntoValue)?.id ?? 'paragraph');
-  const turnIntoItems: DropdownMenuEntry[] = TURN_INTO.map(t => ({
+  const turnIntoKinds = TURN_INTO.filter(t => allows({ block: blockOfKind(t.id) }));
+  const turnIntoItems: DropdownMenuEntry[] = turnIntoKinds.map(t => ({
     id: `turn-${t.id}`,
     label: blockTypeLabel(t.id),
     ...(t.id === turnIntoValue ? { icon: 'check' as const } : {}),
@@ -1119,7 +1302,7 @@ export function JinshuEditor(props: JinshuEditorProps) {
       commitActiveDraft(activeBlock, draftText.value);
       const op = turnIntoOp(activeBlock, t.id);
       if (op) dispatchOps([op]);
-      if (t.id === 'paragraph' || t.id.startsWith('h')) draftText.set(shorthandOf(activeBlock));
+      if (t.id === 'paragraph' || t.id.startsWith('h')) draftText.set(shorthandOf(activeBlock, dialect));
       else activeId.set(null);
     },
   }));
@@ -1139,6 +1322,7 @@ export function JinshuEditor(props: JinshuEditorProps) {
     <InsertBlockPanel
       nameKey={key}
       hasMedia={hasMedia}
+      allows={kind => allows({ block: blockOfKind(kind) })}
       onPickBlock={kind => {
         insertBlockAt(afterId, makeBlockForSlash(kind, seed));
         gutterAddId.set(null);
@@ -1223,7 +1407,7 @@ export function JinshuEditor(props: JinshuEditorProps) {
     <Popover
       key={`math-pop-${popEpoch.value}`}
       label={jinshuText('@jinshu.editor.math.insert')}
-      title={jinshuText('@jinshu.editor.blockType.math')}
+      title={blockTypeLabel('math')}
       content={
         <view className={e.math.base}>
           <view className={e.math.preview}>
@@ -1243,7 +1427,7 @@ export function JinshuEditor(props: JinshuEditorProps) {
               label={jinshuText('@jinshu.editor.math.inline')}
               size="sm"
               variant="secondary"
-              isDisabled={!canFormatInline}
+              isDisabled={!canFormatInline || !allows({ mark: 'math' })}
               onClick={() => {
                 if (mathDraft.value.trim()) insertInlineSnippet(`$${mathDraft.value.trim()}$`);
                 popEpoch.set(popEpoch.value + 1);
@@ -1262,7 +1446,7 @@ export function JinshuEditor(props: JinshuEditorProps) {
         </view>
       }
     >
-      <IconButton label={jinshuText('@jinshu.editor.blockType.math')} icon={editorIcons.math} size="sm" />
+      <IconButton label={blockTypeLabel('math')} icon={editorIcons.math} size="sm" />
     </Popover>
   );
 
@@ -1273,23 +1457,25 @@ export function JinshuEditor(props: JinshuEditorProps) {
         <Button label={turnIntoLabel} endIcon="chevron-down" size="sm" variant="ghost" isDisabled={!canTurnInto} data-testid={props['data-testid'] && `${props['data-testid']}-turn-into`} />
       </DropdownMenu>
       <ToolbarSep />
-      {markButton('B', jinshuText('@jinshu.editor.format.bold'), '**', e.markGlyph.mark.bold)}
-      {markButton('I', jinshuText('@jinshu.editor.format.italic'), '*', e.markGlyph.mark.italic)}
-      {markButton('U', jinshuText('@jinshu.editor.format.underline'), '++', e.markGlyph.mark.underline)}
-      {markButton('S', jinshuText('@jinshu.editor.format.strike'), '~~', e.markGlyph.mark.strike)}
-      {markButton('</>', jinshuText('@jinshu.editor.format.code'), '`', e.markGlyph.mark.code)}
-      <IconButton
-        label={jinshuText('@jinshu.editor.format.highlight')}
-        icon={editorIcons.highlight}
-        size="sm"
-        isDisabled={!canFormatInline}
-        variant={canFormatInline && hasTrailingShorthandMark(draftText.value, '==') ? 'tonal' : 'ghost'}
-        onClick={() => applyFormatButton('==')}
-      />
-      {linkPopover}
+      {allows({ mark: 'bold' }) && markButton('B', jinshuText('@jinshu.editor.format.bold'), '**', e.markGlyph.mark.bold)}
+      {allows({ mark: 'italic' }) && markButton('I', jinshuText('@jinshu.editor.format.italic'), '*', e.markGlyph.mark.italic)}
+      {allows({ mark: 'underline' }) && markButton('U', jinshuText('@jinshu.editor.format.underline'), '++', e.markGlyph.mark.underline)}
+      {allows({ mark: 'strike' }) && markButton('S', jinshuText('@jinshu.editor.format.strike'), '~~', e.markGlyph.mark.strike)}
+      {allows({ mark: 'code' }) && markButton('</>', jinshuText('@jinshu.editor.format.code'), '`', e.markGlyph.mark.code)}
+      {allows({ mark: 'highlight' }) && (
+        <IconButton
+          label={jinshuText('@jinshu.editor.format.highlight')}
+          icon={editorIcons.highlight}
+          size="sm"
+          isDisabled={!canFormatInline}
+          variant={canFormatInline && hasTrailingShorthandMark(draftText.value, '==') ? 'tonal' : 'ghost'}
+          onClick={() => applyFormatButton('==')}
+        />
+      )}
+      {allows({ mark: 'link' }) && linkPopover}
       <ToolbarSep />
-      {markButton('x²', jinshuText('@jinshu.editor.format.superscript'), '^', e.markGlyph.mark.superscript)}
-      {markButton('x₂', jinshuText('@jinshu.editor.format.subscript'), '~', e.markGlyph.mark.subscript)}
+      {allows({ mark: 'script' }) && markButton('x²', jinshuText('@jinshu.editor.format.superscript'), '^', e.markGlyph.mark.superscript)}
+      {allows({ mark: 'script' }) && markButton('x₂', jinshuText('@jinshu.editor.format.subscript'), '~', e.markGlyph.mark.subscript)}
       {mathPopover}
     </>
   );
@@ -1297,6 +1483,44 @@ export function JinshuEditor(props: JinshuEditorProps) {
   const endEditing = () => {
     if (activeBlock) blurActive(activeBlock);
     else activeId.set(null);
+  };
+
+  const profileProblems = doc && docFormat === 'json' ? checkMarkdownProfile(doc).filter(p => p.severity === 'error') : [];
+  const canSource = doc !== null && !readOnly && profileProblems.length === 0;
+  const sourceState = source.value;
+  const enterSource = () => {
+    if (!doc) return;
+    endEditing();
+    selectBlock(null);
+    // A Markdown file comes from the source, as written: untouched blocks keep their bytes.
+    if (activeChannel && docFormat === 'markdown') {
+      source.set({ text: '', entered: doc, enteredText: '', base: liveState.revision, fetching: true });
+      sendMsg({ t: 'file' });
+      return;
+    }
+    const text = documentToMarkdown(doc).text;
+    source.set({ text, entered: doc, enteredText: text, base: liveState.revision });
+  };
+  /** Parses the text against the document it started from and sends only the blocks the person changed, as one batch. */
+  const leaveSource = (acceptWarnings = false) => {
+    const cur = source.value;
+    if (!cur) return;
+    if (cur.fetching || cur.text === cur.enteredText) {
+      source.set(null);
+      return;
+    }
+    const read = markdownToDocument(cur.text, { previous: cur.entered });
+    if (read.problems.length > 0 && !acceptWarnings) {
+      source.set({ ...cur, warnings: formatWordsWith(read.problems, jinshuText), warningCount: read.problems.length, refused: undefined });
+      return;
+    }
+    const ops = sourceEditOps(cur.entered, read.doc);
+    if (ops.length === 0) {
+      source.set(null);
+      return;
+    }
+    const pending = dispatchOps([{ ...ops[0], noteWord: note('@jinshu.note.source') }, ...ops.slice(1)], cur.base);
+    source.set(pending ? { ...cur, warnings: undefined, refused: undefined, pending } : null);
   };
   const previewImage = doc && previewId.value ? doc.blocks.find((b): b is Extract<JinshuBlock, { type: 'image' }> => b.id === previewId.value && b.type === 'image') : undefined;
   const isEditingText = !readOnly && activeBlock !== null && isInlineTextBlock(activeBlock) && activeBlock.type !== 'math';
@@ -1313,7 +1537,7 @@ export function JinshuEditor(props: JinshuEditorProps) {
           aria-label={jinshuText('@jinshu.editor.toolbar')}
           className={e.toolbar.base}
         >
-          <view className={e.toolbarInner.base}>
+          <view className={cx(e.toolbarInner.base, hasGutter && e.toolbarInner.gutter)}>
             <view className={e.toolbarStart.base}>
               {chan && (
                 <>
@@ -1325,6 +1549,19 @@ export function JinshuEditor(props: JinshuEditorProps) {
               <Popover key={`add-pop-${popEpoch.value}`} label={jinshuText('@jinshu.editor.insert')} content={insertPanel(`top-${docKey}`, activeBlock?.id ?? null)}>
                 <Button label={jinshuText('@jinshu.editor.insert')} startIcon="add" size="sm" variant="ghost" data-testid={props['data-testid'] && `${props['data-testid']}-toolbar-add`} />
               </Popover>
+              {doc && (
+                <IconButton
+                  label={jinshuText(sourceState ? '@jinshu.editor.source.leave' : '@jinshu.editor.source.enter')}
+                  icon={editorIcons.code}
+                  size="sm"
+                  variant={sourceState ? 'tonal' : 'ghost'}
+                  isDisabled={!sourceState && !canSource}
+                  disabledMessage={profileProblems.length > 0 ? jinshuText('@jinshu.editor.source.unavailable', { reason: formatLineWith(profileProblems, jinshuText) }) : undefined}
+                  isLoading={sourceState?.pending !== undefined}
+                  onClick={() => (sourceState ? leaveSource() : enterSource())}
+                  data-testid={props['data-testid'] && `${props['data-testid']}-source`}
+                />
+              )}
             </view>
 
             <view className={e.toolbarEnd.base}>
@@ -1364,6 +1601,7 @@ export function JinshuEditor(props: JinshuEditorProps) {
                   >
                     <IconButton label={jinshuText('@jinshu.editor.history')} icon="clock" size="sm" />
                   </Popover>
+                  {wordCount}
                   {isDirty || props.saveStatus === 'failed' || props.saveStatus === 'saving' ? (
                     <Button
                       label={props.saveStatus === 'saving' ? jinshuText('@jinshu.editor.save.saving') : props.saveStatus === 'failed' ? jinshuText('@jinshu.editor.save.retry') : jinshuText('@jinshu.editor.save')}
@@ -1380,6 +1618,7 @@ export function JinshuEditor(props: JinshuEditorProps) {
                   )}
                 </>
               )}
+              {!chan && wordCount}
             </view>
           </view>
         </view>
@@ -1551,6 +1790,42 @@ export function JinshuEditor(props: JinshuEditorProps) {
       {/* Calm, Centered Publication Canvas */}
       {doc === null ? (
         <text className={e.loading.base}>{jinshuText('@jinshu.editor.loading')}</text>
+      ) : sourceState?.fetching ? (
+        <text className={e.loading.base}>{jinshuText('@jinshu.editor.loading')}</text>
+      ) : sourceState ? (
+        <view className={e.source.base}>
+          {sourceState.warnings && (
+            <view role="status" className={e.source.notice}>
+              <text className={e.source.noticeTitle}>{jinshuText('@jinshu.editor.source.warnings', { count: sourceState.warningCount ?? sourceState.warnings.length })}</text>
+              {sourceState.warnings.length > 0 && <text className={e.source.noticeItem}>{sourceState.warnings.join(jinshuText('@jinshu.format.separator'))}</text>}
+              <view className={e.source.actions}>
+                <Button label={jinshuText('@jinshu.editor.source.keep')} size="sm" variant="ghost" onClick={() => source.set({ ...sourceState, warnings: undefined })} />
+                <Button label={jinshuText('@jinshu.editor.source.apply')} size="sm" variant="tonal" onClick={() => leaveSource(true)} />
+              </view>
+            </view>
+          )}
+          {sourceState.refused && (
+            <view role="status" className={e.source.notice}>
+              <text className={e.source.noticeTitle}>
+                {jinshuText(sourceState.refused.stale ? '@jinshu.editor.source.stale' : '@jinshu.editor.source.refused')}
+              </text>
+              {!sourceState.refused.stale && sourceState.refused.words.length > 0 && <text className={e.source.noticeItem}>{sourceState.refused.words.join(jinshuText('@jinshu.format.separator'))}</text>}
+              <view className={e.source.actions}>
+                <Button label={jinshuText('@jinshu.editor.source.discard')} size="sm" variant="ghost" onClick={() => source.set(null)} />
+              </view>
+            </view>
+          )}
+          <textarea
+            aria-label={jinshuText('@jinshu.editor.source.field')}
+            value={sourceState.text}
+            autoFocus
+            rows={16}
+            maxRows={80}
+            onInput={text => source.set({ ...sourceState, text, warnings: undefined, refused: undefined })}
+            onKeyDown={{ Escape: () => { leaveSource(); return true; } }}
+            className={e.source.field}
+          />
+        </view>
       ) : (
         <view className={e.canvas.base}>
           {/* Directly editable Document Title sharing the exact same gutter track as body blocks */}
@@ -1621,7 +1896,7 @@ export function JinshuEditor(props: JinshuEditorProps) {
                     {
                       type: 'group',
                       label: jinshuText('@jinshu.editor.blockMenu.turnInto'),
-                      items: TURN_INTO.filter(t => t.id !== currentTurnInto(block)).map(t => ({
+                      items: turnIntoKinds.filter(t => t.id !== currentTurnInto(block)).map(t => ({
                         id: `t-${t.id}`,
                         label: blockTypeLabel(t.id),
                         onClick: () => {
@@ -1733,7 +2008,7 @@ export function JinshuEditor(props: JinshuEditorProps) {
                     ) : !readOnly && block.type === 'code' ? (
                       <CodeBlockEditor block={block} cb={blockCb} />
                     ) : isActive && block.type === 'math' ? (
-                      /* quiet-md-inspired Live Equation Editor: rendered formula stays live above LaTeX source */
+                      /* The rendered formula stays live above its LaTeX source */
                       <view className={e.mathEditor.base}>
                         <scroll className={e.mathEditor.scroll}>
                           <view className={e.mathEditor.preview}>
@@ -1786,31 +2061,43 @@ export function JinshuEditor(props: JinshuEditorProps) {
                             if (isSlashOpen && filteredSlash.length > 0) {
                               const picked = filteredSlash[Math.min(slashIndex.value, filteredSlash.length - 1)];
                               applySlashChoice(block.id, picked.id, true);
-                              return;
+                              return true;
+                            }
+                            const header = block.type === 'paragraph' ? pipeRow(draftText.value) : null;
+                            if (header) {
+                              const grid = table(header, [header.map(() => '')], { id: block.id });
+                              dispatchOps([{ op: 'replace', id: block.id, blocks: [grid], noteWord: note('@jinshu.note.turnInto', { kind: 'table' }) }]);
+                              activeId.set(null);
+                              return true;
                             }
                             commitActiveDraft(block, draftText.value);
                             const nextP = paragraph('');
                             dispatchOps([{ op: 'insert', at: { after: block.id }, blocks: [nextP] }]);
                             activeId.set(nextP.id);
                             draftText.set('');
+                            return true;
                           },
                           ArrowUp: () => {
                             if (isSlashOpen && filteredSlash.length > 0) {
                               slashIndex.set((slashIndex.value - 1 + filteredSlash.length) % filteredSlash.length);
-                              return;
+                              return true;
                             }
                             if (idx > 0 && isInlineTextBlock(doc.blocks[idx - 1])) {
                               focusBlock(doc.blocks[idx - 1]);
+                              return true;
                             }
+                            return false;
                           },
                           ArrowDown: () => {
                             if (isSlashOpen && filteredSlash.length > 0) {
                               slashIndex.set((slashIndex.value + 1) % filteredSlash.length);
-                              return;
+                              return true;
                             }
                             if (idx < doc.blocks.length - 1 && isInlineTextBlock(doc.blocks[idx + 1])) {
                               focusBlock(doc.blocks[idx + 1]);
+                              return true;
                             }
+                            return false;
                           },
                           Escape: () => {
                             if (isSlashOpen) {
@@ -1819,6 +2106,7 @@ export function JinshuEditor(props: JinshuEditorProps) {
                             } else {
                               blurActive(block);
                             }
+                            return true;
                           },
                         }}
                         className={

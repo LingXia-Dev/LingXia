@@ -11,8 +11,9 @@ export const doc: ComponentDoc = {
     'editing does not jump. Text blocks edit in place; tables, code, folds, callouts and media have their own editors, and `/` inserts ' +
     'any block. On a live `channel` the source keeps the history, the save state and the review: an agent\'s change is marked at each ' +
     'block it touched, with a bar to view or undo that batch; its suggestions and save requests wait in one queue; and an agent at ' +
-    'work shows a mark the person can stop.',
-  keywords: ['editor', 'document editor', 'rich text', 'block editor', 'notion', 'wysiwyg', 'review', 'suggestions', 'track changes', 'jinshu'],
+    'work shows a mark the person can stop. Pasted paragraphs or Markdown become blocks, and in a Markdown document (`format`) the ' +
+    'menus offer only what Markdown holds. Source mode edits the whole document as Markdown text and applies only the changed blocks, in one undo step.',
+  keywords: ['editor', 'document editor', 'rich text', 'block editor', 'wysiwyg', 'review', 'suggestions', 'track changes', 'jinshu'],
   propsType: 'JinshuEditorProps',
   recipe: { map: 'jinshuEditorRecipe', parts: 'jinshuEditorParts' },
   anatomy: [
@@ -20,12 +21,14 @@ export const doc: ComponentDoc = {
     { part: 'header', required: true, description: 'Stays in view while scrolling: the toolbar, then whatever needs the person (activity, the change bar, the review queue).' },
     { part: 'toolbar', required: false, description: 'The document\'s toolbar: insert, the app\'s `toolbarActions` and find; on a live `channel` also undo, redo, history and the save state. Absent when read-only.' },
     { part: 'saved', required: false, description: 'The quiet save state at the toolbar\'s end, from `saveStatus`; Save or Retry takes its place while there is something to save.' },
+    { part: 'wordCount', required: false, description: 'How long the document is, beside the save state: Chinese, Japanese and Korean by character, other text by word. Not shown on a phone.' },
     { part: 'findBar', required: false, description: 'Find and replace across the document, with the match count.' },
     { part: 'history', required: false, description: 'The edit history: who changed what, in the reader\'s language, with undo and redo of each step.' },
     { part: 'activity', required: false, description: 'An agent reading or writing here, named, with Stop; its next edit is refused once stopped.' },
     { part: 'agentBar', required: false, description: 'The change bar: who changed how many blocks while the person was here or away, with View (steps through the changes) and Undo for that batch only.' },
     { part: 'queue', required: false, description: 'One item at a time of what waits for the person: a conflict, an agent\'s save request, its suggestions in document order.' },
     { part: 'canvas', required: true, description: 'The document, at the reader\'s measure.' },
+    { part: 'source', required: false, description: 'Source mode: the whole document as one Markdown text, parsed back into blocks on leaving, with any warnings or a refusal above it.' },
     { part: 'title', required: false, description: 'The document\'s title; pressing it edits it.' },
     { part: 'block', required: true, description: 'One block, with a start-edge mark when an agent changed it.' },
     { part: 'gutter', required: false, description: 'On a desktop, beside the hovered block: insert below, and the block menu (move, duplicate, turn into, properties, ask the agent, delete).' },
@@ -43,7 +46,7 @@ export const doc: ComponentDoc = {
     description: [],
     states: [],
     keyboard: [
-      { keys: 'Enter in a text block', effect: 'ends it and starts a new paragraph below' },
+      { keys: 'Enter in a text block', effect: 'ends it and starts a new paragraph below; in an empty list item, leaves the list' },
       { keys: 'Arrow up and down in a text block', effect: 'move to the text block above or below; in the `/` menu, move through its choices' },
       { keys: 'Escape', effect: 'leaves the field, keeping the edit; in the `/` menu, closes it' },
       { keys: 'Enter, arrows in a table cell', effect: 'Enter moves down a row and adds one at the end; up and down move between rows' },
@@ -70,6 +73,7 @@ export const doc: ComponentDoc = {
       'Let agents work through the tools the app registers with `createJinshuTools`; the editor shows their changes and requests, and has no AI entry of its own.',
       'Set `onAskAgent` to offer "Ask the agent" in each block\'s menu, and open the app\'s own conversation with those blocks.',
       'Give the source `media.pick` to offer images, video, audio and files; without it, the editor offers none.',
+      'Set `saveMode: \'auto\'` on the source to save 1.5 s after the person stops editing; an agent\'s edit alone never saves.',
     ],
     dont: [
       'Apply an agent\'s edit in the page; it goes through the source so the change bar, undo and history see it.',
@@ -86,6 +90,11 @@ export const doc: ComponentDoc = {
       missing: 'Bold, italic and links on a selection of words in a text block.',
       needs: 'reading and setting the selection of a text field, and buttons that leave its caret alone',
       today: 'A text block edits as shorthand (`**bold**`, `==mark==`, `[text](#id)`); the format bar wraps the last word.',
+    },
+    {
+      missing: 'Backspace at a block\'s start merging it into the one above, and Tab indenting a list.',
+      needs: 'Backspace and Tab in an editor\'s key map',
+      today: 'An empty block is deleted from its menu; Enter on an empty list item leaves the list.',
     },
   ],
   limits: [

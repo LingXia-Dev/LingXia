@@ -4,6 +4,7 @@ import { Icon } from '@liulidesign/core/Icon';
 import { IconButton } from '@liulidesign/core/IconButton';
 import { editorIcons } from './editorIcons';
 import { newBlockId, paragraph, plainText, tableColumnCount } from '../schema/helpers';
+import { formatAllows } from '../schema/index';
 import type {
   AnyJinshuOp,
   AudioBlock,
@@ -15,7 +16,10 @@ import type {
   FileBlock,
   ImageBlock,
   ImageSize,
+  Inline,
+  InlineAtom,
   JinshuBlock,
+  JinshuFormat,
   ListBlock,
   ListStyle,
   ParagraphBlock,
@@ -29,7 +33,7 @@ import { CodeFrame, CodeLineNumbers, TableFrame, tableColumnFlex } from '../inte
 import { jinshuViewRecipe as r } from '../JinshuView/JinshuView.recipe';
 import { jinshuText } from '../i18n/text';
 import { blockEditorsRecipe as b } from './BlockEditors.recipe';
-import { atomsIn, inlinesToShorthand, shorthandToInlines } from './inlineMarkdown';
+import { atomsIn, inlinesToShorthand as toShorthand, shorthandToInlines as fromShorthand } from './inlineMarkdown';
 
 const TICK_PATH = [
   { d: 'M3.5 8.5l3 3 6-7', fill: 'none', stroke: 'currentColor', strokeWidth: 2, strokeLinecap: 'round', strokeLinejoin: 'round' },
@@ -38,12 +42,32 @@ const TICK_PATH = [
 export interface BlockEditorCallbacks {
   /** The editor's test id, under which the block editors' own test ids hang. */
   readonly testScope?: string;
+  /** The document's file format: fields it cannot hold are not offered, and shorthand follows its dialect. */
+  readonly format?: JinshuFormat;
   readonly dispatchOps: (ops: readonly AnyJinshuOp[]) => void;
   readonly onFocusBlock: (blockId: string) => void;
   readonly onBlurBlock: () => void;
-  /** Inserts an empty paragraph after `afterId` and puts the caret in it (leaving a list or container). */
-  readonly onCreateParagraphAfter?: (afterId: string) => void;
+  /** Puts the caret in the empty paragraph `blockId`, once a batch has made it. */
+  readonly onEditParagraph?: (blockId: string) => void;
 }
+
+const dialectOf = (format: JinshuFormat | undefined) => ({ dialect: format === 'markdown' ? 'markdown' : 'jinshu' } as const);
+
+/** Shorthand in the dialect of the document's format. */
+function inlinesToShorthand(runs: readonly Inline[], format: JinshuFormat | undefined): string {
+  return toShorthand(runs, dialectOf(format));
+}
+
+function shorthandToInlines(
+  text: string,
+  format: JinshuFormat | undefined,
+  options: { readonly inHeading?: boolean; readonly existingAtoms?: readonly InlineAtom[] },
+): Inline[] {
+  return fromShorthand(text, { ...options, ...dialectOf(format) });
+}
+
+/** Whether the document's format holds `field` on a block of `type`. */
+const holds = (cb: BlockEditorCallbacks, type: string, field: string) => formatAllows(cb.format ?? 'json', { block: type, field });
 
 // ---------------------------------------------------------------------------
 // Container bodies: every paragraph child is editable, blank line = new paragraph
@@ -54,13 +78,13 @@ function isTextChild(b: JinshuBlock): b is ParagraphBlock {
 }
 
 /** Paragraph children joined by blank lines; non-paragraph children are kept as-is and counted. */
-function containerBodyText(blocks: readonly JinshuBlock[]): { text: string; kept: number } {
+function containerBodyText(blocks: readonly JinshuBlock[], format: JinshuFormat | undefined): { text: string; kept: number } {
   const paras = blocks.filter(isTextChild);
-  return { text: paras.map(p => inlinesToShorthand(p.runs)).join('\n\n'), kept: blocks.length - paras.length };
+  return { text: paras.map(p => inlinesToShorthand(p.runs, format)).join('\n\n'), kept: blocks.length - paras.length };
 }
 
 /** Rebuilds container children: paragraphs from blank-line-separated text (ids reused in order), other children kept in place. */
-function rebuildContainerBody(blocks: readonly JinshuBlock[], text: string): JinshuBlock[] {
+function rebuildContainerBody(blocks: readonly JinshuBlock[], text: string, format: JinshuFormat | undefined): JinshuBlock[] {
   const parts = text
     .replace(/\r\n?/g, '\n')
     .split(/\n{2,}/)
@@ -69,7 +93,7 @@ function rebuildContainerBody(blocks: readonly JinshuBlock[], text: string): Jin
   const oldParas = blocks.filter(isTextChild);
   const existingAtoms = oldParas.flatMap(p => atomsIn(p.runs));
   const newParas: JinshuBlock[] = (parts.length > 0 ? parts : ['']).map((part, idx) =>
-    paragraph(shorthandToInlines(part, { existingAtoms }), oldParas[idx]?.id ?? newBlockId('p')),
+    paragraph(shorthandToInlines(part, format, { existingAtoms }), oldParas[idx]?.id ?? newBlockId('p')),
   );
   // Paragraphs take the slots of the old paragraphs; extra ones follow the last slot; others keep their order.
   const out: JinshuBlock[] = [];
@@ -108,15 +132,15 @@ export function ListBlockEditor({ block, cb }: { readonly block: ListBlock; read
 
   const commitItem = (itemId: string, text: string) => {
     const item = block.items.find(it => it.id === itemId);
-    if (!item || inlinesToShorthand(item.runs) === text) return;
-    cb.dispatchOps([{ op: 'replace', id: block.id, blocks: [{ ...block, items: block.items.map(it => (it.id === itemId ? { ...it, runs: shorthandToInlines(text, { existingAtoms: atomsIn(it.runs) }) } : it)) }] }]);
+    if (!item || inlinesToShorthand(item.runs, cb.format) === text) return;
+    cb.dispatchOps([{ op: 'replace', id: block.id, blocks: [{ ...block, items: block.items.map(it => (it.id === itemId ? { ...it, runs: shorthandToInlines(text, cb.format, { existingAtoms: atomsIn(it.runs) }) } : it)) }] }]);
   };
 
   const focusItem = (idx: number) => {
     const target = block.items[idx];
     if (!target) return;
     activeItemId.set(target.id);
-    itemDraft.set(inlinesToShorthand(target.runs));
+    itemDraft.set(inlinesToShorthand(target.runs, cb.format));
   };
 
   return (
@@ -172,35 +196,49 @@ export function ListBlockEditor({ block, cb }: { readonly block: ListBlock; read
                     }}
                     onKeyDown={{
                       Enter: () => {
-                        // Empty last item: leave the list for a fresh paragraph (Typora / Notion behaviour).
-                        if (itemDraft.value.trim() === '' && block.items.length > 1) {
-                          cb.dispatchOps([{ op: 'delete', id: item.id, noteWord: { key: '@jinshu.note.listExit' } }]);
+                        // An empty item ends the list there: a paragraph takes its place, and items after it form a new list.
+                        if (itemDraft.value.trim() === '' && !item.blocks?.length) {
+                          const before = block.items.slice(0, idx);
+                          const after = block.items.slice(idx + 1);
+                          // The list's id stays with whatever comes first, so a reference to it still lands here.
+                          const exitId = before.length > 0 ? newBlockId('p') : block.id;
+                          const { start: _start, ...rest } = block;
+                          const blocks: JinshuBlock[] = [
+                            ...(before.length > 0 ? [{ ...block, items: before }] : []),
+                            paragraph('', exitId),
+                            ...(after.length > 0 ? [{ ...rest, id: newBlockId('l'), items: after }] : []),
+                          ];
+                          cb.dispatchOps([{ op: 'replace', id: block.id, blocks, noteWord: { key: '@jinshu.note.listExit' } }]);
                           activeItemId.set(null);
-                          cb.onCreateParagraphAfter?.(block.id);
-                          return;
+                          cb.onEditParagraph?.(exitId);
+                          return true;
                         }
                         const newId = newBlockId('li');
                         const nextItems = [...block.items];
-                        nextItems[idx] = { ...item, runs: shorthandToInlines(itemDraft.value, { existingAtoms: atomsIn(item.runs) }) };
-                        nextItems.splice(idx + 1, 0, { id: newId, runs: [] });
+                        nextItems[idx] = { ...item, runs: shorthandToInlines(itemDraft.value, cb.format, { existingAtoms: atomsIn(item.runs) }) };
+                        nextItems.splice(idx + 1, 0, block.style === 'task' ? { id: newId, runs: [], checked: false } : { id: newId, runs: [] });
                         cb.dispatchOps([{ op: 'replace', id: block.id, blocks: [{ ...block, items: nextItems }] }]);
                         activeItemId.set(newId);
                         itemDraft.set('');
+                        return true;
                       },
                       ArrowUp: () => {
-                        if (idx === 0) return;
+                        if (idx === 0) return false;
                         commitItem(item.id, itemDraft.value);
                         focusItem(idx - 1);
+                        return true;
                       },
                       ArrowDown: () => {
-                        if (idx >= block.items.length - 1) return;
+                        if (idx >= block.items.length - 1) return false;
                         commitItem(item.id, itemDraft.value);
                         focusItem(idx + 1);
+                        return true;
                       },
                       Escape: () => {
                         commitItem(item.id, itemDraft.value);
                         activeItemId.set(null);
                         cb.onBlurBlock();
+                        return true;
                       },
                     }}
                     className={cx(b.list.input, r.paragraph.base)}
@@ -266,20 +304,20 @@ export function CalloutBlockEditor({ block, cb }: { readonly block: CalloutBlock
   const editing = useLocal(`ed-co-${block.id}`, false);
   const titleDraft = useLocal(`ed-co-t-${block.id}`, '');
   const bodyDraft = useLocal(`ed-co-b-${block.id}`, '');
-  const body = containerBodyText(block.blocks);
+  const body = containerBodyText(block.blocks, cb.format);
 
   const openEdit = () => {
     cb.onFocusBlock(block.id);
-    titleDraft.set(block.title ? inlinesToShorthand(block.title) : '');
+    titleDraft.set(block.title ? inlinesToShorthand(block.title, cb.format) : '');
     bodyDraft.set(body.text);
     editing.set(true);
   };
 
   const commit = () => {
-    const nextTitle = titleDraft.value.trim() ? shorthandToInlines(titleDraft.value, { existingAtoms: atomsIn(block.title) }) : undefined;
-    const sameTitle = (block.title ? inlinesToShorthand(block.title) : '') === titleDraft.value.trim();
+    const nextTitle = titleDraft.value.trim() ? shorthandToInlines(titleDraft.value, cb.format, { existingAtoms: atomsIn(block.title) }) : undefined;
+    const sameTitle = (block.title ? inlinesToShorthand(block.title, cb.format) : '') === titleDraft.value.trim();
     if (!sameTitle || bodyDraft.value !== body.text) {
-      const next: Record<string, unknown> = { ...block, blocks: rebuildContainerBody(block.blocks, bodyDraft.value) };
+      const next: Record<string, unknown> = { ...block, blocks: rebuildContainerBody(block.blocks, bodyDraft.value, cb.format) };
       if (nextTitle) next.title = nextTitle;
       else delete next.title;
       cb.dispatchOps([{ op: 'replace', id: block.id, blocks: [next as unknown as CalloutBlock], noteWord: { key: '@jinshu.note.editCallout' } }]);
@@ -291,7 +329,10 @@ export function CalloutBlockEditor({ block, cb }: { readonly block: CalloutBlock
   if (!editing.value) {
     return (
       <view className={cx(r.callout.base, r.callout.tone[block.tone], b.callout.preview)}>
-        {block.title && block.title.length > 0 && <text className={r.callout.title[block.tone]}>{renderInlineRuns(block.title, { blockId: block.id })}</text>}
+        {/* As in the reader: without a title the tone names itself. */}
+        <text className={r.callout.title[block.tone]}>
+          {block.title && block.title.length > 0 ? renderInlineRuns(block.title, { blockId: block.id }) : jinshuText('@jinshu.calloutTone', { tone: block.tone })}
+        </text>
         <ContainerPreview blocks={block.blocks} />
         <button aria-label={jinshuText('@jinshu.editor.block.editCallout', { id: block.id })} onClick={openEdit} className={b.callout.previewButton} />
       </view>
@@ -301,18 +342,23 @@ export function CalloutBlockEditor({ block, cb }: { readonly block: CalloutBlock
   return (
     <view className={cx(r.callout.base, r.callout.tone[block.tone], b.callout.editing)}>
       <view className={b.callout.header}>
-        <input
-          aria-label={jinshuText('@jinshu.editor.block.calloutTitle')}
-          value={titleDraft.value}
-          placeholder={jinshuText('@jinshu.editor.block.calloutTitlePlaceholder')}
-          onInput={v => titleDraft.set(v)}
-          className={cx(b.callout.titleInput, r.callout.title[block.tone])}
-        />
+        {/* An empty title shows the tone's name, which is what the reader shows in its place. */}
+        {holds(cb, 'callout', 'title') ? (
+          <input
+            aria-label={jinshuText('@jinshu.editor.block.calloutTitle')}
+            value={titleDraft.value}
+            placeholder={jinshuText('@jinshu.calloutTone', { tone: block.tone })}
+            onInput={v => titleDraft.set(v)}
+            className={cx(b.callout.titleInput, r.callout.title[block.tone])}
+          />
+        ) : (
+          <text className={cx(b.callout.titleInput, r.callout.title[block.tone])}>{jinshuText('@jinshu.calloutTone', { tone: block.tone })}</text>
+        )}
         <view className={b.callout.tones}>
           {(['info', 'tip', 'warning', 'danger'] as CalloutTone[]).map(tone => (
             <Button
               key={tone}
-              label={jinshuText('@jinshu.editor.block.calloutTone', { tone })}
+              label={jinshuText('@jinshu.calloutTone', { tone })}
               size="sm"
               variant={block.tone === tone ? 'tonal' : 'ghost'}
               onClick={() => cb.dispatchOps([{ op: 'update', id: block.id, attrs: { tone } }])}
@@ -328,7 +374,7 @@ export function CalloutBlockEditor({ block, cb }: { readonly block: CalloutBlock
         maxRows={18}
         placeholder={jinshuText('@jinshu.editor.block.calloutBodyPlaceholder')}
         onInput={v => bodyDraft.set(v)}
-        onKeyDown={{ Escape: commit }}
+        onKeyDown={{ Escape: () => { commit(); return true; } }}
         className={cx(b.callout.body, r.paragraph.base)}
       />
       <view className={b.callout.footer}>
@@ -343,11 +389,11 @@ export function CalloutBlockEditor({ block, cb }: { readonly block: CalloutBlock
 export function QuoteBlockEditor({ block, cb }: { readonly block: QuoteBlock; readonly cb: BlockEditorCallbacks }) {
   const editing = useLocal(`ed-q-${block.id}`, false);
   const draft = useLocal(`ed-q-t-${block.id}`, '');
-  const body = containerBodyText(block.blocks);
+  const body = containerBodyText(block.blocks, cb.format);
 
   const commit = () => {
     if (draft.value !== body.text) {
-      cb.dispatchOps([{ op: 'replace', id: block.id, blocks: [{ ...block, blocks: rebuildContainerBody(block.blocks, draft.value) }], noteWord: { key: '@jinshu.note.editQuote' } }]);
+      cb.dispatchOps([{ op: 'replace', id: block.id, blocks: [{ ...block, blocks: rebuildContainerBody(block.blocks, draft.value, cb.format) }], noteWord: { key: '@jinshu.note.editQuote' } }]);
     }
     editing.set(false);
     cb.onBlurBlock();
@@ -381,7 +427,7 @@ export function QuoteBlockEditor({ block, cb }: { readonly block: QuoteBlock; re
         placeholder={jinshuText('@jinshu.editor.block.quoteBodyPlaceholder')}
         onInput={v => draft.set(v)}
         onBlur={commit}
-        onKeyDown={{ Escape: commit }}
+        onKeyDown={{ Escape: () => { commit(); return true; } }}
         className={cx(b.quote.body, r.paragraph.base, b.quote.bodyText)}
       />
       <KeptChildrenNote count={body.kept} />
@@ -392,17 +438,17 @@ export function QuoteBlockEditor({ block, cb }: { readonly block: QuoteBlock; re
 /** Direct-manipulation editor for Details blocks (summary + every body paragraph). */
 export function DetailsBlockEditor({ block, cb }: { readonly block: DetailsBlock; readonly cb: BlockEditorCallbacks }) {
   const open = useLocal(`ed-det-open-${block.id}`, block.defaultOpen === true);
-  const summaryDraft = useLocal(`ed-det-s-${block.id}`, inlinesToShorthand(block.summary));
-  const body = containerBodyText(block.blocks);
+  const summaryDraft = useLocal(`ed-det-s-${block.id}`, inlinesToShorthand(block.summary, cb.format));
+  const body = containerBodyText(block.blocks, cb.format);
   const bodyDraft = useLocal(`ed-det-b-${block.id}`, body.text);
 
   const commit = () => {
-    if (summaryDraft.value === inlinesToShorthand(block.summary) && bodyDraft.value === body.text) return;
+    if (summaryDraft.value === inlinesToShorthand(block.summary, cb.format) && bodyDraft.value === body.text) return;
     cb.dispatchOps([
       {
         op: 'replace',
         id: block.id,
-        blocks: [{ ...block, summary: shorthandToInlines(summaryDraft.value, { existingAtoms: atomsIn(block.summary) }), blocks: rebuildContainerBody(block.blocks, bodyDraft.value) }],
+        blocks: [{ ...block, summary: shorthandToInlines(summaryDraft.value, cb.format, { existingAtoms: atomsIn(block.summary) }), blocks: rebuildContainerBody(block.blocks, bodyDraft.value, cb.format) }],
         noteWord: { key: '@jinshu.note.editDetails' },
       },
     ]);
@@ -464,7 +510,11 @@ export function CodeBlockEditor({ block, cb }: { readonly block: CodeBlock; read
       {
         op: 'update',
         id: block.id,
-        attrs: { language: langDraft.value.trim() || 'text', filename: fileDraft.value.trim() || null, code: codeDraft.value },
+        attrs: {
+          language: langDraft.value.trim() || 'text',
+          ...(holds(cb, 'code', 'filename') ? { filename: fileDraft.value.trim() || null } : {}),
+          code: codeDraft.value,
+        },
         noteWord: { key: '@jinshu.note.editCode' },
       },
     ]);
@@ -501,14 +551,18 @@ export function CodeBlockEditor({ block, cb }: { readonly block: CodeBlock; read
     <view className={cx(r.code.root, b.code.editing)}>
       <view className={r.code.header}>
         <view className={b.code.fields}>
-          <input
-            aria-label={jinshuText('@jinshu.editor.block.codeFilename')}
-            value={fileDraft.value}
-            placeholder={jinshuText('@jinshu.editor.block.codeFilenamePlaceholder')}
-            onInput={v => fileDraft.set(v)}
-            className={b.code.filename}
-          />
-          <text aria-hidden className={r.code.lang}>·</text>
+          {holds(cb, 'code', 'filename') && (
+            <>
+              <input
+                aria-label={jinshuText('@jinshu.editor.block.codeFilename')}
+                value={fileDraft.value}
+                placeholder={jinshuText('@jinshu.editor.block.codeFilenamePlaceholder')}
+                onInput={v => fileDraft.set(v)}
+                className={b.code.filename}
+              />
+              <text aria-hidden className={r.code.lang}>·</text>
+            </>
+          )}
           <input
             aria-label={jinshuText('@jinshu.editor.block.codeLanguage')}
             value={langDraft.value}
@@ -529,7 +583,7 @@ export function CodeBlockEditor({ block, cb }: { readonly block: CodeBlock; read
             rows={3}
             maxRows={24}
             onInput={v => codeDraft.set(v)}
-            onKeyDown={{ Escape: commit }}
+            onKeyDown={{ Escape: () => { commit(); return true; } }}
             className={b.code.input}
           />
         </view>
@@ -581,7 +635,7 @@ export function TableBlockEditor({ block, cb }: { readonly block: TableBlock; re
   const chrome = touch || hovered.value || pos !== null || selection !== null;
 
   const cellRuns = (row: number, col: number) => rowAt(row)?.cells[col] ?? [];
-  const cellText = (row: number, col: number) => inlinesToShorthand(cellRuns(row, col));
+  const cellText = (row: number, col: number) => inlinesToShorthand(cellRuns(row, col), cb.format);
 
   const focusCell = (row: number, col: number) => {
     cb.onFocusBlock(block.id);
@@ -595,7 +649,7 @@ export function TableBlockEditor({ block, cb }: { readonly block: TableBlock; re
     if (text === cellText(row, col)) return;
     const target = rowAt(row);
     if (!target) return;
-    const runs = shorthandToInlines(text, { existingAtoms: atomsIn(cellRuns(row, col)) });
+    const runs = shorthandToInlines(text, cb.format, { existingAtoms: atomsIn(cellRuns(row, col)) });
     const rows = block.rows.map(r => (r.id === target.id ? { ...r, cells: r.cells.map((c, i) => (i === col ? runs : c)) } : r));
     cb.dispatchOps([{ op: 'replace', id: block.id, blocks: [{ ...block, rows }], noteWord: { key: row === -1 ? '@jinshu.note.tableHeader' : '@jinshu.note.tableCell' } }]);
   };
@@ -781,20 +835,24 @@ export function TableBlockEditor({ block, cb }: { readonly block: TableBlock; re
                   activePos.set({ row: nRows, col });
                   cellDraft.set('');
                 }
+                return true;
               },
               ArrowUp: () => {
-                if (row === -1) return;
+                if (row === -1) return false;
                 commitCell(row, col, cellDraft.value);
                 focusCell(row - 1, col);
+                return true;
               },
               ArrowDown: () => {
-                if (row + 1 >= nRows) return;
+                if (row + 1 >= nRows) return false;
                 commitCell(row, col, cellDraft.value);
                 focusCell(row + 1, col);
+                return true;
               },
               Escape: () => {
                 commitCell(row, col, cellDraft.value);
                 activePos.set(null);
+                return true;
               },
             }}
             className={isHeader ? b.table.input.header : b.table.input.text}
@@ -831,7 +889,7 @@ export function TableBlockEditor({ block, cb }: { readonly block: TableBlock; re
       onPointerLeave={touch ? undefined : () => hovered.set(false)}
     >
       {lineToolbar && <view className={b.table.toolbarDock}>{lineToolbar}</view>}
-      <TableFrame blockId={block.id} columns={nCols} testId={cb.testScope && `${cb.testScope}-table-editor-${block.id}`}>
+      <TableFrame table={block} testId={cb.testScope && `${cb.testScope}-table-editor-${block.id}`}>
         {headerRow && <view className={r.table.headerRow}>{headerRow.cells.map((_, cIdx) => renderCell(-1, cIdx))}</view>}
         {bodyRows.map((row, rIdx) => (
           <view key={`r-${row.id}`} className={r.table.row}>
@@ -864,8 +922,8 @@ export function ColumnsBlockEditor({
 
   const commitInlineChild = (child: JinshuBlock, text: string) => {
     if (child.type !== 'paragraph' && child.type !== 'heading') return;
-    if (inlinesToShorthand(child.runs) === text) return;
-    const runs = shorthandToInlines(text, { inHeading: child.type === 'heading', existingAtoms: atomsIn(child.runs) });
+    if (inlinesToShorthand(child.runs, cb.format) === text) return;
+    const runs = shorthandToInlines(text, cb.format, { inHeading: child.type === 'heading', existingAtoms: atomsIn(child.runs) });
     cb.dispatchOps([
       {
         op: 'replace',
@@ -907,8 +965,12 @@ export function ColumnsBlockEditor({
                         commitInlineChild(child, childDraft.value);
                         activeChildId.set(null);
                         cb.onBlurBlock();
+                        return true;
                       },
-                      Escape: () => activeChildId.set(null),
+                      Escape: () => {
+                        activeChildId.set(null);
+                        return true;
+                      },
                     }}
                     className={
                       child.type === 'heading' ? cx(b.columns.input, r.heading.base, r.heading.level[child.level]) : cx(b.columns.input, r.paragraph.base)
@@ -924,7 +986,7 @@ export function ColumnsBlockEditor({
                     onClick={() => {
                       cb.onFocusBlock(child.id);
                       activeChildId.set(child.id);
-                      childDraft.set(inlinesToShorthand(child.runs));
+                      childDraft.set(inlinesToShorthand(child.runs, cb.format));
                     }}
                     className={b.columns.childButton}
                   />
@@ -947,14 +1009,20 @@ export function ColumnsBlockEditor({
 /** Inline inspector for Image blocks (alt, caption, display size). */
 export function ImageBlockInspector({ block, cb }: { readonly block: ImageBlock; readonly cb: BlockEditorCallbacks }) {
   const altDraft = useLocal(`ed-img-alt-${block.id}`, block.alt ?? '');
-  const capDraft = useLocal(`ed-img-cap-${block.id}`, block.caption ? inlinesToShorthand(block.caption) : '');
+  const capDraft = useLocal(`ed-img-cap-${block.id}`, block.caption ? inlinesToShorthand(block.caption, cb.format) : '');
 
   const commit = () => {
     cb.dispatchOps([
       {
         op: 'update',
         id: block.id,
-        attrs: { alt: altDraft.value, caption: capDraft.value.trim() ? shorthandToInlines(capDraft.value, { existingAtoms: atomsIn(block.caption) }) : null },
+        attrs: {
+          // An empty alt reads back as none in Markdown, so none it is.
+          alt: altDraft.value || null,
+          ...(holds(cb, 'image', 'caption')
+            ? { caption: capDraft.value.trim() ? shorthandToInlines(capDraft.value, cb.format, { existingAtoms: atomsIn(block.caption) }) : null }
+            : {}),
+        },
         noteWord: { key: '@jinshu.note.imageProps' },
       },
     ]);
@@ -962,20 +1030,24 @@ export function ImageBlockInspector({ block, cb }: { readonly block: ImageBlock;
 
   return (
     <view className={b.inspector.root}>
-      <view className={b.inspector.choices}>
-        <text className={b.inspector.label}>{jinshuText('@jinshu.editor.block.imageSizeLabel')}</text>
-        {(['small', 'medium', 'full'] as ImageSize[]).map(sz => (
-          <Button
-            key={sz}
-            label={jinshuText('@jinshu.editor.block.imageSize', { size: sz })}
-            size="sm"
-            variant={(block.size ?? 'full') === sz ? 'tonal' : 'ghost'}
-            onClick={() => cb.dispatchOps([{ op: 'update', id: block.id, attrs: { size: sz === 'full' ? null : sz } }])}
-          />
-        ))}
-      </view>
+      {holds(cb, 'image', 'size') && (
+        <view className={b.inspector.choices}>
+          <text className={b.inspector.label}>{jinshuText('@jinshu.editor.block.imageSizeLabel')}</text>
+          {(['small', 'medium', 'full'] as ImageSize[]).map(sz => (
+            <Button
+              key={sz}
+              label={jinshuText('@jinshu.editor.block.imageSize', { size: sz })}
+              size="sm"
+              variant={(block.size ?? 'full') === sz ? 'tonal' : 'ghost'}
+              onClick={() => cb.dispatchOps([{ op: 'update', id: block.id, attrs: { size: sz === 'full' ? null : sz } }])}
+            />
+          ))}
+        </view>
+      )}
       <input aria-label={jinshuText('@jinshu.editor.block.imageAlt')} value={altDraft.value} placeholder={jinshuText('@jinshu.editor.block.imageAlt')} onInput={v => altDraft.set(v)} onBlur={commit} className={b.inspector.field} />
-      <input aria-label={jinshuText('@jinshu.editor.block.imageCaption')} value={capDraft.value} placeholder={jinshuText('@jinshu.editor.block.imageCaptionPlaceholder')} onInput={v => capDraft.set(v)} onBlur={commit} className={b.inspector.field} />
+      {holds(cb, 'image', 'caption') && (
+        <input aria-label={jinshuText('@jinshu.editor.block.imageCaption')} value={capDraft.value} placeholder={jinshuText('@jinshu.editor.block.imageCaptionPlaceholder')} onInput={v => capDraft.set(v)} onBlur={commit} className={b.inspector.field} />
+      )}
     </view>
   );
 }
@@ -983,7 +1055,7 @@ export function ImageBlockInspector({ block, cb }: { readonly block: ImageBlock;
 /** Inline inspector for Video, Audio and File blocks. */
 export function MediaBlockInspector({ block, cb }: { readonly block: VideoBlock | AudioBlock | FileBlock; readonly cb: BlockEditorCallbacks }) {
   const primary =
-    block.type === 'video' ? (block.caption ? inlinesToShorthand(block.caption) : '') : block.type === 'audio' ? block.title ?? '' : block.name;
+    block.type === 'video' ? (block.caption ? inlinesToShorthand(block.caption, cb.format) : '') : block.type === 'audio' ? block.title ?? '' : block.name;
   const secondary = block.type === 'file' ? block.description ?? '' : '';
   const primaryDraft = useLocal(`ed-media-p-${block.id}`, primary);
   const secondaryDraft = useLocal(`ed-media-s-${block.id}`, secondary);
@@ -992,7 +1064,7 @@ export function MediaBlockInspector({ block, cb }: { readonly block: VideoBlock 
     if (primaryDraft.value === primary && secondaryDraft.value === secondary) return;
     const attrs: Record<string, unknown> =
       block.type === 'video'
-        ? { caption: primaryDraft.value.trim() ? shorthandToInlines(primaryDraft.value, { existingAtoms: atomsIn(block.caption) }) : null }
+        ? { caption: primaryDraft.value.trim() ? shorthandToInlines(primaryDraft.value, cb.format, { existingAtoms: atomsIn(block.caption) }) : null }
         : block.type === 'audio'
           ? { title: primaryDraft.value.trim() || null }
           : { name: primaryDraft.value.trim() || block.name, description: secondaryDraft.value.trim() || null };

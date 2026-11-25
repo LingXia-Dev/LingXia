@@ -36,6 +36,7 @@ export interface JinshuToolsOptions {
 type Args = Record<string, unknown>;
 
 const LIST_LIMIT = 20;
+const MARKDOWN_NOTE = 'This document is stored as Markdown: edits may use only what Markdown holds; anything else is refused with FORMAT.';
 const MAX_WAIT_MS = 25_000;
 
 /** The agent behind a call: one origin per conversation, so undo and stop reach only its own edits. */
@@ -115,7 +116,7 @@ export function createJinshuTools(options: JinshuToolsOptions): AgentTool[] {
   const read: AgentTool = {
     name: 'jinshu_read',
     summary: 'Read a Jinshu document as markup with block ids.',
-    description: `Read a Jinshu document as concise Jinshu Markup with stable block IDs: whole, as an outline, a range, a search, or what changed since a revision. With \`since\` and \`waitMs\` it waits (at most 25 s) until something changes or the person reviews something, then returns at once. The result lists review outcomes after \`since\` (suggestions accepted or rejected, save decisions, Stop, and your direct changes the person undid or redid, by \`batchId\`), the suggestions still waiting, whether a save request waits, and the blocks under the person's caret (\`focusIds\`). A read longer than 32,000 characters returns the outline; ask for a \`range\` or \`search\`.\n\n${exported.markupGuide}`,
+    description: `Read a Jinshu document as concise Jinshu Markup with stable block IDs: whole, as an outline, a range, a search, or what changed since a revision. With \`since\` and \`waitMs\` it waits (at most 25 s) until something changes or the person reviews something, then returns at once. The result lists review outcomes after \`since\` (suggestions accepted or rejected, save decisions, Stop, and your direct changes the person undid or redid, by \`batchId\`), the suggestions still waiting, whether a save request waits, and the blocks under the person's caret (\`focusIds\`), and the document's \`format\` (\`json\` or \`markdown\`). A read longer than 32,000 characters returns the outline; ask for a \`range\` or \`search\`.\n\n${exported.markupGuide}`,
     inputSchema: {
       type: 'object',
       required: ['doc'],
@@ -158,7 +159,8 @@ export function createJinshuTools(options: JinshuToolsOptions): AgentTool[] {
         origin,
       });
       const page = pageOf(source);
-      return { status: 'ok', data: { ...result, ...(page ? { page } : {}) } };
+      const formatNote = result.format === 'markdown' ? { formatNote: MARKDOWN_NOTE } : {};
+      return { status: 'ok', data: { ...result, ...formatNote, ...(page ? { page } : {}) } };
     },
   };
 

@@ -1,4 +1,4 @@
-import type { JinshuSource, JinshuSourceState, MinimalChannelEndpoint } from './types';
+import type { ChannelParams, JinshuSource, JinshuSourceState, MinimalChannelEndpoint } from './types';
 
 export interface MinimalPageContext {
   update(patch: Record<string, unknown> | ((draft: any) => void)): void;
@@ -13,7 +13,7 @@ export interface MinimalPageContext {
 export function bindJinshuPage(
   page: MinimalPageContext,
   source: JinshuSource,
-): { readonly syncDoc: (_params: unknown, channel: MinimalChannelEndpoint) => void } {
+): { readonly syncDoc: (params: unknown, channel: MinimalChannelEndpoint) => void } {
   const pushFlags = (s: JinshuSourceState) => {
     page.update({
       dirty: s.dirty,
@@ -27,8 +27,8 @@ export function bindJinshuPage(
   const unsub = source.subscribe(pushFlags);
   page.onUnload?.(unsub);
   return {
-    syncDoc(_params, channel) {
-      source.serve(channel);
+    syncDoc(params, channel) {
+      source.serve(channel, params as ChannelParams | undefined);
     },
   };
 }

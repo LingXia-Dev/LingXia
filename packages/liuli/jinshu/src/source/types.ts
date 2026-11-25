@@ -7,6 +7,7 @@ import type {
   HistoryEntry,
   JinshuBlock,
   JinshuDocument,
+  JinshuFormat,
   JinshuOp,
   JinshuRegistry,
   JinshuTemplate,
@@ -84,14 +85,22 @@ export type ValidateBatchHook = (
   ctx: { readonly origin: Origin; readonly batch: OpBatch },
 ) => readonly Problem[];
 
-export interface LoadResult {
-  readonly doc: JinshuDocument;
-  readonly version: string;
+/** The stored document: parsed, or the file's text in the source's `format`. */
+export type LoadResult =
+  | { readonly doc: JinshuDocument; readonly version: string }
+  | { readonly text: string; readonly version: string };
+
+/** The draft serialized in the source's `format`, ready to write as a file. */
+export interface SaveFile {
+  readonly text: string;
 }
 
 export type SaveResult =
   | { readonly ok: true; readonly version: string }
-  | { readonly ok: false; readonly conflict: true; readonly remoteDoc: JinshuDocument; readonly remoteVersion: string }
+  | ({ readonly ok: false; readonly conflict: true; readonly remoteVersion: string } & (
+      | { readonly remoteDoc: JinshuDocument }
+      | { readonly remoteText: string }
+    ))
   | { readonly ok: false; readonly conflict?: false; readonly error: string };
 
 export interface JinshuDraftStorage {
@@ -104,12 +113,16 @@ export interface JinshuSourceOptions extends CheckOptions {
   readonly key: string;
   readonly registry?: JinshuRegistry;
   readonly initialDoc?: JinshuDocument;
+  /** The stored file's text in `format`, instead of `initialDoc`. */
+  readonly initialText?: string;
   readonly initialVersion?: string;
   readonly load?: () => Promise<LoadResult>;
-  readonly save?: (doc: JinshuDocument, baseVersion: string) => Promise<SaveResult>;
+  /** `file` is the draft serialized in `format`: canonical JSON, or Markdown. */
+  readonly save?: (doc: JinshuDocument, baseVersion: string, file: SaveFile) => Promise<SaveResult>;
   /** Optional local key-value storage (such as `lx.storage`) for automatic crash-recovery draft persistence. */
   readonly storage?: JinshuDraftStorage;
   readonly filePolicy?: FilePolicy;
+  /** `auto` saves 1.5 s after the person stops editing; an agent's edit alone never saves. */
   readonly saveMode?: 'manual' | 'auto';
   readonly agentSave?: 'confirm' | 'allow' | 'deny';
   readonly template?: JinshuTemplate;
@@ -193,6 +206,7 @@ export interface ForAgentResult {
   readonly saveWaiting: boolean;
   /** The person stopped this reader's edits since it last read. */
   readonly stopped?: true;
+  readonly format: JinshuFormat;
 }
 
 export interface JinshuStream {
@@ -213,8 +227,24 @@ export type BlockChange =
   | { readonly kind: 'move'; readonly id: string; readonly to: Position }
   | { readonly kind: 'setMeta'; readonly title?: string; readonly lang?: string; readonly meta?: Readonly<Record<string, unknown>> };
 
+/** What a page's channel serves: an editor shows agent changes made while it was away, a reader does not. */
+export type ChannelRole = 'editor' | 'reader';
+
+/** The parameters a page opens its channel with. */
+export interface ChannelParams {
+  readonly doc?: string;
+  readonly have?: number;
+  readonly role?: ChannelRole;
+}
+
+export interface SnapshotPolicy {
+  readonly filePolicy?: FilePolicy;
+  readonly hasMedia?: boolean;
+  readonly format?: JinshuFormat;
+}
+
 export type ChannelClientMsg =
-  | { readonly t: 'open'; readonly doc: string; readonly have?: number }
+  | { readonly t: 'open'; readonly doc: string; readonly have?: number; readonly role?: ChannelRole }
   | { readonly t: 'ops'; readonly batch: OpBatch }
   | { readonly t: 'focus'; readonly blockIds: readonly string[] }
   | { readonly t: 'review'; readonly action: 'accept' | 'reject' | 'acceptAll' | 'rejectAll'; readonly suggestionId?: string }
@@ -227,6 +257,8 @@ export type ChannelClientMsg =
   | { readonly t: 'streamAbort'; readonly streamId: string }
   /** The person stops an agent writing without a stream: its next edits are refused until it reads again. */
   | { readonly t: 'stopAgent'; readonly originId: string }
+  /** Asks for the draft as the file `save` would write it. */
+  | { readonly t: 'file' }
   | {
       readonly t: 'media';
       readonly action: 'pick' | 'upload';
@@ -237,7 +269,7 @@ export type ChannelClientMsg =
     };
 
 export type ChannelServerMsg =
-  | { readonly t: 'snapshot'; readonly revision: number; readonly doc: JinshuDocument; readonly policy?: { readonly filePolicy?: FilePolicy; readonly hasMedia?: boolean } }
+  | { readonly t: 'snapshot'; readonly revision: number; readonly doc: JinshuDocument; readonly policy?: SnapshotPolicy }
   | { readonly t: 'changes'; readonly revision: number; readonly changes: readonly BlockChange[] }
   | { readonly t: 'suggestions'; readonly suggestions: readonly Suggestion[] }
   | { readonly t: 'stream'; readonly streamId: string; readonly origin: Origin; readonly at: Position; readonly blocks: readonly JinshuBlock[]; readonly status: 'streaming' | 'done' | 'aborted' }
@@ -248,6 +280,7 @@ export type ChannelServerMsg =
   | { readonly t: 'saveRequest'; readonly origin: Origin; readonly summary?: string }
   | { readonly t: 'uploadProgress'; readonly blockId: string; readonly ratio: number }
   | { readonly t: 'ack'; readonly revision: number; readonly batchId: string }
+  | { readonly t: 'file'; readonly revision: number; readonly text: string }
   | { readonly t: 'reject'; readonly batchId: string; readonly problems: readonly Problem[]; readonly snapshot?: JinshuDocument; readonly revision?: number };
 
 export interface MinimalChannelEndpoint {
@@ -261,10 +294,13 @@ export interface JinshuSource {
   readonly key: string;
   readonly registry: JinshuRegistry;
   readonly filePolicy?: FilePolicy;
+  readonly format: JinshuFormat;
   readonly agentSave: 'confirm' | 'allow' | 'deny';
   getState(): JinshuSourceState;
   load(): Promise<JinshuSourceState>;
   save(): Promise<SaveResult>;
+  /** The draft as the file `save` would write it now; a Markdown file keeps the bytes of untouched blocks. */
+  file(): SaveFile;
   /** Restores an unsaved crash-recovery draft from `options.storage` if one exists. */
   restoreDraft(): Promise<boolean>;
   apply(batch: OpBatch): { readonly revision: number; readonly batchId: string; readonly problems: readonly Problem[]; readonly suggestionId?: string };
@@ -287,7 +323,8 @@ export interface JinshuSource {
   setActivity(activity: AgentActivity | null, originId?: string): void;
   /** Stops an agent: aborts its stream, or refuses its edits until it reads again (`forAgent({ origin })`). */
   stopAgent(originId: string): void;
-  serve(channel: MinimalChannelEndpoint): () => void;
+  /** Serves a page's channel; `params` are what it opened with, its `role` included. */
+  serve(channel: MinimalChannelEndpoint, params?: ChannelParams): () => void;
   subscribe(listener: (state: JinshuSourceState) => void): () => void;
   close(): void;
 }

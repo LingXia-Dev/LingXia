@@ -30,7 +30,7 @@ test('ReadOnly: no toolbar', async () => {
 
 import { runInContext } from 'node:vm';
 import { renderPage } from '../testing/harness.mjs';
-import { codeBlock, createDocument, details, fileBlock, heading, paragraph, plainText, table } from '../schema/index.ts';
+import { callout, codeBlock, createDocument, details, fileBlock, heading, list, listItem, paragraph, plainText, table, video } from '../schema/index.ts';
 import { createJinshuSource } from '../source/index.ts';
 import { agentCall, toolsOver } from '../testing/agent.mjs';
 
@@ -87,7 +87,7 @@ function bridge(screen, source) {
               server[event].add(fn);
               return () => server[event].delete(fn);
             },
-          });
+          }, msg.params);
         } else if (msg.kind === 'ch.data') {
           for (const fn of [...server.data]) fn(JSON.parse(JSON.stringify(msg.payload)));
         } else if (msg.kind === 'req') {
@@ -310,4 +310,205 @@ test('suggestion card: a marks-only change shows its new formatting, not the par
     assert.ok(hasText(screen, 'First'));
   }
   assert.ok(!hasText(screen, 'First paragraph.First paragraph.'));
+});
+
+test('paste: paragraphs or Markdown become blocks in one undo step; a soft line break stays text', async () => {
+  const source = createJinshuSource({ key: 'w3', initialDoc: lessonDoc() });
+  const { screen, settle } = await mountLive(source);
+  screen.press(byLabel(screen, 'Edit block p1'));
+  await settle();
+  screen.type(byLabel(screen, 'Edit paragraph'), 'Intro\n\n- one\n- two');
+  await settle();
+  const blocks = source.getState().doc.blocks;
+  assert.deepEqual(blocks.map(b => b.type), ['heading', 'paragraph', 'list', 'paragraph', 'paragraph']);
+  assert.equal(blocks[1].id, 'p1', 'the edited block keeps its id');
+  assert.equal(plainText(blocks[1].runs), 'Intro');
+  source.undo();
+  assert.equal(plainText(source.getState().doc.blocks[1].runs), 'First paragraph.');
+  assert.equal(source.getState().doc.blocks.length, 4);
+
+  screen.press(byLabel(screen, 'Edit block p2'));
+  await settle();
+  screen.type(byLabel(screen, 'Edit paragraph'), 'line one\nline two');
+  await settle();
+  assert.equal(source.getState().doc.blocks.length, 4);
+});
+
+test('markdown document: the menus and property editors offer only what Markdown holds', async () => {
+  const doc = createDocument({ blocks: [paragraph('Intro', 'p'), callout('info', [paragraph('Note', 'cp')], { id: 'c' })] });
+  const source = createJinshuSource({ key: 'w3', initialDoc: doc, format: 'markdown', media: { pick: async () => null } });
+  const { screen, settle } = await mountLive(source);
+  screen.press(byLabel(screen, 'Edit block p'));
+  await settle();
+  assert.ok(hasLabel(screen, 'Bold'));
+  for (const label of ['Underline', 'Highlight', 'Superscript', 'Subscript']) assert.ok(!hasLabel(screen, label), label);
+  screen.type(byLabel(screen, 'Edit paragraph'), '/');
+  await settle();
+  for (const text of ['Image', 'Table', 'Callout']) assert.ok(hasText(screen, text), text);
+  for (const text of ['Video', 'Audio', 'File', 'Toggle', 'Columns']) assert.ok(!hasText(screen, text), text);
+  screen.press(byLabel(screen, 'Edit callout c'));
+  await settle();
+  assert.ok(!hasLabel(screen, 'Callout title'));
+});
+
+test('source mode: the document as Markdown, applied back as one batch of only the changed blocks', async () => {
+  const source = createJinshuSource({ key: 'w3', initialDoc: lessonDoc() });
+  const { screen, settle } = await mountLive(source);
+  screen.press(byLabel(screen, 'Edit as Markdown'));
+  await settle();
+  const field = () => byLabel(screen, 'Markdown source');
+  const text = field().props.inputValue;
+  assert.match(text, /^# Week 3\n/);
+  screen.type(field(), text.replace('Second paragraph.', 'Second, rewritten.').replace('# Week 3', '# Week 4'));
+  await settle();
+  screen.press(byLabel(screen, 'Back to blocks'));
+  await settle();
+  const state = source.getState();
+  assert.equal(state.doc.title, 'Week 4');
+  assert.deepEqual(state.doc.blocks.map(b => b.id), ['h', 'p1', 'p2', 'p3']);
+  assert.equal(plainText(state.doc.blocks[2].runs), 'Second, rewritten.');
+  assert.equal(state.history.length, 1, 'one batch');
+  assert.ok(!hasLabel(screen, 'Markdown source'), 'back to blocks');
+  source.undo();
+  assert.equal(source.getState().doc.title, 'Week 3');
+});
+
+test('source mode: an agent change meanwhile refuses the text and keeps it', async () => {
+  const source = createJinshuSource({ key: 'w3', initialDoc: lessonDoc() });
+  const { screen, settle } = await mountLive(source);
+  screen.press(byLabel(screen, 'Edit as Markdown'));
+  await settle();
+  await toolsOver({ w3: source }).call('jinshu_edit', { doc: 'w3', base: source.getState().revision, ops: [{ op: 'edit', id: 'p2', find: 'Second', replace: 'Agent' }] });
+  await settle();
+  const field = byLabel(screen, 'Markdown source');
+  const mine = field.props.inputValue.replace('Second paragraph.', 'Mine.');
+  screen.type(field, mine);
+  await settle();
+  screen.press(byLabel(screen, 'Back to blocks'));
+  await settle();
+  assert.equal(plainText(source.getState().doc.blocks[2].runs), 'Agent paragraph.');
+  assert.ok(hasText(screen, 'Someone changed these blocks while you edited the text. Your text is kept.'));
+  const kept = byLabel(screen, 'Markdown source');
+  assert.equal(kept.props.inputValue, mine);
+});
+
+test('source mode: a document Markdown cannot hold offers it disabled, with the reason', async () => {
+  const doc = createDocument({ blocks: [paragraph('Intro', 'p'), video('https://cdn.example/v.mp4', { id: 'v' })] });
+  const { screen } = await mountLive(createJinshuSource({ key: 'w3', initialDoc: doc }));
+  const toggle = byLabel(screen, 'Edit as Markdown');
+  assert.equal(toggle.props.enabled, 0);
+  assert.ok(toggle.props.ariaDescribedBy, 'the reason is its description');
+});
+
+test('input rules at line start: ordered from a number, checked task, alert callout, math, and a pipe row table', async () => {
+  const source = createJinshuSource({ key: 'w3', initialDoc: lessonDoc() });
+  const { screen, settle } = await mountLive(source);
+  const typeInto = async (id, text) => {
+    screen.press(byLabel(screen, `Edit block ${id}`));
+    await settle();
+    screen.type(byLabel(screen, 'Edit paragraph'), text);
+    await settle();
+  };
+  await typeInto('p1', '3) Third');
+  let b = source.getState().doc.blocks[1];
+  assert.equal(b.style, 'ordered');
+  assert.equal(b.start, 3);
+  await typeInto('p2', '- [x] Done');
+  b = source.getState().doc.blocks[2];
+  assert.equal(b.style, 'task');
+  assert.equal(b.items[0].checked, true);
+  await typeInto('p3', '> ');
+  for (const step of ['> [', '> [!WARN', '> [!WARNING]']) {
+    screen.type(byLabel(screen, 'Edit paragraph'), step);
+    await settle();
+    assert.equal(source.getState().doc.blocks[3].type, 'paragraph', `"${step}" could still become an alert`);
+  }
+  screen.type(byLabel(screen, 'Edit paragraph'), '> [!WARNING] Careful');
+  await settle();
+  b = source.getState().doc.blocks[3];
+  assert.equal(b.type, 'callout');
+  assert.equal(b.tone, 'warning');
+  screen.press(byLabel(screen, 'Edit block h'));
+  await settle();
+  // A new empty paragraph for the last two rules.
+  source.apply({ batchId: 'n', origin: { kind: 'human', id: 'editor' }, base: source.getState().revision, ops: [{ op: 'insert', at: { end: 'doc' }, blocks: [paragraph('', 'm'), paragraph('', 't')] }] });
+  await settle();
+  await typeInto('m', '$$');
+  assert.equal(source.getState().doc.blocks[4].type, 'math');
+  screen.press(byLabel(screen, 'Edit block t'));
+  await settle();
+  screen.type(byLabel(screen, 'Edit paragraph'), '| Week | Topic |');
+  await settle();
+  screen.key(byLabel(screen, 'Edit paragraph'), 'Enter');
+  await settle();
+  const grid = source.getState().doc.blocks[5];
+  assert.equal(grid.type, 'table');
+  assert.equal(grid.rows.length, 2);
+  assert.equal(plainText(grid.rows[0].cells[1]), 'Topic');
+});
+
+test('lists: Enter continues a list; on an empty item it ends the list in one step', async () => {
+  const doc = createDocument({ blocks: [list('bullet', [listItem('One', { id: 'a' }), listItem('', { id: 'b' }), listItem('Three', { id: 'c' })], { id: 'l' })] });
+  const source = createJinshuSource({ key: 'w3', initialDoc: doc });
+  const { screen, settle } = await mountLive(source);
+  screen.press(byLabel(screen, 'Edit item 2'));
+  await settle();
+  screen.key(byLabel(screen, 'Edit item 2'), 'Enter');
+  await settle();
+  const blocks = source.getState().doc.blocks;
+  assert.deepEqual(blocks.map(x => x.type), ['list', 'paragraph', 'list']);
+  assert.equal(blocks[0].id, 'l');
+  assert.deepEqual(blocks[0].items.map(i => i.id), ['a']);
+  assert.deepEqual(blocks[2].items.map(i => i.id), ['c']);
+  assert.equal(source.getState().history.length, 1);
+});
+
+test('word count: CJK by character, other text by word, beside the save state', async () => {
+  const doc = createDocument({ blocks: [paragraph('Hello brave world', 'p'), paragraph('锦书很好', 'q')] });
+  const { screen } = await mountLive(createJinshuSource({ key: 'w3', initialDoc: doc }));
+  assert.ok(hasText(screen, '7 words'));
+});
+
+test('source mode: a Markdown document shows its file as written, and an edit keeps the untouched bytes', async () => {
+  const md = '---\ntags: [a]\n---\n\n# Notes\n\nA soft\nwrapped line.\n\n| A | B |\n|:--|--:|\n| 1 | 2 |\n\nLast.\n';
+  const files = [];
+  const source = createJinshuSource({ key: 'w3', format: 'markdown', initialText: md, save: async (d, b, f) => (files.push(f.text), { ok: true, version: 'v2' }) });
+  const { screen, settle } = await mountLive(source);
+  screen.press(byLabel(screen, 'Edit as Markdown'));
+  await settle();
+  const field = byLabel(screen, 'Markdown source');
+  assert.equal(field.props.inputValue, md);
+  screen.type(field, md.replace('Last.', 'End.'));
+  await settle();
+  screen.press(byLabel(screen, 'Back to blocks'));
+  await settle();
+  await source.save();
+  assert.equal(files[0], md.replace('Last.', 'End.'));
+});
+
+test('table: columns size to their content, the same in the reader and the editor, and never below their widest word', async () => {
+  const doc = createDocument({
+    blocks: [
+      table(
+        ['时间', '光圈', '快门', 'ISO', '备注'],
+        [
+          ['17:02', 'f/8', '1/250', '100', '逆光，云边发亮'],
+          ['17:31', 'f/2', '1/60', '800', '余晖，偏暖，人物轮廓更柔和'],
+        ],
+        { id: 't' },
+      ),
+    ],
+  });
+  for (const env of [{ pointer: 'coarse', sizeClass: 'compact' }, undefined]) {
+    const { screen } = await mountLive(createJinshuSource({ key: 'w3', initialDoc: doc }), env);
+    const cells = screen.queryAll(n => n.props.grow !== undefined && n.props.minWidthCh !== undefined);
+    const header = cells.slice(0, 5);
+    const grows = header.map(c => c.props.grow);
+    assert.ok(grows[4] > 3 * grows[0], `the notes column takes the room its text needs: ${grows}`);
+    assert.ok(grows[3] <= grows[0], 'a short column stays short');
+    for (let col = 0; col < 5; col++) assert.ok(cells.filter((_, i) => i % 5 === col).every(c => c.props.grow === grows[col]), 'every row splits the same way');
+    const grid = screen.queryAll(n => n.props.widthPercent === 100 && n.props.minWidthCh !== undefined)[0];
+    assert.equal(grid.props.minWidthCh, header.reduce((sum, c) => sum + c.props.minWidthCh, 0), 'it scrolls only below every column\'s minimum');
+    assert.ok(grid.props.minWidthCh <= 60, 'five short columns fit a reading measure');
+  }
 });

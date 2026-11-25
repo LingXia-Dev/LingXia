@@ -1,8 +1,8 @@
 import { createContext, useContext, type ChannelEndpoint } from '@lingxia/view';
-import type { ChannelClientMsg, ChannelServerMsg } from '../source/types';
+import type { ChannelClientMsg, ChannelParams, ChannelServerMsg } from '../source/types';
 
 export type JinshuChannelAction = (
-  params: { readonly doc: string; readonly have?: number },
+  params: ChannelParams,
   channel: ChannelEndpoint<ChannelServerMsg, ChannelClientMsg>,
 ) => unknown;
 

@@ -21,7 +21,10 @@
     "defaultMessage": "未命名文档"
   },
   "@jinshu.blockType": {
-    "defaultMessage": "{type, select, paragraph {段落} heading {标题 {level}} quote {引用} callout {提示块} details {折叠块} list {列表} code {代码块} math {公式} table {表格} columns {分栏} divider {分割线} image {图片} video {视频} audio {音频} file {文件} other {{type}}}"
+    "defaultMessage": "{type, select, paragraph {正文} heading {标题 {level}} quote {引用} callout {提示块} details {折叠块} list {列表} bullet {无序列表} ordered {有序列表} task {任务列表} code {代码块} math {公式} table {表格} columns {分栏} divider {分割线} image {图片} video {视频} audio {音频} file {文件} custom {应用自定义块} other {{type}}}"
+  },
+  "@jinshu.calloutTone": {
+    "defaultMessage": "{tone, select, info {信息} tip {技巧} warning {注意} other {警告}}"
   },
   "@jinshu.diff.added": {
     "defaultMessage": "新增"
@@ -116,12 +119,6 @@
   "@jinshu.editor.block.calloutTitle": {
     "defaultMessage": "提示块标题"
   },
-  "@jinshu.editor.block.calloutTitlePlaceholder": {
-    "defaultMessage": "提示标题（可选）"
-  },
-  "@jinshu.editor.block.calloutTone": {
-    "defaultMessage": "{tone, select, info {信息} tip {技巧} warning {注意} other {警告}}"
-  },
   "@jinshu.editor.block.cell": {
     "defaultMessage": "单元格 {row}-{column}"
   },
@@ -141,7 +138,7 @@
     "defaultMessage": "编程语言"
   },
   "@jinshu.editor.block.codeLanguagePlaceholder": {
-    "defaultMessage": "lang"
+    "defaultMessage": "语言"
   },
   "@jinshu.editor.block.column": {
     "defaultMessage": "第 {index} 列"
@@ -319,57 +316,6 @@
   },
   "@jinshu.editor.blockMenu.turnInto": {
     "defaultMessage": "转换为"
-  },
-  "@jinshu.editor.blockType.audio": {
-    "defaultMessage": "音频"
-  },
-  "@jinshu.editor.blockType.bullet": {
-    "defaultMessage": "无序列表"
-  },
-  "@jinshu.editor.blockType.callout": {
-    "defaultMessage": "提示块"
-  },
-  "@jinshu.editor.blockType.code": {
-    "defaultMessage": "代码块"
-  },
-  "@jinshu.editor.blockType.columns": {
-    "defaultMessage": "分栏"
-  },
-  "@jinshu.editor.blockType.details": {
-    "defaultMessage": "折叠块"
-  },
-  "@jinshu.editor.blockType.divider": {
-    "defaultMessage": "分割线"
-  },
-  "@jinshu.editor.blockType.file": {
-    "defaultMessage": "附件"
-  },
-  "@jinshu.editor.blockType.heading": {
-    "defaultMessage": "标题 {level}"
-  },
-  "@jinshu.editor.blockType.image": {
-    "defaultMessage": "图片"
-  },
-  "@jinshu.editor.blockType.math": {
-    "defaultMessage": "公式"
-  },
-  "@jinshu.editor.blockType.ordered": {
-    "defaultMessage": "有序列表"
-  },
-  "@jinshu.editor.blockType.paragraph": {
-    "defaultMessage": "正文"
-  },
-  "@jinshu.editor.blockType.quote": {
-    "defaultMessage": "引用"
-  },
-  "@jinshu.editor.blockType.table": {
-    "defaultMessage": "表格"
-  },
-  "@jinshu.editor.blockType.task": {
-    "defaultMessage": "任务列表"
-  },
-  "@jinshu.editor.blockType.video": {
-    "defaultMessage": "视频"
   },
   "@jinshu.editor.conflict.copy": {
     "defaultMessage": "另存为副本"
@@ -671,8 +617,41 @@
   "@jinshu.editor.slash.matching": {
     "defaultMessage": "匹配「/{query}」（↑↓ 选择 · Enter 插入）"
   },
+  "@jinshu.editor.source.apply": {
+    "defaultMessage": "仍然应用"
+  },
+  "@jinshu.editor.source.discard": {
+    "defaultMessage": "放弃我的修改"
+  },
+  "@jinshu.editor.source.enter": {
+    "defaultMessage": "以 Markdown 编辑"
+  },
+  "@jinshu.editor.source.field": {
+    "defaultMessage": "Markdown 源码"
+  },
+  "@jinshu.editor.source.keep": {
+    "defaultMessage": "继续编辑"
+  },
+  "@jinshu.editor.source.leave": {
+    "defaultMessage": "返回块编辑"
+  },
+  "@jinshu.editor.source.refused": {
+    "defaultMessage": "无法应用这段文本，你的文本已保留。"
+  },
+  "@jinshu.editor.source.stale": {
+    "defaultMessage": "你编辑期间有人修改了这些块，你的文本已保留。"
+  },
+  "@jinshu.editor.source.unavailable": {
+    "defaultMessage": "文档含有 Markdown 无法表示的内容：{reason}"
+  },
+  "@jinshu.editor.source.warnings": {
+    "defaultMessage": "{count} 处内容无法原样保留："
+  },
   "@jinshu.editor.suggestion.accept": {
     "defaultMessage": "接受"
+  },
+  "@jinshu.editor.suggestion.formatOnly": {
+    "defaultMessage": "只改格式"
   },
   "@jinshu.editor.suggestion.reject": {
     "defaultMessage": "拒绝"
@@ -712,6 +691,24 @@
   },
   "@jinshu.editor.uploading": {
     "defaultMessage": "上传中"
+  },
+  "@jinshu.editor.wordCount": {
+    "defaultMessage": "{count} 字"
+  },
+  "@jinshu.format.blockField": {
+    "defaultMessage": "{block}{field}"
+  },
+  "@jinshu.format.field": {
+    "defaultMessage": "{field, select, title {标题} caption {说明} filename {文件名} width {尺寸} height {尺寸} size {尺寸} poster {封面} lang {语言} meta {文档元数据} language {语言} summary {摘要} checked {勾选} other {{field}}}"
+  },
+  "@jinshu.format.mark": {
+    "defaultMessage": "{mark, select, bold {粗体} italic {斜体} underline {下划线} strike {删除线} highlight {高亮} script {上标和下标} code {行内代码} link {链接} math {行内公式} atom {行内组件} other {{mark}}}"
+  },
+  "@jinshu.format.rule": {
+    "defaultMessage": "{rule, select, titleLine {多行标题} frontMatterLine {前言中的分隔线} cellBreak {表格中的换行} cellCodePipe {表格代码中的竖线} inlineMath {部分行内公式} inlineInexact {部分文字格式} codeLanguage {带空格的代码语言名} imageLine {多行的图片描述或地址} listStart {过大的列表编号} checkedItem {非待办列表中的勾选} tableHeader {没有表头的表格} inlineImage {文中图片保留为文字} linkAsText {链接保留为文字} linkTitle {链接标题已去掉} emptyAlt {空的图片描述已去掉} blockInList {列表项中的块保留为文字} headingInQuote {引用中的标题改为正文} headingLevel {五、六级标题改为四级} codeInfo {代码块的附加信息已去掉} rawHtml {HTML 保留为文字} alertType {未知提示类型改为备注} calloutTitle {提示标题改为第一行} listDepth {过深的列表改为正文} tableCells {多出的表格单元格已去掉} unreadable {文件无法读取} other {{rule}}}"
+  },
+  "@jinshu.format.separator": {
+    "defaultMessage": "、"
   },
   "@jinshu.note.accepted": {
     "defaultMessage": "接受了 {name} 的建议"
@@ -782,6 +779,9 @@
   "@jinshu.note.moveUp": {
     "defaultMessage": "上移块"
   },
+  "@jinshu.note.paste": {
+    "defaultMessage": "粘贴 {count} 个块"
+  },
   "@jinshu.note.replace": {
     "defaultMessage": "替换「{text}」"
   },
@@ -796,6 +796,9 @@
   },
   "@jinshu.note.rowUp": {
     "defaultMessage": "上移行"
+  },
+  "@jinshu.note.source": {
+    "defaultMessage": "编辑 Markdown 源码"
   },
   "@jinshu.note.streamStopped": {
     "defaultMessage": "停止前已写好的内容"
@@ -819,7 +822,7 @@
     "defaultMessage": "目录"
   },
   "@jinshu.outline.untitled": {
-    "defaultMessage": "(Untitled)"
+    "defaultMessage": "（无标题）"
   },
   "@jinshu.view.audio.blocked": {
     "defaultMessage": "音频地址受安全策略拦截"
@@ -849,7 +852,7 @@
     "defaultMessage": "复制"
   },
   "@jinshu.view.code.plainText": {
-    "defaultMessage": "text"
+    "defaultMessage": "纯文本"
   },
   "@jinshu.view.details": {
     "defaultMessage": "详情"
@@ -922,8 +925,5 @@
   },
   "@jinshu.view.video.playedOnly": {
     "defaultMessage": "本视频只能拖动到已看过的位置"
-  },
-  "@jinshu.editor.suggestion.formatOnly": {
-    "defaultMessage": "只改格式"
   }
 }

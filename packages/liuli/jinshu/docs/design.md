@@ -88,6 +88,20 @@ operations and suggestions all use this unit.
 
 Reading progress, in-page links and agent edits all point at ids, so this table is part of the format.
 
+### Markdown files
+
+A Markdown file is another encoding of the same model, read on load and written on save. It holds a
+strict profile: CommonMark with GFM tables, task lists, strikethrough and autolinks, `$math$` and `$$`
+blocks, and the alert syntax `> [!NOTE]` for callouts. Jinshu adds no syntax of its own, so any
+Markdown tool reads the file the same way. The document title is a leading plain `# Title` line, front
+matter is kept verbatim in `meta.frontMatter`, and raw HTML stays as literal text with a warning. The
+generated reference lists what the profile holds and what each block loses.
+
+The file has no ids. Reading derives each id from the block's content, and, given the previous
+document, keeps the ids of unchanged blocks and of same-type blocks in the same place between them. The
+cost: a block that is both edited and moved outside Jinshu gets a new id, so anything pointing at it is
+lost. Writing what Jinshu itself wrote and reading it back gives the same document and the same bytes.
+
 ## The source
 
 ### Draft and saved version
@@ -100,6 +114,19 @@ theirs (drop the draft) or a copy.
 
 With `storage`, the draft, its base version and pending suggestions are written locally after each change
 and offered back after a crash. A stored draft that no longer validates is discarded.
+
+With `saveMode: 'auto'`, the source saves 1.5 s after the person's last edit or accepted suggestion. It
+never saves while a conflict is open, waits for a running upload to finish, and does not save after an
+agent's edit alone (`agentSave` decides that). A failed save shows as failed and is retried on the next
+edit.
+
+### One file format per document
+
+A source has a `format`, `json` (the default) or `markdown`. `load` may return the file's text, which
+is parsed in that format, and `save` receives the draft serialized in it beside the document. A
+Markdown document holds only what Markdown can: an op that adds anything else is refused with
+`FORMAT`, and the editor does not offer it. Parsing a Markdown file again keeps the ids of blocks that
+did not change, so reading positions and agent edits still point at them.
 
 ### One pipeline for every edit
 
@@ -229,7 +256,9 @@ editor is involved, the page passes the source's channel action instead (`channe
 `JinshuProvider` for several components), and the source serves snapshots, block changes, suggestions,
 streams, history and upload progress over it. Only small flags such as `dirty` and `saveStatus` go
 through `page.update`. A reopened channel sends the revision it has; the source answers with the changes
-since then or a snapshot. `doc` and `channel` are exclusive.
+since then or a snapshot. `doc` and `channel` are exclusive. A page opens its channel as an `editor` or a
+`reader`: agent changes made while no editor showed the document wait for the next editor, since a
+reader does not show them.
 
 ### Live updates
 
@@ -288,17 +317,32 @@ that the app decides; `nav.scrollTo(id)` scrolls to any block.
 The editor and the reader share one block renderer, so a document looks the same while it is edited.
 Editing chrome adapts to the pointer, not the platform:
 
-- **Fine pointer**: block handles appear on hover (`+` inserts below, the handle opens turn-into, copy
-  link and delete), and a compact format bar floats above the block being edited.
+- **Fine pointer**: block handles appear on hover (`+` inserts below; the handle opens turn-into, move,
+  duplicate, properties, ask the agent and delete), and a compact format bar floats above the block
+  being edited.
 - **Coarse pointer**: no floating bar over the text, which would collide with the system's own copy and
-  paste menu. A format bar sits on top of the keyboard with a Done button at its end, and blocks that are
-  not text get a "more" menu.
-- `/` in an empty block opens the block menu, filtered by Chinese, English or pinyin initials.
-- Text is edited as it reads, with marks applied to the selection. Markdown-style rules at the start of
-  a line turn it into a block (`# `, `- `, `1. `, `- [ ] `, `> `, ```` ``` ````, `---`).
-- Backspace at a block's start turns it back into a paragraph, then merges it into the one above; before
-  a media block it selects that block first, so a second press deletes it.
-- Arrow keys cross blocks at the same column; Tab indents lists and moves between table cells.
+  paste menu. A format bar sits on top of the keyboard with a Done button at its end, and a tap selects
+  a block that is not text, with its own bar and a "more" menu.
+- `/` at the start of a paragraph opens the block menu, filtered by Chinese, English or pinyin initials.
+- A text block edits as shorthand (`**bold**`, `*italic*`, `==mark==`, `[text](url)`, `$x$`); the
+  format bar wraps the last word. Input rules at the start of a paragraph turn it into a block: `# ` to
+  `#### `, `- `, `1. ` or `1) `, `- [ ] ` and `- [x] `, `> `, `> [!NOTE]` (and `TIP`, `IMPORTANT`,
+  `WARNING`, `CAUTION`) for a callout, `$$`, ```` ``` ````, `---`, and a `| a | b |` row then Enter for
+  a table. JSON documents also take `!> ` for a callout.
+- Enter starts a new paragraph below. In a list it adds an item; on an empty item it ends the list
+  there, the item becoming a paragraph, in one undo step. Arrow up and down move to the text block
+  above or below.
+- The toolbar counts the document's length beside the save state: Chinese, Japanese and Korean by
+  character, other text by word.
+- Pasted text with paragraph breaks, or Markdown from elsewhere, becomes blocks in one undo step;
+  a single line stays text.
+- In a Markdown document the menus, the format bar and the property editors offer only what Markdown
+  can hold.
+- Source mode shows the whole document as one Markdown text. A JSON document offers it only when
+  Markdown can hold everything in it, else the toggle is disabled and says why. Leaving parses the text
+  against the document it started from and sends only the changed blocks as one human batch, so other
+  blocks and their ids stay; warnings show first, and a change by someone else meanwhile refuses the
+  batch and keeps the text.
 - IME composition never splits an undo step, and the person's typing always wins over an incoming
   update to the same block.
 - Media blocks edit their caption, `alt` and size in place; tables add and remove rows and columns; code

@@ -2,11 +2,14 @@ import {
   applyOps,
   checkDocument,
   createDocument,
+  documentToMarkdown,
   emptyRegistry,
   findBlockById,
+  formatAllows,
   inlineLength,
   listBlocks,
   walkBlocks,
+  markdownToDocument,
   migrateDocument,
   newBlockId,
   normalizeDocument,
@@ -15,6 +18,7 @@ import {
   toAgentView,
   toBlockMarkup,
 } from '../schema/index';
+import type { MarkdownSource } from '../schema/index';
 import type {
   AnyJinshuOp,
   BlockSuggestion,
@@ -23,6 +27,7 @@ import type {
   Inline,
   JinshuBlock,
   JinshuDocument,
+  JinshuFormat,
   JinshuOp,
   NoteWord,
   OpBatch,
@@ -36,6 +41,7 @@ import type {
   AgentActivity,
   AgentBatch,
   ChannelClientMsg,
+  ChannelParams,
   ChannelServerMsg,
   ForAgentOptions,
   ForAgentResult,
@@ -43,9 +49,12 @@ import type {
   JinshuSourceOptions,
   JinshuSourceState,
   JinshuStream,
+  LoadResult,
   MinimalChannelEndpoint,
   ReviewRecord,
+  SaveFile,
   SaveResult,
+  SnapshotPolicy,
 } from './types';
 import { timeoutSignal, type AbortSignalLike } from './signal';
 
@@ -69,6 +78,9 @@ const DEFAULT_HUMAN: Origin = { kind: 'human', id: 'local' };
 
 /** How long an agent's mark stays up after its tool call returns. */
 const ACTIVITY_MARK_MS = 4_000;
+
+/** How long after the person's last edit `saveMode: 'auto'` saves. */
+const AUTO_SAVE_MS = 1_500;
 
 // Logic has no timer the component engine rule allows; an aborting signal is one.
 function after(ms: number, fn: () => void): void {
@@ -147,19 +159,59 @@ export function createJinshuSource(options: JinshuSourceOptions): JinshuSource {
   const registry = options.registry ?? emptyRegistry;
   const agentSave = options.agentSave ?? 'confirm';
   const guardLargeAgentEdits = options.guardLargeAgentEdits ?? true;
+  const format: JinshuFormat = options.format ?? 'json';
 
+  // The Markdown file as last read or written: saving keeps the bytes of every block that did not change.
+  let markdownSource: MarkdownSource | undefined;
+
+  /** A stored file's text in `format`; `previous` lets Markdown keep the ids of blocks it did not change. */
+  function readText(text: string, previous?: JinshuDocument): { doc?: JinshuDocument; problems: Problem[]; source?: MarkdownSource } {
+    if (format === 'markdown') {
+      const read = markdownToDocument(text, { registry, ...(previous ? { previous } : {}) });
+      return { doc: read.doc, problems: [...read.problems], source: read.source };
+    }
+    try {
+      return { doc: migrateDocument(JSON.parse(text) as JinshuDocument, registry), problems: [] };
+    } catch (err) {
+      return { problems: [{ code: 'INVALID', severity: 'error', message: `The stored file is not JSON: ${err instanceof Error ? err.message : String(err)}` }] };
+    }
+  }
+
+  function readStored(stored: LoadResult, previous?: JinshuDocument): { doc?: JinshuDocument; problems: Problem[]; source?: MarkdownSource } {
+    return 'text' in stored ? readText(stored.text, previous) : { doc: migrateDocument(stored.doc, registry), problems: [] };
+  }
+
+  /** The draft as the file `save` writes: canonical JSON, or Markdown. */
+  function serialize(d: JinshuDocument): SaveFile {
+    if (format === 'markdown') return { text: documentToMarkdown(d, { source: markdownSource }).text };
+    return { text: `${JSON.stringify(normalizeDocument(d, registry), null, 2)}\n` };
+  }
+
+  /** Drops the fields of a picked or uploaded medium that the format cannot hold. */
+  function fitFormat(blockType: string, fields: Readonly<Record<string, unknown>>): Record<string, unknown> {
+    const out: Record<string, unknown> = {};
+    for (const [key, value] of Object.entries(fields)) {
+      if (format === 'json' || key === 'id' || key === 'type' || formatAllows(format, { block: blockType, field: key })) out[key] = value;
+    }
+    return out;
+  }
+
+  const initial = options.initialText !== undefined ? readText(options.initialText) : undefined;
+  if (!options.initialDoc) markdownSource = initial?.source;
   let doc: JinshuDocument = options.initialDoc
     ? migrateDocument(options.initialDoc, registry)
-    : options.template
-      ? migrateDocument(options.template.doc, registry)
-      : createDocument();
+    : initial?.doc
+      ? initial.doc
+      : options.template
+        ? migrateDocument(options.template.doc, registry)
+        : createDocument();
 
   let revision = 1;
   let savedRevision = 1;
   let baseVersion = options.initialVersion ?? 'v1';
   let saving = false;
   let saveError: string | undefined;
-  let problems: Problem[] = checkDocument(doc, registry, options);
+  let problems: Problem[] = [...(initial?.problems ?? []), ...checkDocument(doc, registry, options)];
   let suggestions: Suggestion[] = [];
   let conflicts: ConflictItem[] = [];
   let focusIds: string[] = [];
@@ -167,9 +219,15 @@ export function createJinshuSource(options: JinshuSourceOptions): JinshuSource {
   let activeUploads = 0;
   let activeStream: JinshuStream | null = null;
   let activities: AgentActivity[] = [];
-  // Agent batches that landed while no page showed the document; the next page to open shows them.
+  // Agent batches no editor has shown yet; the next editor to open shows them.
   let awayBatches: AgentBatch[] = [];
+  // Channels whose page shows the change bar: away batches go only to these.
+  const editors = new Set<MinimalChannelEndpoint>();
   const stopped = new Set<string>();
+  // Bumped by each person's edit; a pending auto save runs only if it is still the latest.
+  let autoSaveToken = 0;
+  // An auto save came due while it could not run (an upload, a save in flight); retried once it can.
+  let autoSaveDue = false;
   const draftStorageKey = `jinshu:draft:${options.key}`;
 
   function persistDraft(): void {
@@ -308,15 +366,20 @@ export function createJinshuSource(options: JinshuSourceOptions): JinshuSource {
     for (const fn of listeners) fn(state);
   }
 
+  function policy(): SnapshotPolicy {
+    return {
+      ...(options.filePolicy ? { filePolicy: options.filePolicy } : {}),
+      hasMedia: Boolean(options.media?.pick),
+      format,
+    };
+  }
+
   function pushSnapshotAndMeta(): void {
     broadcast({
       t: 'snapshot',
       revision,
       doc,
-      policy: {
-        ...(options.filePolicy ? { filePolicy: options.filePolicy } : {}),
-        hasMedia: Boolean(options.media?.pick),
-      },
+      policy: policy(),
     });
     broadcast({
       t: 'history',
@@ -482,6 +545,7 @@ export function createJinshuSource(options: JinshuSourceOptions): JinshuSource {
     const result = applyOps(doc, expandedOps, registry, {
       allowedSrcSchemes: options.allowedSrcSchemes,
       allowedLxApps: options.allowedLxApps,
+      format,
     });
     const errors = result.problems.filter(p => p.severity === 'error');
     if (errors.length > 0) {
@@ -656,13 +720,14 @@ export function createJinshuSource(options: JinshuSourceOptions): JinshuSource {
 
     if (batch.origin.kind === 'agent') {
       const shown: AgentBatch = { batchId: batch.batchId, revision, origin: batch.origin, blockIds: touchedIds };
-      if (channels.size > 0) broadcast({ t: 'agentBatches', batches: [shown] });
-      else awayBatches = [...awayBatches, { ...shown, away: true }];
+      if (editors.size > 0) broadcast({ t: 'agentBatches', batches: [shown] });
+      else awayBatches = [...awayBatches, channels.size > 0 ? shown : { ...shown, away: true }];
     }
 
     markStaleSuggestions(touchedIds);
     pushSnapshotAndMeta();
     notify();
+    if (batch.origin.kind === 'human') scheduleAutoSave();
 
     return { revision, batchId: batch.batchId, problems };
   }
@@ -743,6 +808,7 @@ export function createJinshuSource(options: JinshuSourceOptions): JinshuSource {
     recordTakeBack('undone', target, origin);
     pushSnapshotAndMeta();
     notify();
+    if ((origin?.kind ?? 'human') === 'human') scheduleAutoSave();
     return { revision, problems: [] };
   }
 
@@ -762,6 +828,7 @@ export function createJinshuSource(options: JinshuSourceOptions): JinshuSource {
     recordTakeBack('redone', rec, origin);
     pushSnapshotAndMeta();
     notify();
+    if ((origin?.kind ?? 'human') === 'human') scheduleAutoSave();
     return { revision, problems: [] };
   }
 
@@ -822,6 +889,7 @@ export function createJinshuSource(options: JinshuSourceOptions): JinshuSource {
     broadcast({ t: 'suggestions', suggestions });
     pushSnapshotAndMeta();
     notify();
+    scheduleAutoSave();
     return { revision, problems: [] };
   }
 
@@ -854,14 +922,46 @@ export function createJinshuSource(options: JinshuSourceOptions): JinshuSource {
     return { revision, problems: [] };
   }
 
+  /** With `saveMode: 'auto'`, saves once the person has not edited for a moment. */
+  function scheduleAutoSave(): void {
+    if (options.saveMode !== 'auto') return;
+    const token = ++autoSaveToken;
+    after(AUTO_SAVE_MS, () => {
+      if (token === autoSaveToken) autoSave();
+    });
+  }
+
+  function autoSave(): void {
+    if (conflicts.length > 0 || revision === savedRevision) return;
+    if (activeUploads > 0 || saving) {
+      autoSaveDue = true;
+      return;
+    }
+    autoSaveDue = false;
+    void save();
+  }
+
+  function retryAutoSave(): void {
+    if (!autoSaveDue) return;
+    autoSaveDue = false;
+    scheduleAutoSave();
+  }
+
   async function load(): Promise<JinshuSourceState> {
     if (!options.load) return getState();
     const res = await options.load();
-    doc = migrateDocument(res.doc, registry);
+    const read = readStored(res, doc);
+    if (!read.doc) {
+      problems = read.problems;
+      notify();
+      return getState();
+    }
+    doc = read.doc;
+    markdownSource = read.source;
     baseVersion = res.version;
     revision += 1;
     savedRevision = revision;
-    problems = checkDocument(doc, registry, options);
+    problems = [...read.problems, ...checkDocument(doc, registry, options)];
     conflicts = [];
     saveError = undefined;
     pushSnapshotAndMeta();
@@ -877,13 +977,16 @@ export function createJinshuSource(options: JinshuSourceOptions): JinshuSource {
       return { ok: true, version: baseVersion };
     }
     const savingRevision = revision;
+    const savingDoc = doc;
     saving = true;
     saveError = undefined;
     notify();
     try {
-      const res = await options.save(doc, baseVersion);
+      const file = serialize(savingDoc);
+      const res = await options.save(savingDoc, baseVersion, file);
       saving = false;
       if (res.ok) {
+        if (format === 'markdown') markdownSource = markdownToDocument(file.text, { registry, previous: savingDoc }).source;
         savedRevision = savingRevision;
         baseVersion = res.version;
         conflicts = [];
@@ -893,7 +996,7 @@ export function createJinshuSource(options: JinshuSourceOptions): JinshuSource {
           {
             id: newBlockId('conf'),
             kind: 'version',
-            remoteDoc: res.remoteDoc,
+            remoteDoc: 'remoteDoc' in res ? res.remoteDoc : readText(res.remoteText, doc).doc,
             remoteVersion: res.remoteVersion,
             message: `Remote version "${res.remoteVersion}" is newer than base "${baseVersion}".`,
           },
@@ -903,11 +1006,13 @@ export function createJinshuSource(options: JinshuSourceOptions): JinshuSource {
         saveError = res.error;
       }
       notify();
+      retryAutoSave();
       return res;
     } catch (err) {
       saving = false;
       saveError = err instanceof Error ? err.message : String(err);
       notify();
+      retryAutoSave();
       return { ok: false, error: saveError };
     }
   }
@@ -1163,12 +1268,14 @@ export function createJinshuSource(options: JinshuSourceOptions): JinshuSource {
       pending: suggestions.map(s => s.id),
       saveWaiting: pendingAgentSave !== undefined,
       ...(wasStopped ? { stopped: true as const } : {}),
+      format,
     };
   }
 
   async function handleMediaPick(msg: Extract<ChannelClientMsg, { t: 'media' }>): Promise<void> {
     if (!options.media?.pick) return;
     const kind = msg.kind ?? 'image';
+    if (!formatAllows(format, { block: kind })) return;
     const replacing = msg.replacingId ? findBlockById(doc, msg.replacingId) : undefined;
     let picked = await options.media.pick({ kind, replacing });
     if (!picked) return;
@@ -1182,7 +1289,7 @@ export function createJinshuSource(options: JinshuSourceOptions): JinshuSource {
     }
 
     if ('src' in picked) {
-      const newBlk: JinshuBlock =
+      const pickedBlk: JinshuBlock =
         kind === 'video'
           ? { id: newBlockId('v'), type: 'video', src: picked.src, poster: picked.poster, durationMs: picked.durationMs }
           : kind === 'audio'
@@ -1190,6 +1297,7 @@ export function createJinshuSource(options: JinshuSourceOptions): JinshuSource {
             : kind === 'file'
               ? { id: newBlockId('f'), type: 'file', src: picked.src, name: picked.name ?? 'file', mimeType: picked.mimeType, sizeBytes: picked.sizeBytes }
               : { id: newBlockId('img'), type: 'image', src: picked.src, width: picked.width, height: picked.height };
+      const newBlk = fitFormat(kind, pickedBlk as unknown as Record<string, unknown>) as unknown as JinshuBlock;
       apply({
         batchId: newBlockId('med'),
         origin: DEFAULT_HUMAN,
@@ -1225,7 +1333,7 @@ export function createJinshuSource(options: JinshuSourceOptions): JinshuSource {
         broadcast({ t: 'uploadProgress', blockId: tempBlockId, ratio });
       });
       // Replace temp src in-place WITHOUT adding to undo stack
-      const res = applyOps(doc, [{ op: 'update', id: tempBlockId, attrs: uploaded }], registry, options);
+      const res = applyOps(doc, [{ op: 'update', id: tempBlockId, attrs: fitFormat(kind, uploaded) }], registry, options);
       if (!res.problems.some(p => p.severity === 'error')) {
         doc = res.doc;
         revision += 1;
@@ -1235,10 +1343,19 @@ export function createJinshuSource(options: JinshuSourceOptions): JinshuSource {
       }
     } finally {
       activeUploads -= 1;
+      if (activeUploads === 0) retryAutoSave();
     }
   }
 
-  function serve(channel: MinimalChannelEndpoint): () => void {
+  function joinAsEditor(channel: MinimalChannelEndpoint): void {
+    if (editors.has(channel)) return;
+    editors.add(channel);
+    if (awayBatches.length === 0) return;
+    channel.send({ t: 'agentBatches', batches: awayBatches });
+    awayBatches = [];
+  }
+
+  function serve(channel: MinimalChannelEndpoint, params?: ChannelParams): () => void {
     channels.add(channel);
 
     // Send initial state immediately
@@ -1246,10 +1363,7 @@ export function createJinshuSource(options: JinshuSourceOptions): JinshuSource {
       t: 'snapshot',
       revision,
       doc,
-      policy: {
-        ...(options.filePolicy ? { filePolicy: options.filePolicy } : {}),
-        hasMedia: Boolean(options.media?.pick),
-      },
+      policy: policy(),
     });
     if (suggestions.length > 0) channel.send({ t: 'suggestions', suggestions });
     if (conflicts.length > 0) channel.send({ t: 'conflicts', conflicts });
@@ -1263,24 +1377,14 @@ export function createJinshuSource(options: JinshuSourceOptions): JinshuSource {
       channel.send({ t: 'saveRequest', ...pendingAgentSave });
     }
     if (activities.length > 0) channel.send({ t: 'activity', activities });
-    if (awayBatches.length > 0) {
-      channel.send({ t: 'agentBatches', batches: awayBatches });
-      awayBatches = [];
-    }
+    if (params?.role === 'editor') joinAsEditor(channel);
     notify();
 
     const offData = channel.on('data', msg => {
       switch (msg.t) {
         case 'open':
-          channel.send({
-            t: 'snapshot',
-            revision,
-            doc,
-            policy: {
-              ...(options.filePolicy ? { filePolicy: options.filePolicy } : {}),
-              hasMedia: Boolean(options.media?.pick),
-            },
-          });
+          channel.send({ t: 'snapshot', revision, doc, policy: policy() });
+          if (msg.role === 'editor') joinAsEditor(channel);
           break;
         case 'ops': {
           const res = apply(msg.batch);
@@ -1323,6 +1427,9 @@ export function createJinshuSource(options: JinshuSourceOptions): JinshuSource {
         case 'stopAgent':
           stopAgent(msg.originId);
           break;
+        case 'file':
+          channel.send({ t: 'file', revision, text: serialize(doc).text });
+          break;
       }
     });
 
@@ -1330,6 +1437,7 @@ export function createJinshuSource(options: JinshuSourceOptions): JinshuSource {
       offData();
       offClose();
       channels.delete(channel);
+      editors.delete(channel);
       channelCleanups.delete(cleanup);
       notify();
     };
@@ -1342,6 +1450,8 @@ export function createJinshuSource(options: JinshuSourceOptions): JinshuSource {
     key: options.key,
     registry,
     filePolicy: options.filePolicy,
+    format,
+    file: () => serialize(doc),
     agentSave,
     getState,
     load,
@@ -1373,6 +1483,8 @@ export function createJinshuSource(options: JinshuSourceOptions): JinshuSource {
       return () => listeners.delete(listener);
     },
     close() {
+      autoSaveToken += 1;
+      autoSaveDue = false;
       for (const cleanup of [...channelCleanups]) cleanup();
       listeners.clear();
     },

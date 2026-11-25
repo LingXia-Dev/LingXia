@@ -9,6 +9,7 @@ export const jinshuEditorParts = {
   markGlyph: 'text',
   history: 'view',
   saved: 'view',
+  wordCount: 'text',
   link: 'view',
   math: 'view',
   findBar: 'view',
@@ -22,6 +23,7 @@ export const jinshuEditorParts = {
   stream: 'view',
   loading: 'text',
   canvas: 'view',
+  source: 'view',
   row: 'view',
   title: 'button',
   block: 'view',
@@ -60,8 +62,11 @@ export const jinshuEditorRecipe = {
   toolbar: {
     base: 'w-full flex-row items-center justify-center bg-canvas py-1.5 border-b border-line',
   },
+  /** The canvas's measure, so the bar's ends line up with the text's. */
   toolbarInner: {
-    base: 'w-full max-w-5xl flex-row items-center justify-between gap-2',
+    base: 'w-full max-w-[74ch] flex-row items-center justify-between gap-2',
+    // Past the block gutter (its width and the row gap), where the text starts.
+    gutter: 'ps-[4.375rem]',
   },
   toolbarStart: {
     base: 'flex-row items-center gap-0.5',
@@ -105,6 +110,7 @@ export const jinshuEditorRecipe = {
     noteDone: 'text-text',
     origin: 'text-caption text-muted',
   },
+  wordCount: { base: 'text-caption text-muted px-1.5 shrink-0' },
   saved: {
     base: 'flex-row items-center gap-1 px-1.5',
     glyph: 'size-3.5 text-success',
@@ -178,6 +184,15 @@ export const jinshuEditorRecipe = {
   },
   canvas: {
     base: 'w-full max-w-[74ch] mx-auto py-4',
+  },
+  /** Source mode: the document as one Markdown text, with what needs the person above it. */
+  source: {
+    base: 'w-full max-w-[74ch] mx-auto py-4 gap-3',
+    notice: 'gap-1.5 rounded-control bg-warning-soft/50 ps-3 pe-1.5 py-2',
+    noticeTitle: 'text-footnote font-medium text-text',
+    noticeItem: 'text-caption text-text',
+    actions: 'flex-row flex-wrap justify-end gap-1',
+    field: 'w-full rounded-control border border-line bg-surface-sunken px-3 py-2.5 font-mono text-footnote text-text',
   },
   /** The gutter track and the block or title beside it. */
   row: {

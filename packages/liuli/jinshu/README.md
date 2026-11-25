@@ -88,6 +88,28 @@ list of flat runs whose marks are keys (`{ text, bold: true, link }`), never a n
 
 `docs/format.md` lists every field, its type, default and allowed values.
 
+## Markdown or JSON
+
+`format` picks the file a document is stored as. `json` (the default) holds every block and mark;
+`markdown` holds what ordinary Markdown can say, for files people also open elsewhere.
+
+```ts
+createJinshuSource({
+  key: 'notes',
+  format: 'markdown',
+  initialText: '# Notes\n\nFirst line.\n',
+  load: () => api.load('notes'),                              // { text, version } or { doc, version }
+  save: (doc, baseVersion, file) => api.save('notes', file.text, baseVersion),
+});
+```
+
+- `save` receives the file text (`file.text`) beside the document; `source.file()` returns the same
+  text without saving. A Markdown file keeps the bytes of every block that did not change.
+- In a Markdown document, edits outside the profile are refused with `FORMAT`, and the editor offers
+  only what fits. The profile is the Markdown section of `docs/format.md`.
+- Markdown has no ids: they are derived on each read, kept for blocks that did not change. An id of
+  a block whose text changed outside Jinshu is new, so a link, comment or reading position on it is lost.
+
 ## Edits, history and review
 
 Every change is an operation batch (`insert`, `replace`, `edit`, `update`, `move`, `delete`, table row

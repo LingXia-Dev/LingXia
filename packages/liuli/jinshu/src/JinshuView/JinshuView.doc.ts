@@ -88,7 +88,7 @@ export const doc: ComponentDoc = {
     },
   ],
   limits: [
-    'The reader shows no change bar or review queue; an agent\'s changes appear in place, briefly tinted with `hasUpdateHighlights`.',
+    'The reader shows no change bar or review queue; an agent\'s changes appear in place, briefly tinted with `hasUpdateHighlights`. Changes made while no editor was open wait for the next `JinshuEditor`.',
     '`openAt` brings the block to the nearest edge of the scroll, not to its top.',
     'It has no AI entry of its own: an agent reaches documents only through the tools the app registers with `createJinshuTools`.',
   ],

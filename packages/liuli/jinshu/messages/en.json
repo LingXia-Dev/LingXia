@@ -28,8 +28,12 @@
     "description": "Name of a document without a title, in an agent tool summary."
   },
   "@jinshu.blockType": {
-    "defaultMessage": "{type, select, paragraph {Paragraph} heading {Heading {level}} quote {Quote} callout {Callout} details {Toggle} list {List} code {Code block} math {Formula} table {Table} columns {Columns} divider {Divider} image {Image} video {Video} audio {Audio} file {File} other {{type}}}",
-    "description": "A block's kind, as named in a diff badge."
+    "defaultMessage": "{type, select, paragraph {Text} heading {Heading {level}} quote {Quote} callout {Callout} details {Toggle} list {List} bullet {Bulleted list} ordered {Numbered list} task {To-do list} code {Code block} math {Equation} table {Table} columns {Columns} divider {Divider} image {Image} video {Video} audio {Audio} file {File} custom {App block} other {{type}}}",
+    "description": "A block's kind, as the editor's menus and a diff badge name it; `bullet`, `ordered` and `task` are list styles."
+  },
+  "@jinshu.calloutTone": {
+    "defaultMessage": "{tone, select, info {Info} tip {Tip} warning {Warning} other {Danger}}",
+    "description": "A callout tone's name: the tone buttons in the editor, and the label of a callout that has no title."
   },
   "@jinshu.diff.added": {
     "defaultMessage": "Added",
@@ -155,14 +159,6 @@
     "defaultMessage": "Callout title",
     "description": "Accessible name of the callout title field."
   },
-  "@jinshu.editor.block.calloutTitlePlaceholder": {
-    "defaultMessage": "Title (optional)",
-    "description": "Placeholder of the callout title field."
-  },
-  "@jinshu.editor.block.calloutTone": {
-    "defaultMessage": "{tone, select, info {Info} tip {Tip} warning {Warning} other {Danger}}",
-    "description": "Tone buttons in the callout editor."
-  },
   "@jinshu.editor.block.cell": {
     "defaultMessage": "Cell {row}-{column}",
     "description": "Accessible name of a body cell's field."
@@ -188,7 +184,7 @@
     "description": "Accessible name of a code block's language field."
   },
   "@jinshu.editor.block.codeLanguagePlaceholder": {
-    "defaultMessage": "lang",
+    "defaultMessage": "Language",
     "description": "Placeholder of a code block's language field."
   },
   "@jinshu.editor.block.column": {
@@ -328,7 +324,7 @@
     "description": "Placeholder of a list item's field."
   },
   "@jinshu.editor.block.keptChildren": {
-    "defaultMessage": "{count, plural, one {# nested block} other {# nested blocks}} (lists, code, formulas…) left unchanged",
+    "defaultMessage": "{count, plural, one {# nested block} other {# nested blocks}} (lists, code, equations…) left unchanged",
     "description": "Note under a callout, quote or details body: children the text editor does not edit."
   },
   "@jinshu.editor.block.listHint": {
@@ -426,74 +422,6 @@
   "@jinshu.editor.blockMenu.turnInto": {
     "defaultMessage": "Turn into",
     "description": "Group heading in the block menu over the types a block can become."
-  },
-  "@jinshu.editor.blockType.audio": {
-    "defaultMessage": "Audio",
-    "description": "Block type."
-  },
-  "@jinshu.editor.blockType.bullet": {
-    "defaultMessage": "Bulleted list",
-    "description": "Block type."
-  },
-  "@jinshu.editor.blockType.callout": {
-    "defaultMessage": "Callout",
-    "description": "Block type: a tinted note box."
-  },
-  "@jinshu.editor.blockType.code": {
-    "defaultMessage": "Code block",
-    "description": "Block type."
-  },
-  "@jinshu.editor.blockType.columns": {
-    "defaultMessage": "Columns",
-    "description": "Block type: side-by-side columns."
-  },
-  "@jinshu.editor.blockType.details": {
-    "defaultMessage": "Toggle",
-    "description": "Block type: a section that opens and closes."
-  },
-  "@jinshu.editor.blockType.divider": {
-    "defaultMessage": "Divider",
-    "description": "Block type: a horizontal rule."
-  },
-  "@jinshu.editor.blockType.file": {
-    "defaultMessage": "Attachment",
-    "description": "Block type: a file."
-  },
-  "@jinshu.editor.blockType.heading": {
-    "defaultMessage": "Heading {level}",
-    "description": "Block type: a heading of the given level, 1 to 4."
-  },
-  "@jinshu.editor.blockType.image": {
-    "defaultMessage": "Image",
-    "description": "Block type."
-  },
-  "@jinshu.editor.blockType.math": {
-    "defaultMessage": "Equation",
-    "description": "Block type; also the equation button and popover title."
-  },
-  "@jinshu.editor.blockType.ordered": {
-    "defaultMessage": "Numbered list",
-    "description": "Block type."
-  },
-  "@jinshu.editor.blockType.paragraph": {
-    "defaultMessage": "Text",
-    "description": "Block type: a plain paragraph."
-  },
-  "@jinshu.editor.blockType.quote": {
-    "defaultMessage": "Quote",
-    "description": "Block type."
-  },
-  "@jinshu.editor.blockType.table": {
-    "defaultMessage": "Table",
-    "description": "Block type; also the table picker's heading in the insert panel."
-  },
-  "@jinshu.editor.blockType.task": {
-    "defaultMessage": "To-do list",
-    "description": "Block type: a list of items with checkboxes."
-  },
-  "@jinshu.editor.blockType.video": {
-    "defaultMessage": "Video",
-    "description": "Block type."
   },
   "@jinshu.editor.conflict.copy": {
     "defaultMessage": "Save as a copy",
@@ -895,9 +823,53 @@
     "defaultMessage": "Matching “/{query}” (↑↓ to choose · Enter to insert)",
     "description": "Hint over the slash menu; query is what was typed after the slash."
   },
+  "@jinshu.editor.source.apply": {
+    "defaultMessage": "Apply anyway",
+    "description": "Applies the Markdown text despite the warnings."
+  },
+  "@jinshu.editor.source.discard": {
+    "defaultMessage": "Discard my changes",
+    "description": "Leaves the Markdown text without applying it."
+  },
+  "@jinshu.editor.source.enter": {
+    "defaultMessage": "Edit as Markdown",
+    "description": "Toolbar button that shows the whole document as Markdown text."
+  },
+  "@jinshu.editor.source.field": {
+    "defaultMessage": "Markdown source",
+    "description": "Accessible name of the Markdown text field."
+  },
+  "@jinshu.editor.source.keep": {
+    "defaultMessage": "Keep editing",
+    "description": "Closes the warnings and returns to the Markdown text."
+  },
+  "@jinshu.editor.source.leave": {
+    "defaultMessage": "Back to blocks",
+    "description": "Toolbar button that parses the Markdown text back into blocks."
+  },
+  "@jinshu.editor.source.refused": {
+    "defaultMessage": "The text could not be applied. Your text is kept.",
+    "description": "Shown when the document refused the Markdown text; the reasons follow."
+  },
+  "@jinshu.editor.source.stale": {
+    "defaultMessage": "Someone changed these blocks while you edited the text. Your text is kept.",
+    "description": "Shown when the Markdown text cannot be applied because the document changed meanwhile."
+  },
+  "@jinshu.editor.source.unavailable": {
+    "defaultMessage": "This document has content Markdown can't hold: {reason}",
+    "description": "Why the Markdown toggle is disabled; `reason` names the first such content."
+  },
+  "@jinshu.editor.source.warnings": {
+    "defaultMessage": "{count, plural, one {# thing} other {# things}} will not come through exactly:",
+    "description": "Heading of the warnings shown before Markdown text is applied."
+  },
   "@jinshu.editor.suggestion.accept": {
     "defaultMessage": "Accept",
     "description": "Accepts one suggestion."
+  },
+  "@jinshu.editor.suggestion.formatOnly": {
+    "defaultMessage": "Formatting only",
+    "description": "Labels a suggestion that keeps the text and changes only its marks (bold, italic, code…); the new formatting is shown under it."
   },
   "@jinshu.editor.suggestion.reject": {
     "defaultMessage": "Reject",
@@ -950,6 +922,30 @@
   "@jinshu.editor.uploading": {
     "defaultMessage": "Uploading",
     "description": "Accessible name of an upload's progress bar."
+  },
+  "@jinshu.editor.wordCount": {
+    "defaultMessage": "{count, plural, one {# word} other {# words}}",
+    "description": "The document's length in the toolbar; a Chinese, Japanese or Korean character counts as one."
+  },
+  "@jinshu.format.blockField": {
+    "defaultMessage": "{field} ({block})",
+    "description": "A property of a kind of block, as a noun in a list: `block` is the block's name, `field` the property's."
+  },
+  "@jinshu.format.field": {
+    "defaultMessage": "{field, select, title {Title} caption {Caption} filename {File name} width {Size} height {Size} size {Size} poster {Cover} lang {Language} meta {Document metadata} language {Language} summary {Summary} checked {Check mark} other {{field}}}",
+    "description": "A property a file format cannot hold, as a noun in a list."
+  },
+  "@jinshu.format.mark": {
+    "defaultMessage": "{mark, select, bold {Bold} italic {Italic} underline {Underline} strike {Strikethrough} highlight {Highlight} script {Superscript and subscript} code {Inline code} link {Links} math {Inline equations} atom {Inline items} other {{mark}}}",
+    "description": "A text mark a file format cannot hold, as a noun in a list."
+  },
+  "@jinshu.format.rule": {
+    "defaultMessage": "{rule, select, titleLine {Multi-line titles} frontMatterLine {Separator lines in front matter} cellBreak {Line breaks in table cells} cellCodePipe {Pipes in code inside tables} inlineMath {Some inline equations} inlineInexact {Some text formatting} codeLanguage {Code language names with spaces} imageLine {Multi-line image text or addresses} listStart {Very large list numbers} checkedItem {Check marks outside to-do lists} tableHeader {Tables without a header row} inlineImage {Images inside text kept as text} linkAsText {Links kept as text} linkTitle {Link titles dropped} emptyAlt {Empty image descriptions dropped} blockInList {Blocks inside list items kept as text} headingInQuote {Headings in quotes became text} headingLevel {Level 5 and 6 headings became level 4} codeInfo {Extra code fence details dropped} rawHtml {HTML kept as text} alertType {Unknown alert types became notes} calloutTitle {Callout titles became their first line} listDepth {Lists nested too deep became text} tableCells {Extra table cells dropped} unreadable {The file could not be read} other {{rule}}}",
+    "description": "A rule of a file format, as a short phrase in a list: either something it cannot hold, or how reading the file changed something."
+  },
+  "@jinshu.format.separator": {
+    "defaultMessage": ", ",
+    "description": "Joins the items of a list of format losses."
   },
   "@jinshu.note.accepted": {
     "defaultMessage": "Accepted {name}'s suggestion",
@@ -1012,7 +1008,7 @@
     "description": "History note."
   },
   "@jinshu.note.insert": {
-    "defaultMessage": "Inserted {kind, select, paragraph {text} heading {heading {level}} bullet {a bulleted list} ordered {a numbered list} task {a task list} list {a list} quote {a quote} callout {a callout} details {a toggle} columns {columns} code {a code block} math {a formula} table {a table} divider {a divider} image {an image} video {a video} audio {audio} file {a file} other {a block}}",
+    "defaultMessage": "Inserted {kind, select, paragraph {text} heading {heading {level}} bullet {a bulleted list} ordered {a numbered list} task {a task list} list {a list} quote {a quote} callout {a callout} details {a toggle} columns {columns} code {a code block} math {an equation} table {a table} divider {a divider} image {an image} video {a video} audio {audio} file {a file} other {a block}}",
     "description": "History note: a block was inserted."
   },
   "@jinshu.note.insertText": {
@@ -1043,6 +1039,10 @@
     "defaultMessage": "Moved a block up",
     "description": "History note."
   },
+  "@jinshu.note.paste": {
+    "defaultMessage": "Pasted {count, plural, one {# block} other {# blocks}}",
+    "description": "History note: pasted text became blocks."
+  },
   "@jinshu.note.replace": {
     "defaultMessage": "Replaced “{text}”",
     "description": "History note: find and replace."
@@ -1062,6 +1062,10 @@
   "@jinshu.note.rowUp": {
     "defaultMessage": "Moved a row up",
     "description": "History note."
+  },
+  "@jinshu.note.source": {
+    "defaultMessage": "Edited the Markdown source",
+    "description": "History note: the person changed the document through its Markdown text."
   },
   "@jinshu.note.streamStopped": {
     "defaultMessage": "Text written before a stop",
@@ -1084,7 +1088,7 @@
     "description": "History note."
   },
   "@jinshu.note.turnInto": {
-    "defaultMessage": "Turned into {kind, select, paragraph {text} heading {heading {level}} bullet {a bulleted list} ordered {a numbered list} task {a task list} list {a list} quote {a quote} callout {a callout} details {a toggle} columns {columns} code {a code block} math {a formula} table {a table} divider {a divider} image {an image} video {a video} audio {audio} file {a file} other {a block}}",
+    "defaultMessage": "Turned into {kind, select, paragraph {text} heading {heading {level}} bullet {a bulleted list} ordered {a numbered list} task {a task list} list {a list} quote {a quote} callout {a callout} details {a toggle} columns {columns} code {a code block} math {an equation} table {a table} divider {a divider} image {an image} video {a video} audio {audio} file {a file} other {a block}}",
     "description": "History note: a block changed kind."
   },
   "@jinshu.outline.title": {
@@ -1230,9 +1234,5 @@
   "@jinshu.view.video.playedOnly": {
     "defaultMessage": "You can only seek to parts you've already watched",
     "description": "Note under a video that may only seek within what was played."
-  },
-  "@jinshu.editor.suggestion.formatOnly": {
-    "defaultMessage": "Formatting only",
-    "description": "Labels a suggestion that keeps the text and changes only its marks (bold, italic, code…); the new formatting is shown under it."
   }
 }

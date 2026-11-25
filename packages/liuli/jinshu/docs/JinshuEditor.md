@@ -8,7 +8,7 @@ A Jinshu document, edited block by block, with history, saving, and a review of 
 import { JinshuEditor } from '@liulidesign/jinshu/JinshuEditor';
 ```
 
-JinshuEditor edits a Jinshu document where it is read: each block keeps the reader's geometry, so moving between reading and editing does not jump. Text blocks edit in place; tables, code, folds, callouts and media have their own editors, and `/` inserts any block. On a live `channel` the source keeps the history, the save state and the review: an agent's change is marked at each block it touched, with a bar to view or undo that batch; its suggestions and save requests wait in one queue; and an agent at work shows a mark the person can stop.
+JinshuEditor edits a Jinshu document where it is read: each block keeps the reader's geometry, so moving between reading and editing does not jump. Text blocks edit in place; tables, code, folds, callouts and media have their own editors, and `/` inserts any block. On a live `channel` the source keeps the history, the save state and the review: an agent's change is marked at each block it touched, with a bar to view or undo that batch; its suggestions and save requests wait in one queue; and an agent at work shows a mark the person can stop. Pasted paragraphs or Markdown become blocks, and in a Markdown document (`format`) the menus offer only what Markdown holds. Source mode edits the whole document as Markdown text and applies only the changed blocks, in one undo step.
 
 ## Examples
 
@@ -115,6 +115,7 @@ export function ReadOnly() {
 | `saveStatus` | `"dirty" \| "failed" \| "saved" \| "saving"` |  | Where saving stands, as the page hears it from Logic; on a live `channel` the toolbar shows it, with Save or Retry. |
 | `nav` | `JinshuNavHandle` |  | Shared with a `JinshuOutline` from `useJinshuNav()`. |
 | `openAt` | `string` |  | A top-level block to open at, once: where an agent's change landed (a tool result's `page`). |
+| `format` | `JinshuFormat` |  | The document's file format; on a live `channel` the source's. In `markdown` the editor offers only what Markdown holds. |
 | `filePolicy` | `FilePolicy` |  | As on JinshuView. |
 | `mediaPolicy` | `MediaPolicy` |  | As on JinshuView. |
 | `resolveSrc` | `((src: string) => string)` |  | As on JinshuView. |
@@ -133,12 +134,14 @@ export function ReadOnly() {
 | header | `<view>` | yes | Stays in view while scrolling: the toolbar, then whatever needs the person (activity, the change bar, the review queue). |
 | toolbar | `<view>` | no | The document's toolbar: insert, the app's `toolbarActions` and find; on a live `channel` also undo, redo, history and the save state. Absent when read-only. |
 | saved | `<view>` | no | The quiet save state at the toolbar's end, from `saveStatus`; Save or Retry takes its place while there is something to save. |
+| wordCount | `<text>` | no | How long the document is, beside the save state: Chinese, Japanese and Korean by character, other text by word. Not shown on a phone. |
 | findBar | `<view>` | no | Find and replace across the document, with the match count. |
 | history | `<view>` | no | The edit history: who changed what, in the reader's language, with undo and redo of each step. |
 | activity | `<view>` | no | An agent reading or writing here, named, with Stop; its next edit is refused once stopped. |
 | agentBar | `<view>` | no | The change bar: who changed how many blocks while the person was here or away, with View (steps through the changes) and Undo for that batch only. |
 | queue | `<view>` | no | One item at a time of what waits for the person: a conflict, an agent's save request, its suggestions in document order. |
 | canvas | `<view>` | yes | The document, at the reader's measure. |
+| source | `<view>` | no | Source mode: the whole document as one Markdown text, parsed back into blocks on leaving, with any warnings or a refusal above it. |
 | title | `<button>` | no | The document's title; pressing it edits it. |
 | block | `<view>` | yes | One block, with a start-edge mark when an agent changed it. |
 | gutter | `<view>` | no | On a desktop, beside the hovered block: insert below, and the block menu (move, duplicate, turn into, properties, ask the agent, delete). |
@@ -162,7 +165,7 @@ export function ReadOnly() {
 - Pattern: none.
 - Name: none; its content is read.
 - Description: none.
-- Enter in a text block: ends it and starts a new paragraph below.
+- Enter in a text block: ends it and starts a new paragraph below; in an empty list item, leaves the list.
 - Arrow up and down in a text block: move to the text block above or below; in the `/` menu, move through its choices.
 - Escape: leaves the field, keeping the edit; in the `/` menu, closes it.
 - Enter, arrows in a table cell: Enter moves down a row and adds one at the end; up and down move between rows.
@@ -189,6 +192,7 @@ Ratios are computed from @lingxia/view/theme and rounded down.
 - Do: Let agents work through the tools the app registers with `createJinshuTools`; the editor shows their changes and requests, and has no AI entry of its own.
 - Do: Set `onAskAgent` to offer "Ask the agent" in each block's menu, and open the app's own conversation with those blocks.
 - Do: Give the source `media.pick` to offer images, video, audio and files; without it, the editor offers none.
+- Do: Set `saveMode: 'auto'` on the source to save 1.5 s after the person stops editing; an agent's edit alone never saves.
 - Don't: Apply an agent's edit in the page; it goes through the source so the change bar, undo and history see it.
 - Don't: Turn off the leave guard on a page that holds unsaved work.
 
@@ -197,6 +201,7 @@ Ratios are computed from @lingxia/view/theme and rounded down.
 | Missing | Needs | Meanwhile |
 | --- | --- | --- |
 | Bold, italic and links on a selection of words in a text block. | reading and setting the selection of a text field, and buttons that leave its caret alone | A text block edits as shorthand (`**bold**`, `==mark==`, `[text](#id)`); the format bar wraps the last word. |
+| Backspace at a block's start merging it into the one above, and Tab indenting a list. | Backspace and Tab in an editor's key map | An empty block is deleted from its menu; Enter on an empty list item leaves the list. |
 
 ## Limits
 

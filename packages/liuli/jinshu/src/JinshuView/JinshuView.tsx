@@ -95,7 +95,7 @@ function LiveJinshuView(props: JinshuViewProps & { readonly activeChannel: Jinsh
   });
 
   useChannel(`jinshu-view-${props.docKey}`, props.activeChannel, {
-    params: { doc: props.docKey },
+    params: { doc: props.docKey, role: 'reader' },
     onData(msg) {
       if (msg.t === 'snapshot') {
         const nextDoc = msg.doc as JinshuDocument;

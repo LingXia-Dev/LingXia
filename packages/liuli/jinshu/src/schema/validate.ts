@@ -14,6 +14,7 @@ import {
   type FieldSpec,
 } from './fields';
 import { inlineKind, newBlockId, paragraph } from './helpers';
+import { checkMarkdownProfile } from './profile';
 import { emptyRegistry, validateJsonSchema } from './registry';
 import type {
   BlockSpec,
@@ -886,6 +887,8 @@ function checkDocumentUnsafe(doc: JinshuDocument, registry: JinshuRegistry, opti
       warn(`In-page link "#${link.target}" points to no block in this document.`, link.owner, 'NOT_FOUND');
     }
   }
+
+  if (options?.format === 'markdown') problems.push(...checkMarkdownProfile(doc));
 
   // Approximate canonical JSON byte size limit
   const serializedLen = JSON.stringify(doc).length;

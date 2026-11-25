@@ -266,13 +266,12 @@
       "status": "preview",
       "since": "2026-11-24",
       "summary": "A Jinshu document, edited block by block, with history, saving, and a review of what an agent changed or asks",
-      "description": "JinshuEditor edits a Jinshu document where it is read: each block keeps the reader's geometry, so moving between reading and editing does not jump. Text blocks edit in place; tables, code, folds, callouts and media have their own editors, and `/` inserts any block. On a live `channel` the source keeps the history, the save state and the review: an agent's change is marked at each block it touched, with a bar to view or undo that batch; its suggestions and save requests wait in one queue; and an agent at work shows a mark the person can stop.",
+      "description": "JinshuEditor edits a Jinshu document where it is read: each block keeps the reader's geometry, so moving between reading and editing does not jump. Text blocks edit in place; tables, code, folds, callouts and media have their own editors, and `/` inserts any block. On a live `channel` the source keeps the history, the save state and the review: an agent's change is marked at each block it touched, with a bar to view or undo that batch; its suggestions and save requests wait in one queue; and an agent at work shows a mark the person can stop. Pasted paragraphs or Markdown become blocks, and in a Markdown document (`format`) the menus offer only what Markdown holds. Source mode edits the whole document as Markdown text and applies only the changed blocks, in one undo step.",
       "keywords": [
         "editor",
         "document editor",
         "rich text",
         "block editor",
-        "notion",
         "wysiwyg",
         "review",
         "suggestions",
@@ -367,6 +366,16 @@
           "description": "A top-level block to open at, once: where an agent's change landed (a tool result's `page`)."
         },
         {
+          "name": "format",
+          "type": "JinshuFormat",
+          "required": false,
+          "description": "The document's file format; on a live `channel` the source's. In `markdown` the editor offers only what Markdown holds.",
+          "values": [
+            "json",
+            "markdown"
+          ]
+        },
+        {
           "name": "filePolicy",
           "type": "FilePolicy",
           "required": false,
@@ -434,6 +443,7 @@
         "markGlyph": "text",
         "history": "view",
         "saved": "view",
+        "wordCount": "text",
         "link": "view",
         "math": "view",
         "findBar": "view",
@@ -447,6 +457,7 @@
         "stream": "view",
         "loading": "text",
         "canvas": "view",
+        "source": "view",
         "row": "view",
         "title": "button",
         "block": "view",
@@ -471,7 +482,7 @@
         "keyboard": [
           {
             "keys": "Enter in a text block",
-            "effect": "ends it and starts a new paragraph below"
+            "effect": "ends it and starts a new paragraph below; in an empty list item, leaves the list"
           },
           {
             "keys": "Arrow up and down in a text block",
@@ -577,6 +588,11 @@
           "missing": "Bold, italic and links on a selection of words in a text block.",
           "needs": "reading and setting the selection of a text field, and buttons that leave its caret alone",
           "today": "A text block edits as shorthand (`**bold**`, `==mark==`, `[text](#id)`); the format bar wraps the last word."
+        },
+        {
+          "missing": "Backspace at a block's start merging it into the one above, and Tab indenting a list.",
+          "needs": "Backspace and Tab in an editor's key map",
+          "today": "An empty block is deleted from its menu; Enter on an empty list item leaves the list."
         }
       ],
       "limits": [
@@ -1177,7 +1193,7 @@
         }
       ],
       "limits": [
-        "The reader shows no change bar or review queue; an agent's changes appear in place, briefly tinted with `hasUpdateHighlights`.",
+        "The reader shows no change bar or review queue; an agent's changes appear in place, briefly tinted with `hasUpdateHighlights`. Changes made while no editor was open wait for the next `JinshuEditor`.",
         "`openAt` brings the block to the nearest edge of the scroll, not to its top.",
         "It has no AI entry of its own: an agent reaches documents only through the tools the app registers with `createJinshuTools`."
       ],

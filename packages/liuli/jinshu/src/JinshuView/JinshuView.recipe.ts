@@ -147,21 +147,10 @@ export const jinshuViewRecipe = {
       both: 'mask-[linear-gradient(to_right,transparent_0,#000_1.5rem),linear-gradient(to_left,transparent_0,#000_1.5rem)]',
     },
     grid: 'w-full',
-    // At least 9em a column, so a phone scrolls a wide table instead of crushing it.
-    span: {
-      1: 'min-w-[9em]',
-      2: 'min-w-[18em]',
-      3: 'min-w-[27em]',
-      4: 'min-w-[36em]',
-      5: 'min-w-[45em]',
-      6: 'min-w-[54em]',
-      7: 'min-w-[63em]',
-      8: 'min-w-[72em]',
-    },
     headerRow: 'flex-row border-b border-line bg-surface-sunken',
     row: 'flex-row border-b border-line',
     cell: {
-      box: 'relative min-w-[9em] px-3 py-2 justify-center',
+      box: 'relative px-3 py-2 justify-center',
       header: 'text-footnote font-semibold text-text select-none',
       text: 'text-footnote text-text select-none',
     },

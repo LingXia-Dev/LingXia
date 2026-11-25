@@ -3,6 +3,9 @@
  * Zero UI dependencies; shared across Logic, View, CLI, and Node tests.
  */
 
+/** How a document is stored: Jinshu JSON, or a Markdown file holding the subset Markdown can say. */
+export type JinshuFormat = 'json' | 'markdown';
+
 /** Current document format version; documents with a higher `version` are read-only. */
 export const JINSHU_DOC_VERSION = 1;
 
@@ -423,7 +426,46 @@ export type ProblemCode =
   /** The document or an extension block is newer than this code; it renders but cannot be edited. */
   | 'VERSION'
   /** The person stopped this agent's edits; it reads the document again before editing. */
-  | 'STOPPED';
+  | 'STOPPED'
+  /** The document's file format cannot hold this, or it could not be read or written exactly. */
+  | 'FORMAT';
+
+/** A file-format rule a `FORMAT` problem is about, for words a person reads; `message` stays for agents. */
+export type FormatRule =
+  // Writing: what a Markdown file cannot say.
+  | 'titleLine'
+  | 'frontMatterLine'
+  | 'cellBreak'
+  | 'cellCodePipe'
+  | 'inlineMath'
+  | 'inlineInexact'
+  | 'codeLanguage'
+  | 'imageLine'
+  | 'listStart'
+  | 'checkedItem'
+  | 'tableHeader'
+  // Reading: what a Markdown file said that the document keeps differently.
+  | 'inlineImage'
+  | 'linkAsText'
+  | 'linkTitle'
+  | 'emptyAlt'
+  | 'blockInList'
+  | 'headingInQuote'
+  | 'headingLevel'
+  | 'codeInfo'
+  | 'rawHtml'
+  | 'alertType'
+  | 'calloutTitle'
+  | 'listDepth'
+  | 'tableCells'
+  | 'unreadable';
+
+/** What a `FORMAT` problem is about: a block type, a mark, a field (of a block, or of the document), or a rule. */
+export type FormatSubject =
+  | { readonly block: string }
+  | { readonly mark: InlineMarkKey | 'math' | 'atom' }
+  | { readonly field: string; readonly block?: string }
+  | { readonly rule: FormatRule };
 
 export interface Problem {
   readonly code: ProblemCode;
@@ -432,11 +474,15 @@ export interface Problem {
   readonly id?: string;
   readonly message: string;
   readonly current?: string;
+  /** For `FORMAT`: what it is about, so a page can word it for a person. */
+  readonly subject?: FormatSubject;
 }
 
 export interface CheckOptions {
   readonly allowedSrcSchemes?: readonly string[];
   readonly allowedLxApps?: readonly string[];
+  /** The document's file format; `markdown` refuses what a Markdown file cannot hold (problem `FORMAT`). */
+  readonly format?: JinshuFormat;
 }
 
 export interface ApplyOpsOptions extends CheckOptions {

@@ -251,6 +251,49 @@ Registered with `defineInline`.
 | `attrs` | object | yes |  |  |
 | `fallback` | string | yes |  |  |
 
+## Markdown
+
+A document can be stored as a Markdown file instead of JSON. The model stays the same; the file holds
+the subset ordinary Markdown can say (CommonMark, GFM tables, task lists, strikethrough and autolinks,
+`$math$` and `$$` blocks, and the alert syntax for callouts), with no syntax of Jinshu's own. With
+`format: 'markdown'`, `checkDocument` and `applyOps` refuse anything outside it with problem
+`FORMAT`. Markdown has no ids: reading derives them from content and keeps those of a previous version
+for blocks that did not change or stand in the same place.
+
+| Block | Markdown | Not kept |
+| --- | --- | --- |
+| `paragraph` | Text; an empty paragraph is not written, nor spaces at the edges of a line |  |
+| `heading` | `#` to `####` (setext read; `#####` and `######` read as `####`) |  |
+| `quote` | `> ` |  |
+| `callout` | Alert syntax: `> [!NOTE]` info, `> [!TIP]` tip, `> [!WARNING]` warning, `> [!CAUTION]` danger; no title | `title` |
+| `list` | `- ` bullet, `1. ` ordered from `start`, `- [ ] ` / `- [x] ` task when every item has a box; children indented |  |
+| `code` | Fenced with backticks and the language; `text` is a bare fence; indented code reads as `text` | `filename`, `highlightLines` |
+| `math` | `$$` on its own lines; a `math` fence reads as math too |  |
+| `table` | GFM table with its header row (required); `:--` `:-:` `--:` align; no line breaks in cells | `widths` |
+| `divider` | `---` |  |
+| `image` | `![alt](src)` alone in a paragraph; an empty `alt` is the same as none | `width`, `height`, `caption`, `size` |
+
+Not in Markdown: `details`, `columns`, `video`, `audio`, `file` and custom blocks.
+
+| Mark | Markdown |
+| --- | --- |
+| `bold` | `**bold**` |
+| `italic` | `*italic*` |
+| `strike` | `~~strike~~` |
+| `code` | `` `code` `` |
+| `link` | `[text](url)`, `<url>` and bare URLs |
+| `math` | `$latex$` |
+
+Not in Markdown: `underline`, `script`, `highlight`, and inline atoms. A line break is a backslash at the end of the
+line.
+
+| Document | Markdown |
+| --- | --- |
+| `title` | A leading `# Title` line, when it is plain text |
+| `meta` | Only `meta.frontMatter`: the file's leading `---` block, kept verbatim |
+
+Not in Markdown: `id`, `lang`.
+
 ## Markup
 
 This is the guide the agent tools carry:
