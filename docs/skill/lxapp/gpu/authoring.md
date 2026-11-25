@@ -49,7 +49,9 @@ export function render({ data, actions }: View) {
   unstyled as after Tailwind's preflight: give it its fill, padding and radius.
   `w-`/`min-w-`/`max-w-[10ch]` measure the element's own `0`; with `tabular-nums` that is ten digits.
 - Lay out from the View's `env` (`viewport`, `sizeClass`, `insets`); `page.env.watch` is for Logic that acts
-  on a size change itself, never to forward it with `page.update`.
+  on a size change itself, never to forward it with `page.update`. `env` also carries `keyboard.height`,
+  `capsule` (the floating ··· control's box, or `null`), `reducedMotion`, `hourCycle` and `language`;
+  `platform` is for shortcut symbols only, never layout.
 
 ## State and handlers
 
@@ -66,7 +68,10 @@ export function render({ data, actions }: View) {
 - `useRequest`, `useStream(name, action, { onData? })`,
   `useChannel(name, action, { params, onData? })` take `view.actions` references.
   Errors are `{ code, message }`; reloads keep old values (`stale`). `useLeaveGuard(name, { enabled })`.
-- Lists: `<List items getKey renderItem />`; hooks inside rows need stable keys.
+- Lists: `<List items getKey renderItem />`; hooks inside rows need stable keys. `onReachEnd`/`onReachStart`
+  on a `<List>` or `<scroll>` page more items in; `anchor="end"` starts at the last row (a chat).
+- `cx(...)` joins class names (the build still checks each class); `useId()` makes the ids `popoverTarget`,
+  `anchor` and `aria-actions` name, unique per row; `createContext`/`useContext` pass values down.
 - A component taking a child as its trigger: `elementType(child)` tells what it is; `cloneElement(child, props)` adds props in its place (`className` joins; replacing a handler it has needs `{ override: ['onClick'] }`).
 - A component re-runs only when its props, the `useLocal` cells it reads or the environment change, so render must read
   nothing else; one that reads `Date`, `Math.random` or a module `let` re-runs every render.
@@ -75,7 +80,7 @@ export function render({ data, actions }: View) {
 
 Drag, swipe rows, sheet detents and scroll snap: [Drag and snap](./styling-motion.md#drag-and-snap).
 
-- `onPointer={e => …}` on `view`, `button`, `vector` reports a pointer over the element: `e.phase` (`down`/`move`/`up`/`cancel`, and `hover`/`leave` for a mouse), `e.x`/`e.y` in points from its content box's top-left (not clamped), `e.width`/`e.height`. It observes: buttons inside still click. `pointerAxis="x"` leaves vertical movement to the page's scroll (then `cancel`). With `aria-valuenow`/`-valuemax`/`-valuetext` it is a keyboard stop: arrows and a screen reader's adjust send `phase` `increment`/`decrement`.
+- `onPointer={e => …}` on `view`, `button`, `vector` reports a pointer over the element: `e.phase` (`down`/`move`/`up`/`cancel`, and `hover`/`leave` for a mouse), `e.x`/`e.y` in points from its content box's top-left (not clamped), `e.width`/`e.height`. It observes: buttons inside still click. `pointerAxis="x"` leaves vertical movement to the page's scroll (then `cancel`). On a `<view>` with `aria-valuenow`/`-valuemax`/`-valuetext` it is a keyboard stop: arrows and a screen reader's adjust send `phase` `increment`/`decrement`.
 - `onPointerEnter`/`onPointerLeave` on `view`/`button` follow a mouse. Beyond these, `drag` and `onContextMenu`, there are no swipe, pinch or long-press handlers and no drag-and-drop.
 - On phones a finger reaches a control smaller than 44 pt (Android 48 dp) within that size around it, never over
   another control; layout, `boundingBox()` and mouse input keep the real box. `touch-target-none` opts out.
@@ -96,7 +101,7 @@ Drag, swipe rows, sheet detents and scroll snap: [Drag and snap](./styling-motio
 - `role="grid"` > `role="row"` > `role="gridcell"`: one Tab stop, arrows by row and column, Home/End to the row's ends; `onPage("previous" | "next")` on the grid takes PageUp/PageDown.
 - Buttons may contain text, icons and images; their text names them for
   accessibility. Images need `alt` (`""` for decoration).
-- The build fails with `UI_A11Y` when an editor, slider, radio group, select, plot or dialog lacks `aria-label`,
+- The build fails with `UI_A11Y` when an editor, slider, radio group, select, plot, dialog or `<webview>` lacks `aria-label`,
   a button, link, checkbox or switch has neither text nor a label, or an `<image>` lacks `alt`; a placeholder is not a name.
 - Text follows the system font size, up to 2× by default: lxapp.json `maxTextScale` (1 to 3) sets the cap and a
   page's json may lower it; `env.textScale` reads the applied factor (1 at default) for a layout that must change
@@ -108,17 +113,21 @@ Drag, swipe rows, sheet detents and scroll snap: [Drag and snap](./styling-motio
 - `<dialog open onClose closedby aria-label>` is modal, above the page (`backdrop:` styles its scrim;
   `mt-auto mb-0 w-full` makes a sheet). A panel docked to an edge (`mb-0 w-full`, `ms-0 h-full`) runs to the screen's
   edge and its padding grows by that side's inset: never add `env.insets` yourself. `<view id popover>` + `<button popoverTarget>` is a light-dismiss
-  popover anchored to its invoker (`open`/`onToggle`; `style={{ positionArea: 'top' }}` opens it upward; it closes if that button unmounts; `anchor="<id>"` places one opened from state against any element, e.g. a `popover="manual"` list under a field); `role="dialog"` on a popover is a non-modal dialog (`aria-modal` makes it modal); `role="menu"` + `<button role="menuitem">` closes on click (`keepOpen` leaves it open); a popover's `onCloseRequest` returning `false` refuses Escape/back, never a tap outside; `backdrop:bg-scrim` dims the page under a light-dismiss popover, as a docked menu sheet does. A popover flips to the other side when it does not fit; `side-top:`/`side-bottom:`/`side-start:`/`side-end:` (paint only) style it and its contents by the side it ended on, so a caret inside it can face the anchor; an absolute caret with `start-[anchor(center)]` (or `top-[anchor(center)]`) sits on the anchor's centre line even when the popover is pushed in or aligned to an edge, kept off its rounded corners.
+  popover anchored to its invoker (`open`/`onToggle`; `style={{ positionArea: 'top' }}` opens it upward; it closes if that button unmounts; `anchor="<id>"` places one opened from state against any element, e.g. a `popover="manual"` list under a field); `role="dialog"` on a popover is a non-modal dialog (`aria-modal` makes it modal); `role="menu"` + `<button role="menuitem">` closes on click (`keepOpen` leaves it open); a non-`manual` popover's `onCloseRequest` returning `false` refuses Escape/back, never a tap outside; `popover="manual" closeAfter={ms}` is a toast; `backdrop:bg-scrim` dims the page under a light-dismiss popover, as a docked menu sheet does. A popover flips to the other side when it does not fit; `side-top:`/`side-bottom:`/`side-start:`/`side-end:` (paint only) style it and its contents by the side it ended on, so a caret inside it can face the anchor; an absolute caret with `start-[anchor(center)]` (or `top-[anchor(center)]`) sits on the anchor's centre line even when the popover is pushed in or aligned to an edge, kept off its rounded corners.
 - Leaving a page inside the app (push, tab switch, closing its surface) closes what a tap outside would (the select/date picker, light-dismiss popovers, menus, hints, an action sheet); dialogs and `manual` popovers stay. Going to the background closes nothing.
 - In-page overlays are `<dialog>`/popovers; `lx.surface.openPage(page, { as: 'float' })` is for a surface that
   stays across pages (a mini player), and it always sits above the page and its dialogs.
-- `<webview src aria-label>` embeds a web document in the page; pass one `useWebView(name)` handle as `web` to each `<webview>` showing it (inline and in a `<dialog>`) to keep one live document. A browser of its own is `lx.surface.openUrl(url, { as: 'main' | 'aside' })`.
+- `<webview src aria-label>` embeds a web document in the page; pass one `useWebView(name)` handle as `web` to each `<webview>` showing it (inline and in a `<dialog>`) to keep one live document. `onMessage` receives what the web page posts with `window.lingxia.postMessage`. A browser of its own is `lx.surface.openUrl(url, { as: 'main' | 'aside' })`.
 - Keyboard: Tab and arrows follow reading order (no `tabIndex`); an open `<dialog>` keeps focus inside
   and returns it on close; the focus ring shows only after keyboard input. In a menu, arrows wrap,
   Home/End jump, a typed letter finds the next item; `expect(locator).toBeFocused()` checks focus.
 
 ## Inputs
 
+- An editor takes `bind={cell}` or `value` + `onInput` (checkbox, switch, select, radio: `value` + `onChange`),
+  never both. `onSubmit(value)` runs on the keyboard's action key; `autoFocus` focuses it on first show.
+- `<radio options bind aria-label>` is a radio group; `<plot kind values colors aria-label>` a bar, line or pie
+  chart (`onSelect`/`selectedIndex`), though Liuli charts come first.
 - Inputs take `type` (`password`, `email`, `number`, `tel`, `search`, `date`, `time`), `inputMode`, `maxLength`, `autoComplete`, `enterKeyHint` (on a textarea, `send`/`go`/`done`/`search` makes Return submit), `autoCapitalize`, `spellCheck`;
   `type="number"` with `min`/`max`/`step` clamps on blur/submit, keeping the typed text otherwise (`7.0` stays);
   typed and pasted text is filtered by keyboard: `inputMode="numeric"` keeps digits, `type="number"`/`inputMode="decimal"`
@@ -140,6 +149,7 @@ Drag, swipe rows, sheet detents and scroll snap: [Drag and snap](./styling-motio
 
 - `<vector paths gradients>`: paths take SVG `transform`, caps, joins, dash offset and
   `fill`/`stroke: 'url(#id)'` naming a `gradients` entry (linear, radial or conic, ≤8).
+- `<image>` `onLoad`/`onError` fire once per `src`; changing `retryKey` loads it again after an error.
 - While an image loads its background colour shows; `placeholder="tiny.jpg"` paints a small stand-in scaled smooth.
 - `object-top`, `object-left-bottom` or `object-[25%_75%]` (`objectPosition`) align a covered or contained image; pixel offsets fail.
 - Remote `<image>` sources follow HTTP caching: revalidated, and shown stale while offline.

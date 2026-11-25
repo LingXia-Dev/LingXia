@@ -31,7 +31,7 @@
   (controls), `hover:` (mouse, stylus or trackpad), `disabled:`, `indeterminate:`, `placeholder:`, `backdrop:` (a dialog's scrim), slider parts `track:`/`range:`/`secondary:`/`thumb:`
   (a state goes first: `active:thumb:size-4`; the touch target stays the slider's box), switch parts `track:`/`thumb:`
   (`checked:track:bg-success`, `track:w-11 track:h-6`; `checked:` works only before a part),
-  `data-*`, `has-*`, `focus-within:`, `group-active:`. `space-*`/`divide-*` are utilities styling every child but the last. `*:` only places grid children; `**:`, `in-*:`, other `group-*:`, `peer-*:` fail naming the TS-side form.
+  `data-*`, `has-checked:`/`has-[:disabled]:`/`has-focus:`, `focus-within:`, `group-active:`. `space-*`/`divide-*` are utilities styling every child but the last. `*:` only places grid children; `**:`, `in-*:`, other `group-*:`, `peer-*:` fail naming the TS-side form.
 - `translate`/`rotate`/`scale`/`origin` are static and state variants may set them; skew and 3D fail.
   `transition-*`/`animate-*` animate paint and transforms only; gradients and `scale-0` jump. A box that is or
   holds an editor/scroll/slider may only translate (build error; on `starting:`/`exit:` a warning). `starting:`/`exit:` animate enter and removal; `transition-layout` animates position; `transition-[d]` morphs a `<vector>`'s paths, stroke width, dashes and solid colours between sources with the same commands (pair by `key`); draw a line in with `pathLength: 1`, `strokeDasharray: [1]`, `strokeDashoffset` 1 → 0.
@@ -45,7 +45,7 @@
 - `drag="x|y" dragSnapPoints={[0, 120, '50%']}` (≤8, px or % of its own size; `x` mirrors in RTL) lets the
   finger move an element; it springs (its `transition-transform duration-* ease-spring*`) to the nearest point, a flick one on.
   `bind={cell}` is the point's index (setting it springs there), `onDragStart()`, `onDragEnd({ index, velocity })`.
-  Needs `aria-label`: screen readers and arrow keys step it; tests read the point as `toHaveValue('1')`.
+  Needs `aria-label` (it throws `UI_A11Y` without): screen readers and arrow keys step it; tests read the point as `toHaveValue('1')`.
   A same-axis scroll inside it scrolls only once it is fully open (lowest offset) and returns to its top before it closes.
 - Swipe row: `<button drag="x" dragSnapPoints={[0, -144, '-100%']} aria-actions="archive-1 delete-1">` over `<button id="archive-1">`s;
   screen readers get those as the row's actions; tests call `locator.performAction('Delete')` (or `increment`/`decrement`/`dismiss`).
