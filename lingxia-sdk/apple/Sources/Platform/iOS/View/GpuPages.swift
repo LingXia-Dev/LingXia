@@ -560,11 +560,15 @@ final class GpuPageView: UIView {
         report()
     }
 
-    private func report() {
+    fileprivate func report() {
         // A pull moves the page down; it keeps the measurements of where it is laid out.
         if pullToRefresh?.holdsPage == true { return }
         guard let window, bounds.width > 0, bounds.height > 0 else { return }
         let scale = window.screen.scale
+        // The lxapp's chosen scheme, as its WebView pages get it; else the view's own.
+        let appId = gpuPageInfo(token).app_id.toString()
+        let dark = LxAppAppearanceRegistry.resolvedDark(appId: appId)
+            ?? (traitCollection.userInterfaceStyle == .dark)
         let insets = safeAreaInsets
         let shorter = min(window.bounds.width, window.bounds.height)
         gpuPageMeasured(
@@ -572,7 +576,7 @@ final class GpuPageView: UIView {
             UInt32((bounds.width * scale).rounded()),
             UInt32((bounds.height * scale).rounded()),
             Float(scale),
-            traitCollection.userInterfaceStyle == .dark,
+            dark,
             Float(insets.top * scale),
             Float(insets.right * scale),
             Float(insets.bottom * scale),
@@ -1089,6 +1093,11 @@ public enum GpuPages {
             view.pullToRefresh = nil
             view.removeFromSuperview()
         }
+    }
+
+    /// The lxapp pinned or released its scheme: its pages measure again.
+    @MainActor static func schemeChanged(appId: String) {
+        for view in views.values where gpuPageInfo(view.token).app_id.toString() == appId { view.report() }
     }
 
     /// The GPU view showing the page `webtag` of `appId`.
