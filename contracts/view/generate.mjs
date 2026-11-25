@@ -534,8 +534,10 @@ function authoring(source, api) {
     // A run with no block form takes only its run props, so `<span id>` fails in tsc; a `<link>`
     // may be a block link, which takes them all, so its run props are checked at build.
     const runOnly = table.run[name] && !element.block ? common.filter(prop => !table.run[name].includes(prop) && prop !== 'style' && prop !== 'children') : [];
-    // A role the rules keep off this element fails in tsc, not at render.
-    const allowed = rolesOn(schema, table, name), narrowed = allowed.length < schema.options.role.length && !runOnly.includes('role');
+    // A role the rules keep off this element fails in tsc, not at render. tsc can't tell a block
+    // `<link>` from an inline one, so it takes the block form's roles and the build refuses them inline.
+    const blockRoles = element.block ? rolesOn(schema, table, `${name}-box`) : [];
+    const allowed = schema.options.role.filter(role => rolesOn(schema, table, name).includes(role) || blockRoles.includes(role)), narrowed = allowed.length < schema.options.role.length && !runOnly.includes('role');
     if (narrowed) lines.push(`/** The roles a \`<${name}>\` takes; reference/elements.md says where the others go. */`,
       `export type ${type}Role = ${allowed.length ? allowed.map(entry => JSON.stringify(entry)).join(' | ') : 'never'};`);
     const role = narrowed ? `role?: ${type}Role; ` : '';

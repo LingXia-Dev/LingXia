@@ -1409,7 +1409,7 @@ export type SpanProps = Omit<Props, "style" | "children" | "id" | "role" | "aria
 };
 export type LinkStyle = StyleGroup.Run & StyleGroup.Box & StyleGroup.Padding & StyleGroup.Flex & StyleGroup.Align & StyleGroup.Direction & StyleGroup.Gap & StyleGroup.Text & StyleGroup.Grid;
 /** The roles a `<link>` takes; reference/elements.md says where the others go. */
-export type LinkRole = never;
+export type LinkRole = "menuitem";
 export type LinkProps = Omit<Props, "style" | "children" | "role"> & { role?: LinkRole; style?: LinkStyle; children?: Child;
   /** Called for a long press or a secondary click, with where it happened. */ onContextMenu?: (event: ContextMenuEvent) => void;
   /** Called when it is pressed: a tap, a click, Enter or Space, or a screen reader's activation. */ onClick?: () => void;

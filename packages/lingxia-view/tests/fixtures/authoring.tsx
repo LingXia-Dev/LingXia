@@ -92,6 +92,9 @@ export function render(view: View<{ save(value: string): Promise<void> }, { titl
   const tablistOnButton = <button role="tablist" onClick={() => {}}>x</button>;
   // @ts-expect-error role="spinbutton" belongs on an <input>.
   const spinOnText = <text role="spinbutton">1</text>;
+  const menuLink = <link role="menuitem" to={{ page: 'settings' }}><text>Settings</text></link>;
+  // @ts-expect-error a block <link> takes only role="menuitem".
+  const tabLink = <link role="tab" to={{ page: 'settings' }}><text>Settings</text></link>;
   const run = <text>A <span className="font-bold" data-testid="b">b</span></text>;
   // @ts-expect-error a <span> is a run of its <text>; the id goes on the <text>.
   const runId = <text><span id="x">b</span></text>;
