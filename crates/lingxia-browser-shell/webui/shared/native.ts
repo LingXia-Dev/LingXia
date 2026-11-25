@@ -20,15 +20,30 @@ export function invoke<R = void>(route: string, input?: unknown): Promise<R> {
   return dispatch().invoke<R>(route, input);
 }
 
-/** Feed each event to `onEvent` until `signal` aborts (pass the page's `signal`). */
-export function watch<E>(route: string, signal: AbortSignal, onEvent: (event: E) => void): void {
-  const task = dispatch().stream<E>(route, undefined, { signal });
+/**
+ * Feed each event to `onEvent` until `signal` aborts (pass the page's `signal`). A stream that fails or
+ * ends opens again after a backoff; `onReopen` runs first, for a route whose events assume what came before.
+ */
+export function watch<E>(route: string, signal: AbortSignal, onEvent: (event: E) => void, onReopen?: () => void): void {
+  let delay = WATCH_RETRY_MS;
   (async () => {
-    for await (const event of task) {
-      if (signal.aborted) break;
-      onEvent(event);
+    for (let opened = false; !signal.aborted; opened = true) {
+      if (opened) onReopen?.();
+      try {
+        for await (const event of dispatch().stream<E>(route, undefined, { signal })) {
+          if (signal.aborted) return;
+          delay = WATCH_RETRY_MS;
+          onEvent(event);
+        }
+      } catch (error) {
+        if (!signal.aborted) console.warn(`${route} stopped; reopening`, error);
+      }
+      if (signal.aborted) return;
+      await new Promise<void>((resolve) => { setTimeout(() => resolve(), delay); });
+      delay = Math.min(delay * 2, WATCH_RETRY_MAX_MS);
     }
-  })().catch((error) => {
-    if (!signal.aborted) console.warn(`${route} stopped`, error);
-  });
+  })();
 }
+
+const WATCH_RETRY_MS = 1_000;
+const WATCH_RETRY_MAX_MS = 15_000;

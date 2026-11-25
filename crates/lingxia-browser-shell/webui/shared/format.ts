@@ -23,3 +23,9 @@ export function hostOf(url: string): string {
   const match = /^[a-z][a-z0-9+.-]*:\/\/([^/?#:]+)/i.exec(url);
   return match ? match[1].replace(/^www\./i, '') : url;
 }
+
+/** `scheme://host[:port]` of an http(s) URL, the key site icons are cached by; null for other URLs. */
+export function originOf(url: string): string | null {
+  const match = /^(https?:\/\/[^/?#]+)/i.exec(url.trim());
+  return match ? match[1].toLowerCase() : null;
+}
