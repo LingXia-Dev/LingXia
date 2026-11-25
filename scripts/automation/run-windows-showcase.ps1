@@ -205,7 +205,7 @@ function Test-BenignWindowsSessionError {
   # the page after its own teardown, so nothing is left to catch it and the
   # WebView reports the uncaught rejection to the console. A call that fails
   # for any other reason still carries its own code and still fails here.
-  if ($Message -match 'BRIDGE_CANCELED.*Page unloaded') {
+  if ($Message -match 'E_ABORT.*Page unloaded') {
     return $true
   }
   # Home relaunch remounts the chat aside. In-flight lx:// fetches then hit a

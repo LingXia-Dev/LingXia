@@ -4,6 +4,7 @@ use crate::error::LxAppError;
 use crate::lx;
 use crate::lxapp::LxApp;
 use crate::{debug, error, info, warn};
+use lingxia_error::code;
 
 use rong::{JSContext, JSResult, JSRuntime, JSValue, RongJSError, Source, error::HostError};
 use rong_console as console;
@@ -466,17 +467,9 @@ fn reply_to_view_req(
             false,
         ),
         Err(err) => {
-            let canceled = err.code == bridge::BRIDGE_CANCELED;
+            let canceled = err.code == code::ABORT;
             (
-                bridge.send_res_err_for_context(
-                    page_svc,
-                    work_id,
-                    outbound,
-                    id,
-                    &err.code,
-                    err.message,
-                    err.data,
-                ),
+                bridge.send_res_err_for_context(page_svc, work_id, outbound, id, err),
                 canceled,
             )
         }
@@ -541,9 +534,7 @@ async fn handle_bridge_source(
                     work_id,
                     outbound.as_ref(),
                     id,
-                    bridge::BRIDGE_INTERNAL_ERROR,
-                    Some(err.to_string()),
-                    None,
+                    bridge::RpcError::new(code::INTERNAL, Some(err.to_string())),
                 )?,
             }
             Ok(())
@@ -568,9 +559,7 @@ async fn handle_bridge_source(
                     work_id,
                     outbound.as_ref(),
                     id,
-                    bridge::BRIDGE_CANCELED,
-                    None,
-                    None,
+                    bridge::RpcError::new(code::ABORT, None),
                 );
                 return Ok(());
             };
@@ -631,9 +620,9 @@ async fn handle_bridge_source(
                     };
                     let page_svc = page_svc.clone();
                     context_lifecycle::spawn(&ctx, move |_ctx| async move {
-                        let result = result_rx.await.unwrap_or_else(|_| {
-                            Err(bridge::RpcError::new(bridge::BRIDGE_CANCELED, None))
-                        });
+                        let result = result_rx
+                            .await
+                            .unwrap_or_else(|_| Err(bridge::RpcError::new(code::ABORT, None)));
                         match result {
                             Ok(()) => {
                                 let _ = bridge.send_ch_ack_ok_for_context(
@@ -649,9 +638,7 @@ async fn handle_bridge_source(
                                     work_id,
                                     outbound.as_ref(),
                                     id,
-                                    &err.code,
-                                    err.message,
-                                    err.data,
+                                    err,
                                 );
                             }
                         }
@@ -662,9 +649,7 @@ async fn handle_bridge_source(
                     work_id,
                     outbound.as_ref(),
                     id,
-                    &err.code,
-                    err.message,
-                    err.data,
+                    err,
                 )?,
             }
             Ok(())
@@ -1070,7 +1055,7 @@ async fn handle_service_message(
                 if let Some(page_svc) = page_svc {
                     page_svc.mark_terminated();
                     page_svc
-                        .close_channels(bridge::BRIDGE_CANCELED, "Page terminated")
+                        .close_channels(code::ABORT, "Page terminated")
                         .await;
                     // Instance-scoped: terminating one instance must not clear
                     // a same-path sibling's subscriptions.

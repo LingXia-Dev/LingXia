@@ -36,7 +36,7 @@ export function streamResource(state) {
           update({ status: 'completed', result: value ?? null });
         }, error => {
           if (!mounted || current !== ticket) return;
-          if (error.code === 'BRIDGE_CANCELED') { stream = undefined; update({ status: 'canceled', error: resourceError(error) }); }
+          if (error.code === 'E_ABORT') { stream = undefined; update({ status: 'canceled', error: resourceError(error) }); }
           else fail(error);
         });
       } catch (error) { fail(error); }

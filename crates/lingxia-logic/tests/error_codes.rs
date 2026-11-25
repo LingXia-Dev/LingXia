@@ -66,16 +66,9 @@ fn every_thrown_code_is_in_the_published_union() {
             continue;
         }
         let text = fs::read_to_string(&file).unwrap();
-        // The View's own reply names, which `view_call.rs` maps onto the union.
-        let view_names: &[&str] = if name == "view_call.rs" {
-            &["E_INVALID_ARGUMENT", "E_INVALID_PARAMETER", "E_UNSUPPORTED"]
-        } else {
-            &[]
-        };
         for code in codes_in(&text) {
             // rong may still raise E_TYPE for a wrong-typed field; our own refusals are E_INVALID_ARG.
-            if code == "E_TYPE" || !allowed.contains(&code) && !view_names.contains(&code.as_str())
-            {
+            if code == "E_TYPE" || !allowed.contains(&code) {
                 strays.push(format!("{}: {code}", file.display()));
             }
         }

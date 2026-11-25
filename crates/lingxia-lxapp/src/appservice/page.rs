@@ -1,14 +1,14 @@
 use crate::PageLifecycleEvent;
 use crate::bridge::{
-    BRIDGE_CANCELED, BRIDGE_INTERNAL_ERROR, BRIDGE_MALFORMED_MESSAGE, BRIDGE_METHOD_NOT_FOUND,
-    BRIDGE_TOPIC_NOT_FOUND, OutboundContext, PageBridge, Payload, RpcError, SessionWorkId,
-    ViewTransport,
+    BRIDGE_MALFORMED_MESSAGE, BRIDGE_METHOD_NOT_FOUND, BRIDGE_TOPIC_NOT_FOUND, OutboundContext,
+    PageBridge, Payload, RpcError, SessionWorkId, ViewTransport,
 };
 use crate::error;
 use crate::error::LxAppError;
 use crate::lxapp::LxApp;
 use crate::page::PageInstance;
 use crate::warn;
+use lingxia_error::code;
 use lingxia_webview::{DocumentGeneration, DocumentOutboundGate};
 use rong::{
     Class, JSContext, JSFunc, JSObject, JSResult, JSSymbol, JSValue, JsonToJSValue, RongJSError,
@@ -247,25 +247,8 @@ impl Drop for ChannelTurn {
     }
 }
 
-fn rpc_error_from_lxapp_error(err: &LxAppError) -> RpcError {
-    if let LxAppError::RongJSHost {
-        code,
-        message,
-        data,
-    } = err
-    {
-        return RpcError {
-            code: code.clone(),
-            message: Some(message.clone()),
-            data: data.clone(),
-        };
-    }
-    RpcError::new(BRIDGE_INTERNAL_ERROR, Some(err.to_string()))
-}
-
 fn rpc_error_from_rong(err: RongJSError) -> RpcError {
-    let lxapp_error: LxAppError = err.into();
-    rpc_error_from_lxapp_error(&lxapp_error)
+    RpcError::from(&LxAppError::from(err))
 }
 
 async fn await_js_call_or_cancel<T>(
@@ -274,7 +257,7 @@ async fn await_js_call_or_cancel<T>(
 ) -> Result<T, RpcError> {
     tokio::select! {
         biased;
-        _ = cancel_rx => Err(RpcError::new(BRIDGE_CANCELED, None)),
+        _ = cancel_rx => Err(RpcError::new(code::ABORT, None)),
         result = call => result.map_err(rpc_error_from_rong),
     }
 }
@@ -284,13 +267,13 @@ async fn await_channel_call_or_cancel<T>(
     call: impl std::future::Future<Output = JSResult<T>>,
 ) -> Result<T, RpcError> {
     if *cancel_rx.borrow() {
-        return Err(RpcError::new(BRIDGE_CANCELED, None));
+        return Err(RpcError::new(code::ABORT, None));
     }
     tokio::select! {
         biased;
         changed = cancel_rx.changed() => {
             let _ = changed;
-            Err(RpcError::new(BRIDGE_CANCELED, None))
+            Err(RpcError::new(code::ABORT, None))
         }
         result = call => result.map_err(rpc_error_from_rong),
     }
@@ -349,9 +332,8 @@ fn js_value_to_json_str(v: JSValue) -> Result<String, RpcError> {
             .into_value()
             .try_into()
             .map_err(|e: RongJSError| rpc_error_from_rong(e))?;
-        let num = serde_json::Number::from_f64(n).ok_or_else(|| {
-            RpcError::new(BRIDGE_INTERNAL_ERROR, Some("Invalid number".to_string()))
-        })?;
+        let num = serde_json::Number::from_f64(n)
+            .ok_or_else(|| RpcError::new(code::INTERNAL, Some("Invalid number".to_string())))?;
         return Ok(num.to_string());
     }
     if v.is_string() {
@@ -360,16 +342,16 @@ fn js_value_to_json_str(v: JSValue) -> Result<String, RpcError> {
             .try_into()
             .map_err(|e: RongJSError| rpc_error_from_rong(e))?;
         return serde_json::to_string(&s)
-            .map_err(|e| RpcError::new(BRIDGE_INTERNAL_ERROR, Some(e.to_string())));
+            .map_err(|e| RpcError::new(code::INTERNAL, Some(e.to_string())));
     }
     if let Some(obj) = v.into_object() {
         return obj
             .to_json_string()
-            .map_err(|e| RpcError::new(BRIDGE_INTERNAL_ERROR, Some(e.to_string())));
+            .map_err(|e| RpcError::new(code::INTERNAL, Some(e.to_string())));
     }
 
     Err(RpcError::new(
-        BRIDGE_INTERNAL_ERROR,
+        code::INTERNAL,
         Some("Unsupported JS return type".to_string()),
     ))
 }
@@ -483,7 +465,7 @@ impl PageSvc {
         let gpu = is_gpu(outbound.as_ref());
         let ctx = self
             .get_ctx()
-            .ok_or_else(|| RpcError::new(BRIDGE_CANCELED, None))?;
+            .ok_or_else(|| RpcError::new(code::ABORT, None))?;
 
         if let Some(name) = method.strip_prefix("surface.") {
             return self
@@ -521,7 +503,7 @@ impl PageSvc {
         let value = tokio::select! {
             biased;
             _ = &mut cancel_rx => {
-                return Err(RpcError::new(BRIDGE_CANCELED, None));
+                return Err(RpcError::new(code::ABORT, None));
             }
             res = fut => {
                 match res {
@@ -566,7 +548,7 @@ impl PageSvc {
         };
         let ctx = self
             .get_ctx()
-            .ok_or_else(|| RpcError::new(BRIDGE_CANCELED, None))?;
+            .ok_or_else(|| RpcError::new(code::ABORT, None))?;
         let params = params.and_then(JSValue::into_object).ok_or_else(|| {
             RpcError::new(
                 BRIDGE_MALFORMED_MESSAGE,
@@ -609,7 +591,7 @@ impl PageSvc {
     ) -> Result<Payload, RpcError> {
         let ctx = self
             .get_ctx()
-            .ok_or_else(|| RpcError::new(BRIDGE_CANCELED, None))?;
+            .ok_or_else(|| RpcError::new(code::ABORT, None))?;
         let target = target.filter(|value| value.is_object()).ok_or_else(|| {
             RpcError::new(
                 BRIDGE_MALFORMED_MESSAGE,
@@ -691,7 +673,7 @@ impl PageSvc {
         topic: &str,
         params: Option<Payload>,
     ) -> Result<oneshot::Receiver<Result<(), RpcError>>, RpcError> {
-        let work_id = work_id.ok_or_else(|| RpcError::new(BRIDGE_CANCELED, None))?;
+        let work_id = work_id.ok_or_else(|| RpcError::new(code::ABORT, None))?;
         let Some(js_func) = self.get_js_func(topic) else {
             return Err(RpcError::new(
                 BRIDGE_TOPIC_NOT_FOUND,
@@ -701,7 +683,7 @@ impl PageSvc {
 
         let ctx = self
             .get_ctx()
-            .ok_or_else(|| RpcError::new(BRIDGE_CANCELED, None))?;
+            .ok_or_else(|| RpcError::new(code::ABORT, None))?;
         let call_arg = payload_arg(&ctx, params);
 
         let listeners = Rc::new(RefCell::new(ChannelListeners {
@@ -720,7 +702,7 @@ impl PageSvc {
             let token = state.next_channel_token;
             state.next_channel_token = token.checked_add(1).ok_or_else(|| {
                 RpcError::new(
-                    BRIDGE_INTERNAL_ERROR,
+                    code::INTERNAL,
                     Some("channel token space exhausted".to_string()),
                 )
             })?;
@@ -735,7 +717,7 @@ impl PageSvc {
             // longer observe; if it follows, the same lock makes it remove and
             // signal this exact channel.
             if state.active_session_work != Some(work_id) {
-                return Err(RpcError::new(BRIDGE_CANCELED, None));
+                return Err(RpcError::new(code::ABORT, None));
             }
             let (cancel_tx, cancel_rx) = watch::channel(false);
             let (done_tx, done_rx) = oneshot::channel();
@@ -767,13 +749,13 @@ impl PageSvc {
         let key_for_task = key.clone();
         let outbound_for_task = outbound.clone();
         if self.this.get().is_none() {
-            return Err(RpcError::new(BRIDGE_CANCELED, None));
+            return Err(RpcError::new(code::ABORT, None));
         }
         super::context_lifecycle::spawn(&ctx, move |ctx| async move {
             let result =
                 with_document_callback_work(Some(key_for_task.work_id), outbound_for_task, async {
                     if !turn.wait().await {
-                        Err(RpcError::new(BRIDGE_CANCELED, None))
+                        Err(RpcError::new(code::ABORT, None))
                     } else {
                         let call = async {
                             match call_arg {
@@ -824,7 +806,7 @@ impl PageSvc {
         };
         let ctx = self
             .get_ctx()
-            .ok_or_else(|| RpcError::new(BRIDGE_CANCELED, None))?;
+            .ok_or_else(|| RpcError::new(code::ABORT, None))?;
         let payload = payload_value(&ctx, payload).map_err(rpc_error_from_rong)?;
         let page_svc = self.clone();
         let key_for_task = key.clone();
@@ -848,7 +830,7 @@ impl PageSvc {
                     on_data.call_async::<_, ()>(None, (payload,)),
                 )
                 .await
-                    && err.code != BRIDGE_CANCELED
+                    && err.code != code::ABORT
                 {
                     error!(
                         "channel '{}' data handler failed: {}",
@@ -1449,7 +1431,7 @@ impl PageSvc {
         let gpu = is_gpu(outbound);
         let ctx = self
             .get_ctx()
-            .ok_or_else(|| RpcError::new(BRIDGE_CANCELED, None))?;
+            .ok_or_else(|| RpcError::new(code::ABORT, None))?;
         let next_fn = iterator
             .get::<_, JSFunc>("next")
             .map_err(rpc_error_from_rong)?;
@@ -1470,7 +1452,7 @@ impl PageSvc {
                             .await;
                         });
                     }
-                    return Err(RpcError::new(BRIDGE_CANCELED, None));
+                    return Err(RpcError::new(code::ABORT, None));
                 }
                 step = next_fn.call_async::<_, JSObject>(Some(iterator.clone()), ()) => {
                     step.map_err(rpc_error_from_rong)?
@@ -1484,12 +1466,12 @@ impl PageSvc {
             }
 
             if !self.session_work_is_active(work_id).await {
-                return Err(RpcError::new(BRIDGE_CANCELED, None));
+                return Err(RpcError::new(code::ABORT, None));
             }
 
             self.bridge()
                 .send_event_for_context(self, work_id, outbound, stream_id.to_string(), seq, value)
-                .map_err(|e| RpcError::new(BRIDGE_INTERNAL_ERROR, Some(e.to_string())))?;
+                .map_err(|e| RpcError::new(code::INTERNAL, Some(e.to_string())))?;
             seq += 1;
         }
     }
@@ -1503,7 +1485,7 @@ impl PageSvc {
     ) -> Result<JSObject, RpcError> {
         let ctx = self
             .get_ctx()
-            .ok_or_else(|| RpcError::new(BRIDGE_CANCELED, None))?;
+            .ok_or_else(|| RpcError::new(code::ABORT, None))?;
         let channel_ctx = JSObject::new(&ctx);
         channel_ctx
             .set("id", key.id.clone())
@@ -2632,7 +2614,7 @@ mod tests {
         let result =
             await_js_call_or_cancel(&mut cancel_rx, std::future::pending::<JSResult<()>>()).await;
 
-        assert_eq!(result.unwrap_err().code, BRIDGE_CANCELED);
+        assert_eq!(result.unwrap_err().code, code::ABORT);
     }
 
     #[tokio::test]

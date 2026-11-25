@@ -1,9 +1,7 @@
-use crate::bridge::{
-    BRIDGE_CANCELED, BRIDGE_TIMEOUT, OutboundContext, RpcError, SessionWorkId,
-    required_cap_for_name,
-};
+use crate::bridge::{OutboundContext, RpcError, SessionWorkId, required_cap_for_name};
 use crate::error::LxAppError;
 use crate::page::PageInstance;
+use lingxia_error::code;
 use serde_json::Value;
 use std::collections::{HashMap, HashSet};
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -109,12 +107,18 @@ pub(crate) async fn await_pending_view_call(
     timeout: Duration,
 ) -> Result<Value, LxAppError> {
     match time::timeout(timeout, pending.rx).await {
-        Ok(Ok(result)) => result.map_err(|rpc_err| LxAppError::RongJSHost {
-            code: lx_error_code(&rpc_err.code).to_string(),
-            message: rpc_err
+        Ok(Ok(result)) => result.map_err(|rpc_err| {
+            let message = rpc_err
                 .message
-                .unwrap_or_else(|| "View call failed".to_string()),
-            data: rpc_err.data,
+                .unwrap_or_else(|| "View call failed".to_string());
+            let mut error = lingxia_error::Error::new(rpc_err.code, message);
+            if let Some(reason) = rpc_err.reason {
+                error = error.with_reason(String::from(reason));
+            }
+            if let Some(data) = rpc_err.data {
+                error = error.with_data(*data);
+            }
+            LxAppError::Coded(error)
         }),
         Ok(Err(_)) => Err(LxAppError::ChannelError(
             "View call channel closed".to_string(),
@@ -124,25 +128,10 @@ pub(crate) async fn await_pending_view_call(
                 &pending.id,
                 Some(format!("View call timed out after {:?}", timeout)),
             );
-            Err(LxAppError::Bridge(format!(
-                "{}: View call timed out after {:?}",
-                BRIDGE_TIMEOUT, timeout
-            )))
+            Err(LxAppError::Coded(lingxia_error::Error::timeout(format!(
+                "View call timed out after {timeout:?}"
+            ))))
         }
-    }
-}
-
-/// A View reply's code as one `lx` callers can branch on; the View keeps its own names.
-fn lx_error_code(code: &str) -> &'static str {
-    match code {
-        "E_INVALID_ARG" | "E_INVALID_ARGUMENT" | "E_INVALID_PARAMETER" => "E_INVALID_ARG",
-        "E_NOT_SUPPORTED" | "E_UNSUPPORTED" => "E_NOT_SUPPORTED",
-        "E_NOT_FOUND" => "E_NOT_FOUND",
-        "E_INVALID_STATE" => "E_INVALID_STATE",
-        "E_TIMEOUT" => "E_TIMEOUT",
-        "E_ABORT" => "E_ABORT",
-        "E_PERMISSION_DENIED" => "E_PERMISSION_DENIED",
-        _ => "E_INTERNAL",
     }
 }
 
@@ -190,7 +179,7 @@ pub(crate) fn cancel_view_call(id: &str, message: Option<String>) {
     let reg = registry();
     let entry = reg.pending.lock().unwrap().remove(id);
     if let Some(entry) = entry {
-        let _ = entry.tx.send(Err(RpcError::new(BRIDGE_CANCELED, message)));
+        let _ = entry.tx.send(Err(RpcError::new(code::ABORT, message)));
     }
 }
 
@@ -216,10 +205,9 @@ pub(crate) fn cancel_view_calls_for_work(
             .collect::<Vec<_>>()
     };
     for entry in entries {
-        let _ = entry.tx.send(Err(RpcError::new(
-            BRIDGE_CANCELED,
-            Some(reason.to_string()),
-        )));
+        let _ = entry
+            .tx
+            .send(Err(RpcError::new(code::ABORT, Some(reason.to_string()))));
     }
 }
 
@@ -244,10 +232,9 @@ pub(crate) fn cancel_view_calls_for_page_instances(instance_ids: &[String], reas
     };
 
     for entry in entries {
-        let _ = entry.tx.send(Err(RpcError::new(
-            BRIDGE_CANCELED,
-            Some(reason.to_string()),
-        )));
+        let _ = entry
+            .tx
+            .send(Err(RpcError::new(code::ABORT, Some(reason.to_string()))));
     }
 }
 
@@ -281,9 +268,10 @@ mod tests {
         };
 
         tx.send(Err(RpcError {
-            code: "E_UNSUPPORTED".to_string(),
+            code: "E_NOT_SUPPORTED".to_string(),
             message: Some("view failed".to_string()),
-            data: Some(serde_json::json!({ "retryable": false })),
+            reason: Some("placementUnsupported".into()),
+            data: Some(Box::new(serde_json::json!({ "retryable": false }))),
         }))
         .unwrap();
 
@@ -292,14 +280,14 @@ mod tests {
             .unwrap_err();
 
         match err {
-            LxAppError::RongJSHost {
-                code,
-                message,
-                data,
-            } => {
-                assert_eq!(code, "E_NOT_SUPPORTED");
-                assert_eq!(message, "view failed");
-                assert_eq!(data, Some(serde_json::json!({ "retryable": false })));
+            LxAppError::Coded(error) => {
+                assert_eq!(error.code(), "E_NOT_SUPPORTED");
+                assert_eq!(error.message(), "view failed");
+                assert_eq!(error.reason(), Some("placementUnsupported"));
+                assert_eq!(
+                    error.data(),
+                    Some(&serde_json::json!({ "retryable": false }))
+                );
             }
             other => panic!("unexpected error: {other:?}"),
         }
@@ -318,9 +306,7 @@ mod tests {
             .unwrap_err();
 
         match err {
-            LxAppError::Bridge(message) => {
-                assert!(message.contains(BRIDGE_TIMEOUT));
-            }
+            LxAppError::Coded(error) => assert_eq!(error.code(), code::TIMEOUT),
             other => panic!("unexpected error: {other:?}"),
         }
     }

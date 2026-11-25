@@ -139,7 +139,7 @@ after `cancel` or `ch.close`.
 ```json
 { "v": 2, "kind": "req", "id": "<req-id>", "method": "<method>", "params": {}, "cap": "page" }
 { "v": 2, "kind": "res", "id": "<id>", "ok": true, "result": {} }
-{ "v": 2, "kind": "res", "id": "<id>", "ok": false, "error": { "code": "BRIDGE_INTERNAL_ERROR", "message": "..." } }
+{ "v": 2, "kind": "res", "id": "<id>", "ok": false, "error": { "code": "E_NOT_FOUND", "message": "...", "reason": "optional", "data": {} } }
 { "v": 2, "kind": "notify", "method": "<method>", "params": {}, "cap": "page" }
 { "v": 2, "kind": "cancel", "id": "<req-id>" }
 { "v": 2, "kind": "event", "id": "<req-or-sub-id>", "seq": 0, "payload": {} }
@@ -147,7 +147,9 @@ after `cancel` or `ch.close`.
 - `res` is terminal for unary/streaming requests (no `event` may follow). For subscriptions, `res`
   confirms establishment and events follow until close.
 - `cancel` is best-effort; the initiator SHOULD still expect a terminal `res` (commonly
-  `BRIDGE_CANCELED`).
+  `E_ABORT`).
+- A failed `res` carries `{ code, message, reason?, data? }`: `code` is always a string, `message`
+  is English for a log, `reason` names the business case. Numeric codes never reach the wire.
 
 ### Channels
 ```json
@@ -228,13 +230,13 @@ in Logic for all writes up to that revision.
 
 ## 10. Error Codes
 
-Error codes are part of the normative contract and MUST NOT be removed or redefined:
+A call's own failure carries an `E_*` code from `lingxia-error` (`E_TIMEOUT` when it timed out,
+`E_ABORT` when canceled, `E_INTERNAL` for an unexpected failure). The `BRIDGE_*` codes are
+transport-only and MUST NOT be removed or redefined:
 
 | Code | Meaning |
 | --- | --- |
 | `BRIDGE_NOT_READY` | handshake not complete |
-| `BRIDGE_TIMEOUT` | request timed out |
-| `BRIDGE_CANCELED` | request or stream canceled |
 | `BRIDGE_PROTOCOL_MISMATCH` | unsupported protocol version |
 | `BRIDGE_HANDSHAKE_FAILED` | handshake failed |
 | `BRIDGE_MALFORMED_MESSAGE` | invalid frame |
@@ -242,7 +244,6 @@ Error codes are part of the normative contract and MUST NOT be removed or redefi
 | `BRIDGE_METHOD_NOT_FOUND` | request method missing |
 | `BRIDGE_TOPIC_NOT_FOUND` | channel topic missing |
 | `BRIDGE_CAPABILITY_DENIED` | capability check failed |
-| `BRIDGE_INTERNAL_ERROR` | unexpected internal error |
 | `BRIDGE_OUTBOX_FULL` | sender pre-ready outbox overflow |
 | `BRIDGE_STREAM_OVERFLOW` | stream buffer overflow |
 | `BRIDGE_STREAM_CLOSED` | operation on a closed stream or channel |

@@ -3,12 +3,14 @@ use rong::quickjs::{JSContext, JSEngineValue, JSObject, JSValue};
 use rong::{IntoJSValue, JSResult, error::HostError};
 use serde_json::Value;
 
-/// A bridge failure as a reply carries it: `code` is a string, or a business code number.
+/// A bridge failure as a reply carries it: `{ code, message, reason?, data? }`.
 #[derive(Clone, Debug, PartialEq, serde::Deserialize)]
 pub struct BridgeError {
-    pub code: Value,
+    pub code: String,
     #[serde(default)]
     pub message: Option<String>,
+    #[serde(default)]
+    pub reason: Option<String>,
     /// Boxed so the error stays small beside the values a `Result` returns.
     #[serde(default)]
     pub data: Option<Box<Value>>,
@@ -162,7 +164,7 @@ impl ToLogic {
                 id,
                 outcome: Err(error),
             } => {
-                json!({"v":2,"kind":"res","id":id,"ok":false,"error":{"code":error.code,"message":error.message,"data":error.data}})
+                json!({"v":2,"kind":"res","id":id,"ok":false,"error":{"code":error.code,"message":error.message,"reason":error.reason,"data":error.data}})
             }
         };
         if let Some(frame) = frame.as_object_mut() {
@@ -285,8 +287,9 @@ impl<'a> Build<'a> {
         }
     }
     fn error(self, error: &BridgeError) -> JSResult<Self> {
-        let mut built = Build::new(self.ctx).tree("code", &error.code)?;
+        let mut built = Build::new(self.ctx).set("code", error.code.as_str())?;
         built = built.some("message", error.message.as_deref())?;
+        built = built.some("reason", error.reason.as_deref())?;
         if let Some(data) = &error.data {
             built = built.tree("data", data)?;
         }
@@ -409,8 +412,12 @@ impl ToView {
     pub(crate) fn from_frame(frame: &Value) -> Self {
         let id = frame["id"].as_str().unwrap_or_default().to_owned();
         let error = || BridgeError {
-            code: frame["error"]["code"].clone(),
+            code: frame["error"]["code"]
+                .as_str()
+                .unwrap_or_default()
+                .to_owned(),
             message: frame["error"]["message"].as_str().map(str::to_owned),
+            reason: frame["error"]["reason"].as_str().map(str::to_owned),
             data: frame["error"].get("data").cloned().map(Box::new),
         };
         let text = |key: &str| frame[key].as_str().map(str::to_owned);

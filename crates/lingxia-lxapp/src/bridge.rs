@@ -25,6 +25,7 @@ use crate::lxapp::LxApp;
 use crate::page::PageInstance;
 use base64::Engine;
 use futures::StreamExt;
+use lingxia_error::code;
 use lingxia_webview::{
     DocumentBinding, DocumentGeneration, DocumentOutboundGate, IncomingWebMessage,
     WebMessageContext,
@@ -161,10 +162,8 @@ pub(crate) trait AppServiceBackend: Send + Sync {
     ) -> Result<(), LxAppError>;
 }
 
-// Error codes (must match lingxia-bridge/src/types.ts)
+// Transport codes (must match lingxia-bridge/src/types.ts); a call's own failure carries an `E_*` code.
 pub(crate) const BRIDGE_NOT_READY: &str = "BRIDGE_NOT_READY";
-pub(crate) const BRIDGE_TIMEOUT: &str = "BRIDGE_TIMEOUT";
-pub(crate) const BRIDGE_CANCELED: &str = "BRIDGE_CANCELED";
 /// Why an in-flight call was cancelled. Without a message the page normalises
 /// it to "Unknown error" (`@lingxia/bridge` invocation.ts), which tells a
 /// developer reading a log nothing about what happened.
@@ -173,7 +172,6 @@ pub(crate) const BRIDGE_PROTOCOL_MISMATCH: &str = "BRIDGE_PROTOCOL_MISMATCH";
 pub(crate) const BRIDGE_MALFORMED_MESSAGE: &str = "BRIDGE_MALFORMED_MESSAGE";
 pub(crate) const BRIDGE_METHOD_NOT_FOUND: &str = "BRIDGE_METHOD_NOT_FOUND";
 pub(crate) const BRIDGE_TOPIC_NOT_FOUND: &str = "BRIDGE_TOPIC_NOT_FOUND";
-pub(crate) const BRIDGE_INTERNAL_ERROR: &str = "BRIDGE_INTERNAL_ERROR";
 
 #[derive(Serialize)]
 struct ViewReqOut {
@@ -262,7 +260,9 @@ fn serialize_seq_frame_with_payload(
 pub(crate) struct RpcError {
     pub(crate) code: String,
     pub(crate) message: Option<String>,
-    pub(crate) data: Option<Value>,
+    // Boxed: rarely set, and every `Result<_, RpcError>` carries the error's size.
+    pub(crate) reason: Option<Box<str>>,
+    pub(crate) data: Option<Box<Value>>,
 }
 
 impl RpcError {
@@ -270,8 +270,29 @@ impl RpcError {
         Self {
             code: code.into(),
             message,
+            reason: None,
             data: None,
         }
+    }
+}
+
+impl From<lingxia_error::Error> for RpcError {
+    fn from(error: lingxia_error::Error) -> Self {
+        Self {
+            code: error.code().to_string(),
+            message: Some(error.message().to_string()),
+            reason: error.reason().map(Into::into),
+            data: error.data().cloned().map(Box::new),
+        }
+    }
+}
+
+impl From<&LxAppError> for RpcError {
+    fn from(error: &LxAppError) -> Self {
+        if matches!(error, LxAppError::Bridge(msg) if msg == "Canceled") {
+            return Self::new(code::ABORT, Some(PAGE_UNLOADED.to_string()));
+        }
+        lingxia_error::Error::from(error.clone()).into()
     }
 }
 
@@ -979,9 +1000,10 @@ impl PageBridge {
                         work.work_id,
                         work.outbound.as_ref(),
                         id,
-                        "E_PERMISSION_DENIED",
-                        Some("GPU View host calls require a Logic action".into()),
-                        None,
+                        RpcError::new(
+                            "E_PERMISSION_DENIED",
+                            Some("GPU View host calls require a Logic action".into()),
+                        ),
                     );
                 }
                 let call = Call {
@@ -1003,9 +1025,10 @@ impl PageBridge {
                         work.work_id,
                         work.outbound.as_ref(),
                         id,
-                        "E_PERMISSION_DENIED",
-                        Some("GPU View channels require a page Logic handler".into()),
-                        None,
+                        RpcError::new(
+                            "E_PERMISSION_DENIED",
+                            Some("GPU View channels require a page Logic handler".into()),
+                        ),
                     );
                 }
                 let cap = required_cap_for_name(&topic);
@@ -1023,13 +1046,10 @@ impl PageBridge {
                     return Ok(());
                 }
                 let result = outcome.map_err(|error| RpcError {
-                    code: match error.code {
-                        Value::String(code) => code,
-                        Value::Number(code) => code.to_string(),
-                        _ => BRIDGE_INTERNAL_ERROR.to_string(),
-                    },
+                    code: error.code,
                     message: error.message,
-                    data: error.data,
+                    reason: error.reason.map(Into::into),
+                    data: error.data.map(Box::new),
                 });
                 let page_instance_id = page.instance_id_string();
                 crate::view_call::resolve_view_call(
@@ -1153,8 +1173,9 @@ impl PageBridge {
             Err(RpcError {
                 code: err
                     .map(|e| e.normalized_code())
-                    .unwrap_or_else(|| BRIDGE_INTERNAL_ERROR.to_string()),
+                    .unwrap_or_else(|| code::INTERNAL.to_string()),
                 message: err.and_then(|e| e.message.clone()),
+                reason: err.and_then(|e| e.reason.clone()),
                 data: err.and_then(|e| e.data.clone()),
             })
         };
@@ -1306,9 +1327,7 @@ impl PageBridge {
                 work.work_id,
                 work.outbound.as_ref(),
                 id.clone(),
-                code,
-                message,
-                None,
+                RpcError::new(code, message),
             );
         }
         Ok(())
@@ -1438,9 +1457,7 @@ impl PageBridge {
                 work.work_id,
                 work.outbound.as_ref(),
                 call.id.clone(),
-                BRIDGE_NOT_READY,
-                Some("Bridge not ready".to_string()),
-                None,
+                RpcError::new(BRIDGE_NOT_READY, Some("Bridge not ready".to_string())),
             );
             return Ok(());
         }
@@ -1452,9 +1469,7 @@ impl PageBridge {
                 work.work_id,
                 work.outbound.as_ref(),
                 call.id.clone(),
-                BRIDGE_MALFORMED_MESSAGE,
-                Some("Missing cap".to_string()),
-                None,
+                RpcError::new(BRIDGE_MALFORMED_MESSAGE, Some("Missing cap".to_string())),
             );
             return Ok(());
         }
@@ -1464,9 +1479,10 @@ impl PageBridge {
                 work.work_id,
                 work.outbound.as_ref(),
                 call.id.clone(),
-                BRIDGE_MALFORMED_MESSAGE,
-                Some(format!("Capability mismatch: expected '{}'", required_cap)),
-                None,
+                RpcError::new(
+                    BRIDGE_MALFORMED_MESSAGE,
+                    Some(format!("Capability mismatch: expected '{}'", required_cap)),
+                ),
             );
             return Ok(());
         }
@@ -1620,9 +1636,7 @@ impl PageBridge {
                 work.work_id,
                 work.outbound.as_ref(),
                 id.to_owned(),
-                BRIDGE_NOT_READY,
-                Some("Bridge not ready".to_string()),
-                None,
+                RpcError::new(BRIDGE_NOT_READY, Some("Bridge not ready".to_string())),
             );
             return Ok(());
         }
@@ -1634,9 +1648,10 @@ impl PageBridge {
                 work.work_id,
                 work.outbound.as_ref(),
                 id.to_owned(),
-                BRIDGE_MALFORMED_MESSAGE,
-                Some(format!("Capability mismatch: expected '{}'", required_cap)),
-                None,
+                RpcError::new(
+                    BRIDGE_MALFORMED_MESSAGE,
+                    Some(format!("Capability mismatch: expected '{}'", required_cap)),
+                ),
             );
             return Ok(());
         }
@@ -1693,9 +1708,7 @@ impl PageBridge {
                 work_id,
                 outbound,
                 id,
-                BRIDGE_INTERNAL_ERROR,
-                Some(err.to_string()),
-                None,
+                RpcError::new(code::INTERNAL, Some(err.to_string())),
             );
         }
         Ok(())
@@ -1715,9 +1728,7 @@ impl PageBridge {
                 work_id,
                 outbound,
                 id,
-                BRIDGE_INTERNAL_ERROR,
-                Some(err.to_string()),
-                None,
+                RpcError::new(code::INTERNAL, Some(err.to_string())),
             );
         }
         Ok(())
@@ -1792,19 +1803,23 @@ impl PageBridge {
         work_id: Option<SessionWorkId>,
         outbound: Option<&OutboundContext>,
         id: String,
-        code: &str,
-        message: Option<String>,
-        data: Option<Value>,
+        error: RpcError,
     ) -> Result<(), LxAppError> {
-        let wire_code = Value::String(code.to_string());
+        let RpcError {
+            code,
+            message,
+            reason,
+            data,
+        } = error;
         if let Some(outbound) = gpu(outbound) {
             return self.post_gpu(work_id, outbound, || {
                 Ok(crate::GpuViewMessage::Reply {
                     id,
                     outcome: Err(crate::GpuBridgeError {
-                        code: wire_code,
+                        code,
                         message,
-                        data,
+                        reason: reason.map(String::from),
+                        data: data.map(|data| *data),
                     }),
                 })
             });
@@ -1817,9 +1832,10 @@ impl PageBridge {
             ok: false,
             result: None,
             error: Some(BridgeError {
-                code: wire_code,
+                code,
                 message,
-                data,
+                reason: reason.map(String::from),
+                data: data.map(|data| *data),
             }),
         };
         self.send_json_for_context(transport, work_id, outbound, &msg)
@@ -1953,18 +1969,23 @@ impl PageBridge {
         work_id: Option<SessionWorkId>,
         outbound: Option<&OutboundContext>,
         id: impl Into<String>,
-        code: &str,
-        message: Option<String>,
-        data: Option<Value>,
+        error: RpcError,
     ) -> Result<(), LxAppError> {
+        let RpcError {
+            code,
+            message,
+            reason,
+            data,
+        } = error;
         if let Some(outbound) = gpu(outbound) {
             return self.post_gpu(work_id, outbound, || {
                 Ok(crate::GpuViewMessage::ChannelAck {
                     id: id.into(),
                     outcome: Err(crate::GpuBridgeError {
-                        code: Value::String(code.to_string()),
+                        code,
                         message,
-                        data,
+                        reason: reason.map(String::from),
+                        data: data.map(|data| *data),
                     }),
                 })
             });
@@ -1975,9 +1996,10 @@ impl PageBridge {
             id: id.into(),
             ok: false,
             error: Some(BridgeError {
-                code: Value::String(code.to_string()),
+                code,
                 message,
-                data,
+                reason: reason.map(String::from),
+                data: data.map(|data| *data),
             }),
         };
         self.send_json_for_context(transport, work_id, outbound, &msg)
@@ -2180,12 +2202,12 @@ impl PageBridge {
                 Some(channel.work_id),
                 channel.outbound.as_ref(),
                 id,
-                Some(BRIDGE_CANCELED.to_string()),
+                Some(code::ABORT.to_string()),
                 Some(reason.to_string()),
             );
             channel
                 .sender
-                .send_close(Some(BRIDGE_CANCELED.to_string()), Some(reason.to_string()));
+                .send_close(Some(code::ABORT.to_string()), Some(reason.to_string()));
         }
     }
 
@@ -2223,7 +2245,7 @@ impl PageBridge {
         );
         if let Some(replaced) = replaced {
             replaced.sender.send_close(
-                Some(BRIDGE_CANCELED.to_string()),
+                Some(code::ABORT.to_string()),
                 Some("Channel replaced".to_string()),
             );
         }
@@ -2370,9 +2392,10 @@ impl PageBridge {
                         work.work_id,
                         work.outbound.as_ref(),
                         id,
-                        BRIDGE_TOPIC_NOT_FOUND,
-                        Some(format!("Channel not found: host.{}", host_topic)),
-                        None,
+                        RpcError::new(
+                            BRIDGE_TOPIC_NOT_FOUND,
+                            Some(format!("Channel not found: host.{}", host_topic)),
+                        ),
                     );
                     return Ok(());
                 };
@@ -2388,7 +2411,7 @@ impl PageBridge {
                 if !self.is_current_work(Some(work_id)) {
                     if let Some(channel) = self.take_host_channel(&id, work_id, channel_token) {
                         channel.sender.send_close(
-                            Some(BRIDGE_CANCELED.to_string()),
+                            Some(code::ABORT.to_string()),
                             Some(PAGE_UNLOADED.to_string()),
                         );
                     }
@@ -2461,7 +2484,7 @@ impl PageBridge {
                 if !self.is_current_work(Some(work_id)) {
                     if let Some(channel) = self.take_host_channel(&id, work_id, channel_token) {
                         channel.sender.send_close(
-                            Some(BRIDGE_CANCELED.to_string()),
+                            Some(code::ABORT.to_string()),
                             Some(PAGE_UNLOADED.to_string()),
                         );
                     }
@@ -2510,9 +2533,10 @@ impl PageBridge {
                         work.work_id,
                         work.outbound.as_ref(),
                         id,
-                        BRIDGE_METHOD_NOT_FOUND,
-                        Some(format!("Method not found: host.{}", host_method)),
-                        None,
+                        RpcError::new(
+                            BRIDGE_METHOD_NOT_FOUND,
+                            Some(format!("Method not found: host.{}", host_method)),
+                        ),
                     );
                     return Ok(());
                 };
@@ -2542,9 +2566,7 @@ impl PageBridge {
                         Some(work_id),
                         work.outbound.as_ref(),
                         id,
-                        BRIDGE_CANCELED,
-                        Some(PAGE_UNLOADED.to_string()),
-                        None,
+                        RpcError::new(code::ABORT, Some(PAGE_UNLOADED.to_string())),
                     );
                     return Ok(());
                 }
@@ -2556,98 +2578,98 @@ impl PageBridge {
                 crate::executor::spawn(async move {
                     HOST_EFFECT_WORK
                         .scope(task_work, async move {
-                    let started_at = std::time::Instant::now();
-                    let (tx, rx) = oneshot::channel();
-                    let mut host_cancel_tx = Some(tx);
-                    let mut host_fut = handler.call(invocation, params_json, rx);
+                            let started_at = std::time::Instant::now();
+                            let (tx, rx) = oneshot::channel();
+                            let mut host_cancel_tx = Some(tx);
+                            let mut host_fut = handler.call(invocation, params_json, rx);
 
-                    let initial_result: Result<HostOutput, RpcError> = tokio::select! {
-                        biased;
-                        _ = &mut cancel_rx => {
-                            if let Some(tx) = host_cancel_tx.take() {
-                                let _ = tx.send(());
-                            }
-                            Err(RpcError::new(BRIDGE_CANCELED, Some(PAGE_UNLOADED.to_string())))
-                        }
-                        res = &mut host_fut => {
-                            match res {
-                                Ok(output) => Ok(output),
-                                Err(err) => Err(rpc_error_from_lxapp_error(&err)),
-                            }
-                        }
-                    };
+                            let initial_result: Result<HostOutput, RpcError> = tokio::select! {
+                                biased;
+                                _ = &mut cancel_rx => {
+                                    if let Some(tx) = host_cancel_tx.take() {
+                                        let _ = tx.send(());
+                                    }
+                                    Err(RpcError::new(code::ABORT, Some(PAGE_UNLOADED.to_string())))
+                                }
+                                res = &mut host_fut => {
+                                    match res {
+                                        Ok(output) => Ok(output),
+                                        Err(err) => Err(RpcError::from(&err)),
+                                    }
+                                }
+                            };
 
-                    let send_result = match initial_result {
-                        Ok(HostOutput::Json(json)) => bridge.send_res_ok_for_context(
-                            &task_page,
-                            Some(work_id),
-                            task_outbound.as_ref(),
-                            task_id.clone(),
-                            Payload::Json(json),
-                        ),
-                        Ok(HostOutput::Stream(stream)) => {
-                            match bridge
-                                .consume_host_stream(
-                                    &task_page,
-                                    work_id,
-                                    task_outbound.as_ref(),
-                                    &task_id,
-                                    stream,
-                                    &mut cancel_rx,
-                                    host_cancel_tx,
-                                )
-                                .await
-                            {
-                                Ok(json) => bridge.send_res_ok_for_context(
+                            let send_result = match initial_result {
+                                Ok(HostOutput::Json(json)) => bridge.send_res_ok_for_context(
                                     &task_page,
                                     Some(work_id),
                                     task_outbound.as_ref(),
                                     task_id.clone(),
                                     Payload::Json(json),
                                 ),
+                                Ok(HostOutput::Stream(stream)) => {
+                                    match bridge
+                                        .consume_host_stream(
+                                            &task_page,
+                                            work_id,
+                                            task_outbound.as_ref(),
+                                            &task_id,
+                                            stream,
+                                            &mut cancel_rx,
+                                            host_cancel_tx,
+                                        )
+                                        .await
+                                    {
+                                        Ok(json) => bridge.send_res_ok_for_context(
+                                            &task_page,
+                                            Some(work_id),
+                                            task_outbound.as_ref(),
+                                            task_id.clone(),
+                                            Payload::Json(json),
+                                        ),
+                                        Err(err) => bridge.send_res_err_for_context(
+                                            &task_page,
+                                            Some(work_id),
+                                            task_outbound.as_ref(),
+                                            task_id.clone(),
+                                            err,
+                                        ),
+                                    }
+                                }
                                 Err(err) => bridge.send_res_err_for_context(
                                     &task_page,
                                     Some(work_id),
                                     task_outbound.as_ref(),
                                     task_id.clone(),
-                                    &err.code,
-                                    err.message,
-                                    err.data,
+                                    err,
                                 ),
+                            };
+
+                            drop(pending_request);
+
+                            let elapsed = started_at.elapsed();
+                            if elapsed > std::time::Duration::from_secs(3) {
+                                crate::warn!(
+                                    "[{}] host req '{}' slow: {:?}",
+                                    task_page.path(),
+                                    task_host_method,
+                                    elapsed
+                                )
+                                .with_appid(task_page.appid())
+                                .with_path(task_page.path());
                             }
-                        }
-                        Err(err) => bridge.send_res_err_for_context(
-                            &task_page,
-                            Some(work_id),
-                            task_outbound.as_ref(),
-                            task_id.clone(),
-                            &err.code,
-                            err.message,
-                            err.data,
-                        ),
-                    };
 
-                    drop(pending_request);
-
-                    let elapsed = started_at.elapsed();
-                    if elapsed > std::time::Duration::from_secs(3) {
-                        crate::warn!(
-                            "[{}] host req '{}' slow: {:?}",
-                            task_page.path(),
-                            task_host_method,
-                            elapsed
-                        )
-                        .with_appid(task_page.appid())
-                        .with_path(task_page.path());
-                    }
-
-                    if let Err(err) = send_result {
-                        crate::warn!("host req '{}' reply failed: {}", task_host_method, err)
-                            .with_appid(task_page.appid())
-                            .with_path(task_page.path());
-                    }
-                    })
-                    .await;
+                            if let Err(err) = send_result {
+                                crate::warn!(
+                                    "host req '{}' reply failed: {}",
+                                    task_host_method,
+                                    err
+                                )
+                                .with_appid(task_page.appid())
+                                .with_path(task_page.path());
+                            }
+                        })
+                        .await;
                 });
 
                 Ok(())
@@ -2752,7 +2774,7 @@ impl PageBridge {
                     if let Some(tx) = host_cancel_tx.take() {
                         let _ = tx.send(());
                     }
-                    return Err(RpcError::new(BRIDGE_CANCELED, Some(PAGE_UNLOADED.to_string())));
+                    return Err(RpcError::new(code::ABORT, Some(PAGE_UNLOADED.to_string())));
                 }
                 item = stream.next() => item,
             };
@@ -2763,7 +2785,7 @@ impl PageBridge {
                         .map(|raw| raw.get().to_owned())
                         .map_err(|e| {
                             RpcError::new(
-                                BRIDGE_INTERNAL_ERROR,
+                                code::INTERNAL,
                                 Some(format!("Host stream emitted invalid JSON: {}", e)),
                             )
                         })?;
@@ -2775,7 +2797,7 @@ impl PageBridge {
                         seq,
                         Payload::Json(payload_json),
                     )
-                    .map_err(|e| RpcError::new(BRIDGE_INTERNAL_ERROR, Some(e.to_string())))?;
+                    .map_err(|e| RpcError::new(code::INTERNAL, Some(e.to_string())))?;
                     seq += 1;
                 }
                 Some(Ok(HostStreamItem::Return(result_json))) => {
@@ -2783,42 +2805,16 @@ impl PageBridge {
                         .map(|raw| raw.get().to_owned())
                         .map_err(|e| {
                             RpcError::new(
-                                BRIDGE_INTERNAL_ERROR,
+                                code::INTERNAL,
                                 Some(format!("Host stream returned invalid JSON: {}", e)),
                             )
                         });
                 }
-                Some(Err(err)) => return Err(rpc_error_from_lxapp_error(&err)),
+                Some(Err(err)) => return Err(RpcError::from(&err)),
                 None => return Ok("null".to_string()),
             }
         }
     }
-}
-
-fn rpc_error_from_lxapp_error(err: &LxAppError) -> RpcError {
-    if let LxAppError::RongJSHost {
-        code,
-        message,
-        data,
-    } = err
-    {
-        return RpcError {
-            code: code.clone(),
-            message: Some(message.clone()),
-            data: data.clone(),
-        };
-    }
-    if let LxAppError::Coded(error) = err {
-        return RpcError {
-            code: error.code().to_string(),
-            message: Some(error.message().to_string()),
-            data: error.data().cloned(),
-        };
-    }
-    if matches!(err, LxAppError::Bridge(msg) if msg == "Canceled") {
-        return RpcError::new(BRIDGE_CANCELED, Some(PAGE_UNLOADED.to_string()));
-    }
-    RpcError::new(BRIDGE_INTERNAL_ERROR, Some(err.to_string()))
 }
 
 #[cfg(test)]

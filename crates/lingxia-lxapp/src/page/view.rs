@@ -115,11 +115,12 @@ pub enum GpuStateSignal {
     Resync,
 }
 
-/// A bridge failure as a reply carries it: `code` is a string or a business code number.
+/// A bridge failure as a reply carries it: `{ code, message, reason?, data? }`.
 #[derive(Clone, Debug, PartialEq)]
 pub struct GpuBridgeError {
-    pub code: serde_json::Value,
+    pub code: String,
     pub message: Option<String>,
+    pub reason: Option<String>,
     pub data: Option<serde_json::Value>,
 }
 

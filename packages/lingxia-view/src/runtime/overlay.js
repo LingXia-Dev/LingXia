@@ -51,13 +51,13 @@ export function viewCall(call) {
       break;
     case 'ui.showActionSheet': {
       const items = Array.isArray(params.itemList) ? params.itemList.slice(0, 32).map(item => text(item)) : [];
-      if (!items.length) { replies.push(reply(id, false, { code: 'E_INVALID_ARGUMENT', message: 'showActionSheet needs itemList' })); break; }
+      if (!items.length) { replies.push(reply(id, false, { code: 'E_INVALID_ARG', message: 'showActionSheet needs itemList' })); break; }
       sheets.push({ id, key: nextToken++, items, cancelText: text(params.cancelText, null) });
       changed = sheets.length === 1;
       break;
     }
     default:
-      replies.push(reply(id, false, { code: 'E_UNSUPPORTED', message: `${String(method)} is not served by a GPU View` }));
+      replies.push(reply(id, false, { code: 'E_NOT_SUPPORTED', message: `${String(method)} is not served by a GPU View` }));
   }
   return { changed, replies };
 }

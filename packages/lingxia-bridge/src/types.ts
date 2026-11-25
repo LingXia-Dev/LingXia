@@ -41,18 +41,15 @@ export interface ErrorInfo {
   code?: number;
 }
 
-// V2 Error Codes (stable)
+// Transport codes; a call's own failure (timeout, cancel, internal) carries an `E_*` code.
 export const BRIDGE_ERROR = {
   NOT_READY: 'BRIDGE_NOT_READY',
-  TIMEOUT: 'BRIDGE_TIMEOUT',
-  CANCELED: 'BRIDGE_CANCELED',
   PROTOCOL_MISMATCH: 'BRIDGE_PROTOCOL_MISMATCH',
   HANDSHAKE_FAILED: 'BRIDGE_HANDSHAKE_FAILED',
   MALFORMED_MESSAGE: 'BRIDGE_MALFORMED_MESSAGE',
   METHOD_NOT_FOUND: 'BRIDGE_METHOD_NOT_FOUND',
   TOPIC_NOT_FOUND: 'BRIDGE_TOPIC_NOT_FOUND',
   CAPABILITY_DENIED: 'BRIDGE_CAPABILITY_DENIED',
-  INTERNAL_ERROR: 'BRIDGE_INTERNAL_ERROR',
   OUTBOX_FULL: 'BRIDGE_OUTBOX_FULL',
   STREAM_OVERFLOW: 'BRIDGE_STREAM_OVERFLOW',
   STREAM_CLOSED: 'BRIDGE_STREAM_CLOSED',
@@ -62,14 +59,16 @@ export const BRIDGE_ERROR = {
 export type BridgeErrorCode = (typeof BRIDGE_ERROR)[keyof typeof BRIDGE_ERROR];
 
 export interface LxBridgeError {
-  code: string | number;
+  code: string;
   message?: string;
+  reason?: string;
   data?: unknown;
 }
 
 export interface NativeError {
   code: string;
   message: string;
+  reason?: string;
   data?: unknown;
 }
 

@@ -143,17 +143,18 @@ otherwise), for `useLxStream` too.
 
 ## Errors
 
-All three primitives reject with `LxBridgeError` (`{ code, message?, data? }`);
-branch on `code`.
+All three primitives reject with `LxBridgeError` (`{ code, message?, reason?, data? }`);
+branch on `code` and `reason`, never on `message` (English, for a log).
 
 | Code | Meaning |
 |---|---|
-| `BRIDGE_CANCELED` | stream or request was canceled |
+| `E_ABORT` | stream or request was canceled |
 | `BRIDGE_METHOD_NOT_FOUND` | method name doesn't match any Logic handler |
 | `BRIDGE_TOPIC_NOT_FOUND` | channel topic not registered |
-| `BRIDGE_TIMEOUT` | request timed out |
+| `E_TIMEOUT` | request timed out |
 | `BRIDGE_MESSAGE_TOO_LARGE` | the encoded frame exceeded the 64 KiB native message limit — split the payload, or move the bulk through a file or a stream |
-| `BRIDGE_INTERNAL_ERROR` | unexpected error in Logic or Bridge |
+| `E_INTERNAL` | unexpected error in Logic or Bridge |
+| any other `E_*` | the Logic handler's own failure, e.g. `E_NOT_FOUND` |
 
 Check `chat.error` once `streaming` is false, and `session.error` once
 `connected` is false.

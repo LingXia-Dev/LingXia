@@ -27,12 +27,12 @@ export const families = [
   {
     family: 'BRIDGE_*', layer: 'error-envelope',
     owner: 'packages/lingxia-bridge/test-support/test-channel-errors.mjs',
-    codes: ['BRIDGE_NOT_READY', 'BRIDGE_TIMEOUT', 'BRIDGE_CANCELED',
+    codes: ['BRIDGE_NOT_READY',
       'BRIDGE_PROTOCOL_MISMATCH', 'BRIDGE_HANDSHAKE_FAILED', 'BRIDGE_MALFORMED_MESSAGE',
       'BRIDGE_METHOD_NOT_FOUND', 'BRIDGE_TOPIC_NOT_FOUND', 'BRIDGE_CAPABILITY_DENIED',
-      'BRIDGE_INTERNAL_ERROR', 'BRIDGE_OUTBOX_FULL', 'BRIDGE_STREAM_OVERFLOW',
+      'BRIDGE_OUTBOX_FULL', 'BRIDGE_STREAM_OVERFLOW',
       'BRIDGE_STREAM_CLOSED', 'BRIDGE_MESSAGE_TOO_LARGE'],
-    remaining: 'Error-envelope tests inject rejected acknowledgements; overflow, cancellation, and handshake failure origins are not exhaustively induced here.',
+    remaining: 'Error-envelope tests inject rejected acknowledgements; overflow and handshake failure origins are not exhaustively induced here.',
   },
 ];
 

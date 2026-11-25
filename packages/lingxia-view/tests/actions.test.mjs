@@ -17,16 +17,16 @@ test('actions preserve LegacyV2 payloads and settle responses exactly once', asy
   await assert.rejects(failed,{name:'LxBridgeError',code:'E_PERMISSION_DENIED',message:'denied',data:{route:'increment'}});
   // A business failure keeps its E_ code and names its case.
   const closed=actions.increment();const again=JSON.parse(takeActionRequests()[0]);
-  receiveActionResponse({v:2,kind:'res',id:again.id,ok:false,error:{code:'E_CONFLICT',message:'order closed',reason:'orderClosed',detail:'closed at 10:00'}});
-  await assert.rejects(closed,{code:'E_CONFLICT',reason:'orderClosed',detail:'closed at 10:00'});
+  receiveActionResponse({v:2,kind:'res',id:again.id,ok:false,error:{code:'E_CONFLICT',message:'order closed',reason:'orderClosed'}});
+  await assert.rejects(closed,{code:'E_CONFLICT',reason:'orderClosed'});
   const { resourceError } = await import('../src/runtime/errors.js');
   const shown=resourceError(await closed.catch(error=>error));
-  assert.deepEqual(shown,{code:'E_CONFLICT',message:'order closed',reason:'orderClosed',detail:'closed at 10:00'});
+  assert.deepEqual(shown,{code:'E_CONFLICT',message:'order closed',reason:'orderClosed'});
 });
 test('reset cancels pending work and stale closures cannot target the replacement',async()=>{
   configureActions(catalog);const old=createView({},{}).actions;
   const pending=old.increment();const frame=JSON.parse(takeActionRequests()[0]);
-  reset();await assert.rejects(pending,{code:'BRIDGE_CANCELED'});
+  reset();await assert.rejects(pending,{code:'E_ABORT'});
   configureActions(catalog);assert.throws(()=>old.increment(),/Stale/);
   const next=createView({},{}).actions.increment();const replacement=JSON.parse(takeActionRequests()[0]);
   assert.notEqual(frame.id,replacement.id);

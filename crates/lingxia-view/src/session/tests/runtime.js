@@ -2657,7 +2657,7 @@
       case "ui.showActionSheet": {
         const items = Array.isArray(params.itemList) ? params.itemList.slice(0, 32).map((item) => text(item)) : [];
         if (!items.length) {
-          replies.push(reply(id, false, { code: "E_INVALID_ARGUMENT", message: "showActionSheet needs itemList" }));
+          replies.push(reply(id, false, { code: "E_INVALID_ARG", message: "showActionSheet needs itemList" }));
           break;
         }
         sheets.push({ id, key: nextToken++, items, cancelText: text(params.cancelText, null) });
@@ -2665,7 +2665,7 @@
         break;
       }
       default:
-        replies.push(reply(id, false, { code: "E_UNSUPPORTED", message: `${String(method)} is not served by a GPU View` }));
+        replies.push(reply(id, false, { code: "E_NOT_SUPPORTED", message: `${String(method)} is not served by a GPU View` }));
     }
     return { changed: changed2, replies };
   }
@@ -2905,12 +2905,11 @@
     base.message = [base.uiMessage, ...base.uiFrames.map((line) => `  at ${line}`)].join("\n");
     return base;
   }
-  function bridgeError(code, message, data, reason, detail) {
+  function bridgeError(code, message, data, reason) {
     const error = new Error(message ?? code);
     error.name = "LxBridgeError";
     error.code = code;
     if (reason !== void 0) error.reason = reason;
-    if (detail !== void 0) error.detail = detail;
     if (data !== void 0) error.data = data;
     return error;
   }
@@ -2919,7 +2918,6 @@
       code: error.code,
       message: String(error.message ?? error.code),
       ...typeof error.reason === "string" ? { reason: error.reason } : {},
-      ...typeof error.detail === "string" ? { detail: error.detail } : {},
       ...error.data !== void 0 ? { data: error.data } : {}
     });
     const text2 = String(error?.uiMessage ?? error?.message ?? error);
@@ -3470,9 +3468,9 @@
     const oldChannels = [...activeChannels.values()];
     activeChannels.clear();
     channels = closedChannels;
-    for (const { reject } of pending3) reject(bridgeError("BRIDGE_CANCELED", "Page reset"));
+    for (const { reject } of pending3) reject(bridgeError("E_ABORT", "Page reset"));
     for (const entry of oldChannels) {
-      const error = bridgeError("BRIDGE_CANCELED", "Page reset");
+      const error = bridgeError("E_ABORT", "Page reset");
       entry.reject(error);
       entry.channel.reject(error);
     }
@@ -3553,7 +3551,7 @@
     };
     for (const name of names3) built[name] = (...args) => {
       outsideRender("action");
-      if (epoch2 !== actionEpoch) throw bridgeError("BRIDGE_CANCELED", "Stale page action");
+      if (epoch2 !== actionEpoch) throw bridgeError("E_ABORT", "Stale page action");
       if (args.length > 1) throw Error("UI_ACTION: expected at most one JSON payload");
       admit("actions");
       const params = args.length && args[0] !== void 0 ? bounded(args[0], "action", name) : void 0;
@@ -3565,7 +3563,7 @@
           if (requests.length >= 512) throw Error("UI_LIMIT: too many pending cancellations");
           requests.push({ kind: "cancel", id });
           pendingActions.delete(id);
-          stream.reject(cause ?? bridgeError("BRIDGE_CANCELED", "Stream canceled"));
+          stream.reject(cause ?? bridgeError("E_ABORT", "Stream canceled"));
         }, reportLive, bridgeError);
         pendingActions.set(id, { ...stream, sequence: -1 });
         requests.push(encoded);
@@ -3580,7 +3578,7 @@
         reject(cause) {
           settle2.reject(cause);
           Promise.resolve().then(() => {
-            if (!promise.handled && cause?.code !== "BRIDGE_CANCELED") {
+            if (!promise.handled && cause?.code !== "E_ABORT") {
               reportLive(`Unhandled rejection of action '${name}': ${cause?.message ?? String(cause)}`);
             }
           });
@@ -3599,7 +3597,7 @@
     channels = Object.freeze({
       open(topic, params) {
         outsideRender("channel");
-        if (epoch2 !== actionEpoch) throw bridgeError("BRIDGE_CANCELED", "Stale page channel");
+        if (epoch2 !== actionEpoch) throw bridgeError("E_ABORT", "Stale page channel");
         if (typeof topic !== "string" || !has(built, topic) || topic.includes(".") || modes[topic] !== "call")
           throw Error("UI_CHANNEL: expected a page channel handler");
         admit("channels");
@@ -3720,11 +3718,10 @@
     return actionEpoch;
   }
   var failure = ({ error }) => bridgeError(
-    typeof error?.code === "string" ? error.code : "BRIDGE_INTERNAL_ERROR",
+    typeof error?.code === "string" ? error.code : "E_INTERNAL",
     typeof error?.message === "string" ? error.message : void 0,
     error?.data === void 0 ? void 0 : immutable(error.data),
-    typeof error?.reason === "string" ? error.reason : void 0,
-    typeof error?.detail === "string" ? error.detail : void 0
+    typeof error?.reason === "string" ? error.reason : void 0
   );
   function receiveActionResponse(frame) {
     outsideRender("response");
@@ -3830,7 +3827,7 @@
             update({ status: "completed", result: value ?? null });
           }, (error) => {
             if (!mounted || current2 !== ticket) return;
-            if (error.code === "BRIDGE_CANCELED") {
+            if (error.code === "E_ABORT") {
               stream = void 0;
               update({ status: "canceled", error: resourceError(error) });
             } else fail(error);

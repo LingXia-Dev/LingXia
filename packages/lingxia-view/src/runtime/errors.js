@@ -13,21 +13,19 @@ export function located(error, frame) {
   return base;
 }
 
-export function bridgeError(code, message, data, reason, detail) {
+export function bridgeError(code, message, data, reason) {
   const error = new Error(message ?? code);
   error.name = 'LxBridgeError'; error.code = code;
   if (reason !== undefined) error.reason = reason;
-  if (detail !== undefined) error.detail = detail;
   if (data !== undefined) error.data = data;
   return error;
 }
 
-/** The `{ code, message, reason?, detail?, data? }` a resource exposes for a failure. */
+/** The `{ code, message, reason?, data? }` a resource exposes for a failure. */
 export function resourceError(error) {
   if (typeof error?.code === 'string') return Object.freeze({
     code: error.code, message: String(error.message ?? error.code),
     ...(typeof error.reason === 'string' ? { reason: error.reason } : {}),
-    ...(typeof error.detail === 'string' ? { detail: error.detail } : {}),
     ...(error.data !== undefined ? { data: error.data } : {}),
   });
   const text = String(error?.uiMessage ?? error?.message ?? error);

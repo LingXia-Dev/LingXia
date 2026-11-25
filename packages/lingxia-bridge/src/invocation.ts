@@ -50,13 +50,15 @@ export type ChannelOut<TMethod> =
     : never;
 
 class BridgeInvocationError extends Error implements LxBridgeError {
-  code: string | number;
+  code: string;
+  reason?: string;
   data?: unknown;
 
-  constructor(code: string | number, message: string, data?: unknown) {
+  constructor(code: string, message: string, reason?: string, data?: unknown) {
     super(message);
     this.name = "BridgeInvocationError";
     this.code = code;
+    if (reason !== undefined) this.reason = reason;
     this.data = data;
   }
 }
@@ -64,13 +66,9 @@ class BridgeInvocationError extends Error implements LxBridgeError {
 export function toBridgeError(err: unknown): LxBridgeError {
   if (err instanceof BridgeInvocationError) return err;
   if (err && typeof err === "object") {
-    const source = err as { code?: unknown; message?: unknown; data?: unknown };
-    let code: string | number = BRIDGE_ERROR.INTERNAL_ERROR;
-    if (typeof source.code === "string" && source.code.trim() !== "") {
-      code = source.code;
-    } else if (typeof source.code === "number" && Number.isFinite(source.code)) {
-      code = source.code;
-    }
+    const source = err as { code?: unknown; message?: unknown; reason?: unknown; data?: unknown };
+    const code =
+      typeof source.code === "string" && source.code.trim() !== "" ? source.code : "E_INTERNAL";
     const message =
       typeof source.message === "string" && source.message.trim() !== ""
         ? source.message
@@ -78,22 +76,24 @@ export function toBridgeError(err: unknown): LxBridgeError {
     return new BridgeInvocationError(
       code,
       message,
+      typeof source.reason === "string" ? source.reason : undefined,
       "data" in source ? source.data : undefined,
     );
   }
   const message =
     err instanceof Error ? err.message : typeof err === "string" ? err : "Unknown error";
-  return new BridgeInvocationError(BRIDGE_ERROR.INTERNAL_ERROR, message);
+  return new BridgeInvocationError("E_INTERNAL", message);
 }
 
 export function toNativeError(err: unknown): import("./types").NativeError {
   const bridgeError = toBridgeError(err);
   return {
-    code: String(bridgeError.code || BRIDGE_ERROR.INTERNAL_ERROR),
+    code: bridgeError.code,
     message:
       typeof bridgeError.message === "string" && bridgeError.message.trim() !== ""
         ? bridgeError.message
         : "Unknown error",
+    ...(bridgeError.reason === undefined ? {} : { reason: bridgeError.reason }),
     ...(bridgeError.data === undefined ? {} : { data: bridgeError.data }),
   };
 }

@@ -44,11 +44,11 @@ test('rejected opens and resets settle pending promises and invalidate old handl
   frame('ch.ack',{ok:false,error:{code:'BRIDGE_TOPIC_NOT_FOUND',message:'missing'}});
   await assert.rejects(promise,{code:'BRIDGE_TOPIC_NOT_FOUND'});
   const old=view.channels;
-  ({promise}=start());reset();await assert.rejects(promise,{code:'BRIDGE_CANCELED'});
-  assert.throws(()=>old.open('ticker'),{code:'BRIDGE_CANCELED'});
+  ({promise}=start());reset();await assert.rejects(promise,{code:'E_ABORT'});
+  assert.throws(()=>old.open('ticker'),{code:'E_ABORT'});
   ({promise,frame}=start());frame('ch.ack',{ok:true});const channel=await promise;
   const reader=channel[Symbol.asyncIterator](),next=reader.next();reset();
-  await assert.rejects(next,{code:'BRIDGE_CANCELED'});
+  await assert.rejects(next,{code:'E_ABORT'});
   assert.throws(()=>channel.send({}),{code:'STREAM_CLOSED'});
 });
 test('channel creation/send/close are forbidden during render and topics stay page-scoped',async()=>{
@@ -102,7 +102,7 @@ test('admission reserves enough close frames even when the data outbox is full',
   assert.equal(frames.filter(x=>x.kind==='ch.data').length,256);
   assert.equal(frames.filter(x=>x.kind==='ch.close').length,256);
   const reopened=view.channels.open('ticker');reset();
-  await assert.rejects(reopened,{code:'BRIDGE_CANCELED'});
+  await assert.rejects(reopened,{code:'E_ABORT'});
 });
 test('byte limits close a slow consumer and listener failures do not stop delivery',async()=>{
   let {promise,frame}=start();frame('ch.ack',{ok:true});

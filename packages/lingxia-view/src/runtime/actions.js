@@ -61,9 +61,9 @@ export function cancelActions() {
   pendingActions.clear(); requests = []; actions = catalog(Object.create(null), false);
   const oldChannels = [...activeChannels.values()]; activeChannels.clear();
   channels = closedChannels;
-  for (const { reject } of pending) reject(bridgeError('BRIDGE_CANCELED', 'Page reset'));
+  for (const { reject } of pending) reject(bridgeError('E_ABORT', 'Page reset'));
   for (const entry of oldChannels) {
-    const error = bridgeError('BRIDGE_CANCELED', 'Page reset');
+    const error = bridgeError('E_ABORT', 'Page reset');
     entry.reject(error); entry.channel.reject(error);
   }
 }
@@ -139,7 +139,7 @@ export function configureActions(metadata) {
   const reportLive = cause => { if (epoch === actionEpoch) report(cause); };
   for (const name of names) built[name] = (...args) => {
     outsideRender('action');
-    if (epoch !== actionEpoch) throw bridgeError('BRIDGE_CANCELED', 'Stale page action');
+    if (epoch !== actionEpoch) throw bridgeError('E_ABORT', 'Stale page action');
     if (args.length > 1) throw Error('UI_ACTION: expected at most one JSON payload');
     admit('actions');
     const params = args.length && args[0] !== undefined ? bounded(args[0], 'action', name) : undefined;
@@ -152,7 +152,7 @@ export function configureActions(metadata) {
         if (requests.length >= 512) throw Error('UI_LIMIT: too many pending cancellations');
         requests.push({ kind: 'cancel', id });
         pendingActions.delete(id);
-        stream.reject(cause ?? bridgeError('BRIDGE_CANCELED', 'Stream canceled'));
+        stream.reject(cause ?? bridgeError('E_ABORT', 'Stream canceled'));
       }, reportLive, bridgeError);
       pendingActions.set(id, { ...stream, sequence: -1 });
       requests.push(encoded);
@@ -166,7 +166,7 @@ export function configureActions(metadata) {
         settle.reject(cause);
         // Nobody awaited or caught it: the page log shows it instead of the failure vanishing.
         Promise.resolve().then(() => {
-          if (!promise.handled && cause?.code !== 'BRIDGE_CANCELED') {
+          if (!promise.handled && cause?.code !== 'E_ABORT') {
             reportLive(`Unhandled rejection of action '${name}': ${cause?.message ?? String(cause)}`);
           }
         });
@@ -181,7 +181,7 @@ export function configureActions(metadata) {
   channels = Object.freeze({
     open(topic, params) {
       outsideRender('channel');
-      if (epoch !== actionEpoch) throw bridgeError('BRIDGE_CANCELED', 'Stale page channel');
+      if (epoch !== actionEpoch) throw bridgeError('E_ABORT', 'Stale page channel');
       if (typeof topic !== 'string' || !has(built, topic) || topic.includes('.') || modes[topic] !== 'call')
         throw Error('UI_CHANNEL: expected a page channel handler');
       admit('channels');
@@ -284,13 +284,12 @@ export function actionPending(serial) { return pendingActions.has(`ui-action:${s
 export function hasActionEpoch(epoch) { return epoch === actionEpoch; }
 export function actionEpochNow() { return actionEpoch; }
 
-// A reply's `code` is the `E_` string; `reason` names the business case, `detail` says more.
+// A reply's `code` is the `E_` string; `reason` names the business case.
 const failure = ({ error }) => bridgeError(
-  typeof error?.code === 'string' ? error.code : 'BRIDGE_INTERNAL_ERROR',
+  typeof error?.code === 'string' ? error.code : 'E_INTERNAL',
   typeof error?.message === 'string' ? error.message : undefined,
   error?.data === undefined ? undefined : immutable(error.data),
-  typeof error?.reason === 'string' ? error.reason : undefined,
-  typeof error?.detail === 'string' ? error.detail : undefined);
+  typeof error?.reason === 'string' ? error.reason : undefined);
 
 export function receiveActionResponse(frame) {
   outsideRender('response');

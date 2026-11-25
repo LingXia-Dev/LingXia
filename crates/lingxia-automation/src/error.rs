@@ -304,10 +304,7 @@ mod tests {
 
     #[test]
     fn page_action_codes_pass_through_verbatim() {
-        assert_eq!(
-            page_action_code("BRIDGE_INTERNAL_ERROR"),
-            "BRIDGE_INTERNAL_ERROR"
-        );
+        assert_eq!(page_action_code("BRIDGE_NOT_READY"), "BRIDGE_NOT_READY");
         assert_eq!(page_action_code("3000"), "3000");
         assert!(std::ptr::eq(
             page_action_code("E_QUOTA"),

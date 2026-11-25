@@ -77,6 +77,7 @@ pub(crate) fn event_from_view(message: ToLogic) -> GpuViewEvent {
             outcome: outcome.map_err(|error| GpuBridgeError {
                 code: error.code,
                 message: error.message,
+                reason: error.reason,
                 data: error.data.map(|data| *data),
             }),
         },
@@ -87,6 +88,7 @@ fn error_to_view(error: GpuBridgeError) -> BridgeError {
     BridgeError {
         code: error.code,
         message: error.message,
+        reason: error.reason,
         data: error.data.map(Box::new),
     }
 }

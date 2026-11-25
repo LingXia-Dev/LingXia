@@ -120,8 +120,8 @@ window.LingXiaBridge.raw.call = (name, payload, options) => {
 };
 const eventShaped = { type: 'submit', detail: 1, extra: true };
 assert.deepEqual(await invoke('save', eventShaped), { name: 'save', payload: eventShaped });
-window.LingXiaBridge.raw.call = () => Promise.reject({ code: 'BRIDGE_INTERNAL_ERROR', message: 'boom' });
-await assert.rejects(invoke('save'), { code: 'BRIDGE_INTERNAL_ERROR', message: 'boom' });
+window.LingXiaBridge.raw.call = () => Promise.reject({ code: 'E_INTERNAL', message: 'boom' });
+await assert.rejects(invoke('save'), { code: 'E_INTERNAL', message: 'boom' });
 // A departed page answers automation with the error instead of never settling.
 window.LingXiaBridge.raw.call = () => Promise.reject({ code: 'BRIDGE_NOT_READY', message: 'Bridge not ready' });
 await assert.rejects(invoke('save'), { code: 'BRIDGE_NOT_READY' });

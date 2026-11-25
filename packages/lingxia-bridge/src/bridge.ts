@@ -869,7 +869,7 @@ function createStreamHandle(
         return(): Promise<IteratorResult<unknown, unknown>> {
           iteratorRequested = false;
           pendingData.length = 0;
-          // The cancel settles `result` with BRIDGE_CANCELED; the reader asked for it.
+          // The cancel settles `result` with E_ABORT; the reader asked for it.
           result.catch(() => {});
           handle.cancel();
           return Promise.resolve({ done: true, value: undefined });
@@ -1221,7 +1221,7 @@ function armRequestTimer(reqId: string): void {
   info.timerId = setTimeout(() => {
     if (!pendingReq.has(reqId)) return;
     rejectPendingRequest(reqId, {
-      code: BRIDGE_ERROR.TIMEOUT,
+      code: "E_TIMEOUT",
       message: `'${info.method}' timed out`,
     });
   }, info.timeoutMs);
@@ -1233,7 +1233,7 @@ function armChannelTimer(id: string): void {
   if (pending.timerId !== null) clearTimeout(pending.timerId);
   pending.timerId = setTimeout(() => {
     rejectPendingChannel(id, {
-      code: BRIDGE_ERROR.TIMEOUT,
+      code: "E_TIMEOUT",
       message: `Channel '${pending.topic}' timed out`,
     });
   }, DEFAULT_TIMEOUT_MS);
@@ -1909,7 +1909,7 @@ const rawBridge = {
       attachAbortSignal(id, options?.signal, () => {
         const removed = removeOutboxByReqId(id);
         rejectPendingRequest(id, {
-          code: BRIDGE_ERROR.CANCELED,
+          code: "E_ABORT",
           message: "Bridge request aborted",
         });
         if (!removed && handshakeDone)
@@ -1938,7 +1938,7 @@ const rawBridge = {
       const removed = removeOutboxByReqId(id);
       if (removed) {
         rejectPendingRequest(id, {
-          code: BRIDGE_ERROR.CANCELED,
+          code: "E_ABORT",
           message: "Bridge request aborted",
         });
         return;

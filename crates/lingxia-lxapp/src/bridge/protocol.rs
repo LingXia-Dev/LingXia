@@ -6,7 +6,7 @@ use serde_json::Value;
 use serde_json::value::RawValue;
 use std::collections::HashMap;
 
-use super::BRIDGE_INTERNAL_ERROR;
+use lingxia_error::code;
 
 #[derive(Deserialize)]
 struct VersionProbe {
@@ -101,7 +101,9 @@ pub struct ResMsg {
 pub struct ResError {
     pub code: Value,
     pub message: Option<String>,
-    pub data: Option<Value>,
+    // Boxed so a failed reply does not size every incoming message.
+    pub reason: Option<Box<str>>,
+    pub data: Option<Box<Value>>,
 }
 
 impl ResError {
@@ -111,7 +113,7 @@ impl ResError {
             Value::Number(code) => code.to_string(),
             other => {
                 crate::warn!("Unexpected bridge error code type in response: {}", other);
-                BRIDGE_INTERNAL_ERROR.to_string()
+                code::INTERNAL.to_string()
             }
         }
     }
@@ -216,9 +218,11 @@ pub(super) struct ReadyMsg {
 
 #[derive(Serialize)]
 pub(super) struct BridgeError {
-    pub code: Value,
+    pub code: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub message: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub reason: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub data: Option<Value>,
 }

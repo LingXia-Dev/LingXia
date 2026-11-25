@@ -160,8 +160,9 @@ impl ViewSession {
     ) -> Result<serde_json::Value, crate::session::logic::BridgeError> {
         use crate::session::logic::VideoCommand as C;
         let fail = |error: crate::scene::video::VideoError| crate::session::logic::BridgeError {
-            code: serde_json::Value::from(error.code),
+            code: error.code.to_owned(),
             message: Some(error.message),
+            reason: None,
             data: Some(Box::new(
                 serde_json::json!({ "recoverable": error.recoverable }),
             )),

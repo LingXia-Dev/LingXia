@@ -26,10 +26,10 @@ test('stream events, terminal result and listener isolation', async () => {
 test('stream cancellation is terminal locally and emits one cancel frame', async () => {
   const {stream, request, event}=start();
   stream.cancel(); stream.cancel();
-  await assert.rejects(stream.result,{code:'BRIDGE_CANCELED'});
+  await assert.rejects(stream.result,{code:'E_ABORT'});
   assert.deepEqual(takeActionRequests().map(JSON.parse),[{v:2,kind:'cancel',id:request.id}]);
   assert.equal(event(0,'late'),false);
-  assert.equal(receiveActionResponse({v:2,kind:'res',id:request.id,ok:false,error:{code:'BRIDGE_CANCELED'}}),false);
+  assert.equal(receiveActionResponse({v:2,kind:'res',id:request.id,ok:false,error:{code:'E_ABORT'}}),false);
 });
 test('iterator preserves ordered payloads and final result; early return cancels', async () => {
   let {stream,request,event}=start();
@@ -40,7 +40,7 @@ test('iterator preserves ordered payloads and final result; early return cancels
   assert.deepEqual(await iterator.next(),{done:false,value:'b'});
   assert.deepEqual(await iterator.next(),{done:true,value:'final'});
   ({stream}=start());const next=stream[Symbol.asyncIterator]();
-  await next.return();await assert.rejects(stream.result,{code:'BRIDGE_CANCELED'});
+  await next.return();await assert.rejects(stream.result,{code:'E_ABORT'});
 });
 test('malformed ordering cannot consume the expected event; reset rejects pending reads', async () => {
   const {stream,event}=start(), iterator=stream[Symbol.asyncIterator]();
@@ -51,8 +51,8 @@ test('malformed ordering cannot consume the expected event; reset rejects pendin
   assert.throws(()=>event(0,'duplicate'),/sequence/);
   event(2,'monotonic');assert.deepEqual(await iterator.next(),{done:false,value:'monotonic'});
   const pending=iterator.next();reset();
-  await assert.rejects(pending,{code:'BRIDGE_CANCELED'});
-  await assert.rejects(stream.result,{code:'BRIDGE_CANCELED'});
+  await assert.rejects(pending,{code:'E_ABORT'});
+  await assert.rejects(stream.result,{code:'E_ABORT'});
 });
 test('slow consumers are bounded while event-only listeners do not accumulate a queue', async () => {
   let {stream,event}=start();stream[Symbol.asyncIterator]();
@@ -66,8 +66,8 @@ test('slow consumers are bounded while event-only listeners do not accumulate a 
 test('terminal bridge failure rejects readers and reports the original structured error', async () => {
   const {stream,request}=start(), reader=stream[Symbol.asyncIterator]();
   const next=reader.next(), errors=[];stream.on('error',error=>errors.push(error));
-  receiveActionResponse({v:2,kind:'res',id:request.id,ok:false,error:{code:'BRIDGE_INTERNAL_ERROR',message:'failed',data:{stage:'generator'}}});
-  await assert.rejects(next,{code:'BRIDGE_INTERNAL_ERROR',message:'failed'});
+  receiveActionResponse({v:2,kind:'res',id:request.id,ok:false,error:{code:'E_INTERNAL',message:'failed',data:{stage:'generator'}}});
+  await assert.rejects(next,{code:'E_INTERNAL',message:'failed'});
   await assert.rejects(stream.result,{data:{stage:'generator'}});
   assert.equal(errors.length,1);
 });
@@ -80,7 +80,7 @@ test('cancellation still has capacity when all request slots are occupied', asyn
   const frames=takeActionRequests().map(JSON.parse);
   assert.equal(frames.filter(frame=>frame.kind==='req').length,256);
   assert.equal(frames.filter(frame=>frame.kind==='cancel').length,256);
-  await Promise.all(streams.map(stream=>assert.rejects(stream.result,{code:'BRIDGE_CANCELED'})));
+  await Promise.all(streams.map(stream=>assert.rejects(stream.result,{code:'E_ABORT'})));
 });
 test('iterator payload bytes are bounded independently of the item count', async () => {
   const {stream,event}=start();stream[Symbol.asyncIterator]();
