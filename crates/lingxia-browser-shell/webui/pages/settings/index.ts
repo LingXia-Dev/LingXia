@@ -1,69 +1,43 @@
-import { invoke, watch } from '../../shared/native';
 import { localDateTime } from '../../shared/format';
+import { watch } from '../../shared/watch';
 import { definePage, lx, type } from '@lingxia/logic';
-import type { ClearBrowsingDataInput } from '../../shared/privacy';
+import type {
+  AppInfo,
+  AutoSwitchRule,
+  ClearBrowsingDataInput,
+  DownloadSettingsResult,
+  PrivacyUsage,
+  ProxyMode,
+  ProxySettingsInput,
+  ProxySettingsResult,
+  SiteDataContext,
+} from '@lingxia/native';
 
 type Section = 'appearance' | 'downloads' | 'privacy' | 'proxy' | 'about';
-type ProxyMode = 'direct' | 'global' | 'gfw_list';
 /** A toast's text and tone, translated here: the View's `t` works only while rendering. */
 type Notice = { message: string; tone?: 'success' | 'warning' };
+type AppearancePreference = Parameters<typeof lx.host.appearance.set>[0];
 
-interface AppInfo {
-  productName: string;
-  version: string;
-  sdkVersion: string;
-  webuiVersion: string;
-  gitSha: string;
-}
-
-interface DownloadSettings {
-  downloadDir: string;
-  usesDefaultDir: boolean;
-  canChooseDirectory: boolean;
-}
-
-interface PrivacyUsage {
-  historyEntries: number;
-  cacheSites: number;
-  siteDataSites: number;
-  cookies: number;
-}
-
-interface AutoSwitchRule {
-  pattern: string;
-  action: 'proxy' | 'direct';
-}
-
-interface ProxySettings {
-  mode: ProxyMode;
-  socks5Host: string;
-  socks5Port: number;
-  username: string;
-  password: string;
-  autoSwitchRules: AutoSwitchRule[];
-  status: string;
-  localProxyAddr: string | null;
-  gfwlistReady: boolean;
-  gfwlistSourceUrl: string;
-  gfwlistUpdatedAtMs: number | null;
-  gfwlistRuleCount: number | null;
-  gfwlistStatus: string;
-}
-
-/** The proxy as the View shows it: the route's answer with its update time in local form. */
-type ProxyView = Omit<ProxySettings, 'gfwlistUpdatedAtMs'> & { gfwlistUpdatedAt: string | null };
+/** An Auto Switch rule as the View edits it; the route leaves out an empty pattern and the default action. */
+type ProxyRule = Required<AutoSwitchRule>;
+/** The proxy as the View shows it: the route's answer with whole rules and its update time in local form. */
+type ProxyView = Omit<ProxySettingsResult, 'gfwlistUpdatedAtMs' | 'autoSwitchRules'> & {
+  autoSwitchRules: ProxyRule[];
+  gfwlistUpdatedAt: string | null;
+};
+const APPEARANCES: readonly AppearancePreference[] = ['auto', 'light', 'dark'];
 
 interface SettingsData {
   section: Section;
   appearance: string;
   language: string;
-  download: DownloadSettings | null;
+  download: DownloadSettingsResult | null;
   usage: PrivacyUsage | null;
   /** False where the privacy routes do not exist; the section is then hidden. */
   hasPrivacy: boolean;
   /** The tab whose site the clear-site-data card targets, from the opening query. */
   siteTabId: string;
-  site: { url: string; host: string } | null;
+  site: SiteDataContext | null;
   proxy: ProxyView | null;
   /** Why the last rule list download failed, translated; null once one succeeds. */
   listFailure: string | null;
@@ -90,9 +64,13 @@ const initialData: SettingsData = {
   appInfo: null,
 };
 
-function proxyView(settings: ProxySettings): ProxyView {
-  const { gfwlistUpdatedAtMs, ...rest } = settings;
-  return { ...rest, gfwlistUpdatedAt: gfwlistUpdatedAtMs ? localDateTime(gfwlistUpdatedAtMs) : null };
+function proxyView(settings: ProxySettingsResult): ProxyView {
+  const { gfwlistUpdatedAtMs, autoSwitchRules, ...rest } = settings;
+  return {
+    ...rest,
+    autoSwitchRules: autoSwitchRules.map((rule) => ({ pattern: rule.pattern ?? '', action: rule.action ?? 'proxy' })),
+    gfwlistUpdatedAt: gfwlistUpdatedAtMs ? localDateTime(gfwlistUpdatedAtMs) : null,
+  };
 }
 
 /** A failed rule list download in the user's words, from the route's `data.failure`; never the raw error. */
@@ -124,14 +102,14 @@ export default definePage({
   setup(page) {
     async function refreshUsage() {
       try {
-        const usage = await invoke<PrivacyUsage>('privacy.getUsage');
+        const usage: PrivacyUsage = await page.native.privacy.getUsage();
         page.update((d) => { d.usage = usage; });
       } catch {
         page.update((d) => { d.hasPrivacy = false; });
       }
     }
 
-    function showProxy(settings: ProxySettings) {
+    function showProxy(settings: ProxySettingsResult) {
       page.update((d) => {
         d.proxy = proxyView(settings);
         d.now = localDateTime(Date.now());
@@ -147,17 +125,17 @@ export default definePage({
     }
 
     /** Saves the proxy with `patch` over what is saved; the route replaces every field. */
-    async function saveProxy(patch: Partial<ProxySettings>): Promise<ProxySettings> {
+    async function saveProxy(patch: Partial<ProxySettingsInput>): Promise<ProxySettingsResult> {
       const current = page.data.proxy;
       if (!current) throw new Error('proxy settings are not loaded');
-      const saved = await invoke<ProxySettings>('proxy.updateSettings', {
+      const saved = await page.native.proxy.updateSettings({
         mode: current.mode,
         socks5Host: current.socks5Host,
         socks5Port: current.socks5Port,
         username: current.username,
         password: current.password,
         gfwlistSourceUrl: current.gfwlistSourceUrl,
-        autoSwitchRules: current.autoSwitchRules,
+        autoSwitchRules: [...current.autoSwitchRules],
         ...patch,
       });
       showProxy(saved);
@@ -167,7 +145,7 @@ export default definePage({
     /** Downloads the rule list; a failure is kept, translated, for the list card instead of thrown. */
     async function downloadRules(): Promise<boolean> {
       try {
-        showProxy(await invoke<ProxySettings>('proxy.refreshGfwList'));
+        showProxy(await page.native.proxy.refreshGfwList());
         page.update((d) => { d.listFailure = null; });
         return true;
       } catch (error) {
@@ -201,12 +179,12 @@ export default definePage({
         }, { signal: page.signal });
         // Proxy routes exist only where the local proxy runs; without them the section stays hidden.
         // The watch opens with the saved settings, then follows each change.
-        watch<ProxySettings>('proxy.watch', page.signal, showProxy);
+        watch((options) => page.native.proxy.watch(options), page.signal, showProxy);
 
-        const [info, download, site] = await Promise.all([
-          invoke<AppInfo>('app.getInfo').catch(() => null),
-          invoke<DownloadSettings>('downloads.getSettings').catch(() => null),
-          tabId ? invoke<{ url: string; host: string }>('privacy.getSiteDataContext', { tabId }).catch(() => null) : null,
+        const [info, download, site]: [AppInfo | null, DownloadSettingsResult | null, SiteDataContext | null] = await Promise.all([
+          page.native.app.getInfo().catch(() => null),
+          page.native.downloads.getSettings().catch(() => null),
+          tabId ? page.native.privacy.getSiteDataContext({ tabId }).catch(() => null) : null,
         ]);
         page.update((d) => {
           d.appInfo = info;
@@ -221,21 +199,23 @@ export default definePage({
         },
         // The host refuses any other value; the watch above shows what was saved.
         async setAppearance({ preference }: { preference: string }) {
-          await lx.host.appearance.set(preference as 'auto' | 'light' | 'dark');
+          const next = APPEARANCES.find((each) => each === preference);
+          if (!next) return;
+          await lx.host.appearance.set(next);
         },
         async setLanguage({ preference }: { preference: string }) {
           await lx.host.displayLanguage.set(preference);
         },
         async chooseDownloadDir() {
-          const download = await invoke<DownloadSettings>('downloads.chooseDirectory');
+          const download = await page.native.downloads.chooseDirectory();
           page.update((d) => { d.download = download; });
         },
         async resetDownloadDir() {
-          const download = await invoke<DownloadSettings>('downloads.resetDirectory');
+          const download = await page.native.downloads.resetDirectory();
           page.update((d) => { d.download = download; });
         },
         async clearBrowsingData(input: ClearBrowsingDataInput): Promise<Notice> {
-          const result = await invoke<{ historyRemoved: number }>('privacy.clearBrowsingData', input);
+          const result = await page.native.privacy.clearBrowsingData(input);
           await refreshUsage();
           return { message: lx.app.t('privacy.cleared', { count: result.historyRemoved }) };
         },
@@ -243,7 +223,7 @@ export default definePage({
         async clearSite({ cache, siteData }: { cache: boolean; siteData: boolean }): Promise<void> {
           const tabId = page.data.siteTabId;
           if (!tabId) return;
-          await invoke('privacy.clearSiteData', { tabId, cache, siteData });
+          await page.native.privacy.clearSiteData({ tabId, cache, siteData });
           await refreshUsage();
         },
         /** Switches routing over the saved server; Auto Switch without rules downloads them first. */
@@ -269,7 +249,7 @@ export default definePage({
          * Saves Auto Switch's own rules and list address once edits settle; a call that a later
          * edit replaced answers false without saving.
          */
-        async saveAutoSwitch({ rules, url }: { rules: AutoSwitchRule[]; url: string }): Promise<boolean> {
+        async saveAutoSwitch({ rules, url }: { rules: ProxyRule[]; url: string }): Promise<boolean> {
           const generation = ++rulesGeneration;
           if (rulesTimer !== undefined) clearTimeout(rulesTimer);
           await new Promise<void>((resolve) => { rulesTimer = setTimeout(resolve, RULES_SETTLE_MS); });

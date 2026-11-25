@@ -3,7 +3,9 @@ import { Button } from '@liulidesign/core/Button';
 import { CheckboxInput } from '@liulidesign/core/CheckboxInput';
 import { Dialog } from '@liulidesign/core/Dialog';
 import { Select } from '@liulidesign/core/Select';
-import { TIME_RANGES, type ClearBrowsingDataInput, type TimeRange } from './privacy';
+import type { ClearBrowsingDataInput, TimeRange } from '@lingxia/native';
+
+const TIME_RANGES: readonly TimeRange[] = ['lastHour', 'last24Hours', 'last7Days', 'last4Weeks', 'allTime'];
 
 export interface ClearDataDialogProps {
   isOpen: boolean;
