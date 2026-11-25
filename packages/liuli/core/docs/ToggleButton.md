@@ -151,8 +151,8 @@ export function Sizes() {
 | label, off | `text` on `surface` | 4.5:1 | 16.26:1 | 13.87:1 |
 | label, on | `text` on `accent-soft` | 4.5:1 | 14.25:1 | 11.26:1 |
 | boundary, off | `line-strong` on `surface` | 3:1 | 3.47:1 | 3.53:1 |
-| boundary, off, on a card | `line-strong` on `surface-raised` | 3:1 | 3.47:1 | 3.01:1 |
-| boundary, off, in an overlay | `line-strong` on `surface-overlay` | 3:1 | 3.47:1 | 2.57:1, below |
+| boundary, off, on a card | `line-strong` on `surface-raised` | 3:1 | 3.47:1 | 3.56:1 |
+| boundary, off, in an overlay | `line-strong` on `surface-overlay` | 3:1 | 3.47:1 | 3.54:1 |
 | disabled label, off, on a card | `text-muted` on `text/6` over `surface` | 4.5:1 | 5.24:1 | 5.72:1 |
 | disabled label, on | `text-muted` on `accent-soft` | 4.5:1 | 5.16:1 | 5.39:1 |
 
