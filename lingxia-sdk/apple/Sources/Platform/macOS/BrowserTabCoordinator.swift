@@ -1591,20 +1591,16 @@ final class BrowserTabCoordinator: NSObject {
         guard let raw else { return "" }
         let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return "" }
-        return browserUrlIsHidden(trimmed) || isBrowserLoadErrorURL(trimmed) ? "" : trimmed
+        return browserUrlIsHidden(trimmed) ? "" : trimmed
     }
 
     private func logicalURL(for tabId: String, webViewURL: String?) -> String {
         let raw = webViewURL?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-        if raw.isEmpty || isBrowserLoadErrorURL(raw) {
+        // The load-error document sits at about:blank; the tab keeps the URL that failed.
+        if raw.isEmpty || raw.caseInsensitiveCompare("about:blank") == .orderedSame {
             return lastObservedURLs[tabId] ?? ""
         }
         return raw
-    }
-
-    private func isBrowserLoadErrorURL(_ raw: String) -> Bool {
-        raw.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
-            .caseInsensitiveCompare("lingxia://browser/load-error") == .orderedSame
     }
 
     private func syncAddressField(_ rawURL: String?, force: Bool = false) {

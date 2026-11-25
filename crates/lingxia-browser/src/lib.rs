@@ -78,7 +78,6 @@ pub(crate) fn native_control_authority() -> Option<&'static lxapp::NativeControl
 }
 
 pub fn open(url: &str, tab_id: Option<&str>) -> Result<String, LxAppError> {
-    reject_lingxia_url(url)?;
     tabs::open_internal_browser_tab(url, tab_id)
 }
 
@@ -109,26 +108,12 @@ pub fn configure_download_proxy(proxy: Option<String>) {
     downloads::configure_proxy(proxy);
 }
 
-/// The browser has no `lingxia://` pages; its system pages are the
-/// `app.lingxia.browser` lxapp.
-fn reject_lingxia_url(url: &str) -> Result<(), LxAppError> {
-    (extract_url_scheme(url).as_deref() != Some("lingxia"))
-        .then_some(())
-        .ok_or_else(|| {
-            LxAppError::InvalidParameter(
-                "lingxia:// URLs are not browser pages; open app.lingxia.browser instead"
-                    .to_string(),
-            )
-        })
-}
-
 pub fn open_for_app(
     appid: &str,
     session_id: u64,
     url: &str,
     tab_id: Option<&str>,
 ) -> Result<String, LxAppError> {
-    reject_lingxia_url(url)?;
     tabs::open_internal_browser_tab_for_owner(
         appid,
         session_id,
@@ -148,7 +133,6 @@ pub fn open_aside_for_app(
     url: &str,
     tab_id: Option<&str>,
 ) -> Result<String, LxAppError> {
-    reject_lingxia_url(url)?;
     tabs::open_internal_browser_tab_for_owner(
         appid,
         session_id,
@@ -172,7 +156,6 @@ pub fn open_standalone_for_app(
     data_mode: lingxia_webview::WebViewDataMode,
     url_callback: bool,
 ) -> Result<String, LxAppError> {
-    reject_lingxia_url(url)?;
     tabs::open_internal_browser_tab_for_owner(
         appid,
         session_id,
@@ -536,16 +519,3 @@ pub fn register_bundled_app() {
 }
 
 pub use tabs::{ClosedBrowserTab, recently_closed, reopen_closed};
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn lingxia_urls_are_not_browser_pages() {
-        for url in ["lingxia://settings", "LINGXIA://downloads"] {
-            let error = open_for_app("app.example", 7, url, None).expect_err(url);
-            assert!(matches!(error, LxAppError::InvalidParameter(_)), "{url}");
-        }
-    }
-}

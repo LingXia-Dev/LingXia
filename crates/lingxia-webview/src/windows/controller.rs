@@ -1647,6 +1647,21 @@ pub(crate) fn handle_command(state: &mut UiState, command: UiCommand) -> StdResu
         } => {
             let navigation_url = history_url.unwrap_or_else(|| base_url.clone());
             clear_memory_pages(&state.memory_pages);
+            // about:blank never reaches WebResourceRequested, so the HTML goes in as a string
+            // document, which WebView2 reports at about:blank.
+            if navigation_url.eq_ignore_ascii_case("about:blank") {
+                let result = unsafe {
+                    let html = CoTaskMemPWSTR::from(html.as_str());
+                    state
+                        .webview
+                        .NavigateToString(*html.as_ref().as_pcwstr())
+                        .map_err(|err| {
+                            WebViewError::WebView(format!("NavigateToString failed: {err}"))
+                        })
+                };
+                let _ = resp.send(result);
+                return Ok(false);
+            }
             store_memory_page(
                 &state.memory_pages,
                 &navigation_url,

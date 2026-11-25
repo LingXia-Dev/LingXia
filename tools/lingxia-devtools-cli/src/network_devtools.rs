@@ -703,13 +703,16 @@ fn seconds(ms: f64) -> f64 {
     ms / 1000.0
 }
 
+/// The page DevTools files the requests under; it names the session, not a document.
+const DEVTOOLS_ORIGIN: &str = "lxdev://session";
+
 fn frame() -> Value {
     json!({
         "id": FRAME,
         "loaderId": FRAME,
-        "url": "lingxia://lxdev",
+        "url": DEVTOOLS_ORIGIN,
         "domainAndRegistry": "",
-        "securityOrigin": "lingxia://lxdev",
+        "securityOrigin": DEVTOOLS_ORIGIN,
         "mimeType": "text/html",
         "secureContextType": "Secure",
         "crossOriginIsolatedContextType": "NotIsolated",
@@ -767,7 +770,7 @@ fn will_be_sent(cdp: &str, request: &Value, redirect: Option<Value>) -> Value {
     let mut params = json!({
         "requestId": cdp,
         "loaderId": FRAME,
-        "documentURL": "lingxia://lxdev",
+        "documentURL": DEVTOOLS_ORIGIN,
         "request": {
             "url": request["url"],
             "method": request["method"],

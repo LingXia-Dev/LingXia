@@ -347,8 +347,8 @@ mod tests {
     }
 
     #[test]
-    fn address_input_rejects_lingxia_urls() {
-        for raw in ["lingxia://downloads", "lingxia://settings"] {
+    fn address_input_rejects_unknown_schemes() {
+        for raw in ["customxyz://downloads", "customxyz://settings"] {
             let response = resolve_input(BrowserAddressInputRequest {
                 raw_input: raw.to_string(),
                 trigger: BrowserAddressInputTrigger::Submit,

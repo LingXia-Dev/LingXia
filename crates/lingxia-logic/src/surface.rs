@@ -1698,15 +1698,6 @@ async fn open_url_spec(ctx: JSContext, spec: &JSObject) -> JSResult<JSValue> {
     let lxapp = LxApp::from_ctx(&ctx)?;
     let trimmed_url = raw_url.trim_matches(|character: char| character.is_ascii_whitespace());
 
-    match classify_logic_url(trimmed_url) {
-        LogicUrlClassification::ReservedInternal => {
-            return Err(invalid_surface_target(
-                "lingxia:// URLs are not supported; open app.lingxia.browser with lx.surface.openApp",
-            ));
-        }
-        LogicUrlClassification::External => {}
-    }
-
     match read_optional_string(spec, "as")?.as_deref().map(str::trim) {
         Some("aside") => {
             let position = read_validated_edge(spec)?.unwrap_or_else(|| "right".to_string());
@@ -1738,22 +1729,6 @@ async fn open_url_spec(ctx: JSContext, spec: &JSObject) -> JSResult<JSValue> {
             ),
         )),
     }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum LogicUrlClassification {
-    ReservedInternal,
-    External,
-}
-
-fn classify_logic_url(url: &str) -> LogicUrlClassification {
-    if url
-        .get(.."lingxia:".len())
-        .is_some_and(|prefix| prefix.eq_ignore_ascii_case("lingxia:"))
-    {
-        return LogicUrlClassification::ReservedInternal;
-    }
-    LogicUrlClassification::External
 }
 
 /// Hand a URL to the OS: `https` opens the system browser, `tel:` and
@@ -3711,27 +3686,6 @@ mod tests {
         }
         assert!(!external_scheme_allowed("http"));
         assert!(!external_scheme_allowed("custom+handler"));
-    }
-
-    #[test]
-    fn every_lingxia_url_is_reserved() {
-        for rejected in [
-            "lingxia://downloads",
-            "lingxia://settings",
-            "Lingxia://settings",
-            "lingxia://settings?tab=privacy",
-            "lingxia://history",
-        ] {
-            assert_eq!(
-                classify_logic_url(rejected),
-                LogicUrlClassification::ReservedInternal,
-                "{rejected}"
-            );
-        }
-        assert_eq!(
-            classify_logic_url("https://example.com"),
-            LogicUrlClassification::External
-        );
     }
 
     #[test]

@@ -9016,8 +9016,7 @@ mod tests {
     #[test]
     fn blank_new_tab_urls_stay_out_of_the_address_editor() {
         assert!(browser_url_is_hidden("about:blank"));
-        assert!(!browser_url_is_hidden(" LINGXIA://NEWTAB "));
-        assert!(!browser_url_is_hidden("lingxia://settings/"));
+        assert!(browser_url_is_hidden(" ABOUT:BLANK/ "));
         assert!(!browser_url_is_hidden("https://example.com"));
     }
 

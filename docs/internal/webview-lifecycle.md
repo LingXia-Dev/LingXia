@@ -239,7 +239,7 @@ by who creates the instance and which profile is used.
 | LxApp page | `LxApp` via `get_or_create_page()` / `create_page_instance()` | `AppPage` | Page HTML via `lx://` | `PageInstance` | Full |
 | Surface (page target) | `LxApp::open_surface()` → `create_page_instance()` | `AppPage` | Page HTML via `lx://`, presented in overlay or window | `PageInstance` (isolated) | Full |
 | Surface (URL target) | `LxApp::open_surface()` → platform `present_surface()` | Platform-managed (or `BrowserTab` on Windows) | External URL passed as `SurfaceContent::Url` | None (Rust side) | None |
-| Browser tab | `lingxia-browser` | `BrowserTab` | Web content, `about:blank`, or the load-error page | `BrowserTabDelegate` | None |
+| Browser tab | `lingxia-browser` | `BrowserTab` | Web content, `about:blank`, or the load-error page (host HTML at `about:blank`, told apart by delegate state) | `BrowserTabDelegate` | None |
 | Embedded `<webview>` | `PageInstance::open_embedded_document_typed()` | `Embedded` | Trusted `https://` URL or single-file `lx://` | `EmbeddedWebViewDelegate` | None |
 | Host-attached page | SDK container (Apple `LxAppHostView`) | An existing `AppPage` WebView reparented into the host's view hierarchy | LxApp page | The page's existing `PageInstance` | Full (attachment triggers `onPageShow`) |
 
@@ -561,7 +561,7 @@ Creation:
 
 1. Allocate a tab id and a browser-tab path; build the webtag.
 2. `WebViewBuilder::browser_tab(tag)`, delegate `BrowserTabDelegate`.
-3. Register handlers (no scheme handlers; `lingxia://` input is rejected):
+3. Register handlers (no scheme handlers):
    - navigation — normal web URLs stay in-WebView; external schemes are forwarded
      to the host via `open_url(..., External)`.
    - new-window — creates a new managed browser tab.

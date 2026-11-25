@@ -9,7 +9,7 @@ use std::time::{Duration, Instant};
 // `file` loads in-webview so the user can open local files from the address bar
 // (the WKWebView still gates actual reads to the granted directory).
 const BROWSER_IN_WEBVIEW_SCHEMES: &[&str] = &["http", "https", "lx", "file"];
-const BROWSER_NON_EXTERNAL_SCHEMES: &[&str] = &["about", "data", "blob", "javascript", "lingxia"];
+const BROWSER_NON_EXTERNAL_SCHEMES: &[&str] = &["about", "data", "blob", "javascript"];
 const TRANSIENT_USER_ACTIVATION_TTL: Duration = Duration::from_secs(10);
 
 /// Per-tab user activation that survives a short main-frame redirect chain.
@@ -619,17 +619,6 @@ mod tests {
 
         assert_eq!(response.decision, BrowserNavigationPolicyDecision::Deny);
         assert_eq!(response.reason.as_deref(), Some("non_main_frame_external"));
-    }
-
-    #[test]
-    fn browser_nav_policy_denies_lingxia_scheme() {
-        let response = handle_browser_navigation_policy(BrowserNavigationPolicyRequest {
-            raw_url: "lingxia://settings".to_string(),
-            has_user_gesture: false,
-            is_main_frame: true,
-        });
-        assert_eq!(response.decision, BrowserNavigationPolicyDecision::Deny);
-        assert_eq!(response.reason.as_deref(), Some("non_external_scheme"));
     }
 
     #[test]

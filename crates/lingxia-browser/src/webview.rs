@@ -56,16 +56,14 @@ struct BrowserTabNavigationState {
     /// keeps showing the failing URL, and the error document never records a
     /// visit.
     showing_error_page: bool,
+    /// The error document was handed to the WebView and its own load has
+    /// not started yet.
+    error_document_pending: bool,
 }
 
-const BROWSER_LOAD_ERROR_URL: &str = "lingxia://browser/load-error";
-
-/// Platforms may normalize the document URL they report (trailing slash,
-/// scheme case), so error-document detection compares loosely.
-fn is_error_document_url(url: &str) -> bool {
-    url.trim_end_matches('/')
-        .eq_ignore_ascii_case(BROWSER_LOAD_ERROR_URL)
-}
+/// The error document's URL. Engines report it differently, so the
+/// document is told apart by delegate state, not by this URL.
+const BROWSER_LOAD_ERROR_URL: &str = "about:blank";
 
 impl BrowserTabDelegate {
     fn records_browser_history(&self) -> bool {
@@ -108,6 +106,7 @@ impl BrowserTabDelegate {
         ) {
             if let Ok(mut navigation) = self.navigation.lock() {
                 navigation.showing_error_page = false;
+                navigation.error_document_pending = false;
             }
             lxapp::warn!(
                 "[InternalBrowser] Failed to render load error for tab {}: {}",
@@ -123,12 +122,17 @@ impl WebViewDelegate for BrowserTabDelegate {
         let mut navigation = self.navigation.lock().unwrap_or_else(|e| e.into_inner());
         navigation.progress.apply(&event);
         match &event {
-            NavigationEvent::Started { requested_url, .. } => {
-                navigation.showing_error_page = is_error_document_url(requested_url);
+            NavigationEvent::Started { .. } => {
+                // The first load after the error document was handed over is
+                // that document; any later navigation ends the error state.
+                navigation.showing_error_page =
+                    std::mem::take(&mut navigation.error_document_pending);
             }
             NavigationEvent::Succeeded { final_url, .. } => {
+                let is_error_document = navigation.showing_error_page;
+                navigation.error_document_pending = false;
                 drop(navigation);
-                if is_error_document_url(final_url) {
+                if is_error_document {
                     return;
                 }
                 // Persisted history: exactly one visit per success, keyed by
@@ -143,19 +147,18 @@ impl WebViewDelegate for BrowserTabDelegate {
                 }
             }
             NavigationEvent::Failed { id, error } => {
-                let failing_url = error.failing_url.as_deref().unwrap_or_default();
-                if is_error_document_url(failing_url) || navigation.showing_error_page {
-                    // The error document itself failed to load (matched by URL,
-                    // or by arriving while it was pending on a platform that
-                    // reports no failing URL); give up rather than looping, and
-                    // stop suppressing state updates.
+                if navigation.showing_error_page {
+                    // The error document itself failed to load; give up rather
+                    // than looping, and stop suppressing state updates.
                     navigation.showing_error_page = false;
+                    navigation.error_document_pending = false;
                     return;
                 }
                 if !navigation.progress.is_current(*id) {
                     return;
                 }
                 navigation.showing_error_page = true;
+                navigation.error_document_pending = true;
                 drop(navigation);
                 self.show_load_error(error);
             }
@@ -564,7 +567,9 @@ mod tests {
         callback_policy_blocks_file_navigation, url_callback_opens_new_window_externally,
     };
     use crate::tabs;
-    use lingxia_webview::WebViewDataMode;
+    use lingxia_webview::{
+        LoadError, LoadErrorKind, NavigationEvent, NavigationId, WebViewDataMode, WebViewDelegate,
+    };
     use std::sync::atomic::{AtomicBool, Ordering};
     use std::sync::{Arc, Mutex};
 
@@ -609,6 +614,71 @@ mod tests {
         assert!(delegate.records_browser_history());
         tabs::lock_state().tabs.remove(&tab_id);
         tabs::clear_active_browser_tab();
+    }
+
+    fn error_test_delegate(tab_id: &str) -> BrowserTabDelegate {
+        BrowserTabDelegate {
+            tab_id: tab_id.to_string(),
+            page_path: format!("/tabs/{tab_id}"),
+            session_id: 9,
+            create_token: 1,
+            data_mode: WebViewDataMode::ProfileDefault,
+            url_callback: Arc::new(AtomicBool::new(false)),
+            navigation: Mutex::new(BrowserTabNavigationState::default()),
+        }
+    }
+
+    fn started(delegate: &BrowserTabDelegate, raw: u64, url: &str) {
+        delegate.on_navigation_event(NavigationEvent::Started {
+            id: NavigationId::from_raw(raw),
+            requested_url: url.to_string(),
+        });
+    }
+
+    fn failed(delegate: &BrowserTabDelegate, raw: u64, url: &str) {
+        delegate.on_navigation_event(NavigationEvent::Failed {
+            id: NavigationId::from_raw(raw),
+            error: LoadError {
+                failing_url: Some(url.to_string()),
+                kind: LoadErrorKind::Network,
+                description: "offline".to_string(),
+            },
+        });
+    }
+
+    fn showing_error(delegate: &BrowserTabDelegate) -> bool {
+        delegate.navigation.lock().unwrap().showing_error_page
+    }
+
+    #[test]
+    fn the_error_document_is_the_load_after_a_failure_and_the_next_navigation_ends_it() {
+        let delegate = error_test_delegate("error-document-state");
+        started(&delegate, 1, "https://down.example");
+        failed(&delegate, 1, "https://down.example");
+        assert!(showing_error(&delegate));
+        started(&delegate, 2, "about:blank");
+        delegate.on_navigation_event(NavigationEvent::Succeeded {
+            id: NavigationId::from_raw(2),
+            final_url: "about:blank".to_string(),
+        });
+        assert!(showing_error(&delegate));
+        started(&delegate, 3, "about:blank");
+        assert!(
+            !showing_error(&delegate),
+            "a later blank load is the user's"
+        );
+    }
+
+    #[test]
+    fn a_failing_error_document_gives_up_instead_of_looping() {
+        let delegate = error_test_delegate("error-document-fails");
+        started(&delegate, 1, "https://down.example");
+        failed(&delegate, 1, "https://down.example");
+        started(&delegate, 2, "about:blank");
+        failed(&delegate, 2, "about:blank");
+        assert!(!showing_error(&delegate));
+        started(&delegate, 3, "https://up.example");
+        assert!(!showing_error(&delegate));
     }
 
     #[test]
