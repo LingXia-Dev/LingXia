@@ -1,7 +1,18 @@
-# GPU UI renderer
+# View renderer
 
-Invariants of the native page renderer. Authoring: [view-authoring.md](view-authoring.md),
-[view-styling.md](view-styling.md); timing: [view-animation.md](view-animation.md).
+The native renderer behind View pages: wire decoding, View isolates, layout,
+text, paint, interaction and the platform adapters. Authoring:
+[view-authoring.md](view-authoring.md), [view-styling.md](view-styling.md);
+motion: [view-animation.md](view-animation.md); colours and scales:
+[theme.md](theme.md); bounds: [view-engine-limits.md](view-engine-limits.md).
+
+Invariants:
+
+- Native validation is independent of the JS runtime and re-checks every record.
+- A render is a candidate; committed state changes only on commit.
+- All geometry (hit testing, scroll, reach, chrome) runs in the shared core
+  against the presented frame; adapters convert events and compute none.
+- The host never calls adapter code while holding its own or the renderer's locks.
 
 ## Ownership
 
@@ -18,7 +29,8 @@ configs name no renderer.
 
 | Module | Owns |
 | --- | --- |
-| `protocol` | Wire decode/validation, generated ids (`protocol/generated.rs`) |
+| `protocol` | Wire decode/validation, generated ids (`protocol/generated.rs`), scale references |
+| `animation` | Keyframe and transition timelines, wakeups ([view-animation.md](view-animation.md)) |
 | `engine` | JS engine adapters and their capability list |
 | `session` | `ViewSession`, `ViewHost`, lifecycle tickets, candidate prepare/commit, images, metrics |
 | `layout` | Taffy styles, page root, virtual lists |
@@ -27,7 +39,7 @@ configs name no renderer.
 | `interaction` | Hit testing, scroll, reach, sliders, keyboard, pointer state |
 | `semantics` | Composed control groups, accessibility projection, stable ids |
 | `renderer` | CPU raster and wgpu/Vello presentation |
-| `platform` | Adapter traits; platform adapters live in their own crates (`lingxia-view-android`) |
+| `platform` | Adapter traits, host chrome colours; adapters live in their own crates (`lingxia-view-android`, `-apple`, `-harmony`, `-windows`) |
 
 ## Wire contract
 
@@ -35,12 +47,11 @@ configs name no renderer.
 field ids, option enums, the CSS-named author style table (with the CSS
 longhand each key accepts), element admission, wire admission (per-tag
 children, content eligibility, required parent and fields, per-field tags) and
-page limits (nodes, depth, animation and item-key bytes, image bytes, source
-length). `contracts/view/generate.mjs` writes the Rust tables, lxapp's
-`page/view_limits.rs`, `wire.js`, `contract.js`, the authoring `.d.ts` and the
-native-test runtime bundle; no consumer keeps its own copy. `--check` fails on
-drift; a Rust test compares every compiled table with the schema. Field and
-tag ids are append-only and dense; reserved fields are rejected by the decoder.
+page limits. `contracts/view/generate.mjs` writes every consumer's copy (see
+[view-authoring.md](view-authoring.md#contract-package)); `--check` fails on
+drift and a Rust test compares every compiled table with the schema. Field and
+tag ids are append-only and dense, because shipped modules and hosts name them
+by number; reserved fields are rejected by the decoder.
 
 The schema `frame` section types what adapters receive (snapshot, semantics,
 automation); it generates `GpuFrame.java` and `GpuFrame.swift`.
@@ -55,22 +66,18 @@ admitted) and requires finite geometry with visible bounds inside the viewport; 
 targets over the same generator, raw wire JSON, automation requests and the strict JSON
 contracts: `scripts/ci/view-fuzz-smoke.sh [seconds]` (nightly).
 
-JS lowers author style to wire fields; native validation is independent and
-re-checks every record. Never trust that a field reached native through the
-runtime: decode bounds strings, numbers, JSON payloads and tag applicability.
+Never trust that a field reached native through the runtime: decode bounds
+strings, numbers, JSON payloads and tag applicability, so a bug or a
+hand-written buffer in the isolate cannot corrupt layout or paint.
 
-Compiled modules start with `// LingXia UI module; {uiAbi, minField, requiredFeatures, compiler}`.
-The banner refuses hosts whose ABI, `maxField` or features do not satisfy it,
-before author code runs; `minField` is the page's lower bound, and the encoder
-refuses any later field the host lacks. Release hardening preserves that first line.
+Module compatibility (the banner, `minField`, `maxField`) is specified in
+[view-authoring.md](view-authoring.md#module-compatibility). Release hardening
+must preserve the banner line.
 
 ## Engines
 
-| Engine | Platform | Candidate transactions | Bounded jobs (preemption) |
-| --- | --- | --- | --- |
-| QuickJS | all | yes | yes |
-
-View isolates run on QuickJS everywhere, linked beside the platform's Logic
+View isolates run on QuickJS on every platform, with candidate transactions
+and bounded jobs (preemption), linked beside the platform's Logic
 engine (JavaScriptCore on Apple, ArkJS on HarmonyOS) through rong's per-engine
 types (`rong::quickjs::JSRuntime`). The Logic engine stays rong's primary:
 `lingxia` pins `primary-jscore` on Apple, so linking QuickJS cannot flip it.
@@ -92,7 +99,8 @@ that rebuilds in the same session. Execution timeouts poison the isolate:
 input and scheduling stop until an explicit reload resets locals and rebinds
 Logic through the current endpoint and generation.
 
-The microtask budget is 100 ms per turn. JS errors keep their message, code
+Draining microtasks shares the render budget (`evalBudgetMs` and its
+multipliers); past it the turn fails with `UI_TIMEOUT`. JS errors keep their message, code
 and JSX trace (`at <tag> (file:line:col)`, `at Component (…)`) through the
 engine boundary.
 
@@ -210,66 +218,103 @@ the View worker, present on the main thread), `FrameScheduler` (vsync),
 `session::host::ViewHost` drives a page through them: it owns the View worker
 queue (`ViewWorker`, one isolate per app session), frame sequencing, dispatch,
 images, the Logic bridge, the bootstrap deadline, recovery and caret blink.
-Adapters convert OS events into host calls and execute typed effects; the host never
-calls the adapter while holding its locks. Its tests use a fake adapter.
+Adapters convert OS events into host calls and execute typed effects; the host
+never calls the adapter while holding its locks. Its tests use a fake adapter.
 
-Android runs on `ViewHost`: `crates/lingxia-view-android` implements the traits over
-the Java `GpuPlatform` (vsync, posts, presentation, IME, accessibility, feedback
-chrome) and exposes host calls as `GpuView` natives. Java converts events and
-draws chrome; chrome geometry is `interaction::chrome` over the snapshot node.
 Pages of one `appId:session` share a worker by key, so nothing slow runs on it:
-decode and CPU raster use process pools (a newer CPU frame replaces one not started),
-GPU attach its own thread, and a page whose attach is pending declines frames.
-A hidden GPU page is frozen (no frames, input or semantics). `lxapp::surface_retention`
-decides whether it keeps its surface: every tab page of the shown app plus the three
-most recently shown others (~32 MB each at 1080×2504, so at most (tabs + 3) × 32 MB),
-none under memory pressure (backgrounding alone is not). Android hides a kept layer through
-its SurfaceControl and also moves it off screen (SurfaceView ignores alpha); the move alone
-is not enough, since a node outside the window may never report its new position and the
-layer stays under the current page, where any reveal, slide or pull-to-refresh exposes it.
-It reports the kept page's insets as it will be shown. A kept page
-shows at once only when `ViewHost::frame_is_current` holds; a hidden page whose target or
-environment changed renders one catch-up frame as background work. Otherwise the outgoing
-page stays on screen, frozen, until the incoming one presents: at most 300 ms when its
-surface still holds a stale frame; a first visit or a recreated surface waits for its first
-frame (a 2 s watchdog, paused while the window is hidden, logs one that never does).
+decode and CPU raster use process pools (a newer CPU frame replaces one not
+started), GPU attach its own thread, and a page whose attach is pending
+declines frames.
 
-Returning to a kept page shows its last frame at once, then the new one, never black or the
-bare canvas. Where the surface keeps that frame while hidden (Harmony's window, Android's
-retained layer) the surface itself shows it. Windows is the one exception: a page coming
-back is clipped to one pixel until it presents (up to 300 ms), and the page it replaces stays
-on screen meanwhile, since an owned child window is shown before its swap chain is known to
-hold this page's frame at the current geometry. Where the surface cannot keep the frame
-(an Apple page out of its window, Android after `TRIM_MEMORY`, any host whose surfaces go
-with screen-off or the background) the host view reads the last frame back before trimming
-or suspending and shows that snapshot over the surface until a frame presents at the
-current size. Apple trims a page leaving its window instead of suspending it: the surface
-stays, parked at 1×1, with scene and image caches; targets and depth go. A host showing a
-cover calls `ViewHost::cover`; the core asks for a frame and calls `HostEvents::uncover` on
-the first one that reaches the screen at the current size (a held frame does not). A page
-released by retention drops its cover. The reveal metrics carry `covers`, `snapshotShown`
-and `lastCoverMs`, and the `cover`, `present` and `uncover` debug lines are the
-presentation log: on a return, the cover never comes off before a frame at the current
-size is shown. Input during a cover reaches the kept scene, which has the cover's layout; a
-page that changed while hidden is hit at its new layout before the cover comes off.
+A new platform needs the adapter traits, text scaling and insets in the
+environment, and `renderer` frames.
 
-Windows runs each GPU page on its own UI thread, as a WebView2 page runs, with a parent
-window from the host's native-view host and a child content window inside it
-(`crates/lingxia-view-windows`). The page registers under its webtag as
-`WindowsNativeContent`, so `find_webview_handler` returns it and the host presents,
-moves, hides and reparents it exactly as a WebView; a call that only a WebView2 controller
-supports is a no-op for it. The swap chain is bound to the content window: release the
-presenter before that window is destroyed, including when a host destroys the window
-holding it (`WM_DESTROY`), and wait out an attach still running on the render thread —
-a swap chain made for a window that is gone poisons the shared GPU context for every page.
-Touch arrives as `WM_POINTER` (and the registered `LingXiaViewTouch` message automation
-posts); text input runs through IMM32 against the page's editor mirror. Press and
-focus-ring feedback are drawn into the frame (a window over the swap chain cannot blend),
-recovery chrome is a native child panel, and UI Automation answers `WM_GETOBJECT` with a
-fragment tree over the semantic projection. UIA may call from any thread: providers hold
-only the window and a node id and reach the page with a message sent to its thread.
+### Android
 
-New platform: adapter traits, text scaling and insets in the environment, `renderer` frames.
+`crates/lingxia-view-android` implements the traits over the Java
+`GpuPlatform` (vsync, posts, presentation, IME, accessibility, feedback chrome)
+and exposes host calls as `GpuView` natives. Java converts events and draws
+chrome; chrome geometry is `interaction::chrome` over the snapshot node.
+
+Android hides a kept layer through its SurfaceControl and also moves it off
+screen (SurfaceView ignores alpha). The move alone is not enough: a node
+outside the window may never report its new position, and the layer stays
+under the current page, where any reveal, slide or pull-to-refresh exposes it.
+It reports the kept page's insets as they will be when shown.
+
+### Windows
+
+Windows runs each GPU page on its own UI thread, as a WebView2 page runs, with
+a parent window from the host's native-view host and a child content window
+inside it (`crates/lingxia-view-windows`, `crates/lingxia/src/ffi/windows/gpu_page.rs`).
+The page registers under its webtag as `WindowsNativeContent`, so
+`find_webview_handler` returns it and the host presents, moves, hides and
+reparents it exactly as a WebView; a call that only a WebView2 controller
+supports is a no-op for it.
+
+- The swap chain is bound to the content window: release the presenter before
+  that window is destroyed, including when a host destroys the window holding
+  it (`WM_DESTROY`), and wait out an attach still running on the render
+  thread. A swap chain made for a window that is gone poisons the shared GPU
+  context for every page.
+- Touch arrives as `WM_POINTER` (and the registered `LingXiaViewTouch` message
+  automation posts); text input runs through IMM32 against the page's editor
+  mirror.
+- Press and focus-ring feedback are drawn into the frame, because a window over
+  the swap chain cannot blend; recovery chrome is a native child panel.
+- UI Automation answers `WM_GETOBJECT` with a fragment tree over the semantic
+  projection. UIA may call from any thread: providers hold only the window and
+  a node id and reach the page with a message sent to its thread.
+
+## Hidden pages and returns
+
+A hidden GPU page is frozen: no frames, input or semantics.
+`lxapp::surface_retention` decides whether it keeps its surface (~32 MB each
+at 1080×2504):
+
+| Page | Keeps its surface |
+| --- | --- |
+| Tab page of the shown app | yes, except under memory pressure: a tab bar is cycled and would defeat a smaller recency cap |
+| Just under the top of the shown app's stack | always, even under memory pressure: a back gesture reveals it |
+| Other hidden pages on a stack | the three most recently shown |
+| Off the stack | never |
+
+Memory pressure releases every surface but the revealing page's;
+backgrounding alone is not pressure.
+
+A kept page shows at once only when `ViewHost::frame_is_current` holds; a
+hidden page whose target or environment changed renders one catch-up frame as
+background work. Otherwise the outgoing page stays on screen, frozen, until
+the incoming one presents: at most 300 ms when its surface still holds a stale
+frame; a first visit or a recreated surface waits for its first frame (a 2 s
+watchdog, paused while the window is hidden, logs one that never does).
+
+Returning to a kept page shows its last frame at once, then the new one, never
+black or the bare canvas:
+
+- Where the surface keeps that frame while hidden (Harmony's window, Android's
+  retained layer) the surface itself shows it.
+- Windows clips a returning page to one pixel until it presents (up to
+  300 ms) and leaves the page it replaces on screen meanwhile, since an owned
+  child window is shown before its swap chain is known to hold this page's
+  frame at the current geometry.
+- Where the surface cannot keep the frame (an Apple page out of its window,
+  Android after `TRIM_MEMORY`, any host whose surfaces go with screen-off or
+  the background) the host view reads the last frame back before trimming or
+  suspending and shows that snapshot over the surface until a frame presents
+  at the current size.
+- Apple trims a page leaving its window instead of suspending it: the surface
+  stays, parked at 1×1, with scene and image caches; targets and depth go.
+
+A host showing a cover calls `ViewHost::cover`; the core asks for a frame and
+calls `HostEvents::uncover` on the first one that reaches the screen at the
+current size (a held frame does not). A page released by retention drops its
+cover. Input during a cover reaches the kept scene, which has the cover's
+layout; a page that changed while hidden is hit at its new layout before the
+cover comes off. The reveal metrics carry `covers`, `snapshotShown` and
+`lastCoverMs`, and the `cover`, `present` and `uncover` debug lines are the
+presentation log: on a return, the cover never comes off before a frame at the
+current size is shown.
 
 ## Verification
 
