@@ -45,6 +45,7 @@ fn element(tag: &'static str, way: Way) -> NodeSnapshot {
             enabled: true,
             on_input: None,
             on_submit: None,
+            on_paste: None,
             edit: None,
             edit_token: None,
             geometry: None,

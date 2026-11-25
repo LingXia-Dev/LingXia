@@ -385,6 +385,8 @@ pub struct InputSnapshot {
     pub enabled: bool,
     pub on_input: Option<u64>,
     pub on_submit: Option<u64>,
+    /// `onPaste`: the platform sends a paste with its flavours instead of inserting the text.
+    pub on_paste: Option<u64>,
     /// Attributes the platform input connection maps onto its IME and autofill.
     #[serde(flatten)]
     pub attributes: EditorAttributes,

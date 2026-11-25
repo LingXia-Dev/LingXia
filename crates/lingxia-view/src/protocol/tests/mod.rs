@@ -741,6 +741,8 @@ fn contract_drift(schema: &Value) -> Vec<String> {
             ("editorTextBytes", limits::EDITOR_TEXT_BYTES),
             ("inputRequestBytes", limits::INPUT_REQUEST_BYTES),
             ("inputBatchEdits", limits::INPUT_BATCH_EDITS),
+            ("pasteHtmlBytes", limits::PASTE_HTML_BYTES),
+            ("pasteRequestBytes", limits::PASTE_REQUEST_BYTES),
             ("clipboardItems", limits::CLIPBOARD_ITEMS),
             ("wireValues", limits::WIRE_VALUES),
             ("textBytes", limits::TEXT_BYTES),

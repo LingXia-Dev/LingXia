@@ -47,7 +47,7 @@ ${[...enums, ...tags, ...interfaces].join('\n\n')}
 /** `GpuInput.ets`: the core's editor limits, which an ArkTS input mirror holds itself to. */
 export function inputArkTS(schema) {
   return `${header}export class GpuInputLimits {
-${['editorTextBytes', 'inputRequestBytes', 'inputBatchEdits', 'clipboardItems'].map(name => `  static readonly ${constant(name)}: number = ${schema.limits[name]};`).join('\n')}
+${['editorTextBytes', 'inputRequestBytes', 'inputBatchEdits', 'clipboardItems', 'pasteHtmlBytes', 'pasteRequestBytes'].map(name => `  static readonly ${constant(name)}: number = ${schema.limits[name]};`).join('\n')}
 }
 `;
 }

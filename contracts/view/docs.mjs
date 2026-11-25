@@ -352,6 +352,8 @@ const limitNotes = {
   evalOverrunFrames: 'Renders in a row past the budget, each dropped, after which the page fails with UI_TIMEOUT.',
   editorTextBytes: 'Text one editor holds, as UTF-8.',
   inputRequestBytes: 'One input-method request from the platform, as UTF-8 JSON.',
+  pasteHtmlBytes: 'The HTML flavour an `onPaste` event carries; a larger one is listed in `omitted`.',
+  pasteRequestBytes: 'One paste request from the platform, its text and HTML as UTF-8 JSON.',
   inputBatchEdits: 'Edits in one input-method batch.',
   clipboardItems: 'Clipboard items one paste reads.',
   wireValues: 'Values in one encoded frame.',
@@ -387,7 +389,7 @@ const size = value => value >= 1 << 20 && value % (1 << 20) === 0 ? `${value / (
 
 // Engine and wire bounds an author cannot act on; they are documented for work on the renderer.
 const engineLimits = new Set(['decodedImageBytes', 'evalBudgetDebugMultiplier', 'evalWarmupMultiplier',
-  'evalLimitMultiplier', 'evalOverrunFrames', 'inputRequestBytes', 'inputBatchEdits',
+  'evalLimitMultiplier', 'evalOverrunFrames', 'inputRequestBytes', 'pasteRequestBytes', 'inputBatchEdits',
   'clipboardItems', 'wireValues', 'shadowMaskBytes', 'compositeFrames', 'leaseFrames', 'compositeBytes', 'outlineGlyphs',
   'ghosts', 'layoutMotions']);
 

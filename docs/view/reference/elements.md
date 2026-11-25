@@ -190,6 +190,7 @@ Binding: `bind={local}` with a `useLocal<string>` cell, or `value` plus `onInput
 | `onFocus` | `() => void` |  | Called when the editor gains focus. |
 | `onBlur` | `() => void` |  | Called when the editor loses focus. |
 | `onSelectionChange` | `(selection: EditorSelection) => void` |  | Called at most once a frame when the caret moves, the selection changes or where it shows changes: `start` and `end` are UTF-16 offsets, as `value.slice(start, end)` reads them; `caret` and `rects` are in page points. To place a menu at the caret, anchor a popover to `<id>:caret` instead. Needs `bind` for `setSelection` and `replaceRange` on the cell. |
+| `onPaste` | `(event: PasteEvent) => void` |  | Called when the user pastes, before anything is inserted: `text` raw, `html` as the source app wrote it (unsanitised; absent for a plain paste or a secure editor). Call `event.preventDefault()` synchronously to insert your own result, usually with `replaceRange(selection.start, selection.end, …)`; otherwise the plain text is inserted, a single-line editor taking newlines as spaces. |
 | `aria-label` | `string` |  | The accessible name, spoken in place of its text. |
 | `placeholder` | `string` |  | Shown while the value is empty. |
 | `type` | `"text" \| "password" \| "email" \| "number" \| "tel" \| "search" \| "date" \| "time"` |  | The kind of value: picks the keyboard, masking, and the date or time picker. |
@@ -219,6 +220,7 @@ Binding: `bind={local}` with a `useLocal<string>` cell, or `value` plus `onInput
 | `onFocus` | `() => void` |  | Called when the editor gains focus. |
 | `onBlur` | `() => void` |  | Called when the editor loses focus. |
 | `onSelectionChange` | `(selection: EditorSelection) => void` |  | Called at most once a frame when the caret moves, the selection changes or where it shows changes: `start` and `end` are UTF-16 offsets, as `value.slice(start, end)` reads them; `caret` and `rects` are in page points. To place a menu at the caret, anchor a popover to `<id>:caret` instead. Needs `bind` for `setSelection` and `replaceRange` on the cell. |
+| `onPaste` | `(event: PasteEvent) => void` |  | Called when the user pastes, before anything is inserted: `text` raw, `html` as the source app wrote it (unsanitised; absent for a plain paste or a secure editor). Call `event.preventDefault()` synchronously to insert your own result, usually with `replaceRange(selection.start, selection.end, …)`; otherwise the plain text is inserted, a single-line editor taking newlines as spaces. |
 | `rows` | `number` |  | Lines it shows when empty; it grows with its text up to `maxRows`. |
 | `maxRows` | `number` |  | Lines it grows to before it scrolls. |
 | `aria-label` | `string` |  | The accessible name, spoken in place of its text. |

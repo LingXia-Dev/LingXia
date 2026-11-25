@@ -6,6 +6,8 @@ use crate::{
 use serde::Deserialize;
 
 pub const MAX_REQUEST_BYTES: usize = crate::protocol::limits::INPUT_REQUEST_BYTES;
+/// A paste carries the clipboard's text and HTML, so it alone may be larger.
+pub const MAX_PASTE_REQUEST_BYTES: usize = crate::protocol::limits::PASTE_REQUEST_BYTES;
 
 #[derive(Deserialize)]
 #[serde(tag = "op", rename_all = "snake_case", deny_unknown_fields)]
@@ -40,6 +42,15 @@ enum Request {
         token: u64,
         edits: Vec<HostEdit>,
         submit: bool,
+    },
+    /// A paste into an editor with `onPaste`; the core inserts unless the page cancels.
+    Paste {
+        identity: String,
+        token: u64,
+        text: String,
+        #[serde(default)]
+        html: Option<String>,
+        plain: bool,
     },
 }
 
@@ -114,14 +125,21 @@ pub(crate) fn parses(request: &str) -> bool {
 impl ViewSession {
     /// Returns JSON null for an expired connection or stale focus request.
     pub fn input_request(&mut self, request: &str) -> Result<String, String> {
-        if request.len() > MAX_REQUEST_BYTES {
+        if request.len() > MAX_PASTE_REQUEST_BYTES {
             return Err("UI_INPUT: request budget exceeded".into());
         }
+        let size = request.len();
         let request: Request =
             serde_json::from_str(request).map_err(|_| "UI_INPUT: invalid host request")?;
+        if size > MAX_REQUEST_BYTES && !matches!(request, Request::Paste { .. }) {
+            return Err("UI_INPUT: request budget exceeded".into());
+        }
         if matches!(
             request,
-            Request::Focus { .. } | Request::Blur { .. } | Request::Edit { .. }
+            Request::Focus { .. }
+                | Request::Blur { .. }
+                | Request::Edit { .. }
+                | Request::Paste { .. }
         ) {
             self.input_serial += 1;
         }
@@ -172,6 +190,13 @@ impl ViewSession {
                 let edits: Vec<_> = edits.into_iter().map(Edit::from).collect();
                 self.edit_input(token, &identity, &edits, submit)?
             }
+            Request::Paste {
+                identity,
+                token,
+                text,
+                html,
+                plain,
+            } => self.paste_input(token, &identity, text, html, plain)?,
         };
         serde_json::to_string(&reply).map_err(|e| e.to_string())
     }
@@ -234,6 +259,87 @@ mod tests {
                 .unwrap()
                 .is_none()
         );
+    }
+
+    /// A paste reaches `onPaste` with its flavours; a handler that cancels inserts its own
+    /// result, otherwise the core inserts the plain text (line breaks as spaces on one line).
+    #[test]
+    fn a_paste_reaches_on_paste_and_inserts_unless_cancelled() {
+        use serde_json::{Value, json};
+        let source = crate::session::tests::source(
+            "function render(){const doc=useLocal('doc','ab'),line=useLocal('line',''),seen=useLocal('seen','');return h('view',{},h('textarea',{bind:doc,'aria-label':'Doc',style:{height:60},onPaste:e=>{seen.set(JSON.stringify([e.text,e.html??null,e.selection.start,e.selection.end,e.plain,e.omitted]));if(e.html){e.preventDefault();doc.replaceRange(e.selection.start,e.selection.end,'<'+e.text+'>')}}}),h('input',{bind:line,'aria-label':'Line',style:{height:30}}),h('text',{},seen.value))}",
+        );
+        let mut page = ViewSession::new(&source).unwrap();
+        let frame = page.prepare_native(300, 200, 1.0, true, None, Ok).unwrap();
+        let editors: Vec<String> = frame
+            .nodes
+            .iter()
+            .filter(|node| node.input.is_some())
+            .map(|node| node.identity.to_string())
+            .collect();
+        let (doc, line) = (&editors[0], &editors[1]);
+        let focus = |page: &mut ViewSession, id: &str| {
+            let generation = page.generation();
+            page.focus_input(generation, id).unwrap().unwrap().token
+        };
+        let request = |page: &mut ViewSession, value: Value| -> Value {
+            serde_json::from_str(&page.input_request(&value.to_string()).unwrap()).unwrap()
+        };
+        let seen = |page: &mut ViewSession| -> Value {
+            let frame = page.prepare_native(300, 200, 1.0, true, None, Ok).unwrap();
+            let text = frame
+                .nodes
+                .iter()
+                .rev()
+                .find(|n| n.tag == "text")
+                .unwrap()
+                .text
+                .clone();
+            serde_json::from_str(&text).unwrap()
+        };
+        let token = focus(&mut page, doc);
+        request(
+            &mut page,
+            json!({"op":"edit","identity":doc,"token":token,"edits":[{"op":"selection","anchor":1,"focus":1}],"submit":false}),
+        );
+        let reply = request(
+            &mut page,
+            json!({"op":"paste","identity":doc,"token":token,"text":"3*4","html":"<b>3*4</b>","plain":false}),
+        );
+        assert_eq!(reply["needs_view_render"], true);
+        assert_eq!(
+            seen(&mut page),
+            json!(["3*4", "<b>3*4</b>", 1, 1, false, []])
+        );
+        let state = request(
+            &mut page,
+            json!({"op":"query","identity":doc,"token":token}),
+        );
+        assert_eq!(
+            state["state"]["text"], "a<3*4>b",
+            "the handler's own insert, not the default"
+        );
+        // A plain paste carries no html, so the handler lets the default insert it.
+        let reply = request(
+            &mut page,
+            json!({"op":"paste","identity":doc,"token":token,"text":"x\r\ny","html":"<i>x</i>","plain":true}),
+        );
+        assert_eq!(reply["state"]["text"], "a<3*4>x\nyb");
+        assert_eq!(seen(&mut page)[1], Value::Null);
+        // Too large an html is left out and named.
+        let big = "<p>".repeat(crate::protocol::limits::PASTE_HTML_BYTES / 3 + 1);
+        request(
+            &mut page,
+            json!({"op":"paste","identity":doc,"token":token,"text":"","html":big,"plain":false}),
+        );
+        assert_eq!(seen(&mut page)[5], json!(["html"]));
+        // No handler: the core inserts, a single line taking breaks as spaces.
+        let token = focus(&mut page, line);
+        let reply = request(
+            &mut page,
+            json!({"op":"paste","identity":line,"token":token,"text":"one\ntwo","plain":false}),
+        );
+        assert_eq!(reply["state"]["text"], "one two");
     }
 
     #[test]

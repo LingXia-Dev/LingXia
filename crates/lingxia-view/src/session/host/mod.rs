@@ -45,6 +45,7 @@ mod webview;
 mod worker;
 
 /// Largest input-method request [`ViewHost::input`] accepts, in bytes.
+pub use super::input_protocol::MAX_PASTE_REQUEST_BYTES;
 pub use super::input_protocol::MAX_REQUEST_BYTES as MAX_INPUT_REQUEST_BYTES;
 pub use bridge::BridgeUpdate;
 pub(crate) use frame_stats::SPARK as HUD_SPARK;

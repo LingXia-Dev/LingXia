@@ -4,4 +4,6 @@ export class GpuInputLimits {
   static readonly INPUT_REQUEST_BYTES: number = 524288;
   static readonly INPUT_BATCH_EDITS: number = 64;
   static readonly CLIPBOARD_ITEMS: number = 128;
+  static readonly PASTE_HTML_BYTES: number = 2097152;
+  static readonly PASTE_REQUEST_BYTES: number = 6291456;
 }

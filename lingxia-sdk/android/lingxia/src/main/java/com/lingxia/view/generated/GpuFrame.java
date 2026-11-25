@@ -62,6 +62,7 @@ public final class GpuFrame {
     public static final String INPUT_REQUEST_QUERY = "query";
     public static final String INPUT_REQUEST_BLUR = "blur";
     public static final String INPUT_REQUEST_EDIT = "edit";
+    public static final String INPUT_REQUEST_PASTE = "paste";
     public static final String INPUT_EDIT_SELECTION = "selection";
     public static final String INPUT_EDIT_COMPOSITION = "composition";
     public static final String INPUT_EDIT_REPLACE = "replace";
@@ -469,6 +470,8 @@ public final class GpuFrame {
         public Long onInput() { if (json.isNull("on_input")) return null; return json.optLong("on_input"); }
         /** `on_submit`: u64? */
         public Long onSubmit() { if (json.isNull("on_submit")) return null; return json.optLong("on_submit"); }
+        /** `on_paste`: u64? */
+        public Long onPaste() { if (json.isNull("on_paste")) return null; return json.optLong("on_paste"); }
         /** `max_length`: u32? */
         public Long maxLength() { if (json.isNull("max_length")) return null; return json.optLong("max_length"); }
         /** `auto_complete`: string? */
@@ -722,6 +725,12 @@ public final class GpuFrame {
         public InputEdit[] edits() { return (InputEdit[]) GpuFrame.array(json.optJSONArray("edits"), 1, "InputEdit"); }
         /** `submit`: bool? */
         public Boolean submit() { if (json.isNull("submit")) return null; return json.optBoolean("submit"); }
+        /** `text`: string? */
+        public String text() { return json.isNull("text") ? null : json.optString("text", null); }
+        /** `html`: string? */
+        public String html() { return json.isNull("html") ? null : json.optString("html", null); }
+        /** `plain`: bool? */
+        public Boolean plain() { if (json.isNull("plain")) return null; return json.optBoolean("plain"); }
         /** A `drag_hit_test` InputRequest. */
         public static JSONObject dragHitTest(String identity, long generation, long token, float[] point, long[] edge) { return GpuFrame.message("op", "drag_hit_test", "identity", identity, "generation", generation, "token", token, "point", point, "edge", edge); }
         /** A `hit_test` InputRequest. */
@@ -734,6 +743,8 @@ public final class GpuFrame {
         public static JSONObject blur(String identity, long token) { return GpuFrame.message("op", "blur", "identity", identity, "token", token); }
         /** A `edit` InputRequest. */
         public static JSONObject edit(String identity, long token, JSONObject[] edits, boolean submit) { return GpuFrame.message("op", "edit", "identity", identity, "token", token, "edits", edits, "submit", submit); }
+        /** A `paste` InputRequest. */
+        public static JSONObject paste(String identity, long token, String text, String html, boolean plain) { return GpuFrame.message("op", "paste", "identity", identity, "token", token, "text", text, "html", html, "plain", plain); }
     }
 
     public static final class InputEdit {

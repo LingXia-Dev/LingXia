@@ -481,6 +481,7 @@ public struct GpuFrameInput: Decodable, Sendable {
     public let enabled: Bool
     public let onInput: UInt64?
     public let onSubmit: UInt64?
+    public let onPaste: UInt64?
     public let maxLength: UInt32?
     public let autoComplete: String?
     public let enterKeyHint: String?
@@ -508,6 +509,7 @@ public struct GpuFrameInput: Decodable, Sendable {
         case enabled = "enabled"
         case onInput = "on_input"
         case onSubmit = "on_submit"
+        case onPaste = "on_paste"
         case maxLength = "max_length"
         case autoComplete = "auto_complete"
         case enterKeyHint = "enter_key_hint"
@@ -752,6 +754,9 @@ public struct GpuFrameInputRequest: Decodable, Sendable {
     public let word: Bool?
     public let edits: [GpuFrameInputEdit]?
     public let submit: Bool?
+    public let text: String?
+    public let html: String?
+    public let plain: Bool?
 
     enum CodingKeys: String, CodingKey {
         case op = "op"
@@ -763,6 +768,9 @@ public struct GpuFrameInputRequest: Decodable, Sendable {
         case word = "word"
         case edits = "edits"
         case submit = "submit"
+        case text = "text"
+        case html = "html"
+        case plain = "plain"
     }
 }
 
@@ -1419,6 +1427,8 @@ public enum GpuFrameInputLimits {
     public static let inputRequestBytes = 524288
     public static let inputBatchEdits = 64
     public static let clipboardItems = 128
+    public static let pasteHtmlBytes = 2097152
+    public static let pasteRequestBytes = 6291456
 }
 
 /// A JSON key named at run time, for request encoders.
@@ -1438,6 +1448,7 @@ public enum GpuFrameInputRequestMessage: Encodable, Sendable {
     case query(identity: String, token: UInt64)
     case blur(identity: String, token: UInt64)
     case edit(identity: String, token: UInt64, edits: [GpuFrameInputEditMessage], submit: Bool)
+    case paste(identity: String, token: UInt64, text: String, html: String?, plain: Bool)
 
     public func encode(to encoder: Encoder) throws {
         var container = encoder.container(keyedBy: GpuFrameKey.self)
@@ -1473,6 +1484,13 @@ public enum GpuFrameInputRequestMessage: Encodable, Sendable {
             try container.encode(token, forKey: GpuFrameKey("token"))
             try container.encode(edits, forKey: GpuFrameKey("edits"))
             try container.encode(submit, forKey: GpuFrameKey("submit"))
+        case .paste(let identity, let token, let text, let html, let plain):
+            try container.encode("paste", forKey: GpuFrameKey("op"))
+            try container.encode(identity, forKey: GpuFrameKey("identity"))
+            try container.encode(token, forKey: GpuFrameKey("token"))
+            try container.encode(text, forKey: GpuFrameKey("text"))
+            try container.encode(html, forKey: GpuFrameKey("html"))
+            try container.encode(plain, forKey: GpuFrameKey("plain"))
         }
     }
 }

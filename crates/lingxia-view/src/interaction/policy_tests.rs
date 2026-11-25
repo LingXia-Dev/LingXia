@@ -577,6 +577,7 @@ fn projection_exposes_roles_ranges_masked_text_and_only_enabled_actions() {
         enabled: true,
         on_input: None,
         on_submit: None,
+        on_paste: None,
         edit: Some(crate::text::input::Snapshot {
             text: "a😀b".into(),
             selection: [1, 3],

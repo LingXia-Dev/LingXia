@@ -378,6 +378,21 @@ export interface EditorSelection {
 /** A scroll or list reached (`at: true`) or left an edge. Fires once per change, and on mount with the edges its content starts at: both when the content fits. */
 export interface ScrollEdgeEvent { readonly edge: "start" | "end"; readonly at: boolean }
 /** A child on screen: `top` is its start edge from the viewport's, `ratio` the share of it shown. */
+/** A paste into an editor, before anything is inserted. `files` and `omitted` list what a later version copies in or leaves out; today `files` is always empty. */
+export interface PasteEvent extends TimeStamped {
+  readonly text: string;
+  readonly html?: string;
+  readonly files: readonly PastedFile[];
+  readonly omitted: readonly ("html" | "files")[];
+  /** The UTF-16 range the paste replaces. */
+  readonly selection: { readonly start: number; readonly end: number };
+  /** "Paste as plain text" or "Paste and Match Style": no `html`. */
+  readonly plain: boolean;
+  readonly defaultPrevented: boolean;
+  /** Called synchronously: nothing is inserted, the handler inserts its own result. */
+  preventDefault(): void;
+}
+export interface PastedFile { readonly path: string; readonly type: string; readonly name?: string; readonly size: number }
 export interface VisibleItem { readonly id: string; readonly index?: number; readonly ratio: number; readonly top: number }
 /** The children on screen in order; `current` is the last that reached the top, else the first. */
 export interface VisibleChangeEvent extends TimeStamped { readonly items: readonly VisibleItem[]; readonly current?: string }
@@ -1299,6 +1314,7 @@ export type InputProps = Omit<Props, "style" | "children" | "role"> & { role?: I
   /** Called when the editor gains focus. */ onFocus?: () => void;
   /** Called when the editor loses focus. */ onBlur?: () => void;
   /** Called at most once a frame when the caret moves, the selection changes or where it shows changes: `start` and `end` are UTF-16 offsets, as `value.slice(start, end)` reads them; `caret` and `rects` are in page points. To place a menu at the caret, anchor a popover to `<id>:caret` instead. Needs `bind` for `setSelection` and `replaceRange` on the cell. */ onSelectionChange?: (selection: EditorSelection) => void;
+  /** Called when the user pastes, before anything is inserted: `text` raw, `html` as the source app wrote it (unsanitised; absent for a plain paste or a secure editor). Call `event.preventDefault()` synchronously to insert your own result, usually with `replaceRange(selection.start, selection.end, …)`; otherwise the plain text is inserted, a single-line editor taking newlines as spaces. */ onPaste?: (event: PasteEvent) => void;
   /** The accessible name, spoken in place of its text. */ "aria-label"?: string;
   /** Shown while the value is empty. */ placeholder?: string;
   /** The kind of value: picks the keyboard, masking, and the date or time picker. */ type?: "text" | "password" | "email" | "number" | "tel" | "search" | "date" | "time";
@@ -1324,6 +1340,7 @@ export type TextareaProps = Omit<Props, "style" | "children" | "role"> & { role?
   /** Called when the editor gains focus. */ onFocus?: () => void;
   /** Called when the editor loses focus. */ onBlur?: () => void;
   /** Called at most once a frame when the caret moves, the selection changes or where it shows changes: `start` and `end` are UTF-16 offsets, as `value.slice(start, end)` reads them; `caret` and `rects` are in page points. To place a menu at the caret, anchor a popover to `<id>:caret` instead. Needs `bind` for `setSelection` and `replaceRange` on the cell. */ onSelectionChange?: (selection: EditorSelection) => void;
+  /** Called when the user pastes, before anything is inserted: `text` raw, `html` as the source app wrote it (unsanitised; absent for a plain paste or a secure editor). Call `event.preventDefault()` synchronously to insert your own result, usually with `replaceRange(selection.start, selection.end, …)`; otherwise the plain text is inserted, a single-line editor taking newlines as spaces. */ onPaste?: (event: PasteEvent) => void;
   /** Lines it shows when empty; it grows with its text up to `maxRows`. */ rows?: number;
   /** Lines it grows to before it scrolls. */ maxRows?: number;
   /** The accessible name, spoken in place of its text. */ "aria-label"?: string;

@@ -13,6 +13,7 @@ decodable and its GPU memory bounded, and page code cannot act on them.
 | `evalLimitMultiplier` | 4 | Budget multiple at which any render or callback is interrupted (ten times that in wall time for a hang) and the page fails with UI_TIMEOUT. |
 | `evalOverrunFrames` | 3 | Renders in a row past the budget, each dropped, after which the page fails with UI_TIMEOUT. |
 | `inputRequestBytes` | 524288 (512 KiB) | One input-method request from the platform, as UTF-8 JSON. |
+| `pasteRequestBytes` | 6291456 (6 MiB) | One paste request from the platform, its text and HTML as UTF-8 JSON. |
 | `inputBatchEdits` | 64 | Edits in one input-method batch. |
 | `clipboardItems` | 128 | Clipboard items one paste reads. |
 | `wireValues` | 100000 | Values in one encoded frame. |
@@ -24,7 +25,7 @@ decodable and its GPU memory bounded, and page code cannot act on them.
 | `ghosts` | 64 | Removed elements still drawing their exit at once; past it further removals vanish at once. |
 | `layoutMotions` | 256 | Elements moving to a new layout position under `transition-layout` at once; past it further moves land at once. |
 
-Wire ABI: 1. Highest field id: 288.
+Wire ABI: 1. Highest field id: 289.
 
 ## Dev-session globals
 

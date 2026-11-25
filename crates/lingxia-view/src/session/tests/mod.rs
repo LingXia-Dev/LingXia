@@ -1539,10 +1539,16 @@ fn host_input_messages_preserve_composition_and_reject_stale_connections() {
             .unwrap_err()
             .contains("too many edits")
     );
+    // Only a paste may pass the input budget, up to its own.
+    let padded = json!({"op":"blur","identity":id,"token":token}).to_string()
+        + &" ".repeat(crate::session::input_protocol::MAX_REQUEST_BYTES);
+    assert!(page.input_request(&padded).unwrap_err().contains("budget"));
     assert!(
-        page.input_request(&" ".repeat(crate::session::input_protocol::MAX_REQUEST_BYTES + 1))
-            .unwrap_err()
-            .contains("budget")
+        page.input_request(
+            &" ".repeat(crate::session::input_protocol::MAX_PASTE_REQUEST_BYTES + 1)
+        )
+        .unwrap_err()
+        .contains("budget")
     );
     assert_eq!(
         page.input_request(&json!({"op":"blur","identity":id,"token":token}).to_string())

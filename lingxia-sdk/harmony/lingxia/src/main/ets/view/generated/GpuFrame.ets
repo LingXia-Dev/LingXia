@@ -96,6 +96,7 @@ export class GpuFrameInputRequestKinds {
   static readonly QUERY: string = "query";
   static readonly BLUR: string = "blur";
   static readonly EDIT: string = "edit";
+  static readonly PASTE: string = "paste";
 }
 
 /** `InputEdit` variants, by its `op` key. */
@@ -342,6 +343,7 @@ export interface GpuFrameInput {
   enabled: boolean;
   on_input?: number | null;
   on_submit?: number | null;
+  on_paste?: number | null;
   max_length?: number | null;
   auto_complete?: string | null;
   enter_key_hint?: string | null;
@@ -482,6 +484,9 @@ export interface GpuFrameInputRequest {
   word?: boolean | null;
   edits?: GpuFrameInputEdit[] | null;
   submit?: boolean | null;
+  text?: string | null;
+  html?: string | null;
+  plain?: boolean | null;
 }
 
 /** `InputEdit` in the frame contract. */

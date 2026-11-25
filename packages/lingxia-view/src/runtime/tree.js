@@ -240,10 +240,25 @@ export function reset() {
 
 const accepts = (kind, value) => kind === 'number' ? typeof value === 'number' && Number.isFinite(value) && Math.abs(value) <= 1e9
   : kind === 'text' ? validInputText(value)
+  : kind === 'paste' ? typeof value === 'string'
   : kind === 'check' ? value === undefined || typeof value === 'boolean' : value === undefined;
 
 // A press handler hears when the host took the press, in epoch ms.
 const pressEvent = timeStamp => Object.freeze({ timeStamp: typeof timeStamp === 'number' ? timeStamp : Date.now() });
+
+// A paste: `preventDefault()` counts only while the handler runs, as in the DOM.
+function pasteEvent(payload, timeStamp) {
+  const { text, html, selection, plain, omitted = [] } = JSON.parse(payload);
+  const state = { prevented: false, open: true };
+  const event = Object.freeze({
+    text, ...(typeof html === 'string' ? { html } : {}), files: Object.freeze([]), omitted: Object.freeze([...omitted]),
+    selection: Object.freeze({ start: selection[0], end: selection[1] }), plain: plain === true,
+    timeStamp: typeof timeStamp === 'number' ? timeStamp : Date.now(),
+    get defaultPrevented() { return state.prevented; },
+    preventDefault() { if (state.open) state.prevented = true; },
+  });
+  return { event, state };
+}
 
 const where = ({ site }) => site
   ? `${site[0]} of <${site[1]}${typeof site[2] === 'string' ? ` data-testid="${site[2]}"` : ''}>` : 'A handler';
@@ -256,13 +271,17 @@ export function dispatch(handle, value, timeStamp) {
   const previous = entry.isolated ? new Map(page.updates) : undefined;
   try {
     const epoch = actionEpochNow();
-    const result = entry.kind === 'void' ? entry.callback() : entry.kind === 'press' ? entry.callback(pressEvent(timeStamp)) : entry.callback(value);
+    const paste = entry.kind === 'paste' ? pasteEvent(value, timeStamp) : null;
+    const result = entry.kind === 'void' ? entry.callback() : entry.kind === 'press' ? entry.callback(pressEvent(timeStamp))
+      : paste ? entry.callback(paste.event) : entry.callback(value);
+    if (paste) paste.state.open = false;
     if (result && typeof result.then === 'function') Promise.resolve(result).catch(thrown => {
       if (!hasActionEpoch(epoch)) return;
       const message = `UI_HANDLER: ${where(entry)} rejected: ${messageOf(sited(thrown))}`;
       if (entry.isolated) report(message); else failHandler(message);
     });
-    return true;
+    // The host inserts the pasted text itself unless the handler took the paste.
+    return paste?.state.prevented ? 'prevented' : true;
   } catch (thrown) {
     const error = sited(thrown);
     if (error instanceof Error && entry.site) error.message = `UI_HANDLER: ${where(entry)} threw: ${error.message}`;

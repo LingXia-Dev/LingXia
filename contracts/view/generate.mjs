@@ -777,7 +777,7 @@ ${[...options('input-keyboard'), ...options('enter-key-hint'), ...options('auto-
   ...Object.entries(keys).map(([name, key]) => `    public static final String KEY_${constant(name)} = ${JSON.stringify(key)};`)].join('\n')}
 
     /** The core's editor limits; an input mirror holds itself to them. */
-${['editorTextBytes', 'inputRequestBytes', 'inputBatchEdits', 'clipboardItems'].map(name => `    public static final int LIMIT_${constant(name)} = ${schema.limits[name]};`).join('\n')}
+${['editorTextBytes', 'inputRequestBytes', 'inputBatchEdits', 'clipboardItems', 'pasteHtmlBytes', 'pasteRequestBytes'].map(name => `    public static final int LIMIT_${constant(name)} = ${schema.limits[name]};`).join('\n')}
 
     /** The Android autofill hint for an HTML autocomplete token, or null. */
     public static String autofillHint(String token) {
@@ -1044,7 +1044,7 @@ ${structs.join('\n\n')}
 
 /// The core's editor limits; an input mirror holds itself to them, since a rejected edit fails the session.
 public enum GpuFrameInputLimits {
-${['editorTextBytes', 'inputRequestBytes', 'inputBatchEdits', 'clipboardItems'].map(name => `    public static let ${name} = ${schema.limits[name]}`).join('\n')}
+${['editorTextBytes', 'inputRequestBytes', 'inputBatchEdits', 'clipboardItems', 'pasteHtmlBytes', 'pasteRequestBytes'].map(name => `    public static let ${name} = ${schema.limits[name]}`).join('\n')}
 }
 
 /// A JSON key named at run time, for request encoders.

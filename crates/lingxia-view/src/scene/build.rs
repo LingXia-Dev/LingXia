@@ -1925,6 +1925,11 @@ impl Renderer {
                             .iter()
                             .find(|(id, _)| *id == field::ON_SUBMIT)
                             .and_then(|(_, v)| v.as_u64()),
+                        on_paste: record
+                            .fields
+                            .iter()
+                            .find(|(id, _)| *id == field::ON_PASTE)
+                            .and_then(|(_, v)| v.as_u64()),
                         attributes: crate::scene::node::EditorAttributes {
                             max_length: record.number(field::MAX_LENGTH).map(|n| n as u32),
                             auto_complete: record.string(field::AUTO_COMPLETE).map(str::to_owned),

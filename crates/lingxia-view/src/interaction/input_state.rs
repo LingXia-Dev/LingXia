@@ -47,6 +47,10 @@ struct Entry {
     enter_key_hint: Option<String>,
     on_input: Option<u64>,
     on_submit: Option<u64>,
+    on_paste: Option<u64>,
+    /// A `<textarea>`: a paste keeps its line breaks.
+    multiline: bool,
+    secure: bool,
     scroll_offset: [f32; 2],
     rules: crate::interaction::input_rules::Rules,
 }
@@ -193,6 +197,9 @@ impl Inputs {
                         enter_key_hint: None,
                         on_input: None,
                         on_submit: None,
+                        on_paste: None,
+                        multiline: false,
+                        secure: false,
                         scroll_offset: [0.0; 2],
                         rules: Default::default(),
                     },
@@ -226,6 +233,13 @@ impl Inputs {
                 .iter()
                 .find(|(id, _)| *id == field::ON_SELECTION_CHANGE)
                 .and_then(|(_, v)| v.as_u64());
+            entry.on_paste = record
+                .fields
+                .iter()
+                .find(|(id, _)| *id == field::ON_PASTE)
+                .and_then(|(_, v)| v.as_u64());
+            entry.multiline = record.tag == tag::TEXTAREA;
+            entry.secure = record.number(field::SECURE) == Some(1.0);
             entry.editor.set_uncontrolled(controlled.is_none());
             if let Some(value) = controlled {
                 renderer.edit_text(&mut entry.editor, &[Edit::Value(value.into())])?;
@@ -573,6 +587,14 @@ impl Inputs {
             moved_to: None,
         }
     }
+    /// What a paste into editor `id` needs: its `onPaste` handle, whether it keeps line
+    /// breaks, whether it is secure, and the UTF-16 range the paste replaces.
+    pub(crate) fn paste_target(&self, id: &str) -> Option<(Option<u64>, bool, bool, [u32; 2])> {
+        let entry = self.entries.get(id)?;
+        let selection = ordered(entry.editor.snapshot().selection);
+        Some((entry.on_paste, entry.multiline, entry.secure, selection))
+    }
+
     pub fn handler(&self, id: &str, submit: bool) -> Option<u64> {
         self.entries
             .get(id)

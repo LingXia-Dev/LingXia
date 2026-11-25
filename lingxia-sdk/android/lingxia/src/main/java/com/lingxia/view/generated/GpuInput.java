@@ -39,6 +39,8 @@ public final class GpuInput {
     public static final int LIMIT_INPUT_REQUEST_BYTES = 524288;
     public static final int LIMIT_INPUT_BATCH_EDITS = 64;
     public static final int LIMIT_CLIPBOARD_ITEMS = 128;
+    public static final int LIMIT_PASTE_HTML_BYTES = 2097152;
+    public static final int LIMIT_PASTE_REQUEST_BYTES = 6291456;
 
     /** The Android autofill hint for an HTML autocomplete token, or null. */
     public static String autofillHint(String token) {

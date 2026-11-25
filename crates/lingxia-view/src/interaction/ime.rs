@@ -159,6 +159,7 @@ mod tests {
             enabled: true,
             on_input: None,
             on_submit: None,
+            on_paste: None,
             attributes,
             edit: None,
             edit_token: None,

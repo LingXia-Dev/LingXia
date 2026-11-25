@@ -324,6 +324,7 @@ pub mod field {
     pub const SELECTION_REQUEST: usize = 286;
     pub const ON_SELECTION_CHANGE: usize = 287;
     pub const ON_VISIBLE_CHANGE: usize = 288;
+    pub const ON_PASTE: usize = 289;
 }
 
 pub const TAGS: &[&str] = &["column", "reserved-1", "text", "button", "reserved-4", "scroll", "list", "image", "input", "textarea", "checkbox", "switch", "radio", "radio-option", "search", "slider", "link-box", "reserved-17", "plot", "vector", "page", "span", "link", "select", "video", "webview"];
@@ -619,6 +620,7 @@ pub const FIELDS: &[(&str, &str)] = &[
     ("selectionRequest", "selection-request"),
     ("onSelectionChange", "handle"),
     ("onVisibleChange", "handle"),
+    ("onPaste", "handle"),
 ];
 
 /// Enumerated values accepted for an option-valued field kind.
@@ -688,6 +690,8 @@ pub mod limits {
     pub const EVAL_OVERRUN_FRAMES: usize = 3;
     pub const EDITOR_TEXT_BYTES: usize = 65536;
     pub const INPUT_REQUEST_BYTES: usize = 524288;
+    pub const PASTE_HTML_BYTES: usize = 2097152;
+    pub const PASTE_REQUEST_BYTES: usize = 6291456;
     pub const INPUT_BATCH_EDITS: usize = 64;
     pub const CLIPBOARD_ITEMS: usize = 128;
     pub const WIRE_VALUES: usize = 100000;
@@ -1177,4 +1181,5 @@ pub const FIELD_ADMISSION: &[FieldAdmission] = &[
     FieldAdmission { tags: Some(&[tag::INPUT, tag::TEXTAREA, tag::SEARCH]), parent: None },
     FieldAdmission { tags: Some(&[tag::INPUT, tag::TEXTAREA, tag::SEARCH]), parent: None },
     FieldAdmission { tags: Some(&[tag::SCROLL, tag::LIST]), parent: None },
+    FieldAdmission { tags: Some(&[tag::INPUT, tag::TEXTAREA, tag::SEARCH]), parent: None },
 ];

@@ -193,6 +193,26 @@ function screen(host, view, resolved) {
     fire,
     press: node => fire(node, 'onClick'),
     type: (node, text) => fire(node, 'onInput', text),
+    /** A paste: `onPaste` hears it first; unless it called `preventDefault()`, the plain text goes in as `onInput`, as the host inserts it. */
+    paste(node, { text, html, plain = false, selection } = {}) {
+      if (typeof text !== 'string') throw Error('paste takes { text, html?, plain?, selection? }');
+      const value = node.props.inputValue ?? '';
+      const [start, end] = selection ? [selection.start, selection.end] : [value.length, value.length];
+      let prevented = false;
+      if (node.props.onPaste) {
+        const outcome = dispatch(host, node.props.onPaste, JSON.stringify({ text, ...(html !== undefined && !plain ? { html } : {}), selection: [start, end], plain, omitted: [] }), clock);
+        if (!outcome) throw Error(`${label(node)} refused onPaste`);
+        prevented = outcome === 'prevented';
+        bridge?.pump();
+        refresh();
+      }
+      if (!prevented) {
+        const inserted = node.tag === 'textarea' ? text.replace(/\r\n?/g, '\n') : text.replace(/\r\n|[\r\n]/g, ' ');
+        const target = again(node) ?? node;
+        if (target.props.onInput) fire(target, 'onInput', value.slice(0, start) + inserted + value.slice(end));
+      }
+      return { prevented };
+    },
     submit: (node, text = node.props.inputValue ?? '') => fire(node, 'onSubmit', text),
     toggle(node, checked) {
       const was = node.props.checked === 1;

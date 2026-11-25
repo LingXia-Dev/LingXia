@@ -767,6 +767,10 @@ function resolveElement(tag, original, children, identity, depth, parent) {
           onSelectionChange({ start, end, caret, rects });
         }, 'text');
       }
+      if (props.onPaste !== undefined) {
+        if (typeof props.onPaste !== 'function') throw Error('UI_INPUT: onPaste takes a function');
+        if (!disabled && props.readOnly !== true) on('onPaste', props.onPaste, 'paste');
+      }
       // The caret entered or left the editor.
       for (const name of ['onFocus', 'onBlur']) {
         if (props[name] === undefined) continue;

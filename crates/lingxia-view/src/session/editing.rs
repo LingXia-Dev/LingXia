@@ -396,6 +396,90 @@ impl ViewSession {
         Ok(Some(reply))
     }
 
+    /// A paste into an editor with `onPaste`: the page hears it first, and the plain text is
+    /// inserted unless its handler called `preventDefault()`.
+    pub fn paste_input(
+        &mut self,
+        token: u64,
+        identity: &str,
+        text: String,
+        html: Option<String>,
+        plain: bool,
+    ) -> Result<Option<crate::InputReply>, String> {
+        use crate::text::input::Edit;
+        self.check_input_active()?;
+        if !self.inputs.valid(identity, token) || self.read_only(identity) {
+            return Ok(None);
+        }
+        if text.len() > crate::text::input::MAX_TEXT_BYTES {
+            return Err("UI_INPUT: paste exceeds the editor's text limit".into());
+        }
+        let Some((handle, multiline, secure, [start, end])) = self.inputs.paste_target(identity)
+        else {
+            return Ok(None);
+        };
+        let mut handled = false;
+        if let Some(handle) = handle.filter(|_| self.presented_commit(self.generation)) {
+            let mut omitted = Vec::new();
+            let html = html.filter(|_| !plain && !secure).filter(|html| {
+                let fits = html.len() <= crate::protocol::limits::PASTE_HTML_BYTES;
+                if !fits {
+                    omitted.push("html");
+                }
+                fits
+            });
+            let payload = serde_json::json!({
+                "text": text,
+                "html": html,
+                "selection": [start, end],
+                "plain": plain,
+                "omitted": omitted,
+            })
+            .to_string();
+            let encoded = serde_json::to_string(&payload).map_err(|e| e.to_string())?;
+            let time = self.event_time();
+            let outcome: i32 = self.execute(|| {
+                self.context
+                    .eval(Source::from_bytes(
+                        format!(
+                            "(r => r === 'prevented' ? 2 : r ? 1 : 0)(__lingxiaDispatch({handle},{encoded},{time}))"
+                        )
+                        .as_bytes(),
+                    ))
+                    .map_err(|e| crate::engine::js_error(&self.context, e))
+            })?;
+            if outcome == 2 {
+                let mut reply = self.edit_input(token, identity, &[], false)?;
+                if let Some(reply) = &mut reply {
+                    reply.needs_view_render = true;
+                }
+                self.input_rebuild = true;
+                return Ok(reply);
+            }
+            handled = outcome == 1;
+        }
+        // A single-line editor takes line breaks as spaces, as typing cannot enter them.
+        let text = if multiline {
+            text.replace("\r\n", "\n").replace('\r', "\n")
+        } else {
+            text.replace("\r\n", " ").replace(['\n', '\r'], " ")
+        };
+        let edits = [
+            Edit::FinishComposition,
+            Edit::Replace {
+                text,
+                cursor: 1,
+                composing: false,
+            },
+        ];
+        let mut reply = self.edit_input(token, identity, &edits, false)?;
+        if handled && let Some(reply) = &mut reply {
+            reply.needs_view_render = true;
+            self.input_rebuild = true;
+        }
+        Ok(reply)
+    }
+
     pub fn blur_input(&mut self, token: u64, identity: &str) -> Result<bool, String> {
         self.check_input_active()?;
         if !self.inputs.valid(identity, token) {
