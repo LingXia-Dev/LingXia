@@ -28,6 +28,13 @@ Wire ABI: 1. Highest field id: 282.
 
 ## Dev-session globals
 
-An isolate created while a `lingxia dev` session is attached also has `__lingxiaClock()`: microseconds
-since the process started, as a number, for timing View code on a device. It exists only there; a
-page must not depend on it, and production isolates are created without it.
+An isolate created while a `lingxia dev` session is attached also has these globals. They exist only
+there; a page must not depend on them, and production isolates are created without them.
+
+- `__lingxiaClock()`: microseconds, as a number, since the first dev-session isolate of the process
+  was created, for timing View code on a device.
+- `__lingxiaClock.phases = true` opts the page into eval-phase totals: the runtime times its render
+  phases with the clock and reports them in the frame metrics (`viewPhases`). Off, a span costs one
+  property read.
+- `__lingxiaWarn(message)`: the runtime's dev diagnostics (`UI_COMPAT`, `UI_INPUT`, style clamps). The
+  host logs them with the frame's budget warnings; at most 32 wait between collections.
