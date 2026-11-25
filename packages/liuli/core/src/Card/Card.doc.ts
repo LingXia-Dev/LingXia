@@ -23,8 +23,8 @@ export const doc: ComponentDoc = {
     name: 'label',
     description: ['description (ClickableCard)'],
     states: [
-      { state: 'selected', from: 'isSelected (ClickableCard)' },
-      { state: 'checked', from: 'the group\'s value or bind (ClickableCard in a ClickableCardGroup)' },
+      { state: 'pressed', from: 'isSelected (ClickableCard alone), or the group\'s value or bind with selectionMode multiple' },
+      { state: 'checked', from: 'the group\'s value or bind (ClickableCard in a single-choice ClickableCardGroup)' },
       { state: 'disabled', from: 'isDisabled (ClickableCard)' },
     ],
     keyboard: [
@@ -32,19 +32,21 @@ export const doc: ComponentDoc = {
     ],
     contrast: [
       { what: 'selected border', pair: ['accent', 'surface'], minimum: '3:1' },
+      { what: 'check, on', pair: ['accent-solid', 'surface'], minimum: '3:1' },
+      { what: 'check ring, off', pair: ['line-strong', 'surface'], minimum: '3:1' },
     ],
     notes: [
       'Card is not a control; its content is read in order. The button pattern applies to ClickableCard.',
       'ClickableCard is read as its `label` only, so the label summarises what the card shows.',
       'Selection is a thicker accent border as well as a colour, so it does not rest on colour alone.',
-      'In a ClickableCardGroup each card is a radio: checked, not selected, and the group takes one Tab stop.',
+      'In a ClickableCardGroup each card is a radio: checked, and the group takes one Tab stop. With `selectionMode="multiple"` the group is a group, each card is read as pressed and is its own Tab stop, and a check in its corner shows it.',
     ],
   },
   guidance: {
     do: [
       'Use a plain Card with Buttons inside when a card has actions.',
       'Give a ClickableCard a label that a listener can choose by: "Yearly, 40 a year".',
-      'Put cards that choose one value in a ClickableCardGroup, not side by side with isSelected.',
+      'Put cards that choose values in a ClickableCardGroup, not side by side with isSelected; `selectionMode="multiple"` for any number.',
       'Keep the card variant the same for cards that sit side by side.',
     ],
     dont: [
@@ -58,6 +60,7 @@ export const doc: ComponentDoc = {
     { name: 'Floating', title: 'Floating over a map' },
     { name: 'WithActions', title: 'A card with actions' },
     { name: 'Choice', title: 'Choosing one card of several' },
+    { name: 'Several', title: 'Choosing any number of cards' },
     { name: 'ToPage', title: 'A card that goes to a page' },
   ],
   gaps: [
@@ -87,7 +90,10 @@ export const doc: ComponentDoc = {
         { name: 'StateSelected', title: 'Selected' },
         { name: 'StateDisabled', title: 'Disabled' },
       ],
-      inContext: [{ name: 'Choice', title: 'Choosing a plan' }],
+      inContext: [
+        { name: 'Choice', title: 'Choosing a plan' },
+        { name: 'Several', title: 'Choosing topics to follow' },
+      ],
     },
   },
 };

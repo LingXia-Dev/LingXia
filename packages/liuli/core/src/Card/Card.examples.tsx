@@ -68,6 +68,30 @@ export function Choice() {
   );
 }
 
+const topics = [
+  { id: 'design', name: 'Design', detail: 'Type, colour, layout' },
+  { id: 'code', name: 'Code', detail: 'Reviews and releases' },
+  { id: 'research', name: 'Research', detail: 'Papers and notes' },
+] as const;
+
+/** Choosing any number: each card turns on and off on its own, with a check in its corner. */
+export function Several() {
+  const chosen = useLocal<readonly string[]>('topics', ['design']);
+  return (
+    <view className="gap-3">
+      <ClickableCardGroup label="Topics" selectionMode="multiple" bind={chosen} data-testid="topics">
+        {topics.map(item => (
+          <ClickableCard key={item.id} value={item.id} label={item.name} description={item.detail} padding="sm" data-testid={`topic-${item.id}`}>
+            <text className="text-callout font-semibold text-text">{item.name}</text>
+            <text className="text-footnote text-muted">{item.detail}</text>
+          </ClickableCard>
+        ))}
+      </ClickableCardGroup>
+      <text className="text-footnote text-muted" data-testid="topics-count">{chosen.value.length === 1 ? '1 topic' : `${chosen.value.length} topics`}</text>
+    </view>
+  );
+}
+
 /** The home tile. */
 export function Specimen() {
   return (

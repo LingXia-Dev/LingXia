@@ -1,5 +1,6 @@
 import { createContext, cx, useContext, useId, type Child, type Local } from '@lingxia/view';
 import { cardRecipe as r } from './Card.recipe';
+import { Glyph } from '../internal/Glyph';
 import { dataOf } from '../internal/data';
 import type { Press } from '../internal/press';
 
@@ -26,7 +27,8 @@ export function Card({ children, variant = 'outlined', padding = 'md', className
 }
 
 interface GroupState {
-  chosen: string | null;
+  isMultiple: boolean;
+  isOn: (value: string) => boolean;
   isDisabled: boolean;
   choose: (value: string) => void;
 }
@@ -43,7 +45,7 @@ export type ClickableCardProps = CardProps & {
 } & (
     | (Press<{
         onClick: () => void;
-        /** Marks the card as the chosen one among several; reported as selected. @default false */
+        /** Marks the card as chosen; reported as pressed, so a press turns it on and off. @default false */
         isSelected?: boolean;
       }> & { value?: never })
     | {
@@ -72,10 +74,11 @@ export function ClickableCard({
   'data-testid': testId, ...attributes
 }: ClickableCardProps) {
   const group = useContext(Group);
-  const asRadio = group !== null && value !== undefined;
-  const isChosen = asRadio ? group.chosen === value : isSelected;
+  const inGroup = group !== null && value !== undefined;
+  const asRadio = inGroup && !group.isMultiple;
+  const isChosen = inGroup ? group.isOn(value) : isSelected;
   const descriptionId = `${useId()}-description`;
-  const classes = cx(r.root.base, r.root.variant[variant], r.root.padding[padding], r.root.pressable, isChosen && r.root.selected, className);
+  const classes = cx(r.root.base, r.root.variant[variant], r.root.padding[padding], r.root.pressable, isChosen && r.root.selected, inGroup && group.isMultiple && r.root.checkRoom, className);
   if (to !== undefined) {
     return <link to={to} aria-label={label} aria-describedby={description !== undefined ? descriptionId : undefined} disabled={isDisabled} data-testid={testId} {...dataOf(attributes)} className={classes}>{children}{description !== undefined && <text id={descriptionId} aria-hidden className={r.description.base}>{description}</text>}</link>;
   }
@@ -83,12 +86,12 @@ export function ClickableCard({
     <button
       role={asRadio ? 'radio' : undefined}
       aria-checked={asRadio ? isChosen : undefined}
-      aria-selected={!asRadio && isChosen ? true : undefined}
+      aria-pressed={asRadio ? undefined : isChosen}
       aria-label={label}
       aria-describedby={description !== undefined ? descriptionId : undefined}
-      disabled={isDisabled || (asRadio && group.isDisabled)}
+      disabled={isDisabled || (inGroup && group.isDisabled)}
       onClick={() => {
-        if (asRadio) group.choose(value);
+        if (inGroup) group.choose(value);
         onClick?.();
       }}
       data-testid={testId} {...dataOf(attributes)}
@@ -96,23 +99,47 @@ export function ClickableCard({
     >
       {children}
       {description !== undefined && <text id={descriptionId} aria-hidden className={r.description.base}>{description}</text>}
+      {/* Several may be chosen: a check in the corner says so, and shows each one's state beside the border. */}
+      {inGroup && group.isMultiple && (
+        <view aria-hidden className={cx(r.check.base, isChosen ? r.check.on : r.check.off)}>
+          {isChosen && <Glyph name="check" side={14} className={r.checkGlyph.base} />}
+        </view>
+      )}
     </button>
   );
 }
 
 export type ClickableCardGroupBinding =
   | {
+      /** One card at a time, read as a radio group. @default 'single' */
+      selectionMode?: 'single';
       /** A View-local cell the group reads and writes; use it or `value` with `onChange`. */
       bind: Local<string | null>;
       value?: never;
       onChange?: never;
     }
   | {
+      selectionMode?: 'single';
       bind?: never;
       /** The chosen card's value; `null` while none is chosen. */
       value: string | null;
       /** Runs with the card chosen by a tap or by arrowing onto it. */
       onChange: (value: string) => void;
+    }
+  | {
+      /** Any number of cards, each read as pressed and marked with a check. */
+      selectionMode: 'multiple';
+      bind: Local<readonly string[]>;
+      value?: never;
+      onChange?: never;
+    }
+  | {
+      selectionMode: 'multiple';
+      bind?: never;
+      /** The chosen cards' values. */
+      value: readonly string[];
+      /** Runs with the chosen values after a press, in the cards' order of choosing. */
+      onChange: (value: readonly string[]) => void;
     };
 
 export type ClickableCardGroupProps = ClickableCardGroupBinding & {
@@ -128,20 +155,26 @@ export type ClickableCardGroupProps = ClickableCardGroupBinding & {
 };
 
 /**
- * ClickableCards that choose one value, reported as a radio group: one Tab stop, and the arrows move
- * between cards and choose on arrival.
+ * ClickableCards that choose a value. One at a time is a radio group: one Tab stop, and the arrows
+ * move between cards and choose on arrival. With `selectionMode="multiple"` each card turns on and
+ * off on its own, read as pressed, with a check in its corner.
  */
 export function ClickableCardGroup(props: ClickableCardGroupProps) {
   const { label, children, isDisabled = false, className, 'data-testid': testId } = props;
-  const chosen = props.bind ? props.bind.value : props.value;
-  const choose = (next: string) => {
-    if (next === chosen) return;
-    if (props.bind) props.bind.set(next);
-    else props.onChange(next);
-  };
+  const state: GroupState = props.selectionMode === 'multiple'
+    ? (() => {
+        const on = props.bind ? props.bind.value : props.value;
+        const set = (next: readonly string[]) => (props.bind ? props.bind.set(next) : props.onChange(next));
+        return { isMultiple: true, isDisabled, isOn: value => on.includes(value), choose: value => set(on.includes(value) ? on.filter(each => each !== value) : [...on, value]) };
+      })()
+    : (() => {
+        const chosen = props.bind ? props.bind.value : props.value;
+        const set = (next: string) => (props.bind ? props.bind.set(next) : props.onChange(next));
+        return { isMultiple: false, isDisabled, isOn: value => chosen === value, choose: value => { if (value !== chosen) set(value); } };
+      })();
   return (
-    <Group.Provider value={{ chosen, isDisabled, choose }}>
-      <view role="radiogroup" aria-label={label} data-testid={testId} {...dataOf(props)} className={cx(r.group.base, className)}>
+    <Group.Provider value={state}>
+      <view role={state.isMultiple ? 'group' : 'radiogroup'} aria-label={label} data-testid={testId} {...dataOf(props)} className={cx(r.group.base, className)}>
         {children}
       </view>
     </Group.Provider>

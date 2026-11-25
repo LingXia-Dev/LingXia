@@ -115,6 +115,37 @@ export function Choice() {
 }
 ```
 
+### Choosing any number of cards
+
+```tsx
+import { useLocal } from '@lingxia/view';
+import { ClickableCard, ClickableCardGroup } from '@liulidesign/core/Card';
+
+const topics = [
+  { id: 'design', name: 'Design', detail: 'Type, colour, layout' },
+  { id: 'code', name: 'Code', detail: 'Reviews and releases' },
+  { id: 'research', name: 'Research', detail: 'Papers and notes' },
+] as const;
+
+/** Choosing any number: each card turns on and off on its own, with a check in its corner. */
+export function Several() {
+  const chosen = useLocal<readonly string[]>('topics', ['design']);
+  return (
+    <view className="gap-3">
+      <ClickableCardGroup label="Topics" selectionMode="multiple" bind={chosen} data-testid="topics">
+        {topics.map(item => (
+          <ClickableCard key={item.id} value={item.id} label={item.name} description={item.detail} padding="sm" data-testid={`topic-${item.id}`}>
+            <text className="text-callout font-semibold text-text">{item.name}</text>
+            <text className="text-footnote text-muted">{item.detail}</text>
+          </ClickableCard>
+        ))}
+      </ClickableCardGroup>
+      <text className="text-footnote text-muted" data-testid="topics-count">{chosen.value.length === 1 ? '1 topic' : `${chosen.value.length} topics`}</text>
+    </view>
+  );
+}
+```
+
 ### A card that goes to a page
 
 ```tsx
@@ -162,7 +193,7 @@ export function ToPage() {
 | `description` | `string` |  | Read after the name, not drawn: the detail the card shows that the name leaves out, such as a price or a count. |
 | `isDisabled` | `boolean` | `false` |  |
 | `onClick` | `(() => void) \| (() => void)` |  | Runs after the group's choice. |
-| `isSelected` | `boolean` | `false` | Marks the card as the chosen one among several; reported as selected. |
+| `isSelected` | `boolean` | `false` | Marks the card as chosen; reported as pressed, so a press turns it on and off. |
 | `to` | `LinkTarget` |  | Makes it a link that goes there on press: `{ page, params }`, `{ tab }`, `{ back: 1 }`. Read as a link; Enter opens it and Space does not. |
 | `value` | `string` |  | Inside a `ClickableCardGroup`: what the group's value carries when this card is chosen. |
 
@@ -170,9 +201,10 @@ export function ToPage() {
 
 | Prop | Type | Default | Description |
 | --- | --- | --- | --- |
-| `bind` | `Local<string \| null>` |  | A View-local cell the group reads and writes; use it or `value` with `onChange`. |
-| `value` | `string \| null` |  | The chosen card's value; `null` while none is chosen. |
-| `onChange` | `((value: string) => void)` |  | Runs with the card chosen by a tap or by arrowing onto it. |
+| `selectionMode` | `"multiple" \| "single"` | `'single'` | One card at a time, read as a radio group. Any number of cards, each read as pressed and marked with a check. |
+| `bind` | `Local<string \| null> \| Local<readonly string[]>` |  | A View-local cell the group reads and writes; use it or `value` with `onChange`. |
+| `value` | `string \| readonly string[] \| null` |  | The chosen card's value; `null` while none is chosen. The chosen cards' values. |
+| `onChange` | `((value: string) => void) \| ((value: readonly string[]) => void)` |  | Runs with the card chosen by a tap or by arrowing onto it. Runs with the chosen values after a press, in the cards' order of choosing. |
 | `label` (required) | `string` |  | Names the group for assistive input. |
 | `children` (required) | `Child` |  | ClickableCards, each with a `value`. |
 | `isDisabled` | `boolean` | `false` |  |
@@ -193,23 +225,25 @@ export function ToPage() {
 - `className` on ClickableCardGroup: Lays the cards out: a row or a column, and the gap.
 - The recipe, `cardRecipe` from `@liulidesign/core/Card/recipe`: the classes of each part, to style an element of your own to match. The component does not read a changed copy.
 - Scale tokens it reads, set in the app's stylesheet under `@theme`: `--shadow-contact`, `--shadow-raised`, `--radius-container`.
-- Colour roles it paints with, set by the theme pack: `accent`, `focus`, `line`, `line-strong`, `surface`, `surface-raised`, `surface-sunken`, `text`.
+- Colour roles it paints with, set by the theme pack: `accent`, `accent-solid`, `focus`, `line`, `line-strong`, `on-accent-solid`, `surface`, `surface-raised`, `surface-sunken`, `text`.
 
 ## Accessibility
 
 - Pattern: button.
 - Name: label.
 - Description: description (ClickableCard).
-- States: selected (from isSelected (ClickableCard)); checked (from the group's value or bind (ClickableCard in a ClickableCardGroup)); disabled (from isDisabled (ClickableCard)).
+- States: pressed (from isSelected (ClickableCard alone), or the group's value or bind with selectionMode multiple); checked (from the group's value or bind (ClickableCard in a single-choice ClickableCardGroup)); disabled (from isDisabled (ClickableCard)).
 - Up / Left, Down / Right: In a ClickableCardGroup: the previous or next card, chosen on arrival..
 - Card is not a control; its content is read in order. The button pattern applies to ClickableCard.
 - ClickableCard is read as its `label` only, so the label summarises what the card shows.
 - Selection is a thicker accent border as well as a colour, so it does not rest on colour alone.
-- In a ClickableCardGroup each card is a radio: checked, not selected, and the group takes one Tab stop.
+- In a ClickableCardGroup each card is a radio: checked, and the group takes one Tab stop. With `selectionMode="multiple"` the group is a group, each card is read as pressed and is its own Tab stop, and a check in its corner shows it.
 
 | Contrast | Pair | Minimum | Light | Dark |
 | --- | --- | --- | --- | --- |
 | selected border | `accent` on `surface` | 3:1 | 5.62:1 | 6.19:1 |
+| check, on | `accent-solid` on `surface` | 3:1 | 5.62:1 | 3.50:1 |
+| check ring, off | `line-strong` on `surface` | 3:1 | 3.47:1 | 3.53:1 |
 
 Ratios are computed from @lingxia/view/theme and rounded down.
 
@@ -217,7 +251,7 @@ Ratios are computed from @lingxia/view/theme and rounded down.
 
 - Do: Use a plain Card with Buttons inside when a card has actions.
 - Do: Give a ClickableCard a label that a listener can choose by: "Yearly, 40 a year".
-- Do: Put cards that choose one value in a ClickableCardGroup, not side by side with isSelected.
+- Do: Put cards that choose values in a ClickableCardGroup, not side by side with isSelected; `selectionMode="multiple"` for any number.
 - Do: Keep the card variant the same for cards that sit side by side.
 - Don't: Put a Button, a menu or an input inside a ClickableCard; the View refuses a control inside a button.
 - Don't: Nest a raised card inside another raised card.

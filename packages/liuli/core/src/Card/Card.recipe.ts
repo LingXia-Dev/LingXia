@@ -1,6 +1,6 @@
 import type { CardPadding, CardVariant } from './Card';
 
-export const cardParts = { root: 'view', description: 'text', group: 'view' } as const;
+export const cardParts = { root: 'view', description: 'text', group: 'view', check: 'view', checkGlyph: 'vector' } as const;
 
 /** Card classes. ClickableCard lands the same root classes on a `button`, plus `pressable`. */
 export const cardRecipe = {
@@ -23,6 +23,8 @@ export const cardRecipe = {
     pressable: 'items-stretch transition-colors duration-fast ease-standard hover:border-line-strong active:inset-ring-[999px] active:inset-ring-text/7 disabled:opacity-40 focus-visible:ring-2 focus-visible:ring-focus focus-visible:ring-offset-2',
     /** A wider accent border; it swaps colour and width, never the card's size. */
     selected: 'border-accent ring-1 ring-accent',
+    /** With a corner check, the content keeps clear of it: its 12 pt inset, its 20 pt and an 8 pt gap. */
+    checkRoom: 'pe-10',
   },
   /** ClickableCardGroup's radio group; the caller's className lays the cards out. */
   /** ClickableCard's `description`: read after the name, never drawn; the card's content shows it. */
@@ -31,5 +33,14 @@ export const cardRecipe = {
   },
   group: {
     base: 'gap-3',
+  },
+  /** With several chosen, a round check at the card's top end: filled and ticked when on, an empty ring when off. */
+  check: {
+    base: 'absolute top-3 end-3 size-5 rounded-full border items-center justify-center',
+    on: 'bg-accent-solid border-accent-solid',
+    off: 'bg-surface border-line-strong',
+  },
+  checkGlyph: {
+    base: 'size-3.5 text-on-accent-solid',
   },
 } as const;

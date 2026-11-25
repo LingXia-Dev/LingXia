@@ -1,5 +1,5 @@
 // Generated from the doc file by scripts/generate.mjs; do not edit.
-import { WithActions, Variants, Floating, ToPage, StateUnselected, StateSelected, StateDisabled, Choice } from '../../core/src/Card/Card.examples';
+import { WithActions, Variants, Floating, ToPage, StateUnselected, StateSelected, StateDisabled, Choice, Several } from '../../core/src/Card/Card.examples';
 import { Lead, PageSection, Stage, StageGrid } from '../shared/Layout';
 
 export function Content() {
@@ -35,6 +35,9 @@ export function Content() {
       <PageSection title={"In context"}>
         <Stage caption={"Choosing a plan"} bare>
           <Choice />
+        </Stage>
+        <Stage caption={"Choosing topics to follow"} bare>
+          <Several />
         </Stage>
       </PageSection>
     </>

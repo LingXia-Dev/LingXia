@@ -1,5 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { textOf } from '@lingxia/view/testing';
 import { described, renderExample, renderPage } from '../testing/harness.mjs';
 
 test('Variants: a plain view with the container radius, not a control', async () => {
@@ -36,10 +37,11 @@ test('Choice: the cards are a radio group named by its label; pressing one check
   assert.equal(card('yearly').props.borderColor, 'accent');
 });
 
-test('ClickableCard: alone, a chosen card is reported as selected, not checked', async () => {
+test('ClickableCard: alone, a chosen card is reported as pressed, not selected or checked', async () => {
   const screen = await renderExample('Card/Card', 'StateSelected');
   const [card] = screen.queryAll(node => node.tag === 'button');
-  assert.equal(card.props.stateSelected, 1);
+  assert.equal(card.props.statePressed, 1);
+  assert.equal(card.props.stateSelected, undefined);
   assert.equal(card.props.role, undefined);
   assert.equal(card.props.stateChecked, undefined);
 });
@@ -83,4 +85,21 @@ test('Choice: a card is named by its plan and described by its price', async () 
   assert.equal(described(screen, card).length, 1);
   assert.notEqual(described(screen, card)[0], '');
   assert.ok(!card.props.accessibilityLabel.includes(described(screen, card)[0]), 'the price is the description, not part of the name');
+});
+
+test('Several: a group of pressed cards, each on and off on its own, with a check that follows', async () => {
+  const screen = await renderExample('Card/Card', 'Several');
+  assert.equal(screen.getByTestId('topics').props.role, 'group');
+  const card = id => screen.getByTestId(`topic-${id}`);
+  const checked = id => JSON.stringify(card(id).children).includes('"vector"');
+  assert.deepEqual(['design', 'code', 'research'].map(id => card(id).props.statePressed), [1, 0, 0]);
+  assert.deepEqual([card('design').props.role, card('design').props.stateChecked], [undefined, undefined]);
+  assert.deepEqual([checked('design'), checked('code')], [true, false]);
+  screen.press(card('code'));
+  screen.press(card('research'));
+  screen.press(card('design'));
+  assert.deepEqual(['design', 'code', 'research'].map(id => card(id).props.statePressed), [0, 1, 1]);
+  assert.equal(textOf(screen.getByTestId('topics-count')), '2 topics');
+  assert.equal(card('code').props.accessibilityLabel, 'Code');
+  assert.equal(card('code').props.paddingInlineEnd, 40, 'content keeps 8 pt clear of the check');
 });
