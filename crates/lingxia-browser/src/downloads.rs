@@ -9,22 +9,25 @@ use crate::tabs::{
 };
 use lingxia_platform::traits::app_runtime::AppRuntime;
 use lingxia_transfer as transfer;
+use lingxia_transfer::network::BrowserNetwork;
 use lingxia_webview::DownloadRequest;
 use lxapp::{LxApp, LxAppError, publish_app_event};
 use std::path::PathBuf;
 use std::sync::Arc;
 use uuid::Uuid;
 
-#[derive(Clone, Debug, PartialEq, Eq)]
-enum DownloadNetwork {
-    Runtime,
-    Blocked,
-    Explicit(Option<String>),
-}
-fn download_network() -> &'static std::sync::Mutex<DownloadNetwork> {
-    static NETWORK: std::sync::OnceLock<std::sync::Mutex<DownloadNetwork>> =
+fn download_network() -> &'static std::sync::Mutex<BrowserNetwork> {
+    static NETWORK: std::sync::OnceLock<std::sync::Mutex<BrowserNetwork>> =
         std::sync::OnceLock::new();
-    NETWORK.get_or_init(|| std::sync::Mutex::new(DownloadNetwork::Runtime))
+    NETWORK.get_or_init(|| std::sync::Mutex::new(BrowserNetwork::Runtime))
+}
+
+/// The browser's current network decision, for anything else it fetches for its pages.
+pub(crate) fn network() -> BrowserNetwork {
+    download_network()
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .clone()
 }
 fn active_browser_downloads() -> &'static std::sync::Mutex<std::collections::HashSet<String>> {
     static ACTIVE: std::sync::OnceLock<std::sync::Mutex<std::collections::HashSet<String>>> =
@@ -38,7 +41,7 @@ fn unregister_browser_download(id: &str) {
         .remove(id);
     transfer::runtime::unregister_active_download(id);
 }
-fn set_download_network(next: DownloadNetwork) {
+fn set_download_network(next: BrowserNetwork) {
     let mut current = download_network().lock().unwrap_or_else(|e| e.into_inner());
     if *current == next {
         return;
@@ -57,26 +60,26 @@ fn set_download_network(next: DownloadNetwork) {
     *current = next;
 }
 pub(crate) fn require_proxy() {
-    set_download_network(DownloadNetwork::Blocked);
+    set_download_network(BrowserNetwork::Blocked);
 }
 pub(crate) fn configure_proxy(proxy: Option<String>) {
-    set_download_network(DownloadNetwork::Explicit(proxy));
+    set_download_network(BrowserNetwork::Explicit(proxy));
 }
 fn task_network(
     task: transfer::runtime::DownloadTask,
     id: &str,
 ) -> transfer::Result<transfer::runtime::DownloadTask> {
     let network = download_network().lock().unwrap_or_else(|e| e.into_inner());
-    if !matches!(*network, DownloadNetwork::Blocked) {
+    if !matches!(*network, BrowserNetwork::Blocked) {
         active_browser_downloads()
             .lock()
             .unwrap_or_else(|e| e.into_inner())
             .insert(id.into());
     }
     match network.clone() {
-        DownloadNetwork::Runtime => Ok(task),
-        DownloadNetwork::Explicit(proxy) => Ok(task.with_http_proxy(proxy)),
-        DownloadNetwork::Blocked => Err(transfer::DownloadsError::UnsupportedOperation(
+        BrowserNetwork::Runtime => Ok(task),
+        BrowserNetwork::Explicit(proxy) => Ok(task.with_http_proxy(proxy)),
+        BrowserNetwork::Blocked => Err(transfer::DownloadsError::UnsupportedOperation(
             "browser proxy is disconnected; reconnect before downloading".into(),
         )),
     }

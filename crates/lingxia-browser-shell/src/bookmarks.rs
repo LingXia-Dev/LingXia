@@ -434,7 +434,8 @@ pub fn snapshot() -> Option<BookmarksSnapshot> {
 }
 
 /// Absolute path to Rust's cached favicon for `url`. A missing or stale cache
-/// entry is refreshed asynchronously; native chrome is notified when ready.
+/// entry is refreshed asynchronously over the browser's network, as its downloads are;
+/// native chrome is notified when ready.
 pub fn favicon_path(url: &str) -> Option<String> {
     let runtime = lxapp::get_platform()?;
     let notify = Arc::new(|| {
@@ -442,8 +443,13 @@ pub fn favicon_path(url: &str) -> Option<String> {
             listener();
         }
     });
-    lingxia_service::favicon::cached_or_request(&runtime.app_cache_dir(), url, notify)
-        .map(|path| path.to_string_lossy().into_owned())
+    lingxia_service::favicon::cached_or_request(
+        &runtime.app_cache_dir(),
+        url,
+        lingxia_browser::network(),
+        notify,
+    )
+    .map(|path| path.to_string_lossy().into_owned())
 }
 
 /// Store favicon bytes the platform webview already resolved (page-declared

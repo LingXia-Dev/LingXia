@@ -99,6 +99,11 @@ pub fn require_proxy_for_downloads() {
     downloads::require_proxy();
 }
 
+/// The network decision downloads follow; other fetches for the browser's pages follow it too.
+pub fn network() -> lingxia_transfer::network::BrowserNetwork {
+    downloads::network()
+}
+
 /// Apply the host browser network policy to downloads; None is explicit direct.
 pub fn configure_download_proxy(proxy: Option<String>) {
     downloads::configure_proxy(proxy);
