@@ -680,6 +680,7 @@ impl ViewSession {
                         .as_ref()
                         .zip(self.paint_records.as_deref())
                         .and_then(|(retained, previous)| retained.rebind(previous, &render_records))
+                        .map(|retained| retained.with_editor_parts(&self.renderer.editor_parts))
                 } else {
                     None
                 };
@@ -855,6 +856,9 @@ impl ViewSession {
                 }
                 let old_focus = inputs.focused().map(str::to_owned);
                 inputs.decorate(&mut display, &mut self.renderer)?;
+                if self.adopt_editor_parts(&display) {
+                    continue;
+                }
                 if old_focus.as_deref() != inputs.focused()
                     && records.iter().any(|r| {
                         r.string(field::FOCUS_STYLE).is_some()
@@ -1036,6 +1040,22 @@ impl ViewSession {
     }
 
     /// The full render call for a frame of `width` x `height` device pixels.
+    /// Adopts the decorated editors' caret and selection boxes; true when a popover anchored to
+    /// one of them must be placed again.
+    fn adopt_editor_parts(&mut self, display: &crate::DisplayList) -> bool {
+        let parts = display.editor_parts();
+        if parts == self.renderer.editor_parts {
+            return false;
+        }
+        self.renderer.editor_parts = parts;
+        display
+            .retained
+            .anchors
+            .iter()
+            .flatten()
+            .any(|a| a.part.is_some())
+    }
+
     fn render_invoke(
         &mut self,
         width: u16,

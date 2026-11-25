@@ -93,9 +93,10 @@ pub(crate) struct RetainedLayout {
     /// Static rotation and scale; translation is already in the geometry.
     pub(crate) transforms: Vec<Option<crate::scene::transform::StaticTransform>>,
     pub(crate) stickies: Vec<Option<crate::scene::sticky::Sticky>>,
-    /// The node a popover sits against, by identity, and the popover's margin (top, right,
-    /// bottom, left); composition places it below or above.
-    pub(crate) anchors: Vec<Option<(String, crate::scene::anchor::Area, [f32; 4])>>,
+    /// What each popover sits against; composition places it below or above.
+    pub(crate) anchors: Vec<Option<crate::scene::anchor::Anchoring>>,
+    /// The renderer's `editor_parts` this layout places part-anchored popovers by.
+    pub(crate) editor_parts: HashMap<String, [[f32; 4]; 2]>,
     /// Insets at `anchor(center)`, resolved once their popover is placed.
     pub(crate) anchor_insets: Vec<Option<crate::scene::anchor::AnchorInset>>,
     /// The surface less the bars and keyboard over it: an anchored popover stays inside.
@@ -115,6 +116,19 @@ pub(crate) struct RetainedLayout {
 }
 
 impl RetainedLayout {
+    /// This layout placing part-anchored popovers by `parts`.
+    pub(crate) fn with_editor_parts(
+        self: Arc<Self>,
+        parts: &HashMap<String, [[f32; 4]; 2]>,
+    ) -> Arc<Self> {
+        if self.editor_parts == *parts {
+            return self;
+        }
+        let mut next = Arc::unwrap_or_clone(self);
+        next.editor_parts = parts.clone();
+        Arc::new(next)
+    }
+
     pub(crate) fn rebind(
         self: &Arc<Self>,
         before: &[Record],
@@ -616,7 +630,12 @@ impl RetainedLayout {
                 let [dx, dy] = sticky.shift(natural, viewport, container);
                 translation = [translation[0] - dx, translation[1] - dy];
             }
-            if let Some((anchor, area, margin)) = &self.anchors[index]
+            if let Some(crate::scene::anchor::Anchoring {
+                target: anchor,
+                area,
+                margin,
+                part,
+            }) = &self.anchors[index]
                 && let Some(target) = self.nodes.iter().position(|node| &node.identity == anchor)
             {
                 // The target is composed already: it precedes the popover in paint order.
@@ -628,7 +647,14 @@ impl RetainedLayout {
                     .unwrap_or_default();
                 natural[0] -= translation[0] + tx;
                 natural[1] -= translation[1] + ty;
-                let target_box = anchor_box(&nodes, target);
+                // An editor's caret or selection, where it shows; else the editor itself.
+                let target_box = part
+                    .and_then(|part| {
+                        let local = self.editor_parts.get(anchor)?[part as usize];
+                        let at = nodes[target].bounds;
+                        Some([at[0] + local[0], at[1] + local[1], local[2], local[3]])
+                    })
+                    .unwrap_or_else(|| anchor_box(&nodes, target));
                 anchor_centres[index] = Some([
                     target_box[0] + target_box[2] / 2.0,
                     target_box[1] + target_box[3] / 2.0,

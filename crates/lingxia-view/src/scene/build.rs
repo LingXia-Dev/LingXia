@@ -357,6 +357,7 @@ impl Renderer {
                 (layout.size.height - layout.padding.top - layout.padding.bottom).max(0.0),
             ]);
             anchors.push(record.string(field::ANCHOR_TO).map(|target| {
+                let (target, part) = crate::scene::anchor::AnchorPart::split(target);
                 let area = record.string(field::ANCHOR_AREA);
                 let named = target.starts_with("--").then(|| {
                     records
@@ -365,11 +366,12 @@ impl Renderer {
                         .map(|other| identities[other].clone())
                 });
                 let m = layout.margin;
-                (
-                    named.flatten().unwrap_or_else(|| target.to_owned()),
-                    crate::scene::anchor::Area::parse(area, directions[index]),
-                    [m.top, m.right, m.bottom, m.left],
-                )
+                crate::scene::anchor::Anchoring {
+                    target: named.flatten().unwrap_or_else(|| target.to_owned()),
+                    area: crate::scene::anchor::Area::parse(area, directions[index]),
+                    margin: [m.top, m.right, m.bottom, m.left],
+                    part,
+                }
             }));
             anchor_insets.push(crate::scene::anchor::AnchorInset::of(
                 record,
@@ -2009,6 +2011,7 @@ impl Renderer {
                 .map(|(record, collapsed)| record.number(field::TOP_LAYER).is_some() && !collapsed)
                 .collect(),
             selection_fill: palette.role(Role::Selection),
+            editor_parts: self.editor_parts.clone(),
             unobscured: {
                 let [top, right, bottom, left] = self.safe_area.insets;
                 let bottom = bottom.max(self.safe_area.keyboard);

@@ -42,7 +42,7 @@ Children: any elements and text. Renders as `column`. `open`, `onToggle`, `close
 | `bleed` | `BleedEdge` |  | On a direct child of `<page>`: extend under the safe-area insets to the screen edge, on every side or the named ones. |
 | `onPage` | `(direction: "previous" \| "next") => void` |  | Called for PageUp and PageDown on a `role="grid"`. |
 | `onContextMenu` | `(event: ContextMenuEvent) => void` |  | Called for a long press or a secondary click, with where it happened. |
-| `anchor` | `string` |  | The id of the element a popover is placed against. |
+| `anchor` | `string` |  | The id of the element a popover is placed against; `<id>:caret` or `<id>:selection` follows an editor's caret or selection each frame. |
 | `onPointer` | `(event: PointerEvent) => void` |  | Reports a single pointer over the element: down, move, up, enter, leave and cancel. |
 | `pointerAxis` | `"x" \| "y" \| "both"` |  | The axis `onPointer` keeps; the other is left to the page's scroll. |
 | `onLayout` | `(box: BoxSize) => void` |  | Called with its laid-out size after each change, one render behind. |
@@ -187,7 +187,7 @@ Binding: `bind={local}` with a `useLocal<string>` cell, or `value` plus `onInput
 | `readOnly` | `boolean` |  | The text can be selected and copied but not changed. |
 | `onFocus` | `() => void` |  | Called when the editor gains focus. |
 | `onBlur` | `() => void` |  | Called when the editor loses focus. |
-| `onSelectionChange` | `(selection: EditorSelection) => void` |  | Called when the caret moves or the selection changes, typed or set from code: `start` and `end` are UTF-16 offsets, as `value.slice(start, end)` reads them. Needs `bind` for `setSelection` and `replaceRange` on the cell. |
+| `onSelectionChange` | `(selection: EditorSelection) => void` |  | Called at most once a frame when the caret moves, the selection changes or where it shows changes: `start` and `end` are UTF-16 offsets, as `value.slice(start, end)` reads them; `caret` and `rects` are in page points. To place a menu at the caret, anchor a popover to `<id>:caret` instead. Needs `bind` for `setSelection` and `replaceRange` on the cell. |
 | `aria-label` | `string` |  | The accessible name, spoken in place of its text. |
 | `placeholder` | `string` |  | Shown while the value is empty. |
 | `type` | `"text" \| "password" \| "email" \| "number" \| "tel" \| "search" \| "date" \| "time"` |  | The kind of value: picks the keyboard, masking, and the date or time picker. |
@@ -216,7 +216,7 @@ Binding: `bind={local}` with a `useLocal<string>` cell, or `value` plus `onInput
 | `readOnly` | `boolean` |  | The text can be selected and copied but not changed. |
 | `onFocus` | `() => void` |  | Called when the editor gains focus. |
 | `onBlur` | `() => void` |  | Called when the editor loses focus. |
-| `onSelectionChange` | `(selection: EditorSelection) => void` |  | Called when the caret moves or the selection changes, typed or set from code: `start` and `end` are UTF-16 offsets, as `value.slice(start, end)` reads them. Needs `bind` for `setSelection` and `replaceRange` on the cell. |
+| `onSelectionChange` | `(selection: EditorSelection) => void` |  | Called at most once a frame when the caret moves, the selection changes or where it shows changes: `start` and `end` are UTF-16 offsets, as `value.slice(start, end)` reads them; `caret` and `rects` are in page points. To place a menu at the caret, anchor a popover to `<id>:caret` instead. Needs `bind` for `setSelection` and `replaceRange` on the cell. |
 | `rows` | `number` |  | Lines it shows when empty; it grows with its text up to `maxRows`. |
 | `maxRows` | `number` |  | Lines it grows to before it scrolls. |
 | `aria-label` | `string` |  | The accessible name, spoken in place of its text. |

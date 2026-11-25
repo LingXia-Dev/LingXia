@@ -362,8 +362,16 @@ export interface BoxSize {
   readonly width: number; readonly height: number;
   readonly minContentWidth: number; readonly maxContentWidth: number;
 }
-/** An editor's selection as UTF-16 offsets into its value, `start <= end`; equal for a caret. */
-export interface EditorSelection { readonly start: number; readonly end: number }
+/** A box in page points. */
+export interface TextRect { readonly x: number; readonly y: number; readonly width: number; readonly height: number }
+/**
+ * An editor's selection: UTF-16 offsets into its value (`start <= end`; equal for a caret), and where
+ * it shows, in page points: `caret` (null while scrolled out of view) and a rect per selected line.
+ */
+export interface EditorSelection {
+  readonly start: number; readonly end: number;
+  readonly caret: TextRect | null; readonly rects: readonly TextRect[];
+}
 /** A scroll or list reached (`at: true`) or left an edge. Fires once per change, and on mount with the edges its content starts at: both when the content fits. */
 export interface ScrollEdgeEvent { readonly edge: "start" | "end"; readonly at: boolean }
 /** The size of the element that takes this handle as `box`; `null` until its first layout, then one render behind a change. */

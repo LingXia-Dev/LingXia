@@ -94,6 +94,37 @@ pub(crate) struct Placement {
     pub cap: Option<f32>,
 }
 
+/// The part of an editor a popover sits against: `<name>:caret`, `<name>:selection`.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum AnchorPart {
+    Caret = 0,
+    Selection = 1,
+}
+
+impl AnchorPart {
+    pub(crate) fn split(target: &str) -> (&str, Option<Self>) {
+        if let Some(name) = target.strip_suffix(":caret") {
+            (name, Some(Self::Caret))
+        } else if let Some(name) = target.strip_suffix(":selection") {
+            (name, Some(Self::Selection))
+        } else {
+            (target, None)
+        }
+    }
+}
+
+/// What a popover sits against.
+#[derive(Clone, Debug, PartialEq)]
+pub(crate) struct Anchoring {
+    /// The anchor's identity.
+    pub target: String,
+    pub area: Area,
+    /// The popover's own margin (top, right, bottom, left).
+    pub margin: [f32; 4],
+    /// The editor's caret or selection rather than its box.
+    pub part: Option<AnchorPart>,
+}
+
 /// How far to move a popover laid out at `natural` so it sits on `area`'s side of `anchor`,
 /// kept inside `viewport` and never over the anchor. It takes the authored side when its
 /// content (`wanted` tall) fits there, else the other side when it fits there, else the roomier

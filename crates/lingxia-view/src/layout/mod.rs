@@ -59,6 +59,8 @@ pub struct Renderer {
     pub(crate) flipped: HashMap<String, crate::scene::anchor::LogicalSide>,
     /// Popovers the last composition capped to the room on their side, by identity.
     pub(crate) popover_caps: HashMap<String, f32>,
+    /// The focused editor's caret and selection, relative to its box, for popovers anchored to them.
+    pub(crate) editor_parts: HashMap<String, [[f32; 4]; 2]>,
 }
 
 #[cfg(test)]
@@ -107,6 +109,7 @@ impl Default for Renderer {
             intrinsic: HashMap::new(),
             flipped: HashMap::new(),
             popover_caps: HashMap::new(),
+            editor_parts: HashMap::new(),
         }
     }
 }

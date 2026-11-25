@@ -1753,6 +1753,79 @@ fn a_bound_cell_sets_the_editor_selection_and_hears_it_move() {
     assert_eq!(reported(), "10-15");
 }
 
+/// A popover anchored to `<editor>:caret` sits under the caret and follows it with no JS; the
+/// selection event carries the same caret in page points.
+#[test]
+fn a_popover_anchored_to_the_caret_follows_it() {
+    // The fake page is 100pt wide: the popover fits beside either caret, so the edge never clamps it.
+    let worker = ViewWorker::spawn("test-view").unwrap();
+    let platform = Platform::new(&[&worker]);
+    let host = platform.host(
+        &worker,
+        &source(
+            "function render(){const v=useLocal('v','hello world');const cx=useLocal('cx',-1);return h('page',null,h('textarea',{id:'f','data-testid':'f',bind:v,'aria-label':'Body',onSelectionChange:r=>cx.set(r.caret?Math.round(r.caret.x):-1),style:{width:92,height:48,fontSize:10,marginLeft:4}}),h('button',{'data-testid':'start',keepsFocus:true,onClick:()=>v.setSelection(0,0)},'S'),h('button',{'data-testid':'end',keepsFocus:true,onClick:()=>v.setSelection(11,11)},'E'),h('view',{id:'menu',popover:'manual',open:true,anchor:'f:caret','data-testid':'menu',style:{width:16,height:20}}),h('text',{'data-testid':'cx'},String(cx.value)))}",
+        ),
+        false,
+    );
+    host.set_visible(true);
+    platform.settle(&[&host]);
+    let nodes = || {
+        let current: serde_json::Value =
+            serde_json::from_str(host.snapshot().unwrap().json()).unwrap();
+        current["nodes"].as_array().unwrap().clone()
+    };
+    let node = |nodes: &[serde_json::Value], id: &str| {
+        nodes
+            .iter()
+            .find(|node| node["test_id"] == id)
+            .unwrap()
+            .clone()
+    };
+    let current: serde_json::Value = serde_json::from_str(host.snapshot().unwrap().json()).unwrap();
+    host.input(
+        serde_json::json!({"op": "focus", "identity": node(&nodes(), "f")["identity"], "generation": current["generation"]})
+            .to_string(),
+        |_| {},
+    );
+    platform.settle(&[&host]);
+    run_frames(&platform, &host, 2);
+    let click = |id: &str| {
+        host.automation_request(&serde_json::json!({"op": "act", "css": format!("[data-testid=\"{id}\"]"), "action": {"kind": "click"}}))
+            .unwrap();
+        platform.settle(&[&host]);
+        run_frames(&platform, &host, 3);
+    };
+    let placed = || {
+        let nodes = nodes();
+        let caret: Vec<f64> =
+            serde_json::from_value(node(&nodes, "f")["input"]["geometry"]["caret"].clone())
+                .unwrap();
+        let menu: Vec<f64> =
+            serde_json::from_value(node(&nodes, "menu")["bounds"].clone()).unwrap();
+        let reported = host
+            .automation_request(&serde_json::json!({"op": "query", "css": "[data-testid=\"cx\"]"}))
+            .unwrap()["text"]
+            .clone();
+        (caret, menu, reported)
+    };
+    click("start");
+    let (caret, menu, reported) = placed();
+    assert!((menu[0] - caret[0]).abs() < 1.0, "{menu:?} at {caret:?}");
+    assert!(
+        menu[1] >= caret[1] + caret[3],
+        "below the caret: {menu:?} {caret:?}"
+    );
+    assert_eq!(reported, caret[0].round().to_string());
+    click("end");
+    let (moved, menu, reported) = placed();
+    assert!(moved[0] > caret[0] + 20.0, "the caret moved: {moved:?}");
+    assert!(
+        (menu[0] - moved[0]).abs() < 1.0,
+        "{menu:?} follows {moved:?}"
+    );
+    assert_eq!(reported, moved[0].round().to_string());
+}
+
 #[test]
 fn hiding_a_page_drops_its_text_selection_from_the_kept_frame() {
     let worker = ViewWorker::shared("test:hide-selection").unwrap();

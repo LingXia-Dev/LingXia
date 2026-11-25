@@ -258,13 +258,12 @@ impl ViewSession {
         !self.boxes_due.is_empty() || self.inputs.selection_due()
     }
 
-    /// Calls `onSelectionChange` for a selection a render moved (a value or `setSelection` from
-    /// code), then `onLayout` for each changed box through the element's current callback; true
-    /// when one ran.
+    /// Calls `onSelectionChange` for the focused editor's selection the frame moved or showed
+    /// elsewhere, then `onLayout` for each changed box through the element's current callback;
+    /// true when one ran.
     pub fn report_frame_events(&mut self) -> Result<bool, String> {
         let mut ran = false;
-        for (handle, [start, end]) in self.inputs.take_selection_changes() {
-            let payload = format!(r#"{{"start":{start},"end":{end}}}"#);
+        for (handle, payload) in self.inputs.take_selection_changes() {
             ran |= self.text_event(self.generation, handle, &payload)?;
         }
         for (identity, size) in std::mem::take(&mut self.boxes_due) {

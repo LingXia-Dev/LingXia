@@ -40,8 +40,8 @@ struct Entry {
     /// This focus took a requested selection: keyboard entry leaves it in place.
     chose_selection: bool,
     on_selection_change: Option<u64>,
-    /// The ordered range `onSelectionChange` last reported.
-    reported_selection: [u32; 2],
+    /// What `onSelectionChange` last reported.
+    reported_selection: String,
     /// Record order, which is reading order.
     order: usize,
     enter_key_hint: Option<String>,
@@ -63,8 +63,8 @@ pub(crate) struct Inputs {
     /// The platform ended editing: a focus the page makes itself (autoFocus,
     /// `focus()`) shows no keyboard until the user focuses an editor again.
     keyboard_held: bool,
-    /// `onSelectionChange` calls queued for the session: handle and range.
-    selection_due: Vec<(u64, [u32; 2])>,
+    /// `onSelectionChange` calls queued for the session: handle and payload.
+    selection_due: Vec<(u64, String)>,
 }
 
 /// A static-text selection: byte offsets into the node's display text.
@@ -172,12 +172,10 @@ impl Inputs {
                     ))
                 });
             if !self.entries.contains_key(&id) {
-                let editor = Editor::new(value).map_err(|e| format!("UI_INPUT: {e:?}"))?;
-                let reported_selection = ordered(editor.snapshot().selection);
                 self.entries.insert(
                     id.clone(),
                     Entry {
-                        editor,
+                        editor: Editor::new(value).map_err(|e| format!("UI_INPUT: {e:?}"))?,
                         enabled: true,
                         visible: false,
                         sized: false,
@@ -190,7 +188,7 @@ impl Inputs {
                         pending_selection: None,
                         chose_selection: false,
                         on_selection_change: None,
-                        reported_selection,
+                        reported_selection: String::new(),
                         order,
                         enter_key_hint: None,
                         on_input: None,
@@ -362,8 +360,8 @@ impl Inputs {
                     && !input.attributes.read_only;
             }
         }
-        self.note_selection();
         display.decorate_inputs();
+        self.note_selection(display);
         if let Some(selection) = &self.text_selection
             && !display.decorate_selection(selection)
         {
@@ -418,21 +416,36 @@ impl Inputs {
         Ok(true)
     }
 
-    /// Queues `onSelectionChange` when the focused editor's selection moved since it last reported.
-    pub fn note_selection(&mut self) {
-        let Some(entry) = self
-            .focused
-            .as_ref()
-            .and_then(|id| self.entries.get_mut(id))
-        else {
+    /// Queues `onSelectionChange` once a frame when the focused editor's selection, or where
+    /// it shows, changed since it last reported. Rects are in page points; none off screen.
+    fn note_selection(&mut self, display: &DisplayList) {
+        let Some(id) = self.focused.as_deref() else {
             return;
         };
-        let range = ordered(entry.editor.snapshot().selection);
-        if range != entry.reported_selection {
-            entry.reported_selection = range;
-            if let Some(handle) = entry.on_selection_change {
-                self.selection_due.push((handle, range));
-            }
+        let Some(entry) = self.entries.get_mut(id) else {
+            return;
+        };
+        let Some(handle) = entry.on_selection_change else {
+            return;
+        };
+        let [start, end] = ordered(entry.editor.snapshot().selection);
+        let geometry = display
+            .nodes
+            .iter()
+            .find(|node| &*node.identity == id)
+            .and_then(|node| node.input.as_ref()?.geometry.as_ref());
+        let rect =
+            |r: &[f32; 4]| serde_json::json!({"x": r[0], "y": r[1], "width": r[2], "height": r[3]});
+        let payload = serde_json::json!({
+            "start": start,
+            "end": end,
+            "caret": geometry.map(|g| rect(&g.caret)),
+            "rects": geometry.map_or_else(Vec::new, |g| g.selection.iter().map(rect).collect()),
+        })
+        .to_string();
+        if payload != entry.reported_selection {
+            entry.reported_selection = payload.clone();
+            self.selection_due.push((handle, payload));
         }
     }
 
@@ -440,7 +453,7 @@ impl Inputs {
         !self.selection_due.is_empty()
     }
 
-    pub fn take_selection_changes(&mut self) -> Vec<(u64, [u32; 2])> {
+    pub fn take_selection_changes(&mut self) -> Vec<(u64, String)> {
         std::mem::take(&mut self.selection_due)
     }
 

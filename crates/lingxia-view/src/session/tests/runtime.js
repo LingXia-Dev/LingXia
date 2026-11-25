@@ -2166,14 +2166,15 @@
   }
   function popover(tag, props, children, identity2, parent) {
     common(props, parent, "popover");
-    const { popover: type, id, open: open2, onToggle, onCloseRequest, closeAfter, anchor: anchorId, ...rest } = props;
+    const { popover: type, id, open: open2, onToggle, onCloseRequest, closeAfter, anchor: anchorProp, ...rest } = props;
     const kind = type === true || type === "" || type === "auto" ? "auto" : type === "manual" || type === "hint" ? type : null;
     if (!kind) throw Error('UI_PROP: popover is "auto", "manual" or "hint"');
     if (typeof id !== "string" || !id.length || id.length > 256) throw Error("UI_ID: a popover needs an id of 1..256 characters");
     if (onToggle !== void 0 && typeof onToggle !== "function") throw Error("UI_PROP: onToggle");
     if (onCloseRequest !== void 0 && typeof onCloseRequest !== "function") throw Error("UI_PROP: onCloseRequest takes a function");
-    if (anchorId !== void 0 && (typeof anchorId !== "string" || !anchorId.length || anchorId.length > 256 || /\s/.test(anchorId)))
+    if (anchorProp !== void 0 && (typeof anchorProp !== "string" || !anchorProp.length || anchorProp.length > 256 || /\s/.test(anchorProp)))
       throw Error("UI_ID: anchor names an element id");
+    const [, anchorId, anchorPart] = anchorProp === void 0 ? [] : /^(.+?)(?::(caret|selection))?$/.exec(anchorProp);
     if (closeAfter !== void 0 && (kind !== "manual" || !Number.isInteger(closeAfter) || closeAfter < 1 || closeAfter > 6e4))
       throw Error('UI_PROP: closeAfter takes 1..60000 ms on a popover="manual"');
     const top = collected();
@@ -2223,7 +2224,7 @@
         if (kind === "hint") result.wire.push(["hint", 1]);
         if (closeAfter !== void 0) result.wire.push(["closeAfter", closeAfter]);
         const panel = result.children.find((child) => child.props?.key === "panel");
-        if (anchor && panel) panel.wire.push(["anchorTo", anchorName(id)]);
+        if (anchor && panel) panel.wire.push(["anchorTo", anchorName(id) + (anchorPart ? `:${anchorPart}` : "")]);
       }
     };
   }
@@ -6079,8 +6080,8 @@
           if (typeof props.onSelectionChange !== "function") throw Error("UI_INPUT: onSelectionChange takes a function");
           const { onSelectionChange } = props;
           if (!disabled) on("onSelectionChange", (payload2) => {
-            const { start, end } = JSON.parse(payload2);
-            onSelectionChange({ start, end });
+            const { start, end, caret, rects } = JSON.parse(payload2);
+            onSelectionChange({ start, end, caret, rects });
           }, "text");
         }
         for (const name of ["onFocus", "onBlur"]) {

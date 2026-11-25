@@ -190,6 +190,18 @@ test('an element two open popovers name carries both anchor names', () => {
   assert.equal(byId(nodes, 'hint').props.anchorTo, '--lx-popover-hint');
 });
 
+test('a popover anchored to an editor part names the editor and asks the core for its caret or selection', () => {
+  reset();
+  const view = () => h('page', {},
+    h('textarea', { id: 'body', value: 'hi', 'aria-label': 'Body', 'data-testid': 'body' }),
+    h('view', { id: 'mentions', popover: 'manual', anchor: 'body:caret', open: true, 'data-testid': 'mentions' }, h('text', {}, '@')),
+    h('view', { id: 'bubble', popover: 'manual', anchor: 'body:selection', open: true, 'data-testid': 'bubble' }, h('text', {}, 'B')));
+  const nodes = render(view);
+  assert.equal(byId(nodes, 'body').props.anchorName, '--lx-popover-mentions\n--lx-popover-bubble');
+  assert.equal(byId(nodes, 'mentions').props.anchorTo, '--lx-popover-mentions:caret');
+  assert.equal(byId(nodes, 'bubble').props.anchorTo, '--lx-popover-bubble:selection');
+});
+
 test('a popover that names its anchor is placed against that element however it opens, and is owned by it', () => {
   reset();
   const open = { value: false };

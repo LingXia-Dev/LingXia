@@ -58,8 +58,9 @@ test('setSelection and replaceRange reach the bound editor as a counted range, a
   body = byId(render(view), 'b');
   assert.equal(body.props.inputValue, 'hello there');
   assert.deepEqual(body.props.selectionRequest, [2, 11, 11], 'the caret after the new text');
-  dispatch(body.props.onSelectionChange, JSON.stringify({ start: 2, end: 4 }));
-  assert.deepEqual(changes, [{ start: 2, end: 4 }]);
+  const caret = { x: 10, y: 20, width: 1.5, height: 18 };
+  dispatch(body.props.onSelectionChange, JSON.stringify({ start: 2, end: 4, caret, rects: [{ x: 8, y: 20, width: 12, height: 18 }] }));
+  assert.deepEqual(changes, [{ start: 2, end: 4, caret, rects: [{ x: 8, y: 20, width: 12, height: 18 }] }]);
 });
 
 test('a selection call checks its offsets against the value and keeps a surrogate pair whole', () => {

@@ -753,8 +753,8 @@ function resolveElement(tag, original, children, identity, depth, parent) {
         if (typeof props.onSelectionChange !== 'function') throw Error('UI_INPUT: onSelectionChange takes a function');
         const { onSelectionChange } = props;
         if (!disabled) on('onSelectionChange', payload => {
-          const { start, end } = JSON.parse(payload);
-          onSelectionChange({ start, end });
+          const { start, end, caret, rects } = JSON.parse(payload);
+          onSelectionChange({ start, end, caret, rects });
         }, 'text');
       }
       // The caret entered or left the editor.

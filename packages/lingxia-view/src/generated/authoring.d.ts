@@ -361,8 +361,16 @@ export interface BoxSize {
   readonly width: number; readonly height: number;
   readonly minContentWidth: number; readonly maxContentWidth: number;
 }
-/** An editor's selection as UTF-16 offsets into its value, `start <= end`; equal for a caret. */
-export interface EditorSelection { readonly start: number; readonly end: number }
+/** A box in page points. */
+export interface TextRect { readonly x: number; readonly y: number; readonly width: number; readonly height: number }
+/**
+ * An editor's selection: UTF-16 offsets into its value (`start <= end`; equal for a caret), and where
+ * it shows, in page points: `caret` (null while scrolled out of view) and a rect per selected line.
+ */
+export interface EditorSelection {
+  readonly start: number; readonly end: number;
+  readonly caret: TextRect | null; readonly rects: readonly TextRect[];
+}
 /** A scroll or list reached (`at: true`) or left an edge. Fires once per change, and on mount with the edges its content starts at: both when the content fits. */
 export interface ScrollEdgeEvent { readonly edge: "start" | "end"; readonly at: boolean }
 /** The size of the element that takes this handle as `box`; `null` until its first layout, then one render behind a change. */
@@ -1107,19 +1115,19 @@ export type ViewProps = Omit<Props, "style" | "children" | "role"> & { role?: Vi
   /** Whether the popover is shown; with `onToggle` to follow its own closing. */ open?: boolean; 
   /** Called with the new state when the popover opens or closes. */ onToggle?: (open: boolean) => void; 
   /** On a `popover="manual"`: close it this many milliseconds (1..60000) after it opens, as a toast. */ closeAfter?: number; 
-  /** The id of the element a popover is placed against. */ anchor?: string; 
+  /** The id of the element a popover is placed against; `<id>:caret` or `<id>:selection` follows an editor's caret or selection each frame. */ anchor?: string; 
   /** Called when Escape, back or a screen reader asks the popover to close; return `false` to keep it open. */ onCloseRequest?: never; } | { 
   /** Makes it a popover in the top layer: `auto` light-dismisses, `manual` closes only when told, `hint` for a hover hint. */ popover: true | "auto" | "hint"; 
   /** Whether the popover is shown; with `onToggle` to follow its own closing. */ open?: boolean; 
   /** Called with the new state when the popover opens or closes. */ onToggle?: (open: boolean) => void; 
   /** On a `popover="manual"`: close it this many milliseconds (1..60000) after it opens, as a toast. */ closeAfter?: number; 
-  /** The id of the element a popover is placed against. */ anchor?: string; 
+  /** The id of the element a popover is placed against; `<id>:caret` or `<id>:selection` follows an editor's caret or selection each frame. */ anchor?: string; 
   /** Called when Escape, back or a screen reader asks the popover to close; return `false` to keep it open. */ onCloseRequest?: () => boolean | void; } | { 
   /** Makes it a popover in the top layer: `auto` light-dismisses, `manual` closes only when told, `hint` for a hover hint. */ popover?: false | undefined; 
   /** Whether the popover is shown; with `onToggle` to follow its own closing. */ open?: never; 
   /** Called with the new state when the popover opens or closes. */ onToggle?: never; 
   /** On a `popover="manual"`: close it this many milliseconds (1..60000) after it opens, as a toast. */ closeAfter?: never; 
-  /** The id of the element a popover is placed against. */ anchor?: never; 
+  /** The id of the element a popover is placed against; `<id>:caret` or `<id>:selection` follows an editor's caret or selection each frame. */ anchor?: never; 
   /** Called when Escape, back or a screen reader asks the popover to close; return `false` to keep it open. */ onCloseRequest?: never; }) & ({ 
   /** Lets the finger move it and its subtree along one axis, between its `dragSnapPoints`. */ drag: "x" | "y"; 
   /** Up to 8 offsets, in pixels or percents of its size, a drag comes to rest at. */ dragSnapPoints?: readonly (number | `${number}%`)[]; 
@@ -1278,7 +1286,7 @@ export type InputProps = Omit<Props, "style" | "children" | "role"> & { role?: I
   /** The text can be selected and copied but not changed. */ readOnly?: boolean;
   /** Called when the editor gains focus. */ onFocus?: () => void;
   /** Called when the editor loses focus. */ onBlur?: () => void;
-  /** Called when the caret moves or the selection changes, typed or set from code: `start` and `end` are UTF-16 offsets, as `value.slice(start, end)` reads them. Needs `bind` for `setSelection` and `replaceRange` on the cell. */ onSelectionChange?: (selection: EditorSelection) => void;
+  /** Called at most once a frame when the caret moves, the selection changes or where it shows changes: `start` and `end` are UTF-16 offsets, as `value.slice(start, end)` reads them; `caret` and `rects` are in page points. To place a menu at the caret, anchor a popover to `<id>:caret` instead. Needs `bind` for `setSelection` and `replaceRange` on the cell. */ onSelectionChange?: (selection: EditorSelection) => void;
   /** The accessible name, spoken in place of its text. */ "aria-label"?: string;
   /** Shown while the value is empty. */ placeholder?: string;
   /** The kind of value: picks the keyboard, masking, and the date or time picker. */ type?: "text" | "password" | "email" | "number" | "tel" | "search" | "date" | "time";
@@ -1303,7 +1311,7 @@ export type TextareaProps = Omit<Props, "style" | "children" | "role"> & { role?
   /** The text can be selected and copied but not changed. */ readOnly?: boolean;
   /** Called when the editor gains focus. */ onFocus?: () => void;
   /** Called when the editor loses focus. */ onBlur?: () => void;
-  /** Called when the caret moves or the selection changes, typed or set from code: `start` and `end` are UTF-16 offsets, as `value.slice(start, end)` reads them. Needs `bind` for `setSelection` and `replaceRange` on the cell. */ onSelectionChange?: (selection: EditorSelection) => void;
+  /** Called at most once a frame when the caret moves, the selection changes or where it shows changes: `start` and `end` are UTF-16 offsets, as `value.slice(start, end)` reads them; `caret` and `rects` are in page points. To place a menu at the caret, anchor a popover to `<id>:caret` instead. Needs `bind` for `setSelection` and `replaceRange` on the cell. */ onSelectionChange?: (selection: EditorSelection) => void;
   /** Lines it shows when empty; it grows with its text up to `maxRows`. */ rows?: number;
   /** Lines it grows to before it scrolls. */ maxRows?: number;
   /** The accessible name, spoken in place of its text. */ "aria-label"?: string;

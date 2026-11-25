@@ -495,6 +495,39 @@ impl DisplayList {
             });
         }
     }
+    /// Each focused, shown editor's caret and the box around its selection (the caret when
+    /// none), relative to the editor's box, to an eighth of a point so a re-layout settles.
+    pub(crate) fn editor_parts(&self) -> HashMap<String, [[f32; 4]; 2]> {
+        self.nodes
+            .iter()
+            .filter_map(|node| {
+                let geometry = node.input.as_ref()?.geometry.as_ref()?;
+                let local = |r: [f32; 4]| {
+                    [r[0] - node.bounds[0], r[1] - node.bounds[1], r[2], r[3]]
+                        .map(|v| (v * 8.0).round() / 8.0)
+                };
+                let union = geometry
+                    .selection
+                    .iter()
+                    .copied()
+                    .reduce(|a, b| {
+                        let [x, y] = [a[0].min(b[0]), a[1].min(b[1])];
+                        [
+                            x,
+                            y,
+                            (a[0] + a[2]).max(b[0] + b[2]) - x,
+                            (a[1] + a[3]).max(b[1] + b[3]) - y,
+                        ]
+                    })
+                    .unwrap_or(geometry.caret);
+                Some((
+                    node.identity.to_string(),
+                    [local(geometry.caret), local(union)],
+                ))
+            })
+            .collect()
+    }
+
     /// Paint a static-text selection and publish its geometry for chrome; `false`
     /// when the selection no longer fits its node and must be dropped.
     pub(crate) fn decorate_selection(

@@ -190,14 +190,16 @@ function dialog(props, children, identity, parent) {
 
 function popover(tag, props, children, identity, parent) {
   common(props, parent, 'popover');
-  const { popover: type, id, open, onToggle, onCloseRequest, closeAfter, anchor: anchorId, ...rest } = props;
+  const { popover: type, id, open, onToggle, onCloseRequest, closeAfter, anchor: anchorProp, ...rest } = props;
   const kind = type === true || type === '' || type === 'auto' ? 'auto' : type === 'manual' || type === 'hint' ? type : null;
   if (!kind) throw Error('UI_PROP: popover is "auto", "manual" or "hint"');
   if (typeof id !== 'string' || !id.length || id.length > 256) throw Error('UI_ID: a popover needs an id of 1..256 characters');
   if (onToggle !== undefined && typeof onToggle !== 'function') throw Error('UI_PROP: onToggle');
   if (onCloseRequest !== undefined && typeof onCloseRequest !== 'function') throw Error('UI_PROP: onCloseRequest takes a function');
-  if (anchorId !== undefined && (typeof anchorId !== 'string' || !anchorId.length || anchorId.length > 256 || /\s/.test(anchorId)))
+  if (anchorProp !== undefined && (typeof anchorProp !== 'string' || !anchorProp.length || anchorProp.length > 256 || /\s/.test(anchorProp)))
     throw Error('UI_ID: anchor names an element id');
+  // `editor:caret` or `editor:selection`: the core places it against that part of the editor, each frame.
+  const [, anchorId, anchorPart] = anchorProp === undefined ? [] : /^(.+?)(?::(caret|selection))?$/.exec(anchorProp);
   if (closeAfter !== undefined && (kind !== 'manual' || !Number.isInteger(closeAfter) || closeAfter < 1 || closeAfter > 60000))
     throw Error('UI_PROP: closeAfter takes 1..60000 ms on a popover="manual"');
   const top = collected();
@@ -238,7 +240,7 @@ function popover(tag, props, children, identity, parent) {
       // The host counts it down.
       if (closeAfter !== undefined) result.wire.push(['closeAfter', closeAfter]);
       const panel = result.children.find(child => child.props?.key === 'panel');
-      if (anchor && panel) panel.wire.push(['anchorTo', anchorName(id)]);
+      if (anchor && panel) panel.wire.push(['anchorTo', anchorName(id) + (anchorPart ? `:${anchorPart}` : '')]);
     },
   };
 }
