@@ -1,5 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { textOf } from '@lingxia/view/testing';
 import { described, renderExample } from '../testing/harness.mjs';
 
 test('Volume: named by its label, the words are its value, and they follow the slider', async () => {
@@ -56,4 +57,32 @@ test('Marks: a tick at each value\'s share of the track, labels at the ends, non
 test('SaveOnRelease: the slider listens for the finger leaving', async () => {
   const slider = (await renderExample('Slider/Slider', 'SaveOnRelease')).getByTestId('brightness');
   assert.ok(slider.props.onSliderPress);
+});
+
+test('Range: a group named by the label, two sliders named by thumbLabels; the cell holds both ends and the words follow', async () => {
+  const screen = await renderExample('Slider/Slider', 'Range');
+  const group = () => screen.getByTestId('price');
+  assert.deepEqual([group().props.role, group().props.accessibilityLabel], ['group', 'Price']);
+  const thumbs = () => group().children.filter(node => node.tag === 'slider');
+  assert.deepEqual(thumbs().map(node => [node.props.accessibilityLabel, node.props.sliderValue]), [['Minimum price', 20], ['Maximum price', 60]]);
+  assert.ok(thumbs().every(node => node.props.ariaValueText === undefined), 'each thumb reads its own number');
+  screen.slide(thumbs()[1], 85);
+  assert.deepEqual(thumbs().map(node => node.props.sliderValue), [20, 85]);
+  assert.ok(screen.queryAll(node => node.tag === 'text').some(node => textOf(node) === '€20 to €85'));
+});
+
+test('DisabledWithReason: the reason takes the help text\'s place and is read as the description', async () => {
+  const screen = await renderExample('Slider/Slider', 'DisabledWithReason');
+  const slider = screen.getByTestId('quality');
+  assert.equal(slider.props.enabled, 0);
+  assert.deepEqual(described(screen, slider), ['Connect to Wi-Fi to change the quality.']);
+  assert.equal(JSON.stringify(screen.root ?? {}).includes('Higher uses more storage.'), false);
+});
+
+test('StateDisabled: the thumb takes the surface, not the white knob, so it does not look live in dark', async () => {
+  const screen = await renderExample('Slider/Slider', 'DisabledWithReason');
+  const slider = screen.getByTestId('quality');
+  assert.match(slider.props.thumbStyle, /"surface"/);
+  assert.doesNotMatch(slider.props.thumbStyle, /"knob"/);
+  assert.equal(screen.getByText('Connect to Wi-Fi to change the quality.').props.color, 'text-muted', 'the reason is read, so it is not dimmed with the label');
 });

@@ -4052,6 +4052,11 @@ export const playgroundEntries: PlaygroundEntry[] = [
         "name": "isDisabled",
         "required": false,
         "kind": "boolean"
+      },
+      {
+        "name": "disabledMessage",
+        "required": false,
+        "kind": "text"
       }
     ],
     "fixed": [],

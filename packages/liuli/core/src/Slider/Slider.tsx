@@ -6,12 +6,18 @@ export type SliderVariant = 'standalone' | 'row';
 
 export type SliderSize = 'sm' | 'md';
 
+/** A range's two ends, lower first. */
+export type SliderRange = readonly [number, number];
+
 export type SliderBinding =
   | {
       /** A View-local cell the slider reads and writes; use it or `value` with `onChange`. */
       bind: Local<number>;
       value?: never;
       onChange?: never;
+      /** Runs once when a drag ends, with the value it ended on: for work too heavy to do at every step, such as saving. */
+      onChangeEnd?: (value: number) => void;
+      thumbLabels?: never;
     }
   | {
       bind?: never;
@@ -19,6 +25,27 @@ export type SliderBinding =
       value: number;
       /** Runs with each new value while dragging, snapped to `step`. */
       onChange: (value: number) => void;
+      onChangeEnd?: (value: number) => void;
+      thumbLabels?: never;
+    }
+  | {
+      /** Two thumbs that cannot cross, for a range such as a price from and to; a cell holding `[lower, upper]`. */
+      bind: Local<SliderRange>;
+      value?: never;
+      onChange?: never;
+      onChangeEnd?: (value: SliderRange) => void;
+      /** Each thumb's name, read after the slider's label: `['Minimum', 'Maximum']`. */
+      thumbLabels: readonly [string, string];
+      secondaryValue?: never;
+    }
+  | {
+      bind?: never;
+      /** Two thumbs that cannot cross: `[lower, upper]`. */
+      value: SliderRange;
+      onChange: (value: SliderRange) => void;
+      onChangeEnd?: (value: SliderRange) => void;
+      thumbLabels: readonly [string, string];
+      secondaryValue?: never;
     };
 
 /** A named point on the track. */
@@ -50,8 +77,6 @@ export type SliderProps = SliderBinding & {
   step?: number;
   /** Ticks under the track, with optional labels, in ascending order: the ends of the scale, or each step of a short one. */
   marks?: readonly SliderMark[];
-  /** Runs once when a drag ends, with the value it ended on: for work too heavy to do at every step, such as saving. */
-  onChangeEnd?: (value: number) => void;
   /** `sm` for dense rows and media controls. @default 'md' */
   size?: SliderSize;
   /**
@@ -61,33 +86,52 @@ export type SliderProps = SliderBinding & {
   variant?: SliderVariant;
   /** @default false */
   isDisabled?: boolean;
+  /** Why it is disabled: shown in place of `description` while disabled, and read as the description. */
+  disabledMessage?: string;
   className?: string;
   /** On the slider. */
   'data-testid'?: string;
 };
 
-/** A value picked along a track, with a label row that can show the value in words. */
+/** A value, or a range between two thumbs, picked along a track, with a label row that can show it in words. */
 export function Slider(props: SliderProps) {
   const {
     label, isLabelHidden = false, valueLabel, secondaryValue, description, min = 0, max = 100, step = 1, size = 'md',
-    variant = 'standalone', marks, onChangeEnd, isDisabled = false, className, 'data-testid': testId,
+    variant = 'standalone', marks, isDisabled = false, disabledMessage, className, 'data-testid': testId,
   } = props;
   const id = useId();
   const helpId = `${id}-help`;
-  const semantics = {
+  const help = isDisabled && disabledMessage !== undefined ? disabledMessage : description;
+  const shared = {
     'aria-label': label,
-    'aria-valuetext': valueLabel,
-    'aria-describedby': description !== undefined ? helpId : undefined,
+    'aria-describedby': help !== undefined ? helpId : undefined,
     min,
     max,
     step,
-    secondaryValue,
-    // The primitive reports the finger leaving; the value it ended on is the one in hand.
-    onPressChange: onChangeEnd && ((pressed: boolean) => { if (!pressed) onChangeEnd(props.bind ? props.bind.value : props.value); }),
     disabled: isDisabled,
     'data-testid': testId, ...dataOf(props),
     className: cx(r.control.base, r.control.size[size]),
   };
+  const control = props.thumbLabels !== undefined ? (
+    // A range takes its values and its end straight from the primitive; its value words stay in the label row.
+    <slider
+      values={props.bind ? props.bind.value : props.value}
+      onChange={next => (props.bind ? props.bind.set(next) : props.onChange(next))}
+      onChangeEnd={props.onChangeEnd}
+      thumbLabels={props.thumbLabels}
+      {...shared}
+    />
+  ) : (() => {
+    const { onChangeEnd } = props;
+    const single = {
+      ...shared,
+      'aria-valuetext': valueLabel,
+      secondaryValue,
+      // The primitive reports the finger leaving; the value it ended on is the one in hand.
+      onPressChange: onChangeEnd && ((pressed: boolean) => { if (!pressed) onChangeEnd(props.bind ? props.bind.value : props.value); }),
+    };
+    return props.bind ? <slider bind={props.bind} {...single} /> : <slider value={props.value} onChange={props.onChange} {...single} />;
+  })();
   return (
     <view className={cx(r.root.base, r.root.variant[variant], className)}>
       {(!isLabelHidden || valueLabel !== undefined) && (
@@ -97,7 +141,7 @@ export function Slider(props: SliderProps) {
           {valueLabel !== undefined && <text aria-hidden className={cx(r.value.base, r.value.variant[variant])}>{valueLabel}</text>}
         </view>
       )}
-      {props.bind ? <slider bind={props.bind} {...semantics} /> : <slider value={props.value} onChange={props.onChange} {...semantics} />}
+      {control}
       {marks !== undefined && marks.length > 0 && (
         <view aria-hidden className={cx(r.marks.base, r.marks.size[size])}>
           {marks.map((mark, index) => {
@@ -114,7 +158,7 @@ export function Slider(props: SliderProps) {
           })}
         </view>
       )}
-      {description !== undefined && <text id={helpId} className={r.description.base}>{description}</text>}
+      {help !== undefined && <text id={helpId} className={r.description.base}>{help}</text>}
     </view>
   );
 }

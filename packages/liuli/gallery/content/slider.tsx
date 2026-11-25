@@ -1,5 +1,5 @@
 // Generated from the doc file by scripts/generate.mjs; do not edit.
-import { Volume, Stepped, InList, Marks, SaveOnRelease, Sizes, StateDefault, StateDisabled, Position } from '../../core/src/Slider/Slider.examples';
+import { Volume, Stepped, Range, InList, Marks, SaveOnRelease, Sizes, StateDefault, StateDisabled, DisabledWithReason, Position } from '../../core/src/Slider/Slider.examples';
 import { Lead, PageSection, Stage, StageGrid } from '../shared/Layout';
 
 export function Content() {
@@ -11,6 +11,9 @@ export function Content() {
       <PageSection title={"Variants"}>
         <Stage caption={"Whole steps, named in words"}>
           <Stepped />
+        </Stage>
+        <Stage caption={"A range: two thumbs that stop at each other, each with its own name"}>
+          <Range />
         </Stage>
         <Stage caption={"As a row in a list, beside Item rows"}>
           <InList />
@@ -34,6 +37,9 @@ export function Content() {
           </Stage>
           <Stage caption={"Disabled"}>
             <StateDisabled />
+          </Stage>
+          <Stage caption={"Disabled, with the reason in place of the help text"}>
+            <DisabledWithReason />
           </Stage>
         </StageGrid>
       </PageSection>

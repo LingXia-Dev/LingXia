@@ -17298,21 +17298,33 @@
       "props": [
         {
           "name": "bind",
-          "type": "Local<number>",
+          "type": "Local<number> | Local<SliderRange>",
           "required": false,
-          "description": "A View-local cell the slider reads and writes; use it or `value` with `onChange`."
+          "description": "A View-local cell the slider reads and writes; use it or `value` with `onChange`. Two thumbs that cannot cross, for a range such as a price from and to; a cell holding `[lower, upper]`."
         },
         {
           "name": "value",
-          "type": "number",
+          "type": "number | SliderRange",
           "required": false,
-          "description": "The app's value; pass `onChange` with it."
+          "description": "The app's value; pass `onChange` with it. Two thumbs that cannot cross: `[lower, upper]`."
         },
         {
           "name": "onChange",
-          "type": "((value: number) => void)",
+          "type": "((value: number) => void) | ((value: SliderRange) => void)",
           "required": false,
           "description": "Runs with each new value while dragging, snapped to `step`."
+        },
+        {
+          "name": "onChangeEnd",
+          "type": "((value: number) => void) | ((value: number) => void) | ((value: SliderRange) => void) | ((value: SliderRange) => void)",
+          "required": false,
+          "description": "Runs once when a drag ends, with the value it ended on: for work too heavy to do at every step, such as saving."
+        },
+        {
+          "name": "thumbLabels",
+          "type": "readonly [string, string]",
+          "required": false,
+          "description": "Each thumb's name, read after the slider's label: `['Minimum', 'Maximum']`."
         },
         {
           "name": "label",
@@ -17373,12 +17385,6 @@
           "description": "Ticks under the track, with optional labels, in ascending order: the ends of the scale, or each step of a short one."
         },
         {
-          "name": "onChangeEnd",
-          "type": "((value: number) => void)",
-          "required": false,
-          "description": "Runs once when a drag ends, with the value it ended on: for work too heavy to do at every step, such as saving."
-        },
-        {
           "name": "size",
           "type": "SliderSize",
           "required": false,
@@ -17408,6 +17414,12 @@
           "default": "false"
         },
         {
+          "name": "disabledMessage",
+          "type": "string",
+          "required": false,
+          "description": "Why it is disabled: shown in place of `description` while disabled, and read as the description."
+        },
+        {
           "name": "className",
           "type": "string",
           "required": false,
@@ -17430,6 +17442,14 @@
             "value",
             "onChange"
           ]
+        ],
+        [
+          [
+            "thumbLabels"
+          ],
+          [
+            "secondaryValue"
+          ]
         ]
       ],
       "parts": {
@@ -17448,7 +17468,8 @@
         "pattern": "slider",
         "name": "label",
         "description": [
-          "description"
+          "description",
+          "disabledMessage, in its place while disabled"
         ],
         "states": [
           {
@@ -17517,10 +17538,11 @@
         ],
         "notes": [
           "`valueLabel` is the spoken value: \"Large\" in place of 4, \"1:24 of 3:10\" in place of 84.",
+          "A range is two sliders in a group named by `label`, each named by its `thumbLabels` entry and its own Tab stop; each reads its number, so `valueLabel` there is drawn only.",
           "The press area is the whole control, 40 px tall (32 at `sm`), whatever the thumb's drawn size.",
           "The empty track and the secondary range are decorative and have no contrast minimum: the value is carried by the range and the thumb.",
           "The thumb is a `knob` disc, white in both appearances, with an accent rim, so it reads on the range, the track and a dark page alike. On the solid dark accent it would fall to 2.72:1, so the range is the accent at 80 %.",
-          "Disabled, the range keeps its accent at reduced strength, so the value still shows as the filled part."
+          "Disabled, the range keeps its accent at reduced strength, so the value still shows as the filled part; the thumb takes the surface, so it does not look pressable in dark either."
         ]
       },
       "examples": [
@@ -17528,6 +17550,16 @@
           "name": "Volume",
           "title": "With the value in words",
           "source": "import { useLocal } from '@lingxia/view';\nimport { Slider } from '@liulidesign/core/Slider';\n\n/** The value in words at the end of the label row; the app writes it. */\nexport function Volume() {\n  const volume = useLocal('volume', 40);\n  return <Slider bind={volume} label=\"Volume\" valueLabel={`${volume.value}%`} data-testid=\"volume\" />;\n}"
+        },
+        {
+          "name": "Range",
+          "title": "A range, with two thumbs",
+          "source": "import { useLocal } from '@lingxia/view';\nimport { Slider } from '@liulidesign/core/Slider';\n\n/** Two thumbs for a range: each is named, they stop at each other, and the words show both ends. */\nexport function Range() {\n  const price = useLocal<readonly [number, number]>('price', [20, 60]);\n  return (\n    <Slider\n      bind={price}\n      label=\"Price\"\n      thumbLabels={['Minimum price', 'Maximum price']}\n      valueLabel={`€${price.value[0]} to €${price.value[1]}`}\n      step={5}\n      data-testid=\"price\"\n    />\n  );\n}"
+        },
+        {
+          "name": "DisabledWithReason",
+          "title": "Disabled, with the reason",
+          "source": "import { unused } from '../example';\nimport { Slider } from '@liulidesign/core/Slider';\n\n/** Disabled with a reason: it takes the description's place while disabled. */\nexport function DisabledWithReason() {\n  return <Slider value={30} onChange={unused} label=\"Download quality\" description=\"Higher uses more storage.\" isDisabled disabledMessage=\"Connect to Wi-Fi to change the quality.\" data-testid=\"quality\" />;\n}"
         },
         {
           "name": "Stepped",
@@ -17597,6 +17629,7 @@
           "knob",
           "line",
           "line-strong",
+          "surface",
           "text",
           "text-faint",
           "text-muted"
@@ -17616,6 +17649,10 @@
             {
               "name": "Stepped",
               "title": "Whole steps, named in words"
+            },
+            {
+              "name": "Range",
+              "title": "A range: two thumbs that stop at each other, each with its own name"
             },
             {
               "name": "InList",
@@ -17644,6 +17681,10 @@
             {
               "name": "StateDisabled",
               "title": "Disabled"
+            },
+            {
+              "name": "DisabledWithReason",
+              "title": "Disabled, with the reason in place of the help text"
             }
           ],
           "inContext": [
@@ -22779,7 +22820,7 @@
       "status": "preview",
       "since": "2026-11-18",
       "summary": "A page's own header row: a way back, its title, a control at the middle, its actions at the end",
-      "description": "TopBar is the header row a page draws itself, for a page that shows no host navigation bar (`navigationStyle: \"custom\"`). It holds a control at the start (a way back, a menu), the page's title as a heading, a control at the middle (a SearchField, a segmented control) and the page's actions at the end. The start and the end share the room left over, so the middle stays at the bar's middle while everything fits; past that the bar wraps. The page already keeps its content clear of system bars and host chrome, so the bar adds only its own padding.",
+      "description": "TopBar is the header row a page draws itself, for a page that shows no host navigation bar (`navigationStyle: \"custom\"`). It holds a control at the start (a way back, a menu), the page's title as a heading, a control at the middle (a SearchField, a segmented control) and the page's actions at the end. The start and the end share the room left over, so the middle stays at the bar's middle while everything fits; past that the bar wraps. The page already keeps its content clear of system bars; a host capsule floats over the bar's row, so the bar pads that side by the capsule's width.",
       "keywords": [
         "top bar",
         "header",
@@ -23691,6 +23732,7 @@
           "media",
           "on-accent-solid",
           "on-media",
+          "surface",
           "text",
           "text-muted"
         ]

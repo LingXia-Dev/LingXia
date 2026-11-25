@@ -25,6 +25,40 @@ export function Volume() {
 }
 ```
 
+### A range, with two thumbs
+
+```tsx
+import { useLocal } from '@lingxia/view';
+import { Slider } from '@liulidesign/core/Slider';
+
+/** Two thumbs for a range: each is named, they stop at each other, and the words show both ends. */
+export function Range() {
+  const price = useLocal<readonly [number, number]>('price', [20, 60]);
+  return (
+    <Slider
+      bind={price}
+      label="Price"
+      thumbLabels={['Minimum price', 'Maximum price']}
+      valueLabel={`€${price.value[0]} to €${price.value[1]}`}
+      step={5}
+      data-testid="price"
+    />
+  );
+}
+```
+
+### Disabled, with the reason
+
+```tsx
+import { unused } from '../example';
+import { Slider } from '@liulidesign/core/Slider';
+
+/** Disabled with a reason: it takes the description's place while disabled. */
+export function DisabledWithReason() {
+  return <Slider value={30} onChange={unused} label="Download quality" description="Higher uses more storage." isDisabled disabledMessage="Connect to Wi-Fi to change the quality." data-testid="quality" />;
+}
+```
+
 ### Whole steps, with help text
 
 ```tsx
@@ -149,9 +183,11 @@ export function Sizes() {
 
 | Prop | Type | Default | Description |
 | --- | --- | --- | --- |
-| `bind` | `Local<number>` |  | A View-local cell the slider reads and writes; use it or `value` with `onChange`. |
-| `value` | `number` |  | The app's value; pass `onChange` with it. |
-| `onChange` | `((value: number) => void)` |  | Runs with each new value while dragging, snapped to `step`. |
+| `bind` | `Local<number> \| Local<SliderRange>` |  | A View-local cell the slider reads and writes; use it or `value` with `onChange`. Two thumbs that cannot cross, for a range such as a price from and to; a cell holding `[lower, upper]`. |
+| `value` | `number \| SliderRange` |  | The app's value; pass `onChange` with it. Two thumbs that cannot cross: `[lower, upper]`. |
+| `onChange` | `((value: number) => void) \| ((value: SliderRange) => void)` |  | Runs with each new value while dragging, snapped to `step`. |
+| `onChangeEnd` | `((value: number) => void) \| ((value: number) => void) \| ((value: SliderRange) => void) \| ((value: SliderRange) => void)` |  | Runs once when a drag ends, with the value it ended on: for work too heavy to do at every step, such as saving. |
+| `thumbLabels` | `readonly [string, string]` |  | Each thumb's name, read after the slider's label: `['Minimum', 'Maximum']`. |
 | `label` (required) | `string` |  | The visible label and the slider's accessible name. |
 | `isLabelHidden` | `boolean` | `false` | Hides the visible label; the slider keeps it as its name. |
 | `valueLabel` | `string` |  | The value in words, drawn at the end of the label row and read as the value: "40%", "1:24 of 3:10". Liuli formats no numbers. |
@@ -161,14 +197,15 @@ export function Sizes() {
 | `max` | `number` | `100` |  |
 | `step` | `number` | `1` | The value snaps to it. |
 | `marks` | `readonly SliderMark[]` |  | Ticks under the track, with optional labels, in ascending order: the ends of the scale, or each step of a short one. |
-| `onChangeEnd` | `((value: number) => void)` |  | Runs once when a drag ends, with the value it ended on: for work too heavy to do at every step, such as saving. |
 | `size` | `SliderSize` | `'md'` | `sm` for dense rows and media controls. |
 | `variant` | `SliderVariant` | `'standalone'` | `row` sits in a list group among `Item` rows: the row's padding, the Item label style, the value at the end in muted. |
 | `isDisabled` | `boolean` | `false` |  |
+| `disabledMessage` | `string` |  | Why it is disabled: shown in place of `description` while disabled, and read as the description. |
 | `className` | `string` |  |  |
 | `data-testid` | `string` |  | On the slider. |
 
 - `bind` | `value` + `onChange`: props from one side only.
+- `thumbLabels` | `secondaryValue`: props from one side only.
 
 ## Anatomy
 
@@ -184,22 +221,23 @@ export function Sizes() {
 - `className`: classes merged after the recipe's, so they win.
 - The recipe, `sliderRecipe` from `@liulidesign/core/Slider/recipe`: the classes of each part, to style an element of your own to match. The component does not read a changed copy.
 - Scale tokens it reads, set in the app's stylesheet under `@theme`: `--spacing-control-sm`, `--spacing-control-md`, `--text-caption`, `--text-footnote`, `--text-body`, `--shadow-contact`.
-- Colour roles it paints with, set by the theme pack: `accent`, `focus`, `knob`, `line`, `line-strong`, `text`, `text-faint`, `text-muted`.
+- Colour roles it paints with, set by the theme pack: `accent`, `focus`, `knob`, `line`, `line-strong`, `surface`, `text`, `text-faint`, `text-muted`.
 
 ## Accessibility
 
 - Pattern: slider.
 - Name: label.
-- Description: description.
+- Description: description, then disabledMessage, in its place while disabled.
 - States: disabled (from isDisabled).
 - Left / Down, Right / Up: One step down or up..
 - Home, End: The minimum or the maximum..
 - Press target: sm 32 px, md 40 px.
 - `valueLabel` is the spoken value: "Large" in place of 4, "1:24 of 3:10" in place of 84.
+- A range is two sliders in a group named by `label`, each named by its `thumbLabels` entry and its own Tab stop; each reads its number, so `valueLabel` there is drawn only.
 - The press area is the whole control, 40 px tall (32 at `sm`), whatever the thumb's drawn size.
 - The empty track and the secondary range are decorative and have no contrast minimum: the value is carried by the range and the thumb.
 - The thumb is a `knob` disc, white in both appearances, with an accent rim, so it reads on the range, the track and a dark page alike. On the solid dark accent it would fall to 2.72:1, so the range is the accent at 80 %.
-- Disabled, the range keeps its accent at reduced strength, so the value still shows as the filled part.
+- Disabled, the range keeps its accent at reduced strength, so the value still shows as the filled part; the thumb takes the surface, so it does not look pressable in dark either.
 
 | Contrast | Pair | Minimum | Light | Dark |
 | --- | --- | --- | --- | --- |

@@ -22,7 +22,7 @@ export const doc: ComponentDoc = {
   accessibility: {
     pattern: 'slider',
     name: 'label',
-    description: ['description'],
+    description: ['description', 'disabledMessage, in its place while disabled'],
     states: [{ state: 'disabled', from: 'isDisabled' }],
     keyboard: [
       { keys: 'Left / Down, Right / Up', effect: 'One step down or up.' },
@@ -38,10 +38,11 @@ export const doc: ComponentDoc = {
     ],
     notes: [
       '`valueLabel` is the spoken value: "Large" in place of 4, "1:24 of 3:10" in place of 84.',
+      'A range is two sliders in a group named by `label`, each named by its `thumbLabels` entry and its own Tab stop; each reads its number, so `valueLabel` there is drawn only.',
       'The press area is the whole control, 40 px tall (32 at `sm`), whatever the thumb\'s drawn size.',
       'The empty track and the secondary range are decorative and have no contrast minimum: the value is carried by the range and the thumb.',
       'The thumb is a `knob` disc, white in both appearances, with an accent rim, so it reads on the range, the track and a dark page alike. On the solid dark accent it would fall to 2.72:1, so the range is the accent at 80 %.',
-      'Disabled, the range keeps its accent at reduced strength, so the value still shows as the filled part.',
+      'Disabled, the range keeps its accent at reduced strength, so the value still shows as the filled part; the thumb takes the surface, so it does not look pressable in dark either.',
     ],
   },
   guidance: {
@@ -56,6 +57,8 @@ export const doc: ComponentDoc = {
   },
   examples: [
     { name: 'Volume', title: 'With the value in words' },
+    { name: 'Range', title: 'A range, with two thumbs' },
+    { name: 'DisabledWithReason', title: 'Disabled, with the reason' },
     { name: 'Stepped', title: 'Whole steps, with help text' },
     { name: 'InList', title: 'As a list row' },
     { name: 'Marks', title: 'With marks' },
@@ -81,6 +84,7 @@ export const doc: ComponentDoc = {
       hero: 'Volume',
       variants: [
         { name: 'Stepped', title: 'Whole steps, named in words' },
+        { name: 'Range', title: 'A range: two thumbs that stop at each other, each with its own name' },
         { name: 'InList', title: 'As a row in a list, beside Item rows' },
         { name: 'Marks', title: 'Marks: ticks under the track, labelled where it helps' },
         { name: 'SaveOnRelease', title: 'Saving once, when the drag ends' },
@@ -89,6 +93,7 @@ export const doc: ComponentDoc = {
       states: [
         { name: 'StateDefault', title: 'Default' },
         { name: 'StateDisabled', title: 'Disabled' },
+        { name: 'DisabledWithReason', title: 'Disabled, with the reason in place of the help text' },
       ],
       inContext: [{ name: 'Position', title: 'A position in a recording, with what has loaded' }],
     },

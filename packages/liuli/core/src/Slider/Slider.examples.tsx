@@ -25,6 +25,21 @@ export function Stepped() {
   );
 }
 
+/** Two thumbs for a range: each is named, they stop at each other, and the words show both ends. */
+export function Range() {
+  const price = useLocal<readonly [number, number]>('price', [20, 60]);
+  return (
+    <Slider
+      bind={price}
+      label="Price"
+      thumbLabels={['Minimum price', 'Maximum price']}
+      valueLabel={`€${price.value[0]} to €${price.value[1]}`}
+      step={5}
+      data-testid="price"
+    />
+  );
+}
+
 /** Among list rows: the row's label style, the value at the end. The stage's own padding is undone so the rows meet its edges. */
 export function InList() {
   const speed = useLocal('speed', 2);
@@ -59,6 +74,11 @@ export function Sizes() {
 
 export function StateDefault() {
   return <Held value={40}>{(level, set) => <Slider value={level} onChange={set} label="Brightness" />}</Held>;
+}
+
+/** Disabled with a reason: it takes the description's place while disabled. */
+export function DisabledWithReason() {
+  return <Slider value={30} onChange={unused} label="Download quality" description="Higher uses more storage." isDisabled disabledMessage="Connect to Wi-Fi to change the quality." data-testid="quality" />;
 }
 
 export function StateDisabled() {
