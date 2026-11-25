@@ -20,7 +20,7 @@ export const toastRecipe = {
    * press on a top-layer box never reaches what is under it. It meets its corner's edges, so the layer adds the bars there.
    */
   region: {
-    base: 'absolute m-0 p-4 max-w-full transition duration-base ease-standard starting:opacity-0 exit:opacity-0',
+    base: 'fixed m-0 p-4 max-w-full transition duration-base ease-standard starting:opacity-0 exit:opacity-0',
     position: {
       bottomEnd: 'bottom-0 end-0 justify-end items-end motion-safe:starting:translate-y-2 motion-safe:exit:translate-y-2',
       bottomStart: 'bottom-0 start-0 justify-end items-start motion-safe:starting:translate-y-2 motion-safe:exit:translate-y-2',
