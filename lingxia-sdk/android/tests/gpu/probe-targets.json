@@ -107,9 +107,6 @@
       "todo-add": "asserted absent: Enter submits",
       "todo-back": "asserted absent: the host owns Back"
     },
-    "GpuFeedbackProbe": {
-      "feedback-bug": "composed from a lowercased category label"
-    },
     "GpuRadioProbe": {
       "home-scroll": "shared node() fallback for showcase probes"
     },

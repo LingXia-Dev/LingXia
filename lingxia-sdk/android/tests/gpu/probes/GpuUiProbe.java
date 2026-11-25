@@ -94,7 +94,7 @@ public class GpuUiProbe {
    System.out.println("PASS native action sheet selection/cancel and modal confirm/cancel/no-cancel");
 
    enter("toast");set("toast-title","GPU toast");set("toast-duration","10000");
-   click("toast-icon");clickNative("None");contains("toast-icon","None");
+   click("toast-style");clickNative("Default");contains("toast-style","Default");
    click("toast-position");clickNative("Top");contains("toast-position","Top");
    click("toast-show");waitNative("GPU toast").recycle();GpuRadioProbe.screenshot("gpu-independent-ui-toast");click("toast-hide");absentNative("GPU toast");back();
    enter("navbar");set("navbar-title-input","GPU native chrome");click("navbar-set-title");waitNative("GPU native chrome").recycle();

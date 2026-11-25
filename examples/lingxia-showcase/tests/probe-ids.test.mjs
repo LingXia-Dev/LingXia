@@ -69,7 +69,8 @@ test('every test id a device probe or driver references exists in its target app
     }
     for (const id of Object.keys(exempt)) assert.ok(!known(id), `${name} exempts ${id}, but ${target} defines it`);
   }
-  assert.deepEqual(stale, []);
+  assert.deepEqual(stale, [], `probes reference ids their app no longer has:\n${stale.join('\n')}\n` +
+    'A page change must update the probes that drive it in the same commit; this test sees ids, not behavior.');
 });
 
 test('probe targets name existing probes and pages', () => {
