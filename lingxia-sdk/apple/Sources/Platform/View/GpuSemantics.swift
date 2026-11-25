@@ -67,6 +67,7 @@ public enum GpuSemantics {
     /// A JSON key of a semantic node.
     public enum Key: String, Sendable, CaseIterable {
         case headingLevel = "heading_level"
+        case level
         case liveRegion = "live_region"
         case position
         case textSelection = "text_selection"

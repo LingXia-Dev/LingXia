@@ -272,6 +272,7 @@ public struct GpuFrameNode: Decodable, Sendable {
     public let accessibilityHidden: Bool?
     public let role: String?
     public let headingLevel: UInt8?
+    public let ariaLevel: UInt8?
     public let liveRegion: String?
     public let select: GpuFrameSelect?
     public let buttonContent: String?
@@ -309,6 +310,7 @@ public struct GpuFrameNode: Decodable, Sendable {
         case accessibilityHidden = "accessibility_hidden"
         case role = "role"
         case headingLevel = "heading_level"
+        case ariaLevel = "aria_level"
         case liveRegion = "live_region"
         case select = "select"
         case buttonContent = "button_content"
@@ -595,6 +597,7 @@ public struct GpuFrameSemanticNode: Decodable, Sendable {
     public let position: [UInt64]?
     public let actions: [GpuFrameSemanticAction]
     public let headingLevel: UInt8?
+    public let level: UInt8?
     public let liveRegion: String?
     public let textSelection: [UInt32]?
     public let pressed: Bool?
@@ -632,6 +635,7 @@ public struct GpuFrameSemanticNode: Decodable, Sendable {
         case position = "position"
         case actions = "actions"
         case headingLevel = "heading_level"
+        case level = "level"
         case liveRegion = "live_region"
         case textSelection = "text_selection"
         case pressed = "pressed"

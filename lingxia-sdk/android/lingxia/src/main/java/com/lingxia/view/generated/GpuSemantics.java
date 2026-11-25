@@ -53,6 +53,7 @@ public final class GpuSemantics {
     public static final String ACTION_PASTE = "paste";
     public static final String ACTION_SET_SELECTION = "set-selection";
     public static final String KEY_HEADING_LEVEL = "heading_level";
+    public static final String KEY_LEVEL = "level";
     public static final String KEY_LIVE_REGION = "live_region";
     public static final String KEY_POSITION = "position";
     public static final String KEY_TEXT_SELECTION = "text_selection";

@@ -208,8 +208,12 @@ pub(super) fn check(tag: usize, id: usize, value: &Value) -> Result<(), String> 
             "UI_STYLE: invalid order",
         ),
         field::HEADING_LEVEL => ensure(
+            value.as_u64().is_some_and(|v| (1..=6).contains(&v)),
+            "UI_PROP: headingLevel must be 1..6",
+        ),
+        field::ARIA_LEVEL => ensure(
             value.as_u64().is_some_and(|v| (1..=32).contains(&v)),
-            "UI_PROP: headingLevel must be 1..32",
+            "UI_PROP: aria-level must be 1..32",
         ),
         field::STATE_PRESSED
         | field::STATE_SELECTED

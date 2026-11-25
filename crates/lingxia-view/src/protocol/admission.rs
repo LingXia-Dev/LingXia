@@ -105,25 +105,15 @@ pub(super) fn record(
     {
         return Err("UI_STYLE: conflicting automatic height".into());
     }
-    if let Some(level) = fields
+    let role = fields
         .iter()
-        .find(|(id, _)| *id == field::HEADING_LEVEL)
-        .and_then(|(_, value)| value.as_u64())
-    {
-        // A heading is 1..6; a tree item carries its depth in the same field.
-        let role = fields
-            .iter()
-            .find(|(id, _)| *id == field::ROLE)
-            .and_then(|(_, value)| value.as_str());
-        match role {
-            Some("heading") if level <= 6 => {}
-            Some("treeitem") => {}
-            _ => {
-                return Err(
-                    "UI_PROP: headingLevel requires role heading (1..6) or treeitem".into(),
-                );
-            }
-        }
+        .find(|(id, _)| *id == field::ROLE)
+        .and_then(|(_, value)| value.as_str());
+    if has(fields, field::HEADING_LEVEL) && role != Some("heading") {
+        return Err("UI_PROP: headingLevel requires role heading".into());
+    }
+    if has(fields, field::ARIA_LEVEL) && role != Some("treeitem") {
+        return Err("UI_PROP: aria-level requires role treeitem".into());
     }
     let admission = TAG_ADMISSION[tag];
     if admission.root && parent.is_some() {

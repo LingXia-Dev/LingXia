@@ -537,7 +537,7 @@ test('composite roles: items on buttons, containers on views, aria-checked and a
   const radio = rendered(() => h('button', { role: 'radio', 'aria-checked': false, onClick() {} }, 'S'));
   assert.deepEqual([radio.props.role, radio.props.stateChecked], ['radio', 0]);
   const leaf = rendered(() => h('button', { role: 'treeitem', 'aria-level': 3, onClick() {} }, 'a.rs'));
-  assert.equal(leaf.props.headingLevel, 3);
+  assert.deepEqual([leaf.props.ariaLevel, leaf.props.headingLevel], [3, undefined]);
   assert.equal(rendered(() => h('view', { role: 'toolbar', 'aria-label': 'Format' })).props.role, 'toolbar');
   for (const [render, pattern] of [
     [() => h('view', { role: 'tab' }), /role="tab" belongs on a <button>/],

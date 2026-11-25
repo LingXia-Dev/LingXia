@@ -292,6 +292,8 @@ public final class GpuFrame {
         public String role() { return json.isNull("role") ? null : json.optString("role", null); }
         /** `heading_level`: u8? */
         public Long headingLevel() { if (json.isNull("heading_level")) return null; return json.optLong("heading_level"); }
+        /** `aria_level`: u8? */
+        public Long ariaLevel() { if (json.isNull("aria_level")) return null; return json.optLong("aria_level"); }
         /** `live_region`: string? */
         public String liveRegion() { return json.isNull("live_region") ? null : json.optString("live_region", null); }
         /** `select`: Select? */
@@ -590,6 +592,8 @@ public final class GpuFrame {
         public SemanticAction[] actions() { return (SemanticAction[]) GpuFrame.array(json.optJSONArray("actions"), 1, "SemanticAction"); }
         /** `heading_level`: u8? */
         public Long headingLevel() { if (json.isNull("heading_level")) return null; return json.optLong("heading_level"); }
+        /** `level`: u8? */
+        public Long level() { if (json.isNull("level")) return null; return json.optLong("level"); }
         /** `live_region`: string? */
         public String liveRegion() { return json.isNull("live_region") ? null : json.optString("live_region", null); }
         /** `text_selection`: u32[2]? */

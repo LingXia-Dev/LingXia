@@ -131,7 +131,7 @@ fn an_alert_speaks_when_it_appears_and_a_status_only_when_it_changes() {
 }
 
 #[test]
-fn heading_levels_need_a_heading_role_on_the_wire() {
+fn heading_and_tree_levels_need_their_roles_on_the_wire() {
     use crate::protocol::{decode, field, tag};
     use serde_json::json;
     let wire = |fields: serde_json::Value| {
@@ -154,6 +154,15 @@ fn heading_levels_need_a_heading_role_on_the_wire() {
             .contains("role heading")
     );
     assert!(wire(json!([field::ROLE, "heading", field::HEADING_LEVEL, 7])).is_err());
+    // A tree item's depth is its own field, 1..32; headingLevel stays with headings.
+    assert!(wire(json!([field::ROLE, "treeitem", field::ARIA_LEVEL, 32])).is_ok());
+    assert!(wire(json!([field::ROLE, "treeitem", field::ARIA_LEVEL, 33])).is_err());
+    assert!(wire(json!([field::ROLE, "treeitem", field::HEADING_LEVEL, 2])).is_err());
+    assert!(
+        wire(json!([field::ROLE, "heading", field::ARIA_LEVEL, 2]))
+            .unwrap_err()
+            .contains("role treeitem")
+    );
     assert!(wire(json!([field::ROLE, "banner"])).is_err());
     assert!(wire(json!([field::ACCESSIBILITY_HIDDEN, 0])).is_err());
 }
@@ -385,12 +394,12 @@ fn composite_roles_project_with_positions_checked_states_and_tree_levels() {
     assert_eq!((bar.role, bar.position), (Role::Toolbar, None));
     let b = semantic(&frame, "b").unwrap();
     assert_eq!(
-        (b.role, b.heading_level, b.position),
+        (b.role, b.level, b.position),
         (Role::TreeItem, Some(2), Some((1, 1)))
     );
     let docs = semantic(&frame, "docs").unwrap();
     assert_eq!(
-        (docs.heading_level, docs.position),
+        (docs.level, docs.position),
         (Some(1), Some((1, 1))),
         "siblings count by level"
     );

@@ -241,7 +241,7 @@ impl Composites {
         }
         let at = items.iter().position(|item| *item == index)?;
         let count = items.len();
-        let level = |item: usize| frame.nodes[item].heading_level.unwrap_or(1);
+        let level = |item: usize| frame.nodes[item].aria_level.unwrap_or(1);
         match movement {
             Move::First => items.first().copied(),
             Move::Last => items.last().copied(),

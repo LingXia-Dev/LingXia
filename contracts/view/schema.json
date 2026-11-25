@@ -355,7 +355,8 @@
     {"id": 279, "key": "sideEndStyle", "wire": "sideEndStyle", "kind": "state-style"},
     {"id": 280, "key": "bleed", "wire": "bleed", "kind": "bleed", "tags": ["column", "scroll", "list", "image", "video", "webview", "vector"], "parent": "page"},
     {"id": 281, "key": "pageTitle", "wire": "title", "kind": "string", "tags": ["page"]},
-    {"id": 282, "key": "pickerRequest", "wire": "pickerRequest", "kind": "picker-request", "tags": ["input"]}
+    {"id": 282, "key": "pickerRequest", "wire": "pickerRequest", "kind": "picker-request", "tags": ["input"]},
+    {"id": 283, "key": "ariaLevel", "wire": "ariaLevel", "kind": "aria-level"}
   ],
   "input": {
     "autofill": {"username": "username", "current-password": "password", "new-password": "newPassword", "one-time-code": "smsOTPCode", "email": "emailAddress", "tel": "phone", "name": "personName", "given-name": "personGivenName", "family-name": "personFamilyName", "street-address": "postalAddress", "postal-code": "postalCode", "country": "addressCountry", "cc-number": "creditCardNumber", "cc-exp": "creditCardExpirationDate", "cc-csc": "creditCardSecurityCode", "bday": "birthDateFull"},
@@ -366,7 +367,7 @@
     "liveRegions": ["polite", "assertive"],
     "events": ["announce"],
     "actions": ["copy", "cut", "paste", "set-selection"],
-    "keys": {"headingLevel": "heading_level", "liveRegion": "live_region", "position": "position", "textSelection": "text_selection", "selectable": "selectable", "pressed": "pressed", "selected": "selected", "expanded": "expanded", "busy": "busy", "scroll": "scroll", "description": "description", "invalid": "invalid", "required": "required", "controls": "controls", "autocomplete": "autocomplete"}
+    "keys": {"headingLevel": "heading_level", "level": "level", "liveRegion": "live_region", "position": "position", "textSelection": "text_selection", "selectable": "selectable", "pressed": "pressed", "selected": "selected", "expanded": "expanded", "busy": "busy", "scroll": "scroll", "description": "description", "invalid": "invalid", "required": "required", "controls": "controls", "autocomplete": "autocomplete"}
   },
   "scales": [
     {"name": "text.xs", "family": "type", "pack": "type.scale.xs", "doc": "Font size of type step xs."},
@@ -496,7 +497,7 @@
       "VideoOrientation": {"enum": ["landscape", "portrait"]},
       "FrameCost": {"nodes": "usize", "paints": "usize", "glyphs": "usize", "vectorElements": "usize", "layers": "usize", "backdrops": "usize", "shadows": "usize", "images": "usize", "imagePixels": "u64", "outlineGlyphs": "usize"},
       "FeedbackStyle": {"pressOverlay": "u32", "focusRing": "u32", "focusRingWidth": "f32", "selectionHandle": "u32", "noticeBackground": "u32", "noticeText": "u32"},
-      "Node": {"identity": "string", "tag": "string", "test_id": "string", "text": "string", "bounds": "f32[4]", "visible_bounds": "f32[4]", "selectable": "string?", "text_selection": "InputGeometry?", "selection_range": "u32[2]?", "hit_rects": "f32[4][]?", "clips": "Clip[]?", "scroll": "Scroll?", "on_click": "u64?", "checked": "bool?", "mixed": "bool?", "range": "Slider?", "plot": "Plot?", "radio_group": "string?", "scroll_parent": "string?", "accessibility_label": "string?", "accessibility_hidden": "bool?", "role": "string?", "heading_level": "u8?", "live_region": "string?", "select": "Select?", "button_content": "string?", "radii": "f32[2][4]?", "radius": "f32", "content_clip": "Clip?", "control_bounds": "f32[4]?", "input": "Input?", "clips_children": "bool?", "pressed_style": "bool?", "focus_style": "bool?", "order": "u32"},
+      "Node": {"identity": "string", "tag": "string", "test_id": "string", "text": "string", "bounds": "f32[4]", "visible_bounds": "f32[4]", "selectable": "string?", "text_selection": "InputGeometry?", "selection_range": "u32[2]?", "hit_rects": "f32[4][]?", "clips": "Clip[]?", "scroll": "Scroll?", "on_click": "u64?", "checked": "bool?", "mixed": "bool?", "range": "Slider?", "plot": "Plot?", "radio_group": "string?", "scroll_parent": "string?", "accessibility_label": "string?", "accessibility_hidden": "bool?", "role": "string?", "heading_level": "u8?", "aria_level": "u8?", "live_region": "string?", "select": "Select?", "button_content": "string?", "radii": "f32[2][4]?", "radius": "f32", "content_clip": "Clip?", "control_bounds": "f32[4]?", "input": "Input?", "clips_children": "bool?", "pressed_style": "bool?", "focus_style": "bool?", "order": "u32"},
       "Clip": {"radii": "f32[2][4]?", "bounds": "f32[4]", "radius": "f32", "transform": "f64[6]?"},
       "Scroll": {"rtl": "bool?", "contain": "bool?", "axis": "ScrollAxis", "on_reach_start": "u64?", "on_reach_end": "u64?", "id": "string", "parent": "string?", "offset": "f32", "max_offset": "f32"},
       "ScrollAxis": {"enum": ["horizontal", "vertical"]},
@@ -513,7 +514,7 @@
       "Capitalize": {"enum": ["none", "sentences", "words", "characters"]},
       "ReturnKey": {"enum": ["newline", "done", "go", "next", "previous", "search", "send"]},
       "PickerKind": {"enum": ["date", "time"]},
-      "SemanticNode": {"id": "u32", "index": "usize", "role": "string", "name": "string", "text": "string", "test_id": "string", "bounds": "f32[4]", "visible": "bool", "enabled": "bool", "focusable": "bool", "clickable": "bool", "focused": "bool", "checked": "bool?", "mixed": "bool?", "scrollable": "bool", "range": "SemanticRange?", "text_field": "TextField?", "parent": "u32?", "children": "u32[]", "position": "usize[2]?", "actions": "SemanticAction[]", "heading_level": "u8?", "live_region": "string?", "text_selection": "u32[2]?", "pressed": "bool?", "selected": "bool?", "expanded": "bool?", "busy": "bool?", "value": "string?", "scroll": "ScrollPosition?", "description": "string?", "invalid": "bool?", "required": "bool?", "controls": "u32[]?", "autocomplete": "string?"},
+      "SemanticNode": {"id": "u32", "index": "usize", "role": "string", "name": "string", "text": "string", "test_id": "string", "bounds": "f32[4]", "visible": "bool", "enabled": "bool", "focusable": "bool", "clickable": "bool", "focused": "bool", "checked": "bool?", "mixed": "bool?", "scrollable": "bool", "range": "SemanticRange?", "text_field": "TextField?", "parent": "u32?", "children": "u32[]", "position": "usize[2]?", "actions": "SemanticAction[]", "heading_level": "u8?", "level": "u8?", "live_region": "string?", "text_selection": "u32[2]?", "pressed": "bool?", "selected": "bool?", "expanded": "bool?", "busy": "bool?", "value": "string?", "scroll": "ScrollPosition?", "description": "string?", "invalid": "bool?", "required": "bool?", "controls": "u32[]?", "autocomplete": "string?"},
       "SemanticRange": {"min": "f64", "max": "f64", "value": "f64"},
       "TextField": {"text": "string", "hint": "string", "secure": "bool", "multiline": "bool", "selection": "u32[2]?"},
       "ScrollPosition": {"offset": "f32", "max_offset": "f32", "horizontal": "bool"},

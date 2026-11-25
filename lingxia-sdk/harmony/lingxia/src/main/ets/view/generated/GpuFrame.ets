@@ -240,6 +240,7 @@ export interface GpuFrameNode {
   accessibility_hidden?: boolean | null;
   role?: string | null;
   heading_level?: number | null;
+  aria_level?: number | null;
   live_region?: string | null;
   select?: GpuFrameSelect | null;
   button_content?: string | null;
@@ -407,6 +408,7 @@ export interface GpuFrameSemanticNode {
   position?: number[] | null;
   actions: GpuFrameSemanticAction[];
   heading_level?: number | null;
+  level?: number | null;
   live_region?: string | null;
   text_selection?: number[] | null;
   pressed?: boolean | null;

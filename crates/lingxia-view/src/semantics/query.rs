@@ -621,7 +621,7 @@ pub fn tree(projection: &Projection) -> Value {
                 out.insert(key.into(), json!(state));
             }
         }
-        if let Some(level) = node.heading_level {
+        if let Some(level) = node.heading_level.or(node.level) {
             out.insert("level".into(), json!(level));
         }
         if let Some(description) = &node.description {

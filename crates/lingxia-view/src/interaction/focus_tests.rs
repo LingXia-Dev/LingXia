@@ -391,7 +391,7 @@ fn a_list_box_stops_at_its_ends_and_a_tree_walks_levels() {
             (3, 1, Some(false)),
         ] {
             let mut tree_item = item("t", i, "treeitem", 100.0 + 40.0 * i as f32);
-            tree_item.heading_level = Some(level);
+            tree_item.aria_level = Some(level);
             tree_item.states[2] = expanded;
             nodes.push(tree_item);
         }

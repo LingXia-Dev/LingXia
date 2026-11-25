@@ -53,6 +53,7 @@ pub(crate) fn node(identity: &str, tag: &'static str, bounds: [f32; 4]) -> NodeS
         selection_range: None,
         role: None,
         heading_level: None,
+        aria_level: None,
         live_region: None,
         states: [None; 7],
         progress: None,

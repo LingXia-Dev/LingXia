@@ -60,7 +60,7 @@ pub enum Role {
     TabPanel,
     /// A row of controls sharing one tab stop.
     Toolbar,
-    /// A hierarchy of items; `heading_level` carries each item's depth.
+    /// A hierarchy of items; `level` carries each item's depth.
     Tree,
     /// One item of a tree; a button, expandable when it states `expanded`.
     TreeItem,
@@ -153,6 +153,8 @@ pub struct SemanticNode {
     pub actions: Vec<Action>,
     /// 1..6 for headings.
     pub heading_level: Option<u8>,
+    /// A tree item's depth, 1..32.
+    pub level: Option<u8>,
     /// `polite` or `assertive`: announce text changes.
     pub live_region: Option<String>,
     /// Selected range of selectable static text, as UTF-16 offsets.
@@ -811,11 +813,8 @@ impl Projection<'_> {
             children,
             position,
             actions,
-            heading_level: node.heading_level.or(match role {
-                Role::Heading => Some(2),
-                Role::TreeItem => Some(1),
-                _ => None,
-            }),
+            heading_level: node.heading_level.or((role == Role::Heading).then_some(2)),
+            level: node.aria_level.or((role == Role::TreeItem).then_some(1)),
             live_region: node.live_region.clone(),
             text_selection: node.selection_range,
             pressed: node.states[0],
@@ -881,7 +880,7 @@ impl Projection<'_> {
         let (container, kind) = composites
             .container_of(index)
             .filter(|(_, kind)| *kind != Composite::Toolbar)?;
-        let level = |item: usize| self.frame.nodes[item].heading_level.unwrap_or(1);
+        let level = |item: usize| self.frame.nodes[item].aria_level.unwrap_or(1);
         let earlier = (0..index).rev().filter(|item| {
             composites
                 .container_of(*item)

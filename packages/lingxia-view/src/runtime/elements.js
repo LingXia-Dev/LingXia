@@ -1070,7 +1070,7 @@ function semantics(tag, props, wire) {
   }
   if (ariaLevel !== undefined) {
     if (!Number.isInteger(ariaLevel) || ariaLevel < 1 || ariaLevel > 32) throw Error('UI_PROP: aria-level is an integer 1..32');
-    wire('headingLevel', ariaLevel);
+    wire('ariaLevel', ariaLevel);
   }
   if (accessibilityHidden !== undefined) {
     if (typeof accessibilityHidden !== 'boolean') throw Error('UI_PROP: aria-hidden must be boolean');

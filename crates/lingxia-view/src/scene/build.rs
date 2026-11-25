@@ -1795,6 +1795,7 @@ impl Renderer {
                 selection_range: None,
                 role: record.string(field::ROLE).map(str::to_owned),
                 heading_level: record.number(field::HEADING_LEVEL).map(|level| level as u8),
+                aria_level: record.number(field::ARIA_LEVEL).map(|level| level as u8),
                 select: (record.tag == tag::SELECT).then(|| {
                     let value = record.string(field::INPUT_VALUE).unwrap_or("");
                     let options: Vec<SelectOption> = record

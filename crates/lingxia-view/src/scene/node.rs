@@ -241,6 +241,9 @@ pub struct NodeSnapshot {
     pub role: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub heading_level: Option<u8>,
+    /// A tree item's depth, 1..32.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub aria_level: Option<u8>,
     /// `polite` or `assertive`; alerts and statuses imply one.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub live_region: Option<String>,
