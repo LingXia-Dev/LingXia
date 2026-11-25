@@ -2185,15 +2185,23 @@
     base.message = [base.uiMessage, ...base.uiFrames.map((line) => `  at ${line}`)].join("\n");
     return base;
   }
-  function bridgeError(code, message, data) {
+  function bridgeError(code, message, data, reason, detail) {
     const error = new Error(message ?? code);
     error.name = "LxBridgeError";
     error.code = code;
+    if (reason !== void 0) error.reason = reason;
+    if (detail !== void 0) error.detail = detail;
     if (data !== void 0) error.data = data;
     return error;
   }
   function resourceError(error) {
-    if (typeof error?.code === "string") return Object.freeze({ code: error.code, message: String(error.message ?? error.code) });
+    if (typeof error?.code === "string") return Object.freeze({
+      code: error.code,
+      message: String(error.message ?? error.code),
+      ...typeof error.reason === "string" ? { reason: error.reason } : {},
+      ...typeof error.detail === "string" ? { detail: error.detail } : {},
+      ...error.data !== void 0 ? { data: error.data } : {}
+    });
     const text2 = String(error?.uiMessage ?? error?.message ?? error);
     const match = text2.match(/^([A-Z][A-Z0-9_]+): ([\s\S]*)$/);
     return Object.freeze(match ? { code: match[1], message: match[2] } : { code: "UI_ERROR", message: text2 });
@@ -2991,10 +2999,12 @@
   function actionEpochNow() {
     return actionEpoch;
   }
-  var failure = (frame) => bridgeError(
-    typeof frame.error?.code === "string" ? frame.error.code : "BRIDGE_INTERNAL_ERROR",
-    typeof frame.error?.message === "string" ? frame.error.message : void 0,
-    frame.error?.data === void 0 ? void 0 : immutable(frame.error.data)
+  var failure = ({ error }) => bridgeError(
+    typeof error?.code === "string" ? error.code : "BRIDGE_INTERNAL_ERROR",
+    typeof error?.message === "string" ? error.message : void 0,
+    error?.data === void 0 ? void 0 : immutable(error.data),
+    typeof error?.reason === "string" ? error.reason : void 0,
+    typeof error?.detail === "string" ? error.detail : void 0
   );
   function receiveActionResponse(frame) {
     outsideRender("response");

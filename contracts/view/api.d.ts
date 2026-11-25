@@ -51,7 +51,11 @@ export type LeafProps = Omit<Props, "children"> & { children?: never };
 
 export type ReadonlyData<T> = T extends object ? { readonly [K in keyof T]: ReadonlyData<T[K]> } : T;
 /** A failed resource or action, as reported by the bridge. */
-export interface ResourceError { readonly code: string; readonly message: string }
+/** `code` is the `E_` string; `reason` names the business case (camelCase) and `detail` adds what the message leaves out. */
+export interface ResourceError {
+  readonly code: string; readonly message: string;
+  readonly reason?: string; readonly detail?: string; readonly data?: unknown;
+}
 
 export interface Stream<T = unknown, R = unknown> extends AsyncIterable<ReadonlyData<T>> {
   readonly id: string; readonly result: Promise<ReadonlyData<R>>; cancel(): void;

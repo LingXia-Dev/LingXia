@@ -284,10 +284,13 @@ export function actionPending(serial) { return pendingActions.has(`ui-action:${s
 export function hasActionEpoch(epoch) { return epoch === actionEpoch; }
 export function actionEpochNow() { return actionEpoch; }
 
-const failure = frame => bridgeError(
-  typeof frame.error?.code === 'string' ? frame.error.code : 'BRIDGE_INTERNAL_ERROR',
-  typeof frame.error?.message === 'string' ? frame.error.message : undefined,
-  frame.error?.data === undefined ? undefined : immutable(frame.error.data));
+// A reply's `code` is the `E_` string; `reason` names the business case, `detail` says more.
+const failure = ({ error }) => bridgeError(
+  typeof error?.code === 'string' ? error.code : 'BRIDGE_INTERNAL_ERROR',
+  typeof error?.message === 'string' ? error.message : undefined,
+  error?.data === undefined ? undefined : immutable(error.data),
+  typeof error?.reason === 'string' ? error.reason : undefined,
+  typeof error?.detail === 'string' ? error.detail : undefined);
 
 export function receiveActionResponse(frame) {
   outsideRender('response');
