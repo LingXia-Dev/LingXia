@@ -33,6 +33,6 @@ There is no DOM: `lxdev lxapp page eval` is for WebView pages. Logic state is `l
 
 ## Locators
 
-- `locator.dblclick()` selects the word at an element's center in selectable text and editors (a long press on touch).
-- `locator.blur()` takes keyboard focus from an editor that holds it (its `onBlur` runs); any other match is left alone.
-- `locator.click()` on content inside a control (a checkbox's label) clicks that control, as a finger would; it fails when the control is disabled.
+GPU-specific locator behaviour: `locator.dblclick()` selects the word at an element's centre in selectable
+text and editors (a long press on touch); `locator.blur()` takes focus only from an editor that holds it.
+The full locator API: [Testing → Common tasks](../testing.md#common-tasks).

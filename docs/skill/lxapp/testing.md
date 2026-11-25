@@ -76,6 +76,8 @@ everything once before pushing; CI runs it again.
 - Each case is tagged with the page renderers its locators read (`[gpu]`, `[webview]`; `renderers` in `report.json`), and the run prints a `renderers:` count.
 - `--changed` picks tests that import a changed file or name its page
   (`'home'`); it prints why. A page reached only by tapping is missed: name it.
+  A project-wide file (`lxapp.json`, `lxapp.ts`, `package.json`, a lockfile,
+  `lxdev.json`) or one it cannot attribute runs everything.
 - `--changed` ignores files outside the test project (host Rust,
   `lingxia.yaml`): after a host change, pick tests with `--grep` or `--tag`.
 - `lxdev test list` with a session loads the test modules in the app (their
@@ -83,6 +85,8 @@ everything once before pushing; CI runs it again.
   `--offline`, it reads the tests from the source; `~` marks a computed title,
   id or tag, or a test registered in a loop, which a run may list differently.
 - `--retries N` needs `test.reset`; `--shard 1/3` needs separate sessions.
+  `--repeat-each N` and `--shuffle[=SEED]` find flaky and order-dependent tests.
+- `test.only` narrows a file while iterating; `--forbid-only` fails a run that has one (use it in CI).
 - A run pauses [auto-reload](../cli/dev-reload.md). Keep files that setup
   generates outside the watched project.
 - The run fails fast when the project or the session is outside this tool's [compatibility window](../cli/lingxia.md#lingxia-dev).
@@ -101,13 +105,14 @@ everything once before pushing; CI runs it again.
 | Navigate | `t.app.nav.go({ page, params? } \| { tab }, { replace? })` / `.back(n?)`; `.press('back' \| 'home')` presses the navigation bar button (leave guard included) |
 | Find an element | `t.app.view.testId(id)`, `.css(selector)`, `.getByRole(role, { name, selected })`, `.nth(i)` / `.first()` / `.last()`, `.filter({ hasText })`; `locator.getByRole(...)` searches inside every match of an un-narrowed locator |
 | Another page (below the current one, on a surface) | `(await t.app.page({ name })).view`; [Pages](#pages) |
-| Act | `locator.click()` / `.fill(text)` / `.type(text)` / `.press(key)`; `type` inserts at a focused field's selection (replacing it, caret after) and at the end of an unfocused one; `press` takes navigation keys (Tab, arrows, Home/End, Enter/Space, Escape, PageUp/PageDown) and a select's type-ahead letter; in a field a character key is `E_UNSUPPORTED` on every platform, so type it |
+| Act | `locator.click()` / `.dblclick()` / `.fill(text)` / `.type(text)` / `.press(key)` / `.blur()` / `.selectOption(valueOrLabel)` / `.performAction(name)`; `click` on content inside a control (a checkbox's label) clicks that control; `type` inserts at a focused field's selection (replacing it, caret after) and at the end of an unfocused one; `press` takes navigation keys (Tab, arrows, Home/End, Enter/Space, Escape, PageUp/PageDown) and a select's type-ahead letter; in a field a character key is `E_UNSUPPORTED` on every platform, so type it |
 | Hover | `locator.hover()` moves a mouse onto it on macOS/Windows (into the app window: the system cursor and window order stay put; `E_UNSUPPORTED` elsewhere); `locator.pin({ hover: true })` holds `hover:` styles and `interestFor` hints with no pointer, on every platform, until `{ hover: false }` or the test's end; it sends no `pointerenter`/`pointerleave` |
 | Read an element once | `locator.textContent()` / `.inputValue()` / `.getAttribute(name)` / `.boundingBox()` / `.touchTarget()` (the box a finger reaches) / `.selection()` (a focused GPU editor's `[start, end]`, else `null`) / `.count()` / `.isVisible()`; no retry, so assert with `expect(locator)` |
 | Bring an element wholly on screen | `locator.scrollIntoView()`; actions do it themselves, so use it before a `swipe` or a box check |
-| Native window input | `t.app.window.pointer` / `.key`; independent of pages |
+| Native window input | `t.app.window.pointer` / `.key` / `.orient('landscape')`; independent of pages |
+| Host bars | `t.app.tabBar.tap(label)`, `t.app.chrome.tap(label)` |
 | Swipe, drag, fling, pull to refresh, edge back | `t.app.view.swipe` / `.drag` / `.scrub` / `.fling` / `.pullToRefresh` / `.touch`, `t.app.gesture.*`; [Gestures](#gestures) |
-| Assert UI | `expect(locator).toBeVisible()` / `.toBeInViewport()` / `.toBeAttached()` / `.toHaveText()` / `.toContainText()` / `.toHaveAttribute(name, value?)` / `.toHaveCount()` / `.toHaveValue()` / `.toBeEnabled()` / `.toBeChecked()` / `.toBeSelected()` / `.toBeExpanded()` / `.toBePressed()` (fail either way on an element without that state) / `.toBeBusy()` (`aria-busy`; absent is not busy); `.not` |
+| Assert UI | `expect(locator).toBeVisible()` / `.toBeInViewport()` / `.toBeAttached()` / `.toHaveText()` / `.toContainText()` / `.toHaveAttribute(name, value?)` / `.toHaveCount()` / `.toHaveValue()` / `.toBeEnabled()` / `.toBeChecked()` / `.toBeSelected()` / `.toBeExpanded()` / `.toBePressed()` (fail either way on an element without that state) / `.toBeBusy()` (`aria-busy`; absent is not busy) / `.toBeHidden()` / `.toBeDisabled()` / `.toBeEditable()` / `.toBeFocused()`; `.not` |
 | Wait for an element state | `locator.waitFor({ state: 'visible' \| 'inViewport' \| 'attached' \| 'hidden' \| 'detached' })` |
 | Page data, page actions, Logic eval | [Pages](#pages), [Logic eval](#logic-eval) |
 | Wait until a value is ready | `t.waitFor(read, { until })` returns it; `expect.poll(read).toBe(x)` asserts it |
@@ -131,7 +136,7 @@ everything once before pushing; CI runs it again.
 | Another running lxapp | `t.automation.lxapp(appId)` |
 | App lifecycle, inbound links | `t.automation.lxapps` (`applink({ url })`) |
 | External web pages, auth/payment callbacks | `t.automation.browser`: `snapshot()` then act on its refs (`click({ ref })`, `fill`, `selectOption`, …) or `{ css }`; same auto-wait and failure codes (`covered`, `stale_ref`, …) as `lxdev browser` |
-| Runner device and appearance | `t.automation.device` ([example](./adaptive-ui.md#test-runtime-switching)) |
+| Runner device and appearance | `t.device.set({ preset, posture, orientation })`, `t.automation.device` ([example](./adaptive-ui.md#test-runtime-switching)) |
 | Host shell, terminal, desktop | `t.automation.shell`, `.terminal`, `.desktop` where the host has them |
 | External fixtures and service results | test-context `fetch` |
 
@@ -356,8 +361,8 @@ test('an unknown payment result settles as paid', async (t) => {
 });
 ```
 
-- One scenario per test; a second call replaces it. Routes take precedence
-  over its rules. Each test starts with fresh mock handler state.
+- One scenario per test; a second call replaces it and the test's end removes it.
+  Routes take precedence over its rules.
 - `t.scenario.use(checkout, { app: 'other-app' })` installs the scenario's
   `http` rules for that app; a scenario with `function` rules rejects.
 - It returns `{ name, variant, rules, calls(filter?), waitForCall(target),
@@ -388,16 +393,10 @@ expect(problem).toMatchSchema({ ref: '#/components/schemas/Problem', document: '
 test.configure({ requires: { openapi: true } });   // skip the file without --openapi
 ```
 
-## Tags and coverage
+## Logic and Views in Node
 
-| Layer | Talks to | Typical run |
-|---|---|---|
-| `routed` | the UI, with every backend call faked | every change, with `--openapi` |
-| `live` | a real backend or device | nightly, before release |
-
-Pure Logic helpers are plain TypeScript: import them into a Node test runner
-(`node --test`, vitest) instead. `lxdev test` is for behaviour that needs the
-app running.
+`lxdev test` is for behaviour that needs the app running. Pure Logic helpers are plain
+TypeScript: test them with a Node runner (`node --test`, vitest).
 
 A page's Logic runs in Node with `mount(page, { params, lx })` and
 `createLxMock({ pick: { file: async () => ({ status: 'ok', file }) } })`, both from `@lingxia/logic/testing`:
@@ -411,6 +410,13 @@ fails unhandled lands in `mounted.failures` (as `App.onError` would get it) and 
 `unhandled: 'allow'` to assert them.
 
 A GPU View component is unit-tested in Node with `@lingxia/view/testing`: [GPU View tests](./gpu/testing.md#in-node).
+
+## Tags and coverage
+
+| Layer | Talks to | Typical run |
+|---|---|---|
+| `routed` | the UI, with every backend call faked | every change, with `--openapi` |
+| `live` | a real backend or device | nightly, before release |
 
 ```ts
 test.configure({ tags: ['routed'] });            // every test in this file
@@ -447,7 +453,7 @@ test('status refreshes every 3 s', async (t) => {
 ```
 
 - Logic `Date`, `setTimeout` / `setInterval`, and `performance.now()` follow
-  it. Timers fire only from `tick(ms)` or `runAll()`; `setSystemTime(t)` moves
+  it. Timers fire only from `tick(ms)` or `runAll()`; `uninstall()` returns to real time; `setSystemTime(t)` moves
   `Date` alone.
 - Install before opening the page: timers started earlier stay real. The
   WebView, native work, real requests, route delays, and state delivery
