@@ -41,3 +41,18 @@ test('Adds no inset of its own at either size', async () => {
     assert.equal(bar.props.paddingStart ?? bar.props.paddingInlineStart ?? bar.props.paddingLeft, 12, sizeClass);
   }
 });
+
+// The capsule floats over the bar's row: its actions must not sit under it.
+test('Keeps its actions clear of a floating capsule, on whichever side it floats', async () => {
+  const viewport = { width: 393, height: 852 };
+  const cases = [
+    [{ x: 280, y: 52, width: 98, height: 32 }, 'paddingRight', 393 - 280 + 8],
+    [{ x: 12, y: 52, width: 98, height: 32 }, 'paddingLeft', 12 + 98 + 8],
+  ];
+  for (const [capsule, side, expected] of cases) {
+    const bar = (await renderExample('TopBar/TopBar', 'Standard', { env: { viewport, capsule } })).getByTestId('orders-topbar');
+    assert.equal(bar.props[side], expected, side);
+  }
+  const none = (await renderExample('TopBar/TopBar', 'Standard', { env: { viewport, capsule: null } })).getByTestId('orders-topbar');
+  assert.equal(none.props.paddingRight, 12, 'no capsule: only its own padding');
+});
