@@ -12,8 +12,8 @@ Change a page's layout by the room it has. Never infer a device from the user ag
 
 - Near 600 the class holds until the width is 24 px past it, so a width breakpoint
   (`min-[600px]:`) and a `sizeClass` branch disagree there: choose one, `sizeClass`.
-- It comes from the page's own viewport, not the window: a page in a narrow region of a wide
-  window is `compact`, and the shell's sidebar never changes it. A page in its own window
+- It comes from the lxapp's content area, not the window: an lxapp in a narrow region of a wide
+  window is `compact`. Every page of the lxapp shares it, so a page in its own window
   (`as: 'window'`) reads its lxapp's value; size that page from `env.viewport`.
 - `regular` is room, not desktop: an unfolded fold, a tablet and a desktop workspace are all
   `regular`. Do not branch on the device for layout, and do not add a third class.
@@ -52,11 +52,13 @@ export function render({ data, env }: View) {
 - A list and the detail of the chosen item: `<ListDetail>` from `@liulidesign/core/ListDetail`,
   driven by the selection (`value` with `onChange`, or `bind`). On `compact` it drills into the
   detail and Back returns to the list; on `regular` the panes sit side by side.
-- A main area with a companion pane: `<Split aside={…}>` from `@liulidesign/core/Split`; on
-  `compact` the aside stacks below, or opens as a sheet with `compact="sheet"`.
+- A main area with a companion pane: `<Split aside={…} asideLabel="Comments">` from
+  `@liulidesign/core/Split`; on `compact` the aside stacks below, or opens as a sheet with
+  `compact="sheet"` plus `bind` (or `isOpen` and `onOpenChange`).
 - Columns and visibility by class: `grid-cols-1 regular:grid-cols-2`, `regular:hidden`.
-  `regular:` follows the nearest `<SizeClassScope value>`, then `env.sizeClass`; the panes of
-  `<ListDetail>` and `<Split>` set it, so a card inside a 360 px pane stays single-column.
+  `regular:` follows the nearest `<SizeClassScope value>`, then `env.sizeClass`. `<Split>` sets it
+  from each pane's width; `<ListDetail>` makes both panes `compact`, so `regular:` never applies inside
+  them.
 - `useBackHandler(enabled, onBack)` takes Back (never Home) while `enabled`, the latest first. On
   the home app's first page only it holds Back; a leave guard alone there lets Back background the app.
 
@@ -99,8 +101,8 @@ export function render({ data, env }: View) {
 
 `lx.surface.openPage(page, { as: 'window', chrome: 'full' })` runs the page to
 the window edge; the system keeps window controls and the runtime keeps a drag
-strip whose height is `--lx-page-chrome-top-inset`. Check
-`lx.supports('surface.window.fullChrome')` first; the default is `'system'`.
+strip. Check `lx.supports('surface.window.fullChrome')` first; the default is
+`'system'`. A WebView page pads its header by the strip's height:
 
 ```css
 header {
