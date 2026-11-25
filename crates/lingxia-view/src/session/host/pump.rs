@@ -199,6 +199,16 @@ impl<A: PlatformAdapter> Inner<A> {
             main.text_menu.set_fine_pointer(fine);
             main.interaction
                 .set_obscured(crate::platform::obscured(&environment.value));
+            if main.environment.as_ref().is_some_and(|held| {
+                !super::environment::same_appearance(&held.value, &environment.value)
+            }) {
+                main.appearance_asked = Some(asked);
+                log::debug!(
+                    target: "lingxia_view",
+                    "appearance {}: frame asked",
+                    super::environment::appearance_label(&environment.value)
+                );
+            }
             let same = main
                 .environment
                 .as_ref()
@@ -1090,6 +1100,30 @@ impl<A: PlatformAdapter> Inner<A> {
     }
 
     #[allow(clippy::too_many_arguments)]
+    /// The first frame in a newly asked appearance reached the screen.
+    fn log_appearance_presented(self: &Arc<Self>, now: Duration) {
+        let measured = self.adapter.environment();
+        let mut main = self.main();
+        let (Some(asked), Some(shown), Some(mut wanted)) = (
+            main.appearance_asked,
+            main.presented_environment.as_ref(),
+            measured,
+        ) else {
+            return;
+        };
+        main.host_environment.apply(&mut wanted.value);
+        if !super::environment::same_appearance(&shown.value, &wanted.value) {
+            return;
+        }
+        log::debug!(
+            target: "lingxia_view",
+            "appearance {}: presented after {} ms",
+            super::environment::appearance_label(&shown.value),
+            now.saturating_sub(asked).as_millis()
+        );
+        main.appearance_asked = None;
+    }
+
     fn presented(
         self: &Arc<Self>,
         snapshot: Arc<FrameSnapshot>,
@@ -1148,6 +1182,7 @@ impl<A: PlatformAdapter> Inner<A> {
         // A running animation's next frame queues right behind the acknowledgement on the
         // worker instead of waiting for its wakeup to come back through the main thread.
         let now = self.adapter.now();
+        self.log_appearance_presented(now);
         let queue = {
             let mut main = self.main();
             let queue = main.animating && now > main.animation_queued_at;

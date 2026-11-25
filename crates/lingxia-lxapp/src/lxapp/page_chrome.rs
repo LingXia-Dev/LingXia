@@ -505,6 +505,8 @@ impl LxApp {
             warn!("Failed to apply appearance: {error}").with_appid(self.appid.clone());
             return None;
         }
+        debug!("appearance {}: applied to the host", resolved.as_str())
+            .with_appid(self.appid.clone());
         crate::appservice::event_bus::publish_app_event(
             &self.appid,
             crate::APPEARANCE_CHANGE_EVENT,

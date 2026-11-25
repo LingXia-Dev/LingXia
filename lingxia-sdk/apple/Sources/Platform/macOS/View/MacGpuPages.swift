@@ -14,6 +14,9 @@ final class GpuPageView: NSView {
     /// The last frame over the layer while the page is away, until it presents at its size.
     private var cover: CALayer?
     private var coverArmed = false
+    /// The page column's picture from before a scheme change, until the page shows the new one.
+    var schemeFade: NSView?
+    var schemeFadeStarted: CFTimeInterval = 0
     private lazy var semantics = MacGpuAccessibility(view: self)
     lazy var ime = GpuIme(host: self)
     var inputReplies: [UInt64: (GpuFrameInputReply?) -> Void] = [:]
@@ -237,6 +240,7 @@ final class GpuPageView: NSView {
         Self.dropCover(cover)
         cover = nil
         coverArmed = false
+        endSchemeFade()
     }
 
     /// Keys reach the page without a click when nothing else in the key window holds them: a
@@ -763,10 +767,14 @@ public enum GpuPages {
         }
     }
 
-    /// The lxapp's scheme changed: its pages measure again. AppKit's own appearance change
+    /// The lxapp's scheme changed: its pages measure again under a picture of the old scheme,
+    /// which fades once each shows the new one. AppKit's own appearance change
     /// reaches a view before the runtime has resolved the scheme it should take.
     @MainActor static func schemeChanged(appId: String) {
-        for view in views.values where view.refreshAppId == appId { view.report() }
+        for view in views.values where view.refreshAppId == appId {
+            view.beginSchemeFade()
+            view.report()
+        }
     }
 
     /// The GPU view showing the page `webtag` of `appId`.

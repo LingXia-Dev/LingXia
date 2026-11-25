@@ -42,6 +42,21 @@ pub(super) const TEXT_SCALES: std::ops::RangeInclusive<f64> = 0.5..=3.0;
 /// Environment keys that only change colours, which the renderer resolves.
 const APPEARANCE: [&str; 3] = ["theme", "highContrast", "palette"];
 
+/// Whether two environments show the same scheme, contrast and palette.
+pub(super) fn same_appearance(a: &serde_json::Value, b: &serde_json::Value) -> bool {
+    APPEARANCE.iter().all(|key| a.get(key) == b.get(key))
+}
+
+/// The appearance an environment shows, for logs.
+pub(super) fn appearance_label(env: &serde_json::Value) -> String {
+    let contrast = if env["highContrast"] == true {
+        " high-contrast"
+    } else {
+        ""
+    };
+    format!("{}{contrast}", env["theme"].as_str().unwrap_or("unknown"))
+}
+
 /// Environment keys a surface push sets that only the View reads.
 const HOST_CONTEXT: [&str; 2] = ["sizeClass", "canDock"];
 

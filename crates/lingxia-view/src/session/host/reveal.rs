@@ -278,12 +278,22 @@ impl<A: PlatformAdapter> Inner<A> {
     /// A frame of `width`×`height` reached the screen: a cover comes off if that is the
     /// current size.
     pub(super) fn uncover_by_frame(self: &Arc<Self>, width: u16, height: u16) {
-        let sized = self
-            .adapter
-            .environment()
-            .is_some_and(|environment| (environment.width, environment.height) == (width, height));
-        if !sized {
+        let Some(mut current) = self.adapter.environment() else {
             return;
+        };
+        if (current.width, current.height) != (width, height) {
+            return;
+        }
+        // A frame from before an appearance change does not lift a cover put up for it.
+        {
+            let main = self.main();
+            main.host_environment.apply(&mut current.value);
+            let shown = main.presented_environment.as_ref();
+            if shown.is_some_and(|shown| {
+                !super::environment::same_appearance(&shown.value, &current.value)
+            }) {
+                return;
+            }
         }
         let at = self.adapter.now();
         let Some(since) = self.main().reveal.cover.take() else {

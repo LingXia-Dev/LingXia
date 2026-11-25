@@ -214,6 +214,10 @@ pub fn refresh_auto_appearances() {
             (app.appearance_state().preference == AppearancePreference::Auto).then_some(app)
         })
         .collect();
+    crate::debug!(
+        "appearance: the host changed; {} lxapps follow it",
+        apps.len()
+    );
     for app in apps {
         std::mem::drop(crate::executor::spawn(async move {
             let _ = app.refresh_appearance().await;

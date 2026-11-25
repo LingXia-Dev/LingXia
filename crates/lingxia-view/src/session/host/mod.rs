@@ -409,6 +409,8 @@ struct Main<F> {
     environment: Option<FrameEnvironment>,
     /// The environment of the last frame the target accepted; cleared when the target changes.
     presented_environment: Option<FrameEnvironment>,
+    /// When a frame in a new appearance was asked for, until one presents.
+    appearance_asked: Option<Duration>,
     host_environment: environment::HostEnvironment,
     snapshot: Option<Arc<FrameSnapshot>>,
     /// State acknowledgements held until a frame built from their revision is queued to present.
@@ -676,6 +678,7 @@ impl<A: PlatformAdapter> ViewHost<A> {
                     webviews: Default::default(),
                     environment: None,
                     presented_environment: None,
+                    appearance_asked: None,
                     host_environment,
                     snapshot: None,
                     acks: Vec::new(),

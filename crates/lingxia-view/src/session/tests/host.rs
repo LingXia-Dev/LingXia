@@ -2320,6 +2320,32 @@ fn a_cover_stays_through_held_frames_and_a_size_change() {
     assert_eq!(uncovered(&host).len(), 2, "a frame at the new size");
 }
 
+/// A cover put up for a scheme change stays until a frame in the new scheme is shown; one
+/// built in the old scheme does not take it off.
+#[test]
+fn a_cover_stays_until_a_frame_in_the_new_scheme() {
+    let worker = ViewWorker::spawn("test-cover-scheme").unwrap();
+    let platform = Platform::new(&[&worker]);
+    let host = revealing_page(&platform, &worker);
+    platform.settle(&[&host]);
+    host.cover();
+    host.adapter()
+        .environment
+        .lock()
+        .unwrap()
+        .as_mut()
+        .unwrap()
+        .value["theme"] = "dark".into();
+    platform.settle(&[&host]);
+    assert!(
+        uncovered(&host).is_empty(),
+        "built in light, the page is now dark"
+    );
+    host.environment_changed();
+    platform.settle(&[&host]);
+    assert_eq!(uncovered(&host).len(), 1, "a frame in dark");
+}
+
 #[test]
 fn a_stopped_window_pauses_the_deadline_and_a_failure_reveals_at_once() {
     let worker = ViewWorker::spawn("test-reveal-paused").unwrap();
