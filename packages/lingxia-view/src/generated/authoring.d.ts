@@ -373,8 +373,8 @@ export interface Edges {
   readonly right: number;
   readonly bottom: number;
   readonly left: number;
-  readonly inlineStart?: number;
-  readonly inlineEnd?: number;
+  readonly inlineStart: number;
+  readonly inlineEnd: number;
 }
 
 /** Physical display hinge/crease intersecting the page canvas, in page-local logical coordinates. */
