@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { textOf } from '@lingxia/view/testing';
-import { renderExample } from '../testing/harness.mjs';
+import { renderExample, renderPage } from '../testing/harness.mjs';
 
 const texts = (screen, role) => screen.queryAll(node => node.props.role === role && node.tag === 'text').map(textOf);
 // What the live texts of a role say now, ignoring the cleared ones.
@@ -186,4 +186,21 @@ test('a showing toast leaves the rest of the page pressable: its top-layer box n
     assert.equal(screen.getByTestId('counted').text ?? screen.getByTestId('counted').children?.[0]?.text, '1', `${position} ${pointer}: the press reached the page`);
     assert.equal(shown(screen).length, 1, 'and the undo toast stays');
   }
+});
+
+test('ToastRegion: takes several children and a page-bottom scroll, in one box that fills the page', async () => {
+  const screen = await renderPage(`
+    import { ToastRegion } from '@liulidesign/core/Toast';
+    export function render() {
+      return <page>
+        <ToastRegion>
+          <text data-testid="title">Inbox</text>
+          <scroll data-testid="list"><text>One</text></scroll>
+        </ToastRegion>
+      </page>;
+    }
+  `);
+  const box = screen.getByTestId('title').parent;
+  assert.equal(screen.getByTestId('list').parent, box);
+  assert.deepEqual([box.props.grow, box.props.minHeight], [1, 0]);
 });

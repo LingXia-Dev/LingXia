@@ -21450,7 +21450,8 @@
         "message": "text",
         "action": "Button",
         "dismiss": "button",
-        "announcer": "text"
+        "announcer": "text",
+        "content": "view"
       },
       "accessibility": {
         "pattern": null,

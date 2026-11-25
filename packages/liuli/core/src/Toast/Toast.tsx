@@ -1,4 +1,4 @@
-import { createContext, cx, useContext, useId, useLocal, useView, type Local } from '@lingxia/view';
+import { createContext, cx, useContext, useId, useLocal, useView, type Child, type Local } from '@lingxia/view';
 import { liuliText } from '../i18n/text';
 import type { BannerTone } from '../Banner/Banner';
 import { Button } from '../Button/Button';
@@ -48,8 +48,8 @@ export interface ToastRegionProps {
   dismissLabel?: string;
   /** How long a toast without an action shows, in ms. @default 5000 */
   duration?: number;
-  /** The page's content; `useToast()` anywhere inside it reaches this region. */
-  children: JSX.Element;
+  /** The page's content, one element or several, a page-bottom `<scroll>` among them; `useToast()` anywhere inside it reaches this region. */
+  children: Child;
 }
 
 export type ToastProps = {
@@ -221,7 +221,7 @@ export function ToastRegion({ position = 'bottomEnd', inset, dismissLabel, durat
   const say = (which: number, danger: boolean) => (head && urgent === danger && slot.value === which ? head.message : '');
   return (
     <>
-      <ToastContext.Provider value={toaster}>{children}</ToastContext.Provider>
+      <ToastContext.Provider value={toaster}><view className={r.content.base}>{children}</view></ToastContext.Provider>
       <text role="status" className={r.announcer.base}>{say(0, false)}</text>
       <text role="status" className={r.announcer.base}>{say(1, false)}</text>
       <text role="alert" className={r.announcer.base}>{say(0, true)}</text>

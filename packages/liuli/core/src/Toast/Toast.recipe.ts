@@ -8,6 +8,7 @@ export const toastParts = {
   action: 'Button',
   dismiss: 'button',
   announcer: 'text',
+  content: 'view',
 } as const;
 
 /**
@@ -55,6 +56,10 @@ export const toastRecipe = {
   },
   dismissIcon: {
     base: 'size-4',
+  },
+  /** The page's content, in one box a context can wrap; it fills the page, and a page-bottom scroll inside it still runs under the bars. */
+  content: {
+    base: 'flex-1 min-h-0',
   },
   /** Mounted for the region's whole life, so a new message is a change it announces. */
   announcer: {
