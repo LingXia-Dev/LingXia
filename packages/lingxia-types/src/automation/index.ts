@@ -1203,7 +1203,7 @@ export type ScenarioRule = ScenarioHttpRule | ScenarioFunctionRule;
 
 /**
  * A scenario file: rules tried in file order (the first match answers;
- * nothing matched goes to the real backend), and named variants whose rules
+ * nothing matched goes to the mock selection), and named variants whose rules
  * go before the shared ones. Unknown fields are rejected.
  */
 export type ScenarioDefinition = {

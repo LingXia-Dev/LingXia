@@ -8,7 +8,7 @@
     "$schema": { "type": "string" },
     "name": { "type": "string", "description": "Shown by `lxdev mock list` and `lxdev mock`, in the session log and in failure reports." },
     "description": { "type": "string", "description": "Shown by `lxdev mock list`." },
-    "rules": { "$ref": "#/$defs/rules", "description": "Shared by every variant. The first rule that matches a call answers it; nothing matched goes to the real backend." },
+    "rules": { "$ref": "#/$defs/rules", "description": "Shared by every variant. The first rule that matches a call answers it; nothing matched goes to the mock selection." },
     "variants": {
       "type": "object",
       "description": "States of this scenario: `lxdev mock use <name>:<variant>`, `t.scenario.use(file, { variant: '<variant>' })`.",
