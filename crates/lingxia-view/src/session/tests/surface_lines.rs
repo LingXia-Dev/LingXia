@@ -74,7 +74,7 @@ fn a_line_entering_inside_an_overlay_eases_between_the_overlay_pair() {
     page.set_animation_surface(Some(SURFACE), Duration::ZERO)
         .unwrap();
     let at = |index: u64| Duration::from_micros(index * 16_667);
-    let mut present = |page: &mut ViewSession, index: u64, rebuild: bool| {
+    let present = |page: &mut ViewSession, index: u64, rebuild: bool| {
         let (border, toggle) = page
             .prepare_view_animated(
                 200,
