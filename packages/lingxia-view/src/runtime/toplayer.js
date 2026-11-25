@@ -3,6 +3,7 @@
 import { h } from './nodes.js';
 import { render, page } from './state.js';
 import { envOf, cellOf } from './hooks.js';
+import { noteEnv } from './memo.js';
 import { resolveClasses } from '../style/classes.js';
 import { limits } from '../generated/contract.js';
 import { report } from './actions.js';
@@ -171,6 +172,8 @@ function dialog(props, children, identity, parent) {
   if (opening && bound && typeof bound.cell.value === 'number') resting.set(identity, { ...bound, index: bound.cell.value });
   const close = () => onClose?.();
   collected().entries.push({ identity, kind: 'dialog', sequence: opened.get(identity), close: closedby === 'none' ? null : close });
+  // Placement and docking read the bars, insets and viewport.
+  noteEnv('*');
   const env = envOf(render.view);
   const backdrop = backdropOf(resolveClasses(props.className, env));
   const testId = props['data-testid'];
@@ -211,6 +214,7 @@ function popover(tag, props, children, identity, parent) {
   if (!anchors.has(id)) anchors.set(id, invoker?.id === id ? invoker.identity : null);
   const anchor = anchorId ?? anchors.get(id);
   top.entries.push({ identity, kind, sequence: opened.get(identity), close: kind === 'manual' ? null : () => { if (onCloseRequest?.() !== false) toggle(id, false); } });
+  noteEnv('*');
   const env = envOf(render.view);
   const docking = anchor ? { layer: {}, panel: {} } : dock(rest, env, rtlOf(parent, env));
   // A light-dismiss popover's backdrop is clear unless its `backdrop:` classes paint it, as a sheet's scrim.

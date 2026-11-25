@@ -94,8 +94,10 @@ Signatures live in `contracts/view/api.d.ts`; these are the rules the types
 cannot state.
 
 - `useView()` returns the page View, `useEnv()` only its environment (a
-  component reading only that re-runs on environment changes, not data
-  changes). Components that need typed page data take it through props.
+  component reading only that re-runs when a field it read changes, not on
+  data changes). Memo records keep the environment fields their subtree read,
+  by page code or by class lowering; a component nothing reads env in survives
+  any environment change. Components that need typed page data take it through props.
 - `useLocal([name,] initial)` holds JSON state, keyed by name or by call
   order. `set` on a prepared candidate's cell applies when that candidate
   commits; `set` on an unmounted cell throws `UI_LOCAL` naming its scope.

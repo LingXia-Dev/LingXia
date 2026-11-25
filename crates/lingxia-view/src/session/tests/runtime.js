@@ -1093,11 +1093,41 @@
   var classesReadTheme = () => themed;
   var sized = false;
   var classesReadSizeClass = () => sized;
+  var NO_FIELDS = Object.freeze([]);
+  var VIEWPORT_FIELDS = Object.freeze(["viewport", "insets", "keyboard"]);
+  var viewportUnit = /\d(?:vw|vh)\b/;
+  function usesViewportUnits(style2, depth = 0) {
+    if (!style2 || typeof style2 !== "object" || depth > 4) return false;
+    for (const key in style2) {
+      const value = style2[key];
+      if (typeof value === "string" ? viewportUnit.test(value) : usesViewportUnits(value, depth + 1)) return true;
+    }
+    return false;
+  }
+  var fieldsByClass = /* @__PURE__ */ new Map();
+  function classEnvFields(className) {
+    let fields3 = fieldsByClass.get(className);
+    if (fields3) return fields3;
+    const out = /* @__PURE__ */ new Set();
+    for (const name of className.split(/\s+/)) for (const rule of byName.get(name) ?? []) {
+      const when = rule.when;
+      if (when?.theme !== void 0) out.add("theme");
+      if (when?.sizeClass !== void 0) out.add("sizeClass");
+      if (when?.reducedMotion !== void 0) out.add("reducedMotion");
+      if (when?.minWidth !== void 0 || when?.maxWidth !== void 0) out.add("viewport");
+      if (usesViewportUnits(rule.style)) for (const field2 of VIEWPORT_FIELDS) out.add(field2);
+    }
+    fields3 = out.size ? Object.freeze([...out]) : NO_FIELDS;
+    if (fieldsByClass.size >= 4096) fieldsByClass.delete(fieldsByClass.keys().next().value);
+    fieldsByClass.set(className, fields3);
+    return fields3;
+  }
   function configureClasses(compiled) {
     classGeneration++;
     byName = /* @__PURE__ */ new Map();
     cache.clear();
     sizedNames.clear();
+    fieldsByClass.clear();
     themed = compiled.some((rule) => rule.when?.theme !== void 0);
     sized = compiled.some((rule) => rule.when?.sizeClass !== void 0);
     compiled.forEach((rule, order) => {
@@ -1325,6 +1355,647 @@
     return result;
   }
 
+  // src/runtime/keys.js
+  var made = /* @__PURE__ */ new WeakSet();
+  var parents = /* @__PURE__ */ new WeakMap();
+  var checked = /* @__PURE__ */ new WeakMap();
+  var payloads = /* @__PURE__ */ new WeakMap();
+  var positions = /* @__PURE__ */ new WeakMap();
+  var latest = null;
+  var itemKeys = /* @__PURE__ */ new WeakMap();
+  var settled = (keys2) => made.has(keys2) || isFrozen(keys2);
+  function keysOf(items, getKey) {
+    const known = itemKeys.get(items);
+    if (known) return known;
+    const frozen2 = isFrozen(items);
+    const base = frozen2 && latest && extends_(items, latest.items) ? latest : null;
+    if (!base && frozen2 && latest && latest.getKey === getKey && sameKeys(items, latest, getKey)) {
+      itemKeys.set(items, latest.keys);
+      latest = { ...latest, items };
+      return latest.keys;
+    }
+    let keys2;
+    if (base) {
+      keys2 = base.keys.slice();
+      for (let i = base.items.length; i < items.length; i++) keys2.push(getKey(items[i], i));
+    } else keys2 = items.map(getKey);
+    if (frozen2) {
+      made.add(keys2);
+      if (base && base.keys.length) parents.set(keys2, base.keys);
+      itemKeys.set(items, keys2);
+      latest = { items, keys: keys2, getKey };
+    }
+    return keys2;
+  }
+  function sameKeys(items, { items: before, keys: keys2 }, getKey) {
+    if (items.length !== before.length || !isFrozen(before)) return false;
+    for (let i = 0; i < items.length; i++) {
+      if (items[i] !== before[i] && getKey(items[i], i) !== keys2[i]) return false;
+    }
+    return true;
+  }
+  function extends_(items, prefix) {
+    if (items.length < prefix.length || !isFrozen(prefix)) return false;
+    for (let from = extended(items); from; from = extended(from)) if (from === prefix) return true;
+    for (let i = 0; i < prefix.length; i++) if (items[i] !== prefix[i]) return false;
+    return true;
+  }
+  function inherited(parent, table, rebuild) {
+    const entry = parent && table.get(parent);
+    if (!entry) return null;
+    return entry.size === parent.length ? entry : rebuild(parent);
+  }
+  function checkKeys(keys2, check) {
+    if (checked.has(keys2)) return;
+    const parent = parents.get(keys2);
+    const parentSeen = inherited(parent, checked, (keys3) => new Set(keys3));
+    const seen = parentSeen ?? /* @__PURE__ */ new Set();
+    for (let i = parentSeen ? parent.length : 0; i < keys2.length; i++) {
+      check(keys2[i], seen);
+      seen.add(keys2[i]);
+    }
+    if (settled(keys2)) checked.set(keys2, seen);
+  }
+  function keyPayload(keys2) {
+    let encoded = payloads.get(keys2);
+    if (encoded) return encoded;
+    const parent = parents.get(keys2);
+    const base = parent && payloads.get(parent);
+    if (base && keys2.length > parent.length) {
+      const tail = JSON.stringify(keys2.slice(parent.length));
+      encoded = { payload: `${base.payload.slice(0, -1)},${tail.slice(1)}`, bytes: base.bytes + utf8Bytes(tail, limits.itemKeyBytes) - 1 };
+    } else {
+      const payload2 = JSON.stringify(keys2);
+      encoded = { payload: payload2, bytes: utf8Bytes(payload2, limits.itemKeyBytes) };
+    }
+    if (settled(keys2)) payloads.set(keys2, encoded);
+    return encoded;
+  }
+  var identity = (key) => `key:${JSON.stringify(key)}`;
+  function keyPositions(keys2) {
+    let map = positions.get(keys2);
+    if (map) return map;
+    const parent = parents.get(keys2);
+    const base = inherited(parent, positions, (keys3) => new Map(keys3.map((key, i) => [identity(key), i])));
+    map = base ?? /* @__PURE__ */ new Map();
+    for (let i = base ? parent.length : 0; i < keys2.length; i++) map.set(identity(keys2[i]), i);
+    if (settled(keys2)) positions.set(keys2, map);
+    return map;
+  }
+
+  // src/runtime/encode.js
+  var structured = /* @__PURE__ */ new Set(["backgroundGradient", "boxShadow", "ring", "animation"]);
+  var encodeValue = (key, value) => structured.has(key) && value !== "none" ? JSON.stringify(value) : value;
+  var ignorable = new Set(ignorableFields);
+  var authored;
+  function authoredName(key) {
+    if (!authored) {
+      authored = /* @__PURE__ */ new Map();
+      const camel = (name) => name.replace(/-([a-z])/g, (_, letter) => letter.toUpperCase());
+      for (const name of [...commonProps, ...Object.values(elements).flatMap((element) => Object.keys(element.props))]) authored.set(camel(name), name);
+    }
+    if (authored.has(key)) return authored.get(key);
+    if (Object.prototype.hasOwnProperty.call(style, key)) return `style ${key}`;
+    return key.endsWith("Style") ? `${key.slice(0, -5)}: classes` : key;
+  }
+  function unknownToHost(key, host) {
+    if (field[key] <= host.maxField) return false;
+    if (ignorable.has(key)) return true;
+    const name = authoredName(key);
+    throw Error(`UI_COMPAT: ${name} needs wire field ${field[key]} (${key}), but this app's native View${typeof host.version === "string" ? ` (LingXia ${host.version})` : ""} knows fields up to ${host.maxField}; rebuild the app with a LingXia SDK as new as this lxapp's toolchain, or leave ${name} out`);
+  }
+  function copyTree(node) {
+    let children = node.children;
+    for (let i = 0; i < children.length; i++) {
+      const child = copyTree(node.children[i]);
+      if (child === node.children[i]) continue;
+      if (children === node.children) children = children.slice();
+      children[i] = child;
+    }
+    if (node.list) return { ...node, children, list: { ...node.list, states: new Map(node.list.states), cache: new Map(node.list.cache), pure: new Set(node.list.pure) } };
+    return children === node.children ? node : { ...node, children };
+  }
+  function retainCells(cells) {
+    for (const [key, cell2] of cells) {
+      render.candidate.locals.set(key, cell2);
+      for (const collector of render.collectors) collector.set(key, cell2);
+    }
+  }
+  var initialWindow = (count) => ({ start: 0, end: Math.min(1, count), leading: 0, trailing: Math.max(0, count - 1) * 64 });
+  var slices = /* @__PURE__ */ new WeakMap();
+  var sliceable = /* @__PURE__ */ new WeakSet();
+  var WIRE_SERIAL = -3;
+  var WIRE_REUSE = -2;
+  var wireSerial = 0;
+  var wireHeld = 0;
+  function wireAck(serial) {
+    wireHeld = serial;
+  }
+  function wireReset() {
+    wireHeld = 0;
+  }
+  function encodeTree(tree, windows) {
+    const { candidate } = render;
+    const host = globalThis.__lingxiaViewHost;
+    const older = host && Number.isInteger(host.maxField) && host.maxField < maxField ? (key) => unknownToHost(key, host) : () => false;
+    const put = (key, value) => {
+      if (!older(key)) output.push(field[key], value);
+    };
+    const serial = ++wireSerial;
+    const output = [];
+    let count = 0, plotWork = 0, animationBytes = 0, itemKeyBytes = 0, dataBytes = 0;
+    const heads = [], handled = [];
+    let lists = 0, deepest = 0;
+    const paste = (slice, parent, depth) => {
+      if (depth + slice.depth > limits.depth || (count += slice.nodes) > limits.nodes) throw Error("UI_LIMIT: candidate too large");
+      if ((plotWork += slice.plotWork) > 16384) throw Error("UI_LIMIT: plot geometry budget exceeded");
+      if ((animationBytes += slice.animationBytes) > limits.animationBytes) throw Error("UI_ANIMATION: page payload budget exceeded");
+      if ((dataBytes += slice.dataBytes) > limits.dataAttributeBytes) throw Error("UI_PROP: data-* page budget exceeded");
+      for (let i = 0; i < slice.handlers.length; i++) {
+        const entry = slice.handlers[i];
+        candidate.callbacks.set(entry[0], entry[1]);
+        handled.push(entry);
+      }
+      const base = output.length, values = slice.values;
+      deepest = Math.max(deepest, depth + slice.depth);
+      if (slice.serial === wireHeld && wireHeld) {
+        output.push(WIRE_REUSE, parent, slice.serial, slice.offset, slice.nodes, 0);
+        slice.serial = serial;
+        slice.offset = base;
+        heads.push(-1);
+        return;
+      }
+      slice.serial = serial;
+      slice.offset = base;
+      for (let i = 0; i < values.length; i++) output.push(values[i]);
+      output[base + 1] = parent;
+      for (let i = 0; i < slice.heads.length; i++) {
+        const at = slice.heads[i];
+        if (at) output[base + at + 1] += base;
+        heads.push(base + at);
+      }
+    };
+    const write = (node, parent, depth) => {
+      const slice = slices.get(node);
+      if (slice) return paste(slice, parent, depth);
+      if (!sliceable.has(node)) return writeNode(node, parent, depth);
+      const index = output.length, mark = { heads: heads.length, handled: handled.length, lists, deepest, count, plotWork, animationBytes, dataBytes };
+      deepest = depth;
+      writeNode(node, parent, depth);
+      const heads2 = heads.slice(mark.heads);
+      if (lists === mark.lists && !heads2.includes(-1)) {
+        const values = output.slice(index), at = heads2.map((head) => head - index);
+        for (let i = 1; i < at.length; i++) values[at[i] + 1] -= index;
+        slices.set(node, {
+          values,
+          heads: at,
+          handlers: handled.slice(mark.handled),
+          depth: deepest - depth,
+          nodes: count - mark.count,
+          plotWork: plotWork - mark.plotWork,
+          animationBytes: animationBytes - mark.animationBytes,
+          dataBytes: dataBytes - mark.dataBytes,
+          serial,
+          offset: index
+        });
+      }
+      deepest = Math.max(deepest, mark.deepest);
+    };
+    const writeNode = (node, parent, depth) => {
+      if (depth > limits.depth || ++count > limits.nodes) throw Error("UI_LIMIT: candidate too large");
+      deepest = Math.max(deepest, depth);
+      const { tag, props, identity: identity2, fields: fields3, states: states2, wire, handlers } = node;
+      const index = output.length;
+      heads.push(index);
+      output.push(tags[tag], parent, props.key ?? "", props.testId ?? "", node.text, 0);
+      const start = output.length;
+      for (const key in fields3) {
+        const value = fields3[key];
+        if (key === "animation") {
+          animationBytes += utf8Bytes(JSON.stringify(value), 32768);
+          if (animationBytes > limits.animationBytes) throw Error("UI_ANIMATION: page payload budget exceeded");
+        }
+        if (older(key)) continue;
+        output.push(field[key], encodeValue(key, value));
+      }
+      for (const key in states2) {
+        const style2 = states2[key], pairs = [];
+        for (const name in style2) if (!older(name)) pairs.push(field[name], encodeValue(name, style2[name]));
+        if (pairs.length) put(key, JSON.stringify(pairs));
+      }
+      for (let i = 0; i < wire.length; i++) {
+        const key = wire[i][0], value = wire[i][1];
+        if (key === "dataAttributes") {
+          dataBytes += utf8Bytes(value, limits.dataAttributeBytes);
+          if (dataBytes > limits.dataAttributeBytes) throw Error("UI_PROP: data-* page budget exceeded");
+        }
+        put(key, value);
+      }
+      for (let i = 0; i < handlers.length; i++) {
+        const handler = handlers[i];
+        if (older(handler[0])) continue;
+        candidate.callbacks.set(handler[1], handler[2]);
+        handled.push([handler[1], handler[2]]);
+        output.push(field[handler[0]], handler[1]);
+      }
+      if (node.plotWork) {
+        plotWork += node.plotWork;
+        if (plotWork > 16384) throw Error("UI_LIMIT: plot geometry budget exceeded");
+      }
+      if (node.rowIndex !== void 0) put("listRowIndex", node.rowIndex);
+      if (node.slot !== void 0) put("childSlot", node.slot);
+      let window, seededAnchor = false;
+      if (node.list) {
+        lists++;
+        window = windows[identity2] ?? node.list.window ?? initialWindow(props.count);
+        if (!Number.isSafeInteger(window.start) || !Number.isSafeInteger(window.end) || window.start < 0 || window.end < window.start || window.end > Math.max(props.count, node.list.previousCount) || ![window.leading, window.trailing].every((v) => Number.isFinite(v) && v >= 0 && v <= 16384e5)) throw Error("UI_LIST: invalid window");
+        if (window.end > props.count) window = initialWindow(props.count);
+        const typography = node.list.rowSource ? JSON.stringify(node.typography ?? null) : void 0;
+        if (node.list.reusable && node.list.reusable.typography === typography) {
+          node.list.cache = new Map(node.list.reusable.rows);
+          node.list.pure = new Set(node.list.reusable.rows.keys());
+        }
+        node.list.reusable = null;
+        node.list.typography = typography;
+        const target = props.anchor === "end" ? props.count - 1 : Math.min(props.anchor?.index ?? 0, props.count - 1);
+        if (node.list.anchorChanged && !props.anchor?.duration && props.count > 0 && (target < window.start || target >= window.end)) {
+          node.list.cache = new Map([...node.list.anchorCache].filter(([i, row]) => props.itemKeys === void 0 || row.props.key === `key:${JSON.stringify(props.itemKeys[i])}`));
+          seededAnchor = true;
+        }
+        node.list.anchorChanged = false;
+        node.list.anchorCache = null;
+        node.list.previousCount = props.count;
+        node.list.window = { ...window };
+        put("listId", identity2);
+        put("listCount", props.count);
+        put("listLeading", window.leading);
+        put("listTrailing", window.trailing);
+        if (props.itemKeys !== void 0) {
+          const { payload: payload2, bytes } = keyPayload(props.itemKeys);
+          itemKeyBytes += bytes;
+          if (itemKeyBytes > limits.itemKeyBytes) throw Error("UI_LIST: itemKeys page budget exceeded");
+          put("listItemKeys", payload2);
+        }
+        if (props.anchor !== void 0) put("listAnchor", JSON.stringify(props.anchor));
+        candidate.lists.set(identity2, node.list);
+      }
+      output[start - 1] = (output.length - start) / 2;
+      if (!node.list) {
+        const children = node.children;
+        for (let i = 0; i < children.length; i++) write(children[i], index, depth + 1);
+        return;
+      }
+      writeRows(node, window, index, depth, write);
+      if (seededAnchor) node.list.cache.clear();
+    };
+    write(tree, -1, 0);
+    output.push(WIRE_SERIAL, serial, "", "", "", 0);
+    return output;
+  }
+  function writeRows(node, window, index, depth, write) {
+    const visibleKeys = /* @__PURE__ */ new Set();
+    for (const i of node.list.cache.keys()) if (i < window.start || i >= window.end) {
+      node.list.cache.delete(i);
+      node.list.pure.delete(i);
+    }
+    for (let i = window.start; i < window.end; i++) {
+      const cells = /* @__PURE__ */ new Map();
+      render.collectors.push(cells);
+      try {
+        let row = node.list.cache.get(i), key = node.list.states.get(i)?.key;
+        if (!row) {
+          const { candidate } = render, handles2 = handlesIssued(), declarations = candidate.declarations.size, resources = candidate.resources.size;
+          const reads = render.cellReads, contextReads = render.contextReads;
+          render.readsView = false;
+          ({ row, key } = renderRow(node, i, cells, depth));
+          finishTopLayerRow(row);
+          const pure = cells.size === 0 && !render.readsView && handlesIssued() === handles2 && render.cellReads === reads && render.contextReads === contextReads && candidate.declarations.size === declarations && candidate.resources.size === resources;
+          if (pure) node.list.pure.add(i);
+          else node.list.pure.delete(i);
+        } else {
+          row = copyTree(row);
+          retainCells(node.list.states.get(i).locals);
+        }
+        if (visibleKeys.has(key)) throw Error("UI_KEY: duplicate list row");
+        visibleKeys.add(key);
+        sliceable.add(row);
+        write(row, index, depth + 1);
+        node.list.cache.set(i, row);
+        node.list.states.set(i, { key, locals: cells });
+      } finally {
+        render.collectors.pop();
+      }
+    }
+    for (const [i, state] of node.list.states) {
+      if (state.locals.size) retainCells(state.locals);
+      else if (i < window.start || i >= window.end) node.list.states.delete(i);
+    }
+  }
+  function renderRow(node, i, cells, depth) {
+    const since = now();
+    try {
+      return renderRowTimed(node, i, cells, depth);
+    } finally {
+      spent("rows", since);
+    }
+  }
+  function renderRowTimed(node, i, cells, depth) {
+    const { props, identity: identity2 } = node;
+    const suppliedKey = props.itemKeys?.[i];
+    const previous = render.scope, outerContexts = render.contexts;
+    render.contexts = node.list.contexts;
+    render.scope = suppliedKey === void 0 ? `${identity2}/row:${i}` : `${identity2}/row/key:${JSON.stringify(suppliedKey)}`;
+    try {
+      const value = props.row(i);
+      render.contexts = outerContexts;
+      const declared2 = isNode(value) ? readNode(value)[1].key : void 0;
+      if (declared2 !== void 0 && typeof declared2 !== "string") throw Error("UI_KEY: expected string");
+      if (suppliedKey === void 0 && declared2 !== void 0 && cells.size > 0)
+        throw Error("UI_LIST: keyed row factory hooks require itemKeys; alternatively move hooks into a keyed component");
+      if (suppliedKey !== void 0 && declared2 !== void 0 && suppliedKey !== declared2) throw Error("UI_LIST: row key does not match itemKeys");
+      const rowKey = suppliedKey ?? declared2;
+      const key = rowKey === void 0 ? `index:${i}` : `key:${JSON.stringify(rowKey)}`;
+      render.scope = `${identity2}/row/${key}`;
+      const fields3 = {};
+      if (props.height) {
+        const height = props.height(i);
+        if (!Number.isFinite(height) || height < 0 || height > 16384) throw Error("UI_LIST: invalid row height");
+        fields3.height = height;
+      }
+      const content = resolveNode(value, render.scope, depth + 2, {
+        typography: node.typography,
+        sibling: { index: i, count: props.count },
+        direction: node.list.direction,
+        contexts: node.list.contexts
+      });
+      if (content?.fragment) throw Error("UI_LIST: a row returns one node; wrap its fragment in <view>");
+      const row = {
+        tag: "column",
+        element: "view",
+        props: { key },
+        fields: fields3,
+        states: {},
+        wire: [],
+        handlers: [],
+        identity: render.scope,
+        rowIndex: i,
+        text: "",
+        children: content === null ? [] : [content, ...liftedFrom(content, "row")]
+      };
+      return { row, key };
+    } finally {
+      render.scope = previous;
+      render.contexts = outerContexts;
+    }
+  }
+
+  // src/runtime/context.js
+  var unstamped = /* @__PURE__ */ new WeakMap();
+  var unnamed = 0;
+  function contextId(context) {
+    if (typeof context.__lxid === "string") return context.__lxid;
+    let id = unstamped.get(context);
+    if (id === void 0) unstamped.set(context, id = `context#${++unnamed}`);
+    return id;
+  }
+  function lookup(chain, id) {
+    while (chain && chain.id !== id) chain = chain.next;
+    return chain;
+  }
+  function plain(value, budget) {
+    if (value === null || typeof value !== "object" || --budget.left < 0 || brand in value || cellOf(value)) return true;
+    if (Array.isArray(value)) return value.every((each) => plain(each, budget));
+    const proto = Object.getPrototypeOf(value);
+    if (proto !== Object.prototype && proto !== null) return false;
+    for (const descriptor of Object.values(Object.getOwnPropertyDescriptors(value)))
+      if ("value" in descriptor && !plain(descriptor.value, budget)) return false;
+    return true;
+  }
+  function checkValue(value) {
+    if (!plain(value, { left: 256 })) throw Error("UI_CONTEXT: value must be plain data, functions or handles");
+  }
+  function createContext(...args) {
+    if (args.length !== 1) throw Error("UI_CONTEXT: createContext takes a default value");
+    if (render.active) throw Error("UI_CONTEXT: createContext belongs at module top level");
+    checkValue(args[0]);
+    const context = {};
+    const Provider = () => {
+      throw Error("UI_CONTEXT: a Provider renders only as an element");
+    };
+    Object.defineProperty(Provider, "__lxContext", { value: context });
+    Object.defineProperty(Provider, "__lxid", { get: () => `${contextId(context)}.Provider` });
+    Object.defineProperty(context, "Provider", { value: Provider, enumerable: true });
+    Object.defineProperty(context, "defaultValue", { value: args[0] });
+    return context;
+  }
+  function isProvider(tag) {
+    return Boolean(tag.__lxContext);
+  }
+  function provide(tag, props, children, chain, resolve) {
+    for (const key in props) if (key !== "value" && key !== "key") throw Error(`UI_CONTEXT: a Provider takes only value, not ${key}`);
+    if (!("value" in props)) throw Error("UI_CONTEXT: a Provider needs a value");
+    checkValue(props.value);
+    const child = children.length === 1 ? children[0] : void 0;
+    if (children.length > 1 || child != null && child !== false && !isNode(child)) throw Error("UI_CONTEXT: a Provider wraps one element");
+    const result = resolve(child, { id: contextId(tag.__lxContext), value: props.value, next: chain });
+    if (result?.fragment) throw Error("UI_CONTEXT: a Provider wraps one element");
+    return result;
+  }
+
+  // src/runtime/memo.js
+  var compareBudget = 256;
+  var stamps = /* @__PURE__ */ new WeakMap();
+  function viewStamp(view) {
+    let stamp = stamps.get(view);
+    if (!stamp) stamps.set(view, stamp = { actions: view?.actions, channels: view?.channels });
+    return stamp;
+  }
+  var sameView = (a, b) => a.actions === b.actions && a.channels === b.channels;
+  var envValues = /* @__PURE__ */ new WeakMap();
+  function envValue(view, key) {
+    let values = envValues.get(view);
+    if (!values) envValues.set(view, values = /* @__PURE__ */ new Map());
+    let value = values.get(key);
+    if (value === void 0) {
+      const env = envOf(view);
+      values.set(key, value = JSON.stringify((key === "*" ? env : env?.[key]) ?? null));
+    }
+    return value;
+  }
+  function sameEnv(fields3, view) {
+    for (const [key, value] of fields3) if (envValue(view, key) !== value) return false;
+    return true;
+  }
+  function same(a, b, old, budget) {
+    if (Object.is(a, b)) return true;
+    if (typeof a !== "object" || typeof b !== "object" || a === null || b === null || --budget.left < 0) return false;
+    const nodeA = brand in a, nodeB = brand in b;
+    if (nodeA || nodeB) {
+      if (!nodeA || !nodeB) return false;
+      const x = currentArena()[a[brand][1]], y = old[b[brand][1]];
+      return Boolean(x && y) && x[0] === y[0] && sameFields(x[1], y[1], old, budget) && same(x[2], y[2], old, budget);
+    }
+    if (Array.isArray(a)) {
+      if (!Array.isArray(b) || a.length !== b.length) return false;
+      for (let i = 0; i < a.length; i++) if (!same(a[i], b[i], old, budget)) return false;
+      return true;
+    }
+    if (Object.getPrototypeOf(a) !== Object.prototype || Object.getPrototypeOf(b) !== Object.prototype) return false;
+    return sameFields(a, b, old, budget);
+  }
+  function sameFields(a, b, old, budget) {
+    let count = 0;
+    for (const key in a) {
+      count++;
+      if (!Object.prototype.hasOwnProperty.call(b, key) || !same(a[key], b[key], old, budget)) return false;
+    }
+    for (const key in b) count--;
+    return count === 0;
+  }
+  var contextKeys = ["tag", "direction", "inControl", "inText", "inLink", "inBlockLink"];
+  function sameContext(a, b, old) {
+    for (let i = 0; i < contextKeys.length; i++) if (a[contextKeys[i]] !== b[contextKeys[i]]) return false;
+    const budget = { left: compareBudget };
+    return same(a.typography, b.typography, old, budget) && same(a.extra, b.extra, old, budget) && same(a.every, b.every, old, budget) && same(a.sibling, b.sibling, old, budget) && same(a.popovers, b.popovers, old, budget);
+  }
+  function sameContexts(reads, chain, old, budget) {
+    for (const [id, read] of reads) {
+      const entry = lookup(chain, id);
+      if (!same(entry ? entry.value : read.context.defaultValue, read.value, old, budget)) return false;
+    }
+    return true;
+  }
+  function sameChain(a, b, old, budget) {
+    for (; a || b; a = a.next, b = b.next) if (!a || !b || a.id !== b.id || !same(a.value, b.value, old, budget)) return false;
+    return true;
+  }
+  function passContexts(reads, chain, outer) {
+    for (const [id, read] of reads) if (!outer.contextReads.has(id) && lookup(chain, id) === lookup(outer.contexts, id)) outer.contextReads.set(id, read);
+  }
+  var topLayerSize = () => {
+    const top = render.candidate.topLayer;
+    return top ? top.entries.length + top.popovers.size + top.invokers.length : 0;
+  };
+  function recall(scope, tag, props, children, parent) {
+    const since = now();
+    try {
+      return recallTimed(scope, tag, props, children, parent);
+    } finally {
+      spent("recall", since);
+    }
+  }
+  function recallTimed(scope, tag, props, children, parent) {
+    const record = render.recall?.get(scope);
+    if (!record || record.tag !== tag || tag.__lxVolatile || !sameView(record.view, viewStamp(render.view)) || !sameEnv(record.env, render.view)) return void 0;
+    for (const cell2 of record.reads) if (page.updates.has(cell2)) return void 0;
+    for (const cell2 of record.cells.values()) if (page.updates.has(cell2)) return void 0;
+    const budget = { left: compareBudget };
+    if (!sameFields(props, record.props, record.arena, budget) || !same(children, record.children, record.arena, budget) || !sameContext(parent, record.parent, record.arena) || !sameContexts(record.contextReads, parent.contexts, record.arena, budget) || record.lists && !sameChain(parent.contexts, record.parent.contexts, record.arena, budget)) return void 0;
+    const fresh2 = { ...record, props, children, parent, arena: currentArena(), result: record.lists ? reuse(record.result) : record.result };
+    keep(fresh2);
+    const frame = render.frames[render.frames.length - 1];
+    if (frame) {
+      frame.nested.push(fresh2);
+      for (const cell2 of record.reads) frame.reads.add(cell2);
+      for (const key of record.env.keys()) frame.env.add(key);
+      passContexts(record.contextReads, parent.contexts, frame);
+    }
+    for (const [key, cell2] of record.cells) {
+      render.candidate.locals.set(key, cell2);
+      for (const collector of render.collectors) collector.set(key, cell2);
+    }
+    if (record.handles) skipHandle();
+    if (record.lists) render.lists++;
+    return fresh2.result;
+  }
+  function reuse(node) {
+    let children = node.children;
+    for (let i = 0; i < children.length; i++) {
+      const child = reuse(node.children[i]);
+      if (child === node.children[i]) continue;
+      if (children === node.children) children = children.slice();
+      children[i] = child;
+    }
+    if (!node.list) return children === node.children ? node : { ...node, children };
+    const { pure } = node.list, cache2 = /* @__PURE__ */ new Map();
+    for (const [i, row] of node.list.cache) if (pure.has(i)) cache2.set(i, row);
+    return { ...node, children, list: {
+      ...node.list,
+      states: new Map(node.list.states),
+      cache: cache2,
+      pure: new Set(cache2.keys()),
+      reusable: null,
+      anchorChanged: false,
+      anchorCache: null
+    } };
+  }
+  function keep(record) {
+    render.candidate.memo.set(record.scope, record);
+    for (const [key, entry] of record.closures) render.candidate.closures?.set(key, entry);
+    for (const nested of record.nested) keep(nested);
+  }
+  function enter(scope, contexts) {
+    const frame = { scope, contexts, contextReads: /* @__PURE__ */ new Map(), cells: /* @__PURE__ */ new Map(), reads: /* @__PURE__ */ new Set(), env: /* @__PURE__ */ new Set(), view: false, nested: [], closures: [], handles: handlesIssued(), top: topLayerSize(), lists: render.lists };
+    render.frames.push(frame);
+    render.collectors.push(frame.cells);
+    return frame;
+  }
+  function noteRead(cell2) {
+    render.cellReads++;
+    const frame = render.frames[render.frames.length - 1];
+    if (frame) frame.reads.add(cell2);
+  }
+  function noteContext(id, context, value) {
+    render.contextReads++;
+    const frame = render.frames[render.frames.length - 1];
+    if (frame && !frame.contextReads.has(id)) frame.contextReads.set(id, { context, value });
+  }
+  function noteEnv(keys2) {
+    const frame = render.frames[render.frames.length - 1];
+    if (!frame) return;
+    if (typeof keys2 === "string") frame.env.add(keys2);
+    else for (let i = 0; i < keys2.length; i++) frame.env.add(keys2[i]);
+  }
+  function noteView() {
+    const frame = render.frames[render.frames.length - 1];
+    if (frame) frame.view = true;
+  }
+  function leave(frame) {
+    render.frames.splice(render.frames.lastIndexOf(frame), 1);
+    render.collectors.splice(render.collectors.lastIndexOf(frame.cells), 1);
+    const outer = render.frames[render.frames.length - 1];
+    if (outer) {
+      for (const cell2 of frame.reads) outer.reads.add(cell2);
+      for (const key of frame.env) outer.env.add(key);
+      outer.view || (outer.view = frame.view);
+      passContexts(frame.contextReads, frame.contexts, outer);
+    }
+  }
+  function remember(frame, tag, props, children, parent, result) {
+    if (frame.view || result?.fragment || topLayerSize() !== frame.top || !render.candidate.memo) return;
+    const record = {
+      scope: frame.scope,
+      tag,
+      props,
+      children,
+      parent,
+      arena: currentArena(),
+      result,
+      cells: frame.cells,
+      reads: frame.reads,
+      contextReads: frame.contextReads,
+      nested: frame.nested,
+      closures: frame.closures,
+      view: viewStamp(render.view),
+      env: new Map([...frame.env.has("*") ? ["*"] : frame.env].map((key) => [key, envValue(render.view, key)])),
+      handles: handlesIssued() !== frame.handles,
+      lists: render.lists !== frame.lists
+    };
+    render.candidate.memo.set(frame.scope, record);
+    render.frames[render.frames.length - 1]?.nested.push(record);
+    if (result && !record.lists) sliceable.add(result);
+  }
+
   // src/runtime/toplayer.js
   var panelMark = Symbol("top-layer panel");
   var dragClose = Symbol("drag close");
@@ -1466,6 +2137,7 @@
     if (opening && bound && typeof bound.cell.value === "number") resting.set(identity2, { ...bound, index: bound.cell.value });
     const close = () => onClose?.();
     collected().entries.push({ identity: identity2, kind: "dialog", sequence: opened.get(identity2), close: closedby === "none" ? null : close });
+    noteEnv("*");
     const env = envOf(render.view);
     const backdrop2 = backdropOf(resolveClasses(props.className, env));
     const testId = props["data-testid"];
@@ -1522,6 +2194,7 @@
     top.entries.push({ identity: identity2, kind, sequence: opened.get(identity2), close: kind === "manual" ? null : () => {
       if (onCloseRequest?.() !== false) toggle(id, false);
     } });
+    noteEnv("*");
     const env = envOf(render.view);
     const docking = anchor ? { layer: {}, panel: {} } : dock(rest, env, rtlOf(parent, env));
     const lit = kind === "auto" && !submenus.has(id);
@@ -2629,17 +3302,17 @@
 
   // src/runtime/snap.js
   var CEILING_MS = 400;
-  var settled = /* @__PURE__ */ new Map();
+  var settled2 = /* @__PURE__ */ new Map();
   function resetSnaps() {
-    settled = /* @__PURE__ */ new Map();
+    settled2 = /* @__PURE__ */ new Map();
   }
   var clock2 = () => Date.now();
   function controlledSnap(key, index) {
-    if (settled.size === 0) return index;
-    const record = settled.get(key);
+    if (settled2.size === 0) return index;
+    const record = settled2.get(key);
     if (!record) return index;
     if (index === record.index || index !== record.from) {
-      settled.delete(key);
+      settled2.delete(key);
       return index;
     }
     if (!record.sent) {
@@ -2648,7 +3321,7 @@
       return record.index;
     }
     if (open(record)) return record.index;
-    settled.delete(key);
+    settled2.delete(key);
     return index;
   }
   function open(record) {
@@ -2658,7 +3331,7 @@
   }
   function snapSettled(key, index, current, heard) {
     if (index === current) {
-      settled.delete(key);
+      settled2.delete(key);
       return;
     }
     const first = actionSerial();
@@ -2668,18 +3341,18 @@
       const ids = [];
       for (let serial = first; serial < actionSerial(); serial++) ids.push(serial);
       const record = { index, from: current, ids, rejected: false, sent: false, data: page.committed?.view?.data, deadline: clock2() + CEILING_MS };
-      settled.set(key, record);
+      settled2.set(key, record);
       page.invalidated = true;
       if (ids.length) requestWake(CEILING_MS, () => {
-        if (settled.get(key) !== record) return false;
+        if (settled2.get(key) !== record) return false;
         page.invalidated = true;
         return true;
       });
     }
   }
   function snapActionSettled(serial, ok) {
-    if (settled.size === 0) return;
-    for (const record of settled.values()) {
+    if (settled2.size === 0) return;
+    for (const record of settled2.values()) {
       if (!record.ids.includes(serial)) continue;
       if (!ok) record.rejected = true;
       if (!record.ids.some(actionPending)) record.data = page.committed?.view?.data;
@@ -3287,623 +3960,6 @@
     };
   }
 
-  // src/runtime/keys.js
-  var made = /* @__PURE__ */ new WeakSet();
-  var parents = /* @__PURE__ */ new WeakMap();
-  var checked = /* @__PURE__ */ new WeakMap();
-  var payloads = /* @__PURE__ */ new WeakMap();
-  var positions = /* @__PURE__ */ new WeakMap();
-  var latest = null;
-  var itemKeys = /* @__PURE__ */ new WeakMap();
-  var settled2 = (keys2) => made.has(keys2) || isFrozen(keys2);
-  function keysOf(items, getKey) {
-    const known = itemKeys.get(items);
-    if (known) return known;
-    const frozen2 = isFrozen(items);
-    const base = frozen2 && latest && extends_(items, latest.items) ? latest : null;
-    if (!base && frozen2 && latest && latest.getKey === getKey && sameKeys(items, latest, getKey)) {
-      itemKeys.set(items, latest.keys);
-      latest = { ...latest, items };
-      return latest.keys;
-    }
-    let keys2;
-    if (base) {
-      keys2 = base.keys.slice();
-      for (let i = base.items.length; i < items.length; i++) keys2.push(getKey(items[i], i));
-    } else keys2 = items.map(getKey);
-    if (frozen2) {
-      made.add(keys2);
-      if (base && base.keys.length) parents.set(keys2, base.keys);
-      itemKeys.set(items, keys2);
-      latest = { items, keys: keys2, getKey };
-    }
-    return keys2;
-  }
-  function sameKeys(items, { items: before, keys: keys2 }, getKey) {
-    if (items.length !== before.length || !isFrozen(before)) return false;
-    for (let i = 0; i < items.length; i++) {
-      if (items[i] !== before[i] && getKey(items[i], i) !== keys2[i]) return false;
-    }
-    return true;
-  }
-  function extends_(items, prefix) {
-    if (items.length < prefix.length || !isFrozen(prefix)) return false;
-    for (let from = extended(items); from; from = extended(from)) if (from === prefix) return true;
-    for (let i = 0; i < prefix.length; i++) if (items[i] !== prefix[i]) return false;
-    return true;
-  }
-  function inherited(parent, table, rebuild) {
-    const entry = parent && table.get(parent);
-    if (!entry) return null;
-    return entry.size === parent.length ? entry : rebuild(parent);
-  }
-  function checkKeys(keys2, check) {
-    if (checked.has(keys2)) return;
-    const parent = parents.get(keys2);
-    const parentSeen = inherited(parent, checked, (keys3) => new Set(keys3));
-    const seen = parentSeen ?? /* @__PURE__ */ new Set();
-    for (let i = parentSeen ? parent.length : 0; i < keys2.length; i++) {
-      check(keys2[i], seen);
-      seen.add(keys2[i]);
-    }
-    if (settled2(keys2)) checked.set(keys2, seen);
-  }
-  function keyPayload(keys2) {
-    let encoded = payloads.get(keys2);
-    if (encoded) return encoded;
-    const parent = parents.get(keys2);
-    const base = parent && payloads.get(parent);
-    if (base && keys2.length > parent.length) {
-      const tail = JSON.stringify(keys2.slice(parent.length));
-      encoded = { payload: `${base.payload.slice(0, -1)},${tail.slice(1)}`, bytes: base.bytes + utf8Bytes(tail, limits.itemKeyBytes) - 1 };
-    } else {
-      const payload2 = JSON.stringify(keys2);
-      encoded = { payload: payload2, bytes: utf8Bytes(payload2, limits.itemKeyBytes) };
-    }
-    if (settled2(keys2)) payloads.set(keys2, encoded);
-    return encoded;
-  }
-  var identity = (key) => `key:${JSON.stringify(key)}`;
-  function keyPositions(keys2) {
-    let map = positions.get(keys2);
-    if (map) return map;
-    const parent = parents.get(keys2);
-    const base = inherited(parent, positions, (keys3) => new Map(keys3.map((key, i) => [identity(key), i])));
-    map = base ?? /* @__PURE__ */ new Map();
-    for (let i = base ? parent.length : 0; i < keys2.length; i++) map.set(identity(keys2[i]), i);
-    if (settled2(keys2)) positions.set(keys2, map);
-    return map;
-  }
-
-  // src/runtime/encode.js
-  var structured = /* @__PURE__ */ new Set(["backgroundGradient", "boxShadow", "ring", "animation"]);
-  var encodeValue = (key, value) => structured.has(key) && value !== "none" ? JSON.stringify(value) : value;
-  var ignorable = new Set(ignorableFields);
-  var authored;
-  function authoredName(key) {
-    if (!authored) {
-      authored = /* @__PURE__ */ new Map();
-      const camel = (name) => name.replace(/-([a-z])/g, (_, letter) => letter.toUpperCase());
-      for (const name of [...commonProps, ...Object.values(elements).flatMap((element) => Object.keys(element.props))]) authored.set(camel(name), name);
-    }
-    if (authored.has(key)) return authored.get(key);
-    if (Object.prototype.hasOwnProperty.call(style, key)) return `style ${key}`;
-    return key.endsWith("Style") ? `${key.slice(0, -5)}: classes` : key;
-  }
-  function unknownToHost(key, host) {
-    if (field[key] <= host.maxField) return false;
-    if (ignorable.has(key)) return true;
-    const name = authoredName(key);
-    throw Error(`UI_COMPAT: ${name} needs wire field ${field[key]} (${key}), but this app's native View${typeof host.version === "string" ? ` (LingXia ${host.version})` : ""} knows fields up to ${host.maxField}; rebuild the app with a LingXia SDK as new as this lxapp's toolchain, or leave ${name} out`);
-  }
-  function copyTree(node) {
-    let children = node.children;
-    for (let i = 0; i < children.length; i++) {
-      const child = copyTree(node.children[i]);
-      if (child === node.children[i]) continue;
-      if (children === node.children) children = children.slice();
-      children[i] = child;
-    }
-    if (node.list) return { ...node, children, list: { ...node.list, states: new Map(node.list.states), cache: new Map(node.list.cache), pure: new Set(node.list.pure) } };
-    return children === node.children ? node : { ...node, children };
-  }
-  function retainCells(cells) {
-    for (const [key, cell2] of cells) {
-      render.candidate.locals.set(key, cell2);
-      for (const collector of render.collectors) collector.set(key, cell2);
-    }
-  }
-  var initialWindow = (count) => ({ start: 0, end: Math.min(1, count), leading: 0, trailing: Math.max(0, count - 1) * 64 });
-  var slices = /* @__PURE__ */ new WeakMap();
-  var sliceable = /* @__PURE__ */ new WeakSet();
-  var WIRE_SERIAL = -3;
-  var WIRE_REUSE = -2;
-  var wireSerial = 0;
-  var wireHeld = 0;
-  function wireAck(serial) {
-    wireHeld = serial;
-  }
-  function wireReset() {
-    wireHeld = 0;
-  }
-  function encodeTree(tree, windows) {
-    const { candidate } = render;
-    const host = globalThis.__lingxiaViewHost;
-    const older = host && Number.isInteger(host.maxField) && host.maxField < maxField ? (key) => unknownToHost(key, host) : () => false;
-    const put = (key, value) => {
-      if (!older(key)) output.push(field[key], value);
-    };
-    const serial = ++wireSerial;
-    const output = [];
-    let count = 0, plotWork = 0, animationBytes = 0, itemKeyBytes = 0, dataBytes = 0;
-    const heads = [], handled = [];
-    let lists = 0, deepest = 0;
-    const paste = (slice, parent, depth) => {
-      if (depth + slice.depth > limits.depth || (count += slice.nodes) > limits.nodes) throw Error("UI_LIMIT: candidate too large");
-      if ((plotWork += slice.plotWork) > 16384) throw Error("UI_LIMIT: plot geometry budget exceeded");
-      if ((animationBytes += slice.animationBytes) > limits.animationBytes) throw Error("UI_ANIMATION: page payload budget exceeded");
-      if ((dataBytes += slice.dataBytes) > limits.dataAttributeBytes) throw Error("UI_PROP: data-* page budget exceeded");
-      for (let i = 0; i < slice.handlers.length; i++) {
-        const entry = slice.handlers[i];
-        candidate.callbacks.set(entry[0], entry[1]);
-        handled.push(entry);
-      }
-      const base = output.length, values = slice.values;
-      deepest = Math.max(deepest, depth + slice.depth);
-      if (slice.serial === wireHeld && wireHeld) {
-        output.push(WIRE_REUSE, parent, slice.serial, slice.offset, slice.nodes, 0);
-        slice.serial = serial;
-        slice.offset = base;
-        heads.push(-1);
-        return;
-      }
-      slice.serial = serial;
-      slice.offset = base;
-      for (let i = 0; i < values.length; i++) output.push(values[i]);
-      output[base + 1] = parent;
-      for (let i = 0; i < slice.heads.length; i++) {
-        const at = slice.heads[i];
-        if (at) output[base + at + 1] += base;
-        heads.push(base + at);
-      }
-    };
-    const write = (node, parent, depth) => {
-      const slice = slices.get(node);
-      if (slice) return paste(slice, parent, depth);
-      if (!sliceable.has(node)) return writeNode(node, parent, depth);
-      const index = output.length, mark = { heads: heads.length, handled: handled.length, lists, deepest, count, plotWork, animationBytes, dataBytes };
-      deepest = depth;
-      writeNode(node, parent, depth);
-      const heads2 = heads.slice(mark.heads);
-      if (lists === mark.lists && !heads2.includes(-1)) {
-        const values = output.slice(index), at = heads2.map((head) => head - index);
-        for (let i = 1; i < at.length; i++) values[at[i] + 1] -= index;
-        slices.set(node, {
-          values,
-          heads: at,
-          handlers: handled.slice(mark.handled),
-          depth: deepest - depth,
-          nodes: count - mark.count,
-          plotWork: plotWork - mark.plotWork,
-          animationBytes: animationBytes - mark.animationBytes,
-          dataBytes: dataBytes - mark.dataBytes,
-          serial,
-          offset: index
-        });
-      }
-      deepest = Math.max(deepest, mark.deepest);
-    };
-    const writeNode = (node, parent, depth) => {
-      if (depth > limits.depth || ++count > limits.nodes) throw Error("UI_LIMIT: candidate too large");
-      deepest = Math.max(deepest, depth);
-      const { tag, props, identity: identity2, fields: fields3, states: states2, wire, handlers } = node;
-      const index = output.length;
-      heads.push(index);
-      output.push(tags[tag], parent, props.key ?? "", props.testId ?? "", node.text, 0);
-      const start = output.length;
-      for (const key in fields3) {
-        const value = fields3[key];
-        if (key === "animation") {
-          animationBytes += utf8Bytes(JSON.stringify(value), 32768);
-          if (animationBytes > limits.animationBytes) throw Error("UI_ANIMATION: page payload budget exceeded");
-        }
-        if (older(key)) continue;
-        output.push(field[key], encodeValue(key, value));
-      }
-      for (const key in states2) {
-        const style2 = states2[key], pairs = [];
-        for (const name in style2) if (!older(name)) pairs.push(field[name], encodeValue(name, style2[name]));
-        if (pairs.length) put(key, JSON.stringify(pairs));
-      }
-      for (let i = 0; i < wire.length; i++) {
-        const key = wire[i][0], value = wire[i][1];
-        if (key === "dataAttributes") {
-          dataBytes += utf8Bytes(value, limits.dataAttributeBytes);
-          if (dataBytes > limits.dataAttributeBytes) throw Error("UI_PROP: data-* page budget exceeded");
-        }
-        put(key, value);
-      }
-      for (let i = 0; i < handlers.length; i++) {
-        const handler = handlers[i];
-        if (older(handler[0])) continue;
-        candidate.callbacks.set(handler[1], handler[2]);
-        handled.push([handler[1], handler[2]]);
-        output.push(field[handler[0]], handler[1]);
-      }
-      if (node.plotWork) {
-        plotWork += node.plotWork;
-        if (plotWork > 16384) throw Error("UI_LIMIT: plot geometry budget exceeded");
-      }
-      if (node.rowIndex !== void 0) put("listRowIndex", node.rowIndex);
-      if (node.slot !== void 0) put("childSlot", node.slot);
-      let window, seededAnchor = false;
-      if (node.list) {
-        lists++;
-        window = windows[identity2] ?? node.list.window ?? initialWindow(props.count);
-        if (!Number.isSafeInteger(window.start) || !Number.isSafeInteger(window.end) || window.start < 0 || window.end < window.start || window.end > Math.max(props.count, node.list.previousCount) || ![window.leading, window.trailing].every((v) => Number.isFinite(v) && v >= 0 && v <= 16384e5)) throw Error("UI_LIST: invalid window");
-        if (window.end > props.count) window = initialWindow(props.count);
-        const typography = node.list.rowSource ? JSON.stringify(node.typography ?? null) : void 0;
-        if (node.list.reusable && node.list.reusable.typography === typography) {
-          node.list.cache = new Map(node.list.reusable.rows);
-          node.list.pure = new Set(node.list.reusable.rows.keys());
-        }
-        node.list.reusable = null;
-        node.list.typography = typography;
-        const target = props.anchor === "end" ? props.count - 1 : Math.min(props.anchor?.index ?? 0, props.count - 1);
-        if (node.list.anchorChanged && !props.anchor?.duration && props.count > 0 && (target < window.start || target >= window.end)) {
-          node.list.cache = new Map([...node.list.anchorCache].filter(([i, row]) => props.itemKeys === void 0 || row.props.key === `key:${JSON.stringify(props.itemKeys[i])}`));
-          seededAnchor = true;
-        }
-        node.list.anchorChanged = false;
-        node.list.anchorCache = null;
-        node.list.previousCount = props.count;
-        node.list.window = { ...window };
-        put("listId", identity2);
-        put("listCount", props.count);
-        put("listLeading", window.leading);
-        put("listTrailing", window.trailing);
-        if (props.itemKeys !== void 0) {
-          const { payload: payload2, bytes } = keyPayload(props.itemKeys);
-          itemKeyBytes += bytes;
-          if (itemKeyBytes > limits.itemKeyBytes) throw Error("UI_LIST: itemKeys page budget exceeded");
-          put("listItemKeys", payload2);
-        }
-        if (props.anchor !== void 0) put("listAnchor", JSON.stringify(props.anchor));
-        candidate.lists.set(identity2, node.list);
-      }
-      output[start - 1] = (output.length - start) / 2;
-      if (!node.list) {
-        const children = node.children;
-        for (let i = 0; i < children.length; i++) write(children[i], index, depth + 1);
-        return;
-      }
-      writeRows(node, window, index, depth, write);
-      if (seededAnchor) node.list.cache.clear();
-    };
-    write(tree, -1, 0);
-    output.push(WIRE_SERIAL, serial, "", "", "", 0);
-    return output;
-  }
-  function writeRows(node, window, index, depth, write) {
-    const visibleKeys = /* @__PURE__ */ new Set();
-    for (const i of node.list.cache.keys()) if (i < window.start || i >= window.end) {
-      node.list.cache.delete(i);
-      node.list.pure.delete(i);
-    }
-    for (let i = window.start; i < window.end; i++) {
-      const cells = /* @__PURE__ */ new Map();
-      render.collectors.push(cells);
-      try {
-        let row = node.list.cache.get(i), key = node.list.states.get(i)?.key;
-        if (!row) {
-          const { candidate } = render, handles2 = handlesIssued(), declarations = candidate.declarations.size, resources = candidate.resources.size;
-          const reads = render.cellReads, contextReads = render.contextReads;
-          render.readsView = false;
-          ({ row, key } = renderRow(node, i, cells, depth));
-          finishTopLayerRow(row);
-          const pure = cells.size === 0 && !render.readsView && handlesIssued() === handles2 && render.cellReads === reads && render.contextReads === contextReads && candidate.declarations.size === declarations && candidate.resources.size === resources;
-          if (pure) node.list.pure.add(i);
-          else node.list.pure.delete(i);
-        } else {
-          row = copyTree(row);
-          retainCells(node.list.states.get(i).locals);
-        }
-        if (visibleKeys.has(key)) throw Error("UI_KEY: duplicate list row");
-        visibleKeys.add(key);
-        sliceable.add(row);
-        write(row, index, depth + 1);
-        node.list.cache.set(i, row);
-        node.list.states.set(i, { key, locals: cells });
-      } finally {
-        render.collectors.pop();
-      }
-    }
-    for (const [i, state] of node.list.states) {
-      if (state.locals.size) retainCells(state.locals);
-      else if (i < window.start || i >= window.end) node.list.states.delete(i);
-    }
-  }
-  function renderRow(node, i, cells, depth) {
-    const since = now();
-    try {
-      return renderRowTimed(node, i, cells, depth);
-    } finally {
-      spent("rows", since);
-    }
-  }
-  function renderRowTimed(node, i, cells, depth) {
-    const { props, identity: identity2 } = node;
-    const suppliedKey = props.itemKeys?.[i];
-    const previous = render.scope, outerContexts = render.contexts;
-    render.contexts = node.list.contexts;
-    render.scope = suppliedKey === void 0 ? `${identity2}/row:${i}` : `${identity2}/row/key:${JSON.stringify(suppliedKey)}`;
-    try {
-      const value = props.row(i);
-      render.contexts = outerContexts;
-      const declared2 = isNode(value) ? readNode(value)[1].key : void 0;
-      if (declared2 !== void 0 && typeof declared2 !== "string") throw Error("UI_KEY: expected string");
-      if (suppliedKey === void 0 && declared2 !== void 0 && cells.size > 0)
-        throw Error("UI_LIST: keyed row factory hooks require itemKeys; alternatively move hooks into a keyed component");
-      if (suppliedKey !== void 0 && declared2 !== void 0 && suppliedKey !== declared2) throw Error("UI_LIST: row key does not match itemKeys");
-      const rowKey = suppliedKey ?? declared2;
-      const key = rowKey === void 0 ? `index:${i}` : `key:${JSON.stringify(rowKey)}`;
-      render.scope = `${identity2}/row/${key}`;
-      const fields3 = {};
-      if (props.height) {
-        const height = props.height(i);
-        if (!Number.isFinite(height) || height < 0 || height > 16384) throw Error("UI_LIST: invalid row height");
-        fields3.height = height;
-      }
-      const content = resolveNode(value, render.scope, depth + 2, {
-        typography: node.typography,
-        sibling: { index: i, count: props.count },
-        direction: node.list.direction,
-        contexts: node.list.contexts
-      });
-      if (content?.fragment) throw Error("UI_LIST: a row returns one node; wrap its fragment in <view>");
-      const row = {
-        tag: "column",
-        element: "view",
-        props: { key },
-        fields: fields3,
-        states: {},
-        wire: [],
-        handlers: [],
-        identity: render.scope,
-        rowIndex: i,
-        text: "",
-        children: content === null ? [] : [content, ...liftedFrom(content, "row")]
-      };
-      return { row, key };
-    } finally {
-      render.scope = previous;
-      render.contexts = outerContexts;
-    }
-  }
-
-  // src/runtime/context.js
-  var unstamped = /* @__PURE__ */ new WeakMap();
-  var unnamed = 0;
-  function contextId(context) {
-    if (typeof context.__lxid === "string") return context.__lxid;
-    let id = unstamped.get(context);
-    if (id === void 0) unstamped.set(context, id = `context#${++unnamed}`);
-    return id;
-  }
-  function lookup(chain, id) {
-    while (chain && chain.id !== id) chain = chain.next;
-    return chain;
-  }
-  function plain(value, budget) {
-    if (value === null || typeof value !== "object" || --budget.left < 0 || brand in value || cellOf(value)) return true;
-    if (Array.isArray(value)) return value.every((each) => plain(each, budget));
-    const proto = Object.getPrototypeOf(value);
-    if (proto !== Object.prototype && proto !== null) return false;
-    for (const descriptor of Object.values(Object.getOwnPropertyDescriptors(value)))
-      if ("value" in descriptor && !plain(descriptor.value, budget)) return false;
-    return true;
-  }
-  function checkValue(value) {
-    if (!plain(value, { left: 256 })) throw Error("UI_CONTEXT: value must be plain data, functions or handles");
-  }
-  function createContext(...args) {
-    if (args.length !== 1) throw Error("UI_CONTEXT: createContext takes a default value");
-    if (render.active) throw Error("UI_CONTEXT: createContext belongs at module top level");
-    checkValue(args[0]);
-    const context = {};
-    const Provider = () => {
-      throw Error("UI_CONTEXT: a Provider renders only as an element");
-    };
-    Object.defineProperty(Provider, "__lxContext", { value: context });
-    Object.defineProperty(Provider, "__lxid", { get: () => `${contextId(context)}.Provider` });
-    Object.defineProperty(context, "Provider", { value: Provider, enumerable: true });
-    Object.defineProperty(context, "defaultValue", { value: args[0] });
-    return context;
-  }
-  function isProvider(tag) {
-    return Boolean(tag.__lxContext);
-  }
-  function provide(tag, props, children, chain, resolve) {
-    for (const key in props) if (key !== "value" && key !== "key") throw Error(`UI_CONTEXT: a Provider takes only value, not ${key}`);
-    if (!("value" in props)) throw Error("UI_CONTEXT: a Provider needs a value");
-    checkValue(props.value);
-    const child = children.length === 1 ? children[0] : void 0;
-    if (children.length > 1 || child != null && child !== false && !isNode(child)) throw Error("UI_CONTEXT: a Provider wraps one element");
-    const result = resolve(child, { id: contextId(tag.__lxContext), value: props.value, next: chain });
-    if (result?.fragment) throw Error("UI_CONTEXT: a Provider wraps one element");
-    return result;
-  }
-
-  // src/runtime/memo.js
-  var compareBudget = 256;
-  var stamps = /* @__PURE__ */ new WeakMap();
-  function viewStamp(view) {
-    let stamp = stamps.get(view);
-    if (!stamp) stamps.set(view, stamp = { env: JSON.stringify(envOf(view) ?? null), actions: view?.actions, channels: view?.channels });
-    return stamp;
-  }
-  var sameView = (a, b) => a.env === b.env && a.actions === b.actions && a.channels === b.channels;
-  function same(a, b, old, budget) {
-    if (Object.is(a, b)) return true;
-    if (typeof a !== "object" || typeof b !== "object" || a === null || b === null || --budget.left < 0) return false;
-    const nodeA = brand in a, nodeB = brand in b;
-    if (nodeA || nodeB) {
-      if (!nodeA || !nodeB) return false;
-      const x = currentArena()[a[brand][1]], y = old[b[brand][1]];
-      return Boolean(x && y) && x[0] === y[0] && sameFields(x[1], y[1], old, budget) && same(x[2], y[2], old, budget);
-    }
-    if (Array.isArray(a)) {
-      if (!Array.isArray(b) || a.length !== b.length) return false;
-      for (let i = 0; i < a.length; i++) if (!same(a[i], b[i], old, budget)) return false;
-      return true;
-    }
-    if (Object.getPrototypeOf(a) !== Object.prototype || Object.getPrototypeOf(b) !== Object.prototype) return false;
-    return sameFields(a, b, old, budget);
-  }
-  function sameFields(a, b, old, budget) {
-    let count = 0;
-    for (const key in a) {
-      count++;
-      if (!Object.prototype.hasOwnProperty.call(b, key) || !same(a[key], b[key], old, budget)) return false;
-    }
-    for (const key in b) count--;
-    return count === 0;
-  }
-  var contextKeys = ["tag", "direction", "inControl", "inText", "inLink", "inBlockLink"];
-  function sameContext(a, b, old) {
-    for (let i = 0; i < contextKeys.length; i++) if (a[contextKeys[i]] !== b[contextKeys[i]]) return false;
-    const budget = { left: compareBudget };
-    return same(a.typography, b.typography, old, budget) && same(a.extra, b.extra, old, budget) && same(a.every, b.every, old, budget) && same(a.sibling, b.sibling, old, budget) && same(a.popovers, b.popovers, old, budget);
-  }
-  function sameContexts(reads, chain, old, budget) {
-    for (const [id, read] of reads) {
-      const entry = lookup(chain, id);
-      if (!same(entry ? entry.value : read.context.defaultValue, read.value, old, budget)) return false;
-    }
-    return true;
-  }
-  function sameChain(a, b, old, budget) {
-    for (; a || b; a = a.next, b = b.next) if (!a || !b || a.id !== b.id || !same(a.value, b.value, old, budget)) return false;
-    return true;
-  }
-  function passContexts(reads, chain, outer) {
-    for (const [id, read] of reads) if (!outer.contextReads.has(id) && lookup(chain, id) === lookup(outer.contexts, id)) outer.contextReads.set(id, read);
-  }
-  var topLayerSize = () => {
-    const top = render.candidate.topLayer;
-    return top ? top.entries.length + top.popovers.size + top.invokers.length : 0;
-  };
-  function recall(scope, tag, props, children, parent) {
-    const since = now();
-    try {
-      return recallTimed(scope, tag, props, children, parent);
-    } finally {
-      spent("recall", since);
-    }
-  }
-  function recallTimed(scope, tag, props, children, parent) {
-    const record = render.recall?.get(scope);
-    if (!record || record.tag !== tag || tag.__lxVolatile || !sameView(record.view, viewStamp(render.view))) return void 0;
-    for (const cell2 of record.reads) if (page.updates.has(cell2)) return void 0;
-    for (const cell2 of record.cells.values()) if (page.updates.has(cell2)) return void 0;
-    const budget = { left: compareBudget };
-    if (!sameFields(props, record.props, record.arena, budget) || !same(children, record.children, record.arena, budget) || !sameContext(parent, record.parent, record.arena) || !sameContexts(record.contextReads, parent.contexts, record.arena, budget) || record.lists && !sameChain(parent.contexts, record.parent.contexts, record.arena, budget)) return void 0;
-    const fresh2 = { ...record, props, children, parent, arena: currentArena(), result: record.lists ? reuse(record.result) : record.result };
-    keep(fresh2);
-    const frame = render.frames[render.frames.length - 1];
-    if (frame) {
-      frame.nested.push(fresh2);
-      for (const cell2 of record.reads) frame.reads.add(cell2);
-      passContexts(record.contextReads, parent.contexts, frame);
-    }
-    for (const [key, cell2] of record.cells) {
-      render.candidate.locals.set(key, cell2);
-      for (const collector of render.collectors) collector.set(key, cell2);
-    }
-    if (record.handles) skipHandle();
-    if (record.lists) render.lists++;
-    return fresh2.result;
-  }
-  function reuse(node) {
-    let children = node.children;
-    for (let i = 0; i < children.length; i++) {
-      const child = reuse(node.children[i]);
-      if (child === node.children[i]) continue;
-      if (children === node.children) children = children.slice();
-      children[i] = child;
-    }
-    if (!node.list) return children === node.children ? node : { ...node, children };
-    const { pure } = node.list, cache2 = /* @__PURE__ */ new Map();
-    for (const [i, row] of node.list.cache) if (pure.has(i)) cache2.set(i, row);
-    return { ...node, children, list: {
-      ...node.list,
-      states: new Map(node.list.states),
-      cache: cache2,
-      pure: new Set(cache2.keys()),
-      reusable: null,
-      anchorChanged: false,
-      anchorCache: null
-    } };
-  }
-  function keep(record) {
-    render.candidate.memo.set(record.scope, record);
-    for (const [key, entry] of record.closures) render.candidate.closures?.set(key, entry);
-    for (const nested of record.nested) keep(nested);
-  }
-  function enter(scope, contexts) {
-    const frame = { scope, contexts, contextReads: /* @__PURE__ */ new Map(), cells: /* @__PURE__ */ new Map(), reads: /* @__PURE__ */ new Set(), view: false, nested: [], closures: [], handles: handlesIssued(), top: topLayerSize(), lists: render.lists };
-    render.frames.push(frame);
-    render.collectors.push(frame.cells);
-    return frame;
-  }
-  function noteRead(cell2) {
-    render.cellReads++;
-    const frame = render.frames[render.frames.length - 1];
-    if (frame) frame.reads.add(cell2);
-  }
-  function noteContext(id, context, value) {
-    render.contextReads++;
-    const frame = render.frames[render.frames.length - 1];
-    if (frame && !frame.contextReads.has(id)) frame.contextReads.set(id, { context, value });
-  }
-  function noteView() {
-    const frame = render.frames[render.frames.length - 1];
-    if (frame) frame.view = true;
-  }
-  function leave(frame) {
-    render.frames.splice(render.frames.lastIndexOf(frame), 1);
-    render.collectors.splice(render.collectors.lastIndexOf(frame.cells), 1);
-    const outer = render.frames[render.frames.length - 1];
-    if (outer) {
-      for (const cell2 of frame.reads) outer.reads.add(cell2);
-      outer.view || (outer.view = frame.view);
-      passContexts(frame.contextReads, frame.contexts, outer);
-    }
-  }
-  function remember(frame, tag, props, children, parent, result) {
-    if (frame.view || result?.fragment || topLayerSize() !== frame.top || !render.candidate.memo) return;
-    const record = {
-      scope: frame.scope,
-      tag,
-      props,
-      children,
-      parent,
-      arena: currentArena(),
-      result,
-      cells: frame.cells,
-      reads: frame.reads,
-      contextReads: frame.contextReads,
-      nested: frame.nested,
-      closures: frame.closures,
-      view: viewStamp(render.view),
-      handles: handlesIssued() !== frame.handles,
-      lists: render.lists !== frame.lists
-    };
-    render.candidate.memo.set(frame.scope, record);
-    render.frames[render.frames.length - 1]?.nested.push(record);
-    if (result && !record.lists) sliceable.add(result);
-  }
-
   // src/runtime/hooks.js
   var SIZE_CLASS_CONTEXT_ID = "@lingxia/view:SizeClassScope";
   var SizeClassContext = createContext(null);
@@ -4005,7 +4061,27 @@
   }
   function useEnv() {
     if (!render.active) throw Error("UI_SCOPE: useEnv outside render");
-    return scopedEnv()?.env ?? render.view.env;
+    return fieldTracked(scopedEnv()?.env ?? render.view.env);
+  }
+  var tracked = /* @__PURE__ */ new WeakMap();
+  function fieldTracked(env) {
+    if (!env || typeof env !== "object") return env;
+    let proxy = tracked.get(env);
+    if (!proxy) tracked.set(env, proxy = new Proxy(env, {
+      get(target, key, receiver) {
+        if (typeof key === "string") noteEnv(key);
+        return Reflect.get(target, key, receiver);
+      },
+      has(target, key) {
+        if (typeof key === "string") noteEnv(key);
+        return Reflect.has(target, key);
+      },
+      ownKeys(target) {
+        noteEnv("*");
+        return Reflect.ownKeys(target);
+      }
+    }));
+    return proxy;
   }
   function scopedEnv() {
     const scoped = scopedSizeClass();
@@ -4429,7 +4505,7 @@
     if (!Number.isSafeInteger(props.count) || props.count < 0 || props.count > limits.listRows || typeof props.row !== "function" || props.height !== void 0 && typeof props.height !== "function") throw Error("UI_LIST: invalid row description");
     if (props.itemKeys !== void 0) {
       if (!Array.isArray(props.itemKeys) || props.itemKeys.length !== props.count) throw Error("UI_LIST: itemKeys must match count");
-      if (!settled2(props.itemKeys)) props.itemKeys = Array.from(props.itemKeys);
+      if (!settled(props.itemKeys)) props.itemKeys = Array.from(props.itemKeys);
       checkKeys(props.itemKeys, checkKey);
       if (keyPayload(props.itemKeys).bytes > limits.itemKeyBytes) throw Error("UI_LIST: itemKeys budget exceeded");
     }
@@ -5447,6 +5523,8 @@
     warnedClamp.clear();
   }
   function nodeStyle(tag, props, data, extra, inherited2, direction, structure2, every, sizeClass, identity2) {
+    if (typeof props.className === "string") noteEnv(classEnvFields(props.className));
+    if (usesViewportUnits(props.style) || usesViewportUnits(extra) || usesViewportUnits(every)) noteEnv(VIEWPORT_FIELDS);
     if (props.style !== void 0 || extra !== void 0 || every !== void 0 || props.className === void 0) return lowerNodeStyle(tag, props, data, extra, inherited2, direction, structure2, every, sizeClass, identity2);
     const environment = envKey(envOf(render.view));
     if (loweredClasses !== classGeneration) {
@@ -5693,6 +5771,7 @@
     if (props.dir !== void 0 && !["ltr", "rtl", "auto"].includes(props.dir)) throw Error('UI_PROP: dir must be "ltr", "rtl" or "auto"');
     const own2 = props.dir === "auto" && !editor2 ? strongDirection(children) : props.dir === "auto" ? void 0 : props.dir;
     if (props.dir === "auto" && !editor2) props.dir = own2;
+    if (own2 === void 0 && parent.direction === void 0) noteEnv("direction");
     const direction = own2 ?? parent.direction ?? (envOf(render.view)?.direction === "rtl" ? "rtl" : "ltr");
     const authored2 = entries(children), flat = authored2.map((entry) => entry.child);
     const data = dataOf(props);
@@ -5924,6 +6003,7 @@
         if (keyboard !== void 0) wire("keyboard", keyboard);
         if (keyboard === "date" || keyboard === "time") {
           const env = envOf(render.view);
+          noteEnv(["language", "hourCycle"]);
           const shown = fieldText(keyboard, props.value ?? "", {
             seconds: typeof props.step === "number" && props.step < 60,
             language: env?.language,
@@ -6409,6 +6489,7 @@
   function listState(props, identity2, direction, contexts) {
     const old = page.committed?.lists.get(identity2);
     const rowSource = props.row?.__lxRows, rowEnv = rowSource ? JSON.stringify(envOf(render.view) ?? null) : void 0;
+    if (rowSource) noteEnv("*");
     const anchor = props.anchor === void 0 ? null : JSON.stringify(props.anchor);
     const positions2 = props.itemKeys && old?.states?.size ? keyPositions(props.itemKeys) : null;
     const states2 = positions2 ? new Map([...old?.states ?? []].flatMap(([, state]) => positions2.has(state.key) ? [[positions2.get(state.key), state]] : [])) : new Map([...old?.states ?? []].filter(([i]) => i < props.count));

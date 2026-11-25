@@ -58,7 +58,7 @@ export function render({ data, actions }: View) {
 - `useLocal(value)` state is keyed by call order and component identity; `useLocal(name, value)` by name (survives reorders and hot edits).
 - No effects: a handler acts, also after an `await` — `if (!(await signIn.run(form)).ok) password.focus()` (or `.set`, `reveal`). Its closure keeps the old render's `data`, so let the action's result answer, not `data` read after the await.
 - A handler that throws or rejects fails the page in a `lingxia dev` build and under test; a shipped app logs it (`UI_HANDLER: onClick of <button data-testid=…> rejected: …`) and the page stays. A sync throw discards that turn's writes; an async handler's writes made before it failed stay. Prefer `useAction(...).run`, which answers `{ ok: false }`; bare `await actions.x()` rejects — handle it or it is reported.
-- In a component, `useEnv()` reads the environment without re-running on every `view.data` change (`useView()` does).
+- In a component, `useEnv()` re-runs it only when an env field it read changes, not on every `view.data` change (`useView()` does).
 - `cell.focus()` (text cells only, `LocalText`) focuses the editor bound (`bind`) to that cell; from a handler, never in render.
   `cell.showPicker()` opens a bound date or time editor's picker the same way (nothing if disabled or read-only).
 - `reveal(id)` (from `@lingxia/view`, in a handler) scrolls the element with that `id` into view inside its `<scroll>`s, after the render the handler causes; a `<List>` row uses the list's `anchor`.

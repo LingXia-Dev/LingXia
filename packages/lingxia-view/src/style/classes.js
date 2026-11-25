@@ -26,11 +26,46 @@ export const classesReadTheme = () => themed;
 let sized = false;
 export const classesReadSizeClass = () => sized;
 
+const NO_FIELDS = Object.freeze([]);
+export const VIEWPORT_FIELDS = Object.freeze(['viewport', 'insets', 'keyboard']);
+const viewportUnit = /\d(?:vw|vh)\b/;
+/** Whether a style object holds a `vw`/`vh` length, which lowers against the viewport, insets and keyboard. */
+// Styles nest a few levels (shadows, transitions); a cyclic one is refused later, not here.
+export function usesViewportUnits(style, depth = 0) {
+  if (!style || typeof style !== 'object' || depth > 4) return false;
+  for (const key in style) {
+    const value = style[key];
+    if (typeof value === 'string' ? viewportUnit.test(value) : usesViewportUnits(value, depth + 1)) return true;
+  }
+  return false;
+}
+
+const fieldsByClass = new Map();
+/** The environment fields lowering `className` can read: its rules' conditions and viewport units. */
+export function classEnvFields(className) {
+  let fields = fieldsByClass.get(className);
+  if (fields) return fields;
+  const out = new Set();
+  for (const name of className.split(/\s+/)) for (const rule of byName.get(name) ?? []) {
+    const when = rule.when;
+    if (when?.theme !== undefined) out.add('theme');
+    if (when?.sizeClass !== undefined) out.add('sizeClass');
+    if (when?.reducedMotion !== undefined) out.add('reducedMotion');
+    if (when?.minWidth !== undefined || when?.maxWidth !== undefined) out.add('viewport');
+    if (usesViewportUnits(rule.style)) for (const field of VIEWPORT_FIELDS) out.add(field);
+  }
+  fields = out.size ? Object.freeze([...out]) : NO_FIELDS;
+  if (fieldsByClass.size >= 4096) fieldsByClass.delete(fieldsByClass.keys().next().value);
+  fieldsByClass.set(className, fields);
+  return fields;
+}
+
 export function configureClasses(compiled) {
   classGeneration++;
   byName = new Map();
   cache.clear();
   sizedNames.clear();
+  fieldsByClass.clear();
   themed = compiled.some(rule => rule.when?.theme !== undefined);
   sized = compiled.some(rule => rule.when?.sizeClass !== undefined);
   compiled.forEach((rule, order) => {

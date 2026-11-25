@@ -3,7 +3,7 @@ import { render, page, outsideRender } from './state.js';
 import { actionInfo, currentActions, leaveGuards, report } from './actions.js';
 import { actionResource, streamResource, requestResource } from './resources.js';
 import { channelResource } from './channel-resource.js';
-import { noteRead, noteView, noteContext } from './memo.js';
+import { noteRead, noteView, noteContext, noteEnv } from './memo.js';
 import { classesReadTheme, classesReadSizeClass } from '../style/classes.js';
 import { createContext, lookup } from './context.js';
 import { h } from './nodes.js';
@@ -120,10 +120,32 @@ export function useView() {
   return scopedView;
 }
 
-/** The environment alone: a component that reads only it is kept across `view.data` changes. */
+/** The environment alone: a component re-runs only when a field it read changes. */
 export function useEnv() {
   if (!render.active) throw Error('UI_SCOPE: useEnv outside render');
-  return scopedEnv()?.env ?? render.view.env;
+  return fieldTracked(scopedEnv()?.env ?? render.view.env);
+}
+
+const tracked = new WeakMap();
+// Each field read names itself; listing the keys (a spread, `Object.keys`) reads them all.
+function fieldTracked(env) {
+  if (!env || typeof env !== 'object') return env;
+  let proxy = tracked.get(env);
+  if (!proxy) tracked.set(env, proxy = new Proxy(env, {
+    get(target, key, receiver) {
+      if (typeof key === 'string') noteEnv(key);
+      return Reflect.get(target, key, receiver);
+    },
+    has(target, key) {
+      if (typeof key === 'string') noteEnv(key);
+      return Reflect.has(target, key);
+    },
+    ownKeys(target) {
+      noteEnv('*');
+      return Reflect.ownKeys(target);
+    },
+  }));
+  return proxy;
 }
 
 // The environment under the nearest SizeClassScope, or undefined when no scope changes it.

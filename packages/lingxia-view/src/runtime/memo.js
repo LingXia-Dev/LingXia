@@ -1,5 +1,6 @@
 // A component re-runs only when something it was built from changed: its props, its place, the
-// cells it declared or read, or the environment. Otherwise the subtree it resolved last time stands.
+// cells it declared or read, or the environment fields it or its lowering read. Otherwise the
+// subtree it resolved last time stands.
 import { render, page } from './state.js';
 import { now, spent } from './profile.js';
 import { brand, currentArena } from './nodes.js';
@@ -12,13 +13,30 @@ import { lookup } from './context.js';
 const compareBudget = 256;
 
 const stamps = new WeakMap();
-// The parts of the view every resolution reads besides props: environment and catalog.
+// The parts of the view every resolution reads besides props and the environment: the catalog.
 function viewStamp(view) {
   let stamp = stamps.get(view);
-  if (!stamp) stamps.set(view, stamp = { env: JSON.stringify(envOf(view) ?? null), actions: view?.actions, channels: view?.channels });
+  if (!stamp) stamps.set(view, stamp = { actions: view?.actions, channels: view?.channels });
   return stamp;
 }
-const sameView = (a, b) => a.env === b.env && a.actions === b.actions && a.channels === b.channels;
+const sameView = (a, b) => a.actions === b.actions && a.channels === b.channels;
+
+// One environment field as JSON, `*` the whole environment; once per view and field.
+const envValues = new WeakMap();
+function envValue(view, key) {
+  let values = envValues.get(view);
+  if (!values) envValues.set(view, values = new Map());
+  let value = values.get(key);
+  if (value === undefined) {
+    const env = envOf(view);
+    values.set(key, value = JSON.stringify((key === '*' ? env : env?.[key]) ?? null));
+  }
+  return value;
+}
+function sameEnv(fields, view) {
+  for (const [key, value] of fields) if (envValue(view, key) !== value) return false;
+  return true;
+}
 
 function same(a, b, old, budget) {
   if (Object.is(a, b)) return true;
@@ -89,7 +107,7 @@ export function recall(scope, tag, props, children, parent) {
 
 function recallTimed(scope, tag, props, children, parent) {
   const record = render.recall?.get(scope);
-  if (!record || record.tag !== tag || tag.__lxVolatile || !sameView(record.view, viewStamp(render.view))) return undefined;
+  if (!record || record.tag !== tag || tag.__lxVolatile || !sameView(record.view, viewStamp(render.view)) || !sameEnv(record.env, render.view)) return undefined;
   for (const cell of record.reads) if (page.updates.has(cell)) return undefined;
   for (const cell of record.cells.values()) if (page.updates.has(cell)) return undefined;
   const budget = { left: compareBudget };
@@ -103,6 +121,7 @@ function recallTimed(scope, tag, props, children, parent) {
   if (frame) {
     frame.nested.push(fresh);
     for (const cell of record.reads) frame.reads.add(cell);
+    for (const key of record.env.keys()) frame.env.add(key);
     passContexts(record.contextReads, parent.contexts, frame);
   }
   for (const [key, cell] of record.cells) {
@@ -140,7 +159,7 @@ function keep(record) {
 
 /** Starts tracking what the component at `scope` builds from. */
 export function enter(scope, contexts) {
-  const frame = { scope, contexts, contextReads: new Map(), cells: new Map(), reads: new Set(), view: false, nested: [], closures: [], handles: handlesIssued(), top: topLayerSize(), lists: render.lists };
+  const frame = { scope, contexts, contextReads: new Map(), cells: new Map(), reads: new Set(), env: new Set(), view: false, nested: [], closures: [], handles: handlesIssued(), top: topLayerSize(), lists: render.lists };
   render.frames.push(frame);
   render.collectors.push(frame.cells);
   return frame;
@@ -160,6 +179,14 @@ export function noteContext(id, context, value) {
   if (frame && !frame.contextReads.has(id)) frame.contextReads.set(id, { context, value });
 }
 
+/** Environment fields read during render, by page code or lowering (`*`: all): the reading subtrees re-run when one changes. */
+export function noteEnv(keys) {
+  const frame = render.frames[render.frames.length - 1];
+  if (!frame) return;
+  if (typeof keys === 'string') frame.env.add(keys);
+  else for (let i = 0; i < keys.length; i++) frame.env.add(keys[i]);
+}
+
 /** The View read during render: the reading subtrees re-run on every render. */
 export function noteView() {
   const frame = render.frames[render.frames.length - 1];
@@ -171,7 +198,7 @@ export function leave(frame) {
   render.frames.splice(render.frames.lastIndexOf(frame), 1);
   render.collectors.splice(render.collectors.lastIndexOf(frame.cells), 1);
   const outer = render.frames[render.frames.length - 1];
-  if (outer) { for (const cell of frame.reads) outer.reads.add(cell); outer.view ||= frame.view; passContexts(frame.contextReads, frame.contexts, outer); }
+  if (outer) { for (const cell of frame.reads) outer.reads.add(cell); for (const key of frame.env) outer.env.add(key); outer.view ||= frame.view; passContexts(frame.contextReads, frame.contexts, outer); }
 }
 
 /** Remembers the subtree `frame` resolved, when it can stand in for a later render. */
@@ -179,6 +206,7 @@ export function remember(frame, tag, props, children, parent, result) {
   if (frame.view || result?.fragment || topLayerSize() !== frame.top || !render.candidate.memo) return;
   const record = { scope: frame.scope, tag, props, children, parent, arena: currentArena(), result,
     cells: frame.cells, reads: frame.reads, contextReads: frame.contextReads, nested: frame.nested, closures: frame.closures, view: viewStamp(render.view),
+    env: new Map([...(frame.env.has('*') ? ['*'] : frame.env)].map(key => [key, envValue(render.view, key)])),
     handles: handlesIssued() !== frame.handles, lists: render.lists !== frame.lists };
   render.candidate.memo.set(frame.scope, record);
   render.frames[render.frames.length - 1]?.nested.push(record);

@@ -1,7 +1,7 @@
 import { test, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { decode } from './support/wire.mjs';
-import { h, List, describe, prepare, commit, discard, reset, dispatch, useLocal, useView, useEnv, createView } from '../src/internal.js';
+import { h, List, describe, prepare, commit, discard, reset, dispatch, useLocal, useView, useEnv, createView, configureClasses } from '../src/internal.js';
 import { stableClosure } from '../src/runtime/memo.js';
 
 beforeEach(() => reset());
@@ -20,7 +20,7 @@ test('a component re-runs only when its props, place, state or environment chang
   assert.deepEqual(texts(describe(render, view({ n: 3 }))), ['fixed', '3']);
   assert.deepEqual(runs, { Static: 1, Shown: 3 });
   describe(render, view({ n: 3 }, { theme: 'dark' }));
-  assert.deepEqual(runs, { Static: 2, Shown: 4 }, 'a new environment re-runs everything');
+  assert.deepEqual(runs, { Static: 1, Shown: 3 }, 'an environment field nothing read re-runs nothing');
 });
 
 test('a recalled component keeps its state, and re-runs when a cell it declared or read changes', () => {
@@ -63,6 +63,42 @@ test('a component reading only useEnv() is kept across data changes and re-runs 
   assert.equal(runs, 2);
   assert.ok(Object.isFrozen(seen));
   assert.throws(() => useEnv(), /UI_SCOPE/);
+});
+
+test('a useEnv() reader re-runs only when a field it read changes', () => {
+  const runs = { Theme: 0, Spread: 0 };
+  function Theme() { runs.Theme++; return h('text', {}, useEnv().theme ?? 'light'); }
+  function Spread() { runs.Spread++; return h('text', {}, String(Object.keys({ ...useEnv() }).length)); }
+  const render = () => h('view', {}, h(Theme), h(Spread));
+  describe(render, view({}, { theme: 'light', keyboard: { height: 0 } }));
+  describe(render, view({}, { theme: 'light', keyboard: { height: 300 } }));
+  assert.deepEqual(runs, { Theme: 1, Spread: 2 }, 'a keyboard change leaves the theme reader; a spread read every field');
+  assert.equal(texts(describe(render, view({}, { theme: 'dark', keyboard: { height: 300 } })))[0], 'dark');
+  assert.deepEqual(runs, { Theme: 2, Spread: 3 });
+});
+
+test('a component re-runs when an environment field its classes lower against changes', () => {
+  configureClasses([
+    { name: 'card', when: {}, style: { backgroundColor: 'surface' } },
+    { name: 'dark:card-dark', when: { theme: 'dark' }, style: { borderWidth: 1 } },
+    { name: 'md:wide', when: { minWidth: 768 }, style: { paddingTop: 8 } },
+    { name: 'half', when: {}, style: { height: '50vh' } },
+  ]);
+  const runs = { Plain: 0, Themed: 0, Wide: 0, Half: 0 };
+  const part = (name, className) => function () { runs[name]++; return h('view', { className, 'data-testid': name }); };
+  const Plain = part('Plain', 'card'), Themed = part('Themed', 'card dark:card-dark'), Wide = part('Wide', 'md:wide'), Half = part('Half', 'half');
+  const render = () => h('view', {}, h(Plain), h(Themed), h(Wide), h(Half));
+  const env = { theme: 'light', viewport: { width: 400, height: 800 }, insets: { top: 0, right: 0, bottom: 0, left: 0 }, keyboard: { height: 0 } };
+  const node = (buffer, id) => decode(buffer).find(candidate => candidate.testId === id);
+  describe(render, view({}, env));
+  const dark = describe(render, view({}, { ...env, theme: 'dark' }));
+  assert.deepEqual(runs, { Plain: 1, Themed: 2, Wide: 1, Half: 1 });
+  assert.equal(node(dark, 'Themed').props.borderTopWidth, 1);
+  const keyboard = describe(render, view({}, { ...env, theme: 'dark', keyboard: { height: 400 } }));
+  assert.deepEqual(runs, { Plain: 1, Themed: 2, Wide: 1, Half: 2 }, 'a vh length lowers against the keyboard');
+  assert.equal(node(keyboard, 'Half').props.height, 200);
+  describe(render, view({}, { ...env, theme: 'dark', keyboard: { height: 400 }, viewport: { width: 900, height: 800 } }));
+  assert.deepEqual(runs, { Plain: 1, Themed: 2, Wide: 2, Half: 3 });
 });
 
 test('callbacks in a recalled subtree still dispatch, and a discarded render keeps the committed one', () => {

@@ -122,8 +122,8 @@ A `<List>` row and a component inside `<text>` still return one element.
 A component is a function from props to one element, `null`, `undefined` or a boolean (nothing).
 Components receive props only. Read the page View inside one with `useView()`; pass typed data
 down as props when the component needs its type. A component that needs only the environment reads
-`useEnv()`: it then re-runs when the environment changes, not on every `view.data` change as a
-`useView()` reader does.
+`useEnv()`: it then re-runs only when an environment field it read changes, not on every
+`view.data` change as a `useView()` reader does.
 
 ```tsx
 import { useEnv, type Child } from '@lingxia/view';

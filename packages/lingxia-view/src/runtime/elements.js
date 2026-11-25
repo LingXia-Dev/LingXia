@@ -1,6 +1,6 @@
 import { pressChange, changeEnd, pressEnd } from './press.js';
 import { elements, kindOf, admission, limits, commonProps, authoringRules } from '../generated/contract.js';
-import { resolveClasses, classGeneration, classesUseSizeClass } from '../style/classes.js';
+import { resolveClasses, classGeneration, classesUseSizeClass, classEnvFields, usesViewportUnits, VIEWPORT_FIELDS } from '../style/classes.js';
 import { classElementProblem, gridProblem, gridRefuses, tagHint } from '../style/hints.js';
 import { lowerStyle, paintOnly, mergeStyle } from '../style/lower.js';
 import { h, readNode, isNode, isFragment, entries } from './nodes.js';
@@ -16,7 +16,7 @@ import { defaultSeries } from '../style/color.js';
 import { keyPositions } from './keys.js';
 import { expand, invokerHandler, interestTrigger, popoverScope, dragClose, scrimMark, presenceStyle, backdropOwner, panelMark } from './toplayer.js';
 import { rangeSlider, thumbMark } from './range.js';
-import { recall, enter, leave, remember } from './memo.js';
+import { recall, enter, leave, remember, noteEnv } from './memo.js';
 import { isProvider, provide } from './context.js';
 import { playerName, videoStatus, fullscreenHandler } from './video.js';
 import { boxBinding } from './box.js';
@@ -212,6 +212,8 @@ const warnedClamp = new Set();
 export function resetStyleWarnings() { warnedClamp.clear(); }
 
 function nodeStyle(tag, props, data, extra, inherited, direction, structure, every, sizeClass, identity) {
+  if (typeof props.className === 'string') noteEnv(classEnvFields(props.className));
+  if (usesViewportUnits(props.style) || usesViewportUnits(extra) || usesViewportUnits(every)) noteEnv(VIEWPORT_FIELDS);
   if (props.style !== undefined || extra !== undefined || every !== undefined || props.className === undefined) return lowerNodeStyle(tag, props, data, extra, inherited, direction, structure, every, sizeClass, identity);
   const environment = envKey(envOf(render.view));
   if (loweredClasses !== classGeneration) {
@@ -466,6 +468,7 @@ function resolveElement(tag, original, children, identity, depth, parent) {
   // direction of the content's first strong character, as in HTML; an editor follows its live text.
   const own = props.dir === 'auto' && !editor ? strongDirection(children) : props.dir === 'auto' ? undefined : props.dir;
   if (props.dir === 'auto' && !editor) props.dir = own;
+  if (own === undefined && parent.direction === undefined) noteEnv('direction');
   const direction = own ?? parent.direction ?? (envOf(render.view)?.direction === 'rtl' ? 'rtl' : 'ltr');
   const authored = entries(children), flat = authored.map(entry => entry.child);
   // The data-* props as variants and automation read them; nothing below changes them.
@@ -703,6 +706,7 @@ function resolveElement(tag, original, children, identity, depth, parent) {
       if (keyboard === 'date' || keyboard === 'time') {
         // Shown in the user's clock and sized to its widest value; the bound value stays ISO.
         const env = envOf(render.view);
+        noteEnv(['language', 'hourCycle']);
         const shown = fieldText(keyboard, props.value ?? '', {
           seconds: typeof props.step === 'number' && props.step < 60,
           language: env?.language,
@@ -1195,6 +1199,8 @@ function reusableRows(old, props, rowEnv, direction) {
 function listState(props, identity, direction, contexts) {
   const old = page.committed?.lists.get(identity);
   const rowSource = props.row?.__lxRows, rowEnv = rowSource ? JSON.stringify(envOf(render.view) ?? null) : undefined;
+  // Rows render later, against the whole environment.
+  if (rowSource) noteEnv('*');
   const anchor = props.anchor === undefined ? null : JSON.stringify(props.anchor);
   // Row state is remapped by key only when there is some; a fresh list needs no positions.
   const positions = props.itemKeys && old?.states?.size ? keyPositions(props.itemKeys) : null;
