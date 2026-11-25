@@ -6,6 +6,24 @@ update prompts. App configuration belongs in the
 [distribution](../skill/cli/distribution.md). This document records the
 cross-component rules those implementations must preserve.
 
+Invariants:
+
+- Versions only move forward. The client decides; the server only reports its
+  latest package.
+- The host build decides whether signatures are required; nothing a request
+  carries can waive verification.
+- Install metadata is committed last, so a failed update always leaves the
+  previous install usable.
+- An lxapp update applies only when no live instance of it exists.
+- A handoff to the OS (installer started, store opened) is not a successful
+  install; only the next cold start confirms one.
+
+Code: [update policy and verification](../../crates/lingxia-update/src/)
+(pure, so ordering is testable without disk, network or UI),
+[host update coordination](../../crates/lingxia-service/src/update.rs) and
+[host integration](../../crates/lingxia/src/update.rs),
+[lxapp update lifecycle](../../crates/lingxia-lxapp/src/update/).
+
 ## Two pipelines
 
 | | Host app | Lxapp and plugin |
@@ -15,9 +33,9 @@ cross-component rules those implementations must preserve.
 | Applies through | Platform installer or store | Runtime, when no live instance remains |
 
 Both pipelines share signature verification. Host build environment and lxapp
-channel are independent; see [env-version.md](env-version.md). Update policy
-must remain separate from disk, network, and UI so ordering can be tested
-without platform services.
+channel are independent; see [env-version.md](env-version.md).
+
+## Package download
 
 Package downloads (host and lxapp) share
 [`package_download`](../../crates/lingxia-service/src/package_download.rs).
@@ -160,18 +178,21 @@ missing one warns at build time.
   an install is handed off or Control claims the flow. Keep the network
   trigger: it makes the first check as soon as the device is online, and is
   the only trigger without an interval.
-- A successful `lx.host.checkUpdate()` transfers update ownership to JS for the
-  rest of the process. Automatic prompting and downloading stop; an already
-  running download is not canceled. A failed check claims nothing.
+- The Control app takes update ownership for the rest of the process with
+  `lx.host.update.claim()` or the `apply()` of a checked result;
+  `lx.host.update.check()` alone claims nothing, nor does a failed check.
+  After a claim, automatic prompting and downloading stop; an already running
+  download is not canceled.
 - Automatic flow may prompt, but **opening a store requires user confirmation
   or an explicit JS apply request**. Inability to present a prompt must not
   fall back to opening the store.
 - Direct updates download silently, then prompt once. Check that the candidate
   is newer both before download and before installation: another mechanism
   may update the app in between. Reuse cached bytes only on checksum match.
-- `installRequested` and `storeOpened` mean handoff to the OS, not successful
-  installation. The next cold start is the only confirmation. Keep the task
-  result, progress termination, and public event union consistent.
+- The terminal states `install_requested` and `store_opened`
+  (`AppUpdateEvent::InstallRequested` / `StoreOpened`) mean handoff to the OS,
+  not successful installation. Keep the task result, progress termination,
+  and public event union consistent.
 
 ### Platform prompts
 
@@ -204,7 +225,7 @@ failure directly; package visibility makes availability preflight unreliable.
 - Check and download updates in the background. Apply a downloaded update only
   when no live instance exists: initial process startup, after a real close,
   or on restart. Reopening a still-running session must preserve its bundle
-  and WebView. `updateManager.applyUpdate()` restarts the lxapp.
+  and WebView. `lx.app.update.apply()` restarts the lxapp.
 - If applying a pending update fails, the same open/restart must rebuild from
   the previous installed or bundled package. Do not leave a retired session
   without a replacement. With no usable package, the open still fails.
@@ -219,8 +240,7 @@ failure directly; package visibility makes availability preflight unreliable.
   update entry point must leave them alone.
 - Versions only move forward on both channels: a newer server version
   installs and an older one never does, so a server-side rollback cannot
-  downgrade a device. The client decides; the server only reports its latest
-  package. A host-bundled lxapp without an install record compares against its
+  downgrade a device. A host-bundled lxapp without an install record compares against its
   own `lxapp.json` version. An unparseable server version never installs over
   an existing one. An exact-version open older than the install is rejected.
 - Only on the draft channel may a republish replace the same version with a
@@ -229,15 +249,10 @@ failure directly; package visibility makes availability preflight unreliable.
   sideloaded installs. Exact-version draft opens therefore still query the
   server.
 
-## Source entry points and verification
-
-- [Update policy and verification](../../crates/lingxia-update/src/)
-- [Host update coordination](../../crates/lingxia-service/src/update.rs) and
-  [host integration](../../crates/lingxia/src/update.rs)
-- [Lxapp update lifecycle](../../crates/lingxia-lxapp/src/update/)
+## Changing the pipeline
 
 New check paths must preserve shared verification and feed eligibility rules.
 Channel defaults must remain shared with project scaffolding. Test prompt
 startup, JS ownership, terminal events, and failed-install recovery when
 changing those behaviors. A macOS workspace check does not cover the Android,
-Harmony, or Windows platform implementations; use target CI or devices.
+Harmony, or Windows platform implementations.
