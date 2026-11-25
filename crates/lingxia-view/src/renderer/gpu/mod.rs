@@ -7,7 +7,6 @@ mod encode;
 pub mod hls;
 pub(crate) mod images;
 pub(crate) mod pass;
-mod pipeline_cache;
 pub(crate) mod scene;
 pub(crate) mod surface;
 pub(crate) mod text;
@@ -195,13 +194,7 @@ impl Context {
             .lock()
             .map_err(|_| "UI_SURFACE: poisoned renderer registry")?
             .entry(device_id)
-            .or_insert_with(|| {
-                let handle = &context.devices[device_id];
-                let info = handle.adapter().get_info();
-                crate::renderer::gpu::pass::SceneRenderer::with_cache(
-                    pipeline_cache::PipelineCache::open(&handle.device, &info),
-                )
-            })
+            .or_default()
             .clone())
     }
 }

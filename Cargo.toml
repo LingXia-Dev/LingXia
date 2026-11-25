@@ -209,10 +209,6 @@ rong_url = { git = "https://github.com/LingXia-Dev/Rong.git", rev = "44b96a2a392
 rong_worker = { git = "https://github.com/LingXia-Dev/Rong.git", rev = "44b96a2a392f8bae64462c9a69c630b63ec10323" }
 # taffy 0.14 with two flexbox fixes (third_party/taffy/LINGXIA-PATCHES.md), until upstream takes them.
 taffy = { path = "third_party/taffy" }
-# glifo 0.4 decoding a bitmap glyph's PNG on every draw (third_party/glifo/LINGXIA-PATCHES.md).
-glifo = { path = "third_party/glifo" }
-# vello_gpu 0.3 compiling its pipelines through a pipeline cache (third_party/vello_gpu/LINGXIA-PATCHES.md).
-vello_gpu = { path = "third_party/vello_gpu" }
 portable-pty = { git = "https://github.com/LingXia-Dev/wezterm.git", rev = "59d0fb89c54a77c12afe2561dc6969d8dc55fc4f", package = "portable-pty" }
 
 # Renderer hot path: fast enough in debug builds that gesture and spring timing stay trustworthy.

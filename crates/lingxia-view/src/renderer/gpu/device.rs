@@ -241,7 +241,7 @@ impl Devices {
             label: Some("LingXia UI"),
             // Timestamps measure sampled redraws; nothing depends on them.
             required_features: adapter.features()
-                & (wgpu::Features::TIMESTAMP_QUERY | wgpu::Features::PIPELINE_CACHE),
+                & wgpu::Features::TIMESTAMP_QUERY,
             required_limits,
             ..Default::default()
         };
