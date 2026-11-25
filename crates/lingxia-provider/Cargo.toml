@@ -7,3 +7,4 @@ license = "MIT"
 repository.workspace = true
 
 [dependencies]
+lingxia-error = { workspace = true }

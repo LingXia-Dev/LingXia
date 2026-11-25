@@ -95,9 +95,7 @@ pub fn copy_picked_media_to_file(media: &PickedMedia, destination: &Path) -> cra
         "image" => MediaKind::Image,
         "video" => MediaKind::Video,
         _ => {
-            return Err(crate::Error::invalid_request(
-                "unsupported picked media type",
-            ));
+            return Err(crate::Error::invalid_arg("unsupported picked media type"));
         }
     };
     crate::runtime::platform()?

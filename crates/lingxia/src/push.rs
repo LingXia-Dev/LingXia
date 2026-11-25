@@ -5,7 +5,7 @@ use lxapp::provider;
 fn normalize_token(token: String) -> crate::Result<String> {
     let token = token.trim().to_string();
     if token.is_empty() {
-        return Err(crate::Error::invalid_request("push token is empty"));
+        return Err(crate::Error::invalid_arg("push token is empty"));
     }
     Ok(token)
 }

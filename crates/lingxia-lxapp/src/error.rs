@@ -76,6 +76,87 @@ pub enum LxAppError {
     /// Error when plugin download fails
     #[error("Plugin download failed: {0}")]
     PluginDownloadFailed(String),
+
+    /// A coded error from a route or a lower layer, carried to the boundary as it is.
+    #[error("{0}")]
+    Coded(lingxia_error::Error),
+}
+
+impl From<lingxia_error::Error> for LxAppError {
+    fn from(error: lingxia_error::Error) -> Self {
+        LxAppError::Coded(error)
+    }
+}
+
+/// The boundary's one shape: what Logic, a WebView and a channel receive.
+impl From<LxAppError> for lingxia_error::Error {
+    fn from(error: LxAppError) -> Self {
+        use lingxia_error::{Error, code};
+        match error {
+            LxAppError::Coded(error) => error,
+            LxAppError::ResourceNotFound(detail) | LxAppError::PluginNotConfigured(detail) => {
+                Error::not_found(detail)
+            }
+            LxAppError::InvalidParameter(detail) | LxAppError::ResourceExhausted(detail) => {
+                Error::invalid_arg(detail)
+            }
+            LxAppError::UnsupportedOperation(detail) => Error::not_supported(detail),
+            LxAppError::SurfaceConflict(detail) => Error::new(code::SURFACE_CONFLICT, detail),
+            LxAppError::SurfaceRoleLocked(detail) => Error::new(code::SURFACE_ROLE_LOCKED, detail),
+            LxAppError::IoError(detail) => Error::new(code::IO, detail),
+            LxAppError::Bridge(detail) if detail == "Canceled" => Error::aborted(detail),
+            LxAppError::RongJSHost {
+                code,
+                message,
+                data,
+            } => host_error(code, message, data),
+            other => Error::internal(other.to_string()),
+        }
+    }
+}
+
+/// A Rong host error at the boundary: a numeric code (or `bizCode` beside a non-`E_` code)
+/// becomes its code and reason; `reason` and `detail` in its data move to their own fields.
+fn host_error(code: String, message: String, data: Option<Value>) -> lingxia_error::Error {
+    let mut data = data;
+    let (mut reason, mut detail, mut biz) = (None, None, None);
+    if let Some(fields) = data.as_mut().and_then(Value::as_object_mut) {
+        if let Some(Value::String(raised)) = fields.remove("reason") {
+            reason = Some(raised);
+        }
+        if let Some(Value::String(text)) = fields.remove("detail") {
+            detail = Some(text);
+        }
+        biz = fields.remove("bizCode").and_then(|value| {
+            value
+                .as_u64()
+                .and_then(|n| u32::try_from(n).ok())
+                .or_else(|| value.as_str().and_then(|text| text.parse().ok()))
+        });
+    }
+    let message = detail.unwrap_or(message);
+    let numeric = code
+        .parse::<u32>()
+        .ok()
+        .or_else(|| biz.filter(|_| !code.starts_with("E_")));
+    let mut error = match numeric {
+        Some(number) => lingxia_error::Error::business(number, message),
+        None => {
+            let error = lingxia_error::Error::new(code, message);
+            match biz.and_then(|number| lingxia_error::business_code(number).1) {
+                Some(reason) => error.with_reason(reason),
+                None => error,
+            }
+        }
+    };
+    if let Some(reason) = reason {
+        error = error.with_reason(reason);
+    }
+    match data {
+        Some(Value::Object(fields)) if fields.is_empty() => error,
+        Some(data) => error.with_data(data),
+        None => error,
+    }
 }
 
 impl From<io::Error> for LxAppError {
@@ -199,12 +280,20 @@ impl LxAppError {
     }
 
     pub fn is_requires_runtime_upgrade(&self) -> bool {
-        matches!(self, Self::RongJSHost { code, .. } if code == REQUIRES_RUNTIME_UPGRADE_CODE)
+        match self {
+            Self::RongJSHost { code, .. } => code == REQUIRES_RUNTIME_UPGRADE_CODE,
+            Self::Coded(error) => error.reason() == Some("hostUpgradeRequired"),
+            _ => false,
+        }
     }
 
     /// The host refused the call (`E_PERMISSION_DENIED`): the lxapp's policy, not a fault.
     pub fn is_refusal(&self) -> bool {
-        matches!(self, Self::RongJSHost { code, .. } if code == PERMISSION_DENIED_CODE)
+        match self {
+            Self::RongJSHost { code, .. } => code == PERMISSION_DENIED_CODE,
+            Self::Coded(error) => error.is(PERMISSION_DENIED_CODE),
+            _ => false,
+        }
     }
 
     /// The message without the variant's prefix.
@@ -233,6 +322,44 @@ impl LxAppError {
 mod tests {
     use super::LxAppError;
     use lingxia_webview::WebViewError;
+
+    #[test]
+    fn a_coded_error_crosses_the_boundary_unchanged() {
+        let coded = lingxia_error::Error::permission_denied("lxapp scope required")
+            .with_reason("photosPermissionDenied");
+        let back = lingxia_error::Error::from(LxAppError::from(coded));
+        assert_eq!(back.code(), "E_PERMISSION_DENIED");
+        assert_eq!(back.reason(), Some("photosPermissionDenied"));
+        assert!(LxAppError::from(lingxia_error::Error::permission_denied("x")).is_refusal());
+    }
+
+    #[test]
+    fn a_host_error_number_becomes_its_code_and_an_e_code_keeps_its_own() {
+        let numeric = lingxia_error::Error::from(LxAppError::requires_runtime_upgrade("old"));
+        assert_eq!(numeric.code(), "E_NOT_SUPPORTED");
+        assert_eq!(numeric.reason(), Some("hostUpgradeRequired"));
+        let coded = lingxia_error::Error::from(LxAppError::RongJSHost {
+            code: "E_INVALID_ARG".to_string(),
+            message: "localized".to_string(),
+            data: Some(serde_json::json!({
+                "bizCode": 1002,
+                "detail": "duplicate route",
+                "reason": "tabAlreadyOpen",
+                "target": "pages/home",
+            })),
+        });
+        assert_eq!(coded.code(), "E_INVALID_ARG");
+        assert_eq!(coded.message(), "duplicate route");
+        assert_eq!(coded.reason(), Some("tabAlreadyOpen"));
+        assert_eq!(
+            coded.data(),
+            Some(&serde_json::json!({ "target": "pages/home" }))
+        );
+        assert_eq!(
+            lingxia_error::Error::from(LxAppError::Bridge("Canceled".to_string())).code(),
+            "E_ABORT"
+        );
+    }
 
     #[test]
     fn raw_webview_errors_keep_the_source_label() {

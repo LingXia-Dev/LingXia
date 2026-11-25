@@ -51,6 +51,7 @@ harmony-capture = ["realtime-capture", "lingxia-platform/harmony-capture-provide
 webview-input = ["lingxia-webview/webview-input"]
 
 [dependencies]
+lingxia-error = { workspace = true }
 rong_rt = { workspace = true, default-features = false }
 lxapp = { workspace = true, default-features = false }
 lingxia-log = { workspace = true }

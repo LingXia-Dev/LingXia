@@ -57,7 +57,7 @@ where
     RongExecutor::global()
         .spawn_blocking(f)
         .await
-        .map_err(Into::into)
+        .map_err(|error| crate::Error::internal(format!("task failed: {error}")))
 }
 
 /// Spawns blocking work and returns its join handle without awaiting it.

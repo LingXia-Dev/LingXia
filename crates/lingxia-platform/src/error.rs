@@ -54,3 +54,26 @@ impl From<jni::errors::Error> for PlatformError {
         PlatformError::Platform(format!("JNI error: {}", value))
     }
 }
+
+impl From<&PlatformError> for lingxia_error::Error {
+    fn from(error: &PlatformError) -> Self {
+        use lingxia_error::Error;
+        match error {
+            PlatformError::Platform(detail) => Error::internal(detail.clone()),
+            PlatformError::NotSupported(detail) => Error::not_supported(detail.clone()),
+            PlatformError::AssetNotFound(detail) => Error::not_found(detail.clone()),
+            PlatformError::InvalidParameter(detail) => Error::invalid_arg(detail.clone()),
+            PlatformError::BusinessError(number) => Error::business(*number, error.to_string()),
+            PlatformError::CallbackDropped => Error::internal("platform callback dropped"),
+            PlatformError::PresenterUnavailable => {
+                Error::internal("page chrome presenter not mounted")
+            }
+        }
+    }
+}
+
+impl From<PlatformError> for lingxia_error::Error {
+    fn from(error: PlatformError) -> Self {
+        Self::from(&error)
+    }
+}

@@ -351,3 +351,17 @@ mod http_status_tests {
         assert_eq!(super::http_status_in("connection reset"), None);
     }
 }
+
+impl From<DownloadsError> for lingxia_error::Error {
+    fn from(error: DownloadsError) -> Self {
+        use lingxia_error::Error;
+        match error {
+            DownloadsError::InvalidParameter(detail) => Error::invalid_arg(detail),
+            DownloadsError::ResourceNotFound(detail) => Error::not_found(detail),
+            DownloadsError::UnsupportedOperation(detail) => Error::not_supported(detail),
+            DownloadsError::Runtime(detail) => Error::internal(detail),
+            DownloadsError::Io(error) => error.into(),
+            DownloadsError::Json(error) => error.into(),
+        }
+    }
+}

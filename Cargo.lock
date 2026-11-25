@@ -3635,6 +3635,7 @@ dependencies = [
  "lingxia-browser",
  "lingxia-browser-shell",
  "lingxia-control-commands",
+ "lingxia-error",
  "lingxia-log",
  "lingxia-logic",
  "lingxia-lxapp",
@@ -3970,6 +3971,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "lingxia-error"
+version = "0.30.0"
+dependencies = [
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "lingxia-i18n"
 version = "0.30.0"
 dependencies = [
@@ -3996,6 +4005,7 @@ dependencies = [
  "base64 0.23.1",
  "futures",
  "lingxia-app-context",
+ "lingxia-error",
  "lingxia-lxapp",
  "lingxia-media",
  "lingxia-messaging",
@@ -4035,6 +4045,7 @@ dependencies = [
  "image",
  "language-tags",
  "lingxia-app-context",
+ "lingxia-error",
  "lingxia-i18n",
  "lingxia-log",
  "lingxia-media",
@@ -4143,6 +4154,7 @@ dependencies = [
  "jni",
  "libc",
  "lingxia-app-context",
+ "lingxia-error",
  "lingxia-messaging",
  "lingxia-shell",
  "lingxia-surface",
@@ -4181,6 +4193,9 @@ dependencies = [
 [[package]]
 name = "lingxia-provider"
 version = "0.30.0"
+dependencies = [
+ "lingxia-error",
+]
 
 [[package]]
 name = "lingxia-proxy"
@@ -4265,6 +4280,7 @@ version = "0.30.0"
 dependencies = [
  "dashmap 6.2.1",
  "lingxia-app-context",
+ "lingxia-error",
  "log",
  "serde",
  "serde_json",
@@ -4343,6 +4359,7 @@ dependencies = [
  "http",
  "http-body-util",
  "httpdate",
+ "lingxia-error",
  "log",
  "redb",
  "reqwest 0.12.28",
@@ -4362,6 +4379,7 @@ dependencies = [
  "base64 0.23.1",
  "ed25519-dalek",
  "lingxia-app-context",
+ "lingxia-error",
  "lingxia-provider",
  "serde",
  "serde_json",

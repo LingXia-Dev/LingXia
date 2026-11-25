@@ -13,6 +13,7 @@ import { pathToFileURL } from "node:url";
 /** Layer per crate, `lingxia-` prefix omitted. Keep in step with the doc. */
 export const LAYERS = {
   "app-context": 1,
+  error: 1,
   provider: 1,
   log: 1,
   messaging: 1,

@@ -29,5 +29,5 @@ pub use lingxia_webview::url_callback::UrlCallbackChannel;
 /// a URL receives it. Errs when `callback_url` is empty or has no scheme.
 pub fn open_channel(callback_url: impl Into<String>) -> crate::Result<UrlCallbackChannel> {
     lingxia_webview::url_callback::open_channel(callback_url)
-        .map_err(|err| crate::Error::invalid_request(err.to_string()))
+        .map_err(|err| crate::Error::invalid_arg(err.to_string()))
 }

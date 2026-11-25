@@ -368,14 +368,18 @@ fn map_download_error(failure: lingxia_transfer::user_cache::DownloadFailure) ->
     match failure.kind {
         lingxia_transfer::user_cache::DownloadFailureKind::InvalidRequest
         | lingxia_transfer::user_cache::DownloadFailureKind::Conflict => {
-            crate::Error::invalid_request(failure.error)
+            crate::Error::invalid_arg(failure.error)
         }
-        lingxia_transfer::user_cache::DownloadFailureKind::Timeout
-        | lingxia_transfer::user_cache::DownloadFailureKind::NetworkUnavailable
+        lingxia_transfer::user_cache::DownloadFailureKind::Timeout => {
+            crate::Error::timeout(failure.error)
+        }
+        lingxia_transfer::user_cache::DownloadFailureKind::NetworkUnavailable
         | lingxia_transfer::user_cache::DownloadFailureKind::Server
-        | lingxia_transfer::user_cache::DownloadFailureKind::Connection
-        | lingxia_transfer::user_cache::DownloadFailureKind::Canceled => {
-            crate::Error::platform(failure.error)
+        | lingxia_transfer::user_cache::DownloadFailureKind::Connection => {
+            crate::Error::network(failure.error)
+        }
+        lingxia_transfer::user_cache::DownloadFailureKind::Canceled => {
+            crate::Error::aborted(failure.error)
         }
         lingxia_transfer::user_cache::DownloadFailureKind::AccessDenied => {
             crate::Error::permission_denied(failure.error)
@@ -390,13 +394,13 @@ fn map_upload_error(failure: lingxia_transfer::UploadFailure) -> crate::Error {
     match failure.kind {
         lingxia_transfer::UploadFailureKind::InvalidRequest
         | lingxia_transfer::UploadFailureKind::InvalidFile => {
-            crate::Error::invalid_request(failure.error)
+            crate::Error::invalid_arg(failure.error)
         }
-        lingxia_transfer::UploadFailureKind::Timeout
-        | lingxia_transfer::UploadFailureKind::NetworkUnavailable
+        lingxia_transfer::UploadFailureKind::Timeout => crate::Error::timeout(failure.error),
+        lingxia_transfer::UploadFailureKind::NetworkUnavailable
         | lingxia_transfer::UploadFailureKind::Server
-        | lingxia_transfer::UploadFailureKind::Connection
-        | lingxia_transfer::UploadFailureKind::Canceled => crate::Error::platform(failure.error),
+        | lingxia_transfer::UploadFailureKind::Connection => crate::Error::network(failure.error),
+        lingxia_transfer::UploadFailureKind::Canceled => crate::Error::aborted(failure.error),
         lingxia_transfer::UploadFailureKind::AccessDenied => {
             crate::Error::permission_denied(failure.error)
         }

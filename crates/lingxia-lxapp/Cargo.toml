@@ -39,6 +39,7 @@ js-appservice = [
 ]
 
 [dependencies]
+lingxia-error = { workspace = true }
 # Use workspace dependencies
 http = { workspace = true }
 dashmap = { workspace = true }

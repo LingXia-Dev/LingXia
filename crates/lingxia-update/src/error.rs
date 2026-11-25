@@ -67,3 +67,17 @@ impl From<lingxia_provider::ProviderError> for UpdateError {
         }
     }
 }
+
+impl From<UpdateError> for lingxia_error::Error {
+    fn from(error: UpdateError) -> Self {
+        use lingxia_error::Error;
+        match error {
+            UpdateError::InvalidParameter(detail) => Error::invalid_arg(detail),
+            UpdateError::UnsupportedOperation(detail) => Error::not_supported(detail),
+            UpdateError::RequiresRuntimeUpgrade(detail) => Error::business(6002, detail),
+            UpdateError::ResourceNotFound(detail) => Error::not_found(detail),
+            UpdateError::Io(detail) => Error::new(lingxia_error::code::IO, detail),
+            UpdateError::Runtime(detail) => Error::internal(detail),
+        }
+    }
+}

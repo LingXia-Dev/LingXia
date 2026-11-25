@@ -32,11 +32,11 @@ use lingxia_webview::{ProxyApplyStatus, ProxyConfig, runtime};
 ///   WebViews and downloads.
 pub fn require_local_proxy(port: u16) -> crate::Result<()> {
     let config = ProxyConfig::new("127.0.0.1", port)
-        .map_err(|e| crate::Error::invalid_request(e.to_string()))?;
+        .map_err(|e| crate::Error::invalid_arg(e.to_string()))?;
     let (report, sequence) = runtime::apply_proxy_to_current_runtime_sequenced(Some(config))
-        .map_err(|e| crate::Error::invalid_request(e.to_string()))?;
+        .map_err(|e| crate::Error::invalid_arg(e.to_string()))?;
     if report.status != ProxyApplyStatus::Applied {
-        return Err(crate::Error::invalid_request("browser proxy unsupported"));
+        return Err(crate::Error::invalid_arg("browser proxy unsupported"));
     }
     route_downloads(sequence, Some(format!("http://127.0.0.1:{port}")));
     Ok(())
@@ -61,14 +61,12 @@ pub fn require_local_proxy(port: u16) -> crate::Result<()> {
 /// [`use_system_network`]) and where the proxy is unsupported.
 pub fn reapply_local_proxy() -> crate::Result<()> {
     let report = runtime::reapply_proxy_to_current_runtime()
-        .map_err(|e| crate::Error::invalid_request(e.to_string()))?;
+        .map_err(|e| crate::Error::invalid_arg(e.to_string()))?;
     match report.status {
         ProxyApplyStatus::Applied => Ok(()),
-        ProxyApplyStatus::Cleared => Err(crate::Error::invalid_request(
-            "no browser proxy is required",
-        )),
+        ProxyApplyStatus::Cleared => Err(crate::Error::invalid_arg("no browser proxy is required")),
         ProxyApplyStatus::Unsupported => {
-            Err(crate::Error::invalid_request("browser proxy unsupported"))
+            Err(crate::Error::invalid_arg("browser proxy unsupported"))
         }
     }
 }
@@ -104,7 +102,7 @@ pub fn open(url: &str, tab_id: Option<&str>) -> crate::Result<String> {
     let target = if url.is_empty() { "about:blank" } else { url };
     match lingxia_browser::open(target, tab_id) {
         Err(lxapp::LxAppError::ResourceNotFound(_)) if tab_id.is_some() => open(url, None),
-        result => result.map_err(|e| crate::Error::invalid_request(e.to_string())),
+        result => result.map_err(|e| crate::Error::invalid_arg(e.to_string())),
     }
 }
 
@@ -132,9 +130,9 @@ pub fn block_downloads() {
 /// On Apple this interrupts in-flight loads when a proxy was installed.
 pub fn use_system_network() -> crate::Result<()> {
     let (report, sequence) = runtime::apply_proxy_to_current_runtime_sequenced(None)
-        .map_err(|e| crate::Error::invalid_request(e.to_string()))?;
+        .map_err(|e| crate::Error::invalid_arg(e.to_string()))?;
     if report.status != ProxyApplyStatus::Cleared {
-        return Err(crate::Error::invalid_request("browser proxy unsupported"));
+        return Err(crate::Error::invalid_arg("browser proxy unsupported"));
     }
     route_downloads(sequence, None);
     Ok(())
@@ -198,10 +196,10 @@ pub async fn download_action(id: &str, action: DownloadAction) -> crate::Result<
     let record = lingxia_transfer::record(&root, id)
         .map_err(|e| crate::Error::internal(e.to_string()))?
         .filter(|d| d.owner.kind == lingxia_transfer::user_cache::DownloadOwnerKind::Browser)
-        .ok_or_else(|| crate::Error::invalid_request("download not found"))?;
+        .ok_or_else(|| crate::Error::invalid_arg("download not found"))?;
     if matches!(action, DownloadAction::Share) {
         if record.status != lingxia_transfer::DownloadStatus::Completed {
-            return Err(crate::Error::invalid_request("download is not complete"));
+            return Err(crate::Error::invalid_arg("download is not complete"));
         }
         use lingxia_platform::traits::share::{ShareRequest, ShareService};
         runtime
@@ -223,7 +221,7 @@ pub async fn download_action(id: &str, action: DownloadAction) -> crate::Result<
         DownloadAction::Remove => lingxia_transfer::remove(&root, id),
         DownloadAction::Share => unreachable!(),
     };
-    result.map_err(|e| crate::Error::invalid_request(e.to_string()))
+    result.map_err(|e| crate::Error::invalid_arg(e.to_string()))
 }
 
 #[cfg(test)]

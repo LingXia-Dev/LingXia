@@ -195,6 +195,7 @@ fn map_lxapp_error_to_downloads(err: LxAppError) -> transfer::DownloadsError {
         LxAppError::RongJSHost { code, message, .. } => {
             transfer::DownloadsError::Runtime(format!("{code}: {message}"))
         }
+        LxAppError::Coded(error) => transfer::DownloadsError::Runtime(error.to_string()),
     }
 }
 

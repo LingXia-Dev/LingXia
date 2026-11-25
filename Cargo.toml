@@ -8,6 +8,7 @@ members = [
     "crates/lingxia-app-context",
     "crates/lingxia-theme",
     "crates/lingxia-i18n",
+    "crates/lingxia-error",
     "crates/lingxia-control-runtime",
     "crates/lingxia-control-protocol",
     "crates/lingxia-media",
@@ -102,6 +103,7 @@ lingxia-update = { path = "crates/lingxia-update", version = "0.30.0" }
 lingxia-app-context = { path = "crates/lingxia-app-context", version = "0.30.0" }
 lingxia-theme = { path = "crates/lingxia-theme", version = "0.30.0" }
 lingxia-i18n = { path = "crates/lingxia-i18n", version = "0.30.0" }
+lingxia-error = { path = "crates/lingxia-error", version = "0.30.0" }
 lingxia-media = { path = "crates/lingxia-media", version = "0.30.0" }
 lingxia-webview = { path = "crates/lingxia-webview", version = "0.30.0" }
 lingxia-automation = { path = "crates/lingxia-automation", version = "0.30.0" }

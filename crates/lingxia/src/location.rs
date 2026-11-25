@@ -104,7 +104,7 @@ pub async fn request(options: LocationOptions) -> crate::Result<Location> {
         .await
         .map_err(crate::Error::from)?;
     let parsed: RawLocation = serde_json::from_str(&raw)
-        .map_err(|err| crate::Error::platform(format!("parse location: {err} (raw: {raw})")))?;
+        .map_err(|err| crate::Error::internal(format!("parse location: {err} (raw: {raw})")))?;
     Ok(parsed.into())
 }
 

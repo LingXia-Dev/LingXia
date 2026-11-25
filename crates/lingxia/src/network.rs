@@ -92,9 +92,9 @@ pub async fn current() -> crate::Result<NetworkInfo> {
     let raw = crate::runtime::platform()?
         .get_network_info()
         .await
-        .map_err(|err| crate::Error::platform(format!("get_network_info: {err}")))?;
+        .map_err(|err| crate::Error::internal(format!("get_network_info: {err}")))?;
     serde_json::from_str(&raw)
-        .map_err(|err| crate::Error::platform(format!("parse network info: {err} (raw: {raw})")))
+        .map_err(|err| crate::Error::internal(format!("parse network info: {err} (raw: {raw})")))
 }
 
 /// RAII handle for a registered network-change subscription. Dropping it
@@ -151,7 +151,7 @@ where
     });
     if let Err(err) = runtime.add_network_change_listener(callback_id) {
         lingxia_messaging::remove_callback(callback_id);
-        return Err(crate::Error::platform(format!(
+        return Err(crate::Error::internal(format!(
             "add_network_change_listener: {err}"
         )));
     }

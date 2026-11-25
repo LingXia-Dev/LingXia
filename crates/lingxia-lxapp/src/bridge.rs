@@ -2813,6 +2813,13 @@ fn rpc_error_from_lxapp_error(err: &LxAppError) -> RpcError {
             data: data.clone(),
         };
     }
+    if let LxAppError::Coded(error) = err {
+        return RpcError {
+            code: error.code().to_string(),
+            message: Some(error.message().to_string()),
+            data: error.data().cloned(),
+        };
+    }
     if matches!(err, LxAppError::Bridge(msg) if msg == "Canceled") {
         return RpcError::new(BRIDGE_CANCELED, Some(PAGE_UNLOADED.to_string()));
     }

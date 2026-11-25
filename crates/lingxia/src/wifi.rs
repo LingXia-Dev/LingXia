@@ -100,7 +100,7 @@ where
     T: serde::de::DeserializeOwned,
 {
     serde_json::from_str(&raw).map_err(|err| {
-        crate::Error::platform(format!(
+        crate::Error::internal(format!(
             "{operation}: failed to parse response: {err} (raw: {raw})"
         ))
     })
@@ -125,7 +125,7 @@ fn parse_wifi_info_with_defaults(
     }
 
     let raw: RawWifiInfo = serde_json::from_str(raw).map_err(|err| {
-        crate::Error::platform(format!(
+        crate::Error::internal(format!(
             "wifi info: failed to parse response: {err} (raw: {raw})"
         ))
     })?;

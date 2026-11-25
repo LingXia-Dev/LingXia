@@ -44,81 +44,8 @@ pub fn err_code_message(code: u32) -> String {
 }
 
 fn host_error_kind_for_code(code: u32) -> &'static str {
-    if code == 1002 {
-        return rong::error::E_INVALID_ARG;
-    }
-    if code == 1003 {
-        return rong::error::E_NOT_FOUND;
-    }
-    if code == 12010 {
-        return rong::error::E_NOT_FOUND;
-    }
-    if (2000..3000).contains(&code) {
-        return rong::error::E_ABORT;
-    }
-    if (3000..4000).contains(&code) {
-        return rong::error::E_PERMISSION_DENIED;
-    }
-    if (6000..7000).contains(&code) || code == 12005 {
-        return rong::error::E_NOT_SUPPORTED;
-    }
-    if (4000..5000).contains(&code) || code == 12000 || code == 12009 {
-        return rong::error::E_INVALID_STATE;
-    }
-    if code == 5002 || code == 12003 {
-        return rong::error::E_TIMEOUT;
-    }
-    if (5000..6000).contains(&code) || (12001..12009).contains(&code) {
-        return rong::error::E_NETWORK;
-    }
-    rong::error::E_INTERNAL
+    lingxia_error::business_code(code).0
 }
-
-/// The `reason` a Logic error carries for a business code: `None` where `code` already says it all.
-/// Every code in `i18n/error` has a row; `LxErrorReason` in `public_types.rs` is the same list.
-pub(crate) const REASONS: &[(u32, Option<&str>)] = &[
-    (1000, None),
-    (1001, None),
-    (1002, None),
-    (1003, None),
-    (1004, None),
-    (1005, None),
-    (2000, Some("userCanceled")),
-    (2001, Some("userDeclined")),
-    (3000, None),
-    (3001, Some("cameraPermissionDenied")),
-    (3002, Some("locationPermissionDenied")),
-    (3003, Some("microphonePermissionDenied")),
-    (3004, Some("photosPermissionDenied")),
-    (3005, Some("storagePermissionDenied")),
-    (3006, None),
-    (3007, None),
-    (3008, Some("clipboardPermissionDenied")),
-    (4000, None),
-    (4001, Some("locationServicesDisabled")),
-    (4002, None),
-    (4003, None),
-    (4004, Some("refreshNotEnabled")),
-    (5000, None),
-    (5001, Some("networkUnavailable")),
-    (5002, None),
-    (5003, Some("serverErrorStatus")),
-    (5004, Some("connectionFailed")),
-    (6000, None),
-    (6001, Some("deviceUnsupported")),
-    (6002, Some("hostUpgradeRequired")),
-    (12000, None),
-    (12001, Some("wifiSystemError")),
-    (12002, Some("wifiPasswordWrong")),
-    (12003, Some("wifiTimedOut")),
-    (12004, None),
-    (12005, Some("wifiUnsupported")),
-    (12006, Some("wifiPermissionDenied")),
-    (12007, Some("wifiPromptUnanswered")),
-    (12008, Some("wifiConnectionDeclined")),
-    (12009, Some("wifiDisabled")),
-    (12010, Some("wifiNetworkNotFound")),
-];
 
 /// Reasons raised without a business code, with the code they come with. `LxErrorReason` lists
 /// these after the business-code rows.
@@ -144,10 +71,7 @@ fn state_reason(reason: &str) -> Option<&'static str> {
 }
 
 fn reason_for_code(code: u32) -> Option<&'static str> {
-    REASONS
-        .iter()
-        .find(|(known, _)| *known == code)
-        .and_then(|(_, reason)| *reason)
+    lingxia_error::business_code(code).1
 }
 
 fn host_error_with_business_meta(
@@ -291,7 +215,8 @@ fn business_code_from_lxapp_error(error: &LxAppError) -> u32 {
         | LxAppError::ChannelError(_)
         | LxAppError::Bridge(_)
         | LxAppError::RongJS(_)
-        | LxAppError::PluginDownloadFailed(_) => 1005,
+        | LxAppError::PluginDownloadFailed(_)
+        | LxAppError::Coded(_) => 1005,
     }
 }
 
@@ -313,10 +238,14 @@ fn detail_suffix(error: &LxAppError) -> Option<&str> {
         | LxAppError::PluginDownloadFailed(detail)
         | LxAppError::WebView(detail) => Some(detail.as_str()),
         LxAppError::RongJSHost { message, .. } => Some(message.as_str()),
+        LxAppError::Coded(error) => Some(error.message()),
     }
 }
 
 pub fn host_error_from_lxapp_error(error: &LxAppError) -> HostError {
+    if let LxAppError::Coded(coded) = error {
+        return host_error_from_coded(coded);
+    }
     let code = business_code_from_lxapp_error(error);
 
     log::warn!("Mapped LxAppError to business code {}: {}", code, error);
@@ -363,6 +292,18 @@ pub fn host_error_from_lxapp_error(error: &LxAppError) -> HostError {
     )
 }
 
+/// A coded error reaches Logic with its own code, reason and data.
+fn host_error_from_coded(error: &lingxia_error::Error) -> HostError {
+    let mut host = HostError::new(error.static_code(), error.message().to_string());
+    if let Some(reason) = error.reason() {
+        host = host.with_reason(reason.to_string());
+    }
+    match error.data() {
+        Some(data) => host.with_data(error_data_from_json(data)),
+        None => host,
+    }
+}
+
 pub fn js_error_from_lxapp_error(error: &LxAppError) -> RongJSError {
     host_error_from_lxapp_error(error).into()
 }
@@ -407,9 +348,9 @@ mod tests {
     /// The table, the generated `LxErrorReason` and the catalogue's codes are one list.
     #[test]
     fn the_reason_table_matches_the_union_and_the_error_codes() {
-        let union = REASONS
+        let union = lingxia_error::BUSINESS_CODES
             .iter()
-            .filter_map(|(_, reason)| *reason)
+            .filter_map(|(_, _, reason)| *reason)
             .chain(STATE_REASONS.iter().map(|(reason, _)| *reason))
             .map(|reason| format!("'{reason}'"))
             .collect::<Vec<_>>()
@@ -419,11 +360,9 @@ mod tests {
             include_str!("public_types.rs").contains(&declared),
             "LxErrorReason in public_types.rs must read: {declared}"
         );
-        let listed: String = REASONS
+        let listed: String = lingxia_error::BUSINESS_CODES
             .iter()
-            .filter_map(|(code, reason)| {
-                reason.map(|reason| (reason, host_error_kind_for_code(*code)))
-            })
+            .filter_map(|(_, kind, reason)| reason.map(|reason| (reason, *kind)))
             .chain(STATE_REASONS.iter().copied())
             .map(|(reason, kind)| format!("        /// - `{reason}` with `{kind}`\n"))
             .collect();
@@ -436,8 +375,14 @@ mod tests {
             .lines()
             .filter_map(|line| line.trim().split_once(':')?.0.parse().ok())
             .collect();
-        let table: Vec<u32> = REASONS.iter().map(|(code, _)| *code).collect();
-        assert_eq!(table, codes, "every i18n error code needs a REASONS row");
+        let table: Vec<u32> = lingxia_error::BUSINESS_CODES
+            .iter()
+            .map(|(code, _, _)| *code)
+            .collect();
+        assert_eq!(
+            table, codes,
+            "every i18n error code needs a BUSINESS_CODES row"
+        );
     }
 
     /// Source files under `dir` with one of `exts`, test modules cut off.
@@ -510,9 +455,9 @@ mod tests {
     /// A reason raised by name, here or in `lxapp`, is one the table lists.
     #[test]
     fn every_raised_reason_is_in_the_table() {
-        let known: Vec<&str> = REASONS
+        let known: Vec<&str> = lingxia_error::BUSINESS_CODES
             .iter()
-            .filter_map(|(_, reason)| *reason)
+            .filter_map(|(_, _, reason)| *reason)
             .chain(STATE_REASONS.iter().map(|(reason, _)| *reason))
             .collect();
         let raised = raised_by_name();
@@ -542,7 +487,9 @@ mod tests {
         let mut texts: Vec<String> = Vec::new();
         for (path, code) in sources(&repo.join("crates"), &[".rs"]) {
             let name = path.file_name().unwrap().to_string_lossy();
-            if !(name == "i18n.rs" && path.parent().unwrap().ends_with("lingxia-logic/src"))
+            let parent = path.parent().unwrap();
+            if !(name == "i18n.rs" && parent.ends_with("lingxia-logic/src"))
+                && !(name == "lib.rs" && parent.ends_with("lingxia-error/src"))
                 && name != "i18n_generated.rs"
             {
                 texts.push(code);
@@ -565,7 +512,7 @@ mod tests {
                 })
             })
         };
-        for (code, reason) in REASONS {
+        for (code, _, reason) in lingxia_error::BUSINESS_CODES {
             if let Some(reason) = reason {
                 assert!(
                     mentioned(*code),

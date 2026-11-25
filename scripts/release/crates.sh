@@ -20,6 +20,7 @@ CRATES=(
   "lingxia-control-protocol"
   "lingxia-control-runtime"
   "lingxia-device-io"
+  "lingxia-error"
   "lingxia-log"
   "lingxia-logic"
   "lingxia-lxapp"

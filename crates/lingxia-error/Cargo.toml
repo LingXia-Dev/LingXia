@@ -1,0 +1,11 @@
+[package]
+name = "lingxia-error"
+version.workspace = true
+edition.workspace = true
+description = "LingXia's one error type, its codes and its wire shape"
+license = "MIT"
+repository.workspace = true
+
+[dependencies]
+serde = { workspace = true }
+serde_json = { workspace = true }

@@ -143,9 +143,7 @@ fn service_env_error(error: lingxia_app_context::ServiceEnvError) -> crate::Erro
         lingxia_app_context::ServiceEnvError::NotInitialized => {
             crate::Error::internal(error.to_string())
         }
-        lingxia_app_context::ServiceEnvError::Invalid(detail) => {
-            crate::Error::invalid_request(detail)
-        }
+        lingxia_app_context::ServiceEnvError::Invalid(detail) => crate::Error::invalid_arg(detail),
         lingxia_app_context::ServiceEnvError::Persist(detail) => crate::Error::internal(detail),
     }
 }
@@ -466,7 +464,7 @@ pub mod notification {
         if lingxia_app_context::capability::notifications() {
             return Ok(());
         }
-        Err(crate::Error::invalid_request(
+        Err(crate::Error::invalid_arg(
             "this host did not declare capabilities.notifications",
         ))
     }
@@ -492,13 +490,13 @@ pub mod notification {
     pub fn show(request: Notification) -> crate::Result<LocalNotificationStatus> {
         require_capability()?;
         if request.id.trim().is_empty() {
-            return Err(crate::Error::invalid_request("notification id is empty"));
+            return Err(crate::Error::invalid_arg("notification id is empty"));
         }
         if request.title.trim().is_empty() {
-            return Err(crate::Error::invalid_request("notification title is empty"));
+            return Err(crate::Error::invalid_arg("notification title is empty"));
         }
         navigation::validate(&request.target)
-            .map_err(|error| crate::Error::invalid_request(error.to_string()))?;
+            .map_err(|error| crate::Error::invalid_arg(error.to_string()))?;
         let platform = crate::runtime::platform()?;
         let staged = intent::stage(&request.id, &request.target)
             .map_err(|error| crate::Error::internal(error.to_string()))?;
@@ -603,13 +601,13 @@ fn state_file_in(root: impl AsRef<Path>, name: &str) -> crate::Result<PathBuf> {
 fn validate_state_file_name(name: &str) -> crate::Result<()> {
     let path = Path::new(name);
     if name.trim().is_empty() {
-        return Err(crate::Error::invalid_request("state file name is empty"));
+        return Err(crate::Error::invalid_arg("state file name is empty"));
     }
     if path
         .components()
         .any(|component| !matches!(component, Component::Normal(_) | Component::CurDir))
     {
-        return Err(crate::Error::invalid_request(
+        return Err(crate::Error::invalid_arg(
             "state file name must be relative and stay inside the state directory",
         ));
     }

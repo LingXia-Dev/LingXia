@@ -46,7 +46,7 @@ pub use lingxia_service::navigation::{
 /// allowlist) and waits for the runtime when it is still starting.
 pub fn open(target: NavigationTarget, source: NavigationSource) -> crate::Result<()> {
     service::dispatch(NavigationRequest::new(target, source))
-        .map_err(|error| crate::Error::invalid_request(error.to_string()))
+        .map_err(|error| crate::Error::invalid_arg(error.to_string()))
 }
 
 /// A route that opens one page of one lxapp.
@@ -152,7 +152,7 @@ fn validate_lxapp_page(appid: &str, page: Option<&str>) -> Result<(), Navigation
 
 /// Check a target without opening it. Same rules the dispatcher applies.
 pub fn validate(target: &NavigationTarget) -> crate::Result<()> {
-    service::validate(target).map_err(|error| crate::Error::invalid_request(error.to_string()))
+    service::validate(target).map_err(|error| crate::Error::invalid_arg(error.to_string()))
 }
 
 /// The route names this build registered, sorted. For diagnostics.

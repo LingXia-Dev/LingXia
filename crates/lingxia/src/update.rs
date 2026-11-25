@@ -125,7 +125,7 @@ pub mod host_app {
             Action::Wait(mut rx) => match rx.recv().await {
                 Ok(arc) => match (*arc).clone() {
                     Ok(outcome) => Ok(outcome),
-                    Err(detail) => Err(crate::Error::Internal(detail)),
+                    Err(detail) => Err(crate::Error::internal(detail)),
                 },
                 Err(_) => Err(crate::Error::internal(
                     "host app update check coordinator dropped",
@@ -437,7 +437,7 @@ pub mod host_app {
                     return Ok(Outcome::Deferred { version });
                 }
                 AppUpdateEvent::Failed { stage, error } => {
-                    return Err(crate::Error::Internal(format!(
+                    return Err(crate::Error::internal(format!(
                         "host app update failed at {}: {error}",
                         stage_name(stage)
                     )));

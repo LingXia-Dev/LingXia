@@ -23,12 +23,12 @@ pub fn is_supported() -> bool {
 
 fn require_support() -> crate::Result<()> {
     if !lingxia_app_context::autostart_enabled() {
-        return Err(crate::Error::invalid_request(
+        return Err(crate::Error::invalid_arg(
             "this host did not declare capabilities.autostart",
         ));
     }
     if !is_supported() {
-        return Err(crate::Error::invalid_request(
+        return Err(crate::Error::invalid_arg(
             "autostart is not supported on this host",
         ));
     }

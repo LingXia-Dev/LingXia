@@ -26,5 +26,6 @@ pub(super) fn lxapp_error_to_update_error(error: LxAppError) -> UpdateError {
         LxAppError::RongJSHost { code, message, .. } => {
             UpdateError::runtime(format!("{code}: {message}"))
         }
+        LxAppError::Coded(error) => UpdateError::runtime(error.to_string()),
     }
 }

@@ -105,6 +105,12 @@ impl std::fmt::Display for ProviderError {
 
 impl std::error::Error for ProviderError {}
 
+impl From<ProviderError> for lingxia_error::Error {
+    fn from(error: ProviderError) -> Self {
+        lingxia_error::Error::business(error.biz_code(), error.detail().to_string())
+    }
+}
+
 /// Error type for fingerprint operations.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum FingerprintError {

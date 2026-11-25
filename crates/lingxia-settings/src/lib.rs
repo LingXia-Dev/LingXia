@@ -12,6 +12,15 @@ pub enum SettingsError {
     Json(#[from] serde_json::Error),
 }
 
+impl From<SettingsError> for lingxia_error::Error {
+    fn from(error: SettingsError) -> Self {
+        match error {
+            SettingsError::Io(error) => error.into(),
+            SettingsError::Json(error) => error.into(),
+        }
+    }
+}
+
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Settings {

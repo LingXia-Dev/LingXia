@@ -27,6 +27,7 @@ CLI_FINGERPRINT_PATHS=(
   crates/lingxia-control-commands
   crates/lingxia-control-protocol
   crates/lingxia-device-io
+  crates/lingxia-error
   crates/lingxia-log
   crates/lingxia-provider
   crates/lingxia-settings
