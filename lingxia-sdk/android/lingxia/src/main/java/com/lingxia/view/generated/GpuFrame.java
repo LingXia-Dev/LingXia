@@ -984,7 +984,7 @@ public final class GpuFrame {
         /** `worker`: f64 */
         public double worker() { return json.optDouble("worker"); }
         /** `wait`: f64 */
-        public double wait() { return json.optDouble("wait"); }
+        public double waitValue() { return json.optDouble("wait"); }
         /** `main`: f64 */
         public double main() { return json.optDouble("main"); }
         /** `gpuScene`: f64 */

@@ -3,6 +3,8 @@ import { readFile, writeFile, mkdir } from 'node:fs/promises';
 import { readFileSync } from 'node:fs';
 import { dirname, join, relative, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+// Java accessors may not reuse a keyword or an Object method (`wait()`), so those take a suffix.
+const javaMethod = name => name === 'class' ? 'klass' : ['wait', 'notify', 'notifyAll', 'getClass', 'hashCode', 'toString', 'equals', 'clone', 'finalize'].includes(name) ? `${name}Value` : name;
 
 export const contractsRoot = fileURLToPath(new URL('.', import.meta.url));
 export const repositoryRoot = join(contractsRoot, '../..');
@@ -832,7 +834,7 @@ function frameJava(schema) {
     const methods = Object.entries(fieldsOf(def)).map(([key, ty]) => {
       const t = frameType(ty);
       const note = fieldDocs[`${name}.${key}`];
-      return `        /** \`${key}\`: ${ty}${note ? `. ${note}` : ''} */\n        public ${javaType(t)} ${camel(key) === 'class' ? 'klass' : camel(key)}() { ${reader(key, t)} }`;
+      return `        /** \`${key}\`: ${ty}${note ? `. ${note}` : ''} */\n        public ${javaType(t)} ${javaMethod(camel(key))}() { ${reader(key, t)} }`;
     });
     if (requests.has(name)) methods.push(...builders(name, def));
     classes.push(`    public static final class ${name} {
