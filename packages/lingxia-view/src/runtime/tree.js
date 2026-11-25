@@ -161,6 +161,12 @@ function commitCandidate() {
   for (const cell of candidate.locals.values()) if (page.updates.has(cell)) cell.value = page.updates.get(cell);
   page.locals = candidate.locals; page.callbacks = candidate.callbacks;
   page.committed = candidate; render.candidate = null; page.updates.clear(); page.invalidated = candidate.invalidateAfterCommit === true;
+  // A closed dialog's bound drag cell goes back to its opening detent, unless its component went away.
+  for (const { key, cell, index } of candidate.dragResets ?? []) {
+    if (page.locals.get(key) !== cell || cell.value === index) continue;
+    page.updates.set(cell, index);
+    page.invalidated = true;
+  }
   const retained = new Set(page.locals.values()), next = new Map(), definitions = new Map();
   for (const [cell, resource] of page.resources) if (!retained.has(cell)) resource.dispose();
   for (const cell of retained) {

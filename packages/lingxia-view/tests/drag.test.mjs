@@ -32,6 +32,25 @@ test('drag sends its axis, points and bound index; its events reach the callback
   assert.equal(cell.value, 2, 'an index past the points is ignored');
 });
 
+test('a dialog closed by its page reopens at the detent it opened at', () => {
+  reset();
+  let cell, open = true;
+  const view = () => {
+    cell = useLocal('detent', 1);
+    return h('page', {}, h('dialog', { open, drag: 'y', dragSnapPoints: [0, '50%', '100%'], bind: cell,
+      'aria-label': 'Sheet', 'data-testid': 'sheet' }));
+  };
+  dispatch(byId(render(view), 'sheet').props.onDragEvent, event('settle', 0));
+  assert.equal(JSON.parse(byId(render(view), 'sheet').props.drag).index, 0);
+  open = false;
+  render(view);
+  assert.equal(hasLocalUpdates(), true, 'the close schedules the reset');
+  render(view);
+  assert.equal(cell.value, 1);
+  open = true;
+  assert.equal(JSON.parse(byId(render(view), 'sheet').props.drag).index, 1);
+});
+
 test('drag props are checked where they are written', () => {
   reset();
   const panel = props => () => h('page', {}, h('view', { 'aria-label': 'Panel', ...props }));

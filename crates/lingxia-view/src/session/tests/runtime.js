@@ -1296,6 +1296,7 @@
   var anchors = /* @__PURE__ */ new Map();
   var opened = /* @__PURE__ */ new Map();
   var refused = /* @__PURE__ */ new Set();
+  var resting = /* @__PURE__ */ new Map();
   var invoker = null;
   var sequence = 0;
   var submenus = /* @__PURE__ */ new Map();
@@ -1304,6 +1305,7 @@
     anchors = /* @__PURE__ */ new Map();
     opened = /* @__PURE__ */ new Map();
     refused = /* @__PURE__ */ new Set();
+    resting = /* @__PURE__ */ new Map();
     invoker = null;
     sequence = 0;
     submenus = /* @__PURE__ */ new Map();
@@ -1415,7 +1417,10 @@
     const { open: open2, onClose, closedby = "closerequest", ...rest } = props;
     if (onClose !== void 0 && typeof onClose !== "function") throw Error("UI_PROP: onClose");
     if (!closers.has(closedby)) throw Error('UI_PROP: closedby must be "any", "closerequest" or "none"');
+    const opening = !opened.has(identity);
     if (!open2 || !admitted(identity)) return null;
+    const bound = rest.drag !== void 0 && rest.bind !== void 0 ? cellOf(rest.bind) : void 0;
+    if (opening && bound && typeof bound.cell.value === "number") resting.set(identity, { ...bound, index: bound.cell.value });
     const close = () => onClose?.();
     collected().entries.push({ identity, kind: "dialog", sequence: opened.get(identity), close: closedby === "none" ? null : close });
     const env = envOf(render.view);
@@ -1602,8 +1607,17 @@
     return entry ? toggle(target, show4, { identity: entry.identity, scope: entry.scope }) : false;
   }
   function finishTopLayer(tree) {
+    var _a;
     const top = render.candidate.topLayer;
-    for (const identity of [...opened.keys()]) if (!top?.entries.some((entry) => entry.identity === identity)) opened.delete(identity);
+    for (const identity of [...opened.keys()]) {
+      if (top?.entries.some((entry) => entry.identity === identity)) continue;
+      opened.delete(identity);
+      const rest = resting.get(identity);
+      if (rest) {
+        resting.delete(identity);
+        ((_a = render.candidate).dragResets ?? (_a.dragResets = [])).push(rest);
+      }
+    }
     if (top) wireInvokers(top, tree);
   }
   function finishTopLayerRow(row) {
@@ -7002,6 +7016,11 @@
     render.candidate = null;
     page.updates.clear();
     page.invalidated = candidate.invalidateAfterCommit === true;
+    for (const { key, cell: cell2, index } of candidate.dragResets ?? []) {
+      if (page.locals.get(key) !== cell2 || cell2.value === index) continue;
+      page.updates.set(cell2, index);
+      page.invalidated = true;
+    }
     const retained = new Set(page.locals.values()), next = /* @__PURE__ */ new Map(), definitions = /* @__PURE__ */ new Map();
     for (const [cell2, resource] of page.resources) if (!retained.has(cell2)) resource.dispose();
     for (const cell2 of retained) {

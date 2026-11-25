@@ -2,7 +2,7 @@
 // it in open order, wherever it sits in the tree. Native routes `topLayer` boxes to the root.
 import { h } from './nodes.js';
 import { render, page } from './state.js';
-import { envOf } from './hooks.js';
+import { envOf, cellOf } from './hooks.js';
 import { resolveClasses } from '../style/classes.js';
 import { limits } from '../generated/contract.js';
 import { report } from './actions.js';
@@ -26,12 +26,14 @@ const closers = new Set(['any', 'closerequest', 'none']);
 const layerZ = 9000;
 
 let uncontrolled = new Set(), anchors = new Map(), opened = new Map(), refused = new Set();
+// An open dialog's bound drag cell and the detent it opened at, put back however it closes.
+let resting = new Map();
 let invoker = null, sequence = 0;
 // A submenu and the menu whose item opened it.
 let submenus = new Map();
 
 export function resetTopLayer() {
-  uncontrolled = new Set(); anchors = new Map(); opened = new Map(); refused = new Set();
+  uncontrolled = new Set(); anchors = new Map(); opened = new Map(); refused = new Set(); resting = new Map();
   invoker = null; sequence = 0; submenus = new Map();
 }
 
@@ -163,7 +165,10 @@ function dialog(props, children, identity, parent) {
   const { open, onClose, closedby = 'closerequest', ...rest } = props;
   if (onClose !== undefined && typeof onClose !== 'function') throw Error('UI_PROP: onClose');
   if (!closers.has(closedby)) throw Error('UI_PROP: closedby must be "any", "closerequest" or "none"');
+  const opening = !opened.has(identity);
   if (!open || !admitted(identity)) return null;
+  const bound = rest.drag !== undefined && rest.bind !== undefined ? cellOf(rest.bind) : undefined;
+  if (opening && bound && typeof bound.cell.value === 'number') resting.set(identity, { ...bound, index: bound.cell.value });
   const close = () => onClose?.();
   collected().entries.push({ identity, kind: 'dialog', sequence: opened.get(identity), close: closedby === 'none' ? null : close });
   const env = envOf(render.view);
@@ -353,7 +358,13 @@ export function interest(target, nth, show) {
 /** After resolution: invokers name popovers that exist and announce whether they are open. */
 export function finishTopLayer(tree) {
   const top = render.candidate.topLayer;
-  for (const identity of [...opened.keys()]) if (!top?.entries.some(entry => entry.identity === identity)) opened.delete(identity);
+  for (const identity of [...opened.keys()]) {
+    if (top?.entries.some(entry => entry.identity === identity)) continue;
+    opened.delete(identity);
+    // Closed by a request, a drag or the page's own `open={false}`: the next open starts where this one did.
+    const rest = resting.get(identity);
+    if (rest) { resting.delete(identity); (render.candidate.dragResets ??= []).push(rest); }
+  }
   if (top) wireInvokers(top, tree);
 }
 

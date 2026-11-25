@@ -66,6 +66,21 @@ test('initialDetent full: an expandable sheet opens at its full detent, and reop
   assert.equal(drag(sheet(screen, 'reply')).index, 0);
 });
 
+test('an expandable sheet the page closes itself reopens halfway', async () => {
+  const screen = await renderPage(`
+    import { useLocal } from '@lingxia/view';
+    import { BottomSheet } from '@liulidesign/core/BottomSheet';
+    export function render() {
+      const open = useLocal('open', true);
+      return <page><button data-testid="again" onClick={() => open.set(true)}><text>Open</text></button><BottomSheet isOpen={open.value} onOpenChange={open.set} label="Reply" detents="expandable" data-testid="reply"><button data-testid="done" onClick={() => open.set(false)}><text>Done</text></button></BottomSheet></page>;
+    }
+  `);
+  screen.drag(sheet(screen, 'reply'), { phase: 'settle', index: 0 });
+  screen.press(screen.getByTestId('done'));
+  screen.press(screen.getByTestId('again'));
+  assert.equal(drag(sheet(screen, 'reply')).index, 1);
+});
+
 test('Required: with dismissOn none the sheet has no off-screen point and only its buttons close it', async () => {
   const screen = await renderExample('BottomSheet/BottomSheet', 'Required');
   screen.press(screen.getByTestId('leave-open'));
