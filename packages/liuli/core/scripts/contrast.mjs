@@ -4,6 +4,14 @@ import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 export const appearances = ['light', 'dark'];
+/** Every look the default theme resolves, high contrast included. */
+export const looks = ['light', 'dark', 'high-contrast-light', 'high-contrast-dark'];
+/** The grounds a line can sit on. */
+export const surfaces = ['canvas', 'surface', 'surface-sunken', 'surface-raised', 'surface-overlay'];
+
+// What a role draws as under a surface, as native paints it: `line` inside an overlay is the overlay's line.
+const theme = await import('@lingxia/view/theme').catch(() => undefined);
+export const roleUnder = (role, surface) => theme?.roleUnder ? theme.roleUnder(role, surface) : role;
 
 const repo = resolve(dirname(fileURLToPath(import.meta.url)), '../../../..');
 const pack = resolve(repo, 'crates/lingxia-theme/packs/default.json');
@@ -49,7 +57,11 @@ function layer(roles, spec) {
  * translucent; `{ missing }` names the roles the palette lacks.
  */
 export function ratio(roles, pair) {
-  const specs = [pair.pair[0], pair.pair[1], ...(pair.over ? [pair.over] : [])];
+  // The foreground resolves under the surface it sits on: the translucent background's backdrop, or the background.
+  const [role, percent] = pair.pair[0].split('/');
+  const scope = (pair.over ?? pair.pair[1]).split('/')[0];
+  const drawn = [roleUnder(role, scope), percent].filter(part => part !== undefined).join('/');
+  const specs = [drawn, pair.pair[1], ...(pair.over ? [pair.over] : [])];
   const missing = specs.map(spec => spec.split('/')[0]).filter(role => roles[role] === undefined);
   if (missing.length) return { missing: [...new Set(missing)] };
   const [fg, bg, base] = specs.map(spec => layer(roles, spec));
