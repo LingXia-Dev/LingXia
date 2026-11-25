@@ -2306,8 +2306,8 @@
     }
     if (role === "menuitem" && !scope.length) throw Error('UI_PROP: role="menuitem" belongs inside a popover menu');
     if (target === void 0 && (role !== "menuitem" || keepOpen)) return onClick;
-    return () => {
-      onClick?.();
+    return (event) => {
+      onClick?.(event);
       const menu = role === "menuitem" ? scope[scope.length - 1] : void 0;
       if (target !== void 0) toggle(target, !page.committed?.topLayer?.popovers.get(target)?.open, { identity: identity2, scope, menu });
       else for (const id of menuChain(menu)) toggle(id, false);
@@ -5942,7 +5942,7 @@
         const click = invokerHandler(to ? { ...props, onClick: () => requestNavigation(to) } : props, identity2, parent.popovers ?? []);
         interestTrigger(props, identity2, parent.popovers ?? []);
         if (props.interestFor !== void 0) wire("interestFor", props.interestFor);
-        if (click && !disabled) on("onClick", click);
+        if (click && !disabled) on("onClick", click, "press");
         break;
       }
       case "button": {
@@ -5954,7 +5954,7 @@
         if (props.interestFor !== void 0) wire("interestFor", props.interestFor);
         if (props.keepsFocus !== void 0 && typeof props.keepsFocus !== "boolean") throw Error("UI_PROP: keepsFocus is a boolean");
         if (props.keepsFocus) wire("keepsFocus", 1);
-        if (click && !disabled) on("onClick", click);
+        if (click && !disabled) on("onClick", click, "press");
         break;
       }
       case "checkbox":
@@ -6158,11 +6158,11 @@
         }
         const handlers = videoEvents.filter(([, prop]) => props[prop]);
         if (name !== void 0 || handlers.length) on("onVideoEvent", (payload2) => {
-          const { status, events } = JSON.parse(payload2);
+          const { status, events, timeStamp = Date.now() } = JSON.parse(payload2);
           if (name !== void 0) videoStatus(name, status);
           for (const { type, ...detail } of events) {
             const handler = props[videoEvents.find(([event]) => event === type)?.[1]];
-            if (handler) handler(type === "error" ? Object.freeze({ ...status.error }) : Object.freeze(detail));
+            if (handler) handler(Object.freeze({ ...type === "error" ? status.error : detail, timeStamp }));
           }
         }, "text", true);
         break;
@@ -7296,16 +7296,17 @@
     wireReset();
   }
   var accepts2 = (kind, value) => kind === "number" ? typeof value === "number" && Number.isFinite(value) && Math.abs(value) <= 1e9 : kind === "text" ? validInputText(value) : kind === "check" ? value === void 0 || typeof value === "boolean" : value === void 0;
+  var pressEvent = (timeStamp) => Object.freeze({ timeStamp: typeof timeStamp === "number" ? timeStamp : Date.now() });
   var where = ({ site }) => site ? `${site[0]} of <${site[1]}${typeof site[2] === "string" ? ` data-testid="${site[2]}"` : ""}>` : "A handler";
   var messageOf = (error) => error instanceof Error ? `${error.name === "Error" ? "" : `${error.name}: `}${error.message}` : String(error);
-  function dispatch(handle2, value) {
+  function dispatch(handle2, value, timeStamp) {
     outsideRender("dispatch");
     const entry = page.callbacks.get(handle2);
     if (!entry || !accepts2(entry.kind, value)) return false;
     const previous = entry.isolated ? new Map(page.updates) : void 0;
     try {
       const epoch2 = actionEpochNow();
-      const result = entry.kind === "void" ? entry.callback() : entry.callback(value);
+      const result = entry.kind === "void" ? entry.callback() : entry.kind === "press" ? entry.callback(pressEvent(timeStamp)) : entry.callback(value);
       if (result && typeof result.then === "function") Promise.resolve(result).catch((thrown) => {
         if (!hasActionEpoch(epoch2)) return;
         const message = `UI_HANDLER: ${where(entry)} rejected: ${messageOf(sited(thrown))}`;

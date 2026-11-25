@@ -555,6 +555,18 @@ test('aria-current marks the current item on a button or link', () => {
   assert.throws(() => describe(() => h('button', { 'aria-current': 'date', onClick() {} }, 'x'), {}), /aria-current is "page", "step" or a boolean/);
 });
 
+test('a press and a media event carry the host\'s timeStamp', () => {
+  const seen = [];
+  const status = { readyState: 'ready', currentTime: 3, duration: 4, paused: true, ended: false, buffering: false, seeking: false,
+    buffered: 2, videoWidth: 640, videoHeight: 360, playbackRate: 1, volume: 1, muted: true, quality: 'auto', qualities: [], error: null };
+  const [, button, video] = decode(describe(() => h('view', {},
+    h('button', { onClick: event => seen.push(['click', event.timeStamp]) }, 'Go'),
+    h('video', { src: 'a.mp4', onPause: event => seen.push(['pause', event.reason, event.timeStamp]) })), {}));
+  assert.equal(dispatch(button.props.onClick, undefined, 1767225600000), true);
+  assert.equal(dispatch(video.props.onVideoEvent, JSON.stringify({ status, events: [{ type: 'pause', reason: 'user' }], timeStamp: 1767225601000 })), true);
+  assert.deepEqual(seen, [['click', 1767225600000], ['pause', 'user', 1767225601000]]);
+});
+
 test('keepsFocus marks a button whose press leaves the focused editor editing', () => {
   assert.equal(rendered(() => h('button', { keepsFocus: true, onClick() {} }, 'B')).props.keepsFocus, 1);
   assert.equal(rendered(() => h('button', { keepsFocus: false, onClick() {} }, 'B')).props.keepsFocus, undefined);

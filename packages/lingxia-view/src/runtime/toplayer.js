@@ -339,8 +339,8 @@ export function invokerHandler(props, identity, scope) {
   }
   if (role === 'menuitem' && !scope.length) throw Error('UI_PROP: role="menuitem" belongs inside a popover menu');
   if (target === undefined && (role !== 'menuitem' || keepOpen)) return onClick;
-  return () => {
-    onClick?.();
+  return event => {
+    onClick?.(event);
     const menu = role === 'menuitem' ? scope[scope.length - 1] : undefined;
     if (target !== undefined) toggle(target, !page.committed?.topLayer?.popovers.get(target)?.open, { identity, scope, menu });
     else for (const id of menuChain(menu)) toggle(id, false);

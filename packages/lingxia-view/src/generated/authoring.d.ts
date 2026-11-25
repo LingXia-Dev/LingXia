@@ -245,6 +245,10 @@ export declare function useChannel<P, T, S>(
 
 export type VideoErrorCode = "VIDEO_SOURCE" | "VIDEO_NOT_GRANTED" | "VIDEO_NETWORK" | "VIDEO_NOT_FOUND" | "VIDEO_FORMAT" | "VIDEO_DECODE" | "VIDEO_DECODERS" | "VIDEO_NO_PLAYER" | "VIDEO_UNSUPPORTED";
 /** Says what to do in `message`; `recoverable` errors resume with `retry()`. */
+/** When the host took the event, in epoch ms (the base of `Date.now()`). */
+export interface TimeStamped { readonly timeStamp: number }
+/** A press of a button or link. */
+export type PressEvent = TimeStamped;
 export interface VideoError { readonly code: VideoErrorCode; readonly message: string; readonly recoverable: boolean }
 export type WebViewErrorCode = "WEBVIEW_SOURCE" | "WEBVIEW_NOT_GRANTED" | "WEBVIEW_NETWORK" | "WEBVIEW_CRASHED" | "WEBVIEW_UNSUPPORTED" | "WEBVIEW_MESSAGE_DROPPED";
 export interface WebViewError { readonly code: WebViewErrorCode; readonly message: string }
@@ -1182,7 +1186,7 @@ export type ButtonProps = Omit<Props, "style" | "children" | "role"> & { role?: 
   /** Called for a long press or a secondary click, with where it happened. */ onContextMenu?: (event: ContextMenuEvent) => void;
   /** Reports a single pointer over the element: down, move, up, enter, leave and cancel. */ onPointer?: (event: PointerEvent) => void;
   /** The axis `onPointer` keeps; the other is left to the page's scroll. */ pointerAxis?: "x" | "y" | "both";
-  /** Called when it is pressed: a tap, a click, Enter or Space, or a screen reader's activation. */ onClick?: () => void;
+  /** Called when it is pressed: a tap, a click, Enter or Space, or a screen reader's activation. `event.timeStamp` is when the press arrived, in epoch ms. */ onClick?: (event: PressEvent) => void;
   /** Refuses input and shows the disabled style; it stays in accessibility, marked unavailable. */ disabled?: boolean;
   /** The accessible name, spoken in place of its text. */ "aria-label"?: string;
   /** The id of a popover a press opens or closes. */ popoverTarget?: string;
@@ -1438,7 +1442,7 @@ export type LinkStyle = StyleGroup.Run & StyleGroup.Box & StyleGroup.Padding & S
 export type LinkRole = "menuitem";
 export type LinkProps = Omit<Props, "style" | "children" | "role"> & { role?: LinkRole; style?: LinkStyle; children?: Child;
   /** Called for a long press or a secondary click, with where it happened. */ onContextMenu?: (event: ContextMenuEvent) => void;
-  /** Called when it is pressed: a tap, a click, Enter or Space, or a screen reader's activation. */ onClick?: () => void;
+  /** Called when it is pressed: a tap, a click, Enter or Space, or a screen reader's activation. `event.timeStamp` is when the press arrived, in epoch ms. */ onClick?: (event: PressEvent) => void;
   /** The page a press navigates to, with its params. */ to?: LinkTarget;
   /** The accessible name, spoken in place of its text. */ "aria-label"?: string;
   /** Refuses input and shows the disabled style; it stays in accessibility, marked unavailable. */ disabled?: boolean;
@@ -1470,18 +1474,18 @@ export type VideoProps = Omit<Props, "style" | "children" | "role"> & { role?: V
   /** Playback speed, 1 normal. */ playbackRate?: number;
   /** Volume, 0..1. */ volume?: number;
   /** The accessible name, spoken in place of its text. */ "aria-label"?: string;
-  /** Called when the duration and size are known. */ onLoadedMetadata?: (event: VideoMetadata) => void;
-  /** Called when playback is asked to start. */ onPlay?: () => void;
-  /** Called when frames start moving, after a start or a stall. */ onPlaying?: () => void;
-  /** Called when playback pauses, with why. */ onPause?: (event: VideoPause) => void;
-  /** Called when playback stalls for data. */ onWaiting?: () => void;
-  /** Called when a seek has finished, with the new time. */ onSeeked?: (event: { readonly currentTime: number }) => void;
-  /** Called as the playback time moves, a few times a second. */ onTimeUpdate?: (event: { readonly currentTime: number }) => void;
-  /** Called when playback reaches the end. */ onEnded?: () => void;
-  /** Called when the video fails to load or play. */ onError?: (error: VideoError) => void;
-  /** Called when the playback speed changes. */ onRateChange?: (event: { readonly playbackRate: number }) => void;
-  /** Called when the volume or mute changes. */ onVolumeChange?: (event: { readonly volume: number; readonly muted: boolean }) => void;
-  /** Called when a new quality is on screen. */ onQualityChange?: (event: VideoQualityChange) => void;
+  /** Called when the duration and size are known. */ onLoadedMetadata?: (event: VideoMetadata & TimeStamped) => void;
+  /** Called when playback is asked to start. */ onPlay?: (event: TimeStamped) => void;
+  /** Called when frames start moving, after a start or a stall. */ onPlaying?: (event: TimeStamped) => void;
+  /** Called when playback pauses, with why. */ onPause?: (event: VideoPause & TimeStamped) => void;
+  /** Called when playback stalls for data. */ onWaiting?: (event: TimeStamped) => void;
+  /** Called when a seek has finished, with the new time. */ onSeeked?: (event: { readonly currentTime: number } & TimeStamped) => void;
+  /** Called as the playback time moves, a few times a second. */ onTimeUpdate?: (event: { readonly currentTime: number } & TimeStamped) => void;
+  /** Called when playback reaches the end. */ onEnded?: (event: TimeStamped) => void;
+  /** Called when the video fails to load or play. */ onError?: (error: VideoError & TimeStamped) => void;
+  /** Called when the playback speed changes. */ onRateChange?: (event: { readonly playbackRate: number } & TimeStamped) => void;
+  /** Called when the volume or mute changes. */ onVolumeChange?: (event: { readonly volume: number; readonly muted: boolean } & TimeStamped) => void;
+  /** Called when a new quality is on screen. */ onQualityChange?: (event: VideoQualityChange & TimeStamped) => void;
   /** Called when it enters or leaves full screen. */ onFullscreenChange?: (event: { readonly fullscreen: boolean }) => void;
 } & ({ 
   /** The same video at several qualities; not with `src`. */ sources: readonly VideoSource[];  

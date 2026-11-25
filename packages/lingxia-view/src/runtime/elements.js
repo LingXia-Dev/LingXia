@@ -616,7 +616,7 @@ function resolveElement(tag, original, children, identity, depth, parent) {
       const click = invokerHandler(to ? { ...props, onClick: () => requestNavigation(to) } : props, identity, parent.popovers ?? []);
       interestTrigger(props, identity, parent.popovers ?? []);
       if (props.interestFor !== undefined) wire('interestFor', props.interestFor);
-      if (click && !disabled) on('onClick', click);
+      if (click && !disabled) on('onClick', click, 'press');
       break;
     }
     case 'button': {
@@ -628,7 +628,7 @@ function resolveElement(tag, original, children, identity, depth, parent) {
       if (props.interestFor !== undefined) wire('interestFor', props.interestFor);
       if (props.keepsFocus !== undefined && typeof props.keepsFocus !== 'boolean') throw Error('UI_PROP: keepsFocus is a boolean');
       if (props.keepsFocus) wire('keepsFocus', 1);
-      if (click && !disabled) on('onClick', click);
+      if (click && !disabled) on('onClick', click, 'press');
       break;
     }
     case 'checkbox': case 'switch':
@@ -830,11 +830,11 @@ function resolveElement(tag, original, children, identity, depth, parent) {
       }
       const handlers = videoEvents.filter(([, prop]) => props[prop]);
       if (name !== undefined || handlers.length) on('onVideoEvent', payload => {
-        const { status, events } = JSON.parse(payload);
+        const { status, events, timeStamp = Date.now() } = JSON.parse(payload);
         if (name !== undefined) videoStatus(name, status);
         for (const { type, ...detail } of events) {
           const handler = props[videoEvents.find(([event]) => event === type)?.[1]];
-          if (handler) handler(type === 'error' ? Object.freeze({ ...status.error }) : Object.freeze(detail));
+          if (handler) handler(Object.freeze({ ...(type === 'error' ? status.error : detail), timeStamp }));
         }
       }, 'text', true);
       break;

@@ -136,7 +136,7 @@ impl ViewSession {
         let mut changed = repaint;
         for (key, handle) in views {
             let (before, now) = &statuses[&key];
-            let payload = serde_json::json!({"status": now, "events": events(before, now)});
+            let payload = serde_json::json!({"status": now, "events": events(before, now), "timeStamp": self.event_time()});
             changed |= self.text_event(generation, handle, &payload.to_string())?;
         }
         for (key, (_, now)) in statuses {

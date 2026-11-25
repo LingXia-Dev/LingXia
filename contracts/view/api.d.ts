@@ -246,6 +246,10 @@ export declare function useChannel<P, T, S>(
 
 export type VideoErrorCode = "VIDEO_SOURCE" | "VIDEO_NOT_GRANTED" | "VIDEO_NETWORK" | "VIDEO_NOT_FOUND" | "VIDEO_FORMAT" | "VIDEO_DECODE" | "VIDEO_DECODERS" | "VIDEO_NO_PLAYER" | "VIDEO_UNSUPPORTED";
 /** Says what to do in `message`; `recoverable` errors resume with `retry()`. */
+/** When the host took the event, in epoch ms (the base of `Date.now()`). */
+export interface TimeStamped { readonly timeStamp: number }
+/** A press of a button or link. */
+export type PressEvent = TimeStamped;
 export interface VideoError { readonly code: VideoErrorCode; readonly message: string; readonly recoverable: boolean }
 export type WebViewErrorCode = "WEBVIEW_SOURCE" | "WEBVIEW_NOT_GRANTED" | "WEBVIEW_NETWORK" | "WEBVIEW_CRASHED" | "WEBVIEW_UNSUPPORTED" | "WEBVIEW_MESSAGE_DROPPED";
 export interface WebViewError { readonly code: WebViewErrorCode; readonly message: string }

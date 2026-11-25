@@ -113,12 +113,22 @@ impl ViewSession {
         }
     }
 
+    /// When an event reached the page, in epoch ms: its handler's `timeStamp`.
+    pub(crate) fn event_time(&self) -> u64 {
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_or(0, |since| since.as_millis() as u64)
+    }
+
     pub(super) fn dispatch_handle(&mut self, handle: u64) -> Result<bool, String> {
         // An unbound control's press changes its own value; its callback hears the new one.
         let pressed = self.uncontrolled.press(handle);
         let call = match &pressed {
             Some(value) => format!("__lingxiaDispatch({handle},{value})"),
-            None => format!("__lingxiaDispatch({handle})"),
+            None => format!(
+                "__lingxiaDispatch({handle},undefined,{})",
+                self.event_time()
+            ),
         };
         self.send_loudness()?;
         let ran: bool = self.execute(|| {

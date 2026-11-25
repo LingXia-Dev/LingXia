@@ -239,18 +239,21 @@ const accepts = (kind, value) => kind === 'number' ? typeof value === 'number' &
   : kind === 'text' ? validInputText(value)
   : kind === 'check' ? value === undefined || typeof value === 'boolean' : value === undefined;
 
+// A press handler hears when the host took the press, in epoch ms.
+const pressEvent = timeStamp => Object.freeze({ timeStamp: typeof timeStamp === 'number' ? timeStamp : Date.now() });
+
 const where = ({ site }) => site
   ? `${site[0]} of <${site[1]}${typeof site[2] === 'string' ? ` data-testid="${site[2]}"` : ''}>` : 'A handler';
 const messageOf = error => error instanceof Error ? `${error.name === 'Error' ? '' : `${error.name}: `}${error.message}` : String(error);
 
-export function dispatch(handle, value) {
+export function dispatch(handle, value, timeStamp) {
   outsideRender('dispatch');
   const entry = page.callbacks.get(handle);
   if (!entry || !accepts(entry.kind, value)) return false;
   const previous = entry.isolated ? new Map(page.updates) : undefined;
   try {
     const epoch = actionEpochNow();
-    const result = entry.kind === 'void' ? entry.callback() : entry.callback(value);
+    const result = entry.kind === 'void' ? entry.callback() : entry.kind === 'press' ? entry.callback(pressEvent(timeStamp)) : entry.callback(value);
     if (result && typeof result.then === 'function') Promise.resolve(result).catch(thrown => {
       if (!hasActionEpoch(epoch)) return;
       const message = `UI_HANDLER: ${where(entry)} rejected: ${messageOf(sited(thrown))}`;

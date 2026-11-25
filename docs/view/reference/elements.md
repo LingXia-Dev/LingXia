@@ -98,7 +98,7 @@ Children: text, or noninteractive content elements (a composed control). `dragSn
 | `onContextMenu` | `(event: ContextMenuEvent) => void` |  | Called for a long press or a secondary click, with where it happened. |
 | `onPointer` | `(event: PointerEvent) => void` |  | Reports a single pointer over the element: down, move, up, enter, leave and cancel. |
 | `pointerAxis` | `"x" \| "y" \| "both"` |  | The axis `onPointer` keeps; the other is left to the page's scroll. |
-| `onClick` | `() => void` |  | Called when it is pressed: a tap, a click, Enter or Space, or a screen reader's activation. |
+| `onClick` | `(event: PressEvent) => void` |  | Called when it is pressed: a tap, a click, Enter or Space, or a screen reader's activation. `event.timeStamp` is when the press arrived, in epoch ms. |
 | `disabled` | `boolean` |  | Refuses input and shows the disabled style; it stays in accessibility, marked unavailable. |
 | `aria-label` | `string` |  | The accessible name, spoken in place of its text. |
 | `popoverTarget` | `string` |  | The id of a popover a press opens or closes. |
@@ -364,7 +364,7 @@ Inside `<text>`, a run: children text and `<span>` runs; links do not nest. Else
 | Prop | Type | Required | Notes |
 | --- | --- | --- | --- |
 | `onContextMenu` | `(event: ContextMenuEvent) => void` |  | Called for a long press or a secondary click, with where it happened. |
-| `onClick` | `() => void` |  | Called when it is pressed: a tap, a click, Enter or Space, or a screen reader's activation. |
+| `onClick` | `(event: PressEvent) => void` |  | Called when it is pressed: a tap, a click, Enter or Space, or a screen reader's activation. `event.timeStamp` is when the press arrived, in epoch ms. |
 | `to` | `LinkTarget` |  | The page a press navigates to, with its params. |
 | `aria-label` | `string` |  | The accessible name, spoken in place of its text. |
 | `disabled` | `boolean` |  | Refuses input and shows the disabled style; it stays in accessibility, marked unavailable. |
@@ -406,18 +406,18 @@ Children: none. At most one of `src` or `sources` (`UI_PROP`).
 | `playbackRate` | `number` |  | Playback speed, 1 normal. |
 | `volume` | `number` |  | Volume, 0..1. |
 | `aria-label` | `string` |  | The accessible name, spoken in place of its text. |
-| `onLoadedMetadata` | `(event: VideoMetadata) => void` |  | Called when the duration and size are known. |
-| `onPlay` | `() => void` |  | Called when playback is asked to start. |
-| `onPlaying` | `() => void` |  | Called when frames start moving, after a start or a stall. |
-| `onPause` | `(event: VideoPause) => void` |  | Called when playback pauses, with why. |
-| `onWaiting` | `() => void` |  | Called when playback stalls for data. |
-| `onSeeked` | `(event: { readonly currentTime: number }) => void` |  | Called when a seek has finished, with the new time. |
-| `onTimeUpdate` | `(event: { readonly currentTime: number }) => void` |  | Called as the playback time moves, a few times a second. |
-| `onEnded` | `() => void` |  | Called when playback reaches the end. |
-| `onError` | `(error: VideoError) => void` |  | Called when the video fails to load or play. |
-| `onRateChange` | `(event: { readonly playbackRate: number }) => void` |  | Called when the playback speed changes. |
-| `onVolumeChange` | `(event: { readonly volume: number; readonly muted: boolean }) => void` |  | Called when the volume or mute changes. |
-| `onQualityChange` | `(event: VideoQualityChange) => void` |  | Called when a new quality is on screen. |
+| `onLoadedMetadata` | `(event: VideoMetadata & TimeStamped) => void` |  | Called when the duration and size are known. |
+| `onPlay` | `(event: TimeStamped) => void` |  | Called when playback is asked to start. |
+| `onPlaying` | `(event: TimeStamped) => void` |  | Called when frames start moving, after a start or a stall. |
+| `onPause` | `(event: VideoPause & TimeStamped) => void` |  | Called when playback pauses, with why. |
+| `onWaiting` | `(event: TimeStamped) => void` |  | Called when playback stalls for data. |
+| `onSeeked` | `(event: { readonly currentTime: number } & TimeStamped) => void` |  | Called when a seek has finished, with the new time. |
+| `onTimeUpdate` | `(event: { readonly currentTime: number } & TimeStamped) => void` |  | Called as the playback time moves, a few times a second. |
+| `onEnded` | `(event: TimeStamped) => void` |  | Called when playback reaches the end. |
+| `onError` | `(error: VideoError & TimeStamped) => void` |  | Called when the video fails to load or play. |
+| `onRateChange` | `(event: { readonly playbackRate: number } & TimeStamped) => void` |  | Called when the playback speed changes. |
+| `onVolumeChange` | `(event: { readonly volume: number; readonly muted: boolean } & TimeStamped) => void` |  | Called when the volume or mute changes. |
+| `onQualityChange` | `(event: VideoQualityChange & TimeStamped) => void` |  | Called when a new quality is on screen. |
 | `onFullscreenChange` | `(event: { readonly fullscreen: boolean }) => void` |  | Called when it enters or leaves full screen. |
 
 `src` plays one file; `sources` offers the same video at several qualities; not both (`UI_PROP`). Props apply when they change: a new `src` or `sources` starts over from the beginning, showing the last frame until the new first one; `paused`, `muted`, `loop`, `playbackRate` and `volume`: each applies on mount and when its value changes; writing the same value again does nothing, so a handle's `play()` or `pause()` stands until that prop itself changes. To act, use the player handle. A named player is the advanced case: `player={useVideo(name)}` on the `<video>` that gives the source makes it the page's player, and another `<video player>` with no source, such as a full-screen one, shows that same player. A component that forwards a source types it with `VideoSourceProps` and spreads it whole.
