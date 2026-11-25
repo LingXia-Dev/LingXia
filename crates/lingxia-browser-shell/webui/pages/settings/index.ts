@@ -46,6 +46,7 @@ interface ProxySettings {
   gfwlistReady: boolean;
   gfwlistSourceUrl: string;
   gfwlistUpdatedAtMs: number | null;
+  gfwlistRuleCount: number | null;
   gfwlistStatus: string;
 }
 
@@ -64,6 +65,8 @@ interface SettingsData {
   siteTabId: string;
   site: { url: string; host: string } | null;
   proxy: ProxyView | null;
+  /** Why the last rule list download failed, translated; null once one succeeds. */
+  listFailure: string | null;
   /** The present, for "last updated". */
   now: string;
   appInfo: AppInfo | null;
@@ -82,6 +85,7 @@ const initialData: SettingsData = {
   siteTabId: '',
   site: null,
   proxy: null,
+  listFailure: null,
   now: localDateTime(Date.now()),
   appInfo: null,
 };
@@ -89,6 +93,22 @@ const initialData: SettingsData = {
 function proxyView(settings: ProxySettings): ProxyView {
   const { gfwlistUpdatedAtMs, ...rest } = settings;
   return { ...rest, gfwlistUpdatedAt: gfwlistUpdatedAtMs ? localDateTime(gfwlistUpdatedAtMs) : null };
+}
+
+/** A failed rule list download in the user's words, from the route's `data.failure`; never the raw error. */
+function listFailureText(error: unknown): string {
+  const data = (error as { data?: { failure?: unknown; host?: unknown } } | null)?.data;
+  const host = typeof data?.host === 'string' ? data.host : '';
+  switch (data?.failure) {
+    case 'proxyUnreachable': return lx.app.t('settings.proxy.list.why.proxyUnreachable', { host });
+    case 'proxyRejected': return lx.app.t('settings.proxy.list.why.proxyRejected', { host });
+    case 'sourceUnreachable': return lx.app.t('settings.proxy.list.why.sourceUnreachable', { host });
+    case 'sourceTimedOut': return lx.app.t('settings.proxy.list.why.sourceTimedOut', { host });
+    case 'notAList': return lx.app.t('settings.proxy.list.why.notAList', { host });
+    case 'noProxyServer': return lx.app.t('settings.proxy.list.why.noProxyServer');
+    case 'badAddress': return lx.app.t('settings.proxy.list.why.badAddress');
+    default: return lx.app.t('settings.proxy.list.failedHint');
+  }
 }
 
 /** A port typed by the user, or null when it is not one. */
@@ -144,10 +164,17 @@ export default definePage({
       return saved;
     }
 
-    async function downloadRules(): Promise<ProxySettings> {
-      const next = await invoke<ProxySettings>('proxy.refreshGfwList');
-      showProxy(next);
-      return next;
+    /** Downloads the rule list; a failure is kept, translated, for the list card instead of thrown. */
+    async function downloadRules(): Promise<boolean> {
+      try {
+        showProxy(await invoke<ProxySettings>('proxy.refreshGfwList'));
+        page.update((d) => { d.listFailure = null; });
+        return true;
+      } catch (error) {
+        console.warn('proxy.refreshGfwList failed', error);
+        page.update((d) => { d.listFailure = listFailureText(error); });
+        return false;
+      }
     }
 
     // Rule edits settle before they are saved, so typing a pattern saves once.
@@ -216,23 +243,22 @@ export default definePage({
           await refreshUsage();
           return { message: lx.app.t('privacy.cleared', { count: result.historyRemoved }) };
         },
-        async clearSite({ cache, siteData }: { cache: boolean; siteData: boolean }): Promise<Notice | null> {
+        // Saves answer with no toast: the usage counts and the proxy's status badge show the result.
+        async clearSite({ cache, siteData }: { cache: boolean; siteData: boolean }): Promise<void> {
           const tabId = page.data.siteTabId;
-          if (!tabId) return null;
+          if (!tabId) return;
           await invoke('privacy.clearSiteData', { tabId, cache, siteData });
           await refreshUsage();
-          return { message: lx.app.t('settings.privacy.status.siteCleared') };
         },
         /** Switches routing over the saved server; Auto Switch without rules downloads them first. */
-        async setProxyMode({ mode }: { mode: ProxyMode }): Promise<Notice> {
+        async setProxyMode({ mode }: { mode: ProxyMode }): Promise<void> {
           return serial(async () => {
             const saved = await saveProxy({ mode });
             if (mode === 'gfw_list' && !saved.gfwlistReady) await downloadRules();
-            return { message: lx.app.t('settings.proxy.status.modeSaved') };
           });
         },
         /** Saves the server fields; a field the route would refuse comes back as its own problem. */
-        async saveProxyServer(input: { host: string; port: string; username: string; password: string }): Promise<{ field: 'host' | 'port'; message: string } | Notice> {
+        async saveProxyServer(input: { host: string; port: string; username: string; password: string }): Promise<{ field: 'host' | 'port'; message: string } | null> {
           const host = input.host.trim();
           const port = portOf(input.port);
           const mode = page.data.proxy?.mode ?? 'direct';
@@ -240,7 +266,7 @@ export default definePage({
           if (port === null) return { field: 'port', message: lx.app.t('settings.proxy.status.invalidPort') };
           return serial(async () => {
             await saveProxy({ socks5Host: host, socks5Port: port, username: input.username, password: input.password });
-            return { message: lx.app.t('settings.proxy.status.serverSaved') };
+            return null;
           });
         },
         /**
@@ -258,12 +284,14 @@ export default definePage({
           await serial(() => saveProxy({ autoSwitchRules, gfwlistSourceUrl: url.trim() }));
           return true;
         },
-        /** Downloads the rule list, saving a changed address first so the download uses it. */
-        async refreshRules({ url }: { url: string }): Promise<Notice> {
+        /**
+         * Downloads the rule list, saving a changed address first so the download uses it. The card shows
+         * the result in place, so success needs no toast.
+         */
+        async refreshRules({ url }: { url: string }): Promise<void> {
           return serial(async () => {
             if (url.trim() && url.trim() !== page.data.proxy?.gfwlistSourceUrl) await saveProxy({ gfwlistSourceUrl: url.trim() });
             await downloadRules();
-            return { message: lx.app.t('settings.proxy.status.rulesRefreshed') };
           });
         },
         async openHistory() {

@@ -507,10 +507,6 @@
     "defaultMessage": "Show history",
     "description": "Browser system UI string for settings.privacy.viewHistory"
   },
-  "settings.privacy.status.siteCleared": {
-    "defaultMessage": "Site data cleared",
-    "description": "After clearing the current site."
-  },
   "settings.proxy": {
     "defaultMessage": "Proxy",
     "description": "Browser system UI string for settings.proxy"
@@ -599,14 +595,6 @@
     "defaultMessage": "Enter the SOCKS5 host",
     "description": "Browser system pages: settings.proxy.status.hostRequired"
   },
-  "settings.proxy.status.serverSaved": {
-    "defaultMessage": "Proxy server saved",
-    "description": "Browser system pages: settings.proxy.status.serverSaved"
-  },
-  "settings.proxy.status.modeSaved": {
-    "defaultMessage": "Routing updated",
-    "description": "Browser system pages: settings.proxy.status.modeSaved"
-  },
   "settings.proxy.rules": {
     "defaultMessage": "Switch rules",
     "description": "Browser system pages: settings.proxy.rules"
@@ -687,6 +675,10 @@
     "defaultMessage": "Never",
     "description": "Browser system pages: settings.proxy.list.never"
   },
+  "settings.proxy.list.ruleCount": {
+    "defaultMessage": "{count, plural, one {# site} other {# sites}}",
+    "description": "Browser system pages: settings.proxy.list.ruleCount"
+  },
   "settings.proxy.list.download": {
     "defaultMessage": "Download rules now",
     "description": "Browser system pages: settings.proxy.list.download"
@@ -707,13 +699,41 @@
     "defaultMessage": "Error",
     "description": "Browser system pages: settings.proxy.list.error"
   },
-  "settings.proxy.list.failed": {
-    "defaultMessage": "Couldn’t download the rule list",
-    "description": "Browser system pages: settings.proxy.list.failed"
-  },
   "settings.proxy.list.failedHint": {
     "defaultMessage": "Check the address, and that the proxy server is running.",
     "description": "Browser system pages: settings.proxy.list.failedHint"
+  },
+  "settings.proxy.list.why.proxyUnreachable": {
+    "defaultMessage": "Could not reach the proxy server {host}",
+    "description": "Browser system pages: settings.proxy.list.why.proxyUnreachable"
+  },
+  "settings.proxy.list.why.proxyRejected": {
+    "defaultMessage": "The proxy server {host} refused the username or password",
+    "description": "Browser system pages: settings.proxy.list.why.proxyRejected"
+  },
+  "settings.proxy.list.why.sourceUnreachable": {
+    "defaultMessage": "Could not reach {host}",
+    "description": "Browser system pages: settings.proxy.list.why.sourceUnreachable"
+  },
+  "settings.proxy.list.why.sourceTimedOut": {
+    "defaultMessage": "{host} did not answer in time",
+    "description": "Browser system pages: settings.proxy.list.why.sourceTimedOut"
+  },
+  "settings.proxy.list.why.notAList": {
+    "defaultMessage": "{host} did not return a rule list",
+    "description": "Browser system pages: settings.proxy.list.why.notAList"
+  },
+  "settings.proxy.list.why.noProxyServer": {
+    "defaultMessage": "Set a proxy server first",
+    "description": "Browser system pages: settings.proxy.list.why.noProxyServer"
+  },
+  "settings.proxy.list.why.badAddress": {
+    "defaultMessage": "The list address must be an HTTPS URL",
+    "description": "Browser system pages: settings.proxy.list.why.badAddress"
+  },
+  "settings.proxy.list.stillUsing": {
+    "defaultMessage": "Still using the list from {time}",
+    "description": "Browser system pages: settings.proxy.list.stillUsing"
   },
   "downloads.why.proxy": {
     "defaultMessage": "The browser proxy is disconnected",
@@ -762,10 +782,6 @@
   "settings.proxy.status.invalidPort": {
     "defaultMessage": "Enter a port from 1 to 65535",
     "description": "Port validation."
-  },
-  "settings.proxy.status.rulesRefreshed": {
-    "defaultMessage": "Rule list downloaded",
-    "description": "After refreshing GFWList."
   },
   "settings.about": {
     "defaultMessage": "About",

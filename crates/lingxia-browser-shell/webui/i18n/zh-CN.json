@@ -507,10 +507,6 @@
     "defaultMessage": "查看历史记录",
     "description": "Browser system UI string for settings.privacy.viewHistory"
   },
-  "settings.privacy.status.siteCleared": {
-    "defaultMessage": "已清除网站数据",
-    "description": "After clearing the current site."
-  },
   "settings.proxy": {
     "defaultMessage": "代理",
     "description": "Browser system UI string for settings.proxy"
@@ -599,14 +595,6 @@
     "defaultMessage": "请输入 SOCKS5 主机",
     "description": "Browser system pages: settings.proxy.status.hostRequired"
   },
-  "settings.proxy.status.serverSaved": {
-    "defaultMessage": "代理服务器已保存",
-    "description": "Browser system pages: settings.proxy.status.serverSaved"
-  },
-  "settings.proxy.status.modeSaved": {
-    "defaultMessage": "路由模式已更新",
-    "description": "Browser system pages: settings.proxy.status.modeSaved"
-  },
   "settings.proxy.rules": {
     "defaultMessage": "切换规则",
     "description": "Browser system pages: settings.proxy.rules"
@@ -687,6 +675,10 @@
     "defaultMessage": "从未",
     "description": "Browser system pages: settings.proxy.list.never"
   },
+  "settings.proxy.list.ruleCount": {
+    "defaultMessage": "{count, plural, other {# 个网站}}",
+    "description": "Browser system pages: settings.proxy.list.ruleCount"
+  },
   "settings.proxy.list.download": {
     "defaultMessage": "立即下载规则",
     "description": "Browser system pages: settings.proxy.list.download"
@@ -707,13 +699,41 @@
     "defaultMessage": "错误",
     "description": "Browser system pages: settings.proxy.list.error"
   },
-  "settings.proxy.list.failed": {
-    "defaultMessage": "无法下载规则列表",
-    "description": "Browser system pages: settings.proxy.list.failed"
-  },
   "settings.proxy.list.failedHint": {
     "defaultMessage": "请检查网址，并确认代理服务器正在运行。",
     "description": "Browser system pages: settings.proxy.list.failedHint"
+  },
+  "settings.proxy.list.why.proxyUnreachable": {
+    "defaultMessage": "无法连接到代理服务器 {host}",
+    "description": "Browser system pages: settings.proxy.list.why.proxyUnreachable"
+  },
+  "settings.proxy.list.why.proxyRejected": {
+    "defaultMessage": "代理服务器 {host} 拒绝了用户名或密码",
+    "description": "Browser system pages: settings.proxy.list.why.proxyRejected"
+  },
+  "settings.proxy.list.why.sourceUnreachable": {
+    "defaultMessage": "无法连接到 {host}",
+    "description": "Browser system pages: settings.proxy.list.why.sourceUnreachable"
+  },
+  "settings.proxy.list.why.sourceTimedOut": {
+    "defaultMessage": "{host} 没有及时响应",
+    "description": "Browser system pages: settings.proxy.list.why.sourceTimedOut"
+  },
+  "settings.proxy.list.why.notAList": {
+    "defaultMessage": "{host} 返回的不是规则列表",
+    "description": "Browser system pages: settings.proxy.list.why.notAList"
+  },
+  "settings.proxy.list.why.noProxyServer": {
+    "defaultMessage": "请先设置代理服务器",
+    "description": "Browser system pages: settings.proxy.list.why.noProxyServer"
+  },
+  "settings.proxy.list.why.badAddress": {
+    "defaultMessage": "规则列表网址必须是 HTTPS 地址",
+    "description": "Browser system pages: settings.proxy.list.why.badAddress"
+  },
+  "settings.proxy.list.stillUsing": {
+    "defaultMessage": "仍在使用 {time} 下载的列表",
+    "description": "Browser system pages: settings.proxy.list.stillUsing"
   },
   "downloads.why.proxy": {
     "defaultMessage": "浏览器代理未连接",
@@ -762,10 +782,6 @@
   "settings.proxy.status.invalidPort": {
     "defaultMessage": "请输入 1 到 65535 之间的端口",
     "description": "Port validation."
-  },
-  "settings.proxy.status.rulesRefreshed": {
-    "defaultMessage": "规则列表已下载",
-    "description": "After refreshing GFWList."
   },
   "settings.about": {
     "defaultMessage": "关于",

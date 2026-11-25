@@ -92,7 +92,7 @@ function Settings({ data, actions }: View) {
   const toast = useToast();
 
   // Actions answer with the toast's text, already translated.
-  const run = async (outcome: Promise<{ ok: true; value: Notice } | { ok: false }>) => {
+  const run = async (outcome: Promise<{ ok: true; value: Notice | null } | { ok: false }>) => {
     const result = await outcome;
     const notice = result.ok ? result.value : null;
     if (notice) toast.show({ message: notice.message, tone: notice.tone ?? 'success', id: 'settings' });
@@ -179,7 +179,7 @@ function Settings({ data, actions }: View) {
                       variant="secondary"
                       isDisabled={!siteCache.value && !siteData.value}
                       disabledMessage={t('privacy.clear.nothingSelected')}
-                      clickAction={() => run(clearSite.run({ cache: siteCache.value, siteData: siteData.value }))}
+                      clickAction={() => clearSite.run({ cache: siteCache.value, siteData: siteData.value })}
                     />
                   </view>
                 </SettingsCard>
@@ -204,7 +204,7 @@ function Settings({ data, actions }: View) {
             </>
           ) : null}
 
-          {data.section === 'proxy' && data.proxy ? <ProxySection proxy={data.proxy} now={data.now} actions={actions} onNotice={run} /> : null}
+          {data.section === 'proxy' && data.proxy ? <ProxySection proxy={data.proxy} listFailure={data.listFailure} now={data.now} actions={actions} /> : null}
 
           {data.section === 'about' && data.appInfo ? (
             <SettingsCard title={data.appInfo.productName} testId="settings-about">
@@ -238,11 +238,11 @@ function Settings({ data, actions }: View) {
  * Routing, the server, and (for Auto Switch) the rules and rule list. A field keeps what the user
  * typed until it is saved, then follows the saved settings again.
  */
-function ProxySection({ proxy, now, actions, onNotice }: {
+function ProxySection({ proxy, listFailure, now, actions }: {
   proxy: Proxy;
   now: string;
   actions: View['actions'];
-  onNotice: (outcome: Promise<{ ok: true; value: Notice } | { ok: false }>) => Promise<void>;
+  listFailure: string | null;
 }) {
   const isTwelveHour = useView().env.hourCycle === 'h12';
   const host = useLocal<string | null>('proxyHost', null);
@@ -281,11 +281,9 @@ function ProxySection({ proxy, now, actions, onNotice }: {
       password: password.value ?? proxy.password,
     });
     if (!result.ok) return;
-    if ('field' in result.value) { serverProblem.set(result.value); return; }
+    if (result.value) { serverProblem.set(result.value); return; }
     host.set(null); port.set(null); username.set(null); password.set(null);
-    toastOf(result.value);
   };
-  const toastOf = (notice: Notice) => { void onNotice(Promise.resolve({ ok: true as const, value: notice })); };
   const problem = (field: string) => (serverProblem.value?.field === field ? { type: 'error' as const, message: serverProblem.value.message } : undefined);
   const isServerDirty = host.value !== null || port.value !== null || username.value !== null || password.value !== null;
 
@@ -309,7 +307,7 @@ function ProxySection({ proxy, now, actions, onNotice }: {
           variant="card"
           value={proxy.mode}
           isDisabled={isBusy}
-          onChange={(mode) => { void onNotice(setMode.run({ mode: mode as Proxy['mode'] })); }}
+          onChange={(mode) => { void setMode.run({ mode: mode as Proxy['mode'] }); }}
           items={PROXY_MODES.map(([value, hint, label]) => ({ value, label: t(label), description: t(`settings.proxy.mode.${hint}` as MessageKey) }))}
           data-testid="settings-proxy-mode"
         />
@@ -390,23 +388,28 @@ function ProxySection({ proxy, now, actions, onNotice }: {
                 <text className="text-body tabular-nums" data-testid="settings-proxy-list-updated">
                   {refreshRules.pending
                     ? t('settings.proxy.list.downloading')
-                    : proxy.gfwlistUpdatedAt ? formatTimestamp(proxy.gfwlistUpdatedAt, now, 'date-time', isTwelveHour) : t('settings.proxy.list.never')}
+                    : proxy.gfwlistUpdatedAt
+                      ? [formatTimestamp(proxy.gfwlistUpdatedAt, now, 'date-time', isTwelveHour), proxy.gfwlistRuleCount == null ? '' : t('settings.proxy.list.ruleCount', { count: proxy.gfwlistRuleCount })].filter(Boolean).join(' · ')
+                      : t('settings.proxy.list.never')}
                 </text>
               </view>
               <Button
                 label={t('settings.proxy.list.download')}
                 variant="secondary"
                 isDisabled={isBusy && !refreshRules.pending}
-                clickAction={() => onNotice(refreshRules.run({ url: shownUrl }))}
+                clickAction={() => refreshRules.run({ url: shownUrl })}
                 data-testid="settings-proxy-list-download"
               />
             </view>
-            {refreshRules.error && !refreshRules.pending ? (
+            {(listFailure || refreshRules.error) && !refreshRules.pending ? (
               <Banner
-                title={t('settings.proxy.list.failed')}
-                message={t('settings.proxy.list.failedHint')}
+                title={listFailure ?? t('settings.proxy.list.failedHint')}
+                // A saved list keeps routing, so the Ready badge beside this banner still holds.
+                message={proxy.gfwlistUpdatedAt
+                  ? t('settings.proxy.list.stillUsing', { time: formatTimestamp(proxy.gfwlistUpdatedAt, now, 'date-time', isTwelveHour) })
+                  : undefined}
                 tone="danger"
-                action={{ label: t('settings.proxy.list.retry'), onClick: () => { void onNotice(refreshRules.run({ url: shownUrl })); } }}
+                action={{ label: t('settings.proxy.list.retry'), onClick: () => { void refreshRules.run({ url: shownUrl }); } }}
                 data-testid="settings-proxy-list-failed"
               />
             ) : null}
