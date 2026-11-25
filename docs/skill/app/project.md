@@ -6,16 +6,10 @@ macOS/Windows terminal/browser with native control. UI is a flat, adaptive
 
 ## Create
 
-```bash
-lingxia new my-app -t native-app -p macos,windows --package-id com.example.myapp -y
-lingxia new my-terminal -t native-app --main terminal --control native -y
-lingxia new my-browser -t native-app -p windows --main browser --control native -y
-```
-
-The first form uses one lxapp for the main UI and host control.
-`--main terminal|browser` defaults to native control: no `lxapp/`, `homeAppId`,
-or `resources`; the matching capability is enabled and `appService: false`.
-Use `--control lxapp` for host control logic in a hidden embedded lxapp.
+`lingxia new -t native-app` ([forms](../cli/lingxia.md#lingxia-new)). The default uses one lxapp
+for the main UI and host control. `--main terminal|browser` defaults to native control: no
+`lxapp/`, `homeAppId`, or `resources`; the matching capability is enabled and
+`appService: false`. A browser main still needs [`browser.webui`](#browser) before it builds.
 
 The scaffold defines the layout:
 
@@ -71,7 +65,7 @@ surfaces:
 |---|---:|---|
 | [`app`](#app) | Yes | Host identity written into `app.json` |
 | [`macos` / `windows`](#macos-and-windows) | Per platform | Desktop bundle, packaging, store identity |
-| `android` / `ios` / `harmony` | Per platform | Mobile platform settings |
+| `android` / `ios` / `harmony` | Per platform | Mobile platform settings (`ios.teamId`, SDK levels; the scaffold writes them) |
 | [`surfaces`](#surfaces) | For product hosts | Adaptive UI (generates `ui.json`) |
 | [`features`](#features) | Recommended | Native Rust compile-time switches |
 | [`capabilities`](#capabilities) | Recommended | Predeclared platform/runtime integrations |
@@ -255,7 +249,9 @@ permission when called and need no entry here.
 - `notifications` — `lx.host.notification`
   and, on iOS/Harmony, push tokens. Declaring never prompts.
 - `browser` — the in-app browser; see [`browser`](#browser).
-- `terminal` — the built-in terminal (desktop); required by `native: terminal`.
+- `terminal` — the built-in terminal (desktop); required by `native: terminal`. Also
+  bundle its Settings screen: a `resources.bundles` entry with `appId:
+  app.lingxia.terminal-settings` and `package: '@lingxia/terminal-settings'`.
 - `proxy` — the in-app browser's HTTP proxy (desktop); requires `browser`.
 - `autostart` — `lx.host.autostart` (macOS/Windows, Control app). Declaring
   never registers the app.
@@ -267,9 +263,10 @@ permission when called and need no entry here.
 ## `browser`
 
 Requires `capabilities.browser: true`. `bookmarks` (default `true`) shows
-bookmark chrome. Optional `webui` replaces the browser UI with one source:
-project-relative `path:` (CLI-built) or npm `package:` with prebuilt
-`lxapp.json` + `dist/` (optional `version:`).
+bookmark chrome. `webui` is required: the browser's own UI (new tab, settings,
+downloads), which the host supplies as a project-relative `path:` (CLI-built) or
+an npm `package:` you publish with prebuilt `lxapp.json` + `dist/` (optional
+`version:`). LingXia ships none; the build fails without it.
 `platforms` limits the browser runtime to the listed targets; omit it or use an
 empty list for all targets. A mobile-only browser uses `[ios, android, harmony]`.
 
@@ -373,7 +370,7 @@ Each entry starts with exactly one content key, which is also its identity:
 | Field | Type | Description |
 |---|---|---|
 | `lxapp` | string | An lxapp by appId. Roles `main` \| `aside` \| `float`. |
-| `url` | string | A managed-browser page (needs `capabilities.browser`). `main` on macOS/Windows; `aside` on Windows. |
+| `url` | string | A managed-browser page (needs `capabilities.browser`). `main` on macOS/Windows; `aside` except on macOS, which opens a browser aside at runtime. |
 | `native` | string | `terminal` (main or aside) or `browser` (main), macOS/Windows. |
 | `role` | `main` \| `aside` \| `float` | Required. `float` = tray popover (needs `tray:`). |
 | `launch` | bool | Open on start; at most one `main`. Omit for a tray-launched app. |
