@@ -103,7 +103,7 @@ function Settings({ data, actions }: View) {
 
   return (
     <view className="grow min-h-0 flex-row">
-      <view className="w-[240px] shrink-0 px-3 py-4 border-e border-text/8">
+      <view className="w-[240px] shrink-0 px-3 py-4 border-e border-line">
         <NavList
           label={t('settings.title')}
           sections={[{ id: 'sections', items: sections.map((id) => ({ value: id, label: t(`settings.${id}` as MessageKey) })) }]}

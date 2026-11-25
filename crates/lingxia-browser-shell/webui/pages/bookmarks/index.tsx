@@ -166,7 +166,7 @@ function Bookmarks({ data, actions }: View) {
   return (
     <view className="grow min-h-0">
       <view className="grow min-h-0 flex-row bg-canvas">
-        <view className="w-[240px] shrink-0 px-3 py-4 gap-2 border-e border-text/8">
+        <view className="w-[240px] shrink-0 px-3 py-4 gap-2 border-e border-line">
           <NavList
             label={t('bookmarks.title')}
             sections={[
