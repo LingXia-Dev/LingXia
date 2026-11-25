@@ -13,6 +13,9 @@ export function fieldFloor(sourceFiles, usages, rulesByName) {
   let floor = 0;
   // A field counts only on an element that takes it, so a prop named like another element's field adds nothing.
   const add = (key, tag) => {
+    // Some props reach a field named for their element: `<page title>` writes `pageTitle`.
+    const own = tag && `${tag}${key[0].toUpperCase()}${key.slice(1)}`;
+    if (!has(field, key) && own && has(field, own)) key = own;
     const allowed = admission.fields[key];
     if (has(field, key) && !ignorable.has(key) && (!allowed || (tag && allowed.includes(elements[tag].wire)))) floor = Math.max(floor, field[key]);
   };

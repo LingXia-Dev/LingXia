@@ -54,14 +54,17 @@ test('a page asks the host only for the fields its JSX names, not for words in s
 export function render() { const note = 'aria-controls hover:bg-accent pickerRequest'; return <text>{note}</text>; }`,
     'combobox.tsx': 'export function render() { return <input aria-label="City" role="combobox" aria-controls="cities"/>; }',
     'hover.tsx': 'export function render() { return <button onClick={() => {}} className="hover:bg-accent">Go</button>; }',
+    'titled.tsx': 'export function render() { return <page title="Map"><view bleed /></page>; }',
   }, async (root, build) => {
-    for (const page of ['plain.tsx', 'mentions.tsx', 'combobox.tsx', 'hover.tsx']) await build(page);
+    for (const page of ['plain.tsx', 'mentions.tsx', 'combobox.tsx', 'hover.tsx', 'titled.tsx']) await build(page);
     const floor = async name => floorOf(await readFile(join(root, `dist/${name}.js`), 'utf8'));
     // A plain page runs on any host of this ABI.
     assert.equal(await floor('plain'), 0);
     assert.equal(await floor('mentions'), 0);
     assert.equal(await floor('combobox'), field.ariaControls);
     assert.equal(await floor('hover'), field.hoverStyle);
+    // `<page title>` writes `pageTitle`, so an older host refuses the page at load.
+    assert.equal(await floor('titled'), field.pageTitle);
   });
 });
 
