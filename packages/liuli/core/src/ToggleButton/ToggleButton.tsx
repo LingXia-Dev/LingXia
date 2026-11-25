@@ -1,6 +1,6 @@
-import { cx, useContext, type Local } from '@lingxia/view';
-import { LayerContext } from '../internal/layer';
-import { toggleButtonRecipe as r } from './ToggleButton.recipe';
+import { cx, type Local } from '@lingxia/view';
+import type { IconRef } from '../Icon/Icon';
+import { useToggleFace } from '../internal/toggleFace';
 import { registerPressable, identityOf, useTrigger } from '../internal/trigger';
 
 export type ToggleButtonSize = 'sm' | 'md' | 'lg';
@@ -20,7 +20,23 @@ export type ToggleButtonBinding =
       onChange: (isPressed: boolean) => void;
     };
 
-export type ToggleButtonProps = ToggleButtonBinding & {
+/** What a toggle shows beside or instead of its label. */
+export type ToggleButtonLook =
+  | {
+      /** An icon by name from the set, or a definition, before the label. */
+      icon?: IconRef;
+      /** The icon while on, where the icon itself shows the state: `volume` and `mute`. The fill and edge still show it too. */
+      pressedIcon?: IconRef;
+      isLabelHidden?: false;
+    }
+  | {
+      icon: IconRef;
+      pressedIcon?: IconRef;
+      /** Shows the icon alone, in a square, for a toolbar; the label still names it. @default false */
+      isLabelHidden: true;
+    };
+
+export type ToggleButtonProps = ToggleButtonBinding & ToggleButtonLook & {
   /** The text and the accessible name; it stays the same on and off ("Unread", not "Show unread"/"Hide unread"). */
   label: string;
   /** @default 'md' */
@@ -31,12 +47,12 @@ export type ToggleButtonProps = ToggleButtonBinding & {
   'data-testid'?: string;
 };
 
-/** A button that turns one option on or off and shows which: a filter, a view option. */
-export function ToggleButton({ label, bind, value: own, onChange: ownChange, size = 'md', isDisabled = false, className, 'data-testid': testId, ...attributes }: ToggleButtonProps) {
+/** A button that turns one option on or off and shows which: a filter, a view option, a toolbar's bold. */
+export function ToggleButton({ label, bind, value: own, onChange: ownChange, size = 'md', isDisabled = false, icon, pressedIcon, isLabelHidden, className, 'data-testid': testId, ...attributes }: ToggleButtonProps) {
   const isPressed = bind ? bind.value : own;
   const onPressedChange = (next: boolean) => bind ? bind.set(next) : ownChange?.(next);
   const trigger = useTrigger();
-  const layer = useContext(LayerContext);
+  const face = useToggleFace({ label, size, isOn: isPressed, icon, pressedIcon, isLabelHidden });
   return (
     <button
       aria-label={label}
@@ -48,9 +64,10 @@ export function ToggleButton({ label, bind, value: own, onChange: ownChange, siz
       disabled={isDisabled}
       {...identityOf(testId, attributes, trigger)}
       onClick={() => onPressedChange(!isPressed)}
-      className={cx(r.root.base, isPressed ? r.root.on : cx(r.root.off, layer === 'overlay' && r.root.overlay), r.root.size[size], className)}
+      style={face.style}
+      className={cx(face.className, className)}
     >
-      <text className={cx(r.label.base, r.label.size[size])}>{label}</text>
+      {face.content}
     </button>
   );
 }

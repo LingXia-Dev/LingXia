@@ -68,6 +68,7 @@ import { Timer } from '@liulidesign/core/Timer';
 import { Timestamp } from '@liulidesign/core/Timestamp';
 import { Toast } from '@liulidesign/core/Toast';
 import { ToggleButton } from '@liulidesign/core/ToggleButton';
+import { ToggleButtonGroup } from '@liulidesign/core/ToggleButtonGroup';
 import { Token } from '@liulidesign/core/Token';
 import { Tooltip } from '@liulidesign/core/Tooltip';
 import { TreeList } from '@liulidesign/core/TreeList';
@@ -106,6 +107,7 @@ import { playground as SelectFixture } from '../../core/src/Select/Select.exampl
 import { playground as StepperFixture } from '../../core/src/Stepper/Stepper.examples';
 import { playground as TableFixture } from '../../core/src/Table/Table.examples';
 import { playground as TabsFixture } from '../../core/src/Tabs/Tabs.examples';
+import { playground as ToggleButtonGroupFixture } from '../../core/src/ToggleButtonGroup/ToggleButtonGroup.examples';
 import { playground as TooltipFixture } from '../../core/src/Tooltip/Tooltip.examples';
 import { playground as TreeListFixture } from '../../core/src/TreeList/TreeList.examples';
 
@@ -5011,6 +5013,219 @@ export const playgroundEntries: PlaygroundEntry[] = [
     },
     "controls": [
       {
+        "name": "icon",
+        "required": false,
+        "kind": "choice",
+        "options": [
+          "add",
+          "add-circle",
+          "arrow-down",
+          "arrow-end",
+          "arrow-start",
+          "arrow-up",
+          "attach",
+          "blocked",
+          "bookmark",
+          "calendar",
+          "camera",
+          "cancel",
+          "cart",
+          "chart",
+          "check",
+          "checklist",
+          "chevron-down",
+          "chevron-end",
+          "chevron-start",
+          "chevron-up",
+          "click",
+          "clock",
+          "close",
+          "cloud",
+          "collapse",
+          "compass",
+          "copy",
+          "dark",
+          "delete",
+          "document",
+          "download",
+          "edit",
+          "error",
+          "expand",
+          "external-link",
+          "file",
+          "filter",
+          "flag",
+          "folder",
+          "globe",
+          "grid",
+          "heart",
+          "help",
+          "hidden",
+          "home",
+          "image",
+          "info",
+          "layers",
+          "light",
+          "like",
+          "link",
+          "list",
+          "location",
+          "lock",
+          "mail",
+          "menu",
+          "message",
+          "microphone",
+          "more",
+          "more-vertical",
+          "mute",
+          "notifications",
+          "notifications-off",
+          "palette",
+          "pause",
+          "payment",
+          "phone",
+          "play",
+          "print",
+          "redo",
+          "refresh",
+          "remove",
+          "rows",
+          "save",
+          "search",
+          "send",
+          "settings",
+          "share",
+          "sign-in",
+          "sign-out",
+          "sort",
+          "star",
+          "stop",
+          "success",
+          "tag",
+          "template",
+          "text-input",
+          "undo",
+          "unlock",
+          "upload",
+          "user",
+          "users",
+          "video",
+          "visible",
+          "volume",
+          "warning",
+          "wifi"
+        ]
+      },
+      {
+        "name": "pressedIcon",
+        "required": false,
+        "kind": "choice",
+        "options": [
+          "add",
+          "add-circle",
+          "arrow-down",
+          "arrow-end",
+          "arrow-start",
+          "arrow-up",
+          "attach",
+          "blocked",
+          "bookmark",
+          "calendar",
+          "camera",
+          "cancel",
+          "cart",
+          "chart",
+          "check",
+          "checklist",
+          "chevron-down",
+          "chevron-end",
+          "chevron-start",
+          "chevron-up",
+          "click",
+          "clock",
+          "close",
+          "cloud",
+          "collapse",
+          "compass",
+          "copy",
+          "dark",
+          "delete",
+          "document",
+          "download",
+          "edit",
+          "error",
+          "expand",
+          "external-link",
+          "file",
+          "filter",
+          "flag",
+          "folder",
+          "globe",
+          "grid",
+          "heart",
+          "help",
+          "hidden",
+          "home",
+          "image",
+          "info",
+          "layers",
+          "light",
+          "like",
+          "link",
+          "list",
+          "location",
+          "lock",
+          "mail",
+          "menu",
+          "message",
+          "microphone",
+          "more",
+          "more-vertical",
+          "mute",
+          "notifications",
+          "notifications-off",
+          "palette",
+          "pause",
+          "payment",
+          "phone",
+          "play",
+          "print",
+          "redo",
+          "refresh",
+          "remove",
+          "rows",
+          "save",
+          "search",
+          "send",
+          "settings",
+          "share",
+          "sign-in",
+          "sign-out",
+          "sort",
+          "star",
+          "stop",
+          "success",
+          "tag",
+          "template",
+          "text-input",
+          "undo",
+          "unlock",
+          "upload",
+          "user",
+          "users",
+          "video",
+          "visible",
+          "volume",
+          "warning",
+          "wifi"
+        ]
+      },
+      {
+        "name": "isLabelHidden",
+        "required": false,
+        "kind": "boolean"
+      },
+      {
         "name": "label",
         "required": true,
         "kind": "text"
@@ -5032,6 +5247,52 @@ export const playgroundEntries: PlaygroundEntry[] = [
       }
     ],
     "fixed": [],
+    "binds": {
+      "value": "onChange"
+    }
+  },
+  {
+    "name": "ToggleButtonGroup",
+    "component": "ToggleButtonGroup",
+    "defaults": {
+      "label": "Pen",
+      "selectionMode": "single",
+      "value": "fine"
+    },
+    "controls": [
+      {
+        "name": "selectionMode",
+        "required": true,
+        "kind": "choice",
+        "options": [
+          "multiple",
+          "single"
+        ]
+      },
+      {
+        "name": "label",
+        "required": true,
+        "kind": "text"
+      },
+      {
+        "name": "size",
+        "required": false,
+        "kind": "choice",
+        "options": [
+          "sm",
+          "md",
+          "lg"
+        ]
+      },
+      {
+        "name": "isDisabled",
+        "required": false,
+        "kind": "boolean"
+      }
+    ],
+    "fixed": [
+      "items"
+    ],
     "binds": {
       "value": "onChange"
     }
@@ -5312,6 +5573,7 @@ export function PlaygroundSubject({ name, props, set }: { name: string; props: P
   if (name === "Timestamp") return <Timestamp {...(props as any)} />;
   if (name === "Toast") return <Toast {...(props as any)} />;
   if (name === "ToggleButton") return <ToggleButton {...(props as any)} onChange={(next: unknown) => set("value", next as PlaygroundValue)} />;
+  if (name === "ToggleButtonGroup") return <ToggleButtonGroup {...(ToggleButtonGroupFixture() as any)} {...(props as any)} onChange={(next: unknown) => set("value", next as PlaygroundValue)} />;
   if (name === "Token") return <Token {...(props as any)} />;
   if (name === "Tooltip") return <Tooltip {...(TooltipFixture() as any)} {...(props as any)} />;
   if (name === "TreeList") return <TreeList {...(TreeListFixture() as any)} {...(props as any)} onChange={(next: unknown) => set("value", next as PlaygroundValue)} />;

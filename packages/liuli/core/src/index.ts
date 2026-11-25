@@ -71,6 +71,7 @@ export * from './Timer/Timer';
 export * from './Timestamp/Timestamp';
 export * from './Toast/Toast';
 export * from './ToggleButton/ToggleButton';
+export * from './ToggleButtonGroup/ToggleButtonGroup';
 export * from './Token/Token';
 export * from './Tooltip/Tooltip';
 export * from './TopBar/TopBar';

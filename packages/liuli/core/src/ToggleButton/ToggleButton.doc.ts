@@ -15,7 +15,8 @@ export const doc: ComponentDoc = {
   recipe: { map: 'toggleButtonRecipe', parts: 'toggleButtonParts' },
   anatomy: [
     { part: 'root', required: true, description: 'The pressable box: a secondary button while off, the soft accent fill and an accent hairline while on.' },
-    { part: 'label', required: true, description: 'The text and the name; the same on and off.' },
+    { part: 'glyph', required: false, description: 'The icon before the label, or alone in a square; `pressedIcon` while on.' },
+    { part: 'label', required: false, description: 'The text and the name; the same on and off. Not drawn with `isLabelHidden`, but still the name.' },
   ],
   accessibility: {
     pattern: 'toggleButton',
@@ -39,6 +40,7 @@ export const doc: ComponentDoc = {
     notes: [
       'The state is read as pressed and drawn as the fill and the edge, never as the label\'s colour alone.',
       'Disabled keeps the soft fill when on, so a locked option still shows its state.',
+      'An icon-only toggle keeps its label as its name; `pressedIcon` changes the picture, never the name.',
       'Sizes sm and md are shorter than the 44 pt touch minimum; a finger still reaches them in a 44 pt band around the box, which the host adds without changing what is drawn. Leave room between neighbours, since two bands that meet share the gap.',
     ],
   },
@@ -49,24 +51,19 @@ export const doc: ComponentDoc = {
     ],
     dont: [
       'Change the label with the state; the pressed state already says which.',
-      'Use a row of toggle buttons where only one may be on; that is a SegmentedControl.',
+      'Line up loose toggle buttons where only one may be on; that is a ToggleButtonGroup with `selectionMode="single"`, or a SegmentedControl for a setting.',
       'Use it for a setting saved with a form; that is a Switch or a Checkbox.',
     ],
   },
   examples: [
     { name: 'Filters', title: 'Filters over a list' },
     { name: 'WordWrap', title: 'A view option' },
+    { name: 'Icons', title: 'With icons, and icon-only' },
     { name: 'Sizes', title: 'Sizes' },
   ],
-  gaps: [
-    {
-      missing: 'Icon-only toggle buttons, such as bold or italic in an editor toolbar.',
-      needs: 'an icon set for Liuli',
-      today: 'Toggle buttons carry a text label.',
-    },
-  ],
+  gaps: [],
   playground: { props: { label: 'Unread', value: false } },
-  related: ['Button', 'SegmentedControl', 'Switch'],
+  related: ['ToggleButtonGroup', 'Button', 'SegmentedControl', 'Switch'],
   gallery: {
     specimen: 'Specimen',
     tagline: 'Stays down while on',
@@ -81,6 +78,7 @@ export const doc: ComponentDoc = {
         { name: 'StateDisabled', title: 'Disabled, off' },
         { name: 'StateDisabledOn', title: 'Disabled, on' },
       ],
+      variants: [{ name: 'Icons', title: 'An icon beside the label, an icon that changes when on, and icon-only' }],
       inContext: [{ name: 'WordWrap', title: 'A view option beside what it changes' }],
     },
   },

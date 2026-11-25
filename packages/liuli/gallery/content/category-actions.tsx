@@ -3,13 +3,14 @@ import { Specimen as ButtonSpecimen } from '../../core/src/Button/Button.example
 import { Specimen as ToggleButtonSpecimen } from '../../core/src/ToggleButton/ToggleButton.examples';
 import { Specimen as IconButtonSpecimen } from '../../core/src/IconButton/IconButton.examples';
 import { Specimen as ButtonGroupSpecimen } from '../../core/src/ButtonGroup/ButtonGroup.examples';
+import { Specimen as ToggleButtonGroupSpecimen } from '../../core/src/ToggleButtonGroup/ToggleButtonGroup.examples';
 import { Category, Tile } from '../shared/Layout';
 
 export function Content({ onOpen }: { onOpen: (page: string) => void }) {
   return (
     <>
       <text className="text-body text-muted">{"Buttons that start something, or turn a setting on and off."}</text>
-      <Category title={"4 components"}>
+      <Category title={"5 components"}>
         <Tile
           name={"Button"}
           tagline={"Starts an action"}
@@ -41,6 +42,15 @@ export function Content({ onOpen }: { onOpen: (page: string) => void }) {
           testId={"open-button-group"}
         >
           <ButtonGroupSpecimen />
+        </Tile>
+        <Tile
+          name={"ToggleButtonGroup"}
+          tagline={"Toggles together"}
+          isWide
+          onOpen={() => onOpen("toggle-button-group")}
+          testId={"open-toggle-button-group"}
+        >
+          <ToggleButtonGroupSpecimen />
         </Tile>
       </Category>
     </>

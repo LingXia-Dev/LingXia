@@ -21628,6 +21628,25 @@
           "description": "Runs with the new state on a press."
         },
         {
+          "name": "icon",
+          "type": "IconRef",
+          "required": false,
+          "description": "An icon by name from the set, or a definition, before the label."
+        },
+        {
+          "name": "pressedIcon",
+          "type": "IconRef",
+          "required": false,
+          "description": "The icon while on, where the icon itself shows the state: `volume` and `mute`. The fill and edge still show it too."
+        },
+        {
+          "name": "isLabelHidden",
+          "type": "boolean",
+          "required": false,
+          "description": "Shows the icon alone, in a square, for a toolbar; the label still names it.",
+          "default": "false"
+        },
+        {
           "name": "label",
           "type": "string",
           "required": true,
@@ -21679,6 +21698,7 @@
       ],
       "parts": {
         "root": "button",
+        "glyph": "vector",
         "label": "text"
       },
       "accessibility": {
@@ -21752,6 +21772,7 @@
         "notes": [
           "The state is read as pressed and drawn as the fill and the edge, never as the label's colour alone.",
           "Disabled keeps the soft fill when on, so a locked option still shows its state.",
+          "An icon-only toggle keeps its label as its name; `pressedIcon` changes the picture, never the name.",
           "Sizes sm and md are shorter than the 44 pt touch minimum; a finger still reaches them in a 44 pt band around the box, which the host adds without changing what is drawn. Leave room between neighbours, since two bands that meet share the gap."
         ]
       },
@@ -21767,18 +21788,17 @@
           "source": "import { useLocal } from '@lingxia/view';\nimport { ToggleButton } from '@liulidesign/core/ToggleButton';\n\n/** One view option, beside the thing it changes. */\nexport function WordWrap() {\n  const wrap = useLocal('wrap', true);\n  return (\n    <view className=\"gap-3\">\n      <ToggleButton label=\"Wrap lines\" bind={wrap} className=\"self-start\" data-testid=\"wrap\" />\n      <text className={wrap.value ? 'text-body text-text' : 'text-body text-text truncate'} data-testid=\"sample\">\n        Every line of this note is long enough to reach past the edge of a phone held upright.\n      </text>\n    </view>\n  );\n}"
         },
         {
+          "name": "Icons",
+          "title": "With icons, and icon-only",
+          "source": "import { useLocal } from '@lingxia/view';\nimport { ToggleButton } from '@liulidesign/core/ToggleButton';\n\n/** An icon beside the label; an icon that changes with the state; icon-only toggles in a toolbar, named by their labels. */\nexport function Icons() {\n  const starred = useLocal('starred', true);\n  const muted = useLocal('muted', false);\n  const hidden = useLocal('hidden', false);\n  return (\n    <view className=\"flex-row flex-wrap items-center gap-2\">\n      <ToggleButton label=\"Starred\" icon=\"star\" bind={starred} data-testid=\"icons-starred\" />\n      <ToggleButton label=\"Mute\" icon=\"volume\" pressedIcon=\"mute\" isLabelHidden bind={muted} data-testid=\"icons-mute\" />\n      <ToggleButton label=\"Show hidden files\" icon=\"visible\" pressedIcon=\"hidden\" isLabelHidden bind={hidden} data-testid=\"icons-hidden\" />\n    </view>\n  );\n}"
+        },
+        {
           "name": "Sizes",
           "title": "Sizes",
           "source": "import { Held } from '../example';\nimport { ToggleButton } from '@liulidesign/core/ToggleButton';\n\nexport function Sizes() {\n  return (\n    <view className=\"flex-row flex-wrap items-center gap-2\">\n      <Held value={true}>{(isPressed, set) => <ToggleButton label=\"Small\" size=\"sm\" value={isPressed} onChange={set} />}</Held>\n      <Held value={true}>{(isPressed, set) => <ToggleButton label=\"Medium\" value={isPressed} onChange={set} />}</Held>\n      <Held value={true}>{(isPressed, set) => <ToggleButton label=\"Large\" size=\"lg\" value={isPressed} onChange={set} />}</Held>\n    </view>\n  );\n}"
         }
       ],
-      "gaps": [
-        {
-          "missing": "Icon-only toggle buttons, such as bold or italic in an editor toolbar.",
-          "needs": "an icon set for Liuli",
-          "today": "Toggle buttons carry a text label."
-        }
-      ],
+      "gaps": [],
       "playground": {
         "props": {
           "label": "Unread",
@@ -21816,6 +21836,7 @@
         ]
       },
       "related": [
+        "ToggleButtonGroup",
         "Button",
         "SegmentedControl",
         "Switch"
@@ -21851,10 +21872,250 @@
               "title": "Disabled, on"
             }
           ],
+          "variants": [
+            {
+              "name": "Icons",
+              "title": "An icon beside the label, an icon that changes when on, and icon-only"
+            }
+          ],
           "inContext": [
             {
               "name": "WordWrap",
               "title": "A view option beside what it changes"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "ToggleButtonGroup",
+      "import": "@liulidesign/core/ToggleButtonGroup",
+      "exports": [
+        "ToggleButtonGroup"
+      ],
+      "category": "actions",
+      "status": "preview",
+      "since": "2026-11-25",
+      "summary": "Toggle buttons that belong together, one on at a time or any number, as one keyboard stop",
+      "description": "ToggleButtonGroup lays out toggles that act on the same thing, such as filters over a list or a toolbar's layout choice. With `selectionMode=\"single\"` one is on at a time and it is a radio group; with `\"multiple\"` each turns on or off on its own and it is a toolbar of toggle buttons. Either way the group is one Tab stop and the arrow keys move between the toggles. For a setting in a form use SegmentedControl.",
+      "keywords": [
+        "toggle button group",
+        "toggle group",
+        "toolbar",
+        "radio",
+        "filters",
+        "view switcher",
+        "pressed"
+      ],
+      "props": [
+        {
+          "name": "selectionMode",
+          "type": "\"multiple\" | \"single\"",
+          "required": true,
+          "description": "One on at a time, read as a radio group: text alignment, a pen. Each on or off on its own, read as toggle buttons: bold, italic, underline.",
+          "values": [
+            "single",
+            "multiple"
+          ]
+        },
+        {
+          "name": "bind",
+          "type": "Local<readonly string[]> | Local<string>",
+          "required": false,
+          "description": "A View-local cell the group reads and writes; use it or `value` with `onChange`."
+        },
+        {
+          "name": "value",
+          "type": "string | readonly string[]",
+          "required": false,
+          "description": "The value that is on. The values that are on."
+        },
+        {
+          "name": "onChange",
+          "type": "((value: string) => void) | ((value: readonly string[]) => void)",
+          "required": false,
+          "description": "Runs with the toggle pressed or arrowed onto. Runs with the values on after a press, in the items' order."
+        },
+        {
+          "name": "label",
+          "type": "string",
+          "required": true,
+          "description": "Names the group for assistive tech: \"Text style\", \"Alignment\"."
+        },
+        {
+          "name": "items",
+          "type": "readonly ToggleButtonGroupItem[]",
+          "required": true,
+          "description": "The toggles, in order."
+        },
+        {
+          "name": "size",
+          "type": "ToggleButtonSize",
+          "required": false,
+          "description": "",
+          "values": [
+            "sm",
+            "md",
+            "lg"
+          ],
+          "default": "'md'"
+        },
+        {
+          "name": "isDisabled",
+          "type": "boolean",
+          "required": false,
+          "description": "Disables every toggle.",
+          "default": "false"
+        },
+        {
+          "name": "className",
+          "type": "string",
+          "required": false,
+          "description": ""
+        },
+        {
+          "name": "data-testid",
+          "type": "string",
+          "required": false,
+          "description": "On the group; each toggle gets `<testid>-<value>`."
+        }
+      ],
+      "otherProps": {},
+      "choices": [
+        [
+          [
+            "bind"
+          ],
+          [
+            "value",
+            "onChange"
+          ]
+        ]
+      ],
+      "parts": {
+        "root": "view"
+      },
+      "accessibility": {
+        "pattern": null,
+        "name": "label",
+        "description": [],
+        "states": [
+          {
+            "state": "checked",
+            "from": "value or bind, with selectionMode single"
+          },
+          {
+            "state": "pressed",
+            "from": "value or bind, with selectionMode multiple"
+          },
+          {
+            "state": "disabled",
+            "from": "isDisabled, or an item's isDisabled"
+          }
+        ],
+        "keyboard": [
+          {
+            "keys": "Tab",
+            "effect": "Enters the group on one toggle and leaves it"
+          },
+          {
+            "keys": "Left, Right",
+            "effect": "Move between the toggles; with one on at a time, the arrival turns it on"
+          },
+          {
+            "keys": "Enter or Space",
+            "effect": "Turns the focused toggle on, or on and off with any number on"
+          }
+        ],
+        "contrast": [
+          {
+            "what": "boundary, on",
+            "pair": [
+              "accent",
+              "accent-soft"
+            ],
+            "minimum": "3:1"
+          }
+        ],
+        "notes": [
+          "One on at a time: role radiogroup, each toggle a radio read as checked. Any number on: role toolbar, each toggle a button read as pressed.",
+          "An icon-only toggle keeps its label as its name. The state is drawn as the soft accent fill and the accent edge, never as the icon's colour alone."
+        ]
+      },
+      "examples": [
+        {
+          "name": "Filters",
+          "title": "Any number on",
+          "source": "import { useLocal } from '@lingxia/view';\nimport { ToggleButtonGroup } from '@liulidesign/core/ToggleButtonGroup';\n\nconst notes = [\n  { title: 'Q3 plan', pinned: true, starred: true, files: false },\n  { title: 'Reading list', pinned: false, starred: true, files: true },\n  { title: 'Interview notes', pinned: true, starred: false, files: true },\n  { title: 'Groceries', pinned: false, starred: false, files: false },\n];\n\n/** Any number on: filters that each narrow the list, read as toggle buttons. */\nexport function Filters() {\n  const on = useLocal<readonly string[]>('on', ['starred']);\n  const shown = notes.filter(note => (!on.value.includes('pinned') || note.pinned) && (!on.value.includes('starred') || note.starred) && (!on.value.includes('files') || note.files));\n  return (\n    <view className=\"gap-3\">\n      <ToggleButtonGroup\n        label=\"Filters\"\n        selectionMode=\"multiple\"\n        size=\"sm\"\n        items={[\n          { value: 'pinned', label: 'Pinned', icon: 'bookmark' },\n          { value: 'starred', label: 'Starred', icon: 'star' },\n          { value: 'files', label: 'With files', icon: 'attach' },\n        ]}\n        bind={on}\n        data-testid=\"filters\"\n      />\n      <text className=\"text-footnote text-muted\" data-testid=\"filters-count\">{shown.length === 1 ? '1 note' : `${shown.length} notes`}</text>\n    </view>\n  );\n}"
+        },
+        {
+          "name": "Layout",
+          "title": "One on at a time, icon-only",
+          "source": "import { useLocal } from '@lingxia/view';\nimport { ToggleButtonGroup } from '@liulidesign/core/ToggleButtonGroup';\n\nconst notes = [\n  { title: 'Q3 plan', pinned: true, starred: true, files: false },\n  { title: 'Reading list', pinned: false, starred: true, files: true },\n  { title: 'Interview notes', pinned: true, starred: false, files: true },\n  { title: 'Groceries', pinned: false, starred: false, files: false },\n];\n\n/** One on at a time, icon-only, in a toolbar: read as a radio group, each toggle named by its label. */\nexport function Layout() {\n  const layout = useLocal('layout', 'grid');\n  return (\n    <view className=\"gap-3\">\n      <ToggleButtonGroup\n        label=\"Layout\"\n        selectionMode=\"single\"\n        items={[\n          { value: 'list', label: 'List', icon: 'list', isLabelHidden: true },\n          { value: 'grid', label: 'Grid', icon: 'grid', isLabelHidden: true },\n          { value: 'rows', label: 'Rows', icon: 'rows', isLabelHidden: true },\n        ]}\n        bind={layout}\n        data-testid=\"layout\"\n      />\n      <text className=\"text-footnote text-muted\" data-testid=\"layout-shown\">{`Showing notes as a ${layout.value}`}</text>\n    </view>\n  );\n}"
+        },
+        {
+          "name": "Single",
+          "title": "One on at a time, with labels",
+          "source": "import { useLocal } from '@lingxia/view';\nimport { ToggleButtonGroup } from '@liulidesign/core/ToggleButtonGroup';\n\n/** One on at a time, with labels. */\nexport function Single() {\n  const pen = useLocal('pen', 'medium');\n  return (\n    <ToggleButtonGroup\n      label=\"Pen\"\n      selectionMode=\"single\"\n      items={[\n        { value: 'fine', label: 'Fine' },\n        { value: 'medium', label: 'Medium' },\n        { value: 'broad', label: 'Broad' },\n      ]}\n      bind={pen}\n      data-testid=\"pen\"\n    />\n  );\n}"
+        },
+        {
+          "name": "Sizes",
+          "title": "Sizes",
+          "source": "import { unused } from '../example';\nimport { ToggleButtonGroup } from '@liulidesign/core/ToggleButtonGroup';\n\nexport function Sizes() {\n  const items = [\n    { value: 'list', label: 'List', icon: 'list', isLabelHidden: true },\n    { value: 'grid', label: 'Grid', icon: 'grid', isLabelHidden: true },\n  ] as const;\n  return (\n    <view className=\"gap-3\">\n      <ToggleButtonGroup label=\"Small\" selectionMode=\"single\" size=\"sm\" items={items} value=\"grid\" onChange={unused} />\n      <ToggleButtonGroup label=\"Medium\" selectionMode=\"single\" items={items} value=\"grid\" onChange={unused} />\n      <ToggleButtonGroup label=\"Large\" selectionMode=\"single\" size=\"lg\" items={items} value=\"grid\" onChange={unused} />\n    </view>\n  );\n}"
+        }
+      ],
+      "gaps": [],
+      "playground": {
+        "props": {
+          "label": "Pen",
+          "selectionMode": "single",
+          "value": "fine"
+        },
+        "fixture": true
+      },
+      "theming": {
+        "classProps": [
+          {
+            "name": "className",
+            "on": "",
+            "description": ""
+          }
+        ],
+        "tokens": [],
+        "roles": []
+      },
+      "related": [
+        "ToggleButton",
+        "ButtonGroup",
+        "SegmentedControl"
+      ],
+      "gallery": {
+        "specimen": "Specimen",
+        "tagline": "Toggles together",
+        "order": 5,
+        "page": {
+          "lead": "Use a toggle button group for toggles that belong together, with one on at a time or any number.",
+          "hero": "Filters",
+          "variants": [
+            {
+              "name": "Layout",
+              "title": "One on at a time, icon-only, read as a radio group"
+            },
+            {
+              "name": "Single",
+              "title": "One on at a time, with labels"
+            }
+          ],
+          "sizes": [
+            {
+              "name": "Sizes",
+              "title": "Small, medium and large"
+            }
+          ],
+          "states": [
+            {
+              "name": "StateDisabled",
+              "title": "Disabled"
             }
           ]
         }

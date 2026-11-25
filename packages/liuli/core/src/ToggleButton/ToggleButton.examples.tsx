@@ -25,6 +25,20 @@ export function Filters() {
   );
 }
 
+/** An icon beside the label; an icon that changes with the state; icon-only toggles in a toolbar, named by their labels. */
+export function Icons() {
+  const starred = useLocal('starred', true);
+  const muted = useLocal('muted', false);
+  const hidden = useLocal('hidden', false);
+  return (
+    <view className="flex-row flex-wrap items-center gap-2">
+      <ToggleButton label="Starred" icon="star" bind={starred} data-testid="icons-starred" />
+      <ToggleButton label="Mute" icon="volume" pressedIcon="mute" isLabelHidden bind={muted} data-testid="icons-mute" />
+      <ToggleButton label="Show hidden files" icon="visible" pressedIcon="hidden" isLabelHidden bind={hidden} data-testid="icons-hidden" />
+    </view>
+  );
+}
+
 /** One view option, beside the thing it changes. */
 export function WordWrap() {
   const wrap = useLocal('wrap', true);

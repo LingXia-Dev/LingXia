@@ -110,6 +110,21 @@ export const entries: GalleryEntry[] = [
     ]
   },
   {
+    "name": "ToggleButtonGroup",
+    "page": "toggle-button-group",
+    "category": "actions",
+    "summary": "Toggle buttons that belong together, one on at a time or any number, as one keyboard stop",
+    "keywords": [
+      "toggle button group",
+      "toggle group",
+      "toolbar",
+      "radio",
+      "filters",
+      "view switcher",
+      "pressed"
+    ]
+  },
+  {
     "name": "TextInput",
     "page": "text-input",
     "category": "inputs",
@@ -1507,7 +1522,7 @@ export const galleryCategories: GalleryCategory[] = [
     "icon": "click",
     "description": "Buttons and toggles",
     "page": "category-actions",
-    "count": 4
+    "count": 5
   },
   {
     "id": "inputs",

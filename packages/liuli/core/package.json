@@ -97,6 +97,8 @@
     "./Skeleton/recipe": "./src/Skeleton/Skeleton.recipe.ts",
     "./ToggleButton": "./src/ToggleButton/ToggleButton.tsx",
     "./ToggleButton/recipe": "./src/ToggleButton/ToggleButton.recipe.ts",
+    "./ToggleButtonGroup": "./src/ToggleButtonGroup/ToggleButtonGroup.tsx",
+    "./ToggleButtonGroup/recipe": "./src/ToggleButtonGroup/ToggleButtonGroup.recipe.ts",
     "./Toast": "./src/Toast/Toast.tsx",
     "./ToastRegion": "./src/Toast/Toast.tsx",
     "./Toast/recipe": "./src/Toast/Toast.recipe.ts",

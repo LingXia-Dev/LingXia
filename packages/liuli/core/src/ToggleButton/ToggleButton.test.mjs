@@ -45,3 +45,17 @@ test('off: the page\'s surface on a page, the overlay\'s in a sheet\'s footer; o
   assert.equal(screen.getByTestId('off').props.background, 'surface-overlay');
   assert.notEqual(screen.getByTestId('on').props.background, 'surface-overlay');
 });
+
+test('Icons: icon-only toggles are named by their labels; pressedIcon swaps the picture, not the name', async () => {
+  const screen = await renderExample('ToggleButton/ToggleButton', 'Icons');
+  const mute = () => screen.getByTestId('icons-mute');
+  assert.equal(mute().props.accessibilityLabel, 'Mute');
+  assert.equal(JSON.stringify(mute().children).includes('Mute'), false, 'the label is not drawn');
+  const before = JSON.stringify(mute().children);
+  screen.press(mute());
+  assert.equal(mute().props.statePressed, 1);
+  assert.notEqual(JSON.stringify(mute().children), before, 'the icon changes');
+  assert.equal(mute().props.accessibilityLabel, 'Mute');
+  assert.equal(mute().props.width, mute().props.height, 'a square');
+  assert.ok(textOf(screen.getByTestId('icons-starred')).includes('Starred'));
+});

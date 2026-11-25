@@ -62,6 +62,27 @@ export function WordWrap() {
 }
 ```
 
+### With icons, and icon-only
+
+```tsx
+import { useLocal } from '@lingxia/view';
+import { ToggleButton } from '@liulidesign/core/ToggleButton';
+
+/** An icon beside the label; an icon that changes with the state; icon-only toggles in a toolbar, named by their labels. */
+export function Icons() {
+  const starred = useLocal('starred', true);
+  const muted = useLocal('muted', false);
+  const hidden = useLocal('hidden', false);
+  return (
+    <view className="flex-row flex-wrap items-center gap-2">
+      <ToggleButton label="Starred" icon="star" bind={starred} data-testid="icons-starred" />
+      <ToggleButton label="Mute" icon="volume" pressedIcon="mute" isLabelHidden bind={muted} data-testid="icons-mute" />
+      <ToggleButton label="Show hidden files" icon="visible" pressedIcon="hidden" isLabelHidden bind={hidden} data-testid="icons-hidden" />
+    </view>
+  );
+}
+```
+
 ### Sizes
 
 ```tsx
@@ -86,6 +107,9 @@ export function Sizes() {
 | `bind` | `Local<boolean>` |  | A View-local cell the control reads and writes; use it or `value` with `onChange`. |
 | `value` | `boolean` |  | Whether it is on. |
 | `onChange` | `((isPressed: boolean) => void)` |  | Runs with the new state on a press. |
+| `icon` | `IconRef` |  | An icon by name from the set, or a definition, before the label. |
+| `pressedIcon` | `IconRef` |  | The icon while on, where the icon itself shows the state: `volume` and `mute`. The fill and edge still show it too. |
+| `isLabelHidden` | `boolean` | `false` | Shows the icon alone, in a square, for a toolbar; the label still names it. |
 | `label` (required) | `string` |  | The text and the accessible name; it stays the same on and off ("Unread", not "Show unread"/"Hide unread"). |
 | `size` | `ToggleButtonSize` | `'md'` |  |
 | `isDisabled` | `boolean` | `false` |  |
@@ -99,7 +123,8 @@ export function Sizes() {
 | Part | Element | Required | Description |
 | --- | --- | --- | --- |
 | root | `<button>` | yes | The pressable box: a secondary button while off, the soft accent fill and an accent hairline while on. |
-| label | `<text>` | yes | The text and the name; the same on and off. |
+| glyph | `<vector>` | no | The icon before the label, or alone in a square; `pressedIcon` while on. |
+| label | `<text>` | no | The text and the name; the same on and off. Not drawn with `isLabelHidden`, but still the name. |
 
 ## What an app may override
 
@@ -118,6 +143,7 @@ export function Sizes() {
 - Press target: sm 32 px, md 40 px, lg 48 px.
 - The state is read as pressed and drawn as the fill and the edge, never as the label's colour alone.
 - Disabled keeps the soft fill when on, so a locked option still shows its state.
+- An icon-only toggle keeps its label as its name; `pressedIcon` changes the picture, never the name.
 - Sizes sm and md are shorter than the 44 pt touch minimum; a finger still reaches them in a 44 pt band around the box, which the host adds without changing what is drawn. Leave room between neighbours, since two bands that meet share the gap.
 
 | Contrast | Pair | Minimum | Light | Dark |
@@ -135,13 +161,7 @@ Ratios are computed from @lingxia/view/theme and rounded down.
 - Do: Label the option, not the action: "Unread", not "Show unread".
 - Do: Put it next to what it changes, and apply the change at once.
 - Don't: Change the label with the state; the pressed state already says which.
-- Don't: Use a row of toggle buttons where only one may be on; that is a SegmentedControl.
+- Don't: Line up loose toggle buttons where only one may be on; that is a ToggleButtonGroup with `selectionMode="single"`, or a SegmentedControl for a setting.
 - Don't: Use it for a setting saved with a form; that is a Switch or a Checkbox.
 
-## Not yet
-
-| Missing | Needs | Meanwhile |
-| --- | --- | --- |
-| Icon-only toggle buttons, such as bold or italic in an editor toolbar. | an icon set for Liuli | Toggle buttons carry a text label. |
-
-Related: Button, SegmentedControl, Switch.
+Related: ToggleButtonGroup, Button, SegmentedControl, Switch.

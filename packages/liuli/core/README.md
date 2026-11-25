@@ -46,7 +46,7 @@ that directory.
 ## Components
 
 <!-- components:start -->
-80 components. Import any of them from `@liulidesign/core`, or from its own path; a second component in a row (`AvatarGroup`, `Spinner`) has a path of its own too:
+81 components. Import any of them from `@liulidesign/core`, or from its own path; a second component in a row (`AvatarGroup`, `Spinner`) has a path of its own too:
 
 | Import | Exports | What it is |
 | --- | --- | --- |
@@ -54,6 +54,7 @@ that directory.
 | `@liulidesign/core/ToggleButton` | ToggleButton | A button that turns one option on or off and stays down while on |
 | `@liulidesign/core/IconButton` | IconButton | A button that shows only an icon, with a name that is always read |
 | `@liulidesign/core/ButtonGroup` | ButtonGroup | Buttons that belong together, apart or joined edge to edge, as one keyboard stop |
+| `@liulidesign/core/ToggleButtonGroup` | ToggleButtonGroup | Toggle buttons that belong together, one on at a time or any number, as one keyboard stop |
 | `@liulidesign/core/TextInput` | TextInput | Single-line text field with label, help text, status and an optional clear button |
 | `@liulidesign/core/TextArea` | TextArea | Multi-line text field that grows with its text, with label, help text and status |
 | `@liulidesign/core/DateInput` | DateInput | A labelled date field that opens a month picker |
