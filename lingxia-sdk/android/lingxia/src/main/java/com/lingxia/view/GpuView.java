@@ -675,6 +675,7 @@ public final class GpuView extends FrameLayout implements SurfaceHolder.Callback
         // Page switches re-dispatch an unchanged configuration before the incoming page is
         // laid out; sampling then would describe the previous page's chrome.
         if (hostConfiguration.diff(configuration) == 0) return;
+        Log.i("LingXia.UI", "UI_SURFACE: configuration changed diff=0x" + Integer.toHexString(hostConfiguration.diff(configuration)));
         if (configuration.screenWidthDp != hostConfiguration.screenWidthDp
                 || configuration.screenHeightDp != hostConfiguration.screenHeightDp) {
             unoccludedWidth = unoccludedHeight = 0;
@@ -894,6 +895,9 @@ public final class GpuView extends FrameLayout implements SurfaceHolder.Callback
         hasSurfaceFrame = false;
         surfaceEpoch++;
         if (destroyed) return;
+        // Whether a scheme or contrast change arrives here at an unchanged size, which rebuilds the View.
+        Log.i("LingXia.UI", "UI_SURFACE: changed " + width + "x" + height + " night="
+            + (getResources().getConfiguration().uiMode & android.content.res.Configuration.UI_MODE_NIGHT_MASK));
         nativeSurfaceChanged(host);
         // The SurfaceView shows its layer again when it resizes it.
         updateSurfaceVisibility();

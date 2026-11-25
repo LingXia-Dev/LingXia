@@ -837,6 +837,7 @@ impl<A: PlatformAdapter> ViewHost<A> {
                 .still_fits(main.environment.as_ref(), measured)
         };
         if !fits {
+            log::info!(target: "lingxia_view", "surface changed: the frame no longer fits, rebuilding");
             self.inner.lifecycle.invalidate_surface();
         }
         let (hidden, kept) = {
