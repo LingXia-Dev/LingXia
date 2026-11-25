@@ -3,7 +3,7 @@ export const blockEditorsRecipe = {
   keptNote: 'text-caption text-faint',
   list: {
     root: 'gap-1.5',
-    styleBar: 'self-start flex-row items-center gap-1 rounded-container border border-text/12 bg-surface px-1.5 py-1 shadow-raised',
+    styleBar: 'self-start flex-row items-center gap-1 rounded-container border border-line bg-surface px-1.5 py-1 shadow-raised',
     styleHint: 'text-caption text-faint ps-1',
     item: 'flex-row items-start gap-2.5',
     tick: 'size-3 text-on-accent',
@@ -100,7 +100,7 @@ export const blockEditorsRecipe = {
     childButton: 'absolute inset-0 rounded-checkbox',
   },
   inspector: {
-    root: 'rounded-control border border-text/10 bg-surface-sunken p-3 gap-2',
+    root: 'rounded-control border border-line bg-surface-sunken p-3 gap-2',
     choices: 'flex-row flex-wrap items-center gap-1.5',
     label: 'text-caption text-muted',
     field: 'w-full rounded-checkbox bg-surface px-2.5 py-1.5 text-footnote text-text',

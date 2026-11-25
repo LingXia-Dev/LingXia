@@ -41,8 +41,8 @@ export function Content() {
     <view className={isWide ? 'h-[640px] gap-4' : 'grow basis-0 min-h-0 gap-4'}>
       {/* Beside the sidebar the workspace already shows the page's title. */}
       {!isWide && <text role="heading" headingLevel={1} className="text-title font-semibold tracking-tight text-text">Conversation</text>}
-      <view className="grow basis-0 min-h-0 overflow-hidden rounded-container border border-text/12 bg-canvas">
-        <view className="flex-row items-center gap-3 px-4 py-3 border-b border-text/8 bg-surface">
+      <view className="grow basis-0 min-h-0 overflow-hidden rounded-container border border-line bg-canvas">
+        <view className="flex-row items-center gap-3 px-4 py-3 border-b border-line bg-surface">
           <Avatar name="Kai Chen" size="sm" isDecorative />
           <view className="grow basis-0 min-w-0 gap-0.5">
             <text className="text-body font-medium text-text">Kai Chen</text>
@@ -79,7 +79,7 @@ export function Content() {
           }}
           className="grow basis-0 min-h-0 px-3 pt-3 overscroll-contain"
         />
-        <view className="px-3 py-2 border-t border-text/8 bg-surface">
+        <view className="px-3 py-2 border-t border-line bg-surface">
           <Composer bind={draft} label="Message to Kai Chen" placeholder="Message Kai" onSubmit={send} startContent={<IconButton label="Attach a file" icon="attach" onClick={() => last.set('Opened the file picker')} />} data-testid="composer" />
         </view>
       </view>

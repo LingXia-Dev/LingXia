@@ -46,7 +46,7 @@ export function NoChanges() {
 /** The home tile. */
 export function Specimen() {
   return (
-    <view className="w-40 gap-1 rounded-control border border-text/12 bg-surface p-2.5">
+    <view className="w-40 gap-1 rounded-control border border-line bg-surface p-2.5">
       <text className="text-caption text-danger line-through bg-danger-soft">within 30 days</text>
       <text className="text-caption text-success bg-success-soft">within 14 days</text>
     </view>

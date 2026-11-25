@@ -54,7 +54,7 @@ export function ReadOnly() {
 /** The home tile. */
 export function Specimen() {
   return (
-    <view className="w-40 gap-1.5 rounded-control border border-text/12 bg-surface p-2.5">
+    <view className="w-40 gap-1.5 rounded-control border border-line bg-surface p-2.5">
       <text className="text-footnote font-semibold text-text">Limits</text>
       <view className="flex-row items-center gap-1.5">
         <view className="w-[3px] h-4 rounded-full bg-accent" />

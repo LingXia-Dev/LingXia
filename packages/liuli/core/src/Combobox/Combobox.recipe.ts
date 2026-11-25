@@ -33,7 +33,7 @@ export const comboboxRecipe = {
     // The sheet's trigger is a button; the typeahead's box holds the editor and takes its focus ring.
     pressable: 'focus-visible:ring-2 focus-visible:ring-focus focus-visible:ring-offset-2 disabled:bg-text/5 disabled:border-text/8',
     editable: 'focus-within:border-accent focus-within:inset-ring-1 focus-within:inset-ring-accent',
-    off: 'bg-text/5 border-text/8',
+    disabled: 'bg-text/5 border-text/8',
     size: { sm: 'min-h-control-sm', md: 'min-h-control-md', lg: 'min-h-control-lg' } satisfies Record<FieldSize, string>,
     status: { error: 'border-danger', warning: 'border-warning', success: 'border-line-strong' } satisfies Record<FieldStatusType, string>,
   },

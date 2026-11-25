@@ -243,7 +243,7 @@ function ComboboxTypeahead({
   };
   return (
     <>
-      <view id={boxId} box={box} className={cx(r.trigger.base, r.trigger.size[size], r.trigger.editable, statusType && r.trigger.status[statusType], isDisabled && r.trigger.off)}>
+      <view id={boxId} box={box} className={cx(r.trigger.base, r.trigger.size[size], r.trigger.editable, statusType && r.trigger.status[statusType], isDisabled && r.trigger.disabled)}>
         <input
           role="combobox"
           aria-autocomplete="list"

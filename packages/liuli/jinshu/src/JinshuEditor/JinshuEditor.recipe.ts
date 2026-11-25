@@ -203,10 +203,10 @@ export const jinshuEditorRecipe = {
     indent: 'ps-16',
   },
   mathEditor: {
-    base: 'rounded-container border border-accent/45 bg-surface-sunken p-4 gap-3 ring-1 ring-accent/25',
+    base: 'rounded-container border border-accent bg-surface-sunken p-4 gap-3 ring-1 ring-accent/25',
     scroll: 'w-full overflow-x-auto',
     preview: 'min-w-full items-center justify-center py-1',
-    source: 'border-t border-text/10 pt-2.5 gap-1.5',
+    source: 'border-t border-line pt-2.5 gap-1.5',
     field: 'w-full rounded-control bg-surface px-3 py-1.5 font-mono text-footnote text-text',
     footer: 'flex-row items-center justify-between',
     hint: 'text-caption text-faint',
@@ -234,7 +234,7 @@ export const jinshuEditorRecipe = {
     base: 'gap-1.5',
   },
   suggestion: {
-    base: 'rounded-control border border-accent/25 bg-accent-soft/25 px-3 py-2 gap-1.5',
+    base: 'rounded-control border border-line bg-accent-soft/25 px-3 py-2 gap-1.5',
     header: 'flex-row flex-wrap items-center justify-between gap-2',
     meta: 'flex-row items-center gap-1.5 min-w-0',
     note: 'text-footnote text-text truncate',
@@ -275,7 +275,7 @@ export const jinshuEditorRecipe = {
     row: 'flex-row gap-1',
     cell: 'size-5 rounded-xs border transition-colors duration-fast',
     cellLit: 'bg-accent-soft border-accent',
-    cellIdle: 'bg-surface border-text/15',
+    cellIdle: 'bg-surface border-line',
   },
   trailing: {
     base: 'mt-4 py-8 text-start rounded-control hover:bg-text/2',

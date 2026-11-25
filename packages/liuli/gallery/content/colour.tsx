@@ -74,7 +74,7 @@ const series = ['bg-chart-1', 'bg-chart-2', 'bg-chart-3', 'bg-chart-4', 'bg-char
 /** A checker of surface and text squares; the scrim covers its lower half, so it reads as a veil. */
 function Veil({ sample }: { sample: string }) {
   return (
-    <view className="relative size-11 overflow-hidden rounded-control border border-text/12">
+    <view className="relative size-11 overflow-hidden rounded-control border border-line">
       <view className="grow flex-row">
         <view className="grow basis-0 bg-surface" />
         <view className="grow basis-0 bg-text" />
@@ -94,7 +94,7 @@ function SwatchRow({ swatch }: { swatch: Swatch }) {
       {swatch.isVeil ? (
         <Veil sample={swatch.sample} />
       ) : (
-        <view className={`size-11 items-center justify-center rounded-control border border-text/12 ${swatch.sample}`}>
+        <view className={`size-11 items-center justify-center rounded-control border border-line ${swatch.sample}`}>
           {swatch.ink !== undefined && <text className={`text-body font-semibold ${swatch.ink}`}>Aa</text>}
         </view>
       )}
@@ -115,7 +115,7 @@ export function Content() {
       {groups.map(group => (
         <PageSection key={group.title} title={group.title}>
           {group.note !== undefined && <text className="text-footnote text-muted">{group.note}</text>}
-          <view className="rounded-container border border-text/12 bg-surface divide-y divide-text/8">
+          <view className="rounded-container border border-line bg-surface divide-y divide-line">
             {group.swatches.map(swatch => <SwatchRow key={swatch.role} swatch={swatch} />)}
           </view>
         </PageSection>

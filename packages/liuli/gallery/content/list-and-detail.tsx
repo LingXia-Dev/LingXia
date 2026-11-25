@@ -185,7 +185,7 @@ export function Content() {
           {unread > 0 && <Badge label={`${unread} unread`} tone="accent" />}
         </view>
       )}
-      {isWide ? <view className="h-[560px] overflow-hidden rounded-container border border-text/12">{split}</view> : split}
+      {isWide ? <view className="h-[560px] overflow-hidden rounded-container border border-line">{split}</view> : split}
     </view>
   );
 }

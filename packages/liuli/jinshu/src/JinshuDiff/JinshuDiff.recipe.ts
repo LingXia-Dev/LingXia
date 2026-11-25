@@ -34,7 +34,7 @@ export const jinshuDiffRecipe = {
     base: 'w-full gap-3',
   },
   summary: {
-    base: 'flex-row flex-wrap items-center justify-between gap-2 rounded-container border border-text/10 bg-surface px-3.5 py-2.5',
+    base: 'flex-row flex-wrap items-center justify-between gap-2 rounded-container border border-line bg-surface px-3.5 py-2.5',
   },
   counts: {
     base: 'flex-row flex-wrap items-center gap-2',
@@ -52,7 +52,7 @@ export const jinshuDiffRecipe = {
     base: 'gap-2.5',
   },
   expand: {
-    base: 'rounded-control border border-dashed border-text/15 bg-surface-sunken px-3 py-1.5 items-center hover:bg-text/4',
+    base: 'rounded-control border border-dashed border-line bg-surface-sunken px-3 py-1.5 items-center hover:bg-text/4',
   },
   expandText: {
     base: 'text-caption text-muted',
@@ -68,7 +68,7 @@ export const jinshuDiffRecipe = {
       added: 'rounded-container border border-success/30 bg-success-soft/60 p-3 gap-1.5',
       removed: 'rounded-container border border-danger/30 bg-danger-soft/60 p-3 gap-1.5',
       moved: 'rounded-container border-s-4 border-info bg-info-soft/40 p-3 gap-1.5',
-      modified: 'rounded-container border border-text/12 bg-surface p-3 gap-2',
+      modified: 'rounded-container border border-line bg-surface p-3 gap-2',
     } satisfies Record<Exclude<BlockDiffEntry['kind'], 'unchanged'>, string>,
     focused: 'ring-2 ring-accent',
   },
@@ -99,7 +99,7 @@ export const jinshuDiffRecipe = {
     after: 'text-caption font-medium text-success',
   },
   attrs: {
-    base: 'gap-1 pt-1 border-t border-text/8',
+    base: 'gap-1 pt-1 border-t border-line',
   },
   attr: {
     base: 'text-caption font-mono text-muted',

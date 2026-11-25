@@ -40,7 +40,7 @@ export function Content() {
         Six sizes, each with its own line height, in the system typeface. Body is the default; reach for the others to set a hierarchy, not for emphasis.
       </text>
       <PageSection title="Scale">
-        <view className="rounded-container border border-text/12 bg-surface divide-y divide-text/8">
+        <view className="rounded-container border border-line bg-surface divide-y divide-line">
           {scale.map(step => (
             <view key={step.name} className="gap-1 px-4 py-4">
               <text className={`text-text ${step.className}`}>{step.sample}</text>

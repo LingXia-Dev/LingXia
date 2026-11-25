@@ -78,7 +78,7 @@ export const jinshuViewRecipe = {
     atom: 'text-footnote font-medium bg-accent-soft text-accent',
   },
   quote: {
-    base: 'border-s-2 border-accent/50 ps-4 py-0.5 gap-2 text-muted',
+    base: 'border-s-2 border-accent ps-4 py-0.5 gap-2 text-muted',
   },
   callout: {
     base: 'rounded-container p-4 gap-2',
@@ -103,13 +103,13 @@ export const jinshuViewRecipe = {
     body: 'grow min-w-0 gap-1.5',
     checkbox: 'size-4 mt-1 rounded-checkbox border items-center justify-center shrink-0',
     checkboxDone: 'bg-accent border-accent',
-    checkboxOpen: 'border-text/25 bg-surface',
+    checkboxOpen: 'border-line-strong bg-surface',
     tick: 'size-3 text-on-accent',
     done: 'text-muted',
   },
   code: {
-    root: 'rounded-container border border-text/10 bg-surface-sunken overflow-hidden',
-    header: 'flex-row items-center justify-between px-3.5 py-2 border-b border-text/8 bg-surface',
+    root: 'rounded-container border border-line bg-surface-sunken overflow-hidden',
+    header: 'flex-row items-center justify-between px-3.5 py-2 border-b border-line bg-surface',
     lang: 'text-caption font-mono font-medium text-muted',
     lineText: 'text-footnote font-mono text-text whitespace-pre',
     body: 'self-stretch overflow-x-auto py-3',
@@ -118,7 +118,7 @@ export const jinshuViewRecipe = {
     marks: 'absolute inset-0',
     mark: 'h-[1.5em] self-stretch',
     markOn: 'bg-accent-soft border-s-2 border-accent',
-    numbers: 'shrink-0 ps-3.5 pe-3 border-e border-text/8 font-mono text-footnote leading-[1.5] text-end text-muted tabular-nums whitespace-pre select-none',
+    numbers: 'shrink-0 ps-3.5 pe-3 border-e border-line font-mono text-footnote leading-[1.5] text-end text-muted tabular-nums whitespace-pre select-none',
     text: 'shrink-0 ps-3.5 pe-3.5 font-mono text-footnote leading-[1.5] text-text whitespace-pre',
     token: {
       plain: '',
@@ -138,7 +138,7 @@ export const jinshuViewRecipe = {
     latex: 'font-mono text-callout text-text text-center',
   },
   table: {
-    frame: 'rounded-container border border-text/10 bg-surface overflow-hidden',
+    frame: 'rounded-container border border-line bg-surface overflow-hidden',
     scroll: 'w-full overflow-x-auto',
     // The run-under edge fades: past the end at rest, past both mid-scroll.
     more: {
@@ -158,8 +158,8 @@ export const jinshuViewRecipe = {
       7: 'min-w-[63em]',
       8: 'min-w-[72em]',
     },
-    headerRow: 'flex-row border-b border-text/12 bg-surface-sunken',
-    row: 'flex-row border-b border-text/6',
+    headerRow: 'flex-row border-b border-line bg-surface-sunken',
+    row: 'flex-row border-b border-line',
     cell: {
       box: 'relative min-w-[9em] px-3 py-2 justify-center',
       header: 'text-footnote font-semibold text-text select-none',
@@ -172,13 +172,13 @@ export const jinshuViewRecipe = {
   media: {
     // The figure's gap spaces it, the same under an image as under a video.
     caption: 'text-footnote text-muted text-center',
-    errorBox: 'rounded-container border border-text/12 bg-surface-sunken p-6 items-center justify-center gap-2',
+    errorBox: 'rounded-container border border-line bg-surface-sunken p-6 items-center justify-center gap-2',
     error: 'text-footnote text-muted',
   },
   image: {
     figure: 'gap-2',
     size: { small: 'w-1/2 self-center', medium: 'w-3/4 self-center', full: 'w-full' } satisfies Record<ImageSize, string>,
-    frame: 'rounded-container overflow-hidden border border-text/8 bg-surface-sunken w-full',
+    frame: 'rounded-container overflow-hidden border border-line bg-surface-sunken w-full',
     picture: 'size-full',
   },
   video: {
@@ -192,7 +192,7 @@ export const jinshuViewRecipe = {
     row: 'flex-row gap-1 min-w-max',
   },
   file: {
-    card: 'flex-row items-center justify-between gap-3 rounded-container border border-text/10 bg-surface p-3.5',
+    card: 'flex-row items-center justify-between gap-3 rounded-container border border-line bg-surface p-3.5',
     badge: 'px-2 py-1 rounded-segment bg-accent-soft text-caption font-mono font-semibold text-accent shrink-0',
     info: 'grow min-w-0 gap-0.5',
     name: 'text-body font-medium text-text',
@@ -201,7 +201,7 @@ export const jinshuViewRecipe = {
     actions: 'flex-row items-center gap-2 shrink-0',
   },
   audio: {
-    card: 'rounded-container border border-text/10 bg-surface p-4 gap-3 relative overflow-hidden',
+    card: 'rounded-container border border-line bg-surface p-4 gap-3 relative overflow-hidden',
     // Plays the source with no picture; the card is the player.
     player: 'absolute top-0 start-0 size-0 opacity-0',
     row: 'flex-row items-center gap-3',
@@ -229,7 +229,7 @@ export const jinshuViewRecipe = {
     column: 'min-w-0',
   },
   extension: {
-    base: 'rounded-container border border-dashed border-text/20 bg-surface-sunken p-3.5 gap-1',
+    base: 'rounded-container border border-dashed border-line bg-surface-sunken p-3.5 gap-1',
     type: 'text-caption font-mono text-faint',
     failed: 'text-caption font-mono text-danger',
     fallback: 'text-footnote text-muted',

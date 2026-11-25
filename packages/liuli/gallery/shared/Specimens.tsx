@@ -34,9 +34,9 @@ export function TypographySpecimen() {
 export function ShapeAndSpacingSpecimen() {
   return (
     <view className="flex-row items-center gap-2">
-      <view className="size-5 rounded-checkbox border border-accent/40 bg-accent-soft" />
-      <view className="size-8 rounded-control border border-accent/40 bg-accent-soft" />
-      <view className="size-12 rounded-container border border-accent/40 bg-accent-soft" />
+      <view className="size-5 rounded-checkbox border border-line bg-accent-soft" />
+      <view className="size-8 rounded-control border border-line bg-accent-soft" />
+      <view className="size-12 rounded-container border border-line bg-accent-soft" />
     </view>
   );
 }

@@ -13,7 +13,7 @@ export const toggleButtonRecipe = {
     off: 'bg-surface text-text border-line shadow-control hover:bg-text/5 active:bg-text/8 disabled:bg-text/6 disabled:text-muted disabled:border-transparent disabled:shadow-none',
     /** Off inside a dialog, sheet or popover: the overlay's surface. */
     overlay: 'bg-surface-overlay',
-    on: 'bg-accent-soft text-text border-accent/40 hover:bg-accent/16 active:bg-accent/20 disabled:bg-accent-soft/50 disabled:text-faint disabled:border-transparent',
+    on: 'bg-accent-soft text-text border-accent hover:bg-accent/16 active:bg-accent/20 disabled:bg-accent-soft/50 disabled:text-faint disabled:border-transparent',
     size: {
       sm: 'min-h-control-sm px-3',
       md: 'min-h-control-md px-4',

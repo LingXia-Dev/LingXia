@@ -4,9 +4,9 @@ import { PageSection } from '../shared/Layout';
 // themes, since a shadow alone barely shows on a dark page.
 
 const levels = [
-  { name: 'Flat', use: 'Cards and lists: a hairline, no shadow', className: 'rounded-container border border-text/12 bg-surface' },
-  { name: 'Resting', use: 'A raised card: a contact shadow, one surface step up in dark', className: 'rounded-container border border-text/12 bg-surface-raised shadow-contact' },
-  { name: 'Raised', use: 'Menus and anything that floats over the page: a further step up in dark', className: 'rounded-container border border-text/12 bg-surface-overlay shadow-raised' },
+  { name: 'Flat', use: 'Cards and lists: a hairline, no shadow', className: 'rounded-container border border-line bg-surface' },
+  { name: 'Resting', use: 'A raised card: a contact shadow, one surface step up in dark', className: 'rounded-container border border-line bg-surface-raised shadow-contact' },
+  { name: 'Raised', use: 'Menus and anything that floats over the page: a further step up in dark', className: 'rounded-container border border-line bg-surface-overlay shadow-raised' },
 ];
 
 export function Content() {
@@ -18,14 +18,14 @@ export function Content() {
       <PageSection title="The two levels">
         <view className="flex-row gap-4 py-2">
           <view className="grow basis-0 gap-2">
-            <view className="h-28 items-center-safe justify-center-safe rounded-container border border-text/12 bg-surface-overlay shadow-raised">
+            <view className="h-28 items-center-safe justify-center-safe rounded-container border border-line bg-surface-overlay shadow-raised">
               <text className="text-footnote font-medium text-muted">Raised</text>
             </view>
             <text className="text-footnote text-muted">A menu over the page</text>
           </view>
           <view className="grow basis-0 gap-2">
             <view className="h-28 justify-center-safe rounded-container bg-scrim px-3">
-              <view className="h-20 items-center-safe justify-center-safe rounded-dialog border border-text/12 bg-surface-overlay shadow-modal">
+              <view className="h-20 items-center-safe justify-center-safe rounded-dialog border border-line bg-surface-overlay shadow-modal">
                 <text className="text-footnote font-medium text-muted">Modal</text>
               </view>
             </view>
@@ -42,7 +42,7 @@ export function Content() {
             </view>
           ))}
           <view className="rounded-container bg-scrim p-4">
-            <view className="min-h-24 justify-end gap-0.5 p-4 rounded-dialog border border-text/12 bg-surface-overlay shadow-modal">
+            <view className="min-h-24 justify-end gap-0.5 p-4 rounded-dialog border border-line bg-surface-overlay shadow-modal">
               <text className="text-body font-medium text-text">Modal</text>
               <text className="text-footnote text-muted">Dialogs, over a scrim that dims the page</text>
             </view>

@@ -193,7 +193,7 @@ export function ToPage() {
 - `className` on ClickableCardGroup: Lays the cards out: a row or a column, and the gap.
 - The recipe, `cardRecipe` from `@liulidesign/core/Card/recipe`: the classes of each part, to style an element of your own to match. The component does not read a changed copy.
 - Scale tokens it reads, set in the app's stylesheet under `@theme`: `--shadow-contact`, `--shadow-raised`, `--radius-container`.
-- Colour roles it paints with, set by the theme pack: `accent`, `focus`, `line`, `surface`, `surface-raised`, `surface-sunken`, `text`.
+- Colour roles it paints with, set by the theme pack: `accent`, `focus`, `line`, `line-strong`, `surface`, `surface-raised`, `surface-sunken`, `text`.
 
 ## Accessibility
 
