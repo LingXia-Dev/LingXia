@@ -586,9 +586,9 @@ mod tests {
             sync_package_skills(p.path(), true).unwrap()[0].contains("logo.png is not a text file")
         );
 
-        let p = project();
         #[cfg(unix)]
         {
+            let p = project();
             std::os::unix::fs::symlink(
                 p.path().join("package.json"),
                 kit(p.path()).join("skill/link.md"),

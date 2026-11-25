@@ -315,6 +315,7 @@ mod tests {
     use super::*;
 
     /// An lxapp with one GPU page that resolves `@lingxia/view` from this repository.
+    #[cfg(unix)]
     fn gpu_lxapp() -> tempfile::TempDir {
         let dir = tempfile::tempdir().unwrap();
         let root = dir.path();
@@ -339,7 +340,6 @@ mod tests {
         );
         let packages = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../packages/lingxia-view");
         std::fs::create_dir_all(root.join("node_modules/@lingxia")).unwrap();
-        #[cfg(unix)]
         std::os::unix::fs::symlink(
             packages.canonicalize().unwrap(),
             root.join("node_modules/@lingxia/view"),

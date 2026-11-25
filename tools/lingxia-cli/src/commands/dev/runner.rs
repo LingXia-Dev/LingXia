@@ -1655,10 +1655,12 @@ fn installed_runner_version(app_path: &Path) -> Result<Option<String>> {
 
 #[cfg(test)]
 mod tests {
+    #[cfg(unix)]
+    use super::owner_alive;
     use super::{
         RunnerDevTarget, RunnerOwner, RunnerSlot, WindowsRunnerLxAppIdentity,
         is_standalone_lxapp_project, log_store, lxapp_runner_build_args, other_live_instances,
-        owner_alive, parse_owner, prepare_windows_runner_assets, prepare_windows_runner_web_assets,
+        parse_owner, prepare_windows_runner_assets, prepare_windows_runner_web_assets,
         process_start_time, resolve_dev_target, windows_runner_launch_args, windows_runner_ui_json,
         windows_web_runner_launch_args,
     };
