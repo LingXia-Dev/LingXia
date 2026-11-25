@@ -94,11 +94,34 @@ fn check_names_each_failing_pair_unknown_role_and_missing_role() {
     );
     assert!(problems.contains(&"light: unknown role brand".to_string()));
     assert!(
-        problems.iter().any(
-            |p| p.starts_with("light: text-muted on surface is ") && p.ends_with("needs 4.5:1")
-        )
+        problems
+            .iter()
+            .any(|p| p.starts_with("light: text-muted on surface is ")
+                && p.contains("needs 4.5:1; text-muted #")
+                && p.ends_with(" is the nearest that passes"))
     );
     assert!(problems.contains(&"dark: THEME: lingxia-default has no line".to_string()));
+}
+
+#[test]
+fn a_pair_that_misses_names_the_nearest_value_that_passes() {
+    let mut pack = default_pack();
+    pack.appearance
+        .light
+        .insert("text-muted".into(), hex("#b0b6c2"));
+    let missed = |pack: &Pack| {
+        check(pack)
+            .into_iter()
+            .find(|p| p.appearance == "light" && p.message.starts_with("text-muted on surface "))
+    };
+    let message = missed(&pack).expect("text-muted misses on surface").message;
+    let nearest = message
+        .rsplit_once("text-muted ")
+        .and_then(|(_, tail)| tail.strip_suffix(" is the nearest that passes"))
+        .map(hex)
+        .expect(&message);
+    pack.appearance.light.insert("text-muted".into(), nearest);
+    assert_eq!(missed(&pack), None, "the suggested value passes");
 }
 
 #[test]
@@ -360,35 +383,76 @@ fn media_roles_ignore_appearance_and_an_app_pack_may_override_them() {
 fn the_resolved_default_palette_is_recorded_for_javascript() {
     // contracts/view/palette.json feeds @lingxia/view/theme; re-record with LINGXIA_UPDATE_PALETTE=1.
     let pack = default_pack();
-    let appearances =
-        [("light", Appearance::Light), ("dark", Appearance::Dark)].map(|(name, appearance)| {
-            let prefs = Prefs {
-                appearance,
-                ..Prefs::default()
-            };
-            let theme = resolve(&pack, &prefs).unwrap();
-            let roles: Vec<String> = Role::ALL
-                .iter()
-                .map(|role| {
-                    let [r, g, b, a] = theme.color(*role).0;
-                    format!("    \"{}\": \"#{r:02x}{g:02x}{b:02x}{a:02x}\"", role.name())
-                })
-                .collect();
-            format!("  \"{name}\": {{\n{}\n  }}", roles.join(",\n"))
-        });
-    let recorded = format!("{{\n{}\n}}\n", appearances.join(",\n"));
-    let path = concat!(
-        env!("CARGO_MANIFEST_DIR"),
-        "/../../contracts/view/palette.json"
+    let looks = [
+        ("light", Appearance::Light, false),
+        ("dark", Appearance::Dark, false),
+        ("high-contrast-light", Appearance::Light, true),
+        ("high-contrast-dark", Appearance::Dark, true),
+    ]
+    .map(|(name, appearance, high_contrast)| {
+        let prefs = Prefs {
+            appearance,
+            high_contrast,
+            ..Prefs::default()
+        };
+        let theme = resolve(&pack, &prefs).unwrap();
+        let roles: Vec<(String, String)> = Role::ALL
+            .iter()
+            .map(|role| {
+                let [r, g, b, a] = theme.color(*role).0;
+                (
+                    role.name().to_owned(),
+                    format!("#{r:02x}{g:02x}{b:02x}{a:02x}"),
+                )
+            })
+            .collect();
+        (name, roles)
+    });
+    let recorded = format!(
+        "{{\n{}\n}}\n",
+        looks
+            .iter()
+            .map(|(name, roles)| {
+                let roles: Vec<String> = roles
+                    .iter()
+                    .map(|(role, color)| format!("    \"{role}\": \"{color}\""))
+                    .collect();
+                format!("  \"{name}\": {{\n{}\n  }}", roles.join(",\n"))
+            })
+            .collect::<Vec<_>>()
+            .join(",\n")
     );
+    let root = concat!(env!("CARGO_MANIFEST_DIR"), "/../..");
+    let path = format!("{root}/contracts/view/palette.json");
     if std::env::var_os("LINGXIA_UPDATE_PALETTE").is_some() {
-        std::fs::write(path, &recorded).unwrap();
+        std::fs::write(&path, &recorded).unwrap();
     }
-    let committed = std::fs::read_to_string(path).unwrap_or_default();
+    let committed = std::fs::read_to_string(&path).unwrap_or_default();
     assert!(
         committed.replace("\r\n", "\n") == recorded,
         "contracts/view/palette.json is stale; re-record with LINGXIA_UPDATE_PALETTE=1 cargo test -p lingxia-theme, then run node contracts/view/generate.mjs"
     );
+    // What Node tests read is the same resolve, so a stale generate fails here too.
+    let module = std::fs::read_to_string(format!(
+        "{root}/packages/lingxia-view/src/generated/palette.js"
+    ))
+    .unwrap();
+    for (name, roles) in &looks {
+        let prefix = format!("  \"{name}\": Object.freeze(");
+        let object = module
+            .lines()
+            .find_map(|line| line.strip_prefix(&prefix)?.strip_suffix("),"))
+            .unwrap_or_else(|| {
+                panic!("palette.js has no {name}; run node contracts/view/generate.mjs")
+            });
+        let generated: std::collections::BTreeMap<String, String> =
+            serde_json::from_str(object).unwrap();
+        let resolved: std::collections::BTreeMap<String, String> = roles.iter().cloned().collect();
+        assert_eq!(
+            generated, resolved,
+            "palette.js {name} differs from resolve; run node contracts/view/generate.mjs"
+        );
+    }
 }
 
 #[test]

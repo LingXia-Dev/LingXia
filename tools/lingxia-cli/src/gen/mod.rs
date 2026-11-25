@@ -7,5 +7,4 @@
 
 pub mod i18n;
 pub mod icons;
-pub mod tokens;
 pub mod types;

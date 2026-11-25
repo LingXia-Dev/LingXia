@@ -42,8 +42,12 @@ pub fn app_pack(key: &str) -> Option<Pack> {
 /// `pack` with every authored and fixed role, the accent seed and every scale step it leaves
 /// out taken from the default pack, so an lxapp pack may change only its accent. Derived roles
 /// and the near-blacks are never copied: [`resolve`] computes them from the pack's own colours.
-pub fn complete(mut pack: Pack) -> Pack {
-    let base = default_pack();
+pub fn complete(pack: Pack) -> Pack {
+    complete_from(pack, &default_pack())
+}
+
+/// [`complete`] from `base`, itself complete, in place of the default pack.
+pub fn complete_from(mut pack: Pack, base: &Pack) -> Pack {
     let own_accent = [&pack.appearance.light, &pack.appearance.dark]
         .iter()
         .any(|colors| colors.contains_key(Role::Accent.name()));
@@ -573,12 +577,28 @@ pub fn check(pack: &Pack) -> Vec<Problem> {
             } else {
                 f64::from(ratio)
             };
-            let actual = contrast(theme.color(foreground), theme.color(background));
+            let (ink, ground) = (theme.color(foreground), theme.color(background));
+            let actual = contrast(ink, ground);
             if actual + 1e-9 < needed {
+                // A derived foreground follows its ground, so the ground is the colour to move.
+                let (moved, near, against) = if foreground.tier() == Tier::Derived {
+                    (background, ensure_contrast(ground, ink, needed), ink)
+                } else {
+                    (foreground, ensure_contrast(ink, ground, needed), ground)
+                };
+                let nearest = if contrast(near, against) + 1e-9 >= needed {
+                    format!(
+                        "; {} {} is the nearest that passes",
+                        moved.name(),
+                        near.hex()
+                    )
+                } else {
+                    String::new()
+                };
                 problem(
                     name,
                     format!(
-                        "{} on {} is {actual:.2}:1, needs {needed:.1}:1",
+                        "{} on {} is {actual:.2}:1, needs {needed:.1}:1{nearest}",
                         foreground.name(),
                         background.name()
                     ),

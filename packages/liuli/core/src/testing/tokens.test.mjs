@@ -18,7 +18,7 @@ test('tokens.css states no value of a theme step: the pack decides them', () => 
   assert.deepEqual(stated, []);
 });
 
-// tokens.names.json is the one statement of Liuli's names; `lingxia gen tokens --names` writes an
+// tokens.names.json is the one statement of Liuli's names; `lingxia theme tokens --names` writes an
 // app's tokens from it, and tokens.css must say the same.
 test('control heights are the names map\'s multiples of the spacing step', () => {
   for (const [size, units] of Object.entries(names.controlHeight)) assert.equal(token(`spacing-control-${size}`), `calc(var(--spacing) * ${units})`, `control-${size}`);

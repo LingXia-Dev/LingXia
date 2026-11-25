@@ -408,7 +408,7 @@ fn session_label(session: &SessionInfo) -> String {
     }
 }
 
-fn connect_host(ws_url: &str) -> Result<WebSocket<TcpStream>> {
+pub(crate) fn connect_host(ws_url: &str) -> Result<WebSocket<TcpStream>> {
     let authority = parse_ws_addr(ws_url).ok_or_else(|| anyhow!("invalid dev session URL"))?;
     let mut last_error = None;
     for socket_addr in authority
@@ -448,7 +448,10 @@ fn parse_ws_addr(ws_url: &str) -> Option<String> {
     }
 }
 
-fn send_message(websocket: &mut WebSocket<TcpStream>, message: &DevSessionMessage) -> Result<()> {
+pub(crate) fn send_message(
+    websocket: &mut WebSocket<TcpStream>,
+    message: &DevSessionMessage,
+) -> Result<()> {
     let text = serde_json::to_string(message).context("Failed to encode dev websocket message")?;
     websocket
         .send(Message::Text(text.into()))

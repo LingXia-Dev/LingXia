@@ -33,6 +33,7 @@ mod sdk_cache;
 mod sdk_text;
 mod splash;
 mod state_root;
+mod theme;
 mod update;
 mod versions;
 mod wallet;
@@ -421,6 +422,12 @@ In a host project, it checks `lxapp/`.")]
         command: I18nCommand,
     },
 
+    /// An lxapp's theme: start one, check its contrast, preview it, write its tokens
+    Theme {
+        #[command(subcommand)]
+        command: theme::ThemeCommand,
+    },
+
     /// Remove generated build artifacts
     Clean,
 
@@ -741,8 +748,6 @@ enum GenCommand {
     I18n(r#gen::i18n::I18nConfig),
     /// Convert icons to platform-specific resources
     Icons(r#gen::icons::IconsConfig),
-    /// Check a theme and write the GPU page scales it defines to tokens.css
-    Tokens(r#gen::tokens::TokensConfig),
     /// Write the lxapp's page types under .lingxia/types, as a build does
     Types(r#gen::types::TypesConfig),
 }
@@ -1484,15 +1489,13 @@ fn run() -> Result<()> {
         Commands::Store { action } => {
             commands::store::run(action)?;
         }
+        Commands::Theme { command } => theme::run(command)?,
         Commands::Gen { command } => match command {
             GenCommand::I18n(config) => {
                 r#gen::i18n::run(config)?;
             }
             GenCommand::Icons(config) => {
                 r#gen::icons::run(config)?;
-            }
-            GenCommand::Tokens(config) => {
-                r#gen::tokens::run(config)?;
             }
             GenCommand::Types(config) => {
                 r#gen::types::run(config)?;

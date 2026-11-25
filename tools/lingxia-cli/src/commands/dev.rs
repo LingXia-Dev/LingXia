@@ -28,7 +28,7 @@ mod server;
 mod session_output;
 
 mod android;
-mod attach;
+pub(crate) mod attach;
 mod forward;
 mod harmony;
 mod ios;

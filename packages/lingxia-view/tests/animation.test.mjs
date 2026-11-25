@@ -202,7 +202,7 @@ test('transition utilities lower to one bounded transition of painted properties
 });
 
 test('duration and easing names are pack steps the host resolves; a pack\'s spring replaces the built-in one', async () => {
-  // The shape `lingxia gen tokens` writes from a pack's motion block.
+  // The shape `lingxia theme tokens` writes from a theme's motion block.
   const tokens = '@theme {\n  --transition-duration-fast: 150ms;\n  --transition-duration-base: 200ms;\n  --transition-duration-slow: 300ms;\n'
     + '  --ease-standard: cubic-bezier(0.2, 0, 0, 1);\n  --ease-enter: cubic-bezier(0, 0, 0, 1);\n  --ease-exit: cubic-bezier(0.3, 0, 1, 1);\n  --ease-spring: spring(0.3);\n}\n';
   const names = ['duration-fast', 'duration-base', 'duration-slow', 'ease-standard', 'ease-enter', 'ease-exit', 'ease-spring', 'ease-spring-bouncy'];

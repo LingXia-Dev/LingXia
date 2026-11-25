@@ -47,8 +47,10 @@ Add a role only when a component needs a colour no existing role carries with a 
   high contrast, optional accent (replaces the seed), text scale. High contrast is a boost applied
   here, not a second palette.
 - `check(pack)`: every pair in the schema's `on` lists meets its minimum contrast, in both
-  appearances and both contrast levels. Runs in `lingxia build` and `lingxia gen tokens` (both
-  through the same pack loader), the crate tests, and the host before it applies a theme update.
+  appearances and both contrast levels. Runs in `lingxia build` and `lingxia theme check`, `new`
+  and `tokens` (all through the same pack loader), the crate tests, and the host before it applies a
+  theme update. A missed pair names the nearest passing value of the colour to move: the foreground,
+  or the ground when the foreground is derived.
 - `advise(pack)`: non-failing warnings (status colour reading as a hue or the accent, accent text
   below 4.5:1 on common surfaces, solid fill below 3:1).
 
@@ -105,5 +107,6 @@ the same way in the Apple, Android and HarmonyOS adapters.
 
 Liuli states its names once in its core token-names list and as `var()` aliases in its core
 `tokens.css` (`--text-footnote: var(--text-sm)`), which the compiler resolves to slots.
-`lingxia gen tokens` writes `theme/tokens.css` from a pack for Web pages and editor completion; it
+`lingxia theme tokens` writes `theme/tokens.css` from a theme for Web pages and editor completion;
+given a design system's names list it also writes those names as `var()` aliases of the steps. It
 does not decide a GPU page's values.

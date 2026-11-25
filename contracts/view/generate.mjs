@@ -1042,24 +1042,25 @@ ${messages_.join('\n\n')}
 `;
 }
 
-/** The default pack as lingxia-theme resolves it, accent family included; a Rust test records palette.json. */
+/** The default pack as lingxia-theme resolves it in each look, accent family included; a Rust test records palette.json. */
 async function palette(schema) {
   const resolved = JSON.parse(await readFile(join(contractsRoot, 'palette.json'), 'utf8'));
   const roles = schema.roles.map(role => role.name);
-  for (const appearance of ['light', 'dark']) {
+  const looks = ['light', 'dark', 'high-contrast-light', 'high-contrast-dark'];
+  for (const appearance of looks) {
     const recorded = Object.keys(resolved[appearance] ?? {});
     if (recorded.join() !== roles.join())
       throw Error(`contracts/view/palette.json: ${appearance} roles differ from schema.json; record with LINGXIA_UPDATE_PALETTE=1 cargo test -p lingxia-theme`);
   }
   const head = '// Generated from contracts/view/palette.json; do not edit.\n';
-  const js = `${head}/** The default theme pack resolved per appearance, derived roles included: role → #rrggbbaa. */
+  const js = `${head}/** The default theme resolved per look, high contrast included, derived roles too: role → #rrggbbaa. */
 export const defaultPalette = Object.freeze({
-${['light', 'dark'].map(appearance => `  ${appearance}: Object.freeze(${JSON.stringify(resolved[appearance])}),`).join('\n')}
+${looks.map(look => `  ${JSON.stringify(look)}: Object.freeze(${JSON.stringify(resolved[look])}),`).join('\n')}
 });
 `;
   const dts = `${head}export type Role = ${roles.map(role => JSON.stringify(role)).join(' | ')};
-/** The default theme pack resolved per appearance, derived roles included: role → #rrggbbaa. */
-export declare const defaultPalette: { readonly light: Readonly<Record<Role, string>>; readonly dark: Readonly<Record<Role, string>> };
+/** The default theme resolved per look, high contrast included, derived roles too: role → #rrggbbaa. */
+export declare const defaultPalette: { readonly [look in ${looks.map(look => JSON.stringify(look)).join(' | ')}]: Readonly<Record<Role, string>> };
 `;
   return { 'packages/lingxia-view/src/generated/palette.js': js, 'packages/lingxia-view/src/generated/palette.d.ts': dts };
 }
