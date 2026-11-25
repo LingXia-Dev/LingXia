@@ -3,7 +3,8 @@ use crate::proxy_settings::{
     AutoSwitchRule, DEFAULT_PROXY_SOCKS_PORT, ProxyMode, ProxyRuleAction, ProxySettings,
 };
 use lingxia_platform::traits::app_runtime::AppRuntime;
-use lingxia_proxy::rule_list::{fetch_encoded_from_url, validate_source_url};
+use lingxia_proxy::FetchFailure;
+use lingxia_proxy::rule_list::{count_encoded, fetch_encoded_from_url, validate_source_url};
 use lingxia_proxy::{
     FixedRouter, LocalProxy, ProxyRouter, RouteDecision, RuleListRouter, Socks5Credentials,
     UpstreamConfig,
@@ -57,6 +58,8 @@ struct ProxySettingsResult {
     gfwlist_ready: bool,
     gfwlist_source_url: String,
     gfwlist_updated_at_ms: Option<u64>,
+    /// Domains the downloaded rule list routes through the proxy.
+    gfwlist_rule_count: Option<usize>,
     gfwlist_status: String,
     gfwlist_status_message: String,
 }
@@ -86,6 +89,7 @@ struct ProxyRuntimeSnapshot {
 struct GfwListMeta {
     ready: bool,
     updated_at_ms: Option<u64>,
+    rule_count: Option<usize>,
     status: String,
     status_message: String,
 }
@@ -356,6 +360,37 @@ fn validate_upstream_settings(settings: &ProxySettings) -> Result<(), LxAppError
     Ok(())
 }
 
+/// Code of a failed rule-list download; `data.failure` says why in a word the page translates.
+pub(crate) const LIST_FAILED_CODE: &str = "PROXY_LIST_FAILED";
+const GFWLIST_FETCH_TIMEOUT: Duration = Duration::from_secs(30);
+
+/// A rule-list download failure as a kind and the host it concerns; the raw error goes to the log only.
+fn list_failure(kind: &str, host: &str, error: &dyn std::fmt::Display) -> LxAppError {
+    log::warn!("[BrowserShellProxy] refreshGfwList failed ({kind}, {host}): {error}");
+    LxAppError::RongJSHost {
+        code: LIST_FAILED_CODE.to_string(),
+        message: format!("rule list download failed: {kind}"),
+        data: Some(serde_json::json!({ "failure": kind, "host": host })),
+    }
+}
+
+/// The host of a list address, for a failure a person can read.
+fn host_of_source(url: &str) -> String {
+    let rest = url.split_once("://").map_or(url, |(_, rest)| rest);
+    let authority = rest.split(['/', '?', '#']).next().unwrap_or_default();
+    let authority = authority
+        .rsplit_once('@')
+        .map_or(authority, |(_, host)| host);
+    authority
+        .strip_prefix('[')
+        .and_then(|bracketed| bracketed.split_once(']'))
+        .map_or_else(
+            || authority.split(':').next().unwrap_or_default(),
+            |(host, _)| host,
+        )
+        .to_string()
+}
+
 fn validate_gfwlist_source(settings: &ProxySettings) -> Result<(), LxAppError> {
     validate_source_url(&settings.gfwlist_source_url)
         .map_err(|error| LxAppError::InvalidParameter(error.to_string()))
@@ -431,6 +466,23 @@ fn save_gfwlist_cache(app_data_dir: &Path, cache: &GfwListCache) -> Result<(), L
         .map_err(|error| LxAppError::Runtime(format!("failed to write GFW List cache: {}", error)))
 }
 
+/// The rule list's domain count, parsed once per downloaded list.
+fn rule_count_of(cache: &GfwListCache) -> Option<usize> {
+    static COUNTED: OnceLock<Mutex<Option<(u64, usize)>>> = OnceLock::new();
+    let mut counted = COUNTED
+        .get_or_init(|| Mutex::new(None))
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    if let Some((updated_at_ms, count)) = *counted
+        && updated_at_ms == cache.updated_at_ms
+    {
+        return Some(count);
+    }
+    let count = count_encoded(&cache.encoded).ok()?;
+    *counted = Some((cache.updated_at_ms, count));
+    Some(count)
+}
+
 fn gfwlist_meta_from_cache_result(
     cache_result: Result<Option<GfwListCache>, LxAppError>,
 ) -> (Option<GfwListCache>, GfwListMeta) {
@@ -439,6 +491,7 @@ fn gfwlist_meta_from_cache_result(
             let meta = GfwListMeta {
                 ready: true,
                 updated_at_ms: Some(cache.updated_at_ms),
+                rule_count: rule_count_of(&cache),
                 status: "ready".to_string(),
                 status_message: "Rules are cached locally and ready to use.".to_string(),
             };
@@ -449,6 +502,7 @@ fn gfwlist_meta_from_cache_result(
             GfwListMeta {
                 ready: false,
                 updated_at_ms: None,
+                rule_count: None,
                 status: "empty".to_string(),
                 status_message: "Rules have not been downloaded yet.".to_string(),
             },
@@ -458,6 +512,7 @@ fn gfwlist_meta_from_cache_result(
             GfwListMeta {
                 ready: false,
                 updated_at_ms: None,
+                rule_count: None,
                 status: "error".to_string(),
                 status_message: error.to_string(),
             },
@@ -659,6 +714,7 @@ fn settings_result(
         gfwlist_ready: gfwlist.ready,
         gfwlist_source_url: settings.gfwlist_source_url.clone(),
         gfwlist_updated_at_ms: gfwlist.updated_at_ms,
+        gfwlist_rule_count: gfwlist.rule_count,
         gfwlist_status: gfwlist.status,
         gfwlist_status_message: gfwlist.status_message,
     }
@@ -834,19 +890,41 @@ async fn refresh_gfwlist_result(app_data_dir: &Path) -> Result<ProxySettingsResu
         settings.socks_host,
         settings.socks_port
     );
-    validate_upstream_settings(&settings)?;
-    validate_gfwlist_source(&settings)?;
+    let source_host = host_of_source(&settings.gfwlist_source_url);
+    validate_upstream_settings(&settings)
+        .map_err(|error| list_failure("noProxyServer", "", &error))?;
+    validate_gfwlist_source(&settings)
+        .map_err(|error| list_failure("badAddress", &source_host, &error))?;
 
     let upstream = build_upstream_config(&settings);
-    let encoded = fetch_encoded_from_url(&settings.gfwlist_source_url, &upstream)
-        .await
-        .map_err(|error| {
-            log::warn!(
-                "[BrowserShellProxy] refreshGfwList download failed: {}",
-                error
-            );
-            LxAppError::Runtime(error.to_string())
-        })?;
+    let proxy_host = settings.socks_host.clone();
+    let fetched = tokio::time::timeout(
+        GFWLIST_FETCH_TIMEOUT,
+        fetch_encoded_from_url(&settings.gfwlist_source_url, &upstream),
+    )
+    .await;
+    let encoded = match fetched {
+        Err(_) => {
+            return Err(list_failure(
+                "sourceTimedOut",
+                &source_host,
+                &"no answer in time",
+            ));
+        }
+        Ok(Err(error)) => {
+            let (kind, host) = match error.fetch_failure() {
+                FetchFailure::ProxyUnreachable => ("proxyUnreachable", &proxy_host),
+                FetchFailure::ProxyRejected => ("proxyRejected", &proxy_host),
+                FetchFailure::SourceUnreachable => ("sourceUnreachable", &source_host),
+                FetchFailure::SourceTimedOut => ("sourceTimedOut", &source_host),
+                FetchFailure::NotAList => ("notAList", &source_host),
+            };
+            return Err(list_failure(kind, host, &error));
+        }
+        Ok(Ok(encoded)) => encoded,
+    };
+    // An error page answered with 200 is not a list; keep the old one instead of saving it.
+    count_encoded(&encoded).map_err(|error| list_failure("notAList", &source_host, &error))?;
     let cache = GfwListCache {
         encoded,
         updated_at_ms: now_ms(),
@@ -887,12 +965,12 @@ async fn refresh_gfwlist_result(app_data_dir: &Path) -> Result<ProxySettingsResu
     Ok(result)
 }
 
-#[lingxia::framework_native("proxy.getSettings", audience = "browser-control-only")]
+#[lingxia::framework_native("proxy.getSettings", audience = "control-surface-only")]
 fn get_proxy_settings(app: Arc<LxApp>) -> HostResult<ProxySettingsResult> {
     get_proxy_settings_result(&app.app_data_dir())
 }
 
-#[lingxia::framework_native("proxy.updateSettings", audience = "browser-control-only")]
+#[lingxia::framework_native("proxy.updateSettings", audience = "control-surface-only")]
 async fn update_proxy_settings(
     app: Arc<LxApp>,
     input: ProxySettingsInput,
@@ -932,7 +1010,7 @@ async fn update_proxy_settings(
     }
 }
 
-#[lingxia::framework_native("proxy.refreshGfwList", audience = "browser-control-only")]
+#[lingxia::framework_native("proxy.refreshGfwList", audience = "control-surface-only")]
 async fn refresh_gfwlist(app: Arc<LxApp>) -> HostResult<ProxySettingsResult> {
     let result = refresh_gfwlist_result(&app.app_data_dir()).await;
     match &result {
@@ -951,7 +1029,7 @@ async fn refresh_gfwlist(app: Arc<LxApp>) -> HostResult<ProxySettingsResult> {
     result
 }
 
-#[lingxia::framework_native("proxy.watch", stream, audience = "browser-control-only")]
+#[lingxia::framework_native("proxy.watch", stream, audience = "control-surface-only")]
 async fn watch_proxy_settings(
     app: Arc<LxApp>,
     mut stream: StreamContext<ProxySettingsResult>,
@@ -1045,6 +1123,44 @@ mod tests {
     use super::*;
 
     #[test]
+    fn a_list_failure_carries_a_kind_and_host_never_the_raw_error() {
+        let error = list_failure(
+            "sourceUnreachable",
+            "127.0.0.1",
+            &"SOCKS5 error: Host unreachable",
+        );
+        match error {
+            LxAppError::RongJSHost {
+                code,
+                message,
+                data,
+            } => {
+                assert_eq!(code, LIST_FAILED_CODE);
+                assert!(!message.contains("SOCKS5"));
+                let data = data.unwrap();
+                assert_eq!(data["failure"], "sourceUnreachable");
+                assert_eq!(data["host"], "127.0.0.1");
+            }
+            other => panic!("expected a coded failure, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn the_host_of_a_list_address_drops_scheme_port_path_and_credentials() {
+        for (url, host) in [
+            (
+                "https://raw.githubusercontent.com/gfwlist/gfwlist/master/gfwlist.txt",
+                "raw.githubusercontent.com",
+            ),
+            ("https://127.0.0.1:9/gfwlist.txt", "127.0.0.1"),
+            ("https://user:pw@example.org?x=1", "example.org"),
+            ("https://[::1]:443/list", "::1"),
+        ] {
+            assert_eq!(host_of_source(url), host);
+        }
+    }
+
+    #[test]
     fn framework_routes_are_browser_control_only() {
         for route in [
             get_proxy_settings_host(),
@@ -1054,7 +1170,7 @@ mod tests {
         ] {
             assert_eq!(
                 route.audience(),
-                lxapp::host::RouteAudience::BrowserControlOnly
+                lxapp::host::RouteAudience::ControlSurfaceOnly
             );
         }
     }

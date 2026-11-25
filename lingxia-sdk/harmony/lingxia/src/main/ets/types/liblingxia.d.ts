@@ -244,7 +244,8 @@ declare module 'liblingxia.so' {
    * Open or navigate a managed internal browser tab and return tabId.
    */
   export function openBrowserTab(appid: string, sessionId: number, url: string): string | null;
-  export function openTrustedBrowserTabWithId(appid: string, sessionId: number, url: string, tabId: string): string | null;
+  /** Browser chrome only: open a browser system page with a JSON object query, or '' for none. */
+  export function openBrowserSystemPage(page: string, queryJson: string): boolean;
   export function openStandaloneBrowserTab(appid: string, sessionId: number, url: string, ephemeralWebData: boolean, urlCallback: boolean): string | null;
 
   /**

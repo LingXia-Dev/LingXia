@@ -2265,20 +2265,12 @@ async fn send_with_explicit_proxy(
     use futures_util::StreamExt;
     // No whole-request deadline: `request_timeout` bounds the wait for
     // response headers, as on the runtime transport; the body may run long.
-    let mut builder = reqwest::Client::builder()
-        .no_proxy()
-        .read_timeout(DOWNLOAD_PROXY_READ_TIMEOUT);
-    if let Some(timeout) = task.behavior.connect_timeout {
-        builder = builder.connect_timeout(timeout);
-    }
-    if let Some(url) = proxy {
-        builder = builder.proxy(
-            reqwest::Proxy::all(url).map_err(|e| host_http::HttpError::from(e.to_string()))?,
-        );
-    }
-    let client = builder
-        .build()
-        .map_err(|e| host_http::HttpError::from(e.to_string()))?;
+    let client = crate::network::explicit_proxy_client(
+        proxy,
+        task.behavior.connect_timeout,
+        DOWNLOAD_PROXY_READ_TIMEOUT,
+    )
+    .map_err(host_http::HttpError::from)?;
     let pending = client
         .get(request.uri().to_string())
         .headers(request.headers().clone())

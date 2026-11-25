@@ -593,6 +593,7 @@ impl LxApp {
             }
             state.page_chrome_layouts.remove(id.as_str());
         }
+        crate::host::clear_page_state(id.as_str());
 
         if let Some(webview) = webview {
             destroy_webview_if_matches(&page.webtag(), &webview);
@@ -953,6 +954,8 @@ impl LxApp {
                 }
             }
         }
+        // After the map removal, so a call racing this cannot re-create the page's state.
+        crate::host::page_state::clear_page_states(instance_ids);
         // A platform view holds its page, so dropping the map entry alone never frees it.
         for page in removed {
             page.detach_webview();

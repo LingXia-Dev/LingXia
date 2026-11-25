@@ -39,7 +39,7 @@ fn download_settings_result(app: &LxApp) -> HostResult<DownloadSettingsResult> {
     })
 }
 
-#[lingxia::framework_native("app.getInfo", audience = "browser-control-only")]
+#[lingxia::framework_native("app.getInfo", audience = "control-surface-only")]
 fn get_app_info(_app: Arc<LxApp>) -> HostResult<AppInfo> {
     let (product_name, version) = match app_config() {
         // About is user-facing, so the name follows the display language the
@@ -62,12 +62,12 @@ fn get_app_info(_app: Arc<LxApp>) -> HostResult<AppInfo> {
     })
 }
 
-#[lingxia::framework_native("downloads.getSettings", audience = "browser-control-only")]
+#[lingxia::framework_native("downloads.getSettings", audience = "control-surface-only")]
 fn get_download_settings(app: Arc<LxApp>) -> HostResult<DownloadSettingsResult> {
     download_settings_result(&app)
 }
 
-#[lingxia::framework_native("downloads.chooseDirectory", audience = "browser-control-only")]
+#[lingxia::framework_native("downloads.chooseDirectory", audience = "control-surface-only")]
 async fn choose_download_directory(
     app: Arc<LxApp>,
     mut cancel: HostCancel,
@@ -100,7 +100,7 @@ async fn choose_download_directory(
     download_settings_result(&app)
 }
 
-#[lingxia::framework_native("downloads.resetDirectory", audience = "browser-control-only")]
+#[lingxia::framework_native("downloads.resetDirectory", audience = "control-surface-only")]
 fn reset_download_directory(app: Arc<LxApp>) -> HostResult<DownloadSettingsResult> {
     lingxia_service::downloads::reset_dir(&app.app_data_dir())
         .map_err(|e| lxapp::LxAppError::Runtime(e.to_string()))?;
@@ -128,7 +128,7 @@ mod tests {
         ] {
             assert_eq!(
                 route.audience(),
-                lxapp::host::RouteAudience::BrowserControlOnly
+                lxapp::host::RouteAudience::ControlSurfaceOnly
             );
         }
     }

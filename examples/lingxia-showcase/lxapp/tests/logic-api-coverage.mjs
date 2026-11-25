@@ -17,7 +17,6 @@ export default {
     { "api": "lx.surface.openDeclared", "mode": "automated", "owner": "DESKTOP-SURFACE-DECLARED-001", "targets": ["windows", "macos"] },
     { "api": "lx.surface.get", "mode": "automated", "owner": "DESKTOP-SURFACE-WINDOW-001", "targets": ["windows", "macos"] },
     { "api": "lx.surface.openApp", "mode": "automated", "owner": "DESKTOP-DYNAMIC-MAIN-001", "targets": ["windows", "macos"] },
-    { "api": "lx.shell.openBuiltin", "mode": "automated", "owner": "DESKTOP-BROWSER-001", "targets": ["windows", "macos"] },
     { "api": "lx.ui.toast", "mode": "automated", "owner": "UI-FEEDBACK-001" },
     { "api": "lx.shell.sidebarActions.replace", "mode": "automated", "owner": "HOSTAPP-SIDEBAR-001" },
     { "api": "lx.app.moreActions.replace", "mode": "external-ui", "owner": "PEND-MORE-ACTIONS-001" },

@@ -1,5 +1,5 @@
 /**
- * The lxapp the page and flow specs drive. The GPU showcase runs these specs
+ * The lxapp the page specs drive. The GPU showcase runs these specs
  * too and names itself before importing them (its `tests/shared-setup.ts`).
  */
 export const SHOWCASE_APP_ID: string =

@@ -6,8 +6,7 @@ use super::embed_cache::EmbedCache;
 use super::hash::{hash_tree, path_key, sha256_hex};
 use super::lxapp_package::resolve_lxapp_package;
 use crate::config::{
-    BROWSER_CONTROL_PROTOCOL_VERSION, HOST_CONFIG_FILE, LXAPP_BUILD_CONFIG_FILE, LingXiaConfig,
-    ResourceBundleConfig,
+    HOST_CONFIG_FILE, LXAPP_BUILD_CONFIG_FILE, LingXiaConfig, ResourceBundleConfig,
 };
 use crate::lxapp;
 use crate::platform::BuildProfile;
@@ -492,7 +491,6 @@ fn prepare_lxapp_plan(
 struct LxAppMetadata {
     app_id: String,
     version: String,
-    control_protocol_version: Option<u32>,
 }
 
 fn read_lxapp_metadata(path: &Path) -> Result<LxAppMetadata> {
@@ -516,25 +514,9 @@ fn read_lxapp_metadata(path: &Path) -> Result<LxAppMetadata> {
             path.display()
         )
     })?;
-    let control_protocol_version = value
-        .get("controlProtocolVersion")
-        .map(|value| {
-            value
-                .as_u64()
-                .and_then(|version| u32::try_from(version).ok())
-                .ok_or_else(|| {
-                    anyhow!(
-                        "controlProtocolVersion in {} must be an unsigned 32-bit integer",
-                        path.display()
-                    )
-                })
-        })
-        .transpose()?;
-
     Ok(LxAppMetadata {
         app_id: app_id.to_string(),
         version: version.to_string(),
-        control_protocol_version,
     })
 }
 
@@ -547,20 +529,7 @@ fn validate_browser_webui_metadata(metadata: &LxAppMetadata, path: &Path) -> Res
             path.display()
         ));
     }
-    match metadata.control_protocol_version {
-        Some(BROWSER_CONTROL_PROTOCOL_VERSION) => Ok(()),
-        Some(version) => Err(anyhow!(
-            "browser webui controlProtocolVersion must be {}, got {} in {}",
-            BROWSER_CONTROL_PROTOCOL_VERSION,
-            version,
-            path.display()
-        )),
-        None => Err(anyhow!(
-            "browser webui manifest {} must declare controlProtocolVersion: {}",
-            path.display(),
-            BROWSER_CONTROL_PROTOCOL_VERSION
-        )),
-    }
+    Ok(())
 }
 
 fn hash_resource_bundle_inputs(plan: &ResourceBundlePlan) -> Result<String> {
@@ -763,50 +732,10 @@ mod tests {
     }
 
     #[test]
-    fn browser_webui_manifest_requires_exact_control_protocol_version() {
+    fn browser_webui_manifest_requires_the_reserved_app_id() {
         let temp = tempfile::tempdir().unwrap();
         let manifest = temp.path().join("lxapp.json");
-
-        for (protocol, accepted) in [
-            (None, false),
-            (Some(2), false),
-            (Some(3), true),
-            (Some(4), false),
-        ] {
-            let protocol = protocol
-                .map(|version| format!(r#", "controlProtocolVersion": {version}"#))
-                .unwrap_or_default();
-            fs::write(
-                &manifest,
-                format!(
-                    r#"{{"appId":"{}","version":"1.2.3"{protocol}}}"#,
-                    BROWSER_SHELL_WEBUI_APP_ID
-                ),
-            )
-            .unwrap();
-            let metadata = read_lxapp_metadata(&manifest).unwrap();
-            let result = validate_browser_webui_metadata(&metadata, &manifest);
-            assert_eq!(result.is_ok(), accepted, "{result:?}");
-            if !accepted {
-                assert!(
-                    result
-                        .unwrap_err()
-                        .to_string()
-                        .contains("controlProtocolVersion")
-                );
-            }
-        }
-    }
-
-    #[test]
-    fn browser_webui_manifest_still_requires_the_reserved_app_id() {
-        let temp = tempfile::tempdir().unwrap();
-        let manifest = temp.path().join("lxapp.json");
-        fs::write(
-            &manifest,
-            r#"{"appId":"example.fake","version":"1.2.3","controlProtocolVersion":3}"#,
-        )
-        .unwrap();
+        fs::write(&manifest, r#"{"appId":"example.fake","version":"1.2.3"}"#).unwrap();
 
         let metadata = read_lxapp_metadata(&manifest).unwrap();
         let error = validate_browser_webui_metadata(&metadata, &manifest)

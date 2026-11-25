@@ -8,7 +8,6 @@ fn main() {
     let _ = lxapp::host::__install_app_resource_grant_resolver;
     let _ = lxapp::host::__install_devtools_resource_grant_resolver;
     let _ = lxapp::host::AuthenticatedCaller::LxAppSession;
-    let _ = lxapp::host::AuthenticatedCaller::BrowserDocument;
     let _ = lxapp::add_global_page_script;
     let _ = lxapp::LxApp::add_page_script;
     let _ = lingxia::__init_with_native_authority;

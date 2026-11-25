@@ -6,9 +6,7 @@ use futures::{
     StreamExt,
     channel::{mpsc, oneshot},
 };
-use lingxia_platform::traits::app_runtime::{
-    AppRuntime, BuiltinBrowserPage, OpenUrlRequest, OpenUrlTarget,
-};
+use lingxia_platform::traits::app_runtime::{AppRuntime, OpenUrlRequest, OpenUrlTarget};
 use lingxia_platform::traits::ui::WindowChrome;
 use lingxia_platform::traits::ui::{SurfaceKind, SurfacePosition};
 use lxapp::{
@@ -232,7 +230,7 @@ pub(crate) fn init(ctx: &JSContext) -> JSResult<()> {
     ctx.register_hidden_class::<JSSurface>()?;
     register_surface_api(ctx)?;
     register_surface_namespace(ctx)?;
-    register_shell_surface_api(ctx)
+    Ok(())
 }
 
 rong::js_api! {
@@ -273,16 +271,6 @@ rong::js_api! {
     }
 }
 
-rong::js_api! {
-    fn register_shell_surface_api(ctx) {
-        namespace ShellApi = shell_namespace(ctx)?;
-        fn openBuiltin(
-            ts_params = "page: BuiltinShellPage",
-            ts_return = "Promise<BuiltinSurface>"
-        ) = shell_open_builtin;
-    }
-}
-
 /// `lx.surface`, created on demand so registration order does not matter.
 fn surface_namespace(ctx: &JSContext) -> JSResult<JSObject> {
     let lx = ctx.global().get::<_, JSObject>("lx")?;
@@ -293,19 +281,6 @@ fn surface_namespace(ctx: &JSContext) -> JSResult<JSObject> {
             // Generic over the page name, which `js_api` cannot declare; typed in the prelude.
             obj.set("openPage", JSFunc::new(ctx, open_page)?.name("openPage")?)?;
             lx.set("surface", obj.clone())?;
-            Ok(obj)
-        }
-    }
-}
-
-/// `lx.shell`, shared with `crate::ui::shell`.
-fn shell_namespace(ctx: &JSContext) -> JSResult<JSObject> {
-    let lx = ctx.global().get::<_, JSObject>("lx")?;
-    match lx.get::<_, JSObject>("shell") {
-        Ok(obj) => Ok(obj),
-        Err(_) => {
-            let obj = JSObject::new(ctx);
-            lx.set("shell", obj.clone())?;
             Ok(obj)
         }
     }
@@ -680,7 +655,7 @@ pub(crate) async fn open_url_text(
     copy_options(&options, &spec, &["edge", "size"])?;
 
     let key = read_surface_key(&options)?;
-    let opened = open_url_spec(ctx.clone(), &spec, None).await?;
+    let opened = open_url_spec(ctx.clone(), &spec).await?;
     browser_tab_handle(&ctx, opened, &realized, key)
 }
 
@@ -855,30 +830,6 @@ fn declared_lxapp(id: &str) -> Option<String> {
         .iter()
         .find(|item| item.id == id && item.content.kind.is_lxapp())
         .map(|item| item.content.app_id.clone())
-}
-
-/// Open a host builtin page such as downloads. Control app only.
-///
-/// @throws {E_NOT_FOUND} A page other than `downloads`.
-/// @throws {E_PERMISSION_DENIED} From an lxapp other than the Control app.
-async fn shell_open_builtin(ctx: JSContext, page: JSValue) -> JSResult<JSObject> {
-    let (invocation, page) =
-        authorization::require_before_decode(&ctx, LogicRoute::ShellOpenBuiltin, || {
-            shell_string_argument(page, "lx.shell.openBuiltin page")
-        })?;
-    let url = match page.trim() {
-        "downloads" => "lingxia://downloads",
-        other => {
-            return Err(surface_error(
-                SurfaceErrorCode::NotDeclared,
-                format!("unknown builtin page: {other}"),
-            ));
-        }
-    };
-    let spec = JSObject::new(&ctx);
-    spec.set("url", url)?;
-    open_url_spec(ctx.clone(), &spec, Some(&invocation)).await?;
-    builtin_surface_handle(&ctx)
 }
 
 /// Open a declared surface as a keyed instance or at another placement. Control app only.
@@ -1301,15 +1252,6 @@ fn owned_browser_tab_handle(
     let token = register_app_handler(ctx, BROWSER_TAB_CLOSED_EVENT, native_handler)?;
     *native_unsub.borrow_mut() = Some(app_handler_unsub(ctx, BROWSER_TAB_CLOSED_EVENT, token));
     finish_handle(ctx, &handle, "tab", Some(realized), key, Some("tab"))
-}
-
-/// A `BuiltinSurface` for a host product page. The shell owns its lifetime,
-/// so the handle reports identity and leaves control to the shell.
-fn builtin_surface_handle(ctx: &JSContext) -> JSResult<JSObject> {
-    let handle = JSObject::new(ctx);
-    handle.set("alive", true)?;
-    handle.set("visible", true)?;
-    finish_handle(ctx, &handle, "builtin", Some("main"), None, None)
 }
 
 fn shell_string_argument(value: JSValue, label: &str) -> JSResult<String> {
@@ -1751,45 +1693,10 @@ fn page_surface_options(ctx: &JSContext, spec: &JSObject) -> JSResult<JSValue> {
 /// With `as: 'aside'` the url is docked beside the main as a closable browser
 /// tab strip on desktop. Compact hosts project the same request into the
 /// full-screen in-app browser with aside chrome.
-async fn open_url_spec(
-    ctx: JSContext,
-    spec: &JSObject,
-    privileged_invocation: Option<&lxapp::host::HostInvocationContext>,
-) -> JSResult<JSValue> {
+async fn open_url_spec(ctx: JSContext, spec: &JSObject) -> JSResult<JSValue> {
     let raw_url = read_required_string(spec, "url")?;
     let lxapp = LxApp::from_ctx(&ctx)?;
     let trimmed_url = raw_url.trim_matches(|character: char| character.is_ascii_whitespace());
-
-    match classify_logic_url(trimmed_url) {
-        LogicUrlClassification::BuiltinDownloads => {
-            // URL classification only reserves the target. Authority comes
-            // from the fixed-policy shell entry that supplied this context.
-            ensure_fixed_builtin_entry(privileged_invocation.is_some())?;
-            validate_builtin_browser_surface_keys(spec)?;
-            if !lingxia_app_context::browser_enabled() {
-                return Err(surface_error(
-                    SurfaceErrorCode::UnsupportedPlacement,
-                    "built-in browser pages require capabilities.browser",
-                ));
-            }
-            lxapp
-                .runtime
-                .open_builtin_browser_page(BuiltinBrowserPage::Downloads)
-                .map_err(|err| match err {
-                    lingxia_platform::error::PlatformError::NotSupported(_) => {
-                        surface_error(SurfaceErrorCode::UnsupportedPlacement, err)
-                    }
-                    _ => surface_error(SurfaceErrorCode::Failed, err),
-                })?;
-            return Ok(JSValue::null(&ctx));
-        }
-        LogicUrlClassification::ReservedInternal => {
-            return Err(invalid_surface_target(
-                "only lingxia://downloads is a public built-in URL",
-            ));
-        }
-        LogicUrlClassification::External => {}
-    }
 
     match read_optional_string(spec, "as")?.as_deref().map(str::trim) {
         Some("aside") => {
@@ -1822,46 +1729,6 @@ async fn open_url_spec(
             ),
         )),
     }
-}
-
-fn ensure_fixed_builtin_entry(has_control_invocation: bool) -> JSResult<()> {
-    if has_control_invocation {
-        return Ok(());
-    }
-    Err(invalid_surface_target(
-        "lingxia://downloads is reserved; use lx.shell.openBuiltin('downloads')",
-    ))
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum LogicUrlClassification {
-    BuiltinDownloads,
-    ReservedInternal,
-    External,
-}
-
-fn classify_logic_url(url: &str) -> LogicUrlClassification {
-    if url == "lingxia://downloads" {
-        return LogicUrlClassification::BuiltinDownloads;
-    }
-    if url
-        .get(.."lingxia:".len())
-        .is_some_and(|prefix| prefix.eq_ignore_ascii_case("lingxia:"))
-    {
-        return LogicUrlClassification::ReservedInternal;
-    }
-    LogicUrlClassification::External
-}
-
-fn validate_builtin_browser_surface_keys(spec: &JSObject) -> JSResult<()> {
-    let keys = spec.keys_as::<String>()?;
-    if keys.len() == 1 && keys[0] == "url" {
-        return Ok(());
-    }
-    Err(surface_error(
-        SurfaceErrorCode::InvalidArg,
-        "a built-in browser surface accepts only the url field",
-    ))
 }
 
 /// Hand a URL to the OS: `https` opens the system browser, `tel:` and
@@ -2037,10 +1904,8 @@ fn lxapp_surface_handle(
                 }
                 lxapp::close_lxapp(&id)
                     .map_err(|err| surface_error(SurfaceErrorCode::Failed, err.to_string()))?;
-                // Closing the provider alone leaves a dead main/aside node in
-                // the window graph. Remove that shell identity as part of the
-                // same operation so the successor and every retained handle
-                // converge before the promise resolves.
+                // `close_lxapp` drops the window node; the shell still holds the
+                // surface record, so forget it before the promise resolves.
                 let _ = shell.forget_surface_with_reason(&surface_id, "programmatic");
                 emit_lxapp_handle_close(&handle, "programmatic")?;
                 let _ = notify_surface_closed(&surface_id, "programmatic");
@@ -3821,47 +3686,6 @@ mod tests {
         }
         assert!(!external_scheme_allowed("http"));
         assert!(!external_scheme_allowed("custom+handler"));
-    }
-
-    #[test]
-    fn downloads_is_reserved_for_the_fixed_shell_entry() {
-        assert_eq!(
-            classify_logic_url("lingxia://downloads"),
-            LogicUrlClassification::BuiltinDownloads
-        );
-        for rejected in [
-            "lingxia://settings",
-            "Lingxia://settings",
-            "lingxia://settings/",
-            "lingxia://settings?tab=privacy",
-            "lingxia://settings#clear-site-data?tabId=tab-1",
-            "lingxia://downloads#active",
-            "lingxia://history",
-        ] {
-            assert_eq!(
-                classify_logic_url(rejected),
-                LogicUrlClassification::ReservedInternal,
-                "{rejected}"
-            );
-        }
-        assert_eq!(
-            classify_logic_url("https://example.com"),
-            LogicUrlClassification::External
-        );
-        assert!(ensure_fixed_builtin_entry(false).is_err());
-        assert!(ensure_fixed_builtin_entry(true).is_ok());
-    }
-
-    #[test]
-    fn settings_is_reserved_before_ordinary_or_control_caller_authorization() {
-        for caller_is_control in [false, true] {
-            let classification = classify_logic_url("lingxia://settings?tab=privacy");
-            assert_eq!(
-                classification,
-                LogicUrlClassification::ReservedInternal,
-                "caller_is_control={caller_is_control}"
-            );
-        }
     }
 
     #[test]

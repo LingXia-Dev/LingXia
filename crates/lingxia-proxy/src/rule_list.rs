@@ -153,6 +153,12 @@ fn extract_domain(rule: &str) -> Option<&str> {
     None
 }
 
+/// How many domains a base64-encoded ABP rule list routes.
+#[cfg(feature = "rule-list-routing")]
+pub fn count_encoded(b64: &str) -> Result<usize, ProxyError> {
+    Ok(Rules::from_encoded(b64)?.suffixes.len())
+}
+
 // ── Router ────────────────────────────────────────────────────────────────────
 
 /// Routes GFW-blocked domains through `upstream`; everything else goes direct.
@@ -262,4 +268,48 @@ pub async fn fetch_encoded_from_url(
     }
 
     Ok(body)
+}
+
+#[cfg(all(test, feature = "rule-list-routing"))]
+mod count_tests {
+    use super::count_encoded;
+    use base64::Engine as _;
+
+    fn encode(text: &str) -> String {
+        base64::engine::general_purpose::STANDARD.encode(text)
+    }
+
+    #[test]
+    fn an_empty_list_routes_nothing() {
+        assert_eq!(count_encoded(&encode("")).unwrap(), 0);
+    }
+
+    #[test]
+    fn comments_headers_and_blank_lines_are_not_rules() {
+        let text = "[AutoProxy 0.2.9]\n! Checksum: abc\n\n   \n! comment\n";
+        assert_eq!(count_encoded(&encode(text)).unwrap(), 0);
+    }
+
+    #[test]
+    fn a_real_shaped_excerpt_counts_each_routed_domain_once() {
+        let text = "[AutoProxy 0.2.9]\n\
+            ! Expires: 6h\n\
+            ||google.com\n\
+            ||google.com^\n\
+            |https://www.example.org/path\n\
+            .twitter.com\n\
+            youtube.com\n\
+            @@||cn.example.com\n\
+            /^https?:\\/\\/[^\\/]+blogspot\\.(.*)/\n\
+            ||*.wildcard.com\n\
+            example.net/path\n";
+        // google.com (twice), www.example.org, .twitter.com, youtube.com; the exception, regex,
+        // wildcard and path rules route nothing.
+        assert_eq!(count_encoded(&encode(text)).unwrap(), 4);
+    }
+
+    #[test]
+    fn a_list_that_is_not_base64_is_an_error() {
+        assert!(count_encoded("not base64 !!").is_err());
+    }
 }

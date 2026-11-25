@@ -110,13 +110,6 @@ pub(crate) enum UiCommand {
         history_url: Option<String>,
         resp: Sender<StdResult<()>>,
     },
-    LoadTrustedHtml {
-        html: String,
-        base_url: String,
-        history_url: Option<String>,
-        intent: crate::TrustedLoadIntent,
-        resp: Sender<StdResult<()>>,
-    },
     ExecJs {
         js: String,
         resp: Sender<StdResult<()>>,
@@ -292,7 +285,6 @@ pub(crate) struct UiState {
     pub(crate) webtag: WebTag,
     pub(crate) webtag_key: String,
     pub(crate) memory_pages: Arc<Mutex<HashMap<String, Vec<u8>>>>,
-    pub(crate) document_authority: Arc<document::WindowsDocumentAuthority>,
     pub(crate) ephemeral_user_data_dir: Option<PathBuf>,
     /// Captured network entries (shared with the CDP event handlers).
     pub(crate) network_log: Arc<Mutex<network::NetworkLog>>,
@@ -719,22 +711,6 @@ impl WebViewInner {
         .map_err(|err| err.into_webview_error("read network capture"))?
     }
 
-    /// Arm the host-issued token on this WebView's STA immediately before the
-    /// native navigation call. `NavigationStarting` consumes and attests it.
-    pub(crate) fn load_trusted_data(
-        &self,
-        intent: crate::TrustedLoadIntent,
-        request: LoadDataRequest<'_>,
-    ) -> StdResult<()> {
-        self.dispatch_command(|resp| UiCommand::LoadTrustedHtml {
-            html: request.data.to_string(),
-            base_url: request.base_url.to_string(),
-            history_url: request.history_url.map(str::to_string),
-            intent,
-            resp,
-        })
-    }
-
     /// Invoke a Chrome DevTools Protocol method and return its raw JSON
     /// result. Backs the input automation dispatch.
     pub(super) fn dispatch_cdp_command(
@@ -1125,7 +1101,6 @@ type WebViewControllerSetup = (
     HostingMode,
     ICoreWebView2,
     Arc<Mutex<HashMap<String, Vec<u8>>>>,
-    Arc<document::WindowsDocumentAuthority>,
     EphemeralProfileGuard,
 );
 
@@ -1214,8 +1189,11 @@ pub(crate) fn run_ui_thread_inner(
         if effective_options.rules().embed_mailbox {
             install_embed_mailbox(&webview)?;
         }
+        #[cfg(feature = "webview-input")]
+        if effective_options.rules().page_console_recorder {
+            install_page_console_recorder(&webview)?;
+        }
         let memory_pages = Arc::new(Mutex::new(HashMap::new()));
-        let document_authority = Arc::new(document::WindowsDocumentAuthority::default());
         register_event_handlers(
             &env,
             &webview,
@@ -1223,27 +1201,24 @@ pub(crate) fn run_ui_thread_inner(
             native_view_id,
             &effective_options.registered_schemes,
             memory_pages.clone(),
-            Arc::clone(&document_authority),
         )?;
         Ok((
             controller,
             hosting,
             webview,
             memory_pages,
-            document_authority,
             ephemeral_profile,
         ))
     })();
 
-    let (controller, hosting, webview, memory_pages, document_authority, mut ephemeral_profile) =
-        match setup {
-            Ok(parts) => parts,
-            Err(err) => {
-                let _ = startup_tx.send(Err(err.clone()));
-                destroy_webview_parent(webtag.key(), native_view);
-                return Err(err);
-            }
-        };
+    let (controller, hosting, webview, memory_pages, mut ephemeral_profile) = match setup {
+        Ok(parts) => parts,
+        Err(err) => {
+            let _ = startup_tx.send(Err(err.clone()));
+            destroy_webview_parent(webtag.key(), native_view);
+            return Err(err);
+        }
+    };
 
     let (command_tx, command_rx) = mpsc::channel();
 
@@ -1267,8 +1242,8 @@ pub(crate) fn run_ui_thread_inner(
             }
         }
     } else {
-        // BrowserRelaxed control documents use the V3-bound main WebMessage
-        // channel; CDP has no document-session binding and remains disabled.
+        // Withheld profiles may show external content; CDP console capture
+        // stays off for them.
         Vec::new()
     };
 
@@ -1298,7 +1273,6 @@ pub(crate) fn run_ui_thread_inner(
         webtag: webtag.clone(),
         webtag_key,
         memory_pages,
-        document_authority,
         ephemeral_user_data_dir: ephemeral_profile.take(),
         network_log: Arc::new(Mutex::new(network::NetworkLog::default())),
         network_receivers: Vec::new(),
@@ -1673,6 +1647,21 @@ pub(crate) fn handle_command(state: &mut UiState, command: UiCommand) -> StdResu
         } => {
             let navigation_url = history_url.unwrap_or_else(|| base_url.clone());
             clear_memory_pages(&state.memory_pages);
+            // about:blank never reaches WebResourceRequested, so the HTML goes in as a string
+            // document, which WebView2 reports at about:blank.
+            if navigation_url.eq_ignore_ascii_case("about:blank") {
+                let result = unsafe {
+                    let html = CoTaskMemPWSTR::from(html.as_str());
+                    state
+                        .webview
+                        .NavigateToString(*html.as_ref().as_pcwstr())
+                        .map_err(|err| {
+                            WebViewError::WebView(format!("NavigateToString failed: {err}"))
+                        })
+                };
+                let _ = resp.send(result);
+                return Ok(false);
+            }
             store_memory_page(
                 &state.memory_pages,
                 &navigation_url,
@@ -1688,38 +1677,6 @@ pub(crate) fn handle_command(state: &mut UiState, command: UiCommand) -> StdResu
                     .Navigate(*url.as_ref().as_pcwstr())
                     .map_err(|err| WebViewError::WebView(format!("Navigate failed: {err}")))
             };
-            let _ = resp.send(result);
-        }
-        UiCommand::LoadTrustedHtml {
-            html,
-            base_url,
-            history_url,
-            intent,
-            resp,
-        } => {
-            let navigation_url = history_url.unwrap_or_else(|| base_url.clone());
-            clear_memory_pages(&state.memory_pages);
-            store_memory_page(
-                &state.memory_pages,
-                &navigation_url,
-                prepare_navigation_html(&html, &base_url, &navigation_url),
-            );
-            if navigation_url != base_url {
-                store_memory_page(&state.memory_pages, &base_url, html.into_bytes());
-            }
-            if let Some(replaced) = state.document_authority.arm(intent, navigation_url.clone()) {
-                normalizer::revoke_trusted_load(&state.webtag, state.native_view_id, replaced);
-            }
-            let result = unsafe {
-                let url = CoTaskMemPWSTR::from(navigation_url.as_str());
-                state
-                    .webview
-                    .Navigate(*url.as_ref().as_pcwstr())
-                    .map_err(|err| WebViewError::WebView(format!("Navigate failed: {err}")))
-            };
-            if result.is_err() {
-                state.document_authority.revoke_if_matches(intent);
-            }
             let _ = resp.send(result);
         }
         UiCommand::ExecJs { js, resp } => {

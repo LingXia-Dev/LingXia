@@ -32,7 +32,7 @@ pub use lxapp::host::NativeDevtoolsAuthority;
 pub use lxapp::host::NativeHostRuntimeAuthority;
 
 pub use lxapp::host;
-pub use lxapp::host::{ChannelContext, ChannelMessage, StreamContext};
+pub use lxapp::host::{ChannelContext, ChannelMessage, PageState, StreamContext};
 /// Mark a development Runner host before SDK initialization.
 pub use lxapp::register_runner_host;
 // Required by expansions of `#[lingxia::native]`; host applications should
@@ -95,32 +95,14 @@ impl RuntimeInfo {
         settings_destination::resolve_settings_destination()
     }
 
-    #[cfg(feature = "browser-runtime")]
+    /// Opens a browser system page (`settings`, `downloads`, …) as its control surface.
     #[doc(hidden)]
-    pub fn open_trusted_browser_page(
+    pub fn open_browser_system_page(
         &self,
-        url: &str,
-        tab_id: Option<&str>,
-    ) -> std::result::Result<String, lxapp::LxAppError> {
-        lingxia_browser::open_trusted(crate::browser::native_control_authority()?, url, tab_id)
-    }
-
-    #[cfg(feature = "browser-runtime")]
-    #[doc(hidden)]
-    pub fn open_trusted_browser_page_for_app(
-        &self,
-        app_id: &str,
-        session_id: u64,
-        url: &str,
-        tab_id: Option<&str>,
-    ) -> std::result::Result<String, lxapp::LxAppError> {
-        lingxia_browser::open_trusted_for_app(
-            crate::browser::native_control_authority()?,
-            app_id,
-            session_id,
-            url,
-            tab_id,
-        )
+        page: &str,
+        query: Option<&serde_json::Value>,
+    ) -> std::result::Result<(), lxapp::LxAppError> {
+        crate::browser::open_system_page(page, query)
     }
 }
 

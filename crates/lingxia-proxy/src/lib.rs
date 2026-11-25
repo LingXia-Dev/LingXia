@@ -11,7 +11,7 @@ pub mod capture;
 #[cfg(feature = "capture")]
 pub(crate) mod mitm;
 
-pub use error::ProxyError;
+pub use error::{FetchFailure, ProxyError};
 pub use router::{
     FixedRouter, Profile, ProfileRouter, ProxyRouter, RouteDecision, Socks5Credentials,
     UpstreamConfig,

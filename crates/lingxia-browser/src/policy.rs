@@ -6,10 +6,9 @@ use crate::types::{
 };
 use std::time::{Duration, Instant};
 
-pub(crate) const LINGXIA_SCHEME: &str = "lingxia";
 // `file` loads in-webview so the user can open local files from the address bar
 // (the WKWebView still gates actual reads to the granted directory).
-const BROWSER_IN_WEBVIEW_SCHEMES: &[&str] = &["http", "https", "lx", "lingxia", "file"];
+const BROWSER_IN_WEBVIEW_SCHEMES: &[&str] = &["http", "https", "lx", "file"];
 const BROWSER_NON_EXTERNAL_SCHEMES: &[&str] = &["about", "data", "blob", "javascript"];
 const TRANSIENT_USER_ACTIVATION_TTL: Duration = Duration::from_secs(10);
 
@@ -106,30 +105,6 @@ pub fn extract_url_scheme(raw: &str) -> Option<String> {
         return None;
     }
     Some(scheme.to_ascii_lowercase())
-}
-
-/// Whether a `lingxia://` URL maps to the startup/newtab page or another internal browser page.
-///
-/// - `lingxia://newtab` (or bare `lingxia://`) → `Some(true)`
-/// - Registered `lingxia://<route>` values resolve via the browser internal-page registry.
-///
-/// Returns `None` if `url` is not a `lingxia://` URL.
-pub fn is_lingxia_startup_url(url: &str) -> Option<bool> {
-    if extract_url_scheme(url).as_deref() != Some(LINGXIA_SCHEME) {
-        return None;
-    }
-    let host = lingxia_url_host(url);
-    Some(host.is_empty() || host == "newtab")
-}
-
-pub(crate) fn lingxia_url_host(url: &str) -> String {
-    url.split_once("://")
-        .map(|x| x.1)
-        .unwrap_or("")
-        .split(['/', '?', '#'])
-        .next()
-        .unwrap_or("")
-        .to_ascii_lowercase()
 }
 
 pub(crate) fn normalize_browser_target_url(raw: &str) -> String {
@@ -263,7 +238,7 @@ fn browser_policy_response(
 /// - `deny`: cancel navigation.
 ///
 /// Security model:
-/// - `http/https/file` stay in webview; `lx/lingxia` require the main frame.
+/// - `http/https/file` stay in webview; `lx` requires the main frame.
 /// - Potential external schemes require user gesture + main-frame navigation.
 /// - Non-external internal schemes (`javascript:`, `data:`, etc.) are denied.
 pub(crate) fn handle_browser_navigation_policy(
@@ -294,7 +269,7 @@ pub(crate) fn handle_browser_navigation_policy(
         return browser_policy_response(BrowserNavigationPolicyDecision::InWebview, None);
     }
 
-    if !request.is_main_frame && matches!(scheme.as_str(), "lx" | "lingxia") {
+    if !request.is_main_frame && scheme == "lx" {
         return browser_policy_response(
             BrowserNavigationPolicyDecision::Deny,
             Some("non_main_frame_internal"),
@@ -431,20 +406,6 @@ mod tests {
         assert_eq!(
             normalize_browser_target_url("http://例え.jp/路径"),
             "https://例え.jp/路径"
-        );
-    }
-
-    #[test]
-    fn lingxia_startup_host_ignores_path_query_and_fragment_delimiters() {
-        assert_eq!(
-            lingxia_url_host("lingxia://settings#clear-browsing-data"),
-            "settings"
-        );
-        assert_eq!(lingxia_url_host("lingxia://history/?q=deepseek"), "history");
-        assert_eq!(is_lingxia_startup_url("lingxia://newtab#top"), Some(true));
-        assert_eq!(
-            is_lingxia_startup_url("lingxia://settings#clear-browsing-data"),
-            Some(false)
         );
     }
 
@@ -661,42 +622,14 @@ mod tests {
     }
 
     #[test]
-    fn browser_nav_policy_allows_lingxia_in_webview() {
-        // `lingxia://` is served natively by the browser scheme handler — stay in-webview.
-        let response = handle_browser_navigation_policy(BrowserNavigationPolicyRequest {
-            raw_url: "lingxia://settings".to_string(),
-            has_user_gesture: false,
-            is_main_frame: true,
-        });
-        assert_eq!(
-            response.decision,
-            BrowserNavigationPolicyDecision::InWebview
-        );
-    }
-
-    #[test]
     fn browser_nav_policy_denies_internal_schemes_in_subframes() {
-        for raw_url in [
-            "lingxia://settings/history/downloads",
-            "lx://userdata/private.html",
-        ] {
-            let response = handle_browser_navigation_policy(BrowserNavigationPolicyRequest {
-                raw_url: raw_url.to_string(),
-                has_user_gesture: true,
-                is_main_frame: false,
-            });
-
-            assert_eq!(response.decision, BrowserNavigationPolicyDecision::Deny);
-            assert_eq!(response.reason.as_deref(), Some("non_main_frame_internal"));
-        }
-    }
-
-    #[test]
-    fn lingxia_newtab_is_startup_url() {
-        assert_eq!(is_lingxia_startup_url("lingxia://newtab"), Some(true));
-        assert_eq!(is_lingxia_startup_url("lingxia://"), Some(true));
-        assert_eq!(is_lingxia_startup_url("lingxia://downloads"), Some(false));
-        assert_eq!(is_lingxia_startup_url("https://example.com"), None);
+        let response = handle_browser_navigation_policy(BrowserNavigationPolicyRequest {
+            raw_url: "lx://userdata/private.html".to_string(),
+            has_user_gesture: true,
+            is_main_frame: false,
+        });
+        assert_eq!(response.decision, BrowserNavigationPolicyDecision::Deny);
+        assert_eq!(response.reason.as_deref(), Some("non_main_frame_internal"));
     }
 
     #[test]

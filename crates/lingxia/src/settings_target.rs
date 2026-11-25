@@ -268,7 +268,7 @@ fn validate_with_inventory(
                         matches!(
                             audience,
                             lxapp::host::RouteAudience::ControlAppOnly
-                                | lxapp::host::RouteAudience::ControlAppOrBrowserOnly
+                                | lxapp::host::RouteAudience::ControlAppOrSurface
                         )
                     },
                 )?;
@@ -294,8 +294,8 @@ fn validate_with_inventory(
                     |audience| {
                         matches!(
                             audience,
-                            lxapp::host::RouteAudience::BrowserControlOnly
-                                | lxapp::host::RouteAudience::ControlAppOrBrowserOnly
+                            lxapp::host::RouteAudience::ControlSurfaceOnly
+                                | lxapp::host::RouteAudience::ControlAppOrSurface
                         )
                     },
                 )?;
@@ -656,7 +656,7 @@ mod tests {
         _: &str,
     ) -> Result<Option<lxapp::host::EffectiveRoutePolicy>, lxapp::host::RoutePolicyConflict> {
         Ok(Some(lxapp::host::EffectiveRoutePolicy::new(
-            lxapp::host::RouteAudience::BrowserControlOnly,
+            lxapp::host::RouteAudience::ControlSurfaceOnly,
         )))
     }
 
@@ -933,7 +933,7 @@ mod tests {
                 &control_assets(),
                 |_| {
                     Ok(Some(lxapp::host::EffectiveRoutePolicy::new(
-                        lxapp::host::RouteAudience::BrowserControlOnly,
+                        lxapp::host::RouteAudience::ControlSurfaceOnly,
                     )))
                 },
                 false,
@@ -961,12 +961,12 @@ mod tests {
             &browser_assets(),
             |_| {
                 Ok(Some(lxapp::host::EffectiveRoutePolicy::new(
-                    lxapp::host::RouteAudience::ControlAppOrBrowserOnly,
+                    lxapp::host::RouteAudience::ControlAppOrSurface,
                 )))
             },
             true,
         )
-        .expect("ControlAppOrBrowserOnly is compatible with both control target classes");
+        .expect("ControlAppOrSurface is compatible with both control target classes");
     }
 
     #[test]
@@ -997,7 +997,7 @@ mod tests {
             lxapp::host::register_host_route(
                 "settings_target_policy_test",
                 "save",
-                lxapp::host::RouteAudience::BrowserControlOnly,
+                lxapp::host::RouteAudience::ControlSurfaceOnly,
                 Arc::new(TestHostHandler),
             );
         });

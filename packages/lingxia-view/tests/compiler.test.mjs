@@ -1061,3 +1061,19 @@ test('a written-out path over the segment limit fails the build at its d; a comp
     await build();
   });
 });
+
+test('GPU View rejects importing @lingxia/native directly', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'lx-view-native-'));
+  try {
+    await writeFile(
+      join(dir, 'page.tsx'),
+      `import { native } from '@lingxia/native';\nexport function render() { return <text>{String(Boolean(native))}</text>; }\n`,
+    );
+    await assert.rejects(
+      () => buildPages(dir, ['page.tsx'], join(dir, 'dist')),
+      /UI_LX: @lingxia\/native is Logic-only/,
+    );
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});

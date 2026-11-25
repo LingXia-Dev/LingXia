@@ -111,8 +111,8 @@ mod tests {
                 session_id: 1,
             },
             SettingsDestinationResolution::BrowserControlPage {
-                tab_id: "settings".to_string(),
-                browser_session_id: 2,
+                app_id: "app.lingxia.browser".to_string(),
+                session_id: 2,
             },
             SettingsDestinationResolution::NativeAction {
                 action_id: "preferences".to_string(),
@@ -172,8 +172,8 @@ mod tests {
             || {
                 called.set(true);
                 Ok(SettingsDestinationResolution::BrowserControlPage {
-                    tab_id: "settings".to_string(),
-                    browser_session_id: 1,
+                    app_id: "app.lingxia.browser".to_string(),
+                    session_id: 1,
                 })
             },
             |_| panic!("runtime spoof must not present a destination"),

@@ -18,22 +18,6 @@ pub(crate) fn register_bundled_app() {
     lingxia_browser::register_bundled_app();
 }
 
-pub(crate) fn navigate_trusted_control_page(
-    authority: &lxapp::NativeControlPlaneAuthority,
-    url: &str,
-) -> Result<(String, u64), lxapp::LxAppError> {
-    #[cfg(feature = "browser-runtime")]
-    {
-        let navigation = lingxia_browser::navigate_trusted_control_page(authority, url)?;
-        Ok((navigation.tab_id, navigation.browser_session_id))
-    }
-    #[cfg(not(feature = "browser-runtime"))]
-    {
-        let _ = (authority, url);
-        unavailable()
-    }
-}
-
 #[cfg(all(feature = "browser-runtime", not(feature = "browser-shell")))]
 pub(crate) fn install_runtime_once() {
     use std::sync::OnceLock;
@@ -48,19 +32,10 @@ pub(crate) fn register_bundled_app_once() {
     REGISTERED.get_or_init(lingxia_browser::register_bundled_app);
 }
 
-#[cfg(all(feature = "browser-runtime", not(feature = "browser-shell")))]
-pub(crate) fn warmup() {
-    lingxia_browser::warmup();
-}
-
 #[cfg(any(target_os = "ios", target_os = "macos"))]
 pub(crate) fn open(url: &str, tab_id: Option<&str>) -> Result<String, lxapp::LxAppError> {
     #[cfg(feature = "browser-runtime")]
-    return if lingxia_browser::extract_url_scheme(url).as_deref() == Some("lingxia") {
-        lingxia_browser::open_trusted(super::native_control_authority()?, url, tab_id)
-    } else {
-        lingxia_browser::open(url, tab_id)
-    };
+    return lingxia_browser::open(url, tab_id);
     #[cfg(not(feature = "browser-runtime"))]
     {
         let _ = (url, tab_id);
@@ -83,33 +58,54 @@ pub(crate) fn open_for_app(
     }
 }
 
-/// Opens one host-selected internal browser route for an existing app-owned
-/// tab. The native authority is supplied here rather than crossing the platform
-/// FFI, so ordinary app navigation cannot opt into trusted control pages.
+/// Opens a browser system page (`app.lingxia.browser`) as its control surface.
+/// The native authority stays in Rust, so platform chrome names only the page.
+pub(crate) fn open_system_page(
+    page: &str,
+    query: Option<&serde_json::Value>,
+) -> Result<(), lxapp::LxAppError> {
+    #[cfg(feature = "browser-runtime")]
+    {
+        let options = lxapp::LxAppStartupOptions::for_page(Some(page), query)
+            .map_err(lxapp::LxAppError::InvalidParameter)?;
+        lxapp::open_control_surface_lxapp_page(
+            super::native_control_authority()?,
+            lingxia_browser::BUILTIN_BROWSER_APPID,
+            options,
+        )?;
+        Ok(())
+    }
+    #[cfg(not(feature = "browser-runtime"))]
+    {
+        let _ = (page, query);
+        unavailable()
+    }
+}
+
+/// [`open_system_page`] for platform FFI: `query_json` is a JSON object or empty.
 #[cfg(any(
     target_os = "ios",
     target_os = "macos",
     target_os = "android",
     target_env = "ohos"
 ))]
-pub(crate) fn open_trusted_for_app(
-    appid: &str,
-    session_id: u64,
-    url: &str,
-    tab_id: Option<&str>,
-) -> Result<String, lxapp::LxAppError> {
-    #[cfg(feature = "browser-runtime")]
-    return lingxia_browser::open_trusted_for_app(
-        super::native_control_authority()?,
-        appid,
-        session_id,
-        url,
-        tab_id,
-    );
-    #[cfg(not(feature = "browser-runtime"))]
-    {
-        let _ = (appid, session_id, url, tab_id);
-        unavailable()
+pub(crate) fn open_system_page_json(page: &str, query_json: &str) -> bool {
+    let query = match query_json.trim() {
+        "" => None,
+        raw => match serde_json::from_str::<serde_json::Value>(raw) {
+            Ok(value) => Some(value),
+            Err(error) => {
+                log::error!("browser system page query is not JSON: {error}");
+                return false;
+            }
+        },
+    };
+    match open_system_page(page, query.as_ref()) {
+        Ok(()) => true,
+        Err(error) => {
+            log::error!("failed to open browser system page '{page}': {error}");
+            false
+        }
     }
 }
 

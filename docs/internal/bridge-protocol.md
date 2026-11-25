@@ -45,7 +45,7 @@ Every View speaks the same message families, routing rules, capability rules and
 
 | Transport | View | Encoding | Security envelope |
 |---|---|---|---|
-| **WebView** | an HTML document in a platform WebView | JSON frames over the WebView message path | one of two profiles, section 8 |
+| **WebView** | an HTML document in a platform WebView | JSON frames over the WebView message path | none on the frame; native page ownership and platform provenance, section 8 |
 | **GPU** | a `lingxia-view` session in the host process | typed Rust values, in process | none needed: same process, same trust |
 
 A renderer is chosen per lxapp (`renderer` in the built `lxapp.json`, which the CLI derives from the pages' exports); a page cannot pick its transport,
@@ -54,7 +54,7 @@ and neither transport can be negotiated into the other.
 The GPU transport is fully typed: state, requests, replies, events, streams and channels cross
 as Rust values walked to and from the engines, with no JSON text and no frame in either
 direction. It has no handshake frames; the connection generation and endpoint identity carry
-the trust the page and document-bound profiles prove on the WebView path.
+the trust the handshake and document generation establish on the WebView path.
 
 ## 3. Message families
 
@@ -91,9 +91,9 @@ transient or high-frequency payloads.
 | no dot | `page` |
 
 A mismatch MUST be rejected. `cap` is a routing-consistency check, not authentication: a
-correct `cap` MUST NOT satisfy a `CallerClass`, `RouteAudience`, `AppScope` or `DocumentSession`
-check. Native derives caller identity from the owning app session or the active browser
-`DocumentSession`; `appid`, URL, `role`, `cap` and payload fields MUST NOT raise it.
+correct `cap` MUST NOT satisfy a `CallerClass`, `RouteAudience` or `AppScope` check. Native
+derives caller identity from the owning lxapp session only; `appid`, URL, `role`, `cap` and
+payload fields MUST NOT raise it.
 
 | Backend | `req` | `notify` | `ch.open` |
 |---|---|---|---|
@@ -122,18 +122,16 @@ says):
 
 Rules:
 
-- Before `hello`, a WebView document consumes the native bootstrap exactly once: none means the
-  page profile (`[2]`); a valid one pins the document-bound profile (`[3]`); a present but
-  invalid one blocks the document, which then sends no frames. A profile never advertises
-  `[2, 3]`.
-- `helloAck` MUST match the nonce and the single required version; `ready` is ignored until a
-  valid `helloAck` was accepted.
+- `hello` advertises exactly `[2]`; any other version fails closed before a typed message is
+  built.
+- `helloAck` MUST match the nonce and version 2; `ready` is ignored until a valid `helloAck`
+  was accepted.
 - View MUST queue application frames until `ready`; a queued operation's timeout starts when the
   frame is actually sent. Bridge MUST reject premature frames with `BRIDGE_NOT_READY`.
 - The document tries the handshake at most three times, 10 s each; after that, queued requests
   and channels are rejected with `BRIDGE_HANDSHAKE_FAILED`.
-- Mixed-version traffic, a wrong binding, an unsupported or future version, a stale generation,
-  a subframe and an unproven transport all fail closed: none may install a connection, return
+- An unsupported or future version, a stale generation, a subframe and an unproven transport
+  all fail closed: none may install a connection, return
   a schema or reach route dispatch.
 - Navigation, reload, renderer loss, WebView replacement and teardown MUST revoke the connection
   with its queued and in-flight work; a stale completion MUST NOT be sent over a successor.
@@ -143,9 +141,8 @@ Rules:
 Every frame is a JSON object with `v` (version) and `kind`. `id` is opaque to the receiver,
 unique within the sender's active operations, and MUST NOT be reused before terminal
 completion. `seq` starts at `0` and is monotonic per request stream or per channel direction;
-receivers MUST tolerate in-flight frames arriving after `cancel` or `ch.close`. Examples use
-`v: 2`; the document-bound profile sends the same payloads with `v: 3` and its envelope
-(section 8.2).
+receivers MUST tolerate in-flight frames arriving after `cancel` or `ch.close`. Every WebView
+frame carries `v: 2`.
 
 ### 6.1 Requests
 
@@ -232,43 +229,12 @@ cost one render), and `flush()` resolves on `Acked`, one refresh before the fram
 
 ## 8. WebView transport
 
-### 8.1 Profiles
+### 8.1 Page ownership
 
-Native selects the profile for a document; the page can neither choose nor negotiate down.
+Every WebView document speaks `v: 2`. Identity comes from the native page that owns the
+WebView; a frame is not a credential, and the page can neither choose nor raise it.
 
-| Profile | `v` | Used by | Selected when | Authority |
-|---|---|---|---|---|
-| **Page profile** | 2 | every ordinary lxapp page document | no control bootstrap is installed | identity comes from the native page owner; a frame is not a credential |
-| **Document-bound profile** | 3 | host-attested browser control documents | native bootstrap pins `requiredProtocol: 3` for one committed document | every frame is bound to that document's active `DocumentSession` |
-
-In code these are `BridgeProtocol::LegacyV2` and `BridgeProtocol::BoundV3`. An ordinary page
-stays on the page profile even though V3 exists in the same process; a control document stays
-document-bound, and a missing, malformed, V2 or future-version bootstrap or frame MUST NOT
-degrade it.
-
-### 8.2 Document-bound envelope
-
-The V3 codec owns the security fields. Callers pass family payloads only; a payload carrying
-`v`, `kind`, `sessionId` or `secret` MUST be rejected and MUST NOT override the envelope.
-
-| Direction | Families | Envelope |
-|---|---|---|
-| document → native | `hello`, `req`, `res`, `notify`, `cancel`, `ch.open`, `ch.data`, `ch.close`, `state.ack` | `v: 3`, exact `kind`, current public `sessionId`, document secret |
-| native → document | `helloAck`, `ready`, `req`, `res`, `event`, `state.snapshot`, `state.patch`, `ch.ack`, `ch.data`, `ch.close` | `v: 3`, exact `kind`, current public `sessionId`; `secret` MUST be absent |
-
-Before decoding a payload or looking up a route, native MUST validate frame size, version,
-direction/kind, native WebView identity, the committed `DocumentGeneration`, top-level proof,
-transport, public session id and secret. Before delivery, the document MUST validate version,
-direction/kind and session id. A duplicate top-level security key is malformed. The secret is
-captured only by the one-shot bootstrap codec and MUST NOT be copied into runtime config, logged,
-or sent native → document. Every V3 `helloAck` and later native frame MUST match the current
-public `sessionId`.
-
-The console sideband is no exception: a control-document console envelope carries `v: 3`,
-`kind: "console"`, `sessionId` and `secret`, and passes the same checks before its separately
-rate-limited log path.
-
-### 8.3 Bounds, queues, rate limits
+### 8.2 Bounds, queues, rate limits
 
 These are a fail-closed ingress contract, not tuning hints.
 
@@ -276,53 +242,49 @@ These are a fail-closed ingress contract, not tuning hints.
 |---|---:|---|
 | single native WebView message | 64 KiB | rejected before any LingXia payload is materialized where the adapter can read the raw length; on every platform no later than enqueue |
 | WebView ingress queue | 1,024 frames, 1 MiB | new frames rejected; accepted frames keep FIFO order |
-| V3 predecode frame | 64 KiB | rejected before a typed payload is allocated |
-| `sessionId` or `secret` probe field | 512 bytes | rejected as malformed |
 | document pre-ready outbox | 256 frames | operation rejected with `BRIDGE_OUTBOX_FULL` |
-| console sideband | 32 messages per second | excess dropped, `console_rate_limited` diagnostic |
 
 The document enforces the message bound before posting: it rejects the operation with
 `BRIDGE_MESSAGE_TOO_LARGE` instead of letting native drop the frame silently.
 
 Ingress is one bounded FIFO dispatcher, never a thread per message. After close, new frames are
 rejected and unadmitted queued frames are discarded. Rejections are counted by reason; logs are
-sampled at counts 1 and powers of 2, and a diagnostic MUST NOT contain the frame, URL, session id
-or secret.
+sampled at counts 1 and powers of 2, and a diagnostic MUST NOT contain the frame, URL or
+session id.
 
 The outer cap does not depend on JSON or typed decode. Apple accepts only an `NSString` body and
 checks its UTF-8 length before copying into Rust. Android computes the UTF-8 length from the Java
 UTF-16 string at both entries (`MessagePort`, API 21/22 `JavascriptInterface`) before crossing
 JNI. HarmonyOS uses ArkWeb's `data_length` on both ports. WebView2 hands Windows an `HSTRING`
-already, so Windows applies the same 64 KiB rejection before the queue and V3 decode; this is not
-an authority downgrade.
+already, so Windows applies the same 64 KiB rejection before the queue and decode.
 
-### 8.4 Platform provenance
+### 8.3 Platform provenance
 
-| Platform | Document-bound proof | When it cannot be proven |
+A message's `WebMessageContext` carries the committed `DocumentGeneration` and frame proof the
+adapter could establish. A frame is not a credential; the context only lets generation-bound
+output and stale-delivery checks fail closed.
+
+| Platform | Top-level document proof | When it cannot be proven |
 |---|---|---|
-| Apple | current native WebView, committed generation, top-level `WKScriptMessage` frame proof | fail closed |
-| Android API 23+ | host-issued load token correlated with commit, then a fresh per-document `MessagePort` | stale, external and reused ports rejected; navigation, reload, crash and teardown close the port |
-| Android API 21/22 | none; `JavascriptInterface` is always `Unproven` | rendering continues, BrowserControl unavailable (`android_api_below_23` / `android_21_22_unproven_transport`) |
-| Windows | WebView2 navigation identity plus current top-level document/generation proof | fail closed on stale, frame or source mismatch |
-| HarmonyOS | host-issued trusted load intent and non-reused native key correlated with the ArkTS page epoch across start and commit, then a fresh per-document port bound to WebView, generation, port and callback token | stale, external or reused port, reload, renderer loss or teardown revokes the binding, fail closed |
+| Apple | current native WebView, committed generation, top-level `WKScriptMessage` frame proof | subframe or stale generation, never bound |
+| Android API 23+ | native load token correlated with the visible commit, then a fresh per-document `MessagePort` (not minted for the browser profile) | stale and reused ports rejected; navigation, reload, crash and teardown close the port |
+| Android API 21/22 | none; `JavascriptInterface` is always `Unproven` | pages render without document proof |
+| Windows | WebView2 navigation identity plus current top-level document/generation | stale, frame or source mismatch, never bound |
+| HarmonyOS | non-reused native key correlated with the ArkTS page epoch across begin and commit, then a fresh per-document port bound to WebView, generation, port and callback token | stale or reused port, reload, renderer loss or teardown revokes the binding |
 
-Page-profile delivery MAY keep its platform fallbacks. Document-bound output goes through the
+Unbound delivery MAY keep its platform fallbacks. Generation-bound output goes through the
 platform's generation-aware send path and MUST NOT degrade to a bare string or an
 `evaluateJavascript` send.
 
-### 8.5 Restoration and renderer loss
+### 8.4 Restoration and renderer loss
 
-History and BFCache can restore old HTML with old credentials without re-entering the host
-loader. If an internal document's commit does not match the current trusted start, native MUST
-keep it unauthenticated, detach the old page lifecycle and schedule a fresh trusted load; a new
-session exists only once the fresh load's `NavigationId`, generation, attestation, secret and
-public `sessionId` all match. Restored frames and stale reload completions MUST NOT reach the
-successor.
+History and BFCache can restore an old document without a fresh start and commit. Where a
+backend sees that — Apple `pageshow.persisted`, WebView2 `SourceChanged.IsNewDocument` over a
+still-bound document, a second ArkWeb visible commit for one begin — native MUST clear the
+committed generation. The restored document stays unbound until a fresh navigation commits.
 
 Renderer termination MUST clear the committed generation before notifying upper layers or
-reloading. Navigation, reload, crash and teardown revoke the old port and session on every
-backend. An external history entry may present normally but never gains BrowserControl
-authority.
+reloading. Navigation, reload, crash and teardown revoke the old port on every backend.
 
 ## 9. GPU transport
 

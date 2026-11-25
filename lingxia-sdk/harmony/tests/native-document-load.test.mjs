@@ -11,7 +11,7 @@ const { NativeDocumentLoad } = await import('data:text/javascript;base64,' + Buf
 const html = '<!doctype html><p>Farshore 中文 100%</p>';
 const base64 = Buffer.from(html).toString('base64');
 const encoded = 'data:text/html;charset=utf-8,' + encodeURIComponent(html);
-const historyUrl = 'lingxia://newtab/?__lingxia_native_load=test-1';
+const historyUrl = 'about:blank';
 const pending = () => new NativeDocumentLoad(html, base64, historyUrl);
 
 test('admits the exact native HTML once, including Unicode and percent signs', () => {

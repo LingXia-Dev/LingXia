@@ -60,7 +60,7 @@ pub(super) fn resolve_browser_shell_webui_dir(
     // `npm pack` with nothing to act on.
     Err(anyhow!(
         "capabilities.browser is on, but browser.webui is not set.\n\n\
-         The webui is the browser's face — newtab, settings, downloads — so \
+         The webui holds the browser's system pages — bookmarks, history, downloads, settings — so \
          every host that ships a browser owns its own. Point the host at \
          it:\n\n  \
          browser:\n    webui:\n      path: <your webui lxapp>\n\n\

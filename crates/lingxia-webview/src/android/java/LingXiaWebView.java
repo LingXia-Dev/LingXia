@@ -90,7 +90,6 @@ public class LingXiaWebView extends WebView {
     private CreateOptions createOptions = CreateOptions.unconfigured();
     private String ephemeralProfileName;
     private boolean usesGlobalEphemeralFallback;
-    private boolean browserControlDegradationReported;
     private static volatile boolean sHttpProxyEnabled = false;
     private final ConcurrentHashMap<Long, ValueCallback<android.net.Uri[]>> pendingFileChoosers =
             new ConcurrentHashMap<>();
@@ -682,19 +681,13 @@ public class LingXiaWebView extends WebView {
         // Android 5 (API 21/22) does not have WebMessagePort, must not load those classes.
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M) {
             clearMessagePortReflection();
-            reportBrowserControlDegradation(
-                    BrowserControlBridgePolicy.degradationReason(
-                            Build.VERSION.SDK_INT, false));
             return;
         }
         // createWebMessageChannel can SIGSEGV on old Chromium builds — a native
         // crash Java try/catch cannot rescue. Probe capability before touching it.
         if (!isMessagePortSafe()) {
             clearMessagePortReflection();
-            reportBrowserControlDegradation(
-                    BrowserControlBridgePolicy.degradationReason(
-                            Build.VERSION.SDK_INT, false));
-            Log.i(TAG, "MessagePort bridge disabled; BrowserControl remains fail closed");
+            Log.i(TAG, "MessagePort bridge disabled on this WebView build");
             return;
         }
         try {
@@ -709,9 +702,7 @@ public class LingXiaWebView extends WebView {
             Log.i(TAG, "MessagePort bridge enabled (API=" + Build.VERSION.SDK_INT + ")");
         } catch (Throwable t) {
             clearMessagePortReflection();
-            reportBrowserControlDegradation(
-                    BrowserControlBridgePolicy.REASON_MESSAGE_PORT_UNAVAILABLE);
-            Log.w(TAG, "MessagePort bridge unavailable; BrowserControl remains fail closed", t);
+            Log.w(TAG, "MessagePort bridge unavailable", t);
         }
     }
 
@@ -723,16 +714,6 @@ public class LingXiaWebView extends WebView {
         postMessageMethod = null;
         cleanupMethod = null;
         messagePortCapable = false;
-    }
-
-    private void reportBrowserControlDegradation(String reason) {
-        if (!rules().provenDocumentBinding || browserControlDegradationReported) {
-            return;
-        }
-        browserControlDegradationReported = true;
-        Log.w(TAG, "metric=browser_control_bridge_degraded reason=" + reason
-                + " sdk=" + Build.VERSION.SDK_INT);
-        onBrowserControlBridgeDegraded(reason);
     }
 
     // Two gates: androidx feature flag, then a Chromium major-version floor
@@ -773,7 +754,7 @@ public class LingXiaWebView extends WebView {
         ensureMainThread(new Runnable() {
             @Override
             public void run() {
-                prepareHostLoad(AndroidDocumentBridgeState.nextLoadToken(), false);
+                prepareHostLoad(AndroidDocumentBridgeState.nextLoadToken());
                 LingXiaWebView.super.loadUrl(url);
                 Log.d(TAG, "URL loaded on main thread: " + url);
             }
@@ -783,10 +764,7 @@ public class LingXiaWebView extends WebView {
     @Override
     public void reload() {
         ensureMainThread(() -> {
-            // WebView.reload() does not replay the native trusted-data loader,
-            // so it starts untrusted. Browser UI can regain authority only by
-            // asking the host to regenerate the internal document.
-            prepareHostLoad(AndroidDocumentBridgeState.nextLoadToken(), false);
+            prepareHostLoad(AndroidDocumentBridgeState.nextLoadToken());
             LingXiaWebView.super.reload();
         });
     }
@@ -908,10 +886,10 @@ public class LingXiaWebView extends WebView {
         addJavascriptInterface(new LingXiaProxy(), "LingXiaProxy");
     }
 
-    private void prepareHostLoad(long loadToken, boolean trustedHostLoad) {
+    private void prepareHostLoad(long loadToken) {
         messagePortRequested = false;
         cleanupDocumentMessagePort();
-        documentBridgeState.prepareHostLoad(loadToken, trustedHostLoad);
+        documentBridgeState.prepareHostLoad(loadToken);
     }
 
     AndroidDocumentBridgeState.Navigation beginTopLevelNavigation(String url) {
@@ -923,8 +901,8 @@ public class LingXiaWebView extends WebView {
         // placeholder a re-entered page reloads over), the request can only be
         // the new document's, and dropping it stalls that page until its 5 s
         // port timeout. If the old document asked instead, the new one merely
-        // receives a port it adopts or ignores. The browser profile still drops
-        // it: a port minted for a trusted document must not outlive it.
+        // receives a port it adopts or ignores. The browser profile, which
+        // never mints a port, drops it.
         if (rules().provenDocumentBinding && documentBridgeState.hasCommittedDocument()) {
             messagePortRequested = false;
         }
@@ -950,11 +928,6 @@ public class LingXiaWebView extends WebView {
      */
     void commitTopLevelDocumentOnFinish(String url) {
         commitNavigation(documentBridgeState.pendingFinishCommit(url, rules().provenDocumentBinding));
-    }
-
-    boolean awaitsTrustedVisibleCommit(String url) {
-        return rules().provenDocumentBinding && Build.VERSION.SDK_INT >= Build.VERSION_CODES.M
-                && documentBridgeState.awaitsTrustedVisibleCommit(url);
     }
 
     void recordMainFrameLoadFailure() {
@@ -998,20 +971,7 @@ public class LingXiaWebView extends WebView {
         return documentBridgeState.acceptsPort(loadToken, documentGeneration);
     }
 
-    void handleVisitedHistoryUpdate(String url) {
-        if (documentBridgeState.historyRestoreNeedsReproof(rules().provenDocumentBinding)) {
-            // The Java gate closes before JNI/delegate work so neither stale
-            // inbound nor queued platform delivery can race the trusted reload.
-            messagePortRequested = false;
-            cleanupDocumentMessagePort();
-            onDocumentRestored(
-                    getAppId() != null ? getAppId() : "",
-                    getCurrentPath() != null ? getCurrentPath() : "",
-                    getSessionId(),
-                    getNativeViewId(),
-                    url != null ? url : ""
-            );
-        }
+    void handleVisitedHistoryUpdate() {
         pushWebViewState();
     }
 
@@ -1028,8 +988,6 @@ public class LingXiaWebView extends WebView {
             }
         } catch (Throwable t) {
             cleanupDocumentMessagePort();
-            reportBrowserControlDegradation(
-                    BrowserControlBridgePolicy.REASON_MESSAGE_PORT_UNAVAILABLE);
             Log.w(TAG, "Failed to install document MessagePort", t);
         }
     }
@@ -1543,7 +1501,7 @@ public class LingXiaWebView extends WebView {
         });
     }
 
-    /** Queue a RequiredV3 outbound operation onto the UI thread. */
+    /** Queue a document-bound outbound message onto the UI thread. */
     public void scheduleDocumentMessage(final long requestId) {
         ensureMainThread(() -> dispatchDocumentMessage(requestId));
     }
@@ -1835,23 +1793,7 @@ public class LingXiaWebView extends WebView {
         ensureMainThread(new Runnable() {
             @Override
             public void run() {
-                prepareHostLoad(AndroidDocumentBridgeState.nextLoadToken(), false);
-                resetViewport();
-                loadDataWithBaseURL(baseUrl, data, "text/html", "UTF-8", historyUrl);
-            }
-        });
-    }
-
-    public long allocateNavigationLoadToken() {
-        return AndroidDocumentBridgeState.nextLoadToken();
-    }
-
-    /** Rust arms this exact token before UI work can emit onPageStarted. */
-    public void loadTrustedHtmlData(long loadToken, String data, String baseUrl, String historyUrl) {
-        ensureMainThread(new Runnable() {
-            @Override
-            public void run() {
-                prepareHostLoad(loadToken, true);
+                prepareHostLoad(AndroidDocumentBridgeState.nextLoadToken());
                 resetViewport();
                 loadDataWithBaseURL(baseUrl, data, "text/html", "UTF-8", historyUrl);
             }
@@ -2018,9 +1960,7 @@ public class LingXiaWebView extends WebView {
     native void onPageStarted(String appId, String path, long sessionId, long nativeViewId, long loadToken, String url);
     native void onPageFinished(String appId, String path, long sessionId, long nativeViewId, long loadToken, String url);
     native long onPageCommitVisible(String appId, String path, long sessionId, long nativeViewId, long loadToken);
-    native void onDocumentRestored(String appId, String path, long sessionId, long nativeViewId, String url);
     native void onRendererProcessGone(String appId, String path, long sessionId, long nativeViewId);
-    native void onBrowserControlBridgeDegraded(String reason);
     native void onWebViewStateChanged(String appId, String path, long sessionId, long nativeViewId, String url, String title, boolean canGoBack, boolean canGoForward);
     native void onFaviconChanged(String appId, String path, long sessionId, long nativeViewId, byte[] pngBytes);
     native void onLoadError(String appId, String path, long sessionId, long nativeViewId, long loadToken, String url, int errorCode, String description);

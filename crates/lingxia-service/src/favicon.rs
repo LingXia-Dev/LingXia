@@ -1,5 +1,6 @@
 //! Cross-platform website favicon disk cache.
 
+use lingxia_transfer::network::{BrowserNetwork, explicit_proxy_client};
 use lingxia_transfer::store::FetchRequest;
 use sha2::{Digest, Sha256};
 use std::collections::{HashMap, HashSet};
@@ -98,22 +99,24 @@ fn finish_request(origin: &str, succeeded: bool) {
 }
 
 /// Returns an existing cache file immediately and schedules a refresh when it
-/// is missing or stale. `on_ready` runs after a new file is committed.
+/// is missing or stale, over the browser's `network`. `on_ready` runs after a new file is committed.
 pub fn cached_or_request(
     cache_root: &Path,
     page_url: &str,
+    network: BrowserNetwork,
     on_ready: Arc<dyn Fn() + Send + Sync>,
 ) -> Option<PathBuf> {
     let origin = normalized_origin(page_url)?;
     let key = cache_key(&origin);
     let cached = find_cached(cache_root, &key);
-    if should_request(&origin, cached.as_deref()) {
+    // Blocked asks nothing and records no failure, so the icon comes once the proxy is back.
+    if network != BrowserNetwork::Blocked && should_request(&origin, cached.as_deref()) {
         let cache_root = cache_root.to_path_buf();
         let request_origin = origin.clone();
         std::mem::drop(rong_rt::RongExecutor::global().spawn(async move {
             let fetched = lingxia_transfer::scope_host_network_owner(
                 "favicon",
-                fetch_and_store(&cache_root, &request_origin, &key),
+                fetch_and_store(&cache_root, &request_origin, &key, network),
             );
             let succeeded = match fetched.await {
                 Ok(()) => {
@@ -145,17 +148,42 @@ pub fn store_for_url(cache_root: &Path, page_url: &str, bytes: &[u8]) -> Option<
     find_cached(cache_root, &key)
 }
 
-async fn fetch_and_store(cache_root: &Path, origin: &str, key: &str) -> Result<(), String> {
+const FETCH_TIMEOUT: Duration = Duration::from_secs(10);
+const CONNECT_TIMEOUT: Duration = Duration::from_secs(5);
+const ACCEPT_IMAGES: &str = "image/png,image/x-icon,image/*;q=0.8,*/*;q=0.1";
+
+/// Fetches `origin`'s icon the way the browser's downloads go: refused while Blocked, only through
+/// the given proxy (or direct) when Explicit, and over the shared store otherwise.
+async fn fetch_and_store(
+    cache_root: &Path,
+    origin: &str,
+    key: &str,
+    network: BrowserNetwork,
+) -> Result<(), String> {
+    let url = format!("{origin}/favicon.ico");
+    let (bytes, content_type) = match network {
+        BrowserNetwork::Blocked => {
+            return Err("browser proxy is disconnected".to_string());
+        }
+        BrowserNetwork::Explicit(proxy) => fetch_explicit(&url, proxy.as_deref()).await?,
+        BrowserNetwork::Runtime => fetch_shared(&url).await?,
+    };
+    if bytes.is_empty() {
+        return Err("empty image".to_string());
+    }
+    let extension = image_extension(&content_type.to_ascii_lowercase(), &bytes)
+        .ok_or_else(|| "response is not a supported image".to_string())?;
+    store_file(cache_root, key, extension, &bytes)
+}
+
+async fn fetch_shared(url: &str) -> Result<(Vec<u8>, String), String> {
     let store = lingxia_transfer::store::shared().ok_or("HTTP store unavailable")?;
     // Shared across apps on purpose: a site's icon is the same for every caller.
-    let mut request = FetchRequest::new(format!("{origin}/favicon.ico"), "host:favicon");
-    request.headers = vec![(
-        http::header::ACCEPT.to_string(),
-        "image/png,image/x-icon,image/*;q=0.8,*/*;q=0.1".to_string(),
-    )];
+    let mut request = FetchRequest::new(url, "host:favicon");
+    request.headers = vec![(http::header::ACCEPT.to_string(), ACCEPT_IMAGES.to_string())];
     request.max_bytes = MAX_FAVICON_BYTES as u64;
-    request.timeout = Duration::from_secs(10);
-    request.connect_timeout = Some(Duration::from_secs(5));
+    request.timeout = FETCH_TIMEOUT;
+    request.connect_timeout = Some(CONNECT_TIMEOUT);
     // The origin is the page's own; an http page has an http icon.
     request.allow_http = true;
     let mut bytes = Vec::new();
@@ -163,13 +191,38 @@ async fn fetch_and_store(cache_root: &Path, origin: &str, key: &str) -> Result<(
         .fetch_into(request, &mut bytes)
         .await
         .map_err(|error| error.to_string())?;
-    if bytes.is_empty() {
-        return Err("empty image".to_string());
+    Ok((bytes, meta.content_type.unwrap_or_default()))
+}
+
+async fn fetch_explicit(url: &str, proxy: Option<&str>) -> Result<(Vec<u8>, String), String> {
+    let client = explicit_proxy_client(proxy, Some(CONNECT_TIMEOUT), FETCH_TIMEOUT)?;
+    let response = tokio::time::timeout(
+        FETCH_TIMEOUT,
+        client
+            .get(url)
+            .header(http::header::ACCEPT, ACCEPT_IMAGES)
+            .send(),
+    )
+    .await
+    .map_err(|_| "favicon request timed out".to_string())?
+    .map_err(|error| error.to_string())?;
+    if !response.status().is_success() {
+        return Err(format!("http status {}", response.status().as_u16()));
     }
-    let content_type = meta.content_type.unwrap_or_default().to_ascii_lowercase();
-    let extension = image_extension(&content_type, &bytes)
-        .ok_or_else(|| "response is not a supported image".to_string())?;
-    store_file(cache_root, key, extension, &bytes)
+    let content_type = response
+        .headers()
+        .get(http::header::CONTENT_TYPE)
+        .and_then(|value| value.to_str().ok())
+        .unwrap_or_default()
+        .to_string();
+    let bytes = tokio::time::timeout(FETCH_TIMEOUT, response.bytes())
+        .await
+        .map_err(|_| "favicon body timed out".to_string())?
+        .map_err(|error| error.to_string())?;
+    if bytes.len() > MAX_FAVICON_BYTES {
+        return Err("favicon is too large".to_string());
+    }
+    Ok((bytes.to_vec(), content_type))
 }
 
 fn image_extension(content_type: &str, bytes: &[u8]) -> Option<&'static str> {
@@ -292,6 +345,94 @@ pub fn clear_since(cache_root: &Path, since_ms: Option<u64>) -> std::io::Result<
 mod tests {
     use super::*;
 
+    /// A one-request HTTP server that answers with a PNG and reports the request line it got.
+    fn serve_png_once() -> (std::net::SocketAddr, std::sync::mpsc::Receiver<String>) {
+        use std::io::{BufRead, BufReader, Write};
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let addr = listener.local_addr().unwrap();
+        let (tx, rx) = std::sync::mpsc::channel();
+        std::thread::spawn(move || {
+            let (stream, _) = listener.accept().unwrap();
+            let mut reader = BufReader::new(stream.try_clone().unwrap());
+            let mut first = String::new();
+            reader.read_line(&mut first).unwrap();
+            let mut line = String::new();
+            while reader.read_line(&mut line).unwrap() > 2 {
+                line.clear();
+            }
+            let body = b"\x89PNG\r\n\x1a\nicon";
+            let mut stream = stream;
+            write!(
+                stream,
+                "HTTP/1.1 200 OK\r\nContent-Type: image/png\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
+                body.len()
+            )
+            .unwrap();
+            stream.write_all(body).unwrap();
+            tx.send(first.trim_end().to_string()).unwrap();
+        });
+        (addr, rx)
+    }
+
+    #[tokio::test]
+    async fn a_blocked_browser_network_refuses_the_fetch() {
+        let cache = tempfile::tempdir().unwrap();
+        let key = cache_key("http://favicon.invalid");
+        let result = fetch_and_store(
+            cache.path(),
+            "http://favicon.invalid",
+            &key,
+            BrowserNetwork::Blocked,
+        )
+        .await;
+        assert!(result.is_err());
+        assert!(find_cached(cache.path(), &key).is_none());
+    }
+
+    #[test]
+    fn a_blocked_browser_network_schedules_nothing() {
+        let cache = tempfile::tempdir().unwrap();
+        let on_ready: Arc<dyn Fn() + Send + Sync> = Arc::new(|| panic!("nothing was fetched"));
+        let page = "http://blocked-favicon.invalid/";
+        assert!(cached_or_request(cache.path(), page, BrowserNetwork::Blocked, on_ready).is_none());
+        let origin = normalized_origin(page).unwrap();
+        let state = request_state().lock().unwrap();
+        assert!(!state.in_flight.contains(&origin) && !state.failed_at.contains_key(&origin));
+    }
+
+    #[tokio::test]
+    async fn an_explicit_proxy_carries_the_fetch() {
+        let (proxy, request_line) = serve_png_once();
+        let cache = tempfile::tempdir().unwrap();
+        let key = cache_key("http://favicon.invalid");
+        let network = BrowserNetwork::Explicit(Some(format!("http://{proxy}")));
+        fetch_and_store(cache.path(), "http://favicon.invalid", &key, network)
+            .await
+            .unwrap();
+        // An absolute-form request line is a proxy request; the origin itself does not resolve.
+        assert_eq!(
+            request_line.recv().unwrap(),
+            "GET http://favicon.invalid/favicon.ico HTTP/1.1"
+        );
+        assert!(
+            find_cached(cache.path(), &key)
+                .is_some_and(|path| path.extension() == Some("png".as_ref()))
+        );
+    }
+
+    #[tokio::test]
+    async fn an_explicit_direct_network_goes_straight_to_the_origin() {
+        let (origin, request_line) = serve_png_once();
+        let cache = tempfile::tempdir().unwrap();
+        let origin = format!("http://{origin}");
+        let key = cache_key(&origin);
+        fetch_and_store(cache.path(), &origin, &key, BrowserNetwork::Explicit(None))
+            .await
+            .unwrap();
+        assert_eq!(request_line.recv().unwrap(), "GET /favicon.ico HTTP/1.1");
+        assert!(find_cached(cache.path(), &key).is_some());
+    }
+
     #[test]
     fn origin_is_normalized_and_rejects_non_web_urls() {
         assert_eq!(
@@ -383,9 +524,14 @@ mod tests {
             stream.write_all(png).unwrap();
             String::from_utf8_lossy(&request[..read]).to_string()
         });
-        fetch_and_store(directory.path(), &origin, "site")
-            .await
-            .unwrap();
+        fetch_and_store(
+            directory.path(),
+            &origin,
+            "site",
+            BrowserNetwork::Explicit(None),
+        )
+        .await
+        .unwrap();
         assert!(server.join().unwrap().starts_with("GET /favicon.ico "));
         assert!(
             find_cached(directory.path(), "site")

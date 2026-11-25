@@ -94,7 +94,7 @@ pub(super) fn bridge_downstream_cors_origin(request: &http::Request<Vec<u8>>) ->
         return "null".to_string();
     };
 
-    if origin == "null" || origin.starts_with("lingxia://") || origin.starts_with("lx://") {
+    if origin == "null" || origin.starts_with("lx://") {
         origin.to_string()
     } else {
         "null".to_string()

@@ -296,9 +296,7 @@ pub(super) fn extract_html_module_entry_script_path(source: &str) -> Option<Stri
     None
 }
 
-const BRIDGE_RUNTIME_SCRIPT: &str = "<script data-lingxia-bridge-runtime=\"v3-bootstrap\" src=\"lx://assets/bridge-runtime.js\"></script>";
-const LEGACY_BRIDGE_RUNTIME_SCRIPT: &str =
-    "<script src=\"lx://assets/bridge-runtime.js\"></script>";
+const BRIDGE_RUNTIME_SCRIPT: &str = "<script src=\"lx://assets/bridge-runtime.js\"></script>";
 
 pub(super) fn inject_runtime_script(mut html: String, include_polyfills: bool) -> String {
     // Polyfills must load and execute BEFORE the bridge runtime so that any
@@ -312,9 +310,8 @@ pub(super) fn inject_runtime_script(mut html: String, include_polyfills: bool) -
     } else {
         BRIDGE_RUNTIME_SCRIPT.to_string()
     };
-    // Preserve hand-authored/older V2 pages without injecting a second runtime.
-    // Trusted V3 bootstrap intentionally requires the generated sentinel.
-    if !(html.contains(BRIDGE_RUNTIME_SCRIPT) || html.contains(LEGACY_BRIDGE_RUNTIME_SCRIPT)) {
+    // A hand-authored page may already load the runtime; never load it twice.
+    if !html.contains(BRIDGE_RUNTIME_SCRIPT) {
         if let Some(index) = html.find("</head>") {
             html.insert_str(index, &to_insert);
         } else {
@@ -730,17 +727,6 @@ mod tests {
     }
 
     #[test]
-    fn runtime_injection_preserves_legacy_v2_runtime_without_a_sentinel() {
-        let html = format!("<html><head>{LEGACY_BRIDGE_RUNTIME_SCRIPT}</head></html>");
-        let output = inject_runtime_script(html, false);
-
-        assert!(output.contains(LEGACY_BRIDGE_RUNTIME_SCRIPT));
-        assert_eq!(output.matches(LEGACY_BRIDGE_RUNTIME_SCRIPT).count(), 1);
-        assert!(!output.contains("data-lingxia-bridge-runtime"));
-        assert_hides_css_scrollbars(&output);
-    }
-
-    #[test]
     fn inject_runtime_script_hides_css_scrollbars_once() {
         let html = "<!DOCTYPE html><html><head></head><body><p>hi</p></body></html>";
         let once = inject_runtime_script(html.to_string(), false);
@@ -765,17 +751,10 @@ mod tests {
         );
         let stamped = inject_runtime_script(html.to_string(), false);
         assert_hides_css_scrollbars(&stamped);
-        assert!(!stamped.contains("data-lingxia-bridge-runtime"));
-
-        let v3 = format!(
-            "<!DOCTYPE html><html><head>{BRIDGE_RUNTIME_SCRIPT}</head><body></body></html>"
-        );
-        let stamped_v3 = inject_runtime_script(v3, false);
-        assert_hides_css_scrollbars(&stamped_v3);
         assert_eq!(
-            stamped_v3.matches(BRIDGE_RUNTIME_SCRIPT).count(),
+            stamped.matches(BRIDGE_RUNTIME_SCRIPT).count(),
             1,
-            "{stamped_v3}"
+            "{stamped}"
         );
     }
 

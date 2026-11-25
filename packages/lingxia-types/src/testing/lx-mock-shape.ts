@@ -165,7 +165,6 @@ export const LX_MOCK_SHAPE: Readonly<Record<string, 'namespace' | 'async' | 'syn
   "lx.shell.appDisplay": "namespace",
   "lx.shell.appDisplay.get": "async",
   "lx.shell.appDisplay.update": "async",
-  "lx.shell.openBuiltin": "async",
   "lx.shell.sidebarActions": "namespace",
   "lx.shell.sidebarActions.remove": "async",
   "lx.shell.sidebarActions.replace": "async",

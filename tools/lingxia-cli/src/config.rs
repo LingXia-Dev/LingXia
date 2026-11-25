@@ -204,8 +204,6 @@ impl Default for FeaturesConfig {
 // so a capability can never exist on one side only.
 pub use lingxia_app_context::{CapabilitiesConfig, SettingsDestination, ThemeConfig};
 
-pub(crate) const BROWSER_CONTROL_PROTOCOL_VERSION: u32 = 3;
-
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct BrowserConfig {
@@ -1983,8 +1981,8 @@ impl LingXiaConfig {
         if self.app_service_enabled() {
             features.push("standard".to_string());
         }
-        // The browser capability brings its runtime and webui pages (newtab /
-        // settings / downloads) on every platform it is enabled for.
+        // The browser capability brings its runtime and webui system pages on
+        // every platform it is enabled for.
         if self.browser_enabled_for(platform) {
             features.push("browser-shell".to_string());
         }
@@ -3491,22 +3489,6 @@ route: /wrong
         let disabled: BrowserConfig = serde_yaml_ng::from_str("bookmarks: false").unwrap();
         assert!(!disabled.bookmarks);
         assert!(disabled.webui.is_none());
-    }
-
-    #[test]
-    fn browser_webui_does_not_take_a_control_protocol_version() {
-        for source in ["path: ./browser-webui", "package: '@example/browser-webui'"] {
-            let valid = format!("browser:\n  webui:\n    {source}\n");
-            let config: LingXiaConfig = yaml::from_str(&valid).unwrap();
-            config.validate().unwrap();
-
-            let with_pin =
-                format!("browser:\n  webui:\n    {source}\n    controlProtocolVersion: 3\n");
-            let error = yaml::from_str::<LingXiaConfig>(&with_pin)
-                .unwrap_err()
-                .to_string();
-            assert!(error.contains("controlProtocolVersion"), "{error}");
-        }
     }
 
     #[test]

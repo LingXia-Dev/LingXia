@@ -3,6 +3,7 @@
 #![allow(clippy::let_underscore_future)]
 
 mod download;
+pub mod network;
 pub mod store;
 mod upload;
 

@@ -81,7 +81,7 @@ keep it there.
 | Page attach/detach, popup and overlay orchestration, page target resolution, WebView controller lifecycle | Platform lifecycle with no authoring use; see [webview-lifecycle.md](webview-lifecycle.md). |
 | Browser tab models and `lingxia-browser` | The browser product registers itself at init when its feature is on; apps reach it only through `embedded_browser`. |
 | `lingxia-native-macros` | Re-exported as `lingxia::native`. |
-| First-party routes such as `lingxia://settings` | Apps open product surfaces through narrow typed APIs (`RuntimeInfo::resolve_settings_destination`, `RuntimeInfo::open_trusted_browser_page`), never raw routes. |
+| The browser's internal app id and page names | Apps open product surfaces through narrow typed APIs (`RuntimeInfo::resolve_settings_destination`, `RuntimeInfo::open_browser_system_page`), never raw routes. |
 
 ## Windows host entry
 

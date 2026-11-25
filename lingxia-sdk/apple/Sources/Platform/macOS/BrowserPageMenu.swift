@@ -99,7 +99,7 @@ enum BrowserPageMenu {
             guard let parsed = URL(string: url) else { return }
             NSWorkspace.shared.open(parsed)
         }
-        externalItem.isEnabled = pageActionable && !context.url.hasPrefix("lingxia://")
+        externalItem.isEnabled = pageActionable
         menu.addItem(externalItem)
 
         if context.onOpenBookmarks != nil || context.onOpenHistory != nil

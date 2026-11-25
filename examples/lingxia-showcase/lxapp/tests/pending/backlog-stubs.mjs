@@ -205,7 +205,7 @@ export default [
     id: "PEND-BROWSER-DRV-001",
     title: "BrowserDriver tabs, eval, wait, and cookies",
     mode: "planned",
-    covers: ["lx.shell.openBuiltin"],
+    covers: ["lx.surface.openUrl"],
     reason: "DESKTOP-BROWSER-001 does not cover cookies or wait",
   },
   {

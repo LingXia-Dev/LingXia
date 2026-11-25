@@ -76,14 +76,6 @@ const shellDeclared: Promise<unknown> = lx.surface.openDeclared("terminal", {
   as: "main",
 });
 
-// A builtin page's lifetime belongs to the shell.
-async function builtinReportsIdentityOnly(): Promise<string> {
-  const downloads = await lx.shell.openBuiltin("downloads");
-  // @ts-expect-error the shell owns a builtin page's visibility
-  downloads.show;
-  return downloads.kind;
-}
-
 // Shell-owned surfaces are looked up by identity, not by a handle id.
 function shellLookups(): boolean {
   const app = lx.surface.app("com.example.agent");
@@ -96,10 +88,6 @@ function shellLookups(): boolean {
     chat?.kind === "app" ? chat.realized : undefined;
   return Boolean(app?.alive && terminal?.alive && chatRealized);
 }
-
-// Host-wide Settings is bootstrap-owned native chrome, never Logic.
-// @ts-expect-error Settings is not a public builtin page
-lx.shell.openBuiltin("settings");
 
 // An ordered preference degrades, and `realized` reports the outcome.
 async function orderedPreference(): Promise<"window" | "float"> {
@@ -146,8 +134,8 @@ const openedApp: Promise<unknown> = lx.surface.openApp("com.example.agent", {
 });
 // @ts-expect-error the startup query is params now
 lx.surface.openApp("com.example.agent", { query: { thread: "7" } });
-// @ts-expect-error opening a builtin page is a shell operation
-lx.surface.openBuiltin;
+// @ts-expect-error browser pages open with lx.surface.openApp("app.lingxia.browser")
+lx.shell.openBuiltin;
 // @ts-expect-error the lookup is lx.surface.get
 lx.surface.getByKey;
 // @ts-expect-error moved to lx.surface.openApp
@@ -169,7 +157,6 @@ lx.shell.activate();
 export type SurfaceNamespaceGate = [
   typeof preferenceKeepsPerPlacementOptions,
   typeof floatTakesPercentageSize,
-  typeof builtinReportsIdentityOnly,
   typeof shellDeclared,
   typeof openedApp,
   typeof edgeToEdgeWindow,

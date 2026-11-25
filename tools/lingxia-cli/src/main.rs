@@ -449,7 +449,7 @@ In a host project, it checks `lxapp/`.")]
         /// Standalone conversion: write the source icon to this path instead of
         /// into a project. The extension picks the format — `.ico` (multi-size
         /// Windows icon) or `.png`. Used to (re)generate committed design assets
-        /// (e.g. the dev-runner icon, favicon.ico, the appicon masters).
+        /// (e.g. the dev-runner icon, the appicon masters).
         #[arg(long)]
         output: Option<String>,
 

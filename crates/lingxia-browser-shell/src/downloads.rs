@@ -94,19 +94,19 @@ fn map_downloads_error(err: DownloadsError) -> LxAppError {
     }
 }
 
-#[lingxia::framework_native("downloads.list", audience = "browser-control-only")]
+#[lingxia::framework_native("downloads.list", audience = "control-surface-only")]
 fn list_downloads(app: Arc<LxApp>) -> HostResult<DownloadsSnapshot> {
     lingxia_service::downloads::snapshot(&app.app_data_dir()).map_err(map_downloads_error)
 }
 
-#[lingxia::framework_native("downloads.clearCompleted", audience = "browser-control-only")]
+#[lingxia::framework_native("downloads.clearCompleted", audience = "control-surface-only")]
 fn clear_completed_downloads(app: Arc<LxApp>) -> HostResult<ClearCompletedResult> {
     let removed = lingxia_service::downloads::clear_completed(&app.app_data_dir())
         .map_err(map_downloads_error)?;
     Ok(ClearCompletedResult { removed })
 }
 
-#[lingxia::framework_native("downloads.remove", audience = "browser-control-only")]
+#[lingxia::framework_native("downloads.remove", audience = "control-surface-only")]
 fn remove_download_route(app: Arc<LxApp>, input: DownloadTaskIdInput) -> HostResult<()> {
     if input.task_id.trim().is_empty() {
         return Err(LxAppError::InvalidParameter(
@@ -118,7 +118,7 @@ fn remove_download_route(app: Arc<LxApp>, input: DownloadTaskIdInput) -> HostRes
     Ok(())
 }
 
-#[lingxia::framework_native("downloads.cancel", audience = "browser-control-only")]
+#[lingxia::framework_native("downloads.cancel", audience = "control-surface-only")]
 fn cancel_download_route(app: Arc<LxApp>, input: DownloadTaskIdInput) -> HostResult<()> {
     if input.task_id.trim().is_empty() {
         return Err(LxAppError::InvalidParameter(
@@ -129,7 +129,7 @@ fn cancel_download_route(app: Arc<LxApp>, input: DownloadTaskIdInput) -> HostRes
         .map_err(map_downloads_error)
 }
 
-#[lingxia::framework_native("downloads.pause", audience = "browser-control-only")]
+#[lingxia::framework_native("downloads.pause", audience = "control-surface-only")]
 fn pause_download_route(app: Arc<LxApp>, input: DownloadTaskIdInput) -> HostResult<()> {
     if input.task_id.trim().is_empty() {
         return Err(LxAppError::InvalidParameter(
@@ -140,7 +140,7 @@ fn pause_download_route(app: Arc<LxApp>, input: DownloadTaskIdInput) -> HostResu
         .map_err(map_downloads_error)
 }
 
-#[lingxia::framework_native("downloads.retry", audience = "browser-control-only")]
+#[lingxia::framework_native("downloads.retry", audience = "control-surface-only")]
 fn retry_download_route(app: Arc<LxApp>, input: DownloadTaskIdInput) -> HostResult<()> {
     if input.task_id.trim().is_empty() {
         return Err(LxAppError::InvalidParameter(
@@ -151,7 +151,7 @@ fn retry_download_route(app: Arc<LxApp>, input: DownloadTaskIdInput) -> HostResu
         .map_err(map_downloads_error)
 }
 
-#[lingxia::framework_native("downloads.resume", audience = "browser-control-only")]
+#[lingxia::framework_native("downloads.resume", audience = "control-surface-only")]
 fn resume_download_route(app: Arc<LxApp>, input: DownloadTaskIdInput) -> HostResult<()> {
     if input.task_id.trim().is_empty() {
         return Err(LxAppError::InvalidParameter(
@@ -162,7 +162,7 @@ fn resume_download_route(app: Arc<LxApp>, input: DownloadTaskIdInput) -> HostRes
         .map_err(map_downloads_error)
 }
 
-#[lingxia::framework_native("downloads.open", audience = "browser-control-only")]
+#[lingxia::framework_native("downloads.open", audience = "control-surface-only")]
 async fn open_download_route(
     app: Arc<LxApp>,
     input: DownloadTaskIdInput,
@@ -200,7 +200,7 @@ async fn open_download_route(
     .await
 }
 
-#[lingxia::framework_native("downloads.reveal", audience = "browser-control-only")]
+#[lingxia::framework_native("downloads.reveal", audience = "control-surface-only")]
 async fn reveal_download_route(
     app: Arc<LxApp>,
     input: DownloadTaskIdInput,
@@ -247,7 +247,7 @@ async fn reveal_download_route(
     .await
 }
 
-#[lingxia::framework_native("downloads.watch", stream, audience = "browser-control-only")]
+#[lingxia::framework_native("downloads.watch", stream, audience = "control-surface-only")]
 async fn watch_downloads(
     app: Arc<LxApp>,
     mut stream: StreamContext<DownloadEvent>,
@@ -331,7 +331,7 @@ mod tests {
         ] {
             assert_eq!(
                 route.audience(),
-                lxapp::host::RouteAudience::BrowserControlOnly
+                lxapp::host::RouteAudience::ControlSurfaceOnly
             );
         }
     }

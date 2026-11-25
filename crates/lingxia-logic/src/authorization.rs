@@ -43,13 +43,13 @@ pub(crate) enum LogicRoute {
     ShellSidebarUpdate,
     ShellSidebarRemove,
     SurfaceOpenApp,
-    ShellOpenBuiltin,
     SurfaceOpenDeclaredPlacement,
     SurfaceApp,
     SurfaceDeclared,
     ShellSetAppDisplay,
     ShellAppDisplayGet,
     ShellOpenHostTerminalSettings,
+    ShellOpenHostBrowserSurface,
     ShellActivate,
     TerminalSettingsGet,
     TerminalSettingsUpdate,
@@ -103,13 +103,13 @@ impl LogicRoute {
         Self::ShellSidebarUpdate,
         Self::ShellSidebarRemove,
         Self::SurfaceOpenApp,
-        Self::ShellOpenBuiltin,
         Self::SurfaceOpenDeclaredPlacement,
         Self::SurfaceApp,
         Self::SurfaceDeclared,
         Self::ShellSetAppDisplay,
         Self::ShellAppDisplayGet,
         Self::ShellOpenHostTerminalSettings,
+        Self::ShellOpenHostBrowserSurface,
         Self::ShellActivate,
         Self::TerminalSettingsGet,
         Self::TerminalSettingsUpdate,
@@ -165,14 +165,14 @@ impl LogicRoute {
             | Self::ShellSidebarUpdate
             | Self::ShellSidebarRemove
             | Self::SurfaceOpenApp
-            | Self::ShellOpenBuiltin
             | Self::SurfaceOpenDeclaredPlacement
             | Self::SurfaceApp
             | Self::SurfaceDeclared
             | Self::ShellSetAppDisplay
             | Self::ShellAppDisplayGet
             | Self::ShellActivate
-            | Self::ShellOpenHostTerminalSettings => RouteAudience::ControlAppOnly,
+            | Self::ShellOpenHostTerminalSettings
+            | Self::ShellOpenHostBrowserSurface => RouteAudience::ControlAppOnly,
             Self::DevicePermission
             | Self::DeviceRequestPermission
             | Self::AppNotificationShow
@@ -233,13 +233,13 @@ impl LogicRoute {
             Self::ShellSidebarUpdate => "lx.shell.sidebarActions.update",
             Self::ShellSidebarRemove => "lx.shell.sidebarActions.remove",
             Self::SurfaceOpenApp => "lx.surface.openApp",
-            Self::ShellOpenBuiltin => "lx.shell.openBuiltin",
             Self::SurfaceOpenDeclaredPlacement => "lx.surface.openDeclared.placement",
             Self::SurfaceApp => "lx.surface.app",
             Self::SurfaceDeclared => "lx.surface.declared",
             Self::ShellSetAppDisplay => "lx.shell.appDisplay.update",
             Self::ShellAppDisplayGet => "lx.shell.appDisplay.get",
             Self::ShellOpenHostTerminalSettings => "lx.surface.openApp.hostTerminalSettings",
+            Self::ShellOpenHostBrowserSurface => "lx.surface.openApp.hostBrowserSurface",
             Self::ShellActivate => "lx.shell.activate",
             Self::TerminalSettingsGet => "lx.host.terminal.settings.get",
             Self::TerminalSettingsUpdate => "lx.host.terminal.settings.update",
@@ -402,19 +402,14 @@ impl ScopeRefusal {
 
 impl AttentionScope {
     pub(crate) fn of(invocation: &HostInvocationContext) -> Self {
-        Self::for_caller(invocation.caller(), &invocation.lxapp().appid)
+        Self::for_caller(invocation.caller())
     }
 
-    /// `app_id` is the invocation's own lxapp, which bridge dispatch has
-    /// already proved the caller's scope belongs to.
-    fn for_caller(caller: &host::AuthenticatedCaller, app_id: &str) -> Self {
+    fn for_caller(caller: &host::AuthenticatedCaller) -> Self {
         match caller.session_class() {
-            Some(AppSessionClass::ControlApp) => Self::Product,
+            AppSessionClass::ControlApp => Self::Product,
             _ => Self::App {
-                app_id: caller
-                    .app_scope()
-                    .map(|scope| scope.identity().app_id().to_string())
-                    .unwrap_or_else(|| app_id.to_string()),
+                app_id: caller.app_scope().identity().app_id().to_string(),
             },
         }
     }
@@ -584,8 +579,6 @@ mod tests {
             session_id: u64,
             class: AppSessionClass,
         ) -> host::AuthenticatedCaller;
-        #[link_name = "lingxia_lxapp_test_browser_caller_v1"]
-        fn test_browser_caller() -> host::AuthenticatedCaller;
     }
 
     fn app_caller(
@@ -596,11 +589,6 @@ mod tests {
         // SAFETY: the symbol is a private workspace test harness supplied by
         // the lxapp dev-dependency; it is absent from the safe public API.
         unsafe { test_authenticated_caller(app_id, session_id, class) }
-    }
-
-    fn browser_caller() -> host::AuthenticatedCaller {
-        // SAFETY: see `app_caller`.
-        unsafe { test_browser_caller() }
     }
 
     #[test]
@@ -671,11 +659,10 @@ mod tests {
     }
 
     #[test]
-    fn same_app_id_standard_and_browser_are_denied_for_every_direct_family() {
+    fn same_app_id_standard_is_denied_for_every_direct_family() {
         let standard = app_caller("same.app", 41, AppSessionClass::StandardApp);
         let control = app_caller("same.app", 42, AppSessionClass::ControlApp);
         let surface = app_caller("same.app", 43, AppSessionClass::ControlSurface);
-        let browser = browser_caller();
 
         for route in LogicRoute::ALL {
             let surface_route = route.audience() == RouteAudience::ControlSurfaceOnly;
@@ -695,11 +682,6 @@ mod tests {
             assert_eq!(
                 authorize_caller(&surface, *route).is_ok(),
                 surface_route || attention,
-                "{}",
-                route.name()
-            );
-            assert!(
-                authorize_caller(&browser, *route).is_err(),
                 "{}",
                 route.name()
             );
@@ -746,7 +728,7 @@ mod attention_scope_tests {
     fn scope_of(app_id: &str, class: AppSessionClass) -> AttentionScope {
         // SAFETY: the private workspace test harness from the lxapp dev-dependency.
         let caller = unsafe { test_authenticated_caller(app_id, 7, class) };
-        AttentionScope::for_caller(&caller, app_id)
+        AttentionScope::for_caller(&caller)
     }
 
     fn guest() -> AttentionScope {

@@ -478,7 +478,7 @@ pub(crate) fn count_in(app_data_dir: &Path) -> Result<usize, LxAppError> {
 /// Returns at most `MAX_ENTRIES` (10k) newest visits — the store itself is
 /// pruned to that cap. No query input: this is an internal webui route and the
 /// history page filters/searches client-side by design.
-#[lingxia::framework_native("history.list", audience = "browser-control-only")]
+#[lingxia::framework_native("history.list", audience = "control-surface-only")]
 fn list_history(app: Arc<LxApp>) -> HostResult<HistorySnapshot> {
     let _guard = store_lock()
         .lock()
@@ -486,7 +486,7 @@ fn list_history(app: Arc<LxApp>) -> HostResult<HistorySnapshot> {
     load(&app.app_data_dir())
 }
 
-#[lingxia::framework_native("history.remove", audience = "browser-control-only")]
+#[lingxia::framework_native("history.remove", audience = "control-surface-only")]
 fn remove_history_entry(app: Arc<LxApp>, input: IdInput) -> HostResult<()> {
     let _guard = store_lock()
         .lock()
@@ -507,12 +507,12 @@ fn remove_history_entry(app: Arc<LxApp>, input: IdInput) -> HostResult<()> {
     Ok(())
 }
 
-#[lingxia::framework_native("history.clear", audience = "browser-control-only")]
+#[lingxia::framework_native("history.clear", audience = "control-surface-only")]
 fn clear_history(app: Arc<LxApp>, input: ClearInput) -> HostResult<ClearResult> {
     clear_since_in(&app.app_data_dir(), input.since_ms).map(|removed| ClearResult { removed })
 }
 
-#[lingxia::framework_native("history.watch", stream, audience = "browser-control-only")]
+#[lingxia::framework_native("history.watch", stream, audience = "control-surface-only")]
 async fn watch_history(
     app: Arc<LxApp>,
     mut stream: StreamContext<HistoryWatchEvent>,
@@ -613,7 +613,7 @@ mod tests {
         ] {
             assert_eq!(
                 route.audience(),
-                lxapp::host::RouteAudience::BrowserControlOnly
+                lxapp::host::RouteAudience::ControlSurfaceOnly
             );
         }
     }

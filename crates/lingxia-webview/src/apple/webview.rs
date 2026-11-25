@@ -2872,11 +2872,8 @@ impl WebViewInner {
                 let _ = Retained::from_raw(hint_script);
             }
 
-            // Without the native console hook, automation reads the console
-            // from the in-page recorder. A page with no bridge is not ours to
-            // instrument.
             #[cfg(all(feature = "webview-input", target_os = "macos"))]
-            if !rules.native_console && rules.bridge_transport {
+            if rules.page_console_recorder {
                 let recorder = NSString::from_str(crate::page_console::PAGE_CONSOLE_RECORDER);
                 let recorder_script: *mut AnyObject = msg_send![user_script_class, alloc];
                 let recorder_script: *mut AnyObject = msg_send![recorder_script,
@@ -3023,29 +3020,6 @@ impl WebViewInner {
                     request.base_url
                 )))
             }
-        }
-    }
-
-    /// Start a direct native HTML load and retain WebKit's exact navigation
-    /// object identity for the normalizer. Unlike `load_data`, this cannot be
-    /// fire-and-forget: the returned `WKNavigation*` is the only evidence that
-    /// binds a later commit to this host-initiated load.
-    fn load_trusted_data_on_main_thread(
-        &self,
-        request: LoadDataRequest<'_>,
-    ) -> Result<NativeKey, WebViewError> {
-        unsafe {
-            let data_nsstring = NSString::from_str(request.data);
-            let base_url_nsstring = NSString::from_str(request.base_url);
-            let Some(base_url) = NSURL::URLWithString(&base_url_nsstring) else {
-                return Err(WebViewError::WebView(format!(
-                    "Invalid base URL: {}",
-                    request.base_url
-                )));
-            };
-            let navigation: *mut WKNavigation =
-                msg_send![self.webview, loadHTMLString: &*data_nsstring, baseURL: &*base_url];
-            apple_navigation_key(navigation)
         }
     }
 
@@ -4686,33 +4660,6 @@ impl WebViewInner {
     }
 }
 
-impl WebViewInner {
-    /// Execute `loadHTMLString:baseURL:` on WebKit's UI thread and return the
-    /// exact `WKNavigation*` from that same invocation. The synchronous hop is
-    /// intentional: issuing a trusted intent without this key must fail closed.
-    pub(crate) fn load_trusted_data(
-        &self,
-        request: LoadDataRequest<'_>,
-    ) -> Result<NativeKey, WebViewError> {
-        if MainThreadMarker::new().is_some() {
-            return self.load_trusted_data_on_main_thread(request);
-        }
-
-        let webview_retained_addr = self.retain_webview_for_dispatch();
-        let data = request.data.to_string();
-        let base_url = request.base_url.to_string();
-        let (tx, rx) = sync_channel(1);
-        DispatchQueue::main().exec_async(move || unsafe {
-            let (_webview_retained, webview) = dispatched_webview(webview_retained_addr);
-            let result = load_trusted_html_with_navigation(webview, &data, &base_url);
-            let _ = tx.send(result);
-        });
-        rx.recv().map_err(|_| {
-            WebViewError::WebView("Apple trusted data load did not return a navigation key".into())
-        })?
-    }
-}
-
 // Associated storage dies with WKNavigation, so allocator address reuse cannot
 // alias the normalizer's active or recently completed navigation evidence.
 static APPLE_NAVIGATION_KEY_ASSOCIATION: u8 = 0;
@@ -4743,33 +4690,6 @@ fn apple_navigation_object_key(navigation: &AnyObject) -> NativeKey {
         );
         key
     }
-}
-
-// SAFETY: a non-null pointer must refer to a live WKNavigation.
-unsafe fn apple_navigation_key(navigation: *mut WKNavigation) -> Result<NativeKey, WebViewError> {
-    let navigation = unsafe { navigation.as_ref() }.ok_or_else(|| {
-        WebViewError::WebView(
-            "WKWebView did not return a navigation for trusted data load".to_string(),
-        )
-    })?;
-    Ok(apple_navigation_object_key(navigation))
-}
-
-unsafe fn load_trusted_html_with_navigation(
-    webview: *mut AnyObject,
-    data: &str,
-    base_url: &str,
-) -> Result<NativeKey, WebViewError> {
-    let data = NSString::from_str(data);
-    let base_url_string = NSString::from_str(base_url);
-    let Some(base_url) = NSURL::URLWithString(&base_url_string) else {
-        return Err(WebViewError::WebView(format!(
-            "Invalid base URL: {base_url}"
-        )));
-    };
-    let navigation: *mut WKNavigation =
-        unsafe { msg_send![webview, loadHTMLString: &*data, baseURL: &*base_url] };
-    unsafe { apple_navigation_key(navigation) }
 }
 
 impl Drop for WebViewInner {
@@ -5166,15 +5086,7 @@ impl LingXiaMessageHandler {
         let Some(webview) = find_webview_for_native(&webtag, native_webview) else {
             return;
         };
-        let native_view_id = webview.native_view_id();
-        if !invalidate_restored_document(&webtag, native_view_id) {
-            return;
-        }
-        let url = source_page_url_from_webview(native_webview)
-            .unwrap_or_else(|| "about:blank".to_string());
-        if let Some(delegate) = webview.get_delegate() {
-            delegate.on_document_restored(native_view_id, &url);
-        }
+        invalidate_restored_document(&webtag, webview.native_view_id());
     }
 }
 
@@ -5245,11 +5157,6 @@ mod tests {
     }
 
     #[test]
-    fn trusted_html_requires_a_non_null_navigation_key() {
-        assert!(unsafe { apple_navigation_key(std::ptr::null_mut()) }.is_err());
-    }
-
-    #[test]
     fn navigation_keys_follow_object_lifetimes_not_addresses() {
         let mut keys = std::collections::HashSet::new();
         for _ in 0..1024 {
@@ -5285,7 +5192,7 @@ mod tests {
             native_view_id,
             NativeSignal::NavigationStarted {
                 key: Some(71),
-                url: "lingxia://settings".into(),
+                url: "lx://app/pages/home/index.html".into(),
             },
         );
         normalizer::submit(
@@ -5326,7 +5233,7 @@ mod tests {
             native_view_id,
             NativeSignal::NavigationStarted {
                 key: Some(72),
-                url: "lingxia://settings".into(),
+                url: "lx://app/pages/home/index.html".into(),
             },
         );
         normalizer::submit(

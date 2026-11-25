@@ -31,7 +31,7 @@ internal object LxAppBrowser {
     private const val TAG = "LingXia.Browser"
     private const val ATTACH_RETRY_DELAY_MS = 100L
     private const val ATTACH_MAX_RETRIES = 8
-    private const val HIDDEN_NEW_TAB_URL = "lingxia://newtab"
+    private const val HIDDEN_NEW_TAB_URL = "about:blank"
 
     private val openTabIds = mutableListOf<String>()
     private var activeTabId: String? = null
@@ -615,7 +615,7 @@ internal object LxAppBrowser {
             Log.w(TAG, "openNewTab failed: invalid session for appId=$appId")
             return
         }
-        val tabId = NativeApi.openTrustedBrowserTabWithId(appId, sessionId, HIDDEN_NEW_TAB_URL, "tab-" + java.util.UUID.randomUUID().toString())
+        val tabId = NativeApi.openBrowserTab(appId, sessionId, HIDDEN_NEW_TAB_URL)
         if (tabId.isNullOrBlank()) {
             Log.w(TAG, "openNewTab failed: native open returned empty tab")
             return
@@ -901,7 +901,7 @@ internal object LxAppBrowser {
                 Lingxia.localizedString(activity, R.string.lx_browser_downloads)
             ) {
                 closeOverflowMenu()
-                navigateActiveTab(activity, "lingxia://downloads")
+                openSystemPage("downloads")
             }
         )
         panel.addView(
@@ -911,7 +911,7 @@ internal object LxAppBrowser {
                 Lingxia.localizedString(activity, R.string.lx_browser_settings)
             ) {
                 closeOverflowMenu()
-                navigateActiveTab(activity, "lingxia://settings")
+                openSystemPage("settings")
             }
         )
 
@@ -986,7 +986,7 @@ internal object LxAppBrowser {
         // Secure is the norm — no padlock (misread as "locked"); only insecure
         // pages get an icon.
         val scheme = runCatching { URI(cleanUrl).scheme?.lowercase() }.getOrNull()
-        if (scheme == "https" || scheme == "lingxia") {
+        if (scheme == "https") {
             icon.visibility = View.GONE
         } else {
             icon.visibility = View.VISIBLE
@@ -1077,16 +1077,17 @@ internal object LxAppBrowser {
         overlayContainer?.removeCallbacks(chromeRefreshRunnable)
     }
 
+    /** Opens one of the browser's system pages (`app.lingxia.browser`). */
+    private fun openSystemPage(page: String) {
+        if (!NativeApi.openBrowserSystemPage(page, "")) {
+            Log.w(TAG, "failed to open browser system page $page")
+        }
+    }
+
     private fun navigateActiveTab(activity: Activity, targetUrl: String): Boolean {
         val tabId = activeTabId ?: return false
         updateAddressBar(targetUrl)
-        val navigated = if (targetUrl == "lingxia://downloads" || targetUrl == "lingxia://settings") {
-            val appId = LxApp.homeAppId ?: return false
-            val sessionId = NativeApi.getLxAppSessionId(appId)
-            sessionId > 0L && NativeApi.openTrustedBrowserTabWithId(appId, sessionId, targetUrl, tabId) != null
-        } else {
-            NativeApi.browserTabNavigate(tabId, targetUrl)
-        }
+        val navigated = NativeApi.browserTabNavigate(tabId, targetUrl)
         if (!navigated) {
             Log.w(TAG, "navigate failed: tabId=$tabId url=$targetUrl")
             scheduleChromeRefreshSoon()
@@ -1172,7 +1173,7 @@ internal object LxAppBrowser {
             return HIDDEN_NEW_TAB_URL
         }
         val explicitScheme = runCatching { URI(input).scheme?.lowercase() }.getOrNull()
-        if (explicitScheme == "http" || explicitScheme == "https" || explicitScheme == "lingxia") {
+        if (explicitScheme == "http" || explicitScheme == "https") {
             return input
         }
         val looksLikeHost = input.contains(".") && !input.contains(" ")

@@ -1,5 +1,5 @@
-// Keeps tests/shared.test.ts, shared-specs.json and the shared page and flow
-// specs of @lingxia/test in step: every source spec is imported, every skip
+// Keeps tests/shared.test.ts, shared-specs.json and the shared page specs of
+// @lingxia/test in step: every source spec is imported, every skip
 // names an imported file and gives a reason.
 import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { dirname, join } from 'node:path';
@@ -8,7 +8,7 @@ import { fileURLToPath } from 'node:url';
 const here = dirname(fileURLToPath(import.meta.url));
 const manifest = JSON.parse(readFileSync(join(here, 'shared-specs.json'), 'utf8'));
 const source = join(here, manifest.source);
-const specs = ['pages', 'flows'].flatMap((dir) =>
+const specs = ['pages'].flatMap((dir) =>
   readdirSync(join(source, dir)).filter((name) => name.endsWith('.test.ts')).map((name) => `${dir}/${name}`));
 const entry = readFileSync(join(here, 'shared.test.ts'), 'utf8');
 const prefix = '@lingxia/test/showcase';
@@ -18,9 +18,9 @@ const imported = [...entry.matchAll(/^import '([^']+)';$/gm)].map((m) => m[1])
 
 const problems = [];
 for (const spec of specs) if (!imported.includes(spec)) problems.push(`${spec} is not imported by tests/shared.test.ts`);
-for (const file of imported) if (!specs.includes(file)) problems.push(`tests/shared.test.ts imports ${file}, which is not a page or flow spec`);
+for (const file of imported) if (!specs.includes(file)) problems.push(`tests/shared.test.ts imports ${file}, which is not a page spec`);
 for (const [file, reason] of Object.entries(manifest.skip)) {
-  if (!specs.includes(file)) problems.push(`skip names ${file}, which is not a page or flow spec`);
+  if (!specs.includes(file)) problems.push(`skip names ${file}, which is not a page spec`);
   if (typeof reason !== 'string' || !reason.trim()) problems.push(`skip of ${file} has no reason`);
 }
 // Every literal testId a run spec names must exist in this lxapp.

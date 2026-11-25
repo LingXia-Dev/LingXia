@@ -295,10 +295,11 @@ internal object NativeApi {
     external fun openBrowserTab(appId: String, sessionId: Long, url: String): String?
 
     /**
-     * Open or navigate a host-selected internal browser page in the given tab.
+     * Browser chrome only: open a browser system page (`settings`, `downloads`)
+     * with a JSON object query, or empty for none.
      */
     @JvmStatic
-    external fun openTrustedBrowserTabWithId(appId: String, sessionId: Long, url: String, tabId: String): String?
+    external fun openBrowserSystemPage(page: String, queryJson: String): Boolean
 
     /**
      * Open a managed browser target without registering it in product browser

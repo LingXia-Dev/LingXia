@@ -15,7 +15,9 @@ runs:
       with:
         node-version: ${{ env.NODE_VERSION || '22' }}
         cache: npm
-        cache-dependency-path: packages/package-lock.json
+        cache-dependency-path: |
+          packages/package-lock.json
+          crates/lingxia-browser-shell/webui/package-lock.json
 
     - name: Install + build @lingxia web packages
       shell: bash
@@ -26,6 +28,8 @@ runs:
       run: |
         set -euo pipefail
         npm ci --prefix packages
+        # The browser system pages lxapp; hosts with capabilities.browser build it.
+        npm ci --prefix crates/lingxia-browser-shell/webui
         # react cascades to elements + page-runtime + bridge:types.
         # lingxia-test builds against lingxia-types' declarations, so it follows it.
         for pkg in lingxia-types lingxia-bridge lingxia-polyfills lingxia-react lingxia-test; do

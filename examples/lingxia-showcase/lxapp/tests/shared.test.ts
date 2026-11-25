@@ -1,5 +1,4 @@
-// The shared page and flow specs (@lingxia/test/showcase) on GPU pages; skips are in shared-specs.json.
-import '@lingxia/test/showcase/flows/browser-control-navigation.test.js';
+// The shared page specs (@lingxia/test/showcase) on GPU pages; skips are in shared-specs.json.
 import '@lingxia/test/showcase/pages/bridge-repro.test.js';
 import '@lingxia/test/showcase/pages/bridge.test.js';
 import '@lingxia/test/showcase/pages/channel.test.js';

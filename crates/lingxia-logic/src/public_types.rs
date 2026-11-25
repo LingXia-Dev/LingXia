@@ -1534,10 +1534,6 @@ rong::js_api! {
     modal?: boolean;
 }"###;
 
-        /// Built-in browser product page. Opening one requires
-        /// `capabilities.browser` and is restricted to the native-assigned Control app.
-        type BuiltinShellPage = r###"'downloads'"###;
-
         /// A float's size hint.
         type OverlaySurfaceSize = r###"{
     /** Width hint. */
@@ -1999,7 +1995,7 @@ true
         /// Where the content came from. The discriminant on every surface
         /// handle, so `AnySurface` narrows without a runtime `typeof` check.
         ///
-        type SurfaceKind = r###"'page' | 'declared' | 'app' | 'tab' | 'builtin'"###;
+        type SurfaceKind = r###"'page' | 'declared' | 'app' | 'tab'"###;
 
         /// What the host actually produced. Reported by `realized`, which is
         /// how a caller reads the outcome of an ordered placement preference.
@@ -2095,15 +2091,6 @@ true
     readonly realized: 'main' | 'aside';
 }"###;
 
-        /// A host builtin page such as downloads. The shell owns
-        /// its lifetime and its visibility, so this handle reports identity:
-        /// there is no `show`, `hide`, `close`, or `onClose`.
-        ///
-        type BuiltinSurface = r###"Omit<SurfaceBase, 'close' | 'onClose'> & {
-    /** A host builtin page. */
-    readonly kind: 'builtin';
-}"###;
-
         /// External content in the in-app browser.
         ///
         type TabSurface = r###"(SurfaceBase & {
@@ -2126,7 +2113,7 @@ true
 
         /// Every surface handle, narrowable by `kind`.
         ///
-        type AnySurface = r###"PageSurface | DeclaredSurface | AppSurface | TabSurface | BuiltinSurface"###;
+        type AnySurface = r###"PageSurface | DeclaredSurface | AppSurface | TabSurface"###;
 
         /// Options every `lx.surface.openPage` placement takes.
         type OpenPageShared = r###"{

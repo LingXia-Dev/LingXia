@@ -17,13 +17,9 @@ use jni::sys::{jboolean, jint, jlong};
 use jni::{Env, EnvUnowned, errors::ThrowRuntimeExAndDefault, jni_sig, jni_str};
 use std::fs;
 use std::sync::Arc;
-use std::sync::atomic::{AtomicU64, Ordering};
 
 // Import from webview.rs
 use crate::android::webview::{WebViewInner, complete_pending_eval_request};
-
-static BROWSER_CONTROL_API_BELOW_23: AtomicU64 = AtomicU64::new(0);
-static BROWSER_CONTROL_MESSAGE_PORT_UNAVAILABLE: AtomicU64 = AtomicU64::new(0);
 
 fn native_view_id_from_jni(native_view_id: jlong, callback: &str) -> Option<NativeWebViewId> {
     (native_view_id > 0)
@@ -179,36 +175,6 @@ pub extern "system" fn Java_com_lingxia_webview_LingXiaWebView_dispatchDocumentM
     .resolve::<ThrowRuntimeExAndDefault>()
 }
 
-#[unsafe(no_mangle)]
-pub extern "system" fn Java_com_lingxia_webview_LingXiaWebView_onBrowserControlBridgeDegraded(
-    mut env: EnvUnowned,
-    _this: JObject,
-    reason: JString,
-) {
-    env.with_env(|env| -> Result<(), jni::errors::Error> {
-        let reason: String = reason.try_to_string(env)?;
-        let count = match reason.as_str() {
-            "android_api_below_23" => {
-                BROWSER_CONTROL_API_BELOW_23.fetch_add(1, Ordering::Relaxed) + 1
-            }
-            "android_message_port_unavailable" => {
-                BROWSER_CONTROL_MESSAGE_PORT_UNAVAILABLE.fetch_add(1, Ordering::Relaxed) + 1
-            }
-            _ => {
-                log::warn!("Unknown Android BrowserControl degradation reason: {reason}");
-                return Ok(());
-            }
-        };
-        log::warn!(
-            "metric=browser_control_bridge_degraded reason={} count={}",
-            reason,
-            count
-        );
-        Ok(())
-    })
-    .resolve::<ThrowRuntimeExAndDefault>()
-}
-
 /// Java-sampled observable WebView state (URL/title/back-forward), pushed on
 /// visited-history, title, and page-finished callbacks. Empty strings mean
 /// "no sample" and are skipped.
@@ -338,19 +304,7 @@ pub extern "system" fn Java_com_lingxia_webview_LingXiaWebView_onPageStarted(
         } else {
             url
         };
-        let Some(webview) = find_webview_by_native_view_id(&webtag, native_view_id) else {
-            return Ok(0);
-        };
-        if let Some(intent) = webview.inner.trusted_load.take(load_token as u64) {
-            if !normalizer::start_trusted_navigation(
-                &webtag,
-                native_view_id,
-                intent,
-                load_token as u64,
-                url,
-            ) {
-                normalizer::revoke_trusted_load(&webtag, native_view_id, intent);
-            }
+        if find_webview_by_native_view_id(&webtag, native_view_id).is_none() {
             return Ok(0);
         }
         normalizer::submit(
@@ -399,44 +353,6 @@ pub extern "system" fn Java_com_lingxia_webview_LingXiaWebView_onPageCommitVisib
                 .map(|generation| generation.get() as jlong)
                 .unwrap_or_default(),
         )
-    })
-    .resolve::<ThrowRuntimeExAndDefault>()
-}
-
-#[unsafe(no_mangle)]
-pub extern "system" fn Java_com_lingxia_webview_LingXiaWebView_onDocumentRestored(
-    mut env: EnvUnowned,
-    _this: JObject,
-    appid: JString,
-    path: JString,
-    session_id: jlong,
-    native_view_id: jlong,
-    url: JString,
-) {
-    env.with_env(|env| -> Result<(), jni::errors::Error> {
-        let appid: String = appid.try_to_string(env)?;
-        let path: String = path.try_to_string(env)?;
-        let url: String = url.try_to_string(env)?;
-        let session_id = (session_id > 0).then_some(session_id as u64);
-        let Some(native_view_id) = native_view_id_from_jni(native_view_id, "document-restored")
-        else {
-            return Ok(());
-        };
-        let webtag = WebTag::new(&appid, &path, session_id);
-        let Some(webview) = find_webview_by_native_view_id(&webtag, native_view_id) else {
-            return Ok(());
-        };
-        if !normalizer::invalidate_restored_document(&webtag, native_view_id) {
-            return Ok(());
-        }
-
-        // Close the shared generation/outbound gate before asking the browser
-        // owner to replace the restored document with a fresh trusted load.
-        if let Some(delegate) = webview.get_delegate() {
-            let url = if url.is_empty() { "about:blank" } else { &url };
-            delegate.on_document_restored(native_view_id, url);
-        }
-        Ok(())
     })
     .resolve::<ThrowRuntimeExAndDefault>()
 }

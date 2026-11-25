@@ -105,9 +105,6 @@ mod android;
 #[cfg(any(target_os = "android", test))]
 mod android_create;
 
-#[cfg(any(target_os = "android", test))]
-mod android_document;
-
 #[cfg(any(target_os = "ios", target_os = "macos"))]
 mod apple;
 
@@ -140,16 +137,15 @@ pub use traits::{
     LoadError, LoadErrorKind, NativeWebViewId, NavigationPolicy, NavigationRequest, NetworkBody,
     NetworkCaptureSnapshot, NetworkEntry, NewWindowPolicy, PointerButton, PointerInput,
     PressOptions, SchemeOutcome, SchemeRequestFrame, ScreenshotRegion, ScrollOptions,
-    SystemPipeReader, TrustedDocumentAdmission, TrustedLoadIntent, TypeOptions, UserAgentOverride,
-    WebMessageContext, WebMessageFrame, WebMessageSource, WebMessageTransport, WebResourceBody,
-    WebResourceResponse, WebViewController, WebViewCookie, WebViewCookieSameSite,
-    WebViewCookieSetRequest, WebViewDelegate, WebViewInputController,
+    SystemPipeReader, TypeOptions, UserAgentOverride, WebMessageContext, WebMessageFrame,
+    WebMessageSource, WebMessageTransport, WebResourceBody, WebResourceResponse, WebViewController,
+    WebViewCookie, WebViewCookieSameSite, WebViewCookieSetRequest, WebViewDelegate,
+    WebViewInputController,
 };
 pub use webview::{
     AppPageWebViewBuilder, BrowserTabWebViewBuilder, EmbeddedWebViewBuilder, ProxyActivation,
-    ProxyApplyReport, ProxyApplyStatus, ProxyConfig, TrustedDataLoadReservation, WebTag, WebView,
-    WebViewBuilder, WebViewCreateStage, WebViewDataMode, WebViewEvent, WebViewEventSubscription,
-    WebViewSession,
+    ProxyApplyReport, ProxyApplyStatus, ProxyConfig, WebTag, WebView, WebViewBuilder,
+    WebViewCreateStage, WebViewDataMode, WebViewEvent, WebViewEventSubscription, WebViewSession,
 };
 
 /// Global website-data operations for privacy surfaces: usage counts,

@@ -42,18 +42,17 @@ pub(crate) use runtime::navigate;
 #[cfg(any(target_os = "ios", target_os = "macos"))]
 pub(crate) use runtime::open;
 pub(crate) use runtime::open_standalone_for_app;
+pub(crate) use runtime::open_system_page;
 #[cfg(any(
     target_os = "ios",
     target_os = "macos",
     target_os = "android",
     target_env = "ohos"
 ))]
-pub(crate) use runtime::open_trusted_for_app;
+pub(crate) use runtime::open_system_page_json;
 #[cfg(target_env = "ohos")]
 pub(crate) use runtime::tab_webtag;
-pub(crate) use runtime::{
-    APP_ID, close, mark_active, navigate_trusted_control_page, open_for_app, tab_path,
-};
+pub(crate) use runtime::{APP_ID, close, mark_active, open_for_app, tab_path};
 #[cfg(target_os = "windows")]
 pub(crate) use runtime::{
     BrowserTabSummary, activate, go_back, go_forward, navigate, reload, runtime_enabled,
@@ -136,20 +135,16 @@ pub(crate) fn register_builtin_runtime() {
     });
 }
 
-pub(crate) fn register_builtin_assets(authority: &lxapp::NativeControlPlaneAuthority) {
+pub(crate) fn register_builtin_assets() {
     #[cfg(feature = "browser-shell")]
-    shell::register_bundled_assets(authority);
+    shell::register_bundled_assets();
     #[cfg(all(feature = "browser-runtime", not(feature = "browser-shell")))]
     runtime::register_bundled_app_once();
-    #[cfg(not(feature = "browser-shell"))]
-    let _ = authority;
 }
 
 pub(crate) fn warmup() {
     #[cfg(feature = "browser-shell")]
     shell::warmup();
-    #[cfg(all(feature = "browser-runtime", not(feature = "browser-shell")))]
-    runtime::warmup();
 }
 
 #[cfg(all(test, feature = "browser-shell"))]
@@ -157,6 +152,7 @@ mod tests {
     #[test]
     fn settings_catalog_routes_match_production_inventory_and_policy() {
         crate::host_addon::run_install_host_apis();
+        crate::appearance_host::register();
         crate::display_language_host::register();
         super::register_builtin_route_inventory();
         lxapp::host::register_builtin_routes();
@@ -169,8 +165,8 @@ mod tests {
             assert!(
                 matches!(
                     audience,
-                    lxapp::host::RouteAudience::BrowserControlOnly
-                        | lxapp::host::RouteAudience::ControlAppOrBrowserOnly
+                    lxapp::host::RouteAudience::ControlSurfaceOnly
+                        | lxapp::host::RouteAudience::ControlAppOrSurface
                 ),
                 "incompatible production Settings route {route}: {audience:?}"
             );

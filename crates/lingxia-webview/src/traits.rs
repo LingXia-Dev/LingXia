@@ -55,66 +55,6 @@ impl DocumentGeneration {
     }
 }
 
-/// Opaque capability issued for one native-owned direct HTML load.
-///
-/// This is deliberately useful only for equality binding. It has no public
-/// constructor, raw representation, formatting implementation, or wire
-/// encoding: URL and HTML data are not authority, and neither is this token
-/// until the navigation normalizer attests it at a committed document.
-#[derive(Clone, Copy, PartialEq, Eq, Hash)]
-pub struct TrustedLoadIntent(u64);
-
-impl TrustedLoadIntent {
-    pub(crate) const fn new(raw: u64) -> Self {
-        Self(raw)
-    }
-}
-
-/// Non-forgeable evidence that a trusted native HTML load committed.
-///
-/// The normalizer creates this only after it correlates one issued
-/// [`TrustedLoadIntent`] with the exact native WebView, the platform-native
-/// navigation key, and an accepted navigation lifecycle.
-#[derive(Clone, Copy)]
-pub struct TrustedDocumentAdmission {
-    native_view: NativeWebViewId,
-    generation: DocumentGeneration,
-    navigation_id: crate::events::NavigationId,
-    intent: TrustedLoadIntent,
-}
-
-impl TrustedDocumentAdmission {
-    pub(crate) const fn new(
-        native_view: NativeWebViewId,
-        generation: DocumentGeneration,
-        navigation_id: crate::events::NavigationId,
-        intent: TrustedLoadIntent,
-    ) -> Self {
-        Self {
-            native_view,
-            generation,
-            navigation_id,
-            intent,
-        }
-    }
-
-    pub const fn native_view(&self) -> NativeWebViewId {
-        self.native_view
-    }
-
-    pub const fn generation(&self) -> DocumentGeneration {
-        self.generation
-    }
-
-    pub const fn navigation_id(&self) -> crate::events::NavigationId {
-        self.navigation_id
-    }
-
-    pub const fn intent(&self) -> TrustedLoadIntent {
-        self.intent
-    }
-}
-
 /// Whether a platform callback is bound to a committed document generation.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum DocumentBinding {
@@ -365,10 +305,6 @@ pub struct NavigationRequest {
     pub url: String,
     pub has_user_gesture: bool,
     pub is_main_frame: bool,
-    /// True when this start is the host-issued trusted load (or its redirect
-    /// restart). In-document `lingxia://` clicks are false so the browser can
-    /// cancel them and reload through the trusted path.
-    pub host_issued_trusted: bool,
 }
 
 impl NavigationRequest {
@@ -377,13 +313,7 @@ impl NavigationRequest {
             url: url.into(),
             has_user_gesture,
             is_main_frame,
-            host_issued_trusted: false,
         }
-    }
-
-    pub fn with_host_issued_trusted(mut self, host_issued_trusted: bool) -> Self {
-        self.host_issued_trusted = host_issued_trusted;
-        self
     }
 }
 
@@ -1161,23 +1091,10 @@ pub trait WebViewDelegate: Send + Sync {
     ) {
     }
 
-    /// A trusted native HTML load that reached a reliably committed document.
-    ///
-    /// This is stricter than [`Self::on_document_committed`]: it is emitted
-    /// only when the platform returned the exact native navigation key for a
-    /// direct native load and the normalizer bound that key to this accepted
-    /// navigation. The data and base URL used for the load are not authority.
-    fn on_trusted_document_admitted(&self, _admission: TrustedDocumentAdmission) {}
-
     /// The platform terminated this exact WebView's content process. Only
     /// adapters with native evidence emit it; consumers must revoke any
     /// document authority before allowing a replacement to load.
     fn on_web_content_process_terminated(&self, _native_view: NativeWebViewId) {}
-
-    /// A backend proved that a previously committed document was restored
-    /// without a fresh native start/commit chain (for example from BFCache).
-    /// The adapter revokes its generation before invoking this hook.
-    fn on_document_restored(&self, _native_view: NativeWebViewId, _url: &str) {}
 
     /// Handles a postMessage from the page View(WebView).
     ///

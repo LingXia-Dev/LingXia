@@ -585,7 +585,7 @@ declare global {
     readonly surface: SurfaceApi;
     /** Move between pages, tabs and lxapps. */
     readonly nav: NavApi;
-    /** The desktop shell: running apps, declared surfaces, builtins and sidebar actions. */
+    /** The desktop shell: running apps, declared surfaces and sidebar actions. */
     readonly shell: ShellApi;
     /** Dialogs, action sheets and toasts. */
     readonly ui: UiApi;
@@ -760,7 +760,7 @@ export type AlertOptions = {
 };
 
 /** Every surface handle, narrowable by `kind`. */
-export type AnySurface = PageSurface | DeclaredSurface | AppSurface | TabSurface | BuiltinSurface;
+export type AnySurface = PageSurface | DeclaredSurface | AppSurface | TabSurface;
 
 /**
  * `lx.app.appearance` — the scheme this lxapp renders in: the one its
@@ -1136,22 +1136,6 @@ export type BannerApi = {
 
 /** Bytes `lx.fs.write` and the clipboard accept. */
 export type BinaryFileData = ArrayBuffer | ArrayBufferView;
-
-/**
- * Built-in browser product page. Opening one requires
- * `capabilities.browser` and is restricted to the native-assigned Control app.
- */
-export type BuiltinShellPage = 'downloads';
-
-/**
- * A host builtin page such as downloads. The shell owns
- * its lifetime and its visibility, so this handle reports identity:
- * there is no `show`, `hide`, `close`, or `onClose`.
- */
-export type BuiltinSurface = Omit<SurfaceBase, 'close' | 'onClose'> & {
-    /** A host builtin page. */
-    readonly kind: 'builtin';
-};
 
 /** How the camera records, for `lx.pick.capture` and the camera route of `lx.pick.media`. */
 export type CameraOptions = {
@@ -2855,7 +2839,7 @@ export type SurfaceInteraction = {
  * Where the content came from. The discriminant on every surface
  * handle, so `AnySurface` narrows without a runtime `typeof` check.
  */
-export type SurfaceKind = 'page' | 'declared' | 'app' | 'tab' | 'builtin';
+export type SurfaceKind = 'page' | 'declared' | 'app' | 'tab';
 
 /** Two-way messaging, available when both sides are lxapp pages. */
 export type SurfaceMessaging = {
@@ -4334,12 +4318,6 @@ declare global {
 
 declare global {
   interface ShellApi {
-    /**
-     * Open a host builtin page such as downloads. Control app only.
-     * @throws {E_NOT_FOUND} A page other than `downloads`.
-     * @throws {E_PERMISSION_DENIED} From an lxapp other than the Control app.
-     */
-    openBuiltin(page: BuiltinShellPage): Promise<BuiltinSurface>;
     /** Bring the product window forward without navigating. Control app only. */
     activate(): void;
     readonly appDisplay: AppDisplayApi;

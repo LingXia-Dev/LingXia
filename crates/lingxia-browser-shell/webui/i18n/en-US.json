@@ -1,0 +1,806 @@
+{
+  "common.cancel": {
+    "defaultMessage": "Cancel",
+    "description": "Browser system UI string for common.cancel"
+  },
+  "common.delete": {
+    "defaultMessage": "Delete",
+    "description": "Browser system UI string for common.delete"
+  },
+  "common.save": {
+    "defaultMessage": "Save",
+    "description": "Browser system UI string for common.save"
+  },
+  "common.optional": {
+    "defaultMessage": "optional",
+    "description": "Browser system pages: common.optional"
+  },
+  "bookmarks.title": {
+    "defaultMessage": "Bookmarks",
+    "description": "Browser system UI string for bookmarks.title"
+  },
+  "bookmarks.all": {
+    "defaultMessage": "All bookmarks",
+    "description": "Browser system UI string for bookmarks.all"
+  },
+  "bookmarks.ungrouped": {
+    "defaultMessage": "Ungrouped",
+    "description": "Browser system UI string for bookmarks.ungrouped"
+  },
+  "bookmarks.groups": {
+    "defaultMessage": "Groups",
+    "description": "Browser system pages: bookmarks.groups"
+  },
+  "bookmarks.group": {
+    "defaultMessage": "Group",
+    "description": "Browser system pages: bookmarks.group"
+  },
+  "bookmarks.add": {
+    "defaultMessage": "Add bookmark",
+    "description": "Browser system UI string for bookmarks.add"
+  },
+  "bookmarks.url": {
+    "defaultMessage": "Address",
+    "description": "Browser system pages: bookmarks.url"
+  },
+  "bookmarks.name": {
+    "defaultMessage": "Name",
+    "description": "Browser system pages: bookmarks.name"
+  },
+  "bookmarks.edit": {
+    "defaultMessage": "Edit bookmark",
+    "description": "Browser system pages: bookmarks.edit"
+  },
+  "bookmarks.editNamed": {
+    "defaultMessage": "Edit {title}",
+    "description": "Browser system pages: bookmarks.editNamed"
+  },
+  "bookmarks.open": {
+    "defaultMessage": "Open",
+    "description": "Browser system pages: bookmarks.open"
+  },
+  "bookmarks.pin": {
+    "defaultMessage": "Pin to sidebar",
+    "description": "Browser system UI string for bookmarks.pin"
+  },
+  "bookmarks.unpin": {
+    "defaultMessage": "Unpin from sidebar",
+    "description": "Browser system UI string for bookmarks.unpin"
+  },
+  "bookmarks.pinned": {
+    "defaultMessage": "Pinned",
+    "description": "Browser system pages: bookmarks.pinned"
+  },
+  "bookmarks.pinToSidebar": {
+    "defaultMessage": "Show in the sidebar",
+    "description": "Browser system pages: bookmarks.pinToSidebar"
+  },
+  "bookmarks.other": {
+    "defaultMessage": "Other",
+    "description": "Browser system pages: bookmarks.other"
+  },
+  "bookmarks.pinHint": {
+    "defaultMessage": "Pinned bookmarks show as icons at the top of the sidebar, one click away.",
+    "description": "Browser system pages: bookmarks.pinHint"
+  },
+  "bookmarks.moveUp": {
+    "defaultMessage": "Move up",
+    "description": "Accessible label of the arrow that moves a bookmark one place up in its group"
+  },
+  "bookmarks.moveDown": {
+    "defaultMessage": "Move down",
+    "description": "Accessible label of the arrow that moves a bookmark one place down in its group"
+  },
+  "bookmarks.more": {
+    "defaultMessage": "More bookmark actions",
+    "description": "Browser system pages: bookmarks.more"
+  },
+  "bookmarks.import": {
+    "defaultMessage": "Import from HTML…",
+    "description": "Browser system UI string for bookmarks.import"
+  },
+  "bookmarks.export": {
+    "defaultMessage": "Export to HTML…",
+    "description": "Browser system UI string for bookmarks.export"
+  },
+  "bookmarks.search": {
+    "defaultMessage": "Search bookmarks",
+    "description": "Browser system pages: bookmarks.search"
+  },
+  "bookmarks.empty": {
+    "defaultMessage": "No bookmarks yet",
+    "description": "Browser system pages: bookmarks.empty"
+  },
+  "bookmarks.emptyHint": {
+    "defaultMessage": "Bookmark a page from the address bar, or add one here.",
+    "description": "Browser system pages: bookmarks.emptyHint"
+  },
+  "bookmarks.noMatches": {
+    "defaultMessage": "No bookmarks match",
+    "description": "Browser system pages: bookmarks.noMatches"
+  },
+  "bookmarks.newGroup": {
+    "defaultMessage": "New group",
+    "description": "Browser system UI string for bookmarks.newGroup"
+  },
+  "bookmarks.groupName": {
+    "defaultMessage": "Group name",
+    "description": "Browser system pages: bookmarks.groupName"
+  },
+  "bookmarks.groupActions": {
+    "defaultMessage": "Actions for {name}",
+    "description": "Browser system pages: bookmarks.groupActions"
+  },
+  "bookmarks.renameGroup": {
+    "defaultMessage": "Rename group",
+    "description": "Button that renames the selected bookmark group"
+  },
+  "bookmarks.moveGroupUp": {
+    "defaultMessage": "Move group up",
+    "description": "Button that moves the selected group one place up in the group list"
+  },
+  "bookmarks.moveGroupDown": {
+    "defaultMessage": "Move group down",
+    "description": "Button that moves the selected group one place down in the group list"
+  },
+  "bookmarks.deleteGroup": {
+    "defaultMessage": "Delete group",
+    "description": "Button that deletes the selected bookmark group"
+  },
+  "bookmarks.deleteGroupConfirm": {
+    "defaultMessage": "Delete {name}?",
+    "description": "Browser system pages: bookmarks.deleteGroupConfirm"
+  },
+  "bookmarks.deleteGroupHint": {
+    "defaultMessage": "Its bookmarks move to Ungrouped.",
+    "description": "Browser system pages: bookmarks.deleteGroupHint"
+  },
+  "bookmarks.status.imported": {
+    "defaultMessage": "{count, plural, one {Imported # bookmark} other {Imported # bookmarks}}",
+    "description": "After an HTML import."
+  },
+  "bookmarks.status.exported": {
+    "defaultMessage": "{count, plural, one {Exported # bookmark} other {Exported # bookmarks}}",
+    "description": "After an HTML export."
+  },
+  "bookmarks.problem.url": {
+    "defaultMessage": "Enter a web address that starts with http:// or https://",
+    "description": "Browser system pages: bookmarks.problem.url"
+  },
+  "bookmarks.problem.groupExists": {
+    "defaultMessage": "A group named “{name}” already exists",
+    "description": "Browser system pages: bookmarks.problem.groupExists"
+  },
+  "bookmarks.problem.sidebarFull": {
+    "defaultMessage": "The sidebar holds {max} pins. Unpin one first.",
+    "description": "Browser system pages: bookmarks.problem.sidebarFull"
+  },
+  "bookmarks.problem.gone": {
+    "defaultMessage": "This was removed in the meantime",
+    "description": "Browser system pages: bookmarks.problem.gone"
+  },
+  "bookmarks.problem.failed": {
+    "defaultMessage": "Couldn’t save. Try again.",
+    "description": "Browser system pages: bookmarks.problem.failed"
+  },
+  "history.title": {
+    "defaultMessage": "History",
+    "description": "Browser system UI string for history.title"
+  },
+  "history.search": {
+    "defaultMessage": "Search history",
+    "description": "Browser system pages: history.search"
+  },
+  "history.results": {
+    "defaultMessage": "{count, plural, one {# visit} other {# visits}}",
+    "description": "Browser system pages: history.results"
+  },
+  "history.today": {
+    "defaultMessage": "Today",
+    "description": "Browser system pages: history.today"
+  },
+  "history.yesterday": {
+    "defaultMessage": "Yesterday",
+    "description": "Browser system pages: history.yesterday"
+  },
+  "history.remove": {
+    "defaultMessage": "Remove {title} from history",
+    "description": "Browser system pages: history.remove"
+  },
+  "history.open": {
+    "defaultMessage": "Open",
+    "description": "Browser system pages: history.open"
+  },
+  "history.removeShort": {
+    "defaultMessage": "Remove",
+    "description": "Browser system pages: history.removeShort"
+  },
+  "history.clearData": {
+    "defaultMessage": "Clear browsing data…",
+    "description": "Browser system pages: history.clearData"
+  },
+  "history.empty": {
+    "defaultMessage": "No history yet",
+    "description": "Browser system pages: history.empty"
+  },
+  "history.emptyHint": {
+    "defaultMessage": "Pages you visit show up here.",
+    "description": "Browser system pages: history.emptyHint"
+  },
+  "history.noMatches": {
+    "defaultMessage": "No visits match",
+    "description": "Browser system pages: history.noMatches"
+  },
+  "downloads.title": {
+    "defaultMessage": "Downloads",
+    "description": "Browser system UI string for downloads.title"
+  },
+  "downloads.filter": {
+    "defaultMessage": "Show",
+    "description": "Browser system pages: downloads.filter"
+  },
+  "downloads.filter.all": {
+    "defaultMessage": "All",
+    "description": "Browser system pages: downloads.filter.all"
+  },
+  "downloads.filter.active": {
+    "defaultMessage": "In progress",
+    "description": "Browser system pages: downloads.filter.active"
+  },
+  "downloads.filter.completed": {
+    "defaultMessage": "Done",
+    "description": "Browser system pages: downloads.filter.completed"
+  },
+  "downloads.search": {
+    "defaultMessage": "Search downloads",
+    "description": "Browser system pages: downloads.search"
+  },
+  "downloads.clearCompleted": {
+    "defaultMessage": "Clear finished",
+    "description": "Browser system UI string for downloads.clearCompleted"
+  },
+  "downloads.settings": {
+    "defaultMessage": "Download settings",
+    "description": "Browser system pages: downloads.settings"
+  },
+  "downloads.size.of": {
+    "defaultMessage": "{done} of {total}",
+    "description": "Browser system pages: downloads.size.of"
+  },
+  "downloads.pause": {
+    "defaultMessage": "Pause {name}",
+    "description": "Browser system UI string for downloads.pause"
+  },
+  "downloads.resume": {
+    "defaultMessage": "Resume {name}",
+    "description": "Browser system UI string for downloads.resume"
+  },
+  "downloads.cancel": {
+    "defaultMessage": "Stop downloading {name}",
+    "description": "Browser system pages: downloads.cancel"
+  },
+  "downloads.retry": {
+    "defaultMessage": "Retry",
+    "description": "Browser system UI string for downloads.retry"
+  },
+  "downloads.open": {
+    "defaultMessage": "Open {name}",
+    "description": "Browser system pages: downloads.open"
+  },
+  "downloads.reveal": {
+    "defaultMessage": "Show {name} in folder",
+    "description": "Browser system UI string for downloads.reveal"
+  },
+  "downloads.remove": {
+    "defaultMessage": "Remove {name} from the list",
+    "description": "Browser system pages: downloads.remove"
+  },
+  "downloads.empty": {
+    "defaultMessage": "No downloads yet",
+    "description": "Browser system pages: downloads.empty"
+  },
+  "downloads.emptyHint": {
+    "defaultMessage": "Files you download show up here.",
+    "description": "Browser system pages: downloads.emptyHint"
+  },
+  "downloads.noMatches": {
+    "defaultMessage": "No downloads match",
+    "description": "Browser system pages: downloads.noMatches"
+  },
+  "downloads.summary.active": {
+    "defaultMessage": "{count, plural, one {# active} other {# active}}",
+    "description": "Browser system pages: downloads.summary.active"
+  },
+  "downloads.summary.files": {
+    "defaultMessage": "{count, plural, =0 {No files} one {# file} other {# files}}",
+    "description": "Browser system pages: downloads.summary.files"
+  },
+  "downloads.loadFailed": {
+    "defaultMessage": "Couldn’t load downloads",
+    "description": "Browser system pages: downloads.loadFailed"
+  },
+  "downloads.status.downloading": {
+    "defaultMessage": "Downloading",
+    "description": "A download row state."
+  },
+  "downloads.status.paused": {
+    "defaultMessage": "Paused",
+    "description": "A download row state."
+  },
+  "downloads.status.completed": {
+    "defaultMessage": "Done",
+    "description": "A download row state."
+  },
+  "downloads.status.failed": {
+    "defaultMessage": "Failed",
+    "description": "A download row state."
+  },
+  "downloads.status.removed": {
+    "defaultMessage": "File deleted",
+    "description": "A download row state."
+  },
+  "privacy.clear.title": {
+    "defaultMessage": "Clear browsing data",
+    "description": "Browser system pages: privacy.clear.title"
+  },
+  "privacy.clear.open": {
+    "defaultMessage": "Clear browsing data…",
+    "description": "Browser system pages: privacy.clear.open"
+  },
+  "privacy.clear.confirm": {
+    "defaultMessage": "Clear data",
+    "description": "Browser system pages: privacy.clear.confirm"
+  },
+  "privacy.clear.nothingSelected": {
+    "defaultMessage": "Choose what to clear",
+    "description": "Browser system pages: privacy.clear.nothingSelected"
+  },
+  "privacy.timeRange": {
+    "defaultMessage": "Time range",
+    "description": "Browser system pages: privacy.timeRange"
+  },
+  "privacy.range.lastHour": {
+    "defaultMessage": "Last hour",
+    "description": "Browser system pages: privacy.range.lastHour"
+  },
+  "privacy.range.last24Hours": {
+    "defaultMessage": "Last 24 hours",
+    "description": "Browser system pages: privacy.range.last24Hours"
+  },
+  "privacy.range.last7Days": {
+    "defaultMessage": "Last 7 days",
+    "description": "Browser system pages: privacy.range.last7Days"
+  },
+  "privacy.range.last4Weeks": {
+    "defaultMessage": "Last 4 weeks",
+    "description": "Browser system pages: privacy.range.last4Weeks"
+  },
+  "privacy.range.allTime": {
+    "defaultMessage": "All time",
+    "description": "Browser system pages: privacy.range.allTime"
+  },
+  "privacy.history": {
+    "defaultMessage": "Browsing history",
+    "description": "Browser system pages: privacy.history"
+  },
+  "privacy.cache": {
+    "defaultMessage": "Cached images and files",
+    "description": "Browser system pages: privacy.cache"
+  },
+  "privacy.siteData": {
+    "defaultMessage": "Cookies and site data",
+    "description": "Browser system pages: privacy.siteData"
+  },
+  "privacy.cleared": {
+    "defaultMessage": "{count, plural, =0 {Browsing data cleared} one {Cleared, with # history entry} other {Cleared, with # history entries}}",
+    "description": "Browser system pages: privacy.cleared"
+  },
+  "settings.title": {
+    "defaultMessage": "Settings",
+    "description": "Browser system UI string for settings.title"
+  },
+  "settings.appearance": {
+    "defaultMessage": "Appearance",
+    "description": "Browser system UI string for settings.appearance"
+  },
+  "settings.appearance.hint": {
+    "defaultMessage": "System follows your device.",
+    "description": "Browser system pages: settings.appearance.hint"
+  },
+  "settings.appearance.auto": {
+    "defaultMessage": "System",
+    "description": "Browser system UI string for settings.appearance.auto"
+  },
+  "settings.appearance.light": {
+    "defaultMessage": "Light",
+    "description": "Browser system UI string for settings.appearance.light"
+  },
+  "settings.appearance.dark": {
+    "defaultMessage": "Dark",
+    "description": "Browser system UI string for settings.appearance.dark"
+  },
+  "settings.language": {
+    "defaultMessage": "Language",
+    "description": "Browser system UI string for settings.language"
+  },
+  "settings.language.hint": {
+    "defaultMessage": "The language of menus and pages.",
+    "description": "Browser system pages: settings.language.hint"
+  },
+  "settings.language.auto": {
+    "defaultMessage": "System",
+    "description": "Browser system UI string for settings.language.auto"
+  },
+  "settings.language.en": {
+    "defaultMessage": "English",
+    "description": "The English option, named in English."
+  },
+  "settings.language.zh": {
+    "defaultMessage": "简体中文",
+    "description": "The Simplified Chinese option, named in Chinese."
+  },
+  "settings.saveFailed": {
+    "defaultMessage": "Couldn’t save this setting",
+    "description": "Browser system pages: settings.saveFailed"
+  },
+  "settings.downloads.default": {
+    "defaultMessage": "Default",
+    "description": "Browser system pages: settings.downloads.default"
+  },
+  "settings.downloads.custom": {
+    "defaultMessage": "Custom",
+    "description": "Browser system pages: settings.downloads.custom"
+  },
+  "settings.privacy.data": {
+    "defaultMessage": "Browsing data",
+    "description": "Browser system pages: settings.privacy.data"
+  },
+  "settings.privacy.historyCount": {
+    "defaultMessage": "{count, plural, =0 {No saved history} one {# page} other {# pages}}",
+    "description": "Browser system pages: settings.privacy.historyCount"
+  },
+  "settings.privacy.cacheSites": {
+    "defaultMessage": "{count, plural, =0 {Nothing cached} one {Cached files from # site} other {Cached files from # sites}}",
+    "description": "Browser system pages: settings.privacy.cacheSites"
+  },
+  "settings.privacy.cookies": {
+    "defaultMessage": "{count, plural, =0 {No cookies or site data} one {# cookie and site data from {sites, plural, one {# site} other {# sites}}} other {# cookies and site data from {sites, plural, one {# site} other {# sites}}}}",
+    "description": "Browser system pages: settings.privacy.cookies"
+  },
+  "settings.privacy.clearHint": {
+    "defaultMessage": "Choose a time range and what to remove.",
+    "description": "Browser system pages: settings.privacy.clearHint"
+  },
+  "settings.downloads": {
+    "defaultMessage": "Downloads",
+    "description": "Browser system UI string for settings.downloads"
+  },
+  "settings.downloads.dir": {
+    "defaultMessage": "Save files to",
+    "description": "Browser system UI string for settings.downloads.dir"
+  },
+  "settings.downloads.choose": {
+    "defaultMessage": "Change…",
+    "description": "Browser system UI string for settings.downloads.choose"
+  },
+  "settings.downloads.reset": {
+    "defaultMessage": "Use default",
+    "description": "Browser system UI string for settings.downloads.reset"
+  },
+  "settings.downloads.open": {
+    "defaultMessage": "Show downloads",
+    "description": "Browser system pages: settings.downloads.open"
+  },
+  "settings.privacy": {
+    "defaultMessage": "Privacy",
+    "description": "Browser system UI string for settings.privacy"
+  },
+  "settings.privacy.site.title": {
+    "defaultMessage": "This site",
+    "description": "Card for clearing the site of the tab Settings was opened from."
+  },
+  "settings.privacy.clearCurrentSite": {
+    "defaultMessage": "Clear data for this site",
+    "description": "Browser system UI string for settings.privacy.clearCurrentSite"
+  },
+  "settings.privacy.viewHistory": {
+    "defaultMessage": "Show history",
+    "description": "Browser system UI string for settings.privacy.viewHistory"
+  },
+  "settings.proxy": {
+    "defaultMessage": "Proxy",
+    "description": "Browser system UI string for settings.proxy"
+  },
+  "settings.proxy.modeHint": {
+    "defaultMessage": "How browser traffic reaches the web.",
+    "description": "Browser system pages: settings.proxy.modeHint"
+  },
+  "settings.proxy.mode.directHint": {
+    "defaultMessage": "No proxy. Browser traffic goes out normally.",
+    "description": "Browser system pages: settings.proxy.mode.directHint"
+  },
+  "settings.proxy.mode.gfwListHint": {
+    "defaultMessage": "Sites on the rule list and your own rules go through the proxy; everything else stays direct.",
+    "description": "Browser system pages: settings.proxy.mode.gfwListHint"
+  },
+  "settings.proxy.mode.globalHint": {
+    "defaultMessage": "Send all browser traffic to the SOCKS server.",
+    "description": "Browser system pages: settings.proxy.mode.globalHint"
+  },
+  "settings.proxy.state.active": {
+    "defaultMessage": "Active",
+    "description": "Browser system pages: settings.proxy.state.active"
+  },
+  "settings.proxy.state.saved": {
+    "defaultMessage": "Saved",
+    "description": "Browser system pages: settings.proxy.state.saved"
+  },
+  "settings.proxy.state.pending": {
+    "defaultMessage": "Applying",
+    "description": "Browser system pages: settings.proxy.state.pending"
+  },
+  "settings.proxy.state.disabled": {
+    "defaultMessage": "Off",
+    "description": "Browser system pages: settings.proxy.state.disabled"
+  },
+  "settings.proxy.state.error": {
+    "defaultMessage": "Error",
+    "description": "Browser system pages: settings.proxy.state.error"
+  },
+  "settings.proxy.state.unsupported": {
+    "defaultMessage": "Unsupported",
+    "description": "Browser system pages: settings.proxy.state.unsupported"
+  },
+  "settings.proxy.state.via": {
+    "defaultMessage": "Running through {address}. New tabs use it.",
+    "description": "Browser system pages: settings.proxy.state.via"
+  },
+  "settings.proxy.state.directDetail": {
+    "defaultMessage": "The server settings stay saved but are not used.",
+    "description": "Browser system pages: settings.proxy.state.directDetail"
+  },
+  "settings.proxy.state.unsupportedDetail": {
+    "defaultMessage": "This device cannot route browser traffic through a proxy.",
+    "description": "Browser system pages: settings.proxy.state.unsupportedDetail"
+  },
+  "settings.proxy.server": {
+    "defaultMessage": "Proxy server",
+    "description": "Browser system pages: settings.proxy.server"
+  },
+  "settings.proxy.serverHint": {
+    "defaultMessage": "The SOCKS5 server Always Proxy and Auto Switch use.",
+    "description": "Browser system pages: settings.proxy.serverHint"
+  },
+  "settings.proxy.host": {
+    "defaultMessage": "SOCKS5 host",
+    "description": "Browser system pages: settings.proxy.host"
+  },
+  "settings.proxy.port": {
+    "defaultMessage": "Port",
+    "description": "Browser system pages: settings.proxy.port"
+  },
+  "settings.proxy.username": {
+    "defaultMessage": "Username",
+    "description": "Browser system pages: settings.proxy.username"
+  },
+  "settings.proxy.password": {
+    "defaultMessage": "Password",
+    "description": "Browser system pages: settings.proxy.password"
+  },
+  "settings.proxy.saveServer": {
+    "defaultMessage": "Save server",
+    "description": "Browser system pages: settings.proxy.saveServer"
+  },
+  "settings.proxy.status.hostRequired": {
+    "defaultMessage": "Enter the SOCKS5 host",
+    "description": "Browser system pages: settings.proxy.status.hostRequired"
+  },
+  "settings.proxy.rules": {
+    "defaultMessage": "Switch rules",
+    "description": "Browser system pages: settings.proxy.rules"
+  },
+  "settings.proxy.rulesHint": {
+    "defaultMessage": "Your rules are checked first, then the rule list, then everything else goes direct. A host pattern matches that host and its subdomains.",
+    "description": "Browser system pages: settings.proxy.rulesHint"
+  },
+  "settings.proxy.rules.list": {
+    "defaultMessage": "Rule list",
+    "description": "Browser system pages: settings.proxy.rules.list"
+  },
+  "settings.proxy.rules.listHint": {
+    "defaultMessage": "Any site on the downloaded list",
+    "description": "Browser system pages: settings.proxy.rules.listHint"
+  },
+  "settings.proxy.rules.default": {
+    "defaultMessage": "Everything else",
+    "description": "Browser system pages: settings.proxy.rules.default"
+  },
+  "settings.proxy.rules.defaultHint": {
+    "defaultMessage": "Sites no rule matches",
+    "description": "Browser system pages: settings.proxy.rules.defaultHint"
+  },
+  "settings.proxy.rules.viaProxy": {
+    "defaultMessage": "Proxy",
+    "description": "Browser system pages: settings.proxy.rules.viaProxy"
+  },
+  "settings.proxy.rules.viaDirect": {
+    "defaultMessage": "Direct",
+    "description": "Browser system pages: settings.proxy.rules.viaDirect"
+  },
+  "settings.proxy.rules.pattern": {
+    "defaultMessage": "Host pattern",
+    "description": "Browser system pages: settings.proxy.rules.pattern"
+  },
+  "settings.proxy.rules.route": {
+    "defaultMessage": "Route for {pattern}",
+    "description": "Browser system pages: settings.proxy.rules.route"
+  },
+  "settings.proxy.rules.remove": {
+    "defaultMessage": "Remove the rule for {pattern}",
+    "description": "Browser system pages: settings.proxy.rules.remove"
+  },
+  "settings.proxy.rules.add": {
+    "defaultMessage": "Add rule",
+    "description": "Browser system pages: settings.proxy.rules.add"
+  },
+  "settings.proxy.rules.saving": {
+    "defaultMessage": "Saving…",
+    "description": "Browser system pages: settings.proxy.rules.saving"
+  },
+  "settings.proxy.rules.saved": {
+    "defaultMessage": "Saved",
+    "description": "Browser system pages: settings.proxy.rules.saved"
+  },
+  "settings.proxy.rules.failed": {
+    "defaultMessage": "Couldn’t save the rules",
+    "description": "Browser system pages: settings.proxy.rules.failed"
+  },
+  "settings.proxy.list": {
+    "defaultMessage": "Rule list",
+    "description": "Browser system pages: settings.proxy.list"
+  },
+  "settings.proxy.list.url": {
+    "defaultMessage": "Rule list URL",
+    "description": "Browser system pages: settings.proxy.list.url"
+  },
+  "settings.proxy.list.urlHint": {
+    "defaultMessage": "An HTTPS address; the list downloads through the proxy server.",
+    "description": "Browser system pages: settings.proxy.list.urlHint"
+  },
+  "settings.proxy.list.updated": {
+    "defaultMessage": "Last updated",
+    "description": "Browser system pages: settings.proxy.list.updated"
+  },
+  "settings.proxy.list.never": {
+    "defaultMessage": "Never",
+    "description": "Browser system pages: settings.proxy.list.never"
+  },
+  "settings.proxy.list.ruleCount": {
+    "defaultMessage": "{count, plural, one {# site} other {# sites}}",
+    "description": "Browser system pages: settings.proxy.list.ruleCount"
+  },
+  "settings.proxy.list.download": {
+    "defaultMessage": "Download rules now",
+    "description": "Browser system pages: settings.proxy.list.download"
+  },
+  "settings.proxy.list.downloading": {
+    "defaultMessage": "Downloading the rule list…",
+    "description": "Browser system pages: settings.proxy.list.downloading"
+  },
+  "settings.proxy.list.ready": {
+    "defaultMessage": "Ready",
+    "description": "Browser system pages: settings.proxy.list.ready"
+  },
+  "settings.proxy.list.empty": {
+    "defaultMessage": "Not downloaded",
+    "description": "Browser system pages: settings.proxy.list.empty"
+  },
+  "settings.proxy.list.error": {
+    "defaultMessage": "Error",
+    "description": "Browser system pages: settings.proxy.list.error"
+  },
+  "settings.proxy.list.failedHint": {
+    "defaultMessage": "Check the address, and that the proxy server is running.",
+    "description": "Browser system pages: settings.proxy.list.failedHint"
+  },
+  "settings.proxy.list.why.proxyUnreachable": {
+    "defaultMessage": "Could not reach the proxy server {host}",
+    "description": "Browser system pages: settings.proxy.list.why.proxyUnreachable"
+  },
+  "settings.proxy.list.why.proxyRejected": {
+    "defaultMessage": "The proxy server {host} refused the username or password",
+    "description": "Browser system pages: settings.proxy.list.why.proxyRejected"
+  },
+  "settings.proxy.list.why.sourceUnreachable": {
+    "defaultMessage": "Could not reach {host}",
+    "description": "Browser system pages: settings.proxy.list.why.sourceUnreachable"
+  },
+  "settings.proxy.list.why.sourceTimedOut": {
+    "defaultMessage": "{host} did not answer in time",
+    "description": "Browser system pages: settings.proxy.list.why.sourceTimedOut"
+  },
+  "settings.proxy.list.why.notAList": {
+    "defaultMessage": "{host} did not return a rule list",
+    "description": "Browser system pages: settings.proxy.list.why.notAList"
+  },
+  "settings.proxy.list.why.noProxyServer": {
+    "defaultMessage": "Set a proxy server first",
+    "description": "Browser system pages: settings.proxy.list.why.noProxyServer"
+  },
+  "settings.proxy.list.why.badAddress": {
+    "defaultMessage": "The list address must be an HTTPS URL",
+    "description": "Browser system pages: settings.proxy.list.why.badAddress"
+  },
+  "settings.proxy.list.stillUsing": {
+    "defaultMessage": "Still using the list from {time}",
+    "description": "Browser system pages: settings.proxy.list.stillUsing"
+  },
+  "downloads.why.proxy": {
+    "defaultMessage": "The browser proxy is disconnected",
+    "description": "Browser system pages: downloads.why.proxy"
+  },
+  "downloads.why.status": {
+    "defaultMessage": "The server refused the download (HTTP {code})",
+    "description": "Browser system pages: downloads.why.status"
+  },
+  "downloads.why.timeout": {
+    "defaultMessage": "The server stopped answering",
+    "description": "Browser system pages: downloads.why.timeout"
+  },
+  "downloads.why.network": {
+    "defaultMessage": "The connection was lost",
+    "description": "Browser system pages: downloads.why.network"
+  },
+  "downloads.why.disk": {
+    "defaultMessage": "The file could not be saved",
+    "description": "Browser system pages: downloads.why.disk"
+  },
+  "settings.proxy.failedHint": {
+    "defaultMessage": "Check the proxy server settings.",
+    "description": "Browser system pages: settings.proxy.failedHint"
+  },
+  "settings.proxy.list.retry": {
+    "defaultMessage": "Try again",
+    "description": "Browser system pages: settings.proxy.list.retry"
+  },
+  "settings.proxy.mode": {
+    "defaultMessage": "Routing",
+    "description": "Browser system pages: settings.proxy.mode"
+  },
+  "settings.proxy.mode.direct": {
+    "defaultMessage": "Direct",
+    "description": "Proxy mode."
+  },
+  "settings.proxy.mode.global": {
+    "defaultMessage": "Always Proxy",
+    "description": "Proxy mode."
+  },
+  "settings.proxy.mode.gfwList": {
+    "defaultMessage": "Auto Switch",
+    "description": "Proxy mode."
+  },
+  "settings.proxy.status.invalidPort": {
+    "defaultMessage": "Enter a port from 1 to 65535",
+    "description": "Port validation."
+  },
+  "settings.about": {
+    "defaultMessage": "About",
+    "description": "Browser system UI string for settings.about"
+  },
+  "settings.about.version": {
+    "defaultMessage": "Version",
+    "description": "About card."
+  },
+  "settings.about.sdk": {
+    "defaultMessage": "SDK",
+    "description": "About card."
+  },
+  "settings.about.webui": {
+    "defaultMessage": "System pages",
+    "description": "About card."
+  },
+  "settings.about.commit": {
+    "defaultMessage": "Commit",
+    "description": "About card."
+  }
+}

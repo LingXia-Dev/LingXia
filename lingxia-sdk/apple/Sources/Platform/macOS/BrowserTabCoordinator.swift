@@ -18,9 +18,6 @@ protocol BrowserCoordinatorHost: AnyObject {
     var keepsBrowserRootWithoutTabs: Bool { get }
     /// Whether closing the final browser tab closes the containing window.
     var closesWindowOnLastBrowserTab: Bool { get }
-    /// Whether a user-created tab starts at about:blank instead of the bundled
-    /// browser new-tab page.
-    var usesBlankBrowserNewTabs: Bool { get }
     /// Returns owner (appId, sessionId) for creating a new browser tab.
     func browserOwnerForNewTab() -> (appId: String, sessionId: UInt64)?
     /// Called before a browser tab becomes active. Host should pause current VC.
@@ -276,15 +273,11 @@ final class BrowserTabCoordinator: NSObject {
     }
 
     func addTab() {
-        addTabWithURL(host?.usesBlankBrowserNewTabs == true ? "about:blank" : "")
+        addTabWithURL("about:blank")
     }
 
     func openBrowserLocalSettings() {
         openBrowserLocalNavigation(.settings)
-    }
-
-    func openDownloads() {
-        openBrowserLocalNavigation(.downloads)
     }
 
     /// Open the bookmarks manager page (the archive; pins are its subset).
@@ -762,21 +755,20 @@ final class BrowserTabCoordinator: NSObject {
 
     // MARK: - Internal Tab Operations
 
-    @discardableResult
-    private func openBrowserLocalNavigation(_ navigation: BrowserLocalNavigation) -> String? {
-        addTabWithURL(
-            navigation.url,
-            stableTabId: navigation.stableTabID,
-            openAuthority: navigation.openAuthority
-        )
+    private func openBrowserLocalNavigation(_ navigation: BrowserLocalNavigation) {
+        if !openBrowserSystemPage(navigation.page, navigation.queryJSON) {
+            LXLog.error(
+                "Failed to open browser system page \(navigation.page)",
+                category: "BrowserTabCoordinator"
+            )
+        }
     }
 
     @discardableResult
     private func addTabWithURL(
         _ url: String,
         stableTabId: String? = nil,
-        declaredSurfaceID: String? = nil,
-        openAuthority: BrowserTabOpenAuthority = .appSession
+        declaredSurfaceID: String? = nil
     ) -> String? {
         let owner = host?.browserOwnerForNewTab()
             ?? (host?.keepsBrowserRootWithoutTabs == true ? retainedNewTabOwner : nil)
@@ -802,21 +794,8 @@ final class BrowserTabCoordinator: NSObject {
             return existingTabId
         }
 
-        if requestedStableTabId == nil, openAuthority != .appSession {
-            LXLog.error(
-                "Trusted browser navigation requires a stable native route",
-                category: "BrowserTabCoordinator"
-            )
-            return nil
-        }
-
         let openedTab = if let requestedStableTabId {
-            switch openAuthority {
-            case .appSession:
-                openBrowserTabWithId(owner.appId, owner.sessionId, url, requestedStableTabId)
-            case .nativeControl:
-                openTrustedBrowserTabWithId(owner.appId, owner.sessionId, url, requestedStableTabId)
-            }
+            openBrowserTabWithId(owner.appId, owner.sessionId, url, requestedStableTabId)
         } else {
             openBrowserTab(owner.appId, owner.sessionId, url)
         }
@@ -1612,20 +1591,16 @@ final class BrowserTabCoordinator: NSObject {
         guard let raw else { return "" }
         let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return "" }
-        return browserUrlIsHidden(trimmed) || isBrowserLoadErrorURL(trimmed) ? "" : trimmed
+        return browserUrlIsHidden(trimmed) ? "" : trimmed
     }
 
     private func logicalURL(for tabId: String, webViewURL: String?) -> String {
         let raw = webViewURL?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-        if raw.isEmpty || isBrowserLoadErrorURL(raw) {
+        // The load-error document sits at about:blank; the tab keeps the URL that failed.
+        if raw.isEmpty || raw.caseInsensitiveCompare("about:blank") == .orderedSame {
             return lastObservedURLs[tabId] ?? ""
         }
         return raw
-    }
-
-    private func isBrowserLoadErrorURL(_ raw: String) -> Bool {
-        raw.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
-            .caseInsensitiveCompare("lingxia://browser/load-error") == .orderedSame
     }
 
     private func syncAddressField(_ rawURL: String?, force: Bool = false) {
@@ -1679,9 +1654,6 @@ final class BrowserTabCoordinator: NSObject {
               let host = url.host?.lowercased() else {
             return nil
         }
-        if scheme == "lingxia" {
-            return "\(scheme)://\(host)"
-        }
         guard scheme == "http" || scheme == "https" else {
             return nil
         }
@@ -1694,23 +1666,7 @@ final class BrowserTabCoordinator: NSObject {
         return "\(scheme)://\(host)\(port)"
     }
 
-    /// Built-in `lingxia://` pages (settings, downloads, …) have no site
-    /// favicon. Use the host app's icon so those rows read as product chrome,
-    /// not the LingXia SDK mark shipped in the framework bundle.
-    private func bundledFavicon() -> NSImage? {
-        // Favicon rows draw their image unclipped, so hand them a pre-rounded
-        // tile; the raw host artwork is a full-bleed square.
-        LxIcon.hostAppImage().map { TabBarHelper.appTileIcon($0, size: 16) }
-    }
-
     private func fetchFavicon(for origin: String, tabId: String, webView: WKWebView) {
-        if origin.hasPrefix("lingxia://") {
-            guard let image = bundledFavicon() else { return }
-            tabFavicons[tabId] = image
-            host?.updateSidebarBrowserItems(sidebarItems(), activeId: activeTabId)
-            return
-        }
-
         // Page-declared icon first, /favicon.ico fallback (FaviconLoader waits
         // for the load to settle — the old fetch ran at navigation time and
         // only tried the default path, so most sites never got an icon).

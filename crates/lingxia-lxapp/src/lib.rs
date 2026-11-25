@@ -11,7 +11,6 @@ mod archive;
 pub mod automation;
 pub(crate) mod bridge;
 mod cache;
-mod control_document_bootstrap;
 mod delegate;
 /// Simulated-device control shared by the devtool and `lx.automation()`.
 pub mod device;
@@ -61,19 +60,11 @@ pub use appservice::event_bus::{
     AppHandlerUnsub, HandlerToken, app_handler_unsub, register_app_handler, register_page_handler,
     unregister_app_handler, unregister_app_handler_token, unregister_page_handler,
 };
-#[doc(hidden)]
-pub use bridge::{
-    DeferredRequiredV3Cancellation, PreparedRequiredV3Incoming, RequiredV3DocumentGate,
-};
 pub use cache::product::{
     ClearReport as ProductCacheClearReport, clear as clear_product_cache,
     usage_bytes as product_cache_usage_bytes,
 };
 pub use cache::touch_access_time;
-pub use control_document_bootstrap::{
-    ControlDocumentAuthority, ControlDocumentBootstrap, ControlDocumentBootstrapError,
-    RequiredV3ExecutionGate, RequiredV3ExecutionPermit, issue_control_document_bootstrap,
-};
 pub use delegate::{LxAppDelegate, LxAppUiEventType};
 pub use error::LxAppError;
 pub use lifecycle::{
@@ -119,16 +110,16 @@ pub use lxapp::{
     get_platform, host_appearance_dark, host_appearance_state, host_appearance_update, host_class,
     init, initialize_display_language, initialize_host_appearance,
     install_display_language_session_override, installed_lxapp_path, is_declared_icon_reference,
-    is_dev_bundle_appid, is_dev_session, is_public_network_address, is_pull_down_refresh_enabled,
-    keep_responsive_for_development, list_lxapps, mark_lxapp_active, navbar,
-    next_surface_context_revision, notify_lxapp_host_visibility,
+    is_dev_bundle_appid, is_dev_session, is_host_bundled_lxapp, is_public_network_address,
+    is_pull_down_refresh_enabled, keep_responsive_for_development, list_lxapps, mark_lxapp_active,
+    navbar, next_surface_context_revision, notify_lxapp_host_visibility,
     notify_lxapp_host_visibility_by_session, notify_page_host_visibility,
     notify_page_host_visibility_by_webtag, notify_page_instance, notify_page_instance_by_id,
     observe_display_language_state, observe_host_appearance, on_low_memory,
-    open_control_lxapp_page, open_lxapp, open_lxapp_in_region, open_region, page_chrome,
-    refresh_auto_appearances, refresh_display_language_system, refresh_host_appearance_system,
-    register_builtin_asset_bundle, register_dev_bundle_source, register_runner_host,
-    register_surface_active_main_observer, register_surface_close_observer,
+    open_control_lxapp_page, open_control_surface_lxapp_page, open_lxapp, open_lxapp_in_region,
+    open_region, page_chrome, refresh_auto_appearances, refresh_display_language_system,
+    refresh_host_appearance_system, register_builtin_asset_bundle, register_dev_bundle_source,
+    register_runner_host, register_surface_active_main_observer, register_surface_close_observer,
     register_surface_context_observer, register_surface_context_snapshot,
     register_surface_visibility_observer, register_synthetic_lxapp,
     registry::{

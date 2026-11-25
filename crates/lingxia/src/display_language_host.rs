@@ -14,7 +14,7 @@ struct SetPreferenceInput {
 /// setting needs the preference behind it.
 #[lingxia::framework_native(
     "app.getDisplayLanguagePreference",
-    audience = "control-app-or-browser-only"
+    audience = "control-app-or-surface"
 )]
 fn get_display_language_preference() -> HostResult<DisplayLanguagePreference> {
     Ok(lxapp::display_language_state().preference)
@@ -22,7 +22,7 @@ fn get_display_language_preference() -> HostResult<DisplayLanguagePreference> {
 
 #[lingxia::framework_native(
     "app.setDisplayLanguagePreference",
-    audience = "control-app-or-browser-only"
+    audience = "control-app-or-surface"
 )]
 fn set_display_language_preference(
     input: SetPreferenceInput,
@@ -34,7 +34,7 @@ fn set_display_language_preference(
 #[lingxia::framework_native(
     "app.watchDisplayLanguagePreference",
     stream,
-    audience = "control-app-or-browser-only"
+    audience = "control-app-or-surface"
 )]
 async fn watch_display_language_preference(
     mut stream: StreamContext<DisplayLanguagePreference>,
@@ -72,7 +72,7 @@ mod tests {
         ] {
             assert_eq!(
                 route.audience(),
-                crate::host::RouteAudience::ControlAppOrBrowserOnly
+                crate::host::RouteAudience::ControlAppOrSurface
             );
         }
     }
@@ -92,8 +92,6 @@ mod tests {
                 session_id: u64,
                 class: AppSessionClass,
             ) -> AuthenticatedCaller;
-            #[link_name = "lingxia_lxapp_test_browser_caller_v1"]
-            fn test_browser_caller() -> AuthenticatedCaller;
         }
 
         register();
@@ -106,18 +104,15 @@ mod tests {
         };
         let control =
             unsafe { test_authenticated_caller("test.control", 2, AppSessionClass::ControlApp) };
-        let browser = unsafe { test_browser_caller() };
         let audience = get_display_language_preference_host().audience();
 
-        for caller in [&standard, &surface] {
-            assert!(!authorize(caller, audience));
-            assert!(
-                !host_route_schema(caller)
-                    .methods
-                    .contains_key("app.getDisplayLanguagePreference")
-            );
-        }
-        for caller in [&control, &browser] {
+        assert!(!authorize(&standard, audience));
+        assert!(
+            !host_route_schema(&standard)
+                .methods
+                .contains_key("app.getDisplayLanguagePreference")
+        );
+        for caller in [&control, &surface] {
             assert!(authorize(caller, audience));
             assert!(
                 host_route_schema(caller)

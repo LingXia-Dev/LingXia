@@ -29,11 +29,12 @@ creation and sealed before that session's Logic starts.
    There is no setter, no promotion, and no route that returns one.
 
 2. **The classes are disjoint, not ordered.** `ControlApp` is not "a
-   ControlSurface with more". Neither reaches the other's routes.
-   `RouteAudience` therefore enumerates caller *sets*, and a variant named for
-   one class never silently includes another — which is why
-   `ControlAppOrBrowserOnly` spells out both rather than being called
-   "ControlOnly".
+   ControlSurface with more". Neither reaches the other's `*Only` routes.
+   `RouteAudience` therefore enumerates caller *sets*. The one shared set is
+   `ControlAppOrSurface` (appearance, display language, sidebar Pins): the
+   `ControlApp` and every `ControlSurface`. Every `ControlSurface` (Terminal
+   Settings, the browser system pages `app.lingxia.browser`) reaches every
+   `ControlSurfaceOnly` route; no route is scoped to one surface app.
 
 3. **One authorization seam.** `lxapp::host::authorize(caller, audience)` is
    the only place a caller class is compared to a route's audience. Route
@@ -63,19 +64,22 @@ home as a guest, with no way back short of a process restart. `ControlSurface` i
 an identity (a host-bundled lxapp is a surface only while the Control app keeps
 one open), so it stays inherited from the live session.
 
-## Callers that are not lxapp sessions
+## Which class reaches which audience
 
-`AuthenticatedCaller` has a second source: `BrowserDocument`, the ingress scope
-a browser control document holds. It carries no `AppScope`, so it reaches no
-lxapp's storage namespace or resource grants.
+Every authenticated caller is an lxapp session; there is no other caller
+source. Browser tab documents are web content with no LingXia bridge, so they
+reach no route at all.
 
-Its scope is **per frame**, held by the browser registry, and never a durable
-property of a bridge connection. A bound-V3 connection lives on the owning
-lxapp's page, so it must not lend that lxapp's identity to the document's
-frames: `predecode_inbound` drops the connection's caller for a bound-V3 frame,
-and `handle_incoming` refuses one outright — browser ingress
-(`prepare_required_v3_incoming`, which installs the browser caller) is the only
-entry.
+| Audience | `ControlApp` | `ControlSurface` | `StandardApp` |
+|---|---|---|---|
+| `AppSessionOnly` | yes | yes | yes |
+| `ControlAppOnly` | yes | no | no |
+| `ControlSurfaceOnly` | no | yes | no |
+| `ControlAppOrSurface` | yes | yes | no |
+
+A `StandardApp` (any guest, and a host-bundled lxapp the native host did not
+open as a surface) reaches only `AppSessionOnly` routes, so giving a route that audience opens it
+to every downloaded lxapp.
 
 ## Grants are separate from class
 
@@ -200,8 +204,8 @@ Widening that list widens what every downloaded lxapp can do;
 
 - GPU View ingress is native-owned: the attached endpoint and runtime-issued
   connection generation must match before protocol decoding. Page-profile caller
-  identity comes from the owning LxApp. Never synthesize a WebMessageContext or
-  browser document identity for a GPU page. Capture its endpoint and generation
+  identity comes from the owning LxApp. Never synthesize a WebMessageContext
+  for a GPU page. Capture its endpoint and generation
   for outbound work and recheck the generation at native worker delivery.
   GPU Views may call only the page-owned `navigation.setLeaveGuard` and
   `navigation.leave` host routes directly; both still use normal audience and

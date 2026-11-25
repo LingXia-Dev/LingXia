@@ -1,13 +1,8 @@
 #if os(macOS)
 import Foundation
 
-enum BrowserTabOpenAuthority: Equatable {
-    case appSession
-    case nativeControl
-}
-
-/// Browser-owned internal navigation. These routes belong to browser chrome;
-/// they are not host-wide Settings destination resolution.
+/// Browser system pages opened from browser chrome. Rust opens them as the
+/// `app.lingxia.browser` control surface; they are not host-wide Settings.
 enum BrowserLocalNavigation: Equatable {
     case settings
     case clearSiteData(tabID: String)
@@ -15,27 +10,10 @@ enum BrowserLocalNavigation: Equatable {
     case bookmarks
     case history
 
-    static let settingsTabID = "settings"
-
-    var url: String {
-        switch self {
-        case .settings:
-            return "lingxia://settings"
-        case .clearSiteData(let tabID):
-            return "lingxia://settings#clear-site-data?tabId=\(tabID)"
-        case .downloads:
-            return "lingxia://downloads"
-        case .bookmarks:
-            return "lingxia://bookmarks"
-        case .history:
-            return "lingxia://history"
-        }
-    }
-
-    var stableTabID: String {
+    var page: String {
         switch self {
         case .settings, .clearSiteData:
-            return Self.settingsTabID
+            return "settings"
         case .downloads:
             return "downloads"
         case .bookmarks:
@@ -45,6 +23,16 @@ enum BrowserLocalNavigation: Equatable {
         }
     }
 
-    var openAuthority: BrowserTabOpenAuthority { .nativeControl }
+    /// The page query as a JSON object, or empty for none.
+    var queryJSON: String {
+        guard case .clearSiteData(let tabID) = self,
+              let data = try? JSONSerialization.data(
+                  withJSONObject: ["section": "clear-site-data", "tabId": tabID],
+                  options: [.sortedKeys]
+              ),
+              let json = String(data: data, encoding: .utf8)
+        else { return "" }
+        return json
+    }
 }
 #endif

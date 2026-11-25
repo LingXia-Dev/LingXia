@@ -110,8 +110,19 @@ export interface PageLike<Data> {
   set(patch: SetPatch<Data>): void;
 }
 
+/** Augmented by `.lingxia/native.logic.ts` when the host app defines `#[lingxia::native]` routes. */
+export interface PageNativeRegistry {}
+
+/** Typed `page.native` client bound to this page instance. */
+export type PageNative = PageNativeRegistry extends { native: infer N } ? N : Record<string, never>;
+
 /** One page instance, as `setup` and everything it returns see it. */
 export interface PageApi<Data, Params, Result, Messages = never, Follow = {}> {
+  /**
+   * Host native routes bound to this page instance (for `PageState<T>` and page-scoped
+   * cancellation). Available in both `setup` and `actions`.
+   */
+  readonly native: PageNative;
   /** The current data, with the followed keys. Readonly: change it with `update`. */
   readonly data: DeepReadonly<WithFollowed<Data, Follow>>;
   /**

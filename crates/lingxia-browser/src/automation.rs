@@ -386,27 +386,17 @@ pub async fn browser_take_screenshot(tab_id: &str) -> Result<Vec<u8>, BrowserAut
 pub fn browser_reload(tab_id: &str) -> Result<(), BrowserAutomationError> {
     let normalized_tab_id = normalize_runtime_tab_id(tab_id)
         .ok_or_else(|| BrowserAutomationError::TabNotFound(tab_id.to_string()))?;
-    let (session_id, create_token, current_url) = {
+    let (session_id, create_token) = {
         let state = lock_state();
         let tab = state
             .tabs
             .get(&normalized_tab_id)
             .ok_or_else(|| BrowserAutomationError::TabNotFound(tab_id.to_string()))?;
-        (
-            tab.session_id,
-            tab.create_token,
-            tab.pending_url.clone().or_else(|| tab.current_url.clone()),
-        )
+        (tab.session_id, tab.create_token)
     };
     let path = browser_tab_path_for_runtime_id(&normalized_tab_id);
-    crate::webview::browser_reload_document(
-        &normalized_tab_id,
-        &path,
-        session_id,
-        create_token,
-        current_url.as_deref(),
-    )
-    .map_err(|error| BrowserAutomationError::NativeInput(error.to_string()))?;
+    crate::webview::browser_reload_document(&normalized_tab_id, &path, session_id, create_token)
+        .map_err(|error| BrowserAutomationError::NativeInput(error.to_string()))?;
     Ok(())
 }
 

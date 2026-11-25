@@ -204,9 +204,7 @@ final class RunnerPhoneBrowserSurface {
         return tabIds(forAside: activeTabIsAside)
     }
 
-    /// Open a fresh blank tab against the presenting owner and switch to it.
-    /// The runner bundles no browser webui, so a new tab is `about:blank`
-    /// (a blank page) rather than the `lingxia://newtab` start page.
+    /// Open a fresh `about:blank` tab against the presenting owner and switch to it.
     private func openNewTab() {
         if let tabId = activeTabId, RunnerSupport.Browser.isAside(tabId: tabId) {
             return
@@ -284,8 +282,8 @@ final class RunnerPhoneBrowserSurface {
         addressPill.addSubview(refreshButton)
 
         // Action row: back / forward — spacer — new-tab / tabs / close, matching
-        // the iOS browser. (No downloads/settings overflow menu: those are
-        // `lingxia://` pages and the runner bundles no browser webui for them.)
+        // the iOS browser. (No downloads/settings overflow menu: the runner
+        // does not bundle the browser system pages.)
         let actionRow = NSStackView()
         actionRow.translatesAutoresizingMaskIntoConstraints = false
         actionRow.orientation = .horizontal

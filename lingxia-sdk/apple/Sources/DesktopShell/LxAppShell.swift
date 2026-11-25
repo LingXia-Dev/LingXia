@@ -284,7 +284,6 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
     /// again when they are gone.
     private var sidebarBrowserItemCount = 0
     private var sidebarBrowserRootVisible = false
-    private var browserBlankNewTabs = false
     private var browserClosesWindowOnLastTab = false
     private var declaredBrowserOwnerAppId: String?
     private var managedMainSurfaceIDs = Set<String>()
@@ -2484,23 +2483,6 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
         controlSessionIndicator = nil
     }
 
-    /// Open a browser-local management surface as a main browser
-    /// tab via the unified switcher — same path as the sidebar buttons, so it
-    /// detaches the lxapp cleanly. Only explicit browser-local callers use this;
-    /// generic managed-surface declaration misses never fall through here.
-    func openBuiltinShellSurface(id: String) -> Bool {
-        switch id {
-        case "downloads":
-            browserCoordinator.openDownloads()
-            return true
-        case "bookmarks":
-            browserCoordinator.openBookmarks()
-            return true
-        default:
-            return false
-        }
-    }
-
     /// Present the "ready to update" card with release notes. Clicking Restart
     /// Now applies the staged update; Later dismisses. Reached by clicking the
     /// bottom-left "ready" sidebar callout.
@@ -2718,10 +2700,6 @@ extension LxAppShell {
         reconcileSidebarAutoHide()
     }
 
-    func setBrowserBlankNewTabs(_ enabled: Bool) {
-        browserBlankNewTabs = enabled
-    }
-
     func setBrowserClosesWindowOnLastTab(_ enabled: Bool) {
         browserClosesWindowOnLastTab = enabled
     }
@@ -2794,7 +2772,6 @@ extension LxAppShell: BrowserCoordinatorHost {
     var hasOpenTabs: Bool { tabManager.hasTabs }
     var keepsBrowserRootWithoutTabs: Bool { sidebarBrowserRootVisible }
     var closesWindowOnLastBrowserTab: Bool { browserClosesWindowOnLastTab }
-    var usesBlankBrowserNewTabs: Bool { browserBlankNewTabs }
 
     func browserOwnerForNewTab() -> (appId: String, sessionId: UInt64)? {
         if let appId = tabManager.activeTab?.appId {

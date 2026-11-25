@@ -2,7 +2,6 @@ import { hilog } from '@kit.PerformanceAnalysisKit';
 import { LxLog } from '../app/LxLog';
 import { webview } from '@kit.ArkWeb';
 import { display, window } from '@kit.ArkUI';
-import { util } from '@kit.ArkTS';
 import { common, ConfigurationConstant } from '@kit.AbilityKit';
 import { LxApp } from './LxApp';
 import { Lingxia } from '../app/Lingxia';
@@ -26,7 +25,7 @@ import {
 	  browserTabNavigate,
 	  browserUrlIsHidden as nativeBrowserUrlIsHidden,
 	  getBuiltinBrowserAppId,
-	  openTrustedBrowserTabWithId,
+	  openBrowserSystemPage,
 	  getLxappSessionId,
 	  notifyWebViewState,
 	  openAsideBrowserTab,
@@ -39,9 +38,7 @@ const ATTACH_RETRY_DELAY_MS = 100;
 const ATTACH_MAX_RETRIES = 8;
 const KEYBOARD_MONITOR_INTERVAL_MS = 80;
 
-const NEW_TAB_URL = 'lingxia://newtab';
-const DOWNLOADS_URL = 'lingxia://downloads';
-const SETTINGS_URL = 'lingxia://settings';
+const NEW_TAB_URL = 'about:blank';
 
 interface BrowserUrlDisplay {
   text: string;
@@ -114,8 +111,8 @@ interface DisplayMetrics {
 }
 
 /**
- * A new/blank tab (lingxia://newtab) and a bare `lingxia://` carry no address
- * the user should edit: they read as an empty start page.
+ * A new/blank tab carries no address the user should edit: it reads as an empty
+ * start page.
  */
 function browserUrlIsHidden(rawUrl: string): boolean {
   const raw = String(rawUrl ?? '');
@@ -126,8 +123,6 @@ function browserUrlIsHidden(rawUrl: string): boolean {
   }
   const trimmed = raw.trim().toLowerCase();
   return !trimmed
-    || trimmed === NEW_TAB_URL
-    || trimmed === 'lingxia://'
     || trimmed.startsWith('lx:')
     || trimmed.startsWith('data:')
     || trimmed.startsWith('javascript:')
@@ -156,16 +151,6 @@ function browserUrlDisplay(rawUrl: string): BrowserUrlDisplay {
     return fallback;
   }
   const scheme = trimmed.substring(0, schemeEnd).toLowerCase();
-  if (scheme === 'lingxia') {
-    // The browser's own internal pages (settings / downloads): show the full
-    // lingxia:// address, no security chrome.
-    return {
-      text: trimmed,
-      iconPath: $rawfile('icons/icon_lock.svg'),
-      iconColor: '#666666',
-      iconVisible: false,
-    };
-  }
   if (scheme === 'http' || scheme === 'https') {
     const rest = trimmed.substring(schemeEnd + 1);
     if (!rest.startsWith('//')) {
@@ -315,9 +300,9 @@ export class LxAppBrowserManager {
 
     let newTabId: string | null = null;
     try {
-      newTabId = openTrustedBrowserTabWithId(appId, Math.trunc(sessionId), NEW_TAB_URL, 'tab-' + util.generateRandomUUID(true));
+      newTabId = openBrowserTab(appId, Math.trunc(sessionId), NEW_TAB_URL);
     } catch (error) {
-      LxLog.e(TAG, `openNewTab failed: openTrustedBrowserTabWithId threw: ${error}`);
+      LxLog.e(TAG, `openNewTab failed: openBrowserTab threw: ${error}`);
       return false;
     }
     if (!newTabId || newTabId.trim().length === 0) {
@@ -390,17 +375,21 @@ export class LxAppBrowserManager {
       return false;
     }
     try {
-      if (target === DOWNLOADS_URL || target === SETTINGS_URL) {
-        const appId = LxApp.getInstance().getHomeAppId();
-        if (!appId) return false;
-        const sessionId = Number(getLxappSessionId(appId));
-        if (!Number.isFinite(sessionId) || sessionId <= 0) return false;
-        const opened: string | null = openTrustedBrowserTabWithId(appId, Math.trunc(sessionId), target, tabId);
-        return opened !== null && LxAppBrowserManager.show(opened, target);
-      }
       return Boolean(browserTabNavigate(tabId, target));
     } catch (error) {
       LxLog.e(TAG, `navigateActiveTab failed for tabId=${tabId}: ${error}`);
+      return false;
+    }
+  }
+
+  /**
+   * Open one of the browser's system pages (`app.lingxia.browser`).
+   */
+  public static openSystemPage(page: string): boolean {
+    try {
+      return Boolean(openBrowserSystemPage(page, ''));
+    } catch (error) {
+      LxLog.e(TAG, `openSystemPage failed for ${page}: ${error}`);
       return false;
     }
   }
@@ -1459,7 +1448,7 @@ export struct LxAppBrowser {
           .alignItems(VerticalAlign.Center)
           .onClick(() => {
             this.closeMenus();
-            LxAppBrowserManager.navigateActiveTab(DOWNLOADS_URL);
+            LxAppBrowserManager.openSystemPage('downloads');
           })
 
           Divider().color(this.colors().hairline)
@@ -1480,7 +1469,7 @@ export struct LxAppBrowser {
           .alignItems(VerticalAlign.Center)
           .onClick(() => {
             this.closeMenus();
-            LxAppBrowserManager.navigateActiveTab(SETTINGS_URL);
+            LxAppBrowserManager.openSystemPage('settings');
           })
         }
         .width('60%')

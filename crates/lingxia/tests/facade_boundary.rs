@@ -23,12 +23,11 @@ fn facade_blocking_echo(input: EchoInput) -> lingxia::Result<EchoOutput> {
 #[lingxia::native("facade.scope")]
 fn facade_scope(context: lingxia::host::HostInvocationContext) -> lingxia::Result<()> {
     let _ = context.caller();
-    if let Some(scope) = context.app_scope() {
-        let _ = scope.identity().app_id();
-        let _ = scope.identity().session_id();
-        let _ = scope.storage().user_data();
-        let _ = scope.resource_grants();
-    }
+    let scope = context.app_scope();
+    let _ = scope.identity().app_id();
+    let _ = scope.identity().session_id();
+    let _ = scope.storage().user_data();
+    let _ = scope.resource_grants();
     let _ = context.lxapp();
     Ok(())
 }
@@ -52,10 +51,7 @@ async fn facade_scope_stream(
     context: lingxia::host::HostInvocationContext,
     stream: lingxia::host::StreamContext<StreamEvent, String>,
 ) -> lingxia::Result<()> {
-    let app_id = context
-        .app_scope()
-        .map(|scope| scope.identity().app_id().to_string())
-        .unwrap_or_default();
+    let app_id = context.app_scope().identity().app_id().to_string();
     stream.end(app_id)?;
     Ok(())
 }
@@ -101,8 +97,8 @@ fn facade_control() -> lingxia::Result<()> {
     Ok(())
 }
 
-#[lingxia::framework_native("facade.browser", audience = "browser-control-only")]
-fn facade_browser_control() -> lingxia::Result<()> {
+#[lingxia::framework_native("facade.controlOrSurface", audience = "control-app-or-surface")]
+fn facade_control_or_surface() -> lingxia::Result<()> {
     Ok(())
 }
 
@@ -116,7 +112,7 @@ fn native_macro_accepts_lingxia_result_handlers() {
     let _ = facade_channel_host();
     let _ = facade_scope_channel_host();
     let _ = facade_control_host();
-    let _ = facade_browser_control_host();
+    let _ = facade_control_or_surface_host();
 }
 
 #[test]
@@ -258,7 +254,6 @@ fn authority_escape_fixture_covers_all_feature_unification_paths() {
         "__install_app_resource_grant_resolver",
         "__install_devtools_resource_grant_resolver",
         "AuthenticatedCaller::LxAppSession",
-        "AuthenticatedCaller::BrowserDocument",
         "add_global_page_script",
         "LxApp::add_page_script",
         "resolve_settings_destination",

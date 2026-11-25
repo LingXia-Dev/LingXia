@@ -80,10 +80,10 @@ details; JS does not pick a provider by kind.
 | `native` | Capability name | Set by the declaration; the terminal admits keyed instances | A host provider, such as the terminal or the browser |
 
 JS opens by subject: a declaration (`openDeclared`), another lxapp
-(`openApp`), its own page (`openPage`), a URL (`openUrl`), or a host
-builtin page (`lx.shell.openBuiltin`). There is no `native` selector: a
-native provider is reached only through its declaration. Every handle
-carries a `kind` (`page`, `declared`, `app`, `tab`, `builtin`) and the
+(`openApp`), its own page (`openPage`), or a URL (`openUrl`). The browser's
+system pages are the `app.lingxia.browser` lxapp, opened with `openApp`. There
+is no `native` selector: a native provider is reached only through its
+declaration. Every handle carries a `kind` (`page`, `declared`, `app`, `tab`) and the
 `realized` placement (`main`, `aside`, `float`, `window`).
 
 ### 1.4 Roles and presentations
@@ -1034,7 +1034,6 @@ There is no `sidebar:` field. Sidebar entries come only from
 | `lx.surface.get(key)` | any lxapp | Its own live page or URL tab by key | — |
 | `lx.surface.app(appId)` | Control app | The live lxapp's handle | — |
 | `lx.surface.declared(id, { key? })` | Control app | The live declaration's handle | — |
-| `lx.shell.openBuiltin('downloads')` | Control app | The browser's downloads page | `E_NOT_FOUND`, `E_PERMISSION_DENIED` |
 | `lx.shell.activate()` | Control app | Brings the product window forward without navigating | — |
 | `lx.shell.sidebarActions.replace / update / remove` | Control app | §11.6 | `E_INVALID_ARG`, `E_NOT_FOUND` |
 | `lx.shell.appDisplay.update(patch)` | Control app | The name and icon the shell shows for the app | `E_INVALID_ARG` |
@@ -1077,11 +1076,9 @@ notifications — are on `lx.host`, never on `lx.shell`.
 - An explicit `as` changes only the live instance, never the declaration or the
   role later opens default to.
 - URLs are `https:` or a host-authorized `file:`, and their domain must pass the
-  lxapp's security policy. The only public `lingxia:` page is the browser's
-  downloads page, opened with `lx.shell.openBuiltin('downloads')`; every other
-  `lingxia:` URL, including `lingxia://settings`, fails with `E_INVALID_ARG`.
-  Settings is native chrome or browser-local navigation, never a Logic
-  destination. Handing a URL to the system still passes the host's scheme
+  lxapp's security policy. Every `lingxia:` URL fails with `E_INVALID_ARG`;
+  the browser's pages open with `lx.surface.openApp('app.lingxia.browser',
+  { page })`. Host-wide Settings is native chrome, never a Logic destination. Handing a URL to the system still passes the host's scheme
   allowlist.
 
 ### 11.3 App navigation and App Surfaces
@@ -1191,14 +1188,12 @@ routes:
   localises the message. Automation reorders with the full list from
   `shell.pins`.
 - `bookmarks.reorder` orders the bookmark manager only.
-  `browser.bookmarks: false` hides bookmark chrome; `lingxia://bookmarks` and
-  `bookmarks.list` / `watch` stay available.
-- `tabs.recentlyClosed` lists the process's last 25 closed website tabs, newest
-  first; `tabs.reopen({ id? })` restores one, the latest when `id` is omitted.
-  Private tabs, aside tabs and window surfaces are not recorded.
-- A replacement web UI declares `controlProtocolVersion` in its `lxapp.json`,
-  equal to the runtime's control protocol version; a missing, older or unknown
-  value fails the build.
+  `browser.bookmarks: false` hides bookmark chrome; the bookmarks system page
+  and `bookmarks.list` / `watch` stay available.
+- The host keeps the process's last 25 closed website tabs; the desktop
+  reopen-closed-tab shortcut (Cmd/Ctrl+Shift+T) restores the latest. Private tabs, aside tabs and
+  window surfaces are not recorded.
+- A replacement web UI is an lxapp whose `appId` is `app.lingxia.browser`.
 
 ---
 
@@ -1226,7 +1221,7 @@ Code uses these roots; only the case changes between languages (Rust
 
 | Term | Root | TS / JS | Rust | Not |
 |---|---|---|---|---|
-| surface, handle | `surface` | `AnySurface`, `AppSurface`, `DeclaredSurface`, `PageSurface`, `TabSurface`, `BuiltinSurface` | `Surface` | view, panel |
+| surface, handle | `surface` | `AnySurface`, `AppSurface`, `DeclaredSurface`, `PageSurface`, `TabSurface` | `Surface` | view, panel |
 | YAML content | `lxapp / page / url / native` | not JS selectors | `SurfaceContent` | render |
 | surface key | `key` | `key` | `SurfaceKey` | instanceKey, workspaceId |
 | runtime id | `surface_id` | not in Logic; automation `surfaceLayout().identities` | `SurfaceId` | — |

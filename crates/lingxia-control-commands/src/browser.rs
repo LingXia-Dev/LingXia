@@ -1863,8 +1863,7 @@ fn normalize_open_url(input: &str) -> String {
     format!("{scheme}://{trimmed}")
 }
 
-/// Runner does not bundle the product browser's `lingxia://newtab` webui.
-/// Keep an explicitly empty automation target aligned with its native + button.
+/// An explicitly empty runner target opens a blank tab, like its native + button.
 fn normalize_open_url_for_target(input: &str, target: &str) -> String {
     if input.trim().is_empty() && target.eq_ignore_ascii_case("runner") {
         return "about:blank".to_string();

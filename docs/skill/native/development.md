@@ -1,8 +1,9 @@
 # Native development
 
-The Rust side of a host app: the `HostAddon`, `#[lingxia::native]` routes for
-WebView Views, the generated client, `lingxia::*` facades, and `lingxia::js`
-extensions for Logic.
+The Rust side of a host app: the `HostAddon`, `#[lingxia::native]` routes
+(callable from Logic and WebView Views), synchronous routes, per-page
+`PageState<T>`, the generated `@lingxia/native` client, and `lingxia::*`
+facades.
 
 ## Host addon
 
@@ -34,11 +35,6 @@ impl lingxia::HostAddon for AppHostAddon {
         if user_approved_downloads_for(authority.app_id()) {
             authority.grant(lingxia::host::AppResourceGrant::Downloads);
         }
-    }
-
-    #[cfg(feature = "standard")]
-    fn install_logic_extensions(&self) {
-        lingxia::js::register_logic_extension(Box::new(WorkspaceDocsExtension));
     }
 
     fn start_services(&self) {
@@ -96,9 +92,9 @@ pub fn lingxia_register_host_addon() {
 
 ## Native routes
 
-`#[lingxia::native("namespace.method")]` exposes a Rust function to a WebView
-(React/HTML) View. A GPU View cannot call it (`E_PERMISSION_DENIED`); reach Rust
-from a Logic action through a [JS extension](#js-extensions).
+`#[lingxia::native("namespace.method")]` exposes a Rust function to Logic and to
+a WebView (React/HTML) View. A GPU View cannot call it (`E_PERMISSION_DENIED`);
+call it from a Logic action.
 
 ```rust
 use std::sync::Arc;
@@ -166,7 +162,7 @@ fn set_account() -> lingxia::Result<()> {
     Ok(())
 }
 
-#[lingxia::native("host.watch", stream, audience = "control-app-or-browser-only")]
+#[lingxia::native("host.watch", stream, audience = "control-app-or-surface")]
 async fn watch_host(
     mut stream: lingxia::host::StreamContext<lingxia::host::JsonValue>,
 ) -> lingxia::Result<()> {
@@ -178,15 +174,13 @@ async fn watch_host(
 | String | Admits |
 | --- | --- |
 | `app-session-only` | any lxapp session (the default for `native`) |
-| `any-authenticated` | any lxapp session, plus a browser control document |
 | `control-app-only` | the ControlApp session only |
-| `control-surface-only` | the host-bundled control surface session only |
-| `browser-control-only` | a browser control document only |
-| `control-app-or-browser-only` | the ControlApp session, plus a browser control document |
+| `control-surface-only` | any host-bundled control surface session |
+| `control-app-or-surface` | the ControlApp session and every control surface session |
 
-The classes are disjoint: `control-app-only` excludes the control surface.
-`any-authenticated` limits the caller, not what the route may change. An
-unknown or duplicate `audience` is a compile error.
+`control-app-only` excludes control surfaces. An audience limits the caller,
+not what the route may change. An unknown or duplicate `audience` is a compile
+error.
 
 ### Cancellation
 
@@ -276,28 +270,66 @@ every `cargo build`. A hand-rolled crate copies the template's `build.rs` and it
 build-dependency. Lxapps configure no Rust paths.
 
 When `lingxia build` or `lingxia dev` builds an Android, Apple, or HarmonyOS
-host, it passes the home lxapp's client path as `LINGXIA_NATIVE_CLIENT_OUT`: React gets
-`.lingxia/native.ts` (imported as `@lingxia/native`), HTML gets
-`.lingxia/native.js` (copied into `dist/.lingxia/`).
+host, it generates the home lxapp's clients, both imported as `@lingxia/native`:
+`.lingxia/native.logic.ts` for Logic, and `.lingxia/native.ts` (React) or
+`.lingxia/native.js` (HTML, copied into `dist/.lingxia/`) for a WebView View.
+A GPU View (`.tsx`) cannot import `@lingxia/native`; call routes from a Logic
+action or `setup(page)`.
 
 ```ts
+import { definePage } from "@lingxia/logic";
 import { native } from "@lingxia/native";
 
-const path = await native.editor.pickDocument({ title: "meeting-notes" });
-
-const stream = native.editor.exportPdf();
-stream.onEvent((event) => console.log(event.progress));
-const output = await stream.result;
-console.log(output);
-
-const channel = await native.editor.session();
-channel.onMessage((event) => console.log(event));
-channel.send({ kind: "cursor", payload: "{}" });
-channel.close();
+export default definePage({
+  data: { path: "" },
+  actions: (page) => ({
+    async pick() {
+      const path = await native.editor.pickDocument({ title: "meeting-notes" });
+      page.update((d) => { d.path = path; });
+    },
+    async *exportPdf() {
+      return yield* native.editor.exportPdf();
+    },
+  }),
+});
 ```
 
+### Synchronous routes
+
+`#[lingxia::native("ns.method", sync)]` runs a plain `fn` on the Logic JS thread
+and returns `T`, not `Promise<T>`, in Logic. Keep it short and I/O-free
+(formatting, validation, parsing); dev builds warn above 8 ms. It cannot take
+`HostCancel`.
+
+### Per-page Rust state (`PageState<T>`)
+
+A unary route (async, blocking or `sync`) may take
+`mut state: lingxia::PageState<MyState>` (`MyState: Default + Send + 'static`):
+one value per page instance, and calls on the same page for the same `T`
+serialize; a `sync` route fails instead of waiting while an async call holds it.
+Call such routes through `page.native` in `setup(page)` or `actions`; module-level
+`native` fails. `page.native` exists once a Logic module imports
+`@lingxia/native`. Removing the page drops the state, cancels its in-flight calls
+(`HostCancel`) and closes its channels; so does a throwing `setup`.
+
+### Supported DTO types & serde attributes
+
+Unresolved or unsupported DTO types fail codegen with the type name and source
+location rather than emitting `unknown`. That includes `&'static str` (use
+`String`), `serde_json::Map` (use `HashMap<String, Value>`) and generic structs.
+
+| Rust / serde | TypeScript |
+| --- | --- |
+| `String`, `&str`, `char`, `bool`, numeric primitives, `()` | `string`, `boolean`, `number`, `void` |
+| `Option<T>`, `Vec<T>`, `HashSet<T>`, `BTreeSet<T>`, `[T; N]`, `(A, B)` | `T \| null` (or `?`), `T[]`, `[A, B]` |
+| `HashMap<K, V>`, `BTreeMap<K, V>`, `serde_json::Value` | `Record<string, V>`, `unknown` |
+| `struct` (named, tuple, unit), `type` alias, path-qualified DTOs | `interface` / `type` |
+| `enum` (unit, external, `tag`, `tag + content`, `untagged`) | string literal or discriminated union |
+| `rename`, `rename_all`, `default`, `skip`, `skip_serializing_if`, `flatten` | applied to wire names, optionality, intersections |
+
 ```html
-<script src="lingxia://lxapp/.lingxia/native.js"></script>
+<!-- pages/<name>/index.html -->
+<script src="../../.lingxia/native.js"></script>
 <script>
   window.native.editor.pickDocument({ title: "meeting-notes" }).then(console.log);
 </script>
@@ -366,52 +398,17 @@ desktop banner (`lx.host.banner`). It blocks until the card
 resolves: call it from a blocking worker, and never show a no-timeout prompt on
 the macOS main thread.
 
-## JS extensions
-
-With the `standard` Cargo feature, `lingxia::js` adds `lx.<namespace>.*` to
-Logic:
-
-```rust
-#[cfg(feature = "standard")]
-use lingxia::js::LxLogicExtension;
-
-#[cfg(feature = "standard")]
-struct WorkspaceDocsExtension;
-
-#[cfg(feature = "standard")]
-impl LxLogicExtension for WorkspaceDocsExtension {
-    fn init(&self, ctx: &rong::JSContext) -> rong::JSResult<()> {
-        let lx = ctx.global().get::<_, rong::JSObject>("lx")?;
-        let ns = rong::JSObject::new(ctx);
-        ns.set("loadDocument", rong::JSFunc::new(ctx, load_document)?)?;
-        lx.set("workspaceDocs", ns)?;
-        Ok(())
-    }
-}
-
-#[cfg(feature = "standard")]
-fn load_document(_ctx: rong::JSContext, id: String) -> rong::JSResult<String> {
-    Ok(format!("# {id}"))
-}
-```
-
-Register it in `install_logic_extensions` (see the addon above). Without
-`features.appService` there is no `standard` feature and no `lingxia::js`
-([`features`](../app/project.md#features)).
-
 ## Choosing the surface
 
 | Surface | Runs in | Called from | Use for |
 | --- | --- | --- | --- |
-| `#[lingxia::native]` | Rust host async runtime | WebView View / generated native client | page-scoped native UI, file pickers, browser controls, native streams/channels |
-| `lingxia::js` extension | JS AppService runtime | Logic layer as `lx.*` | business logic helpers, app-owned data APIs, synchronous JS-facing helpers |
-
-Keep business state in Logic; use native routes for host capabilities.
+| `#[lingxia::native]` | Rust host async runtime | Logic (`@lingxia/native`, `page.native`) & WebView View | host capabilities, I/O, streams, channels, heavy computation, `PageState<T>` |
+| `#[lingxia::native(..., sync)]` | Logic JS thread | Logic (`@lingxia/native`, `page.native`) | short, non-blocking, I/O-free pure helpers (< 8 ms) |
 
 ## Pitfalls
 
 - Importing `lingxia_logic` or `rong` internals instead of `lingxia::*`
-  facades (JS extensions excepted).
+  facades.
 - Authority not first, or `HostCancel` not last, in a route signature.
 - Writing the `<fn>_host()` companion yourself, skipping
   `__lingxia_native::install()`, or leaving a submodule handler without a

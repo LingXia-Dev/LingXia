@@ -7,7 +7,7 @@ license = "MIT"
 repository.workspace = true
 
 [dependencies]
-lingxia-transfer = { workspace = true }
+lingxia-transfer = { workspace = true, features = ["http-proxy"] }
 lingxia-settings = { workspace = true }
 lingxia-platform = { workspace = true }
 lingxia-app-context = { workspace = true }
