@@ -36,11 +36,6 @@ export interface DropdownMenuProps {
   alignment?: DropdownMenuAlignment;
   /** Classes for the menu panel. */
   menuClassName?: string;
-  /**
-   * Keeps an icon's width at the start of every row, so all labels share one edge. Rows given as `items` set it
-   * themselves when any row has an icon; set it on `menu` rows, whose props the menu cannot read. @default false
-   */
-  hasIconColumn?: boolean;
   /** On the trigger: the wrapper, or a Button or Link child without a test id of its own. The menu gets `<testid>-menu`. */
   'data-testid'?: string;
 }
@@ -146,13 +141,36 @@ const areas = {
 
 /** The items' height; set by whatever holds them: a DropdownMenu or a ContextMenu. */
 export const MenuSize = createContext<ButtonSize | null>(null);
-/** Whether the panel's rows keep an icon's width at their start; shared with ContextMenu, not public. */
-export const IconColumn = createContext(false);
+/**
+ * A panel's icon column: whether its rows keep an icon's width at their start, and what its rows found as they
+ * drew. A row with an icon marks `found`; the panel reads it once laid out. Shared with ContextMenu, not public.
+ */
+interface Column { isShown: boolean; found: { hasIcon: boolean } }
+export const IconColumn = createContext<Column>({ isShown: false, found: { hasIcon: false } });
+/**
+ * A panel's column, from its rows: data rows are known at once; composed rows tell it as they draw, and it
+ * shows the column one render later, on its first layout. Give `sync` to the panel's `onLayout`.
+ */
+export const useIconColumn = (items: readonly DropdownMenuEntry[] | undefined) => {
+  const seen = useLocal('iconColumn', false);
+  const found = { hasIcon: false };
+  return {
+    value: { isShown: hasIcons(items) || seen.value, found } satisfies Column,
+    sync: () => { if (found.hasIcon !== seen.value) seen.set(found.hasIcon); },
+  };
+};
 /** Whether any row of these entries, in a group too, has an icon: a submenu's own rows are its own panel. */
-export const hasIcons = (entries: readonly DropdownMenuEntry[] | undefined): boolean =>
+const hasIcons = (entries: readonly DropdownMenuEntry[] | undefined): boolean =>
   entries !== undefined && entries.some(entry => 'type' in entry ? entry.type === 'group' && hasIcons(entry.items) : entry.icon !== undefined);
-/** The space an icon takes, on a row without one in a panel whose rows have them. */
-const IconSpace = () => useContext(IconColumn) ? <view aria-hidden className={r.itemIcon.base} /> : null;
+/** A row's lead: its icon, which it tells the panel of, or the icon's space when the panel's rows have icons. */
+function Lead({ icon, className }: { icon: IconRef | undefined; className: string }) {
+  const column = useContext(IconColumn);
+  if (icon !== undefined) {
+    column.found.hasIcon = true;
+    return <Glyph name={icon} className={className} />;
+  }
+  return column.isShown ? <view aria-hidden className={r.itemIcon.base} /> : null;
+}
 /** Which submenu has taken over the panel, where there is no room to open one beside its item. */
 interface DrillState {
   open: string | null;
@@ -200,12 +218,12 @@ export function DropdownMenu({
   placement = 'bottom',
   alignment = 'start',
   menuClassName,
-  hasIconColumn = false,
   'data-testid': testId, ...attributes
 }: DropdownMenuProps) {
   const id = useId();
   const isCompact = useView().env.sizeClass === 'compact';
   const drill = useDrill(label, isCompact);
+  const column = useIconColumn(items);
   const rows = menuRows('DropdownMenu', menu, items);
   return (
     <>
@@ -226,8 +244,8 @@ export function DropdownMenu({
           className={cx(r.menu.base, r.menu.offset[placement], isCompact && r.menu.drill, menuClassName)}
         >
           <Drill.Provider value={drill.state}>
-            <IconColumn.Provider value={hasIconColumn || hasIcons(items)}>
-              <view className={r.items.base}>{rows}</view>
+            <IconColumn.Provider value={column.value}>
+              <view onLayout={column.sync} className={r.items.base}>{rows}</view>
             </IconColumn.Provider>
           </Drill.Provider>
         </view>
@@ -275,7 +293,7 @@ function entryRow(owner: string, entry: DropdownMenuEntry, key: string): Child {
 function itemRow(owner: string, item: DropdownMenuItemData, key: string): Child {
   if (item.items !== undefined) {
     return (
-      <DropdownMenuSubmenu key={key} label={item.label} icon={item.icon} hasIconColumn={hasIcons(item.items)} isDisabled={item.isDisabled} data-testid={item['data-testid']}>
+      <DropdownMenuSubmenu key={key} label={item.label} icon={item.icon} isDisabled={item.isDisabled} data-testid={item['data-testid']}>
         {rowsOf(owner, item.items)}
       </DropdownMenuSubmenu>
     );
@@ -301,7 +319,7 @@ export function DropdownMenuItem(props: DropdownMenuItemProps) {
   if (isReplaced(drill)) return null;
   const content = (
     <>
-      {icon !== undefined ? <Glyph name={icon} className={cx(r.itemIcon.base, r.itemIcon.variant[variant])} /> : <IconSpace />}
+      <Lead icon={icon} className={cx(r.itemIcon.base, r.itemIcon.variant[variant])} />
       <view className={r.itemText.base}>
         <text className={cx(r.itemLabel.base, r.itemLabel.variant[variant])}>{label}</text>
         {description !== undefined && <text id={descriptionId} className={r.itemDescription.base}>{description}</text>}
@@ -402,7 +420,7 @@ function CheckableItem(props: {
       data-testid={props.testId}
       className={cx(r.item.base, r.item.size[size])}
     >
-      <IconSpace />
+      <Lead icon={undefined} className={r.itemIcon.base} />
       <view className={r.itemText.base}>
         <text className={r.itemLabel.base}>{props.label}</text>
         {props.description !== undefined && <text id={descriptionId} className={r.itemDescription.base}>{props.description}</text>}
@@ -420,11 +438,6 @@ export interface DropdownMenuSubmenuProps {
   icon?: IconRef;
   /** The submenu's items. One level only: a submenu holds no submenu. */
   children: Child;
-  /**
-   * Keeps an icon's width at the start of every row, so all labels share one edge. Set it when one of
-   * `children` has an icon; a submenu given as data sets it itself. @default false
-   */
-  hasIconColumn?: boolean;
   /** @default false */
   isDisabled?: boolean;
   /** On the item; the submenu gets `<testid>-menu`. */
@@ -432,14 +445,15 @@ export interface DropdownMenuSubmenuProps {
 }
 
 /** An item that opens a second menu at its side, for a few choices that belong under one name: "Move to". */
-export function DropdownMenuSubmenu({ label, icon, children, hasIconColumn = false, isDisabled = false, 'data-testid': testId, ...attributes }: DropdownMenuSubmenuProps) {
+export function DropdownMenuSubmenu({ label, icon, children, isDisabled = false, 'data-testid': testId, ...attributes }: DropdownMenuSubmenuProps) {
   const size = useContext(MenuSize);
   const drill = useContext(Drill);
   const id = useId();
+  const column = useIconColumn(undefined);
   if (size === null) throw Error('DropdownMenuSubmenu: place it inside a DropdownMenu');
   const row = (
     <>
-      {icon !== undefined ? <Glyph name={icon} className={cx(r.itemIcon.base, r.itemIcon.variant.default)} /> : <IconSpace />}
+      <Lead icon={icon} className={cx(r.itemIcon.base, r.itemIcon.variant.default)} />
       <view className={r.itemText.base}>
         <text className={r.itemLabel.base}>{label}</text>
       </view>
@@ -459,8 +473,8 @@ export function DropdownMenuSubmenu({ label, icon, children, hasIconColumn = fal
           </button>
           <view aria-hidden className={r.divider.base} />
           <Drill.Provider value={{ ...drill, open: null }}>
-            <IconColumn.Provider value={hasIconColumn}>
-              <view role="group" aria-label={label} data-testid={testId && `${testId}-menu`} className={r.group.base}>{children}</view>
+            <IconColumn.Provider value={column.value}>
+              <view onLayout={column.sync} role="group" aria-label={label} data-testid={testId && `${testId}-menu`} className={r.group.base}>{children}</view>
             </IconColumn.Provider>
           </Drill.Provider>
         </>
@@ -479,8 +493,9 @@ export function DropdownMenuSubmenu({ label, icon, children, hasIconColumn = fal
       <button role="menuitem" popoverTarget={id} aria-label={label} disabled={isDisabled} data-testid={testId} {...dataOf(attributes)} className={cx(r.item.base, r.item.size[size])}>
         {row}
       </button>
-      <IconColumn.Provider value={hasIconColumn}>
+      <IconColumn.Provider value={column.value}>
         <view
+          onLayout={column.sync}
           id={id}
           popover
           role="menu"

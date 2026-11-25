@@ -357,6 +357,7 @@ test('isRepeatable with to is refused, naming why', async () => {
 test('icon column: a row without an icon keeps the icon\'s space when another row has one, so the labels share a start edge', async () => {
   const screen = await renderExample('DropdownMenu/DropdownMenu', 'Repeatable');
   screen.press(screen.getByTestId('zoom'));
+  screen.layout(menus(screen)[0].children[0], { width: 200, height: 140 });
   const lead = id => screen.getByTestId(id).children[0];
   const reset = lead('zoom-reset');
   const box = node => [node.props.width, node.props.height, node.props.shrink];
@@ -364,21 +365,27 @@ test('icon column: a row without an icon keeps the icon\'s space when another ro
   assert.deepEqual(box(reset), box(lead('zoom-in')), 'as wide as the icon');
 });
 
-test('icon column: a menu with no icons keeps no space, and a JSX menu keeps it when told', async () => {
+test('icon column: composed rows tell their panel, which keeps the space once laid out; a menu with no icons keeps none', async () => {
   const screen = await renderPage(`
-    import { DropdownMenu, DropdownMenuItem } from '@liulidesign/core/DropdownMenu';
+    import { DropdownMenu, DropdownMenuItem, DropdownMenuCheckboxItem } from '@liulidesign/core/DropdownMenu';
     export function render() {
       return <page>
         <DropdownMenu label="Plain" data-testid="plain" items={[{ label: 'Copy', onClick: () => {}, 'data-testid': 'copy' }]}><text>Plain</text></DropdownMenu>
-        <DropdownMenu label="Told" data-testid="told" hasIconColumn menu={<>
-          <DropdownMenuItem label="Share" icon="share" onClick={() => {}} />
+        <DropdownMenu label="Composed" data-testid="composed" menu={<>
           <DropdownMenuItem label="Rename" onClick={() => {}} data-testid="rename" />
-        </>}><text>Told</text></DropdownMenu>
+          <DropdownMenuItem label="Share" icon="share" onClick={() => {}} />
+          <DropdownMenuCheckboxItem label="Pinned" value={false} onChange={() => {}} data-testid="pinned" />
+        </>}><text>Composed</text></DropdownMenu>
       </page>;
     }
   `);
+  const isSpaced = id => screen.getByTestId(id).children[0].props.accessibilityHidden === 1;
   screen.press(screen.getByTestId('plain'));
-  assert.notEqual(screen.getByTestId('copy').children[0].props.accessibilityHidden, 1, 'the label first');
-  screen.press(screen.getByTestId('told'));
-  assert.equal(screen.getByTestId('rename').children[0].props.accessibilityHidden, 1);
+  screen.layout(screen.getByTestId('plain-menu').children[0], { width: 200, height: 48 });
+  assert.equal(isSpaced('copy'), false, 'the label first');
+  screen.press(screen.getByTestId('composed'));
+  assert.equal(isSpaced('rename'), false, 'before layout the panel has not heard yet');
+  screen.layout(screen.getByTestId('composed-menu').children[0], { width: 200, height: 140 });
+  assert.equal(isSpaced('rename'), true, 'a row above the icon row');
+  assert.equal(isSpaced('pinned'), true, 'and a checkable row');
 });

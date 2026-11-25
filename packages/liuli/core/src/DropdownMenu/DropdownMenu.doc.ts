@@ -52,7 +52,7 @@ export const doc: ComponentDoc = {
       'On a narrow screen the row that opens a submenu and the row that goes back are menu items that keep the menu open, so the arrow keys reach them; Escape and back go up one level before they close the menu.',
       'While a submenu takes the panel the menu is named by the submenu, so a screen reader says where it is; the back row\'s menu name is bidi-isolated, so a name in the other direction keeps its order.',
       'An `isRepeatable` item runs and leaves the menu open, as checkbox and radio items do.',
-      'When a row has an icon, every row in that panel keeps an icon\'s width at its start, so the labels share one edge: `items` work it out, `menu` rows need `hasIconColumn`, whose rows\' props the menu cannot read.',
+      'When a row has an icon, every row in that panel keeps an icon\'s width at its start, so the labels share one edge; composed rows tell their panel, which shows the column once laid out.',
       'Checkbox and radio items are read as checked or not, and keep the menu open so the change can be seen.',
     ],
   },

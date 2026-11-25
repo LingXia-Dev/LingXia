@@ -5832,13 +5832,6 @@
           "description": "The rows as data, as DropdownMenu's `items` takes them."
         },
         {
-          "name": "hasIconColumn",
-          "type": "boolean",
-          "required": false,
-          "description": "Keeps an icon's width at the start of every row, as DropdownMenu's does; `items` set it themselves.",
-          "default": "false"
-        },
-        {
           "name": "isDisabled",
           "type": "boolean",
           "required": false,
@@ -8248,13 +8241,6 @@
           "description": "Classes for the menu panel."
         },
         {
-          "name": "hasIconColumn",
-          "type": "boolean",
-          "required": false,
-          "description": "Keeps an icon's width at the start of every row, so all labels share one edge. Rows given as `items` set it themselves when any row has an icon; set it on `menu` rows, whose props the menu cannot read.",
-          "default": "false"
-        },
-        {
           "name": "data-testid",
           "type": "string",
           "required": false,
@@ -8608,7 +8594,7 @@
           "On a narrow screen the row that opens a submenu and the row that goes back are menu items that keep the menu open, so the arrow keys reach them; Escape and back go up one level before they close the menu.",
           "While a submenu takes the panel the menu is named by the submenu, so a screen reader says where it is; the back row's menu name is bidi-isolated, so a name in the other direction keeps its order.",
           "An `isRepeatable` item runs and leaves the menu open, as checkbox and radio items do.",
-          "When a row has an icon, every row in that panel keeps an icon's width at its start, so the labels share one edge: `items` work it out, `menu` rows need `hasIconColumn`, whose rows' props the menu cannot read.",
+          "When a row has an icon, every row in that panel keeps an icon's width at its start, so the labels share one edge; composed rows tell their panel, which shows the column once laid out.",
           "Checkbox and radio items are read as checked or not, and keep the menu open so the change can be seen."
         ]
       },
@@ -8666,7 +8652,7 @@
         {
           "name": "Repeatable",
           "title": "Rows that keep the menu open",
-          "source": "import { useLocal } from '@lingxia/view';\nimport { DropdownMenu } from '@liulidesign/core/DropdownMenu';\nimport { Button } from '@liulidesign/core/Button';\n\n/** Rows that change what is beside the menu keep it open, so a second press needs no reopening; Reset closes it. Reset has no icon, so it keeps the icon's space and its label lines up with the others. */\nexport function Repeatable() {\n  const zoom = useLocal('zoom', 100);\n  return (\n    <view className=\"flex-row items-center gap-3\">\n      <DropdownMenu label=\"Zoom\" items={[\n        { id: 'in', label: 'Zoom in', icon: 'add', isRepeatable: true, onClick: () => zoom.set(Math.min(200, zoom.value + 10)), 'data-testid': 'zoom-in' },\n        { id: 'out', label: 'Zoom out', icon: 'remove', isRepeatable: true, onClick: () => zoom.set(Math.max(50, zoom.value - 10)), 'data-testid': 'zoom-out' },\n        { type: 'divider' },\n        { id: 'reset', label: 'Reset to 100%', onClick: () => zoom.set(100), 'data-testid': 'zoom-reset' },\n      ]}>\n        <Button label=\"Zoom\" endIcon=\"chevron-down\" data-testid=\"zoom\" />\n      </DropdownMenu>\n      <text role=\"status\" className=\"text-footnote text-muted tabular-nums\">{`${zoom.value}%`}</text>\n    </view>\n  );\n}"
+          "source": "import { useLocal } from '@lingxia/view';\nimport { DropdownMenu, DropdownMenuDivider, DropdownMenuItem } from '@liulidesign/core/DropdownMenu';\nimport { Button } from '@liulidesign/core/Button';\n\n/** Rows that change what is beside the menu keep it open, so a second press needs no reopening; Reset closes it. Reset has no icon, so it keeps the icon's space and its label lines up with the others. */\nexport function Repeatable() {\n  const zoom = useLocal('zoom', 100);\n  return (\n    <view className=\"flex-row items-center gap-3\">\n      <DropdownMenu label=\"Zoom\" menu={<>\n        <DropdownMenuItem label=\"Zoom in\" icon=\"add\" isRepeatable onClick={() => zoom.set(Math.min(200, zoom.value + 10))} data-testid=\"zoom-in\" />\n        <DropdownMenuItem label=\"Zoom out\" icon=\"remove\" isRepeatable onClick={() => zoom.set(Math.max(50, zoom.value - 10))} data-testid=\"zoom-out\" />\n        <DropdownMenuDivider />\n        <DropdownMenuItem label=\"Reset to 100%\" onClick={() => zoom.set(100)} data-testid=\"zoom-reset\" />\n      </>}>\n        <Button label=\"Zoom\" endIcon=\"chevron-down\" data-testid=\"zoom\" />\n      </DropdownMenu>\n      <text role=\"status\" className=\"text-footnote text-muted tabular-nums\">{`${zoom.value}%`}</text>\n    </view>\n  );\n}"
         },
         {
           "name": "Data",

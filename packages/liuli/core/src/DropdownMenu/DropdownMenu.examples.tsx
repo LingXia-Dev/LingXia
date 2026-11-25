@@ -313,12 +313,12 @@ export function Repeatable() {
   const zoom = useLocal('zoom', 100);
   return (
     <view className="flex-row items-center gap-3">
-      <DropdownMenu label="Zoom" items={[
-        { id: 'in', label: 'Zoom in', icon: 'add', isRepeatable: true, onClick: () => zoom.set(Math.min(200, zoom.value + 10)), 'data-testid': 'zoom-in' },
-        { id: 'out', label: 'Zoom out', icon: 'remove', isRepeatable: true, onClick: () => zoom.set(Math.max(50, zoom.value - 10)), 'data-testid': 'zoom-out' },
-        { type: 'divider' },
-        { id: 'reset', label: 'Reset to 100%', onClick: () => zoom.set(100), 'data-testid': 'zoom-reset' },
-      ]}>
+      <DropdownMenu label="Zoom" menu={<>
+        <DropdownMenuItem label="Zoom in" icon="add" isRepeatable onClick={() => zoom.set(Math.min(200, zoom.value + 10))} data-testid="zoom-in" />
+        <DropdownMenuItem label="Zoom out" icon="remove" isRepeatable onClick={() => zoom.set(Math.max(50, zoom.value - 10))} data-testid="zoom-out" />
+        <DropdownMenuDivider />
+        <DropdownMenuItem label="Reset to 100%" onClick={() => zoom.set(100)} data-testid="zoom-reset" />
+      </>}>
         <Button label="Zoom" endIcon="chevron-down" data-testid="zoom" />
       </DropdownMenu>
       <text role="status" className="text-footnote text-muted tabular-nums">{`${zoom.value}%`}</text>

@@ -337,7 +337,7 @@ export function Submenu() {
 
 ```tsx
 import { useLocal } from '@lingxia/view';
-import { DropdownMenu } from '@liulidesign/core/DropdownMenu';
+import { DropdownMenu, DropdownMenuDivider, DropdownMenuItem } from '@liulidesign/core/DropdownMenu';
 import { Button } from '@liulidesign/core/Button';
 
 /** Rows that change what is beside the menu keep it open, so a second press needs no reopening; Reset closes it. Reset has no icon, so it keeps the icon's space and its label lines up with the others. */
@@ -345,12 +345,12 @@ export function Repeatable() {
   const zoom = useLocal('zoom', 100);
   return (
     <view className="flex-row items-center gap-3">
-      <DropdownMenu label="Zoom" items={[
-        { id: 'in', label: 'Zoom in', icon: 'add', isRepeatable: true, onClick: () => zoom.set(Math.min(200, zoom.value + 10)), 'data-testid': 'zoom-in' },
-        { id: 'out', label: 'Zoom out', icon: 'remove', isRepeatable: true, onClick: () => zoom.set(Math.max(50, zoom.value - 10)), 'data-testid': 'zoom-out' },
-        { type: 'divider' },
-        { id: 'reset', label: 'Reset to 100%', onClick: () => zoom.set(100), 'data-testid': 'zoom-reset' },
-      ]}>
+      <DropdownMenu label="Zoom" menu={<>
+        <DropdownMenuItem label="Zoom in" icon="add" isRepeatable onClick={() => zoom.set(Math.min(200, zoom.value + 10))} data-testid="zoom-in" />
+        <DropdownMenuItem label="Zoom out" icon="remove" isRepeatable onClick={() => zoom.set(Math.max(50, zoom.value - 10))} data-testid="zoom-out" />
+        <DropdownMenuDivider />
+        <DropdownMenuItem label="Reset to 100%" onClick={() => zoom.set(100)} data-testid="zoom-reset" />
+      </>}>
         <Button label="Zoom" endIcon="chevron-down" data-testid="zoom" />
       </DropdownMenu>
       <text role="status" className="text-footnote text-muted tabular-nums">{`${zoom.value}%`}</text>
@@ -449,7 +449,6 @@ export function InSentence() {
 | `placement` | `DropdownMenuPlacement` | `'bottom'` | Which side of the trigger the menu opens on. |
 | `alignment` | `DropdownMenuAlignment` | `'start'` | Which edge of the trigger the menu lines up with. |
 | `menuClassName` | `string` |  | Classes for the menu panel. |
-| `hasIconColumn` | `boolean` | `false` | Keeps an icon's width at the start of every row, so all labels share one edge. Rows given as `items` set it themselves when any row has an icon; set it on `menu` rows, whose props the menu cannot read. |
 | `data-testid` | `string` |  | On the trigger: the wrapper, or a Button or Link child without a test id of its own. The menu gets `<testid>-menu`. |
 
 ## DropdownMenuItemData props
@@ -551,7 +550,7 @@ export function InSentence() {
 - On a narrow screen the row that opens a submenu and the row that goes back are menu items that keep the menu open, so the arrow keys reach them; Escape and back go up one level before they close the menu.
 - While a submenu takes the panel the menu is named by the submenu, so a screen reader says where it is; the back row's menu name is bidi-isolated, so a name in the other direction keeps its order.
 - An `isRepeatable` item runs and leaves the menu open, as checkbox and radio items do.
-- When a row has an icon, every row in that panel keeps an icon's width at its start, so the labels share one edge: `items` work it out, `menu` rows need `hasIconColumn`, whose rows' props the menu cannot read.
+- When a row has an icon, every row in that panel keeps an icon's width at its start, so the labels share one edge; composed rows tell their panel, which shows the column once laid out.
 - Checkbox and radio items are read as checked or not, and keep the menu open so the change can be seen.
 
 | Contrast | Pair | Minimum | Light | Dark |
