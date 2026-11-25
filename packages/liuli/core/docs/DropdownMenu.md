@@ -424,7 +424,7 @@ export function InSentence() {
 | itemCheck | `<vector>` | no | A check at the end of a checked checkbox or radio item; hidden from assistive tech. |
 | divider | `<view>` | no | DropdownMenuDivider: a hairline between groups; hidden from assistive tech. |
 | submenuChevron | `<vector>` | no | DropdownMenuSubmenu: an item with a chevron that opens a second menu at its side; choosing there closes both. |
-| back | `<button>` | no | On a narrow screen a submenu takes the panel instead: this first row names it and goes back to the menu. |
+| back | `<button>` | no | On a narrow screen a submenu takes the panel instead: this first row, "Back to" and the menu's label, goes back to the menu. |
 
 ## What an app may override
 

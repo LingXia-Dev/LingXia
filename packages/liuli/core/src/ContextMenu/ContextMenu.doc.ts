@@ -27,7 +27,7 @@ export const doc: ComponentDoc = {
       { keys: 'Menu key or Shift+F10', effect: 'Opens the menu for the focused thing' },
       { keys: 'Up and Down', effect: 'Move between items' },
       { keys: 'Enter or Space', effect: 'Runs the item and closes the menu' },
-      { keys: 'Escape', effect: 'Closes the menu' },
+      { keys: 'Escape', effect: 'Closes the menu; inside a submenu that took the sheet, goes back to the menu first' },
     ],
     target: { lg: 48 },
     contrast: [
@@ -35,6 +35,7 @@ export const doc: ComponentDoc = {
       { what: 'docked title', pair: ['text-muted', 'surface-overlay'], minimum: '4.5:1' },
     ],
     notes: [
+      'A submenu opens beside its row at a point; from a finger it takes the sheet\'s place under a row back to the menu ("Back to Dunes at noon"), and back goes up a level before it closes the sheet.',
       'The menu is named by `label`; its items are menu items, and choosing one closes it.',
       'A screen reader user asks for the menu with the platform\'s own gesture for it.',
       'After a long press the same finger does not also press the thing.',
@@ -53,7 +54,6 @@ export const doc: ComponentDoc = {
   examples: [{ name: 'Rows', title: 'A menu on each row' }, { name: 'Data', title: 'The rows as data' }],
   gaps: [],
   limits: [
-    'It holds no submenu: a menu item that opens another menu closes the first.',
     'At a point the menu is placed from the size of the page; a very long menu can still reach past its edge.',
   ],
   playground: { props: { label: 'Trip to the coast' }, fixture: true },

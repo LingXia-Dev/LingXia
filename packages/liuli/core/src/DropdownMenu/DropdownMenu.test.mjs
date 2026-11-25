@@ -163,7 +163,8 @@ test('Submenu, narrow: the submenu takes the panel under a row that goes back; c
   assert.deepEqual(labels(), ['Rename', 'Move to', 'Delete']);
   screen.press(screen.getByTestId('move'));
   assert.equal(menus(screen).length, 1, 'the same panel');
-  assert.deepEqual(labels(), ['Move to', 'Move to'], 'the back row, then the submenu as a group');
+  assert.deepEqual(labels(), ['Back to Note', 'Move to'], 'the back row names the menu it goes back to, then the submenu as a group');
+  assert.equal(textOf(screen.getByTestId('move-back')), 'Back to Note', 'it reads as it is named');
   assert.equal(screen.getByTestId('move-back').props.stateExpanded, 1);
   assert.equal(screen.getByTestId('move-back').props.role, 'menuitem', 'reached by the arrow keys like any row');
   screen.press(screen.getByTestId('move-back'));

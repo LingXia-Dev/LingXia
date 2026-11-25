@@ -1,5 +1,5 @@
 import { cx, useId, useLocal, useView, type Child } from '@lingxia/view';
-import { MenuSize, menuRows, type DropdownMenuEntry } from '../DropdownMenu/DropdownMenu';
+import { Drill, MenuSize, menuRows, type DropdownMenuEntry } from '../DropdownMenu/DropdownMenu';
 import { contextMenuRecipe as r } from './ContextMenu.recipe';
 import { dataOf } from '../internal/data';
 
@@ -26,6 +26,7 @@ type Ask = { x: number; y: number; pointer: 'touch' | 'mouse' | 'keyboard' };
 export function ContextMenu({ label, children, menu, items, isDisabled = false, className, 'data-testid': testId, ...attributes }: ContextMenuProps) {
   const id = useId();
   const ask = useLocal<Ask | null>('ask', null);
+  const drilled = useLocal<string | null>('drilled', null);
   // The last ask outlives the menu: while it closes it keeps its form and its place.
   const shown = useLocal<Ask | null>('shown', null);
   const { env } = useView();
@@ -46,20 +47,25 @@ export function ContextMenu({ label, children, menu, items, isDisabled = false, 
         {children}
       </view>
       <MenuSize.Provider value={isDocked ? 'lg' : 'md'}>
-        <view
-          id={id}
-          popover
-          role="menu"
-          aria-label={label}
-          open={ask.value !== null}
-          onToggle={isOpen => { if (!isOpen) ask.set(null); }}
-          data-testid={testId && `${testId}-menu`}
-          style={place}
-          className={cx(r.menu.base, isDocked ? r.menu.docked : cx(r.menu.point, r.menu.from[isUpward ? 'above' : 'below']))}
-        >
-          {isDocked && <text aria-hidden className={r.title.base}>{label}</text>}
-          {rows}
-        </view>
+        {/* From a finger the sheet has no room beside a row: a submenu takes its place, as on a phone's DropdownMenu. */}
+        <Drill.Provider value={{ open: drilled.value, set: drilled.set, isCompact: isDocked, parent: label }}>
+          <view
+            id={id}
+            popover
+            role="menu"
+            aria-label={label}
+            open={ask.value !== null}
+            // A menu that closes forgets which submenu it was showing; Escape or back inside one goes up a level.
+            onToggle={isOpen => { if (!isOpen) { ask.set(null); drilled.set(null); } }}
+            onCloseRequest={() => { if (drilled.value === null) return true; drilled.set(null); return false; }}
+            data-testid={testId && `${testId}-menu`}
+            style={place}
+            className={cx(r.menu.base, isDocked ? r.menu.docked : cx(r.menu.point, r.menu.from[isUpward ? 'above' : 'below']))}
+          >
+            {isDocked && <text aria-hidden className={r.title.base}>{label}</text>}
+            {rows}
+          </view>
+        </Drill.Provider>
       </MenuSize.Provider>
     </>
   );

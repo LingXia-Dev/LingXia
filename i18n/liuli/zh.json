@@ -83,6 +83,9 @@
   "@liuli.back": {
     "defaultMessage": "上一步"
   },
+  "@liuli.backTo": {
+    "defaultMessage": "返回{parent}"
+  },
   "@liuli.skip": {
     "defaultMessage": "跳过"
   },

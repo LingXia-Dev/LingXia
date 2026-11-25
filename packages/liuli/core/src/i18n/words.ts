@@ -5,6 +5,7 @@ const languages = {
 "en": {
   "@liuli.add": (a, f) => "Add",
   "@liuli.back": (a, f) => "Back",
+  "@liuli.backTo": (a, f) => f.j(["Back to ", ...f.i(a["parent"])]),
   "@liuli.calendar.day": (a, f) => f.j([f.s(a["today"], { "yes": () => f.j(["Today, "]), "other": () => f.j([]) }), ...f.i(a["weekdayName"]), " ", ...f.i(a["day"]), " ", ...f.i(a["monthName"]), " ", ...f.i(a["year"])]),
   "@liuli.calendar.nextMonth": (a, f) => "Next month",
   "@liuli.calendar.previousMonth": (a, f) => "Previous month",
@@ -72,6 +73,7 @@ const languages = {
 "zh": {
   "@liuli.add": (a, f) => "添加",
   "@liuli.back": (a, f) => "上一步",
+  "@liuli.backTo": (a, f) => f.j(["返回", ...f.i(a["parent"])]),
   "@liuli.calendar.day": (a, f) => f.j([f.s(a["today"], { "yes": () => f.j(["今天，"]), "other": () => f.j([]) }), ...f.i(a["year"]), "年", ...f.i(a["monthName"]), ...f.i(a["day"]), "日", ...f.i(a["weekdayName"])]),
   "@liuli.calendar.nextMonth": (a, f) => "下个月",
   "@liuli.calendar.previousMonth": (a, f) => "上个月",

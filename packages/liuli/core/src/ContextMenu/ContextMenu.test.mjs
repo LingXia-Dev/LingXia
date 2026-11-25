@@ -65,3 +65,32 @@ test('Rows: at a point the menu is as wide as its widest item, up to 90 % of the
   assert.deepEqual([text.props.flexBasis, text.props.grow, text.props.minWidth], [undefined, 1, 0], 'the label\'s own width counts toward the menu\'s');
   assert.equal(label.parent.parent.props.height, undefined, 'an item has no fixed height: a wrapped label makes it taller');
 });
+
+test('Data: from a finger the docked sheet has no room beside a row, so a submenu takes its place under a row back to the menu; Back goes up a level, not out', async () => {
+  const screen = await renderExample('ContextMenu/ContextMenu', 'Data');
+  await ask(screen, 'photo-dunes', 'touch');
+  screen.press(screen.getByTestId('add-album'));
+  assert.equal(menus(screen).length, 1, 'one menu in the tree: no second popover');
+  const back = screen.getByTestId('add-album-back');
+  assert.deepEqual([back.props.accessibilityLabel, back.props.role], ['Back to Dunes at noon', 'menuitem']);
+  assert.equal(screen.getByTestId('add-album-menu').props.accessibilityLabel, 'Add to album');
+  assert.equal(screen.queryAll(node => node.tag === 'text' && node.text === 'Share').length, 0, 'the sheet\'s rows give way');
+  screen.escape();
+  assert.equal(menus(screen).length, 1, 'back inside the submenu goes up a level');
+  assert.equal(screen.queryAll(node => node.tag === 'text' && node.text === 'Share').length, 1, 'the sheet\'s rows again');
+  screen.escape();
+  assert.equal(menus(screen).length, 0, 'from the top, back closes the sheet');
+  await ask(screen, 'photo-dunes', 'touch');
+  screen.press(screen.getByTestId('add-album'));
+  screen.press(screen.getByTestId('album-holidays'));
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(status(screen), 'Added to Holidays');
+});
+
+test('Data: at a point, from a mouse, the submenu opens beside its row, as before', async () => {
+  const screen = await renderExample('ContextMenu/ContextMenu', 'Data');
+  await ask(screen, 'photo-dunes', 'mouse');
+  screen.press(screen.getByTestId('add-album'));
+  assert.throws(() => screen.getByTestId('add-album-back'), /no node/, 'no back row');
+  assert.equal(screen.getByTestId('add-album-menu').props.role, 'menu', 'its own menu beside the row');
+});

@@ -1,6 +1,7 @@
 import { createContext, cx, useContext, useId, useLocal, useView, type Child } from '@lingxia/view';
 import type { ButtonSize } from '../Button/Button';
 import type { IconRef } from '../Icon/Icon';
+import { liuliText } from '../i18n/text';
 import { Glyph } from '../internal/Glyph';
 import { Trigger } from '../internal/trigger';
 import { dropdownMenuRecipe as r } from './DropdownMenu.recipe';
@@ -133,8 +134,11 @@ interface DrillState {
   open: string | null;
   set: (id: string | null) => void;
   isCompact: boolean;
+  /** The menu's name, which the back row names as where it goes. */
+  parent: string;
 }
-const Drill = createContext<DrillState | null>(null);
+/** Shared with ContextMenu, not public: a const, so the catalogue does not list it. */
+export const Drill = createContext<DrillState | null>(null);
 /** Whether a submenu has replaced this item in the panel. */
 const isReplaced = (drill: DrillState | null) => drill !== null && drill.open !== null;
 
@@ -181,7 +185,7 @@ export function DropdownMenu({
           style={{ positionArea: areas[placement][alignment] }}
           className={cx(r.menu.base, r.menu.offset[placement], isCompact && r.menu.drill, menuClassName)}
         >
-          <Drill.Provider value={{ open: drilled.value, set: drilled.set, isCompact }}>
+          <Drill.Provider value={{ open: drilled.value, set: drilled.set, isCompact, parent: label }}>
             <view className={r.items.base}>{rows}</view>
           </Drill.Provider>
         </view>
@@ -388,14 +392,15 @@ export function DropdownMenuSubmenu({ label, icon, children, isDisabled = false,
       <Glyph name="chevron-end" className={r.submenuChevron.base} />
     </>
   );
-  // No room beside the item: the submenu takes the panel, under a row that goes back.
+  // No room beside the item: the submenu takes the panel, under a row back to the menu, as the reference does.
   if (drill?.isCompact) {
     if (drill.open === id) {
+      const back = liuliText('@liuli.backTo', { parent: drill.parent });
       return (
         <>
-          <button role="menuitem" keepOpen aria-label={label} aria-expanded onClick={() => drill.set(null)} data-testid={testId && `${testId}-back`} className={cx(r.item.base, r.item.size[size], r.back.base)}>
+          <button role="menuitem" keepOpen aria-label={back} aria-expanded onClick={() => drill.set(null)} data-testid={testId && `${testId}-back`} className={cx(r.item.base, r.item.size[size], r.back.base)}>
             <Glyph name="chevron-start" className={r.submenuChevron.base} />
-            <text className={r.back.label}>{label}</text>
+            <text className={r.back.label}>{back}</text>
           </button>
           <view aria-hidden className={r.divider.base} />
           <Drill.Provider value={{ ...drill, open: null }}>

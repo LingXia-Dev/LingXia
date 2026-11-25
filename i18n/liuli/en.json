@@ -111,6 +111,10 @@
     "defaultMessage": "Back",
     "description": "Tour button to the step before."
   },
+  "@liuli.backTo": {
+    "defaultMessage": "Back to {parent}",
+    "description": "Row above a submenu that has taken a phone menu's place; `parent` is the menu's name."
+  },
   "@liuli.skip": {
     "defaultMessage": "Skip",
     "description": "Tour button that ends the tour early."

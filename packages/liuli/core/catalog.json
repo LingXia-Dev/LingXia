@@ -5716,7 +5716,7 @@
           },
           {
             "keys": "Escape",
-            "effect": "Closes the menu"
+            "effect": "Closes the menu; inside a submenu that took the sheet, goes back to the menu first"
           }
         ],
         "target": {
@@ -5741,6 +5741,7 @@
           }
         ],
         "notes": [
+          "A submenu opens beside its row at a point; from a finger it takes the sheet's place under a row back to the menu (\"Back to Dunes at noon\"), and back goes up a level before it closes the sheet.",
           "The menu is named by `label`; its items are menu items, and choosing one closes it.",
           "A screen reader user asks for the menu with the platform's own gesture for it.",
           "After a long press the same finger does not also press the thing."
@@ -5755,12 +5756,11 @@
         {
           "name": "Data",
           "title": "The rows as data",
-          "source": "import { useLocal } from '@lingxia/view';\nimport { Item, ItemList } from '@liulidesign/core/Item';\nimport { ContextMenu } from '@liulidesign/core/ContextMenu';\n\n/** The same menu, its rows given as data. */\nexport function Data() {\n  const last = useLocal('last', '');\n  return (\n    <view className=\"gap-2\">\n      <ItemList label=\"Photos\">\n        <ContextMenu\n          label=\"Dunes at noon\"\n          data-testid=\"photo-dunes\"\n          items={[\n            { label: 'Add to album', items: [{ label: 'Holidays', onClick: () => last.set('Added to Holidays'), 'data-testid': 'album-holidays' }, { label: 'Favourites', onClick: () => last.set('Added to Favourites') }] },\n            { label: 'Share', onClick: () => last.set('Shared Dunes at noon') },\n            { type: 'divider' },\n            { label: 'Delete', variant: 'destructive', onClick: () => last.set('Deleted Dunes at noon'), 'data-testid': 'photo-delete' },\n          ]}\n        >\n          <Item label=\"Dunes at noon\" description=\"Taken in May\" hasChevron onClick={() => last.set('Opened Dunes at noon')} />\n        </ContextMenu>\n      </ItemList>\n      {last.value !== '' && <text role=\"status\" className=\"text-footnote text-muted\">{last.value}</text>}\n    </view>\n  );\n}"
+          "source": "import { useLocal } from '@lingxia/view';\nimport { Item, ItemList } from '@liulidesign/core/Item';\nimport { ContextMenu } from '@liulidesign/core/ContextMenu';\n\n/** The same menu, its rows given as data. */\nexport function Data() {\n  const last = useLocal('last', '');\n  return (\n    <view className=\"gap-2\">\n      <ItemList label=\"Photos\">\n        <ContextMenu\n          label=\"Dunes at noon\"\n          data-testid=\"photo-dunes\"\n          items={[\n            { label: 'Add to album', 'data-testid': 'add-album', items: [{ label: 'Holidays', onClick: () => last.set('Added to Holidays'), 'data-testid': 'album-holidays' }, { label: 'Favourites', onClick: () => last.set('Added to Favourites') }] },\n            { label: 'Share', onClick: () => last.set('Shared Dunes at noon') },\n            { type: 'divider' },\n            { label: 'Delete', variant: 'destructive', onClick: () => last.set('Deleted Dunes at noon'), 'data-testid': 'photo-delete' },\n          ]}\n        >\n          <Item label=\"Dunes at noon\" description=\"Taken in May\" hasChevron onClick={() => last.set('Opened Dunes at noon')} />\n        </ContextMenu>\n      </ItemList>\n      {last.value !== '' && <text role=\"status\" className=\"text-footnote text-muted\">{last.value}</text>}\n    </view>\n  );\n}"
         }
       ],
       "gaps": [],
       "limits": [
-        "It holds no submenu: a menu item that opens another menu closes the first.",
         "At a point the menu is placed from the size of the page; a very long menu can still reach past its edge."
       ],
       "playground": {

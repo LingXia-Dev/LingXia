@@ -73,7 +73,7 @@ export function Data() {
           label="Dunes at noon"
           data-testid="photo-dunes"
           items={[
-            { label: 'Add to album', items: [{ label: 'Holidays', onClick: () => last.set('Added to Holidays'), 'data-testid': 'album-holidays' }, { label: 'Favourites', onClick: () => last.set('Added to Favourites') }] },
+            { label: 'Add to album', 'data-testid': 'add-album', items: [{ label: 'Holidays', onClick: () => last.set('Added to Holidays'), 'data-testid': 'album-holidays' }, { label: 'Favourites', onClick: () => last.set('Added to Favourites') }] },
             { label: 'Share', onClick: () => last.set('Shared Dunes at noon') },
             { type: 'divider' },
             { label: 'Delete', variant: 'destructive', onClick: () => last.set('Deleted Dunes at noon'), 'data-testid': 'photo-delete' },
@@ -123,8 +123,9 @@ export function Data() {
 - Menu key or Shift+F10: Opens the menu for the focused thing.
 - Up and Down: Move between items.
 - Enter or Space: Runs the item and closes the menu.
-- Escape: Closes the menu.
+- Escape: Closes the menu; inside a submenu that took the sheet, goes back to the menu first.
 - Press target: lg 48 px.
+- A submenu opens beside its row at a point; from a finger it takes the sheet's place under a row back to the menu ("Back to Dunes at noon"), and back goes up a level before it closes the sheet.
 - The menu is named by `label`; its items are menu items, and choosing one closes it.
 - A screen reader user asks for the menu with the platform's own gesture for it.
 - After a long press the same finger does not also press the thing.
@@ -145,7 +146,6 @@ Ratios are computed from @lingxia/view/theme and rounded down.
 
 ## Limits
 
-- It holds no submenu: a menu item that opens another menu closes the first.
 - At a point the menu is placed from the size of the page; a very long menu can still reach past its edge.
 
 Related: DropdownMenu, Item, BottomSheet.

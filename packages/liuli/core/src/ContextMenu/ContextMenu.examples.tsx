@@ -49,7 +49,7 @@ export function Data() {
           label="Dunes at noon"
           data-testid="photo-dunes"
           items={[
-            { label: 'Add to album', items: [{ label: 'Holidays', onClick: () => last.set('Added to Holidays'), 'data-testid': 'album-holidays' }, { label: 'Favourites', onClick: () => last.set('Added to Favourites') }] },
+            { label: 'Add to album', 'data-testid': 'add-album', items: [{ label: 'Holidays', onClick: () => last.set('Added to Holidays'), 'data-testid': 'album-holidays' }, { label: 'Favourites', onClick: () => last.set('Added to Favourites') }] },
             { label: 'Share', onClick: () => last.set('Shared Dunes at noon') },
             { type: 'divider' },
             { label: 'Delete', variant: 'destructive', onClick: () => last.set('Deleted Dunes at noon'), 'data-testid': 'photo-delete' },

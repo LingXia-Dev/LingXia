@@ -22,7 +22,7 @@ export const doc: ComponentDoc = {
     { part: 'itemCheck', required: false, description: 'A check at the end of a checked checkbox or radio item; hidden from assistive tech.' },
     { part: 'divider', required: false, description: 'DropdownMenuDivider: a hairline between groups; hidden from assistive tech.' },
     { part: 'submenuChevron', required: false, description: 'DropdownMenuSubmenu: an item with a chevron that opens a second menu at its side; choosing there closes both.' },
-    { part: 'back', required: false, description: 'On a narrow screen a submenu takes the panel instead: this first row names it and goes back to the menu.' },
+    { part: 'back', required: false, description: 'On a narrow screen a submenu takes the panel instead: this first row, "Back to" and the menu\'s label, goes back to the menu.' },
   ],
   accessibility: {
     pattern: 'menuButton',
