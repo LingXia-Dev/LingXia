@@ -1,4 +1,4 @@
-import type { ToastTone } from './Toast';
+import type { ToastPosition, ToastTone } from './Toast';
 
 export const toastParts = {
   region: 'view',
@@ -11,18 +11,24 @@ export const toastParts = {
 } as const;
 
 /**
- * A raised card on the page's surface, at the bottom of the screen on touch and the bottom end with
- * a pointer. It rises a little as it fades in; under reduced motion it only fades.
+ * A raised card on the page's surface, in a corner of the screen, the bottom end unless the region says
+ * otherwise. It moves in a little from its edge as it fades in; under reduced motion it only fades.
  */
 export const toastRecipe = {
   /** The top-layer box the toast sits in. It meets every edge, so the layer adds the bars to its 16 px gap. */
   region: {
-    base: 'absolute inset-0 m-0 p-4 justify-end transition duration-base ease-standard starting:opacity-0 exit:opacity-0 motion-safe:starting:translate-y-2 motion-safe:exit:translate-y-2',
-    pointer: { coarse: 'items-center', fine: 'items-end' },
+    base: 'absolute inset-0 m-0 p-4 transition duration-base ease-standard starting:opacity-0 exit:opacity-0',
+    position: {
+      bottomEnd: 'justify-end items-end motion-safe:starting:translate-y-2 motion-safe:exit:translate-y-2',
+      bottomStart: 'justify-end items-start motion-safe:starting:translate-y-2 motion-safe:exit:translate-y-2',
+      topEnd: 'justify-start items-end motion-safe:starting:-translate-y-2 motion-safe:exit:-translate-y-2',
+      topStart: 'justify-start items-start motion-safe:starting:-translate-y-2 motion-safe:exit:-translate-y-2',
+    } satisfies Record<ToastPosition, string>,
   },
   toast: {
     base: 'flex-row items-center gap-3 min-h-12 ps-4 pe-1.5 py-1.5 rounded-container border border-text/12 bg-surface-overlay shadow-raised transition-transform duration-slow ease-standard',
-    pointer: { coarse: 'w-full max-w-[480px]', fine: 'w-[360px] max-w-full' },
+    /** As wide as the region up to 400 pt, as the reference's: the screen's width on a phone, a corner card on a wide one. */
+    width: 'w-full max-w-[400px]',
     /** Without a dismiss button the end padding matches the start. */
     plain: 'pe-4',
   },

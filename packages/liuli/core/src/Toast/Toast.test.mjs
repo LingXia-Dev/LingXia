@@ -86,14 +86,32 @@ test('Progress: a toast with the same id updates in place instead of queueing', 
   assert.equal(shown(screen).length, 0);
 });
 
-test('a touch screen centres the toast; a pointer puts it at the bottom end', async () => {
-  for (const [pointer, align] of [['coarse', 'center'], ['fine', 'end']]) {
+test('like the reference, the toast sits in the bottom end corner on any screen, as wide as the region up to 400 pt', async () => {
+  for (const pointer of ['coarse', 'fine']) {
     const screen = await renderExample('Toast/Toast', 'Tones', { env: { pointer } });
     screen.press(screen.getByTestId('show-info'));
-    const region = screen.queryAll(node => node.props.elementId !== undefined && node.props.justify === 'end')[0];
-    assert.equal(region.props.align, align);
-    assert.equal(region.props.paddingBottom, 16);
+    assert.deepEqual([region(screen).props.justify, region(screen).props.align, region(screen).props.paddingBottom], ['end', 'end', 16], pointer);
+    const card = screen.getByTestId('toast').parent;
+    assert.deepEqual([card.props.widthPercent ?? card.props.width, card.props.maxWidth], [100, 400], pointer);
   }
+});
+
+test('position moves the toast to another corner, from its own edge; inset keeps an edge clear for the page\'s own bar', async () => {
+  const { renderPage } = await import('../testing/harness.mjs');
+  const page = (props) => `
+    import { Button } from '@liulidesign/core/Button';
+    import { ToastRegion, useToast } from '@liulidesign/core/Toast';
+    function Save() { const toast = useToast(); return <Button label="Save" onClick={() => toast.show({ message: 'Saved' })} data-testid="save" />; }
+    export function render() { return <page><ToastRegion ${props}><Save /></ToastRegion></page>; }
+  `;
+  const top = await renderPage(page(`position="topStart"`));
+  top.press(top.getByTestId('save'));
+  assert.deepEqual([region(top).props.justify, region(top).props.align], ['start', 'start']);
+  assert.match(region(top).props.startingStyle, /\\"translate\\":\[0,-8\]/, 'it moves in from above');
+  const clear = await renderPage(page(`inset={{ bottom: 64, end: 24 }}`));
+  clear.press(clear.getByTestId('save'));
+  assert.deepEqual([region(clear).props.marginBottom, region(clear).props.marginInlineEnd, region(clear).props.paddingBottom], [64, 24, 16], 'the page\'s bar as a margin; the gap stays');
+  assert.match(region(clear).props.startingStyle, /\\"translate\\":\[0,8\]/, 'at the bottom it rises from below');
 });
 
 test('the toast clears the bars and the home indicator, and sits on an open keyboard', async () => {
@@ -107,7 +125,7 @@ test('the toast clears the bars and the home indicator, and sits on an open keyb
   assert.equal(region(typing).props.paddingBottom, 16);
 });
 
-const region = screen => screen.queryAll(node => node.props.elementId !== undefined && node.props.justify === 'end')[0];
+const region = screen => screen.queryAll(node => node.props.elementId !== undefined && typeof node.props.justify === 'string')[0];
 // The top-layer box the popover lands in carries its wire fields.
 const layer = screen => screen.queryAll(node => node.props.topLayer === 2)[0];
 

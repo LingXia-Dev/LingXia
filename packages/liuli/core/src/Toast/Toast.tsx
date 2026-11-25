@@ -1,4 +1,4 @@
-import { createContext, cx, useContext, useId, useLocal, useView, type Local } from '@lingxia/view';
+import { createContext, cx, useContext, useId, useLocal, type Local } from '@lingxia/view';
 import { liuliText } from '../i18n/text';
 import type { BannerTone } from '../Banner/Banner';
 import { Button } from '../Button/Button';
@@ -36,7 +36,14 @@ export interface Toaster {
   dismiss(id?: string): void;
 }
 
+/** The corner toasts show in. */
+export type ToastPosition = 'bottomEnd' | 'bottomStart' | 'topEnd' | 'topStart';
+
 export interface ToastRegionProps {
+  /** The corner toasts show in: move them off controls the page keeps at the bottom end. @default 'bottomEnd' */
+  position?: ToastPosition;
+  /** Room the page keeps on an edge for a bar of its own, in pt, added to the 16 pt gap and the system bars. */
+  inset?: { top?: number; bottom?: number; start?: number; end?: number };
   /** The dismiss button's name on every toast: "Dismiss". Defaults to "Dismiss" in the page's language. */
   dismissLabel?: string;
   /** How long a toast without an action shows, in ms. @default 5000 */
@@ -145,9 +152,18 @@ export function useToast(): Toaster {
 }
 
 const swipePoints = ['-120%', 0, '120%'] as const;
+// The page's own bars, as margins of the region, so the layer still adds the system bars to its padding.
+const edges = (inset: NonNullable<ToastRegionProps['inset']>) => {
+  const { top, bottom, start, end } = inset;
+  return {
+    ...(top !== undefined && { marginTop: top }),
+    ...(bottom !== undefined && { marginBottom: bottom }),
+    ...(start !== undefined && { marginInlineStart: start }),
+    ...(end !== undefined && { marginInlineEnd: end }),
+  };
+};
 
-function Shown({ entry, regionId, dismissLabel, duration, toaster, actions }: { entry: Entry; regionId: string; dismissLabel?: string; duration: number; toaster: Toaster; actions: Map<string, () => void> }) {
-  const { env } = useView();
+function Shown({ entry, regionId, position, inset, dismissLabel, duration, toaster, actions }: { entry: Entry; regionId: string; position: ToastPosition; inset?: ToastRegionProps['inset']; dismissLabel?: string; duration: number; toaster: Toaster; actions: Map<string, () => void> }) {
   // Rests on the middle point; a swipe to either side closes it.
   const swipe = useLocal('swipe', 1);
   const close = () => toaster.dismiss(entry.id);
@@ -162,7 +178,8 @@ function Shown({ entry, regionId, dismissLabel, duration, toaster, actions }: { 
       open
       closeAfter={closeAfter}
       onToggle={open => { if (!open) close(); }}
-      className={cx(r.region.base, r.region.pointer[env.pointer])}
+      style={inset && edges(inset)}
+      className={cx(r.region.base, r.region.position[position])}
     >
       <view
         drag="x"
@@ -170,7 +187,7 @@ function Shown({ entry, regionId, dismissLabel, duration, toaster, actions }: { 
         bind={swipe}
         aria-label={entry.message}
         onDragEnd={({ index }) => { if (index !== 1) close(); }}
-        className={r.toast.pointer[env.pointer]}
+        className={r.toast.width}
       >
         <Toast
           message={entry.message}
@@ -190,7 +207,7 @@ function Shown({ entry, regionId, dismissLabel, duration, toaster, actions }: { 
  * page and reach it with `useToast()`. Each new message is announced, politely unless its tone is
  * danger.
  */
-export function ToastRegion({ dismissLabel, duration = 5000, children }: ToastRegionProps) {
+export function ToastRegion({ position = 'bottomEnd', inset, dismissLabel, duration = 5000, children }: ToastRegionProps) {
   const regionId = useId();
   const queue = useLocal<Entry[]>('toasts', []);
   const seq = useLocal('seq', 0);
@@ -208,7 +225,7 @@ export function ToastRegion({ dismissLabel, duration = 5000, children }: ToastRe
       <text role="status" className={r.announcer.base}>{say(1, false)}</text>
       <text role="alert" className={r.announcer.base}>{say(0, true)}</text>
       <text role="alert" className={r.announcer.base}>{say(1, true)}</text>
-      {head && <Shown key={`t${head.seq}`} entry={head} regionId={regionId} dismissLabel={dismissLabel} duration={duration} toaster={toaster} actions={actions} />}
+      {head && <Shown key={`t${head.seq}`} entry={head} regionId={regionId} position={position} inset={inset} dismissLabel={dismissLabel} duration={duration} toaster={toaster} actions={actions} />}
     </>
   );
 }

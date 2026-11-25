@@ -51,6 +51,7 @@ export const doc: ComponentDoc = {
       'Say what happened in a few words: "Note archived", not "Success".',
       'Offer Undo for an action that is easy to regret.',
       'Give a running message an `id`, so each update replaces it.',
+      'Where a page keeps a control or bar at the bottom end, move the toasts with `position` or keep that edge clear with `inset`; they show in the bottom end corner, up to 400 pt wide.',
     ],
     dont: [
       'Put something people must read or act on in a toast; use a Banner or a Dialog.',
