@@ -76,3 +76,49 @@ test('Parts and the tile: the drawn panel\'s secondary action takes the overlay\
     assert.equal(button.props.background, 'surface-overlay', name);
   }
 });
+
+const shown = (screen, id) => screen.queryAll(node => node.testId === id).length;
+
+test('Confirm: an alert closes on Escape and back, never on a backdrop tap', async () => {
+  const screen = await renderExample('Dialog/Dialog', 'Confirm');
+  screen.press(screen.getByTestId('confirm-open'));
+  screen.press(screen.getByTestId('confirm-dialog-backdrop'));
+  assert.equal(shown(screen, 'confirm-dialog'), 1, 'a backdrop tap does nothing');
+  assert.equal(screen.escape(), true);
+  assert.equal(shown(screen, 'confirm-dialog'), 0);
+});
+
+// A Logic action the test settles by hand.
+const deferred = () => { let settle; const promise = new Promise((resolve, reject) => { settle = { resolve, reject }; }); return { promise, ...settle }; };
+const turn = () => new Promise(resolve => setImmediate(resolve));
+
+test('Alert: Cancel comes first; while the action runs the button loads and nothing closes it; a failure stays in the dialog', async () => {
+  let pending;
+  const screen = await renderExample('Dialog/Dialog', 'Alert', { actions: { publish: () => (pending = deferred()).promise } });
+  screen.press(screen.getByTestId('alert-open'));
+  const answers = screen.queryAll(node => node.tag === 'button').map(node => textOf(node)).filter(text => text === 'Cancel' || text === 'Delete');
+  assert.deepEqual(answers, ['Cancel', 'Delete']);
+  screen.press(screen.getByTestId('alert-confirm'));
+  await turn();
+  screen.escape();
+  assert.equal(shown(screen, 'alert'), 1, 'Escape waits too');
+  assert.equal(screen.getByTestId('alert-cancel').props.onClick, undefined, 'cancel waits');
+  pending.resolve();
+  await turn(); await turn();
+  screen.rerender({});
+  assert.equal(shown(screen, 'alert'), 1, 'a failure keeps it open');
+  const failed = screen.getByTestId('alert-failed');
+  assert.equal(failed.props.role, 'alert');
+  assert.equal(textOf(failed), "That didn't work. Try again.");
+  screen.press(screen.getByTestId('alert-cancel'));
+  assert.equal(shown(screen, 'alert'), 0);
+  screen.toggle(screen.getByTestId('alert-offline'), false);
+  screen.press(screen.getByTestId('alert-open'));
+  assert.equal(shown(screen, 'alert-failed'), 0, 'reopened without the old failure');
+  screen.press(screen.getByTestId('alert-confirm'));
+  await turn();
+  pending.resolve();
+  await turn(); await turn();
+  screen.rerender({});
+  assert.equal(shown(screen, 'alert'), 0, 'success closes it');
+});

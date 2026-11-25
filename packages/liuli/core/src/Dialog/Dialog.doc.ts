@@ -8,9 +8,11 @@ export const doc: ComponentDoc = {
   summary: 'Modal panel over the page for a decision or a short task',
   description:
     'Dialog interrupts the page to ask for a decision or a short piece of input, and keeps focus and assistive tech inside until it closes. ' +
-    'It is controlled: `isOpen` shows it, `onOpenChange(false)` reports every close request.',
+    'It is controlled: `isOpen` shows it, `onOpenChange(false)` reports every close request. ' +
+    'AlertDialog, from the same import, is the two-answer confirmation: it runs its action, loads until it settles and keeps a failure in the dialog.',
   keywords: ['dialog', 'modal', 'confirm', 'alert', 'popup', 'overlay', 'prompt'],
   propsType: 'DialogProps',
+  otherPropsTypes: ['AlertDialogProps'],
   recipe: { map: 'dialogRecipe', parts: 'dialogParts' },
   anatomy: [
     { part: 'panel', required: true, description: 'The dialog primitive: a centred panel on the overlay surface, in the top layer above a scrim; at `full` it covers the screen on the page\'s canvas.' },
@@ -21,6 +23,9 @@ export const doc: ComponentDoc = {
     { part: 'description', required: false, description: 'Text under the title.' },
     { part: 'body', required: false, description: '`children`, in a scroll that takes the remaining height. A hairline shows at an edge while content is scrolled under it.' },
     { part: 'headerAction', required: false, description: '`headerAction`: one small control beside the title that acts on the whole panel, such as Refresh.' },
+    { part: 'failed', required: false, description: 'AlertDialog: the failure row, in the body, when `confirmAction` fails.' },
+    { part: 'failedIcon', required: false, description: 'AlertDialog: the danger glyph that marks the failure.' },
+    { part: 'failedText', required: false, description: 'AlertDialog: the failure message, in the body colour.' },
     { part: 'footer', required: false, description: '`actions`: on a phone they share the width equally, the main one last; wider, they keep their own widths at the end, wrapping when narrow.' },
   ],
   accessibility: {
@@ -28,17 +33,19 @@ export const doc: ComponentDoc = {
     name: 'label',
     description: ['description'],
     states: [{ state: 'modal', from: 'isOpen; announced as an alert dialog with isAlert' }],
-    keyboard: [{ keys: 'Escape', effect: 'onOpenChange(false), unless dismissOn is none' }],
+    keyboard: [{ keys: 'Escape', effect: 'onOpenChange(false), unless dismissOn is none; an alert takes it as cancel, and an AlertDialog ignores it while its action runs' }],
     contrast: [
       { what: 'title', pair: ['text', 'surface-overlay'], minimum: '4.5:1' },
       { what: 'close button over a picture', pair: ['on-media', 'media'], minimum: '3:1' },
       { what: 'description', pair: ['text-muted', 'surface-overlay'], minimum: '4.5:1' },
+      { what: 'AlertDialog failure mark', pair: ['danger', 'surface-overlay'], minimum: '3:1' },
       { what: 'title, full screen', pair: ['text', 'canvas'], minimum: '4.5:1' },
       { what: 'description, full screen', pair: ['text-muted', 'canvas'], minimum: '4.5:1' },
     ],
     notes: [
       'Opened from a hardware keyboard, focus moves to the first control and returns to the opener on close; opened by touch, focus stays put.',
       'Android back and the screen reader dismiss gesture are close requests, like Escape.',
+      'An alert never closes on a backdrop tap. AlertDialog puts Cancel first, so a keyboard lands on the safe answer, and announces a failure as an alert.',
       'The close button is 32 px; a finger reaches it in a 44 pt band around it. Offer an action button too, so closing is never the only way on.',
     ],
   },
@@ -56,6 +63,7 @@ export const doc: ComponentDoc = {
   },
   examples: [
     { name: 'Confirm', title: 'Confirm a destructive action, as an alert dialog' },
+    { name: 'Alert', title: 'AlertDialog: an action that loads, and a failure that stays' },
     { name: 'Form', title: 'A short form' },
     { name: 'Full', title: 'Full screen' },
     { name: 'Hero', title: 'With a picture above the title' },
@@ -77,7 +85,7 @@ export const doc: ComponentDoc = {
       lead: 'Use a dialog for a decision or a short task that must be finished before going on.',
       hero: 'Confirm',
       parts: { name: 'Parts', title: 'Title, then the body, then the actions with the main one last' },
-      variants: [{ name: 'Form', title: 'A short task: renaming' }, { name: 'Full', title: 'Full screen, for a task with its own content' }, { name: 'Hero', title: 'A picture above the title, for a dialog that introduces something' }],
+      variants: [{ name: 'Alert', title: 'AlertDialog runs the action: loading, then a failure to retry' }, { name: 'Form', title: 'A short task: renaming' }, { name: 'Full', title: 'Full screen, for a task with its own content' }, { name: 'Hero', title: 'A picture above the title, for a dialog that introduces something' }],
     },
   },
 };

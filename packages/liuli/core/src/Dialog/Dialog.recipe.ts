@@ -12,6 +12,9 @@ export const dialogParts = {
   description: 'text',
   body: 'scroll',
   footer: 'view',
+  failed: 'view',
+  failedIcon: 'vector',
+  failedText: 'text',
 } as const;
 
 /**
@@ -62,5 +65,18 @@ export const dialogRecipe = {
   },
   footer: {
     base: 'flex-row flex-wrap justify-end gap-2',
+  },
+  /**
+   * An AlertDialog's failed action, in the body above the buttons: the words in the body colour, which
+   * reads on every surface, marked by the danger glyph.
+   */
+  failed: {
+    base: 'flex-row items-start gap-2',
+  },
+  failedIcon: {
+    base: 'size-5 shrink-0 text-danger',
+  },
+  failedText: {
+    base: 'flex-1 text-body text-text',
   },
 } as const;

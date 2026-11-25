@@ -196,5 +196,11 @@
   },
   "@liuli.step.upcoming": {
     "defaultMessage": "未开始"
+  },
+  "@liuli.cancel": {
+    "defaultMessage": "取消"
+  },
+  "@liuli.actionFailed": {
+    "defaultMessage": "操作未成功，请重试。"
   }
 }

@@ -1,10 +1,11 @@
-import { useLocal } from '@lingxia/view';
+import { useLocal, useView, type View } from '@lingxia/view';
 import { Said, unused } from '../example';
 import { Button } from '../Button/Button';
 import { LayerContext } from '../internal/layer';
 import { TextArea } from '../TextArea/TextArea';
 import { TextInput } from '../TextInput/TextInput';
-import { Dialog, type DialogProps } from './Dialog';
+import { Switch } from '../Switch/Switch';
+import { AlertDialog, Dialog, type DialogProps } from './Dialog';
 import { dialogRecipe } from './Dialog.recipe';
 
 /** A confirmation that interrupts: Escape and back cancel, a backdrop tap does not; the destructive action is last. */
@@ -22,7 +23,6 @@ export function Confirm() {
         description="It leaves every device you are signed in on."
         size="sm"
         isAlert
-        dismissOn="closeRequest"
         data-testid="confirm-dialog"
         actions={
           <>
@@ -30,6 +30,37 @@ export function Confirm() {
             <Button label="Delete" variant="destructive" onClick={() => { deleted.set(true); open.set(false); }} data-testid="confirm" />
           </>
         }
+      />
+    </view>
+  );
+}
+
+type Actions = { publish(): Promise<void> };
+
+/** AlertDialog runs the action itself: the button loads until it settles, and a failure stays in the dialog to try again. */
+export function Alert() {
+  const { actions } = useView() as View<Actions>;
+  const open = useLocal('open', false);
+  const offline = useLocal('offline', true);
+  const deleted = useLocal('deleted', false);
+  return (
+    <view className="gap-3">
+      <Switch label="Fail the request" bind={offline} data-testid="alert-offline" />
+      <Button label="Delete note" variant="destructive" width="content" onClick={() => open.set(true)} data-testid="alert-open" />
+      {deleted.value && <text role="status" className="text-footnote text-muted">Deleted</text>}
+      <AlertDialog
+        isOpen={open.value}
+        onOpenChange={next => open.set(next)}
+        label="Delete this note?"
+        description="It leaves every device you are signed in on."
+        confirmLabel="Delete"
+        isDestructive
+        confirmAction={async () => {
+          await actions.publish();
+          if (offline.value) throw Error('offline');
+          deleted.set(true);
+        }}
+        data-testid="alert"
       />
     </view>
   );

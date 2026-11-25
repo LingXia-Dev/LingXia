@@ -1,5 +1,5 @@
 // Generated from the doc file by scripts/generate.mjs; do not edit.
-import { Confirm, Parts, Form, Full, Hero } from '../../core/src/Dialog/Dialog.examples';
+import { Confirm, Parts, Alert, Form, Full, Hero } from '../../core/src/Dialog/Dialog.examples';
 import { Lead, PageSection, Stage } from '../shared/Layout';
 
 export function Content() {
@@ -14,6 +14,9 @@ export function Content() {
         </Stage>
       </PageSection>
       <PageSection title={"Variants"}>
+        <Stage caption={"AlertDialog runs the action: loading, then a failure to retry"}>
+          <Alert />
+        </Stage>
         <Stage caption={"A short task: renaming"}>
           <Form />
         </Stage>

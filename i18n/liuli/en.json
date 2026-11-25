@@ -262,5 +262,13 @@
   "@liuli.step.upcoming": {
     "defaultMessage": "Not started",
     "description": "Spoken state of a step not yet reached."
+  },
+  "@liuli.cancel": {
+    "defaultMessage": "Cancel",
+    "description": "Button that backs out of a confirmation without doing anything."
+  },
+  "@liuli.actionFailed": {
+    "defaultMessage": "That didn't work. Try again.",
+    "description": "Shown in a confirmation dialog when its action fails."
   }
 }

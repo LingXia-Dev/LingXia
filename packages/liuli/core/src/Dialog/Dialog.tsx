@@ -1,4 +1,6 @@
-import { cx, useId, type Child } from '@lingxia/view';
+import { cx, useId, useLocal, type Child } from '@lingxia/view';
+import { Button } from '../Button/Button';
+import { reportFailure, settleFlag } from '../internal/settle';
 import { liuliText } from '../i18n/text';
 import { Glyph } from '../internal/Glyph';
 import { warnOnce } from '../internal/warn';
@@ -23,7 +25,7 @@ export interface DialogProps {
   description?: string;
   /**
    * Interrupts with something to confirm or acknowledge; screen readers announce it as an alert
-   * dialog. Pair it with `dismissOn="closeRequest"` or `"none"`. @default false
+   * dialog. A backdrop tap does not close it; Escape and back still do, as its cancel. @default false
    */
   isAlert?: boolean;
   /**
@@ -44,8 +46,8 @@ export interface DialogProps {
   closeLabel?: string;
   /**
    * Which requests close it: `any` adds a backdrop tap to `closeRequest` (Escape, back); `none`
-   * leaves closing to your code, for a step that must finish.
-   * @default 'any'
+   * leaves closing to your code, for a step that must finish. An alert takes `closeRequest` unless you
+   * say otherwise; any other dialog takes `any`.
    */
   dismissOn?: DialogDismissOn;
   /** Maximum width: 360, 480 or 640. `full` covers the screen, for a task with its own scrolling content: an editor, a long form on a phone. @default 'md' */
@@ -74,7 +76,7 @@ export function Dialog({
   headerAction,
   hasCloseButton = !isAlert,
   closeLabel = liuliText('@liuli.close'),
-  dismissOn = 'any',
+  dismissOn: ownDismissOn,
   size = 'md',
   className,
   'data-testid': testId, ...attributes
@@ -82,6 +84,7 @@ export function Dialog({
   const bodyEdges = useBodyEdges();
   const descriptionId = `${useId()}-description`;
   const close = () => onOpenChange(false);
+  const dismissOn = ownDismissOn ?? (isAlert ? 'closeRequest' : 'any');
   if (!hasCloseButton && dismissOn !== 'any' && actions === undefined) {
     warnOnce(`Dialog "${label}" has no way out: no close button, no tap outside, no actions. Set hasCloseButton, or dismissOn="any", or give it an action that closes it.`);
   }
@@ -122,5 +125,90 @@ export function Dialog({
       {children !== undefined && <LayerContext.Provider value="overlay"><scroll className={cx(r.body.base, size === 'full' && r.body.full, bodyEdges.className)} onScrollEdge={bodyEdges.onScrollEdge}>{children}</scroll></LayerContext.Provider>}
       {actions !== undefined && <Footer className={r.footer.base}>{actions}</Footer>}
     </dialog>
+  );
+}
+
+export interface AlertDialogProps {
+  /** Whether it is shown. */
+  isOpen: boolean;
+  /** Called with `false` on cancel, Escape or back, and after `confirmAction` succeeds. */
+  onOpenChange: (isOpen: boolean) => void;
+  /** The question, as the title and the dialog's accessible name ("Delete this note?"). */
+  label: string;
+  /** What happens if the person goes on. */
+  description?: string;
+  /** Names the action by its outcome ("Delete"). */
+  confirmLabel: string;
+  /** Runs the action. The dialog stays open with the button loading until it settles; it closes on success and shows `failedMessage` on failure. */
+  confirmAction: () => Promise<unknown>;
+  /** Draws the action in the danger colour, for something that cannot be undone. @default false */
+  isDestructive?: boolean;
+  /** Names the cancel button. Defaults to "Cancel" in the page's language. */
+  cancelLabel?: string;
+  /** Shown in the dialog when `confirmAction` fails; the person can try again or cancel. Defaults to "That didn't work. Try again." in the page's language. */
+  failedMessage?: string;
+  'data-testid'?: string;
+}
+
+/**
+ * A confirmation with two answers. Cancel comes first and takes focus from a keyboard; Escape and
+ * back cancel, a backdrop tap does nothing. While the action runs, nothing closes it.
+ */
+export function AlertDialog({
+  isOpen,
+  onOpenChange,
+  label,
+  description,
+  confirmLabel,
+  confirmAction,
+  isDestructive = false,
+  cancelLabel = liuliText('@liuli.cancel'),
+  failedMessage = liuliText('@liuli.actionFailed'),
+  'data-testid': testId,
+}: AlertDialogProps) {
+  const pending = useLocal('pending', false);
+  const failed = useLocal('failed', false);
+  const change = (next: boolean) => {
+    if (pending.value) return;
+    if (!next) failed.set(false);
+    onOpenChange(next);
+  };
+  const confirm = async () => {
+    if (pending.value) return;
+    pending.set(true);
+    failed.set(false);
+    try {
+      await confirmAction();
+      settleFlag(pending, false);
+      onOpenChange(false);
+    } catch (error) {
+      reportFailure('AlertDialog', label, error);
+      failed.set(true);
+      settleFlag(pending, false);
+    }
+  };
+  return (
+    <Dialog
+      isOpen={isOpen}
+      onOpenChange={change}
+      label={label}
+      description={description}
+      isAlert
+      dismissOn={pending.value ? 'none' : 'closeRequest'}
+      size="sm"
+      data-testid={testId}
+      actions={
+        <>
+          <Button label={cancelLabel} isDisabled={pending.value} onClick={() => change(false)} data-testid={testId && `${testId}-cancel`} />
+          <Button label={confirmLabel} variant={isDestructive ? 'destructive' : 'primary'} isLoading={pending.value} onClick={confirm} data-testid={testId && `${testId}-confirm`} />
+        </>
+      }
+      children={failed.value ? (
+        <view role="alert" className={r.failed.base} data-testid={testId && `${testId}-failed`}>
+          <Glyph name="error" className={r.failedIcon.base} />
+          <text className={r.failedText.base}>{failedMessage}</text>
+        </view>
+      ) : undefined}
+    />
   );
 }

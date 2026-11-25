@@ -7118,13 +7118,14 @@
       "name": "Dialog",
       "import": "@liulidesign/core/Dialog",
       "exports": [
-        "Dialog"
+        "Dialog",
+        "AlertDialog"
       ],
       "category": "overlays",
       "status": "preview",
       "since": "2026-11-12",
       "summary": "Modal panel over the page for a decision or a short task",
-      "description": "Dialog interrupts the page to ask for a decision or a short piece of input, and keeps focus and assistive tech inside until it closes. It is controlled: `isOpen` shows it, `onOpenChange(false)` reports every close request.",
+      "description": "Dialog interrupts the page to ask for a decision or a short piece of input, and keeps focus and assistive tech inside until it closes. It is controlled: `isOpen` shows it, `onOpenChange(false)` reports every close request. AlertDialog, from the same import, is the two-answer confirmation: it runs its action, loads until it settles and keeps a failure in the dialog.",
       "keywords": [
         "dialog",
         "modal",
@@ -7170,7 +7171,7 @@
           "name": "isAlert",
           "type": "boolean",
           "required": false,
-          "description": "Interrupts with something to confirm or acknowledge; screen readers announce it as an alert dialog. Pair it with `dismissOn=\"closeRequest\"` or `\"none\"`.",
+          "description": "Interrupts with something to confirm or acknowledge; screen readers announce it as an alert dialog. A backdrop tap does not close it; Escape and back still do, as its cancel.",
           "default": "false"
         },
         {
@@ -7213,13 +7214,12 @@
           "name": "dismissOn",
           "type": "DialogDismissOn",
           "required": false,
-          "description": "Which requests close it: `any` adds a backdrop tap to `closeRequest` (Escape, back); `none` leaves closing to your code, for a step that must finish.",
+          "description": "Which requests close it: `any` adds a backdrop tap to `closeRequest` (Escape, back); `none` leaves closing to your code, for a step that must finish. An alert takes `closeRequest` unless you say otherwise; any other dialog takes `any`.",
           "values": [
             "any",
             "closeRequest",
             "none"
-          ],
-          "default": "'any'"
+          ]
         },
         {
           "name": "size",
@@ -7247,7 +7247,71 @@
           "description": ""
         }
       ],
-      "otherProps": {},
+      "otherProps": {
+        "AlertDialog": [
+          {
+            "name": "isOpen",
+            "type": "boolean",
+            "required": true,
+            "description": "Whether it is shown."
+          },
+          {
+            "name": "onOpenChange",
+            "type": "(isOpen: boolean) => void",
+            "required": true,
+            "description": "Called with `false` on cancel, Escape or back, and after `confirmAction` succeeds."
+          },
+          {
+            "name": "label",
+            "type": "string",
+            "required": true,
+            "description": "The question, as the title and the dialog's accessible name (\"Delete this note?\")."
+          },
+          {
+            "name": "description",
+            "type": "string",
+            "required": false,
+            "description": "What happens if the person goes on."
+          },
+          {
+            "name": "confirmLabel",
+            "type": "string",
+            "required": true,
+            "description": "Names the action by its outcome (\"Delete\")."
+          },
+          {
+            "name": "confirmAction",
+            "type": "() => Promise<unknown>",
+            "required": true,
+            "description": "Runs the action. The dialog stays open with the button loading until it settles; it closes on success and shows `failedMessage` on failure."
+          },
+          {
+            "name": "isDestructive",
+            "type": "boolean",
+            "required": false,
+            "description": "Draws the action in the danger colour, for something that cannot be undone.",
+            "default": "false"
+          },
+          {
+            "name": "cancelLabel",
+            "type": "string",
+            "required": false,
+            "description": "Names the cancel button. Defaults to \"Cancel\" in the page's language."
+          },
+          {
+            "name": "failedMessage",
+            "type": "string",
+            "required": false,
+            "description": "Shown in the dialog when `confirmAction` fails; the person can try again or cancel. Defaults to \"That didn't work. Try again.\" in the page's language."
+          },
+          {
+            "name": "data-testid",
+            "type": "string",
+            "required": false,
+            "description": ""
+          }
+        ]
+      },
       "choices": [],
       "parts": {
         "panel": "dialog",
@@ -7260,7 +7324,10 @@
         "closeIcon": "vector",
         "description": "text",
         "body": "scroll",
-        "footer": "view"
+        "footer": "view",
+        "failed": "view",
+        "failedIcon": "vector",
+        "failedText": "text"
       },
       "accessibility": {
         "pattern": "dialog",
@@ -7277,7 +7344,7 @@
         "keyboard": [
           {
             "keys": "Escape",
-            "effect": "onOpenChange(false), unless dismissOn is none"
+            "effect": "onOpenChange(false), unless dismissOn is none; an alert takes it as cancel, and an AlertDialog ignores it while its action runs"
           }
         ],
         "contrast": [
@@ -7306,6 +7373,14 @@
             "minimum": "4.5:1"
           },
           {
+            "what": "AlertDialog failure mark",
+            "pair": [
+              "danger",
+              "surface-overlay"
+            ],
+            "minimum": "3:1"
+          },
+          {
             "what": "title, full screen",
             "pair": [
               "text",
@@ -7325,6 +7400,7 @@
         "notes": [
           "Opened from a hardware keyboard, focus moves to the first control and returns to the opener on close; opened by touch, focus stays put.",
           "Android back and the screen reader dismiss gesture are close requests, like Escape.",
+          "An alert never closes on a backdrop tap. AlertDialog puts Cancel first, so a keyboard lands on the safe answer, and announces a failure as an alert.",
           "The close button is 32 px; a finger reaches it in a 44 pt band around it. Offer an action button too, so closing is never the only way on."
         ]
       },
@@ -7332,7 +7408,12 @@
         {
           "name": "Confirm",
           "title": "Confirm a destructive action, as an alert dialog",
-          "source": "import { useLocal } from '@lingxia/view';\nimport { Button } from '@liulidesign/core/Button';\nimport { Dialog } from '@liulidesign/core/Dialog';\n\n/** A confirmation that interrupts: Escape and back cancel, a backdrop tap does not; the destructive action is last. */\nexport function Confirm() {\n  const open = useLocal('open', false);\n  const deleted = useLocal('deleted', false);\n  return (\n    <view className=\"gap-2\">\n      <Button label=\"Delete note\" variant=\"destructive\" width=\"content\" onClick={() => open.set(true)} data-testid=\"confirm-open\" />\n      {deleted.value && <text role=\"status\" data-testid=\"outcome\" className=\"text-footnote text-muted\">Deleted</text>}\n      <Dialog\n        isOpen={open.value}\n        onOpenChange={next => open.set(next)}\n        label=\"Delete this note?\"\n        description=\"It leaves every device you are signed in on.\"\n        size=\"sm\"\n        isAlert\n        dismissOn=\"closeRequest\"\n        data-testid=\"confirm-dialog\"\n        actions={\n          <>\n            <Button label=\"Cancel\" onClick={() => open.set(false)} data-testid=\"cancel\" />\n            <Button label=\"Delete\" variant=\"destructive\" onClick={() => { deleted.set(true); open.set(false); }} data-testid=\"confirm\" />\n          </>\n        }\n      />\n    </view>\n  );\n}"
+          "source": "import { useLocal } from '@lingxia/view';\nimport { Button } from '@liulidesign/core/Button';\nimport { Dialog } from '@liulidesign/core/Dialog';\n\n/** A confirmation that interrupts: Escape and back cancel, a backdrop tap does not; the destructive action is last. */\nexport function Confirm() {\n  const open = useLocal('open', false);\n  const deleted = useLocal('deleted', false);\n  return (\n    <view className=\"gap-2\">\n      <Button label=\"Delete note\" variant=\"destructive\" width=\"content\" onClick={() => open.set(true)} data-testid=\"confirm-open\" />\n      {deleted.value && <text role=\"status\" data-testid=\"outcome\" className=\"text-footnote text-muted\">Deleted</text>}\n      <Dialog\n        isOpen={open.value}\n        onOpenChange={next => open.set(next)}\n        label=\"Delete this note?\"\n        description=\"It leaves every device you are signed in on.\"\n        size=\"sm\"\n        isAlert\n        data-testid=\"confirm-dialog\"\n        actions={\n          <>\n            <Button label=\"Cancel\" onClick={() => open.set(false)} data-testid=\"cancel\" />\n            <Button label=\"Delete\" variant=\"destructive\" onClick={() => { deleted.set(true); open.set(false); }} data-testid=\"confirm\" />\n          </>\n        }\n      />\n    </view>\n  );\n}"
+        },
+        {
+          "name": "Alert",
+          "title": "AlertDialog: an action that loads, and a failure that stays",
+          "source": "import { useLocal, useView, type View } from '@lingxia/view';\nimport { Button } from '@liulidesign/core/Button';\nimport { Switch } from '@liulidesign/core/Switch';\nimport { AlertDialog } from '@liulidesign/core/Dialog';\n\ntype Actions = { publish(): Promise<void> };\n\n/** AlertDialog runs the action itself: the button loads until it settles, and a failure stays in the dialog to try again. */\nexport function Alert() {\n  const { actions } = useView() as View<Actions>;\n  const open = useLocal('open', false);\n  const offline = useLocal('offline', true);\n  const deleted = useLocal('deleted', false);\n  return (\n    <view className=\"gap-3\">\n      <Switch label=\"Fail the request\" bind={offline} data-testid=\"alert-offline\" />\n      <Button label=\"Delete note\" variant=\"destructive\" width=\"content\" onClick={() => open.set(true)} data-testid=\"alert-open\" />\n      {deleted.value && <text role=\"status\" className=\"text-footnote text-muted\">Deleted</text>}\n      <AlertDialog\n        isOpen={open.value}\n        onOpenChange={next => open.set(next)}\n        label=\"Delete this note?\"\n        description=\"It leaves every device you are signed in on.\"\n        confirmLabel=\"Delete\"\n        isDestructive\n        confirmAction={async () => {\n          await actions.publish();\n          if (offline.value) throw Error('offline');\n          deleted.set(true);\n        }}\n        data-testid=\"alert\"\n      />\n    </view>\n  );\n}"
         },
         {
           "name": "Form",
@@ -7382,6 +7463,7 @@
         ],
         "roles": [
           "canvas",
+          "danger",
           "focus",
           "line",
           "media",
@@ -7407,6 +7489,10 @@
             "title": "Title, then the body, then the actions with the main one last"
           },
           "variants": [
+            {
+              "name": "Alert",
+              "title": "AlertDialog runs the action: loading, then a failure to retry"
+            },
             {
               "name": "Form",
               "title": "A short task: renaming"

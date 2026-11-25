@@ -39,6 +39,7 @@
     "./CheckboxInput": "./src/CheckboxInput/CheckboxInput.tsx",
     "./CheckboxInput/recipe": "./src/CheckboxInput/CheckboxInput.recipe.ts",
     "./Dialog": "./src/Dialog/Dialog.tsx",
+    "./AlertDialog": "./src/Dialog/Dialog.tsx",
     "./Dialog/recipe": "./src/Dialog/Dialog.recipe.ts",
     "./Details": "./src/Details/Details.tsx",
     "./DetailsGroup": "./src/Details/Details.tsx",

@@ -3,6 +3,7 @@
 
 const languages = {
 "en": {
+  "@liuli.actionFailed": (a, f) => "That didn't work. Try again.",
   "@liuli.add": (a, f) => "Add",
   "@liuli.back": (a, f) => "Back",
   "@liuli.backTo": (a, f) => f.j(["Back to ", ...f.i(a["parent"])]),
@@ -10,6 +11,7 @@ const languages = {
   "@liuli.calendar.nextMonth": (a, f) => "Next month",
   "@liuli.calendar.previousMonth": (a, f) => "Previous month",
   "@liuli.calendar.title": (a, f) => f.j([...f.i(a["monthName"]), " ", ...f.i(a["year"])]),
+  "@liuli.cancel": (a, f) => "Cancel",
   "@liuli.chooseFiles": (a, f) => f.j([f.s(a["multiple"], { "yes": () => f.j(["Choose files"]), "other": () => f.j(["Choose a file"]) })]),
   "@liuli.clear": (a, f) => "Clear",
   "@liuli.clearSearch": (a, f) => "Clear search",
@@ -71,6 +73,7 @@ const languages = {
   "@liuli.weekdayName": (a, f) => f.j([f.s(a["weekday"], { "sun": () => f.j(["Sunday"]), "mon": () => f.j(["Monday"]), "tue": () => f.j(["Tuesday"]), "wed": () => f.j(["Wednesday"]), "thu": () => f.j(["Thursday"]), "fri": () => f.j(["Friday"]), "sat": () => f.j(["Saturday"]), "other": () => f.j([]) })]),
 },
 "zh": {
+  "@liuli.actionFailed": (a, f) => "操作未成功，请重试。",
   "@liuli.add": (a, f) => "添加",
   "@liuli.back": (a, f) => "上一步",
   "@liuli.backTo": (a, f) => f.j(["返回", ...f.i(a["parent"])]),
@@ -78,6 +81,7 @@ const languages = {
   "@liuli.calendar.nextMonth": (a, f) => "下个月",
   "@liuli.calendar.previousMonth": (a, f) => "上个月",
   "@liuli.calendar.title": (a, f) => f.j([...f.i(a["year"]), "年", ...f.i(a["monthName"])]),
+  "@liuli.cancel": (a, f) => "取消",
   "@liuli.chooseFiles": (a, f) => f.j([f.s(a["multiple"], { "yes": () => f.j(["选择文件"]), "other": () => f.j(["选择文件"]) })]),
   "@liuli.clear": (a, f) => "清除",
   "@liuli.clearSearch": (a, f) => "清除搜索",
