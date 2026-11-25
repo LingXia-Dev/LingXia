@@ -459,6 +459,18 @@ test('class usage follows cx arguments, class maps and template pieces', async (
   });
 });
 
+test('only a dev build stamps JSX sites with their source positions; a release error still names the element', async () => {
+  await project({ 'page.tsx': 'function Total() {\n  return <view><text>{({}).price.toFixed(2)}</text></view>;\n}\nexport function render() {\n  return <view><Total/></view>;\n}' }, async root => {
+    for (const dev of [false, true]) {
+      await build(root, ['page.tsx'], join(root, 'dist'), {}, { dev });
+      assert.equal(/__loc: "page\.tsx/.test(await readFile(join(root, 'dist/page.js'), 'utf8')), dev);
+      await load(root);
+      const error = (() => { try { describePage(); } catch (error) { return error; } })();
+      assert.match(error.message, dev ? /\n {2}at Total \(page\.tsx:5:\d+\)/ : /\n {2}at Total(\n|$)/);
+    }
+  });
+});
+
 async function authorColumn(body, lineNumber) {
   let column;
   await project({ 'page.tsx': `${body}\nexport function render() {\n  return <view><Total/></view>;\n}` }, async root => {
@@ -491,7 +503,7 @@ test('runtime errors in compiled pages name the JSX site and component chain', a
 }
 export function render() {
   return <Card><text onClick={() => {}}>x</text></Card>;
-}` }, async (root, build) => {
+}` }, async root => {
     // A spread the checker cannot see past reaches the runtime, which reports the JSX chain.
     await writeFile(join(root, 'page.tsx'), `function Card({ children }) {
   return <view>{children}</view>;
@@ -500,7 +512,7 @@ const extra = JSON.parse('{"onClick":1}');
 export function render() {
   return <Card><text {...extra}>x</text></Card>;
 }`);
-    await build();
+    await build(root, ['page.tsx'], join(root, 'dist'), {}, { dev: true });
     await load(root);
     assert.throws(() => describePage(), /UI_PROP: onClick is not a property of <text>\n  at <text> \(page.tsx:6:16\)\n  at <view> \(page.tsx:2:10\)\n  at Card \(page.tsx:6:10\)/);
   });

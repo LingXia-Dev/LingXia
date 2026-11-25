@@ -263,7 +263,7 @@ const moduleContext = declaration => ts.isVariableDeclaration(declaration) && ts
   ts.isVariableStatement(declaration.parent.parent) && ts.isSourceFile(declaration.parent.parent.parent) &&
   Boolean(declaration.parent.flags & ts.NodeFlags.Const);
 
-// Each JSX site carries its source position so runtime errors name the line that built the node.
+// In dev builds each JSX site carries its source position so runtime errors name the line that built the node.
 export function annotate(source, filename, label, log) {
   const file = parseSource(filename, source);
   const inserts = [];
@@ -431,7 +431,9 @@ function analyse(path, contents, label, id, loader, literalColors, dev) {
   collect(file);
   const stages = dev ? [] : undefined;
   const stamped = stampIds(contents, path, stages);
-  const transformed = loader.endsWith('x') ? stabilizeClosures(annotate(stamped, path, id, stages), path, id, stages) : stamped;
+  // Source positions serve only error text, so release pages go without them.
+  const sited = dev ? annotate(stamped, path, id, stages) : stamped;
+  const transformed = loader.endsWith('x') ? stabilizeClosures(sited, path, id, stages) : stamped;
   const annotated = identify(transformed, path, id);
   const analysed = {
     contents, file, names, problems: audit(contents, path, { literalColors }),
