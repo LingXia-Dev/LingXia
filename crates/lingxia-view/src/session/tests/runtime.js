@@ -1097,6 +1097,7 @@
     classGeneration++;
     byName = /* @__PURE__ */ new Map();
     cache.clear();
+    sizedNames.clear();
     themed = compiled.some((rule) => rule.when?.theme !== void 0);
     sized = compiled.some((rule) => rule.when?.sizeClass !== void 0);
     compiled.forEach((rule, order) => {
@@ -1200,6 +1201,17 @@
       style2.ring = ring.outer || ring.inner ? ring : "none";
     }
     return style2;
+  }
+  var sizedNames = /* @__PURE__ */ new Map();
+  function classesUseSizeClass(className) {
+    if (!sized || typeof className !== "string") return false;
+    let uses = sizedNames.get(className);
+    if (uses === void 0) {
+      uses = className.split(/\s+/).some((name) => byName.get(name)?.some((rule) => rule.when?.sizeClass !== void 0) ?? false);
+      if (sizedNames.size > 4096) sizedNames.clear();
+      sizedNames.set(className, uses);
+    }
+    return uses;
   }
   function partitionClasses(className, pick2) {
     const picked = [], rest = [];
@@ -5675,7 +5687,7 @@
     const authored2 = entries(effectiveChildren), flat = authored2.map((entry) => entry.child);
     const data = dataOf(props);
     const rootFamily = !parent.typography && pageFamily && element.style.includes("fontFamily") ? { fontFamily: pageFamily } : void 0;
-    const scopedSize = scopedSizeClass(parent.contexts, false);
+    const scopedSize = scopedSizeClass(parent.contexts, classesUseSizeClass(props.className));
     const style2 = nodeStyle(kind, props, data, parent.extra ?? rootFamily, parent.typography ?? { fontSize: 14 }, direction, structure(parent.sibling, flat), parent.every, scopedSize, identity2);
     const inline = (child) => typeof child === "string" || typeof child === "number";
     if (admission.tags[element.wire].parent === "text" && !parent.inText) throw Error(`UI_TEXT: <${tag}> belongs inside <text>; wrap it in a <text>`);

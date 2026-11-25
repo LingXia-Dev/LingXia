@@ -1,6 +1,6 @@
 import { pressChange, changeEnd, pressEnd } from './press.js';
 import { elements, kindOf, admission, limits, commonProps, authoringRules } from '../generated/contract.js';
-import { resolveClasses, classGeneration } from '../style/classes.js';
+import { resolveClasses, classGeneration, classesUseSizeClass } from '../style/classes.js';
 import { classElementProblem, gridProblem, gridRefuses, tagHint } from '../style/hints.js';
 import { lowerStyle, paintOnly, mergeStyle } from '../style/lower.js';
 import { h, readNode, isNode, isFragment, entries } from './nodes.js';
@@ -477,7 +477,8 @@ function resolveElement(tag, original, children, identity, depth, parent) {
   const data = dataOf(props);
   // The root takes the theme's `--font-sans`, as preflight gives the document's root; its classes and style still win.
   const rootFamily = !parent.typography && pageFamily && element.style.includes('fontFamily') ? { fontFamily: pageFamily } : undefined;
-  const scopedSize = scopedSizeClass(parent.contexts, false);
+  // A memoized component re-renders when a scope its classes' `regular:`/`compact:` read changes.
+  const scopedSize = scopedSizeClass(parent.contexts, classesUseSizeClass(props.className));
   const style = nodeStyle(kind, props, data, parent.extra ?? rootFamily, parent.typography ?? { fontSize: 14 }, direction, structure(parent.sibling, flat), parent.every, scopedSize, identity);
   const inline = child => typeof child === 'string' || typeof child === 'number';
   if (admission.tags[element.wire].parent === 'text' && !parent.inText) throw Error(`UI_TEXT: <${tag}> belongs inside <text>; wrap it in a <text>`);

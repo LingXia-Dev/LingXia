@@ -39,6 +39,17 @@ test('regular: variant follows env.sizeClass and nearest SizeClassScope', async 
   assert.equal(byId(compactNodes, 'outer').props.gridTemplateColumns, 'repeat(1, minmax(0, 1fr))');
 });
 
+test('a recalled component restyles when the SizeClassScope its regular: classes read changes', async () => {
+  reset();
+  configureClasses(await compileUtilities(['grid', 'grid-cols-1', 'regular:grid-cols-2']));
+  // No props and no env read: only the class's own scope read can bring it back.
+  function Box() { return h('view', { 'data-testid': 'box', className: 'grid grid-cols-1 regular:grid-cols-2' }); }
+  const view = ({ data }) => h('page', {}, h(SizeClassScope, { value: data.size }, h(Box, {})));
+  const columns = size => byId(decode(prepare(view, createView({ size }, { sizeClass: 'compact' }, 0))), 'box').props.gridTemplateColumns;
+  assert.equal(columns('compact'), 'repeat(1, minmax(0, 1fr))'); commit();
+  assert.equal(columns('regular'), 'repeat(2, minmax(0, 1fr))'); commit();
+});
+
 test('bleed is allowed on direct <page> children and rejected on nested nodes', () => {
   reset();
   const valid = () => h('page', { title: 'Map' },

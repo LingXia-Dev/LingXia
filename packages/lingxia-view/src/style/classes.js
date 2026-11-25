@@ -30,6 +30,7 @@ export function configureClasses(compiled) {
   classGeneration++;
   byName = new Map();
   cache.clear();
+  sizedNames.clear();
   themed = compiled.some(rule => rule.when?.theme !== undefined);
   sized = compiled.some(rule => rule.when?.sizeClass !== undefined);
   compiled.forEach((rule, order) => {
@@ -142,6 +143,19 @@ function cascade(rules, meta) {
     style.ring = ring.outer || ring.inner ? ring : 'none';
   }
   return style;
+}
+
+const sizedNames = new Map();
+/** Whether any class in `className` has a `regular:`/`compact:` condition. */
+export function classesUseSizeClass(className) {
+  if (!sized || typeof className !== 'string') return false;
+  let uses = sizedNames.get(className);
+  if (uses === undefined) {
+    uses = className.split(/\s+/).some(name => byName.get(name)?.some(rule => rule.when?.sizeClass !== undefined) ?? false);
+    if (sizedNames.size > 4096) sizedNames.clear();
+    sizedNames.set(className, uses);
+  }
+  return uses;
 }
 
 /** `className` in two: the classes with a rule `pick` holds for, and the rest; both keep their order. */
