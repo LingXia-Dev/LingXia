@@ -4,7 +4,7 @@ import { useControlSize } from '../density';
 import { Field, type FieldOwnProps } from '../Field/Field';
 import type { IconRef } from '../Icon/Icon';
 import { describedBy } from '../internal/describedBy';
-import { Glyph } from '../internal/Glyph';
+import { Glyph, glyphGrowth, useTextGrowth } from '../internal/Glyph';
 import { spinner, spinnerBox } from '../internal/spinner';
 import { textInputRecipe as r } from './TextInput.recipe';
 import { dataOf } from '../internal/data';
@@ -94,7 +94,9 @@ export function TextInput(props: TextInputProps) {
   const revealed = useLocal('revealed', false);
   const editorType = isSearch || (isPassword && revealed.value) ? undefined : type;
   const keyHint = enterKeyHint ?? (isSearch ? 'search' : undefined);
-  const leading = startContent ?? (startIcon !== undefined || isSearch ? <Glyph name={startIcon ?? 'search'} className={r.searchIcon.base} /> : undefined);
+  // The icon lane and its marks grow with the text, as a Button's icon does.
+  const mark = useTextGrowth(16, glyphGrowth);
+  const leading = startContent ?? (startIcon !== undefined || isSearch ? <Glyph name={startIcon ?? 'search'} side={16} className={r.searchIcon.base} /> : undefined);
   const clear = () => (props.bind ? props.bind.set('') : props.onChange(''));
   const inputClass = cx(r.input.base, r.input.size[size]);
   const id = useId();
@@ -116,7 +118,7 @@ export function TextInput(props: TextInputProps) {
     >
       {control => (
         <view className={cx(r.box.base, r.box.size[size], status && r.box.status[status.type], isReadOnly && r.box.readOnly, isDisabled && r.box.disabled, controlClassName)}>
-          {leading !== undefined && <view aria-hidden className={r.icon.base}>{leading}</view>}
+          {leading !== undefined && <view aria-hidden style={mark} className={r.icon.base}>{leading}</view>}
           {prefix !== undefined && <text id={prefixId} className={cx(r.adornment.base, r.input.size[size])}>{prefix}</text>}
           {props.bind ? (
             <input
@@ -172,10 +174,10 @@ export function TextInput(props: TextInputProps) {
           )}
           {suffix !== undefined && <text id={suffixId} className={cx(r.adornment.base, r.input.size[size])}>{suffix}</text>}
           {endContent !== undefined && <view className={r.end.base}>{endContent}</view>}
-          {isLoading && <vector aria-hidden paths={spinner} viewBox={spinnerBox} className={r.spinner.base} />}
+          {isLoading && <vector aria-hidden paths={spinner} viewBox={spinnerBox} style={mark} className={r.spinner.base} />}
           {props.hasClear && text !== '' && !isDisabled && !isReadOnly && (
             <button aria-label={props.clearLabel ?? liuliText('@liuli.clear')} onClick={clear} className={r.clear.base}>
-              <Glyph name="close" className={r.clearIcon.base} />
+              <Glyph name="close" side={16} className={r.clearIcon.base} />
             </button>
           )}
           {isPassword && (
@@ -186,7 +188,7 @@ export function TextInput(props: TextInputProps) {
               data-testid={testId !== undefined ? `${testId}-reveal` : undefined}
               className={r.clear.base}
             >
-              <Glyph name={revealed.value ? 'hidden' : 'visible'} className={r.clearIcon.base} />
+              <Glyph name={revealed.value ? 'hidden' : 'visible'} side={16} className={r.clearIcon.base} />
             </button>
           )}
         </view>

@@ -155,7 +155,7 @@ export function NumberInput(props: NumberInputProps) {
                 data-testid={testId && `${testId}-decrement`}
                 className={cx(r.stepper.base, r.stepper.size[size])}
               >
-                <Glyph name="remove" className={r.stepperIcon.base} />
+                <Glyph name="remove" side={16} className={r.stepperIcon.base} />
               </button>
               <view aria-hidden className={r.divider.base} />
               <button
@@ -165,7 +165,7 @@ export function NumberInput(props: NumberInputProps) {
                 data-testid={testId && `${testId}-increment`}
                 className={cx(r.stepper.base, r.stepper.size[size], r.stepper.end)}
               >
-                <Glyph name="add" className={r.stepperIcon.base} />
+                <Glyph name="add" side={16} className={r.stepperIcon.base} />
               </button>
             </view>
           )}

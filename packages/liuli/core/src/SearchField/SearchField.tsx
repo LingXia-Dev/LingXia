@@ -4,6 +4,7 @@ import { useControlSize } from '../density';
 import type { FieldSize } from '../Field/Field';
 import { TextInput } from '../TextInput/TextInput';
 import { spinner, spinnerBox } from '../internal/spinner';
+import { glyphGrowth, useTextGrowth } from '../internal/Glyph';
 import { searchFieldRecipe as r } from './SearchField.recipe';
 import { dataOf } from '../internal/data';
 
@@ -60,6 +61,7 @@ export function SearchField(props: SearchFieldProps) {
     hasAutoFocus = false, size: ownSize, isDisabled = false, className, 'data-testid': testId,
   } = props;
   const size = useControlSize(ownSize);
+  const mark = useTextGrowth(16, glyphGrowth);
   const shared = {
     label,
     isLabelHidden,
@@ -67,7 +69,7 @@ export function SearchField(props: SearchFieldProps) {
     placeholder,
     hasClear: true,
     clearLabel,
-    startContent: isLoading ? <vector aria-hidden paths={spinner} viewBox={spinnerBox} className={r.spinner.base} /> : undefined,
+    startContent: isLoading ? <vector aria-hidden paths={spinner} viewBox={spinnerBox} style={mark} className={r.spinner.base} /> : undefined,
     onSubmit,
     hasAutoFocus,
     size,
@@ -77,7 +79,7 @@ export function SearchField(props: SearchFieldProps) {
   return (
     <view aria-busy={isLoading || undefined} className={cx(r.root.base, className)}>
       {props.bind ? <TextInput {...shared} bind={props.bind} /> : <TextInput {...shared} value={props.value} onChange={props.onChange} />}
-      <text aria-hidden className={cx(r.natural.base, r.natural.size[size])}>{natural}</text>
+      <text aria-hidden style={mark && { paddingInlineStart: 21 + mark.width }} className={cx(r.natural.base, r.natural.size[size])}>{natural}</text>
       {/* Always mounted: a status region announces a change, not its first appearance. */}
       <text role="status" data-testid={testId && `${testId}-results`} className={cx(r.results.base, (isResultsLabelHidden || resultsLabel === undefined) && r.results.hidden)}>
         {resultsLabel ?? ''}

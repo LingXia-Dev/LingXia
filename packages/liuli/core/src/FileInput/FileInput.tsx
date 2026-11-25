@@ -58,7 +58,7 @@ export function FileInput(props: FileInputProps) {
             data-testid={testId} {...dataOf(field)}
             className={cx(r.pick.base, status && r.pick.status[status.type])}
           >
-            <Glyph name="upload" className={r.pickIcon.base} />
+            <Glyph name="upload" side={20} className={r.pickIcon.base} />
             <text className={r.pickLabel.base}>{pickLabel}</text>
             {hint !== undefined && <text className={r.hint.base}>{hint}</text>}
           </button>
@@ -66,7 +66,7 @@ export function FileInput(props: FileInputProps) {
             <view role="list" aria-label={control['aria-label']} data-testid={testId && `${testId}-files`} className={r.list.base}>
               {files.map(file => (
                 <view key={file.id} role="listitem" data-testid={testId && `${testId}-${file.id}`} className={cx(r.file.base, file.isFailed && r.file.failed)}>
-                  <Glyph name={file.isFailed ? 'error' : 'file'} className={r.fileIcon.base} />
+                  <Glyph name={file.isFailed ? 'error' : 'file'} side={20} className={r.fileIcon.base} />
                   <view className={r.fileText.base}>
                     <text className={r.name.base}>{file.name}</text>
                     {file.detail !== undefined && <text className={cx(r.detail.base, file.isFailed && r.detail.failed)}>{file.detail}</text>}

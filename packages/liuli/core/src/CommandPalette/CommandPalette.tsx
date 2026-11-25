@@ -109,7 +109,7 @@ export function CommandPalette({ isOpen, onOpenChange, label, placeholder, group
       className={cx(r.panel.base, isCompact ? r.panel.compact : r.panel.regular)}
     >
       <view className={r.search.base}>
-        <Glyph name="search" className={r.searchIcon.base} />
+        <Glyph name="search" side={20} className={r.searchIcon.base} />
         <input
           role="combobox"
           aria-label={label}

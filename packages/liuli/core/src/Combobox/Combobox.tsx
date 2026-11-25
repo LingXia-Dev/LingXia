@@ -265,7 +265,7 @@ function ComboboxTypeahead({
           data-testid={testId}
           className={cx(r.editor.base, r.value.size[size])}
         />
-        <Glyph name="chevron-down" weight={chevronWeight} className={cx(r.chevron.base, isDisabled && r.chevron.disabled)} />
+        <Glyph name="chevron-down" weight={chevronWeight} side={20} className={cx(r.chevron.base, isDisabled && r.chevron.disabled)} />
       </view>
       {/* A manual popover takes no focus and has no backdrop, so the text keeps the keys while the list is open. */}
       <view
@@ -359,7 +359,7 @@ export function Combobox(props: ComboboxProps) {
             <text id={valueId} className={cx(chosen ? r.value.base : r.value.placeholder, r.value.size[size], isDisabled && r.value.disabled)}>
               {chosen?.label ?? placeholder ?? ''}
             </text>
-            <Glyph name="chevron-down" weight={chevronWeight} className={cx(r.chevron.base, isDisabled && r.chevron.disabled)} />
+            <Glyph name="chevron-down" weight={chevronWeight} side={20} className={cx(r.chevron.base, isDisabled && r.chevron.disabled)} />
           </button>
           <dialog
             open={open.value}
