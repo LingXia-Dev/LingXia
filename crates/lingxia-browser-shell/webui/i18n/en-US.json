@@ -279,6 +279,18 @@
     "defaultMessage": "No downloads match",
     "description": "Browser system pages: downloads.noMatches"
   },
+  "downloads.summary.active": {
+    "defaultMessage": "{count, plural, one {# active} other {# active}}",
+    "description": "Browser system pages: downloads.summary.active"
+  },
+  "downloads.summary.files": {
+    "defaultMessage": "{count, plural, =0 {No files} one {# file} other {# files}}",
+    "description": "Browser system pages: downloads.summary.files"
+  },
+  "downloads.loadFailed": {
+    "defaultMessage": "Couldn’t load downloads",
+    "description": "Browser system pages: downloads.loadFailed"
+  },
   "downloads.status.downloading": {
     "defaultMessage": "Downloading",
     "description": "A download row state."
@@ -674,6 +686,26 @@
   "settings.proxy.list.failedHint": {
     "defaultMessage": "Check the address, and that the proxy server is running.",
     "description": "Browser system pages: settings.proxy.list.failedHint"
+  },
+  "downloads.why.proxy": {
+    "defaultMessage": "The browser proxy is disconnected",
+    "description": "Browser system pages: downloads.why.proxy"
+  },
+  "downloads.why.status": {
+    "defaultMessage": "The server refused the download (HTTP {code})",
+    "description": "Browser system pages: downloads.why.status"
+  },
+  "downloads.why.timeout": {
+    "defaultMessage": "The server stopped answering",
+    "description": "Browser system pages: downloads.why.timeout"
+  },
+  "downloads.why.network": {
+    "defaultMessage": "The connection was lost",
+    "description": "Browser system pages: downloads.why.network"
+  },
+  "downloads.why.disk": {
+    "defaultMessage": "The file could not be saved",
+    "description": "Browser system pages: downloads.why.disk"
   },
   "settings.proxy.failedHint": {
     "defaultMessage": "Check the proxy server settings.",
