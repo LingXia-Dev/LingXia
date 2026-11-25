@@ -3,7 +3,7 @@ use crate::proxy_settings::{
     AutoSwitchRule, DEFAULT_PROXY_SOCKS_PORT, ProxyMode, ProxyRuleAction, ProxySettings,
 };
 use lingxia_platform::traits::app_runtime::AppRuntime;
-use lingxia_proxy::rule_list::{fetch_encoded_from_url, validate_source_url};
+use lingxia_proxy::rule_list::{count_encoded, fetch_encoded_from_url, validate_source_url};
 use lingxia_proxy::{
     FixedRouter, LocalProxy, ProxyRouter, RouteDecision, RuleListRouter, Socks5Credentials,
     UpstreamConfig,
@@ -57,6 +57,8 @@ struct ProxySettingsResult {
     gfwlist_ready: bool,
     gfwlist_source_url: String,
     gfwlist_updated_at_ms: Option<u64>,
+    /// Domains the downloaded rule list routes through the proxy.
+    gfwlist_rule_count: Option<usize>,
     gfwlist_status: String,
     gfwlist_status_message: String,
 }
@@ -86,6 +88,7 @@ struct ProxyRuntimeSnapshot {
 struct GfwListMeta {
     ready: bool,
     updated_at_ms: Option<u64>,
+    rule_count: Option<usize>,
     status: String,
     status_message: String,
 }
@@ -431,6 +434,23 @@ fn save_gfwlist_cache(app_data_dir: &Path, cache: &GfwListCache) -> Result<(), L
         .map_err(|error| LxAppError::Runtime(format!("failed to write GFW List cache: {}", error)))
 }
 
+/// The rule list's domain count, parsed once per downloaded list.
+fn rule_count_of(cache: &GfwListCache) -> Option<usize> {
+    static COUNTED: OnceLock<Mutex<Option<(u64, usize)>>> = OnceLock::new();
+    let mut counted = COUNTED
+        .get_or_init(|| Mutex::new(None))
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    if let Some((updated_at_ms, count)) = *counted
+        && updated_at_ms == cache.updated_at_ms
+    {
+        return Some(count);
+    }
+    let count = count_encoded(&cache.encoded).ok()?;
+    *counted = Some((cache.updated_at_ms, count));
+    Some(count)
+}
+
 fn gfwlist_meta_from_cache_result(
     cache_result: Result<Option<GfwListCache>, LxAppError>,
 ) -> (Option<GfwListCache>, GfwListMeta) {
@@ -439,6 +459,7 @@ fn gfwlist_meta_from_cache_result(
             let meta = GfwListMeta {
                 ready: true,
                 updated_at_ms: Some(cache.updated_at_ms),
+                rule_count: rule_count_of(&cache),
                 status: "ready".to_string(),
                 status_message: "Rules are cached locally and ready to use.".to_string(),
             };
@@ -449,6 +470,7 @@ fn gfwlist_meta_from_cache_result(
             GfwListMeta {
                 ready: false,
                 updated_at_ms: None,
+                rule_count: None,
                 status: "empty".to_string(),
                 status_message: "Rules have not been downloaded yet.".to_string(),
             },
@@ -458,6 +480,7 @@ fn gfwlist_meta_from_cache_result(
             GfwListMeta {
                 ready: false,
                 updated_at_ms: None,
+                rule_count: None,
                 status: "error".to_string(),
                 status_message: error.to_string(),
             },
@@ -659,6 +682,7 @@ fn settings_result(
         gfwlist_ready: gfwlist.ready,
         gfwlist_source_url: settings.gfwlist_source_url.clone(),
         gfwlist_updated_at_ms: gfwlist.updated_at_ms,
+        gfwlist_rule_count: gfwlist.rule_count,
         gfwlist_status: gfwlist.status,
         gfwlist_status_message: gfwlist.status_message,
     }
