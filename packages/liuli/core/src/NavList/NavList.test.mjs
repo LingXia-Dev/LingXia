@@ -13,9 +13,9 @@ test('Sidebar: one named tree; rows are treeitems at their level, the current on
   assert.equal(inbox.props.role, 'treeitem');
   assert.equal(inbox.props.stateSelected, 1);
   assert.equal(screen.getByTestId('workspace-launch').props.stateSelected, 0);
-  assert.equal(screen.getByTestId('workspace-sent').props.headingLevel, 1);
-  assert.equal(screen.getByTestId('workspace-launch').props.headingLevel, 2);
-  assert.equal(screen.getByTestId('workspace-section-projects').props.headingLevel, 1);
+  assert.equal(screen.getByTestId('workspace-sent').props.ariaLevel, 1);
+  assert.equal(screen.getByTestId('workspace-launch').props.ariaLevel, 2);
+  assert.equal(screen.getByTestId('workspace-section-projects').props.ariaLevel, 1);
 });
 
 test('Sidebar: a row with a count is named with it; the count itself is not read again', async () => {

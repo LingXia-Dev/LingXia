@@ -8,7 +8,7 @@ test('Folders: tree items by level; open branches show their children, closed on
   const screen = await renderExample('TreeList/TreeList', 'Folders');
   const tree = screen.getByTestId('folders');
   assert.deepEqual([tree.props.role, tree.props.accessibilityLabel], ['tree', 'Folders']);
-  assert.deepEqual(rows(screen).map(row => [row.testId.slice('folders-'.length), row.props.headingLevel, row.props.stateExpanded]), [
+  assert.deepEqual(rows(screen).map(row => [row.testId.slice('folders-'.length), row.props.ariaLevel, row.props.stateExpanded]), [
     ['notes', 1, 1], ['travel', 2, 1], ['coast', 3, undefined], ['lisbon', 3, undefined], ['recipes', 2, 0], ['reading', 2, undefined], ['shared', 1, 0], ['archive', 1, undefined],
   ]);
   const coast = screen.getByTestId('folders-coast');
