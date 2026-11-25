@@ -1,8 +1,19 @@
-# GPU View styling
+# View styling
 
-Authoring is TSX with Tailwind utilities or CSS-named inline `style`. The
-official Tailwind compiler runs at build time; nothing CSS-related loads into
-the View isolate. Pin Tailwind and review lowering tests before upgrades.
+How Tailwind utilities and CSS-named inline `style` become wire fields, and
+what each construct means natively. Element and prop admission is in
+[view-authoring.md](view-authoring.md); colour roles and scale steps are in
+[theme.md](theme.md); motion timing is in [view-animation.md](view-animation.md).
+
+Invariants:
+
+- The official Tailwind compiler runs at build time; nothing CSS-related loads
+  into the View isolate, and there is no per-platform style evaluator.
+- A utility either lowers to drawn style that matches CSS or fails the build;
+  nothing compiles to a silent no-op.
+- Native re-validates every lowered record; it never trusts the runtime.
+
+Pin Tailwind and review the lowering tests before upgrading it.
 
 ## Pipeline
 
@@ -18,7 +29,7 @@ the View isolate. Pin Tailwind and review lowering tests before upgrades.
    CSS cascade does — a later shorthand resets earlier longhands — checks every
    property against the element's style groups, and lowers to wire fields.
 4. The native decoder validates the record again; layout and paint own the
-   result. There is no per-platform style evaluator.
+   result.
 
 Class order in a string never changes Tailwind's cascade. Inline style wins
 over classes. Unknown, unsupported and wrong-element utilities fail at build
@@ -108,15 +119,23 @@ other than `has-checked:`/`has-disabled:`/`has-focus:` fail: choose classes in T
 
 ## Motion
 
-`transition-*`, `duration-*`, `delay-*` and
-`ease-*` compose into one `transition` field over opacity, transform, bg, fg,
-border and shadow (≤10 s each); layout transitions fail naming
-`transition-transform`/`transition-opacity`. `animate-*` keyframes may omit
-endpoints (identity), rotate, translate by `%` (relative) and ease per keyframe.
+`transition-*`, `duration-*`, `delay-*` and `ease-*` compose into one
+`transition` field (≤10 s each). CSS transition properties map onto what
+native can animate: opacity, transform, colours, border colour, shadow,
+`width`/`height` (as `size`) and a vector's `d`. `transition-layout` adds
+position (FLIP) motion and `transition-size` size motion to whatever
+`transition-*` sets; `ease-spring` and `ease-spring-bouncy` time a transition
+by a spring. A transition of any other layout property (padding, margin,
+inset, gap, font size, …) fails naming those utilities, because animating it
+would re-run layout every frame.
+
+`animate-*` keyframes may omit endpoints (identity), rotate, translate by `%`
+(relative), ease per keyframe and take a fill mode; one animation per element.
 `motion-reduce:`/`motion-safe:` follow `env.reducedMotion`; animations carry
-`whenReduced: keep` when authored under either, otherwise reduced motion drops
-them. Native multiplies durations by `env.animatorDurationScale` (0 = reduced). Transforms are paint, so
-`active:scale-95` is legal.
+`whenReduced: keep` when authored under either, otherwise reduced motion shows
+their base style. Native multiplies durations by `env.animatorDurationScale`
+(0 = reduced). Transforms are paint, so `active:scale-95` is legal.
+[view-animation.md](view-animation.md) has the payloads and timing.
 
 ## Themes
 
@@ -127,15 +146,11 @@ custom properties. Appearance-specific values compile into separate rules;
 the isolate selects them from `View.env.theme`. Palette blocks accept only
 custom properties and a matching `color-scheme`.
 
-Colours are roles from `contracts/view/schema.json` (`roles`, append-only slots). The compiler injects
+Colours are roles from `contracts/view/schema.json` (`roles`). The compiler injects
 `--color-<role>: role(<role>)` after the project theme, so classes lower to `role` or `role/NN` and
 a project token cannot redefine one; the build refuses other colours (`UI_COLOR`) unless
-`literalColors` is set for pixel fixtures. Native resolves roles against the environment's
-internal `palette` push (`lingxia-theme` resolves packs), else the default pack for `theme`.
-An lxapp's `theme/pack.json` ships completed by `lingxia build`; core registers it under the
-app session's worker key before a page is created (`lingxia_theme::set_app_pack`), each host
-seeds its first environment with it, and it is the palette unless the platform's measured
-environment carries one. A `theme` host-environment push replaces it later.
+`literalColors` is set for pixel fixtures. How roles resolve to colours at run time, and where the
+pack comes from, is in [theme.md](theme.md).
 
 A component package's `tokens.css` names steps, never values: an alias is `var(--<step>)` and a
 size is `calc(var(--spacing) * N)`. A literal there lowers to a fixed number the pack cannot reach.
