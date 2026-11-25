@@ -601,22 +601,24 @@ impl RetainedLayout {
             }
             let mut translation = parent.map(|p| translations[p]).unwrap_or([0.0; 2]);
             if let Some(sticky) = &self.stickies[index] {
-                // The scroll is composed already; its content box is the sticky viewport.
-                let scroll = &nodes[sticky.scroll];
-                let insets = scroll
-                    .scroll
-                    .as_ref()
-                    .map(|s| s.content_insets)
-                    .unwrap_or_default();
-                let viewport = snap_to_pixels(
-                    [
-                        scroll.bounds[0] + insets[3],
-                        scroll.bounds[1] + insets[0],
-                        (scroll.bounds[2] - insets[1] - insets[3]).max(0.0),
-                        (scroll.bounds[3] - insets[0] - insets[2]).max(0.0),
-                    ],
-                    self.scale,
-                );
+                // Each axis's scroll is composed already; its content box is that axis's viewport.
+                let viewports = sticky.scroll.map(|scroll| {
+                    let scroll = &nodes[scroll];
+                    let insets = scroll
+                        .scroll
+                        .as_ref()
+                        .map(|s| s.content_insets)
+                        .unwrap_or_default();
+                    snap_to_pixels(
+                        [
+                            scroll.bounds[0] + insets[3],
+                            scroll.bounds[1] + insets[0],
+                            (scroll.bounds[2] - insets[1] - insets[3]).max(0.0),
+                            (scroll.bounds[3] - insets[0] - insets[2]).max(0.0),
+                        ],
+                        self.scale,
+                    )
+                });
                 let mut natural = self.nodes[index].bounds;
                 natural[0] -= translation[0];
                 natural[1] -= translation[1];
@@ -625,7 +627,7 @@ impl RetainedLayout {
                     c[1] -= translation[1];
                     c
                 });
-                let [dx, dy] = sticky.shift(natural, viewport, container);
+                let [dx, dy] = sticky.shift(natural, viewports, container);
                 translation = [translation[0] - dx, translation[1] - dy];
             }
             if let Some(crate::scene::anchor::Anchoring {

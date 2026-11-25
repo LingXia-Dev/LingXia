@@ -119,7 +119,8 @@ focus order.
 - `fixed` positions against the root `<page>`: it ignores ancestor scrolling and clipping. Use it for floating
   buttons and toasts.
 - `sticky` works only inside a `<scroll>`: the box scrolls normally until it reaches its pixel inset, then holds
-  there while its parent is still in view, and paints above its in-flow siblings. A sticky box outside a scroll,
+  there while its parent is still in view, and paints above its in-flow siblings. Each axis binds to the nearest
+  scroll along it: `top` in a sideways table holds against the page's vertical scroll. A sticky box outside a scroll,
   inside a list row, with `%` insets or with a transform fails when the host lays it out (`UI_STYLE`)
   and the previous frame stays on screen.
 - `static` is not supported; it is the same as the default `relative` without insets.

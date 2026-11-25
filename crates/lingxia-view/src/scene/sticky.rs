@@ -4,12 +4,15 @@
 /// A sticky box's scroll, insets (top, right, bottom, left) and containing block.
 #[derive(Clone, Debug, PartialEq)]
 pub(crate) struct Sticky {
-    /// Nearest scroll ancestor; its content box is the sticky viewport.
-    pub scroll: usize,
+    /// The nearest ancestor scrolling along x, and along y: a header in a sideways table
+    /// sticks to the page's vertical scroll, not the table's.
+    pub scroll: [usize; 2],
     pub insets: [Option<f32>; 4],
-    /// The parent's content box in unscrolled coordinates; `None` when the
-    /// parent is the scroll itself, whose content bounds nothing.
+    /// The parent's content box in unscrolled coordinates.
     pub container: Option<[f32; 4]>,
+    /// Per axis (x, y), whether the parent bounds it: not along an axis the parent scrolls,
+    /// whose content bounds nothing.
+    pub contained: [bool; 2],
 }
 
 /// How far to move along one axis so `[start, size]` keeps `before`/`after`
@@ -46,24 +49,25 @@ impl Sticky {
     pub fn shift(
         &self,
         natural: [f32; 4],
-        viewport: [f32; 4],
+        [x_view, y_view]: [[f32; 4]; 2],
         container: Option<[f32; 4]>,
     ) -> [f32; 2] {
         let [top, right, bottom, left] = self.insets;
+        let [x_bound, y_bound] = self.contained;
         [
             axis(
                 [natural[0], natural[2]],
-                [viewport[0], viewport[2]],
+                [x_view[0], x_view[2]],
                 left,
                 right,
-                container.map(|c| [c[0], c[0] + c[2]]),
+                container.filter(|_| x_bound).map(|c| [c[0], c[0] + c[2]]),
             ),
             axis(
                 [natural[1], natural[3]],
-                [viewport[1], viewport[3]],
+                [y_view[1], y_view[3]],
                 top,
                 bottom,
-                container.map(|c| [c[1], c[1] + c[3]]),
+                container.filter(|_| y_bound).map(|c| [c[1], c[1] + c[3]]),
             ),
         ]
     }
@@ -76,11 +80,12 @@ mod tests {
     #[test]
     fn sticks_to_the_viewport_until_its_container_leaves() {
         let sticky = Sticky {
-            scroll: 0,
+            scroll: [0, 0],
             insets: [Some(0.0), None, None, None],
             container: None,
+            contained: [true, true],
         };
-        let viewport = [0.0, 100.0, 300.0, 400.0];
+        let viewport = [[0.0, 100.0, 300.0, 400.0]; 2];
         assert_eq!(
             sticky.shift([0.0, 150.0, 300.0, 40.0], viewport, None),
             [0.0, 0.0]

@@ -36,6 +36,12 @@ pub(crate) fn scrolls(record: &Record) -> bool {
     matches!(record.tag, tag::SCROLL | tag::LIST) || popover_cap(record).is_some()
 }
 
+/// Whether the record scrolls along `axis` (0 x, 1 y): a horizontal `<scroll>` only sideways,
+/// every other scroller only down.
+pub(crate) fn scrolls_along(record: &Record, axis: usize) -> bool {
+    scrolls(record) && (record.string(field::SCROLL_AXIS) == Some("horizontal")) == (axis == 0)
+}
+
 /// The height a popover is capped to, set by `cap_popovers`.
 pub(crate) fn popover_cap(record: &Record) -> Option<f32> {
     (record.tag == tag::COLUMN && record.string(field::SCROLL_AXIS) == Some(CAPPED))

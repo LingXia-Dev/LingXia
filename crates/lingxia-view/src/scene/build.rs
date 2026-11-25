@@ -409,22 +409,27 @@ impl Renderer {
                         rtl,
                     )
                 };
-                let mut scroll = parents[index];
-                while let Some(ancestor) =
-                    scroll.filter(|a| !crate::layout::style::scrolls(&records[*a]))
-                {
-                    scroll = parents[ancestor];
-                }
+                let along = |axis| {
+                    let mut scroll = parents[index];
+                    while let Some(ancestor) =
+                        scroll.filter(|a| !crate::layout::style::scrolls_along(&records[*a], axis))
+                    {
+                        scroll = parents[ancestor];
+                    }
+                    scroll
+                };
+                let scroll = [along(0), along(1)];
                 let parent = parents[index].unwrap_or(0);
                 crate::scene::sticky::Sticky {
-                    scroll: scroll.unwrap_or(0),
+                    scroll: scroll.map(|scroll| scroll.unwrap_or(0)),
                     insets: [
                         record.number(field::INSET_TOP),
                         record.number(side(field::INSET_RIGHT, false)),
                         record.number(field::INSET_BOTTOM),
                         record.number(side(field::INSET_LEFT, true)),
                     ],
-                    container: (Some(parent) != scroll).then(|| content_boxes[parent]),
+                    container: Some(content_boxes[parent]),
+                    contained: scroll.map(|scroll| scroll != Some(parent)),
                 }
             }));
             let paint_start = commands.len();

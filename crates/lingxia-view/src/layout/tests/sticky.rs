@@ -171,3 +171,32 @@ fn a_header_inside_a_list_row_pins_while_its_row_is_in_view() {
     assert_eq!(top(&pushed, "h0"), -20.0);
     assert_eq!(top(&pushed, "h1"), 10.0);
 }
+
+/// A table scrolling sideways inside a page: its `top` header binds to the page's vertical
+/// scroll, the nearest on that axis, while the table still carries it sideways.
+#[test]
+fn a_sticky_binds_per_axis_to_the_nearest_scroll_on_that_axis() {
+    // Sized: in a column a scroll without a height shrinks, here to nothing.
+    let base = display(
+        "h('scroll',{'data-testid':'page',style:{height:200}},h('view',{style:{height:40}}),h('scroll',{'data-testid':'table',style:{overflowX:'auto',height:400}},h('view',{style:{width:600}},h('text',{'data-testid':'h',style:{position:'sticky',top:0,height:30}},'Head'),h('view',{style:{height:370}}))),h('view',{style:{height:400}}))",
+    );
+    assert_eq!(top(&base, "h"), 40.0);
+    // The page scrolled past the table's top: the header stays at the page's viewport top.
+    assert_eq!(top(&scrolled(&base, &[("page", 100.0)]), "h"), 0.0);
+    // Past the table's end it leaves with the table.
+    assert_eq!(top(&scrolled(&base, &[("page", 420.0)]), "h"), -10.0);
+    // Sideways, the table's scroll moves it; no left inset holds it.
+    let left = |display: &crate::DisplayList| {
+        display
+            .nodes
+            .iter()
+            .find(|n| n.test_id == "h")
+            .unwrap()
+            .bounds[0]
+    };
+    assert_eq!(left(&scrolled(&base, &[("table", 100.0)])), -100.0);
+    assert_eq!(
+        top(&scrolled(&base, &[("table", 100.0), ("page", 100.0)]), "h"),
+        0.0
+    );
+}
