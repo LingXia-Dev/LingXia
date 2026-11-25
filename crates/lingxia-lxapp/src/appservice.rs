@@ -63,6 +63,7 @@ impl WorkerTermination {
 pub(crate) mod event_bus {
     pub const BROWSER_TAB_CLOSED_EVENT: &str = "__lingxiaBrowserTabClosed";
     pub const APPEARANCE_CHANGE_EVENT: &str = "AppearanceChange";
+    pub const NAV_CURRENT_CHANGE_EVENT: &str = "NavCurrentChange";
     pub const HOST_APPEARANCE_CHANGE_EVENT: &str = "HostAppearanceChange";
     pub const DISPLAY_LANGUAGE_CHANGE_EVENT: &str = "DisplayLanguageChange";
     pub const DISPLAY_LANGUAGE_STATE_CHANGE_EVENT: &str = "DisplayLanguageStateChange";
