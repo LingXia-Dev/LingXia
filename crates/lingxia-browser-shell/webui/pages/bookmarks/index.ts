@@ -58,7 +58,7 @@ const initialData: BookmarksData = {
 export default definePage({
   data: initialData,
   setup(page) {
-    const icons = siteIconCache((found) => {
+    const icons = siteIconCache(page.native.shell, (found) => {
       page.update((d) => {
         for (const [origin, icon] of found) d.icons[origin] = icon;
       });

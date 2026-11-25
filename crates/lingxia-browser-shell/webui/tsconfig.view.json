@@ -2,22 +2,10 @@
   "extends": "./.lingxia/tsconfig.view.json",
   "compilerOptions": {
     "composite": true,
-    "noEmit": true,
-    "allowImportingTsExtensions": true,
-    "paths": {
-      "@lingxia/view": [
-        "../../../packages/lingxia-view/src/index.d.ts"
-      ]
-    }
+    "noEmit": true
   },
   "files": [
     "./.lingxia/run-lingxia-gen-types.d.ts"
-  ],
-  "include": [
-    "pages/**/*.tsx",
-    "shared/**/*.tsx",
-    ".lingxia/types/**/*.d.ts",
-    ".lingxia/types/**/$types.ts"
   ],
   "references": [
     {

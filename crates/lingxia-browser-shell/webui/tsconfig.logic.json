@@ -7,11 +7,5 @@
   },
   "files": [
     "./.lingxia/run-lingxia-gen-types.d.ts"
-  ],
-  "include": [
-    "pages/**/*.ts",
-    "shared/**/*.ts",
-    ".lingxia/types/**/*.d.ts",
-    ".lingxia/logic-types/**/*.d.ts"
   ]
 }

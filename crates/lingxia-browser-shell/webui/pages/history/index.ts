@@ -1,20 +1,8 @@
-import { invoke, watch } from '../../shared/native';
 import { hostOf, localDateTime, originOf } from '../../shared/format';
 import { siteIconCache } from '../../shared/siteIcons';
+import { watch } from '../../shared/watch';
 import { definePage, lx } from '@lingxia/logic';
-import type { ClearBrowsingDataInput, ClearBrowsingDataResult } from '../../shared/privacy';
-
-interface HistoryEntry {
-  id: string;
-  url: string;
-  title: string;
-  visitedAtMs: number;
-}
-
-type HistoryWatchEvent =
-  | { kind: 'snapshot'; entries: HistoryEntry[] }
-  | { kind: 'upsert'; entry: HistoryEntry }
-  | { kind: 'remove'; id: string };
+import type { ClearBrowsingDataInput, HistoryEntry, HistoryWatchEvent } from '@lingxia/native';
 
 /** A day heading, or one visit under it; `at` and `day` are local `YYYY-MM-DDTHH:mm`. */
 type HistoryRow =
@@ -58,7 +46,7 @@ export default definePage({
     // Rows go out a page at a time, so no update carries the whole history.
     let limit = PAGE;
     // Icons that arrive after their rows went out are patched into just those rows.
-    const icons = siteIconCache((found) => {
+    const icons = siteIconCache(page.native.shell, (found) => {
       page.update((d) => {
         for (const row of d.rows) {
           if (row.kind !== 'visit' || row.icon) continue;
@@ -128,7 +116,7 @@ export default definePage({
         // System pages open in their own stack; the bar shows back only when a page is under them.
         void page.navigationBar.update({ homeButton: 'hidden' });
         // The watch opens with a snapshot of the store, then follows each change.
-        watch<HistoryWatchEvent>('history.watch', page.signal, apply);
+        watch((options) => page.native.history.watch(options), page.signal, apply);
       },
       actions: {
         async search({ query }: { query: string }) {
@@ -154,11 +142,11 @@ export default definePage({
         },
         // The watch reports both, so the rows follow from it.
         async removeEntry({ id }: { id: string }) {
-          await invoke('history.remove', { id });
+          await page.native.history.remove({ id });
         },
         /** Answers the toast's text, translated here: the View's `t` works only while rendering. */
         async clearBrowsingData(input: ClearBrowsingDataInput): Promise<string> {
-          const result = await invoke<ClearBrowsingDataResult>('privacy.clearBrowsingData', input);
+          const result = await page.native.privacy.clearBrowsingData(input);
           return lx.app.t('privacy.cleared', { count: result.historyRemoved });
         },
         async openUrl({ url }: { url: string }) {

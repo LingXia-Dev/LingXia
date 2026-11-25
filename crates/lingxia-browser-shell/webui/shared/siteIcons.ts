@@ -1,4 +1,4 @@
-import { invoke } from './native';
+import type { NativeClient } from '@lingxia/native';
 import { originOf } from './format';
 
 // The route takes at most this many URLs per call.
@@ -7,10 +7,10 @@ const BATCH = 400;
 const RETRY_MS = 15_000;
 
 /**
- * Site icons by origin, asked of the host once per site; `onFound` runs with the icons each answer
- * adds, so a page can patch only the rows they belong to.
+ * Site icons by origin, asked of the host once per site through the page's `shell` client; `onFound`
+ * runs with the icons each answer adds, so a page can patch only the rows they belong to.
  */
-export function siteIconCache(onFound: (found: Map<string, string>) => void) {
+export function siteIconCache(shell: NativeClient['shell'], onFound: (found: Map<string, string>) => void) {
   const icons = new Map<string, string>();
   const askedAt = new Map<string, number>();
 
@@ -28,7 +28,7 @@ export function siteIconCache(onFound: (found: Map<string, string>) => void) {
     const urlsToAsk = [...ask.values()];
     for (let start = 0; start < urlsToAsk.length; start += BATCH) {
       const batch = urlsToAsk.slice(start, start + BATCH);
-      const answer = await invoke<{ icons: Record<string, string> }>('shell.siteIcons', { urls: batch }).catch(() => null);
+      const answer = await shell.siteIcons({ urls: batch }).catch(() => null);
       if (!answer) continue;
       const found = new Map<string, string>();
       for (const [url, icon] of Object.entries(answer.icons)) {
