@@ -73,7 +73,7 @@ test('Weight: the scale is round numbers at the start edge, each level with a ha
   assert.ok(labels.every(label => JSON.parse(label.props.transform).translate[1] === '-50%'), 'each label is centred on its line');
   const grid = plot.children.find(node => node.props.position === 'absolute' && ticks(node).length === 5);
   assert.deepEqual(levels(grid), levels(scale), 'the hairlines stand where the labels do');
-  assert.deepEqual(ticks(grid).map(tick => [tick.children[0].props.height, tick.children[0].props.background]), [...Array(4).fill([1, 'text/8']), [1, 'text/12']], 'quiet lines, a firmer one under the values');
+  assert.deepEqual(ticks(grid).map(tick => [tick.children[0].props.height, tick.children[0].props.background]), [...Array(4).fill([1, 'line']), [1, 'line-strong']], 'quiet lines, a firmer one under the values');
   // Scale, hairlines and end figure share the drawing's 4 pt inset, so a label is level with its line and its values.
   assert.deepEqual([scale, grid, end].map(node => [node.props.paddingTop, node.props.paddingBottom]), Array(3).fill([4, 4]));
   // The drawing is cut at its viewBox, which reaches 4 pt past the data on every side, so the end dot is whole.

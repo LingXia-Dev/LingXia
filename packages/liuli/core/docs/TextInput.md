@@ -255,7 +255,7 @@ export function ShareLink() {
 - `controlClassName`: Classes for the bordered box.
 - The recipe, `textInputRecipe` from `@liulidesign/core/TextInput/recipe`: the classes of each part, to style an element of your own to match. The component does not read a changed copy.
 - Scale tokens it reads, set in the app's stylesheet under `@theme`: `--spacing-control-sm`, `--spacing-control-md`, `--spacing-control-lg`, `--text-footnote`, `--text-body`, `--text-callout`, `--radius-control`.
-- Colour roles it paints with, set by the theme pack: `accent`, `danger`, `focus`, `line-strong`, `surface`, `surface-sunken`, `text`, `text-faint`, `text-muted`, `warning`.
+- Colour roles it paints with, set by the theme pack: `accent`, `danger`, `focus`, `line`, `line-strong`, `surface`, `surface-sunken`, `text`, `text-faint`, `text-muted`, `warning`.
 
 ## Accessibility
 

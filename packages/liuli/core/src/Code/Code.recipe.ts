@@ -28,7 +28,7 @@ export const codeRecipe = {
     base: 'self-stretch overflow-hidden rounded-control bg-text/6',
   },
   header: {
-    base: 'flex-row items-center gap-3 min-h-10 ps-3 pe-1.5 border-b border-text/8',
+    base: 'flex-row items-center gap-3 min-h-10 ps-3 pe-1.5 border-b border-line',
   },
   title: {
     base: 'grow basis-0 min-w-0 truncate text-footnote font-medium text-muted',
@@ -58,7 +58,7 @@ export const codeRecipe = {
     highlighted: 'bg-accent-soft',
   },
   gutter: {
-    base: 'shrink-0 ps-3 pe-3 border-e border-text/8 font-mono text-footnote leading-[1.5] text-end text-muted tabular-nums whitespace-pre select-none',
+    base: 'shrink-0 ps-3 pe-3 border-e border-line font-mono text-footnote leading-[1.5] text-end text-muted tabular-nums whitespace-pre select-none',
   },
   signs: {
     base: 'shrink-0 ps-3 font-mono text-footnote leading-[1.5] whitespace-pre select-none',

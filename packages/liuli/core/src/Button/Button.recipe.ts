@@ -13,7 +13,7 @@ export const buttonRecipe = {
     base: 'flex-row items-center justify-center-safe shrink-0 max-w-full rounded-control transition-colors duration-fast ease-standard focus-visible:ring-2 focus-visible:ring-focus focus-visible:ring-offset-2',
     variant: {
       primary: 'bg-accent-solid text-on-accent-solid border border-transparent shadow-control-solid hover:bg-accent-solid-hover active:bg-accent-solid-pressed',
-      secondary: 'bg-surface text-text border border-text/12 shadow-control hover:bg-text/5 active:bg-text/8',
+      secondary: 'bg-surface text-text border border-line shadow-control hover:bg-text/5 active:bg-text/8',
       /** A soft ink fill, no edge or shadow: lighter than secondary, firmer than ghost. */
       tonal: 'bg-text/6 text-text border border-transparent hover:bg-text/10 active:bg-text/14',
       ghost: 'bg-transparent text-text border border-transparent hover:bg-text/5 active:bg-text/8',

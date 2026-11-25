@@ -148,7 +148,7 @@ export function InSentence() {
 - `className`: classes merged after the recipe's, so they win.
 - The recipe, `codeRecipe` from `@liulidesign/core/Code/recipe`: the classes of each part, to style an element of your own to match. The component does not read a changed copy.
 - Scale tokens it reads, set in the app's stylesheet under `@theme`: `--text-footnote`, `--radius-control`.
-- Colour roles it paints with, set by the theme pack: `accent`, `accent-soft`, `chart-4`, `chart-5`, `chart-7`, `danger`, `danger-soft`, `success`, `success-soft`, `text`, `text-muted`.
+- Colour roles it paints with, set by the theme pack: `accent`, `accent-soft`, `chart-4`, `chart-5`, `chart-7`, `danger`, `danger-soft`, `line`, `success`, `success-soft`, `text`, `text-muted`.
 
 ## Accessibility
 

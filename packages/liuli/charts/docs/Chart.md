@@ -196,7 +196,7 @@ export function Readout() {
 - `className` on ChartLegend: classes merged after the recipe's, so they win.
 - The recipe, `chartRecipe` from `@liulidesign/charts/Chart/recipe`: the classes of each part, to style an element of your own to match. The component does not read a changed copy.
 - Scale tokens it reads, set in the app's stylesheet under `@theme`: `--text-caption`, `--text-footnote`, `--text-body`, `--radius-control`.
-- Colour roles it paints with, set by the theme pack: `chart-1`, `chart-2`, `chart-3`, `chart-4`, `chart-5`, `chart-6`, `chart-7`, `chart-8`, `danger`, `line-strong`, `text`, `text-faint`, `text-muted`.
+- Colour roles it paints with, set by the theme pack: `chart-1`, `chart-2`, `chart-3`, `chart-4`, `chart-5`, `chart-6`, `chart-7`, `chart-8`, `danger`, `line`, `line-strong`, `text`, `text-faint`, `text-muted`.
 
 ## Accessibility
 

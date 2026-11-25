@@ -30,11 +30,11 @@ export const tableParts = {
  */
 export const tableRecipe = {
   root: {
-    base: 'self-stretch overflow-hidden rounded-container border border-text/12',
+    base: 'self-stretch overflow-hidden rounded-container border border-line',
     layer: { page: 'bg-surface', overlay: 'bg-surface-overlay' } satisfies Record<Layer, string>,
   },
   header: {
-    base: 'grid items-center gap-x-3 px-4 border-b border-text/12 self-stretch',
+    base: 'grid items-center gap-x-3 px-4 border-b border-line self-stretch',
     density: { comfortable: 'min-h-control-md', compact: 'min-h-control-sm' } satisfies Record<TableDensity, string>,
     // The rows pass under a heading that stays, so it carries the table's surface.
     layer: { page: 'bg-surface', overlay: 'bg-surface-overlay' } satisfies Record<Layer, string>,
@@ -45,7 +45,7 @@ export const tableRecipe = {
     align: { start: 'text-start', end: 'text-end' } satisfies Record<TableAlign, string>,
   },
   body: {
-    base: 'self-stretch divide-y divide-text/8',
+    base: 'self-stretch divide-y divide-line',
   },
   rowgroup: {
     base: 'self-stretch',

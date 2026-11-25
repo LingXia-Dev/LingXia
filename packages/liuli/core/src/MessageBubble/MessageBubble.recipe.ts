@@ -93,6 +93,6 @@ export const messageBubbleRecipe = {
     closed: 'h-0',
   },
   reasoningText: {
-    base: 'mt-1 mb-2 ps-3 border-s-2 border-text/12 text-footnote text-muted break-words select-text',
+    base: 'mt-1 mb-2 ps-3 border-s-2 border-line text-footnote text-muted break-words select-text',
   },
 } as const;

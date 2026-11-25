@@ -193,7 +193,7 @@ export function Hero() {
 - `className`: Classes for the panel.
 - The recipe, `dialogRecipe` from `@liulidesign/core/Dialog/recipe`: the classes of each part, to style an element of your own to match. The component does not read a changed copy.
 - Scale tokens it reads, set in the app's stylesheet under `@theme`: `--text-body`, `--text-title`, `--shadow-modal`, `--radius-dialog`.
-- Colour roles it paints with, set by the theme pack: `canvas`, `focus`, `media`, `on-media`, `surface-overlay`, `text`, `text-muted`.
+- Colour roles it paints with, set by the theme pack: `canvas`, `focus`, `line`, `media`, `on-media`, `surface-overlay`, `text`, `text-muted`.
 
 ## Accessibility
 

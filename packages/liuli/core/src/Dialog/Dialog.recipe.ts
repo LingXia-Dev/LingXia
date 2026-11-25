@@ -22,7 +22,7 @@ export const dialogRecipe = {
   panel: {
     base: 'p-5 gap-4 transition duration-base ease-standard starting:opacity-0 exit:opacity-0',
     /** A floating panel sits on the overlay surface and rises 8 px into place; it holds a scroll, which the View never scales. */
-    floating: 'w-[90%] max-h-[85vh] rounded-dialog border border-text/12 bg-surface-overlay shadow-modal motion-safe:starting:translate-y-2 motion-safe:exit:translate-y-2',
+    floating: 'w-[90%] max-h-[85vh] rounded-dialog border border-line bg-surface-overlay shadow-modal motion-safe:starting:translate-y-2 motion-safe:exit:translate-y-2',
     /** `full` has nothing behind it to float over: it is a page, on the page's canvas, and only fades. */
     size: { sm: 'max-w-[360px]', md: 'max-w-[480px]', lg: 'max-w-[640px]', full: 'w-full h-full rounded-none bg-canvas' } satisfies Record<DialogSize, string>,
   },

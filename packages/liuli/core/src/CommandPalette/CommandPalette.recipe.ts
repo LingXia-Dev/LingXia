@@ -22,12 +22,12 @@ export const commandPaletteParts = {
  */
 export const commandPaletteRecipe = {
   panel: {
-    base: 'mb-auto p-0 gap-0 overflow-hidden border-text/12 bg-surface-overlay shadow-modal transition duration-fast ease-standard starting:opacity-0 exit:opacity-0',
+    base: 'mb-auto p-0 gap-0 overflow-hidden border-line bg-surface-overlay shadow-modal transition duration-fast ease-standard starting:opacity-0 exit:opacity-0',
     regular: 'w-[90%] max-w-[560px] max-h-[70vh] rounded-dialog border',
     compact: 'mt-0 w-full max-h-[92vh] rounded-none rounded-b-dialog border-b',
   },
   search: {
-    base: 'flex-row items-center gap-3 min-h-control-lg px-4 border-b border-text/8',
+    base: 'flex-row items-center gap-3 min-h-control-lg px-4 border-b border-line',
   },
   searchIcon: {
     base: 'size-5 shrink-0 text-muted',

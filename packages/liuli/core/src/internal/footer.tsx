@@ -19,9 +19,9 @@ export function Footer({ className, children }: { className: string; children: C
 // A body that runs on under its header or footer shows a hairline there; the negative margin
 // gives the line's point back, so the content does not move when it appears.
 const lines = {
-  start: 'border-t border-text/12 -mt-px',
-  end: 'border-b border-text/12 -mb-px',
-  both: 'border-y border-text/12 -my-px',
+  start: 'border-t border-line -mt-px',
+  end: 'border-b border-line -mb-px',
+  both: 'border-y border-line -my-px',
 } as const;
 
 /** A modal body's scroll edges: a hairline at the top while content is scrolled under the header, at the bottom while more lies under the footer. */

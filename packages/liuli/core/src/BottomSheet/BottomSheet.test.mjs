@@ -130,7 +130,7 @@ test('Comments: a hairline at the top while content is under the header, at the 
     const { borderTopWidth: top, borderBottomWidth: bottom, marginTop, marginBottom, borderColor } = body().props;
     if (top) assert.equal(marginTop, -top, 'the line takes back its point at the top');
     if (bottom) assert.equal(marginBottom, -bottom, 'and at the bottom');
-    if (top || bottom) assert.equal(borderColor, 'text/12', 'the sheet border\'s strength, so it reads on a dark sheet');
+    if (top || bottom) assert.equal(borderColor, 'line', 'the line role, which high contrast strengthens');
     return [top ? 'top' : '', bottom ? 'bottom' : ''].filter(Boolean);
   };
   assert.deepEqual(lines(), [], 'nothing before the body reports its edges, so a body that fits never flashes a line');

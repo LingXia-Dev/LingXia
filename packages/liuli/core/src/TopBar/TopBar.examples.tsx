@@ -17,7 +17,7 @@ export function Standard() {
   return (
     <Said>
       {say => (
-        <view className="overflow-hidden rounded-container border border-text/12 bg-canvas">
+        <view className="overflow-hidden rounded-container border border-line bg-canvas">
           <TopBar
             startContent={<IconButton icon="chevron-start" label="Back" variant="ghost" onClick={() => say('Went back')} data-testid="orders-back" />}
             heading="Orders"
@@ -55,7 +55,7 @@ const mail = [
 export function WithSearch() {
   const query = useLocal('query', '');
   return (
-    <view className="overflow-hidden rounded-container border border-text/12 bg-canvas">
+    <view className="overflow-hidden rounded-container border border-line bg-canvas">
       <TopBar
         heading="Mail"
         centerContent={<SearchField label="Search mail" isLabelHidden placeholder="Search mail" bind={query} data-testid="mail-search" />}
@@ -74,7 +74,7 @@ export function WithSearch() {
 /** The tile: a title and an action, drawn at the tile's size. */
 export function Specimen() {
   return (
-    <view className="w-full overflow-hidden rounded-control border border-text/12 bg-surface">
+    <view className="w-full overflow-hidden rounded-control border border-line bg-surface">
       <TopBar heading="Orders" endContent={<IconButton icon="add" size="sm" label="New order" isDisabled onClick={unused} />} />
     </view>
   );

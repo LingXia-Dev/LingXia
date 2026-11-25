@@ -4,7 +4,7 @@ import { renderExample } from '../testing/harness.mjs';
 
 test('Between: a hairline across, one pixel tall, not read', async () => {
   const line = (await renderExample('Divider/Divider', 'Between')).getByTestId('line');
-  assert.deepEqual([line.props.height, line.props.background, line.props.accessibilityHidden, line.props.alignSelf], [1, 'text/8', 1, 'stretch']);
+  assert.deepEqual([line.props.height, line.props.background, line.props.accessibilityHidden, line.props.alignSelf], [1, 'line', 1, 'stretch']);
 });
 
 test('Labelled: the word is read where it stands, between two lines that are not', async () => {

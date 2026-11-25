@@ -16,7 +16,7 @@ export const detailsParts = {
 /** A disclosure row: the summary is the press target, the chevron turns as it opens. */
 export const detailsRecipe = {
   group: {
-    base: 'overflow-hidden rounded-container border border-text/12 divide-y divide-text/8',
+    base: 'overflow-hidden rounded-container border border-line divide-y divide-line',
     /** One rung up from what it sits on; inside an overlay it takes the overlay's surface. */
     layer: { page: 'bg-surface', overlay: 'bg-surface-overlay' } satisfies Record<Layer, string>,
   },

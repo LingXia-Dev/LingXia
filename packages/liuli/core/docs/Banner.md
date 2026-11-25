@@ -72,7 +72,7 @@ export function OverList() {
         action={{ label: 'Retry now', onClick: () => retried.set(true) }}
         data-testid="sync"
       />
-      <view className="overflow-hidden rounded-container border border-text/12 bg-surface divide-y divide-text/8">
+      <view className="overflow-hidden rounded-container border border-line bg-surface divide-y divide-line">
         {['Q3 plan', 'Reading list', 'Interview notes'].map(note => (
           <view key={note} className="px-4 py-3"><text className="text-body text-text">{note}</text></view>
         ))}
@@ -141,7 +141,7 @@ export function Collapsible() {
 - `className`: classes merged after the recipe's, so they win.
 - The recipe, `bannerRecipe` from `@liulidesign/core/Banner/recipe`: the classes of each part, to style an element of your own to match. The component does not read a changed copy.
 - Scale tokens it reads, set in the app's stylesheet under `@theme`: `--text-footnote`, `--text-body`, `--radius-container`.
-- Colour roles it paints with, set by the theme pack: `danger`, `danger-soft`, `focus`, `info`, `info-soft`, `success`, `success-soft`, `text`, `text-muted`, `warning`, `warning-soft`.
+- Colour roles it paints with, set by the theme pack: `danger`, `danger-soft`, `focus`, `info`, `info-soft`, `line`, `success`, `success-soft`, `text`, `text-muted`, `warning`, `warning-soft`.
 
 ## Accessibility
 

@@ -48,8 +48,8 @@ export function ShapeAndSpacingSpecimen() {
 export function ElevationSpecimen() {
   return (
     <view className="mb-5 flex-row items-end gap-3">
-      <view className="w-12 h-9 rounded-control border border-text/12 bg-surface-overlay shadow-[0_1px_2px_rgb(0_0_0/0.06),0_3px_8px_rgb(0_0_0/0.08)]" />
-      <view className="w-14 h-11 rounded-container border border-text/12 bg-surface-overlay shadow-[0_2px_4px_rgb(0_0_0/0.10),0_10px_22px_rgb(0_0_0/0.22)]" />
+      <view className="w-12 h-9 rounded-control border border-line bg-surface-overlay shadow-[0_1px_2px_rgb(0_0_0/0.06),0_3px_8px_rgb(0_0_0/0.08)]" />
+      <view className="w-14 h-11 rounded-container border border-line bg-surface-overlay shadow-[0_2px_4px_rgb(0_0_0/0.10),0_10px_22px_rgb(0_0_0/0.22)]" />
     </view>
   );
 }
@@ -108,7 +108,7 @@ export function ListAndDetailSpecimen() {
 
 export function DashboardSpecimen() {
   return (
-    <view className="w-full rounded-container border border-text/12 bg-surface p-3">
+    <view className="w-full rounded-container border border-line bg-surface p-3">
       <Stat label="Revenue" value="€34,020" delta="8.8%" deltaDirection="up" deltaLabel="Up 8.8%" size="sm" />
     </view>
   );
@@ -116,7 +116,7 @@ export function DashboardSpecimen() {
 
 export function ConversationSpecimen() {
   return (
-    <view className="w-full gap-1 rounded-container border border-text/12 bg-surface p-3">
+    <view className="w-full gap-1 rounded-container border border-line bg-surface p-3">
       <MessageBubble text="Lunch?" />
       <MessageBubble side="end" text="Yes!" />
     </view>
@@ -125,7 +125,7 @@ export function ConversationSpecimen() {
 
 export function UploadsSpecimen() {
   return (
-    <view className="w-full gap-2 rounded-container border border-text/12 bg-surface p-3">
+    <view className="w-full gap-2 rounded-container border border-line bg-surface p-3">
       <ProgressBar label="photos.zip" valueLabel="64%" size="sm" value={64} />
     </view>
   );

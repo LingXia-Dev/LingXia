@@ -39,7 +39,7 @@ export const tabsRecipe = {
   list: {
     base: 'self-start min-w-full relative flex-row',
     // The rule is the list's, so the indicator can sit on it inside the scroll's clip.
-    underline: 'pb-1 border-b border-text/8',
+    underline: 'pb-1 border-b border-line',
   },
   track: {
     base: 'absolute inset-0 rtl:-scale-x-100',

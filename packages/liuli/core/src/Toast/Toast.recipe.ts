@@ -34,7 +34,7 @@ export const toastRecipe = {
     width: { touch: 'inset-x-0 w-full', pointer: 'w-[432px]' },
   },
   toast: {
-    base: 'flex-row items-center gap-3 min-h-12 ps-4 pe-1.5 py-1.5 rounded-container border border-text/12 bg-surface-overlay shadow-raised transition-transform duration-slow ease-standard',
+    base: 'flex-row items-center gap-3 min-h-12 ps-4 pe-1.5 py-1.5 rounded-container border border-line bg-surface-overlay shadow-raised transition-transform duration-slow ease-standard',
     /** As wide as the region up to 400 pt, as the reference's: the screen's width on a phone, a corner card on a wide one. */
     width: 'w-full max-w-[400px]',
     /** Without a dismiss button the end padding matches the start. */

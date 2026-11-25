@@ -315,7 +315,7 @@ import { Item } from '@liulidesign/core/Item';
 export function WithControl() {
   const signedIn = useLocal('signedIn', true);
   return (
-    <view className="overflow-hidden rounded-container border border-text/12 bg-surface">
+    <view className="overflow-hidden rounded-container border border-line bg-surface">
       <Item
         label="Account"
         description={signedIn.value ? 'Signed in' : 'Signed out'}
@@ -342,7 +342,7 @@ import { Item } from '@liulidesign/core/Item';
 
 export function Disabled() {
   return (
-    <view className="overflow-hidden rounded-container border border-text/12 bg-surface">
+    <view className="overflow-hidden rounded-container border border-line bg-surface">
       <Item
         label="Export history"
         description="Download every change as a file"
@@ -374,7 +374,7 @@ export function Destructive() {
   return (
     <Said>
       {say => (
-        <view className="overflow-hidden rounded-container border border-text/12 bg-surface">
+        <view className="overflow-hidden rounded-container border border-line bg-surface">
           <Item label="Delete account" description="Removes your notes from every device" variant="destructive" hasChevron onClick={() => say('Opened Delete account')} data-testid="delete-row" />
         </view>
       )}
@@ -529,7 +529,7 @@ export function Compact() {
 - `className` on ItemList: classes merged after the recipe's, so they win.
 - The recipe, `itemRecipe` from `@liulidesign/core/Item/recipe`: the classes of each part, to style an element of your own to match. The component does not read a changed copy.
 - Scale tokens it reads, set in the app's stylesheet under `@theme`: `--spacing-control-md`, `--spacing-control-lg`, `--text-caption`, `--text-footnote`, `--text-body`, `--radius-control`, `--radius-container`.
-- Colour roles it paints with, set by the theme pack: `accent`, `accent-soft`, `accent-solid`, `accent-solid-hover`, `accent-solid-pressed`, `danger`, `danger-solid`, `danger-solid-hover`, `danger-solid-pressed`, `focus`, `on-accent-soft`, `on-accent-solid`, `on-danger-solid`, `surface`, `surface-overlay`, `text`, `text-faint`, `text-muted`.
+- Colour roles it paints with, set by the theme pack: `accent`, `accent-soft`, `accent-solid`, `accent-solid-hover`, `accent-solid-pressed`, `danger`, `danger-solid`, `danger-solid-hover`, `danger-solid-pressed`, `focus`, `line`, `on-accent-soft`, `on-accent-solid`, `on-danger-solid`, `surface`, `surface-overlay`, `text`, `text-faint`, `text-muted`.
 
 ## Accessibility
 

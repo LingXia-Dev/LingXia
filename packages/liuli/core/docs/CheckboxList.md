@@ -153,7 +153,7 @@ export function SelectAll() {
 - `className`: classes merged after the recipe's, so they win.
 - The recipe, `checkboxListRecipe` from `@liulidesign/core/CheckboxList/recipe`: the classes of each part, to style an element of your own to match. The component does not read a changed copy.
 - Scale tokens it reads, set in the app's stylesheet under `@theme`: `--text-caption`, `--text-footnote`, `--text-body`.
-- Colour roles it paints with, set by the theme pack: `text`, `text-faint`, `text-muted`.
+- Colour roles it paints with, set by the theme pack: `line`, `text`, `text-faint`, `text-muted`.
 
 ## Accessibility
 

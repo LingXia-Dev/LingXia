@@ -36,7 +36,7 @@ export const fileInputRecipe = {
     base: 'gap-1.5',
   },
   file: {
-    base: 'flex-row items-center gap-3 min-h-12 ps-3 pe-1 rounded-control border border-text/12 bg-surface',
+    base: 'flex-row items-center gap-3 min-h-12 ps-3 pe-1 rounded-control border border-line bg-surface',
     failed: 'border-danger',
   },
   fileIcon: {

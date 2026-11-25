@@ -431,7 +431,7 @@ export function InSentence() {
 - `menuClassName`: Classes for the menu panel.
 - The recipe, `dropdownMenuRecipe` from `@liulidesign/core/DropdownMenu/recipe`: the classes of each part, to style an element of your own to match. The component does not read a changed copy.
 - Scale tokens it reads, set in the app's stylesheet under `@theme`: `--spacing-control-sm`, `--spacing-control-md`, `--spacing-control-lg`, `--text-caption`, `--text-footnote`, `--text-body`, `--shadow-raised`, `--radius-control`, `--radius-container`.
-- Colour roles it paints with, set by the theme pack: `accent`, `danger`, `surface-overlay`, `text`, `text-muted`.
+- Colour roles it paints with, set by the theme pack: `accent`, `danger`, `line`, `surface-overlay`, `text`, `text-muted`.
 
 ## Accessibility
 

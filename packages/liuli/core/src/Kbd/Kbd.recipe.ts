@@ -12,7 +12,7 @@ export const kbdRecipe = {
     base: 'flex-row items-center gap-1 shrink-0',
   },
   key: {
-    base: 'items-center justify-center rounded-segment border border-text/12 bg-surface',
+    base: 'items-center justify-center rounded-segment border border-line bg-surface',
     size: { sm: 'h-5 min-w-5 px-1', md: 'h-6 min-w-6 px-1.5' } satisfies Record<KbdSize, string>,
   },
   label: {

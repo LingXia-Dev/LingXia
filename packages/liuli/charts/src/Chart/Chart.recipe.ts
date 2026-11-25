@@ -143,7 +143,7 @@ export const chartRecipe = {
   loadingLine: {
     base: 'relative self-stretch grow motion-safe:animate-pulse',
     grid: 'absolute inset-0 justify-between py-1',
-    rule: 'h-px bg-text/8',
+    rule: 'h-px bg-line',
     curve: 'absolute inset-0 size-full object-fill',
   },
   /** Loading, as a ring or a pie: the plot's height, as the chart draws it. */

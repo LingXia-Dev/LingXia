@@ -34,7 +34,7 @@ export const radioGroupRecipe = {
     /** A card's edge carries the choice: the accent ring, beside the filled circle. */
     card: {
       on: 'border-accent ring-1 ring-accent',
-      off: 'border-text/12',
+      off: 'border-line',
     } satisfies Record<'on' | 'off', string>,
   },
   /** The label's first line box, holding the mark centred on it at any text size. */

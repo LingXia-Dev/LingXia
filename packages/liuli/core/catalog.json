@@ -833,7 +833,7 @@
         {
           "name": "InARow",
           "title": "At the end of a row",
-          "source": "import { Said } from '../example';\nimport { Item } from '@liulidesign/core/Item';\nimport { Badge } from '@liulidesign/core/Badge';\n\n/** In a pressable row the badge is read after the second line, as part of the row's description. */\nexport function InARow() {\n  return (\n    <Said>\n      {say => (\n        <view className=\"overflow-hidden rounded-container border border-text/12 bg-surface\">\n          <Item\n            label=\"Invoice 2041\"\n            description=\"Due 3 May\"\n            endContent={<Badge label=\"Overdue\" tone=\"danger\" size=\"sm\" />}\n            hasChevron\n            onClick={() => say('Opened Invoice 2041')}\n            data-testid=\"invoice\"\n          />\n        </view>\n      )}\n    </Said>\n  );\n}"
+          "source": "import { Said } from '../example';\nimport { Item } from '@liulidesign/core/Item';\nimport { Badge } from '@liulidesign/core/Badge';\n\n/** In a pressable row the badge is read after the second line, as part of the row's description. */\nexport function InARow() {\n  return (\n    <Said>\n      {say => (\n        <view className=\"overflow-hidden rounded-container border border-line bg-surface\">\n          <Item\n            label=\"Invoice 2041\"\n            description=\"Due 3 May\"\n            endContent={<Badge label=\"Overdue\" tone=\"danger\" size=\"sm\" />}\n            hasChevron\n            onClick={() => say('Opened Invoice 2041')}\n            data-testid=\"invoice\"\n          />\n        </view>\n      )}\n    </Said>\n  );\n}"
         }
       ],
       "gaps": [],
@@ -1156,7 +1156,7 @@
         {
           "name": "OverList",
           "title": "Above the list it is about",
-          "source": "import { useLocal } from '@lingxia/view';\nimport { Banner } from '@liulidesign/core/Banner';\n\n/** At the top of a list it is about, before the content. */\nexport function OverList() {\n  const retried = useLocal(false);\n  return (\n    <view className=\"gap-3\">\n      <Banner\n        tone=\"danger\"\n        title={retried.value ? 'Still offline' : 'Sync stopped'}\n        message=\"Changes are kept on this device until the connection returns.\"\n        action={{ label: 'Retry now', onClick: () => retried.set(true) }}\n        data-testid=\"sync\"\n      />\n      <view className=\"overflow-hidden rounded-container border border-text/12 bg-surface divide-y divide-text/8\">\n        {['Q3 plan', 'Reading list', 'Interview notes'].map(note => (\n          <view key={note} className=\"px-4 py-3\"><text className=\"text-body text-text\">{note}</text></view>\n        ))}\n      </view>\n    </view>\n  );\n}"
+          "source": "import { useLocal } from '@lingxia/view';\nimport { Banner } from '@liulidesign/core/Banner';\n\n/** At the top of a list it is about, before the content. */\nexport function OverList() {\n  const retried = useLocal(false);\n  return (\n    <view className=\"gap-3\">\n      <Banner\n        tone=\"danger\"\n        title={retried.value ? 'Still offline' : 'Sync stopped'}\n        message=\"Changes are kept on this device until the connection returns.\"\n        action={{ label: 'Retry now', onClick: () => retried.set(true) }}\n        data-testid=\"sync\"\n      />\n      <view className=\"overflow-hidden rounded-container border border-line bg-surface divide-y divide-line\">\n        {['Q3 plan', 'Reading list', 'Interview notes'].map(note => (\n          <view key={note} className=\"px-4 py-3\"><text className=\"text-body text-text\">{note}</text></view>\n        ))}\n      </view>\n    </view>\n  );\n}"
         },
         {
           "name": "Collapsible",
@@ -1191,6 +1191,7 @@
           "focus",
           "info",
           "info-soft",
+          "line",
           "success",
           "success-soft",
           "text",
@@ -1488,6 +1489,7 @@
         ],
         "roles": [
           "focus",
+          "line",
           "surface-overlay",
           "text",
           "text-muted"
@@ -2046,7 +2048,7 @@
         {
           "name": "Floating",
           "title": "Floating over a list",
-          "source": "import { Said } from '../example';\nimport { Button } from '@liulidesign/core/Button';\nimport { Item } from '@liulidesign/core/Item';\n\nconst notes = [\n  ['Trip to the coast', 'Edited yesterday'],\n  ['Reading list', 'Edited on Monday'],\n  ['Ideas for the garden', 'Edited last week'],\n  ['Recipes to try', 'Edited on 2 November'],\n  ['Gift list', 'Edited on 28 October'],\n  ['Books of the year', 'Edited on 14 October'],\n] as const;\n\n/** Floating: the screen's one main action, inside the frame, over a list that scrolls under it. */\nexport function Floating() {\n  return (\n    <Said>\n      {say => (\n        <view className=\"relative h-72 overflow-hidden rounded-container border border-text/12 bg-surface\">\n          <scroll className=\"h-full\">\n            <view className=\"divide-y divide-text/8\">\n              {notes.map(([label, edited]) => <Item key={label} label={label} description={edited} />)}\n            </view>\n          </scroll>\n          <view className=\"absolute bottom-4 end-4\">\n            <Button label=\"New note\" variant=\"primary\" size=\"lg\" startIcon=\"add\" isFloating onClick={() => say('Created a note')} data-testid=\"floating\" />\n          </view>\n        </view>\n      )}\n    </Said>\n  );\n}"
+          "source": "import { Said } from '../example';\nimport { Button } from '@liulidesign/core/Button';\nimport { Item } from '@liulidesign/core/Item';\n\nconst notes = [\n  ['Trip to the coast', 'Edited yesterday'],\n  ['Reading list', 'Edited on Monday'],\n  ['Ideas for the garden', 'Edited last week'],\n  ['Recipes to try', 'Edited on 2 November'],\n  ['Gift list', 'Edited on 28 October'],\n  ['Books of the year', 'Edited on 14 October'],\n] as const;\n\n/** Floating: the screen's one main action, inside the frame, over a list that scrolls under it. */\nexport function Floating() {\n  return (\n    <Said>\n      {say => (\n        <view className=\"relative h-72 overflow-hidden rounded-container border border-line bg-surface\">\n          <scroll className=\"h-full\">\n            <view className=\"divide-y divide-line\">\n              {notes.map(([label, edited]) => <Item key={label} label={label} description={edited} />)}\n            </view>\n          </scroll>\n          <view className=\"absolute bottom-4 end-4\">\n            <Button label=\"New note\" variant=\"primary\" size=\"lg\" startIcon=\"add\" isFloating onClick={() => say('Created a note')} data-testid=\"floating\" />\n          </view>\n        </view>\n      )}\n    </Said>\n  );\n}"
         },
         {
           "name": "ToPage",
@@ -2110,6 +2112,7 @@
           "danger-solid-hover",
           "danger-solid-pressed",
           "focus",
+          "line",
           "on-accent-solid",
           "on-danger-solid",
           "surface",
@@ -3086,6 +3089,7 @@
         "roles": [
           "accent",
           "focus",
+          "line",
           "surface",
           "surface-raised",
           "surface-sunken",
@@ -3977,6 +3981,7 @@
           "--text-body"
         ],
         "roles": [
+          "line",
           "text",
           "text-faint",
           "text-muted"
@@ -4592,6 +4597,7 @@
           "chart-7",
           "danger",
           "danger-soft",
+          "line",
           "success",
           "success-soft",
           "text",
@@ -5057,6 +5063,7 @@
           "accent",
           "danger",
           "focus",
+          "line",
           "line-strong",
           "surface",
           "surface-overlay",
@@ -5318,6 +5325,7 @@
           "--radius-dialog"
         ],
         "roles": [
+          "line",
           "surface-overlay",
           "text",
           "text-muted"
@@ -5785,9 +5793,9 @@
           "--radius-dialog"
         ],
         "roles": [
+          "line",
           "scrim",
           "surface-overlay",
-          "text",
           "text-muted"
         ]
       },
@@ -6536,8 +6544,8 @@
           "--radius-container"
         ],
         "roles": [
+          "line",
           "surface-overlay",
-          "text",
           "text-muted"
         ]
       },
@@ -7000,7 +7008,7 @@
         {
           "name": "Single",
           "title": "One row",
-          "source": "import { Details } from '@liulidesign/core/Details';\n\nconst surface = 'gap-1 rounded-container border border-text/12 bg-surface px-5 pt-4 pb-1';\n\n/** One disclosure under the text it qualifies: the summary opens and closes the content under it. */\nexport function Single() {\n  return (\n    <view className={surface}>\n      <text className=\"text-body text-text\">Team is €8 a month for each active member.</text>\n      <Details label=\"What counts as an active member?\" data-testid=\"active\">\n        <text className=\"text-body text-muted\">Anyone who opened a shared notebook in the last 30 days. Guests with view access are free.</text>\n      </Details>\n    </view>\n  );\n}"
+          "source": "import { Details } from '@liulidesign/core/Details';\n\nconst surface = 'gap-1 rounded-container border border-line bg-surface px-5 pt-4 pb-1';\n\n/** One disclosure under the text it qualifies: the summary opens and closes the content under it. */\nexport function Single() {\n  return (\n    <view className={surface}>\n      <text className=\"text-body text-text\">Team is €8 a month for each active member.</text>\n      <Details label=\"What counts as an active member?\" data-testid=\"active\">\n        <text className=\"text-body text-muted\">Anyone who opened a shared notebook in the last 30 days. Guests with view access are free.</text>\n      </Details>\n    </view>\n  );\n}"
         },
         {
           "name": "Accordion",
@@ -7054,6 +7062,7 @@
         ],
         "roles": [
           "focus",
+          "line",
           "surface",
           "surface-overlay",
           "text",
@@ -7372,6 +7381,7 @@
         "roles": [
           "canvas",
           "focus",
+          "line",
           "media",
           "on-media",
           "surface-overlay",
@@ -7537,7 +7547,7 @@
           "--text-footnote"
         ],
         "roles": [
-          "text",
+          "line",
           "text-muted"
         ]
       },
@@ -7787,6 +7797,7 @@
         ],
         "roles": [
           "focus",
+          "line",
           "surface-overlay",
           "text",
           "text-muted"
@@ -8333,6 +8344,7 @@
         "roles": [
           "accent",
           "danger",
+          "line",
           "surface-overlay",
           "text",
           "text-muted"
@@ -9185,6 +9197,7 @@
         "roles": [
           "danger",
           "focus",
+          "line",
           "line-strong",
           "surface",
           "surface-sunken",
@@ -9521,8 +9534,8 @@
         ],
         "roles": [
           "focus",
-          "surface-overlay",
-          "text"
+          "line",
+          "surface-overlay"
         ]
       },
       "related": [
@@ -10125,7 +10138,7 @@
         {
           "name": "InRows",
           "title": "At the end of a row",
-          "source": "import { useLocal } from '@lingxia/view';\nimport { Item } from '@liulidesign/core/Item';\nimport { IconButton } from '@liulidesign/core/IconButton';\n\n/** At the end of a row, an icon button acts on that row alone. */\nexport function InRows() {\n  const removed = useLocal<readonly string[]>('removed', []);\n  const files = ['Budget.xlsx', 'Notes.txt', 'Plan.pdf'].filter(name => !removed.value.includes(name));\n  return (\n    <view role=\"list\" aria-label=\"Attachments\" className=\"divide-y divide-text/8\">\n      {files.map(name => (\n        <view key={name} role=\"listitem\">\n          <Item\n            label={name}\n            endContent={<IconButton label={`Remove ${name}`} icon=\"close\" size=\"sm\" onClick={() => removed.set([...removed.value, name])} data-testid={`remove-${name}`} />}\n          />\n        </view>\n      ))}\n    </view>\n  );\n}"
+          "source": "import { useLocal } from '@lingxia/view';\nimport { Item } from '@liulidesign/core/Item';\nimport { IconButton } from '@liulidesign/core/IconButton';\n\n/** At the end of a row, an icon button acts on that row alone. */\nexport function InRows() {\n  const removed = useLocal<readonly string[]>('removed', []);\n  const files = ['Budget.xlsx', 'Notes.txt', 'Plan.pdf'].filter(name => !removed.value.includes(name));\n  return (\n    <view role=\"list\" aria-label=\"Attachments\" className=\"divide-y divide-line\">\n      {files.map(name => (\n        <view key={name} role=\"listitem\">\n          <Item\n            label={name}\n            endContent={<IconButton label={`Remove ${name}`} icon=\"close\" size=\"sm\" onClick={() => removed.set([...removed.value, name])} data-testid={`remove-${name}`} />}\n          />\n        </view>\n      ))}\n    </view>\n  );\n}"
         }
       ],
       "gaps": [
@@ -10922,17 +10935,17 @@
         {
           "name": "WithControl",
           "title": "A control at the end",
-          "source": "import { useLocal } from '@lingxia/view';\nimport { Button } from '@liulidesign/core/Button';\nimport { Item } from '@liulidesign/core/Item';\n\n/** A row without `onClick` can hold its own control at the end. */\nexport function WithControl() {\n  const signedIn = useLocal('signedIn', true);\n  return (\n    <view className=\"overflow-hidden rounded-container border border-text/12 bg-surface\">\n      <Item\n        label=\"Account\"\n        description={signedIn.value ? 'Signed in' : 'Signed out'}\n        endContent={\n          <Button\n            label={signedIn.value ? 'Sign out' : 'Sign in'}\n            size=\"sm\"\n            onClick={() => signedIn.set(!signedIn.value)}\n            data-testid=\"account-action\"\n          />\n        }\n        data-testid=\"account\"\n      />\n    </view>\n  );\n}"
+          "source": "import { useLocal } from '@lingxia/view';\nimport { Button } from '@liulidesign/core/Button';\nimport { Item } from '@liulidesign/core/Item';\n\n/** A row without `onClick` can hold its own control at the end. */\nexport function WithControl() {\n  const signedIn = useLocal('signedIn', true);\n  return (\n    <view className=\"overflow-hidden rounded-container border border-line bg-surface\">\n      <Item\n        label=\"Account\"\n        description={signedIn.value ? 'Signed in' : 'Signed out'}\n        endContent={\n          <Button\n            label={signedIn.value ? 'Sign out' : 'Sign in'}\n            size=\"sm\"\n            onClick={() => signedIn.set(!signedIn.value)}\n            data-testid=\"account-action\"\n          />\n        }\n        data-testid=\"account\"\n      />\n    </view>\n  );\n}"
         },
         {
           "name": "Disabled",
           "title": "Disabled, with the reason",
-          "source": "import { unused } from '../example';\nimport { Item } from '@liulidesign/core/Item';\n\nexport function Disabled() {\n  return (\n    <view className=\"overflow-hidden rounded-container border border-text/12 bg-surface\">\n      <Item\n        label=\"Export history\"\n        description=\"Download every change as a file\"\n        disabledMessage=\"Available once a change is saved\"\n        isDisabled\n        hasChevron\n        onClick={unused}\n        data-testid=\"export\"\n      />\n    </view>\n  );\n}"
+          "source": "import { unused } from '../example';\nimport { Item } from '@liulidesign/core/Item';\n\nexport function Disabled() {\n  return (\n    <view className=\"overflow-hidden rounded-container border border-line bg-surface\">\n      <Item\n        label=\"Export history\"\n        description=\"Download every change as a file\"\n        disabledMessage=\"Available once a change is saved\"\n        isDisabled\n        hasChevron\n        onClick={unused}\n        data-testid=\"export\"\n      />\n    </view>\n  );\n}"
         },
         {
           "name": "Destructive",
           "title": "A destructive row",
-          "source": "import { Said } from '../example';\nimport { Item } from '@liulidesign/core/Item';\n\nconst notes = [\n  { id: 'n1', title: 'Groceries', updated: 'Edited today' },\n  { id: 'n2', title: 'Trip to the coast', updated: 'Edited yesterday' },\n  { id: 'n3', title: 'Reading list', updated: 'Edited last week' },\n] as const;\n\n/** A row that deletes or ends something; the destructive variant marks it before it is pressed. */\nexport function Destructive() {\n  return (\n    <Said>\n      {say => (\n        <view className=\"overflow-hidden rounded-container border border-text/12 bg-surface\">\n          <Item label=\"Delete account\" description=\"Removes your notes from every device\" variant=\"destructive\" hasChevron onClick={() => say('Opened Delete account')} data-testid=\"delete-row\" />\n        </view>\n      )}\n    </Said>\n  );\n}"
+          "source": "import { Said } from '../example';\nimport { Item } from '@liulidesign/core/Item';\n\nconst notes = [\n  { id: 'n1', title: 'Groceries', updated: 'Edited today' },\n  { id: 'n2', title: 'Trip to the coast', updated: 'Edited yesterday' },\n  { id: 'n3', title: 'Reading list', updated: 'Edited last week' },\n] as const;\n\n/** A row that deletes or ends something; the destructive variant marks it before it is pressed. */\nexport function Destructive() {\n  return (\n    <Said>\n      {say => (\n        <view className=\"overflow-hidden rounded-container border border-line bg-surface\">\n          <Item label=\"Delete account\" description=\"Removes your notes from every device\" variant=\"destructive\" hasChevron onClick={() => say('Opened Delete account')} data-testid=\"delete-row\" />\n        </view>\n      )}\n    </Said>\n  );\n}"
         },
         {
           "name": "Swipe",
@@ -10993,6 +11006,7 @@
           "danger-solid-hover",
           "danger-solid-pressed",
           "focus",
+          "line",
           "on-accent-soft",
           "on-accent-solid",
           "on-danger-solid",
@@ -11214,8 +11228,8 @@
           "--radius-segment"
         ],
         "roles": [
+          "line",
           "surface",
-          "text",
           "text-muted"
         ]
       },
@@ -11792,12 +11806,12 @@
         {
           "name": "Orders",
           "title": "Orders, with an action on the chosen one",
-          "source": "import { useLocal } from '@lingxia/view';\nimport { Button } from '@liulidesign/core/Button';\nimport { EmptyState } from '@liulidesign/core/EmptyState';\nimport { Item, ItemList } from '@liulidesign/core/Item';\nimport { ListDetail } from '@liulidesign/core/ListDetail';\n\nconst orders = [\n  { id: 'ord-101', title: 'Order #101', summary: 'Express delivery · Paid' },\n  { id: 'ord-102', title: 'Order #102', summary: 'Warehouse pickup · Processing' },\n  { id: 'ord-103', title: 'Order #103', summary: 'Standard shipping · Shipped' },\n] as const;\n\n/** Orders and the one chosen: side by side on a wide screen, the order over the list on a phone, where Back returns. */\nexport function Orders() {\n  const selected = useLocal<string | null>('selected-order', null);\n  const current = orders.find(order => order.id === selected.value) ?? null;\n  const shipped = useLocal<readonly string[]>('shipped', []);\n  const isShipped = current !== null && shipped.value.includes(current.id);\n  return (\n    // A window's worth of page: in an app it fills the page itself.\n    <view className=\"h-[360px] overflow-hidden rounded-container border border-text/12\">\n      <ListDetail bind={selected} listLabel=\"Orders\" data-testid=\"orders\">\n        <ListDetail.List>\n          <ItemList>\n            {orders.map(order => (\n              <Item\n                key={order.id}\n                label={order.title}\n                description={order.summary}\n                isSelected={selected.value === order.id}\n                onClick={() => selected.set(order.id)}\n                data-testid={`order-${order.id}`}\n              />\n            ))}\n          </ItemList>\n        </ListDetail.List>\n        <ListDetail.Detail\n          title={current?.title}\n          placeholder={<EmptyState title=\"Choose an order\" description=\"Its delivery and payment show here.\" />}\n          actions={<Button label={isShipped ? 'Shipped' : 'Mark as shipped'} variant=\"primary\" isDisabled={isShipped} onClick={() => current && shipped.set([...shipped.value, current.id])} data-testid=\"ship\" />}\n        >\n          {current && (\n            <view className=\"gap-2\" data-testid=\"order-detail\">\n              <text role=\"heading\" headingLevel={1} className=\"text-title font-semibold text-text\">{current.title}</text>\n              <text className=\"text-body text-text\">{current.summary}</text>\n              <text className=\"text-footnote text-muted\">Placed on 12 November, paid by card.</text>\n            </view>\n          )}\n        </ListDetail.Detail>\n      </ListDetail>\n    </view>\n  );\n}"
+          "source": "import { useLocal } from '@lingxia/view';\nimport { Button } from '@liulidesign/core/Button';\nimport { EmptyState } from '@liulidesign/core/EmptyState';\nimport { Item, ItemList } from '@liulidesign/core/Item';\nimport { ListDetail } from '@liulidesign/core/ListDetail';\n\nconst orders = [\n  { id: 'ord-101', title: 'Order #101', summary: 'Express delivery · Paid' },\n  { id: 'ord-102', title: 'Order #102', summary: 'Warehouse pickup · Processing' },\n  { id: 'ord-103', title: 'Order #103', summary: 'Standard shipping · Shipped' },\n] as const;\n\n/** Orders and the one chosen: side by side on a wide screen, the order over the list on a phone, where Back returns. */\nexport function Orders() {\n  const selected = useLocal<string | null>('selected-order', null);\n  const current = orders.find(order => order.id === selected.value) ?? null;\n  const shipped = useLocal<readonly string[]>('shipped', []);\n  const isShipped = current !== null && shipped.value.includes(current.id);\n  return (\n    // A window's worth of page: in an app it fills the page itself.\n    <view className=\"h-[360px] overflow-hidden rounded-container border border-line\">\n      <ListDetail bind={selected} listLabel=\"Orders\" data-testid=\"orders\">\n        <ListDetail.List>\n          <ItemList>\n            {orders.map(order => (\n              <Item\n                key={order.id}\n                label={order.title}\n                description={order.summary}\n                isSelected={selected.value === order.id}\n                onClick={() => selected.set(order.id)}\n                data-testid={`order-${order.id}`}\n              />\n            ))}\n          </ItemList>\n        </ListDetail.List>\n        <ListDetail.Detail\n          title={current?.title}\n          placeholder={<EmptyState title=\"Choose an order\" description=\"Its delivery and payment show here.\" />}\n          actions={<Button label={isShipped ? 'Shipped' : 'Mark as shipped'} variant=\"primary\" isDisabled={isShipped} onClick={() => current && shipped.set([...shipped.value, current.id])} data-testid=\"ship\" />}\n        >\n          {current && (\n            <view className=\"gap-2\" data-testid=\"order-detail\">\n              <text role=\"heading\" headingLevel={1} className=\"text-title font-semibold text-text\">{current.title}</text>\n              <text className=\"text-body text-text\">{current.summary}</text>\n              <text className=\"text-footnote text-muted\">Placed on 12 November, paid by card.</text>\n            </view>\n          )}\n        </ListDetail.Detail>\n      </ListDetail>\n    </view>\n  );\n}"
         },
         {
           "name": "Workspace",
           "title": "A mail workspace held by the caller",
-          "source": "import { useLocal } from '@lingxia/view';\nimport { Button } from '@liulidesign/core/Button';\nimport { NavList } from '@liulidesign/core/NavList';\nimport { ListDetail } from '@liulidesign/core/ListDetail';\n\nconst sections = [\n  { id: 'mail', items: [\n    { value: 'inbox', label: 'Inbox', endText: '12' },\n    { value: 'drafts', label: 'Drafts', endText: '3' },\n    { value: 'sent', label: 'Sent' },\n  ] },\n  { id: 'projects', title: 'Projects', items: [\n    { value: 'launch', label: 'Spring launch' },\n    { value: 'research', label: 'User research' },\n  ] },\n] as const;\nconst titles: Record<string, string> = { inbox: 'Inbox', drafts: 'Drafts', sent: 'Sent', launch: 'Spring launch', research: 'User research' };\n\n/** A mail workspace held by the caller: the mailboxes beside the open one, its reading width capped for prose. */\nexport function Workspace() {\n  const current = useLocal<string | null>('current', 'inbox');\n  const title = current.value === null ? undefined : titles[current.value];\n  const archived = useLocal<readonly string[]>('archived', []);\n  const isArchived = current.value !== null && archived.value.includes(current.value);\n  return (\n    // A window's worth of page: in an app it fills the page itself.\n    <view className=\"h-[360px] overflow-hidden rounded-container border border-text/12\">\n      <ListDetail value={current.value} onChange={next => current.set(next)} listLabel=\"Mail\" listWidth={200} contentWidth=\"prose\" data-testid=\"workspace\">\n        <ListDetail.List>\n          <NavList label=\"Mailboxes\" sections={sections} value={current.value ?? ''} onChange={next => current.set(next)} data-testid=\"workspace-nav\" />\n        </ListDetail.List>\n        <ListDetail.Detail title={title} actions={<Button label={isArchived ? 'Archived' : 'Archive all'} isDisabled={isArchived} onClick={() => current.value !== null && archived.set([...archived.value, current.value])} data-testid=\"archive\" />}>\n          <text role=\"heading\" headingLevel={1} className=\"text-title font-semibold text-text\" data-testid=\"workspace-title\">{title}</text>\n          <text className=\"text-body text-muted\">Each pane scrolls on its own. Beside the list the detail keeps a gutter from it; on a phone it takes the screen.</text>\n        </ListDetail.Detail>\n      </ListDetail>\n    </view>\n  );\n}"
+          "source": "import { useLocal } from '@lingxia/view';\nimport { Button } from '@liulidesign/core/Button';\nimport { NavList } from '@liulidesign/core/NavList';\nimport { ListDetail } from '@liulidesign/core/ListDetail';\n\nconst sections = [\n  { id: 'mail', items: [\n    { value: 'inbox', label: 'Inbox', endText: '12' },\n    { value: 'drafts', label: 'Drafts', endText: '3' },\n    { value: 'sent', label: 'Sent' },\n  ] },\n  { id: 'projects', title: 'Projects', items: [\n    { value: 'launch', label: 'Spring launch' },\n    { value: 'research', label: 'User research' },\n  ] },\n] as const;\nconst titles: Record<string, string> = { inbox: 'Inbox', drafts: 'Drafts', sent: 'Sent', launch: 'Spring launch', research: 'User research' };\n\n/** A mail workspace held by the caller: the mailboxes beside the open one, its reading width capped for prose. */\nexport function Workspace() {\n  const current = useLocal<string | null>('current', 'inbox');\n  const title = current.value === null ? undefined : titles[current.value];\n  const archived = useLocal<readonly string[]>('archived', []);\n  const isArchived = current.value !== null && archived.value.includes(current.value);\n  return (\n    // A window's worth of page: in an app it fills the page itself.\n    <view className=\"h-[360px] overflow-hidden rounded-container border border-line\">\n      <ListDetail value={current.value} onChange={next => current.set(next)} listLabel=\"Mail\" listWidth={200} contentWidth=\"prose\" data-testid=\"workspace\">\n        <ListDetail.List>\n          <NavList label=\"Mailboxes\" sections={sections} value={current.value ?? ''} onChange={next => current.set(next)} data-testid=\"workspace-nav\" />\n        </ListDetail.List>\n        <ListDetail.Detail title={title} actions={<Button label={isArchived ? 'Archived' : 'Archive all'} isDisabled={isArchived} onClick={() => current.value !== null && archived.set([...archived.value, current.value])} data-testid=\"archive\" />}>\n          <text role=\"heading\" headingLevel={1} className=\"text-title font-semibold text-text\" data-testid=\"workspace-title\">{title}</text>\n          <text className=\"text-body text-muted\">Each pane scrolls on its own. Beside the list the detail keeps a gutter from it; on a phone it takes the screen.</text>\n        </ListDetail.Detail>\n      </ListDetail>\n    </view>\n  );\n}"
         }
       ],
       "gaps": [
@@ -11831,7 +11845,7 @@
         "tokens": [],
         "roles": [
           "canvas",
-          "text"
+          "line"
         ]
       },
       "related": [
@@ -12380,6 +12394,7 @@
         "roles": [
           "accent",
           "accent-solid",
+          "line",
           "line-strong",
           "on-accent-solid",
           "text",
@@ -12733,6 +12748,7 @@
           "accent-soft",
           "danger",
           "focus",
+          "line",
           "on-accent-soft",
           "text",
           "text-muted"
@@ -13868,6 +13884,7 @@
         "tokens": [],
         "roles": [
           "focus",
+          "line",
           "text",
           "text-faint",
           "text-muted"
@@ -14689,6 +14706,7 @@
           "--radius-container"
         ],
         "roles": [
+          "line",
           "surface-overlay",
           "text"
         ]
@@ -15625,6 +15643,7 @@
           "accent-solid",
           "danger",
           "focus",
+          "line",
           "line-strong",
           "on-accent-solid",
           "surface",
@@ -16382,6 +16401,7 @@
         ],
         "roles": [
           "focus",
+          "line",
           "surface-raised",
           "surface-sunken",
           "text",
@@ -16864,7 +16884,7 @@
         {
           "name": "ListLoading",
           "title": "A list loading",
-          "source": "import { Skeleton, SkeletonGroup } from '@liulidesign/core/Skeleton';\n\n/** A list loading: rows shaped as the rows that will arrive, named once as what is loading. */\nexport function ListLoading() {\n  return (\n    <SkeletonGroup label=\"Loading notes\" className=\"gap-0 overflow-hidden rounded-container border border-text/12 bg-surface divide-y divide-text/8\" data-testid=\"loading-notes\">\n      {['a', 'b', 'c'].map(key => (\n        <view key={key} className=\"flex-row items-center gap-3 px-4 py-3\">\n          <Skeleton shape=\"circle\" className=\"size-10 shrink-0\" />\n          <view className=\"grow basis-0 gap-1\">\n            <Skeleton className=\"w-2/3\" />\n            <Skeleton className=\"w-1/3\" />\n          </view>\n        </view>\n      ))}\n    </SkeletonGroup>\n  );\n}"
+          "source": "import { Skeleton, SkeletonGroup } from '@liulidesign/core/Skeleton';\n\n/** A list loading: rows shaped as the rows that will arrive, named once as what is loading. */\nexport function ListLoading() {\n  return (\n    <SkeletonGroup label=\"Loading notes\" className=\"gap-0 overflow-hidden rounded-container border border-line bg-surface divide-y divide-line\" data-testid=\"loading-notes\">\n      {['a', 'b', 'c'].map(key => (\n        <view key={key} className=\"flex-row items-center gap-3 px-4 py-3\">\n          <Skeleton shape=\"circle\" className=\"size-10 shrink-0\" />\n          <view className=\"grow basis-0 gap-1\">\n            <Skeleton className=\"w-2/3\" />\n            <Skeleton className=\"w-1/3\" />\n          </view>\n        </view>\n      ))}\n    </SkeletonGroup>\n  );\n}"
         },
         {
           "name": "CardLoading",
@@ -17189,7 +17209,7 @@
         {
           "name": "InList",
           "title": "As a list row",
-          "source": "import { useLocal } from '@lingxia/view';\nimport { Item } from '@liulidesign/core/Item';\nimport { Slider } from '@liulidesign/core/Slider';\n\n/** Among list rows: the row's label style, the value at the end. The stage's own padding is undone so the rows meet its edges. */\nexport function InList() {\n  const speed = useLocal('speed', 2);\n  return (\n    <view className=\"-m-5 divide-y divide-text/8\">\n      <Item label=\"Read aloud\" description=\"Notes are read in the system voice\" />\n      <Slider bind={speed} label=\"Speed\" valueLabel={['Slow', 'Normal', 'Fast'][speed.value - 1]} min={1} max={3} variant=\"row\" data-testid=\"speed\" />\n    </view>\n  );\n}"
+          "source": "import { useLocal } from '@lingxia/view';\nimport { Item } from '@liulidesign/core/Item';\nimport { Slider } from '@liulidesign/core/Slider';\n\n/** Among list rows: the row's label style, the value at the end. The stage's own padding is undone so the rows meet its edges. */\nexport function InList() {\n  const speed = useLocal('speed', 2);\n  return (\n    <view className=\"-m-5 divide-y divide-line\">\n      <Item label=\"Read aloud\" description=\"Notes are read in the system voice\" />\n      <Slider bind={speed} label=\"Speed\" valueLabel={['Slow', 'Normal', 'Fast'][speed.value - 1]} min={1} max={3} variant=\"row\" data-testid=\"speed\" />\n    </view>\n  );\n}"
         },
         {
           "name": "Marks",
@@ -17430,12 +17450,12 @@
         {
           "name": "LiveStreamSplit",
           "title": "A live stream and its chat",
-          "source": "import { cx, useLocal, useView } from '@lingxia/view';\nimport { Avatar } from '@liulidesign/core/Avatar';\nimport { Badge } from '@liulidesign/core/Badge';\nimport { Composer } from '@liulidesign/core/Composer';\nimport { Icon } from '@liulidesign/core/Icon';\nimport { IconButton } from '@liulidesign/core/IconButton';\nimport { MessageBubble } from '@liulidesign/core/MessageBubble';\nimport { Split } from '@liulidesign/core/Split';\n\nconst chat = [\n  { name: 'Mira Patel', text: 'The light on the water right now!' },\n  { name: 'Sam Ortiz', text: 'Which harbour is this?' },\n  { name: 'Ana Lima', text: 'The north pier, the boats leave at seven.' },\n  { name: 'Kai Chen', text: 'Watching from the train, the sound is perfect.' },\n];\n\n/** A live stream and its chat: side by side on a wide screen, the chat under the stream on a phone. */\nexport function LiveStreamSplit() {\n  const { env } = useView();\n  const draft = useLocal('chat-draft', '');\n  const playing = useLocal('playing', true);\n  const muted = useLocal('muted', false);\n  const large = useLocal('large', false);\n  return (\n    <view className={cx('overflow-hidden rounded-container border border-text/12', env.sizeClass === 'regular' ? 'h-[400px]' : 'h-[600px]')}>\n      <Split\n        asideWidth={300}\n        asideLabel=\"Live chat\"\n        aside={\n          <view className=\"grow min-h-0\">\n            <view className=\"flex-row items-center justify-between px-4 pt-3 pb-2\">\n              <text role=\"heading\" headingLevel={2} className=\"text-callout font-semibold text-text\">Live chat</text>\n              <text className=\"text-caption text-muted tabular-nums\">1,284 watching</text>\n            </view>\n            <scroll className=\"grow min-h-0\">\n              <view className=\"px-4 pb-2 gap-2\">\n                {chat.map(line => (\n                  <MessageBubble key={line.name} author={line.name} avatar={<Avatar name={line.name} size=\"sm\" isDecorative />} text={line.text} />\n                ))}\n              </view>\n            </scroll>\n            <view className=\"px-3 pb-3 pt-2 border-t border-text/8\">\n              <Composer bind={draft} label=\"Message\" placeholder=\"Say something\" onSubmit={() => draft.set('')} />\n            </view>\n          </view>\n        }\n        data-testid=\"live-split\"\n      >\n        <view className=\"grow min-h-0 p-4 gap-3\">\n          <view className=\"grow min-h-0 rounded-control bg-media-canvas items-center justify-center\">\n            <Icon name=\"video\" size=\"lg\" className=\"text-on-media/60\" />\n            <view className=\"absolute start-3 top-3\">\n              <Badge label=\"Live\" tone=\"danger\" emphasis=\"solid\" />\n            </view>\n          </view>\n          <view className=\"flex-row items-center gap-1\">\n            <IconButton label={playing.value ? 'Pause' : 'Play'} icon={playing.value ? 'pause' : 'play'} variant=\"ghost\" onClick={() => playing.set(!playing.value)} />\n            <IconButton label={muted.value ? 'Unmute' : 'Mute'} icon={muted.value ? 'mute' : 'volume'} variant=\"ghost\" onClick={() => muted.set(!muted.value)} />\n            <view className=\"grow shrink min-w-0 ps-2\">\n              <text className=\"text-footnote font-semibold text-text truncate\">Evening boats at the north pier</text>\n              <text className=\"text-caption text-muted truncate\">Harbour Lights · started 42 minutes ago</text>\n            </view>\n            <IconButton label={large.value ? 'Exit full screen' : 'Full screen'} icon={large.value ? 'collapse' : 'expand'} variant=\"ghost\" onClick={() => large.set(!large.value)} />\n          </view>\n        </view>\n      </Split>\n    </view>\n  );\n}"
+          "source": "import { cx, useLocal, useView } from '@lingxia/view';\nimport { Avatar } from '@liulidesign/core/Avatar';\nimport { Badge } from '@liulidesign/core/Badge';\nimport { Composer } from '@liulidesign/core/Composer';\nimport { Icon } from '@liulidesign/core/Icon';\nimport { IconButton } from '@liulidesign/core/IconButton';\nimport { MessageBubble } from '@liulidesign/core/MessageBubble';\nimport { Split } from '@liulidesign/core/Split';\n\nconst chat = [\n  { name: 'Mira Patel', text: 'The light on the water right now!' },\n  { name: 'Sam Ortiz', text: 'Which harbour is this?' },\n  { name: 'Ana Lima', text: 'The north pier, the boats leave at seven.' },\n  { name: 'Kai Chen', text: 'Watching from the train, the sound is perfect.' },\n];\n\n/** A live stream and its chat: side by side on a wide screen, the chat under the stream on a phone. */\nexport function LiveStreamSplit() {\n  const { env } = useView();\n  const draft = useLocal('chat-draft', '');\n  const playing = useLocal('playing', true);\n  const muted = useLocal('muted', false);\n  const large = useLocal('large', false);\n  return (\n    <view className={cx('overflow-hidden rounded-container border border-line', env.sizeClass === 'regular' ? 'h-[400px]' : 'h-[600px]')}>\n      <Split\n        asideWidth={300}\n        asideLabel=\"Live chat\"\n        aside={\n          <view className=\"grow min-h-0\">\n            <view className=\"flex-row items-center justify-between px-4 pt-3 pb-2\">\n              <text role=\"heading\" headingLevel={2} className=\"text-callout font-semibold text-text\">Live chat</text>\n              <text className=\"text-caption text-muted tabular-nums\">1,284 watching</text>\n            </view>\n            <scroll className=\"grow min-h-0\">\n              <view className=\"px-4 pb-2 gap-2\">\n                {chat.map(line => (\n                  <MessageBubble key={line.name} author={line.name} avatar={<Avatar name={line.name} size=\"sm\" isDecorative />} text={line.text} />\n                ))}\n              </view>\n            </scroll>\n            <view className=\"px-3 pb-3 pt-2 border-t border-line\">\n              <Composer bind={draft} label=\"Message\" placeholder=\"Say something\" onSubmit={() => draft.set('')} />\n            </view>\n          </view>\n        }\n        data-testid=\"live-split\"\n      >\n        <view className=\"grow min-h-0 p-4 gap-3\">\n          <view className=\"grow min-h-0 rounded-control bg-media-canvas items-center justify-center\">\n            <Icon name=\"video\" size=\"lg\" className=\"text-on-media/60\" />\n            <view className=\"absolute start-3 top-3\">\n              <Badge label=\"Live\" tone=\"danger\" emphasis=\"solid\" />\n            </view>\n          </view>\n          <view className=\"flex-row items-center gap-1\">\n            <IconButton label={playing.value ? 'Pause' : 'Play'} icon={playing.value ? 'pause' : 'play'} variant=\"ghost\" onClick={() => playing.set(!playing.value)} />\n            <IconButton label={muted.value ? 'Unmute' : 'Mute'} icon={muted.value ? 'mute' : 'volume'} variant=\"ghost\" onClick={() => muted.set(!muted.value)} />\n            <view className=\"grow shrink min-w-0 ps-2\">\n              <text className=\"text-footnote font-semibold text-text truncate\">Evening boats at the north pier</text>\n              <text className=\"text-caption text-muted truncate\">Harbour Lights · started 42 minutes ago</text>\n            </view>\n            <IconButton label={large.value ? 'Exit full screen' : 'Full screen'} icon={large.value ? 'collapse' : 'expand'} variant=\"ghost\" onClick={() => large.set(!large.value)} />\n          </view>\n        </view>\n      </Split>\n    </view>\n  );\n}"
         },
         {
           "name": "DocumentSheetSplit",
           "title": "A document and its comments",
-          "source": "import { useLocal, useView } from '@lingxia/view';\nimport { Avatar } from '@liulidesign/core/Avatar';\nimport { Button } from '@liulidesign/core/Button';\nimport { Composer } from '@liulidesign/core/Composer';\nimport { Split } from '@liulidesign/core/Split';\n\nconst comments = [\n  { name: 'Ana Lima', time: '09:12', text: 'Can the legend sit under the map on a phone? It covers the north loop.' },\n  { name: 'Kai Chen', time: '10:40', text: 'Agree. And the closed paths need more than colour to tell them apart.' },\n  { name: 'Mira Patel', time: 'Yesterday', text: 'The elevation numbers read well at this size.' },\n];\n\n/** A document and its comments: beside it on a wide screen, in a sheet the reader opens on a phone. */\nexport function DocumentSheetSplit() {\n  const { env } = useView();\n  const commentsOpen = useLocal('comments-open', false);\n  const reply = useLocal('reply', '');\n  const isCompact = env.sizeClass !== 'regular';\n  return (\n    <view className=\"h-[440px] overflow-hidden rounded-container border border-text/12\">\n      <Split\n        compact=\"sheet\"\n        bind={commentsOpen}\n        asideLabel=\"Comments\"\n        asideWidth={300}\n        aside={\n          <view className=\"h-full min-h-0\">\n            <text role=\"heading\" headingLevel={2} className=\"px-4 pt-3 pb-2 text-callout font-semibold text-text\">Comments</text>\n            <scroll className=\"grow min-h-0\">\n              <view className=\"px-4 pb-3 gap-4\">\n                {comments.map(comment => (\n                  <view key={comment.name} className=\"flex-row gap-3\">\n                    <Avatar name={comment.name} size=\"sm\" isDecorative />\n                    <view className=\"grow shrink min-w-0 gap-0.5\">\n                      <view className=\"flex-row items-baseline justify-between gap-2\">\n                        <text className=\"text-footnote font-semibold text-text\">{comment.name}</text>\n                        <text className=\"text-caption text-muted\">{comment.time}</text>\n                      </view>\n                      <text className=\"text-footnote text-text\">{comment.text}</text>\n                    </view>\n                  </view>\n                ))}\n              </view>\n            </scroll>\n            <view className=\"px-4 pt-3 border-t border-text/8\" data-testid=\"doc-reply-row\">\n              <Composer bind={reply} label=\"Reply\" placeholder=\"Add a comment\" onSubmit={() => reply.set('')} data-testid=\"doc-reply\" />\n            </view>\n          </view>\n        }\n        data-testid=\"doc-split\"\n      >\n        <scroll className=\"grow min-h-0\">\n          <view className=\"p-4 gap-3\">\n            <view className=\"gap-1\">\n              <text role=\"heading\" headingLevel={2} className=\"text-title font-semibold tracking-tight text-text\">Trail map redesign</text>\n              <text className=\"text-caption text-muted\">Draft · edited 2 hours ago</text>\n            </view>\n            {isCompact && (\n              <Button\n                label=\"Comments (3)\"\n                variant=\"secondary\"\n                width=\"content\"\n                startIcon=\"message\"\n                onClick={() => commentsOpen.set(true)}\n                data-testid=\"doc-open-comments\"\n              />\n            )}\n            <text role=\"heading\" headingLevel={3} className=\"text-callout font-semibold text-text\">Goals</text>\n            <text className=\"text-body text-text\">Walkers should find the loop that suits the time they have, and see where a path is closed before they reach it.</text>\n            <text role=\"heading\" headingLevel={3} className=\"text-callout font-semibold text-text\">What changes</text>\n            <text className=\"text-body text-text\">The map keeps the coast at the top. Each loop gets one colour and a pattern, its length in kilometres and its climb in metres beside the name.</text>\n            <text className=\"text-body text-text\">Closed paths are drawn dashed with a short reason, such as a fallen tree or a nesting season.</text>\n          </view>\n        </scroll>\n      </Split>\n    </view>\n  );\n}"
+          "source": "import { useLocal, useView } from '@lingxia/view';\nimport { Avatar } from '@liulidesign/core/Avatar';\nimport { Button } from '@liulidesign/core/Button';\nimport { Composer } from '@liulidesign/core/Composer';\nimport { Split } from '@liulidesign/core/Split';\n\nconst comments = [\n  { name: 'Ana Lima', time: '09:12', text: 'Can the legend sit under the map on a phone? It covers the north loop.' },\n  { name: 'Kai Chen', time: '10:40', text: 'Agree. And the closed paths need more than colour to tell them apart.' },\n  { name: 'Mira Patel', time: 'Yesterday', text: 'The elevation numbers read well at this size.' },\n];\n\n/** A document and its comments: beside it on a wide screen, in a sheet the reader opens on a phone. */\nexport function DocumentSheetSplit() {\n  const { env } = useView();\n  const commentsOpen = useLocal('comments-open', false);\n  const reply = useLocal('reply', '');\n  const isCompact = env.sizeClass !== 'regular';\n  return (\n    <view className=\"h-[440px] overflow-hidden rounded-container border border-line\">\n      <Split\n        compact=\"sheet\"\n        bind={commentsOpen}\n        asideLabel=\"Comments\"\n        asideWidth={300}\n        aside={\n          <view className=\"h-full min-h-0\">\n            <text role=\"heading\" headingLevel={2} className=\"px-4 pt-3 pb-2 text-callout font-semibold text-text\">Comments</text>\n            <scroll className=\"grow min-h-0\">\n              <view className=\"px-4 pb-3 gap-4\">\n                {comments.map(comment => (\n                  <view key={comment.name} className=\"flex-row gap-3\">\n                    <Avatar name={comment.name} size=\"sm\" isDecorative />\n                    <view className=\"grow shrink min-w-0 gap-0.5\">\n                      <view className=\"flex-row items-baseline justify-between gap-2\">\n                        <text className=\"text-footnote font-semibold text-text\">{comment.name}</text>\n                        <text className=\"text-caption text-muted\">{comment.time}</text>\n                      </view>\n                      <text className=\"text-footnote text-text\">{comment.text}</text>\n                    </view>\n                  </view>\n                ))}\n              </view>\n            </scroll>\n            <view className=\"px-4 pt-3 border-t border-line\" data-testid=\"doc-reply-row\">\n              <Composer bind={reply} label=\"Reply\" placeholder=\"Add a comment\" onSubmit={() => reply.set('')} data-testid=\"doc-reply\" />\n            </view>\n          </view>\n        }\n        data-testid=\"doc-split\"\n      >\n        <scroll className=\"grow min-h-0\">\n          <view className=\"p-4 gap-3\">\n            <view className=\"gap-1\">\n              <text role=\"heading\" headingLevel={2} className=\"text-title font-semibold tracking-tight text-text\">Trail map redesign</text>\n              <text className=\"text-caption text-muted\">Draft · edited 2 hours ago</text>\n            </view>\n            {isCompact && (\n              <Button\n                label=\"Comments (3)\"\n                variant=\"secondary\"\n                width=\"content\"\n                startIcon=\"message\"\n                onClick={() => commentsOpen.set(true)}\n                data-testid=\"doc-open-comments\"\n              />\n            )}\n            <text role=\"heading\" headingLevel={3} className=\"text-callout font-semibold text-text\">Goals</text>\n            <text className=\"text-body text-text\">Walkers should find the loop that suits the time they have, and see where a path is closed before they reach it.</text>\n            <text role=\"heading\" headingLevel={3} className=\"text-callout font-semibold text-text\">What changes</text>\n            <text className=\"text-body text-text\">The map keeps the coast at the top. Each loop gets one colour and a pattern, its length in kilometres and its climb in metres beside the name.</text>\n            <text className=\"text-body text-text\">Closed paths are drawn dashed with a short reason, such as a fallen tree or a nesting season.</text>\n          </view>\n        </scroll>\n      </Split>\n    </view>\n  );\n}"
         }
       ],
       "gaps": [],
@@ -17450,7 +17470,7 @@
         "tokens": [],
         "roles": [
           "canvas",
-          "text"
+          "line"
         ]
       },
       "related": [
@@ -18267,7 +18287,7 @@
         {
           "name": "InList",
           "title": "As list rows",
-          "source": "import { useLocal } from '@lingxia/view';\nimport { Item } from '@liulidesign/core/Item';\nimport { Switch } from '@liulidesign/core/Switch';\n\n/** Among list rows: the row's padding and height. The stage's own padding is undone so the rows meet its edges. */\nexport function InList() {\n  const alerts = useLocal('alerts', true);\n  const digest = useLocal('digest', false);\n  const sounds = ['Chime', 'Bell', 'None'];\n  const sound = useLocal('sound', 0);\n  return (\n    <view className=\"-m-5 divide-y divide-text/8\">\n      {/* An app opens a list of sounds here; the row steps through them so the press shows. */}\n      <Item label=\"Sound\" endContent={<text className=\"text-body\">{sounds[sound.value]}</text>} onClick={() => sound.set((sound.value + 1) % sounds.length)} hasChevron />\n      <Switch bind={alerts} label=\"Mentions\" variant=\"row\" data-testid=\"mentions\" />\n      <Switch bind={digest} label=\"Weekly digest\" variant=\"row\" data-testid=\"digest\" />\n    </view>\n  );\n}"
+          "source": "import { useLocal } from '@lingxia/view';\nimport { Item } from '@liulidesign/core/Item';\nimport { Switch } from '@liulidesign/core/Switch';\n\n/** Among list rows: the row's padding and height. The stage's own padding is undone so the rows meet its edges. */\nexport function InList() {\n  const alerts = useLocal('alerts', true);\n  const digest = useLocal('digest', false);\n  const sounds = ['Chime', 'Bell', 'None'];\n  const sound = useLocal('sound', 0);\n  return (\n    <view className=\"-m-5 divide-y divide-line\">\n      {/* An app opens a list of sounds here; the row steps through them so the press shows. */}\n      <Item label=\"Sound\" endContent={<text className=\"text-body\">{sounds[sound.value]}</text>} onClick={() => sound.set((sound.value + 1) % sounds.length)} hasChevron />\n      <Switch bind={alerts} label=\"Mentions\" variant=\"row\" data-testid=\"mentions\" />\n      <Switch bind={digest} label=\"Weekly digest\" variant=\"row\" data-testid=\"digest\" />\n    </view>\n  );\n}"
         },
         {
           "name": "Sizes",
@@ -18317,6 +18337,7 @@
           "accent-solid",
           "focus",
           "knob",
+          "line",
           "line-strong",
           "text",
           "text-faint",
@@ -18713,6 +18734,7 @@
           "accent",
           "accent-soft",
           "focus",
+          "line",
           "surface",
           "surface-overlay",
           "text",
@@ -18968,7 +18990,7 @@
         {
           "name": "Filter",
           "title": "A segmented filter over a list",
-          "source": "import { useLocal } from '@lingxia/view';\nimport { Item } from '@liulidesign/core/Item';\nimport { Tabs } from '@liulidesign/core/Tabs';\n\nconst notes = {\n  all: ['Q3 plan', 'Reading list', 'Interview notes'],\n  pinned: ['Q3 plan'],\n  shared: ['Interview notes'],\n};\n\n/** A list filtered by a segmented control above it. */\nexport function Filter() {\n  const filter = useLocal('filter', 'all');\n  return (\n    <Tabs\n      label=\"Show\"\n      items={[{ value: 'all', label: 'All' }, { value: 'pinned', label: 'Pinned' }, { value: 'shared', label: 'Shared' }]}\n      bind={filter}\n      variant=\"segmented\"\n      className=\"gap-3\"\n      data-testid=\"filter\"\n    >\n      <view className=\"-mx-5 -mb-5 divide-y divide-text/8 border-t border-text/8\">\n        {notes[filter.value as keyof typeof notes].map(note => <Item key={note} label={note} />)}\n      </view>\n    </Tabs>\n  );\n}"
+          "source": "import { useLocal } from '@lingxia/view';\nimport { Item } from '@liulidesign/core/Item';\nimport { Tabs } from '@liulidesign/core/Tabs';\n\nconst notes = {\n  all: ['Q3 plan', 'Reading list', 'Interview notes'],\n  pinned: ['Q3 plan'],\n  shared: ['Interview notes'],\n};\n\n/** A list filtered by a segmented control above it. */\nexport function Filter() {\n  const filter = useLocal('filter', 'all');\n  return (\n    <Tabs\n      label=\"Show\"\n      items={[{ value: 'all', label: 'All' }, { value: 'pinned', label: 'Pinned' }, { value: 'shared', label: 'Shared' }]}\n      bind={filter}\n      variant=\"segmented\"\n      className=\"gap-3\"\n      data-testid=\"filter\"\n    >\n      <view className=\"-mx-5 -mb-5 divide-y divide-line border-t border-line\">\n        {notes[filter.value as keyof typeof notes].map(note => <Item key={note} label={note} />)}\n      </view>\n    </Tabs>\n  );\n}"
         },
         {
           "name": "Fitted",
@@ -19011,6 +19033,7 @@
         "roles": [
           "accent",
           "focus",
+          "line",
           "text",
           "text-muted"
         ]
@@ -20032,6 +20055,7 @@
           "accent",
           "danger",
           "focus",
+          "line",
           "line-strong",
           "surface",
           "surface-sunken",
@@ -21177,6 +21201,7 @@
           "danger",
           "focus",
           "info",
+          "line",
           "success",
           "surface-overlay",
           "text",
@@ -21433,6 +21458,7 @@
           "accent",
           "accent-soft",
           "focus",
+          "line",
           "surface",
           "surface-overlay",
           "text",
@@ -22168,12 +22194,12 @@
         {
           "name": "Standard",
           "title": "A way back, the title and actions",
-          "source": "import { Said } from '../example';\nimport { IconButton } from '@liulidesign/core/IconButton';\nimport { Item, ItemList } from '@liulidesign/core/Item';\nimport { TopBar } from '@liulidesign/core/TopBar';\n\nconst orders = [\n  { id: '104', items: '3 items · Paid', when: 'Today' },\n  { id: '103', items: '1 item · Shipped', when: 'Yesterday' },\n  { id: '102', items: '2 items · Delivered', when: 'Mon' },\n  { id: '101', items: '5 items · Delivered', when: '8 Nov' },\n];\n\n/** A page's header: a way back, its title, and its actions at the end. */\nexport function Standard() {\n  return (\n    <Said>\n      {say => (\n        <view className=\"overflow-hidden rounded-container border border-text/12 bg-canvas\">\n          <TopBar\n            startContent={<IconButton icon=\"chevron-start\" label=\"Back\" variant=\"ghost\" onClick={() => say('Went back')} data-testid=\"orders-back\" />}\n            heading=\"Orders\"\n            endContent={[\n              <IconButton key=\"filter\" icon=\"filter\" label=\"Filter\" variant=\"ghost\" onClick={() => say('Opened Filter')} data-testid=\"orders-filter\" />,\n              <IconButton key=\"add\" icon=\"add\" label=\"New order\" variant=\"ghost\" onClick={() => say('Created a new order')} data-testid=\"orders-add\" />,\n            ]}\n            data-testid=\"orders-topbar\"\n          />\n          <ItemList label=\"Orders\" isFlush>\n            {orders.map(order => (\n              <Item\n                key={order.id}\n                label={`Order #${order.id}`}\n                description={order.items}\n                endContent={<text className=\"text-footnote text-muted\">{order.when}</text>}\n                hasChevron\n                onClick={() => say(`Opened order #${order.id}`)}\n              />\n            ))}\n          </ItemList>\n        </view>\n      )}\n    </Said>\n  );\n}"
+          "source": "import { Said } from '../example';\nimport { IconButton } from '@liulidesign/core/IconButton';\nimport { Item, ItemList } from '@liulidesign/core/Item';\nimport { TopBar } from '@liulidesign/core/TopBar';\n\nconst orders = [\n  { id: '104', items: '3 items · Paid', when: 'Today' },\n  { id: '103', items: '1 item · Shipped', when: 'Yesterday' },\n  { id: '102', items: '2 items · Delivered', when: 'Mon' },\n  { id: '101', items: '5 items · Delivered', when: '8 Nov' },\n];\n\n/** A page's header: a way back, its title, and its actions at the end. */\nexport function Standard() {\n  return (\n    <Said>\n      {say => (\n        <view className=\"overflow-hidden rounded-container border border-line bg-canvas\">\n          <TopBar\n            startContent={<IconButton icon=\"chevron-start\" label=\"Back\" variant=\"ghost\" onClick={() => say('Went back')} data-testid=\"orders-back\" />}\n            heading=\"Orders\"\n            endContent={[\n              <IconButton key=\"filter\" icon=\"filter\" label=\"Filter\" variant=\"ghost\" onClick={() => say('Opened Filter')} data-testid=\"orders-filter\" />,\n              <IconButton key=\"add\" icon=\"add\" label=\"New order\" variant=\"ghost\" onClick={() => say('Created a new order')} data-testid=\"orders-add\" />,\n            ]}\n            data-testid=\"orders-topbar\"\n          />\n          <ItemList label=\"Orders\" isFlush>\n            {orders.map(order => (\n              <Item\n                key={order.id}\n                label={`Order #${order.id}`}\n                description={order.items}\n                endContent={<text className=\"text-footnote text-muted\">{order.when}</text>}\n                hasChevron\n                onClick={() => say(`Opened order #${order.id}`)}\n              />\n            ))}\n          </ItemList>\n        </view>\n      )}\n    </Said>\n  );\n}"
         },
         {
           "name": "WithSearch",
           "title": "A search field at the middle",
-          "source": "import { useLocal } from '@lingxia/view';\nimport { unused } from '../example';\nimport { IconButton } from '@liulidesign/core/IconButton';\nimport { Item, ItemList } from '@liulidesign/core/Item';\nimport { SearchField } from '@liulidesign/core/SearchField';\nimport { TopBar } from '@liulidesign/core/TopBar';\n\nconst mail = [\n  { from: 'Harbour Lights', subject: 'Your tickets for Saturday', when: '09:41' },\n  { from: 'Kai Chen', subject: 'Photos from the coast walk', when: 'Yesterday' },\n  { from: 'Trail Club', subject: 'November route and meeting point', when: 'Mon' },\n];\n\n/** A search field at the middle of the bar. */\nexport function WithSearch() {\n  const query = useLocal('query', '');\n  return (\n    <view className=\"overflow-hidden rounded-container border border-text/12 bg-canvas\">\n      <TopBar\n        heading=\"Mail\"\n        centerContent={<SearchField label=\"Search mail\" isLabelHidden placeholder=\"Search mail\" bind={query} data-testid=\"mail-search\" />}\n        endContent={<IconButton icon=\"add\" label=\"New message\" variant=\"ghost\" onClick={unused} />}\n        data-testid=\"mail-topbar\"\n      />\n      <ItemList label=\"Inbox\" isFlush>\n        {mail.map(message => (\n          <Item key={message.from} label={message.from} description={message.subject} endContent={<text className=\"text-footnote text-muted\">{message.when}</text>} />\n        ))}\n      </ItemList>\n    </view>\n  );\n}"
+          "source": "import { useLocal } from '@lingxia/view';\nimport { unused } from '../example';\nimport { IconButton } from '@liulidesign/core/IconButton';\nimport { Item, ItemList } from '@liulidesign/core/Item';\nimport { SearchField } from '@liulidesign/core/SearchField';\nimport { TopBar } from '@liulidesign/core/TopBar';\n\nconst mail = [\n  { from: 'Harbour Lights', subject: 'Your tickets for Saturday', when: '09:41' },\n  { from: 'Kai Chen', subject: 'Photos from the coast walk', when: 'Yesterday' },\n  { from: 'Trail Club', subject: 'November route and meeting point', when: 'Mon' },\n];\n\n/** A search field at the middle of the bar. */\nexport function WithSearch() {\n  const query = useLocal('query', '');\n  return (\n    <view className=\"overflow-hidden rounded-container border border-line bg-canvas\">\n      <TopBar\n        heading=\"Mail\"\n        centerContent={<SearchField label=\"Search mail\" isLabelHidden placeholder=\"Search mail\" bind={query} data-testid=\"mail-search\" />}\n        endContent={<IconButton icon=\"add\" label=\"New message\" variant=\"ghost\" onClick={unused} />}\n        data-testid=\"mail-topbar\"\n      />\n      <ItemList label=\"Inbox\" isFlush>\n        {mail.map(message => (\n          <Item key={message.from} label={message.from} description={message.subject} endContent={<text className=\"text-footnote text-muted\">{message.when}</text>} />\n        ))}\n      </ItemList>\n    </view>\n  );\n}"
         }
       ],
       "gaps": [],
@@ -22189,6 +22215,7 @@
           "--text-body"
         ],
         "roles": [
+          "line",
           "surface",
           "text"
         ]
@@ -23415,6 +23442,7 @@
         "roles": [
           "canvas",
           "focus",
+          "line",
           "media",
           "on-media",
           "surface",

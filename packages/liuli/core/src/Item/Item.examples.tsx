@@ -132,7 +132,7 @@ export function Compact() {
 export function WithControl() {
   const signedIn = useLocal('signedIn', true);
   return (
-    <view className="overflow-hidden rounded-container border border-text/12 bg-surface">
+    <view className="overflow-hidden rounded-container border border-line bg-surface">
       <Item
         label="Account"
         description={signedIn.value ? 'Signed in' : 'Signed out'}
@@ -152,7 +152,7 @@ export function WithControl() {
 
 export function Disabled() {
   return (
-    <view className="overflow-hidden rounded-container border border-text/12 bg-surface">
+    <view className="overflow-hidden rounded-container border border-line bg-surface">
       <Item
         label="Export history"
         description="Download every change as a file"
@@ -169,7 +169,7 @@ export function Disabled() {
 /** The home tile. */
 export function Specimen() {
   return (
-    <view className="w-28 overflow-hidden rounded-container border border-text/12 bg-surface">
+    <view className="w-28 overflow-hidden rounded-container border border-line bg-surface">
       <Item label="Alerts" description="On" hasChevron onClick={unused} />
     </view>
   );
@@ -179,7 +179,7 @@ export function StatePressable() {
   return (
     <Said>
       {say => (
-        <view className="overflow-hidden rounded-container border border-text/12 bg-surface">
+        <view className="overflow-hidden rounded-container border border-line bg-surface">
           <Item label="Wi-Fi" description="Home" hasChevron onClick={() => say('Opened Wi-Fi')} />
         </view>
       )}
@@ -191,7 +191,7 @@ export function StateSelected() {
   return (
     <Said>
       {say => (
-        <view className="overflow-hidden rounded-container border border-text/12 bg-surface">
+        <view className="overflow-hidden rounded-container border border-line bg-surface">
           <Item label="Wi-Fi" description="Home" hasChevron isSelected onClick={() => say('Opened Wi-Fi')} />
         </view>
       )}
@@ -201,7 +201,7 @@ export function StateSelected() {
 
 export function StateDisabled() {
   return (
-    <view className="overflow-hidden rounded-container border border-text/12 bg-surface">
+    <view className="overflow-hidden rounded-container border border-line bg-surface">
       <Item label="Wi-Fi" description="Off" hasChevron isDisabled onClick={unused} />
     </view>
   );
@@ -212,7 +212,7 @@ export function Destructive() {
   return (
     <Said>
       {say => (
-        <view className="overflow-hidden rounded-container border border-text/12 bg-surface">
+        <view className="overflow-hidden rounded-container border border-line bg-surface">
           <Item label="Delete account" description="Removes your notes from every device" variant="destructive" hasChevron onClick={() => say('Opened Delete account')} data-testid="delete-row" />
         </view>
       )}

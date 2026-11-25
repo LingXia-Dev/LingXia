@@ -64,7 +64,7 @@ export function Stage({ caption, bare = false, children }: { caption?: string; b
       {caption !== undefined && <text className="text-footnote text-text">{caption}</text>}
       <view
         onLayout={report === null ? undefined : box => { room.set(box.width); if (need.value > 0) report(need.value > box.width + 0.5); }}
-        className={bare ? 'grow gap-3' : 'grow gap-3 overflow-hidden rounded-container border border-text/12 bg-surface p-5'}
+        className={bare ? 'grow gap-3' : 'grow gap-3 overflow-hidden rounded-container border border-line bg-surface p-5'}
       >
         {body}
       </view>
@@ -164,7 +164,7 @@ export function Tile({ name, tagline, isWide = false, onOpen, testId, children }
   return (
     // A tile is a card; taking the card's own frame also brings Liuli's tokens to every page laid out with this file.
     <view className={cx('relative overflow-hidden', cardRecipe.root.base, cardRecipe.root.variant.outlined, isWide && 'min-[360px]:col-span-2 md:col-span-1')}>
-      <view aria-hidden className="h-28 items-center-safe justify-center-safe overflow-hidden p-3 bg-surface-sunken border-b border-text/8">
+      <view aria-hidden className="h-28 items-center-safe justify-center-safe overflow-hidden p-3 bg-surface-sunken border-b border-line">
         {children}
       </view>
       <view className="px-3 pt-2.5 pb-3 gap-0.5">

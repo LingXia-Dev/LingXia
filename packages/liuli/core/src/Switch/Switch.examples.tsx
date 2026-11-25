@@ -16,7 +16,7 @@ export function InList() {
   const sounds = ['Chime', 'Bell', 'None'];
   const sound = useLocal('sound', 0);
   return (
-    <view className="-m-5 divide-y divide-text/8">
+    <view className="-m-5 divide-y divide-line">
       {/* An app opens a list of sounds here; the row steps through them so the press shows. */}
       <Item label="Sound" endContent={<text className="text-body">{sounds[sound.value]}</text>} onClick={() => sound.set((sound.value + 1) % sounds.length)} hasChevron />
       <Switch bind={alerts} label="Mentions" variant="row" data-testid="mentions" />

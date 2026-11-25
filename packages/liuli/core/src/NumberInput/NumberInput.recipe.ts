@@ -27,7 +27,7 @@ export const numberInputRecipe = {
   },
   /** A hairline before each stepper, stopping short of the outline so the two edges never meet. */
   divider: {
-    base: 'w-px self-stretch my-2 bg-text/12',
+    base: 'w-px self-stretch my-2 bg-line',
   },
   stepper: {
     base: 'items-center justify-center self-stretch text-muted transition-colors duration-fast ease-standard hover:bg-text/5 active:bg-text/8 focus-visible:inset-ring-2 focus-visible:inset-ring-focus disabled:text-faint',

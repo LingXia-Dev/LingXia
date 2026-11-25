@@ -139,7 +139,7 @@ const cities = [
 /** In a row, the sparkline sits between the name and the figure it explains. */
 export function InRows() {
   return (
-    <view role="list" aria-label="Cities" className="divide-y divide-text/8">
+    <view role="list" aria-label="Cities" className="divide-y divide-line">
       {cities.map(city => (
         <view key={city.name} role="listitem" className="flex-row items-center gap-4 py-2.5">
           <text className="grow basis-0 text-body text-text">{city.name}</text>

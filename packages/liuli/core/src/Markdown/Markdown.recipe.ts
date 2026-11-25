@@ -84,7 +84,7 @@ export const markdownRecipe = {
     text: 'self-start font-mono text-footnote text-text whitespace-pre',
   },
   rule: {
-    base: 'self-stretch h-px bg-text/12',
+    base: 'self-stretch h-px bg-line',
   },
   cell: {
     base: 'text-footnote',

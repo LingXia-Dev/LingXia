@@ -20,7 +20,7 @@ export function Orders() {
   const isShipped = current !== null && shipped.value.includes(current.id);
   return (
     // A window's worth of page: in an app it fills the page itself.
-    <view className="h-[360px] overflow-hidden rounded-container border border-text/12">
+    <view className="h-[360px] overflow-hidden rounded-container border border-line">
       <ListDetail bind={selected} listLabel="Orders" data-testid="orders">
         <ListDetail.List>
           <ItemList>
@@ -75,7 +75,7 @@ export function Workspace() {
   const isArchived = current.value !== null && archived.value.includes(current.value);
   return (
     // A window's worth of page: in an app it fills the page itself.
-    <view className="h-[360px] overflow-hidden rounded-container border border-text/12">
+    <view className="h-[360px] overflow-hidden rounded-container border border-line">
       <ListDetail value={current.value} onChange={next => current.set(next)} listLabel="Mail" listWidth={200} contentWidth="prose" data-testid="workspace">
         <ListDetail.List>
           <NavList label="Mailboxes" sections={sections} value={current.value ?? ''} onChange={next => current.set(next)} data-testid="workspace-nav" />
@@ -92,8 +92,8 @@ export function Workspace() {
 /** The tile: a list's rows beside the chosen record, drawn at the tile's size. */
 export function Specimen() {
   return (
-    <view className="w-full flex-row overflow-hidden rounded-control border border-text/12 bg-canvas">
-      <view className="w-[96px] p-1 border-e border-text/8">
+    <view className="w-full flex-row overflow-hidden rounded-control border border-line bg-canvas">
+      <view className="w-[96px] p-1 border-e border-line">
         <ItemList>
           <Item label="#101" density="compact" isSelected onClick={unused} />
           <Item label="#102" density="compact" isSelected={false} onClick={unused} />

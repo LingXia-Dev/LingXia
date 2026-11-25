@@ -14,7 +14,7 @@ export const textInputRecipe = {
     status: { error: 'border-danger', warning: 'border-warning', success: 'border-line-strong' } satisfies Record<FieldStatusType, string>,
     disabled: 'bg-text/5 border-text/8',
     /** Read-only keeps the text at full strength on a sunken box with a quiet edge: there to read, not to fill in. */
-    readOnly: 'bg-surface-sunken border-text/12 focus-within:border-line-strong focus-within:inset-ring-0',
+    readOnly: 'bg-surface-sunken border-line focus-within:border-line-strong focus-within:inset-ring-0',
   },
   spinner: {
     base: 'size-4 shrink-0 text-muted motion-safe:animate-spin',

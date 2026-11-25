@@ -90,7 +90,7 @@ export function Hero() {
  */
 export function Specimen() {
   return (
-    <view className="p-2.5 gap-2 rounded-container border border-text/12 bg-surface-overlay shadow-[0_2px_4px_rgb(0_0_0/0.10),0_6px_14px_rgb(0_0_0/0.18)]">
+    <view className="p-2.5 gap-2 rounded-container border border-line bg-surface-overlay shadow-[0_2px_4px_rgb(0_0_0/0.10),0_6px_14px_rgb(0_0_0/0.18)]">
       <text className="text-footnote font-semibold text-text">Delete note?</text>
       <LayerContext.Provider value="overlay">
         <view className="flex-row justify-end gap-1.5">
@@ -111,7 +111,7 @@ export function Parts() {
     <Said>
       {say => (
         <view className="items-center rounded-container bg-scrim px-4 py-8">
-          <view className="w-full max-w-[360px] p-5 gap-4 rounded-dialog border border-text/12 bg-surface-overlay shadow-modal">
+          <view className="w-full max-w-[360px] p-5 gap-4 rounded-dialog border border-line bg-surface-overlay shadow-modal">
             <view className={dialogRecipe.header.base}>
               <text className={dialogRecipe.title.base}>Delete this note?</text>
             </view>

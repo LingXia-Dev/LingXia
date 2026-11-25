@@ -25,8 +25,8 @@ export const barChartRecipe = {
   },
   plot: {
     base: 'relative grow',
-    ruled: 'border-t border-text/8',
-    floored: 'border-b border-text/8',
+    ruled: 'border-t border-line',
+    floored: 'border-b border-line',
   },
   marks: {
     // Inset by the corner radius at the free ends, and with figures by the figures' line too.
@@ -47,7 +47,7 @@ export const barChartRecipe = {
   },
   /** Lies over the bars' last point at zero. */
   baseline: {
-    base: 'h-px shrink-0 bg-text/20 -translate-y-full',
+    base: 'h-px shrink-0 bg-line-strong -translate-y-full',
   },
   slots: {
     base: 'absolute inset-0 flex-row items-stretch',

@@ -11,7 +11,7 @@ export const popoverParts = {
  */
 export const popoverRecipe = {
   panel: {
-    base: 'w-72 p-4 gap-3 rounded-container border border-text/12 bg-surface-overlay shadow-raised transition duration-fast ease-standard starting:opacity-0 exit:opacity-0',
+    base: 'w-72 p-4 gap-3 rounded-container border border-line bg-surface-overlay shadow-raised transition duration-fast ease-standard starting:opacity-0 exit:opacity-0',
     /** The gap between the trigger and the panel, on the side it opens to. */
     offset: { bottom: 'mt-1.5 motion-safe:starting:-translate-y-1', top: 'mb-1.5 motion-safe:starting:translate-y-1', end: 'ms-1.5 motion-safe:starting:-translate-x-1 rtl:motion-safe:starting:translate-x-1', start: 'me-1.5 motion-safe:starting:translate-x-1 rtl:motion-safe:starting:-translate-x-1' } satisfies Record<PopoverPlacement, string>,
   },

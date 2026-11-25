@@ -38,9 +38,9 @@ export const itemRecipe = {
     base: 'text-footnote text-muted',
   },
   list: {
-    base: 'divide-y divide-text/8',
+    base: 'divide-y divide-line',
     /** Its own border and corners, unless it fills a pane that has them. */
-    framed: 'overflow-hidden rounded-container border border-text/12',
+    framed: 'overflow-hidden rounded-container border border-line',
     /** One rung up from what it sits on; inside an overlay it takes the overlay's surface. */
     layer: { page: 'bg-surface', overlay: 'bg-surface-overlay' } satisfies Record<Layer, string>,
   },

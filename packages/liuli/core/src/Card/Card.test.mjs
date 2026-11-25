@@ -62,7 +62,7 @@ test('a pressed card keeps its surface under a wash of the text colour', async (
 
 test('Floating: the raised surface under the raised shadow, with a fainter edge', async () => {
   const card = (await renderExample('Card/Card', 'Floating')).getByTestId('floating');
-  assert.deepEqual([card.props.background, card.props.borderColor], ['surface-raised', 'text/8']);
+  assert.deepEqual([card.props.background, card.props.borderColor], ['surface-raised', 'line']);
   assert.equal(JSON.parse(card.props.boxShadow)[1].blur, 24);
 });
 

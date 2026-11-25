@@ -207,7 +207,7 @@ export function Form() {
 - `className`: Classes for the panel.
 - The recipe, `bottomSheetRecipe` from `@liulidesign/core/BottomSheet/recipe`: the classes of each part, to style an element of your own to match. The component does not read a changed copy.
 - Scale tokens it reads, set in the app's stylesheet under `@theme`: `--text-body`, `--text-title`, `--shadow-modal`, `--radius-dialog`.
-- Colour roles it paints with, set by the theme pack: `focus`, `surface-overlay`, `text`, `text-muted`.
+- Colour roles it paints with, set by the theme pack: `focus`, `line`, `surface-overlay`, `text`, `text-muted`.
 
 ## Accessibility
 

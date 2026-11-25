@@ -13,12 +13,12 @@ export const splitRecipe = {
   },
   primary: {
     base: 'grow shrink basis-0 min-w-0 min-h-0 flex-col',
-    tabletop: 'grow shrink basis-0 min-w-0 min-h-0 flex-col border-b border-text/8',
+    tabletop: 'grow shrink basis-0 min-w-0 min-h-0 flex-col border-b border-line',
   },
   aside: {
     base: 'min-w-0 flex-col bg-canvas',
-    side: 'shrink-0 border-s border-text/8',
-    stacked: 'grow shrink basis-0 min-h-0 border-t border-text/8',
+    side: 'shrink-0 border-s border-line',
+    stacked: 'grow shrink basis-0 min-h-0 border-t border-line',
     tabletop: 'shrink-0 min-h-0',
   },
   hingeGap: {

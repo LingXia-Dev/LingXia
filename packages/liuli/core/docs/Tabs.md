@@ -92,7 +92,7 @@ export function Filter() {
       className="gap-3"
       data-testid="filter"
     >
-      <view className="-mx-5 -mb-5 divide-y divide-text/8 border-t border-text/8">
+      <view className="-mx-5 -mb-5 divide-y divide-line border-t border-line">
         {notes[filter.value as keyof typeof notes].map(note => <Item key={note} label={note} />)}
       </view>
     </Tabs>
@@ -155,7 +155,7 @@ export function Fitted() {
 - `className`: classes merged after the recipe's, so they win.
 - The recipe, `tabsRecipe` from `@liulidesign/core/Tabs/recipe`: the classes of each part, to style an element of your own to match. The component does not read a changed copy.
 - Scale tokens it reads, set in the app's stylesheet under `@theme`: `--spacing-control-md`, `--text-footnote`, `--radius-control`.
-- Colour roles it paints with, set by the theme pack: `accent`, `focus`, `text`, `text-muted`.
+- Colour roles it paints with, set by the theme pack: `accent`, `focus`, `line`, `text`, `text-muted`.
 
 ## Accessibility
 

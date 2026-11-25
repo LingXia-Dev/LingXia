@@ -164,9 +164,9 @@ export function Floating() {
   return (
     <Said>
       {say => (
-        <view className="relative h-72 overflow-hidden rounded-container border border-text/12 bg-surface">
+        <view className="relative h-72 overflow-hidden rounded-container border border-line bg-surface">
           <scroll className="h-full">
-            <view className="divide-y divide-text/8">
+            <view className="divide-y divide-line">
               {notes.map(([label, edited]) => <Item key={label} label={label} description={edited} />)}
             </view>
           </scroll>

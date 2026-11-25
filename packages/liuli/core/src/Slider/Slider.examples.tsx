@@ -29,7 +29,7 @@ export function Stepped() {
 export function InList() {
   const speed = useLocal('speed', 2);
   return (
-    <view className="-m-5 divide-y divide-text/8">
+    <view className="-m-5 divide-y divide-line">
       <Item label="Read aloud" description="Notes are read in the system voice" />
       <Slider bind={speed} label="Speed" valueLabel={['Slow', 'Normal', 'Fast'][speed.value - 1]} min={1} max={3} variant="row" data-testid="speed" />
     </view>

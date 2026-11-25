@@ -31,7 +31,7 @@ export const listDetailRecipe = {
    */
   list: {
     base: 'min-h-0 bg-canvas',
-    regular: 'shrink-0 border-e border-text/8',
+    regular: 'shrink-0 border-e border-line',
     compact: 'grow shrink basis-0 transition-transform duration-slow ease-standard',
     hidden: 'hidden',
     returning: 'motion-safe:starting:-translate-x-1/4 rtl:motion-safe:starting:translate-x-1/4',
@@ -69,7 +69,7 @@ export const listDetailRecipe = {
   },
   /** The record's actions, under its scroll behind a hairline, starting on the detail's own edge. */
   actions: {
-    base: 'flex-row flex-wrap items-center gap-2 border-t border-text/8 bg-canvas',
+    base: 'flex-row flex-wrap items-center gap-2 border-t border-line bg-canvas',
     regular: 'ps-10 pe-8 py-3',
     compact: 'px-4 pt-3 pb-1',
   },

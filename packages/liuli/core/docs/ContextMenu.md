@@ -113,7 +113,7 @@ export function Data() {
 - `className`: Classes for the wrapper around `children`.
 - The recipe, `contextMenuRecipe` from `@liulidesign/core/ContextMenu/recipe`: the classes of each part, to style an element of your own to match. The component does not read a changed copy.
 - Scale tokens it reads, set in the app's stylesheet under `@theme`: `--text-footnote`, `--shadow-raised`, `--shadow-modal`, `--radius-container`, `--radius-dialog`.
-- Colour roles it paints with, set by the theme pack: `scrim`, `surface-overlay`, `text`, `text-muted`.
+- Colour roles it paints with, set by the theme pack: `line`, `scrim`, `surface-overlay`, `text-muted`.
 
 ## Accessibility
 

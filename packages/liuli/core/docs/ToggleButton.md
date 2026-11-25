@@ -106,7 +106,7 @@ export function Sizes() {
 - `className`: classes merged after the recipe's, so they win.
 - The recipe, `toggleButtonRecipe` from `@liulidesign/core/ToggleButton/recipe`: the classes of each part, to style an element of your own to match. The component does not read a changed copy.
 - Scale tokens it reads, set in the app's stylesheet under `@theme`: `--spacing-control-sm`, `--spacing-control-md`, `--spacing-control-lg`, `--text-footnote`, `--text-body`, `--text-callout`, `--shadow-control`, `--radius-control`.
-- Colour roles it paints with, set by the theme pack: `accent`, `accent-soft`, `focus`, `surface`, `surface-overlay`, `text`, `text-faint`, `text-muted`.
+- Colour roles it paints with, set by the theme pack: `accent`, `accent-soft`, `focus`, `line`, `surface`, `surface-overlay`, `text`, `text-faint`, `text-muted`.
 
 ## Accessibility
 

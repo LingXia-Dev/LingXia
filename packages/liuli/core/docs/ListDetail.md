@@ -35,7 +35,7 @@ export function Orders() {
   const isShipped = current !== null && shipped.value.includes(current.id);
   return (
     // A window's worth of page: in an app it fills the page itself.
-    <view className="h-[360px] overflow-hidden rounded-container border border-text/12">
+    <view className="h-[360px] overflow-hidden rounded-container border border-line">
       <ListDetail bind={selected} listLabel="Orders" data-testid="orders">
         <ListDetail.List>
           <ItemList>
@@ -99,7 +99,7 @@ export function Workspace() {
   const isArchived = current.value !== null && archived.value.includes(current.value);
   return (
     // A window's worth of page: in an app it fills the page itself.
-    <view className="h-[360px] overflow-hidden rounded-container border border-text/12">
+    <view className="h-[360px] overflow-hidden rounded-container border border-line">
       <ListDetail value={current.value} onChange={next => current.set(next)} listLabel="Mail" listWidth={200} contentWidth="prose" data-testid="workspace">
         <ListDetail.List>
           <NavList label="Mailboxes" sections={sections} value={current.value ?? ''} onChange={next => current.set(next)} data-testid="workspace-nav" />
@@ -168,7 +168,7 @@ export function Workspace() {
 - `className` on ListDetailDetail: classes merged after the recipe's, so they win.
 - The recipe, `listDetailRecipe` from `@liulidesign/core/ListDetail/recipe`: the classes of each part, to style an element of your own to match. The component does not read a changed copy.
 - It reads no Liuli scale token.
-- Colour roles it paints with, set by the theme pack: `canvas`, `text`.
+- Colour roles it paints with, set by the theme pack: `canvas`, `line`.
 
 ## Accessibility
 

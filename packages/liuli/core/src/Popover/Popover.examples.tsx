@@ -59,7 +59,7 @@ export function Parts() {
       {say => (
         <view className="items-start gap-1.5">
           <Button label="View options" onClick={() => say('Opened View options')} />
-          <view className="w-72 p-4 gap-3 rounded-container border border-text/12 bg-surface-overlay shadow-raised">
+          <view className="w-72 p-4 gap-3 rounded-container border border-line bg-surface-overlay shadow-raised">
             <text className={popoverRecipe.title.base}>Show in the list</text>
             <text className="text-body text-text">Previews</text>
             <text className="text-body text-text">Dates</text>
@@ -74,8 +74,8 @@ export function Parts() {
 export function Specimen() {
   return (
     <view className="items-start gap-1">
-      <view className="min-h-6 justify-center rounded-md border border-text/12 bg-surface px-2"><text className="text-caption font-medium text-text">Options</text></view>
-      <view className="w-28 p-2 gap-1 rounded-control border border-text/12 bg-surface-overlay shadow-[0_1px_2px_rgb(0_0_0/0.06),0_4px_12px_rgb(0_0_0/0.10)]">
+      <view className="min-h-6 justify-center rounded-md border border-line bg-surface px-2"><text className="text-caption font-medium text-text">Options</text></view>
+      <view className="w-28 p-2 gap-1 rounded-control border border-line bg-surface-overlay shadow-[0_1px_2px_rgb(0_0_0/0.06),0_4px_12px_rgb(0_0_0/0.10)]">
         <text className="text-caption font-semibold text-text">Show</text>
         <view className="h-1.5 w-3/4 rounded-full bg-text/10" />
         <view className="h-1.5 w-1/2 rounded-full bg-text/10" />

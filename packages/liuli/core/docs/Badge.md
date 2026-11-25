@@ -99,7 +99,7 @@ export function InARow() {
   return (
     <Said>
       {say => (
-        <view className="overflow-hidden rounded-container border border-text/12 bg-surface">
+        <view className="overflow-hidden rounded-container border border-line bg-surface">
           <Item
             label="Invoice 2041"
             description="Due 3 May"

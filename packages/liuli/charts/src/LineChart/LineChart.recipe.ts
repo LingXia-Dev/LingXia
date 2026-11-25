@@ -60,9 +60,9 @@ export const lineChartRecipe = {
     base: 'h-0 self-stretch items-end',
   },
   rule: {
-    line: 'self-stretch h-px bg-text/8',
-    foot: 'self-stretch h-px bg-text/12',
-    bottom: 'absolute start-0 end-0 bottom-0 h-px bg-text/12',
+    line: 'self-stretch h-px bg-line',
+    foot: 'self-stretch h-px bg-line-strong',
+    bottom: 'absolute start-0 end-0 bottom-0 h-px bg-line-strong',
     open: 'bottom-[4px]',
   },
   drawing: {

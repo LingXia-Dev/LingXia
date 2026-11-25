@@ -23,7 +23,7 @@ export function LiveStreamSplit() {
   const muted = useLocal('muted', false);
   const large = useLocal('large', false);
   return (
-    <view className={cx('overflow-hidden rounded-container border border-text/12', env.sizeClass === 'regular' ? 'h-[400px]' : 'h-[600px]')}>
+    <view className={cx('overflow-hidden rounded-container border border-line', env.sizeClass === 'regular' ? 'h-[400px]' : 'h-[600px]')}>
       <Split
         asideWidth={300}
         asideLabel="Live chat"
@@ -40,7 +40,7 @@ export function LiveStreamSplit() {
                 ))}
               </view>
             </scroll>
-            <view className="px-3 pb-3 pt-2 border-t border-text/8">
+            <view className="px-3 pb-3 pt-2 border-t border-line">
               <Composer bind={draft} label="Message" placeholder="Say something" onSubmit={() => draft.set('')} />
             </view>
           </view>
@@ -82,7 +82,7 @@ export function DocumentSheetSplit() {
   const reply = useLocal('reply', '');
   const isCompact = env.sizeClass !== 'regular';
   return (
-    <view className="h-[440px] overflow-hidden rounded-container border border-text/12">
+    <view className="h-[440px] overflow-hidden rounded-container border border-line">
       <Split
         compact="sheet"
         bind={commentsOpen}
@@ -107,7 +107,7 @@ export function DocumentSheetSplit() {
                 ))}
               </view>
             </scroll>
-            <view className="px-4 pt-3 border-t border-text/8" data-testid="doc-reply-row">
+            <view className="px-4 pt-3 border-t border-line" data-testid="doc-reply-row">
               <Composer bind={reply} label="Reply" placeholder="Add a comment" onSubmit={() => reply.set('')} data-testid="doc-reply" />
             </view>
           </view>
@@ -145,11 +145,11 @@ export function DocumentSheetSplit() {
 /** Tile specimen showing a primary canvas beside its companion aside pane. */
 export function Specimen() {
   return (
-    <view className="w-full flex-row overflow-hidden rounded-control border border-text/12 bg-canvas">
+    <view className="w-full flex-row overflow-hidden rounded-control border border-line bg-canvas">
       <view className="grow shrink basis-0 p-2.5 items-center justify-center bg-surface-sunken">
         <text className="text-caption font-semibold text-text">Canvas</text>
       </view>
-      <view className="w-[76px] p-2 gap-1 border-s border-text/8">
+      <view className="w-[76px] p-2 gap-1 border-s border-line">
         <text className="text-caption font-semibold text-text">Chat</text>
         <text className="text-caption text-muted">Live</text>
       </view>

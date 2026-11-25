@@ -114,7 +114,7 @@ export function FullScreenWithActions() {
 - `className`: Classes for the inline frame, such as its height or aspect ratio.
 - The recipe, `webViewRecipe` from `@liulidesign/core/WebView/recipe`: the classes of each part, to style an element of your own to match. The component does not read a changed copy.
 - Scale tokens it reads, set in the app's stylesheet under `@theme`: `--text-title`, `--shadow-modal`, `--radius-container`, `--radius-dialog`.
-- Colour roles it paints with, set by the theme pack: `canvas`, `focus`, `media`, `on-media`, `surface`, `surface-overlay`, `text`, `text-muted`.
+- Colour roles it paints with, set by the theme pack: `canvas`, `focus`, `line`, `media`, `on-media`, `surface`, `surface-overlay`, `text`, `text-muted`.
 
 ## Accessibility
 

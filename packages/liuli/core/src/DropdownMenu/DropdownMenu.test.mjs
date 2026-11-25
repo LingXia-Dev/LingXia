@@ -66,7 +66,7 @@ test('the menu panel is the raised surface with a hairline border and the raised
   screen.press(screen.getByTestId('sort'));
   const menu = menus(screen)[0];
   assert.equal(menu.props.background, 'surface-overlay');
-  assert.equal(menu.props.borderColor, 'text/12');
+  assert.equal(menu.props.borderColor, 'line');
   assert.equal(menu.props.borderTopWidth, 1);
   assert.equal(JSON.parse(menu.props.boxShadow).length, 2, 'contact and ambient layers');
 });

@@ -18,7 +18,7 @@ export const bannerRecipe = {
   root: {
     base: 'flex-row items-start gap-3 rounded-container border ps-4 pe-2 py-3',
     tone: {
-      neutral: 'bg-text/6 border-text/12',
+      neutral: 'bg-text/6 border-line',
       info: 'bg-info-soft border-info/20',
       success: 'bg-success-soft border-success/25',
       warning: 'bg-warning-soft border-warning/30',

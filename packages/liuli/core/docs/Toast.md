@@ -113,7 +113,7 @@ export function Faces() {
 - `className`: classes merged after the recipe's, so they win.
 - The recipe, `toastRecipe` from `@liulidesign/core/Toast/recipe`: the classes of each part, to style an element of your own to match. The component does not read a changed copy.
 - Scale tokens it reads, set in the app's stylesheet under `@theme`: `--text-body`, `--shadow-raised`, `--radius-container`.
-- Colour roles it paints with, set by the theme pack: `danger`, `focus`, `info`, `success`, `surface-overlay`, `text`, `text-muted`, `warning`.
+- Colour roles it paints with, set by the theme pack: `danger`, `focus`, `info`, `line`, `success`, `surface-overlay`, `text`, `text-muted`, `warning`.
 
 ## Accessibility
 

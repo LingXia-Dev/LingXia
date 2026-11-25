@@ -88,7 +88,7 @@ export function Specimen() {
         <view className="h-6 grow basis-0 rounded-control border border-line-strong bg-surface" />
         <view className="size-3 rounded-full bg-text/20" />
       </view>
-      <view className="h-5 w-14 rounded-control border border-text/12 bg-surface" />
+      <view className="h-5 w-14 rounded-control border border-line bg-surface" />
     </view>
   );
 }

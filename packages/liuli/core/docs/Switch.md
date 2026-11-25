@@ -39,7 +39,7 @@ export function InList() {
   const sounds = ['Chime', 'Bell', 'None'];
   const sound = useLocal('sound', 0);
   return (
-    <view className="-m-5 divide-y divide-text/8">
+    <view className="-m-5 divide-y divide-line">
       {/* An app opens a list of sounds here; the row steps through them so the press shows. */}
       <Item label="Sound" endContent={<text className="text-body">{sounds[sound.value]}</text>} onClick={() => sound.set((sound.value + 1) % sounds.length)} hasChevron />
       <Switch bind={alerts} label="Mentions" variant="row" data-testid="mentions" />
@@ -127,7 +127,7 @@ export function Applying() {
 - `className`: classes merged after the recipe's, so they win.
 - The recipe, `switchRecipe` from `@liulidesign/core/Switch/recipe`: the classes of each part, to style an element of your own to match. The component does not read a changed copy.
 - Scale tokens it reads, set in the app's stylesheet under `@theme`: `--spacing-control-lg`, `--text-footnote`, `--text-body`, `--shadow-contact`.
-- Colour roles it paints with, set by the theme pack: `accent-solid`, `focus`, `knob`, `line-strong`, `text`, `text-faint`, `text-muted`.
+- Colour roles it paints with, set by the theme pack: `accent-solid`, `focus`, `knob`, `line`, `line-strong`, `text`, `text-faint`, `text-muted`.
 
 ## Accessibility
 

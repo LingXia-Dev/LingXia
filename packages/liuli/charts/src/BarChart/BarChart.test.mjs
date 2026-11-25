@@ -12,7 +12,7 @@ const bars = d => [...d.matchAll(/M([\d.]+) [\d.]+V([\d.]+)h([\d.]+)V[\d.]+/g)].
 /** Where each bar of a path stands: its zero line. */
 const feet = d => [...d.matchAll(/M[\d.]+ ([\d.]+)V/g)].map(match => Number(match[1]));
 /** The box that carries the zero line down the marks. */
-const zeroBox = chart => find(chart, node => node.props.position === 'absolute' && node.children.length === 1 && node.children[0].props.background === 'text/20')[0];
+const zeroBox = chart => find(chart, node => node.props.position === 'absolute' && node.children.length === 1 && node.children[0].props.background === 'line-strong')[0];
 const slots = chart => find(chart, node => (node.tag === 'button' || node.props.role === 'listitem') && /: /.test(node.props.accessibilityLabel ?? ''));
 /** How far down a box is moved, as a percentage of its own height, to two places. */
 const down = node => Math.round(Number.parseFloat(JSON.parse(node.props.transform).translate[1]) * 100) / 100;

@@ -32,7 +32,7 @@ export function Standard() {
   return (
     <Said>
       {say => (
-        <view className="overflow-hidden rounded-container border border-text/12 bg-canvas">
+        <view className="overflow-hidden rounded-container border border-line bg-canvas">
           <TopBar
             startContent={<IconButton icon="chevron-start" label="Back" variant="ghost" onClick={() => say('Went back')} data-testid="orders-back" />}
             heading="Orders"
@@ -81,7 +81,7 @@ const mail = [
 export function WithSearch() {
   const query = useLocal('query', '');
   return (
-    <view className="overflow-hidden rounded-container border border-text/12 bg-canvas">
+    <view className="overflow-hidden rounded-container border border-line bg-canvas">
       <TopBar
         heading="Mail"
         centerContent={<SearchField label="Search mail" isLabelHidden placeholder="Search mail" bind={query} data-testid="mail-search" />}
@@ -124,7 +124,7 @@ export function WithSearch() {
 - `className`: classes merged after the recipe's, so they win.
 - The recipe, `topBarRecipe` from `@liulidesign/core/TopBar/recipe`: the classes of each part, to style an element of your own to match. The component does not read a changed copy.
 - Scale tokens it reads, set in the app's stylesheet under `@theme`: `--text-body`.
-- Colour roles it paints with, set by the theme pack: `surface`, `text`.
+- Colour roles it paints with, set by the theme pack: `line`, `surface`, `text`.
 
 ## Accessibility
 

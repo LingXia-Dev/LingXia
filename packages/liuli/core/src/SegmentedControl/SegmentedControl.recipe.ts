@@ -27,7 +27,7 @@ export const segmentedControlRecipe = {
   },
   thumb: {
     /** The hairline carries the lift in dark, where the contact shadow does not show. */
-    base: 'absolute start-0 rounded-segment border border-text/12 bg-surface-raised shadow-contact transition-transform duration-base ease-spring',
+    base: 'absolute start-0 rounded-segment border border-line bg-surface-raised shadow-contact transition-transform duration-base ease-spring',
     row: 'inset-y-0',
     stacked: 'top-0 end-0',
   },

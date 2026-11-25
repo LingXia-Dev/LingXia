@@ -17,7 +17,7 @@ Details hides secondary content behind a row the person opens when they need it:
 ```tsx
 import { Details } from '@liulidesign/core/Details';
 
-const surface = 'gap-1 rounded-container border border-text/12 bg-surface px-5 pt-4 pb-1';
+const surface = 'gap-1 rounded-container border border-line bg-surface px-5 pt-4 pb-1';
 
 /** One disclosure under the text it qualifies: the summary opens and closes the content under it. */
 export function Single() {
@@ -151,7 +151,7 @@ export function WithForm() {
 - `className`: classes merged after the recipe's, so they win.
 - The recipe, `detailsRecipe` from `@liulidesign/core/Details/recipe`: the classes of each part, to style an element of your own to match. The component does not read a changed copy.
 - Scale tokens it reads, set in the app's stylesheet under `@theme`: `--spacing-control-lg`, `--text-footnote`, `--text-body`, `--radius-control`, `--radius-container`.
-- Colour roles it paints with, set by the theme pack: `focus`, `surface`, `surface-overlay`, `text`, `text-muted`.
+- Colour roles it paints with, set by the theme pack: `focus`, `line`, `surface`, `surface-overlay`, `text`, `text-muted`.
 
 ## Accessibility
 

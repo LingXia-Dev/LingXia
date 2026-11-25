@@ -39,7 +39,7 @@ export function LiveStreamSplit() {
   const muted = useLocal('muted', false);
   const large = useLocal('large', false);
   return (
-    <view className={cx('overflow-hidden rounded-container border border-text/12', env.sizeClass === 'regular' ? 'h-[400px]' : 'h-[600px]')}>
+    <view className={cx('overflow-hidden rounded-container border border-line', env.sizeClass === 'regular' ? 'h-[400px]' : 'h-[600px]')}>
       <Split
         asideWidth={300}
         asideLabel="Live chat"
@@ -56,7 +56,7 @@ export function LiveStreamSplit() {
                 ))}
               </view>
             </scroll>
-            <view className="px-3 pb-3 pt-2 border-t border-text/8">
+            <view className="px-3 pb-3 pt-2 border-t border-line">
               <Composer bind={draft} label="Message" placeholder="Say something" onSubmit={() => draft.set('')} />
             </view>
           </view>
@@ -108,7 +108,7 @@ export function DocumentSheetSplit() {
   const reply = useLocal('reply', '');
   const isCompact = env.sizeClass !== 'regular';
   return (
-    <view className="h-[440px] overflow-hidden rounded-container border border-text/12">
+    <view className="h-[440px] overflow-hidden rounded-container border border-line">
       <Split
         compact="sheet"
         bind={commentsOpen}
@@ -133,7 +133,7 @@ export function DocumentSheetSplit() {
                 ))}
               </view>
             </scroll>
-            <view className="px-4 pt-3 border-t border-text/8" data-testid="doc-reply-row">
+            <view className="px-4 pt-3 border-t border-line" data-testid="doc-reply-row">
               <Composer bind={reply} label="Reply" placeholder="Add a comment" onSubmit={() => reply.set('')} data-testid="doc-reply" />
             </view>
           </view>
@@ -200,7 +200,7 @@ export function DocumentSheetSplit() {
 - `className`: classes merged after the recipe's, so they win.
 - The recipe, `splitRecipe` from `@liulidesign/core/Split/recipe`: the classes of each part, to style an element of your own to match. The component does not read a changed copy.
 - It reads no Liuli scale token.
-- Colour roles it paints with, set by the theme pack: `canvas`, `text`.
+- Colour roles it paints with, set by the theme pack: `canvas`, `line`.
 
 ## Accessibility
 

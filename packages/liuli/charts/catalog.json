@@ -467,6 +467,8 @@
           "--text-footnote"
         ],
         "roles": [
+          "line",
+          "line-strong",
           "text",
           "text-muted"
         ]
@@ -1041,6 +1043,7 @@
           "chart-7",
           "chart-8",
           "danger",
+          "line",
           "line-strong",
           "text",
           "text-faint",
@@ -1548,6 +1551,8 @@
           "--text-footnote"
         ],
         "roles": [
+          "line",
+          "line-strong",
           "text",
           "text-muted"
         ]
@@ -2276,7 +2281,7 @@
         {
           "name": "InRows",
           "title": "In list rows",
-          "source": "import { Sparkline } from '@liulidesign/charts/Sparkline';\n\nconst cities = [\n  { name: 'Lisbon', now: '24°', values: [19, 20, 22, 24, 25, 24, 24], label: 'Lisbon, last 7 days: 19 to 24 degrees' },\n  { name: 'Oslo', now: '9°', values: [12, 11, 11, 10, 8, 9, 9], label: 'Oslo, last 7 days: 12 to 9 degrees' },\n  { name: 'Nairobi', now: '27°', values: [26, 27, 26, 28, 27, 27, 27], label: 'Nairobi, last 7 days: steady near 27 degrees' },\n];\n\n/** In a row, the sparkline sits between the name and the figure it explains. */\nexport function InRows() {\n  return (\n    <view role=\"list\" aria-label=\"Cities\" className=\"divide-y divide-text/8\">\n      {cities.map(city => (\n        <view key={city.name} role=\"listitem\" className=\"flex-row items-center gap-4 py-2.5\">\n          <text className=\"grow basis-0 text-body text-text\">{city.name}</text>\n          <Sparkline values={city.values} tone=\"neutral\" size=\"sm\" label={city.label} className=\"w-20 self-center\" />\n          <text className=\"w-[4ch] text-end text-body font-medium text-text tabular-nums\">{city.now}</text>\n        </view>\n      ))}\n    </view>\n  );\n}"
+          "source": "import { Sparkline } from '@liulidesign/charts/Sparkline';\n\nconst cities = [\n  { name: 'Lisbon', now: '24°', values: [19, 20, 22, 24, 25, 24, 24], label: 'Lisbon, last 7 days: 19 to 24 degrees' },\n  { name: 'Oslo', now: '9°', values: [12, 11, 11, 10, 8, 9, 9], label: 'Oslo, last 7 days: 12 to 9 degrees' },\n  { name: 'Nairobi', now: '27°', values: [26, 27, 26, 28, 27, 27, 27], label: 'Nairobi, last 7 days: steady near 27 degrees' },\n];\n\n/** In a row, the sparkline sits between the name and the figure it explains. */\nexport function InRows() {\n  return (\n    <view role=\"list\" aria-label=\"Cities\" className=\"divide-y divide-line\">\n      {cities.map(city => (\n        <view key={city.name} role=\"listitem\" className=\"flex-row items-center gap-4 py-2.5\">\n          <text className=\"grow basis-0 text-body text-text\">{city.name}</text>\n          <Sparkline values={city.values} tone=\"neutral\" size=\"sm\" label={city.label} className=\"w-20 self-center\" />\n          <text className=\"w-[4ch] text-end text-body font-medium text-text tabular-nums\">{city.now}</text>\n        </view>\n      ))}\n    </view>\n  );\n}"
         }
       ],
       "gaps": [

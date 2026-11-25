@@ -93,7 +93,7 @@ export function InRows() {
   const removed = useLocal<readonly string[]>('removed', []);
   const files = ['Budget.xlsx', 'Notes.txt', 'Plan.pdf'].filter(name => !removed.value.includes(name));
   return (
-    <view role="list" aria-label="Attachments" className="divide-y divide-text/8">
+    <view role="list" aria-label="Attachments" className="divide-y divide-line">
       {files.map(name => (
         <view key={name} role="listitem">
           <Item

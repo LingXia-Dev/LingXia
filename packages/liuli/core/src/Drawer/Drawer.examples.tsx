@@ -61,7 +61,7 @@ export function Navigation() {
 export function Specimen() {
   return (
     <view className="w-28 h-16 flex-row justify-end overflow-hidden rounded-control bg-surface-sunken">
-      <view className="w-12 h-full rounded-s-control border-s border-text/12 bg-surface-overlay" />
+      <view className="w-12 h-full rounded-s-control border-s border-line bg-surface-overlay" />
     </view>
   );
 }

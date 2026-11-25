@@ -78,7 +78,7 @@ export function Filter() {
       className="gap-3"
       data-testid="filter"
     >
-      <view className="-mx-5 -mb-5 divide-y divide-text/8 border-t border-text/8">
+      <view className="-mx-5 -mb-5 divide-y divide-line border-t border-line">
         {notes[filter.value as keyof typeof notes].map(note => <Item key={note} label={note} />)}
       </view>
     </Tabs>
