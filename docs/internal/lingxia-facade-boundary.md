@@ -1,99 +1,40 @@
 # LingXia Facade Boundary
 
-> **Audience**: contributors working on the `lingxia` crate facade and its internal implementation crates (`lingxia-logic`, `lingxia-lxapp` and its bridge module, `lingxia-browser`, `rong`, proc-macro crates). If you're **building an app on LingXia**, the rule you need is simply "import from `lingxia::*` facades, never from internal crates" — this is restated in the skill at [`docs/skill/native/development.md`](../skill/native/development.md). This doc defines what stays behind the facade and why.
+> **Audience**: contributors working on the `lingxia` crate facade and the
+> implementation crates behind it. App authors only need "import from
+> `lingxia::*`, never from internal crates", stated in
+> [`docs/skill/native/development.md`](../skill/native/development.md). Which
+> crate owns which code is [`crate-layout.md`](crate-layout.md).
 
-This internal document defines the public Rust API boundary for LingXia application projects:
+`lingxia` is the only public Rust API for LingXia app authors. Invariants:
 
-- app-facing Rust libraries depend on `lingxia`
-- app-facing Rust libraries do not depend directly on `lxapp`
-- internal implementation layers such as `lingxia-browser`, the shell domain inside `lingxia`, and proc-macro crates stay behind the `lingxia` facade
+- An app's Rust library depends on `lingxia` and nothing else from LingXia.
+  A host app may also link the host integration crates
+  (`lingxia-control-runtime`, `lingxia-windows-sdk`).
+- The public API is organized around what a developer means (host functions,
+  files, update, media), not around internal crate layout.
+- An app crate that needs an internal crate means the facade is missing an
+  export or wrapper; add it to the facade rather than taking the dependency.
 
-## Goal
+The reason is that internal crates are reorganized freely. Only the facade has
+to stay stable, so an app crate that reaches past it breaks on refactors that
+never touched its API.
 
-`lingxia` is the only public Rust facade for LingXia app authors.
+## What the facade exports
 
-Application Rust libraries, such as `examples/*/rust-lib`, should:
+| Area | Exports | Notes |
+| --- | --- | --- |
+| Platform entry | `lingxia::android`, `apple`, `harmony`, `windows`; the init path | The facade owns the final FFI surface. Apps never call `lxapp::init` or wire runtime internals. |
+| Host functions | `#[lingxia::native(...)]`, `lingxia::host::*` (`HostResult`, `HostCancel`, `await_or_cancel`, `StreamContext`, `ChannelContext`), `HostAddon`, `register_host_addon` | The proc-macro crate is an implementation detail. |
+| Logic extensions | `lingxia::js::{LxLogicExtension, register_logic_extension}` (`standard` feature) | Apps never depend on `lxapp::lx`. |
+| Runtime types | `LxApp`, surface and page request types, provider traits (`lingxia::provider`) | Only types an author legitimately needs; no runtime orchestration types. |
+| Product domains | `app`, `device`, `file`, `media`, `update`, `task`, `wifi`, `location`, `network`, `navigation`, `log` | Grouped by what they do, not by owning crate. |
+| Opt-in products | `embedded_browser` (`browser-runtime`), `terminal` (`terminal-runtime`), `capture`, `automation_runtime`, `product_cli`, `dev` (`devtool`) | Each behind its feature, so a product build without it carries none of the code. |
 
-- depend on `lingxia`
-- define host APIs through `lingxia`
-- register logic extensions through `lingxia::js` when `standard` is enabled
-- consume platform exports through `lingxia`
+## Host app update
 
-They should not need to know about runtime-core crate boundaries.
-
-## What `lingxia` Must Export
-
-### 1. Platform entry surface
-
-`lingxia` should remain the crate that produces and owns the final platform-facing entry surface.
-
-It should export:
-
-- platform FFI modules such as `lingxia::android`, `lingxia::apple`, and `lingxia::harmony`
-- the unified initialization path used by host apps
-- built-in product registration needed for browser and other first-party surfaces
-
-Application crates should not call `lxapp::init` or wire runtime internals directly.
-
-### 2. Host API authoring surface
-
-App authors should define page-facing host functions only through `lingxia`.
-
-This includes:
-
-- `#[lingxia::native(...)]`
-- `lingxia::host::*`
-- `lingxia::host::HostResult`
-- `lingxia::host::HostCancel`
-- `lingxia::host::await_or_cancel(...)`
-- `lingxia::host::StreamContext`
-- `lingxia::host::ChannelContext`
-
-The proc-macro implementation can stay in a separate crate, but that crate is an implementation detail.
-
-### 3. Logic extension authoring surface
-
-App authors should register Logic-layer APIs through `lingxia::js`.
-
-This includes:
-
-- `lingxia::js::LxLogicExtension`
-- `lingxia::js::register_logic_extension(...)`
-- any stable `lx` helper facade intentionally exposed for extension authors
-
-App crates should not depend on `lxapp::lx` directly.
-
-### 4. Stable runtime context types
-
-`lingxia` should export the minimum set of runtime types an app author legitimately needs.
-
-These include:
-
-- `lingxia::LxApp`
-- provider traits intended for app integration
-- stable file transfer and update surface types
-
-The rule is:
-
-- export app-authoring types
-- do not export internal runtime orchestration types unless there is a clear authoring need
-
-### 5. Product-domain facades
-
-If an app crate can reasonably use a capability, it should come from `lingxia`, not from an internal crate.
-
-Examples:
-
-- app info
-- file transfer
-- update providers
-- notification providers
-- fingerprint providers
-
-These should be organized around product domains, not around internal crate ownership.
-
-Host app update should expose a complete check + install flow, not raw package
-data. The surface is `lingxia::update::host_app`:
+The surface is `lingxia::update::host_app`, a complete check + install flow
+rather than raw package data:
 
 ```rust
 // Optional, once at startup; without this the platform default installer is used.
@@ -108,154 +49,44 @@ lingxia::update::host_app::on_progress(|progress| {
 match lingxia::update::host_app::check().await? {
     lingxia::update::host_app::Outcome::UpToDate => {}
     lingxia::update::host_app::Outcome::Installed { version } => {}
+    lingxia::update::host_app::Outcome::Deferred { version } => {}
 }
 ```
 
-The facade should not expose package paths, caller-supplied current versions,
-global config mutation, or separate download/install steps.
+The facade exposes no package paths, caller-supplied current versions, global
+config mutation, or separate download/install steps, so a host cannot install
+a package that skipped verification or the version check (see
+[update-pipeline.md](update-pipeline.md)).
 
-## What `lingxia` May Export Carefully
+## Downloads and the embedded browser
 
-### 1. Browser product facade
+Download history, pause, retry and directory overrides are shell and Logic
+product concerns. They stay in `lingxia-service` / `lingxia-transfer` and are
+not facade API. Native code that just needs a file uses
+`lingxia::file::download`.
 
-If app authors need to enable or register the built-in browser product, that should happen through `lingxia`.
+A host embedding its own browser controls uses `lingxia::embedded_browser`.
+It configures the transport (`require_local_proxy`, `reapply_local_proxy`,
+`block_downloads`, `use_system_network`) and reads browser-owned download
+state (`downloads`, `download_action`), never with caller-supplied filesystem
+paths. The proxy contract (fail-closed, per-platform scope, threading) is
+documented on the module's rustdoc in `crates/lingxia/src/embedded_browser.rs`;
+keep it there.
 
-Examples of acceptable facade shapes:
+## What stays internal
 
-- `lingxia::register_builtin_browser()`
-- `lingxia::browser::register_builtin()`
+| Internal | Why |
+| --- | --- |
+| `lxapp::init`, install/load orchestration, built-in app ownership, route wiring | Sequenced by the facade's init path; apps have no reason to call them. |
+| Page attach/detach, popup and overlay orchestration, page target resolution, WebView controller lifecycle | Platform lifecycle with no authoring use; see [webview-lifecycle.md](webview-lifecycle.md). |
+| Browser tab models and `lingxia-browser` | The browser product registers itself at init when its feature is on; apps reach it only through `embedded_browser`. |
+| `lingxia-native-macros` | Re-exported as `lingxia::native`. |
+| First-party routes such as `lingxia://settings` | Apps open product surfaces through narrow typed APIs (`RuntimeInfo::resolve_settings_destination`, `RuntimeInfo::open_trusted_browser_page`), never raw routes. |
 
-App crates should not need a direct dependency on `lingxia-browser`.
+## Windows host entry
 
-### 2. Internal product actions
-
-If app authors need to open first-party product surfaces, that should go
-through a narrow `lingxia` action API instead of raw routes or service internals.
-
-Examples:
-
-- `lingxia::open_product_surface(...)`
-
-App code should not need to know internal routes such as `lingxia://settings`.
-
-### 3. Download management
-
-Download history, pause, retry, and directory overrides are shell/logic product
-concerns. They stay in `lingxia-service`/`lingxia-transfer` and are not facade
-API without a clear host-app authoring use case. Native app code that simply needs to
-fetch a file should use `lingxia::file::download`.
-
-A host embedding its own browser controls uses `lingxia::embedded_browser`
-(the `browser-runtime` feature). Configure `require_local_proxy` before opening
-with `open_and_present`; it also applies the transport to browser downloads.
-On Apple the proxy is scoped to browser data stores; on Android and Harmony it
-is app-wide, so lxapp pages route through it too.
-The proxy is fail-closed. On Apple an unchanged port is a no-op and a changed
-one interrupts in-flight loads; nothing re-applies it on resume.
-`reapply_local_proxy` forces the write for a host that rebuilt its listener on
-the same port; whether WebKit then reconnects is device-verified behaviour, not
-an API guarantee. The calls work from any thread except Android's main thread,
-where they fail at once (Chromium acknowledges the apply on the main looper);
-on Apple they block until the main thread runs the apply, so the main thread
-must never wait on their caller. Download routing follows the latest apply.
-`block_downloads` preserves the required WebView proxy during disconnection;
-`use_system_network` explicitly clears it. Changing transport pauses active
-browser downloads. `downloads` and `download_action` expose browser-owned task
-metadata and actions, with no caller-supplied filesystem paths.
-
-## What Must Stay Internal
-
-### 1. `lxapp` initialization and runtime wiring
-
-The following belong to internal implementation layers:
-
-- `lxapp::init`
-- runtime install/load orchestration
-- built-in app ownership resolution
-- internal route wiring
-
-These are not part of the application authoring surface.
-
-### 2. WebView and page lifecycle internals
-
-Do not expose implementation details such as:
-
-- page attach and detach internals
-- popup and overlay orchestration
-- browser tab runtime models
-- internal page target resolution
-- WebView controller lifecycle details
-
-### 3. Browser and shell implementation crates
-
-Application crates should not directly depend on:
-
-- `lingxia-browser`
-
-It is internal and does not define the public authoring model.
-
-### 4. Macro implementation crates
-
-Application crates should not directly depend on:
-
-- `lingxia-native-macros`
-
-These are implementation details behind `lingxia::native`.
-
-## Public Shape
-
-The top level of the public API reads like this (abridged):
-
-```rust
-lingxia::
-  android
-  apple
-  harmony
-
-  host
-  native
-
-  LxApp
-  js::LxLogicExtension
-  js::register_logic_extension
-
-  file
-  media
-  update
-  provider
-```
-
-The important rule is:
-
-- public API should be organized around developer meaning
-- public API should not mirror internal crate layout
-
-## Rules For App Rust Libraries
-
-Application Rust libraries may depend on:
-
-- `lingxia`
-
-Application Rust libraries should not directly depend on:
-
-- `lxapp`
-- `lingxia-browser`
-- `lingxia-native-macros`
-
-An app crate that needs one of those dependencies means the `lingxia` facade is missing a required export or wrapper; add it to the facade.
-
-## Layering
-
-- `lingxia` is the public facade crate
-- host-runtime crates sit above the facade as platform host entry points:
-  `lingxia-windows-sdk` is the Windows host entry, providing the binary-level
-  pieces (`WindowsApp` configuration, `init_runtime`, `run_message_loop`,
-  `quick_start`), while `lingxia::windows` holds the facade-level Windows
-  APIs (`Platform`, `init`, `open_home_app`, app-icon helpers) that
-  `lingxia-windows-sdk` builds on — hosts use `lingxia-windows-sdk` for binary
-  entry and the message loop
-- `lxapp` is runtime core
-- browser and shell concerns stay behind `lingxia`
-- app authors only program against `lingxia`
-
-Refactors preserve this boundary.
+`lingxia-windows-sdk` is the Windows host entry: the binary-level pieces
+(`WindowsApp`, `init_runtime`, `run_message_loop`, `quick_start`).
+`lingxia::windows` holds the facade-level Windows APIs it builds on
+(`Platform`, `init`, `open_home_app`). Hosts use `lingxia-windows-sdk` for the
+binary entry and the message loop.
