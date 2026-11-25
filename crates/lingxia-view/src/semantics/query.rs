@@ -333,25 +333,38 @@ pub fn select(projection: &Projection, selector: &str) -> Result<Vec<usize>, Str
         .collect())
 }
 
-/// What a DOM element's rendered text reads: its own text, else its rendered descendants'
-/// text in order, one space apart. Editor values are values, not text.
+/// What a DOM element's rendered text reads: a text node's own text, else its rendered
+/// descendants' text in order, one space apart. Editor values are values, not text, and a
+/// control with children is read through them, not by its accessible name.
 fn text_content(nodes: &[NodeSnapshot], index: usize) -> String {
     let node = &nodes[index];
-    if node.input.is_none() && !node.text.is_empty() {
+    let has_descendants = |at: usize| {
+        let prefix = format!("{}/", nodes[at].identity);
+        nodes.get(at + 1).is_some_and(|next| next.identity.starts_with(&prefix))
+    };
+    // A leaf control keeps its snapshot text: its content is not kept apart from its label.
+    if (!named_by_label(node) || !has_descendants(index))
+        && node.input.is_none()
+        && !node.text.is_empty()
+    {
         return node.text.clone();
     }
     let prefix = format!("{}/", node.identity);
     let mut parts: Vec<&str> = Vec::new();
     let mut covered: Option<String> = None;
-    for child in nodes[index + 1..]
+    for (offset, child) in nodes[index + 1..]
         .iter()
-        .take_while(|child| child.identity.starts_with(&prefix))
+        .enumerate()
+        .take_while(|(_, child)| child.identity.starts_with(&prefix))
     {
         // A text node's runs are its text already.
         if covered
             .as_ref()
             .is_some_and(|text| child.identity.starts_with(text.as_str()))
         {
+            continue;
+        }
+        if named_by_label(child) && has_descendants(index + 1 + offset) {
             continue;
         }
         if child.input.is_none()
@@ -364,6 +377,11 @@ fn text_content(nodes: &[NodeSnapshot], index: usize) -> String {
         }
     }
     parts.join(" ")
+}
+
+/// Controls whose snapshot text is their accessible name rather than their content.
+fn named_by_label(node: &NodeSnapshot) -> bool {
+    matches!(node.tag, "button" | "link-box" | "checkbox" | "switch")
 }
 
 /// The authored ARIA states, in `NodeSnapshot::states` order.

@@ -611,6 +611,26 @@ fn a_container_reads_its_descendants_text_like_dom_text_content() {
 }
 
 #[test]
+fn a_labelled_button_reads_its_children_as_text_and_keeps_its_label_as_name() {
+    let i = interaction(
+        "h('view',{},h('button',{'data-testid':'boost','aria-label':'Boost mode',onClick(){}},h('text',{},'Boost'),h('text',{},'Faster charging')))",
+    );
+    let boost = i
+        .automation_query("[data-testid=\"boost\"]", None, false, None)
+        .unwrap();
+    assert_eq!(boost["text"], "Boost Faster charging");
+    assert_eq!(boost["attributes"]["aria-label"], "Boost mode");
+    // A control inside the container is read through its children too.
+    let i = interaction(
+        "h('view',{'data-testid':'group'},h('button',{'aria-label':'Eco mode',onClick(){}},h('text',{},'Eco')),h('button',{'aria-label':'Boost mode',onClick(){}},h('text',{},'Boost')))",
+    );
+    let group = i
+        .automation_query("[data-testid=\"group\"]", None, false, None)
+        .unwrap();
+    assert_eq!(group["text"], "Eco Boost");
+}
+
+#[test]
 fn data_props_answer_attribute_selectors_and_reads_but_not_semantics() {
     let i = interaction(
         "h('view',{},h('button',{'data-testid':'mode','data-mode':'dark','data-selected':true,onClick(){}},'Dark'),h('button',{'data-testid':'light','data-mode':'light',onClick(){}},'Light'))",
