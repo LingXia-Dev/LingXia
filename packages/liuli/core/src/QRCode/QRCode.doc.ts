@@ -34,6 +34,7 @@ export const doc: ComponentDoc = {
       'Say what scanning does in `label`: "Code to join Harbour Café Guest".',
       'Show the link or password beside the code for whoever cannot scan.',
       'Check a value that comes from data with `fitsQRCode` and show it as text when it does not fit.',
+      'To save or share the code, give your own button `qrCodeSVG(value, level)`: the same code as an SVG document.',
       'In a `WIFI:` value, put a backslash before every `\\`, `;`, `,`, `"` and `:` in the name and password, and wrap a name or password made only of hex digits in double quotes, or readers take it as hex: `WIFI:T:WPA;S:Harbour Café\\; Upstairs;P:tide\\:pool\\,73;;` joins "Harbour Café; Upstairs" with the password "tide:pool,73".',
     ],
     dont: [

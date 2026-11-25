@@ -15443,6 +15443,7 @@
       "import": "@liulidesign/core/QRCode",
       "exports": [
         "fitsQRCode",
+        "qrCodeSVG",
         "QRCode"
       ],
       "category": "content",

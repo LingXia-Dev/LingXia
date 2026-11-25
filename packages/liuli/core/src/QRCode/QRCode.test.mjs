@@ -108,3 +108,25 @@ test('the WIFI guidance: its example reads back to the name and password it says
   assert.deepEqual(fields, { T: 'WPA', S: 'Harbour Café; Upstairs', P: 'tide:pool,73' });
   assert.ok(line.includes('"Harbour Café; Upstairs"') && line.includes('"tide:pool,73"'), 'the words match the value');
 });
+
+test('qrCodeSVG: a standalone SVG of the same modules, with the quiet zone; a value too long throws', async () => {
+  const value = 'https://lingxia.app/join/7F3K';
+  const screen = await renderPage(`
+    import { qrCodeSVG } from '@liulidesign/core/QRCode';
+    let long = '';
+    try { qrCodeSVG('x'.repeat(2000)); } catch { long = 'threw'; }
+    export function render() {
+      return <page><text data-testid="svg">{qrCodeSVG(${JSON.stringify(value)})}</text><text data-testid="long">{long}</text></page>;
+    }
+  `);
+  const svg = textOf(screen.getByTestId('svg'));
+  const modules = encodeQR(value, 'M', 15);
+  const side = modules.length + 8;
+  assert.ok(svg.startsWith(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${side} ${side}"`));
+  // Every dark module is covered once by the black rectangles.
+  let area = 0;
+  for (const [, d] of svg.matchAll(/fill="#000000" d="([^"]*)"/g))
+    for (const [, w, h] of d.matchAll(/h(\d+)v(\d+)/g)) area += Number(w) * Number(h);
+  assert.equal(area, modules.flat().filter(Boolean).length);
+  assert.equal(textOf(screen.getByTestId('long')), 'threw');
+});

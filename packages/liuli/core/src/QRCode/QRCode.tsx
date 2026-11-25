@@ -61,6 +61,16 @@ export function fitsQRCode(value: string, level: QRLevel = 'M'): boolean {
   return bytes <= limit;
 }
 
+/**
+ * The same code as a standalone SVG document, black on white with its quiet zone, for an app to save
+ * or share with a button of its own. Throws, as QRCode does, when `value` does not fit.
+ */
+export function qrCodeSVG(value: string, level: QRLevel = 'M'): string {
+  const { viewBox, paths } = source(value, level);
+  const shapes = paths.map(path => `<path fill="${path.fill}" d="${path.d}"/>`).join('');
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${viewBox.join(' ')}" shape-rendering="crispEdges">${shapes}</svg>`;
+}
+
 /** A QR code for a phone camera to read: a link to open, a code to join with. */
 export function QRCode({ value, label, size = 'md', level = 'M', className, 'data-testid': testId, ...attributes }: QRCodeProps) {
   const { bytes, limit } = qrRoom(value, level, maxVersion);
