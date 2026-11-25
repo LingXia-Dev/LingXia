@@ -731,6 +731,8 @@ public final class GpuFrame {
         public String html() { return json.isNull("html") ? null : json.optString("html", null); }
         /** `plain`: bool? */
         public Boolean plain() { if (json.isNull("plain")) return null; return json.optBoolean("plain"); }
+        /** `omitted`: string[]? */
+        public String[] omitted() { return (String[]) GpuFrame.array(json.optJSONArray("omitted"), 1, "String"); }
         /** A `drag_hit_test` InputRequest. */
         public static JSONObject dragHitTest(String identity, long generation, long token, float[] point, long[] edge) { return GpuFrame.message("op", "drag_hit_test", "identity", identity, "generation", generation, "token", token, "point", point, "edge", edge); }
         /** A `hit_test` InputRequest. */
@@ -744,7 +746,7 @@ public final class GpuFrame {
         /** A `edit` InputRequest. */
         public static JSONObject edit(String identity, long token, JSONObject[] edits, boolean submit) { return GpuFrame.message("op", "edit", "identity", identity, "token", token, "edits", edits, "submit", submit); }
         /** A `paste` InputRequest. */
-        public static JSONObject paste(String identity, long token, String text, String html, boolean plain) { return GpuFrame.message("op", "paste", "identity", identity, "token", token, "text", text, "html", html, "plain", plain); }
+        public static JSONObject paste(String identity, long token, String text, String html, boolean plain, String[] omitted) { return GpuFrame.message("op", "paste", "identity", identity, "token", token, "text", text, "html", html, "plain", plain, "omitted", omitted); }
     }
 
     public static final class InputEdit {

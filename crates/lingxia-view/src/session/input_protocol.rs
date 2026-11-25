@@ -51,6 +51,9 @@ enum Request {
         #[serde(default)]
         html: Option<String>,
         plain: bool,
+        /// Flavours the platform left out to keep the request in budget: `"html"`.
+        #[serde(default)]
+        omitted: Option<Vec<String>>,
     },
 }
 
@@ -196,7 +199,15 @@ impl ViewSession {
                 text,
                 html,
                 plain,
-            } => self.paste_input(token, &identity, text, html, plain)?,
+                omitted,
+            } => {
+                let omitted = omitted.unwrap_or_default();
+                if omitted.iter().any(|flavour| flavour != "html") {
+                    return Err("UI_INPUT: a paste omits only html".into());
+                }
+                let html_omitted = !omitted.is_empty();
+                self.paste_input(token, &identity, text, html, plain, html_omitted)?
+            }
         };
         serde_json::to_string(&reply).map_err(|e| e.to_string())
     }
@@ -340,6 +351,61 @@ mod tests {
             json!({"op":"paste","identity":line,"token":token,"text":"one\ntwo","plain":false}),
         );
         assert_eq!(reply["state"]["text"], "one two");
+    }
+
+    /// A platform that left the html out to stay in budget names it; the page hears that, and
+    /// the plain text still goes in.
+    #[test]
+    fn a_paste_whose_html_the_platform_left_out_names_it_omitted() {
+        use serde_json::{Value, json};
+        let source = crate::session::tests::source(
+            "function render(){const doc=useLocal('doc','ab'),seen=useLocal('seen','');return h('view',{},h('textarea',{bind:doc,'aria-label':'Doc',style:{height:60},onPaste:e=>seen.set(JSON.stringify([e.html??null,e.omitted]))}),h('text',{},seen.value))}",
+        );
+        let mut page = ViewSession::new(&source).unwrap();
+        let frame = page.prepare_native(300, 200, 1.0, true, None, Ok).unwrap();
+        let doc = frame
+            .nodes
+            .iter()
+            .find(|node| node.input.is_some())
+            .unwrap()
+            .identity
+            .to_string();
+        let generation = page.generation();
+        let token = page.focus_input(generation, &doc).unwrap().unwrap().token;
+        let request = |page: &mut ViewSession, value: Value| page.input_request(&value.to_string());
+        request(
+            &mut page,
+            json!({"op":"edit","identity":doc,"token":token,"edits":[{"op":"selection","anchor":2,"focus":2}],"submit":false}),
+        )
+        .unwrap();
+        let reply: Value = serde_json::from_str(
+            &request(
+                &mut page,
+                json!({"op":"paste","identity":doc,"token":token,"text":"x","plain":false,"omitted":["html"]}),
+            )
+            .unwrap(),
+        )
+        .unwrap();
+        assert_eq!(reply["state"]["text"], "abx");
+        let frame = page.prepare_native(300, 200, 1.0, true, None, Ok).unwrap();
+        let seen = &frame
+            .nodes
+            .iter()
+            .rev()
+            .find(|n| n.tag == "text")
+            .unwrap()
+            .text;
+        assert_eq!(
+            serde_json::from_str::<Value>(seen).unwrap(),
+            json!([null, ["html"]])
+        );
+        assert!(
+            request(
+                &mut page,
+                json!({"op":"paste","identity":doc,"token":token,"text":"x","plain":false,"omitted":["files"]}),
+            )
+            .is_err()
+        );
     }
 
     #[test]

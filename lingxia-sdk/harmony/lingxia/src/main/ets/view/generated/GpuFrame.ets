@@ -487,6 +487,7 @@ export interface GpuFrameInputRequest {
   text?: string | null;
   html?: string | null;
   plain?: boolean | null;
+  omitted?: string[] | null;
 }
 
 /** `InputEdit` in the frame contract. */

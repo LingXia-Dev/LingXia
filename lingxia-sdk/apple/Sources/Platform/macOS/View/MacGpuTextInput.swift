@@ -75,7 +75,8 @@ extension GpuPageView: GpuImeHost, @preconcurrency NSTextInputClient {
             case "a": return editor.selectAll()
             case "c": return copyEditor(cut: false)
             case "x": return copyEditor(cut: true)
-            case "v": return pasteEditor()
+            // ⌥⇧⌘V pastes and matches style: the page hears it as plain.
+            case "v": return pasteEditor(plain: flags.contains(.option))
             case "z": return editor.history(undo: !flags.contains(.shift))
             default: return false
             }
@@ -93,10 +94,12 @@ extension GpuPageView: GpuImeHost, @preconcurrency NSTextInputClient {
         return cut ? editor.replace("", composing: false, key: true, before: copy) : copy()
     }
 
-    private func pasteEditor() -> Bool {
-        guard let editor = ime.editor, let value = NSPasteboard.general.string(forType: .string),
+    private func pasteEditor(plain: Bool = false) -> Bool {
+        let board = NSPasteboard.general
+        guard let editor = ime.editor, let value = board.string(forType: .string),
               GpuEditorMirror.valid(value) else { return false }
-        return editor.replace(value, composing: false, key: true)
+        let html = ime.hearsPaste && !plain ? board.string(forType: .html) : nil
+        return ime.paste(value, html: html, plain: plain) || editor.replace(value, composing: false, key: true)
     }
 
     /// Copy from the focused editor, or else the page's static-text selection.
@@ -106,6 +109,7 @@ extension GpuPageView: GpuImeHost, @preconcurrency NSTextInputClient {
     }
     @objc func cut(_ sender: Any?) { _ = copyEditor(cut: true) }
     @objc func paste(_ sender: Any?) { _ = pasteEditor() }
+    @objc func pasteAsPlainText(_ sender: Any?) { _ = pasteEditor(plain: true) }
     override func selectAll(_ sender: Any?) { _ = ime.editor?.selectAll() }
 
     // MARK: NSTextInputClient

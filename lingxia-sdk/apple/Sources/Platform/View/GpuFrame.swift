@@ -757,6 +757,7 @@ public struct GpuFrameInputRequest: Decodable, Sendable {
     public let text: String?
     public let html: String?
     public let plain: Bool?
+    public let omitted: [String]?
 
     enum CodingKeys: String, CodingKey {
         case op = "op"
@@ -771,6 +772,7 @@ public struct GpuFrameInputRequest: Decodable, Sendable {
         case text = "text"
         case html = "html"
         case plain = "plain"
+        case omitted = "omitted"
     }
 }
 
@@ -1448,7 +1450,7 @@ public enum GpuFrameInputRequestMessage: Encodable, Sendable {
     case query(identity: String, token: UInt64)
     case blur(identity: String, token: UInt64)
     case edit(identity: String, token: UInt64, edits: [GpuFrameInputEditMessage], submit: Bool)
-    case paste(identity: String, token: UInt64, text: String, html: String?, plain: Bool)
+    case paste(identity: String, token: UInt64, text: String, html: String?, plain: Bool, omitted: [String]?)
 
     public func encode(to encoder: Encoder) throws {
         var container = encoder.container(keyedBy: GpuFrameKey.self)
@@ -1484,13 +1486,14 @@ public enum GpuFrameInputRequestMessage: Encodable, Sendable {
             try container.encode(token, forKey: GpuFrameKey("token"))
             try container.encode(edits, forKey: GpuFrameKey("edits"))
             try container.encode(submit, forKey: GpuFrameKey("submit"))
-        case .paste(let identity, let token, let text, let html, let plain):
+        case .paste(let identity, let token, let text, let html, let plain, let omitted):
             try container.encode("paste", forKey: GpuFrameKey("op"))
             try container.encode(identity, forKey: GpuFrameKey("identity"))
             try container.encode(token, forKey: GpuFrameKey("token"))
             try container.encode(text, forKey: GpuFrameKey("text"))
             try container.encode(html, forKey: GpuFrameKey("html"))
             try container.encode(plain, forKey: GpuFrameKey("plain"))
+            try container.encode(omitted, forKey: GpuFrameKey("omitted"))
         }
     }
 }

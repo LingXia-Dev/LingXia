@@ -405,6 +405,7 @@ impl ViewSession {
         text: String,
         html: Option<String>,
         plain: bool,
+        html_omitted: bool,
     ) -> Result<Option<crate::InputReply>, String> {
         use crate::text::input::Edit;
         self.check_input_active()?;
@@ -421,13 +422,18 @@ impl ViewSession {
         let mut handled = false;
         if let Some(handle) = handle.filter(|_| self.presented_commit(self.generation)) {
             let mut omitted = Vec::new();
-            let html = html.filter(|_| !plain && !secure).filter(|html| {
-                let fits = html.len() <= crate::protocol::limits::PASTE_HTML_BYTES;
-                if !fits {
-                    omitted.push("html");
-                }
-                fits
-            });
+            if html_omitted && !plain && !secure {
+                omitted.push("html");
+            }
+            let html = html
+                .filter(|_| !plain && !secure && !html_omitted)
+                .filter(|html| {
+                    let fits = html.len() <= crate::protocol::limits::PASTE_HTML_BYTES;
+                    if !fits {
+                        omitted.push("html");
+                    }
+                    fits
+                });
             let payload = serde_json::json!({
                 "text": text,
                 "html": html,

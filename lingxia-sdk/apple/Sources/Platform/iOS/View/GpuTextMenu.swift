@@ -90,7 +90,11 @@ extension GpuPageView: @preconcurrency UIEditMenuInteractionDelegate {
                 }
             }
         case .paste:
-            if let value = UIPasteboard.general.string, GpuEditorMirror.valid(value) {
+            let board = UIPasteboard.general
+            guard let value = board.string, GpuEditorMirror.valid(value) else { return }
+            let html = ime.hearsPaste
+                ? board.data(forPasteboardType: "public.html").flatMap { String(data: $0, encoding: .utf8) } : nil
+            if !ime.paste(value, html: html, plain: false) {
                 editor.replace(value, composing: false, key: true)
             }
         case .selectAll: _ = editor.selectAll()

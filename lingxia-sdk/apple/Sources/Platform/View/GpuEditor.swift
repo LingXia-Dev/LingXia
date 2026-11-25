@@ -45,7 +45,8 @@ final class GpuEditorMirror {
     private var pendingBytes = 0
     private(set) var closed = false
     private var submitting = false
-    private var historyPending = false
+    /// An undo, redo or heard paste is out: only the core knows the text it leaves.
+    private var awaitingCore = false
     private var undoable = false
     private var redoable = false
     private var queued: [Edit] = []
@@ -111,8 +112,8 @@ final class GpuEditorMirror {
         for entry in pending where entry.revision <= acknowledged { pendingBytes -= entry.bytes }
         pending.removeAll { $0.revision <= acknowledged }
         if acknowledged == revision, queued.isEmpty, let state, install(state) {
-            let resync = historyPending
-            historyPending = false
+            let resync = awaitingCore
+            awaitingCore = false
             notify()
             return resync
         }
@@ -133,11 +134,11 @@ final class GpuEditorMirror {
         pendingBytes = 0
         queuedBytes = 0
         depth = 0
-        historyPending = false
+        awaitingCore = false
     }
 
     func beginBatch() -> Bool {
-        if closed || historyPending || depth >= Self.maxEdits { return false }
+        if closed || awaitingCore || depth >= Self.maxEdits { return false }
         depth += 1
         return true
     }
@@ -149,7 +150,7 @@ final class GpuEditorMirror {
     }
 
     private func reserve(_ edits: [Edit]) -> Bool {
-        if closed || historyPending || submitting || queued.count + edits.count > Self.maxEdits
+        if closed || awaitingCore || submitting || queued.count + edits.count > Self.maxEdits
             || pending.count >= Self.maxEdits { return false }
         let encoder = JSONEncoder()
         var bytes = 0
@@ -311,7 +312,7 @@ final class GpuEditorMirror {
 
     @discardableResult
     func submit() -> Bool {
-        if closed || historyPending || submitting || queued.count >= Self.maxEdits
+        if closed || awaitingCore || submitting || queued.count >= Self.maxEdits
             || pending.count >= Self.maxEdits { return false }
         submitting = true
         composeStart = -1
@@ -323,14 +324,25 @@ final class GpuEditorMirror {
     /// The mirror keeps no history: undo and redo wait for the core's state.
     @discardableResult
     func history(undo: Bool) -> Bool {
-        guard !closed, !historyPending, undo ? canUndo : canRedo, reserve([undo ? .undo : .redo])
+        guard !closed, !awaitingCore, undo ? canUndo : canRedo, reserve([undo ? .undo : .redo])
         else { return false }
-        historyPending = true
+        awaitingCore = true
         changed()
         return true
     }
 
     func selectAll() -> Bool { select(0, length) }
+
+    /// A revision for a paste the page hears first; the text changes here once the core answers.
+    func reservePaste() -> UInt64? {
+        guard !closed, !awaitingCore, !submitting, depth == 0, queued.isEmpty,
+              pending.count < Self.maxEdits else { return nil }
+        awaitingCore = true
+        revision += 1
+        pending.append((revision, 0))
+        notify()
+        return revision
+    }
 }
 
 /// Focus and editor lifecycle for one GPU page, shared by AppKit and UIKit. Every
@@ -581,5 +593,40 @@ final class GpuIme {
     func reset() {
         clear(blur: false)
         blurred = nil
+    }
+
+    /// The connected editor's page hears pastes with `onPaste`.
+    var hearsPaste: Bool { editor != nil && input?.onPaste != nil }
+
+    /// Sends a paste to an editor whose page hears it; the core inserts unless the page cancels.
+    /// False when it cannot go as one request: the caller inserts the text as before.
+    func paste(_ text: String, html: String?, plain: Bool) -> Bool {
+        guard let editor, hearsPaste, GpuEditorMirror.valid(text) else { return false }
+        let message = { (html: String?, omitted: [String]?) in
+            GpuFrameInputRequestMessage.paste(identity: editor.identity, token: editor.token, text: text,
+                                              html: html, plain: plain, omitted: omitted)
+        }
+        let fits = { (message: GpuFrameInputRequestMessage) in
+            (try? JSONEncoder().encode(message)).map { $0.count <= GpuFrameInputLimits.pasteRequestBytes } == true
+        }
+        // Html past its cap or the request's budget is left out and named, never sent to be refused.
+        let html = plain ? nil : html
+        var request = message(html, nil)
+        if let html, html.utf8.count > GpuFrameInputLimits.pasteHtmlBytes || !fits(request) {
+            request = message(nil, ["html"])
+        }
+        guard fits(request), let revision = editor.reservePaste() else { return false }
+        let created = epoch
+        host?.imeRequest(request) { [weak self] reply in
+            guard let self, created == self.epoch, editor === self.editor else { return }
+            guard let reply, reply.token == editor.token else {
+                self.drop(hide: true)
+                self.host?.imeRender(rebuild: false)
+                return
+            }
+            if editor.acknowledge(revision, state: reply.state) { self.host?.imeInvalidated() }
+            self.host?.imeRender(rebuild: reply.needsViewRender == true)
+        }
+        return true
     }
 }
