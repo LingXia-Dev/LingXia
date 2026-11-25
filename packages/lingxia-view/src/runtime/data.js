@@ -29,9 +29,17 @@ export function immutable(value, depth = 0, omitUndefined = false, budget) {
   if (typeof value === 'number' && Number.isFinite(value)) return value;
   if (Array.isArray(value)) return freeze(value.map(v => immutable(v, depth + 1, omitUndefined, budget)));
   if (value && Object.getPrototypeOf(value) === Object.prototype) {
-    return freeze(Object.fromEntries(Object.entries(value)
-      .filter(([, v]) => !omitUndefined || v !== undefined)
-      .map(([k, v]) => [k, immutable(v, depth + 1, omitUndefined, budget && ((budget.left -= k.length + 3), budget))])));
+    // One plain loop: each appended row passes here, and interpreted engines pay per intermediate array.
+    const out = {};
+    for (const k of Object.keys(value)) {
+      const v = value[k];
+      if (omitUndefined && v === undefined) continue;
+      if (budget) budget.left -= k.length + 3;
+      const item = immutable(v, depth + 1, omitUndefined, budget);
+      // A `__proto__` key stays data.
+      if (k === '__proto__') define(out, k, item); else out[k] = item;
+    }
+    return freeze(out);
   }
   throw Error('UI_LOCAL: expected JSON value');
 }
@@ -72,7 +80,8 @@ export function applyPatch(root, ops) {
       root = op.op === 'remove' ? freeze({}) : shared(op.value, root);
       continue;
     }
-    const tokens = op.path.slice(1).split('/').map(t => t.replace(/~1/g, '/').replace(/~0/g, '~'));
+    const tokens = op.path.slice(1).split('/');
+    if (op.path.includes('~')) for (let i = 0; i < tokens.length; i++) tokens[i] = tokens[i].replace(/~1/g, '/').replace(/~0/g, '~');
     root = patchAt(root, tokens, 0, op, fresh);
   }
   for (const [container, origin] of fresh) {
@@ -106,7 +115,8 @@ function patchLeaf(node, array, key, op, fresh) {
     if (op.op === 'remove' && index >= node.length) return node;
     const copy = mutable(node, fresh);
     if (op.op !== 'add' || index < copy.length) fresh.set(copy, null);
-    if (op.op === 'add') copy.splice(Math.min(index, copy.length), 0, immutable(op.value));
+    if (op.op === 'add' && index >= copy.length) copy.push(immutable(op.value));
+    else if (op.op === 'add') copy.splice(index, 0, immutable(op.value));
     else if (op.op === 'remove') copy.splice(index, 1);
     else {
       while (copy.length < index) copy.push(null);

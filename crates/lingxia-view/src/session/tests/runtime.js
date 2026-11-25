@@ -465,7 +465,16 @@
     if (typeof value === "number" && Number.isFinite(value)) return value;
     if (Array.isArray(value)) return freeze(value.map((v) => immutable(v, depth + 1, omitUndefined, budget)));
     if (value && Object.getPrototypeOf(value) === Object.prototype) {
-      return freeze(Object.fromEntries(Object.entries(value).filter(([, v]) => !omitUndefined || v !== void 0).map(([k, v]) => [k, immutable(v, depth + 1, omitUndefined, budget && (budget.left -= k.length + 3, budget))])));
+      const out = {};
+      for (const k of Object.keys(value)) {
+        const v = value[k];
+        if (omitUndefined && v === void 0) continue;
+        if (budget) budget.left -= k.length + 3;
+        const item = immutable(v, depth + 1, omitUndefined, budget);
+        if (k === "__proto__") define(out, k, item);
+        else out[k] = item;
+      }
+      return freeze(out);
     }
     throw Error("UI_LOCAL: expected JSON value");
   }
@@ -501,7 +510,8 @@
         root = op.op === "remove" ? freeze({}) : shared(op.value, root);
         continue;
       }
-      const tokens = op.path.slice(1).split("/").map((t) => t.replace(/~1/g, "/").replace(/~0/g, "~"));
+      const tokens = op.path.slice(1).split("/");
+      if (op.path.includes("~")) for (let i = 0; i < tokens.length; i++) tokens[i] = tokens[i].replace(/~1/g, "/").replace(/~0/g, "~");
       root = patchAt(root, tokens, 0, op, fresh2);
     }
     for (const [container2, origin] of fresh2) {
@@ -532,7 +542,8 @@
       if (op.op === "remove" && index >= node.length) return node;
       const copy3 = mutable(node, fresh2);
       if (op.op !== "add" || index < copy3.length) fresh2.set(copy3, null);
-      if (op.op === "add") copy3.splice(Math.min(index, copy3.length), 0, immutable(op.value));
+      if (op.op === "add" && index >= copy3.length) copy3.push(immutable(op.value));
+      else if (op.op === "add") copy3.splice(index, 0, immutable(op.value));
       else if (op.op === "remove") copy3.splice(index, 1);
       else {
         while (copy3.length < index) copy3.push(null);
