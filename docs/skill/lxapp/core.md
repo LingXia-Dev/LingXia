@@ -115,7 +115,7 @@ lx.ui.toast(scan.value)                    // narrowed: the payload is present
 
 Everything an `lx` call throws or rejects with is an `LxError`, argument refusals included
 (`E_INVALID_ARG`, named `TypeError`, the argument in `data`); an `lx` call never throws a bare
-`TypeError`. Branch on `code`, never on the localized message:
+`TypeError`. `message` is English for a log; branch on `code` (and `reason`) and show your own text:
 
 ```ts
 import { LxError, lx } from '@lingxia/logic'

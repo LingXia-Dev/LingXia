@@ -3747,6 +3747,7 @@ dependencies = [
  "http",
  "lingxia-app-context",
  "lingxia-browser",
+ "lingxia-error",
  "lingxia-lxapp",
  "lingxia-native-codegen",
  "lingxia-native-macros",

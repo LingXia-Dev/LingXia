@@ -20,8 +20,8 @@ pub(super) fn lxapp_error_to_update_error(error: LxAppError) -> UpdateError {
         | LxAppError::PluginNotConfigured(detail)
         | LxAppError::PluginDownloadFailed(detail)
         | LxAppError::InvalidJsonFile(detail) => UpdateError::runtime(detail),
-        LxAppError::RongJSHost { message, .. } if is_runtime_gate => {
-            UpdateError::requires_runtime_upgrade(message)
+        LxAppError::Coded(error) if is_runtime_gate => {
+            UpdateError::requires_runtime_upgrade(error.message())
         }
         LxAppError::RongJSHost { code, message, .. } => {
             UpdateError::runtime(format!("{code}: {message}"))

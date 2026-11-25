@@ -13,8 +13,8 @@ const frozen = Object.freeze(rejection("E_IO"));
 assert.equal(isLxError(frozen), true, "the guard does not modify the caught value");
 
 // Built by a mock: the fields are set, and every instance passes the guard.
-const built = new LxError("no photos", { code: "E_PERMISSION_DENIED", reason: "photoPermissionDenied", detail: "d", data: { n: 1 }, cause: "c" });
-assert.deepEqual([built.code, built.reason, built.detail, built.data.n, built.cause, built.message], ["E_PERMISSION_DENIED", "photoPermissionDenied", "d", 1, "c", "no photos"]);
+const built = new LxError("no photos", { code: "E_PERMISSION_DENIED", reason: "photoPermissionDenied", data: { n: 1 }, cause: "c" });
+assert.deepEqual([built.code, built.reason, built.data.n, built.cause, built.message], ["E_PERMISSION_DENIED", "photoPermissionDenied", 1, "c", "no photos"]);
 assert.equal(isLxError(built), true);
 assert.equal("reason" in new LxError("x", { code: "E_IO" }), false, "an absent field stays absent");
 assert.equal(isLxError(new LxError("as the host builds it")), true, "an instance is an lx error before its fields are set");

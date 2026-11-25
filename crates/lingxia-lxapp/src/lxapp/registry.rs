@@ -184,13 +184,10 @@ pub fn set_registry_change_listener(listener: RegistryChangeListener) {
 
 /// Status that blocked an open, when the error came from [`ensure_open_allowed`].
 pub fn registry_unavailable_status(error: &LxAppError) -> Option<LxAppStatus> {
-    let LxAppError::RongJSHost {
-        data: Some(data), ..
-    } = error
-    else {
+    let LxAppError::Coded(error) = error else {
         return None;
     };
-    match data.get("reason")?.as_str()? {
+    match error.reason()? {
         "appUnderMaintenance" => Some(LxAppStatus::Maintain),
         "appSuspended" => Some(LxAppStatus::Suspended),
         _ => None,
@@ -467,15 +464,13 @@ pub async fn ensure_open_allowed(appid: &str) -> Result<(), LxAppError> {
 /// travels as the error's `reason` rather than only inside a sentence; the message
 /// is a fallback for a host that shows the raw text.
 fn unavailable_error(appid: &str, status: LxAppStatus) -> LxAppError {
-    LxAppError::RongJSHost {
-        code: "3000".to_string(),
-        message: format!("lxapp {appid} is {status} and cannot be opened"),
-        data: Some(serde_json::json!({
-            "bizCode": 3000,
-            "reason": unavailable_reason(status),
-            "appId": appid,
-        })),
-    }
+    LxAppError::Coded(
+        lingxia_error::Error::permission_denied(format!(
+            "lxapp {appid} is {status} and cannot be opened"
+        ))
+        .with_reason(unavailable_reason(status))
+        .with_data(serde_json::json!({ "appId": appid })),
+    )
 }
 
 /// Fetch the registry's answer for one channel and store it. Artwork is *not*
@@ -1201,14 +1196,14 @@ mod tests {
         for status in [LxAppStatus::Suspended, LxAppStatus::Maintain] {
             let error = unavailable_error("com.example.app", status);
             assert_eq!(registry_unavailable_status(&error), Some(status));
-            let LxAppError::RongJSHost { data, message, .. } = error else {
-                panic!("a blocked open must carry structured data, got a bare error");
+            let LxAppError::Coded(error) = error else {
+                panic!("a blocked open must carry a coded error, got {error:?}");
             };
-            let data = data.expect("blocked open carries data");
-            assert_eq!(data["reason"], unavailable_reason(status));
-            assert_eq!(data["appId"], "com.example.app");
-            // The message stays useful for a host that only shows raw text.
-            assert!(message.contains("com.example.app"));
+            assert_eq!(error.code(), "E_PERMISSION_DENIED");
+            assert_eq!(error.reason(), Some(unavailable_reason(status)));
+            assert_eq!(error.data().unwrap()["appId"], "com.example.app");
+            // The message stays useful for a log.
+            assert!(error.message().contains("com.example.app"));
         }
     }
 

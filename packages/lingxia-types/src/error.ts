@@ -46,14 +46,12 @@ export type LxErrorCode = (typeof LX_ERROR_CODES)[number];
 export interface LxError extends Error {
   /** The JavaScript error kind, such as `TypeError`; branch on `code` instead. */
   readonly name: string;
-  /** For a log line; it can change between releases. */
+  /** Plain English for a log line; it can change between releases. Show users text chosen by `code` and `reason`. */
   readonly message: string;
   /** What went wrong, stable across releases. */
   readonly code: LxErrorCode;
   /** Why it failed, where `code` alone does not say, such as `'locationPermissionDenied'`. */
   readonly reason?: LxErrorReason | (string & {});
-  /** Free-form detail for a log line. */
-  readonly detail?: string;
   /** Structured facts about the failure, such as the refused argument. */
   readonly data?: unknown;
 }
@@ -64,8 +62,6 @@ export interface LxErrorOptions {
   code: LxErrorCode;
   /** Why, where `code` alone does not say. */
   reason?: LxErrorReason | (string & {});
-  /** Free-form detail for a log line. */
-  detail?: string;
   /** Structured facts about the failure. */
   data?: unknown;
   /** The error that caused this one. */
@@ -91,7 +87,6 @@ export const LxError: LxErrorConstructor =
       const self = this as unknown as Record<string, unknown>;
       self.code = options.code;
       if (options.reason !== undefined) self.reason = options.reason;
-      if (options.detail !== undefined) self.detail = options.detail;
       if (options.data !== undefined) self.data = options.data;
       if ('cause' in options) self.cause = options.cause;
     }

@@ -93,14 +93,14 @@ test("page.refresh runs onRefresh, and the indicator stays until it settles", { 
         currentPage()!.refresh();
         return { ok: true };
       } catch (error) {
-        const { code, reason, detail } = error as { code?: string; reason?: string; detail?: string };
-        return { ok: false, code: code ?? '', reason: reason ?? '', detail: detail ?? '' };
+        const { code, reason, message } = error as { code?: string; reason?: string; message?: string };
+        return { ok: false, code: code ?? '', reason: reason ?? '', message: message ?? '' };
       }
     });
     expect(rejected.ok).toBeFalsy();
     expect(rejected.code).toBe('E_INVALID_STATE');
     expect(rejected.reason).toBe('refreshNotEnabled');
-    expect(rejected.detail).toContain('enablePullDownRefresh: true');
+    expect(rejected.message).toContain('enablePullDownRefresh: true');
   });
 });
 

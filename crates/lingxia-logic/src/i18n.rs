@@ -1,5 +1,5 @@
 use crate::I18nKey;
-use lingxia_platform::error::{PRESENTER_UNAVAILABLE_CODE, PlatformError};
+use lingxia_platform::error::PlatformError;
 use lxapp::LxAppError;
 use rong::{HostError, RongJSError, error::ErrorData};
 use serde_json::Value;
@@ -34,17 +34,12 @@ pub fn t(key: I18nKey) -> String {
     key.get(&language).to_string()
 }
 
-pub fn err_code_message(code: u32) -> String {
-    if let Some(key) = crate::i18n_generated::err_code_key(code) {
-        return t(key);
+/// A numeric code's English text, the message when the caller gave none.
+pub fn business_message(code: u32) -> String {
+    match crate::i18n_generated::err_code_key(code) {
+        Some(key) => key.get("en").to_string(),
+        None => format!("error {code}"),
     }
-
-    log::error!("Unknown business error code {}.", code);
-    format!("Unknown business error code: {}", code)
-}
-
-fn host_error_kind_for_code(code: u32) -> &'static str {
-    lingxia_error::business_code(code).0
 }
 
 /// Reasons raised without a business code, with the code they come with. `LxErrorReason` lists
@@ -62,32 +57,27 @@ pub(crate) const STATE_REASONS: &[(&str, &str)] = &[
     ("tabBarNotDeclared", rong::error::E_INVALID_STATE),
 ];
 
-/// The table's spelling of a reason another crate raised in `data.reason`.
-fn state_reason(reason: &str) -> Option<&'static str> {
-    STATE_REASONS
-        .iter()
-        .find(|(known, _)| *known == reason)
-        .map(|(known, _)| *known)
+/// Whether a reason is one `LxErrorReason` lists.
+fn known_reason(reason: &str) -> bool {
+    STATE_REASONS.iter().any(|(known, _)| *known == reason)
+        || lingxia_error::BUSINESS_CODES
+            .iter()
+            .any(|(_, _, known)| *known == Some(reason))
 }
 
-fn reason_for_code(code: u32) -> Option<&'static str> {
-    lingxia_error::business_code(code).1
-}
-
-fn host_error_with_business_meta(
-    host_code: &'static str,
-    message: String,
-    biz_code: u32,
-    detail: Option<&str>,
-) -> HostError {
-    let mut error = HostError::new(host_code, message);
-    if let Some(reason) = reason_for_code(biz_code) {
-        error = error.with_reason(reason);
+/// An error as Logic receives it: its code, English message, reason and data.
+pub fn host_error(error: &lingxia_error::Error) -> HostError {
+    let mut host = HostError::new(error.static_code(), error.message().to_string());
+    if let Some(reason) = error.reason() {
+        if !known_reason(reason) {
+            log::error!("reason '{reason}' is not in LxErrorReason");
+        }
+        host = host.with_reason(reason.to_string());
     }
-    if let Some(detail) = detail.map(str::trim).filter(|value| !value.is_empty()) {
-        error = error.with_detail(detail);
+    match error.data() {
+        Some(data) => host.with_data(error_data_from_json(data)),
+        None => host,
     }
-    error
 }
 
 fn error_data_from_json(value: &Value) -> ErrorData {
@@ -115,21 +105,21 @@ fn error_data_from_json(value: &Value) -> ErrorData {
 }
 
 pub fn host_error_from_business_code(code: u32) -> HostError {
-    host_error_with_business_meta(
-        host_error_kind_for_code(code),
-        err_code_message(code),
+    host_error(&lingxia_error::Error::business(
         code,
-        None,
-    )
+        business_message(code),
+    ))
 }
 
+/// `detail` is the message; an empty one reads as the code's own text.
 pub fn host_error_from_business_code_with_detail(code: u32, detail: impl AsRef<str>) -> HostError {
-    host_error_with_business_meta(
-        host_error_kind_for_code(code),
-        err_code_message(code),
-        code,
-        Some(detail.as_ref()),
-    )
+    let detail = detail.as_ref().trim();
+    let message = if detail.is_empty() {
+        business_message(code)
+    } else {
+        detail.to_string()
+    };
+    host_error(&lingxia_error::Error::business(code, message))
 }
 
 pub fn js_error_from_business_code(code: u32) -> RongJSError {
@@ -177,164 +167,19 @@ pub fn js_timeout_error(detail: impl AsRef<str>) -> RongJSError {
     js_error_from_business_code_with_detail(5002, detail)
 }
 
-fn business_code_from_lxapp_error(error: &LxAppError) -> u32 {
-    fn code_from_value(value: &Value) -> Option<u32> {
-        if let Some(code) = value.as_u64() {
-            return u32::try_from(code).ok();
-        }
-        if let Some(text) = value.as_str()
-            && let Ok(parsed) = text.parse::<u32>()
-        {
-            return Some(parsed);
-        }
-        None
-    }
-
-    fn biz_code_from_data(data: &Option<Value>) -> Option<u32> {
-        let obj = data.as_ref()?.as_object()?;
-        obj.get("bizCode")
-            .and_then(code_from_value)
-            .or_else(|| obj.get("code").and_then(code_from_value))
-    }
-
-    match error {
-        LxAppError::InvalidParameter(_) => 1002,
-        LxAppError::ResourceExhausted(_) => 1002,
-        LxAppError::ResourceNotFound(_) | LxAppError::PluginNotConfigured(_) => 1003,
-        LxAppError::UnsupportedOperation(_) | LxAppError::SurfaceRoleLocked(_) => 6000,
-        LxAppError::IoError(_) => 1001,
-        LxAppError::RongJSHost { code, data, .. } => code
-            .parse::<u32>()
-            .ok()
-            .or_else(|| biz_code_from_data(data))
-            .unwrap_or(1005),
-        LxAppError::WebView(_)
-        | LxAppError::InvalidJsonFile(_)
-        | LxAppError::Runtime(_)
-        | LxAppError::SurfaceConflict(_)
-        | LxAppError::ChannelError(_)
-        | LxAppError::Bridge(_)
-        | LxAppError::RongJS(_)
-        | LxAppError::PluginDownloadFailed(_)
-        | LxAppError::Coded(_) => 1005,
-    }
-}
-
-fn detail_suffix(error: &LxAppError) -> Option<&str> {
-    match error {
-        LxAppError::ResourceNotFound(detail)
-        | LxAppError::InvalidJsonFile(detail)
-        | LxAppError::InvalidParameter(detail)
-        | LxAppError::UnsupportedOperation(detail)
-        | LxAppError::IoError(detail)
-        | LxAppError::Runtime(detail)
-        | LxAppError::SurfaceConflict(detail)
-        | LxAppError::SurfaceRoleLocked(detail)
-        | LxAppError::ChannelError(detail)
-        | LxAppError::ResourceExhausted(detail)
-        | LxAppError::Bridge(detail)
-        | LxAppError::RongJS(detail)
-        | LxAppError::PluginNotConfigured(detail)
-        | LxAppError::PluginDownloadFailed(detail)
-        | LxAppError::WebView(detail) => Some(detail.as_str()),
-        LxAppError::RongJSHost { message, .. } => Some(message.as_str()),
-        LxAppError::Coded(error) => Some(error.message()),
-    }
-}
-
 pub fn host_error_from_lxapp_error(error: &LxAppError) -> HostError {
-    if let LxAppError::Coded(coded) = error {
-        return host_error_from_coded(coded);
-    }
-    let code = business_code_from_lxapp_error(error);
-
-    log::warn!("Mapped LxAppError to business code {}: {}", code, error);
-    if let LxAppError::RongJSHost {
-        data: Some(data), ..
-    } = error
-    {
-        // `bizCode` is the carrier a View reply reads; a Logic error says it as `reason`.
-        let mut data = data.clone();
-        let mut reason = None;
-        let detail = data.as_object_mut().and_then(|fields| {
-            fields.remove("bizCode");
-            // A sub-reason is top-level on a Logic error, never in `data`.
-            if let Some(Value::String(raised)) = fields.remove("reason") {
-                reason = state_reason(&raised);
-                if reason.is_none() {
-                    log::error!("reason '{raised}' is not in STATE_REASONS");
-                }
-            }
-            match fields.remove("detail") {
-                Some(Value::String(detail)) => Some(detail),
-                _ => None,
-            }
-        });
-        let mut error = host_error_with_business_meta(
-            host_error_kind_for_code(code),
-            err_code_message(code),
-            code,
-            detail.as_deref(),
-        );
-        if let Some(reason) = reason {
-            error = error.with_reason(reason);
-        }
-        return match data.as_object() {
-            Some(fields) if fields.is_empty() => error,
-            _ => error.with_data(error_data_from_json(&data)),
-        };
-    }
-    host_error_with_business_meta(
-        host_error_kind_for_code(code),
-        err_code_message(code),
-        code,
-        detail_suffix(error),
-    )
-}
-
-/// A coded error reaches Logic with its own code, reason and data.
-fn host_error_from_coded(error: &lingxia_error::Error) -> HostError {
-    let mut host = HostError::new(error.static_code(), error.message().to_string());
-    if let Some(reason) = error.reason() {
-        host = host.with_reason(reason.to_string());
-    }
-    match error.data() {
-        Some(data) => host.with_data(error_data_from_json(data)),
-        None => host,
-    }
+    host_error(&lingxia_error::Error::from(error.clone()))
 }
 
 pub fn js_error_from_lxapp_error(error: &LxAppError) -> RongJSError {
     host_error_from_lxapp_error(error).into()
 }
 
-fn business_code_from_platform_error(error: &PlatformError) -> u32 {
-    match error {
-        PlatformError::NotSupported(_) => 6000,
-        PlatformError::InvalidParameter(_) => 1002,
-        PlatformError::AssetNotFound(_) => 1003,
-        PlatformError::Platform(_) => 1005,
-        PlatformError::BusinessError(code) => *code,
-        PlatformError::CallbackDropped => 1006,
-        PlatformError::PresenterUnavailable => PRESENTER_UNAVAILABLE_CODE,
-    }
-}
-
-fn detail_from_platform_error(error: &PlatformError) -> &str {
-    match error {
-        PlatformError::Platform(detail)
-        | PlatformError::NotSupported(detail)
-        | PlatformError::AssetNotFound(detail)
-        | PlatformError::InvalidParameter(detail) => detail,
-        PlatformError::BusinessError(_) => "business error",
-        PlatformError::CallbackDropped => "callback dropped",
-        PlatformError::PresenterUnavailable => "page chrome presenter not mounted",
-    }
-}
-
 pub fn host_error_from_platform_error(error: &PlatformError) -> HostError {
-    let code = business_code_from_platform_error(error);
-    host_error_from_business_code_with_detail(code, detail_from_platform_error(error))
+    match error {
+        PlatformError::BusinessError(code) => host_error_from_business_code(*code),
+        other => host_error(&other.into()),
+    }
 }
 
 pub fn js_error_from_platform_error(error: &PlatformError) -> RongJSError {
@@ -523,10 +368,12 @@ mod tests {
     }
 
     #[test]
-    fn a_business_code_becomes_reason_and_detail() {
+    fn a_business_code_becomes_reason_and_an_english_message() {
         let error = host_error_from_business_code_with_detail(3002, "  denied in settings ");
+        assert_eq!(error.code, "E_PERMISSION_DENIED");
         assert_eq!(error.reason(), Some("locationPermissionDenied"));
-        assert_eq!(error.detail(), Some("denied in settings"));
+        assert_eq!(error.message, "denied in settings");
+        assert_eq!(error.detail(), None);
         assert!(error.data.is_none());
         assert_eq!(host_error_from_business_code(1002).reason(), None);
     }
@@ -537,7 +384,6 @@ mod tests {
             code: "E_INVALID_ARG".to_string(),
             message: "duplicate route".to_string(),
             data: Some(serde_json::json!({
-                "bizCode": 1002,
                 "detail": "duplicate route",
                 "reason": "tabAlreadyOpen",
                 "operation": "navigateTo",
@@ -554,8 +400,9 @@ mod tests {
             data.get("operation").and_then(ErrorData::as_str),
             Some("navigateTo")
         );
-        assert!(!data.contains_key("bizCode") && !data.contains_key("detail"));
-        assert_eq!(host.detail(), Some("duplicate route"));
+        assert!(!data.contains_key("detail"));
+        assert_eq!(host.message, "duplicate route");
+        assert_eq!(host.detail(), None);
         assert_eq!(host.reason(), Some("tabAlreadyOpen"));
     }
 }

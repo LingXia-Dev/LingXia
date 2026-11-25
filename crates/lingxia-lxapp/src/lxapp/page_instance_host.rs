@@ -21,17 +21,14 @@ fn navigation_entry_error(
     target: &str,
     detail: String,
 ) -> LxAppError {
-    LxAppError::RongJSHost {
-        code: "E_INVALID_ARG".to_string(),
-        message: detail.clone(),
-        data: Some(serde_json::json!({
-            "bizCode": 1002,
-            "detail": detail,
-            "reason": reason,
-            "operation": navigation_operation(nav_type),
-            "target": target,
-        })),
-    }
+    LxAppError::Coded(
+        lingxia_error::Error::invalid_arg(detail)
+            .with_reason(reason)
+            .with_data(serde_json::json!({
+                "operation": navigation_operation(nav_type),
+                "target": target,
+            })),
+    )
 }
 
 fn validate_navigation_stack(
@@ -1607,9 +1604,7 @@ mod tests {
 
     fn navigation_reason(error: crate::LxAppError) -> String {
         match error {
-            crate::LxAppError::RongJSHost {
-                data: Some(data), ..
-            } => data["reason"].as_str().unwrap().to_string(),
+            crate::LxAppError::Coded(error) => error.reason().unwrap().to_string(),
             other => panic!("unexpected navigation error: {other:?}"),
         }
     }

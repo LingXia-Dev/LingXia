@@ -1796,12 +1796,7 @@ impl PageBridge {
         message: Option<String>,
         data: Option<Value>,
     ) -> Result<(), LxAppError> {
-        let wire_code = data
-            .as_ref()
-            .and_then(|d| d.get("bizCode"))
-            .and_then(|v| v.as_u64())
-            .map(|n| Value::Number(n.into()))
-            .unwrap_or_else(|| Value::String(code.to_string()));
+        let wire_code = Value::String(code.to_string());
         if let Some(outbound) = gpu(outbound) {
             return self.post_gpu(work_id, outbound, || {
                 Ok(crate::GpuViewMessage::Reply {

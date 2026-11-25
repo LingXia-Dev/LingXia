@@ -1,4 +1,4 @@
-use crate::i18n::{err_code_message, js_error_from_lxapp_error};
+use crate::i18n::js_error_from_lxapp_error;
 use lxapp::{Channel, LxApp, register_app_handler, try_get, warn};
 use rong::{
     Class, HostError, JSContext, JSContextService, JSFunc, JSObject, JSResult, JSValue,
@@ -156,12 +156,12 @@ impl JSUpdateManager {
 impl JSUpdateManager {
     #[js_method(constructor)]
     fn _ctor() -> JSResult<()> {
-        Err(
-            HostError::new(rong::error::E_NOT_SUPPORTED, err_code_message(1002))
-                .with_name("TypeError")
-                .with_detail("UpdateManager cannot be directly constructed")
-                .into(),
+        Err(HostError::new(
+            rong::error::E_NOT_SUPPORTED,
+            "UpdateManager cannot be directly constructed",
         )
+        .with_name("TypeError")
+        .into())
     }
 
     /// Apply update by restarting the app

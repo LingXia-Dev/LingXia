@@ -29,17 +29,10 @@ impl ProviderErrorExt for ProviderError {
 }
 
 pub(crate) fn provider_error_to_lxapp_error(error: &ProviderError) -> LxAppError {
-    let biz_code = error.biz_code();
-    let detail = error.detail().to_string();
-    LxAppError::RongJSHost {
-        code: biz_code.to_string(),
-        message: detail.clone(),
-        data: Some(serde_json::json!({
-            "bizCode": biz_code,
-            "providerCode": error.code().as_str(),
-            "detail": detail,
-        })),
-    }
+    LxAppError::Coded(
+        lingxia_error::Error::business(error.biz_code(), error.detail().to_string())
+            .with_data(serde_json::json!({ "providerCode": error.code().as_str() })),
+    )
 }
 
 /// Runtime provider aggregation used by lxapp host registration.

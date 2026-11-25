@@ -966,7 +966,7 @@
       "types": [],
       "tags": {},
       "examples": [],
-      "source": "src/error.ts:79"
+      "source": "src/error.ts:75"
     },
     {
       "path": "LxError.prototype.code",
@@ -992,27 +992,14 @@
       "types": [],
       "tags": {},
       "examples": [],
-      "source": "src/error.ts:58"
-    },
-    {
-      "path": "LxError.prototype.detail",
-      "kind": "property",
-      "entry": "@lingxia/logic",
-      "summary": "Free-form detail for a log line.",
-      "description": "Free-form detail for a log line.",
-      "signatures": [],
-      "type": "string",
-      "types": [],
-      "tags": {},
-      "examples": [],
       "source": "src/error.ts:56"
     },
     {
       "path": "LxError.prototype.message",
       "kind": "property",
       "entry": "@lingxia/logic",
-      "summary": "For a log line; it can change between releases.",
-      "description": "For a log line; it can change between releases.",
+      "summary": "Plain English for a log line; it can change between releases.",
+      "description": "Plain English for a log line; it can change between releases. Show users text chosen by `code` and `reason`.",
       "signatures": [],
       "type": "string",
       "types": [],
@@ -1316,7 +1303,7 @@
       ],
       "tags": {},
       "examples": [],
-      "source": "src/error.ts:101"
+      "source": "src/error.ts:96"
     },
     {
       "path": "isTimeZone",
@@ -11440,8 +11427,8 @@
           "name": "message",
           "type": "string",
           "required": true,
-          "summary": "For a log line; it can change between releases.",
-          "description": "For a log line; it can change between releases."
+          "summary": "Plain English for a log line; it can change between releases.",
+          "description": "Plain English for a log line; it can change between releases. Show users text chosen by `code` and `reason`."
         },
         {
           "name": "code",
@@ -11456,13 +11443,6 @@
           "required": false,
           "summary": "Why it failed, where `code` alone does not say, such as `'locationPermissionDenied'`.",
           "description": "Why it failed, where `code` alone does not say, such as `'locationPermissionDenied'`."
-        },
-        {
-          "name": "detail",
-          "type": "string | undefined",
-          "required": false,
-          "summary": "Free-form detail for a log line.",
-          "description": "Free-form detail for a log line."
         },
         {
           "name": "data",
@@ -11502,13 +11482,6 @@
           "description": "Why, where `code` alone does not say."
         },
         {
-          "name": "detail",
-          "type": "string | undefined",
-          "required": false,
-          "summary": "Free-form detail for a log line.",
-          "description": "Free-form detail for a log line."
-        },
-        {
           "name": "data",
           "type": "unknown",
           "required": false,
@@ -11523,7 +11496,7 @@
           "description": "The error that caused this one."
         }
       ],
-      "source": "src/error.ts:62"
+      "source": "src/error.ts:60"
     },
     {
       "name": "LxErrorReason",

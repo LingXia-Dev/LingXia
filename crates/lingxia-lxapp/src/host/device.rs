@@ -13,30 +13,12 @@ struct MakePhoneCallParams {
 }
 
 fn map_platform_error(api: &str, error: PlatformError) -> LxAppError {
-    let (code, message) = match error {
-        PlatformError::NotSupported(message) => ("E_NOT_SUPPORTED", message),
-        PlatformError::InvalidParameter(message) => ("E_INVALID_ARG", message),
-        PlatformError::AssetNotFound(message) => ("E_NOT_FOUND", message),
-        PlatformError::Platform(message) => ("E_INTERNAL", message),
-        PlatformError::BusinessError(code) => {
-            return LxAppError::RongJSHost {
-                code: "E_INTERNAL".to_string(),
-                message: format!("{api} failed"),
-                data: Some(serde_json::json!({ "bizCode": code })),
-            };
+    LxAppError::Coded(match error {
+        PlatformError::BusinessError(number) => {
+            lingxia_error::Error::business(number, format!("{api} failed"))
         }
-        PlatformError::CallbackDropped => ("E_INTERNAL", "Callback dropped".to_string()),
-        PlatformError::PresenterUnavailable => (
-            "E_INTERNAL",
-            "Page chrome presenter not mounted".to_string(),
-        ),
-    };
-
-    LxAppError::RongJSHost {
-        code: code.to_string(),
-        message,
-        data: None,
-    }
+        other => other.into(),
+    })
 }
 
 fn make_phone_call_impl(lxapp: &LxApp, params: &MakePhoneCallParams) -> Result<(), LxAppError> {

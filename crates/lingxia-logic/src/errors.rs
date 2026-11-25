@@ -13,7 +13,6 @@ const CLASSES: &str = r#"(() => {
       if (!options) return;
       this.code = options.code;
       if (options.reason !== undefined) this.reason = options.reason;
-      if (options.detail !== undefined) this.detail = options.detail;
       if (options.data !== undefined) this.data = options.data;
       if ('cause' in options) this.cause = options.cause;
     }
@@ -91,12 +90,12 @@ mod tests {
             .eval(Source::from_bytes(
                 r#"(() => {
                   const LxError = globalThis[Symbol.for('lingxia.LxError')];
-                  const e = new LxError('no photos', { code: 'E_PERMISSION_DENIED', reason: 'r', detail: 'd', data: { n: 1 } });
+                  const e = new LxError('no photos', { code: 'E_PERMISSION_DENIED', reason: 'r', data: { n: 1 } });
                   const bare = new LxError('bare');
-                  return [e.code, e.reason, e.detail, e.data.n, 'code' in bare, 'reason' in new LxError('x', { code: 'E_IO' })].join(' ');
+                  return [e.code, e.reason, e.data.n, 'code' in bare, 'reason' in new LxError('x', { code: 'E_IO' })].join(' ');
                 })()"#,
             ))
             .unwrap();
-        assert_eq!(seen, "E_PERMISSION_DENIED r d 1 false false");
+        assert_eq!(seen, "E_PERMISSION_DENIED r 1 false false");
     }
 }

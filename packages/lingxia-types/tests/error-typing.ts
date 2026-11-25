@@ -12,7 +12,7 @@ function branchesOnAClosedCodeUnion(): string {
 }
 
 // A mock builds its rejection as the host does: the code is required, the rest optional.
-const denied = new LxError("no photos", { code: "E_PERMISSION_DENIED", reason: "photoPermissionDenied", detail: "settings" });
+const denied = new LxError("no photos", { code: "E_PERMISSION_DENIED", reason: "photoPermissionDenied" });
 void (denied instanceof LxError && denied.code === "E_PERMISSION_DENIED");
 // @ts-expect-error an LxError without a code cannot be branched on
 void new LxError("x");

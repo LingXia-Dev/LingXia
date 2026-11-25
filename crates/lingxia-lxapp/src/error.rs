@@ -115,11 +115,11 @@ impl From<LxAppError> for lingxia_error::Error {
     }
 }
 
-/// A Rong host error at the boundary: a numeric code (or `bizCode` beside a non-`E_` code)
-/// becomes its code and reason; `reason` and `detail` in its data move to their own fields.
+/// A Rong host error at the boundary: a numeric code becomes its code and reason, and
+/// `reason` and `detail` in its data move to their own fields.
 fn host_error(code: String, message: String, data: Option<Value>) -> lingxia_error::Error {
     let mut data = data;
-    let (mut reason, mut detail, mut biz) = (None, None, None);
+    let (mut reason, mut detail) = (None, None);
     if let Some(fields) = data.as_mut().and_then(Value::as_object_mut) {
         if let Some(Value::String(raised)) = fields.remove("reason") {
             reason = Some(raised);
@@ -127,27 +127,11 @@ fn host_error(code: String, message: String, data: Option<Value>) -> lingxia_err
         if let Some(Value::String(text)) = fields.remove("detail") {
             detail = Some(text);
         }
-        biz = fields.remove("bizCode").and_then(|value| {
-            value
-                .as_u64()
-                .and_then(|n| u32::try_from(n).ok())
-                .or_else(|| value.as_str().and_then(|text| text.parse().ok()))
-        });
     }
     let message = detail.unwrap_or(message);
-    let numeric = code
-        .parse::<u32>()
-        .ok()
-        .or_else(|| biz.filter(|_| !code.starts_with("E_")));
-    let mut error = match numeric {
-        Some(number) => lingxia_error::Error::business(number, message),
-        None => {
-            let error = lingxia_error::Error::new(code, message);
-            match biz.and_then(|number| lingxia_error::business_code(number).1) {
-                Some(reason) => error.with_reason(reason),
-                None => error,
-            }
-        }
+    let mut error = match code.parse::<u32>() {
+        Ok(number) => lingxia_error::Error::business(number, message),
+        Err(_) => lingxia_error::Error::new(code, message),
     };
     if let Some(reason) = reason {
         error = error.with_reason(reason);
@@ -265,26 +249,21 @@ fn error_data_to_json(data: &ErrorData) -> Value {
     }
 }
 
-const REQUIRES_RUNTIME_UPGRADE_CODE: &str = "6002";
+const REQUIRES_RUNTIME_UPGRADE_CODE: u32 = 6002;
 /// Spelled here: the crate also builds without rong.
 const PERMISSION_DENIED_CODE: &str = "E_PERMISSION_DENIED";
 
 impl LxAppError {
     /// This host's runtime is below the package's `minRuntime`.
     pub fn requires_runtime_upgrade(detail: impl Into<String>) -> Self {
-        Self::RongJSHost {
-            code: REQUIRES_RUNTIME_UPGRADE_CODE.to_string(),
-            message: detail.into(),
-            data: None,
-        }
+        Self::Coded(lingxia_error::Error::business(
+            REQUIRES_RUNTIME_UPGRADE_CODE,
+            detail,
+        ))
     }
 
     pub fn is_requires_runtime_upgrade(&self) -> bool {
-        match self {
-            Self::RongJSHost { code, .. } => code == REQUIRES_RUNTIME_UPGRADE_CODE,
-            Self::Coded(error) => error.reason() == Some("hostUpgradeRequired"),
-            _ => false,
-        }
+        matches!(self, Self::Coded(error) if error.reason() == Some("hostUpgradeRequired"))
     }
 
     /// The host refused the call (`E_PERMISSION_DENIED`): the lxapp's policy, not a fault.
@@ -342,7 +321,6 @@ mod tests {
             code: "E_INVALID_ARG".to_string(),
             message: "localized".to_string(),
             data: Some(serde_json::json!({
-                "bizCode": 1002,
                 "detail": "duplicate route",
                 "reason": "tabAlreadyOpen",
                 "target": "pages/home",

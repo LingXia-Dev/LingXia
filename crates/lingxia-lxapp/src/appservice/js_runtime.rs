@@ -309,7 +309,7 @@ pub(crate) fn eval_error_from_rong(ctx: &JSContext, error: RongJSError) -> LxApp
             if let Ok(message) = object.get::<_, String>("message") {
                 let message = format!("{name}: {message}");
                 // A coded rejection (every `lx.*` error) keeps its code and
-                // data, e.g. `{ bizCode }`, for the caller to act on.
+                // data for the caller to act on.
                 if let Ok(code) = object.get::<_, String>("code") {
                     let data = object
                         .get::<_, JSValue>("data")
@@ -2258,7 +2258,7 @@ mod eval_script_shape_tests {
                     async move |js_runtime, _receiver| -> rong::JSResult<String> {
                         let ctx = js_runtime.context();
                         let script = "(async () => { const e = new Error('Wi-Fi is off'); \
-                        e.code = 'E_INVALID_STATE'; e.data = { bizCode: 12009 }; throw e; })()";
+                        e.code = 'E_INVALID_STATE'; e.data = { ssid: 'home' }; throw e; })()";
                         let error = super::eval_logic_script_inner(&ctx, script, false)
                             .await
                             .unwrap_err();
@@ -2273,7 +2273,7 @@ mod eval_script_shape_tests {
         });
         assert!(error.contains("RongJSHost"), "{error}");
         assert!(error.contains("E_INVALID_STATE"), "{error}");
-        assert!(error.contains("12009"), "{error}");
+        assert!(error.contains("home"), "{error}");
     }
 }
 
@@ -2321,7 +2321,5 @@ impl http::NetworkAccessGuard for LxAppCtx {
 }
 
 fn network_access_denied_error(detail: impl AsRef<str>) -> RongJSError {
-    HostError::new(rong::error::E_PERMISSION_DENIED, "Permission denied")
-        .with_detail(detail.as_ref())
-        .into()
+    HostError::new(rong::error::E_PERMISSION_DENIED, detail.as_ref()).into()
 }
