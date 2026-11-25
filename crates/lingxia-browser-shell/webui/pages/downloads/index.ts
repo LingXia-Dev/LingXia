@@ -1,37 +1,16 @@
-import { invoke, watch } from '../../shared/native';
 import { localDateTime } from '../../shared/format';
+import { watch } from '../../shared/watch';
 import { definePage, lx } from '@lingxia/logic';
-
-type DownloadStatus = 'downloading' | 'paused' | 'completed' | 'failed' | 'removed';
-
-interface DownloadRecord {
-  taskId: string;
-  url: string;
-  fileName: string;
-  status: DownloadStatus;
-  downloadedBytes: number;
-  totalBytes?: number;
-  retry: boolean;
-  error?: string;
-  createdAt: number;
-  updatedAt: number;
-  completedAt?: number;
-}
+import type { DownloadEvent, DownloadRecord } from '@lingxia/native';
 
 /** A download as the View shows it: when it last happened, in local form, and how fast it runs. */
-type DownloadView = Omit<DownloadRecord, 'createdAt' | 'updatedAt' | 'completedAt' | 'error'> & {
+type DownloadView = Pick<DownloadRecord, 'taskId' | 'url' | 'fileName' | 'status' | 'downloadedBytes' | 'totalBytes' | 'retry'> & {
   at: string;
   /** Why a failed download failed, in the user's language; the raw error stays in the log. */
   failure?: string;
   /** Bytes per second while downloading, else 0. */
   speed: number;
 };
-
-interface DownloadEvent {
-  kind: 'started' | 'progress' | 'paused' | 'completed' | 'failed' | 'removed' | 'cleared';
-  download?: DownloadRecord;
-  taskId?: string;
-}
 
 interface DownloadsData {
   downloads: DownloadView[];
@@ -92,10 +71,15 @@ export default definePage({
     }
 
     function viewOf(record: DownloadRecord): DownloadView {
-      const { createdAt, updatedAt, completedAt, error, ...rest } = record;
-      const failure = record.status === 'failed' ? failureOf(error ?? '') : undefined;
-      if (error && record.status === 'failed') console.warn(`download ${record.taskId} failed: ${error}`);
-      return { ...rest, at: localDateTime(completedAt ?? updatedAt ?? createdAt), speed: speedOf(record), failure };
+      const { taskId, url, fileName, status, downloadedBytes, totalBytes, retry, error } = record;
+      const failure = status === 'failed' ? failureOf(error ?? '') : undefined;
+      if (error && status === 'failed') console.warn(`download ${taskId} failed: ${error}`);
+      return {
+        taskId, url, fileName, status, downloadedBytes, totalBytes, retry,
+        at: localDateTime(record.completedAt ?? record.updatedAt),
+        speed: speedOf(record),
+        failure,
+      };
     }
 
     function stampDays(d: DownloadsData) {
@@ -107,7 +91,7 @@ export default definePage({
 
     async function refresh() {
       try {
-        const snap = await invoke<{ downloads: DownloadRecord[] }>('downloads.list');
+        const snap = await page.native.downloads.list();
         page.update((d) => {
           d.downloads = snap.downloads.map(viewOf);
           d.loading = false;
@@ -137,8 +121,8 @@ export default definePage({
       });
     }
 
-    async function run(route: string, taskId: string) {
-      await invoke(route, { taskId });
+    async function run(call: (input: { taskId: string }) => Promise<void>, taskId: string) {
+      await call({ taskId });
       await refresh();
     }
 
@@ -146,7 +130,7 @@ export default definePage({
       async onLoad() {
         // System pages open in their own stack; the bar shows back only when a page is under them.
         void page.navigationBar.update({ homeButton: 'hidden' });
-        watch<DownloadEvent>('downloads.watch', page.signal, apply, () => { void refresh(); });
+        watch((options) => page.native.downloads.watch(options), page.signal, apply, () => { void refresh(); });
         await refresh();
       },
       actions: {
@@ -154,28 +138,28 @@ export default definePage({
           await refresh();
         },
         async pause({ taskId }: { taskId: string }) {
-          await run('downloads.pause', taskId);
+          await run(page.native.downloads.pause, taskId);
         },
         async resume({ taskId }: { taskId: string }) {
-          await run('downloads.resume', taskId);
+          await run(page.native.downloads.resume, taskId);
         },
         async retry({ taskId }: { taskId: string }) {
-          await run('downloads.retry', taskId);
+          await run(page.native.downloads.retry, taskId);
         },
         async cancel({ taskId }: { taskId: string }) {
-          await run('downloads.cancel', taskId);
+          await run(page.native.downloads.cancel, taskId);
         },
         async remove({ taskId }: { taskId: string }) {
-          await run('downloads.remove', taskId);
+          await run(page.native.downloads.remove, taskId);
         },
         async open({ taskId }: { taskId: string }) {
-          await invoke('downloads.open', { taskId });
+          await page.native.downloads.open({ taskId });
         },
         async reveal({ taskId }: { taskId: string }) {
-          await invoke('downloads.reveal', { taskId });
+          await page.native.downloads.reveal({ taskId });
         },
         async clearCompleted() {
-          await invoke('downloads.clearCompleted');
+          await page.native.downloads.clearCompleted();
           await refresh();
         },
         async openSettings() {
