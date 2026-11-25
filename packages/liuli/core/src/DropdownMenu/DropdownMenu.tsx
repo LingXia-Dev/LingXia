@@ -463,8 +463,7 @@ export function DropdownMenuSubmenu({ label, icon, children, isDisabled = false,
   // No room beside the item: the submenu takes the panel, under a row back to the menu, as the reference does.
   if (drill?.isCompact) {
     if (drill.open === id) {
-      // The menu's name sits in a sentence of the UI's language: isolated, so a name in the other direction keeps its order.
-      const back = liuliText('@liuli.backTo', { parent: `\u2068${drill.parent}\u2069` });
+      const back = liuliText('@liuli.backTo', { parent: drill.parent });
       return (
         <>
           <button role="menuitem" keepOpen aria-label={back} aria-expanded onClick={() => drill.set(null)} data-testid={testId && `${testId}-back`} className={cx(r.item.base, r.item.size[size], r.back.base)}>

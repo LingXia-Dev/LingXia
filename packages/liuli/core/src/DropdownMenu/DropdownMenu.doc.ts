@@ -50,7 +50,7 @@ export const doc: ComponentDoc = {
       'Sizes sm (32) and md (40) are shorter than the 44 pt touch minimum; a finger still reaches them in a 44 pt band around the box, which the host adds without changing what is drawn.',
       'A tap outside, Escape and back close the menu; that tap reaches nothing else.',
       'On a narrow screen the row that opens a submenu and the row that goes back are menu items that keep the menu open, so the arrow keys reach them; Escape and back go up one level before they close the menu.',
-      'While a submenu takes the panel the menu is named by the submenu, so a screen reader says where it is; the back row\'s menu name is bidi-isolated, so a name in the other direction keeps its order.',
+      'While a submenu takes the panel the menu is named by the submenu, so a screen reader says where it is.',
       'An `isRepeatable` item runs and leaves the menu open, as checkbox and radio items do.',
       'When a row has an icon, every row in that panel keeps an icon\'s width at its start, so the labels share one edge; composed rows tell their panel, which shows the column once laid out.',
       'Checkbox and radio items are read as checked or not, and keep the menu open so the change can be seen.',

@@ -163,9 +163,8 @@ test('Submenu, narrow: the submenu takes the panel under a row that goes back; c
   assert.deepEqual(labels(), ['Rename', 'Move to', 'Delete']);
   screen.press(screen.getByTestId('move'));
   assert.equal(menus(screen).length, 1, 'the same panel');
-  const isolated = 'Back to \u2068Note\u2069';
-  assert.deepEqual(labels(), [isolated, 'Move to'], 'the back row names the menu it goes back to, isolated, then the submenu as a group');
-  assert.equal(textOf(screen.getByTestId('move-back')), isolated, 'it reads as it is named');
+  assert.deepEqual(labels(), ['Back to Note', 'Move to'], 'the back row names the menu it goes back to, then the submenu as a group');
+  assert.equal(textOf(screen.getByTestId('move-back')), 'Back to Note', 'it reads as it is named');
   assert.equal(menus(screen)[0].props.accessibilityLabel, 'Move to', 'the menu is named by the submenu it shows');
   assert.equal(screen.getByTestId('move-back').props.stateExpanded, 1);
   assert.equal(screen.getByTestId('move-back').props.role, 'menuitem', 'reached by the arrow keys like any row');
@@ -388,4 +387,18 @@ test('icon column: composed rows tell their panel, which keeps the space once la
   screen.layout(screen.getByTestId('composed-menu').children[0], { width: 200, height: 140 });
   assert.equal(isSpaced('rename'), true, 'a row above the icon row');
   assert.equal(isSpaced('pinned'), true, 'and a checkable row');
+});
+
+test('drilled, a menu named in the other direction is isolated once in the back row', async () => {
+  const screen = await renderPage(`
+    import { DropdownMenu, DropdownMenuItem, DropdownMenuSubmenu } from '@liulidesign/core/DropdownMenu';
+    export function render() {
+      return <page><DropdownMenu label="\u05ea\u05e4\u05e8\u05d9\u05d8" data-testid="menu" menu={
+        <DropdownMenuSubmenu label="Move to" data-testid="move"><DropdownMenuItem label="Notes" onClick={() => {}} /></DropdownMenuSubmenu>
+      }><text>Open</text></DropdownMenu></page>;
+    }
+  `);
+  screen.press(screen.getByTestId('menu'));
+  screen.press(screen.getByTestId('move'));
+  assert.equal(screen.getByTestId('move-back').props.accessibilityLabel, 'Back to \u2068\u05ea\u05e4\u05e8\u05d9\u05d8\u2069');
 });
