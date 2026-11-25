@@ -1,4 +1,4 @@
-# LingXia View Environment and Host Chrome Layout Specification
+# View environment and host chrome layout
 
 > Platforms: Android / iOS / HarmonyOS / macOS / Windows / Runner
 >
@@ -87,10 +87,8 @@ This specification does not define:
 
 - the visual design of a tab bar, capsule, popup, or modal;
 - a general-purpose browser layout engine;
-- page business state replication;
-- keyboard and IME avoidance;
-- acceptance of the flat `tabBar` fields listed in §4.1; or
-- aliases for `lx.*` methods that do not exist.
+- page business state replication; or
+- keyboard and IME avoidance.
 
 ---
 
@@ -170,19 +168,11 @@ The layers have distinct responsibilities:
 Project templates SHOULD use `"standard"` unless the template is explicitly an
 immersive design.
 
-The parser MUST reject these root fields, naming the replacement in the
-error:
-
-- `color`;
-- `selectedColor`;
-- `backgroundColor`;
-- `borderStyle`;
-- `position`;
-- `dimension`; and
-- `list`.
-
-It also rejects `items[].pagePath`; an item names its page with `page`. No
-alias parser is provided.
+The parser rejects the flat root fields other mini-program formats use
+(`color`, `selectedColor`, `backgroundColor`, `borderStyle`, `position`,
+`dimension`, `list`) and `items[].pagePath`, naming the LingXia field in the
+error (`lxapp/config.rs`). It accepts no aliases, so one manifest shape is the
+only one any tool or host has to read.
 
 ### 4.2 Why `standard` and `immersive`
 
@@ -510,7 +500,7 @@ within the content area. A design that requires arbitrary HTML to render
 physically above native chrome must use a native presentation or a separate
 host-managed surface; ordinary WebView z-index cannot provide that guarantee.
 
-### 8.4 GPU View pages and the host bars
+### 8.4 GPU View pages
 
 A GPU page spans the window under the navigation bar and tab bar, which reach
 it as `env.insets`. One rule on every page and platform:
@@ -566,7 +556,9 @@ Every platform follows the same sequence:
 2. resolve effective visibility;
 3. apply the `standard` or `immersive` constraints without inspecting colours;
 4. complete layout and acknowledge the revision;
-5. measure the visible capsule frame in the target page's CSS viewport;
+5. measure the visible capsule frame in the target page's CSS viewport
+   (`UIUpdate::measure_page_chrome_capsule` in `lingxia-platform`; the result
+   reaches pages only through the page chrome layout, never Logic);
 6. derive the insets; and
 7. publish the layout.
 
@@ -624,56 +616,43 @@ insets or region:
 
 ---
 
-## 10. No Logic capsule query
+## 10. Rejected alternatives
 
-No Logic API exposes capsule geometry. There is no `lx.getCapsuleRect()`, no
-generated `CapsuleRect` declaration, and no `AppRuntime::get_capsule_rect`.
-`CapsuleRect` does not exist in any other Logic namespace.
-
-The native capsule control and its layout remain. Each host measures the
-laid-out capsule frame through the platform UI trait
-(`measure_page_chrome_capsule`), and the result reaches pages only through the
-page chrome layout.
-
----
-
-## 11. Rejected alternatives
-
-### 11.1 Infer layout from `backgroundColor`
+### 10.1 Infer layout from `backgroundColor`
 
 Rejected because style changes would mutate layout, partially transparent
 colours have ambiguous semantics, and platforms tend to implement different
 alpha thresholds.
 
-### 11.2 Always end the page above the tab bar
+### 10.2 Always end the page above the tab bar
 
 Rejected because it prevents immersive backgrounds and media from extending
 beneath a see-through or floating tab bar.
 
-### 11.3 Always extend and make every page add padding
+### 10.3 Always extend and make every page add padding
 
 Rejected because ordinary opaque tab bars should have native adjacent layout,
 first-paint correctness would depend on page CSS, and every application would
 need to reproduce framework behavior.
 
-### 11.4 Add `lx.getViewportMetrics()`
+### 10.4 Add `lx.getViewportMetrics()`
 
 Rejected because it leaves View geometry in Logic, introduces an asynchronous
 query race, duplicates state between View and Logic, and still requires a
 separate change-notification mechanism.
 
-### 11.5 Keep one getter per host control
+### 10.5 Keep one getter per host control
 
 Rejected because capsule, tab bar, navigation, floating controls, and further
 chrome would each require their own types, FFI, callbacks, and platform code.
 
-### 11.6 Add a third padded presentation
+### 10.6 Add a third padded presentation
 
 Rejected because it is not a distinct host geometry. It is `immersive` plus
 the View consuming the bottom inset. Keeping that composition explicit avoids a
 third presentation whose native layout is indistinguishable from `immersive`.
 
-### 11.7 Hide/show the tab bar around every modal
+### 10.7 Hide/show the tab bar around every modal
 
 Rejected because semantic visibility is not transient presentation state. It
 breaks nested modal restoration and races with navigation and app-requested
