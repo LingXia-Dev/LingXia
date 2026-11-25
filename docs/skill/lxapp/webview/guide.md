@@ -20,8 +20,9 @@ a panel naming itself.
 | `useLxHost()` | [host facts](#host-facts) | only when a field changes |
 | `useLxLeaveGuard(dirty, onRequest)` | nothing — [guards leaving](#leaving-a-page-with-unsaved-changes) while `dirty` | — |
 
-Any component may call either. Geometry is CSS, not a hook:
-[page chrome CSS](#page-chrome-css).
+Any component may call them. Streams and channels: `useLxStream` / `useLxChannel`
+([Bridge](../bridge.md)); catalogue text: `useText` ([text in several languages](../guide.md#text-in-several-languages)).
+Geometry is CSS, not a hook: [page chrome CSS](#page-chrome-css).
 
 `data` is deeply read-only. In a dev session a write throws.
 Keep what the user edits as View state and submit it with an action; Logic's
@@ -90,7 +91,7 @@ const { sizeClass, canDock, language, formFactor, os, runner } = useLxHost();
 nothing. It never changes while a window is dragged.
 
 - `sizeClass` (`compact` | `regular`) and `canDock` — how much room:
-  [Adaptive UI](../adaptive-ui.md).
+  [Adaptive UI](../adaptive-ui.md). CSS reads the class as `<html data-size-class>`.
 - `formFactor` (`mobile` | `desktop`) — which machine. Branch on it for what a
   phone must not show. A narrow desktop window is `desktop`; a tablet or
   unfolded fold is `mobile`.

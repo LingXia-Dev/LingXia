@@ -3,8 +3,8 @@
 Native-backed presenters: `LxPicker`, `LxMediaSwiper`, `LxNavigator`. Text input is plain `<input>` / `<textarea>`; there is no `LxInput`. In WebView pages, play video and audio with plain HTML `<video>` / `<audio>`.
 
 Attribute and event types are exported from `@lingxia/elements`
-(`LxPickerAttributes`, `LxMediaSwiperAttributes`,
-`LxNavigatorAttributes`, `*EventDetail`).
+(`LxPickerAttributes`, `LxMediaSwiperAttributes`, `LxNavigatorAttributes`, the picker and
+swiper `*EventDetail`s, `LxNavigatorEvent`).
 
 ## Import
 
@@ -13,8 +13,8 @@ Attribute and event types are exported from `@lingxia/elements`
 import { LxPicker, LxMediaSwiper, LxNavigator } from '@lingxia/react';
 ```
 
-Wrappers take the element attributes plus `className` / `class` / `style` /
-`ref`. An `actions.*` handler goes straight to Logic; a local function gets the
+Wrappers take the element attributes plus `className` / `style` / `ref` (`class` is for
+the raw `<lx-*>` tags). An `actions.*` handler goes straight to Logic; a local function gets the
 View event.
 
 ## Callback shapes
@@ -81,7 +81,8 @@ type LxMediaSwiperItem =
 
 Handlers get the payload: `onChange` / `onTransitionEnd` →
 `{ index, previousIndex, item, source }`; `onTap` / `onVideoEnded` →
-`{ index, item }`; `onEndReached` at the last item; `onError` → `{ index, code, message }`.
+`{ index, item }`; `onEndReached` at the last item; `onError` → `{ index, code, message }`
+(`code`: `not_found`, `network`, `decode`, `unsupported_format`, `permission_denied`, `unknown`).
 The ref (`LxMediaSwiperRef`) has `next()`,
 `previous()` and `goToIndex(index)`.
 
