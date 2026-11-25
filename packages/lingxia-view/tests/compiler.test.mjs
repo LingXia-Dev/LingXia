@@ -1070,7 +1070,7 @@ test('GPU View rejects importing @lingxia/native directly', async () => {
       `import { native } from '@lingxia/native';\nexport function render() { return <text>{String(Boolean(native))}</text>; }\n`,
     );
     await assert.rejects(
-      () => buildPages(dir, ['page.tsx'], join(dir, 'dist')),
+      () => buildPages(dir, ['page.tsx'], join(dir, 'dist'), {}, { messages: null, inputsRecord: join(dir, 'inputs.json') }),
       /UI_LX: @lingxia\/native is Logic-only/,
     );
   } finally {
