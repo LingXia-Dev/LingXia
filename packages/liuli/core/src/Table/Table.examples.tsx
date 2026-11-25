@@ -98,6 +98,23 @@ export function SortStacked() {
   return <Table label="Invoices" columns={sortableColumns} rows={bills} keyField="id" layout="stacked" data-testid="sort-stacked" />;
 }
 
+/** A checkbox on each row and one for all; the rows checked are the page's, here counted above the table. */
+export function Selectable() {
+  const picked = useLocal<string[]>('picked', ['INV-1043']);
+  return (
+    <view className="self-stretch gap-2">
+      <text role="status" className="text-footnote text-muted">{picked.value.length === 0 ? 'None selected' : `${picked.value.length} selected`}</text>
+      <Table label="Invoices" columns={[sortableColumns[0], sortableColumns[2]]} rows={bills} keyField="id" checkedRows={picked.value} onCheckedRowsChange={picked.set} data-testid="selectable" />
+    </view>
+  );
+}
+
+/** Stacked, the checkbox for all sits beside the sort menu, and each record's at its start. */
+export function SelectableStacked() {
+  const picked = useLocal<string[]>('picked', []);
+  return <Table label="Invoices" columns={sortableColumns} rows={bills} keyField="id" layout="stacked" checkedRows={picked.value} onCheckedRowsChange={picked.set} data-testid="selectable-stacked" />;
+}
+
 /** Compact rows that scroll under a heading that stays. */
 export function Scrolling() {
   return (

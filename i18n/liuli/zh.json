@@ -229,5 +229,11 @@
   },
   "@liuli.sortDescending": {
     "defaultMessage": "降序排列"
+  },
+  "@liuli.selectAll": {
+    "defaultMessage": "全选"
+  },
+  "@liuli.selectRow": {
+    "defaultMessage": "选择{row}"
   }
 }

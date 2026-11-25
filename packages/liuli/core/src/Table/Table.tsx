@@ -1,5 +1,7 @@
 import { cx, useBox, useContext, useLocal, useView, type Child, type Local } from '@lingxia/view';
 import { Button } from '../Button/Button';
+import { CheckboxInput } from '../CheckboxInput/CheckboxInput';
+import { useLargeText } from '../internal/largeText';
 import { DropdownMenu, DropdownMenuRadioGroup, DropdownMenuRadioItem } from '../DropdownMenu/DropdownMenu';
 import { IconButton } from '../IconButton/IconButton';
 import { liuliText } from '../i18n/text';
@@ -92,6 +94,13 @@ export type TableProps = TableBinding & {
   sort?: TableSort | null;
   /** Runs when a heading asks for another order, with it. */
   onSortChange?: (sort: TableSort) => void;
+  /** The rows checked, by key. @default [] */
+  checkedRows?: readonly string[];
+  /**
+   * Puts a checkbox at each row's start and one for all rows above them; runs with the keys checked, in the
+   * rows' order. A row can still open its record with `onChange` or `bind`.
+   */
+  onCheckedRowsChange?: (keys: string[]) => void;
   className?: string;
   /** On the table; a row is `<id>-<key>`. */
   'data-testid'?: string;
@@ -101,6 +110,8 @@ export type TableProps = TableBinding & {
 const minText = 11;
 // The row's side padding and the gap between columns, in points, as the recipe sets them.
 const [inset, gap] = [16, 12];
+// A row's checkbox and its cell take about this much of the row from the columns: 16 inset, a 16-point box, 12 to the first column, less the 16 the row's own inset no longer takes.
+const selectWidth = 28;
 // Measured for a character's width at the reader's text size; taken as 8 points until it is.
 const sample = 'abcdefghijklmnopqrstuvwxyz';
 const share = (column: TableColumn) => (typeof column.width === 'number' ? 0 : parseFloat(column.width ?? '1fr'));
@@ -149,19 +160,23 @@ const track = (column: TableColumn) => (typeof column.width === 'number' ? `${co
 
 /** Records in rows and fields in columns, under headings that stay in view. */
 export function Table({
-  label, columns, rows, keyField, layout = 'auto', density: ownDensity, maxHeight, isHeaderSticky = false, bind, onChange: ownChange, value: own, emptyLabel, sort: ownSort, onSortChange, className, 'data-testid': testId, ...attributes
+  label, columns, rows, keyField, layout = 'auto', density: ownDensity, maxHeight, isHeaderSticky = false, bind, onChange: ownChange, value: own, emptyLabel, sort: ownSort, onSortChange, checkedRows = [], onCheckedRowsChange, className, 'data-testid': testId, ...attributes
 }: TableProps) {
   const selectedKey = bind ? bind.value : own;
   const localSort = useLocal<TableSort | null>('sort', null);
   const sort = ownSort !== undefined ? ownSort : localSort.value;
   const setSort = (next: TableSort) => { if (ownSort === undefined) localSort.set(next); onSortChange?.(next); };
   const isSortable = columns.some(column => column.isSortable);
+  const isMulti = onCheckedRowsChange !== undefined;
+  const checked = new Set(checkedRows);
   // Bound, each row is a button that selects it.
   const onRowClick = bind ? (key: string) => bind.set(key) : ownChange;
   const screenDensity = useDensity();
   const density = ownDensity ?? screenDensity;
   const layer = useContext(LayerContext);
   const { env } = useView();
+  // At accessibility text sizes a record's figure goes under its name, so a name never breaks inside a word.
+  const isLarge = useLargeText();
   const box = useBox('table');
   const measured = useBox('sample');
   const char = measured.value ? measured.value.width / sample.length : 8;
@@ -174,7 +189,7 @@ export function Table({
   const widest = (column: TableColumn) => figureBoxes[columns.indexOf(column)]?.value?.width;
   // Until the table is measured, a phone is taken to be 328 points wide inside its page's margins.
   const isStacked = layout === 'stacked'
-    || (layout === 'auto' && isCramped(columns, box.value?.width ?? (env.sizeClass === 'compact' ? 328 : 720), char, longest, widest));
+    || (layout === 'auto' && isCramped(columns, (box.value?.width ?? (env.sizeClass === 'compact' ? 328 : 720)) - (isMulti ? selectWidth : 0), char, longest, widest));
   // Stacked, the first field heads the record, the last number sits at the end of its line, the rest follow.
   const lead = columns[0];
   const figure = [...columns].reverse().find(column => column !== lead && column.align === 'end');
@@ -182,7 +197,18 @@ export function Table({
   // Every row is a grid of the same tracks, none sized by its content, so the columns line up.
   const tracks = { gridTemplateColumns: columns.map(track).join(' ') };
   const keyOf = (row: TableRow, index: number) => String(row[keyField ?? columns[0]?.field ?? ''] ?? index);
-  const line = cx(r.row.base, r.row.density[density]);
+  const sides = isMulti ? r.inset.afterSelect : r.inset.full;
+  const line = cx(r.row.base, sides, r.row.density[density]);
+  const ordered = sorted(rows, columns, sort);
+  const keys = ordered.map((row, index) => keyOf(row, index));
+  const checkedCount = keys.filter(key => checked.has(key)).length;
+  const toggle = (key: string, isOn: boolean) => onCheckedRowsChange?.(keys.filter(each => (each === key ? isOn : checked.has(each))));
+  const selectAll = isMulti && (
+    <view className={r.select.base}>
+      <CheckboxInput label={liuliText('@liuli.selectAll')} isLabelHidden size="sm" value={keys.length > 0 && checkedCount === keys.length}
+        isIndeterminate={checkedCount > 0} isDisabled={keys.length === 0} onChange={isOn => onCheckedRowsChange?.(isOn ? keys : [])} data-testid={testId && `${testId}-select-all`} />
+    </view>
+  );
 
   const directionOf = (column: TableColumn) => (sort?.field === column.field ? sort.direction : undefined);
   // Its state is in its name until the View reads a column's sort.
@@ -204,16 +230,22 @@ export function Table({
       </button>
     );
   };
-  const header = (
-    <view aria-hidden={!isSortable || undefined} style={tracks} className={cx(r.header.base, r.header.density[density], r.header.layer[layer], isHeaderSticky && maxHeight === undefined && r.header.sticky)}>
+  const isSticky = isHeaderSticky && maxHeight === undefined;
+  // The line under the headings: the headings' own, or, selectable, the one that puts the checkbox for all before them.
+  const edge = cx(r.header.line, r.header.layer[layer], isSticky && r.header.sticky);
+  const headings = (
+    <view aria-hidden={!isSortable || undefined} style={tracks} className={cx(r.header.base, isMulti ? r.header.grow : edge, r.header.density[density], sides)}>
       {columns.map(heading)}
     </view>
   );
+  const header = isMulti ? <view className={cx(edge, r.header.select)}>{selectAll}{headings}</view> : headings;
   // Stacked there are no headings to press: a menu picks the column, a button beside it turns the order round.
   const sortable = columns.filter(column => column.isSortable);
   const active = sortable.find(column => column.field === sort?.field);
-  const sortBar = isSortable && (
-    <view role="group" aria-label={liuliText('@liuli.sort')} className={r.sortBar.base}>
+  const sortBar = (isSortable || isMulti) && (
+    <view className={cx(r.sortBar.base, isMulti ? r.inset.select : r.inset.full)}>
+      {selectAll}
+      {isSortable && <view role="group" aria-label={liuliText('@liuli.sort')} className={r.sortGroup.base}>
       <DropdownMenu label={liuliText('@liuli.sort')} menu={
         <DropdownMenuRadioGroup value={active?.field ?? null} onChange={field => setSort({ field, direction: sort?.direction ?? 'ascending' })}>
           {sortable.map(column => <DropdownMenuRadioItem key={column.field} value={column.field} label={column.header} />)}
@@ -227,11 +259,12 @@ export function Table({
           onClick={() => setSort({ field: active.field, direction: sort.direction === 'descending' ? 'ascending' : 'descending' })}
           data-testid={testId && `${testId}-direction`} />
       )}
+      </view>}
     </view>
   );
 
-  const body = sorted(rows, columns, sort).map((row, index) => {
-    const key = keyOf(row, index);
+  const body = ordered.map((row, index) => {
+    const key = keys[index];
     const isSelected = selectedKey === key;
     const drawn = (column: TableColumn, isRead: boolean, className: string) => (column.cell
       ? <view aria-hidden={isRead || undefined} className={cx(r.custom.base, r.custom.align[column.align ?? 'start'])}>{column.cell(row)}</view>
@@ -244,9 +277,9 @@ export function Table({
         </view>
       ))
       : [
-        <view key="lead" className={r.lead.base}>
+        <view key="lead" className={isLarge ? r.lead.large : r.lead.base}>
           {lead && <view {...read(lead, isRead)} className={r.leadCell.base}>{drawn(lead, isRead, cx(r.text.base, r.text.lead))}</view>}
-          {figure && <view {...read(figure, isRead)} className={r.figure.base}>{drawn(figure, isRead, cx(r.text.base, r.text.align.end))}</view>}
+          {figure && <view {...read(figure, isRead)} className={r.figure.base}>{drawn(figure, isRead, cx(r.text.base, isLarge ? r.text.figureUnder : r.text.align.end))}</view>}
         </view>,
         rest.length > 0 && (
           <view key="rest" className={r.pairs.base}>
@@ -259,8 +292,28 @@ export function Table({
           </view>
         ),
       ]);
-    const shape = isStacked ? { className: cx(r.block.base, r.block.density[density]) } : { style: tracks, className: line };
-    if (!onRowClick) return <view key={key} role="row" data-testid={testId === undefined ? undefined : `${testId}-${key}`} {...shape}>{cells(true)}</view>;
+    const shape = isStacked ? { className: cx(r.block.base, sides, r.block.density[density]) } : { style: tracks, className: line };
+    const rowId = testId === undefined ? undefined : `${testId}-${key}`;
+    if (isMulti) {
+      const isChecked = checked.has(key);
+      return (
+        <view key={key} role="row" className={cx(r.selectable.base, isChecked && r.selectable.checked)}>
+          <view className={r.select.base}>
+            <CheckboxInput label={liuliText('@liuli.selectRow', { row: lead ? textOf(row, lead) : key })} isLabelHidden size="sm" value={isChecked}
+              onChange={isOn => toggle(key, isOn)} data-testid={rowId && `${rowId}-select`} />
+          </view>
+          {onRowClick
+            ? (
+              <button aria-label={columns.map(column => `${column.header}: ${textOf(row, column)}`).join(', ')} aria-selected={selectedKey === key} onClick={() => onRowClick(key)} data-testid={rowId}
+                {...shape} className={cx(shape.className, r.selectable.rest, r.row.pressable, selectedKey === key ? r.row.selected : r.row.idle)}>
+                {cells(false)}
+              </button>
+            )
+            : <view data-testid={rowId} {...shape} className={cx(shape.className, r.selectable.rest)}>{cells(true)}</view>}
+        </view>
+      );
+    }
+    if (!onRowClick) return <view key={key} role="row" data-testid={rowId} {...shape}>{cells(true)}</view>;
     return (
       <view key={key} role="row" className={r.rowgroup.base}>
         <button

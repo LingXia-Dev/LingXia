@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { textOf } from '@lingxia/view/testing';
-import { renderExample } from '../testing/harness.mjs';
+import { renderExample, renderPage } from '../testing/harness.mjs';
 
 const rows = screen => screen.queryAll(node => node.props.role === 'row');
 
@@ -150,7 +150,6 @@ test('SortControlled: the page holds the order; the table sorts by it and asks f
 });
 
 test('text sorts as the language does: case aside and numbers inside it by value; a column compare wins', async () => {
-  const { renderPage } = await import('../testing/harness.mjs');
   const screen = await renderPage(`
     import { Table } from '@liulidesign/core/Table';
     const rows = [{ name: 'item 10', rank: 'b' }, { name: 'Item 9', rank: 'c' }, { name: 'apple', rank: 'a' }];
@@ -180,4 +179,41 @@ test('SortStacked: a menu above the records picks the column; the button beside 
   screen.press(screen.getByTestId('sort-stacked-direction'));
   assert.equal(screen.getByTestId('sort-stacked-direction').props.accessibilityLabel, 'Sort ascending');
   assert.deepEqual(order(screen, 'sort-stacked'), ['INV-1045', 'INV-1042', 'INV-1043', 'INV-1044', 'INV-1046']);
+});
+
+test('Selectable: a checkbox on each row, named by its first field, and one for all that is mixed while some are checked', async () => {
+  const screen = await renderExample('Table/Table', 'Selectable');
+  const box = id => screen.getByTestId(id);
+  const status = () => textOf(screen.queryAll(node => node.props.role === 'status')[0]);
+  assert.equal(box('selectable-INV-1044-select').props.accessibilityLabel, 'Select Kestrel & Co');
+  assert.equal(box('selectable-select-all').props.accessibilityLabel, 'Select all rows');
+  assert.equal(box('selectable-select-all').props.mixed, 1);
+  assert.equal(status(), '1 selected');
+  screen.toggle(box('selectable-INV-1042-select'), true);
+  assert.equal(status(), '2 selected');
+  assert.equal(box('selectable-INV-1042-select').props.checked, 1);
+  screen.toggle(box('selectable-select-all'), true);
+  assert.equal(status(), '5 selected');
+  assert.equal(box('selectable-select-all').props.checked, 1);
+  assert.equal(box('selectable-select-all').props.mixed, undefined);
+  screen.toggle(box('selectable-select-all'), false);
+  assert.equal(status(), 'None selected');
+});
+
+test('SelectableStacked: the checkbox for all leads the bar, beside the sort menu', async () => {
+  const screen = await renderExample('Table/Table', 'SelectableStacked');
+  const all = () => screen.getByTestId('selectable-stacked-select-all');
+  assert.ok(screen.getByTestId('selectable-stacked-sort'));
+  assert.equal(all().props.checked, 0);
+  screen.toggle(screen.getByTestId('selectable-stacked-INV-1045-select'), true);
+  assert.equal(all().props.mixed, 1);
+});
+
+test('Stacked at accessibility text sizes: the figure goes under the name, start-aligned', async () => {
+  const screen = await renderExample('Table/Table', 'SortStacked', { env: { textScale: 2 } });
+  const lead = screen.getByTestId('sort-stacked-INV-1044').children[0];
+  assert.notEqual(lead.props.flexDirection, 'row');
+  assert.deepEqual(lead.children.map(textOf), ['Kestrel & Co', '$96.00']);
+  const small = (await renderExample('Table/Table', 'SortStacked')).getByTestId('sort-stacked-INV-1044').children[0];
+  assert.equal(small.props.flexDirection, 'row');
 });

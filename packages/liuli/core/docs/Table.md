@@ -162,6 +162,76 @@ export function SortStacked() {
 }
 ```
 
+### Rows checked for a bulk action
+
+```tsx
+import { useLocal } from '@lingxia/view';
+import { Badge } from '@liulidesign/core/Badge';
+import { Table, type TableColumn, type TableRow } from '@liulidesign/core/Table';
+
+const status = (row: TableRow) => (row.status === 'Paid' ? <Badge label="Paid" tone="success" size="sm" />
+  : row.status === 'Overdue' ? <Badge label="Overdue" tone="danger" size="sm" /> : <Badge label={String(row.status)} size="sm" />);
+const columns: TableColumn[] = [
+  { field: 'customer', header: 'Customer', width: '2fr' },
+  { field: 'due', header: 'Due' },
+  { field: 'amount', header: 'Amount', align: 'end', format: money },
+];
+const bills = [
+  { id: 'INV-1042', customer: 'Northwind', dueOn: '2026-11-03', amount: 1280 },
+  { id: 'INV-1043', customer: 'Blue Harbor', dueOn: '2026-11-09', amount: 420.5 },
+  { id: 'INV-1044', customer: 'Kestrel & Co', dueOn: '2026-10-28', amount: 96 },
+  { id: 'INV-1045', customer: 'Lumen Studio', dueOn: '2026-11-20', amount: 3150 },
+  { id: 'INV-1046', customer: 'Atlas Freight', dueOn: '2026-11-14', amount: null },
+];
+const sortableColumns: TableColumn[] = [
+  { field: 'customer', header: 'Customer', width: '2fr', isSortable: true },
+  { field: 'dueOn', header: 'Due', format: day, isSortable: true },
+  { field: 'amount', header: 'Amount', align: 'end', format: value => (value === null ? '—' : money(value)), isSortable: true },
+];
+
+/** A checkbox on each row and one for all; the rows checked are the page's, here counted above the table. */
+export function Selectable() {
+  const picked = useLocal<string[]>('picked', ['INV-1043']);
+  return (
+    <view className="self-stretch gap-2">
+      <text role="status" className="text-footnote text-muted">{picked.value.length === 0 ? 'None selected' : `${picked.value.length} selected`}</text>
+      <Table label="Invoices" columns={[sortableColumns[0], sortableColumns[2]]} rows={bills} keyField="id" checkedRows={picked.value} onCheckedRowsChange={picked.set} data-testid="selectable" />
+    </view>
+  );
+}
+```
+
+### Stacked records checked
+
+```tsx
+import { useLocal } from '@lingxia/view';
+import { Table, type TableColumn } from '@liulidesign/core/Table';
+
+const columns: TableColumn[] = [
+  { field: 'customer', header: 'Customer', width: '2fr' },
+  { field: 'due', header: 'Due' },
+  { field: 'amount', header: 'Amount', align: 'end', format: money },
+];
+const bills = [
+  { id: 'INV-1042', customer: 'Northwind', dueOn: '2026-11-03', amount: 1280 },
+  { id: 'INV-1043', customer: 'Blue Harbor', dueOn: '2026-11-09', amount: 420.5 },
+  { id: 'INV-1044', customer: 'Kestrel & Co', dueOn: '2026-10-28', amount: 96 },
+  { id: 'INV-1045', customer: 'Lumen Studio', dueOn: '2026-11-20', amount: 3150 },
+  { id: 'INV-1046', customer: 'Atlas Freight', dueOn: '2026-11-14', amount: null },
+];
+const sortableColumns: TableColumn[] = [
+  { field: 'customer', header: 'Customer', width: '2fr', isSortable: true },
+  { field: 'dueOn', header: 'Due', format: day, isSortable: true },
+  { field: 'amount', header: 'Amount', align: 'end', format: value => (value === null ? '—' : money(value)), isSortable: true },
+];
+
+/** Stacked, the checkbox for all sits beside the sort menu, and each record's at its start. */
+export function SelectableStacked() {
+  const picked = useLocal<string[]>('picked', []);
+  return <Table label="Invoices" columns={sortableColumns} rows={bills} keyField="id" layout="stacked" checkedRows={picked.value} onCheckedRowsChange={picked.set} data-testid="selectable-stacked" />;
+}
+```
+
 ### Compact rows under a heading that stays
 
 ```tsx
@@ -266,6 +336,8 @@ export function MembersColumns() {
 | `emptyLabel` | `string` |  | Shown in place of the rows when there are none: "No invoices yet". |
 | `sort` | `TableSort \| null` |  | The order the rows are shown in; the table sorts `rows` by it. Leave it out to let the headings own it, starting from `rows` as given. |
 | `onSortChange` | `((sort: TableSort) => void)` |  | Runs when a heading asks for another order, with it. |
+| `checkedRows` | `readonly string[]` | `[]` | The rows checked, by key. |
+| `onCheckedRowsChange` | `((keys: string[]) => void)` |  | Puts a checkbox at each row's start and one for all rows above them; runs with the keys checked, in the rows' order. A row can still open its record with `onChange` or `bind`. |
 | `className` | `string` |  |  |
 | `data-testid` | `string` |  | On the table; a row is `<id>-<key>`. |
 
@@ -349,7 +421,6 @@ Ratios are computed from @lingxia/view/theme and rounded down.
 | Missing | Needs | Meanwhile |
 | --- | --- | --- |
 | Columns as wide as their content. | text measurement before layout | A width in points or a share of the table; rows are separate grids, so a track sized by content would not line up. |
-| Choosing several rows. | nothing from the View | One row can be selected. |
 | A sorted column read as sorted by its header role. | a column header role with `aria-sort` | A sortable heading is a button whose name carries the order: "Amount, sorted ascending". |
 | Sideways scrolling with the first column held. | a sticky box on the horizontal axis | Columns share the table's width, and the table stacks its records where they would be too narrow. |
 | Rows drawn only while in view. | grid rows inside a `<List>` | Every row is laid out; page a long set. |

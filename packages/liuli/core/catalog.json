@@ -18995,6 +18995,19 @@
           "description": "Runs when a heading asks for another order, with it."
         },
         {
+          "name": "checkedRows",
+          "type": "readonly string[]",
+          "required": false,
+          "description": "The rows checked, by key.",
+          "default": "[]"
+        },
+        {
+          "name": "onCheckedRowsChange",
+          "type": "((keys: string[]) => void)",
+          "required": false,
+          "description": "Puts a checkbox at each row's start and one for all rows above them; runs with the keys checked, in the rows' order. A row can still open its record with `onChange` or `bind`."
+        },
+        {
           "name": "className",
           "type": "string",
           "required": false,
@@ -19084,6 +19097,10 @@
         "sortHeading": "button",
         "sortMark": "view",
         "sortBar": "view",
+        "sortGroup": "view",
+        "select": "view",
+        "selectable": "view",
+        "inset": "view",
         "body": "view",
         "rowgroup": "view",
         "row": "view",
@@ -19189,6 +19206,16 @@
           "source": "import { Table, type TableColumn } from '@liulidesign/core/Table';\n\nconst columns: TableColumn[] = [\n  { field: 'customer', header: 'Customer', width: '2fr' },\n  { field: 'due', header: 'Due' },\n  { field: 'amount', header: 'Amount', align: 'end', format: money },\n];\nconst bills = [\n  { id: 'INV-1042', customer: 'Northwind', dueOn: '2026-11-03', amount: 1280 },\n  { id: 'INV-1043', customer: 'Blue Harbor', dueOn: '2026-11-09', amount: 420.5 },\n  { id: 'INV-1044', customer: 'Kestrel & Co', dueOn: '2026-10-28', amount: 96 },\n  { id: 'INV-1045', customer: 'Lumen Studio', dueOn: '2026-11-20', amount: 3150 },\n  { id: 'INV-1046', customer: 'Atlas Freight', dueOn: '2026-11-14', amount: null },\n];\nconst sortableColumns: TableColumn[] = [\n  { field: 'customer', header: 'Customer', width: '2fr', isSortable: true },\n  { field: 'dueOn', header: 'Due', format: day, isSortable: true },\n  { field: 'amount', header: 'Amount', align: 'end', format: value => (value === null ? '—' : money(value)), isSortable: true },\n];\n\n/** On a phone the records stack, and the order is set from one menu above them. */\nexport function SortStacked() {\n  return <Table label=\"Invoices\" columns={sortableColumns} rows={bills} keyField=\"id\" layout=\"stacked\" data-testid=\"sort-stacked\" />;\n}"
         },
         {
+          "name": "Selectable",
+          "title": "Rows checked for a bulk action",
+          "source": "import { useLocal } from '@lingxia/view';\nimport { Badge } from '@liulidesign/core/Badge';\nimport { Table, type TableColumn, type TableRow } from '@liulidesign/core/Table';\n\nconst status = (row: TableRow) => (row.status === 'Paid' ? <Badge label=\"Paid\" tone=\"success\" size=\"sm\" />\n  : row.status === 'Overdue' ? <Badge label=\"Overdue\" tone=\"danger\" size=\"sm\" /> : <Badge label={String(row.status)} size=\"sm\" />);\nconst columns: TableColumn[] = [\n  { field: 'customer', header: 'Customer', width: '2fr' },\n  { field: 'due', header: 'Due' },\n  { field: 'amount', header: 'Amount', align: 'end', format: money },\n];\nconst bills = [\n  { id: 'INV-1042', customer: 'Northwind', dueOn: '2026-11-03', amount: 1280 },\n  { id: 'INV-1043', customer: 'Blue Harbor', dueOn: '2026-11-09', amount: 420.5 },\n  { id: 'INV-1044', customer: 'Kestrel & Co', dueOn: '2026-10-28', amount: 96 },\n  { id: 'INV-1045', customer: 'Lumen Studio', dueOn: '2026-11-20', amount: 3150 },\n  { id: 'INV-1046', customer: 'Atlas Freight', dueOn: '2026-11-14', amount: null },\n];\nconst sortableColumns: TableColumn[] = [\n  { field: 'customer', header: 'Customer', width: '2fr', isSortable: true },\n  { field: 'dueOn', header: 'Due', format: day, isSortable: true },\n  { field: 'amount', header: 'Amount', align: 'end', format: value => (value === null ? '—' : money(value)), isSortable: true },\n];\n\n/** A checkbox on each row and one for all; the rows checked are the page's, here counted above the table. */\nexport function Selectable() {\n  const picked = useLocal<string[]>('picked', ['INV-1043']);\n  return (\n    <view className=\"self-stretch gap-2\">\n      <text role=\"status\" className=\"text-footnote text-muted\">{picked.value.length === 0 ? 'None selected' : `${picked.value.length} selected`}</text>\n      <Table label=\"Invoices\" columns={[sortableColumns[0], sortableColumns[2]]} rows={bills} keyField=\"id\" checkedRows={picked.value} onCheckedRowsChange={picked.set} data-testid=\"selectable\" />\n    </view>\n  );\n}"
+        },
+        {
+          "name": "SelectableStacked",
+          "title": "Stacked records checked",
+          "source": "import { useLocal } from '@lingxia/view';\nimport { Table, type TableColumn } from '@liulidesign/core/Table';\n\nconst columns: TableColumn[] = [\n  { field: 'customer', header: 'Customer', width: '2fr' },\n  { field: 'due', header: 'Due' },\n  { field: 'amount', header: 'Amount', align: 'end', format: money },\n];\nconst bills = [\n  { id: 'INV-1042', customer: 'Northwind', dueOn: '2026-11-03', amount: 1280 },\n  { id: 'INV-1043', customer: 'Blue Harbor', dueOn: '2026-11-09', amount: 420.5 },\n  { id: 'INV-1044', customer: 'Kestrel & Co', dueOn: '2026-10-28', amount: 96 },\n  { id: 'INV-1045', customer: 'Lumen Studio', dueOn: '2026-11-20', amount: 3150 },\n  { id: 'INV-1046', customer: 'Atlas Freight', dueOn: '2026-11-14', amount: null },\n];\nconst sortableColumns: TableColumn[] = [\n  { field: 'customer', header: 'Customer', width: '2fr', isSortable: true },\n  { field: 'dueOn', header: 'Due', format: day, isSortable: true },\n  { field: 'amount', header: 'Amount', align: 'end', format: value => (value === null ? '—' : money(value)), isSortable: true },\n];\n\n/** Stacked, the checkbox for all sits beside the sort menu, and each record's at its start. */\nexport function SelectableStacked() {\n  const picked = useLocal<string[]>('picked', []);\n  return <Table label=\"Invoices\" columns={sortableColumns} rows={bills} keyField=\"id\" layout=\"stacked\" checkedRows={picked.value} onCheckedRowsChange={picked.set} data-testid=\"selectable-stacked\" />;\n}"
+        },
+        {
           "name": "Scrolling",
           "title": "Compact rows under a heading that stays",
           "source": "import { Table, type TableColumn } from '@liulidesign/core/Table';\n\nconst columns: TableColumn[] = [\n  { field: 'customer', header: 'Customer', width: '2fr' },\n  { field: 'due', header: 'Due' },\n  { field: 'amount', header: 'Amount', align: 'end', format: money },\n];\nconst cities = [\n  ['Lagos', 'Nigeria', 15.4], ['Cairo', 'Egypt', 10.0], ['Kinshasa', 'DR Congo', 9.5], ['Johannesburg', 'South Africa', 5.6], ['Nairobi', 'Kenya', 4.4],\n  ['Addis Ababa', 'Ethiopia', 3.9], ['Casablanca', 'Morocco', 3.7], ['Accra', 'Ghana', 2.6], ['Dakar', 'Senegal', 1.3], ['Kigali', 'Rwanda', 1.2],\n].map(([city, country, people]) => ({ city, country, people }));\n\n/** Compact rows that scroll under a heading that stays. */\nexport function Scrolling() {\n  return (\n    <Table\n      label=\"Cities by population\"\n      columns={[{ field: 'city', header: 'City' }, { field: 'country', header: 'Country' }, { field: 'people', header: 'Millions', align: 'end', width: 72, format: value => Number(value).toFixed(1) }]}\n      rows={cities}\n      density=\"compact\"\n      maxHeight={216}\n      data-testid=\"cities\"\n    />\n  );\n}"
@@ -19209,11 +19236,6 @@
           "missing": "Columns as wide as their content.",
           "needs": "text measurement before layout",
           "today": "A width in points or a share of the table; rows are separate grids, so a track sized by content would not line up."
-        },
-        {
-          "missing": "Choosing several rows.",
-          "needs": "nothing from the View",
-          "today": "One row can be selected."
         },
         {
           "missing": "A sorted column read as sorted by its header role.",
@@ -19300,6 +19322,14 @@
             {
               "name": "SortStacked",
               "title": "Stacked records, sorted from one menu"
+            },
+            {
+              "name": "Selectable",
+              "title": "A checkbox on each row and one for all, for a bulk action"
+            },
+            {
+              "name": "SelectableStacked",
+              "title": "Stacked records, each with its checkbox at the start"
             },
             {
               "name": "Scrolling",

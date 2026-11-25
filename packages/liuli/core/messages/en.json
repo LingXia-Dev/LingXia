@@ -306,5 +306,13 @@
   "@liuli.sortDescending": {
     "defaultMessage": "Sort descending",
     "description": "Button beside a stacked Table's sort menu while the order is ascending: turns it round."
+  },
+  "@liuli.selectAll": {
+    "defaultMessage": "Select all rows",
+    "description": "The checkbox above a selectable Table's rows; checked when every row is, mixed when some are."
+  },
+  "@liuli.selectRow": {
+    "defaultMessage": "Select {row}",
+    "description": "A selectable Table row's checkbox; `row` is the row's first field."
   }
 }

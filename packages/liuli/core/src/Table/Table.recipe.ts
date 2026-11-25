@@ -8,6 +8,10 @@ export const tableParts = {
   sortHeading: 'button',
   sortMark: 'view',
   sortBar: 'view',
+  sortGroup: 'view',
+  select: 'view',
+  selectable: 'view',
+  inset: 'view',
   body: 'view',
   rowgroup: 'view',
   row: 'view',
@@ -37,11 +41,32 @@ export const tableRecipe = {
     layer: { page: 'bg-surface', overlay: 'bg-surface-overlay' } satisfies Record<Layer, string>,
   },
   header: {
-    base: 'grid items-center gap-x-3 px-4 border-b border-line self-stretch',
+    base: 'grid items-center gap-x-3',
+    /** The hairline under the headings, on the headings or on the line that holds them and the checkbox for all. */
+    line: 'border-b border-line self-stretch',
+    grow: 'grow shrink min-w-0',
+    select: 'flex-row items-stretch',
     density: { comfortable: 'min-h-control-md', compact: 'min-h-control-sm' } satisfies Record<TableDensity, string>,
     // The rows pass under a heading that stays, so it carries the table's surface.
     layer: { page: 'bg-surface', overlay: 'bg-surface-overlay' } satisfies Record<Layer, string>,
     sticky: 'sticky top-0 z-10',
+  },
+  /** The row's sides: its own inset, or, after a row's checkbox, the gap a column keeps from the next. */
+  inset: {
+    full: 'px-4',
+    afterSelect: 'ps-3 pe-4',
+    /** The sort bar after the checkbox for all, whose cell brings its own start inset. */
+    select: 'pe-4',
+  },
+  /** A row's checkbox, in its own cell before the row's grid, centred on the row or the whole record. */
+  select: {
+    base: 'shrink-0 justify-center ps-4',
+  },
+  /** A selectable row: the checkbox's cell, then the row; the checked tint covers both. */
+  selectable: {
+    base: 'flex-row items-stretch self-stretch',
+    checked: 'bg-accent-soft',
+    rest: 'grow shrink min-w-0',
   },
   heading: {
     base: 'text-footnote font-medium text-muted',
@@ -61,7 +86,10 @@ export const tableRecipe = {
   },
   /** Stacked: the sort menu's trigger and the order's button at the top of the records, over the hairline the heading would draw. */
   sortBar: {
-    base: 'flex-row items-center gap-1 px-4 py-1 border-b border-line self-stretch',
+    base: 'flex-row items-center gap-3 py-1 border-b border-line self-stretch',
+  },
+  sortGroup: {
+    base: 'flex-row items-center gap-1',
   },
   body: {
     base: 'self-stretch divide-y divide-line',
@@ -70,7 +98,7 @@ export const tableRecipe = {
     base: 'self-stretch',
   },
   row: {
-    base: 'grid items-center gap-x-3 px-4 self-stretch text-start',
+    base: 'grid items-center gap-x-3 self-stretch text-start',
     density: { comfortable: 'min-h-[44px] py-2', compact: 'min-h-[36px] py-1.5' } satisfies Record<TableDensity, string>,
     pressable: 'transition-colors duration-fast ease-standard',
     idle: 'hover:bg-text/4 active:bg-text/7 focus-visible:inset-ring-2 focus-visible:inset-ring-focus',
@@ -83,6 +111,7 @@ export const tableRecipe = {
   text: {
     base: 'text-body text-text wrap-anywhere',
     lead: 'font-medium',
+    figureUnder: 'text-start tabular-nums',
     align: { start: 'text-start', end: 'text-end tabular-nums whitespace-nowrap' } satisfies Record<TableAlign, string>,
   },
   custom: {
@@ -92,12 +121,14 @@ export const tableRecipe = {
   // Stacked: one block a record. Its first line holds the leading field and, at the end edge, the
   // number, so numbers still line up down the table; the other fields wrap under it by whole pairs.
   block: {
-    base: 'gap-1 px-4 self-stretch text-start',
+    base: 'gap-1 self-stretch text-start',
     density: { comfortable: 'min-h-[44px] py-2.5 justify-center', compact: 'min-h-[36px] py-1.5 justify-center' } satisfies Record<TableDensity, string>,
   },
   lead: {
     // items-start, not items-baseline: View bug, a wrapped <text> in a baseline row is painted on one line.
     base: 'flex-row items-start gap-x-3 self-stretch',
+    /** At accessibility text sizes: the name, then the figure under it. */
+    large: 'gap-1 self-stretch',
   },
   leadCell: {
     // No basis-0: View bug, a zero-basis grow child keeps no width after its keyed row moves.
