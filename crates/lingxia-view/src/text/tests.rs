@@ -743,6 +743,9 @@ fn numeric_variants_inherit_as_opentype_features_and_reset_with_normal() {
 #[path = "tests/runs.rs"]
 mod runs;
 
+#[path = "tests/bidi_isolation.rs"]
+mod bidi_isolation;
+
 #[test]
 fn editors_take_the_box_direction_unless_dir_is_auto() {
     for (dir, rtl) in [("", false), ("dir:'auto',", true), ("dir:'rtl',", true)] {
