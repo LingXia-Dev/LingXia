@@ -420,6 +420,22 @@ impl<'a> LogicBundler<'a> {
                 )
             );
         }
+        if normalize_path(&native_client_path(&self.project.root))
+            .ok()
+            .as_deref()
+            != Some(path.as_path())
+            && let Some(line) = native_bridge_line(&program, &source)
+        {
+            bail!(
+                "{}:{line}: `{NATIVE_BRIDGE_GLOBAL}` is the runtime's private native bridge; \
+                 call routes through `page.native` or `import {{ native }} from '@lingxia/native'`",
+                relative_to(
+                    &path,
+                    &normalize_path(&self.project.root)
+                        .unwrap_or_else(|_| self.project.root.clone())
+                )
+            );
+        }
 
         let imports = collect_imports(&program, &source, &path, self.project.root.as_path())?;
         let export_dependencies =
@@ -1217,6 +1233,84 @@ fn unimported_lx_line(program: &oxc_ast::ast::Program<'_>, source: &str) -> Opti
     Some(source[..start as usize].matches('\n').count() + 1)
 }
 
+/// The Logic global the generated native client dispatches through; only that client may name it.
+const NATIVE_BRIDGE_GLOBAL: &str = "__lingxiaNative";
+
+/// The line of the first reach for the native bridge: the global itself (also when declared
+/// ambient), the name as a property or key, or the name as a string
+/// (`globalThis["__lingxiaNative"]`). Local bindings and comments are not reaches.
+fn native_bridge_line(program: &oxc_ast::ast::Program<'_>, source: &str) -> Option<usize> {
+    use oxc_ast_visit::{Visit, walk};
+    struct Reaches<'s> {
+        scoping: &'s oxc_semantic::Scoping,
+        in_global: bool,
+        first: Option<u32>,
+    }
+    impl Reaches<'_> {
+        fn hit(&mut self, start: u32) {
+            self.first = Some(self.first.map_or(start, |f| f.min(start)));
+        }
+    }
+    impl<'a> Visit<'a> for Reaches<'_> {
+        fn visit_identifier_reference(&mut self, ident: &oxc_ast::ast::IdentifierReference<'a>) {
+            let global = ident.reference_id.get().is_some_and(|id| {
+                self.scoping
+                    .get_reference(id)
+                    .symbol_id()
+                    .is_none_or(|symbol| {
+                        self.scoping
+                            .symbol_flags(symbol)
+                            .contains(oxc_semantic::SymbolFlags::Ambient)
+                    })
+            });
+            if ident.name == NATIVE_BRIDGE_GLOBAL && global {
+                self.hit(ident.span.start);
+            }
+        }
+        fn visit_binding_identifier(&mut self, ident: &oxc_ast::ast::BindingIdentifier<'a>) {
+            if self.in_global && ident.name == NATIVE_BRIDGE_GLOBAL {
+                self.hit(ident.span.start);
+            }
+        }
+        fn visit_ts_global_declaration(&mut self, decl: &oxc_ast::ast::TSGlobalDeclaration<'a>) {
+            let outer = std::mem::replace(&mut self.in_global, true);
+            walk::walk_ts_global_declaration(self, decl);
+            self.in_global = outer;
+        }
+        fn visit_identifier_name(&mut self, ident: &oxc_ast::ast::IdentifierName<'a>) {
+            if ident.name == NATIVE_BRIDGE_GLOBAL {
+                self.hit(ident.span.start);
+            }
+        }
+        fn visit_string_literal(&mut self, literal: &oxc_ast::ast::StringLiteral<'a>) {
+            if literal.value.as_str() == NATIVE_BRIDGE_GLOBAL {
+                self.hit(literal.span.start);
+            }
+        }
+        fn visit_template_literal(&mut self, literal: &oxc_ast::ast::TemplateLiteral<'a>) {
+            let plain = literal.expressions.is_empty()
+                && literal
+                    .quasis
+                    .first()
+                    .and_then(|q| q.value.cooked.as_ref())
+                    .is_some_and(|cooked| cooked.as_str() == NATIVE_BRIDGE_GLOBAL);
+            if plain {
+                self.hit(literal.span.start);
+            }
+            walk::walk_template_literal(self, literal);
+        }
+    }
+    let semantic = SemanticBuilder::new().build(program).semantic;
+    let mut reaches = Reaches {
+        scoping: semantic.scoping(),
+        in_global: false,
+        first: None,
+    };
+    reaches.visit_program(program);
+    let start = reaches.first?;
+    Some(source[..start as usize].matches('\n').count() + 1)
+}
+
 pub(crate) fn transpile_module(path: &Path, source: &str) -> Result<String> {
     let allocator = Allocator::default();
     let source_type = SourceType::from_path(path)
@@ -1578,6 +1672,63 @@ mod tests {
         let error = page_build_error(temp.path(), "export default {};\n\nlx.nav.back();\n");
         assert!(
             error.contains("pages/home/index.ts:3: `lx` is not imported; add `import { lx } from '@lingxia/logic'`"),
+            "{error}"
+        );
+    }
+
+    #[test]
+    fn logic_reaching_for_the_native_bridge_names_the_generated_client() {
+        for reach in [
+            "__lingxiaNative.invoke('a.b');",
+            "globalThis.__lingxiaNative.invoke('a.b');",
+            "globalThis['__lingxiaNative'].invoke('a.b');",
+            "globalThis[`__lingxiaNative`].invoke('a.b');",
+            "const { __lingxiaNative: bridge } = globalThis;",
+            "const present = '__lingxiaNative' in globalThis;",
+            "declare const __lingxiaNative: any; __lingxiaNative.invoke('a.b');",
+            "declare global { var __lingxiaNative: any }",
+        ] {
+            let temp = TempDir::new().unwrap();
+            let error =
+                page_build_error(temp.path(), &format!("export default {{}};\n\n{reach}\n"));
+            assert!(
+                error.contains("pages/home/index.ts:3: `__lingxiaNative` is the runtime's private native bridge; call routes through `page.native` or `import { native } from '@lingxia/native'`"),
+                "{reach}: {error}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_local_binding_or_comment_named_like_the_native_bridge_builds() {
+        let temp = TempDir::new().unwrap();
+        write(
+            temp.path(),
+            "lxapp.ts",
+            "// __lingxiaNative stays private\nconst __lingxiaNative = 1;\nglobalThis.n = __lingxiaNative + 1;\nApp({});\n",
+        );
+        build_test_bundle(temp.path(), "lxapp.ts");
+    }
+
+    /// The exemption is the generated client's own path, not its contents.
+    #[test]
+    fn a_copy_of_the_generated_client_outside_its_path_is_refused() {
+        let temp = TempDir::new().unwrap();
+        let root = temp.path();
+        write(
+            root,
+            "rust/lib.rs",
+            "#[lingxia::native(\"greet.hello\")]\npub async fn hello() -> HostResult<()> { todo!() }\n",
+        );
+        lingxia_native_codegen::generate_clients(&root.join("rust"), &root.join(".lingxia"), None)
+            .unwrap();
+        let client = fs::read_to_string(
+            root.join(".lingxia")
+                .join(lingxia_native_codegen::LOGIC_CLIENT),
+        )
+        .unwrap();
+        let error = page_build_error(root, &client);
+        assert!(
+            error.contains("pages/home/index.ts:") && error.contains("private native bridge"),
             "{error}"
         );
     }
