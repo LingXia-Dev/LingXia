@@ -4485,6 +4485,7 @@ dependencies = [
  "http",
  "jni",
  "libc",
+ "lingxia-error",
  "log",
  "napi-derive-ohos",
  "napi-ohos",

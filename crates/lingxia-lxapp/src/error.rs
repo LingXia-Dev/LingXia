@@ -94,12 +94,12 @@ impl From<LxAppError> for lingxia_error::Error {
         use lingxia_error::{Error, code};
         match error {
             LxAppError::Coded(error) => error,
-            LxAppError::ResourceNotFound(detail) | LxAppError::PluginNotConfigured(detail) => {
-                Error::not_found(detail)
-            }
-            LxAppError::InvalidParameter(detail) | LxAppError::ResourceExhausted(detail) => {
-                Error::invalid_arg(detail)
-            }
+            LxAppError::ResourceNotFound(detail) => Error::not_found(detail),
+            LxAppError::PluginNotConfigured(detail) => Error::new(code::CAPABILITY_MISSING, detail),
+            LxAppError::InvalidParameter(detail) => Error::invalid_arg(detail),
+            LxAppError::ResourceExhausted(detail) => Error::new(code::QUOTA, detail),
+            LxAppError::InvalidJsonFile(detail) => Error::new(code::INVALID_DATA, detail),
+            LxAppError::PluginDownloadFailed(detail) => Error::network(detail),
             LxAppError::UnsupportedOperation(detail) => Error::not_supported(detail),
             LxAppError::SurfaceConflict(detail) => Error::new(code::SURFACE_CONFLICT, detail),
             LxAppError::SurfaceRoleLocked(detail) => Error::new(code::SURFACE_ROLE_LOCKED, detail),
@@ -159,6 +159,16 @@ impl From<serde_json::Error> for LxAppError {
     fn from(error: serde_json::Error) -> Self {
         LxAppError::Bridge(format!("JSON Processing Error: {}", error))
     }
+}
+
+/// A Logic runtime error: a host error keeps its code, anything else is `E_INTERNAL`.
+#[cfg(feature = "js-appservice")]
+pub fn js_error(error: RongJSError) -> lingxia_error::Error {
+    if let Some(host) = error.as_host_error() {
+        let data = host.data.as_ref().map(error_data_to_json);
+        return host_error(host.code.to_string(), host.message.clone(), data);
+    }
+    lingxia_error::Error::internal(error.to_string())
 }
 
 #[cfg(feature = "js-appservice")]
@@ -337,6 +347,26 @@ mod tests {
             lingxia_error::Error::from(LxAppError::Bridge("Canceled".to_string())).code(),
             "E_ABORT"
         );
+    }
+
+    #[test]
+    fn each_failure_kind_has_the_code_that_says_what_happened() {
+        let code = |error: LxAppError| lingxia_error::Error::from(error).code().to_string();
+        assert_eq!(code(LxAppError::ResourceExhausted("x".into())), "E_QUOTA");
+        assert_eq!(
+            code(LxAppError::PluginNotConfigured("x".into())),
+            "E_CAPABILITY_MISSING"
+        );
+        assert_eq!(
+            code(LxAppError::InvalidJsonFile("x".into())),
+            "E_INVALID_DATA"
+        );
+        assert_eq!(
+            code(LxAppError::PluginDownloadFailed("x".into())),
+            "E_NETWORK"
+        );
+        let webview = lingxia_error::Error::from(WebViewError::InvalidCreateOptions("tag".into()));
+        assert_eq!(webview.code(), "E_INVALID_ARG");
     }
 
     #[test]

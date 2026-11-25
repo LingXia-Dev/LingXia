@@ -16,6 +16,7 @@ webview-input = []
 test-support = []
 
 [dependencies]
+lingxia-error = { workspace = true }
 async-trait = "0.1"
 log = { workspace = true }
 thiserror =  { workspace = true }

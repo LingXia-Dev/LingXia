@@ -48,6 +48,19 @@ pub enum WebViewScriptError {
     Platform(String),
 }
 
+impl From<WebViewError> for lingxia_error::Error {
+    fn from(error: WebViewError) -> Self {
+        use lingxia_error::Error;
+        match error {
+            WebViewError::WebView(detail) => Error::internal(detail),
+            WebViewError::InvalidCreateOptions(detail) => Error::invalid_arg(detail),
+            WebViewError::Unsupported(operation) => {
+                Error::not_supported(format!("{operation} is not supported on this platform"))
+            }
+        }
+    }
+}
+
 #[derive(Error, Debug, Clone, PartialEq, Eq)]
 pub enum WebViewInputError {
     #[error(transparent)]

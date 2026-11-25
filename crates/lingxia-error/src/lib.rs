@@ -367,6 +367,12 @@ impl From<serde_json::Error> for Error {
     }
 }
 
+impl<T> From<std::sync::mpsc::SendError<T>> for Error {
+    fn from(error: std::sync::mpsc::SendError<T>) -> Self {
+        Self::internal(error.to_string())
+    }
+}
+
 /// A `lingxia::Error` inside comes back as it was; anything else is `E_INTERNAL`.
 impl From<anyhow::Error> for Error {
     fn from(error: anyhow::Error) -> Self {
