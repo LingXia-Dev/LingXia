@@ -37,9 +37,10 @@ export const doc: ComponentDoc = {
     contrast: [
       { what: 'chosen label', pair: ['text', 'surface-raised'], minimum: '4.5:1' },
       { what: 'other labels', pair: ['text-muted', 'surface-sunken'], minimum: '4.5:1' },
+      { what: 'thumb edge, with icon-only segments', pair: ['line-strong', 'surface-sunken'], minimum: '3:1' },
     ],
     notes: [
-      'The chosen segment is in the raised thumb and the label\'s colour together, and is read as checked.',
+      'The chosen segment is in the raised thumb and the label\'s colour together, and is read as checked. With icon-only segments the thumb alone shows it, so its edge is drawn in `line-strong`.',
       'Segments are 28 and 36 px tall, below the 44 pt touch minimum; keep it to pointer layouts and compact rows with room around them.',
       'The thumb\'s edge is decorative and has no contrast minimum: the chosen segment is carried by its label and the raised thumb.',
     ],

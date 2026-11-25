@@ -100,7 +100,7 @@ export function Tabs({ label, items, bind, value: own, onChange: ownChange, vari
             {place && (
               <view aria-hidden className={r.track.base}>
                 <view dir="ltr" className={r.track.inner}>
-                  <view className={cx(r.indicator.base, segmented ? cx(s.thumb.base, s.thumb.row) : r.indicator.underline)} style={place} />
+                  <view className={cx(r.indicator.base, segmented ? cx(s.thumb.base, s.thumb.row, items.some(item => item.isLabelHidden) && s.thumb.edged) : r.indicator.underline)} style={place} />
                 </view>
               </view>
             )}

@@ -32,6 +32,8 @@ export const segmentedControlRecipe = {
     base: 'absolute start-0 rounded-segment border border-line bg-surface-raised shadow-contact transition-transform duration-base ease-spring',
     row: 'inset-y-0',
     stacked: 'top-0 end-0',
+    /** With icon-only segments the thumb is the only cue for the choice, so its edge reaches 3:1 on the track. */
+    edged: 'border-line-strong',
   },
   segment: {
     base: 'flex-row items-center-safe justify-center rounded-segment transition-colors duration-fast ease-standard focus-visible:ring-2 focus-visible:ring-focus focus-visible:ring-offset-2 disabled:opacity-40',

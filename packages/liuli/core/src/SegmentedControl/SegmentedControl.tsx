@@ -93,7 +93,7 @@ export function SegmentedControl(props: SegmentedControlProps) {
           right-to-left mirrors; stacked, one segment tall. */}
       <view aria-hidden className={r.track.base}>
         <view dir="ltr" className={r.track.inner}>
-          <view className={cx(r.thumb.base, r.thumb[layout])} style={thumb} />
+          <view className={cx(r.thumb.base, r.thumb[layout], items.some(option => option.isLabelHidden) && r.thumb.edged)} style={thumb} />
         </view>
       </view>
       {items.map((option, at) => {

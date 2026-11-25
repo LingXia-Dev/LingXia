@@ -144,7 +144,7 @@ export function Sizes() {
 - `className`: classes merged after the recipe's, so they win.
 - The recipe, `segmentedControlRecipe` from `@liulidesign/core/SegmentedControl/recipe`: the classes of each part, to style an element of your own to match. The component does not read a changed copy.
 - Scale tokens it reads, set in the app's stylesheet under `@theme`: `--text-footnote`, `--text-body`, `--shadow-contact`, `--radius-control`, `--radius-segment`.
-- Colour roles it paints with, set by the theme pack: `focus`, `line`, `surface-raised`, `surface-sunken`, `text`, `text-muted`.
+- Colour roles it paints with, set by the theme pack: `focus`, `line`, `line-strong`, `surface-raised`, `surface-sunken`, `text`, `text-muted`.
 
 ## Accessibility
 
@@ -155,7 +155,7 @@ export function Sizes() {
 - Tab: Into the row, on the chosen segment; again, out of it..
 - Left, Right: The previous or next segment, chosen on arrival..
 - Press target: sm 28 px, md 36 px.
-- The chosen segment is in the raised thumb and the label's colour together, and is read as checked.
+- The chosen segment is in the raised thumb and the label's colour together, and is read as checked. With icon-only segments the thumb alone shows it, so its edge is drawn in `line-strong`.
 - Segments are 28 and 36 px tall, below the 44 pt touch minimum; keep it to pointer layouts and compact rows with room around them.
 - The thumb's edge is decorative and has no contrast minimum: the chosen segment is carried by its label and the raised thumb.
 
@@ -163,6 +163,7 @@ export function Sizes() {
 | --- | --- | --- | --- | --- |
 | chosen label | `text` on `surface-raised` | 4.5:1 | 16.26:1 | 11.83:1 |
 | other labels | `text-muted` on `surface-sunken` | 4.5:1 | 5.20:1 | 7.45:1 |
+| thumb edge, with icon-only segments | `line-strong` on `surface-sunken` | 3:1 | 3.06:1 | 3.96:1 |
 
 Ratios are computed from @lingxia/view/theme and rounded down.
 
