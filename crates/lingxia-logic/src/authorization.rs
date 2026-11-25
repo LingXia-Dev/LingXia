@@ -127,7 +127,9 @@ impl LogicRoute {
         Self::TerminalConptySetEnabled,
     ];
 
-    /// `lx.host.terminal.*` serves the host-bundled Settings surface. The
+    /// `lx.host.terminal.*` serves the host-bundled Settings surface;
+    /// `lx.host.appearance.*` and `lx.host.displayLanguage.*` serve home and
+    /// every control surface. The
     /// attention routes (`lx.host.notification.*`, `lx.host.banner.*`)
     /// admit every lxapp session and then scope
     /// what each may touch with [`AttentionScope`]. Every other direct route
@@ -145,12 +147,6 @@ impl LogicRoute {
             | Self::AppBadgeClear
             | Self::AppCacheSize
             | Self::AppCacheClear
-            | Self::AppAppearancePreferenceGet
-            | Self::AppAppearancePreferenceSet
-            | Self::AppAppearancePreferenceWatch
-            | Self::AppDisplayLanguagePreferenceGet
-            | Self::AppDisplayLanguagePreferenceSet
-            | Self::AppDisplayLanguagePreferenceWatch
             | Self::AppCheckUpdate
             | Self::AppClaimUpdate
             | Self::AppApplyUpdate
@@ -173,6 +169,13 @@ impl LogicRoute {
             | Self::ShellActivate
             | Self::ShellOpenHostTerminalSettings
             | Self::ShellOpenHostBrowserSurface => RouteAudience::ControlAppOnly,
+            // Settings pages that are control surfaces read and set these too.
+            Self::AppAppearancePreferenceGet
+            | Self::AppAppearancePreferenceSet
+            | Self::AppAppearancePreferenceWatch
+            | Self::AppDisplayLanguagePreferenceGet
+            | Self::AppDisplayLanguagePreferenceSet
+            | Self::AppDisplayLanguagePreferenceWatch => RouteAudience::ControlAppOrSurface,
             Self::DevicePermission
             | Self::DeviceRequestPermission
             | Self::AppNotificationShow
@@ -602,6 +605,8 @@ mod tests {
             assert_eq!(audience, route.audience(), "{}", route.name());
             let expected = if route.name().starts_with("lx.host.terminal.") {
                 RouteAudience::ControlSurfaceOnly
+            } else if is_shared_preference_route(*route) {
+                RouteAudience::ControlAppOrSurface
             } else if is_attention_route(*route) {
                 RouteAudience::AppSessionOnly
             } else {
@@ -614,6 +619,50 @@ mod tests {
             LogicRoute::ShellOpenHostTerminalSettings.audience(),
             RouteAudience::ControlAppOnly
         );
+    }
+
+    /// The preferences home and the control surfaces both own; a guest never reaches them.
+    fn is_shared_preference_route(route: LogicRoute) -> bool {
+        route.name().starts_with("lx.host.appearance.")
+            || route.name().starts_with("lx.host.displayLanguage.")
+    }
+
+    #[test]
+    fn appearance_and_display_language_serve_home_and_control_surfaces_only() {
+        let shared: Vec<LogicRoute> = LogicRoute::ALL
+            .iter()
+            .copied()
+            .filter(|route| route.audience() == RouteAudience::ControlAppOrSurface)
+            .collect();
+        assert_eq!(shared.len(), 6);
+        assert!(
+            shared
+                .iter()
+                .all(|route| is_shared_preference_route(*route))
+        );
+        let standard = app_caller("guest.app", 51, AppSessionClass::StandardApp);
+        let control = app_caller("home.app", 52, AppSessionClass::ControlApp);
+        let surface = app_caller("settings.app", 53, AppSessionClass::ControlSurface);
+        for route in LogicRoute::ALL
+            .iter()
+            .filter(|r| is_shared_preference_route(**r))
+        {
+            assert!(
+                authorize_caller(&standard, *route).is_err(),
+                "{}",
+                route.name()
+            );
+            assert!(
+                authorize_caller(&control, *route).is_ok(),
+                "{}",
+                route.name()
+            );
+            assert!(
+                authorize_caller(&surface, *route).is_ok(),
+                "{}",
+                route.name()
+            );
+        }
     }
 
     /// The routes a guest may call for itself. Widening this list widens
@@ -666,6 +715,7 @@ mod tests {
 
         for route in LogicRoute::ALL {
             let surface_route = route.audience() == RouteAudience::ControlSurfaceOnly;
+            let shared = route.audience() == RouteAudience::ControlAppOrSurface;
             let attention = is_attention_route(*route);
             assert_eq!(
                 authorize_caller(&standard, *route).is_ok(),
@@ -681,7 +731,7 @@ mod tests {
             );
             assert_eq!(
                 authorize_caller(&surface, *route).is_ok(),
-                surface_route || attention,
+                surface_route || shared || attention,
                 "{}",
                 route.name()
             );

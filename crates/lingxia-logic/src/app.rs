@@ -269,7 +269,7 @@ pub(crate) fn init(ctx: &JSContext) -> JSResult<()> {
 /// `lx.app.language` and `lx.app.appearance` belong here: rendering in the
 /// product's language and scheme is what every context does, control surfaces
 /// included. The preferences beside them on `lx.host` authorize on each call,
-/// so only the Control app gets past them.
+/// so only the Control app and control surfaces get past them.
 pub(crate) fn init_base(ctx: &JSContext) -> JSResult<()> {
     register_app_property(ctx)?;
     register_app_base_api(ctx)?;

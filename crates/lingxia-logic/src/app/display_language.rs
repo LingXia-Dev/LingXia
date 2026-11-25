@@ -39,7 +39,7 @@ pub(super) fn init_app(ctx: &JSContext, app: &JSObject) -> JSResult<()> {
 }
 
 /// `lx.host.displayLanguage` — the product's language preference. Every context gets it; each call
-/// authorizes, so only the Control app gets past it.
+/// authorizes, so only the Control app and control surfaces get past it.
 pub(super) fn init_host(ctx: &JSContext, host: &JSObject) -> JSResult<()> {
     let namespace = JSObject::new(ctx);
     namespace.set("get", JSFunc::new(ctx, get_preference)?.name("get")?)?;

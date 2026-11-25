@@ -92,12 +92,6 @@ fn settings_required_routes() -> Vec<&'static str> {
         "privacy.clearSiteData",
         "privacy.getSiteDataContext",
         "privacy.getUsage",
-        "app.getDisplayLanguagePreference",
-        "app.setDisplayLanguagePreference",
-        "app.watchDisplayLanguagePreference",
-        "app.getAppearancePreference",
-        "app.setAppearancePreference",
-        "app.watchAppearancePreference",
     ];
     #[cfg(feature = "proxy")]
     let routes = {
@@ -152,8 +146,6 @@ mod tests {
     #[test]
     fn settings_catalog_routes_match_production_inventory_and_policy() {
         crate::host_addon::run_install_host_apis();
-        crate::appearance_host::register();
-        crate::display_language_host::register();
         super::register_builtin_route_inventory();
         lxapp::host::register_builtin_routes();
 

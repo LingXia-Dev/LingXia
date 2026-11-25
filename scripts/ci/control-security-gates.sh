@@ -66,7 +66,7 @@ case "$profile" in
     cargo test -p lingxia-browser --lib
     cargo test -p lingxia-transfer --lib download::manager::tests
     cargo test -p lingxia --lib host_addon::tests
-    cargo test -p lingxia --lib display_language_host::tests
+    cargo test -p lingxia-logic --lib authorization::tests
     bash scripts/ci/authority-escape-gate.sh run
     ;;
   bridge)

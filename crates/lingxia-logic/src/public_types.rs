@@ -811,15 +811,15 @@ rong::js_api! {
         type AppAppearanceApi = r###"Live<ResolvedAppearance>"###;
 
         /// `lx.host.appearance` — the product's scheme preference; only the Control
-        /// app gets past it. A system flip under `'auto'` moves `lx.app.appearance`
-        /// and leaves this quiet.
+        /// app and control surfaces get past it. A system flip under `'auto'` moves
+        /// `lx.app.appearance` and leaves this quiet.
         type HostAppearanceApi = r###"Live<AppearancePreference> & {
     /**
      * Pin the product to `'light'` or `'dark'`, or follow the system with
      * `'auto'`. An lxapp that pinned a scheme in its manifest keeps it. Resolves
      * once this lxapp's own `lx.app.appearance` follows.
      * @throws {E_INVALID_ARG} Any other value.
-     * @throws {E_PERMISSION_DENIED} From an lxapp other than the Control app.
+     * @throws {E_PERMISSION_DENIED} From an lxapp other than the Control app or a control surface.
      */
     set(preference: AppearancePreference): Promise<void>;
 }"###;
@@ -838,13 +838,14 @@ rong::js_api! {
         type AppLanguageApi = r###"Live<string>"###;
 
         /// `lx.host.displayLanguage` — the product's language preference: `'auto'`
-        /// or a canonical BCP-47 tag; only the Control app gets past it. A system
-        /// locale change under `'auto'` moves `lx.app.language` and leaves this quiet.
+        /// or a canonical BCP-47 tag; only the Control app and control surfaces get
+        /// past it. A system locale change under `'auto'` moves `lx.app.language` and
+        /// leaves this quiet.
         type HostDisplayLanguageApi = r###"Live<DisplayLanguagePreference> & {
     /**
      * Persist the product's language.
      * @throws {E_INVALID_ARG} A tag that is not valid BCP-47.
-     * @throws {E_PERMISSION_DENIED} From an lxapp other than the Control app.
+     * @throws {E_PERMISSION_DENIED} From an lxapp other than the Control app or a control surface.
      */
     set(preference: DisplayLanguagePreference): Promise<void>;
 }"###;

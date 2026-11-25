@@ -151,13 +151,11 @@ pub use lxapp::lingxia_surface::SizeClass;
 /// Where an lxapp is presented (main or aside) and whether the user can see
 /// it there, read from the window's surface graph at call time.
 pub use lxapp::{LxAppOpenRegion, ShellPresence, ShellPresentation, shell_presence};
-mod appearance_host;
 mod applink;
 /// Host assets packaged by the CLI (`assets:` in `lingxia.yaml`).
 pub mod assets;
 mod bootstrap;
 mod capabilities;
-mod display_language_host;
 pub mod splash;
 /// What a development host calls: the dev session's bundles, and the
 /// simulated device. The devtool commands themselves are implemented in

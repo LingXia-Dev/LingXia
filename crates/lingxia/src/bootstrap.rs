@@ -304,8 +304,6 @@ pub(crate) fn init_with_platform(
     // is created and no handler is invoked. Conflicting policies remain visible
     // through the read-only lookup used by validation.
     crate::host_addon::run_install_host_apis();
-    crate::appearance_host::register();
-    crate::display_language_host::register();
     crate::browser::register_builtin_route_inventory();
     lxapp::host::register_builtin_routes();
     let validated_settings = crate::settings_target::validate_for_startup(

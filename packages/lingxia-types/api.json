@@ -1448,7 +1448,7 @@
       "types": [],
       "tags": {},
       "examples": [],
-      "source": "src/generated/logic.ts:3560"
+      "source": "src/generated/logic.ts:3561"
     },
     {
       "path": "lx.app.info.channel",
@@ -1463,7 +1463,7 @@
       ],
       "tags": {},
       "examples": [],
-      "source": "src/generated/logic.ts:3566"
+      "source": "src/generated/logic.ts:3567"
     },
     {
       "path": "lx.app.info.name",
@@ -1476,7 +1476,7 @@
       "types": [],
       "tags": {},
       "examples": [],
-      "source": "src/generated/logic.ts:3562"
+      "source": "src/generated/logic.ts:3563"
     },
     {
       "path": "lx.app.info.role",
@@ -1489,7 +1489,7 @@
       "types": [],
       "tags": {},
       "examples": [],
-      "source": "src/generated/logic.ts:3572"
+      "source": "src/generated/logic.ts:3573"
     },
     {
       "path": "lx.app.info.version",
@@ -1502,7 +1502,7 @@
       "types": [],
       "tags": {},
       "examples": [],
-      "source": "src/generated/logic.ts:3564"
+      "source": "src/generated/logic.ts:3565"
     },
     {
       "path": "lx.app.language",
@@ -1603,7 +1603,7 @@
       "examples": [
         "lx.app.moreActions.replace([\n{ icon: 'public/feedback.svg', label: 'Feedback', onSelect: () => openFeedback() },\n]);"
       ],
-      "source": "src/generated/logic.ts:4179"
+      "source": "src/generated/logic.ts:4180"
     },
     {
       "path": "lx.app.t",
@@ -1627,7 +1627,7 @@
       "types": [],
       "tags": {},
       "examples": [],
-      "source": "src/generated/logic.ts:4065"
+      "source": "src/generated/logic.ts:4066"
     },
     {
       "path": "lx.app.tabBar",
@@ -1681,7 +1681,7 @@
         ]
       },
       "examples": [],
-      "source": "src/generated/logic.ts:4412"
+      "source": "src/generated/logic.ts:4413"
     },
     {
       "path": "lx.app.update",
@@ -1711,7 +1711,7 @@
       "types": [],
       "tags": {},
       "examples": [],
-      "source": "src/generated/logic.ts:4075"
+      "source": "src/generated/logic.ts:4076"
     },
     {
       "path": "lx.app.update.onFailed",
@@ -1743,7 +1743,7 @@
       ],
       "tags": {},
       "examples": [],
-      "source": "src/generated/logic.ts:4083"
+      "source": "src/generated/logic.ts:4084"
     },
     {
       "path": "lx.app.update.onReady",
@@ -1775,7 +1775,7 @@
       ],
       "tags": {},
       "examples": [],
-      "source": "src/generated/logic.ts:4081"
+      "source": "src/generated/logic.ts:4082"
     },
     {
       "path": "lx.automation",
@@ -1840,7 +1840,7 @@
         ]
       },
       "examples": [],
-      "source": "src/generated/logic.ts:3797"
+      "source": "src/generated/logic.ts:3798"
     },
     {
       "path": "lx.clipboard.read",
@@ -1883,7 +1883,7 @@
         ]
       },
       "examples": [],
-      "source": "src/generated/logic.ts:3792"
+      "source": "src/generated/logic.ts:3793"
     },
     {
       "path": "lx.clipboard.readText",
@@ -1917,7 +1917,7 @@
       "examples": [
         "const read = await lx.clipboard.readText();\nif (read.status === 'ok' && read.text) paste(read.text);"
       ],
-      "source": "src/generated/logic.ts:3776"
+      "source": "src/generated/logic.ts:3777"
     },
     {
       "path": "lx.clipboard.types",
@@ -1944,7 +1944,7 @@
         ]
       },
       "examples": [],
-      "source": "src/generated/logic.ts:3807"
+      "source": "src/generated/logic.ts:3808"
     },
     {
       "path": "lx.clipboard.write",
@@ -1978,7 +1978,7 @@
         ]
       },
       "examples": [],
-      "source": "src/generated/logic.ts:3781"
+      "source": "src/generated/logic.ts:3782"
     },
     {
       "path": "lx.clipboard.writeText",
@@ -2009,7 +2009,7 @@
         ]
       },
       "examples": [],
-      "source": "src/generated/logic.ts:3764"
+      "source": "src/generated/logic.ts:3765"
     },
     {
       "path": "lx.device",
@@ -2056,7 +2056,7 @@
         ]
       },
       "examples": [],
-      "source": "src/generated/logic.ts:3819"
+      "source": "src/generated/logic.ts:3820"
     },
     {
       "path": "lx.device.info",
@@ -2081,7 +2081,7 @@
       "types": [],
       "tags": {},
       "examples": [],
-      "source": "src/generated/logic.ts:3578"
+      "source": "src/generated/logic.ts:3579"
     },
     {
       "path": "lx.device.info.marketName",
@@ -2094,7 +2094,7 @@
       "types": [],
       "tags": {},
       "examples": [],
-      "source": "src/generated/logic.ts:3582"
+      "source": "src/generated/logic.ts:3583"
     },
     {
       "path": "lx.device.info.model",
@@ -2107,7 +2107,7 @@
       "types": [],
       "tags": {},
       "examples": [],
-      "source": "src/generated/logic.ts:3580"
+      "source": "src/generated/logic.ts:3581"
     },
     {
       "path": "lx.device.info.osName",
@@ -2122,7 +2122,7 @@
       ],
       "tags": {},
       "examples": [],
-      "source": "src/generated/logic.ts:3584"
+      "source": "src/generated/logic.ts:3585"
     },
     {
       "path": "lx.device.info.osVersion",
@@ -2135,7 +2135,7 @@
       "types": [],
       "tags": {},
       "examples": [],
-      "source": "src/generated/logic.ts:3586"
+      "source": "src/generated/logic.ts:3587"
     },
     {
       "path": "lx.device.location",
@@ -2186,7 +2186,7 @@
       "examples": [
         "const { latitude, longitude } = await lx.device.location();\nshowOnMap(latitude, longitude);"
       ],
-      "source": "src/generated/logic.ts:3843"
+      "source": "src/generated/logic.ts:3844"
     },
     {
       "path": "lx.device.onKeyDown",
@@ -2219,7 +2219,7 @@
       ],
       "tags": {},
       "examples": [],
-      "source": "src/generated/logic.ts:3826"
+      "source": "src/generated/logic.ts:3827"
     },
     {
       "path": "lx.device.onKeyUp",
@@ -2252,7 +2252,7 @@
       ],
       "tags": {},
       "examples": [],
-      "source": "src/generated/logic.ts:3828"
+      "source": "src/generated/logic.ts:3829"
     },
     {
       "path": "lx.device.orientation",
@@ -2284,7 +2284,7 @@
       ],
       "tags": {},
       "examples": [],
-      "source": "src/generated/logic.ts:4209"
+      "source": "src/generated/logic.ts:4210"
     },
     {
       "path": "lx.device.orientation.watch",
@@ -2316,7 +2316,7 @@
       ],
       "tags": {},
       "examples": [],
-      "source": "src/generated/logic.ts:4214"
+      "source": "src/generated/logic.ts:4215"
     },
     {
       "path": "lx.device.permission",
@@ -2371,7 +2371,7 @@
       "examples": [
         "if (await lx.device.permission.get('notifications') === 'prompt') showEnableButton();"
       ],
-      "source": "src/generated/logic.ts:4231"
+      "source": "src/generated/logic.ts:4232"
     },
     {
       "path": "lx.device.permission.request",
@@ -2418,7 +2418,7 @@
         ]
       },
       "examples": [],
-      "source": "src/generated/logic.ts:4242"
+      "source": "src/generated/logic.ts:4243"
     },
     {
       "path": "lx.device.screen",
@@ -2438,7 +2438,7 @@
       ],
       "tags": {},
       "examples": [],
-      "source": "src/generated/logic.ts:3823"
+      "source": "src/generated/logic.ts:3824"
     },
     {
       "path": "lx.device.systemSettings",
@@ -2458,7 +2458,7 @@
       ],
       "tags": {},
       "examples": [],
-      "source": "src/generated/logic.ts:3845"
+      "source": "src/generated/logic.ts:3846"
     },
     {
       "path": "lx.fs",
@@ -2516,7 +2516,7 @@
       "examples": [
         "await lx.fs.copy(picked, { to: 'lx://userdata/avatar.jpg', overwrite: true });"
       ],
-      "source": "src/generated/logic.ts:3903"
+      "source": "src/generated/logic.ts:3904"
     },
     {
       "path": "lx.fs.exists",
@@ -2543,7 +2543,7 @@
       ],
       "tags": {},
       "examples": [],
-      "source": "src/generated/logic.ts:3863"
+      "source": "src/generated/logic.ts:3864"
     },
     {
       "path": "lx.fs.file",
@@ -2572,7 +2572,7 @@
       ],
       "tags": {},
       "examples": [],
-      "source": "src/generated/logic.ts:3858"
+      "source": "src/generated/logic.ts:3859"
     },
     {
       "path": "lx.fs.mkdir",
@@ -2616,7 +2616,7 @@
         ]
       },
       "examples": [],
-      "source": "src/generated/logic.ts:3882"
+      "source": "src/generated/logic.ts:3883"
     },
     {
       "path": "lx.fs.readDir",
@@ -2656,7 +2656,7 @@
         ]
       },
       "examples": [],
-      "source": "src/generated/logic.ts:3876"
+      "source": "src/generated/logic.ts:3877"
     },
     {
       "path": "lx.fs.remove",
@@ -2704,7 +2704,7 @@
         ]
       },
       "examples": [],
-      "source": "src/generated/logic.ts:3921"
+      "source": "src/generated/logic.ts:3922"
     },
     {
       "path": "lx.fs.rename",
@@ -2750,7 +2750,7 @@
       "examples": [
         "await lx.fs.rename('drafts/a.txt', { to: 'notes/a.txt' });"
       ],
-      "source": "src/generated/logic.ts:3914"
+      "source": "src/generated/logic.ts:3915"
     },
     {
       "path": "lx.fs.stat",
@@ -2794,7 +2794,7 @@
         ]
       },
       "examples": [],
-      "source": "src/generated/logic.ts:3870"
+      "source": "src/generated/logic.ts:3871"
     },
     {
       "path": "lx.fs.userCache",
@@ -2864,7 +2864,7 @@
       "examples": [
         "await lx.fs.write('notes/today.md', { data: '# Today' });"
       ],
-      "source": "src/generated/logic.ts:3892"
+      "source": "src/generated/logic.ts:3893"
     },
     {
       "path": "lx.host",
@@ -2940,7 +2940,7 @@
           },
           {
             "code": "E_PERMISSION_DENIED",
-            "when": "From an lxapp other than the Control app."
+            "when": "From an lxapp other than the Control app or a control surface."
           }
         ]
       },
@@ -3466,12 +3466,12 @@
           },
           {
             "code": "E_PERMISSION_DENIED",
-            "when": "From an lxapp other than the Control app."
+            "when": "From an lxapp other than the Control app or a control surface."
           }
         ]
       },
       "examples": [],
-      "source": "src/generated/logic.ts:1647"
+      "source": "src/generated/logic.ts:1648"
     },
     {
       "path": "lx.host.displayLanguage.watch",
@@ -3538,7 +3538,7 @@
       "types": [],
       "tags": {},
       "examples": [],
-      "source": "src/generated/logic.ts:3950"
+      "source": "src/generated/logic.ts:3951"
     },
     {
       "path": "lx.host.info",
@@ -3565,7 +3565,7 @@
       ],
       "tags": {},
       "examples": [],
-      "source": "src/generated/logic.ts:3617"
+      "source": "src/generated/logic.ts:3618"
     },
     {
       "path": "lx.host.info.productName",
@@ -3578,7 +3578,7 @@
       "types": [],
       "tags": {},
       "examples": [],
-      "source": "src/generated/logic.ts:3619"
+      "source": "src/generated/logic.ts:3620"
     },
     {
       "path": "lx.host.info.sdkVersion",
@@ -3591,7 +3591,7 @@
       "types": [],
       "tags": {},
       "examples": [],
-      "source": "src/generated/logic.ts:3623"
+      "source": "src/generated/logic.ts:3624"
     },
     {
       "path": "lx.host.info.version",
@@ -3604,7 +3604,7 @@
       "types": [],
       "tags": {},
       "examples": [],
-      "source": "src/generated/logic.ts:3621"
+      "source": "src/generated/logic.ts:3622"
     },
     {
       "path": "lx.host.notification",
@@ -3664,7 +3664,7 @@
         ]
       },
       "examples": [],
-      "source": "src/generated/logic.ts:1914"
+      "source": "src/generated/logic.ts:1915"
     },
     {
       "path": "lx.host.notification.cancelAll",
@@ -3692,7 +3692,7 @@
         ]
       },
       "examples": [],
-      "source": "src/generated/logic.ts:1921"
+      "source": "src/generated/logic.ts:1922"
     },
     {
       "path": "lx.host.notification.show",
@@ -3737,7 +3737,7 @@
       "examples": [
         "await lx.host.notification.show({ title: 'Upload finished', target: { page: 'files' } });"
       ],
-      "source": "src/generated/logic.ts:1858"
+      "source": "src/generated/logic.ts:1859"
     },
     {
       "path": "lx.host.screenshot",
@@ -3779,7 +3779,7 @@
         ]
       },
       "examples": [],
-      "source": "src/generated/logic.ts:3938"
+      "source": "src/generated/logic.ts:3939"
     },
     {
       "path": "lx.host.serviceEnv",
@@ -3812,7 +3812,7 @@
       ],
       "tags": {},
       "examples": [],
-      "source": "src/generated/logic.ts:3958"
+      "source": "src/generated/logic.ts:3959"
     },
     {
       "path": "lx.host.serviceEnv.set",
@@ -3840,7 +3840,7 @@
       ],
       "tags": {},
       "examples": [],
-      "source": "src/generated/logic.ts:3965"
+      "source": "src/generated/logic.ts:3966"
     },
     {
       "path": "lx.host.terminal",
@@ -3874,7 +3874,7 @@
       "types": [],
       "tags": {},
       "examples": [],
-      "source": "src/generated/logic.ts:2966"
+      "source": "src/generated/logic.ts:2967"
     },
     {
       "path": "lx.host.terminal.colorSchemes.createPreview",
@@ -3895,7 +3895,7 @@
       ],
       "tags": {},
       "examples": [],
-      "source": "src/generated/logic.ts:3054"
+      "source": "src/generated/logic.ts:3055"
     },
     {
       "path": "lx.host.terminal.colorSchemes.import",
@@ -3942,7 +3942,7 @@
         ]
       },
       "examples": [],
-      "source": "src/generated/logic.ts:3045"
+      "source": "src/generated/logic.ts:3046"
     },
     {
       "path": "lx.host.terminal.colorSchemes.list",
@@ -3970,7 +3970,7 @@
         ]
       },
       "examples": [],
-      "source": "src/generated/logic.ts:3037"
+      "source": "src/generated/logic.ts:3038"
     },
     {
       "path": "lx.host.terminal.conpty",
@@ -3982,7 +3982,7 @@
       "types": [],
       "tags": {},
       "examples": [],
-      "source": "src/generated/logic.ts:2970"
+      "source": "src/generated/logic.ts:2971"
     },
     {
       "path": "lx.host.terminal.conpty.install",
@@ -4127,7 +4127,7 @@
       "types": [],
       "tags": {},
       "examples": [],
-      "source": "src/generated/logic.ts:2968"
+      "source": "src/generated/logic.ts:2969"
     },
     {
       "path": "lx.host.terminal.fonts.list",
@@ -4154,7 +4154,7 @@
         ]
       },
       "examples": [],
-      "source": "src/generated/logic.ts:3081"
+      "source": "src/generated/logic.ts:3082"
     },
     {
       "path": "lx.host.terminal.settings",
@@ -4166,7 +4166,7 @@
       "types": [],
       "tags": {},
       "examples": [],
-      "source": "src/generated/logic.ts:2964"
+      "source": "src/generated/logic.ts:2965"
     },
     {
       "path": "lx.host.terminal.settings.get",
@@ -4200,7 +4200,7 @@
         ]
       },
       "examples": [],
-      "source": "src/generated/logic.ts:3101"
+      "source": "src/generated/logic.ts:3102"
     },
     {
       "path": "lx.host.terminal.settings.onChange",
@@ -4235,7 +4235,7 @@
       ],
       "tags": {},
       "examples": [],
-      "source": "src/generated/logic.ts:3121"
+      "source": "src/generated/logic.ts:3122"
     },
     {
       "path": "lx.host.terminal.settings.reset",
@@ -4272,7 +4272,7 @@
         ]
       },
       "examples": [],
-      "source": "src/generated/logic.ts:3114"
+      "source": "src/generated/logic.ts:3115"
     },
     {
       "path": "lx.host.terminal.settings.update",
@@ -4311,7 +4311,7 @@
         ]
       },
       "examples": [],
-      "source": "src/generated/logic.ts:3106"
+      "source": "src/generated/logic.ts:3107"
     },
     {
       "path": "lx.host.tray",
@@ -4382,7 +4382,7 @@
         ]
       },
       "examples": [],
-      "source": "src/generated/logic.ts:4443"
+      "source": "src/generated/logic.ts:4444"
     },
     {
       "path": "lx.host.tray.onClick",
@@ -4423,7 +4423,7 @@
         ]
       },
       "examples": [],
-      "source": "src/generated/logic.ts:4432"
+      "source": "src/generated/logic.ts:4433"
     },
     {
       "path": "lx.host.tray.update",
@@ -4459,7 +4459,7 @@
         ]
       },
       "examples": [],
-      "source": "src/generated/logic.ts:4425"
+      "source": "src/generated/logic.ts:4426"
     },
     {
       "path": "lx.host.update",
@@ -4514,7 +4514,7 @@
         ]
       },
       "examples": [],
-      "source": "src/generated/logic.ts:3983"
+      "source": "src/generated/logic.ts:3984"
     },
     {
       "path": "lx.host.update.claim",
@@ -4532,7 +4532,7 @@
       "types": [],
       "tags": {},
       "examples": [],
-      "source": "src/generated/logic.ts:3990"
+      "source": "src/generated/logic.ts:3991"
     },
     {
       "path": "lx.media",
@@ -4593,7 +4593,7 @@
       "examples": [
         "const { path } = await lx.media.compressImage(photo, { quality: 60, maxWidth: 1280 });"
       ],
-      "source": "src/generated/logic.ts:4110"
+      "source": "src/generated/logic.ts:4111"
     },
     {
       "path": "lx.media.compressVideo",
@@ -4645,7 +4645,7 @@
       "examples": [
         "const task = lx.media.compressVideo(clip, { quality: 'medium' });\nfor await (const { fraction } of task) render(fraction);\nconst { path, size } = await task.result;"
       ],
-      "source": "src/generated/logic.ts:4162"
+      "source": "src/generated/logic.ts:4163"
     },
     {
       "path": "lx.media.imageInfo",
@@ -4688,7 +4688,7 @@
       "examples": [
         "const { width, height } = await lx.media.imageInfo('images/cover.png');"
       ],
-      "source": "src/generated/logic.ts:4099"
+      "source": "src/generated/logic.ts:4100"
     },
     {
       "path": "lx.media.preview",
@@ -4722,7 +4722,7 @@
       ],
       "tags": {},
       "examples": [],
-      "source": "src/generated/logic.ts:4115"
+      "source": "src/generated/logic.ts:4116"
     },
     {
       "path": "lx.media.saveToLibrary",
@@ -4753,7 +4753,7 @@
         ]
       },
       "examples": [],
-      "source": "src/generated/logic.ts:4121"
+      "source": "src/generated/logic.ts:4122"
     },
     {
       "path": "lx.media.videoInfo",
@@ -4796,7 +4796,7 @@
       "examples": [
         "const { durationMs, size } = await lx.media.videoInfo(clip);"
       ],
-      "source": "src/generated/logic.ts:4136"
+      "source": "src/generated/logic.ts:4137"
     },
     {
       "path": "lx.media.videoThumbnail",
@@ -4845,7 +4845,7 @@
       "examples": [
         "const poster = await lx.media.videoThumbnail(clip, { positionMs: 1000, maxWidth: 480 });"
       ],
-      "source": "src/generated/logic.ts:4147"
+      "source": "src/generated/logic.ts:4148"
     },
     {
       "path": "lx.nav",
@@ -5406,7 +5406,7 @@
         ]
       },
       "examples": [],
-      "source": "src/generated/logic.ts:4199"
+      "source": "src/generated/logic.ts:4200"
     },
     {
       "path": "lx.network.wifi",
@@ -5467,7 +5467,7 @@
         ]
       },
       "examples": [],
-      "source": "src/generated/logic.ts:4498"
+      "source": "src/generated/logic.ts:4499"
     },
     {
       "path": "lx.network.wifi.current",
@@ -5498,7 +5498,7 @@
         ]
       },
       "examples": [],
-      "source": "src/generated/logic.ts:4511"
+      "source": "src/generated/logic.ts:4512"
     },
     {
       "path": "lx.network.wifi.list",
@@ -5540,7 +5540,7 @@
         ]
       },
       "examples": [],
-      "source": "src/generated/logic.ts:4505"
+      "source": "src/generated/logic.ts:4506"
     },
     {
       "path": "lx.network.wifi.onConnected",
@@ -5573,7 +5573,7 @@
       ],
       "tags": {},
       "examples": [],
-      "source": "src/generated/logic.ts:4513"
+      "source": "src/generated/logic.ts:4514"
     },
     {
       "path": "lx.openExternal",
@@ -5610,7 +5610,7 @@
       "examples": [
         "await lx.openExternal('mailto:help@example.com');"
       ],
-      "source": "src/generated/logic.ts:4050"
+      "source": "src/generated/logic.ts:4051"
     },
     {
       "path": "lx.openFile",
@@ -5654,7 +5654,7 @@
       "examples": [
         "await lx.openFile('lx://userdata/report.pdf');"
       ],
-      "source": "src/generated/logic.ts:4022"
+      "source": "src/generated/logic.ts:4023"
     },
     {
       "path": "lx.pick",
@@ -5719,7 +5719,7 @@
         ]
       },
       "examples": [],
-      "source": "src/generated/logic.ts:4305"
+      "source": "src/generated/logic.ts:4306"
     },
     {
       "path": "lx.pick.code",
@@ -5763,7 +5763,7 @@
         ]
       },
       "examples": [],
-      "source": "src/generated/logic.ts:4315"
+      "source": "src/generated/logic.ts:4316"
     },
     {
       "path": "lx.pick.directory",
@@ -5810,7 +5810,7 @@
         ]
       },
       "examples": [],
-      "source": "src/generated/logic.ts:4279"
+      "source": "src/generated/logic.ts:4280"
     },
     {
       "path": "lx.pick.file",
@@ -5858,7 +5858,7 @@
       "examples": [
         "const picked = await lx.pick.file({ filters: [{ extensions: ['pdf'] }] });\nif (picked.status === 'ok') await attach(picked.file.path);"
       ],
-      "source": "src/generated/logic.ts:4260"
+      "source": "src/generated/logic.ts:4261"
     },
     {
       "path": "lx.pick.files",
@@ -5904,7 +5904,7 @@
         ]
       },
       "examples": [],
-      "source": "src/generated/logic.ts:4268"
+      "source": "src/generated/logic.ts:4269"
     },
     {
       "path": "lx.pick.media",
@@ -5958,7 +5958,7 @@
         ]
       },
       "examples": [],
-      "source": "src/generated/logic.ts:4293"
+      "source": "src/generated/logic.ts:4294"
     },
     {
       "path": "lx.share",
@@ -6002,7 +6002,7 @@
       "examples": [
         "const { outcome } = await lx.share({ title: 'LingXia', text: 'Try this app' });"
       ],
-      "source": "src/generated/logic.ts:4038"
+      "source": "src/generated/logic.ts:4039"
     },
     {
       "path": "lx.shell",
@@ -6032,7 +6032,7 @@
       "types": [],
       "tags": {},
       "examples": [],
-      "source": "src/generated/logic.ts:4322"
+      "source": "src/generated/logic.ts:4323"
     },
     {
       "path": "lx.shell.appDisplay",
@@ -6071,7 +6071,7 @@
         ]
       },
       "examples": [],
-      "source": "src/generated/logic.ts:3745"
+      "source": "src/generated/logic.ts:3746"
     },
     {
       "path": "lx.shell.appDisplay.update",
@@ -6108,7 +6108,7 @@
         ]
       },
       "examples": [],
-      "source": "src/generated/logic.ts:3753"
+      "source": "src/generated/logic.ts:3754"
     },
     {
       "path": "lx.shell.sidebarActions",
@@ -6151,7 +6151,7 @@
         ]
       },
       "examples": [],
-      "source": "src/generated/logic.ts:4356"
+      "source": "src/generated/logic.ts:4357"
     },
     {
       "path": "lx.shell.sidebarActions.replace",
@@ -6188,7 +6188,7 @@
       "examples": [
         "await lx.shell.sidebarActions.replace([\n{ id: 'new', placement: 'header', icon: 'public/plus.svg', label: 'New', onSelect: () => createDraft() },\n]);"
       ],
-      "source": "src/generated/logic.ts:4343"
+      "source": "src/generated/logic.ts:4344"
     },
     {
       "path": "lx.shell.sidebarActions.update",
@@ -6230,7 +6230,7 @@
         ]
       },
       "examples": [],
-      "source": "src/generated/logic.ts:4351"
+      "source": "src/generated/logic.ts:4352"
     },
     {
       "path": "lx.storage",
@@ -6549,7 +6549,7 @@
       "examples": [
         "if (lx.supports('host.tray')) lx.host.tray.update({ visible: true });"
       ],
-      "source": "src/generated/logic.ts:4007"
+      "source": "src/generated/logic.ts:4008"
     },
     {
       "path": "lx.surface",
@@ -6591,7 +6591,7 @@
       ],
       "tags": {},
       "examples": [],
-      "source": "src/generated/logic.ts:4393"
+      "source": "src/generated/logic.ts:4394"
     },
     {
       "path": "lx.surface.declared",
@@ -6629,7 +6629,7 @@
       ],
       "tags": {},
       "examples": [],
-      "source": "src/generated/logic.ts:4399"
+      "source": "src/generated/logic.ts:4400"
     },
     {
       "path": "lx.surface.get",
@@ -6663,7 +6663,7 @@
       ],
       "tags": {},
       "examples": [],
-      "source": "src/generated/logic.ts:4387"
+      "source": "src/generated/logic.ts:4388"
     },
     {
       "path": "lx.surface.openApp",
@@ -6721,7 +6721,7 @@
         ]
       },
       "examples": [],
-      "source": "src/generated/logic.ts:4375"
+      "source": "src/generated/logic.ts:4376"
     },
     {
       "path": "lx.surface.openDeclared",
@@ -6779,7 +6779,7 @@
         ]
       },
       "examples": [],
-      "source": "src/generated/logic.ts:4385"
+      "source": "src/generated/logic.ts:4386"
     },
     {
       "path": "lx.surface.openPage",
@@ -6890,7 +6890,7 @@
         ]
       },
       "examples": [],
-      "source": "src/generated/logic.ts:4367"
+      "source": "src/generated/logic.ts:4368"
     },
     {
       "path": "lx.ui",
@@ -6946,7 +6946,7 @@
         ]
       },
       "examples": [],
-      "source": "src/generated/logic.ts:4458"
+      "source": "src/generated/logic.ts:4459"
     },
     {
       "path": "lx.ui.alert",
@@ -6987,7 +6987,7 @@
         ]
       },
       "examples": [],
-      "source": "src/generated/logic.ts:4465"
+      "source": "src/generated/logic.ts:4466"
     },
     {
       "path": "lx.ui.confirm",
@@ -7028,7 +7028,7 @@
         ]
       },
       "examples": [],
-      "source": "src/generated/logic.ts:4472"
+      "source": "src/generated/logic.ts:4473"
     },
     {
       "path": "lx.ui.toast",
@@ -7069,7 +7069,7 @@
       "examples": [
         "lx.ui.toast('Saved', { tone: 'success' });\nconst busy = lx.ui.toast('Uploading…', { loading: true, durationMs: 60_000 });\nbusy.dismiss();"
       ],
-      "source": "src/generated/logic.ts:4483"
+      "source": "src/generated/logic.ts:4484"
     },
     {
       "path": "page.after",
@@ -7567,7 +7567,7 @@
       "types": [],
       "tags": {},
       "examples": [],
-      "source": "src/generated/logic.ts:2779"
+      "source": "src/generated/logic.ts:2780"
     },
     {
       "path": "page.surface.close",
@@ -7603,7 +7603,7 @@
       "types": [],
       "tags": {},
       "examples": [],
-      "source": "src/generated/logic.ts:2874"
+      "source": "src/generated/logic.ts:2875"
     },
     {
       "path": "page.surface.key",
@@ -7616,7 +7616,7 @@
       "types": [],
       "tags": {},
       "examples": [],
-      "source": "src/generated/logic.ts:2771"
+      "source": "src/generated/logic.ts:2772"
     },
     {
       "path": "page.surface.kind",
@@ -7629,7 +7629,7 @@
       "types": [],
       "tags": {},
       "examples": [],
-      "source": "src/generated/logic.ts:2769"
+      "source": "src/generated/logic.ts:2770"
     },
     {
       "path": "page.surface.onClose",
@@ -7662,7 +7662,7 @@
       ],
       "tags": {},
       "examples": [],
-      "source": "src/generated/logic.ts:2791"
+      "source": "src/generated/logic.ts:2792"
     },
     {
       "path": "page.surface.onHide",
@@ -7694,7 +7694,7 @@
       ],
       "tags": {},
       "examples": [],
-      "source": "src/generated/logic.ts:2878"
+      "source": "src/generated/logic.ts:2879"
     },
     {
       "path": "page.surface.onShow",
@@ -7726,7 +7726,7 @@
       ],
       "tags": {},
       "examples": [],
-      "source": "src/generated/logic.ts:2876"
+      "source": "src/generated/logic.ts:2877"
     },
     {
       "path": "page.surface.realized",
@@ -7739,7 +7739,7 @@
       "types": [],
       "tags": {},
       "examples": [],
-      "source": "src/generated/logic.ts:2777"
+      "source": "src/generated/logic.ts:2778"
     },
     {
       "path": "page.surface.show",
@@ -7757,7 +7757,7 @@
       "types": [],
       "tags": {},
       "examples": [],
-      "source": "src/generated/logic.ts:2869"
+      "source": "src/generated/logic.ts:2870"
     },
     {
       "path": "page.surface.visible",
@@ -7770,7 +7770,7 @@
       "types": [],
       "tags": {},
       "examples": [],
-      "source": "src/generated/logic.ts:2784"
+      "source": "src/generated/logic.ts:2785"
     },
     {
       "path": "page.update",
@@ -8231,7 +8231,7 @@
           "description": "Whether it set its own icon."
         }
       ],
-      "source": "src/generated/logic.ts:3550"
+      "source": "src/generated/logic.ts:3551"
     },
     {
       "name": "AppDisplayPatch",
@@ -8347,7 +8347,7 @@
           "description": "What this lxapp may call. `control`: the product's own lxapp, admitted to\nControl-only members. `control_surface`: a host-bundled settings lxapp the\nControl app opens, admitted only to its own members. `guest`: any other."
         }
       ],
-      "source": "src/generated/logic.ts:3558"
+      "source": "src/generated/logic.ts:3559"
     },
     {
       "name": "AppLanguageApi",
@@ -9923,7 +9923,7 @@
           "description": "Operating system version, e.g. `18.2`."
         }
       ],
-      "source": "src/generated/logic.ts:3576"
+      "source": "src/generated/logic.ts:3577"
     },
     {
       "name": "DeviceOrientation",
@@ -9953,7 +9953,7 @@
           "description": "What the entry is; a `symlink` is not followed."
         }
       ],
-      "source": "src/generated/logic.ts:3590"
+      "source": "src/generated/logic.ts:3591"
     },
     {
       "name": "DisplayLanguagePreference",
@@ -10122,7 +10122,7 @@
       "summary": "",
       "description": "",
       "fields": [],
-      "source": "src/generated/logic.ts:2894"
+      "source": "src/generated/logic.ts:2895"
     },
     {
       "name": "ExternalPageName",
@@ -10195,7 +10195,7 @@
           "description": "Epoch milliseconds; absent where the file system does not record it."
         }
       ],
-      "source": "src/generated/logic.ts:3598"
+      "source": "src/generated/logic.ts:3599"
     },
     {
       "name": "FileSystemApi",
@@ -10833,8 +10833,8 @@
     },
     {
       "name": "HostAppearanceApi",
-      "summary": "`lx.host.appearance` — the product's scheme preference; only the Control app gets past it.",
-      "description": "`lx.host.appearance` — the product's scheme preference; only the Control\napp gets past it. A system flip under `'auto'` moves `lx.app.appearance`\nand leaves this quiet.",
+      "summary": "`lx.host.appearance` — the product's scheme preference; only the Control app and control surfaces get past it.",
+      "description": "`lx.host.appearance` — the product's scheme preference; only the Control\napp and control surfaces get past it. A system flip under `'auto'` moves\n`lx.app.appearance` and leaves this quiet.",
       "fields": [
         {
           "name": "get",
@@ -10864,7 +10864,7 @@
               },
               {
                 "code": "E_PERMISSION_DENIED",
-                "when": "From an lxapp other than the Control app."
+                "when": "From an lxapp other than the Control app or a control surface."
               }
             ]
           }
@@ -10874,8 +10874,8 @@
     },
     {
       "name": "HostDisplayLanguageApi",
-      "summary": "`lx.host.displayLanguage` — the product's language preference: `'auto'` or a canonical BCP-47 tag; only the Control app gets past it.",
-      "description": "`lx.host.displayLanguage` — the product's language preference: `'auto'`\nor a canonical BCP-47 tag; only the Control app gets past it. A system\nlocale change under `'auto'` moves `lx.app.language` and leaves this quiet.",
+      "summary": "`lx.host.displayLanguage` — the product's language preference: `'auto'` or a canonical BCP-47 tag; only the Control app and control surfaces get past it.",
+      "description": "`lx.host.displayLanguage` — the product's language preference: `'auto'`\nor a canonical BCP-47 tag; only the Control app and control surfaces get\npast it. A system locale change under `'auto'` moves `lx.app.language` and\nleaves this quiet.",
       "fields": [
         {
           "name": "get",
@@ -10905,13 +10905,13 @@
               },
               {
                 "code": "E_PERMISSION_DENIED",
-                "when": "From an lxapp other than the Control app."
+                "when": "From an lxapp other than the Control app or a control surface."
               }
             ]
           }
         }
       ],
-      "source": "src/generated/logic.ts:1641"
+      "source": "src/generated/logic.ts:1642"
     },
     {
       "name": "HostInfo",
@@ -10947,7 +10947,7 @@
           "description": "The LingXia runtime version."
         }
       ],
-      "source": "src/generated/logic.ts:3615"
+      "source": "src/generated/logic.ts:3616"
     },
     {
       "name": "HostOs",
@@ -10955,7 +10955,7 @@
       "description": "Canonical platform-family label shared by `lx.host.info.os`\nand `lx.device.info.osName`. `\"unknown\"` is a non-product build.",
       "text": "\"ios\" | \"macos\" | \"android\" | \"windows\" | \"harmony\" | \"unknown\"",
       "fields": [],
-      "source": "src/generated/logic.ts:1654"
+      "source": "src/generated/logic.ts:1655"
     },
     {
       "name": "HostServiceEnvState",
@@ -10998,7 +10998,7 @@
           "description": "Switching is allowed in this build."
         }
       ],
-      "source": "src/generated/logic.ts:3627"
+      "source": "src/generated/logic.ts:3628"
     },
     {
       "name": "HostServiceEnvSwitchResult",
@@ -11027,7 +11027,7 @@
           "description": "If present, the environment was saved; close and reopen the app manually."
         }
       ],
-      "source": "src/generated/logic.ts:3641"
+      "source": "src/generated/logic.ts:3642"
     },
     {
       "name": "HostTarget",
@@ -11035,7 +11035,7 @@
       "description": "Where a notification tap or a banner action goes: a page, tab or\nlxapp as `lx.nav.go` takes it, or `{ activate }`, `{ route }`,\n`{ appLink }`. One destination per target; a mix is a parameter error.\nAn lxapp already open, such as docked as an aside, comes back where it\nis, and `page` and `params` reach its App `onShow` (`reason: 'switch_back'`).",
       "text": "PageTarget | (TabTarget & { params?: never; }) | Omit<AppTarget, 'channel' | 'version'> | ActivateTarget | RouteTarget | AppLinkTarget",
       "fields": [],
-      "source": "src/generated/logic.ts:1663"
+      "source": "src/generated/logic.ts:1664"
     },
     {
       "name": "HostUpdateApi",
@@ -11073,7 +11073,7 @@
           "description": "Claim the process-lifetime custom host-update flow.\nIrreversible: the built-in auto-flow will not prompt or download again,\nincluding after the calling page unloads. Does not cancel an already-started\nupdate task. Later failed checks do not undo a claim already made."
         }
       ],
-      "source": "src/generated/logic.ts:1666"
+      "source": "src/generated/logic.ts:1667"
     },
     {
       "name": "ImageInfo",
@@ -11109,7 +11109,7 @@
           "description": "A path the image can be read from."
         }
       ],
-      "source": "src/generated/logic.ts:3654"
+      "source": "src/generated/logic.ts:3655"
     },
     {
       "name": "InstalledTerminalFont",
@@ -11145,7 +11145,7 @@
           "description": "The font carries Nerd Font icons."
         }
       ],
-      "source": "src/generated/logic.ts:1669"
+      "source": "src/generated/logic.ts:1670"
     },
     {
       "name": "JsonData",
@@ -11169,7 +11169,7 @@
       "description": "A JSON value: what a navigation route parameter may hold. Not a way\nto smuggle a payload — every route declares its own parameter\nschema, and the framework caps size, count, and nesting.",
       "text": "null | boolean | number | string | JsonValue[] | { [key: string]: JsonValue; }",
       "fields": [],
-      "source": "src/generated/logic.ts:1685"
+      "source": "src/generated/logic.ts:1686"
     },
     {
       "name": "KeyEvent",
@@ -11226,7 +11226,7 @@
           "description": "The key is held down and this event is a repeat."
         }
       ],
-      "source": "src/generated/logic.ts:1694"
+      "source": "src/generated/logic.ts:1695"
     },
     {
       "name": "KeyEventCallback",
@@ -11234,7 +11234,7 @@
       "description": "Receives each hardware key event.",
       "text": "(event: KeyEvent) => void",
       "fields": [],
-      "source": "src/generated/logic.ts:1712"
+      "source": "src/generated/logic.ts:1713"
     },
     {
       "name": "Live",
@@ -11313,7 +11313,7 @@
           "description": "Horizontal accuracy in meters"
         }
       ],
-      "source": "src/generated/logic.ts:3666"
+      "source": "src/generated/logic.ts:3667"
     },
     {
       "name": "LxAppApi",
@@ -11393,7 +11393,7 @@
       "description": "Which channel an lxapp build came from: a release or a draft.",
       "text": "\"release\" | \"draft\"",
       "fields": [],
-      "source": "src/generated/logic.ts:1717"
+      "source": "src/generated/logic.ts:1718"
     },
     {
       "name": "LxAppUpdateApi",
@@ -11422,7 +11422,7 @@
           "description": "Calls `callback` when downloading an update fails. Returns the unsubscribe fn."
         }
       ],
-      "source": "src/generated/logic.ts:1720"
+      "source": "src/generated/logic.ts:1721"
     },
     {
       "name": "LxError",
@@ -11531,7 +11531,7 @@
       "description": "Why an `lx` call failed, where `code` alone does not say: `e.reason === 'wifiPasswordWrong'`.\n- `userCanceled` with `E_ABORT`\n- `userDeclined` with `E_ABORT`\n- `cameraPermissionDenied` with `E_PERMISSION_DENIED`\n- `locationPermissionDenied` with `E_PERMISSION_DENIED`\n- `microphonePermissionDenied` with `E_PERMISSION_DENIED`\n- `photosPermissionDenied` with `E_PERMISSION_DENIED`\n- `storagePermissionDenied` with `E_PERMISSION_DENIED`\n- `clipboardPermissionDenied` with `E_PERMISSION_DENIED`\n- `locationServicesDisabled` with `E_INVALID_STATE`\n- `refreshNotEnabled` with `E_INVALID_STATE`\n- `networkUnavailable` with `E_NETWORK`\n- `serverErrorStatus` with `E_NETWORK`\n- `connectionFailed` with `E_NETWORK`\n- `deviceUnsupported` with `E_NOT_SUPPORTED`\n- `hostUpgradeRequired` with `E_NOT_SUPPORTED`\n- `wifiSystemError` with `E_NETWORK`\n- `wifiPasswordWrong` with `E_NETWORK`\n- `wifiTimedOut` with `E_TIMEOUT`\n- `wifiUnsupported` with `E_NOT_SUPPORTED`\n- `wifiPermissionDenied` with `E_NETWORK`\n- `wifiPromptUnanswered` with `E_NETWORK`\n- `wifiConnectionDeclined` with `E_NETWORK`\n- `wifiDisabled` with `E_INVALID_STATE`\n- `wifiNetworkNotFound` with `E_NOT_FOUND`\n- `placementUnsupported` with `E_NOT_SUPPORTED`\n- `appOpenInOtherRole` with `E_SURFACE_CONFLICT`\n- `appUnderMaintenance` with `E_PERMISSION_DENIED`\n- `appSuspended` with `E_PERMISSION_DENIED`\n- `tabAlreadyOpen` with `E_INVALID_ARG`\n- `stackFull` with `E_INVALID_ARG`\n- `revisionOutdated` with `E_INVALID_STATE`\n- `appClosed` with `E_INVALID_STATE`\n- `pageUnloaded` with `E_INVALID_STATE`\n- `tabBarNotDeclared` with `E_INVALID_STATE`",
       "text": "\"userCanceled\" | \"userDeclined\" | \"cameraPermissionDenied\" | \"locationPermissionDenied\" | \"microphonePermissionDenied\" | \"photosPermissionDenied\" | \"storagePermissionDenied\" | \"clipboardPermissionDenied\" | \"locationServicesDisabled\" | \"refreshNotEnabled\" | \"networkUnavailable\" | \"serverErrorStatus\" | \"connectionFailed\" | \"deviceUnsupported\" | \"hostUpgradeRequired\" | \"wifiSystemError\" | \"wifiPasswordWrong\" | \"wifiTimedOut\" | \"wifiUnsupported\" | \"wifiPermissionDenied\" | \"wifiPromptUnanswered\" | \"wifiConnectionDeclined\" | \"wifiDisabled\" | \"wifiNetworkNotFound\" | \"placementUnsupported\" | \"appOpenInOtherRole\" | \"appUnderMaintenance\" | \"appSuspended\" | \"tabAlreadyOpen\" | \"stackFull\" | \"revisionOutdated\" | \"appClosed\" | \"pageUnloaded\" | \"tabBarNotDeclared\"",
       "fields": [],
-      "source": "src/generated/logic.ts:1759"
+      "source": "src/generated/logic.ts:1760"
     },
     {
       "name": "LxFeature",
@@ -11539,7 +11539,7 @@
       "description": "Feature contracts generated from the runtime registry.",
       "text": "\"app.appUse\" | \"app.browser\" | \"app.browserUse\" | \"app.computerUse\" | \"app.mediaCapture\" | \"app.proxy\" | \"automation\" | \"device.haptics\" | \"host.autostart\" | \"host.badge\" | \"host.banner\" | \"host.notification\" | \"host.selfUpdate\" | \"host.terminal\" | \"host.terminal.conpty\" | \"host.tray\" | \"pick.camera\" | \"pick.directory\" | \"surface.tab\" | \"surface.window\" | \"surface.window.fullChrome\"",
       "fields": [],
-      "source": "src/generated/logic.ts:4520"
+      "source": "src/generated/logic.ts:4521"
     },
     {
       "name": "LxFile",
@@ -11611,7 +11611,7 @@
           "description": "Read metadata for this managed path."
         }
       ],
-      "source": "src/generated/logic.ts:3716"
+      "source": "src/generated/logic.ts:3717"
     },
     {
       "name": "LxStorageValues",
@@ -11779,7 +11779,7 @@
       "description": "How media fills its box: crop, letterbox, stretch, or fit.",
       "text": "\"cover\" | \"contain\" | \"fill\" | \"fit\"",
       "fields": [],
-      "source": "src/generated/logic.ts:1764"
+      "source": "src/generated/logic.ts:1765"
     },
     {
       "name": "MediaRotation",
@@ -11787,7 +11787,7 @@
       "description": "A clockwise rotation in degrees.",
       "text": "0 | 90 | 180 | 270",
       "fields": [],
-      "source": "src/generated/logic.ts:1767"
+      "source": "src/generated/logic.ts:1768"
     },
     {
       "name": "MessageIn",
@@ -11855,7 +11855,7 @@
           "description": "Runs when the person picks it, after the menu has closed."
         }
       ],
-      "source": "src/generated/logic.ts:1775"
+      "source": "src/generated/logic.ts:1776"
     },
     {
       "name": "MoreActionsApi",
@@ -11870,7 +11870,7 @@
           "description": "Replace the current lxapp's complete app-declared More action list (seven\nentries maximum). Pass an empty array to clear it. Native hosts append these\nentries after their own lifecycle actions."
         }
       ],
-      "source": "src/generated/logic.ts:1785"
+      "source": "src/generated/logic.ts:1786"
     },
     {
       "name": "NavApi",
@@ -12015,7 +12015,7 @@
       "description": "Anywhere `lx.nav.go` can go: a page, a tab, another lxapp, or a URL.",
       "text": "PageTarget | TabTarget | AppTarget | UrlTarget",
       "fields": [],
-      "source": "src/generated/logic.ts:1790"
+      "source": "src/generated/logic.ts:1791"
     },
     {
       "name": "NavigationBarPatch",
@@ -12044,7 +12044,7 @@
           "description": "Colors to change; `null` restores every declared color."
         }
       ],
-      "source": "src/generated/logic.ts:1793"
+      "source": "src/generated/logic.ts:1794"
     },
     {
       "name": "NavigationBarStylePatch",
@@ -12073,7 +12073,7 @@
           "description": "The line under the bar."
         }
       ],
-      "source": "src/generated/logic.ts:1803"
+      "source": "src/generated/logic.ts:1804"
     },
     {
       "name": "NetworkApi",
@@ -12190,7 +12190,7 @@
           "description": "The primary IPv6 address, at most one; empty when not connected."
         }
       ],
-      "source": "src/generated/logic.ts:1815"
+      "source": "src/generated/logic.ts:1816"
     },
     {
       "name": "NetworkType",
@@ -12198,7 +12198,7 @@
       "description": "The kind of network the device is on.",
       "text": "\"unknown\" | \"none\" | \"wifi\" | \"2g\" | \"3g\" | \"4g\" | \"5g\" | \"ethernet\"",
       "fields": [],
-      "source": "src/generated/logic.ts:1830"
+      "source": "src/generated/logic.ts:1831"
     },
     {
       "name": "NoLifecycleTypos",
@@ -12268,7 +12268,7 @@
           }
         }
       ],
-      "source": "src/generated/logic.ts:1846"
+      "source": "src/generated/logic.ts:1847"
     },
     {
       "name": "OpenAppOptions",
@@ -12318,7 +12318,7 @@
           "description": "Install this version first if it is newer than the installed one; older versions are refused."
         }
       ],
-      "source": "src/generated/logic.ts:1925"
+      "source": "src/generated/logic.ts:1926"
     },
     {
       "name": "OpenDeclaredOptions",
@@ -12347,7 +12347,7 @@
           "description": "Preferred docking side when the effective role is `aside`."
         }
       ],
-      "source": "src/generated/logic.ts:1959"
+      "source": "src/generated/logic.ts:1960"
     },
     {
       "name": "OpenFileOptions",
@@ -12363,7 +12363,7 @@
           "default": "'auto'"
         }
       ],
-      "source": "src/generated/logic.ts:1978"
+      "source": "src/generated/logic.ts:1979"
     },
     {
       "name": "OpenLink",
@@ -12392,7 +12392,7 @@
           "description": "The link's query parameters. Untrusted."
         }
       ],
-      "source": "src/generated/logic.ts:1988"
+      "source": "src/generated/logic.ts:1989"
     },
     {
       "name": "OpenPageArgs",
@@ -12408,7 +12408,7 @@
       "description": "`as` picks the shape. A float anchors and carries no decoration; a\nwindow is decorated and does not anchor. The runtime rejects the\nwrong pairing either way, so the type says it first — except with an\nordered preference, where the realized placement is not known up\nfront and both stay open.",
       "text": "(OpenPageShared & { as?: 'float'; position?: SurfaceFloatPosition; chrome?: never; }) | (OpenPageShared & { as: 'window'; chrome?: WindowChrome; position?: never; }) | (OpenPageShared & { as: readonly ('float' | 'window')[]; chrome?: WindowChrome; position?: SurfaceFloatPosition; })",
       "fields": [],
-      "source": "src/generated/logic.ts:2004"
+      "source": "src/generated/logic.ts:2005"
     },
     {
       "name": "OpenPageShared",
@@ -12437,7 +12437,7 @@
           "description": "Caller-owned identity, for `lx.surface.get(key)` later."
         }
       ],
-      "source": "src/generated/logic.ts:2027"
+      "source": "src/generated/logic.ts:2028"
     },
     {
       "name": "OpenUrlOptions",
@@ -12473,7 +12473,7 @@
           "description": "Stable identity for `lx.surface.get(key)`."
         }
       ],
-      "source": "src/generated/logic.ts:2041"
+      "source": "src/generated/logic.ts:2042"
     },
     {
       "name": "OrientationApi",
@@ -12517,7 +12517,7 @@
           "description": "Height hint."
         }
       ],
-      "source": "src/generated/logic.ts:2058"
+      "source": "src/generated/logic.ts:2059"
     },
     {
       "name": "OverlaySurfaceSizeValue",
@@ -12525,7 +12525,7 @@
       "description": "Size hint for an overlay surface (aside / float).\n- number: absolute px, must be > 0\n- `${number}%`: percentage of the container, 0 < N ≤ 100",
       "text": "number | `${number}%`",
       "fields": [],
-      "source": "src/generated/logic.ts:2070"
+      "source": "src/generated/logic.ts:2071"
     },
     {
       "name": "PageApi",
@@ -12832,7 +12832,7 @@
           "description": "`compact` below 600 logical pixels of the page's width, `regular` from 600."
         }
       ],
-      "source": "src/generated/logic.ts:2076"
+      "source": "src/generated/logic.ts:2077"
     },
     {
       "name": "PageEveryOptions",
@@ -12921,7 +12921,7 @@
           "description": "Who ended it: the person, the opener, memory pressure, or the app closing."
         }
       ],
-      "source": "src/generated/logic.ts:2156"
+      "source": "src/generated/logic.ts:2157"
     },
     {
       "name": "PageHookName",
@@ -12965,7 +12965,7 @@
       "summary": "What `onLoad` receives: each param with the type it was passed with.",
       "description": "What `onLoad` receives: each param with the type it was passed with.\nValidate a query from outside (an app link, a URL): it is usually\nstrings.",
       "fields": [],
-      "source": "src/generated/logic.ts:2092"
+      "source": "src/generated/logic.ts:2093"
     },
     {
       "name": "PageMessagePort",
@@ -12987,7 +12987,7 @@
           "description": "Receives what the other side sends. Returns a function that removes the handler."
         }
       ],
-      "source": "src/generated/logic.ts:2097"
+      "source": "src/generated/logic.ts:2098"
     },
     {
       "name": "PageNative",
@@ -13087,7 +13087,7 @@
           "description": "A GPU page player's volume."
         }
       ],
-      "source": "src/generated/logic.ts:2109"
+      "source": "src/generated/logic.ts:2110"
     },
     {
       "name": "PageQuery",
@@ -13095,7 +13095,7 @@
       "description": "A page's params, keyed by name.",
       "text": "Record<string, PageQueryValue>",
       "fields": [],
-      "source": "src/generated/logic.ts:2135"
+      "source": "src/generated/logic.ts:2136"
     },
     {
       "name": "PageQueryValue",
@@ -13103,7 +13103,7 @@
       "description": "A page param: any JSON value. `null` and `undefined` mean absent. The\nwhole set of non-string params is limited to 8 KB as JSON.",
       "text": "JsonValue | undefined",
       "fields": [],
-      "source": "src/generated/logic.ts:2141"
+      "source": "src/generated/logic.ts:2142"
     },
     {
       "name": "PageResult",
@@ -13111,7 +13111,7 @@
       "description": "A pushed or surface page's outcome. `canceled` means it left without a\nresult: `user` (Back, a dismiss, a close), `opener` (the opener went\naway, or a newer result promise replaced this one), `reclaimed` (a\nhidden surface page unloaded under memory pressure), `app_closed`.",
       "text": "{ status: 'ok'; value: JsonValue; } | { status: 'canceled'; reason: 'user' | 'opener' | 'reclaimed' | 'app_closed'; }",
       "fields": [],
-      "source": "src/generated/logic.ts:2149"
+      "source": "src/generated/logic.ts:2150"
     },
     {
       "name": "PageSetup",
@@ -13311,7 +13311,7 @@
           "description": "Who ended it: the person, the opener, memory pressure, or the app closing."
         }
       ],
-      "source": "src/generated/logic.ts:2156"
+      "source": "src/generated/logic.ts:2157"
     },
     {
       "name": "PageTarget",
@@ -13370,7 +13370,7 @@
       "description": "A permission `lx.device.permission.get` reads and `lx.device.permission.request` asks for.",
       "text": "\"location\" | \"camera\" | \"photos\" | \"notifications\"",
       "fields": [],
-      "source": "src/generated/logic.ts:2164"
+      "source": "src/generated/logic.ts:2165"
     },
     {
       "name": "PermissionState",
@@ -13378,7 +13378,7 @@
       "description": "A permission's state: `prompt` means the person has not been asked yet.",
       "text": "\"granted\" | \"denied\" | \"prompt\"",
       "fields": [],
-      "source": "src/generated/logic.ts:2167"
+      "source": "src/generated/logic.ts:2168"
     },
     {
       "name": "PersistGuard",
@@ -13702,7 +13702,7 @@
           "description": "Aborting it rejects the call at once; a system picker stays until the person closes it, and what it returns is dropped. When its page unloads, it closes as if the person dismissed it."
         }
       ],
-      "source": "src/generated/logic.ts:2172"
+      "source": "src/generated/logic.ts:2173"
     },
     {
       "name": "PickCodeResult",
@@ -13710,7 +13710,7 @@
       "description": "Result of `lx.pick.code`. `format` is the symbology that was read.",
       "text": "{ status: 'ok'; value: string; format: string; } | CanceledResult",
       "fields": [],
-      "source": "src/generated/logic.ts:2185"
+      "source": "src/generated/logic.ts:2186"
     },
     {
       "name": "PickDirectoryOptions",
@@ -13737,7 +13737,7 @@
           "description": "Aborting it rejects the call at once; a system picker stays until the person closes it, and what it returns is dropped. When its page unloads, it closes as if the person dismissed it."
         }
       ],
-      "source": "src/generated/logic.ts:2195"
+      "source": "src/generated/logic.ts:2196"
     },
     {
       "name": "PickDirectoryResult",
@@ -13745,7 +13745,7 @@
       "description": "Result of `lx.pick.directory`.",
       "text": "{ status: 'ok'; directory: PickedDirectory; } | CanceledResult",
       "fields": [],
-      "source": "src/generated/logic.ts:2206"
+      "source": "src/generated/logic.ts:2207"
     },
     {
       "name": "PickFileOptions",
@@ -13774,7 +13774,7 @@
           "description": "Aborting it rejects the call at once; a system picker stays until the person closes it, and what it returns is dropped. When its page unloads, it closes as if the person dismissed it."
         }
       ],
-      "source": "src/generated/logic.ts:2214"
+      "source": "src/generated/logic.ts:2215"
     },
     {
       "name": "PickFileResult",
@@ -13782,7 +13782,7 @@
       "description": "Result of `lx.pick.file` and `lx.pick.capture`: one file.",
       "text": "{ status: 'ok'; file: PickedFile; } | CanceledResult",
       "fields": [],
-      "source": "src/generated/logic.ts:2229"
+      "source": "src/generated/logic.ts:2230"
     },
     {
       "name": "PickFilesResult",
@@ -13790,7 +13790,7 @@
       "description": "Result of `lx.pick.files` and `lx.pick.media`: at least one file.\nFrom `lx.pick.media` on mobile, each file is a copy in the lxapp\ntemp directory, counted against its quota.",
       "text": "{ status: 'ok'; files: readonly [ PickedFile, ...PickedFile[] ]; } | CanceledResult",
       "fields": [],
-      "source": "src/generated/logic.ts:2241"
+      "source": "src/generated/logic.ts:2242"
     },
     {
       "name": "PickMediaOptions",
@@ -13836,7 +13836,7 @@
           "description": "Aborting it takes the source sheet down and rejects the call; a system picker stays until the person closes it, and what it returns is dropped. When its page unloads, it closes as if the person dismissed it."
         }
       ],
-      "source": "src/generated/logic.ts:2249"
+      "source": "src/generated/logic.ts:2250"
     },
     {
       "name": "PickMediaSource",
@@ -13844,7 +13844,7 @@
       "description": "Where `lx.pick.media` may get media: the photo library or the camera.",
       "text": "\"camera\" | \"library\"",
       "fields": [],
-      "source": "src/generated/logic.ts:2275"
+      "source": "src/generated/logic.ts:2276"
     },
     {
       "name": "PickedDirectory",
@@ -13866,7 +13866,7 @@
           "description": "The directory's own name, for display."
         }
       ],
-      "source": "src/generated/logic.ts:2284"
+      "source": "src/generated/logic.ts:2285"
     },
     {
       "name": "PickedFile",
@@ -13902,7 +13902,7 @@
           "description": "MIME type, e.g. `application/pdf`, `image/jpeg`."
         }
       ],
-      "source": "src/generated/logic.ts:2304"
+      "source": "src/generated/logic.ts:2305"
     },
     {
       "name": "PreviewMediaAdvance",
@@ -13910,7 +13910,7 @@
       "description": "What a preview does when an item ends: wait, go to the next, or loop.",
       "text": "\"manual\" | \"next\" | \"loop\"",
       "fields": [],
-      "source": "src/generated/logic.ts:2316"
+      "source": "src/generated/logic.ts:2317"
     },
     {
       "name": "PreviewMediaChange",
@@ -13932,7 +13932,7 @@
           "description": "The shown item."
         }
       ],
-      "source": "src/generated/logic.ts:2319"
+      "source": "src/generated/logic.ts:2320"
     },
     {
       "name": "PreviewMediaCloseReason",
@@ -13940,7 +13940,7 @@
       "description": "Why a media preview closed.",
       "text": "\"manual\" | \"completed\" | \"interrupted\" | \"error\"",
       "fields": [],
-      "source": "src/generated/logic.ts:2327"
+      "source": "src/generated/logic.ts:2328"
     },
     {
       "name": "PreviewMediaHandle",
@@ -13976,7 +13976,7 @@
           "description": "Settles when the preview closes."
         }
       ],
-      "source": "src/generated/logic.ts:2334"
+      "source": "src/generated/logic.ts:2335"
     },
     {
       "name": "PreviewMediaOptions",
@@ -13984,7 +13984,7 @@
       "description": "What `lx.media.preview` shows: one path, one source, or a list.",
       "text": "string | PreviewMediaSingleOptions | PreviewMediaSequenceOptions",
       "fields": [],
-      "source": "src/generated/logic.ts:2346"
+      "source": "src/generated/logic.ts:2347"
     },
     {
       "name": "PreviewMediaResult",
@@ -14013,7 +14013,7 @@
           "description": "The item on screen when the session closed — \"what the user just\nviewed/played\", without mapping `index` back yourself."
         }
       ],
-      "source": "src/generated/logic.ts:2349"
+      "source": "src/generated/logic.ts:2350"
     },
     {
       "name": "PreviewMediaSequenceOptions",
@@ -14058,7 +14058,7 @@
           "default": "true for more than one item"
         }
       ],
-      "source": "src/generated/logic.ts:2366"
+      "source": "src/generated/logic.ts:2367"
     },
     {
       "name": "PreviewMediaShownSource",
@@ -14080,7 +14080,7 @@
           "description": "Resolved media kind (after extension inference when `type` was omitted)."
         }
       ],
-      "source": "src/generated/logic.ts:2407"
+      "source": "src/generated/logic.ts:2408"
     },
     {
       "name": "PreviewMediaSingleOptions",
@@ -14147,7 +14147,7 @@
           "default": "true for more than one item"
         }
       ],
-      "source": "src/generated/logic.ts:2415"
+      "source": "src/generated/logic.ts:2416"
     },
     {
       "name": "PreviewMediaSource",
@@ -14192,7 +14192,7 @@
           "description": "Display duration in milliseconds.\nEffective when preview `advance` is not `manual`."
         }
       ],
-      "source": "src/generated/logic.ts:2441"
+      "source": "src/generated/logic.ts:2442"
     },
     {
       "name": "ResolvedAppearance",
@@ -14200,7 +14200,7 @@
       "description": "The scheme in effect: light or dark.",
       "text": "\"light\" | \"dark\"",
       "fields": [],
-      "source": "src/generated/logic.ts:2472"
+      "source": "src/generated/logic.ts:2473"
     },
     {
       "name": "ResultOf",
@@ -14258,7 +14258,7 @@
           "description": ""
         }
       ],
-      "source": "src/generated/logic.ts:2475"
+      "source": "src/generated/logic.ts:2476"
     },
     {
       "name": "ScreenInfo",
@@ -14287,7 +14287,7 @@
           "description": "Physical pixels per logical pixel."
         }
       ],
-      "source": "src/generated/logic.ts:3684"
+      "source": "src/generated/logic.ts:3685"
     },
     {
       "name": "ShareFilesOptions",
@@ -14323,7 +14323,7 @@
           "description": ""
         }
       ],
-      "source": "src/generated/logic.ts:2487"
+      "source": "src/generated/logic.ts:2488"
     },
     {
       "name": "ShareOptions",
@@ -14331,7 +14331,7 @@
       "description": "What `lx.share` hands to the share sheet: text, the current page, or files.",
       "text": "ShareTextOptions | SharePageOptions | ShareFilesOptions",
       "fields": [],
-      "source": "src/generated/logic.ts:2507"
+      "source": "src/generated/logic.ts:2508"
     },
     {
       "name": "SharePage",
@@ -14339,7 +14339,7 @@
       "description": "The current page as a share target, with or without a query.",
       "text": "true | { query?: ShareQuery; }",
       "fields": [],
-      "source": "src/generated/logic.ts:2510"
+      "source": "src/generated/logic.ts:2511"
     },
     {
       "name": "SharePageOptions",
@@ -14375,7 +14375,7 @@
           "description": ""
         }
       ],
-      "source": "src/generated/logic.ts:2526"
+      "source": "src/generated/logic.ts:2527"
     },
     {
       "name": "SharePageOptions.page",
@@ -14390,7 +14390,7 @@
           "description": "Query appended to the current page. Query belongs to the page target and is\nencoded into the AppLink URL."
         }
       ],
-      "source": "src/generated/logic.ts:2517"
+      "source": "src/generated/logic.ts:2518"
     },
     {
       "name": "ShareQuery",
@@ -14398,7 +14398,7 @@
       "description": "Query values appended to a shared page's link.",
       "text": "Record<string, string | number | boolean>",
       "fields": [],
-      "source": "src/generated/logic.ts:2545"
+      "source": "src/generated/logic.ts:2546"
     },
     {
       "name": "ShareResult",
@@ -14413,7 +14413,7 @@
           "description": "What the share sheet reported. Not part of the `canceled` family: some\nplatforms only observe that the system UI opened and closed, so the\nunknown case is stated rather than hidden in a missing boolean that\nevery call site would read as \"not shared\"."
         }
       ],
-      "source": "src/generated/logic.ts:2548"
+      "source": "src/generated/logic.ts:2549"
     },
     {
       "name": "ShareTextBaseOptions",
@@ -14435,7 +14435,7 @@
           "description": "Share text body."
         }
       ],
-      "source": "src/generated/logic.ts:2559"
+      "source": "src/generated/logic.ts:2560"
     },
     {
       "name": "ShareTextOptions",
@@ -14471,7 +14471,7 @@
           "description": ""
         }
       ],
-      "source": "src/generated/logic.ts:2570"
+      "source": "src/generated/logic.ts:2571"
     },
     {
       "name": "ShareTitleOptions",
@@ -14486,7 +14486,7 @@
           "description": "Share title."
         }
       ],
-      "source": "src/generated/logic.ts:2576"
+      "source": "src/generated/logic.ts:2577"
     },
     {
       "name": "ShellApi",
@@ -14515,7 +14515,7 @@
           "description": "Bring the product window forward without navigating. Control app only."
         }
       ],
-      "source": "src/generated/logic.ts:2587"
+      "source": "src/generated/logic.ts:2588"
     },
     {
       "name": "ShellSidebarAction",
@@ -14523,7 +14523,7 @@
       "description": "One app-declared shell sidebar action. It is a stateless command, not a\nselectable navigation item: the shell invokes `onSelect` once and\ndoes not infer a target or active state.\n`value` is footer-only, so a header action with one does not type-check.",
       "text": "ShellSidebarActionBase & ({ placement: 'header'; value?: never; } | { placement: 'footer'; value?: string; })",
       "fields": [],
-      "source": "src/generated/logic.ts:2595"
+      "source": "src/generated/logic.ts:2596"
     },
     {
       "name": "ShellSidebarActionBase",
@@ -14566,7 +14566,7 @@
           "description": "Called once for each enabled mouse, keyboard, accessibility, shortcut, or\nautomation activation. Explicitly open or navigate to the desired content."
         }
       ],
-      "source": "src/generated/logic.ts:2615"
+      "source": "src/generated/logic.ts:2616"
     },
     {
       "name": "ShellSidebarActionPlacement",
@@ -14574,7 +14574,7 @@
       "description": "Where an action lives in the desktop sidebar.\n- `header`: the caption row beside the window controls. At most two\nicon-only actions; declaring a third rejects the whole `replace`.\n- `footer`: always reachable. Icon buttons, plus a `value` drawn\nbeside the icon when the action carries one. Scrolls after five\nrows.\nIn the collapsed rail every action is an icon button. Apps cannot\nconfigure cell size, row, weight, color, or selected state.",
       "text": "\"header\" | \"footer\"",
       "fields": [],
-      "source": "src/generated/logic.ts:2659"
+      "source": "src/generated/logic.ts:2660"
     },
     {
       "name": "ShellSidebarActionUpdate",
@@ -14610,7 +14610,7 @@
           "description": "Whether the action remains visible but rejects activation."
         }
       ],
-      "source": "src/generated/logic.ts:2667"
+      "source": "src/generated/logic.ts:2668"
     },
     {
       "name": "ShellSidebarActionsApi",
@@ -14667,7 +14667,7 @@
           }
         }
       ],
-      "source": "src/generated/logic.ts:2685"
+      "source": "src/generated/logic.ts:2686"
     },
     {
       "name": "ShowOptions",
@@ -14697,7 +14697,7 @@
           "description": "Aborting it ends the call or subscription."
         }
       ],
-      "source": "src/generated/logic.ts:2691"
+      "source": "src/generated/logic.ts:2692"
     },
     {
       "name": "Storage",
@@ -14902,7 +14902,7 @@
           "description": "Number of stored keys; `list()` names them."
         }
       ],
-      "source": "src/generated/logic.ts:2697"
+      "source": "src/generated/logic.ts:2698"
     },
     {
       "name": "Store",
@@ -15004,7 +15004,7 @@
           "description": "Passed to the provider as it starts."
         }
       ],
-      "source": "src/generated/logic.ts:2707"
+      "source": "src/generated/logic.ts:2708"
     },
     {
       "name": "SurfaceApi",
@@ -15080,7 +15080,7 @@
           "description": "The handle of a live declared surface, or of its keyed instance, the same\nobject on every call; `undefined` when it is not live. Control app only."
         }
       ],
-      "source": "src/generated/logic.ts:2723"
+      "source": "src/generated/logic.ts:2724"
     },
     {
       "name": "SurfaceBase",
@@ -15137,7 +15137,7 @@
           "description": "Fires once when the surface closes, whoever closed it. Returns a function that removes the handler."
         }
       ],
-      "source": "src/generated/logic.ts:2767"
+      "source": "src/generated/logic.ts:2768"
     },
     {
       "name": "SurfaceCloseReason",
@@ -15145,7 +15145,7 @@
       "description": "Why a surface closed.",
       "text": "\"failed\" | \"unknown\" | \"user\" | \"reclaimed\" | \"app_closed\" | \"programmatic\" | \"owner_closed\"",
       "fields": [],
-      "source": "src/generated/logic.ts:2795"
+      "source": "src/generated/logic.ts:2796"
     },
     {
       "name": "SurfaceClosedEvent",
@@ -15160,7 +15160,7 @@
           "description": "Why it closed."
         }
       ],
-      "source": "src/generated/logic.ts:2804"
+      "source": "src/generated/logic.ts:2805"
     },
     {
       "name": "SurfaceEdge",
@@ -15168,7 +15168,7 @@
       "description": "Preferred docking side for an aside when the Host has room for a docked\nlayout. `aside` selects the companion region; `edge` selects a side within\nit. Compact Hosts may reproject the same aside as a full-screen overlay.",
       "text": "\"left\" | \"right\" | \"top\" | \"bottom\"",
       "fields": [],
-      "source": "src/generated/logic.ts:2814"
+      "source": "src/generated/logic.ts:2815"
     },
     {
       "name": "SurfaceFloatPosition",
@@ -15176,7 +15176,7 @@
       "description": "Where a float popup anchors (default `center`).",
       "text": "\"left\" | \"right\" | \"top\" | \"bottom\" | \"center\"",
       "fields": [],
-      "source": "src/generated/logic.ts:2817"
+      "source": "src/generated/logic.ts:2818"
     },
     {
       "name": "SurfaceInteraction",
@@ -15208,7 +15208,7 @@
           "default": "false"
         }
       ],
-      "source": "src/generated/logic.ts:2820"
+      "source": "src/generated/logic.ts:2821"
     },
     {
       "name": "SurfaceKind",
@@ -15216,7 +15216,7 @@
       "description": "Where the content came from. The discriminant on every surface\nhandle, so `AnySurface` narrows without a runtime `typeof` check.",
       "text": "\"app\" | \"page\" | \"tab\" | \"declared\"",
       "fields": [],
-      "source": "src/generated/logic.ts:2842"
+      "source": "src/generated/logic.ts:2843"
     },
     {
       "name": "SurfaceMessaging",
@@ -15238,7 +15238,7 @@
           "description": "Receives what the other side sends. Returns a function that removes the handler."
         }
       ],
-      "source": "src/generated/logic.ts:2845"
+      "source": "src/generated/logic.ts:2846"
     },
     {
       "name": "SurfacePlacement",
@@ -15246,7 +15246,7 @@
       "description": "What the host actually produced. Reported by `realized`, which is\nhow a caller reads the outcome of an ordered placement preference.",
       "text": "\"main\" | \"aside\" | \"float\" | \"window\"",
       "fields": [],
-      "source": "src/generated/logic.ts:2861"
+      "source": "src/generated/logic.ts:2862"
     },
     {
       "name": "SurfaceShowable",
@@ -15282,7 +15282,7 @@
           "description": "Fires on a real transition to hidden, whichever side drove it."
         }
       ],
-      "source": "src/generated/logic.ts:2864"
+      "source": "src/generated/logic.ts:2865"
     },
     {
       "name": "SurfaceVisibilityEvent",
@@ -15297,14 +15297,14 @@
           "description": "Who changed it: the opener's handle, the page itself, or the shell."
         }
       ],
-      "source": "src/generated/logic.ts:2888"
+      "source": "src/generated/logic.ts:2889"
     },
     {
       "name": "SystemDownloadsPath",
       "summary": "Native system Downloads path.",
       "description": "Native system Downloads path. Do not pass this to `lx.fs`.",
       "fields": [],
-      "source": "src/generated/logic.ts:2894"
+      "source": "src/generated/logic.ts:2895"
     },
     {
       "name": "SystemSettingInfo",
@@ -15326,7 +15326,7 @@
           "description": "Wi-Fi is on."
         }
       ],
-      "source": "src/generated/logic.ts:3694"
+      "source": "src/generated/logic.ts:3695"
     },
     {
       "name": "TabBarApi",
@@ -15385,7 +15385,7 @@
           "description": "Text in a badge, `true` for a dot without text, `null` to remove either."
         }
       ],
-      "source": "src/generated/logic.ts:2901"
+      "source": "src/generated/logic.ts:2902"
     },
     {
       "name": "TabBarPatch",
@@ -15410,14 +15410,14 @@
       "examples": [
         "await lx.app.tabBar.update({ items: { home: { badge: '3' } } });"
       ],
-      "source": "src/generated/logic.ts:2929"
+      "source": "src/generated/logic.ts:2930"
     },
     {
       "name": "TabBarPatch.items",
       "summary": "",
       "description": "",
       "fields": [],
-      "source": "src/generated/logic.ts:2933"
+      "source": "src/generated/logic.ts:2934"
     },
     {
       "name": "TabBarVisibilityPreference",
@@ -15425,7 +15425,7 @@
       "description": "Whether the tab bar shows: `auto` leaves it to the runtime, or always `visible` or `hidden`.",
       "text": "\"auto\" | \"visible\" | \"hidden\"",
       "fields": [],
-      "source": "src/generated/logic.ts:2937"
+      "source": "src/generated/logic.ts:2938"
     },
     {
       "name": "TabName",
@@ -15433,7 +15433,7 @@
       "description": "A tab root of this lxapp.",
       "text": "keyof LxAppPages extends never ? string : keyof LxAppTabs & string",
       "fields": [],
-      "source": "src/generated/logic.ts:2940"
+      "source": "src/generated/logic.ts:2941"
     },
     {
       "name": "TabParams",
@@ -15449,7 +15449,7 @@
       "description": "External content in the in-app browser.",
       "text": "(SurfaceBase & { readonly kind: 'tab'; readonly realized: 'main' | 'aside'; readonly scope: 'tab'; activate(): Promise<void>; }) | (Omit<SurfaceBase, 'close' | 'onClose'> & { readonly kind: 'tab'; readonly realized: 'main' | 'aside'; readonly scope: 'group'; })",
       "fields": [],
-      "source": "src/generated/logic.ts:2943"
+      "source": "src/generated/logic.ts:2944"
     },
     {
       "name": "TabTarget",
@@ -15551,7 +15551,7 @@
           "description": "The Windows console runtime a terminal needs for inline images."
         }
       ],
-      "source": "src/generated/logic.ts:2962"
+      "source": "src/generated/logic.ts:2963"
     },
     {
       "name": "TerminalColorScheme",
@@ -15713,7 +15713,7 @@
           "description": "ANSI color 15."
         }
       ],
-      "source": "src/generated/logic.ts:2974"
+      "source": "src/generated/logic.ts:2975"
     },
     {
       "name": "TerminalColorSchemeDetails",
@@ -15742,7 +15742,7 @@
           "description": "Its colors."
         }
       ],
-      "source": "src/generated/logic.ts:3022"
+      "source": "src/generated/logic.ts:3023"
     },
     {
       "name": "TerminalColorSchemesApi",
@@ -15799,7 +15799,7 @@
           "description": "A controller that shows a scheme live without saving it."
         }
       ],
-      "source": "src/generated/logic.ts:3032"
+      "source": "src/generated/logic.ts:3033"
     },
     {
       "name": "TerminalFontSettings",
@@ -15837,7 +15837,7 @@
           "description": "Draw the font's ligatures."
         }
       ],
-      "source": "src/generated/logic.ts:3058"
+      "source": "src/generated/logic.ts:3059"
     },
     {
       "name": "TerminalFontsApi",
@@ -15860,7 +15860,7 @@
           }
         }
       ],
-      "source": "src/generated/logic.ts:3076"
+      "source": "src/generated/logic.ts:3077"
     },
     {
       "name": "TerminalPreviewController",
@@ -15889,7 +15889,7 @@
           "description": "Idempotently clear and retire this controller."
         }
       ],
-      "source": "src/generated/logic.ts:3085"
+      "source": "src/generated/logic.ts:3086"
     },
     {
       "name": "TerminalSettingsApi",
@@ -15953,7 +15953,7 @@
           "description": "Fires after saved settings, effective appearance, or fonts change."
         }
       ],
-      "source": "src/generated/logic.ts:3095"
+      "source": "src/generated/logic.ts:3096"
     },
     {
       "name": "TerminalSettingsPatch",
@@ -15975,7 +15975,7 @@
           "description": "Scheme names to change; others keep their value."
         }
       ],
-      "source": "src/generated/logic.ts:3125"
+      "source": "src/generated/logic.ts:3126"
     },
     {
       "name": "TerminalSettingsSnapshot",
@@ -16025,7 +16025,7 @@
           "description": "Problems found while reading the settings; they never block it."
         }
       ],
-      "source": "src/generated/logic.ts:3133"
+      "source": "src/generated/logic.ts:3134"
     },
     {
       "name": "TerminalSettingsSnapshot.effective",
@@ -16054,7 +16054,7 @@
           "description": "The font in use."
         }
       ],
-      "source": "src/generated/logic.ts:3143"
+      "source": "src/generated/logic.ts:3144"
     },
     {
       "name": "TerminalSettingsSnapshot.effective.font",
@@ -16083,7 +16083,7 @@
           "description": "None of the requested families is installed, so a system monospace font is drawn."
         }
       ],
-      "source": "src/generated/logic.ts:3149"
+      "source": "src/generated/logic.ts:3150"
     },
     {
       "name": "TerminalSettingsValue",
@@ -16105,7 +16105,7 @@
           "description": "Color scheme per appearance."
         }
       ],
-      "source": "src/generated/logic.ts:3163"
+      "source": "src/generated/logic.ts:3164"
     },
     {
       "name": "TerminalSettingsWarning",
@@ -16127,7 +16127,7 @@
           "description": "A sentence for a person."
         }
       ],
-      "source": "src/generated/logic.ts:3171"
+      "source": "src/generated/logic.ts:3172"
     },
     {
       "name": "TerminalThemeSettings",
@@ -16149,7 +16149,7 @@
           "description": "Color scheme name used in dark appearance."
         }
       ],
-      "source": "src/generated/logic.ts:3182"
+      "source": "src/generated/logic.ts:3183"
     },
     {
       "name": "TimeZoneOptions",
@@ -16179,7 +16179,7 @@
           "description": "Dismiss this toast only; harmless after a newer toast replaces it.\nBefore it shows, this cancels it."
         }
       ],
-      "source": "src/generated/logic.ts:3190"
+      "source": "src/generated/logic.ts:3191"
     },
     {
       "name": "ToastOptions",
@@ -16225,7 +16225,7 @@
           "description": "Aborting it dismisses the toast."
         }
       ],
-      "source": "src/generated/logic.ts:3199"
+      "source": "src/generated/logic.ts:3200"
     },
     {
       "name": "TransferProgress",
@@ -16331,7 +16331,7 @@
           }
         }
       ],
-      "source": "src/generated/logic.ts:3224"
+      "source": "src/generated/logic.ts:3225"
     },
     {
       "name": "TrayMenuItem",
@@ -16367,7 +16367,7 @@
           "description": "Draw a check mark."
         }
       ],
-      "source": "src/generated/logic.ts:3227"
+      "source": "src/generated/logic.ts:3228"
     },
     {
       "name": "TrayMenuSeparator",
@@ -16382,7 +16382,7 @@
           "description": "A line between items."
         }
       ],
-      "source": "src/generated/logic.ts:3239"
+      "source": "src/generated/logic.ts:3240"
     },
     {
       "name": "TrayPatch",
@@ -16411,7 +16411,7 @@
           "description": "Show or hide the item."
         }
       ],
-      "source": "src/generated/logic.ts:3245"
+      "source": "src/generated/logic.ts:3246"
     },
     {
       "name": "UiApi",
@@ -16539,7 +16539,7 @@
           "description": "Failures of the same kind merged into this one since the last report."
         }
       ],
-      "source": "src/generated/logic.ts:3261"
+      "source": "src/generated/logic.ts:3262"
     },
     {
       "name": "UnhandledFailure.page",
@@ -16561,7 +16561,7 @@
           "description": "The page instance, one per open."
         }
       ],
-      "source": "src/generated/logic.ts:3265"
+      "source": "src/generated/logic.ts:3266"
     },
     {
       "name": "UnhandledFailure.source",
@@ -16597,7 +16597,7 @@
           "description": "The action the handler called that failed, if that is where it came from."
         }
       ],
-      "source": "src/generated/logic.ts:3278"
+      "source": "src/generated/logic.ts:3279"
     },
     {
       "name": "UnhandledFailureSource",
@@ -16605,7 +16605,7 @@
       "description": "Where an unhandled failure happened.",
       "text": "{ kind: 'view_handler'; prop: string; testId: string | null; action: string | null; } | { kind: 'hook'; hook: string; } | { kind: 'app'; hook: string | null; }",
       "fields": [],
-      "source": "src/generated/logic.ts:3278"
+      "source": "src/generated/logic.ts:3279"
     },
     {
       "name": "UpdateFailedInfo",
@@ -16634,7 +16634,7 @@
           "description": "What went wrong, for a log line."
         }
       ],
-      "source": "src/generated/logic.ts:3300"
+      "source": "src/generated/logic.ts:3301"
     },
     {
       "name": "UpdateReadyInfo",
@@ -16656,7 +16656,7 @@
           "description": "The channel it came from."
         }
       ],
-      "source": "src/generated/logic.ts:3306"
+      "source": "src/generated/logic.ts:3307"
     },
     {
       "name": "UpdateRecipe",
@@ -16672,7 +16672,7 @@
       "description": "Upload options. The file streams from disk, so the size ceiling is\nthe remote's, not memory.\n`bodyMode` picks the body shape, and with it which of the other\nfields apply:\n- `multipart` (default) wraps the file in a `multipart/form-data`\nenvelope beside the `fields` text fields — what an ordinary form\nendpoint parses. `field`, `fileName`, and `fields` describe that\nenvelope. `fields`, when present, must contain at least one entry.\n- `raw` sends the file bytes as the entire body. Presigned\nobject-storage URLs (S3, OSS, Azure Blob) need this: a multipart\nenvelope would be stored verbatim as the object's contents,\nboundary lines and all. `field`, `fields`, and `fileName` are\nthen rejected rather than silently dropped.",
       "text": "{ path: string; method?: 'POST' | 'PUT' | 'PATCH'; headers?: Record<string, string>; type?: string; signal?: AbortSignal; } & ({ bodyMode?: 'multipart'; field?: string; fields?: Record<string, string>; fileName?: string; } | { bodyMode: 'raw'; field?: never; fields?: never; fileName?: never; })",
       "fields": [],
-      "source": "src/generated/logic.ts:3341"
+      "source": "src/generated/logic.ts:3342"
     },
     {
       "name": "UploadResult",
@@ -16715,7 +16715,7 @@
           "description": "Parse `text` as JSON."
         }
       ],
-      "source": "src/generated/logic.ts:3393"
+      "source": "src/generated/logic.ts:3394"
     },
     {
       "name": "UploadTask",
@@ -16745,7 +16745,7 @@
           }
         }
       ],
-      "source": "src/generated/logic.ts:3407"
+      "source": "src/generated/logic.ts:3408"
     },
     {
       "name": "UrlTarget",
@@ -16788,7 +16788,7 @@
           "description": ""
         }
       ],
-      "source": "src/generated/logic.ts:3410"
+      "source": "src/generated/logic.ts:3411"
     },
     {
       "name": "VideoCompressQuality",
@@ -16796,7 +16796,7 @@
       "description": "A preset size for `lx.media.compressVideo`.",
       "text": "\"high\" | \"low\" | \"medium\"",
       "fields": [],
-      "source": "src/generated/logic.ts:3420"
+      "source": "src/generated/logic.ts:3421"
     },
     {
       "name": "VideoInfo",
@@ -16888,7 +16888,7 @@
           "description": "Resolved path used by runtime (typically `lx://...`)."
         }
       ],
-      "source": "src/generated/logic.ts:3428"
+      "source": "src/generated/logic.ts:3429"
     },
     {
       "name": "VideoThumbnailOptions",
@@ -16933,7 +16933,7 @@
           "default": "80"
         }
       ],
-      "source": "src/generated/logic.ts:3486"
+      "source": "src/generated/logic.ts:3487"
     },
     {
       "name": "VideoThumbnailResult",
@@ -16969,7 +16969,7 @@
           "description": "Output MIME type, usually `image/jpeg`."
         }
       ],
-      "source": "src/generated/logic.ts:3506"
+      "source": "src/generated/logic.ts:3507"
     },
     {
       "name": "ViewCallable",
@@ -16984,7 +16984,7 @@
       "description": "Whether a piece of page chrome shows: `auto` leaves it to the runtime, `hidden` hides it.",
       "text": "\"auto\" | \"hidden\"",
       "fields": [],
-      "source": "src/generated/logic.ts:3524"
+      "source": "src/generated/logic.ts:3525"
     },
     {
       "name": "WallTime",
@@ -17138,7 +17138,7 @@
       "description": "Receives each Wi-Fi connection change.",
       "text": "(info: WifiConnectedInfo) => void",
       "fields": [],
-      "source": "src/generated/logic.ts:3529"
+      "source": "src/generated/logic.ts:3530"
     },
     {
       "name": "WifiConnectedInfo",
@@ -17195,7 +17195,7 @@
           "description": "The platform's own word for the connection state, such as `connected`."
         }
       ],
-      "source": "src/generated/logic.ts:3532"
+      "source": "src/generated/logic.ts:3533"
     },
     {
       "name": "WifiInfo",
@@ -17238,7 +17238,7 @@
           "description": "Center frequency in MHz (if available)"
         }
       ],
-      "source": "src/generated/logic.ts:3702"
+      "source": "src/generated/logic.ts:3703"
     },
     {
       "name": "WindowChrome",
@@ -17246,7 +17246,7 @@
       "description": "Window decoration. `system` is the standard title bar. `full`\nextends the page to the window edge while keeping the system\nminimize, maximize, resize, and drag affordances — the runtime owns\na native drag strip across the top and publishes its height as\n`topInset` on the page-chrome snapshot, so a page that does nothing\nto opt in still cannot trap the user.",
       "text": "\"system\" | \"full\"",
       "fields": [],
-      "source": "src/generated/logic.ts:3547"
+      "source": "src/generated/logic.ts:3548"
     },
     {
       "name": "WithFollowed",
@@ -17668,7 +17668,7 @@
           "description": "`posted`: the OS took it for display, not proof anyone saw it. `scheduled`:\nqueued for `schedule`, and shown even if the product is frontmost then.\n`presented`: the product was frontmost, so it shows as a banner instead.\n`suppressed`: frontmost and nothing shown. Neither needs permission."
         }
       ],
-      "source": "src/generated/logic.ts:1896"
+      "source": "src/generated/logic.ts:1897"
     },
     {
       "name": "lx.host.notification.show(options)",
@@ -17742,7 +17742,7 @@
           }
         }
       ],
-      "source": "src/generated/logic.ts:1858"
+      "source": "src/generated/logic.ts:1859"
     },
     {
       "name": "lx.host.notification.show(options).schedule",
@@ -17757,7 +17757,7 @@
           "description": "Epoch milliseconds."
         }
       ],
-      "source": "src/generated/logic.ts:1875"
+      "source": "src/generated/logic.ts:1876"
     },
     {
       "name": "lx.host.notification.show(options).target",
@@ -17822,7 +17822,7 @@
           "description": "Existing names are rejected unless overwrite is explicit."
         }
       ],
-      "source": "src/generated/logic.ts:3045"
+      "source": "src/generated/logic.ts:3046"
     },
     {
       "name": "lx.host.terminal.conpty.install(options)",
@@ -17874,7 +17874,7 @@
           "description": "Reset only the font or only the theme; both when absent."
         }
       ],
-      "source": "src/generated/logic.ts:3114"
+      "source": "src/generated/logic.ts:3115"
     },
     {
       "name": "lx.host.terminal.settings.update(patch)",
@@ -17889,7 +17889,7 @@
           "description": "The `revision` the patch was made against."
         }
       ],
-      "source": "src/generated/logic.ts:3106"
+      "source": "src/generated/logic.ts:3107"
     },
     {
       "name": "lx.media.compressVideo(options)",
@@ -17941,7 +17941,7 @@
           "default": "true for more than one item"
         }
       ],
-      "source": "src/generated/logic.ts:2415"
+      "source": "src/generated/logic.ts:2416"
     },
     {
       "name": "lx.nav.current.get()",
@@ -18124,7 +18124,7 @@
           "description": "Aborting it cancels the upload, and the task's `result` rejects."
         }
       ],
-      "source": "src/generated/logic.ts:3341"
+      "source": "src/generated/logic.ts:3342"
     },
     {
       "name": "lx.pick.capture()",
@@ -18146,7 +18146,7 @@
           "description": "The picked file."
         }
       ],
-      "source": "src/generated/logic.ts:2229"
+      "source": "src/generated/logic.ts:2230"
     },
     {
       "name": "lx.pick.capture(options)",
@@ -18197,7 +18197,7 @@
           "description": "The symbology, in snake_case, e.g. `qr_code`."
         }
       ],
-      "source": "src/generated/logic.ts:2185"
+      "source": "src/generated/logic.ts:2186"
     },
     {
       "name": "lx.pick.directory()",
@@ -18219,7 +18219,7 @@
           "description": "The picked directory."
         }
       ],
-      "source": "src/generated/logic.ts:2206"
+      "source": "src/generated/logic.ts:2207"
     },
     {
       "name": "lx.pick.file()",
@@ -18241,7 +18241,7 @@
           "description": "The picked file."
         }
       ],
-      "source": "src/generated/logic.ts:2229"
+      "source": "src/generated/logic.ts:2230"
     },
     {
       "name": "lx.pick.files()",
@@ -18263,7 +18263,7 @@
           "description": "The picked files, in the order chosen."
         }
       ],
-      "source": "src/generated/logic.ts:2241"
+      "source": "src/generated/logic.ts:2242"
     },
     {
       "name": "lx.pick.media()",
@@ -18285,7 +18285,7 @@
           "description": "The picked files, in the order chosen."
         }
       ],
-      "source": "src/generated/logic.ts:2241"
+      "source": "src/generated/logic.ts:2242"
     },
     {
       "name": "lx.share(options)",
@@ -18300,7 +18300,7 @@
           "description": "Share text body."
         }
       ],
-      "source": "src/generated/logic.ts:2559"
+      "source": "src/generated/logic.ts:2560"
     },
     {
       "name": "lx.shell.sidebarActions.replace(items)",
@@ -18322,14 +18322,14 @@
           "description": ""
         }
       ],
-      "source": "src/generated/logic.ts:2596"
+      "source": "src/generated/logic.ts:2597"
     },
     {
       "name": "lx.storage.get()",
       "summary": "",
       "description": "",
       "fields": [],
-      "source": "src/generated/logic.ts:1691"
+      "source": "src/generated/logic.ts:1692"
     },
     {
       "name": "lx.surface.app()",
@@ -18409,7 +18409,7 @@
           "description": "Brings this tab to the front. Rejects with `closed` once the tab is gone."
         }
       ],
-      "source": "src/generated/logic.ts:2943"
+      "source": "src/generated/logic.ts:2944"
     },
     {
       "name": "lx.surface.openApp()",
@@ -18511,7 +18511,7 @@
           "description": "Brings this tab to the front. Rejects with `closed` once the tab is gone."
         }
       ],
-      "source": "src/generated/logic.ts:2943"
+      "source": "src/generated/logic.ts:2944"
     },
     {
       "name": "lx.ui.actionSheet()",

@@ -192,27 +192,24 @@ export default definePage({
           d.siteTabId = tabId;
         });
 
-        watch<string>('app.watchAppearancePreference', page.signal, (pref) => {
+        // Each watch calls back with the current value at once.
+        lx.host.appearance.watch((pref) => {
           page.update((d) => { d.appearance = pref; });
-        });
-        watch<string>('app.watchDisplayLanguagePreference', page.signal, (pref) => {
+        }, { signal: page.signal });
+        lx.host.displayLanguage.watch((pref) => {
           page.update((d) => { d.language = pref; });
-        });
+        }, { signal: page.signal });
         // Proxy routes exist only where the local proxy runs; without them the section stays hidden.
         // The watch opens with the saved settings, then follows each change.
         watch<ProxySettings>('proxy.watch', page.signal, showProxy);
 
-        const [info, appearance, language, download, site] = await Promise.all([
+        const [info, download, site] = await Promise.all([
           invoke<AppInfo>('app.getInfo').catch(() => null),
-          invoke<string>('app.getAppearancePreference').catch(() => null),
-          invoke<string>('app.getDisplayLanguagePreference').catch(() => null),
           invoke<DownloadSettings>('downloads.getSettings').catch(() => null),
           tabId ? invoke<{ url: string; host: string }>('privacy.getSiteDataContext', { tabId }).catch(() => null) : null,
         ]);
         page.update((d) => {
           d.appInfo = info;
-          if (appearance) d.appearance = appearance;
-          if (language) d.language = language;
           d.download = download;
           d.site = site;
         });
@@ -222,13 +219,12 @@ export default definePage({
         async setSection({ section }: { section: Section }) {
           page.update((d) => { d.section = section; });
         },
+        // The host refuses any other value; the watch above shows what was saved.
         async setAppearance({ preference }: { preference: string }) {
-          const next = await invoke<string>('app.setAppearancePreference', { preference });
-          page.update((d) => { d.appearance = next; });
+          await lx.host.appearance.set(preference as 'auto' | 'light' | 'dark');
         },
         async setLanguage({ preference }: { preference: string }) {
-          const next = await invoke<string>('app.setDisplayLanguagePreference', { preference });
-          page.update((d) => { d.language = next; });
+          await lx.host.displayLanguage.set(preference);
         },
         async chooseDownloadDir() {
           const download = await invoke<DownloadSettings>('downloads.chooseDirectory');
