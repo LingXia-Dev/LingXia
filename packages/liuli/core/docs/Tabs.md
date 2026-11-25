@@ -67,6 +67,35 @@ export function Segmented() {
 }
 ```
 
+### Icons, a count, and icon-only tabs
+
+```tsx
+import { useLocal } from '@lingxia/view';
+import { Tabs } from '@liulidesign/core/Tabs';
+
+const boxes = [
+  { value: 'inbox', label: 'Inbox', icon: 'mail', badge: '3' },
+  { value: 'starred', label: 'Starred', icon: 'star' },
+  { value: 'sent', label: 'Sent', icon: 'send' },
+] as const;
+const layouts = [
+  { value: 'list', label: 'List', icon: 'list', isLabelHidden: true },
+  { value: 'grid', label: 'Grid', icon: 'grid', isLabelHidden: true },
+] as const;
+
+/** Tabs that lead with an icon, one with a count read as part of its name; and icon-only segmented tabs. */
+export function Icons() {
+  const box = useLocal('box', 'inbox');
+  const layout = useLocal('layout', 'list');
+  return (
+    <view className="gap-6">
+      <Tabs label="Mail" items={boxes} bind={box} data-testid="mail" />
+      <Tabs label="Layout" variant="segmented" items={layouts} bind={layout} className="self-start" data-testid="layout" />
+    </view>
+  );
+}
+```
+
 ### A segmented filter over a list
 
 ```tsx
@@ -154,7 +183,7 @@ export function Fitted() {
 
 - `className`: classes merged after the recipe's, so they win.
 - The recipe, `tabsRecipe` from `@liulidesign/core/Tabs/recipe`: the classes of each part, to style an element of your own to match. The component does not read a changed copy.
-- Scale tokens it reads, set in the app's stylesheet under `@theme`: `--spacing-control-md`, `--text-footnote`, `--radius-control`.
+- Scale tokens it reads, set in the app's stylesheet under `@theme`: `--spacing-control-md`, `--text-caption`, `--text-footnote`, `--radius-control`.
 - Colour roles it paints with, set by the theme pack: `accent`, `focus`, `line`, `text`, `text-muted`.
 
 ## Accessibility

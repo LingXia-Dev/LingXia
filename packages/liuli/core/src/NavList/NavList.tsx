@@ -1,4 +1,5 @@
 import { cx, reveal, useId, useLocal, type Local } from '@lingxia/view';
+import type { IconRef } from '../Icon/Icon';
 import { Glyph } from '../internal/Glyph';
 import { navListRecipe as r } from './NavList.recipe';
 import { dataOf } from '../internal/data';
@@ -8,6 +9,8 @@ export interface NavListItem {
   value: string;
   /** The row's text and accessible name. */
   label: string;
+  /** An icon by name from the set, or a definition, before the label; hidden from assistive tech. */
+  icon?: IconRef;
   /** A short count or value at the end, such as unread messages; read after the label. */
   endText?: string;
   /** @default false */
@@ -98,6 +101,7 @@ export function NavList({ label, sections, bind, value: own, onChange: ownChange
               data-testid={testId && `${testId}-${item.value}`}
               className={cx(r.item.base, isSelected ? r.item.selected : r.item.idle)}
             >
+              {item.icon !== undefined && <Glyph name={item.icon} side={20} className={cx(r.icon.base, isSelected && r.icon.selected)} />}
               <text className={cx(r.label.base, isSelected && r.label.selected)}>{item.label}</text>
               {item.endText !== undefined && <text id={`${rowId(item.value)}-end`} className={r.end.base}>{item.endText}</text>}
             </button>

@@ -66,6 +66,7 @@ export const doc: ComponentDoc = {
   examples: [
     { name: 'Sidebar', title: 'A sidebar' },
     { name: 'Closed', title: 'A section that starts closed' },
+    { name: 'Icons', title: 'Rows with icons' },
   ],
   gaps: [
     { missing: 'The current row read as "current page"', needs: '`aria-current` in the View', today: 'Read as selected' },
@@ -80,7 +81,7 @@ export const doc: ComponentDoc = {
     page: {
       lead: 'Use a nav list for the column of places beside a workspace.',
       hero: 'Sidebar',
-      variants: [{ name: 'Closed', title: 'A section that starts closed' }],
+      variants: [{ name: 'Icons', title: 'Rows that lead with an icon' }, { name: 'Closed', title: 'A section that starts closed' }],
     },
   },
 };

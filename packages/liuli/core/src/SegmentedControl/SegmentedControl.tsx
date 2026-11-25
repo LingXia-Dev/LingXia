@@ -1,17 +1,30 @@
 import { cx, useBox, type Local } from '@lingxia/view';
+import type { IconRef } from '../Icon/Icon';
+import { Glyph } from '../internal/Glyph';
 import { segmentedControlRecipe as r } from './SegmentedControl.recipe';
 import { dataOf } from '../internal/data';
 
 export type SegmentedControlSize = 'sm' | 'md';
 
-export interface SegmentedOption {
+export type SegmentedOption = {
   /** What `value` and `onChange` carry. */
   value: string;
-  /** The segment's text and accessible name. */
+  /** The segment's text and accessible name; with `isLabelHidden`, its name alone. */
   label: string;
   /** @default false */
   isDisabled?: boolean;
-}
+} & (
+  | {
+      /** An icon by name from the set, or a definition, before the label. */
+      icon?: IconRef;
+      isLabelHidden?: false;
+    }
+  | {
+      icon: IconRef;
+      /** Shows the icon alone, for a view switcher; the label still names the segment. @default false */
+      isLabelHidden: true;
+    }
+);
 
 export type SegmentedControlBinding =
   | {
@@ -40,7 +53,8 @@ export type SegmentedControlProps = SegmentedControlBinding & {
   'data-testid'?: string;
 };
 
-// A segment's side padding, both sides, in points: what its measured label leaves out (`px-2`, `px-3`).
+// A segment's side padding, both sides, in points: what its measured content leaves out (`px-2`, `px-3`).
+const iconSide: Record<SegmentedControlSize, number> = { sm: 16, md: 20 };
 const segmentPadding: Record<SegmentedControlSize, number> = { sm: 16, md: 24 };
 
 /**
@@ -96,7 +110,10 @@ export function SegmentedControl(props: SegmentedControlProps) {
             onClick={() => choose(option.value)}
             className={cx(r.segment.base, r.segment.size[size], r.segment[layout])}
           >
-            <text box={labelBoxes[at]} aria-hidden className={cx(r.label.base, r.label[layout], r.label.size[size], isChecked ? r.label.chosen : r.label.other)}>{option.label}</text>
+            <view box={labelBoxes[at]} aria-hidden className={cx(r.content.base, r.content[layout])}>
+              {option.icon !== undefined && <Glyph name={option.icon} side={iconSide[size]} className={cx(r.icon.size[size], isChecked ? r.icon.chosen : r.icon.other)} />}
+              {!option.isLabelHidden && <text className={cx(r.label.base, r.label[layout], r.label.size[size], isChecked ? r.label.chosen : r.label.other)}>{option.label}</text>}
+            </view>
             <view aria-hidden box={segmentBoxes[at]} className={r.segment.extent} />
           </button>
         );

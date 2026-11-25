@@ -62,6 +62,7 @@ export const doc: ComponentDoc = {
   examples: [
     { name: 'Sections', title: 'Sections of a page' },
     { name: 'Segmented', title: 'Modes of one view' },
+    { name: 'Icons', title: 'Icons, a count, and icon-only tabs' },
     { name: 'Filter', title: 'A segmented filter over a list' },
     { name: 'Fitted', title: 'Tabs as wide as their labels, in a row that scrolls' },
   ],
@@ -88,6 +89,7 @@ export const doc: ComponentDoc = {
       hero: 'Sections',
       variants: [
         { name: 'Segmented', title: 'Segmented: modes of one view' },
+        { name: 'Icons', title: 'Icons and a count; icon-only segmented tabs' },
         { name: 'Fitted', title: 'Six tabs as wide as their labels; the row scrolls and the chosen tab is brought into view' },
       ],
       states: [

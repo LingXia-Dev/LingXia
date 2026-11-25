@@ -1,4 +1,6 @@
 import { cx, reveal, useBox, useId, useLocal, type Child, type Local } from '@lingxia/view';
+import type { IconRef } from '../Icon/Icon';
+import { Glyph } from '../internal/Glyph';
 import { segmentedControlRecipe as s } from '../SegmentedControl/SegmentedControl.recipe';
 import { tabsRecipe as r } from './Tabs.recipe';
 import { dataOf } from '../internal/data';
@@ -7,14 +9,27 @@ export type TabsVariant = 'underline' | 'segmented';
 /** `equal` shares the row; `content` makes each tab as wide as its label. Either row scrolls when the labels do not fit. */
 export type TabsWidth = 'equal' | 'content';
 
-export interface TabItem {
+export type TabItem = {
   /** What `value` and `onChange` carry. */
   value: string;
-  /** The tab's text and accessible name. */
+  /** The tab's text and accessible name; with `isLabelHidden`, its name alone. */
   label: string;
+  /** A short count after the label, such as unread items: "3". Read with the name ("Inbox, 3"), not announced when it changes. */
+  badge?: string;
   /** @default false */
   isDisabled?: boolean;
-}
+} & (
+  | {
+      /** An icon by name from the set, or a definition, before the label. */
+      icon?: IconRef;
+      isLabelHidden?: false;
+    }
+  | {
+      icon: IconRef;
+      /** Shows the icon alone; the label still names the tab. @default false */
+      isLabelHidden: true;
+    }
+);
 
 export type TabsBinding =
   | {
@@ -97,6 +112,7 @@ export function Tabs({ label, items, bind, value: own, onChange: ownChange, vari
                   key={item.value}
                   role="tab"
                   id={tabId}
+                  aria-label={item.badge === undefined ? item.label : `${item.label}, ${item.badge}`}
                   aria-selected={isSelected}
                   data-state={isSelected ? 'active' : 'inactive'}
                   disabled={item.isDisabled}
@@ -105,7 +121,15 @@ export function Tabs({ label, items, bind, value: own, onChange: ownChange, vari
                   onClick={() => { if (!isSelected) { onChange(item.value); reveal(tabId); } }}
                   className={cx(r.tab.base, segmented ? cx(s.segment.base, s.segment.size.md, s.segment.row) : cx(r.tab[width], r.tab.underline, r.tab.pad[width]))}
                 >
-                  <text className={cx(r.label.base, segmented ? s.label.size.md : r.label.underline, isSelected ? r.label.selected : r.label.unselected)}>{item.label}</text>
+                  <view aria-hidden className={r.content.base}>
+                    {item.icon !== undefined && <Glyph name={item.icon} side={20} className={cx(r.icon.base, isSelected ? r.icon.selected : r.icon.unselected)} />}
+                    {!item.isLabelHidden && <text className={cx(r.label.base, segmented ? s.label.size.md : r.label.underline, isSelected ? r.label.selected : r.label.unselected)}>{item.label}</text>}
+                    {item.badge !== undefined && (
+                      <view className={r.badge.base}>
+                        <text className={cx(r.badge.label, isSelected ? r.label.selected : r.label.unselected)}>{item.badge}</text>
+                      </view>
+                    )}
+                  </view>
                   <view aria-hidden box={boxes[at]} className={r.tab.extent} />
                 </button>
               );

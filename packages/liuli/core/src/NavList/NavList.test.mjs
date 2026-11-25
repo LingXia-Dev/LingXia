@@ -76,3 +76,10 @@ test('Sidebar: the current row is brought into view by a mark that is new for ea
   screen.press(screen.getByTestId('workspace-section-projects'));
   assert.equal(mark().length, 0, 'the current row is in a closed section');
 });
+
+test('Icons: a row leads with its icon, which is not read; the row keeps its label as its name', async () => {
+  const screen = await renderExample('NavList/NavList', 'Icons');
+  const inbox = screen.getByTestId('mailboxes-inbox');
+  assert.equal(inbox.props.accessibilityLabel, 'Inbox');
+  assert.equal(inbox.children[0].tag, 'vector');
+});

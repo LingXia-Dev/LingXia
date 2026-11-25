@@ -30,6 +30,29 @@ const settings = [
   { value: 'billing', label: 'Billing' }, { value: 'integrations', label: 'Integrations' }, { value: 'advanced', label: 'Advanced' },
 ];
 
+const boxes = [
+  { value: 'inbox', label: 'Inbox', icon: 'mail', badge: '3' },
+  { value: 'starred', label: 'Starred', icon: 'star' },
+  { value: 'sent', label: 'Sent', icon: 'send' },
+] as const;
+
+const layouts = [
+  { value: 'list', label: 'List', icon: 'list', isLabelHidden: true },
+  { value: 'grid', label: 'Grid', icon: 'grid', isLabelHidden: true },
+] as const;
+
+/** Tabs that lead with an icon, one with a count read as part of its name; and icon-only segmented tabs. */
+export function Icons() {
+  const box = useLocal('box', 'inbox');
+  const layout = useLocal('layout', 'list');
+  return (
+    <view className="gap-6">
+      <Tabs label="Mail" items={boxes} bind={box} data-testid="mail" />
+      <Tabs label="Layout" variant="segmented" items={layouts} bind={layout} className="self-start" data-testid="layout" />
+    </view>
+  );
+}
+
 /** More tabs than a phone has room for: each is as wide as its label and the row scrolls. */
 export function Fitted() {
   const tab = useLocal('tab', 'general');

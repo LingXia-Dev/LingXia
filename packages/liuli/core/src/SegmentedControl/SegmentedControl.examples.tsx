@@ -39,6 +39,29 @@ export function Appearance() {
   );
 }
 
+const views = [
+  { value: 'list', label: 'List', icon: 'list', isLabelHidden: true },
+  { value: 'grid', label: 'Grid', icon: 'grid', isLabelHidden: true },
+  { value: 'rows', label: 'Compact', icon: 'rows', isLabelHidden: true },
+] as const;
+
+const chartKinds = [
+  { value: 'chart', label: 'Chart', icon: 'chart' },
+  { value: 'table', label: 'Table', icon: 'list' },
+] as const;
+
+/** A view switcher: icons alone, each still named by its label, and icons beside labels. */
+export function Icons() {
+  const view = useLocal('view', 'grid');
+  const shown = useLocal('shown', 'chart');
+  return (
+    <view className="flex-row flex-wrap items-center gap-4">
+      <SegmentedControl label="View" items={views} bind={view} size="sm" data-testid="view" />
+      <SegmentedControl label="Show as" items={chartKinds} bind={shown} data-testid="show-as" />
+    </view>
+  );
+}
+
 export function Sizes() {
   return (
     <view className="gap-3">

@@ -4,6 +4,7 @@ export const navListParts = {
   groupLabel: 'text',
   groupChevron: 'vector',
   item: 'button',
+  icon: 'vector',
   label: 'text',
   end: 'view',
   current: 'view',
@@ -38,6 +39,11 @@ export const navListRecipe = {
     idle: 'hover:bg-text/4 active:bg-text/7 focus-visible:inset-ring-2 focus-visible:inset-ring-focus',
     /** Item's selected wash, deepening on hover, press and focus. */
     selected: 'bg-accent-soft hover:bg-accent/16 active:bg-accent/20 focus-visible:inset-ring-2 focus-visible:inset-ring-focus',
+  },
+  /** Leading, 20 pt like the label's line, muted until the row is current. */
+  icon: {
+    base: 'size-5 shrink-0 text-muted',
+    selected: 'text-text',
   },
   label: {
     base: 'grow shrink basis-0 truncate text-body text-text',

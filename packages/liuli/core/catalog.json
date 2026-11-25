@@ -13612,6 +13612,7 @@
         "groupLabel": "text",
         "groupChevron": "vector",
         "item": "button",
+        "icon": "vector",
         "label": "text",
         "end": "view",
         "current": "view"
@@ -13703,6 +13704,11 @@
           "name": "Closed",
           "title": "A section that starts closed",
           "source": "import { useLocal } from '@lingxia/view';\nimport { NavList } from '@liulidesign/core/NavList';\n\nconst library = [\n  { id: 'inputs', title: 'Inputs', items: [{ value: 'text-input', label: 'TextInput' }, { value: 'date-input', label: 'DateInput' }] },\n  { id: 'feedback', title: 'Feedback', items: [{ value: 'badge', label: 'Badge' }, { value: 'toast', label: 'Toast' }] },\n] as const;\n\n/** Only the section in use starts open; each remembers being opened. */\nexport function Closed() {\n  const current = useLocal<string>('current', 'text-input');\n  return (\n    <view className=\"md:max-w-[264px]\">\n      <NavList label=\"Components\" sections={library} bind={current} defaultOpenSections={['inputs']} data-testid=\"library\" />\n    </view>\n  );\n}"
+        },
+        {
+          "name": "Icons",
+          "title": "Rows with icons",
+          "source": "import { useLocal } from '@lingxia/view';\nimport { NavList } from '@liulidesign/core/NavList';\n\nconst mailboxes = [\n  { id: 'mail', items: [\n    { value: 'inbox', label: 'Inbox', icon: 'mail', endText: '12' },\n    { value: 'starred', label: 'Starred', icon: 'star' },\n    { value: 'sent', label: 'Sent', icon: 'send' },\n    { value: 'drafts', label: 'Drafts', icon: 'document', endText: '3' },\n  ] },\n  { id: 'labels', title: 'Labels', items: [\n    { value: 'work', label: 'Work', icon: 'tag' },\n    { value: 'travel', label: 'Travel', icon: 'tag' },\n  ] },\n] as const;\n\n/** Rows with icons: each leads with its mark, muted until the row is current. */\nexport function Icons() {\n  const current = useLocal<string>('current', 'inbox');\n  return (\n    <view className=\"md:max-w-[264px]\">\n      <NavList label=\"Mailboxes\" sections={mailboxes} bind={current} data-testid=\"mailboxes\" />\n    </view>\n  );\n}"
         }
       ],
       "gaps": [
@@ -13757,6 +13763,10 @@
           "lead": "Use a nav list for the column of places beside a workspace.",
           "hero": "Sidebar",
           "variants": [
+            {
+              "name": "Icons",
+              "title": "Rows that lead with an icon"
+            },
             {
               "name": "Closed",
               "title": "A section that starts closed"
@@ -16539,6 +16549,8 @@
         "track": "view",
         "thumb": "view",
         "segment": "button",
+        "content": "view",
+        "icon": "vector",
         "label": "text"
       },
       "accessibility": {
@@ -16605,18 +16617,17 @@
           "source": "import { useLocal } from '@lingxia/view';\nimport { SegmentedControl } from '@liulidesign/core/SegmentedControl';\n\nconst themes = [\n  { value: 'system', label: 'System' },\n  { value: 'light', label: 'Light' },\n  { value: 'dark', label: 'Dark' },\n];\n\n/** A setting row: the control sits at the end, sized to its segments. */\nexport function Appearance() {\n  const theme = useLocal('theme', 'system');\n  return (\n    <view className=\"flex-row items-center gap-4\">\n      <text className=\"grow basis-0 text-body text-text\">Appearance</text>\n      <SegmentedControl label=\"Appearance\" items={themes} value={theme.value} onChange={next => theme.set(next)} size=\"sm\" className=\"w-56\" data-testid=\"appearance\" />\n    </view>\n  );\n}"
         },
         {
+          "name": "Icons",
+          "title": "Icons, alone or beside labels",
+          "source": "import { useLocal } from '@lingxia/view';\nimport { SegmentedControl } from '@liulidesign/core/SegmentedControl';\n\nconst views = [\n  { value: 'list', label: 'List', icon: 'list', isLabelHidden: true },\n  { value: 'grid', label: 'Grid', icon: 'grid', isLabelHidden: true },\n  { value: 'rows', label: 'Compact', icon: 'rows', isLabelHidden: true },\n] as const;\nconst chartKinds = [\n  { value: 'chart', label: 'Chart', icon: 'chart' },\n  { value: 'table', label: 'Table', icon: 'list' },\n] as const;\n\n/** A view switcher: icons alone, each still named by its label, and icons beside labels. */\nexport function Icons() {\n  const view = useLocal('view', 'grid');\n  const shown = useLocal('shown', 'chart');\n  return (\n    <view className=\"flex-row flex-wrap items-center gap-4\">\n      <SegmentedControl label=\"View\" items={views} bind={view} size=\"sm\" data-testid=\"view\" />\n      <SegmentedControl label=\"Show as\" items={chartKinds} bind={shown} data-testid=\"show-as\" />\n    </view>\n  );\n}"
+        },
+        {
           "name": "Sizes",
           "title": "Sizes",
           "source": "import { Held } from '../example';\nimport { SegmentedControl } from '@liulidesign/core/SegmentedControl';\n\nconst themes = [\n  { value: 'system', label: 'System' },\n  { value: 'light', label: 'Light' },\n  { value: 'dark', label: 'Dark' },\n];\n\nexport function Sizes() {\n  return (\n    <view className=\"gap-3\">\n      <Held value=\"light\">{(theme, set) => <SegmentedControl label=\"Small\" items={themes} value={theme} onChange={set} size=\"sm\" />}</Held>\n      <Held value=\"light\">{(theme, set) => <SegmentedControl label=\"Medium\" items={themes} value={theme} onChange={set} />}</Held>\n    </view>\n  );\n}"
         }
       ],
-      "gaps": [
-        {
-          "missing": "Icon-only segments.",
-          "needs": "an icon set for Liuli",
-          "today": "Segments carry a text label."
-        }
-      ],
+      "gaps": [],
       "playground": {
         "props": {
           "label": "Units",
@@ -16660,6 +16671,12 @@
         "page": {
           "lead": "Use a segmented control to set one value from a few short choices, applied at once.",
           "hero": "Units",
+          "variants": [
+            {
+              "name": "Icons",
+              "title": "A view switcher of icons alone, and icons beside labels"
+            }
+          ],
           "sizes": [
             {
               "name": "Sizes",
@@ -19135,7 +19152,10 @@
         "track": "view",
         "indicator": "view",
         "tab": "button",
+        "content": "view",
+        "icon": "vector",
         "label": "text",
+        "badge": "view",
         "panel": "view"
       },
       "accessibility": {
@@ -19229,6 +19249,11 @@
           "source": "import { useLocal } from '@lingxia/view';\nimport { Tabs } from '@liulidesign/core/Tabs';\n\nconst ranges = [\n  { value: 'day', label: 'Day' },\n  { value: 'week', label: 'Week' },\n  { value: 'month', label: 'Month' },\n];\n\n/** Modes of one view: the thumb slides to the chosen segment. */\nexport function Segmented() {\n  const range = useLocal('range', 'week');\n  const totals: Record<string, string> = { day: '42 minutes', week: '5 hours 10 minutes', month: '21 hours' };\n  return (\n    <Tabs label=\"Range\" items={ranges} bind={range} variant=\"segmented\" data-testid=\"range\">\n      <view className=\"gap-0.5\">\n        <text className=\"text-footnote text-muted\">Time spent writing</text>\n        <text className=\"text-title font-semibold text-text tabular-nums\">{totals[range.value]}</text>\n      </view>\n    </Tabs>\n  );\n}"
         },
         {
+          "name": "Icons",
+          "title": "Icons, a count, and icon-only tabs",
+          "source": "import { useLocal } from '@lingxia/view';\nimport { Tabs } from '@liulidesign/core/Tabs';\n\nconst boxes = [\n  { value: 'inbox', label: 'Inbox', icon: 'mail', badge: '3' },\n  { value: 'starred', label: 'Starred', icon: 'star' },\n  { value: 'sent', label: 'Sent', icon: 'send' },\n] as const;\nconst layouts = [\n  { value: 'list', label: 'List', icon: 'list', isLabelHidden: true },\n  { value: 'grid', label: 'Grid', icon: 'grid', isLabelHidden: true },\n] as const;\n\n/** Tabs that lead with an icon, one with a count read as part of its name; and icon-only segmented tabs. */\nexport function Icons() {\n  const box = useLocal('box', 'inbox');\n  const layout = useLocal('layout', 'list');\n  return (\n    <view className=\"gap-6\">\n      <Tabs label=\"Mail\" items={boxes} bind={box} data-testid=\"mail\" />\n      <Tabs label=\"Layout\" variant=\"segmented\" items={layouts} bind={layout} className=\"self-start\" data-testid=\"layout\" />\n    </view>\n  );\n}"
+        },
+        {
           "name": "Filter",
           "title": "A segmented filter over a list",
           "source": "import { useLocal } from '@lingxia/view';\nimport { Item } from '@liulidesign/core/Item';\nimport { Tabs } from '@liulidesign/core/Tabs';\n\nconst notes = {\n  all: ['Q3 plan', 'Reading list', 'Interview notes'],\n  pinned: ['Q3 plan'],\n  shared: ['Interview notes'],\n};\n\n/** A list filtered by a segmented control above it. */\nexport function Filter() {\n  const filter = useLocal('filter', 'all');\n  return (\n    <Tabs\n      label=\"Show\"\n      items={[{ value: 'all', label: 'All' }, { value: 'pinned', label: 'Pinned' }, { value: 'shared', label: 'Shared' }]}\n      bind={filter}\n      variant=\"segmented\"\n      className=\"gap-3\"\n      data-testid=\"filter\"\n    >\n      <view className=\"-mx-5 -mb-5 divide-y divide-line border-t border-line\">\n        {notes[filter.value as keyof typeof notes].map(note => <Item key={note} label={note} />)}\n      </view>\n    </Tabs>\n  );\n}"
@@ -19268,6 +19293,7 @@
         ],
         "tokens": [
           "--spacing-control-md",
+          "--text-caption",
           "--text-footnote",
           "--radius-control"
         ],
@@ -19294,6 +19320,10 @@
             {
               "name": "Segmented",
               "title": "Segmented: modes of one view"
+            },
+            {
+              "name": "Icons",
+              "title": "Icons and a count; icon-only segmented tabs"
             },
             {
               "name": "Fitted",

@@ -59,15 +59,10 @@ export const doc: ComponentDoc = {
   examples: [
     { name: 'Units', title: 'A unit for the numbers below it' },
     { name: 'Appearance', title: 'A setting row' },
+    { name: 'Icons', title: 'Icons, alone or beside labels' },
     { name: 'Sizes', title: 'Sizes' },
   ],
-  gaps: [
-    {
-      missing: 'Icon-only segments.',
-      needs: 'an icon set for Liuli',
-      today: 'Segments carry a text label.',
-    },
-  ],
+  gaps: [],
   playground: { props: { label: 'Units', value: 'km' }, fixture: true },
   related: ['Tabs', 'RadioGroup', 'ToggleButton'],
   gallery: {
@@ -77,6 +72,7 @@ export const doc: ComponentDoc = {
     page: {
       lead: 'Use a segmented control to set one value from a few short choices, applied at once.',
       hero: 'Units',
+      variants: [{ name: 'Icons', title: 'A view switcher of icons alone, and icons beside labels' }],
       sizes: [{ name: 'Sizes', title: 'Small and medium' }],
       states: [
         { name: 'StateTwo', title: 'Two choices' },

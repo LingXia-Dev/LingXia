@@ -5,6 +5,8 @@ export const segmentedControlParts = {
   track: 'view',
   thumb: 'view',
   segment: 'button',
+  content: 'view',
+  icon: 'vector',
   label: 'text',
 } as const;
 
@@ -40,6 +42,18 @@ export const segmentedControlRecipe = {
     stacked: '',
     /** Fills its segment, so the thumb can follow segments of unequal width. */
     extent: 'absolute inset-0',
+  },
+  /** The icon and the label, measured together: a segment never gets narrower than both. */
+  content: {
+    base: 'flex-row items-center gap-1.5',
+    row: 'shrink-0',
+    stacked: 'min-w-0',
+  },
+  /** Leading, as tall as the label's line; the thumb, not the colour, shows which is chosen. */
+  icon: {
+    size: { sm: 'size-4 shrink-0', md: 'size-5 shrink-0' } satisfies Record<SegmentedControlSize, string>,
+    chosen: 'text-text',
+    other: 'text-muted',
   },
   /** Whole in a row; cut short only when a stacked segment, the full width, cannot hold it. */
   label: {

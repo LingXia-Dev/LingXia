@@ -1,5 +1,5 @@
 // Generated from the doc file by scripts/generate.mjs; do not edit.
-import { Sidebar, Closed } from '../../core/src/NavList/NavList.examples';
+import { Sidebar, Icons, Closed } from '../../core/src/NavList/NavList.examples';
 import { Lead, PageSection, Stage } from '../shared/Layout';
 
 export function Content() {
@@ -9,6 +9,9 @@ export function Content() {
         <Sidebar />
       </Lead>
       <PageSection title={"Variants"}>
+        <Stage caption={"Rows that lead with an icon"}>
+          <Icons />
+        </Stage>
         <Stage caption={"A section that starts closed"}>
           <Closed />
         </Stage>

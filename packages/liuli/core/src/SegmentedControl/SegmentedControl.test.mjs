@@ -45,7 +45,7 @@ test('Large text: a long label widens its segment and the thumb follows; a row t
   const group = () => screen.getByTestId('units');
   const segment = value => screen.getByTestId(`units-${value}`);
   const box = () => screen.queryAll(node => node.props.background === 'surface-raised')[0];
-  assert.equal(segment('km').children[0].props.whiteSpace, 'nowrap', 'a label in a row is never cut');
+  assert.equal(segment('km').children[0].children[0].props.whiteSpace, 'nowrap', 'a label in a row is never cut');
   screen.layout(group(), { width: 200, height: 36 });
   screen.layout(segment('km').children[0], { width: 100, height: 22 });
   screen.layout(segment('mi').children[0], { width: 40, height: 22 });
@@ -68,4 +68,12 @@ test('Sizes: a segment pads its label 8 pt each side when small and 12 pt at the
   const groups = screen.queryAll(node => node.props.role === 'radiogroup');
   const pads = groups.map(group => group.children.filter(child => child.props.role === 'radio').map(segment => [segment.props.paddingLeft ?? segment.props.paddingInlineStart, segment.props.paddingRight ?? segment.props.paddingInlineEnd]));
   assert.deepEqual(pads.map(each => [...new Set(each.map(String))]), [['8,8'], ['12,12']]);
+});
+
+test('Icons: an icon-only segment keeps its label as its name and is chosen as any other', async () => {
+  const screen = await renderExample('SegmentedControl/SegmentedControl', 'Icons');
+  const list = screen.getByTestId('view-list');
+  assert.equal(list.props.accessibilityLabel, 'List');
+  screen.press(list);
+  assert.equal(screen.getByTestId('view-list').props.stateChecked, 1);
 });

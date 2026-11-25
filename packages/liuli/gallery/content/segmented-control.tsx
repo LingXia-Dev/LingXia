@@ -1,5 +1,5 @@
 // Generated from the doc file by scripts/generate.mjs; do not edit.
-import { Units, Sizes, StateTwo, StateFive, StateDisabled, Appearance } from '../../core/src/SegmentedControl/SegmentedControl.examples';
+import { Units, Icons, Sizes, StateTwo, StateFive, StateDisabled, Appearance } from '../../core/src/SegmentedControl/SegmentedControl.examples';
 import { Lead, PageSection, Stage, StageGrid } from '../shared/Layout';
 
 export function Content() {
@@ -8,6 +8,11 @@ export function Content() {
       <Lead text={"Use a segmented control to set one value from a few short choices, applied at once."}>
         <Units />
       </Lead>
+      <PageSection title={"Variants"}>
+        <Stage caption={"A view switcher of icons alone, and icons beside labels"}>
+          <Icons />
+        </Stage>
+      </PageSection>
       <PageSection title={"Sizes"}>
         <Stage caption={"Small and medium"}>
           <Sizes />

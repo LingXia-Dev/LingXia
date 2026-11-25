@@ -63,6 +63,35 @@ export function Appearance() {
 }
 ```
 
+### Icons, alone or beside labels
+
+```tsx
+import { useLocal } from '@lingxia/view';
+import { SegmentedControl } from '@liulidesign/core/SegmentedControl';
+
+const views = [
+  { value: 'list', label: 'List', icon: 'list', isLabelHidden: true },
+  { value: 'grid', label: 'Grid', icon: 'grid', isLabelHidden: true },
+  { value: 'rows', label: 'Compact', icon: 'rows', isLabelHidden: true },
+] as const;
+const chartKinds = [
+  { value: 'chart', label: 'Chart', icon: 'chart' },
+  { value: 'table', label: 'Table', icon: 'list' },
+] as const;
+
+/** A view switcher: icons alone, each still named by its label, and icons beside labels. */
+export function Icons() {
+  const view = useLocal('view', 'grid');
+  const shown = useLocal('shown', 'chart');
+  return (
+    <view className="flex-row flex-wrap items-center gap-4">
+      <SegmentedControl label="View" items={views} bind={view} size="sm" data-testid="view" />
+      <SegmentedControl label="Show as" items={chartKinds} bind={shown} data-testid="show-as" />
+    </view>
+  );
+}
+```
+
 ### Sizes
 
 ```tsx
@@ -145,11 +174,5 @@ Ratios are computed from @lingxia/view/theme and rounded down.
 - Don't: Use it to switch between panels of content; that is Tabs.
 - Don't: Use it for more than five choices or long labels; use a Select or a RadioGroup.
 - Don't: Use it for an action; each segment is a value, not a command.
-
-## Not yet
-
-| Missing | Needs | Meanwhile |
-| --- | --- | --- |
-| Icon-only segments. | an icon set for Liuli | Segments carry a text label. |
 
 Related: Tabs, RadioGroup, ToggleButton.

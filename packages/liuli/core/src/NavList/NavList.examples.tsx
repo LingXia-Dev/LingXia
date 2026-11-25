@@ -41,6 +41,29 @@ export function Closed() {
   );
 }
 
+const mailboxes = [
+  { id: 'mail', items: [
+    { value: 'inbox', label: 'Inbox', icon: 'mail', endText: '12' },
+    { value: 'starred', label: 'Starred', icon: 'star' },
+    { value: 'sent', label: 'Sent', icon: 'send' },
+    { value: 'drafts', label: 'Drafts', icon: 'document', endText: '3' },
+  ] },
+  { id: 'labels', title: 'Labels', items: [
+    { value: 'work', label: 'Work', icon: 'tag' },
+    { value: 'travel', label: 'Travel', icon: 'tag' },
+  ] },
+] as const;
+
+/** Rows with icons: each leads with its mark, muted until the row is current. */
+export function Icons() {
+  const current = useLocal<string>('current', 'inbox');
+  return (
+    <view className="md:max-w-[264px]">
+      <NavList label="Mailboxes" sections={mailboxes} bind={current} data-testid="mailboxes" />
+    </view>
+  );
+}
+
 /** The home tile. */
 export function Specimen() {
   return (

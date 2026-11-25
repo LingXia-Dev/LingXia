@@ -6,7 +6,10 @@ export const tabsParts = {
   track: 'view',
   indicator: 'view',
   tab: 'button',
+  content: 'view',
+  icon: 'vector',
   label: 'text',
+  badge: 'view',
   panel: 'view',
 } as const;
 
@@ -58,6 +61,21 @@ export const tabsRecipe = {
     pad: { equal: 'px-2', content: 'px-3' },
     /** Fills its tab, so the indicator can follow tabs of unequal width. */
     extent: 'absolute inset-0',
+  },
+  /** The icon, the label and the count, in one line that is never cut. */
+  content: {
+    base: 'flex-row items-center gap-1.5 shrink-0',
+  },
+  /** Leading, 20 pt; the indicator, not the colour, shows the chosen tab. */
+  icon: {
+    base: 'size-5 shrink-0',
+    selected: 'text-text',
+    unselected: 'text-muted',
+  },
+  /** A count after the label: a quiet pill, in the label's colour. */
+  badge: {
+    base: 'min-w-5 h-5 px-1.5 items-center justify-center rounded-full bg-text/8',
+    label: 'text-caption font-medium tabular-nums',
   },
   label: {
     base: 'font-medium whitespace-nowrap',

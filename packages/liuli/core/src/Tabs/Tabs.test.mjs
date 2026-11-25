@@ -1,5 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { textOf } from '@lingxia/view/testing';
 import { renderExample, renderPage } from '../testing/harness.mjs';
 
 const indicator = screen => screen.queryAll(node => node.props.widthPercent !== undefined)[0];
@@ -40,7 +41,7 @@ test('Fitted: tabs keep their labels whole in a row that scrolls; the indicator 
   const list = () => screen.getByTestId('settings');
   assert.equal(list().parent.tag, 'scroll');
   const tab = value => screen.getByTestId(`settings-${value}`);
-  assert.deepEqual([tab('privacy').props.shrink, tab('privacy').children[0].props.whiteSpace, tab('privacy').props.height], [0, 'nowrap', 40]);
+  assert.deepEqual([tab('privacy').props.shrink, tab('privacy').children[0].children[0].props.whiteSpace, tab('privacy').props.height], [0, 'nowrap', 40]);
   const bar = () => screen.queryAll(node => node.props.background === 'accent' && node.props.height === 2)[0];
   assert.equal(bar(), undefined, 'before any tab is measured there is no indicator');
   const tabs = { general: 74, notifications: 108, privacy: 150, billing: 64, integrations: 102, advanced: 86 };
@@ -57,7 +58,7 @@ test('Large text: an equal tab is never narrower than its label; the indicator f
   const bar = () => screen.queryAll(node => node.props.background === 'accent' && node.props.height === 2)[0];
   const scroll = () => screen.getByTestId('project').parent;
   assert.equal(scroll().tag, 'scroll');
-  assert.deepEqual([tab('overview').props.grow, tab('overview').props.minWidth, tab('overview').children[0].props.whiteSpace], [1, undefined, 'nowrap'], 'no floor of zero, no cut');
+  assert.deepEqual([tab('overview').props.grow, tab('overview').props.minWidth, tab('overview').children[0].children[0].props.whiteSpace], [1, undefined, 'nowrap'], 'no floor of zero, no cut');
   const frame = scroll().parent;
   screen.layout(frame, { width: 300, height: 44 });
   for (const value of ['overview', 'activity', 'members']) screen.layout(tab(value).children[1], { width: 100, height: 40 });
@@ -91,4 +92,14 @@ export function render() {
   screen.layout(tab('notes').children[1], { width: 60, height: 40 });
   const bar = screen.queryAll(node => node.props.background === 'accent' && node.props.height === 2)[0];
   assert.deepEqual([bar.props.width, JSON.parse(bar.props.transform).translate], [90, [0, 0]]);
+});
+
+test('Icons: a count is read with the name ("Inbox, 3"); an icon-only tab is still named by its label', async () => {
+  const screen = await renderExample('Tabs/Tabs', 'Icons');
+  assert.equal(screen.getByTestId('mail-inbox').props.accessibilityLabel, 'Inbox, 3');
+  assert.equal(screen.getByTestId('mail-starred').props.accessibilityLabel, 'Starred');
+  const grid = screen.getByTestId('layout-grid');
+  assert.equal(grid.props.accessibilityLabel, 'Grid');
+  assert.equal(textOf(grid).trim(), '', 'icon only: no visible label');
+  assert.equal(screen.getByTestId('mail-inbox').props.ariaLive, undefined, 'the count is not announced');
 });
