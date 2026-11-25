@@ -28,3 +28,25 @@ test('Deep: past four levels the middle ones fold into a named menu; the first a
   screen.press(more);
   assert.deepEqual(['deep-clients', 'deep-northwind', 'deep-2026'].map(id => screen.getByTestId(id).props.accessibilityLabel ?? textOf(screen.getByTestId(id))), ['Clients', 'Northwind', '2026']);
 });
+
+test('Pages: a level with to is a block link to its page; the current level is text', async () => {
+  const screen = await renderExample('Breadcrumb/Breadcrumb', 'Pages');
+  assert.equal(screen.getByTestId('pages-home').tag, 'link-box');
+  assert.equal(screen.getByTestId('pages-settings').tag, 'link-box');
+  assert.equal(screen.getByTestId('pages-privacy').tag, 'text');
+});
+
+test('to: a folded level with to is a link row in the menu', async () => {
+  const { renderPage } = await import('../testing/harness.mjs');
+  const screen = await renderPage(`
+    import { Breadcrumb } from '@liulidesign/core/Breadcrumb';
+    const page = (key) => ({ key, label: key, to: { page: key } });
+    export function render() {
+      return <page><Breadcrumb label="Breadcrumb" moreLabel="More levels" items={[page('a'), page('b'), page('c'), page('d'), page('e'), { key: 'f', label: 'f' }]} data-testid="t" /></page>;
+    }
+  `);
+  screen.press(screen.getByTestId('t-more'));
+  const folded = screen.getByTestId('t-c');
+  assert.equal(folded.tag, 'link-box');
+  assert.equal(folded.props.role, 'menuitem');
+});

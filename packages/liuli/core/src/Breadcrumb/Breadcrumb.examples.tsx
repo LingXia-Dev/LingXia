@@ -22,6 +22,21 @@ export function Path() {
   );
 }
 
+/** Levels that are pages of the app: each is a link with `to`. */
+export function Pages() {
+  return (
+    <Breadcrumb
+      label="Breadcrumb"
+      items={[
+        { key: 'home', label: 'Home', to: { page: 'index' } },
+        { key: 'settings', label: 'Settings', to: { page: 'settings' } },
+        { key: 'privacy', label: 'Privacy' },
+      ]}
+      data-testid="pages"
+    />
+  );
+}
+
 /** A deep trail: the middle levels fold into a menu, and the first level and the last two stay. */
 export function Deep() {
   return (

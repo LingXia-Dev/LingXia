@@ -1,4 +1,4 @@
-import { createContext, cx, useContext, useId, useLocal, useView, type Child } from '@lingxia/view';
+import { createContext, cx, useContext, useId, useLocal, useView, type Child, type LinkTarget } from '@lingxia/view';
 import type { ButtonSize } from '../Button/Button';
 import type { IconRef } from '../Icon/Icon';
 import { liuliText } from '../i18n/text';
@@ -6,6 +6,7 @@ import { Glyph } from '../internal/Glyph';
 import { Trigger } from '../internal/trigger';
 import { dropdownMenuRecipe as r } from './DropdownMenu.recipe';
 import { dataOf } from '../internal/data';
+import type { Press } from '../internal/press';
 import { warnOnce } from '../internal/warn';
 
 export type DropdownMenuItemVariant = 'default' | 'destructive';
@@ -39,21 +40,24 @@ export interface DropdownMenuProps {
   'data-testid'?: string;
 }
 
-export interface DropdownMenuItemProps {
+export type DropdownMenuItemProps = Press<{
+  /** Runs on choice; the menu then closes. */
+  onClick: () => void;
+}> & {
   /** The item's text and its accessible name. */
   label: string;
   /** A second line, read as the item's description. */
   description?: string;
   /** An icon by name from the set, or a definition, before the label; hidden from assistive tech. */
   icon?: IconRef;
-  /** Runs on choice; the menu then closes. */
-  onClick: () => void;
+  /** At the row's trailing edge, muted: a shortcut as a `Kbd`, or a count. Not read; name a shortcut in `description` if it matters. */
+  endContent?: Child;
   /** @default false */
   isDisabled?: boolean;
   /** `destructive` draws the label and the icon in the danger role. @default 'default' */
   variant?: DropdownMenuItemVariant;
   'data-testid'?: string;
-}
+};
 
 export interface DropdownMenuCheckboxItemProps {
   /** The item's text and its accessible name. */
@@ -105,6 +109,10 @@ export interface DropdownMenuItemData {
   icon?: IconRef;
   /** Runs on choice, with nothing; the menu then closes. A row that keeps the menu open is a checkable row, composed in `menu`. Leave it out on a submenu. */
   onClick?: () => void;
+  /** Goes to a page instead of running `onClick`: `{ page, params }`, `{ tab }`, `{ back: 1 }`. Read as a menu item that is a link. Not on a submenu. */
+  to?: LinkTarget;
+  /** At the row's trailing edge, muted: a shortcut as a `Kbd`, or a count. Not on a submenu. */
+  endContent?: Child;
   /** Makes the row a submenu of these actions, one level deep. */
   items?: readonly DropdownMenuItemData[];
   /** @default false */
@@ -238,46 +246,47 @@ function itemRow(owner: string, item: DropdownMenuItemData, key: string): Child 
       </DropdownMenuSubmenu>
     );
   }
-  if (item.onClick === undefined) throw Error(`${owner}: "${item.label}" needs onClick or items`);
-  return (
-    <DropdownMenuItem key={key} label={item.label} description={item.description} icon={item.icon} onClick={item.onClick}
-      isDisabled={item.isDisabled} variant={item.variant} data-testid={item['data-testid']} />
-  );
+  const shared = { label: item.label, description: item.description, icon: item.icon, endContent: item.endContent, isDisabled: item.isDisabled, variant: item.variant, 'data-testid': item['data-testid'] };
+  if (item.to !== undefined) {
+    if (item.onClick !== undefined) throw Error(`${owner}: "${item.label}" takes onClick or to, not both`);
+    return <DropdownMenuItem key={key} {...shared} to={item.to} />;
+  }
+  if (item.onClick === undefined) throw Error(`${owner}: "${item.label}" needs onClick, to or items`);
+  return <DropdownMenuItem key={key} {...shared} onClick={item.onClick} />;
 }
 
-/** One action in a DropdownMenu. */
-export function DropdownMenuItem({
-  label,
-  description,
-  icon,
-  onClick,
-  isDisabled = false,
-  variant = 'default',
-  'data-testid': testId, ...attributes
-}: DropdownMenuItemProps) {
+/** One action in a DropdownMenu, or with `to` a way to a page. */
+export function DropdownMenuItem(props: DropdownMenuItemProps) {
+  const { label, description, icon, endContent, isDisabled = false, variant = 'default', 'data-testid': testId } = props;
   const size = useContext(MenuSize);
   const close = useContext(MenuClose);
   const drill = useContext(Drill);
   const descriptionId = `${useId()}-description`;
   if (size === null) throw Error('DropdownMenuItem: place it inside a DropdownMenu');
   if (isReplaced(drill)) return null;
-  return (
-    <button
-      role="menuitem"
-      aria-label={label}
-      aria-describedby={description !== undefined ? descriptionId : undefined}
-      disabled={isDisabled}
-      onClick={() => { onClick?.(); close?.(); }}
-      data-testid={testId} {...dataOf(attributes)}
-      className={cx(r.item.base, r.item.size[size])}
-    >
+  const content = (
+    <>
       {icon !== undefined && <Glyph name={icon} className={cx(r.itemIcon.base, r.itemIcon.variant[variant])} />}
       <view className={r.itemText.base}>
         <text className={cx(r.itemLabel.base, r.itemLabel.variant[variant])}>{label}</text>
         {description !== undefined && <text id={descriptionId} className={r.itemDescription.base}>{description}</text>}
       </view>
-    </button>
+      {endContent !== undefined && <view aria-hidden className={r.itemEnd.base}>{endContent}</view>}
+    </>
   );
+  const shared = {
+    role: 'menuitem',
+    'aria-label': label,
+    'aria-describedby': description !== undefined ? descriptionId : undefined,
+    disabled: isDisabled,
+    'data-testid': testId,
+    ...dataOf(props),
+    className: cx(r.item.base, r.item.size[size]),
+  } as const;
+  // A link row takes no press of its own: the engine closes a menu when one of its items is chosen.
+  if (props.to !== undefined) return <link {...shared} to={props.to}>{content}</link>;
+  const { onClick } = props;
+  return <button {...shared} onClick={() => { onClick(); close?.(); }}>{content}</button>;
 }
 
 /** An item that turns one option on or off, checked at its end. */

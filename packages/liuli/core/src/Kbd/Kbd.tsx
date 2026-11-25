@@ -18,7 +18,8 @@ export interface KbdProps {
 /** A keyboard shortcut, drawn as key caps. */
 export function Kbd({ keys, label, size = 'sm', className, 'data-testid': testId, ...attributes }: KbdProps) {
   return (
-    <view data-testid={testId} {...dataOf(attributes)} role={label === undefined ? undefined : 'img'} aria-label={label} className={cx(r.root.base, className)}>
+    // A key combination reads left to right in every language, so the caps keep their order in a right-to-left page.
+    <view dir="ltr" data-testid={testId} {...dataOf(attributes)} role={label === undefined ? undefined : 'img'} aria-label={label} className={cx(r.root.base, className)}>
       {keys.map((key, at) => (
         <view key={`${at}-${key}`} aria-hidden={label !== undefined} className={cx(r.key.base, r.key.size[size])}>
           <text className={cx(r.label.base, r.label.size[size])}>{key}</text>

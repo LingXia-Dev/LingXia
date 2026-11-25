@@ -1604,7 +1604,13 @@
             "name": "onClick",
             "type": "(() => void)",
             "required": false,
-            "description": "Opens the level. The last item is where the person is, and takes none."
+            "description": ""
+          },
+          {
+            "name": "to",
+            "type": "LinkTarget",
+            "required": false,
+            "description": ""
           }
         ]
       },
@@ -1669,6 +1675,11 @@
           "name": "Deep",
           "title": "A deep trail, folded",
           "source": "import { Said } from '../example';\nimport { Breadcrumb } from '@liulidesign/core/Breadcrumb';\n\n/** A deep trail: the middle levels fold into a menu, and the first level and the last two stay. */\nexport function Deep() {\n  return (\n    <Said>\n      {say => (\n        <Breadcrumb\n          label=\"Breadcrumb\"\n          moreLabel=\"More levels\"\n          items={[\n            { key: 'drive', label: 'Drive', onClick: () => say('Opened Drive') },\n            { key: 'clients', label: 'Clients', onClick: () => say('Opened Clients') },\n            { key: 'northwind', label: 'Northwind', onClick: () => say('Opened Northwind') },\n            { key: '2026', label: '2026', onClick: () => say('Opened 2026') },\n            { key: 'invoices', label: 'Invoices', onClick: () => say('Opened Invoices') },\n            { key: 'inv', label: 'INV-1043.pdf' },\n          ]}\n          data-testid=\"deep\"\n        />\n      )}\n    </Said>\n  );\n}"
+        },
+        {
+          "name": "Pages",
+          "title": "Levels that are pages, with `to`",
+          "source": "import { Breadcrumb } from '@liulidesign/core/Breadcrumb';\n\n/** Levels that are pages of the app: each is a link with `to`. */\nexport function Pages() {\n  return (\n    <Breadcrumb\n      label=\"Breadcrumb\"\n      items={[\n        { key: 'home', label: 'Home', to: { page: 'index' } },\n        { key: 'settings', label: 'Settings', to: { page: 'settings' } },\n        { key: 'privacy', label: 'Privacy' },\n      ]}\n      data-testid=\"pages\"\n    />\n  );\n}"
         }
       ],
       "gaps": [
@@ -1724,6 +1735,10 @@
             {
               "name": "Deep",
               "title": "Six levels: the middle three fold into a menu"
+            },
+            {
+              "name": "Pages",
+              "title": "Levels that are pages of the app, as links"
             }
           ]
         }
@@ -8152,6 +8167,18 @@
             "description": "Runs on choice, with nothing; the menu then closes. A row that keeps the menu open is a checkable row, composed in `menu`. Leave it out on a submenu."
           },
           {
+            "name": "to",
+            "type": "LinkTarget",
+            "required": false,
+            "description": "Goes to a page instead of running `onClick`: `{ page, params }`, `{ tab }`, `{ back: 1 }`. Read as a menu item that is a link. Not on a submenu."
+          },
+          {
+            "name": "endContent",
+            "type": "Child",
+            "required": false,
+            "description": "At the row's trailing edge, muted: a shortcut as a `Kbd`, or a count. Not on a submenu."
+          },
+          {
             "name": "items",
             "type": "readonly DropdownMenuItemData[]",
             "required": false,
@@ -8184,6 +8211,18 @@
         ],
         "DropdownMenuItem": [
           {
+            "name": "onClick",
+            "type": "(() => void)",
+            "required": false,
+            "description": "Runs on choice; the menu then closes."
+          },
+          {
+            "name": "to",
+            "type": "LinkTarget",
+            "required": false,
+            "description": "Makes it a link that goes there on press: `{ page, params }`, `{ tab }`, `{ back: 1 }`. Read as a link; Enter opens it and Space does not."
+          },
+          {
             "name": "label",
             "type": "string",
             "required": true,
@@ -8202,10 +8241,10 @@
             "description": "An icon by name from the set, or a definition, before the label; hidden from assistive tech."
           },
           {
-            "name": "onClick",
-            "type": "() => void",
-            "required": true,
-            "description": "Runs on choice; the menu then closes."
+            "name": "endContent",
+            "type": "Child",
+            "required": false,
+            "description": "At the row's trailing edge, muted: a shortcut as a `Kbd`, or a count. Not read; name a shortcut in `description` if it matters."
           },
           {
             "name": "isDisabled",
@@ -8347,6 +8386,7 @@
         "itemText": "view",
         "itemLabel": "text",
         "itemDescription": "text",
+        "itemEnd": "view",
         "itemCheck": "vector",
         "itemDash": "view",
         "submenuChevron": "vector",
@@ -8434,6 +8474,16 @@
           "source": "import { useLocal } from '@lingxia/view';\nimport { DropdownMenu, DropdownMenuItem } from '@liulidesign/core/DropdownMenu';\nimport { Button } from '@liulidesign/core/Button';\n\n/** A labelled trigger; the menu lines up with its start edge. */\nexport function Basic() {\n  const order = useLocal('order', 'Name');\n  return (\n    <view className=\"flex-row items-center gap-3\">\n      <DropdownMenu\n        label=\"Sort by\"\n        menu={<>\n          <DropdownMenuItem label=\"Name\" onClick={() => order.set('Name')} data-testid=\"sort-name\" />\n          <DropdownMenuItem label=\"Last updated\" description=\"Newest first\" onClick={() => order.set('Last updated')} data-testid=\"sort-updated\" />\n          <DropdownMenuItem label=\"Size\" onClick={() => order.set('Size')} />\n        </>}\n      >\n        <Button label=\"Sort by\" endIcon=\"chevron-down\" data-testid=\"sort\" />\n      </DropdownMenu>\n      <text data-testid=\"order\" className=\"text-footnote text-muted\">{order.value}</text>\n    </view>\n  );\n}"
         },
         {
+          "name": "Shortcuts",
+          "title": "Shortcuts at the trailing edge",
+          "source": "import { DropdownMenu, DropdownMenuDivider, DropdownMenuItem } from '@liulidesign/core/DropdownMenu';\nimport { Said } from '../example';\nimport { Button } from '@liulidesign/core/Button';\nimport { Kbd } from '@liulidesign/core/Kbd';\n\n/** Shortcuts at each row's trailing edge, muted, as an app's Edit menu shows them. */\nexport function Shortcuts() {\n  return (\n    <Said>\n      {say => (\n        <view className=\"flex-row\">\n          <DropdownMenu\n            label=\"Edit\"\n            menu={<>\n              <DropdownMenuItem label=\"Undo\" endContent={<Kbd keys={['⌘', 'Z']} />} onClick={() => say('Undid')} data-testid=\"edit-undo\" />\n              <DropdownMenuDivider />\n              <DropdownMenuItem label=\"Cut\" endContent={<Kbd keys={['⌘', 'X']} />} onClick={() => say('Cut')} />\n              <DropdownMenuItem label=\"Copy\" endContent={<Kbd keys={['⌘', 'C']} />} onClick={() => say('Copied')} />\n              <DropdownMenuItem label=\"Paste\" endContent={<Kbd keys={['⌘', 'V']} />} onClick={() => say('Pasted')} />\n              <DropdownMenuDivider />\n              <DropdownMenuItem label=\"Delete\" icon=\"delete\" variant=\"destructive\" endContent={<Kbd keys={['⌫']} />} onClick={() => say('Deleted')} />\n            </>}\n          >\n            <Button label=\"Edit\" endIcon=\"chevron-down\" data-testid=\"edit\" />\n          </DropdownMenu>\n        </view>\n      )}\n    </Said>\n  );\n}"
+        },
+        {
+          "name": "ShortcutsRtl",
+          "title": "Shortcuts, right to left",
+          "source": "import { DropdownMenu, DropdownMenuItem } from '@liulidesign/core/DropdownMenu';\nimport { Said } from '../example';\nimport { Button } from '@liulidesign/core/Button';\nimport { Kbd } from '@liulidesign/core/Kbd';\n\n/** In a right-to-left language the row mirrors: the shortcut sits at the left edge. */\nexport function ShortcutsRtl() {\n  return (\n    <Said>\n      {say => (\n        <view dir=\"rtl\" className=\"flex-row\">\n          <DropdownMenu\n            label=\"تحرير\"\n            menu={<>\n              <DropdownMenuItem label=\"تراجع\" endContent={<Kbd keys={['⌘', 'Z']} />} onClick={() => say('تم التراجع')} data-testid=\"rtl-undo\" />\n              <DropdownMenuItem label=\"نسخ\" endContent={<Kbd keys={['⌘', 'C']} />} onClick={() => say('تم النسخ')} />\n              <DropdownMenuItem label=\"لصق\" endContent={<Kbd keys={['⌘', 'V']} />} onClick={() => say('تم اللصق')} />\n            </>}\n          >\n            <Button label=\"تحرير\" endIcon=\"chevron-down\" data-testid=\"rtl-edit\" />\n          </DropdownMenu>\n        </view>\n      )}\n    </Said>\n  );\n}"
+        },
+        {
           "name": "More",
           "title": "Icon-only \"more\" menu on a row",
           "source": "import { useLocal } from '@lingxia/view';\nimport { DropdownMenu, DropdownMenuDivider, DropdownMenuItem } from '@liulidesign/core/DropdownMenu';\nimport { Said, unused } from '../example';\nimport { IconButton } from '@liulidesign/core/IconButton';\n\n/** An icon-only \"more\" menu at the end of a row, aligned to the row's end edge. */\nexport function More() {\n  const removed = useLocal('removed', false);\n  return (\n    <Said>\n      {say => (\n        <view className=\"flex-row items-center gap-3\">\n          <text className=\"grow basis-0 text-body font-medium text-text\">{removed.value ? 'Removed' : 'Groceries'}</text>\n          <DropdownMenu\n            label=\"More actions\"\n            alignment=\"end\"\n            menu={<>\n              <DropdownMenuItem label=\"Rename\" onClick={() => say('Chose Rename')} />\n              <DropdownMenuItem label=\"Share\" onClick={unused} isDisabled />\n              <DropdownMenuDivider />\n              <DropdownMenuItem\n                label=\"Delete\"\n                variant=\"destructive\"\n                icon=\"delete\"\n                onClick={() => removed.set(true)}\n                data-testid=\"delete\"\n              />\n            </>}\n          >\n            <IconButton label=\"More actions\" icon=\"more\" data-testid=\"more\" />\n          </DropdownMenu>\n        </view>\n      )}\n    </Said>\n  );\n}"
@@ -8471,7 +8521,7 @@
         {
           "name": "Data",
           "title": "The rows as data",
-          "source": "import { DropdownMenu } from '@liulidesign/core/DropdownMenu';\nimport { Said, unused } from '../example';\nimport { Button } from '@liulidesign/core/Button';\n\n/** The rows as data: actions, a submenu, a group under a heading and a destructive action after a divider. */\nexport function Data() {\n  return (\n    <Said>\n      {say => (\n        <DropdownMenu\n          label=\"Note actions\"\n          items={[\n            { label: 'Rename', icon: 'edit', onClick: () => say('Chose Rename'), 'data-testid': 'data-rename' },\n            { label: 'Duplicate', icon: 'copy', onClick: () => say('Chose Duplicate') },\n            {\n              label: 'Move to',\n              icon: 'folder',\n              items: [\n                { label: 'Inbox', onClick: () => say('Moved to Inbox'), 'data-testid': 'data-inbox' },\n                { label: 'Archive', onClick: () => say('Moved to Archive') },\n              ],\n              'data-testid': 'data-move',\n            },\n            { type: 'divider' },\n            {\n              type: 'group',\n              label: 'Share',\n              items: [\n                { label: 'Copy link', icon: 'link', onClick: () => say('Copied the link') },\n                { label: 'Invite someone', icon: 'share', description: 'They can edit it', onClick: unused, isDisabled: true },\n              ],\n            },\n            { type: 'divider' },\n            { label: 'Delete', icon: 'delete', variant: 'destructive', onClick: () => say('Chose Delete'), 'data-testid': 'data-delete' },\n          ]}\n        >\n          <Button label=\"Actions\" endIcon=\"chevron-down\" data-testid=\"data\" />\n        </DropdownMenu>\n      )}\n    </Said>\n  );\n}"
+          "source": "import { DropdownMenu } from '@liulidesign/core/DropdownMenu';\nimport { Said, unused } from '../example';\nimport { Button } from '@liulidesign/core/Button';\n\n/** The rows as data: actions, a submenu, a group under a heading and a destructive action after a divider. */\nexport function Data() {\n  return (\n    <Said>\n      {say => (\n        <DropdownMenu\n          label=\"Note actions\"\n          items={[\n            { label: 'Rename', icon: 'edit', onClick: () => say('Chose Rename'), 'data-testid': 'data-rename' },\n            { label: 'Duplicate', icon: 'copy', onClick: () => say('Chose Duplicate') },\n            { label: 'Note settings', icon: 'settings', to: { page: 'settings' }, 'data-testid': 'data-settings' },\n            {\n              label: 'Move to',\n              icon: 'folder',\n              items: [\n                { label: 'Inbox', onClick: () => say('Moved to Inbox'), 'data-testid': 'data-inbox' },\n                { label: 'Archive', onClick: () => say('Moved to Archive') },\n              ],\n              'data-testid': 'data-move',\n            },\n            { type: 'divider' },\n            {\n              type: 'group',\n              label: 'Share',\n              items: [\n                { label: 'Copy link', icon: 'link', onClick: () => say('Copied the link') },\n                { label: 'Invite someone', icon: 'share', description: 'They can edit it', onClick: unused, isDisabled: true },\n              ],\n            },\n            { type: 'divider' },\n            { label: 'Delete', icon: 'delete', variant: 'destructive', onClick: () => say('Chose Delete'), 'data-testid': 'data-delete' },\n          ]}\n        >\n          <Button label=\"Actions\" endIcon=\"chevron-down\" data-testid=\"data\" />\n        </DropdownMenu>\n      )}\n    </Said>\n  );\n}"
         },
         {
           "name": "InSentence",
@@ -8543,6 +8593,14 @@
           "lead": "Use a dropdown menu for a short list of actions that do not need to stay on screen.",
           "hero": "Basic",
           "variants": [
+            {
+              "name": "Shortcuts",
+              "title": "Shortcuts at the trailing edge, muted"
+            },
+            {
+              "name": "ShortcutsRtl",
+              "title": "Right to left: the shortcuts mirror to the left edge"
+            },
             {
               "name": "More",
               "title": "Icon only, at the end of a row"

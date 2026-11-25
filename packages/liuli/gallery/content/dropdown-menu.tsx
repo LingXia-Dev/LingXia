@@ -1,5 +1,5 @@
 // Generated from the doc file by scripts/generate.mjs; do not edit.
-import { Basic, More, Value, Checkable, Grouped, Submenu, Data, Sizes, StateEnabled, StateDisabled, StateMixed, InList, InSentence } from '../../core/src/DropdownMenu/DropdownMenu.examples';
+import { Basic, Shortcuts, ShortcutsRtl, More, Value, Checkable, Grouped, Submenu, Data, Sizes, StateEnabled, StateDisabled, StateMixed, InList, InSentence } from '../../core/src/DropdownMenu/DropdownMenu.examples';
 import { Lead, PageSection, Stage, StageGrid } from '../shared/Layout';
 
 export function Content() {
@@ -9,6 +9,12 @@ export function Content() {
         <Basic />
       </Lead>
       <PageSection title={"Variants"}>
+        <Stage caption={"Shortcuts at the trailing edge, muted"}>
+          <Shortcuts />
+        </Stage>
+        <Stage caption={"Right to left: the shortcuts mirror to the left edge"}>
+          <ShortcutsRtl />
+        </Stage>
         <Stage caption={"Icon only, at the end of a row"}>
           <More />
         </Stage>

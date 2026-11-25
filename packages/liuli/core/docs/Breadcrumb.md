@@ -69,6 +69,27 @@ export function Deep() {
 }
 ```
 
+### Levels that are pages, with `to`
+
+```tsx
+import { Breadcrumb } from '@liulidesign/core/Breadcrumb';
+
+/** Levels that are pages of the app: each is a link with `to`. */
+export function Pages() {
+  return (
+    <Breadcrumb
+      label="Breadcrumb"
+      items={[
+        { key: 'home', label: 'Home', to: { page: 'index' } },
+        { key: 'settings', label: 'Settings', to: { page: 'settings' } },
+        { key: 'privacy', label: 'Privacy' },
+      ]}
+      data-testid="pages"
+    />
+  );
+}
+```
+
 ## Props
 
 | Prop | Type | Default | Description |
@@ -86,7 +107,8 @@ export function Deep() {
 | --- | --- | --- | --- |
 | `key` (required) | `string` |  | Identifies the level: its test id is `<id>-<key>`. |
 | `label` (required) | `string` |  | The level's name. |
-| `onClick` | `(() => void)` |  | Opens the level. The last item is where the person is, and takes none. |
+| `onClick` | `(() => void)` |  |  |
+| `to` | `LinkTarget` |  |  |
 
 ## Anatomy
 

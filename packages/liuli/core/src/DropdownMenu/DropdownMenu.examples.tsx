@@ -14,6 +14,7 @@ import { Said, unused } from '../example';
 import { Button } from '../Button/Button';
 import { IconButton } from '../IconButton/IconButton';
 import { Link } from '../Link/Link';
+import { Kbd } from '../Kbd/Kbd';
 
 
 /** A labelled trigger; the menu lines up with its start edge. */
@@ -33,6 +34,54 @@ export function Basic() {
       </DropdownMenu>
       <text data-testid="order" className="text-footnote text-muted">{order.value}</text>
     </view>
+  );
+}
+
+/** Shortcuts at each row's trailing edge, muted, as an app's Edit menu shows them. */
+export function Shortcuts() {
+  return (
+    <Said>
+      {say => (
+        <view className="flex-row">
+          <DropdownMenu
+            label="Edit"
+            menu={<>
+              <DropdownMenuItem label="Undo" endContent={<Kbd keys={['⌘', 'Z']} />} onClick={() => say('Undid')} data-testid="edit-undo" />
+              <DropdownMenuDivider />
+              <DropdownMenuItem label="Cut" endContent={<Kbd keys={['⌘', 'X']} />} onClick={() => say('Cut')} />
+              <DropdownMenuItem label="Copy" endContent={<Kbd keys={['⌘', 'C']} />} onClick={() => say('Copied')} />
+              <DropdownMenuItem label="Paste" endContent={<Kbd keys={['⌘', 'V']} />} onClick={() => say('Pasted')} />
+              <DropdownMenuDivider />
+              <DropdownMenuItem label="Delete" icon="delete" variant="destructive" endContent={<Kbd keys={['⌫']} />} onClick={() => say('Deleted')} />
+            </>}
+          >
+            <Button label="Edit" endIcon="chevron-down" data-testid="edit" />
+          </DropdownMenu>
+        </view>
+      )}
+    </Said>
+  );
+}
+
+/** In a right-to-left language the row mirrors: the shortcut sits at the left edge. */
+export function ShortcutsRtl() {
+  return (
+    <Said>
+      {say => (
+        <view dir="rtl" className="flex-row">
+          <DropdownMenu
+            label="تحرير"
+            menu={<>
+              <DropdownMenuItem label="تراجع" endContent={<Kbd keys={['⌘', 'Z']} />} onClick={() => say('تم التراجع')} data-testid="rtl-undo" />
+              <DropdownMenuItem label="نسخ" endContent={<Kbd keys={['⌘', 'C']} />} onClick={() => say('تم النسخ')} />
+              <DropdownMenuItem label="لصق" endContent={<Kbd keys={['⌘', 'V']} />} onClick={() => say('تم اللصق')} />
+            </>}
+          >
+            <Button label="تحرير" endIcon="chevron-down" data-testid="rtl-edit" />
+          </DropdownMenu>
+        </view>
+      )}
+    </Said>
   );
 }
 
@@ -269,6 +318,7 @@ export function Data() {
           items={[
             { label: 'Rename', icon: 'edit', onClick: () => say('Chose Rename'), 'data-testid': 'data-rename' },
             { label: 'Duplicate', icon: 'copy', onClick: () => say('Chose Duplicate') },
+            { label: 'Note settings', icon: 'settings', to: { page: 'settings' }, 'data-testid': 'data-settings' },
             {
               label: 'Move to',
               icon: 'folder',

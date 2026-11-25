@@ -15,3 +15,14 @@ test('Hint: without a spoken form the key is read as written, in a cap at least 
   const [cap] = kbd.children;
   assert.deepEqual([kbd.props.accessibilityLabel, cap.props.accessibilityHidden, cap.props.height, cap.props.minWidth], [undefined, undefined, 24, 24]);
 });
+
+test('a combination keeps its caps left to right inside a right-to-left page', async () => {
+  const { renderPage } = await import('../testing/harness.mjs');
+  const screen = await renderPage(`
+    import { Kbd } from '@liulidesign/core/Kbd';
+    export function render() { return <page><view dir="rtl"><Kbd keys={['⌘', 'Z']} data-testid="combo" /></view></page>; }
+  `);
+  const combo = screen.getByTestId('combo');
+  assert.equal(combo.props.direction, 'ltr');
+  assert.equal(textOf(combo).replace(/\s+/g, ''), '⌘Z');
+});

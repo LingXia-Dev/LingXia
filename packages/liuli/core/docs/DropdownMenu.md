@@ -40,6 +40,72 @@ export function Basic() {
 }
 ```
 
+### Shortcuts at the trailing edge
+
+```tsx
+import { DropdownMenu, DropdownMenuDivider, DropdownMenuItem } from '@liulidesign/core/DropdownMenu';
+import { Said } from '../example';
+import { Button } from '@liulidesign/core/Button';
+import { Kbd } from '@liulidesign/core/Kbd';
+
+/** Shortcuts at each row's trailing edge, muted, as an app's Edit menu shows them. */
+export function Shortcuts() {
+  return (
+    <Said>
+      {say => (
+        <view className="flex-row">
+          <DropdownMenu
+            label="Edit"
+            menu={<>
+              <DropdownMenuItem label="Undo" endContent={<Kbd keys={['⌘', 'Z']} />} onClick={() => say('Undid')} data-testid="edit-undo" />
+              <DropdownMenuDivider />
+              <DropdownMenuItem label="Cut" endContent={<Kbd keys={['⌘', 'X']} />} onClick={() => say('Cut')} />
+              <DropdownMenuItem label="Copy" endContent={<Kbd keys={['⌘', 'C']} />} onClick={() => say('Copied')} />
+              <DropdownMenuItem label="Paste" endContent={<Kbd keys={['⌘', 'V']} />} onClick={() => say('Pasted')} />
+              <DropdownMenuDivider />
+              <DropdownMenuItem label="Delete" icon="delete" variant="destructive" endContent={<Kbd keys={['⌫']} />} onClick={() => say('Deleted')} />
+            </>}
+          >
+            <Button label="Edit" endIcon="chevron-down" data-testid="edit" />
+          </DropdownMenu>
+        </view>
+      )}
+    </Said>
+  );
+}
+```
+
+### Shortcuts, right to left
+
+```tsx
+import { DropdownMenu, DropdownMenuItem } from '@liulidesign/core/DropdownMenu';
+import { Said } from '../example';
+import { Button } from '@liulidesign/core/Button';
+import { Kbd } from '@liulidesign/core/Kbd';
+
+/** In a right-to-left language the row mirrors: the shortcut sits at the left edge. */
+export function ShortcutsRtl() {
+  return (
+    <Said>
+      {say => (
+        <view dir="rtl" className="flex-row">
+          <DropdownMenu
+            label="تحرير"
+            menu={<>
+              <DropdownMenuItem label="تراجع" endContent={<Kbd keys={['⌘', 'Z']} />} onClick={() => say('تم التراجع')} data-testid="rtl-undo" />
+              <DropdownMenuItem label="نسخ" endContent={<Kbd keys={['⌘', 'C']} />} onClick={() => say('تم النسخ')} />
+              <DropdownMenuItem label="لصق" endContent={<Kbd keys={['⌘', 'V']} />} onClick={() => say('تم اللصق')} />
+            </>}
+          >
+            <Button label="تحرير" endIcon="chevron-down" data-testid="rtl-edit" />
+          </DropdownMenu>
+        </view>
+      )}
+    </Said>
+  );
+}
+```
+
 ### Icon-only "more" menu on a row
 
 ```tsx
@@ -284,6 +350,7 @@ export function Data() {
           items={[
             { label: 'Rename', icon: 'edit', onClick: () => say('Chose Rename'), 'data-testid': 'data-rename' },
             { label: 'Duplicate', icon: 'copy', onClick: () => say('Chose Duplicate') },
+            { label: 'Note settings', icon: 'settings', to: { page: 'settings' }, 'data-testid': 'data-settings' },
             {
               label: 'Move to',
               icon: 'folder',
@@ -367,6 +434,8 @@ export function InSentence() {
 | `description` | `string` |  | A second line, read as the row's description. Not on a submenu. |
 | `icon` | `IconRef` |  | An icon by name from the set, or a definition, before the label; hidden from assistive tech. |
 | `onClick` | `(() => void)` |  | Runs on choice, with nothing; the menu then closes. A row that keeps the menu open is a checkable row, composed in `menu`. Leave it out on a submenu. |
+| `to` | `LinkTarget` |  | Goes to a page instead of running `onClick`: `{ page, params }`, `{ tab }`, `{ back: 1 }`. Read as a menu item that is a link. Not on a submenu. |
+| `endContent` | `Child` |  | At the row's trailing edge, muted: a shortcut as a `Kbd`, or a count. Not on a submenu. |
 | `items` | `readonly DropdownMenuItemData[]` |  | Makes the row a submenu of these actions, one level deep. |
 | `isDisabled` | `boolean` | `false` |  |
 | `variant` | `DropdownMenuItemVariant` | `'default'` | `destructive` draws the icon in the danger role. Not on a submenu. |
@@ -376,10 +445,12 @@ export function InSentence() {
 
 | Prop | Type | Default | Description |
 | --- | --- | --- | --- |
+| `onClick` | `(() => void)` |  | Runs on choice; the menu then closes. |
+| `to` | `LinkTarget` |  | Makes it a link that goes there on press: `{ page, params }`, `{ tab }`, `{ back: 1 }`. Read as a link; Enter opens it and Space does not. |
 | `label` (required) | `string` |  | The item's text and its accessible name. |
 | `description` | `string` |  | A second line, read as the item's description. |
 | `icon` | `IconRef` |  | An icon by name from the set, or a definition, before the label; hidden from assistive tech. |
-| `onClick` (required) | `() => void` |  | Runs on choice; the menu then closes. |
+| `endContent` | `Child` |  | At the row's trailing edge, muted: a shortcut as a `Kbd`, or a count. Not read; name a shortcut in `description` if it matters. |
 | `isDisabled` | `boolean` | `false` |  |
 | `variant` | `DropdownMenuItemVariant` | `'default'` | `destructive` draws the label and the icon in the danger role. |
 | `data-testid` | `string` |  |  |

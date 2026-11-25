@@ -9,6 +9,7 @@ export const dropdownMenuParts = {
   itemText: 'view',
   itemLabel: 'text',
   itemDescription: 'text',
+  itemEnd: 'view',
   itemCheck: 'vector',
   itemDash: 'view',
   submenuChevron: 'vector',
@@ -55,6 +56,10 @@ export const dropdownMenuRecipe = {
   },
   itemDescription: {
     base: 'text-footnote text-muted',
+  },
+  /** After the text, at the trailing edge, so it mirrors in RTL; muted, as a shortcut is in a platform menu. */
+  itemEnd: {
+    base: 'shrink-0 flex-row items-center gap-1 text-footnote text-muted',
   },
   /** The check at the end of a checked checkbox or radio item. */
   itemCheck: {

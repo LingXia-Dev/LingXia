@@ -55,6 +55,7 @@ export const doc: ComponentDoc = {
   examples: [
     { name: 'Path', title: 'A path of three levels' },
     { name: 'Deep', title: 'A deep trail, folded' },
+    { name: 'Pages', title: 'Levels that are pages, with `to`' },
   ],
   gaps: [
     { missing: 'Folding by the room there is, not by a count.', needs: 'nothing from the View', today: 'Folds past `maxItems`; otherwise the trail wraps.' },
@@ -69,7 +70,7 @@ export const doc: ComponentDoc = {
     page: {
       lead: 'Use a breadcrumb to show where a page sits in a hierarchy and to go back up it.',
       hero: 'Path',
-      variants: [{ name: 'Deep', title: 'Six levels: the middle three fold into a menu' }],
+      variants: [{ name: 'Deep', title: 'Six levels: the middle three fold into a menu' }, { name: 'Pages', title: 'Levels that are pages of the app, as links' }],
     },
   },
 };

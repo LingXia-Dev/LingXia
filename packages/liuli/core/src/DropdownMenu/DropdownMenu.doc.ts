@@ -69,6 +69,8 @@ export const doc: ComponentDoc = {
   },
   examples: [
     { name: 'Basic', title: 'Labelled trigger' },
+    { name: 'Shortcuts', title: 'Shortcuts at the trailing edge' },
+    { name: 'ShortcutsRtl', title: 'Shortcuts, right to left' },
     { name: 'More', title: 'Icon-only "more" menu on a row' },
     { name: 'InList', title: 'A menu on every row' },
     { name: 'Value', title: 'A menu that sets a value' },
@@ -106,6 +108,8 @@ export const doc: ComponentDoc = {
       lead: 'Use a dropdown menu for a short list of actions that do not need to stay on screen.',
       hero: 'Basic',
       variants: [
+        { name: 'Shortcuts', title: 'Shortcuts at the trailing edge, muted' },
+        { name: 'ShortcutsRtl', title: 'Right to left: the shortcuts mirror to the left edge' },
         { name: 'More', title: 'Icon only, at the end of a row' },
         { name: 'Value', title: 'Showing the current choice' },
         { name: 'Checkable', title: 'Checkbox and radio items' },

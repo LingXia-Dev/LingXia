@@ -230,7 +230,8 @@ test('Data: rows given as data draw as the composed ones: a submenu, a named gro
   const top = menus(screen)[0];
   assert.equal(top.props.accessibilityLabel, 'Note actions');
   const labels = screen.queryAll(node => node.props.role === 'menuitem').map(node => node.props.accessibilityLabel);
-  assert.deepEqual(labels.slice(0, 6), ['Rename', 'Duplicate', 'Move to', 'Copy link', 'Invite someone', 'Delete']);
+  assert.deepEqual(labels.slice(0, 7), ['Rename', 'Duplicate', 'Note settings', 'Move to', 'Copy link', 'Invite someone', 'Delete']);
+  assert.equal(screen.getByTestId('data-settings').tag, 'link-box', 'a row with to is a link');
   const group = screen.queryAll(node => node.props.role === 'group' && node.props.accessibilityLabel === 'Share');
   assert.equal(group.length, 1, 'the group is named by its label');
   const invite = screen.queryAll(node => node.props.role === 'menuitem' && node.props.accessibilityLabel === 'Invite someone')[0];
@@ -281,4 +282,47 @@ test('Basic: the menu is as wide as its widest item, at least 192 pt and at most
   assert.deepEqual([menu.props.minWidth, menu.props.maxWidth, menu.props.width], [192, 351, undefined], 'at least 192 pt, at most 90 % of the 390 pt screen');
   const texts = screen.queryAll(node => node.tag === 'text' && ['Name', 'Size'].includes(node.text) && node.parent.parent.props.role === 'menuitem').map(label => label.parent);
   assert.deepEqual(texts.map(text => [text.props.flexBasis, text.props.minWidth]), [[undefined, 0], [undefined, 0]]);
+});
+
+test('Shortcuts: a row keeps its label as its name; the shortcut sits after the text and is not read', async () => {
+  const screen = await renderExample('DropdownMenu/DropdownMenu', 'Shortcuts');
+  screen.press(screen.getByTestId('edit'));
+  const undo = screen.getByTestId('edit-undo');
+  assert.equal(undo.props.accessibilityLabel, 'Undo');
+  const end = undo.children.at(-1);
+  assert.ok(end.props.accessibilityHidden);
+  assert.match(textOf(end), /⌘\s*Z/);
+});
+
+test('to: a row with to is a menu item that is a block link, named by its label, as a row or as data', async () => {
+  const screen = await renderPage(`
+    import { Button } from '@liulidesign/core/Button';
+    import { DropdownMenu, DropdownMenuItem } from '@liulidesign/core/DropdownMenu';
+    export function render() {
+      return <page>
+        <DropdownMenu label="Account" menu={<DropdownMenuItem label="Settings" to={{ page: 'settings' }} data-testid="row" />}><Button label="Account" data-testid="a" /></DropdownMenu>
+        <DropdownMenu label="More" items={[{ label: 'Profile', to: { page: 'profile' }, 'data-testid': 'data' }]}><Button label="More" data-testid="b" /></DropdownMenu>
+      </page>;
+    }
+  `);
+  for (const [trigger, row, name] of [['a', 'row', 'Settings'], ['b', 'data', 'Profile']]) {
+    screen.press(screen.getByTestId(trigger));
+    const item = screen.getByTestId(row);
+    assert.equal(item.tag, 'link-box');
+    assert.equal(item.props.role, 'menuitem');
+    assert.equal(item.props.accessibilityLabel, name);
+  }
+});
+
+test('to: a data row with both onClick and to is refused', async () => {
+  await assert.rejects(
+    renderPage(`
+      import { Button } from '@liulidesign/core/Button';
+      import { DropdownMenu } from '@liulidesign/core/DropdownMenu';
+      export function render() {
+        return <page><DropdownMenu label="M" isOpen onOpenChange={() => {}} items={[{ label: 'Both', onClick: () => {}, to: { page: 'x' } }]}><Button label="M" /></DropdownMenu></page>;
+      }
+    `),
+    /takes onClick or to, not both/,
+  );
 });
