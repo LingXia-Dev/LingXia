@@ -69,18 +69,17 @@ Logic 包含 `fetch`、timer、URL、stream、console 等标准 Web API，但没
 
 ## 原生组件
 
-LingXia 提供 `LxPicker`、`LxMediaSwiper`、`LxNavigator` 三个 presenter。React 会重新导出它们，HTML View 直接使用对应 custom element。文本输入直接使用普通 `<input>` / `<textarea>`，不存在 `LxInput`。WebView 页面中的视频和音频使用普通 HTML `<video>` / `<audio>`。
+LingXia 提供 `LxMediaSwiper` 与 `LxNavigator` 两个 presenter。React 会重新导出它们，HTML View 直接使用对应 custom element。文本输入与表单选择直接使用普通 `<input>` / `<textarea>` / `<select>` / `<input type="date|time">`；在 GPU View 中使用 `<input>` / `<select>` 或 `@liulidesign/core`。WebView 页面中的视频和音频使用普通 HTML `<video>` / `<audio>`。
 
 ```tsx
-import { LxPicker } from '@lingxia/react'
+import { LxMediaSwiper, LxNavigator } from '@lingxia/react'
 ```
 
 组件 callback 并不统一：
 
 | 组件 | React handler 收到的值 |
 |---|---|
-| `LxPicker` | **解析后的 value** — `string \| string[]` |
-| `LxMediaSwiper` | 原始 DOM `CustomEvent` — `event.detail.index` |
+| `LxMediaSwiper` | React 中直接收到 payload — `{ index, ... }` |
 | `LxNavigator` | 原始 DOM `CustomEvent` |
 
 属性见生成的[组件参考](../../reference/components/)。Callback 约定见 LingXia skill 的 `lxapp/webview/native-elements.md`。

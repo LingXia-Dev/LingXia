@@ -15,7 +15,6 @@ export {
 export type { LxHost, LxLeaveHandler, LxLeaveReason, LxLeaveRequest, MessageKey } from "@lingxia/bridge";
 export type { DeepReadonly } from "@lingxia/page-runtime";
 export { LxMediaSwiper, type LxMediaSwiperProps, type LxMediaSwiperRef } from "./LxMediaSwiper.js";
-export { LxPicker, type LxPickerProps } from "./LxPicker.js";
 export { LxNavigator, type LxNavigatorProps } from "./LxNavigator.js";
 export {
   SizeClassScope,

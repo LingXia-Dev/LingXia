@@ -12,7 +12,6 @@ const GROUPS: { title: string; demos: Demo[] }[] = [
   {
     title: 'Native components in a page',
     demos: [
-      { page: 'picker', title: 'Picker', detail: 'LxPicker: columns, cascading, date and time' },
       { page: 'swiper', title: 'Media Swiper', detail: 'LxMediaSwiper over picked images and videos' },
       { page: 'navigator', title: 'Navigator', detail: 'LxNavigator: push, replace, reset, float, URLs' },
     ],

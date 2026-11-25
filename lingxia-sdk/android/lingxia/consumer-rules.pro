@@ -36,8 +36,6 @@
 -keep class com.lingxia.lxapp.APIs.LxAppSurface { public static !synthetic <methods>; }
 -keep class com.lingxia.lxapp.APIs.LxAppToast { public static !synthetic <methods>; }
 -keep class com.lingxia.lxapp.APIs.LxAppWifi { public static !synthetic <methods>; }
-# Resolved with the others at load; the runtime calls nothing on it.
--keep class com.lingxia.lxapp.APIs.LxAppPicker
 
 # Objects the Rust runtime constructs and hands back across JNI.
 -keep class com.lingxia.app.CurrentLxApp { <init>(...); }

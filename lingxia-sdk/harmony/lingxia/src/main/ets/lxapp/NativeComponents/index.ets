@@ -25,5 +25,4 @@ export {
 } from './NativeBridgeInternal';
 
 export { registerVideoBuilder } from './Builders/VideoBuilder';
-export { registerPickerBuilder } from './Builders/PickerBuilder';
 export { registerMediaSwiperBuilder } from './Builders/MediaSwiperBuilder';

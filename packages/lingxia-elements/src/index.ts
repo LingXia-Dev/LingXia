@@ -21,18 +21,6 @@ export {
 } from "./media_swiper.js";
 
 export {
-  registerPickerComponent,
-  LxPickerElement,
-  type LxPickerAttributes,
-  type LxPickerColumn,
-  type LxPickerCascadingColumns,
-  type LxPickerColumns,
-  type LxPickerEvent,
-  type LxPickerEventDetail,
-} from "./picker.js";
-
-
-export {
   LxNavigatorElement,
   type LxNavigatorAttributes,
   type LxNavigatorEvent,
@@ -54,9 +42,6 @@ export {
 export {
   buildMediaSwiperNativeAttrs,
   buildNavigatorNativeAttrs,
-  buildPickerNativeAttrs,
-  getPickerDisplayText,
-  getPickerValueFromIndex,
   MEDIA_SWIPER_DOM_EVENT_MAP,
 } from "./native_component_wrapper_shared.js";
 

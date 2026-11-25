@@ -7,7 +7,6 @@ test('open every demo from the home list through LxNavigator', {
 }, async (t) => {
   const app = t.app;
   const destinations = [
-    ['home-picker', 'picker'],
     ['home-swiper', 'swiper'],
     ['home-navigator', 'navigator'],
     ['home-video', 'video'],

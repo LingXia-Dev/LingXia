@@ -62,8 +62,7 @@ function describe(prop) {
 // Friendly title + ordering per known component; unknown ones sort last.
 const META = {
   LxMediaSwiperAttributes: { title: 'Media Swiper', tag: 'lx-media-swiper', order: 6, summary: 'Paged image/video carousel.' },
-  LxPickerAttributes: { title: 'Picker', tag: 'lx-picker', order: 7, summary: 'Native selector / date / time picker.' },
-  LxNavigatorAttributes: { title: 'Navigator', tag: 'lx-navigator', order: 8, summary: 'Declarative navigation element.' },
+  LxNavigatorAttributes: { title: 'Navigator', tag: 'lx-navigator', order: 7, summary: 'Declarative navigation element.' },
 };
 
 function frontmatter(title, order, description) {
@@ -163,7 +162,7 @@ overviewRows.sort((a, b) => (a.order ?? 99) - (b.order ?? 99) || a.title.localeC
 // Overview index page.
 let index = frontmatter('Components', 0, 'Native-backed custom elements provided by @lingxia/elements.');
 index += `Native-backed custom elements provided by the \`@lingxia/elements\` package. React apps normally import their wrappers from \`@lingxia/react\`; HTML views use these custom elements directly.\n\n`;
-index += `Presenters: \`LxPicker\`, \`LxMediaSwiper\`, \`LxNavigator\`. Video and audio use the web platform's \`<video>\` and \`<audio>\`; text entry stays on the web platform with \`<input>\` and \`<textarea>\`—there is no \`LxInput\`.\n\n`;
+index += `Presenters: \`LxMediaSwiper\`, \`LxNavigator\`. Video, audio, text entry, and pickers use standard web elements (\`<video>\`, \`<audio>\`, \`<input>\`, \`<textarea>\`, \`<select>\`); in GPU View pages, use \`<input>\`, \`<select>\`, or \`@liulidesign/core\`.\n\n`;
 index += `| Component | Element | Description |\n`;
 index += `| --- | --- | --- |\n`;
 for (const r of overviewRows) {

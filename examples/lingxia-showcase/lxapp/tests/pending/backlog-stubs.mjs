@@ -187,14 +187,6 @@ export default [
     reason: "NAV-APP-001 checks one launch and exact hide/show deltas across a real Android app hop; desktop return navigation remains pending",
   },
   {
-    id: "PEND-PICKER-001",
-    implementedOn: ["android"],
-    title: "LxPicker value change, cancel, and columns",
-    mode: "planned",
-    covers: ["lx.nav.go"],
-    reason: "Android native-picker cases cover wheel changes, cancellation, confirmation, and multiple columns; other hosts still only open the page in COMPONENTS-001",
-  },
-  {
     id: "PEND-SWIPER-001",
     title: "LxMediaSwiper index change and add from pick.media",
     mode: "planned",

@@ -11,9 +11,6 @@
   "title.navigator": {
     "defaultMessage": "导航"
   },
-  "title.picker": {
-    "defaultMessage": "LxPicker"
-  },
   "title.pulltorefresh": {
     "defaultMessage": "下拉刷新"
   },

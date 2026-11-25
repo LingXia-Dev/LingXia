@@ -1,7 +1,7 @@
 # LingXia Showcase (WebView)
 
 A standalone lxapp with React pages. It shows what only a WebView page can:
-native components inside a page (picker, media swiper, navigator), the page's
+native components inside a page (media swiper, navigator), the page's
 own `<video>`, the bridge (a chat stream, a two-way channel, a bridge under
 load), and native pull to refresh. It has no native host; it runs in the
 LingXia Runner.

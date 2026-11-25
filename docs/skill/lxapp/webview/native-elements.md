@@ -1,16 +1,15 @@
 # WebView native elements
 
-Native-backed presenters: `LxPicker`, `LxMediaSwiper`, `LxNavigator`. Text input is plain `<input>` / `<textarea>`; there is no `LxInput`. In WebView pages, play video and audio with plain HTML `<video>` / `<audio>`.
+Native-backed presenters: `LxMediaSwiper`, `LxNavigator`. Text input and form pickers use plain HTML (`<input>`, `<textarea>`, `<select>`, `<input type="date|time">`) or web components; in GPU View pages, use `<input>`, `<select>`, or `@liulidesign/core`. Video and audio in WebView pages use plain HTML `<video>` / `<audio>`.
 
 Attribute and event types are exported from `@lingxia/elements`
-(`LxPickerAttributes`, `LxMediaSwiperAttributes`, `LxNavigatorAttributes`, the picker and
-swiper `*EventDetail`s, `LxNavigatorEvent`).
+(`LxMediaSwiperAttributes`, `LxNavigatorAttributes`, the swiper `*EventDetail`s, `LxNavigatorEvent`).
 
 ## Import
 
 ```ts
 // React
-import { LxPicker, LxMediaSwiper, LxNavigator } from '@lingxia/react';
+import { LxMediaSwiper, LxNavigator } from '@lingxia/react';
 ```
 
 Wrappers take the element attributes plus `className` / `style` / `ref` (`class` is for
@@ -21,7 +20,6 @@ View event.
 
 | Component | What the handler receives | Example |
 |---|---|---|
-| `LxPicker` | **Resolved value directly** — `string \| string[]` | `onConfirm(value)`, `onColumnChange(value)` |
 | `LxMediaSwiper` | **Payload first** in React; HTML reads `CustomEvent.detail` | `onChange(({ index }) => …)` |
 | `LxNavigator` | Raw DOM `CustomEvent` | `onSuccess(event)` → `event.detail.success` |
 
@@ -38,34 +36,6 @@ const onResize = () => {
   // h > 0 while the keyboard is up
 };
 visualViewport?.addEventListener('resize', onResize);
-```
-
-## `LxPicker`
-
-The wrapper props (`LxPickerProps`) are the contract. Column mode comes from
-`columns`; set `mode` only for date/time.
-
-| Wrapper configuration | Confirm value |
-|---|---|
-| `columns={[['A', 'B']]}` | `string` |
-| Multiple independent arrays in `columns` | `string[]` |
-| Cascading `columns`: `[parents, childrenByParent]` | `string[]` |
-| `mode="date"` | Date string; `fields="range"` returns a pair of strings |
-| `mode="time"` | Time string (`HH:mm`) |
-
-`onConfirm` fires on confirm, `onColumnChange` on each column scroll,
-`onCancel()` on dismiss.
-
-```tsx
-<LxPicker
-  columns={[
-    ['China', 'USA'],
-    ['Beijing', 'Shanghai'],
-  ]}
-  value={['China', 'Beijing']}
-  onConfirm={(value) => actions.setCity({ value })}
-  onColumnChange={(value) => console.log('scrolling', value)}
-/>
 ```
 
 ## `LxMediaSwiper`

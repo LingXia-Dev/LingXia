@@ -13,8 +13,6 @@ import { extractWebTag, pauseAllComponentsByAppId } from './WebViewBridge';
 import { onLxappOpened, onLxappClosed, getTabBar, TabBarItem, TabBarState, getCurrentLxapp, CurrentLxApp, onLxappEvent, UiEventType, splashMarkLaunchFace } from 'liblingxia.so';
 import { ToastManager } from './APIs/LxAppToast';
 import { ModalManager } from './APIs/LxAppModal';
-import { PickerManager } from './APIs/LxAppPicker';
-import { DatePickerManager } from './APIs/LxAppDatePicker';
 import { ActionSheetManager } from './APIs/LxAppActionSheet';
 import { LxAppSurface, SurfaceManager } from './APIs/LxAppSurface';
 import { AsidePart, AsideRegion, AsideRegionModel, AsideState, NO_TOUCH } from './AsideRegion';
@@ -726,12 +724,6 @@ export struct LxAppNavigation {
 
       ActionSheetManager()
         .zIndex(10002)
-
-      PickerManager()
-        .zIndex(10003)
-
-      DatePickerManager()
-        .zIndex(10003)
 
       // Surfaces and the side panel sit above the app containers and below toast and dialogs,
       // so a toast or modal raised from a page in them shows over it. The panel's chrome is

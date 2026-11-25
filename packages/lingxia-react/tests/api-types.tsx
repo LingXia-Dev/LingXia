@@ -5,7 +5,6 @@ import * as React from "react";
 import type { DeepReadonly } from "@lingxia/page-runtime";
 import {
   LxMediaSwiper,
-  LxPicker,
   useLxChannel,
   useLxPage,
   useLxStream,
@@ -91,23 +90,18 @@ void feed;
 // Readonly page data goes straight into components.
 type Page = DeepReadonly<{
   slides: { id: string; type: "image"; src: string }[];
-  columns: string[][];
-  choice: string[];
 }>;
 declare const page: Page;
 export function Components() {
   const swiper = React.useRef<LxMediaSwiperRef | null>(null);
   swiper.current?.goToIndex(0);
   return (
-    <>
-      <LxMediaSwiper
-        ref={swiper}
-        items={page.slides}
-        onChange={({ index, previousIndex, source }) => void [index, previousIndex, source]}
-        onError={({ code }) => void code}
-        onClick={() => {}}
-      />
-      <LxPicker columns={page.columns} value={page.choice} onKeyDown={() => {}} />
-    </>
+    <LxMediaSwiper
+      ref={swiper}
+      items={page.slides}
+      onChange={({ index, previousIndex, source }) => void [index, previousIndex, source]}
+      onError={({ code }) => void code}
+      onClick={() => {}}
+    />
   );
 }

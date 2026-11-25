@@ -141,7 +141,7 @@ You can browse the same content in this repo at [`docs/skill/SKILL.md`](./skill/
 
 - Page authoring (`definePage`, lifecycle, navigation): [`docs/skill/lxapp/guide.md`](./skill/lxapp/guide.md)
 - GPU View authoring: [`docs/skill/lxapp/gpu/authoring.md`](./skill/lxapp/gpu/authoring.md)
-- WebView native elements (`LxPicker`, `LxMediaSwiper`, …): [`docs/skill/lxapp/webview/native-elements.md`](./skill/lxapp/webview/native-elements.md)
+- WebView native elements (`LxMediaSwiper`, `LxNavigator`): [`docs/skill/lxapp/webview/native-elements.md`](./skill/lxapp/webview/native-elements.md)
 - Logic runtime and typings: [`docs/skill/lxapp/core.md`](./skill/lxapp/core.md)
 - Bridge mechanics (page state, stream, channel): [`docs/skill/lxapp/bridge.md`](./skill/lxapp/bridge.md)
 - Host project (`lingxia.yaml`, macOS App UI): [`docs/skill/app/project.md`](./skill/app/project.md)

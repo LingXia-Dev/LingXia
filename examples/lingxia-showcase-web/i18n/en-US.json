@@ -15,10 +15,6 @@
     "defaultMessage": "Navigator",
     "description": "Navigation bar title of the navigator page."
   },
-  "title.picker": {
-    "defaultMessage": "LxPicker",
-    "description": "Navigation bar title of the picker page."
-  },
   "title.pulltorefresh": {
     "defaultMessage": "Pull Down Refresh",
     "description": "Navigation bar title of the pulltorefresh page."

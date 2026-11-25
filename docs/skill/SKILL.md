@@ -116,9 +116,9 @@ A JS-Logic lxapp that calls Rust routes is still B. B's id rule:
 | `@lingxia/view` | GPU View primitives' types, hooks and helpers | lxapp View (GPU) | `useLocal`, `useAction`, `useRequest`, `useStream`, `List`, `t`; tests: `@lingxia/view/testing` |
 | `@liulidesign/core` | Liuli: accessible GPU components (buttons, fields, rows, sheets, icons) | lxapp View (GPU) | `import { Button } from '@liulidesign/core/Button'`; find a part with `lingxia ui search`, read it with `lingxia ui info <Part>`; its own skill installs into the project |
 | `@liulidesign/charts` | Liuli charts and stats | lxapp View (GPU) | `import { LineChart } from '@liulidesign/charts/LineChart'`; `lingxia ui` covers it too |
-| `@lingxia/react` | React hooks + framework-wrapped native components | lxapp View (React) | `useLxPage`, `useLxHost`, `useLxStream`, `LxPicker`, `LxMediaSwiper`, … |
+| `@lingxia/react` | React hooks + framework-wrapped native components | lxapp View (React) | `useLxPage`, `useLxHost`, `useLxStream`, `LxMediaSwiper`, `LxNavigator` |
 | `@lingxia/html` | DOM helpers for HTML-only views | lxapp View (HTML) | `pageReady`, `getPage`, `subscribePage`, `getHost`, `subscribeHost` |
-| `@lingxia/elements` | Pure-JS custom elements (`<lx-picker>`, …) | rarely direct — react re-exports wrappers | `registerPickerComponent`, `LxPickerElement` |
+| `@lingxia/elements` | Pure-JS custom elements (`<lx-media-swiper>`, `<lx-navigator>`) | rarely direct — react re-exports wrappers | `registerMediaSwiperComponent`, `LxMediaSwiperElement` |
 | `@lingxia/logic` | Logic's `lx`, `definePage`, `type`, `LxError` and every API type | lxapp Logic | [Install typing](./lxapp/core.md#install-typing) |
 | `@lingxia/types` | Generated API declarations; Logic globals, mocks, automation, page types | tsconfig `types`, mocks, tests | `import type { Mocks } from '@lingxia/types/mocks'` |
 | `@lingxia/test` | Test authoring SDK for `lxdev test` | lxapp tests | `import { test } from '@lingxia/test'` |
@@ -146,7 +146,7 @@ The CLI ships `@lingxia/polyfills`; never add it.
 | GPU View: tests in Node, checking the running page | [lxapp/gpu/testing.md](./lxapp/gpu/testing.md) |
 | Page state, streams, channels | [lxapp/bridge.md](./lxapp/bridge.md) |
 | WebView pages: React/HTML hooks, host facts, leave guard, page chrome CSS | [lxapp/webview/guide.md](./lxapp/webview/guide.md) |
-| WebView native elements: `LxPicker`, `LxMediaSwiper`, `LxNavigator`; text inputs, HTML `<video>` / `<audio>` | [lxapp/webview/native-elements.md](./lxapp/webview/native-elements.md) |
+| WebView native elements: `LxMediaSwiper`, `LxNavigator`; text inputs, HTML `<video>` / `<audio>` | [lxapp/webview/native-elements.md](./lxapp/webview/native-elements.md) |
 | Logic runtime: typing, Web globals, product settings, `lx.supports`, errors; look up a member with `lingxia api` | [lxapp/core.md](./lxapp/core.md) |
 | Size classes and per-size Views | [lxapp/adaptive-ui.md](./lxapp/adaptive-ui.md) |
 | Files: `lx://` storage, `lx.network.download`, `lx.fs`, `lx.network.upload`, quotas | [lxapp/files.md](./lxapp/files.md) |
@@ -195,6 +195,6 @@ The CLI ships `@lingxia/polyfills`; never add it.
 | `lxdev test` takes too long / runs unrelated tests | [testing.md → Running](./lxapp/testing.md#running) |
 | TS doesn't know `lx.foo()` / `definePage` | [Install typing](./lxapp/core.md#install-typing) |
 | A GPU build error (`UI_*`) | [GPU authoring](./lxapp/gpu/authoring.md), [styling](./lxapp/gpu/styling-motion.md) |
-| `<LxPicker>` / `<LxMediaSwiper>` prop not recognized | [native-elements.md](./lxapp/webview/native-elements.md) |
+| `<LxMediaSwiper>` / `<LxNavigator>` prop not recognized | [native-elements.md](./lxapp/webview/native-elements.md) |
 | WebView handler gets an event instead of a payload (or vice versa) | [Callback shapes](./lxapp/webview/native-elements.md#callback-shapes) |
 | `E_PERMISSION_DENIED` naming a class | [control-app.md → Refusal](./app/control-app.md#refusal) |

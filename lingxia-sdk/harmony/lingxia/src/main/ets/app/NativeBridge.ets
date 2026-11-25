@@ -6,7 +6,6 @@ import { LxLog } from './LxLog';
 import { LxAppToast, ToastIcon, ToastPosition } from '../lxapp/APIs/LxAppToast';
 import { LxAppModal } from '../lxapp/APIs/LxAppModal';
 import { LxAppActionSheet } from '../lxapp/APIs/LxAppActionSheet';
-import { LxAppPicker } from '../lxapp/APIs/LxAppPicker';
 import { LxAppDevice } from '../lxapp/APIs/LxAppDevice';
 import { LxAppMedia } from '../lxapp/APIs/LxAppMedia';
 import { LxAppScan } from '../lxapp/APIs/LxAppScan';
@@ -339,29 +338,6 @@ class NativeBridge {
     // ActionSheet APIs
     this.register('showActionSheet', (options: string, cancelText: string, itemColor: string, callbackId: string): boolean => {
       return LxAppActionSheet.showActionSheetFromJson(options, cancelText, itemColor, callbackId);
-    });
-
-    // Picker APIs (matching Rust interface)
-    this.register('showPicker', (
-      columns: string,
-      cancelText: string,
-      cancelButtonColor: string,
-      cancelTextColor: string,
-      confirmText: string,
-      confirmButtonColor: string,
-      confirmTextColor: string,
-      callbackId: string
-    ): boolean => {
-      return LxAppPicker.showPicker(
-        columns,
-        cancelText,
-        cancelButtonColor,
-        cancelTextColor,
-        confirmText,
-        confirmButtonColor,
-        confirmTextColor,
-        callbackId
-      );
     });
 
     this.register('presentSurface', (

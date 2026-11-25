@@ -84,23 +84,22 @@ pub enum CachedClass {
     LxAppToast = 6,
     LxAppModal = 7,
     LxAppActionSheet = 8,
-    LxAppPicker = 9,
-    LxAppFile = 10,
-    ComponentRouter = 11,
-    LxAppPullToRefresh = 12,
-    UpdateManager = 13,
-    LxAppCapsule = 14,
-    LxAppWifi = 15,
-    LxAppNetwork = 16,
-    AppScreenshot = 17,
-    LxApp = 18,
-    LxAppShare = 19,
-    LxAppClipboard = 20,
-    LxAppNotification = 21,
+    LxAppFile = 9,
+    ComponentRouter = 10,
+    LxAppPullToRefresh = 11,
+    UpdateManager = 12,
+    LxAppCapsule = 13,
+    LxAppWifi = 14,
+    LxAppNetwork = 15,
+    AppScreenshot = 16,
+    LxApp = 17,
+    LxAppShare = 18,
+    LxAppClipboard = 19,
+    LxAppNotification = 20,
 }
 
 impl CachedClass {
-    const COUNT: usize = 22;
+    const COUNT: usize = 21;
 
     pub const fn class_path(self) -> &'static str {
         match self {
@@ -114,7 +113,6 @@ impl CachedClass {
             CachedClass::LxAppToast => "com/lingxia/lxapp/APIs/LxAppToast",
             CachedClass::LxAppModal => "com/lingxia/lxapp/APIs/LxAppModal",
             CachedClass::LxAppActionSheet => "com/lingxia/lxapp/APIs/LxAppActionSheet",
-            CachedClass::LxAppPicker => "com/lingxia/lxapp/APIs/LxAppPicker",
             CachedClass::LxAppFile => "com/lingxia/lxapp/APIs/LxAppFile",
             CachedClass::ComponentRouter => "com/lingxia/lxapp/NativeComponents/ComponentRouter",
             CachedClass::LxAppPullToRefresh => "com/lingxia/lxapp/APIs/LxAppPullToRefresh",
@@ -170,10 +168,6 @@ impl CachedClass {
             CachedClass::LxAppActionSheet => concat!(
                 "Global class reference not found: ",
                 "com/lingxia/lxapp/APIs/LxAppActionSheet"
-            ),
-            CachedClass::LxAppPicker => concat!(
-                "Global class reference not found: ",
-                "com/lingxia/lxapp/APIs/LxAppPicker"
             ),
             CachedClass::LxAppFile => concat!(
                 "Global class reference not found: ",

@@ -11,7 +11,6 @@ test("open every component demo through rendered UI and the Logic bridge", { id:
     ['components-video', 'video'],
     ['components-swiper', 'swiper'],
     ['components-navigator', 'navigator'],
-    ['components-picker', 'picker'],
   ] as const;
 
   await app.nav.reset({ page: 'components' });

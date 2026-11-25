@@ -97,15 +97,6 @@ file_chooser:
   filtered_empty_title: "No matching files"
   filtered_empty_subtitle: "There are no files matching the current filter in this folder."
 
-# Date Range Picker
-date:
-  last_7_days: "Last 7 Days"
-  last_30_days: "Last 30 Days"
-  this_week: "This Week"
-  last_week: "Last Week"
-  this_month: "This Month"
-  last_month: "Last Month"
-
 # Launch campaign
 splash:
   skip: "Skip"

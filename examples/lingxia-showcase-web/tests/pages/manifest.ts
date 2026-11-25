@@ -4,7 +4,6 @@ export const PAGE_EXPECTATIONS = [
   { page: 'chat', title: 'AI Chat', text: 'AI Chat' },
   { page: 'feedback', title: 'Feedback', text: 'Help us improve' },
   { page: 'about', title: 'About', text: 'LingXia Showcase (WebView)' },
-  { page: 'picker', title: 'LxPicker', text: 'Component like input, tap to show picker' },
   { page: 'swiper', title: 'LxMediaSwiper', text: 'Media Swiper' },
   { page: 'navigator', title: 'Navigator', text: 'Declarative navigation component' },
   { page: 'video', title: 'Video', text: 'HTML Video' },

@@ -69,18 +69,17 @@ APIs that act on the **product** (quit, dock badge, shell sidebar, host update) 
 
 ## Native-backed components
 
-LingXia ships the presenters `LxPicker`, `LxMediaSwiper`, and `LxNavigator`. React re-exports them; HTML Views use the custom elements. Text input is normal web `<input>` / `<textarea>`—there is no `LxInput`. In WebView pages, play video and audio with plain HTML `<video>` / `<audio>`.
+LingXia ships the presenters `LxMediaSwiper` and `LxNavigator`. React re-exports them; HTML Views use the custom elements. Text input and form pickers use normal web `<input>`, `<textarea>`, `<select>`, and `<input type="date|time">`—in GPU View pages, use `<input>`, `<select>`, or `@liulidesign/core`. In WebView pages, play video and audio with plain HTML `<video>` / `<audio>`.
 
 ```tsx
-import { LxPicker } from '@lingxia/react'
+import { LxMediaSwiper, LxNavigator } from '@lingxia/react'
 ```
 
 Component callbacks are not uniform:
 
 | Component | What the React handler receives |
 |---|---|
-| `LxPicker` | **Resolved value** — `string \| string[]` |
-| `LxMediaSwiper` | Raw DOM `CustomEvent` — `event.detail.index` |
+| `LxMediaSwiper` | Payload first in React — `{ index, ... }` |
 | `LxNavigator` | Raw DOM `CustomEvent` |
 
 Use the generated [Components reference](../../reference/components/) for attributes. Callback contracts live in the LingXia skill's `lxapp/webview/native-elements.md`.

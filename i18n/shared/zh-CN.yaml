@@ -97,15 +97,6 @@ file_chooser:
   filtered_empty_title: "没有匹配的文件"
   filtered_empty_subtitle: "当前文件夹里没有符合筛选条件的文件。"
 
-# Date Range Picker
-date:
-  last_7_days: "近7日"
-  last_30_days: "近30日"
-  this_week: "本周"
-  last_week: "上周"
-  this_month: "本月"
-  last_month: "上月"
-
 # Launch campaign
 splash:
   skip: "跳过"

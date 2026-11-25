@@ -317,9 +317,6 @@ extension NativeBridge {
         if registeredFactories["media-swiper.native"] == nil {
             registeredFactories["media-swiper.native"] = MediaSwiperComponentFactory()
         }
-        if registeredFactories["picker.native"] == nil {
-            registeredFactories["picker.native"] = PickerComponentFactory()
-        }
     }
 
     private static func makePageKey(for webView: WKWebView) -> String {

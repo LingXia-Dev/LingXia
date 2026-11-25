@@ -9,7 +9,6 @@
     { "name": "chat", "path": "pages/chat/index" },
     { "name": "feedback", "path": "pages/feedback/index" },
     { "name": "about", "path": "pages/about/index" },
-    { "name": "picker", "path": "pages/picker/index" },
     { "name": "swiper", "path": "pages/swiper/index" },
     { "name": "navigator", "path": "pages/navigator/index" },
     { "name": "video", "path": "pages/video/index" },

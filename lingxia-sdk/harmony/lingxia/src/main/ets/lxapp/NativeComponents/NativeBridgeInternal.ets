@@ -7,7 +7,6 @@ import { NativeComponentRecord, NativeComponentValue, nativeComponentError, nati
 import { NativeComponentEmbedManager } from './NativeComponentEmbed';
 import { NativeComponentNodeController } from './NativeComponentNodeController';
 import { registerVideoBuilder } from './Builders/VideoBuilder';
-import { registerPickerBuilder } from './Builders/PickerBuilder';
 import { registerMediaSwiperBuilder } from './Builders/MediaSwiperBuilder';
 
 // Embed managers by webTag
@@ -108,7 +107,6 @@ function registerDefaultBuilders(): void {
   if (defaultsRegistered) return;
   defaultsRegistered = true;
   registerVideoBuilder();
-  registerPickerBuilder();
   registerMediaSwiperBuilder();
 }
 
