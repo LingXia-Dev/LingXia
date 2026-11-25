@@ -13,6 +13,7 @@ mod list_end_resize;
 mod lowered;
 mod popover_room;
 mod side_style;
+mod surface_lines;
 #[cfg(feature = "gpu")]
 mod video;
 mod webview;

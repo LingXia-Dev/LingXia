@@ -15,8 +15,8 @@
     },
     "./compiler": "./compiler/index.mjs",
     "./theme": {
-      "types": "./src/generated/palette.d.ts",
-      "default": "./src/generated/palette.js"
+      "types": "./src/theme.d.ts",
+      "default": "./src/theme.js"
     }
   },
   "scripts": {

@@ -146,9 +146,17 @@ pub enum Role {
     DangerSolidPressed = 69,
     /// Translucent fill of the theme's own neutral behind initials and placeholders, dark in light and light in dark, raised in alpha only as far as it shows as an edge on every floor, 3:1 under high contrast; text on it uses text.
     NeutralSoft = 70,
+    /// `line` as drawn inside a raised surface: the contrast `line` has on surface, at least 1.3:1, 3:1 under high contrast.
+    LineOnRaised = 71,
+    /// `line-strong` as drawn inside a raised surface: the contrast `line-strong` has on surface, at least 3:1.
+    LineStrongOnRaised = 72,
+    /// `line` as drawn inside an overlay: the contrast `line` has on surface, at least 1.3:1, 3:1 under high contrast.
+    LineOnOverlay = 73,
+    /// `line-strong` as drawn inside an overlay: the contrast `line-strong` has on surface, at least 3:1.
+    LineStrongOnOverlay = 74,
 }
 
-pub const ROLE_COUNT: usize = 71;
+pub const ROLE_COUNT: usize = 75;
 
 impl Role {
     pub const ALL: [Role; ROLE_COUNT] = [
@@ -223,6 +231,10 @@ impl Role {
         Role::DangerSolidHover,
         Role::DangerSolidPressed,
         Role::NeutralSoft,
+        Role::LineOnRaised,
+        Role::LineStrongOnRaised,
+        Role::LineOnOverlay,
+        Role::LineStrongOnOverlay,
     ];
 
     pub const fn name(self) -> &'static str {
@@ -298,11 +310,37 @@ impl Role {
             Role::DangerSolidHover => "danger-solid-hover",
             Role::DangerSolidPressed => "danger-solid-pressed",
             Role::NeutralSoft => "neutral-soft",
+            Role::LineOnRaised => "line-on-raised",
+            Role::LineStrongOnRaised => "line-strong-on-raised",
+            Role::LineOnOverlay => "line-on-overlay",
+            Role::LineStrongOnOverlay => "line-strong-on-overlay",
         }
     }
 
     pub fn from_name(name: &str) -> Option<Role> {
         Role::ALL.into_iter().find(|role| role.name() == name)
+    }
+
+    /// Whether a page may name it; an internal role is only ever resolved from another.
+    pub const fn authorable(self) -> bool {
+        !matches!(
+            self,
+            Role::LineOnRaised
+                | Role::LineStrongOnRaised
+                | Role::LineOnOverlay
+                | Role::LineStrongOnOverlay
+        )
+    }
+
+    /// The role this one draws as inside `surface`: a line keeps its contrast on a lifted surface.
+    pub const fn under(self, surface: Role) -> Role {
+        match (surface, self) {
+            (Role::SurfaceRaised, Role::Line) => Role::LineOnRaised,
+            (Role::SurfaceRaised, Role::LineStrong) => Role::LineStrongOnRaised,
+            (Role::SurfaceOverlay, Role::Line) => Role::LineOnOverlay,
+            (Role::SurfaceOverlay, Role::LineStrong) => Role::LineStrongOnOverlay,
+            _ => self,
+        }
     }
 
     pub const fn tier(self) -> Tier {
@@ -446,6 +484,10 @@ pub const CONTRAST: &[(Role, Role, f32)] = &[
     (Role::NeutralSoft, Role::SurfaceSunken, 1.3),
     (Role::NeutralSoft, Role::SurfaceRaised, 1.3),
     (Role::NeutralSoft, Role::Canvas, 1.3),
+    (Role::LineOnRaised, Role::SurfaceRaised, 1.3),
+    (Role::LineStrongOnRaised, Role::SurfaceRaised, 3.0),
+    (Role::LineOnOverlay, Role::SurfaceOverlay, 1.3),
+    (Role::LineStrongOnOverlay, Role::SurfaceOverlay, 3.0),
 ];
 
 /// (foreground, ground, the ground's alpha percent, what it is laid over, minimum WCAG contrast).

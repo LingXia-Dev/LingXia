@@ -61,7 +61,6 @@ impl Renderer {
     ) -> Result<RetainedLayout, String> {
         let colors: Vec<&str> = styles.iter().map(|style| style.color.as_str()).collect();
         let palette = self.palette;
-        let color = |value: &str| palette.resolve(value);
         let press_layer =
             crate::interaction::chrome::FeedbackStyle::press_layer(&palette, self.dark);
         let pressed_identity = self.pressed.clone();
@@ -191,7 +190,39 @@ impl Renderer {
                     || record.parent.is_some_and(|parent| collapsed[parent]),
             );
         }
+        // A lifted surface (a dialog, a menu) hands its contents its own line roles; only another
+        // surface background changes that, never a filled control's.
+        let mut surfaces: Vec<Role> = Vec::with_capacity(records.len());
+        for record in records {
+            let own = record
+                .string(field::BACKGROUND)
+                .and_then(|value| match crate::theme::parse(value) {
+                    Ok(crate::theme::WireColor::Role(role, _)) => Some(role),
+                    _ => None,
+                })
+                .filter(|role| {
+                    matches!(role, Role::Surface | Role::Canvas)
+                        || Role::Line.under(*role) != Role::Line
+                });
+            let inherited = record
+                .parent
+                .map_or(Role::Surface, |parent| surfaces[parent]);
+            surfaces.push(own.unwrap_or(inherited));
+        }
+        let mut scoped: Vec<(Role, crate::theme::Palette)> = Vec::new();
+        for surface in &surfaces {
+            if Role::Line.under(*surface) != Role::Line && !scoped.iter().any(|(s, _)| s == surface)
+            {
+                scoped.push((*surface, palette.under(*surface)));
+            }
+        }
+        let page_palette = palette;
         for (index, record) in records.iter().enumerate() {
+            let palette = scoped
+                .iter()
+                .find(|(surface, _)| *surface == surfaces[index])
+                .map_or(page_palette, |(_, palette)| *palette);
+            let color = |value: &str| palette.resolve(value);
             let mut layout = *tree.layout(ids[index]).map_err(|e| e.to_string())?;
             // Taffy stretches a child to its parent minus margins, which can go below zero.
             layout.size.width = layout.size.width.max(0.0);
@@ -2056,6 +2087,7 @@ impl Renderer {
             ),
             parents,
             stickies,
+            surfaces,
             anchors,
             anchor_insets,
             transforms: transforms

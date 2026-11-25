@@ -151,10 +151,12 @@ fn transition_inputs(
         let blocked = blocked.get_or_insert_with(|| retained.transform_blocked());
         let target = retained.resolved(index, blocked[index]);
         let [_, _, w, h] = retained.nodes[index].bounds;
+        // Presence values resolve as the build did: lines inside a lifted surface take its pair.
+        let palette = palette.under(retained.surfaces[index]);
         let presence = |id| {
             record
                 .string(id)
-                .map(|delta| presence::apply(&target, delta, palette, [w, h]))
+                .map(|delta| presence::apply(&target, delta, &palette, [w, h]))
                 .transpose()
         };
         let (starting, exit) = (

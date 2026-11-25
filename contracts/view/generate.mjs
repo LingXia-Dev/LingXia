@@ -119,12 +119,31 @@ function validateRoles(roles) {
   for (const role of roles) {
     if (!/^[a-z]+(?:-[a-z0-9]+)*$/.test(role.name) || typeof role.doc !== 'string') throw Error(`schema.json: role ${role.name} needs a kebab-case name and a doc`);
     if (!['authored', 'fixed', 'derived'].includes(role.tier)) throw Error(`schema.json: role ${role.name} needs a tier: authored, fixed or derived`);
+    if (role.internal !== undefined && (role.internal !== true || role.tier !== 'derived' || !surfaceLine(role, names)))
+      throw Error(`schema.json: internal role ${role.name} must be derived and named <role>-on-<surface>, for a role drawn inside surface-<surface>`);
     for (const [background, ratio] of Object.entries(role.on ?? {})) {
       const ground = ground_(background);
       if (!ground || ![ground.role, ground.under ?? ground.role].every(name => names.includes(name)) || !(ratio >= 1 && ratio <= 21))
         throw Error(`schema.json: role ${role.name} needs a known background (a role, or \`<role>/<NN> over <role>\`) and a 1-21 contrast`);
     }
   }
+}
+
+/** An internal `<base>-on-<name>` role: `base` as drawn inside `surface-<name>`. */
+function surfaceLine(role, names) {
+  const found = role.name.match(/^(.+)-on-([a-z]+)$/);
+  return found && names.includes(found[1]) && names.includes(`surface-${found[2]}`) && { base: found[1], surface: `surface-${found[2]}` };
+}
+
+/** Each surface that hands its contents other roles: surface → { base role → internal role }. */
+function surfaceLines(schema) {
+  const names = schema.roles.map(role => role.name);
+  const scoped = {};
+  for (const role of schema.roles.filter(role => role.internal)) {
+    const { base, surface } = surfaceLine(role, names);
+    (scoped[surface] ??= {})[base] = role.name;
+  }
+  return scoped;
 }
 
 /** An `on` key: a role, or a role at an alpha laid over another (`accent/80 over surface`). */
@@ -165,6 +184,22 @@ ${roles.map(role => `            Role::${roleVariant(role.name)} => ${JSON.strin
 
     pub fn from_name(name: &str) -> Option<Role> {
         Role::ALL.into_iter().find(|role| role.name() == name)
+    }
+
+    /// Whether a page may name it; an internal role is only ever resolved from another.
+    pub const fn authorable(self) -> bool {
+        ${roles.some(role => role.internal) ? `!matches!(
+            self,
+            ${roles.filter(role => role.internal).map(role => `Role::${roleVariant(role.name)}`).join('\n                | ')}
+        )` : 'true'}
+    }
+
+    /// The role this one draws as inside \`surface\`: a line keeps its contrast on a lifted surface.
+    pub const fn under(self, surface: Role) -> Role {
+        match (surface, self) {
+${Object.entries(surfaceLines(schema)).flatMap(([surface, bases]) => Object.entries(bases).map(([base, internal]) => `            (Role::${roleVariant(surface)}, Role::${roleVariant(base)}) => Role::${roleVariant(internal)},`)).join('\n')}
+            _ => self,
+        }
     }
 
     pub const fn tier(self) -> Tier {
@@ -594,7 +629,7 @@ ${Object.entries(schema.environment).filter(([, entry]) => !entry.internal).map(
 }
 
 /** A theme colour role; it resolves per appearance, so \`dark:\` is never needed on one. */
-export type ColorRole = ${schema.roles.map(role => JSON.stringify(role.name)).join(' | ')};
+export type ColorRole = ${schema.roles.filter(role => !role.internal).map(role => JSON.stringify(role.name)).join(' | ')};
 /** A role at an alpha percent, 0 to 100 (\`'accent/12'\`). */
 export type ColorAlpha = \`\${ColorRole}/\${number}\`;
 /** A page colour: a role, a role at an alpha percent, or \`'transparent'\`. */
@@ -691,8 +726,10 @@ export const options = ${JSON.stringify(schema.options)};
 export const commonProps = ${JSON.stringify(common)};
 /** Authoring admission the wire does not carry: where a role goes, and what an element's role allows. */
 export const authoringRules = ${JSON.stringify(rules(schema, common))};
-/** Colour roles in palette-slot order. */
-export const roles = ${JSON.stringify(schema.roles.map(role => role.name))};
+/** Colour roles a page may name, in palette-slot order. */
+export const roles = ${JSON.stringify(schema.roles.filter(role => !role.internal).map(role => role.name))};
+/** What a lifted surface hands its contents: surface → { role → the role it draws as there }. */
+export const surfaceLines = ${JSON.stringify(surfaceLines(schema))};
 /** Scale slots in wire order: a \`[slot, times, plus]\` reference names one by index. */
 export const scales = ${JSON.stringify(schema.scales.map(({ name, family }) => ({ name, family })))};
 /** Each slot's value in the built-in pack: where a step cannot follow the pack, it takes this. */
@@ -1060,16 +1097,18 @@ ${messages_.join('\n\n')}
 `;
 }
 
-/** The default pack as lingxia-theme resolves it in each look, accent family included; a Rust test records palette.json. */
+/**
+ * The default pack as lingxia-theme resolves it in each look, accent family included; a Rust test records palette.json.
+ * A palette recorded before a role was added or removed yields `{ stale }` instead of outputs: the role code must be
+ * generated before lingxia-theme can compile and record it.
+ */
 async function palette(schema) {
   const resolved = JSON.parse(await readFile(join(contractsRoot, 'palette.json'), 'utf8'));
   const roles = schema.roles.map(role => role.name);
   const looks = ['light', 'dark', 'high-contrast-light', 'high-contrast-dark'];
-  for (const appearance of looks) {
-    const recorded = Object.keys(resolved[appearance] ?? {});
-    if (recorded.join() !== roles.join())
-      throw Error(`contracts/view/palette.json: ${appearance} roles differ from schema.json; record with LINGXIA_UPDATE_PALETTE=1 cargo test -p lingxia-theme`);
-  }
+  const differ = looks.filter(appearance => Object.keys(resolved[appearance] ?? {}).join() !== roles.join());
+  if (differ.length)
+    return { stale: `contracts/view/palette.json: ${differ.join(', ')} roles differ from schema.json; record with LINGXIA_UPDATE_PALETTE=1 cargo test -p lingxia-theme, then generate again` };
   const head = '// Generated from contracts/view/palette.json; do not edit.\n';
   const js = `${head}/** The default theme resolved per look, high contrast included, derived roles too: role → #rrggbbaa. */
 export const defaultPalette = Object.freeze({
@@ -1080,8 +1119,11 @@ ${looks.map(look => `  ${JSON.stringify(look)}: Object.freeze(${JSON.stringify(r
 /** The default theme resolved per look, high contrast included, derived roles too: role → #rrggbbaa. */
 export declare const defaultPalette: { readonly [look in ${looks.map(look => JSON.stringify(look)).join(' | ')}]: Readonly<Record<Role, string>> };
 `;
-  return { 'packages/lingxia-view/src/generated/palette.js': js, 'packages/lingxia-view/src/generated/palette.d.ts': dts };
+  return { outputs: { 'packages/lingxia-view/src/generated/palette.js': js, 'packages/lingxia-view/src/generated/palette.d.ts': dts } };
 }
+
+/** Why the palette outputs were left out of the last generation, if they were. */
+export let stalePalette;
 
 /** Map of repository-relative path to generated content. */
 export async function generate(schema) {
@@ -1102,7 +1144,9 @@ export async function generate(schema) {
     'lingxia-sdk/apple/Sources/Platform/View/GpuSemantics.swift': swiftSemantics(schema),
   };
   Object.assign(generated, (await import('./arkts.mjs')).arkts(schema));
-  Object.assign(generated, await palette(schema));
+  const resolved = await palette(schema);
+  stalePalette = resolved.stale;
+  Object.assign(generated, resolved.outputs ?? {});
   generated['crates/lingxia-view/src/session/tests/runtime.js'] = await nativeTestRuntime(generated);
   Object.assign(generated, await (await import('./docs.mjs')).docs(schema, generated));
   return generated;
@@ -1115,6 +1159,7 @@ export async function drift(schema, root = repositoryRoot) {
     const current = await readFile(join(root, path), 'utf8').catch(() => null);
     if (current?.replace(/\r\n/g, '\n') !== content) stale.push(path);
   }
+  if (stalePalette) stale.push(stalePalette);
   return stale;
 }
 
@@ -1136,6 +1181,7 @@ const main = async () => {
       await writeFile(target, content);
       console.log(`wrote ${path}`);
     }
+    if (stalePalette) console.warn(`skipped packages/lingxia-view/src/generated/palette.{js,d.ts}: ${stalePalette}`);
   }
 };
 if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1])

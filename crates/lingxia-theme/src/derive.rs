@@ -552,6 +552,39 @@ impl Build<'_> {
         self.info(seed);
         self.categorical(seed, sides);
         self.neutral_soft();
+        self.surface_lines();
+    }
+
+    /// The line pair each lifted surface hands its contents: a line keeps the contrast it has on
+    /// `surface`, at least its floor, so a divider or outline on a dialog or menu reads as it does
+    /// in the page. Light surfaces that equal `surface` keep the line itself.
+    fn surface_lines(&mut self) {
+        let home = self.get(Role::Surface);
+        for (line, floor) in [(Role::Line, 1.3), (Role::LineStrong, 3.0)] {
+            let base = self.get(line);
+            let floor = if self.strong { 3.0 } else { floor };
+            let want = contrast(base, home).max(floor);
+            let targets = match line {
+                Role::Line => [
+                    (Role::SurfaceRaised, Role::LineOnRaised),
+                    (Role::SurfaceOverlay, Role::LineOnOverlay),
+                ],
+                _ => [
+                    (Role::SurfaceRaised, Role::LineStrongOnRaised),
+                    (Role::SurfaceOverlay, Role::LineStrongOnOverlay),
+                ],
+            };
+            for (surface, target) in targets {
+                let ground = self.get(surface);
+                let color = if contrast(base, ground) >= want - 0.005 {
+                    base
+                } else {
+                    let tone = base.oklch();
+                    at_contrast(tone.h, tone.c, want, ground, self.dark)
+                };
+                self.put(target, color);
+            }
+        }
     }
 
     /// The theme's own neutral at tone 10 in light and 90 in dark, at 10 % and 20 %, its alpha

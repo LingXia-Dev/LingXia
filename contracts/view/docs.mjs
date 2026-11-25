@@ -140,7 +140,7 @@ function styles(schema) {
     'series `ColorSeries`.', '',
     'A pack writes the authored roles. Fixed roles are the same in every pack, and derived roles are computed from the',
     'authored ones and the accent seed, unless a pack sets them.', '',
-    table(['Role', 'Set by', 'Minimum contrast', 'Use'], schema.roles.map(role => [code(role.name), { authored: 'the pack', fixed: 'fixed', derived: 'derived' }[role.tier],
+    table(['Role', 'Set by', 'Minimum contrast', 'Use'], schema.roles.filter(role => !role.internal).map(role => [code(role.name), { authored: 'the pack', fixed: 'fixed', derived: 'derived' }[role.tier],
       Object.entries(role.on ?? {}).map(([background, ratio]) => `${ratio}:1 on ${code(background)}`).join(', '), role.doc])), '');
   out.push('### Hover and pressed fills', '',
     'A pressed or hovered fill deepens; where that would make its label hard to read, it lightens instead. A pack decides',

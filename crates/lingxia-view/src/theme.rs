@@ -62,6 +62,15 @@ impl Palette {
         self.0[role as usize]
     }
 
+    /// This palette as drawn inside `surface`: a lifted surface hands its contents its own lines.
+    pub fn under(&self, surface: Role) -> Palette {
+        let mut scoped = *self;
+        for role in Role::ALL {
+            scoped.0[role as usize] = self.role(role.under(surface));
+        }
+        scoped
+    }
+
     /// A wire colour: `#rrggbb[aa]`, a role, or `role/NN` with NN an alpha percent.
     pub fn resolve(&self, value: &str) -> Result<[u8; 4], String> {
         match parse(value)? {
@@ -101,7 +110,9 @@ pub(crate) fn parse(value: &str) -> Result<WireColor, String> {
         ),
         None => (value, 100),
     };
-    let role = Role::from_name(name).ok_or_else(|| format!("UI_COLOR: unknown role {name}"))?;
+    let role = Role::from_name(name)
+        .filter(|role| role.authorable())
+        .ok_or_else(|| format!("UI_COLOR: unknown role {name}"))?;
     Ok(WireColor::Role(role, percent))
 }
 

@@ -91,6 +91,8 @@ pub(crate) struct RetainedLayout {
     /// Static rotation and scale; translation is already in the geometry.
     pub(crate) transforms: Vec<Option<crate::scene::transform::StaticTransform>>,
     pub(crate) stickies: Vec<Option<crate::scene::sticky::Sticky>>,
+    /// Each node's nearest surface background, which its `line` roles resolve under.
+    pub(crate) surfaces: Vec<lingxia_theme::Role>,
     /// What each popover sits against; composition places it below or above.
     pub(crate) anchors: Vec<Option<crate::scene::anchor::Anchoring>>,
     /// The renderer's `editor_parts` this layout places part-anchored popovers by.
@@ -352,6 +354,7 @@ impl RetainedLayout {
                 next.opacities.push(old.opacities[index]);
                 next.transforms.push(old.transforms[index]);
                 next.stickies.push(None);
+                next.surfaces.push(old.surfaces[index]);
                 next.anchors.push(None);
                 next.anchor_insets.push(None);
                 next.backdrops.push(old.backdrops[index]);
