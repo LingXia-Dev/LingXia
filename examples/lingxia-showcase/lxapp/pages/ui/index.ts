@@ -83,6 +83,7 @@ function newInstanceTag() {
 export default definePage({
   data: {
     currentType: "navigation",
+    navTitle: null as string | null,
     instanceTag: "",
     previousInstanceTag: "",
     logicCounter: 0,
@@ -481,10 +482,9 @@ export default definePage({
       clearModalResult() {
         thisPage.update(d => { d.modalResult = null; });
       },
+      // A GPU page's title is its View's `<page title>`, so it travels as page data.
       updateNavigationBarTitle(options: { title: string }) {
-        return helpers.runChromeUpdate("Navigation bar update", () =>
-          thisPage.navigationBar.update({ title: options.title }),
-        );
+        thisPage.update(d => { d.navTitle = options.title; });
       },
       updateNavigationBarColors(options: {
         backgroundColor?: string;
@@ -507,8 +507,9 @@ export default definePage({
         );
       },
       resetNavigationBar() {
+        thisPage.update(d => { d.navTitle = null; });
         return helpers.runChromeUpdate("Navigation bar update", () =>
-          thisPage.navigationBar.update({ title: null, style: null, homeButton: "auto" }),
+          thisPage.navigationBar.update({ style: null, homeButton: "auto" }),
         );
       },
       // TabBar API functions

@@ -44,6 +44,7 @@ function Auth({ data, actions }: Pane) {
   return (
     <Page
       testId="cloud-page"
+      title={data.title}
       data={{ 'data-mode': 'auth' }}
       intro={t('cloud.loginReturnsTheActive')}
     >
@@ -149,7 +150,7 @@ function Mqtt({ data, actions }: Pane) {
   const dot = connected ? 'bg-success' : waiting ? 'bg-warning' : failed ? 'bg-danger' : 'bg-line-strong';
   const active = !!data.mqttSubscribed;
   return (
-    <Page testId="cloud-page" data={{ 'data-mode': 'mqtt' }}>
+    <Page testId="cloud-page" title={data.title} data={{ 'data-mode': 'mqtt' }}>
       <Section title={t('cloud.runtimeConnection')} description={t('cloud.mqttRuntimeStatusFor')}>
         <view className="flex-row items-center justify-between gap-3">
           <text className="text-xs text-muted">{t('cloud.connectionState')}</text>
@@ -229,7 +230,7 @@ function Mqtt({ data, actions }: Pane) {
 function Functions({ data, actions }: Pane) {
   const names = (data.functionsAvailable || []) as string[];
   return (
-    <Page testId="cloud-page" data={{ 'data-mode': 'functions' }}>
+    <Page testId="cloud-page" title={data.title} data={{ 'data-mode': 'functions' }}>
       <Section
         title={t('cloud.currentLxappFunctions')}
         description={t('cloud.theseSampleCallsUse')}

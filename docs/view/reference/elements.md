@@ -70,8 +70,7 @@ Children: any elements and text. The page root.
 
 | Prop | Type | Required | Notes |
 | --- | --- | --- | --- |
-| `title` | `string` |  | The title the host navigation bar shows for the page. |
-| `headerActions` | `Child` |  | Controls shown in a toolbar at the top of the page. |
+| `title` | `string` |  | The title the host navigation bar shows for the page; the page's only title writer, so Logic changes it through page data, not `navigationBar.update`. |
 | `aria-label` | `string` |  | The accessible name, spoken in place of its text. |
 
 ## `<text>`

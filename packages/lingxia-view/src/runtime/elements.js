@@ -467,12 +467,7 @@ function resolveElement(tag, original, children, identity, depth, parent) {
   const own = props.dir === 'auto' && !editor ? strongDirection(children) : props.dir === 'auto' ? undefined : props.dir;
   if (props.dir === 'auto' && !editor) props.dir = own;
   const direction = own ?? parent.direction ?? (envOf(render.view)?.direction === 'rtl' ? 'rtl' : 'ltr');
-  const effectiveChildren =
-    tag === 'page' && props.headerActions !== undefined && props.headerActions !== null && props.headerActions !== false
-      // In flow above the content: the host bar draws no View content, and an overlay would cover the page's first row.
-      ? [h('view', { key: '__lx_page_header_actions', role: 'toolbar', 'aria-label': typeof props.title === 'string' && props.title.trim() ? props.title : undefined, style: { minHeight: 44, flexShrink: 0, flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-end', gap: 6, paddingInlineStart: 12, paddingInlineEnd: 12 } }, props.headerActions), ...(Array.isArray(children) ? children : [children])]
-      : children;
-  const authored = entries(effectiveChildren), flat = authored.map(entry => entry.child);
+  const authored = entries(children), flat = authored.map(entry => entry.child);
   // The data-* props as variants and automation read them; nothing below changes them.
   const data = dataOf(props);
   // The root takes the theme's `--font-sans`, as preflight gives the document's root; its classes and style still win.

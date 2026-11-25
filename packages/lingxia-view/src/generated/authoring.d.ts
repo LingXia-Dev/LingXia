@@ -1138,8 +1138,7 @@ export type PageStyle = StyleGroup.Box & StyleGroup.Padding & StyleGroup.Flex & 
 /** The roles a `<page>` takes; reference/elements.md says where the others go. */
 export type PageRole = never;
 export type PageProps = Omit<Props, "style" | "children" | "role"> & { role?: PageRole; style?: PageStyle; children?: Child;
-  /** The title the host navigation bar shows for the page. */ title?: string;
-  /** Controls shown in a toolbar at the top of the page. */ headerActions?: Child;
+  /** The title the host navigation bar shows for the page; the page's only title writer, so Logic changes it through page data, not `navigationBar.update`. */ title?: string;
   /** The accessible name, spoken in place of its text. */ "aria-label"?: string;
 };
 export type TextStyle = StyleGroup.Box & StyleGroup.Padding & StyleGroup.Text & StyleGroup.TextBlock;

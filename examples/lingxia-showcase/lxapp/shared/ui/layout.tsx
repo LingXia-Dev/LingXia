@@ -5,16 +5,18 @@ export type DataAttributes = Record<`data-${string}`, string>;
 
 /**
  * A scrolling page inside the safe area; `<page>` owns insets and the keyboard.
- * No body title: the nav bar already shows it. `intro` is one line on what the page does.
+ * No body title: the nav bar shows `title`, else the configured one. `intro` is one line on what the page does.
  */
 export function Page({
   testId,
+  title,
   data,
   scrollId = 'page-scroll',
   intro,
   children,
 }: {
   testId?: string;
+  title?: string;
   data?: DataAttributes;
   scrollId?: string;
   intro?: string;
@@ -25,7 +27,7 @@ export function Page({
   // while rows pass under them.
   const bar = keyboard.height > 0 ? 0 : insets.bottom - safeArea.bottom;
   return (
-    <page data-testid={testId} {...data} className="bg-canvas text-text">
+    <page data-testid={testId} title={title} {...data} className="bg-canvas text-text">
       <scroll data-testid={scrollId} className="grow basis-0">
         <view className="w-full max-w-3xl self-center px-4 pt-5 pb-10 gap-4">
           {intro ? <text className="text-sm text-muted text-center line-clamp-3">{intro}</text> : null}

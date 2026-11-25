@@ -1158,7 +1158,7 @@
       ],
       "tags": {},
       "examples": [],
-      "source": "src/page.ts:329"
+      "source": "src/page.ts:332"
     },
     {
       "path": "defineStore",
@@ -7138,7 +7138,7 @@
       "types": [],
       "tags": {},
       "examples": [],
-      "source": "src/page.ts:200"
+      "source": "src/page.ts:203"
     },
     {
       "path": "page.close",
@@ -7190,7 +7190,7 @@
       "types": [],
       "tags": {},
       "examples": [],
-      "source": "src/page.ts:190"
+      "source": "src/page.ts:193"
     },
     {
       "path": "page.env.get",
@@ -7278,7 +7278,7 @@
       ],
       "tags": {},
       "examples": [],
-      "source": "src/page.ts:206"
+      "source": "src/page.ts:209"
     },
     {
       "path": "page.flush",
@@ -7328,7 +7328,7 @@
       "kind": "function",
       "entry": "@lingxia/logic",
       "summary": "Patch it; unset fields stay as they are.",
-      "description": "Patch it; unset fields stay as they are. Rejects `E_INVALID_STATE` (`'pageUnloaded'`) once the page has unloaded.",
+      "description": "Patch it; unset fields stay as they are. Rejects `E_INVALID_STATE` (`'pageUnloaded'`) once the page has unloaded.\nOn a GPU page the title belongs to the View's `<page title>`, so a `title` here rejects `E_INVALID_ARG`.",
       "signatures": [
         {
           "text": "update(patch: NavigationBarPatch): Promise<void>",
@@ -7349,7 +7349,7 @@
       ],
       "tags": {},
       "examples": [],
-      "source": "src/page.ts:163"
+      "source": "src/page.ts:166"
     },
     {
       "path": "page.opener",
@@ -7431,7 +7431,7 @@
       "types": [],
       "tags": {},
       "examples": [],
-      "source": "src/page.ts:179"
+      "source": "src/page.ts:182"
     },
     {
       "path": "page.orientation.lock",
@@ -7457,7 +7457,7 @@
       ],
       "tags": {},
       "examples": [],
-      "source": "src/page.ts:181"
+      "source": "src/page.ts:184"
     },
     {
       "path": "page.orientation.unlock",
@@ -7475,7 +7475,7 @@
       "types": [],
       "tags": {},
       "examples": [],
-      "source": "src/page.ts:183"
+      "source": "src/page.ts:186"
     },
     {
       "path": "page.params",
@@ -7506,7 +7506,7 @@
       "types": [],
       "tags": {},
       "examples": [],
-      "source": "src/page.ts:170"
+      "source": "src/page.ts:173"
     },
     {
       "path": "page.set",
@@ -7850,7 +7850,7 @@
       ],
       "tags": {},
       "examples": [],
-      "source": "src/page.ts:172"
+      "source": "src/page.ts:175"
     },
     {
       "path": "page.visible",
@@ -7862,7 +7862,7 @@
       "types": [],
       "tags": {},
       "examples": [],
-      "source": "src/page.ts:195"
+      "source": "src/page.ts:198"
     },
     {
       "path": "page.visible.get",
@@ -10453,7 +10453,7 @@
       "summary": "A followed key that is also in `data`, as a type error.",
       "description": "A followed key that is also in `data`, as a type error.",
       "fields": [],
-      "source": "src/page.ts:294"
+      "source": "src/page.ts:297"
     },
     {
       "name": "FsCopyOptions",
@@ -11889,7 +11889,7 @@
       "description": "The messages a page definition declares.",
       "text": "P extends { readonly __lxPage: { readonly messages: infer T; }; } ? T : never",
       "fields": [],
-      "source": "src/page.ts:269"
+      "source": "src/page.ts:272"
     },
     {
       "name": "MisspelledLifecycle",
@@ -12773,7 +12773,7 @@
           "description": "Returns a function that removes the handler."
         }
       ],
-      "source": "src/page.ts:254"
+      "source": "src/page.ts:257"
     },
     {
       "name": "PageDeclarations",
@@ -12816,7 +12816,7 @@
           "description": "Data keys that show a `Live` (a store, `store.pick(…)`, a host `Live`), current from the first\nframe until the page unloads: `follow: { plan: session.pick(s => s.plan) }`. Read-only in\n`update` and `set`; change the source instead."
         }
       ],
-      "source": "src/page.ts:272"
+      "source": "src/page.ts:275"
     },
     {
       "name": "PageDefinition",
@@ -12845,7 +12845,7 @@
           "description": "What the page declares, for the type system only."
         }
       ],
-      "source": "src/page.ts:231"
+      "source": "src/page.ts:234"
     },
     {
       "name": "PageDefinition.__lxPage",
@@ -12881,7 +12881,7 @@
           "description": "The actions as written, which `mount` calls directly."
         }
       ],
-      "source": "src/page.ts:237"
+      "source": "src/page.ts:240"
     },
     {
       "name": "PageEnvContext",
@@ -12919,7 +12919,7 @@
           "default": "'pause'"
         }
       ],
-      "source": "src/page.ts:210"
+      "source": "src/page.ts:213"
     },
     {
       "name": "PageHandle",
@@ -13418,7 +13418,7 @@
       "description": "The params a page definition declares.",
       "text": "P extends { readonly __lxPage: { readonly params: infer T; }; } ? T : never",
       "fields": [],
-      "source": "src/page.ts:265"
+      "source": "src/page.ts:268"
     },
     {
       "name": "PermissionName",
@@ -14264,7 +14264,7 @@
       "description": "The result a page definition declares.",
       "text": "P extends { readonly __lxPage: { readonly result: infer T; }; } ? T : never",
       "fields": [],
-      "source": "src/page.ts:267"
+      "source": "src/page.ts:270"
     },
     {
       "name": "RouteTarget",
@@ -17051,7 +17051,7 @@
       "summary": "Page actions as the View calls them: each resolves to its result.",
       "description": "Page actions as the View calls them: each resolves to its result.",
       "fields": [],
-      "source": "src/page.ts:219"
+      "source": "src/page.ts:222"
     },
     {
       "name": "VisibilityPreference",
@@ -17329,7 +17329,7 @@
       "description": "A page's data with its followed keys.",
       "text": "[ keyof Follow ] extends [ never ] ? Data : Data & FollowedData<Follow>",
       "fields": [],
-      "source": "src/page.ts:302"
+      "source": "src/page.ts:305"
     },
     {
       "name": "definePage(definition)",
@@ -17351,7 +17351,7 @@
           "description": "Not with `setup`: `setup` returns the actions."
         }
       ],
-      "source": "src/page.ts:337"
+      "source": "src/page.ts:340"
     },
     {
       "name": "lx.clipboard.read()",

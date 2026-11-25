@@ -26,19 +26,20 @@ test('page JSON controls native navigation chrome and refresh eligibility', {
   expect(pullConfig.enablePullDownRefresh).toBe(true);
 
   await app.nav.reset({ page: 'ui' });
-  // The demo sets a runtime title onLoad; null must restore the JSON title.
-  await app.logic.eval(({ currentPage }) => currentPage()!.navigationBar.update({ title: null }));
+  // A GPU page's title is its View's `<page title>`; the demo keeps it in page data.
+  await app.logic.eval(({ currentPage }) => currentPage()!.update((d) => { (d as { navTitle: string | null }).navTitle = null; }));
   await expect.poll(async () => (await app.info()).navigationBar?.title).toBe(title(uiConfig));
   await expect.poll(async () => (await device.nodes()).some((node) => node.text === title(uiConfig))).toBe(true);
   // Unique runtime titles distinguish native chrome from matching page text.
   const marker = `Navbar ${namespace}`;
-  await app.logic.eval(({ currentPage }, title) => currentPage()!.navigationBar.update({ title }), marker);
+  await app.logic.eval(({ currentPage }, title) => currentPage()!.update((d) => { (d as { navTitle: string | null }).navTitle = title; }), marker);
   await expect.poll(async () => (await device.nodes()).some((node) => node.text === marker)).toBe(true);
-
+  const refused = await app.logic.eval(async ({ currentPage }) => {
+    try { await currentPage()!.navigationBar.update({ title: 'Other' }); return ''; }
+    catch (error) { return (error as { code: string }).code; }
+  });
+  expect(refused).toBe('E_INVALID_ARG');
   await app.nav.reset({ page: 'home' });
-  await app.logic.eval(({ currentPage }, title) => currentPage()!.navigationBar.update({ title }), marker);
-  expect((await app.info()).navigationBar?.title).toBe(marker);
-  expect((await device.nodes()).some((node) => node.text === marker)).toBe(false);
 
   const disabled = await app.logic.eval(async ({ currentPage }) => {
     try { currentPage()!.refresh(); return { code: '', reason: '' }; }

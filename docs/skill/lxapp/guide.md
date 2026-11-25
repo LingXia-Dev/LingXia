@@ -463,7 +463,7 @@ Control app's Logic).
 
 `lx.app.tabBar.update()` changes a declared tab bar (it rejects without one);
 `page.navigationBar.update()` patches that page's bar, even while another
-page is on top. Each call is one
+page is on top (on a GPU page, not its title: that is `<page title>`). Each call is one
 transaction: `null` resets a field, omitted fields stay, an invalid patch
 applies nothing.
 

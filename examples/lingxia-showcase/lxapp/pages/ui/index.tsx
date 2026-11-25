@@ -71,7 +71,7 @@ function Dialogs({ data, actions }: Pane) {
       confirmText: confirmText.value,
     });
   return (
-    <Page testId="ui-page" data={{ 'data-instance-tag': String(data.instanceTag ?? '') }}>
+    <Page testId="ui-page" title={data.navTitle ?? undefined} data={{ 'data-instance-tag': String(data.instanceTag ?? '') }}>
       <ChromeError data={data} />
       {type === 'toast' && (
         <Section title={t('ui.toastParameters')}>
@@ -147,7 +147,7 @@ function Appearance({ data, actions }: Pane) {
   const appearance = data.appearance as { preference: string; resolved: string } | undefined;
   const preference = appearance?.preference || 'auto';
   return (
-    <Page testId="ui-page" data={{ 'data-instance-tag': String(data.instanceTag ?? '') }}>
+    <Page testId="ui-page" title={data.navTitle ?? undefined} data={{ 'data-instance-tag': String(data.instanceTag ?? '') }}>
       <ChromeError data={data} />
       <Section
         title={t('ui.lightDark')}
@@ -194,7 +194,7 @@ function Navbar({ data, actions }: Pane) {
     </Button>
   );
   return (
-    <Page testId="ui-page" data={{ 'data-instance-tag': String(data.instanceTag ?? '') }}>
+    <Page testId="ui-page" title={data.navTitle ?? undefined} data={{ 'data-instance-tag': String(data.instanceTag ?? '') }}>
       <ChromeError data={data} />
       <Section title={t('ui.navigationbarApis')}>
         <Field testId="navbar-title-input" label={t('ui.title')} bind={title} placeholder={t('ui.enterTitle')} />
@@ -258,7 +258,7 @@ function Tabbar({ data, actions }: Pane) {
     </view>
   );
   return (
-    <Page testId="ui-page" data={{ 'data-instance-tag': String(data.instanceTag ?? '') }}>
+    <Page testId="ui-page" title={data.navTitle ?? undefined} data={{ 'data-instance-tag': String(data.instanceTag ?? '') }}>
       <ChromeError data={data} />
       <Section title={t('ui.visibilityControls')} description={t('ui.showOrHideThe')}>
         {pair(
@@ -511,7 +511,7 @@ function Surface({ data, actions }: Pane) {
       });
   };
   return (
-    <Page testId="ui-page" data={{ 'data-instance-tag': String(data.instanceTag ?? '') }}>
+    <Page testId="ui-page" title={data.navTitle ?? undefined} data={{ 'data-instance-tag': String(data.instanceTag ?? '') }}>
       <Section title={t('ui.openASurface')} description={kinds().find(item => item.value === kind.value)?.hint}>
         <Options label={t('ui.kind')} testId="surface-kind" bind={kind} options={kinds()} disabled={active} />
         {kind.value === 'aside' && <Options label={t('ui.edge')} testId="surface-edge" bind={edge} options={titled(['left', 'right', 'top', 'bottom'])} />}

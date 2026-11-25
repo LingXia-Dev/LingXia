@@ -142,6 +142,7 @@ function normalizeTenants(tenants: any[]): TenantLike[] {
 export default definePage({
   data: {
     type: CLOUD_PAGE_TYPES.AUTH as CloudPageType,
+    title: getNavigationTitle(CLOUD_PAGE_TYPES.AUTH),
     status: "Idle",
     tenant: null as TenantLike | null,
     user: null as UserLike | null,
@@ -169,9 +170,7 @@ export default definePage({
     let pageActive = false;
     const helpers = {
       async applyPageType(pageType: CloudPageType) {
-        void page.navigationBar.update({
-          title: getNavigationTitle(pageType),
-        });
+        page.update(d => { d.title = getNavigationTitle(pageType); });
 
         if (pageType === CLOUD_PAGE_TYPES.MQTT) {
           helpers.ensureMqttStatusListener();

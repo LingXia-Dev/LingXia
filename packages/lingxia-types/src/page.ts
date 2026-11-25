@@ -159,7 +159,10 @@ export interface PageApi<Data, Params, Result, Messages = never, Follow = {}> {
   readonly surface?: Omit<PageSurface, 'opened' | 'result' | 'send' | 'onMessage'>;
   /** This page's navigation bar, reached even while another page is on top. */
   readonly navigationBar: {
-    /** Patch it; unset fields stay as they are. Rejects `E_INVALID_STATE` (`'pageUnloaded'`) once the page has unloaded. */
+    /**
+     * Patch it; unset fields stay as they are. Rejects `E_INVALID_STATE` (`'pageUnloaded'`) once the page has unloaded.
+     * On a GPU page the title belongs to the View's `<page title>`, so a `title` here rejects `E_INVALID_ARG`.
+     */
     update(patch: NavigationBarPatch): Promise<void>;
   };
   /**

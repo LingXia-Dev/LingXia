@@ -75,7 +75,8 @@ export function render({ data, env }: View) {
 
 ### Title, bleed and folds
 
-- `<page title={…}>` sets the page's navigation bar title.
+- `<page title={…}>` sets the page's navigation bar title and is its only writer: Logic changes it
+  through page data; `navigationBar.update({ title })` on a GPU page rejects.
 - `bleed` (`true`, `'top'`, `'bottom'`, `'horizontal'`) on a direct child of `<page>` runs it to
   the screen edge under bars and cutouts (a map, a video, a cover); elsewhere it throws
   `UI_BLEED_PARENT`. Only the first in-flow child reaches the top and the last the bottom.
