@@ -19,13 +19,20 @@ changing the subsystem it covers — each states invariants that are not
 recoverable from the code alone.
 
 - [`trusted-control-plane.md`](docs/internal/trusted-control-plane.md) — session classes, route audiences, and the ingress lock discipline. Read before touching authorization, session creation, or WebView message ingress.
-- [`bridge-protocol.md`](docs/internal/bridge-protocol.md) — normative bridge contract: message families, the WebView frame transport (page and document-bound profiles) and the GPU in-process transport.
+- [`bridge-protocol.md`](docs/internal/bridge-protocol.md) — normative bridge contract: message families, the WebView frame transport and the GPU in-process transport.
 - [`webview-lifecycle.md`](docs/internal/webview-lifecycle.md) — WebView creation, presentation, and teardown across platforms.
+- [`logic-runtime.md`](docs/internal/logic-runtime.md) — the Logic JS engine choice, the worker pool and its pump discipline, quarantine of a terminated worker, extension registration, and cross-cutting Logic contracts.
+- [`platform-ffi.md`](docs/internal/platform-ffi.md) — `lingxia-platform` trait architecture, `lingxia-messaging`, per-platform FFI boundaries (Android JNI, Apple `swift-bridge`, HarmonyOS N-API, Windows in-process SDK), threading and `capture-contract` vs `device-io` boundaries.
+- [`lxapp-container.md`](docs/internal/lxapp-container.md) — `.lxapp` archive extraction, `lxapp.json` validation, startup/bootstrap, page ownership and pinning, the navigation queue, network access guards, and native components.
 - [`lingxia-facade-boundary.md`](docs/internal/lingxia-facade-boundary.md) — what stays behind the `lingxia` crate facade.
 - [`crate-layout.md`](docs/internal/crate-layout.md) — crate layers, dependency rules, and which crate owns what. Read before adding a crate or moving code between crates.
+- [`view-authoring.md`](docs/internal/view-authoring.md) · [`view-renderer.md`](docs/internal/view-renderer.md) · [`view-styling.md`](docs/internal/view-styling.md) · [`view-animation.md`](docs/internal/view-animation.md) · [`view-engine-limits.md`](docs/internal/view-engine-limits.md) — GPU View contract, compiler/authoring diagnostics, renderer/adapter architecture, styling, animations, and wire/engine limits.
 - [`shell-ui-spec.md`](docs/internal/shell-ui-spec.md) · [`view-environment-spec.md`](docs/internal/view-environment-spec.md) — the shell surface model and its projections; host-chrome geometry (tab bar, capsule, insets) and how each page receives it.
 - [`launch-screen.md`](docs/internal/launch-screen.md) — `splash:`, the OS launch frame, the first-frame cover, dismissal and the campaign hook. Read before changing the CLI splash generation or an SDK's splash overlay.
 - [`theme.md`](docs/internal/theme.md) — theme packs, role tiers, scale slots and their run-time resolution, `palette`/`scales` delivery. Read before changing `lingxia-theme`, the schema's `roles`/`scales`, or scale lowering.
+- [`terminal-engine.md`](docs/internal/terminal-engine.md) — the single PTY path and terminal-core contract, the frame cell format, Kitty graphics, restore snapshots, and the `terminal.json` fallback.
+- [`browser-runtime.md`](docs/internal/browser-runtime.md) — `lingxia-browser` navigation/tab/download ownership, `lingxia-browser-shell` persistence and GPU system pages, and `lingxia-proxy` local CONNECT/MITM/WebView coordination.
+- [`host-control-ipc.md`](docs/internal/host-control-ipc.md) — external CLI/IPC control (`dev-bridge` vs `local-control` IPC), single-binary product CLI startup, dev/product feature gating, and dispatch/error framing.
 - [`test-runner.md`](docs/internal/test-runner.md) — test isolation, deadlines, result schema, and interrupted-run reporting.
 - [`companion-protocol.md`](docs/internal/companion-protocol.md) — how scenario `function` rules and the Function half of mocks reach the dev session's companion: capabilities, `scenario.*` and `mock.*` messages, owners and their lifetime. Read before changing the relay or implementing a companion.
 - [`dev-session.md`](docs/internal/dev-session.md) — `lingxia dev` session broker and files, dev websocket transport, bundle sync, mock readiness, and CLI/Runner version checks.

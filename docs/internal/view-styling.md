@@ -17,16 +17,16 @@ Pin Tailwind and review the lowering tests before upgrading it.
 
 ## Pipeline
 
-1. `compiler/tailwind.mjs` compiles candidate classes, then lowers each rule's
+1. The `@lingxia/view` compiler compiles candidate classes via Tailwind, then lowers each rule's
    declarations to CSS-named style (`backgroundColor`, `marginTop`,
    `justifyContent: 'space-between'`, …). Gradients, shadows and backdrop
    filters keep Tailwind's variables until the cascade composes them.
-2. `src/style/classes.js` matches rules by class name and View environment
+2. The class-matching stage in `@lingxia/view` matches rules by class name and View environment
    (theme, viewport width, pointer) and returns the cascade: base, `disabled`,
    paint deltas for `focus`/`active`/`hover`, and the child style of
    `space-*`/`divide-*` rules.
-3. `src/style/lower.js` merges layers (child rule, classes, inline) the way the
-   CSS cascade does — a later shorthand resets earlier longhands — checks every
+3. The style-lowering stage in `@lingxia/view` merges layers (child rule, classes, inline) the
+   way the CSS cascade does — a later shorthand resets earlier longhands — checks every
    property against the element's style groups, and lowers to wire fields.
 4. The native decoder validates the record again; layout and paint own the
    result.

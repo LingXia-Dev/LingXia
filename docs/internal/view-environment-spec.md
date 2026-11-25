@@ -171,7 +171,7 @@ immersive design.
 The parser rejects the flat root fields other mini-program formats use
 (`color`, `selectedColor`, `backgroundColor`, `borderStyle`, `position`,
 `dimension`, `list`) and `items[].pagePath`, naming the LingXia field in the
-error (`lxapp/config.rs`). It accepts no aliases, so one manifest shape is the
+error. It accepts no aliases, so one manifest shape is the
 only one any tool or host has to read.
 
 ### 4.2 Why `standard` and `immersive`
@@ -532,8 +532,10 @@ it as `env.insets`. One rule on every page and platform:
     in page-local logical coordinates, clipped to each page; `null` where the
     hinge does not cross the page. A `half-opened` posture reaches the page
     as is: the host does not crop the page to one half.
-  - `platform`: `'apple' | 'android' | 'harmony' | 'windows' | 'web'` (shortcut
-    glyphs only; never for layout branching).
+  - `os`: `'ios' | 'macos' | 'android' | 'windows' | 'harmony' | 'unknown'`
+    (shortcut glyphs only; never for layout branching). WebView pages expose
+    `platform` (`'apple' | 'android' | 'harmony' | 'windows' | 'web'`) via
+    `useLxViewEnvironment()` instead.
 - Logic's `page.env` carries only `sizeClass` and `canDock`.
   `page.env.watch` fires only when one of them flips, never on a resize.
 - Declarative `<page title>` owns the page navigation bar title; direct
@@ -557,8 +559,8 @@ Every platform follows the same sequence:
 3. apply the `standard` or `immersive` constraints without inspecting colours;
 4. complete layout and acknowledge the revision;
 5. measure the visible capsule frame in the target page's CSS viewport
-   (`UIUpdate::measure_page_chrome_capsule` in `lingxia-platform`; the result
-   reaches pages only through the page chrome layout, never Logic);
+   (through `lingxia-platform`; the result reaches pages only through the page
+   chrome layout, never Logic);
 6. derive the insets; and
 7. publish the layout.
 

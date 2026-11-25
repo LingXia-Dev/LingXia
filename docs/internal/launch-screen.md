@@ -5,12 +5,12 @@ draws on its first frame, and the campaign a host may show after them. The
 `splash:` block of `lingxia.yaml` (`background`, optional `image`, `mark`,
 `minDuration`) drives all of it; hosts build none of it by hand.
 
-| Piece | Code |
+| Piece | Owner |
 | --- | --- |
-| Resource generation | `tools/lingxia-cli/src/splash.rs` |
-| Hold time, home-ready signal | `crates/lingxia-app-context` (`splash_min_duration`, `mark_splash_visible`) |
-| Campaign hook and store | `crates/lingxia/src/splash.rs` |
-| Overlay | `SplashOverlay.kt` (Android), `LingXiaSplashOverlay.swift` (Apple), `SplashOverlay.ets` + `LxAppNavigation.ets` (HarmonyOS) |
+| Resource generation | `lingxia-cli` |
+| Hold time, home-ready signal | `lingxia-app-context` |
+| Campaign hook and store | `lingxia` (`lingxia::splash`) |
+| Overlay | Android, Apple, and HarmonyOS platform SDKs |
 
 Invariants:
 

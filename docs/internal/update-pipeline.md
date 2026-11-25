@@ -18,11 +18,9 @@ Invariants:
 - A handoff to the OS (installer started, store opened) is not a successful
   install; only the next cold start confirms one.
 
-Code: [update policy and verification](../../crates/lingxia-update/src/)
-(pure, so ordering is testable without disk, network or UI),
-[host update coordination](../../crates/lingxia-service/src/update.rs) and
-[host integration](../../crates/lingxia/src/update.rs),
-[lxapp update lifecycle](../../crates/lingxia-lxapp/src/update/).
+Ownership: `lingxia-update` (pure update policy and verification, testable
+without disk, network or UI), `lingxia-service` (host update coordination),
+`lingxia` (host integration), and `lingxia-lxapp` (lxapp update lifecycle).
 
 ## Two pipelines
 
@@ -37,10 +35,9 @@ channel are independent; see [env-version.md](env-version.md).
 
 ## Package download
 
-Package downloads (host and lxapp) share
-[`package_download`](../../crates/lingxia-service/src/package_download.rs).
+Package downloads (host and lxapp) share one downloader in `lingxia-service`.
 They resume from `.part`, cap connect at 20 seconds, and allow 60 minutes per
-transfer: rong_rt's 60 second default would also bound the body and fail slow
+transfer: the HTTP runtime's 60 second default would also bound the body and fail slow
 links mid-transfer. A socket that delivers nothing for 120 seconds still
 aborts. Network failures, 408/429, and 5xx retry twice with backoff. A
 permanent failure or checksum mismatch after resuming retries once without the
@@ -189,9 +186,8 @@ missing one warns at build time.
 - Direct updates download silently, then prompt once. Check that the candidate
   is newer both before download and before installation: another mechanism
   may update the app in between. Reuse cached bytes only on checksum match.
-- The terminal states `install_requested` and `store_opened`
-  (`AppUpdateEvent::InstallRequested` / `StoreOpened`) mean handoff to the OS,
-  not successful installation. Keep the task result, progress termination,
+- The terminal states `install_requested` and `store_opened` mean handoff to
+  the OS, not successful installation. Keep the task result, progress termination,
   and public event union consistent.
 
 ### Platform prompts
@@ -219,7 +215,8 @@ failure directly; package visibility makes availability preflight unreliable.
   Logic worker ACK outside admission and transition locks before opening.
   Failed ACKs quarantine the worker without poisoning later opens. Same-channel opens
   preserve live sessions. Host-bundled assets satisfy release first installs;
-  draft packages come from the draft feed. DevPath sessions remain local drafts.
+  draft packages come from the draft feed. Sessions served from a local dev
+  path remain local drafts.
   Host control surfaces cannot switch to downloaded drafts or inherit their
   authority onto an installed replacement.
 - Check and download updates in the background. Apply a downloaded update only
@@ -240,8 +237,8 @@ failure directly; package visibility makes availability preflight unreliable.
   update entry point must leave them alone.
 - Versions only move forward on both channels: a newer server version
   installs and an older one never does, so a server-side rollback cannot
-  downgrade a device. A host-bundled lxapp without an install record compares against its
-  own `lxapp.json` version. An unparseable server version never installs over
+  downgrade a device. A host-bundled lxapp without an install record compares
+  against its own `lxapp.json` version. An unparseable server version never installs over
   an existing one. An exact-version open older than the install is rejected.
 - Only on the draft channel may a republish replace the same version with a
   different checksum, in every service env; `release` compares semver alone.

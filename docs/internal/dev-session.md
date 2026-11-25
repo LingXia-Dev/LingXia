@@ -24,7 +24,7 @@ per-user broker. Invariants:
 
 ## Registration
 
-Code: `lingxia-control-protocol/src/dev_session/broker.rs`.
+Owned by `lingxia-control-protocol`.
 
 Each session registers with a per-user local broker and keeps that connection
 open; the broker drops the session when the connection closes. `lxdev` queries
@@ -46,43 +46,40 @@ and `lxdev` reaches them with the same variable or `--instance <name>`.
 Without it every build shares the default broker, and a different build
 replaces it.
 
-Broker replacement (`log_store::ensure_current_broker`, run before
-registering and, with `--name`, before the build): the broker answers `info`
-with its `BrokerBuild` (CLI version, executable path, executable mtime at
-start) and live session count. A mismatched idle broker is asked to
+Broker replacement runs before registering and, with `--name`, before the
+build: the broker answers `info` with its build identity (CLI version,
+executable path, executable mtime at start) and live session count. A mismatched idle broker is asked to
 `shutdown`, which it obeys only with no session registered (the check holds
 the session lock); a busy one is terminated by the pid `info` reported, and
-its sessions' `register_session` threads reconnect a second later and
+its sessions' registration threads reconnect a second later and
 re-register; one that does not answer `info` is found by a process scan
 (`<lingxia*> dev-broker`, same user). The current build is spawned right
 after and must answer `info` as this build. If replacing fails, `--name`
-makes it an error; after registering, `verify_registered_name` lists the
-broker and fails the session if its record lacks the name.
+makes it an error; after registering, the session lists the broker and fails
+if its record lacks the name.
 
-`SessionInfo.name` / `.build` are optional, and `SessionInfo.extra`
-(`serde(flatten)`) keeps fields a build does not know, so a broker passes
-newer fields through. A broker without `extra` drops them, which is why a
-named session verifies its registration.
+A session record's name and build are optional, and the record keeps fields a
+build does not know, so a broker passes newer fields through. An older broker
+that drops them is why a named session verifies its registration.
 
 ### Selection and lifecycle
 
-`dev_session::select` (broker feature) is the one session resolver.
-`hint_selector` returns the shortest selector that resolves back to the same
-session from the same directory (none, name, target, `target@dir-name`,
+One session resolver serves every command. A printed hint uses the shortest
+selector that resolves back to the same session from the same directory (none, name, target, `target@dir-name`,
 `target@path`). Printed hints (a failed spec's `Rerun:` line, the stop
 command) therefore never carry a session id.
 
 `lingxia dev` starts and stops sessions; `lxdev` never starts one.
 
-- `lingxia dev --background` (`run_background_owner`) spawns the owner
+- `lingxia dev --background` spawns the owner
   (`lingxia dev …` minus `--background`/`--json`, its own process group,
   output appended to `.lingxia/background/dev-<ms>.log`) and polls for a
   session of this project registered after the spawn whose runtime answers
   `echo` with `runtimeConnected`. The owner exiting, the timeout
-  (`BACKGROUND_START_TIMEOUT`, 1800 s) or Ctrl-C ends the wait: the owner's
+  (1800 s) or Ctrl-C ends the wait: the owner's
   process tree is terminated unless it already exited, and the error carries
   the log path and its last 30 non-empty lines.
-- `lingxia dev stop [SESSION]` (`plan_stop`): no session or no match is
+- `lingxia dev stop [SESSION]`: no session or no match is
   "nothing to stop" (exit 0); an ambiguous selector is an error with the
   candidate table, as are a broker that cannot be queried and a session that
   will not die.
@@ -129,14 +126,14 @@ plain timeout. Without this a call to a backgrounded app would wait out the
 120 s command timeout; 5 s is long enough for a spec that leaves the app and
 comes back on purpose.
 
-`DEV_SESSION_MAX_MESSAGE_BYTES` (40 MiB) bounds every dev WebSocket message:
-a test poll can carry 24 MiB of base64 artifacts plus an 8 MiB result, and a
-16 MiB attachment no longer fits 16 MiB once base64-encoded. The relay and
-the CLI receiver share the constant.
+A 40 MiB limit bounds every dev WebSocket message: a test poll can carry
+24 MiB of base64 artifacts plus an 8 MiB result, and a 16 MiB attachment does
+not fit in 16 MiB once base64-encoded. The relay and the CLI receiver share
+the limit.
 
 ## Bundle sync
 
-Code: `crates/lingxia/src/devtool.rs`, `devtool/sync.rs`.
+Owned by `lingxia` (`devtool` feature).
 
 A dev host pulls a changed lxapp bundle as one zstd archive,
 `lxapp/<id>/bundle/<distHash>.tar.zst`: pages repeat the UI runtime, so 6.5 MB
@@ -145,7 +142,7 @@ server that answers 404, goes file by file.
 
 | Where | Deadline |
 | --- | --- |
-| Pre-init pull off the UI thread (`prepare_dev_bundles`, called by the Android and Apple entry points before init) | 60 s |
+| Pre-init pull off the UI thread (called by the Android and Apple entry points before init) | 60 s |
 | Sync inside init without a pre-init pull, or a dev restart | 10 s |
 | An open waiting for its app's sync | 2 s, then the installed bundle; the sync finishes in the background |
 
@@ -160,8 +157,8 @@ reused.
 
 ## Mock readiness
 
-Code: `lingxia-network-dev/src/dev.rs`; the gate is `__lxWaitForDevMocks`,
-installed by automation.
+Owned by `lingxia-network-dev`; the gate is a Logic-side wait installed by
+automation.
 
 The host awaits the context-bound gate under session liveness before
 evaluating the Logic bundle. A failed gate tears the context down before any
@@ -179,7 +176,7 @@ every app's mock load has settled, the dev server sends
 for apps with zero handlers, and removing handlers loads an empty one, so
 `--mock all` can never silently fall through to real I/O.
 
-The 30 s startup deadline (`MOCK_BOOTSTRAP_IDLE`) is an idle window: the
+The 30 s startup deadline is an idle window: the
 connection and each `mock.load` re-arm it, so it bounds a stalled server, not
 the number of apps. It refuses Logic only once the server has answered this
 process. A first attempt can block without failing (iOS resolves a `.local`
@@ -196,33 +193,31 @@ to `build` and `package`.
 
 ### Version checks
 
-`lingxia_control_protocol::dev_session::compat` is pure; reading a project from
-disk is its `project` feature, which only the CLI binaries enable. Project
-checks apply the build-target window of
+The compatibility checks in `lingxia-control-protocol` are pure; reading a
+project from disk is its `project` feature, which only the CLI binaries
+enable. Project checks apply the build-target window of
 [release-versioning.md](release-versioning.md#minruntime-is-a-build-target):
 SDK pins (Cargo `lingxia*`, the Android Gradle fallback, a Windows SDK tag)
 agree and sit in the window, each path-bundle lxapp's `minRuntime` sits in it
 and not above the host line, and its installed `@lingxia/*` packages are on
-that line. A live peer (`PeerBuild.protocol` from the runtime `hello`) must
-speak a dev protocol in
-`[MIN_DEV_SESSION_PROTOCOL_VERSION, DEV_SESSION_PROTOCOL_VERSION]`. Commits
+that line. A live peer (the protocol in the runtime `hello`) must speak a dev
+protocol between the minimum and current dev-session protocol versions. Commits
 are printed by `doctor` and are not a gate.
 
 Every Runner install writes `runner-build.json` beside the app:
-`{version, commit, protocol}` from `install-local-runner.sh`/`.ps1`, or
-`{version, release: true, protocol}` when `runner_cache::ensure_runner`
-unpacks a release asset. `ensure_matching_runner` runs a Runner of this CLI's
-version whose protocol is in range. A stamp without `protocol` is read as the
+`{version, commit, protocol}` from the local Runner install script, or
+`{version, release: true, protocol}` when the CLI unpacks a release asset.
+The CLI runs a Runner of its own version whose protocol is in range. A stamp without `protocol` is read as the
 constant committed at its commit or `lingxia-cli-v<version>` tag (`git show`
 of the object, not the working tree). Out of range, a release CLI
 re-downloads and a checkout CLI must rebuild
-(`tools/lingxia-runner/macos/install-local-runner.sh`, or `.ps1` on Windows).
+(via the local Runner install script).
 A checkout CLI running a Runner not built from its commit prints a one-line
 note once per CLI/Runner pair (`.foreign-build-noted` beside the Runner).
 
-`LINGXIA_SKIP_COMPAT=1` (`compat::SKIP_ENV`) turns the project, Runner and
-`lxdev` session pre-checks into warnings; no check error names it, and the
-dev-session handshake (`speaks_dev_protocol`) still refuses.
+`LINGXIA_SKIP_COMPAT=1` turns the project, Runner and `lxdev` session
+pre-checks into warnings; no check error names it, and the dev-session
+handshake still refuses.
 `doctor --project` shows the same verdict for a standalone lxapp.
 
 ### Runner installs

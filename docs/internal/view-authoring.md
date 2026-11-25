@@ -16,22 +16,21 @@ Invariants:
 ## Contract package
 
 `contracts/view/` holds `schema.json` (tags, fields, CSS-named style,
-elements, limits, roles), `api.d.ts` (hook and data types), `generate.mjs`
-(Rust, JS, Java, Swift and ArkTS outputs; `arkts.mjs` holds the HarmonyOS
-half) and `docs.mjs` (`docs/view/reference` and
-[view-engine-limits.md](view-engine-limits.md)).
-`node contracts/view/generate.mjs --check` and the contract tests fail on drift
+elements, limits, roles), the TypeScript hook and data type declarations, and
+the code and reference generator (Rust, JS, Java, Swift and ArkTS outputs, plus
+`docs/view/reference` and [view-engine-limits.md](view-engine-limits.md)).
+The contract generator's `--check` mode and the contract tests fail on drift
 in either direction.
 
-`packages/lingxia-view`:
+The `@lingxia/view` package:
 
-| Path | Owns |
+| Area | Owns |
 | --- | --- |
-| `compiler/` | TSX audit, JSX source annotation, Tailwind lowering, stylesheet loading, the module banner |
-| `src/runtime/` | render state, JSX arena, hooks, the action bridge, element resolution, wire encoding |
-| `src/style/` | class cascade and author-style lowering |
-| `src/index.js` | the public entry |
-| `src/internal.js` (`@lingxia/view/internal`) | the host protocol for the native session and tests; pages never import it |
+| Compiler | TSX audit, JSX source annotation, Tailwind lowering, stylesheet loading, the module banner |
+| Runtime | render state, JSX arena, hooks, the action bridge, element resolution, wire encoding |
+| Style | class cascade and author-style lowering |
+| `@lingxia/view` | the public entry |
+| `@lingxia/view/internal` | the host protocol for the native session and tests; pages never import it |
 
 The compiler injects only the JSX factory into a page.
 
@@ -76,8 +75,8 @@ unless `aria-label` is given.
 
 The projection nests published nodes under their nearest published layout
 ancestor (a role, or a scroll); unpublished wrappers collapse and reading
-order is source order. The Android adapter reads role and key names from the
-generated `GpuSemantics` class. Android's `findAccessibilityNodeInfosByViewId`
+order is source order. The Android adapter reads role and key names from
+generated Java constants. Android's `findAccessibilityNodeInfosByViewId`
 does not search node providers, so accessibility-service automation must walk
 the tree by test id; `lx.automation` queries the projection directly.
 
@@ -86,11 +85,11 @@ the tree by test id; `lx.automation` queries the projection directly.
 Editors enforce `maxLength` natively (insertions are cut, existing text kept),
 clamp and snap `min`/`max`/`step` on blur or submit and report the result as
 input, and hold only ISO values with `type="date|time"`. The Android adapter
-maps the attributes through the generated `GpuInput` class.
+maps the attributes through generated Java constants.
 
 ## Hooks
 
-Signatures live in `contracts/view/api.d.ts`; these are the rules the types
+Signatures live in the `contracts/view/` TypeScript declarations; these are the rules the types
 cannot state.
 
 - `useView()` returns the page View, `useEnv()` only its environment (a
@@ -135,15 +134,14 @@ Runtime errors carry the JSX chain (`at <tag> (file:line:col)`,
 ## Module compatibility
 
 A compiled module starts with a `// LingXia UI module; {…}` banner declaring
-`uiAbi`, `minField`, the required engine features and the compiler version
-(`compiler/compatibility.mjs`). Native validates it against its own `uiAbi`,
-`maxField` and features (`crates/lingxia-view/src/engine/compatibility.rs`)
-before running author code, so an old host refuses a newer page up front
-instead of failing mid-render.
+`uiAbi`, `minField`, the required engine features and the compiler version.
+Native (`lingxia-view`) validates it against its own `uiAbi`,
+`maxField` and features before running author code, so an old host refuses a
+newer page up front instead of failing mid-render.
 
 - `minField` is a lower bound: the highest non-ignorable field the page's JSX
-  props, literal style keys and class rules name on an element that takes it
-  (`compiler/field-floor.mjs`), never words in strings or comments.
+  props, literal style keys and class rules name on an element that takes it,
+  never words in strings or comments.
 - The encoder is the exact check: a non-ignorable field past the host's
   `maxField` fails that render with `UI_COMPAT`, which the host shows as
   "update the app".

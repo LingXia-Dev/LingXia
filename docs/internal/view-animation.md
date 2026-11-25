@@ -9,8 +9,8 @@ Invariants:
 - The compiler lowers Tailwind/PostCSS once into bounded payloads: field 101 `animation`
   (keyframes) and field 171 `transition`. The runtime never evaluates CSS per frame and never
   hardcodes class names.
-- `lingxia_view::animation` owns identity, time, interpolation and the next wakeup. Platform
-  adapters supply a monotonic clock, vsync and visibility/presentation events only: no
+- The `animation` module of `lingxia-view` owns identity, time, interpolation and the next
+  wakeup. Platform adapters supply a monotonic clock, vsync and visibility/presentation events only: no
   View-isolate timers, no per-element platform animators, no interpolation in JS or in the
   presenter.
 - Animation state commits only when the frame that carries it is presented.
@@ -18,7 +18,7 @@ Invariants:
 
 ## Keyframes (field 101)
 
-`decode_definition` (`animation/wire.rs`) revalidates every value; the payload is at most
+The `lingxia-view` decoder revalidates every value; the payload is at most
 32 KiB per definition and `animationBytes` (256 KiB) per page, in UTF-8 bytes on both sides.
 
 | Part | Rule |
@@ -73,9 +73,9 @@ variant or a theme change animate without the View re-running.
 
 ## Time and commits
 
-One `Timeline` per page; times are durations from a host epoch. Preparation forks it and builds
-a candidate (`Prepared`) with keyframe instances, transitions and sampled visuals; only
-`animation_presented` for the matching generation and surface commits it. Entrances and new
+One timeline per page; times are durations from a host epoch. Preparation forks it and builds
+a candidate with keyframe instances, transitions and sampled visuals; only the presentation
+acknowledgement for the matching generation and surface commits it. Entrances and new
 transitions start at that presentation, so a frame that never reaches the screen cannot use up
 part of a motion. Failed preparation, declined frames and stale acknowledgements consume
 nothing. Unrelated View updates keep elapsed time; a changed definition or name starts a new
@@ -89,7 +89,7 @@ Animation-only frames (no rebuild, input or viewport change) reuse committed lay
 and touch only paint, transforms and hit geometry. Opacity is a subtree group. Text is never
 scaled by resizing the surface.
 
-`DisplayList::animated_spans()` names each outermost animated subtree's command range. A span
+The display list names each outermost animated subtree's command range. A span
 opens from and closes back to its parent's layer stack and is followed by the parent's absolute
 transform, so commands outside the spans are identical across frames of one layout: renderers
 cache those and re-encode only the spans. Presented frames carry a layout key; between frames
@@ -98,15 +98,15 @@ changes go out at most every fourth frame and once on settle.
 
 ## Scheduling
 
-After a successful presentation the host asks `view_animation_wakeup` over the visible
-identities: `Wakeup::NextFrame` for continuous change, `After(d)` for a step, delay or
-iteration boundary, `None` when settled. One timer per page (`animation_timer`) is revoked by
+After a successful presentation the host asks the animation module for the next wakeup over the
+visible identities: the next frame for continuous change, a delay for a step, delay or
+iteration boundary, none when settled. One timer per page is revoked by
 any other frame, so animation, caret and scroll work coalesce into one frame per vsync.
 Removal, completion and teardown leave no timer.
 
 - A page whose encode overruns a vsync drops frames, never timing. Values that differ from what
   was presented force a catch-up frame.
-- While the last wakeup was `NextFrame`, presenting queues the next prepare right behind the
+- While the last wakeup was the next frame, presenting queues the next prepare right behind the
   acknowledgement on the worker, and a prepared frame lets the next one be prepared ahead while
   it waits for its vsync: at most one ahead, visible pages only, never while input waits.
 - Every frame samples at its expected vsync, so spacing stays even. The interval is the
@@ -117,18 +117,18 @@ Removal, completion and teardown leave no timer.
 - Commits of one layout stay valid for input, so a tap on the presented frame still dispatches
   while newer frames of that layout are queued; queued same-layout frames yield to a waiting
   activation.
-- An adapter whose `present` only queues a frame (CPU raster) returns `Presenter::deferred` and
-  calls `ViewHost::deferred_presented` once it is on screen; nothing prepares meanwhile, so each
+- An adapter whose present only queues a frame (CPU raster) reports the presentation as deferred
+  and tells the host once it is on screen; nothing prepares meanwhile, so each
   shown frame carries its own sample.
 
-Adapters request vsync through `FrameScheduler::request_vsync` and report it back to the host;
+Adapters request vsync through their frame scheduler and report it back to the host;
 none keeps its own animation clock.
 
 ## Hidden pages
 
-`set_visible(false)`, surface loss and pause park the timeline and revoke the timer. A hidden
-page's catch-up frame (environment or target change) prepares with
-`set_animation_target(surface, visible: false)`: it samples the parked time, a change made
+Hiding the page, surface loss and pause park the timeline and revoke the timer. A hidden
+page's catch-up frame (environment or target change) prepares against its surface as not
+visible: it samples the parked time, a change made
 meanwhile lands on its end value, and its acknowledgement commits state without starting time
 or scheduling. On reveal the kept frame already shows the parked state and time resumes from
 it. The frame-currency gate compares environments only; animation frames neither change nor
@@ -145,17 +145,16 @@ so a hidden page renders one catch-up frame.
 
 ## Metrics
 
-`FrameMetrics.animationFrames` counts visible presentations in the last second that showed or
+The frame metrics' `animationFrames` counts visible presentations in the last second that showed or
 cleared animated values; parked frames never count. Tests assert silence with it and with
-presentation counts, not with log greps. Each executed click also goes to `HostEvents::debug`.
-A declined candidate keeps the View's pending updates (`discard(true)` only for
-`FRAME_DECLINED`); any other failure reverts them.
+presentation counts, not with log greps. Each executed click also goes to the host's debug log.
+A declined candidate keeps the View's pending updates; any other failure reverts them.
 
 ## Verification
 
-- Fake-clock session tests (`session/tests/transition.rs`, `animation.rs`, `flip.rs`): 200 ms
-  at 60 Hz settles in 12–14 frames with at least 10 intermediate samples; interruption continues
-  within one frame step; mid-flight hit bounds follow the transform; CPU and composited routes
-  agree at fixed times; reduced motion lands in one frame; hidden pages park.
-- Host tests (`session/tests/host.rs`): a spinner presents once per vsync only while shown,
-  nothing hidden, removed or after a one-shot completes, no timers left.
+- Fake-clock session tests verify that 200 ms at 60 Hz settles in 12–14 frames with at least 10
+  intermediate samples; interruption continues within one frame step; mid-flight hit bounds follow
+  the transform; CPU and composited routes agree at fixed times; reduced motion lands in one frame;
+  hidden pages park.
+- Host tests verify that a spinner presents once per vsync only while shown, nothing while hidden,
+  removed or after a one-shot completes, with no timers left.

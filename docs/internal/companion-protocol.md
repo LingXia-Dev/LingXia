@@ -2,7 +2,7 @@
 
 `lingxia dev` may start one **companion** per session: the `companion`
 lifecycle of the template the session root's `.lingxia/template.json` names
-(see `tools/lingxia-cli/src/commands/dev/companion.rs`), a process that serves
+(managed by `lingxia-cli`), a process that serves
 the app's Worker Functions during development. LingXia knows nothing about
 Workers — it never parses Function Definitions, a Worker project's files, or
 its mock configuration. It reaches the companion only through the messages
@@ -30,9 +30,8 @@ Invariants:
 
 A companion lists what it implements in its `hello` `capabilities`, or in
 its `session.prepare` result's `capabilities` (the two are merged):
-`scenario.function` (`dev_session::capabilities::SCENARIO_FUNCTION`) and
-`mock` (`dev_session::capabilities::MOCK`). Nothing of a part is sent
-without its capability:
+`scenario.function` and `mock`. Nothing of a part is sent without its
+capability:
 
 - Without `scenario.function`, every scenario with a `function` rule is
   refused as a whole — by `lxdev mock use` and by `t.scenario.use()` —
@@ -50,7 +49,7 @@ without its capability:
 After `session.prepare` the dev server writes `request` frames to the
 companion's stdin and reads `response` frames (same `id`) from its stdout,
 interleaved with its `event_batch` frames. Frames are the dev-session wire
-(`DevSessionMessage`), one JSON object per line. The companion keeps a
+messages, one JSON object per line. The companion keeps a
 request loop running after `session.prepare`; stdin EOF is the shutdown
 signal. The server waits up to 15 s for an answer (a `mock.set` may take
 seconds); a late answer is dropped.
@@ -63,7 +62,7 @@ forwards the `scenario.*` and `mock.*` methods below (anything else is
 - `lxdev mock …` and `lxdev network status` send them over their client
   websocket.
 - A host test run (`t.scenario.use()`) sends them up the runtime's dev bridge
-  (`lingxia-control-runtime/src/bridge_upstream.rs`); the dev server answers
+  (`lingxia-control-runtime`); the dev server answers
   on the same connection. A host without a dev bridge refuses `function`
   rules and Function targets.
 - `session.companion.capabilities` is answered by the server itself:
@@ -74,10 +73,9 @@ companion error is passed through unchanged (code, message, data).
 
 ## `session.prepare`
 
-The first request, after a companion `hello` with `version` 3
-(`dev_session::DEV_COMPANION_PROTOCOL_VERSION`; runtimes and clients keep
-speaking `DEV_SESSION_PROTOCOL_VERSION`). A companion with any other version
-is stopped at its hello. Params (`DevSessionPrepareParams`):
+The first request, after a companion `hello` with `version` 3 (the companion
+protocol version; runtimes and clients keep speaking the dev-session protocol
+version). A companion with any other version is stopped at its hello. Params:
 
 ```json
 { "env": "prod", "mock": "all" }
@@ -95,13 +93,13 @@ all` needs `--env dev`, since mocked Functions live in the local companion.
 for the session, exactly as the companion's own command-line switch would.
 Absent means the companion's own default.
 
-The result is `DevSessionPrepareResult`: `active`, and when active, the
+The result carries `active`, and when active, the
 `runtime_env` LingXia sets for the runtime it starts and restores when the
 session ends. `active: false` sets nothing and stops the companion.
 
 ## Scenario methods (`scenario.function`)
 
-Types are in `lingxia_control_protocol::scenario::companion`.
+Types are in `lingxia-control-protocol`.
 
 ### `scenario.use`
 
@@ -114,7 +112,7 @@ Types are in `lingxia_control_protocol::scenario::companion`.
 
 Install `rules` for `owner`, replacing everything that owner had. `rules` are
 the file's `function` rules verbatim, in precedence order (a variant's rules
-first); their shape is already checked (`scenario::check_rule`). The
+first); LingXia has already checked their shape. The
 companion validates them against its Function Definitions — unknown Function,
 `result` not matching the declared type, undeclared `error.code`, an invalid
 `match` regex — and either installs all or none: on an error the owner's
@@ -173,8 +171,8 @@ Exactly as for `http` rules:
 - `match.args` is a deep subset: listed object keys must be present and
   match, arrays match element by element with equal length, a
   `"/regex/flags"` string (flags among `imsu`) matches a scalar's text, other
-  values by equality. `scenario::Matcher` (feature `scenario-match`)
-  implements exactly this and may be reused.
+  values by equality. The scenario matcher in `lingxia-control-protocol`
+  (feature `scenario-match`) implements exactly this and may be reused.
 - Answers: `result` (the Function's return value), `error: { code, … }` (a
   declared business error, delivered as the Function would), `fault:
   "notRun"` (the call fails before the Function runs) or `"unknown"` (the
@@ -203,15 +201,15 @@ Exactly as for `http` rules:
 
 ## Mock methods (`mock`)
 
-Types are in `lingxia_control_protocol::mock::companion`. The companion
+Types are in `lingxia-control-protocol`. The companion
 keeps its mock handlers and its configured selection in the Worker project,
 in whatever form it likes, and keeps them complete (one mock per Function);
 LingXia only switches between them.
 
 ### Selection semantics
 
-The same as LingXia's HTTP half (`lingxia_control_protocol::mock::Selection`
-implements it and may be reused):
+The same as LingXia's HTTP half (the mock selection type in
+`lingxia-control-protocol` implements it and may be reused):
 
 - An *entry* is a whole (`all` or `none` for every Function) or targets
   (`all` or `none` for the named Functions).
@@ -311,7 +309,7 @@ companion), and they must switch together. A change runs in four steps:
 
 | Companion outcome | Meaning | Effect |
 | --- | --- | --- |
-| `invalid_rules`, `companion_unsupported`, `companion_not_sent` (`scenario::companion::left_previous_rules`) | The previous rules still answer | The change fails, the previous scenario stays whole, admission reopens (`session.network.scenario.resume` with the generation; in test runs without revoking the context). |
+| `invalid_rules`, `companion_unsupported`, `companion_not_sent` | The previous rules still answer | The change fails, the previous scenario stays whole, admission reopens (`session.network.scenario.resume` with the generation; in test runs without revoking the context). |
 | Anything else (`connection_lost`, a timeout, `unavailable`) | The request may have applied | Admission stays closed; a host run revokes the context. |
 
 - `lxdev mock clear` asks the companion first, then always clears the host,

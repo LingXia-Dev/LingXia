@@ -5,8 +5,8 @@
 > this is the internal side: which crate code belongs in.
 
 The workspace crates under `crates/` form six layers. A crate depends only on
-crates in its own layer or below. `scripts/ci/check-crate-layers.mjs` enforces
-this in CI (normal dependencies only; dev- and build-dependencies are free),
+crates in its own layer or below. The `check-crate-layers` CI script enforces
+this (normal dependencies only; dev- and build-dependencies are free),
 and fails on a crate it has no layer for: give a new crate a layer there and a
 line below.
 
@@ -47,9 +47,9 @@ Build tooling sits outside the layers and may be used from anywhere:
 5. **View and the app runtime meet only in the facade.** `view*` depends on
    none of `lxapp`, `logic`, `service`, `webview`, `platform`, `media`,
    `browser`, `terminal*`, and `lxapp`, `logic`, `service` depend on no
-   `view*`; the script's `FORBIDDEN` edges enforce it. View renders without
-   the app runtime and carries no app authorization; the facade's `gpu_page`
-   module wires the two together.
+   `view*`; the script's forbidden-edge list enforces it. View renders without
+   the app runtime and carries no app authorization; the facade wires the two
+   together.
 
 ## What each crate owns
 
@@ -85,14 +85,14 @@ Names omit the `lingxia-` prefix.
 - `lxapp`: the lxapp container and runtime: pages, bridge, host APIs, updates.
 - `view`: the View language, layout, text, rendering and the platform adapter
   traits; no app authorization.
-- `view-android`: the Android adapter for `view`: `GpuView` JNI natives,
+- `view-android`: the Android adapter for `view`: the GPU view's JNI natives,
   presentation and platform mechanics.
-- `view-apple`: the iOS and macOS adapter for `view`: a `ViewHost` per GPU
+- `view-apple`: the iOS and macOS adapter for `view`: a View host per GPU
   page behind the Swift view, presentation and platform mechanics.
-- `view-harmony`: the HarmonyOS adapter for `view`: a `ViewHost` per GPU page
+- `view-harmony`: the HarmonyOS adapter for `view`: a View host per GPU page
   behind a native XComponent node, GLES presentation, the accessibility
   provider and the input method.
-- `view-windows`: the Windows adapter for `view`: a `ViewHost` per GPU page on
+- `view-windows`: the Windows adapter for `view`: a View host per GPU page on
   its own UI thread, its child window (input, CPU frames through GDI), wgpu
   presentation on that window and the DWM vsync source.
 - `logic`: the JavaScript (Logic) runtime.
@@ -108,7 +108,7 @@ Names omit the `lingxia-` prefix.
 - `control-commands`: the command surface `lxdev` and shipped products share.
 - `network-dev`: dev and test network layer: Logic `fetch`/SSE interception,
   mocks and scenarios, and the traffic observer behind `lxdev network`, with
-  its `lx.automation()` drivers (authorized through the `Policy` automation
+  its `lx.automation()` drivers (authorized through the policy automation
   installs).
 - `automation`: `lx.automation()` and the host test runtime.
 

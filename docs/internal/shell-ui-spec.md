@@ -1,11 +1,10 @@
 # Shell UI
 
 The surface model of the host shell and how each kind of host projects it.
-Read before changing `crates/lingxia-surface` (the surface graph, arbitration
-and the presentation plan), `crates/lingxia-shell` (pins, sidebar actions,
-surface menus), the lxapp presentation code in
-`crates/lingxia-lxapp/src/lxapp/surface.rs`, the `lx.surface` / `lx.shell`
-bindings in `crates/lingxia-logic/src/surface.rs`, or a platform shell. What a
+Read before changing `lingxia-surface` (the surface graph, arbitration
+and the presentation plan), `lingxia-shell` (pins, sidebar actions,
+surface menus), the lxapp surface presentation code in `lingxia-lxapp`,
+the `lx.surface` / `lx.shell` bindings in `lingxia-logic`, or a platform shell. What a
 page reads about its own canvas (size class, viewport, insets, hinge) is in
 [view-environment-spec.md](view-environment-spec.md); the launch screen is in
 [launch-screen.md](launch-screen.md).
@@ -45,7 +44,7 @@ platform.
 | **surface** | A shell-managed content instance with its role, state and presentation |
 | **declaration id** | The stable key of a surface declared in `lingxia.yaml`: the value of its `lxapp` / `url` / `native` field |
 | **surface key** | A caller-owned key that selects an additional instance of a declaration that admits several |
-| **runtime id** | The id the shell assigns to a live surface (`SurfaceId`). Only the shell and automation see it |
+| **runtime id** | The id the shell assigns to a live surface. Only the shell and automation see it |
 | **main** | A switchable first-class destination; the selected one fills the main area |
 | **main switcher** | The shell's list of mains. Desktop shows it as sidebar rows; touch hosts as an app rail |
 | **aside** | Companion content beside the selected main: docked when there is room, over the main when there is not |
@@ -226,7 +225,7 @@ covers several causes. Names are those of `@lingxia/types`.
 
 | Code | `reason` | When |
 |---|---|---|
-| `E_INVALID_ARG` | — | A malformed option, an unknown `as`, `edge` without an aside, a bad size, a URL that is not `https:` or an allowed `file:`, a reserved `lingxia:` URL, a malformed sidebar-action generation (§11.6) |
+| `E_INVALID_ARG` | — | A malformed option, an unknown `as`, `edge` without an aside, a bad size, a URL that is not `https:` or an allowed `file:`, a malformed sidebar-action generation (§11.6) |
 | `E_INVALID_ARG` | `tabAlreadyOpen`, `stackFull` | `lx.nav.go` to a tab already on the stack, or onto a stack of ten pages |
 | `E_PERMISSION_DENIED` | — | A composition call from an lxapp other than the Control app; a URL whose domain the lxapp's security policy does not allow |
 | `E_PERMISSION_DENIED` | `appUnderMaintenance`, `appSuspended` | The operator has taken the target lxapp down |
@@ -318,7 +317,7 @@ how each host draws the result.
 | Sidebar width (budget) | 220 dp/pt | What the budget reserves for an expanded sidebar |
 | Rail width | 56 dp/pt | Icon rail and app rail |
 | Sidebar budget | 820 dp/pt | Sidebar width plus the compact boundary: the free width an expanded sidebar needs |
-| Main minimum | 360 dp/pt wide | Width aside admission always leaves the main (`lingxia-surface` `Policy`; hosts read this value) |
+| Main minimum | 360 dp/pt wide | Width aside admission always leaves the main (owned by `lingxia-surface`; hosts read this value) |
 | Aside minimum | 240 dp/pt wide; 180 high at top or bottom | Narrowest docked aside |
 | Visible slots | 2 in `regular`, 1 in `compact` | Ceiling on docked slots |
 | Portrait ratio | 1.2 | Height over width at which a touch host is clearly portrait |
@@ -674,7 +673,7 @@ The sidebar budget (§4.1) reserves 220 whatever the sidebar's actual width.
 - It lists mains only, in stable graph order, lxapp, web and native mains
   interleaved. Asides never appear in it. A main lxapp MUST NOT gain a tab strip
   inside its content rectangle.
-- `SurfaceId` is the only switcher identity. An appId, terminal session id, URL
+- The runtime id is the only switcher identity. An appId, terminal session id, URL
   or browser workspace tab id is provider metadata.
 - While mains exist, exactly one is selected. The root has no close action;
   replacing it is a host configuration matter, not a tab action.
@@ -743,8 +742,8 @@ translucent chip under the pointer — never a move or "not allowed" cursor.
   aligned to the first slot. The grid never scrolls.
 - Every path that pins — page menu, address bar, context menu, bookmark
   manager, lxapp menu — goes through one shared operation, which enforces the
-  limit. Over it the operation returns `LimitReached { max }` and the host shows
-  a localised message. A stored pin is never hidden by rendering.
+  limit. Over it the operation reports the limit reached, with the maximum, and
+  the host shows a localised message. A stored pin is never hidden by rendering.
 - One ordered, mixed list is persisted. Hosts MUST NOT put lxapps before
   websites.
 - An lxapp pin is a launch intent. Clicking it opens or selects that lxapp as a
@@ -1226,27 +1225,27 @@ browser routes are `ControlSurfaceOnly`:
 Code uses these roots; only the case changes between languages (Rust
 `snake_case`, TS `camelCase`, YAML lowercase). Synonyms are not used.
 
-| Term | Root | TS / JS | Rust | Not |
-|---|---|---|---|---|
-| surface, handle | `surface` | `AnySurface`, `AppSurface`, `DeclaredSurface`, `PageSurface`, `TabSurface` | `Surface` | view, panel |
-| YAML content | `lxapp / page / url / native` | not JS selectors | `SurfaceContent` | render |
-| surface key | `key` | `key` | `SurfaceKey` | instanceKey, workspaceId |
-| runtime id | `surface_id` | not in Logic; automation `surfaceLayout().identities` | `SurfaceId` | — |
-| app navigation | `navigate_to_app / navigate_back_app` | `nav.go({ app })`, `nav.leaveApp` | same roots | navigateToLxApp, openApp |
-| role | `role` | `SurfacePlacement` (with `window`) | `Role` | mode, kind |
-| main | `main` | `'main'` | `Role::Main` | primary, home tab |
-| aside, slot | `aside / slot` | `'aside'` | `Role::Aside`, `SlotKind` | panel as a role |
-| side panel | `panel` | slot name `panel` | `SlotKind::Panel` | lxapp slot, browser slot |
-| dock region | `can_dock` | `canDock` | `can_dock` | docked |
-| role moves | `promote / demote` | — | `promote_aside_to_main`, `demote_main_to_aside`, `SurfaceMenuBuiltinAction::MoveToAside` | — |
-| sidebar | `sidebar` | — | `Sidebar*` | tabbar (the lxapp's), rail (the collapsed form) |
-| main switcher | `switcher` | — | `SwitcherForm`, `SurfaceSwitcherSnapshot` | — |
-| touch tab bar | `touch_tab_bar` | — | `touch_tab_bar`; shapes `floating`, `tab_rail` (the tab column) | sidebar |
-| sidebar action | `sidebar_action` | `lx.shell.sidebarActions`, `ShellSidebarAction` | `SidebarAction*` | activator, launcher |
-| pin | `pin` | — | `Pin*`, `MAX_SHELL_PINS` | favorite, shortcut |
-| size class | `size_class` | `sizeClass` (`compact` \| `regular`) | `SizeClass` | medium, expanded, breakpoint |
-| hinge | `hinge` | `env.hinge` | `HingeRect`, `HingeOrientation`, `DevicePosture` | fold |
-| host form | `host_class` | `isMobile()` / `isDesktop()` | `HostClass` | pad as a third class |
-| tablet | `pad` | — | `is_pad` | tablet host class |
-| admission | `admission` | — | `Policy`, `aside_slots_admitted` | — |
-| errors | `E_*` | verbatim | the same `E_*` strings | per-platform names |
+| Term | Root | TS / JS | Not |
+|---|---|---|---|
+| surface, handle | `surface` | `AnySurface`, `AppSurface`, `DeclaredSurface`, `PageSurface`, `TabSurface` | view, panel |
+| YAML content | `lxapp / page / url / native` | not JS selectors | render |
+| surface key | `key` | `key` | instanceKey, workspaceId |
+| runtime id | `surface_id` | not in Logic; automation `surfaceLayout().identities` | — |
+| app navigation | `navigate_to_app / navigate_back_app` | `nav.go({ app })`, `nav.leaveApp` | navigateToLxApp, openApp |
+| role | `role` | `SurfacePlacement` (with `window`) | mode, kind |
+| main | `main` | `'main'` | primary, home tab |
+| aside, slot | `aside / slot` | `'aside'` | panel as a role |
+| side panel | `panel` | slot name `panel` | lxapp slot, browser slot |
+| dock region | `can_dock` | `canDock` | docked |
+| role moves | `promote / demote` | — | — |
+| sidebar | `sidebar` | — | tabbar (the lxapp's), rail (the collapsed form) |
+| main switcher | `switcher` | — | — |
+| touch tab bar | `touch_tab_bar`; shapes `floating`, `tab_rail` (the tab column) | — | sidebar |
+| sidebar action | `sidebar_action` | `lx.shell.sidebarActions`, `ShellSidebarAction` | activator, launcher |
+| pin | `pin` | — | favorite, shortcut |
+| size class | `size_class` | `sizeClass` (`compact` \| `regular`) | medium, expanded, breakpoint |
+| hinge | `hinge` | `env.hinge` | fold |
+| host form | `host_class` | `isMobile()` / `isDesktop()` | pad as a third class |
+| tablet | `pad` | — | tablet host class |
+| admission | `admission` | — | — |
+| errors | `E_*` | verbatim | per-platform names |

@@ -51,7 +51,7 @@ export function render({ data, actions }: View) {
 - Lay out from the View's `env` (`viewport`, `sizeClass`, `insets`); `page.env.watch` is for Logic that acts
   on a size change itself, never to forward it with `page.update`. `env` also carries `keyboard.height`,
   `capsule` (the floating ··· control's box, or `null`), `reducedMotion`, `hourCycle` and `language`;
-  `platform` is for shortcut symbols only, never layout.
+  `os` is for shortcut symbols only, never layout.
 
 ## State and handlers
 

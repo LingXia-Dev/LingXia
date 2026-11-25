@@ -39,9 +39,8 @@ workspace version with the Rust crates and SDKs.
 
 The libraries an lxapp builds with: `@lingxia/page-runtime`,
 `@lingxia/elements`, `@lingxia/react`, `@lingxia/html` (bundled into pages),
-`@lingxia/logic` (what Logic imports), `@lingxia/test` (lxapp tests) and
-`@lingxia/terminal-settings`. Their major.minor must match the base runtime;
-patches may differ.
+`@lingxia/logic` (what Logic imports) and `@lingxia/test` (lxapp tests). Their
+major.minor must match the base runtime; patches may differ.
 
 Published internal `@lingxia/*` dependencies use `~M.m.P`, floored at the
 published patch. Scaffolds use `~M.m.0`, allowing packages ahead of or behind
@@ -50,28 +49,26 @@ version all npm packages together; there is no `npm:<package>` component.
 
 ## `minRuntime` is a build target
 
-Code: `lingxia_control_protocol::dev_session::compat`.
-
 `minRuntime` gates on major.minor everywhere; patches never gate. The host
 refuses a package whose line is above its own. The CLI builds only for lines in
-`[BUILD_TARGET_FLOOR, CLI line]` and refuses others with the CLI to use instead. `lingxia dev` and `lingxia build` use that window for a
-standalone lxapp and for a host project: SDK pins must agree and sit in the
-window, each embedded lxapp's `minRuntime` must not exceed the host, and
-`@lingxia/*` packages sit on the lxapp's `minRuntime` line — neither older nor
-newer, since a newer package may call APIs that line's host lacks. A newer CLI compiles an
-older project inside the window without an environment variable.
+`[build-target floor, CLI line]` and refuses others with the CLI to use instead.
+`lingxia dev` and `lingxia build` use that window for a standalone lxapp and for
+a host project: SDK pins must agree and sit in the window, each embedded lxapp's
+`minRuntime` must not exceed the host, and `@lingxia/*` packages sit on the
+lxapp's `minRuntime` line — neither older nor newer, since a newer package may
+call APIs that line's host lacks. A newer CLI compiles an older project inside
+the window without an environment variable.
 
 A change to CLI-generated output that a host line inside the window cannot read
-must either emit the old form for that `minRuntime` or raise
-`BUILD_TARGET_FLOOR` in the same change and say so in the release notes. CLI-
-generated output: dist `lxapp.json`, injected page HTML, `logic.js` wrapper and
+must either emit the old form for that `minRuntime` or raise the CLI's
+build-target floor in the same change and say so in the release notes. CLI-
+generated output: dist `lxapp.json`, injected page HTML, Logic bundle wrapper and
 registration calls, package layout. View entry scaffolds count too: they import
 `@lingxia/*` subpaths, so a new import ties the build to that npm line.
 
 ## Release commands
 
-[version.sh](../../scripts/release/version.sh) and the
-[prepare-release workflow](../../.github/workflows/prepare-release.yml)
+The release versioning script and the prepare-release workflow
 accept `all` or `cli`:
 
 - `--component all X` sets the workspace, CLI/Runner, npm packages, and embedded
@@ -86,7 +83,7 @@ When publishing its CLI release, pass `0.20.1` from
 `tools/lingxia-cli/Cargo.toml`, rather than the workspace version.
 
 CLI metadata pins embedded or downloaded assets (`bridge`, `polyfills`,
-`rust-crate`, `sdk`). App npm packages, browser-shell-webui, and terminal-settings
+`rust-crate`, `sdk`). App npm packages and browser-shell-webui
 resolve via `~M.m.0`; Cargo dependencies use `~M.m.P`, floored at the base patch
 so they cannot resolve older than the paired SDK. A new minor requires a new CLI;
 `lingxia new` warns when GitHub has a newer release.
@@ -112,7 +109,7 @@ The project half compares major.minor only. Applying a newer line updates:
 - Android's Gradle `lingxia.sdkVersion` and cached Maven SDK under
   `~/.lingxia/sdk/android-maven/<ver>/`;
 - Apple's cached source SDK under `~/.lingxia/sdk/apple/<ver>/` and generated
-  `Package.swift` path references. The SDK's `unsafeFlags` require a local package;
+  SwiftPM manifest path references. The SDK's `unsafeFlags` require a local package;
   custom manifests are left alone;
 - Harmony's cached HAR under `~/.lingxia/sdk/harmony/<ver>/`.
 
@@ -126,7 +123,7 @@ returns 10 even with `--yes`. The new binary synchronizes its own skill copy.
 The `lingxia-cli-v*` release carries CLI binaries and the development Runner
 used by `lingxia dev` for standalone lxapps.
 
-- `install.sh` / `install.ps1` (repo root) install `lingxia-*` and `lxdev-*`.
+- The repo-root installer scripts install `lingxia-*` and `lxdev-*`.
 - CLI release targets are macOS arm64/x64 and Windows x64. Windows 11 Arm
   uses x64 emulation; installers and self-update select the x64 assets there.
 - Runner assets are fetched into `~/.lingxia/runner/<version>` as needed.

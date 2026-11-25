@@ -1,9 +1,10 @@
 # Trusted Control Plane
 
-> **Audience**: contributors working on session classes, route authorization,
+> **Audience**: contributors working on in-process lxapp session classes, route authorization,
 > the bridge ingress seam, or anything that decides whether a caller may reach
-> a host route. If you're **building an app on LingXia**, the author-facing
-> version is [`docs/skill/app/control-app.md`](../skill/app/control-app.md);
+> a host route. For **external** CLI/IPC control of a host process, see
+> [`host-control-ipc.md`](host-control-ipc.md). If you're **building an app on LingXia**, the
+> author-facing version is [`docs/skill/app/control-app.md`](../skill/app/control-app.md);
 > this document explains why the mechanism is shaped the way it is, and which
 > invariants a change must not break.
 
@@ -23,8 +24,8 @@ creation and sealed before that session's Logic starts.
 
 1. **Identity is native, and it is a constructor argument.** `AppSessionClass`
    is assigned when `LxApp` is built and is immutable afterwards. `ControlApp`
-   has exactly one constructor, reachable only for the app id sealed into
-   `APP_CONFIG.home_app_id` at bootstrap. `ControlSurface` has its own, gated
+   has exactly one constructor, reachable only for the home app id sealed from
+   `lingxia.yaml` at bootstrap. `ControlSurface` has its own, gated
    on a host-bundled bundle source and explicitly refused for the home id.
    There is no setter, no promotion, and no route that returns one.
 
@@ -36,8 +37,8 @@ creation and sealed before that session's Logic starts.
    Settings, the browser system pages `app.lingxia.browser`) reaches every
    `ControlSurfaceOnly` route; no route is scoped to one surface app.
 
-3. **One authorization seam.** `lxapp::host::authorize(caller, audience)` is
-   the only place a caller class is compared to a route's audience. Route
+3. **One authorization seam.** A single authorize check is the only place a
+   caller class is compared to a route's audience. Route
    audiences are immutable registration metadata resolved before dispatch, not
    a runtime parameter; `#[lingxia::native]` records `AppSessionOnly` unless an
    explicit `audience` is given, so forgetting the attribute fails closed.
@@ -51,13 +52,13 @@ creation and sealed before that session's Logic starts.
 
 | Class | Constructor | Gate |
 |---|---|---|
-| `ControlApp` | `LxApp::new_as_home` | `home_app_id()` equals the app id. Set once from `lingxia.yaml` into a `OnceLock`. |
-| `ControlSurface` | `LxApp::new_control_surface` | Host-bundled bundle source, **not** the home id, and the live native control authority. |
-| `StandardApp` | `LxApp::new` | Default. |
+| `ControlApp` | home constructor | The home app id equals the app id. Set once from `lingxia.yaml` at bootstrap. |
+| `ControlSurface` | control-surface constructor | Host-bundled bundle source, **not** the home id, and the live native control authority. |
+| `StandardApp` | default constructor | Default. |
 
-**The class follows the identity, not the live map.** `LxApps::session_class_for`
-derives `ControlApp` from `home_app_id()` rather than from whatever session
-happens to be in `lxapps`. This matters because the home session *is* removed
+**The class follows the identity, not the live map.** Session-class lookup
+derives `ControlApp` from the sealed home app id rather than from whatever session
+happens to be in the live lxapp map. This matters because the home session *is* removed
 from that map — by LRU eviction, by uninstall, and by the 30-minute delayed
 destroy — and reading the class off the map would rebuild the product's own
 home as a guest, with no way back short of a process restart. `ControlSurface` is not
@@ -66,8 +67,8 @@ open as one), so it stays inherited from the live session.
 
 Only native code opens a surface: the browser runtime opens `app.lingxia.browser`
 as its tab owner and for host chrome's system pages, and the Control app's
-`lx.surface.openApp` reaches Terminal Settings or the browser through the
-`ControlAppOnly` `ShellOpenHost*` routes. Any other `openApp` of those ids is
+`lx.surface.openApp` reaches Terminal Settings or the browser through
+`ControlAppOnly` shell open-host routes. Any other `openApp` of those ids is
 refused, so a guest cannot start one as a `StandardApp` session.
 
 ## Which class reaches which audience
@@ -106,7 +107,7 @@ the grant is already decided, and otherwise on the task that lands the
 snapshot, which can be after the user closed the lxapp. So a resolver decides
 from the authority alone: no prompt, no blocking on a person, and no opening,
 restarting or closing an lxapp — that deadlocks. Sealing a closed session
-grants nothing; `has_resource_grant` refuses a session that is not live.
+grants nothing; the grant check refuses a session that is not live.
 
 ## Permission snapshot resolution
 
@@ -135,7 +136,7 @@ initialization, including direct launches without the CLI environment marker.
 
 ## Host automation authority and surface handles
 
-Host-owned `AutomationRuntime` programs carry a native runtime authority and do
+Host-owned automation runtime programs carry a native runtime authority and do
 not impersonate an lxapp. A manifest `automation` or `host` entry is only a
 request: cross-lxapp, browser, shell, device, terminal, and desktop process
 operations also need a native grant sealed to that session. Retained drivers
@@ -152,14 +153,14 @@ dispatch, and completion, so a restart or takeover cannot reuse it.
 
 This is the least obvious invariant here and the easiest to break.
 
-`normalizer::with_current_document_binding` holds the process-wide normalizer
+The current-document-binding scope holds the process-wide normalizer
 registry lock **and** the per-WebView state lock across its action, so a
 navigation start cannot land between the generation check and the effect.
 Neither lock is reentrant, and the normalizer is a global.
 
 **The rule: that form is only for a short native effect that cannot re-enter
 the normalizer.** Outbound posts and port setup qualify. Anything that runs
-host code does not, and must use `document_binding_is_current`, which answers
+host code does not, and must use the binding-is-current query, which answers
 and releases:
 
 - Inbound delivery to a delegate. The delegate is the whole bridge and Logic
@@ -167,19 +168,19 @@ and releases:
   the lock would deadlock the ArkWeb callback thread on every document's first
   frame. Holding it would also serialize all four message workers behind one
   WebView's dispatch and block navigation callbacks on every platform.
-- Enqueueing. `enqueue_web_message` samples the binding through the same
+- Enqueueing. The web-message enqueue samples the binding through the same
   registry lock, so wrapping it self-deadlocks. A per-document port instead
-  goes through `enqueue_document_web_message`, which proves the generation in
+  goes through the per-document enqueue, which proves the generation in
   one acquisition.
 - The console log delegate.
 
 Releasing loses nothing that was enforceable: a message carries the generation
 snapshotted at enqueue time, that is what downstream authorization reads, and
 every outbound path re-verifies the generation under its own document gate
-(`DocumentOutboundGate`, `HarmonyDocumentAuthority::with_current_generation`,
-Android's `postDocumentMessageNow`).
+(the shared outbound gate, the Harmony document authority, and Android's
+per-document post).
 
-The same rule applies to `HarmonyDocumentAuthority`: take one generation lock
+The same rule applies to the Harmony document authority: take one generation lock
 at a time. Ingress checks the authority, releases, then enqueues; nesting the
 two would put ingress and outbound in opposite lock orders.
 
@@ -187,7 +188,7 @@ two would put ingress and outbound in opposite lock orders.
 
 `lx.host.notification.*`, `lx.host.banner.*`, `lx.device.permission.get` and
 `lx.device.permission.request` are the direct routes a guest reaches. They are `AppSessionOnly`, and the
-handler then scopes the effect by `AttentionScope`, derived from the session
+handler then scopes the effect by an attention scope derived from the session
 class, never from a payload:
 
 - A guest's ids are a digest of its app id and its own id, so it cannot name
@@ -203,22 +204,23 @@ class, never from a payload:
 - A guest's banner carries its name and icon, so it cannot pass as the
   product's.
 
-Widening that list widens what every downloaded lxapp can do;
-`the_attention_routes_are_exactly_these` pins it.
+Widening that list widens what every downloaded lxapp can do; a unit test
+pins it to exactly these routes.
 
 ## Invariants to preserve
 
 - GPU View ingress is native-owned: the attached endpoint and runtime-issued
   connection generation must match before protocol decoding. Page-profile caller
-  identity comes from the owning LxApp. Never synthesize a WebMessageContext
-  for a GPU page. Capture its endpoint and generation
+  identity comes from the owning LxApp. Never synthesize a WebView message
+  context for a GPU page. Capture its endpoint and generation
   for outbound work and recheck the generation at native worker delivery.
-  GPU Views may call only the page-owned `navigation.setLeaveGuard` and
-  `navigation.leave` host routes directly; both still use normal audience and
-  calling-page admission. Other host APIs go through Logic. Native leave
+  GPU Views may call only the page-owned `navigation.setLeaveGuard`,
+  `navigation.leave`, and `navigation.setTitle` host routes directly; all three
+  still use normal audience and calling-page admission. Other host APIs go
+  through Logic. Native leave
   requests capture the endpoint generation and recheck it on the View worker.
 
-- No route audience defaults by omission. `LogicRoute::audience` is an
+- No route audience defaults by omission. The Logic route audience table is an
   exhaustive match on purpose — a catch-all makes the next route
   ControlApp-only, which breaks every guest that expected to call it.
 - Every control-plane refusal reaches JS as `E_PERMISSION_DENIED` (business
@@ -226,6 +228,6 @@ Widening that list widens what every downloaded lxapp can do;
   Not "unsupported" — that points the author at the wrong fix.
 - The `audience = "..."` strings are SDK-facing and part of the published
   contract. Renaming one is a breaking change for extension authors.
-- `authority-escape-gate.sh` and `crates/lingxia/tests/facade_boundary.rs`
+- The authority-escape gate and `lingxia`'s facade-boundary tests
   are the compile-time regression line for reaching an authority from outside
   bootstrap. Keep new authority types behind them.

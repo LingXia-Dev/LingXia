@@ -32,7 +32,7 @@ Non-persistent shared-cache subscribers may elect a replacement when their
 leader disappears (at most three attempts). Ordinary transfer failures do not
 trigger this takeover; the existing retry policy still governs those failures.
 
-`DownloadBehavior.max_bytes` (`lingxia-transfer`) optionally bounds persisted
+A download in `lingxia-transfer` may carry an optional bound on persisted
 bytes. The cumulative size, resumed data included, is checked before each chunk
 is written, and an oversized transfer is never published. The bound is part of
 concurrent-download matching, so a bounded consumer cannot join an unlimited
@@ -52,13 +52,13 @@ On `ENOSPC`, `lx.fs` writes and `downloadFile` finalization evict LRU usercache
 ## HTTP store
 
 Bytes LingXia fetches for itself (remote GPU page images, favicons, registry
-icons, preview media) go through `lingxia_transfer::store`, under the OS cache
-dir at `lingxia/http`. Entries are keyed by partition and URL: an appid, or
+icons, preview media) go through the `lingxia-transfer` HTTP store, under the OS
+cache dir at `lingxia/http`. Entries are keyed by partition and URL: an appid, or
 `host:<name>` for bytes shared across apps on purpose. Callers check their own
 grants before a lookup. Freshness follows `Cache-Control`/`Expires`, else 10% of
 the age since `Last-Modified` (at most 24 h); stale entries revalidate with
 validators, and a 304 serves the stored body. The store evicts LRU by bytes
-within `STORE_BUDGET_BYTES` (256 MB).
+within a 256 MB budget.
 
 Package downloads (updates, plugins) bypass the store and resume from a `.part`
 file instead: they are large and used once, so caching them would only crowd
@@ -67,8 +67,7 @@ out small reusable entries.
 ## View bytecode
 
 GPU page modules compiled by QuickJS persist under the OS cache dir at
-`lingxia/view-bytecode` (`lingxia_view::engine::bytecode`), one `.qbc` file per
-key. The key hashes the source, the module specifier, the View crate version,
+`lingxia/view-bytecode`, one `.qbc` file per key. The key hashes the source, the module specifier, the View crate version,
 the QuickJS version and the UI ABI, so any engine change is a miss rather than
 a bad load. The header repeats key and length; a renamed or truncated file is
 removed on read. A read refreshes the file's mtime, and trimming drops the

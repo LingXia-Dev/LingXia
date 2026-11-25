@@ -24,11 +24,11 @@ never touched its API.
 
 | Area | Exports | Notes |
 | --- | --- | --- |
-| Platform entry | `lingxia::android`, `apple`, `harmony`, `windows`; the init path | The facade owns the final FFI surface. Apps never call `lxapp::init` or wire runtime internals. |
-| Host functions | `#[lingxia::native(...)]`, `lingxia::host::*` (`HostResult`, `HostCancel`, `await_or_cancel`, `StreamContext`, `ChannelContext`), `HostAddon`, `register_host_addon` | The proc-macro crate is an implementation detail. |
-| Logic extensions | `lingxia::js::{LxLogicExtension, register_logic_extension}` (`standard` feature) | Apps never depend on `lxapp::lx`. |
+| Platform entry | `lingxia::android`, `apple`, `harmony`, `windows`; the init path | The facade owns the final FFI surface. Apps never call the runtime's own init or wire runtime internals. |
+| Host functions | `#[lingxia::native(...)]`, `lingxia::host::*` (`HostResult`, `HostCancel`, `await_or_cancel`, `StreamContext`, `ChannelContext`), `HostAddon`, `register_host_addon`, `lingxia::spawn` | The proc-macro crate is an implementation detail. |
+| Logic extensions | `lingxia::js::{LxLogicExtension, register_logic_extension}` (`standard` feature) | Apps never depend on the runtime's `lx` module. |
 | Runtime types | `LxApp`, surface and page request types, provider traits (`lingxia::provider`) | Only types an author legitimately needs; no runtime orchestration types. |
-| Product domains | `app`, `device`, `file`, `media`, `update`, `task`, `wifi`, `location`, `network`, `navigation`, `log` | Grouped by what they do, not by owning crate. |
+| Product domains | `app`, `assets`, `device`, `file`, `media`, `splash`, `update`, `url_callback`, `task`, `wifi`, `location`, `network`, `navigation`, `log` | Grouped by what they do, not by owning crate. |
 | Opt-in products | `embedded_browser` (`browser-runtime`), `terminal` (`terminal-runtime`), `capture`, `automation_runtime`, `product_cli`, `dev` (`devtool`) | Each behind its feature, so a product build without it carries none of the code. |
 
 ## Host app update
@@ -70,14 +70,14 @@ It configures the transport (`require_local_proxy`, `reapply_local_proxy`,
 `block_downloads`, `use_system_network`) and reads browser-owned download
 state (`downloads`, `download_action`), never with caller-supplied filesystem
 paths. The proxy contract (fail-closed, per-platform scope, threading) is
-documented on the module's rustdoc in `crates/lingxia/src/embedded_browser.rs`;
+documented on the `lingxia::embedded_browser` module's rustdoc;
 keep it there.
 
 ## What stays internal
 
 | Internal | Why |
 | --- | --- |
-| `lxapp::init`, install/load orchestration, built-in app ownership, route wiring | Sequenced by the facade's init path; apps have no reason to call them. |
+| Runtime init, install/load orchestration, built-in app ownership, route wiring | Sequenced by the facade's init path; apps have no reason to call them. |
 | Page attach/detach, popup and overlay orchestration, page target resolution, WebView controller lifecycle | Platform lifecycle with no authoring use; see [webview-lifecycle.md](webview-lifecycle.md). |
 | Browser tab models and `lingxia-browser` | The browser product registers itself at init when its feature is on; apps reach it only through `embedded_browser`. |
 | `lingxia-native-macros` | Re-exported as `lingxia::native`. |
