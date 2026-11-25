@@ -27,7 +27,7 @@ export const progressBarRecipe = {
     base: 'text-footnote text-muted tabular-nums',
   },
   track: {
-    base: 'self-stretch overflow-hidden rounded-full bg-text/10',
+    base: 'self-stretch overflow-hidden rounded-full bg-line',
     size: { sm: 'h-1', md: 'h-2' } satisfies Record<ProgressBarSize, string>,
   },
   fill: {

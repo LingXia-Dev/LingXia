@@ -18,7 +18,7 @@ test('Checkout: a named list; each step is read with its state, a finished one i
   assert.deepEqual([textOf(marker('address')), marker('address').children[0].props.color], ['2', 'accent']);
   assert.ok(marker('cart').props.accessibilityHidden && marker('payment').props.accessibilityHidden, 'the markers are not read');
   const line = id => screen.getByTestId(`checkout-${id}`).children[0].children[1];
-  assert.deepEqual([line('cart').props.background, line('address').props.background, line('review')], ['accent-solid', 'text/12', undefined], 'the line is filled behind, quiet ahead, absent after the last');
+  assert.deepEqual([line('cart').props.background, line('address').props.background, line('review')], ['accent-solid', 'line', undefined], 'the line is filled behind, quiet ahead, absent after the last');
 });
 
 test('Checkout: moving on ticks the step left behind; going back makes the later ones not started again', async () => {

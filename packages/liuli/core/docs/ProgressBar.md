@@ -214,7 +214,7 @@ export function SpinnerTones() {
 - `className` on Spinner: classes merged after the recipe's, so they win.
 - The recipe, `progressBarRecipe` from `@liulidesign/core/ProgressBar/recipe`: the classes of each part, to style an element of your own to match. The component does not read a changed copy.
 - Scale tokens it reads, set in the app's stylesheet under `@theme`: `--text-footnote`, `--animate-progress-march`, `--animate-progress-march-rtl`.
-- Colour roles it paints with, set by the theme pack: `accent`, `danger-mark`, `on-media`, `success-mark`, `text`, `text-muted`, `warning-mark`.
+- Colour roles it paints with, set by the theme pack: `accent`, `danger-mark`, `line`, `on-media`, `success-mark`, `text`, `text-muted`, `warning-mark`.
 
 ## Accessibility
 

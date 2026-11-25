@@ -9,7 +9,7 @@ export const circularProgressParts = {
   value: 'text',
 } as const;
 
-/** A ring: the track in the same faint ink as ProgressBar's, the arc in the tone, the app's words in the middle. */
+/** A ring: the track in the line role, as ProgressBar's, the arc in the tone, the app's words in the middle. */
 export const circularProgressRecipe = {
   /** The ring, and the words beside it when they outgrow its middle. */
   root: {
@@ -20,7 +20,7 @@ export const circularProgressRecipe = {
     size: { sm: 'size-6', md: 'size-12', lg: 'size-20' } satisfies Record<CircularProgressSize, string>,
   },
   track: {
-    base: 'absolute inset-0 size-full text-text/10',
+    base: 'absolute inset-0 size-full text-line',
   },
   fill: {
     base: 'absolute inset-0 size-full',

@@ -51,7 +51,7 @@ export const stepperRecipe = {
     base: 'rounded-full',
     orientation: { horizontal: 'grow h-0.5 mx-1.5', vertical: 'grow w-0.5 my-1 min-h-3' } satisfies Record<StepperOrientation, string>,
     done: 'bg-accent-solid',
-    ahead: 'bg-text/12',
+    ahead: 'bg-line',
   },
   body: {
     column: 'grow shrink basis-0 min-w-0 pt-0.5',

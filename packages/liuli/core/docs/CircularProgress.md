@@ -112,7 +112,7 @@ export function Tones() {
 - `className`: classes merged after the recipe's, so they win.
 - The recipe, `circularProgressRecipe` from `@liulidesign/core/CircularProgress/recipe`: the classes of each part, to style an element of your own to match. The component does not read a changed copy.
 - Scale tokens it reads, set in the app's stylesheet under `@theme`: `--text-caption`, `--text-callout`.
-- Colour roles it paints with, set by the theme pack: `accent`, `danger-mark`, `success-mark`, `text`, `warning-mark`.
+- Colour roles it paints with, set by the theme pack: `accent`, `danger-mark`, `line`, `success-mark`, `text`, `warning-mark`.
 
 ## Accessibility
 
