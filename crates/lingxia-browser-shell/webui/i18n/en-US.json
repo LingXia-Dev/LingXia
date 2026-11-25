@@ -75,6 +75,14 @@
     "defaultMessage": "Show in the sidebar",
     "description": "Browser system pages: bookmarks.pinToSidebar"
   },
+  "bookmarks.other": {
+    "defaultMessage": "Other",
+    "description": "Browser system pages: bookmarks.other"
+  },
+  "bookmarks.pinHint": {
+    "defaultMessage": "Pinned bookmarks show as icons at the top of the sidebar, one click away.",
+    "description": "Browser system pages: bookmarks.pinHint"
+  },
   "bookmarks.moveUp": {
     "defaultMessage": "Move up",
     "description": "Accessible label of the arrow that moves a bookmark one place up in its group"
@@ -154,6 +162,26 @@
   "bookmarks.status.exported": {
     "defaultMessage": "{count, plural, one {Exported # bookmark} other {Exported # bookmarks}}",
     "description": "After an HTML export."
+  },
+  "bookmarks.problem.url": {
+    "defaultMessage": "Enter a web address that starts with http:// or https://",
+    "description": "Browser system pages: bookmarks.problem.url"
+  },
+  "bookmarks.problem.groupExists": {
+    "defaultMessage": "A group named “{name}” already exists",
+    "description": "Browser system pages: bookmarks.problem.groupExists"
+  },
+  "bookmarks.problem.sidebarFull": {
+    "defaultMessage": "The sidebar holds {max} pins. Unpin one first.",
+    "description": "Browser system pages: bookmarks.problem.sidebarFull"
+  },
+  "bookmarks.problem.gone": {
+    "defaultMessage": "This was removed in the meantime",
+    "description": "Browser system pages: bookmarks.problem.gone"
+  },
+  "bookmarks.problem.failed": {
+    "defaultMessage": "Couldn’t save. Try again.",
+    "description": "Browser system pages: bookmarks.problem.failed"
   },
   "history.title": {
     "defaultMessage": "History",

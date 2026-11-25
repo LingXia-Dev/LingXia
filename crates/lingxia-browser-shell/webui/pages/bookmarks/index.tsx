@@ -13,12 +13,13 @@ import { Select } from '@liulidesign/core/Select';
 import { Switch } from '@liulidesign/core/Switch';
 import { TextInput } from '@liulidesign/core/TextInput';
 import { ToastRegion, useToast } from '@liulidesign/core/Toast';
-import { hostOf } from '../../shared/format';
+import { hostOf, originOf } from '../../shared/format';
 import { SiteIcon } from '../../shared/SiteIcon';
 import type { View } from './$types';
 
 const ALL = '__all__';
 const UNGROUPED = '__ungrouped__';
+const PINNED = '__pinned__';
 // A fixed height lets the list place any of thousands of imported bookmarks without measuring them.
 const ROW_HEIGHT = 56;
 
@@ -39,6 +40,8 @@ function Bookmarks({ data, actions }: View) {
   const query = useLocal('query', '');
   // Which dialog is open: '' for none, 'add', 'group', 'renameGroup', 'deleteGroup', or `edit:<id>`.
   const dialog = useLocal('dialog', '');
+  // Why the open dialog's save failed; cleared whenever a dialog opens or closes.
+  const problem = useLocal<string | null>('problem', null);
   const formTitle = useLocal('formTitle', '');
   const formUrl = useLocal('formUrl', '');
   const formGroup = useLocal<string>('formGroup', UNGROUPED);
@@ -70,21 +73,35 @@ function Bookmarks({ data, actions }: View) {
   const q = query.value.trim().toLowerCase();
   const visible = data.entries.filter((entry) => {
     if (data.selectedGroupId === UNGROUPED && entry.groupId) return false;
+    if (data.selectedGroupId === PINNED && !data.pinnedIds.includes(entry.id)) return false;
     if (!data.selectedGroupId.startsWith('__') && entry.groupId !== data.selectedGroupId) return false;
     return !q || entry.title.toLowerCase().includes(q) || entry.url.toLowerCase().includes(q);
   });
   const selectedGroup = data.groups.find((group) => group.id === data.selectedGroupId);
   const groupIndex = selectedGroup ? data.groups.indexOf(selectedGroup) : -1;
   // Order is kept per group, so reorder only while one group's list shows in full.
-  const canReorder = data.selectedGroupId !== ALL && !q;
-  const heading = selectedGroup?.name ?? (data.selectedGroupId === UNGROUPED ? t('bookmarks.ungrouped') : t('bookmarks.all'));
+  const canReorder = data.selectedGroupId !== ALL && data.selectedGroupId !== PINNED && !q;
+  const heading = selectedGroup?.name
+    ?? (data.selectedGroupId === UNGROUPED ? t('bookmarks.other') : data.selectedGroupId === PINNED ? t('bookmarks.pinned') : t('bookmarks.all'));
+  const pinnedCount = data.entries.filter((entry) => data.pinnedIds.includes(entry.id)).length;
+  const ungroupedCount = data.entries.filter((entry) => !entry.groupId).length;
   const groupItems = [
     { value: UNGROUPED, label: t('bookmarks.ungrouped') },
     ...data.groups.map((group) => ({ value: group.id, label: group.name })),
   ];
   const editing = dialog.value.startsWith('edit:') ? data.entries.find((entry) => `edit:${entry.id}` === dialog.value) : undefined;
 
-  const close = () => dialog.set('');
+  const close = () => { problem.set(null); dialog.set(''); };
+  // Read while rendering: `t` throws once a handler has awaited.
+  const failedText = t('bookmarks.problem.failed');
+  /** Closes a dialog whose save went through; a failed one stays open with its input and says why. */
+  const settle = (result: { ok: true; value: { problem: string } | null } | { ok: false }) => {
+    if (result.ok && !result.value) close();
+    else problem.set(result.ok && result.value ? result.value.problem : failedText);
+  };
+  const problemLine = problem.value
+    ? <text role="alert" className="text-footnote text-danger" data-testid="bookmarks-dialog-problem">{problem.value}</text>
+    : null;
   const openAdd = () => {
     formTitle.set('');
     formUrl.set('');
@@ -122,7 +139,7 @@ function Bookmarks({ data, actions }: View) {
           labelEnd={data.pinnedIds.includes(entry.id) ? <Icon name="star" size="sm" label={t('bookmarks.pinned')} className="text-muted" /> : undefined}
           description={entry.url}
           descriptionLines={1}
-          startContent={<SiteIcon host={hostOf(entry.url)} />}
+          startContent={<SiteIcon host={hostOf(entry.url)} icon={data.icons[originOf(entry.url) ?? '']} />}
           density="compact"
           onClick={() => { void openUrl.run({ url: entry.url }); }}
           endAction={{ label: t('bookmarks.editNamed', { title }), icon: 'more', onClick: () => openEdit(entry), 'data-testid': `bookmark-edit-${entry.id}` }}
@@ -150,7 +167,9 @@ function Bookmarks({ data, actions }: View) {
             sections={[
               { id: 'library', items: [
                 { value: ALL, label: t('bookmarks.all'), endText: String(data.entries.length) },
-                { value: UNGROUPED, label: t('bookmarks.ungrouped') },
+                ...(pinnedCount ? [{ value: PINNED, label: t('bookmarks.pinned'), endText: String(pinnedCount) }] : []),
+                // Without groups every bookmark is ungrouped, so "Other" would repeat "All".
+                ...(data.groups.length && ungroupedCount ? [{ value: UNGROUPED, label: t('bookmarks.other'), endText: String(ungroupedCount) }] : []),
               ] },
               ...(data.groups.length ? [{ id: 'groups', title: t('bookmarks.groups'), items: data.groups.map((group) => ({
                 value: group.id,
@@ -189,6 +208,12 @@ function Bookmarks({ data, actions }: View) {
             </DropdownMenu>
           </view>
           <SearchField label={t('bookmarks.search')} isLabelHidden placeholder={t('bookmarks.search')} bind={query} data-testid="bookmarks-search" />
+          {data.selectedGroupId === PINNED ? (
+            <view className="flex-row items-center gap-2 text-muted" data-testid="bookmarks-pin-hint">
+              <Icon name="star" size="sm" />
+              <text className="shrink min-w-0 text-footnote text-muted">{t('bookmarks.pinHint')}</text>
+            </view>
+          ) : null}
           {data.loading ? null : visible.length === 0 ? (
             <EmptyState
               title={q ? t('bookmarks.noMatches') : t('bookmarks.empty')}
@@ -224,8 +249,7 @@ function Bookmarks({ data, actions }: View) {
               variant="primary"
               isDisabled={!formUrl.value.trim()}
               clickAction={async () => {
-                const result = await addBookmark.run({ title: formTitle.value, url: formUrl.value, groupId: data.selectedGroupId });
-                if (result.ok) close();
+                settle(await addBookmark.run({ title: formTitle.value, url: formUrl.value, groupId: data.selectedGroupId }));
               }}
               data-testid="bookmarks-add-save"
             />
@@ -235,6 +259,7 @@ function Bookmarks({ data, actions }: View) {
         <view className="gap-4">
           <TextInput label={t('bookmarks.url')} bind={formUrl} type="text" inputMode="text" autoCapitalize="none" placeholder="https://" hasAutoFocus isRequired />
           <TextInput label={t('bookmarks.name')} bind={formTitle} optionalLabel={t('common.optional')} />
+          {problemLine}
         </view>
       </Dialog>
 
@@ -259,8 +284,7 @@ function Bookmarks({ data, actions }: View) {
               variant="primary"
               clickAction={async () => {
                 if (!editing) return;
-                const result = await updateBookmark.run({ id: editing.id, title: formTitle.value, groupId: formGroup.value, pinned: formPinned.value });
-                if (result.ok) close();
+                settle(await updateBookmark.run({ id: editing.id, title: formTitle.value, groupId: formGroup.value, pinned: formPinned.value }));
               }}
               data-testid="bookmarks-edit-save"
             />
@@ -270,7 +294,8 @@ function Bookmarks({ data, actions }: View) {
         <view className="gap-4">
           <TextInput label={t('bookmarks.name')} bind={formTitle} placeholder={editing?.url} />
           {data.groups.length ? <Select label={t('bookmarks.group')} bind={formGroup} items={groupItems} /> : null}
-          <Switch label={t('bookmarks.pinToSidebar')} bind={formPinned} />
+          <Switch label={t('bookmarks.pinToSidebar')} description={t('bookmarks.pinHint')} bind={formPinned} />
+          {problemLine}
         </view>
       </Dialog>
 
@@ -287,17 +312,19 @@ function Bookmarks({ data, actions }: View) {
               variant="primary"
               isDisabled={!groupName.value.trim()}
               clickAction={async () => {
-                const result = dialog.value === 'group' || !selectedGroup
+                settle(dialog.value === 'group' || !selectedGroup
                   ? await createGroup.run({ name: groupName.value })
-                  : await renameGroup.run({ id: selectedGroup.id, name: groupName.value });
-                if (result.ok) close();
+                  : await renameGroup.run({ id: selectedGroup.id, name: groupName.value }));
               }}
               data-testid="bookmarks-group-save"
             />
           </>
         }
       >
-        <TextInput label={t('bookmarks.groupName')} bind={groupName} hasAutoFocus />
+        <view className="gap-4">
+          <TextInput label={t('bookmarks.groupName')} bind={groupName} hasAutoFocus />
+          {problemLine}
+        </view>
       </Dialog>
 
       <Dialog

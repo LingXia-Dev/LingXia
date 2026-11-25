@@ -1,5 +1,6 @@
 import { invoke, watch } from '../../shared/native';
 import { definePage, lx } from '@lingxia/logic';
+import { siteIconCache } from '../../shared/siteIcons';
 
 interface BookmarkGroup {
   id: string;
@@ -25,35 +26,75 @@ interface BookmarksData {
   entries: BookmarkEntry[];
   pinnedIds: string[];
   selectedGroupId: string;
+  /** Cached site icons by origin; a site without one shows its monogram. */
+  icons: Record<string, string>;
   loading: boolean;
 }
 
-/** A toast for the View: a catalogue key and its count. */
 /** A toast's text, translated here: the View's `t` works only while rendering. */
 type Notice = { message: string };
+/** Why a dialog's save failed, in the user's words; the dialog stays open with its input. */
+type Problem = { problem: string } | null;
+
+/** The pin limit travels as `data.max`; anything else is said plainly, never as the route's text. */
+function problemOf(error: unknown): Problem {
+  console.warn('bookmark save failed', error);
+  const max = (error as { data?: { max?: unknown } } | null)?.data?.max;
+  if (typeof max === 'number') return { problem: lx.app.t('bookmarks.problem.sidebarFull', { max }) };
+  return { problem: lx.app.t('bookmarks.problem.failed') };
+}
+
+const WEB_URL = /^https?:\/\/[^\s/?#]+/i;
 
 const initialData: BookmarksData = {
   groups: [],
   entries: [],
   pinnedIds: [],
   selectedGroupId: '__all__',
+  icons: {},
   loading: true,
 };
 
 export default definePage({
   data: initialData,
   setup(page) {
+    const icons = siteIconCache((found) => {
+      page.update((d) => {
+        for (const [origin, icon] of found) d.icons[origin] = icon;
+      });
+    });
+
     function apply(view: BookmarksView) {
+      void icons.want(view.entries.map((entry) => entry.url));
       page.update((d) => {
         d.groups = view.groups;
         d.entries = view.entries;
         d.pinnedIds = view.pinnedIds;
-        if (d.selectedGroupId !== '__all__' && d.selectedGroupId !== '__ungrouped__'
-          && !view.groups.some((group) => group.id === d.selectedGroupId)) {
-          d.selectedGroupId = '__all__';
-        }
+        // A scope whose rail entry went away falls back to All.
+        const scope = d.selectedGroupId;
+        const gone = scope === '__pinned__' ? !view.pinnedIds.length
+          : scope === '__ungrouped__' ? !view.groups.length
+            : scope !== '__all__' && !view.groups.some((group) => group.id === scope);
+        if (gone) d.selectedGroupId = '__all__';
         d.loading = false;
       });
+    }
+
+    /** Creates a group, or renames group `id`; a name another group has is refused here, in words. */
+    async function saveGroupName(name: string, id: string | undefined): Promise<Problem> {
+      const trimmed = name.trim();
+      if (!trimmed) return null;
+      if (page.data.groups.some((group) => group.name === trimmed && group.id !== id)) {
+        return { problem: lx.app.t('bookmarks.problem.groupExists', { name: trimmed }) };
+      }
+      try {
+        if (id) await invoke('bookmarks.renameGroup', { id, name: trimmed });
+        else await invoke('bookmarks.createGroup', { name: trimmed });
+      } catch (error) {
+        return problemOf(error);
+      }
+      await refresh();
+      return null;
     }
 
     async function refresh() {
@@ -81,23 +122,37 @@ export default definePage({
         async selectGroup({ groupId }: { groupId: string }) {
           page.update((d) => { d.selectedGroupId = groupId; });
         },
-        async addBookmark({ title, url, groupId }: { title: string; url: string; groupId: string }) {
-          await invoke('bookmarks.add', {
-            url: url.trim(),
-            title: title.trim() || undefined,
-            groupId: groupId.startsWith('__') ? undefined : groupId,
-          });
+        async addBookmark({ title, url, groupId }: { title: string; url: string; groupId: string }): Promise<Problem> {
+          if (!WEB_URL.test(url.trim())) return { problem: lx.app.t('bookmarks.problem.url') };
+          try {
+            const added = await invoke<{ entry: { id: string } }>('bookmarks.add', {
+              url: url.trim(),
+              title: title.trim() || undefined,
+              groupId: groupId.startsWith('__') ? undefined : groupId,
+            });
+            // Added while Pinned shows, it is pinned so it stays in view.
+            if (groupId === '__pinned__') await invoke('bookmarks.setPinned', { id: added.entry.id, pinned: true });
+          } catch (error) {
+            return problemOf(error);
+          }
           await refresh();
+          return null;
         },
         /** Applies the edit form: only what changed goes to the store. */
-        async updateBookmark({ id, title, groupId, pinned }: { id: string; title: string; groupId: string; pinned: boolean }) {
+        async updateBookmark({ id, title, groupId, pinned }: { id: string; title: string; groupId: string; pinned: boolean }): Promise<Problem> {
           const entry = page.data.entries.find((item) => item.id === id);
-          if (!entry) return;
+          if (!entry) return { problem: lx.app.t('bookmarks.problem.gone') };
           const nextGroup = groupId.startsWith('__') ? undefined : groupId;
-          if (title.trim() !== entry.title) await invoke('bookmarks.rename', { id, title: title.trim() });
-          if (nextGroup !== entry.groupId) await invoke('bookmarks.move', { id, groupId: nextGroup });
-          if (pinned !== page.data.pinnedIds.includes(id)) await invoke('bookmarks.setPinned', { id, pinned });
+          try {
+            if (title.trim() !== entry.title) await invoke('bookmarks.rename', { id, title: title.trim() });
+            if (nextGroup !== entry.groupId) await invoke('bookmarks.move', { id, groupId: nextGroup });
+            if (pinned !== page.data.pinnedIds.includes(id)) await invoke('bookmarks.setPinned', { id, pinned });
+          } catch (error) {
+            await refresh();
+            return problemOf(error);
+          }
           await refresh();
+          return null;
         },
         async removeBookmark({ id }: { id: string }) {
           await invoke('bookmarks.remove', { id });
@@ -119,17 +174,12 @@ export default definePage({
           await invoke('bookmarks.setPinned', { id, pinned });
           await refresh();
         },
-        async createGroup({ name }: { name: string }) {
-          const trimmed = name.trim();
-          if (!trimmed) return;
-          await invoke('bookmarks.createGroup', { name: trimmed });
-          await refresh();
+        async createGroup({ name }: { name: string }): Promise<Problem> {
+          return saveGroupName(name, undefined);
         },
-        async renameGroup({ id, name }: { id: string; name: string }) {
-          const trimmed = name.trim();
-          if (!trimmed) return;
-          await invoke('bookmarks.renameGroup', { id, name: trimmed });
-          await refresh();
+        async renameGroup({ id, name }: { id: string; name: string }): Promise<Problem> {
+          if (!page.data.groups.some((group) => group.id === id)) return { problem: lx.app.t('bookmarks.problem.gone') };
+          return saveGroupName(name, id);
         },
         async shiftGroup({ id, delta }: { id: string; delta: -1 | 1 }) {
           const orderedIds = shifted(page.data.groups.map((group) => group.id), id, delta);

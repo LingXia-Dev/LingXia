@@ -75,6 +75,14 @@
     "defaultMessage": "在侧边栏显示",
     "description": "Browser system pages: bookmarks.pinToSidebar"
   },
+  "bookmarks.other": {
+    "defaultMessage": "其他",
+    "description": "Browser system pages: bookmarks.other"
+  },
+  "bookmarks.pinHint": {
+    "defaultMessage": "固定的书签以图标显示在侧栏顶部，一键即可打开。",
+    "description": "Browser system pages: bookmarks.pinHint"
+  },
   "bookmarks.moveUp": {
     "defaultMessage": "上移",
     "description": "Accessible label of the arrow that moves a bookmark one place up in its group"
@@ -154,6 +162,26 @@
   "bookmarks.status.exported": {
     "defaultMessage": "已导出 {count} 个书签",
     "description": "After an HTML export."
+  },
+  "bookmarks.problem.url": {
+    "defaultMessage": "请输入以 http:// 或 https:// 开头的网址",
+    "description": "Browser system pages: bookmarks.problem.url"
+  },
+  "bookmarks.problem.groupExists": {
+    "defaultMessage": "已有名为“{name}”的分组",
+    "description": "Browser system pages: bookmarks.problem.groupExists"
+  },
+  "bookmarks.problem.sidebarFull": {
+    "defaultMessage": "侧栏最多固定 {max} 项，请先取消固定一项。",
+    "description": "Browser system pages: bookmarks.problem.sidebarFull"
+  },
+  "bookmarks.problem.gone": {
+    "defaultMessage": "它已被删除",
+    "description": "Browser system pages: bookmarks.problem.gone"
+  },
+  "bookmarks.problem.failed": {
+    "defaultMessage": "无法保存，请重试。",
+    "description": "Browser system pages: bookmarks.problem.failed"
   },
   "history.title": {
     "defaultMessage": "历史记录",
