@@ -8,7 +8,7 @@
 - RTL: use `ps`/`ms`/`start-`/`text-start` etc.; they mirror with `env.direction` (from the
   display language) or a `dir` prop. Mirror icons with `rtl:-scale-x-100`.
 - Colours are theme roles, never hex: `bg-surface`, `text-muted`, `border-line` (decorative) or
-  `border-line-strong` (editors, controls), `bg-accent-solid text-on-accent-solid` (pressed or switched controls; badges and labels keep `bg-accent text-on-accent`, `accent` text and rings), `bg-text/8`; plot series
+  `border-line-strong` (editors, controls; other roles at an opacity on an edge warn `UI_CLASS_EDGE`), `bg-accent-solid text-on-accent-solid` (pressed or switched controls; badges and labels keep `bg-accent text-on-accent`, `accent` text and rings), `bg-text/8`; plot series
   `chart-1`..`chart-8`; controls over video `bg-media text-on-media` (tracks `on-media/25`). Roles follow appearance, so `dark:` on a colour fails (`UI_COLOR`).
 - Type, radius, spacing and motion are theme steps: `text-sm`, `rounded-lg`, `p-4`, `duration-fast|base|slow`,
   `ease-standard|enter|exit|spring` (not milliseconds). Liuli's names come from the same ramps:

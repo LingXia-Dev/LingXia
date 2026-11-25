@@ -917,6 +917,36 @@ export function render() {
   });
 });
 
+test('UI_CLASS_EDGE warns on an edge tinted from a non-line role at an opacity; disabled looks, on-media edges and a tone or accent edge on its soft fill stay quiet', async () => {
+  await project({
+    'page.tsx': `export function render() {
+  return <view className="divide-y divide-text/10">
+    <view className="border border-text/12" />
+    <view className="border-b border-line" />
+    <view className="border border-line-strong/60" />
+    <view className="border-2 border-accent" />
+    <view className="bg-text/8" />
+    <button className="border border-line-strong disabled:border-text/12" disabled onClick={() => {}}><text>off</text></button>
+    <view className={field.disabled} />
+    <view className={field.offDisabled} />
+    <view className={field.quiet} />
+    <view className={tone.danger} />
+    <view className="border border-on-media/20" />
+    <view className="bg-info-soft border border-info/20" />
+    <view className="bg-accent-soft border-2 border-accent/40" />
+    <view className="bg-surface border border-accent/20" />
+  </view>;
+}
+const field = { disabled: 'border border-text/8', offDisabled: 'border border-text/12', quiet: 'border border-muted/30' };
+const tone = { danger: 'bg-surface border border-danger/25' };`,
+  }, async (root, build) => {
+    const { warnings } = await build();
+    await load(root);
+    assert.deepEqual(warnings.map(line => line.replace(/: UI_CLASS_EDGE: .*/, '')), ['page.tsx:2:26', 'page.tsx:3:21', 'page.tsx:16:21', 'page.tsx:19:96', 'page.tsx:20:24']);
+    assert.match(warnings[1], /border-text\/12 tints an edge text\/12.*use border-line for a separator or border-line-strong/);
+  });
+});
+
 test('an element its props make a keyboard stop takes focus-visible:', async () => {
   await project({
     'page.tsx': `import { useLocal } from '@lingxia/view';

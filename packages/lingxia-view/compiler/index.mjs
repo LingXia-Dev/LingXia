@@ -333,6 +333,31 @@ export function identify(source, filename, label) {
     volatile.map(name => `${name}.__lxVolatile = true;\n`).join('');
 }
 
+// An edge tinted from a non-line role misses the high-contrast boost the line roles carry.
+const edgeColor = /^(?:border|outline)\w*Color$/;
+// `on-media` edges sit over video or a picture, where the theme's line roles do not apply.
+const lineRoles = new Set(['line', 'line-strong', 'on-media']);
+function edgeRole(style) {
+  for (const key in style) {
+    const value = style[key];
+    if (value && typeof value === 'object') { const found = edgeRole(value); if (found) return found; }
+    else if (edgeColor.test(key) && typeof value === 'string') {
+      const role = value.match(/^([a-z][a-z-]*)\/\d+$/)?.[1];
+      if (role && !lineRoles.has(role)) return value;
+    }
+  }
+  return undefined;
+}
+
+// A disabled control's edge may stay faint (WCAG 1.4.11 exempts inactive components), by variant or by a `disabled` slot.
+// A tone's edge over that tone's soft fill (a status panel, a selection or drop-zone tint): the fill carries the boundary.
+const tones = new Set(['accent', 'info', 'success', 'warning', 'danger']);
+const softFilled = (tint, names, rulesByName) => {
+  const tone = tint.split('/')[0];
+  return tones.has(tone) && names.some(name => (rulesByName.get(name) ?? []).some(rule => !Object.keys(rule.when ?? {}).length && rule.style?.backgroundColor === `${tone}-soft`));
+};
+const disabledEdge = (rule, name) => rule.when?.state === 'disabled' || rule.when?.state === 'hasDisabled' || /(?:^|:)aria-disabled:/.test(name);
+
 function classProblems(rule, name, tag, suggestions, grid, focusable = false) {
   if (!rule) {
     const nearest = suggestions.get(name);
@@ -698,7 +723,8 @@ export async function buildPages(root, pages, output, catalogs = {}, { dev = fal
     const suggestions = await nearestSupported(unknown, theme);
     // A name the checks reach but the collection missed is a valid utility the table lacks, not a typo.
     const uncollected = new Map(unknown.length ? (await compileUtilities(new Set(unknown), theme, { literalColors })).map(rule => [rule.name, rule]) : []);
-    for (const { value, location, tag, focusable } of usages) {
+    const edges = [];
+    for (const { value, location, tag, focusable, disabled } of usages) {
       const names = value.split(/\s+/).filter(Boolean);
       const grid = names.includes('grid');
       for (const name of names) {
@@ -709,6 +735,8 @@ export async function buildPages(root, pages, output, catalogs = {}, { dev = fal
         }
         const found = rulesByName.get(name) ?? [late];
         for (const problem of new Set(found.flatMap(rule => classProblems(rule, name, tag, suggestions, grid, focusable)))) problems.push(`${location}: ${problem}`);
+        const tint = !disabled && found.map(rule => rule && !rule.error && !disabledEdge(rule, name) && edgeRole(rule.style)).find(Boolean);
+        if (tint && !softFilled(tint, names, rulesByName)) edges.push(`${location}: UI_CLASS_EDGE: ${name} tints an edge ${tint}, which high contrast does not strengthen; use border-line for a separator or border-line-strong for an interactive boundary`);
       }
     }
     const ownFile = file => !file.fileName.includes(`${sep}node_modules${sep}`);
@@ -734,7 +762,7 @@ export async function buildPages(root, pages, output, catalogs = {}, { dev = fal
       warnings.push(...lines.text.split('\n'));
       console.warn(`${page}: ${lines.count} control warning${lines.count === 1 ? '' : 's'}\n${lines.text}`);
     }
-    const statics = staticStyleWarnings(own);
+    const statics = [...staticStyleWarnings(own), ...new Set(edges)];
     if (statics.length) {
       const lines = report(statics.map(line => packageRelative(root, line)), rel);
       warnings.push(...lines.text.split('\n'));

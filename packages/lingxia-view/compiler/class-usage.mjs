@@ -797,6 +797,13 @@ function location(node) {
   return `${owner.fileName}:${line + 1}:${character + 1}`;
 }
 
+// A literal held under a key that names a disabled look (`disabled`, `offDisabled`).
+function disabledLook(node) {
+  for (let at = node; at && !ts.isSourceFile(at); at = at.parent)
+    if (ts.isPropertyAssignment(at) && /^disabled$|Disabled$/.test(at.name.getText())) return true;
+  return false;
+}
+
 /** Every `className` in `file` as checked usages; what the build cannot follow goes to `untraced`.
  * A usage is `complete` when its whole className was followed to literals. */
 function collectClassUsage(file, checker, untraced, calls) {
@@ -804,7 +811,7 @@ function collectClassUsage(file, checker, untraced, calls) {
   const record = (expression, tag, focusable) => {
     const result = answer(expression, calls, () => traceClasses(checker, expression, NO_KNOWN, calls));
     const complete = result.untraced.length === 0;
-    for (const { text, node } of result.pieces) usages.push({ value: text, tag, focusable, location: location(node), complete });
+    for (const { text, node } of result.pieces) usages.push({ value: text, tag, focusable, location: location(node), complete, disabled: disabledLook(node) });
     untraced.push(...result.untraced);
   };
   const spread = ({ node, tag }) => {
