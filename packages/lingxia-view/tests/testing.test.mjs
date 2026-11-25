@@ -61,6 +61,45 @@ export const formatter = () => ({ j: parts => parts.join('') });
   } finally { await rm(root, { recursive: true, force: true }); }
 });
 
+test('a channels double serves the page\'s useChannel through its own bridge, both ways', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'lingxia-view-testing-channels-'));
+  try {
+    await writeFile(join(root, 'lxapp.json'), '{}');
+    await writeFile(join(root, 'page.tsx'), `import { useChannel, useLocal, useView } from '@lingxia/view';
+export function render() {
+  const { actions } = useView();
+  const lines = useLocal<string[]>('lines', []);
+  const feed = useChannel('feed', actions.feed, { params: { room: 'a' }, onData: line => lines.set(latest => [...latest, String(line)]) });
+  return <view>
+    <text data-testid="state">{feed.connected ? 'open' : 'closed'}: {lines.value.join(',')}</text>
+    <button data-testid="say" onClick={() => feed.send('hi')}>Say</button>
+    <link data-testid="away" to={{ page: 'other' }}><text>Away</text></link>
+  </view>;
+}
+`);
+    const heard = [], opened = [];
+    let logic;
+    const screen = await render(join(root, 'page.tsx'), { channels: { feed(channel, params) {
+      logic = channel; opened.push(params);
+      channel.on('data', payload => { heard.push(payload); channel.send(`echo ${payload}`); });
+      channel.send('welcome');
+    } } });
+    await screen.settle();
+    assert.deepEqual(opened, [{ room: 'a' }]);
+    assert.equal(textOf(screen.getByTestId('state')), 'open: welcome');
+    screen.press(screen.getByTestId('say'));
+    await screen.settle();
+    assert.deepEqual(heard, ['hi']);
+    assert.equal(textOf(screen.getByTestId('state')), 'open: welcome,echo hi');
+    logic.close('done', 'bye');
+    await screen.settle();
+    assert.equal(textOf(screen.getByTestId('state')), 'closed: welcome,echo hi');
+    screen.press(screen.getByTestId('away'));
+    assert.deepEqual(screen.takeRequests().map(message => message.method), ['nav.go']);
+    assert.throws(() => screen.rerender({ channels: {} }), /served from the first render/);
+  } finally { await rm(root, { recursive: true, force: true }); }
+});
+
 test('each render has its own runtime', () => withPage(async page => {
   const first = await render(page), second = await render(page);
   first.press(first.getByTestId('inc'));

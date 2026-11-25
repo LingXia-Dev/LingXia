@@ -13,8 +13,26 @@ export interface WireNode {
 /** The page's runtime, isolated in its own context. */
 export type Host = object;
 
-/** `env` defaults to `defaultEnv()`; the fields given replace its own. */
-export interface ViewInput { data?: Record<string, unknown>; env?: Record<string, unknown>; actions?: Record<string, unknown> }
+/** Logic's end of a page channel, as a `channels` handler gets it. */
+export interface ServedChannel {
+  /** Delivers `payload` to the page's `onData`. */
+  send(payload: unknown): void;
+  /** Closes the channel from Logic's side. */
+  close(code?: string, reason?: string): void;
+  /** `data`: what the page's `send` sent; `close`: the page closed it. Returns an unsubscribe. */
+  on(event: "data", listener: (payload: unknown) => void): () => void;
+  on(event: "close", listener: (closed: { code: string; reason: string }) => void): () => void;
+}
+
+/**
+ * `env` defaults to `defaultEnv()`; the fields given replace its own. `channels` plays Logic's side of
+ * the page's channels: each name becomes a page action a `useChannel` opens through the page's own
+ * bridge, and its handler is called once per open with Logic's end and the params.
+ */
+export interface ViewInput {
+  data?: Record<string, unknown>; env?: Record<string, unknown>; actions?: Record<string, unknown>;
+  channels?: Record<string, (channel: ServedChannel, params: unknown) => void>;
+}
 
 export interface Screen {
   readonly root: WireNode;
@@ -73,6 +91,10 @@ export interface Screen {
   escape(): boolean;
   /** Merges `data` and `env` into the current view and re-renders; local state is kept. */
   rerender(view: ViewInput): void;
+  /** Re-renders until the page's channel frames and the promises they settle have run out. */
+  settle(): Promise<void>;
+  /** With `channels`, the other messages the page sent (`nav.go`, …), unanswered, oldest first. */
+  takeRequests(): Array<{ kind: string; [field: string]: unknown }>;
 }
 
 /** A phone: 390×844 light, ltr, `en-US`, coarse pointer, no insets; `overrides` replace fields. */

@@ -143,7 +143,10 @@ export function defaultEnv(overrides = {}) {
 
 function screen(host, view, resolved) {
   let given = view.env ?? {};
-  let current = { data: {}, ...view, env: defaultEnv(given) };
+  const { channels: served, ...rest } = view;
+  let current = { data: {}, ...rest, env: defaultEnv(given) };
+  const bridge = served ? serveChannels(host, served) : null;
+  if (bridge) current = { ...current, actions: { ...current.actions, ...bridge.actions }, channels: bridge.channels };
   // With `points`, every node's props read in points, as the built-in pack resolves them.
   const read = () => {
     const decoded = decode(describePage(host, current));
@@ -151,7 +154,8 @@ function screen(host, view, resolved) {
     return decoded;
   };
   let nodes = read();
-  const refresh = () => { nodes = read(); };
+  const refresh = () => { nodes = read(); bridge?.pump(); };
+  bridge?.pump();
   const single = (matches, what, onScreen) => {
     if (matches.length === 1) return matches[0];
     if (matches.length === 0) throw Error(`no node has ${what}; on screen: ${onScreen() || 'none'}`);
@@ -167,6 +171,7 @@ function screen(host, view, resolved) {
     const handle = node.props[prop];
     if (handle === undefined || handle === 0) throw Error(`${label(node)} has no ${prop}`);
     if (!dispatch(host, handle, value)) throw Error(`${label(node)} refused ${prop}(${value === undefined ? '' : JSON.stringify(value)})`);
+    bridge?.pump();
     refresh();
   };
   const json = (node, prop, payload) => fire(node, prop, JSON.stringify(payload));
@@ -211,9 +216,72 @@ function screen(host, view, resolved) {
     /** The Back or Escape a device sends: closes the topmost overlay; false when none was open. */
     escape() { const closed = host.__lingxiaEscape(); refresh(); return closed; },
     rerender(next = {}) {
+      if (next.channels) throw Error('rerender: channels are served from the first render');
       given = { ...given, ...next.env };
       current = { ...current, ...next, data: { ...current.data, ...next.data }, env: defaultEnv(given) };
       refresh();
+    },
+    /** With `channels`, the other messages the page sent (`nav.go`, …), unanswered, oldest first. */
+    takeRequests: () => bridge?.take() ?? [],
+    async settle() {
+      for (let round = 0; round < 50; round++) {
+        await new Promise(done => setImmediate(done));
+        const before = bridge?.count() ?? 0;
+        refresh();
+        if ((bridge?.count() ?? 0) === before) { await new Promise(done => setImmediate(done)); refresh(); return; }
+      }
+      throw Error('settle: the page kept sending channel frames after 50 rounds');
+    },
+  };
+}
+
+// Plays Logic's side of the page's channels: each name opens through the page's own bridge, as on a device.
+function serveChannels(host, served) {
+  const names = Object.keys(served);
+  for (const name of names) if (typeof served[name] !== 'function') throw Error(`render: channels.${name} must be a function (channel, params) => void`);
+  host.__lingxiaConfigureActions({ __names: names, __modes: Object.fromEntries(names.map(name => [name, 'call'])) });
+  const made = runInContext('__lingxiaCreateView({}, {})', host);
+  // Frames are parsed inside the page's realm, as the bridge hands them over.
+  const receive = frame => {
+    host.__lingxiaFrame = JSON.stringify(frame);
+    try { runInContext('__lingxiaReceiveActionResponse(JSON.parse(__lingxiaFrame))', host); } finally { delete host.__lingxiaFrame; }
+  };
+  const open = new Map(), unanswered = [];
+  let handled = 0;
+  return {
+    actions: Object.fromEntries(names.map(name => [name, made.actions[name]])),
+    channels: made.channels,
+    count: () => handled,
+    take: () => unanswered.splice(0),
+    pump() {
+      for (let messages; (messages = host.__lingxiaTakeViewEvents()).length;) for (const message of messages) {
+        handled++;
+        const copy = value => value === undefined ? undefined : JSON.parse(JSON.stringify(value));
+        if (message.kind === 'ch.open') {
+          const listeners = { data: new Set(), close: new Set() };
+          let seq = 0;
+          open.set(message.id, listeners);
+          receive({ v: 2, kind: 'ch.ack', id: message.id, ok: true });
+          served[message.topic]({
+            send(payload) { if (open.has(message.id)) receive({ v: 2, kind: 'ch.data', id: message.id, seq: seq++, payload: copy(payload) }); },
+            close(code = 'closed', reason = '') {
+              if (!open.delete(message.id)) return;
+              receive({ v: 2, kind: 'ch.close', id: message.id, code, reason });
+            },
+            on(event, listener) {
+              if (!listeners[event]) throw Error(`channel.on: "data" or "close", not ${JSON.stringify(event)}`);
+              listeners[event].add(listener);
+              return () => listeners[event].delete(listener);
+            },
+          }, copy(message.params));
+        } else if (message.kind === 'ch.data') {
+          for (const listener of [...open.get(message.id)?.data ?? []]) listener(copy(message.payload));
+        } else if (message.kind === 'ch.close') {
+          const listeners = open.get(message.id);
+          open.delete(message.id);
+          for (const listener of [...listeners?.close ?? []]) listener({ code: message.code, reason: message.reason });
+        } else unanswered.push(copy(message));
+      }
     },
   };
 }
