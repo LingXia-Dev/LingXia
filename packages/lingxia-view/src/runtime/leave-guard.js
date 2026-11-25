@@ -1,6 +1,7 @@
 import { resourceError } from './errors.js';
 
-export function createLeaveGuards(callHost, report) {
+// `fail` takes a handler's failure: it fails the page when failures are loud, as a throwing onClick does.
+export function createLeaveGuards(callHost, report, fail) {
   const holders = new Set(), backHolders = new Set();
   let epoch = 0, sent = false, sentBack = false, asking = false, tail = Promise.resolve();
   const sync = () => {
@@ -89,10 +90,12 @@ export function createLeaveGuards(callHost, report) {
         ask(reason) {
           // Only intercept Back, never Home.
           if (!enabled || reason !== 'back') return Promise.resolve(true);
+          const failed = (verb, error) => fail(`UI_HANDLER: onBack ${verb}: ${error instanceof Error ? error.message : String(error)}`);
           try {
-            callback?.();
+            const result = callback?.();
+            if (result && typeof result.then === 'function') Promise.resolve(result).catch(error => failed('rejected', error));
           } catch (error) {
-            report(error);
+            failed('threw', error);
           }
           return Promise.resolve(false);
         },

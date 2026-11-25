@@ -8,10 +8,10 @@ import {
 
 const flush = async () => { for (let i = 0; i < 12; i++) await Promise.resolve(); };
 function setup() {
-  const calls = [], errors = [];
-  const guards = createLeaveGuards(async (name, params) => { calls.push({ name, params }); }, error => errors.push(error));
+  const calls = [], errors = [], failures = [];
+  const guards = createLeaveGuards(async (name, params) => { calls.push({ name, params }); }, error => errors.push(error), message => failures.push(message));
   const resource = () => guards.resource({ value: { pending: null, requests: 0, error: null }, set() {} });
-  return { guards, calls, errors, resource };
+  return { guards, calls, errors, failures, resource };
 }
 
 test('keep editing cancels; repeated back produces one question; discard preserves reason', async () => {
@@ -139,4 +139,17 @@ test('sync tells the host a back handler is mounted, and clears it with the last
   assert.deepEqual(calls.splice(0), [], 'one back handler is still mounted');
   second.commit({ enabled: false, onBack() {} }); await flush();
   assert.deepEqual(calls.splice(0), [{ name: 'navigation.setLeaveGuard', params: { enabled: true } }]);
+});
+
+test('a throwing or rejecting onBack fails as a handler does, and Back stays intercepted', async () => {
+  const { guards, calls, errors, failures } = setup();
+  const back = guards.backHandler();
+  back.commit({ enabled: true, onBack() { throw Error('no seats'); } }); await flush();
+  calls.length = 0;
+  guards.request('back'); await flush();
+  back.commit({ enabled: true, onBack: async () => { await 0; throw Error('later'); } });
+  guards.request('back'); await flush();
+  assert.deepEqual(failures, ['UI_HANDLER: onBack threw: no seats', 'UI_HANDLER: onBack rejected: later']);
+  assert.deepEqual(errors, []);
+  assert.deepEqual(calls, [], 'the page does not leave');
 });

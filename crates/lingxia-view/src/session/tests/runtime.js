@@ -2448,7 +2448,7 @@
   }
 
   // src/runtime/leave-guard.js
-  function createLeaveGuards(callHost, report2) {
+  function createLeaveGuards(callHost, report2, fail) {
     const holders = /* @__PURE__ */ new Set(), backHolders = /* @__PURE__ */ new Set();
     let epoch2 = 0, sent = false, sentBack = false, asking = false, tail = Promise.resolve();
     const sync = () => {
@@ -2567,10 +2567,12 @@
           },
           ask(reason) {
             if (!enabled || reason !== "back") return Promise.resolve(true);
+            const failed = (verb, error) => fail(`UI_HANDLER: onBack ${verb}: ${error instanceof Error ? error.message : String(error)}`);
             try {
-              callback?.();
+              const result = callback?.();
+              if (result && typeof result.then === "function") Promise.resolve(result).catch((error) => failed("rejected", error));
             } catch (error) {
-              report2(error);
+              failed("threw", error);
             }
             return Promise.resolve(false);
           },
@@ -2709,7 +2711,7 @@
     handlerFailure = "";
     return result;
   }
-  var leaveGuards = createLeaveGuards(callLeaveHost, report);
+  var leaveGuards = createLeaveGuards(callLeaveHost, report, (message) => failHandler(message));
   function currentActions() {
     return { actions, channels };
   }

@@ -42,7 +42,7 @@ export function loudFailures() { return loud; }
 export function failHandler(message) { if (loud) handlerFailure ||= message.slice(0, 2048); else report(message); }
 export function takeHandlerFailure() { const result = handlerFailure; handlerFailure = ''; return result; }
 
-export const leaveGuards = createLeaveGuards(callLeaveHost, report);
+export const leaveGuards = createLeaveGuards(callLeaveHost, report, message => failHandler(message));
 
 /** The current catalog; Views capture it when created. */
 export function currentActions() { return { actions, channels }; }
