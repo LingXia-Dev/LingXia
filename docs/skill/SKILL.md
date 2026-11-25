@@ -126,8 +126,8 @@ A JS-Logic lxapp that calls Rust routes is still B. B's id rule:
 | `@lingxia/native` | Virtual module for the CLI-generated native client | lxapp View (React) | `import { native } from '@lingxia/native'` |
 | `@lingxia/page-runtime` | Internal — shared impl behind react/html | **don't import directly** | — |
 
-The CLI and host ship `@lingxia/polyfills` and `@lingxia/terminal-settings`;
-never add them to a project.
+The CLI ships `@lingxia/polyfills`; never add it. `@lingxia/terminal-settings` is
+a bundled lxapp, not an import ([`capabilities`](./app/project.md#capabilities)).
 
 ## Reference map
 
@@ -140,9 +140,9 @@ never add them to a project.
 | Write and run tests (`@lingxia/test`, `lxdev test`) | [lxapp/testing.md](./lxapp/testing.md) |
 | Mocks and scenarios: `mocks/`, `lxdev mock`, `lingxia dev --mock`, `t.scenario.use` | [lxapp/mock.md](./lxapp/mock.md) |
 | **Lxapp** | |
-| Pages: `definePage`, lifecycle, `App({})`, navigation, tab bar, page chrome, catalogues | [lxapp/guide.md](./lxapp/guide.md) |
+| Pages: `lxapp.json`, `definePage`, `App({})`, stores, navigation, tab bar, page chrome, text in several languages | [lxapp/guide.md](./lxapp/guide.md) |
 | Hook order, `App`/`Page` triggers, what each navigation or restart fires | [lxapp/lifecycle.md](./lxapp/lifecycle.md) |
-| GPU View: elements, layout, hooks, events, dialogs, inputs, accessibility, video | [lxapp/gpu/authoring.md](./lxapp/gpu/authoring.md) |
+| GPU View: elements, layout, hooks, events, dialogs, inputs, accessibility, video; find a Liuli part with `lingxia ui` | [lxapp/gpu/authoring.md](./lxapp/gpu/authoring.md) |
 | GPU View: Tailwind classes, theme roles, `theme/pack.json`, transitions, drag and snap | [lxapp/gpu/styling-motion.md](./lxapp/gpu/styling-motion.md) |
 | GPU View: tests in Node, checking the running page | [lxapp/gpu/testing.md](./lxapp/gpu/testing.md) |
 | Page state, streams, channels | [lxapp/bridge.md](./lxapp/bridge.md) |
