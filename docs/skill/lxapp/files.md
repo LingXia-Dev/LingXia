@@ -46,12 +46,14 @@ const task = lx.network.download(url, {
   grant ([permissions](../native/permissions.md)); without it the call fails.
   `suggestedName` is sanitized and never overwrites. A `downloads` URI is
   opaque to `lx.fs`.
-- A failed or canceled download leaves no partial file; `resume()` continues a
-  paused one.
+- `result` rejects `E_NETWORK` on an HTTP error status (`reason: 'serverErrorStatus'`,
+  `data.status`) or no answer (`'connectionFailed'`); upload, by contrast, resolves any status.
+- A failed or canceled download leaves no partial file. `pause()` rejects where
+  the platform cannot pause; `resume()` continues a paused one.
 - Every task (download, upload, `compressVideo`, update `apply()`) iterates
   `{ loaded, total?, fraction? }` and returns its result, so a page stream is
   `async *get(url) { return yield* lx.network.download(url); }`. One consumer;
-  leaving the loop early cancels the task.
+  leaving the loop early cancels a task that has `cancel()` (not update `apply()`).
 
 ## `lx.fs`
 
@@ -75,7 +77,10 @@ const encoded = await file.base64();        // string
 - `write(path, { data })` takes a string, `ArrayBuffer`, or typed array;
   `encoding: "base64"` decodes a Base64 input string.
 - `readDir(path)` resolves to entries with `name` and `kind`
-  (`'file' | 'directory' | 'symlink'`); `stat` reports the same `kind`.
+  (`'file' | 'directory' | 'symlink'`); `stat` reports the same `kind` plus `size`
+  and times. `exists` never rejects.
+- `mkdir(path, { recursive })` and `remove(path, { recursive })` manage
+  directories; a non-empty one needs `recursive`.
 
 ### Copy and move
 
@@ -89,7 +94,9 @@ await lx.fs.rename(result.path, {
 });
 ```
 
-- Sources: temp, userdata, usercache. Destinations: userdata or usercache.
+- Sources: temp, userdata, usercache; `copy` also takes a picked file. Destinations:
+  userdata or usercache.
+- `copy` takes one file. `rename` also moves a directory, but not a picked path.
 - Parent directories are created. `write` replaces a file (`overwrite: false`
   refuses); `copy` and `rename` overwrite only with `overwrite: true`. None
   replaces a directory.
@@ -149,7 +156,7 @@ const videos = r.files.filter(f => f.type.startsWith('video/'))
   `exists`, `stat`, `readDir`, `file()`, or as a `copy` source. Empty, `.`,
   `..` segments, `:`, `\`, and paths leaving the directory through a symlink
   do not resolve; `lx.fs.file` throws on a missing child, so check `exists`
-  first. `copy` takes one file; it is not recursive.
+  first.
 - Whether the file is copied differs by host, so do not assume either:
 
 | | Mobile | Desktop |
@@ -165,9 +172,9 @@ rejects with `E_NOT_SUPPORTED`, so catch it and fall back to `pick.files`.
 
 ## Media outputs
 
-`lx.pick.media` on mobile, `lx.media.compressImage`, `compressVideo` and `videoThumbnail` return
-temp files. `lx.fs.copy` keeps a copy; `lx.fs.rename` moves it into userdata or
-usercache.
+`lx.pick.media` on mobile and `lx.media.compressImage` return temp files: `lx.fs.copy`
+keeps a copy, `lx.fs.rename` moves it into userdata or usercache. `compressVideo` and
+`videoThumbnail` write to their `to` path, or to temp without one.
 
 ## Cleanup and quotas
 
@@ -180,18 +187,18 @@ Limits come from host [`storage`](../app/project.md#storage):
 | `dataMaxSizeMB` | 4096 | per LxApp userdata | disable userdata size limit |
 | `appStorageMaxSizeMB` | 16384 | total userdata + usercache budget | disable app-wide storage limit |
 
-A write over a cap rejects `E_INVALID_ARG` with `detail` naming the cap.
+A write, copy or move over a cap rejects `E_INVALID_ARG`; its `detail` (a log string, not
+for branching) names the quota, such as `USERDATA_QUOTA_EXCEEDED`.
 
 - **Temp** is removed with its session (stale sessions at open, the current one
   at destroy) and oldest-first under the cap; the OS may also clear it.
-  Overflow fails with `TEMP_QUOTA_EXCEEDED`.
 - **Usercache** is LRU-evicted from 80 % down to 50 % of the cap, with no age
   cutoff. Assets a WebView keeps in its own cache stop refreshing their access
   time; refresh them with `lx.fs.stat(path)` at session start, or keep them in
-  userdata. Overflow fails with `USERCACHE_QUOTA_EXCEEDED`.
-- **Userdata** is never evicted; only explicit deletes, uninstall, or the user
-  clearing app data remove it. Overflow fails with `USERDATA_QUOTA_EXCEEDED`,
-  or `APP_STORAGE_QUOTA_EXCEEDED` after usercache cleanup.
+  userdata.
+- **Userdata** is never evicted; only explicit deletes (`lx.fs.remove`), uninstall,
+  or the user clearing app data remove it. Over the app-wide cap, usercache is
+  cleaned first.
 - On a full disk, writes evict usercache and retry once, then fail; tell the
   user.
 
