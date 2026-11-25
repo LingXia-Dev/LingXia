@@ -422,3 +422,12 @@ fn an_img_role_speaks_its_label_in_place_of_what_it_draws() {
         (Role::Image, "4 of 5 stars")
     );
 }
+
+#[test]
+fn a_block_link_in_a_menu_is_a_menu_item_and_elsewhere_a_link() {
+    let frame = frame(
+        "h('page',{},h('link',{'data-testid':'plain',to:{page:'a'}},h('text',{},'Plain')),h('view',{id:'m',popover:'manual',open:true,role:'menu','aria-label':'More'},h('link',{'data-testid':'nav',role:'menuitem',to:{page:'settings'}},h('text',{},'Settings'))))",
+    );
+    assert_eq!(semantic(&frame, "nav").unwrap().role, Role::MenuItem);
+    assert_eq!(semantic(&frame, "plain").unwrap().role, Role::Link);
+}

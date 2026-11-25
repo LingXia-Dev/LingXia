@@ -442,7 +442,7 @@ function semantics(schema) {
     'The accessibility tree the platform adapter exposes. Elements get their role from what they are;',
     'the `role` prop sets one of the authored roles on any non-control element.', '',
     '## Authored roles', '', table(['`role`', 'Goes on', 'Exposed as'], authored.map(role => [code(role), where(role), code(projected(role))])), '',
-    ...Object.entries(admits.elementRole).filter(([, rule]) => rule.roles.length).map(([tag, rule]) => `A ${code(`<${shown(schema, tag)}>`)} takes only ${list(rule.roles)} (\`UI_PROP\`).`), '',
+    ...Object.entries(admits.elementRole).filter(([, rule]) => rule.roles.length).map(([tag, rule]) => `A ${tag === 'link-box' ? `block ${code('<link>')}` : code(`<${shown(schema, tag)}>`)} takes only ${list(rule.roles)} (\`UI_PROP\`).`), '',
     `${Object.entries(admits.elementRole).filter(([, rule]) => !rule.roles.length).map(([tag]) => code(`<${shown(schema, tag)}>`)).join(', ')} keep their own role and take no \`role\` (\`UI_PROP\`).`, '',
     '## Props with conditions', '',
     'A literal combination that breaks one of these fails the build; a computed one fails at render (`UI_PROP`).', '',

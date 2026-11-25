@@ -20,7 +20,7 @@ the `role` prop sets one of the authored roles on any non-control element.
 | `listbox` | any non-control element | `list-box` |
 | `option` | any non-control element | `option` |
 | `menu` | any non-control element | `menu` |
-| `menuitem` | `<button>` | `menu-item` |
+| `menuitem` | `<button>` or `<link>` | `menu-item` |
 | `progressbar` | any non-control element | `progress-bar` |
 | `alertdialog` | `<dialog>` | `alert-dialog` |
 | `group` | any non-control element | `group` |
@@ -45,6 +45,7 @@ A `<button>` takes only `tab`, `radio`, `option`, `gridcell`, `treeitem`, `menui
 A `<scroll>` takes only `list`, `listbox`, `grid`, `menu`, `group`, `tree` (`UI_PROP`).
 A `<List>` takes only `list`, `listbox`, `grid`, `menu`, `group`, `tree` (`UI_PROP`).
 A `<input>` takes only `combobox`, `spinbutton` (`UI_PROP`).
+A block `<link>` takes only `menuitem` (`UI_PROP`).
 A `<dialog>` takes only `alertdialog` (`UI_PROP`).
 
 `<page>`, `<image>`, `<vector>`, `<plot>`, `<textarea>`, `<checkbox>`, `<switch>`, `<radio>`, `<slider>`, `<select>`, `<video>`, `<webview>`, `<link>` keep their own role and take no `role` (`UI_PROP`).

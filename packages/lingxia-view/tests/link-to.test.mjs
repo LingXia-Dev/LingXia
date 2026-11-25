@@ -27,3 +27,26 @@ test('a malformed to fails at render', () => {
   assert.throws(() => describe(() => h('text', {}, h('link', { to: { tab: 'home' }, onClick() {} }, 'x')), {}), /not two/);
   describe(link({ app: 'other', page: 'home' }), {});
 });
+
+test('a block link with role="menuitem" navigates and closes its menu; elsewhere it keeps the link role', async () => {
+  const { prepare, commit, reset } = await import('../src/internal.js');
+  const { decode } = await import('./support/wire.mjs');
+  reset();
+  configureActions({ __names: [], __modes: {} });
+  const toggled = [];
+  const view = () => h('page', {},
+    h('button', { popoverTarget: 'menu', 'data-testid': 'more', 'aria-label': 'More' }),
+    h('view', { id: 'menu', popover: true, role: 'menu', onToggle: open => toggled.push(open), 'data-testid': 'menu' },
+      h('link', { to: { page: 'settings' }, role: 'menuitem', 'data-testid': 'settings' }, h('text', {}, 'Settings'))));
+  const render = () => { const nodes = decode(prepare(view, {})); commit(); return nodes; };
+  let nodes = render();
+  dispatch(nodes.find(node => node.testId === 'more').props.onClick);
+  nodes = render();
+  const row = nodes.find(node => node.testId === 'settings');
+  assert.equal(row.props.role, 'menuitem');
+  dispatch(row.props.onClick);
+  assert.equal(JSON.parse(takeActionRequests()[0]).method, 'nav.go');
+  assert.deepEqual(toggled, [true, false], 'the menu closed');
+  assert.throws(() => describe(() => h('page', {}, h('link', { to: { page: 'a' }, role: 'heading' }, h('text', {}, 'A'))), {}), /a block <link> takes only role="menuitem"/);
+  assert.throws(() => describe(() => h('text', {}, h('link', { to: { page: 'a' }, role: 'menuitem' }, 'A')), {}), /UI_PROP/);
+});

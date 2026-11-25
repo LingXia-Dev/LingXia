@@ -853,7 +853,7 @@
     "role": {
       "tab": [{"tags": ["button"]}],
       "radio": [{"tags": ["button"]}],
-      "menuitem": [{"tags": ["button"]}],
+      "menuitem": [{"tags": ["button", "link-box"]}],
       "menuitemcheckbox": [{"tags": ["button"]}],
       "menuitemradio": [{"tags": ["button"]}],
       "treeitem": [{"tags": ["button"]}],
@@ -888,6 +888,7 @@
       "video": {"roles": [], "error": "a <video> keeps its own role"},
       "webview": {"roles": [], "error": "a <webview> keeps its own role"},
       "link": {"roles": [], "error": "a <link> keeps its own role"},
+      "link-box": {"roles": ["menuitem"], "error": "a block <link> takes only role=\"menuitem\", as a navigation row of a menu"},
       "dialog": {"roles": ["alertdialog"], "implied": "dialog", "error": "a <dialog> keeps its own role; only role=\"alertdialog\" marks one that interrupts"}
     },
     "trait": {

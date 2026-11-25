@@ -443,7 +443,10 @@ impl Projection<'_> {
             } else {
                 Role::CheckBox
             }
-        } else if matches!(node.tag, "link" | "link-box") {
+        // A block link in a menu is a navigation row: a menu item that follows its `to`.
+        } else if node.tag == "link"
+            || (node.tag == "link-box" && node.role.as_deref() != Some("menuitem"))
+        {
             Role::Link
         } else if let Some(role) = node.role.as_deref().filter(|role| {
             !button
