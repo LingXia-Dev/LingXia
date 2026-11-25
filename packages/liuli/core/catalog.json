@@ -4379,7 +4379,7 @@
       "status": "preview",
       "since": "2026-11-15",
       "summary": "Code as it was written, in a sentence or as a block",
-      "description": "Code is a run inside a sentence, in the fixed-width face on a tint: a file name, a key, a value to type exactly. CodeBlock keeps lines of code as they were written: it never wraps a line, it scrolls sideways, and it can carry a title and one action, usually copy. It can number its lines, mark some of them, show a change as a unified diff, and colour the code by its `language`: keywords, strings, numbers, types and comments, the rest in the text colour.",
+      "description": "Code is a run inside a sentence, in the fixed-width face on a tint: a file name, a key, a value to type exactly. CodeBlock keeps lines of code as they were written: it scrolls sideways, or wraps them at its width with `isWrapped`, and it can carry a title, a copy button and one action of the app's. It can number its lines, mark some of them, show a change as a unified diff, cap its height with `maxHeight`, and colour the code by its `language`: keywords, strings, numbers, types and comments, the rest in the text colour.",
       "keywords": [
         "code",
         "code block",
@@ -4390,6 +4390,40 @@
         "command"
       ],
       "props": [
+        {
+          "name": "hasLineNumbers",
+          "type": "boolean",
+          "required": false,
+          "description": "Numbers each line in a gutter before the code.",
+          "default": "false"
+        },
+        {
+          "name": "startLineNumber",
+          "type": "number",
+          "required": false,
+          "description": "The first line's number, so an excerpt shows its lines' numbers in the file. Below 1 reads as 1.",
+          "default": "1"
+        },
+        {
+          "name": "highlightLines",
+          "type": "readonly number[]",
+          "required": false,
+          "description": "Lines to mark, by the numbers the gutter shows (see `startLineNumber`). A number outside the code marks nothing; in a diff an added or removed line keeps its own tint."
+        },
+        {
+          "name": "isDiff",
+          "type": "boolean",
+          "required": false,
+          "description": "Reads the code as a unified diff: a line starting `+` is added and `-` removed, `@@` starts a hunk, and a `--- `/`+++ ` pair just before one names the files. The sign sits in its own column; `onCopy` and the app's action still get the whole text, signs included.",
+          "default": "false"
+        },
+        {
+          "name": "isWrapped",
+          "type": "boolean",
+          "required": false,
+          "description": "Long lines wrap at the block's width instead of scrolling sideways.",
+          "default": "false"
+        },
         {
           "name": "code",
           "type": "string",
@@ -4415,37 +4449,22 @@
           "description": "Colours the code by its language's grammar: `ts`, `tsx`, `js`, `json`, `css`, `html`, `xml`, `python`, `bash`, `yaml`, `toml`, `rust`, `kotlin`, `swift`, `java`, `go`, `c`, `cpp` or `sql`, by name or file extension. Any other stays plain."
         },
         {
+          "name": "onCopy",
+          "type": "((code: string) => void | Promise<unknown>)",
+          "required": false,
+          "description": "Draws a copy button at the end of the title's line and runs with the code when it is pressed. Liuli has no clipboard: pass the call that puts text on it. When that call returns (a promise, once it resolves) the button says \"Copied\" for a moment."
+        },
+        {
           "name": "action",
           "type": "Child",
           "required": false,
-          "description": "At the end of the title's line: a Button or IconButton that copies the code. The app does the copying."
+          "description": "At the end of the title's line, before the copy button: a Button or IconButton the app draws."
         },
         {
-          "name": "hasLineNumbers",
-          "type": "boolean",
-          "required": false,
-          "description": "Numbers each line in a gutter before the code.",
-          "default": "false"
-        },
-        {
-          "name": "startLineNumber",
+          "name": "maxHeight",
           "type": "number",
           "required": false,
-          "description": "The first line's number, so an excerpt shows its lines' numbers in the file. Below 1 reads as 1.",
-          "default": "1"
-        },
-        {
-          "name": "highlightLines",
-          "type": "readonly number[]",
-          "required": false,
-          "description": "Lines to mark, by the numbers the gutter shows (see `startLineNumber`). A number outside the code marks nothing; in a diff an added or removed line keeps its own tint."
-        },
-        {
-          "name": "isDiff",
-          "type": "boolean",
-          "required": false,
-          "description": "Reads the code as a unified diff: a line starting `+` is added and `-` removed, `@@` starts a hunk, and a `--- `/`+++ ` pair just before one names the files. The sign sits in its own column; the app's copy action still has the whole text, signs included.",
-          "default": "false"
+          "description": "The code area's tallest height, in points; longer code scrolls inside it, under the title's line."
         },
         {
           "name": "isSelectable",
@@ -4484,7 +4503,12 @@
         "headerLine": "span",
         "text": "text",
         "syntax": "span",
-        "chunks": "view"
+        "chunks": "view",
+        "wrap": "view",
+        "capped": "scroll",
+        "copy": "view",
+        "copied": "view",
+        "copiedText": "text"
       },
       "accessibility": {
         "pattern": null,
@@ -4604,10 +4628,19 @@
             ],
             "over": "surface",
             "minimum": "4.5:1"
+          },
+          {
+            "what": "\"Copied\" in its bubble",
+            "pair": [
+              "surface",
+              "text"
+            ],
+            "minimum": "4.5:1"
           }
         ],
         "notes": [
           "A block is a group named by `label`; its code is read as text, line by line.",
+          "The copy button is named \"Copy\" and, for a moment after a copy, \"Copied\"; the bubble saying so is a status, read once.",
           "The action is the app's own Button or IconButton, with its own name.",
           "Line numbers are not read; a diff's signs are, so a change reads without its colour.",
           "A marked line is marked by its tint alone; say in the text around the block why it is marked.",
@@ -4618,7 +4651,17 @@
         {
           "name": "Command",
           "title": "A command to copy",
-          "source": "import { useLocal } from '@lingxia/view';\nimport { IconButton } from '@liulidesign/core/IconButton';\nimport { CodeBlock } from '@liulidesign/core/Code';\n\nconst install = `npm install @liulidesign/core\nnpx lingxia dev --platform ios`;\n\n/** A command to copy: the title says what it is, and the app copies it. */\nexport function Command() {\n  const copied = useLocal('copied', false);\n  return (\n    <view className=\"gap-2\">\n      <CodeBlock\n        code={install}\n        language=\"bash\"\n        label=\"Install commands\"\n        title=\"Terminal\"\n        action={<IconButton label=\"Copy the commands\" icon=\"copy\" size=\"sm\" variant=\"ghost\" onClick={() => copied.set(true)} data-testid=\"copy\" />}\n        data-testid=\"install\"\n      />\n      {copied.value && <text role=\"status\" className=\"text-footnote text-muted\">Copied</text>}\n    </view>\n  );\n}"
+          "source": "import { useLocal } from '@lingxia/view';\nimport { CodeBlock } from '@liulidesign/core/Code';\n\nconst install = `npm install @liulidesign/core\nnpx lingxia dev --platform ios`;\n\n/** A command to copy: the title says what it is, and the block's copy button hands the code to the app's clipboard call. */\nexport function Command() {\n  // Stands in for the app's clipboard call.\n  const clipboard = useLocal('clipboard', '');\n  return (\n    <CodeBlock\n      code={install}\n      language=\"bash\"\n      label=\"Install commands\"\n      title=\"Terminal\"\n      onCopy={code => clipboard.set(code)}\n      data-testid=\"install\"\n    />\n  );\n}"
+        },
+        {
+          "name": "Capped",
+          "title": "A long file under a height cap",
+          "source": "import { useLocal } from '@lingxia/view';\nimport { CodeBlock } from '@liulidesign/core/Code';\n\nconst config = `export default {\n  name: 'notes',\n  version: '1.4.0',\n  pages: ['pages/home/index', 'pages/note/index', 'pages/settings/index'],\n  window: { title: 'Notes', theme: 'system' },\n  network: { timeout: 15000, retries: 2 },\n  storage: { quota: '50MB', encrypt: true },\n  share: { targets: ['link', 'image'] },\n  sync: { interval: 300, onCellular: false },\n  logs: { level: 'warn' },\n};`;\n\n/** A long file in a short box: past `maxHeight` the code scrolls up and down under the title's line. */\nexport function Capped() {\n  const clipboard = useLocal('clipboard', '');\n  return <CodeBlock code={config} language=\"ts\" label=\"lxapp.config.ts\" title=\"lxapp.config.ts\" maxHeight={160} onCopy={code => clipboard.set(code)} data-testid=\"capped\" />;\n}"
+        },
+        {
+          "name": "Wrapped",
+          "title": "Long lines wrapped",
+          "source": "import { CodeBlock } from '@liulidesign/core/Code';\n\nconst prompt = 'Summarise the note in three short bullet points, keep every date and amount exactly as written, and end with one line listing anything that still needs an answer.';\n\n/** Prose-like text, such as a prompt, wrapped at the block's width rather than scrolled. */\nexport function Wrapped() {\n  return <CodeBlock code={prompt} label=\"Prompt\" title=\"Prompt\" isWrapped data-testid=\"wrapped\" />;\n}"
         },
         {
           "name": "Plain",
@@ -4644,8 +4687,8 @@
       "gaps": [],
       "limits": [
         "Colouring reads tokens, not meaning: a name is coloured as a type by its capital, and a regular expression in JavaScript is not told from division.",
-        "With numbers, a diff or marked lines, a line is never wrapped, even at large text; it scrolls.",
-        "Copying is the app's: Liuli has no clipboard.",
+        "With numbers, a diff or marked lines, a line is never wrapped, even at large text; it scrolls. `isWrapped` does not go with them.",
+        "Copying is the app's: Liuli has no clipboard, so `onCopy` makes the call that puts the text on it.",
         "Code past 64 KiB or about 800 coloured runs is several texts, one under another; a selection stays inside one of them."
       ],
       "playground": {
@@ -4665,6 +4708,7 @@
         ],
         "tokens": [
           "--text-footnote",
+          "--shadow-raised",
           "--radius-control"
         ],
         "roles": [
@@ -4678,6 +4722,7 @@
           "line",
           "success",
           "success-soft",
+          "surface",
           "text",
           "text-muted"
         ]
@@ -4697,6 +4742,14 @@
             {
               "name": "Plain",
               "title": "No header; long lines scroll sideways"
+            },
+            {
+              "name": "Capped",
+              "title": "A long file, capped at 160 points"
+            },
+            {
+              "name": "Wrapped",
+              "title": "Long lines wrapped at the width"
             },
             {
               "name": "Numbered",
@@ -12648,11 +12701,6 @@
           "missing": "Images.",
           "needs": "nothing from the View",
           "today": "An image is drawn as its alternative text."
-        },
-        {
-          "missing": "Code coloured by its language.",
-          "needs": "nothing from the View",
-          "today": "One colour, in the fixed-width face."
         },
         {
           "missing": "Editing: bold and lists while typing.",

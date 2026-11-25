@@ -8,17 +8,21 @@ export const doc: ComponentDoc = {
   summary: 'Code as it was written, in a sentence or as a block',
   description:
     'Code is a run inside a sentence, in the fixed-width face on a tint: a file name, a key, a value to type exactly. ' +
-    'CodeBlock keeps lines of code as they were written: it never wraps a line, it scrolls sideways, and it can carry a title and one action, usually copy. ' +
-    'It can number its lines, mark some of them, show a change as a unified diff, and colour the code by its `language`: keywords, strings, numbers, types and comments, the rest in the text colour.',
+    'CodeBlock keeps lines of code as they were written: it scrolls sideways, or wraps them at its width with `isWrapped`, and it can carry a title, a copy button and one action of the app\'s. ' +
+    'It can number its lines, mark some of them, show a change as a unified diff, cap its height with `maxHeight`, and colour the code by its `language`: keywords, strings, numbers, types and comments, the rest in the text colour.',
   keywords: ['code', 'code block', 'snippet', 'monospace', 'pre', 'terminal', 'command'],
   propsType: 'CodeBlockProps',
   recipe: { map: 'codeRecipe', parts: 'codeParts' },
   anatomy: [
     { part: 'inline', required: false, description: 'Code: a fixed-width run on a tint, inside a `<text>`.' },
     { part: 'block', required: false, description: 'CodeBlock: a tinted box, a group named by `label`.' },
-    { part: 'header', required: false, description: 'The title and the action, over a hairline.' },
+    { part: 'header', required: false, description: 'The title, the action and the copy button, over a hairline.' },
+    { part: 'copy', required: false, description: 'With `onCopy`: the copy button, which shows a tick and is named "Copied" for a moment after a copy.' },
+    { part: 'copied', required: false, description: '"Copied", in a bubble above the copy button, off the code, read as a status; it closes by itself.' },
     { part: 'title', required: false, description: 'A file name or a language.' },
     { part: 'scroll', required: false, description: 'The sideways scroll around the code.' },
+    { part: 'wrap', required: false, description: 'With `isWrapped`: the box the wrapped code fills, in place of the sideways scroll.' },
+    { part: 'capped', required: false, description: 'With `maxHeight`: the scroll up and down around the code, under the header.' },
     { part: 'tint', required: false, description: 'A row behind one line: marked, added, removed, or a diff\'s header. In a diff a mark tints only an unchanged line.' },
     { part: 'gutter', required: false, description: 'The line numbers, before a hairline.' },
     { part: 'signs', required: false, description: 'In a diff, each line\'s `+`, `-` or space, in its own column.' },
@@ -46,9 +50,11 @@ export const doc: ComponentDoc = {
       { what: 'a string', pair: ['chart-5', 'text/6'], over: 'surface', minimum: '4.5:1' },
       { what: 'a number or literal', pair: ['chart-4', 'text/6'], over: 'surface', minimum: '4.5:1' },
       { what: 'a type', pair: ['chart-7', 'text/6'], over: 'surface', minimum: '4.5:1' },
+      { what: '"Copied" in its bubble', pair: ['surface', 'text'], minimum: '4.5:1' },
     ],
     notes: [
       'A block is a group named by `label`; its code is read as text, line by line.',
+      'The copy button is named "Copy" and, for a moment after a copy, "Copied"; the bubble saying so is a status, read once.',
       'The action is the app\'s own Button or IconButton, with its own name.',
       'Line numbers are not read; a diff\'s signs are, so a change reads without its colour.',
       'A marked line is marked by its tint alone; say in the text around the block why it is marked.',
@@ -58,15 +64,19 @@ export const doc: ComponentDoc = {
   guidance: {
     do: [
       'Use Code for what must be typed exactly; use plain emphasis for a term.',
-      'Give a block a copy action when people will paste it somewhere.',
+      'Give a block `onCopy` when people will paste it somewhere.',
+      'Cap a long file with `maxHeight` so the page around it stays in reach.',
     ],
     dont: [
       'Put prose in a block to set it apart; that is a Card or a Banner.',
-      'Break a long line by hand to make it fit; it scrolls.',
+      'Break a long line by hand to make it fit; it scrolls, or use `isWrapped` for prose-like text such as a prompt.',
+      'Wrap code whose line breaks carry meaning; a wrapped line reads as two.',
     ],
   },
   examples: [
     { name: 'Command', title: 'A command to copy' },
+    { name: 'Capped', title: 'A long file under a height cap' },
+    { name: 'Wrapped', title: 'Long lines wrapped' },
     { name: 'Plain', title: 'A block without a header' },
     { name: 'Numbered', title: 'Line numbers and marked lines' },
     { name: 'Diff', title: 'A change as a diff' },
@@ -75,8 +85,8 @@ export const doc: ComponentDoc = {
   gaps: [],
   limits: [
     'Colouring reads tokens, not meaning: a name is coloured as a type by its capital, and a regular expression in JavaScript is not told from division.',
-    'With numbers, a diff or marked lines, a line is never wrapped, even at large text; it scrolls.',
-    'Copying is the app\'s: Liuli has no clipboard.',
+    'With numbers, a diff or marked lines, a line is never wrapped, even at large text; it scrolls. `isWrapped` does not go with them.',
+    'Copying is the app\'s: Liuli has no clipboard, so `onCopy` makes the call that puts the text on it.',
     'Code past 64 KiB or about 800 coloured runs is several texts, one under another; a selection stays inside one of them.',
   ],
   playground: { props: { code: 'npm run build', label: 'Build command', title: 'Terminal' } },
@@ -90,6 +100,8 @@ export const doc: ComponentDoc = {
       hero: 'Command',
       variants: [
         { name: 'Plain', title: 'No header; long lines scroll sideways' },
+        { name: 'Capped', title: 'A long file, capped at 160 points' },
+        { name: 'Wrapped', title: 'Long lines wrapped at the width' },
         { name: 'Numbered', title: 'Line numbers from 41, two lines marked' },
         { name: 'Diff', title: 'A change, with signs and tints' },
         { name: 'InSentence', title: 'Code, inside a sentence' },

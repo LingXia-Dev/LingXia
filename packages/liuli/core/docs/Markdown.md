@@ -113,7 +113,7 @@ export function Comment() {
 | marker | `<text>` | no | An item's bullet or number, hidden from assistive tech, which counts the items itself. |
 | task | `<view>` | no | A task item's mark, empty or ticked. It shows the state; it cannot be pressed. |
 | quote | `<view>` | no | A quotation, set off by a rule at its start edge. |
-| code | `<scroll>` | no | A code block in the fixed-width face on a tint; long lines scroll sideways instead of wrapping. |
+| code | `<scroll>` | no | A code block in the fixed-width face on a tint, coloured like CodeBlock by the fence's language; long lines scroll sideways instead of wrapping. |
 | rule | `<view>` | no | A hairline between sections. |
 
 ## What an app may override
@@ -162,7 +162,6 @@ Ratios are computed from @lingxia/view/theme and rounded down.
 | Missing | Needs | Meanwhile |
 | --- | --- | --- |
 | Images. | nothing from the View | An image is drawn as its alternative text. |
-| Code coloured by its language. | nothing from the View | One colour, in the fixed-width face. |
 | Editing: bold and lists while typing. | an editor that holds styled text | Viewing only; TextArea edits the plain source. |
 | Raw HTML, footnotes and definition lists. | nothing from the View | Shown as the text they were written as. |
 | A paragraph of more than 256 styled runs. | a higher run limit on `<text>` | Not handled; split the paragraph. |

@@ -14,6 +14,11 @@ export const codeParts = {
   text: 'text',
   syntax: 'span',
   chunks: 'view',
+  wrap: 'view',
+  capped: 'scroll',
+  copy: 'view',
+  copied: 'view',
+  copiedText: 'text',
 } as const;
 
 /**
@@ -90,8 +95,28 @@ export const codeRecipe = {
   chunks: {
     base: 'shrink-0',
   },
+  /** Wrapped code: no sideways scroll, lines break at the block's width, a long word anywhere. */
+  wrap: {
+    base: 'self-stretch p-3',
+  },
+  /** Past `maxHeight` the code scrolls up and down; at its end the page takes over. */
+  capped: {
+    base: 'self-stretch overflow-y-auto overscroll-contain',
+  },
+  copy: {
+    base: 'shrink-0',
+  },
+  /** "Copied": Tooltip's bubble, above the button, so it covers the block's edge or the page, never the code. */
+  copied: {
+    base: 'mb-1 max-w-64 px-3 py-2 rounded-control bg-text shadow-raised transition duration-fast ease-standard starting:opacity-0 exit:opacity-0 motion-safe:starting:translate-y-1',
+  },
+  copiedText: {
+    base: 'text-footnote text-surface',
+  },
   text: {
-    base: 'self-start font-mono text-footnote text-text whitespace-pre',
+    base: 'font-mono text-footnote text-text',
+    unwrapped: 'self-start whitespace-pre',
+    wrapped: 'self-stretch whitespace-pre-wrap wrap-anywhere',
     selectable: 'select-text',
     lined: 'shrink-0 pe-3 leading-[1.5]',
     start: 'ps-3',

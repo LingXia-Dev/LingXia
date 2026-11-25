@@ -1,5 +1,4 @@
 import { useLocal } from '@lingxia/view';
-import { IconButton } from '../IconButton/IconButton';
 import { Code, CodeBlock } from './Code';
 
 const install = `npm install @liulidesign/core
@@ -12,21 +11,19 @@ const response = `{
   "sharedWith": ["ana@example.com", "kai@example.com"]
 }`;
 
-/** A command to copy: the title says what it is, and the app copies it. */
+/** A command to copy: the title says what it is, and the block's copy button hands the code to the app's clipboard call. */
 export function Command() {
-  const copied = useLocal('copied', false);
+  // Stands in for the app's clipboard call.
+  const clipboard = useLocal('clipboard', '');
   return (
-    <view className="gap-2">
-      <CodeBlock
-        code={install}
-        language="bash"
-        label="Install commands"
-        title="Terminal"
-        action={<IconButton label="Copy the commands" icon="copy" size="sm" variant="ghost" onClick={() => copied.set(true)} data-testid="copy" />}
-        data-testid="install"
-      />
-      {copied.value && <text role="status" className="text-footnote text-muted">Copied</text>}
-    </view>
+    <CodeBlock
+      code={install}
+      language="bash"
+      label="Install commands"
+      title="Terminal"
+      onCopy={code => clipboard.set(code)}
+      data-testid="install"
+    />
   );
 }
 
@@ -58,6 +55,31 @@ const change = `--- a/cart.ts
 /** A change as a unified diff: each sign in its own column, added and removed lines tinted. */
 export function Diff() {
   return <CodeBlock code={change} language="ts" label="Change to cart.ts" title="cart.ts" isDiff data-testid="diff" />;
+}
+
+const config = `export default {
+  name: 'notes',
+  version: '1.4.0',
+  pages: ['pages/home/index', 'pages/note/index', 'pages/settings/index'],
+  window: { title: 'Notes', theme: 'system' },
+  network: { timeout: 15000, retries: 2 },
+  storage: { quota: '50MB', encrypt: true },
+  share: { targets: ['link', 'image'] },
+  sync: { interval: 300, onCellular: false },
+  logs: { level: 'warn' },
+};`;
+
+/** A long file in a short box: past `maxHeight` the code scrolls up and down under the title's line. */
+export function Capped() {
+  const clipboard = useLocal('clipboard', '');
+  return <CodeBlock code={config} language="ts" label="lxapp.config.ts" title="lxapp.config.ts" maxHeight={160} onCopy={code => clipboard.set(code)} data-testid="capped" />;
+}
+
+const prompt = 'Summarise the note in three short bullet points, keep every date and amount exactly as written, and end with one line listing anything that still needs an answer.';
+
+/** Prose-like text, such as a prompt, wrapped at the block's width rather than scrolled. */
+export function Wrapped() {
+  return <CodeBlock code={prompt} label="Prompt" title="Prompt" isWrapped data-testid="wrapped" />;
 }
 
 /** In a sentence: a file name and a value to type exactly. */

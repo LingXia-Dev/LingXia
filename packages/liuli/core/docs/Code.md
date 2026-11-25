@@ -8,7 +8,7 @@ Code as it was written, in a sentence or as a block. Status: preview.
 import { Code, CodeBlock } from '@liulidesign/core/Code';
 ```
 
-Code is a run inside a sentence, in the fixed-width face on a tint: a file name, a key, a value to type exactly. CodeBlock keeps lines of code as they were written: it never wraps a line, it scrolls sideways, and it can carry a title and one action, usually copy. It can number its lines, mark some of them, show a change as a unified diff, and colour the code by its `language`: keywords, strings, numbers, types and comments, the rest in the text colour.
+Code is a run inside a sentence, in the fixed-width face on a tint: a file name, a key, a value to type exactly. CodeBlock keeps lines of code as they were written: it scrolls sideways, or wraps them at its width with `isWrapped`, and it can carry a title, a copy button and one action of the app's. It can number its lines, mark some of them, show a change as a unified diff, cap its height with `maxHeight`, and colour the code by its `language`: keywords, strings, numbers, types and comments, the rest in the text colour.
 
 ## Examples
 
@@ -16,28 +16,63 @@ Code is a run inside a sentence, in the fixed-width face on a tint: a file name,
 
 ```tsx
 import { useLocal } from '@lingxia/view';
-import { IconButton } from '@liulidesign/core/IconButton';
 import { CodeBlock } from '@liulidesign/core/Code';
 
 const install = `npm install @liulidesign/core
 npx lingxia dev --platform ios`;
 
-/** A command to copy: the title says what it is, and the app copies it. */
+/** A command to copy: the title says what it is, and the block's copy button hands the code to the app's clipboard call. */
 export function Command() {
-  const copied = useLocal('copied', false);
+  // Stands in for the app's clipboard call.
+  const clipboard = useLocal('clipboard', '');
   return (
-    <view className="gap-2">
-      <CodeBlock
-        code={install}
-        language="bash"
-        label="Install commands"
-        title="Terminal"
-        action={<IconButton label="Copy the commands" icon="copy" size="sm" variant="ghost" onClick={() => copied.set(true)} data-testid="copy" />}
-        data-testid="install"
-      />
-      {copied.value && <text role="status" className="text-footnote text-muted">Copied</text>}
-    </view>
+    <CodeBlock
+      code={install}
+      language="bash"
+      label="Install commands"
+      title="Terminal"
+      onCopy={code => clipboard.set(code)}
+      data-testid="install"
+    />
   );
+}
+```
+
+### A long file under a height cap
+
+```tsx
+import { useLocal } from '@lingxia/view';
+import { CodeBlock } from '@liulidesign/core/Code';
+
+const config = `export default {
+  name: 'notes',
+  version: '1.4.0',
+  pages: ['pages/home/index', 'pages/note/index', 'pages/settings/index'],
+  window: { title: 'Notes', theme: 'system' },
+  network: { timeout: 15000, retries: 2 },
+  storage: { quota: '50MB', encrypt: true },
+  share: { targets: ['link', 'image'] },
+  sync: { interval: 300, onCellular: false },
+  logs: { level: 'warn' },
+};`;
+
+/** A long file in a short box: past `maxHeight` the code scrolls up and down under the title's line. */
+export function Capped() {
+  const clipboard = useLocal('clipboard', '');
+  return <CodeBlock code={config} language="ts" label="lxapp.config.ts" title="lxapp.config.ts" maxHeight={160} onCopy={code => clipboard.set(code)} data-testid="capped" />;
+}
+```
+
+### Long lines wrapped
+
+```tsx
+import { CodeBlock } from '@liulidesign/core/Code';
+
+const prompt = 'Summarise the note in three short bullet points, keep every date and amount exactly as written, and end with one line listing anything that still needs an answer.';
+
+/** Prose-like text, such as a prompt, wrapped at the block's width rather than scrolled. */
+export function Wrapped() {
+  return <CodeBlock code={prompt} label="Prompt" title="Prompt" isWrapped data-testid="wrapped" />;
 }
 ```
 
@@ -115,15 +150,18 @@ export function InSentence() {
 
 | Prop | Type | Default | Description |
 | --- | --- | --- | --- |
+| `hasLineNumbers` | `boolean` | `false` | Numbers each line in a gutter before the code. |
+| `startLineNumber` | `number` | `1` | The first line's number, so an excerpt shows its lines' numbers in the file. Below 1 reads as 1. |
+| `highlightLines` | `readonly number[]` |  | Lines to mark, by the numbers the gutter shows (see `startLineNumber`). A number outside the code marks nothing; in a diff an added or removed line keeps its own tint. |
+| `isDiff` | `boolean` | `false` | Reads the code as a unified diff: a line starting `+` is added and `-` removed, `@@` starts a hunk, and a `--- `/`+++ ` pair just before one names the files. The sign sits in its own column; `onCopy` and the app's action still get the whole text, signs included. |
+| `isWrapped` | `boolean` | `false` | Long lines wrap at the block's width instead of scrolling sideways. |
 | `code` (required) | `string` |  | The code, with its own line breaks and indentation. |
 | `label` (required) | `string` |  | Names the block for assistive tech: "Shell command", "Example response". |
 | `title` | `string` |  | Shown over the code: a file name, a language. |
 | `language` | `string` |  | Colours the code by its language's grammar: `ts`, `tsx`, `js`, `json`, `css`, `html`, `xml`, `python`, `bash`, `yaml`, `toml`, `rust`, `kotlin`, `swift`, `java`, `go`, `c`, `cpp` or `sql`, by name or file extension. Any other stays plain. |
-| `action` | `Child` |  | At the end of the title's line: a Button or IconButton that copies the code. The app does the copying. |
-| `hasLineNumbers` | `boolean` | `false` | Numbers each line in a gutter before the code. |
-| `startLineNumber` | `number` | `1` | The first line's number, so an excerpt shows its lines' numbers in the file. Below 1 reads as 1. |
-| `highlightLines` | `readonly number[]` |  | Lines to mark, by the numbers the gutter shows (see `startLineNumber`). A number outside the code marks nothing; in a diff an added or removed line keeps its own tint. |
-| `isDiff` | `boolean` | `false` | Reads the code as a unified diff: a line starting `+` is added and `-` removed, `@@` starts a hunk, and a `--- `/`+++ ` pair just before one names the files. The sign sits in its own column; the app's copy action still has the whole text, signs included. |
+| `onCopy` | `((code: string) => void \| Promise<unknown>)` |  | Draws a copy button at the end of the title's line and runs with the code when it is pressed. Liuli has no clipboard: pass the call that puts text on it. When that call returns (a promise, once it resolves) the button says "Copied" for a moment. |
+| `action` | `Child` |  | At the end of the title's line, before the copy button: a Button or IconButton the app draws. |
+| `maxHeight` | `number` |  | The code area's tallest height, in points; longer code scrolls inside it, under the title's line. |
 | `isSelectable` | `boolean` | `true` | Lets the code be selected. |
 | `className` | `string` |  |  |
 | `data-testid` | `string` |  |  |
@@ -134,9 +172,13 @@ export function InSentence() {
 | --- | --- | --- | --- |
 | inline | `<span>` | no | Code: a fixed-width run on a tint, inside a `<text>`. |
 | block | `<view>` | no | CodeBlock: a tinted box, a group named by `label`. |
-| header | `<view>` | no | The title and the action, over a hairline. |
+| header | `<view>` | no | The title, the action and the copy button, over a hairline. |
+| copy | `<view>` | no | With `onCopy`: the copy button, which shows a tick and is named "Copied" for a moment after a copy. |
+| copied | `<view>` | no | "Copied", in a bubble above the copy button, off the code, read as a status; it closes by itself. |
 | title | `<text>` | no | A file name or a language. |
 | scroll | `<scroll>` | no | The sideways scroll around the code. |
+| wrap | `<view>` | no | With `isWrapped`: the box the wrapped code fills, in place of the sideways scroll. |
+| capped | `<scroll>` | no | With `maxHeight`: the scroll up and down around the code, under the header. |
 | tint | `<view>` | no | A row behind one line: marked, added, removed, or a diff's header. In a diff a mark tints only an unchanged line. |
 | gutter | `<text>` | no | The line numbers, before a hairline. |
 | signs | `<text>` | no | In a diff, each line's `+`, `-` or space, in its own column. |
@@ -147,8 +189,8 @@ export function InSentence() {
 
 - `className`: classes merged after the recipe's, so they win.
 - The recipe, `codeRecipe` from `@liulidesign/core/Code/recipe`: the classes of each part, to style an element of your own to match. The component does not read a changed copy.
-- Scale tokens it reads, set in the app's stylesheet under `@theme`: `--text-footnote`, `--radius-control`.
-- Colour roles it paints with, set by the theme pack: `accent`, `accent-soft`, `chart-4`, `chart-5`, `chart-7`, `danger`, `danger-soft`, `line`, `success`, `success-soft`, `text`, `text-muted`.
+- Scale tokens it reads, set in the app's stylesheet under `@theme`: `--text-footnote`, `--shadow-raised`, `--radius-control`.
+- Colour roles it paints with, set by the theme pack: `accent`, `accent-soft`, `chart-4`, `chart-5`, `chart-7`, `danger`, `danger-soft`, `line`, `success`, `success-soft`, `surface`, `text`, `text-muted`.
 
 ## Accessibility
 
@@ -157,6 +199,7 @@ export function InSentence() {
 - Description: none.
 - Press target: .
 - A block is a group named by `label`; its code is read as text, line by line.
+- The copy button is named "Copy" and, for a moment after a copy, "Copied"; the bubble saying so is a status, read once.
 - The action is the app's own Button or IconButton, with its own name.
 - Line numbers are not read; a diff's signs are, so a change reads without its colour.
 - A marked line is marked by its tint alone; say in the text around the block why it is marked.
@@ -177,21 +220,24 @@ export function InSentence() {
 | a string | `chart-5` on `text/6` over `surface` | 4.5:1 | 5.03:1 | 7.16:1 |
 | a number or literal | `chart-4` on `text/6` over `surface` | 4.5:1 | 5.17:1 | 6.12:1 |
 | a type | `chart-7` on `text/6` over `surface` | 4.5:1 | 7.38:1 | 7.04:1 |
+| "Copied" in its bubble | `surface` on `text` | 4.5:1 | 16.26:1 | 13.87:1 |
 
 Ratios are computed from @lingxia/view/theme and rounded down.
 
 ## Guidance
 
 - Do: Use Code for what must be typed exactly; use plain emphasis for a term.
-- Do: Give a block a copy action when people will paste it somewhere.
+- Do: Give a block `onCopy` when people will paste it somewhere.
+- Do: Cap a long file with `maxHeight` so the page around it stays in reach.
 - Don't: Put prose in a block to set it apart; that is a Card or a Banner.
-- Don't: Break a long line by hand to make it fit; it scrolls.
+- Don't: Break a long line by hand to make it fit; it scrolls, or use `isWrapped` for prose-like text such as a prompt.
+- Don't: Wrap code whose line breaks carry meaning; a wrapped line reads as two.
 
 ## Limits
 
 - Colouring reads tokens, not meaning: a name is coloured as a type by its capital, and a regular expression in JavaScript is not told from division.
-- With numbers, a diff or marked lines, a line is never wrapped, even at large text; it scrolls.
-- Copying is the app's: Liuli has no clipboard.
+- With numbers, a diff or marked lines, a line is never wrapped, even at large text; it scrolls. `isWrapped` does not go with them.
+- Copying is the app's: Liuli has no clipboard, so `onCopy` makes the call that puts the text on it.
 - Code past 64 KiB or about 800 coloured runs is several texts, one under another; a selection stays inside one of them.
 
 Related: Markdown, Kbd.

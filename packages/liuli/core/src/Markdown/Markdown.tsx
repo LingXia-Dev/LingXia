@@ -1,4 +1,5 @@
 import { cx, type Child } from '@lingxia/view';
+import { codeColumn, colouredLines } from '../Code/lines';
 import { Table, type TableColumn } from '../Table/Table';
 import { markdownRecipe as r } from './Markdown.recipe';
 import { parseMarkdown, plainText, type MarkdownBlock, type MarkdownRun } from './parse';
@@ -59,7 +60,7 @@ export function Markdown({
     if (each.type === 'code') {
       return (
         <scroll key={key} className={r.code.base}>
-          <text className={r.code.text}>{each.text}</text>
+          {codeColumn(r.code.text, colouredLines(each.text, each.language || undefined))}
         </scroll>
       );
     }

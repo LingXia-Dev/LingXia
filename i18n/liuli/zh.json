@@ -205,5 +205,11 @@
   },
   "@liuli.clearField": {
     "defaultMessage": "清除{label}"
+  },
+  "@liuli.copy": {
+    "defaultMessage": "复制"
+  },
+  "@liuli.copied": {
+    "defaultMessage": "已复制"
   }
 }

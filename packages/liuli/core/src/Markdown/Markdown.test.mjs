@@ -59,11 +59,14 @@ test('Note: headings at their levels, a link the app opens, tasks read by their 
   assert.ok(lists[1].children.every(item => item.children[0].props.accessibilityHidden === 1), 'the list counts its items itself');
 });
 
-test('Reference: code keeps its lines in a sideways scroll; the table is a Table read with its headings; without onLinkClick nothing is a link', async () => {
+test('Reference: code keeps its lines in a sideways scroll, coloured by its fence\'s language; the table is a Table read with its headings; without onLinkClick nothing is a link', async () => {
   const screen = await renderExample('Markdown/Markdown', 'Reference');
-  const code = screen.queryAll(node => node.tag === 'scroll')[0];
-  assert.deepEqual([code.children[0].props.whiteSpace, code.children[0].props.fontFamily], ['pre', 'mono']);
-  assert.match(code.children[0].text, /^const reply = [^\n]+\nif \(reply\.status === 401\) await signIn\(\);$/);
+  const code = screen.queryAll(node => node.tag === 'scroll')[0].children[0];
+  assert.deepEqual([code.props.whiteSpace, code.props.fontFamily], ['pre', 'mono']);
+  const parts = code.children.map(child => [child.text, child.tag === 'span' ? child.props.color : null]);
+  assert.match(parts.map(([text]) => text).join(''), /^const reply = [^\n]+\nif \(reply\.status === 401\) await signIn\(\);$/);
+  assert.deepEqual(parts.slice(0, 1), [['const', 'accent']], 'a keyword takes CodeBlock\'s keyword colour');
+  assert.ok(parts.some(([text, colour]) => text === "'/api/notes'" && colour === 'chart-5'), 'a string takes the string colour');
   const grid = screen.queryAll(node => node.props.role === 'grid')[0];
   assert.equal(grid.props.accessibilityLabel, 'Status, Meaning, Retry');
   const cell = screen.queryAll(node => node.props.role === 'gridcell' && node.props.accessibilityLabel === 'Retry: after 30 s');

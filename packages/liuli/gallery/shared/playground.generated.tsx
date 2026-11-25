@@ -1199,6 +1199,26 @@ export const playgroundEntries: PlaygroundEntry[] = [
     },
     "controls": [
       {
+        "name": "hasLineNumbers",
+        "required": false,
+        "kind": "boolean"
+      },
+      {
+        "name": "startLineNumber",
+        "required": false,
+        "kind": "number"
+      },
+      {
+        "name": "isDiff",
+        "required": false,
+        "kind": "boolean"
+      },
+      {
+        "name": "isWrapped",
+        "required": false,
+        "kind": "boolean"
+      },
+      {
         "name": "code",
         "required": true,
         "kind": "text"
@@ -1219,19 +1239,9 @@ export const playgroundEntries: PlaygroundEntry[] = [
         "kind": "text"
       },
       {
-        "name": "hasLineNumbers",
-        "required": false,
-        "kind": "boolean"
-      },
-      {
-        "name": "startLineNumber",
+        "name": "maxHeight",
         "required": false,
         "kind": "number"
-      },
-      {
-        "name": "isDiff",
-        "required": false,
-        "kind": "boolean"
       },
       {
         "name": "isSelectable",

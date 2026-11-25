@@ -274,5 +274,13 @@
   "@liuli.clearField": {
     "defaultMessage": "Clear {label}",
     "description": "Button inside a choice field that empties it; `label` is the field's label."
+  },
+  "@liuli.copy": {
+    "defaultMessage": "Copy",
+    "description": "Button on a code block that copies its code."
+  },
+  "@liuli.copied": {
+    "defaultMessage": "Copied",
+    "description": "Shown for a moment after a code block's code is copied; also the copy button's name meanwhile."
   }
 }

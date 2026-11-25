@@ -7,7 +7,10 @@ import { palette, ratio } from '../../scripts/contrast.mjs';
 const runs = node => (node.children.length ? node.children : [node]).map(child => [child.text, child.tag === 'span' ? child.props.color ?? null : null]);
 const textOf = node => runs(node).map(([text]) => text).join('');
 
-test('Command: a named group with its title, the app\'s copy action, and the code unwrapped in a sideways scroll', async () => {
+const tick = () => new Promise(resolve => setImmediate(resolve));
+const layer = screen => screen.queryAll(node => node.props.topLayer === 2)[0];
+
+test('Command: a named group with its title, a copy button, and the code unwrapped in a sideways scroll', async () => {
   const screen = await renderExample('Code/Code', 'Command');
   const block = screen.getByTestId('install');
   assert.deepEqual([block.props.role, block.props.accessibilityLabel], ['group', 'Install commands']);
@@ -15,8 +18,69 @@ test('Command: a named group with its title, the app\'s copy action, and the cod
   assert.equal(header.children[0].text, 'Terminal');
   const code = scroll.children[0];
   assert.deepEqual([scroll.tag, code.props.whiteSpace, code.text.split('\n').length], ['scroll', 'pre', 2]);
-  screen.press(screen.getByTestId('copy'));
-  screen.getByText('Copied');
+  assert.equal(screen.getByTestId('install-copy').props.accessibilityLabel, 'Copy');
+});
+
+test('onCopy: gets the whole code; then the button says Copied, a status bubble shows, and both go when the host closes it', async () => {
+  const screen = await renderPage(`
+    import { useLocal } from '@lingxia/view';
+    import { CodeBlock } from '@liulidesign/core/Code';
+    function Page() {
+      const got = useLocal('got', '');
+      return <view>
+        <CodeBlock code={'a\\nb'} label="Sample" onCopy={code => got.set(code)} data-testid="sample" />
+        <text data-testid="got">{got.value}</text>
+      </view>;
+    }
+    export function render() { return <page><Page /></page>; }
+  `);
+  assert.equal(layer(screen), undefined, 'no bubble before a copy');
+  screen.press(screen.getByTestId('sample-copy'));
+  await tick();
+  screen.rerender();
+  assert.equal(screen.getByTestId('got').text, 'a\nb');
+  assert.equal(screen.getByTestId('sample-copy').props.accessibilityLabel, 'Copied');
+  const bubble = screen.getByTestId('sample-copied');
+  assert.equal(bubble.props.role, 'status');
+  assert.deepEqual([bubble.props.anchorArea, bubble.props.marginBottom], ['top', 4], 'above the button, off the code');
+  assert.equal(layer(screen).props.closeAfter, 1500);
+  screen.host.__lingxiaCloseAfter(bubble.props.elementId);
+  screen.rerender();
+  assert.equal(screen.getByTestId('sample-copy').props.accessibilityLabel, 'Copy');
+});
+
+test('onCopy: a rejected copy says nothing was copied', async () => {
+  const screen = await renderPage(`
+    import { CodeBlock } from '@liulidesign/core/Code';
+    export function render() { return <page><CodeBlock code="x" label="Sample" onCopy={() => Promise.reject(new Error('denied'))} data-testid="sample" /></page>; }
+  `);
+  const errors = console.error;
+  console.error = () => {};
+  try {
+    screen.press(screen.getByTestId('sample-copy'));
+    await tick();
+    screen.rerender();
+  } finally {
+    console.error = errors;
+  }
+  assert.equal(screen.getByTestId('sample-copy').props.accessibilityLabel, 'Copy');
+  assert.equal(layer(screen), undefined);
+});
+
+test('Capped: the code scrolls up and down inside maxHeight, under the header', async () => {
+  const block = (await renderExample('Code/Code', 'Capped')).getByTestId('capped');
+  const [, capped] = block.children;
+  assert.equal(capped.tag, 'scroll');
+  assert.equal(capped.props.maxHeight, 160);
+  assert.equal(capped.children[0].tag, 'scroll', 'the sideways scroll sits inside');
+});
+
+test('Wrapped: no sideways scroll; the code wraps at the width and breaks a long word', async () => {
+  const block = (await renderExample('Code/Code', 'Wrapped')).getByTestId('wrapped');
+  const [, wrap] = block.children;
+  assert.equal(wrap.tag, 'column');
+  const code = wrap.children[0];
+  assert.deepEqual([code.props.whiteSpace, code.props.overflowWrap], ['pre-wrap', 'anywhere']);
 });
 
 test('Plain: no header without a title or an action', async () => {

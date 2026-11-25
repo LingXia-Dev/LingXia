@@ -22,7 +22,7 @@ export const doc: ComponentDoc = {
     { part: 'marker', required: false, description: 'An item\'s bullet or number, hidden from assistive tech, which counts the items itself.' },
     { part: 'task', required: false, description: 'A task item\'s mark, empty or ticked. It shows the state; it cannot be pressed.' },
     { part: 'quote', required: false, description: 'A quotation, set off by a rule at its start edge.' },
-    { part: 'code', required: false, description: 'A code block in the fixed-width face on a tint; long lines scroll sideways instead of wrapping.' },
+    { part: 'code', required: false, description: 'A code block in the fixed-width face on a tint, coloured like CodeBlock by the fence\'s language; long lines scroll sideways instead of wrapping.' },
     { part: 'rule', required: false, description: 'A hairline between sections.' },
   ],
   accessibility: {
@@ -68,7 +68,6 @@ export const doc: ComponentDoc = {
   ],
   gaps: [
     { missing: 'Images.', needs: 'nothing from the View', today: 'An image is drawn as its alternative text.' },
-    { missing: 'Code coloured by its language.', needs: 'nothing from the View', today: 'One colour, in the fixed-width face.' },
     { missing: 'Editing: bold and lists while typing.', needs: 'an editor that holds styled text', today: 'Viewing only; TextArea edits the plain source.' },
     { missing: 'Raw HTML, footnotes and definition lists.', needs: 'nothing from the View', today: 'Shown as the text they were written as.' },
     { missing: 'A paragraph of more than 256 styled runs.', needs: 'a higher run limit on `<text>`', today: 'Not handled; split the paragraph.' },
