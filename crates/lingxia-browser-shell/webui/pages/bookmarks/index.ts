@@ -1,25 +1,7 @@
-import { invoke, watch } from '../../shared/native';
 import { definePage, lx } from '@lingxia/logic';
+import type { BookmarkEntry, BookmarkGroup, BookmarksView } from '@lingxia/native';
 import { siteIconCache } from '../../shared/siteIcons';
-
-interface BookmarkGroup {
-  id: string;
-  name: string;
-}
-
-interface BookmarkEntry {
-  id: string;
-  url: string;
-  title: string;
-  groupId?: string;
-  createdAtMs: number;
-}
-
-interface BookmarksView {
-  groups: BookmarkGroup[];
-  entries: BookmarkEntry[];
-  pinnedIds: string[];
-}
+import { watch } from '../../shared/watch';
 
 interface BookmarksData {
   groups: BookmarkGroup[];
@@ -88,8 +70,8 @@ export default definePage({
         return { problem: lx.app.t('bookmarks.problem.groupExists', { name: trimmed }) };
       }
       try {
-        if (id) await invoke('bookmarks.renameGroup', { id, name: trimmed });
-        else await invoke('bookmarks.createGroup', { name: trimmed });
+        if (id) await page.native.bookmarks.renameGroup({ id, name: trimmed });
+        else await page.native.bookmarks.createGroup({ name: trimmed });
       } catch (error) {
         return problemOf(error);
       }
@@ -98,7 +80,7 @@ export default definePage({
     }
 
     async function refresh() {
-      apply(await invoke<BookmarksView>('bookmarks.list'));
+      apply(await page.native.bookmarks.list());
     }
 
     /** The ids of `ids` with `id` swapped one step by `delta`, or null at an end. */
@@ -115,7 +97,7 @@ export default definePage({
       async onLoad() {
         // System pages open in their own stack; the bar shows back only when a page is under them.
         void page.navigationBar.update({ homeButton: 'hidden' });
-        watch<BookmarksView>('bookmarks.watch', page.signal, apply);
+        watch((options) => page.native.bookmarks.watch(options), page.signal, apply);
         await refresh().catch(() => page.update((d) => { d.loading = false; }));
       },
       actions: {
@@ -125,13 +107,13 @@ export default definePage({
         async addBookmark({ title, url, groupId }: { title: string; url: string; groupId: string }): Promise<Problem> {
           if (!WEB_URL.test(url.trim())) return { problem: lx.app.t('bookmarks.problem.url') };
           try {
-            const added = await invoke<{ entry: { id: string } }>('bookmarks.add', {
+            const added = await page.native.bookmarks.add({
               url: url.trim(),
               title: title.trim() || undefined,
               groupId: groupId.startsWith('__') ? undefined : groupId,
             });
             // Added while Pinned shows, it is pinned so it stays in view.
-            if (groupId === '__pinned__') await invoke('bookmarks.setPinned', { id: added.entry.id, pinned: true });
+            if (groupId === '__pinned__') await page.native.bookmarks.setPinned({ id: added.entry.id, pinned: true });
           } catch (error) {
             return problemOf(error);
           }
@@ -144,9 +126,9 @@ export default definePage({
           if (!entry) return { problem: lx.app.t('bookmarks.problem.gone') };
           const nextGroup = groupId.startsWith('__') ? undefined : groupId;
           try {
-            if (title.trim() !== entry.title) await invoke('bookmarks.rename', { id, title: title.trim() });
-            if (nextGroup !== entry.groupId) await invoke('bookmarks.move', { id, groupId: nextGroup });
-            if (pinned !== page.data.pinnedIds.includes(id)) await invoke('bookmarks.setPinned', { id, pinned });
+            if (title.trim() !== entry.title) await page.native.bookmarks.rename({ id, title: title.trim() });
+            if (nextGroup !== entry.groupId) await page.native.bookmarks.move({ id, groupId: nextGroup });
+            if (pinned !== page.data.pinnedIds.includes(id)) await page.native.bookmarks.setPinned({ id, pinned });
           } catch (error) {
             await refresh();
             return problemOf(error);
@@ -155,7 +137,7 @@ export default definePage({
           return null;
         },
         async removeBookmark({ id }: { id: string }) {
-          await invoke('bookmarks.remove', { id });
+          await page.native.bookmarks.remove({ id });
           await refresh();
         },
         async shiftBookmark({ id, delta }: { id: string; delta: -1 | 1 }) {
@@ -167,11 +149,11 @@ export default definePage({
             .map((item) => item.id);
           const orderedIds = shifted(scope, id, delta);
           if (!orderedIds) return;
-          await invoke('bookmarks.reorder', { groupId: entry.groupId, orderedIds });
+          await page.native.bookmarks.reorder({ groupId: entry.groupId, orderedIds });
           await refresh();
         },
         async setPinned({ id, pinned }: { id: string; pinned: boolean }) {
-          await invoke('bookmarks.setPinned', { id, pinned });
+          await page.native.bookmarks.setPinned({ id, pinned });
           await refresh();
         },
         async createGroup({ name }: { name: string }): Promise<Problem> {
@@ -184,22 +166,22 @@ export default definePage({
         async shiftGroup({ id, delta }: { id: string; delta: -1 | 1 }) {
           const orderedIds = shifted(page.data.groups.map((group) => group.id), id, delta);
           if (!orderedIds) return;
-          await invoke('bookmarks.reorderGroups', { orderedIds });
+          await page.native.bookmarks.reorderGroups({ orderedIds });
           await refresh();
         },
         async deleteGroup({ id }: { id: string }) {
-          await invoke('bookmarks.deleteGroup', { id });
+          await page.native.bookmarks.deleteGroup({ id });
           await refresh();
         },
         async importHtml(): Promise<Notice | null> {
-          const result = await invoke<{ imported: number } | null>('bookmarks.importHtml');
+          const result = await page.native.bookmarks.importHtml();
           if (!result) return null;
           await refresh();
           return { message: lx.app.t('bookmarks.status.imported', { count: result.imported }) };
         },
-        async exportHtml(): Promise<Notice | null> {
-          const result = await invoke<{ count: number } | null>('bookmarks.exportHtml');
-          return result ? { message: lx.app.t('bookmarks.status.exported', { count: result.count }) } : null;
+        async exportHtml(): Promise<Notice> {
+          const { count } = await page.native.bookmarks.exportHtml();
+          return { message: lx.app.t('bookmarks.status.exported', { count }) };
         },
         async openUrl({ url }: { url: string }) {
           await lx.surface.openUrl(url);

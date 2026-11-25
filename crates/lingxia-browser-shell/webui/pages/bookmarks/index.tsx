@@ -4,7 +4,7 @@ import { ContextMenu } from '@liulidesign/core/ContextMenu';
 import { Dialog } from '@liulidesign/core/Dialog';
 import { DropdownMenu, type DropdownMenuEntry } from '@liulidesign/core/DropdownMenu';
 import { EmptyState } from '@liulidesign/core/EmptyState';
-import { Icon } from '@liulidesign/core/Icon';
+import { Icon, type IconDefinition } from '@liulidesign/core/Icon';
 import { IconButton } from '@liulidesign/core/IconButton';
 import { Item } from '@liulidesign/core/Item';
 import { NavList } from '@liulidesign/core/NavList';
@@ -16,6 +16,11 @@ import { ToastRegion, useToast } from '@liulidesign/core/Toast';
 import { hostOf, originOf } from '../../shared/format';
 import { SiteIcon } from '../../shared/SiteIcon';
 import type { View } from './$types';
+
+// The chrome's pin glyph, since pinning puts a bookmark on the sidebar; filled marks a pinned row.
+const PIN_HEAD = 'M9 3.5h6l-.75 5 2.75 3V13H7v-1.5l2.75-3L9 3.5z';
+const pinIcon: IconDefinition = { paths: [PIN_HEAD, 'M12 13v7.5'] };
+const pinnedIcon: IconDefinition = { paths: [{ d: PIN_HEAD, fill: 'currentColor' }, 'M12 13v7.5'] };
 
 const ALL = '__all__';
 const UNGROUPED = '__ungrouped__';
@@ -119,7 +124,7 @@ function Bookmarks({ data, actions }: View) {
     return [
       { label: t('bookmarks.open'), icon: 'external-link', onClick: () => { void openUrl.run({ url: entry.url }); } },
       { label: t('bookmarks.edit'), icon: 'edit', onClick: () => openEdit(entry) },
-      { label: pinned ? t('bookmarks.unpin') : t('bookmarks.pin'), icon: 'star', onClick: () => { void setPinned.run({ id: entry.id, pinned: !pinned }); } },
+      { label: pinned ? t('bookmarks.unpin') : t('bookmarks.pin'), icon: pinIcon, onClick: () => { void setPinned.run({ id: entry.id, pinned: !pinned }); } },
       ...(canReorder ? [
         { label: t('bookmarks.moveUp'), icon: 'arrow-up', isDisabled: index === 0, onClick: () => { void shiftBookmark.run({ id: entry.id, delta: -1 }); } },
         { label: t('bookmarks.moveDown'), icon: 'arrow-down', isDisabled: index === visible.length - 1, onClick: () => { void shiftBookmark.run({ id: entry.id, delta: 1 }); } },
@@ -136,7 +141,7 @@ function Bookmarks({ data, actions }: View) {
       <ContextMenu label={title} items={rowMenu(entry, index)} data-testid={`bookmark-${entry.id}`}>
         <Item
           label={title}
-          labelEnd={data.pinnedIds.includes(entry.id) ? <Icon name="star" size="sm" label={t('bookmarks.pinned')} className="text-muted" /> : undefined}
+          labelEnd={data.pinnedIds.includes(entry.id) ? <Icon icon={pinnedIcon} size="sm" label={t('bookmarks.pinned')} className="text-muted" /> : undefined}
           description={entry.url}
           descriptionLines={1}
           startContent={<SiteIcon host={hostOf(entry.url)} icon={data.icons[originOf(entry.url) ?? '']} />}
@@ -210,7 +215,7 @@ function Bookmarks({ data, actions }: View) {
           <SearchField label={t('bookmarks.search')} isLabelHidden placeholder={t('bookmarks.search')} bind={query} data-testid="bookmarks-search" />
           {data.selectedGroupId === PINNED ? (
             <view className="flex-row items-center gap-2 text-muted" data-testid="bookmarks-pin-hint">
-              <Icon name="star" size="sm" />
+              <Icon icon={pinnedIcon} size="sm" />
               <text className="shrink min-w-0 text-footnote text-muted">{t('bookmarks.pinHint')}</text>
             </view>
           ) : null}
