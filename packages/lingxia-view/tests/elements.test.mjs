@@ -548,6 +548,13 @@ test('composite roles: items on buttons, containers on views, aria-checked and a
   ]) assert.throws(() => describe(render, {}), pattern);
 });
 
+test('aria-current marks the current item on a button or link', () => {
+  assert.equal(rendered(() => h('button', { 'aria-current': 'page', onClick() {} }, 'Home')).props.ariaCurrent, 'page');
+  assert.equal(rendered(() => h('link', { 'aria-current': true, to: { page: 'b' } }, h('text', {}, 'B'))).props.ariaCurrent, 'true');
+  assert.equal(rendered(() => h('button', { 'aria-current': false, onClick() {} }, 'Other')).props.ariaCurrent, undefined);
+  assert.throws(() => describe(() => h('button', { 'aria-current': 'date', onClick() {} }, 'x'), {}), /aria-current is "page", "step" or a boolean/);
+});
+
 test('role="img" takes a <view> or <text> with an aria-label', () => {
   assert.equal(rendered(() => h('view', { role: 'img', 'aria-label': 'Ada Lovelace' }, h('text', {}, 'AL'))).props.role, 'img');
   assert.equal(rendered(() => h('text', { role: 'img', 'aria-label': '4 of 5 stars' }, '★★★★☆')).props.role, 'img');

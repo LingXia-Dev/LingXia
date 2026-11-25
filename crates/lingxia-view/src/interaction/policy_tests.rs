@@ -54,6 +54,7 @@ pub(crate) fn node(identity: &str, tag: &'static str, bounds: [f32; 4]) -> NodeS
         role: None,
         heading_level: None,
         aria_level: None,
+        aria_current: None,
         live_region: None,
         states: [None; 7],
         progress: None,

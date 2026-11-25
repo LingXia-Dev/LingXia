@@ -103,6 +103,7 @@ Children: text, or noninteractive content elements (a composed control). `dragSn
 | `aria-label` | `string` |  | The accessible name, spoken in place of its text. |
 | `popoverTarget` | `string` |  | The id of a popover a press opens or closes. |
 | `interestFor` | `string` |  | The id of a `popover="hint"` shown while the pointer rests on it or it has focus. |
+| `aria-current` | `"page" \| "step" \| boolean` |  | The current item of a set: `"page"` in navigation, `"step"` in a progress of steps, `true` otherwise; `false` or absent for the rest. |
 | `keepOpen` | `boolean` |  | On a menu item: run `onClick` and leave the menu open. |
 | `drag` | `"x" \| "y"` |  | Lets the finger move it and its subtree along one axis, between its `dragSnapPoints`. |
 | `dragSnapPoints` | `` readonly (number \| `${number}%`)[] `` |  | Up to 8 offsets, in pixels or percents of its size, a drag comes to rest at. |
@@ -366,6 +367,7 @@ Inside `<text>`, a run: children text and `<span>` runs; links do not nest. Else
 | `disabled` | `boolean` |  | Refuses input and shows the disabled style; it stays in accessibility, marked unavailable. |
 | `popoverTarget` | `string` |  | The id of a popover a press opens or closes. |
 | `interestFor` | `string` |  | The id of a `popover="hint"` shown while the pointer rests on it or it has focus. |
+| `aria-current` | `"page" \| "step" \| boolean` |  | The current item of a set: `"page"` in navigation, `"step"` in a progress of steps, `true` otherwise; `false` or absent for the rest. |
 
 ## `<select>`
 

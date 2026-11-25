@@ -1068,6 +1068,11 @@ function semantics(tag, props, wire) {
       wire('ariaAutocomplete', props['aria-autocomplete']);
     }
   }
+  const current = props['aria-current'];
+  if (current !== undefined && current !== false) {
+    if (current !== true && current !== 'page' && current !== 'step') throw Error('UI_PROP: aria-current is "page", "step" or a boolean');
+    wire('ariaCurrent', String(current));
+  }
   if (headingLevel !== undefined) {
     if (!Number.isInteger(headingLevel) || headingLevel < 1 || headingLevel > 6) throw Error('UI_PROP: headingLevel is an integer 1..6');
     wire('headingLevel', headingLevel);

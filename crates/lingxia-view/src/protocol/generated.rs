@@ -319,6 +319,7 @@ pub mod field {
     pub const PAGE_TITLE: usize = 281;
     pub const PICKER_REQUEST: usize = 282;
     pub const ARIA_LEVEL: usize = 283;
+    pub const ARIA_CURRENT: usize = 284;
 }
 
 pub const TAGS: &[&str] = &["column", "reserved-1", "text", "button", "reserved-4", "scroll", "list", "image", "input", "textarea", "checkbox", "switch", "radio", "radio-option", "search", "slider", "link-box", "reserved-17", "plot", "vector", "page", "span", "link", "select", "video", "webview"];
@@ -609,12 +610,14 @@ pub const FIELDS: &[(&str, &str)] = &[
     ("title", "string"),
     ("pickerRequest", "picker-request"),
     ("ariaLevel", "aria-level"),
+    ("ariaCurrent", "aria-current"),
 ];
 
 /// Enumerated values accepted for an option-valued field kind.
 pub fn options(kind: &str) -> Option<&'static [&'static str]> {
     match kind {
         "snap-stop" => Some(&["normal", "always"]),
+        "aria-current" => Some(&["page", "step", "true"]),
         "font-family" => Some(&["sans", "mono", "serif"]),
         "font-style" => Some(&["normal", "italic"]),
         "flex-wrap" => Some(&["nowrap", "wrap", "wrap-reverse"]),
@@ -1159,4 +1162,5 @@ pub const FIELD_ADMISSION: &[FieldAdmission] = &[
     FieldAdmission { tags: Some(&[tag::PAGE]), parent: None },
     FieldAdmission { tags: Some(&[tag::INPUT]), parent: None },
     FieldAdmission { tags: None, parent: None },
+    FieldAdmission { tags: Some(&[tag::BUTTON, tag::LINK, tag::LINK_BOX]), parent: None },
 ];

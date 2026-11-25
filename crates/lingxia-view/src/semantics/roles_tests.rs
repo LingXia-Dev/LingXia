@@ -470,3 +470,19 @@ fn a_flat_tree_speaks_no_level_and_still_queries_at_level_one() {
         assert_eq!(find(&tree["nodes"], id).unwrap()["level"], 1, "{tree}");
     }
 }
+
+#[test]
+fn the_current_item_carries_aria_current_to_the_adapters() {
+    let frame = frame(
+        "h('page',{},h('button',{'data-testid':'here','aria-current':'page',onClick(){}},'Home'),h('link',{'data-testid':'row','aria-current':true,to:{page:'b'}},h('text',{},'B')),h('button',{'data-testid':'other',onClick(){}},'Other'))",
+    );
+    assert_eq!(
+        semantic(&frame, "here").unwrap().current.as_deref(),
+        Some("page")
+    );
+    assert_eq!(
+        semantic(&frame, "row").unwrap().current.as_deref(),
+        Some("true")
+    );
+    assert_eq!(semantic(&frame, "other").unwrap().current, None);
+}

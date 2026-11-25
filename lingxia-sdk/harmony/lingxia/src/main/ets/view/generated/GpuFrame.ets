@@ -241,6 +241,7 @@ export interface GpuFrameNode {
   role?: string | null;
   heading_level?: number | null;
   aria_level?: number | null;
+  aria_current?: string | null;
   live_region?: string | null;
   select?: GpuFrameSelect | null;
   button_content?: string | null;
@@ -409,6 +410,7 @@ export interface GpuFrameSemanticNode {
   actions: GpuFrameSemanticAction[];
   heading_level?: number | null;
   level?: number | null;
+  current?: string | null;
   live_region?: string | null;
   text_selection?: number[] | null;
   pressed?: boolean | null;

@@ -1204,3 +1204,23 @@ fn automation_reads_no_break_spaces_as_written() {
         .unwrap();
     assert_eq!(go["aria_label"], "Wait 14\u{a0}days");
 }
+
+#[test]
+fn aria_current_reads_as_an_attribute_and_matches_in_selectors() {
+    let i = interaction(
+        "h('view',{},h('button',{'data-testid':'home','aria-current':'page',onClick(){}},'Home'),h('text',{},h('link',{'data-testid':'two','aria-current':'step',onClick(){}},'Step 2')),h('button',{'data-testid':'plain',onClick(){}},'Go'))",
+    );
+    let attribute = |id: &str| {
+        i.automation_query(&format!("[data-testid=\"{id}\"]"), None, false, None)
+            .unwrap()["attributes"]["aria-current"]
+            .as_str()
+            .map(str::to_owned)
+    };
+    assert_eq!(attribute("home").as_deref(), Some("page"));
+    assert_eq!(attribute("two").as_deref(), Some("step"));
+    assert_eq!(attribute("plain"), None);
+    let found = i
+        .automation_query("[aria-current=\"page\"]", None, false, None)
+        .unwrap();
+    assert_eq!(found["attributes"]["data-testid"], "home");
+}

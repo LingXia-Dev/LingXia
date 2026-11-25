@@ -244,6 +244,9 @@ pub struct NodeSnapshot {
     /// A tree item's depth, 1..32.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub aria_level: Option<u8>,
+    /// `page`, `step` or `true`: the current item of its set.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub aria_current: Option<String>,
     /// `polite` or `assertive`; alerts and statuses imply one.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub live_region: Option<String>,

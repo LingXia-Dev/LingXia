@@ -1164,6 +1164,7 @@ export type ButtonProps = Omit<Props, "style" | "children" | "role"> & { role?: 
   /** The accessible name, spoken in place of its text. */ "aria-label"?: string;
   /** The id of a popover a press opens or closes. */ popoverTarget?: string;
   /** The id of a `popover="hint"` shown while the pointer rests on it or it has focus. */ interestFor?: string;
+  /** The current item of a set: `"page"` in navigation, `"step"` in a progress of steps, `true` otherwise; `false` or absent for the rest. */ "aria-current"?: "page" | "step" | boolean;
   /** On a menu item: run `onClick` and leave the menu open. */ keepOpen?: boolean;
   /** Called when a mouse, stylus or trackpad pointer enters it. */ onPointerEnter?: () => void;
   /** Called when that pointer leaves it. */ onPointerLeave?: () => void;
@@ -1417,6 +1418,7 @@ export type LinkProps = Omit<Props, "style" | "children" | "role"> & { role?: Li
   /** Refuses input and shows the disabled style; it stays in accessibility, marked unavailable. */ disabled?: boolean;
   /** The id of a popover a press opens or closes. */ popoverTarget?: string;
   /** The id of a `popover="hint"` shown while the pointer rests on it or it has focus. */ interestFor?: string;
+  /** The current item of a set: `"page"` in navigation, `"step"` in a progress of steps, `true` otherwise; `false` or absent for the rest. */ "aria-current"?: "page" | "step" | boolean;
 };
 export type SelectStyle = StyleGroup.Box & StyleGroup.Padding & StyleGroup.Text & StyleGroup.TextBlock & StyleGroup.Editor;
 /** The roles a `<select>` takes; reference/elements.md says where the others go. */

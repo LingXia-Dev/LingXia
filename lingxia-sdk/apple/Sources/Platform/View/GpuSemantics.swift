@@ -68,6 +68,7 @@ public enum GpuSemantics {
     public enum Key: String, Sendable, CaseIterable {
         case headingLevel = "heading_level"
         case level
+        case current
         case liveRegion = "live_region"
         case position
         case textSelection = "text_selection"

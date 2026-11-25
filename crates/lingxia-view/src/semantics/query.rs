@@ -6,7 +6,7 @@ use crate::scene::node::NodeSnapshot;
 use serde_json::{Value, json};
 
 /// Selector forms GPU pages answer; anything else is rejected by name.
-pub const SUPPORTED: &str = "tag names (button, a, input, textarea, img, h1-h6, ul, li, dialog, div, span), [data-testid=\"…\"], [data-*] and [data-*=\"…\"] (authored data-* props), [role=\"…\"], [aria-label=\"…\"], authored ARIA states ([aria-pressed=\"true\"], -selected, -expanded, -busy, -invalid, -required, -checked) and [aria-activedescendant], [placeholder=\"…\"], [type=\"…\"], [href], descendant chains of these (`A B`), comma lists of those";
+pub const SUPPORTED: &str = "tag names (button, a, input, textarea, img, h1-h6, ul, li, dialog, div, span), [data-testid=\"…\"], [data-*] and [data-*=\"…\"] (authored data-* props), [role=\"…\"], [aria-label=\"…\"], authored ARIA states ([aria-pressed=\"true\"], -selected, -expanded, -busy, -invalid, -required, -checked), [aria-activedescendant], [aria-current], [placeholder=\"…\"], [type=\"…\"], [href], descendant chains of these (`A B`), comma lists of those";
 
 #[derive(Debug, PartialEq)]
 struct Simple {
@@ -53,6 +53,7 @@ fn simple(source: &str) -> Result<Simple, String> {
         ) && !data_name(name)
             && !ARIA_STATES.contains(&name)
             && name != "aria-activedescendant"
+            && name != "aria-current"
         {
             return Err(unsupported(source));
         }
@@ -250,6 +251,7 @@ fn matches(simple: &Simple, element: &Virtual, node: &NodeSnapshot, name: &str) 
                     .map(|input| input.placeholder.as_str())
                     .filter(|placeholder| !placeholder.is_empty()),
                 "aria-activedescendant" => node.active_descendant.as_deref(),
+                "aria-current" => node.aria_current.as_deref(),
                 state if state.starts_with("aria-") => ARIA_STATES
                     .iter()
                     .position(|name| *name == state)
@@ -421,6 +423,9 @@ fn attributes(node: &NodeSnapshot) -> Value {
     }
     if let Some(id) = &node.active_descendant {
         out.insert("aria-activedescendant".into(), json!(id));
+    }
+    if let Some(current) = &node.aria_current {
+        out.insert("aria-current".into(), json!(current));
     }
     if !node.described_by.is_empty() {
         out.insert(

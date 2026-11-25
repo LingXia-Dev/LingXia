@@ -50,6 +50,7 @@ export class GpuSemantics {
   static readonly ACTION_SET_SELECTION: string = "set-selection";
   static readonly KEY_HEADING_LEVEL: string = "heading_level";
   static readonly KEY_LEVEL: string = "level";
+  static readonly KEY_CURRENT: string = "current";
   static readonly KEY_LIVE_REGION: string = "live_region";
   static readonly KEY_POSITION: string = "position";
   static readonly KEY_TEXT_SELECTION: string = "text_selection";

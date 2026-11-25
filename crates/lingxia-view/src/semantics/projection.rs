@@ -155,6 +155,8 @@ pub struct SemanticNode {
     pub heading_level: Option<u8>,
     /// A tree item's depth, 1..32.
     pub level: Option<u8>,
+    /// `page`, `step` or `true`: the current item of its set, for the adapters to speak.
+    pub current: Option<String>,
     /// `polite` or `assertive`: announce text changes.
     pub live_region: Option<String>,
     /// Selected range of selectable static text, as UTF-16 offsets.
@@ -820,6 +822,7 @@ impl Projection<'_> {
             } else {
                 node.aria_level
             },
+            current: node.aria_current.clone(),
             live_region: node.live_region.clone(),
             text_selection: node.selection_range,
             pressed: node.states[0],
