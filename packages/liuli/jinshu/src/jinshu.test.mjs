@@ -12,6 +12,7 @@ import {
   customBlock,
   defineBlock,
   details,
+  defaultSegmenter,
   diffDocuments,
   divider,
   dwellOf,
@@ -255,9 +256,9 @@ describe('applyOps & Diff & Observations', () => {
 
   it('reduces objective observations idempotently and respects media src change', () => {
     const events = [
-      { seq: 1, sessionId: 's1', monoMs: 100, kind: 'dwell', blockId: 'b_p1', dwellMs: 3000, seenRatio: 0.8, idleMs: 0 },
-      { seq: 2, sessionId: 's1', monoMs: 200, kind: 'played', blockId: 'b_v1', src: './v1.mp4', range: [0, 30000], durationMs: 100000, rate: 1 },
-      { seq: 3, sessionId: 's1', monoMs: 300, kind: 'played', blockId: 'b_v1', src: './v1.mp4', range: [20000, 60000], durationMs: 100000, rate: 1 },
+      { seq: 1, sessionId: 's1', kind: 'dwell', blockId: 'b_p1', dwellMs: 3000, seenRatio: 0.8, idleMs: 0 },
+      { seq: 2, sessionId: 's1', kind: 'played', blockId: 'b_v1', src: './v1.mp4', range: [0, 30000], durationMs: 100000, rate: 1 },
+      { seq: 3, sessionId: 's1', kind: 'played', blockId: 'b_v1', src: './v1.mp4', range: [20000, 60000], durationMs: 100000, rate: 1 },
     ];
     const p1 = reduceObservations(undefined, events);
     // Replay same events -> idempotent
@@ -359,5 +360,12 @@ describe('JinshuSource & JinshuTools & Streaming', () => {
     assert.deepEqual(back, runs);
     assert.equal(toggleShorthandWrap('hello', '**'), '**hello**');
     assert.equal(toggleShorthandWrap('**hello**', '**'), 'hello');
+  });
+});
+
+describe('word diff segmenting', () => {
+  it('splits the same way on every engine: Han and kana alone, letter runs in any script', () => {
+    assert.deepEqual(defaultSegmenter('abc中文 café, мир'), ['abc', '中', '文', ' ', 'café', ',', ' ', 'мир']);
+    assert.deepEqual(defaultSegmenter('こんにちは'), ['こ', 'ん', 'に', 'ち', 'は']);
   });
 });

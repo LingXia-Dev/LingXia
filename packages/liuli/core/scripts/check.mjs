@@ -25,6 +25,8 @@ const kind = path => {
   if (name.endsWith('.examples.tsx') || rel(path) === 'src/example.tsx') return 'examples';
   if (name.endsWith('.recipe.ts')) return 'recipe';
   if (name.endsWith('.doc.ts')) return 'doc';
+  // A package's document source runs in Logic, which owns the clock; render rules on time do not apply.
+  if (rel(path).startsWith('src/source/')) return 'logic';
   return 'source';
 };
 
@@ -105,9 +107,9 @@ for (const path of files) {
     if (role !== 'test') {
       if (ts.isIdentifier(node) && engineGlobals.has(node.text) && !(ts.isPropertyAccessExpression(node.parent) && node.parent.name === node))
         report(node, 'engine', `${node.text} is not available on every engine; take formatted values as props`);
-      if (ts.isPropertyAccessExpression(node) && ts.isIdentifier(node.expression) && node.expression.text === 'Date' && node.name.text === 'now')
+      if (role !== 'logic' && ts.isPropertyAccessExpression(node) && ts.isIdentifier(node.expression) && node.expression.text === 'Date' && node.name.text === 'now')
         report(node, 'engine', 'Date.now() in render; time arrives as a prop');
-      if (ts.isNewExpression(node) && ts.isIdentifier(node.expression) && node.expression.text === 'Date')
+      if (role !== 'logic' && ts.isNewExpression(node) && ts.isIdentifier(node.expression) && node.expression.text === 'Date')
         report(node, 'engine', 'new Date() in render; time arrives as a prop');
       if (ts.isPropertyAccessExpression(node) && ['os', 'formFactor'].includes(node.name.text))
         report(node, 'same-on-every-os', `env.${node.name.text} must not change how a component looks or behaves`);

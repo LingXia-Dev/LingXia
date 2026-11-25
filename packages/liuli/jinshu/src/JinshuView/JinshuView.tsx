@@ -175,7 +175,7 @@ function ControlledJinshuView({
 
   const highlightedSet = highlightedIds && highlightedIds.length > 0 ? new Set(highlightedIds) : undefined;
 
-  const emitObservation = (event: DistributiveOmit<Observation, 'seq' | 'sessionId' | 'monoMs'>) => {
+  const emitObservation = (event: DistributiveOmit<Observation, 'seq' | 'sessionId'>) => {
     if (!onObserve) return;
     const nextSeq = obsSeq.value + 1;
     obsSeq.set(nextSeq);
@@ -184,7 +184,6 @@ function ControlledJinshuView({
         ...event,
         seq: nextSeq,
         sessionId: 'view',
-        monoMs: Date.now(),
       } as Observation,
     ]);
   };

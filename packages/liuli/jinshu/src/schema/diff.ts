@@ -44,18 +44,9 @@ export interface DocumentDiff {
   };
 }
 
-/** Default word segmenter using `Intl.Segmenter` when available, falling back to CJK/word regex. */
+/** Splits text the same way on every engine: a Han or kana character alone, a run of letters and digits, a run of spaces, any other mark alone. */
 export function defaultSegmenter(text: string): string[] {
-  const intlAny = typeof Intl !== 'undefined'
-    ? (Intl as unknown as { Segmenter?: new (loc?: string, opts?: { granularity: string }) => { segment(s: string): Iterable<{ segment: string }> } })
-    : undefined;
-  if (typeof intlAny?.Segmenter === 'function') {
-    const seg = new intlAny.Segmenter(undefined, { granularity: 'word' });
-    const out: string[] = [];
-    for (const part of seg.segment(text)) out.push(part.segment);
-    return out;
-  }
-  return text.match(/[\u4e00-\u9fff]|[A-Za-z0-9_]+|\s+|[^\sA-Za-z0-9_\u4e00-\u9fff]/g) ?? (text ? [text] : []);
+  return text.match(/[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}]|(?:(?![\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}])[\p{L}\p{M}\p{N}_])+|\s+|[^\s\p{L}\p{M}\p{N}_]/gu) ?? (text ? [text] : []);
 }
 
 /** Simple LCS-based word diff for block text comparison. */

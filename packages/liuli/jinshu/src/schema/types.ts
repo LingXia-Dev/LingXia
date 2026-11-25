@@ -529,7 +529,7 @@ export interface MediaPolicy {
   readonly maxRate?: number;
 }
 
-export type Observation = { readonly seq: number; readonly sessionId: string; readonly monoMs: number } & (
+export type Observation = { readonly seq: number; readonly sessionId: string } & (
   | { readonly kind: 'dwell'; readonly blockId: string; readonly contentHash?: string; readonly dwellMs: number; readonly seenRatio: number; readonly idleMs: number }
   | { readonly kind: 'played'; readonly blockId: string; readonly src: string; readonly range: readonly [startMs: number, endMs: number]; readonly durationMs: number; readonly rate: number; readonly ended?: true }
   | { readonly kind: 'position'; readonly blockId: string; readonly offset: number }
