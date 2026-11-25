@@ -3,7 +3,7 @@
 How a theme pack becomes colours, lengths and timings on a GPU page. Read before changing
 `crates/lingxia-theme`, the `roles` / `scales` lists in `contracts/view/schema.json`, scale lowering
 in the compiler, or the environment's `palette` / `scales` keys. Authoring rules for classes are in
-`view-styling.md`.
+[view-styling.md](view-styling.md).
 
 ## Invariants
 
@@ -33,7 +33,7 @@ Each role carries a `tier` (generated into `lingxia_theme::Tier`):
 | --- | --- | --- |
 | authored | 12 | surfaces, lines, text, `danger`/`success`/`warning`; what a pack writes with an accent seed |
 | fixed | 6 | `scrim`, `shadow`, `media`, `on-media`, `knob`, `media-canvas`; written or taken from the pack's dark canvas / the default |
-| derived | 48 | accent family incl. `*-solid`, `focus`, status on/soft/solid/mark, info, `hue-1..8`, `chart-1..8`, `selection`, `surface-overlay` |
+| derived | 52 | accent family incl. `*-solid` and its hover/pressed steps, `focus`, status on/soft/solid/mark, info, `hue-1..8` and their soft forms, `chart-1..8`, `selection`, `surface-overlay` |
 
 `resolve` computes every derived role a pack does not write, in OKLCH, so each passes its pairs; a
 derived hue avoids the chart colours and yields to a status colour it would read as. A role a pack
@@ -47,15 +47,16 @@ Add a role only when a component needs a colour no existing role carries with a 
   optional accent (replaces the seed), text scale. High contrast is a boost applied here, not a
   second palette.
 - `check(pack)`: every pair in the schema's `on` lists meets its minimum contrast, in both
-  appearances and both contrast levels. Runs in `lingxia build`, `lingxia gen tokens`, the crate
-  tests, and the host before a push.
+  appearances and both contrast levels. Runs in `lingxia build` and `lingxia gen tokens` (both
+  through `gen::tokens::load`), the crate tests, and the host before it applies a theme update.
 - `advise(pack)`: non-failing warnings (status colour reading as a hue or the accent, accent text
   below 4.5:1 on common surfaces, solid fill below 3:1).
 
 ## Scales
 
-`schema.json` `scales` lists 31 slots in six families: `type`, `leading`, `radius`, `space`,
-`duration`, `ease`; each names its pack field.
+`schema.json` `scales` lists 31 slots in seven families: `type`, `leading`, `radius`, `space`,
+`duration`, `ease`, and `em`; each names its pack field. `em` has no pack field and no value: it
+stays a reference until layout, which knows the node's font size.
 
 **Compiler.** `scaleTheme` (`compiler/tailwind.mjs`) defines every Tailwind scale variable as
 `scale(<slot>)` and is appended after the project and package tokens, so it always wins: a project
@@ -91,8 +92,10 @@ pack seeded at session start. Older revisions are ignored.
 ## Ownership
 
 The pack belongs to the lxapp. `theme/pack.json` is completed and checked by `lingxia build`;
-`gpu_page::Lease::new` registers it under the app session's worker (`set_app_pack`) before the first
-page, and the registration outlives page relaunches until the session ends. An lxapp without one
+`gpu_page::Lease::new` registers it under the app session's worker (`set_app_pack`) before the
+page's host reads it. Leases count per worker: the pack stays registered while any page of that
+worker is live and is cleared when the last lease is disposed, so a relaunch that replaces pages
+keeps it. An lxapp without one
 uses the default pack. The host has no pack of its own.
 
 Host chrome around a GPU page (navigation bar, tab bar, separator, window floor) takes `surface`,
