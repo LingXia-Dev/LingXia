@@ -4,6 +4,14 @@ The Rust workspace version is the base-library version shared by the native
 runtime, SDKs, and embedded JS runtime assets. The CLI has an explicit package
 version so it can ship hotfixes against an unchanged base.
 
+Invariants:
+
+- Compatibility is decided by major.minor only; a patch never gates anything.
+- Everything except the CLI and Runner moves together at the workspace
+  version; the CLI may run ahead on patches within the base line.
+- A host never runs a package built for a newer line than its own, and the CLI
+  never builds for a line it cannot target.
+
 ## Components
 
 | Family | Where | Version |
@@ -30,9 +38,11 @@ workspace version with the Rust crates and SDKs.
 
 ### Tier 2 — framework libraries
 
-`@lingxia/page-runtime`, `@lingxia/elements`, `@lingxia/react`,
-and `@lingxia/html` are bundled into the lxapp. Their major.minor must match
-its base runtime; patches may differ.
+The libraries an lxapp builds with: `@lingxia/page-runtime`,
+`@lingxia/elements`, `@lingxia/react`, `@lingxia/html` (bundled into pages),
+`@lingxia/logic` (what Logic imports), `@lingxia/test` (lxapp tests) and
+`@lingxia/terminal-settings`. Their major.minor must match the base runtime;
+patches may differ.
 
 Published internal `@lingxia/*` dependencies use `~M.m.P`, floored at the
 published patch. Scaffolds use `~M.m.0`, allowing packages ahead of or behind
@@ -41,10 +51,11 @@ version all npm packages together; there is no `npm:<package>` component.
 
 ## `minRuntime` is a build target
 
+Code: `lingxia_control_protocol::dev_session::compat`.
+
 `minRuntime` gates on major.minor everywhere; patches never gate. The host
 refuses a package whose line is above its own. The CLI builds only for lines in
-`[BUILD_TARGET_FLOOR, CLI line]` (`lingxia_control_protocol::dev_session::compat`)
-and refuses others with the CLI to use instead. `lingxia dev` and `lingxia build` use that window for a
+`[BUILD_TARGET_FLOOR, CLI line]` and refuses others with the CLI to use instead. `lingxia dev` and `lingxia build` use that window for a
 standalone lxapp and for a host project: SDK pins must agree and sit in the
 window, each embedded lxapp's `minRuntime` must not exceed the host, and
 `@lingxia/*` packages sit on the lxapp's `minRuntime` line — neither older nor
@@ -116,7 +127,7 @@ returns 10 even with `--yes`. The new binary synchronizes its own skill copy.
 The `lingxia-cli-v*` release carries CLI binaries and the development Runner
 used by `lingxia dev` for standalone lxapps.
 
-- `install.sh` / `install.ps1` install `lingxia-*` and `lxdev-*`.
+- `install.sh` / `install.ps1` (repo root) install `lingxia-*` and `lxdev-*`.
 - CLI release targets are macOS arm64/x64 and Windows x64. Windows 11 Arm
   uses x64 emulation; installers and self-update select the x64 assets there.
 - Runner assets are fetched into `~/.lingxia/runner/<version>` as needed.
