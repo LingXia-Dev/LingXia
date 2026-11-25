@@ -1169,6 +1169,7 @@ export type ButtonProps = Omit<Props, "style" | "children" | "role"> & { role?: 
   /** The id of a `popover="hint"` shown while the pointer rests on it or it has focus. */ interestFor?: string;
   /** The current item of a set: `"page"` in navigation, `"step"` in a progress of steps, `true` otherwise; `false` or absent for the rest. */ "aria-current"?: "page" | "step" | boolean;
   /** On a menu item: run `onClick` and leave the menu open. */ keepOpen?: boolean;
+  /** A press leaves the focused editor editing: its caret, selection and keyboard stay, as a format bar above the keyboard needs. */ keepsFocus?: boolean;
   /** Called when a mouse, stylus or trackpad pointer enters it. */ onPointerEnter?: () => void;
   /** Called when that pointer leaves it. */ onPointerLeave?: () => void;
 } & ({ 

@@ -287,7 +287,8 @@ impl<A: PlatformAdapter> Inner<A> {
                             .is_some_and(|(snapshot, clicked)| {
                                 controlled_by_focused_editor(&snapshot.frame.nodes, clicked)
                             });
-                    if !in_controlled_list {
+                    // A `keepsFocus` button (a format bar's) leaves the caret and keyboard too.
+                    if !in_controlled_list && !clicked.is_some_and(|node| node.keeps_focus) {
                         self.adapter.activation();
                     }
                     let identity = clicked

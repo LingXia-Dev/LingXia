@@ -626,6 +626,8 @@ function resolveElement(tag, original, children, identity, depth, parent) {
       const click = invokerHandler(props, identity, parent.popovers ?? []);
       interestTrigger(props, identity, parent.popovers ?? []);
       if (props.interestFor !== undefined) wire('interestFor', props.interestFor);
+      if (props.keepsFocus !== undefined && typeof props.keepsFocus !== 'boolean') throw Error('UI_PROP: keepsFocus is a boolean');
+      if (props.keepsFocus) wire('keepsFocus', 1);
       if (click && !disabled) on('onClick', click);
       break;
     }

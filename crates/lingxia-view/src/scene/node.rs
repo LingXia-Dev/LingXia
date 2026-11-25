@@ -122,6 +122,9 @@ pub struct NodeSnapshot {
     /// A dialog backdrop whose opacity follows how much of its dragged panel is on screen.
     #[serde(skip)]
     pub drag_scrim: bool,
+    /// A `keepsFocus` button: its press leaves the focused editor editing.
+    #[serde(skip)]
+    pub keeps_focus: bool,
     /// A shown top layer's panel (a dialog's or popover's box): presses over it never reach
     /// what lies beneath, its backdrop included.
     #[serde(skip)]

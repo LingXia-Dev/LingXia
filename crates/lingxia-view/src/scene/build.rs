@@ -1607,6 +1607,7 @@ impl Renderer {
                 close_request: record.number(field::TOP_LAYER) == Some(1.0),
                 modal: record.number(field::MODAL) == Some(1.0),
                 drag_scrim: record.number(field::DRAG_SCRIM) == Some(1.0),
+                keeps_focus: record.number(field::KEEPS_FOCUS) == Some(1.0),
                 touch_target_none: record.string(field::TOUCH_TARGET) == Some("none"),
                 panel: !matches!(record.tag, tag::BUTTON | tag::LINK_BOX)
                     && record

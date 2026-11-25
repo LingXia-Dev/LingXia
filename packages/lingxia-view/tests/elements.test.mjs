@@ -555,6 +555,12 @@ test('aria-current marks the current item on a button or link', () => {
   assert.throws(() => describe(() => h('button', { 'aria-current': 'date', onClick() {} }, 'x'), {}), /aria-current is "page", "step" or a boolean/);
 });
 
+test('keepsFocus marks a button whose press leaves the focused editor editing', () => {
+  assert.equal(rendered(() => h('button', { keepsFocus: true, onClick() {} }, 'B')).props.keepsFocus, 1);
+  assert.equal(rendered(() => h('button', { keepsFocus: false, onClick() {} }, 'B')).props.keepsFocus, undefined);
+  assert.throws(() => describe(() => h('button', { keepsFocus: 'yes', onClick() {} }, 'B'), {}), /keepsFocus is a boolean/);
+});
+
 test('role="img" takes a <view> or <text> with an aria-label', () => {
   assert.equal(rendered(() => h('view', { role: 'img', 'aria-label': 'Ada Lovelace' }, h('text', {}, 'AL'))).props.role, 'img');
   assert.equal(rendered(() => h('text', { role: 'img', 'aria-label': '4 of 5 stars' }, '★★★★☆')).props.role, 'img');

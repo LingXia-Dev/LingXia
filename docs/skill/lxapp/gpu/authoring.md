@@ -61,6 +61,7 @@ export function render({ data, actions }: View) {
 - In a component, `useEnv()` re-runs it only when an env field it read changes, not on every `view.data` change (`useView()` does).
 - `cell.focus()` (text cells only, `LocalText`) focuses the editor bound (`bind`) to that cell; from a handler, never in render.
   `cell.showPicker()` opens a bound date or time editor's picker the same way (nothing if disabled or read-only).
+- `<button keepsFocus>` (a format bar's): its press leaves the focused editor editing, caret and keyboard kept.
 - `reveal(id)` (from `@lingxia/view`, in a handler) scrolls the element with that `id` into view inside its `<scroll>`s, after the render the handler causes; a `<List>` row uses the list's `anchor`.
 - `const box = useBox(name)` + `<view box={box}>` reads the element's laid-out content size: `box.value` is `{ width, height, minContentWidth, maxContentWidth }` in points (the last two: its content at its narrowest and on one line, to choose a layout that fits), `null` until the first layout and one render behind a change (`onLayout={size => …}` is the callback form; on `view`, `text`, `vector`, `plot`, `scroll`).
 - `useAction(actions.x)` gives `pending`, `error` and `run`, which never rejects and resolves `{ ok: true, value }` (`value` is `null` for an action that returns nothing) or `{ ok: false, error }`.

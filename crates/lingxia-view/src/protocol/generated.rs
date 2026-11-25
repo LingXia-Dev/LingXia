@@ -320,6 +320,7 @@ pub mod field {
     pub const PICKER_REQUEST: usize = 282;
     pub const ARIA_LEVEL: usize = 283;
     pub const ARIA_CURRENT: usize = 284;
+    pub const KEEPS_FOCUS: usize = 285;
 }
 
 pub const TAGS: &[&str] = &["column", "reserved-1", "text", "button", "reserved-4", "scroll", "list", "image", "input", "textarea", "checkbox", "switch", "radio", "radio-option", "search", "slider", "link-box", "reserved-17", "plot", "vector", "page", "span", "link", "select", "video", "webview"];
@@ -611,6 +612,7 @@ pub const FIELDS: &[(&str, &str)] = &[
     ("pickerRequest", "picker-request"),
     ("ariaLevel", "aria-level"),
     ("ariaCurrent", "aria-current"),
+    ("keepsFocus", "flag"),
 ];
 
 /// Enumerated values accepted for an option-valued field kind.
@@ -1163,4 +1165,5 @@ pub const FIELD_ADMISSION: &[FieldAdmission] = &[
     FieldAdmission { tags: Some(&[tag::INPUT]), parent: None },
     FieldAdmission { tags: None, parent: None },
     FieldAdmission { tags: Some(&[tag::BUTTON, tag::LINK, tag::LINK_BOX]), parent: None },
+    FieldAdmission { tags: Some(&[tag::BUTTON]), parent: None },
 ];

@@ -105,6 +105,7 @@ Children: text, or noninteractive content elements (a composed control). `dragSn
 | `interestFor` | `string` |  | The id of a `popover="hint"` shown while the pointer rests on it or it has focus. |
 | `aria-current` | `"page" \| "step" \| boolean` |  | The current item of a set: `"page"` in navigation, `"step"` in a progress of steps, `true` otherwise; `false` or absent for the rest. |
 | `keepOpen` | `boolean` |  | On a menu item: run `onClick` and leave the menu open. |
+| `keepsFocus` | `boolean` |  | A press leaves the focused editor editing: its caret, selection and keyboard stay, as a format bar above the keyboard needs. |
 | `drag` | `"x" \| "y"` |  | Lets the finger move it and its subtree along one axis, between its `dragSnapPoints`. |
 | `dragSnapPoints` | `` readonly (number \| `${number}%`)[] `` |  | Up to 8 offsets, in pixels or percents of its size, a drag comes to rest at. |
 | `bind` | `Local<number>` |  | A number `useLocal` cell holding the index of the snap point it rests on. |

@@ -1605,6 +1605,63 @@ fn clicking_an_option_of_a_focused_combobox_keeps_the_field_editing() {
     assert_eq!(last["text"], "picked", "{last}");
 }
 
+/// A format bar's `keepsFocus` button runs its click and leaves the field editing; a plain one ends it.
+#[test]
+fn a_keeps_focus_button_leaves_the_field_editing() {
+    let worker = ViewWorker::spawn("test-view").unwrap();
+    let platform = Platform::new(&[&worker]);
+    let host = platform.host(
+        &worker,
+        &source(
+            "function render(){const v=useLocal('v','hello');const last=useLocal('last','none');return h('page',null,h('textarea',{'data-testid':'f',bind:v,'aria-label':'Body',onBlur:()=>last.set('blur'),style:{height:48}}),h('button',{'data-testid':'bold',keepsFocus:true,onClick:()=>last.set('bold')},'B'),h('button',{'data-testid':'done',onClick:()=>{}},'Done'),h('text',{'data-testid':'last'},last.value))}",
+        ),
+        false,
+    );
+    host.set_visible(true);
+    platform.settle(&[&host]);
+    let current: serde_json::Value = serde_json::from_str(host.snapshot().unwrap().json()).unwrap();
+    let identity = current["nodes"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|node| node["test_id"] == "f")
+        .unwrap()["identity"]
+        .clone();
+    host.input(
+        serde_json::json!({"op": "focus", "identity": identity, "generation": current["generation"]})
+            .to_string(),
+        |_| {},
+    );
+    platform.settle(&[&host]);
+    run_frames(&platform, &host, 2);
+    let click = |id: &str| {
+        host.automation_request(&serde_json::json!({"op": "act", "css": format!("[data-testid=\"{id}\"]"), "action": {"kind": "click"}}))
+            .unwrap();
+        platform.settle(&[&host]);
+        run_frames(&platform, &host, 2);
+    };
+    let text = |id: &str| {
+        host.automation_request(
+            &serde_json::json!({"op": "query", "css": format!("[data-testid=\"{id}\"]")}),
+        )
+        .unwrap()["text"]
+            .clone()
+    };
+    click("bold");
+    assert_eq!(text("last"), "bold", "the click ran");
+    assert_eq!(
+        host.adapter().log.lock().unwrap().ended_input,
+        0,
+        "the field keeps editing"
+    );
+    click("done");
+    assert_eq!(
+        host.adapter().log.lock().unwrap().ended_input,
+        1,
+        "a plain button ends editing"
+    );
+}
+
 #[test]
 fn hiding_a_page_drops_its_text_selection_from_the_kept_frame() {
     let worker = ViewWorker::shared("test:hide-selection").unwrap();
