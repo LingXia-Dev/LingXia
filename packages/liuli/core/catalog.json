@@ -21752,6 +21752,22 @@
             "minimum": "3:1"
           },
           {
+            "what": "boundary, off, on a card",
+            "pair": [
+              "line-strong",
+              "surface-raised"
+            ],
+            "minimum": "3:1"
+          },
+          {
+            "what": "boundary, off, in an overlay",
+            "pair": [
+              "line-strong",
+              "surface-overlay"
+            ],
+            "minimum": "3:1"
+          },
+          {
             "what": "disabled label, off, on a card",
             "pair": [
               "text-muted",
@@ -21827,7 +21843,7 @@
           "accent",
           "accent-soft",
           "focus",
-          "line",
+          "line-strong",
           "surface",
           "surface-overlay",
           "text",

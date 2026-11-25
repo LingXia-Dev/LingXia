@@ -10,7 +10,7 @@ export const toggleButtonParts = { root: 'button', glyph: 'vector', label: 'text
 export const toggleButtonRecipe = {
   root: {
     base: 'flex-row items-center justify-center-safe gap-1.5 rounded-control border transition-colors duration-fast ease-standard focus-visible:ring-2 focus-visible:ring-focus focus-visible:ring-offset-2',
-    off: 'bg-surface text-text border-line shadow-control hover:bg-text/5 active:bg-text/8 disabled:bg-text/6 disabled:text-muted disabled:border-transparent disabled:shadow-none',
+    off: 'bg-surface text-text border-line-strong shadow-control hover:bg-text/5 active:bg-text/8 disabled:bg-text/6 disabled:text-muted disabled:border-transparent disabled:shadow-none',
     /** Off inside a dialog, sheet or popover: the overlay's surface. */
     overlay: 'bg-surface-overlay',
     on: 'bg-accent-soft text-text border-accent hover:bg-accent/16 active:bg-accent/20 disabled:bg-accent-soft/50 disabled:text-faint disabled:border-transparent',

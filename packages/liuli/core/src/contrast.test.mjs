@@ -11,7 +11,7 @@ const theme = await palette();
 const key = (pair, appearance) => `${pair.component}: ${pair.what} (${appearance})`;
 
 /** Pairs the default theme fails today: the input to the theme roles work, not a Liuli fix. */
-const themeGaps = new Set([]);
+const themeGaps = new Set(['ToggleButton: boundary, off, in an overlay (dark)']);
 
 test('contrast pairs name View roles, with a backdrop under any translucent background', () => {
   for (const pair of pairs) {
@@ -42,7 +42,7 @@ test('pairs on roles the engine derives wait for the resolved palette', t => {
 });
 
 /** Pairs that clear their minimum by under 0.1: a palette nudge can tip them, so each is named. */
-const tight = new Set(['Code: a sign and number on a removed line (light)', 'Item: chevron (light)', 'SegmentedControl: thumb edge, with icon-only segments (light)', 'Toast: action (dark)']);
+const tight = new Set(['Code: a sign and number on a removed line (light)', 'Item: chevron (light)', 'SegmentedControl: thumb edge, with icon-only segments (light)', 'Toast: action (dark)', 'ToggleButton: boundary, off, on a card (dark)']);
 
 test('the tight pairs are named and still clear their minimum', () => {
   const near = [];

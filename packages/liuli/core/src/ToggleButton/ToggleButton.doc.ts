@@ -34,6 +34,8 @@ export const doc: ComponentDoc = {
       { what: 'label, off', pair: ['text', 'surface'], minimum: '4.5:1' },
       { what: 'label, on', pair: ['text', 'accent-soft'], minimum: '4.5:1' },
       { what: 'boundary, off', pair: ['line-strong', 'surface'], minimum: '3:1' },
+      { what: 'boundary, off, on a card', pair: ['line-strong', 'surface-raised'], minimum: '3:1' },
+      { what: 'boundary, off, in an overlay', pair: ['line-strong', 'surface-overlay'], minimum: '3:1' },
       { what: 'disabled label, off, on a card', pair: ['text-muted', 'text/6'], over: 'surface', minimum: '4.5:1' },
       { what: 'disabled label, on', pair: ['text-muted', 'accent-soft'], minimum: '4.5:1' },
     ],
