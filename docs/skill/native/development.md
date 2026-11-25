@@ -115,16 +115,18 @@ async fn pick_document(
 }
 ```
 
-Parameters, in order, all optional:
+Parameters are recognized by type, in any order, all optional:
 
-1. an authority: `Arc<lingxia::LxApp>`, or
-   `lingxia::host::HostInvocationContext` to authorize app-owned or granted
-   resources;
-2. one JSON payload (`serde::Deserialize`);
-3. `lingxia::host::HostCancel`, last.
+- an authority: `Arc<lingxia::LxApp>`, or
+  `lingxia::host::HostInvocationContext` to authorize app-owned or granted
+  resources;
+- `lingxia::host::HostCancel` (unary only);
+- `PageState<T>` (unary only);
+- `StreamContext`/`ChannelContext` (required by `stream`/`channel`);
+- anything else is the JSON payload (`serde::Deserialize`). Only one: a
+  second is a compile error, so put multiple values in one struct.
 
-Return `lingxia::Result<T>` with `T: serde::Serialize`. Streams and channels
-take the same authority before their payload and final context.
+Return `lingxia::Result<T>` with `T: serde::Serialize`.
 
 `HostInvocationContext` comes from dispatch, never from JSON. Treat a payload
 id only as a selector and authorize it against `app_scope()`:
@@ -409,7 +411,6 @@ the macOS main thread.
 
 - Importing `lingxia_logic` or `rong` internals instead of `lingxia::*`
   facades.
-- Authority not first, or `HostCancel` not last, in a route signature.
 - Writing the `<fn>_host()` companion yourself, skipping
   `__lingxia_native::install()`, or leaving a submodule handler without a
   crate-root `pub use` (`BRIDGE_METHOD_NOT_FOUND` or a build error).

@@ -8,15 +8,16 @@
 //! - `.js` — Browser global JS client (same unified shapes)
 //! - `.rs` — Rust auto-register module (`mod __lingxia_native { pub fn install() }`)
 
+pub mod syntax;
+
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result, anyhow, bail};
+use syntax::{Shape, classify};
 use syn::punctuated::Punctuated;
-use syn::{
-    Attribute, Expr, Fields, FnArg, ItemEnum, ItemFn, ItemStruct, Lit, Meta, ReturnType, Token,
-};
+use syn::{Attribute, Expr, Fields, ItemEnum, ItemFn, ItemStruct, Lit, Meta, ReturnType, Token};
 
 // ---------------------------------------------------------------------------
 // Public API
@@ -298,11 +299,15 @@ fn find_item_line(source: &str, keyword: &str, ident: &str) -> usize {
 
 fn scan_file_into(source: &str, file_label: &str, manifest: &mut NativeManifest) -> Result<()> {
     let ast = syn::parse_file(source).with_context(|| format!("parse {file_label}"))?;
-    scan_items(&ast.items, source, file_label, manifest);
-    Ok(())
+    scan_items(&ast.items, source, file_label, manifest)
 }
 
-fn scan_items(items: &[syn::Item], source: &str, file_label: &str, manifest: &mut NativeManifest) {
+fn scan_items(
+    items: &[syn::Item],
+    source: &str,
+    file_label: &str,
+    manifest: &mut NativeManifest,
+) -> Result<()> {
     for item in items {
         match item {
             syn::Item::Fn(item_fn) => {
@@ -312,9 +317,8 @@ fn scan_items(items: &[syn::Item], source: &str, file_label: &str, manifest: &mu
                         file: file_label.to_string(),
                         line: find_item_line(source, "fn", &ident),
                     };
-                    manifest
-                        .routes
-                        .push(extract_route_info(&route, kind, item_fn, loc));
+                    let route = extract_route_info(&route, kind, item_fn, loc)?;
+                    manifest.routes.push(route);
                 }
             }
             syn::Item::Struct(item_struct) => {
@@ -353,12 +357,13 @@ fn scan_items(items: &[syn::Item], source: &str, file_label: &str, manifest: &mu
             }
             syn::Item::Mod(item_mod) => {
                 if let Some((_, sub_items)) = &item_mod.content {
-                    scan_items(sub_items, source, file_label, manifest);
+                    scan_items(sub_items, source, file_label, manifest)?;
                 }
             }
             _ => {}
         }
     }
+    Ok(())
 }
 
 fn collect_rs_files(dir: &Path, out: &mut Vec<PathBuf>) -> Result<(), String> {
@@ -435,46 +440,25 @@ fn extract_route_info(
     kind: RouteKind,
     item_fn: &ItemFn,
     loc: SourceLoc,
-) -> NativeRoute {
-    let mut input: Option<String> = None;
-    let mut event: Option<String> = None;
-    let mut channel_in: Option<String> = None;
-    let mut channel_out: Option<String> = None;
-    let mut output: Option<String> = None;
-
-    for arg in &item_fn.sig.inputs {
-        let FnArg::Typed(pat_type) = arg else {
-            continue;
-        };
-        let ty_str = type_string(&pat_type.ty).replace(' ', "");
-
-        // Dispatch supplies these; they are never part of the JSON input.
-        if ty_str.contains("LxApp")
-            || ty_str.contains("HostCancel")
-            || ty_str.contains("HostInvocationContext")
-            || ty_str.contains("PageState")
-        {
-            continue;
-        }
-
-        if ty_str.contains("StreamContext") {
-            let args = extract_generic_args(&ty_str, "StreamContext");
-            event = args.first().cloned();
-            if let Some(result) = args.get(1) {
-                output = Some(result.clone());
-            }
-            continue;
-        }
-
-        if ty_str.contains("ChannelContext") {
-            let args = extract_generic_args(&ty_str, "ChannelContext");
-            channel_in = args.first().cloned();
-            channel_out = args.get(1).cloned().or_else(|| channel_in.clone());
-            continue;
-        }
-
-        input = Some(ty_str);
-    }
+) -> Result<NativeRoute> {
+    let shape = match kind {
+        RouteKind::Call => Shape::Call,
+        RouteKind::SyncCall => Shape::Sync,
+        RouteKind::Stream => Shape::Stream,
+        RouteKind::Channel => Shape::Channel,
+    };
+    let params = classify(&item_fn.sig, shape)
+        .map_err(|err| anyhow!("{}:{} `{route}`: {err}", loc.file, loc.line))?;
+    let text = |ty: Option<&syn::Type>| ty.map(|ty| type_string(ty).replace(' ', ""));
+    let input = text(params.payload());
+    let (event, mut output) = params
+        .stream()
+        .map(|(event, result)| (text(event), text(result)))
+        .unwrap_or_default();
+    let (channel_in, channel_out) = params
+        .channel()
+        .map(|(inbound, outbound)| (text(inbound), text(outbound)))
+        .unwrap_or_default();
 
     if output.is_none() {
         output = match &item_fn.sig.output {
@@ -486,7 +470,7 @@ fn extract_route_info(
         };
     }
 
-    NativeRoute {
+    Ok(NativeRoute {
         route: route.to_string(),
         kind,
         input,
@@ -496,7 +480,7 @@ fn extract_route_info(
         channel_out,
         fn_ident: item_fn.sig.ident.to_string(),
         loc,
-    }
+    })
 }
 
 // ---------------------------------------------------------------------------
@@ -1917,7 +1901,6 @@ mod tests {
             pub async fn export(
                 input: ExportInput,
                 ctx: StreamContext<ExportEvent, AdjEvent>,
-                _state: PageState<EditorState>,
             ) -> HostResult<()> { todo!() }
         "#,
         );
@@ -2005,6 +1988,41 @@ mod tests {
         };
         assert_eq!(input("notes.scoped").as_deref(), Some("String"));
         assert_eq!(input("notes.ping"), None);
+    }
+
+    #[test]
+    fn parameters_are_classified_by_type_in_any_order() {
+        let manifest = scan_source(
+            r#"
+            #[lingxia::native("apps.describe")]
+            pub fn describe(cancel: HostCancel, info: LxAppInfo, app: Arc<LxApp>) -> HostResult<()> { todo!() }
+
+            #[lingxia::native("apps.watch", stream)]
+            pub async fn watch(ctx: StreamContext<AppEvent>, query: AppQuery) -> HostResult<()> { todo!() }
+        "#,
+        );
+        let route = |name: &str| manifest.routes.iter().find(|r| r.route == name).unwrap();
+        assert_eq!(route("apps.describe").input.as_deref(), Some("LxAppInfo"));
+        assert_eq!(route("apps.watch").input.as_deref(), Some("AppQuery"));
+        assert_eq!(route("apps.watch").event.as_deref(), Some("AppEvent"));
+    }
+
+    #[test]
+    fn a_route_the_macro_would_reject_fails_with_its_location() {
+        let mut manifest = NativeManifest::default();
+        let err = scan_file_into(
+            r#"
+            #[lingxia::native("apps.pair")]
+            pub fn pair(a: Left, b: Right) -> HostResult<()> { todo!() }
+        "#,
+            "src/apps.rs",
+            &mut manifest,
+        )
+        .unwrap_err()
+        .to_string();
+        assert!(err.contains("src/apps.rs:"), "{err}");
+        assert!(err.contains("`apps.pair`"), "{err}");
+        assert!(err.contains("one payload argument"), "{err}");
     }
 
     #[test]

@@ -1,11 +1,9 @@
+use lingxia_native_codegen::syntax::{Param, Params, Shape, classify};
 use proc_macro::TokenStream;
 use quote::{format_ident, quote};
 use syn::parse::Parser;
 use syn::punctuated::Punctuated;
-use syn::{
-    Expr, FnArg, GenericArgument, ItemFn, Lit, LitStr, PatType, PathArguments, Token, Type,
-    parse_macro_input,
-};
+use syn::{Expr, ItemFn, Lit, LitStr, Token, Type, parse_macro_input};
 
 #[proc_macro_attribute]
 pub fn native(attr: TokenStream, item: TokenStream) -> TokenStream {
@@ -293,7 +291,12 @@ fn expand_host(
     let method_lit = LitStr::new(method, route_lit.span());
     let audience = options.audience.tokens();
 
-    let call_plan = match HostFnPlan::from_fn(&input_fn) {
+    let shape = if options.sync {
+        Shape::Sync
+    } else {
+        Shape::Call
+    };
+    let call_plan = match Plan::new(&input_fn, shape) {
         Ok(plan) => plan,
         Err(err) => return err.to_compile_error(),
     };
@@ -314,21 +317,8 @@ fn expand_host(
         .to_compile_error();
     }
 
-    if options.sync
-        && call_plan
-            .args
-            .iter()
-            .any(|arg| matches!(arg, PlanArg::Cancel))
-    {
-        return syn::Error::new_spanned(
-            &input_fn.sig,
-            "#[native(..., sync)] cannot take HostCancel: a sync route is never cancelled",
-        )
-        .to_compile_error();
-    }
-
     if options.sync {
-        let call_expr = call_plan.call_expr(&fn_ident, false, false, true);
+        let call_expr = call_plan.call_expr(&fn_ident, false, false);
         return quote! {
             #input_fn
 
@@ -364,7 +354,7 @@ fn expand_host(
         };
     }
 
-    let call_expr = call_plan.call_expr(&fn_ident, is_async, options.blocking, false);
+    let call_expr = call_plan.call_expr(&fn_ident, is_async, options.blocking);
     let ctor_ident = match options.mode {
         HostMode::Unary => format_ident!("new"),
         HostMode::Stream => format_ident!("stream"),
@@ -415,95 +405,37 @@ fn expand_host(
     }
 }
 
-#[derive(Clone, Copy)]
-enum HostAuthorityArg {
-    None,
-    LxApp,
-    Invocation,
+/// Call glue for one route; parameters come in any order, classified by type.
+struct Plan {
+    shape: Shape,
+    params: Params,
 }
 
-impl HostAuthorityArg {
-    fn tokens(self) -> Option<proc_macro2::TokenStream> {
-        match self {
-            Self::None => None,
-            Self::LxApp => Some(quote! { __lingxia_invocation.lxapp() }),
-            Self::Invocation => Some(quote! { __lingxia_invocation }),
-        }
+impl Plan {
+    fn new(input_fn: &ItemFn, shape: Shape) -> syn::Result<Self> {
+        Ok(Self {
+            shape,
+            params: classify(&input_fn.sig, shape)?,
+        })
     }
-}
 
-enum PlanArg {
-    LxApp,
-    Invocation,
-    Payload(Type),
-    PageState(Type),
-    Cancel,
-}
+    fn stream_types(&self) -> (Type, Type) {
+        let (event, result) = self.params.stream().unwrap_or_default();
+        (
+            event
+                .cloned()
+                .unwrap_or_else(|| syn::parse_quote!(::lingxia::host::JsonValue)),
+            result.cloned().unwrap_or_else(|| syn::parse_quote!(())),
+        )
+    }
 
-struct HostFnPlan {
-    args: Vec<PlanArg>,
-}
-
-impl HostFnPlan {
-    fn from_fn(input_fn: &ItemFn) -> syn::Result<Self> {
-        let mut args = Vec::new();
-        let mut has_input = false;
-        let mut has_cancel = false;
-        let input_count = input_fn.sig.inputs.len();
-
-        for (index, arg) in input_fn.sig.inputs.iter().enumerate() {
-            let FnArg::Typed(arg) = arg else {
-                return Err(syn::Error::new_spanned(
-                    arg,
-                    "#[native] does not support methods with a receiver",
-                ));
-            };
-
-            if index == 0 {
-                if is_lxapp_arg(arg) {
-                    args.push(PlanArg::LxApp);
-                    continue;
-                }
-                if is_host_invocation_context_arg(arg) {
-                    args.push(PlanArg::Invocation);
-                    continue;
-                }
-            }
-
-            if is_page_state_arg(arg) {
-                args.push(PlanArg::PageState((*arg.ty).clone()));
-                continue;
-            }
-
-            if is_host_cancel_arg(arg) {
-                if index + 1 != input_count {
-                    return Err(syn::Error::new_spanned(
-                        arg,
-                        "HostCancel must be the last argument in a #[native] function",
-                    ));
-                }
-                if has_cancel {
-                    return Err(syn::Error::new_spanned(
-                        arg,
-                        "#[native] functions can only take one HostCancel argument",
-                    ));
-                }
-                has_cancel = true;
-                args.push(PlanArg::Cancel);
-                continue;
-            }
-
-            if has_input {
-                return Err(syn::Error::new_spanned(
-                    arg,
-                    "#[native] functions support at most one JSON payload argument",
-                ));
-            }
-            has_input = true;
-            args.push(PlanArg::Payload((*arg.ty).clone()));
-        }
-
-        Ok(Self { args })
+    fn channel_types(&self) -> (Type, Type) {
+        let (inbound, outbound) = self.params.channel().unwrap_or_default();
+        let json = || syn::parse_quote!(::lingxia::host::JsonValue);
+        (
+            inbound.cloned().unwrap_or_else(json),
+            outbound.cloned().unwrap_or_else(json),
+        )
     }
 
     fn call_expr(
@@ -511,40 +443,49 @@ impl HostFnPlan {
         fn_ident: &syn::Ident,
         is_async: bool,
         blocking: bool,
-        is_sync_route: bool,
     ) -> proc_macro2::TokenStream {
         let mut call_args = Vec::new();
         let mut prelude = Vec::new();
-        let mut state_idx = 0usize;
 
-        for arg in &self.args {
-            match arg {
-                PlanArg::LxApp => call_args.push(quote! { __lingxia_invocation.lxapp() }),
-                PlanArg::Invocation => call_args.push(quote! { __lingxia_invocation.clone() }),
-                PlanArg::Payload(input_ty) => {
-                    prelude.push(quote! {
-                        let __lingxia_payload: #input_ty =
-                            ::lingxia::host::parse_input(__lingxia_input.as_deref())?;
+        for (index, param) in self.params.0.iter().enumerate() {
+            match param {
+                Param::LxApp => call_args.push(quote! { __lingxia_invocation.lxapp() }),
+                Param::Invocation => call_args.push(quote! { __lingxia_invocation.clone() }),
+                Param::Cancel => call_args.push(quote! { __lingxia_cancel }),
+                Param::Stream { .. } => call_args.push(quote! { __lingxia_stream }),
+                Param::Channel { .. } => call_args.push(quote! { __lingxia_channel }),
+                Param::Payload(input_ty) => {
+                    let parse = quote! { ::lingxia::host::parse_input(__lingxia_input.as_deref()) };
+                    prelude.push(if self.shape == Shape::Channel {
+                        quote! {
+                            let __lingxia_payload: #input_ty = match #parse {
+                                Ok(v) => v,
+                                Err(e) => {
+                                    __lingxia_close.close_with("INVALID_PARAMS", e.to_string());
+                                    return;
+                                }
+                            };
+                        }
+                    } else {
+                        quote! { let __lingxia_payload: #input_ty = #parse?; }
                     });
                     call_args.push(quote! { __lingxia_payload });
                 }
-                PlanArg::PageState(state_ty) => {
-                    let ident = format_ident!("__lingxia_page_state_{state_idx}");
-                    state_idx += 1;
-                    if is_sync_route {
-                        prelude.push(quote! {
+                Param::PageState(state_ty) => {
+                    let ident = format_ident!("__lingxia_page_state_{index}");
+                    prelude.push(if self.shape == Shape::Sync {
+                        quote! {
                             let #ident: #state_ty =
                                 <#state_ty>::acquire_sync(&__lingxia_invocation)?;
-                        });
+                        }
                     } else {
-                        prelude.push(quote! {
+                        quote! {
                             let #ident: #state_ty =
                                 <#state_ty>::acquire_async(&__lingxia_invocation).await?;
-                        });
-                    }
+                        }
+                    });
                     call_args.push(quote! { #ident });
                 }
-                PlanArg::Cancel => call_args.push(quote! { __lingxia_cancel }),
             }
         }
 
@@ -567,291 +508,7 @@ impl HostFnPlan {
     }
 }
 
-fn is_page_state_arg(arg: &PatType) -> bool {
-    let Type::Path(type_path) = &*arg.ty else {
-        return false;
-    };
-    type_path
-        .path
-        .segments
-        .last()
-        .map(|segment| segment.ident == "PageState")
-        .unwrap_or(false)
-}
-
-fn is_lxapp_arg(arg: &PatType) -> bool {
-    type_is_arc_lxapp(&arg.ty)
-}
-
-fn is_host_invocation_context_arg(arg: &PatType) -> bool {
-    type_is_host_invocation_context(&arg.ty)
-}
-
-fn is_host_cancel_arg(arg: &PatType) -> bool {
-    type_is_host_cancel(&arg.ty)
-}
-
-fn type_is_arc_lxapp(ty: &Type) -> bool {
-    let Type::Path(type_path) = ty else {
-        return false;
-    };
-    let Some(last_segment) = type_path.path.segments.last() else {
-        return false;
-    };
-    if last_segment.ident != "Arc" {
-        return false;
-    }
-    let PathArguments::AngleBracketed(args) = &last_segment.arguments else {
-        return false;
-    };
-    let Some(GenericArgument::Type(inner_ty)) = args.args.first() else {
-        return false;
-    };
-    type_is_lxapp(inner_ty)
-}
-
-fn type_is_lxapp(ty: &Type) -> bool {
-    let Type::Path(type_path) = ty else {
-        return false;
-    };
-    type_path
-        .path
-        .segments
-        .last()
-        .map(|segment| segment.ident == "LxApp")
-        .unwrap_or(false)
-}
-
-fn type_is_host_cancel(ty: &Type) -> bool {
-    let Type::Path(type_path) = ty else {
-        return false;
-    };
-    type_path
-        .path
-        .segments
-        .last()
-        .map(|segment| segment.ident == "HostCancel")
-        .unwrap_or(false)
-}
-
-fn type_is_host_invocation_context(ty: &Type) -> bool {
-    let Type::Path(type_path) = ty else {
-        return false;
-    };
-    type_path
-        .path
-        .segments
-        .last()
-        .map(|segment| segment.ident == "HostInvocationContext")
-        .unwrap_or(false)
-}
-
-fn type_is_stream_context(ty: &Type) -> bool {
-    let Type::Path(type_path) = ty else {
-        return false;
-    };
-    type_path
-        .path
-        .segments
-        .last()
-        .map(|segment| segment.ident == "StreamContext")
-        .unwrap_or(false)
-}
-
-fn type_is_channel_context(ty: &Type) -> bool {
-    let Type::Path(type_path) = ty else {
-        return false;
-    };
-    type_path
-        .path
-        .segments
-        .last()
-        .map(|segment| segment.ident == "ChannelContext")
-        .unwrap_or(false)
-}
-
-fn context_type_args(ty: &Type, expected_ident: &str) -> syn::Result<Vec<Type>> {
-    let Type::Path(type_path) = ty else {
-        return Err(syn::Error::new_spanned(
-            ty,
-            format!("expected `{expected_ident}`"),
-        ));
-    };
-    let Some(last_segment) = type_path.path.segments.last() else {
-        return Err(syn::Error::new_spanned(
-            ty,
-            format!("expected `{expected_ident}`"),
-        ));
-    };
-    if last_segment.ident != expected_ident {
-        return Err(syn::Error::new_spanned(
-            ty,
-            format!("expected `{expected_ident}`"),
-        ));
-    }
-
-    let PathArguments::AngleBracketed(args) = &last_segment.arguments else {
-        return Ok(Vec::new());
-    };
-
-    let mut out = Vec::new();
-    for arg in &args.args {
-        let GenericArgument::Type(ty) = arg else {
-            return Err(syn::Error::new_spanned(
-                arg,
-                format!("`{expected_ident}` only supports type generic arguments"),
-            ));
-        };
-        out.push(ty.clone());
-    }
-    Ok(out)
-}
-
-fn parse_stream_context_types(ty: &Type) -> syn::Result<(Type, Type)> {
-    let args = context_type_args(ty, "StreamContext")?;
-    Ok(match args.len() {
-        0 => (
-            syn::parse_quote!(::lingxia::host::JsonValue),
-            syn::parse_quote!(()),
-        ),
-        1 => (args[0].clone(), syn::parse_quote!(())),
-        2 => (args[0].clone(), args[1].clone()),
-        _ => {
-            return Err(syn::Error::new_spanned(
-                ty,
-                "`StreamContext` supports at most two generic arguments",
-            ));
-        }
-    })
-}
-
-fn parse_channel_context_types(ty: &Type) -> syn::Result<(Type, Type)> {
-    let args = context_type_args(ty, "ChannelContext")?;
-    Ok(match args.len() {
-        0 => (
-            syn::parse_quote!(::lingxia::host::JsonValue),
-            syn::parse_quote!(::lingxia::host::JsonValue),
-        ),
-        1 => (args[0].clone(), args[0].clone()),
-        2 => (args[0].clone(), args[1].clone()),
-        _ => {
-            return Err(syn::Error::new_spanned(
-                ty,
-                "`ChannelContext` supports at most two generic arguments",
-            ));
-        }
-    })
-}
-
 // ===== Stream expansion =====
-
-struct StreamFnPlan {
-    authority: HostAuthorityArg,
-    input_ty: Option<Type>,
-    event_ty: Type,
-    result_ty: Type,
-}
-
-impl StreamFnPlan {
-    fn from_fn(input_fn: &ItemFn) -> syn::Result<Self> {
-        let inputs = &input_fn.sig.inputs;
-
-        let Some(last) = inputs.last() else {
-            return Err(syn::Error::new(
-                proc_macro2::Span::call_site(),
-                "#[native(..., stream)] function must take `StreamContext` as its last argument",
-            ));
-        };
-        let FnArg::Typed(last_arg) = last else {
-            return Err(syn::Error::new_spanned(
-                last,
-                "#[native] does not support methods with a receiver",
-            ));
-        };
-        if !type_is_stream_context(&last_arg.ty) {
-            return Err(syn::Error::new_spanned(
-                last,
-                "last argument of a #[native(..., stream)] function must be `StreamContext`",
-            ));
-        }
-
-        let (event_ty, result_ty) = parse_stream_context_types(&last_arg.ty)?;
-        let mut authority = HostAuthorityArg::None;
-        let mut input_ty = None;
-        let prefix_count = inputs.len() - 1;
-
-        for (index, arg) in inputs.iter().take(prefix_count).enumerate() {
-            let FnArg::Typed(arg) = arg else {
-                return Err(syn::Error::new_spanned(
-                    arg,
-                    "#[native] does not support methods with a receiver",
-                ));
-            };
-            if index == 0 {
-                if is_lxapp_arg(arg) {
-                    authority = HostAuthorityArg::LxApp;
-                    continue;
-                }
-                if is_host_invocation_context_arg(arg) {
-                    authority = HostAuthorityArg::Invocation;
-                    continue;
-                }
-            }
-            if is_page_state_arg(arg) {
-                return Err(syn::Error::new_spanned(
-                    arg,
-                    "PageState<T> is supported on unary routes only",
-                ));
-            }
-            if input_ty.is_some() {
-                return Err(syn::Error::new_spanned(
-                    arg,
-                    "#[native(stream)] functions support at most one JSON payload argument",
-                ));
-            }
-            input_ty = Some((*arg.ty).clone());
-        }
-
-        Ok(Self {
-            authority,
-            input_ty,
-            event_ty,
-            result_ty,
-        })
-    }
-
-    fn call_expr(&self, fn_ident: &syn::Ident, is_async: bool) -> proc_macro2::TokenStream {
-        let mut args: Vec<proc_macro2::TokenStream> = Vec::new();
-        let mut prelude: Vec<proc_macro2::TokenStream> = Vec::new();
-
-        if let Some(authority) = self.authority.tokens() {
-            args.push(authority);
-        }
-
-        if let Some(input_ty) = &self.input_ty {
-            prelude.push(quote! {
-                let __lingxia_payload: #input_ty =
-                    ::lingxia::host::parse_input(__lingxia_input.as_deref())?;
-            });
-            args.push(quote! { __lingxia_payload });
-        }
-
-        args.push(quote! { __lingxia_stream });
-
-        let invoke = if is_async {
-            quote! { #fn_ident(#(#args),*).await }
-        } else {
-            quote! { #fn_ident(#(#args),*) }
-        };
-
-        quote! {
-            {
-                #(#prelude)*
-                #invoke
-            }
-        }
-    }
-}
 
 fn expand_stream(
     route_lit: LitStr,
@@ -867,13 +524,12 @@ fn expand_stream(
     let method_lit = LitStr::new(method, route_lit.span());
     let audience = options.audience.tokens();
 
-    let plan = match StreamFnPlan::from_fn(&input_fn) {
+    let plan = match Plan::new(&input_fn, Shape::Stream) {
         Ok(p) => p,
         Err(err) => return err.to_compile_error(),
     };
-    let call_expr = plan.call_expr(&fn_ident, input_fn.sig.asyncness.is_some());
-    let event_ty = &plan.event_ty;
-    let result_ty = &plan.result_ty;
+    let call_expr = plan.call_expr(&fn_ident, input_fn.sig.asyncness.is_some(), false);
+    let (event_ty, result_ty) = plan.stream_types();
 
     quote! {
         #input_fn
@@ -928,130 +584,6 @@ fn expand_stream(
 
 // ===== Channel expansion =====
 
-struct ChannelFnPlan {
-    authority: HostAuthorityArg,
-    input_ty: Option<Type>,
-    inbound_ty: Type,
-    outbound_ty: Type,
-}
-
-impl ChannelFnPlan {
-    fn from_fn(input_fn: &ItemFn) -> syn::Result<Self> {
-        let inputs = &input_fn.sig.inputs;
-
-        // Last argument must be ChannelContext.
-        let Some(last) = inputs.last() else {
-            return Err(syn::Error::new(
-                proc_macro2::Span::call_site(),
-                "#[native(..., channel)] function must take `ChannelContext` as its last argument",
-            ));
-        };
-        let FnArg::Typed(last_arg) = last else {
-            return Err(syn::Error::new_spanned(
-                last,
-                "#[native] does not support methods with a receiver",
-            ));
-        };
-        if !type_is_channel_context(&last_arg.ty) {
-            return Err(syn::Error::new_spanned(
-                last,
-                "last argument of a #[native(..., channel)] function must be `ChannelContext`",
-            ));
-        }
-
-        let (inbound_ty, outbound_ty) = parse_channel_context_types(&last_arg.ty)?;
-
-        let mut authority = HostAuthorityArg::None;
-        let mut input_ty = None;
-        let prefix_count = inputs.len() - 1;
-
-        for (index, arg) in inputs.iter().take(prefix_count).enumerate() {
-            let FnArg::Typed(arg) = arg else {
-                return Err(syn::Error::new_spanned(
-                    arg,
-                    "#[native] does not support methods with a receiver",
-                ));
-            };
-            if index == 0 {
-                if is_lxapp_arg(arg) {
-                    authority = HostAuthorityArg::LxApp;
-                    continue;
-                }
-                if is_host_invocation_context_arg(arg) {
-                    authority = HostAuthorityArg::Invocation;
-                    continue;
-                }
-            }
-            if is_page_state_arg(arg) {
-                return Err(syn::Error::new_spanned(
-                    arg,
-                    "PageState<T> is supported on unary routes only",
-                ));
-            }
-            if input_ty.is_some() {
-                return Err(syn::Error::new_spanned(
-                    arg,
-                    "#[native(channel)] functions support at most one JSON payload argument",
-                ));
-            }
-            input_ty = Some((*arg.ty).clone());
-        }
-
-        Ok(Self {
-            authority,
-            input_ty,
-            inbound_ty,
-            outbound_ty,
-        })
-    }
-
-    fn call_expr(
-        &self,
-        fn_ident: &syn::Ident,
-        is_async: bool,
-        channel_ident: &syn::Ident,
-    ) -> proc_macro2::TokenStream {
-        let mut args: Vec<proc_macro2::TokenStream> = Vec::new();
-        let mut prelude: Vec<proc_macro2::TokenStream> = Vec::new();
-
-        if let Some(authority) = self.authority.tokens() {
-            args.push(authority);
-        }
-
-        if let Some(input_ty) = &self.input_ty {
-            prelude.push(quote! {
-                let __lingxia_payload: #input_ty =
-                    match ::lingxia::host::parse_input(__lingxia_input.as_deref()) {
-                        Ok(v) => v,
-                        Err(e) => {
-                            __lingxia_close.close_with("INVALID_PARAMS", e.to_string());
-                            return;
-                        }
-                    };
-            });
-            args.push(quote! { __lingxia_payload });
-        }
-
-        args.push(quote! { #channel_ident });
-
-        if is_async {
-            quote! {
-                {
-                    #(#prelude)*
-                    #fn_ident(#(#args),*).await
-                }
-            }
-        } else {
-            quote! {
-                {
-                    #(#prelude)*
-                    #fn_ident(#(#args),*)
-                }
-            }
-        }
-    }
-}
-
 fn expand_channel(
     route_lit: LitStr,
     namespace: &str,
@@ -1066,15 +598,14 @@ fn expand_channel(
     let method_lit = LitStr::new(method, route_lit.span());
     let audience = options.audience.tokens();
 
-    let plan = match ChannelFnPlan::from_fn(&input_fn) {
+    let plan = match Plan::new(&input_fn, Shape::Channel) {
         Ok(p) => p,
         Err(err) => return err.to_compile_error(),
     };
 
     let channel_ident = format_ident!("__lingxia_channel");
-    let call_expr = plan.call_expr(&fn_ident, input_fn.sig.asyncness.is_some(), &channel_ident);
-    let inbound_ty = &plan.inbound_ty;
-    let outbound_ty = &plan.outbound_ty;
+    let call_expr = plan.call_expr(&fn_ident, input_fn.sig.asyncness.is_some(), false);
+    let (inbound_ty, outbound_ty) = plan.channel_types();
 
     quote! {
         #input_fn
@@ -1220,48 +751,72 @@ mod tests {
     }
 
     #[test]
-    fn invocation_context_is_an_authority_argument_for_every_native_mode() {
+    fn extractors_bind_in_declaration_order_for_every_mode() {
         let unary: ItemFn = syn::parse_quote! {
-            fn scoped(context: lingxia::host::HostInvocationContext, input: String) -> Result<()> {
+            fn scoped(input: String, cancel: HostCancel, context: HostInvocationContext) -> Result<()> {
                 Ok(())
             }
         };
         let stream: ItemFn = syn::parse_quote! {
             async fn scoped_stream(
-                context: lingxia::host::HostInvocationContext,
                 stream: lingxia::host::StreamContext<String>,
+                input: Query,
+                context: lingxia::host::HostInvocationContext,
             ) -> Result<()> {
                 Ok(())
             }
         };
         let channel: ItemFn = syn::parse_quote! {
             async fn scoped_channel(
-                context: lingxia::host::HostInvocationContext,
                 channel: lingxia::host::ChannelContext<String>,
+                app: Arc<LxApp>,
             ) -> Result<()> {
                 Ok(())
             }
         };
 
-        assert!(matches!(
-            HostFnPlan::from_fn(&unary)
-                .expect("unary plan")
-                .args
-                .first(),
-            Some(PlanArg::Invocation)
+        let call = |item: &ItemFn, shape| {
+            Plan::new(item, shape)
+                .expect("plan")
+                .call_expr(&item.sig.ident, true, false)
+                .to_string()
+                .replace(' ', "")
+        };
+        assert!(
+            call(&unary, Shape::Call).contains(
+                "scoped(__lingxia_payload,__lingxia_cancel,__lingxia_invocation.clone())"
+            )
+        );
+        assert!(call(&stream, Shape::Stream).contains(
+            "scoped_stream(__lingxia_stream,__lingxia_payload,__lingxia_invocation.clone())"
         ));
-        assert!(matches!(
-            StreamFnPlan::from_fn(&stream)
-                .expect("stream plan")
-                .authority,
-            HostAuthorityArg::Invocation
-        ));
-        assert!(matches!(
-            ChannelFnPlan::from_fn(&channel)
-                .expect("channel plan")
-                .authority,
-            HostAuthorityArg::Invocation
-        ));
+        assert!(
+            call(&channel, Shape::Channel)
+                .contains("scoped_channel(__lingxia_channel,__lingxia_invocation.lxapp())")
+        );
+    }
+
+    #[test]
+    fn a_second_payload_fails_the_expansion() {
+        let item: ItemFn = syn::parse_quote! {
+            fn two(a: Query, b: Filter) -> Result<()> { Ok(()) }
+        };
+        let options = HostOptions {
+            mode: HostMode::Unary,
+            blocking: false,
+            sync: false,
+            audience: RouteAudience::AppSessionOnly,
+        };
+        let out = expand_host(
+            LitStr::new("demo.two", proc_macro2::Span::call_site()),
+            "demo",
+            "two",
+            options,
+            item,
+        )
+        .to_string();
+        assert!(out.contains("compile_error"), "{out}");
+        assert!(out.contains("one payload argument"), "{out}");
     }
 
     #[test]
@@ -1271,10 +826,8 @@ mod tests {
                 Ok(delta)
             }
         };
-        let plan = HostFnPlan::from_fn(&sync_fn).expect("sync plan with PageState");
-        let tokens = plan
-            .call_expr(&sync_fn.sig.ident, false, false, true)
-            .to_string();
+        let plan = Plan::new(&sync_fn, Shape::Sync).expect("sync plan with PageState");
+        let tokens = plan.call_expr(&sync_fn.sig.ident, false, false).to_string();
         assert!(tokens.contains("acquire_sync"), "{tokens}");
         assert!(tokens.contains("parse_input"), "{tokens}");
 

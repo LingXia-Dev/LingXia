@@ -8,6 +8,6 @@ repository.workspace = true
 
 [dependencies]
 anyhow = "1.0"
-syn = { version = "2", features = ["full"] }
+syn = { version = "2", features = ["full", "extra-traits"] }
 quote = "1"
 serde_json = "1.0"
