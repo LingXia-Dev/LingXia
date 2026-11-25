@@ -1,5 +1,6 @@
 import { invoke, watch } from '../../shared/native';
-import { hostOf, localDateTime } from '../../shared/format';
+import { hostOf, localDateTime, originOf } from '../../shared/format';
+import { siteIconCache } from '../../shared/siteIcons';
 import { definePage, lx } from '@lingxia/logic';
 import type { ClearBrowsingDataInput, ClearBrowsingDataResult } from '../../shared/privacy';
 
@@ -18,7 +19,7 @@ type HistoryWatchEvent =
 /** A day heading, or one visit under it; `at` and `day` are local `YYYY-MM-DDTHH:mm`. */
 type HistoryRow =
   | { kind: 'day'; key: string; day: string }
-  | { kind: 'visit'; key: string; id: string; url: string; title: string; host: string; at: string };
+  | { kind: 'visit'; key: string; id: string; url: string; title: string; host: string; at: string; icon?: string };
 
 interface HistoryData {
   rows: HistoryRow[];
@@ -56,6 +57,20 @@ export default definePage({
     let entries: HistoryEntry[] = [];
     // Rows go out a page at a time, so no update carries the whole history.
     let limit = PAGE;
+    // Icons that arrive after their rows went out are patched into just those rows.
+    const icons = siteIconCache((found) => {
+      page.update((d) => {
+        for (const row of d.rows) {
+          if (row.kind !== 'visit' || row.icon) continue;
+          const icon = found.get(originOf(row.url) ?? '');
+          if (icon) row.icon = icon;
+        }
+      });
+    });
+
+    function wantIcons(rows: HistoryRow[]) {
+      void icons.want(rows.flatMap((row) => (row.kind === 'visit' && !row.icon ? [row.url] : [])));
+    }
 
     function build() {
       const q = page.data.query.trim().toLowerCase();
@@ -72,7 +87,7 @@ export default definePage({
           day = entryDay;
           rows.push({ kind: 'day', key: `d${day}`, day });
         }
-        rows.push({ kind: 'visit', key: entry.id, id: entry.id, url: entry.url, title: entry.title, host: hostOf(entry.url), at });
+        rows.push({ kind: 'visit', key: entry.id, id: entry.id, url: entry.url, title: entry.title, host: hostOf(entry.url), at, icon: icons.iconOf(entry.url) });
       }
       return { rows, shown };
     }
@@ -90,6 +105,7 @@ export default definePage({
         d.yesterday = `${localDateTime(now - 86_400_000).slice(0, 10)}T00:00`;
         d.loading = false;
       });
+      wantIcons(rows);
     }
 
     // Type-ahead settles before the store is searched, so only the last query of a burst runs.
@@ -134,6 +150,7 @@ export default definePage({
             d.rows.push(...added);
             d.hasMore = shown > limit;
           });
+          wantIcons(added);
         },
         // The watch reports both, so the rows follow from it.
         async removeEntry({ id }: { id: string }) {

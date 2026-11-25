@@ -47,11 +47,12 @@ function DayRow({ label }: { label: string }) {
  * One visit. Props are plain values, so a row whose visit did not change is not rendered again; the
  * remove button mounts only under a hovering pointer, and the row's menu covers touch and keys.
  */
-function VisitRow({ id, url, title, host, at, isTwelveHour, onOpen, onRemove, onMenu }: {
+function VisitRow({ id, url, title, host, icon, at, isTwelveHour, onOpen, onRemove, onMenu }: {
   id: string;
   url: string;
   title: string;
   host: string;
+  icon?: string;
   at: string;
   isTwelveHour: boolean;
   onOpen: (url: string) => void;
@@ -73,9 +74,9 @@ function VisitRow({ id, url, title, host, at, isTwelveHour, onOpen, onRemove, on
         className="grow shrink basis-0 min-w-0 self-stretch flex-row items-center gap-3 px-4 rounded-control bg-transparent text-start active:bg-text/7 focus-visible:inset-ring-2 focus-visible:inset-ring-focus"
       >
         <text className="w-20 shrink-0 text-footnote text-muted tabular-nums">{formatTimestamp(at, at, 'time', isTwelveHour)}</text>
-        <SiteIcon host={host} size="sm" />
+        <SiteIcon host={host} icon={icon} size="sm" />
         <text className="shrink min-w-0 truncate text-body text-text">{title}</text>
-        <text className="shrink-[4] min-w-0 truncate text-footnote text-muted">{host}</text>
+        <text className="shrink-[4] min-w-0 truncate text-footnote text-muted">{url}</text>
       </button>
       {hovered.value ? (
         <IconButton
@@ -107,7 +108,7 @@ function History({ data, actions }: View) {
   const ask = (target: MenuTarget, at: MenuAsk) => menu.set({ target, at });
   const renderRow = (row: Row) => (row.kind === 'day'
     ? <DayRow label={dayLabel(row.day, data, isTwelveHour)} />
-    : <VisitRow id={row.id} url={row.url} title={row.title || row.url} host={row.host} at={row.at} isTwelveHour={isTwelveHour} onOpen={open} onRemove={remove} onMenu={ask} />);
+    : <VisitRow id={row.id} url={row.url} title={row.title || row.url} host={row.host} icon={row.icon} at={row.at} isTwelveHour={isTwelveHour} onOpen={open} onRemove={remove} onMenu={ask} />);
   const target = menu.value?.target;
 
   return (
@@ -133,6 +134,11 @@ function History({ data, actions }: View) {
             data-testid="history-clear-data"
           />
         </view>
+        {data.loading || data.total === 0 ? null : (
+          <text className="px-2 text-footnote text-muted" data-testid="history-summary">
+            {t('history.results', { count: query.value.trim() ? data.shown : data.total })}
+          </text>
+        )}
         {data.loading ? null : data.rows.length === 0 ? (
           <EmptyState
             title={query.value.trim() ? t('history.noMatches') : t('history.empty')}
