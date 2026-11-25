@@ -524,9 +524,14 @@ mod tests {
             stream.write_all(png).unwrap();
             String::from_utf8_lossy(&request[..read]).to_string()
         });
-        fetch_and_store(directory.path(), &origin, "site")
-            .await
-            .unwrap();
+        fetch_and_store(
+            directory.path(),
+            &origin,
+            "site",
+            BrowserNetwork::Explicit(None),
+        )
+        .await
+        .unwrap();
         assert!(server.join().unwrap().starts_with("GET /favicon.ico "));
         assert!(
             find_cached(directory.path(), "site")

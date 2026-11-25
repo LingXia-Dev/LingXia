@@ -1,5 +1,6 @@
 //! Ordered, mixed sidebar Pins and cached site icons, exposed to trusted control surfaces.
 use crate::host::HostResult;
+use lingxia_platform::traits::app_runtime::AppRuntime;
 use lingxia_shell::{MAX_SHELL_PINS, ShellPin};
 use lxapp::{LxApp, LxAppError};
 use std::collections::HashMap;
