@@ -8,6 +8,7 @@ export const switchParts = {
   spinner: 'vector',
   label: 'text',
   description: 'text',
+  failed: 'view',
 } as const;
 
 /**
@@ -54,5 +55,9 @@ export const switchRecipe = {
   },
   description: {
     base: 'text-footnote text-muted whitespace-pre-line',
+  },
+  /** A failed `changeAction`, under the label, until the next change. */
+  failed: {
+    base: 'text-footnote',
   },
 } as const;

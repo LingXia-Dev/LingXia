@@ -1,5 +1,5 @@
 // Generated from the doc file by scripts/generate.mjs; do not edit.
-import { Basic, Sizes, StateOff, StateOn, StateInvalid, StateDisabled, StateMixed, Controlled } from '../../core/src/CheckboxInput/CheckboxInput.examples';
+import { Basic, Sizes, StateOff, StateOn, StateInvalid, StateDisabled, StateMixed, Controlled, Saved } from '../../core/src/CheckboxInput/CheckboxInput.examples';
 import { Lead, PageSection, Stage, StageGrid } from '../shared/Layout';
 
 export function Content() {
@@ -35,6 +35,9 @@ export function Content() {
       <PageSection title={"In context"}>
         <Stage caption={"Terms on a sign-up form, with an error"}>
           <Controlled />
+        </Stage>
+        <Stage caption={"Saved by an action: busy while it runs, undone with a note if it fails"}>
+          <Saved />
         </Stage>
       </PageSection>
     </>

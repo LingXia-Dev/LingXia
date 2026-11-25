@@ -1,4 +1,4 @@
-import { useLocal } from '@lingxia/view';
+import { useLocal, useView, type View } from '@lingxia/view';
 import { Held, unused } from '../example';
 import { Item } from '../Item/Item';
 import { Switch } from './Switch';
@@ -69,4 +69,28 @@ export function Specimen() {
 /** While the app applies a change that takes a moment, the switch waits and says so. */
 export function Applying() {
   return <Switch value onChange={unused} label="Back up over Wi-Fi" description="Turning on: checking your storage." isLoading data-testid="applying" />;
+}
+
+type Actions = { publish(): Promise<void> };
+
+/** `changeAction` saves the change elsewhere: the switch flips at once and is busy meanwhile; a failure flips it back and says so. */
+export function Saved() {
+  const { actions } = useView() as View<Actions>;
+  const share = useLocal('share', false);
+  const fail = useLocal('fail', true);
+  return (
+    <view className="gap-4">
+      <Switch label="Fail the request" bind={fail} data-testid="saved-fail" />
+      <Switch
+        label="Share usage data"
+        description="Saved to your account, on every device."
+        bind={share}
+        changeAction={async () => {
+          await actions.publish();
+          if (fail.value) throw Error('offline');
+        }}
+        data-testid="saved"
+      />
+    </view>
+  );
 }

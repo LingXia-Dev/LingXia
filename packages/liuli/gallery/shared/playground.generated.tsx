@@ -1060,6 +1060,11 @@ export const playgroundEntries: PlaygroundEntry[] = [
         ]
       },
       {
+        "name": "failedMessage",
+        "required": false,
+        "kind": "text"
+      },
+      {
         "name": "isIndeterminate",
         "required": false,
         "kind": "boolean"
@@ -4161,6 +4166,11 @@ export const playgroundEntries: PlaygroundEntry[] = [
         "name": "isLoading",
         "required": false,
         "kind": "boolean"
+      },
+      {
+        "name": "failedMessage",
+        "required": false,
+        "kind": "text"
       },
       {
         "name": "size",

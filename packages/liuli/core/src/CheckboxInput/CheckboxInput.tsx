@@ -7,6 +7,7 @@ import { Glyph } from '../internal/Glyph';
 import { hasMessage, StatusRegion } from '../internal/StatusRegion';
 import { checkboxInputRecipe as r } from './CheckboxInput.recipe';
 import { dataOf } from '../internal/data';
+import { useChangeAction } from '../internal/changeAction';
 
 export type CheckboxInputBinding =
   | {
@@ -24,6 +25,13 @@ export type CheckboxInputBinding =
     };
 
 export type CheckboxInputProps = FieldOwnProps & CheckboxInputBinding & {
+  /**
+   * An async change, such as a Logic action. The box changes at once and reports busy to assistive tech while it runs, with no spinner;
+   * if it fails, it changes back and says so in its status line. A rejection is logged with the label.
+   */
+  changeAction?: (value: boolean) => Promise<unknown>;
+  /** Said in the status line when `changeAction` fails. Defaults to a short "try again", in the page's language. */
+  failedMessage?: string;
   /** Stands for a set that is partly chosen: draws a dash and is read as mixed. A press asks for all; the app clears it when the set is all or none. @default false */
   isIndeterminate?: boolean;
   className?: string;
@@ -39,19 +47,23 @@ export type CheckboxInputProps = FieldOwnProps & CheckboxInputBinding & {
 export function CheckboxInput(props: CheckboxInputProps) {
   const {
     label, isLabelHidden = false, description, status, isRequired = false, isDisabled = false, disabledMessage, size: ownSize,
-    isIndeterminate = false, className, 'data-testid': testId,
+    isIndeterminate = false, changeAction, failedMessage, className, 'data-testid': testId,
   } = props;
   const size = useControlSize(ownSize);
   const id = useId();
   const helpId = `${id}-help`;
   const statusId = `${id}-status`;
   const checked = props.bind ? props.bind.value : props.value;
+  const apply = (next: boolean) => (props.bind ? props.bind.set(next) : props.onChange(next));
+  const { isPending, failure, change } = useChangeAction('CheckboxInput', label, apply, changeAction, failedMessage);
+  // A failed action is said where the field's own status goes, until the next change.
+  const shownStatus = failure !== undefined ? { type: 'error' as const, message: failure } : status;
   const isMixed = isIndeterminate && !checked;
   const state = checked ? 'checked' : isMixed ? 'mixed' : 'unchecked';
   const help = isDisabled && disabledMessage ? disabledMessage : description;
   const semantics = {
     'aria-label': label,
-    'aria-describedby': describedBy(help !== undefined && helpId, hasMessage(status) && statusId),
+    'aria-describedby': describedBy(help !== undefined && helpId, hasMessage(shownStatus) && statusId),
     'aria-invalid': status?.type === 'error' || undefined,
     'aria-required': isRequired || undefined,
   };
@@ -75,7 +87,8 @@ export function CheckboxInput(props: CheckboxInputProps) {
   );
   return (
     <view className={cx(r.root.base, className)}>
-      {props.bind ? (
+      {/* With an action the box goes through `change`, which holds off a second change while one runs. */}
+      {props.bind && !changeAction ? (
         <checkbox
           bind={props.bind}
           aria-label={semantics['aria-label']}
@@ -92,8 +105,9 @@ export function CheckboxInput(props: CheckboxInputProps) {
         </checkbox>
       ) : (
         <checkbox
-          value={props.value}
-          onChange={props.onChange}
+          value={checked}
+          onChange={next => void change(next)}
+          aria-busy={isPending || undefined}
           aria-label={semantics['aria-label']}
           aria-describedby={semantics['aria-describedby']}
           aria-invalid={semantics['aria-invalid']}
@@ -107,7 +121,7 @@ export function CheckboxInput(props: CheckboxInputProps) {
           {content}
         </checkbox>
       )}
-      <StatusRegion id={statusId} status={status} className={r.status.size[size]} />
+      <StatusRegion id={statusId} status={shownStatus} className={r.status.size[size]} />
     </view>
   );
 }

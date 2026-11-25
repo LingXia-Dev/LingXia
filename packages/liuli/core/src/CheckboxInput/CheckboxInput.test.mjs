@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { textOf } from '@lingxia/view/testing';
-import { described, renderExample } from '../testing/harness.mjs';
+import { described, renderExample, renderPage } from '../testing/harness.mjs';
 
 // What the region reads out: its message, without the hidden icon line.
 const announced = node => node.children.filter(child => child.props.accessibilityHidden !== 1).map(textOf).join('');
@@ -93,4 +93,56 @@ test('StateDisabled: checked reads as off-but-checked, a neutral fill and a mute
   const box = screen.queryAll(node => node.props.borderTopWidth === 2)[0];
   assert.deepEqual([box.props.background, box.props.color], ['text/20', 'text-muted']);
   assert.equal(screen.queryAll(node => node.tag === 'checkbox')[0].props.opacity, undefined, 'the row is not faded');
+});
+
+const savedPage = component => `
+  import { useLocal } from '@lingxia/view';
+  import { ${component} } from '@liulidesign/core/${component}';
+  let finish: (ok: boolean) => void = () => {};
+  let calls = 0;
+  const action = () => { calls++; return new Promise<void>((resolve, reject) => { finish = ok => (ok ? resolve() : reject(Error('offline'))); }); };
+  export function render() {
+    const on = useLocal('on', false);
+    return <page>
+      <${component} label="Share usage data" description="Saved to your account." bind={on} changeAction={action} data-testid="saved" />
+      <button data-testid="ok" onClick={() => finish(true)}>Ok</button>
+      <button data-testid="fail" onClick={() => finish(false)}>Fail</button>
+      <text data-testid="calls">{String(calls)}</text>
+    </page>;
+  }
+`;
+
+test('changeAction: flips at once, busy but not disabled, holds further presses, and keeps the value on success', async () => {
+  const screen = await renderPage(savedPage('CheckboxInput'));
+  screen.toggle(screen.getByTestId('saved'), true);
+  const busy = screen.getByTestId('saved');
+  assert.deepEqual([busy.props.checked, busy.props.stateBusy, busy.props.enabled], [1, 1, undefined]);
+  assert.throws(() => screen.toggle(screen.getByTestId('saved'), false), /did not update value/, 'a press while saving is held off');
+  assert.equal(screen.getByTestId('saved').props.checked, 1);
+  screen.press(screen.getByTestId('ok'));
+  await new Promise(resolve => setImmediate(resolve));
+  screen.rerender({});
+  const done = screen.getByTestId('saved');
+  assert.deepEqual([done.props.checked, done.props.stateBusy], [1, undefined]);
+  assert.equal(screen.getByText('1').tag, 'text', 'the action ran once');
+});
+
+test('changeAction: a failure flips back and is said in the status line, as a description, until the next change', async () => {
+  const screen = await renderPage(savedPage('CheckboxInput'));
+  const errors = [];
+  const original = console.error;
+  console.error = (...args) => errors.push(args.join(' '));
+  try {
+    screen.toggle(screen.getByTestId('saved'), true);
+    screen.press(screen.getByTestId('fail'));
+    await new Promise(resolve => setImmediate(resolve));
+    screen.rerender({});
+  } finally {
+    console.error = original;
+  }
+  const control = screen.getByTestId('saved');
+  assert.deepEqual([control.props.checked, control.props.stateBusy], [0, undefined]);
+  assert.deepEqual(described(screen, control), ['Saved to your account.', "That didn't work. Try again."]);
+  screen.toggle(screen.getByTestId('saved'), true);
+  assert.deepEqual(described(screen, screen.getByTestId('saved')), ['Saved to your account.']);
 });

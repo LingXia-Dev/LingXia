@@ -3527,6 +3527,18 @@
           "description": "Runs with the new value; the app passes it back as `value`."
         },
         {
+          "name": "changeAction",
+          "type": "((value: boolean) => Promise<unknown>)",
+          "required": false,
+          "description": "An async change, such as a Logic action. The box changes at once and reports busy to assistive tech while it runs, with no spinner; if it fails, it changes back and says so in its status line. A rejection is logged with the label."
+        },
+        {
+          "name": "failedMessage",
+          "type": "string",
+          "required": false,
+          "description": "Said in the status line when `changeAction` fails. Defaults to a short \"try again\", in the page's language."
+        },
+        {
           "name": "isIndeterminate",
           "type": "boolean",
           "required": false,
@@ -3658,6 +3670,11 @@
           "name": "StateMixed",
           "title": "Partly chosen",
           "source": "import { Held } from '../example';\nimport { CheckboxInput } from '@liulidesign/core/CheckboxInput';\n\n/** Partly chosen: one box that stands for a set of which some are on. */\nexport function StateMixed() {\n  return (\n    // A press on a mixed box chooses the whole set; after that it is an ordinary checkbox.\n    <Held value=\"mixed\">\n      {(state, set) => (\n        <CheckboxInput\n          value={state === 'on'}\n          onChange={next => set(next ? 'on' : 'off')}\n          isIndeterminate={state === 'mixed'}\n          label=\"All folders\"\n          description={state === 'mixed' ? '3 of 8 chosen' : state === 'on' ? '8 of 8 chosen' : '0 of 8 chosen'}\n          data-testid=\"mixed\"\n        />\n      )}\n    </Held>\n  );\n}"
+        },
+        {
+          "name": "Saved",
+          "title": "Saved by an action, undone if it fails",
+          "source": "import { useLocal, useView, type View } from '@lingxia/view';\nimport { CheckboxInput } from '@liulidesign/core/CheckboxInput';\n\ntype Actions = { publish(): Promise<void> };\n\n/** `changeAction` saves the change elsewhere: the box changes at once and is busy meanwhile; a failure changes it back and says so. */\nexport function Saved() {\n  const { actions } = useView() as View<Actions>;\n  const reminders = useLocal('reminders', false);\n  const fail = useLocal('fail', true);\n  return (\n    <view className=\"gap-4\">\n      <CheckboxInput label=\"Fail the request\" bind={fail} data-testid=\"saved-fail\" />\n      <CheckboxInput\n        label=\"Email me reminders\"\n        description=\"Saved to your account.\"\n        bind={reminders}\n        changeAction={async () => {\n          await actions.publish();\n          if (fail.value) throw Error('offline');\n        }}\n        data-testid=\"saved\"\n      />\n    </view>\n  );\n}"
         }
       ],
       "gaps": [
@@ -3744,6 +3761,10 @@
             {
               "name": "Controlled",
               "title": "Terms on a sign-up form, with an error"
+            },
+            {
+              "name": "Saved",
+              "title": "Saved by an action: busy while it runs, undone with a note if it fails"
             }
           ]
         }
@@ -18421,6 +18442,18 @@
           "default": "false"
         },
         {
+          "name": "changeAction",
+          "type": "((value: boolean) => Promise<unknown>)",
+          "required": false,
+          "description": "An async change, such as a Logic action. The switch flips at once and reports busy to assistive tech while it runs, with no spinner; if it fails, the switch flips back and says so under its label. A rejection is logged with the label."
+        },
+        {
+          "name": "failedMessage",
+          "type": "string",
+          "required": false,
+          "description": "Said under the label when `changeAction` fails. Defaults to a short \"try again\", in the page's language."
+        },
+        {
           "name": "size",
           "type": "SwitchSize",
           "required": false,
@@ -18474,7 +18507,8 @@
         "loading": "view",
         "spinner": "vector",
         "label": "text",
-        "description": "text"
+        "description": "text",
+        "failed": "view"
       },
       "accessibility": {
         "pattern": "switch",
@@ -18570,6 +18604,11 @@
           "name": "Applying",
           "title": "Waiting for the app to apply it",
           "source": "import { unused } from '../example';\nimport { Switch } from '@liulidesign/core/Switch';\n\n/** While the app applies a change that takes a moment, the switch waits and says so. */\nexport function Applying() {\n  return <Switch value onChange={unused} label=\"Back up over Wi-Fi\" description=\"Turning on: checking your storage.\" isLoading data-testid=\"applying\" />;\n}"
+        },
+        {
+          "name": "Saved",
+          "title": "Saved by an action, undone if it fails",
+          "source": "import { useLocal, useView, type View } from '@lingxia/view';\nimport { Switch } from '@liulidesign/core/Switch';\n\ntype Actions = { publish(): Promise<void> };\n\n/** `changeAction` saves the change elsewhere: the switch flips at once and is busy meanwhile; a failure flips it back and says so. */\nexport function Saved() {\n  const { actions } = useView() as View<Actions>;\n  const share = useLocal('share', false);\n  const fail = useLocal('fail', true);\n  return (\n    <view className=\"gap-4\">\n      <Switch label=\"Fail the request\" bind={fail} data-testid=\"saved-fail\" />\n      <Switch\n        label=\"Share usage data\"\n        description=\"Saved to your account, on every device.\"\n        bind={share}\n        changeAction={async () => {\n          await actions.publish();\n          if (fail.value) throw Error('offline');\n        }}\n        data-testid=\"saved\"\n      />\n    </view>\n  );\n}"
         }
       ],
       "gaps": [
@@ -18630,6 +18669,10 @@
             {
               "name": "Applying",
               "title": "While the app applies the change"
+            },
+            {
+              "name": "Saved",
+              "title": "Saved by an action: busy while it runs, undone with a note if it fails"
             },
             {
               "name": "LabelHidden",

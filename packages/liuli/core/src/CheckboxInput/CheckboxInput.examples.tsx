@@ -1,4 +1,4 @@
-import { useLocal } from '@lingxia/view';
+import { useLocal, useView, type View } from '@lingxia/view';
 import { Held, unused } from '../example';
 import { CheckboxInput } from './CheckboxInput';
 
@@ -72,5 +72,29 @@ export function StateMixed() {
         />
       )}
     </Held>
+  );
+}
+
+type Actions = { publish(): Promise<void> };
+
+/** `changeAction` saves the change elsewhere: the box changes at once and is busy meanwhile; a failure changes it back and says so. */
+export function Saved() {
+  const { actions } = useView() as View<Actions>;
+  const reminders = useLocal('reminders', false);
+  const fail = useLocal('fail', true);
+  return (
+    <view className="gap-4">
+      <CheckboxInput label="Fail the request" bind={fail} data-testid="saved-fail" />
+      <CheckboxInput
+        label="Email me reminders"
+        description="Saved to your account."
+        bind={reminders}
+        changeAction={async () => {
+          await actions.publish();
+          if (fail.value) throw Error('offline');
+        }}
+        data-testid="saved"
+      />
+    </view>
   );
 }

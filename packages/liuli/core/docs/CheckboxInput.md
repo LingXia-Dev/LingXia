@@ -92,6 +92,37 @@ export function StateMixed() {
 }
 ```
 
+### Saved by an action, undone if it fails
+
+```tsx
+import { useLocal, useView, type View } from '@lingxia/view';
+import { CheckboxInput } from '@liulidesign/core/CheckboxInput';
+
+type Actions = { publish(): Promise<void> };
+
+/** `changeAction` saves the change elsewhere: the box changes at once and is busy meanwhile; a failure changes it back and says so. */
+export function Saved() {
+  const { actions } = useView() as View<Actions>;
+  const reminders = useLocal('reminders', false);
+  const fail = useLocal('fail', true);
+  return (
+    <view className="gap-4">
+      <CheckboxInput label="Fail the request" bind={fail} data-testid="saved-fail" />
+      <CheckboxInput
+        label="Email me reminders"
+        description="Saved to your account."
+        bind={reminders}
+        changeAction={async () => {
+          await actions.publish();
+          if (fail.value) throw Error('offline');
+        }}
+        data-testid="saved"
+      />
+    </view>
+  );
+}
+```
+
 ## Props
 
 | Prop | Type | Default | Description |
@@ -110,6 +141,8 @@ export function StateMixed() {
 | `bind` | `Local<boolean>` |  | A View-local cell the control reads and writes; use it or `value` with `onChange`. |
 | `value` | `boolean` |  | The app's value; pass `onChange` with it. |
 | `onChange` | `((value: boolean) => void)` |  | Runs with the new value; the app passes it back as `value`. |
+| `changeAction` | `((value: boolean) => Promise<unknown>)` |  | An async change, such as a Logic action. The box changes at once and reports busy to assistive tech while it runs, with no spinner; if it fails, it changes back and says so in its status line. A rejection is logged with the label. |
+| `failedMessage` | `string` |  | Said in the status line when `changeAction` fails. Defaults to a short "try again", in the page's language. |
 | `isIndeterminate` | `boolean` | `false` | Stands for a set that is partly chosen: draws a dash and is read as mixed. A press asks for all; the app clears it when the set is all or none. |
 | `className` | `string` |  |  |
 | `data-testid` | `string` |  | On the checkbox. |

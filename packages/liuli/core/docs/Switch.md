@@ -95,6 +95,37 @@ export function Applying() {
 }
 ```
 
+### Saved by an action, undone if it fails
+
+```tsx
+import { useLocal, useView, type View } from '@lingxia/view';
+import { Switch } from '@liulidesign/core/Switch';
+
+type Actions = { publish(): Promise<void> };
+
+/** `changeAction` saves the change elsewhere: the switch flips at once and is busy meanwhile; a failure flips it back and says so. */
+export function Saved() {
+  const { actions } = useView() as View<Actions>;
+  const share = useLocal('share', false);
+  const fail = useLocal('fail', true);
+  return (
+    <view className="gap-4">
+      <Switch label="Fail the request" bind={fail} data-testid="saved-fail" />
+      <Switch
+        label="Share usage data"
+        description="Saved to your account, on every device."
+        bind={share}
+        changeAction={async () => {
+          await actions.publish();
+          if (fail.value) throw Error('offline');
+        }}
+        data-testid="saved"
+      />
+    </view>
+  );
+}
+```
+
 ## Props
 
 | Prop | Type | Default | Description |
@@ -107,6 +138,8 @@ export function Applying() {
 | `isLabelHidden` | `boolean` | `false` | Keeps `label` as the name and draws only the track, for a switch whose row already says what it sets. Help text is not drawn either. |
 | `isDisabled` | `boolean` | `false` |  |
 | `isLoading` | `boolean` | `false` | A spinner before the track while the app applies the change; the switch reports busy and takes no press until it settles. |
+| `changeAction` | `((value: boolean) => Promise<unknown>)` |  | An async change, such as a Logic action. The switch flips at once and reports busy to assistive tech while it runs, with no spinner; if it fails, the switch flips back and says so under its label. A rejection is logged with the label. |
+| `failedMessage` | `string` |  | Said under the label when `changeAction` fails. Defaults to a short "try again", in the page's language. |
 | `size` | `SwitchSize` | `'md'` | `sm` for dense rows. |
 | `variant` | `SwitchVariant` | `'standalone'` | `row` sits in a list group among `Item` rows, with the row's padding and height. |
 | `className` | `string` |  |  |
