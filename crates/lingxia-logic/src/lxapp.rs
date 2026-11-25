@@ -41,7 +41,25 @@ fn get_app_info(ctx: JSContext) -> JSResult<AppInfo> {
 
 pub(crate) fn init(ctx: &JSContext) -> JSResult<()> {
     register_api(ctx)?;
-    register_app_api(ctx)
+    register_app_api(ctx)?;
+    // Framework-internal, for `@lingxia/logic`'s `packageText`; not part of `lx`.
+    ctx.global()
+        .set("__lingxiaAppText", rong::JSFunc::new(ctx, app_text)?)?;
+    Ok(())
+}
+
+/// The lxapp's override of a package word in `language`'s catalogue, or null.
+fn app_text(
+    ctx: JSContext,
+    key: String,
+    language: String,
+    args: String,
+) -> JSResult<Option<String>> {
+    let lxapp = LxApp::from_ctx(&ctx)?;
+    let args = serde_json::from_str(&args).map_err(|error| {
+        crate::i18n::js_invalid_parameter_error(format!("packageText args: {error}"))
+    })?;
+    Ok(lxapp.message_in(&key, &language, &args))
 }
 
 rong::js_api! {

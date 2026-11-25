@@ -17,3 +17,9 @@ export default definePage({
 const failure: LxError | undefined = undefined;
 void failure;
 setLx(undefined);
+import { packageText, type PackageWords } from "@lingxia/logic";
+declare const jinshuWords: PackageWords;
+const summary: string = packageText(jinshuWords, "@jinshu.agent.edit", { title: "W3" }, "zh-CN");
+void summary;
+// @ts-expect-error Logic has no page language: pass the caller's.
+packageText(jinshuWords, "@jinshu.agent.edit");

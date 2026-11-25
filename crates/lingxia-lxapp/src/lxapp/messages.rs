@@ -28,6 +28,19 @@ impl LxApp {
         Err(LxAppError::ResourceNotFound(format!("no message '{key}'")))
     }
 
+    /// `key` in the catalogue the lxapp shows for `language`, and only there: no source fallback, so
+    /// a package's own word stands when this language does not override it.
+    pub fn message_in(
+        &self,
+        key: &str,
+        language: &str,
+        args: &serde_json::Value,
+    ) -> Option<String> {
+        let tag = self.content_language(language);
+        let entry = self.catalogue(&tag).ok()??.entries.get(key).cloned()?;
+        Some(lingxia_i18n::format::format(&entry.message, &tag, args))
+    }
+
     /// Binds manifest text naming a key to the key's text in every declared language.
     pub(crate) fn bind_text(&self, text: &mut super::localized_text::LocalizedText) {
         let super::localized_text::LocalizedText::Message(key) = text else {

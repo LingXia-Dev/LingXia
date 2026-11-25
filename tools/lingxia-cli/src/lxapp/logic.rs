@@ -1601,6 +1601,11 @@ mod tests {
         );
         write(
             root,
+            "node_modules/@lingxia/logic/package-text.js",
+            include_str!("../../../../packages/lingxia-logic/package-text.js"),
+        );
+        write(
+            root,
             "node_modules/@lingxia/types/package.json",
             r#"{"name":"@lingxia/types","type":"module","exports":{"./page":"./page.js","./error":"./error.js"}}"#,
         );

@@ -23,6 +23,7 @@
   "files": [
     "index.js",
     "index.d.ts",
+    "package-text.js",
     "node.js",
     "testing.js",
     "testing.d.ts",

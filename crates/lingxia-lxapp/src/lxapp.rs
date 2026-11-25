@@ -5839,6 +5839,47 @@ mod manifest_reload_tests {
     }
 
     #[test]
+    fn an_override_reads_from_the_catalogue_shown_for_that_language_only() {
+        let temp = tempfile::tempdir().unwrap();
+        let appid = format!("app.lingxia.message-in.{}", Uuid::new_v4());
+        write_manifest(
+            temp.path(),
+            &appid,
+            r#"{"appId":"APPID","version":"1.0.0","logic":true,"renderer":"gpu",
+            "languages":["en-US","zh-CN"],"pages":[{"name":"home","path":"pages/home/index.js"}]}"#,
+        );
+        std::fs::create_dir_all(temp.path().join("i18n")).unwrap();
+        std::fs::write(
+            temp.path().join("i18n/en-US.json"),
+            r#"{"@jinshu.agent.edit":{"defaultMessage":"Edit {title}"},"cart.title":{"defaultMessage":"Cart"}}"#,
+        )
+        .unwrap();
+        std::fs::write(
+            temp.path().join("i18n/zh-CN.json"),
+            r#"{"cart.title":{"defaultMessage":"购物车"}}"#,
+        )
+        .unwrap();
+        let app = dev_app(temp.path(), &appid);
+        let args = serde_json::json!({ "title": "Week 3" });
+        assert_eq!(
+            app.message_in("@jinshu.agent.edit", "en-GB", &args)
+                .as_deref(),
+            Some("Edit Week 3")
+        );
+        assert_eq!(
+            app.message_in("@jinshu.agent.edit", "zh-Hans-CN", &args),
+            None,
+            "the source catalogue's override does not reach another language"
+        );
+        assert_eq!(
+            app.message_in("cart.title", "zh-CN", &serde_json::Value::Null)
+                .as_deref(),
+            Some("购物车")
+        );
+        assert_eq!(app.message_in("@jinshu.nope", "en-US", &args), None);
+    }
+
+    #[test]
     fn gpu_renderer_is_read_from_the_manifest() {
         let temp = tempfile::tempdir().unwrap();
         let root = temp.path();

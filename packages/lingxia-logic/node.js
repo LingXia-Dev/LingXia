@@ -6,5 +6,6 @@ export function setLx(value) {
   // A persisted store reaches lx.storage through the global, as in the Logic runtime.
   globalThis.lx = value;
 }
+export { packageText } from "./package-text.js";
 export * from "@lingxia/types/page";
 export * from "@lingxia/types/error";
