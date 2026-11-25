@@ -28,8 +28,8 @@ cpSync(join(liuli, 'gallery'), join(out, 'gallery'), {
   recursive: true,
   filter: source => !skipped.has(source.slice(join(liuli, 'gallery').length + 1).split('/')[0]) && !/\/\.dist[^/]*$/.test(source),
 });
-// The packages it compiles from are linked, at the places the gallery's imports expect them.
-for (const each of ['core', 'charts']) symlinkSync(join(liuli, each), join(out, each), 'dir');
+// The packages it compiles from, as gallery/packages.json lists them, are linked where its imports expect them.
+for (const each of JSON.parse(readFileSync(join(liuli, 'gallery', 'packages.json'), 'utf8'))) symlinkSync(join(liuli, each), join(out, each), 'dir');
 symlinkSync(resolve(liuli, '..', 'node_modules'), join(out, 'node_modules'), 'dir');
 
 const gallery = join(out, 'gallery');

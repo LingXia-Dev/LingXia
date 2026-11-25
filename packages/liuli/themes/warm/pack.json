@@ -16,6 +16,7 @@
       "success": "#2f7a48",
       "warning": "#a26000",
       "scrim": "#16121066",
+      "shadow": "#3b2414",
       "media": "#110e0cb8",
       "media-canvas": "#0d0b0a"
     },
@@ -33,6 +34,7 @@
       "success": "#6fc48c",
       "warning": "#e6b84a",
       "scrim": "#000000a0",
+      "shadow": "#000000",
       "media": "#110e0cb8",
       "media-canvas": "#0d0b0a"
     }
