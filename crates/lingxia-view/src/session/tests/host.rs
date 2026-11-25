@@ -712,6 +712,52 @@ fn a_field_the_host_lacks_asks_for_an_update_without_a_retry() {
 }
 
 #[test]
+fn a_module_refused_at_load_asks_for_an_update_and_a_connection_keeps_it() {
+    // A newer toolchain's module: its manifest names a feature this host lacks.
+    let manifest = serde_json::json!({
+        "uiAbi": crate::protocol::UI_ABI, "minField": 0,
+        "requiredFeatures": ["example-later-feature"], "compiler": "9.0.0",
+    });
+    for logic in [false, true] {
+        let worker = ViewWorker::spawn("test-view").unwrap();
+        let platform = Platform::new(&[&worker]);
+        let page = format!(
+            "// LingXia UI module; {manifest}\n{}\nglobalThis.__lingxiaActionCatalog={{__names:[],__modes:{{}}}};",
+            source("function render(){return h('text',{},'hi')}")
+        );
+        let host = platform.host(&worker, &page, logic);
+        host.set_visible(true);
+        platform.settle(&[&host]);
+        if logic {
+            host.connect(ConnectionTicket::new(1));
+            platform.settle(&[&host]);
+        }
+        let failure = host.failure().expect("the load failed");
+        assert_eq!(
+            (failure.recovery.kind, failure.recovery.retry),
+            (FailureKind::Compatibility, Retry::None),
+            "logic {logic}: {}",
+            failure.error
+        );
+        assert_eq!(failure.message, RecoveryMessage::UpdateRequired);
+        assert_eq!(failure.action, None);
+        assert_eq!(failure.detail.is_some(), cfg!(feature = "dev"));
+        assert!(
+            failure.error.contains("example-later-feature"),
+            "{}",
+            failure.error
+        );
+        let shown = host.adapter().log.lock().unwrap().recovery.clone();
+        assert!(
+            shown.last().is_some_and(|last| last
+                .as_ref()
+                .is_some_and(|f| f.message == RecoveryMessage::UpdateRequired)),
+            "logic {logic}: the update panel stays shown: {shown:?}"
+        );
+    }
+}
+
+#[test]
 fn removed_images_cancel_their_transport_and_failures_stop_input() {
     let worker = ViewWorker::spawn("test-view").unwrap();
     let platform = Platform::new(&[&worker]);

@@ -2166,10 +2166,10 @@ impl<A: PlatformAdapter> Inner<A> {
         let inner = self.clone();
         let run = move |app: &mut crate::ViewApp| {
             panics::watch();
-            let result = inner.current(guard).then(|| {
+            // No session means the load failed and showed why; a later job has nothing to run on.
+            let id = *inner.page.lock().unwrap_or_else(|p| p.into_inner());
+            let result = id.filter(|_| inner.current(guard)).map(|id| {
                 std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                    let id = (*inner.page.lock().unwrap_or_else(|p| p.into_inner()))
-                        .ok_or("UI_SESSION: page not loaded")?;
                     let session = app.page(id)?;
                     inner.set_loudness(session);
                     job(&inner, session)

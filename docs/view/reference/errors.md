@@ -74,7 +74,6 @@ Every message starts with its code: `CODE: detail`. **build** codes stop `lingxi
 | `UI_SCOPE` | build, runtime | error | A hook or JSX element was evaluated outside render (including JSX at module scope). | Call hooks and construct JSX inside render() or a component/function invoked during render. |
 | `UI_SCROLL` | native | error | The host reported an invalid scroll position. | Check the host scroll adapter offset reporting. |
 | `UI_SELECT` | runtime, native | error | A <select> has invalid options, value, placeholder or selection reply. | Pass 1..64 unique { value, label } options, a string value/placeholder, and an aria-label. |
-| `UI_SESSION` | native | error | A call reached a page session that is not loaded. | Wait for the page session to load before sending events or queries. |
 | `UI_SHADOW` | runtime, native | error | A boxShadow or ring definition is malformed or exceeds the 8-shadow limit. | Use Tailwind shadow-*/ring-* utilities or pass valid shadow/ring objects within bounds. |
 | `UI_SLIDER` | runtime, native | error | A <slider> range, step, value, values pair or label is invalid. | Set finite min < max, positive step dividing the range (<= 1e6 steps), aria-label, and valid value or values. |
 | `UI_STALE` | runtime | error | A JSX element handle from an earlier render was reused in a later render. | Create fresh JSX elements inside each render instead of caching them across renders. |

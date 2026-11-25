@@ -4,8 +4,10 @@ use serde::Deserialize;
 const PREFIX: &str = "// LingXia UI module; ";
 const ABI: u32 = crate::protocol::UI_ABI;
 
+// Unknown fields are ignored: an older host must load a newer module, and a field it has to
+// understand goes into `requiredFeatures`.
 #[derive(Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[serde(rename_all = "camelCase")]
 pub(crate) struct Manifest {
     pub(crate) ui_abi: u32,
     pub(crate) min_field: usize,
@@ -120,5 +122,16 @@ mod tests {
         }
         assert!(validate(&format!("{PREFIX}{{bad json")).is_err());
         assert!(validate("// LingXia UI module; schema 0.25\n").is_ok());
+    }
+
+    #[test]
+    fn a_manifest_field_this_host_does_not_know_still_loads() {
+        let manifest = serde_json::json!({"uiAbi":ABI,"minField":0,"requiredFeatures":[],"compiler":"9.0.0","laterField":{"any":1}});
+        let module = format!(
+            "{PREFIX}{manifest}\n{}",
+            crate::session::tests::source("function render(){return h('text',{},'hi')}")
+        );
+        let mut page = crate::ViewSession::new(&module).unwrap();
+        assert!(page.layout(200, 100, 1.0).is_ok());
     }
 }

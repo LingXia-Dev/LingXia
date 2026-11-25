@@ -200,6 +200,12 @@ impl<A: PlatformAdapter> Inner<A> {
         if self.main().disposed || !self.lifecycle.connect(connection) {
             return;
         }
+        // A module this host cannot run stays refused: a new connection does not change it.
+        if self.main().failure.as_ref().is_some_and(|failure| {
+            failure.recovery.kind == crate::session::lifecycle::FailureKind::Compatibility
+        }) {
+            return;
+        }
         self.main().failure = None;
         log::info!(target: "lingxia_view", "recovery cleared: the logic connected");
         self.adapter.recovery(None);
