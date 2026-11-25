@@ -6,7 +6,7 @@ export default definePage({
     statusText: "wifi.state.ready",
     statusArgs: {} as Record<string, number>,
     scanning: false,
-    wifiList: null as WifiInfo[] | null,
+    wifiList: null as readonly WifiInfo[] | null,
     connectedWifi: null as WifiInfo | null,
     wifiListenerEnabled: false,
     wifiConnectedEvents: [] as unknown[],

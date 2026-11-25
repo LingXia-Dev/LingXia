@@ -1737,7 +1737,7 @@ async fn open_url_spec(ctx: JSContext, spec: &JSObject) -> JSResult<JSValue> {
 ///
 /// @example
 /// ```ts
-/// await lx.openExternal('mailto:help@example.com');
+/// lx.openExternal('mailto:help@example.com');
 /// ```
 ///
 /// @throws {E_INVALID_ARG} Not an absolute URL.

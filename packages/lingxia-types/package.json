@@ -59,9 +59,8 @@
     "src"
   ],
   "scripts": {
-    "gen:i18n": "node scripts/gen-i18n.mjs",
     "gen:logic": "node scripts/gen-logic.mjs",
-    "gen": "npm run gen:i18n && npm run gen:logic",
+    "gen": "npm run gen:logic",
     "check:logic": "npm run gen:logic -- --check",
     "check:quality": "node scripts/check-generated-quality.mjs && node scripts/check-api-style.mjs && node scripts/check-twins.mjs && node scripts/emit-api-json.mjs --check && node scripts/check-doc-refs.mjs",
     "gen:api": "node scripts/check-api-style.mjs --write && node scripts/emit-api-json.mjs",

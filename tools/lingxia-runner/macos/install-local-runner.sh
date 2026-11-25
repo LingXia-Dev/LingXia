@@ -103,7 +103,7 @@ echo "==> Generating apple SDK resources (i18n + icons)"
 (
   cd "$ROOT_DIR"
   "$LINGXIA_BIN" gen i18n \
-    --input i18n --no-rust --no-ts --no-android --no-harmony \
+    --input i18n --no-rust --no-android --no-harmony \
     --ios-out lingxia-sdk/apple/Sources/Resources
   "$LINGXIA_BIN" gen icons \
     --input design/icons/svg \

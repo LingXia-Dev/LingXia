@@ -55,6 +55,16 @@ if (!existsSync(binary)) {
   run("cargo", ["install", "rong_typegen", "--version", `=${VERSION}`, "--locked", "--root", installRoot]);
 }
 
+// The prelude declares the correlated `lx.network.download` overloads; drop the
+// placeholder signature emitted from the Rust binding so IDEs never surface `download(url: never)`.
+function dropDownloadPlaceholder(source) {
+  const placeholder = "    download(url: never): never;\n";
+  if (source.split(placeholder).length !== 2) {
+    throw new Error("gen-logic: expected one `download(url: never): never` placeholder on NetworkApi");
+  }
+  return source.replace(placeholder, "");
+}
+
 // A `js_method` cannot declare a type parameter, so `LxFile.json` gets its one here.
 function jsonGeneric(source) {
   const plain = "  json(): Promise<unknown>;";
@@ -73,8 +83,8 @@ try {
   for (const path of outputs) {
     let source = readFileSync(path, "utf8").replace(UPSTREAM_HINT, REGEN_HINT);
     if (path.endsWith("logic.ts")) {
-      source = jsonGeneric(dropBindingClasses(source)
-        .replace(/export declare class (DirEntry|LxFile) \{\n  private constructor\(\);/g, 'export interface $1 {'))
+      source = dropDownloadPlaceholder(jsonGeneric(dropBindingClasses(source)
+        .replace(/export declare class (DirEntry|LxFile) \{\n  private constructor\(\);/g, 'export interface $1 {')))
         + "\n" + featureDeclaration();
     }
     if (path.endsWith("logic-web.d.ts")) source = refineWebProfile(source);

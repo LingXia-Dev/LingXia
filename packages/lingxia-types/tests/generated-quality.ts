@@ -80,7 +80,7 @@ const jsonResult: Promise<unknown> = managedFile.json();
 const screenshotResult: Promise<AppScreenshotResult> = app.screenshot();
 const clipboardWrite: Promise<void> = lx.clipboard.writeText("copied");
 const clipboardText: Promise<ClipboardTextResult> = lx.clipboard.readText();
-const clipboardTypes: Promise<ClipboardType[]> = lx.clipboard.types();
+const clipboardTypes: Promise<readonly ClipboardType[]> = lx.clipboard.types();
 // Control-only is a run-time refusal, not an absent member (rule 2).
 const cacheSize: Promise<number> = lx.host.cache.size();
 const notifyPermission: Promise<PermissionState> = lx.device.permission.get('notifications');

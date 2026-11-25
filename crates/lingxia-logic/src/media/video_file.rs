@@ -160,15 +160,15 @@ rong::js_api! {
     fn register_api(ctx) {
         namespace MediaApi = crate::media::media_namespace(ctx)?;
         fn videoInfo(
-            ts_params = "path: string",
+            ts_params = "path: ManagedPath",
             ts_return = "Promise<VideoInfo>"
         ) = get_video_info_api;
         fn videoThumbnail(
-            ts_params = "path: string, options?: VideoThumbnailOptions",
+            ts_params = "path: ManagedPath, options?: VideoThumbnailOptions",
             ts_return = "Promise<VideoThumbnailResult>"
         ) = extract_video_thumbnail_api;
         fn compressVideo(
-            ts_params = "path: string, options?: CompressVideoOptions",
+            ts_params = "path: ManagedPath, options?: CompressVideoOptions",
             ts_return = "CompressVideoTask"
         ) = compress_video_api;
     }

@@ -701,7 +701,7 @@ export type Storage<S extends object = Record<string, JsonValue>> = {
    * @throws {E_INVALID_STATE} The host configured no store for this lxapp.
    * @throws {E_IO} The database could not be read or written.
    */
-  list(prefix?: string): Promise<string[]>;
+  list(prefix?: string): Promise<readonly string[]>;
   /**
    * Resolves how much is stored, the limit, and the key count.
    * @throws {E_INVALID_STATE} The host configured no store for this lxapp.
@@ -768,6 +768,18 @@ export type AnySurface = PageSurface | DeclaredSurface | AppSurface | TabSurface
  */
 export type AppAppearanceApi = Live<ResolvedAppearance>;
 
+/** Outcome of `lx.host.cache.clear`. */
+export type AppCacheClearResult = {
+    /** Estimated file bytes successfully removed; excludes WebView cache. */
+    freedBytes: number;
+    /** Protected usercache/session paths skipped, not a count of apps. */
+    skippedActivePaths: number;
+    /** What happened to the WebView's own cache. */
+    webview: 'cleared' | 'unsupported' | 'failed';
+    /** Categories that could not be cleared. */
+    failures: readonly string[];
+};
+
 /**
  * The product-wide cache a settings screen reports and clears.
  * App-scoped, not lxapp-scoped: the figure covers every lxapp the host
@@ -787,16 +799,7 @@ export type AppCacheApi = {
      * @throws {E_PERMISSION_DENIED} From an lxapp other than the Control app.
      * @throws {E_INTERNAL} The clear could not start.
      */
-    clear(): Promise<{
-        /** Estimated file bytes successfully removed; excludes WebView cache. */
-        freedBytes: number;
-        /** Protected usercache/session paths skipped, not a count of apps. */
-        skippedActivePaths: number;
-        /** What happened to the WebView's own cache. */
-        webview: 'cleared' | 'unsupported' | 'failed';
-        /** Categories that could not be cleared. */
-        failures: readonly string[];
-    }>;
+    clear(): Promise<AppCacheClearResult>;
 };
 
 /** What `App({...})` takes: the lxapp's lifecycle hooks. */
@@ -946,7 +949,10 @@ export type AppTarget = {
     url?: never;
     /** The page's params. */
     params?: PageQuery;
-    /** Lxapp publish channel. Defaults to `release`. */
+    /**
+     * Lxapp publish channel.
+     * @default 'release'
+     */
     channel?: LxAppReleaseType;
     /** Install this version first if it is newer than the installed one; older versions are refused. */
     version?: string;
@@ -1062,6 +1068,62 @@ export type BadgeResult = {
  * dismiss, timeout, or replace. User outcomes resolve; presentation
  * failures reject.
  */
+/** A button on a desktop banner shown by `lx.host.banner.show`. */
+export type BannerAction = {
+    /** What `action` reports when this button is picked. */
+    id: string;
+    /** Button text. */
+    label: string;
+    /** Emphasis: `primary` for the expected choice, `danger` for a destructive one. */
+    tone?: 'default' | 'primary' | 'danger';
+    /**
+     * Where picking this action goes, as a notification target, checked
+     * before the banner shows; absent, picking it only resolves `show`.
+     */
+    target?: HostTarget;
+};
+
+/** Options for `lx.host.banner.show`. */
+export type BannerOptions = {
+    /**
+     * Replace key, 1 to 64 characters: showing the same `id` again replaces that banner, which
+     * resolves `replaced`. Different ids queue, one on screen at a time.
+     */
+    id?: string;
+    /** First line. */
+    title: string;
+    /** Text below the title. */
+    message?: string;
+    /** Buttons, at most two; with any, the banner waits for a choice instead of closing by itself. */
+    actions?: readonly BannerAction[];
+    /**
+     * Close after this many milliseconds; a guest's banners close after 60000 at most.
+     * @default 5000 without buttons; with buttons, it waits for a choice
+     */
+    durationMs?: number;
+    /** Omit/`system` follows the OS. `light`/`dark` force chrome. `#RGB`/`#RRGGBB`/`#RRGGBBAA` is a solid fill. */
+    background?: 'system' | 'light' | 'dark' | (string & {});
+};
+
+/** Outcome of `lx.host.banner.show`. */
+export type BannerResult =
+    | {
+        /** A button was picked. */
+        status: 'ok';
+        /** The banner's replace key. */
+        id: string;
+        /** The picked button's `id`. */
+        action: string;
+    }
+    | {
+        /** It closed without a choice. */
+        status: 'canceled';
+        /** The banner's replace key. */
+        id: string;
+        /** Closed by the person, by `durationMs`, or by a banner with the same `id`. */
+        reason: 'dismissed' | 'timeout' | 'replaced';
+    };
+
 export type BannerApi = {
     /**
      * Show a banner, or replace the one with the same `id`; resolves with what the person did.
@@ -1076,55 +1138,7 @@ export type BannerApi = {
      * @supports host.banner
      * @throws {E_NOT_SUPPORTED} Off the desktop.
      */
-    show(options: {
-        /**
-         * Replace key, 1 to 64 characters: showing the same `id` again replaces that banner, which
-         * resolves `replaced`. Different ids queue, one on screen at a time.
-         */
-        id?: string;
-        /** First line. */
-        title: string;
-        /** Text below the title. */
-        message?: string;
-        /** Buttons, at most two; with any, the banner waits for a choice instead of closing by itself. */
-        actions?: ReadonlyArray<{
-            /** What `action` reports when this button is picked. */
-            id: string;
-            /** Button text. */
-            label: string;
-            /** Emphasis: `primary` for the expected choice, `danger` for a destructive one. */
-            tone?: 'default' | 'primary' | 'danger';
-            /**
-             * Where picking this action goes, as a notification target, checked
-             * before the banner shows; absent, picking it only resolves `show`.
-             */
-            target?: HostTarget;
-        }>;
-        /**
-         * Close after this many milliseconds; a guest's banners close after 60000 at most.
-         * @default 5000 without buttons; with buttons, it waits for a choice
-         */
-        durationMs?: number;
-        /** Omit/`system` follows the OS. `light`/`dark` force chrome. `#RGB`/`#RRGGBB`/`#RRGGBBAA` is a solid fill. */
-        background?: 'system' | 'light' | 'dark' | string;
-    }): Promise<
-        | {
-            /** A button was picked. */
-            status: 'ok';
-            /** The banner's replace key. */
-            id: string;
-            /** The picked button's `id`. */
-            action: string;
-        }
-        | {
-            /** It closed without a choice. */
-            status: 'canceled';
-            /** The banner's replace key. */
-            id: string;
-            /** Closed by the person, by `durationMs`, or by a banner with the same `id`. */
-            reason: 'dismissed' | 'timeout' | 'replaced';
-        }
-    >;
+    show(options: BannerOptions): Promise<BannerResult>;
     /**
      * Close the banner under `id`; it resolves `dismissed`. Unknown ids are fine.
      * @throws {E_INVALID_ARG} An empty `id`.
@@ -1844,6 +1858,63 @@ export type NetworkType = 'none' | 'unknown' | 'wifi' | '2g' | '3g' | '4g' | '5g
  * may hold 32 live notifications, and it may cause at most one
  * permission prompt per launch, only while it is open on screen.
  */
+/** When `lx.host.notification.show` presents a scheduled notification. */
+export type NotificationSchedule = {
+    /** Epoch milliseconds. */
+    at: number;
+} | {
+    /** Milliseconds from now. */
+    delayMs: number;
+};
+
+/** Options for `lx.host.notification.show`. */
+export type NotificationOptions = {
+    /** Replace key: what is pending or delivered under it is replaced and its tap target retired. Generated when absent. */
+    id?: string;
+    /** First line. */
+    title: string;
+    /** Text below the title. */
+    message?: string;
+    /**
+     * Where a tap goes; absent brings the product forward, nothing else.
+     * A guest lxapp may only target itself: `{ page }`, `{ tab }` or `{ app }` with its own id.
+     */
+    target?: HostTarget;
+    /**
+     * When to present; a time not in the future posts now.
+     * @platform Android: may fire late, and a reboot drops it.
+     * @platform HarmonyOS: needs the agent-reminder privilege.
+     */
+    schedule?: NotificationSchedule;
+    /**
+     * No sound. The banner still appears.
+     * @platform HarmonyOS: no effect.
+     */
+    silent?: boolean;
+    /**
+     * An immediate post while the product is frontmost: `banner` shows it as
+     * `lx.host.banner` would, with an Open button that follows `target`;
+     * `system` posts it anyway; `suppress` shows nothing. Where there is no
+     * banner (phones), `banner` posts it as `system` does.
+     * @platform macOS, iOS, HarmonyOS: `banner` and `system` still suppress when no banner is shown.
+     * @default 'banner'
+     */
+    whenFrontmost?: 'banner' | 'system' | 'suppress';
+};
+
+/** Outcome of `lx.host.notification.show`. */
+export type NotificationResult = {
+    /** The replace key, generated when none was given. */
+    id: string;
+    /**
+     * `posted`: the OS took it for display, not proof anyone saw it. `scheduled`:
+     * queued for `schedule`, and shown even if the product is frontmost then.
+     * `presented`: the product was frontmost, so it shows as a banner instead.
+     * `suppressed`: frontmost and nothing shown. Neither needs permission.
+     */
+    delivery: 'posted' | 'scheduled' | 'presented' | 'suppressed';
+};
+
 export type NotificationApi = {
     /**
      * Post a local notification now or at `schedule`, replacing any under the same `id`.
@@ -1856,55 +1927,7 @@ export type NotificationApi = {
      * ```
      * @throws {E_PERMISSION_DENIED} A guest lxapp's `target` names anything but itself.
      */
-    show(options: {
-        /** Replace key: what is pending or delivered under it is replaced and its tap target retired. Generated when absent. */
-        id?: string;
-        /** First line. */
-        title: string;
-        /** Text below the title. */
-        message?: string;
-        /**
-         * Where a tap goes; absent brings the product forward, nothing else.
-         * A guest lxapp may only target itself: `{ page }`, `{ tab }` or `{ app }` with its own id.
-         */
-        target?: HostTarget;
-        /**
-         * When to present; a time not in the future posts now.
-         * @platform Android: may fire late, and a reboot drops it.
-         * @platform HarmonyOS: needs the agent-reminder privilege.
-         */
-        schedule?: {
-            /** Epoch milliseconds. */
-            at: number;
-        } | {
-            /** Milliseconds from now. */
-            delayMs: number;
-        };
-        /**
-         * No sound. The banner still appears.
-         * @platform HarmonyOS: no effect.
-         */
-        silent?: boolean;
-        /**
-         * An immediate post while the product is frontmost: `banner` shows it as
-         * `lx.host.banner` would, with an Open button that follows `target`;
-         * `system` posts it anyway; `suppress` shows nothing. Where there is no
-         * banner (phones), `banner` posts it as `system` does.
-         * @platform macOS, iOS, HarmonyOS: `banner` and `system` still suppress when no banner is shown.
-         * @default 'banner'
-         */
-        whenFrontmost?: 'banner' | 'system' | 'suppress';
-    }): Promise<{
-        /** The replace key, generated when none was given. */
-        id: string;
-        /**
-         * `posted`: the OS took it for display, not proof anyone saw it. `scheduled`:
-         * queued for `schedule`, and shown even if the product is frontmost then.
-         * `presented`: the product was frontmost, so it shows as a banner instead.
-         * `suppressed`: frontmost and nothing shown. Neither needs permission.
-         */
-        delivery: 'posted' | 'scheduled' | 'presented' | 'suppressed';
-    }>;
+    show(options: NotificationOptions): Promise<NotificationResult>;
     /**
      * Remove what is pending or delivered under `id`, and retire its tap
      * target. Unknown ids are fine.
@@ -1962,7 +1985,7 @@ export type OpenDeclaredOptions = {
      * Which instance of the declaration: a declaration can be opened more than
      * once, and a new key creates one. Find it again with
      * `lx.surface.declared(id, { key })`. 1 to 128 UTF-8 bytes. Declarations
-     * without instantiable native providers reject it with `capability_missing`.
+     * without instantiable native providers reject with `E_CAPABILITY_MISSING`.
      */
     key?: string;
     /**
@@ -2042,7 +2065,8 @@ export type OpenPageShared = {
 export type OpenUrlOptions = {
     /**
      * `main` opens a browser tab in the main area; `aside` docks the browser
-     * beside the main. Defaults to `'main'`.
+     * beside the main.
+     * @default 'main'
      */
     as?: 'main' | 'aside' | readonly ('main' | 'aside')[];
     /** Preferred docking side when the realized placement is an aside. */
@@ -3822,7 +3846,7 @@ declare global {
      * content may change before you read it.
      * @throws {E_INTERNAL} The platform clipboard could not be read.
      */
-    types(): Promise<ClipboardType[]>;
+    types(): Promise<readonly ClipboardType[]>;
   }
 }
 
@@ -3891,7 +3915,7 @@ declare global {
      * @throws {E_NOT_FOUND} Nothing at the path.
      * @throws {E_INVALID_ARG} Not a directory, outside lxapp storage, or through a symlink.
      */
-    readDir(path: ManagedPath): Promise<DirEntry[]>;
+    readDir(path: ManagedPath): Promise<readonly DirEntry[]>;
     /**
      * Create a managed directory. An existing directory resolves.
      * @throws {E_INVALID_ARG} A read-only or outside path, or one through a symlink.
@@ -4037,7 +4061,7 @@ declare global {
      * @throws {E_INVALID_ARG} An empty path, or one the lxapp may not read.
      * @throws {E_NOT_FOUND} No file at the path.
      */
-    openFile(path: string, options?: OpenFileOptions): Promise<void>;
+    openFile(path: ManagedPath, options?: OpenFileOptions): Promise<void>;
     readonly fs: FileSystemApi;
     readonly app: LxAppApi;
     readonly media: MediaApi;
@@ -4060,7 +4084,7 @@ declare global {
      * `mailto:` their apps.
      * @example
      * ```ts
-     * await lx.openExternal('mailto:help@example.com');
+     * lx.openExternal('mailto:help@example.com');
      * ```
      * @throws {E_INVALID_ARG} Not an absolute URL.
      * @throws {E_PERMISSION_DENIED} Any other scheme.
@@ -4114,7 +4138,7 @@ declare global {
      * @throws {E_INVALID_ARG} A path the lxapp may not read.
      * @throws {E_INTERNAL} The file is not an image the platform can read.
      */
-    imageInfo(path: string): Promise<ImageInfo>;
+    imageInfo(path: ManagedPath): Promise<ImageInfo>;
     /**
      * Re-encode an image as JPEG at a lower quality or size, writing a new temporary file.
      * @example
@@ -4125,7 +4149,7 @@ declare global {
      * @throws {E_INVALID_ARG} A path the lxapp may not read, or output over the temporary storage quota.
      * @throws {E_INTERNAL} The image could not be re-encoded.
      */
-    compressImage(path: string, options?: CompressImageOptions): Promise<CompressImageResult>;
+    compressImage(path: ManagedPath, options?: CompressImageOptions): Promise<CompressImageResult>;
     /**
      * Show images and videos full screen. The handle comes back at once, so
      * listeners attach before the first event.
@@ -4136,7 +4160,7 @@ declare global {
      * the file's extension, else its leading bytes.
      * @throws {E_INVALID_ARG} The file is neither.
      */
-    saveToLibrary(path: string): Promise<void>;
+    saveToLibrary(path: ManagedPath): Promise<void>;
     /**
      * Reads local video metadata for upload preflight and presentation.
      * Size, dimensions, duration, and path form the portable core. Container type,
@@ -4151,7 +4175,7 @@ declare global {
      * @throws {E_INVALID_ARG} A path the lxapp may not read.
      * @throws {E_INTERNAL} The file is not a video the platform can read.
      */
-    videoInfo(path: string): Promise<VideoInfo>;
+    videoInfo(path: ManagedPath): Promise<VideoInfo>;
     /**
      * Write one frame of a video out as an image file.
      * @example
@@ -4162,7 +4186,7 @@ declare global {
      * @throws {E_INVALID_ARG} A path the lxapp may not read, or output over the temporary storage quota.
      * @throws {E_INTERNAL} No frame could be extracted.
      */
-    videoThumbnail(path: string, options?: VideoThumbnailOptions): Promise<VideoThumbnailResult>;
+    videoThumbnail(path: ManagedPath, options?: VideoThumbnailOptions): Promise<VideoThumbnailResult>;
     /**
      * Transcode a video to a smaller file.
      * Returns a task handle synchronously, so progress and cancellation can be
@@ -4177,7 +4201,7 @@ declare global {
      * @throws {E_ABORT} `cancel()` was called or `signal` was aborted (on `result`).
      * @throws {E_INTERNAL} The transcode failed (on `result`).
      */
-    compressVideo(path: string, options?: CompressVideoOptions): CompressVideoTask;
+    compressVideo(path: ManagedPath, options?: CompressVideoOptions): CompressVideoTask;
   }
 }
 
@@ -4202,7 +4226,6 @@ declare global {
   interface NetworkApi {
     readonly wifi: WifiApi;
     readonly status: Live<NetworkInfo>;
-    download(url: never): never;
     /**
      * Upload a file over HTTP, streamed from disk. `method: 'PUT'` with
      * `bodyMode: 'raw'` sends the file as the whole body, as presigned
@@ -4520,7 +4543,7 @@ declare global {
      * @throws {E_INVALID_STATE} Wi-Fi is off.
      * @throws {E_NETWORK} The scan failed.
      */
-    list(options?: SignalOptions): Promise<WifiInfo[]>;
+    list(options?: SignalOptions): Promise<readonly WifiInfo[]>;
     /**
      * The network the device is on now. Rejects when Wi-Fi is off.
      * @throws {E_INVALID_STATE} Wi-Fi is off.

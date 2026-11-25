@@ -45,11 +45,11 @@ rong::js_api! {
     fn register_api(ctx) {
         namespace MediaApi = crate::media::media_namespace(ctx)?;
         fn imageInfo(
-            ts_params = "path: string",
+            ts_params = "path: ManagedPath",
             ts_return = "Promise<ImageInfo>"
         ) = get_image_info_api;
         fn compressImage(
-            ts_params = "path: string, options?: CompressImageOptions",
+            ts_params = "path: ManagedPath, options?: CompressImageOptions",
             ts_return = "Promise<CompressImageResult>"
         ) = compress_image_api;
     }

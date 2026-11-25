@@ -53,14 +53,6 @@ pub struct I18nConfig {
     #[arg(long, conflicts_with = "harmony_out")]
     pub no_harmony: bool,
 
-    /// Override TypeScript-keys output directory. Defaults to the workspace
-    /// path used by `lingxia-types`. Pass `--no-ts` to skip.
-    #[arg(long)]
-    pub ts_out: Option<PathBuf>,
-
-    #[arg(long, conflicts_with = "ts_out")]
-    pub no_ts: bool,
-
     /// Override the View words module generated from `<input>/view/`. Pass
     /// `--no-view` to skip.
     #[arg(long)]
@@ -91,7 +83,6 @@ pub struct I18nConfig {
 /// `cargo run -p lingxia-cli -- gen i18n` regenerates every target in place
 /// without 6 separate `--*-out` flags.
 const RUST_DEFAULT_OUT: &str = "crates/lingxia-logic/src/i18n_generated.rs";
-const TS_DEFAULT_OUT: &str = "packages/lingxia-types/src/generated";
 const ANDROID_DEFAULT_OUT: &str = "lingxia-sdk/android/lingxia/src/main/res";
 const APPLE_DEFAULT_OUT: &str = "lingxia-sdk/apple/Sources/Resources";
 const HARMONY_DEFAULT_OUT: &str = "lingxia-sdk/harmony/lingxia/src/main/resources";
@@ -699,14 +690,6 @@ pub fn run(config: I18nConfig) -> Result<()> {
         temp_path,
         true,
     );
-    let ts_plan = resolve_output_plan(
-        config.ts_out.as_deref(),
-        config.no_ts,
-        TS_DEFAULT_OUT,
-        "ts",
-        temp_path,
-        true,
-    );
     let android_plan = resolve_output_plan(
         config.android_out.as_deref(),
         config.no_android,
@@ -765,10 +748,9 @@ pub fn run(config: I18nConfig) -> Result<()> {
         true,
     );
 
-    // 5. Share the (combined, keys) computation between Rust and TS — they
-    // pull from the same scope set, so the data is identical.
-    let rust_ts_active = rust_plan.is_some() || ts_plan.is_some();
-    let rust_ts_combined = rust_ts_active
+    // 5. The Rust target's combined translations and key set.
+    let rust_combined = rust_plan
+        .is_some()
         .then(|| {
             platform_form(
                 &translations_for_target(&scoped, Target::Rust),
@@ -776,7 +758,7 @@ pub fn run(config: I18nConfig) -> Result<()> {
             )
         })
         .transpose()?;
-    let rust_ts_keys = rust_ts_combined.as_ref().map(|c| {
+    let rust_keys = rust_combined.as_ref().map(|c| {
         c.values()
             .flat_map(|t| t.keys().cloned().map(|k| (k, ())))
             .collect::<BTreeMap<String, ()>>()
@@ -786,8 +768,8 @@ pub fn run(config: I18nConfig) -> Result<()> {
     if let Some(plan) = &rust_plan {
         generate_rust(
             &plan.write_to,
-            rust_ts_combined.as_ref().expect("rust_ts_combined"),
-            rust_ts_keys.as_ref().expect("rust_ts_keys"),
+            rust_combined.as_ref().expect("rust_combined"),
+            rust_keys.as_ref().expect("rust_keys"),
             &err_code_keys,
         )?;
     }
@@ -811,13 +793,6 @@ pub fn run(config: I18nConfig) -> Result<()> {
             ArgForm::Printf("s"),
         )?;
         generate_harmony(&plan.write_to, &combined)?;
-    }
-    if let Some(plan) = &ts_plan {
-        generate_typescript(
-            &plan.write_to,
-            rust_ts_keys.as_ref().expect("rust_ts_keys"),
-            &err_code_keys,
-        )?;
     }
 
     if let Some(plan) = &view_plan {
@@ -844,7 +819,6 @@ pub fn run(config: I18nConfig) -> Result<()> {
         let mut drift = Vec::new();
         for plan in [
             &rust_plan,
-            &ts_plan,
             &android_plan,
             &ios_plan,
             &harmony_plan,
@@ -1531,63 +1505,6 @@ fn generate_rust(
     Ok(())
 }
 
-fn escape_ts_string(val: &str) -> String {
-    val.replace('\\', "\\\\").replace('"', "\\\"")
-}
-
-fn generate_typescript(
-    out_dir: &PathBuf,
-    all_keys: &BTreeMap<String, ()>,
-    err_code_keys: &BTreeMap<u32, String>,
-) -> Result<()> {
-    fs::create_dir_all(out_dir).with_context(|| {
-        format!(
-            "Failed to create TypeScript output dir {}",
-            out_dir.display()
-        )
-    })?;
-
-    let mut i18n_content = String::from(GEN_HEADER_RUST);
-    i18n_content.push_str("export const I18N_KEYS = [\n");
-    for key in all_keys.keys() {
-        i18n_content.push_str(&format!("  \"{}\",\n", escape_ts_string(key)));
-    }
-    i18n_content.push_str("] as const;\n\n");
-    i18n_content.push_str("export type I18nKey = (typeof I18N_KEYS)[number];\n");
-
-    let i18n_file = out_dir.join("i18n.ts");
-    fs::write(&i18n_file, i18n_content)
-        .with_context(|| format!("Failed to write {}", i18n_file.display()))?;
-    println!("Generated TypeScript: {:?}", i18n_file);
-
-    let mut error_content = String::from(GEN_HEADER_RUST);
-    error_content.push_str("import type { I18nKey } from \"./i18n.js\";\n\n");
-    error_content.push_str("export const ERR_CODE_INFO_BY_CODE = {\n");
-    for (code, key) in err_code_keys {
-        error_content.push_str(&format!(
-            "  {}: {{ code: {}, key: \"{}\" }},\n",
-            code,
-            code,
-            escape_ts_string(key)
-        ));
-    }
-    error_content.push_str("} as const;\n\n");
-    error_content.push_str(
-        "export type LxErrorCode = (typeof ERR_CODE_INFO_BY_CODE)[keyof typeof ERR_CODE_INFO_BY_CODE][\"code\"];\n",
-    );
-    error_content.push_str("export interface LxErrorCodeInfo {\n");
-    error_content.push_str("  readonly code: LxErrorCode;\n");
-    error_content.push_str("  readonly key: I18nKey;\n");
-    error_content.push_str("}\n\n");
-
-    let error_file = out_dir.join("error.ts");
-    fs::write(&error_file, error_content)
-        .with_context(|| format!("Failed to write {}", error_file.display()))?;
-    println!("Generated TypeScript: {:?}", error_file);
-
-    Ok(())
-}
-
 fn generate_android(base_res_dir: &Path, i18n_map: &I18nMap) -> Result<()> {
     for (lang, translations) in i18n_map {
         let dirname = if lang == "en-US" {
@@ -1736,7 +1653,6 @@ mod tests {
             no_android: true,
             no_ios: true,
             no_harmony: true,
-            no_ts: true,
             ..I18nConfig::default()
         }
     }
@@ -2017,7 +1933,7 @@ mod tests {
     }
 
     /// The repository's own `i18n/` generates for every target and matches the committed Rust
-    /// and TypeScript output: a merge that puts one key in two scopes fails here, not on a
+    /// output: a merge that puts one key in two scopes fails here, not on a
     /// fresh checkout's first host build.
     #[test]
     fn the_repository_strings_generate_for_every_target() {
@@ -2026,7 +1942,6 @@ mod tests {
             input: root.join("i18n"),
             check: true,
             rust_out: Some(root.join(RUST_DEFAULT_OUT)),
-            ts_out: Some(root.join(TS_DEFAULT_OUT)),
             android_out: Some(root.join(ANDROID_DEFAULT_OUT)),
             ios_out: Some(root.join(APPLE_DEFAULT_OUT)),
             harmony_out: Some(root.join(HARMONY_DEFAULT_OUT)),

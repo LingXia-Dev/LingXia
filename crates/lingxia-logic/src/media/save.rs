@@ -10,7 +10,7 @@ pub(crate) fn init(ctx: &JSContext) -> JSResult<()> {
 rong::js_api! {
     fn register_api(ctx) {
         namespace MediaApi = crate::media::media_namespace(ctx)?;
-        fn saveToLibrary(ts_params = "path: string", ts_return = "Promise<void>") = save_to_library;
+        fn saveToLibrary(ts_params = "path: ManagedPath", ts_return = "Promise<void>") = save_to_library;
     }
 }
 

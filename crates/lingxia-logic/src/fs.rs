@@ -1551,7 +1551,7 @@ rong::js_api! {
     fn register_file_api(ctx) {
         namespace Lx = ctx.global().get::<_, rong::JSObject>("lx")?;
         fn openFile(
-            ts_params = "path: string, options?: OpenFileOptions",
+            ts_params = "path: ManagedPath, options?: OpenFileOptions",
             ts_return = "void"
         ) = open_file;
     }
@@ -1586,7 +1586,7 @@ rong::js_api! {
         fn stat(ts_params = "path: ManagedPath") = fs_stat;
         fn readDir(
             ts_params = "path: ManagedPath",
-            ts_return = "Promise<DirEntry[]>"
+            ts_return = "Promise<readonly DirEntry[]>"
         ) = fs_read_dir;
         fn mkdir(ts_params = "path: ManagedPath, options?: FsMkdirOptions") = fs_mkdir;
         fn write(ts_params = "path: ManagedPath, options: FsWriteOptions") = fs_write;

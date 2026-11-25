@@ -330,7 +330,7 @@ rong::js_api! {
             ts_return = "Promise<ClipboardReadResult>"
         ) = read;
         fn clear() = clear;
-        fn types(ts_return = "Promise<ClipboardType[]>") = types;
+        fn types(ts_return = "Promise<readonly ClipboardType[]>") = types;
     }
 }
 

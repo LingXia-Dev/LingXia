@@ -8,7 +8,6 @@ export * from './generated/logic.js';
 export type { Automation } from './automation/index.js';
 export type { MockAnswer, MockContext, MockHandler, MockRequest, Mocks } from './mocks.js';
 export * from './error.js';
-export * from './generated/i18n.js';
 
 import './generated/logic.js';
 

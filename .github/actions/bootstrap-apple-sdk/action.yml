@@ -32,7 +32,7 @@ runs:
           cli=("$(resolve_cargo_target_dir "$GITHUB_WORKSPACE")/debug/lingxia")
         fi
         "${cli[@]}" gen i18n \
-          --input i18n --no-rust --no-ts --no-android --no-harmony \
+          --input i18n --no-rust --no-android --no-harmony \
           --ios-out lingxia-sdk/apple/Sources/Resources
         "${cli[@]}" gen icons \
           --input design/icons/svg \

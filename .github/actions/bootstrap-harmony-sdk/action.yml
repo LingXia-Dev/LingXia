@@ -34,5 +34,5 @@ runs:
           --harmony-out lingxia-sdk/harmony/lingxia/src/main/resources/rawfile/icons
         # Localized strings into the SDK resources dir (harmony only).
         "${cli[@]}" gen i18n \
-          --input i18n --no-rust --no-ts --no-ios --no-android \
+          --input i18n --no-rust --no-ios --no-android \
           --harmony-out lingxia-sdk/harmony/lingxia/src/main/resources

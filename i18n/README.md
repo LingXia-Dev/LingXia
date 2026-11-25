@@ -1,7 +1,7 @@
 # i18n Resources
 
 Single source of truth for every localizable string LingXia ships, across:
-Rust (`lingxia-logic`), TypeScript (`lingxia-types`), Android, iOS / macOS,
+Rust (`lingxia-logic`), Android, iOS / macOS,
 Harmony, and the Apple CLI permission descriptors.
 
 LingXia translates these; an app overrides keys or adds a language in its own
@@ -58,12 +58,11 @@ Equivalent to running with these defaults:
 |---|---|
 | `--input` | `i18n` |
 | `--rust-out` | `crates/lingxia-logic/src/i18n_generated.rs` |
-| `--ts-out` | `packages/lingxia-types/src/generated` |
 | `--android-out` | `lingxia-sdk/android/lingxia/src/main/res` |
 | `--ios-out` | `lingxia-sdk/apple/Sources/Resources` |
 | `--harmony-out` | `lingxia-sdk/harmony/lingxia/src/main/resources` |
 
-Skip individual targets with `--no-rust`, `--no-ts`, `--no-android`,
+Skip individual targets with `--no-rust`, `--no-android`,
 `--no-ios`, `--no-harmony`.
 
 ### Verify-only mode (`--check`)
@@ -79,8 +78,8 @@ checked-in copy, prints any drift, and exits non-zero. Run this in
 pre-commit / pre-push hooks. The verify-only mode writes nothing. This is
 also the CI gate.
 
-Only the Rust (`i18n_generated.rs`) and TypeScript outputs are committed, so
-`--check` byte-compares those. The native resource bundles (Android
+Only the Rust output (`i18n_generated.rs`) is committed, so
+`--check` byte-compares it. The native resource bundles (Android
 `strings.xml`, Apple `Localizable.strings`, Harmony `string.json`) are
 gitignored and regenerated at build time, so `--check` validates that they
 generate but does not require them to be tracked.

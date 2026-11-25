@@ -94,7 +94,13 @@ function persistence<T>(persist: StorePersist<T>, label: string): Persistence<T>
     if (typeof persist.key !== 'string' || persist.key === '') throw new TypeError(`${label}: persist.key is a storage key`);
     const key = persist.key;
     // Read at each call: a module store is defined before a test swaps `lx`.
-    const storage = () => (globalThis as { lx?: StorageLx }).lx!.storage;
+    const storage = () => {
+      const store = (globalThis as { lx?: StorageLx }).lx?.storage;
+      if (!store) {
+        throw new Error(`${label}: persist.key requires globalThis.lx.storage; install a mock with setLx(...) or pass { load, save }`);
+      }
+      return store;
+    };
     return {
       load: () => storage().get(key) as Promise<T | undefined>,
       save: (value) => storage().set(key, value),

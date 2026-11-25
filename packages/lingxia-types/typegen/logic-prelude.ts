@@ -698,7 +698,7 @@ export type Storage<S extends object = Record<string, JsonValue>> = {
    * @throws {E_INVALID_STATE} The host configured no store for this lxapp.
    * @throws {E_IO} The database could not be read or written.
    */
-  list(prefix?: string): Promise<string[]>;
+  list(prefix?: string): Promise<readonly string[]>;
   /**
    * Resolves how much is stored, the limit, and the key count.
    * @throws {E_INVALID_STATE} The host configured no store for this lxapp.

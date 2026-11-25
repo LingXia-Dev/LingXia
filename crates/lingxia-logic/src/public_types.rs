@@ -249,6 +249,63 @@ rong::js_api! {
     route?: never;
 }"###;
 
+        /// When `lx.host.notification.show` presents a scheduled notification.
+        type NotificationSchedule = r###"{
+    /** Epoch milliseconds. */
+    at: number;
+} | {
+    /** Milliseconds from now. */
+    delayMs: number;
+}"###;
+
+        /// Options for `lx.host.notification.show`.
+        type NotificationOptions = r###"{
+    /** Replace key: what is pending or delivered under it is replaced and its tap target retired. Generated when absent. */
+    id?: string;
+    /** First line. */
+    title: string;
+    /** Text below the title. */
+    message?: string;
+    /**
+     * Where a tap goes; absent brings the product forward, nothing else.
+     * A guest lxapp may only target itself: `{ page }`, `{ tab }` or `{ app }` with its own id.
+     */
+    target?: HostTarget;
+    /**
+     * When to present; a time not in the future posts now.
+     * @platform Android: may fire late, and a reboot drops it.
+     * @platform HarmonyOS: needs the agent-reminder privilege.
+     */
+    schedule?: NotificationSchedule;
+    /**
+     * No sound. The banner still appears.
+     * @platform HarmonyOS: no effect.
+     */
+    silent?: boolean;
+    /**
+     * An immediate post while the product is frontmost: `banner` shows it as
+     * `lx.host.banner` would, with an Open button that follows `target`;
+     * `system` posts it anyway; `suppress` shows nothing. Where there is no
+     * banner (phones), `banner` posts it as `system` does.
+     * @platform macOS, iOS, HarmonyOS: `banner` and `system` still suppress when no banner is shown.
+     * @default 'banner'
+     */
+    whenFrontmost?: 'banner' | 'system' | 'suppress';
+}"###;
+
+        /// Outcome of `lx.host.notification.show`.
+        type NotificationResult = r###"{
+    /** The replace key, generated when none was given. */
+    id: string;
+    /**
+     * `posted`: the OS took it for display, not proof anyone saw it. `scheduled`:
+     * queued for `schedule`, and shown even if the product is frontmost then.
+     * `presented`: the product was frontmost, so it shows as a banner instead.
+     * `suppressed`: frontmost and nothing shown. Neither needs permission.
+     */
+    delivery: 'posted' | 'scheduled' | 'presented' | 'suppressed';
+}"###;
+
         /// Local notifications as a resume affordance.
         ///
         /// Without `capabilities.notifications`, or where the platform has no
@@ -275,55 +332,7 @@ rong::js_api! {
      * ```
      * @throws {E_PERMISSION_DENIED} A guest lxapp's `target` names anything but itself.
      */
-    show(options: {
-        /** Replace key: what is pending or delivered under it is replaced and its tap target retired. Generated when absent. */
-        id?: string;
-        /** First line. */
-        title: string;
-        /** Text below the title. */
-        message?: string;
-        /**
-         * Where a tap goes; absent brings the product forward, nothing else.
-         * A guest lxapp may only target itself: `{ page }`, `{ tab }` or `{ app }` with its own id.
-         */
-        target?: HostTarget;
-        /**
-         * When to present; a time not in the future posts now.
-         * @platform Android: may fire late, and a reboot drops it.
-         * @platform HarmonyOS: needs the agent-reminder privilege.
-         */
-        schedule?: {
-            /** Epoch milliseconds. */
-            at: number;
-        } | {
-            /** Milliseconds from now. */
-            delayMs: number;
-        };
-        /**
-         * No sound. The banner still appears.
-         * @platform HarmonyOS: no effect.
-         */
-        silent?: boolean;
-        /**
-         * An immediate post while the product is frontmost: `banner` shows it as
-         * `lx.host.banner` would, with an Open button that follows `target`;
-         * `system` posts it anyway; `suppress` shows nothing. Where there is no
-         * banner (phones), `banner` posts it as `system` does.
-         * @platform macOS, iOS, HarmonyOS: `banner` and `system` still suppress when no banner is shown.
-         * @default 'banner'
-         */
-        whenFrontmost?: 'banner' | 'system' | 'suppress';
-    }): Promise<{
-        /** The replace key, generated when none was given. */
-        id: string;
-        /**
-         * `posted`: the OS took it for display, not proof anyone saw it. `scheduled`:
-         * queued for `schedule`, and shown even if the product is frontmost then.
-         * `presented`: the product was frontmost, so it shows as a banner instead.
-         * `suppressed`: frontmost and nothing shown. Neither needs permission.
-         */
-        delivery: 'posted' | 'scheduled' | 'presented' | 'suppressed';
-    }>;
+    show(options: NotificationOptions): Promise<NotificationResult>;
     /**
      * Remove what is pending or delivered under `id`, and retire its tap
      * target. Unknown ids are fine.
@@ -339,6 +348,61 @@ rong::js_api! {
      * @throws {E_NOT_SUPPORTED} The host does not declare notifications.
      */
     cancelAll(): Promise<void>;
+}"###;
+
+        /// A button on a desktop banner shown by `lx.host.banner.show`.
+        type BannerAction = r###"{
+    /** What `action` reports when this button is picked. */
+    id: string;
+    /** Button text. */
+    label: string;
+    /** Emphasis: `primary` for the expected choice, `danger` for a destructive one. */
+    tone?: 'default' | 'primary' | 'danger';
+    /**
+     * Where picking this action goes, as a notification target, checked
+     * before the banner shows; absent, picking it only resolves `show`.
+     */
+    target?: HostTarget;
+}"###;
+
+        /// Options for `lx.host.banner.show`.
+        type BannerOptions = r###"{
+    /**
+     * Replace key, 1 to 64 characters: showing the same `id` again replaces that banner, which
+     * resolves `replaced`. Different ids queue, one on screen at a time.
+     */
+    id?: string;
+    /** First line. */
+    title: string;
+    /** Text below the title. */
+    message?: string;
+    /** Buttons, at most two; with any, the banner waits for a choice instead of closing by itself. */
+    actions?: readonly BannerAction[];
+    /**
+     * Close after this many milliseconds; a guest's banners close after 60000 at most.
+     * @default 5000 without buttons; with buttons, it waits for a choice
+     */
+    durationMs?: number;
+    /** Omit/`system` follows the OS. `light`/`dark` force chrome. `#RGB`/`#RRGGBB`/`#RRGGBBAA` is a solid fill. */
+    background?: 'system' | 'light' | 'dark' | (string & {});
+}"###;
+
+        /// Outcome of `lx.host.banner.show`.
+        type BannerResult = r###"| {
+    /** A button was picked. */
+    status: 'ok';
+    /** The banner's replace key. */
+    id: string;
+    /** The picked button's `id`. */
+    action: string;
+}
+| {
+    /** It closed without a choice. */
+    status: 'canceled';
+    /** The banner's replace key. */
+    id: string;
+    /** Closed by the person, by `durationMs`, or by a banner with the same `id`. */
+    reason: 'dismissed' | 'timeout' | 'replaced';
 }"###;
 
         /// Product-drawn desktop banner, top-right. Not an OS notification and
@@ -369,55 +433,7 @@ rong::js_api! {
      * @supports host.banner
      * @throws {E_NOT_SUPPORTED} Off the desktop.
      */
-    show(options: {
-        /**
-         * Replace key, 1 to 64 characters: showing the same `id` again replaces that banner, which
-         * resolves `replaced`. Different ids queue, one on screen at a time.
-         */
-        id?: string;
-        /** First line. */
-        title: string;
-        /** Text below the title. */
-        message?: string;
-        /** Buttons, at most two; with any, the banner waits for a choice instead of closing by itself. */
-        actions?: ReadonlyArray<{
-            /** What `action` reports when this button is picked. */
-            id: string;
-            /** Button text. */
-            label: string;
-            /** Emphasis: `primary` for the expected choice, `danger` for a destructive one. */
-            tone?: 'default' | 'primary' | 'danger';
-            /**
-             * Where picking this action goes, as a notification target, checked
-             * before the banner shows; absent, picking it only resolves `show`.
-             */
-            target?: HostTarget;
-        }>;
-        /**
-         * Close after this many milliseconds; a guest's banners close after 60000 at most.
-         * @default 5000 without buttons; with buttons, it waits for a choice
-         */
-        durationMs?: number;
-        /** Omit/`system` follows the OS. `light`/`dark` force chrome. `#RGB`/`#RRGGBB`/`#RRGGBBAA` is a solid fill. */
-        background?: 'system' | 'light' | 'dark' | string;
-    }): Promise<
-        | {
-            /** A button was picked. */
-            status: 'ok';
-            /** The banner's replace key. */
-            id: string;
-            /** The picked button's `id`. */
-            action: string;
-        }
-        | {
-            /** It closed without a choice. */
-            status: 'canceled';
-            /** The banner's replace key. */
-            id: string;
-            /** Closed by the person, by `durationMs`, or by a banner with the same `id`. */
-            reason: 'dismissed' | 'timeout' | 'replaced';
-        }
-    >;
+    show(options: BannerOptions): Promise<BannerResult>;
     /**
      * Close the banner under `id`; it resolves `dismissed`. Unknown ids are fine.
      * @throws {E_INVALID_ARG} An empty `id`.
@@ -477,6 +493,18 @@ rong::js_api! {
     disable(): Promise<void>;
 }"###;
 
+        /// Outcome of `lx.host.cache.clear`.
+        type AppCacheClearResult = r###"{
+    /** Estimated file bytes successfully removed; excludes WebView cache. */
+    freedBytes: number;
+    /** Protected usercache/session paths skipped, not a count of apps. */
+    skippedActivePaths: number;
+    /** What happened to the WebView's own cache. */
+    webview: 'cleared' | 'unsupported' | 'failed';
+    /** Categories that could not be cleared. */
+    failures: readonly string[];
+}"###;
+
         /// The product-wide cache a settings screen reports and clears.
         ///
         /// App-scoped, not lxapp-scoped: the figure covers every lxapp the host
@@ -495,16 +523,7 @@ rong::js_api! {
      * @throws {E_PERMISSION_DENIED} From an lxapp other than the Control app.
      * @throws {E_INTERNAL} The clear could not start.
      */
-    clear(): Promise<{
-        /** Estimated file bytes successfully removed; excludes WebView cache. */
-        freedBytes: number;
-        /** Protected usercache/session paths skipped, not a count of apps. */
-        skippedActivePaths: number;
-        /** What happened to the WebView's own cache. */
-        webview: 'cleared' | 'unsupported' | 'failed';
-        /** Categories that could not be cleared. */
-        failures: readonly string[];
-    }>;
+    clear(): Promise<AppCacheClearResult>;
 }"###;
         /// The terminal's font: family candidates, size, line height and ligatures.
         type TerminalFontSettings = r###"{
@@ -1484,7 +1503,10 @@ rong::js_api! {
     url?: never;
     /** The page's params. */
     params?: PageQuery;
-    /** Lxapp publish channel. Defaults to `release`. */
+    /**
+     * Lxapp publish channel.
+     * @default 'release'
+     */
     channel?: LxAppReleaseType;
     /** Install this version first if it is newer than the installed one; older versions are refused. */
     version?: string;
@@ -2178,7 +2200,8 @@ true
         type OpenUrlOptions = r###"{
     /**
      * `main` opens a browser tab in the main area; `aside` docks the browser
-     * beside the main. Defaults to `'main'`.
+     * beside the main.
+     * @default 'main'
      */
     as?: 'main' | 'aside' | readonly ('main' | 'aside')[];
     /** Preferred docking side when the realized placement is an aside. */
@@ -2204,7 +2227,7 @@ true
      * Which instance of the declaration: a declaration can be opened more than
      * once, and a new key creates one. Find it again with
      * `lx.surface.declared(id, { key })`. 1 to 128 UTF-8 bytes. Declarations
-     * without instantiable native providers reject it with `capability_missing`.
+     * without instantiable native providers reject with `E_CAPABILITY_MISSING`.
      */
     key?: string;
     /**

@@ -412,7 +412,7 @@ rong::js_api! {
     fn register_api(ctx) {
         namespace WifiApi = crate::namespace::wifi(ctx)?;
         fn connect(ts_params = "options: ConnectWifiOptions") = connect_wifi;
-        fn list(ts_params = "options?: SignalOptions", ts_return = "Promise<WifiInfo[]>") = get_wifi_list;
+        fn list(ts_params = "options?: SignalOptions", ts_return = "Promise<readonly WifiInfo[]>") = get_wifi_list;
         fn current(ts_return = "Promise<WifiInfo>") = get_connected_wifi;
         fn onConnected(
             ts_params = "callback: WifiConnectedCallback, options?: SignalOptions",

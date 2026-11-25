@@ -233,7 +233,7 @@ fn generate_resources(root: &Path, platform: Platform, cli: Option<&Path>) -> Re
     let icons = icons.to_string_lossy();
     let res_dir = res_dir.to_string_lossy();
     let icons_dir = icons_dir.to_string_lossy();
-    let mut i18n_args = vec!["gen", "i18n", "--input", &i18n, "--no-rust", "--no-ts"];
+    let mut i18n_args = vec!["gen", "i18n", "--input", &i18n, "--no-rust"];
     i18n_args.extend(i18n_out);
     i18n_args.push(&res_dir);
     let icons_args = ["gen", "icons", "--input", &icons, icons_out, &icons_dir];

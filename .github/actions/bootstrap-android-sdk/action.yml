@@ -32,5 +32,5 @@ runs:
           --input design/icons/svg \
           --android-out lingxia-sdk/android/lingxia/src/main/res/drawable
         "${cli[@]}" gen i18n \
-          --input i18n --no-rust --no-ts --no-ios --no-harmony \
+          --input i18n --no-rust --no-ios --no-harmony \
           --android-out lingxia-sdk/android/lingxia/src/main/res
