@@ -124,29 +124,30 @@ final class GpuAccessibilityElement: UIAccessibilityElement {
 
     @MainActor private static func traits(_ node: GpuFrameSemanticNode) -> UIAccessibilityTraits {
         var traits: UIAccessibilityTraits = []
-        switch node.role {
+        // Exhaustive over the generated roles: a role the core adds fails this build until mapped.
+        switch GpuSemantics.Role(rawValue: node.role) {
         // An editable combobox is a text field to VoiceOver; its hint names the suggestions.
-        case "combo-box" where node.textField != nil: break
-        case "button", "combo-box", "radio-button": traits.insert(.button)
-        case "check-box", "switch":
+        case .comboBox where node.textField != nil: break
+        case .button, .comboBox, .radioButton: traits.insert(.button)
+        case .checkBox, .switch:
             if #available(iOS 17.0, *) { traits.insert(.toggleButton) } else { traits.insert(.button) }
-        case "link": traits.insert(.link)
-        case "heading": traits.insert(.header)
-        case "image": traits.insert(.image)
-        case "video": traits.formUnion([.image, .startsMediaSession])
-        case "slider": traits.insert(.adjustable)
-        case "text", "tooltip": traits.insert(.staticText)
+        case .link: traits.insert(.link)
+        case .heading: traits.insert(.header)
+        case .image: traits.insert(.image)
+        case .video: traits.formUnion([.image, .startsMediaSession])
+        case .slider: traits.insert(.adjustable)
+        case .text, .tooltip: traits.insert(.staticText)
         // A day of a month or a choice of a picker column: pressable, and selected when chosen.
-        case "grid-cell", "option", "menu-item": traits.insert(.button)
+        case .gridCell, .option, .menuItem: traits.insert(.button)
         // Composite items: pressable, selected or checked when chosen.
-        case "tab", "tree-item", "menu-item-check-box", "menu-item-radio": traits.insert(.button)
-        case "grid", "list-box", "list", "list-item", "dialog", "alert-dialog", "alert", "status", "group", "text-field", "menu",
-             "scroll-view", "horizontal-scroll-view", "radio-group", "tab-list", "tab-panel", "toolbar", "tree", "row",
-             "web-view": break
+        case .tab, .treeItem, .menuItemCheckBox, .menuItemRadio: traits.insert(.button)
+        case .grid, .listBox, .list, .listItem, .dialog, .alertDialog, .alert, .status, .group, .textField, .menu,
+             .scrollView, .horizontalScrollView, .radioGroup, .tabList, .tabPanel, .toolbar, .tree, .row, .webView:
+            break
         // As UIProgressView: no trait, its share spoken as the value.
-        case "progress-bar": traits.insert(.updatesFrequently)
-        default:
-            // A role without a case here is a bug the schema check catches; a shipping host reads it as plain.
+        case .progressBar: traits.insert(.updatesFrequently)
+        case nil:
+            // A core newer than this adapter; a shipping host reads it as plain.
             if unmappedRoles.insert(node.role).inserted {
                 LXLog.warn("unmapped semantic role \(node.role)", category: "Accessibility")
             }

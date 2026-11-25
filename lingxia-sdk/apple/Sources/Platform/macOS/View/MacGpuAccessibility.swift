@@ -130,33 +130,34 @@ final class MacGpuAccessibilityElement: NSAccessibilityElement {
     @MainActor private static var unmappedRoles = Set<String>()
 
     @MainActor private static func role(_ node: GpuFrameSemanticNode) -> NSAccessibility.Role {
-        switch node.role {
-        case "combo-box" where node.textField != nil: return .comboBox
-        case "button", "combo-box": return .button
-        case "check-box", "switch": return .checkBox
-        case "radio-button": return .radioButton
-        case "radio-group": return .radioGroup
-        case "link": return .link
-        case "heading", "text": return .staticText
-        case "image", "video": return .image
-        case "slider": return .slider
-        case "progress-bar": return .progressIndicator
-        case "text-field": return .textField
-        case "scroll-view", "horizontal-scroll-view": return .scrollArea
-        case "list", "list-box": return .list
-        case "grid": return .grid
-        case "grid-cell", "option": return .cell
-        case "menu": return .menu
-        case "menu-item", "menu-item-check-box", "menu-item-radio": return .menuItem
-        case "tab-list": return .tabGroup
-        case "tab": return .radioButton
-        case "toolbar": return .toolbar
-        case "tree": return .outline
-        case "tree-item", "row": return .row
-        case "dialog", "alert-dialog", "alert", "list-item", "status", "group", "tab-panel", "web-view": return .group
-        case "tooltip": return .staticText
-        default:
-            // A role without a case here is a bug the schema check catches; a shipping host reads it as a group.
+        // Exhaustive over the generated roles: a role the core adds fails this build until mapped.
+        switch GpuSemantics.Role(rawValue: node.role) {
+        case .comboBox where node.textField != nil: return .comboBox
+        case .button, .comboBox: return .button
+        case .checkBox, .switch: return .checkBox
+        case .radioButton: return .radioButton
+        case .radioGroup: return .radioGroup
+        case .link: return .link
+        case .heading, .text: return .staticText
+        case .image, .video: return .image
+        case .slider: return .slider
+        case .progressBar: return .progressIndicator
+        case .textField: return .textField
+        case .scrollView, .horizontalScrollView: return .scrollArea
+        case .list, .listBox: return .list
+        case .grid: return .grid
+        case .gridCell, .option: return .cell
+        case .menu: return .menu
+        case .menuItem, .menuItemCheckBox, .menuItemRadio: return .menuItem
+        case .tabList: return .tabGroup
+        case .tab: return .radioButton
+        case .toolbar: return .toolbar
+        case .tree: return .outline
+        case .treeItem, .row: return .row
+        case .dialog, .alertDialog, .alert, .listItem, .status, .group, .tabPanel, .webView: return .group
+        case .tooltip: return .staticText
+        case nil:
+            // A core newer than this adapter; a shipping host reads it as a group.
             if unmappedRoles.insert(node.role).inserted {
                 LXLog.warn("unmapped semantic role \(node.role)", category: "Accessibility")
             }
