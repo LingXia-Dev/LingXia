@@ -167,6 +167,16 @@ function envKey(env) {
   return keyedEnvKey;
 }
 
+// A list row arrives by index and leaves by its key; `current` is the last child at or past the top.
+export function visibleEvent({ items = [], timeStamp }, keys) {
+  const shown = items.map(({ id, index, ratio, top }) => Object.freeze(index === undefined
+    ? { id: String(id), ratio, top } : { id: keys ? String(keys[index]) : String(index), index, ratio, top }));
+  let current = shown[0];
+  for (const item of shown) if (item.top <= 0) current = item;
+  return Object.freeze({ items: Object.freeze(shown), ...(current ? { current: current.id } : {}),
+    timeStamp: typeof timeStamp === 'number' ? timeStamp : Date.now() });
+}
+
 /** Lowered styles for the current env once any is new since the last take, as JSON; '' otherwise. */
 export function takeLowered() {
   if (!fresh.size) return '';
@@ -884,6 +894,11 @@ function resolveElement(tag, original, children, identity, depth, parent) {
       const { edge, at } = JSON.parse(payload);
       if ((edge === 'start' || edge === 'end') && typeof at === 'boolean') onScrollEdge(Object.freeze({ edge, at }));
     }, 'text');
+  }
+  if ((tag === 'scroll' || tag === 'list') && props.onVisibleChange !== undefined) {
+    const { onVisibleChange, itemKeys } = props;
+    if (typeof onVisibleChange !== 'function') throw Error('UI_PROP: onVisibleChange takes a function');
+    on('onVisibleChange', payload => onVisibleChange(visibleEvent(JSON.parse(payload), tag === 'list' ? itemKeys : undefined)), 'text');
   }
   if (tag === 'list') {
     check.listKeys(props);

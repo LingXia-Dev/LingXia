@@ -8109,3 +8109,103 @@ fn a_tab_measured_before_it_shows_again_does_not_wait_for_its_own_hold() {
         start.elapsed()
     );
 }
+
+/// `onVisibleChange` under a 60-step drag: a bounded number of reports (set changes and quarter
+/// crossings), then one with exact values once the scroll rests.
+#[test]
+fn a_dragged_scroll_reports_its_visible_children_on_the_gate_then_exactly_at_rest() {
+    let worker = ViewWorker::spawn("test-view").unwrap();
+    let platform = Platform::new(&[&worker]);
+    let host = platform.host(
+        &worker,
+        &source(
+            "function render(){const n=useLocal('n',0),last=useLocal('last','');return h('view',{},h('scroll',{'data-testid':'s',style:{height:150},onVisibleChange:e=>{n.set(n.value+1);last.set(JSON.stringify({items:e.items.map(i=>[i.id,i.ratio,i.top]),current:e.current,stamped:e.timeStamp>0}))}},...Array.from({length:20},(_,i)=>h('view',{key:'k'+i,id:'i'+i,style:{height:100}}))),h('text',{'data-testid':'n'},String(n.value)),h('text',{'data-testid':'last'},last.value))}",
+        ),
+        false,
+    );
+    host.set_visible(true);
+    platform.settle(&[&host]);
+    run_frames(&platform, &host, 3);
+    let text = |id: &str| {
+        host.automation_request(
+            &serde_json::json!({"op": "query", "css": format!("[data-testid=\"{id}\"]")}),
+        )
+        .unwrap()["text"]
+            .as_str()
+            .unwrap()
+            .to_owned()
+    };
+    let last = || serde_json::from_str::<serde_json::Value>(&text("last")).unwrap();
+    assert_eq!(text("n"), "1", "the first frame reports what it shows");
+    assert_eq!(
+        last(),
+        serde_json::json!({"items": [["i0", 1, 0], ["i1", 0.5, 100]], "current": "i0", "stamped": true})
+    );
+    let pointer = |phase, y: f32| {
+        host.pointer(Pointer {
+            phase,
+            x: 100.0,
+            y,
+            slop: 8.0,
+            velocity: [0.0; 2],
+            min_fling: 50.0,
+        });
+        run_frames(&platform, &host, 1);
+    };
+    pointer(PointerPhase::Down, 280.0);
+    for n in 1..=60 {
+        pointer(PointerPhase::Move, 280.0 - 4.0 * n as f32);
+    }
+    pointer(PointerPhase::Up, 40.0);
+    run_frames(&platform, &host, 30);
+    let reports: u32 = text("n").parse().unwrap();
+    assert!(
+        (3..=14).contains(&reports),
+        "60 moved frames gave {reports} reports"
+    );
+    let current: serde_json::Value = serde_json::from_str(host.snapshot().unwrap().json()).unwrap();
+    let offset = current["nodes"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|node| node["test_id"] == "s")
+        .unwrap()["scroll"]["offset"]
+        .as_f64()
+        .unwrap();
+    assert!(offset > 50.0, "the drag scrolled: {offset}");
+    let first = (offset / 100.0).floor();
+    let top = -(offset - first * 100.0);
+    let items = last()["items"].clone();
+    assert_eq!(items[0][0], format!("i{first}"));
+    assert!(
+        (items[0][2].as_f64().unwrap() - top).abs() <= 0.125,
+        "at rest the report is exact: {items} at offset {offset}"
+    );
+    run_frames(&platform, &host, 30);
+    assert_eq!(
+        text("n"),
+        reports.to_string(),
+        "a rested scroll reports nothing more"
+    );
+}
+
+#[test]
+fn a_list_reports_its_rows_by_key() {
+    let worker = ViewWorker::spawn("test-view").unwrap();
+    let platform = Platform::new(&[&worker]);
+    let host = platform.host(
+        &worker,
+        &source(
+            "function render(){const last=useLocal('last','');return h('view',{},h(List,{style:{height:120},items:Array.from({length:10},(_,i)=>i),getKey:i=>'row-'+i,renderItem:i=>h('text',{style:{height:50}},String(i)),onVisibleChange:e=>last.set(e.items.map(i=>i.id+':'+i.index+':'+i.ratio).join(' ')+' @'+e.current)}),h('text',{'data-testid':'last'},last.value))}",
+        ),
+        false,
+    );
+    host.set_visible(true);
+    platform.settle(&[&host]);
+    run_frames(&platform, &host, 3);
+    let reported = host
+        .automation_request(&serde_json::json!({"op": "query", "css": "[data-testid=\"last\"]"}))
+        .unwrap()["text"]
+        .clone();
+    assert_eq!(reported, "row-0:0:1 row-1:1:1 row-2:2:0.4 @row-0");
+}

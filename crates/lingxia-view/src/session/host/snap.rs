@@ -3,6 +3,7 @@
 //! point. A new movement cancels it.
 use super::Inner;
 use crate::platform::PlatformAdapter;
+use crate::session::lifecycle::PageTicket;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -20,6 +21,8 @@ fn spring() -> crate::animation::spring::Spring {
 pub(super) struct Snaps {
     /// Bumped by every movement; a settle or its animation stops once it no longer matches.
     serial: u64,
+    /// Bumped by every frame that leaves `onVisibleChange` unsettled; the same, for its report.
+    visible_serial: u64,
     pending: std::collections::BTreeSet<String>,
 }
 
@@ -39,6 +42,35 @@ impl<A: PlatformAdapter> Inner<A> {
         let inner = self.clone();
         self.adapter
             .post_after(IDLE, Box::new(move || inner.settle_snaps(serial)));
+    }
+
+    /// After a frame moved visible children short of a report: tell them exactly once quiet.
+    pub(super) fn settle_visible_later(self: &Arc<Self>, page: PageTicket) {
+        let serial = {
+            let mut main = self.main();
+            main.snaps.visible_serial += 1;
+            main.snaps.visible_serial
+        };
+        let inner = self.clone();
+        self.adapter
+            .post_after(IDLE, Box::new(move || inner.settle_visible(page, serial)));
+    }
+
+    fn settle_visible(self: &Arc<Self>, page: PageTicket, serial: u64) {
+        {
+            let main = self.main();
+            if main.snaps.visible_serial != serial {
+                return;
+            }
+            if main.interaction.holding_scroll() {
+                drop(main);
+                let inner = self.clone();
+                self.adapter
+                    .post_after(IDLE, Box::new(move || inner.settle_visible(page, serial)));
+                return;
+            }
+        }
+        self.activate(page, false, Box::new(|session| session.settle_visibility()));
     }
 
     fn settle_snaps(self: &Arc<Self>, serial: u64) {

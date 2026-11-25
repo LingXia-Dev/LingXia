@@ -331,6 +331,12 @@ impl Renderer {
                         .find(|(id, _)| *id == field::ON_SNAP_CHANGE)
                         .and_then(|(_, v)| v.as_u64())
                         .filter(|handle| *handle != 0),
+                    on_visible: record
+                        .fields
+                        .iter()
+                        .find(|(id, _)| *id == field::ON_VISIBLE_CHANGE)
+                        .and_then(|(_, v)| v.as_u64())
+                        .filter(|handle| *handle != 0),
                     glide: None,
                     parent: scroll_parent.clone(),
                     offset: 0.0,
@@ -1612,6 +1618,7 @@ impl Renderer {
                 modal: record.number(field::MODAL) == Some(1.0),
                 drag_scrim: record.number(field::DRAG_SCRIM) == Some(1.0),
                 keeps_focus: record.number(field::KEEPS_FOCUS) == Some(1.0),
+                list_row: record.number(field::LIST_ROW_INDEX).map(|row| row as u32),
                 touch_target_none: record.string(field::TOUCH_TARGET) == Some("none"),
                 panel: !matches!(record.tag, tag::BUTTON | tag::LINK_BOX)
                     && record

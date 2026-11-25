@@ -356,6 +356,9 @@ impl<A: PlatformAdapter> Inner<A> {
                 if session.frame_events_due() {
                     inner.main().boxes_due = true;
                 }
+                if session.visibility_unsettled() {
+                    inner.main().visible_unsettled = true;
+                }
                 // A handler's `reveal(id)` waits for this frame: it may be the one that mounts the element.
                 if rebuild
                     && let Ok(ids) = session.take_reveals()
@@ -387,6 +390,9 @@ impl<A: PlatformAdapter> Inner<A> {
                         false,
                         Box::new(|session| session.report_frame_events()),
                     );
+                }
+                if std::mem::take(&mut inner.main().visible_unsettled) {
+                    inner.settle_visible_later(page);
                 }
                 let (current, missed) = {
                     let mut main = inner.main();

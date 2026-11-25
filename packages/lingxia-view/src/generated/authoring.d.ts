@@ -377,6 +377,10 @@ export interface EditorSelection {
 }
 /** A scroll or list reached (`at: true`) or left an edge. Fires once per change, and on mount with the edges its content starts at: both when the content fits. */
 export interface ScrollEdgeEvent { readonly edge: "start" | "end"; readonly at: boolean }
+/** A child on screen: `top` is its start edge from the viewport's, `ratio` the share of it shown. */
+export interface VisibleItem { readonly id: string; readonly index?: number; readonly ratio: number; readonly top: number }
+/** The children on screen in order; `current` is the last that reached the top, else the first. */
+export interface VisibleChangeEvent extends TimeStamped { readonly items: readonly VisibleItem[]; readonly current?: string }
 /** The size of the element that takes this handle as `box`; `null` until its first layout, then one render behind a change. */
 export interface Box { readonly value: BoxSize | null }
 export declare function useBox(name: string): Box;
@@ -1232,6 +1236,7 @@ export type ScrollProps = Omit<Props, "style" | "children" | "role"> & { role?: 
   /** Called when the scroll reaches its start, as for loading older items. */ onReachStart?: () => void;
   /** Called when the scroll reaches its end, as for loading more items. */ onReachEnd?: () => void;
   /** Called when the scroll reaches or leaves either edge, and on mount with the edges it starts at. */ onScrollEdge?: (event: ScrollEdgeEvent) => void;
+  /** Called with the children on screen (an element with an `id`, or a `List` row by its key) when that set, a child's ratio by a quarter step, or the current child changes, and once with exact values when the scroll comes to rest. */ onVisibleChange?: (event: VisibleChangeEvent) => void;
 } & ({ 
   /** The index of the snap point a `scrollSnapType` scroll rests on, with `onSnapChange`; not with `bind`. */ snapIndex: number; 
   /** Called with the snap point index it came to rest at after a drag or swipe. */ onSnapChange: (index: number) => void; 
@@ -1255,6 +1260,7 @@ export type ListProps = Omit<Props, "style" | "children" | "role"> & { role?: Li
   /** Called when the scroll reaches its start, as for loading older items. */ onReachStart?: () => void;
   /** Called when the scroll reaches its end, as for loading more items. */ onReachEnd?: () => void;
   /** Called when the scroll reaches or leaves either edge, and on mount with the edges it starts at. */ onScrollEdge?: (event: ScrollEdgeEvent) => void;
+  /** Called with the children on screen (an element with an `id`, or a `List` row by its key) when that set, a child's ratio by a quarter step, or the current child changes, and once with exact values when the scroll comes to rest. */ onVisibleChange?: (event: VisibleChangeEvent) => void;
   /** The accessible name, spoken in place of its text. */ "aria-label"?: string;
 };
 export interface DataListProps<T> extends Omit<ListProps, "count" | "row" | "height" | "itemKeys"> {

@@ -67,6 +67,8 @@ export interface Screen {
   selectPoint(node: WireNode, index: number): void;
   /** A `<scroll>`/`<List>`'s `onReachStart`/`onReachEnd`. */
   reach(node: WireNode, edge: "start" | "end"): void;
+  /** A `<scroll>`/`<List>`'s `onVisibleChange` with these children on screen, in order: an element by `id`, a `List` row by `index`. */
+  visible(node: WireNode, items: ReadonlyArray<{ id?: string; index?: number; ratio: number; top: number }>): void;
   /** `<image>` `onLoad`/`onError`. */
   image(node: WireNode, outcome: "load" | "error"): void;
   /** A snapping `<scroll>` coming to rest on snap point `index`. */

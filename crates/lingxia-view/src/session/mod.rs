@@ -30,6 +30,7 @@ mod selection;
 pub(crate) mod tests;
 mod uncontrolled;
 mod video;
+mod visibility;
 mod webview;
 use frame_animation::FrameAnimations;
 
@@ -96,6 +97,8 @@ pub struct ViewSession {
     boxes: HashMap<String, [f32; 4]>,
     /// Sizes that changed in the committed layout and wait for delivery.
     boxes_due: Vec<(String, [f32; 4])>,
+    /// What each `onVisibleChange` scroll last reported and last showed.
+    visibility: visibility::Visibility,
     /// The first commit of the current layout revision.
     /// The last commit the host presented: the frame the user saw.
     seen_commit: lifecycle::CommitTicket,
@@ -414,6 +417,7 @@ impl ViewSession {
             layout_revision: 0,
             boxes: HashMap::new(),
             boxes_due: Vec::new(),
+            visibility: Default::default(),
             seen_commit: lifecycle::CommitTicket::new(0),
             layout_commit: lifecycle::CommitTicket::new(0),
             clicks: Vec::new(),

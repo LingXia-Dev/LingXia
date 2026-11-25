@@ -592,9 +592,12 @@ impl ViewSession {
                     metrics.cost = display.cost();
                     metrics.top_layer_open = display.top_layer_open();
                     metrics.chrome_snapshot = self.chrome.attach(&mut display);
+                    let visible = crate::session::visibility::measure(&display);
                     let started = std::time::Instant::now();
                     let frame = build(display)?;
                     metrics.build_us += crate::session::metrics::micros(started);
+                    let time = self.event_time();
+                    self.visibility.note(visible, time);
                     self.input_hits = Some(input_hits);
                     self.inputs = inputs;
                     self.input_dirty = input_dirty;
@@ -624,6 +627,7 @@ impl ViewSession {
         let mut revealed = HashMap::new();
         let mut keyboard_reveal = self.keyboard_reveal.clone();
         let mut active_shown = self.active_shown.clone();
+        let mut visible = Vec::new();
         let candidate = (|| {
             let mut records = if native_input {
                 self.input_records.as_ref().unwrap().clone()
@@ -913,6 +917,7 @@ impl ViewSession {
                     metrics.cost = display.cost();
                     metrics.top_layer_open = display.top_layer_open();
                     metrics.chrome_snapshot = self.chrome.attach(&mut display);
+                    visible = crate::session::visibility::measure(&display);
                     let started = std::time::Instant::now();
                     let frame = build(display)?;
                     metrics.build_us += crate::session::metrics::micros(started);
@@ -987,6 +992,8 @@ impl ViewSession {
                 }
                 self.retained = Some(retained);
                 self.lists = lists;
+                let time = self.event_time();
+                self.visibility.note(std::mem::take(&mut visible), time);
                 self.viewport = Some((width, height, scale));
                 self.scroll_offsets = applied;
                 self.keyboard_reveal = keyboard_reveal;

@@ -80,6 +80,12 @@ export function render() {
 - `onScrollEdge({ edge, at })` fires when the content reaches (`at: true`) or leaves an edge, on the
   frame that shows it, and once on mount with the edges it starts at (both when the content fits).
   Use it for state that follows the position: a header shadow, a "back to top" button.
+- `onVisibleChange({ items, current, timeStamp })` lists the children on screen in order: each element
+  with an `id` whose nearest scroll this is (a `<List>`'s rows by key, with `index`), with `ratio` (the
+  share shown) and `top` (its start from the viewport's, in points). `current` is the last child at or
+  past the top, else the first. While the scroll moves it fires only when the set, `current`, or a ratio
+  by a quarter step changes; once the scroll rests it fires again with exact values. Use it for a
+  table of contents, a reading position, or a "seen" mark.
 - In RTL a horizontal scroll starts at its inline start (the right edge) and advances leftward.
 - A gesture moves the innermost scroll under the finger on its axis; leftover distance passes to the next
   ancestor on the same axis. `overscroll-contain` or `overscroll-none` keeps it in this scroll.
@@ -109,6 +115,7 @@ created by index as they approach the viewport and dropped when they leave it.
 | `getItemHeight(item, index)` | optional fixed row height; rows are measured otherwise |
 | `anchor` | where to move the position (below) |
 | `onReachStart`, `onReachEnd`, `onScrollEdge` | edge arrivals and departures, as on `<scroll>` |
+| `onVisibleChange` | the rows on screen, by key, as on `<scroll>` |
 
 `gap-*` separates rows; padding pads the whole list. Lists scroll vertically only. Rows are their
 item's sibling index for `first:`, `last:`, `odd:` and `even:`, counted over the whole list.

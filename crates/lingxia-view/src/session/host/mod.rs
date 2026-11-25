@@ -460,6 +460,8 @@ struct Main<F> {
     reveals: Vec<(u64, String)>,
     /// The frame just prepared changed a box some `onLayout` reads.
     boxes_due: bool,
+    /// The frame just prepared moved an `onVisibleChange` child short of a report.
+    visible_unsettled: bool,
     /// An `onPointer` move or hover is with the View; the newest one after it waits here.
     pointer_busy: bool,
     pointer_held: Option<dispatch::PointerReport>,
@@ -706,6 +708,7 @@ impl<A: PlatformAdapter> ViewHost<A> {
                     frame_measures: Vec::new(),
                     reveals: Vec::new(),
                     boxes_due: false,
+                    visible_unsettled: false,
                     pointer_busy: false,
                     pointer_held: None,
                     activating: 0,

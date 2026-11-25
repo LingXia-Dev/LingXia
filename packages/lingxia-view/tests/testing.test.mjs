@@ -172,3 +172,30 @@ test('every event the elements define is reachable from the screen, with a phone
     screen.rerender({ env: { viewport: { width: 800, height: 600 }, theme: 'dark' } });
   } finally { await rm(root, { recursive: true, force: true }); }
 });
+
+test('screen.visible reports a List row by its key and a scroll child by its id, with the current one', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'lingxia-view-testing-visible-'));
+  try {
+    await writeFile(join(root, 'lxapp.json'), '{}');
+    await writeFile(join(root, 'page.tsx'), `import { List, useLocal } from '@lingxia/view';
+const rows = Object.freeze(['a', 'b', 'c']);
+export function render() {
+  const seen = useLocal('seen', '');
+  const say = (event: { items: readonly { id: string }[]; current?: string; timeStamp: number }) =>
+    seen.set(event.items.map(item => item.id).join(',') + ' @' + (event.current ?? '-') + (event.timeStamp > 0 ? '' : ' no time'));
+  return <view>
+    <List data-testid="list" items={rows} getKey={row => 'row-' + row} renderItem={row => <text>{row}</text>} onVisibleChange={say} />
+    <scroll data-testid="scroll" onVisibleChange={say}><view id="intro" /></scroll>
+    <text data-testid="seen">{seen.value}</text>
+  </view>;
+}
+`);
+    const screen = await render(join(root, 'page.tsx'));
+    screen.visible(screen.getByTestId('list'), [{ index: 1, ratio: 0.5, top: -10 }, { index: 2, ratio: 1, top: 40 }]);
+    assert.equal(textOf(screen.getByTestId('seen')), 'row-b,row-c @row-b');
+    screen.visible(screen.getByTestId('scroll'), [{ id: 'intro', ratio: 1, top: 8 }]);
+    assert.equal(textOf(screen.getByTestId('seen')), 'intro @intro');
+    screen.visible(screen.getByTestId('scroll'), []);
+    assert.equal(textOf(screen.getByTestId('seen')), ' @-');
+  } finally { await rm(root, { recursive: true, force: true }); }
+});

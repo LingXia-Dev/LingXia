@@ -378,6 +378,10 @@ export interface EditorSelection {
 }
 /** A scroll or list reached (`at: true`) or left an edge. Fires once per change, and on mount with the edges its content starts at: both when the content fits. */
 export interface ScrollEdgeEvent { readonly edge: "start" | "end"; readonly at: boolean }
+/** A child on screen: `top` is its start edge from the viewport's, `ratio` the share of it shown. */
+export interface VisibleItem { readonly id: string; readonly index?: number; readonly ratio: number; readonly top: number }
+/** The children on screen in order; `current` is the last that reached the top, else the first. */
+export interface VisibleChangeEvent extends TimeStamped { readonly items: readonly VisibleItem[]; readonly current?: string }
 /** The size of the element that takes this handle as `box`; `null` until its first layout, then one render behind a change. */
 export interface Box { readonly value: BoxSize | null }
 export declare function useBox(name: string): Box;

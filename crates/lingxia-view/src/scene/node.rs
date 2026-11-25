@@ -125,6 +125,9 @@ pub struct NodeSnapshot {
     /// A `keepsFocus` button: its press leaves the focused editor editing.
     #[serde(skip)]
     pub keeps_focus: bool,
+    /// A `List` row's index, which `onVisibleChange` reports it by.
+    #[serde(skip)]
+    pub list_row: Option<u32>,
     /// A shown top layer's panel (a dialog's or popover's box): presses over it never reach
     /// what lies beneath, its backdrop included.
     #[serde(skip)]
@@ -590,6 +593,8 @@ pub struct ScrollSnapshot {
     pub(crate) snap_index: Option<usize>,
     #[serde(skip)]
     pub(crate) on_snap: Option<u64>,
+    #[serde(skip)]
+    pub(crate) on_visible: Option<u64>,
     /// A list anchor with a `duration`: where its row sits now, for the host to scroll to.
     #[serde(skip)]
     pub(crate) glide: Option<Glide>,

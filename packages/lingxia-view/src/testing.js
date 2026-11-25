@@ -202,6 +202,7 @@ function screen(host, view, resolved) {
     slide: (node, value) => fire(node, 'onSliderChange', value),
     select: (node, value) => fire(node, 'onSelect', value),
     selectPoint: (node, index) => fire(node, 'onPlotSelect', index),
+    visible: (node, items) => json(node, 'onVisibleChange', { items }),
     reach: (node, edge) => fire(node, edge === 'start' ? 'onReachStart' : 'onReachEnd'),
     image: (node, outcome) => fire(node, outcome === 'error' ? 'onImageError' : 'onImageLoad'),
     snap: (node, index) => fire(node, 'onSnapChange', String(index)),

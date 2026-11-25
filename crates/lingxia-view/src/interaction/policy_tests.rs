@@ -22,6 +22,7 @@ pub(crate) fn node(identity: &str, tag: &'static str, bounds: [f32; 4]) -> NodeS
         close_after: None,
         drag_scrim: false,
         keeps_focus: false,
+        list_row: None,
         touch_target_none: false,
         panel: false,
         disabled: false,
@@ -109,6 +110,7 @@ pub(crate) fn region(id: &str, parent: Option<&str>, offset: f32, max: f32) -> S
         snap_stop: false,
         snap_index: None,
         on_snap: None,
+        on_visible: None,
         glide: None,
         row_gap: 0.0,
     }

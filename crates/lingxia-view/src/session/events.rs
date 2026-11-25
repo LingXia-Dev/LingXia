@@ -263,9 +263,23 @@ impl ViewSession {
         self.boxes_due.sort_by(|a, b| a.0.cmp(&b.0));
     }
 
-    /// A frame left `onLayout` or `onSelectionChange` calls to make once it lands.
+    /// A frame left `onLayout`, `onSelectionChange` or `onVisibleChange` calls to make once it
+    /// lands.
     pub(crate) fn frame_events_due(&self) -> bool {
-        !self.boxes_due.is_empty() || self.inputs.selection_due()
+        !self.boxes_due.is_empty() || self.inputs.selection_due() || self.visibility.due()
+    }
+
+    /// A scroll moved by less than `onVisibleChange` reports at once; [`Self::settle_visibility`]
+    /// tells the exact children once it rests.
+    pub(crate) fn visibility_unsettled(&self) -> bool {
+        self.visibility.unsettled()
+    }
+
+    /// The scrolls came to rest: reports each one's exact children where they moved.
+    pub fn settle_visibility(&mut self) -> Result<bool, String> {
+        let time = self.event_time();
+        self.visibility.settle(time);
+        self.report_frame_events()
     }
 
     /// Calls `onSelectionChange` for the focused editor's selection the frame moved or showed
@@ -274,6 +288,9 @@ impl ViewSession {
     pub fn report_frame_events(&mut self) -> Result<bool, String> {
         let mut ran = false;
         for (handle, payload) in self.inputs.take_selection_changes() {
+            ran |= self.text_event(self.generation, handle, &payload)?;
+        }
+        for (handle, payload) in self.visibility.take_due() {
             ran |= self.text_event(self.generation, handle, &payload)?;
         }
         for (identity, size) in std::mem::take(&mut self.boxes_due) {
