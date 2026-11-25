@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { textOf } from '@lingxia/view/testing';
-import { renderExample } from '../testing/harness.mjs';
+import { described, renderExample } from '../testing/harness.mjs';
 
 test('Sidebar: one named tree; rows are treeitems at their level, the current one selected', async () => {
   const screen = await renderExample('NavList/NavList', 'Sidebar');
@@ -18,9 +18,11 @@ test('Sidebar: one named tree; rows are treeitems at their level, the current on
   assert.equal(screen.getByTestId('workspace-section-projects').props.ariaLevel, 1);
 });
 
-test('Sidebar: a row with a count is named with it; the count itself is not read again', async () => {
+test('Sidebar: a row with a count is named by its label, the count read after it as its description', async () => {
   const screen = await renderExample('NavList/NavList', 'Sidebar');
-  assert.equal(screen.getByTestId('workspace-inbox').props.accessibilityLabel, 'Inbox, 12');
+  const inbox = screen.getByTestId('workspace-inbox');
+  assert.equal(inbox.props.accessibilityLabel, 'Inbox');
+  assert.deepEqual(described(screen, inbox), ['12']);
   assert.equal(screen.getByTestId('workspace-sent').props.accessibilityLabel, undefined);
 });
 

@@ -90,14 +90,16 @@ export function NavList({ label, sections, bind, value: own, onChange: ownChange
               id={rowId(item.value)}
               aria-level={level}
               aria-selected={isSelected}
-              aria-label={item.endText === undefined ? undefined : `${item.label}, ${item.endText}`}
+              // The label is the row's name; the count follows it as the description.
+              aria-label={item.endText === undefined ? undefined : item.label}
+              aria-describedby={item.endText === undefined ? undefined : `${rowId(item.value)}-end`}
               disabled={item.isDisabled}
               onClick={() => onChange(item.value)}
               data-testid={testId && `${testId}-${item.value}`}
               className={cx(r.item.base, isSelected ? r.item.selected : r.item.idle)}
             >
               <text className={cx(r.label.base, isSelected && r.label.selected)}>{item.label}</text>
-              {item.endText !== undefined && <text aria-hidden className={r.end.base}>{item.endText}</text>}
+              {item.endText !== undefined && <text id={`${rowId(item.value)}-end`} className={r.end.base}>{item.endText}</text>}
             </button>
           );
         });

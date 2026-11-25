@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { renderExample } from '../testing/harness.mjs';
+import { described, renderExample } from '../testing/harness.mjs';
 
 const rows = screen => screen.queryAll(node => node.props.role === 'treeitem');
 
@@ -13,7 +13,10 @@ test('Folders: tree items by level; open branches show their children, closed on
   ]);
   const coast = screen.getByTestId('folders-coast');
   assert.deepEqual([coast.props.stateSelected, coast.props.background], [1, 'accent-soft']);
-  assert.equal(screen.getByTestId('folders-notes').props.accessibilityLabel, 'Notes, 48');
+  // Named by its label alone, so getByRole('treeitem', { name: 'Notes' }) finds it; the count is read after the name.
+  const notes = screen.getByTestId('folders-notes');
+  assert.equal(notes.props.accessibilityLabel, 'Notes');
+  assert.deepEqual(described(screen, notes), ['48']);
 });
 
 test('Folders: pressing a branch opens it and selects it; each level steps in', async () => {

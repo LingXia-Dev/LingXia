@@ -77,7 +77,10 @@ export function TreeList({
     const isSelected = node.id === value;
     const isLast = [...lastAt, index === list.length - 1];
     const hasEnd = node.endContent !== undefined;
-    const describedBy = node.description === undefined ? undefined : `${id}-${node.id}-description`;
+    // The label is the row's name; its description and count follow it as the description.
+    const descriptionId = node.description === undefined ? undefined : `${id}-${node.id}-description`;
+    const endId = node.endText === undefined ? undefined : `${id}-${node.id}-end`;
+    const describedBy = [descriptionId, endId].filter(Boolean).join(' ') || undefined;
     // A guide runs down a parent's chevron column while that parent has more below it in this branch.
     const guides = hasLineGuides && depth > 1 && Array.from({ length: depth - 1 }, (_, level) => {
       const isOwn = level === depth - 2;
@@ -91,7 +94,7 @@ export function TreeList({
         aria-level={depth}
         aria-expanded={isBranch ? isOpen : undefined}
         aria-selected={isSelected}
-        aria-label={node.endText === undefined && node.description === undefined ? undefined : node.endText === undefined ? node.label : `${node.label}, ${node.endText}`}
+        aria-label={describedBy === undefined ? undefined : node.label}
         aria-describedby={describedBy}
         disabled={node.isDisabled}
         onClick={() => { if (isBranch) toggle(node.id); onChange(node.id); }}
@@ -112,10 +115,10 @@ export function TreeList({
           : (
             <view className={r.words.base}>
               <text className={cx(r.label.stacked, isSelected && r.label.selected)}>{node.label}</text>
-              <text id={describedBy} className={r.description.base}>{node.description}</text>
+              <text id={descriptionId} className={r.description.base}>{node.description}</text>
             </view>
           )}
-        {node.endText !== undefined && <text aria-hidden className={r.end.base}>{node.endText}</text>}
+        {node.endText !== undefined && <text id={endId} className={r.end.base}>{node.endText}</text>}
       </button>
     );
     // The row's own content cannot sit inside its button, so the two share a row that carries the fill.
