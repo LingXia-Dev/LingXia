@@ -65,8 +65,8 @@ export const jinshuDiffRecipe = {
   },
   change: {
     kind: {
-      added: 'rounded-container border border-success/30 bg-success-soft/60 p-3 gap-1.5',
-      removed: 'rounded-container border border-danger/30 bg-danger-soft/60 p-3 gap-1.5',
+      added: 'rounded-container border border-success/30 bg-success-soft p-3 gap-1.5',
+      removed: 'rounded-container border border-danger/30 bg-danger-soft p-3 gap-1.5',
       moved: 'rounded-container border-s-4 border-info bg-info-soft/40 p-3 gap-1.5',
       modified: 'rounded-container border border-line bg-surface p-3 gap-2',
     } satisfies Record<Exclude<BlockDiffEntry['kind'], 'unchanged'>, string>,

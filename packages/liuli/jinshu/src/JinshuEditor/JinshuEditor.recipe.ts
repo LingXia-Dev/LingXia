@@ -171,7 +171,7 @@ export const jinshuEditorRecipe = {
     base: 'absolute bottom-full start-0 z-20 mb-1.5 flex-row items-center gap-0.5 rounded-container border border-line bg-surface-raised px-1 py-0.5 shadow-raised',
   },
   stream: {
-    base: 'rounded-container border border-info/30 bg-info-soft/40 p-3.5 gap-2',
+    base: 'rounded-container border border-info/30 bg-info-soft p-3.5 gap-2',
   },
   loading: {
     base: 'text-footnote text-muted py-8 text-center',
