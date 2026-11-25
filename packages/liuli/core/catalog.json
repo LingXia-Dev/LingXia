@@ -4254,6 +4254,7 @@
         "roles": [
           "accent",
           "danger-mark",
+          "line",
           "success-mark",
           "text",
           "warning-mark"
@@ -15092,6 +15093,7 @@
         "roles": [
           "accent",
           "danger-mark",
+          "line",
           "on-media",
           "success-mark",
           "text",
@@ -18055,6 +18057,7 @@
           "accent",
           "accent-solid",
           "focus",
+          "line",
           "line-strong",
           "on-accent-solid",
           "text",
