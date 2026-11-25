@@ -61,3 +61,16 @@ test('InSentence: the link stays in its sentence and wires the overlay', async (
   assert.equal(screen.queryAll(node => node.tag === 'text' && node.children?.includes(link)).length, 1, 'inside the sentence');
   assert.ok(link.props.interestFor || link.props.stateExpanded === 0, 'wired to its overlay');
 });
+
+test('Anchored: with `anchor` there is no trigger; the caller opens the panel against that element, and its own closing reaches the caller', async () => {
+  const screen = await renderExample('Popover/Popover', 'Anchored');
+  assert.throws(() => screen.getByTestId('conflicts'), /no node/, 'no trigger of its own');
+  assert.equal(screen.queryAll(node => node.props.role === 'dialog').length, 0);
+  screen.press(screen.getByTestId('explain'));
+  const panel = screen.getByTestId('conflicts-panel');
+  assert.deepEqual([typeof panel.props.anchorTo, panel.props.role, panel.props.accessibilityLabel], ['string', 'dialog', '3 photos changed in two places'], 'placed against the badge, named by its title');
+  screen.escape();
+  assert.equal(screen.queryAll(node => node.props.role === 'dialog').length, 0, 'Escape closes it and the caller hears');
+  screen.press(screen.getByTestId('explain'));
+  assert.equal(screen.queryAll(node => node.props.role === 'dialog').length, 1, 'and it opens again');
+});

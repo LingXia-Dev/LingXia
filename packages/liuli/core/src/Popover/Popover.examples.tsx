@@ -95,6 +95,29 @@ export function Beside() {
   );
 }
 
+/** Against something that is not its trigger: a row's count opens its detail from a button at the foot of the list. */
+export function Anchored() {
+  const isOpen = useLocal('open', false);
+  return (
+    <view className="gap-3">
+      <view className="flex-row items-center justify-between gap-3">
+        <text className="text-body text-text">Shared albums</text>
+        <view id="album-conflicts" className="rounded-full bg-warning-soft px-2 py-0.5"><text className="text-footnote font-medium text-text">3 conflicts</text></view>
+      </view>
+      <Button label="Explain conflicts" width="content" onClick={() => isOpen.set(true)} data-testid="explain" />
+      <Popover
+        anchor="album-conflicts"
+        isOpen={isOpen.value}
+        onOpenChange={isOpen.set}
+        label="Conflicts"
+        title="3 photos changed in two places"
+        content={<text className="text-footnote text-muted">Pick which copy to keep from each photo's page.</text>}
+        data-testid="conflicts"
+      />
+    </view>
+  );
+}
+
 /** On a link in a sentence: the panel opens from the linked words, which stay in their line. */
 export function InSentence() {
   return (

@@ -14487,8 +14487,20 @@
         {
           "name": "children",
           "type": "Child",
-          "required": true,
+          "required": false,
           "description": "The trigger: a Button, an IconButton or any element, which is then wrapped in a plain button."
+        },
+        {
+          "name": "anchor",
+          "type": "string",
+          "required": false,
+          "description": "The id of an element elsewhere on the page to open against, in place of a trigger: a chart mark, a row's badge."
+        },
+        {
+          "name": "isOpen",
+          "type": "boolean",
+          "required": false,
+          "description": "Controls whether it is open; leave it out to let the trigger own it. Whether it is open: with `anchor` there is no trigger, so the caller opens it."
         },
         {
           "name": "content",
@@ -14534,12 +14546,6 @@
           "default": "'start'"
         },
         {
-          "name": "isOpen",
-          "type": "boolean",
-          "required": false,
-          "description": "Controls whether it is open; leave it out to let the trigger own it."
-        },
-        {
           "name": "onOpenChange",
           "type": "((isOpen: boolean) => void)",
           "required": false,
@@ -14559,7 +14565,16 @@
         }
       ],
       "otherProps": {},
-      "choices": [],
+      "choices": [
+        [
+          [
+            "children"
+          ],
+          [
+            "anchor"
+          ]
+        ]
+      ],
       "parts": {
         "panel": "view",
         "title": "text"
@@ -14633,6 +14648,11 @@
           "name": "Beside",
           "title": "Beside the trigger",
           "source": "import { Button } from '@liulidesign/core/Button';\nimport { Popover } from '@liulidesign/core/Popover';\n\n/** Beside its trigger: a tool at the edge of a canvas opens its options at its side. */\nexport function Beside() {\n  return (\n    <view className=\"items-start gap-2\">\n      <Popover label=\"Line\" title=\"Line\" placement=\"end\" content={<text className=\"text-footnote text-muted\">Weight and style for the shapes you draw next.</text>} data-testid=\"beside\">\n        <Button label=\"Line\" data-testid=\"beside\" />\n      </Popover>\n    </view>\n  );\n}"
+        },
+        {
+          "name": "Anchored",
+          "title": "Against an element that is not its trigger",
+          "source": "import { useLocal } from '@lingxia/view';\nimport { Button } from '@liulidesign/core/Button';\nimport { Popover } from '@liulidesign/core/Popover';\n\n/** Against something that is not its trigger: a row's count opens its detail from a button at the foot of the list. */\nexport function Anchored() {\n  const isOpen = useLocal('open', false);\n  return (\n    <view className=\"gap-3\">\n      <view className=\"flex-row items-center justify-between gap-3\">\n        <text className=\"text-body text-text\">Shared albums</text>\n        <view id=\"album-conflicts\" className=\"rounded-full bg-warning-soft px-2 py-0.5\"><text className=\"text-footnote font-medium text-text\">3 conflicts</text></view>\n      </view>\n      <Button label=\"Explain conflicts\" width=\"content\" onClick={() => isOpen.set(true)} data-testid=\"explain\" />\n      <Popover\n        anchor=\"album-conflicts\"\n        isOpen={isOpen.value}\n        onOpenChange={isOpen.set}\n        label=\"Conflicts\"\n        title=\"3 photos changed in two places\"\n        content={<text className=\"text-footnote text-muted\">Pick which copy to keep from each photo's page.</text>}\n        data-testid=\"conflicts\"\n      />\n    </view>\n  );\n}"
         },
         {
           "name": "InSentence",

@@ -8,9 +8,24 @@ import { dataOf } from '../internal/data';
 export type PopoverPlacement = 'bottom' | 'top' | 'end' | 'start';
 export type PopoverAlignment = 'start' | 'center' | 'end';
 
-export interface PopoverProps {
-  /** The trigger: a Button, an IconButton or any element, which is then wrapped in a plain button. */
-  children: Child;
+/** Opened by its own trigger, or placed against an element by id and opened by the caller. */
+export type PopoverAnchoring =
+  | {
+      /** The trigger: a Button, an IconButton or any element, which is then wrapped in a plain button. */
+      children: Child;
+      anchor?: never;
+      /** Controls whether it is open; leave it out to let the trigger own it. */
+      isOpen?: boolean;
+    }
+  | {
+      children?: never;
+      /** The id of an element elsewhere on the page to open against, in place of a trigger: a chart mark, a row's badge. */
+      anchor: string;
+      /** Whether it is open: with `anchor` there is no trigger, so the caller opens it. */
+      isOpen: boolean;
+    };
+
+export type PopoverProps = PopoverAnchoring & {
   /** The panel's content: a few lines, a short form, a handful of controls. */
   content: Child;
   /** The panel's accessible name, unless `title` is set. */
@@ -21,14 +36,12 @@ export interface PopoverProps {
   placement?: PopoverPlacement;
   /** Which edge of the trigger the panel lines up with: for `end` and `start`, `start` is the top of the trigger and `end` its bottom. @default 'start' */
   alignment?: PopoverAlignment;
-  /** Controls whether it is open; leave it out to let the trigger own it. */
-  isOpen?: boolean;
   onOpenChange?: (isOpen: boolean) => void;
   /** Classes for the panel. */
   panelClassName?: string;
   /** On the trigger (the wrapper, or a Button or Link child without a test id of its own), and on the panel as `<testid>-panel`. */
   'data-testid'?: string;
-}
+};
 
 // Logical areas, so start and end mirror in right-to-left.
 const areas = {
@@ -49,6 +62,7 @@ export function Popover({
   title,
   placement = 'bottom',
   alignment = 'start',
+  anchor,
   isOpen,
   onOpenChange,
   panelClassName,
@@ -57,7 +71,7 @@ export function Popover({
   const id = useId();
   return (
     <>
-      <Trigger wiring={{ popoverTarget: id }} data-testid={testId} {...dataOf(attributes)}>{children}</Trigger>
+      {anchor === undefined && <Trigger wiring={{ popoverTarget: id }} data-testid={testId} {...dataOf(attributes)}>{children}</Trigger>}
       <LayerContext.Provider value="overlay">
         <view
           id={id}
@@ -66,6 +80,7 @@ export function Popover({
           aria-label={title ?? label}
           open={isOpen}
           onToggle={onOpenChange}
+          anchor={anchor}
           data-testid={testId && `${testId}-panel`}
           style={{ positionArea: areas[placement][alignment] }}
           className={cx(r.panel.base, r.panel.offset[placement], panelClassName)}

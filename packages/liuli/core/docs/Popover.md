@@ -93,6 +93,37 @@ export function Beside() {
 }
 ```
 
+### Against an element that is not its trigger
+
+```tsx
+import { useLocal } from '@lingxia/view';
+import { Button } from '@liulidesign/core/Button';
+import { Popover } from '@liulidesign/core/Popover';
+
+/** Against something that is not its trigger: a row's count opens its detail from a button at the foot of the list. */
+export function Anchored() {
+  const isOpen = useLocal('open', false);
+  return (
+    <view className="gap-3">
+      <view className="flex-row items-center justify-between gap-3">
+        <text className="text-body text-text">Shared albums</text>
+        <view id="album-conflicts" className="rounded-full bg-warning-soft px-2 py-0.5"><text className="text-footnote font-medium text-text">3 conflicts</text></view>
+      </view>
+      <Button label="Explain conflicts" width="content" onClick={() => isOpen.set(true)} data-testid="explain" />
+      <Popover
+        anchor="album-conflicts"
+        isOpen={isOpen.value}
+        onOpenChange={isOpen.set}
+        label="Conflicts"
+        title="3 photos changed in two places"
+        content={<text className="text-footnote text-muted">Pick which copy to keep from each photo's page.</text>}
+        data-testid="conflicts"
+      />
+    </view>
+  );
+}
+```
+
 ### On a link in a sentence
 
 ```tsx
@@ -117,16 +148,19 @@ export function InSentence() {
 
 | Prop | Type | Default | Description |
 | --- | --- | --- | --- |
-| `children` (required) | `Child` |  | The trigger: a Button, an IconButton or any element, which is then wrapped in a plain button. |
+| `children` | `Child` |  | The trigger: a Button, an IconButton or any element, which is then wrapped in a plain button. |
+| `anchor` | `string` |  | The id of an element elsewhere on the page to open against, in place of a trigger: a chart mark, a row's badge. |
+| `isOpen` | `boolean` |  | Controls whether it is open; leave it out to let the trigger own it. Whether it is open: with `anchor` there is no trigger, so the caller opens it. |
 | `content` (required) | `Child` |  | The panel's content: a few lines, a short form, a handful of controls. |
 | `label` (required) | `string` |  | The panel's accessible name, unless `title` is set. |
 | `title` | `string` |  | A heading at the top of the panel, and its accessible name. |
 | `placement` | `PopoverPlacement` | `'bottom'` | Which side of the trigger the panel opens on. Beside the trigger it flips to the other side for room, and falls back to below or above. |
 | `alignment` | `PopoverAlignment` | `'start'` | Which edge of the trigger the panel lines up with: for `end` and `start`, `start` is the top of the trigger and `end` its bottom. |
-| `isOpen` | `boolean` |  | Controls whether it is open; leave it out to let the trigger own it. |
 | `onOpenChange` | `((isOpen: boolean) => void)` |  |  |
 | `panelClassName` | `string` |  | Classes for the panel. |
 | `data-testid` | `string` |  | On the trigger (the wrapper, or a Button or Link child without a test id of its own), and on the panel as `<testid>-panel`. |
+
+- `children` | `anchor`: props from one side only.
 
 ## Anatomy
 
@@ -173,6 +207,7 @@ Ratios are computed from @lingxia/view/theme and rounded down.
 - Don't: Put a task that must be finished in a popover; use a Dialog or a BottomSheet.
 - Don't: Use it for a list of actions; that is a DropdownMenu.
 - Don't: Open a popover from a popover.
+- Don't: Reach for `anchor` when a trigger cannot hold it, such as a chart mark; the caller then opens and closes it.
 
 ## Not yet
 

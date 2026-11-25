@@ -51,12 +51,14 @@ export const doc: ComponentDoc = {
       'Put a task that must be finished in a popover; use a Dialog or a BottomSheet.',
       'Use it for a list of actions; that is a DropdownMenu.',
       'Open a popover from a popover.',
+      'Reach for `anchor` when a trigger cannot hold it, such as a chart mark; the caller then opens and closes it.',
     ],
   },
   examples: [
     { name: 'ViewOptions', title: 'View options under the trigger' },
     { name: 'Share', title: 'A share link above the trigger' },
     { name: 'Beside', title: 'Beside the trigger' },
+    { name: 'Anchored', title: 'Against an element that is not its trigger' },
     { name: 'InSentence', title: 'On a link in a sentence' },
   ],
   gaps: [

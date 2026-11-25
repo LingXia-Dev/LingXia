@@ -3470,6 +3470,16 @@ export const playgroundEntries: PlaygroundEntry[] = [
     },
     "controls": [
       {
+        "name": "anchor",
+        "required": false,
+        "kind": "text"
+      },
+      {
+        "name": "isOpen",
+        "required": false,
+        "kind": "boolean"
+      },
+      {
         "name": "label",
         "required": true,
         "kind": "text"
@@ -3499,11 +3509,6 @@ export const playgroundEntries: PlaygroundEntry[] = [
           "end",
           "start"
         ]
-      },
-      {
-        "name": "isOpen",
-        "required": false,
-        "kind": "boolean"
       }
     ],
     "fixed": [
