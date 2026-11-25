@@ -116,7 +116,7 @@ import { JinshuEditor } from ${JSON.stringify(`${linked}/src/JinshuEditor/Jinshu
 function Editor() {
   const { actions } = useView();
   if (!actions?.syncDoc) return <view />;
-  return <JinshuEditor channel={actions.syncDoc} docKey="w3" onAskAgent={ids => void actions.ask({ ids })} hasLeaveGuard={false} />;
+  return <JinshuEditor channel={actions.syncDoc} docKey="w3" onAskAgent={ids => void actions.ask({ ids })} hasLeaveGuard={false} data-testid="w3" />;
 }
 export function render() {
   return <page><Editor /></page>;
@@ -206,10 +206,10 @@ test('phone: a media block has no overlay control until a tap selects it; the ba
   const source = createJinshuSource({ key: 'w3', initialDoc: doc });
   const { screen, settle } = await mountLive(source, { pointer: 'coarse', sizeClass: 'compact' });
   assert.ok(!hasLabel(screen, 'Block actions'), 'no menu over an unselected block');
-  assert.equal(screen.queryAll(n => n.props.testID === 'jinshu-selection-bar' || n.props['data-testid'] === 'jinshu-selection-bar').length, 0);
+  assert.equal(screen.queryAll(n => n.props.testID === 'w3-selection-bar' || n.props['data-testid'] === 'w3-selection-bar').length, 0);
   screen.press(byLabel(screen, 'Select block'));
   await settle();
-  assert.ok(screen.getByTestId('jinshu-selection-bar'));
+  assert.ok(screen.getByTestId('w3-selection-bar'));
   for (const label of ['Move up', 'Move down', 'Delete', 'Block actions', 'Deselect']) assert.ok(hasLabel(screen, label), label);
   assert.ok(!hasLabel(screen, 'Select block'));
   screen.press(byLabel(screen, 'Deselect'));
@@ -243,9 +243,9 @@ test('history: editor notes are words in the reader\'s language, and the person 
 test('table: the grid scrolls inside its frame, in the reader and in the editor', async () => {
   const doc = createDocument({ blocks: [table(['Package', 'Path', 'Role'], [['jinshu', '@liulidesign/jinshu/schema', 'types']], { id: 't' })] });
   const phone = await mountLive(createJinshuSource({ key: 'w3', initialDoc: doc }), { pointer: 'coarse', sizeClass: 'compact' });
-  assert.equal(phone.screen.getByTestId('jinshu-block-t-scroll').tag, 'scroll');
+  assert.equal(phone.screen.getByTestId('w3-block-t-scroll').tag, 'scroll');
   const desktop = await mountLive(createJinshuSource({ key: 'w3', initialDoc: doc }));
-  assert.equal(desktop.screen.getByTestId('jinshu-table-editor-t-scroll').tag, 'scroll');
+  assert.equal(desktop.screen.getByTestId('w3-table-editor-t-scroll').tag, 'scroll');
   assert.ok(hasLabel(desktop.screen, 'Edit cell 1-2'));
 });
 
@@ -271,7 +271,7 @@ test('details: the editor draws the reader\'s chevron, and "starts open" is a bl
 test('code: the preview and the open editor share the header and the line numbers', async () => {
   const doc = createDocument({ blocks: [codeBlock('ts', 'const a = 1;\nconst b = 2;\nexport { a, b };', { filename: 'limits.ts', id: 'c' })] });
   const { screen, settle } = await mountLive(createJinshuSource({ key: 'w3', initialDoc: doc }));
-  const numbers = () => screen.getByTestId('jinshu-code-numbers');
+  const numbers = () => screen.getByTestId('w3-block-c-numbers');
   assert.ok(hasText(screen, 'limits.ts · ts'));
   assert.equal(numbers().text ?? numbers().props.text, '1\n2\n3');
   pressText(screen, 'Edit');

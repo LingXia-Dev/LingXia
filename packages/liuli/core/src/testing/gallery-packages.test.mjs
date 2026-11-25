@@ -34,6 +34,6 @@ test('a listed package without a catalog fails the run', () => {
   }
 });
 
-test('the tracked list names core and charts', () => {
-  assert.deepEqual(galleryPackages(new URL('../../..', import.meta.url).pathname, 'core').map(entry => entry.name), ['charts']);
+test('the tracked list names core, charts and jinshu', () => {
+  assert.deepEqual(galleryPackages(new URL('../../..', import.meta.url).pathname, 'core').map(entry => entry.name), ['charts', 'jinshu']);
 });

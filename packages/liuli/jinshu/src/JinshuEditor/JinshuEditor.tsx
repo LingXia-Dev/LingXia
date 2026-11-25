@@ -861,6 +861,7 @@ export function JinshuEditor(props: JinshuEditorProps) {
   };
 
   const blockCb: BlockEditorCallbacks = {
+    testScope: props['data-testid'],
     dispatchOps,
     onFocusBlock(blockId) {
       activeId.set(blockId);
@@ -894,6 +895,7 @@ export function JinshuEditor(props: JinshuEditorProps) {
   const renderCtx: BlockRenderContext = {
     mode: readOnly ? 'view' : 'edit',
     idScope: scope,
+    testScope: props['data-testid'],
     resolveSrc: props.resolveSrc,
     filePolicy: props.filePolicy ?? liveState.filePolicy,
     mediaPolicy: props.mediaPolicy,
@@ -1268,7 +1270,7 @@ export function JinshuEditor(props: JinshuEditorProps) {
   const formatControls = (
     <>
       <DropdownMenu label={jinshuText('@jinshu.editor.format.turnInto')} size="sm" items={turnIntoItems}>
-        <Button label={turnIntoLabel} endIcon="chevron-down" size="sm" variant="ghost" isDisabled={!canTurnInto} data-testid="jinshu-turn-into" />
+        <Button label={turnIntoLabel} endIcon="chevron-down" size="sm" variant="ghost" isDisabled={!canTurnInto} data-testid={props['data-testid'] && `${props['data-testid']}-turn-into`} />
       </DropdownMenu>
       <ToolbarSep />
       {markButton('B', jinshuText('@jinshu.editor.format.bold'), '**', e.markGlyph.mark.bold)}
@@ -1321,7 +1323,7 @@ export function JinshuEditor(props: JinshuEditorProps) {
                 </>
               )}
               <Popover key={`add-pop-${popEpoch.value}`} label={jinshuText('@jinshu.editor.insert')} content={insertPanel(`top-${docKey}`, activeBlock?.id ?? null)}>
-                <Button label={jinshuText('@jinshu.editor.insert')} startIcon="add" size="sm" variant="ghost" data-testid="jinshu-toolbar-add" />
+                <Button label={jinshuText('@jinshu.editor.insert')} startIcon="add" size="sm" variant="ghost" data-testid={props['data-testid'] && `${props['data-testid']}-toolbar-add`} />
               </Popover>
             </view>
 
@@ -1532,7 +1534,7 @@ export function JinshuEditor(props: JinshuEditorProps) {
               </Popover>
             </view>
           </scroll>
-          <Button label={jinshuText('@jinshu.editor.done')} size="sm" variant="tonal" onClick={endEditing} data-testid="jinshu-done" />
+          <Button label={jinshuText('@jinshu.editor.done')} size="sm" variant="tonal" onClick={endEditing} data-testid={props['data-testid'] && `${props['data-testid']}-done`} />
         </view>
       )}
 
@@ -1861,7 +1863,7 @@ export function JinshuEditor(props: JinshuEditorProps) {
                           )}
                         </view>
                         {isNonTextSelected && (
-                          <view role="toolbar" aria-label={jinshuText('@jinshu.editor.selection.toolbar')} className={e.selectionBar.base} data-testid="jinshu-selection-bar">
+                          <view role="toolbar" aria-label={jinshuText('@jinshu.editor.selection.toolbar')} className={e.selectionBar.base} data-testid={props['data-testid'] && `${props['data-testid']}-selection-bar`}>
                             {idx > 0 && (
                               <IconButton label={jinshuText('@jinshu.editor.object.moveUp')} icon="arrow-up" size="sm" onClick={() => dispatchOps([{ op: 'move', id: block.id, to: { before: doc.blocks[idx - 1].id }, noteWord: note('@jinshu.note.moveUp') }])} />
                             )}

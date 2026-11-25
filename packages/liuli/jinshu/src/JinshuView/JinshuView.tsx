@@ -219,6 +219,7 @@ function ControlledJinshuView({
   const ctx: BlockRenderContext = {
     mode: 'view',
     idScope: scope,
+    testScope: testId,
     resolveSrc,
     filePolicy,
     mediaPolicy,
@@ -272,7 +273,7 @@ function ControlledJinshuView({
             label={jinshuText('@jinshu.view.resume')}
             size="sm"
             variant="ghost"
-            data-testid="jinshu-resume"
+            data-testid={testId && `${testId}-resume`}
             onClick={() => {
               resumeDismissed.set(true);
               if (nav) nav.scrollTo(resumeTarget.id);

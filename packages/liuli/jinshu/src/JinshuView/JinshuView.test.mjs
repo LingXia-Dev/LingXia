@@ -8,7 +8,7 @@ const labelOf = node => node.props.accessibilityLabel;
 test('Lesson: the title is a level-one heading and each block keeps its id', async () => {
   const screen = await renderExample('JinshuView/JinshuView', 'Lesson');
   assert.equal(textOf(screen.getByText('Limits')), 'Limits');
-  for (const id of ['h1', 'p1', 'l1', 'c1', 'k1', 'f1']) assert.ok(screen.getByTestId(`jinshu-block-${id}`), id);
+  for (const id of ['h1', 'p1', 'l1', 'c1', 'k1', 'f1']) assert.ok(screen.getByTestId(`lesson-block-${id}`), id);
 });
 
 test('Lesson: the file and code chrome speak the page language', async () => {

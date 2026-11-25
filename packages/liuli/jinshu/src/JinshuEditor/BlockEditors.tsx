@@ -36,6 +36,8 @@ const TICK_PATH = [
 ] as const;
 
 export interface BlockEditorCallbacks {
+  /** The editor's test id, under which the block editors' own test ids hang. */
+  readonly testScope?: string;
   readonly dispatchOps: (ops: readonly AnyJinshuOp[]) => void;
   readonly onFocusBlock: (blockId: string) => void;
   readonly onBlurBlock: () => void;
@@ -474,6 +476,7 @@ export function CodeBlockEditor({ block, cb }: { readonly block: CodeBlock; read
     return (
       <CodeFrame
         block={block}
+        testId={cb.testScope && `${cb.testScope}-block-${block.id}`}
         action={
           <Button
             label={jinshuText('@jinshu.editor.block.codeEdit')}
@@ -518,7 +521,7 @@ export function CodeBlockEditor({ block, cb }: { readonly block: CodeBlock; read
       </view>
       <view className={b.code.body}>
         <view className={b.code.lines}>
-          <CodeLineNumbers count={codeDraft.value.split('\n').length} />
+          <CodeLineNumbers count={codeDraft.value.split('\n').length} testId={cb.testScope && `${cb.testScope}-block-${block.id}-numbers`} />
           <textarea
             aria-label={jinshuText('@jinshu.editor.block.codeBody')}
             value={codeDraft.value}
@@ -828,7 +831,7 @@ export function TableBlockEditor({ block, cb }: { readonly block: TableBlock; re
       onPointerLeave={touch ? undefined : () => hovered.set(false)}
     >
       {lineToolbar && <view className={b.table.toolbarDock}>{lineToolbar}</view>}
-      <TableFrame blockId={block.id} columns={nCols} testId={`jinshu-table-editor-${block.id}`}>
+      <TableFrame blockId={block.id} columns={nCols} testId={cb.testScope && `${cb.testScope}-table-editor-${block.id}`}>
         {headerRow && <view className={r.table.headerRow}>{headerRow.cells.map((_, cIdx) => renderCell(-1, cIdx))}</view>}
         {bodyRows.map((row, rIdx) => (
           <view key={`r-${row.id}`} className={r.table.row}>

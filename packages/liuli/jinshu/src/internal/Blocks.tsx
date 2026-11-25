@@ -45,6 +45,8 @@ export interface BlockRenderContext {
   readonly mode: 'view' | 'edit';
   /** The instance scope for block element ids; without it blocks carry no `id` (a diff's before/after pairs). */
   readonly idScope?: string;
+  /** The instance's test id; block test ids hang under it, and without it blocks carry none. */
+  readonly testScope?: string;
   readonly resolveSrc?: (src: string) => string;
   readonly filePolicy?: FilePolicy;
   readonly mediaPolicy?: MediaPolicy;
@@ -114,6 +116,10 @@ function containsBlockId(blocks: readonly JinshuBlock[], targetId: string | null
     if (b.type === 'columns' && b.columns.some(c => c.id === targetId || containsBlockId(c.blocks, targetId))) return true;
   }
   return false;
+}
+
+function blockTestId(blockId: string, ctx: BlockRenderContext): string | undefined {
+  return ctx.testScope && `${ctx.testScope}-block-${blockId}`;
 }
 
 function blockDomId(blockId: string, ctx: BlockRenderContext): string | undefined {
@@ -198,7 +204,7 @@ export function CodeFrame({
               ))}
             </view>
           )}
-          <CodeLineNumbers count={lines.length} />
+          <CodeLineNumbers count={lines.length} testId={testId && `${testId}-numbers`} />
           <text className={cx(r.code.text, isSelectable && r.selectable)}>
             {body}
           </text>
@@ -215,9 +221,9 @@ export function codeTitle(block: Pick<CodeBlock, 'language' | 'filename'>): stri
 }
 
 /** The line-number gutter; the editor puts the same one beside its field. */
-export function CodeLineNumbers({ count }: { count: number }) {
+export function CodeLineNumbers({ count, testId }: { count: number; testId?: string }) {
   return (
-    <text aria-hidden data-testid="jinshu-code-numbers" className={r.code.numbers}>
+    <text aria-hidden data-testid={testId} className={r.code.numbers}>
       {Array.from({ length: Math.max(1, count) }, (_, idx) => `${idx + 1}`).join('\n')}
     </text>
   );
@@ -229,7 +235,7 @@ function JinshuCodeBlockView({ block, ctx }: { block: CodeBlock; ctx: BlockRende
     <CodeFrame
       block={block}
       id={blockDomId(block.id, ctx)}
-      testId={`jinshu-block-${block.id}`}
+      testId={blockTestId(block.id, ctx)}
       isSelectable={takeSelect(ctx)}
       action={
         ctx.onCopyCode && (
@@ -285,7 +291,7 @@ function JinshuImageBlockView({ block, ctx }: { block: ImageBlock; ctx: BlockRen
 
   if (!resolved || failed.value) {
     return (
-      <view id={blockDomId(block.id, ctx)} data-testid={`jinshu-block-${block.id}`} className={cx(sizeClass, r.media.errorBox)}>
+      <view id={blockDomId(block.id, ctx)} data-testid={blockTestId(block.id, ctx)} className={cx(sizeClass, r.media.errorBox)}>
         <text className={r.media.error}>{!resolved ? jinshuText('@jinshu.view.image.blocked') : jinshuText('@jinshu.view.image.failed')}</text>
         {resolved && (
           <Button
@@ -305,7 +311,7 @@ function JinshuImageBlockView({ block, ctx }: { block: ImageBlock; ctx: BlockRen
   const aspectRatio = block.width && block.height && block.height > 0 ? block.width / block.height : undefined;
 
   return (
-    <view id={blockDomId(block.id, ctx)} data-testid={`jinshu-block-${block.id}`} className={cx(sizeClass, r.image.figure)}>
+    <view id={blockDomId(block.id, ctx)} data-testid={blockTestId(block.id, ctx)} className={cx(sizeClass, r.image.figure)}>
       <button
         aria-label={block.alt || captionText || jinshuText('@jinshu.view.image.open')}
         onClick={() => {
@@ -464,10 +470,10 @@ function JinshuVideoBlockView({ block, ctx }: { block: VideoBlock; ctx: BlockRen
 
   const label = block.caption ? plainText(block.caption) : jinshuText('@jinshu.view.video.label');
   return (
-    <view id={blockDomId(block.id, ctx)} data-testid={`jinshu-block-${block.id}`} className={r.video.base}>
+    <view id={blockDomId(block.id, ctx)} data-testid={blockTestId(block.id, ctx)} className={r.video.base}>
       <view className={r.video.frame}>
         <video player={player} src={resolved} poster={poster} aria-label={label} className={r.video.picture} {...tracking.handlers} />
-        <VideoControls player={player} poster={poster} variant="overlay" data-testid={`jinshu-video-${block.id}-controls`} />
+        <VideoControls player={player} poster={poster} variant="overlay" data-testid={ctx.testScope && `${ctx.testScope}-video-${block.id}-controls`} />
       </view>
       {block.chapters && block.chapters.length > 0 && (
         <ChapterRow blockId={block.id} chapters={block.chapters} maxPlayedMs={tracking.maxPlayedMs} ctx={ctx} player={player} />
@@ -508,12 +514,12 @@ function JinshuAudioBlockView({ block, ctx }: { block: AudioBlock; ctx: BlockRen
   const nextRate = rates[(rates.indexOf(currentRate) + 1) % rates.length] ?? 1;
 
   return (
-    <view id={blockDomId(block.id, ctx)} data-testid={`jinshu-block-${block.id}`} className={r.audio.card}>
+    <view id={blockDomId(block.id, ctx)} data-testid={blockTestId(block.id, ctx)} className={r.audio.card}>
       <video player={player} src={resolved} aria-label={title} className={r.audio.player} {...tracking.handlers} />
       <view className={r.audio.row}>
         <button
           aria-label={playing ? jinshuText('@jinshu.view.audio.pause', { title }) : jinshuText('@jinshu.view.audio.play', { title })}
-          data-testid={`jinshu-audio-${block.id}-toggle`}
+          data-testid={ctx.testScope && `${ctx.testScope}-audio-${block.id}-toggle`}
           onClick={() => void (playing ? player.pause() : player.play())}
           className={r.audio.toggle}
         >
@@ -573,7 +579,7 @@ function JinshuDetailsView({ block, ctx }: { block: DetailsBlock; ctx: BlockRend
   // A navigation target inside forces it open, even when it was mounted closed.
   const forceOpen = containsBlockId(block.blocks, ctx.targetBlockId);
   return (
-    <view id={blockDomId(block.id, ctx)} data-testid={`jinshu-block-${block.id}`}>
+    <view id={blockDomId(block.id, ctx)} data-testid={blockTestId(block.id, ctx)}>
       <Details label={plainText(block.summary) || jinshuText('@jinshu.view.details')} isOpen={open.value || forceOpen} onOpenChange={next => open.set(next)}>
         <view className={r.details.body}>{block.blocks.map((child, idx) => renderBlock(child, idx > 0 ? block.blocks[idx - 1].type : null, ctx))}</view>
       </Details>
@@ -599,7 +605,7 @@ function JinshuFileBlockView({ block, ctx }: { block: FileBlock; ctx: BlockRende
   };
 
   return (
-    <view id={blockDomId(block.id, ctx)} data-testid={`jinshu-block-${block.id}`} className={r.file.card}>
+    <view id={blockDomId(block.id, ctx)} data-testid={blockTestId(block.id, ctx)} className={r.file.card}>
       <view className={r.file.main}>
         <text className={r.file.badge}>{fileExtLabel(block)}</text>
         <view className={r.file.info}>
@@ -622,7 +628,7 @@ function JinshuColumnsBlockView({ block, ctx }: { block: ColumnsBlock; ctx: Bloc
   return (
     <view
       id={blockDomId(block.id, ctx)}
-      data-testid={`jinshu-block-${block.id}`}
+      data-testid={blockTestId(block.id, ctx)}
       className={shouldStack ? r.columns.stacked : r.columns.base}
     >
       {block.columns.map((col, idx) => {
@@ -666,7 +672,7 @@ export function renderBlock(
       inner = (
         <text
           id={blockDomId(block.id, ctx)}
-          data-testid={`jinshu-block-${block.id}`}
+          data-testid={blockTestId(block.id, ctx)}
           className={cx(r.paragraph.base, takeSelect(ctx) && r.selectable)}
         >
           {block.runs.length > 0 ? renderInlineRuns(block.runs, inlineOpts) : '\u200B'}
@@ -679,7 +685,7 @@ export function renderBlock(
       inner = (
         <text
           id={blockDomId(headingBlk.id, ctx)}
-          data-testid={`jinshu-block-${headingBlk.id}`}
+          data-testid={blockTestId(headingBlk.id, ctx)}
           role="heading"
           headingLevel={headingBlk.level}
           className={cx(r.heading.base, r.heading.level[headingBlk.level], takeSelect(ctx) && r.selectable)}
@@ -693,7 +699,7 @@ export function renderBlock(
     case 'quote': {
       const q = block as QuoteBlock;
       inner = (
-        <view id={blockDomId(q.id, ctx)} data-testid={`jinshu-block-${q.id}`} className={r.quote.base}>
+        <view id={blockDomId(q.id, ctx)} data-testid={blockTestId(q.id, ctx)} className={r.quote.base}>
           {q.blocks.map((child, idx) => renderBlock(child, idx > 0 ? q.blocks[idx - 1].type : null, ctx))}
         </view>
       );
@@ -703,7 +709,7 @@ export function renderBlock(
     case 'callout': {
       const c = block as CalloutBlock;
       inner = (
-        <view id={blockDomId(c.id, ctx)} data-testid={`jinshu-block-${c.id}`} className={cx(r.callout.base, r.callout.tone[c.tone])}>
+        <view id={blockDomId(c.id, ctx)} data-testid={blockTestId(c.id, ctx)} className={cx(r.callout.base, r.callout.tone[c.tone])}>
           {c.title && c.title.length > 0 && (
             <text className={r.callout.title[c.tone]}>{renderInlineRuns(c.title, inlineOpts)}</text>
           )}
@@ -723,7 +729,7 @@ export function renderBlock(
       const l = block as ListBlock;
       const start = l.start ?? 1;
       inner = (
-        <view id={blockDomId(l.id, ctx)} data-testid={`jinshu-block-${l.id}`} role="list" className={r.list.base}>
+        <view id={blockDomId(l.id, ctx)} data-testid={blockTestId(l.id, ctx)} role="list" className={r.list.base}>
           {l.items.map((item, idx) => (
             <view key={item.id} role="listitem" className={r.list.item}>
               {l.style === 'task' ? (
@@ -766,7 +772,7 @@ export function renderBlock(
     case 'math': {
       const m = block as MathBlock;
       inner = (
-        <view id={blockDomId(m.id, ctx)} data-testid={`jinshu-block-${m.id}`} aria-label={m.latex} className={r.math.root}>
+        <view id={blockDomId(m.id, ctx)} data-testid={blockTestId(m.id, ctx)} aria-label={m.latex} className={r.math.root}>
           <scroll className={r.math.scroll}>
             <view className={r.math.inner}>
               <MathFormulaView latex={m.latex} />
@@ -780,7 +786,7 @@ export function renderBlock(
     case 'table': {
       const t = block as TableBlock;
       inner = (
-        <TableFrame blockId={t.id} columns={tableColumnCount(t)} id={blockDomId(t.id, ctx)} testId={`jinshu-block-${t.id}`}>
+        <TableFrame blockId={t.id} columns={tableColumnCount(t)} id={blockDomId(t.id, ctx)} testId={blockTestId(t.id, ctx)}>
           {t.rows.map((row, rIdx) => {
             const isHeader = rIdx === 0 && t.headerRow === true;
             return (
@@ -830,7 +836,7 @@ export function renderBlock(
       if (renderer) {
         try {
           inner = (
-            <view id={blockDomId(ext.id, ctx)} data-testid={`jinshu-block-${ext.id}`}>
+            <view id={blockDomId(ext.id, ctx)} data-testid={blockTestId(ext.id, ctx)}>
               {renderer({
                 block: ext as any,
                 mode: ctx.mode,
@@ -849,7 +855,7 @@ export function renderBlock(
         }
       } else {
         inner = (
-          <view id={blockDomId(ext.id, ctx)} data-testid={`jinshu-block-${ext.id}`} className={r.extension.base}>
+          <view id={blockDomId(ext.id, ctx)} data-testid={blockTestId(ext.id, ctx)} className={r.extension.base}>
             <text className={r.extension.type}>{ext.type}</text>
             <text className={r.extension.fallback}>{ext.fallback}</text>
           </view>
