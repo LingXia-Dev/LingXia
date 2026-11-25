@@ -10,6 +10,7 @@ import { Content as CategoryOverlays } from '../content/category-overlays';
 import { Content as CategoryContent } from '../content/category-content';
 import { Content as CategoryCharts } from '../content/category-charts';
 import { Content as CategoryMedia } from '../content/category-media';
+import { Content as CategoryDocuments } from '../content/category-documents';
 import { Content as CategoryPatterns } from '../content/category-patterns';
 import { Content as Colour } from '../content/colour';
 import { Content as Typography } from '../content/typography';
@@ -103,6 +104,10 @@ import { Content as Carousel } from '../content/carousel';
 import { Content as Thumbnail } from '../content/thumbnail';
 import { Content as Lightbox } from '../content/lightbox';
 import { Content as WebView } from '../content/web-view';
+import { Content as JinshuView } from '../content/jinshu-view';
+import { Content as JinshuEditor } from '../content/jinshu-editor';
+import { Content as JinshuDiff } from '../content/jinshu-diff';
+import { Content as JinshuOutline } from '../content/jinshu-outline';
 import { Content as SignIn } from '../content/sign-in';
 import { Content as Settings } from '../content/settings';
 import { Content as Uploads } from '../content/uploads';
@@ -124,6 +129,7 @@ export const contents: Record<string, GalleryContent> = {
   "category-content": CategoryContent,
   "category-charts": CategoryCharts,
   "category-media": CategoryMedia,
+  "category-documents": CategoryDocuments,
   "category-patterns": CategoryPatterns,
   "colour": Colour,
   "typography": Typography,
@@ -217,6 +223,10 @@ export const contents: Record<string, GalleryContent> = {
   "thumbnail": Thumbnail,
   "lightbox": Lightbox,
   "web-view": WebView,
+  "jinshu-view": JinshuView,
+  "jinshu-editor": JinshuEditor,
+  "jinshu-diff": JinshuDiff,
+  "jinshu-outline": JinshuOutline,
   "sign-in": SignIn,
   "settings": Settings,
   "uploads": Uploads,

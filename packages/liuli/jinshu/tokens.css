@@ -1,0 +1,4 @@
+/* Jinshu (锦书) inherits Liuli's semantic colour roles and scale tokens. */
+@theme {
+  --spacing-jinshu-measure: 65ch;
+}

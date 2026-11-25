@@ -9,5 +9,6 @@
   { "id": "content", "title": "Content", "icon": "rows", "description": "Cards, rows and tables", "lead": "Containers, rows and tables that hold what the app shows." },
   { "id": "charts", "title": "Charts", "icon": "chart", "description": "Figures and small charts", "lead": "Figures and small charts that show numbers at a glance." },
   { "id": "media", "title": "Media", "icon": "play", "description": "Video and its controls", "lead": "Video and its controls." },
+  { "id": "documents", "title": "Documents", "icon": "document", "description": "Read, edit and compare", "lead": "Structured documents that people and the app's agent read, edit and compare: a lesson, an article, a handbook." },
   { "id": "patterns", "title": "Patterns", "icon": "template", "description": "Whole screens, put together", "lead": "Whole screens built from the components: forms, settings, lists with their records, and dashboards." }
 ]

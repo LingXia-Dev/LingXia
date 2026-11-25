@@ -1,0 +1,1238 @@
+{
+  "@jinshu.agent.edit": {
+    "defaultMessage": "“{title}”: {count, plural, one {# change} other {# changes}}",
+    "description": "Consent card summary for an agent edit that changes the draft directly."
+  },
+  "@jinshu.agent.save": {
+    "defaultMessage": "Save “{title}”",
+    "description": "Consent card summary for an agent saving the document."
+  },
+  "@jinshu.agent.saveWaiting": {
+    "defaultMessage": "Asked to save “{title}”; waiting for confirmation",
+    "description": "Status line after an agent asked to save and the person must confirm in the document."
+  },
+  "@jinshu.agent.suggest": {
+    "defaultMessage": "“{title}”: suggest changes for review",
+    "description": "Summary of an agent edit in suggest mode."
+  },
+  "@jinshu.agent.suggested": {
+    "defaultMessage": "Suggested changes to “{title}”; waiting for review",
+    "description": "Status line after an agent edit became a suggestion waiting in the document."
+  },
+  "@jinshu.agent.undo": {
+    "defaultMessage": "“{title}”: undo a change",
+    "description": "Consent card summary for an agent undoing its own change."
+  },
+  "@jinshu.agent.untitled": {
+    "defaultMessage": "Untitled",
+    "description": "Name of a document without a title, in an agent tool summary."
+  },
+  "@jinshu.blockType": {
+    "defaultMessage": "{type, select, paragraph {Paragraph} heading {Heading {level}} quote {Quote} callout {Callout} details {Toggle} list {List} code {Code block} math {Formula} table {Table} columns {Columns} divider {Divider} image {Image} video {Video} audio {Audio} file {File} other {{type}}}",
+    "description": "A block's kind, as named in a diff badge."
+  },
+  "@jinshu.diff.added": {
+    "defaultMessage": "Added",
+    "description": "Badge on an added block."
+  },
+  "@jinshu.diff.addedCount": {
+    "defaultMessage": "+{count} added",
+    "description": "Summary badge: blocks added."
+  },
+  "@jinshu.diff.after": {
+    "defaultMessage": "After",
+    "description": "Label over a changed block's new version."
+  },
+  "@jinshu.diff.before": {
+    "defaultMessage": "Before",
+    "description": "Label over a changed block's old version."
+  },
+  "@jinshu.diff.marksOnly": {
+    "defaultMessage": "Formatting only",
+    "description": "Badge on a block whose only change is inline formatting."
+  },
+  "@jinshu.diff.modified": {
+    "defaultMessage": "Changed",
+    "description": "Badge on a changed block."
+  },
+  "@jinshu.diff.modifiedCount": {
+    "defaultMessage": "~{count} changed",
+    "description": "Summary badge: blocks changed."
+  },
+  "@jinshu.diff.moved": {
+    "defaultMessage": "Moved (#{from} → #{to})",
+    "description": "Badge on a moved block: its old and new position."
+  },
+  "@jinshu.diff.movedCount": {
+    "defaultMessage": "↕{count} moved",
+    "description": "Summary badge: blocks moved."
+  },
+  "@jinshu.diff.next": {
+    "defaultMessage": "Next",
+    "description": "Button that goes to the next change."
+  },
+  "@jinshu.diff.noData": {
+    "defaultMessage": "Nothing to compare",
+    "description": "Shown when the diff has neither two documents nor a computed diff."
+  },
+  "@jinshu.diff.position": {
+    "defaultMessage": "{index} / {count}",
+    "description": "Which change is focused, of how many."
+  },
+  "@jinshu.diff.previous": {
+    "defaultMessage": "Previous",
+    "description": "Button that goes to the previous change."
+  },
+  "@jinshu.diff.removed": {
+    "defaultMessage": "Removed",
+    "description": "Badge on a removed block."
+  },
+  "@jinshu.diff.removedCount": {
+    "defaultMessage": "-{count} removed",
+    "description": "Summary badge: blocks removed."
+  },
+  "@jinshu.diff.showUnchanged": {
+    "defaultMessage": "{count, plural, one {Show # unchanged block} other {Show # unchanged blocks}}",
+    "description": "Row that unfolds a run of unchanged blocks."
+  },
+  "@jinshu.diff.total": {
+    "defaultMessage": "{count, plural, =0 {No changes} one {# change} other {# changes}}",
+    "description": "Summary bar: how many changes the diff holds."
+  },
+  "@jinshu.editor.activity.reading": {
+    "defaultMessage": "{name} is reading…",
+    "description": "Marker while an agent reads this part."
+  },
+  "@jinshu.editor.activity.stop": {
+    "defaultMessage": "Stop",
+    "description": "Stops an agent writing."
+  },
+  "@jinshu.editor.activity.writing": {
+    "defaultMessage": "{name} is writing…",
+    "description": "Marker while an agent writes here."
+  },
+  "@jinshu.editor.agent.changed": {
+    "defaultMessage": "{name} changed {count, plural, one {# block} other {# blocks}}",
+    "description": "Bar after an agent changed the document directly."
+  },
+  "@jinshu.editor.agent.changedAway": {
+    "defaultMessage": "While you were away, {name} changed {count, plural, one {# block} other {# blocks}}",
+    "description": "Bar shown on opening a document an agent changed while no page showed it."
+  },
+  "@jinshu.editor.agent.dismiss": {
+    "defaultMessage": "Dismiss",
+    "description": "Closes the agent change bar and its highlight."
+  },
+  "@jinshu.editor.agent.undo": {
+    "defaultMessage": "Undo this change",
+    "description": "Undoes only that agent change."
+  },
+  "@jinshu.editor.agent.view": {
+    "defaultMessage": "View",
+    "description": "Jumps to the blocks an agent changed."
+  },
+  "@jinshu.editor.block.addColumnButton": {
+    "defaultMessage": "Add column",
+    "description": "Table toolbar: add a column at the end."
+  },
+  "@jinshu.editor.block.addRowButton": {
+    "defaultMessage": "Add row",
+    "description": "Table toolbar: add a row at the end."
+  },
+  "@jinshu.editor.block.align": {
+    "defaultMessage": "{align, select, start {Align start} center {Align center} other {Align end}}",
+    "description": "Column alignment buttons in the table toolbar."
+  },
+  "@jinshu.editor.block.calloutBody": {
+    "defaultMessage": "Callout text",
+    "description": "Accessible name of the callout body field."
+  },
+  "@jinshu.editor.block.calloutBodyPlaceholder": {
+    "defaultMessage": "Text; a blank line starts a new paragraph",
+    "description": "Placeholder of the callout body field."
+  },
+  "@jinshu.editor.block.calloutTitle": {
+    "defaultMessage": "Callout title",
+    "description": "Accessible name of the callout title field."
+  },
+  "@jinshu.editor.block.calloutTitlePlaceholder": {
+    "defaultMessage": "Title (optional)",
+    "description": "Placeholder of the callout title field."
+  },
+  "@jinshu.editor.block.calloutTone": {
+    "defaultMessage": "{tone, select, info {Info} tip {Tip} warning {Warning} other {Danger}}",
+    "description": "Tone buttons in the callout editor."
+  },
+  "@jinshu.editor.block.cell": {
+    "defaultMessage": "Cell {row}-{column}",
+    "description": "Accessible name of a body cell's field."
+  },
+  "@jinshu.editor.block.codeBody": {
+    "defaultMessage": "Code",
+    "description": "Accessible name of a code block's code field."
+  },
+  "@jinshu.editor.block.codeEdit": {
+    "defaultMessage": "Edit",
+    "description": "Button in a code block's header that opens its editor."
+  },
+  "@jinshu.editor.block.codeFilename": {
+    "defaultMessage": "File name",
+    "description": "Accessible name of a code block's file name field."
+  },
+  "@jinshu.editor.block.codeFilenamePlaceholder": {
+    "defaultMessage": "filename (optional)",
+    "description": "Placeholder of a code block's file name field."
+  },
+  "@jinshu.editor.block.codeLanguage": {
+    "defaultMessage": "Language",
+    "description": "Accessible name of a code block's language field."
+  },
+  "@jinshu.editor.block.codeLanguagePlaceholder": {
+    "defaultMessage": "lang",
+    "description": "Placeholder of a code block's language field."
+  },
+  "@jinshu.editor.block.column": {
+    "defaultMessage": "Column {index}",
+    "description": "Label of the table toolbar while a column is selected."
+  },
+  "@jinshu.editor.block.deleteColumn": {
+    "defaultMessage": "Delete column",
+    "description": "Table toolbar: delete the selected column."
+  },
+  "@jinshu.editor.block.deleteRow": {
+    "defaultMessage": "Delete row",
+    "description": "Table toolbar: delete the selected row."
+  },
+  "@jinshu.editor.block.detailsBody": {
+    "defaultMessage": "Hidden content",
+    "description": "Accessible name of a details block's body field."
+  },
+  "@jinshu.editor.block.detailsBodyPlaceholder": {
+    "defaultMessage": "Hidden content; a blank line starts a new paragraph",
+    "description": "Placeholder of a details block's body field."
+  },
+  "@jinshu.editor.block.detailsSummary": {
+    "defaultMessage": "Summary",
+    "description": "Accessible name of a details block's summary field."
+  },
+  "@jinshu.editor.block.detailsSummaryPlaceholder": {
+    "defaultMessage": "Summary",
+    "description": "Placeholder of a details block's summary field."
+  },
+  "@jinshu.editor.block.detailsToggle": {
+    "defaultMessage": "Show or hide the contents",
+    "description": "Accessible name of the chevron that opens a details block while editing it."
+  },
+  "@jinshu.editor.block.done": {
+    "defaultMessage": "Done",
+    "description": "Button that closes a callout or code block editor."
+  },
+  "@jinshu.editor.block.editCallout": {
+    "defaultMessage": "Edit callout {id}",
+    "description": "Accessible name of the button over a callout that opens its editor."
+  },
+  "@jinshu.editor.block.editCell": {
+    "defaultMessage": "Edit cell {row}-{column}",
+    "description": "Accessible name of a body cell's edit button."
+  },
+  "@jinshu.editor.block.editColumnBlock": {
+    "defaultMessage": "Edit column block {id}",
+    "description": "Accessible name of the button over a block inside a column."
+  },
+  "@jinshu.editor.block.editHeaderCell": {
+    "defaultMessage": "Edit header {column}",
+    "description": "Accessible name of a header cell's edit button."
+  },
+  "@jinshu.editor.block.editInColumn": {
+    "defaultMessage": "Edit {type} in column",
+    "description": "Accessible name of the field editing a paragraph or heading inside a column; type is the block type."
+  },
+  "@jinshu.editor.block.editItem": {
+    "defaultMessage": "Edit item {index}",
+    "description": "Accessible name of a list item's field and its edit button."
+  },
+  "@jinshu.editor.block.editQuote": {
+    "defaultMessage": "Edit quote {id}",
+    "description": "Accessible name of the button over a quote that opens its editor."
+  },
+  "@jinshu.editor.block.emptyItem": {
+    "defaultMessage": "Empty item (tap to type)",
+    "description": "Shown for a list item with no text."
+  },
+  "@jinshu.editor.block.fileDescription": {
+    "defaultMessage": "File description",
+    "description": "Accessible name of a file block's description field."
+  },
+  "@jinshu.editor.block.fileDescriptionPlaceholder": {
+    "defaultMessage": "One-line description (optional)",
+    "description": "Placeholder of a file block's description field."
+  },
+  "@jinshu.editor.block.fileDisplay": {
+    "defaultMessage": "{display, select, attachment {Attachment card} other {Inline preview}}",
+    "description": "File display buttons in the file inspector."
+  },
+  "@jinshu.editor.block.fileDisplayLabel": {
+    "defaultMessage": "Show as:",
+    "description": "Label before a file block's display buttons."
+  },
+  "@jinshu.editor.block.headerCell": {
+    "defaultMessage": "Header, column {column}",
+    "description": "Accessible name of a header cell's field."
+  },
+  "@jinshu.editor.block.headerPlaceholder": {
+    "defaultMessage": "Header",
+    "description": "Shown in an empty header cell."
+  },
+  "@jinshu.editor.block.headerRow": {
+    "defaultMessage": "Header row",
+    "description": "Label of the table toolbar while the header row is selected."
+  },
+  "@jinshu.editor.block.imageAlt": {
+    "defaultMessage": "Alt text",
+    "description": "Accessible name and placeholder of the image alt text field."
+  },
+  "@jinshu.editor.block.imageCaption": {
+    "defaultMessage": "Image caption",
+    "description": "Accessible name of the image caption field."
+  },
+  "@jinshu.editor.block.imageCaptionPlaceholder": {
+    "defaultMessage": "Caption (supports **bold** and other inline formatting)",
+    "description": "Placeholder of the image caption field."
+  },
+  "@jinshu.editor.block.imageSize": {
+    "defaultMessage": "{size, select, small {Small} medium {Medium} other {Full width}}",
+    "description": "Image size buttons in the image inspector."
+  },
+  "@jinshu.editor.block.imageSizeLabel": {
+    "defaultMessage": "Size:",
+    "description": "Label before the image size buttons."
+  },
+  "@jinshu.editor.block.insertAbove": {
+    "defaultMessage": "Insert above",
+    "description": "Table toolbar: insert a row above the selected one."
+  },
+  "@jinshu.editor.block.insertBelow": {
+    "defaultMessage": "Insert below",
+    "description": "Table toolbar: insert a row below the selected one."
+  },
+  "@jinshu.editor.block.insertLeft": {
+    "defaultMessage": "Insert left",
+    "description": "Table toolbar: insert a column before the selected one."
+  },
+  "@jinshu.editor.block.insertRight": {
+    "defaultMessage": "Insert right",
+    "description": "Table toolbar: insert a column after the selected one."
+  },
+  "@jinshu.editor.block.itemPlaceholder": {
+    "defaultMessage": "List item…",
+    "description": "Placeholder of a list item's field."
+  },
+  "@jinshu.editor.block.keptChildren": {
+    "defaultMessage": "{count, plural, one {# nested block} other {# nested blocks}} (lists, code, formulas…) left unchanged",
+    "description": "Note under a callout, quote or details body: children the text editor does not edit."
+  },
+  "@jinshu.editor.block.listHint": {
+    "defaultMessage": "Enter on an empty item ends the list",
+    "description": "Hint in the list editor's floating bar."
+  },
+  "@jinshu.editor.block.listStyle": {
+    "defaultMessage": "{style, select, bullet {Bulleted} ordered {Numbered} other {Tasks}}",
+    "description": "List style buttons in the list editor's floating bar."
+  },
+  "@jinshu.editor.block.mediaName": {
+    "defaultMessage": "{type, select, video {Video caption} audio {Audio title} other {File name}}",
+    "description": "Accessible name and placeholder of the media inspector's first field."
+  },
+  "@jinshu.editor.block.moveDown": {
+    "defaultMessage": "Move down",
+    "description": "Table toolbar: move the selected row down."
+  },
+  "@jinshu.editor.block.moveLeft": {
+    "defaultMessage": "Move left",
+    "description": "Table toolbar: move the selected column back one place."
+  },
+  "@jinshu.editor.block.moveRight": {
+    "defaultMessage": "Move right",
+    "description": "Table toolbar: move the selected column on one place."
+  },
+  "@jinshu.editor.block.moveUp": {
+    "defaultMessage": "Move up",
+    "description": "Table toolbar: move the selected row up."
+  },
+  "@jinshu.editor.block.quoteBody": {
+    "defaultMessage": "Quote text",
+    "description": "Accessible name of the quote field."
+  },
+  "@jinshu.editor.block.quoteBodyPlaceholder": {
+    "defaultMessage": "Quote; a blank line starts a new paragraph",
+    "description": "Placeholder of the quote field."
+  },
+  "@jinshu.editor.block.removeItem": {
+    "defaultMessage": "Remove",
+    "description": "Button that deletes the list item being edited."
+  },
+  "@jinshu.editor.block.row": {
+    "defaultMessage": "Row {index}",
+    "description": "Label of the table toolbar while a body row is selected."
+  },
+  "@jinshu.editor.block.selectColumn": {
+    "defaultMessage": "Select column {index}",
+    "description": "Accessible name of a column's selection bar."
+  },
+  "@jinshu.editor.block.selectHeaderRow": {
+    "defaultMessage": "Select the header row",
+    "description": "Accessible name of the header row's selection bar."
+  },
+  "@jinshu.editor.block.selectRow": {
+    "defaultMessage": "Select row {index}",
+    "description": "Accessible name of a row's selection bar."
+  },
+  "@jinshu.editor.block.taskItem": {
+    "defaultMessage": "Task",
+    "description": "Accessible name of an empty task checkbox."
+  },
+  "@jinshu.editor.blockMenu": {
+    "defaultMessage": "Block actions",
+    "description": "Accessible name of a block's action menu and its button."
+  },
+  "@jinshu.editor.blockMenu.askAgent": {
+    "defaultMessage": "Ask agent",
+    "description": "Hands the block to the app's agent as context."
+  },
+  "@jinshu.editor.blockMenu.delete": {
+    "defaultMessage": "Delete block",
+    "description": "Block menu item that deletes the block."
+  },
+  "@jinshu.editor.blockMenu.detailsStart": {
+    "defaultMessage": "{open, select, yes {Start closed} other {Start open}}",
+    "description": "Block menu item that flips whether a details block starts open; open is its current state."
+  },
+  "@jinshu.editor.blockMenu.duplicate": {
+    "defaultMessage": "Duplicate block",
+    "description": "Block menu item that copies the block below itself."
+  },
+  "@jinshu.editor.blockMenu.moveDown": {
+    "defaultMessage": "Move down",
+    "description": "Block menu item that moves the block one down."
+  },
+  "@jinshu.editor.blockMenu.moveUp": {
+    "defaultMessage": "Move up",
+    "description": "Block menu item that moves the block one up."
+  },
+  "@jinshu.editor.blockMenu.properties": {
+    "defaultMessage": "Edit properties",
+    "description": "Opens the inspector of a media or other non-text block."
+  },
+  "@jinshu.editor.blockMenu.turnInto": {
+    "defaultMessage": "Turn into",
+    "description": "Group heading in the block menu over the types a block can become."
+  },
+  "@jinshu.editor.blockType.audio": {
+    "defaultMessage": "Audio",
+    "description": "Block type."
+  },
+  "@jinshu.editor.blockType.bullet": {
+    "defaultMessage": "Bulleted list",
+    "description": "Block type."
+  },
+  "@jinshu.editor.blockType.callout": {
+    "defaultMessage": "Callout",
+    "description": "Block type: a tinted note box."
+  },
+  "@jinshu.editor.blockType.code": {
+    "defaultMessage": "Code block",
+    "description": "Block type."
+  },
+  "@jinshu.editor.blockType.columns": {
+    "defaultMessage": "Columns",
+    "description": "Block type: side-by-side columns."
+  },
+  "@jinshu.editor.blockType.details": {
+    "defaultMessage": "Toggle",
+    "description": "Block type: a section that opens and closes."
+  },
+  "@jinshu.editor.blockType.divider": {
+    "defaultMessage": "Divider",
+    "description": "Block type: a horizontal rule."
+  },
+  "@jinshu.editor.blockType.file": {
+    "defaultMessage": "Attachment",
+    "description": "Block type: a file."
+  },
+  "@jinshu.editor.blockType.heading": {
+    "defaultMessage": "Heading {level}",
+    "description": "Block type: a heading of the given level, 1 to 4."
+  },
+  "@jinshu.editor.blockType.image": {
+    "defaultMessage": "Image",
+    "description": "Block type."
+  },
+  "@jinshu.editor.blockType.math": {
+    "defaultMessage": "Equation",
+    "description": "Block type; also the equation button and popover title."
+  },
+  "@jinshu.editor.blockType.ordered": {
+    "defaultMessage": "Numbered list",
+    "description": "Block type."
+  },
+  "@jinshu.editor.blockType.paragraph": {
+    "defaultMessage": "Text",
+    "description": "Block type: a plain paragraph."
+  },
+  "@jinshu.editor.blockType.quote": {
+    "defaultMessage": "Quote",
+    "description": "Block type."
+  },
+  "@jinshu.editor.blockType.table": {
+    "defaultMessage": "Table",
+    "description": "Block type; also the table picker's heading in the insert panel."
+  },
+  "@jinshu.editor.blockType.task": {
+    "defaultMessage": "To-do list",
+    "description": "Block type: a list of items with checkboxes."
+  },
+  "@jinshu.editor.blockType.video": {
+    "defaultMessage": "Video",
+    "description": "Block type."
+  },
+  "@jinshu.editor.conflict.copy": {
+    "defaultMessage": "Save as a copy",
+    "description": "Resolves a save conflict by saving the draft as a new document."
+  },
+  "@jinshu.editor.conflict.mine": {
+    "defaultMessage": "Keep mine (overwrite)",
+    "description": "Resolves a save conflict by overwriting the server's version."
+  },
+  "@jinshu.editor.conflict.theirs": {
+    "defaultMessage": "Use theirs",
+    "description": "Resolves a save conflict by taking the server's version."
+  },
+  "@jinshu.editor.done": {
+    "defaultMessage": "Done",
+    "description": "Ends editing a block."
+  },
+  "@jinshu.editor.edit.block": {
+    "defaultMessage": "Edit block {id}",
+    "description": "Accessible name of the area that starts editing a text block; id is the block id."
+  },
+  "@jinshu.editor.edit.source": {
+    "defaultMessage": "Edit {type}",
+    "description": "Accessible name of the field editing a block; type is the block's type name, such as paragraph or math."
+  },
+  "@jinshu.editor.find.close": {
+    "defaultMessage": "Close find",
+    "description": "Closes the find and replace bar."
+  },
+  "@jinshu.editor.find.count": {
+    "defaultMessage": "{count, plural, one {# match} other {# matches}}",
+    "description": "Number of blocks that match the search."
+  },
+  "@jinshu.editor.find.field": {
+    "defaultMessage": "Find text",
+    "description": "Accessible name of the search field."
+  },
+  "@jinshu.editor.find.placeholder": {
+    "defaultMessage": "Find",
+    "description": "Placeholder of the search field."
+  },
+  "@jinshu.editor.find.replaceAll": {
+    "defaultMessage": "Replace all",
+    "description": "Replaces every match."
+  },
+  "@jinshu.editor.find.replaceWith": {
+    "defaultMessage": "Replace with",
+    "description": "Name and placeholder of the replacement field."
+  },
+  "@jinshu.editor.find.toggle": {
+    "defaultMessage": "Find and replace",
+    "description": "Toolbar button that shows the find and replace bar."
+  },
+  "@jinshu.editor.format.bold": {
+    "defaultMessage": "Bold",
+    "description": "Format button."
+  },
+  "@jinshu.editor.format.code": {
+    "defaultMessage": "Inline code",
+    "description": "Format button."
+  },
+  "@jinshu.editor.format.highlight": {
+    "defaultMessage": "Highlight",
+    "description": "Format button."
+  },
+  "@jinshu.editor.format.italic": {
+    "defaultMessage": "Italic",
+    "description": "Format button."
+  },
+  "@jinshu.editor.format.strike": {
+    "defaultMessage": "Strikethrough",
+    "description": "Format button."
+  },
+  "@jinshu.editor.format.subscript": {
+    "defaultMessage": "Subscript",
+    "description": "Format button."
+  },
+  "@jinshu.editor.format.superscript": {
+    "defaultMessage": "Superscript",
+    "description": "Format button."
+  },
+  "@jinshu.editor.format.toolbar": {
+    "defaultMessage": "Formatting",
+    "description": "Accessible name of the format bar at the block being edited."
+  },
+  "@jinshu.editor.format.turnInto": {
+    "defaultMessage": "Change block type",
+    "description": "Accessible name of the format bar's block type menu."
+  },
+  "@jinshu.editor.format.underline": {
+    "defaultMessage": "Underline",
+    "description": "Format button."
+  },
+  "@jinshu.editor.heading.placeholder": {
+    "defaultMessage": "Heading…",
+    "description": "Placeholder of an empty heading being edited."
+  },
+  "@jinshu.editor.history": {
+    "defaultMessage": "History",
+    "description": "Toolbar button and popover listing the document's changes."
+  },
+  "@jinshu.editor.history.empty": {
+    "defaultMessage": "No changes yet",
+    "description": "Shown in the history popover before any change."
+  },
+  "@jinshu.editor.history.entry": {
+    "defaultMessage": "{count, plural, one {Changed # block} other {Changed # blocks}}",
+    "description": "A history entry that has no note of its own."
+  },
+  "@jinshu.editor.history.titleCount": {
+    "defaultMessage": "History · {count}",
+    "description": "Title of the history popover with the number of changes."
+  },
+  "@jinshu.editor.insert": {
+    "defaultMessage": "Insert",
+    "description": "Opens the insert panel; also confirms inserting a link."
+  },
+  "@jinshu.editor.insert.below": {
+    "defaultMessage": "Insert block below",
+    "description": "Gutter button that inserts a block under this one."
+  },
+  "@jinshu.editor.insert.block": {
+    "defaultMessage": "Insert block",
+    "description": "Keyboard bar button that opens the insert panel."
+  },
+  "@jinshu.editor.insert.blocks": {
+    "defaultMessage": "Blocks",
+    "description": "Insert panel section heading over block types."
+  },
+  "@jinshu.editor.insert.media": {
+    "defaultMessage": "Media",
+    "description": "Insert panel section heading over media types."
+  },
+  "@jinshu.editor.insert.tableSize": {
+    "defaultMessage": "Insert a table, {rows} by {columns}",
+    "description": "Accessible name of a cell of the table size picker."
+  },
+  "@jinshu.editor.leave.description": {
+    "defaultMessage": "Your draft stays saved on this device. Leave anyway?",
+    "description": "Body of the leave guard dialog."
+  },
+  "@jinshu.editor.leave.discard": {
+    "defaultMessage": "Leave without saving",
+    "description": "Leaves the page without saving."
+  },
+  "@jinshu.editor.leave.save": {
+    "defaultMessage": "Save and leave",
+    "description": "Saves, then leaves the page."
+  },
+  "@jinshu.editor.leave.stay": {
+    "defaultMessage": "Keep editing",
+    "description": "Closes the leave guard dialog and stays."
+  },
+  "@jinshu.editor.leave.title": {
+    "defaultMessage": "You have unsaved changes",
+    "description": "Title of the dialog shown when leaving with unsaved changes."
+  },
+  "@jinshu.editor.link.address": {
+    "defaultMessage": "Link address",
+    "description": "Accessible name of the link address field."
+  },
+  "@jinshu.editor.link.addressPlaceholder": {
+    "defaultMessage": "https://… or #section",
+    "description": "Placeholder of the link address field."
+  },
+  "@jinshu.editor.link.insert": {
+    "defaultMessage": "Insert link",
+    "description": "Accessible name of the link popover."
+  },
+  "@jinshu.editor.link.sections": {
+    "defaultMessage": "Sections in this document",
+    "description": "Heading over the document's sections a link can point to."
+  },
+  "@jinshu.editor.link.text": {
+    "defaultMessage": "Link text",
+    "description": "Accessible name of the link text field."
+  },
+  "@jinshu.editor.link.textPlaceholder": {
+    "defaultMessage": "Text to show",
+    "description": "Placeholder of the link text field."
+  },
+  "@jinshu.editor.link.title": {
+    "defaultMessage": "Link",
+    "description": "Link button and popover title."
+  },
+  "@jinshu.editor.loading": {
+    "defaultMessage": "Loading document…",
+    "description": "Shown until the document arrives."
+  },
+  "@jinshu.editor.math.block": {
+    "defaultMessage": "As a block",
+    "description": "Inserts the equation as its own block."
+  },
+  "@jinshu.editor.math.editPlaceholder": {
+    "defaultMessage": "Type a LaTeX equation, such as {example}",
+    "description": "Placeholder of an equation block being edited; example is LaTeX source."
+  },
+  "@jinshu.editor.math.hint": {
+    "defaultMessage": "Live preview above · Esc to finish",
+    "description": "Hint under an equation block being edited."
+  },
+  "@jinshu.editor.math.inline": {
+    "defaultMessage": "Inline",
+    "description": "Inserts the equation inside the text."
+  },
+  "@jinshu.editor.math.insert": {
+    "defaultMessage": "Insert equation",
+    "description": "Accessible name of the equation popover."
+  },
+  "@jinshu.editor.math.source": {
+    "defaultMessage": "LaTeX source",
+    "description": "Accessible name of the equation popover's source field."
+  },
+  "@jinshu.editor.math.sourcePlaceholder": {
+    "defaultMessage": "LaTeX, such as {example}",
+    "description": "Placeholder of the equation popover's source field; example is LaTeX source."
+  },
+  "@jinshu.editor.object.delete": {
+    "defaultMessage": "Delete",
+    "description": "Deletes a selected media or other non-text block."
+  },
+  "@jinshu.editor.object.moveDown": {
+    "defaultMessage": "Move down",
+    "description": "Moves a selected non-text block one down."
+  },
+  "@jinshu.editor.object.moveUp": {
+    "defaultMessage": "Move up",
+    "description": "Moves a selected non-text block one up."
+  },
+  "@jinshu.editor.origin.via": {
+    "defaultMessage": "{name} via {via}",
+    "description": "An agent and the app it worked through, e.g. Codex via Dazi."
+  },
+  "@jinshu.editor.origin.you": {
+    "defaultMessage": "You",
+    "description": "Who made a change, when it was the person reading."
+  },
+  "@jinshu.editor.queue.conflict": {
+    "defaultMessage": "The server has a newer version",
+    "description": "Approval item: a save conflict."
+  },
+  "@jinshu.editor.queue.count": {
+    "defaultMessage": "{count, plural, one {# item needs you} other {# items need you}}",
+    "description": "Approval bar: suggestions, save requests and conflicts waiting."
+  },
+  "@jinshu.editor.queue.downgraded.focus": {
+    "defaultMessage": "Held as a suggestion: you were editing there",
+    "description": "Why a direct agent edit waits for review."
+  },
+  "@jinshu.editor.queue.downgraded.large": {
+    "defaultMessage": "Held as a suggestion: a large change",
+    "description": "Why a direct agent edit waits for review."
+  },
+  "@jinshu.editor.queue.next": {
+    "defaultMessage": "Next item",
+    "description": "Approval bar navigation."
+  },
+  "@jinshu.editor.queue.previous": {
+    "defaultMessage": "Previous item",
+    "description": "Approval bar navigation."
+  },
+  "@jinshu.editor.queue.save": {
+    "defaultMessage": "{name} asks to save",
+    "description": "Approval item: an agent save request."
+  },
+  "@jinshu.editor.queue.save.confirm": {
+    "defaultMessage": "Save",
+    "description": "Approves an agent save request."
+  },
+  "@jinshu.editor.queue.save.decline": {
+    "defaultMessage": "Decline",
+    "description": "Refuses an agent save request."
+  },
+  "@jinshu.editor.queue.suggestion": {
+    "defaultMessage": "{name} suggests: {note}",
+    "description": "Approval item: a suggestion."
+  },
+  "@jinshu.editor.redo": {
+    "defaultMessage": "Redo",
+    "description": "Toolbar button."
+  },
+  "@jinshu.editor.review.acceptAll": {
+    "defaultMessage": "Accept all",
+    "description": "Accepts every pending suggestion."
+  },
+  "@jinshu.editor.review.rejectAll": {
+    "defaultMessage": "Reject all",
+    "description": "Rejects every pending suggestion."
+  },
+  "@jinshu.editor.review.show": {
+    "defaultMessage": "View",
+    "description": "Scrolls to the one pending suggestion."
+  },
+  "@jinshu.editor.save": {
+    "defaultMessage": "Save",
+    "description": "Toolbar button that saves the draft."
+  },
+  "@jinshu.editor.save.failed": {
+    "defaultMessage": "Save failed",
+    "description": "Save state."
+  },
+  "@jinshu.editor.save.retry": {
+    "defaultMessage": "Retry save",
+    "description": "Toolbar button after a failed save."
+  },
+  "@jinshu.editor.save.saved": {
+    "defaultMessage": "Saved",
+    "description": "Save state."
+  },
+  "@jinshu.editor.save.saving": {
+    "defaultMessage": "Saving…",
+    "description": "Save state and the save button while saving."
+  },
+  "@jinshu.editor.save.unsaved": {
+    "defaultMessage": "Unsaved",
+    "description": "Save state."
+  },
+  "@jinshu.editor.seed.calloutBody": {
+    "defaultMessage": "Add a note",
+    "description": "Starter text of a callout inserted from the menu."
+  },
+  "@jinshu.editor.seed.calloutText": {
+    "defaultMessage": "Callout text",
+    "description": "Starter text of a callout typed with the !> shortcut on an empty line."
+  },
+  "@jinshu.editor.seed.calloutTitle": {
+    "defaultMessage": "Tip",
+    "description": "Starter title of a new callout."
+  },
+  "@jinshu.editor.seed.column": {
+    "defaultMessage": "Column {column}",
+    "description": "Starter header of a new table's column."
+  },
+  "@jinshu.editor.seed.columnEnd": {
+    "defaultMessage": "Right column",
+    "description": "Starter text of a new columns block's second column."
+  },
+  "@jinshu.editor.seed.columnStart": {
+    "defaultMessage": "Left column",
+    "description": "Starter text of a new columns block's first column."
+  },
+  "@jinshu.editor.seed.detailsBody": {
+    "defaultMessage": "Write the steps or notes here…",
+    "description": "Starter body of a new toggle block."
+  },
+  "@jinshu.editor.seed.detailsSummary": {
+    "defaultMessage": "Click to show the full explanation",
+    "description": "Starter summary of a new toggle block."
+  },
+  "@jinshu.editor.seed.firstItem": {
+    "defaultMessage": "First item",
+    "description": "Starter item of a new numbered list."
+  },
+  "@jinshu.editor.seed.linkText": {
+    "defaultMessage": "link text",
+    "description": "Placeholder text wrapped when the link format is applied to nothing."
+  },
+  "@jinshu.editor.seed.listItem": {
+    "defaultMessage": "List item",
+    "description": "Starter item of a new bulleted list."
+  },
+  "@jinshu.editor.seed.quote": {
+    "defaultMessage": "Quote",
+    "description": "Starter text of a new quote."
+  },
+  "@jinshu.editor.seed.task": {
+    "defaultMessage": "To-do",
+    "description": "Starter item of a new to-do list."
+  },
+  "@jinshu.editor.seed.text": {
+    "defaultMessage": "text",
+    "description": "Placeholder text wrapped when a format is applied to nothing."
+  },
+  "@jinshu.editor.selection.clear": {
+    "defaultMessage": "Deselect",
+    "description": "Clears the block selection."
+  },
+  "@jinshu.editor.selection.preview": {
+    "defaultMessage": "Preview",
+    "description": "Opens the selected image large."
+  },
+  "@jinshu.editor.selection.replace": {
+    "defaultMessage": "Replace",
+    "description": "Replaces the selected media through the app."
+  },
+  "@jinshu.editor.selection.select": {
+    "defaultMessage": "Select block",
+    "description": "Tapping a media or table block selects it."
+  },
+  "@jinshu.editor.selection.toolbar": {
+    "defaultMessage": "Selected block",
+    "description": "Bar under a selected block."
+  },
+  "@jinshu.editor.slash.hint": {
+    "defaultMessage": "Choose a block to insert (↑↓ to choose · Enter to insert)",
+    "description": "Hint over the slash menu before anything is typed."
+  },
+  "@jinshu.editor.slash.matching": {
+    "defaultMessage": "Matching “/{query}” (↑↓ to choose · Enter to insert)",
+    "description": "Hint over the slash menu; query is what was typed after the slash."
+  },
+  "@jinshu.editor.suggestion.accept": {
+    "defaultMessage": "Accept",
+    "description": "Accepts one suggestion."
+  },
+  "@jinshu.editor.suggestion.reject": {
+    "defaultMessage": "Reject",
+    "description": "Rejects one suggestion."
+  },
+  "@jinshu.editor.suggestion.stale": {
+    "defaultMessage": "Text changed, reject only",
+    "description": "Badge on a suggestion whose original text has since changed."
+  },
+  "@jinshu.editor.suggestion.untitled": {
+    "defaultMessage": "Suggested edit",
+    "description": "Name of a suggestion that has no note."
+  },
+  "@jinshu.editor.suggestion.wholeBlock": {
+    "defaultMessage": "(whole block)",
+    "description": "Stands for a deleted block with no text in a suggestion's diff."
+  },
+  "@jinshu.editor.text.placeholder": {
+    "defaultMessage": "Type, or press / for blocks…",
+    "description": "Placeholder of an empty paragraph being edited."
+  },
+  "@jinshu.editor.title": {
+    "defaultMessage": "Document title",
+    "description": "Accessible name of the title field."
+  },
+  "@jinshu.editor.title.edit": {
+    "defaultMessage": "Edit document title",
+    "description": "Accessible name of the title, which starts editing it."
+  },
+  "@jinshu.editor.title.untitled": {
+    "defaultMessage": "Untitled document",
+    "description": "Shown for a document with no title; also the title field's placeholder."
+  },
+  "@jinshu.editor.toolbar": {
+    "defaultMessage": "Document toolbar",
+    "description": "Accessible name of the document bar on top of the editor."
+  },
+  "@jinshu.editor.trailing": {
+    "defaultMessage": "Continue writing at the end",
+    "description": "Accessible name of the space after the last block."
+  },
+  "@jinshu.editor.trailing.hint": {
+    "defaultMessage": "Click here to keep writing, or type / to insert a block…",
+    "description": "Hint in the space after the last block."
+  },
+  "@jinshu.editor.undo": {
+    "defaultMessage": "Undo",
+    "description": "Undoes the last change, or one history entry."
+  },
+  "@jinshu.editor.uploading": {
+    "defaultMessage": "Uploading",
+    "description": "Accessible name of an upload's progress bar."
+  },
+  "@jinshu.note.accepted": {
+    "defaultMessage": "Accepted {name}'s suggestion",
+    "description": "History note: the person accepted an agent suggestion."
+  },
+  "@jinshu.note.columnAlign": {
+    "defaultMessage": "Changed a column's alignment",
+    "description": "History note."
+  },
+  "@jinshu.note.columnBack": {
+    "defaultMessage": "Moved a column back",
+    "description": "History note: a table column moved toward the start."
+  },
+  "@jinshu.note.columnDelete": {
+    "defaultMessage": "Deleted a column",
+    "description": "History note."
+  },
+  "@jinshu.note.columnForward": {
+    "defaultMessage": "Moved a column forward",
+    "description": "History note: a table column moved toward the end."
+  },
+  "@jinshu.note.columnInsert": {
+    "defaultMessage": "Inserted a column",
+    "description": "History note."
+  },
+  "@jinshu.note.custom": {
+    "defaultMessage": "Updated an extension block",
+    "description": "History note."
+  },
+  "@jinshu.note.delete": {
+    "defaultMessage": "Deleted a block",
+    "description": "History note."
+  },
+  "@jinshu.note.detailsStart": {
+    "defaultMessage": "Changed how a toggle starts",
+    "description": "History note."
+  },
+  "@jinshu.note.duplicate": {
+    "defaultMessage": "Duplicated a block",
+    "description": "History note."
+  },
+  "@jinshu.note.editCallout": {
+    "defaultMessage": "Edited a callout",
+    "description": "History note."
+  },
+  "@jinshu.note.editCode": {
+    "defaultMessage": "Edited code",
+    "description": "History note."
+  },
+  "@jinshu.note.editDetails": {
+    "defaultMessage": "Edited a toggle",
+    "description": "History note."
+  },
+  "@jinshu.note.editQuote": {
+    "defaultMessage": "Edited a quote",
+    "description": "History note."
+  },
+  "@jinshu.note.imageProps": {
+    "defaultMessage": "Changed image settings",
+    "description": "History note."
+  },
+  "@jinshu.note.insert": {
+    "defaultMessage": "Inserted {kind, select, paragraph {text} heading {heading {level}} bullet {a bulleted list} ordered {a numbered list} task {a task list} list {a list} quote {a quote} callout {a callout} details {a toggle} columns {columns} code {a code block} math {a formula} table {a table} divider {a divider} image {an image} video {a video} audio {audio} file {a file} other {a block}}",
+    "description": "History note: a block was inserted."
+  },
+  "@jinshu.note.insertText": {
+    "defaultMessage": "Inserted text",
+    "description": "History note."
+  },
+  "@jinshu.note.listExit": {
+    "defaultMessage": "Left the list",
+    "description": "History note."
+  },
+  "@jinshu.note.listItemDelete": {
+    "defaultMessage": "Deleted a list item",
+    "description": "History note."
+  },
+  "@jinshu.note.listStyle": {
+    "defaultMessage": "Changed the list style",
+    "description": "History note."
+  },
+  "@jinshu.note.mediaProps": {
+    "defaultMessage": "Changed media settings",
+    "description": "History note."
+  },
+  "@jinshu.note.moveDown": {
+    "defaultMessage": "Moved a block down",
+    "description": "History note."
+  },
+  "@jinshu.note.moveUp": {
+    "defaultMessage": "Moved a block up",
+    "description": "History note."
+  },
+  "@jinshu.note.replace": {
+    "defaultMessage": "Replaced “{text}”",
+    "description": "History note: find and replace."
+  },
+  "@jinshu.note.rowDelete": {
+    "defaultMessage": "Deleted a row",
+    "description": "History note."
+  },
+  "@jinshu.note.rowDown": {
+    "defaultMessage": "Moved a row down",
+    "description": "History note."
+  },
+  "@jinshu.note.rowInsert": {
+    "defaultMessage": "Inserted a row",
+    "description": "History note."
+  },
+  "@jinshu.note.rowUp": {
+    "defaultMessage": "Moved a row up",
+    "description": "History note."
+  },
+  "@jinshu.note.streamStopped": {
+    "defaultMessage": "Text written before a stop",
+    "description": "History/suggestion note: what an agent had written when the person stopped it."
+  },
+  "@jinshu.note.tableCell": {
+    "defaultMessage": "Edited a table cell",
+    "description": "History note."
+  },
+  "@jinshu.note.tableHeader": {
+    "defaultMessage": "Edited a table header",
+    "description": "History note."
+  },
+  "@jinshu.note.taskToggle": {
+    "defaultMessage": "Checked or unchecked a task",
+    "description": "History note."
+  },
+  "@jinshu.note.title": {
+    "defaultMessage": "Changed the title",
+    "description": "History note."
+  },
+  "@jinshu.note.turnInto": {
+    "defaultMessage": "Turned into {kind, select, paragraph {text} heading {heading {level}} bullet {a bulleted list} ordered {a numbered list} task {a task list} list {a list} quote {a quote} callout {a callout} details {a toggle} columns {columns} code {a code block} math {a formula} table {a table} divider {a divider} image {an image} video {a video} audio {audio} file {a file} other {a block}}",
+    "description": "History note: a block changed kind."
+  },
+  "@jinshu.outline.title": {
+    "defaultMessage": "Contents",
+    "description": "Default heading and accessible name of the outline."
+  },
+  "@jinshu.outline.untitled": {
+    "defaultMessage": "(Untitled)",
+    "description": "Outline entry for a heading with no text."
+  },
+  "@jinshu.view.audio.blocked": {
+    "defaultMessage": "This audio's address is blocked by the security policy",
+    "description": "Shown in place of audio whose address is not allowed."
+  },
+  "@jinshu.view.audio.label": {
+    "defaultMessage": "Audio",
+    "description": "Title of an audio block that has none."
+  },
+  "@jinshu.view.audio.pause": {
+    "defaultMessage": "Pause {title}",
+    "description": "Accessible name of the audio card's pause button."
+  },
+  "@jinshu.view.audio.play": {
+    "defaultMessage": "Play {title}",
+    "description": "Accessible name of the audio card's play button."
+  },
+  "@jinshu.view.audio.progress": {
+    "defaultMessage": "{title} progress",
+    "description": "Accessible name of the audio card's position slider."
+  },
+  "@jinshu.view.audio.rate": {
+    "defaultMessage": "Change playback speed",
+    "description": "Accessible name of the audio card's speed button."
+  },
+  "@jinshu.view.audio.transcript": {
+    "defaultMessage": "Transcript",
+    "description": "Disclosure that shows an audio block's transcript."
+  },
+  "@jinshu.view.code.copied": {
+    "defaultMessage": "Copied",
+    "description": "The copy button once the code is copied."
+  },
+  "@jinshu.view.code.copy": {
+    "defaultMessage": "Copy",
+    "description": "Button that copies a code block."
+  },
+  "@jinshu.view.code.plainText": {
+    "defaultMessage": "text",
+    "description": "Language label of a code block that names none."
+  },
+  "@jinshu.view.details": {
+    "defaultMessage": "Details",
+    "description": "Summary of a collapsible block that has none."
+  },
+  "@jinshu.view.extensionFailed": {
+    "defaultMessage": "Couldn't render this block ({type})",
+    "description": "Shown when an app's custom block renderer fails; type is the block's type."
+  },
+  "@jinshu.view.file.download": {
+    "defaultMessage": "Download",
+    "description": "Button that downloads a file block."
+  },
+  "@jinshu.view.file.inline": {
+    "defaultMessage": "Inline",
+    "description": "Badge on a file shown inline in the document."
+  },
+  "@jinshu.view.file.pages": {
+    "defaultMessage": "{count, plural, one {# page} other {# pages}}",
+    "description": "A file block's page count."
+  },
+  "@jinshu.view.fromStart": {
+    "defaultMessage": "Start from the beginning",
+    "description": "Button that dismisses the resume bar and stays at the start."
+  },
+  "@jinshu.view.image.blocked": {
+    "defaultMessage": "This image's address is blocked by the security policy",
+    "description": "Shown in place of an image whose address is not allowed."
+  },
+  "@jinshu.view.image.failed": {
+    "defaultMessage": "The image didn't load",
+    "description": "Shown in place of an image that failed to load."
+  },
+  "@jinshu.view.image.open": {
+    "defaultMessage": "View image",
+    "description": "Accessible name of an image with no alt text or caption; pressing it opens the viewer."
+  },
+  "@jinshu.view.image.preview": {
+    "defaultMessage": "Image preview",
+    "description": "Accessible name of the viewer for an image with no alt text."
+  },
+  "@jinshu.view.images": {
+    "defaultMessage": "Images in this document",
+    "description": "Accessible name of the image viewer opened from a document without a title."
+  },
+  "@jinshu.view.imagesOf": {
+    "defaultMessage": "Images in {title}",
+    "description": "Accessible name of the image viewer opened from a document with a title."
+  },
+  "@jinshu.view.media.buffering": {
+    "defaultMessage": "Buffering…",
+    "description": "Audio card status while loading."
+  },
+  "@jinshu.view.media.cannotPlay": {
+    "defaultMessage": "Can't play",
+    "description": "Audio card status when playback failed."
+  },
+  "@jinshu.view.media.notPlayedYet": {
+    "defaultMessage": "Not played this far yet",
+    "description": "Why a chapter button is unavailable: seeking is limited to what has been played."
+  },
+  "@jinshu.view.resume": {
+    "defaultMessage": "Continue reading",
+    "description": "Button in the resume bar that jumps to the last reading position."
+  },
+  "@jinshu.view.resumeAt": {
+    "defaultMessage": "You stopped at “{heading}”",
+    "description": "Resume bar above the document; heading is the start of the block last read."
+  },
+  "@jinshu.view.resumeHere": {
+    "defaultMessage": "You stopped here last time",
+    "description": "Resume bar above the document when the last block read has no title text."
+  },
+  "@jinshu.view.retry": {
+    "defaultMessage": "Retry",
+    "description": "Button that loads a failed image or audio again."
+  },
+  "@jinshu.view.task": {
+    "defaultMessage": "Task",
+    "description": "Accessible name of a task checkbox whose item has no text."
+  },
+  "@jinshu.view.unavailable": {
+    "defaultMessage": "This document isn't available",
+    "description": "Shown in place of a document that could not be loaded."
+  },
+  "@jinshu.view.video.blocked": {
+    "defaultMessage": "This video's address is blocked by the security policy",
+    "description": "Shown in place of a video whose address is not allowed."
+  },
+  "@jinshu.view.video.label": {
+    "defaultMessage": "Video",
+    "description": "Accessible name of a video with no caption."
+  },
+  "@jinshu.view.video.playedOnly": {
+    "defaultMessage": "You can only seek to parts you've already watched",
+    "description": "Note under a video that may only seek within what was played."
+  },
+  "@jinshu.editor.suggestion.formatOnly": {
+    "defaultMessage": "Formatting only",
+    "description": "Labels a suggestion that keeps the text and changes only its marks (bold, italic, code…); the new formatting is shown under it."
+  }
+}

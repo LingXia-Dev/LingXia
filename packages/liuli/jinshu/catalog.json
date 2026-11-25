@@ -1,0 +1,1268 @@
+{
+  "generated": "Generated from the doc file by scripts/generate.mjs; do not edit.",
+  "components": [
+    {
+      "name": "JinshuDiff",
+      "import": "@liulidesign/jinshu/JinshuDiff",
+      "exports": [
+        "JinshuDiff"
+      ],
+      "category": "documents",
+      "status": "preview",
+      "since": "2026-11-24",
+      "summary": "What changed between two versions of a Jinshu document, block by block, with words struck and inserted",
+      "description": "JinshuDiff compares two versions of a document and shows what changed: blocks added, removed, moved and modified, each in a card tinted by its kind, with the unchanged runs between them folded. A summary counts each kind and steps between the changes. A modified block shows its words struck and inserted in place, or the whole block before and after when the edit is too heavy to read word by word; `mode` chooses.",
+      "keywords": [
+        "diff",
+        "compare",
+        "changes",
+        "revision",
+        "version history",
+        "track changes",
+        "redline",
+        "jinshu"
+      ],
+      "props": [
+        {
+          "name": "a",
+          "type": "JinshuDocument",
+          "required": false,
+          "description": "The earlier document."
+        },
+        {
+          "name": "b",
+          "type": "JinshuDocument",
+          "required": false,
+          "description": "The later document."
+        },
+        {
+          "name": "diff",
+          "type": "DocumentDiff",
+          "required": false,
+          "description": "A diff computed in Logic with `diffDocuments`, in place of `a` and `b`; for a long document."
+        },
+        {
+          "name": "mode",
+          "type": "DiffMode",
+          "required": false,
+          "description": "`smart` shows words for a light edit and the whole block for a heavy one; `inline` always words; `block` always whole blocks.",
+          "values": [
+            "smart",
+            "inline",
+            "block"
+          ],
+          "default": "'smart'"
+        },
+        {
+          "name": "className",
+          "type": "string",
+          "required": false,
+          "description": ""
+        },
+        {
+          "name": "data-testid",
+          "type": "string",
+          "required": false,
+          "description": ""
+        }
+      ],
+      "otherProps": {},
+      "choices": [],
+      "parts": {
+        "root": "view",
+        "summary": "view",
+        "counts": "view",
+        "total": "text",
+        "stepper": "view",
+        "position": "text",
+        "entries": "view",
+        "expand": "button",
+        "expandText": "text",
+        "unchanged": "view",
+        "unchangedBlock": "view",
+        "change": "view",
+        "changeHeader": "view",
+        "blockId": "text",
+        "removedBlock": "view",
+        "words": "text",
+        "sides": "view",
+        "side": "view",
+        "sideLabel": "text",
+        "attrs": "view",
+        "attr": "text",
+        "empty": "text"
+      },
+      "accessibility": {
+        "pattern": null,
+        "name": null,
+        "description": [],
+        "states": [],
+        "keyboard": [],
+        "contrast": [
+          {
+            "what": "removed words",
+            "pair": [
+              "danger",
+              "danger-soft"
+            ],
+            "minimum": "4.5:1"
+          },
+          {
+            "what": "inserted words",
+            "pair": [
+              "success",
+              "success-soft"
+            ],
+            "minimum": "4.5:1"
+          },
+          {
+            "what": "text in an added card",
+            "pair": [
+              "text",
+              "success-soft/60"
+            ],
+            "over": "canvas",
+            "minimum": "4.5:1"
+          },
+          {
+            "what": "text in a removed card",
+            "pair": [
+              "text-muted",
+              "danger-soft/60"
+            ],
+            "over": "canvas",
+            "minimum": "4.5:1"
+          },
+          {
+            "what": "before label",
+            "pair": [
+              "danger",
+              "danger-soft/50"
+            ],
+            "over": "canvas",
+            "minimum": "4.5:1"
+          },
+          {
+            "what": "after label",
+            "pair": [
+              "success",
+              "success-soft/50"
+            ],
+            "over": "canvas",
+            "minimum": "4.5:1"
+          },
+          {
+            "what": "step position",
+            "pair": [
+              "text-muted",
+              "surface"
+            ],
+            "minimum": "4.5:1"
+          }
+        ],
+        "notes": [
+          "Each card names its kind in words (added, removed, moved, changed), so the tint is never the only sign.",
+          "Removed words are struck through as well as tinted; the before and after sides of a heavy edit are labelled.",
+          "The stepper's buttons are named Previous and Next, and the position is read beside them."
+        ]
+      },
+      "examples": [
+        {
+          "name": "Revision",
+          "title": "A draft against the saved version",
+          "source": "import { createDocument, heading, paragraph } from '@liulidesign/jinshu/schema';\nimport { JinshuDiff } from '@liulidesign/jinshu/JinshuDiff';\n\nconst saved = createDocument({\n  blocks: [heading(2, 'Limits', 'h1'), paragraph('A limit says where a function goes.', 'p1'), paragraph('Old note.', 'p2'), paragraph('Unchanged.', 'p3')],\n});\nconst draft = createDocument({\n  blocks: [heading(2, 'Limits', 'h1'), paragraph('A limit says where a function heads.', 'p1'), paragraph('Unchanged.', 'p3'), paragraph('New exercise.', 'p4')],\n});\n\n/** A draft against the saved version: one block changed, one removed, one added. */\nexport function Revision() {\n  return <JinshuDiff a={saved} b={draft} data-testid=\"diff\" />;\n}"
+        },
+        {
+          "name": "Inline",
+          "title": "Inline: words, always",
+          "source": "import { callout, createDocument, heading, paragraph } from '@liulidesign/jinshu/schema';\nimport { JinshuDiff } from '@liulidesign/jinshu/JinshuDiff';\n\nconst policy = createDocument({\n  blocks: [\n    heading(2, 'Refunds', 'r1'),\n    paragraph('Refunds are issued within 30 days of purchase.', 'r2'),\n    callout('info', [paragraph('Digital items are not refundable once downloaded.', 'r3p')], { title: 'Note', id: 'r3' }),\n  ],\n});\nconst revised = createDocument({\n  blocks: [\n    heading(2, 'Refunds', 'r1'),\n    paragraph('Refunds are issued within 14 days of purchase, to the original payment method.', 'r2'),\n    callout('warning', [paragraph('Digital items are not refundable once downloaded.', 'r3p')], { title: 'Note', id: 'r3' }),\n  ],\n});\n\n/** Inline: every changed text shows its words struck and inserted in place; a change with no text, like a callout's tone, shows before and after. */\nexport function Inline() {\n  return <JinshuDiff a={policy} b={revised} mode=\"inline\" data-testid=\"inline\" />;\n}"
+        },
+        {
+          "name": "Block",
+          "title": "Block: before and after, always",
+          "source": "import { callout, createDocument, heading, paragraph } from '@liulidesign/jinshu/schema';\nimport { JinshuDiff } from '@liulidesign/jinshu/JinshuDiff';\n\nconst policy = createDocument({\n  blocks: [\n    heading(2, 'Refunds', 'r1'),\n    paragraph('Refunds are issued within 30 days of purchase.', 'r2'),\n    callout('info', [paragraph('Digital items are not refundable once downloaded.', 'r3p')], { title: 'Note', id: 'r3' }),\n  ],\n});\nconst revised = createDocument({\n  blocks: [\n    heading(2, 'Refunds', 'r1'),\n    paragraph('Refunds are issued within 14 days of purchase, to the original payment method.', 'r2'),\n    callout('warning', [paragraph('Digital items are not refundable once downloaded.', 'r3p')], { title: 'Note', id: 'r3' }),\n  ],\n});\n\n/** Block: each changed block shown before and after, for edits too heavy to read word by word. */\nexport function Block() {\n  return <JinshuDiff a={policy} b={revised} mode=\"block\" data-testid=\"block\" />;\n}"
+        },
+        {
+          "name": "NoChanges",
+          "title": "No changes",
+          "source": "import { createDocument, heading, paragraph } from '@liulidesign/jinshu/schema';\nimport { JinshuDiff } from '@liulidesign/jinshu/JinshuDiff';\n\nconst saved = createDocument({\n  blocks: [heading(2, 'Limits', 'h1'), paragraph('A limit says where a function goes.', 'p1'), paragraph('Old note.', 'p2'), paragraph('Unchanged.', 'p3')],\n});\n\n/** Two equal documents. */\nexport function NoChanges() {\n  return <JinshuDiff a={saved} b={saved} data-testid=\"same\" />;\n}"
+        }
+      ],
+      "gaps": [],
+      "limits": [
+        "Inserted words are told apart by their tint alone; a screen reader reads the block's new text without marking them.",
+        "It compares two versions; it does not merge them or accept a change."
+      ],
+      "theming": {
+        "classProps": [
+          {
+            "name": "className",
+            "on": "",
+            "description": ""
+          }
+        ],
+        "tokens": [
+          "--text-caption",
+          "--text-footnote",
+          "--text-body",
+          "--radius-control",
+          "--radius-container"
+        ],
+        "roles": [
+          "accent",
+          "danger",
+          "danger-soft",
+          "info",
+          "info-soft",
+          "success",
+          "success-soft",
+          "surface",
+          "surface-sunken",
+          "text",
+          "text-muted"
+        ]
+      },
+      "related": [
+        "JinshuEditor",
+        "JinshuView",
+        "Badge"
+      ],
+      "gallery": {
+        "specimen": "Specimen",
+        "tagline": "What changed",
+        "order": 3,
+        "page": {
+          "lead": "Use JinshuDiff to show what changed between two versions of a document.",
+          "stage": "bare",
+          "hero": "Revision",
+          "variants": [
+            {
+              "name": "Inline",
+              "title": "Inline"
+            },
+            {
+              "name": "Block",
+              "title": "Block"
+            }
+          ],
+          "states": [
+            {
+              "name": "NoChanges",
+              "title": "No changes"
+            }
+          ],
+          "statesLayout": "stack"
+        }
+      }
+    },
+    {
+      "name": "JinshuEditor",
+      "import": "@liulidesign/jinshu/JinshuEditor",
+      "exports": [
+        "JinshuEditor"
+      ],
+      "category": "documents",
+      "status": "preview",
+      "since": "2026-11-24",
+      "summary": "A Jinshu document, edited block by block, with history, saving, and a review of what an agent changed or asks",
+      "description": "JinshuEditor edits a Jinshu document where it is read: each block keeps the reader's geometry, so moving between reading and editing does not jump. Text blocks edit in place; tables, code, folds, callouts and media have their own editors, and `/` inserts any block. On a live `channel` the source keeps the history, the save state and the review: an agent's change is marked at each block it touched, with a bar to view or undo that batch; its suggestions and save requests wait in one queue; and an agent at work shows a mark the person can stop.",
+      "keywords": [
+        "editor",
+        "document editor",
+        "rich text",
+        "block editor",
+        "notion",
+        "wysiwyg",
+        "review",
+        "suggestions",
+        "track changes",
+        "jinshu"
+      ],
+      "props": [
+        {
+          "name": "channel",
+          "type": "JinshuChannelAction",
+          "required": false,
+          "description": "The page's `syncDoc` action, which Logic answers with `source.serve`: edits, history, saving, the review queue and agent changes all go through the source."
+        },
+        {
+          "name": "docKey",
+          "type": "string",
+          "required": false,
+          "description": "Which document `channel` serves."
+        },
+        {
+          "name": "doc",
+          "type": "JinshuDocument",
+          "required": false,
+          "description": "The document, held by the page, when there is no `channel`; each edit comes back through `onOps`."
+        },
+        {
+          "name": "onOps",
+          "type": "((ops: readonly AnyJinshuOp[]) => void)",
+          "required": false,
+          "description": "The ops of each edit to `doc`, for the page to apply with `applyOps`."
+        },
+        {
+          "name": "isReadOnly",
+          "type": "boolean",
+          "required": false,
+          "description": "Read-only: hides editing chrome, keeps selection and copy."
+        },
+        {
+          "name": "isToolbarSticky",
+          "type": "boolean",
+          "required": false,
+          "description": "Pins the single-row icon formatting ribbon at the top of the scroll container.",
+          "default": "true"
+        },
+        {
+          "name": "toolbarActions",
+          "type": "Child",
+          "required": false,
+          "description": "Extra quiet action(s) docked on the trailing side of the sticky ribbon."
+        },
+        {
+          "name": "onAskAgent",
+          "type": "((blockIds: readonly string[]) => void)",
+          "required": false,
+          "description": "Hands blocks to the app's agent as context; offered in each block's menu when set."
+        },
+        {
+          "name": "hasLeaveGuard",
+          "type": "boolean",
+          "required": false,
+          "description": "Enable `useLeaveGuard` when draft has unsaved changes.",
+          "default": "true"
+        },
+        {
+          "name": "isDirty",
+          "type": "boolean",
+          "required": false,
+          "description": "Unsaved changes, for the leave guard and the toolbar's Save; falls back to `saveStatus === 'dirty'`."
+        },
+        {
+          "name": "saveStatus",
+          "type": "\"dirty\" | \"failed\" | \"saved\" | \"saving\"",
+          "required": false,
+          "description": "Where saving stands, as the page hears it from Logic; on a live `channel` the toolbar shows it, with Save or Retry.",
+          "values": [
+            "saved",
+            "dirty",
+            "saving",
+            "failed"
+          ]
+        },
+        {
+          "name": "nav",
+          "type": "JinshuNavHandle",
+          "required": false,
+          "description": "Shared with a `JinshuOutline` from `useJinshuNav()`."
+        },
+        {
+          "name": "openAt",
+          "type": "string",
+          "required": false,
+          "description": "A top-level block to open at, once: where an agent's change landed (a tool result's `page`)."
+        },
+        {
+          "name": "filePolicy",
+          "type": "FilePolicy",
+          "required": false,
+          "description": "As on JinshuView."
+        },
+        {
+          "name": "mediaPolicy",
+          "type": "MediaPolicy",
+          "required": false,
+          "description": "As on JinshuView."
+        },
+        {
+          "name": "resolveSrc",
+          "type": "((src: string) => string)",
+          "required": false,
+          "description": "As on JinshuView."
+        },
+        {
+          "name": "customBlocks",
+          "type": "Readonly<Record<string, CustomBlockRenderer>>",
+          "required": false,
+          "description": "Renderers for the app's own block types, keyed by `x-scope-name`; they edit through their attrs."
+        },
+        {
+          "name": "customInlines",
+          "type": "Readonly<Record<string, InlineAtomRenderer>>",
+          "required": false,
+          "description": "Renderers for the app's own inline atoms, keyed by `x-scope-name`."
+        },
+        {
+          "name": "onLinkPress",
+          "type": "((info: { readonly blockId: string; readonly href: string; }) => void)",
+          "required": false,
+          "description": "As on JinshuView."
+        },
+        {
+          "name": "onFileAction",
+          "type": "((info: { readonly blockId: string; readonly src: string; readonly action: \"download\"; }) => void)",
+          "required": false,
+          "description": "As on JinshuView."
+        },
+        {
+          "name": "className",
+          "type": "string",
+          "required": false,
+          "description": ""
+        },
+        {
+          "name": "data-testid",
+          "type": "string",
+          "required": false,
+          "description": ""
+        }
+      ],
+      "otherProps": {},
+      "choices": [],
+      "parts": {
+        "root": "view",
+        "toolbar": "view",
+        "toolbarInner": "view",
+        "toolbarStart": "view",
+        "toolbarEnd": "view",
+        "toolbarSep": "view",
+        "markButton": "button",
+        "markGlyph": "text",
+        "history": "view",
+        "saved": "view",
+        "link": "view",
+        "math": "view",
+        "findBar": "view",
+        "agentBar": "view",
+        "header": "view",
+        "activity": "view",
+        "queue": "view",
+        "unanchored": "view",
+        "keyboardBar": "view",
+        "formatBar": "view",
+        "stream": "view",
+        "loading": "text",
+        "canvas": "view",
+        "row": "view",
+        "title": "button",
+        "block": "view",
+        "gutter": "view",
+        "mathEditor": "view",
+        "textEditor": "view",
+        "textBlock": "view",
+        "objectBlock": "view",
+        "selectionBar": "view",
+        "suggestions": "view",
+        "suggestion": "view",
+        "slashMenu": "view",
+        "insertPanel": "view",
+        "tablePicker": "view",
+        "trailing": "button"
+      },
+      "accessibility": {
+        "pattern": null,
+        "name": null,
+        "description": [],
+        "states": [],
+        "keyboard": [
+          {
+            "keys": "Enter in a text block",
+            "effect": "ends it and starts a new paragraph below"
+          },
+          {
+            "keys": "Arrow up and down in a text block",
+            "effect": "move to the text block above or below; in the `/` menu, move through its choices"
+          },
+          {
+            "keys": "Escape",
+            "effect": "leaves the field, keeping the edit; in the `/` menu, closes it"
+          },
+          {
+            "keys": "Enter, arrows in a table cell",
+            "effect": "Enter moves down a row and adds one at the end; up and down move between rows"
+          }
+        ],
+        "contrast": [
+          {
+            "what": "document text",
+            "pair": [
+              "text",
+              "canvas"
+            ],
+            "minimum": "4.5:1"
+          },
+          {
+            "what": "change bar text",
+            "pair": [
+              "text",
+              "accent-soft/40"
+            ],
+            "over": "canvas",
+            "minimum": "4.5:1"
+          },
+          {
+            "what": "activity text",
+            "pair": [
+              "text",
+              "info-soft/40"
+            ],
+            "over": "canvas",
+            "minimum": "4.5:1"
+          },
+          {
+            "what": "change mark",
+            "pair": [
+              "accent",
+              "canvas"
+            ],
+            "minimum": "3:1"
+          },
+          {
+            "what": "suggestion note",
+            "pair": [
+              "text",
+              "accent-soft/25"
+            ],
+            "over": "canvas",
+            "minimum": "4.5:1"
+          },
+          {
+            "what": "save state",
+            "pair": [
+              "text-muted",
+              "canvas"
+            ],
+            "minimum": "4.5:1"
+          },
+          {
+            "what": "find match",
+            "pair": [
+              "text",
+              "warning-soft/50"
+            ],
+            "over": "canvas",
+            "minimum": "4.5:1"
+          }
+        ],
+        "notes": [
+          "The toolbar and a phone's selection bar are toolbars, each named; every icon button is named by its action.",
+          "The activity mark, the change bar and the review queue are status regions, so a screen reader hears them when they appear.",
+          "An agent's change is never shown by the start-edge mark alone: the change bar says who changed how many blocks.",
+          "Each block's edit button is named by the block, and each history step by what it did, in the reader's language."
+        ]
+      },
+      "examples": [
+        {
+          "name": "Draft",
+          "title": "A draft the page holds",
+          "source": "import { useLocal } from '@lingxia/view';\nimport { callout, codeBlock, createDocument, heading, list, listItem, paragraph, table } from '@liulidesign/jinshu/schema';\nimport { applyOps } from '@liulidesign/jinshu/schema';\nimport type { JinshuDocument } from '@liulidesign/jinshu/schema';\nimport { JinshuEditor } from '@liulidesign/jinshu/JinshuEditor';\n\nconst draft = createDocument({\n  title: 'Limits',\n  blocks: [\n    heading(2, 'What a limit says', 'h1'),\n    paragraph('A limit describes where a function heads.', 'p1'),\n    list('bullet', [listItem('Definition', { id: 'i1' }), listItem('Exercises', { id: 'i2' })], { id: 'l1' }),\n    callout('tip', [paragraph('Sketch the graph before you compute.', 'c1p')], { title: 'Tip', id: 'c1' }),\n    table(['Week', 'Topic', 'Due'], [['3', 'Limits', 'Friday'], ['4', 'Continuity', 'Next Friday']], { id: 't1' }),\n    codeBlock('ts', 'const f = (x: number) => x * x;\\nf(2);', { id: 'k1', filename: 'square.ts' }),\n  ],\n});\n\n/** The editor on a document the page holds: each edit comes back as ops the page applies. */\nexport function Draft() {\n  // `useLocal` types only closed data, and a document's `meta` and extension attrs are open records.\n  const doc = useLocal<any>('editor-example-doc', draft) as { value: JinshuDocument; set(next: JinshuDocument): void };\n  return <JinshuEditor doc={doc.value} onOps={ops => doc.set(applyOps(doc.value, ops).doc)} hasLeaveGuard={false} data-testid=\"draft\" />;\n}"
+        },
+        {
+          "name": "AskAgent",
+          "title": "Handing blocks to the app's agent",
+          "source": "import { useLocal } from '@lingxia/view';\nimport { createDocument, heading, paragraph } from '@liulidesign/jinshu/schema';\nimport { applyOps } from '@liulidesign/jinshu/schema';\nimport type { JinshuDocument } from '@liulidesign/jinshu/schema';\nimport { JinshuEditor } from '@liulidesign/jinshu/JinshuEditor';\n\nconst notes = createDocument({\n  title: 'Meeting notes',\n  blocks: [heading(2, 'Decisions', 'n1'), paragraph('Ship the reader first; the editor follows in May.', 'n2'), paragraph('Open: who owns the migration?', 'n3')],\n});\n\n/** Each block's menu offers to hand it to the app's agent; the app opens its own conversation with it. */\nexport function AskAgent() {\n  const doc = useLocal<any>('editor-ask-doc', notes) as { value: JinshuDocument; set(next: JinshuDocument): void };\n  const asked = useLocal<string>('editor-ask-ids', '');\n  return (\n    <view className=\"gap-3\">\n      <JinshuEditor\n        doc={doc.value}\n        onOps={ops => doc.set(applyOps(doc.value, ops).doc)}\n        onAskAgent={ids => asked.set(ids.join(', '))}\n        hasLeaveGuard={false}\n        data-testid=\"ask-agent\"\n      />\n      {asked.value !== '' && <text className=\"text-footnote text-muted\">{`Handed to the assistant: ${asked.value}`}</text>}\n    </view>\n  );\n}"
+        },
+        {
+          "name": "ReadOnly",
+          "title": "Read-only",
+          "source": "import { callout, codeBlock, createDocument, heading, list, listItem, paragraph, table } from '@liulidesign/jinshu/schema';\nimport { JinshuEditor } from '@liulidesign/jinshu/JinshuEditor';\n\nconst draft = createDocument({\n  title: 'Limits',\n  blocks: [\n    heading(2, 'What a limit says', 'h1'),\n    paragraph('A limit describes where a function heads.', 'p1'),\n    list('bullet', [listItem('Definition', { id: 'i1' }), listItem('Exercises', { id: 'i2' })], { id: 'l1' }),\n    callout('tip', [paragraph('Sketch the graph before you compute.', 'c1p')], { title: 'Tip', id: 'c1' }),\n    table(['Week', 'Topic', 'Due'], [['3', 'Limits', 'Friday'], ['4', 'Continuity', 'Next Friday']], { id: 't1' }),\n    codeBlock('ts', 'const f = (x: number) => x * x;\\nf(2);', { id: 'k1', filename: 'square.ts' }),\n  ],\n});\n\n/** Read-only: the document with no editing chrome. */\nexport function ReadOnly() {\n  return <JinshuEditor doc={draft} isReadOnly data-testid=\"read-only\" />;\n}"
+        }
+      ],
+      "gaps": [
+        {
+          "missing": "Bold, italic and links on a selection of words in a text block.",
+          "needs": "reading and setting the selection of a text field, and buttons that leave its caret alone",
+          "today": "A text block edits as shorthand (`**bold**`, `==mark==`, `[text](#id)`); the format bar wraps the last word."
+        }
+      ],
+      "limits": [
+        "History, saving, the change bar, the review queue and the activity mark need a live `channel`; a page-held `doc` has none of them.",
+        "`openAt` brings the block to the nearest edge of the scroll, not to its top.",
+        "A table's header row scrolls with the page; it does not stay pinned."
+      ],
+      "theming": {
+        "classProps": [
+          {
+            "name": "className",
+            "on": "",
+            "description": ""
+          }
+        ],
+        "tokens": [
+          "--text-caption",
+          "--text-footnote",
+          "--shadow-raised",
+          "--radius-control",
+          "--radius-container",
+          "--radius-checkbox"
+        ],
+        "roles": [
+          "accent",
+          "accent-soft",
+          "canvas",
+          "danger",
+          "danger-soft",
+          "info",
+          "info-soft",
+          "line",
+          "line-strong",
+          "success",
+          "success-soft",
+          "surface",
+          "surface-raised",
+          "surface-sunken",
+          "text",
+          "text-faint",
+          "text-muted",
+          "warning-soft"
+        ]
+      },
+      "related": [
+        "JinshuView",
+        "JinshuDiff",
+        "JinshuOutline"
+      ],
+      "gallery": {
+        "specimen": "Specimen",
+        "tagline": "A document, edited",
+        "order": 2,
+        "page": {
+          "lead": "Use JinshuEditor to let people, and the app's agent, edit a structured document in place.",
+          "stage": "bare",
+          "hero": "Draft",
+          "variants": [
+            {
+              "name": "AskAgent",
+              "title": "Handing blocks to the app's agent"
+            },
+            {
+              "name": "ReadOnly",
+              "title": "Read-only"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "JinshuOutline",
+      "import": "@liulidesign/jinshu/JinshuOutline",
+      "exports": [
+        "JinshuOutline"
+      ],
+      "category": "documents",
+      "status": "preview",
+      "since": "2026-11-24",
+      "summary": "A Jinshu document's headings as a contents list that moves the reader and shows each section's progress",
+      "description": "JinshuOutline lists a document's headings, indented by level, as a contents list. Shared with a JinshuView or JinshuEditor through `useJinshuNav()`, pressing a heading scrolls the document to it and tints that heading as the one being read. An app can mark each section done, current or locked, as a course does.",
+      "keywords": [
+        "outline",
+        "table of contents",
+        "toc",
+        "contents",
+        "headings",
+        "navigation",
+        "sections",
+        "jinshu"
+      ],
+      "props": [
+        {
+          "name": "doc",
+          "type": "JinshuDocument",
+          "required": false,
+          "description": "The document whose headings it lists."
+        },
+        {
+          "name": "items",
+          "type": "readonly OutlineItem[]",
+          "required": false,
+          "description": "Headings taken out in Logic with `extractOutline`, in place of `doc`."
+        },
+        {
+          "name": "nav",
+          "type": "JinshuNavHandle",
+          "required": false,
+          "description": "Shared with the JinshuView or JinshuEditor it moves, from `useJinshuNav()`."
+        },
+        {
+          "name": "status",
+          "type": "Readonly<Record<string, OutlineSectionStatus>>",
+          "required": false,
+          "description": "Each section's progress by heading id: `done`, `current` or `locked`, shown at the row's end."
+        },
+        {
+          "name": "title",
+          "type": "string",
+          "required": false,
+          "description": "The outline's heading and accessible name. Defaults to \"Contents\" in the page's language."
+        },
+        {
+          "name": "onSelect",
+          "type": "((headingId: string) => void)",
+          "required": false,
+          "description": "A heading was pressed; with `nav`, the reader also scrolls to it."
+        },
+        {
+          "name": "className",
+          "type": "string",
+          "required": false,
+          "description": ""
+        },
+        {
+          "name": "data-testid",
+          "type": "string",
+          "required": false,
+          "description": ""
+        }
+      ],
+      "otherProps": {},
+      "choices": [],
+      "parts": {
+        "root": "view",
+        "title": "text",
+        "item": "button",
+        "itemText": "text",
+        "status": "text"
+      },
+      "accessibility": {
+        "pattern": null,
+        "name": "title",
+        "description": [],
+        "states": [],
+        "keyboard": [],
+        "contrast": [
+          {
+            "what": "heading",
+            "pair": [
+              "text",
+              "canvas"
+            ],
+            "minimum": "4.5:1"
+          },
+          {
+            "what": "nested heading",
+            "pair": [
+              "text-muted",
+              "canvas"
+            ],
+            "minimum": "4.5:1"
+          },
+          {
+            "what": "heading being read",
+            "pair": [
+              "accent",
+              "accent-soft"
+            ],
+            "minimum": "4.5:1"
+          },
+          {
+            "what": "done",
+            "pair": [
+              "success",
+              "canvas"
+            ],
+            "minimum": "3:1"
+          },
+          {
+            "what": "locked",
+            "pair": [
+              "text-muted",
+              "canvas"
+            ],
+            "minimum": "3:1"
+          }
+        ],
+        "notes": [
+          "Each heading is a button named by its text.",
+          "The status mark is a glyph read as it is drawn; say what done and locked mean in the page around it when it matters."
+        ]
+      },
+      "examples": [
+        {
+          "name": "Progress",
+          "title": "With each section's progress",
+          "source": "import { createDocument, heading, paragraph } from '@liulidesign/jinshu/schema';\nimport { JinshuOutline, useJinshuNav } from '@liulidesign/jinshu/JinshuOutline';\n\nconst doc = createDocument({\n  blocks: [\n    heading(1, 'Limits', 'h1'),\n    paragraph('Where a function heads.', 'p1'),\n    heading(2, 'Definition', 'h2'),\n    heading(2, 'Exercises', 'h3'),\n    heading(3, '', 'h4'),\n  ],\n});\n\n/** Headings by level, with each section's progress; the one being read is tinted. */\nexport function Progress() {\n  const nav = useJinshuNav('outline-example');\n  return <JinshuOutline doc={doc} nav={nav} status={{ h1: 'done', h2: 'current', h3: 'locked' }} data-testid=\"outline\" />;\n}"
+        },
+        {
+          "name": "BesideTheDocument",
+          "title": "Beside the document",
+          "source": "import { createDocument, heading, paragraph } from '@liulidesign/jinshu/schema';\nimport { JinshuView } from '@liulidesign/jinshu/JinshuView';\nimport { JinshuOutline, useJinshuNav } from '@liulidesign/jinshu/JinshuOutline';\n\nconst doc = createDocument({\n  blocks: [\n    heading(1, 'Limits', 'h1'),\n    paragraph('Where a function heads.', 'p1'),\n    heading(2, 'Definition', 'h2'),\n    heading(2, 'Exercises', 'h3'),\n    heading(3, '', 'h4'),\n  ],\n});\nconst guide = createDocument({\n  title: 'Onboarding guide',\n  blocks: [\n    heading(2, 'Your first day', 'g1'),\n    paragraph('Collect your badge at reception and set up your laptop with IT.', 'g1p'),\n    heading(2, 'Your first week', 'g2'),\n    paragraph('Meet your team, read the handbook and pick a starter task.', 'g2p'),\n    heading(3, 'Accounts to request', 'g3'),\n    paragraph('Email, chat, the code host and the design library.', 'g3p'),\n    heading(2, 'Your first month', 'g4'),\n    paragraph('Ship your starter task and book a check-in with your manager.', 'g4p'),\n  ],\n});\n\n/** In a side column beside the document, sharing one nav handle: pressing a heading scrolls the reader to it. */\nexport function BesideTheDocument() {\n  const nav = useJinshuNav('outline-beside');\n  return (\n    <view className=\"flex-row items-start gap-6\">\n      <JinshuOutline doc={guide} nav={nav} className=\"w-48 shrink-0\" />\n      <JinshuView doc={guide} nav={nav} className=\"grow min-w-0\" />\n    </view>\n  );\n}"
+        },
+        {
+          "name": "InPopover",
+          "title": "Behind a Contents button",
+          "source": "import { Button } from '@liulidesign/core/Button';\nimport { Popover } from '@liulidesign/core/Popover';\nimport { createDocument, heading, paragraph } from '@liulidesign/jinshu/schema';\nimport { JinshuView } from '@liulidesign/jinshu/JinshuView';\nimport { JinshuOutline, useJinshuNav } from '@liulidesign/jinshu/JinshuOutline';\n\nconst doc = createDocument({\n  blocks: [\n    heading(1, 'Limits', 'h1'),\n    paragraph('Where a function heads.', 'p1'),\n    heading(2, 'Definition', 'h2'),\n    heading(2, 'Exercises', 'h3'),\n    heading(3, '', 'h4'),\n  ],\n});\nconst guide = createDocument({\n  title: 'Onboarding guide',\n  blocks: [\n    heading(2, 'Your first day', 'g1'),\n    paragraph('Collect your badge at reception and set up your laptop with IT.', 'g1p'),\n    heading(2, 'Your first week', 'g2'),\n    paragraph('Meet your team, read the handbook and pick a starter task.', 'g2p'),\n    heading(3, 'Accounts to request', 'g3'),\n    paragraph('Email, chat, the code host and the design library.', 'g3p'),\n    heading(2, 'Your first month', 'g4'),\n    paragraph('Ship your starter task and book a check-in with your manager.', 'g4p'),\n  ],\n});\n\n/** On a phone: the outline in a popover from a Contents button, over the document. */\nexport function InPopover() {\n  const nav = useJinshuNav('outline-popover');\n  return (\n    <view className=\"gap-3\">\n      <Popover label=\"Contents\" content={<JinshuOutline doc={guide} nav={nav} title=\"On this page\" />}>\n        <Button label=\"Contents\" startIcon=\"list\" variant=\"secondary\" size=\"sm\" />\n      </Popover>\n      <JinshuView doc={guide} nav={nav} />\n    </view>\n  );\n}"
+        }
+      ],
+      "gaps": [],
+      "limits": [
+        "The tinted heading is the one last chosen; scrolling the document by hand does not move it.",
+        "A locked section stays pressable; the app decides what opening it does.",
+        "An empty document draws nothing."
+      ],
+      "theming": {
+        "classProps": [
+          {
+            "name": "className",
+            "on": "",
+            "description": ""
+          }
+        ],
+        "tokens": [
+          "--text-caption",
+          "--text-footnote",
+          "--radius-control"
+        ],
+        "roles": [
+          "accent",
+          "accent-soft",
+          "success",
+          "text",
+          "text-muted"
+        ]
+      },
+      "related": [
+        "JinshuView",
+        "JinshuEditor",
+        "Popover"
+      ],
+      "gallery": {
+        "specimen": "Specimen",
+        "tagline": "Contents, progress",
+        "order": 4,
+        "page": {
+          "lead": "Use JinshuOutline to let people see a long document's sections and move between them.",
+          "stage": "bare",
+          "hero": "Progress",
+          "inContext": [
+            {
+              "name": "BesideTheDocument",
+              "title": "Beside the document"
+            },
+            {
+              "name": "InPopover",
+              "title": "Behind a Contents button"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "JinshuView",
+      "import": "@liulidesign/jinshu/JinshuView",
+      "exports": [
+        "JinshuView"
+      ],
+      "category": "documents",
+      "status": "preview",
+      "since": "2026-11-24",
+      "summary": "A Jinshu document, read: text, media, tables and the app's own blocks, with resume and reading observations",
+      "description": "JinshuView draws a Jinshu document for reading: headings, paragraphs, lists, callouts, folds, code, formulas, tables, images, video, audio, files and the app's own `x-` blocks. It reads a document the page holds (`doc`), or follows a live one that Logic serves (`channel` and `docKey`), so an edit made elsewhere, by a person or an agent, appears as it lands. It can offer to continue where the reader stopped, open at one block, hold media to a policy, and report what was read and played through `onObserve`.",
+      "keywords": [
+        "document",
+        "reader",
+        "rich text",
+        "article",
+        "lesson",
+        "course",
+        "blocks",
+        "markdown",
+        "viewer",
+        "jinshu"
+      ],
+      "props": [
+        {
+          "name": "doc",
+          "type": "JinshuDocument | null",
+          "required": false,
+          "description": "The document, held by the page: `null` says it is unavailable, `undefined` that it is still loading. Leave it out to read a live `channel`."
+        },
+        {
+          "name": "channel",
+          "type": "JinshuChannelAction",
+          "required": false,
+          "description": "The page's `syncDoc` action, which Logic answers with `source.serve`: the reader follows the live document."
+        },
+        {
+          "name": "docKey",
+          "type": "string",
+          "required": false,
+          "description": "Which document `channel` serves."
+        },
+        {
+          "name": "nav",
+          "type": "JinshuNavHandle",
+          "required": false,
+          "description": "Shared with a `JinshuOutline` from `useJinshuNav()`: pressing a heading in the outline scrolls the reader to it."
+        },
+        {
+          "name": "resume",
+          "type": "JinshuProgress",
+          "required": false,
+          "description": "Saved progress: offers to continue at its position and resumes media where it stopped."
+        },
+        {
+          "name": "openAt",
+          "type": "string",
+          "required": false,
+          "description": "A top-level block to open at, once: where an agent's change landed (a tool result's `page`)."
+        },
+        {
+          "name": "onObserve",
+          "type": "((events: readonly Observation[]) => void)",
+          "required": false,
+          "description": "What was read and played, in batches: dwell per block, played media ranges, the reading position, events from custom blocks. Facts only; the app decides what counts as done."
+        },
+        {
+          "name": "filePolicy",
+          "type": "FilePolicy",
+          "required": false,
+          "description": "Whether files may show inline or only as attachments."
+        },
+        {
+          "name": "mediaPolicy",
+          "type": "MediaPolicy",
+          "required": false,
+          "description": "How media may be scrubbed (`any`, `played-only`, `none`) and the fastest rate offered."
+        },
+        {
+          "name": "resolveSrc",
+          "type": "((src: string) => string)",
+          "required": false,
+          "description": "Turns a block's `src` into what the page loads: a signed URL, a custom scheme."
+        },
+        {
+          "name": "customBlocks",
+          "type": "Readonly<Record<string, CustomBlockRenderer>>",
+          "required": false,
+          "description": "Renderers for the app's own block types, keyed by `x-scope-name`."
+        },
+        {
+          "name": "customInlines",
+          "type": "Readonly<Record<string, InlineAtomRenderer>>",
+          "required": false,
+          "description": "Renderers for the app's own inline atoms, keyed by `x-scope-name`."
+        },
+        {
+          "name": "hasUpdateHighlights",
+          "type": "boolean",
+          "required": false,
+          "description": "Tints the blocks a live update changed, briefly."
+        },
+        {
+          "name": "onLinkPress",
+          "type": "((info: { readonly blockId: string; readonly href: string; }) => void)",
+          "required": false,
+          "description": "A link to outside the document was pressed; in-page links scroll on their own."
+        },
+        {
+          "name": "onFileAction",
+          "type": "((info: { readonly blockId: string; readonly src: string; readonly action: \"download\"; }) => void)",
+          "required": false,
+          "description": "A file's Download was pressed; without it, the button does nothing."
+        },
+        {
+          "name": "onCopyCode",
+          "type": "((code: string, blockId: string) => void)",
+          "required": false,
+          "description": "Puts the code on the clipboard; a code block offers Copy only when set."
+        },
+        {
+          "name": "isSelectable",
+          "type": "boolean",
+          "required": false,
+          "description": "Text can be selected and copied, up to the page's budget of selectable nodes.",
+          "default": "true"
+        },
+        {
+          "name": "hasTitle",
+          "type": "boolean",
+          "required": false,
+          "description": "Shows the document's title above its blocks.",
+          "default": "true"
+        },
+        {
+          "name": "isFullWidth",
+          "type": "boolean",
+          "required": false,
+          "description": "Fills its container instead of a 65-character reading measure.",
+          "default": "false"
+        },
+        {
+          "name": "fallback",
+          "type": "Child",
+          "required": false,
+          "description": "Drawn in place of the document when it is unavailable. Defaults to one line in the page's language."
+        },
+        {
+          "name": "className",
+          "type": "string",
+          "required": false,
+          "description": ""
+        },
+        {
+          "name": "data-testid",
+          "type": "string",
+          "required": false,
+          "description": ""
+        }
+      ],
+      "otherProps": {},
+      "choices": [],
+      "parts": {
+        "root": "view",
+        "docTitle": "text",
+        "resume": "view",
+        "heading": "text",
+        "paragraph": "text",
+        "quote": "view",
+        "callout": "view",
+        "list": "view",
+        "code": "view",
+        "math": "view",
+        "table": "view",
+        "divider": "view",
+        "image": "view",
+        "video": "view",
+        "audio": "view",
+        "file": "view",
+        "columns": "view",
+        "extension": "view"
+      },
+      "accessibility": {
+        "pattern": null,
+        "name": null,
+        "description": [],
+        "states": [],
+        "keyboard": [],
+        "contrast": [
+          {
+            "what": "body text",
+            "pair": [
+              "text",
+              "canvas"
+            ],
+            "minimum": "4.5:1"
+          },
+          {
+            "what": "quote and caption",
+            "pair": [
+              "text-muted",
+              "canvas"
+            ],
+            "minimum": "4.5:1"
+          },
+          {
+            "what": "link",
+            "pair": [
+              "accent",
+              "canvas"
+            ],
+            "minimum": "4.5:1"
+          },
+          {
+            "what": "text in a tip",
+            "pair": [
+              "text",
+              "success-soft"
+            ],
+            "minimum": "4.5:1"
+          },
+          {
+            "what": "tip title",
+            "pair": [
+              "success",
+              "success-soft"
+            ],
+            "minimum": "4.5:1"
+          },
+          {
+            "what": "warning title",
+            "pair": [
+              "warning",
+              "warning-soft"
+            ],
+            "minimum": "4.5:1"
+          },
+          {
+            "what": "danger title",
+            "pair": [
+              "danger",
+              "danger-soft"
+            ],
+            "minimum": "4.5:1"
+          },
+          {
+            "what": "inline code",
+            "pair": [
+              "text",
+              "text/8"
+            ],
+            "over": "canvas",
+            "minimum": "4.5:1"
+          },
+          {
+            "what": "code line numbers",
+            "pair": [
+              "text-muted",
+              "surface-sunken"
+            ],
+            "minimum": "3:1"
+          },
+          {
+            "what": "table header",
+            "pair": [
+              "text",
+              "surface-sunken"
+            ],
+            "minimum": "4.5:1"
+          },
+          {
+            "what": "resume bar",
+            "pair": [
+              "text",
+              "accent-soft/50"
+            ],
+            "over": "canvas",
+            "minimum": "4.5:1"
+          }
+        ],
+        "notes": [
+          "The title and each heading are headings at their level, so a screen reader can move between sections.",
+          "Lists are lists of items; a task's box is a checkable item named by its text.",
+          "Images are named by `alt`, then the caption; a formula is named by its LaTeX; media controls are named by the block's title or caption.",
+          "Selection is budgeted per page: past the budget, further text renders unselectable rather than slowing the page."
+        ]
+      },
+      "examples": [
+        {
+          "name": "Lesson",
+          "title": "A lesson",
+          "source": "import { callout, codeBlock, createDocument, details, fileBlock, heading, image, list, listItem, mathBlock, paragraph, quote, run, table } from '@liulidesign/jinshu/schema';\nimport { JinshuView } from '@liulidesign/jinshu/JinshuView';\n\nconst lesson = createDocument({\n  title: 'Limits',\n  blocks: [\n    heading(2, 'What a limit says', 'h1'),\n    paragraph([run('A limit describes where a function '), run('heads', { bold: true }), run(', not where it is.')], 'p1'),\n    image('public/photos/photo-1.png', { alt: 'The sea running out to the horizon at sunset', width: 480, height: 360, caption: 'The horizon: the sea heads toward it and never arrives.', id: 'g1' }),\n    mathBlock('\\\\lim_{x \\\\to 1} \\\\frac{x^2 - 1}{x - 1} = 2', 'm1'),\n    list('task', [listItem('Read the definition', { id: 'i1', checked: true }), listItem('Try the exercises', { id: 'i2', checked: false })], { id: 'l1' }),\n    callout('tip', [paragraph('Sketch the graph first.', 'p2')], { title: 'Tip', id: 'c1' }),\n    table(['Notation', 'Read as', 'Means'], [['lim x→a f(x)', 'the limit of f at a', 'where f heads near a'], ['x→a⁺', 'from the right', 'only x greater than a']], { id: 't1' }),\n    quote([paragraph('The limit does not care what happens at the point itself.', 'q1p')], 'q1'),\n    details('Why the hollow point?', [paragraph('Dividing by x − 1 is undefined at 1, so the graph has a hole there.', 'd1p')], { id: 'd1' }),\n    codeBlock('ts', 'const f = (x: number) => x * x;\\nf(2);', { id: 'k1', filename: 'square.ts' }),\n    fileBlock('https://example.com/limits.pdf', 'limits.pdf', { pageCount: 12, sizeBytes: 482_000, id: 'f1' }),\n  ],\n});\n\n/** A lesson: text, an image with its caption, a formula, a task list, a tip, a table, a quote, a fold, code and an attachment. */\nexport function Lesson() {\n  return <JinshuView doc={lesson} data-testid=\"lesson\" />;\n}"
+        },
+        {
+          "name": "Resume",
+          "title": "Continue where the reader stopped",
+          "source": "import { callout, codeBlock, createDocument, details, fileBlock, heading, image, list, listItem, mathBlock, paragraph, quote, run, table } from '@liulidesign/jinshu/schema';\nimport { JinshuView } from '@liulidesign/jinshu/JinshuView';\n\nconst lesson = createDocument({\n  title: 'Limits',\n  blocks: [\n    heading(2, 'What a limit says', 'h1'),\n    paragraph([run('A limit describes where a function '), run('heads', { bold: true }), run(', not where it is.')], 'p1'),\n    image('public/photos/photo-1.png', { alt: 'The sea running out to the horizon at sunset', width: 480, height: 360, caption: 'The horizon: the sea heads toward it and never arrives.', id: 'g1' }),\n    mathBlock('\\\\lim_{x \\\\to 1} \\\\frac{x^2 - 1}{x - 1} = 2', 'm1'),\n    list('task', [listItem('Read the definition', { id: 'i1', checked: true }), listItem('Try the exercises', { id: 'i2', checked: false })], { id: 'l1' }),\n    callout('tip', [paragraph('Sketch the graph first.', 'p2')], { title: 'Tip', id: 'c1' }),\n    table(['Notation', 'Read as', 'Means'], [['lim x→a f(x)', 'the limit of f at a', 'where f heads near a'], ['x→a⁺', 'from the right', 'only x greater than a']], { id: 't1' }),\n    quote([paragraph('The limit does not care what happens at the point itself.', 'q1p')], 'q1'),\n    details('Why the hollow point?', [paragraph('Dividing by x − 1 is undefined at 1, so the graph has a hole there.', 'd1p')], { id: 'd1' }),\n    codeBlock('ts', 'const f = (x: number) => x * x;\\nf(2);', { id: 'k1', filename: 'square.ts' }),\n    fileBlock('https://example.com/limits.pdf', 'limits.pdf', { pageCount: 12, sizeBytes: 482_000, id: 'f1' }),\n  ],\n});\n\n/** A returning reader is offered their last position above the document. */\nexport function Resume() {\n  return <JinshuView doc={lesson} resume={{ position: { blockId: 'h1', offset: 0 }, blocks: {}, media: {} }} data-testid=\"resume\" />;\n}"
+        },
+        {
+          "name": "Course",
+          "title": "Video and audio held to a policy",
+          "source": "import { audio, createDocument, paragraph, video } from '@liulidesign/jinshu/schema';\nimport { JinshuView } from '@liulidesign/jinshu/JinshuView';\n\nconst course = createDocument({\n  title: 'Week 3: continuity',\n  blocks: [\n    paragraph('Watch the lecture before the exercise set; it unlocks once you have seen it through.', 'cp'),\n    video(clip, {\n      poster,\n      durationMs: 10_000,\n      caption: 'Lecture 3, recorded on 12 March.',\n      chapters: [{ title: 'Definition', atMs: 0 }, { title: 'Three conditions', atMs: 3_000 }, { title: 'Worked examples', atMs: 6_000 }],\n      id: 'v1',\n    }),\n    audio(clip, {\n      title: 'Recap',\n      durationMs: 10_000,\n      transcript: [paragraph('A function is continuous at a point when its limit there equals its value.', 'tr1')],\n      id: 'a1',\n    }),\n  ],\n});\n\n/** A course page whose video can only be scrubbed back over what was watched, at up to 1.5×. */\nexport function Course() {\n  return <JinshuView doc={course} mediaPolicy={{ seek: 'played-only', maxRate: 1.5 }} data-testid=\"course\" />;\n}"
+        },
+        {
+          "name": "Attachments",
+          "title": "Files, inline or attached",
+          "source": "import { Said } from '@liulidesign/core/internal/example';\nimport { createDocument, fileBlock, paragraph } from '@liulidesign/jinshu/schema';\nimport { JinshuView } from '@liulidesign/jinshu/JinshuView';\n\nconst handbook = createDocument({\n  title: 'Course handbook',\n  blocks: [\n    paragraph('Everything you need for the term, in two files.', 'hp'),\n    fileBlock('https://example.com/handbook.pdf', 'handbook.pdf', { pageCount: 36, sizeBytes: 2_400_000, display: 'inline', id: 'hf1' }),\n    fileBlock('https://example.com/timetable.xlsx', 'timetable.xlsx', { sizeBytes: 64_000, description: 'Spring term', id: 'hf2' }),\n  ],\n});\n\n/** Attachments: the app decides which files may show inline and handles the download. */\nexport function Attachments() {\n  return (\n    <Said>\n      {say => (\n        <JinshuView\n          doc={handbook}\n          filePolicy={{ default: 'attachment', inline: 'allow' }}\n          onFileAction={({ src }) => say(`Downloading ${src.split('/').pop()}`)}\n          data-testid=\"attachments\"\n        />\n      )}\n    </Said>\n  );\n}"
+        },
+        {
+          "name": "Unavailable",
+          "title": "No document",
+          "source": "import { JinshuView } from '@liulidesign/jinshu/JinshuView';\n\n/** No document: the reader says so in place of the content. */\nexport function Unavailable() {\n  return <JinshuView doc={null} data-testid=\"unavailable\" />;\n}"
+        },
+        {
+          "name": "Loading",
+          "title": "Loading",
+          "source": "import { JinshuView } from '@liulidesign/jinshu/JinshuView';\n\n/** Waiting for the document: placeholders where the title and the first blocks will be. */\nexport function Loading() {\n  return <JinshuView doc={undefined} data-testid=\"loading\" />;\n}"
+        }
+      ],
+      "gaps": [
+        {
+          "missing": "A table's header row staying in view while the page scrolls down.",
+          "needs": "a sticky box that binds to the nearest scroll on its own axis",
+          "today": "The header row scrolls with the table; it stays aligned with its columns as the table scrolls sideways."
+        }
+      ],
+      "limits": [
+        "The reader shows no change bar or review queue; an agent's changes appear in place, briefly tinted with `hasUpdateHighlights`.",
+        "`openAt` brings the block to the nearest edge of the scroll, not to its top.",
+        "It has no AI entry of its own: an agent reaches documents only through the tools the app registers with `createJinshuTools`."
+      ],
+      "theming": {
+        "classProps": [
+          {
+            "name": "className",
+            "on": "",
+            "description": ""
+          }
+        ],
+        "tokens": [
+          "--text-caption",
+          "--text-footnote",
+          "--text-body",
+          "--text-callout",
+          "--text-title",
+          "--text-display",
+          "--radius-control",
+          "--radius-container",
+          "--radius-checkbox",
+          "--radius-segment"
+        ],
+        "roles": [
+          "accent",
+          "accent-soft",
+          "accent-solid",
+          "danger",
+          "danger-soft",
+          "info",
+          "info-soft",
+          "on-accent",
+          "on-accent-solid",
+          "success",
+          "success-soft",
+          "surface",
+          "surface-sunken",
+          "text",
+          "text-faint",
+          "text-muted",
+          "warning",
+          "warning-soft"
+        ]
+      },
+      "related": [
+        "JinshuEditor",
+        "JinshuOutline",
+        "JinshuDiff",
+        "VideoControls",
+        "Lightbox"
+      ],
+      "gallery": {
+        "specimen": "Specimen",
+        "tagline": "A document, read",
+        "order": 1,
+        "page": {
+          "lead": "Use JinshuView to show a structured document for reading: a lesson, an article, a handbook.",
+          "stage": "bare",
+          "hero": "Lesson",
+          "variants": [
+            {
+              "name": "Course",
+              "title": "Video and audio held to a policy"
+            },
+            {
+              "name": "Attachments",
+              "title": "Files, inline or attached"
+            }
+          ],
+          "states": [
+            {
+              "name": "Resume",
+              "title": "Continue where the reader stopped"
+            },
+            {
+              "name": "Loading",
+              "title": "Loading"
+            },
+            {
+              "name": "Unavailable",
+              "title": "Unavailable"
+            }
+          ],
+          "statesLayout": "stack"
+        }
+      }
+    }
+  ]
+}

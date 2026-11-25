@@ -1,0 +1,929 @@
+{
+  "@jinshu.agent.edit": {
+    "defaultMessage": "《{title}》：{count} 处修改"
+  },
+  "@jinshu.agent.save": {
+    "defaultMessage": "保存《{title}》"
+  },
+  "@jinshu.agent.saveWaiting": {
+    "defaultMessage": "已请求保存《{title}》，等待确认"
+  },
+  "@jinshu.agent.suggest": {
+    "defaultMessage": "《{title}》：提出修改建议，待审阅"
+  },
+  "@jinshu.agent.suggested": {
+    "defaultMessage": "已向《{title}》提出建议，等待审阅"
+  },
+  "@jinshu.agent.undo": {
+    "defaultMessage": "《{title}》：撤销一次修改"
+  },
+  "@jinshu.agent.untitled": {
+    "defaultMessage": "未命名文档"
+  },
+  "@jinshu.blockType": {
+    "defaultMessage": "{type, select, paragraph {段落} heading {标题 {level}} quote {引用} callout {提示块} details {折叠块} list {列表} code {代码块} math {公式} table {表格} columns {分栏} divider {分割线} image {图片} video {视频} audio {音频} file {文件} other {{type}}}"
+  },
+  "@jinshu.diff.added": {
+    "defaultMessage": "新增"
+  },
+  "@jinshu.diff.addedCount": {
+    "defaultMessage": "+{count} 新增"
+  },
+  "@jinshu.diff.after": {
+    "defaultMessage": "修改后"
+  },
+  "@jinshu.diff.before": {
+    "defaultMessage": "修改前"
+  },
+  "@jinshu.diff.marksOnly": {
+    "defaultMessage": "仅行内格式变化"
+  },
+  "@jinshu.diff.modified": {
+    "defaultMessage": "修改"
+  },
+  "@jinshu.diff.modifiedCount": {
+    "defaultMessage": "~{count} 修改"
+  },
+  "@jinshu.diff.moved": {
+    "defaultMessage": "已移动 (#{from} → #{to})"
+  },
+  "@jinshu.diff.movedCount": {
+    "defaultMessage": "↕{count} 移动"
+  },
+  "@jinshu.diff.next": {
+    "defaultMessage": "下一处"
+  },
+  "@jinshu.diff.noData": {
+    "defaultMessage": "无差异数据"
+  },
+  "@jinshu.diff.position": {
+    "defaultMessage": "{index} / {count}"
+  },
+  "@jinshu.diff.previous": {
+    "defaultMessage": "上一处"
+  },
+  "@jinshu.diff.removed": {
+    "defaultMessage": "删除"
+  },
+  "@jinshu.diff.removedCount": {
+    "defaultMessage": "-{count} 删除"
+  },
+  "@jinshu.diff.showUnchanged": {
+    "defaultMessage": "展开 {count} 个未改动的块"
+  },
+  "@jinshu.diff.total": {
+    "defaultMessage": "{count, plural, =0 {无修改} other {共 {count} 处修改}}"
+  },
+  "@jinshu.editor.activity.reading": {
+    "defaultMessage": "{name} 正在阅读…"
+  },
+  "@jinshu.editor.activity.stop": {
+    "defaultMessage": "停止"
+  },
+  "@jinshu.editor.activity.writing": {
+    "defaultMessage": "{name} 正在写入…"
+  },
+  "@jinshu.editor.agent.changed": {
+    "defaultMessage": "{name} 修改了 {count} 处"
+  },
+  "@jinshu.editor.agent.changedAway": {
+    "defaultMessage": "你不在时，{name} 修改了 {count} 处"
+  },
+  "@jinshu.editor.agent.dismiss": {
+    "defaultMessage": "知道了"
+  },
+  "@jinshu.editor.agent.undo": {
+    "defaultMessage": "撤销这次修改"
+  },
+  "@jinshu.editor.agent.view": {
+    "defaultMessage": "查看"
+  },
+  "@jinshu.editor.block.addColumnButton": {
+    "defaultMessage": "新增列"
+  },
+  "@jinshu.editor.block.addRowButton": {
+    "defaultMessage": "新增行"
+  },
+  "@jinshu.editor.block.align": {
+    "defaultMessage": "{align, select, start {左对齐} center {居中} other {右对齐}}"
+  },
+  "@jinshu.editor.block.calloutBody": {
+    "defaultMessage": "提示块正文"
+  },
+  "@jinshu.editor.block.calloutBodyPlaceholder": {
+    "defaultMessage": "正文；空一行开始新段落"
+  },
+  "@jinshu.editor.block.calloutTitle": {
+    "defaultMessage": "提示块标题"
+  },
+  "@jinshu.editor.block.calloutTitlePlaceholder": {
+    "defaultMessage": "提示标题（可选）"
+  },
+  "@jinshu.editor.block.calloutTone": {
+    "defaultMessage": "{tone, select, info {信息} tip {技巧} warning {注意} other {警告}}"
+  },
+  "@jinshu.editor.block.cell": {
+    "defaultMessage": "单元格 {row}-{column}"
+  },
+  "@jinshu.editor.block.codeBody": {
+    "defaultMessage": "代码内容"
+  },
+  "@jinshu.editor.block.codeEdit": {
+    "defaultMessage": "编辑"
+  },
+  "@jinshu.editor.block.codeFilename": {
+    "defaultMessage": "文件名"
+  },
+  "@jinshu.editor.block.codeFilenamePlaceholder": {
+    "defaultMessage": "filename（可选）"
+  },
+  "@jinshu.editor.block.codeLanguage": {
+    "defaultMessage": "编程语言"
+  },
+  "@jinshu.editor.block.codeLanguagePlaceholder": {
+    "defaultMessage": "lang"
+  },
+  "@jinshu.editor.block.column": {
+    "defaultMessage": "第 {index} 列"
+  },
+  "@jinshu.editor.block.deleteColumn": {
+    "defaultMessage": "删除列"
+  },
+  "@jinshu.editor.block.deleteRow": {
+    "defaultMessage": "删除行"
+  },
+  "@jinshu.editor.block.detailsBody": {
+    "defaultMessage": "折叠块内容"
+  },
+  "@jinshu.editor.block.detailsBodyPlaceholder": {
+    "defaultMessage": "折叠内容；空一行开始新段落"
+  },
+  "@jinshu.editor.block.detailsSummary": {
+    "defaultMessage": "折叠块摘要"
+  },
+  "@jinshu.editor.block.detailsSummaryPlaceholder": {
+    "defaultMessage": "折叠标题"
+  },
+  "@jinshu.editor.block.detailsToggle": {
+    "defaultMessage": "展开或收起内容"
+  },
+  "@jinshu.editor.block.done": {
+    "defaultMessage": "完成"
+  },
+  "@jinshu.editor.block.editCallout": {
+    "defaultMessage": "编辑提示块 {id}"
+  },
+  "@jinshu.editor.block.editCell": {
+    "defaultMessage": "编辑单元格 {row}-{column}"
+  },
+  "@jinshu.editor.block.editColumnBlock": {
+    "defaultMessage": "编辑分栏块 {id}"
+  },
+  "@jinshu.editor.block.editHeaderCell": {
+    "defaultMessage": "编辑表头 {column}"
+  },
+  "@jinshu.editor.block.editInColumn": {
+    "defaultMessage": "编辑分栏内 {type}"
+  },
+  "@jinshu.editor.block.editItem": {
+    "defaultMessage": "编辑列表项 {index}"
+  },
+  "@jinshu.editor.block.editQuote": {
+    "defaultMessage": "编辑引用块 {id}"
+  },
+  "@jinshu.editor.block.emptyItem": {
+    "defaultMessage": "空列表项（点击输入）"
+  },
+  "@jinshu.editor.block.fileDescription": {
+    "defaultMessage": "文件说明"
+  },
+  "@jinshu.editor.block.fileDescriptionPlaceholder": {
+    "defaultMessage": "一句话说明（可选）"
+  },
+  "@jinshu.editor.block.fileDisplay": {
+    "defaultMessage": "{display, select, attachment {附件卡片} other {内嵌预览}}"
+  },
+  "@jinshu.editor.block.fileDisplayLabel": {
+    "defaultMessage": "展示："
+  },
+  "@jinshu.editor.block.headerCell": {
+    "defaultMessage": "表头列 {column}"
+  },
+  "@jinshu.editor.block.headerPlaceholder": {
+    "defaultMessage": "表头"
+  },
+  "@jinshu.editor.block.headerRow": {
+    "defaultMessage": "表头行"
+  },
+  "@jinshu.editor.block.imageAlt": {
+    "defaultMessage": "替代文本 (alt)"
+  },
+  "@jinshu.editor.block.imageCaption": {
+    "defaultMessage": "图片题注"
+  },
+  "@jinshu.editor.block.imageCaptionPlaceholder": {
+    "defaultMessage": "题注（支持 **粗体** 等行内格式）"
+  },
+  "@jinshu.editor.block.imageSize": {
+    "defaultMessage": "{size, select, small {小} medium {中} other {通栏}}"
+  },
+  "@jinshu.editor.block.imageSizeLabel": {
+    "defaultMessage": "尺寸："
+  },
+  "@jinshu.editor.block.insertAbove": {
+    "defaultMessage": "上插"
+  },
+  "@jinshu.editor.block.insertBelow": {
+    "defaultMessage": "下插"
+  },
+  "@jinshu.editor.block.insertLeft": {
+    "defaultMessage": "左插"
+  },
+  "@jinshu.editor.block.insertRight": {
+    "defaultMessage": "右插"
+  },
+  "@jinshu.editor.block.itemPlaceholder": {
+    "defaultMessage": "输入列表项…"
+  },
+  "@jinshu.editor.block.keptChildren": {
+    "defaultMessage": "另有 {count} 个嵌套块（列表/代码/公式等）保持不变"
+  },
+  "@jinshu.editor.block.listHint": {
+    "defaultMessage": "空项回车退出列表"
+  },
+  "@jinshu.editor.block.listStyle": {
+    "defaultMessage": "{style, select, bullet {无序} ordered {有序} other {任务}}"
+  },
+  "@jinshu.editor.block.mediaName": {
+    "defaultMessage": "{type, select, video {视频题注} audio {音频标题} other {文件名}}"
+  },
+  "@jinshu.editor.block.moveDown": {
+    "defaultMessage": "下移"
+  },
+  "@jinshu.editor.block.moveLeft": {
+    "defaultMessage": "左移"
+  },
+  "@jinshu.editor.block.moveRight": {
+    "defaultMessage": "右移"
+  },
+  "@jinshu.editor.block.moveUp": {
+    "defaultMessage": "上移"
+  },
+  "@jinshu.editor.block.quoteBody": {
+    "defaultMessage": "引用内容"
+  },
+  "@jinshu.editor.block.quoteBodyPlaceholder": {
+    "defaultMessage": "引用内容；空一行开始新段落"
+  },
+  "@jinshu.editor.block.removeItem": {
+    "defaultMessage": "删项"
+  },
+  "@jinshu.editor.block.row": {
+    "defaultMessage": "第 {index} 行"
+  },
+  "@jinshu.editor.block.selectColumn": {
+    "defaultMessage": "选中第 {index} 列"
+  },
+  "@jinshu.editor.block.selectHeaderRow": {
+    "defaultMessage": "选中表头行"
+  },
+  "@jinshu.editor.block.selectRow": {
+    "defaultMessage": "选中第 {index} 行"
+  },
+  "@jinshu.editor.block.taskItem": {
+    "defaultMessage": "任务项"
+  },
+  "@jinshu.editor.blockMenu": {
+    "defaultMessage": "块操作菜单"
+  },
+  "@jinshu.editor.blockMenu.askAgent": {
+    "defaultMessage": "问助手"
+  },
+  "@jinshu.editor.blockMenu.delete": {
+    "defaultMessage": "删除块"
+  },
+  "@jinshu.editor.blockMenu.detailsStart": {
+    "defaultMessage": "{open, select, yes {默认收起} other {默认展开}}"
+  },
+  "@jinshu.editor.blockMenu.duplicate": {
+    "defaultMessage": "复制块"
+  },
+  "@jinshu.editor.blockMenu.moveDown": {
+    "defaultMessage": "下移一块"
+  },
+  "@jinshu.editor.blockMenu.moveUp": {
+    "defaultMessage": "上移一块"
+  },
+  "@jinshu.editor.blockMenu.properties": {
+    "defaultMessage": "编辑属性"
+  },
+  "@jinshu.editor.blockMenu.turnInto": {
+    "defaultMessage": "转换为"
+  },
+  "@jinshu.editor.blockType.audio": {
+    "defaultMessage": "音频"
+  },
+  "@jinshu.editor.blockType.bullet": {
+    "defaultMessage": "无序列表"
+  },
+  "@jinshu.editor.blockType.callout": {
+    "defaultMessage": "提示块"
+  },
+  "@jinshu.editor.blockType.code": {
+    "defaultMessage": "代码块"
+  },
+  "@jinshu.editor.blockType.columns": {
+    "defaultMessage": "分栏"
+  },
+  "@jinshu.editor.blockType.details": {
+    "defaultMessage": "折叠块"
+  },
+  "@jinshu.editor.blockType.divider": {
+    "defaultMessage": "分割线"
+  },
+  "@jinshu.editor.blockType.file": {
+    "defaultMessage": "附件"
+  },
+  "@jinshu.editor.blockType.heading": {
+    "defaultMessage": "标题 {level}"
+  },
+  "@jinshu.editor.blockType.image": {
+    "defaultMessage": "图片"
+  },
+  "@jinshu.editor.blockType.math": {
+    "defaultMessage": "公式"
+  },
+  "@jinshu.editor.blockType.ordered": {
+    "defaultMessage": "有序列表"
+  },
+  "@jinshu.editor.blockType.paragraph": {
+    "defaultMessage": "正文"
+  },
+  "@jinshu.editor.blockType.quote": {
+    "defaultMessage": "引用"
+  },
+  "@jinshu.editor.blockType.table": {
+    "defaultMessage": "表格"
+  },
+  "@jinshu.editor.blockType.task": {
+    "defaultMessage": "任务列表"
+  },
+  "@jinshu.editor.blockType.video": {
+    "defaultMessage": "视频"
+  },
+  "@jinshu.editor.conflict.copy": {
+    "defaultMessage": "另存为副本"
+  },
+  "@jinshu.editor.conflict.mine": {
+    "defaultMessage": "保留我的（覆盖）"
+  },
+  "@jinshu.editor.conflict.theirs": {
+    "defaultMessage": "采用对方"
+  },
+  "@jinshu.editor.done": {
+    "defaultMessage": "完成"
+  },
+  "@jinshu.editor.edit.block": {
+    "defaultMessage": "编辑块 {id}"
+  },
+  "@jinshu.editor.edit.source": {
+    "defaultMessage": "编辑 {type}"
+  },
+  "@jinshu.editor.find.close": {
+    "defaultMessage": "关闭查找"
+  },
+  "@jinshu.editor.find.count": {
+    "defaultMessage": "{count} 处"
+  },
+  "@jinshu.editor.find.field": {
+    "defaultMessage": "查找文本"
+  },
+  "@jinshu.editor.find.placeholder": {
+    "defaultMessage": "查找"
+  },
+  "@jinshu.editor.find.replaceAll": {
+    "defaultMessage": "全部替换"
+  },
+  "@jinshu.editor.find.replaceWith": {
+    "defaultMessage": "替换为"
+  },
+  "@jinshu.editor.find.toggle": {
+    "defaultMessage": "查找与替换"
+  },
+  "@jinshu.editor.format.bold": {
+    "defaultMessage": "粗体"
+  },
+  "@jinshu.editor.format.code": {
+    "defaultMessage": "行内代码"
+  },
+  "@jinshu.editor.format.highlight": {
+    "defaultMessage": "高亮"
+  },
+  "@jinshu.editor.format.italic": {
+    "defaultMessage": "斜体"
+  },
+  "@jinshu.editor.format.strike": {
+    "defaultMessage": "删除线"
+  },
+  "@jinshu.editor.format.subscript": {
+    "defaultMessage": "下标"
+  },
+  "@jinshu.editor.format.superscript": {
+    "defaultMessage": "上标"
+  },
+  "@jinshu.editor.format.toolbar": {
+    "defaultMessage": "格式工具栏"
+  },
+  "@jinshu.editor.format.turnInto": {
+    "defaultMessage": "转换块类型"
+  },
+  "@jinshu.editor.format.underline": {
+    "defaultMessage": "下划线"
+  },
+  "@jinshu.editor.heading.placeholder": {
+    "defaultMessage": "输入标题…"
+  },
+  "@jinshu.editor.history": {
+    "defaultMessage": "修改记录"
+  },
+  "@jinshu.editor.history.empty": {
+    "defaultMessage": "还没有修改"
+  },
+  "@jinshu.editor.history.entry": {
+    "defaultMessage": "修改 {count} 块"
+  },
+  "@jinshu.editor.history.titleCount": {
+    "defaultMessage": "修改记录 · {count}"
+  },
+  "@jinshu.editor.insert": {
+    "defaultMessage": "插入"
+  },
+  "@jinshu.editor.insert.below": {
+    "defaultMessage": "在下方插入块"
+  },
+  "@jinshu.editor.insert.block": {
+    "defaultMessage": "插入块"
+  },
+  "@jinshu.editor.insert.blocks": {
+    "defaultMessage": "块"
+  },
+  "@jinshu.editor.insert.media": {
+    "defaultMessage": "媒体"
+  },
+  "@jinshu.editor.insert.tableSize": {
+    "defaultMessage": "插入 {rows} 行 {columns} 列表格"
+  },
+  "@jinshu.editor.leave.description": {
+    "defaultMessage": "离开当前页面将保留本地草稿，是否直接离开？"
+  },
+  "@jinshu.editor.leave.discard": {
+    "defaultMessage": "不保存离开"
+  },
+  "@jinshu.editor.leave.save": {
+    "defaultMessage": "保存并离开"
+  },
+  "@jinshu.editor.leave.stay": {
+    "defaultMessage": "继续编辑"
+  },
+  "@jinshu.editor.leave.title": {
+    "defaultMessage": "有未保存的修改"
+  },
+  "@jinshu.editor.link.address": {
+    "defaultMessage": "链接地址"
+  },
+  "@jinshu.editor.link.addressPlaceholder": {
+    "defaultMessage": "https://… 或 #章节"
+  },
+  "@jinshu.editor.link.insert": {
+    "defaultMessage": "插入链接"
+  },
+  "@jinshu.editor.link.sections": {
+    "defaultMessage": "本文章节"
+  },
+  "@jinshu.editor.link.text": {
+    "defaultMessage": "链接文字"
+  },
+  "@jinshu.editor.link.textPlaceholder": {
+    "defaultMessage": "显示的文字"
+  },
+  "@jinshu.editor.link.title": {
+    "defaultMessage": "链接"
+  },
+  "@jinshu.editor.loading": {
+    "defaultMessage": "正在加载文档…"
+  },
+  "@jinshu.editor.math.block": {
+    "defaultMessage": "独立成块"
+  },
+  "@jinshu.editor.math.editPlaceholder": {
+    "defaultMessage": "输入 LaTeX 公式，例如 {example}"
+  },
+  "@jinshu.editor.math.hint": {
+    "defaultMessage": "上方实时预览排版 · 按 Esc 完成"
+  },
+  "@jinshu.editor.math.inline": {
+    "defaultMessage": "行内"
+  },
+  "@jinshu.editor.math.insert": {
+    "defaultMessage": "插入公式"
+  },
+  "@jinshu.editor.math.source": {
+    "defaultMessage": "LaTeX 公式源码"
+  },
+  "@jinshu.editor.math.sourcePlaceholder": {
+    "defaultMessage": "LaTeX，如 {example}"
+  },
+  "@jinshu.editor.object.delete": {
+    "defaultMessage": "删除"
+  },
+  "@jinshu.editor.object.moveDown": {
+    "defaultMessage": "下移"
+  },
+  "@jinshu.editor.object.moveUp": {
+    "defaultMessage": "上移"
+  },
+  "@jinshu.editor.origin.via": {
+    "defaultMessage": "{name}（经 {via}）"
+  },
+  "@jinshu.editor.origin.you": {
+    "defaultMessage": "你"
+  },
+  "@jinshu.editor.queue.conflict": {
+    "defaultMessage": "服务端已有更新的版本"
+  },
+  "@jinshu.editor.queue.count": {
+    "defaultMessage": "{count} 项待你处理"
+  },
+  "@jinshu.editor.queue.downgraded.focus": {
+    "defaultMessage": "你正在编辑此处，已改为建议"
+  },
+  "@jinshu.editor.queue.downgraded.large": {
+    "defaultMessage": "改动较大，已改为建议"
+  },
+  "@jinshu.editor.queue.next": {
+    "defaultMessage": "下一项"
+  },
+  "@jinshu.editor.queue.previous": {
+    "defaultMessage": "上一项"
+  },
+  "@jinshu.editor.queue.save": {
+    "defaultMessage": "{name} 请求保存"
+  },
+  "@jinshu.editor.queue.save.confirm": {
+    "defaultMessage": "保存"
+  },
+  "@jinshu.editor.queue.save.decline": {
+    "defaultMessage": "不保存"
+  },
+  "@jinshu.editor.queue.suggestion": {
+    "defaultMessage": "{name} 建议：{note}"
+  },
+  "@jinshu.editor.redo": {
+    "defaultMessage": "重做"
+  },
+  "@jinshu.editor.review.acceptAll": {
+    "defaultMessage": "全部接受"
+  },
+  "@jinshu.editor.review.rejectAll": {
+    "defaultMessage": "全部拒绝"
+  },
+  "@jinshu.editor.review.show": {
+    "defaultMessage": "查看"
+  },
+  "@jinshu.editor.save": {
+    "defaultMessage": "保存"
+  },
+  "@jinshu.editor.save.failed": {
+    "defaultMessage": "保存失败"
+  },
+  "@jinshu.editor.save.retry": {
+    "defaultMessage": "重试保存"
+  },
+  "@jinshu.editor.save.saved": {
+    "defaultMessage": "已保存"
+  },
+  "@jinshu.editor.save.saving": {
+    "defaultMessage": "保存中…"
+  },
+  "@jinshu.editor.save.unsaved": {
+    "defaultMessage": "未保存"
+  },
+  "@jinshu.editor.seed.calloutBody": {
+    "defaultMessage": "补充说明"
+  },
+  "@jinshu.editor.seed.calloutText": {
+    "defaultMessage": "提示内容"
+  },
+  "@jinshu.editor.seed.calloutTitle": {
+    "defaultMessage": "提示"
+  },
+  "@jinshu.editor.seed.column": {
+    "defaultMessage": "列 {column}"
+  },
+  "@jinshu.editor.seed.columnEnd": {
+    "defaultMessage": "右栏内容"
+  },
+  "@jinshu.editor.seed.columnStart": {
+    "defaultMessage": "左栏内容"
+  },
+  "@jinshu.editor.seed.detailsBody": {
+    "defaultMessage": "在此编写解题步骤或补充说明…"
+  },
+  "@jinshu.editor.seed.detailsSummary": {
+    "defaultMessage": "点击展开详细解析"
+  },
+  "@jinshu.editor.seed.firstItem": {
+    "defaultMessage": "第一项"
+  },
+  "@jinshu.editor.seed.linkText": {
+    "defaultMessage": "链接文字"
+  },
+  "@jinshu.editor.seed.listItem": {
+    "defaultMessage": "列表项"
+  },
+  "@jinshu.editor.seed.quote": {
+    "defaultMessage": "引用内容"
+  },
+  "@jinshu.editor.seed.task": {
+    "defaultMessage": "待办事项"
+  },
+  "@jinshu.editor.seed.text": {
+    "defaultMessage": "文本"
+  },
+  "@jinshu.editor.selection.clear": {
+    "defaultMessage": "取消选中"
+  },
+  "@jinshu.editor.selection.preview": {
+    "defaultMessage": "预览"
+  },
+  "@jinshu.editor.selection.replace": {
+    "defaultMessage": "替换"
+  },
+  "@jinshu.editor.selection.select": {
+    "defaultMessage": "选中块"
+  },
+  "@jinshu.editor.selection.toolbar": {
+    "defaultMessage": "选中的块"
+  },
+  "@jinshu.editor.slash.hint": {
+    "defaultMessage": "选择要插入的块类型（↑↓ 选择 · Enter 插入）"
+  },
+  "@jinshu.editor.slash.matching": {
+    "defaultMessage": "匹配「/{query}」（↑↓ 选择 · Enter 插入）"
+  },
+  "@jinshu.editor.suggestion.accept": {
+    "defaultMessage": "接受"
+  },
+  "@jinshu.editor.suggestion.reject": {
+    "defaultMessage": "拒绝"
+  },
+  "@jinshu.editor.suggestion.stale": {
+    "defaultMessage": "原文已变，只能拒绝"
+  },
+  "@jinshu.editor.suggestion.untitled": {
+    "defaultMessage": "建议修改"
+  },
+  "@jinshu.editor.suggestion.wholeBlock": {
+    "defaultMessage": "（整块）"
+  },
+  "@jinshu.editor.text.placeholder": {
+    "defaultMessage": "输入内容，或输入 / 呼出块菜单…"
+  },
+  "@jinshu.editor.title": {
+    "defaultMessage": "文档标题"
+  },
+  "@jinshu.editor.title.edit": {
+    "defaultMessage": "编辑文档标题"
+  },
+  "@jinshu.editor.title.untitled": {
+    "defaultMessage": "无标题文档"
+  },
+  "@jinshu.editor.toolbar": {
+    "defaultMessage": "文档编辑工具栏"
+  },
+  "@jinshu.editor.trailing": {
+    "defaultMessage": "在末尾继续写作"
+  },
+  "@jinshu.editor.trailing.hint": {
+    "defaultMessage": "点击此处继续写作，或输入 / 插入新块…"
+  },
+  "@jinshu.editor.undo": {
+    "defaultMessage": "撤销"
+  },
+  "@jinshu.editor.uploading": {
+    "defaultMessage": "上传中"
+  },
+  "@jinshu.note.accepted": {
+    "defaultMessage": "接受了 {name} 的建议"
+  },
+  "@jinshu.note.columnAlign": {
+    "defaultMessage": "调整列对齐"
+  },
+  "@jinshu.note.columnBack": {
+    "defaultMessage": "前移列"
+  },
+  "@jinshu.note.columnDelete": {
+    "defaultMessage": "删除列"
+  },
+  "@jinshu.note.columnForward": {
+    "defaultMessage": "后移列"
+  },
+  "@jinshu.note.columnInsert": {
+    "defaultMessage": "插入列"
+  },
+  "@jinshu.note.custom": {
+    "defaultMessage": "更新扩展块"
+  },
+  "@jinshu.note.delete": {
+    "defaultMessage": "删除块"
+  },
+  "@jinshu.note.detailsStart": {
+    "defaultMessage": "更改了折叠块的默认状态"
+  },
+  "@jinshu.note.duplicate": {
+    "defaultMessage": "复制块"
+  },
+  "@jinshu.note.editCallout": {
+    "defaultMessage": "编辑提示块"
+  },
+  "@jinshu.note.editCode": {
+    "defaultMessage": "编辑代码块"
+  },
+  "@jinshu.note.editDetails": {
+    "defaultMessage": "编辑折叠块"
+  },
+  "@jinshu.note.editQuote": {
+    "defaultMessage": "编辑引用"
+  },
+  "@jinshu.note.imageProps": {
+    "defaultMessage": "更新图片属性"
+  },
+  "@jinshu.note.insert": {
+    "defaultMessage": "插入{kind, select, paragraph {正文} heading {标题 {level}} bullet {无序列表} ordered {有序列表} task {任务列表} list {列表} quote {引用} callout {提示块} details {折叠块} columns {分栏} code {代码块} math {公式} table {表格} divider {分割线} image {图片} video {视频} audio {音频} file {文件} other {块}}"
+  },
+  "@jinshu.note.insertText": {
+    "defaultMessage": "插入内容"
+  },
+  "@jinshu.note.listExit": {
+    "defaultMessage": "退出列表"
+  },
+  "@jinshu.note.listItemDelete": {
+    "defaultMessage": "删除列表项"
+  },
+  "@jinshu.note.listStyle": {
+    "defaultMessage": "切换列表样式"
+  },
+  "@jinshu.note.mediaProps": {
+    "defaultMessage": "更新媒体属性"
+  },
+  "@jinshu.note.moveDown": {
+    "defaultMessage": "下移块"
+  },
+  "@jinshu.note.moveUp": {
+    "defaultMessage": "上移块"
+  },
+  "@jinshu.note.replace": {
+    "defaultMessage": "替换「{text}」"
+  },
+  "@jinshu.note.rowDelete": {
+    "defaultMessage": "删除行"
+  },
+  "@jinshu.note.rowDown": {
+    "defaultMessage": "下移行"
+  },
+  "@jinshu.note.rowInsert": {
+    "defaultMessage": "插入行"
+  },
+  "@jinshu.note.rowUp": {
+    "defaultMessage": "上移行"
+  },
+  "@jinshu.note.streamStopped": {
+    "defaultMessage": "停止前已写好的内容"
+  },
+  "@jinshu.note.tableCell": {
+    "defaultMessage": "编辑单元格"
+  },
+  "@jinshu.note.tableHeader": {
+    "defaultMessage": "编辑表头"
+  },
+  "@jinshu.note.taskToggle": {
+    "defaultMessage": "切换任务"
+  },
+  "@jinshu.note.title": {
+    "defaultMessage": "修改文档标题"
+  },
+  "@jinshu.note.turnInto": {
+    "defaultMessage": "转为{kind, select, paragraph {正文} heading {标题 {level}} bullet {无序列表} ordered {有序列表} task {任务列表} list {列表} quote {引用} callout {提示块} details {折叠块} columns {分栏} code {代码块} math {公式} table {表格} divider {分割线} image {图片} video {视频} audio {音频} file {文件} other {块}}"
+  },
+  "@jinshu.outline.title": {
+    "defaultMessage": "目录"
+  },
+  "@jinshu.outline.untitled": {
+    "defaultMessage": "(Untitled)"
+  },
+  "@jinshu.view.audio.blocked": {
+    "defaultMessage": "音频地址受安全策略拦截"
+  },
+  "@jinshu.view.audio.label": {
+    "defaultMessage": "音频"
+  },
+  "@jinshu.view.audio.pause": {
+    "defaultMessage": "暂停 {title}"
+  },
+  "@jinshu.view.audio.play": {
+    "defaultMessage": "播放 {title}"
+  },
+  "@jinshu.view.audio.progress": {
+    "defaultMessage": "{title} 进度"
+  },
+  "@jinshu.view.audio.rate": {
+    "defaultMessage": "切换音频倍速"
+  },
+  "@jinshu.view.audio.transcript": {
+    "defaultMessage": "查看文字稿"
+  },
+  "@jinshu.view.code.copied": {
+    "defaultMessage": "已复制"
+  },
+  "@jinshu.view.code.copy": {
+    "defaultMessage": "复制"
+  },
+  "@jinshu.view.code.plainText": {
+    "defaultMessage": "text"
+  },
+  "@jinshu.view.details": {
+    "defaultMessage": "详情"
+  },
+  "@jinshu.view.extensionFailed": {
+    "defaultMessage": "扩展块渲染异常 ({type})"
+  },
+  "@jinshu.view.file.download": {
+    "defaultMessage": "下载"
+  },
+  "@jinshu.view.file.inline": {
+    "defaultMessage": "内嵌"
+  },
+  "@jinshu.view.file.pages": {
+    "defaultMessage": "{count} 页"
+  },
+  "@jinshu.view.fromStart": {
+    "defaultMessage": "从头读"
+  },
+  "@jinshu.view.image.blocked": {
+    "defaultMessage": "图片地址受安全策略拦截"
+  },
+  "@jinshu.view.image.failed": {
+    "defaultMessage": "图片加载失败"
+  },
+  "@jinshu.view.image.open": {
+    "defaultMessage": "查看图片"
+  },
+  "@jinshu.view.image.preview": {
+    "defaultMessage": "图片预览"
+  },
+  "@jinshu.view.images": {
+    "defaultMessage": "文档图片浏览"
+  },
+  "@jinshu.view.imagesOf": {
+    "defaultMessage": "{title} 图片浏览"
+  },
+  "@jinshu.view.media.buffering": {
+    "defaultMessage": "缓冲中…"
+  },
+  "@jinshu.view.media.cannotPlay": {
+    "defaultMessage": "无法播放"
+  },
+  "@jinshu.view.media.notPlayedYet": {
+    "defaultMessage": "尚未播放到这里"
+  },
+  "@jinshu.view.resume": {
+    "defaultMessage": "继续阅读"
+  },
+  "@jinshu.view.resumeAt": {
+    "defaultMessage": "上次读到「{heading}」"
+  },
+  "@jinshu.view.resumeHere": {
+    "defaultMessage": "上次读到这里"
+  },
+  "@jinshu.view.retry": {
+    "defaultMessage": "重试"
+  },
+  "@jinshu.view.task": {
+    "defaultMessage": "任务项"
+  },
+  "@jinshu.view.unavailable": {
+    "defaultMessage": "文档暂不可用"
+  },
+  "@jinshu.view.video.blocked": {
+    "defaultMessage": "视频地址受安全策略拦截"
+  },
+  "@jinshu.view.video.label": {
+    "defaultMessage": "视频"
+  },
+  "@jinshu.view.video.playedOnly": {
+    "defaultMessage": "本视频只能拖动到已看过的位置"
+  },
+  "@jinshu.editor.suggestion.formatOnly": {
+    "defaultMessage": "只改格式"
+  }
+}

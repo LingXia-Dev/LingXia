@@ -1,0 +1,49 @@
+{
+  "name": "@liulidesign/jinshu",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Jinshu (锦书): AI-native structured block document model, renderer, source, and editor for LingXia GPU pages.",
+  "type": "module",
+  "sideEffects": false,
+  "files": [
+    "src",
+    "!src/**/*.test.mjs",
+    "!src/**/*.doc.ts",
+    "!src/**/*.examples.tsx",
+    "!src/testing",
+    "messages",
+    "tokens.css",
+    "docs",
+    "catalog.json"
+  ],
+  "lingxia": {
+    "catalog": "./catalog.json",
+    "messages": "./messages/en.json",
+    "tokens": "./tokens.css"
+  },
+  "exports": {
+    "./JinshuView": "./src/JinshuView/JinshuView.tsx",
+    "./JinshuView/recipe": "./src/JinshuView/JinshuView.recipe.ts",
+    "./JinshuOutline": "./src/JinshuOutline/JinshuOutline.tsx",
+    "./JinshuOutline/recipe": "./src/JinshuOutline/JinshuOutline.recipe.ts",
+    "./JinshuDiff": "./src/JinshuDiff/JinshuDiff.tsx",
+    "./JinshuDiff/recipe": "./src/JinshuDiff/JinshuDiff.recipe.ts",
+    "./JinshuEditor": "./src/JinshuEditor/JinshuEditor.tsx",
+    "./JinshuEditor/recipe": "./src/JinshuEditor/JinshuEditor.recipe.ts",
+    "./schema": "./src/schema/index.ts",
+    "./source": "./src/source/index.ts",
+    "./catalog.json": "./catalog.json",
+    "./package.json": "./package.json",
+    "./docs/*": "./docs/*"
+  },
+  "scripts": {
+    "test": "node --import ./scripts/ts-resolve.mjs --test \"src/**/*.test.mjs\"",
+    "check": "node ../core/scripts/check.mjs . && node ../core/scripts/generate.mjs . --check && node scripts/words.mjs --check && node --import ./scripts/ts-resolve.mjs scripts/format-doc.mjs --check && tsc --noEmit -p tsconfig.json",
+    "generate": "node scripts/words.mjs && node ../core/scripts/generate.mjs . && node --import ./scripts/ts-resolve.mjs scripts/format-doc.mjs",
+    "typecheck": "tsc --noEmit -p tsconfig.json"
+  },
+  "peerDependencies": {
+    "@lingxia/view": ">=0.30.0",
+    "@liulidesign/core": ">=0.1.0"
+  }
+}
