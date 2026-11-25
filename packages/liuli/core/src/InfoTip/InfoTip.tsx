@@ -44,7 +44,6 @@ export function InfoTip({ label, content, placement = 'top', size = 'md', isOpen
         popoverTarget={id}
         aria-label={label}
         aria-describedby={open ? textId : undefined}
-        aria-expanded={open}
         data-state={open ? 'open' : 'closed'}
         data-testid={testId} {...dataOf(attributes)}
         className={cx(r.trigger.base, r.trigger.size[size], className)}

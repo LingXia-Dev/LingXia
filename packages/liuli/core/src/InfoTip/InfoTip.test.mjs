@@ -7,6 +7,7 @@ test('Storage: a named info button; a press opens a tooltip note that then descr
   const trigger = screen.getByTestId('storage');
   assert.equal(trigger.tag, 'button');
   assert.equal(trigger.props.accessibilityLabel, 'About storage');
+  // Expanded comes from the popover's own state, not a prop.
   assert.equal(trigger.props.stateExpanded, 0);
   assert.equal(screen.queryAll(node => node.testId === 'storage-content').length, 0);
   screen.press(trigger);
