@@ -89,7 +89,7 @@ fn fake_environment() -> FrameEnvironment {
         width: 200,
         height: 400,
         scale: 2.0,
-        os: "test".into(),
+        os: "unknown".into(),
         smallest_width: 100.0,
         locale: "en".into(),
         animation_scale: 1.0,

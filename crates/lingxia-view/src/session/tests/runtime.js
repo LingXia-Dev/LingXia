@@ -2113,7 +2113,8 @@
   }
   function sheetNode(env) {
     const sheet = sheets[0];
-    const phone = (env?.formFactor ?? "phone") === "phone";
+    const compact = (env?.sizeClass ?? "compact") === "compact" || (env?.viewport?.height ?? 0) < 600;
+    const bottom = compact && env?.pointer !== "fine";
     const item = (testId, label2, index, color) => h("button", { "data-testid": testId, onClick: () => settleSheet(index), style: {
       paddingTop: 14,
       paddingBottom: 14,
@@ -2121,7 +2122,7 @@
       color,
       fontSize: 17
     } }, label2);
-    const place = phone ? { marginTop: "auto", marginBottom: 8, marginLeft: 8, marginRight: 8 } : { width: 320 };
+    const place = bottom ? { marginTop: "auto", marginBottom: 8, marginLeft: 8, marginRight: 8 } : { width: 320 };
     return h(
       "dialog",
       {

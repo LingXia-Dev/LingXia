@@ -65,7 +65,6 @@ export function ScreenFacts() {
       <view className={row}>
         <text className={name}>{t(labels.envDevice)}</text>
         <Readout testId="lab-env-os" state={env.os}>{env.os}</Readout>
-        <Readout testId="lab-env-form-factor" state={env.formFactor}>{env.formFactor}</Readout>
         <Readout testId="lab-env-pointer" state={env.pointer}>{env.pointer}</Readout>
       </view>
       <view className={row}>

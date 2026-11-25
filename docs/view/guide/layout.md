@@ -138,6 +138,10 @@ The same holds for `env.viewport` and `env.sizeClass`: lay out from them in the 
 pass the size on with `setData`: the View already has it, and the copy arrives after a `setData` round
 trip and renders the page again.
 
+`sizeClass` changes 24 pixels past 600 on either side (compact holds until 624, regular until below
+576), so near the edge it can disagree with `min-[600px]:`. Use `sizeClass` for structure and
+`min-[…]:` for spacing and type.
+
 The exception is a `<scroll>` or `<List>` that is the page's last child: it runs to the bottom edge,
 under the tab bar and the gesture area, so a translucent bar shows the content scrolling beneath it.
 The bottom inset becomes its own end padding instead, so its last row still scrolls clear, and a

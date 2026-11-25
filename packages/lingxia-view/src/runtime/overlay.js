@@ -163,11 +163,13 @@ function modalNode(env) {
 
 function sheetNode(env) {
   const sheet = sheets[0];
-  const phone = (env?.formFactor ?? 'phone') === 'phone';
+  // Either side compact under touch: a phone in landscape has compact height, as on iOS.
+  const compact = (env?.sizeClass ?? 'compact') === 'compact' || (env?.viewport?.height ?? 0) < 600;
+  const bottom = compact && env?.pointer !== 'fine';
   const item = (testId, label, index, color) => h('button', { 'data-testid': testId, onClick: () => settleSheet(index), style: {
     paddingTop: 14, paddingBottom: 14, backgroundColor: 'transparent', color, fontSize: 17 } }, label);
-  // A sheet at the bottom on phones, a centred card elsewhere; a backdrop tap cancels.
-  const place = phone ? { marginTop: 'auto', marginBottom: 8, marginLeft: 8, marginRight: 8 } : { width: 320 };
+  // A centred card elsewhere; a backdrop tap cancels.
+  const place = bottom ? { marginTop: 'auto', marginBottom: 8, marginLeft: 8, marginRight: 8 } : { width: 320 };
   return h('dialog', { 'data-testid': 'lx-action-sheet', key: `sheet-${sheet.key}`, open: true, closedby: 'any', onClose: () => settleSheet(-1),
     'aria-label': word('@view.actions', env?.language), style: { ...place, gap: 8, transition: fade } },
     h('view', { style: { borderRadius: 14, backgroundColor: 'surface-overlay', overflow: 'hidden' } },

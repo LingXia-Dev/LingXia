@@ -1,11 +1,8 @@
 //! The View `env` from what an adapter measured. Adapters report OS facts;
-//! insets, form factor, pointer and motion policy are decided here.
+//! insets, pointer and motion policy are decided here.
 use super::FrameEnvironment;
 use crate::platform::calendar;
 use serde_json::json;
-
-/// Shorter window side, in logical pixels, from which a device is a tablet.
-pub const TABLET_SMALLEST_WIDTH: f32 = 600.0;
 
 /// One frame's OS measurements. Lengths are device pixels unless named logical.
 #[derive(Clone, Debug, Default, PartialEq)]
@@ -14,7 +11,7 @@ pub struct DeviceFacts {
     pub height: u32,
     /// Device pixels per logical pixel.
     pub scale: f32,
-    /// `android`, `ios`, ...
+    /// `ios`, `macos`, `android`, `windows` or `harmony`.
     pub os: String,
     pub dark: bool,
     /// System bars, cutouts and home indicators over the surface: top, right, bottom, left.
@@ -43,16 +40,6 @@ pub struct DeviceFacts {
     pub first_weekday: Option<u8>,
     /// Physical display hinge/crease intersecting the page canvas in local logical pixels, if any.
     pub hinge: Option<serde_json::Value>,
-}
-
-fn platform_family(os: &str) -> &'static str {
-    match os {
-        "ios" | "ipados" | "macos" | "visionos" => "apple",
-        "android" => "android",
-        "harmony" | "harmonyos" | "ohos" => "harmony",
-        "windows" => "windows",
-        _ => "web",
-    }
 }
 
 fn sanitize_hinge(hinge: Option<&serde_json::Value>) -> serde_json::Value {
@@ -113,9 +100,7 @@ impl DeviceFacts {
             "hinge": sanitize_hinge(self.hinge.as_ref()),
             "keyboard": {"height": logical(self.keyboard.min(f32::from(height)))},
             "os": self.os,
-            "platform": platform_family(&self.os),
             "pointer": if self.fine_pointer { "fine" } else { "coarse" },
-            "formFactor": if self.smallest_width >= TABLET_SMALLEST_WIDTH { "tablet" } else { "phone" },
             "language": self.locale,
             "animatorDurationScale": animation_scale,
             "reducedMotion": self.reduce_motion || animation_scale == 0.0,
@@ -212,14 +197,13 @@ mod tests {
             env.value["keyboard"]["height"], 896.0,
             "clamped to the surface"
         );
-        assert_eq!(env.value["formFactor"], "phone");
         assert_eq!(env.value["pointer"], "coarse");
         assert_eq!(env.value["theme"], "light");
         assert!(env.value.get("textScale").is_none());
     }
 
     #[test]
-    fn either_motion_signal_reduces_motion_and_wide_windows_are_tablets() {
+    fn either_motion_signal_reduces_motion_and_a_fine_pointer_is_reported() {
         let mut facts = phone();
         facts.reduce_motion = true;
         assert_eq!(facts.environment().unwrap().value["reducedMotion"], true);
@@ -230,10 +214,9 @@ mod tests {
         let env = facts.environment().unwrap();
         assert_eq!(env.value["reducedMotion"], false);
         assert_eq!(env.value["animatorDurationScale"], 1.0);
-        facts.smallest_width = 744.0;
         facts.fine_pointer = true;
         let env = facts.environment().unwrap();
-        assert_eq!(env.value["formFactor"], "tablet");
+        assert!(env.value.get("formFactor").is_none());
         assert_eq!(env.value["pointer"], "fine");
     }
 

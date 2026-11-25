@@ -32,7 +32,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         width: (f32::from(width) * scale) as u32,
         height: (f32::from(height) * scale) as u32,
         scale,
-        os: "bench".into(),
+        os: "unknown".into(),
         smallest_width: f32::from(width),
         locale: "en".into(),
         animation_scale: 1.0,

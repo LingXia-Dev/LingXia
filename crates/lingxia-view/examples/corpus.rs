@@ -102,7 +102,7 @@ fn session(job: &Job, source: &str) -> Result<lingxia_view::ViewSession, String>
         width: (f32::from(job.width) * job.scale) as u32,
         height: (f32::from(job.height) * job.scale) as u32,
         scale: job.scale,
-        os: "corpus".into(),
+        os: "unknown".into(),
         dark: job.dark,
         smallest_width: f32::from(job.width.min(job.height)),
         locale: job.locale.clone().unwrap_or_else(|| "en".into()),

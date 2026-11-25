@@ -475,12 +475,9 @@ export interface Env {
   readonly capsule: Readonly<{ x: number; y: number; width: number; height: number }> | null;
   /** `fine` pointers (mouse, trackpad) hover; `coarse` ones (touch) do not. */
   readonly pointer: "fine" | "coarse";
-  /** Host platform family (for rendering platform shortcut symbols only; never for layout branching). */
-  readonly platform: "apple" | "android" | "harmony" | "windows" | "web";
-  readonly os: string;
-  /** `phone` or `tablet` from the smallest screen width; other hosts may report their own. */
-  readonly formFactor: string;
-  /** `compact` below 600 logical pixels of page width, else `regular`. */
+  /** The host OS, the same value as Logic's `lx.host.info.os` and `lx.device.info.osName`. */
+  readonly os: "ios" | "macos" | "android" | "windows" | "harmony" | "unknown";
+  /** `compact` below 600 logical pixels of page width, else `regular`, with 24 pixels of hysteresis: compact holds until 624, regular until below 576. Near the edge it can disagree with `min-[600px]:`; use `sizeClass` for structure and `min-[…]:` for spacing and type. */
   readonly sizeClass: "compact" | "regular";
   /** The language the page's text is in: the host's display language narrowed to the `languages` its lxapp.json lists. `t`, built-in words, direction and glyph forms follow it. */
   readonly language: string;

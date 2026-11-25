@@ -715,9 +715,7 @@ pub const ENVIRONMENT_KEYS: &[(&str, &str)] = &[
     ("keyboard", "device"),
     ("capsule", "push"),
     ("pointer", "device"),
-    ("platform", "device"),
     ("os", "device"),
-    ("formFactor", "device"),
     ("sizeClass", "push"),
     ("language", "device"),
     ("reducedMotion", "device"),
@@ -743,9 +741,7 @@ pub fn check_environment(value: &serde_json::Value) -> bool {
         && value["keyboard"]["height"].as_f64().is_some_and(|n| n.is_finite() && (0.0..=16384.0).contains(&n))
         && (value.get("capsule").is_none() || (value["capsule"].is_null() || (["x", "y", "width", "height"].iter().all(|side| value["capsule"][side].as_f64().is_some_and(|n| n.is_finite() && (-16384.0..=16384.0).contains(&n))) && ["width", "height"].iter().all(|side| value["capsule"][side].as_f64().is_some_and(|n| n >= 0.0)))))
         && matches!(value["pointer"].as_str(), Some("fine") | Some("coarse"))
-        && (value.get("platform").is_none() || matches!(value["platform"].as_str(), Some("apple") | Some("android") | Some("harmony") | Some("windows") | Some("web")))
-        && value["os"].as_str().is_some_and(|s| !s.is_empty() && s.len() <= 128)
-        && value["formFactor"].as_str().is_some_and(|s| !s.is_empty() && s.len() <= 128)
+        && matches!(value["os"].as_str(), Some("ios") | Some("macos") | Some("android") | Some("windows") | Some("harmony") | Some("unknown"))
         && (value.get("sizeClass").is_none() || matches!(value["sizeClass"].as_str(), Some("compact") | Some("regular")))
         && value["language"].as_str().is_some_and(|s| !s.is_empty() && s.len() <= 128)
         && (value.get("reducedMotion").is_none() || value["reducedMotion"].is_boolean())

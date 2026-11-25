@@ -14,10 +14,8 @@ _Generated from the View schema (`schema.json`) and the compiler; do not edit._
 | `keyboard` | `Readonly<{ height: number }>` |  |
 | `capsule` | `Readonly<{ x: number; y: number; width: number; height: number }> \| null` | The host's capsule (the ··· and close control) where it floats over the page, in page coordinates, logical pixels; `null` when the host shows none or it sits in a nav bar. The same box Web pages read as `--lx-page-chrome-capsule-*`. |
 | `pointer` | `"fine" \| "coarse"` | `fine` pointers (mouse, trackpad) hover; `coarse` ones (touch) do not. |
-| `platform` | `"apple" \| "android" \| "harmony" \| "windows" \| "web"` | Host platform family (for rendering platform shortcut symbols only; never for layout branching). |
-| `os` | `string` |  |
-| `formFactor` | `string` | `phone` or `tablet` from the smallest screen width; other hosts may report their own. |
-| `sizeClass` | `"compact" \| "regular"` | `compact` below 600 logical pixels of page width, else `regular`. |
+| `os` | `"ios" \| "macos" \| "android" \| "windows" \| "harmony" \| "unknown"` | The host OS, the same value as Logic's `lx.host.info.os` and `lx.device.info.osName`. |
+| `sizeClass` | `"compact" \| "regular"` | `compact` below 600 logical pixels of page width, else `regular`, with 24 pixels of hysteresis: compact holds until 624, regular until below 576. Near the edge it can disagree with `min-[600px]:`; use `sizeClass` for structure and `min-[…]:` for spacing and type. |
 | `language` | `string` | The language the page's text is in: the host's display language narrowed to the `languages` its lxapp.json lists. `t`, built-in words, direction and glyph forms follow it. |
 | `reducedMotion` | `boolean` | The system asks for reduced motion; `motion-reduce:`/`motion-safe:` follow it. |
 | `highContrast` | `boolean` | The system asks for increased contrast; the palette resolves its high-contrast variant. |

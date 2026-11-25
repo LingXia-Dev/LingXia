@@ -458,7 +458,6 @@ globalThis.__lingxiaRender = ({{ env }}) => h('text', {{}}, (globalThis.__cat[en
                 "insets": { "top": 0, "right": 0, "bottom": 0, "left": 0 },
                 "keyboard": { "height": 0 },
                 "os": "android",
-                "formFactor": "phone",
                 "canDock": false
             })
         };
@@ -514,7 +513,6 @@ globalThis.__lingxiaRender = () => h('text', {{}}, (globalThis.__cat['zh-CN']?.g
                 "insets": { "top": 0, "right": 0, "bottom": 0, "left": 0 },
                 "keyboard": { "height": 0 },
                 "os": "android",
-                "formFactor": "phone",
                 "canDock": false
             })
         };

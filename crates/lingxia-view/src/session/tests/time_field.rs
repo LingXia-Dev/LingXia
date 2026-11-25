@@ -4,7 +4,7 @@ use crate::ViewSession;
 use crate::scene::paint::Paint;
 
 fn environment(hour_cycle: &str) -> serde_json::Value {
-    serde_json::json!({"theme":"light","insets":{"top":0,"right":0,"bottom":0,"left":0},"keyboard":{"height":0},"os":"android","formFactor":"phone","language":"en-US","canDock":false,"hourCycle":hour_cycle})
+    serde_json::json!({"theme":"light","insets":{"top":0,"right":0,"bottom":0,"left":0},"keyboard":{"height":0},"os":"android","language":"en-US","canDock":false,"hourCycle":hour_cycle})
 }
 
 fn page(body: &str, hour_cycle: &str) -> ViewSession {

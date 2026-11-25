@@ -374,7 +374,7 @@ mod tests {
             width,
             height,
             scale: 1.0,
-            value: serde_json::json!({"theme": "light", "os": "test", "pointer": "coarse"}),
+            value: serde_json::json!({"theme": "light", "os": "unknown", "pointer": "coarse"}),
         }
     }
 

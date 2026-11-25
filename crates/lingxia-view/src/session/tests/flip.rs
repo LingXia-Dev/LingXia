@@ -137,7 +137,7 @@ fn reversing_mid_flight_continues_from_the_position_on_screen() {
 #[test]
 fn reduced_motion_lands_a_reorder_at_once() {
     let mut page = page();
-    page.set_environment(serde_json::json!({"theme":"light","insets":{"top":0,"right":0,"bottom":0,"left":0},"keyboard":{"height":0},"os":"android","formFactor":"phone","language":"en","canDock":false,"reducedMotion":true})).unwrap();
+    page.set_environment(serde_json::json!({"theme":"light","insets":{"top":0,"right":0,"bottom":0,"left":0},"keyboard":{"height":0},"os":"android","language":"en","canDock":false,"reducedMotion":true})).unwrap();
     let (shot, _) = present(&mut page, frame_time(0), true);
     toggle(&mut page, &shot);
     let (shot, wakeup) = present(&mut page, frame_time(1), true);
