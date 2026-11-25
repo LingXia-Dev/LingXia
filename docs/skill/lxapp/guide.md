@@ -18,27 +18,11 @@ second path ([WebView pages](./webview/guide.md)). One kind per lxapp.
 | A long-lived two-way line | a channel action, with `useChannel` |
 | Go to another page | `<link to={{ page, params }}>` in the View; `lx.nav.go` in Logic when it decides |
 
-## Scaffold
+## Project files
 
-```bash
-lingxia new my-lxapp -t lxapp -y
-```
-
-## Layout
-
-```text
-my-lxapp/
-├── lxapp.json
-├── lxapp.config.ts
-├── package.json
-├── pages/
-│   └── home/
-│       ├── index.tsx   # View  — GPU View (`export function render`); React default export or index.html in a WebView
-│       ├── index.ts    # Logic — runs in native JS runtime
-│       └── index.json  # Page config, optional (navigation bar, style)
-├── public/
-└── shared/
-```
+`lingxia new` writes the layout ([Step 0](../SKILL.md#0c-scaffold-and-read-the-result)). A page is
+`pages/<name>/`: `index.ts` (Logic), `index.tsx` (View; `index.html` for an HTML page) and an optional
+`index.json` (page config). `lxapp.ts` holds [`App({})`](#app); `shared/` holds modules both sides import.
 
 - `lxapp.json` — `appId`, `appName`, `version`, `minRuntime`, `pages`, and
   optional `languages` ([Product settings](./core.md#product-settings)). `appName`
@@ -106,7 +90,7 @@ export default definePage({
 });
 ```
 
-- `params`, `result`, `messages`, `data`, and `setup` or `actions` are all optional; `definePage({ data })` is a static page.
+- `params`, `result`, `messages`, `data`, [`follow`](#app), and `setup` or `actions` are all optional; `definePage({ data })` is a static page.
 - `messages: type<{ in: A; out: B }>()` types the line to the opener: the
   opener's handle sends `A` and receives `B`, `page.opener` the reverse.
   Messages sent before the other side's first `onMessage` wait for it.
@@ -123,8 +107,11 @@ export default definePage({
 | `params`, `name` | This instance's params, its page name. |
 | `visible` | `Live<boolean>` of `onShow`/`onHide`; already `true` in `setup` for a page that opens showing. |
 | `signal` | `AbortSignal` aborted as the page unloads, before `onUnload`. Pass it to work the page starts: `fetch(url, { signal: page.signal })`. |
-| `setResult(value)` / `close(value?)` | Return a JSON result to the opener. `close` also leaves: a pushed page goes back (top page only), a surface page closes its surface. The opener reads it from the handle's `result` (`lx.nav.go({ page })`, `lx.surface.openPage`): `{ status: 'ok', value }`, or `{ status: 'canceled', reason }` when the page left without one. It settles when the page is closed: a `setResult` in `onUnload` is ignored. |
+| `setResult(value)` / `close(value?)` | Return a JSON result to the opener. `close` also leaves: a pushed page goes back (top page only), a surface page closes its surface; it throws for a root or tab page. The opener reads it from the handle's `result` (`lx.nav.go({ page })`, `lx.surface.openPage`): `{ status: 'ok', value }`, or `{ status: 'canceled', reason }` when the page left without one. It settles when the page is closed: a `setResult` in `onUnload` is ignored. |
 | `opener`, `surface` | The page that opened this one, or this page's surface; absent otherwise. |
+| `after`, `every` | Page timers: [Subscriptions](#subscriptions). |
+| `navigationBar`, `orientation`, `refresh()` | [Navigation bar](#navigation-bar) and its [updates](#runtime-updates); `refresh()` runs [`onRefresh`](#lifecycle). |
+| `env`, `video(name)` | Size class for Logic ([Adaptive UI](./adaptive-ui.md#logic-and-webview-pages)); a GPU page's video ([GPU View](./gpu/authoring.md#images-vectors-and-video)). |
 
 ### Lifecycle
 
@@ -137,13 +124,12 @@ Order across `App` and `Page`, and what each navigation fires: [Lifecycle](./lif
 | `onReady()` | The document finished rendering, after the first `onShow`. |
 | `onHide()` | Covered by another page, the lxapp went to the background, or the desktop aside it is docked in was collapsed. |
 | `onUnload()` | Left the stack (`lx.nav.back`, a replace, a tab switch that drops it, `lx.nav.reset`). |
+| `onRefresh()` | Pull to refresh or `refresh()`; needs `"enablePullDownRefresh": true` in `index.json` ([details](./lifecycle.md#two-layers)). |
 
 - **Leaving unloads.** Entering again starts a fresh instance: `data` is back
   to its defaults and the View is a new document. Keep what must survive in
   `lx.storage` or `App({})`.
-- **Hidden keeps state.** A covered or backgrounded page keeps `data`. A
-  desktop host may discard a hidden lxapp's inactive tab WebView: `data` stays,
-  and the next show brings `onShow` and a new `onReady`.
+- **Hidden keeps state.** A covered or backgrounded page keeps `data`.
 - Replacing the current page with its own route keeps the instance and calls
   `onLoad` again.
 - Every push is its own instance, so `detail {id: 1} → detail {id: 2}`
@@ -269,20 +255,20 @@ export default definePage({
 });
 ```
 
-- `defineStore(initial, { name?, persist? })` holds one JSON value for every page: `set` replaces it,
-  `update` changes an object or array in place, `pick` and `derive([a, b], fn)` give read-only `Live`s.
+- `defineStore(initial, { name?, persist? })` holds one JSON value for every page and is itself a `Live`:
+  `set` replaces it, `update` changes an object or array in place, `pick(fn)` gives a read-only `Live`;
+  `derive([a, b], fn)` (its own export) combines several.
 - `follow: { key: live }` puts a store, pick, derive or host `Live` in `data` from the first frame;
   write it through its source, never `page.update`.
 - `persist` loads at definition and saves each change, one save at a time with the newest value;
-  a change made before the load wins, and `saved` reports the last save.
-- `onError(failure)` in `App({})` sees each failure nothing handled (page hooks and timers, App hooks,
-  store callbacks), one call at a time; it only observes. A promise nothing awaited or caught reaches it
-  (`kind: 'app'`, `hook: null`) only on an engine that tracks rejections: not on iOS or macOS.
+  a change made before the load wins, `saved` reports the last save and `reload()` reads storage again.
+- `onError(failure)` in `App({})` sees each failure nothing handled (View handlers, page hooks and timers,
+  App hooks, store callbacks, module code), one call at a time; it only observes. `failure.source.kind` is
+  `view_handler`, `hook` or `app`. A promise nothing awaited or caught reaches it (`kind: 'app'`,
+  `hook: null`) only on an engine that tracks rejections: not on iOS or macOS.
 - There is no `getApp()` or `globalData`; `App({ globalData })` throws. Plain module
   state is not reactive; share what pages show through a store.
-- Cold start: `App.onLaunch` → `App.onShow` → `Page.onLoad` → `Page.onShow`;
-  `Page.onLoad` waits for an `async onLaunch` to settle.
-  Foregrounding: `App.onShow` → top page's `onShow`.
+- Hook order across `App` and pages: [Lifecycle](./lifecycle.md).
 - There is no `getCurrentPages()`; a page reaches itself through `page`, and
   another page through the handle `lx.nav.go` returned.
 
@@ -329,8 +315,8 @@ host `surfaces`.
 - `presentation`: `"standard"` (View ends above the bar) or `"immersive"` (View
   extends behind it; omit `backgroundColor` and `dividerColor`).
 - Style keys are optional. Mobile uses them as declared (no OS dark mode by
-  itself); desktop draws the sidebar from the host `theme` and ignores
-  `backgroundColor`. `lx.app.tabBar.update()` cannot change style.
+  itself); desktop draws the sidebar from the host `theme`: it ignores
+  `backgroundColor`, and a dark host ignores every style key. `lx.app.tabBar.update()` cannot change style.
 - With more than five items a phone shows the first four plus **More**; order
   items by use. A tablet shows all; desktop lists all in the sidebar.
 - `"showOn": ["mobile"]` or `["desktop"]` limits an item to mobile or desktop hosts.
@@ -386,10 +372,15 @@ Moves run one at a time in the order issued; past 8 waiting, another throws `E_I
 does not join the stack; `lx.openExternal(url)` hands a URL to the system.
 
 `lx.surface.openPage('detail', { as: 'float', params })` returns the same
-handle, plus `show`/`hide`; the floated page reaches it through `page.opener`.
+handle, plus `show`/`hide`, `visible`, `alive` and `onClose`; the floated page reaches its opener
+through `page.opener` and its surface through `surface`.
 A handle is not a promise: await `.opened`. Its methods can be called at once;
 `close()` before `opened` settles stops the open (`opened` rejects `E_ABORT`,
 `result` is `canceled`).
+
+A page with unsaved changes holds the user's Back and Home with `useLeaveGuard` (GPU) or
+[`useLxLeaveGuard`](./webview/guide.md#leaving-a-page-with-unsaved-changes) (WebView); `lx.nav`
+moves are not guarded.
 
 ### Navigation bar
 
@@ -428,7 +419,7 @@ put one catalogue per language in `i18n/<tag>.json`:
 ```
 
 Keys are dot-separated camelCase. The source catalogue needs a `description` per key; a translation
-has only `defaultMessage`. Messages are ICU MessageFormat: `{arg}`, `{n, number}`, `{d, date, short}`,
+needs only `defaultMessage`. Messages are ICU MessageFormat: `{arg}`, `{n, number}`, `{d, date, short}`,
 `plural`, `selectordinal`, `select`, paired tags. `lingxia build` and `lingxia check` fail on a missing
 translation, an argument a translation adds or drops, and a catalogue for an undeclared language;
 `lingxia dev` warns about a translation's key and shows the source message for it.
@@ -492,10 +483,6 @@ UI works in only one scheme declares it in `lxapp.json`:
 ```json
 { "appearance": "dark" }
 ```
-
-A View never mutates `data`: it calls an action and Logic answers with `page.update`. A page
-holds itself while it has unsaved changes with `useLeaveGuard` (GPU) or
-[`useLxLeaveGuard`](./webview/guide.md#leaving-a-page-with-unsaved-changes) (WebView).
 
 ## Pitfalls
 
