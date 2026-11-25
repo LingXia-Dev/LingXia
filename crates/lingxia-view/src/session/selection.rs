@@ -57,8 +57,8 @@ impl ViewSession {
         } else {
             crate::text::words::snap(
                 &text.text,
-                Selection::word_from_point(&text.layout, x, y).text_range(),
-                Cursor::from_point(&text.layout, x, y).index(),
+                Selection::word_from_point(&*text.layout, x, y).text_range(),
+                Cursor::from_point(&*text.layout, x, y).index(),
             )
         };
         self.set_selection(identity, &text.text, range.start, range.end);
@@ -87,8 +87,8 @@ impl ViewSession {
         ) else {
             return Ok(false);
         };
-        let anchor = Cursor::from_point(&text.layout, fx, fy).index();
-        let focus = Cursor::from_point(&text.layout, tx, ty).index();
+        let anchor = Cursor::from_point(&*text.layout, fx, fy).index();
+        let focus = Cursor::from_point(&*text.layout, tx, ty).index();
         self.set_selection(identity, &text.text, anchor, focus);
         Ok(true)
     }
@@ -113,7 +113,7 @@ impl ViewSession {
         else {
             return Ok(false);
         };
-        let at = Cursor::from_point(&text.layout, x, y).index();
+        let at = Cursor::from_point(&*text.layout, x, y).index();
         let (anchor, focus) = if which == 0 {
             (at, current.focus)
         } else {

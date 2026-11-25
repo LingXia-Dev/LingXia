@@ -12,15 +12,13 @@ use vello_cpu::kurbo::Affine;
 #[derive(Clone)]
 /// A selectable static text's shaped paragraph, kept for hit-to-offset queries.
 pub(crate) struct SelectableText {
-    pub(crate) layout: Layout<crate::text::RunBrush>,
+    /// Shared with the shape cache: realizing a selectable copies no glyphs.
+    pub(crate) layout: Arc<Layout<crate::text::RunBrush>>,
     /// The paragraph origin and content box in unscrolled layout space.
     pub(crate) origin: [f32; 2],
     pub(crate) content: [f32; 4],
     pub(crate) text: String,
 }
-
-/// Selectable texts realized in one frame; more fall back to unselectable.
-pub(crate) const MAX_SELECTABLE: usize = 64;
 
 #[derive(Clone)]
 pub(crate) struct InputLayout {

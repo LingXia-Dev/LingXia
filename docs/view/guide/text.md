@@ -133,6 +133,6 @@ Static text is not selectable unless you opt in:
 | `select-none` | stops selection that an ancestor enabled |
 
 The setting inherits, so `select-text` on a container covers every `<text>` inside. One selection exists
-per page, and selection stays within one `<text>`: it cannot span several elements. A frame offers at most
-64 selectable texts; truncated or clamped text is never selectable. Editors select their own text and
+per page, and selection stays within one `<text>`: it cannot span several elements. Every selectable text
+on the page selects, however long the page; truncated or clamped text is never selectable. Editors select their own text and
 refuse `select-*`.

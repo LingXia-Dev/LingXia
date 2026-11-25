@@ -568,7 +568,7 @@ impl DisplayList {
             text.content[2],
             text.content[3],
         ];
-        let cursor = |byte| Cursor::from_byte_index(&text.layout, byte, Affinity::Downstream);
+        let cursor = |byte| Cursor::from_byte_index(&*text.layout, byte, Affinity::Downstream);
         let (anchor, focus) = (cursor(selection.anchor), cursor(selection.focus));
         let bounds = |rect: parley::BoundingBox| {
             [
@@ -579,15 +579,15 @@ impl DisplayList {
             ]
         };
         let rects: Vec<_> = Selection::new(anchor, focus)
-            .geometry(&text.layout)
+            .geometry(&*text.layout)
             .into_iter()
             .map(|(rect, _)| bounds(rect))
             .collect();
         let units = |byte: usize| text.text[..byte].encode_utf16().count() as u32;
         node.selection_range = Some([units(selection.anchor), units(selection.focus)]);
         node.text_selection = Some(InputGeometry {
-            anchor: bounds(anchor.geometry(&text.layout, 1.5)),
-            caret: bounds(focus.geometry(&text.layout, 1.5)),
+            anchor: bounds(anchor.geometry(&*text.layout, 1.5)),
+            caret: bounds(focus.geometry(&*text.layout, 1.5)),
             content_bounds: content,
             selection: rects.clone(),
             composition: Vec::new(),

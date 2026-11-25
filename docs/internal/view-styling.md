@@ -60,7 +60,8 @@ time (see [view-authoring.md](view-authoring.md)) and again at runtime.
   list from handing leftover distance to ancestors.
 - `select-text` (inherited) makes static text long-press selectable by word;
   `select-all` selects the whole text first; `select-none` stops it. One selection per
-  page, ≤64 selectable texts per frame; truncated text and editors never take it.
+  page, any number of selectable texts (each shares its shaped layout); truncated text and
+  editors never take it.
 - `w-fit`, `w-auto`, `h-auto` map to native sizing keywords; `h-auto` keeps
   intrinsic height under min/max constraints.
 - `whiteSpace` follows CSS: `normal`/`nowrap` collapse whitespace runs (newlines

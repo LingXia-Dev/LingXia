@@ -155,7 +155,6 @@ impl Renderer {
         let mut live_webviews: std::collections::HashSet<String> = std::collections::HashSet::new();
         let mut content_boxes: Vec<[f32; 4]> = Vec::with_capacity(records.len());
         let mut selectables = Vec::with_capacity(records.len());
-        let mut selectable_count = 0;
         let mut stickies = Vec::with_capacity(records.len());
         let mut anchors = Vec::with_capacity(records.len());
         let mut anchor_insets = Vec::with_capacity(records.len());
@@ -1083,12 +1082,10 @@ impl Renderer {
                             && styles[index].select != 0
                             && record.string(field::TEXT_OVERFLOW) != Some("ellipsis")
                             && !collapsed[index]
-                            && selectable_count < crate::scene::retained::MAX_SELECTABLE
                     })
                     .map(|text| {
-                        selectable_count += 1;
                         Arc::new(crate::scene::retained::SelectableText {
-                            layout: (**text).clone(),
+                            layout: text.shared(),
                             origin: [
                                 x + layout.padding.left,
                                 y + layout.padding.top + text_offset_y,

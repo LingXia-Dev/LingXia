@@ -116,6 +116,11 @@ impl ShapedText {
         self.shape.zip(self.lines)
     }
 
+    /// The laid-out paragraph itself, shared rather than copied.
+    pub(crate) fn shared(&self) -> Arc<TextLayout> {
+        self.layout.clone()
+    }
+
     pub(crate) fn into_layout(self) -> TextLayout {
         Arc::unwrap_or_clone(self.layout)
     }
