@@ -2290,9 +2290,8 @@ mod tests {
              globalThis.__lingxiaNative = { invoke: (route, input, pageId) => `${route}:${input.name}:${pageId}` };",
         ))
         .unwrap();
-        ctx.eval::<()>(Source::from_bytes(bundle.to_string()))
-            .unwrap();
-        ctx.eval(Source::from_bytes(script.to_string())).unwrap()
+        ctx.eval::<()>(Source::from_bytes(bundle)).unwrap();
+        ctx.eval(Source::from_bytes(script)).unwrap()
     }
 
     #[test]

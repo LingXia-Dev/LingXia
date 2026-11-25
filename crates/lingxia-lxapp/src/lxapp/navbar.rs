@@ -101,9 +101,11 @@ impl NavigationBarPatch {
     /// A GPU page's title has one writer, its View's `<page title>`; Logic changes it through page data.
     pub fn check_writer(&self, renderer: crate::PageRenderer) -> Result<(), String> {
         if renderer == crate::PageRenderer::Gpu && self.title != PatchField::Missing {
-            return Err("navigationBar.update: a GPU page's title is its View's <page title>; \
+            return Err(
+                "navigationBar.update: a GPU page's title is its View's <page title>; \
                  set it from page data"
-                .into());
+                    .into(),
+            );
         }
         Ok(())
     }
@@ -346,7 +348,8 @@ mod patch_tests {
 
     #[test]
     fn logic_cannot_set_a_gpu_page_title_but_patches_the_rest() {
-        let title: NavigationBarPatch = serde_json::from_value(serde_json::json!({"title": "Inbox"})).unwrap();
+        let title: NavigationBarPatch =
+            serde_json::from_value(serde_json::json!({"title": "Inbox"})).unwrap();
         let error = title.check_writer(crate::PageRenderer::Gpu).unwrap_err();
         assert!(error.contains("<page title>"), "{error}");
         assert!(title.check_writer(crate::PageRenderer::Webview).is_ok());

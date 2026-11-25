@@ -240,8 +240,7 @@ impl Devices {
         let descriptor = wgpu::DeviceDescriptor {
             label: Some("LingXia UI"),
             // Timestamps measure sampled redraws; nothing depends on them.
-            required_features: adapter.features()
-                & wgpu::Features::TIMESTAMP_QUERY,
+            required_features: adapter.features() & wgpu::Features::TIMESTAMP_QUERY,
             required_limits,
             ..Default::default()
         };
