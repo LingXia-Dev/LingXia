@@ -268,8 +268,8 @@ A unary route (async, blocking or `sync`) may take
 one value per page instance, and calls on the same page for the same `T`
 serialize; a `sync` route fails instead of waiting while an async call holds it.
 Call such routes through `page.native` in `setup(page)` or `actions`; module-level
-`native` fails. `page.native` exists once a Logic module imports
-`@lingxia/native`. Removing the page drops the state, cancels its in-flight calls
+`native` fails. The build bundles the Logic client, so `page.native` needs no
+import. Removing the page drops the state, cancels its in-flight calls
 (`HostCancel`) and closes its channels; so does a throwing `setup`.
 
 ### Supported DTO types & serde attributes

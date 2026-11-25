@@ -2404,6 +2404,62 @@ mod tests {
         Ok(())
     }
 
+    /// `page.native` is the bundled client's factory bound to the page: a call made from the
+    /// page reaches the native bridge with that page's id and resolves with the route's answer.
+    #[tokio::test(flavor = "current_thread")]
+    async fn page_native_calls_reach_the_bridge_for_the_page() -> JSResult<()> {
+        tokio::task::LocalSet::new()
+            .run_until(page_native_contract())
+            .await
+    }
+
+    async fn page_native_contract() -> JSResult<()> {
+        use rong::{JSEngine, RongJS};
+        let runtime = RongJS::runtime();
+        let ctx = runtime.context();
+        rong_modules::init(&ctx, ["timer", "event", "exception", "abort", "console"])
+            .expect("Logic modules");
+        ctx.eval::<()>(Source::from_bytes(
+            "globalThis.PageSvc = class { constructor() {} _setData() {} };",
+        ))?;
+        ctx.eval::<()>(Source::from_bytes(include_str!("scripts/Page.js")))?;
+        capture_real_timers(&ctx)?;
+        let result: String = ctx
+            .eval_async(Source::from_bytes(
+                r#"
+            (async () => { try {
+              __registerDefinedPage("pages/greet", {
+                [Symbol.for("lingxia.page")]: true,
+                setup(page) { globalThis.thePage = page; return {}; },
+              });
+              __LX_CREATE_PAGE__("pages/greet", null, "p1", false, "{}");
+              let missing = "";
+              try { thePage.native; } catch (error) { missing = String(error.message); }
+              // What the generated client installs: a client per page that dispatches to the bridge.
+              globalThis.__lingxiaNative = {
+                invoke: async (route, input, pageId) => `${route}:${input.name}:${pageId}`,
+              };
+              globalThis.__lingxiaCreatePageNative = (pageId) => ({
+                greet: { hello: (input) => __lingxiaNative.invoke("greet.hello", input, pageId) },
+              });
+              __LX_CREATE_PAGE__("pages/greet", null, "p2", false, "{}");
+              const answer = await thePage.native.greet.hello({ name: "ada" });
+              return JSON.stringify({ missing, answer, same: thePage.native === thePage.native });
+            } catch (error) { return `threw: ${error}`; } })()
+            "#,
+            ))
+            .await?;
+        let seen: serde_json::Value = serde_json::from_str(&result)
+            .map_err(|_| rong::HostError::new(rong::error::E_INTERNAL, result.clone()))?;
+        assert_eq!(seen["answer"], "greet.hello:ada:p2");
+        assert_eq!(seen["same"], true);
+        assert_eq!(
+            seen["missing"],
+            "page.native: this lxapp has no native client; no Rust crate serves it"
+        );
+        Ok(())
+    }
+
     /// A test clock installed after the worker started, but before the first
     /// setData, must not hold the View update: batching uses the timers
     /// captured at worker start. Deterministic: the "real" timers captured at

@@ -597,9 +597,9 @@
       get native() {
         if (!pageNative) {
           const factory = globalThis.__lingxiaCreatePageNative;
-          // The generated client installs the factory when a Logic module imports it.
+          // The CLI bundles the generated client, which installs the factory, whenever it made one.
           if (typeof factory !== "function") {
-            throw new Error("page.native: no native client is loaded; import '@lingxia/native' in a Logic module");
+            throw new Error("page.native: this lxapp has no native client; no Rust crate serves it");
           }
           pageNative = factory(pageInstanceId);
         }

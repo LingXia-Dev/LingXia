@@ -68,9 +68,14 @@ pub fn build(
     let mut bundler = LogicBundler::new(project);
     // Each entry's refusal is collected, so one build names every page that has one.
     let mut failures = Vec::new();
-    let entries = app_logic
-        .map(|path| (path, ModuleRole::App))
+    // The generated client installs `page.native`, so it ships first whether or not a module
+    // imports it; an `@lingxia/native` import resolves to this same module.
+    let native_client = native_client_path(&project.root);
+    let entries = native_client
+        .is_file()
+        .then_some((native_client, ModuleRole::Plain))
         .into_iter()
+        .chain(app_logic.map(|path| (path, ModuleRole::App)))
         .chain(
             page_logic_entries
                 .into_iter()
@@ -1280,11 +1285,30 @@ fn resolve_local_import(
     ))
 }
 
+/// The module name the generated Logic native client is imported by.
+const NATIVE_CLIENT_SPECIFIER: &str = "@lingxia/native";
+
+fn native_client_path(project_root: &Path) -> PathBuf {
+    project_root
+        .join(".lingxia")
+        .join(lingxia_native_codegen::LOGIC_CLIENT)
+}
+
 fn resolve_bare_import(
     from_module: &Path,
     specifier: &str,
     project_root: &Path,
 ) -> Result<PathBuf> {
+    if specifier == NATIVE_CLIENT_SPECIFIER {
+        let client = native_client_path(project_root);
+        if !client.is_file() {
+            bail!(
+                "{} imports {specifier}, but this lxapp has no native client: no Rust crate serves it",
+                relative_to(from_module, project_root)
+            );
+        }
+        return normalize_path(&client);
+    }
     let mut options = ResolveOptions::default()
         .with_condition_names(&["import", "module", "default"])
         .with_builtin_modules(true);
@@ -2218,5 +2242,105 @@ mod tests {
             "{bundle}"
         );
         assert!(!bundle.contains("__lx_module_exports[\"Erased\"]"));
+    }
+
+    /// An lxapp served by one `greet.hello` route, its client generated as the build does.
+    fn native_project(root: &Path, app_logic: &str) -> String {
+        write(
+            root,
+            "rust/lib.rs",
+            r#"
+            #[derive(serde::Deserialize)]
+            pub struct HelloInput { pub name: String }
+            #[lingxia::native("greet.hello")]
+            pub async fn hello(input: HelloInput) -> HostResult<String> { todo!() }
+            "#,
+        );
+        lingxia_native_codegen::generate_clients(&root.join("rust"), &root.join(".lingxia"), None)
+            .unwrap();
+        write(root, "lxapp.ts", app_logic);
+        let options = BuildOptions {
+            dev_session: false,
+            release: false,
+            package: false,
+            typecheck: false,
+            progress: crate::lxapp::options::ProgressMode::Plain,
+            inputs_record: None,
+            messages: None,
+        };
+        let report = build(&test_project(root), &options, None).unwrap();
+        let LogicBuildStatus::Built { output_path } = report.status else {
+            panic!("logic was not built");
+        };
+        fs::read_to_string(output_path).unwrap()
+    }
+
+    /// Runs `bundle` with a bridge that answers each call with its route, input name and page.
+    fn run_with_bridge(bundle: &str, script: &str) -> String {
+        use rong::{JSEngine, RongJS, Source};
+        let runtime = RongJS::runtime();
+        let ctx = runtime.context();
+        ctx.eval::<()>(Source::from_bytes(
+            "globalThis.__registerApp = () => {}; \
+             globalThis.__lingxiaNative = { invoke: (route, input, pageId) => `${route}:${input.name}:${pageId}` };",
+        ))
+        .unwrap();
+        ctx.eval::<()>(Source::from_bytes(bundle.to_string()))
+            .unwrap();
+        ctx.eval(Source::from_bytes(script.to_string())).unwrap()
+    }
+
+    #[test]
+    fn the_generated_native_client_ships_first_without_an_import() {
+        let temp = TempDir::new().unwrap();
+        let bundle = native_project(&temp.path().canonicalize().unwrap(), "App({});\n");
+        let client = bundle
+            .find("//#region .lingxia/native.logic.ts")
+            .expect("client bundled");
+        assert!(
+            client < bundle.find("//#region lxapp.ts").unwrap(),
+            "{bundle}"
+        );
+        // What `page.native` builds for a page: its calls carry that page's id.
+        let answer = run_with_bridge(
+            &bundle,
+            r#"globalThis.__lingxiaCreatePageNative("p1").greet.hello({ name: "ada" })"#,
+        );
+        assert_eq!(answer, "greet.hello:ada:p1");
+    }
+
+    #[test]
+    fn an_lingxia_native_import_is_the_bundled_client() {
+        let temp = TempDir::new().unwrap();
+        let bundle = native_project(
+            &temp.path().canonicalize().unwrap(),
+            "import { native } from '@lingxia/native';\nglobalThis.client = native;\nApp({});\n",
+        );
+        assert_eq!(
+            bundle.matches("//#region .lingxia/native.logic.ts").count(),
+            1
+        );
+        let answer = run_with_bridge(&bundle, r#"client.greet.hello({ name: "ada" })"#);
+        assert_eq!(answer, "greet.hello:ada:undefined");
+    }
+
+    #[test]
+    fn an_lingxia_native_import_without_a_client_names_the_cause() {
+        let temp = TempDir::new().unwrap();
+        write(
+            temp.path(),
+            "lxapp.ts",
+            "import { native } from '@lingxia/native';\nApp({ native });\n",
+        );
+        let project = test_project(temp.path());
+        let mut bundler = LogicBundler::new(&project);
+        let error = bundler
+            .add_entry(temp.path().join("lxapp.ts"), ModuleRole::App)
+            .unwrap_err();
+        assert!(
+            format!("{error:#}")
+                .contains("lxapp.ts imports @lingxia/native, but this lxapp has no native client"),
+            "{error:#}"
+        );
     }
 }
