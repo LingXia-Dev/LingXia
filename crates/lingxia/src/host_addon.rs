@@ -165,6 +165,8 @@ macro_rules! __host_cli {
     () => {
         /// Answers as this product's command line if that is what this invocation is, and
         /// returns the exit code; `None` means carry on and be the app. Call it first in `main`.
+        /// Windows only: on Apple the platform layer runs the command line with its data directory.
+        #[cfg(target_os = "windows")]
         pub fn run_cli_if_invoked() -> Option<i32> {
             __lingxia_register_host();
             $crate::product_cli::run_if_invoked()
