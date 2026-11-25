@@ -126,7 +126,7 @@ enum BrowserPageMenu {
             if let onOpenSettings = context.onOpenSettings {
                 menu.addItem(actionItem(
                     title: L10n.string("lx_browser_settings"),
-                    iconName: "icon_settings",
+                    iconName: "icon_browser_settings",
                     handler: onOpenSettings
                 ))
             }
