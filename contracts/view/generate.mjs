@@ -119,16 +119,28 @@ function validateRoles(roles) {
   for (const role of roles) {
     if (!/^[a-z]+(?:-[a-z0-9]+)*$/.test(role.name) || typeof role.doc !== 'string') throw Error(`schema.json: role ${role.name} needs a kebab-case name and a doc`);
     if (!['authored', 'fixed', 'derived'].includes(role.tier)) throw Error(`schema.json: role ${role.name} needs a tier: authored, fixed or derived`);
-    for (const [background, ratio] of Object.entries(role.on ?? {}))
-      if (!names.includes(background) || !(ratio >= 1 && ratio <= 21)) throw Error(`schema.json: role ${role.name} needs a known background and a 1-21 contrast`);
+    for (const [background, ratio] of Object.entries(role.on ?? {})) {
+      const ground = ground_(background);
+      if (!ground || ![ground.role, ground.under ?? ground.role].every(name => names.includes(name)) || !(ratio >= 1 && ratio <= 21))
+        throw Error(`schema.json: role ${role.name} needs a known background (a role, or \`<role>/<NN> over <role>\`) and a 1-21 contrast`);
+    }
   }
+}
+
+/** An `on` key: a role, or a role at an alpha laid over another (`accent/80 over surface`). */
+function ground_(key) {
+  const found = key.match(/^([a-z][a-z0-9-]*)(?:\/(\d{1,2}) over ([a-z][a-z0-9-]*))?$/);
+  return found && { role: found[1], percent: found[2] && Number(found[2]), under: found[3] };
 }
 
 function themeRust(schema) {
   const roles = schema.roles;
   const variants = roles.map((role, slot) => `    /// ${role.doc}\n    ${roleVariant(role.name)} = ${slot},`).join('\n');
-  const pairs = roles.flatMap(role => Object.entries(role.on ?? {}).map(([background, ratio]) =>
-    `    (Role::${roleVariant(role.name)}, Role::${roleVariant(background)}, ${Number(ratio).toFixed(1)}),`)).join('\n');
+  const entries = roles.flatMap(role => Object.entries(role.on ?? {}).map(([background, ratio]) => ({ role, ground: ground_(background), ratio: Number(ratio).toFixed(1) })));
+  const pairs = entries.filter(({ ground }) => !ground.under).map(({ role, ground, ratio }) =>
+    `    (Role::${roleVariant(role.name)}, Role::${roleVariant(ground.role)}, ${ratio}),`).join('\n');
+  const composites = entries.filter(({ ground }) => ground.under).map(({ role, ground, ratio }) =>
+    `    (Role::${roleVariant(role.name)}, Role::${roleVariant(ground.role)}, ${ground.percent}, Role::${roleVariant(ground.under)}, ${ratio}),`).join('\n');
   return `// Generated from contracts/view/schema.json; do not edit.
 //! Roles are palette slots in order; append-only.
 
@@ -174,10 +186,14 @@ pub enum Tier {
     Derived,
 }
 
-/// (foreground, background, minimum WCAG contrast) every resolved palette meets.
+/// (foreground, background, minimum WCAG contrast) every resolved palette meets. A translucent
+/// foreground is measured laid over its background.
 pub const CONTRAST: &[(Role, Role, f32)] = &[
 ${pairs}
 ];
+
+/// (foreground, ground, the ground's alpha percent, what it is laid over, minimum WCAG contrast).
+pub const COMPOSITE_CONTRAST: &[(Role, Role, u8, Role, f32)] = &[${composites && `\n${composites}\n`}];
 `;
 }
 

@@ -144,9 +144,11 @@ pub enum Role {
     DangerSolidHover = 68,
     /// danger-solid while pressed: the same step again past hover, in the same direction. Always derived; a pack does not write it.
     DangerSolidPressed = 69,
+    /// Translucent fill of the theme's own neutral behind initials and placeholders, dark in light and light in dark, raised in alpha only as far as it shows as an edge on every floor, 3:1 under high contrast; text on it uses text.
+    NeutralSoft = 70,
 }
 
-pub const ROLE_COUNT: usize = 70;
+pub const ROLE_COUNT: usize = 71;
 
 impl Role {
     pub const ALL: [Role; ROLE_COUNT] = [
@@ -220,6 +222,7 @@ impl Role {
         Role::AccentSolidPressed,
         Role::DangerSolidHover,
         Role::DangerSolidPressed,
+        Role::NeutralSoft,
     ];
 
     pub const fn name(self) -> &'static str {
@@ -294,6 +297,7 @@ impl Role {
             Role::AccentSolidPressed => "accent-solid-pressed",
             Role::DangerSolidHover => "danger-solid-hover",
             Role::DangerSolidPressed => "danger-solid-pressed",
+            Role::NeutralSoft => "neutral-soft",
         }
     }
 
@@ -337,10 +341,13 @@ pub enum Tier {
     Derived,
 }
 
-/// (foreground, background, minimum WCAG contrast) every resolved palette meets.
+/// (foreground, background, minimum WCAG contrast) every resolved palette meets. A translucent
+/// foreground is measured laid over its background.
 pub const CONTRAST: &[(Role, Role, f32)] = &[
     (Role::Line, Role::Surface, 1.2),
     (Role::Line, Role::Canvas, 1.1),
+    (Role::Line, Role::SurfaceSunken, 1.1),
+    (Role::Line, Role::SurfaceRaised, 1.1),
     (Role::Text, Role::Canvas, 4.5),
     (Role::Text, Role::Surface, 4.5),
     (Role::Text, Role::SurfaceRaised, 4.5),
@@ -434,4 +441,11 @@ pub const CONTRAST: &[(Role, Role, f32)] = &[
     (Role::OnDangerSolid, Role::DangerSolid, 4.5),
     (Role::OnDangerSolid, Role::DangerSolidHover, 4.5),
     (Role::OnDangerSolid, Role::DangerSolidPressed, 4.5),
+    (Role::NeutralSoft, Role::Surface, 1.3),
+    (Role::NeutralSoft, Role::SurfaceSunken, 1.3),
+    (Role::NeutralSoft, Role::SurfaceRaised, 1.3),
+    (Role::NeutralSoft, Role::Canvas, 1.3),
 ];
+
+/// (foreground, ground, the ground's alpha percent, what it is laid over, minimum WCAG contrast).
+pub const COMPOSITE_CONTRAST: &[(Role, Role, u8, Role, f32)] = &[];

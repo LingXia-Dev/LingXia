@@ -2,7 +2,7 @@
 //! whole theme. A role the pack wrote is never replaced.
 
 use crate::ALIKE;
-use crate::color::{Oklch, Rgba, contrast, distance, ensure_contrast};
+use crate::color::{Oklch, Rgba, contrast, distance, ensure_contrast, over};
 use crate::generated::{ROLE_COUNT, Role};
 
 const WHITE: Rgba = Rgba([255, 255, 255, 255]);
@@ -547,6 +547,42 @@ impl Build<'_> {
         }
         self.info(seed);
         self.categorical(seed, sides);
+        self.neutral_soft();
+    }
+
+    /// The theme's own neutral at tone 10 in light and 90 in dark, at 10 % and 20 %, its alpha
+    /// raised only as far as it stands off every floor as an edge, 3:1 under high contrast.
+    fn neutral_soft(&mut self) {
+        let floors = [
+            Role::Surface,
+            Role::SurfaceSunken,
+            Role::SurfaceRaised,
+            Role::Canvas,
+        ]
+        .map(|role| self.get(role));
+        let edge = crate::CONTRAST
+            .iter()
+            .filter(|(role, ..)| *role == Role::NeutralSoft)
+            .map(|&(.., ratio)| {
+                if self.strong {
+                    crate::boosted(ratio)
+                } else {
+                    f64::from(ratio)
+                }
+            })
+            .fold(1.0, f64::max);
+        let neutral = self.get(Role::Canvas).oklch();
+        let Rgba([r, g, b, _]) = tone(neutral, self.pick([10.0, 90.0]));
+        let fill = |alpha: u8| Rgba([r, g, b, alpha]);
+        let mut alpha = (self.pick([0.10, 0.20]) * 255.0).round() as u8;
+        while alpha < u8::MAX
+            && !floors
+                .iter()
+                .all(|&floor| contrast(over(fill(alpha), floor), floor) >= edge)
+        {
+            alpha += 1;
+        }
+        self.put(Role::NeutralSoft, fill(alpha));
     }
 
     fn accent(&mut self, seed: Rgba) {
@@ -879,4 +915,31 @@ impl Build<'_> {
             self.put(role, ensure_contrast(color, self.get(Role::Canvas), off));
         }
     }
+}
+
+/// `neutral`'s hue at CIE lightness `lstar` (0-100), its chroma held to a neutral's.
+fn tone(neutral: Oklch, lstar: f64) -> Rgba {
+    let target = if lstar > 8.0 {
+        ((lstar + 16.0) / 116.0).powi(3)
+    } else {
+        lstar / 903.3
+    };
+    let (mut low, mut high) = (0.0, 1.0);
+    let at = |l: f64| {
+        Oklch {
+            l,
+            c: neutral.c.min(0.02),
+            h: neutral.h,
+        }
+        .rgba(255)
+    };
+    for _ in 0..40 {
+        let mid = (low + high) / 2.0;
+        if at(mid).luminance() < target {
+            low = mid;
+        } else {
+            high = mid;
+        }
+    }
+    at(high)
 }

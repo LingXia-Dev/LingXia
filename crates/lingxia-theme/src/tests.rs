@@ -22,8 +22,8 @@ fn the_default_pack_proves_every_pair_in_both_appearances() {
         };
         let theme = resolve(&pack, &prefs).unwrap();
         for &(foreground, background, ratio) in CONTRAST {
-            let actual = contrast(theme.color(foreground), theme.color(background));
-            let needed = if involves_selection(foreground, background) {
+            let actual = pair_contrast(&theme, foreground, background);
+            let needed = if keeps_base_ratio(foreground, background) {
                 f64::from(ratio)
             } else {
                 boosted(ratio)
@@ -52,7 +52,7 @@ fn any_user_accent_derives_a_passing_family() {
             };
             let theme = resolve(&pack, &prefs).unwrap();
             for &(foreground, background, ratio) in CONTRAST {
-                let actual = contrast(theme.color(foreground), theme.color(background));
+                let actual = pair_contrast(&theme, foreground, background);
                 assert!(
                     actual + 1e-9 >= f64::from(ratio),
                     "{seed} {appearance:?}: {} on {} is {actual:.2}",
@@ -754,12 +754,12 @@ fn a_pack_of_authored_roles_derives_a_whole_theme_from_its_own_colours() {
         let theme = resolve(&pack, &prefs).unwrap();
         let default = resolve(&base, &prefs).unwrap();
         for &(foreground, background, ratio) in CONTRAST {
-            let needed = if prefs.high_contrast && !involves_selection(foreground, background) {
+            let needed = if prefs.high_contrast && !keeps_base_ratio(foreground, background) {
                 boosted(ratio)
             } else {
                 f64::from(ratio)
             };
-            let actual = contrast(theme.color(foreground), theme.color(background));
+            let actual = pair_contrast(&theme, foreground, background);
             assert!(
                 actual + 1e-9 >= needed,
                 "{label}: {} on {} is {actual:.2}",
@@ -918,7 +918,7 @@ fn hues_and_series_stand_apart_under_any_accent() {
                     let theme = resolve(&pack, &prefs).unwrap();
                     let label = format!("{} {} {appearance:?}", pack.name, seed.hex());
                     for &(foreground, background, ratio) in CONTRAST {
-                        let actual = contrast(theme.color(foreground), theme.color(background));
+                        let actual = pair_contrast(&theme, foreground, background);
                         assert!(
                             actual + 1e-9 >= f64::from(ratio),
                             "{label}: {} on {} is {actual:.2}",
@@ -1656,5 +1656,92 @@ fn a_written_fill_neither_direction_holds_is_refused_with_the_nearest_that_passe
             .iter()
             .all(|problem| problem.appearance != "light"),
         "the suggested fill passes"
+    );
+}
+
+#[test]
+fn neutral_soft_is_a_translucent_neutral_that_stands_off_every_floor_in_every_look() {
+    for pack in shipped_packs() {
+        every(|prefs, label| {
+            let theme = resolve(&pack, &prefs).unwrap();
+            let fill = theme.color(Role::NeutralSoft);
+            let floor = theme.color(Role::Surface);
+            // Dark ink in light, light ink in dark, and never opaque.
+            assert!(fill.0[3] < 255, "{label}: {}", fill.hex());
+            assert_eq!(
+                fill.luminance() < floor.luminance(),
+                prefs.appearance == Appearance::Light,
+                "{label}"
+            );
+            for ground in [
+                Role::Surface,
+                Role::SurfaceSunken,
+                Role::SurfaceRaised,
+                Role::Canvas,
+            ] {
+                let edge = pair_contrast(&theme, Role::NeutralSoft, ground);
+                let needed = if prefs.high_contrast { 3.0 } else { 1.3 };
+                assert!(edge >= needed, "{label}: on {} {edge:.2}", ground.name());
+            }
+        });
+    }
+    // The light default starts at 10 % and rises only to the first alpha that reads as an edge.
+    let theme = resolve(&default_pack(), &Prefs::default()).unwrap();
+    let alpha = theme.color(Role::NeutralSoft).0[3];
+    assert!((26..=40).contains(&alpha), "{alpha}");
+}
+
+#[test]
+fn every_edge_stands_three_to_one_off_each_floor_under_high_contrast() {
+    let showcase = include_str!("../../../examples/lingxia-showcase/lxapp/theme.json");
+    let mut packs = shipped_packs().to_vec();
+    packs.push(complete(serde_json::from_str(showcase).unwrap()));
+    for pack in packs {
+        for appearance in [Appearance::Light, Appearance::Dark] {
+            let prefs = Prefs {
+                appearance,
+                high_contrast: true,
+                ..Prefs::default()
+            };
+            let theme = resolve(&pack, &prefs).unwrap();
+            for edge in [Role::Line, Role::LineStrong, Role::Focus, Role::NeutralSoft] {
+                for floor in [
+                    Role::Canvas,
+                    Role::Surface,
+                    Role::SurfaceSunken,
+                    Role::SurfaceRaised,
+                ] {
+                    let ratio = pair_contrast(&theme, edge, floor);
+                    assert!(
+                        ratio + 1e-9 >= 3.0,
+                        "{} {appearance:?}: {} on {} is {ratio:.2}:1",
+                        pack.name,
+                        edge.name(),
+                        floor.name()
+                    );
+                }
+            }
+        }
+    }
+}
+
+#[test]
+fn a_composite_pair_is_measured_against_its_ground_laid_over_the_floor() {
+    let theme = resolve(&default_pack(), &Prefs::default()).unwrap();
+    let pairs = [(Role::Knob, Role::Accent, 80, Role::Surface, 3.0)];
+    assert_eq!(
+        composite_misses(&theme, &pairs, false),
+        Vec::<String>::new()
+    );
+    let misses = composite_misses(
+        &theme,
+        &[(Role::Knob, Role::Accent, 10, Role::Surface, 3.0)],
+        false,
+    );
+    assert_eq!(misses.len(), 1);
+    assert!(
+        misses[0].starts_with("knob on accent/10 over surface is ")
+            && misses[0].ends_with("needs 3.0:1"),
+        "{misses:?}"
     );
 }

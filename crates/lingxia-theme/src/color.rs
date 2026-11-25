@@ -71,6 +71,15 @@ pub fn distance(a: Rgba, b: Rgba) -> f64 {
     100.0 * squares.sqrt()
 }
 
+/// `top` laid over the opaque `under` by its alpha, blended in sRGB as a renderer does.
+pub fn over(top: Rgba, under: Rgba) -> Rgba {
+    let alpha = f64::from(top.0[3]) / 255.0;
+    let mix = |i: usize| {
+        (f64::from(top.0[i]) * alpha + f64::from(under.0[i]) * (1.0 - alpha)).round() as u8
+    };
+    Rgba([mix(0), mix(1), mix(2), 255])
+}
+
 /// WCAG contrast ratio of two opaque colours, 1–21.
 pub fn contrast(a: Rgba, b: Rgba) -> f64 {
     let (x, y) = (a.luminance(), b.luminance());

@@ -10,8 +10,8 @@ use std::sync::{LazyLock, Mutex};
 
 use serde::{Deserialize, Serialize};
 
-pub use color::{Oklch, Rgba, contrast, distance, ensure_contrast};
-pub use generated::{CONTRAST, ROLE_COUNT, Role, Tier};
+pub use color::{Oklch, Rgba, contrast, distance, ensure_contrast, over};
+pub use generated::{COMPOSITE_CONTRAST, CONTRAST, ROLE_COUNT, Role, Tier};
 
 /// The pack shipped when a host names none.
 pub fn default_pack() -> Pack {
@@ -332,7 +332,7 @@ pub fn resolve(pack: &Pack, prefs: &Prefs) -> Result<ResolvedTheme, String> {
         for _ in 0..2 {
             for &(foreground, background, ratio) in CONTRAST {
                 let (fg, bg) = (foreground as usize, background as usize);
-                if involves_selection(foreground, background) || !placed[fg] || !placed[bg] {
+                if keeps_base_ratio(foreground, background) || !placed[fg] || !placed[bg] {
                     continue;
                 }
                 let target = boosted(ratio);
@@ -392,7 +392,7 @@ fn colors_for(pack: &Pack, appearance: Appearance, high_contrast: bool) -> (&Col
 }
 
 /// The high-contrast threshold for a base minimum: AA text to AAA, UI to AA text.
-fn boosted(ratio: f32) -> f64 {
+pub(crate) fn boosted(ratio: f32) -> f64 {
     match ratio {
         r if r >= 4.5 => 7.0,
         r if r >= 3.0 => 4.5,
@@ -428,8 +428,48 @@ fn near_black(pack: &Pack, colors: &Colors, role: Role, appearance: Appearance) 
 
 /// Selection pairs keep their base ratios under high contrast: text must stay readable on the
 /// highlight, and a highlight boosted past 3:1 off the page would leave no room for that.
-fn involves_selection(foreground: Role, background: Role) -> bool {
+fn keeps_base_ratio(foreground: Role, background: Role) -> bool {
     foreground == Role::Selection || background == Role::Selection
+}
+
+/// The contrast a pair is held to: a translucent foreground is measured laid over its background.
+pub fn pair_contrast(theme: &ResolvedTheme, foreground: Role, background: Role) -> f64 {
+    let ground = theme.color(background);
+    let ink = theme.color(foreground);
+    let ink = if ink.0[3] < 255 {
+        over(ink, ground)
+    } else {
+        ink
+    };
+    contrast(ink, ground)
+}
+
+/// Each composite pair `theme` misses: the foreground on a role at an alpha laid over another.
+fn composite_misses(
+    theme: &ResolvedTheme,
+    pairs: &[(Role, Role, u8, Role, f32)],
+    high_contrast: bool,
+) -> Vec<String> {
+    let mut misses = Vec::new();
+    for &(foreground, ground, percent, under, ratio) in pairs {
+        let needed = if high_contrast {
+            boosted(ratio)
+        } else {
+            f64::from(ratio)
+        };
+        let mut tint = theme.color(ground);
+        tint.0[3] = (f64::from(tint.0[3]) * f64::from(percent) / 100.0).round() as u8;
+        let actual = contrast(theme.color(foreground), over(tint, theme.color(under)));
+        if actual + 1e-9 < needed {
+            misses.push(format!(
+                "{} on {}/{percent} over {} is {actual:.2}:1, needs {needed:.1}:1",
+                foreground.name(),
+                ground.name(),
+                under.name()
+            ));
+        }
+    }
+    misses
 }
 
 /// The accent's soft tone moved in OKLCH lightness, by bisection, just far enough to stand 3:1
@@ -572,13 +612,13 @@ pub fn check(pack: &Pack) -> Vec<Problem> {
             if refused.contains(&background) {
                 continue;
             }
-            let needed = if high_contrast && !involves_selection(foreground, background) {
+            let needed = if high_contrast && !keeps_base_ratio(foreground, background) {
                 boosted(ratio)
             } else {
                 f64::from(ratio)
             };
             let (ink, ground) = (theme.color(foreground), theme.color(background));
-            let actual = contrast(ink, ground);
+            let actual = pair_contrast(&theme, foreground, background);
             if actual + 1e-9 < needed {
                 // A derived foreground follows its ground, so the ground is the colour to move.
                 let (moved, near, against) = if foreground.tier() == Tier::Derived {
@@ -586,7 +626,8 @@ pub fn check(pack: &Pack) -> Vec<Problem> {
                 } else {
                     (foreground, ensure_contrast(ink, ground, needed), ground)
                 };
-                let nearest = if contrast(near, against) + 1e-9 >= needed {
+                // A translucent colour's nearest value would also be a question of alpha.
+                let nearest = if ink.0[3] == 255 && contrast(near, against) + 1e-9 >= needed {
                     format!(
                         "; {} {} is the nearest that passes",
                         moved.name(),
@@ -604,6 +645,9 @@ pub fn check(pack: &Pack) -> Vec<Problem> {
                     ),
                 );
             }
+        }
+        for miss in composite_misses(&theme, COMPOSITE_CONTRAST, high_contrast) {
+            problem(name, miss);
         }
     }
     for (group, values) in [

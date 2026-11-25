@@ -233,7 +233,7 @@ authored ones and the accent seed, unless a pack sets them.
 | `surface` | the pack |  | Cards, cells and sheets. |
 | `surface-raised` | the pack |  | Raised cards and panels that stay in the page. |
 | `surface-sunken` | the pack |  | Inset fields and grouped backgrounds. |
-| `line` | the pack | 1.2:1 on `surface`, 1.1:1 on `canvas` | Decorative separators and card borders; interactive boundaries use line-strong. |
+| `line` | the pack | 1.2:1 on `surface`, 1.1:1 on `canvas`, 1.1:1 on `surface-sunken`, 1.1:1 on `surface-raised` | Decorative separators and card borders; interactive boundaries use line-strong. |
 | `text` | the pack | 4.5:1 on `canvas`, 4.5:1 on `surface`, 4.5:1 on `surface-raised`, 4.5:1 on `surface-sunken`, 4.5:1 on `selection`, 4.5:1 on `surface-overlay`, 4.5:1 on `hue-1-soft`, 4.5:1 on `hue-2-soft`, 4.5:1 on `hue-3-soft`, 4.5:1 on `hue-4-soft`, 4.5:1 on `hue-5-soft`, 4.5:1 on `hue-6-soft`, 4.5:1 on `hue-7-soft`, 4.5:1 on `hue-8-soft` | Body text. |
 | `text-muted` | the pack | 4.5:1 on `canvas`, 4.5:1 on `surface`, 4.5:1 on `surface-overlay` | Secondary text. |
 | `text-faint` | the pack | 3:1 on `surface`, 3:1 on `surface-overlay` | Hints and disabled text. |
@@ -299,6 +299,7 @@ authored ones and the accent seed, unless a pack sets them.
 | `accent-solid-pressed` | derived |  | accent-solid while pressed: the same step again past hover, in the same direction. Always derived; a pack does not write it. |
 | `danger-solid-hover` | derived |  | danger-solid under a hovering pointer: a visible step deeper, or lighter where deeper would make its label hard to read; hue kept. Always derived; a pack does not write it. |
 | `danger-solid-pressed` | derived |  | danger-solid while pressed: the same step again past hover, in the same direction. Always derived; a pack does not write it. |
+| `neutral-soft` | derived | 1.3:1 on `surface`, 1.3:1 on `surface-sunken`, 1.3:1 on `surface-raised`, 1.3:1 on `canvas` | Translucent fill of the theme's own neutral behind initials and placeholders, dark in light and light in dark, raised in alpha only as far as it shows as an edge on every floor, 3:1 under high contrast; text on it uses text. |
 
 ### Hover and pressed fills
 
