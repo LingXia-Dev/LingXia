@@ -104,8 +104,11 @@ export declare function useEnv(): Env;
 export declare function useView<A = Readonly<Record<string, (payload?: unknown) => Promise<unknown>>>, D = Record<string, unknown>>(): View<A, D>;
 
 declare const localCell: unique symbol;
-/** JSON-shaped state; undefined object fields are omitted, including optional fields. */
-export type LocalData<T> = T extends string | number | boolean | null ? T
+/**
+ * JSON-shaped state; undefined object fields are omitted, including optional fields. An `unknown`
+ * value (an open record's `Record<string, unknown>`) is taken as is and checked when it is set.
+ */
+export type LocalData<T> = unknown extends T ? T : T extends string | number | boolean | null ? T
   : T extends (...args: any[]) => any ? never
   : T extends readonly unknown[] ? { [K in keyof T]: LocalData<T[K]> }
   : T extends object ? { [K in keyof T]: T[K] extends undefined ? undefined : LocalData<T[K]> } : never;

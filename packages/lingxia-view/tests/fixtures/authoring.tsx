@@ -177,6 +177,9 @@ export function localDomain() {
   const draft = useLocal<Draft>('draft', {title:'', note:undefined});
   draft.set({title:'two', nested:undefined});
   useLocal('omitted-fields', {note:undefined, nested:{note:undefined}});
+  interface Doc { blocks: { id: string; attrs?: Record<string, unknown> }[]; meta: Record<string, unknown> }
+  const doc = useLocal<Doc>('document', {blocks:[{id:'a', attrs:{level:2}}], meta:{}});
+  doc.set(latest => ({...latest, meta:{...latest.meta, title:'x'}}));
   // @ts-expect-error Date is not JSON-shaped local state
   useLocal('date', new Date());
   // @ts-expect-error functions cannot be local state
