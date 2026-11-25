@@ -534,6 +534,10 @@ impl Build<'_> {
                 seed,
             ),
         }
+        // A light seed's accent-solid sits under a dark ink, where a white knob would vanish.
+        if contrast(self.get(Role::Knob), self.get(Role::AccentSolid)) < self.need(3.0) {
+            self.put(Role::Knob, self.get(Role::OnAccentSolid));
+        }
         let danger = self.get(Role::Danger);
         self.solid(
             [Role::Danger, Role::OnDanger],

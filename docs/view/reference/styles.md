@@ -263,7 +263,7 @@ authored ones and the accent seed, unless a pack sets them.
 | `media` | fixed |  | Translucent dock over video and images; the same in both appearances; a pack without it takes a near-black of its own neutral. |
 | `on-media` | fixed | 4.5:1 on `media`, 4.5:1 on `media-canvas` | Text and icons over media; tracks and buffered ranges take it at an alpha (`on-media/25`). |
 | `surface-overlay` | derived |  | Anything floating over the page: menus, popovers, toasts, dialogs and sheets; surface-raised, a step lighter in dark. |
-| `knob` | fixed |  | The thumb of a switch or slider, drawn on an accent track; white in both appearances by default. |
+| `knob` | fixed | 3:1 on `accent-solid` | The thumb of a switch or slider, drawn on an accent-solid track; white by default, or the dark ink of a light seed's accent-solid. |
 | `success-mark` | derived | 3:1 on `surface`, 3:1 on `surface-sunken` | Success as a dot or shape, never text. |
 | `warning-mark` | derived | 3:1 on `surface`, 3:1 on `surface-sunken` | Warning as a dot or shape, never text. |
 | `danger-mark` | derived | 3:1 on `surface`, 3:1 on `surface-sunken` | Danger as a dot or shape, never text. |

@@ -299,7 +299,7 @@ fn status_marks_are_fuller_in_light_and_the_status_tone_in_dark() {
 }
 
 #[test]
-fn a_pack_without_a_knob_keeps_the_white_thumb() {
+fn a_pack_without_a_knob_keeps_the_white_thumb_where_it_stands_off_the_track() {
     let pale: Pack = serde_json::from_str(
         r##"{"name":"pale","version":1,"accent":{"seed":"#365cdd","derive":true},"appearance":{"light":{"on-accent":"#101010"}}}"##,
     )
@@ -319,7 +319,16 @@ fn a_pack_without_a_knob_keeps_the_white_thumb() {
                     ..Prefs::default()
                 };
                 let theme = resolve(pack, &prefs).unwrap();
-                assert_eq!(theme.color(Role::Knob), hex("#ffffff"), "{}", pack.name);
+                let (knob, track) = (theme.color(Role::Knob), theme.color(Role::AccentSolid));
+                let need = if high_contrast { 4.5 } else { 3.0 };
+                let label = format!("{} {appearance:?} high {high_contrast}", pack.name);
+                assert!(contrast(knob, track) >= need, "{label}");
+                // Only a track that would hide white takes its own dark ink.
+                if contrast(hex("#ffffff"), track) >= need {
+                    assert_eq!(knob, hex("#ffffff"), "{label}");
+                } else {
+                    assert_eq!(knob, theme.color(Role::OnAccentSolid), "{label}");
+                }
             }
         }
     }
@@ -1591,6 +1600,7 @@ fn a_light_seed_keeps_its_fill_on_the_accent_solid_under_a_dark_ink() {
         let ink = theme.color(Role::OnAccentSolid);
         assert_eq!(theme.color(Role::AccentSolid), seed, "{label}");
         assert!(ink.oklch().l < 0.3, "{label}: {}", ink.hex());
+        assert_eq!(theme.color(Role::Knob), ink, "{label}");
         for role in [
             Role::AccentSolid,
             Role::AccentSolidHover,

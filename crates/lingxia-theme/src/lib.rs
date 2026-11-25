@@ -59,9 +59,9 @@ pub fn complete_from(mut pack: Pack, base: &Pack) -> Pack {
         (&mut pack.appearance.dark, &base.appearance.dark),
     ] {
         for (role, color) in defaults {
-            if Role::from_name(role)
-                .is_some_and(|role| role.tier() != Tier::Derived && !NEAR_BLACKS.contains(&role))
-            {
+            if Role::from_name(role).is_some_and(|role| {
+                role.tier() != Tier::Derived && !NEAR_BLACKS.contains(&role) && role != Role::Knob
+            }) {
                 colors.entry(role.clone()).or_insert(*color);
             }
         }
@@ -289,7 +289,8 @@ pub fn resolve(pack: &Pack, prefs: &Prefs) -> Result<ResolvedTheme, String> {
     let mut palette = [Rgba([0, 0, 0, 255]); ROLE_COUNT];
     let mut written = [false; ROLE_COUNT];
     for role in Role::ALL {
-        if picked && ACCENT_FAMILY.contains(&role) {
+        // The knob follows the track, so a user accent drops a written one with the family.
+        if picked && (ACCENT_FAMILY.contains(&role) || role == Role::Knob) {
             continue;
         }
         let slot = role as usize;

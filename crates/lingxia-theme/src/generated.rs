@@ -72,7 +72,7 @@ pub enum Role {
     OnMedia = 32,
     /// Anything floating over the page: menus, popovers, toasts, dialogs and sheets; surface-raised, a step lighter in dark.
     SurfaceOverlay = 33,
-    /// The thumb of a switch or slider, drawn on an accent track; white in both appearances by default.
+    /// The thumb of a switch or slider, drawn on an accent-solid track; white by default, or the dark ink of a light seed's accent-solid.
     Knob = 34,
     /// Success as a dot or shape, never text.
     SuccessMark = 35,
@@ -395,6 +395,7 @@ pub const CONTRAST: &[(Role, Role, f32)] = &[
     (Role::Selection, Role::Canvas, 3.0),
     (Role::OnMedia, Role::Media, 4.5),
     (Role::OnMedia, Role::MediaCanvas, 4.5),
+    (Role::Knob, Role::AccentSolid, 3.0),
     (Role::SuccessMark, Role::Surface, 3.0),
     (Role::SuccessMark, Role::SurfaceSunken, 3.0),
     (Role::WarningMark, Role::Surface, 3.0),

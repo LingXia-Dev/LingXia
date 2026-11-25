@@ -19,7 +19,6 @@
       "shadow": "#000000",
       "media": "#0b0e14b8",
       "on-media": "#ffffff",
-      "knob": "#ffffff",
       "media-canvas": "#0a0c11"
     },
     "dark": {
@@ -39,7 +38,6 @@
       "shadow": "#000000",
       "media": "#0b0e14b8",
       "on-media": "#ffffff",
-      "knob": "#ffffff",
       "media-canvas": "#0a0c11"
     }
   },

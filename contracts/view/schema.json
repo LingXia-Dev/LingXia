@@ -449,7 +449,7 @@
     {"name": "media", "tier": "fixed", "doc": "Translucent dock over video and images; the same in both appearances; a pack without it takes a near-black of its own neutral."},
     {"name": "on-media", "tier": "fixed", "on": {"media": 4.5, "media-canvas": 4.5}, "doc": "Text and icons over media; tracks and buffered ranges take it at an alpha (`on-media/25`)."},
     {"name": "surface-overlay", "tier": "derived", "doc": "Anything floating over the page: menus, popovers, toasts, dialogs and sheets; surface-raised, a step lighter in dark."},
-    {"name": "knob", "tier": "fixed", "doc": "The thumb of a switch or slider, drawn on an accent track; white in both appearances by default."},
+    {"name": "knob", "tier": "fixed", "on": {"accent-solid": 3}, "doc": "The thumb of a switch or slider, drawn on an accent-solid track; white by default, or the dark ink of a light seed's accent-solid."},
     {"name": "success-mark", "tier": "derived", "on": {"surface": 3, "surface-sunken": 3}, "doc": "Success as a dot or shape, never text."},
     {"name": "warning-mark", "tier": "derived", "on": {"surface": 3, "surface-sunken": 3}, "doc": "Warning as a dot or shape, never text."},
     {"name": "danger-mark", "tier": "derived", "on": {"surface": 3, "surface-sunken": 3}, "doc": "Danger as a dot or shape, never text."},
