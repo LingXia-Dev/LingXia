@@ -36,10 +36,6 @@ not have to be the one on screen.
 - An app id the dev server does not publish keeps the source it already
   opened from. Home with no manifest is an error.
 
-The reload loads a fresh document. `./view.js` is requested with the file's
-mtime (`?lxdev=`), and the dev scheme answers `Cache-Control: no-store`, so
-the WebView does not keep the previous module.
-
 What restarts: [lifecycle](../lxapp/lifecycle.md) (a dev reload keeps the
 window and starts Logic again).
 

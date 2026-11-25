@@ -39,7 +39,8 @@ The lxapps and pages in the session. Commands target the current lxapp
 (`--app` for another) and the current page (`--page` takes a page name or an
 `instance_id` from `page current|list|info`).
 
-- `list` / `current` / `info` / `pages` — what is running, and configured pages
+- `list` / `current` / `info` / `pages` — what is running, and configured pages;
+  `doctor` — what automation the session supports
 - `open` / `close` / `restart` / `uninstall` — lifecycle (`restart` relaunches
   without rebuilding)
 - `nav go <page> [--param K=V] [--replace]` / `nav go --tab <tab>` / `nav reset <page>` / `nav back` — navigate by page name
@@ -53,8 +54,8 @@ The lxapps and pages in the session. Commands target the current lxapp
   `page press KEY [SELECTOR]`, `page scroll|back`
 - `page tree`, `page find ROLE [--name NAME]` — the accessibility tree (role, name, test id,
   state, bounds); every page command reaches GPU pages too
-- `page frame` — a GPU page's presentation counters (frames, queue and eval time, image cache,
-  reveal); `failure` and `stalled` say when it stopped rendering
+- `page frame` — a GPU page's presentation counters and frame pacing; `failure` and `stalled`
+  say when it stopped rendering. `page hud on|off` draws the counters over the page
 - `page screenshot` — PNG of one page. On a Runner a GPU page's is the simulated device's pixels,
   viewport × the preset's pixel ratio (iPhone 15 Pro: 1179 × 2556), on any Mac screen
 
@@ -122,27 +123,18 @@ On macOS, `hover` fires the events but cannot apply `:hover` styles.
 
 ## `lxdev mock` and `lxdev network`
 
-Who answers the running app's calls — `mocks/` handlers, the real backend,
-or a scenario state on top — and what each call got (development hosts and
-the Runner):
+`lxdev mock` sets who answers the running app's calls (development hosts and the
+Runner): [Mocks → Commands](../lxapp/mock.md#commands). Its changes affect the whole
+session; `use --app` picks which lxapp's HTTP calls the session's one scenario answers.
 
 ```bash
-lxdev mock                        # the selection, its source, hits, errors
-lxdev mock all | none [TARGET…]   # live, until lxdev mock reset
-lxdev mock use checkout:empty-cart
 lxdev network status              # who answered each call; what reached the network
 lxdev network capture start       # then: capture stop r.json | r.har
 ```
 
-Mock selection, clear, and reset affect the whole session. `use --app` chooses
-which lxapp's HTTP calls the one session scenario answers; another `use`
-replaces it. A partial reset fails and reports the unfinished phases.
-
 `capture stop` writes HAR to a `.har` path and the request JSON to any other.
 Read the JSON: bodies are parsed and secrets redacted. Page WebViews do not
 reach the network (`connect-src 'none'`).
-
-Everything else: [Mocks](../lxapp/mock.md).
 
 ## `lxdev test`
 
@@ -154,8 +146,8 @@ profiles, secrets, and exit codes: [Testing](../lxapp/testing.md).
 
 ## `lxdev logs`
 
-The session's log stream. Use `lxdev logs --help` for filtering and output
-options. An app filter matches the recorded app id, not the current live app.
+The session's log stream: `-f` follows, `--level`, `--app` and `--path` filter, `--jsonl` for
+scripts. An app filter matches the recorded app id, not the current live app.
 `--grep` matches text in any case; add `-E` to read it as a regular expression (`--grep 'ready|failed' -E`).
 Following ends with this session; it never attaches to a later session.
 
