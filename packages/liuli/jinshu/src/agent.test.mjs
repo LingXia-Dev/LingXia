@@ -295,3 +295,81 @@ describe('what an agent insert touched, nested', () => {
     assert.deepEqual(read.data.reviews.find(r => r.kind === 'undone').blockIds, [callout]);
   });
 });
+
+describe('jinshu_undo is scoped to the calling agent', () => {
+  const other = agentCall({ conversation: 'conv-2' });
+
+  it("refuses a batchId of the person's edit or another agent's", async () => {
+    const source = createJinshuSource({ key: 'w3', initialDoc: lesson() });
+    const t = toolsOver({ w3: source });
+    const mine = source.apply({ batchId: 'h1', origin: { kind: 'human', id: 'local' }, base: 1, ops: [{ op: 'edit', id: 'p1', find: 'First', replace: 'Mine' }] });
+    const theirs = await t.call('jinshu_edit', { doc: 'w3', base: mine.revision, ops: [{ op: 'edit', id: 'p2', find: 'Second', replace: 'Theirs' }] }, other);
+    for (const batchId of ['h1', theirs.data.batchId]) {
+      const res = await t.call('jinshu_undo', { doc: 'w3', batchId });
+      assert.equal(res.error?.code ?? res.code, 'NOT_FOUND', JSON.stringify(res));
+    }
+    const blocks = source.getState().doc.blocks;
+    assert.equal(plainText(blocks[1].runs), 'Mine paragraph.');
+    assert.equal(plainText(blocks[2].runs), 'Theirs paragraph.');
+  });
+
+  it("still lets the person take back an agent's batch by id", async () => {
+    const source = createJinshuSource({ key: 'w3', initialDoc: lesson() });
+    const t = toolsOver({ w3: source });
+    const edit = await t.call('jinshu_edit', { doc: 'w3', base: 1, ops: [{ op: 'edit', id: 'p2', find: 'Second', replace: 'Next' }] });
+    assert.deepEqual(source.undo(edit.data.batchId).problems, []);
+    assert.equal(plainText(source.getState().doc.blocks[2].runs), 'Second paragraph.');
+  });
+
+  it('tells an agent from an external origin that shares its id', () => {
+    const source = createJinshuSource({ key: 'w3', initialDoc: lesson() });
+    const agent = { kind: 'agent', id: 'shared' };
+    const external = { kind: 'external', id: 'shared' };
+    source.apply({ batchId: 'e1', origin: external, base: 1, ops: [{ op: 'edit', id: 'p1', find: 'First', replace: 'Outside' }] });
+    assert.equal(source.undo('e1', agent).problems[0]?.code, 'NOT_FOUND');
+    assert.deepEqual(source.undo('e1', external).problems, []);
+    assert.equal(source.redo(agent).problems[0]?.code, 'NOT_FOUND');
+    assert.deepEqual(source.redo(external).problems, []);
+    assert.equal(plainText(source.getState().doc.blocks[1].runs), 'Outside paragraph.');
+  });
+
+  it('keeps an earlier undone batch undone when a later one is undone', () => {
+    const source = createJinshuSource({ key: 'w3', initialDoc: lesson() });
+    const human = { kind: 'human', id: 'local' };
+    source.apply({ batchId: 'h1', origin: human, base: 1, ops: [{ op: 'edit', id: 'p1', find: 'First', replace: 'Mine' }] });
+    source.apply({ batchId: 'a1', origin: { kind: 'agent', id: 'dazi/conv-1' }, base: source.getState().revision, ops: [{ op: 'edit', id: 'p2', find: 'Second', replace: 'Next' }] });
+    source.undo('h1', human);
+    source.undo('a1', human);
+    assert.deepEqual(source.getState().doc.blocks.map(b => plainText(b.runs)), ['Week 3', 'First paragraph.', 'Second paragraph.', 'Third.']);
+  });
+
+  it('redoes only what the same actor undid', () => {
+    const source = createJinshuSource({ key: 'w3', initialDoc: lesson() });
+    const human = { kind: 'human', id: 'local' };
+    const agent = { kind: 'agent', id: 'dazi/conv-1' };
+    const intruder = { kind: 'agent', id: 'dazi/conv-2' };
+    source.apply({ batchId: 'h1', origin: human, base: 1, ops: [{ op: 'edit', id: 'p1', find: 'First', replace: 'Mine' }] });
+    source.apply({ batchId: 'a1', origin: agent, base: source.getState().revision, ops: [{ op: 'edit', id: 'p2', find: 'Second', replace: 'Next' }] });
+    source.undo('h1', human);
+    source.undo('a1', agent);
+    assert.equal(source.redo(intruder).problems[0]?.code, 'NOT_FOUND');
+    assert.deepEqual(source.redo(human).problems, []);
+    assert.equal(plainText(source.getState().doc.blocks[1].runs), 'Mine paragraph.');
+    assert.equal(plainText(source.getState().doc.blocks[2].runs), 'Second paragraph.');
+    assert.equal(source.getState().canRedo, false);
+    assert.deepEqual(source.redo(agent).problems, []);
+    assert.equal(plainText(source.getState().doc.blocks[2].runs), 'Next paragraph.');
+  });
+
+  it('keeps a redo that fails to apply, so it can be tried again', () => {
+    const source = createJinshuSource({ key: 'w3', initialDoc: lesson() });
+    const agent = { kind: 'agent', id: 'dazi/conv-1' };
+    source.apply({ batchId: 'a1', origin: agent, base: 1, ops: [{ op: 'edit', id: 'p2', find: 'Second', replace: 'Next' }] });
+    source.undo('a1', agent);
+    source.apply({ batchId: 'b1', origin: { kind: 'agent', id: 'dazi/conv-2' }, base: source.getState().revision, ops: [{ op: 'delete', id: 'p2' }] });
+    assert.ok(source.redo(agent).problems.some(p => p.severity === 'error'));
+    source.undo('b1');
+    assert.deepEqual(source.redo(agent).problems, []);
+    assert.equal(plainText(source.getState().doc.blocks[2].runs), 'Next paragraph.');
+  });
+});

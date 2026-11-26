@@ -76,6 +76,16 @@ interface LogRecord {
 // No label: the page names a human origin without one as the person reading.
 const DEFAULT_HUMAN: Origin = { kind: 'human', id: 'local' };
 
+// The person may act on anyone's batch; an agent or external origin only on its own.
+function mayActOn(actor: Origin, owner: Origin): boolean {
+  return actor.kind === 'human' || (actor.kind === owner.kind && actor.id === owner.id);
+}
+
+// Redo takes back an undo, so only whoever undid may redo: the person, or that same agent.
+function sameActor(a: Origin, b: Origin): boolean {
+  return a.kind === b.kind && (a.kind === 'human' || a.id === b.id);
+}
+
 /** How long an agent's mark stays up after its tool call returns. */
 const ACTIVITY_MARK_MS = 4_000;
 
@@ -251,7 +261,7 @@ export function createJinshuSource(options: JinshuSourceOptions): JinshuSource {
   }
 
   const log: LogRecord[] = [];
-  const redoStack: LogRecord[] = [];
+  const redoStack: { readonly rec: LogRecord; readonly by: Origin }[] = [];
   const reviewLog: ReviewRecord[] = [];
   const blockLastModifiedRev = new Map<string, number>();
   // The editor channel that made that change: an editor shows its own edits at once, so its next
@@ -303,7 +313,7 @@ export function createJinshuSource(options: JinshuSourceOptions): JinshuSource {
       conflicts,
       history: toHistoryEntries(),
       canUndo: log.some(r => !r.undone && r.origin.kind === 'human'),
-      canRedo: redoStack.length > 0,
+      canRedo: redoStack.some(e => e.by.kind === 'human'),
       focusIds,
       ...(pendingAgentSave ? { pendingAgentSave } : {}),
       viewers: channels.size,
@@ -391,7 +401,7 @@ export function createJinshuSource(options: JinshuSourceOptions): JinshuSource {
       t: 'history',
       entries: toHistoryEntries(),
       canUndo: log.some(r => !r.undone && r.origin.kind === 'human'),
-      canRedo: redoStack.length > 0,
+      canRedo: redoStack.some(e => e.by.kind === 'human'),
     });
   }
 
@@ -759,9 +769,10 @@ export function createJinshuSource(options: JinshuSourceOptions): JinshuSource {
     origin?: Origin,
     opts?: { readonly force?: boolean },
   ): { revision: number; problems: Problem[] } {
+    const actor = origin ?? DEFAULT_HUMAN;
     let idx = -1;
     if (batchId) {
-      idx = log.findIndex(r => r.batchId === batchId && !r.undone);
+      idx = log.findIndex(r => r.batchId === batchId && !r.undone && mayActOn(actor, r.origin));
     } else {
       const targetKind = origin?.kind ?? 'human';
       for (let i = log.length - 1; i >= 0; i--) {
@@ -802,9 +813,11 @@ export function createJinshuSource(options: JinshuSourceOptions): JinshuSource {
     }
 
     target.undone = true;
-    // Replay remaining active batches from `target.beforeDoc` if later batches exist, else restore directly
-    let nextDoc = target.beforeDoc;
-    for (let i = idx + 1; i < log.length; i++) {
+    // Rebuild from before the first undone batch: a later batch's beforeDoc still holds earlier undone edits.
+    let from = 0;
+    while (!log[from].undone) from++;
+    let nextDoc = log[from].beforeDoc;
+    for (let i = from + 1; i < log.length; i++) {
       if (log[i].undone) continue;
       const replayed = applyOps(nextDoc, log[i].ops, registry, options);
       if (replayed.problems.some(p => p.severity === 'error')) {
@@ -819,7 +832,7 @@ export function createJinshuSource(options: JinshuSourceOptions): JinshuSource {
 
     doc = normalizeDocument(nextDoc, registry);
     revision += 1;
-    redoStack.push(target);
+    redoStack.push({ rec: target, by: actor });
     for (const id of target.touchedIds) {
       blockLastModifiedRev.set(id, revision);
       blockLastModifiedBy.delete(id);
@@ -832,14 +845,18 @@ export function createJinshuSource(options: JinshuSourceOptions): JinshuSource {
   }
 
   function redo(origin?: Origin): { revision: number; problems: Problem[] } {
-    const rec = redoStack.pop();
-    if (!rec) {
+    const actor = origin ?? DEFAULT_HUMAN;
+    let at = redoStack.length - 1;
+    while (at >= 0 && !sameActor(actor, redoStack[at].by)) at--;
+    if (at < 0) {
       return { revision, problems: [{ code: 'NOT_FOUND', severity: 'error', message: 'Nothing to redo.' }] };
     }
+    const { rec } = redoStack[at];
     const res = applyOps(doc, rec.ops, registry, options);
     if (res.problems.some(p => p.severity === 'error')) {
       return { revision, problems: [...res.problems] };
     }
+    redoStack.splice(at, 1);
     rec.undone = false;
     doc = res.doc;
     revision += 1;
@@ -1414,7 +1431,7 @@ export function createJinshuSource(options: JinshuSourceOptions): JinshuSource {
       t: 'history',
       entries: toHistoryEntries(),
       canUndo: log.some(r => !r.undone && r.origin.kind === 'human'),
-      canRedo: redoStack.length > 0,
+      canRedo: redoStack.some(e => e.by.kind === 'human'),
     });
     if (pendingAgentSave) {
       channel.send({ t: 'saveRequest', ...pendingAgentSave });
