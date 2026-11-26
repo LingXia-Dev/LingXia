@@ -60,7 +60,7 @@ for (const page of pages) {
     await expect(view.testId(form), `the page has not taken its ${form === 'form-regular' ? 'desk' : 'phone'} form`).toBeAttached();
     for (const theme of ['light', 'dark'] as const) {
       // Held still, so a spinner or a sweep is caught at the same place every time.
-      await view.environment({ theme, still: true });
+      await view.environment({ appearance: theme, still: true });
       // The page says which appearance it is drawn in: a shot taken before the pinned one has taken is the other one's picture.
       await expect(view.testId(`page-appearance-${theme}`), `the page has not turned ${theme}`).toBeAttached();
       // A list that opens at its end is at rest once its last row is on screen; a row can exist before it is.

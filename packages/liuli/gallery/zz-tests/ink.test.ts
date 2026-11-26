@@ -37,7 +37,7 @@ const near = (a: Tone, b: Tone, by = 9) => Math.abs(sum(a) - sum(b)) <= by;
 
 test('an icon in an ink with alpha has one tone where its strokes cross', { start: { page: 'icon' } }, async (tc) => {
   const view = tc.app.view;
-  await view.environment({ theme: 'light', still: true });
+  await view.environment({ appearance: 'light', still: true });
   const { ground, ink, darkest } = await tones(view, await boxOf(view.testId('faded')));
   expect(sum(ink)).toBeLessThan(sum(ground));
   expect({ ink, darkest, alike: near(ink, darkest) }).toEqual(expect.objectContaining({ alike: true }));
@@ -45,7 +45,7 @@ test('an icon in an ink with alpha has one tone where its strokes cross', { star
 
 test('a disabled token draws its remove mark in its label\'s tone', { start: { page: 'token' } }, async (tc) => {
   const view = tc.app.view;
-  await view.environment({ theme: 'light', still: true });
+  await view.environment({ appearance: 'light', still: true });
   const token = await boxOf(view.testId('locked'));
   const remove = await boxOf(view.testId('locked-remove'));
   // Inside the pill's rounded start, in the label's band: the page outside the pill is not counted.

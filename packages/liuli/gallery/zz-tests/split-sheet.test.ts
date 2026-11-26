@@ -7,7 +7,7 @@ import { expect, test } from '@lingxia/test';
 for (const theme of ['light', 'dark'] as const) {
   test(`split sheet: the sheet opens whole, its reply field pinned at its bottom (${theme})`, { start: { page: 'split' } }, async (tc) => {
     const view = tc.app.view;
-    await view.environment({ theme, still: true });
+    await view.environment({ appearance: theme, still: true });
     const open = view.testId('doc-open-comments');
     await open.scrollIntoView();
     await open.click();

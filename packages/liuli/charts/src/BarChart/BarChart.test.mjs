@@ -187,7 +187,7 @@ test('a theme change or an unrelated render draws the same outlines', async () =
   const before = source();
   assert.doesNotMatch(before, /#[0-9a-f]{3,8}/i, 'colours are role names, resolved by the theme outside the page');
   screen.press(screen.getByTestId('again'));
-  screen.rerender({ env: { theme: 'dark' } });
+  screen.rerender({ env: { appearance: 'dark' } });
   assert.equal(source(), before);
 });
 

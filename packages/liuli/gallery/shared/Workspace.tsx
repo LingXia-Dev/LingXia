@@ -45,7 +45,7 @@ export function Workspace({ page, onSelect }: WorkspaceProps) {
     <page className="bg-canvas">
       {/* Test probe: the workspace is the regular form; see GalleryPage. */}
       <view aria-hidden data-testid="form-regular" className="absolute start-0 top-0 size-px" />
-      <view aria-hidden data-testid={`page-appearance-${env.theme}`} className="absolute start-0 top-0 size-px" />
+      <view aria-hidden data-testid={`page-appearance-${env.appearance}`} className="absolute start-0 top-0 size-px" />
       <ListDetail value={current} onChange={next => next !== null && select(next)} listLabel="Gallery" contentWidth="prose" data-testid="gallery">
         <ListDetail.List>
           <view className="gap-0.5 px-3 pt-1">

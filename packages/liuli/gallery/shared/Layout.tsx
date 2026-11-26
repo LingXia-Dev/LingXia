@@ -25,7 +25,7 @@ export function GalleryPage({ children, isFilled = false }: { children: Child; i
       {/* Test probe: which form the page has taken, so a capture can refuse the wrong one. */}
       <view aria-hidden data-testid={env.sizeClass === 'regular' ? 'form-regular' : 'form-compact'} className="absolute start-0 top-0 size-px" />
       {/* Test probe: the appearance the page is drawn in, so a capture waits until a pinned one has taken. */}
-      <view aria-hidden data-testid={`page-appearance-${env.theme}`} className="absolute start-0 top-0 size-px" />
+      <view aria-hidden data-testid={`page-appearance-${env.appearance}`} className="absolute start-0 top-0 size-px" />
     </page>
   );
 }
