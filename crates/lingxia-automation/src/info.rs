@@ -102,31 +102,20 @@ impl JSLxAppDriver {
     }
 }
 
-/// The code for a failed Logic evaluation: a script that threw is
-/// `E_EVAL_SCRIPT`; a runtime that could not run it keeps its own code.
-fn logic_eval_code(err: &lxapp::LxAppError) -> &'static str {
-    match err {
-        lxapp::LxAppError::RongJS(_) | lxapp::LxAppError::RongJSHost { .. } => {
-            crate::error::E_EVAL_SCRIPT
+/// A failed Logic evaluation. A script that threw is `E_EVAL_SCRIPT`, and a coded
+/// throw (an `lx.*` error) rides along as `data.cause`, as a page action's does.
+fn logic_eval_error(error: lxapp::EvalError) -> HostError {
+    match error {
+        lxapp::EvalError::Thrown(thrown) => {
+            let error = crate::error::coded(crate::error::E_EVAL_SCRIPT, thrown.message());
+            if thrown.is(lingxia_error::code::INTERNAL) {
+                return error;
+            }
+            crate::error::with_json_data(error, &serde_json::json!({ "cause": thrown }))
         }
-        other => crate::error::code_for(&other.to_string()),
-    }
-}
-
-/// A failed Logic evaluation. A coded rejection the script threw (an `lx.*`
-/// error) rides along as `data.cause`, as a page action's does.
-fn logic_eval_error(err: lxapp::LxAppError) -> HostError {
-    let error = crate::error::coded(logic_eval_code(&err), err.to_string());
-    match err {
-        lxapp::LxAppError::RongJSHost {
-            code,
-            message,
-            data,
-        } => crate::error::with_json_data(
-            error,
-            &serde_json::json!({ "cause": { "code": code, "message": message, "data": data } }),
-        ),
-        _ => error,
+        lxapp::EvalError::Unavailable(error) => {
+            crate::error::coded(crate::error::code_for(error.message()), error.message())
+        }
     }
 }
 

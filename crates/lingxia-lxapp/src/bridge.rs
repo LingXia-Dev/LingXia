@@ -19,7 +19,6 @@ pub(crate) use protocol::JsonPatchOp;
 
 use protocol::*;
 
-use crate::LxAppError;
 use crate::host::{self, HostOutput, HostStream, HostStreamItem};
 use crate::lxapp::LxApp;
 use crate::page::PageInstance;
@@ -142,7 +141,7 @@ impl Payload {
     }
 
     /// For a GPU View: JSON text (a host route's result) is parsed only here.
-    fn into_tree(self) -> Result<Value, LxAppError> {
+    fn into_tree(self) -> Result<Value, lingxia_error::Error> {
         match self {
             Self::Json(json) => Ok(serde_json::from_str(&json)?),
             Self::Tree(value) => Ok(value),
@@ -158,7 +157,7 @@ pub(crate) trait AppServiceBackend: Send + Sync {
         path: String,
         page_instance_id: Option<String>,
         message: AppServiceCommand,
-    ) -> Result<(), LxAppError>;
+    ) -> Result<(), lingxia_error::Error>;
 }
 
 // Transport codes (must match lingxia-bridge/src/types.ts); a call's own failure carries an `E_*` code.
@@ -185,16 +184,16 @@ struct ViewReqOut {
 
 // ViewTransport — posting messages back to the WebView
 pub(crate) trait ViewTransport {
-    fn post_message_to_view(&self, message_json: String) -> Result<(), LxAppError>;
+    fn post_message_to_view(&self, message_json: String) -> Result<(), lingxia_error::Error>;
 
     fn post_message_to_document(
         &self,
         _expected_generation: DocumentGeneration,
         _gate: Arc<dyn DocumentOutboundGate>,
         _message_json: String,
-    ) -> Result<(), LxAppError> {
-        Err(LxAppError::Bridge(
-            "document-bound message posting is unavailable".to_string(),
+    ) -> Result<(), lingxia_error::Error> {
+        Err(lingxia_error::Error::internal(
+            "document-bound message posting is unavailable",
         ))
     }
 }
@@ -204,19 +203,19 @@ pub(crate) trait ViewTransport {
 /// production dispatch supplies the non-forgeable `WebMessageContext`.
 fn admit_before_host_dispatch<C, T>(
     context: &C,
-    admit: impl FnOnce(&C) -> Result<(), LxAppError>,
-    dispatch: impl FnOnce() -> Result<T, LxAppError>,
-) -> Result<T, LxAppError> {
+    admit: impl FnOnce(&C) -> Result<(), lingxia_error::Error>,
+    dispatch: impl FnOnce() -> Result<T, lingxia_error::Error>,
+) -> Result<T, lingxia_error::Error> {
     admit(context)?;
     dispatch()
 }
 
 impl ViewTransport for PageInstance {
-    fn post_message_to_view(&self, message_json: String) -> Result<(), LxAppError> {
+    fn post_message_to_view(&self, message_json: String) -> Result<(), lingxia_error::Error> {
         if let Some(view) = self.page_view() {
-            view.post_message(&message_json)
+            view.post_message(&message_json).map_err(Into::into)
         } else {
-            Err(LxAppError::Runtime("page View not ready".to_string()))
+            Err(lingxia_error::Error::internal("page View not ready"))
         }
     }
 
@@ -225,11 +224,12 @@ impl ViewTransport for PageInstance {
         expected_generation: DocumentGeneration,
         gate: Arc<dyn DocumentOutboundGate>,
         message_json: String,
-    ) -> Result<(), LxAppError> {
+    ) -> Result<(), lingxia_error::Error> {
         if let Some(view) = self.page_view() {
             view.post_message_to_document(expected_generation, gate, &message_json)
+                .map_err(Into::into)
         } else {
-            Err(LxAppError::Runtime("page View not ready".to_string()))
+            Err(lingxia_error::Error::internal("page View not ready"))
         }
     }
 }
@@ -239,7 +239,7 @@ fn serialize_seq_frame_with_payload(
     id: String,
     seq: u64,
     payload_json: &str,
-) -> Result<String, LxAppError> {
+) -> Result<String, lingxia_error::Error> {
     let id_json = serde_json::to_string(&id)?;
     let mut message_json = String::with_capacity(id_json.len() + payload_json.len() + 64);
     message_json.push_str("{\"v\":2,\"kind\":\"");
@@ -344,12 +344,12 @@ impl From<RpcError> for lingxia_error::Error {
     }
 }
 
-impl From<&LxAppError> for RpcError {
-    fn from(error: &LxAppError) -> Self {
-        if matches!(error, LxAppError::Bridge(msg) if msg == "Canceled") {
+impl From<&lingxia_error::Error> for RpcError {
+    fn from(error: &lingxia_error::Error) -> Self {
+        if error.is(code::ABORT) && error.message() == "Canceled" {
             return Self::new(code::ABORT, Some(PAGE_UNLOADED.to_string()));
         }
-        lingxia_error::Error::from(error.clone()).into()
+        error.clone().into()
     }
 }
 
@@ -407,40 +407,44 @@ impl OutboundContext {
     }
 
     /// Typed state for a GPU View; a document takes state only as frames.
-    fn post_state(&self, write: crate::GpuStateWrite) -> Result<(), LxAppError> {
+    fn post_state(&self, write: crate::GpuStateWrite) -> Result<(), lingxia_error::Error> {
         let Self::Gpu {
             endpoint,
             generation,
         } = self
         else {
-            return Err(LxAppError::Bridge(
-                "typed state is only for GPU pages".into(),
+            return Err(lingxia_error::Error::internal(
+                "typed state is only for GPU pages",
             ));
         };
         let endpoint = endpoint
             .upgrade()
-            .ok_or_else(|| LxAppError::Bridge("GPU endpoint was disposed".into()))?;
-        endpoint.write_state(*generation, write)
+            .ok_or_else(|| lingxia_error::Error::internal("GPU endpoint was disposed"))?;
+        Ok(endpoint.write_state(*generation, write)?)
     }
 
     /// Everything else a GPU View takes from Logic, typed.
-    fn post_gpu(&self, message: crate::GpuViewMessage) -> Result<(), LxAppError> {
+    fn post_gpu(&self, message: crate::GpuViewMessage) -> Result<(), lingxia_error::Error> {
         let Self::Gpu {
             endpoint,
             generation,
         } = self
         else {
-            return Err(LxAppError::Bridge(
-                "typed messages are only for GPU pages".into(),
+            return Err(lingxia_error::Error::internal(
+                "typed messages are only for GPU pages",
             ));
         };
         let endpoint = endpoint
             .upgrade()
-            .ok_or_else(|| LxAppError::Bridge("GPU endpoint was disposed".into()))?;
-        endpoint.deliver(*generation, message)
+            .ok_or_else(|| lingxia_error::Error::internal("GPU endpoint was disposed"))?;
+        Ok(endpoint.deliver(*generation, message)?)
     }
 
-    fn post<T: ViewTransport>(&self, transport: &T, message: String) -> Result<(), LxAppError> {
+    fn post<T: ViewTransport>(
+        &self,
+        transport: &T,
+        message: String,
+    ) -> Result<(), lingxia_error::Error> {
         match self {
             Self::Document {
                 expected_generation,
@@ -448,8 +452,8 @@ impl OutboundContext {
             } => {
                 transport.post_message_to_document(*expected_generation, Arc::clone(gate), message)
             }
-            Self::Gpu { .. } => Err(LxAppError::Bridge(
-                "a GPU View takes typed messages only".into(),
+            Self::Gpu { .. } => Err(lingxia_error::Error::internal(
+                "a GPU View takes typed messages only",
             )),
         }
     }
@@ -766,7 +770,7 @@ impl PageBridge {
         page: &PageInstance,
         expected_work: Option<SessionWorkId>,
         document: DocumentBinding,
-    ) -> Result<Option<Arc<BridgeConnection>>, LxAppError> {
+    ) -> Result<Option<Arc<BridgeConnection>>, lingxia_error::Error> {
         let work_id = self.next_session_work_id();
         #[cfg(target_os = "windows")]
         let outbound = match document {
@@ -844,7 +848,7 @@ impl PageBridge {
         &self,
         page: &PageInstance,
         work_id: SessionWorkId,
-    ) -> Result<(), LxAppError> {
+    ) -> Result<(), lingxia_error::Error> {
         // Callers hold `handshake`. This order deliberately makes Begin part
         // of the connection state transition rather than a late side effect.
         self.inner.js_backend.forward(
@@ -883,10 +887,10 @@ impl PageBridge {
         &self,
         page: &PageInstance,
         endpoint: &Arc<dyn crate::GpuPageView>,
-    ) -> Result<crate::GpuViewGeneration, LxAppError> {
+    ) -> Result<crate::GpuViewGeneration, lingxia_error::Error> {
         if !page.is_current_gpu_endpoint(endpoint) {
-            return Err(LxAppError::Bridge(
-                "GPU endpoint is no longer attached".into(),
+            return Err(lingxia_error::Error::internal(
+                "GPU endpoint is no longer attached",
             ));
         }
         let work_id = self.next_session_work_id();
@@ -963,7 +967,7 @@ impl PageBridge {
         endpoint: &Arc<dyn crate::GpuPageView>,
         generation: crate::GpuViewGeneration,
         signal: crate::GpuStateSignal,
-    ) -> Result<(), LxAppError> {
+    ) -> Result<(), lingxia_error::Error> {
         let outbound = {
             let handshake = self.inner.handshake.lock().unwrap();
             handshake
@@ -974,7 +978,7 @@ impl PageBridge {
                     matches!(outbound, OutboundContext::Gpu { endpoint: expected, generation: current }
                         if *current == generation && expected.upgrade().is_some_and(|expected| Arc::ptr_eq(&expected, endpoint)))
                 })
-                .ok_or_else(|| LxAppError::Bridge("stale GPU connection".into()))?
+                .ok_or_else(|| lingxia_error::Error::internal("stale GPU connection"))?
         };
         let work_id = Some(SessionWorkId(generation.0));
         self.forward_js_message(
@@ -1001,7 +1005,7 @@ impl PageBridge {
         endpoint: &Arc<dyn crate::GpuPageView>,
         generation: crate::GpuViewGeneration,
         event: crate::GpuViewEvent,
-    ) -> Result<(), LxAppError> {
+    ) -> Result<(), lingxia_error::Error> {
         let (work, ready) = {
             let handshake = self.inner.handshake.lock().unwrap();
             let connection = handshake
@@ -1012,7 +1016,7 @@ impl PageBridge {
                         && matches!(connection.outbound.as_ref(), Some(OutboundContext::Gpu { endpoint: expected, generation: current })
                             if *current == generation && expected.upgrade().is_some_and(|expected| Arc::ptr_eq(&expected, endpoint)))
                 })
-                .ok_or_else(|| LxAppError::Bridge("stale GPU connection".into()))?;
+                .ok_or_else(|| lingxia_error::Error::internal("stale GPU connection"))?;
             let work = CapturedSessionWork {
                 work_id: Some(connection.work_id),
                 outbound: connection.outbound.clone(),
@@ -1024,7 +1028,7 @@ impl PageBridge {
         match event {
             crate::GpuViewEvent::Connected => {
                 let Some(work_id) = work.work_id.filter(|_| !ready) else {
-                    return Err(LxAppError::Bridge("repeated GPU connection".into()));
+                    return Err(lingxia_error::Error::internal("repeated GPU connection"));
                 };
                 if !self.set_ready_if_current(work_id, self.new_session_id()) {
                     return Ok(());
@@ -1120,7 +1124,7 @@ impl PageBridge {
         &self,
         page: &PageInstance,
         incoming: IncomingWebMessage,
-    ) -> Result<(), LxAppError> {
+    ) -> Result<(), lingxia_error::Error> {
         // This is deliberately before JSON decode and before any request or
         // channel allocation. Every inbound bridge kind retains the same seam
         // and receives platform-attested context.
@@ -1155,9 +1159,9 @@ impl PageBridge {
         }
     }
 
-    fn predecode_inbound(&self, frame: &str) -> Result<DecodedIncoming, LxAppError> {
+    fn predecode_inbound(&self, frame: &str) -> Result<DecodedIncoming, lingxia_error::Error> {
         let message = decode_v2_inbound(frame)
-            .map_err(|_| LxAppError::Bridge("invalid bridge protocol envelope".to_string()))?;
+            .map_err(|_| lingxia_error::Error::internal("invalid bridge protocol envelope"))?;
         let handshake = self.inner.handshake.lock().unwrap();
         let work = handshake
             .connection
@@ -1188,7 +1192,7 @@ impl PageBridge {
         &self,
         _page: &PageInstance,
         _context: &WebMessageContext,
-    ) -> Result<(), LxAppError> {
+    ) -> Result<(), lingxia_error::Error> {
         Ok(())
     }
 
@@ -1200,10 +1204,10 @@ impl PageBridge {
         _page: &PageInstance,
         context: &BridgeMessageContext,
         route: &str,
-    ) -> Result<(), LxAppError> {
+    ) -> Result<(), lingxia_error::Error> {
         if matches!(context, BridgeMessageContext::Gpu) && !gpu_view_control_route(route) {
-            return Err(LxAppError::Bridge(
-                "GPU Views must invoke host APIs through Logic actions".into(),
+            return Err(lingxia_error::Error::internal(
+                "GPU Views must invoke host APIs through Logic actions",
             ));
         }
         Ok(())
@@ -1215,7 +1219,7 @@ impl PageBridge {
         _context: &BridgeMessageContext,
         msg: &ResMsg,
         work: &CapturedSessionWork,
-    ) -> Result<(), LxAppError> {
+    ) -> Result<(), lingxia_error::Error> {
         if !self.is_current_work(work.work_id) {
             return Ok(());
         }
@@ -1244,7 +1248,7 @@ impl PageBridge {
         _context: &BridgeMessageContext,
         msg: &ChDataMsg,
         work: &CapturedSessionWork,
-    ) -> Result<(), LxAppError> {
+    ) -> Result<(), lingxia_error::Error> {
         self.handle_ch_data_parts(
             page,
             &msg.id,
@@ -1259,7 +1263,7 @@ impl PageBridge {
         id: &str,
         payload: Payload,
         work: &CapturedSessionWork,
-    ) -> Result<(), LxAppError> {
+    ) -> Result<(), lingxia_error::Error> {
         if !self.is_current_work(work.work_id) {
             return Ok(());
         }
@@ -1286,7 +1290,7 @@ impl PageBridge {
         id: String,
         error: Option<RpcError>,
         work: &CapturedSessionWork,
-    ) -> Result<(), LxAppError> {
+    ) -> Result<(), lingxia_error::Error> {
         if !self.is_current_work(work.work_id) {
             return Ok(());
         }
@@ -1312,7 +1316,7 @@ impl PageBridge {
         _context: &BridgeMessageContext,
         msg: &CancelMsg,
         work: &CapturedSessionWork,
-    ) -> Result<(), LxAppError> {
+    ) -> Result<(), lingxia_error::Error> {
         if let Some(work_id) = work.work_id
             && self.is_current_work(Some(work_id))
         {
@@ -1327,7 +1331,7 @@ impl PageBridge {
         _context: &BridgeMessageContext,
         msg: &StateAckMsg,
         work: &CapturedSessionWork,
-    ) -> Result<(), LxAppError> {
+    ) -> Result<(), lingxia_error::Error> {
         if !self.is_current_work(work.work_id) {
             return Ok(());
         }
@@ -1347,7 +1351,7 @@ impl PageBridge {
         _context: &BridgeMessageContext,
         unknown: &UnknownMsg,
         work: &CapturedSessionWork,
-    ) -> Result<(), LxAppError> {
+    ) -> Result<(), lingxia_error::Error> {
         if !self.is_current_work(work.work_id) {
             return Ok(());
         }
@@ -1391,25 +1395,28 @@ impl PageBridge {
         _context: &BridgeMessageContext,
         msg: &HelloMsg,
         decoded: &DecodedIncoming,
-    ) -> Result<(), LxAppError> {
+    ) -> Result<(), lingxia_error::Error> {
         if msg.v != 2 {
-            return Err(LxAppError::Bridge(format!(
+            return Err(lingxia_error::Error::internal(format!(
                 "Unsupported protocol: {}",
                 msg.v
             )));
         }
         if !msg.protocols_supported.contains(&2) {
-            return Err(LxAppError::Bridge(
-                "Protocol 2 not in supported list".to_string(),
+            return Err(lingxia_error::Error::internal(
+                "Protocol 2 not in supported list",
             ));
         }
         if msg.role != "view" {
-            return Err(LxAppError::Bridge(format!("Unexpected role: {}", msg.role)));
+            return Err(lingxia_error::Error::internal(format!(
+                "Unexpected role: {}",
+                msg.role
+            )));
         }
         if let Some(expected) = page.bridge_nonce()
             && expected != msg.nonce
         {
-            return Err(LxAppError::Bridge("Nonce mismatch".to_string()));
+            return Err(lingxia_error::Error::internal("Nonce mismatch"));
         }
         if !self.is_current_work(decoded.work.work_id) {
             return Ok(());
@@ -1421,8 +1428,8 @@ impl PageBridge {
                 self.replace_with_session_work(page, decoded.work.work_id, context.document())?
             }
             BridgeMessageContext::Gpu => {
-                return Err(LxAppError::Bridge(
-                    "a GPU View connects without hello".into(),
+                return Err(lingxia_error::Error::internal(
+                    "a GPU View connects without hello",
                 ));
             }
         };
@@ -1478,7 +1485,7 @@ impl PageBridge {
         msg: &ReqMsg,
         work: &CapturedSessionWork,
         ready: bool,
-    ) -> Result<(), LxAppError> {
+    ) -> Result<(), lingxia_error::Error> {
         let call = Call {
             id: msg.id.clone(),
             method: msg.method.clone(),
@@ -1499,7 +1506,7 @@ impl PageBridge {
         call: Call,
         work: &CapturedSessionWork,
         ready: bool,
-    ) -> Result<(), LxAppError> {
+    ) -> Result<(), lingxia_error::Error> {
         if !self.is_current_work(work.work_id) {
             return Ok(());
         }
@@ -1618,7 +1625,7 @@ impl PageBridge {
         msg: &NotifyMsg,
         work: &CapturedSessionWork,
         ready: bool,
-    ) -> Result<(), LxAppError> {
+    ) -> Result<(), lingxia_error::Error> {
         if !self.is_current_work(work.work_id) || !ready {
             return Ok(());
         }
@@ -1657,7 +1664,7 @@ impl PageBridge {
         msg: &ChOpenMsg,
         work: &CapturedSessionWork,
         ready: bool,
-    ) -> Result<(), LxAppError> {
+    ) -> Result<(), lingxia_error::Error> {
         let params = msg
             .params
             .as_ref()
@@ -1678,7 +1685,7 @@ impl PageBridge {
         params: Option<Payload>,
         work: &CapturedSessionWork,
         ready: bool,
-    ) -> Result<(), LxAppError> {
+    ) -> Result<(), lingxia_error::Error> {
         if !self.is_current_work(work.work_id) {
             return Ok(());
         }
@@ -1737,7 +1744,7 @@ impl PageBridge {
         &self,
         page: &PageInstance,
         message: AppServiceCommand,
-    ) -> Result<(), LxAppError> {
+    ) -> Result<(), lingxia_error::Error> {
         self.inner.js_backend.forward(
             self.inner.lxapp.clone(),
             page.path(),
@@ -1753,7 +1760,7 @@ impl PageBridge {
         outbound: Option<&OutboundContext>,
         id: String,
         message: AppServiceCommand,
-    ) -> Result<(), LxAppError> {
+    ) -> Result<(), lingxia_error::Error> {
         if let Err(err) = self.forward_js_message(page, message) {
             let _ = self.send_res_err_for_context(
                 page,
@@ -1773,7 +1780,7 @@ impl PageBridge {
         outbound: Option<&OutboundContext>,
         id: String,
         message: AppServiceCommand,
-    ) -> Result<(), LxAppError> {
+    ) -> Result<(), lingxia_error::Error> {
         if let Err(err) = self.forward_js_message(page, message) {
             let _ = self.send_ch_ack_err_for_context(
                 page,
@@ -1793,7 +1800,7 @@ impl PageBridge {
         outbound: Option<&OutboundContext>,
         id: String,
         result: Payload,
-    ) -> Result<(), LxAppError> {
+    ) -> Result<(), lingxia_error::Error> {
         if let Some(outbound) = gpu(outbound) {
             return self.post_gpu(work_id, outbound, || {
                 Ok(crate::GpuViewMessage::Reply {
@@ -1803,7 +1810,7 @@ impl PageBridge {
             });
         }
         let result = RawValue::from_string(result.into_json())
-            .map_err(|e| LxAppError::Bridge(e.to_string()))?;
+            .map_err(|e| lingxia_error::Error::internal(e.to_string()))?;
         let msg = Res {
             v: 2,
             kind: "res",
@@ -1824,16 +1831,10 @@ impl PageBridge {
         method: String,
         params: Option<Value>,
         cap: String,
-    ) -> Result<(), LxAppError> {
+    ) -> Result<(), lingxia_error::Error> {
         if let Some(outbound) = gpu(outbound) {
-            let request =
-                crate::GpuViewRequest::from_call(&method, params).map_err(|(code, message)| {
-                    LxAppError::RongJSHost {
-                        code: code.into(),
-                        message,
-                        data: None,
-                    }
-                })?;
+            let request = crate::GpuViewRequest::from_call(&method, params)
+                .map_err(|(code, message)| lingxia_error::Error::new(code, message))?;
             return self.post_gpu(work_id, outbound, || {
                 Ok(crate::GpuViewMessage::Request { id, request })
             });
@@ -1856,7 +1857,7 @@ impl PageBridge {
         outbound: Option<&OutboundContext>,
         id: String,
         error: RpcError,
-    ) -> Result<(), LxAppError> {
+    ) -> Result<(), lingxia_error::Error> {
         let RpcError {
             code,
             message,
@@ -1901,7 +1902,7 @@ impl PageBridge {
         scope: Option<String>,
         rev: u64,
         state: Payload,
-    ) -> Result<(), LxAppError> {
+    ) -> Result<(), lingxia_error::Error> {
         if let Some(outbound) = outbound.filter(|outbound| outbound.is_gpu()) {
             if !self.is_current_work(work_id) {
                 return Ok(());
@@ -1910,7 +1911,7 @@ impl PageBridge {
             return outbound.post_state(crate::GpuStateWrite::Snapshot { rev, state });
         }
         let state = RawValue::from_string(state.into_json())
-            .map_err(|e| LxAppError::Bridge(e.to_string()))?;
+            .map_err(|e| lingxia_error::Error::internal(e.to_string()))?;
         let msg = StateSnapshotOut {
             v: 2,
             kind: "state.snapshot",
@@ -1929,12 +1930,12 @@ impl PageBridge {
         rev: u64,
         ops: Vec<crate::GpuPatchOp>,
         ack: bool,
-    ) -> Result<(), LxAppError> {
+    ) -> Result<(), lingxia_error::Error> {
         if !self.is_current_work(work_id) {
             return Ok(());
         }
-        let outbound =
-            outbound.ok_or_else(|| LxAppError::Bridge("GPU state has no connection".into()))?;
+        let outbound = outbound
+            .ok_or_else(|| lingxia_error::Error::internal("GPU state has no connection"))?;
         outbound.post_state(crate::GpuStateWrite::Patch { rev, ops, ack })
     }
 
@@ -1948,7 +1949,7 @@ impl PageBridge {
         rev: u64,
         ops: Box<RawValue>,
         ack: Option<bool>,
-    ) -> Result<(), LxAppError> {
+    ) -> Result<(), lingxia_error::Error> {
         let msg = StatePatch {
             v: 2,
             kind: "state.patch",
@@ -1969,7 +1970,7 @@ impl PageBridge {
         id: impl Into<String>,
         seq: u64,
         payload: Payload,
-    ) -> Result<(), LxAppError> {
+    ) -> Result<(), lingxia_error::Error> {
         if let Some(outbound) = gpu(outbound) {
             return self.post_gpu(work_id, outbound, || {
                 Ok(crate::GpuViewMessage::StreamEvent {
@@ -1996,7 +1997,7 @@ impl PageBridge {
         work_id: Option<SessionWorkId>,
         outbound: Option<&OutboundContext>,
         id: impl Into<String>,
-    ) -> Result<(), LxAppError> {
+    ) -> Result<(), lingxia_error::Error> {
         if let Some(outbound) = gpu(outbound) {
             return self.post_gpu(work_id, outbound, || {
                 Ok(crate::GpuViewMessage::ChannelAck {
@@ -2022,7 +2023,7 @@ impl PageBridge {
         outbound: Option<&OutboundContext>,
         id: impl Into<String>,
         error: RpcError,
-    ) -> Result<(), LxAppError> {
+    ) -> Result<(), lingxia_error::Error> {
         let RpcError {
             code,
             message,
@@ -2065,7 +2066,7 @@ impl PageBridge {
         id: impl Into<String>,
         seq: u64,
         payload: Payload,
-    ) -> Result<(), LxAppError> {
+    ) -> Result<(), lingxia_error::Error> {
         if let Some(outbound) = gpu(outbound) {
             return self.post_gpu(work_id, outbound, || {
                 Ok(crate::GpuViewMessage::ChannelData {
@@ -2093,7 +2094,7 @@ impl PageBridge {
         outbound: Option<&OutboundContext>,
         id: impl Into<String>,
         error: Option<RpcError>,
-    ) -> Result<(), LxAppError> {
+    ) -> Result<(), lingxia_error::Error> {
         if let Some(outbound) = gpu(outbound) {
             return self.post_gpu(work_id, outbound, || {
                 Ok(crate::GpuViewMessage::ChannelClose {
@@ -2116,8 +2117,8 @@ impl PageBridge {
         &self,
         work_id: Option<SessionWorkId>,
         outbound: &OutboundContext,
-        build: impl FnOnce() -> Result<crate::GpuViewMessage, LxAppError>,
-    ) -> Result<(), LxAppError> {
+        build: impl FnOnce() -> Result<crate::GpuViewMessage, lingxia_error::Error>,
+    ) -> Result<(), lingxia_error::Error> {
         if !self.is_current_work(work_id) {
             return Ok(());
         }
@@ -2130,7 +2131,7 @@ impl PageBridge {
         work_id: Option<SessionWorkId>,
         outbound: Option<&OutboundContext>,
         msg: &S,
-    ) -> Result<(), LxAppError> {
+    ) -> Result<(), lingxia_error::Error> {
         if !self.is_current_work(work_id) {
             return Ok(());
         }
@@ -2151,7 +2152,7 @@ impl PageBridge {
         id: String,
         seq: u64,
         payload_json: &str,
-    ) -> Result<(), LxAppError> {
+    ) -> Result<(), lingxia_error::Error> {
         if !self.is_current_work(work_id) {
             return Ok(());
         }
@@ -2170,7 +2171,7 @@ impl PageBridge {
         outbound: Option<&OutboundContext>,
         nonce: String,
         session_id: String,
-    ) -> Result<(), LxAppError> {
+    ) -> Result<(), lingxia_error::Error> {
         let msg = HelloAck {
             v: 2,
             kind: "helloAck",
@@ -2188,7 +2189,7 @@ impl PageBridge {
         outbound: Option<&OutboundContext>,
         session_id: String,
         caller: &host::AuthenticatedCaller,
-    ) -> Result<(), LxAppError> {
+    ) -> Result<(), lingxia_error::Error> {
         let schema = host::host_route_schema(caller);
         let msg = ReadyMsg {
             v: 2,
@@ -2421,7 +2422,7 @@ impl PageBridge {
         host_topic: &str,
         params_json: Option<String>,
         work: &CapturedSessionWork,
-    ) -> Result<(), LxAppError> {
+    ) -> Result<(), lingxia_error::Error> {
         admit_before_host_dispatch(
             context,
             |context| self.admit_host_route(page, context, host_topic),
@@ -2536,7 +2537,7 @@ impl PageBridge {
                 let invocation =
                     host::HostInvocationContext::for_dispatch(self.lxapp(), caller, Some(page))
                         .ok_or_else(|| {
-                            LxAppError::Bridge(
+                            lingxia_error::Error::internal(
                                 "authenticated caller does not match the native lxapp session"
                                     .to_string(),
                             )
@@ -2558,7 +2559,7 @@ impl PageBridge {
         host_method: String,
         params_json: Option<String>,
         work: &CapturedSessionWork,
-    ) -> Result<(), LxAppError> {
+    ) -> Result<(), lingxia_error::Error> {
         let route = host_method.clone();
         admit_before_host_dispatch(
             context,
@@ -2590,7 +2591,7 @@ impl PageBridge {
                 let invocation =
                     host::HostInvocationContext::for_dispatch(self.lxapp(), caller, Some(page))
                         .ok_or_else(|| {
-                            LxAppError::Bridge(
+                            lingxia_error::Error::internal(
                                 "authenticated caller does not match the native lxapp session"
                                     .to_string(),
                             )
@@ -2637,7 +2638,7 @@ impl PageBridge {
                                 res = &mut host_fut => {
                                     match res {
                                         Ok(output) => Ok(output),
-                                        Err(err) => Err(RpcError::from(&err)),
+                                        Err(err) => Err(RpcError::from(&lingxia_error::Error::from(err))),
                                     }
                                 }
                             };
@@ -2727,7 +2728,7 @@ impl PageBridge {
         host_method: String,
         params_json: Option<String>,
         work: &CapturedSessionWork,
-    ) -> Result<(), LxAppError> {
+    ) -> Result<(), lingxia_error::Error> {
         let route = host_method.clone();
         admit_before_host_dispatch(
             context,
@@ -2749,7 +2750,7 @@ impl PageBridge {
                 let invocation =
                     host::HostInvocationContext::for_dispatch(self.lxapp(), caller, Some(page))
                         .ok_or_else(|| {
-                            LxAppError::Bridge(
+                            lingxia_error::Error::internal(
                                 "authenticated caller does not match the native lxapp session"
                                     .to_string(),
                             )
@@ -2853,7 +2854,7 @@ impl PageBridge {
                             )
                         });
                 }
-                Some(Err(err)) => return Err(RpcError::from(&err)),
+                Some(Err(err)) => return Err(RpcError::from(&lingxia_error::Error::from(err))),
                 None => return Ok("null".to_string()),
             }
         }
@@ -2874,7 +2875,7 @@ mod tests {
                 &self,
                 generation: crate::GpuViewGeneration,
                 write: crate::GpuStateWrite,
-            ) -> Result<(), LxAppError> {
+            ) -> Result<(), crate::LxAppError> {
                 self.0
                     .lock()
                     .unwrap()
@@ -2885,36 +2886,39 @@ mod tests {
                 &self,
                 generation: crate::GpuViewGeneration,
                 message: crate::GpuViewMessage,
-            ) -> Result<(), LxAppError> {
+            ) -> Result<(), crate::LxAppError> {
                 self.0
                     .lock()
                     .unwrap()
                     .push((generation.get(), format!("{message:?}")));
                 Ok(())
             }
-            fn connect(&self, _: crate::GpuViewGeneration) -> Result<(), LxAppError> {
+            fn connect(&self, _: crate::GpuViewGeneration) -> Result<(), crate::LxAppError> {
                 Ok(())
             }
-            fn request_leave(&self, _: crate::LeaveReason) -> Result<(), LxAppError> {
+            fn request_leave(&self, _: crate::LeaveReason) -> Result<(), crate::LxAppError> {
                 Ok(())
             }
-            fn update_environment(&self, _: crate::PageViewEnvironment) -> Result<(), LxAppError> {
+            fn update_environment(
+                &self,
+                _: crate::PageViewEnvironment,
+            ) -> Result<(), crate::LxAppError> {
                 Ok(())
             }
-            fn reload(&self) -> Result<(), LxAppError> {
+            fn reload(&self) -> Result<(), crate::LxAppError> {
                 Ok(())
             }
-            fn park(&self) -> Result<(), LxAppError> {
+            fn park(&self) -> Result<(), crate::LxAppError> {
                 Ok(())
             }
-            fn retain_surface(&self, _: bool) -> Result<(), LxAppError> {
+            fn retain_surface(&self, _: bool) -> Result<(), crate::LxAppError> {
                 Ok(())
             }
             fn dispose(&self) {}
         }
         struct OtherTransport;
         impl ViewTransport for OtherTransport {
-            fn post_message_to_view(&self, _: String) -> Result<(), LxAppError> {
+            fn post_message_to_view(&self, _: String) -> Result<(), lingxia_error::Error> {
                 panic!("must not target current View")
             }
         }
@@ -2984,7 +2988,7 @@ mod tests {
             &PageInstance,
             &BridgeMessageContext,
             &str,
-        ) -> Result<(), LxAppError> = PageBridge::admit_host_route;
+        ) -> Result<(), lingxia_error::Error> = PageBridge::admit_host_route;
     }
 
     #[test]
@@ -3026,7 +3030,7 @@ mod tests {
             &context,
             |received| {
                 assert!(std::ptr::eq(received, &context));
-                Err(LxAppError::Bridge("denied".to_string()))
+                Err(lingxia_error::Error::internal("denied"))
             },
             || {
                 *dispatched.borrow_mut() = true;
@@ -3034,7 +3038,7 @@ mod tests {
             },
         );
 
-        assert!(matches!(result, Err(LxAppError::Bridge(message)) if message == "denied"));
+        assert!(matches!(result, Err(error) if error.message() == "denied"));
         assert!(!*dispatched.borrow());
     }
 

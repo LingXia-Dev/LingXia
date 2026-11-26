@@ -90,8 +90,8 @@ test("t.reject and test.fail pin a driver failure by code", async () => {
 test("an lx.* error thrown in logic.eval is matched by its own code", async () => {
   const world = createWorld();
   world.app.eval = async () => {
-    throw coded("E_EVAL_SCRIPT", "E_INVALID_STATE: Error: Wi-Fi is off", {
-      cause: { code: "E_INVALID_STATE", message: "Error: Wi-Fi is off", reason: "wifiDisabled" },
+    throw coded("E_EVAL_SCRIPT", "Wi-Fi is off", {
+      cause: { code: "E_INVALID_STATE", message: "Wi-Fi is off", reason: "wifiDisabled" },
     });
   };
   installFakeHost(world);

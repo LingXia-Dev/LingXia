@@ -1001,7 +1001,7 @@ impl LxApps {
         drop(admission);
         let terminated = match termination {
             Ok(completion) => completion.wait().await,
-            Err(error) => Err(error),
+            Err(error) => Err(error.into()),
         };
         if let Err(error) = terminated {
             // A hung Logic is the usual reason to restart. Its worker stays
@@ -1928,12 +1928,12 @@ impl LxApp {
         )
     }
 
-    pub async fn eval_logic(&self, script: String) -> Result<serde_json::Value, LxAppError> {
+    pub async fn eval_logic(&self, script: String) -> Result<serde_json::Value, crate::EvalError> {
         let json = self
             .executor
             .eval_app_service(self.clone_arc(), script, false)
             .await?;
-        serde_json::from_str(&json).map_err(LxAppError::from)
+        serde_json::from_str(&json).map_err(|error| crate::EvalError::Thrown(error.into()))
     }
 
     /// Evaluate, and report which `lx.*` members the script reached.
@@ -1943,12 +1943,12 @@ impl LxApp {
     pub async fn eval_logic_capturing_calls(
         &self,
         script: String,
-    ) -> Result<serde_json::Value, LxAppError> {
+    ) -> Result<serde_json::Value, crate::EvalError> {
         let json = self
             .executor
             .eval_app_service(self.clone_arc(), script, true)
             .await?;
-        serde_json::from_str(&json).map_err(LxAppError::from)
+        serde_json::from_str(&json).map_err(|error| crate::EvalError::Thrown(error.into()))
     }
 
     pub(crate) fn set_status(&self, s: LxAppSessionStatus) {
@@ -2374,7 +2374,7 @@ impl LxApp {
         self.app_launch_dispatched.store(false, Ordering::SeqCst);
         self.launch_settled.send_replace(false);
         self.clear_open_region();
-        termination
+        termination.map_err(Into::into)
     }
 
     pub fn shutdown(&self) -> Result<(), LxAppError> {
@@ -3549,7 +3549,7 @@ impl LxApp {
 
     /// Ensure the JS app service worker is running for this app.
     pub fn ensure_app_service_running(&self) -> Result<(), LxAppError> {
-        self.executor.create_app_svc(self.clone_arc())
+        Ok(self.executor.create_app_svc(self.clone_arc())?)
     }
 
     /// Dispatch `App.onLaunch` once for the current worker-backed app instance.
@@ -3777,7 +3777,8 @@ impl LxApp {
             // Also acknowledge worker startup when this app has no page services.
             self.executor
                 .eval_app_service(self.clone_arc(), "return true;".into(), false)
-                .await?;
+                .await
+                .map_err(lingxia_error::Error::from)?;
             Self::finish_cold_restart(pending).await?;
             loop {
                 if self.session.is_cancelled() {
@@ -3903,7 +3904,7 @@ impl LxApp {
             ack_tx,
         ) {
             page.finish_webview_setup(Err(err.to_string()));
-            return Err(err);
+            return Err(err.into());
         }
 
         let page_clone = page.clone();

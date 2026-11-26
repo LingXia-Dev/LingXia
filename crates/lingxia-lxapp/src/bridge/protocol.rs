@@ -1,6 +1,5 @@
 //! Bridge wire protocol types — incoming and outgoing message definitions.
 
-use crate::LxAppError;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use serde_json::value::RawValue;
@@ -15,11 +14,11 @@ struct VersionProbe {
 
 /// Decode a document frame. Any version other than 2 is rejected before the
 /// typed parser can create a message for downstream dispatch.
-pub(crate) fn decode_v2_inbound(frame: &str) -> Result<IncomingMessage, LxAppError> {
+pub(crate) fn decode_v2_inbound(frame: &str) -> Result<IncomingMessage, lingxia_error::Error> {
     let version = serde_json::from_str::<VersionProbe>(frame)
-        .map_err(|e| LxAppError::Bridge(format!("Invalid JSON: {e}")))?;
+        .map_err(|e| lingxia_error::Error::internal(format!("Invalid JSON: {e}")))?;
     if version.v != Some(2) {
-        return Err(LxAppError::Bridge(format!(
+        return Err(lingxia_error::Error::internal(format!(
             "Unsupported protocol: {:?}",
             version.v
         )));
@@ -141,7 +140,7 @@ pub enum IncomingMessage {
 }
 
 impl IncomingMessage {
-    pub fn from_json_str(json_str: &str) -> Result<Self, LxAppError> {
+    pub fn from_json_str(json_str: &str) -> Result<Self, lingxia_error::Error> {
         #[derive(Deserialize)]
         struct KindProbe {
             v: Option<u8>,
@@ -150,7 +149,7 @@ impl IncomingMessage {
         }
 
         let probe: KindProbe = serde_json::from_str(json_str)
-            .map_err(|e| LxAppError::Bridge(format!("Invalid JSON: {}", e)))?;
+            .map_err(|e| lingxia_error::Error::internal(format!("Invalid JSON: {}", e)))?;
 
         let Some(kind_str) = probe.kind.as_deref() else {
             return Ok(Self::Unknown(UnknownMsg {

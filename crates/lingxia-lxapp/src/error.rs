@@ -117,7 +117,11 @@ impl From<LxAppError> for lingxia_error::Error {
 
 /// A Rong host error at the boundary: a numeric code becomes its code and reason, and
 /// `reason` and `detail` in its data move to their own fields.
-fn host_error(code: String, message: String, data: Option<Value>) -> lingxia_error::Error {
+pub(crate) fn host_error(
+    code: String,
+    message: String,
+    data: Option<Value>,
+) -> lingxia_error::Error {
     let mut data = data;
     let (mut reason, mut detail) = (None, None);
     if let Some(fields) = data.as_mut().and_then(Value::as_object_mut) {
@@ -140,6 +144,33 @@ fn host_error(code: String, message: String, data: Option<Value>) -> lingxia_err
         Some(Value::Object(fields)) if fields.is_empty() => error,
         Some(data) => error.with_data(data),
         None => error,
+    }
+}
+
+/// Why a Logic evaluation produced no value.
+#[derive(Debug, Clone)]
+pub enum EvalError {
+    /// The script threw: a coded throw keeps its code, anything else is `E_INTERNAL`.
+    Thrown(lingxia_error::Error),
+    /// The Logic runtime could not run the script.
+    Unavailable(lingxia_error::Error),
+}
+
+impl std::fmt::Display for EvalError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Thrown(error) | Self::Unavailable(error) => error.fmt(f),
+        }
+    }
+}
+
+impl std::error::Error for EvalError {}
+
+impl From<EvalError> for lingxia_error::Error {
+    fn from(error: EvalError) -> Self {
+        match error {
+            EvalError::Thrown(error) | EvalError::Unavailable(error) => error,
+        }
     }
 }
 

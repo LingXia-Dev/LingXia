@@ -34,8 +34,8 @@ fn is_transient_page_error(error: &str) -> bool {
     error.starts_with("page is not active:")
         || error == "page WebView is not ready"
         || error.starts_with("E_PAGE_NOT_READY:")
-        // The query path surfaces LxAppError's Display form ("WebView error:
-        // No current page"), not the bare lowercase string navigate() emits.
+        // The query path surfaces the error's Display form, not the bare
+        // lowercase string navigate() emits.
         || error.to_ascii_lowercase().contains("no current page")
         || error.to_ascii_lowercase().contains("0x8007139f")
 }

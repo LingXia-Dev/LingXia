@@ -188,7 +188,7 @@ async fn channel_switch_waits_for_the_only_logic_worker_and_blocks_early_opens()
     );
     assert!(matches!(
         f.manager.ensure_lxapp(f.old.appid.clone(), Channel::Draft),
-        Err(LxAppError::ResourceExhausted(_))
+        Err(error) if lingxia_error::Error::from(error.clone()).is(lingxia_error::code::QUOTA)
     ));
     ack.send(()).unwrap();
     time::timeout(Duration::from_secs(1), switch)
@@ -312,7 +312,7 @@ async fn restart_still_replaces_the_session_when_ack_closes() {
     assert!(
         matches!(
             f.workers.create_app_svc(replacement),
-            Err(LxAppError::ResourceExhausted(_))
+            Err(error) if error.is(lingxia_error::code::QUOTA)
         ),
         "a missing ACK must keep the worker quarantined"
     );
@@ -334,7 +334,7 @@ async fn restart_replaces_a_hung_session_and_prunes_it_after_a_late_ack() {
     assert_replaced(&f.manager, &f.old, &replacement);
     assert!(matches!(
         f.workers.create_app_svc(replacement.clone()),
-        Err(LxAppError::ResourceExhausted(_))
+        Err(error) if error.is(lingxia_error::code::QUOTA)
     ));
     // The hung Logic is still live, so a shutdown drain must keep seeing it.
     f.manager.track_instance(&replacement);
@@ -346,7 +346,9 @@ async fn restart_replaces_a_hung_session_and_prunes_it_after_a_late_ack() {
         loop {
             match f.workers.create_app_svc(replacement.clone()) {
                 Ok(()) => break,
-                Err(LxAppError::ResourceExhausted(_)) => tokio::task::yield_now().await,
+                Err(error) if error.is(lingxia_error::code::QUOTA) => {
+                    tokio::task::yield_now().await
+                }
                 Err(error) => panic!("unexpected restart error: {error}"),
             }
         }

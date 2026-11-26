@@ -1,6 +1,6 @@
 use super::WorkerTermination;
 use crate::bridge::{self, AppServiceCommand};
-use crate::error::LxAppError;
+use crate::error::EvalError;
 use crate::lx;
 use crate::lxapp::LxApp;
 use crate::{debug, error, info, warn};
@@ -184,7 +184,7 @@ pub(crate) enum ServiceMessage {
         capture_calls: bool,
         lxapp: Arc<LxApp>,
         script: String,
-        tx: oneshot::Sender<Result<String, LxAppError>>,
+        tx: oneshot::Sender<Result<String, EvalError>>,
     },
 }
 
@@ -255,8 +255,8 @@ async fn handle_app_service_event(
             | AppServiceEvent::OnUserCaptureScreen
     ) && let Err(e) = svc.call_event(ctx, event, args.clone()).await
     {
-        let error = eval_error_from_rong(ctx, e);
-        if error.is_refusal() {
+        let error = thrown_error(ctx, e);
+        if error.is(code::PERMISSION_DENIED) {
             warn!(
                 "[Worker {}] App '{}' was refused: {}",
                 worker_id, event, error
@@ -272,45 +272,43 @@ async fn handle_app_service_event(
     }
 }
 
-fn js_value_to_json_string(value: JSValue) -> Result<String, LxAppError> {
+fn js_value_to_json_string(value: JSValue) -> Result<String, lingxia_error::Error> {
     if value.is_undefined() || value.is_null() {
         return Ok("null".to_string());
     }
     if value.is_boolean() {
-        let value: bool = value.into_value().try_into().map_err(LxAppError::from)?;
+        let value: bool = value.into_value().try_into().map_err(crate::rong_error)?;
         return Ok(if value { "true" } else { "false" }.to_string());
     }
     if value.is_number() {
-        let value: f64 = value.into_value().try_into().map_err(LxAppError::from)?;
+        let value: f64 = value.into_value().try_into().map_err(crate::rong_error)?;
         let number = serde_json::Number::from_f64(value)
-            .ok_or_else(|| LxAppError::Runtime("eval returned invalid number".to_string()))?;
+            .ok_or_else(|| lingxia_error::Error::internal("eval returned invalid number"))?;
         return Ok(number.to_string());
     }
     if value.is_string() {
-        let value: String = value.into_value().try_into().map_err(LxAppError::from)?;
-        return serde_json::to_string(&value).map_err(LxAppError::from);
+        let value: String = value.into_value().try_into().map_err(crate::rong_error)?;
+        return serde_json::to_string(&value).map_err(lingxia_error::Error::from);
     }
     if let Some(object) = value.into_object() {
-        return object.to_json_string().map_err(LxAppError::from);
+        return object.to_json_string().map_err(crate::rong_error);
     }
     Ok("null".to_string())
 }
 
-pub(crate) fn eval_error_from_rong(ctx: &JSContext, error: RongJSError) -> LxAppError {
+/// What a Logic script threw: a coded throw keeps its code and data, anything else is `E_INTERNAL`.
+pub(crate) fn thrown_error(ctx: &JSContext, error: RongJSError) -> lingxia_error::Error {
     if let Some(thrown) = error.thrown_value(ctx) {
         if thrown.is_string() {
             let value: Result<String, RongJSError> = thrown.into_value().try_into();
             if let Ok(value) = value {
-                return LxAppError::RongJS(value);
+                return lingxia_error::Error::internal(value);
             }
         } else if let Some(object) = thrown.into_object() {
             let name = object
                 .get::<_, String>("name")
                 .unwrap_or_else(|_| "Error".to_string());
             if let Ok(message) = object.get::<_, String>("message") {
-                let message = format!("{name}: {message}");
-                // A coded rejection (every `lx.*` error) keeps its code and
-                // data for the caller to act on.
                 if let Ok(code) = object.get::<_, String>("code") {
                     let data = object
                         .get::<_, JSValue>("data")
@@ -318,17 +316,13 @@ pub(crate) fn eval_error_from_rong(ctx: &JSContext, error: RongJSError) -> LxApp
                         .and_then(|value| js_value_to_json_string(value).ok())
                         .and_then(|json| serde_json::from_str::<serde_json::Value>(&json).ok())
                         .filter(|value| !value.is_null());
-                    return LxAppError::RongJSHost {
-                        code,
-                        message,
-                        data,
-                    };
+                    return crate::error::host_error(code, message, data);
                 }
-                return LxAppError::RongJS(message);
+                return lingxia_error::Error::internal(format!("{name}: {message}"));
             }
         }
     }
-    LxAppError::from(error)
+    crate::rong_error(error)
 }
 
 /// Wraps the caller's script so that `lx` inside it is a recording proxy.
@@ -370,8 +364,9 @@ async fn eval_logic_script_inner(
     ctx: &JSContext,
     script: &str,
     capture_calls: bool,
-) -> Result<String, LxAppError> {
-    let expression_json = serde_json::to_string(script).map_err(LxAppError::from)?;
+) -> Result<String, EvalError> {
+    let expression_json =
+        serde_json::to_string(script).map_err(|error| EvalError::Unavailable(error.into()))?;
     let (prelude, wrap_result) = if capture_calls {
         (RECORDER_PRELUDE, true)
     } else {
@@ -396,7 +391,7 @@ async fn eval_logic_script_inner(
         .eval_async::<JSValue>(Source::from_bytes(expression))
         .await
     {
-        Ok(value) => js_value_to_json_string(value),
+        Ok(value) => js_value_to_json_string(value).map_err(EvalError::Thrown),
         Err(expression_error) if script_may_be_function_body(ctx, script, &expression_error) => {
             let body = if wrap_result {
                 format!(
@@ -418,10 +413,10 @@ async fn eval_logic_script_inner(
             let value = ctx
                 .eval_async::<JSValue>(Source::from_bytes(body))
                 .await
-                .map_err(|body_error| eval_error_from_rong(ctx, body_error))?;
-            js_value_to_json_string(value)
+                .map_err(|body_error| EvalError::Thrown(thrown_error(ctx, body_error)))?;
+            js_value_to_json_string(value).map_err(EvalError::Thrown)
         }
-        Err(expression_error) => Err(eval_error_from_rong(ctx, expression_error)),
+        Err(expression_error) => Err(EvalError::Thrown(thrown_error(ctx, expression_error))),
     }
 }
 
@@ -494,7 +489,7 @@ fn reply_to_view_req(
 async fn handle_bridge_source(
     page_svc: &PageSvc,
     message: AppServiceCommand,
-) -> Result<(), LxAppError> {
+) -> Result<(), lingxia_error::Error> {
     match message {
         AppServiceCommand::BeginSessionWork { work_id } => {
             page_svc.begin_session_work(work_id).await;
@@ -1227,9 +1222,8 @@ async fn handle_service_message(
             tx,
         } => {
             let Some(ctx) = current_ctx.as_ref() else {
-                let _ = tx.send(Err(LxAppError::Runtime(format!(
-                    "logic runtime is not ready for {}",
-                    lxapp.appid
+                let _ = tx.send(Err(EvalError::Unavailable(lingxia_error::Error::internal(
+                    format!("logic runtime is not ready for {}", lxapp.appid),
                 ))));
                 return;
             };
@@ -1237,9 +1231,11 @@ async fn handle_service_message(
                 .map(|ctx_app| ctx_app.session.id == lxapp.session.id)
                 .unwrap_or(false);
             if !same_app {
-                let _ = tx.send(Err(LxAppError::Runtime(format!(
-                    "logic runtime is bound to a different lxapp than {}",
-                    lxapp.appid
+                let _ = tx.send(Err(EvalError::Unavailable(lingxia_error::Error::internal(
+                    format!(
+                        "logic runtime is bound to a different lxapp than {}",
+                        lxapp.appid
+                    ),
                 ))));
                 return;
             }
@@ -1266,7 +1262,7 @@ pub(crate) fn create_app_svc(
     sender: &mpsc::Sender<ServiceMessage>,
     instance_assignments: &Arc<Mutex<HashMap<usize, WorkerAssignment>>>,
     free_workers: &Arc<Mutex<VecDeque<usize>>>,
-) -> Result<(), LxAppError> {
+) -> Result<(), lingxia_error::Error> {
     let _creation = crate::device::logic_creation_guard()?;
     let appid = lxapp.appid.clone();
 
@@ -1279,7 +1275,8 @@ pub(crate) fn create_app_svc(
     let worker_id = {
         let mut free_workers_guard = free_workers.lock().unwrap();
         if free_workers_guard.is_empty() {
-            return Err(LxAppError::ResourceExhausted(
+            return Err(lingxia_error::Error::new(
+                lingxia_error::code::QUOTA,
                 "No available workers for new mini-app".to_string(),
             ));
         }
@@ -1316,7 +1313,7 @@ fn reactivate_or_reuse_assignment(
     sender: &mpsc::Sender<ServiceMessage>,
     instance_assignments: &Arc<Mutex<HashMap<usize, WorkerAssignment>>>,
     key: usize,
-) -> Result<bool, LxAppError> {
+) -> Result<bool, lingxia_error::Error> {
     let mut assignments = instance_assignments.lock().unwrap();
     reactivate_or_reuse_locked(lxapp, sender, &mut assignments, key)
 }
@@ -1326,10 +1323,10 @@ fn reactivate_or_reuse_locked(
     sender: &mpsc::Sender<ServiceMessage>,
     assignments: &mut HashMap<usize, WorkerAssignment>,
     key: usize,
-) -> Result<bool, LxAppError> {
+) -> Result<bool, lingxia_error::Error> {
     if lxapp.session.is_cancelled() {
-        return Err(LxAppError::Runtime(
-            "Cannot start a terminated LxApp session".into(),
+        return Err(lingxia_error::Error::internal(
+            "Cannot start a terminated LxApp session",
         ));
     }
     let Some(assignment) = assignments.get(&key).cloned() else {
@@ -1362,7 +1359,7 @@ pub(crate) fn terminate_app_svc(
     instance_assignments: &Arc<Mutex<HashMap<usize, WorkerAssignment>>>,
     free_workers: &Arc<Mutex<VecDeque<usize>>>,
     ack_timeout: Duration,
-) -> Result<WorkerTermination, LxAppError> {
+) -> Result<WorkerTermination, lingxia_error::Error> {
     let appid = lxapp_arc.appid.clone();
     let key = lxapp_arc.as_ref() as *const _ as usize;
     let (worker_id, token, rx, done_tx, completion) = {
@@ -1424,7 +1421,7 @@ async fn await_termination_ack(
     worker_id: usize,
     token: u64,
     mut rx: oneshot::Receiver<()>,
-    done_tx: tokio::sync::watch::Sender<Option<Result<(), LxAppError>>>,
+    done_tx: tokio::sync::watch::Sender<Option<Result<(), lingxia_error::Error>>>,
     assignments: Arc<Mutex<HashMap<usize, WorkerAssignment>>>,
     free_workers: Arc<Mutex<VecDeque<usize>>>,
     ack_timeout: Duration,
@@ -1441,8 +1438,8 @@ async fn await_termination_ack(
                 // the mapping lock until then, including for repeated shutdowns.
                 done_tx.send_replace(Some(Ok(())));
             } else {
-                done_tx.send_replace(Some(Err(LxAppError::Runtime(
-                    "Worker termination was superseded".into(),
+                done_tx.send_replace(Some(Err(lingxia_error::Error::internal(
+                    "Worker termination was superseded",
                 ))));
             }
         }
@@ -1453,15 +1450,15 @@ async fn await_termination_ack(
                 error!("Terminate ACK channel closed; quarantining worker {worker_id}")
                     .with_appid(appid);
             }
-            done_tx.send_replace(Some(Err(LxAppError::Runtime(
-                "Worker termination ACK channel closed".into(),
+            done_tx.send_replace(Some(Err(lingxia_error::Error::internal(
+                "Worker termination ACK channel closed",
             ))));
         }
         Err(_) => {
             let quarantined =
                 take_terminated_assignment(&mut assignments.lock().unwrap(), key, worker_id, token);
-            done_tx.send_replace(Some(Err(LxAppError::Runtime(
-                "Worker termination ACK timed out".into(),
+            done_tx.send_replace(Some(Err(lingxia_error::Error::internal(
+                "Worker termination ACK timed out",
             ))));
             if quarantined.is_none() {
                 return;
@@ -1511,20 +1508,20 @@ pub(crate) fn restart_app_svc(
     lxapp: Arc<LxApp>,
     sender: &mpsc::Sender<ServiceMessage>,
     instance_assignments: &Arc<Mutex<HashMap<usize, WorkerAssignment>>>,
-) -> Result<(), LxAppError> {
+) -> Result<(), lingxia_error::Error> {
     let _creation = crate::device::logic_creation_guard()?;
     let key = lxapp.as_ref() as *const _ as usize;
     let mut assignments = instance_assignments.lock().unwrap();
     let Some(assignment) = assignments.get(&key).cloned() else {
-        return Err(LxAppError::Runtime(format!(
+        return Err(lingxia_error::Error::internal(format!(
             "No active worker mapping for app {}",
             lxapp.appid
         )));
     };
 
     if lxapp.session.is_cancelled() {
-        return Err(LxAppError::Runtime(
-            "Cannot restart a terminated LxApp session".into(),
+        return Err(lingxia_error::Error::internal(
+            "Cannot restart a terminated LxApp session",
         ));
     }
     // Reserve the replacement before the old termination can acknowledge.
@@ -2236,14 +2233,18 @@ mod eval_script_shape_tests {
             let worker = pool.worker(0).unwrap();
             let handle = worker
                 .spawn(
-                    async move |js_runtime, _receiver| -> rong::JSResult<String> {
+                    async move |js_runtime, _receiver| -> rong::JSResult<lingxia_error::Error> {
                         let ctx = js_runtime.context();
                         let script = "(async () => { const e = new Error('Wi-Fi is off'); \
                         e.code = 'E_INVALID_STATE'; e.data = { ssid: 'home' }; throw e; })()";
-                        let error = super::eval_logic_script_inner(&ctx, script, false)
-                            .await
-                            .unwrap_err();
-                        Ok(format!("{error:?}"))
+                        let super::EvalError::Thrown(error) =
+                            super::eval_logic_script_inner(&ctx, script, false)
+                                .await
+                                .unwrap_err()
+                        else {
+                            panic!("the script's throw must be reported as thrown");
+                        };
+                        Ok(error)
                     },
                 )
                 .await
@@ -2252,9 +2253,9 @@ mod eval_script_shape_tests {
             pool.shutdown().unwrap();
             error
         });
-        assert!(error.contains("RongJSHost"), "{error}");
-        assert!(error.contains("E_INVALID_STATE"), "{error}");
-        assert!(error.contains("home"), "{error}");
+        assert_eq!(error.code(), "E_INVALID_STATE");
+        assert_eq!(error.message(), "Wi-Fi is off");
+        assert_eq!(error.data(), Some(&serde_json::json!({ "ssid": "home" })));
     }
 }
 

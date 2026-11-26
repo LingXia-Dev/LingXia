@@ -23,7 +23,7 @@ pub(crate) use js_worker_pool::LxAppWorkers;
 /// Completes after Logic teardown has returned its dedicated worker to the pool.
 #[derive(Clone, Debug)]
 pub(crate) struct WorkerTermination {
-    result: tokio::sync::watch::Receiver<Option<Result<(), crate::LxAppError>>>,
+    result: tokio::sync::watch::Receiver<Option<Result<(), lingxia_error::Error>>>,
 }
 
 impl WorkerTermination {
@@ -36,7 +36,7 @@ impl WorkerTermination {
     }
     #[cfg(feature = "js-appservice")]
     fn pending() -> (
-        tokio::sync::watch::Sender<Option<Result<(), crate::LxAppError>>>,
+        tokio::sync::watch::Sender<Option<Result<(), lingxia_error::Error>>>,
         Self,
     ) {
         let (tx, result) = tokio::sync::watch::channel(None);
@@ -49,11 +49,11 @@ impl WorkerTermination {
         }
     }
 
-    pub(crate) async fn wait(mut self) -> Result<(), crate::LxAppError> {
+    pub(crate) async fn wait(mut self) -> Result<(), lingxia_error::Error> {
         match self.result.wait_for(Option::is_some).await {
             Ok(result) => result.clone().unwrap_or(Ok(())),
-            Err(_) => Err(crate::LxAppError::Runtime(
-                "Worker termination completion channel closed".into(),
+            Err(_) => Err(lingxia_error::Error::internal(
+                "Worker termination completion channel closed",
             )),
         }
     }
@@ -102,8 +102,8 @@ pub(crate) mod event_bus {
 #[cfg(not(feature = "js-appservice"))]
 mod no_js_runtime {
     use crate::appservice::event_bus::AppBusEvent;
+    use crate::info;
     use crate::lifecycle::{AppServiceEvent, PageLifecycleEvent};
-    use crate::{LxAppError, info};
     use std::sync::Arc;
     use tokio::sync::oneshot::Sender;
 
@@ -115,7 +115,10 @@ mod no_js_runtime {
             Arc::new(Self)
         }
 
-        pub fn create_app_svc(&self, lxapp: Arc<crate::lxapp::LxApp>) -> Result<(), LxAppError> {
+        pub fn create_app_svc(
+            &self,
+            lxapp: Arc<crate::lxapp::LxApp>,
+        ) -> Result<(), lingxia_error::Error> {
             if lxapp.logic_enabled() {
                 return Err(unsupported_js_runtime());
             }
@@ -127,11 +130,14 @@ mod no_js_runtime {
         pub fn terminate_app_svc(
             &self,
             _lxapp: Arc<crate::lxapp::LxApp>,
-        ) -> Result<super::WorkerTermination, LxAppError> {
+        ) -> Result<super::WorkerTermination, lingxia_error::Error> {
             Ok(super::WorkerTermination::completed())
         }
 
-        pub fn restart_app_svc(&self, lxapp: Arc<crate::lxapp::LxApp>) -> Result<(), LxAppError> {
+        pub fn restart_app_svc(
+            &self,
+            lxapp: Arc<crate::lxapp::LxApp>,
+        ) -> Result<(), lingxia_error::Error> {
             if lxapp.logic_enabled() {
                 return Err(unsupported_js_runtime());
             }
@@ -144,7 +150,7 @@ mod no_js_runtime {
             _path: String,
             _page_instance_id: Option<String>,
             ack_tx: Sender<Result<(), String>>,
-        ) -> Result<(), LxAppError> {
+        ) -> Result<(), lingxia_error::Error> {
             if lxapp.logic_enabled() {
                 return Err(unsupported_js_runtime());
             }
@@ -157,7 +163,7 @@ mod no_js_runtime {
             _lxapp: Arc<crate::lxapp::LxApp>,
             _path: String,
             _page_instance_id: Option<String>,
-        ) -> Result<(), LxAppError> {
+        ) -> Result<(), lingxia_error::Error> {
             Ok(())
         }
 
@@ -166,7 +172,7 @@ mod no_js_runtime {
             _lxapp: Arc<crate::lxapp::LxApp>,
             _event: AppServiceEvent,
             _args: Option<String>,
-        ) -> Result<(), LxAppError> {
+        ) -> Result<(), lingxia_error::Error> {
             Ok(())
         }
 
@@ -177,7 +183,7 @@ mod no_js_runtime {
             _page_instance_id: Option<String>,
             _name: String,
             _args: Option<String>,
-        ) -> Result<(), LxAppError> {
+        ) -> Result<(), lingxia_error::Error> {
             Err(unsupported_js_runtime())
         }
 
@@ -188,7 +194,7 @@ mod no_js_runtime {
             _page_instance_id: Option<String>,
             _event: PageLifecycleEvent,
             _args: Option<String>,
-        ) -> Result<(), LxAppError> {
+        ) -> Result<(), lingxia_error::Error> {
             Ok(())
         }
 
@@ -196,7 +202,7 @@ mod no_js_runtime {
             &self,
             _lxapp: Arc<crate::lxapp::LxApp>,
             event: AppBusEvent,
-        ) -> Result<(), LxAppError> {
+        ) -> Result<(), lingxia_error::Error> {
             let _ = (event.scope, event.event_name, event.payload_json);
             Ok(())
         }
@@ -206,8 +212,8 @@ mod no_js_runtime {
             _lxapp: Arc<crate::lxapp::LxApp>,
             _script: String,
             _capture_calls: bool,
-        ) -> Result<String, LxAppError> {
-            Err(unsupported_js_runtime())
+        ) -> Result<String, crate::EvalError> {
+            Err(crate::EvalError::Unavailable(unsupported_js_runtime()))
         }
     }
 
@@ -218,7 +224,7 @@ mod no_js_runtime {
             _path: String,
             _page_instance_id: Option<String>,
             message: crate::bridge::AppServiceCommand,
-        ) -> Result<(), LxAppError> {
+        ) -> Result<(), lingxia_error::Error> {
             if lxapp.logic_enabled() {
                 return Err(unsupported_js_runtime());
             }
@@ -232,15 +238,15 @@ mod no_js_runtime {
                 | crate::bridge::AppServiceCommand::StateAck { .. }
                 | crate::bridge::AppServiceCommand::StateResync { .. } => Ok(()),
                 // Real AppService traffic is unavailable in native-only mode.
-                _ => Err(LxAppError::UnsupportedOperation(
-                    "AppService is unavailable for logic:false page".to_string(),
+                _ => Err(lingxia_error::Error::not_supported(
+                    "AppService is unavailable for logic:false page",
                 )),
             }
         }
     }
 
-    fn unsupported_js_runtime() -> LxAppError {
-        LxAppError::UnsupportedOperation("host was built without JS AppService runtime".to_string())
+    fn unsupported_js_runtime() -> lingxia_error::Error {
+        lingxia_error::Error::not_supported("host was built without JS AppService runtime")
     }
 }
 

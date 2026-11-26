@@ -5,7 +5,7 @@ use crate::appservice::js_runtime::{
 };
 use crate::lifecycle::AppServiceEvent;
 use crate::lifecycle::PageLifecycleEvent;
-use crate::{LxAppError, debug, error, info};
+use crate::{debug, error, info};
 use std::time::Duration;
 
 use rong::{JSContext, Rong, RongJS, TaskHandle, TaskMessage, Worker};
@@ -342,15 +342,18 @@ impl LxAppWorkers {
     }
 
     /// Create a new lxapp service (worker reads session id from LxApp state).
-    pub fn create_app_svc(&self, lxapp: Arc<crate::lxapp::LxApp>) -> Result<(), LxAppError> {
+    pub fn create_app_svc(
+        &self,
+        lxapp: Arc<crate::lxapp::LxApp>,
+    ) -> Result<(), lingxia_error::Error> {
         if !lxapp.logic_enabled() {
             info!("Logic disabled in lxapp.json; skipping worker startup")
                 .with_appid(lxapp.appid.clone());
             return Ok(());
         }
         if !crate::js_appservice_supported() {
-            return Err(LxAppError::UnsupportedOperation(
-                "host was built without JS AppService runtime".to_string(),
+            return Err(lingxia_error::Error::not_supported(
+                "host was built without JS AppService runtime",
             ));
         }
         create_app_svc(
@@ -365,7 +368,7 @@ impl LxAppWorkers {
     pub fn terminate_app_svc(
         &self,
         lxapp: Arc<crate::lxapp::LxApp>,
-    ) -> Result<super::WorkerTermination, LxAppError> {
+    ) -> Result<super::WorkerTermination, lingxia_error::Error> {
         lxapp.cancel_all_page_bridge_work();
         terminate_app_svc(
             lxapp,
@@ -376,13 +379,16 @@ impl LxAppWorkers {
         )
     }
 
-    pub fn restart_app_svc(&self, lxapp: Arc<crate::lxapp::LxApp>) -> Result<(), LxAppError> {
+    pub fn restart_app_svc(
+        &self,
+        lxapp: Arc<crate::lxapp::LxApp>,
+    ) -> Result<(), lingxia_error::Error> {
         if !lxapp.logic_enabled() {
             return Ok(());
         }
         if !crate::js_appservice_supported() {
-            return Err(LxAppError::UnsupportedOperation(
-                "host was built without JS AppService runtime".to_string(),
+            return Err(lingxia_error::Error::not_supported(
+                "host was built without JS AppService runtime",
             ));
         }
         lxapp.cancel_all_page_bridge_work();
@@ -396,14 +402,14 @@ impl LxAppWorkers {
         path: String,
         page_instance_id: Option<String>,
         ack_tx: Sender<Result<(), String>>,
-    ) -> Result<(), LxAppError> {
+    ) -> Result<(), lingxia_error::Error> {
         if !lxapp.logic_enabled() {
             let _ = ack_tx.send(Ok(()));
             return Ok(());
         }
         if !crate::js_appservice_supported() {
-            return Err(LxAppError::UnsupportedOperation(
-                "host was built without JS AppService runtime".to_string(),
+            return Err(lingxia_error::Error::not_supported(
+                "host was built without JS AppService runtime",
             ));
         }
         self.sender.send(ServiceMessage::CreatePage {
@@ -421,7 +427,7 @@ impl LxAppWorkers {
         lxapp: Arc<crate::lxapp::LxApp>,
         path: String,
         page_instance_id: Option<String>,
-    ) -> Result<(), LxAppError> {
+    ) -> Result<(), lingxia_error::Error> {
         self.sender.send(ServiceMessage::TerminatePage {
             lxapp,
             path,
@@ -436,7 +442,7 @@ impl LxAppWorkers {
         lxapp: Arc<crate::lxapp::LxApp>,
         event: AppServiceEvent,
         args: Option<String>,
-    ) -> Result<(), LxAppError> {
+    ) -> Result<(), lingxia_error::Error> {
         self.sender
             .send(ServiceMessage::CallAppSvcEvent { lxapp, event, args })?;
         Ok(())
@@ -450,7 +456,7 @@ impl LxAppWorkers {
         page_instance_id: Option<String>,
         name: String,
         args: Option<String>,
-    ) -> Result<(), LxAppError> {
+    ) -> Result<(), lingxia_error::Error> {
         self.sender.send(ServiceMessage::CallPageSvc {
             lxapp,
             path,
@@ -468,7 +474,7 @@ impl LxAppWorkers {
         page_instance_id: Option<String>,
         event: PageLifecycleEvent,
         args: Option<String>,
-    ) -> Result<(), LxAppError> {
+    ) -> Result<(), lingxia_error::Error> {
         self.sender.send(ServiceMessage::CallPageSvcEvent {
             lxapp,
             path,
@@ -484,7 +490,7 @@ impl LxAppWorkers {
         &self,
         lxapp: Arc<crate::lxapp::LxApp>,
         event: AppBusEvent,
-    ) -> Result<(), LxAppError> {
+    ) -> Result<(), lingxia_error::Error> {
         self.sender
             .send(ServiceMessage::DispatchAppBusEvent { lxapp, event })?;
         Ok(())
@@ -495,16 +501,19 @@ impl LxAppWorkers {
         lxapp: Arc<crate::lxapp::LxApp>,
         script: String,
         capture_calls: bool,
-    ) -> Result<String, LxAppError> {
+    ) -> Result<String, crate::EvalError> {
+        let unavailable =
+            |error: String| crate::EvalError::Unavailable(lingxia_error::Error::internal(error));
         let (tx, rx) = oneshot::channel();
-        self.sender.send(ServiceMessage::Eval {
-            capture_calls,
-            lxapp,
-            script,
-            tx,
-        })?;
-        rx.await
-            .map_err(|err| LxAppError::ChannelError(err.to_string()))?
+        self.sender
+            .send(ServiceMessage::Eval {
+                capture_calls,
+                lxapp,
+                script,
+                tx,
+            })
+            .map_err(|error| unavailable(error.to_string()))?;
+        rx.await.map_err(|error| unavailable(error.to_string()))?
     }
 }
 
@@ -515,7 +524,7 @@ impl crate::bridge::AppServiceBackend for LxAppWorkers {
         path: String,
         page_instance_id: Option<String>,
         message: crate::bridge::AppServiceCommand,
-    ) -> Result<(), LxAppError> {
+    ) -> Result<(), lingxia_error::Error> {
         self.sender.send(ServiceMessage::CallPageSvc {
             lxapp,
             path,

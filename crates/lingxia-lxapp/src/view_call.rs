@@ -1,5 +1,4 @@
 use crate::bridge::{OutboundContext, RpcError, SessionWorkId, required_cap_for_name};
-use crate::error::LxAppError;
 use crate::page::PageInstance;
 use lingxia_error::code;
 use serde_json::Value;
@@ -50,7 +49,7 @@ pub(crate) fn call_view(
     page: &PageInstance,
     method: &str,
     params: Option<Value>,
-) -> Result<PendingViewCall, LxAppError> {
+) -> Result<PendingViewCall, lingxia_error::Error> {
     let reg = registry();
     let seq = reg
         .counter
@@ -60,7 +59,7 @@ pub(crate) fn call_view(
     let page_instance_id = page.instance_id_string();
     let bridge = page.bridge();
     let (work_id, outbound) = bridge.capture_session_work().ok_or_else(|| {
-        LxAppError::Bridge("View bridge has no active document session".to_string())
+        lingxia_error::Error::internal("View bridge has no active document session")
     })?;
 
     let cap = required_cap_for_name(method);
@@ -80,8 +79,8 @@ pub(crate) fn call_view(
     // receiver that only times out.
     if !bridge.is_current_work(Some(work_id)) {
         reg.pending.lock().unwrap().remove(&id);
-        return Err(LxAppError::Bridge(
-            "View bridge document session was revoked".to_string(),
+        return Err(lingxia_error::Error::internal(
+            "View bridge document session was revoked",
         ));
     }
 
@@ -105,7 +104,7 @@ pub(crate) fn call_view(
 pub(crate) async fn await_pending_view_call(
     pending: PendingViewCall,
     timeout: Duration,
-) -> Result<Value, LxAppError> {
+) -> Result<Value, lingxia_error::Error> {
     match time::timeout(timeout, pending.rx).await {
         Ok(Ok(result)) => result.map_err(|rpc_err| {
             let message = rpc_err
@@ -118,19 +117,17 @@ pub(crate) async fn await_pending_view_call(
             if let Some(data) = rpc_err.data {
                 error = error.with_data(*data);
             }
-            LxAppError::Coded(error)
+            error
         }),
-        Ok(Err(_)) => Err(LxAppError::ChannelError(
-            "View call channel closed".to_string(),
-        )),
+        Ok(Err(_)) => Err(lingxia_error::Error::internal("View call channel closed")),
         Err(_) => {
             cancel_view_call(
                 &pending.id,
                 Some(format!("View call timed out after {:?}", timeout)),
             );
-            Err(LxAppError::Coded(lingxia_error::Error::timeout(format!(
+            Err(lingxia_error::Error::timeout(format!(
                 "View call timed out after {timeout:?}"
-            ))))
+            )))
         }
     }
 }
@@ -279,18 +276,10 @@ mod tests {
             .await
             .unwrap_err();
 
-        match err {
-            LxAppError::Coded(error) => {
-                assert_eq!(error.code(), "E_NOT_SUPPORTED");
-                assert_eq!(error.message(), "view failed");
-                assert_eq!(error.reason(), Some("placementUnsupported"));
-                assert_eq!(
-                    error.data(),
-                    Some(&serde_json::json!({ "retryable": false }))
-                );
-            }
-            other => panic!("unexpected error: {other:?}"),
-        }
+        assert_eq!(err.code(), "E_NOT_SUPPORTED");
+        assert_eq!(err.message(), "view failed");
+        assert_eq!(err.reason(), Some("placementUnsupported"));
+        assert_eq!(err.data(), Some(&serde_json::json!({ "retryable": false })));
     }
 
     #[tokio::test]
@@ -305,10 +294,7 @@ mod tests {
             .await
             .unwrap_err();
 
-        match err {
-            LxAppError::Coded(error) => assert_eq!(error.code(), code::TIMEOUT),
-            other => panic!("unexpected error: {other:?}"),
-        }
+        assert_eq!(err.code(), code::TIMEOUT);
     }
 
     #[test]

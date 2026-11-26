@@ -1304,8 +1304,9 @@ impl LxApp {
         if !self.logic_enabled() || self.status() == LxAppSessionStatus::Restarting {
             return Ok(());
         }
-        self.executor
-            .call_app_service_event(self.clone_arc(), event, payload_json)
+        Ok(self
+            .executor
+            .call_app_service_event(self.clone_arc(), event, payload_json)?)
     }
     /// Back to the topmost instance of `url`'s page on the stack, closing the pages above it as
     /// a back by that many does (their results settle canceled); `url`'s params become its

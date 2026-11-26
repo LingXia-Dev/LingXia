@@ -1275,7 +1275,7 @@ impl PageInstance {
         &self,
         message: IncomingWebMessage,
     ) -> Result<(), LxAppError> {
-        self.inner.bridge.handle_incoming(self, message)
+        Ok(self.inner.bridge.handle_incoming(self, message)?)
     }
 
     /// A typed message from the current GPU View, straight from its worker thread.
@@ -1293,6 +1293,7 @@ impl PageInstance {
         self.inner
             .bridge
             .handle_gpu_event(self, endpoint, generation, event)
+            .map_err(Into::into)
     }
 
     /// What the current GPU View made of its typed state writes.
@@ -1310,6 +1311,7 @@ impl PageInstance {
         self.inner
             .bridge
             .handle_gpu_state_signal(self, endpoint, generation, signal)
+            .map_err(Into::into)
     }
 
     pub(crate) fn is_current_gpu_endpoint(&self, endpoint: &Arc<dyn GpuPageView>) -> bool {
@@ -2893,13 +2895,13 @@ impl PageInstance {
     /// `Ok(())` if successful, `Err(LxAppError)` if execution fails
     pub fn call_js(&self, name: String, arg: String) -> Result<(), LxAppError> {
         let lxapp = self.owning_lxapp();
-        lxapp.executor.call_page_service(
+        Ok(lxapp.executor.call_page_service(
             lxapp.clone(),
             self.path(),
             Some(self.instance_id_string()),
             name,
             Some(arg),
-        )
+        )?)
     }
 
     /// Call a View method on this page without a payload and deserialize the response.
@@ -2997,7 +2999,7 @@ impl PageInstance {
         options: ViewCallOptions,
     ) -> Result<Value, LxAppError> {
         let pending = crate::view_call::call_view(self, method, params)?;
-        crate::view_call::await_pending_view_call(pending, options.timeout()).await
+        Ok(crate::view_call::await_pending_view_call(pending, options.timeout()).await?)
     }
 }
 

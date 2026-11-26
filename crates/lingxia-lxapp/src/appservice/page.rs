@@ -4,7 +4,6 @@ use crate::bridge::{
     PageBridge, Payload, RpcError, SessionWorkId, ViewTransport,
 };
 use crate::error;
-use crate::error::LxAppError;
 use crate::lxapp::LxApp;
 use crate::page::PageInstance;
 use crate::warn;
@@ -285,7 +284,7 @@ fn close_error(value: JSValue) -> Option<RpcError> {
 }
 
 fn rpc_error_from_rong(err: RongJSError) -> RpcError {
-    RpcError::from(&LxAppError::from(err))
+    RpcError::from(&crate::rong_error(err))
 }
 
 async fn await_js_call_or_cancel<T>(
@@ -441,13 +440,13 @@ fn read_async_iterator_step(
 }
 
 impl ViewTransport for PageSvc {
-    fn post_message_to_view(&self, message_json: String) -> Result<(), LxAppError> {
+    fn post_message_to_view(&self, message_json: String) -> Result<(), lingxia_error::Error> {
         if let Some(controller) = self.page.webview_controller() {
             controller
                 .post_message(&message_json)
-                .map_err(LxAppError::from)
+                .map_err(lingxia_error::Error::from)
         } else {
-            Err(LxAppError::WebView("WebView not ready".to_string()))
+            Err(lingxia_error::Error::internal("WebView not ready"))
         }
     }
 
@@ -456,7 +455,7 @@ impl ViewTransport for PageSvc {
         expected_generation: DocumentGeneration,
         gate: std::sync::Arc<dyn DocumentOutboundGate>,
         message_json: String,
-    ) -> Result<(), LxAppError> {
+    ) -> Result<(), lingxia_error::Error> {
         self.page
             .post_message_to_document(expected_generation, gate, message_json)
     }
@@ -467,7 +466,7 @@ impl PageSvc {
         &self,
         _scope: Option<&str>,
         gpu: bool,
-    ) -> Result<Payload, LxAppError> {
+    ) -> Result<Payload, lingxia_error::Error> {
         let (rev, data) = self.state_snapshot_parts(gpu).await?;
         Ok(match data {
             Payload::Json(data) => Payload::Json(format!(r#"{{"rev":{rev},"state":{data}}}"#)),
@@ -479,13 +478,14 @@ impl PageSvc {
     pub(crate) async fn state_snapshot_parts(
         &self,
         gpu: bool,
-    ) -> Result<(u64, Payload), LxAppError> {
+    ) -> Result<(u64, Payload), lingxia_error::Error> {
         let data_obj = self
             .this
             .require()
             .and_then(|this| this.get::<_, JSObject>("data"))
-            .map_err(|e| LxAppError::Bridge(e.to_string()))?;
-        let data = page_data(data_obj, gpu).map_err(|e| LxAppError::Bridge(e.to_string()))?;
+            .map_err(|e| lingxia_error::Error::internal(e.to_string()))?;
+        let data =
+            page_data(data_obj, gpu).map_err(|e| lingxia_error::Error::internal(e.to_string()))?;
         let rev = self.state.lock().await.state_rev;
         Ok((rev, data))
     }
@@ -1809,13 +1809,13 @@ impl PageSvc {
                 }
                 let outcome = page_svc.call_page_event(&ctx, event, args.as_deref()).await;
                 if let Err(e) = outcome {
-                    let error = super::eval_error_from_rong(&ctx, e);
+                    let error = super::thrown_error(&ctx, e);
                     let page = page_svc.get_page();
                     if page.document_is_departing() {
                         crate::debug!("PageInstance event '{}' cancelled after unload", event)
                             .with_appid(page.appid())
                             .with_path(page.path());
-                    } else if error.is_refusal() {
+                    } else if error.is(lingxia_error::code::PERMISSION_DENIED) {
                         crate::warn!("PageInstance event '{}' was refused: {}", event, error)
                             .with_appid(page.appid())
                             .with_path(page.path());
@@ -2004,10 +2004,11 @@ impl PageSvc {
     }
 
     /// Leave this page as if it closed itself.
-    pub fn leave_page(&self) -> Result<(), LxAppError> {
+    pub fn leave_page(&self) -> Result<(), lingxia_error::Error> {
         self.page
             .owning_lxapp()
             .leave_page_instance(&self.page.instance_id_string())
+            .map_err(Into::into)
     }
 }
 
