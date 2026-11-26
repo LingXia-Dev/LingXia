@@ -1,6 +1,7 @@
 import { cx, useBox, useContext, useLocal, useView, type Child, type Local } from '@lingxia/view';
 import { Button } from '../Button/Button';
 import { CheckboxInput } from '../CheckboxInput/CheckboxInput';
+import { checkboxInputRecipe } from '../CheckboxInput/CheckboxInput.recipe';
 import { useLargeText } from '../internal/largeText';
 import { DropdownMenu, DropdownMenuRadioGroup, DropdownMenuRadioItem } from '../DropdownMenu/DropdownMenu';
 import { IconButton } from '../IconButton/IconButton';
@@ -340,7 +341,7 @@ export function Table({
   // Placeholder rows keep the table's shape: a bar per column, varied in width, the number's at the end.
   const placeholders = Array.from({ length: loadingRows }, (_, row) => (
     <view key={String(row)} className={isMulti ? r.selectable.base : r.rowgroup.base}>
-      {isMulti && <view className={r.select.base}><Skeleton shape="block" className={r.loading.box} /></view>}
+      {isMulti && <view className={r.select.base}><Skeleton shape="block" className={cx(checkboxInputRecipe.box.size.sm, r.loading.box)} /></view>}
       {isStacked
         ? (
           <view className={cx(r.block.base, sides, r.block.density[density], isMulti && r.selectable.rest)}>
@@ -348,7 +349,7 @@ export function Table({
               <view className={r.leadCell.base}><Skeleton className={r.loading.width[barWidths[row % barWidths.length]]} /></view>
               {figure && <Skeleton className={isLarge ? r.loading.figureUnder : r.loading.figure} />}
             </view>
-            {rest.length > 0 && <Skeleton className={r.loading.width[barWidths[(row + 1) % barWidths.length]]} />}
+            {rest.length > 0 && <Skeleton textSize="footnote" className={r.loading.width[barWidths[(row + 1) % barWidths.length]]} />}
           </view>
         )
         : (

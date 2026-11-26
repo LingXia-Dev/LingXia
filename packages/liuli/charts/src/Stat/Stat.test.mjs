@@ -61,14 +61,17 @@ test('states: by default up is positive, down negative and flat neutral, each wi
   assert.equal(new Set(seen.map(each => each[1])).size, 3);
 });
 
-test('StateLoading: busy under the same name, a hidden skeleton for the figure, no change line', async () => {
+test('StateLoading: busy under the same name, hidden skeletons for the figure and, as a footnote line, the change', async () => {
   const screen = await renderExample('Stat/Stat', 'StateLoading');
   const stat = screen.getByTestId('loading');
   assert.equal(stat.props.stateBusy, 1);
   assert.equal(stat.props.accessibilityLabel, 'Sign-ups');
   assert.deepEqual(spoken(stat), []);
-  assert.equal(stat.children.length, 2);
+  assert.equal(stat.children.length, 3, 'the label, the figure, and the change line kept');
   assert.match(JSON.stringify(stat.children[1]), /skeleton-glint/);
+  const change = stat.children[2].children[0].children[0];
+  assert.equal(change.children[0].props.fontSize, 13, 'a footnote line, as the change is');
+  assert.ok(!JSON.stringify(stat.children[2]).includes('3.1%'), 'the change itself waits');
 });
 
 test('Dashboard: four groups, each read by its label, figure and change', async () => {

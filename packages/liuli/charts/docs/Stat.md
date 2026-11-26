@@ -140,7 +140,7 @@ export function Dashboard() {
 | `description` | `string` |  | A short note after the change: "vs last month". |
 | `chart` | `Child` |  | A small chart under the figure, usually a Sparkline. |
 | `size` | `StatSize` | `'md'` | The figure's size: title or display type. |
-| `isLoading` | `boolean` | `false` | Stands a skeleton in for the figure and leaves out the change and the chart; the group is reported busy. |
+| `isLoading` | `boolean` | `false` | Stands skeletons in for the figure and the change, and leaves out the chart; the group is reported busy. |
 | `className` | `string` |  |  |
 | `data-testid` | `string` |  | On the group. |
 

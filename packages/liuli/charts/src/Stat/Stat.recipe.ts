@@ -52,6 +52,9 @@ export const statRecipe = {
     base: 'self-stretch pt-1.5',
   },
   skeleton: {
-    size: { sm: 'my-1 h-5 w-20', md: 'my-1 h-[1.625rem] w-24' } satisfies Record<StatSize, string>,
+    /** A line of the figure's own type, so it is as tall as the figure at any text size. */
+    size: { sm: 'w-20', md: 'w-24' } satisfies Record<StatSize, string>,
+    /** The change's line, about as long as an arrow and a percentage. */
+    change: 'w-14',
   },
 } as const;

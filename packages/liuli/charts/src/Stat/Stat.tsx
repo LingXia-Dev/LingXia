@@ -25,7 +25,7 @@ export interface StatProps {
   chart?: Child;
   /** The figure's size: title or display type. @default 'md' */
   size?: StatSize;
-  /** Stands a skeleton in for the figure and leaves out the change and the chart; the group is reported busy. @default false */
+  /** Stands skeletons in for the figure and the change, and leaves out the chart; the group is reported busy. @default false */
   isLoading?: boolean;
   className?: string;
   /** On the group. */
@@ -61,9 +61,11 @@ export function Stat({
     <view role="group" aria-label={label} aria-busy={isLoading || undefined} data-testid={testId} className={cx(r.root.base, className)}>
       {/* The group carries the label as its name, so it is not read a second time. */}
       <text aria-hidden className={r.label.base}>{label}</text>
-      {isLoading ? <Skeleton shape="block" className={r.skeleton.size[size]} /> : <text className={cx(r.value.base, r.value.size[size])}>{value}</text>}
-      {(hasDelta || description !== undefined) && (
+      {isLoading ? <Skeleton textSize={size === 'sm' ? 'title' : 'display'} className={r.skeleton.size[size]} /> : <text className={cx(r.value.base, r.value.size[size])}>{value}</text>}
+      {(delta !== undefined || description !== undefined) && (
         <view className={r.change.base}>
+          {/* Loading, a bar holds the change's line, so the figure's card keeps its height when the data comes. */}
+          {isLoading && delta !== undefined && <Skeleton textSize="footnote" className={r.skeleton.change} />}
           {hasDelta && (
             <view className={cx(r.delta.base, r.delta.tone[deltaTone ?? toneOf[deltaDirection]])}>
               <vector aria-hidden paths={glyphs[deltaDirection]} viewBox={glyphBox} className={r.deltaGlyph.base} />

@@ -3982,6 +3982,19 @@ export const playgroundEntries: PlaygroundEntry[] = [
         ]
       },
       {
+        "name": "textSize",
+        "required": false,
+        "kind": "choice",
+        "options": [
+          "body",
+          "callout",
+          "caption",
+          "display",
+          "footnote",
+          "title"
+        ]
+      },
+      {
         "name": "lines",
         "required": false,
         "kind": "number"

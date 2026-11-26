@@ -159,7 +159,8 @@ export const tableRecipe = {
     figure: 'shrink-0 w-16',
     /** At accessibility text sizes, under the name bar, as the loaded figure goes. */
     figureUnder: 'self-start w-16',
-    box: 'size-4 rounded-checkbox',
+    /** The bone's shape; its size is the small checkbox's own box, so the two match at every text size. */
+    box: 'rounded-checkbox',
   },
   empty: {
     base: 'px-4 py-6 text-body text-muted text-center',

@@ -2467,7 +2467,7 @@
           "name": "isLoading",
           "type": "boolean",
           "required": false,
-          "description": "Stands a skeleton in for the figure and leaves out the change and the chart; the group is reported busy.",
+          "description": "Stands skeletons in for the figure and the change, and leaves out the chart; the group is reported busy.",
           "default": "false"
         },
         {

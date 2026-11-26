@@ -59,7 +59,8 @@ export function CardLoading() {
 
 | Prop | Type | Default | Description |
 | --- | --- | --- | --- |
-| `shape` | `SkeletonShape` | `'text'` | `text` draws lines at the body text height; `block` and `circle` take their size from `className`. |
+| `shape` | `SkeletonShape` | `'text'` | `text` draws lines as tall as the text they stand in for; `block` and `circle` take their size from `className`. |
+| `textSize` | `SkeletonTextSize` | `'body'` | With `text`, the type it stands in for: each line is that type's line, and grows with the reader's text size. |
 | `lines` | `number` | `1` | With `text`, how many lines; the last is shorter, as a paragraph's is. |
 | `className` | `string` |  | Size and placement: `h-32`, `size-10`, `w-2/3`. |
 | `data-testid` | `string` |  |  |
@@ -87,7 +88,7 @@ export function CardLoading() {
 - `className`: Size and placement: `h-32`, `size-10`, `w-2/3`.
 - `className` on SkeletonGroup: classes merged after the recipe's, so they win.
 - The recipe, `skeletonRecipe` from `@liulidesign/core/Skeleton/recipe`: the classes of each part, to style an element of your own to match. The component does not read a changed copy.
-- Scale tokens it reads, set in the app's stylesheet under `@theme`: `--radius-control`, `--animate-skeleton-glint`.
+- Scale tokens it reads, set in the app's stylesheet under `@theme`: `--text-caption`, `--text-footnote`, `--text-body`, `--text-callout`, `--text-title`, `--text-display`, `--radius-control`, `--animate-skeleton-glint`.
 - Colour roles it paints with, set by the theme pack: `text`.
 
 ## Accessibility

@@ -17216,13 +17216,28 @@
           "name": "shape",
           "type": "SkeletonShape",
           "required": false,
-          "description": "`text` draws lines at the body text height; `block` and `circle` take their size from `className`.",
+          "description": "`text` draws lines as tall as the text they stand in for; `block` and `circle` take their size from `className`.",
           "values": [
             "circle",
             "text",
             "block"
           ],
           "default": "'text'"
+        },
+        {
+          "name": "textSize",
+          "type": "SkeletonTextSize",
+          "required": false,
+          "description": "With `text`, the type it stands in for: each line is that type's line, and grows with the reader's text size.",
+          "values": [
+            "caption",
+            "footnote",
+            "body",
+            "callout",
+            "title",
+            "display"
+          ],
+          "default": "'body'"
         },
         {
           "name": "lines",
@@ -17276,6 +17291,9 @@
       "parts": {
         "group": "view",
         "lines": "view",
+        "line": "view",
+        "ghost": "text",
+        "size": "view",
         "bone": "view",
         "glint": "view"
       },
@@ -17330,6 +17348,12 @@
           }
         ],
         "tokens": [
+          "--text-caption",
+          "--text-footnote",
+          "--text-body",
+          "--text-callout",
+          "--text-title",
+          "--text-display",
           "--radius-control",
           "--animate-skeleton-glint"
         ],
