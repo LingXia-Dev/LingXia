@@ -84,6 +84,7 @@ export const doc: ComponentDoc = {
   examples: [
     { name: 'Orders', title: 'One series, with selection' },
     { name: 'Grouped', title: 'Two series, with a legend that hides them' },
+    { name: 'Stacked', title: 'Two series as one bar, its total' },
     { name: 'Signed', title: 'Values above and below zero' },
     { name: 'Target', title: 'A target and an average across the bars' },
     { name: 'Month', title: 'Thirty bars' },
@@ -92,7 +93,7 @@ export const doc: ComponentDoc = {
     { missing: 'Ticks between zero and the top of the scale.', needs: 'nothing from the View', today: 'Each value over its bar up to eight bars, the top of the scale beyond; category labels are fitted.' },
     { missing: 'A tooltip by the bar.', needs: 'nothing from the View', today: 'The value is over the bar, or in the readout above the plot, where a finger does not cover it.' },
     { missing: 'Fitted labels and scrubbing on a host built before `useBox` and `onPointer`.', needs: 'a newer host', today: 'All category labels up to seven bars, the first and last beyond; a press on a bar.' },
-    { missing: 'Stacked bars and horizontal bars.', needs: 'nothing from the View', today: 'Grouped vertical bars.' },
+    { missing: 'Horizontal bars.', needs: 'nothing from the View', today: 'Vertical bars, grouped or stacked.' },
     { missing: 'Series told apart without colour.', needs: 'pattern fills', today: 'Position within the group, the legend\'s order, and each bar\'s spoken name.' },
   ],
   related: ['Chart', 'LineChart', 'PieChart', 'Sparkline'],

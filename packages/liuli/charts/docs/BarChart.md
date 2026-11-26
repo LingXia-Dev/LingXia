@@ -76,6 +76,36 @@ export function Grouped() {
 }
 ```
 
+### Two series as one bar, its total
+
+```tsx
+import { summarize } from '@liulidesign/charts/summary';
+import { BarChart } from '@liulidesign/charts/BarChart';
+
+const channels = [
+  { quarter: 'Q1', online: 42, store: 31 }, { quarter: 'Q2', online: 48, store: 29 },
+  { quarter: 'Q3', online: 55, store: 33 }, { quarter: 'Q4', online: 67, store: 38 },
+];
+const thousands = (value: number) => `${value < 0 ? '-' : ''}$${Math.abs(value)}k`;
+
+/** The same two channels as one bar per quarter: the bar is the quarter's total, each channel a piece of it. */
+export function Stacked() {
+  return (
+    <BarChart
+      rows={channels}
+      x="quarter"
+      y={[{ field: 'online', label: 'Online' }, { field: 'store', label: 'In store' }]}
+      layout="stacked"
+      label="Sales by quarter, online and in store"
+      title="Sales"
+      formatValue={thousands}
+      summarize={summarize}
+      data-testid="stacked"
+    />
+  );
+}
+```
+
 ### Values above and below zero
 
 ```tsx
@@ -157,6 +187,7 @@ export function Month() {
 | `onChange` | `((key: string \| null) => void)` |  | Makes each category a button, up to 36 of them; runs with its key, or `null` when the chosen one is pressed again. A drag across the bars chooses each it passes. |
 | `defaultValue` | `string \| null` |  | Where the choice starts when the chart keeps it itself: give this instead of `value`; `onChange` still hears each choice. |
 | `bind` | `Local<string \| null>` |  | A View-local cell holding the chosen key, read and written instead of `value` with `onChange`; `onChange` still hears each choice. |
+| `layout` | `BarChartLayout` | `'grouped'` | `stacked` piles a category's series into one bar, each on the one before, so the bar is their total; the scale reaches the largest. |
 | `hiddenSeries` | `readonly string[]` | `[]` | Series fields not drawn at present. |
 | `onHiddenSeriesChange` | `((fields: readonly string[]) => void)` |  | Makes each legend entry a button that shows or hides its series. |
 | `defaultHiddenSeries` | `readonly string[]` |  | The series hidden at first when the chart keeps them itself: give this instead of `hiddenSeries`; the legend entries then toggle them, and `onHiddenSeriesChange` still hears each change. |
@@ -253,7 +284,7 @@ Ratios are computed from @lingxia/view/theme and rounded down.
 | Ticks between zero and the top of the scale. | nothing from the View | Each value over its bar up to eight bars, the top of the scale beyond; category labels are fitted. |
 | A tooltip by the bar. | nothing from the View | The value is over the bar, or in the readout above the plot, where a finger does not cover it. |
 | Fitted labels and scrubbing on a host built before `useBox` and `onPointer`. | a newer host | All category labels up to seven bars, the first and last beyond; a press on a bar. |
-| Stacked bars and horizontal bars. | nothing from the View | Grouped vertical bars. |
+| Horizontal bars. | nothing from the View | Vertical bars, grouped or stacked. |
 | Series told apart without colour. | pattern fills | Position within the group, the legend's order, and each bar's spoken name. |
 
 Related: Chart, LineChart, PieChart, Sparkline.

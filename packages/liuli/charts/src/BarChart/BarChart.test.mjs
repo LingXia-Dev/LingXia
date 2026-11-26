@@ -600,3 +600,21 @@ test('with defaultValue and defaultHiddenSeries the chart keeps its own choice a
   assert.equal(legend().props.statePressed, 1);
   assert.deepEqual(pressed(), ['2: V 3, W 1']);
 });
+
+/** Each piece of a path as [x, bottom, top, width], from its full outline. */
+const pieces = d => [...d.matchAll(/M([\d.]+) ([\d.]+)V([\d.]+)h([\d.]+)V[\d.]+/g)].map(match => match.slice(1).map(Number));
+
+test('Stacked: one bar per quarter, the second channel on the first with a clear seam; the scale reaches the largest total', async () => {
+  const screen = laidOut(await renderExample('BarChart/BarChart', 'Stacked'));
+  const chart = screen.getByTestId('stacked');
+  const [up] = drawings(chart);
+  assert.deepEqual(up.paths.map(path => path.fill), ['chart-1', 'chart-2']);
+  const [online, store] = up.paths.map(path => pieces(path.d));
+  assert.equal(online[0][0], store[0][0], 'the pieces share one bar');
+  assert.equal(online[0][3], store[0][3]);
+  assert.equal(online[0][1], 100, 'the first piece stands on zero');
+  assert.ok(store[0][1] < online[0][2], 'a seam is left between the two pieces');
+  // Q4 totals $105k; the scale's top is the round number above it.
+  assert.ok(screen.queryAll(node => /\$1\d0k|\$200k/.test(textOf(node))).length > 0, 'the scale reaches past the largest total');
+  assert.equal(slots(chart)[3].props.accessibilityLabel, 'Q4: Online $67k, In store $38k');
+});

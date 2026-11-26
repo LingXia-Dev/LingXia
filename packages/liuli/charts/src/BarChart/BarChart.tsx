@@ -10,6 +10,7 @@ import { barChartRecipe as r } from './BarChart.recipe';
 
 export type BarChartLabels = 'fit' | 'all' | 'ends' | 'none';
 export type BarChartValueLabels = 'auto' | 'always' | 'none';
+export type BarChartLayout = 'grouped' | 'stacked';
 
 /** `Row` is the app's own record type, so `x`, `y` and `keyField` name its fields and a typo fails to compile. */
 export interface BarChartProps<Row extends ChartRecord<Row> = ChartRow> {
@@ -55,6 +56,8 @@ export interface BarChartProps<Row extends ChartRecord<Row> = ChartRow> {
   defaultValue?: string | null;
   /** A View-local cell holding the chosen key, read and written instead of `value` with `onChange`; `onChange` still hears each choice. */
   bind?: Local<string | null>;
+  /** `stacked` piles a category's series into one bar, each on the one before, so the bar is their total; the scale reaches the largest. @default 'grouped' */
+  layout?: BarChartLayout;
   /** Series fields not drawn at present. @default [] */
   hiddenSeries?: readonly string[];
   /** Makes each legend entry a button that shows or hides its series. */
@@ -106,6 +109,20 @@ const radius = { regular: 3, dense: 1 };
 
 interface BarPaths { full: VectorPath[]; dimmed: VectorPath[] }
 
+// The clear space between two pieces of a stacked bar, in points.
+const seamGap = 2;
+/** A category's stacked reach: the sum of its positive values above zero and of its negative ones below. */
+function piled(row: ChartRow, series: readonly { field: string }[]): [number, number] {
+  let [up, down] = [0, 0];
+  for (const each of series) {
+    const value = numberOf(row, each.field);
+    if (!Number.isFinite(value)) continue;
+    if (value > 0) up += value;
+    else down += value;
+  }
+  return [up, down];
+}
+
 const at = (value: number) => String(Math.round(value * 100) / 100);
 
 /**
@@ -116,9 +133,11 @@ const at = (value: number) => String(Math.round(value * 100) / 100);
  */
 function barPaths(
   rows: readonly ChartRow[], series: readonly { field: string; color: ChartColor }[], high: number, depth: number, chosen: number, corner: number, grown: boolean,
+  stack?: { pointsTall: number },
 ): BarPaths {
   const out: BarPaths = { full: [], dimmed: [] };
   const slot = box / rows.length;
+  if (stack) return stackedPaths(rows, series, high, depth, chosen, corner, grown, slot, stack.pointsTall);
   const isSolo = series.length === 1;
   const inner = slot * (isSolo ? share.solo : share.group);
   // The gaps take at most a third of the group, so many series still leave every bar a width.
@@ -143,10 +162,54 @@ function barPaths(
   return out;
 }
 
+/**
+ * One bar per category, its series piled from zero in order: positives up, negatives down. Like a
+ * bar, a piece's outline is open along its base, so the base is flat and its far end is rounded by
+ * the stroke, which reaches past it by the corner. A seam draws the far end back by the corner and
+ * half the gap, and the next base back by half the gap, in plot units, leaving the gap clear.
+ */
+function stackedPaths(
+  rows: readonly ChartRow[], series: readonly { field: string; color: ChartColor }[], high: number, depth: number, chosen: number, corner: number, grown: boolean, slot: number, pointsTall: number,
+): BarPaths {
+  const out: BarPaths = { full: [], dimmed: [] };
+  const width = slot * share.solo;
+  const span = high + depth > 0 ? high + depth : 1;
+  const unit = box / span;
+  const points = (value: number) => (pointsTall > 0 ? (value * box) / pointsTall : 0);
+  const [baseInset, endInset] = [points(seamGap / 2), points(corner + seamGap / 2)];
+  const level = (value: number) => (high - value) * unit;
+  const bases = rows.map(() => [0, 0]);
+  const tops = rows.map(row => piled(row, series));
+  series.forEach(each => {
+    const d = { full: '', dimmed: '' };
+    rows.forEach((row, index) => {
+      const value = numberOf(row, each.field);
+      if (!Number.isFinite(value) || value === 0) return;
+      const side = value > 0 ? 0 : 1;
+      const from = bases[index][side];
+      const to = from + value;
+      bases[index][side] = to;
+      const [a, b] = grown ? [from, to] : [0, 0];
+      // Zero and the pile's far end keep their place; a seam with another piece is drawn back.
+      const atZero = a === 0;
+      const atEnd = to === tops[index][side];
+      const sign = value > 0 ? 1 : -1;
+      let [y0, y1] = [level(a) - (atZero ? 0 : sign * baseInset), level(b) + (atEnd ? 0 : sign * endInset)];
+      if (sign * (y0 - y1) < 0) y0 = y1 = (y0 + y1) / 2;
+      const x0 = slot * index + (slot - width) / 2;
+      d[chosen >= 0 && chosen !== index ? 'dimmed' : 'full'] += `M${at(x0)} ${at(y0)}V${at(y1)}h${at(width)}V${at(y0)}`;
+    });
+    const role = roleOf(each.color);
+    for (const side of ['full', 'dimmed'] as const)
+      if (d[side]) out[side].push({ key: each.field, d: d[side], fill: role, stroke: role, strokeWidth: corner * 2, strokeLinejoin: 'round', vectorEffect: 'non-scaling-stroke' });
+  });
+  return out;
+}
+
 /** Amounts by category, as bars that stand on a zero line. */
 export function BarChart<Row extends ChartRecord<Row>>({
   rows, x, y, keyField, label, title, description, formatValue: format, summarize, xLabels, valueLabels = 'auto', legendPosition = 'bottom', legendLabel,
-  value, onChange, defaultValue, bind, hiddenSeries: givenHidden, onHiddenSeriesChange: onHiddenChange, defaultHiddenSeries, references: given = [], domainMin, domainMax, size = 'md',
+  value, onChange, defaultValue, bind, layout = 'grouped', hiddenSeries: givenHidden, onHiddenSeriesChange: onHiddenChange, defaultHiddenSeries, references: given = [], domainMin, domainMax, size = 'md',
   isLoading = false, error, emptyLabel, emptyHint, onRetry, retryLabel, className, 'data-testid': testId,
 }: BarChartProps<Row>) {
   // Without `value`, a `defaultValue` makes the choice the chart's own.
@@ -165,7 +228,8 @@ export function BarChart<Row extends ChartRecord<Row>>({
   const all = seriesOf(y).map((series, index) => ({ ...series, color: colorOf(index, series.color) }));
   const shown = all.filter(series => !hiddenSeries.includes(series.field));
   const facts = shown.flatMap(series => seriesFacts(data, x, series, formatValue) ?? []);
-  const values = data.flatMap(row => shown.map(series => numberOf(row, series.field))).filter(Number.isFinite);
+  const isStacked = layout === 'stacked' && shown.length > 1;
+  const values = isStacked ? data.flatMap(row => piled(row, shown)) : data.flatMap(row => shown.map(series => numberOf(row, series.field))).filter(Number.isFinite);
   const plot = useBox('plot');
   const widest = useBox('figure');
   const figureBoxes = data.map((_, index) => useBox(`figure-${index}`));
@@ -194,13 +258,15 @@ export function BarChart<Row extends ChartRecord<Row>>({
   const keys = keysOf(data, keyField ?? x);
   const chosen = selectedKey == null ? -1 : keys.indexOf(selectedKey);
   // Narrow bars take the small corner: many bars, counting each of a group, or the smallest plot, where a bar is a few points wide.
-  const density = data.length * Math.max(1, shown.length) >= denseFrom || size === 'xs' ? 'dense' : 'regular';
+  const density = data.length * (isStacked ? 1 : Math.max(1, shown.length)) >= denseFrom || size === 'xs' ? 'dense' : 'regular';
   // Colours are role names, so the outlines outlive a theme change; they are rebuilt only for new data, encoding or choice.
   // Until the plot is first laid out the bars stand at zero; a chart that comes back does not grow them again.
   const grown = laidOutOnce(data, `bar:${label}`, plot.value !== null);
   const corner = radius[density];
-  const paths = remember(data, 'bars', JSON.stringify([shown.map(series => [series.field, series.color]), high, depth, chosen, density, grown]),
-    () => barPaths(data, shown, high, depth, chosen, corner, grown));
+  // The marks' height, which the plot units span: the plot less the corner kept at each free end.
+  const pointsTall = Math.max(0, Math.round((plot.value?.height ?? 0) - corner - (isSigned ? corner : 0)));
+  const paths = remember(data, 'bars', JSON.stringify([shown.map(series => [series.field, series.color]), high, depth, chosen, density, grown, isStacked && pointsTall]),
+    () => barPaths(data, shown, high, depth, chosen, corner, grown, isStacked ? { pointsTall } : undefined));
 
   const reading = (row: ChartRow) => shown
     .filter(series => Number.isFinite(numberOf(row, series.field)))

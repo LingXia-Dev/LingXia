@@ -67,6 +67,23 @@ export function Grouped() {
   );
 }
 
+/** The same two channels as one bar per quarter: the bar is the quarter's total, each channel a piece of it. */
+export function Stacked() {
+  return (
+    <BarChart
+      rows={channels}
+      x="quarter"
+      y={[{ field: 'online', label: 'Online' }, { field: 'store', label: 'In store' }]}
+      layout="stacked"
+      label="Sales by quarter, online and in store"
+      title="Sales"
+      formatValue={thousands}
+      summarize={summarize}
+      data-testid="stacked"
+    />
+  );
+}
+
 const cash = [
   { month: 'Jan', net: 12 }, { month: 'Feb', net: -5 }, { month: 'Mar', net: 8 }, { month: 'Apr', net: -11 },
   { month: 'May', net: 3 }, { month: 'Jun', net: 15 },

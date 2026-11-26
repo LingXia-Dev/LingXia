@@ -146,6 +146,17 @@
           "description": "A View-local cell holding the chosen key, read and written instead of `value` with `onChange`; `onChange` still hears each choice."
         },
         {
+          "name": "layout",
+          "type": "BarChartLayout",
+          "required": false,
+          "description": "`stacked` piles a category's series into one bar, each on the one before, so the bar is their total; the scale reaches the largest.",
+          "values": [
+            "grouped",
+            "stacked"
+          ],
+          "default": "'grouped'"
+        },
+        {
           "name": "hiddenSeries",
           "type": "readonly string[]",
           "required": false,
@@ -430,6 +441,11 @@
           "source": "import { useLocal } from '@lingxia/view';\nimport { summarize } from '@liulidesign/charts/summary';\nimport { BarChart } from '@liulidesign/charts/BarChart';\n\nconst channels = [\n  { quarter: 'Q1', online: 42, store: 31 }, { quarter: 'Q2', online: 48, store: 29 },\n  { quarter: 'Q3', online: 55, store: 33 }, { quarter: 'Q4', online: 67, store: 38 },\n];\nconst thousands = (value: number) => `${value < 0 ? '-' : ''}$${Math.abs(value)}k`;\n\n/** Two series side by side; the legend shows and hides each. */\nexport function Grouped() {\n  const hidden = useLocal<readonly string[]>('hidden', []);\n  return (\n    <BarChart\n      rows={channels}\n      x=\"quarter\"\n      y={[{ field: 'online', label: 'Online' }, { field: 'store', label: 'In store' }]}\n      label=\"Sales by quarter and channel\"\n      title=\"Sales by channel\"\n      formatValue={thousands}\n      summarize={summarize}\n      hiddenSeries={hidden.value}\n      onHiddenSeriesChange={hidden.set}\n      data-testid=\"channels\"\n    />\n  );\n}"
         },
         {
+          "name": "Stacked",
+          "title": "Two series as one bar, its total",
+          "source": "import { summarize } from '@liulidesign/charts/summary';\nimport { BarChart } from '@liulidesign/charts/BarChart';\n\nconst channels = [\n  { quarter: 'Q1', online: 42, store: 31 }, { quarter: 'Q2', online: 48, store: 29 },\n  { quarter: 'Q3', online: 55, store: 33 }, { quarter: 'Q4', online: 67, store: 38 },\n];\nconst thousands = (value: number) => `${value < 0 ? '-' : ''}$${Math.abs(value)}k`;\n\n/** The same two channels as one bar per quarter: the bar is the quarter's total, each channel a piece of it. */\nexport function Stacked() {\n  return (\n    <BarChart\n      rows={channels}\n      x=\"quarter\"\n      y={[{ field: 'online', label: 'Online' }, { field: 'store', label: 'In store' }]}\n      layout=\"stacked\"\n      label=\"Sales by quarter, online and in store\"\n      title=\"Sales\"\n      formatValue={thousands}\n      summarize={summarize}\n      data-testid=\"stacked\"\n    />\n  );\n}"
+        },
+        {
           "name": "Signed",
           "title": "Values above and below zero",
           "source": "import { summarize } from '@liulidesign/charts/summary';\nimport { BarChart } from '@liulidesign/charts/BarChart';\n\nconst thousands = (value: number) => `${value < 0 ? '-' : ''}$${Math.abs(value)}k`;\nconst cash = [\n  { month: 'Jan', net: 12 }, { month: 'Feb', net: -5 }, { month: 'Mar', net: 8 }, { month: 'Apr', net: -11 },\n  { month: 'May', net: 3 }, { month: 'Jun', net: 15 },\n];\n\n/** Values on both sides of zero stand on one line. */\nexport function Signed() {\n  return <BarChart rows={cash} x=\"month\" y=\"net\" label=\"Net cash flow by month\" title=\"Net cash flow\" formatValue={thousands} summarize={summarize} data-testid=\"cash\" />;\n}"
@@ -462,9 +478,9 @@
           "today": "All category labels up to seven bars, the first and last beyond; a press on a bar."
         },
         {
-          "missing": "Stacked bars and horizontal bars.",
+          "missing": "Horizontal bars.",
           "needs": "nothing from the View",
-          "today": "Grouped vertical bars."
+          "today": "Vertical bars, grouped or stacked."
         },
         {
           "missing": "Series told apart without colour.",
