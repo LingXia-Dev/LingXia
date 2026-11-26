@@ -23,6 +23,9 @@ use crate::lifecycle::AppServiceEvent;
 #[path = "context_lifecycle.rs"]
 mod context_lifecycle;
 
+#[path = "intl.rs"]
+mod intl;
+
 #[path = "event_bus.rs"]
 pub(crate) mod event_bus;
 
@@ -763,6 +766,11 @@ async fn handle_service_message(
                     worker_id, e
                 )
                 .with_appid(lxapp.appid.clone());
+                return;
+            }
+            if let Err(e) = intl::install(&ctx, &lxapp) {
+                error!("[Worker {}] Failed to initialize Intl: {}", worker_id, e)
+                    .with_appid(lxapp.appid.clone());
                 return;
             }
             if let Err(e) = page::init(&ctx) {

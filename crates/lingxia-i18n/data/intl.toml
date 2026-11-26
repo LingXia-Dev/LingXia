@@ -1,0 +1,58 @@
+# Locale data for `Intl` on QuickJS (`intl.postcard`), embedded in every host that runs QuickJS.
+# Regenerate with icu4x-datagen at `icu4x`, from the sources below, then update `sha256`:
+#   icu4x-datagen --format blob --locales full --markers <markers> --out intl.postcard
+icu4x = "2.4.0"
+cldr = "49.0.0"
+icuexport = "release-79.1rc"
+ucd = "18.0.0"
+tzdata = "2026e"
+locales = "full"
+sha256 = "34f09e04df968c881a16e19cbfe85b036af096b95e350020a99f54c998e12aee"
+markers = [
+  "CalendarWeekV1",
+  "DatetimeNamesDayperiodV1",
+  "DatetimeNamesMonthGregorianV1",
+  "DatetimeNamesWeekdayV1",
+  "DatetimeNamesYearGregorianV1",
+  "DatetimePatternsDateGregorianV1",
+  "DatetimePatternsGlueV1",
+  "DatetimePatternsTimeV1",
+  "DatetimeRelativeDayLongV1",
+  "DatetimeRelativeDayNarrowV1",
+  "DatetimeRelativeDayShortV1",
+  "DatetimeRelativeHourLongV1",
+  "DatetimeRelativeHourNarrowV1",
+  "DatetimeRelativeHourShortV1",
+  "DatetimeRelativeMinuteLongV1",
+  "DatetimeRelativeMinuteNarrowV1",
+  "DatetimeRelativeMinuteShortV1",
+  "DatetimeRelativeMonthLongV1",
+  "DatetimeRelativeMonthNarrowV1",
+  "DatetimeRelativeMonthShortV1",
+  "DatetimeRelativeQuarterLongV1",
+  "DatetimeRelativeQuarterNarrowV1",
+  "DatetimeRelativeQuarterShortV1",
+  "DatetimeRelativeSecondLongV1",
+  "DatetimeRelativeSecondNarrowV1",
+  "DatetimeRelativeSecondShortV1",
+  "DatetimeRelativeWeekLongV1",
+  "DatetimeRelativeWeekNarrowV1",
+  "DatetimeRelativeWeekShortV1",
+  "DatetimeRelativeYearLongV1",
+  "DatetimeRelativeYearNarrowV1",
+  "DatetimeRelativeYearShortV1",
+  "DecimalDigitsV1",
+  "DecimalPercentV1",
+  "DecimalSymbolsV1",
+  "ListAndV1",
+  "ListOrV1",
+  "ListUnitV1",
+  "LocaleAliasesV1",
+  "LocaleLikelySubtagsExtendedV1",
+  "LocaleLikelySubtagsLanguageV1",
+  "LocaleLikelySubtagsScriptRegionV1",
+  "LocaleParentsV1",
+  "PluralsCardinalV1",
+  "PluralsOrdinalV1",
+  "PluralsRangesV1",
+]

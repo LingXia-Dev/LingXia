@@ -152,6 +152,7 @@ parley = { version = "=0.12.0", default-features = false }
 taffy = "=0.16.0"
 pollster = "=0.4.0"
 rong_core = "=0.8.0"
+rong_quickjs = { version = "0.8.0", default-features = false }
 rong_quickjs_sys = "=0.7.0"
 memmap2 = "0.9.11"
 libc = "0.2"
@@ -198,7 +199,9 @@ rong_jscore_sys = { git = "https://github.com/LingXia-Dev/Rong.git", rev = "44b9
 rong_macro = { git = "https://github.com/LingXia-Dev/Rong.git", rev = "44b96a2a392f8bae64462c9a69c630b63ec10323" }
 rong_modules = { git = "https://github.com/LingXia-Dev/Rong.git", rev = "44b96a2a392f8bae64462c9a69c630b63ec10323" }
 rong_quickjs = { git = "https://github.com/LingXia-Dev/Rong.git", rev = "44b96a2a392f8bae64462c9a69c630b63ec10323" }
+rong_quickjs_intl = { git = "https://github.com/LingXia-Dev/Rong.git", rev = "44b96a2a392f8bae64462c9a69c630b63ec10323" }
 rong_quickjs_sys = { git = "https://github.com/LingXia-Dev/Rong.git", rev = "44b96a2a392f8bae64462c9a69c630b63ec10323" }
+rong_quickjs_tz = { git = "https://github.com/LingXia-Dev/Rong.git", rev = "44b96a2a392f8bae64462c9a69c630b63ec10323" }
 rong_redis = { git = "https://github.com/LingXia-Dev/Rong.git", rev = "44b96a2a392f8bae64462c9a69c630b63ec10323" }
 rong_rt = { git = "https://github.com/LingXia-Dev/Rong.git", rev = "44b96a2a392f8bae64462c9a69c630b63ec10323" }
 rong_s3 = { git = "https://github.com/LingXia-Dev/Rong.git", rev = "44b96a2a392f8bae64462c9a69c630b63ec10323" }

@@ -31,6 +31,7 @@ network-observer = [
 rejection-tracking = ["js-appservice"]
 js-appservice = [
     "dep:rong",
+    "dep:rong_quickjs",
     "dep:rong_modules",
     "dep:rong_http",
     "dep:rong_console",
@@ -92,6 +93,8 @@ rong_modules = { workspace = true, default-features = false, features = ["jscore
 # Android currently uses QuickJS.
 [target.'cfg(target_os = "android")'.dependencies]
 rong = { workspace = true, features = ["quickjs"], optional = true }
+# `Intl` for Logic with the system tz database.
+rong_quickjs = { workspace = true, features = ["intl"], optional = true }
 rong_modules = { workspace = true, default-features = false, features = ["quickjs"], optional = true }
 
 # HarmonyOS uses ArkJS.
@@ -102,6 +105,8 @@ rong_modules = { workspace = true, default-features = false, features = ["arkjs"
 # Fallback for other targets.
 [target.'cfg(not(any(target_os = "ios", target_os = "macos", target_os = "android", all(target_os = "linux", target_env = "ohos"))))'.dependencies]
 rong = { workspace = true, features = ["quickjs"], optional = true }
+# `Intl` for Logic with the system tz database.
+rong_quickjs = { workspace = true, features = ["intl"], optional = true }
 rong_modules = { workspace = true, default-features = false, features = ["quickjs"], optional = true }
 
 [target.'cfg(any(target_os = "android", target_os = "ios", all(target_os = "linux", target_env = "ohos")))'.dependencies]

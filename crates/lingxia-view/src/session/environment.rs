@@ -151,6 +151,14 @@ impl ViewSession {
         {
             self.warm.set(true);
         }
+        let intl = crate::engine::intl::Settings {
+            language: value["language"].as_str().map(str::to_owned),
+            hour_cycle: value["hourCycle"].as_str().map(str::to_owned),
+        };
+        if self.intl != intl {
+            crate::engine::intl::update(&self.context, &intl);
+            self.intl = intl;
+        }
         // Without a language the source catalogue still loads: `t` needs one in the first frame.
         self.ensure_language_catalogue(value["language"].as_str().unwrap_or(""))?;
         self.environment = value;

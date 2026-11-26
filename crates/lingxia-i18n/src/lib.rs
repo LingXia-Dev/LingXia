@@ -5,6 +5,7 @@ pub mod catalogue;
 pub mod direction;
 pub mod dts;
 pub mod format;
+pub mod intl;
 pub mod js;
 pub mod message;
 pub mod plural;

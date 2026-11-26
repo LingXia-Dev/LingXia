@@ -1,5 +1,6 @@
 /.gitattributes text eol=lf
 *.sh text eol=lf
+*.postcard binary
 # Generated files: identical bytes on every OS, so a Windows regenerate shows no drift.
 packages/lingxia-types/api.json text eol=lf
 packages/lingxia-types/src/generated/** text eol=lf

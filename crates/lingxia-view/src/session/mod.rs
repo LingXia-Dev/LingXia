@@ -71,6 +71,8 @@ pub struct ViewSession {
     module: crate::engine::bytecode::Key,
     /// Per-lxapp chunk loader for `lx:view/*` imports and per-language catalogues.
     chunks: Option<crate::engine::chunks::ChunkLoader>,
+    /// The language and clock this page's `Intl` defaults follow.
+    intl: crate::engine::intl::Settings,
     /// Dev build id carried in the page's compatibility manifest, when present.
     chunk_build_id: Option<String>,
     /// Per-language catalogue specifier prefix (e.g. `lx:view/<hash>`), when split out of the chunk.
@@ -362,6 +364,7 @@ impl ViewSession {
             crate::engine::compatibility::install(&context)?;
             crate::engine::install_dev_globals(&context)?;
             crate::engine::console::install(&context, console.clone())?;
+            crate::engine::intl::install(&context)?;
             video::install(&context, video_scope, video_orientation)?;
             crate::engine::defer_collections(&context);
             let module = <crate::engine::Active as crate::engine::Engine>::evaluate_module(
@@ -408,6 +411,7 @@ impl ViewSession {
             eval_phases,
             module,
             chunks,
+            intl: Default::default(),
             chunk_build_id,
             catalogue_chunk,
             catalogue_source,

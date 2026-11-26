@@ -17,6 +17,8 @@ hot-swap = ["dev"]
 serde = { workspace = true, features = ["rc"] }
 serde_json = { workspace = true }
 lingxia-theme = { workspace = true }
+# The locale data `Intl` reads in View isolates.
+lingxia-i18n = { workspace = true }
 log = { workspace = true }
 image = { version = "0.25.10", default-features = false, features = ["png", "jpeg", "webp", "gif"] }
 taffy = { workspace = true }
@@ -30,6 +32,9 @@ wgpu = { workspace = true, optional = true, features = ["vulkan", "dx12", "metal
 pollster = { workspace = true, optional = true }
 # The View isolate runs on QuickJS everywhere, beside the platform's Logic engine.
 rong = { workspace = true, features = ["quickjs"] }
+# `Intl` with the system tz database; `rong::quickjs::intl` is only re-exported with the
+# bundled-tz `quickjs-intl`.
+rong_quickjs = { workspace = true, features = ["intl"] }
 rong_core = { workspace = true }
 rong_quickjs_sys = { workspace = true }
 sha2 = "0.10"
@@ -62,8 +67,6 @@ windows = { workspace = true, features = ["Win32_Foundation", "Win32_System_Thre
 libc = { workspace = true }
 
 [dev-dependencies]
-# The showcase pages these tests build read their text through `t`.
-lingxia-i18n = { workspace = true }
 
 # Runs its own main: AVPlayer needs the main run loop.
 [[test]]

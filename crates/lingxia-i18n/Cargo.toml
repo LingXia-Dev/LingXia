@@ -9,3 +9,6 @@ repository.workspace = true
 [dependencies]
 chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
 serde_json = { workspace = true }
+
+[dev-dependencies]
+sha2 = "0.10"

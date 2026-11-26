@@ -61,6 +61,7 @@ impl ViewSession {
             &mut other.catalogue_languages,
         );
         std::mem::swap(&mut self.loaded_languages, &mut other.loaded_languages);
+        crate::engine::intl::update(&self.context, &self.intl);
         // The buffers each isolate referenced are its own.
         self.wire.swap(&other.wire);
         // Each keeps resolving against its own page's scales.

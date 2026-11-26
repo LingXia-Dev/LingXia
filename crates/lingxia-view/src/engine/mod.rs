@@ -4,6 +4,7 @@ pub(crate) mod bytecode;
 pub mod chunks;
 pub(crate) mod compatibility;
 pub(crate) mod console;
+pub mod intl;
 mod quickjs;
 pub(crate) mod thread_clock;
 
