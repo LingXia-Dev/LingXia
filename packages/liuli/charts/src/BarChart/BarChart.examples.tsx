@@ -116,6 +116,40 @@ export function Signed() {
   return <BarChart rows={cash} x="month" y="net" label="Net cash flow by month" title="Net cash flow" formatValue={thousands} summarize={summarize} data-testid="cash" />;
 }
 
+/** Each bar takes the tone of what its value means: a gain, a loss. The figures keep their signs, so colour is not the only cue. */
+export function Tones() {
+  return (
+    <BarChart
+      rows={cash}
+      x="month"
+      y="net"
+      toneOf={row => (row.net < 0 ? 'negative' : 'positive')}
+      label="Net cash flow by month"
+      title="Net cash flow"
+      formatValue={thousands}
+      summarize={summarize}
+      data-testid="tones"
+    />
+  );
+}
+
+/** One bar picked out in another colour, the rest stepped back: the latest week. */
+export function Highlight() {
+  return (
+    <BarChart
+      rows={week}
+      x="day"
+      y="orders"
+      toneOf={(_, index) => (index === week.length - 1 ? 1 : 'neutral')}
+      label="Orders by weekday, today picked out"
+      title="Orders"
+      description="Today against the week"
+      summarize={summarize}
+      data-testid="highlight"
+    />
+  );
+}
+
 const apps = [
   { app: 'Messages', minutes: 94 }, { app: 'Maps and navigation', minutes: 61 }, { app: 'Photos', minutes: 38 },
   { app: 'Music', minutes: 27 }, { app: 'Calendar', minutes: 12 },

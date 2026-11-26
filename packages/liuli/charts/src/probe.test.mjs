@@ -9,12 +9,16 @@ const found = await probe(fileURLToPath(new URL('..', import.meta.url)));
 /** Lengths the data sets, in points by design. */
 const dataGeometry = new Set([
   // The figures' lane above each bar: the widest figure's measured line, at least 20 points.
-  ...['Orders', 'Signed', 'Sizes', 'StateSelected', 'Target', 'Zone'].map(example => `BarChart/${example}: height=20`),
+  ...['Orders', 'Signed', 'Sizes', 'StateSelected', 'Target', 'Zone', 'Tones', 'Highlight'].map(example => `BarChart/${example}: height=20`),
   // A signed bar's slot leaves the figure lane on the side its bar grows away from.
-  'BarChart/Signed: paddingTop=20',
-  'BarChart/Signed: paddingBottom=20',
-  // The marks' box clears the figure lane and the bar's rounded end, which is drawn into the path.
-  'BarChart/Signed: insetBottom=23',
+  ...['Signed', 'Tones'].flatMap(example => [
+    `BarChart/${example}: paddingTop=20`,
+    `BarChart/${example}: paddingBottom=20`,
+    // The marks' box clears the figure lane and the bar's rounded end, which is drawn into the path.
+    `BarChart/${example}: insetBottom=23`,
+    // The drawing reaches the rounded end back below the marks' box, as it paints only inside its own.
+    `BarChart/${example}: insetBottom=-3`,
+  ]),
   // A lying bar's line is as tall as its bars, which the drawing sets in points.
   ...['Horizontal', 'HorizontalStacked'].map(example => `BarChart/${example}: height=12`),
 ]);

@@ -146,6 +146,12 @@
           "description": "A View-local cell holding the chosen key, read and written instead of `value` with `onChange`; `onChange` still hears each choice."
         },
         {
+          "name": "toneOf",
+          "type": "((row: Row, index: number) => BarChartTone | undefined)",
+          "required": false,
+          "description": "Colours each bar by its row: `positive` and `negative` for a gain and a loss, `neutral` to step one back, or a series colour to pick one out. Undefined keeps the series colour. One series only; say the meaning in the label or the values too, as a colour alone is not read."
+        },
+        {
           "name": "layout",
           "type": "BarChartLayout",
           "required": false,
@@ -480,6 +486,16 @@
           "name": "Zone",
           "title": "A range to stay in, behind the bars",
           "source": "import { BarChart } from '@liulidesign/charts/BarChart';\n\nconst week = [\n  { day: 'Mon', orders: 132 }, { day: 'Tue', orders: 148 }, { day: 'Wed', orders: 121 }, { day: 'Thu', orders: 163 },\n  { day: 'Fri', orders: 187 }, { day: 'Sat', orders: 96 }, { day: 'Sun', orders: 74 },\n];\nconst sleep = [\n  { night: 'Mon', hours: 6.4 }, { night: 'Tue', hours: 7.2 }, { night: 'Wed', hours: 7.8 }, { night: 'Thu', hours: 5.9 },\n  { night: 'Fri', hours: 8.3 }, { night: 'Sat', hours: 9.1 }, { night: 'Sun', hours: 7.5 },\n];\n\n/** A zone behind the bars: the range to stay in, named with both ends. */\nexport function Zone() {\n  return (\n    <BarChart\n      rows={sleep}\n      x=\"night\"\n      y=\"hours\"\n      label=\"Hours slept by night\"\n      title=\"Sleep\"\n      description=\"This week, hours\"\n      formatValue={value => value.toFixed(1)}\n      references={[{ value: 7, to: 9, label: 'Goal' }]}\n      data-testid=\"sleep\"\n    />\n  );\n}"
+        },
+        {
+          "name": "Tones",
+          "title": "Gains and losses in their own tones",
+          "source": "import { summarize } from '@liulidesign/charts/summary';\nimport { BarChart } from '@liulidesign/charts/BarChart';\n\nconst thousands = (value: number) => `${value < 0 ? '-' : ''}$${Math.abs(value)}k`;\nconst cash = [\n  { month: 'Jan', net: 12 }, { month: 'Feb', net: -5 }, { month: 'Mar', net: 8 }, { month: 'Apr', net: -11 },\n  { month: 'May', net: 3 }, { month: 'Jun', net: 15 },\n];\n\n/** Each bar takes the tone of what its value means: a gain, a loss. The figures keep their signs, so colour is not the only cue. */\nexport function Tones() {\n  return (\n    <BarChart\n      rows={cash}\n      x=\"month\"\n      y=\"net\"\n      toneOf={row => (row.net < 0 ? 'negative' : 'positive')}\n      label=\"Net cash flow by month\"\n      title=\"Net cash flow\"\n      formatValue={thousands}\n      summarize={summarize}\n      data-testid=\"tones\"\n    />\n  );\n}"
+        },
+        {
+          "name": "Highlight",
+          "title": "One bar picked out, the rest stepped back",
+          "source": "import { summarize } from '@liulidesign/charts/summary';\nimport { BarChart } from '@liulidesign/charts/BarChart';\n\nconst week = [\n  { day: 'Mon', orders: 132 }, { day: 'Tue', orders: 148 }, { day: 'Wed', orders: 121 }, { day: 'Thu', orders: 163 },\n  { day: 'Fri', orders: 187 }, { day: 'Sat', orders: 96 }, { day: 'Sun', orders: 74 },\n];\n\n/** One bar picked out in another colour, the rest stepped back: the latest week. */\nexport function Highlight() {\n  return (\n    <BarChart\n      rows={week}\n      x=\"day\"\n      y=\"orders\"\n      toneOf={(_, index) => (index === week.length - 1 ? 1 : 'neutral')}\n      label=\"Orders by weekday, today picked out\"\n      title=\"Orders\"\n      description=\"Today against the week\"\n      summarize={summarize}\n      data-testid=\"highlight\"\n    />\n  );\n}"
         },
         {
           "name": "Month",
@@ -2279,10 +2295,10 @@
           "required": false,
           "description": "`series` is the first chart colour; `positive` and `negative` say the trend is good or bad.",
           "values": [
-            "series",
-            "neutral",
             "positive",
-            "negative"
+            "negative",
+            "neutral",
+            "series"
           ],
           "default": "'series'"
         },
@@ -2573,9 +2589,9 @@
           "required": false,
           "description": "Whether the change is good news. By default up is positive, down negative and flat neutral; set it when up is bad (errors, cost).",
           "values": [
-            "neutral",
             "positive",
-            "negative"
+            "negative",
+            "neutral"
           ]
         },
         {

@@ -234,6 +234,65 @@ export function Zone() {
 }
 ```
 
+### Gains and losses in their own tones
+
+```tsx
+import { summarize } from '@liulidesign/charts/summary';
+import { BarChart } from '@liulidesign/charts/BarChart';
+
+const thousands = (value: number) => `${value < 0 ? '-' : ''}$${Math.abs(value)}k`;
+const cash = [
+  { month: 'Jan', net: 12 }, { month: 'Feb', net: -5 }, { month: 'Mar', net: 8 }, { month: 'Apr', net: -11 },
+  { month: 'May', net: 3 }, { month: 'Jun', net: 15 },
+];
+
+/** Each bar takes the tone of what its value means: a gain, a loss. The figures keep their signs, so colour is not the only cue. */
+export function Tones() {
+  return (
+    <BarChart
+      rows={cash}
+      x="month"
+      y="net"
+      toneOf={row => (row.net < 0 ? 'negative' : 'positive')}
+      label="Net cash flow by month"
+      title="Net cash flow"
+      formatValue={thousands}
+      summarize={summarize}
+      data-testid="tones"
+    />
+  );
+}
+```
+
+### One bar picked out, the rest stepped back
+
+```tsx
+import { summarize } from '@liulidesign/charts/summary';
+import { BarChart } from '@liulidesign/charts/BarChart';
+
+const week = [
+  { day: 'Mon', orders: 132 }, { day: 'Tue', orders: 148 }, { day: 'Wed', orders: 121 }, { day: 'Thu', orders: 163 },
+  { day: 'Fri', orders: 187 }, { day: 'Sat', orders: 96 }, { day: 'Sun', orders: 74 },
+];
+
+/** One bar picked out in another colour, the rest stepped back: the latest week. */
+export function Highlight() {
+  return (
+    <BarChart
+      rows={week}
+      x="day"
+      y="orders"
+      toneOf={(_, index) => (index === week.length - 1 ? 1 : 'neutral')}
+      label="Orders by weekday, today picked out"
+      title="Orders"
+      description="Today against the week"
+      summarize={summarize}
+      data-testid="highlight"
+    />
+  );
+}
+```
+
 ### Thirty bars
 
 ```tsx
@@ -270,6 +329,7 @@ export function Month() {
 | `onChange` | `((key: string \| null) => void)` |  | Makes each category a button, up to 36 of them; runs with its key, or `null` when the chosen one is pressed again. A drag across the bars chooses each it passes. |
 | `defaultValue` | `string \| null` |  | Where the choice starts when the chart keeps it itself: give this instead of `value`; `onChange` still hears each choice. |
 | `bind` | `Local<string \| null>` |  | A View-local cell holding the chosen key, read and written instead of `value` with `onChange`; `onChange` still hears each choice. |
+| `toneOf` | `((row: Row, index: number) => BarChartTone \| undefined)` |  | Colours each bar by its row: `positive` and `negative` for a gain and a loss, `neutral` to step one back, or a series colour to pick one out. Undefined keeps the series colour. One series only; say the meaning in the label or the values too, as a colour alone is not read. |
 | `layout` | `BarChartLayout` | `'grouped'` | `stacked` piles a category's series into one bar, each on the one before, so the bar is their total; the scale reaches the largest. |
 | `orientation` | `BarChartOrientation` | `'vertical'` | `horizontal` lays each category on its own line, its name and value over a bar that runs from the start: for long names and ranked lists. It draws no scale, axis labels or references. |
 | `hiddenSeries` | `readonly string[]` | `[]` | Series fields not drawn at present. |

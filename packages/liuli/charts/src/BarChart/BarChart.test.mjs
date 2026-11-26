@@ -657,3 +657,15 @@ test('Zone: the shade lies behind the bars, with an edge at each end and both en
   assert.deepEqual(references, ['zone-0', 'reference-0', 'reference-1']);
   assert.match(textOf(screen.getByTestId('sleep')), /Goal, 7\.0–9\.0/);
 });
+
+test('Tones: each bar takes its row\'s tone, one outline per tone; Highlight picks one bar out of stepped-back ones', async () => {
+  const fills = async name => {
+    const screen = laidOut(await renderExample('BarChart/BarChart', name));
+    return screen.queryAll(node => node.tag === 'vector').flatMap(node => JSON.parse(node.props.vectorSource).paths).filter(path => !/^(reference|zone)/.test(path.key)).map(path => [path.key, path.fill, path.d.split('M').length - 1]);
+  };
+  const tones = await fills('Tones');
+  assert.deepEqual(tones.map(([key, fill]) => [key, fill]), [['net-success-mark', 'success-mark'], ['net-danger-mark', 'danger-mark']], 'every bar toned: the series colour has none left');
+  assert.equal(tones.reduce((sum, [, , count]) => sum + count, 0), 6, 'every month a bar');
+  const picked = await fills('Highlight');
+  assert.deepEqual(picked.map(([key, fill, count]) => [key, fill, count]), [['orders', 'chart-1', 1], ['orders-line', 'line', 6]]);
+});

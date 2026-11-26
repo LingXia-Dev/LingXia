@@ -90,6 +90,8 @@ export const doc: ComponentDoc = {
     { name: 'Signed', title: 'Values above and below zero' },
     { name: 'Target', title: 'A target and an average across the bars' },
     { name: 'Zone', title: 'A range to stay in, behind the bars' },
+    { name: 'Tones', title: 'Gains and losses in their own tones' },
+    { name: 'Highlight', title: 'One bar picked out, the rest stepped back' },
     { name: 'Month', title: 'Thirty bars' },
   ],
   gaps: [

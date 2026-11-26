@@ -1,4 +1,4 @@
-import { cx, useBox, useLocal, useView, type PointerEvent, type VectorPath, type Local } from '@lingxia/view';
+import { cx, useBox, useLocal, useView, type PointerEvent, type VectorPath, type Local, type ColorRole } from '@lingxia/view';
 import { Chart, ChartLegend, ChartReadout, type ChartLegendPosition, type ChartField, type ChartRecord, type ChartReference, type ChartRow, type ChartSeries, type ChartSize, type ChartSummarize } from '../Chart/Chart';
 import { colorOf, keysOf, numberOf, numberIn, referenceEnds, referenceTop, roleOf, seriesFacts, seriesOf, textOf, type ChartColor } from '../internal/data';
 import { leftPressed, pressed, pressedIndex, pressedKey, scrubbing } from '../internal/gesture';
@@ -11,6 +11,11 @@ import { barChartRecipe as r } from './BarChart.recipe';
 export type BarChartLabels = 'fit' | 'all' | 'ends' | 'none';
 export type BarChartValueLabels = 'auto' | 'always' | 'none';
 export type BarChartLayout = 'grouped' | 'stacked';
+/** A bar's own colour: a series colour, or what its value means. */
+export type BarChartTone = ChartColor | 'positive' | 'negative' | 'neutral';
+
+const toneRoles = { positive: 'success-mark', negative: 'danger-mark', neutral: 'line' } as const;
+const toneRole = (tone: BarChartTone): ColorRole => (typeof tone === 'number' ? roleOf(tone) : toneRoles[tone]);
 export type BarChartOrientation = 'vertical' | 'horizontal';
 
 /** `Row` is the app's own record type, so `x`, `y` and `keyField` name its fields and a typo fails to compile. */
@@ -57,6 +62,12 @@ export interface BarChartProps<Row extends ChartRecord<Row> = ChartRow> {
   defaultValue?: string | null;
   /** A View-local cell holding the chosen key, read and written instead of `value` with `onChange`; `onChange` still hears each choice. */
   bind?: Local<string | null>;
+  /**
+   * Colours each bar by its row: `positive` and `negative` for a gain and a loss, `neutral` to step
+   * one back, or a series colour to pick one out. Undefined keeps the series colour. One series
+   * only; say the meaning in the label or the values too, as a colour alone is not read.
+   */
+  toneOf?: (row: Row, index: number) => BarChartTone | undefined;
   /** `stacked` piles a category's series into one bar, each on the one before, so the bar is their total; the scale reaches the largest. @default 'grouped' */
   layout?: BarChartLayout;
   /**
@@ -154,12 +165,12 @@ function lying(from: number, to: number, top: number, bottom: number, corner: nu
  */
 function lyingPaths(
   row: ChartRow, series: readonly { field: string; color: ChartColor }[], high: number, depth: number, corner: number, grown: boolean,
-  isStacked: boolean, barTall: number, wide: number, isDimmed: boolean,
+  isStacked: boolean, barTall: number, wide: number, isDimmed: boolean, tone?: ColorRole,
 ): VectorPath[] {
   const span = high + depth > 0 ? high + depth : 1;
   const along = (value: number) => ((depth + value) / span) * wide;
   const paths: VectorPath[] = [];
-  const add = (field: string, color: ChartColor, d: string) => paths.push({ key: field, d, fill: `${roleOf(color)}/${isDimmed ? 30 : 85}` });
+  const add = (field: string, color: ChartColor, d: string) => paths.push({ key: field, d, fill: `${tone ?? roleOf(color)}/${isDimmed ? 30 : 85}` });
   if (isStacked) {
     const tops = piled(row, series);
     const bases = [0, 0];
@@ -196,7 +207,7 @@ function lyingPaths(
  */
 function barPaths(
   rows: readonly ChartRow[], series: readonly { field: string; color: ChartColor }[], high: number, depth: number, chosen: number, corner: number, grown: boolean,
-  stack?: { pointsTall: number },
+  stack?: { pointsTall: number }, tones?: ReadonlyArray<ColorRole | undefined>,
 ): BarPaths {
   const out: BarPaths = { full: [], dimmed: [] };
   const slot = box / rows.length;
@@ -209,18 +220,23 @@ function barPaths(
   const span = high + depth > 0 ? high + depth : 1;
   const level = (value: number) => at(((high - value) / span) * box);
   series.forEach((each, column) => {
-    const d = { full: '', dimmed: '' };
+    // One outline per colour: the series' own, and each tone its bars take.
+    const own = roleOf(each.color);
+    const outlines = new Map<ColorRole, { full: string; dimmed: string }>([[own, { full: '', dimmed: '' }]]);
     rows.forEach((row, index) => {
       const value = numberOf(row, each.field);
       if (!Number.isFinite(value) || value === 0) return;
       // Before the first layout every bar stands at zero, so the bars grow to their values.
       const reach = grown ? value : 0;
       const x0 = slot * index + (slot - inner) / 2 + column * (width + gap);
-      d[chosen >= 0 && chosen !== index ? 'dimmed' : 'full'] += `M${at(x0)} ${level(0)}V${level(reach)}h${at(width)}V${level(0)}`;
+      const role = (isSolo && tones?.[index]) || own;
+      if (!outlines.has(role)) outlines.set(role, { full: '', dimmed: '' });
+      outlines.get(role)![chosen >= 0 && chosen !== index ? 'dimmed' : 'full'] += `M${at(x0)} ${level(0)}V${level(reach)}h${at(width)}V${level(0)}`;
     });
-    const role = roleOf(each.color);
-    for (const side of ['full', 'dimmed'] as const)
-      if (d[side]) out[side].push({ key: each.field, d: d[side], fill: role, stroke: role, strokeWidth: corner * 2, strokeLinejoin: 'round', vectorEffect: 'non-scaling-stroke' });
+    outlines.forEach((d, role) => {
+      for (const side of ['full', 'dimmed'] as const)
+        if (d[side]) out[side].push({ key: role === own ? each.field : `${each.field}-${role}`, d: d[side], fill: role, stroke: role, strokeWidth: corner * 2, strokeLinejoin: 'round', vectorEffect: 'non-scaling-stroke' });
+    });
   });
   return out;
 }
@@ -272,7 +288,7 @@ function stackedPaths(
 /** Amounts by category, as bars that stand on a zero line. */
 export function BarChart<Row extends ChartRecord<Row>>({
   rows, x, y, keyField, label, title, description, formatValue: format, summarize, xLabels, valueLabels = 'auto', legendPosition = 'bottom', legendLabel,
-  value, onChange, defaultValue, bind, layout = 'grouped', orientation = 'vertical', hiddenSeries: givenHidden, onHiddenSeriesChange: onHiddenChange, defaultHiddenSeries, references: given = [], domainMin, domainMax, size = 'md',
+  value, onChange, defaultValue, bind, toneOf, layout = 'grouped', orientation = 'vertical', hiddenSeries: givenHidden, onHiddenSeriesChange: onHiddenChange, defaultHiddenSeries, references: given = [], domainMin, domainMax, size = 'md',
   isLoading = false, error, emptyLabel, emptyHint, onRetry, retryLabel, className, 'data-testid': testId,
 }: BarChartProps<Row>) {
   // Without `value`, a `defaultValue` makes the choice the chart's own.
@@ -330,8 +346,9 @@ export function BarChart<Row extends ChartRecord<Row>>({
   const corner = radius[density];
   // The marks' height, which the plot units span: the plot less the corner kept at each free end.
   const pointsTall = Math.max(0, Math.round((plot.value?.height ?? 0) - corner - (isSigned ? corner : 0)));
-  const paths = remember(data, 'bars', JSON.stringify([shown.map(series => [series.field, series.color]), high, depth, chosen, density, grown, isStacked && pointsTall]),
-    () => barPaths(data, shown, high, depth, chosen, corner, grown, isStacked ? { pointsTall } : undefined));
+  const tones = toneOf && shown.length === 1 ? data.map((row, index) => { const tone = toneOf(row as Row, index); return tone === undefined ? undefined : toneRole(tone); }) : undefined;
+  const paths = remember(data, 'bars', JSON.stringify([shown.map(series => [series.field, series.color]), high, depth, chosen, density, grown, isStacked && pointsTall, tones]),
+    () => barPaths(data, shown, high, depth, chosen, corner, grown, isStacked ? { pointsTall } : undefined, tones));
 
   const reading = (row: ChartRow) => shown
     .filter(series => Number.isFinite(numberOf(row, series.field)))
@@ -395,12 +412,21 @@ export function BarChart<Row extends ChartRecord<Row>>({
     );
   });
 
-  const drawing = (list: VectorPath[], isDimmed: boolean) => list.length > 0 && (
-    <vector paths={list} viewBox={[0, 0, box, box]} className={cx(r.drawing.base, r.motion.base, isDimmed ? r.drawing.dimmed : r.drawing.full)} />
-  );
   // The marks are the scale's box: the corner's stroke stands past it at the bars' free ends, and the figures' lines lie outside it.
   const clear = scale === 'each' ? lane : 0;
   const markBox = { top: clear + corner, bottom: isSigned ? clear + corner : 0 };
+  // A drawing paints only inside its own box, so it reaches a corner past each free end, its viewBox with it.
+  const marksTall = (plot.value?.height ?? 0) - markBox.top - markBox.bottom;
+  const reachUnits = marksTall > 0 ? (corner * box) / marksTall : 0;
+  const [reachUp, reachDown] = [reachUnits, isSigned ? reachUnits : 0];
+  const drawing = (list: VectorPath[], isDimmed: boolean) => list.length > 0 && (
+    <vector
+      paths={list}
+      viewBox={[0, -reachUp, box, box + reachUp + reachDown]}
+      style={{ top: -corner, bottom: isSigned ? -corner : 0 }}
+      className={cx(r.drawing.base, r.motion.base, isDimmed ? r.drawing.dimmed : r.drawing.full)}
+    />
+  );
   const span = high + depth > 0 ? high + depth : 1;
   const fall = (value: number) => (high - value) / span;
   const plotSize = plot.value;
@@ -488,7 +514,7 @@ export function BarChart<Row extends ChartRecord<Row>>({
         <view key="track" aria-hidden className={r.lying.track} style={{ height: rowTall }}>
           {wide > 0 && (
             <vector
-              paths={lyingPaths(row, shown, rawHigh, rawDepth, corner, grown, isStacked, barTall, wide, isDimmed)}
+              paths={lyingPaths(row, shown, rawHigh, rawDepth, corner, grown, isStacked, barTall, wide, isDimmed, tones?.[index])}
               viewBox={[0, 0, wide, rowTall]}
               className={cx(r.lying.drawing, r.motion.base)}
             />
