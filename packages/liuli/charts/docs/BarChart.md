@@ -106,6 +106,57 @@ export function Stacked() {
 }
 ```
 
+### A ranked list, each name over its bar
+
+```tsx
+import { useLocal } from '@lingxia/view';
+import { summarize } from '@liulidesign/charts/summary';
+import { BarChart } from '@liulidesign/charts/BarChart';
+
+const apps = [
+  { app: 'Messages', minutes: 94 }, { app: 'Maps and navigation', minutes: 61 }, { app: 'Photos', minutes: 38 },
+  { app: 'Music', minutes: 27 }, { app: 'Calendar', minutes: 12 },
+];
+const minutes = (value: number) => `${Math.floor(value / 60) ? `${Math.floor(value / 60)} h ` : ''}${value % 60} min`;
+
+/** A ranked list: each name over its bar, with room for long names; tap a line to choose it. */
+export function Horizontal() {
+  const app = useLocal<string | null>('app', null);
+  return (
+    <BarChart rows={apps} x="app" y="minutes" orientation="horizontal" label="Screen time by app" title="Screen time" description="Today" formatValue={minutes} summarize={summarize} bind={app} data-testid="apps" />
+  );
+}
+```
+
+### Stacked and lying down
+
+```tsx
+import { BarChart } from '@liulidesign/charts/BarChart';
+
+const channels = [
+  { quarter: 'Q1', online: 42, store: 31 }, { quarter: 'Q2', online: 48, store: 29 },
+  { quarter: 'Q3', online: 55, store: 33 }, { quarter: 'Q4', online: 67, store: 38 },
+];
+const thousands = (value: number) => `${value < 0 ? '-' : ''}$${Math.abs(value)}k`;
+
+/** Stacked and lying down: each quarter's total at the end of its line, the channels as pieces of its bar. */
+export function HorizontalStacked() {
+  return (
+    <BarChart
+      rows={channels}
+      x="quarter"
+      y={[{ field: 'online', label: 'Online' }, { field: 'store', label: 'In store' }]}
+      layout="stacked"
+      orientation="horizontal"
+      label="Sales by quarter, online and in store"
+      title="Sales"
+      formatValue={thousands}
+      data-testid="lying-stacked"
+    />
+  );
+}
+```
+
 ### Values above and below zero
 
 ```tsx
@@ -188,6 +239,7 @@ export function Month() {
 | `defaultValue` | `string \| null` |  | Where the choice starts when the chart keeps it itself: give this instead of `value`; `onChange` still hears each choice. |
 | `bind` | `Local<string \| null>` |  | A View-local cell holding the chosen key, read and written instead of `value` with `onChange`; `onChange` still hears each choice. |
 | `layout` | `BarChartLayout` | `'grouped'` | `stacked` piles a category's series into one bar, each on the one before, so the bar is their total; the scale reaches the largest. |
+| `orientation` | `BarChartOrientation` | `'vertical'` | `horizontal` lays each category on its own line, its name and value over a bar that runs from the start: for long names and ranked lists. It draws no scale, axis labels or references. |
 | `hiddenSeries` | `readonly string[]` | `[]` | Series fields not drawn at present. |
 | `onHiddenSeriesChange` | `((fields: readonly string[]) => void)` |  | Makes each legend entry a button that shows or hides its series. |
 | `defaultHiddenSeries` | `readonly string[]` |  | The series hidden at first when the chart keeps them itself: give this instead of `hiddenSeries`; the legend entries then toggle them, and `onHiddenSeriesChange` still hears each change. |
@@ -284,7 +336,7 @@ Ratios are computed from @lingxia/view/theme and rounded down.
 | Ticks between zero and the top of the scale. | nothing from the View | Each value over its bar up to eight bars, the top of the scale beyond; category labels are fitted. |
 | A tooltip by the bar. | nothing from the View | The value is over the bar, or in the readout above the plot, where a finger does not cover it. |
 | Fitted labels and scrubbing on a host built before `useBox` and `onPointer`. | a newer host | All category labels up to seven bars, the first and last beyond; a press on a bar. |
-| Horizontal bars. | nothing from the View | Vertical bars, grouped or stacked. |
+| A scale and references on horizontal bars. | nothing from the View | Each line writes its value at its end; the longest bar is the largest value. |
 | Series told apart without colour. | pattern fills | Position within the group, the legend's order, and each bar's spoken name. |
 
 Related: Chart, LineChart, PieChart, Sparkline.

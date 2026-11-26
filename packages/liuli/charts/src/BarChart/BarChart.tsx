@@ -11,6 +11,7 @@ import { barChartRecipe as r } from './BarChart.recipe';
 export type BarChartLabels = 'fit' | 'all' | 'ends' | 'none';
 export type BarChartValueLabels = 'auto' | 'always' | 'none';
 export type BarChartLayout = 'grouped' | 'stacked';
+export type BarChartOrientation = 'vertical' | 'horizontal';
 
 /** `Row` is the app's own record type, so `x`, `y` and `keyField` name its fields and a typo fails to compile. */
 export interface BarChartProps<Row extends ChartRecord<Row> = ChartRow> {
@@ -58,6 +59,11 @@ export interface BarChartProps<Row extends ChartRecord<Row> = ChartRow> {
   bind?: Local<string | null>;
   /** `stacked` piles a category's series into one bar, each on the one before, so the bar is their total; the scale reaches the largest. @default 'grouped' */
   layout?: BarChartLayout;
+  /**
+   * `horizontal` lays each category on its own line, its name and value over a bar that runs from
+   * the start: for long names and ranked lists. It draws no scale, axis labels or references. @default 'vertical'
+   */
+  orientation?: BarChartOrientation;
   /** Series fields not drawn at present. @default [] */
   hiddenSeries?: readonly string[];
   /** Makes each legend entry a button that shows or hides its series. */
@@ -124,6 +130,63 @@ function piled(row: ChartRow, series: readonly { field: string }[]): [number, nu
 }
 
 const at = (value: number) => String(Math.round(value * 100) / 100);
+
+// A horizontal bar's thickness in points, and the gap between the bars of a group.
+const thickness = { xs: 6, sm: 8, md: 12, lg: 14 } satisfies Record<ChartSize, number>;
+const groupGap = 2;
+
+/**
+ * A bar lying from `from` to `to` in points, rounded at its free end only; the base stays square, on
+ * zero or against the piece before it. Every bar has the same commands, so a change of value or of
+ * side morphs under `transition-[d]`.
+ */
+function lying(from: number, to: number, top: number, bottom: number, corner: number): string {
+  const sign = to >= from ? 1 : -1;
+  const c = Math.min(corner, Math.abs(to - from), (bottom - top) / 2);
+  const sweep = sign > 0 ? 1 : 0;
+  return `M${at(from)} ${at(top)}H${at(to - sign * c)}A${at(c)} ${at(c)} 0 0 ${sweep} ${at(to)} ${at(top + c)}V${at(bottom - c)}A${at(c)} ${at(c)} 0 0 ${sweep} ${at(to - sign * c)} ${at(bottom)}H${at(from)}Z`;
+}
+
+/**
+ * One category's bars in points along its line, from zero: grouped, each series takes its own band
+ * down the line; stacked, the pieces follow one another, a seam clear between them, and only the end
+ * of the pile is rounded. Chosen elsewhere, the bars step back to a faint fill.
+ */
+function lyingPaths(
+  row: ChartRow, series: readonly { field: string; color: ChartColor }[], high: number, depth: number, corner: number, grown: boolean,
+  isStacked: boolean, barTall: number, wide: number, isDimmed: boolean,
+): VectorPath[] {
+  const span = high + depth > 0 ? high + depth : 1;
+  const along = (value: number) => ((depth + value) / span) * wide;
+  const paths: VectorPath[] = [];
+  const add = (field: string, color: ChartColor, d: string) => paths.push({ key: field, d, fill: `${roleOf(color)}/${isDimmed ? 30 : 85}` });
+  if (isStacked) {
+    const tops = piled(row, series);
+    const bases = [0, 0];
+    for (const each of series) {
+      const value = numberOf(row, each.field);
+      if (!Number.isFinite(value) || value === 0) continue;
+      const side = value > 0 ? 0 : 1;
+      const from = bases[side];
+      const to = from + value;
+      bases[side] = to;
+      const [a, b] = grown ? [from, to] : [0, 0];
+      const sign = value > 0 ? 1 : -1;
+      const isEnd = to === tops[side];
+      let [x0, x1] = [along(a) + (a === 0 ? 0 : sign * seamGap / 2), along(b) - (isEnd ? 0 : sign * seamGap / 2)];
+      if (sign * (x1 - x0) < 0) x0 = x1 = (x0 + x1) / 2;
+      add(each.field, each.color, lying(x0, x1, 0, barTall, isEnd ? corner : 0));
+    }
+    return paths;
+  }
+  series.forEach((each, index) => {
+    const value = numberOf(row, each.field);
+    if (!Number.isFinite(value) || value === 0) return;
+    const top = index * (barTall + groupGap);
+    add(each.field, each.color, lying(along(0), along(grown ? value : 0), top, top + barTall, corner));
+  });
+  return paths;
+}
 
 /**
  * Every bar of a series as one outline in one box that runs from the top of the scale down to its
@@ -209,7 +272,7 @@ function stackedPaths(
 /** Amounts by category, as bars that stand on a zero line. */
 export function BarChart<Row extends ChartRecord<Row>>({
   rows, x, y, keyField, label, title, description, formatValue: format, summarize, xLabels, valueLabels = 'auto', legendPosition = 'bottom', legendLabel,
-  value, onChange, defaultValue, bind, layout = 'grouped', hiddenSeries: givenHidden, onHiddenSeriesChange: onHiddenChange, defaultHiddenSeries, references: given = [], domainMin, domainMax, size = 'md',
+  value, onChange, defaultValue, bind, layout = 'grouped', orientation = 'vertical', hiddenSeries: givenHidden, onHiddenSeriesChange: onHiddenChange, defaultHiddenSeries, references: given = [], domainMin, domainMax, size = 'md',
   isLoading = false, error, emptyLabel, emptyHint, onRetry, retryLabel, className, 'data-testid': testId,
 }: BarChartProps<Row>) {
   // Without `value`, a `defaultValue` makes the choice the chart's own.
@@ -224,7 +287,8 @@ export function BarChart<Row extends ChartRecord<Row>>({
   // Only the fields named are read, and each of those holds a datum.
   const data = rows as readonly ChartRow[];
   // Without the app's own, values are written as the page's language writes numbers.
-  const formatValue = format ?? numberIn(useView().env.language);
+  const { env } = useView();
+  const formatValue = format ?? numberIn(env.language);
   const references = given.filter(each => Number.isFinite(each.value));
   const all = seriesOf(y).map((series, index) => ({ ...series, color: colorOf(index, series.color) }));
   const shown = all.filter(series => !hiddenSeries.includes(series.field));
@@ -378,23 +442,82 @@ export function BarChart<Row extends ChartRecord<Row>>({
   ));
 
   const picked = chosen >= 0 ? data[chosen] : undefined;
+  const legend = all.length > 1 && (
+    <ChartLegend
+      label={legendLabel ?? label}
+      items={all.map(series => ({ key: series.field, label: series.label, color: series.color, isOff: hiddenSeries.includes(series.field) }))}
+      pressedState="shown"
+      onItemPress={onHiddenSeriesChange && (field => onHiddenSeriesChange(hiddenSeries.includes(field) ? hiddenSeries.filter(each => each !== field) : [...hiddenSeries, field]))}
+      data-testid={testId === undefined ? undefined : `${testId}-legend`}
+    />
+  );
+  const frame = {
+    label, title, description, size, isLoading, error, onRetry, retryLabel, emptyHint, emptyLabel, className, legendPosition,
+    summary: summarize?.({ kind: 'bar', count: data.length, series: facts }),
+    plotShape: 'bars' as const,
+    isEmpty: !values.length,
+    'data-testid': testId,
+  };
+
+  if (orientation === 'horizontal') {
+    const barTall = thickness[size];
+    const rowTall = isStacked ? barTall : shown.length * barTall + Math.max(0, shown.length - 1) * groupGap;
+    const [rawHigh, rawDepth] = reach[0] + reach[1] > 0 ? reach : [1, 0];
+    // The bars are drawn in points across the measured line; before that they wait at zero width.
+    const wide = plot.value?.width ?? 0;
+    const figureOf = (row: ChartRow) => {
+      if (isNone || shown.length === 0) return undefined;
+      if (shown.length === 1) return Number.isFinite(numberOf(row, shown[0].field)) ? formatValue(numberOf(row, shown[0].field)) : undefined;
+      if (!isStacked) return undefined;
+      const parts = shown.map(series => numberOf(row, series.field)).filter(Number.isFinite);
+      return parts.length ? formatValue(parts.reduce((sum, each) => sum + each, 0)) : undefined;
+    };
+    const lines = data.map((row, index) => {
+      const key = keys[index];
+      const figure = figureOf(row);
+      const isDimmed = chosen >= 0 && chosen !== index;
+      const body = [
+        <view key="head" aria-hidden className={r.lying.head}>
+          <text className={cx(r.lying.name, chosen === index && r.lying.chosen)}>{textOf(row, x)}</text>
+          {figure !== undefined && <text className={r.lying.figure}>{figure}</text>}
+        </view>,
+        <view key="track" aria-hidden className={r.lying.track} style={{ height: rowTall }}>
+          {wide > 0 && (
+            <vector
+              paths={lyingPaths(row, shown, rawHigh, rawDepth, corner, grown, isStacked, barTall, wide, isDimmed)}
+              viewBox={[0, 0, wide, rowTall]}
+              className={cx(r.lying.drawing, r.motion.base)}
+            />
+          )}
+          {rawDepth > 0 && <view className={r.lying.zero} style={{ insetInlineStart: `${(rawDepth / (rawHigh + rawDepth)) * 100}%` }} />}
+        </view>,
+      ];
+      const name = `${textOf(row, x)}: ${reading(row)}`;
+      if (!isPressable) return <view key={key} role="listitem" aria-label={name} className={r.lying.line}>{body}</view>;
+      return (
+        <button
+          key={key}
+          aria-label={name}
+          aria-pressed={chosen === index}
+          onClick={() => onSelect(chosen === index ? null : key)}
+          data-testid={testId === undefined ? undefined : `${testId}-${key}`}
+          className={cx(r.lying.line, r.lying.pressable)}
+        >
+          {body}
+        </button>
+      );
+    });
+    return (
+      <Chart {...frame} size={isLoading || error !== undefined || !values.length ? size : 'fit'} legend={legend}>
+        {/* The frame keeps drawn data left to right; lying bars are lines of text, so they follow the page. */}
+        <view box={plot} dir={env.direction} role={isPressable ? undefined : 'list'} aria-label={isPressable ? undefined : label} className={r.lying.lines}>{lines}</view>
+      </Chart>
+    );
+  }
+
   return (
     <Chart
-      label={label}
-      title={title}
-      description={description}
-      summary={summarize?.({ kind: 'bar', count: data.length, series: facts })}
-      size={size}
-      isLoading={isLoading}
-      plotShape="bars"
-      error={error}
-      onRetry={onRetry}
-      retryLabel={retryLabel}
-      emptyHint={emptyHint}
-      isEmpty={!values.length}
-      emptyLabel={emptyLabel}
-      className={className}
-      data-testid={testId}
+      {...frame}
       // Bars that carry their values need no readout, and keep no line for one.
       readout={scale !== 'each' && (onSelect !== undefined || picked !== undefined) && (
         <ChartReadout
@@ -404,16 +527,7 @@ export function BarChart<Row extends ChartRecord<Row>>({
           }))}
         />
       )}
-      legendPosition={legendPosition}
-      legend={all.length > 1 && (
-        <ChartLegend
-          label={legendLabel ?? label}
-          items={all.map(series => ({ key: series.field, label: series.label, color: series.color, isOff: hiddenSeries.includes(series.field) }))}
-          pressedState="shown"
-          onItemPress={onHiddenSeriesChange && (field => onHiddenSeriesChange(hiddenSeries.includes(field) ? hiddenSeries.filter(each => each !== field) : [...hiddenSeries, field]))}
-          data-testid={testId === undefined ? undefined : `${testId}-legend`}
-        />
-      )}
+      legend={legend}
       axis={labels === 'none' || !data.length ? undefined : labels === 'fit' ? (
         <view className={r.labels.fit}>
           <Ticks texts={data.map(row => textOf(row, x))} layout="slots">{row(data.length <= maxLabelled ? 'all' : 'ends', r.labels.cover)}</Ticks>

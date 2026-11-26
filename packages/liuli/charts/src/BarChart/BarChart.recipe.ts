@@ -80,6 +80,20 @@ export const barChartRecipe = {
     all: 'flex-row',
     ends: 'flex-row justify-between',
   },
+  /** Horizontal: a line per category, its name and figure over a bar that runs from the start. */
+  lying: {
+    lines: 'gap-1 -mx-1.5',
+    line: 'items-stretch gap-1.5 px-1.5 py-1.5 rounded-[calc(var(--radius-sm)*0.66667)]',
+    pressable: 'hover:bg-text/4 focus-visible:bg-text/7',
+    head: 'flex-row items-baseline gap-3',
+    name: 'grow basis-0 min-w-0 truncate text-start text-footnote text-text',
+    chosen: 'font-medium',
+    figure: 'shrink-0 text-footnote text-muted tabular-nums',
+    track: 'relative self-stretch',
+    // Drawn from the left; in a right-to-left page the bars run from the right.
+    drawing: 'absolute inset-0 motion-safe:transition-[d] rtl:-scale-x-100',
+    zero: 'absolute top-0 bottom-0 w-px -ms-px bg-line-strong',
+  },
   label: {
     base: 'text-caption text-muted tabular-nums',
     cell: 'grow basis-0 min-w-0 truncate text-center',

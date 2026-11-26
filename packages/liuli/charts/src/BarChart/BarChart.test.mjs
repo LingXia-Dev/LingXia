@@ -618,3 +618,34 @@ test('Stacked: one bar per quarter, the second channel on the first with a clear
   assert.ok(screen.queryAll(node => /\$1\d0k|\$200k/.test(textOf(node))).length > 0, 'the scale reaches past the largest total');
   assert.equal(slots(chart)[3].props.accessibilityLabel, 'Q4: Online $67k, In store $38k');
 });
+
+// The box that holds a horizontal chart's lines, which the bars are drawn across.
+const lines = screen => screen.queryAll(node => node.props.onLayout !== undefined && node.children.some(child => child.tag === 'button' || child.props.role === 'listitem'))[0];
+
+test('Horizontal: a line per category, its name and value over a bar from the start; pressing a line chooses it and the rest step back', async () => {
+  const screen = await renderExample('BarChart/BarChart', 'Horizontal');
+  const line = name => screen.getByTestId(`apps-${name}`);
+  assert.equal(line('Photos').props.accessibilityLabel, 'Photos: 38 min');
+  assert.deepEqual(screen.queryAll(node => node.tag === 'vector').length, 0, 'no bar until the line has a width');
+  screen.layout(lines(screen), { width: 300, height: 400 });
+  const lying = () => screen.queryAll(node => node.tag === 'vector').map(node => JSON.parse(node.props.vectorSource));
+  assert.equal(lying().length, 5);
+  const [first] = lying()[0].paths;
+  assert.match(first.d, /^M0 0H297A3 3 0 0 1 300 3V9A3 3 0 0 1 297 12H0Z$/, 'the longest runs the width, square at the start and round at its end');
+  assert.equal(first.fill, 'chart-1/85');
+  screen.press(line('Photos'));
+  assert.equal(line('Photos').props.statePressed, 1);
+  assert.deepEqual(lying().map(vector => vector.paths[0].fill.split('/')[1]), ['30', '30', '85', '30', '30']);
+});
+
+test('HorizontalStacked: one bar per line, its pieces end to end with a seam, only the pile end rounded; the line writes the total', async () => {
+  const screen = await renderExample('BarChart/BarChart', 'HorizontalStacked');
+  screen.getByText('$73k');
+  screen.layout(lines(screen), { width: 210, height: 300 });
+  const pile = JSON.parse(screen.queryAll(node => node.tag === 'vector')[3].props.vectorSource).paths;
+  const [online, store] = pile;
+  assert.match(online.d, /^M0 0H\d+(\.\d+)?A0 0 /, 'the first piece has no rounded end');
+  assert.match(store.d, /A3 3 0 0 1 210 3/, 'the pile ends at the width, rounded');
+  assert.equal(pile.length, 2);
+});
+

@@ -15,6 +15,8 @@ const dataGeometry = new Set([
   'BarChart/Signed: paddingBottom=20',
   // The marks' box clears the figure lane and the bar's rounded end, which is drawn into the path.
   'BarChart/Signed: insetBottom=23',
+  // A lying bar's line is as tall as its bars, which the drawing sets in points.
+  ...['Horizontal', 'HorizontalStacked'].map(example => `BarChart/${example}: height=12`),
 ]);
 
 test('every length drawn is a theme step, so a pack reaches it, except the data geometry', () => {

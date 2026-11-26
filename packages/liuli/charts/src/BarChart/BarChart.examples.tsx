@@ -94,6 +94,37 @@ export function Signed() {
   return <BarChart rows={cash} x="month" y="net" label="Net cash flow by month" title="Net cash flow" formatValue={thousands} summarize={summarize} data-testid="cash" />;
 }
 
+const apps = [
+  { app: 'Messages', minutes: 94 }, { app: 'Maps and navigation', minutes: 61 }, { app: 'Photos', minutes: 38 },
+  { app: 'Music', minutes: 27 }, { app: 'Calendar', minutes: 12 },
+];
+const minutes = (value: number) => `${Math.floor(value / 60) ? `${Math.floor(value / 60)} h ` : ''}${value % 60} min`;
+
+/** A ranked list: each name over its bar, with room for long names; tap a line to choose it. */
+export function Horizontal() {
+  const app = useLocal<string | null>('app', null);
+  return (
+    <BarChart rows={apps} x="app" y="minutes" orientation="horizontal" label="Screen time by app" title="Screen time" description="Today" formatValue={minutes} summarize={summarize} bind={app} data-testid="apps" />
+  );
+}
+
+/** Stacked and lying down: each quarter's total at the end of its line, the channels as pieces of its bar. */
+export function HorizontalStacked() {
+  return (
+    <BarChart
+      rows={channels}
+      x="quarter"
+      y={[{ field: 'online', label: 'Online' }, { field: 'store', label: 'In store' }]}
+      layout="stacked"
+      orientation="horizontal"
+      label="Sales by quarter, online and in store"
+      title="Sales"
+      formatValue={thousands}
+      data-testid="lying-stacked"
+    />
+  );
+}
+
 const days = Array.from({ length: 30 }, (_, index) => ({ day: `${index + 1} Jun`, steps: 4200 + ((index * 37) % 11) * 610 + (index % 7 === 5 ? 3800 : 0) }));
 
 /** Thirty bars at phone width: the bars narrow, and only the first and last are labelled. */
