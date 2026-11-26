@@ -13,10 +13,7 @@ const isTranslucent = spec => spec.includes('/') || Object.values(theme.roles).s
 const key = (pair, appearance) => `${pair.component}: ${pair.what} (${appearance})`;
 
 /** Pairs the default theme fails today: the input to the theme roles work, not a Liuli fix. */
-const themeGaps = new Set([
-  // `danger` as text on the overlay in dark: waits for View to resolve `danger` per surface, as it does lines.
-  'ActionSheet: destructive row label (dark)',
-]);
+const themeGaps = new Set([]);
 
 test('contrast pairs name View roles, with a backdrop under an opacity step, and only under a translucent background', () => {
   for (const pair of pairs) {

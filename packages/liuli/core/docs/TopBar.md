@@ -8,7 +8,7 @@ A page's own header row: a way back, its title, a control at the middle, its act
 import { TopBar } from '@liulidesign/core/TopBar';
 ```
 
-TopBar is the header row a page draws itself, for a page that shows no host navigation bar (`navigationStyle: "custom"`). It holds a control at the start (a way back, a menu), the page's title as a heading, a control at the middle (a SearchField, a segmented control) and the page's actions at the end. The start and the end share the room left over, so the middle stays at the bar's middle while everything fits; past that the bar wraps. The page already keeps its content clear of system bars and host chrome, so the bar adds only its own padding.
+TopBar is the header row a page draws itself, for a page that shows no host navigation bar (`navigationStyle: "custom"`). It holds a control at the start (a way back, a menu), the page's title as a heading, a control at the middle (a SearchField, a segmented control) and the page's actions at the end. The start and the end share the room left over, so the middle stays at the bar's middle while everything fits; past that the bar wraps. The page already keeps its content clear of system bars; a host capsule floats over the bar's row, so the bar pads that side by the capsule's width.
 
 ## Examples
 

@@ -8802,12 +8802,12 @@
             "minimum": "4.5:1"
           },
           {
-            "what": "destructive icon",
+            "what": "destructive item text",
             "pair": [
               "danger",
               "surface-overlay"
             ],
-            "minimum": "3:1"
+            "minimum": "4.5:1"
           }
         ],
         "notes": [

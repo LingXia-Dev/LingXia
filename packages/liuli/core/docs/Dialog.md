@@ -269,7 +269,7 @@ export function Hero() {
 | title | `text` on `surface-overlay` | 4.5:1 | 16.26:1 | 10.11:1 |
 | close button over a picture | `on-media` on `media` | 3:1 | 7.94:1 | 7.94:1 |
 | description | `text-muted` on `surface-overlay` | 4.5:1 | 5.89:1 | 4.84:1 |
-| AlertDialog failure mark | `danger` on `surface-overlay` | 3:1 | 5.21:1 | 3.95:1 |
+| AlertDialog failure mark | `danger` on `surface-overlay` | 3:1 | 5.21:1 | 5.43:1 |
 | title, full screen | `text` on `canvas` | 4.5:1 | 15.19:1 | 15.31:1 |
 | description, full screen | `text-muted` on `canvas` | 4.5:1 | 5.50:1 | 7.33:1 |
 

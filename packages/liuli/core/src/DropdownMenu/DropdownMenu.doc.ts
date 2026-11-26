@@ -43,7 +43,7 @@ export const doc: ComponentDoc = {
     target: { sm: 32, md: 40, lg: 48 },
     contrast: [
       { what: 'item text', pair: ['text', 'surface-overlay'], minimum: '4.5:1' },
-      { what: 'destructive icon', pair: ['danger', 'surface-overlay'], minimum: '3:1' },
+      { what: 'destructive item text', pair: ['danger', 'surface-overlay'], minimum: '4.5:1' },
     ],
     notes: [
       'An item is named by its label and then its description, both inside the item.',

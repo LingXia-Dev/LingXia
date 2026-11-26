@@ -138,7 +138,7 @@ export function Untitled() {
 | Contrast | Pair | Minimum | Light | Dark |
 | --- | --- | --- | --- | --- |
 | row label | `text` on `surface-overlay` | 4.5:1 | 16.26:1 | 10.11:1 |
-| destructive row label | `danger` on `surface-overlay` | 4.5:1 | 5.21:1 | 3.95:1, below |
+| destructive row label | `danger` on `surface-overlay` | 4.5:1 | 5.21:1 | 5.43:1 |
 | description | `text-muted` on `surface-overlay` | 4.5:1 | 5.89:1 | 4.84:1 |
 
 Ratios are computed from @lingxia/view/theme and rounded down.
