@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { renderExample } from '../testing/harness.mjs';
+import { renderExample, renderPage } from '../testing/harness.mjs';
 
 test('Reminder: one group named by the label, with a named date and time holding the parts of one value', async () => {
   const screen = await renderExample('DateTimeInput/DateTimeInput', 'Reminder');
@@ -73,4 +73,24 @@ test('Clearable: a clear button named "Clear Remind me" empties the field, and i
   assert.equal(clear.props.accessibilityLabel, 'Clear Remind me');
   screen.press(clear);
   assert.equal(screen.queryAll(node => node.testId === 'clearable-clear').length, 0, 'gone once empty');
+});
+
+test('a reset from outside empties both parts; a part the reader set alone is kept', async () => {
+  const screen = await renderPage(`
+    import { useLocal } from '@lingxia/view';
+    import { DateTimeInput } from '@liulidesign/core/DateTimeInput';
+    export function render() {
+      const when = useLocal('when', '2026-11-20T09:00');
+      return <page>
+        <DateTimeInput label="Remind me" bind={when} data-testid="remind" />
+        <button data-testid="reset" onClick={() => when.set('')}><text>Reset</text></button>
+      </page>;
+    }
+  `);
+  const part = id => screen.getByTestId(`remind-${id}`).props.inputValue;
+  screen.type(screen.getByTestId('remind-time'), '14:30');
+  screen.press(screen.getByTestId('reset'));
+  assert.deepEqual([part('date'), part('time')], ['', ''], 'the old parts are not shown after a reset');
+  screen.type(screen.getByTestId('remind-date'), '2026-11-22');
+  assert.deepEqual([part('date'), part('time')], ['2026-11-22', '']);
 });

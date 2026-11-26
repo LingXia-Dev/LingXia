@@ -64,18 +64,18 @@ export function DateTimeInput(props: DateTimeInputProps) {
   const partChrome = partFrame + (useTextGrowth(pickerMark, glyphGrowth)?.width ?? pickerMark);
   const whole = props.bind ? props.bind.value : props.value;
   const [wholeDate = '', wholeTime = ''] = whole.split('T');
-  // One part can be set before the other; the whole value exists only once both are.
-  const date = useLocal('date', wholeDate);
-  const time = useLocal('time', wholeTime);
-  const shownDate = whole === '' ? date.value : wholeDate;
-  const shownTime = whole === '' ? time.value : wholeTime;
+  // One part can be set before the other; the whole value exists only once both are. The draft remembers what it
+  // sent, so a reset from outside (a full value to '') empties both parts rather than showing the old ones.
+  const draft = useLocal('draft', { date: wholeDate, time: wholeTime, sent: whole });
+  const isDraft = whole === '' && draft.value.sent === '';
+  const shownDate = isDraft ? draft.value.date : wholeDate;
+  const shownTime = isDraft ? draft.value.time : wholeTime;
   const showClear = hasClear && (shownDate !== '' || shownTime !== '') && !isDisabled;
   const isStacked = groupBox.value !== null && dateBox.value !== null && timeBox.value !== null
     && dateBox.value.width + timeBox.value.width + partChrome * 2 + partGap + (showClear ? clearRoom : 0) > groupBox.value.width;
   const emit = (nextDate: string, nextTime: string) => {
-    date.set(nextDate);
-    time.set(nextTime);
     const next = nextDate !== '' && nextTime !== '' ? `${nextDate}T${nextTime}` : '';
+    draft.set({ date: nextDate, time: nextTime, sent: next });
     if (props.bind) props.bind.set(next);
     else props.onChange(next);
   };
