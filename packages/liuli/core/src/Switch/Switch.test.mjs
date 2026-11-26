@@ -179,3 +179,29 @@ test('label hidden: the mark and the row\'s line go with the next change', async
   assert.throws(() => screen.getByTestId('alone-failed'));
   assert.equal(screen.queryAll(node => node.text === "That didn't work. Try again.").length, 0);
 });
+
+test('a compact DensityProvider makes the switch small unless it names a size; a disabled switch says why', async () => {
+  const screen = await renderPage(`
+    import { DensityProvider } from '@liulidesign/core/density';
+    import { Switch } from '@liulidesign/core/Switch';
+    export function render() {
+      return (
+        <page>
+          <Switch label="Plain" value={false} onChange={() => {}} data-testid="plain" />
+          <Switch label="Small" value={false} onChange={() => {}} size="sm" data-testid="small" />
+          <DensityProvider value="compact">
+            <view>
+              <Switch label="Dense" value={false} onChange={() => {}} data-testid="dense" />
+              <Switch label="Named" value={false} onChange={() => {}} size="md" data-testid="named" />
+            </view>
+          </DensityProvider>
+          <Switch label="Locked" description="Sync between devices." value={false} onChange={() => {}} isDisabled disabledMessage="Sign in to sync." data-testid="locked" />
+        </page>
+      );
+    }`);
+  const track = id => screen.getByTestId(id).props.trackStyle;
+  assert.equal(track('dense'), track('small'));
+  assert.equal(track('named'), track('plain'));
+  assert.notEqual(track('small'), track('plain'));
+  assert.deepEqual(described(screen, screen.getByTestId('locked')), ['Sign in to sync.']);
+});

@@ -8,6 +8,7 @@ import { switchRecipe as r } from './Switch.recipe';
 import { dataOf } from '../internal/data';
 import { useChangeAction } from '../internal/changeAction';
 import { registerControl } from '../internal/trigger';
+import { useControlSize } from '../density';
 
 export type SwitchVariant = 'standalone' | 'row';
 
@@ -37,6 +38,8 @@ export type SwitchProps = SwitchBinding & {
   isLabelHidden?: boolean;
   /** @default false */
   isDisabled?: boolean;
+  /** Why it is disabled: shown in place of `description` while disabled, and read as the description. */
+  disabledMessage?: string;
   /** A spinner before the track while the app applies the change; the switch reports busy and takes no press until it settles. @default false */
   isLoading?: boolean;
   /**
@@ -46,7 +49,7 @@ export type SwitchProps = SwitchBinding & {
   changeAction?: (value: boolean) => Promise<unknown>;
   /** Said under the label when `changeAction` fails. Defaults to a short "try again", in the page's language. */
   failedMessage?: string;
-  /** `sm` for dense rows. @default 'md' */
+  /** `sm` for dense rows. By default `sm` inside a compact `DensityProvider`, else `md`. */
   size?: SwitchSize;
   /** `row` sits in a list group among `Item` rows, with the row's padding and height. @default 'standalone' */
   variant?: SwitchVariant;
@@ -57,7 +60,9 @@ export type SwitchProps = SwitchBinding & {
 
 /** A setting that takes effect at once: on or off, label at the start, track at the end. */
 export function Switch(props: SwitchProps) {
-  const { label, description, isLabelHidden = false, isDisabled = false, isLoading = false, changeAction, failedMessage, size = 'md', variant = 'standalone', className, 'data-testid': testId } = props;
+  const { label, description: own, isLabelHidden = false, isDisabled = false, disabledMessage, isLoading = false, changeAction, failedMessage, size: ownSize, variant = 'standalone', className, 'data-testid': testId } = props;
+  const size = useControlSize(ownSize);
+  const description = isDisabled && disabledMessage !== undefined ? disabledMessage : own;
   const id = useId();
   const helpId = `${id}-help`;
   const failedId = `${id}-failed`;

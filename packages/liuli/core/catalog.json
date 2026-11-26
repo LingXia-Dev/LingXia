@@ -18868,6 +18868,12 @@
           "default": "false"
         },
         {
+          "name": "disabledMessage",
+          "type": "string",
+          "required": false,
+          "description": "Why it is disabled: shown in place of `description` while disabled, and read as the description."
+        },
+        {
           "name": "isLoading",
           "type": "boolean",
           "required": false,
@@ -18890,12 +18896,11 @@
           "name": "size",
           "type": "SwitchSize",
           "required": false,
-          "description": "`sm` for dense rows.",
+          "description": "`sm` for dense rows. By default `sm` inside a compact `DensityProvider`, else `md`.",
           "values": [
             "sm",
             "md"
-          ],
-          "default": "'md'"
+          ]
         },
         {
           "name": "variant",

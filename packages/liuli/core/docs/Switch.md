@@ -165,10 +165,11 @@ export function SavedLabelHidden() {
 | `description` | `string` |  | Help text under the label, read as the switch's description. |
 | `isLabelHidden` | `boolean` | `false` | Keeps `label` as the name and draws only the track, for a switch whose row already says what it sets. Help text is not drawn either. |
 | `isDisabled` | `boolean` | `false` |  |
+| `disabledMessage` | `string` |  | Why it is disabled: shown in place of `description` while disabled, and read as the description. |
 | `isLoading` | `boolean` | `false` | A spinner before the track while the app applies the change; the switch reports busy and takes no press until it settles. |
 | `changeAction` | `((value: boolean) => Promise<unknown>)` |  | An async change, such as a Logic action. The switch flips at once and reports busy to assistive tech while it runs, with no spinner; if it fails, the switch flips back and says so under its label. A rejection is logged with the label. |
 | `failedMessage` | `string` |  | Said under the label when `changeAction` fails. Defaults to a short "try again", in the page's language. |
-| `size` | `SwitchSize` | `'md'` | `sm` for dense rows. |
+| `size` | `SwitchSize` |  | `sm` for dense rows. By default `sm` inside a compact `DensityProvider`, else `md`. |
 | `variant` | `SwitchVariant` | `'standalone'` | `row` sits in a list group among `Item` rows, with the row's padding and height. |
 | `className` | `string` |  |  |
 | `data-testid` | `string` |  | On the switch. |
