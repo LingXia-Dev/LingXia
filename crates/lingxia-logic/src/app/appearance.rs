@@ -1,5 +1,5 @@
 use crate::authorization::{self, LogicRoute};
-use crate::i18n::{js_error_from_lxapp_error, js_invalid_parameter_error};
+use crate::i18n::{js_error, js_invalid_parameter_error};
 use lxapp::page_chrome::AppearancePreference;
 use lxapp::{
     APPEARANCE_CHANGE_EVENT, HOST_APPEARANCE_CHANGE_EVENT, HandlerToken, register_app_handler,
@@ -103,13 +103,10 @@ async fn set_preference(ctx: JSContext, preference: JSValue) -> JSResult<()> {
         .parse::<AppearancePreference>()
         .map_err(js_invalid_parameter_error)?;
     let app = lxapp::LxApp::from_ctx(&ctx)?;
-    lxapp::set_host_appearance_preference(preference)
-        .map_err(|error| js_error_from_lxapp_error(&error))?;
+    lxapp::set_host_appearance_preference(preference).map_err(js_error)?;
     // Resolve once the caller's own appearance follows, so `get()` right after reads it.
     if app.appearance_state().preference == AppearancePreference::Auto {
-        app.refresh_appearance()
-            .await
-            .map_err(|error| js_error_from_lxapp_error(&error))?;
+        app.refresh_appearance().await.map_err(js_error)?;
     }
     Ok(())
 }

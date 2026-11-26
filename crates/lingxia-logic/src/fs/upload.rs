@@ -1,7 +1,7 @@
 use super::download::options_string;
 use super::{network_security, normalize_relative_path};
 use crate::i18n::{
-    js_error_from_business_code_with_detail, js_error_from_lxapp_error, js_internal_error,
+    js_error, js_error_from_business_code_with_detail, js_internal_error,
     js_invalid_parameter_error, server_error_status,
 };
 use futures::channel::{mpsc, oneshot};
@@ -509,9 +509,7 @@ fn upload_file(ctx: JSContext, url: JSValue, options: JSValue) -> JSResult<JSObj
     }
 
     let resolved_path = resolve_upload_path(&lxapp.user_data_dir, &options.file_path, |path| {
-        lxapp
-            .resolve_accessible_path(path)
-            .map_err(|err| js_error_from_lxapp_error(&err))
+        lxapp.resolve_accessible_path(path).map_err(js_error)
     })?;
     let file_name = resolve_upload_file_name(&resolved_path, options.file_name.as_deref());
     let behavior = UploadBehavior {

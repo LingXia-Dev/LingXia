@@ -1,6 +1,4 @@
-use crate::i18n::{
-    js_error_from_lxapp_error, js_error_from_platform_error, js_invalid_parameter_error,
-};
+use crate::i18n::{js_error, js_error_from_platform_error, js_invalid_parameter_error};
 use lingxia_service::media::SaveMediaRequest;
 use lxapp::LxApp;
 use rong::{JSContext, JSResult};
@@ -22,9 +20,7 @@ rong::js_api! {
 /// @throws {E_INVALID_ARG} The file is neither.
 async fn save_to_library(ctx: JSContext, path: String) -> JSResult<()> {
     let lxapp = LxApp::from_ctx(&ctx)?;
-    let resolved = lxapp
-        .resolve_accessible_path(&path)
-        .map_err(|err| js_error_from_lxapp_error(&err))?;
+    let resolved = lxapp.resolve_accessible_path(&path).map_err(js_error)?;
     let mime = crate::pick::mime_for_path(&resolved);
     let image = if mime.starts_with("image/") {
         true

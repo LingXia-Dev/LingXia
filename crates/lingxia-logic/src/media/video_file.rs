@@ -1,6 +1,6 @@
 use crate::i18n::{
-    js_error_from_business_code_with_detail, js_error_from_lxapp_error,
-    js_error_from_platform_error, js_internal_error, js_invalid_parameter_error,
+    js_error, js_error_from_business_code_with_detail, js_error_from_platform_error,
+    js_internal_error, js_invalid_parameter_error,
 };
 use lingxia_messaging::{CallbackResult, get_callback, get_stream_callback, remove_callback};
 use lingxia_platform::traits::media_runtime::{
@@ -196,7 +196,7 @@ async fn get_video_info_api(ctx: JSContext, path: String) -> JSResult<JSVideoInf
     let trimmed_path = path.trim();
     let resolved = lxapp
         .resolve_accessible_path(trimmed_path)
-        .map_err(|err| js_error_from_lxapp_error(&err))?;
+        .map_err(js_error)?;
     let normalized_path = resolved.to_string_lossy().into_owned();
 
     let response_path =
@@ -238,7 +238,7 @@ async fn extract_video_thumbnail_api(
 
     let resolved_source = lxapp
         .resolve_accessible_path(path.trim())
-        .map_err(|err| js_error_from_lxapp_error(&err))?;
+        .map_err(js_error)?;
     let source_uri = resolved_source.to_string_lossy().into_owned();
 
     let explicit_output_uri = explicit_lx_output_uri(options.to.as_deref());
@@ -306,7 +306,7 @@ fn compress_video_api(
 
     let resolved_source = lxapp
         .resolve_accessible_path(path.trim())
-        .map_err(|err| js_error_from_lxapp_error(&err))?;
+        .map_err(js_error)?;
     let source_uri = resolved_source.to_string_lossy().into_owned();
 
     let explicit_output_uri = explicit_lx_output_uri(options.to.as_deref());

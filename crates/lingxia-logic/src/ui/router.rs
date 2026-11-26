@@ -1,12 +1,10 @@
-use crate::i18n::{
-    js_error_from_business_code_with_detail, js_error_from_lxapp_error, js_internal_error,
-};
+use crate::i18n::{js_error, js_error_from_business_code_with_detail, js_internal_error};
 use crate::message_port;
 use crate::navigator::{self, NavigateToAppOptions};
 use crate::open_gate::{OpenGate, canceled_open_error, canceled_result};
 use futures::channel::oneshot;
 use lxapp::nav_queue::{Admission, NavTicket};
-use lxapp::{LxApp, LxAppError, NavigationType, PageSvc, startup};
+use lxapp::{LxApp, NavigationType, PageSvc, startup};
 use rong::{
     FromJSObject, JSContext, JSFunc, JSObject, JSResult, JSValue, JsonToJSValue, Promise,
     function::Optional,
@@ -53,15 +51,15 @@ enum NavTarget {
     Url(String),
 }
 
-fn invalid(message: impl Into<String>) -> LxAppError {
-    LxAppError::InvalidParameter(message.into())
+fn invalid(message: impl Into<String>) -> lingxia_error::Error {
+    lingxia_error::Error::invalid_arg(message)
 }
 
 fn js_invalid(message: impl Into<String>) -> rong::RongJSError {
-    js_error_from_lxapp_error(&invalid(message))
+    js_error(invalid(message))
 }
 
-fn nav_target(value: &JSValue) -> Result<NavTarget, LxAppError> {
+fn nav_target(value: &JSValue) -> Result<NavTarget, lingxia_error::Error> {
     let Some(object) = value.clone().into_object() else {
         return Err(invalid("a target is { page }, { tab }, { app } or { url }"));
     };
@@ -140,26 +138,28 @@ fn nav_target(value: &JSValue) -> Result<NavTarget, LxAppError> {
     Ok(NavTarget::Url(non_empty("url", url)?))
 }
 
-fn page_url(lxapp: &LxApp, name: &str, params: Option<&JSObject>) -> Result<String, LxAppError> {
+fn page_url(
+    lxapp: &LxApp,
+    name: &str,
+    params: Option<&JSObject>,
+) -> Result<String, lingxia_error::Error> {
     let path = lxapp
         .find_page_path_by_name(name)
-        .ok_or_else(|| LxAppError::ResourceNotFound(format!("page name: {name}")))?;
+        .ok_or_else(|| lingxia_error::Error::not_found(format!("page name: {name}")))?;
     append_query(path, params)
 }
 
-fn append_query(path: String, query: Option<&JSObject>) -> Result<String, LxAppError> {
+fn append_query(path: String, query: Option<&JSObject>) -> Result<String, lingxia_error::Error> {
     let Some(query) = query else {
         return Ok(path);
     };
-    let query_json = query.to_json_string().map_err(LxAppError::from)?;
+    let query_json = query.to_json_string().map_err(lxapp::rong_error)?;
     let query: Value = serde_json::from_str(&query_json)?;
-    lxapp::append_page_query(path, &query).map_err(LxAppError::InvalidParameter)
+    lxapp::append_page_query(path, &query).map_err(lingxia_error::Error::invalid_arg)
 }
 
 fn ensure_page_exists_js(lxapp: &LxApp, url: &str) -> JSResult<()> {
-    lxapp
-        .ensure_page_exists(url)
-        .map_err(|e| js_error_from_lxapp_error(&e))
+    lxapp.ensure_page_exists(url).map_err(js_error)
 }
 
 fn normalize_tabbar_path(url: &str) -> String {
@@ -184,10 +184,10 @@ fn is_tabbar_page_url(lxapp: &LxApp, url: &str) -> bool {
         .any(|item| normalize_tabbar_path(&item.page_path) == target)
 }
 
-fn current_page_path(lxapp: &LxApp) -> Result<String, LxAppError> {
+fn current_page_path(lxapp: &LxApp) -> Result<String, lingxia_error::Error> {
     lxapp
         .peek_current_page_path()
-        .ok_or_else(|| LxAppError::Runtime("No current page found".to_string()))
+        .ok_or_else(|| lingxia_error::Error::internal("No current page found".to_string()))
 }
 
 async fn navigate_with_url(
@@ -195,7 +195,7 @@ async fn navigate_with_url(
     target_url: String,
     nav_type: NavigationType,
     wait_ready: bool,
-) -> Result<(), LxAppError> {
+) -> Result<(), lingxia_error::Error> {
     let current_path = current_page_path(&lxapp)?;
 
     if let Some(page) = lxapp.get_page(&current_path) {
@@ -207,11 +207,13 @@ async fn navigate_with_url(
             target_page
                 .wait_webview_ready()
                 .await
-                .map_err(LxAppError::WebView)?;
+                .map_err(lingxia_error::Error::internal)?;
         }
         Ok(())
     } else {
-        Err(LxAppError::Runtime("Current page not found".to_string()))
+        Err(lingxia_error::Error::internal(
+            "Current page not found".to_string(),
+        ))
     }
 }
 
@@ -322,7 +324,7 @@ where
 }
 
 fn configured_page_url(lxapp: &LxApp, name: &str, params: Option<&JSObject>) -> JSResult<String> {
-    let url = page_url(lxapp, name, params).map_err(|e| js_error_from_lxapp_error(&e))?;
+    let url = page_url(lxapp, name, params).map_err(js_error)?;
     ensure_page_exists_js(lxapp, &url)?;
     Ok(url)
 }
@@ -333,7 +335,7 @@ pub(crate) fn is_tab_name(lxapp: &LxApp, name: &str) -> bool {
 }
 
 fn tab_url(lxapp: &LxApp, name: &str, params: Option<&JSObject>) -> JSResult<String> {
-    let url = page_url(lxapp, name, params).map_err(|e| js_error_from_lxapp_error(&e))?;
+    let url = page_url(lxapp, name, params).map_err(js_error)?;
     ensure_page_exists_js(lxapp, &url)?;
     if !is_tabbar_page_url(lxapp, &url) {
         return Err(js_invalid(format!(
@@ -391,7 +393,7 @@ fn push(
             // query or opener of a page already on the stack.
             lxapp
                 .validate_navigation_entry(&target_url, NavigationType::Forward)
-                .map_err(|e| js_error_from_lxapp_error(&e))?;
+                .map_err(js_error)?;
             let page_svc = lxapp
                 .create_page_for_entry_in_ctx(&open_ctx, &target_url)
                 .await
@@ -401,7 +403,7 @@ fn push(
             *open_slot.borrow_mut() = Some(page_svc.clone());
             navigate_with_url(lxapp.clone(), target_url, NavigationType::Forward, true)
                 .await
-                .map_err(|e| js_error_from_lxapp_error(&e))?;
+                .map_err(js_error)?;
             Ok::<_, rong::RongJSError>((page_svc, result))
         }
         .await;
@@ -438,9 +440,7 @@ fn push(
             // At its turn the page may be gone already: closing it again does nothing.
             let key = format!("close:{}", page_svc.get_page().instance_id_string());
             return queued(&ctx, &key, move || async move {
-                page_svc
-                    .leave_page()
-                    .map_err(|e| js_error_from_lxapp_error(&e))
+                page_svc.leave_page().map_err(js_error)
             });
         }
         gate.cancel();
@@ -530,7 +530,7 @@ async fn replace(ctx: &JSContext, name: String, params: Option<JSObject>) -> JSR
     }
     navigate_with_url(lxapp.clone(), target_url, NavigationType::Replace, false)
         .await
-        .map_err(|e| js_error_from_lxapp_error(&e))
+        .map_err(js_error)
 }
 
 async fn switch_tab(ctx: &JSContext, name: String, params: Option<JSObject>) -> JSResult<()> {
@@ -541,13 +541,13 @@ async fn switch_tab(ctx: &JSContext, name: String, params: Option<JSObject>) -> 
     let _ = page_svc.clear_opener();
     navigate_with_url(lxapp.clone(), target_url, NavigationType::SwitchTab, false)
         .await
-        .map_err(|e| js_error_from_lxapp_error(&e))
+        .map_err(js_error)
 }
 
 /// `lx.nav.go`: pushing a `{ page }` returns its handle at once; every other
 /// move returns a promise.
 fn go(ctx: JSContext, target: JSValue, options: Optional<GoOptions>) -> JSResult<JSObject> {
-    let target = nav_target(&target).map_err(|e| js_error_from_lxapp_error(&e))?;
+    let target = nav_target(&target).map_err(js_error)?;
     let (replace_current, reuse) = options.0.map_or((false, false), |options| {
         (options.replace == Some(true), options.reuse == Some(true))
     });
@@ -608,10 +608,7 @@ async fn go_reuse(
 ) -> JSResult<()> {
     let lxapp = LxApp::from_ctx(ctx)?;
     let target_url = configured_page_url(&lxapp, &name, params.as_ref())?;
-    if lxapp
-        .reuse_page(&target_url)
-        .map_err(|e| js_error_from_lxapp_error(&e))?
-    {
+    if lxapp.reuse_page(&target_url).map_err(js_error)? {
         return wait_current_ready(&lxapp).await;
     }
     if replace_current {
@@ -629,7 +626,7 @@ async fn wait_current_ready(lxapp: &LxApp) -> JSResult<()> {
     {
         page.wait_webview_ready()
             .await
-            .map_err(|error| js_error_from_lxapp_error(&LxAppError::WebView(error)))?;
+            .map_err(|error| js_error(lingxia_error::Error::internal(error)))?;
     }
     Ok(())
 }
@@ -657,12 +654,11 @@ async fn back_now(ctx: &JSContext, n: f64) -> JSResult<()> {
     if delta == 0 {
         return Ok(());
     }
-    let current_path = current_page_path(&lxapp).map_err(|e| js_error_from_lxapp_error(&e))?;
-    let page = lxapp.get_page(&current_path).ok_or_else(|| {
-        js_error_from_lxapp_error(&LxAppError::Runtime("Current page not found".into()))
-    })?;
-    page.navigate_back(delta as u32)
-        .map_err(|e| js_error_from_lxapp_error(&e))?;
+    let current_path = current_page_path(&lxapp).map_err(js_error)?;
+    let page = lxapp
+        .get_page(&current_path)
+        .ok_or_else(|| js_error(lingxia_error::Error::internal("Current page not found")))?;
+    page.navigate_back(delta as u32).map_err(js_error)?;
     wait_current_ready(&lxapp).await
 }
 
@@ -670,7 +666,7 @@ async fn back_now(ctx: &JSContext, n: f64) -> JSResult<()> {
 /// result settles canceled.
 fn reset(ctx: JSContext, target: JSValue) -> JSResult<JSObject> {
     let lxapp = LxApp::from_ctx(&ctx)?;
-    let target_url = match nav_target(&target).map_err(|e| js_error_from_lxapp_error(&e))? {
+    let target_url = match nav_target(&target).map_err(js_error)? {
         NavTarget::Page { name, params } => configured_page_url(&lxapp, &name, params.as_ref())?,
         NavTarget::Tab { name, params } => tab_url(&lxapp, &name, params.as_ref())?,
         NavTarget::App(_) | NavTarget::Url(_) => {
@@ -678,10 +674,7 @@ fn reset(ctx: JSContext, target: JSValue) -> JSResult<JSObject> {
         }
     };
     queued(&ctx, &format!("reset:{target_url}"), move || async move {
-        lxapp
-            .relaunch(&target_url)
-            .map(|_| ())
-            .map_err(|e| js_error_from_lxapp_error(&e))
+        lxapp.relaunch(&target_url).map(|_| ()).map_err(js_error)
     })
 }
 

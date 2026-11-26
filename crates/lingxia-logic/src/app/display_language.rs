@@ -1,5 +1,5 @@
 use crate::authorization::{self, LogicRoute};
-use crate::i18n::{js_error_from_lxapp_error, js_invalid_parameter_error};
+use crate::i18n::{js_error, js_invalid_parameter_error};
 use lxapp::{
     DISPLAY_LANGUAGE_CHANGE_EVENT, DISPLAY_LANGUAGE_STATE_CHANGE_EVENT, HandlerToken,
     register_app_handler, unregister_app_handler_token,
@@ -112,8 +112,7 @@ async fn set_preference(ctx: JSContext, preference: JSValue) -> JSResult<()> {
     let preference = preference
         .parse::<lxapp::DisplayLanguagePreference>()
         .map_err(js_invalid_parameter_error)?;
-    lxapp::set_display_language_preference(preference)
-        .map_err(|error| js_error_from_lxapp_error(&error))
+    lxapp::set_display_language_preference(preference).map_err(js_error)
 }
 
 /// Follow what the user chose, not what it resolves to. A system locale change

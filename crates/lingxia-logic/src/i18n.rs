@@ -1,6 +1,5 @@
 use crate::I18nKey;
 use lingxia_platform::error::PlatformError;
-use lxapp::LxAppError;
 use rong::{HostError, RongJSError, error::ErrorData};
 use serde_json::Value;
 use std::collections::BTreeMap;
@@ -167,12 +166,12 @@ pub fn js_timeout_error(detail: impl AsRef<str>) -> RongJSError {
     js_error_from_business_code_with_detail(5002, detail)
 }
 
-pub fn host_error_from_lxapp_error(error: &LxAppError) -> HostError {
-    host_error(&lingxia_error::Error::from(error.clone()))
+pub fn host_error_of(error: impl Into<lingxia_error::Error>) -> HostError {
+    host_error(&error.into())
 }
 
-pub fn js_error_from_lxapp_error(error: &LxAppError) -> RongJSError {
-    host_error_from_lxapp_error(error).into()
+pub fn js_error(error: impl Into<lingxia_error::Error>) -> RongJSError {
+    host_error_of(error).into()
 }
 
 pub fn host_error_from_platform_error(error: &PlatformError) -> HostError {
@@ -380,18 +379,11 @@ mod tests {
 
     #[test]
     fn lxapp_host_errors_keep_structured_navigation_metadata() {
-        let error = LxAppError::RongJSHost {
-            code: "E_INVALID_ARG".to_string(),
-            message: "duplicate route".to_string(),
-            data: Some(serde_json::json!({
-                "detail": "duplicate route",
-                "reason": "tabAlreadyOpen",
-                "operation": "navigateTo",
-                "target": "pages/home",
-            })),
-        };
+        let error = lingxia_error::Error::invalid_arg("duplicate route")
+            .with_reason("tabAlreadyOpen")
+            .with_data(serde_json::json!({ "operation": "navigateTo", "target": "pages/home" }));
 
-        let host = host_error_from_lxapp_error(&error);
+        let host = host_error_of(error);
         let Some(ErrorData::Object(data)) = host.data.clone() else {
             panic!("expected structured error metadata");
         };

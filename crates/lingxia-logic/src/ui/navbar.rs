@@ -13,11 +13,12 @@ pub(super) async fn update(app: Arc<LxApp>, page: PageInstance, patch: JSObject)
         .map_err(js_invalid_parameter_error)?;
     app.commit_navigation_bar(page, patch)
         .await
-        .map_err(|error| match error {
-            lxapp::LxAppError::InvalidParameter(_) => js_invalid_parameter_error(error.to_string()),
-            lxapp::LxAppError::ResourceNotFound(_) => {
-                js_state_error("pageUnloaded", error.to_string())
+        .map_err(|error| {
+            let error = lingxia_error::Error::from(error);
+            match error.code() {
+                lingxia_error::code::INVALID_ARG => js_invalid_parameter_error(error.message()),
+                lingxia_error::code::NOT_FOUND => js_state_error("pageUnloaded", error.message()),
+                _ => js_internal_error(error.message()),
             }
-            _ => js_internal_error(error.to_string()),
         })
 }

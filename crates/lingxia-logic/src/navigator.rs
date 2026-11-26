@@ -1,10 +1,10 @@
 use crate::authorization;
 use crate::authorization::LogicRoute;
-use crate::i18n::js_error_from_lxapp_error;
+use crate::i18n::js_error;
 use crate::update;
 use lingxia_platform::traits::app_runtime::AppRuntime;
 use lxapp::host::HostInvocationContext;
-use lxapp::{self, Channel, LxApp, LxAppError, LxAppStartupOptions};
+use lxapp::{self, Channel, LxApp, LxAppStartupOptions};
 use rong::{FromJSObject, JSContext, JSObject, JSResult};
 use serde_json::Value;
 use std::sync::Arc;
@@ -27,7 +27,7 @@ pub(crate) struct NavigateToAppOptions {
 pub(crate) fn build_startup_options(
     target: &LxApp,
     options: &NavigateToAppOptions,
-) -> Result<(LxAppStartupOptions, Channel), LxAppError> {
+) -> Result<(LxAppStartupOptions, Channel), lingxia_error::Error> {
     let path = resolve_page_target(target, options)?;
     let mut startup_options = LxAppStartupOptions::new(&path);
 
@@ -40,28 +40,28 @@ pub(crate) fn build_startup_options(
     Ok((startup_options, channel))
 }
 
-fn parse_channel(channel: Option<&str>) -> Result<Channel, LxAppError> {
-    lxapp::parse_optional_channel(channel).map_err(LxAppError::InvalidParameter)
+fn parse_channel(channel: Option<&str>) -> Result<Channel, lingxia_error::Error> {
+    lxapp::parse_optional_channel(channel).map_err(lingxia_error::Error::invalid_arg)
 }
 
 fn resolve_page_target<'a>(
     target: &'a LxApp,
     options: &'a NavigateToAppOptions,
-) -> Result<String, LxAppError> {
+) -> Result<String, lingxia_error::Error> {
     validate_page_selector(options)?;
     let path = if let Some(page) = options.page.as_deref().map(str::trim) {
         target
             .find_page_path_by_name(page)
-            .ok_or_else(|| LxAppError::ResourceNotFound(format!("page name: {page}")))?
+            .ok_or_else(|| lingxia_error::Error::not_found(format!("page name: {page}")))?
     } else {
         String::new()
     };
     append_query(path, options.query.as_ref())
 }
 
-fn validate_page_selector(options: &NavigateToAppOptions) -> Result<(), LxAppError> {
+fn validate_page_selector(options: &NavigateToAppOptions) -> Result<(), lingxia_error::Error> {
     if options.path.is_some() {
-        return Err(LxAppError::InvalidParameter(
+        return Err(lingxia_error::Error::invalid_arg(
             "path is not supported; pass the configured page name in page".to_string(),
         ));
     }
@@ -70,29 +70,29 @@ fn validate_page_selector(options: &NavigateToAppOptions) -> Result<(), LxAppErr
         .as_deref()
         .is_some_and(|page| page.trim().is_empty())
     {
-        return Err(LxAppError::InvalidParameter(
+        return Err(lingxia_error::Error::invalid_arg(
             "page must be a non-empty configured page name".to_string(),
         ));
     }
     Ok(())
 }
 
-fn append_query(path: String, query: Option<&JSObject>) -> Result<String, LxAppError> {
+fn append_query(path: String, query: Option<&JSObject>) -> Result<String, lingxia_error::Error> {
     let Some(query) = query else {
         return Ok(path);
     };
-    let query_json = query.to_json_string().map_err(LxAppError::from)?;
+    let query_json = query.to_json_string().map_err(lxapp::rong_error)?;
     let query: Value = serde_json::from_str(&query_json)?;
-    lxapp::append_page_query(path, &query).map_err(LxAppError::InvalidParameter)
+    lxapp::append_page_query(path, &query).map_err(lingxia_error::Error::invalid_arg)
 }
 
 fn should_navigate_to_app(
     lxapp: &LxApp,
     options: &NavigateToAppOptions,
-) -> Result<bool, LxAppError> {
+) -> Result<bool, lingxia_error::Error> {
     validate_page_selector(options)?;
     if options.appid.is_empty() {
-        return Err(LxAppError::InvalidParameter(
+        return Err(lingxia_error::Error::invalid_arg(
             "navigateToApp requires appId".to_string(),
         ));
     }
@@ -106,16 +106,16 @@ fn should_navigate_to_app(
 
 const BROWSER_SYSTEM_APP_ID: &str = "app.lingxia.browser";
 
-fn ensure_ordinary_app_target(appid: &str) -> Result<(), LxAppError> {
+fn ensure_ordinary_app_target(appid: &str) -> Result<(), lingxia_error::Error> {
     #[cfg(feature = "terminal")]
     if appid == lingxia_terminal_config::SETTINGS_APP_ID {
-        return Err(LxAppError::UnsupportedOperation(
+        return Err(lingxia_error::Error::not_supported(
             "the host Terminal Settings control session is reserved; use lx.surface.openApp"
                 .to_string(),
         ));
     }
     if appid == BROWSER_SYSTEM_APP_ID {
-        return Err(LxAppError::UnsupportedOperation(
+        return Err(lingxia_error::Error::not_supported(
             "the host Browser System control session is reserved; use lx.surface.openApp"
                 .to_string(),
         ));
@@ -131,11 +131,11 @@ pub(crate) async fn prepare_app_open(
     let target_appid = options.appid.clone();
     let host_control_surface =
         register_host_control_surface_bundle(lxapp, &target_appid, control_invocation)?;
-    validate_page_selector(options).map_err(|e| js_error_from_lxapp_error(&e))?;
+    validate_page_selector(options).map_err(js_error)?;
     let release_type = lxapp::resolve_open_channel(
         &target_appid,
         lxapp::parse_requested_channel(options.channel.as_deref())
-            .map_err(|e| js_error_from_lxapp_error(&LxAppError::InvalidParameter(e)))?,
+            .map_err(|e| js_error(lingxia_error::Error::invalid_arg(e)))?,
     );
     let target_version = options
         .target_version
@@ -144,20 +144,20 @@ pub(crate) async fn prepare_app_open(
         .filter(|value| !value.is_empty());
 
     if host_control_surface && target_version.is_some() {
-        return Err(js_error_from_lxapp_error(&LxAppError::InvalidParameter(
+        return Err(js_error(lingxia_error::Error::invalid_arg(
             "host-bundled control surface apps do not support version".to_string(),
         )));
     }
 
     lxapp::ensure_open_allowed(&target_appid)
         .await
-        .map_err(|e| js_error_from_lxapp_error(&e))?;
+        .map_err(js_error)?;
 
     if !host_control_surface {
         if let Some(target_version) = target_version {
             lxapp::ensure_target_version_ready(lxapp, &target_appid, release_type, target_version)
                 .await
-                .map_err(|e| js_error_from_lxapp_error(&e))?;
+                .map_err(js_error)?;
         } else {
             update::ensure_first_install(lxapp, &target_appid, release_type).await?;
         }
@@ -165,7 +165,7 @@ pub(crate) async fn prepare_app_open(
 
     let target_app = if host_control_surface {
         let authority = crate::native_control_authority().ok_or_else(|| {
-            js_error_from_lxapp_error(&LxAppError::UnsupportedOperation(
+            js_error(lingxia_error::Error::not_supported(
                 "native control authority is not initialized".to_string(),
             ))
         })?;
@@ -173,9 +173,8 @@ pub(crate) async fn prepare_app_open(
     } else {
         lxapp::ensure_lxapp_ready(&target_appid, release_type).await
     }
-    .map_err(|e| js_error_from_lxapp_error(&e))?;
-    let (startup_options, _) =
-        build_startup_options(&target_app, options).map_err(|e| js_error_from_lxapp_error(&e))?;
+    .map_err(js_error)?;
+    let (startup_options, _) = build_startup_options(&target_app, options).map_err(js_error)?;
     // Options default to the release channel. The instance above may already
     // be a draft dev bundle; opening with the default asks for a channel switch.
     let release_type = target_app.release_type();
@@ -212,11 +211,9 @@ fn register_host_control_surface_bundle(
         return Ok(false);
     };
     let Some(invocation) = control_invocation else {
-        return Err(js_error_from_lxapp_error(
-            &LxAppError::UnsupportedOperation(format!(
-                "the host {label} control session is reserved; use lx.surface.openApp"
-            )),
-        ));
+        return Err(js_error(lingxia_error::Error::not_supported(format!(
+            "the host {label} control session is reserved; use lx.surface.openApp"
+        ))));
     };
     if let Err(denied) = authorization::authorize(invocation, route) {
         // A caller that lacks the audience is denied, not unsupported: every
@@ -225,7 +222,7 @@ fn register_host_control_surface_bundle(
     }
     let manifest = format!("{target_appid}/lxapp.json");
     lxapp.runtime.read_asset(&manifest).map_err(|_| {
-        js_error_from_lxapp_error(&LxAppError::ResourceNotFound(format!(
+        js_error(lingxia_error::Error::not_found(format!(
             "{label} is not bundled by this host"
         )))
     })?;
@@ -244,13 +241,13 @@ async fn do_navigate_to_app(
 
     lxapp
         .navigate_to(target_appid.clone(), startup_options)
-        .map_err(|e| js_error_from_lxapp_error(&e))?;
+        .map_err(js_error)?;
 
     lxapp::schedule_lxapp_update_check(&target_appid, release_type);
     Ok(())
 }
 
-fn do_navigate_back_lxapp(lxapp: &LxApp) -> Result<(), LxAppError> {
+fn do_navigate_back_lxapp(lxapp: &LxApp) -> Result<(), lingxia_error::Error> {
     lxapp.navigate_back()?;
     Ok(())
 }
@@ -264,10 +261,9 @@ pub(crate) async fn navigate_to_app(ctx: JSContext, options: NavigateToAppOption
     let invocation = authorization::invocation_from_context(&ctx)?;
     let lxapp = invocation.lxapp();
 
-    ensure_ordinary_app_target(&options.appid)
-        .map_err(|error| js_error_from_lxapp_error(&error))?;
+    ensure_ordinary_app_target(&options.appid).map_err(js_error)?;
 
-    if !should_navigate_to_app(&lxapp, &options).map_err(|e| js_error_from_lxapp_error(&e))? {
+    if !should_navigate_to_app(&lxapp, &options).map_err(js_error)? {
         return Ok(());
     }
 
@@ -292,7 +288,7 @@ pub(crate) async fn navigate_to_app(ctx: JSContext, options: NavigateToAppOption
 /// Leave this lxapp and reveal the one that opened it.
 pub(crate) async fn navigate_back_app(ctx: JSContext) -> JSResult<()> {
     let lxapp = LxApp::from_ctx(&ctx)?;
-    do_navigate_back_lxapp(&lxapp).map_err(|e| js_error_from_lxapp_error(&e))?;
+    do_navigate_back_lxapp(&lxapp).map_err(js_error)?;
     Ok(())
 }
 

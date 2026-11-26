@@ -1,6 +1,6 @@
 use crate::i18n::{
-    js_error_from_business_code_with_detail, js_error_from_lxapp_error,
-    js_error_from_platform_error, js_internal_error,
+    js_error, js_error_from_business_code_with_detail, js_error_from_platform_error,
+    js_internal_error,
 };
 use lingxia_platform::traits::media_runtime::{CompressImageRequest, MediaRuntime};
 use lingxia_service::storage;
@@ -75,7 +75,7 @@ async fn get_image_info_api(ctx: JSContext, path: String) -> JSResult<ImageInfo>
     let trimmed_path = path.trim();
     let resolved = lxapp
         .resolve_accessible_path(trimmed_path)
-        .map_err(|err| js_error_from_lxapp_error(&err))?;
+        .map_err(js_error)?;
     let normalized_path = resolved.to_string_lossy().into_owned();
 
     let response_path =
@@ -130,7 +130,7 @@ async fn compress_image_api(
 
     let resolved_source = lxapp
         .resolve_accessible_path(path.trim())
-        .map_err(|err| js_error_from_lxapp_error(&err))?;
+        .map_err(js_error)?;
     let source_uri = resolved_source.to_string_lossy().into_owned();
 
     let output_path = generate_compress_output_path(&lxapp.temp_dir)?;

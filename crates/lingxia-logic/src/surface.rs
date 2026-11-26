@@ -1,5 +1,5 @@
 use crate::authorization::{self, LogicRoute};
-use crate::i18n::js_error_from_lxapp_error;
+use crate::i18n::js_error;
 use crate::open_gate::{OpenGate, canceled_open_error, canceled_result};
 use crate::url::{is_http_url, split_url_scheme_host};
 use futures::{
@@ -10,9 +10,9 @@ use lingxia_platform::traits::app_runtime::{AppRuntime, OpenUrlRequest, OpenUrlT
 use lingxia_platform::traits::ui::WindowChrome;
 use lingxia_platform::traits::ui::{SurfaceKind, SurfacePosition};
 use lxapp::{
-    AppHandlerUnsub, BROWSER_TAB_CLOSED_EVENT, LxApp, LxAppError, PageQueryInput,
-    PageSurfaceRequest, PageSurfaceTarget, PageTarget, app_handler_unsub, publish_app_event,
-    register_app_handler, try_get,
+    AppHandlerUnsub, BROWSER_TAB_CLOSED_EVENT, LxApp, PageQueryInput, PageSurfaceRequest,
+    PageSurfaceTarget, PageTarget, app_handler_unsub, publish_app_event, register_app_handler,
+    try_get,
 };
 use rong::{
     Class, HostError, IntoJSObject, JSContext, JSContextService, JSFunc, JSObject, JSResult,
@@ -1427,11 +1427,12 @@ fn reused_app_reopen(
     Ok(Some(options))
 }
 
-fn lxapp_open_error(err: LxAppError) -> rong::RongJSError {
+fn lxapp_open_error(err: impl Into<lingxia_error::Error>) -> rong::RongJSError {
+    let err = err.into();
     // An operator takedown keeps its business error, whose `reason` says
     // `appUnderMaintenance` or `appSuspended`.
     if lxapp::registry_unavailable_status(&err).is_some() {
-        return js_error_from_lxapp_error(&err);
+        return js_error(err);
     }
     surface_lifecycle_error("open", err)
 }
@@ -1503,10 +1504,11 @@ async fn open_declared_surface_spec(
         lxapp::prepare_lxapp_open(app_id, lxapp::resolve_open_channel(app_id, None))
             .await
             .map_err(|err| {
+                let err = lingxia_error::Error::from(err);
                 if lxapp::registry_unavailable_status(&err).is_some() {
-                    js_error_from_lxapp_error(&err)
+                    js_error(err)
                 } else {
-                    surface_error(SurfaceErrorCode::NotDeclared, err.to_string())
+                    surface_error(SurfaceErrorCode::NotDeclared, err.message())
                 }
             })?;
     }
@@ -2503,11 +2505,11 @@ async fn open_surface(
         .open_surface_with_chrome(request, chrome)
         .map_err(|err| {
             unregister_closed_sender(&requested_surface_id);
-            match err {
-                LxAppError::UnsupportedOperation(detail) => {
-                    surface_error(SurfaceErrorCode::UnsupportedPlacement, detail)
-                }
-                other => surface_error(SurfaceErrorCode::Failed, other),
+            let err = lingxia_error::Error::from(err);
+            if err.is(lingxia_error::code::NOT_SUPPORTED) {
+                surface_error(SurfaceErrorCode::UnsupportedPlacement, err.message())
+            } else {
+                surface_error(SurfaceErrorCode::Failed, err.message())
             }
         })?;
     let surface_id = opened_surface.id.clone();
@@ -2856,36 +2858,30 @@ fn closed_surface_error() -> rong::RongJSError {
     surface_error(SurfaceErrorCode::Closed, "surface handle is closed")
 }
 
-fn surface_lifecycle_error(operation: &str, error: LxAppError) -> rong::RongJSError {
+fn surface_lifecycle_error(
+    operation: &str,
+    error: impl Into<lingxia_error::Error>,
+) -> rong::RongJSError {
+    let error = error.into();
     match surface_code_for(&error) {
         SurfaceErrorCode::Failed => surface_error(
             SurfaceErrorCode::Failed,
-            format!("surface {operation} failed: {error}"),
+            format!("surface {operation} failed: {}", error.message()),
         ),
-        code => surface_error(code, lxapp_error_detail(error)),
+        code => surface_error(code, error.message()),
     }
 }
 
 /// The surface category of a runtime failure.
-fn surface_code_for(error: &LxAppError) -> SurfaceErrorCode {
-    match error {
-        LxAppError::InvalidParameter(_) => SurfaceErrorCode::InvalidArg,
-        LxAppError::ResourceNotFound(_) => SurfaceErrorCode::NotDeclared,
-        LxAppError::UnsupportedOperation(_) => SurfaceErrorCode::UnsupportedPlacement,
-        LxAppError::SurfaceConflict(_) => SurfaceErrorCode::AlreadyOpenOtherRole,
-        LxAppError::SurfaceRoleLocked(_) => SurfaceErrorCode::RoleLocked,
+fn surface_code_for(error: &lingxia_error::Error) -> SurfaceErrorCode {
+    use lingxia_error::code;
+    match error.code() {
+        code::INVALID_ARG => SurfaceErrorCode::InvalidArg,
+        code::NOT_FOUND => SurfaceErrorCode::NotDeclared,
+        code::NOT_SUPPORTED => SurfaceErrorCode::UnsupportedPlacement,
+        code::SURFACE_CONFLICT => SurfaceErrorCode::AlreadyOpenOtherRole,
+        code::SURFACE_ROLE_LOCKED => SurfaceErrorCode::RoleLocked,
         _ => SurfaceErrorCode::Failed,
-    }
-}
-
-fn lxapp_error_detail(error: LxAppError) -> String {
-    match error {
-        LxAppError::InvalidParameter(detail)
-        | LxAppError::ResourceNotFound(detail)
-        | LxAppError::UnsupportedOperation(detail)
-        | LxAppError::SurfaceConflict(detail)
-        | LxAppError::SurfaceRoleLocked(detail) => detail,
-        other => other.to_string(),
     }
 }
 
@@ -3652,23 +3648,26 @@ mod tests {
     #[test]
     fn an_open_failure_keeps_its_category() {
         assert_eq!(
-            surface_code_for(&LxAppError::UnsupportedOperation("no aside here".into())),
+            surface_code_for(&lingxia_error::Error::not_supported("no aside here")),
             SurfaceErrorCode::UnsupportedPlacement
         );
         assert_eq!(
-            surface_code_for(&LxAppError::InvalidParameter("bad page".into())),
+            surface_code_for(&lingxia_error::Error::invalid_arg("bad page")),
             SurfaceErrorCode::InvalidArg
         );
         assert_eq!(
-            surface_code_for(&LxAppError::SurfaceRoleLocked("root".into())),
+            surface_code_for(&lingxia_error::Error::new(
+                lingxia_error::code::SURFACE_ROLE_LOCKED,
+                "root"
+            )),
             SurfaceErrorCode::RoleLocked
         );
         assert_eq!(
-            surface_code_for(&LxAppError::Runtime("boom".into())),
+            surface_code_for(&lingxia_error::Error::internal("boom")),
             SurfaceErrorCode::Failed
         );
         assert_eq!(
-            surface_code_for(&LxAppError::ResourceNotFound("app".into())),
+            surface_code_for(&lingxia_error::Error::not_found("app")),
             SurfaceErrorCode::NotDeclared
         );
     }

@@ -1,11 +1,11 @@
 use crate::i18n::{
-    js_error_from_business_code_with_detail, js_error_from_lxapp_error,
-    js_error_from_platform_error, js_invalid_parameter_error,
+    js_error, js_error_from_business_code_with_detail, js_error_from_platform_error,
+    js_invalid_parameter_error,
 };
 use lingxia_platform::traits::share::{
     ShareRequest, ShareResult as PlatformShareResult, ShareService,
 };
-use lxapp::{LxApp, LxAppError};
+use lxapp::LxApp;
 use rong::{IntoJSObject, JSArray, JSContext, JSObject, JSResult, JSValue};
 use serde_json::Value;
 
@@ -107,13 +107,12 @@ fn non_empty(value: Option<String>) -> Option<String> {
 
 fn build_page_share_url(lxapp: &LxApp, page: JSSharePage) -> JSResult<String> {
     let current_page = lxapp.peek_current_page_path().ok_or_else(|| {
-        js_error_from_lxapp_error(&LxAppError::Runtime("No current page found".to_string()))
+        js_error(lingxia_error::Error::internal(
+            "No current page found".to_string(),
+        ))
     })?;
-    let page_url = append_query(current_page, page.query.as_ref())
-        .map_err(|e| js_error_from_lxapp_error(&e))?;
-    lxapp
-        .ensure_page_exists(&page_url)
-        .map_err(|e| js_error_from_lxapp_error(&e))?;
+    let page_url = append_query(current_page, page.query.as_ref()).map_err(js_error)?;
+    lxapp.ensure_page_exists(&page_url).map_err(js_error)?;
 
     let host = first_app_link_host()?;
     let (path, raw_query) = lxapp::startup::split_path_query(&page_url);
@@ -216,13 +215,13 @@ fn read_optional_files(obj: &JSObject) -> JSResult<Vec<String>> {
         .collect()
 }
 
-fn append_query(path: String, query: Option<&JSObject>) -> Result<String, LxAppError> {
+fn append_query(path: String, query: Option<&JSObject>) -> Result<String, lingxia_error::Error> {
     let Some(query) = query else {
         return Ok(path);
     };
-    let query_json = query.to_json_string().map_err(LxAppError::from)?;
+    let query_json = query.to_json_string().map_err(lxapp::rong_error)?;
     let query: Value = serde_json::from_str(&query_json)?;
-    lxapp::append_page_query(path, &query).map_err(LxAppError::InvalidParameter)
+    lxapp::append_page_query(path, &query).map_err(lingxia_error::Error::invalid_arg)
 }
 
 fn validate_share_page_query(raw_query: Option<&str>) -> JSResult<()> {
@@ -286,9 +285,7 @@ fn resolve_share_files(lxapp: &LxApp, files: Vec<String>) -> JSResult<Vec<String
                     "share file path must be returned by lx.pick",
                 ));
             }
-            let resolved = lxapp
-                .resolve_accessible_path(path)
-                .map_err(|e| js_error_from_lxapp_error(&e))?;
+            let resolved = lxapp.resolve_accessible_path(path).map_err(js_error)?;
             let metadata = std::fs::metadata(&resolved)
                 .map_err(|e| js_invalid_parameter_error(e.to_string()))?;
             if !metadata.is_file() {

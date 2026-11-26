@@ -92,7 +92,7 @@ fn message(
     };
     lxapp
         .message(&key, &args)
-        .map_err(|error| crate::i18n::host_error_from_lxapp_error(&error).into())
+        .map_err(|error| crate::i18n::host_error_of(error).into())
 }
 
 rong::js_api! {

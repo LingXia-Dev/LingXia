@@ -1,8 +1,7 @@
 use crate::dismissal::{canceled, completed};
 use crate::i18n::{
-    js_error_from_business_code_with_detail, js_error_from_lxapp_error,
-    js_error_from_platform_error, js_internal_error, js_invalid_parameter_error,
-    js_resource_not_found_error,
+    js_error, js_error_from_business_code_with_detail, js_error_from_platform_error,
+    js_internal_error, js_invalid_parameter_error, js_resource_not_found_error,
 };
 use base64::{Engine as _, engine::general_purpose};
 use lingxia_service::file::{
@@ -89,7 +88,7 @@ fn resolve_open_file_request(
 
     let resolved_path = lxapp
         .resolve_accessible_path(path)
-        .map_err(|err| crate::i18n::js_error_from_lxapp_error(&err))?;
+        .map_err(crate::i18n::js_error)?;
 
     Ok(OpenFileRequest {
         mime_type: mime_from_extension(&resolved_path),
@@ -317,7 +316,7 @@ fn resolve_dialog_default_path(lxapp: &LxApp, raw_path: &str) -> JSResult<String
 
     let resolved = lxapp
         .resolve_accessible_path(trimmed)
-        .map_err(|err| crate::i18n::js_error_from_lxapp_error(&err))?;
+        .map_err(crate::i18n::js_error)?;
 
     Ok(resolved.to_string_lossy().into_owned())
 }
@@ -349,7 +348,7 @@ fn selected_file(lxapp: &LxApp, raw_path: &str) -> JSResult<(String, Option<Path
         // internal failure.
         let uri = lxapp
             .grant_transient_file_access(path_ref)
-            .map_err(|err| js_error_from_lxapp_error(&err))?;
+            .map_err(js_error)?;
         return Ok((uri.into_string(), Some(path_ref.to_path_buf())));
     }
 
@@ -395,7 +394,7 @@ fn selected_directory_path_to_uri(lxapp: &LxApp, raw_path: &str) -> JSResult<Str
         return lxapp
             .grant_transient_directory_access(path_ref)
             .map(|uri| uri.into_string())
-            .map_err(|err| js_error_from_lxapp_error(&err));
+            .map_err(js_error);
     }
 
     Err(js_internal_error(format!(
@@ -752,9 +751,7 @@ fn resolve_managed_path(
     let allow_granted = !require_child;
     let path = raw_path.trim();
     if path.starts_with("lx://") {
-        let resolved = lxapp
-            .resolve_accessible_path(path)
-            .map_err(|err| js_error_from_lxapp_error(&err))?;
+        let resolved = lxapp.resolve_accessible_path(path).map_err(js_error)?;
         // A picked directory can contain this lxapp's own storage; a path
         // reached through the grant stays read-only even then.
         let classified = if is_directory_grant_child(path) {

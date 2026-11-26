@@ -3,7 +3,7 @@ use super::{
     storage::{self, StorageQuotaError},
 };
 use crate::i18n::{
-    js_error_from_business_code_with_detail, js_error_from_lxapp_error, js_internal_error,
+    js_error, js_error_from_business_code_with_detail, js_internal_error,
     js_invalid_parameter_error,
 };
 use futures::channel::{mpsc, oneshot};
@@ -565,9 +565,7 @@ fn resolve_output_path(
                 "network.download to must use lx://userdata or be omitted",
             ));
         }
-        let resolved = lxapp
-            .resolve_accessible_path(file_path)
-            .map_err(|err| js_error_from_lxapp_error(&err))?;
+        let resolved = lxapp.resolve_accessible_path(file_path).map_err(js_error)?;
         if resolved.starts_with(&lxapp.user_cache_dir) {
             return Err(js_invalid_parameter_error(
                 "network.download to must use lx://userdata or be omitted",
@@ -595,8 +593,7 @@ fn resolve_output_path(
 }
 
 fn ensure_downloads_privilege(lxapp: &LxApp) -> JSResult<()> {
-    let privilege =
-        LxAppSecurityPrivilege::new("downloads").map_err(|err| js_error_from_lxapp_error(&err))?;
+    let privilege = LxAppSecurityPrivilege::new("downloads").map_err(js_error)?;
     if downloads_access_allowed(
         lxapp.has_security_privilege(&privilege),
         lxapp.has_resource_grant(lxapp::host::AppResourceGrant::Downloads),

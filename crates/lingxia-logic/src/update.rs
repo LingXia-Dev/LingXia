@@ -1,4 +1,4 @@
-use crate::i18n::js_error_from_lxapp_error;
+use crate::i18n::js_error;
 use lxapp::{Channel, LxApp, register_app_handler, try_get, warn};
 use rong::{
     Class, HostError, JSContext, JSContextService, JSFunc, JSObject, JSResult, JSValue,
@@ -190,7 +190,7 @@ impl JSUpdateManager {
                 .into());
             }
         };
-        lxapp.restart().map_err(|e| js_error_from_lxapp_error(&e))
+        lxapp.restart().map_err(js_error)
     }
 
     /// Subscribes to a ready update and returns the unsubscribe fn.
@@ -379,7 +379,7 @@ pub async fn ensure_first_install(
 ) -> JSResult<()> {
     lxapp::ensure_first_install(current_lxapp, target_appid, release_type)
         .await
-        .map_err(|error| js_error_from_lxapp_error(&error))
+        .map_err(js_error)
 }
 
 #[cfg(test)]

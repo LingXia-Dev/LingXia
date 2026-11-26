@@ -1,7 +1,6 @@
 use crate::i18n::{
-    js_error_from_business_code, js_error_from_business_code_with_detail,
-    js_error_from_lxapp_error, js_error_from_platform_error, js_internal_error,
-    js_invalid_parameter_error,
+    js_error, js_error_from_business_code, js_error_from_business_code_with_detail,
+    js_error_from_platform_error, js_internal_error, js_invalid_parameter_error,
 };
 use crate::url::{is_http_url, split_url_scheme_host};
 use futures::channel::oneshot;
@@ -803,7 +802,7 @@ fn resolve_preview_path(lxapp: &LxApp, raw: &str) -> JSResult<String> {
         PreviewPath::Local(path) => lxapp
             .resolve_accessible_path(&path)
             .map(|resolved| resolved.to_string_lossy().into_owned())
-            .map_err(|err| js_error_from_lxapp_error(&err)),
+            .map_err(js_error),
     }
 }
 

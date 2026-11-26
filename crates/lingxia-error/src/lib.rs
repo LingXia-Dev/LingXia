@@ -211,6 +211,14 @@ impl Error {
         Self::new(code::INTERNAL, message)
     }
 
+    pub fn io(message: impl Into<String>) -> Self {
+        Self::new(code::IO, message)
+    }
+
+    pub fn invalid_data(message: impl Into<String>) -> Self {
+        Self::new(code::INVALID_DATA, message)
+    }
+
     pub fn with_reason(mut self, reason: impl Into<Cow<'static, str>>) -> Self {
         self.extra().reason = Some(reason.into());
         self

@@ -1,7 +1,7 @@
 //! `lx.shell.sidebarActions` — app-declared host-shell entries (Control app only).
 
 use crate::authorization::{self, LogicRoute};
-use crate::i18n::{js_error_from_lxapp_error, js_internal_error, js_invalid_parameter_error};
+use crate::i18n::{js_error, js_internal_error, js_invalid_parameter_error};
 use lingxia_shell::{
     ShellError, ShellSidebarAction, ShellSidebarActionUpdate, SidebarActionCollection,
     SidebarActionPlacement,
@@ -219,7 +219,7 @@ fn parse_sidebar_action(item: &JSObject) -> JSResult<ParsedSidebarAction> {
         disabled,
     }
     .validate()
-    .map_err(js_error)?;
+    .map_err(shell_error)?;
     Ok(ParsedSidebarAction { item, handler })
 }
 
@@ -338,7 +338,7 @@ async fn set_app_display(ctx: JSContext, patch: JSValue) -> JSResult<()> {
     tokio::task::spawn_blocking(move || app_display::set(&appid, request))
         .await
         .map_err(|err| js_internal_error(format!("{SET_APP_DISPLAY} failed: {err}")))?
-        .map_err(|err| js_error_from_lxapp_error(&err))?;
+        .map_err(js_error)?;
     Ok(())
 }
 
@@ -361,9 +361,7 @@ fn decode_app_display(patch: &JSObject, app: &lxapp::LxApp) -> JSResult<AppDispl
     let name = if has("name") {
         match display_field(patch, "name")? {
             None => FieldPatch::Clear,
-            Some(name) => match app_display::normalize_name(&name)
-                .map_err(|err| js_error_from_lxapp_error(&err))?
-            {
+            Some(name) => match app_display::normalize_name(&name).map_err(js_error)? {
                 Some(name) => FieldPatch::Set(name),
                 None => FieldPatch::Clear,
             },
@@ -414,10 +412,10 @@ fn commit_generation(
     mutate: impl FnOnce(&mut SidebarActionCollection) -> Result<(), ShellError>,
     mut next_handlers: HashMap<String, JSFunc>,
 ) -> JSResult<()> {
-    let manager = lingxia_shell::manager().map_err(js_error)?;
+    let manager = lingxia_shell::manager().map_err(shell_error)?;
     let previous = manager.snapshot().sidebar_actions;
     let mut next = previous.clone();
-    mutate(&mut next).map_err(js_error)?;
+    mutate(&mut next).map_err(shell_error)?;
     next_handlers.retain(|id, _| next.items().iter().any(|item| item.id == *id));
 
     let next_generation = next.generation();
@@ -437,7 +435,7 @@ fn commit_generation(
         for event in registered {
             unregister_app_handler(ctx, &event, None);
         }
-        return Err(js_error(error).into());
+        return Err(shell_error(error).into());
     }
     if let Err(error) = lingxia_shell::apply_current_sidebar_actions() {
         let _ = manager.commit_sidebar_actions(next.generation(), previous.clone());
@@ -445,7 +443,7 @@ fn commit_generation(
         for event in registered {
             unregister_app_handler(ctx, &event, None);
         }
-        return Err(js_error(error).into());
+        return Err(shell_error(error).into());
     }
 
     let registry = handler_registry(ctx);
@@ -458,7 +456,7 @@ fn commit_generation(
     Ok(())
 }
 
-fn js_error(error: ShellError) -> rong::HostError {
+fn shell_error(error: ShellError) -> rong::HostError {
     let code = match &error {
         ShellError::SidebarActionNotFound { .. } => rong::error::E_NOT_FOUND,
         ShellError::Io(_)

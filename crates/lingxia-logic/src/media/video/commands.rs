@@ -431,7 +431,7 @@ impl JSVideoContext {
             page.call_view_json_with("video.command", &params)
                 .await
                 .map(drop)
-                .map_err(|error| video_error(&error))
+                .map_err(video_error)
         })
     }
 
@@ -445,7 +445,8 @@ impl JSVideoContext {
 }
 
 /// A View's `VideoError` keeps its code for Logic; other failures keep theirs.
-fn video_error(error: &lxapp::LxAppError) -> rong::RongJSError {
+fn video_error(error: impl Into<lingxia_error::Error>) -> rong::RongJSError {
+    let error = error.into();
     const CODES: [&str; 10] = [
         "VIDEO_SOURCE",
         "VIDEO_NOT_GRANTED",
@@ -458,12 +459,10 @@ fn video_error(error: &lxapp::LxAppError) -> rong::RongJSError {
         "VIDEO_UNSUPPORTED",
         "VIDEO_PLAYER_PROPS",
     ];
-    if let lxapp::LxAppError::RongJSHost { code, message, .. } = error
-        && let Some(code) = CODES.into_iter().find(|known| known == code)
-    {
-        return HostError::new(code, message.clone()).into();
+    if let Some(code) = CODES.into_iter().find(|known| error.is(known)) {
+        return HostError::new(code, error.message().to_string()).into();
     }
-    crate::i18n::js_error_from_lxapp_error(error)
+    crate::i18n::js_error(error)
 }
 
 #[js_class]

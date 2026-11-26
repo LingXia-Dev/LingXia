@@ -183,10 +183,7 @@ pub fn set_registry_change_listener(listener: RegistryChangeListener) {
 }
 
 /// Status that blocked an open, when the error came from [`ensure_open_allowed`].
-pub fn registry_unavailable_status(error: &LxAppError) -> Option<LxAppStatus> {
-    let LxAppError::Coded(error) = error else {
-        return None;
-    };
+pub fn registry_unavailable_status(error: &lingxia_error::Error) -> Option<LxAppStatus> {
     match error.reason()? {
         "appUnderMaintenance" => Some(LxAppStatus::Maintain),
         "appSuspended" => Some(LxAppStatus::Suspended),
@@ -219,7 +216,7 @@ pub fn set_open_blocked_listener(listener: OpenBlockedListener) {
 
 /// Tell host chrome a blocked open happened. Logs when nothing is registered.
 pub fn notify_open_blocked(error: &LxAppError) {
-    if let Some(status) = registry_unavailable_status(error) {
+    if let Some(status) = registry_unavailable_status(&error.clone().into()) {
         let guard = open_blocked_listener()
             .lock()
             .unwrap_or_else(|e| e.into_inner());
@@ -1195,10 +1192,10 @@ mod tests {
         // status has to survive as data rather than only inside a sentence.
         for status in [LxAppStatus::Suspended, LxAppStatus::Maintain] {
             let error = unavailable_error("com.example.app", status);
-            assert_eq!(registry_unavailable_status(&error), Some(status));
             let LxAppError::Coded(error) = error else {
                 panic!("a blocked open must carry a coded error, got {error:?}");
             };
+            assert_eq!(registry_unavailable_status(&error), Some(status));
             assert_eq!(error.code(), "E_PERMISSION_DENIED");
             assert_eq!(error.reason(), Some(unavailable_reason(status)));
             assert_eq!(error.data().unwrap()["appId"], "com.example.app");

@@ -1,7 +1,6 @@
 use crate::dismissal::{USER_DISMISSED, canceled, completed};
 use crate::i18n::{
-    js_error_from_lxapp_error, js_error_from_platform_error, js_internal_error,
-    js_invalid_parameter_error,
+    js_error, js_error_from_platform_error, js_internal_error, js_invalid_parameter_error,
 };
 use crate::share::is_platform_file_reference;
 use lingxia_platform::error::PlatformError;
@@ -262,9 +261,7 @@ fn resolve_share_like_file(lxapp: &LxApp, file: &str) -> JSResult<String> {
             "clipboard image path must be an lx:// path or a file returned by lx.pick",
         ));
     }
-    let resolved = lxapp
-        .resolve_accessible_path(path)
-        .map_err(|e| js_error_from_lxapp_error(&e))?;
+    let resolved = lxapp.resolve_accessible_path(path).map_err(js_error)?;
     let metadata =
         fs::metadata(&resolved).map_err(|e| js_invalid_parameter_error(e.to_string()))?;
     if !metadata.is_file() {

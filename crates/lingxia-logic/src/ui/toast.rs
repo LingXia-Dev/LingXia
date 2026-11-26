@@ -268,9 +268,11 @@ async fn present_toast(ctx: &JSContext, request: ToastRequest) -> JSResult<()> {
                 async move {
                     let page = lxapp.current_page()?;
                     if page.instance_id_string() != id {
-                        return Err(lxapp::LxAppError::WebView("the page changed".into()));
+                        return Err(lingxia_error::Error::internal("the page changed"));
                     }
-                    page.call_view_with::<_, ()>("ui.showToast", &params).await
+                    page.call_view_with::<_, ()>("ui.showToast", &params)
+                        .await
+                        .map_err(Into::into)
                 }
             },
             || tokio::time::sleep(std::time::Duration::from_millis(20)),
@@ -304,14 +306,14 @@ async fn on_current_page<E, C, F, S, W>(
     wait: S,
 ) -> Result<(), E>
 where
-    E: From<lxapp::LxAppError>,
+    E: From<lingxia_error::Error>,
     C: Fn() -> Option<String>,
     F: std::future::Future<Output = Result<(), E>>,
     S: Fn() -> W,
     W: std::future::Future<Output = ()>,
 {
     const WAIT_STEPS: usize = 50;
-    let no_page = || E::from(lxapp::LxAppError::WebView("No current page".into()));
+    let no_page = || E::from(lingxia_error::Error::internal("No current page"));
     let mut page = current().ok_or_else(no_page)?;
     let mut hops = 0;
     loop {
@@ -387,11 +389,10 @@ rong::js_api! {
 #[cfg(test)]
 mod tests {
     use super::on_current_page;
-    use lxapp::LxAppError;
     use std::cell::RefCell;
 
-    fn revoked() -> LxAppError {
-        LxAppError::WebView("Document session revoked".into())
+    fn revoked() -> lingxia_error::Error {
+        lingxia_error::Error::internal("Document session revoked")
     }
 
     /// Runs the helper over a page stack that moves to the next page after `moves_after` reads.
@@ -399,7 +400,7 @@ mod tests {
         pages: &[&str],
         moves_after: usize,
         fails_on: &[&str],
-    ) -> (Result<(), LxAppError>, Vec<String>) {
+    ) -> (Result<(), lingxia_error::Error>, Vec<String>) {
         let reads = RefCell::new(0usize);
         let calls = RefCell::new(Vec::new());
         let current = || {

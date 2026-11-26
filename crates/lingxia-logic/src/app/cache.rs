@@ -1,7 +1,7 @@
 use rong::{JSContext, JSFunc, JSObject, JSResult};
 
 use crate::authorization::{self, LogicRoute};
-use crate::i18n::js_error_from_lxapp_error;
+use crate::i18n::js_error;
 
 /// `lx.host.cache` — the product-wide cache a settings screen reports and
 /// clears.
@@ -22,7 +22,7 @@ async fn cache_size(ctx: JSContext) -> JSResult<f64> {
     let bytes = tokio::task::spawn_blocking(lxapp::product_cache_usage_bytes)
         .await
         .map_err(|err| {
-            js_error_from_lxapp_error(&lxapp::LxAppError::Runtime(format!(
+            js_error(lingxia_error::Error::internal(format!(
                 "cache size task failed: {err}"
             )))
         })?;
@@ -32,9 +32,7 @@ async fn cache_size(ctx: JSContext) -> JSResult<f64> {
 /// Report completed, skipped and failed work without concealing partial cleanup.
 async fn cache_clear(ctx: JSContext) -> JSResult<JSObject> {
     authorization::require(&ctx, LogicRoute::AppCacheClear)?;
-    let report = lxapp::clear_product_cache()
-        .await
-        .map_err(|err| js_error_from_lxapp_error(&err))?;
+    let report = lxapp::clear_product_cache().await.map_err(js_error)?;
     let result = JSObject::new(&ctx);
     result.set("freedBytes", report.freed_bytes as f64)?;
     result.set("skippedActivePaths", report.skipped_active_paths as f64)?;

@@ -312,7 +312,7 @@ async fn run_pick(
                     original_name = original_name.or_else(|| file_name_of(&source_path));
                     let uri = lxapp
                         .grant_transient_file_access(&source_path)
-                        .map_err(|err| crate::i18n::js_error_from_lxapp_error(&err))?
+                        .map_err(crate::i18n::js_error)?
                         .into_string();
                     (uri, source_path)
                 }

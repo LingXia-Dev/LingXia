@@ -68,7 +68,7 @@ pub use cache::touch_access_time;
 pub use delegate::{LxAppDelegate, LxAppUiEventType};
 pub use error::LxAppError;
 #[cfg(feature = "js-appservice")]
-pub use error::js_error;
+pub use error::rong_error;
 pub use lifecycle::{
     AppServiceEvent, AppServiceEventArgs, AppServiceEventReason, AppServiceEventSource,
     PageLifecycleEvent,

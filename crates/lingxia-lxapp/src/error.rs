@@ -163,7 +163,7 @@ impl From<serde_json::Error> for LxAppError {
 
 /// A Logic runtime error: a host error keeps its code, anything else is `E_INTERNAL`.
 #[cfg(feature = "js-appservice")]
-pub fn js_error(error: RongJSError) -> lingxia_error::Error {
+pub fn rong_error(error: RongJSError) -> lingxia_error::Error {
     if let Some(host) = error.as_host_error() {
         let data = host.data.as_ref().map(error_data_to_json);
         return host_error(host.code.to_string(), host.message.clone(), data);

@@ -19,7 +19,7 @@ use rong::function::Optional;
 use rong::{HostError, JSContext, JSFunc, JSObject, JSResult, JSValue, Source};
 use tokio::sync::{mpsc, oneshot};
 
-use crate::i18n::{js_error_from_lxapp_error, js_internal_error, js_invalid_parameter_error};
+use crate::i18n::{js_error, js_internal_error, js_invalid_parameter_error};
 
 fn js_value_to_json(ctx: &JSContext, value: Option<JSValue>) -> JSResult<Option<String>> {
     let Some(value) = value else {
@@ -66,7 +66,7 @@ async fn invoke(
     })
     .await
     .map_err(|e| js_internal_error(format!("native route '{route}' did not finish: {e}")))?
-    .map_err(|e| js_error_from_lxapp_error(&e))?;
+    .map_err(js_error)?;
     match output {
         HostOutput::Json(json) => json_to_js_value(&ctx, Some(&json)),
         HostOutput::Stream(_) => Err(js_internal_error(format!(
@@ -83,8 +83,7 @@ fn invoke_sync(
 ) -> JSResult<JSValue> {
     let invocation = HostInvocationContext::for_logic_context_with_page(&ctx, page_id.0)?;
     let payload = js_value_to_json(&ctx, input.0)?;
-    let output = host::dispatch_host_call_sync(&route, invocation, payload)
-        .map_err(|e| js_error_from_lxapp_error(&e))?;
+    let output = host::dispatch_host_call_sync(&route, invocation, payload).map_err(js_error)?;
     match output {
         HostOutput::Json(json) => json_to_js_value(&ctx, Some(&json)),
         HostOutput::Stream(_) => Err(js_internal_error(format!(
@@ -188,7 +187,7 @@ fn stream(
                     obj.set("value", json_to_js_value(&ctx, Some(&json))?)?;
                 }
                 Some(Err(err)) => {
-                    return Err(js_error_from_lxapp_error(&err));
+                    return Err(js_error(err));
                 }
                 None => {
                     obj.set("kind", "return")?;
