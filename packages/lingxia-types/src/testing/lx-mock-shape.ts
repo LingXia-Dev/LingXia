@@ -103,6 +103,7 @@ export const LX_MOCK_SHAPE: Readonly<Record<string, 'namespace' | 'async' | 'syn
   "lx.host.terminal.colorSchemes": "namespace",
   "lx.host.terminal.colorSchemes.createPreview": "sync",
   "lx.host.terminal.colorSchemes.import": "async",
+  "lx.host.terminal.colorSchemes.importFile": "async",
   "lx.host.terminal.colorSchemes.list": "async",
   "lx.host.terminal.conpty": "namespace",
   "lx.host.terminal.conpty.install": "async",

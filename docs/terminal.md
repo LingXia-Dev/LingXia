@@ -88,19 +88,19 @@ The cross-platform implementation path is:
 
 ## Settings
 
-Enabling the terminal supplies runtime defaults but does not automatically add
-a settings screen. A product that exposes settings bundles
-`@lingxia/terminal-settings` as the `app.lingxia.terminal-settings` lxapp. The
-current settings surface controls:
+Enabling the terminal supplies runtime defaults; the host supplies the settings
+screen itself through `terminal.settings` in `lingxia.yaml`, an lxapp with appId
+`app.lingxia.terminal-settings`. The showcase's demo
+(`examples/lingxia-showcase/terminal-settings`) controls:
 
-- system, light, or dark appearance mode;
-- the light and dark color schemes;
+- the color scheme for the product's current light or dark appearance;
 - installed monospaced font family, font size, line height, and ligatures;
-- color-scheme import and reset to framework defaults.
+- color-scheme file import and reset to framework defaults;
+- on Windows, the inline-image console runtime.
 
-There is no `terminal:` configuration section in `lingxia.yaml`; product-level
-YAML enables and places the surface, while user-facing appearance settings live
-in app state.
+The `terminal:` section of `lingxia.yaml` only names the settings lxapp;
+product-level YAML enables and places the surface, while user-facing settings
+live in app state.
 
 LingXia does not bundle a font. The default candidate order is JetBrains Mono,
 SF Mono, Cascadia Code, Menlo, and Consolas; the first installed monospaced

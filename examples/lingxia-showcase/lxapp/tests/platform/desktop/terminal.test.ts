@@ -5,7 +5,6 @@ import type {
   TerminalPaneTree,
   TerminalWorkspaceSnapshot,
 } from '@lingxia/types/automation';
-import type { ProbeDocument, ProbeElement } from '@lingxia/test/showcase/helpers/view.js';
 
 const SETTINGS_APP_ID = 'app.lingxia.terminal-settings';
 
@@ -34,13 +33,6 @@ async function waitFor<T>(operation: () => Promise<T | undefined>, label: string
     await new Promise<void>((resolve) => setTimeout(() => resolve(), 25));
   }
   throw new Error(`${label} was not observed`);
-}
-
-/** Enabled Save means dirty Terminal Settings; disabled, applied ones. */
-async function waitForSave(settings: TestApp, enabled: boolean): Promise<void> {
-  const save = settings.view.css('#save').first();
-  if (enabled) await expect(save).toBeEnabled({ timeout: 8_000 });
-  else await expect(save).toBeDisabled({ timeout: 8_000 });
 }
 
 /** The runtime id of the terminal declared under `key`, read from the host layout. */
@@ -155,7 +147,7 @@ test('keeps a maximized terminal maximized when a tab opens', {
   }
 });
 
-test('applies a selected color scheme to native chrome before Apply', {
+test('applies a chosen color scheme to native chrome at once', {
   id: 'DESKTOP-TERMINAL-003',
   timeout: 90_000,
   covers: ['lx.surface.openDeclared', 'lx.surface.openApp'],
@@ -184,98 +176,48 @@ test('applies a selected color scheme to native chrome before Apply', {
   const previousAppearance = await app.logic.eval(({ lx }) => lx.host.appearance.get() ?? null);
 
   try {
-    // The action bar is intentionally hidden until the draft becomes dirty;
-    // its button is still a reliable page-readiness marker once attached.
-    await settingsApp.view.css('#save').first().waitFor({ state: 'attached', timeout: 10_000 });
-    await settingsApp.view.css('button[data-theme][aria-pressed="true"]').first()
-      .waitFor({ state: 'visible', timeout: 10_000 });
-    await waitForSave(settingsApp, false);
-    const runtime = await settingsApp.logic.eval(async ({ lx }) => {
-      const settings = await lx.host.terminal.settings.get();
-      return {
-        terminal: typeof lx.host.terminal.settings.get,
-        fileSystem: typeof lx.fs,
-        appearance: settings.effective.appearance,
-      };
-    });
+    await expect(settingsApp.view.testId('schemes')).toBeVisible({ timeout: 10_000 });
+    const runtime = await settingsApp.logic.eval(async ({ lx }) => ({
+      terminal: typeof lx.host.terminal.settings.get,
+      fileSystem: typeof lx.fs,
+    }));
     expect(runtime.terminal).toBe('function');
     expect(runtime.fileSystem).toBe('undefined');
 
-    const themeCards = async (): Promise<Array<{ name: string; pressed: boolean }>> =>
-      settingsApp.view.eval(({ document }) => Array.from(document.querySelectorAll('button[data-theme]')).map((el) => ({
-        name: el.getAttribute('data-theme') ?? '',
-        pressed: el.getAttribute('aria-pressed') === 'true',
+    // The page lists only the schemes for the product's light or dark; light ships one built-in,
+    // so pin dark when the current slot cannot offer a second card.
+    const installed = await settingsApp.logic.eval(async ({ lx }) => (await lx.host.terminal.colorSchemes.list())
+      .map((entry) => ({
+        name: entry.name,
+        background: entry.scheme.background.toLowerCase(),
+        cursor: (entry.scheme.cursorColor ?? entry.scheme.foreground).toLowerCase(),
       })));
-
-    // The product owns light/dark; this screen only lists schemes for the
-    // active slot. Light ships one built-in, dark ships several, so pin dark
-    // when the current slot cannot offer a second card to click.
-    let cards = await themeCards();
+    const shown = async () => {
+      const cards = [];
+      for (const entry of installed) {
+        if (await settingsApp.view.testId(`scheme-${entry.name}`).count() > 0) cards.push(entry);
+      }
+      return cards;
+    };
+    let cards = await shown();
     if (cards.length < 2) {
       await app.logic.eval(async ({ lx }) => {
         await lx.host.appearance.set('dark');
         return true;
       });
       cards = await waitFor(async () => {
-        const next = await themeCards();
+        const next = await shown();
         return next.length >= 2 ? next : undefined;
       }, 'dark-slot color schemes');
     }
 
     initial = await terminal.snapshot({ surface: refs.terminal });
-    // Imported aliases can have the same palette as an unselected built-in.
-    // Choose a visibly different background: identical colors do not repaint.
-    const target = await settingsApp.view.eval(({ document }, surface) => {
-      const current = (document as unknown as ProbeDocument).createElement('span');
-      current.style.backgroundColor = surface;
-      const card = (Array.from(document.querySelectorAll('button[data-theme]')) as ProbeElement[]).find((el) =>
-        el.getAttribute('aria-pressed') !== 'true'
-        && el.style.backgroundColor !== current.style.backgroundColor);
-      return card?.dataset.theme && card.dataset.background && card.dataset.cursor ? {
-        name: card.dataset.theme,
-        background: card.dataset.background.toLowerCase(),
-        cursor: card.dataset.cursor.toLowerCase(),
-      } : null;
-    }, initial.chrome.surface);
-    if (!target) throw new Error('terminal settings did not publish a visually distinct color scheme');
+    // Identical colors do not repaint, so choose a visibly different background.
+    const target = cards.find((card) => card.background !== initial!.chrome.surface);
+    if (!target) throw new Error('terminal settings did not show a visually distinct color scheme');
     const slot = await settingsApp.logic.eval(async ({ lx }) => (await lx.host.terminal.settings.get()).effective.appearance);
 
-    // Click through the settings document: an OS pointer click can miss the
-    // aside WebView even when the card is in the page DOM.
-    const clicked = await settingsApp.view.eval(({ document }, css) => {
-      const el = document.querySelector(css) as ProbeElement | null;
-      if (!el) return { ok: false, reason: 'missing' };
-      el.scrollIntoView({ block: 'center', inline: 'nearest' });
-      el.click();
-      return {
-        ok: true,
-        saveDisabled: document.getElementById('save')?.disabled === true,
-      };
-    }, `button[data-theme="${target.name}"]`);
-    if (!clicked.ok) {
-      throw new Error(`color scheme ${target.name} was not in the settings document`);
-    }
-    await waitForSave(settingsApp, true);
-
-    const previewed = await waitFor(async () => {
-      const snapshot = await terminal.snapshot({ surface: refs.terminal });
-      // Appearance changes also bump the generation; only the selected
-      // palette proves that this click's preview reached the native terminal.
-      return snapshot.visualGeneration !== initial!.visualGeneration
-        && snapshot.chrome.surface === target.background
-        && snapshot.chrome.cursor === target.cursor
-        ? snapshot
-        : undefined;
-    }, 'native terminal preview chrome');
-    expect(previewed.configGeneration).toBe(initial.configGeneration);
-
-    await settingsApp.view.eval(({ document }) => {
-      const save = document.getElementById('save') as ProbeElement | null;
-      if (!save) throw new Error('Apply is missing');
-      save.click();
-      return true;
-    });
-    await waitForSave(settingsApp, false);
+    await settingsApp.view.testId(`scheme-${target.name}`).click();
     const applied = await waitFor(async () => {
       const snapshot = await terminal.snapshot({ surface: refs.terminal });
       const theme = snapshot.config.theme as { light?: string; dark?: string } | undefined;
@@ -286,8 +228,8 @@ test('applies a selected color scheme to native chrome before Apply', {
         ? snapshot
         : undefined;
     }, 'persisted terminal color scheme');
-    expect(applied.chrome.surface).toBe(previewed.chrome.surface);
-    expect(applied.chrome.cursor).toBe(previewed.chrome.cursor);
+    expect(applied.chrome.surface).toBe(target.background);
+    await expect(settingsApp.view.testId(`scheme-${target.name}`)).toBeChecked();
   } finally {
     await app.logic.eval(async ({ lx }, previous) => {
       if (previous !== null) await lx.host.appearance.set(previous);

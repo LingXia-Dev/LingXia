@@ -126,8 +126,7 @@ A JS-Logic lxapp that calls Rust routes is still B. B's id rule:
 | `@lingxia/native` | Virtual module for the CLI-generated native client | lxapp View (React) | `import { native } from '@lingxia/native'` |
 | `@lingxia/page-runtime` | Internal — shared impl behind react/html | **don't import directly** | — |
 
-The CLI ships `@lingxia/polyfills`; never add it. `@lingxia/terminal-settings` is
-a bundled lxapp, not an import ([`capabilities`](./app/project.md#capabilities)).
+The CLI ships `@lingxia/polyfills`; never add it.
 
 ## Reference map
 

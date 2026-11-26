@@ -54,6 +54,10 @@ browser:
   webui:
     path: browser
 
+terminal:
+  settings:
+    path: terminal-settings
+
 # Host-owned Settings chrome resolves this sealed destination on every click.
 settingsDestination:
   kind: browserControlPage
@@ -67,9 +71,6 @@ resources:
     - type: lxapp
       appId: lingxia-showcase-web
       path: ../lingxia-showcase-web
-    - type: lxapp
-      appId: app.lingxia.terminal-settings
-      path: ../../packages/lingxia-terminal-settings
 
 surfaces:
   - lxapp: lingxia-showcase

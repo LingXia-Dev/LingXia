@@ -239,6 +239,7 @@ mod tests {
             theme: None,
             settings_destination: None,
             browser: None,
+            terminal: None,
             generated_ui: None,
             surfaces: None,
             app_links: None,

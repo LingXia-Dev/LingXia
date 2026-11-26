@@ -719,6 +719,23 @@ rong::js_api! {
         /** Existing names are rejected unless overwrite is explicit. */
         overwrite?: boolean;
     }): Promise<TerminalColorSchemeDetails>;
+    /**
+     * Ask the person for a scheme file and add it, named after the file.
+     * Resolves `{ status: 'canceled' }` only when they dismiss the picker.
+     * @throws {E_INVALID_DATA} The file is not a scheme in any of the three formats, or not text.
+     * @throws {E_ALREADY_EXISTS} A scheme has that name and `overwrite` is not set.
+     * @throws {E_IO} The file could not be read, or the scheme saved.
+     * @throws {E_PERMISSION_DENIED} Outside the host's own control surface.
+     */
+    importFile(options?: {
+        /** Existing names are rejected unless overwrite is explicit. */
+        overwrite?: boolean;
+    }): Promise<{
+        /** A file was picked and its scheme saved. */
+        status: 'ok';
+        /** The saved scheme, under the file's name. */
+        scheme: TerminalColorSchemeDetails;
+    } | CanceledResult>;
     /** A controller that shows a scheme live without saving it. */
     createPreview(): TerminalPreviewController;
 }"###;

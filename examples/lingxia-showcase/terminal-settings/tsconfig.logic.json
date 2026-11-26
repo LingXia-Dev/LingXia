@@ -1,0 +1,11 @@
+{
+  "extends": "./.lingxia/tsconfig.logic.json",
+  "compilerOptions": {
+    "composite": true,
+    "emitDeclarationOnly": true,
+    "declarationDir": "./.lingxia/logic-decl",
+    "allowImportingTsExtensions": true
+  },
+  "files": ["./.lingxia/run-lingxia-gen-types.d.ts"],
+  "include": ["lxapp.ts", "pages/**/*.ts", ".lingxia/types/**/*.d.ts", ".lingxia/logic-types/**/*.d.ts"]
+}

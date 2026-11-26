@@ -42,6 +42,12 @@ struct ImportOptions {
     overwrite: Option<bool>,
 }
 
+#[derive(FromJSObject, Default)]
+#[ts_skip]
+struct ImportFileOptions {
+    overwrite: Option<bool>,
+}
+
 #[cfg(target_os = "windows")]
 #[derive(FromJSObject)]
 #[ts_skip]
@@ -296,43 +302,142 @@ async fn schemes_list(ctx: JSContext) -> JSResult<JSValue> {
 async fn schemes_import(ctx: JSContext, options: JSValue) -> JSResult<JSValue> {
     let (_, data_dir, _) = context(&ctx, LogicRoute::TerminalSchemesImport)?;
     let options = options.to_rust::<ImportOptions>()?;
-    let scheme = lingxia_terminal_config::parse_scheme(&options.text).map_err(|error| {
+    let details = import_scheme_text(
+        &data_dir,
+        &options.text,
+        options.name.as_deref(),
+        options.overwrite.unwrap_or(false),
+    )?;
+    to_js(&ctx, &details)
+}
+
+/// The scheme formats `parse_scheme` reads, for the picker's filter.
+const SCHEME_FILE_EXTENSIONS: &[&str] = &["json", "conf", "txt", "xresources", "xdefaults"];
+/// Far above any real scheme; keeps a mistaken pick from being read whole.
+const SCHEME_FILE_MAX_BYTES: u64 = 1024 * 1024;
+
+async fn schemes_import_file(
+    ctx: JSContext,
+    options: Optional<ImportFileOptions>,
+) -> JSResult<JSObject> {
+    let (app, data_dir, _) = context(&ctx, LogicRoute::TerminalSchemesImportFile)?;
+    let overwrite = options.0.unwrap_or_default().overwrite.unwrap_or(false);
+    let request = lingxia_service::file::PickFileRequest {
+        multiple: false,
+        filters: vec![lingxia_service::file::FileDialogFilter {
+            name: None,
+            extensions: SCHEME_FILE_EXTENSIONS
+                .iter()
+                .map(|ext| ext.to_string())
+                .collect(),
+        }],
+        title: None,
+        default_path: None,
+        owner: app.dialog_owner(),
+    };
+    let picker = app.clone();
+    let work = async move {
+        lingxia_service::file::pick_file(&*picker.runtime, request)
+            .await
+            .map_err(|error| crate::i18n::js_error_from_platform_error(&error))
+    };
+    let picked = crate::pick::abortable(
+        &ctx,
+        None,
+        crate::ui::owner_end(&app),
+        work,
+        lingxia_service::file::FileDialogResult::canceled,
+        |_| {},
+    )
+    .await?;
+    let Some(entry) = picked
+        .entries
+        .into_iter()
+        .next()
+        .filter(|_| !picked.canceled)
+    else {
+        return crate::dismissal::canceled(&ctx);
+    };
+    let path = PathBuf::from(entry.path.trim());
+    let name = path
+        .file_stem()
+        .and_then(|stem| stem.to_str())
+        .map(ToOwned::to_owned);
+    let text = read_scheme_file(&path)?;
+    let details = import_scheme_text(&data_dir, &text, name.as_deref(), overwrite)?;
+    let result = JSObject::new(&ctx);
+    result.set("status", "ok")?;
+    result.set("scheme", to_js(&ctx, &details)?)?;
+    Ok(result)
+}
+
+fn read_scheme_file(path: &Path) -> JSResult<String> {
+    let io_error = |error: std::io::Error| {
+        HostError::new(
+            rong::error::E_IO,
+            format!("failed to read {}: {error}", path.display()),
+        )
+    };
+    let size = std::fs::metadata(path).map_err(io_error)?.len();
+    if size > SCHEME_FILE_MAX_BYTES {
+        return Err(HostError::new(
+            rong::error::E_INVALID_DATA,
+            format!("{} is too large to be a color scheme", path.display()),
+        )
+        .into());
+    }
+    let bytes = std::fs::read(path).map_err(io_error)?;
+    String::from_utf8(bytes).map_err(|_| {
+        HostError::new(
+            rong::error::E_INVALID_DATA,
+            format!("{} is not a text file", path.display()),
+        )
+        .into()
+    })
+}
+
+fn import_scheme_text(
+    data_dir: &Path,
+    text: &str,
+    name: Option<&str>,
+    overwrite: bool,
+) -> JSResult<lingxia_terminal_config::ThemeDetails> {
+    let invalid = |error: String| {
         HostError::new(
             rong::error::E_INVALID_DATA,
             format!("invalid terminal color scheme: {error}"),
         )
-    })?;
-    scheme.to_colors().map_err(|error| {
-        HostError::new(
-            rong::error::E_INVALID_DATA,
-            format!("invalid terminal color scheme: {error}"),
-        )
-    })?;
-    let name = options
-        .name
-        .as_deref()
+    };
+    let scheme =
+        lingxia_terminal_config::parse_scheme(text).map_err(|error| invalid(error.to_string()))?;
+    scheme
+        .to_colors()
+        .map_err(|error| invalid(error.to_string()))?;
+    let name = name
         .map(str::trim)
         .filter(|name| !name.is_empty())
         .map(ToOwned::to_owned)
         .or_else(|| scheme.name.clone())
         .unwrap_or_else(|| "imported".to_string());
-    let details = lingxia_terminal_config::runtime::import_theme(
-        &data_dir,
+    lingxia_terminal_config::runtime::import_theme(
+        data_dir,
         &name,
         &scheme,
-        options.overwrite.unwrap_or(false),
+        overwrite,
         lxapp::host_appearance_dark(),
     )
-    .map_err(|error| match error {
-        lingxia_terminal_config::runtime::ThemeImportError::AlreadyExists(_) => {
-            HostError::new(rong::error::E_ALREADY_EXISTS, error.to_string())
+    .map_err(|error| {
+        match error {
+            lingxia_terminal_config::runtime::ThemeImportError::AlreadyExists(_) => {
+                HostError::new(rong::error::E_ALREADY_EXISTS, error.to_string())
+            }
+            lingxia_terminal_config::runtime::ThemeImportError::Io(_) => HostError::new(
+                rong::error::E_IO,
+                format!("failed to import terminal color scheme: {error}"),
+            ),
         }
-        lingxia_terminal_config::runtime::ThemeImportError::Io(_) => HostError::new(
-            rong::error::E_IO,
-            format!("failed to import terminal color scheme: {error}"),
-        ),
-    })?;
-    to_js(&ctx, &details)
+        .into()
+    })
 }
 
 async fn fonts_list(ctx: JSContext) -> JSResult<JSValue> {
@@ -620,6 +725,10 @@ pub(crate) fn init(ctx: &JSContext) -> JSResult<()> {
 
     schemes.set("list", JSFunc::new(ctx, schemes_list)?.name("list")?)?;
     schemes.set("import", JSFunc::new(ctx, schemes_import)?.name("import")?)?;
+    schemes.set(
+        "importFile",
+        JSFunc::new(ctx, schemes_import_file)?.name("importFile")?,
+    )?;
     schemes.set(
         "createPreview",
         JSFunc::new(ctx, create_preview)?.name("createPreview")?,

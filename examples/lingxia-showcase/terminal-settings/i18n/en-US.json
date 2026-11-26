@@ -1,0 +1,214 @@
+{
+  "app.title": {
+    "defaultMessage": "Terminal Settings",
+    "description": "Navigation bar title of the Terminal Settings app."
+  },
+  "app.unavailable": {
+    "defaultMessage": "Terminal settings are unavailable",
+    "description": "Shown in place of the page when the host has no terminal or refused to load its settings."
+  },
+  "app.unavailableHint": {
+    "defaultMessage": "This app has to be opened from the host's own Terminal Settings.",
+    "description": "Under app.unavailable: what the person can do."
+  },
+  "app.loading": {
+    "defaultMessage": "Loading terminal settings",
+    "description": "Accessible name of the loading placeholder."
+  },
+  "app.saveFailed": {
+    "defaultMessage": "Couldn't save this change. Try again.",
+    "description": "Inline error under a setting whose write failed."
+  },
+  "app.warning": {
+    "defaultMessage": "Some saved settings could not be used",
+    "description": "Title of the banner listing problems with the saved settings file; the host's sentences follow."
+  },
+  "appearance.title": {
+    "defaultMessage": "Appearance",
+    "description": "Heading of the color scheme section."
+  },
+  "appearance.scheme": {
+    "defaultMessage": "Color scheme",
+    "description": "Accessible name of the group of color scheme cards."
+  },
+  "appearance.slot": {
+    "defaultMessage": "Scheme for",
+    "description": "Names the light/dark slot switch."
+  },
+  "appearance.slot.light": {
+    "defaultMessage": "Light",
+    "description": "Slot used while the product is light."
+  },
+  "appearance.slot.dark": {
+    "defaultMessage": "Dark",
+    "description": "Slot used while the product is dark."
+  },
+  "appearance.slot.inUse": {
+    "defaultMessage": "In use now.",
+    "description": "Caption when the chosen slot is the one the terminal shows."
+  },
+  "appearance.slot.usedLight": {
+    "defaultMessage": "Used when the product is light.",
+    "description": "Caption for the light slot while dark is in use."
+  },
+  "appearance.slot.usedDark": {
+    "defaultMessage": "Used when the product is dark.",
+    "description": "Caption for the dark slot while light is in use."
+  },
+  "appearance.empty": {
+    "defaultMessage": "No schemes for this appearance yet. Import one.",
+    "description": "Shown when no scheme matches the current appearance."
+  },
+  "appearance.import": {
+    "defaultMessage": "Import…",
+    "description": "Button that opens a file picker to import a color scheme file."
+  },
+  "appearance.importName": {
+    "defaultMessage": "Import a color scheme file",
+    "description": "Accessible description of the import button."
+  },
+  "appearance.imported": {
+    "defaultMessage": "Imported {name}",
+    "description": "Toast after a scheme file was imported. name = the scheme's name."
+  },
+  "appearance.importInvalid": {
+    "defaultMessage": "That file isn't a color scheme. Use a Windows Terminal JSON scheme, or kitty or Xresources color lines.",
+    "description": "Error after importing a file that is not a scheme."
+  },
+  "appearance.importExists": {
+    "defaultMessage": "A scheme with that name is already installed.",
+    "description": "Error after importing a scheme whose name is taken."
+  },
+  "appearance.importFailed": {
+    "defaultMessage": "Couldn't import that file.",
+    "description": "Error after importing failed for another reason."
+  },
+  "appearance.builtIn": {
+    "defaultMessage": "Built in",
+    "description": "Source of a scheme that ships with the product."
+  },
+  "appearance.importedSource": {
+    "defaultMessage": "Imported",
+    "description": "Source of a scheme the user imported."
+  },
+  "appearance.card": {
+    "defaultMessage": "{name}, {source}",
+    "description": "Accessible name of a scheme card. name = scheme name, source = Built in, Imported or its author."
+  },
+  "type.title": {
+    "defaultMessage": "Type",
+    "description": "Heading of the font section."
+  },
+  "type.family": {
+    "defaultMessage": "Font family",
+    "description": "Label of the font family picker."
+  },
+  "type.familyHint": {
+    "defaultMessage": "Installed monospaced fonts.",
+    "description": "Under Font family."
+  },
+  "type.familyMissing": {
+    "defaultMessage": "{family} isn't installed, so the terminal uses {fallback}.",
+    "description": "Under Font family when the chosen font is missing. family = requested, fallback = drawn."
+  },
+  "type.size": {
+    "defaultMessage": "Size",
+    "description": "Label of the font size field."
+  },
+  "type.sizeName": {
+    "defaultMessage": "Font size",
+    "description": "Accessible name of the font size field."
+  },
+  "type.sizeUnit": {
+    "defaultMessage": "pt",
+    "description": "Unit after the font size number: points."
+  },
+  "type.sizeRange": {
+    "defaultMessage": "Between 4 and 96 pt.",
+    "description": "Error when the font size field is empty or out of range."
+  },
+  "type.smaller": {
+    "defaultMessage": "Smaller",
+    "description": "Accessible name of the font size minus stepper."
+  },
+  "type.larger": {
+    "defaultMessage": "Larger",
+    "description": "Accessible name of the font size plus stepper."
+  },
+  "type.lineHeight": {
+    "defaultMessage": "Line height",
+    "description": "Label of the line height slider."
+  },
+  "type.lineHeightHint": {
+    "defaultMessage": "Multiplier for the font's natural line height.",
+    "description": "Under Line height."
+  },
+  "type.lineHeightValue": {
+    "defaultMessage": "{value}×",
+    "description": "Line height value, e.g. 1.2×. value = the multiplier."
+  },
+  "type.ligatures": {
+    "defaultMessage": "Ligatures",
+    "description": "Label of the ligatures switch."
+  },
+  "type.ligaturesHint": {
+    "defaultMessage": "Shape sequences such as != and =>.",
+    "description": "Under Ligatures."
+  },
+  "windows.title": {
+    "defaultMessage": "Windows",
+    "description": "Heading of the Windows-only section."
+  },
+  "windows.inlineImages": {
+    "defaultMessage": "Inline images",
+    "description": "Label of the Windows inline images switch."
+  },
+  "windows.inlineImagesHint": {
+    "defaultMessage": "Download Microsoft's optional compatibility runtime so Kitty images reach the terminal unchanged. New tabs and panes use it immediately.",
+    "description": "Under Inline images."
+  },
+  "windows.downloading": {
+    "defaultMessage": "Downloading compatibility runtime",
+    "description": "Label of the runtime download progress bar."
+  },
+  "windows.downloadingAmount": {
+    "defaultMessage": "{received} of {total}",
+    "description": "Download amount, e.g. 1.2 MB of 3.4 MB."
+  },
+  "windows.megabytes": {
+    "defaultMessage": "{value} MB",
+    "description": "A size in megabytes. value = the number."
+  },
+  "windows.failed": {
+    "defaultMessage": "Couldn't change inline images. Try again.",
+    "description": "Inline error when the switch could not be changed."
+  },
+  "reset.title": {
+    "defaultMessage": "Reset everything",
+    "description": "Label of the reset row."
+  },
+  "reset.hint": {
+    "defaultMessage": "Drops every override and returns to what this product ships.",
+    "description": "Under Reset everything."
+  },
+  "reset.action": {
+    "defaultMessage": "Reset…",
+    "description": "Button that asks to reset every terminal setting."
+  },
+  "reset.confirmTitle": {
+    "defaultMessage": "Reset terminal settings?",
+    "description": "Title of the reset confirmation dialog."
+  },
+  "reset.confirmMessage": {
+    "defaultMessage": "Your font, size, line height, ligatures and color schemes go back to what this product ships. Imported schemes stay installed.",
+    "description": "Body of the reset confirmation dialog."
+  },
+  "reset.confirm": {
+    "defaultMessage": "Reset",
+    "description": "Destructive button in the reset dialog."
+  },
+  "common.cancel": {
+    "defaultMessage": "Cancel",
+    "description": "Cancel button."
+  }
+}

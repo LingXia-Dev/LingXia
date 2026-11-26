@@ -57,6 +57,7 @@ pub(crate) enum LogicRoute {
     TerminalSettingsOnChange,
     TerminalSchemesList,
     TerminalSchemesImport,
+    TerminalSchemesImportFile,
     TerminalPreviewCreate,
     TerminalPreviewShow,
     TerminalPreviewClear,
@@ -117,6 +118,7 @@ impl LogicRoute {
         Self::TerminalSettingsOnChange,
         Self::TerminalSchemesList,
         Self::TerminalSchemesImport,
+        Self::TerminalSchemesImportFile,
         Self::TerminalPreviewCreate,
         Self::TerminalPreviewShow,
         Self::TerminalPreviewClear,
@@ -189,6 +191,7 @@ impl LogicRoute {
             | Self::TerminalSettingsOnChange
             | Self::TerminalSchemesList
             | Self::TerminalSchemesImport
+            | Self::TerminalSchemesImportFile
             | Self::TerminalPreviewCreate
             | Self::TerminalPreviewShow
             | Self::TerminalPreviewClear
@@ -250,6 +253,7 @@ impl LogicRoute {
             Self::TerminalSettingsOnChange => "lx.host.terminal.settings.onChange",
             Self::TerminalSchemesList => "lx.host.terminal.colorSchemes.list",
             Self::TerminalSchemesImport => "lx.host.terminal.colorSchemes.import",
+            Self::TerminalSchemesImportFile => "lx.host.terminal.colorSchemes.importFile",
             Self::TerminalPreviewCreate => "lx.host.terminal.colorSchemes.createPreview",
             Self::TerminalPreviewShow => "lx.host.terminal.colorSchemes.preview.show",
             Self::TerminalPreviewClear => "lx.host.terminal.colorSchemes.preview.clear",
@@ -734,6 +738,23 @@ mod tests {
                 surface_route || shared || attention,
                 "{}",
                 route.name()
+            );
+        }
+    }
+
+    #[test]
+    fn importing_a_scheme_file_is_for_the_settings_surface_alone() {
+        let route = LogicRoute::TerminalSchemesImportFile;
+        for (session, class, allowed) in [
+            (61, AppSessionClass::StandardApp, false),
+            (62, AppSessionClass::ControlApp, false),
+            (63, AppSessionClass::ControlSurface, true),
+        ] {
+            let caller = app_caller("app.lingxia.terminal-settings", session, class);
+            assert_eq!(
+                authorize_caller(&caller, route).is_ok(),
+                allowed,
+                "{class:?}"
             );
         }
     }

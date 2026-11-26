@@ -58,6 +58,8 @@ impl LxLogicExtension for LxLogicRuntime {
         if terminal::owns_context(ctx)? {
             app::init_base(ctx)?;
             fs::init_download(ctx)?;
+            // Its settings screen is a GPU page whose Logic uses `page`.
+            ui::init_page(ctx)?;
             terminal::init(ctx)?;
             return Ok(());
         }

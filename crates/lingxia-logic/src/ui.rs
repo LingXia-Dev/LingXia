@@ -174,6 +174,13 @@ rong::js_api! {
     }
 }
 
+/// Only the page object's natives (navigation bar, env, refresh, video), for a context that
+/// registers no other UI.
+#[cfg(feature = "terminal")]
+pub(crate) fn init_page(ctx: &JSContext) -> JSResult<()> {
+    page::init(ctx)
+}
+
 /// Initialize UI module
 pub(crate) fn init(ctx: &JSContext) -> JSResult<()> {
     register_ui_property(ctx)?;

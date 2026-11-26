@@ -1,0 +1,161 @@
+{
+  "app.title": {
+    "defaultMessage": "终端设置"
+  },
+  "app.unavailable": {
+    "defaultMessage": "终端设置不可用"
+  },
+  "app.unavailableHint": {
+    "defaultMessage": "需要从宿主应用自带的终端设置打开。"
+  },
+  "app.loading": {
+    "defaultMessage": "正在加载终端设置"
+  },
+  "app.saveFailed": {
+    "defaultMessage": "无法保存此更改，请重试。"
+  },
+  "app.warning": {
+    "defaultMessage": "部分已保存的设置无法使用"
+  },
+  "appearance.title": {
+    "defaultMessage": "外观"
+  },
+  "appearance.scheme": {
+    "defaultMessage": "配色方案"
+  },
+  "appearance.slot": {
+    "defaultMessage": "配色用于"
+  },
+  "appearance.slot.light": {
+    "defaultMessage": "浅色"
+  },
+  "appearance.slot.dark": {
+    "defaultMessage": "深色"
+  },
+  "appearance.slot.inUse": {
+    "defaultMessage": "正在使用。"
+  },
+  "appearance.slot.usedLight": {
+    "defaultMessage": "产品为浅色时使用。"
+  },
+  "appearance.slot.usedDark": {
+    "defaultMessage": "产品为深色时使用。"
+  },
+  "appearance.empty": {
+    "defaultMessage": "此外观还没有配色方案，可导入一个。"
+  },
+  "appearance.import": {
+    "defaultMessage": "导入…"
+  },
+  "appearance.importName": {
+    "defaultMessage": "导入配色方案文件"
+  },
+  "appearance.imported": {
+    "defaultMessage": "已导入 {name}"
+  },
+  "appearance.importInvalid": {
+    "defaultMessage": "该文件不是配色方案。请使用 Windows Terminal JSON 配色，或 kitty、Xresources 颜色行。"
+  },
+  "appearance.importExists": {
+    "defaultMessage": "已安装同名的配色方案。"
+  },
+  "appearance.importFailed": {
+    "defaultMessage": "无法导入该文件。"
+  },
+  "appearance.builtIn": {
+    "defaultMessage": "内置"
+  },
+  "appearance.importedSource": {
+    "defaultMessage": "已导入"
+  },
+  "appearance.card": {
+    "defaultMessage": "{name}，{source}"
+  },
+  "type.title": {
+    "defaultMessage": "字体"
+  },
+  "type.family": {
+    "defaultMessage": "字体"
+  },
+  "type.familyHint": {
+    "defaultMessage": "本机已安装的等宽字体。"
+  },
+  "type.familyMissing": {
+    "defaultMessage": "未安装 {family}，终端正在使用 {fallback}。"
+  },
+  "type.size": {
+    "defaultMessage": "字号"
+  },
+  "type.sizeName": {
+    "defaultMessage": "字号"
+  },
+  "type.sizeUnit": {
+    "defaultMessage": "pt"
+  },
+  "type.sizeRange": {
+    "defaultMessage": "需在 4 到 96 pt 之间。"
+  },
+  "type.smaller": {
+    "defaultMessage": "减小"
+  },
+  "type.larger": {
+    "defaultMessage": "增大"
+  },
+  "type.lineHeight": {
+    "defaultMessage": "行高"
+  },
+  "type.lineHeightHint": {
+    "defaultMessage": "字体自然行高的倍数。"
+  },
+  "type.lineHeightValue": {
+    "defaultMessage": "{value}×"
+  },
+  "type.ligatures": {
+    "defaultMessage": "连字"
+  },
+  "type.ligaturesHint": {
+    "defaultMessage": "将 != 和 => 这类序列合并显示。"
+  },
+  "windows.title": {
+    "defaultMessage": "Windows"
+  },
+  "windows.inlineImages": {
+    "defaultMessage": "内联图片"
+  },
+  "windows.inlineImagesHint": {
+    "defaultMessage": "下载 Microsoft 可选兼容运行库，让 Kitty 图片完整传给终端。新标签页和面板立即生效。"
+  },
+  "windows.downloading": {
+    "defaultMessage": "正在下载兼容运行库"
+  },
+  "windows.downloadingAmount": {
+    "defaultMessage": "{received} / {total}"
+  },
+  "windows.megabytes": {
+    "defaultMessage": "{value} MB"
+  },
+  "windows.failed": {
+    "defaultMessage": "无法更改内联图片设置，请重试。"
+  },
+  "reset.title": {
+    "defaultMessage": "全部重置"
+  },
+  "reset.hint": {
+    "defaultMessage": "丢弃所有自定义，回到本产品出厂的设置。"
+  },
+  "reset.action": {
+    "defaultMessage": "重置…"
+  },
+  "reset.confirmTitle": {
+    "defaultMessage": "重置终端设置？"
+  },
+  "reset.confirmMessage": {
+    "defaultMessage": "字体、字号、行高、连字和配色方案将恢复为本产品出厂的设置。已导入的配色方案会保留。"
+  },
+  "reset.confirm": {
+    "defaultMessage": "重置"
+  },
+  "common.cancel": {
+    "defaultMessage": "取消"
+  }
+}

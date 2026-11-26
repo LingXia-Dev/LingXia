@@ -382,15 +382,12 @@ fn setup_ai_tooling(project_dir: &std::path::Path) {
 mod native_main_scaffold_tests {
     use super::types::{LxAppInfo, MainSurface, Platform, ProjectConfig};
     use super::*;
-    use crate::config::{
-        AppEnv, LingXiaConfig, ResolvedEnv, ResourceBundleConfig, ResourceBundleType,
-        ResourcesConfig,
-    };
+    use crate::config::{AppEnv, LingXiaConfig, LxappSourceConfig, ResolvedEnv, TerminalConfig};
     use crate::platform::BuildProfile;
     use crate::platform::detector::PlatformType;
 
     #[test]
-    fn windows_native_terminal_accepts_an_explicit_resource() {
+    fn windows_native_terminal_bundles_the_settings_app_it_names() {
         let temp = tempfile::tempdir().unwrap();
         let target_dir = temp.path().join("terminal-host");
         let config = ProjectConfig {
@@ -430,7 +427,7 @@ mod native_main_scaffold_tests {
         std::fs::write(
             settings_dir.join("lxapp.json"),
             r#"{
-                "appId": "com.example.settings",
+                "appId": "app.lingxia.terminal-settings",
                 "name": "Settings",
                 "version": "0.0.0",
                 "minRuntime": "0.25.0",
@@ -450,14 +447,12 @@ mod native_main_scaffold_tests {
         .unwrap();
 
         let mut host_config = LingXiaConfig::load(&target_dir).unwrap();
-        host_config.resources = Some(ResourcesConfig {
-            bundles: vec![ResourceBundleConfig {
-                bundle_type: ResourceBundleType::Lxapp,
-                app_id: "com.example.settings".to_string(),
+        host_config.terminal = Some(TerminalConfig {
+            settings: Some(LxappSourceConfig {
                 path: Some("terminal-settings-fixture".to_string()),
                 package: None,
                 version: None,
-            }],
+            }),
         });
         crate::host_assets::prepare_configured_host_assets(
             &target_dir,
@@ -504,8 +499,8 @@ mod native_main_scaffold_tests {
             [
                 "AppIcon.png",
                 "app.json",
+                "app.lingxia.terminal-settings",
                 "bridge-runtime.js",
-                "com.example.settings",
                 "icons",
                 "ui.json"
             ]

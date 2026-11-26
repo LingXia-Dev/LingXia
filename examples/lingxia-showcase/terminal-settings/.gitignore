@@ -1,0 +1,6 @@
+/dist/
+/.lingxia/
+/node_modules/
+# Skills from npm dependencies
+/.agents/skills/liuli/
+/.claude/skills/liuli

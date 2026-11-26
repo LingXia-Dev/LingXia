@@ -9,7 +9,7 @@ usage() {
 Release LingXia npm packages.
 
 Usage:
-  scripts/release/npm.sh [--package bridge|elements|react|html|page-runtime|polyfills|terminal-settings|types|logic|test|all] [--publish] [--dry-run]
+  scripts/release/npm.sh [--package bridge|elements|react|html|page-runtime|polyfills|types|logic|test|all] [--publish] [--dry-run]
 
 Options:
   --package <name>  Package set to process (default: all)
@@ -45,9 +45,8 @@ if [[ "$PUBLISH" -eq 0 && "$DRY_RUN" -eq 0 ]]; then
   DRY_RUN=1
 fi
 
-# Tier 1, then framework in dep order (bridge → elements/page-runtime → html/react),
-# then prebuilt lxapps.
-ALL_TARGETS=("bridge" "polyfills" "types" "logic" "test" "elements" "page-runtime" "html" "react" "terminal-settings")
+# Tier 1, then framework in dep order (bridge → elements/page-runtime → html/react).
+ALL_TARGETS=("bridge" "polyfills" "types" "logic" "test" "elements" "page-runtime" "html" "react")
 
 case "$PACKAGE_SET" in
   bridge) targets=("bridge") ;;
@@ -56,7 +55,6 @@ case "$PACKAGE_SET" in
   html) targets=("html") ;;
   page-runtime) targets=("page-runtime") ;;
   polyfills) targets=("polyfills") ;;
-  terminal-settings) targets=("terminal-settings") ;;
   types) targets=("types") ;;
   logic) targets=("logic") ;;
   test) targets=("test") ;;
@@ -72,7 +70,6 @@ pkg_dir() {
     html) echo "$ROOT_DIR/packages/lingxia-html" ;;
     page-runtime) echo "$ROOT_DIR/packages/lingxia-page-runtime" ;;
     polyfills) echo "$ROOT_DIR/packages/lingxia-polyfills" ;;
-    terminal-settings) echo "$ROOT_DIR/packages/lingxia-terminal-settings" ;;
     types) echo "$ROOT_DIR/packages/lingxia-types" ;;
     logic) echo "$ROOT_DIR/packages/lingxia-logic" ;;
     test) echo "$ROOT_DIR/packages/lingxia-test" ;;
@@ -137,7 +134,6 @@ pkg_target_for_name() {
     @lingxia/page-runtime) echo "page-runtime" ;;
     @lingxia/html) echo "html" ;;
     @lingxia/react) echo "react" ;;
-    @lingxia/terminal-settings) echo "terminal-settings" ;;
     *) return 1 ;;
   esac
 }
@@ -158,7 +154,6 @@ const dirOf = {
   "page-runtime": "packages/lingxia-page-runtime",
   html: "packages/lingxia-html",
   react: "packages/lingxia-react",
-  "terminal-settings": "packages/lingxia-terminal-settings",
 };
 const nameOf = {};
 for (const target of targets) {
@@ -250,9 +245,7 @@ fi
 
 # Install the packages/ workspace before building any member. Members carry no
 # lockfile of their own: their dev tooling is hoisted to packages/node_modules,
-# and the in-repo @lingxia/* links live there too. A member installed on its
-# own therefore still cannot build -- lingxia-terminal-settings runs the CLI,
-# whose build.rs resolves rolldown from this workspace.
+# and the in-repo @lingxia/* links live there too.
 install_packages_workspace() {
   local workspace="$ROOT_DIR/packages"
   [[ -f "$workspace/package.json" ]] || return 0

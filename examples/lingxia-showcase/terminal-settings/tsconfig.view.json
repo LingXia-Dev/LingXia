@@ -1,0 +1,12 @@
+{
+  "extends": "./.lingxia/tsconfig.view.json",
+  "compilerOptions": {
+    "composite": true,
+    "noEmit": true,
+    "allowImportingTsExtensions": true,
+    "paths": { "@lingxia/view": ["../../../packages/lingxia-view/src/index.d.ts"] }
+  },
+  "files": ["./.lingxia/run-lingxia-gen-types.d.ts"],
+  "include": ["pages/**/*.tsx", ".lingxia/types/**/*.d.ts", ".lingxia/types/**/$types.ts"],
+  "references": [{ "path": "./tsconfig.logic.json" }]
+}

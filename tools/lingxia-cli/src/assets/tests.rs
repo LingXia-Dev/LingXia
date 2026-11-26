@@ -48,6 +48,7 @@ fn lingxia_id_is_not_suffixed_by_env() {
         theme: None,
         settings_destination: None,
         browser: None,
+        terminal: None,
         generated_ui: None,
         surfaces: None,
         app_links: None,
@@ -167,7 +168,7 @@ fn browser_system_pages_follow_the_declared_webui() {
     };
     config.browser = Some(browser.clone());
     assert!(!system_pages(&config));
-    browser.webui = Some(crate::config::BrowserWebUiConfig {
+    browser.webui = Some(crate::config::LxappSourceConfig {
         path: Some("./browser".to_string()),
         package: None,
         version: None,
@@ -347,6 +348,7 @@ fn generated_app_json_excludes_ui_fields() {
         theme: None,
         settings_destination: None,
         browser: None,
+        terminal: None,
         generated_ui: Some(serde_json::json!({
             "launch": { "initialSurface": "main" },
             "surfaces": [],
@@ -451,6 +453,7 @@ fn generated_app_json_includes_dev_ws_url_when_configured() {
         theme: None,
         settings_destination: None,
         browser: None,
+        terminal: None,
         generated_ui: None,
         surfaces: None,
         app_links: None,
@@ -508,6 +511,7 @@ fn generated_app_json_includes_app_link_hosts() {
         theme: None,
         settings_destination: None,
         browser: None,
+        terminal: None,
         generated_ui: None,
         surfaces: None,
         app_links: Some(AppLinksConfig {
@@ -559,6 +563,7 @@ fn generated_app_json_selects_per_env_app_link_hosts() {
         theme: None,
         settings_destination: None,
         browser: None,
+        terminal: None,
         generated_ui: None,
         surfaces: None,
         app_links: Some(AppLinksConfig {
@@ -633,6 +638,7 @@ fn generated_app_json_keeps_both_lingxia_servers() {
         theme: None,
         settings_destination: None,
         browser: None,
+        terminal: None,
         generated_ui: None,
         surfaces: None,
         app_links: None,
@@ -698,6 +704,7 @@ fn generated_app_json_includes_capabilities() {
         theme: None,
         settings_destination: None,
         browser: None,
+        terminal: None,
         generated_ui: None,
         surfaces: None,
         app_links: None,
@@ -761,6 +768,7 @@ fn generated_ui_json_preserves_generated_ui_config() {
         theme: None,
         settings_destination: None,
         browser: None,
+        terminal: None,
         generated_ui: Some(ui.clone()),
         surfaces: None,
         app_links: None,
@@ -809,6 +817,7 @@ fn generated_ui_json_rewrites_app_ui_icons() {
         theme: None,
         settings_destination: None,
         browser: None,
+        terminal: None,
         generated_ui: Some(ui),
         surfaces: None,
         app_links: None,
@@ -863,6 +872,7 @@ fn generated_windows_ui_json_rewrites_app_ui_icons_to_png() {
         theme: None,
         settings_destination: None,
         browser: None,
+        terminal: None,
         generated_ui: Some(ui),
         surfaces: None,
         app_links: None,
@@ -1004,6 +1014,7 @@ fn generated_ui_json_rejects_terminal_when_capability_disabled() {
         theme: None,
         settings_destination: None,
         browser: None,
+        terminal: None,
         generated_ui: Some(serde_json::json!({
             "launch": { "initialSurface": "main" },
             "surfaces": [{
@@ -1048,6 +1059,7 @@ fn generated_ui_json_prunes_surfaces_for_target_platform() {
         theme: None,
         settings_destination: None,
         browser: None,
+        terminal: None,
         generated_ui: Some(serde_json::json!({
             "launch": { "initialSurface": "main" },
             "surfaces": [{
@@ -1121,6 +1133,7 @@ fn app_ui_icon_preparation_requires_svg() {
         theme: None,
         settings_destination: None,
         browser: None,
+        terminal: None,
         generated_ui: Some(serde_json::json!({
             "launch": { "initialSurface": "main" },
             "surfaces": [],

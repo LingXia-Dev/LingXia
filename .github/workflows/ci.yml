@@ -211,7 +211,7 @@ jobs:
               - 'tools/lingxia-devtools-cli/**'
               - 'packages/lingxia-bridge/**'
               - 'packages/lingxia-polyfills/**'
-              - 'packages/lingxia-terminal-settings/**'
+              - 'examples/lingxia-showcase/terminal-settings/**'
               - 'i18n/**'
               - '.github/actions/build-web-packages/**'
             automation_macos:
@@ -1737,13 +1737,13 @@ jobs:
         working-directory: packages
         run: npm run test:types --workspace @lingxia/react
 
-      # Its lxapp bundle builds through the CLI (`build:lxapp`), which the
-      # showcase host build covers; only its JS checks run here.
-      - name: Check terminal settings themes and i18n
-        working-directory: packages
+      # The showcase host build bundles it; only its JS checks run here.
+      - name: Check the showcase Terminal Settings themes and Logic
+        working-directory: examples/lingxia-showcase/terminal-settings
         run: |
-          npm run check:themes --workspace @lingxia/terminal-settings
-          npm test --workspace @lingxia/terminal-settings
+          npm ci
+          npm run check:themes
+          npm test
 
       # A page mounts once its first state arrives; the page hooks read it.
       - name: Test the page runtime and page hooks

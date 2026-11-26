@@ -42,6 +42,8 @@ pub struct LingXiaConfig {
     pub settings_destination: Option<SettingsDestination>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub browser: Option<BrowserConfig>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub terminal: Option<TerminalConfig>,
     /// Generated UI structure (`ui.json`). Built from `surfaces` at load time;
     /// never authored directly.
     #[serde(skip)]
@@ -214,12 +216,21 @@ pub struct BrowserConfig {
     #[serde(default = "default_true")]
     pub bookmarks: bool,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub webui: Option<BrowserWebUiConfig>,
+    pub webui: Option<LxappSourceConfig>,
 }
 
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct TerminalConfig {
+    /// The `app.lingxia.terminal-settings` lxapp; without it the host has no settings screen.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub settings: Option<LxappSourceConfig>,
+}
+
+/// Where a host-supplied system lxapp comes from: a project-relative `path`, or a prebuilt npm `package`.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct BrowserWebUiConfig {
+pub struct LxappSourceConfig {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub path: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -2116,6 +2127,7 @@ impl LingXiaConfig {
             theme: None,
             settings_destination: None,
             browser: None,
+            terminal: None,
             generated_ui: None,
             surfaces: None,
             app_links: None,
@@ -2341,11 +2353,17 @@ impl LingXiaConfig {
                 if app_id.is_empty() {
                     return Err(anyhow!("resources.bundles[].appId must not be empty"));
                 }
-                if is_resource_forbidden_app_id(app_id) {
+                if let Some(system) = crate::host_assets::system_lxapp(app_id) {
+                    let key = system.key;
                     return Err(anyhow!(
                         "resources.bundles[{app_id}] uses an SDK-reserved appId. \
-                         Customize it with `browser.webui.path` (or `browser.webui.package`) \
+                         Supply it with `{key}.path` (or `{key}.package`) \
                          instead of declaring `{app_id}` as a resource bundle."
+                    ));
+                }
+                if is_resource_forbidden_app_id(app_id) {
+                    return Err(anyhow!(
+                        "resources.bundles[{app_id}] uses an SDK-reserved appId"
                     ));
                 }
                 // Bundles land in the asset root as a directory named by
@@ -2386,35 +2404,16 @@ impl LingXiaConfig {
                 }
             }
         }
-        if let Some(webui) = self
+        let browser_webui = self
             .browser
             .as_ref()
-            .and_then(|browser| browser.webui.as_ref())
-        {
-            let has_path = webui
-                .path
-                .as_deref()
-                .map(str::trim)
-                .is_some_and(|value| !value.is_empty());
-            let has_package = webui
-                .package
-                .as_deref()
-                .map(str::trim)
-                .is_some_and(|value| !value.is_empty());
-            if has_path && has_package {
-                return Err(anyhow!(
-                    "browser.webui must use either path or package, not both"
-                ));
-            }
-            if webui
-                .version
-                .as_deref()
-                .map(str::trim)
-                .is_some_and(|value| value.is_empty())
-            {
-                return Err(anyhow!("browser.webui.version must not be empty"));
-            }
-        }
+            .and_then(|browser| browser.webui.as_ref());
+        validate_lxapp_source("browser.webui", browser_webui)?;
+        let terminal_settings = self
+            .terminal
+            .as_ref()
+            .and_then(|terminal| terminal.settings.as_ref());
+        validate_lxapp_source("terminal.settings", terminal_settings)?;
         if let Some(ui) = &self.generated_ui
             && !ui.is_object()
         {
@@ -2477,11 +2476,37 @@ fn optional_non_empty_str(value: Option<&Value>) -> Option<String> {
 ///
 /// Source of truth for each entry (kept in sync manually to avoid pulling the
 /// full browser runtime into the CLI build):
-/// - `crate::host_assets::BROWSER_SHELL_WEBUI_APP_ID` mirrors `lingxia_browser::BUILTIN_BROWSER_APPID`.
+/// - the browser webui's id mirrors `lingxia_browser::BUILTIN_BROWSER_APPID`;
+/// - the terminal settings' id mirrors `lingxia_terminal_config::SETTINGS_APP_ID`.
 const RESOURCE_FORBIDDEN_APP_IDS: &[&str] = &[
-    crate::host_assets::BROWSER_SHELL_WEBUI_APP_ID,
+    crate::host_assets::BROWSER_WEBUI.app_id,
+    crate::host_assets::TERMINAL_SETTINGS.app_id,
     "app.lingxia.host-surface-owner",
 ];
+
+fn validate_lxapp_source(key: &str, source: Option<&LxappSourceConfig>) -> Result<()> {
+    let Some(source) = source else {
+        return Ok(());
+    };
+    let set = |value: &Option<String>| {
+        value
+            .as_deref()
+            .map(str::trim)
+            .is_some_and(|v| !v.is_empty())
+    };
+    if set(&source.path) && set(&source.package) {
+        return Err(anyhow!("{key} must use either path or package, not both"));
+    }
+    if source
+        .version
+        .as_deref()
+        .map(str::trim)
+        .is_some_and(str::is_empty)
+    {
+        return Err(anyhow!("{key}.version must not be empty"));
+    }
+    Ok(())
+}
 
 fn is_resource_forbidden_app_id(app_id: &str) -> bool {
     RESOURCE_FORBIDDEN_APP_IDS.contains(&app_id)
@@ -3443,7 +3468,7 @@ android: {}
         config.browser = Some(BrowserConfig {
             platforms: Vec::new(),
             bookmarks: true,
-            webui: Some(BrowserWebUiConfig {
+            webui: Some(LxappSourceConfig {
                 path: Some("./browser".to_string()),
                 package: None,
                 version: None,
@@ -3530,6 +3555,44 @@ route: /wrong
         assert!(
             msg.contains("app.lingxia.browser") && msg.contains("browser.webui"),
             "error must point at the new customization API; got: {msg}"
+        );
+    }
+
+    #[test]
+    fn terminal_settings_app_id_is_supplied_through_its_own_key() {
+        let mut config = LingXiaConfig::new_android("my-app", "com.example.myapp", "my-app");
+        config
+            .resources
+            .as_mut()
+            .unwrap()
+            .bundles
+            .push(ResourceBundleConfig {
+                bundle_type: ResourceBundleType::Lxapp,
+                app_id: "app.lingxia.terminal-settings".to_string(),
+                path: Some("terminal-settings".to_string()),
+                package: None,
+                version: None,
+            });
+        let msg = config.validate().unwrap_err().to_string();
+        assert!(msg.contains("terminal.settings.path"), "{msg}");
+    }
+
+    #[test]
+    fn terminal_settings_takes_one_source() {
+        let parsed: TerminalConfig =
+            serde_yaml_ng::from_str("settings: { path: terminal-settings }").unwrap();
+        assert_eq!(
+            parsed.settings.unwrap().path.as_deref(),
+            Some("terminal-settings")
+        );
+
+        let mut config = LingXiaConfig::new_android("my-app", "com.example.myapp", "my-app");
+        config.terminal =
+            Some(serde_yaml_ng::from_str("settings: { path: a, package: b }").unwrap());
+        let msg = config.validate().unwrap_err().to_string();
+        assert!(
+            msg.contains("terminal.settings must use either path or package"),
+            "{msg}"
         );
     }
 

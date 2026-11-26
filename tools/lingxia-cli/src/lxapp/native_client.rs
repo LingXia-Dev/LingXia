@@ -63,7 +63,7 @@ fn clear(out: &Path) -> Result<()> {
 /// First-party lxapps and the framework crate serving their routes, relative to the repo root.
 /// These win over the walk: a showcase bundles them under its own `lingxia.yaml`.
 const FIRST_PARTY_ROUTES: &[(&str, &str)] = &[(
-    crate::host_assets::BROWSER_SHELL_WEBUI_APP_ID,
+    crate::host_assets::BROWSER_WEBUI.app_id,
     "crates/lingxia-browser-shell",
 )];
 
@@ -235,7 +235,7 @@ mod tests {
         write(root, "examples/showcase/native/src/lib.rs", ROUTE);
         let browser = format!(
             "{{\"appId\": \"{}\"}}",
-            crate::host_assets::BROWSER_SHELL_WEBUI_APP_ID
+            crate::host_assets::BROWSER_WEBUI.app_id
         );
         write(root, "examples/showcase/browser/lxapp.json", &browser);
 

@@ -331,8 +331,8 @@ manifests = (
     sorted(root.glob("examples/*/lxapp.json"))
     + sorted(root.glob("examples/*/lxapp/lxapp.json"))
     + sorted(root.glob("examples/*/browser/lxapp.json"))
-    # Built-in lxapps ship inside the SDK of the same line.
-    + [root / "packages/lingxia-terminal-settings/lxapp.json"]
+    # The terminal settings lxapp the showcase bundles.
+    + [root / "examples/lingxia-showcase/terminal-settings/lxapp.json"]
 )
 pattern = re.compile(r'("minRuntime"\s*:\s*")([^"]+)(")')
 for manifest in manifests:

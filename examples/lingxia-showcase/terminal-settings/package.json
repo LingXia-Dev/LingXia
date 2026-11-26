@@ -1,0 +1,22 @@
+{
+  "name": "lingxia-showcase-terminal-settings",
+  "private": true,
+  "type": "module",
+  "description": "The showcase's demo Terminal Settings lxapp (GPU View + JS Logic)",
+  "scripts": {
+    "build": "lingxia build",
+    "typecheck": "lingxia check",
+    "check:themes": "node --experimental-strip-types scripts/check-themes.mjs",
+    "test": "node --experimental-strip-types --test tests/*.test.ts"
+  },
+  "dependencies": {
+    "@lingxia/view": "file:../../../packages/lingxia-view",
+    "@liulidesign/core": "file:../../../packages/liuli/core"
+  },
+  "devDependencies": {
+    "@lingxia/logic": "file:../../../packages/lingxia-logic",
+    "@lingxia/types": "file:../../../packages/lingxia-types",
+    "typescript": "^5.7.2"
+  },
+  "license": "MIT"
+}

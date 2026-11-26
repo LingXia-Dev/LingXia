@@ -503,6 +503,11 @@ fn write_info(m: &Match, out: &mut dyn Write) -> Result<()> {
         for prop in required.into_iter().chain(optional) {
             writeln!(out, "  {}", prop_line(prop))?;
         }
+        if m.sub_part.is_none() {
+            for choice in array(m.entry.get("choices")) {
+                writeln!(out, "  {}", choice_line(choice))?;
+            }
+        }
     }
     if m.sub_part.is_none() {
         let mut parts: Vec<String> = strings(m.entry, "exports")
@@ -543,6 +548,22 @@ fn array(value: Option<&Value>) -> Vec<&Value> {
 
 /// `name?: Type ('a' | 'b') = default — description`; `values` (a string-literal union the
 /// catalogue spelled out) is shown when the type is only an alias.
+/// Props that exclude each other, as the catalogue groups them: "`bind` | `value` + `onChange`: props from one side only".
+fn choice_line(choice: &Value) -> String {
+    let sides: Vec<String> = array(Some(choice))
+        .into_iter()
+        .map(|side| {
+            array(Some(side))
+                .into_iter()
+                .filter_map(Value::as_str)
+                .map(|name| format!("`{name}`"))
+                .collect::<Vec<_>>()
+                .join(" + ")
+        })
+        .collect();
+    format!("{}: props from one side only", sides.join(" | "))
+}
+
 fn prop_line(prop: &Value) -> String {
     let required = prop
         .get("required")
@@ -628,7 +649,7 @@ mod tests {
        "props":[
          {"name":"variant","type":"ButtonVariant","required":false,"description":"Emphasis.","default":"'secondary'","values":["primary","secondary"]},
          {"name":"label","type":"string","required":true,"description":"The visible text."}
-       ],"related":["IconButton"]},
+       ],"choices":[[["onClick","clickAction"],["to"]]],"related":["IconButton"]},
       {"name":"Item","import":"@kit/core/Item","exports":["Item","ItemList"],
        "summary":"A row with a title, a value and a status","description":"A list row.",
        "keywords":["row","list item","status"],
@@ -758,6 +779,10 @@ mod tests {
         assert_eq!(
             lines[variant],
             "  variant?: ButtonVariant ('primary' | 'secondary') = 'secondary' — Emphasis."
+        );
+        assert!(
+            out.contains("  `onClick` + `clickAction` | `to`: props from one side only\n"),
+            "{out}"
         );
         assert!(out.contains("related: IconButton\n"));
         assert!(

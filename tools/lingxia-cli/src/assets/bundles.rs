@@ -1,10 +1,8 @@
-use super::browser_shell_webui::{
-    APP_ID as BROWSER_SHELL_WEBUI_APP_ID, resolve_browser_shell_webui_dir,
-};
 use super::cache::{HostAssetsCache, LxAppBuildStamp};
 use super::embed_cache::EmbedCache;
 use super::hash::{hash_tree, path_key, sha256_hex};
 use super::lxapp_package::resolve_lxapp_package;
+use super::system_lxapps::{SystemLxapp, resolve_system_lxapp};
 use crate::config::{
     HOST_CONFIG_FILE, LXAPP_BUILD_CONFIG_FILE, LingXiaConfig, ResourceBundleConfig,
 };
@@ -113,7 +111,7 @@ pub(super) fn prepare_resource_lxapp_bundles(
     let mut bundles = Vec::new();
     for bundle in &resources.bundles {
         // home_app_id is staged by `prepare_home_app_bundle`. SDK-reserved appIds
-        // (e.g. `BROWSER_SHELL_WEBUI_APP_ID`) are rejected by `LingXiaConfig::validate`.
+        // (e.g. `BROWSER_WEBUI.app_id`) are rejected by `LingXiaConfig::validate`.
         if bundle.app_id == home_app_id {
             continue;
         }
@@ -325,24 +323,28 @@ fn prepare_lxapp_bundle_dir(
     prepare_lxapp_plan(plan, build_profile, progress_override, cache_kind, cache)
 }
 
-pub(super) fn prepare_browser_shell_webui_bundle(
+/// Builds the host's copy of a system lxapp, or `None` when it configures none.
+pub(super) fn prepare_system_lxapp_bundle(
+    system: &SystemLxapp,
     project_root: &Path,
     config: &LingXiaConfig,
     build_profile: BuildProfile,
     dev: bool,
     cache: &mut HostAssetsCache,
-) -> Result<PreparedResourceBundle> {
-    // Customization goes through `browser.webui.path` / `browser.webui.package`.
-    let source = resolve_browser_shell_webui_dir(project_root, config)?;
+) -> Result<Option<PreparedResourceBundle>> {
+    let Some(source) = resolve_system_lxapp(system, project_root, config)? else {
+        return Ok(None);
+    };
     let lxapp_json = source.bundle_dir.join("lxapp.json");
     if !lxapp_json.exists() {
         return Err(anyhow!(
-            "Configured browser.webui path must contain lxapp.json: {}",
+            "Configured {} must contain lxapp.json: {}",
+            system.key,
             source.bundle_dir.display()
         ));
     }
     let metadata = read_lxapp_metadata(&lxapp_json)?;
-    validate_browser_webui_metadata(&metadata, &lxapp_json)?;
+    validate_system_lxapp_metadata(system, &metadata, &lxapp_json)?;
 
     let plan = ResourceBundlePlan {
         bundle_dir: source.bundle_dir,
@@ -357,17 +359,18 @@ pub(super) fn prepare_browser_shell_webui_bundle(
         embed_cache: None,
     };
 
-    let bundle = prepare_lxapp_plan(plan, build_profile, None, "browser-shell-webui", cache)?;
+    let bundle = prepare_lxapp_plan(plan, build_profile, None, system.kind, cache)?;
     let manifest = bundle.dist_dir.join("lxapp.json");
     if !manifest.is_file() {
         return Err(anyhow!(
-            "browser-shell requires browser webui build output manifest: {}",
+            "{} build output has no manifest: {}",
+            system.key,
             manifest.display()
         ));
     }
     let built_metadata = read_lxapp_metadata(&manifest)?;
-    validate_browser_webui_metadata(&built_metadata, &manifest)?;
-    Ok(bundle)
+    validate_system_lxapp_metadata(system, &built_metadata, &manifest)?;
+    Ok(Some(bundle))
 }
 
 fn prepare_lxapp_plan(
@@ -520,11 +523,16 @@ fn read_lxapp_metadata(path: &Path) -> Result<LxAppMetadata> {
     })
 }
 
-fn validate_browser_webui_metadata(metadata: &LxAppMetadata, path: &Path) -> Result<()> {
-    if metadata.app_id != BROWSER_SHELL_WEBUI_APP_ID {
+fn validate_system_lxapp_metadata(
+    system: &SystemLxapp,
+    metadata: &LxAppMetadata,
+    path: &Path,
+) -> Result<()> {
+    if metadata.app_id != system.app_id {
         return Err(anyhow!(
-            "browser.webui appId must be '{}', got '{}' in {}",
-            BROWSER_SHELL_WEBUI_APP_ID,
+            "{} appId must be '{}', got '{}' in {}",
+            system.key,
+            system.app_id,
             metadata.app_id,
             path.display()
         ));
@@ -732,16 +740,24 @@ mod tests {
     }
 
     #[test]
-    fn browser_webui_manifest_requires_the_reserved_app_id() {
+    fn system_lxapp_manifests_require_their_reserved_app_id() {
         let temp = tempfile::tempdir().unwrap();
         let manifest = temp.path().join("lxapp.json");
         fs::write(&manifest, r#"{"appId":"example.fake","version":"1.2.3"}"#).unwrap();
 
         let metadata = read_lxapp_metadata(&manifest).unwrap();
-        let error = validate_browser_webui_metadata(&metadata, &manifest)
-            .unwrap_err()
-            .to_string();
-        assert!(error.contains(BROWSER_SHELL_WEBUI_APP_ID), "{error}");
+        for system in [
+            &super::super::system_lxapps::BROWSER_WEBUI,
+            &super::super::system_lxapps::TERMINAL_SETTINGS,
+        ] {
+            let error = validate_system_lxapp_metadata(system, &metadata, &manifest)
+                .unwrap_err()
+                .to_string();
+            assert!(
+                error.contains(system.app_id) && error.contains(system.key),
+                "{error}"
+            );
+        }
     }
 
     #[cfg(unix)]

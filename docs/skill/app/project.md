@@ -75,6 +75,7 @@ surfaces:
 | [`splash`](#splash) | Optional | Launch screen |
 | [`assets`](#assets) | Optional | Raw host files |
 | [`browser`](#browser) | Optional | In-app browser preferences and webui |
+| [`terminal`](#terminal) | Conditional | The terminal's settings lxapp |
 | `appLinks` | Optional | [App link hosts](./applinks.md#applinkshosts) |
 | [`storage`](#storage) | Recommended | Temp/cache/data size limits |
 | [`update`](#update) | Optional | In-app update keys and channel |
@@ -249,9 +250,8 @@ permission when called and need no entry here.
 - `notifications` — `lx.host.notification`
   and, on iOS/Harmony, push tokens. Declaring never prompts.
 - `browser` — the in-app browser; see [`browser`](#browser).
-- `terminal` — the built-in terminal (desktop); required by `native: terminal`. Also
-  bundle its Settings screen: a `resources.bundles` entry with `appId:
-  app.lingxia.terminal-settings` and `package: '@lingxia/terminal-settings'`.
+- `terminal` — the built-in terminal (desktop); required by `native: terminal` and by
+  [`terminal`](#terminal).
 - `proxy` — the in-app browser's HTTP proxy (desktop); requires `browser`.
 - `autostart` — `lx.host.autostart` (macOS/Windows, Control app). Declaring
   never registers the app.
@@ -280,6 +280,20 @@ browser:
 ```
 
 `homeAppId` is the product control app, never the browser UI.
+
+## `terminal`
+
+Required with `capabilities.terminal: true`. `settings` is the terminal's settings
+lxapp, appId `app.lingxia.terminal-settings`, the only lxapp that may call
+`lx.host.terminal`. The host supplies it as a `path:` or a `package:` (optional
+`version:`), as `browser.webui`; LingXia ships none. The showcase's
+`terminal-settings/` is a demo to start from.
+
+```yaml
+terminal:
+  settings:
+    path: terminal-settings
+```
 
 ## `resources`
 

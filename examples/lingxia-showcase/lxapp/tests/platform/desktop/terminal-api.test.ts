@@ -98,26 +98,16 @@ test('read, revise, reset, and preview terminal settings inside the bundled sett
   });
 
   await t.step('the ControlSurface follows host language updates', async () => {
-    // The heading exists only in the settings document itself, not in the
-    // blank document a WebView shows before its first navigation commits.
     const settings = await terminal.page({ name: 'settings' }, { timeout: 30_000 });
-    await settings.view.css('#type-heading').first().waitFor({ state: 'visible', timeout: 30_000 });
+    await expect(settings.view.testId('settings-type')).toBeVisible({ timeout: 30_000 });
     const preference = await app.logic.eval(({ lx }) => lx.host.displayLanguage.get());
     try {
       for (const language of ['zh-CN', 'en-US']) {
         await app.logic.eval(async ({ lx }, language) => {
           await lx.host.displayLanguage.set(language);
         }, language);
-        await eventually(
-          // The bridge also writes the HTML language tag. Check translated
-          // content to prove the screen re-rendered, not just that the
-          // document was stamped.
-          () => settings.view.eval(({ document }) => (
-            document.querySelector('#type-heading')?.textContent
-          )),
-          (heading) => heading === (language === 'zh-CN' ? '字体' : 'Type'),
-          { describe: `terminal settings to render ${language}`, timeoutMs: 10_000 },
-        );
+        const heading = language === 'zh-CN' ? '字体' : 'Type';
+        await expect(settings.view.getByRole('heading', { name: heading })).toBeVisible({ timeout: 10_000 });
       }
     } finally {
       await app.logic.eval(async ({ lx }, preference) => {

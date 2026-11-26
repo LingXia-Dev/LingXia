@@ -1,14 +1,17 @@
 {
   "appId": "app.lingxia.terminal-settings",
-  "name": "Terminal Settings",
-  "version": "0.12.0",
+  "appName": "Terminal Settings",
+  "version": "1.0.0",
   "minRuntime": "0.30.0",
-  "framework": "html",
+  "languages": [
+    "en-US",
+    "zh-CN"
+  ],
   "logic": true,
   "pages": [
     {
       "name": "settings",
-      "path": "pages/settings/index.html"
+      "path": "pages/settings/index"
     }
   ]
 }

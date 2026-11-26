@@ -4,7 +4,7 @@ use crate::runtime;
 use anyhow::{Result, anyhow};
 pub(crate) use bundles::resolve_home_bundle_dir;
 use bundles::{
-    prepare_browser_shell_webui_bundle, prepare_home_app_bundle, prepare_resource_lxapp_bundles,
+    prepare_home_app_bundle, prepare_resource_lxapp_bundles, prepare_system_lxapp_bundle,
 };
 use cache::HostAssetsCache;
 pub(crate) use clean::clean_configured_host_assets;
@@ -26,8 +26,6 @@ use runtime_asset::{prepare_polyfills_es5_asset, prepare_runtime_asset};
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 
-#[path = "assets/browser_shell_webui.rs"]
-mod browser_shell_webui;
 #[path = "assets/bundles.rs"]
 mod bundles;
 #[path = "assets/cache.rs"]
@@ -48,7 +46,9 @@ mod json;
 mod lxapp_package;
 #[path = "assets/runtime.rs"]
 mod runtime_asset;
-pub(crate) use browser_shell_webui::APP_ID as BROWSER_SHELL_WEBUI_APP_ID;
+#[path = "assets/system_lxapps.rs"]
+mod system_lxapps;
+pub(crate) use system_lxapps::{BROWSER_WEBUI, TERMINAL_SETTINGS, system_lxapp};
 #[path = "assets/sync.rs"]
 mod sync;
 #[cfg(test)]
@@ -56,6 +56,18 @@ mod sync;
 mod tests;
 #[path = "assets/ui.rs"]
 mod ui;
+
+// There is no default: the CLI ships no webui, so a host enabling the browser names its own.
+fn missing_browser_webui() -> anyhow::Error {
+    anyhow!(
+        "capabilities.browser is on, but browser.webui is not set.\n\n\
+         The webui holds the browser's system pages — bookmarks, history, downloads, settings — so \
+         every host that ships a browser owns its own. Point the host at \
+         it:\n\n  \
+         browser:\n    webui:\n      path: <your webui lxapp>\n\n\
+         `browser.webui.package`/`version` takes one you publish yourself."
+    )
+}
 
 pub(crate) fn prepare_windows_design_icon_assets(assets_root: &Path) -> Result<()> {
     let icons = icons::prepare_embedded_windows_design_icons();
@@ -224,13 +236,29 @@ pub(crate) fn prepare_configured_host_assets(
             .iter()
             .any(|platform| config.browser_enabled_for(platform.as_str()))
     {
-        common_bundles.push(prepare_browser_shell_webui_bundle(
+        let webui = prepare_system_lxapp_bundle(
+            &BROWSER_WEBUI,
             project_root,
             config,
             build_profile,
             dev,
             &mut cache,
-        )?);
+        )?;
+        common_bundles.push(webui.ok_or_else(missing_browser_webui)?);
+    }
+    if platforms
+        .iter()
+        .any(|platform| config.terminal_enabled(platform.as_str()))
+        && let Some(settings) = prepare_system_lxapp_bundle(
+            &TERMINAL_SETTINGS,
+            project_root,
+            config,
+            build_profile,
+            dev,
+            &mut cache,
+        )?
+    {
+        common_bundles.push(settings);
     }
     let prepared_app_ui_icons = prepare_app_ui_icons(project_root, config)?;
 
