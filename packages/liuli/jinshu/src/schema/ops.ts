@@ -50,6 +50,7 @@ import type {
   ParagraphBlock,
   Position,
   Problem,
+  TableAlign,
   TableBlock,
   TableRow,
   VideoBlock,
@@ -236,6 +237,8 @@ function findContainerChildren(doc: JinshuDocument, containerId: string | 'doc')
         }
       } else if (b.type === 'quote' || b.type === 'callout' || b.type === 'details') {
         scan(b.blocks as JinshuBlock[]);
+      } else if (b.type.startsWith('x-') && (b as ExtensionBlock).blocks) {
+        scan((b as ExtensionBlock).blocks as JinshuBlock[]);
       }
     }
   }
@@ -314,6 +317,16 @@ function getInlineField(
 
   const blk = loc.list[loc.index];
   const f = field ?? 'runs';
+  if (f === 'runs' && blk.type.startsWith('x-') && (blk as ExtensionBlock).blocks === undefined) {
+    const ext = blk as ExtensionBlock;
+    return {
+      inlines: ext.runs ?? [],
+      inHeading: false,
+      set: next => {
+        loc.list[loc.index] = { ...ext, runs: next } as ExtensionBlock;
+      },
+    };
+  }
   if (f === 'runs' && (blk.type === 'paragraph' || blk.type === 'heading')) {
     return {
       inlines: blk.runs,
@@ -897,8 +910,8 @@ function applyOne(
       const tbl = loc.list[loc.index] as TableBlock;
       const cols = tableColumnCount(tbl);
       const rows = tbl.rows.map(r => ({ ...r, cells: [...r.cells] }));
-      const align = tbl.align ? [...tbl.align] : undefined;
-      const widths = tbl.widths ? [...tbl.widths] : undefined;
+      let align: TableAlign[] | undefined = tbl.align ? [...tbl.align] : undefined;
+      let widths: number[] | undefined = tbl.widths ? [...tbl.widths] : undefined;
       const index = op.index;
       if (!Number.isInteger(index)) return fail({ code: 'INVALID', id: op.id, message: 'tableCol needs an integer index.' });
       const move = <T>(arr: T[], from: number, to: number) => {
@@ -909,8 +922,17 @@ function applyOne(
       if (op.action === 'insert') {
         if (index < 0 || index > cols) return fail({ code: 'INVALID', id: op.id, message: `Column index ${index} out of bounds.` });
         rows.forEach((row, r) => row.cells.splice(index, 0, r === 0 && tbl.headerRow ? op.header ?? [] : []));
-        if (align) align.splice(index, 0, op.align ?? 'start');
-        if (widths) widths.splice(index, 0, op.width ?? 1);
+        // A table without alignments or widths gets them when the new column names one; the rest keep the defaults.
+        if (align || op.align !== undefined) {
+          const next = align ?? Array.from({ length: cols }, () => 'start' as const);
+          next.splice(index, 0, op.align ?? 'start');
+          align = next;
+        }
+        if (widths || op.width !== undefined) {
+          const next = widths ?? Array.from({ length: cols }, () => 1);
+          next.splice(index, 0, op.width ?? 1);
+          widths = next;
+        }
       } else if (op.action === 'delete') {
         if (cols <= 1) return fail({ code: 'INVALID', id: op.id, message: 'Cannot delete the last column of a table.' });
         if (index < 0 || index >= cols) return fail({ code: 'INVALID', id: op.id, message: `Column index ${index} out of bounds.` });

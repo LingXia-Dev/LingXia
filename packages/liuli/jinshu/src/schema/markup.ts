@@ -560,41 +560,28 @@ class XmlParser {
   }
 
   private readCodeBlockBody(): string {
-    // Check for dynamic backtick fence: optional leading newline, then >=3 backticks, newline, body, newline, same fence, optional newline, </code>
+    // A backtick fence: optional newline, the fence (>= 3 backticks, possibly indented), body, the same
+    // fence, `</code>`. An indented fence's indent is taken off each body line, as Markdown does.
     const save = this.pos;
-    let i = this.pos;
-    if (this.src[i] === '\n') i += 1;
-    let fenceCount = 0;
-    while (this.src[i] === '`') {
-      fenceCount += 1;
-      i += 1;
-    }
-    if (fenceCount >= 3 && this.src[i] === '\n') {
-      const fence = '`'.repeat(fenceCount);
-      const bodyStart = i + 1;
-      const closeMarker = `\n${fence}`;
-      let searchFrom = bodyStart;
-      while (searchFrom < this.src.length) {
-        const idx = this.src.indexOf(closeMarker, searchFrom);
-        if (idx < 0) break;
-        const afterFence = idx + closeMarker.length;
-        const rest = this.src.slice(afterFence);
-        const closeMatch = /^[ \t]*\n?[ \t]*<\/code>/.exec(rest);
-        if (closeMatch) {
-          this.pos = afterFence + closeMatch[0].length;
-          return this.src.slice(bodyStart, idx);
-        }
-        searchFrom = idx + 1;
-      }
-      // Handle empty fenced code block: ```\n```
-      if (this.src.startsWith(fence, bodyStart)) {
-        const afterFence = bodyStart + fence.length;
-        const rest = this.src.slice(afterFence);
-        const closeMatch = /^[ \t]*\n?[ \t]*<\/code>/.exec(rest);
-        if (closeMatch) {
-          this.pos = afterFence + closeMatch[0].length;
-          return '';
-        }
+    const open = /^\n?([ \t]*)(`{3,})\n/.exec(this.src.slice(this.pos));
+    if (open) {
+      const [opening, indent, fence] = open;
+      const bodyStart = this.pos + opening.length;
+      const close = new RegExp(`(^|\\n)[ \\t]*${fence}[ \\t]*\\n?[ \\t]*</code>`);
+      const rest = this.src.slice(bodyStart);
+      const found = close.exec(rest);
+      if (found) {
+        this.pos = bodyStart + found.index + found[0].length;
+        const body = rest.slice(0, found.index);
+        if (!indent) return body;
+        return body
+          .split('\n')
+          .map(line => {
+            let cut = 0;
+            while (cut < indent.length && line[cut] === indent[cut]) cut += 1;
+            return line.slice(cut);
+          })
+          .join('\n');
       }
     }
 
