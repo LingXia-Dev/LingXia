@@ -21,6 +21,11 @@ const attrs = text => Object.fromEntries([...text.matchAll(/([\w-]+)="([^"]*)"/g
 function pathOf(tag, a) {
   if (tag === 'path') return a.d;
   if (tag === 'line') return `M${n(a.x1)} ${n(a.y1)}L${n(a.x2)} ${n(a.y2)}`;
+  if (tag === 'polyline' || tag === 'polygon') {
+    const values = a.points.trim().split(/[\s,]+/).map(n);
+    const pairs = values.flatMap((value, at) => (at % 2 ? [] : [`${value} ${values[at + 1]}`]));
+    return `M${pairs.join('L')}${tag === 'polygon' ? 'z' : ''}`;
+  }
   if (tag === 'circle') {
     const [cx, cy, r] = [a.cx, a.cy, a.r].map(Number);
     return `M${n(cx - r)} ${n(cy)}a${n(r)} ${n(r)} 0 1 0 ${n(2 * r)} 0a${n(r)} ${n(r)} 0 1 0 ${n(-2 * r)} 0z`;

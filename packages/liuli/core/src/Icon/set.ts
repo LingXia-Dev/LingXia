@@ -97,6 +97,20 @@ import { compassIcon } from './icons/compass';
 import { layersIcon } from './icons/layers';
 import { rowsIcon } from './icons/rows';
 import { templateIcon } from './icons/template';
+import { pinIcon } from './icons/pin';
+import { archiveIcon } from './icons/archive';
+import { inboxIcon } from './icons/inbox';
+import { replyIcon } from './icons/reply';
+import { forwardIcon } from './icons/forward';
+import { historyIcon } from './icons/history';
+import { sparklesIcon } from './icons/sparkles';
+import { qrCodeIcon } from './icons/qr-code';
+import { terminalIcon } from './icons/terminal';
+import { shieldIcon } from './icons/shield';
+import { keyIcon } from './icons/key';
+import { bluetoothIcon } from './icons/bluetooth';
+import { devicesIcon } from './icons/devices';
+import { slidersIcon } from './icons/sliders';
 import { boldIcon } from './icons/bold';
 import { italicIcon } from './icons/italic';
 import { underlineIcon } from './icons/underline';
@@ -112,7 +126,7 @@ import { alignStartIcon } from './icons/align-start';
 import { alignCenterIcon } from './icons/align-center';
 import { alignEndIcon } from './icons/align-end';
 
-/** The default set: 111 icons from Lucide. */
+/** The default set: 125 icons from Lucide. */
 export const lucide: IconSet = {
   'add': addIcon,
   'remove': removeIcon,
@@ -211,6 +225,20 @@ export const lucide: IconSet = {
   'layers': layersIcon,
   'rows': rowsIcon,
   'template': templateIcon,
+  'pin': pinIcon,
+  'archive': archiveIcon,
+  'inbox': inboxIcon,
+  'reply': replyIcon,
+  'forward': forwardIcon,
+  'history': historyIcon,
+  'sparkles': sparklesIcon,
+  'qr-code': qrCodeIcon,
+  'terminal': terminalIcon,
+  'shield': shieldIcon,
+  'key': keyIcon,
+  'bluetooth': bluetoothIcon,
+  'devices': devicesIcon,
+  'sliders': slidersIcon,
   'bold': boldIcon,
   'italic': italicIcon,
   'underline': underlineIcon,
