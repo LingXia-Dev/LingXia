@@ -337,12 +337,89 @@ async fn list_app_windows_ios() -> Result<Vec<WindowInfo>, Error> {
     }])
 }
 
-/// macOS implementation. Uses `NSView`'s bitmap-caching display API rather
-/// than `CGWindowListCreateImage` — the latter requires Screen Recording
-/// privacy permission on macOS 10.15+ since it can also capture other apps'
-/// windows. The caching path renders only our own window into a private
-/// bitmap, needs no permission, and returns the same visual content the
-/// user sees.
+/// The window server's composite of `window` and its child windows (the feedback layer), cut to
+/// the content view's `frame`: what is on screen, Metal layers and see-through windows included.
+/// An app may capture its own windows without the Screen Recording permission.
+#[cfg(target_os = "macos")]
+#[allow(deprecated)]
+unsafe fn window_server_image(
+    window: *mut objc2::runtime::AnyObject,
+    frame: objc2_core_foundation::CGRect,
+) -> Result<objc2_core_foundation::CFRetained<objc2_core_graphics::CGImage>, String> {
+    use objc2::runtime::AnyObject;
+    use objc2::{class, msg_send};
+    use objc2_core_foundation::{CFArray, CGPoint, CGRect};
+    use objc2_core_graphics::{CGWindowImageOption, CGWindowListCreateImageFromArray};
+
+    // Front to back: the children (above the window) first.
+    let mut ids: Vec<*const std::ffi::c_void> = Vec::new();
+    let children: *mut AnyObject = msg_send![window, childWindows];
+    if !children.is_null() {
+        let count: usize = msg_send![children, count];
+        for index in (0..count).rev() {
+            let child: *mut AnyObject = msg_send![children, objectAtIndex: index];
+            let visible: bool = msg_send![child, isVisible];
+            let n: isize = msg_send![child, windowNumber];
+            if visible && n > 0 {
+                ids.push(n as usize as *const std::ffi::c_void);
+            }
+        }
+    }
+    let n: isize = msg_send![window, windowNumber];
+    if n <= 0 {
+        return Err("window is not on screen".to_string());
+    }
+    ids.push(n as usize as *const std::ffi::c_void);
+    let array =
+        unsafe { CFArray::new(None, ids.as_mut_ptr(), ids.len() as isize, std::ptr::null()) }
+            .ok_or("CFArrayCreate failed")?;
+
+    // Cocoa screen space (origin bottom-left of the primary screen) to Quartz (top-left).
+    let on_screen: CGRect = msg_send![window, convertRectToScreen: frame];
+    let screens: *mut AnyObject = msg_send![class!(NSScreen), screens];
+    let primary: *mut AnyObject = msg_send![screens, objectAtIndex: 0usize];
+    let primary_frame: CGRect = msg_send![primary, frame];
+    let bounds = CGRect::new(
+        CGPoint::new(
+            on_screen.origin.x,
+            primary_frame.size.height - on_screen.origin.y - on_screen.size.height,
+        ),
+        on_screen.size,
+    );
+    unsafe { CGWindowListCreateImageFromArray(bounds, &array, CGWindowImageOption::BestResolution) }
+        .ok_or_else(|| "the window server returned no image of the window".to_string())
+}
+
+/// Whether the window server shows windows now: a locked screen or a sleeping display yields a
+/// blank composite.
+#[cfg(target_os = "macos")]
+unsafe fn screen_shows_windows() -> bool {
+    use objc2::runtime::AnyObject;
+    use objc2::{class, msg_send};
+    unsafe extern "C" {
+        fn CGSessionCopyCurrentDictionary() -> *mut AnyObject;
+        fn CGMainDisplayID() -> u32;
+        fn CGDisplayIsAsleep(display: u32) -> u32;
+        fn CFRelease(cf: *const std::ffi::c_void);
+    }
+    if unsafe { CGDisplayIsAsleep(CGMainDisplayID()) } != 0 {
+        return false;
+    }
+    let session = unsafe { CGSessionCopyCurrentDictionary() };
+    if session.is_null() {
+        return false;
+    }
+    let key: *mut AnyObject = unsafe {
+        msg_send![class!(NSString), stringWithUTF8String: c"CGSSessionScreenIsLocked".as_ptr()]
+    };
+    let locked: *mut AnyObject = unsafe { msg_send![session, objectForKey: key] };
+    let locked = !locked.is_null() && unsafe { msg_send![locked, boolValue] };
+    unsafe { CFRelease(session as *const std::ffi::c_void) };
+    !locked
+}
+
+/// macOS implementation: the window server's composite of the window (see
+/// `window_server_image`), so a capture shows exactly what the user sees.
 ///
 /// When `window_id` is `Some`, looks up the NSWindow with that
 /// `windowNumber`. When `None`, falls back to key → main → first window.
@@ -442,39 +519,48 @@ async fn take_app_screenshot_macos(window_id: Option<&str>) -> Result<Vec<u8>, E
             return;
         }
 
-        // `bounds` is the view's local coordinate space — perfect for the
-        // cache-display call below.
-        let bounds: CGRect = msg_send![content_view, bounds];
-        if bounds.size.width <= 0.0 || bounds.size.height <= 0.0 {
+        let frame: CGRect = msg_send![content_view, frame];
+        if frame.size.width <= 0.0 || frame.size.height <= 0.0 {
             let _ = sender.send(Err(format!(
                 "contentView has empty bounds {}x{}",
-                bounds.size.width, bounds.size.height
+                frame.size.width, frame.size.height
             )));
             return;
         }
-
-        // Ask the view for a bitmap rep that matches its current backing
-        // scale (Retina), then have it render into the rep. Together this
-        // captures all subviews (including embedded WKWebViews) with
-        // proper compositing.
-        let bitmap_rep: *mut AnyObject =
-            msg_send![content_view, bitmapImageRepForCachingDisplayInRect: bounds];
-        if bitmap_rep.is_null() {
-            let _ = sender.send(Err(
-                "bitmapImageRepForCachingDisplayInRect returned null".to_string()
-            ));
+        // The window server's composite is what the user sees, and an app may read its own
+        // windows without Screen Recording. A window it cannot image (off screen, locked screen,
+        // sleeping display) is rebuilt from the view tree and each GPU page's last presented frame.
+        let composite = screen_shows_windows()
+            .then(|| window_server_image(window, frame).ok())
+            .flatten();
+        let rep: Option<objc2::rc::Retained<AnyObject>> = if let Some(image) = composite {
+            let allocated: objc2::rc::Allocated<AnyObject> =
+                msg_send![class!(NSBitmapImageRep), alloc];
+            msg_send![allocated, initWithCGImage: &*image]
+        } else {
+            let bounds: CGRect = msg_send![content_view, bounds];
+            let cached: Option<objc2::rc::Retained<AnyObject>> =
+                msg_send![content_view, bitmapImageRepForCachingDisplayInRect: bounds];
+            if let Some(cached) = &cached {
+                let _: () = msg_send![
+                    content_view,
+                    cacheDisplayInRect: bounds,
+                    toBitmapImageRep: &**cached
+                ];
+                // GPU pages present through Metal drawables, which caching cannot see; the
+                // SDK draws their last presented frames over the bitmap when it is linked.
+                if let Some(capture) = objc2::runtime::AnyClass::get(c"LingXiaGpuCapture") {
+                    let _: () =
+                        msg_send![capture, overlayContentView: content_view, into: &**cached];
+                }
+            }
+            cached
+        };
+        let Some(rep) = rep else {
+            let _ = sender.send(Err("could not create the window's bitmap".to_string()));
             return;
-        }
-        let _: () = msg_send![
-            content_view,
-            cacheDisplayInRect: bounds,
-            toBitmapImageRep: bitmap_rep
-        ];
-        // GPU pages present through Metal drawables, which caching the display cannot see;
-        // the SDK draws their last presented frames over the bitmap when it is linked.
-        if let Some(capture) = objc2::runtime::AnyClass::get(c"LingXiaGpuCapture") {
-            let _: () = msg_send![capture, overlayContentView: content_view, into: bitmap_rep];
-        }
+        };
+        let bitmap_rep = objc2::rc::Retained::as_ptr(&rep) as *mut AnyObject;
 
         let empty_props_class = class!(NSDictionary);
         let empty_props: *mut AnyObject = msg_send![empty_props_class, dictionary];
