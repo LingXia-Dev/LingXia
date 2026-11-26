@@ -770,7 +770,7 @@ mod tests {
                 ..Prefs::default()
             };
             let theme = lingxia_theme::resolve(&pack, &prefs).unwrap();
-            let palette = crate::theme::Palette(theme.palette.map(|color| color.0));
+            let palette = crate::theme::Palette::from_theme(&theme);
             let pairs = serde_json::json!([field::BACKGROUND, "accent-solid"]).to_string();
             let record = crate::scene::test_prelude::node(
                 crate::protocol::tag::SWITCH,

@@ -104,7 +104,9 @@ pub(crate) fn part_style(value: &Value) -> Result<Vec<(usize, Value)>, String> {
 pub fn color(value: &str) -> Result<[u8; 4], String> {
     match crate::theme::parse(value)? {
         crate::theme::WireColor::Literal(rgba) => Ok(rgba),
-        crate::theme::WireColor::Role(..) => Err("UI_COLOR: expected #rrggbb or #rrggbbaa".into()),
+        crate::theme::WireColor::Role(..) | crate::theme::WireColor::App(..) => {
+            Err("UI_COLOR: expected #rrggbb or #rrggbbaa".into())
+        }
     }
 }
 

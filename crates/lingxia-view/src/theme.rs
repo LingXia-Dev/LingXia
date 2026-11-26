@@ -1,12 +1,29 @@
 //! The resolved role palette pages paint with; colours never reach the View.
 
 use lingxia_theme::{Appearance, Prefs, ROLE_COUNT, Role};
-use std::sync::OnceLock;
+use std::collections::BTreeMap;
+use std::sync::{Arc, OnceLock};
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct Palette(pub [[u8; 4]; ROLE_COUNT]);
+/// The role slots, and the app's own colours by name with `on-<name>` for each fill's label.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Palette(pub [[u8; 4]; ROLE_COUNT], Arc<BTreeMap<String, [u8; 4]>>);
 
 impl Palette {
+    /// A palette of roles alone.
+    pub fn from_roles(roles: [[u8; 4]; ROLE_COUNT]) -> Palette {
+        Palette(roles, Arc::default())
+    }
+
+    /// `theme` as painted: its roles and its app colours.
+    pub fn from_theme(theme: &lingxia_theme::ResolvedTheme) -> Palette {
+        let app = theme
+            .app
+            .iter()
+            .map(|(name, color)| (name.clone(), color.0))
+            .collect();
+        Palette(theme.palette.map(|color| color.0), Arc::new(app))
+    }
+
     /// The default pack for `dark`, used until the host pushes a palette.
     pub fn builtin(dark: bool) -> Palette {
         Self::builtin_for(dark, false)
@@ -30,14 +47,16 @@ impl Palette {
                     };
                     let theme =
                         lingxia_theme::resolve(&pack, &prefs).expect("default pack resolves");
-                    Palette(theme.palette.map(|color| color.0))
+                    Palette::from_theme(&theme)
                 },
             )
         })[usize::from(dark) + 2 * usize::from(high_contrast)]
+        .clone()
     }
 
-    /// The environment's `palette` push: `{ revision, colors }`, one hex per slot. A host
-    /// built against fewer roles leaves the newer slots to the built-in palette.
+    /// The environment's `palette` push: `{ revision, colors, app? }`, one hex per slot and one
+    /// per app colour. A host built against fewer roles leaves the newer slots to the built-in
+    /// palette.
     pub fn decode(value: &serde_json::Value, dark: bool) -> Result<Palette, String> {
         let invalid = || "UI_ENVIRONMENT: invalid palette".to_string();
         let colors = value["colors"]
@@ -55,7 +74,27 @@ impl Palette {
                 .ok_or_else(invalid)?
                 .0;
         }
+        let mut app = BTreeMap::new();
+        if let Some(pushed) = value.get("app") {
+            let pushed = pushed
+                .as_object()
+                .filter(|colors| colors.len() <= 2 * lingxia_theme::APP_COLOR_LIMIT)
+                .ok_or_else(invalid)?;
+            for (name, color) in pushed {
+                let color = color
+                    .as_str()
+                    .and_then(lingxia_theme::Rgba::parse)
+                    .ok_or_else(invalid)?;
+                app.insert(name.clone(), color.0);
+            }
+        }
+        palette.1 = Arc::new(app);
         Ok(palette)
+    }
+
+    /// The app colour `name`, if the pushed theme has it.
+    pub fn app(&self, name: &str) -> Option<[u8; 4]> {
+        self.1.get(name).copied()
     }
 
     pub fn role(&self, role: Role) -> [u8; 4] {
@@ -64,36 +103,53 @@ impl Palette {
 
     /// This palette as drawn inside `surface`: a lifted surface hands its contents its own lines.
     pub fn under(&self, surface: Role) -> Palette {
-        let mut scoped = *self;
+        let mut scoped = self.clone();
         for role in Role::ALL {
             scoped.0[role as usize] = self.role(role.under(surface));
         }
         scoped
     }
 
-    /// A wire colour: `#rrggbb[aa]`, a role, or `role/NN` with NN an alpha percent.
+    /// A wire colour: `#rrggbb[aa]`, a role or app colour, either with `/NN` alpha percent.
     pub fn resolve(&self, value: &str) -> Result<[u8; 4], String> {
-        match parse(value)? {
-            WireColor::Literal(rgba) => Ok(rgba),
-            WireColor::Role(role, percent) => {
-                let [r, g, b, a] = self.role(role);
-                Ok([
-                    r,
-                    g,
-                    b,
-                    ((u32::from(a) * u32::from(percent) + 50) / 100) as u8,
-                ])
-            }
+        let ([r, g, b, a], percent) = match parse(value)? {
+            WireColor::Literal(rgba) => return Ok(rgba),
+            WireColor::Role(role, percent) => (self.role(role), percent),
+            WireColor::App(name, percent) => (self.app_or_neutral(name)?, percent),
+        };
+        Ok([
+            r,
+            g,
+            b,
+            ((u32::from(a) * u32::from(percent) + 50) / 100) as u8,
+        ])
+    }
+
+    /// A name the pushed theme lacks fails a debug build; a release one paints muted text,
+    /// never transparent, and logs it once.
+    fn app_or_neutral(&self, name: &str) -> Result<[u8; 4], String> {
+        if let Some(color) = self.app(name) {
+            return Ok(color);
         }
+        if cfg!(debug_assertions) {
+            return Err(format!("UI_COLOR: app.{name} is not in this app's theme"));
+        }
+        static LOGGED: OnceLock<()> = OnceLock::new();
+        if LOGGED.set(()).is_ok() {
+            log::warn!("UI_COLOR: app.{name} is not in this app's theme; painting text-muted");
+        }
+        Ok(self.role(Role::TextMuted))
     }
 }
 
-pub(crate) enum WireColor {
+pub(crate) enum WireColor<'a> {
     Literal([u8; 4]),
     Role(Role, u8),
+    /// An app colour by name; which names exist is the pushed theme's question.
+    App(&'a str, u8),
 }
 
-pub(crate) fn parse(value: &str) -> Result<WireColor, String> {
+pub(crate) fn parse(value: &str) -> Result<WireColor<'_>, String> {
     if value.starts_with('#') {
         return lingxia_theme::Rgba::parse(value)
             .map(|color| WireColor::Literal(color.0))
@@ -110,6 +166,19 @@ pub(crate) fn parse(value: &str) -> Result<WireColor, String> {
         ),
         None => (value, 100),
     };
+    if let Some(app) = name.strip_prefix("app.") {
+        let kebab = app.split('-').all(|part| {
+            !part.is_empty()
+                && part
+                    .bytes()
+                    .all(|byte| byte.is_ascii_lowercase() || byte.is_ascii_digit())
+        }) && app.starts_with(|first: char| first.is_ascii_lowercase());
+        return if kebab {
+            Ok(WireColor::App(app, percent))
+        } else {
+            Err(format!("UI_COLOR: {name} is not an app colour name"))
+        };
+    }
     let role = Role::from_name(name)
         .filter(|role| role.authorable())
         .ok_or_else(|| format!("UI_COLOR: unknown role {name}"))?;
@@ -142,19 +211,50 @@ mod tests {
     fn the_increased_contrast_preference_resolves_the_high_contrast_variant() {
         for dark in [false, true] {
             let (base, high) = (Palette::builtin(dark), Palette::builtin_for(dark, true));
-            let ratio = |p: Palette| {
+            let ratio = |p: &Palette| {
                 lingxia_theme::contrast(
                     lingxia_theme::Rgba(p.role(Role::TextMuted)),
                     lingxia_theme::Rgba(p.role(Role::Surface)),
                 )
             };
-            assert!(ratio(high) > ratio(base), "dark={dark}");
-            assert!(ratio(high) >= 7.0, "AAA for body-like text, dark={dark}");
+            assert!(ratio(&high) > ratio(&base), "dark={dark}");
+            assert!(ratio(&high) >= 7.0, "AAA for body-like text, dark={dark}");
         }
         assert_eq!(
             Palette::builtin(false).resolve("shadow/10").unwrap(),
             [0, 0, 0, 26]
         );
+    }
+
+    #[test]
+    fn app_colours_resolve_by_name_with_alpha_from_the_push() {
+        let pushed = serde_json::json!({
+            "revision": 1,
+            "colors": ["#000000"],
+            "app": {"trend-up": "#0f7b3f", "on-brand-band": "#ffffff"},
+        });
+        let palette = Palette::decode(&pushed, false).unwrap();
+        assert_eq!(
+            palette.resolve("app.trend-up").unwrap(),
+            [0x0f, 0x7b, 0x3f, 255]
+        );
+        assert_eq!(
+            palette.resolve("app.on-brand-band/40").unwrap(),
+            [255, 255, 255, 102]
+        );
+        for bad in ["app.Trend", "app.", "app.trend-up/101", "app.-x"] {
+            assert!(palette.resolve(bad).is_err(), "{bad}");
+        }
+        if cfg!(debug_assertions) {
+            assert!(palette.resolve("app.trend-down").is_err());
+        } else {
+            assert_eq!(
+                palette.resolve("app.trend-down").unwrap(),
+                palette.role(Role::TextMuted)
+            );
+        }
+        let bad = serde_json::json!({"revision": 1, "colors": ["#000000"], "app": {"x": "red"}});
+        assert!(Palette::decode(&bad, false).is_err());
     }
 
     #[test]

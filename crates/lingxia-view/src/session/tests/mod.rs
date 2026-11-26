@@ -2892,7 +2892,7 @@ fn a_pressed_opaque_fill_deepens_in_light_and_dark_and_a_clear_one_takes_the_lay
                 .unwrap()
                 .clone()
         };
-        let palette = page.renderer.palette;
+        let palette = page.renderer.palette.clone();
         let rects = |page: &mut crate::ViewSession, pressed: &str| -> Vec<[u8; 4]> {
             page.set_pointer_state(Some(pressed), None);
             page.layout(300, 300, 1.0)

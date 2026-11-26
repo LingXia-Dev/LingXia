@@ -60,7 +60,7 @@ impl Renderer {
         (width, height, scale): (u16, u16, f32),
     ) -> Result<RetainedLayout, String> {
         let colors: Vec<&str> = styles.iter().map(|style| style.color.as_str()).collect();
-        let palette = self.palette;
+        let palette = self.palette.clone();
         let press_layer =
             crate::interaction::chrome::FeedbackStyle::press_layer(&palette, self.dark);
         let pressed_identity = self.pressed.clone();
@@ -216,12 +216,11 @@ impl Renderer {
                 scoped.push((*surface, palette.under(*surface)));
             }
         }
-        let page_palette = palette;
         for (index, record) in records.iter().enumerate() {
             let palette = scoped
                 .iter()
                 .find(|(surface, _)| *surface == surfaces[index])
-                .map_or(page_palette, |(_, palette)| *palette);
+                .map_or(&palette, |(_, palette)| palette);
             let color = |value: &str| palette.resolve(value);
             let mut layout = *tree.layout(ids[index]).map_err(|e| e.to_string())?;
             // Taffy stretches a child to its parent minus margins, which can go below zero.
@@ -571,7 +570,7 @@ impl Renderer {
                     && record.number(field::ENABLED) != Some(0.0)
                     && pressed_identity.as_deref() == identities.get(index).map(String::as_str)
                 {
-                    [r, g, b, _] = crate::scene::slider::pressed_fill(source, &palette)?;
+                    [r, g, b, _] = crate::scene::slider::pressed_fill(source, palette)?;
                 }
                 if clip_text {
                     text_fill = Some([r, g, b, a]);
@@ -587,7 +586,7 @@ impl Renderer {
             }
             if let Some(source) = record.string(field::BACKGROUND_GRADIENT)
                 && let Some(gradient) =
-                    crate::scene::gradient::BackgroundGradient::parse_with(source, &palette)?
+                    crate::scene::gradient::BackgroundGradient::parse_with(source, palette)?
             {
                 paint_style.gradient = true;
                 if clip_text {
@@ -656,7 +655,7 @@ impl Renderer {
             if record.tag == tag::VECTOR {
                 let vector = crate::scene::vector::Vector::parse_with(
                     record.string(field::VECTOR_SOURCE).unwrap(),
-                    &palette,
+                    palette,
                 )?;
                 let vector_bounds = [
                     control_bounds[0] + layout.padding.left,
@@ -715,7 +714,7 @@ impl Renderer {
             }
             let mut plot_snapshot = None;
             if record.tag == tag::PLOT {
-                let plot = crate::scene::plot::Plot::from_record(record, &palette)?;
+                let plot = crate::scene::plot::Plot::from_record(record, palette)?;
                 plot_snapshot = Some(plot.snapshot());
                 for shape in plot.shapes(control_bounds) {
                     commands.push(match shape {
@@ -767,7 +766,7 @@ impl Renderer {
                     record,
                     [control_bounds[0], control_bounds[2], center],
                     accent,
-                    &palette,
+                    palette,
                     &mut commands,
                 )?);
             }
@@ -1288,7 +1287,7 @@ impl Renderer {
                             press_layer,
                         },
                         record,
-                        &palette,
+                        palette,
                         &mut commands,
                     )?;
                     paint_style.slider = Some(slots);

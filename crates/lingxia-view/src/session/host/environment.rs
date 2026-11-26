@@ -410,7 +410,12 @@ fn palettes(pack: &lingxia_theme::Pack, revision: u64) -> Result<[serde_json::Va
         lingxia_theme::resolve(&pack, &prefs)
             .map(|theme| {
                 let colors: Vec<String> = theme.palette.iter().map(|color| color.hex()).collect();
-                serde_json::json!({ "revision": revision, "colors": colors })
+                let app: serde_json::Map<String, serde_json::Value> = theme
+                    .app
+                    .iter()
+                    .map(|(name, color)| (name.clone(), color.hex().into()))
+                    .collect();
+                serde_json::json!({ "revision": revision, "colors": colors, "app": app })
             })
             .map_err(|error| format!("UI_ENVIRONMENT: {error}"))
     };
@@ -644,6 +649,27 @@ mod tests {
         let mut env = json!({"theme": "light", "palette": {"revision": 9, "colors": ["#000000"]}});
         host.apply(&mut env);
         assert_eq!(env["palette"]["revision"], 9, "the platform's palette wins");
+    }
+
+    #[test]
+    fn a_packs_app_colours_ride_the_palette_push_for_each_look() {
+        let mut host = HostEnvironment::default();
+        let pack = json!({"kind": "theme", "revision": 1, "pack": {"name": "brand", "version": 1,
+            "colors": {"trend-up": {"light": "#0f7b3f", "dark": "#5bd28a", "use": "text"}}}});
+        assert!(host.update(&pack.to_string()).unwrap());
+        for (theme, expected) in [
+            ("light", [0x0f, 0x7b, 0x3f, 255]),
+            ("dark", [0x5b, 0xd2, 0x8a, 255]),
+        ] {
+            let mut env = json!({"theme": theme});
+            host.apply(&mut env);
+            let palette = crate::theme::Palette::decode(&env["palette"], theme == "dark").unwrap();
+            assert_eq!(
+                palette.resolve("app.trend-up").unwrap(),
+                expected,
+                "{theme}"
+            );
+        }
     }
 
     #[test]
