@@ -69,12 +69,14 @@ function Uploader() {
   const upload = () => {
     const next = Math.min(done.value + 1, 3);
     done.set(next);
-    toast.show({ id: 'upload', message: next < 3 ? `Uploaded ${next} of 3` : 'All 3 photos uploaded', tone: next < 3 ? 'neutral' : 'success' });
+    toast.show(next < 3
+      ? { id: 'upload', message: `Uploading photos: ${next} of 3 done`, isBusy: true }
+      : { id: 'upload', message: 'All 3 photos uploaded', tone: 'success' });
   };
   return <Button label="Upload a photo" onClick={upload} isDisabled={done.value >= 3} data-testid="upload" />;
 }
 
-/** A progress message updated in place by its id, rather than queued behind itself. */
+/** A progress message updated in place by its id, rather than queued behind itself: busy, so it stays, until the last update says it is done. */
 export function Progress() {
   return (
     <ToastRegion>
@@ -84,8 +86,8 @@ export function Progress() {
 }
 
 /**
- * Each face at the width a toast takes on a phone: a message, success, with Undo, and danger with
- * Retry. 32 px apart and below, the raised shadow's reach (8 px down plus a 24 px blur), so each
+ * Each face at the width a toast takes on a phone: a message, success, busy, with Undo, and danger
+ * with Retry. 32 px apart and below, the raised shadow's reach (8 px down plus a 24 px blur), so each
  * shadow ends before the next card and the stage's edge.
  */
 export function Faces() {
@@ -95,6 +97,7 @@ export function Faces() {
         <view className="gap-8 pb-8">
           <Toast message="Note moved to Travel" onDismiss={() => say('Dismissed')} />
           <Toast message="Changes saved" tone="success" onDismiss={() => say('Dismissed')} />
+          <Toast message="Exporting 24 notes" isBusy onDismiss={() => say('Dismissed')} />
           <Toast message={'"Q3 plan" archived'} action={{ label: 'Undo', onClick: () => say('Undid the archive') }} onDismiss={() => say('Dismissed')} />
           <Toast message="Could not save the note" tone="danger" action={{ label: 'Retry', onClick: () => say('Retried') }} onDismiss={() => say('Dismissed')} />
         </view>

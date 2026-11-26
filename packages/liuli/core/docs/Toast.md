@@ -8,7 +8,7 @@ A short message about something that just happened, over the bottom of the scree
 import { Toast, useToast, ToastRegion } from '@liulidesign/core/Toast';
 ```
 
-A toast confirms an action that worked away from where it was pressed, or offers to undo it: a note archived, a link copied. A page holds one `ToastRegion`; `useToast()` shows a toast from anywhere inside it. One shows at a time and the rest wait in order; a toast with the same `id` replaces the one queued, so a running count updates in place. One without an action closes by itself after `duration`; one with an action stays until it is closed.
+A toast confirms an action that worked away from where it was pressed, or offers to undo it: a note archived, a link copied. A page holds one `ToastRegion`; `useToast()` shows a toast from anywhere inside it. One shows at a time and the rest wait in order; a toast with the same `id` replaces the one queued, so a running count updates in place. One without an action closes by itself after `duration`; one with an action stays until it is closed. A busy one, for work still under way, turns a spinner and stays until its result replaces it.
 
 ## Examples
 
@@ -47,7 +47,7 @@ export function Tones() {
 ```tsx
 import { ToastRegion } from '@liulidesign/core/Toast';
 
-/** A progress message updated in place by its id, rather than queued behind itself. */
+/** A progress message updated in place by its id, rather than queued behind itself: busy, so it stays, until the last update says it is done. */
 export function Progress() {
   return (
     <ToastRegion>
@@ -64,8 +64,8 @@ import { Said } from '../example';
 import { Toast } from '@liulidesign/core/Toast';
 
 /**
- * Each face at the width a toast takes on a phone: a message, success, with Undo, and danger with
- * Retry. 32 px apart and below, the raised shadow's reach (8 px down plus a 24 px blur), so each
+ * Each face at the width a toast takes on a phone: a message, success, busy, with Undo, and danger
+ * with Retry. 32 px apart and below, the raised shadow's reach (8 px down plus a 24 px blur), so each
  * shadow ends before the next card and the stage's edge.
  */
 export function Faces() {
@@ -75,6 +75,7 @@ export function Faces() {
         <view className="gap-8 pb-8">
           <Toast message="Note moved to Travel" onDismiss={() => say('Dismissed')} />
           <Toast message="Changes saved" tone="success" onDismiss={() => say('Dismissed')} />
+          <Toast message="Exporting 24 notes" isBusy onDismiss={() => say('Dismissed')} />
           <Toast message={'"Q3 plan" archived'} action={{ label: 'Undo', onClick: () => say('Undid the archive') }} onDismiss={() => say('Dismissed')} />
           <Toast message="Could not save the note" tone="danger" action={{ label: 'Retry', onClick: () => say('Retried') }} onDismiss={() => say('Dismissed')} />
         </view>
@@ -91,6 +92,7 @@ export function Faces() {
 | `message` (required) | `string` |  |  |
 | `tone` | `BannerTone` | `'neutral'` |  |
 | `action` | `ToastAction` |  |  |
+| `isBusy` | `boolean` | `false` | A spinner in the tone's glyph's place, and the toast reported busy. |
 | `onDismiss` | `(() => void)` |  | Shows a dismiss button. |
 | `dismissLabel` | `string` |  | The dismiss button's name, with `onDismiss`. |
 | `className` | `string` |  |  |
@@ -103,6 +105,8 @@ export function Faces() {
 | region | `<view>` | yes | The top-layer box the toast sits in, clear of the system bars and the keyboard. |
 | toast | `<view>` | yes | The raised card; a sideways swipe closes it. |
 | icon | `<vector>` | no | The tone's glyph, hidden from assistive tech; neutral toasts have none. |
+| spinner | `<view>` | no | While busy, in the glyph's place, hidden from assistive tech; still under reduced motion. |
+| stack | `<view>` | no | At accessibility text sizes, the message over its action, so the message keeps the card's width. |
 | message | `<text>` | yes | What happened, in a few words. |
 | action | `<Button>` | no | One link button that follows up, such as Undo; the toast closes after it. |
 | dismiss | `<button>` | yes | A close button named by `dismissLabel`. |
@@ -120,12 +124,14 @@ export function Faces() {
 - Pattern: none.
 - Name: none; its content is read.
 - Description: none.
+- States: busy (from isBusy).
 - Tab: Reaches the action and the dismiss button after the page..
 - Escape: Nothing on the toast; it stays with what has focus..
 - Press target: md 36 px.
 - Each new message is announced politely; a danger toast is announced assertively.
 - The announcement comes from live text that lives as long as the region, as a region inserted with its message is not announced.
 - The tone is in the glyph and the words, never in colour alone.
+- A busy toast is reported busy and never closes by itself; the toast that replaces it is announced like any other.
 - A toast without an action closes after `duration`; the count pauses while it is pressed, under a resting pointer or holding focus. A toast with an action stays until closed.
 - A toast is not modal: Escape and back go to whatever has focus, never to the toast. The dismiss button is its keyboard path.
 
@@ -141,7 +147,7 @@ Ratios are computed from @lingxia/view/theme and rounded down.
 
 - Do: Say what happened in a few words: "Note archived", not "Success".
 - Do: Offer Undo for an action that is easy to regret.
-- Do: Give a running message an `id`, so each update replaces it.
+- Do: Give a running message an `id`, so each update replaces it; while the work runs make it busy, and end with the result.
 - Do: Where a page keeps a control or bar at the bottom end, move the toasts with `position` or keep that edge clear with `inset`; they show in the bottom end corner, up to 400 pt wide.
 - Don't: Put something people must read or act on in a toast; use a Banner or a Dialog.
 - Don't: Show a toast for the result people can already see where they pressed.

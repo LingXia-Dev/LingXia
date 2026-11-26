@@ -12,10 +12,10 @@ export function Content() {
         <Stage caption={"Info, success, warning and danger, one at a time"}>
           <Tones />
         </Stage>
-        <Stage caption={"A count updated in place"}>
+        <Stage caption={"A count updated in place, busy until done"}>
           <Progress />
         </Stage>
-        <Stage caption={"A message, success, with Undo, and danger with Retry"}>
+        <Stage caption={"A message, success, busy, with Undo, and danger with Retry"}>
           <Faces />
         </Stage>
       </PageSection>

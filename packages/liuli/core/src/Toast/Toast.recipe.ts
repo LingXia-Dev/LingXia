@@ -4,6 +4,8 @@ export const toastParts = {
   region: 'view',
   toast: 'view',
   icon: 'vector',
+  spinner: 'view',
+  stack: 'view',
   message: 'text',
   action: 'Button',
   dismiss: 'button',
@@ -41,12 +43,24 @@ export const toastRecipe = {
     /** Without a dismiss button the end padding matches the start. */
     plain: 'pe-4',
   },
+  /** 20 pt, grown with the reader's text; the glyph and the busy spinner share it. */
   icon: {
     base: 'size-5 shrink-0',
     tone: { neutral: 'text-muted', info: 'text-info', success: 'text-success', warning: 'text-warning', danger: 'text-danger' } satisfies Record<ToastTone, string>,
   },
+  /** Busy: turns in the glyph's place; still under reduced motion. */
+  spinner: {
+    base: 'motion-safe:animate-spin',
+  },
+  /** At accessibility text sizes: the message over its action, taking the card's width. */
+  stack: {
+    base: 'grow shrink basis-0 min-w-0 items-start pb-1',
+  },
   message: {
+    /** The message's line: the icon's slot centres on one of it. */
+    type: 'py-1.5 text-body',
     base: 'grow shrink basis-0 min-w-0 py-1.5 text-body text-text whitespace-pre-line',
+    under: 'self-stretch py-1.5 text-body text-text whitespace-pre-line',
   },
   action: {
     base: 'shrink-0',

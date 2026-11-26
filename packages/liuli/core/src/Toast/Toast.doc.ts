@@ -10,7 +10,8 @@ export const doc: ComponentDoc = {
     'A toast confirms an action that worked away from where it was pressed, or offers to undo it: a note archived, a link ' +
     'copied. A page holds one `ToastRegion`; `useToast()` shows a toast from anywhere inside it. One shows at a time and ' +
     'the rest wait in order; a toast with the same `id` replaces the one queued, so a running count updates in place. ' +
-    'One without an action closes by itself after `duration`; one with an action stays until it is closed.',
+    'One without an action closes by itself after `duration`; one with an action stays until it is closed. A busy one, ' +
+    'for work still under way, turns a spinner and stays until its result replaces it.',
   keywords: ['toast', 'snackbar', 'notification', 'undo', 'message', 'confirmation', 'feedback', 'status'],
   propsType: 'ToastProps',
   recipe: { map: 'toastRecipe', parts: 'toastParts' },
@@ -18,6 +19,8 @@ export const doc: ComponentDoc = {
     { part: 'region', required: true, description: 'The top-layer box the toast sits in, clear of the system bars and the keyboard.' },
     { part: 'toast', required: true, description: 'The raised card; a sideways swipe closes it.' },
     { part: 'icon', required: false, description: 'The tone\'s glyph, hidden from assistive tech; neutral toasts have none.' },
+    { part: 'spinner', required: false, description: 'While busy, in the glyph\'s place, hidden from assistive tech; still under reduced motion.' },
+    { part: 'stack', required: false, description: 'At accessibility text sizes, the message over its action, so the message keeps the card\'s width.' },
     { part: 'message', required: true, description: 'What happened, in a few words.' },
     { part: 'action', required: false, description: 'One link button that follows up, such as Undo; the toast closes after it.' },
     { part: 'dismiss', required: true, description: 'A close button named by `dismissLabel`.' },
@@ -27,7 +30,7 @@ export const doc: ComponentDoc = {
     pattern: null,
     name: null,
     description: [],
-    states: [],
+    states: [{ state: 'busy', from: 'isBusy' }],
     keyboard: [
       { keys: 'Tab', effect: 'Reaches the action and the dismiss button after the page.' },
       { keys: 'Escape', effect: 'Nothing on the toast; it stays with what has focus.' },
@@ -42,6 +45,7 @@ export const doc: ComponentDoc = {
       'Each new message is announced politely; a danger toast is announced assertively.',
       'The announcement comes from live text that lives as long as the region, as a region inserted with its message is not announced.',
       'The tone is in the glyph and the words, never in colour alone.',
+      'A busy toast is reported busy and never closes by itself; the toast that replaces it is announced like any other.',
       'A toast without an action closes after `duration`; the count pauses while it is pressed, under a resting pointer or holding focus. A toast with an action stays until closed.',
       'A toast is not modal: Escape and back go to whatever has focus, never to the toast. The dismiss button is its keyboard path.',
     ],
@@ -50,7 +54,7 @@ export const doc: ComponentDoc = {
     do: [
       'Say what happened in a few words: "Note archived", not "Success".',
       'Offer Undo for an action that is easy to regret.',
-      'Give a running message an `id`, so each update replaces it.',
+      'Give a running message an `id`, so each update replaces it; while the work runs make it busy, and end with the result.',
       'Where a page keeps a control or bar at the bottom end, move the toasts with `position` or keep that edge clear with `inset`; they show in the bottom end corner, up to 400 pt wide.',
     ],
     dont: [
@@ -77,8 +81,8 @@ export const doc: ComponentDoc = {
       hero: 'Archive',
       variants: [
         { name: 'Tones', title: 'Info, success, warning and danger, one at a time' },
-        { name: 'Progress', title: 'A count updated in place' },
-        { name: 'Faces', title: 'A message, success, with Undo, and danger with Retry' },
+        { name: 'Progress', title: 'A count updated in place, busy until done' },
+        { name: 'Faces', title: 'A message, success, busy, with Undo, and danger with Retry' },
       ],
       inContext: [],
     },

@@ -5185,6 +5185,11 @@ export const playgroundEntries: PlaygroundEntry[] = [
         ]
       },
       {
+        "name": "isBusy",
+        "required": false,
+        "kind": "boolean"
+      },
+      {
         "name": "dismissLabel",
         "required": false,
         "kind": "text"

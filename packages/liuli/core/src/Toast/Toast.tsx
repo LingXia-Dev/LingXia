@@ -3,6 +3,9 @@ import { liuliText } from '../i18n/text';
 import type { BannerTone } from '../Banner/Banner';
 import { Button } from '../Button/Button';
 import { Glyph } from '../internal/Glyph';
+import { useLargeText } from '../internal/largeText';
+import { SpinnerMark } from '../internal/spinner';
+import { FirstLine } from '../internal/firstLine';
 import { toastRecipe as r } from './Toast.recipe';
 import { dataOf } from '../internal/data';
 
@@ -23,9 +26,11 @@ export interface ToastOptions {
   tone?: ToastTone;
   /** One follow-up; the toast closes after it runs. */
   action?: ToastAction;
+  /** Work still under way: a spinner in the tone's glyph's place, reported busy, and no closing by itself; show the result with the same `id` to replace it. @default false */
+  isBusy?: boolean;
   /** Replaces the toast with this id where it stands in the queue, instead of adding another. */
   id?: string;
-  /** How long it shows, in ms (1 to 60000), over the region's `duration`; a toast with an action stays until closed. */
+  /** How long it shows, in ms (1 to 60000), over the region's `duration`; a toast with an action, or busy, stays until closed or replaced. */
   duration?: number;
 }
 
@@ -46,7 +51,7 @@ export interface ToastRegionProps {
   inset?: { top?: number; bottom?: number; start?: number; end?: number };
   /** The dismiss button's name on every toast: "Dismiss". Defaults to "Dismiss" in the page's language. */
   dismissLabel?: string;
-  /** How long a toast without an action shows, in ms. @default 5000 */
+  /** How long a toast without an action, and not busy, shows, in ms. @default 5000 */
   duration?: number;
   /** The page's content, one element or several, a page-bottom `<scroll>` among them; `useToast()` anywhere inside it reaches this region. */
   children: Child;
@@ -57,6 +62,8 @@ export type ToastProps = {
   /** @default 'neutral' */
   tone?: ToastTone;
   action?: ToastAction;
+  /** A spinner in the tone's glyph's place, and the toast reported busy. @default false */
+  isBusy?: boolean;
   /** Shows a dismiss button. */
   onDismiss?: () => void;
   /** The dismiss button's name, with `onDismiss`. */
@@ -67,15 +74,25 @@ export type ToastProps = {
 };
 
 /** The toast as drawn. Pages show toasts through `ToastRegion` and `useToast()`; this is its face. */
-export function Toast({ message, tone = 'neutral', action, onDismiss, dismissLabel = liuliText('@liuli.dismiss'), className, 'data-testid': testId, ...attributes }: ToastProps) {
+export function Toast({ message, tone = 'neutral', action, isBusy = false, onDismiss, dismissLabel = liuliText('@liuli.dismiss'), className, 'data-testid': testId, ...attributes }: ToastProps) {
   const glyph = toneGlyph[tone];
+  // At accessibility text sizes the action goes under the message, so the message keeps the card's width.
+  const isUnder = useLargeText() && action !== undefined;
+  const words = <text className={isUnder ? r.message.under : r.message.base}>{message}</text>;
+  const follow = action !== undefined && (
+    <Button label={action.label} onClick={action.onClick} variant="link" size="sm" className={r.action.base} data-testid={testId && `${testId}-action`} />
+  );
   return (
-    <view data-testid={testId} {...dataOf(attributes)} className={cx(r.toast.base, onDismiss === undefined && r.toast.plain, className)}>
-      {glyph && <Glyph name={glyph} className={cx(r.icon.base, r.icon.tone[tone])} />}
-      <text className={r.message.base}>{message}</text>
-      {action !== undefined && (
-        <Button label={action.label} onClick={action.onClick} variant="link" size="sm" className={r.action.base} data-testid={testId && `${testId}-action`} />
+    <view data-testid={testId} {...dataOf(attributes)} aria-busy={isBusy || undefined} className={cx(r.toast.base, onDismiss === undefined && r.toast.plain, className)}>
+      {(isBusy || glyph) && (
+        // One slot for the glyph and the spinner, on the message's first line.
+        <FirstLine strut={r.message.type}>
+          {isBusy
+            ? <SpinnerMark side={20} className={cx(r.icon.base, r.icon.tone[tone], r.spinner.base)} />
+            : glyph && <Glyph name={glyph} side={20} className={cx(r.icon.base, r.icon.tone[tone])} />}
+        </FirstLine>
       )}
+      {isUnder ? <view className={r.stack.base}>{words}{follow}</view> : <>{words}{follow}</>}
       {onDismiss !== undefined && (
         <button aria-label={dismissLabel} onClick={onDismiss} data-testid={testId && `${testId}-dismiss`} className={r.dismiss.base}>
           <Glyph name="close" className={r.dismissIcon.base} />
@@ -92,6 +109,7 @@ interface Entry {
   message: string;
   tone: ToastTone;
   action: string | null;
+  isBusy: boolean;
   duration: number | null;
 }
 
@@ -124,6 +142,7 @@ function regionFor(queue: Local<Entry[]>, seq: Local<number>, slot: Local<number
         message: options.message,
         tone: options.tone ?? 'neutral',
         action: options.action?.label ?? null,
+        isBusy: options.isBusy ?? false,
         duration: options.duration ?? null,
       };
       if (options.action) actions.set(id, options.action.onClick);
@@ -169,9 +188,9 @@ function Shown({ entry, regionId, position, inset, dismissLabel, duration, toast
   const close = () => toaster.dismiss(entry.id);
   const run = actions.get(entry.id);
   // The host counts only while nothing holds the toast (a press, a resting pointer, focus inside)
-  // and closes it through onToggle; a toast with an action waits to be closed.
+  // and closes it through onToggle; a toast with an action, or busy, waits to be closed or replaced.
   const isTouch = useView().env.pointer !== 'fine';
-  const closeAfter = entry.action !== null ? undefined : Math.min(60000, Math.max(1, Math.round(entry.duration ?? duration)));
+  const closeAfter = entry.action !== null || entry.isBusy ? undefined : Math.min(60000, Math.max(1, Math.round(entry.duration ?? duration)));
   return (
     <view
       id={`${regionId}-${entry.seq}`}
@@ -193,6 +212,7 @@ function Shown({ entry, regionId, position, inset, dismissLabel, duration, toast
         <Toast
           message={entry.message}
           tone={entry.tone}
+          isBusy={entry.isBusy}
           action={entry.action !== null && run ? { label: entry.action, onClick: () => { run(); close(); } } : undefined}
           onDismiss={close}
           dismissLabel={dismissLabel}

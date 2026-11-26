@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { textOf } from '@lingxia/view/testing';
-import { renderExample, renderPage } from '../testing/harness.mjs';
+import { renderExample, renderPage, isSpinner } from '../testing/harness.mjs';
 
 const texts = (screen, role) => screen.queryAll(node => node.props.role === role && node.tag === 'text').map(textOf);
 // What the live texts of a role say now, ignoring the cleared ones.
@@ -79,11 +79,39 @@ test('Progress: a toast with the same id updates in place instead of queueing', 
   screen.press(screen.getByTestId('upload'));
   screen.press(screen.getByTestId('upload'));
   assert.equal(shown(screen).length, 1);
-  assert.equal(message(screen), 'Uploaded 2 of 3');
+  assert.equal(message(screen), 'Uploading photos: 2 of 3 done');
   screen.press(screen.getByTestId('upload'));
   assert.equal(message(screen), 'All 3 photos uploaded');
   screen.press(screen.getByTestId('toast-dismiss'));
   assert.equal(shown(screen).length, 0);
+});
+
+test('Progress: busy until done: a spinner, no glyph, reported busy, never closing by itself; the result closes on its own', async () => {
+  const screen = await renderExample('Toast/Toast', 'Progress');
+  screen.press(screen.getByTestId('upload'));
+  const card = () => shown(screen)[0];
+  const inside = node => [node, ...(node.children ?? []).flatMap(inside)];
+  const marks = () => inside(card()).filter(isSpinner);
+  assert.equal(card().props.stateBusy, 1);
+  assert.equal(marks().length, 1);
+  assert.ok(marks()[0].props.accessibilityHidden);
+  assert.equal(layer(screen).props.closeAfter, undefined);
+  assert.deepEqual(live(screen, 'status'), ['Uploading photos: 1 of 3 done']);
+  screen.press(screen.getByTestId('upload'));
+  screen.press(screen.getByTestId('upload'));
+  assert.equal(card().props.stateBusy, undefined);
+  assert.equal(layer(screen).props.closeAfter, 5000);
+  assert.deepEqual(live(screen, 'status'), ['All 3 photos uploaded']);
+});
+
+test('Faces: at accessibility text sizes an action goes under its message; at the default size it sits beside it', async () => {
+  for (const [textScale, isUnder] of [[1, false], [2, true]]) {
+    const screen = await renderExample('Toast/Toast', 'Faces', { env: { textScale } });
+    const retry = screen.queryAll(node => node.tag === 'text' && textOf(node) === 'Retry')[0];
+    const card = screen.queryAll(node => node.children?.some(child => child.tag === 'text' && textOf(child) === 'Could not save the note'))[0];
+    assert.equal(card.props.flexDirection === 'row' || card.props.direction === 'row', !isUnder, `textScale ${textScale}`);
+    assert.ok(retry);
+  }
 });
 
 test('like the reference, the toast sits in the bottom end corner on any screen, as wide as the region up to 400 pt', async () => {

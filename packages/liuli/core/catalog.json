@@ -21926,7 +21926,7 @@
       "status": "preview",
       "since": "2026-11-13",
       "summary": "A short message about something that just happened, over the bottom of the screen",
-      "description": "A toast confirms an action that worked away from where it was pressed, or offers to undo it: a note archived, a link copied. A page holds one `ToastRegion`; `useToast()` shows a toast from anywhere inside it. One shows at a time and the rest wait in order; a toast with the same `id` replaces the one queued, so a running count updates in place. One without an action closes by itself after `duration`; one with an action stays until it is closed.",
+      "description": "A toast confirms an action that worked away from where it was pressed, or offers to undo it: a note archived, a link copied. A page holds one `ToastRegion`; `useToast()` shows a toast from anywhere inside it. One shows at a time and the rest wait in order; a toast with the same `id` replaces the one queued, so a running count updates in place. One without an action closes by itself after `duration`; one with an action stays until it is closed. A busy one, for work still under way, turns a spinner and stays until its result replaces it.",
       "keywords": [
         "toast",
         "snackbar",
@@ -21965,6 +21965,13 @@
           "description": ""
         },
         {
+          "name": "isBusy",
+          "type": "boolean",
+          "required": false,
+          "description": "A spinner in the tone's glyph's place, and the toast reported busy.",
+          "default": "false"
+        },
+        {
           "name": "onDismiss",
           "type": "(() => void)",
           "required": false,
@@ -21995,6 +22002,8 @@
         "region": "view",
         "toast": "view",
         "icon": "vector",
+        "spinner": "view",
+        "stack": "view",
         "message": "text",
         "action": "Button",
         "dismiss": "button",
@@ -22005,7 +22014,12 @@
         "pattern": null,
         "name": null,
         "description": [],
-        "states": [],
+        "states": [
+          {
+            "state": "busy",
+            "from": "isBusy"
+          }
+        ],
         "keyboard": [
           {
             "keys": "Tab",
@@ -22049,6 +22063,7 @@
           "Each new message is announced politely; a danger toast is announced assertively.",
           "The announcement comes from live text that lives as long as the region, as a region inserted with its message is not announced.",
           "The tone is in the glyph and the words, never in colour alone.",
+          "A busy toast is reported busy and never closes by itself; the toast that replaces it is announced like any other.",
           "A toast without an action closes after `duration`; the count pauses while it is pressed, under a resting pointer or holding focus. A toast with an action stays until closed.",
           "A toast is not modal: Escape and back go to whatever has focus, never to the toast. The dismiss button is its keyboard path."
         ]
@@ -22067,12 +22082,12 @@
         {
           "name": "Progress",
           "title": "Updated in place",
-          "source": "import { ToastRegion } from '@liulidesign/core/Toast';\n\n/** A progress message updated in place by its id, rather than queued behind itself. */\nexport function Progress() {\n  return (\n    <ToastRegion>\n      <Uploader />\n    </ToastRegion>\n  );\n}"
+          "source": "import { ToastRegion } from '@liulidesign/core/Toast';\n\n/** A progress message updated in place by its id, rather than queued behind itself: busy, so it stays, until the last update says it is done. */\nexport function Progress() {\n  return (\n    <ToastRegion>\n      <Uploader />\n    </ToastRegion>\n  );\n}"
         },
         {
           "name": "Faces",
           "title": "Each face, at phone width",
-          "source": "import { Said } from '../example';\nimport { Toast } from '@liulidesign/core/Toast';\n\n/**\n * Each face at the width a toast takes on a phone: a message, success, with Undo, and danger with\n * Retry. 32 px apart and below, the raised shadow's reach (8 px down plus a 24 px blur), so each\n * shadow ends before the next card and the stage's edge.\n */\nexport function Faces() {\n  return (\n    <Said>\n      {say => (\n        <view className=\"gap-8 pb-8\">\n          <Toast message=\"Note moved to Travel\" onDismiss={() => say('Dismissed')} />\n          <Toast message=\"Changes saved\" tone=\"success\" onDismiss={() => say('Dismissed')} />\n          <Toast message={'\"Q3 plan\" archived'} action={{ label: 'Undo', onClick: () => say('Undid the archive') }} onDismiss={() => say('Dismissed')} />\n          <Toast message=\"Could not save the note\" tone=\"danger\" action={{ label: 'Retry', onClick: () => say('Retried') }} onDismiss={() => say('Dismissed')} />\n        </view>\n      )}\n    </Said>\n  );\n}"
+          "source": "import { Said } from '../example';\nimport { Toast } from '@liulidesign/core/Toast';\n\n/**\n * Each face at the width a toast takes on a phone: a message, success, busy, with Undo, and danger\n * with Retry. 32 px apart and below, the raised shadow's reach (8 px down plus a 24 px blur), so each\n * shadow ends before the next card and the stage's edge.\n */\nexport function Faces() {\n  return (\n    <Said>\n      {say => (\n        <view className=\"gap-8 pb-8\">\n          <Toast message=\"Note moved to Travel\" onDismiss={() => say('Dismissed')} />\n          <Toast message=\"Changes saved\" tone=\"success\" onDismiss={() => say('Dismissed')} />\n          <Toast message=\"Exporting 24 notes\" isBusy onDismiss={() => say('Dismissed')} />\n          <Toast message={'\"Q3 plan\" archived'} action={{ label: 'Undo', onClick: () => say('Undid the archive') }} onDismiss={() => say('Dismissed')} />\n          <Toast message=\"Could not save the note\" tone=\"danger\" action={{ label: 'Retry', onClick: () => say('Retried') }} onDismiss={() => say('Dismissed')} />\n        </view>\n      )}\n    </Said>\n  );\n}"
         }
       ],
       "gaps": [],
@@ -22125,11 +22140,11 @@
             },
             {
               "name": "Progress",
-              "title": "A count updated in place"
+              "title": "A count updated in place, busy until done"
             },
             {
               "name": "Faces",
-              "title": "A message, success, with Undo, and danger with Retry"
+              "title": "A message, success, busy, with Undo, and danger with Retry"
             }
           ],
           "inContext": []
