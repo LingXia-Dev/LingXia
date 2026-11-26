@@ -1,4 +1,4 @@
-use crate::host::{HostCancel, HostResult, await_or_cancel};
+use crate::host::{HostCancel, await_or_cancel};
 use crate::platform_error::map_platform_error;
 use lingxia_app_context::app_config;
 use lingxia_service::file::PickDirectoryRequest;
@@ -25,7 +25,7 @@ struct DownloadSettingsResult {
     can_choose_directory: bool,
 }
 
-fn download_settings_result(app: &LxApp) -> HostResult<DownloadSettingsResult> {
+fn download_settings_result(app: &LxApp) -> lingxia_error::Result<DownloadSettingsResult> {
     let effective = lingxia_service::downloads::dir(&app.app_data_dir());
     let configured = lingxia_service::settings::download_dir(&app.app_data_dir())
         .map_err(|e| lingxia_error::Error::internal(e.to_string()))?;
@@ -40,7 +40,7 @@ fn download_settings_result(app: &LxApp) -> HostResult<DownloadSettingsResult> {
 }
 
 #[lingxia::framework_native("app.getInfo", audience = "control-surface-only")]
-fn get_app_info(_app: Arc<LxApp>) -> HostResult<AppInfo> {
+fn get_app_info(_app: Arc<LxApp>) -> lingxia_error::Result<AppInfo> {
     let (product_name, version) = match app_config() {
         // About is user-facing, so the name follows the display language the
         // same way the launcher entry does. `productName` is the fallback
@@ -63,7 +63,7 @@ fn get_app_info(_app: Arc<LxApp>) -> HostResult<AppInfo> {
 }
 
 #[lingxia::framework_native("downloads.getSettings", audience = "control-surface-only")]
-fn get_download_settings(app: Arc<LxApp>) -> HostResult<DownloadSettingsResult> {
+fn get_download_settings(app: Arc<LxApp>) -> lingxia_error::Result<DownloadSettingsResult> {
     download_settings_result(&app)
 }
 
@@ -71,7 +71,7 @@ fn get_download_settings(app: Arc<LxApp>) -> HostResult<DownloadSettingsResult> 
 async fn choose_download_directory(
     app: Arc<LxApp>,
     mut cancel: HostCancel,
-) -> HostResult<DownloadSettingsResult> {
+) -> lingxia_error::Result<DownloadSettingsResult> {
     let current_dir = lingxia_service::downloads::dir(&app.app_data_dir())
         .to_string_lossy()
         .to_string();
@@ -101,7 +101,7 @@ async fn choose_download_directory(
 }
 
 #[lingxia::framework_native("downloads.resetDirectory", audience = "control-surface-only")]
-fn reset_download_directory(app: Arc<LxApp>) -> HostResult<DownloadSettingsResult> {
+fn reset_download_directory(app: Arc<LxApp>) -> lingxia_error::Result<DownloadSettingsResult> {
     lingxia_service::downloads::reset_dir(&app.app_data_dir())
         .map_err(|e| lingxia_error::Error::internal(e.to_string()))?;
     download_settings_result(&app)

@@ -4,7 +4,7 @@
 //! than rewriting a JSON document after each navigation. Bookmarks remain in
 //! JSON because they are small and edited infrequently.
 
-use crate::host::{HostResult, StreamContext};
+use crate::host::StreamContext;
 use crate::url_match::normalize_url;
 use lingxia_platform::traits::app_runtime::AppRuntime;
 use lxapp::LxApp;
@@ -487,7 +487,7 @@ pub(crate) fn count_in(app_data_dir: &Path) -> Result<usize, lingxia_error::Erro
 /// pruned to that cap. No query input: this is an internal webui route and the
 /// history page filters/searches client-side by design.
 #[lingxia::framework_native("history.list", audience = "control-surface-only")]
-fn list_history(app: Arc<LxApp>) -> HostResult<HistorySnapshot> {
+fn list_history(app: Arc<LxApp>) -> lingxia_error::Result<HistorySnapshot> {
     let _guard = store_lock()
         .lock()
         .unwrap_or_else(|error| error.into_inner());
@@ -495,7 +495,7 @@ fn list_history(app: Arc<LxApp>) -> HostResult<HistorySnapshot> {
 }
 
 #[lingxia::framework_native("history.remove", audience = "control-surface-only")]
-fn remove_history_entry(app: Arc<LxApp>, input: IdInput) -> HostResult<()> {
+fn remove_history_entry(app: Arc<LxApp>, input: IdInput) -> lingxia_error::Result<()> {
     let _guard = store_lock()
         .lock()
         .unwrap_or_else(|error| error.into_inner());
@@ -516,7 +516,7 @@ fn remove_history_entry(app: Arc<LxApp>, input: IdInput) -> HostResult<()> {
 }
 
 #[lingxia::framework_native("history.clear", audience = "control-surface-only")]
-fn clear_history(app: Arc<LxApp>, input: ClearInput) -> HostResult<ClearResult> {
+fn clear_history(app: Arc<LxApp>, input: ClearInput) -> lingxia_error::Result<ClearResult> {
     clear_since_in(&app.app_data_dir(), input.since_ms).map(|removed| ClearResult { removed })
 }
 
@@ -524,7 +524,7 @@ fn clear_history(app: Arc<LxApp>, input: ClearInput) -> HostResult<ClearResult> 
 async fn watch_history(
     app: Arc<LxApp>,
     mut stream: StreamContext<HistoryWatchEvent>,
-) -> HostResult<()> {
+) -> lingxia_error::Result<()> {
     let mut receiver = channel().subscribe();
     {
         let _guard = store_lock()

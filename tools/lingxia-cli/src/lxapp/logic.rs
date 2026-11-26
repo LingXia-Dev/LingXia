@@ -1717,7 +1717,7 @@ mod tests {
         write(
             root,
             "rust/lib.rs",
-            "#[lingxia::native(\"greet.hello\")]\npub async fn hello() -> HostResult<()> { todo!() }\n",
+            "#[lingxia::native(\"greet.hello\")]\npub async fn hello() -> lingxia::Result<()> { todo!() }\n",
         );
         lingxia_native_codegen::generate_clients(&root.join("rust"), &root.join(".lingxia"), None)
             .unwrap();
@@ -2409,7 +2409,7 @@ mod tests {
             #[derive(serde::Deserialize)]
             pub struct HelloInput { pub name: String }
             #[lingxia::native("greet.hello")]
-            pub async fn hello(input: HelloInput) -> HostResult<String> { todo!() }
+            pub async fn hello(input: HelloInput) -> lingxia::Result<String> { todo!() }
             "#,
         );
         lingxia_native_codegen::generate_clients(&root.join("rust"), &root.join(".lingxia"), None)

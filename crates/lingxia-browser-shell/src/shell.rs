@@ -1,5 +1,4 @@
 //! Ordered, mixed sidebar Pins and cached site icons, exposed to trusted control surfaces.
-use crate::host::HostResult;
 use lingxia_platform::traits::app_runtime::AppRuntime;
 use lingxia_shell::{MAX_SHELL_PINS, ShellPin};
 use lxapp::LxApp;
@@ -48,7 +47,7 @@ struct ShellPins {
     max: usize,
 }
 
-fn shell_pins() -> HostResult<ShellPins> {
+fn shell_pins() -> lingxia_error::Result<ShellPins> {
     Ok(ShellPins {
         items: lingxia_shell::pins()
             .map_err(|error| lingxia_error::Error::internal(error.to_string()))?,
@@ -57,12 +56,12 @@ fn shell_pins() -> HostResult<ShellPins> {
 }
 
 #[lingxia::framework_native("shell.pins", audience = "control-app-or-surface")]
-fn pins(_app: Arc<LxApp>) -> HostResult<ShellPins> {
+fn pins(_app: Arc<LxApp>) -> lingxia_error::Result<ShellPins> {
     shell_pins()
 }
 
 #[lingxia::framework_native("shell.reorderPins", audience = "control-app-or-surface")]
-fn reorder_pins(_app: Arc<LxApp>, input: ReorderPinsInput) -> HostResult<ShellPins> {
+fn reorder_pins(_app: Arc<LxApp>, input: ReorderPinsInput) -> lingxia_error::Result<ShellPins> {
     lingxia_shell::reorder_pins(input.items).map_err(map_pin_error)?;
     shell_pins()
 }
@@ -101,7 +100,7 @@ fn site_icons_for(
     urls: Vec<String>,
     cached: impl Fn(&str) -> Option<PathBuf>,
     publish: impl Fn(&Path) -> Option<String>,
-) -> HostResult<HashMap<String, String>> {
+) -> lingxia_error::Result<HashMap<String, String>> {
     if urls.len() > MAX_SITE_ICON_URLS {
         return Err(lingxia_error::Error::invalid_arg(format!(
             "shell.siteIcons takes at most {MAX_SITE_ICON_URLS} urls"
@@ -119,7 +118,7 @@ fn site_icons_for(
 /// Reads the icon cache only: icons arrive there from the tab's WebView, which already goes through the
 /// browser's proxy, so this route never opens a connection of its own.
 #[lingxia::framework_native("shell.siteIcons", audience = "control-surface-only")]
-fn site_icons(app: Arc<LxApp>, input: SiteIconsInput) -> HostResult<SiteIcons> {
+fn site_icons(app: Arc<LxApp>, input: SiteIconsInput) -> lingxia_error::Result<SiteIcons> {
     let Some(cache_root) = lxapp::get_platform().map(|runtime| runtime.app_cache_dir()) else {
         return Ok(SiteIcons {
             icons: HashMap::new(),

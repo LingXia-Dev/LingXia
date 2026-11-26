@@ -368,10 +368,10 @@ fn expand_host(
                     &self,
                     __lingxia_invocation: ::lingxia::host::HostInvocationContext,
                     __lingxia_input: Option<String>,
-                ) -> ::lingxia::host::HostResult<::lingxia::host::HostOutput> {
+                ) -> ::lingxia::Result<::lingxia::host::HostOutput> {
                     let __lingxia_result = {
                         let __lingxia_result = #call_expr;
-                        __lingxia_result.map_err(::lingxia::host::__native::route_error)
+                        __lingxia_result.map_err(::core::convert::Into::<::lingxia::Error>::into)
                     };
                     ::lingxia::host::serialize_result(__lingxia_result)
                 }
@@ -421,7 +421,7 @@ fn expand_host(
                 Box::pin(async move {
                     let __lingxia_result = {
                         let __lingxia_result = #call_expr;
-                        __lingxia_result.map_err(::lingxia::host::__native::route_error)
+                        __lingxia_result.map_err(::core::convert::Into::<::lingxia::Error>::into)
                     };
                     #serialize_expr
                 })
@@ -588,13 +588,13 @@ fn expand_stream(
                     let __lingxia_error_tx = __lingxia_stream.error_sender();
 
                     ::lingxia::host::__native::spawn(async move {
-                        let __lingxia_result: ::lingxia::host::HostResult<()> = {
+                        let __lingxia_result: ::lingxia::Result<()> = {
                             let __lingxia_invocation = __lingxia_invocation;
                             let __lingxia_input = __lingxia_input;
                             let __lingxia_stream = __lingxia_stream;
                             #call_expr
                         }
-                        .map_err(::lingxia::host::__native::route_error);
+                        .map_err(::core::convert::Into::<::lingxia::Error>::into);
                         if let Err(err) = __lingxia_result {
                             let _ = __lingxia_error_tx.send(Err(err));
                         }
@@ -665,10 +665,10 @@ fn expand_channel(
                     __lingxia_ctx.disable_close_on_drop();
                     let #channel_ident =
                         __lingxia_ctx.with_types::<#inbound_ty, #outbound_ty>();
-                    let __lingxia_result: ::lingxia::host::HostResult<()> = {
+                    let __lingxia_result: ::lingxia::Result<()> = {
                         #call_expr
                     }
-                    .map_err(::lingxia::host::__native::route_error);
+                    .map_err(::core::convert::Into::<::lingxia::Error>::into);
                     match __lingxia_result {
                         Ok(()) => __lingxia_close.close(),
                         Err(err) => __lingxia_close.close_with(err),

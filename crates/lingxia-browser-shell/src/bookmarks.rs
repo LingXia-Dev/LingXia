@@ -7,7 +7,7 @@
 //! when the native chrome toggles a star.
 
 use crate::bookmarks_html::{ImportedBookmark, export_netscape_html, parse_netscape_html};
-use crate::host::{HostCancel, HostResult, StreamContext, await_or_cancel};
+use crate::host::{HostCancel, StreamContext, await_or_cancel};
 use crate::platform_error::map_platform_error;
 use crate::url_match::normalize_url;
 use lingxia_platform::traits::app_runtime::AppRuntime;
@@ -909,13 +909,13 @@ fn reorder_entries(
 }
 
 #[lingxia::framework_native("bookmarks.list", audience = "control-surface-only")]
-fn list_bookmarks(app: Arc<LxApp>) -> HostResult<BookmarksView> {
+fn list_bookmarks(app: Arc<LxApp>) -> lingxia_error::Result<BookmarksView> {
     let _guard = store_lock().lock().unwrap_or_else(|e| e.into_inner());
     load(&app.app_data_dir()).map(bookmarks_view)
 }
 
 #[lingxia::framework_native("bookmarks.add", audience = "control-surface-only")]
-fn add_bookmark(app: Arc<LxApp>, input: UrlInput) -> HostResult<AddResult> {
+fn add_bookmark(app: Arc<LxApp>, input: UrlInput) -> lingxia_error::Result<AddResult> {
     mutate(&app.app_data_dir(), |snapshot| {
         let (entry, created) = add_entry(
             snapshot,
@@ -928,7 +928,7 @@ fn add_bookmark(app: Arc<LxApp>, input: UrlInput) -> HostResult<AddResult> {
 }
 
 #[lingxia::framework_native("bookmarks.remove", audience = "control-surface-only")]
-fn remove_bookmark(app: Arc<LxApp>, input: IdInput) -> HostResult<()> {
+fn remove_bookmark(app: Arc<LxApp>, input: IdInput) -> lingxia_error::Result<()> {
     mutate(&app.app_data_dir(), |snapshot| {
         let before = snapshot.entries.len();
         snapshot.entries.retain(|e| e.id != input.id);
@@ -944,7 +944,7 @@ fn remove_bookmark(app: Arc<LxApp>, input: IdInput) -> HostResult<()> {
 }
 
 #[lingxia::framework_native("bookmarks.toggle", audience = "control-surface-only")]
-fn toggle_bookmark_route(app: Arc<LxApp>, input: UrlInput) -> HostResult<StatusResult> {
+fn toggle_bookmark_route(app: Arc<LxApp>, input: UrlInput) -> lingxia_error::Result<StatusResult> {
     let (status, removed_id) = mutate(&app.app_data_dir(), |snapshot| {
         let normalized = normalize_url(&input.url);
         if let Some(existing) = find_entry(snapshot, &normalized) {
@@ -980,7 +980,7 @@ fn toggle_bookmark_route(app: Arc<LxApp>, input: UrlInput) -> HostResult<StatusR
 }
 
 #[lingxia::framework_native("bookmarks.getStatus", audience = "control-surface-only")]
-fn bookmark_status(app: Arc<LxApp>, input: UrlInput) -> HostResult<StatusResult> {
+fn bookmark_status(app: Arc<LxApp>, input: UrlInput) -> lingxia_error::Result<StatusResult> {
     let _guard = store_lock().lock().unwrap_or_else(|e| e.into_inner());
     let snapshot = load(&app.app_data_dir())?;
     let entry = find_entry(&snapshot, &normalize_url(&input.url)).cloned();
@@ -991,28 +991,28 @@ fn bookmark_status(app: Arc<LxApp>, input: UrlInput) -> HostResult<StatusResult>
 }
 
 #[lingxia::framework_native("bookmarks.rename", audience = "control-surface-only")]
-fn rename_bookmark(app: Arc<LxApp>, input: RenameInput) -> HostResult<BookmarkEntry> {
+fn rename_bookmark(app: Arc<LxApp>, input: RenameInput) -> lingxia_error::Result<BookmarkEntry> {
     mutate(&app.app_data_dir(), |snapshot| {
         rename_entry_op(snapshot, &input.id, &input.title)
     })
 }
 
 #[lingxia::framework_native("bookmarks.move", audience = "control-surface-only")]
-fn move_bookmark(app: Arc<LxApp>, input: MoveInput) -> HostResult<BookmarkEntry> {
+fn move_bookmark(app: Arc<LxApp>, input: MoveInput) -> lingxia_error::Result<BookmarkEntry> {
     mutate(&app.app_data_dir(), |snapshot| {
         move_entry_op(snapshot, &input.id, input.group_id.clone())
     })
 }
 
 #[lingxia::framework_native("bookmarks.reorder", audience = "control-surface-only")]
-fn reorder_bookmarks(app: Arc<LxApp>, input: ReorderInput) -> HostResult<()> {
+fn reorder_bookmarks(app: Arc<LxApp>, input: ReorderInput) -> lingxia_error::Result<()> {
     mutate(&app.app_data_dir(), |snapshot| {
         reorder_entries(snapshot, input.group_id.as_deref(), &input.ordered_ids)
     })
 }
 
 #[lingxia::framework_native("bookmarks.setPinned", audience = "control-surface-only")]
-fn set_pinned(app: Arc<LxApp>, input: SetPinnedInput) -> HostResult<PinStatus> {
+fn set_pinned(app: Arc<LxApp>, input: SetPinnedInput) -> lingxia_error::Result<PinStatus> {
     let exists = {
         let _guard = store_lock()
             .lock()
@@ -1035,7 +1035,7 @@ fn set_pinned(app: Arc<LxApp>, input: SetPinnedInput) -> HostResult<PinStatus> {
 }
 
 #[lingxia::framework_native("bookmarks.createGroup", audience = "control-surface-only")]
-fn create_group(app: Arc<LxApp>, input: GroupNameInput) -> HostResult<BookmarkGroup> {
+fn create_group(app: Arc<LxApp>, input: GroupNameInput) -> lingxia_error::Result<BookmarkGroup> {
     let name = validated_name(&input.name, "group name")?;
     mutate(&app.app_data_dir(), |snapshot| {
         if snapshot.groups.iter().any(|g| g.name == name) {
@@ -1053,21 +1053,21 @@ fn create_group(app: Arc<LxApp>, input: GroupNameInput) -> HostResult<BookmarkGr
 }
 
 #[lingxia::framework_native("bookmarks.renameGroup", audience = "control-surface-only")]
-fn rename_group(app: Arc<LxApp>, input: GroupRenameInput) -> HostResult<BookmarkGroup> {
+fn rename_group(app: Arc<LxApp>, input: GroupRenameInput) -> lingxia_error::Result<BookmarkGroup> {
     mutate(&app.app_data_dir(), |snapshot| {
         rename_group_op(snapshot, &input.id, &input.name)
     })
 }
 
 #[lingxia::framework_native("bookmarks.deleteGroup", audience = "control-surface-only")]
-fn delete_group(app: Arc<LxApp>, input: IdInput) -> HostResult<()> {
+fn delete_group(app: Arc<LxApp>, input: IdInput) -> lingxia_error::Result<()> {
     mutate(&app.app_data_dir(), |snapshot| {
         delete_group_op(snapshot, &input.id)
     })
 }
 
 #[lingxia::framework_native("bookmarks.reorderGroups", audience = "control-surface-only")]
-fn reorder_groups(app: Arc<LxApp>, input: OrderedIdsInput) -> HostResult<()> {
+fn reorder_groups(app: Arc<LxApp>, input: OrderedIdsInput) -> lingxia_error::Result<()> {
     mutate(&app.app_data_dir(), |snapshot| {
         let ids: Vec<&str> = snapshot.groups.iter().map(|g| g.id.as_str()).collect();
         if !is_id_permutation(&ids, &input.ordered_ids) {
@@ -1090,7 +1090,7 @@ fn reorder_groups(app: Arc<LxApp>, input: OrderedIdsInput) -> HostResult<()> {
 async fn import_html_bookmarks(
     app: Arc<LxApp>,
     mut cancel: HostCancel,
-) -> HostResult<Option<ImportResult>> {
+) -> lingxia_error::Result<Option<ImportResult>> {
     let app_for_picker = app.clone();
     let is_chinese = display_locale_is_chinese();
     let selected = await_or_cancel(&mut cancel, async move {
@@ -1159,7 +1159,7 @@ async fn import_html_bookmarks(
 }
 
 #[lingxia::framework_native("bookmarks.exportHtml", audience = "control-surface-only")]
-fn export_html_bookmarks(app: Arc<LxApp>) -> HostResult<ExportResult> {
+fn export_html_bookmarks(app: Arc<LxApp>) -> lingxia_error::Result<ExportResult> {
     let snapshot = {
         let _guard = store_lock()
             .lock()
@@ -1189,7 +1189,7 @@ fn export_html_bookmarks(app: Arc<LxApp>) -> HostResult<ExportResult> {
 async fn watch_bookmarks(
     app: Arc<LxApp>,
     mut stream: StreamContext<BookmarksView>,
-) -> HostResult<()> {
+) -> lingxia_error::Result<()> {
     let mut rx = channel().subscribe();
     // Seed subscribers with the current state so the page renders from the
     // stream alone.

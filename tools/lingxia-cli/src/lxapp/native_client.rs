@@ -173,7 +173,7 @@ mod tests {
     }
 
     const ROUTE: &str =
-        "#[lingxia::native(\"demo.ping\")]\npub fn ping() -> HostResult<()> { todo!() }\n";
+        "#[lingxia::native(\"demo.ping\")]\npub fn ping() -> lingxia::Result<()> { todo!() }\n";
 
     #[test]
     fn a_bundled_host_lxapp_calls_the_configured_crate() {

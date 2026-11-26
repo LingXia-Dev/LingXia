@@ -27,7 +27,6 @@ mod embedded_document_probe;
 mod navigation;
 mod navigator;
 
-pub type HostResult<T> = Result<T, lingxia_error::Error>;
 pub type JsonValue = serde_json::Value;
 
 pub type HostCancel = oneshot::Receiver<()>;
@@ -48,7 +47,7 @@ pub enum HostOutput {
 
 #[doc(hidden)]
 pub mod __native {
-    use super::{Future, HostResult};
+    use super::Future;
 
     pub fn spawn<F>(future: F) -> tokio::task::JoinHandle<F::Output>
     where
@@ -58,12 +57,7 @@ pub mod __native {
         crate::executor::spawn(future)
     }
 
-    /// A route's own error, whatever type it returns.
-    pub fn route_error(error: impl Into<lingxia_error::Error>) -> lingxia_error::Error {
-        error.into()
-    }
-
-    pub async fn spawn_blocking<F, R>(f: F) -> HostResult<R>
+    pub async fn spawn_blocking<F, R>(f: F) -> lingxia_error::Result<R>
     where
         F: FnOnce() -> R + Send + 'static,
         R: Send + 'static,
@@ -830,7 +824,7 @@ pub trait SyncHostHandler: Send + Sync + 'static {
         &self,
         invocation: HostInvocationContext,
         input: Option<String>,
-    ) -> HostResult<HostOutput>;
+    ) -> lingxia_error::Result<HostOutput>;
 }
 
 struct SyncAsAsyncHostHandler(Arc<dyn SyncHostHandler>);
@@ -1108,7 +1102,7 @@ pub fn dispatch_host_call_sync(
     name: &str,
     invocation: HostInvocationContext,
     input: Option<String>,
-) -> HostResult<HostOutput> {
+) -> lingxia_error::Result<HostOutput> {
     let handler = {
         let registry = get_route_registry().lock().unwrap();
         registry.sync_host_for_caller(name, invocation.caller())
@@ -1205,7 +1199,7 @@ pub fn route_policy(name: &str) -> Result<Option<EffectiveRoutePolicy>, RoutePol
         .map(|route| route.metadata.policy()))
 }
 
-pub fn parse_input<T: DeserializeOwned>(input: Option<&str>) -> HostResult<T> {
+pub fn parse_input<T: DeserializeOwned>(input: Option<&str>) -> lingxia_error::Result<T> {
     match input {
         Some(json) => serde_json::from_str(json)
             .map_err(|e| lingxia_error::Error::invalid_arg(format!("Invalid input JSON: {}", e))),
@@ -1213,7 +1207,9 @@ pub fn parse_input<T: DeserializeOwned>(input: Option<&str>) -> HostResult<T> {
     }
 }
 
-pub fn serialize_result<T: Serialize>(result: HostResult<T>) -> HostResult<HostOutput> {
+pub fn serialize_result<T: Serialize>(
+    result: lingxia_error::Result<T>,
+) -> lingxia_error::Result<HostOutput> {
     let value = result?;
     serde_json::to_string(&value)
         .map(HostOutput::Json)
@@ -1225,7 +1221,7 @@ pub fn serialize_result<T: Serialize>(result: HostResult<T>) -> HostResult<HostO
 /// Handlers emit zero or more events with [`send`](Self::send), then finish
 /// with [`end`](Self::end) or [`error`](Self::error).
 pub struct StreamContext<TEvent, TResult = ()> {
-    tx: mpsc::UnboundedSender<HostResult<HostStreamItem>>,
+    tx: mpsc::UnboundedSender<lingxia_error::Result<HostStreamItem>>,
     cancel: HostCancel,
     canceled: bool,
     _marker: PhantomData<fn(TEvent) -> TResult>,
@@ -1243,7 +1239,7 @@ impl<TEvent, TResult> StreamContext<TEvent, TResult> {
     }
 
     #[doc(hidden)]
-    pub fn error_sender(&self) -> mpsc::UnboundedSender<HostResult<HostStreamItem>> {
+    pub fn error_sender(&self) -> mpsc::UnboundedSender<lingxia_error::Result<HostStreamItem>> {
         self.tx.clone()
     }
 }
@@ -1254,7 +1250,7 @@ where
     TResult: Serialize,
 {
     /// Emit one event chunk to the view.
-    pub fn send(&mut self, event: TEvent) -> HostResult<()> {
+    pub fn send(&mut self, event: TEvent) -> lingxia_error::Result<()> {
         let payload = serde_json::to_string(&event)
             .map_err(|e| lingxia_error::Error::internal(e.to_string()))?;
         self.tx
@@ -1263,7 +1259,7 @@ where
     }
 
     /// Finish the stream with a final result.
-    pub fn end(self, result: TResult) -> HostResult<()> {
+    pub fn end(self, result: TResult) -> lingxia_error::Result<()> {
         let payload = serde_json::to_string(&result)
             .map_err(|e| lingxia_error::Error::internal(e.to_string()))?;
         self.tx
@@ -1272,7 +1268,11 @@ where
     }
 
     /// Finish the stream with a structured bridge error.
-    pub fn error(self, code: impl Into<String>, message: impl Into<String>) -> HostResult<()> {
+    pub fn error(
+        self,
+        code: impl Into<String>,
+        message: impl Into<String>,
+    ) -> lingxia_error::Result<()> {
         self.tx
             .send(Err(crate::error::host_error(
                 code.into(),
@@ -1288,7 +1288,7 @@ pub fn new_stream_context<TEvent, TResult>(
     cancel: HostCancel,
 ) -> (
     StreamContext<TEvent, TResult>,
-    mpsc::UnboundedReceiver<HostResult<HostStreamItem>>,
+    mpsc::UnboundedReceiver<lingxia_error::Result<HostStreamItem>>,
 ) {
     let (tx, rx) = mpsc::unbounded_channel();
     (
@@ -1304,7 +1304,7 @@ pub fn new_stream_context<TEvent, TResult>(
 
 #[doc(hidden)]
 pub fn stream_output_from_rx(
-    rx: mpsc::UnboundedReceiver<HostResult<HostStreamItem>>,
+    rx: mpsc::UnboundedReceiver<lingxia_error::Result<HostStreamItem>>,
 ) -> HostOutput {
     HostOutput::Stream(Box::pin(futures::stream::unfold(rx, |mut rx| async move {
         rx.recv().await.map(|item| (item, rx))
@@ -1313,8 +1313,8 @@ pub fn stream_output_from_rx(
 
 pub async fn await_or_cancel<T>(
     cancel: &mut HostCancel,
-    fut: impl Future<Output = HostResult<T>>,
-) -> HostResult<T> {
+    fut: impl Future<Output = lingxia_error::Result<T>>,
+) -> lingxia_error::Result<T> {
     tokio::select! {
         _ = cancel => Err(lingxia_error::Error::aborted("Canceled")),
         res = fut => res,
@@ -1451,7 +1451,7 @@ impl<TIn, TOut> ChannelContext<TIn, TOut> {
         self.inbound_rx.recv().await
     }
 
-    pub(crate) fn send_raw_json(&self, payload_json: String) -> HostResult<()> {
+    pub(crate) fn send_raw_json(&self, payload_json: String) -> lingxia_error::Result<()> {
         self.outbound_tx
             .send(ChannelOutbound::Data(payload_json))
             .map_err(|_| lingxia_error::Error::internal("Channel closed"))
@@ -1479,7 +1479,7 @@ where
     ///
     /// Returns `None` when the channel has been closed from the View side or
     /// the session was reset.
-    pub async fn recv(&mut self) -> HostResult<Option<ChannelMessage<TIn>>> {
+    pub async fn recv(&mut self) -> lingxia_error::Result<Option<ChannelMessage<TIn>>> {
         match self.recv_raw().await {
             Some(RawChannelInbound::Data(payload_json)) => {
                 let payload = serde_json::from_str(&payload_json).map_err(|e| {
@@ -1496,7 +1496,7 @@ where
     }
 
     /// Send a JSON-serialisable payload to the view.
-    pub fn send(&self, payload: TOut) -> HostResult<()> {
+    pub fn send(&self, payload: TOut) -> lingxia_error::Result<()> {
         let payload_json = serde_json::to_string(&payload)
             .map_err(|e| lingxia_error::Error::internal(e.to_string()))?;
         self.send_raw_json(payload_json)

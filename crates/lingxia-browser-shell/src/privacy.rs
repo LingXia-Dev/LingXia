@@ -5,7 +5,6 @@
 //! browser without needing a live tab. The settings page hides the Privacy
 //! section when `privacy.getUsage` reports the platform as unsupported.
 
-use crate::host::HostResult;
 use lingxia_webview::WebViewError;
 use lxapp::LxApp;
 use serde::{Deserialize, Serialize};
@@ -110,7 +109,7 @@ fn map_webview_error(action: &str, err: WebViewError) -> lingxia_error::Error {
 }
 
 #[lingxia::framework_native("privacy.getUsage", audience = "control-surface-only")]
-async fn get_privacy_usage(app: Arc<LxApp>) -> HostResult<PrivacyUsage> {
+async fn get_privacy_usage(app: Arc<LxApp>) -> lingxia_error::Result<PrivacyUsage> {
     let history_entries = crate::history::count_in(&app.app_data_dir())?;
     let cache_sites = lingxia_webview::data_store::cache_site_count()
         .await
@@ -127,7 +126,7 @@ async fn get_privacy_usage(app: Arc<LxApp>) -> HostResult<PrivacyUsage> {
 }
 
 #[lingxia::framework_native("privacy.clearCache", audience = "control-surface-only")]
-async fn clear_cache(_app: Arc<LxApp>) -> HostResult<()> {
+async fn clear_cache(_app: Arc<LxApp>) -> lingxia_error::Result<()> {
     clear_favicons(None)?;
     lingxia_webview::data_store::clear_cache(None)
         .await
@@ -135,7 +134,7 @@ async fn clear_cache(_app: Arc<LxApp>) -> HostResult<()> {
 }
 
 #[lingxia::framework_native("privacy.clearAllSiteData", audience = "control-surface-only")]
-async fn clear_all_site_data(_app: Arc<LxApp>) -> HostResult<()> {
+async fn clear_all_site_data(_app: Arc<LxApp>) -> lingxia_error::Result<()> {
     lingxia_webview::data_store::clear_all_site_data(None)
         .await
         .map_err(|e| map_webview_error("privacy.clearAllSiteData", e))
@@ -145,7 +144,7 @@ async fn clear_all_site_data(_app: Arc<LxApp>) -> HostResult<()> {
 async fn clear_browsing_data(
     app: Arc<LxApp>,
     input: ClearBrowsingDataInput,
-) -> HostResult<ClearBrowsingDataResult> {
+) -> lingxia_error::Result<ClearBrowsingDataResult> {
     if !input.history && !input.cache && !input.site_data {
         return Err(lingxia_error::Error::invalid_arg(
             "select at least one browsing data category",
@@ -201,7 +200,7 @@ async fn clear_browsing_data(
 async fn clear_site_data(
     _app: Arc<LxApp>,
     input: ClearSiteDataInput,
-) -> HostResult<ClearSiteDataResult> {
+) -> lingxia_error::Result<ClearSiteDataResult> {
     if !input.cache && !input.site_data {
         return Err(lingxia_error::Error::invalid_arg(
             "select site data or cache to clear",
@@ -238,7 +237,7 @@ async fn clear_site_data(
 async fn get_site_data_context(
     _app: Arc<LxApp>,
     input: SiteDataContextInput,
-) -> HostResult<SiteDataContext> {
+) -> lingxia_error::Result<SiteDataContext> {
     let url = lingxia_browser::current_url(&input.tab_id)
         .await
         .map_err(|error| {
@@ -261,7 +260,7 @@ async fn get_site_data_context(
     Ok(SiteDataContext { url, host })
 }
 
-fn clear_favicons(since_ms: Option<u64>) -> HostResult<()> {
+fn clear_favicons(since_ms: Option<u64>) -> lingxia_error::Result<()> {
     use lingxia_platform::traits::app_runtime::AppRuntime;
     if let Some(runtime) = lxapp::get_platform() {
         lingxia_service::favicon::clear_since(&runtime.app_cache_dir(), since_ms).map_err(

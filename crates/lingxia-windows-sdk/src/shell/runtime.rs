@@ -6855,14 +6855,13 @@ fn panel_startup_options(
     path: &str,
     page: Option<&str>,
     query: Option<&serde_json::Value>,
-) -> Result<LxAppStartupOptions, lxapp::LxAppError> {
+) -> lingxia::Result<LxAppStartupOptions> {
     if let Some(current) = lxapp::try_get(target_appid).and_then(|panel| panel.peek_current_page())
     {
         return Ok(LxAppStartupOptions::new(&current));
     }
     if page.is_some() || query.is_some() {
-        return LxAppStartupOptions::for_page(page, query)
-            .map_err(lxapp::LxAppError::InvalidParameter);
+        return LxAppStartupOptions::for_page(page, query).map_err(lingxia::Error::invalid_arg);
     }
     Ok(LxAppStartupOptions::new(path))
 }
@@ -8799,7 +8798,7 @@ async fn open_panel_lxapp(
     path: &str,
     page: Option<&str>,
     query: Option<&serde_json::Value>,
-) -> Result<(), lxapp::LxAppError> {
+) -> lingxia::Result<()> {
     let channel = lxapp::resolve_open_channel(appid, None);
     lxapp::prepare_lxapp_open(appid, channel).await?;
     let options = panel_startup_options(appid, path, page, query)?;

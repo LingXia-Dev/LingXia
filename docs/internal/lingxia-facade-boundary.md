@@ -25,7 +25,7 @@ never touched its API.
 | Area | Exports | Notes |
 | --- | --- | --- |
 | Platform entry | `lingxia::android`, `apple`, `harmony`, `windows`; the init path | The facade owns the final FFI surface. Apps never call the runtime's own init or wire runtime internals. |
-| Host functions | `#[lingxia::native(...)]`, `lingxia::host::*` (`HostResult`, `HostCancel`, `await_or_cancel`, `StreamContext`, `ChannelContext`), `HostAddon`, `register_host_addon`, `lingxia::spawn` | The proc-macro crate is an implementation detail. |
+| Host functions | `#[lingxia::native(...)]`, `lingxia::host::*` (`HostCancel`, `await_or_cancel`, `StreamContext`, `ChannelContext`), `HostAddon`, `register_host_addon`, `lingxia::spawn` | The proc-macro crate is an implementation detail. |
 | Logic extensions | `lingxia::js::{LxLogicExtension, register_logic_extension}` (`standard` feature) | Apps never depend on the runtime's `lx` module. |
 | Runtime types | `LxApp`, surface and page request types, provider traits (`lingxia::provider`) | Only types an author legitimately needs; no runtime orchestration types. |
 | Product domains | `app`, `assets`, `device`, `file`, `media`, `splash`, `update`, `url_callback`, `task`, `wifi`, `location`, `network`, `navigation`, `log` | Grouped by what they do, not by owning crate. |

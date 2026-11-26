@@ -1034,12 +1034,7 @@ fn split_top_level(s: &str) -> Vec<String> {
 }
 
 fn unwrap_result(ty: &str) -> Option<String> {
-    for wrapper in &[
-        "Result",
-        "std::result::Result",
-        "HostResult",
-        "lingxia::Result",
-    ] {
+    for wrapper in &["Result", "std::result::Result", "lingxia::Result"] {
         let args = extract_generic_args(ty, wrapper);
         if !args.is_empty() {
             let inner = args.first().cloned().unwrap_or_else(|| "void".to_string());
@@ -2260,7 +2255,7 @@ mod tests {
             }
 
             #[lingxia::native("device.open")]
-            pub async fn open_device(input: OpenDeviceInput) -> HostResult<()> { todo!() }
+            pub async fn open_device(input: OpenDeviceInput) -> lingxia::Result<()> { todo!() }
         "#,
         );
         let view = render(&manifest, OutputKind::ViewTypeScript).unwrap();
@@ -2331,7 +2326,7 @@ mod tests {
             pub async fn export(
                 input: ExportInput,
                 ctx: StreamContext<ExportEvent, AdjEvent>,
-            ) -> HostResult<()> { todo!() }
+            ) -> lingxia::Result<()> { todo!() }
         "#,
         );
         let logic = render(&manifest, OutputKind::LogicTypeScript).unwrap();
@@ -2370,7 +2365,7 @@ mod tests {
         let manifest = scan_source(
             r#"
             #[lingxia::native("files.stat")]
-            pub async fn stat() -> HostResult<MissingDto> { todo!() }
+            pub async fn stat() -> lingxia::Result<MissingDto> { todo!() }
         "#,
         );
         let err = render(&manifest, OutputKind::LogicTypeScript)
@@ -2386,7 +2381,7 @@ mod tests {
         let manifest = scan_source(
             r#"
             #[lingxia::native("math.add", sync)]
-            pub fn add(input: (i32, i32)) -> HostResult<i32> { todo!() }
+            pub fn add(input: (i32, i32)) -> lingxia::Result<i32> { todo!() }
         "#,
         );
         let logic = render(&manifest, OutputKind::LogicTypeScript).unwrap();
@@ -2401,10 +2396,10 @@ mod tests {
         let manifest = scan_source(
             r#"
             #[lingxia::native("notes.scoped")]
-            pub fn scoped(input: String, context: lingxia::host::HostInvocationContext, state: PageState<NotesState>) -> HostResult<()> { todo!() }
+            pub fn scoped(input: String, context: lingxia::host::HostInvocationContext, state: PageState<NotesState>) -> lingxia::Result<()> { todo!() }
 
             #[lingxia::native("notes.ping")]
-            pub fn ping(context: HostInvocationContext, state: PageState<NotesState>) -> HostResult<u32> { todo!() }
+            pub fn ping(context: HostInvocationContext, state: PageState<NotesState>) -> lingxia::Result<u32> { todo!() }
         "#,
         );
         let input = |name: &str| {
@@ -2442,7 +2437,7 @@ mod tests {
             struct Unused { never_sent: u32 }
 
             #[lingxia::native("list.page")]
-            pub fn page(input: (Page, Raw)) -> HostResult<(Event, Loose)> { todo!() }
+            pub fn page(input: (Page, Raw)) -> lingxia::Result<(Event, Loose)> { todo!() }
         "#,
         );
         let logic = render(&manifest, OutputKind::LogicTypeScript).unwrap();
@@ -2474,10 +2469,10 @@ mod tests {
             struct Both { note: Option<String> }
 
             #[lingxia::native("rows.list")]
-            pub fn list(query: Query) -> HostResult<Vec<Row>> { todo!() }
+            pub fn list(query: Query) -> lingxia::Result<Vec<Row>> { todo!() }
 
             #[lingxia::native("rows.echo")]
-            pub fn echo(both: Both) -> HostResult<Both> { todo!() }
+            pub fn echo(both: Both) -> lingxia::Result<Both> { todo!() }
         "#,
         );
         let logic = render(&manifest, OutputKind::LogicTypeScript).unwrap();
@@ -2506,7 +2501,7 @@ mod tests {
             src.join("lib.rs"),
             r#"
             #[lingxia::framework_native("shell.ping", audience = "control-surface-only")]
-            pub fn ping() -> HostResult<()> { todo!() }
+            pub fn ping() -> lingxia::Result<()> { todo!() }
         "#,
         )
         .unwrap();
@@ -2554,9 +2549,9 @@ mod tests {
             use serde::Opaque;
             #[derive(Serialize)] pub struct IdInput { pub id: String }
             #[lingxia::native("downloads.list")]
-            fn list(input: IdInput) -> HostResult<Snapshot> { todo!() }
+            fn list(input: IdInput) -> lingxia::Result<Snapshot> { todo!() }
             #[lingxia::native("downloads.raw")]
-            fn raw() -> HostResult<Opaque> { todo!() }
+            fn raw() -> lingxia::Result<Opaque> { todo!() }
             "#,
         );
         write(
@@ -2595,7 +2590,7 @@ mod tests {
             #[derive(Serialize)] pub struct IdInput { pub id: String }
             struct Server { listener: Listener }
             #[lingxia::native("downloads.list")]
-            fn list(input: IdInput) -> HostResult<Snapshot> { todo!() }
+            fn list(input: IdInput) -> lingxia::Result<Snapshot> { todo!() }
             "#,
         );
         // `Server` holds a registry type, but no route reaches it.
@@ -2643,7 +2638,7 @@ mod tests {
                 mod tools { pub(crate) mod inner {
                     #[lingxia::native("tools.ping")]
                     #[cfg(unix)]
-                    fn ping() -> HostResult<()> { todo!() }
+                    fn ping() -> lingxia::Result<()> { todo!() }
                 } }
             "#,
             ),
@@ -2652,7 +2647,7 @@ mod tests {
                 "net/proxy.rs",
                 r#"
                 #[lingxia::framework_native("net.get", audience = "control-surface-only")]
-                fn get() -> HostResult<()> { todo!() }
+                fn get() -> lingxia::Result<()> { todo!() }
             "#,
             ),
         ]);
@@ -2678,7 +2673,7 @@ mod tests {
             ("net.rs", "mod proxy;"),
             (
                 "net/proxy.rs",
-                "#[lingxia::native(\"net.get\")]\nfn get() -> HostResult<()> { todo!() }",
+                "#[lingxia::native(\"net.get\")]\nfn get() -> lingxia::Result<()> { todo!() }",
             ),
         ]);
         let err = render(&private, OutputKind::RustModule)
@@ -2689,7 +2684,7 @@ mod tests {
 
         let undeclared = scan_files(&[(
             "stray.rs",
-            "#[lingxia::native(\"stray.get\")]\nfn get() -> HostResult<()> { todo!() }",
+            "#[lingxia::native(\"stray.get\")]\nfn get() -> lingxia::Result<()> { todo!() }",
         )]);
         let err = render(&undeclared, OutputKind::RustModule)
             .unwrap_err()
@@ -2702,10 +2697,10 @@ mod tests {
         let manifest = scan_source(
             r#"
             #[lingxia::native("apps.describe")]
-            pub fn describe(cancel: HostCancel, info: LxAppInfo, app: Arc<LxApp>) -> HostResult<()> { todo!() }
+            pub fn describe(cancel: HostCancel, info: LxAppInfo, app: Arc<LxApp>) -> lingxia::Result<()> { todo!() }
 
             #[lingxia::native("apps.watch", stream)]
-            pub async fn watch(ctx: StreamContext<AppEvent>, query: AppQuery) -> HostResult<()> { todo!() }
+            pub async fn watch(ctx: StreamContext<AppEvent>, query: AppQuery) -> lingxia::Result<()> { todo!() }
         "#,
         );
         let route = |name: &str| manifest.routes.iter().find(|r| r.route == name).unwrap();
@@ -2720,7 +2715,7 @@ mod tests {
         let err = scan_file_into(
             r#"
             #[lingxia::native("apps.pair")]
-            pub fn pair(a: Left, b: Right) -> HostResult<()> { todo!() }
+            pub fn pair(a: Left, b: Right) -> lingxia::Result<()> { todo!() }
         "#,
             "src/apps.rs",
             &mut manifest,
@@ -2810,7 +2805,7 @@ mod tests {
         let manifest = scan_source(
             r#"
             #[lingxia::native("device.close")]
-            pub fn close_device() -> HostResult<()> { todo!() }
+            pub fn close_device() -> lingxia::Result<()> { todo!() }
         "#,
         );
         let ts = render(&manifest, OutputKind::LogicTypeScript).unwrap();
@@ -2822,7 +2817,7 @@ mod tests {
         let manifest = scan_source(
             r#"
             #[lingxia::native("downloads.watch", stream)]
-            pub async fn watch(ctx: StreamContext<String, ()>) -> HostResult<()> { todo!() }
+            pub async fn watch(ctx: StreamContext<String, ()>) -> lingxia::Result<()> { todo!() }
         "#,
         );
         let generated = render(&manifest, OutputKind::BrowserGlobalJs).unwrap();
@@ -2836,10 +2831,10 @@ mod tests {
         let manifest = scan_source(
             r#"
             #[lingxia::native("device.open")]
-            pub fn open_device(input: String) -> HostResult<()> { todo!() }
+            pub fn open_device(input: String) -> lingxia::Result<()> { todo!() }
 
             #[lingxia::native("device.close")]
-            pub fn close_device() -> HostResult<()> { todo!() }
+            pub fn close_device() -> lingxia::Result<()> { todo!() }
         "#,
         );
         let generated = render(&manifest, OutputKind::RustModule).unwrap();

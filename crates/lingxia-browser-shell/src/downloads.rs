@@ -1,4 +1,4 @@
-use crate::host::{HostCancel, HostResult, StreamContext, await_or_cancel};
+use crate::host::{HostCancel, StreamContext, await_or_cancel};
 use crate::platform_error::map_platform_error;
 use lingxia_platform::PlatformError;
 use lingxia_platform::traits::app_runtime::{AppRuntime, OpenUrlRequest, OpenUrlTarget};
@@ -98,19 +98,19 @@ fn map_downloads_error(err: DownloadsError) -> lingxia_error::Error {
 }
 
 #[lingxia::framework_native("downloads.list", audience = "control-surface-only")]
-fn list_downloads(app: Arc<LxApp>) -> HostResult<DownloadsSnapshot> {
+fn list_downloads(app: Arc<LxApp>) -> lingxia_error::Result<DownloadsSnapshot> {
     lingxia_service::downloads::snapshot(&app.app_data_dir()).map_err(map_downloads_error)
 }
 
 #[lingxia::framework_native("downloads.clearCompleted", audience = "control-surface-only")]
-fn clear_completed_downloads(app: Arc<LxApp>) -> HostResult<ClearCompletedResult> {
+fn clear_completed_downloads(app: Arc<LxApp>) -> lingxia_error::Result<ClearCompletedResult> {
     let removed = lingxia_service::downloads::clear_completed(&app.app_data_dir())
         .map_err(map_downloads_error)?;
     Ok(ClearCompletedResult { removed })
 }
 
 #[lingxia::framework_native("downloads.remove", audience = "control-surface-only")]
-fn remove_download_route(app: Arc<LxApp>, input: DownloadTaskIdInput) -> HostResult<()> {
+fn remove_download_route(app: Arc<LxApp>, input: DownloadTaskIdInput) -> lingxia_error::Result<()> {
     if input.task_id.trim().is_empty() {
         return Err(lingxia_error::Error::invalid_arg(
             "downloads.remove requires taskId",
@@ -122,7 +122,7 @@ fn remove_download_route(app: Arc<LxApp>, input: DownloadTaskIdInput) -> HostRes
 }
 
 #[lingxia::framework_native("downloads.cancel", audience = "control-surface-only")]
-fn cancel_download_route(app: Arc<LxApp>, input: DownloadTaskIdInput) -> HostResult<()> {
+fn cancel_download_route(app: Arc<LxApp>, input: DownloadTaskIdInput) -> lingxia_error::Result<()> {
     if input.task_id.trim().is_empty() {
         return Err(lingxia_error::Error::invalid_arg(
             "downloads.cancel requires taskId",
@@ -133,7 +133,7 @@ fn cancel_download_route(app: Arc<LxApp>, input: DownloadTaskIdInput) -> HostRes
 }
 
 #[lingxia::framework_native("downloads.pause", audience = "control-surface-only")]
-fn pause_download_route(app: Arc<LxApp>, input: DownloadTaskIdInput) -> HostResult<()> {
+fn pause_download_route(app: Arc<LxApp>, input: DownloadTaskIdInput) -> lingxia_error::Result<()> {
     if input.task_id.trim().is_empty() {
         return Err(lingxia_error::Error::invalid_arg(
             "downloads.pause requires taskId",
@@ -144,7 +144,7 @@ fn pause_download_route(app: Arc<LxApp>, input: DownloadTaskIdInput) -> HostResu
 }
 
 #[lingxia::framework_native("downloads.retry", audience = "control-surface-only")]
-fn retry_download_route(app: Arc<LxApp>, input: DownloadTaskIdInput) -> HostResult<()> {
+fn retry_download_route(app: Arc<LxApp>, input: DownloadTaskIdInput) -> lingxia_error::Result<()> {
     if input.task_id.trim().is_empty() {
         return Err(lingxia_error::Error::invalid_arg(
             "downloads.retry requires taskId",
@@ -155,7 +155,7 @@ fn retry_download_route(app: Arc<LxApp>, input: DownloadTaskIdInput) -> HostResu
 }
 
 #[lingxia::framework_native("downloads.resume", audience = "control-surface-only")]
-fn resume_download_route(app: Arc<LxApp>, input: DownloadTaskIdInput) -> HostResult<()> {
+fn resume_download_route(app: Arc<LxApp>, input: DownloadTaskIdInput) -> lingxia_error::Result<()> {
     if input.task_id.trim().is_empty() {
         return Err(lingxia_error::Error::invalid_arg(
             "downloads.resume requires taskId",
@@ -170,7 +170,7 @@ async fn open_download_route(
     app: Arc<LxApp>,
     input: DownloadTaskIdInput,
     mut cancel: HostCancel,
-) -> HostResult<()> {
+) -> lingxia_error::Result<()> {
     if input.task_id.trim().is_empty() {
         return Err(lingxia_error::Error::invalid_arg(
             "downloads.open requires taskId",
@@ -208,7 +208,7 @@ async fn reveal_download_route(
     app: Arc<LxApp>,
     input: DownloadTaskIdInput,
     mut cancel: HostCancel,
-) -> HostResult<()> {
+) -> lingxia_error::Result<()> {
     if input.task_id.trim().is_empty() {
         return Err(lingxia_error::Error::invalid_arg(
             "downloads.reveal requires taskId",
@@ -254,7 +254,7 @@ async fn reveal_download_route(
 async fn watch_downloads(
     app: Arc<LxApp>,
     mut stream: StreamContext<DownloadEvent>,
-) -> HostResult<()> {
+) -> lingxia_error::Result<()> {
     let mut rx: broadcast::Receiver<DownloadEvent> =
         lingxia_service::downloads::subscribe(&app.app_data_dir()).map_err(map_downloads_error)?;
 

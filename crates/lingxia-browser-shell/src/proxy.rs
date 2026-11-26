@@ -1,4 +1,4 @@
-use crate::host::{HostResult, StreamContext};
+use crate::host::StreamContext;
 use crate::proxy_settings::{
     AutoSwitchRule, DEFAULT_PROXY_SOCKS_PORT, ProxyMode, ProxyRuleAction, ProxySettings,
 };
@@ -980,7 +980,7 @@ async fn refresh_gfwlist_result(
 }
 
 #[lingxia::framework_native("proxy.getSettings", audience = "control-surface-only")]
-fn get_proxy_settings(app: Arc<LxApp>) -> HostResult<ProxySettingsResult> {
+fn get_proxy_settings(app: Arc<LxApp>) -> lingxia_error::Result<ProxySettingsResult> {
     get_proxy_settings_result(&app.app_data_dir())
 }
 
@@ -988,7 +988,7 @@ fn get_proxy_settings(app: Arc<LxApp>) -> HostResult<ProxySettingsResult> {
 async fn update_proxy_settings(
     app: Arc<LxApp>,
     input: ProxySettingsInput,
-) -> HostResult<ProxySettingsResult> {
+) -> lingxia_error::Result<ProxySettingsResult> {
     let app_data_dir = app.app_data_dir();
     let task = rong::RongExecutor::global()
         .spawn_blocking(move || save_proxy_settings_and_schedule_apply(app_data_dir, input));
@@ -1025,7 +1025,7 @@ async fn update_proxy_settings(
 }
 
 #[lingxia::framework_native("proxy.refreshGfwList", audience = "control-surface-only")]
-async fn refresh_gfwlist(app: Arc<LxApp>) -> HostResult<ProxySettingsResult> {
+async fn refresh_gfwlist(app: Arc<LxApp>) -> lingxia_error::Result<ProxySettingsResult> {
     let result = refresh_gfwlist_result(&app.app_data_dir()).await;
     match &result {
         Ok(output) => log::info!(
@@ -1047,7 +1047,7 @@ async fn refresh_gfwlist(app: Arc<LxApp>) -> HostResult<ProxySettingsResult> {
 async fn watch_proxy_settings(
     app: Arc<LxApp>,
     mut stream: StreamContext<ProxySettingsResult>,
-) -> HostResult<()> {
+) -> lingxia_error::Result<()> {
     // Subscribe before building the initial snapshot so state changes that
     // happen in between are not lost.
     let mut rx = proxy_state_sender().subscribe();
