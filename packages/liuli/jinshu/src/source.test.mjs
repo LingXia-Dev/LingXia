@@ -330,3 +330,31 @@ describe('format problems as words a person reads', () => {
     assert.deepEqual(formatProblemWords(read.problems, 'zh'), ['HTML 保留为文字', '五、六级标题改为四级']);
   });
 });
+
+describe('stale batches', () => {
+  const replaceP1 = (base, text) => ({ t: 'ops', batch: { batchId: `b${text}`, origin: HUMAN, base, mode: 'direct', ops: [{ op: 'replace', id: 'p1', blocks: [paragraph(text, 'p1')] }] } });
+  const insertAfterP1 = base => ({ t: 'ops', batch: { batchId: 'bi', origin: HUMAN, base, mode: 'direct', ops: [{ op: 'insert', at: { after: 'p1' }, blocks: [paragraph('Next', 'n')] }] } });
+
+  it("an editor's own earlier batch never makes its next one stale", () => {
+    const source = createJinshuSource({ key: 'w3', initialDoc: lesson() });
+    const editor = fakeChannel();
+    source.serve(editor, { doc: 'w3', role: 'editor' });
+    const base = source.getState().revision;
+    editor.emit(replaceP1(base, 'Saved'));
+    editor.emit(insertAfterP1(base));
+    assert.deepEqual(editor.sent.filter(m => m.t === 'reject'), []);
+    assert.deepEqual(source.getState().doc.blocks.map(b => b.id), ['h', 'p1', 'n', 'p2']);
+  });
+
+  it("another editor's change to the block still does", () => {
+    const source = createJinshuSource({ key: 'w3', initialDoc: lesson() });
+    const one = fakeChannel();
+    const two = fakeChannel();
+    source.serve(one, { doc: 'w3', role: 'editor' });
+    source.serve(two, { doc: 'w3', role: 'editor' });
+    const base = source.getState().revision;
+    one.emit(replaceP1(base, 'Mine'));
+    two.emit(insertAfterP1(base));
+    assert.equal(two.sent.filter(m => m.t === 'reject')[0]?.problems[0].code, 'STALE_BLOCK');
+  });
+});

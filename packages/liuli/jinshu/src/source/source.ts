@@ -254,6 +254,9 @@ export function createJinshuSource(options: JinshuSourceOptions): JinshuSource {
   const redoStack: LogRecord[] = [];
   const reviewLog: ReviewRecord[] = [];
   const blockLastModifiedRev = new Map<string, number>();
+  // The editor channel that made that change: an editor shows its own edits at once, so its next
+  // batch already knows them and is never stale because of them.
+  const blockLastModifiedBy = new Map<string, object>();
   const listeners = new Set<(state: JinshuSourceState) => void>();
   const channels = new Set<MinimalChannelEndpoint>();
   const channelCleanups = new Set<() => void>();
@@ -463,7 +466,7 @@ export function createJinshuSource(options: JinshuSourceOptions): JinshuSource {
     return errs;
   }
 
-  function apply(batch: OpBatch): { revision: number; batchId: string; problems: Problem[]; suggestionId?: string } {
+  function apply(batch: OpBatch, from?: object): { revision: number; batchId: string; problems: Problem[]; suggestionId?: string } {
     if (batch.origin.kind === 'agent' && stopped.has(batch.origin.id)) {
       return {
         revision,
@@ -476,7 +479,8 @@ export function createJinshuSource(options: JinshuSourceOptions): JinshuSource {
       const targetIds = extractOpTargetIds(batch.ops[i]);
       for (const id of targetIds) {
         const modRev = blockLastModifiedRev.get(id) ?? 0;
-        if (modRev > batch.base) {
+        const own = from !== undefined && blockLastModifiedBy.get(id) === from;
+        if (modRev > batch.base && !own) {
           const currentBlk = findBlockById(doc, id);
           return {
             revision,
@@ -676,7 +680,11 @@ export function createJinshuSource(options: JinshuSourceOptions): JinshuSource {
     });
     const edited = batch.ops.filter(op => op.op !== 'insert').flatMap(extractOpTargetIds);
     const touchedIds = Array.from(new Set([...edited, ...added]));
-    for (const id of touchedIds) blockLastModifiedRev.set(id, revision);
+    for (const id of touchedIds) {
+      blockLastModifiedRev.set(id, revision);
+      if (from) blockLastModifiedBy.set(id, from);
+      else blockLastModifiedBy.delete(id);
+    }
 
     const now = Date.now();
     // Logic-side 500ms coalescing for rapid human text edits on the same block
@@ -812,7 +820,10 @@ export function createJinshuSource(options: JinshuSourceOptions): JinshuSource {
     doc = normalizeDocument(nextDoc, registry);
     revision += 1;
     redoStack.push(target);
-    for (const id of target.touchedIds) blockLastModifiedRev.set(id, revision);
+    for (const id of target.touchedIds) {
+      blockLastModifiedRev.set(id, revision);
+      blockLastModifiedBy.delete(id);
+    }
     recordTakeBack('undone', target, origin);
     pushSnapshotAndMeta();
     notify();
@@ -832,7 +843,10 @@ export function createJinshuSource(options: JinshuSourceOptions): JinshuSource {
     rec.undone = false;
     doc = res.doc;
     revision += 1;
-    for (const id of rec.touchedIds) blockLastModifiedRev.set(id, revision);
+    for (const id of rec.touchedIds) {
+      blockLastModifiedRev.set(id, revision);
+      blockLastModifiedBy.delete(id);
+    }
     recordTakeBack('redone', rec, origin);
     pushSnapshotAndMeta();
     notify();
@@ -873,7 +887,10 @@ export function createJinshuSource(options: JinshuSourceOptions): JinshuSource {
     doc = res.doc;
     revision += 1;
     const touchedIds = Array.from(new Set(opsToApply.flatMap(extractOpTargetIds)));
-    for (const id of touchedIds) blockLastModifiedRev.set(id, revision);
+    for (const id of touchedIds) {
+      blockLastModifiedRev.set(id, revision);
+      blockLastModifiedBy.delete(id);
+    }
 
     // Accepting a suggestion creates a `human` transaction carrying `acceptedFrom: suggestion.origin`
     log.push({
@@ -1413,7 +1430,7 @@ export function createJinshuSource(options: JinshuSourceOptions): JinshuSource {
           if (msg.role === 'editor') joinAsEditor(channel);
           break;
         case 'ops': {
-          const res = apply(msg.batch);
+          const res = apply(msg.batch, channel);
           if (res.problems.some(p => p.severity === 'error')) {
             channel.send({ t: 'reject', batchId: msg.batch.batchId, problems: res.problems, snapshot: doc, revision });
           } else {
