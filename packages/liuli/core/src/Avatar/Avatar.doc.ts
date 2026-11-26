@@ -26,7 +26,7 @@ export const doc: ComponentDoc = {
     states: [],
     keyboard: [],
     contrast: [
-      { what: 'initials', pair: ['text', 'text/14'], over: 'surface', minimum: '4.5:1' },
+      { what: 'initials', pair: ['text', 'neutral-soft'], over: 'surface', minimum: '4.5:1' },
       { what: 'hue 1, initials on its fill', pair: ['text', 'hue-1-soft'], minimum: '4.5:1' },
       { what: 'hue 2, initials on its fill', pair: ['text', 'hue-2-soft'], minimum: '4.5:1' },
       { what: 'hue 3, initials on its fill', pair: ['text', 'hue-3-soft'], minimum: '4.5:1' },

@@ -134,7 +134,7 @@ test('Initials: the fill is a translucent neutral, a step off base, sunken, rais
   const screen = await renderExample('Avatar/Avatar', 'People');
   const initials = screen.queryAll(node => node.props.role === 'img')[0];
   const fill = initials.parent.props.background;
-  assert.deepEqual([fill, initials.props.color, initials.parent.props.borderWidth ?? 0], ['text/14', 'text', 0]);
+  assert.deepEqual([fill, initials.props.color, initials.parent.props.borderWidth ?? 0], ['neutral-soft', 'text', 0]);
   const { roles } = await palette();
   for (const appearance of appearances)
     for (const surface of ['surface', 'surface-sunken', 'surface-raised', 'canvas']) {

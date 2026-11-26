@@ -117,11 +117,13 @@ export function AvatarGroup({ label, children, max, overflowLabel, size = 'md', 
     <InGroup.Provider value={{ size, surface, shape }}>
       <view role="group" aria-label={label} data-testid={testId} {...dataOf(attributes)} className={cx(r.group.base, className)}>
         {shown.map((child, index) => (
-          <view key={String(index)} className={cx(index > 0 && r.overlap.size[size])}>{child}</view>
+          <view key={String(index)} className={cx(index > 0 && r.overlap.size[size], r.slot[surface], r.root.shape[shape][size])}>{child}</view>
         ))}
         {rest > 0 && (
-          <view data-testid={testId && `${testId}-overflow`} style={scaled.box} className={cx(r.root.base, r.root.shape[shape][size], r.root.size[size], r.root.inGroup[surface], r.overflow.base, r.overlap.size[size])}>
-            <text aria-label={overflowLabel?.(rest)} style={scaled.letters} className={cx(r.initials.base, r.initials.size[size], r.overflow.text)}>{`+${rest}`}</text>
+          <view className={cx(r.overlap.size[size], r.slot[surface], r.root.shape[shape][size])}>
+            <view data-testid={testId && `${testId}-overflow`} style={scaled.box} className={cx(r.root.base, r.root.shape[shape][size], r.root.size[size], r.root.inGroup[surface])}>
+              <text aria-label={overflowLabel?.(rest)} style={scaled.letters} className={cx(r.initials.base, r.initials.size[size], r.overflow.text)}>{`+${rest}`}</text>
+            </view>
           </view>
         )}
       </view>

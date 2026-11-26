@@ -6,6 +6,7 @@ export const avatarParts = {
   image: 'image',
   initials: 'text',
   group: 'view',
+  slot: 'view',
   overflow: 'text',
   status: 'view',
   badge: 'view',
@@ -15,7 +16,7 @@ export const avatarParts = {
 export const avatarRecipe = {
   root: {
     /** Translucent, so the fill is a step off whatever surface it sits on, with no border. */
-    base: 'relative shrink-0 items-center-safe justify-center-safe bg-text/14',
+    base: 'relative shrink-0 items-center-safe justify-center-safe bg-neutral-soft',
     /** A rounded square's corner grows with its size, a quarter of it: the four smallest radius steps, by the names Liuli gives them. */
     shape: {
       circle: { xs: 'rounded-full', sm: 'rounded-full', md: 'rounded-full', lg: 'rounded-full' },
@@ -64,9 +65,14 @@ export const avatarRecipe = {
   overlap: {
     size: { xs: '-ms-1.5', sm: '-ms-2', md: '-ms-2.5', lg: '-ms-3.5' } satisfies Record<AvatarSize, string>,
   },
-  /** Opaque, since the avatar before it shows through anything lighter. */
+  /** Under each avatar of a group, the surface's own colour, opaque, so the avatar before never shows through a translucent fill. */
+  slot: {
+    surface: 'bg-surface',
+    raised: 'bg-surface-raised',
+    sunken: 'bg-surface-sunken',
+  } satisfies Record<AvatarGroupSurface, string>,
+  /** The count past `max`, on the initials' neutral fill. */
   overflow: {
-    base: 'bg-line',
     text: 'text-text',
   },
 } as const;

@@ -367,6 +367,7 @@
         "image": "image",
         "initials": "text",
         "group": "view",
+        "slot": "view",
         "overflow": "text",
         "status": "view",
         "badge": "view"
@@ -382,7 +383,7 @@
             "what": "initials",
             "pair": [
               "text",
-              "text/14"
+              "neutral-soft"
             ],
             "over": "surface",
             "minimum": "4.5:1"
@@ -594,7 +595,7 @@
           "hue-6-soft",
           "hue-7-soft",
           "hue-8-soft",
-          "line",
+          "neutral-soft",
           "success-mark",
           "surface",
           "surface-raised",
