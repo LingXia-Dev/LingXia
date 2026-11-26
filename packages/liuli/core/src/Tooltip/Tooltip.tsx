@@ -1,5 +1,5 @@
 import { cx, useId, useLocal, type Child } from '@lingxia/view';
-import { Trigger } from '../internal/trigger';
+import { PASSED_WIRING, Trigger, registerTriggerWrapper, type TriggerWiring } from '../internal/trigger';
 import { tooltipRecipe as r } from './Tooltip.recipe';
 import { dataOf } from '../internal/data';
 
@@ -26,9 +26,11 @@ export function Tooltip({ children, content, placement = 'top', 'data-testid': t
   const id = useId();
   const textId = `${id}-text`;
   const open = useLocal(false);
+  // Set when this tooltip is the trigger of a Popover or a menu: its button opens that one too.
+  const passed = (attributes as Record<string, unknown>)[PASSED_WIRING] as TriggerWiring | undefined;
   return (
     <>
-      <Trigger wiring={{ interestFor: id, describedBy: open.value ? textId : undefined }} data-testid={testId} {...dataOf(attributes)}>{children}</Trigger>
+      <Trigger wiring={{ interestFor: id, describedBy: open.value ? textId : undefined }} passed={passed} data-testid={testId} {...dataOf(attributes)}>{children}</Trigger>
       <view
         id={id}
         popover="hint"
@@ -43,3 +45,4 @@ export function Tooltip({ children, content, placement = 'top', 'data-testid': t
     </>
   );
 }
+registerTriggerWrapper(Tooltip);

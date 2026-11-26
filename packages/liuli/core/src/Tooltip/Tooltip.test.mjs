@@ -65,3 +65,30 @@ test('a Button trigger without a test id of its own takes the tooltip\'s, with i
   assert.equal(screen.getByTestId('print').props.accessibilityLabel, 'Print');
   assert.equal(screen.queryAll(node => node.testId === 'print-help').length, 0);
 });
+
+test('a Tooltip as the trigger of a Popover or DropdownMenu: the one button opens the panel and shows the hint', async () => {
+  const screen = await renderPage(`
+    import { IconButton } from '@liulidesign/core/IconButton';
+    import { Popover } from '@liulidesign/core/Popover';
+    import { DropdownMenu } from '@liulidesign/core/DropdownMenu';
+    import { Tooltip } from '@liulidesign/core/Tooltip';
+    export function render() {
+      return <page><view className="flex-row">
+        <Popover label="Insert" content={<text>Blocks</text>}>
+          <Tooltip content="Insert"><IconButton label="Insert" icon="add" data-testid="insert" /></Tooltip>
+        </Popover>
+        <DropdownMenu label="More" items={[{ id: 'a', label: 'A', onClick: () => {} }]}>
+          <Tooltip content="More"><IconButton label="More" icon="more" data-testid="more" /></Tooltip>
+        </DropdownMenu>
+      </view></page>;
+    }
+  `);
+  for (const [id, shown] of [['insert', 'Blocks'], ['more', 'A']]) {
+    assert.ok(screen.getByTestId(id).props.interestFor, `${id} shows its hint`);
+    assert.equal(screen.queryAll(node => (node.props.text ?? node.text) === shown).length, 0);
+    screen.press(screen.getByTestId(id));
+    assert.ok(screen.queryAll(node => (node.props.text ?? node.text) === shown || node.props.accessibilityLabel === shown).length > 0, `${id} opens its panel`);
+    screen.escape?.();
+  }
+  assert.equal(screen.queryAll(node => node.tag === 'button').length, 2, 'no wrapper button around either');
+});
