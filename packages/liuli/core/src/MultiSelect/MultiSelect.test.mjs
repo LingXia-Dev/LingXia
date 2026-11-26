@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { textOf } from '@lingxia/view/testing';
-import { renderExample } from '../testing/harness.mjs';
+import { renderExample, renderPage } from '../testing/harness.mjs';
 
 const tokens = screen => screen.queryAll(node => node.testId?.startsWith('labels-token-') && !node.testId.endsWith('-remove')).map(textOf);
 
@@ -31,4 +31,19 @@ test('Labels: the list checks options, stays open, and keeps the options\' order
 test('Empty: a placeholder holds the place, and the error colours the boundary', async () => {
   const box = (await renderExample('MultiSelect/MultiSelect', 'Empty')).getByTestId('teams');
   assert.deepEqual([textOf(box.children[0]), box.props.borderColor], ['No teams yet', 'danger']);
+});
+
+test('a chosen option that is disabled keeps its token, with no way to remove it', async () => {
+  const screen = await renderPage(`
+    import { useLocal } from '@lingxia/view';
+    import { MultiSelect } from '@liulidesign/core/MultiSelect';
+    export function render() {
+      const chosen = useLocal('chosen', ['archive', 'travel']);
+      return <page><MultiSelect label="Labels" bind={chosen} addLabel="Add a label" data-testid="labels" items={[
+        { value: 'travel', label: 'Travel' }, { value: 'archive', label: 'Archive', isDisabled: true },
+      ]} /></page>;
+    }
+  `);
+  assert.equal(screen.getByTestId('labels-token-archive-remove').props.onClick, undefined, 'a disabled choice cannot be removed');
+  assert.ok(screen.getByTestId('labels-token-travel-remove').props.onClick);
 });

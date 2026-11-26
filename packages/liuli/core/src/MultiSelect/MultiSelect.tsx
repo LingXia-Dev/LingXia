@@ -90,7 +90,7 @@ export function MultiSelect(props: MultiSelectProps) {
               key={option.value}
               label={option.label}
               size="sm"
-              isDisabled={isDisabled}
+              isDisabled={isDisabled || option.isDisabled}
               removeLabel={removeLabel(option.label)}
               onRemove={() => toggle(option.value, false)}
               data-testid={testId && `${testId}-token-${option.value}`}
