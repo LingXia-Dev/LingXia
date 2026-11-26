@@ -48,7 +48,12 @@ final class GpuFrameVectorsTests: XCTestCase {
             let data = try JSONSerialization.data(withJSONObject: exchange)
             let decoded = try JSONDecoder().decode(Exchange.self, from: data)
             guard let reply = decoded.reply else {
-                XCTAssertEqual(decoded.request.action?.kind, "fill")
+                // Only an action and the HUD toggle answer nothing.
+                switch decoded.request.op {
+                case "act": XCTAssertEqual(decoded.request.action?.kind, "fill")
+                case "hud": XCTAssertNotNil(decoded.request.on)
+                default: XCTFail("\(decoded.request.op) has no reply")
+                }
                 continue
             }
             let value = try JSONSerialization.data(withJSONObject: exchange["value"]!)
