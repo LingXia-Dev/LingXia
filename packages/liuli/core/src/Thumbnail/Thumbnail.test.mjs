@@ -17,3 +17,17 @@ test('Strip: the one in view is ringed', async () => {
   assert.ok(String(screen.getByTestId('strip-1').props.ring).includes('accent'));
   assert.equal(screen.getByTestId('strip-0').props.ring ?? 'none', 'none');
 });
+
+test('Attachments: each has a remove button named for its picture, beside it rather than inside; one still loading is busy', async () => {
+  const screen = await renderExample('Thumbnail/Thumbnail', 'Attachments');
+  const remove = screen.getByTestId('attached-0-remove');
+  assert.deepEqual([remove.tag, remove.props.accessibilityLabel], ['button', 'Remove The bay at sunrise']);
+  const frame = screen.getByTestId('attached-0');
+  assert.equal(frame.children[0].tag, 'column', 'the picture and the button are siblings');
+  assert.equal(frame.children[1], remove);
+  assert.equal(frame.children[0].children[0].tag, 'image');
+  const loading = screen.getByTestId('attached-2');
+  assert.equal(loading.children[0].props.stateBusy, 1, 'the uploading one is busy');
+  screen.press(remove);
+  assert.equal(screen.queryAll(node => node.props?.testId === 'attached-0').length, 0, 'pressed, it is taken away');
+});

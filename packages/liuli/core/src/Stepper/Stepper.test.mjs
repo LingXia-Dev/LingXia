@@ -39,3 +39,14 @@ test('Across: horizontal steps share the row, the last taking only its own width
   assert.deepEqual(names(screen), ['Account, Done', 'Profile, Current step', 'Done, Not started']);
   assert.equal(screen.queryAll(node => node.text === 'Where to deliver').length, 0);
 });
+
+test('NeedsAttention: a step with a problem is read as needing attention under a danger mark; a disabled finished step does not go back', async () => {
+  const screen = await renderExample('Stepper/Stepper', 'NeedsAttention');
+  assert.deepEqual(names(screen), ['Cart, Done', 'Address, Done', 'Payment, Needs attention', 'Review, Current step']);
+  assert.equal(screen.getByTestId('attention-cart').tag, 'button');
+  assert.notEqual(screen.getByTestId('attention-address').tag, 'button', 'a disabled step stays put');
+  const marker = screen.getByTestId('attention-payment').children[0].children[0];
+  assert.deepEqual([marker.props.background, marker.children[0].tag], ['danger-solid', 'vector']);
+  const line = screen.getByTestId('attention-payment').children[0].children[1];
+  assert.equal(line.props.background, 'accent-solid', 'its line still says how far the task got');
+});

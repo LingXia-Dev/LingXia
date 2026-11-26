@@ -143,6 +143,7 @@ export function Saved() {
 | `onChange` | `((value: boolean) => void)` |  | Runs with the new value; the app passes it back as `value`. |
 | `changeAction` | `((value: boolean) => Promise<unknown>)` |  | An async change, such as a Logic action. The box changes at once and reports busy to assistive tech while it runs, with no spinner; if it fails, it changes back and says so in its status line. A rejection is logged with the label. |
 | `failedMessage` | `string` |  | Said in the status line when `changeAction` fails. Defaults to a short "try again", in the page's language. |
+| `endContent` | `Child` |  | Trailing content at the end of the label's line: a price, a size, a count. Never shrinks, and is read after the label. |
 | `isIndeterminate` | `boolean` | `false` | Stands for a set that is partly chosen: draws a dash and is read as mixed. A press asks for all; the app clears it when the set is all or none. |
 | `className` | `string` |  |  |
 | `data-testid` | `string` |  | On the checkbox. |

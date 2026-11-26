@@ -61,3 +61,15 @@ test('SelectAll: a dash while some are chosen; a press chooses all, the next cle
   screen.toggle(all(), false);
   assert.equal(state(), 'unchecked');
 });
+
+test('WithEndContent: an option\'s end content shares its label\'s line, never gives way, and is read after the label', async () => {
+  const screen = await renderExample('CheckboxList/CheckboxList', 'WithEndContent');
+  const notes = box(screen, 'backup-notes');
+  assert.equal(notes.props.accessibilityLabel, 'Notes');
+  assert.deepEqual(described(screen, notes), ['18 MB']);
+  const size = screen.queryAll(node => node.tag === 'text' && node.text === '18 MB')[0];
+  const end = size.parent;
+  assert.equal(end.props.shrink, 0, 'the size never gives way');
+  assert.equal(end.parent.children[0].text, 'Notes', 'it shares the label\'s line');
+  assert.equal(end.parent.props.flexDirection, 'row');
+});

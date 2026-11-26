@@ -4280,6 +4280,11 @@ export const playgroundEntries: PlaygroundEntry[] = [
           "sm",
           "md"
         ]
+      },
+      {
+        "name": "isPulsing",
+        "required": false,
+        "kind": "boolean"
       }
     ],
     "fixed": [],
@@ -5002,6 +5007,16 @@ export const playgroundEntries: PlaygroundEntry[] = [
       },
       {
         "name": "isSelected",
+        "required": false,
+        "kind": "boolean"
+      },
+      {
+        "name": "removeLabel",
+        "required": false,
+        "kind": "text"
+      },
+      {
+        "name": "isLoading",
         "required": false,
         "kind": "boolean"
       }

@@ -1,5 +1,5 @@
 // Generated from the doc file by scripts/generate.mjs; do not edit.
-import { Services, Tones, Hues, DotOnly } from '../../core/src/StatusDot/StatusDot.examples';
+import { Services, Tones, Hues, DotOnly, Live } from '../../core/src/StatusDot/StatusDot.examples';
 import { Lead, PageSection, Stage } from '../shared/Layout';
 
 export function Content() {
@@ -17,6 +17,9 @@ export function Content() {
         </Stage>
         <Stage caption={"The dot alone, named by its word"}>
           <DotOnly />
+        </Stage>
+        <Stage caption={"A halo for a state that is live right now"}>
+          <Live />
         </Stage>
       </PageSection>
     </>

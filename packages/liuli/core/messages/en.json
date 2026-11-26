@@ -263,6 +263,10 @@
     "defaultMessage": "Not started",
     "description": "Spoken state of a step not yet reached."
   },
+  "@liuli.step.error": {
+    "defaultMessage": "Needs attention",
+    "description": "Spoken state of a step that has a problem to fix."
+  },
   "@liuli.cancel": {
     "defaultMessage": "Cancel",
     "description": "Button that backs out of a confirmation without doing anything."

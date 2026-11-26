@@ -58,6 +58,7 @@ export const doc: ComponentDoc = {
     { name: 'WithUnavailable', title: 'An option that cannot be chosen' },
     { name: 'Sizes', title: 'Sizes' },
     { name: 'SelectAll', title: 'With a box for all' },
+    { name: 'WithEndContent', title: 'With a size on each line' },
   ],
   gaps: [
     {
@@ -84,6 +85,7 @@ export const doc: ComponentDoc = {
         { name: 'AtLeastOne', title: 'A rule about the group, shown while the choice breaks it' },
         { name: 'WithUnavailable', title: 'An option that cannot be chosen stays in the list, with its reason' },
         { name: 'SelectAll', title: 'A box that chooses all, with a dash while some are chosen' },
+        { name: 'WithEndContent', title: 'Something at the end of each option: a size, a price' },
       ],
       sizes: [{ name: 'Sizes', title: 'Small and large' }],
       states: [{ name: 'StateDisabled', title: 'Disabled' }],

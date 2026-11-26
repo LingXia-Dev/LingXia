@@ -25,6 +25,18 @@ export function Across() {
   return <Stepper label="Sign-up steps" orientation="horizontal" steps={[{ key: 'account', label: 'Account' }, { key: 'profile', label: 'Profile' }, { key: 'done', label: 'Done' }]} value={1} data-testid="across" />;
 }
 
+/** A payment the bank refused: that step is marked to fix, and the address, once sent to the courier, cannot be changed. */
+export function NeedsAttention() {
+  const at = useLocal('at', 3);
+  const steps = [
+    { key: 'cart', label: 'Cart', description: 'Three items' },
+    { key: 'address', label: 'Address', description: 'Sent to the courier', isDisabled: true },
+    { key: 'payment', label: 'Payment', description: 'The bank declined the card', status: 'error' as const },
+    { key: 'review', label: 'Review', description: 'Check and place the order' },
+  ];
+  return <Stepper label="Checkout steps" steps={steps} bind={at} data-testid="attention" />;
+}
+
 /** The home tile. */
 export function Specimen() {
   return <Stepper label="Steps" orientation="horizontal" steps={[{ key: 'a', label: 'One' }, { key: 'b', label: 'Two' }, { key: 'c', label: 'Three' }]} value={1} className="w-32" />;

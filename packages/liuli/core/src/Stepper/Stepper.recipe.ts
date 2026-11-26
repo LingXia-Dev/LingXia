@@ -1,6 +1,6 @@
 import type { StepperOrientation } from './Stepper';
 
-type State = 'done' | 'current' | 'upcoming';
+type State = 'done' | 'current' | 'upcoming' | 'error';
 
 export const stepperParts = {
   root: 'view',
@@ -40,12 +40,13 @@ export const stepperRecipe = {
       done: 'bg-accent-solid text-on-accent-solid',
       current: 'inset-ring-2 inset-ring-accent',
       upcoming: 'inset-ring-1 inset-ring-line-strong',
+      error: 'bg-danger-solid text-on-danger-solid',
     } satisfies Record<State, string>,
     tick: 'size-3.5',
   },
   number: {
     base: 'text-caption font-semibold tabular-nums',
-    state: { done: '', current: 'text-accent', upcoming: 'text-muted' } satisfies Record<State, string>,
+    state: { done: '', current: 'text-accent', upcoming: 'text-muted', error: '' } satisfies Record<State, string>,
   },
   line: {
     base: 'rounded-full',
@@ -63,7 +64,7 @@ export const stepperRecipe = {
   },
   label: {
     base: 'text-footnote',
-    state: { done: 'text-text', current: 'font-semibold text-text', upcoming: 'text-muted' } satisfies Record<State, string>,
+    state: { done: 'text-text', current: 'font-semibold text-text', upcoming: 'text-muted', error: 'font-semibold text-danger' } satisfies Record<State, string>,
     row: 'truncate',
   },
   description: {

@@ -1,5 +1,5 @@
 // Generated from the doc file by scripts/generate.mjs; do not edit.
-import { Grid, Strip, Sizes, InRows } from '../../core/src/Thumbnail/Thumbnail.examples';
+import { Grid, Strip, Attachments, Sizes, InRows } from '../../core/src/Thumbnail/Thumbnail.examples';
 import { Lead, PageSection, Stage } from '../shared/Layout';
 
 export function Content() {
@@ -11,6 +11,9 @@ export function Content() {
       <PageSection title={"Variants"}>
         <Stage caption={"A strip, with the one in view ringed"}>
           <Strip />
+        </Stage>
+        <Stage caption={"Attachments: one still uploading, each with a remove button"}>
+          <Attachments />
         </Stage>
       </PageSection>
       <PageSection title={"Sizes"}>

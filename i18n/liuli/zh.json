@@ -197,6 +197,9 @@
   "@liuli.step.upcoming": {
     "defaultMessage": "未开始"
   },
+  "@liuli.step.error": {
+    "defaultMessage": "需要处理"
+  },
   "@liuli.cancel": {
     "defaultMessage": "取消"
   },

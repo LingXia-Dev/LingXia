@@ -54,6 +54,16 @@ export function DotOnly() {
   );
 }
 
+/** A state that is live right now: the halo rings out while it lasts. */
+export function Live() {
+  return (
+    <view className="gap-3">
+      <StatusDot label="Recording" tone="danger" isPulsing data-testid="recording" />
+      <StatusDot label="On a call" tone="success" isPulsing size="sm" />
+    </view>
+  );
+}
+
 /** The home tile. */
 export function Specimen() {
   return <StatusDot label="Running" tone="success" />;

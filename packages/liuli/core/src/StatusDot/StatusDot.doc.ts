@@ -62,6 +62,7 @@ export const doc: ComponentDoc = {
     { name: 'Tones', title: 'The six tones' },
     { name: 'Hues', title: 'Categories in the eight hues' },
     { name: 'DotOnly', title: 'Without its words' },
+    { name: 'Live', title: 'Live right now' },
   ],
   gaps: [],
   limits: [
@@ -80,6 +81,7 @@ export const doc: ComponentDoc = {
         { name: 'Tones', title: 'Success, warning, danger, info, the accent, and neutral as a ring' },
         { name: 'Hues', title: 'A hue for a category: which calendar an event is on' },
         { name: 'DotOnly', title: 'The dot alone, named by its word' },
+        { name: 'Live', title: 'A halo for a state that is live right now' },
       ],
     },
   },

@@ -61,9 +61,10 @@ export const doc: ComponentDoc = {
   examples: [
     { name: 'Checkout', title: 'A task in four steps' },
     { name: 'Across', title: 'Across the top of a form' },
+    { name: 'NeedsAttention', title: 'A step to fix, a step that cannot go back' },
   ],
   gaps: [
-    { missing: 'A step marked as failed or optional.', needs: 'nothing from the View', today: 'Done, in progress or ahead.' },
+    { missing: 'A step marked as optional.', needs: 'nothing from the View', today: 'Done, in progress, ahead, or needing attention.' },
     { missing: 'Horizontal steps that fold to "2 of 4" where they do not fit.', needs: 'nothing from the View', today: 'Labels are cut short; use `vertical` on a phone.' },
   ],
   playground: { props: { label: 'Checkout steps', value: 1 }, fixture: true },
@@ -75,7 +76,10 @@ export const doc: ComponentDoc = {
     page: {
       lead: 'Use a stepper for a task with a known number of steps done in order.',
       hero: 'Checkout',
-      variants: [{ name: 'Across', title: 'Horizontal, for up to four short labels' }],
+      variants: [
+        { name: 'Across', title: 'Horizontal, for up to four short labels' },
+        { name: 'NeedsAttention', title: 'A step to fix, and a finished step that cannot be gone back to' },
+      ],
     },
   },
 };

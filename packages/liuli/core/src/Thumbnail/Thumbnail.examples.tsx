@@ -1,3 +1,4 @@
+import { useLocal } from '@lingxia/view';
 import { Held, Said } from '../example';
 import { Item, ItemList } from '../Item/Item';
 import { Thumbnail } from './Thumbnail';
@@ -69,6 +70,29 @@ export function Specimen() {
     <view className="flex-row gap-2">
       <Thumbnail src={photo(1)} alt="" size="sm" />
       <Thumbnail src={photo(3)} alt="" size="sm" />
+    </view>
+  );
+}
+
+/** Pictures attached to a message: each can be taken back, and one is still uploading. */
+export function Attachments() {
+  const attached = useLocal<readonly number[]>('attached', [0, 1, 2]);
+  return (
+    <view className="flex-row gap-3 pt-2 pe-2">
+      {attached.value.map(index => {
+        const [n, alt] = photos[index];
+        return (
+          <Thumbnail
+            key={alt}
+            src={photo(n)}
+            alt={alt}
+            size="md"
+            isLoading={index === 2}
+            onRemove={() => attached.set(attached.value.filter(each => each !== index))}
+            data-testid={`attached-${index}`}
+          />
+        );
+      })}
     </view>
   );
 }

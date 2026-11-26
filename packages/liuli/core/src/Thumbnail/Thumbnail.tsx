@@ -1,4 +1,7 @@
 import { cx } from '@lingxia/view';
+import { CircularProgress } from '../CircularProgress/CircularProgress';
+import { liuliText } from '../i18n/text';
+import { Glyph } from '../internal/Glyph';
 import { thumbnailRecipe as r } from './Thumbnail.recipe';
 import { dataOf } from '../internal/data';
 
@@ -17,23 +20,45 @@ export interface ThumbnailProps {
   onClick?: () => void;
   /** Marks it as the one in view among several. @default false */
   isSelected?: boolean;
+  /** Adds a remove button in its top corner, as for an attachment that can be taken back. */
+  onRemove?: () => void;
+  /** The remove button's name. Defaults to "Remove <alt>" in the page's language. */
+  removeLabel?: string;
+  /** Covers it with a spinner while what it stands for is still on its way, such as an upload. @default false */
+  isLoading?: boolean;
   className?: string;
   'data-testid'?: string;
 }
 
 /** A small picture that stands for a bigger one. */
-export function Thumbnail({ src, alt, size = 'md', ratio = 'square', onClick, isSelected = false, className, 'data-testid': testId, ...attributes }: ThumbnailProps) {
-  const classes = cx(r.root.base, r.root.size[size], r.root.ratio[ratio], isSelected && r.root.selected, className);
-  if (onClick === undefined) {
-    return (
-      <view data-testid={testId} {...dataOf(attributes)} className={classes}>
-        <image src={src} alt={alt} className={r.image.base} />
-      </view>
-    );
-  }
-  return (
-    <button aria-label={alt} aria-selected={isSelected || undefined} onClick={onClick} data-testid={testId} {...dataOf(attributes)} className={cx(classes, r.root.pressable)}>
+export function Thumbnail({ src, alt, size = 'md', ratio = 'square', onClick, isSelected = false, onRemove, removeLabel, isLoading = false, className, 'data-testid': testId, ...attributes }: ThumbnailProps) {
+  const classes = cx(r.root.base, r.root.size[size], r.root.ratio[ratio], isSelected && r.root.selected);
+  const loading = isLoading && (
+    <view aria-hidden className={r.loading.base}>
+      <CircularProgress label={liuliText('@liuli.loadingNamed', { name: alt })} size="sm" className={r.loading.ring} />
+    </view>
+  );
+  const picture = onClick === undefined ? (
+    <view data-testid={onRemove === undefined ? testId : undefined} aria-busy={isLoading || undefined} {...(onRemove === undefined ? dataOf(attributes) : {})} className={cx(classes, onRemove === undefined && className)}>
+      <image src={src} alt={alt} className={r.image.base} />
+      {loading}
+    </view>
+  ) : (
+    <button aria-label={alt} aria-selected={isSelected || undefined} aria-busy={isLoading || undefined} onClick={onClick} data-testid={onRemove === undefined ? testId : undefined} {...(onRemove === undefined ? dataOf(attributes) : {})} className={cx(classes, r.root.pressable, onRemove === undefined && className)}>
       <image src={src} alt="" className={r.image.base} />
+      {loading}
     </button>
+  );
+  if (onRemove === undefined) return picture;
+  // The remove button sits beside the picture, never inside a picture that is itself a button.
+  return (
+    <view data-testid={testId} {...dataOf(attributes)} className={cx(r.frame.base, r.frame.size[size], className)}>
+      {picture}
+      <button aria-label={removeLabel ?? liuliText('@liuli.removeNamed', { name: alt })} onClick={onRemove} data-testid={testId && `${testId}-remove`} className={r.remove.base}>
+        <view className={r.remove.disc}>
+          <Glyph name="close" weight={2.5} side={12} className={r.remove.icon} />
+        </view>
+      </button>
+    </view>
   );
 }

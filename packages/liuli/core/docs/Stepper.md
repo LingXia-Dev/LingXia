@@ -49,6 +49,25 @@ export function Across() {
 }
 ```
 
+### A step to fix, a step that cannot go back
+
+```tsx
+import { useLocal } from '@lingxia/view';
+import { Stepper } from '@liulidesign/core/Stepper';
+
+/** A payment the bank refused: that step is marked to fix, and the address, once sent to the courier, cannot be changed. */
+export function NeedsAttention() {
+  const at = useLocal('at', 3);
+  const steps = [
+    { key: 'cart', label: 'Cart', description: 'Three items' },
+    { key: 'address', label: 'Address', description: 'Sent to the courier', isDisabled: true },
+    { key: 'payment', label: 'Payment', description: 'The bank declined the card', status: 'error' as const },
+    { key: 'review', label: 'Review', description: 'Check and place the order' },
+  ];
+  return <Stepper label="Checkout steps" steps={steps} bind={at} data-testid="attention" />;
+}
+```
+
 ## Props
 
 | Prop | Type | Default | Description |
@@ -58,7 +77,7 @@ export function Across() {
 | `onChange` | `((index: number) => void)` |  | Makes a finished step a button that goes back to it; runs with its index. |
 | `label` (required) | `string` |  | Names the steps for assistive tech: "Checkout steps". |
 | `steps` (required) | `readonly StepperStep[]` |  | The steps, in order. |
-| `stateLabels` | `Partial<Record<StepState, string>>` |  | What a screen reader hears for a step's state, instead of Liuli's "Done", "Current step" and "Not started" in the page's language. |
+| `stateLabels` | `Partial<Record<StepState, string>>` |  | What a screen reader hears for a step's state, instead of Liuli's "Done", "Current step", "Not started" and "Needs attention" in the page's language. |
 | `orientation` | `StepperOrientation` | `'vertical'` | `horizontal` suits up to four short labels; `vertical` any number, with descriptions. |
 | `className` | `string` |  |  |
 | `data-testid` | `string` |  |  |
@@ -72,6 +91,8 @@ export function Across() {
 | `key` (required) | `string` |  | Identifies the step: its test id is `<id>-<key>`. |
 | `label` (required) | `string` |  |  |
 | `description` | `string` |  | A second line; vertical only. |
+| `status` | `"error"` |  | Marks a step with a problem to fix, such as a rejected payment: a danger mark in place of its number or tick, read as needing attention. |
+| `isDisabled` | `boolean` | `false` | A finished step that cannot be gone back to: it stays a plain step, not a button. |
 
 ## Anatomy
 
@@ -89,7 +110,7 @@ export function Across() {
 - `className`: classes merged after the recipe's, so they win.
 - The recipe, `stepperRecipe` from `@liulidesign/core/Stepper/recipe`: the classes of each part, to style an element of your own to match. The component does not read a changed copy.
 - Scale tokens it reads, set in the app's stylesheet under `@theme`: `--text-caption`, `--text-footnote`, `--radius-control`.
-- Colour roles it paints with, set by the theme pack: `accent`, `accent-solid`, `focus`, `line`, `line-strong`, `on-accent-solid`, `text`, `text-muted`.
+- Colour roles it paints with, set by the theme pack: `accent`, `accent-solid`, `danger`, `danger-solid`, `focus`, `line`, `line-strong`, `on-accent-solid`, `on-danger-solid`, `text`, `text-muted`.
 
 ## Accessibility
 
@@ -128,7 +149,7 @@ Ratios are computed from @lingxia/view/theme and rounded down.
 
 | Missing | Needs | Meanwhile |
 | --- | --- | --- |
-| A step marked as failed or optional. | nothing from the View | Done, in progress or ahead. |
+| A step marked as optional. | nothing from the View | Done, in progress, ahead, or needing attention. |
 | Horizontal steps that fold to "2 of 4" where they do not fit. | nothing from the View | Labels are cut short; use `vertical` on a phone. |
 
 Related: ProgressBar, Tabs, Breadcrumb.

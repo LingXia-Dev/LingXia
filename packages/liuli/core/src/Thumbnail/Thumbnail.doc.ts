@@ -48,6 +48,7 @@ export const doc: ComponentDoc = {
     { name: 'InRows', title: 'At the start of a row' },
     { name: 'Sizes', title: 'Sizes and ratios' },
     { name: 'Strip', title: 'A strip with one selected' },
+    { name: 'Attachments', title: 'Attachments, one still uploading' },
   ],
   gaps: [],
   limits: [
@@ -62,7 +63,10 @@ export const doc: ComponentDoc = {
     page: {
       lead: 'Use a thumbnail to stand for a picture, a file or an album.',
       hero: 'Grid',
-      variants: [{ name: 'Strip', title: 'A strip, with the one in view ringed' }],
+      variants: [
+        { name: 'Strip', title: 'A strip, with the one in view ringed' },
+        { name: 'Attachments', title: 'Attachments: one still uploading, each with a remove button' },
+      ],
       sizes: [{ name: 'Sizes', title: 'Small (48), medium (72), large (96), and large at 4:3' }],
       inContext: [{ name: 'InRows', title: 'At the start of a row' }],
     },

@@ -90,6 +90,22 @@ export function DotOnly() {
 }
 ```
 
+### Live right now
+
+```tsx
+import { StatusDot } from '@liulidesign/core/StatusDot';
+
+/** A state that is live right now: the halo rings out while it lasts. */
+export function Live() {
+  return (
+    <view className="gap-3">
+      <StatusDot label="Recording" tone="danger" isPulsing data-testid="recording" />
+      <StatusDot label="On a call" tone="success" isPulsing size="sm" />
+    </view>
+  );
+}
+```
+
 ## Props
 
 | Prop | Type | Default | Description |
@@ -99,6 +115,7 @@ export function DotOnly() {
 | `tone` | `StatusDotTone` | `'neutral'` |  |
 | `hue` | `Hue` |  | A category's colour in place of a tone, one of the theme's eight hues: which calendar, which project. Not for a status. |
 | `size` | `StatusDotSize` | `'md'` |  |
+| `isPulsing` | `boolean` | `false` | A halo that keeps ringing out from the dot, for a state that is live right now: recording, on a call. Still when motion is reduced. |
 | `className` | `string` |  |  |
 | `data-testid` | `string` |  |  |
 

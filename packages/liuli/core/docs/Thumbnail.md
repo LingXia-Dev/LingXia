@@ -123,6 +123,46 @@ export function Strip() {
 }
 ```
 
+### Attachments, one still uploading
+
+```tsx
+import { useLocal } from '@lingxia/view';
+import { Thumbnail } from '@liulidesign/core/Thumbnail';
+
+const photo = (n: number) => `public/photos/photo-${n}.png`;
+const photos = [
+  [1, 'The bay at sunrise'],
+  [2, 'Fields behind the house'],
+  [3, 'Dusk over the ridge'],
+  [4, 'Morning fog in the valley'],
+  [5, 'Dunes at noon'],
+  [1, 'The bay, a minute later'],
+] as const;
+
+/** Pictures attached to a message: each can be taken back, and one is still uploading. */
+export function Attachments() {
+  const attached = useLocal<readonly number[]>('attached', [0, 1, 2]);
+  return (
+    <view className="flex-row gap-3 pt-2 pe-2">
+      {attached.value.map(index => {
+        const [n, alt] = photos[index];
+        return (
+          <Thumbnail
+            key={alt}
+            src={photo(n)}
+            alt={alt}
+            size="md"
+            isLoading={index === 2}
+            onRemove={() => attached.set(attached.value.filter(each => each !== index))}
+            data-testid={`attached-${index}`}
+          />
+        );
+      })}
+    </view>
+  );
+}
+```
+
 ## Props
 
 | Prop | Type | Default | Description |
@@ -133,6 +173,9 @@ export function Strip() {
 | `ratio` | `ThumbnailRatio` | `'square'` | 1:1, 4:3 or 16:9; the picture is cropped to fill it. |
 | `onClick` | `(() => void)` |  | Makes it a button: opens the picture, usually in a Lightbox. |
 | `isSelected` | `boolean` | `false` | Marks it as the one in view among several. |
+| `onRemove` | `(() => void)` |  | Adds a remove button in its top corner, as for an attachment that can be taken back. |
+| `removeLabel` | `string` |  | The remove button's name. Defaults to "Remove <alt>" in the page's language. |
+| `isLoading` | `boolean` | `false` | Covers it with a spinner while what it stands for is still on its way, such as an upload. |
 | `className` | `string` |  |  |
 | `data-testid` | `string` |  |  |
 
@@ -148,7 +191,7 @@ export function Strip() {
 - `className`: classes merged after the recipe's, so they win.
 - The recipe, `thumbnailRecipe` from `@liulidesign/core/Thumbnail/recipe`: the classes of each part, to style an element of your own to match. The component does not read a changed copy.
 - Scale tokens it reads, set in the app's stylesheet under `@theme`: `--radius-control`.
-- Colour roles it paints with, set by the theme pack: `accent`, `focus`, `text`.
+- Colour roles it paints with, set by the theme pack: `accent`, `focus`, `media`, `on-media`, `text`.
 
 ## Accessibility
 

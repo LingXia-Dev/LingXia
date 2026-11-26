@@ -3810,6 +3810,12 @@
           "description": "Said in the status line when `changeAction` fails. Defaults to a short \"try again\", in the page's language."
         },
         {
+          "name": "endContent",
+          "type": "Child",
+          "required": false,
+          "description": "Trailing content at the end of the label's line: a price, a size, a count. Never shrinks, and is read after the label."
+        },
+        {
           "name": "isIndeterminate",
           "type": "boolean",
           "required": false,
@@ -3851,6 +3857,8 @@
         "dash": "view",
         "mark": "vector",
         "text": "view",
+        "top": "view",
+        "end": "view",
         "label": "text",
         "description": "text",
         "status": "view"
@@ -4255,6 +4263,11 @@
           "name": "SelectAll",
           "title": "With a box for all",
           "source": "import { useLocal } from '@lingxia/view';\nimport { CheckboxList } from '@liulidesign/core/CheckboxList';\n\n/** A box for all of them: checked when all are, a dash when some are. */\nexport function SelectAll() {\n  const chosen = useLocal<readonly string[]>('folders', ['travel', 'recipes']);\n  return (\n    <CheckboxList\n      bind={chosen}\n      label=\"Folders to export\"\n      selectAllLabel=\"All folders\"\n      items={[{ value: 'travel', label: 'Travel' }, { value: 'work', label: 'Work' }, { value: 'recipes', label: 'Recipes' }, { value: 'garden', label: 'Garden' }]}\n      data-testid=\"export\"\n    />\n  );\n}"
+        },
+        {
+          "name": "WithEndContent",
+          "title": "With a size on each line",
+          "source": "import { useLocal } from '@lingxia/view';\nimport { CheckboxList } from '@liulidesign/core/CheckboxList';\n\n/** A size at the end of each option's line, read after its name. */\nexport function WithEndContent() {\n  const chosen = useLocal<readonly string[]>('exports', ['photos']);\n  const size = (text: string) => <text className=\"text-footnote\">{text}</text>;\n  return (\n    <CheckboxList\n      bind={chosen}\n      label=\"Include in the backup\"\n      items={[\n        { value: 'photos', label: 'Photos', endContent: size('4.2 GB') },\n        { value: 'notes', label: 'Notes', endContent: size('18 MB') },\n        { value: 'downloads', label: 'Downloads, including files from shared folders', endContent: size('1.1 GB') },\n      ]}\n      data-testid=\"backup\"\n    />\n  );\n}"
         }
       ],
       "gaps": [
@@ -4319,6 +4332,10 @@
             {
               "name": "SelectAll",
               "title": "A box that chooses all, with a dash while some are chosen"
+            },
+            {
+              "name": "WithEndContent",
+              "title": "Something at the end of each option: a size, a price"
             }
           ],
           "sizes": [
@@ -18292,6 +18309,13 @@
           "default": "'md'"
         },
         {
+          "name": "isPulsing",
+          "type": "boolean",
+          "required": false,
+          "description": "A halo that keeps ringing out from the dot, for a state that is live right now: recording, on a call. Still when motion is reduced.",
+          "default": "false"
+        },
+        {
           "name": "className",
           "type": "string",
           "required": false,
@@ -18309,6 +18333,7 @@
       "parts": {
         "root": "view",
         "dot": "view",
+        "halo": "view",
         "label": "text"
       },
       "accessibility": {
@@ -18466,6 +18491,11 @@
           "name": "DotOnly",
           "title": "Without its words",
           "source": "import { StatusDot } from '@liulidesign/core/StatusDot';\n\n/** Without its words, where they are already beside it. */\nexport function DotOnly() {\n  return (\n    <view className=\"flex-row items-center gap-2\">\n      <StatusDot label=\"Online\" tone=\"success\" isLabelHidden data-testid=\"bare\" />\n      <text className=\"text-body font-medium text-text\">Ana Lima</text>\n      <text className=\"text-footnote text-muted\">Online</text>\n    </view>\n  );\n}"
+        },
+        {
+          "name": "Live",
+          "title": "Live right now",
+          "source": "import { StatusDot } from '@liulidesign/core/StatusDot';\n\n/** A state that is live right now: the halo rings out while it lasts. */\nexport function Live() {\n  return (\n    <view className=\"gap-3\">\n      <StatusDot label=\"Recording\" tone=\"danger\" isPulsing data-testid=\"recording\" />\n      <StatusDot label=\"On a call\" tone=\"success\" isPulsing size=\"sm\" />\n    </view>\n  );\n}"
         }
       ],
       "gaps": [],
@@ -18534,6 +18564,10 @@
             {
               "name": "DotOnly",
               "title": "The dot alone, named by its word"
+            },
+            {
+              "name": "Live",
+              "title": "A halo for a state that is live right now"
             }
           ]
         }
@@ -18594,7 +18628,7 @@
           "name": "stateLabels",
           "type": "Partial<Record<StepState, string>>",
           "required": false,
-          "description": "What a screen reader hears for a step's state, instead of Liuli's \"Done\", \"Current step\" and \"Not started\" in the page's language."
+          "description": "What a screen reader hears for a step's state, instead of Liuli's \"Done\", \"Current step\", \"Not started\" and \"Needs attention\" in the page's language."
         },
         {
           "name": "orientation",
@@ -18639,6 +18673,19 @@
             "type": "string",
             "required": false,
             "description": "A second line; vertical only."
+          },
+          {
+            "name": "status",
+            "type": "\"error\"",
+            "required": false,
+            "description": "Marks a step with a problem to fix, such as a rejected payment: a danger mark in place of its number or tick, read as needing attention."
+          },
+          {
+            "name": "isDisabled",
+            "type": "boolean",
+            "required": false,
+            "description": "A finished step that cannot be gone back to: it stays a plain step, not a button.",
+            "default": "false"
           }
         ]
       },
@@ -18737,13 +18784,18 @@
           "name": "Across",
           "title": "Across the top of a form",
           "source": "import { Stepper } from '@liulidesign/core/Stepper';\n\n/** Across the top of a wide form: up to four short labels. */\nexport function Across() {\n  return <Stepper label=\"Sign-up steps\" orientation=\"horizontal\" steps={[{ key: 'account', label: 'Account' }, { key: 'profile', label: 'Profile' }, { key: 'done', label: 'Done' }]} value={1} data-testid=\"across\" />;\n}"
+        },
+        {
+          "name": "NeedsAttention",
+          "title": "A step to fix, a step that cannot go back",
+          "source": "import { useLocal } from '@lingxia/view';\nimport { Stepper } from '@liulidesign/core/Stepper';\n\n/** A payment the bank refused: that step is marked to fix, and the address, once sent to the courier, cannot be changed. */\nexport function NeedsAttention() {\n  const at = useLocal('at', 3);\n  const steps = [\n    { key: 'cart', label: 'Cart', description: 'Three items' },\n    { key: 'address', label: 'Address', description: 'Sent to the courier', isDisabled: true },\n    { key: 'payment', label: 'Payment', description: 'The bank declined the card', status: 'error' as const },\n    { key: 'review', label: 'Review', description: 'Check and place the order' },\n  ];\n  return <Stepper label=\"Checkout steps\" steps={steps} bind={at} data-testid=\"attention\" />;\n}"
         }
       ],
       "gaps": [
         {
-          "missing": "A step marked as failed or optional.",
+          "missing": "A step marked as optional.",
           "needs": "nothing from the View",
-          "today": "Done, in progress or ahead."
+          "today": "Done, in progress, ahead, or needing attention."
         },
         {
           "missing": "Horizontal steps that fold to \"2 of 4\" where they do not fit.",
@@ -18774,10 +18826,13 @@
         "roles": [
           "accent",
           "accent-solid",
+          "danger",
+          "danger-solid",
           "focus",
           "line",
           "line-strong",
           "on-accent-solid",
+          "on-danger-solid",
           "text",
           "text-muted"
         ]
@@ -18798,6 +18853,10 @@
             {
               "name": "Across",
               "title": "Horizontal, for up to four short labels"
+            },
+            {
+              "name": "NeedsAttention",
+              "title": "A step to fix, and a finished step that cannot be gone back to"
             }
           ]
         }
@@ -21103,6 +21162,25 @@
           "default": "false"
         },
         {
+          "name": "onRemove",
+          "type": "(() => void)",
+          "required": false,
+          "description": "Adds a remove button in its top corner, as for an attachment that can be taken back."
+        },
+        {
+          "name": "removeLabel",
+          "type": "string",
+          "required": false,
+          "description": "The remove button's name. Defaults to \"Remove <alt>\" in the page's language."
+        },
+        {
+          "name": "isLoading",
+          "type": "boolean",
+          "required": false,
+          "description": "Covers it with a spinner while what it stands for is still on its way, such as an upload.",
+          "default": "false"
+        },
+        {
           "name": "className",
           "type": "string",
           "required": false,
@@ -21118,8 +21196,11 @@
       "otherProps": {},
       "choices": [],
       "parts": {
+        "frame": "view",
         "root": "view",
-        "image": "image"
+        "image": "image",
+        "loading": "view",
+        "remove": "button"
       },
       "accessibility": {
         "pattern": null,
@@ -21175,6 +21256,11 @@
           "name": "Strip",
           "title": "A strip with one selected",
           "source": "import { Held } from '../example';\nimport { Thumbnail } from '@liulidesign/core/Thumbnail';\n\nconst photo = (n: number) => `public/photos/photo-${n}.png`;\nconst photos = [\n  [1, 'The bay at sunrise'],\n  [2, 'Fields behind the house'],\n  [3, 'Dusk over the ridge'],\n  [4, 'Morning fog in the valley'],\n  [5, 'Dunes at noon'],\n  [1, 'The bay, a minute later'],\n] as const;\n\n/** A strip under a picture: the one in view is ringed. */\nexport function Strip() {\n  return (\n    <Held value={1}>\n      {(shown, show) => (\n        <view className=\"flex-row gap-3 p-1\">\n          {photos.slice(0, 4).map(([n, alt], index) => <Thumbnail key={alt} src={photo(n)} alt={alt} size=\"sm\" isSelected={index === shown} onClick={() => show(index)} data-testid={`strip-${index}`} />)}\n        </view>\n      )}\n    </Held>\n  );\n}"
+        },
+        {
+          "name": "Attachments",
+          "title": "Attachments, one still uploading",
+          "source": "import { useLocal } from '@lingxia/view';\nimport { Thumbnail } from '@liulidesign/core/Thumbnail';\n\nconst photo = (n: number) => `public/photos/photo-${n}.png`;\nconst photos = [\n  [1, 'The bay at sunrise'],\n  [2, 'Fields behind the house'],\n  [3, 'Dusk over the ridge'],\n  [4, 'Morning fog in the valley'],\n  [5, 'Dunes at noon'],\n  [1, 'The bay, a minute later'],\n] as const;\n\n/** Pictures attached to a message: each can be taken back, and one is still uploading. */\nexport function Attachments() {\n  const attached = useLocal<readonly number[]>('attached', [0, 1, 2]);\n  return (\n    <view className=\"flex-row gap-3 pt-2 pe-2\">\n      {attached.value.map(index => {\n        const [n, alt] = photos[index];\n        return (\n          <Thumbnail\n            key={alt}\n            src={photo(n)}\n            alt={alt}\n            size=\"md\"\n            isLoading={index === 2}\n            onRemove={() => attached.set(attached.value.filter(each => each !== index))}\n            data-testid={`attached-${index}`}\n          />\n        );\n      })}\n    </view>\n  );\n}"
         }
       ],
       "gaps": [],
@@ -21202,6 +21288,8 @@
         "roles": [
           "accent",
           "focus",
+          "media",
+          "on-media",
           "text"
         ]
       },
@@ -21221,6 +21309,10 @@
             {
               "name": "Strip",
               "title": "A strip, with the one in view ringed"
+            },
+            {
+              "name": "Attachments",
+              "title": "Attachments: one still uploading, each with a remove button"
             }
           ],
           "sizes": [

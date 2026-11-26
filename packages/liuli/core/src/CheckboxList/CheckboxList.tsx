@@ -1,4 +1,4 @@
-import { cx, useId, type Local } from '@lingxia/view';
+import { cx, useId, type Child, type Local } from '@lingxia/view';
 import { useControlSize } from '../density';
 import { CheckboxInput } from '../CheckboxInput/CheckboxInput';
 import type { FieldSize, FieldStatus } from '../Field/Field';
@@ -14,6 +14,8 @@ export interface CheckboxListOption {
   label: string;
   /** Help text under the option's label. */
   description?: string;
+  /** Trailing content at the end of the label's line: a price, a size, a count. Never shrinks, and is read after the label. */
+  endContent?: Child;
   /** @default false */
   isDisabled?: boolean;
 }
@@ -114,6 +116,7 @@ export function CheckboxList(props: CheckboxListProps) {
             key={option.value}
             label={option.label}
             description={option.description}
+            endContent={option.endContent}
             value={chosen.includes(option.value)}
             onChange={isOn => toggle(option.value, isOn)}
             isDisabled={isDisabled || option.isDisabled}

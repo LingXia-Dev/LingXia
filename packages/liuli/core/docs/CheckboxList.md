@@ -118,6 +118,31 @@ export function SelectAll() {
 }
 ```
 
+### With a size on each line
+
+```tsx
+import { useLocal } from '@lingxia/view';
+import { CheckboxList } from '@liulidesign/core/CheckboxList';
+
+/** A size at the end of each option's line, read after its name. */
+export function WithEndContent() {
+  const chosen = useLocal<readonly string[]>('exports', ['photos']);
+  const size = (text: string) => <text className="text-footnote">{text}</text>;
+  return (
+    <CheckboxList
+      bind={chosen}
+      label="Include in the backup"
+      items={[
+        { value: 'photos', label: 'Photos', endContent: size('4.2 GB') },
+        { value: 'notes', label: 'Notes', endContent: size('18 MB') },
+        { value: 'downloads', label: 'Downloads, including files from shared folders', endContent: size('1.1 GB') },
+      ]}
+      data-testid="backup"
+    />
+  );
+}
+```
+
 ## Props
 
 | Prop | Type | Default | Description |

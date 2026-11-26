@@ -1,4 +1,4 @@
-import { cx, useId, type Local } from '@lingxia/view';
+import { cx, useId, type Child, type Local } from '@lingxia/view';
 import { useControlSize } from '../density';
 import type { FieldOwnProps } from '../Field/Field';
 import { fieldRecipe } from '../Field/Field.recipe';
@@ -32,6 +32,8 @@ export type CheckboxInputProps = FieldOwnProps & CheckboxInputBinding & {
   changeAction?: (value: boolean) => Promise<unknown>;
   /** Said in the status line when `changeAction` fails. Defaults to a short "try again", in the page's language. */
   failedMessage?: string;
+  /** Trailing content at the end of the label's line: a price, a size, a count. Never shrinks, and is read after the label. */
+  endContent?: Child;
   /** Stands for a set that is partly chosen: draws a dash and is read as mixed. A press asks for all; the app clears it when the set is all or none. @default false */
   isIndeterminate?: boolean;
   className?: string;
@@ -47,12 +49,13 @@ export type CheckboxInputProps = FieldOwnProps & CheckboxInputBinding & {
 export function CheckboxInput(props: CheckboxInputProps) {
   const {
     label, isLabelHidden = false, description, status, isRequired = false, isDisabled = false, disabledMessage, size: ownSize,
-    isIndeterminate = false, changeAction, failedMessage, className, 'data-testid': testId,
+    isIndeterminate = false, changeAction, failedMessage, endContent, className, 'data-testid': testId,
   } = props;
   const size = useControlSize(ownSize);
   const id = useId();
   const helpId = `${id}-help`;
   const statusId = `${id}-status`;
+  const endId = `${id}-end`;
   const checked = props.bind ? props.bind.value : props.value;
   const apply = (next: boolean) => (props.bind ? props.bind.set(next) : props.onChange(next));
   const { isPending, failure, change } = useChangeAction('CheckboxInput', label, apply, changeAction, failedMessage);
@@ -63,10 +66,16 @@ export function CheckboxInput(props: CheckboxInputProps) {
   const help = isDisabled && disabledMessage ? disabledMessage : description;
   const semantics = {
     'aria-label': label,
-    'aria-describedby': describedBy(help !== undefined && helpId, hasMessage(shownStatus) && statusId),
+    'aria-describedby': describedBy(endContent !== undefined && endId, help !== undefined && helpId, hasMessage(shownStatus) && statusId),
     'aria-invalid': status?.type === 'error' || undefined,
     'aria-required': isRequired || undefined,
   };
+  const labelText = (
+    <text className={cx(r.label.base, endContent !== undefined && r.label.beside, r.label.size[size], isDisabled && r.label.disabled, isLabelHidden && r.label.hidden)}>
+      {label}
+      {isRequired && <span className={fieldRecipe.required.base}>{' *'}</span>}
+    </text>
+  );
   const content = (
     <view className={r.row.base}>
       <view aria-hidden className={r.line.base}>
@@ -77,10 +86,12 @@ export function CheckboxInput(props: CheckboxInputProps) {
         </view>
       </view>
       <view className={r.text.base}>
-        <text className={cx(r.label.base, r.label.size[size], isDisabled && r.label.disabled, isLabelHidden && r.label.hidden)}>
-          {label}
-          {isRequired && <span className={fieldRecipe.required.base}>{' *'}</span>}
-        </text>
+        {endContent === undefined ? labelText : (
+          <view className={r.top.base}>
+            {labelText}
+            <view id={endId} aria-hidden className={cx(r.end.base, isDisabled && r.end.disabled)}>{endContent}</view>
+          </view>
+        )}
         {help !== undefined && <text id={helpId} className={r.description.base}>{help}</text>}
       </view>
     </view>

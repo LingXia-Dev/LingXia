@@ -17,16 +17,19 @@ export interface StatusDotProps {
   hue?: Hue;
   /** @default 'md' */
   size?: StatusDotSize;
+  /** A halo that keeps ringing out from the dot, for a state that is live right now: recording, on a call. Still when motion is reduced. @default false */
+  isPulsing?: boolean;
   className?: string;
   'data-testid'?: string;
 }
 
 /** How something stands, as a small coloured dot and a word: a service, a device, a record. */
-export function StatusDot({ label, isLabelHidden = false, tone = 'neutral', hue, size = 'md', className, 'data-testid': testId, ...attributes }: StatusDotProps) {
+export function StatusDot({ label, isLabelHidden = false, tone = 'neutral', hue, size = 'md', isPulsing = false, className, 'data-testid': testId, ...attributes }: StatusDotProps) {
   const colour = hue !== undefined ? r.dot.hue[hue] : r.dot.tone[tone];
-  const dot = <view aria-hidden={!isLabelHidden || undefined} className={cx(r.dot.base, r.dot.size[size], colour)} />;
+  const halo = isPulsing && <view aria-hidden className={cx(r.halo.base, colour)} />;
+  const dot = <view aria-hidden={!isLabelHidden || undefined} className={cx(r.dot.base, r.dot.size[size], colour)}>{halo}</view>;
   if (isLabelHidden) {
-    return <view role="img" aria-label={label} data-testid={testId} {...dataOf(attributes)} className={cx(r.dot.base, r.dot.size[size], colour, className)} />;
+    return <view role="img" aria-label={label} data-testid={testId} {...dataOf(attributes)} className={cx(r.dot.base, r.dot.size[size], colour, className)}>{halo}</view>;
   }
   return (
     <view data-testid={testId} {...dataOf(attributes)} className={cx(r.root.base, r.root.size[size], className)}>
