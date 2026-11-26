@@ -22,9 +22,9 @@ export const blockEditorsRecipe = {
     other: 'text-caption font-mono text-faint',
   },
   callout: {
-    preview: 'relative hover:ring-1 hover:ring-text/10',
+    preview: 'relative hover:ring-1 hover:ring-line',
     previewButton: 'absolute inset-0 rounded-container',
-    editing: 'gap-2 ring-1 ring-accent/40',
+    editing: 'gap-2 ring-1 ring-accent',
     header: 'flex-row flex-wrap items-center justify-between gap-2',
     titleInput: 'grow min-w-0 bg-canvas/0',
     tones: 'flex-row items-center gap-1',
@@ -51,7 +51,7 @@ export const blockEditorsRecipe = {
     bodyInput: 'w-full p-0 bg-canvas/0',
   },
   code: {
-    editing: 'ring-1 ring-accent/40',
+    editing: 'ring-1 ring-accent',
     fields: 'grow min-w-0 flex-row items-center gap-1.5',
     filename: 'grow min-w-0 bg-canvas/0 p-0 text-caption font-mono font-medium text-text',
     language: 'w-20 bg-canvas/0 p-0 text-caption font-mono font-medium text-muted',
@@ -67,7 +67,7 @@ export const blockEditorsRecipe = {
     toolbar: 'self-start max-w-full overflow-x-auto rounded-control border border-line bg-surface px-1.5 py-0.5 shadow-raised',
     toolbarRow: 'flex-row items-center gap-0.5 min-w-max',
     toolbarLabel: 'text-caption font-medium text-muted px-1.5',
-    toolbarSeparator: 'w-px h-4 bg-text/12 mx-0.5',
+    toolbarSeparator: 'w-px h-4 bg-line mx-0.5',
     cell: {
       selected: 'bg-accent-soft/45',
       doomed: 'bg-danger-soft',

@@ -156,7 +156,7 @@ export const jinshuViewRecipe = {
     },
   },
   divider: {
-    base: 'h-px w-full bg-text/12',
+    base: 'h-px w-full bg-line',
   },
   media: {
     // The figure's gap spaces it, the same under an image as under a video.

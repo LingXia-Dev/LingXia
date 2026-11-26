@@ -73,7 +73,7 @@ export const jinshuEditorRecipe = {
     base: 'flex-row items-center gap-1 shrink-0',
   },
   toolbarSep: {
-    base: 'w-px h-4 bg-text/12 mx-1 shrink-0',
+    base: 'w-px h-4 bg-line mx-1 shrink-0',
   },
   history: {
     base: 'w-72 gap-2',
