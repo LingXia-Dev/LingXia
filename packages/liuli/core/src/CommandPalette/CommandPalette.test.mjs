@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { textOf } from '@lingxia/view/testing';
-import { renderExample } from '../testing/harness.mjs';
+import { renderExample, renderPage } from '../testing/harness.mjs';
 
 const open = async () => {
   const screen = await renderExample('CommandPalette/CommandPalette', 'Commands');
@@ -53,4 +53,33 @@ test('At large text: the button that opens the palette stays inside its card and
   const open = screen.getByTestId('palette-open');
   assert.deepEqual([open.props.maxWidthPercent, open.props.height, open.props.minHeight > 0], [100, undefined, true]);
   assert.equal(open.children.find(node => node.tag === 'text').props.whiteSpace, undefined, 'its label wraps only when the button alone is wider than the card');
+});
+
+test('a disabled first row is not highlighted; with no row that can be chosen nothing is; closed from outside, it opens again empty', async () => {
+  const screen = await renderPage(`
+    import { useLocal } from '@lingxia/view';
+    import { CommandPalette } from '@liulidesign/core/CommandPalette';
+    const groups = [{ label: 'Go', items: [{ id: 'locked', label: 'Locked', isDisabled: true }, { id: 'inbox', label: 'Inbox' }, { id: 'trash', label: 'Trash', isDisabled: true }] }];
+    export function render() {
+      const open = useLocal('open', true);
+      return <page>
+        <button data-testid="toggle" onClick={() => open.set(!open.value)}><text>Toggle</text></button>
+        <CommandPalette isOpen={open.value} onOpenChange={next => open.set(next)} label="Go to" groups={groups} onSelect={() => {}} data-testid="p" />
+      </page>;
+    }
+  `);
+  const search = () => screen.getByTestId('p-search');
+  assert.deepEqual(highlighted(screen), ['p-inbox'], 'the first row that can be chosen');
+  screen.key(search(), 'Home');
+  screen.key(search(), 'End');
+  assert.deepEqual(highlighted(screen), ['p-inbox']);
+  screen.type(search(), 'locked');
+  assert.deepEqual(highlighted(screen), [], 'only a disabled row matches');
+  assert.equal(search().props.ariaActiveDescendant, undefined);
+  for (const name of ['Home', 'End', 'ArrowDown']) screen.key(search(), name);
+  assert.equal(search().props.ariaActiveDescendant, undefined);
+  screen.press(screen.getByTestId('toggle'));
+  screen.press(screen.getByTestId('toggle'));
+  assert.equal(search().props.inputValue, '', 'the query does not outlive a close from outside');
+  assert.deepEqual(highlighted(screen), ['p-inbox']);
 });

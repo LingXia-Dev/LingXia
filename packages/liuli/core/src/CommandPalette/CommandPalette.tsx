@@ -72,23 +72,26 @@ function filtered(groups: readonly CommandGroup[], typed: string): readonly Comm
 /** Type to find a command or a place, and run it from the keyboard. */
 export function CommandPalette({ isOpen, onOpenChange, label, placeholder, groups, onSelect, onQueryChange, isLoading = false, emptyLabel = liuliText('@liuli.noMatches'), 'data-testid': testId, ...attributes }: CommandPaletteProps) {
   const listId = useId();
-  const query = useLocal('query', '');
-  const active = useLocal('active', 0);
+  // Named by whether it is open, so a palette closed from outside opens again empty, at the first row.
+  const session = isOpen ? 'open' : 'closed';
+  const query = useLocal(`query-${session}`, '');
+  const active = useLocal(`active-${session}`, -1);
   const { env } = useView();
   const isCompact = env.sizeClass === 'compact';
   const shown = onQueryChange ? groups : filtered(groups, query.value.trim().toLowerCase());
   const flat = shown.flatMap(group => group.items);
   const rowId = (index: number) => `${listId}-${index}`;
-  const close = () => { onOpenChange(false); query.set(''); active.set(0); };
+  const close = () => { onOpenChange(false); query.set(''); active.set(-1); };
   const choose = (item: CommandItem | undefined) => { if (item && !item.isDisabled) { onSelect(item.id); close(); } };
-  // The next row that can be chosen, from `from` in `direction`, stopping at the ends.
+  // The next row that can be chosen, from `from` in `direction`, stopping at the ends; -1 when none is.
   const step = (from: number, direction: 1 | -1) => {
     for (let index = from + direction; index >= 0 && index < flat.length; index += direction) if (!flat[index].isDisabled) return index;
-    return from;
+    return from >= 0 && from < flat.length ? from : -1;
   };
   // The highlighted row is brought into view as it moves.
-  const move = (index: number) => { active.set(index); reveal(rowId(index)); };
-  const at = Math.min(active.value, Math.max(0, flat.length - 1));
+  const move = (index: number) => { if (index < 0) return; active.set(index); reveal(rowId(index)); };
+  // The row moved to, while it can still be chosen; else the first that can be.
+  const at = active.value >= 0 && active.value < flat.length && !flat[active.value].isDisabled ? active.value : step(-1, 1);
   const keys = {
     ArrowDown: () => move(step(at, 1)),
     ArrowUp: () => move(step(at, -1)),
@@ -115,12 +118,12 @@ export function CommandPalette({ isOpen, onOpenChange, label, placeholder, group
           aria-label={label}
           aria-expanded
           aria-controls={listId}
-          aria-activedescendant={flat.length > 0 ? rowId(at) : undefined}
+          aria-activedescendant={at >= 0 ? rowId(at) : undefined}
           value={query.value}
           placeholder={placeholder}
           autoFocus
           enterKeyHint="go"
-          onInput={text => { query.set(text); active.set(0); onQueryChange?.(text); }}
+          onInput={text => { query.set(text); active.set(-1); onQueryChange?.(text); }}
           onKeyDown={keys}
           onSubmit={() => choose(flat[at])}
           data-testid={testId && `${testId}-search`}
