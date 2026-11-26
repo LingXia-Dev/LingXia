@@ -112,8 +112,7 @@ pub fn set_host_overlays(elements: &str) {
 fn overlay_tap(points: &[GesturePoint], end: GestureEnd) -> Result<AppGestureResult, Error> {
     let unsupported = || {
         Error::not_supported(
-            "window gestures reach only the host's own overlays on HarmonyOS; apps cannot inject input"
-                .into(),
+            "window gestures reach only the host's own overlays on HarmonyOS; apps cannot inject input",
         )
     };
     let (first, last) = (
