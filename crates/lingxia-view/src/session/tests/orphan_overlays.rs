@@ -9,8 +9,8 @@ fn page(
 ) -> ViewHost<Fake> {
     let host = platform.host(worker, &source(render), false);
     if let Some(environment) = host.adapter().environment.lock().unwrap().as_mut() {
-        environment.value["pointer"] = pointer.into();
-        environment.value["reducedMotion"] = true.into();
+        environment.value.pointer = crate::protocol::env::Pointer::parse(pointer).unwrap();
+        environment.value.reduced_motion = Some(true);
     }
     host.set_visible(true);
     platform.settle(&[&host]);

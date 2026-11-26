@@ -38,11 +38,12 @@ impl HostChrome {
 
     /// The chrome for an environment the host has applied its pushes to: its palette push,
     /// or the built-in palette for its look, the same palette the page renders with.
-    pub fn from_environment(env: &serde_json::Value) -> HostChrome {
-        let dark = env["theme"] == "dark";
-        let high_contrast = env["highContrast"] == true;
+    pub fn from_environment(env: &crate::protocol::env::Environment) -> HostChrome {
+        let dark = env.theme == crate::protocol::env::Theme::Dark;
+        let high_contrast = env.high_contrast == Some(true);
         let palette = env
-            .get("palette")
+            .palette
+            .as_ref()
             .and_then(|pushed| Palette::decode(pushed).ok())
             .unwrap_or_else(|| Palette::builtin_for(dark, high_contrast));
         HostChrome::from_palette(&palette)
@@ -70,10 +71,10 @@ mod tests {
     fn chrome_follows_the_page_palette_in_every_look() {
         for (dark, high_contrast) in [(false, false), (true, false), (false, true), (true, true)] {
             let palette = Palette::builtin_for(dark, high_contrast);
-            let env = serde_json::json!({
+            let env = crate::platform::test_environment(serde_json::json!({
                 "theme": if dark { "dark" } else { "light" },
                 "highContrast": high_contrast,
-            });
+            }));
             let chrome = HostChrome::from_environment(&env);
             assert_eq!(
                 chrome.canvas,
@@ -94,10 +95,10 @@ mod tests {
             .map(|[r, g, b, _]| format!("#{r:02x}{g:02x}{b:02x}"))
             .collect();
         colors[Role::Canvas as usize] = "#123456".into();
-        let env = serde_json::json!({
+        let env = crate::platform::test_environment(serde_json::json!({
             "theme": "light",
             "palette": {"revision": 1, "colors": colors},
-        });
+        }));
         assert_eq!(
             HostChrome::from_environment(&env).canvas,
             [0x12, 0x34, 0x56, 0xff]

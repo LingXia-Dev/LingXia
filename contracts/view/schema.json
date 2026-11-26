@@ -582,7 +582,7 @@
     "highContrast": {"type": "boolean", "check": "bool", "origin": "device", "optional": true, "doc": "The system asks for increased contrast; the palette resolves its high-contrast variant."},
     "animatorDurationScale": {"type": "number", "check": "range", "range": [0, 10], "origin": "device", "optional": true, "doc": "The platform's animation duration multiplier (0..10, default 1); 0 also sets `reducedMotion`."},
     "hourCycle": {"type": "\"h12\" | \"h23\"", "check": "enum", "values": ["h12", "h23"], "origin": "device", "optional": true, "doc": "12- or 24-hour clock: the user's system setting, else the custom of the system language."},
-    "firstWeekday": {"type": "Weekday", "check": "range", "range": [1, 7], "origin": "device", "optional": true, "doc": "The first day of the week, a `Weekday` (1 = Monday … 7 = Sunday): the user's system setting, else the custom of the system language."},
+    "firstWeekday": {"type": "Weekday", "check": "range", "range": [1, 7], "rust": "u8", "origin": "device", "optional": true, "doc": "The first day of the week, a `Weekday` (1 = Monday … 7 = Sunday): the user's system setting, else the custom of the system language."},
     "direction": {"type": "\"ltr\" | \"rtl\"", "check": "none", "origin": "session", "doc": "Inline direction derived from `language`."},
     "canDock": {"type": "boolean", "check": "bool", "origin": "push", "doc": "Whether the window can dock an `as: 'aside'` beside the main; false until the host reports it."},
     "renderer": {"type": "Readonly<{ fallback: \"driver\" | null }>", "check": "renderer", "origin": "device", "optional": true, "absent": true, "doc": "`fallback: \"driver\"` when this device's GPU driver failed and pages render on the CPU."},

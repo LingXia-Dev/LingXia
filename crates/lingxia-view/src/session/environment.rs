@@ -51,6 +51,8 @@ impl ViewSession {
         if !valid {
             return Err("UI_ENVIRONMENT: invalid native snapshot".into());
         }
+        let typed: crate::protocol::env::Environment = serde_json::from_value(value.clone())
+            .map_err(|error| format!("UI_ENVIRONMENT: {error}"))?;
         // Platforms that cannot report the setting leave motion on.
         if value.get("reducedMotion").is_none() {
             value["reducedMotion"] = serde_json::json!(false);
@@ -76,8 +78,8 @@ impl ViewSession {
             self.input_dirty = true;
             crate::layout::list_layout::invalidate_measurements(&mut self.lists);
         }
-        let dark = value["theme"] == "dark";
-        let high_contrast = value["highContrast"] == true;
+        let dark = typed.theme == crate::protocol::env::Theme::Dark;
+        let high_contrast = typed.high_contrast == Some(true);
         // Pages never read colours: the palette is taken out before the View sees the snapshot.
         let palette = match value
             .as_object_mut()
@@ -121,10 +123,10 @@ impl ViewSession {
             self.retained = None;
             crate::layout::list_layout::invalidate_measurements(&mut self.lists);
         }
-        let edge = |name: &str| value["insets"][name].as_f64().unwrap_or(0.0) as f32;
+        let insets = typed.insets;
         let safe_area = crate::layout::style::SafeArea {
-            insets: [edge("top"), edge("right"), edge("bottom"), edge("left")],
-            keyboard: value["keyboard"]["height"].as_f64().unwrap_or(0.0) as f32,
+            insets: [insets.top, insets.right, insets.bottom, insets.left].map(|n| n as f32),
+            keyboard: typed.keyboard.height as f32,
         };
         if self.renderer.safe_area != safe_area {
             if self.renderer.safe_area.keyboard != safe_area.keyboard {

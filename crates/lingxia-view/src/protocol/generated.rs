@@ -770,6 +770,325 @@ pub fn check_environment(value: &serde_json::Value) -> bool {
         && (value.get("renderer").is_none() || (matches!(value["renderer"]["fallback"].as_str(), None | Some("driver")) && value["renderer"].as_object().is_some_and(|r| r.len() == 1)))
 }
 
+/// The native environment snapshot (device facts plus host pushes) as `view.env` carries it.
+pub mod env {
+    use serde::{Deserialize, Serialize};
+
+    #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+    #[serde(rename_all = "camelCase")]
+    pub struct Environment {
+        pub theme: Theme,
+        /// System bars and host chrome over the surface, logical pixels.
+        pub insets: Edges,
+        /// The system bars alone (status bar, cutout, home indicator), as CSS `env(safe-area-inset-*)`; a dialog covering host chrome pads by these, logical pixels.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        pub safe_area: Option<Edges>,
+        /// Physical display hinge/crease intersecting this page canvas in local logical pixels; null when absent.
+        #[serde(default)]
+        pub hinge: Option<Hinge>,
+        pub keyboard: Keyboard,
+        /// The host's capsule (the ··· and close control) where it floats over the page, in page coordinates, logical pixels; `null` when the host shows none or it sits in a nav bar. The same box Web pages read as `--lx-page-chrome-capsule-*`.
+        #[serde(default)]
+        pub capsule: Option<Capsule>,
+        /// `fine` pointers (mouse, trackpad) hover; `coarse` ones (touch) do not.
+        #[serde(default)]
+        pub pointer: Pointer,
+        /// The host OS, the same value as Logic's `lx.host.info.os` and `lx.device.info.osName`.
+        pub os: Os,
+        /// `compact` below 600 logical pixels of page width, else `regular`, with 24 pixels of hysteresis: compact holds until 624, regular until below 576. Near the edge it can disagree with `min-[600px]:`; use `sizeClass` for structure and `min-[…]:` for spacing and type.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        pub size_class: Option<SizeClass>,
+        /// The language the page's text is in: the host's display language narrowed to the `languages` its lxapp.json lists. `t`, built-in words, direction and glyph forms follow it.
+        pub language: String,
+        /// The system asks for reduced motion; `motion-reduce:`/`motion-safe:` follow it.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        pub reduced_motion: Option<bool>,
+        /// The system asks for increased contrast; the palette resolves its high-contrast variant.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        pub high_contrast: Option<bool>,
+        /// The platform's animation duration multiplier (0..10, default 1); 0 also sets `reducedMotion`.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        pub animator_duration_scale: Option<f64>,
+        /// 12- or 24-hour clock: the user's system setting, else the custom of the system language.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        pub hour_cycle: Option<HourCycle>,
+        /// The first day of the week, a `Weekday` (1 = Monday … 7 = Sunday): the user's system setting, else the custom of the system language.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        pub first_weekday: Option<u8>,
+        /// Whether the window can dock an `as: 'aside'` beside the main; false until the host reports it.
+        pub can_dock: bool,
+        /// `fallback: "driver"` when this device's GPU driver failed and pages render on the CPU.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        pub renderer: Option<Renderer>,
+        /// How much the system's text size grows body text: 1 at the default size, 2 when it is twice as large, after the lxapp's `maxTextScale`. Sizes already follow it; read it only for a layout that must change shape, such as fewer columns.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        pub text_scale: Option<serde_json::Value>,
+        /// The resolved theme: `{ revision, colors }`, one #rrggbbaa per role slot; the page never sees it.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        pub palette: Option<serde_json::Value>,
+        /// The resolved pack scales: `{ revision, values }`, one value per scale slot (points, ms for durations, a timing function for easings); the page never sees it.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        pub scales: Option<serde_json::Value>,
+    }
+
+    /// Top, right, bottom and left, logical pixels.
+    #[derive(Clone, Copy, Debug, Default, PartialEq, Serialize, Deserialize)]
+    pub struct Edges {
+        pub top: f64,
+        pub right: f64,
+        pub bottom: f64,
+        pub left: f64,
+    }
+
+    #[derive(Clone, Copy, Debug, Default, PartialEq, Serialize, Deserialize)]
+    pub struct Keyboard {
+        pub height: f64,
+    }
+
+    #[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
+    pub struct Capsule {
+        pub x: f64,
+        pub y: f64,
+        pub width: f64,
+        pub height: f64,
+    }
+
+    #[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
+    pub struct Hinge {
+        pub x: f64,
+        pub y: f64,
+        pub width: f64,
+        pub height: f64,
+        pub orientation: HingeOrientation,
+        pub posture: HingePosture,
+    }
+
+    #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+    pub enum Theme {
+        #[serde(rename = "light")]
+        Light,
+        #[serde(rename = "dark")]
+        Dark,
+    }
+
+    impl Theme {
+        pub fn as_str(self) -> &'static str {
+            match self {
+                Self::Light => "light",
+                Self::Dark => "dark",
+            }
+        }
+
+        pub fn parse(value: &str) -> Option<Self> {
+            match value {
+                "light" => Some(Self::Light),
+                "dark" => Some(Self::Dark),
+                _ => None,
+            }
+        }
+    }
+
+    #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
+    pub enum Pointer {
+        #[serde(rename = "fine")]
+        Fine,
+        #[serde(rename = "coarse")]
+        #[default]
+        Coarse,
+    }
+
+    impl Pointer {
+        pub fn as_str(self) -> &'static str {
+            match self {
+                Self::Fine => "fine",
+                Self::Coarse => "coarse",
+            }
+        }
+
+        pub fn parse(value: &str) -> Option<Self> {
+            match value {
+                "fine" => Some(Self::Fine),
+                "coarse" => Some(Self::Coarse),
+                _ => None,
+            }
+        }
+    }
+
+    #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+    pub enum Os {
+        #[serde(rename = "ios")]
+        Ios,
+        #[serde(rename = "macos")]
+        Macos,
+        #[serde(rename = "android")]
+        Android,
+        #[serde(rename = "windows")]
+        Windows,
+        #[serde(rename = "harmony")]
+        Harmony,
+        #[serde(rename = "unknown")]
+        Unknown,
+    }
+
+    impl Os {
+        pub fn as_str(self) -> &'static str {
+            match self {
+                Self::Ios => "ios",
+                Self::Macos => "macos",
+                Self::Android => "android",
+                Self::Windows => "windows",
+                Self::Harmony => "harmony",
+                Self::Unknown => "unknown",
+            }
+        }
+
+        pub fn parse(value: &str) -> Option<Self> {
+            match value {
+                "ios" => Some(Self::Ios),
+                "macos" => Some(Self::Macos),
+                "android" => Some(Self::Android),
+                "windows" => Some(Self::Windows),
+                "harmony" => Some(Self::Harmony),
+                "unknown" => Some(Self::Unknown),
+                _ => None,
+            }
+        }
+    }
+
+    #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+    pub enum SizeClass {
+        #[serde(rename = "compact")]
+        Compact,
+        #[serde(rename = "regular")]
+        Regular,
+    }
+
+    impl SizeClass {
+        pub fn as_str(self) -> &'static str {
+            match self {
+                Self::Compact => "compact",
+                Self::Regular => "regular",
+            }
+        }
+
+        pub fn parse(value: &str) -> Option<Self> {
+            match value {
+                "compact" => Some(Self::Compact),
+                "regular" => Some(Self::Regular),
+                _ => None,
+            }
+        }
+    }
+
+    #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+    pub enum HourCycle {
+        #[serde(rename = "h12")]
+        H12,
+        #[serde(rename = "h23")]
+        H23,
+    }
+
+    impl HourCycle {
+        pub fn as_str(self) -> &'static str {
+            match self {
+                Self::H12 => "h12",
+                Self::H23 => "h23",
+            }
+        }
+
+        pub fn parse(value: &str) -> Option<Self> {
+            match value {
+                "h12" => Some(Self::H12),
+                "h23" => Some(Self::H23),
+                _ => None,
+            }
+        }
+    }
+
+    #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+    pub enum HingeOrientation {
+        #[serde(rename = "vertical")]
+        Vertical,
+        #[serde(rename = "horizontal")]
+        Horizontal,
+    }
+
+    impl HingeOrientation {
+        pub fn as_str(self) -> &'static str {
+            match self {
+                Self::Vertical => "vertical",
+                Self::Horizontal => "horizontal",
+            }
+        }
+
+        pub fn parse(value: &str) -> Option<Self> {
+            match value {
+                "vertical" => Some(Self::Vertical),
+                "horizontal" => Some(Self::Horizontal),
+                _ => None,
+            }
+        }
+    }
+
+    #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+    pub enum HingePosture {
+        #[serde(rename = "flat")]
+        Flat,
+        #[serde(rename = "half-opened")]
+        HalfOpened,
+    }
+
+    impl HingePosture {
+        pub fn as_str(self) -> &'static str {
+            match self {
+                Self::Flat => "flat",
+                Self::HalfOpened => "half-opened",
+            }
+        }
+
+        pub fn parse(value: &str) -> Option<Self> {
+            match value {
+                "flat" => Some(Self::Flat),
+                "half-opened" => Some(Self::HalfOpened),
+                _ => None,
+            }
+        }
+    }
+
+    #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+    pub enum RendererFallback {
+        #[serde(rename = "driver")]
+        Driver,
+    }
+
+    impl RendererFallback {
+        pub fn as_str(self) -> &'static str {
+            match self {
+                Self::Driver => "driver",
+            }
+        }
+
+        pub fn parse(value: &str) -> Option<Self> {
+            match value {
+                "driver" => Some(Self::Driver),
+                _ => None,
+            }
+        }
+    }
+
+    #[derive(Clone, Copy, Debug, Default, PartialEq, Serialize, Deserialize)]
+    pub struct Renderer {
+        pub fallback: Option<RendererFallback>,
+    }
+
+    impl Environment {
+        /// The snapshot as the session's `check_environment` and the View read it.
+        pub fn to_json(&self) -> serde_json::Value {
+            serde_json::to_value(self).unwrap_or_default()
+        }
+    }
+}
+
 /// What a wire tag may contain.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Children {

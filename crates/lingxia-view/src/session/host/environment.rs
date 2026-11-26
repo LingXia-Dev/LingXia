@@ -1,3 +1,4 @@
+use crate::protocol::env::{self, Environment};
 use serde::Deserialize;
 
 /// Environment the runtime pushes and the platform cannot measure; each kind keeps its newest revision.
@@ -41,32 +42,45 @@ pub(super) struct TestOverride {
 /// The text sizes a test may pin, as factors of the default.
 pub(super) const TEXT_SCALES: std::ops::RangeInclusive<f64> = 0.5..=3.0;
 
-/// Environment keys that only change colours, which the renderer resolves.
-const APPEARANCE: [&str; 3] = ["theme", "highContrast", "palette"];
+/// The environment without what only changes colours, which the renderer resolves.
+fn without_appearance(env: &Environment) -> Environment {
+    Environment {
+        theme: env::Theme::Light,
+        high_contrast: None,
+        palette: None,
+        ..env.clone()
+    }
+}
 
 /// Whether two environments show the same scheme, contrast and palette.
-pub(super) fn same_appearance(a: &serde_json::Value, b: &serde_json::Value) -> bool {
-    APPEARANCE.iter().all(|key| a.get(key) == b.get(key))
+pub(super) fn same_appearance(a: &Environment, b: &Environment) -> bool {
+    (a.theme, a.high_contrast, &a.palette) == (b.theme, b.high_contrast, &b.palette)
 }
 
 /// The appearance an environment shows, for logs.
-pub(super) fn appearance_label(env: &serde_json::Value) -> String {
-    let contrast = if env["highContrast"] == true {
+pub(super) fn appearance_label(env: &Environment) -> String {
+    let contrast = if env.high_contrast == Some(true) {
         " high-contrast"
     } else {
         ""
     };
-    format!("{}{contrast}", env["theme"].as_str().unwrap_or("unknown"))
+    format!("{}{contrast}", env.theme.as_str())
 }
 
-/// Environment keys a surface push sets that only the View reads.
-const HOST_CONTEXT: [&str; 2] = ["sizeClass", "canDock"];
+/// The environment without what a surface push sets and only the View reads.
+fn without_host_context(env: &Environment) -> Environment {
+    Environment {
+        size_class: None,
+        can_dock: false,
+        ..env.clone()
+    }
+}
 
 /// The lxapp's adaptive context, as Logic's `page.env` reads it, plus pixels.
 #[derive(Clone, Debug, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 struct SurfaceContext {
-    size_class: SizeClass,
+    size_class: env::SizeClass,
     can_dock: bool,
     width: f64,
     height: f64,
@@ -80,13 +94,6 @@ struct Capsule {
     y: f64,
     width: f64,
     height: f64,
-}
-
-#[derive(Clone, Copy, Debug, Deserialize, PartialEq)]
-#[serde(rename_all = "lowercase")]
-enum SizeClass {
-    Compact,
-    Regular,
 }
 
 #[derive(Deserialize)]
@@ -227,19 +234,13 @@ impl HostEnvironment {
         {
             return false;
         }
-        let strip = |value: &serde_json::Value| {
-            let mut value = value.clone();
-            if let Some(object) = value.as_object_mut() {
-                for key in APPEARANCE {
-                    object.remove(key);
-                }
-                if self.ignores_host_context {
-                    for key in HOST_CONTEXT {
-                        object.remove(key);
-                    }
-                }
+        let strip = |env: &Environment| {
+            let env = without_appearance(env);
+            if self.ignores_host_context {
+                without_host_context(&env)
+            } else {
+                env
             }
-            value
         };
         strip(&a.value) == strip(&b.value)
     }
@@ -266,16 +267,7 @@ impl HostEnvironment {
         if reads_host_context || (a.width, a.height, a.scale) != (b.width, b.height, b.scale) {
             return false;
         }
-        let strip = |value: &serde_json::Value| {
-            let mut value = value.clone();
-            if let Some(object) = value.as_object_mut() {
-                for key in HOST_CONTEXT {
-                    object.remove(key);
-                }
-            }
-            value
-        };
-        strip(&a.value) == strip(&b.value)
+        without_host_context(&a.value) == without_host_context(&b.value)
     }
 
     /// A frame built for `built` still fits a target measuring `now`: same size and scale,
@@ -293,68 +285,67 @@ impl HostEnvironment {
     }
 
     /// Overlays pushed values on the measured `env`; `canDock` is false until a surface push.
-    pub(super) fn apply(&self, env: &mut serde_json::Value) {
+    pub(super) fn apply(&self, env: &mut Environment) {
         if let Some(test) = self.test {
-            if let Some(dark) = test.dark
-                && (env["theme"] == "dark") != dark
-            {
-                env["theme"] = if dark { "dark" } else { "light" }.into();
-                // A pushed palette was resolved for the measured theme.
-                if let Some(object) = env.as_object_mut() {
-                    object.remove("palette");
+            if let Some(dark) = test.dark {
+                let theme = if dark {
+                    env::Theme::Dark
+                } else {
+                    env::Theme::Light
+                };
+                if env.theme != theme {
+                    env.theme = theme;
+                    // A pushed palette was resolved for the measured theme.
+                    env.palette = None;
                 }
             }
             if let Some(high) = test.high_contrast
-                && (env["highContrast"] == true) != high
+                && (env.high_contrast == Some(true)) != high
             {
-                env["highContrast"] = high.into();
-                if let Some(object) = env.as_object_mut() {
-                    object.remove("palette");
-                }
+                env.high_contrast = Some(high);
+                env.palette = None;
             }
             if let Some(scale) = test.text_scale {
-                env["textScale"] = serde_json::json!([[0.0, 0.0], [16384.0, 16384.0 * scale]]);
+                env.text_scale = Some(serde_json::json!([[0.0, 0.0], [16384.0, 16384.0 * scale]]));
             }
             if test.still {
-                env["reducedMotion"] = true.into();
+                env.reduced_motion = Some(true);
             }
         }
         self.limit_text_scale(env);
         if let Some((_, language, content)) = &self.language {
             // Until the host narrows it to the lxapp's languages, the page reads the host's.
-            env["language"] = content
+            env.language = content
                 .as_deref()
                 .filter(|tag| !tag.is_empty())
                 .unwrap_or(language)
-                .into();
+                .to_owned();
         }
         let surface = self.surface.as_ref().map(|s| &s.1);
         if let Some(context) = surface {
-            env["sizeClass"] = match context.size_class {
-                SizeClass::Compact => "compact",
-                SizeClass::Regular => "regular",
-            }
-            .into();
+            env.size_class = Some(context.size_class);
         }
-        env["canDock"] = surface.is_some_and(|c| c.can_dock).into();
+        env.can_dock = surface.is_some_and(|c| c.can_dock);
         if let Some((_, capsule)) = &self.chrome {
-            env["capsule"] = capsule.map_or(
-                serde_json::Value::Null,
-                |c| serde_json::json!({"x": c.x, "y": c.y, "width": c.width, "height": c.height}),
-            );
+            env.capsule = capsule.map(|c| env::Capsule {
+                x: c.x,
+                y: c.y,
+                width: c.width,
+                height: c.height,
+            });
         }
         // A palette the platform pushes (the host's theme) wins over the lxapp's own pack.
         if let Some((_, palettes, _)) = &self.theme
-            && env.get("palette").is_none()
+            && env.palette.is_none()
         {
-            let look =
-                usize::from(env["theme"] == "dark") + 2 * usize::from(env["highContrast"] == true);
-            env["palette"] = palettes[look].clone();
+            let look = usize::from(env.theme == env::Theme::Dark)
+                + 2 * usize::from(env.high_contrast == Some(true));
+            env.palette = Some(palettes[look].clone());
         }
         if let Some((_, _, scales)) = &self.theme
-            && env.get("scales").is_none()
+            && env.scales.is_none()
         {
-            env["scales"] = scales.clone();
+            env.scales = Some(scales.clone());
         }
     }
 }
@@ -362,12 +353,9 @@ impl HostEnvironment {
 impl HostEnvironment {
     /// Caps the measured text size mapping at the allowed factor. Capped at its points, the
     /// mapping stays rising and stays under the cap between them.
-    fn limit_text_scale(&self, env: &mut serde_json::Value) {
+    fn limit_text_scale(&self, env: &mut Environment) {
         let max = self.max_text_scale();
-        let Some(rows) = env
-            .get_mut("textScale")
-            .and_then(|rows| rows.as_array_mut())
-        else {
+        let Some(rows) = env.text_scale.as_mut().and_then(|rows| rows.as_array_mut()) else {
             return;
         };
         for row in rows {
@@ -438,25 +426,28 @@ impl<A: crate::platform::PlatformAdapter> super::Inner<A> {
             return false;
         };
         self.main().host_environment.apply(&mut env.value);
-        env.value["reducedMotion"] == true || env.value["animatorDurationScale"] == 0.0
+        env.value.reduced_motion == Some(true) || env.value.animator_duration_scale == Some(0.0)
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::platform::test_environment as env_with;
     use serde_json::json;
 
     #[test]
     fn a_test_override_pins_the_theme_and_stills_motion_until_cleared() {
         let mut host = HostEnvironment::default();
-        let measured = json!({"theme": "light", "reducedMotion": false, "palette": {"revision": 1, "colors": []}});
+        let measured = env_with(
+            json!({"theme": "light", "reducedMotion": false, "palette": {"revision": 1, "colors": []}}),
+        );
         let applied = |host: &HostEnvironment| {
             let mut env = measured.clone();
             host.apply(&mut env);
             env
         };
-        assert_eq!(applied(&host)["palette"]["revision"], 1);
+        assert_eq!(applied(&host).palette.unwrap()["revision"], 1);
         let dark = TestOverride {
             dark: Some(true),
             still: true,
@@ -466,11 +457,11 @@ mod tests {
         assert!(!host.set_test(Some(dark)));
         let env = applied(&host);
         assert_eq!(
-            (env["theme"].as_str(), env["reducedMotion"].as_bool()),
-            (Some("dark"), Some(true))
+            (env.theme, env.reduced_motion),
+            (env::Theme::Dark, Some(true))
         );
         // The platform's palette was for light; the dark look resolves its own.
-        assert!(env.get("palette").is_none());
+        assert!(env.palette.is_none());
         assert!(host.still());
         // Pinning the measured theme keeps its palette.
         host.set_test(Some(TestOverride {
@@ -480,14 +471,14 @@ mod tests {
         let env = applied(&host);
         assert_eq!(
             (
-                env["theme"].as_str(),
-                env["reducedMotion"].as_bool(),
-                env["palette"]["revision"].as_i64()
+                env.theme,
+                env.reduced_motion,
+                env.palette.unwrap()["revision"].as_i64()
             ),
-            (Some("light"), Some(false), Some(1))
+            (env::Theme::Light, Some(false), Some(1))
         );
         assert!(host.set_test(None));
-        assert_eq!(applied(&host)["theme"], "light");
+        assert_eq!(applied(&host).theme, env::Theme::Light);
         assert!(!host.still());
     }
 
@@ -498,18 +489,18 @@ mod tests {
             json!({"kind": "chrome", "revision": revision, "capsule": capsule}).to_string()
         };
         let applied = |host: &HostEnvironment| {
-            let mut env = json!({});
+            let mut env = env_with(json!({}));
             host.apply(&mut env);
-            env
+            env.capsule
         };
-        assert!(applied(&host).get("capsule").is_none());
+        assert!(applied(&host).is_none());
         let rect = json!({"x": 280.0, "y": 50.0, "width": 87.0, "height": 32.0});
         assert!(host.update(&chrome(1, rect.clone())).unwrap());
-        assert_eq!(applied(&host)["capsule"], rect);
+        assert_eq!(applied(&host), serde_json::from_value(rect.clone()).unwrap());
         assert!(!host.update(&chrome(2, rect.clone())).unwrap(), "unchanged");
         assert!(!host.update(&chrome(1, json!(null))).unwrap(), "older");
         assert!(host.update(&chrome(3, json!(null))).unwrap());
-        assert_eq!(applied(&host)["capsule"], json!(null));
+        assert_eq!(applied(&host), None);
         for bad in [
             json!({"x": 0.0, "y": 0.0, "width": -1.0, "height": 32.0}),
             json!({"x": 0.0, "y": 0.0, "width": 87.0}),
@@ -521,9 +512,12 @@ mod tests {
     #[test]
     fn pushes_overlay_the_measured_environment_by_revision() {
         let mut host = HostEnvironment::default();
-        let mut env = json!({"language": "en-US"});
+        let mut env = env_with(json!({"language": "en-US", "canDock": true}));
         host.apply(&mut env);
-        assert_eq!(env, json!({"language": "en-US", "canDock": false}));
+        assert_eq!(
+            (env.language.as_str(), env.size_class, env.can_dock),
+            ("en-US", None, false)
+        );
 
         let surface = |revision: u64, size: &str, dock: bool| {
             json!({"kind": "surface", "revision": revision,
@@ -541,8 +535,8 @@ mod tests {
         );
         host.apply(&mut env);
         assert_eq!(
-            env,
-            json!({"language": "zh-Hans-CN", "sizeClass": "regular", "canDock": true})
+            (env.language.as_str(), env.size_class, env.can_dock),
+            ("zh-Hans-CN", Some(env::SizeClass::Regular), true)
         );
         assert!(
             host.update(
@@ -552,7 +546,7 @@ mod tests {
         );
         host.apply(&mut env);
         assert_eq!(
-            env["language"], "en",
+            env.language, "en",
             "the page reads the lxapp's narrowing of the host language"
         );
     }
@@ -564,12 +558,11 @@ mod tests {
                 width,
                 height: 800,
                 scale,
-                value,
+                value: env_with(value),
             };
         let mut host = HostEnvironment::default();
-        let mut measured = json!({"theme": "light"});
-        host.apply(&mut measured);
-        let built = frame(400, 2.0, measured.clone());
+        let mut built = frame(400, 2.0, json!({"theme": "light"}));
+        host.apply(&mut built.value);
         assert!(host.still_fits(
             Some(&built),
             Some(frame(400, 2.0, json!({"theme": "light"})))
@@ -609,9 +602,8 @@ mod tests {
             "a push this View never read leaves its frame current"
         );
         host.set_reads_host_context(true);
-        let mut pushed = json!({"theme": "light"});
-        host.apply(&mut pushed);
-        let rebuilt = frame(400, 2.0, pushed);
+        let mut rebuilt = frame(400, 2.0, json!({"theme": "light"}));
+        host.apply(&mut rebuilt.value);
         assert!(
             host.still_fits(Some(&rebuilt), now()),
             "a frame built with the pushed values stays current"
@@ -642,9 +634,9 @@ mod tests {
         assert!(host.update(&pack.to_string()).unwrap());
         let slot = lingxia_theme::Role::Accent as usize;
         for theme in ["light", "dark"] {
-            let mut env = json!({"theme": theme});
+            let mut env = env_with(json!({"theme": theme}));
             host.apply(&mut env);
-            let palette = crate::theme::Palette::decode(&env["palette"]).unwrap();
+            let palette = crate::theme::Palette::decode(&env.palette.unwrap()).unwrap();
             assert_ne!(
                 palette.0[slot],
                 crate::theme::Palette::builtin(theme == "dark").0[slot]
@@ -655,14 +647,15 @@ mod tests {
             );
         }
         // The increased-contrast preference picks the pack's high-contrast look.
-        let mut base = json!({"theme": "light"});
-        let mut high = json!({"theme": "light", "highContrast": true});
+        let mut base = env_with(json!({"theme": "light"}));
+        let mut high = env_with(json!({"theme": "light", "highContrast": true}));
         host.apply(&mut base);
         host.apply(&mut high);
-        assert_ne!(base["palette"], high["palette"]);
-        let mut env = json!({"theme": "light", "palette": {"revision": 9, "colors": ["#000000"]}});
+        assert_ne!(base.palette, high.palette);
+        let mut env =
+            env_with(json!({"theme": "light", "palette": {"revision": 9, "colors": ["#000000"]}}));
         host.apply(&mut env);
-        assert_eq!(env["palette"]["revision"], 9, "the platform's palette wins");
+        assert_eq!(env.palette.unwrap()["revision"], 9, "the platform's palette wins");
     }
 
     #[test]
@@ -675,9 +668,9 @@ mod tests {
             ("light", [0x0f, 0x7b, 0x3f, 255]),
             ("dark", [0x5b, 0xd2, 0x8a, 255]),
         ] {
-            let mut env = json!({"theme": theme});
+            let mut env = env_with(json!({"theme": theme}));
             host.apply(&mut env);
-            let palette = crate::theme::Palette::decode(&env["palette"]).unwrap();
+            let palette = crate::theme::Palette::decode(&env.palette.unwrap()).unwrap();
             assert_eq!(
                 palette.resolve("app.trend-up").unwrap(),
                 expected,
@@ -691,9 +684,9 @@ mod tests {
         let mut host = HostEnvironment::default();
         let measured = json!([[0, 0], [17, 51], [100, 150], [16384, 24576]]);
         let capped = |host: &HostEnvironment| {
-            let mut env = json!({"textScale": measured});
+            let mut env = env_with(json!({"textScale": measured}));
             host.apply(&mut env);
-            env["textScale"].clone()
+            env.text_scale.unwrap()
         };
         // 2.0 until the lxapp says otherwise; a point under the cap keeps its size.
         assert_eq!(

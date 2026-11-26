@@ -45,7 +45,7 @@ fn set_theme(platform: &Platform, host: &ViewHost<Fake>, theme: &str) {
         .unwrap()
         .as_mut()
         .unwrap()
-        .value["theme"] = theme.into();
+        .value.theme = crate::protocol::env::Theme::parse(theme).unwrap();
     host.environment_changed();
     platform.settle(&[host]);
     run_frames(platform, host, 4);
@@ -237,7 +237,7 @@ fn a_theme_change_racing_a_render_leaves_the_page_reading_the_new_theme() {
                 .unwrap()
                 .as_mut()
                 .unwrap()
-                .value["theme"] = value.into();
+                .value.theme = crate::protocol::env::Theme::parse(value).unwrap();
             host.environment_changed();
         };
         for (step, value) in ["dark", "light", "dark"].into_iter().enumerate() {

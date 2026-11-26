@@ -85,7 +85,7 @@ struct Log {
 /// What a phone adapter reports, built as adapters build it, so the fake never lacks a key a
 /// real host sends.
 fn fake_environment() -> FrameEnvironment {
-    let mut environment = crate::platform::DeviceFacts {
+    crate::platform::DeviceFacts {
         width: 200,
         height: 400,
         scale: 2.0,
@@ -96,9 +96,7 @@ fn fake_environment() -> FrameEnvironment {
         ..Default::default()
     }
     .environment()
-    .unwrap();
-    environment.value["canDock"] = false.into();
-    environment
+    .unwrap()
 }
 
 struct Fake {
@@ -1341,7 +1339,7 @@ fn a_hidden_page_catches_up_when_its_environment_changes_without_a_new_target() 
         .unwrap()
         .as_mut()
         .unwrap()
-        .value["insets"] = serde_json::json!({"top": 0, "left": 0, "right": 0, "bottom": 40});
+        .value.insets = crate::protocol::env::Edges { bottom: 40.0, ..Default::default() };
     assert!(!hidden.frame_is_current());
     hidden.request_frame();
     platform.settle(&[&hidden]);
@@ -1383,7 +1381,7 @@ fn a_parked_page_renders_nothing_after_it_left() {
         .unwrap()
         .as_mut()
         .unwrap()
-        .value["theme"] = serde_json::json!("dark");
+        .value.theme = crate::protocol::env::Theme::Dark;
     host.surface_changed();
     host.request_frame();
     platform.settle(&[&host]);
@@ -1418,7 +1416,7 @@ fn a_click_that_changes_the_look_logs_one_input_line() {
         .unwrap()
         .as_mut()
         .unwrap()
-        .value["theme"] = serde_json::json!("dark");
+        .value.theme = crate::protocol::env::Theme::Dark;
     host.surface_changed();
     platform.settle(&[&host]);
     // An image load lands afterwards: its callback is not an input and logs nothing.
@@ -2386,7 +2384,7 @@ fn a_reduced_motion_change_while_hidden_catches_up_once_and_stays_silent() {
         .unwrap()
         .as_mut()
         .unwrap()
-        .value["reducedMotion"] = serde_json::json!(true);
+        .value.reduced_motion = Some(true);
     host.redraw();
     platform.settle(&[&host]);
     assert_eq!(presents(&host), hidden + 1, "one catch-up frame");
@@ -2567,7 +2565,7 @@ fn a_cover_stays_until_a_frame_in_the_new_scheme() {
         .unwrap()
         .as_mut()
         .unwrap()
-        .value["theme"] = "dark".into();
+        .value.theme = crate::protocol::env::Theme::Dark;
     platform.settle(&[&host]);
     assert!(
         uncovered(&host).is_empty(),
@@ -3244,7 +3242,7 @@ fn fill_and_pick(dev: bool, swap: bool, logic: bool) {
         .unwrap()
         .as_mut()
         .unwrap()
-        .value["reducedMotion"] = serde_json::json!(true);
+        .value.reduced_motion = Some(true);
     host.set_visible(true);
     if logic {
         let connection = ConnectionTicket::new(1);
@@ -3612,7 +3610,7 @@ fn fine_pointer_text_host(platform: &Platform, worker: &Arc<ViewWorker>) -> View
         false,
     );
     if let Some(environment) = host.adapter().environment.lock().unwrap().as_mut() {
-        environment.value["pointer"] = "fine".into();
+        environment.value.pointer = crate::protocol::env::Pointer::Fine;
     }
     host.set_visible(true);
     platform.settle(&[&host]);
@@ -5389,7 +5387,7 @@ fn host_chrome_takes_the_page_palette_before_its_first_frame_and_follows_the_loo
     platform.settle(&[&host]);
     assert_eq!(pushes().len(), 1, "an unchanged look pushes nothing");
     if let Some(environment) = host.adapter().environment.lock().unwrap().as_mut() {
-        environment.value["theme"] = "dark".into();
+        environment.value.theme = crate::protocol::env::Theme::Dark;
     }
     host.redraw();
     platform.settle(&[&host]);
@@ -5463,7 +5461,7 @@ fn an_off_screen_list_row_is_found_revealed_and_clicked_by_test_id() {
         .unwrap()
         .as_mut()
         .unwrap()
-        .value["reducedMotion"] = serde_json::json!(true);
+        .value.reduced_motion = Some(true);
     host.set_visible(true);
     platform.settle(&[&host]);
     let act = |css: &str, action: serde_json::Value| {
@@ -5626,7 +5624,7 @@ fn a_pushed_pack_follows_increased_contrast_when_it_changes() {
         .unwrap()
         .as_mut()
         .unwrap()
-        .value["highContrast"] = serde_json::json!(true);
+        .value.high_contrast = Some(true);
     // What the Apple adapter does for a changed fact that is not a resize.
     host.request_frame();
     platform.settle(&[&host]);
@@ -5655,7 +5653,7 @@ fn a_list_row_below_the_fold_is_revealed_through_the_page_scroll_and_clicked() {
         .unwrap()
         .as_mut()
         .unwrap()
-        .value["reducedMotion"] = serde_json::json!(true);
+        .value.reduced_motion = Some(true);
     host.set_visible(true);
     platform.settle(&[&host]);
     let act = |css: &str, action: serde_json::Value| {
@@ -5958,7 +5956,7 @@ fn close_request_case(reduced: bool, blur: bool) {
         .unwrap()
         .as_mut()
         .unwrap()
-        .value["reducedMotion"] = serde_json::json!(reduced);
+        .value.reduced_motion = Some(reduced);
     host.set_visible(true);
     platform.settle(&[&host]);
     let count = |css: &str| {
@@ -6111,7 +6109,7 @@ fn a_select_sheet_is_drivable_and_a_choice_made_elsewhere_closes_it() {
         .unwrap()
         .as_mut()
         .unwrap()
-        .value["reducedMotion"] = serde_json::json!(true);
+        .value.reduced_motion = Some(true);
     host.set_visible(true);
     platform.settle(&[&host]);
     let count = |css: &str| {
@@ -6988,7 +6986,7 @@ fn a_last_field_clears_a_keyboard_that_arrives_before_or_with_the_focus() {
         );
         if let Some(environment) = host.adapter().environment.lock().unwrap().as_mut() {
             (environment.width, environment.height) = (414 * 2, 896 * 2);
-            environment.value["insets"]["bottom"] = 34.into();
+            environment.value.insets.bottom = 34.0;
         }
         host.set_visible(true);
         platform.settle(&[&host]);
@@ -7009,7 +7007,7 @@ fn a_last_field_clears_a_keyboard_that_arrives_before_or_with_the_focus() {
         );
         let keyboard = |host: &ViewHost<Fake>| {
             if let Some(environment) = host.adapter().environment.lock().unwrap().as_mut() {
-                environment.value["keyboard"]["height"] = 318.into();
+                environment.value.keyboard.height = 318.0;
             }
             host.environment_changed();
         };
@@ -7075,7 +7073,7 @@ fn a_field_stays_clear_of_a_keyboard_that_grows_in_two_steps() {
         );
         if let Some(environment) = host.adapter().environment.lock().unwrap().as_mut() {
             (environment.width, environment.height) = (414 * 2, 896 * 2);
-            environment.value["insets"]["bottom"] = 34.into();
+            environment.value.insets.bottom = 34.0;
         }
         host.set_visible(true);
         platform.settle(&[&host]);
@@ -7090,7 +7088,7 @@ fn a_field_stays_clear_of_a_keyboard_that_grows_in_two_steps() {
         };
         let keyboard = |host: &ViewHost<Fake>, height: f64| {
             if let Some(environment) = host.adapter().environment.lock().unwrap().as_mut() {
-                environment.value["keyboard"]["height"] = height.into();
+                environment.value.keyboard.height = height;
             }
             host.environment_changed();
         };
@@ -7158,7 +7156,7 @@ fn a_revealed_field_settles_back_when_the_keyboard_shrinks() {
     );
     if let Some(environment) = host.adapter().environment.lock().unwrap().as_mut() {
         (environment.width, environment.height) = (414 * 2, 896 * 2);
-        environment.value["insets"]["bottom"] = 34.into();
+        environment.value.insets.bottom = 34.0;
     }
     host.set_visible(true);
     platform.settle(&[&host]);
@@ -7171,7 +7169,7 @@ fn a_revealed_field_settles_back_when_the_keyboard_shrinks() {
     };
     let keyboard = |host: &ViewHost<Fake>, height: f64| {
         if let Some(environment) = host.adapter().environment.lock().unwrap().as_mut() {
-            environment.value["keyboard"]["height"] = height.into();
+            environment.value.keyboard.height = height;
         }
         host.environment_changed();
     };
@@ -7408,7 +7406,7 @@ fn a_frame_built_before_a_tap_focus_lands_without_dropping_it() {
         .defer
         .store(true, std::sync::atomic::Ordering::Release);
     if let Some(environment) = host.adapter().environment.lock().unwrap().as_mut() {
-        environment.value["keyboard"]["height"] = 120.into();
+        environment.value.keyboard.height = 120.0;
     }
     host.environment_changed();
     drain_without_frames(&platform);
@@ -7513,7 +7511,7 @@ fn a_tapped_field_clears_a_keyboard_that_rises_after_the_focus() {
         "a caret in the empty field"
     );
     if let Some(environment) = host.adapter().environment.lock().unwrap().as_mut() {
-        environment.value["keyboard"]["height"] = 318.into();
+        environment.value.keyboard.height = 318.0;
     }
     let reconciled = host.adapter().log.lock().unwrap().reconciled.len();
     host.environment_changed();
@@ -7652,7 +7650,7 @@ fn a_showcase_field_clears_a_keyboard_that_rises_after_the_focus() {
     run_frames(&platform, &host, 4);
     let before = rect(&host);
     if let Some(environment) = host.adapter().environment.lock().unwrap().as_mut() {
-        environment.value["keyboard"]["height"] = 318.into();
+        environment.value.keyboard.height = 318.0;
     }
     host.environment_changed();
     platform.settle(&[&host]);

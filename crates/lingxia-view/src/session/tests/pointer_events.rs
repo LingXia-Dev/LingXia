@@ -17,7 +17,7 @@ fn pad(axis: &str, scroll: bool) -> String {
 fn page(platform: &Platform, worker: &Arc<ViewWorker>, render: &str, fine: bool) -> ViewHost<Fake> {
     let host = platform.host(worker, &source(render), false);
     if let Some(environment) = host.adapter().environment.lock().unwrap().as_mut() {
-        environment.value["pointer"] = if fine { "fine" } else { "coarse" }.into();
+        environment.value.pointer = if fine { crate::protocol::env::Pointer::Fine } else { crate::protocol::env::Pointer::Coarse };
     }
     host.set_visible(true);
     platform.settle(&[&host]);

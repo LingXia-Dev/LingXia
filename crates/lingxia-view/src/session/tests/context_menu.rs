@@ -8,7 +8,7 @@ const PAGE: &str = "function render(){const log=useLocal('log','');const say=who
 fn page(platform: &Platform, worker: &Arc<ViewWorker>, fine: bool) -> ViewHost<Fake> {
     let host = platform.host(worker, &source(PAGE), false);
     if let Some(environment) = host.adapter().environment.lock().unwrap().as_mut() {
-        environment.value["pointer"] = if fine { "fine" } else { "coarse" }.into();
+        environment.value.pointer = if fine { crate::protocol::env::Pointer::Fine } else { crate::protocol::env::Pointer::Coarse };
     }
     host.set_visible(true);
     platform.settle(&[&host]);

@@ -81,8 +81,8 @@ fn stall_key(environment: &FrameEnvironment) -> Stall {
     (
         environment.width,
         environment.height,
-        environment.value["theme"] == "dark",
-        environment.value["highContrast"] == true,
+        environment.value.theme == crate::protocol::env::Theme::Dark,
+        environment.value.high_contrast == Some(true),
     )
 }
 
@@ -1859,7 +1859,6 @@ impl<A: PlatformAdapter> ViewHost<A> {
         let main = self.inner.main();
         let test = main.host_environment.test();
         let presented = main.presented_environment.as_ref().map(|env| &env.value);
-        let fact = |key: &str| presented.and_then(|env| env.get(key)).cloned();
         let theme = |dark: bool| if dark { "dark" } else { "light" };
         serde_json::json!({
             "theme": test.and_then(|test| test.dark).map(theme),
@@ -1868,8 +1867,8 @@ impl<A: PlatformAdapter> ViewHost<A> {
             "contrast": test
                 .and_then(|test| test.high_contrast)
                 .map(|high| if high { "high" } else { "standard" }),
-            "textScale": fact("textScale"),
-            "language": fact("language"),
+            "textScale": presented.and_then(|env| env.text_scale.clone()),
+            "language": presented.map(|env| env.language.clone()),
         })
     }
 

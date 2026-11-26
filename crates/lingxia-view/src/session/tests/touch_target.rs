@@ -7,8 +7,8 @@ const PAGE: &str = "function render(){const log=useLocal('log','');const open=us
 fn page(platform: &Platform, worker: &Arc<ViewWorker>, os: &str, pointer: &str) -> ViewHost<Fake> {
     let host = platform.host(worker, &source(PAGE), false);
     if let Some(environment) = host.adapter().environment.lock().unwrap().as_mut() {
-        environment.value["os"] = os.into();
-        environment.value["pointer"] = pointer.into();
+        environment.value.os = crate::protocol::env::Os::parse(os).unwrap();
+        environment.value.pointer = crate::protocol::env::Pointer::parse(pointer).unwrap();
     }
     host.set_visible(true);
     platform.settle(&[&host]);
@@ -128,7 +128,7 @@ fn a_press_on_a_dialog_panel_stays_in_it_and_one_outside_dismisses_it() {
     let platform = Platform::new(&[&worker]);
     let host = platform.host(&worker, &source("function render(){const open=useLocal('open',true);const hit=useLocal('hit','');return h('page',{},h('text',{'data-testid':'state'},(open.value?'open':'shut')+hit.value),h('dialog',{open:open.value,closedby:'any',onClose:()=>open.set(false),'aria-label':'D',style:{width:80,height:80}},h('text',{'data-testid':'body'},'Body'),h('button',{'data-testid':'x',onClick:()=>hit.set('x'),style:{width:20,height:20,marginLeft:50}})))}"), false);
     if let Some(environment) = host.adapter().environment.lock().unwrap().as_mut() {
-        environment.value["os"] = "ios".into();
+        environment.value.os = crate::protocol::env::Os::Ios;
     }
     host.set_visible(true);
     platform.settle(&[&host]);

@@ -192,7 +192,7 @@ impl<A: PlatformAdapter> Inner<A> {
                 }
                 None => {}
             }
-            let fine = environment.value["pointer"] == "fine";
+            let fine = environment.value.pointer == crate::protocol::env::Pointer::Fine;
             main.interaction.set_fine_pointer(fine);
             main.interaction
                 .set_touch_target(crate::platform::touch_target(&environment.value));
@@ -627,7 +627,7 @@ impl<A: PlatformAdapter> Inner<A> {
         {
             session.renderer.videos.set_resolver(resolver);
         }
-        session.set_environment(value)?;
+        session.set_environment(value.to_json())?;
         session.set_animation_target(Some(request.surface), request.visible, now)?;
         let (sample, ahead, single_target, dropped_activations, activations) = (
             request.sample,

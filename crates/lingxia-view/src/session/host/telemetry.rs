@@ -326,8 +326,7 @@ impl<A: PlatformAdapter> Inner<A> {
             "pointer": main
                 .presented_environment
                 .as_ref()
-                .and_then(|environment| environment.value["pointer"].as_str())
-                .map(str::to_owned),
+                .map(|environment| environment.value.pointer.as_str()),
             // The bar-snapshot generation the presented frame draws under its top layer; 0 when none.
             "chromeSnapshot": main.snapshot.as_ref().map_or(0, |snapshot| snapshot.metrics.chrome_snapshot),
             // Nodes the presented frame laid out: a virtual list mounts only rows near the viewport.

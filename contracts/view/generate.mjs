@@ -68,6 +68,113 @@ const environmentChecks = {
   renderer: key => `(matches!(value[${JSON.stringify(key)}]["fallback"].as_str(), None | Some("driver")) && value[${JSON.stringify(key)}].as_object().is_some_and(|r| r.len() == 1))`,
 };
 
+// The Rust type each check carries; an entry's `rust` names another (e.g. an integer range).
+const environmentTypes = {
+  bool: 'bool', range: 'f64', name: 'String', edges: 'Edges', keyboard: 'Keyboard',
+  capsule: 'Capsule', hinge: 'Hinge', renderer: 'Renderer', external: 'serde_json::Value',
+};
+const snake = key => key.replace(/([a-z0-9])([A-Z])/g, '$1_$2').toLowerCase();
+const variant = value => value.split(/[-_]/).map(part => part[0].toUpperCase() + part.slice(1)).join('');
+
+function environmentEnum(name, values, fallback) {
+  const variants = values.map(value => `    #[serde(rename = ${JSON.stringify(value)})]\n    ${fallback === value ? '#[default]\n    ' : ''}${variant(value)},`).join('\n');
+  return `#[derive(Clone, Copy, Debug, ${fallback === undefined ? '' : 'Default, '}PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum ${name} {
+${variants}
+}
+
+impl ${name} {
+    pub fn as_str(self) -> &'static str {
+        match self {
+${values.map(value => `            Self::${variant(value)} => ${JSON.stringify(value)},`).join('\n')}
+        }
+    }
+
+    pub fn parse(value: &str) -> Option<Self> {
+        match value {
+${values.map(value => `            ${JSON.stringify(value)} => Some(Self::${variant(value)}),`).join('\n')}
+            _ => None,
+        }
+    }
+}`;
+}
+
+/** The typed native snapshot: device facts plus pushes, without the keys the session adds. */
+function environmentStruct(schema) {
+  const native = Object.entries(schema.environment).filter(([, entry]) => entry.origin !== 'session');
+  const enums = [];
+  const fields = native.map(([key, entry]) => {
+    let ty = entry.rust ?? environmentTypes[entry.check];
+    if (entry.check === 'enum') {
+      ty = variant(key);
+      enums.push(environmentEnum(ty, entry.values, entry.default));
+    }
+    if (!ty) throw Error(`schema.json: environment ${key} has no Rust type`);
+    const nullable = / \| null$/.test(entry.type);
+    const attrs = [];
+    if (nullable || entry.optional) ty = `Option<${ty}>`;
+    if (entry.optional || entry.default !== undefined) attrs.push(entry.optional && !nullable ? 'default, skip_serializing_if = "Option::is_none"' : 'default');
+    const doc = entry.doc ? `    /// ${entry.doc}\n` : '';
+    return `${doc}${attrs.length ? `    #[serde(${attrs.join(', ')})]\n` : ''}    pub ${snake(key)}: ${ty},`;
+  });
+  return `/// The native environment snapshot (device facts plus host pushes) as \`view.env\` carries it.
+pub mod env {
+    use serde::{Deserialize, Serialize};
+
+    #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+    #[serde(rename_all = "camelCase")]
+    pub struct Environment {
+${fields.map(field => field.replace(/^/gm, '    ')).join('\n')}
+    }
+
+    /// Top, right, bottom and left, logical pixels.
+    #[derive(Clone, Copy, Debug, Default, PartialEq, Serialize, Deserialize)]
+    pub struct Edges {
+        pub top: f64,
+        pub right: f64,
+        pub bottom: f64,
+        pub left: f64,
+    }
+
+    #[derive(Clone, Copy, Debug, Default, PartialEq, Serialize, Deserialize)]
+    pub struct Keyboard {
+        pub height: f64,
+    }
+
+    #[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
+    pub struct Capsule {
+        pub x: f64,
+        pub y: f64,
+        pub width: f64,
+        pub height: f64,
+    }
+
+    #[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
+    pub struct Hinge {
+        pub x: f64,
+        pub y: f64,
+        pub width: f64,
+        pub height: f64,
+        pub orientation: HingeOrientation,
+        pub posture: HingePosture,
+    }
+
+${[...enums, environmentEnum('HingeOrientation', ['vertical', 'horizontal']), environmentEnum('HingePosture', ['flat', 'half-opened']), environmentEnum('RendererFallback', ['driver'])].join('\n\n').replace(/^(?=.)/gm, '    ')}
+
+    #[derive(Clone, Copy, Debug, Default, PartialEq, Serialize, Deserialize)]
+    pub struct Renderer {
+        pub fallback: Option<RendererFallback>,
+    }
+
+    impl Environment {
+        /// The snapshot as the session's \`check_environment\` and the View read it.
+        pub fn to_json(&self) -> serde_json::Value {
+            serde_json::to_value(self).unwrap_or_default()
+        }
+    }
+}`;
+}
+
 /** The native environment snapshot check, from the schema's \`environment\` section. */
 function environmentRust(schema) {
   const checks = Object.entries(schema.environment).filter(([, entry]) => environmentChecks[entry.check]).map(([key, entry]) => {
@@ -293,6 +400,8 @@ ${limits}
 }
 
 ${environmentRust(schema)}
+
+${environmentStruct(schema)}
 
 /// What a wire tag may contain.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

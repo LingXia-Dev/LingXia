@@ -90,10 +90,7 @@ pub(crate) fn evaluate(
     context
         .eval::<()>(Source::from_bytes(module.as_bytes()))
         .map_err(|e| js_error(&context, e))?;
-    let mut env = environment.value.clone();
-    if !env.is_object() {
-        return Err("UI_ENVIRONMENT: expected an object".into());
-    }
+    let mut env = environment.value.to_json();
     env["viewport"] = serde_json::json!({"width": width, "height": height});
     let invoke = format!(
         "__lingxiaDescribe(__lingxiaRender, {{data: Object.freeze({{}}), actions: Object.freeze({{}}), env: Object.freeze({env})}})"
@@ -411,7 +408,7 @@ mod tests {
             width,
             height,
             scale: 1.0,
-            value: serde_json::json!({"theme": "light", "os": "unknown", "pointer": "coarse"}),
+            value: crate::platform::test_environment(serde_json::json!({})),
         }
     }
 

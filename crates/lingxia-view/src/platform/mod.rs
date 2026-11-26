@@ -20,6 +20,8 @@ pub use environment::{DeviceFacts, obscured, touch_target};
 pub use overlay::{
     OverlayAutomationReply, OverlayInput, OverlayLogic, OverlaySurface, WindowId, WindowOverlays,
 };
+#[cfg(test)]
+pub(crate) use environment::test_environment;
 
 pub type Task = Box<dyn FnOnce() + Send>;
 
@@ -30,8 +32,8 @@ pub struct FrameEnvironment {
     pub height: u16,
     /// Device pixels per logical pixel.
     pub scale: f32,
-    /// The View `env` object (theme, insets, keyboard, text scale, os, pointer, ...).
-    pub value: serde_json::Value,
+    /// The View `env` snapshot, before the session adds its own keys.
+    pub value: crate::protocol::env::Environment,
 }
 
 /// Encodes frames on the View worker and puts them on screen on the main thread.

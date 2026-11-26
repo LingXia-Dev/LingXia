@@ -17,8 +17,8 @@ fn facts() -> DeviceFacts {
 }
 
 #[test]
-fn the_builder_emits_exactly_the_device_keys_the_schema_names() {
-    let env = facts().environment().unwrap().value;
+fn the_builder_emits_the_device_keys_and_no_session_key() {
+    let env = facts().environment().unwrap().value.to_json();
     let origin = |key: &str| {
         ENVIRONMENT_KEYS
             .iter()
@@ -26,28 +26,22 @@ fn the_builder_emits_exactly_the_device_keys_the_schema_names() {
             .map(|(_, o)| *o)
     };
     for key in env.as_object().unwrap().keys() {
-        assert_eq!(
-            origin(key),
-            Some("device"),
-            "{key} is not a device key in the schema"
+        assert!(
+            matches!(origin(key), Some("device" | "push")),
+            "{key} is not a native key in the schema"
         );
     }
     for (key, origin) in ENVIRONMENT_KEYS {
-        if *origin != "device" {
-            assert!(
-                env.get(*key).is_none(),
-                "{key} comes from the {origin}, not the device"
-            );
+        if *origin == "device" {
+            assert!(env.get(*key).is_some(), "the device reports {key}");
         }
     }
-    // With the host's pushes the snapshot passes the generated check; without them it does not.
-    assert!(!check_environment(&env));
-    let mut pushed = env.clone();
-    pushed["canDock"] = false.into();
-    pushed["sizeClass"] = "compact".into();
-    assert!(check_environment(&pushed));
-    pushed["theme"] = "sepia".into();
-    assert!(!check_environment(&pushed));
+    // Pushes the host has not made yet stay at their unpushed values.
+    assert_eq!((env["canDock"].as_bool(), env.get("sizeClass")), (Some(false), None));
+    assert!(check_environment(&env));
+    let mut wrong = env.clone();
+    wrong["theme"] = "sepia".into();
+    assert!(!check_environment(&wrong));
 }
 
 #[test]
@@ -56,8 +50,7 @@ fn the_session_fills_the_session_keys() {
         "function render({env}){return h('text',{},Object.keys(env).sort().join(','))}",
     );
     let mut page = crate::ViewSession::new(&source).unwrap();
-    let mut env = facts().environment().unwrap().value;
-    env["canDock"] = false.into();
+    let mut env = facts().environment().unwrap().value.to_json();
     env["palette"] =
         serde_json::json!({"revision": 1, "colors": vec!["#000000"; lingxia_theme::ROLE_COUNT]});
     page.set_environment(env).unwrap();
@@ -94,8 +87,7 @@ fn a_pushed_palette_repaints_roles_and_editors_default_to_line_strong() {
         });
         (canvas.unwrap(), border.unwrap())
     };
-    let mut env = facts().environment().unwrap().value;
-    env["canDock"] = false.into();
+    let mut env = facts().environment().unwrap().value.to_json();
     page.set_environment(env.clone()).unwrap();
     let builtin = crate::theme::Palette::builtin(false);
     assert_eq!(

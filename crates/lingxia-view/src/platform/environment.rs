@@ -2,6 +2,7 @@
 //! insets, pointer and motion policy are decided here.
 use super::FrameEnvironment;
 use crate::platform::calendar;
+use crate::protocol::env;
 use serde_json::json;
 
 /// One frame's OS measurements. Lengths are device pixels unless named logical.
@@ -42,22 +43,12 @@ pub struct DeviceFacts {
     pub hinge: Option<serde_json::Value>,
 }
 
-fn sanitize_hinge(hinge: Option<&serde_json::Value>) -> serde_json::Value {
-    let Some(raw) = hinge.filter(|v| v.is_object()) else {
-        return serde_json::Value::Null;
-    };
-    let coords_ok = ["x", "y", "width", "height"].iter().all(|k| {
-        raw[k]
-            .as_f64()
-            .is_some_and(|n| n.is_finite() && (0.0..=16384.0).contains(&n))
-    });
-    let orient_ok = matches!(raw["orientation"].as_str(), Some("vertical" | "horizontal"));
-    let posture_ok = matches!(raw["posture"].as_str(), Some("flat" | "half-opened"));
-    if coords_ok && orient_ok && posture_ok {
-        raw.clone()
-    } else {
-        serde_json::Value::Null
-    }
+fn sanitize_hinge(hinge: Option<&serde_json::Value>) -> Option<env::Hinge> {
+    let hinge: env::Hinge = serde_json::from_value(hinge?.clone()).ok()?;
+    [hinge.x, hinge.y, hinge.width, hinge.height]
+        .iter()
+        .all(|n| n.is_finite() && (0.0..=16384.0).contains(n))
+        .then_some(hinge)
 }
 
 impl DeviceFacts {
@@ -74,48 +65,62 @@ impl DeviceFacts {
             return None;
         }
         let logical = |px: f32| (px.max(0.0) / self.scale) as f64;
-        let edge = |index: usize, extent: u16| {
-            let covered = self.system_insets[index].max(self.chrome_insets[index]);
-            logical(covered.min(f32::from(extent)))
-        };
         let animation_scale = if self.animation_scale.is_finite() {
             self.animation_scale.clamp(0.0, 10.0)
         } else {
             1.0
         };
-        let mut value = json!({
-            "theme": if self.dark { "dark" } else { "light" },
-            "insets": {
-                "top": edge(0, height),
-                "right": edge(1, width),
-                "bottom": edge(2, height),
-                "left": edge(3, width),
+        let edges = |extent: [f32; 4]| env::Edges {
+            top: logical(extent[0].min(f32::from(height))),
+            right: logical(extent[1].min(f32::from(width))),
+            bottom: logical(extent[2].min(f32::from(height))),
+            left: logical(extent[3].min(f32::from(width))),
+        };
+        let covered: [f32; 4] =
+            std::array::from_fn(|i| self.system_insets[i].max(self.chrome_insets[i]));
+        let value = env::Environment {
+            theme: if self.dark {
+                env::Theme::Dark
+            } else {
+                env::Theme::Light
             },
-            "safeArea": {
-                "top": logical(self.system_insets[0].min(f32::from(height))),
-                "right": logical(self.system_insets[1].min(f32::from(width))),
-                "bottom": logical(self.system_insets[2].min(f32::from(height))),
-                "left": logical(self.system_insets[3].min(f32::from(width))),
+            insets: edges(covered),
+            safe_area: Some(edges(self.system_insets)),
+            hinge: sanitize_hinge(self.hinge.as_ref()),
+            keyboard: env::Keyboard {
+                height: logical(self.keyboard.min(f32::from(height))),
             },
-            "hinge": sanitize_hinge(self.hinge.as_ref()),
-            "keyboard": {"height": logical(self.keyboard.min(f32::from(height)))},
-            "os": self.os,
-            "pointer": if self.fine_pointer { "fine" } else { "coarse" },
-            "language": self.locale,
-            "animatorDurationScale": animation_scale,
-            "reducedMotion": self.reduce_motion || animation_scale == 0.0,
-            "highContrast": self.high_contrast,
-            "hourCycle": self.hour_cycle.as_deref().filter(|cycle| matches!(*cycle, "h12" | "h23"))
-                .unwrap_or(calendar::hour_cycle(&self.locale)),
-            "firstWeekday": self.first_weekday.filter(|day| (1..=7).contains(day))
-                .unwrap_or(calendar::first_weekday(&self.locale)),
-            "renderer": {
-                "fallback": crate::renderer::sentinel::fallback().map(|_| "driver"),
+            capsule: None,
+            pointer: if self.fine_pointer {
+                env::Pointer::Fine
+            } else {
+                env::Pointer::Coarse
             },
-        });
-        if let Some(rows) = &self.text_scale {
-            value["textScale"] = json!(rows);
-        }
+            os: env::Os::parse(&self.os).unwrap_or(env::Os::Unknown),
+            size_class: None,
+            language: self.locale.clone(),
+            reduced_motion: Some(self.reduce_motion || animation_scale == 0.0),
+            high_contrast: Some(self.high_contrast),
+            animator_duration_scale: Some(f64::from(animation_scale)),
+            hour_cycle: self
+                .hour_cycle
+                .as_deref()
+                .and_then(env::HourCycle::parse)
+                .or_else(|| env::HourCycle::parse(calendar::hour_cycle(&self.locale))),
+            first_weekday: Some(
+                self.first_weekday
+                    .filter(|day| (1..=7).contains(day))
+                    .unwrap_or(calendar::first_weekday(&self.locale)),
+            ),
+            can_dock: false,
+            renderer: Some(env::Renderer {
+                fallback: crate::renderer::sentinel::fallback()
+                    .map(|_| env::RendererFallback::Driver),
+            }),
+            text_scale: self.text_scale.as_ref().map(|rows| json!(rows)),
+            palette: None,
+            scales: None,
+        };
         Some(FrameEnvironment {
             width,
             height,
@@ -127,31 +132,44 @@ impl DeviceFacts {
 
 /// The smallest box a finger press reaches on this platform, logical pixels: the platform's
 /// minimum touch target (Android 48 dp, iOS and HarmonyOS 44 pt); none for a fine pointer.
-pub fn touch_target(env: &serde_json::Value) -> f32 {
-    if env["pointer"] == "fine" {
+pub fn touch_target(env: &env::Environment) -> f32 {
+    if env.pointer == env::Pointer::Fine {
         return 0.0;
     }
-    match env["os"].as_str() {
-        Some("android") => 48.0,
-        Some("ios" | "harmony") => 44.0,
+    match env.os {
+        env::Os::Android => 48.0,
+        env::Os::Ios | env::Os::Harmony => 44.0,
         _ => 0.0,
     }
 }
 
 /// The surface edges covered, logical pixels (top, right, bottom, left): by host and system
 /// bars and the keyboard, then by system bars and the keyboard alone.
-pub fn obscured(env: &serde_json::Value) -> [[f32; 4]; 2] {
-    let length = |value: &serde_json::Value| value.as_f64().unwrap_or(0.0) as f32;
-    let keyboard = length(&env["keyboard"]["height"]);
-    let edges = |insets: &serde_json::Value| {
+pub fn obscured(env: &env::Environment) -> [[f32; 4]; 2] {
+    let keyboard = env.keyboard.height as f32;
+    let edges = |insets: env::Edges| {
         [
-            length(&insets["top"]),
-            length(&insets["right"]),
-            length(&insets["bottom"]).max(keyboard),
-            length(&insets["left"]),
+            insets.top as f32,
+            insets.right as f32,
+            (insets.bottom as f32).max(keyboard),
+            insets.left as f32,
         ]
     };
-    [edges(&env["insets"]), edges(&env["safeArea"])]
+    [
+        edges(env.insets),
+        edges(env.safe_area.unwrap_or_default()),
+    ]
+}
+
+/// A well-formed environment with `fields` over a plain light phone's.
+#[cfg(test)]
+pub(crate) fn test_environment(fields: serde_json::Value) -> env::Environment {
+    let mut value = json!({"theme": "light", "insets": {"top": 0.0, "right": 0.0, "bottom": 0.0, "left": 0.0},
+        "keyboard": {"height": 0.0}, "os": "unknown", "language": "en", "canDock": false});
+    for (key, field) in fields.as_object().expect("fields are an object") {
+        value[key] = field.clone();
+    }
+    serde_json::from_value(value).expect("a well-formed environment")
 }
 
 #[cfg(test)]
@@ -177,9 +195,9 @@ mod tests {
     #[test]
     fn the_increased_contrast_switch_reaches_the_environment() {
         let mut facts = phone();
-        assert_eq!(facts.environment().unwrap().value["highContrast"], false);
+        assert_eq!(facts.environment().unwrap().value.high_contrast, Some(false));
         facts.high_contrast = true;
-        assert_eq!(facts.environment().unwrap().value["highContrast"], true);
+        assert_eq!(facts.environment().unwrap().value.high_contrast, Some(true));
     }
 
     #[test]
@@ -188,36 +206,31 @@ mod tests {
         facts.keyboard = 4000.0;
         let env = facts.environment().unwrap();
         assert_eq!((env.width, env.height, env.scale), (828, 1792, 2.0));
-        assert_eq!(env.value["insets"]["top"], 48.0);
+        assert_eq!(env.value.insets.top, 48.0);
         assert_eq!(
-            env.value["insets"]["bottom"], 83.0,
+            env.value.insets.bottom, 83.0,
             "chrome covers more than the home indicator"
         );
-        assert_eq!(
-            env.value["keyboard"]["height"], 896.0,
-            "clamped to the surface"
-        );
-        assert_eq!(env.value["pointer"], "coarse");
-        assert_eq!(env.value["theme"], "light");
-        assert!(env.value.get("textScale").is_none());
+        assert_eq!(env.value.keyboard.height, 896.0, "clamped to the surface");
+        assert_eq!(env.value.pointer, env::Pointer::Coarse);
+        assert_eq!(env.value.theme, env::Theme::Light);
+        assert!(env.value.text_scale.is_none());
     }
 
     #[test]
     fn either_motion_signal_reduces_motion_and_a_fine_pointer_is_reported() {
         let mut facts = phone();
         facts.reduce_motion = true;
-        assert_eq!(facts.environment().unwrap().value["reducedMotion"], true);
+        assert_eq!(facts.environment().unwrap().value.reduced_motion, Some(true));
         facts.reduce_motion = false;
         facts.animation_scale = 0.0;
-        assert_eq!(facts.environment().unwrap().value["reducedMotion"], true);
+        assert_eq!(facts.environment().unwrap().value.reduced_motion, Some(true));
         facts.animation_scale = f32::NAN;
         let env = facts.environment().unwrap();
-        assert_eq!(env.value["reducedMotion"], false);
-        assert_eq!(env.value["animatorDurationScale"], 1.0);
+        assert_eq!(env.value.reduced_motion, Some(false));
+        assert_eq!(env.value.animator_duration_scale, Some(1.0));
         facts.fine_pointer = true;
-        let env = facts.environment().unwrap();
-        assert!(env.value.get("formFactor").is_none());
-        assert_eq!(env.value["pointer"], "fine");
+        assert_eq!(facts.environment().unwrap().value.pointer, env::Pointer::Fine);
     }
 
     #[test]
@@ -244,9 +257,7 @@ mod tests {
     fn a_built_environment_is_one_the_session_accepts() {
         let mut facts = phone();
         facts.text_scale = Some(vec![[0.0, 0.0], [17.0, 20.0], [16384.0, 19275.0]]);
-        let env = facts.environment().unwrap();
-        let mut value = env.value;
-        value["canDock"] = json!(false);
+        let value = facts.environment().unwrap().value.to_json();
         let module = crate::session::tests::source("function render(){return h('text',{},'ok')}");
         let mut page = crate::ViewSession::new(&module).unwrap();
         page.set_environment(value).unwrap();
