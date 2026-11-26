@@ -19,9 +19,12 @@ export interface JinshuNavHandle {
   setActiveHeading(headingId: string | null): void;
 }
 
+const handles = new WeakMap<object, Pick<JinshuNavHandle, 'scrollTo' | 'setActiveHeading'>>();
+
 /**
  * Pure-data navigation handle backed by `useLocal` (no `useRef` needed).
- * Connects `<JinshuOutline>` and `<JinshuView>`.
+ * Connects `<JinshuOutline>` and `<JinshuView>`. Its functions keep their identity across renders,
+ * so a view it drives is not drawn again while its state holds.
  */
 export function useJinshuNav(name = 'jinshu-nav'): JinshuNavHandle {
   const local = useLocal<JinshuNavState>(name, {
@@ -29,32 +32,23 @@ export function useJinshuNav(name = 'jinshu-nav'): JinshuNavHandle {
     seq: 0,
     activeHeadingId: null,
   });
-
-  return {
-    scope: name,
-    get state() {
-      return local.value;
-    },
-    scrollTo(blockId: string) {
-      const nextSeq = local.value.seq + 1;
-      local.set({
-        targetBlockId: blockId,
-        seq: nextSeq,
-        activeHeadingId: blockId,
-      });
-      try {
-        reveal(blockElementId(name, blockId));
-      } catch {
-        // Element may be collapsed inside details; JinshuView auto-expands on targetBlockId change.
-      }
-    },
-    setActiveHeading(headingId: string | null) {
-      if (local.value.activeHeadingId === headingId) return;
-      local.set({
-        targetBlockId: local.value.targetBlockId,
-        seq: local.value.seq,
-        activeHeadingId: headingId,
-      });
-    },
-  };
+  let fns = handles.get(local);
+  if (!fns) {
+    fns = {
+      scrollTo(blockId: string) {
+        local.set({ targetBlockId: blockId, seq: local.value.seq + 1, activeHeadingId: blockId });
+        try {
+          reveal(blockElementId(name, blockId));
+        } catch {
+          // Element may be collapsed inside details; JinshuView auto-expands on targetBlockId change.
+        }
+      },
+      setActiveHeading(headingId: string | null) {
+        if (local.value.activeHeadingId === headingId) return;
+        local.set({ targetBlockId: local.value.targetBlockId, seq: local.value.seq, activeHeadingId: headingId });
+      },
+    };
+    handles.set(local, fns);
+  }
+  return { scope: name, state: local.value, ...fns };
 }

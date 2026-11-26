@@ -743,10 +743,6 @@
     "defaultMessage": "Add a note",
     "description": "Starter text of a callout inserted from the menu."
   },
-  "@jinshu.editor.seed.calloutText": {
-    "defaultMessage": "Callout text",
-    "description": "Starter text of a callout typed with the !> shortcut on an empty line."
-  },
   "@jinshu.editor.seed.calloutTitle": {
     "defaultMessage": "Tip",
     "description": "Starter title of a new callout."

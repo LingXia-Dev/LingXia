@@ -228,6 +228,8 @@ export function createJinshuSource(options: JinshuSourceOptions): JinshuSource {
   let autoSaveToken = 0;
   // An auto save came due while it could not run (an upload, a save in flight); retried once it can.
   let autoSaveDue = false;
+  /** A flush was asked of an editor; its batch saves at once, the pause already waited for. */
+  let flushAsked = false;
   const draftStorageKey = `jinshu:draft:${options.key}`;
 
   function persistDraft(): void {
@@ -371,6 +373,7 @@ export function createJinshuSource(options: JinshuSourceOptions): JinshuSource {
       ...(options.filePolicy ? { filePolicy: options.filePolicy } : {}),
       hasMedia: Boolean(options.media?.pick),
       format,
+      ...(options.saveMode === 'auto' ? { autoSave: true } : {}),
     };
   }
 
@@ -727,7 +730,12 @@ export function createJinshuSource(options: JinshuSourceOptions): JinshuSource {
     markStaleSuggestions(touchedIds);
     pushSnapshotAndMeta();
     notify();
-    if (batch.origin.kind === 'human') scheduleAutoSave();
+    if (batch.origin.kind === 'human') {
+      if (flushAsked) {
+        flushAsked = false;
+        autoSave();
+      } else scheduleAutoSave();
+    }
 
     return { revision, batchId: batch.batchId, problems };
   }
@@ -928,6 +936,24 @@ export function createJinshuSource(options: JinshuSourceOptions): JinshuSource {
     const token = ++autoSaveToken;
     after(AUTO_SAVE_MS, () => {
       if (token === autoSaveToken) autoSave();
+    });
+  }
+
+  /** Text still in an editor's field is not in the document: once typing pauses, ask for it. */
+  function scheduleFlush(channel: MinimalChannelEndpoint): void {
+    if (options.saveMode !== 'auto') return;
+    const token = ++autoSaveToken;
+    after(AUTO_SAVE_MS, () => {
+      if (token !== autoSaveToken) return;
+      if (!channels.has(channel)) return autoSave();
+      flushAsked = true;
+      channel.send({ t: 'flush' });
+      // A field with nothing new sends no batch; what is already in the document still saves.
+      after(AUTO_SAVE_MS, () => {
+        if (token !== autoSaveToken || !flushAsked) return;
+        flushAsked = false;
+        autoSave();
+      });
     });
   }
 
@@ -1426,6 +1452,9 @@ export function createJinshuSource(options: JinshuSourceOptions): JinshuSource {
           break;
         case 'stopAgent':
           stopAgent(msg.originId);
+          break;
+        case 'typing':
+          scheduleFlush(channel);
           break;
         case 'file':
           channel.send({ t: 'file', revision, text: serialize(doc).text });

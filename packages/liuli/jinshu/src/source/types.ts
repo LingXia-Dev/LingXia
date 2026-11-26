@@ -241,6 +241,8 @@ export interface SnapshotPolicy {
   readonly filePolicy?: FilePolicy;
   readonly hasMedia?: boolean;
   readonly format?: JinshuFormat;
+  /** The source saves on its own (`saveMode: 'auto'`), so the editor shows where saving stands, not a Save button. */
+  readonly autoSave?: boolean;
 }
 
 export type ChannelClientMsg =
@@ -257,6 +259,8 @@ export type ChannelClientMsg =
   | { readonly t: 'streamAbort'; readonly streamId: string }
   /** The person stops an agent writing without a stream: its next edits are refused until it reads again. */
   | { readonly t: 'stopAgent'; readonly originId: string }
+  /** The person is typing in a field whose text is not in the document yet. */
+  | { readonly t: 'typing' }
   /** Asks for the draft as the file `save` would write it. */
   | { readonly t: 'file' }
   | {
@@ -281,6 +285,8 @@ export type ChannelServerMsg =
   | { readonly t: 'uploadProgress'; readonly blockId: string; readonly ratio: number }
   | { readonly t: 'ack'; readonly revision: number; readonly batchId: string }
   | { readonly t: 'file'; readonly revision: number; readonly text: string }
+  /** Auto-save is due: put the text being typed into the document. */
+  | { readonly t: 'flush' }
   | { readonly t: 'reject'; readonly batchId: string; readonly problems: readonly Problem[]; readonly snapshot?: JinshuDocument; readonly revision?: number };
 
 export interface MinimalChannelEndpoint {

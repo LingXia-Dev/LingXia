@@ -49,7 +49,12 @@ export interface BlockEditorCallbacks {
   readonly onBlurBlock: () => void;
   /** Puts the caret in the empty paragraph `blockId`, once a batch has made it. */
   readonly onEditParagraph?: (blockId: string) => void;
+  /** A block a line-start rule just made from the paragraph being typed: its editor opens holding `text`. */
+  readonly opening?: { readonly id: string; readonly text: string };
 }
+
+/** The text a just-made block opens with, when `block` is it. */
+const openingText = (cb: BlockEditorCallbacks, id: string): string | undefined => (cb.opening?.id === id ? cb.opening.text : undefined);
 
 const dialectOf = (format: JinshuFormat | undefined) => ({ dialect: format === 'markdown' ? 'markdown' : 'jinshu' } as const);
 
@@ -126,8 +131,9 @@ function KeptChildrenNote({ count }: { readonly count: number }) {
 
 /** Direct-manipulation editor for bullet / ordered / task lists. */
 export function ListBlockEditor({ block, cb }: { readonly block: ListBlock; readonly cb: BlockEditorCallbacks }) {
-  const activeItemId = useLocal<string | null>(`ed-li-${block.id}`, null);
-  const itemDraft = useLocal<string>(`ed-li-txt-${block.id}`, '');
+  const opening = openingText(cb, block.id);
+  const activeItemId = useLocal<string | null>(`ed-li-${block.id}`, opening !== undefined ? (block.items[0]?.id ?? null) : null);
+  const itemDraft = useLocal<string>(`ed-li-txt-${block.id}`, opening ?? '');
   const start = block.start ?? 1;
 
   const commitItem = (itemId: string, text: string) => {
@@ -183,12 +189,25 @@ export function ListBlockEditor({ block, cb }: { readonly block: ListBlock; read
 
               <view className={b.list.body}>
                 {isEditing ? (
-                  <input
+                  // One row that grows with its text, so the open item keeps the line height it is read at.
+                  <textarea
                     aria-label={jinshuText('@jinshu.editor.block.editItem', { index: idx + 1 })}
                     value={itemDraft.value}
                     autoFocus
+                    rows={1}
+                    maxRows={8}
                     placeholder={jinshuText('@jinshu.editor.block.itemPlaceholder')}
-                    onInput={v => itemDraft.set(v)}
+                    onInput={v => {
+                      // `- [ ] ` typed key by key is a bullet at `- `; the box that follows makes it a task list.
+                      const box = block.style === 'bullet' && block.items.length === 1 ? /^\[( |x|X)\] (.*)$/.exec(v) : null;
+                      if (box) {
+                        const checked = box[1] !== ' ';
+                        cb.dispatchOps([{ op: 'replace', id: block.id, blocks: [{ ...block, style: 'task', items: [{ ...item, checked, runs: shorthandToInlines(box[2], cb.format, { existingAtoms: atomsIn(item.runs) }) }] }], noteWord: { key: '@jinshu.note.listStyle' } }]);
+                        itemDraft.set(box[2]);
+                        return;
+                      }
+                      itemDraft.set(v);
+                    }}
                     onBlur={() => {
                       commitItem(item.id, itemDraft.value);
                       if (activeItemId.value === item.id) activeItemId.set(null);
@@ -261,15 +280,17 @@ export function ListBlockEditor({ block, cb }: { readonly block: ListBlock; read
               </view>
 
               {isEditing && block.items.length > 1 && (
-                <Button
-                  label={jinshuText('@jinshu.editor.block.removeItem')}
-                  size="sm"
-                  variant="ghost"
-                  onClick={() => {
-                    cb.dispatchOps([{ op: 'delete', id: item.id, noteWord: { key: '@jinshu.note.listItemDelete' } }]);
-                    activeItemId.set(null);
-                  }}
-                />
+                <view className={b.list.remove}>
+                  <Button
+                    label={jinshuText('@jinshu.editor.block.removeItem')}
+                    size="sm"
+                    variant="ghost"
+                    onClick={() => {
+                      cb.dispatchOps([{ op: 'delete', id: item.id, noteWord: { key: '@jinshu.note.listItemDelete' } }]);
+                      activeItemId.set(null);
+                    }}
+                  />
+                </view>
               )}
             </view>
           );
@@ -301,9 +322,10 @@ function ContainerPreview({ blocks, muted }: { readonly blocks: readonly JinshuB
 
 /** Direct-manipulation editor for Callout blocks (title, every body paragraph, tone). */
 export function CalloutBlockEditor({ block, cb }: { readonly block: CalloutBlock; readonly cb: BlockEditorCallbacks }) {
-  const editing = useLocal(`ed-co-${block.id}`, false);
+  const opening = openingText(cb, block.id);
+  const editing = useLocal(`ed-co-${block.id}`, opening !== undefined);
   const titleDraft = useLocal(`ed-co-t-${block.id}`, '');
-  const bodyDraft = useLocal(`ed-co-b-${block.id}`, '');
+  const bodyDraft = useLocal(`ed-co-b-${block.id}`, opening ?? '');
   const body = containerBodyText(block.blocks, cb.format);
 
   const openEdit = () => {
@@ -387,8 +409,9 @@ export function CalloutBlockEditor({ block, cb }: { readonly block: CalloutBlock
 
 /** Direct-manipulation editor for Quote blocks (every paragraph). */
 export function QuoteBlockEditor({ block, cb }: { readonly block: QuoteBlock; readonly cb: BlockEditorCallbacks }) {
-  const editing = useLocal(`ed-q-${block.id}`, false);
-  const draft = useLocal(`ed-q-t-${block.id}`, '');
+  const opening = openingText(cb, block.id);
+  const editing = useLocal(`ed-q-${block.id}`, opening !== undefined);
+  const draft = useLocal(`ed-q-t-${block.id}`, opening ?? '');
   const body = containerBodyText(block.blocks, cb.format);
 
   const commit = () => {
@@ -500,7 +523,7 @@ export function DetailsBlockEditor({ block, cb }: { readonly block: DetailsBlock
 
 /** Direct-manipulation editor for Code blocks (language, filename, multiline code). */
 export function CodeBlockEditor({ block, cb }: { readonly block: CodeBlock; readonly cb: BlockEditorCallbacks }) {
-  const editing = useLocal(`ed-code-${block.id}`, false);
+  const editing = useLocal(`ed-code-${block.id}`, openingText(cb, block.id) !== undefined);
   const langDraft = useLocal(`ed-code-l-${block.id}`, block.language);
   const fileDraft = useLocal(`ed-code-f-${block.id}`, block.filename ?? '');
   const codeDraft = useLocal(`ed-code-c-${block.id}`, block.code);

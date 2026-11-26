@@ -9,6 +9,8 @@ export const blockEditorsRecipe = {
     tick: 'size-3 text-on-accent',
     body: 'grow min-w-0',
     input: 'w-full p-0 bg-canvas/0',
+    /** Held to the line's height, so the open item's row does not grow. */
+    remove: 'h-6 justify-center',
     itemButton: 'w-full text-start rounded-checkbox hover:bg-text/3',
     checked: 'text-muted',
     empty: 'text-faint',

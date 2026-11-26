@@ -28,7 +28,6 @@ test('ReadOnly: no toolbar', async () => {
 // ---------------------------------------------------------------------------------------------
 // The editor on a live source, through the same channel messages Logic sends.
 
-import { runInContext } from 'node:vm';
 import { renderPage } from '../testing/harness.mjs';
 import { callout, codeBlock, createDocument, details, fileBlock, heading, list, listItem, paragraph, plainText, table, video } from '../schema/index.ts';
 import { createJinshuSource } from '../source/index.ts';
@@ -56,60 +55,15 @@ function pressText(screen, text) {
   screen.press(node);
 }
 
-/**
- * Plays Logic's side of the bridge for a rendered page: `syncDoc` opens a channel that
- * `source.serve` answers, and `ask` records its argument.
- */
-function bridge(screen, source) {
-  const host = screen.host;
-  const asked = [];
-  const server = { data: new Set(), close: new Set() };
-  let channelId = null;
-  let seq = 0;
-  // Frames are parsed inside the page's realm, as the bridge hands them over.
-  const receive = frame => {
-    host.__frame = JSON.stringify(frame);
-    runInContext('__lingxiaReceiveActionResponse(JSON.parse(__frame))', host);
-  };
-  const pump = () => {
-    for (let round = 0; round < 10; round++) {
-      const events = host.__lingxiaTakeViewEvents();
-      if (events.length === 0) return;
-      for (const msg of events) {
-        if (msg.kind === 'ch.open') {
-          channelId = msg.id;
-          receive({ v: 2, kind: 'ch.ack', id: msg.id, ok: true });
-          source.serve({
-            send: payload => {
-              receive({ v: 2, kind: 'ch.data', id: channelId, seq: seq++, payload });
-            },
-            on(event, fn) {
-              server[event].add(fn);
-              return () => server[event].delete(fn);
-            },
-          }, msg.params);
-        } else if (msg.kind === 'ch.data') {
-          for (const fn of [...server.data]) fn(JSON.parse(JSON.stringify(msg.payload)));
-        } else if (msg.kind === 'req') {
-          asked.push(JSON.parse(JSON.stringify(msg.payload ?? msg.params ?? null)));
-          receive({ v: 2, kind: 'res', id: msg.id, ok: true, result: null });
-        }
-      }
-    }
-  };
-  host.__lingxiaConfigureActions({ __names: ['syncDoc', 'ask'], __modes: { syncDoc: 'call', ask: 'call' } });
-  // The page reads the bridge's own actions and channels, as on a device.
-  const { actions, channels } = runInContext('__lingxiaCreateView({}, {})', host);
-  return { asked, pump, view: { actions, channels } };
-}
-
 const lessonDoc = () =>
   createDocument({
     title: 'Week 3',
     blocks: [heading(1, 'Week 3', 'h'), paragraph('First paragraph.', 'p1'), paragraph('Second paragraph.', 'p2'), paragraph('Third.', 'p3')],
   });
 
+/** The editor on `source`, which answers its `syncDoc` channel as Logic does; `ask` records its argument. */
 async function mountLive(source, env = desk) {
+  const asked = [];
   const screen = await renderPage(
     linked => `import { useView } from '@lingxia/view';
 import { JinshuEditor } from ${JSON.stringify(`${linked}/src/JinshuEditor/JinshuEditor`)};
@@ -122,18 +76,13 @@ export function render() {
   return <page><Editor /></page>;
 }
 `,
-    { env },
+    {
+      env,
+      actions: { ask: async args => void asked.push(JSON.parse(JSON.stringify(args))) },
+      channels: { syncDoc: (channel, params) => source.serve(channel, params) },
+    },
   );
-  const { asked, pump, view } = bridge(screen, source);
-  screen.rerender(view);
-  const settle = async () => {
-    for (let i = 0; i < 4; i++) {
-      screen.rerender({});
-      pump();
-      await flush();
-    }
-    screen.rerender({});
-  };
+  const settle = () => screen.settle();
   await settle();
   return { screen, asked, settle };
 }
@@ -463,6 +412,86 @@ test('lists: Enter continues a list; on an empty item it ends the list in one st
   assert.equal(source.getState().history.length, 1);
 });
 
+test('line-start rules typed key by key: the caret follows into the new block with no starter text', async () => {
+  const doc = createDocument({ blocks: [paragraph('', 'a'), paragraph('', 'b'), paragraph('', 'c'), paragraph('', 'd')] });
+  const source = createJinshuSource({ key: 'w3', initialDoc: doc, format: 'markdown' });
+  const { screen, settle } = await mountLive(source);
+  // Each key goes to whichever field is open, appended to what it holds, as a keyboard types.
+  const typeKeys = async (_field, text) => {
+    for (const ch of text) {
+      const fields = screen.queryAll(n => n.tag === 'input' || n.tag === 'textarea');
+      assert.equal(fields.length, 1, `one open field before "${ch}"`);
+      screen.type(fields[0], `${fields[0].props.inputValue ?? ''}${ch}`);
+      await settle();
+    }
+  };
+
+  screen.press(byLabel(screen, 'Edit block a'));
+  await settle();
+  await typeKeys('Edit paragraph', '- [x] ');
+  let list = source.getState().doc.blocks[0];
+  assert.equal(list.type, 'list');
+  assert.equal(list.style, 'task', 'the box after "- " makes it a task list');
+  assert.equal(list.items[0].checked, true);
+  assert.deepEqual(list.items[0].runs, [], 'no starter text in the item');
+  await typeKeys('Edit item 1', 'Tripod');
+  screen.key(byLabel(screen, 'Edit item 1'), 'Enter');
+  await settle();
+  list = source.getState().doc.blocks[0];
+  assert.equal(plainText(list.items[0].runs), 'Tripod');
+  assert.ok(hasLabel(screen, 'Edit item 2'), 'Enter opened the next item');
+  screen.key(byLabel(screen, 'Edit item 2'), 'Enter');
+  await settle();
+  assert.ok(hasLabel(screen, 'Edit paragraph'), 'Enter on the empty item leaves the list into a paragraph');
+
+  screen.press(byLabel(screen, 'Edit block b'));
+  await settle();
+  await typeKeys('Edit paragraph', '> x');
+  const quote = source.getState().doc.blocks.find(blk => blk.id === 'b');
+  assert.equal(quote.type, 'quote');
+  assert.equal(byLabel(screen, 'Quote text').props.inputValue, 'x', 'the quote opens holding what was typed');
+  screen.blur(byLabel(screen, 'Quote text'));
+  await settle();
+
+  screen.press(byLabel(screen, 'Edit block c'));
+  await settle();
+  await typeKeys('Edit paragraph', '```py');
+  assert.equal(source.getState().doc.blocks.find(blk => blk.id === 'c').type, 'paragraph', 'a fence waits for Enter');
+  screen.key(byLabel(screen, 'Edit paragraph'), 'Enter');
+  await settle();
+  const code = source.getState().doc.blocks.find(blk => blk.id === 'c');
+  assert.equal(code.type, 'code');
+  assert.equal(code.language, 'py');
+});
+
+test('auto-save: text typed in an open paragraph saves after a pause, and the field stays open', async () => {
+  const saves = [];
+  const doc = createDocument({ blocks: [paragraph('Intro', 'p')] });
+  const source = createJinshuSource({
+    key: 'w3',
+    initialDoc: doc,
+    format: 'markdown',
+    saveMode: 'auto',
+    save: async (next, _base, file) => {
+      saves.push(file.text);
+      return { ok: true, version: `v${saves.length + 1}` };
+    },
+  });
+  const { screen, settle } = await mountLive(source);
+  assert.ok(!hasLabel(screen, 'Save'), 'an auto-saving document has no Save button');
+  screen.press(byLabel(screen, 'Edit block p'));
+  await settle();
+  screen.type(byLabel(screen, 'Edit paragraph'), 'Intro, longer');
+  await settle();
+  assert.ok(hasText(screen, 'Saving…'), 'typed text counts as a change at once');
+  assert.ok(!hasLabel(screen, 'Save'));
+  await new Promise(resolve => setTimeout(resolve, 1700));
+  await settle();
+  assert.deepEqual(saves, ['Intro, longer\n']);
+  assert.ok(hasLabel(screen, 'Edit paragraph'), 'still typing in the same field');
+  assert.ok(hasText(screen, 'Saved'));
+});
+
 test('word count: CJK by character, other text by word, beside the save state', async () => {
   const doc = createDocument({ blocks: [paragraph('Hello brave world', 'p'), paragraph('锦书很好', 'q')] });
   const { screen } = await mountLive(createJinshuSource({ key: 'w3', initialDoc: doc }));
@@ -510,5 +539,30 @@ test('table: columns size to their content, the same in the reader and the edito
     const grid = screen.queryAll(n => n.props.widthPercent === 100 && n.props.minWidthCh !== undefined)[0];
     assert.equal(grid.props.minWidthCh, header.reduce((sum, c) => sum + c.props.minWidthCh, 0), 'it scrolls only below every column\'s minimum');
     assert.ok(grid.props.minWidthCh <= 60, 'five short columns fit a reading measure');
+  }
+});
+
+test('loading: before the first snapshot the reader and the editor show a skeleton, and "unavailable" only when the channel fails', async () => {
+  for (const component of ['JinshuView/JinshuView', 'JinshuEditor/JinshuEditor']) {
+    const name = component.split('/')[1];
+    const mount = channel => renderPage(
+      linked => `import { useView } from '@lingxia/view';
+import { ${name} } from ${JSON.stringify(`${linked}/src/${component}`)};
+function Doc() {
+  const { actions } = useView();
+  if (!actions?.syncDoc) return <view />;
+  return <${name} channel={actions.syncDoc} docKey="w3" hasLeaveGuard={false} />;
+}
+export function render() { return <page><Doc /></page>; }
+`,
+      { env: desk, channels: { syncDoc: channel } },
+    );
+    const waiting = await mount(() => {});
+    await waiting.settle();
+    assert.ok(!hasText(waiting, "This document isn't available"), `${name}: loading is not "unavailable"`);
+    assert.equal(waiting.queryAll(n => n.props.accessibilityLabel === 'Loading document…').length, 1, `${name}: the skeleton says it is loading`);
+    const failed = await mount(channel => void setTimeout(() => channel.close({ code: 'E_NOT_FOUND', message: 'no such document' }), 0));
+    await failed.settle();
+    assert.ok(hasText(failed, "This document isn't available"), `${name}: a failed channel says so`);
   }
 });

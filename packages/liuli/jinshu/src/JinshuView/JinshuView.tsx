@@ -9,7 +9,6 @@ import {
 import { Button } from '@liulidesign/core/Button';
 import { IconButton } from '@liulidesign/core/IconButton';
 import { Lightbox, type LightboxImage } from '@liulidesign/core/Lightbox';
-import { Skeleton } from '@liulidesign/core/Skeleton';
 import { blockContentHash, findBlockById, listBlocks, plainText } from '../schema/helpers';
 import { validateSrc } from '../schema/validate';
 import type {
@@ -20,11 +19,12 @@ import type {
   MediaPolicy,
   Observation,
 } from '../schema/types';
-import { renderBlock, type BlockRenderContext, type CustomBlockRenderer } from '../internal/Blocks';
 import type { InlineAtomRenderer } from '../internal/InlineRuns';
 import { blockElementId, type JinshuNavHandle } from '../internal/nav';
 import { useJinshuChannelContext, type JinshuChannelAction } from '../internal/channel';
 import { jinshuText } from '../i18n/text';
+import { BlockBody, JinshuSkeleton, selectCost, type BlockRenderContext, type CustomBlockRenderer } from '../internal/Blocks';
+import { stableCallbacks } from '../internal/stable';
 import { jinshuViewRecipe as r } from './JinshuView.recipe';
 
 export { JinshuProvider, type JinshuChannelAction, type JinshuProviderProps } from '../internal/channel';
@@ -77,29 +77,21 @@ export interface JinshuViewProps {
   readonly 'data-testid'?: string;
 }
 
-function JinshuSkeleton() {
-  return (
-    <view className={r.skeleton.base}>
-      <Skeleton shape="text" className={r.skeleton.title} />
-      <Skeleton shape="text" lines={3} className={r.skeleton.lines} />
-      <Skeleton shape="block" className={r.skeleton.block} />
-    </view>
-  );
-}
 
 function LiveJinshuView(props: JinshuViewProps & { readonly activeChannel: JinshuChannelAction; readonly docKey: string }) {
+  // Until the first snapshot the document is loading, not missing: the skeleton shows, not "unavailable".
   const snapshot = useLocal<any>(`jinshu-live-${props.docKey}`, {
-    doc: null as JinshuDocument | null,
+    doc: undefined as JinshuDocument | undefined,
     filePolicy: undefined as FilePolicy | undefined,
     highlightedIds: [] as string[],
   });
 
-  useChannel(`jinshu-view-${props.docKey}`, props.activeChannel, {
+  const channel = useChannel(`jinshu-view-${props.docKey}`, props.activeChannel, {
     params: { doc: props.docKey, role: 'reader' },
     onData(msg) {
       if (msg.t === 'snapshot') {
         const nextDoc = msg.doc as JinshuDocument;
-        const prevDoc = snapshot.value.doc as JinshuDocument | null;
+        const prevDoc = snapshot.value.doc as JinshuDocument | undefined;
         const changed: string[] = [];
         if (props.hasUpdateHighlights && prevDoc) {
           const prevHashes = new Map(prevDoc.blocks.map(b => [b.id, blockContentHash(b)]));
@@ -119,7 +111,7 @@ function LiveJinshuView(props: JinshuViewProps & { readonly activeChannel: Jinsh
   return (
     <ControlledJinshuView
       {...props}
-      doc={snapshot.value.doc}
+      doc={snapshot.value.doc ?? (channel.error ? null : undefined)}
       filePolicy={props.filePolicy ?? snapshot.value.filePolicy}
       highlightedIds={snapshot.value.highlightedIds}
     />
@@ -190,7 +182,7 @@ function ControlledJinshuView({
 
   // The View caps selectable text nodes per page: the first 56 text nodes stay selectable,
   // the rest render as plain text instead of switching selection off for the whole document.
-  const selectBudget = { left: 56 };
+  let selectLeft = 56;
 
   // Resume : offer to jump back to the last reading position; media seeks on its own metadata.
   const resumeBlockId = resume?.position?.blockId;
@@ -215,45 +207,47 @@ function ControlledJinshuView({
     });
   }
 
+  // Each block is its own component: its callbacks keep their identity, so a parent's re-render
+  // that changed nothing a block shows does not draw it again.
   const ctx: BlockRenderContext = {
     mode: 'view',
     idScope: scope,
     testScope: testId,
-    resolveSrc,
     filePolicy,
     mediaPolicy,
     customBlocks,
     customInlines,
     isSelectable,
-    selectBudget,
     resumeMedia,
     targetBlockId: nav?.state.targetBlockId,
-    onLinkPress,
-    onInPageLink: targetId => nav?.scrollTo(targetId),
-    onFileAction,
-    onOpenImage: blockId => {
-      const idx = galleryImages.findIndex(g => g.blockId === blockId);
-      if (idx >= 0) {
-        lightboxIndex.set(idx);
-        lightboxOpen.set(true);
-      }
-    },
-    onCopyCode,
-    onEmitBlockEvent: (blockId, type, data) => {
-      emitObservation({ kind: 'block', blockId, type, data });
-    },
-    onPlayedSegment: (blockId, src, range, durationMs, rate, ended) => {
-      emitObservation({
-        kind: 'played',
-        blockId,
-        src,
-        range,
-        durationMs,
-        rate,
-        ...(ended ? { ended: true } : {}),
-      });
-    },
-    highlightedBlockIds: highlightedSet,
+    ...stableCallbacks(lightboxOpen, {
+      resolveSrc,
+      onLinkPress,
+      onInPageLink: (targetId: string) => nav?.scrollTo(targetId),
+      onFileAction,
+      onOpenImage: (blockId: string) => {
+        const idx = galleryImages.findIndex(g => g.blockId === blockId);
+        if (idx >= 0) {
+          lightboxIndex.set(idx);
+          lightboxOpen.set(true);
+        }
+      },
+      onCopyCode,
+      onEmitBlockEvent: (blockId: string, type: string, data: unknown) => {
+        emitObservation({ kind: 'block', blockId, type, data });
+      },
+      onPlayedSegment: (blockId: string, src: string, range: [number, number], durationMs: number, rate: number, ended?: true) => {
+        emitObservation({
+          kind: 'played',
+          blockId,
+          src,
+          range,
+          durationMs,
+          rate,
+          ...(ended ? { ended: true } : {}),
+        });
+      },
+    }),
   };
 
   return (
@@ -284,7 +278,18 @@ function ControlledJinshuView({
         </view>
       )}
       {doc.blocks.map((block, idx) => {
-        const node = renderBlock(block, idx > 0 ? doc.blocks[idx - 1].type : null, ctx);
+        const allowed = isSelectable ? selectLeft : 0;
+        selectLeft = Math.max(0, selectLeft - selectCost(block));
+        const node = (
+          <BlockBody
+            key={block.id}
+            block={block}
+            prevType={idx > 0 ? doc.blocks[idx - 1].type : null}
+            ctx={ctx}
+            selectLeft={allowed}
+            isHighlighted={highlightedSet?.has(block.id) === true}
+          />
+        );
         if (block.id !== openAt) return node;
         // Scrolls there on its first layout; the flag keeps a later relayout from pulling the reader back.
         return (

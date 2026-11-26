@@ -557,9 +557,6 @@
   "@jinshu.editor.seed.calloutBody": {
     "defaultMessage": "补充说明"
   },
-  "@jinshu.editor.seed.calloutText": {
-    "defaultMessage": "提示内容"
-  },
   "@jinshu.editor.seed.calloutTitle": {
     "defaultMessage": "提示"
   },

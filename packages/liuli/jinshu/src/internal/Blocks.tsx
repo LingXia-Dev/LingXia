@@ -3,6 +3,7 @@ import { Badge } from '@liulidesign/core/Badge';
 import { Button } from '@liulidesign/core/Button';
 import { Details } from '@liulidesign/core/Details';
 import { Lightbox } from '@liulidesign/core/Lightbox';
+import { Skeleton, SkeletonGroup } from '@liulidesign/core/Skeleton';
 import { VideoControls } from '@liulidesign/core/VideoControls';
 import { plainText, tableColumnCount } from '../schema/helpers';
 import { validateSrc } from '../schema/validate';
@@ -926,4 +927,50 @@ export function renderBlock(
       {inner}
     </view>
   );
+}
+
+/** A document still loading: the reader and the editor show it until the first snapshot. */
+export function JinshuSkeleton() {
+  return (
+    <SkeletonGroup label={jinshuText('@jinshu.editor.loading')} className={r.skeleton.base}>
+      <Skeleton shape="text" className={r.skeleton.title} />
+      <Skeleton shape="text" lines={3} className={r.skeleton.lines} />
+      <Skeleton shape="block" className={r.skeleton.block} />
+    </SkeletonGroup>
+  );
+}
+
+/** How many selectable text nodes a block takes from the page budget. */
+export function selectCost(block: unknown): number {
+  if (Array.isArray(block)) return block.reduce((sum: number, item) => sum + selectCost(item), 0);
+  if (!block || typeof block !== 'object') return 0;
+  const node = block as { readonly type?: unknown };
+  let sum = node.type === 'paragraph' || node.type === 'heading' || node.type === 'code' ? 1 : 0;
+  for (const value of Object.values(block)) if (value && typeof value === 'object') sum += selectCost(value);
+  return sum;
+}
+
+/**
+ * One top-level block as its own component, so a render that changed nothing it shows keeps it.
+ * `ctx` must hold no per-render objects: the budget and highlight arrive as plain props.
+ */
+export function BlockBody({
+  block,
+  prevType = null,
+  ctx,
+  selectLeft,
+  isHighlighted = false,
+}: {
+  readonly block: JinshuBlock;
+  readonly prevType?: string | null;
+  readonly ctx: BlockRenderContext;
+  readonly selectLeft?: number;
+  readonly isHighlighted?: boolean;
+}) {
+  const own: BlockRenderContext = {
+    ...ctx,
+    ...(selectLeft !== undefined ? { selectBudget: { left: selectLeft } } : {}),
+    ...(isHighlighted ? { highlightedBlockIds: new Set([block.id]) } : {}),
+  };
+  return <>{renderBlock(block, prevType, own)}</>;
 }
