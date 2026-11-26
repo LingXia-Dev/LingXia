@@ -69,10 +69,10 @@ export const doc: ComponentDoc = {
     { name: 'Spending', title: 'A ring with the total, selected through its legend' },
     { name: 'Solid', title: 'A solid pie' },
     { name: 'Merged', title: 'Many parts, the small ones gathered' },
+    { name: 'Months', title: 'Slices that move to new data' },
   ],
   gaps: [
     { missing: 'Choosing a slice by pressing it.', needs: 'pointer coordinates on an element (`onPointer`)', today: 'The legend rows are the buttons.' },
-    { missing: 'Slices that grow and turn when the data changes.', needs: 'animation of vector geometry', today: 'New data is drawn at once.' },
     { missing: 'Labels on or beside slices.', needs: 'a laid-out box\'s size, readable in render (`useBox`)', today: 'The legend names every part.' },
   ],
   related: ['Chart', 'BarChart'],

@@ -1,6 +1,7 @@
 import { useLocal } from '@lingxia/view';
 import { Held } from '@liulidesign/core/internal/example';
 import { summarize } from '../summary/en';
+import { SegmentedControl } from '@liulidesign/core/SegmentedControl';
 import { PieChart } from './PieChart';
 
 const spending = [
@@ -28,6 +29,32 @@ export function Spending() {
       bind={part}
       data-testid="spending"
     />
+  );
+}
+
+const months = {
+  sep: [{ category: 'Rent', amount: 1450 }, { category: 'Food', amount: 540 }, { category: 'Transport', amount: 320 }, { category: 'Leisure', amount: 90 }, { category: 'Savings', amount: 650 }],
+  oct: spending,
+};
+
+/** New data moves each slice from where it was: switch the month and the parts grow and shrink into place. */
+export function Months() {
+  const month = useLocal<'sep' | 'oct'>('month', 'oct');
+  return (
+    <view className="gap-4">
+      <SegmentedControl label="Month" items={[{ value: 'sep', label: 'September' }, { value: 'oct', label: 'October' }]} bind={month} size="sm" className="w-64" data-testid="month" />
+      <PieChart
+        rows={months[month.value]}
+        nameField="category"
+        valueField="amount"
+        label="Spending by category"
+        title="Spending"
+        formatValue={dollars}
+        formatShare={percent}
+        summarize={summarize}
+        data-testid="months"
+      />
+    </view>
   );
 }
 

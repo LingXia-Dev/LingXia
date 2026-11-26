@@ -96,6 +96,43 @@ export function Merged() {
 }
 ```
 
+### Slices that move to new data
+
+```tsx
+import { useLocal } from '@lingxia/view';
+import { summarize } from '@liulidesign/charts/summary';
+import { SegmentedControl } from '@liulidesign/core/SegmentedControl';
+import { PieChart } from '@liulidesign/charts/PieChart';
+
+const dollars = (value: number) => `$${grouped(value)}`;
+const percent = (share: number) => `${Math.round(share * 100)}%`;
+const months = {
+  sep: [{ category: 'Rent', amount: 1450 }, { category: 'Food', amount: 540 }, { category: 'Transport', amount: 320 }, { category: 'Leisure', amount: 90 }, { category: 'Savings', amount: 650 }],
+  oct: spending,
+};
+
+/** New data moves each slice from where it was: switch the month and the parts grow and shrink into place. */
+export function Months() {
+  const month = useLocal<'sep' | 'oct'>('month', 'oct');
+  return (
+    <view className="gap-4">
+      <SegmentedControl label="Month" items={[{ value: 'sep', label: 'September' }, { value: 'oct', label: 'October' }]} bind={month} size="sm" className="w-64" data-testid="month" />
+      <PieChart
+        rows={months[month.value]}
+        nameField="category"
+        valueField="amount"
+        label="Spending by category"
+        title="Spending"
+        formatValue={dollars}
+        formatShare={percent}
+        summarize={summarize}
+        data-testid="months"
+      />
+    </view>
+  );
+}
+```
+
 ## Props
 
 | Prop | Type | Default | Description |
@@ -193,7 +230,6 @@ Ratios are computed from @lingxia/view/theme and rounded down.
 | Missing | Needs | Meanwhile |
 | --- | --- | --- |
 | Choosing a slice by pressing it. | pointer coordinates on an element (`onPointer`) | The legend rows are the buttons. |
-| Slices that grow and turn when the data changes. | animation of vector geometry | New data is drawn at once. |
 | Labels on or beside slices. | a laid-out box's size, readable in render (`useBox`) | The legend names every part. |
 
 Related: Chart, BarChart.

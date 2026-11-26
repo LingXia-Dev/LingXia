@@ -2148,6 +2148,11 @@
           "name": "Merged",
           "title": "Many parts, the small ones gathered",
           "source": "import { summarize } from '@liulidesign/charts/summary';\nimport { PieChart } from '@liulidesign/charts/PieChart';\n\nconst grouped = (value: number) => String(value).replace(/\\B(?=(\\d{3})+(?!\\d))/g, ',');\nconst percent = (share: number) => `${Math.round(share * 100)}%`;\nconst languages = [\n  { language: 'English', readers: 4210 }, { language: 'Spanish', readers: 1870 }, { language: 'Chinese', readers: 1540 }, { language: 'Hindi', readers: 960 },\n  { language: 'French', readers: 610 }, { language: 'German', readers: 480 }, { language: 'Japanese', readers: 350 }, { language: 'Korean', readers: 190 },\n];\n\n/** Eight parts are too many to tell apart: the four largest keep a slice, the rest share one. */\nexport function Merged() {\n  return (\n    <PieChart\n      rows={languages}\n      nameField=\"language\"\n      valueField=\"readers\"\n      label=\"Readers by language\"\n      title=\"Readers by language\"\n      formatValue={grouped}\n      formatShare={percent}\n      otherLabel=\"Other\"\n      maxParts={4}\n      totalLabel=\"Readers\"\n      summarize={summarize}\n      data-testid=\"languages\"\n    />\n  );\n}"
+        },
+        {
+          "name": "Months",
+          "title": "Slices that move to new data",
+          "source": "import { useLocal } from '@lingxia/view';\nimport { summarize } from '@liulidesign/charts/summary';\nimport { SegmentedControl } from '@liulidesign/core/SegmentedControl';\nimport { PieChart } from '@liulidesign/charts/PieChart';\n\nconst dollars = (value: number) => `$${grouped(value)}`;\nconst percent = (share: number) => `${Math.round(share * 100)}%`;\nconst months = {\n  sep: [{ category: 'Rent', amount: 1450 }, { category: 'Food', amount: 540 }, { category: 'Transport', amount: 320 }, { category: 'Leisure', amount: 90 }, { category: 'Savings', amount: 650 }],\n  oct: spending,\n};\n\n/** New data moves each slice from where it was: switch the month and the parts grow and shrink into place. */\nexport function Months() {\n  const month = useLocal<'sep' | 'oct'>('month', 'oct');\n  return (\n    <view className=\"gap-4\">\n      <SegmentedControl label=\"Month\" items={[{ value: 'sep', label: 'September' }, { value: 'oct', label: 'October' }]} bind={month} size=\"sm\" className=\"w-64\" data-testid=\"month\" />\n      <PieChart\n        rows={months[month.value]}\n        nameField=\"category\"\n        valueField=\"amount\"\n        label=\"Spending by category\"\n        title=\"Spending\"\n        formatValue={dollars}\n        formatShare={percent}\n        summarize={summarize}\n        data-testid=\"months\"\n      />\n    </view>\n  );\n}"
         }
       ],
       "gaps": [
@@ -2155,11 +2160,6 @@
           "missing": "Choosing a slice by pressing it.",
           "needs": "pointer coordinates on an element (`onPointer`)",
           "today": "The legend rows are the buttons."
-        },
-        {
-          "missing": "Slices that grow and turn when the data changes.",
-          "needs": "animation of vector geometry",
-          "today": "New data is drawn at once."
         },
         {
           "missing": "Labels on or beside slices.",

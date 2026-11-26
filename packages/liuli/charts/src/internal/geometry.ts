@@ -181,12 +181,16 @@ export function sector(inner: number, outer: number, from: number, to: number, g
   const trim = sweep > 2 * outerTrim + 0.02 ? half : 0;
   const edge = (radius: number) => (trim ? Math.asin(Math.min(1, trim / radius)) : 0);
   const [a0, a1] = [top + from + edge(outer), top + to - edge(outer)];
-  const large = a1 - a0 > Math.PI ? 1 : 0;
-  const rim = `M${at(polar(outer, a0))}A${round(outer)} ${round(outer)} 0 ${large} 1 ${at(polar(outer, a1))}`;
+  // Each arc goes in two halves, both under half a turn, so the commands and flags stay the same as a slice grows or shrinks and its outline can move.
+  const halves = (radius: number, start: number, end: number, sweep: 0 | 1) => {
+    const r = round(radius);
+    return `A${r} ${r} 0 0 ${sweep} ${at(polar(radius, (start + end) / 2))}A${r} ${r} 0 0 ${sweep} ${at(polar(radius, end))}`;
+  };
+  const rim = `M${at(polar(outer, a0))}${halves(outer, a0, a1, 1)}`;
   const innerSweep = inner > trim ? sweep - 2 * edge(inner) : 0;
   if (innerSweep > 0) {
     const [b0, b1] = [top + from + edge(inner), top + to - edge(inner)];
-    return `${rim}L${at(polar(inner, b1))}A${round(inner)} ${round(inner)} 0 ${b1 - b0 > Math.PI ? 1 : 0} 0 ${at(polar(inner, b0))}Z`;
+    return `${rim}L${at(polar(inner, b1))}${halves(inner, b1, b0, 0)}Z`;
   }
   // The two moved edges meet on the slice's middle line, short of the centre.
   const reach = trim && sweep < Math.PI ? Math.min(outer, trim / Math.sin(sweep / 2)) : Math.max(inner, 0);

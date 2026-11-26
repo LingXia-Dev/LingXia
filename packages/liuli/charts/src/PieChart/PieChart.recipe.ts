@@ -19,7 +19,8 @@ export const pieChartRecipe = {
     base: 'grow grid grid-cols-1 grid-rows-1 place-items-center',
   },
   drawing: {
-    base: 'col-start-1 row-start-1',
+    // Slices move to new data and to a choice.
+    base: 'col-start-1 row-start-1 motion-safe:transition-[d] duration-slow ease-standard',
     // A vector keeps its own size until given one: the ring is as tall as the plot.
     size: { xs: 'size-16', sm: 'size-28', md: 'size-44', lg: 'size-60' } satisfies Record<ChartSize, string>,
   },

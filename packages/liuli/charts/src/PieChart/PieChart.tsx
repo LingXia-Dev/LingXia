@@ -118,7 +118,8 @@ export function PieChart<Row extends ChartRecord<Row>>({
       const role: ColorRole = part.color ? roleOf(part.color) : 'line-strong';
       const fill: ColorRole | ColorAlpha = chosen && chosen !== part ? `${role}/35` : role;
       const rim = chosen === part ? grown : outer;
-      if (parts.length > 1) return { d: sector(inner, rim, from, to, gap), fill };
+      // Keyed by the part, so new data moves each slice from where it was.
+      if (parts.length > 1) return { key: part.key, d: sector(inner, rim, from, to, gap), fill };
       return inner ? { d: circle((rim + inner) / 2), fill: 'none', stroke: fill, strokeWidth: rim - inner } : { d: circle(rim), fill };
     });
   });

@@ -54,7 +54,8 @@ test('Solid: every slice is cut back from its neighbours, so the gaps show whate
   const screen = await renderExample('PieChart/PieChart', 'Solid');
   const paths = slices(screen);
   const start = d => /^M([\d.]+) ([\d.]+)/.exec(d).slice(1).map(Number);
-  const end = d => /A46 46 0 [01] 1 ([\d.]+) ([\d.]+)/.exec(d).slice(1).map(Number);
+  // The rim is drawn in two halves; its end is where the second one ends.
+  const end = d => [...d.matchAll(/A46 46 0 [01] 1 ([\d.]+) ([\d.]+)/g)].at(-1).slice(1).map(Number);
   for (const [index, path] of paths.entries()) {
     const next = paths[(index + 1) % paths.length];
     const gap = Math.hypot(start(next.d)[0] - end(path.d)[0], start(next.d)[1] - end(path.d)[1]);
@@ -202,4 +203,18 @@ test('a tap on a slice chooses it and a second tap clears it; a tap in the hole 
   assert.equal(centre(screen), later, 'the hole chooses nothing');
   tap(2, 2);
   assert.equal(centre(screen), later, 'nor does the corner past the rim');
+});
+
+test('Months: each slice is keyed by its part and drawn in half-turn arcs, so new data moves the same outlines', async () => {
+  const screen = await renderExample('PieChart/PieChart', 'Months');
+  const slices = () => screen.queryAll(node => node.tag === 'vector').flatMap(node => JSON.parse(node.props.vectorSource).paths).filter(path => /^(Rent|Food|Transport|Leisure|Savings)$/.test(path.key ?? ''));
+  const before = slices();
+  assert.deepEqual(before.map(path => path.key), ['Rent', 'Food', 'Transport', 'Leisure', 'Savings']);
+  const shape = path => path.d.replace(/-?[\d.]+/g, '#');
+  assert.ok(before.every(path => !/A# # # 1 /.test(path.d.replace(/-?[\d.]+/g, m => (m === '1' ? '1' : '#')))), 'no large-arc flag');
+  screen.press(screen.getByTestId('month-sep'));
+  const after = slices();
+  assert.deepEqual(after.map(path => path.key), before.map(path => path.key), 'the same parts');
+  assert.deepEqual(after.map(shape), before.map(shape), 'the same commands, so each outline can move');
+  assert.notDeepEqual(after.map(path => path.d), before.map(path => path.d));
 });
