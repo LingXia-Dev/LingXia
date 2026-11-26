@@ -1,4 +1,5 @@
 import { Badge } from '../Badge/Badge';
+import { Said } from '../example';
 import { hueFor } from '../hue';
 import { Avatar, AvatarGroup } from './Avatar';
 
@@ -48,14 +49,18 @@ export function Unread() {
 /** Overlapping, with the rest folded into a count. */
 export function Group() {
   return (
-    <AvatarGroup label="Editors" max={4} overflowLabel={count => `${count} more editors`} onOverflowClick={() => {}} data-testid="editors">
-      <Avatar name="Ana Lima" src={photo(1)} />
-      <Avatar name="Kai Chen" />
-      <Avatar name="Mira Patel" src={photo(2)} />
-      <Avatar name="Tomás Ruiz" />
-      <Avatar name="Lena Vogel" />
-      <Avatar name="Sam Okafor" />
-    </AvatarGroup>
+    <Said>
+      {say => (
+        <AvatarGroup label="Editors" max={4} overflowLabel={count => `${count} more editors`} onOverflowClick={() => say('Showing all six editors')} data-testid="editors">
+          <Avatar name="Ana Lima" src={photo(1)} />
+          <Avatar name="Kai Chen" />
+          <Avatar name="Mira Patel" src={photo(2)} />
+          <Avatar name="Tomás Ruiz" />
+          <Avatar name="Lena Vogel" />
+          <Avatar name="Sam Okafor" />
+        </AvatarGroup>
+      )}
+    </Said>
   );
 }
 
