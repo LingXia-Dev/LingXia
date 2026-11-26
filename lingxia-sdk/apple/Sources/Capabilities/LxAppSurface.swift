@@ -1472,6 +1472,7 @@ enum LxAppSurface {
     /// the host's normal-level chip. A child surface stays at the host's
     /// level, and the chip is ordered after this window.
     private static func orderSurface(_ window: NSWindow, parent: NSWindow?) {
+        defer { GpuOverlays.presents(window, touched: true) }
         if let parent {
             if let panel = window as? NSPanel {
                 panel.isFloatingPanel = false
@@ -1483,6 +1484,11 @@ enum LxAppSurface {
         }
         window.makeKeyAndOrderFront(nil)
         DevServiceMarkWindow.noteChildWindow(of: parent ?? window)
+    }
+
+    /// The lxapp a window or float surface shows, for the feedback layer's placement.
+    static func appId(of window: NSWindow) -> String? {
+        entries.values.first { $0.window === window }?.appId
     }
 
     /// Float popups currently shown. A float is created + registered hidden by

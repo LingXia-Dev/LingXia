@@ -4,13 +4,37 @@ import AppKit
 import CLingXiaRustAPI
 
 /// Window overlays: a see-through GPU page in a borderless transparent child window over the
-/// shell window, above every LingXia surface in it. Rust calls these on the main thread.
+/// window holding the caller's presentation, above every LingXia surface in it. Rust calls these
+/// on the main thread.
 public enum GpuOverlays {
     @MainActor private static var hosts: [Int64: GpuOverlayHost] = [:]
+    @MainActor private static let tracker = GpuPresentationTracker()
 
-    static func open(token: Int64) -> Bool {
+    /// Start telling Rust which windows hold which lxapps; once, after `lingxiaInit`.
+    static func start() {
+        MainActor.assumeIsolated { tracker.start() }
+    }
+
+    /// `window` came forward (`touched`) or on screen: Rust learns whose presentation it holds.
+    @MainActor static func presents(_ window: NSWindow, touched: Bool) {
+        if window is GpuOverlayWindow { return }
+        let number = UInt64(max(window.windowNumber, 0))
+        if let appId = LxAppSurface.appId(of: window) {
+            gpuOverlayPresents(appId, number, touched)
+        } else if isShell(window) {
+            gpuOverlayPresents("", number, touched)
+        }
+    }
+
+    /// The shell window, or with none (a custom host) the window showing the host's pages.
+    @MainActor private static func isShell(_ window: NSWindow) -> Bool {
+        if let shell = macOSLxApp.activeShell() { return shell.window === window }
+        return window.canBecomeMain && !(window is NSPanel)
+    }
+
+    static func open(token: Int64, window: UInt64) -> Bool {
         MainActor.assumeIsolated {
-            guard let parent = macOSLxApp.activeShell()?.window ?? NSApp.mainWindow else { return false }
+            guard let parent = NSApp.window(withWindowNumber: Int(window)) else { return false }
             hosts[token] = GpuOverlayHost(token: token, parent: parent)
             return true
         }
@@ -37,6 +61,37 @@ public enum GpuOverlays {
             let size = host.window.frame.size
             context.draw(image, in: CGRect(x: -origin.x, y: -origin.y, width: size.width, height: size.height))
         }
+    }
+}
+
+/// Every window's focus, first showing and closing, for `GpuOverlays.presents`.
+@MainActor
+final class GpuPresentationTracker: NSObject {
+    private var started = false
+
+    func start() {
+        guard !started else { return }
+        started = true
+        let center = NotificationCenter.default
+        center.addObserver(self, selector: #selector(becameKey), name: NSWindow.didBecomeKeyNotification, object: nil)
+        center.addObserver(self, selector: #selector(occlusion), name: NSWindow.didChangeOcclusionStateNotification, object: nil)
+        center.addObserver(self, selector: #selector(closing), name: NSWindow.willCloseNotification, object: nil)
+    }
+
+    @objc private func becameKey(_ note: Notification) {
+        guard let window = note.object as? NSWindow else { return }
+        GpuOverlays.presents(window, touched: true)
+    }
+
+    /// A window shown without focus (a dev session in the background) still holds its lxapp.
+    @objc private func occlusion(_ note: Notification) {
+        guard let window = note.object as? NSWindow, window.occlusionState.contains(.visible) else { return }
+        GpuOverlays.presents(window, touched: false)
+    }
+
+    @objc private func closing(_ note: Notification) {
+        guard let window = note.object as? NSWindow, !(window is GpuOverlayWindow) else { return }
+        gpuOverlayWindowClosed(UInt64(max(window.windowNumber, 0)))
     }
 }
 
@@ -80,7 +135,7 @@ final class GpuOverlayHost: NSObject {
         let radius = parent.contentView?.superview?.layer?.cornerRadius ?? 0
         view.layer?.cornerRadius = radius > 0 ? radius : 10
         view.layer?.masksToBounds = true
-        // The lxapp's scheme reaches the shell window's appearance; the overlay follows it.
+        // The lxapp's scheme reaches its window's appearance; the overlay follows it.
         window.appearance = parent.effectiveAppearance
         appearance = parent.observe(\.effectiveAppearance) { [weak self] _, _ in
             Task { @MainActor [weak self] in
@@ -94,7 +149,6 @@ final class GpuOverlayHost: NSObject {
                      NSWindow.didEnterFullScreenNotification, NSWindow.didExitFullScreenNotification] {
             center.addObserver(self, selector: #selector(fit), name: name, object: parent)
         }
-        center.addObserver(self, selector: #selector(parentClosing), name: NSWindow.willCloseNotification, object: parent)
     }
 
     /// The whole parent window: the two share window coordinates, so its controls can be
@@ -106,10 +160,6 @@ final class GpuOverlayHost: NSObject {
     @objc private func fit() {
         guard let parent else { return }
         window.setFrame(Self.cover(parent), display: false)
-    }
-
-    @objc private func parentClosing() {
-        gpuOverlayGone(token)
     }
 
     func block(_ block: Bool) {

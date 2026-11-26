@@ -293,9 +293,14 @@ mod bridge {
         #[swift_bridge(swift_name = "gpuPageWebViewPicture")]
         fn gpu_page_webview_picture(token: i64, web_id: &str, png: &[u8]);
 
-        // Window overlay `token`'s window closed, or there was none to put it over.
-        #[swift_bridge(swift_name = "gpuOverlayGone")]
-        fn gpu_overlay_gone(token: i64);
+        // `app_id`'s presentation (the shell when empty) is in window number `window`;
+        // `touched` when the user brought it forward, not only showed it.
+        #[swift_bridge(swift_name = "gpuOverlayPresents")]
+        fn gpu_overlay_presents(app_id: &str, window: u64, touched: bool);
+
+        // Window number `window` closed.
+        #[swift_bridge(swift_name = "gpuOverlayWindowClosed")]
+        fn gpu_overlay_window_closed(window: u64);
     }
 
     extern "Swift" {
@@ -424,10 +429,10 @@ mod bridge {
         #[swift_bridge(swift_name = "GpuPages.pictureWebViews")]
         fn gpu_pages_picture_webviews(token: i64, web_ids: &str, scale: f32);
 
-        // Show overlay page `token` in a transparent window over the shell window, passing
-        // input through and unfocused; false when there is no window to cover.
+        // Show overlay page `token` in a transparent window over window number `window`,
+        // passing input through and unfocused; false when no such window is open.
         #[swift_bridge(swift_name = "GpuOverlays.open")]
-        fn gpu_overlays_open(token: i64) -> bool;
+        fn gpu_overlays_open(token: i64, window: u64) -> bool;
         // `block` takes every click over the window; otherwise they reach the window below.
         #[swift_bridge(swift_name = "GpuOverlays.input")]
         fn gpu_overlays_input(token: i64, block: bool);
@@ -446,11 +451,18 @@ mod overlay;
 #[cfg(all(target_os = "macos", feature = "standard"))]
 pub(super) use overlay::install as install_overlays;
 
-fn gpu_overlay_gone(token: i64) {
+fn gpu_overlay_presents(app_id: &str, window: u64, touched: bool) {
     #[cfg(all(target_os = "macos", feature = "standard"))]
-    overlay::gone(token);
+    overlay::presents((!app_id.is_empty()).then_some(app_id), window, touched);
     #[cfg(not(all(target_os = "macos", feature = "standard")))]
-    let _ = token;
+    let _ = (app_id, window, touched);
+}
+
+fn gpu_overlay_window_closed(window: u64) {
+    #[cfg(all(target_os = "macos", feature = "standard"))]
+    overlay::window_closed(window);
+    #[cfg(not(all(target_os = "macos", feature = "standard")))]
+    let _ = window;
 }
 
 #[allow(clippy::too_many_arguments)]

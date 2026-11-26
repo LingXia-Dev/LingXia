@@ -1,5 +1,6 @@
-//! The macOS window overlay surface: a borderless transparent child window over the shell window,
-//! holding a see-through GPU page whose Logic is Rust. Every page call runs on the main thread.
+//! The macOS window overlay surface: a borderless transparent child window over the window that
+//! holds the caller's presentation (the shell, or an lxapp's own window or float), holding a
+//! see-through GPU page whose Logic is Rust. Every page call runs on the main thread.
 use super::live::{self, Bridge};
 use crate::feedback::Feedback;
 use lingxia_view_apple::Page;
@@ -14,8 +15,6 @@ use std::sync::atomic::{AtomicI64, Ordering};
 use std::sync::{Arc, LazyLock, Mutex, MutexGuard, OnceLock};
 use std::time::Duration;
 
-/// macOS shows every lxapp in its one shell window.
-const SHELL: WindowId = WindowId(1);
 /// Overlays share one View worker, apart from every lxapp's.
 const WORKER: &str = "lingxia:overlay";
 
@@ -25,6 +24,52 @@ static OVERLAYS: LazyLock<Mutex<HashMap<i64, (WindowId, OverlayLogic)>>> =
 /// Negative, so overlay tokens never meet lxapp page tokens.
 static NEXT: AtomicI64 = AtomicI64::new(-1);
 static FEEDBACK: OnceLock<Arc<Feedback>> = OnceLock::new();
+static PRESENTATIONS: LazyLock<Mutex<Presentations>> = LazyLock::new(Default::default);
+
+/// Where lxapps are presented, by window number, each with when the user last touched it.
+#[derive(Default)]
+struct Presentations {
+    touches: u64,
+    shell: Option<(u64, u64)>,
+    apps: HashMap<String, (u64, u64)>,
+}
+
+impl Presentations {
+    /// The window the user touched last of `appid`'s own and the shell; the shell otherwise.
+    fn window_of(&self, appid: Option<&str>) -> Option<u64> {
+        let own = appid.and_then(|appid| self.apps.get(appid)).copied();
+        match (own, self.shell) {
+            (Some(own), Some(shell)) => Some(if own.1 > shell.1 { own.0 } else { shell.0 }),
+            (own, shell) => own.or(shell).map(|(window, _)| window),
+        }
+    }
+
+    /// `appid`'s own window, or the shell for `None`; `touched` when the user brought it
+    /// forward, otherwise it only fills a place nothing holds yet.
+    fn presents(&mut self, appid: Option<&str>, window: u64, touched: bool) {
+        let place = match appid {
+            Some(appid) => self.apps.entry(appid.to_owned()).or_insert((window, 0)),
+            None => self.shell.get_or_insert((window, 0)),
+        };
+        if touched {
+            self.touches += 1;
+            *place = (window, self.touches);
+        } else if place.1 == 0 {
+            place.0 = window;
+        }
+    }
+
+    fn closed(&mut self, window: u64) {
+        if self.shell.is_some_and(|(shell, _)| shell == window) {
+            self.shell = None;
+        }
+        self.apps.retain(|_, (own, _)| *own != window);
+    }
+}
+
+fn presentations() -> MutexGuard<'static, Presentations> {
+    PRESENTATIONS.lock().unwrap_or_else(|p| p.into_inner())
+}
 
 fn overlays() -> MutexGuard<'static, HashMap<i64, (WindowId, OverlayLogic)>> {
     OVERLAYS.lock().unwrap_or_else(|p| p.into_inner())
@@ -40,19 +85,24 @@ pub(super) fn logic_of(token: i64) -> Option<OverlayLogic> {
     overlays().get(&token).map(|(_, logic)| logic.clone())
 }
 
-/// Main thread: overlay `token`'s window closed, or there was none to put it over.
-pub(super) fn gone(token: i64) {
-    let window = overlays().get(&token).map(|(window, _)| *window);
-    if let (Some(window), Some(feedback)) = (window, FEEDBACK.get()) {
-        feedback.window_closed(window);
+/// Main thread: Swift reports where `appid` (the shell for `None`) is presented.
+pub(super) fn presents(appid: Option<&str>, window: u64, touched: bool) {
+    presentations().presents(appid, window, touched);
+}
+
+/// Main thread: `window` closed, or an overlay found no window by that number.
+pub(super) fn window_closed(window: u64) {
+    presentations().closed(window);
+    if let Some(feedback) = FEEDBACK.get() {
+        feedback.window_closed(WindowId(window));
     }
 }
 
 struct MacOverlays;
 
 impl WindowOverlays for MacOverlays {
-    fn window_of(&self, _: Option<&str>) -> Option<WindowId> {
-        Some(SHELL)
+    fn window_of(&self, appid: Option<&str>) -> Option<WindowId> {
+        presentations().window_of(appid).map(WindowId)
     }
 
     fn open(
@@ -70,13 +120,13 @@ impl WindowOverlays for MacOverlays {
                     page.host().load(module.to_owned());
                     page.host().connect(ConnectionTicket::new(1));
                     live::insert_page(token, page);
-                    if !super::bridge::gpu_overlays_open(token) {
-                        gone(token);
+                    if !super::bridge::gpu_overlays_open(token, window.0) {
+                        window_closed(window.0);
                     }
                 }
                 Err(error) => {
                     log::warn!("window overlay: {error}");
-                    gone(token);
+                    window_closed(window.0);
                 }
             }
         }));
@@ -133,5 +183,29 @@ impl Drop for MacSurface {
             drop(live::remove_page(token));
             super::bridge::gpu_overlays_close(token);
         }));
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::Presentations;
+
+    #[test]
+    fn an_lxapp_gets_the_window_the_user_touched_last_of_its_own_and_the_shell() {
+        let mut places = Presentations::default();
+        assert_eq!(places.window_of(Some("a")), None);
+        // Shown without a touch (a dev session in the background) still places the shell.
+        places.presents(None, 1, false);
+        assert_eq!(places.window_of(Some("a")), Some(1));
+        places.presents(Some("a"), 7, true);
+        assert_eq!(places.window_of(Some("a")), Some(7));
+        assert_eq!(places.window_of(Some("b")), Some(1));
+        places.presents(None, 1, true);
+        assert_eq!(places.window_of(Some("a")), Some(1));
+        places.presents(Some("a"), 7, true);
+        places.closed(7);
+        assert_eq!(places.window_of(Some("a")), Some(1));
+        places.closed(1);
+        assert_eq!(places.window_of(None), None);
     }
 }

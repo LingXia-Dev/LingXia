@@ -75,6 +75,9 @@ public final class LxAppRuntime {
         }
         LxAppHostFormFactor.applyPadFlag()
         LxAppAppearanceRegistry.observeHostLocale()
+        #if os(macOS)
+        GpuOverlays.start()
+        #endif
 
         let rawLxAppId = initResult.home_app_id.toString()
         let lxAppId = rawLxAppId.isEmpty ? nil : rawLxAppId
