@@ -5,7 +5,7 @@
 A Jinshu document, read: text, media, tables and the app's own blocks, with resume and reading observations. Status: preview.
 
 ```ts
-import { JinshuView } from '@liulidesign/jinshu/JinshuView';
+import { JinshuProvider, JinshuView } from '@liulidesign/jinshu/JinshuView';
 ```
 
 JinshuView draws a Jinshu document for reading: headings, paragraphs, lists, callouts, folds, code, formulas, tables, images, video, audio, files and the app's own `x-` blocks. It reads a document the page holds (`doc`), or follows a live one that Logic serves (`channel` and `docKey`), so an edit made elsewhere, by a person or an agent, appears as it lands. It can offer to continue where the reader stopped, open at one block, hold media to a policy, and report what was read and played through `onObserve`.

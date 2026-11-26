@@ -876,6 +876,11 @@ export const playgroundEntries: PlaygroundEntry[] = [
         ]
       },
       {
+        "name": "isFocusKept",
+        "required": false,
+        "kind": "boolean"
+      },
+      {
         "name": "isDisabled",
         "required": false,
         "kind": "boolean"
@@ -2166,6 +2171,11 @@ export const playgroundEntries: PlaygroundEntry[] = [
         "name": "label",
         "required": true,
         "kind": "text"
+      },
+      {
+        "name": "isLabelHidden",
+        "required": false,
+        "kind": "boolean"
       },
       {
         "name": "description",
@@ -4335,6 +4345,11 @@ export const playgroundEntries: PlaygroundEntry[] = [
         "kind": "boolean"
       },
       {
+        "name": "disabledMessage",
+        "required": false,
+        "kind": "text"
+      },
+      {
         "name": "isLoading",
         "required": false,
         "kind": "boolean"
@@ -5470,6 +5485,11 @@ export const playgroundEntries: PlaygroundEntry[] = [
           "ghost",
           "secondary"
         ]
+      },
+      {
+        "name": "isFocusKept",
+        "required": false,
+        "kind": "boolean"
       },
       {
         "name": "isDisabled",

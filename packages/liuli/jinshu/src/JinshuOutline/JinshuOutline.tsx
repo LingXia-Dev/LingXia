@@ -6,6 +6,9 @@ import { jinshuText } from '../i18n/text';
 import { jinshuOutlineRecipe as r } from './JinshuOutline.recipe';
 
 export { useJinshuNav, type JinshuNavHandle, type JinshuNavState } from '../internal/nav';
+// What `items` takes and how Logic makes it, so the outline needs no second import.
+export { extractOutline } from '../schema/helpers';
+export type { OutlineItem } from '../schema/types';
 
 export type OutlineSectionStatus = 'done' | 'current' | 'locked';
 

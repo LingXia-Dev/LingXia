@@ -63,7 +63,7 @@ export { FormLayout, FormSpan } from './FormLayout/FormLayout';
 export type * from './FormLayout/FormLayout';
 export { HoverCard } from './HoverCard/HoverCard';
 export type * from './HoverCard/HoverCard';
-export { iconPaths, useIcon, Icon, IconSetProvider } from './Icon/Icon';
+export { iconNames, iconPaths, useIcon, Icon, IconSetProvider } from './Icon/Icon';
 export type * from './Icon/Icon';
 export { IconButton } from './IconButton/IconButton';
 export type * from './IconButton/IconButton';

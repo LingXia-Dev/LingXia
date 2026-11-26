@@ -260,6 +260,7 @@
       "name": "JinshuEditor",
       "import": "@liulidesign/jinshu/JinshuEditor",
       "exports": [
+        "JinshuProvider",
         "JinshuEditor"
       ],
       "category": "documents",
@@ -665,6 +666,8 @@
       "name": "JinshuOutline",
       "import": "@liulidesign/jinshu/JinshuOutline",
       "exports": [
+        "useJinshuNav",
+        "extractOutline",
         "JinshuOutline"
       ],
       "category": "documents",
@@ -868,6 +871,7 @@
       "name": "JinshuView",
       "import": "@liulidesign/jinshu/JinshuView",
       "exports": [
+        "JinshuProvider",
         "JinshuView"
       ],
       "category": "documents",

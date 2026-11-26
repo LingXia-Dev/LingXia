@@ -5,7 +5,7 @@
 A Jinshu document's headings as a contents list that moves the reader and shows each section's progress. Status: preview.
 
 ```ts
-import { JinshuOutline } from '@liulidesign/jinshu/JinshuOutline';
+import { useJinshuNav, extractOutline, JinshuOutline } from '@liulidesign/jinshu/JinshuOutline';
 ```
 
 JinshuOutline lists a document's headings, indented by level, as a contents list. Shared with a JinshuView or JinshuEditor through `useJinshuNav()`, pressing a heading scrolls the document to it and tints that heading as the one being read. An app can mark each section done, current or locked, as a course does.

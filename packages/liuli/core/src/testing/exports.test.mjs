@@ -12,7 +12,7 @@ const { exports } = JSON.parse(readFileSync(join(core, 'package.json'), 'utf8'))
 const { components } = JSON.parse(readFileSync(join(core, 'catalog.json'), 'utf8'));
 const isComponent = name => /^[A-Z]/.test(name);
 
-test('exports: the root entry gives every component module\'s exports and types, density and hue, and nothing shared between modules', async () => {
+test('exports: the root entry gives every component module\'s exports, the values it re-exports and its types, density and hue, and nothing shared between modules', async () => {
   assert.equal(exports['.'], './src/index.ts');
   const index = readFileSync(join(core, 'src', 'index.ts'), 'utf8');
   for (const { name, exports: names } of components) {
@@ -20,8 +20,8 @@ test('exports: the root entry gives every component module\'s exports and types,
     assert.ok(index.includes(`export type * from './${name}/${name}';`), `${name}'s types are in the root entry`);
   }
   const root = await renderPage(`
-    import { Button, DensityProvider, calendarWeekday, hueFor } from '@liulidesign/core';
-    export function render() { return <page><DensityProvider value="compact"><Button label={String(calendarWeekday('2026-11-23')) + hueFor('a')} onClick={() => {}} /></DensityProvider></page>; }`);
+    import { Button, DensityProvider, calendarWeekday, hueFor, iconNames } from '@liulidesign/core';
+    export function render() { return <page><DensityProvider value="compact"><Button label={String(calendarWeekday('2026-11-23')) + hueFor('a') + iconNames.length} onClick={() => {}} /></DensityProvider></page>; }`);
   assert.equal(root.queryAll(node => node.tag === 'button').length, 1);
   await assert.rejects(renderPage(`
     import { MenuSize } from '@liulidesign/core';

@@ -4,7 +4,7 @@
 // catalogue standing in for liuli's, keyed `@liuli.`, and puts `@jinshu.` back in its output.
 // Run: node scripts/words.mjs [--check]; LINGXIA names the CLI when `lingxia` on PATH is stale.
 import { execFileSync } from 'node:child_process';
-import { mkdtempSync, mkdirSync, readFileSync, readdirSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { cpSync, mkdtempSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -18,7 +18,8 @@ const temp = mkdtempSync(join(tmpdir(), 'jinshu-words-'));
 try {
   const input = join(temp, 'i18n');
   mkdirSync(join(input, 'liuli'), { recursive: true });
-  for (const scope of readdirSync(repoI18n)) if (scope !== 'liuli' && !scope.includes('.')) symlinkSync(join(repoI18n, scope), join(input, scope));
+  // Copied, not linked: a symlink needs extra rights on Windows.
+  for (const scope of readdirSync(repoI18n)) if (scope !== 'liuli' && !scope.includes('.')) cpSync(join(repoI18n, scope), join(input, scope), { recursive: true });
   for (const file of readdirSync(join(root, 'messages')).filter(name => name.endsWith('.json'))) {
     const catalogue = JSON.parse(readFileSync(join(root, 'messages', file), 'utf8'));
     const renamed = Object.fromEntries(Object.entries(catalogue).map(([key, entry]) => {
@@ -28,7 +29,14 @@ try {
     writeFileSync(join(input, 'liuli', file), JSON.stringify(renamed, null, 2));
   }
   const generated = join(temp, 'words.ts');
-  execFileSync(process.env.LINGXIA ?? 'lingxia', ['gen', 'i18n', '-i', input, '--liuli-out', generated, '--no-rust', '--no-android', '--no-ios', '--no-harmony', '--no-ts', '--no-view'], { stdio: ['ignore', 'ignore', 'inherit'] });
+  const cli = process.env.LINGXIA ?? 'lingxia';
+  try {
+    execFileSync(cli, ['gen', 'i18n', '-i', input, '--liuli-out', generated, '--no-rust', '--no-android', '--no-ios', '--no-harmony', '--no-ts', '--no-view'], { stdio: ['ignore', 'ignore', 'inherit'] });
+  } catch (error) {
+    if (error.code !== 'ENOENT') throw error;
+    console.error(`words: the \`${cli}\` CLI was not found; put it on PATH or name it with LINGXIA=/path/to/lingxia`);
+    process.exit(1);
+  }
   const words = readFileSync(generated, 'utf8')
     .replace('from i18n/liuli/. Do not edit.', 'from messages/ by scripts/words.mjs. Do not edit.')
     .replace(/^ {2}"@liuli\./gm, '  "@jinshu.');

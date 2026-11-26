@@ -22,6 +22,7 @@
     "tokens": "./tokens.css"
   },
   "exports": {
+    ".": "./src/index.ts",
     "./JinshuView": "./src/JinshuView/JinshuView.tsx",
     "./JinshuView/recipe": "./src/JinshuView/JinshuView.recipe.ts",
     "./JinshuOutline": "./src/JinshuOutline/JinshuOutline.tsx",
@@ -33,6 +34,7 @@
     "./schema": "./src/schema/index.ts",
     "./source": "./src/source/index.ts",
     "./catalog.json": "./catalog.json",
+    "./tokens.css": "./tokens.css",
     "./package.json": "./package.json",
     "./docs/*": "./docs/*"
   },

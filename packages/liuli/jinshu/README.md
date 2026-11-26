@@ -58,10 +58,10 @@ export function render({ actions }) {
 
 | Import | Exports | What it is |
 | --- | --- | --- |
-| `@liulidesign/jinshu/JinshuView` | JinshuView | A Jinshu document, read: text, media, tables and the app's own blocks, with resume and reading observations |
-| `@liulidesign/jinshu/JinshuEditor` | JinshuEditor | A Jinshu document, edited block by block, with history, saving, and a review of what an agent changed or asks |
+| `@liulidesign/jinshu/JinshuView` | JinshuProvider, JinshuView | A Jinshu document, read: text, media, tables and the app's own blocks, with resume and reading observations |
+| `@liulidesign/jinshu/JinshuEditor` | JinshuProvider, JinshuEditor | A Jinshu document, edited block by block, with history, saving, and a review of what an agent changed or asks |
 | `@liulidesign/jinshu/JinshuDiff` | JinshuDiff | What changed between two versions of a Jinshu document, block by block, with words struck and inserted |
-| `@liulidesign/jinshu/JinshuOutline` | JinshuOutline | A Jinshu document's headings as a contents list that moves the reader and shows each section's progress |
+| `@liulidesign/jinshu/JinshuOutline` | useJinshuNav, extractOutline, JinshuOutline | A Jinshu document's headings as a contents list that moves the reader and shows each section's progress |
 <!-- components:end -->
 
 | Import | What it is |

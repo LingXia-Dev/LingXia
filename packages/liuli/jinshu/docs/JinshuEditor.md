@@ -5,7 +5,7 @@
 A Jinshu document, edited block by block, with history, saving, and a review of what an agent changed or asks. Status: preview.
 
 ```ts
-import { JinshuEditor } from '@liulidesign/jinshu/JinshuEditor';
+import { JinshuProvider, JinshuEditor } from '@liulidesign/jinshu/JinshuEditor';
 ```
 
 JinshuEditor edits a Jinshu document where it is read: each block keeps the reader's geometry, so moving between reading and editing does not jump. Text blocks edit in place; tables, code, folds, callouts and media have their own editors, and `/` inserts any block. On a live `channel` the source keeps the history, the save state and the review: an agent's change is marked at each block it touched, with a bar to view or undo that batch; its suggestions and save requests wait in one queue; and an agent at work shows a mark the person can stop. Pasted paragraphs or Markdown become blocks, and in a Markdown document (`format`) the menus offer only what Markdown holds. Source mode edits the whole document as Markdown text and applies only the changed blocks, in one undo step.

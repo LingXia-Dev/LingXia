@@ -1439,7 +1439,6 @@ export const entries: GalleryEntry[] = [
       "document editor",
       "rich text",
       "block editor",
-      "notion",
       "wysiwyg",
       "review",
       "suggestions",
