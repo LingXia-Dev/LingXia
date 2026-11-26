@@ -217,13 +217,12 @@ final class GpuPageView: UIView {
         coverArmed = false
     }
 
-    /// Off screen and not kept: drop the layer's last frame and drawables; the next attach
-    /// sizes the layer again, and the page background shows until its first frame.
+    /// Off screen and not kept: drop the layer's drawables; the next attach sizes the layer
+    /// again. Setting `contents` on a CAMetalLayer stops it showing presented drawables.
     func releaseSurface() {
         guard window == nil, let layer = metalView.layer as? CAMetalLayer else { return }
         suspend()
         uncover()
-        layer.contents = nil
         layer.drawableSize = CGSize(width: 1, height: 1)
     }
 
