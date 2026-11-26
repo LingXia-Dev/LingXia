@@ -3,7 +3,6 @@ import { Button } from '@liulidesign/core/Button';
 import { Icon } from '@liulidesign/core/Icon';
 import { Tooltip } from '@liulidesign/core/Tooltip';
 import { IconButton } from '@liulidesign/core/IconButton';
-import { editorIcons } from './editorIcons';
 import { newBlockId, paragraph, plainText, tableColumnCount } from '../schema/helpers';
 import { formatAllows } from '../schema/index';
 import type {
@@ -667,9 +666,9 @@ type TableSel = { readonly kind: 'row' | 'col'; readonly index: number } | null;
 type CellPos = { readonly row: number; readonly col: number } | null;
 
 const ALIGN_ICON = {
-  start: editorIcons.alignStart,
-  center: editorIcons.alignCenter,
-  end: editorIcons.alignEnd,
+  start: 'align-start',
+  center: 'align-center',
+  end: 'align-end',
 } as const;
 
 /**

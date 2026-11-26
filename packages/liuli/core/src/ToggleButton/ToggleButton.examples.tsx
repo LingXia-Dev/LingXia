@@ -1,5 +1,6 @@
 import { useLocal } from '@lingxia/view';
 import { Held, unused } from '../example';
+import { IconButton } from '../IconButton/IconButton';
 import { ToggleButton } from './ToggleButton';
 
 const notes = [
@@ -35,6 +36,19 @@ export function Icons() {
       <ToggleButton label="Starred" icon="star" bind={starred} data-testid="icons-starred" />
       <ToggleButton label="Mute" icon="volume" pressedIcon="mute" isLabelHidden bind={muted} data-testid="icons-mute" />
       <ToggleButton label="Show hidden files" icon="visible" pressedIcon="hidden" isLabelHidden bind={hidden} data-testid="icons-hidden" />
+    </view>
+  );
+}
+
+/** Ghost toggles in a toolbar beside icon buttons: no edge, only the fill shows which are on. */
+export function Toolbar() {
+  const bold = useLocal('bold', true);
+  const italic = useLocal('italic', false);
+  return (
+    <view className="flex-row items-center gap-1">
+      <ToggleButton label="Bold" icon="bold" isLabelHidden variant="ghost" size="sm" bind={bold} data-testid="toolbar-bold" />
+      <ToggleButton label="Italic" icon="italic" isLabelHidden variant="ghost" size="sm" bind={italic} data-testid="toolbar-italic" />
+      <IconButton label="Link" icon="link" size="sm" data-testid="toolbar-link" />
     </view>
   );
 }

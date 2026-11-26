@@ -59,3 +59,16 @@ test('Icons: icon-only toggles are named by their labels; pressedIcon swaps the 
   assert.equal(mute().props.width, mute().props.height, 'a square');
   assert.ok(textOf(screen.getByTestId('icons-starred')).includes('Starred'));
 });
+
+test('Toolbar: a ghost toggle has no edge or fill while off, like the icon button beside it; on, the soft accent fill', async () => {
+  const screen = await renderExample('ToggleButton/ToggleButton', 'Toolbar');
+  const italic = screen.getByTestId('toolbar-italic');
+  const link = screen.getByTestId('toolbar-link');
+  assert.equal(italic.props.background, link.props.background);
+  assert.equal(italic.props.borderColor, link.props.borderColor);
+  assert.equal(italic.props.shadow, undefined);
+  assert.equal(screen.getByTestId('toolbar-bold').props.background, 'accent-soft');
+  screen.press(italic);
+  assert.equal(screen.getByTestId('toolbar-italic').props.statePressed, 1);
+  assert.equal(screen.getByTestId('toolbar-italic').props.background, 'accent-soft');
+});

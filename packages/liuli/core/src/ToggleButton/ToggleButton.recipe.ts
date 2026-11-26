@@ -14,6 +14,11 @@ export const toggleButtonRecipe = {
     /** Off inside a dialog, sheet or popover: the overlay's surface. */
     overlay: 'bg-surface-overlay',
     on: 'bg-accent-soft text-text border-accent hover:bg-accent/16 active:bg-accent/20 disabled:bg-accent-soft/50 disabled:text-faint disabled:border-transparent',
+    /** Ghost, for a toolbar beside icon buttons: no edge or fill until hovered; on, the soft accent fill alone. */
+    ghost: {
+      off: 'bg-transparent text-text border-transparent hover:bg-text/5 active:bg-text/8 disabled:text-muted',
+      on: 'bg-accent-soft text-accent border-transparent hover:bg-accent/16 active:bg-accent/20 disabled:bg-accent-soft/50 disabled:text-faint',
+    },
     size: {
       sm: 'min-h-control-sm px-3',
       md: 'min-h-control-md px-4',

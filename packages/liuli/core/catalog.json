@@ -9970,7 +9970,7 @@
       "props": [
         {
           "name": "name",
-          "type": "\"add\" | \"add-circle\" | \"arrow-down\" | \"arrow-end\" | \"arrow-start\" | \"arrow-up\" | \"attach\" | \"blocked\" | \"bookmark\" | \"calendar\" | \"camera\" | \"cancel\" | \"cart\" | \"chart\" | \"check\" | \"checklist\" | \"chevron-down\" | \"chevron-end\" | \"chevron-start\" | \"chevron-up\" | \"click\" | \"clock\" | \"close\" | \"cloud\" | \"collapse\" | \"compass\" | \"copy\" | \"dark\" | \"delete\" | \"document\" | \"download\" | \"edit\" | \"error\" | \"expand\" | \"external-link\" | \"file\" | \"filter\" | \"flag\" | \"folder\" | \"globe\" | \"grid\" | \"heart\" | \"help\" | \"hidden\" | \"home\" | \"image\" | \"info\" | \"layers\" | \"light\" | \"like\" | \"link\" | \"list\" | \"location\" | \"lock\" | \"mail\" | \"menu\" | \"message\" | \"microphone\" | \"more\" | \"more-vertical\" | \"mute\" | \"notifications\" | \"notifications-off\" | \"palette\" | \"pause\" | \"payment\" | \"phone\" | \"play\" | \"print\" | \"redo\" | \"refresh\" | \"remove\" | \"rows\" | \"save\" | \"search\" | \"send\" | \"settings\" | \"share\" | \"sign-in\" | \"sign-out\" | \"sort\" | \"star\" | \"stop\" | \"success\" | \"tag\" | \"template\" | \"text-input\" | \"undo\" | \"unlock\" | \"upload\" | \"user\" | \"users\" | \"video\" | \"visible\" | \"volume\" | \"warning\" | \"wifi\"",
+          "type": "\"add\" | \"add-circle\" | \"align-center\" | \"align-end\" | \"align-start\" | \"arrow-down\" | \"arrow-end\" | \"arrow-start\" | \"arrow-up\" | \"attach\" | \"blocked\" | \"bold\" | \"bookmark\" | \"calendar\" | \"camera\" | \"cancel\" | \"cart\" | \"chart\" | \"check\" | \"checklist\" | \"chevron-down\" | \"chevron-end\" | \"chevron-start\" | \"chevron-up\" | \"click\" | \"clock\" | \"close\" | \"cloud\" | \"code\" | \"collapse\" | \"compass\" | \"copy\" | \"dark\" | \"delete\" | \"document\" | \"download\" | \"edit\" | \"error\" | \"expand\" | \"external-link\" | \"file\" | \"filter\" | \"flag\" | \"folder\" | \"formula\" | \"globe\" | \"grid\" | \"heading\" | \"heart\" | \"help\" | \"hidden\" | \"highlight\" | \"home\" | \"image\" | \"info\" | \"italic\" | \"layers\" | \"light\" | \"like\" | \"link\" | \"list\" | \"location\" | \"lock\" | \"mail\" | \"menu\" | \"message\" | \"microphone\" | \"more\" | \"more-vertical\" | \"mute\" | \"notifications\" | \"notifications-off\" | \"palette\" | \"pause\" | \"payment\" | \"phone\" | \"play\" | \"print\" | \"redo\" | \"refresh\" | \"remove\" | \"rows\" | \"save\" | \"search\" | \"send\" | \"settings\" | \"share\" | \"sign-in\" | \"sign-out\" | \"sort\" | \"star\" | \"stop\" | \"strikethrough\" | \"subscript\" | \"success\" | \"superscript\" | \"table\" | \"tag\" | \"template\" | \"text-input\" | \"underline\" | \"undo\" | \"unlock\" | \"upload\" | \"user\" | \"users\" | \"video\" | \"visible\" | \"volume\" | \"warning\" | \"wifi\"",
           "required": false,
           "description": "The icon by what it means: `close`, `search`, `chevron-end`. The set in use decides how it is drawn.",
           "values": [
@@ -10070,7 +10070,21 @@
             "compass",
             "layers",
             "rows",
-            "template"
+            "template",
+            "bold",
+            "italic",
+            "underline",
+            "strikethrough",
+            "code",
+            "highlight",
+            "superscript",
+            "subscript",
+            "heading",
+            "table",
+            "formula",
+            "align-start",
+            "align-center",
+            "align-end"
           ]
         },
         {
@@ -10115,7 +10129,7 @@
         "IconSetProvider": [
           {
             "name": "icons",
-            "type": "Partial<Readonly<Record<\"info\" | \"success\" | \"warning\" | \"add\" | \"remove\" | \"close\" | \"check\" | \"edit\" | \"delete\" | \"copy\" | \"share\" | \"download\" | \"upload\" | \"refresh\" | \"search\" | \"filter\" | \"sort\" | \"more\" | \"more-vertical\" | \"menu\" | \"settings\" | \"send\" | \"save\" | \"undo\" | \"redo\" | \"link\" | \"external-link\" | \"attach\" | \"print\" | \"sign-in\" | \"sign-out\" | \"chevron-down\" | \"chevron-up\" | \"chevron-start\" | \"chevron-end\" | \"arrow-up\" | \"arrow-down\" | \"arrow-start\" | \"arrow-end\" | \"home\" | \"expand\" | \"collapse\" | \"error\" | \"help\" | \"cancel\" | \"add-circle\" | \"blocked\" | \"lock\" | \"unlock\" | \"visible\" | \"hidden\" | \"user\" | \"users\" | \"calendar\" | \"clock\" | \"mail\" | \"phone\" | \"message\" | \"notifications\" | \"notifications-off\" | \"star\" | \"heart\" | \"like\" | \"bookmark\" | \"tag\" | \"flag\" | \"location\" | \"image\" | \"camera\" | \"file\" | \"document\" | \"folder\" | \"cloud\" | \"globe\" | \"light\" | \"dark\" | \"cart\" | \"payment\" | \"chart\" | \"list\" | \"grid\" | \"play\" | \"pause\" | \"stop\" | \"volume\" | \"mute\" | \"microphone\" | \"video\" | \"wifi\" | \"palette\" | \"click\" | \"text-input\" | \"checklist\" | \"compass\" | \"layers\" | \"rows\" | \"template\", IconDefinition>>>",
+            "type": "Partial<Readonly<Record<\"info\" | \"success\" | \"warning\" | \"add\" | \"remove\" | \"close\" | \"check\" | \"edit\" | \"delete\" | \"copy\" | \"share\" | \"download\" | \"upload\" | \"refresh\" | \"search\" | \"filter\" | \"sort\" | \"more\" | \"more-vertical\" | \"menu\" | \"settings\" | \"send\" | \"save\" | \"undo\" | \"redo\" | \"link\" | \"external-link\" | \"attach\" | \"print\" | \"sign-in\" | \"sign-out\" | \"chevron-down\" | \"chevron-up\" | \"chevron-start\" | \"chevron-end\" | \"arrow-up\" | \"arrow-down\" | \"arrow-start\" | \"arrow-end\" | \"home\" | \"expand\" | \"collapse\" | \"error\" | \"help\" | \"cancel\" | \"add-circle\" | \"blocked\" | \"lock\" | \"unlock\" | \"visible\" | \"hidden\" | \"user\" | \"users\" | \"calendar\" | \"clock\" | \"mail\" | \"phone\" | \"message\" | \"notifications\" | \"notifications-off\" | \"star\" | \"heart\" | \"like\" | \"bookmark\" | \"tag\" | \"flag\" | \"location\" | \"image\" | \"camera\" | \"file\" | \"document\" | \"folder\" | \"cloud\" | \"globe\" | \"light\" | \"dark\" | \"cart\" | \"payment\" | \"chart\" | \"list\" | \"grid\" | \"play\" | \"pause\" | \"stop\" | \"volume\" | \"mute\" | \"microphone\" | \"video\" | \"wifi\" | \"palette\" | \"click\" | \"text-input\" | \"checklist\" | \"compass\" | \"layers\" | \"rows\" | \"template\" | \"bold\" | \"italic\" | \"underline\" | \"strikethrough\" | \"code\" | \"highlight\" | \"superscript\" | \"subscript\" | \"heading\" | \"table\" | \"formula\" | \"align-start\" | \"align-center\" | \"align-end\", IconDefinition>>>",
             "required": true,
             "description": "The icons to draw for the names they cover; the rest stay as the default set draws them."
           },
@@ -22176,6 +22190,17 @@
             {
               "name": "StateDisabledOn",
               "title": "Disabled, on"
+        {
+          "name": "variant",
+          "type": "\"ghost\" | \"secondary\"",
+          "required": false,
+          "description": "`ghost` for a toolbar beside icon buttons: no edge, the fill alone shows it on.",
+          "values": [
+            "secondary",
+            "ghost"
+          ],
+          "default": "'secondary'"
+        },
             }
           ],
           "variants": [
@@ -22404,6 +22429,10 @@
           "hero": "Filters",
           "variants": [
             {
+            },
+            {
+              "name": "Toolbar",
+              "title": "Ghost, in a toolbar beside icon buttons"
               "name": "Layout",
               "title": "One on at a time, icon-only, read as a radio group"
             },

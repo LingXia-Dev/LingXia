@@ -80,7 +80,10 @@ export const doc: ComponentDoc = {
         { name: 'StateDisabled', title: 'Disabled, off' },
         { name: 'StateDisabledOn', title: 'Disabled, on' },
       ],
-      variants: [{ name: 'Icons', title: 'An icon beside the label, an icon that changes when on, and icon-only' }],
+      variants: [
+        { name: 'Icons', title: 'An icon beside the label, an icon that changes when on, and icon-only' },
+        { name: 'Toolbar', title: 'Ghost, in a toolbar beside icon buttons' },
+      ],
       inContext: [{ name: 'WordWrap', title: 'A view option beside what it changes' }],
     },
   },

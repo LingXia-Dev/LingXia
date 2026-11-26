@@ -97,8 +97,22 @@ import { compassIcon } from './icons/compass';
 import { layersIcon } from './icons/layers';
 import { rowsIcon } from './icons/rows';
 import { templateIcon } from './icons/template';
+import { boldIcon } from './icons/bold';
+import { italicIcon } from './icons/italic';
+import { underlineIcon } from './icons/underline';
+import { strikethroughIcon } from './icons/strikethrough';
+import { codeIcon } from './icons/code';
+import { highlightIcon } from './icons/highlight';
+import { superscriptIcon } from './icons/superscript';
+import { subscriptIcon } from './icons/subscript';
+import { headingIcon } from './icons/heading';
+import { tableIcon } from './icons/table';
+import { formulaIcon } from './icons/formula';
+import { alignStartIcon } from './icons/align-start';
+import { alignCenterIcon } from './icons/align-center';
+import { alignEndIcon } from './icons/align-end';
 
-/** The default set: 97 icons from Lucide. */
+/** The default set: 111 icons from Lucide. */
 export const lucide: IconSet = {
   'add': addIcon,
   'remove': removeIcon,
@@ -197,4 +211,18 @@ export const lucide: IconSet = {
   'layers': layersIcon,
   'rows': rowsIcon,
   'template': templateIcon,
+  'bold': boldIcon,
+  'italic': italicIcon,
+  'underline': underlineIcon,
+  'strikethrough': strikethroughIcon,
+  'code': codeIcon,
+  'highlight': highlightIcon,
+  'superscript': superscriptIcon,
+  'subscript': subscriptIcon,
+  'heading': headingIcon,
+  'table': tableIcon,
+  'formula': formulaIcon,
+  'align-start': alignStartIcon,
+  'align-center': alignCenterIcon,
+  'align-end': alignEndIcon,
 };

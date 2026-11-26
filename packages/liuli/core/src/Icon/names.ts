@@ -99,6 +99,20 @@ export const iconNames = [
   'layers',
   'rows',
   'template',
+  'bold',
+  'italic',
+  'underline',
+  'strikethrough',
+  'code',
+  'highlight',
+  'superscript',
+  'subscript',
+  'heading',
+  'table',
+  'formula',
+  'align-start',
+  'align-center',
+  'align-end',
 ] as const;
 
 export type IconName = (typeof iconNames)[number];

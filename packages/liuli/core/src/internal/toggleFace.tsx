@@ -12,8 +12,8 @@ const squareSides = { sm: 32, md: 40, lg: 48 } satisfies Record<ToggleButtonSize
  * A toggle's face and box, shared with ToggleButtonGroup: the classes for its state, the square an
  * icon-only toggle keeps as its glyph grows with text, and what it draws.
  */
-export function useToggleFace(look: { label: string; size: ToggleButtonSize; isOn: boolean; icon?: IconRef; pressedIcon?: IconRef; isLabelHidden?: boolean }) {
-  const { label, size, isOn, icon, pressedIcon, isLabelHidden } = look;
+export function useToggleFace(look: { label: string; size: ToggleButtonSize; variant?: 'secondary' | 'ghost'; isOn: boolean; icon?: IconRef; pressedIcon?: IconRef; isLabelHidden?: boolean }) {
+  const { label, size, variant = 'secondary', isOn, icon, pressedIcon, isLabelHidden } = look;
   const layer = useContext(LayerContext);
   const glyph = useTextGrowth(glyphSides[size], glyphGrowth);
   const side = isLabelHidden && glyph ? squareSides[size] + glyph.width - glyphSides[size] : undefined;
@@ -25,7 +25,7 @@ export function useToggleFace(look: { label: string; size: ToggleButtonSize; isO
     </>
   );
   return {
-    className: cx(r.root.base, isOn ? r.root.on : cx(r.root.off, layer === 'overlay' && r.root.overlay), isLabelHidden ? r.root.square[size] : r.root.size[size]),
+    className: cx(r.root.base, variant === 'ghost' ? r.root.ghost[isOn ? 'on' : 'off'] : isOn ? r.root.on : cx(r.root.off, layer === 'overlay' && r.root.overlay), isLabelHidden ? r.root.square[size] : r.root.size[size]),
     style: side === undefined ? undefined : { width: side, height: side },
     content,
   };

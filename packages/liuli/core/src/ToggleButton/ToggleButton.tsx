@@ -41,6 +41,8 @@ export type ToggleButtonProps = ToggleButtonBinding & ToggleButtonLook & {
   label: string;
   /** @default 'md' */
   size?: ToggleButtonSize;
+  /** `ghost` for a toolbar beside icon buttons: no edge, the fill alone shows it on. @default 'secondary' */
+  variant?: 'secondary' | 'ghost';
   /** @default false */
   isDisabled?: boolean;
   className?: string;
@@ -48,11 +50,11 @@ export type ToggleButtonProps = ToggleButtonBinding & ToggleButtonLook & {
 };
 
 /** A button that turns one option on or off and shows which: a filter, a view option, a toolbar's bold. */
-export function ToggleButton({ label, bind, value: own, onChange: ownChange, size = 'md', isDisabled = false, icon, pressedIcon, isLabelHidden, className, 'data-testid': testId, ...attributes }: ToggleButtonProps) {
+export function ToggleButton({ label, bind, value: own, onChange: ownChange, size = 'md', variant, isDisabled = false, icon, pressedIcon, isLabelHidden, className, 'data-testid': testId, ...attributes }: ToggleButtonProps) {
   const isPressed = bind ? bind.value : own;
   const onPressedChange = (next: boolean) => bind ? bind.set(next) : ownChange?.(next);
   const trigger = useTrigger();
-  const face = useToggleFace({ label, size, isOn: isPressed, icon, pressedIcon, isLabelHidden });
+  const face = useToggleFace({ label, size, variant, isOn: isPressed, icon, pressedIcon, isLabelHidden });
   return (
     <button
       aria-label={label}

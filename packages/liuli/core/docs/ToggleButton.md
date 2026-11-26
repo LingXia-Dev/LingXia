@@ -112,6 +112,7 @@ export function Sizes() {
 | `isLabelHidden` | `boolean` | `false` | Shows the icon alone, in a square, for a toolbar; the label still names it. |
 | `label` (required) | `string` |  | The text and the accessible name; it stays the same on and off ("Unread", not "Show unread"/"Hide unread"). |
 | `size` | `ToggleButtonSize` | `'md'` |  |
+| `variant` | `"ghost" \| "secondary"` | `'secondary'` | `ghost` for a toolbar beside icon buttons: no edge, the fill alone shows it on. |
 | `isDisabled` | `boolean` | `false` |  |
 | `className` | `string` |  |  |
 | `data-testid` | `string` |  |  |

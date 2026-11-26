@@ -99,6 +99,20 @@
     "compass": { "lucide": "compass" },
     "layers": { "lucide": "layers" },
     "rows": { "lucide": "layout-list", "isMirrored": true },
-    "template": { "lucide": "layout-template" }
+    "template": { "lucide": "layout-template" },
+    "bold": { "lucide": "bold" },
+    "italic": { "lucide": "italic" },
+    "underline": { "lucide": "underline" },
+    "strikethrough": { "lucide": "strikethrough" },
+    "code": { "lucide": "code" },
+    "highlight": { "lucide": "highlighter" },
+    "superscript": { "lucide": "superscript" },
+    "subscript": { "lucide": "subscript" },
+    "heading": { "lucide": "heading" },
+    "table": { "lucide": "table" },
+    "formula": { "lucide": "sigma" },
+    "align-start": { "lucide": "text-align-start", "isMirrored": true },
+    "align-center": { "lucide": "text-align-center" },
+    "align-end": { "lucide": "text-align-end", "isMirrored": true }
   }
 }

@@ -206,11 +206,11 @@ const openEditors = new WeakMap<object, Map<string, { readonly close: () => void
 
 /** The blocks a wide toolbar offers in one tap; the rest stay in the insert palette. */
 const QUICK_INSERTS: readonly { readonly id: string; readonly icon: IconButtonProps['icon'] }[] = [
-  { id: 'h2', icon: editorIcons.heading },
+  { id: 'h2', icon: 'heading' },
   { id: 'bullet', icon: 'list' },
   { id: 'task', icon: 'checklist' },
   { id: 'quote', icon: editorIcons.quote },
-  { id: 'table', icon: editorIcons.table },
+  { id: 'table', icon: 'table' },
   { id: 'image', icon: 'image' },
 ];
 
@@ -1350,6 +1350,7 @@ export function JinshuEditor(props: JinshuEditorProps) {
         label={label}
         icon={icon}
         isLabelHidden
+        variant="ghost"
         size="sm"
         isDisabled={!canFormatInline}
         value={canFormatInline && hasTrailingShorthandMark(draftText.value, mark)}
@@ -1547,7 +1548,7 @@ export function JinshuEditor(props: JinshuEditorProps) {
         </view>
       }
     >
-      <Tooltip content={blockTypeLabel('math')} placement="bottom"><IconButton label={blockTypeLabel('math')} icon={editorIcons.math} size="sm" /></Tooltip>
+      <Tooltip content={blockTypeLabel('math')} placement="bottom"><IconButton label={blockTypeLabel('math')} icon={'formula'} size="sm" /></Tooltip>
     </Popover>
   );
 
@@ -1558,15 +1559,15 @@ export function JinshuEditor(props: JinshuEditorProps) {
         <Button label={turnIntoLabel} endIcon="chevron-down" size="sm" variant="ghost" isDisabled={!canTurnInto} data-testid={props['data-testid'] && `${props['data-testid']}-turn-into`} />
       </DropdownMenu>
       <ToolbarSep />
-      {allows({ mark: 'bold' }) && markButton(editorIcons.bold, jinshuText('@jinshu.editor.format.bold'), '**')}
-      {allows({ mark: 'italic' }) && markButton(editorIcons.italic, jinshuText('@jinshu.editor.format.italic'), '*')}
-      {allows({ mark: 'underline' }) && markButton(editorIcons.underline, jinshuText('@jinshu.editor.format.underline'), '++')}
-      {allows({ mark: 'strike' }) && markButton(editorIcons.strike, jinshuText('@jinshu.editor.format.strike'), '~~')}
-      {allows({ mark: 'code' }) && markButton(editorIcons.code, jinshuText('@jinshu.editor.format.code'), '`')}
+      {allows({ mark: 'bold' }) && markButton('bold', jinshuText('@jinshu.editor.format.bold'), '**')}
+      {allows({ mark: 'italic' }) && markButton('italic', jinshuText('@jinshu.editor.format.italic'), '*')}
+      {allows({ mark: 'underline' }) && markButton('underline', jinshuText('@jinshu.editor.format.underline'), '++')}
+      {allows({ mark: 'strike' }) && markButton('strikethrough', jinshuText('@jinshu.editor.format.strike'), '~~')}
+      {allows({ mark: 'code' }) && markButton('code', jinshuText('@jinshu.editor.format.code'), '`')}
       {allows({ mark: 'highlight' }) && (
         <Tooltip content={jinshuText('@jinshu.editor.format.highlight')} placement="bottom"><IconButton
           label={jinshuText('@jinshu.editor.format.highlight')}
-          icon={editorIcons.highlight}
+          icon={'highlight'}
           size="sm"
           isDisabled={!canFormatInline}
           variant={canFormatInline && hasTrailingShorthandMark(draftText.value, '==') ? 'tonal' : 'ghost'}
@@ -1575,8 +1576,8 @@ export function JinshuEditor(props: JinshuEditorProps) {
       )}
       {allows({ mark: 'link' }) && linkPopover}
       <ToolbarSep />
-      {allows({ mark: 'script' }) && markButton(editorIcons.superscript, jinshuText('@jinshu.editor.format.superscript'), '^')}
-      {allows({ mark: 'script' }) && markButton(editorIcons.subscript, jinshuText('@jinshu.editor.format.subscript'), '~')}
+      {allows({ mark: 'script' }) && markButton('superscript', jinshuText('@jinshu.editor.format.superscript'), '^')}
+      {allows({ mark: 'script' }) && markButton('subscript', jinshuText('@jinshu.editor.format.subscript'), '~')}
       {mathPopover}
     </>
   );
@@ -1658,7 +1659,7 @@ export function JinshuEditor(props: JinshuEditorProps) {
               {doc && (
                 <Tooltip content={jinshuText(sourceState ? '@jinshu.editor.source.leave' : '@jinshu.editor.source.enter')} placement="bottom"><IconButton
                   label={jinshuText(sourceState ? '@jinshu.editor.source.leave' : '@jinshu.editor.source.enter')}
-                  icon={editorIcons.code}
+                  icon={'code'}
                   size="sm"
                   variant={sourceState ? 'tonal' : 'ghost'}
                   isDisabled={!sourceState && !canSource}
