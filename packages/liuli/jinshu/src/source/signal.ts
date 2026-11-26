@@ -12,27 +12,45 @@ export function timeoutSignal(ms: number): AbortSignalLike {
   return AbortSignal.timeout(ms);
 }
 
-/** Aborts when any of `signals` does. */
+/**
+ * Aborts when any of `signals` does. It listens to them only while something listens to it, so a
+ * long-lived signal, such as a tool call's, does not keep one listener per wait.
+ */
 export function anySignal(...signals: readonly AbortSignalLike[]): AbortSignalLike {
   const listeners = new Set<() => void>();
   let aborted = signals.some(s => s.aborted);
-  const fire = () => {
+  let attached = false;
+  const detach = () => {
+    if (!attached) return;
+    attached = false;
+    for (const s of signals) s.removeEventListener('abort', fire);
+  };
+  function fire() {
     if (aborted) return;
     aborted = true;
+    detach();
     for (const fn of [...listeners]) fn();
     listeners.clear();
-  };
-  for (const s of signals) s.addEventListener('abort', fire, { once: true });
+  }
   return {
     get aborted() {
-      return aborted;
+      return aborted || signals.some(s => s.aborted);
     },
     addEventListener(_type, listener) {
-      if (aborted) listener();
-      else listeners.add(listener);
+      if (aborted || signals.some(s => s.aborted)) {
+        aborted = true;
+        listener();
+        return;
+      }
+      listeners.add(listener);
+      if (!attached) {
+        attached = true;
+        for (const s of signals) s.addEventListener('abort', fire, { once: true });
+      }
     },
     removeEventListener(_type, listener) {
       listeners.delete(listener);
+      if (listeners.size === 0) detach();
     },
   };
 }

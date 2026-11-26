@@ -7,6 +7,7 @@ import {
   findBlockById,
   formatAllows,
   inlineLength,
+  inlinePlainProjection,
   listBlocks,
   walkBlocks,
   markdownToDocument,
@@ -14,7 +15,7 @@ import {
   newBlockId,
   normalizeDocument,
   parseAgentMarkup,
-  plainText,
+  splitInlinesAt,
   toAgentView,
   toBlockMarkup,
 } from '../schema/index';
@@ -56,6 +57,7 @@ import type {
   SaveResult,
   SnapshotPolicy,
 } from './types';
+import { blockFields } from '../schema/fields';
 import { timeoutSignal, type AbortSignalLike } from './signal';
 
 interface LogRecord {
@@ -124,13 +126,33 @@ function extractOpTargetIds(op: AnyJinshuOp): string[] {
   }
 }
 
+/**
+ * The ids a batch touched: the blocks it edited and, for an insert, the blocks it added rather than
+ * its anchor, which is what the change marks and undo name. Outermost new blocks only: a new callout
+ * is one change, not one per paragraph inside it.
+ */
+function touchedBy(prevDoc: JinshuDocument, nextDoc: JinshuDocument, ops: readonly AnyJinshuOp[]): string[] {
+  const existed = new Set(listBlocks(prevDoc).map(b => b.id));
+  const added: string[] = [];
+  const inside = new Set<string>();
+  walkBlocks(nextDoc.blocks, (block, parentId) => {
+    if (existed.has(block.id)) return;
+    if (!inside.has(parentId)) added.push(block.id);
+    inside.add(block.id);
+    if (block.type === 'list') for (const item of block.items) inside.add(item.id);
+  });
+  const edited = ops.filter(op => op.op !== 'insert').flatMap(extractOpTargetIds);
+  return Array.from(new Set([...edited, ...added]));
+}
+
 /** Computes a minimal RangeSuggestion by comparing before/after Inline[] of a block. */
 function computeRangeChange(
   beforeRuns: readonly Inline[],
   afterRuns: readonly Inline[],
 ): { from: number; to: number; insert: readonly Inline[] } {
-  const beforeText = plainText(beforeRuns);
-  const afterText = plainText(afterRuns);
+  // Inline coordinates, where math and atoms count one, as the suggestion is applied.
+  const beforeText = inlinePlainProjection(beforeRuns);
+  const afterText = inlinePlainProjection(afterRuns);
   let start = 0;
   const minLen = Math.min(beforeText.length, afterText.length);
   while (start < minLen && beforeText.charCodeAt(start) === afterText.charCodeAt(start)) start += 1;
@@ -156,12 +178,10 @@ function computeRangeChange(
     return { from: 0, to: inlineLength(beforeRuns), insert: afterRuns };
   }
 
-  const insertedText = afterText.slice(start, endB);
-  return {
-    from: start,
-    to: endA,
-    insert: insertedText.length > 0 ? [{ text: insertedText }] : [],
-  };
+  // The replacement keeps its marks, math and atoms: it is cut from the new runs, not their text.
+  const [, tail] = splitInlinesAt(afterRuns, start);
+  const [inserted] = splitInlinesAt(tail, endB - start);
+  return { from: start, to: endA, insert: inserted };
 }
 
 /** Creates a Logic-side JinshuSource managing draft, revisions, rebasing, suggestions, undo, streaming, and Channel sync. */
@@ -199,8 +219,11 @@ export function createJinshuSource(options: JinshuSourceOptions): JinshuSource {
 
   /** Drops the fields of a picked or uploaded medium that the format cannot hold. */
   function fitFormat(blockType: string, fields: Readonly<Record<string, unknown>>): Record<string, unknown> {
+    // Only the block's own fields: an upload may return more (an etag, a url), which the block cannot hold.
+    const known = new Set((blockFields(blockType) ?? []).map(field => field.name));
     const out: Record<string, unknown> = {};
     for (const [key, value] of Object.entries(fields)) {
+      if (key !== 'id' && key !== 'type' && !known.has(key)) continue;
       if (format === 'json' || key === 'id' || key === 'type' || formatAllows(format, { block: blockType, field: key })) out[key] = value;
     }
     return out;
@@ -677,19 +700,7 @@ export function createJinshuSource(options: JinshuSourceOptions): JinshuSource {
     problems = [...result.problems];
     saveError = undefined;
 
-    // An insert touches the blocks it adds, not its anchor: that is what the change marks and undo name.
-    const existed = new Set(listBlocks(prevDoc).map(b => b.id));
-    // Outermost new blocks only: a new callout is one change, not one per paragraph inside it.
-    const added: string[] = [];
-    const inside = new Set<string>();
-    walkBlocks(doc.blocks, (block, parentId) => {
-      if (existed.has(block.id)) return;
-      if (!inside.has(parentId)) added.push(block.id);
-      inside.add(block.id);
-      if (block.type === 'list') for (const item of block.items) inside.add(item.id);
-    });
-    const edited = batch.ops.filter(op => op.op !== 'insert').flatMap(extractOpTargetIds);
-    const touchedIds = Array.from(new Set([...edited, ...added]));
+    const touchedIds = touchedBy(prevDoc, doc, batch.ops);
     for (const id of touchedIds) {
       blockLastModifiedRev.set(id, revision);
       if (from) blockLastModifiedBy.set(id, from);
@@ -900,10 +911,19 @@ export function createJinshuSource(options: JinshuSourceOptions): JinshuSource {
     if (res.problems.some(p => p.severity === 'error')) {
       return { revision, problems: [...res.problems] };
     }
+    // Accepting is a human batch: the app's own rules see it as they see any other.
+    const acceptedBatch: OpBatch = { batchId: newBlockId('acc'), origin: humanOrigin, base: revision, ops: opsToApply };
+    if (options.validateBatch) {
+      const batchProblems = options.validateBatch(res.doc, doc, { origin: humanOrigin, batch: acceptedBatch });
+      if (batchProblems.some(p => p.severity === 'error')) return { revision, problems: [...res.problems, ...batchProblems] };
+    }
 
     doc = res.doc;
     revision += 1;
-    const touchedIds = Array.from(new Set(opsToApply.flatMap(extractOpTargetIds)));
+    problems = [...res.problems];
+    saveError = undefined;
+    redoStack.length = 0;
+    const touchedIds = touchedBy(prevDoc, doc, opsToApply);
     for (const id of touchedIds) {
       blockLastModifiedRev.set(id, revision);
       blockLastModifiedBy.delete(id);
@@ -911,7 +931,7 @@ export function createJinshuSource(options: JinshuSourceOptions): JinshuSource {
 
     // Accepting a suggestion creates a `human` transaction carrying `acceptedFrom: suggestion.origin`
     log.push({
-      batchId: newBlockId('acc'),
+      batchId: acceptedBatch.batchId,
       revision,
       origin: humanOrigin,
       acceptedFrom: sug.origin,
@@ -1029,7 +1049,23 @@ export function createJinshuSource(options: JinshuSourceOptions): JinshuSource {
     return getState();
   }
 
-  async function save(): Promise<SaveResult> {
+  // One save at a time: a manual, agent and auto save that overlap would each send the same base
+  // version. A later one waits, then saves what is current against the version the earlier returned.
+  let saveChain: Promise<unknown> = Promise.resolve();
+  let savesQueued = 0;
+  function save(): Promise<SaveResult> {
+    const waited = savesQueued > 0;
+    savesQueued += 1;
+    const next = saveChain
+      .then(() => (waited && savedRevision === revision && saveError === undefined && conflicts.length === 0
+        ? { ok: true as const, version: baseVersion }
+        : saveNow()))
+      .finally(() => { savesQueued -= 1; });
+    saveChain = next.catch(() => undefined);
+    return next;
+  }
+
+  async function saveNow(): Promise<SaveResult> {
     if (!options.save) {
       savedRevision = revision;
       saveError = undefined;
@@ -1203,7 +1239,14 @@ export function createJinshuSource(options: JinshuSourceOptions): JinshuSource {
 
   function stream(opts: { readonly at: Position; readonly origin: Origin; readonly mode?: 'direct' | 'suggest' }): JinshuStream {
     if (activeStream !== null) {
-      throw new Error(`Another stream (${activeStream.streamId}) is already active on document "${options.key}".`);
+      // Refused, not thrown: the caller reads the problem from each call, as from any other edit.
+      const busy: Problem = { code: 'REJECTED', severity: 'error', message: `Another stream (${activeStream.streamId}) is already active on document "${options.key}".` };
+      return {
+        streamId: '',
+        push: () => ({ blocks: [], problems: [busy] }),
+        finish: () => ({ revision, problems: [busy] }),
+        abort: () => ({}),
+      };
     }
     const streamId = newBlockId('str');
     let buffer = '';
@@ -1303,7 +1346,12 @@ export function createJinshuSource(options: JinshuSourceOptions): JinshuSource {
       if (changedIds.size === 0) {
         rawView = '<!-- No blocks changed since requested revision. -->';
       } else {
-        const blocks = doc.blocks.filter(b => changedIds.has(b.id));
+        // A top-level block is shown when it or anything inside it (a nested block, item, row or atom) changed.
+        const holds = (value: unknown): boolean => (Array.isArray(value)
+          ? value.some(holds)
+          : value !== null && typeof value === 'object'
+            && ((typeof (value as { id?: unknown }).id === 'string' && changedIds.has((value as { id: string }).id)) || Object.values(value).some(holds)));
+        const blocks = doc.blocks.filter(holds);
         rawView = blocks.map(b => toBlockMarkup(b, registry)).join('\n');
       }
     } else {

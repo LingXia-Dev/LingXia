@@ -29,6 +29,12 @@ export function createJinshuSources(
         .restoreDraft()
         .then(restored => (restored || !options.load ? source : source.load().then(() => source)));
       ready.set(key, opened);
+      // A failed load is not kept: the next open tries again.
+      opened.catch(() => {
+        if (ready.get(key) !== opened) return;
+        ready.delete(key);
+        sources.delete(key);
+      });
       return opened;
     },
     peek: key => sources.get(key),
