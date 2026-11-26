@@ -752,3 +752,23 @@ test('a link or an inline formula takes the selected text as its own', async () 
   assert.equal(field().props.inputValue, 'see the [docs](https://x.dev) here, area $x^2$', 'the formula takes the selection’s place');
   assert.equal(source.getState().doc.blocks.length, 1);
 });
+
+test('find and replace: Replace All changes every match Find counts, any case, as plain text keeping the marks', async () => {
+  const doc = createDocument({
+    title: 'Week 3',
+    blocks: [{ ...paragraph('', 'p1'), runs: [{ text: 'Limit and ' }, { text: 'limit', bold: true }, { text: '.' }] }, codeBlock('js', 'const LIMIT = 1;', { id: 'k' })],
+  });
+  const source = createJinshuSource({ key: 'w3', initialDoc: doc });
+  const { screen, settle } = await mountLive(source);
+  screen.press(byLabel(screen, 'Find and replace'));
+  await settle();
+  screen.type(byLabel(screen, 'Find text'), 'limit');
+  screen.type(byLabel(screen, 'Replace with'), 'a<b> & c');
+  await settle();
+  pressText(screen, 'Replace all');
+  await settle();
+  const [p, k] = source.getState().doc.blocks;
+  assert.equal(plainText(p.runs), 'a<b> & c and a<b> & c.');
+  assert.ok(p.runs.some(run => run.text === 'a<b> & c' && run.bold), JSON.stringify(p.runs));
+  assert.equal(k.code, 'const a<b> & c = 1;');
+});

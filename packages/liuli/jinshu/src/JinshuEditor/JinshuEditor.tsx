@@ -26,6 +26,7 @@ import {
   divider,
   extractOutline,
   heading,
+  isInlineRun,
   list,
   listItem,
   mathBlock,
@@ -37,7 +38,7 @@ import {
   walkBlocks,
 } from '../schema/helpers';
 import { normalizeInlines } from '../schema/validate';
-import { applyOps, checkMarkdownProfile, documentToMarkdown, formatAllows, markdownToBlocks, markdownToDocument } from '../schema/index';
+import { applyOps, checkMarkdownProfile, documentToMarkdown, formatAllows, inlinePlainProjection, markdownToBlocks, markdownToDocument } from '../schema/index';
 import type {
   AnyJinshuOp,
   BlockInput,
@@ -47,6 +48,7 @@ import type {
   HeadingLevel,
   HistoryEntry,
   Inline,
+  InlineRun,
   Position,
   JinshuBlock,
   JinshuDocument,
@@ -625,6 +627,28 @@ function InsertBlockPanel({
   );
 }
 
+/** Each match of `needle` in `text`, ignoring case, left to right, as `[from, to]`. */
+function findMatches(text: string, needle: string): [number, number][] {
+  const out: [number, number][] = [];
+  const pattern = new RegExp(needle.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'giu');
+  for (const m of text.matchAll(pattern)) out.push([m.index, m.index + m[0].length]);
+  return out;
+}
+
+/** The marks of the text run at `offset`, so replaced text keeps its look. */
+function marksAt(runs: readonly Inline[], offset: number): Omit<InlineRun, 'text'> {
+  let cursor = 0;
+  for (const item of runs) {
+    const length = isInlineRun(item) ? item.text.length : 1;
+    if (isInlineRun(item) && offset >= cursor && offset < cursor + length) {
+      const { text: _text, ...marks } = item;
+      return marks;
+    }
+    cursor += length;
+  }
+  return {};
+}
+
 /**
  * Publication-grade block editor & AI co-authoring workspace:
  * - Sticky single-row icon formatting ribbon (`isToolbarSticky`), zero layout shift on block focus.
@@ -1130,15 +1154,22 @@ export function JinshuEditor(props: JinshuEditorProps) {
     }),
   };
 
+  // Replaces what Find counts, ignoring case as it does, with the replacement as plain text taking
+  // the marks of the text it replaces. Matches go last to first so earlier offsets stay put.
   const runReplaceAll = () => {
     if (!doc || !findQuery.value) return;
     const needle = findQuery.value;
+    const noteWord = note('@jinshu.note.replace', { text: needle });
     const ops: AnyJinshuOp[] = [];
     for (const blk of doc.blocks) {
-      if ((blk.type === 'paragraph' || blk.type === 'heading') && plainText(blk.runs).includes(needle)) {
-        ops.push({ op: 'edit', id: blk.id, find: needle, replace: replaceQuery.value, all: true, noteWord: note('@jinshu.note.replace', { text: needle }) });
-      } else if (blk.type === 'code' && blk.code.includes(needle)) {
-        ops.push({ op: 'edit', id: blk.id, field: 'code', find: needle, replace: replaceQuery.value, all: true, noteWord: note('@jinshu.note.replace', { text: needle }) });
+      if (blk.type === 'paragraph' || blk.type === 'heading') {
+        for (const [from, to] of findMatches(inlinePlainProjection(blk.runs), needle).reverse()) {
+          ops.push({ op: 'text', target: { blockId: blk.id }, from, to, insert: replaceQuery.value ? [{ ...marksAt(blk.runs, from), text: replaceQuery.value }] : [], noteWord });
+        }
+      } else if (blk.type === 'code') {
+        for (const [from, to] of findMatches(blk.code, needle).reverse()) {
+          ops.push({ op: 'text', target: { blockId: blk.id, field: 'code' }, from, to, insert: replaceQuery.value ? [{ text: replaceQuery.value }] : [], noteWord });
+        }
       }
     }
     if (ops.length > 0) dispatchOps(ops);
@@ -1184,10 +1215,9 @@ export function JinshuEditor(props: JinshuEditorProps) {
 
   const matchingBlockIds = new Set<string>();
   if (showFind.value && findQuery.value && doc) {
-    const q = findQuery.value.toLowerCase();
     for (const blk of doc.blocks) {
-      const txt = blk.type === 'code' ? blk.code : 'runs' in blk && blk.runs ? plainText(blk.runs) : '';
-      if (txt.toLowerCase().includes(q)) matchingBlockIds.add(blk.id);
+      const txt = blk.type === 'code' ? blk.code : blk.type === 'paragraph' || blk.type === 'heading' ? inlinePlainProjection(blk.runs) : '';
+      if (findMatches(txt, findQuery.value).length > 0) matchingBlockIds.add(blk.id);
     }
   }
 
