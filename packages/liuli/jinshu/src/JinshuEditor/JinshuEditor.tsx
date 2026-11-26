@@ -82,11 +82,14 @@ import { editorIcons } from './editorIcons';
 import { jinshuEditorRecipe as e } from './JinshuEditor.recipe';
 import { stableCallbacks } from '../internal/stable';
 import {
-  hasTrailingShorthandMark,
+  linkAt,
+  markSpanAt,
+  splitAt,
+  toggleMarkAt,
+  type TextRange,
   atomsIn,
   inlinesToShorthand,
   shorthandToInlines,
-  toggleShorthandWrap,
 } from './inlineMarkdown';
 
 export { JinshuProvider, type JinshuChannelAction, type JinshuProviderProps } from '../internal/channel';
@@ -201,6 +204,9 @@ const SLASH_ITEMS: readonly SlashItem[] = [
 
 // The block the person last worked in, per editor: a toolbar insert lands there, not at the end.
 const lastWorked = new WeakMap<object, string>();
+// Where the caret or selection is in the open text field, by its draft cell; read when a format applies, so moving it renders nothing.
+const selections = new WeakMap<object, TextRange & { readonly id: string | null }>();
+const MARKS = ['**', '*', '++', '~~', '`', '==', '^', '~'] as const;
 // Block editors holding a field open, per editor, with how to save and close each.
 const openEditors = new WeakMap<object, Map<string, { readonly close: () => void; readonly save: () => void }>>();
 
@@ -653,6 +659,9 @@ export function JinshuEditor(props: JinshuEditorProps) {
   const titleDraft = useLocal<string>(`jinshu-ed-title-val-${docKey}`, '');
   const activeId = useLocal<string | null>(`jinshu-ed-active-${docKey}`, null);
   const draftText = useLocal<string>(`jinshu-ed-draft-${docKey}`, '');
+  // Whether text is selected, and the marks around the caret: written only when they change.
+  const caretMarks = useLocal(`jinshu-ed-marks-${docKey}`, '');
+  const fieldId = useId();
   const opening = useLocal<{ readonly id: string; readonly text: string } | null>(`jinshu-ed-opening-${docKey}`, null);
   const hoveredId = useLocal<string | null>(`jinshu-ed-hover-${docKey}`, null);
   const openedAt = useLocal(`jinshu-ed-opened-at-${docKey}`, '');
@@ -1032,27 +1041,62 @@ export function JinshuEditor(props: JinshuEditorProps) {
     insertBlockAt(targetBlockId, makeBlockForSlash(kind, seed), replaceEmpty);
   };
 
-  const applyFormatButton = (prefix: string, suffix = prefix) => {
-    if (!doc || !activeId.value) return;
-    const blk = doc.blocks.find(b => b.id === activeId.value);
-    if (!blk || (blk.type !== 'paragraph' && blk.type !== 'heading')) return;
-    const next = toggleShorthandWrap(draftText.value, prefix, suffix, { placeholder: prefix === '[' ? seed.linkText : seed.text });
-    draftText.set(next);
-    commitActiveDraft(blk, next);
+  /** Notes where the caret is; the bar re-renders only when a selection starts or ends, or the marks around it change. */
+  const noteSelection = (text: string, range: TextRange) => {
+    const id = activeId.value;
+    selections.set(draftText, { id, start: range.start, end: range.end });
+    const key = `${range.start < range.end ? 1 : 0}|${MARKS.filter(mark => markSpanAt(text, range, mark)).join(' ')}|${id ?? ''}`;
+    if (caretMarks.value !== key) caretMarks.set(key);
+  };
+  const caretRange = (): TextRange => {
+    const held = selections.get(draftText);
+    const length = draftText.value.length;
+    // Noted in another block, or before an edit shortened the text: the caret is taken to be at the end.
+    return held && held.id === activeId.value && held.end <= length ? held : { start: length, end: length };
+  };
+  /** Puts new text in the open field with the selection where it belongs, and saves it. */
+  const placeDraft = (blk: JinshuBlock, text: string, range: TextRange) => {
+    draftText.set(text);
+    draftText.setSelection(range.start, range.end);
+    noteSelection(text, range);
+    commitActiveDraft(blk, text);
+  };
+  const activeTextBlock = () => {
+    const blk = doc && activeId.value ? doc.blocks.find(b => b.id === activeId.value) : undefined;
+    return blk && (blk.type === 'paragraph' || blk.type === 'heading') ? blk : undefined;
+  };
+
+  const applyFormatButton = (mark: string) => {
+    const blk = activeTextBlock();
+    if (!blk) return;
+    const next = toggleMarkAt(draftText.value, caretRange(), mark, seed.text);
+    placeDraft(blk, next.text, next);
   };
 
   const insertInlineSnippet = (snippet: string) => {
     if (!doc) return;
-    const blk = activeId.value ? doc.blocks.find(b => b.id === activeId.value) : undefined;
-    if (blk && (blk.type === 'paragraph' || blk.type === 'heading')) {
-      const sep = draftText.value && !/\s$/.test(draftText.value) ? ' ' : '';
-      const next = `${draftText.value}${sep}${snippet}`;
-      draftText.set(next);
-      commitActiveDraft(blk, next);
+    const blk = activeTextBlock();
+    if (blk) {
+      const { start, end } = caretRange();
+      const text = draftText.value;
+      const caret = start + snippet.length;
+      placeDraft(blk, text.slice(0, start) + snippet + text.slice(end), { start: caret, end: caret });
+      draftText.focus();
       return;
     }
     const nextP = paragraph(shorthandToInlines(snippet, dialect));
     dispatchOps([{ op: 'insert', at: { end: 'doc' }, blocks: [nextP], noteWord: note('@jinshu.note.insertText') }]);
+  };
+
+  const insertLink = (href: string, label: string) => {
+    const blk = activeTextBlock();
+    if (!blk) {
+      insertInlineSnippet(`[${label || href}](${href})`);
+      return;
+    }
+    const next = linkAt(draftText.value, caretRange(), href, label);
+    placeDraft(blk, next.text, next);
+    draftText.focus();
   };
 
   const blockCb: BlockEditorCallbacks = {
@@ -1344,7 +1388,11 @@ export function JinshuEditor(props: JinshuEditorProps) {
     },
   }));
 
-  const markButton = (icon: IconButtonProps['icon'], label: string, mark: string, close = mark) => (
+  const [selected, marksHere, markedIn] = caretMarks.value.split('|');
+  const isHere = markedIn === (activeId.value ?? '');
+  const onMarks = new Set(isHere ? marksHere?.split(' ') : []);
+  const hasSelection = isHere && selected === '1';
+  const markButton = (icon: IconButtonProps['icon'], label: string, mark: string) => (
     <Tooltip content={label} placement="bottom">
       <ToggleButton
         label={label}
@@ -1353,8 +1401,9 @@ export function JinshuEditor(props: JinshuEditorProps) {
         variant="ghost"
         size="sm"
         isDisabled={!canFormatInline}
-        value={canFormatInline && hasTrailingShorthandMark(draftText.value, mark)}
-        onChange={() => applyFormatButton(mark, close)}
+        value={canFormatInline && onMarks.has(mark)}
+        isFocusKept
+        onChange={() => applyFormatButton(mark)}
       />
     </Tooltip>
   );
@@ -1447,6 +1496,10 @@ export function JinshuEditor(props: JinshuEditorProps) {
     <Popover
       key={`link-pop-${popEpoch.value}`}
       label={jinshuText('@jinshu.editor.link.insert')}
+      onOpenChange={isOpen => {
+        const { start, end } = caretRange();
+        if (isOpen && start < end) linkLabel.set(draftText.value.slice(start, end).trim());
+      }}
       title={jinshuText('@jinshu.editor.link.title')}
       content={
         <view className={e.link.base}>
@@ -1490,8 +1543,7 @@ export function JinshuEditor(props: JinshuEditorProps) {
               variant="primary"
               isDisabled={!linkHref.value.trim() || linkHref.value.trim() === 'https://'}
               onClick={() => {
-                const text = linkLabel.value.trim() || linkHref.value.trim();
-                insertInlineSnippet(`[${text}](${linkHref.value.trim()})`);
+                insertLink(linkHref.value.trim(), linkLabel.value.trim());
                 linkLabel.set('');
                 linkHref.set('https://');
                 popEpoch.set(popEpoch.value + 1);
@@ -1509,6 +1561,10 @@ export function JinshuEditor(props: JinshuEditorProps) {
     <Popover
       key={`math-pop-${popEpoch.value}`}
       label={jinshuText('@jinshu.editor.math.insert')}
+      onOpenChange={isOpen => {
+        const { start, end } = caretRange();
+        if (isOpen && start < end) mathDraft.set(draftText.value.slice(start, end).trim());
+      }}
       title={blockTypeLabel('math')}
       content={
         <view className={e.math.base}>
@@ -1564,16 +1620,7 @@ export function JinshuEditor(props: JinshuEditorProps) {
       {allows({ mark: 'underline' }) && markButton('underline', jinshuText('@jinshu.editor.format.underline'), '++')}
       {allows({ mark: 'strike' }) && markButton('strikethrough', jinshuText('@jinshu.editor.format.strike'), '~~')}
       {allows({ mark: 'code' }) && markButton('code', jinshuText('@jinshu.editor.format.code'), '`')}
-      {allows({ mark: 'highlight' }) && (
-        <Tooltip content={jinshuText('@jinshu.editor.format.highlight')} placement="bottom"><IconButton
-          label={jinshuText('@jinshu.editor.format.highlight')}
-          icon={'highlight'}
-          size="sm"
-          isDisabled={!canFormatInline}
-          variant={canFormatInline && hasTrailingShorthandMark(draftText.value, '==') ? 'tonal' : 'ghost'}
-          onClick={() => applyFormatButton('==')}
-        /></Tooltip>
-      )}
+      {allows({ mark: 'highlight' }) && markButton('highlight', jinshuText('@jinshu.editor.format.highlight'), '==')}
       {allows({ mark: 'link' }) && linkPopover}
       <ToolbarSep />
       {allows({ mark: 'script' }) && markButton('superscript', jinshuText('@jinshu.editor.format.superscript'), '^')}
@@ -2152,11 +2199,18 @@ export function JinshuEditor(props: JinshuEditorProps) {
                       </view>
                     ) : isActive && isInlineTextBlock(block) ? (
                       <view className={e.textEditor.base}>
+                        {/* Desktop: the format bar floats over selected text and leaves the page clear otherwise. */}
                         {isDesktop && (
                           <view
+                            id={`${fieldId}-format`}
+                            popover="manual"
+                            open={hasSelection}
+                            anchor={`${fieldId}:selection`}
                             role="toolbar"
                             aria-label={jinshuText('@jinshu.editor.format.toolbar')}
+                            style={{ positionArea: 'top' }}
                             className={e.formatBar.base}
+                            data-testid={props['data-testid'] && `${props['data-testid']}-format-bar`}
                           >
                             {formatControls}
                           </view>
@@ -2164,13 +2218,15 @@ export function JinshuEditor(props: JinshuEditorProps) {
                       {/* Its own key: when a line-start rule makes a list or quote here, focus leaves this field for the new one. */}
                       <textarea
                         key="text-field"
+                        id={fieldId}
                         aria-label={jinshuText('@jinshu.editor.edit.source', { type: block.type })}
-                        value={draftText.value}
+                        bind={draftText}
                         autoFocus
                         rows={1}
                         maxRows={24}
                         placeholder={block.type === 'paragraph' ? jinshuText('@jinshu.editor.text.placeholder') : jinshuText('@jinshu.editor.heading.placeholder')}
                         onInput={val => handleLiveInput(block, val)}
+                        onSelectionChange={sel => noteSelection(draftText.value, sel)}
                         onBlur={() => commitOnBlur(block)}
                         onKeyDown={{
                           Enter: () => {
@@ -2193,11 +2249,15 @@ export function JinshuEditor(props: JinshuEditorProps) {
                               activeId.set(null);
                               return true;
                             }
-                            commitActiveDraft(block, draftText.value);
-                            const nextP = paragraph('');
+                            // The line breaks at the caret: what follows it moves into a new paragraph below, the caret at its start.
+                            const [before, after] = splitAt(draftText.value, caretRange(), MARKS);
+                            commitActiveDraft(block, before);
+                            const nextP = paragraph(after ? shorthandToInlines(after, dialect) : '');
                             dispatchOps([{ op: 'insert', at: { after: block.id }, blocks: [nextP] }]);
                             activeId.set(nextP.id);
-                            draftText.set('');
+                            draftText.set(after);
+                            draftText.setSelection(0, 0);
+                            noteSelection(after, { start: 0, end: 0 });
                             return true;
                           },
                           ArrowUp: () => {

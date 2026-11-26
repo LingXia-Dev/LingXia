@@ -13,7 +13,7 @@ import {
   table,
 } from './schema/index';
 import { createJinshuSource } from './source/index';
-import { inlinesToShorthand, shorthandToInlines, toggleShorthandWrap } from './JinshuEditor/inlineMarkdown';
+import { inlinesToShorthand, linkAt, markSpanAt, shorthandToInlines, splitAt, toggleMarkAt } from './JinshuEditor/inlineMarkdown';
 import { tokenizeCodeLine } from './internal/codeTokens';
 
 const registry = createRegistry([]);
@@ -86,36 +86,65 @@ describe('UTF-16 surrogate safety', () => {
   });
 });
 
-describe('Toolbar formatting never wraps a whole paragraph', () => {
-  it('wraps a short single phrase whole and toggles it back', () => {
-    assert.equal(toggleShorthandWrap('函数极限', '**'), '**函数极限**');
-    assert.equal(toggleShorthandWrap('**函数极限**', '**'), '函数极限');
+describe('Format buttons act where the person is', () => {
+  const at = (text, start, end = start) => ({ start, end });
+  const show = r => `${r.text.slice(0, r.start)}[${r.text.slice(r.start, r.end)}]${r.text.slice(r.end)}`;
+
+  it('wraps the selection, and the selection stays on the same words', () => {
+    assert.equal(show(toggleMarkAt('Jinshu stores documents as JSON', at(0, 14, 23), '**', 'text')), 'Jinshu stores **[documents]** as JSON');
   });
 
-  it('wraps only the trailing ASCII word of a sentence', () => {
-    assert.equal(toggleShorthandWrap('Jinshu stores documents as JSON', '**'), 'Jinshu stores documents as **JSON**');
+  it('a selection ending in a space marks the word, not the space', () => {
+    assert.equal(toggleMarkAt('read this now', at(0, 5, 10), '*', 'text').text, 'read *this* now');
   });
 
-  it('wraps only the trailing CJK clause after punctuation', () => {
-    assert.equal(toggleShorthandWrap('先读题目，再看解析', '=='), '先读题目，==再看解析==');
+  it('inside a marked span, or selecting it with its marks, takes the mark off', () => {
+    assert.equal(show(toggleMarkAt('先读题目，**再看解析**', at(0, 9), '**', '文本')), '先读题目，再看[]解析');
+    assert.equal(toggleMarkAt('a **bold** b', at(0, 2, 10), '**', 'x').text, 'a bold b');
+    assert.equal(toggleMarkAt('a **bold** b', at(0, 4, 8), '**', 'x').text, 'a bold b');
   });
 
-  it('caps a long unpunctuated CJK run to its last characters', () => {
-    const out = toggleShorthandWrap('这是一个没有任何标点符号的很长很长的句子', '**');
-    assert.ok(out.endsWith('**的句子**') || out.endsWith('**长的句子**'), out);
-    assert.ok(out.startsWith('这是一个'), 'the head stays unformatted');
+  it('a caret in a word marks that word and stays put in it', () => {
+    assert.equal(show(toggleMarkAt('stores documents as', at(0, 10), '`', 'code')), 'stores `doc[]uments` as');
   });
 
-  it('unwraps a trailing marked token instead of nesting', () => {
-    assert.equal(toggleShorthandWrap('先读题目，**再看解析**', '**'), '先读题目，再看解析');
+  it('a caret between words, or in CJK text, puts in a selected placeholder to type over', () => {
+    assert.equal(show(toggleMarkAt('结论如下：', at(0, 5), '`', '文本')), '结论如下：`[文本]`');
+    assert.equal(show(toggleMarkAt('先读题目再看', at(0, 2), '==', '文本')), '先读==[文本]==题目再看');
   });
 
-  it('appends a placeholder after trailing punctuation', () => {
-    assert.equal(toggleShorthandWrap('结论如下：', '`'), '结论如下：`文本`');
+  it('italic is not taken for half of bold, nor subscript for half of strike', () => {
+    assert.equal(markSpanAt('a **b** c', at(0, 4), '*'), null);
+    assert.deepEqual(markSpanAt('a **b** c', at(0, 4), '**'), { open: 2, close: 5 });
+    assert.equal(markSpanAt('~~gone~~ H~2~O', at(0, 4), '~'), null);
+    assert.deepEqual(markSpanAt('~~gone~~ H~2~O', at(0, 12), '~'), { open: 10, close: 12 });
   });
 
-  it('wraps the whole cell when asked', () => {
-    assert.equal(toggleShorthandWrap('a long table cell, with commas', '**', '**', { wholeText: true }), '**a long table cell, with commas**');
+  it('bold and italic on the same words: each turns on and off by itself', () => {
+    const both = toggleMarkAt('a **word** b', at(0, 4, 8), '*', 'x');
+    assert.equal(both.text, 'a ***word*** b');
+    assert.ok(markSpanAt(both.text, both, '**') && markSpanAt(both.text, both, '*'), 'both show as on');
+    assert.equal(toggleMarkAt(both.text, both, '*', 'x').text, 'a **word** b');
+    assert.equal(toggleMarkAt(both.text, both, '**', 'x').text, 'a *word* b');
+  });
+
+  it('a span on another line does not hold the selection', () => {
+    assert.equal(markSpanAt('**a\nb**', at(0, 5), '**'), null);
+  });
+
+  it('a link shows the typed label, else the selected text, else its address, at the selection', () => {
+    assert.equal(show(linkAt('see the docs here', at(0, 8, 12), 'https://x.dev', '')), 'see the [[docs]](https://x.dev) here');
+    assert.equal(show(linkAt('see the docs here', at(0, 8, 12), 'https://x.dev', 'manual')), 'see the [[manual]](https://x.dev) here');
+    assert.equal(show(linkAt('see ', at(0, 4), 'https://x.dev', '')), 'see [[https://x.dev]](https://x.dev)');
+  });
+
+  it('Enter in the middle of a mark keeps both halves formatted', () => {
+    const marks = ['**', '*', '++', '~~', '`', '==', '^', '~'];
+    assert.deepEqual(splitAt('Hello **world** now', at(0, 11), marks), ['Hello **wor**', '**ld** now']);
+    assert.deepEqual(splitAt('a ***both*** b', at(0, 7), marks), ['a ***bo***', '***th*** b']);
+    assert.deepEqual(splitAt('x **bold** y', at(0, 4), marks), ['x ', '**bold** y'], 'at the mark’s start the mark moves whole');
+    assert.deepEqual(splitAt('x **bold** y', at(0, 8), marks), ['x **bold**', ' y'], 'at its end it stays whole');
+    assert.deepEqual(splitAt('plain text', at(0, 5), marks), ['plain', ' text']);
   });
 
   it('round-trips underline, superscript and subscript', () => {

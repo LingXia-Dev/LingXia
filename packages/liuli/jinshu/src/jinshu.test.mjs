@@ -43,7 +43,7 @@ import {
 
 import { createJinshuSource } from './source/index.ts';
 import { toolsOver } from './testing/agent.mjs';
-import { inlinesToShorthand, shorthandToInlines, toggleShorthandWrap } from './JinshuEditor/inlineMarkdown.ts';
+import { inlinesToShorthand, shorthandToInlines, toggleMarkAt } from './JinshuEditor/inlineMarkdown.ts';
 
 const quizBlock = defineBlock({
   type: 'x-demo-quiz',
@@ -358,8 +358,8 @@ describe('JinshuSource & JinshuTools & Streaming', () => {
     assert.equal(short, 'Use **GPU Channel** with `syncDoc` and [docs](https://example.com) $E=mc^2$');
     const back = shorthandToInlines(short);
     assert.deepEqual(back, runs);
-    assert.equal(toggleShorthandWrap('hello', '**'), '**hello**');
-    assert.equal(toggleShorthandWrap('**hello**', '**'), 'hello');
+    assert.equal(toggleMarkAt('hello', { start: 0, end: 5 }, '**', 'x').text, '**hello**');
+    assert.equal(toggleMarkAt('**hello**', { start: 2, end: 7 }, '**', 'x').text, 'hello');
   });
 });
 

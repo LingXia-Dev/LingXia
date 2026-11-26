@@ -289,6 +289,8 @@ test('markdown document: the menus and property editors offer only what Markdown
   const { screen, settle } = await mountLive(source);
   screen.press(byLabel(screen, 'Edit block p'));
   await settle();
+  screen.selectText(byLabel(screen, 'Edit paragraph'), 0, 5);
+  await settle();
   assert.ok(hasLabel(screen, 'Bold'));
   for (const label of ['Underline', 'Highlight', 'Superscript', 'Subscript']) assert.ok(!hasLabel(screen, label), label);
   screen.type(byLabel(screen, 'Edit paragraph'), '/');
@@ -616,6 +618,9 @@ test('toolbars: every button that shows only an icon names itself in a hint', as
   const { screen, settle } = await mountLive(createJinshuSource({ key: 'w3', initialDoc: doc }));
   screen.press(byLabel(screen, 'Edit block p'));
   await settle();
+  // The format bar shows over selected text.
+  screen.selectText(byLabel(screen, 'Edit paragraph'), 0, 5);
+  await settle();
   const inToolbar = node => {
     for (let at = node.parent; at; at = at.parent) if (at.props.role === 'toolbar' || at.props.accessibilityRole === 'toolbar') return true;
     return false;
@@ -664,4 +669,86 @@ test('a block only started (a quote, list or code block closed with nothing in i
   screen.key(byLabel(screen, 'Quote text'), 'Escape');
   await settle();
   assert.deepEqual(source.getState().doc.blocks.map(b => b.type), ['paragraph', 'quote']);
+});
+
+test('format buttons act on the selected words, keep them selected, show which marks are on, and come off again', async () => {
+  const doc = createDocument({ blocks: [paragraph('Jinshu stores documents as JSON', 'p')] });
+  const source = createJinshuSource({ key: 'w3', initialDoc: doc });
+  const { screen, settle } = await mountLive(source);
+  screen.press(byLabel(screen, 'Edit block p'));
+  await settle();
+  const field = () => byLabel(screen, 'Edit paragraph');
+  const bar = () => screen.queryAll(n => n.testId === 'w3-format-bar')[0];
+  assert.equal(bar(), undefined, 'no bar over the page while only a caret is in the text');
+  screen.selectText(field(), 14, 23);
+  await settle();
+  assert.ok(bar(), 'selecting words brings the bar');
+  assert.match(bar().props.anchorTo, /:selection$/, 'and it rides on the selection');
+  assert.equal(byLabel(screen, 'Bold').props.keepsFocus, 1, 'a press keeps the selection in the text');
+  screen.press(byLabel(screen, 'Bold'));
+  await settle();
+  assert.equal(field().props.inputValue, 'Jinshu stores **documents** as JSON');
+  assert.deepEqual(Array.from(field().props.selectionRequest).slice(1), [16, 25], 'the same words stay selected');
+  assert.equal(byLabel(screen, 'Bold').props.statePressed, 1);
+  assert.equal(byLabel(screen, 'Italic').props.statePressed, 0);
+  assert.deepEqual(source.getState().doc.blocks[0].runs.map(r => r.text), ['Jinshu stores ', 'documents', ' as JSON']);
+  screen.press(byLabel(screen, 'Bold'));
+  await settle();
+  assert.equal(field().props.inputValue, 'Jinshu stores documents as JSON');
+  assert.equal(byLabel(screen, 'Bold').props.statePressed, 0);
+  screen.selectText(field(), 9);
+  await settle();
+  assert.equal(bar(), undefined, 'a caret again: the bar goes');
+});
+
+test('a format with only a caret marks the word it is in; Enter breaks the line at the caret', async () => {
+  const doc = createDocument({ blocks: [paragraph('Hello world', 'p')] });
+  const source = createJinshuSource({ key: 'w3', initialDoc: doc });
+  const { screen, settle } = await mountLive(source, { pointer: 'coarse', sizeClass: 'compact' });
+  screen.press(byLabel(screen, 'Edit block p'));
+  await settle();
+  const field = () => byLabel(screen, 'Edit paragraph');
+  screen.selectText(field(), 8);
+  screen.press(byLabel(screen, 'Italic'));
+  await settle();
+  assert.equal(field().props.inputValue, 'Hello *world*');
+  assert.deepEqual(Array.from(field().props.selectionRequest).slice(1), [9, 9], 'the caret stays where it was in the word');
+  screen.selectText(field(), 9);
+  screen.key(field(), 'Enter');
+  await settle();
+  const blocks = source.getState().doc.blocks;
+  assert.deepEqual(blocks.map(b => b.runs.map(r => r.text).join('')), ['Hello wo', 'rld']);
+  assert.deepEqual(blocks.map(b => b.runs.at(-1).italic), [true, true], 'both halves stay italic');
+  assert.equal(field().props.inputValue, '*rld*', 'the caret moved on with the rest of the line');
+  assert.deepEqual(Array.from(field().props.selectionRequest).slice(1), [0, 0]);
+});
+
+test('a link or an inline formula takes the selected text as its own', async () => {
+  const doc = createDocument({ blocks: [paragraph('see the docs here', 'p')] });
+  const source = createJinshuSource({ key: 'w3', initialDoc: doc });
+  const { screen, settle } = await mountLive(source);
+  screen.press(byLabel(screen, 'Edit block p'));
+  await settle();
+  const field = () => byLabel(screen, 'Edit paragraph');
+  screen.selectText(field(), 8, 12);
+  await settle();
+  screen.press(byLabel(screen, 'Link'));
+  await settle();
+  assert.equal(byLabel(screen, 'Link text').props.inputValue, 'docs', 'the selection fills the link text');
+  screen.type(byLabel(screen, 'Link address'), 'https://x.dev');
+  await settle();
+  screen.press(screen.queryAll(n => n.tag === 'button' && labelOf(n) === 'Insert' && n.props.enabled !== 0).at(-1));
+  await settle();
+  assert.equal(field().props.inputValue, 'see the [docs](https://x.dev) here');
+  screen.type(field(), 'see the [docs](https://x.dev) here, area x^2');
+  const at = field().props.inputValue.indexOf('x^2');
+  screen.selectText(field(), at, at + 3);
+  await settle();
+  screen.press(byLabel(screen, 'Equation'));
+  await settle();
+  assert.equal(byLabel(screen, 'LaTeX source').props.inputValue, 'x^2', 'the selection fills the formula');
+  screen.press(byLabel(screen, 'Inline'));
+  await settle();
+  assert.equal(field().props.inputValue, 'see the [docs](https://x.dev) here, area $x^2$', 'the formula takes the selection’s place');
+  assert.equal(source.getState().doc.blocks.length, 1);
 });
