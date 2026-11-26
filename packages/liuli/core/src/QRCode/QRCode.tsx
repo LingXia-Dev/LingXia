@@ -65,7 +65,8 @@ export function fitsQRCode(value: string, level: QRLevel = 'M'): boolean {
 
 /**
  * The same code as a standalone SVG document, black on white with its quiet zone, for an app to save
- * or share with a button of its own. Throws, as QRCode does, when `value` does not fit.
+ * or share with a button of its own. Throws when `value` does not fit, where QRCode warns and draws
+ * nothing; check with `fitsQRCode()` first.
  */
 export function qrCodeSVG(value: string, level: QRLevel = 'M'): string {
   const { viewBox, paths } = source(value, level);
