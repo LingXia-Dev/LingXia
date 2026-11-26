@@ -79,6 +79,7 @@ export const doc: ComponentDoc = {
     { name: 'Area', title: 'An area, from zero' },
     { name: 'Smooth', title: 'A smoothed line' },
     { name: 'Steps', title: 'A count that holds between changes' },
+    { name: 'Band', title: "Each day's range shaded behind its mean" },
     { name: 'Zone', title: 'A target range shaded under the line' },
     { name: 'Stacked', title: 'Series stacked into bands, the top line their total' },
     { name: 'Series', title: 'Three series, with a legend that hides them' },

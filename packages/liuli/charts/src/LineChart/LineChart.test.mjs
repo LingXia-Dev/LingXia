@@ -546,3 +546,13 @@ test('Zone: a reference with `to` shades its range under the line, draws both ed
   assert.ok(order.findIndex(keys => keys.includes('zone-0')) < order.findIndex(keys => keys.includes('mmol-line')), 'the shade lies under the line');
   assert.match(textOf(screen.getByTestId('glucose')), /Target, 3\.9–10\.0/);
 });
+
+test('Band: the range between two fields is one shade behind the line, the scale holds it, and each day reads it', async () => {
+  const screen = laidOut(await renderExample('LineChart/LineChart', 'Band'));
+  const paths = screen.queryAll(node => node.tag === 'vector').flatMap(node => JSON.parse(node.props.vectorSource).paths);
+  const band = paths.find(path => path.key === 'band-area');
+  assert.equal(band.fill, 'chart-1/16', "in the first series' colour");
+  assert.equal(band.d.split('M').length - 1, 1, 'one shape: the highs forward, the lows back');
+  assert.ok(!paths.some(path => path.key === 'mean-area'), 'the line itself is not filled');
+  assert.match(textOf(screen.getByTestId('forecast')), /Wed: Mean 13\.8°, Range 9\.0°–19\.0°/);
+});

@@ -1253,6 +1253,12 @@
           "default": "false"
         },
         {
+          "name": "band",
+          "type": "LineChartBand<Row>",
+          "required": false,
+          "description": "Shades the range between two fields behind the lines: a day's low and high, a forecast's margin. Each row reads it as `label low–high`."
+        },
+        {
           "name": "layout",
           "type": "LineChartLayout",
           "required": false,
@@ -1598,6 +1604,11 @@
           "name": "Steps",
           "title": "A count that holds between changes",
           "source": "import { summarize } from '@liulidesign/charts/summary';\nimport { LineChart } from '@liulidesign/charts/LineChart';\n\nconst seats = [\n  { month: 'Jan', seats: 12 }, { month: 'Feb', seats: 12 }, { month: 'Mar', seats: 18 }, { month: 'Apr', seats: 18 },\n  { month: 'May', seats: 25 }, { month: 'Jun', seats: 22 }, { month: 'Jul', seats: 30 },\n];\n\n/** Steps suit a count that changes at set moments and holds between them: seats on a plan, a price, a limit. */\nexport function Steps() {\n  return <LineChart rows={seats} x=\"month\" y=\"seats\" label=\"Seats on the plan by month\" title=\"Seats\" description=\"This year\" curve=\"step\" hasArea summarize={summarize} data-testid=\"seats\" />;\n}"
+        },
+        {
+          "name": "Band",
+          "title": "Each day's range shaded behind its mean",
+          "source": "import { useLocal } from '@lingxia/view';\nimport { LineChart } from '@liulidesign/charts/LineChart';\n\nconst day = [\n  { hour: '00:00', c: 11.2 }, { hour: '02:00', c: 10.4 }, { hour: '04:00', c: 9.8 }, { hour: '06:00', c: 10.1 }, { hour: '08:00', c: 12.6 },\n  { hour: '10:00', c: 15.9 }, { hour: '12:00', c: 18.7 }, { hour: '14:00', c: 20.3 }, { hour: '16:00', c: 19.6 }, { hour: '18:00', c: 17.0 },\n  { hour: '20:00', c: 14.4 }, { hour: '22:00', c: 12.5 },\n];\nconst degrees = (value: number) => `${value.toFixed(1)}°`;\nconst forecast = [\n  { day: 'Mon', low: 6, mean: 10.5, high: 14 }, { day: 'Tue', low: 7, mean: 11.4, high: 16 }, { day: 'Wed', low: 9, mean: 13.8, high: 19 },\n  { day: 'Thu', low: 8, mean: 12.1, high: 17 }, { day: 'Fri', low: 5, mean: 8.6, high: 12 }, { day: 'Sat', low: 4, mean: 8.9, high: 13 },\n  { day: 'Sun', low: 6, mean: 11.2, high: 15 },\n];\n\n/** A band behind the line shades each day's range, low to high; a chosen day reads both. */\nexport function Band() {\n  const day = useLocal<string | null>('day', null);\n  return (\n    <LineChart\n      rows={forecast}\n      x=\"day\"\n      y={[{ field: 'mean', label: 'Mean' }]}\n      band={{ low: 'low', high: 'high', label: 'Range' }}\n      curve=\"smooth\"\n      label=\"Temperature this week, mean and daily range\"\n      title=\"Temperature\"\n      description=\"This week\"\n      formatValue={degrees}\n      bind={day}\n      data-testid=\"forecast\"\n    />\n  );\n}"
         },
         {
           "name": "Zone",

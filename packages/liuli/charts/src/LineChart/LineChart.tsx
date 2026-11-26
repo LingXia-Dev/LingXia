@@ -1,6 +1,6 @@
 import { cx, useBox, useLocal, useView, type Child, type PointerEvent, type VectorPath, type Local } from '@lingxia/view';
 import { Chart, ChartLegend, ChartReadout, type ChartLegendPosition, type ChartField, type ChartRecord, type ChartReference, type ChartRow, type ChartSeries, type ChartSize, type ChartSummarize } from '../Chart/Chart';
-import { colorOf, keysOf, numberOf, numberIn, referenceEnds, referenceTop, roleOf, seriesFacts, seriesOf, textOf } from '../internal/data';
+import { colorOf, keysOf, numberOf, numberIn, referenceEnds, referenceTop, roleOf, seriesFacts, seriesOf, textOf, type ChartColor } from '../internal/data';
 import { pressed, pressedKey, scrubbing } from '../internal/gesture';
 import { between, box, closed, domain, dot, indexAt, niceTicks, reach, runs, scaleY, thin, traced, type ChartCurve, type Point } from '../internal/geometry';
 import { ReferenceLabels, ReferenceReading, referencePath, useReferences, zonePath } from '../internal/References';
@@ -33,6 +33,8 @@ export interface LineChartProps<Row extends ChartRecord<Row> = ChartRow> {
   curve?: ChartCurve;
   /** Fills under each line and measures it from zero. @default false */
   hasArea?: boolean;
+  /** Shades the range between two fields behind the lines: a day's low and high, a forecast's margin. Each row reads it as `label low–high`. */
+  band?: LineChartBand<Row>;
   /** `stacked` lays each series on the ones before it, as filled bands whose top line is the running total; the values read stay each series' own. @default 'overlaid' */
   layout?: LineChartLayout;
   /**
@@ -116,9 +118,18 @@ const maxRead = 60;
 
 export type LineChartLayout = 'overlaid' | 'stacked';
 
+export interface LineChartBand<Row = ChartRow> {
+  low: ChartField<Row>;
+  high: ChartField<Row>;
+  /** What the range is: "Range", "Forecast". */
+  label: string;
+  /** Its colour; by default the first series'. */
+  color?: ChartColor;
+}
+
 /** A number over time, as a line that fits its data, or as an area measured from zero. */
 export function LineChart<Row extends ChartRecord<Row>>({
-  rows, x, y, keyField, label, title, description, formatValue: format, summarize, curve = 'straight', hasArea = false, layout = 'overlaid',
+  rows, x, y, keyField, label, title, description, formatValue: format, summarize, curve = 'straight', hasArea = false, band, layout = 'overlaid',
   hasScale, hasEndLabel = false, hasEndDot = hasEndLabel, xLabels, legendPosition = 'bottom', legendLabel, value, onChange, defaultValue, bind, hiddenSeries: givenHidden, onHiddenSeriesChange: onHiddenChange, defaultHiddenSeries,
   references: given = [], domainMin, domainMax, size = 'md', isLoading = false, error, emptyLabel, emptyHint, onRetry, retryLabel, className, 'data-testid': testId,
 }: LineChartProps<Row>) {
@@ -146,8 +157,14 @@ export function LineChart<Row extends ChartRecord<Row>>({
     ? columns.map((_, index) => data.map((__, row) => columns.slice(0, index + 1).reduce((sum, column) => sum + (Number.isFinite(column[row]) ? column[row] : 0), 0)))
     : columns;
   const isArea = hasArea || isStacked;
+  // A band is drawn only where both its ends are known.
+  const bandColumns = band ? (() => {
+    const [low, high] = [band.low, band.high].map(field => data.map(row => numberOf(row, field)));
+    const known = (index: number) => Number.isFinite(low[index]) && Number.isFinite(high[index]);
+    return [low, high].map(column => column.map((value, index) => (known(index) ? value : NaN)));
+  })() : [];
   const isScaled = hasScale ?? size !== 'xs';
-  const fitted = domain([...drawnColumns.flat(), ...references.flatMap(referenceEnds)], isArea, domainMin, domainMax);
+  const fitted = domain([...drawnColumns.flat(), ...bandColumns.flat(), ...references.flatMap(referenceEnds)], isArea, domainMin, domainMax);
   // With the scale written out, the plot's lines sit on round numbers: fewer of them in a short plot.
   const scaled = isScaled && facts.length ? niceTicks(fitted, size === 'sm' ? 2 : 4) : undefined;
   const range = scaled?.range ?? fitted;
@@ -169,10 +186,15 @@ export function LineChart<Row extends ChartRecord<Row>>({
   const picked = chosen >= 0 ? data[chosen] : undefined;
 
   // The lines depend on the data and the encoding, never on the theme or the chosen row, so a scrub redraws only the marker.
-  const paths = remember(data, 'lines', JSON.stringify([shown.map(series => [series.field, series.color, series.dash]), range, curve, isArea, isStacked, hasEndDot]), () => {
+  const paths = remember(data, 'lines', JSON.stringify([shown.map(series => [series.field, series.color, series.dash]), range, curve, isArea, isStacked, hasEndDot, band && [band.low, band.high, band.color ?? all[0]?.color]]), () => {
     const paths: VectorPath[] = [];
     const trace = (points: readonly Point[]) => traced(points, curve);
     const round = { fill: 'none', strokeLinecap: 'round', strokeLinejoin: 'round', vectorEffect: 'non-scaling-stroke' } as const;
+    if (band) {
+      const [lows, highs] = bandColumns.map(column => runs(thin(column), range));
+      const d = highs.map((top, index) => (top.length > 1 ? between(top, lows[index], curve) : '')).join('');
+      if (d) paths.push({ key: 'band-area', d, fill: `${roleOf(band.color ?? all[0]?.color ?? 1)}/16` });
+    }
     shown.forEach((series, index) => {
       const stroke = roleOf(series.color);
       const lines = runs(thin(drawnColumns[index]), range);
@@ -242,10 +264,13 @@ export function LineChart<Row extends ChartRecord<Row>>({
     </view>
   );
 
-  const reading = (row: ChartRow) => shown
-    .filter(series => Number.isFinite(numberOf(row, series.field)))
-    .map(series => (series.label ? `${series.label} ${formatValue(numberOf(row, series.field))}` : formatValue(numberOf(row, series.field))))
-    .join(', ');
+  const reading = (row: ChartRow) => [
+    ...shown
+      .filter(series => Number.isFinite(numberOf(row, series.field)))
+      .map(series => (series.label ? `${series.label} ${formatValue(numberOf(row, series.field))}` : formatValue(numberOf(row, series.field)))),
+    ...(band && Number.isFinite(numberOf(row, band.low)) && Number.isFinite(numberOf(row, band.high))
+      ? [`${band.label} ${formatValue(numberOf(row, band.low))}–${formatValue(numberOf(row, band.high))}`] : []),
+  ].join(', ');
 
   const named = (row: ChartRow) => (reading(row) === '' ? textOf(row, x) : `${textOf(row, x)}: ${reading(row)}`);
   // With nothing chosen the scrubber rests on the latest row, which is what the line's end shows.

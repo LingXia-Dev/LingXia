@@ -89,6 +89,32 @@ export function Zone() {
   );
 }
 
+const forecast = [
+  { day: 'Mon', low: 6, mean: 10.5, high: 14 }, { day: 'Tue', low: 7, mean: 11.4, high: 16 }, { day: 'Wed', low: 9, mean: 13.8, high: 19 },
+  { day: 'Thu', low: 8, mean: 12.1, high: 17 }, { day: 'Fri', low: 5, mean: 8.6, high: 12 }, { day: 'Sat', low: 4, mean: 8.9, high: 13 },
+  { day: 'Sun', low: 6, mean: 11.2, high: 15 },
+];
+
+/** A band behind the line shades each day's range, low to high; a chosen day reads both. */
+export function Band() {
+  const day = useLocal<string | null>('day', null);
+  return (
+    <LineChart
+      rows={forecast}
+      x="day"
+      y={[{ field: 'mean', label: 'Mean' }]}
+      band={{ low: 'low', high: 'high', label: 'Range' }}
+      curve="smooth"
+      label="Temperature this week, mean and daily range"
+      title="Temperature"
+      description="This week"
+      formatValue={degrees}
+      bind={day}
+      data-testid="forecast"
+    />
+  );
+}
+
 /** Steps suit a count that changes at set moments and holds between them: seats on a plan, a price, a limit. */
 export function Steps() {
   return <LineChart rows={seats} x="month" y="seats" label="Seats on the plan by month" title="Seats" description="This year" curve="step" hasArea summarize={summarize} data-testid="seats" />;

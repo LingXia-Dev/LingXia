@@ -127,6 +127,45 @@ export function Steps() {
 }
 ```
 
+### Each day's range shaded behind its mean
+
+```tsx
+import { useLocal } from '@lingxia/view';
+import { LineChart } from '@liulidesign/charts/LineChart';
+
+const day = [
+  { hour: '00:00', c: 11.2 }, { hour: '02:00', c: 10.4 }, { hour: '04:00', c: 9.8 }, { hour: '06:00', c: 10.1 }, { hour: '08:00', c: 12.6 },
+  { hour: '10:00', c: 15.9 }, { hour: '12:00', c: 18.7 }, { hour: '14:00', c: 20.3 }, { hour: '16:00', c: 19.6 }, { hour: '18:00', c: 17.0 },
+  { hour: '20:00', c: 14.4 }, { hour: '22:00', c: 12.5 },
+];
+const degrees = (value: number) => `${value.toFixed(1)}°`;
+const forecast = [
+  { day: 'Mon', low: 6, mean: 10.5, high: 14 }, { day: 'Tue', low: 7, mean: 11.4, high: 16 }, { day: 'Wed', low: 9, mean: 13.8, high: 19 },
+  { day: 'Thu', low: 8, mean: 12.1, high: 17 }, { day: 'Fri', low: 5, mean: 8.6, high: 12 }, { day: 'Sat', low: 4, mean: 8.9, high: 13 },
+  { day: 'Sun', low: 6, mean: 11.2, high: 15 },
+];
+
+/** A band behind the line shades each day's range, low to high; a chosen day reads both. */
+export function Band() {
+  const day = useLocal<string | null>('day', null);
+  return (
+    <LineChart
+      rows={forecast}
+      x="day"
+      y={[{ field: 'mean', label: 'Mean' }]}
+      band={{ low: 'low', high: 'high', label: 'Range' }}
+      curve="smooth"
+      label="Temperature this week, mean and daily range"
+      title="Temperature"
+      description="This week"
+      formatValue={degrees}
+      bind={day}
+      data-testid="forecast"
+    />
+  );
+}
+```
+
 ### A target range shaded under the line
 
 ```tsx
@@ -288,6 +327,7 @@ export function Gaps() {
 | `summarize` | `ChartSummarize` |  | Writes the summary a screen reader hears from the chart's facts; see `@liulidesign/charts/summary/en`. |
 | `curve` | `ChartCurve` | `'straight'` | How the line goes between points: `smooth` rounds it without passing above or below them; `step` holds each value level across its point and changes halfway to the next. |
 | `hasArea` | `boolean` | `false` | Fills under each line and measures it from zero. |
+| `band` | `LineChartBand<Row>` |  | Shades the range between two fields behind the lines: a day's low and high, a forecast's margin. Each row reads it as `label low–high`. |
 | `layout` | `LineChartLayout` | `'overlaid'` | `stacked` lays each series on the ones before it, as filled bands whose top line is the running total; the values read stay each series' own. |
 | `hasEndDot` | `boolean` | `hasEndLabel` | Marks each line's latest value with a dot. By default only with the end label, which the dot ties to its line; a lone dot at rest reads as a chosen point. |
 | `hasScale` | `boolean` |  | Shows the scale: round numbers at the start edge, each with a hairline across the plot. The range reaches just past the data, so the plot is filled. By default on, except at the `xs` size. |
