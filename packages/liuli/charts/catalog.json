@@ -1244,8 +1244,19 @@
           "name": "hasArea",
           "type": "boolean",
           "required": false,
-          "description": "Fills under the line and measures it from zero. One series only.",
+          "description": "Fills under each line and measures it from zero.",
           "default": "false"
+        },
+        {
+          "name": "layout",
+          "type": "LineChartLayout",
+          "required": false,
+          "description": "`stacked` lays each series on the ones before it, as filled bands whose top line is the running total; the values read stay each series' own.",
+          "values": [
+            "stacked",
+            "overlaid"
+          ],
+          "default": "'overlaid'"
         },
         {
           "name": "hasEndDot",
@@ -1582,6 +1593,11 @@
           "name": "Steps",
           "title": "A count that holds between changes",
           "source": "import { summarize } from '@liulidesign/charts/summary';\nimport { LineChart } from '@liulidesign/charts/LineChart';\n\nconst seats = [\n  { month: 'Jan', seats: 12 }, { month: 'Feb', seats: 12 }, { month: 'Mar', seats: 18 }, { month: 'Apr', seats: 18 },\n  { month: 'May', seats: 25 }, { month: 'Jun', seats: 22 }, { month: 'Jul', seats: 30 },\n];\n\n/** Steps suit a count that changes at set moments and holds between them: seats on a plan, a price, a limit. */\nexport function Steps() {\n  return <LineChart rows={seats} x=\"month\" y=\"seats\" label=\"Seats on the plan by month\" title=\"Seats\" description=\"This year\" curve=\"step\" hasArea summarize={summarize} data-testid=\"seats\" />;\n}"
+        },
+        {
+          "name": "Stacked",
+          "title": "Series stacked into bands, the top line their total",
+          "source": "import { useLocal } from '@lingxia/view';\nimport type { ChartSeries } from '@liulidesign/charts/Chart';\nimport { summarize } from '@liulidesign/charts/summary';\nimport { LineChart } from '@liulidesign/charts/LineChart';\n\nconst plans = [\n  { month: 'Jan', free: 410, team: 120, pro: 64 }, { month: 'Feb', free: 455, team: 131, pro: 71 }, { month: 'Mar', free: 440, team: 150, pro: 83 },\n  { month: 'Apr', free: 492, team: 171, pro: 88 }, { month: 'May', free: 530, team: 204, pro: 97 }, { month: 'Jun', free: 561, team: 236, pro: 121 },\n];\nconst series: readonly ChartSeries<(typeof plans)[number]>[] = [{ field: 'free', label: 'Free' }, { field: 'team', label: 'Team' }, { field: 'pro', label: 'Pro' }];\n\n/** The same plans stacked: each band sits on the ones below, so the top line is all accounts; choosing a month reads each plan's own count. */\nexport function Stacked() {\n  const month = useLocal<string | null>('month', null);\n  return (\n    <LineChart\n      rows={plans}\n      x=\"month\"\n      y={series}\n      layout=\"stacked\"\n      curve=\"smooth\"\n      label=\"Accounts by plan and month, stacked\"\n      title=\"All accounts\"\n      summarize={summarize}\n      bind={month}\n      data-testid=\"stacked\"\n    />\n  );\n}"
         },
         {
           "name": "Series",

@@ -127,6 +127,40 @@ export function Steps() {
 }
 ```
 
+### Series stacked into bands, the top line their total
+
+```tsx
+import { useLocal } from '@lingxia/view';
+import type { ChartSeries } from '@liulidesign/charts/Chart';
+import { summarize } from '@liulidesign/charts/summary';
+import { LineChart } from '@liulidesign/charts/LineChart';
+
+const plans = [
+  { month: 'Jan', free: 410, team: 120, pro: 64 }, { month: 'Feb', free: 455, team: 131, pro: 71 }, { month: 'Mar', free: 440, team: 150, pro: 83 },
+  { month: 'Apr', free: 492, team: 171, pro: 88 }, { month: 'May', free: 530, team: 204, pro: 97 }, { month: 'Jun', free: 561, team: 236, pro: 121 },
+];
+const series: readonly ChartSeries<(typeof plans)[number]>[] = [{ field: 'free', label: 'Free' }, { field: 'team', label: 'Team' }, { field: 'pro', label: 'Pro' }];
+
+/** The same plans stacked: each band sits on the ones below, so the top line is all accounts; choosing a month reads each plan's own count. */
+export function Stacked() {
+  const month = useLocal<string | null>('month', null);
+  return (
+    <LineChart
+      rows={plans}
+      x="month"
+      y={series}
+      layout="stacked"
+      curve="smooth"
+      label="Accounts by plan and month, stacked"
+      title="All accounts"
+      summarize={summarize}
+      bind={month}
+      data-testid="stacked"
+    />
+  );
+}
+```
+
 ### Three series, with a legend that hides them
 
 ```tsx
@@ -212,7 +246,8 @@ export function Gaps() {
 | `formatValue` | `((value: number) => string)` |  | Turns a number into the text shown and read. By default the number as the page's language writes it, grouped (`Intl.NumberFormat`). |
 | `summarize` | `ChartSummarize` |  | Writes the summary a screen reader hears from the chart's facts; see `@liulidesign/charts/summary/en`. |
 | `curve` | `ChartCurve` | `'straight'` | How the line goes between points: `smooth` rounds it without passing above or below them; `step` holds each value level across its point and changes halfway to the next. |
-| `hasArea` | `boolean` | `false` | Fills under the line and measures it from zero. One series only. |
+| `hasArea` | `boolean` | `false` | Fills under each line and measures it from zero. |
+| `layout` | `LineChartLayout` | `'overlaid'` | `stacked` lays each series on the ones before it, as filled bands whose top line is the running total; the values read stay each series' own. |
 | `hasEndDot` | `boolean` | `hasEndLabel` | Marks each line's latest value with a dot. By default only with the end label, which the dot ties to its line; a lone dot at rest reads as a chosen point. |
 | `hasScale` | `boolean` |  | Shows the scale: round numbers at the start edge, each with a hairline across the plot. The range reaches just past the data, so the plot is filled. By default on, except at the `xs` size. |
 | `hasEndLabel` | `boolean` | `false` | Writes the latest value at the end of the line. One series only. |
@@ -294,7 +329,7 @@ Ratios are computed from @lingxia/view/theme and rounded down.
 
 ## Guidance
 
-- Do: Use a line for a level (a weight, a price, a rate) and `hasArea` for an amount that adds up (visits, sales).
+- Do: Use a line for a level (a weight, a price, a rate) and `hasArea` for an amount that adds up (visits, sales); `layout="stacked"` when the series are parts of one total.
 - Do: Pass `null` or leave the field out for a missing reading.
 - Do: Give charts that are compared the same `domainMin` and `domainMax`.
 - Do: Pass `summarize`; past 60 rows it is all a screen reader gets.

@@ -520,3 +520,19 @@ test('Steps: each value holds level across its month and changes halfway to the 
   const area = paths.find(path => path.key === 'seats-area').d;
   assert.ok(area.startsWith(line), 'the fill is bounded by the same steps');
 });
+
+test('Stacked: each series a band on the ones below, the top line the total; the scale reaches the total and the reading stays each plan\'s own', async () => {
+  const screen = laidOut(await renderExample('LineChart/LineChart', 'Stacked'));
+  const { paths } = drawing(screen);
+  const areas = paths.filter(path => path.key.endsWith('-area'));
+  assert.deepEqual(areas.map(path => [path.key, path.fill]), [['free-area', 'chart-1/24'], ['team-area', 'chart-2/24'], ['pro-area', 'chart-3/24']]);
+  assert.match(areas[0].d, /Z$/, 'the first band closes down to zero');
+  assert.equal(areas[1].d.split('M').length - 1, 1, 'a band above is one shape: its top forward, the band below back');
+  assert.match(areas[1].d, /L[\d.]+ [\d.]+C/, 'the floor is traced back on the same curve');
+  const top = paths.find(path => path.key === 'pro-line');
+  const [, y] = top.d.match(/^M[\d.]+ ([\d.]+)/).map(Number);
+  const free = paths.find(path => path.key === 'free-line');
+  assert.ok(y < Number(free.d.match(/^M[\d.]+ ([\d.]+)/)[1]), 'the top line stands above the first series: it is the total');
+  screen.pointer(screen.getByTestId('stacked-plot'), { phase: 'up', x: 0, y: 20, width: 300, height: 160 });
+  assert.match(textOf(screen.getByTestId('stacked')), /Free 410.*Team 120.*Pro 64/, 'the readout reads each plan, not the running total');
+});

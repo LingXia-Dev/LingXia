@@ -141,6 +141,12 @@ export function closed(line: string, points: readonly Point[], floor: number): s
   return `${line}L${round(points[points.length - 1][0])} ${round(floor)}L${round(points[0][0])} ${round(floor)}Z`;
 }
 
+/** The band between two lines over the same points, `top` traced forward and `bottom` back, for a stacked area. */
+export function between(top: readonly Point[], bottom: readonly Point[], curve: ChartCurve): string {
+  const back = traced([...bottom].reverse(), curve).replace(/^M/, 'L');
+  return `${traced(top, curve)}${back}Z`;
+}
+
 /** One bar per finite value, from the zero line, each `share` of its slot wide. */
 export function bars(values: readonly number[], range: readonly [number, number], share: number): string {
   const slot = box / values.length;

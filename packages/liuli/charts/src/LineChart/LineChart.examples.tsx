@@ -98,6 +98,25 @@ export function Series() {
   );
 }
 
+/** The same plans stacked: each band sits on the ones below, so the top line is all accounts; choosing a month reads each plan's own count. */
+export function Stacked() {
+  const month = useLocal<string | null>('month', null);
+  return (
+    <LineChart
+      rows={plans}
+      x="month"
+      y={series}
+      layout="stacked"
+      curve="smooth"
+      label="Accounts by plan and month, stacked"
+      title="All accounts"
+      summarize={summarize}
+      bind={month}
+      data-testid="stacked"
+    />
+  );
+}
+
 /** Dragging across the plot, a mouse over it or the arrow keys choose the month the readout shows. */
 export function Selected() {
   const month = useLocal<string | null>('month', 'Apr');

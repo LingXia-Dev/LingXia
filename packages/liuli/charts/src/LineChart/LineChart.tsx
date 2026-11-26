@@ -2,7 +2,7 @@ import { cx, useBox, useLocal, useView, type Child, type PointerEvent, type Vect
 import { Chart, ChartLegend, ChartReadout, type ChartLegendPosition, type ChartField, type ChartRecord, type ChartReference, type ChartRow, type ChartSeries, type ChartSize, type ChartSummarize } from '../Chart/Chart';
 import { colorOf, keysOf, numberOf, numberIn, roleOf, seriesFacts, seriesOf, textOf } from '../internal/data';
 import { pressed, pressedKey, scrubbing } from '../internal/gesture';
-import { box, closed, domain, dot, indexAt, niceTicks, reach, runs, scaleY, thin, traced, type ChartCurve, type Point } from '../internal/geometry';
+import { between, box, closed, domain, dot, indexAt, niceTicks, reach, runs, scaleY, thin, traced, type ChartCurve, type Point } from '../internal/geometry';
 import { ReferenceLabels, ReferenceReading, referencePath, useReferences } from '../internal/References';
 import { Ticks } from '../internal/Ticks';
 import { laidOutOnce, remember } from '../internal/memo';
@@ -31,8 +31,10 @@ export interface LineChartProps<Row extends ChartRecord<Row> = ChartRow> {
   summarize?: ChartSummarize;
   /** How the line goes between points: `smooth` rounds it without passing above or below them; `step` holds each value level across its point and changes halfway to the next. @default 'straight' */
   curve?: ChartCurve;
-  /** Fills under the line and measures it from zero. One series only. @default false */
+  /** Fills under each line and measures it from zero. @default false */
   hasArea?: boolean;
+  /** `stacked` lays each series on the ones before it, as filled bands whose top line is the running total; the values read stay each series' own. @default 'overlaid' */
+  layout?: LineChartLayout;
   /**
    * Marks each line's latest value with a dot. By default only with the end label, which the dot
    * ties to its line; a lone dot at rest reads as a chosen point. @default hasEndLabel
@@ -112,9 +114,11 @@ const heights = { xs: 64, sm: 112, md: 176, lg: 240 } as const;
 // Past this many rows a screen reader gets the summary alone; a longer list is not a reading.
 const maxRead = 60;
 
+export type LineChartLayout = 'overlaid' | 'stacked';
+
 /** A number over time, as a line that fits its data, or as an area measured from zero. */
 export function LineChart<Row extends ChartRecord<Row>>({
-  rows, x, y, keyField, label, title, description, formatValue: format, summarize, curve = 'straight', hasArea = false,
+  rows, x, y, keyField, label, title, description, formatValue: format, summarize, curve = 'straight', hasArea = false, layout = 'overlaid',
   hasScale, hasEndLabel = false, hasEndDot = hasEndLabel, xLabels, legendPosition = 'bottom', legendLabel, value, onChange, defaultValue, bind, hiddenSeries: givenHidden, onHiddenSeriesChange: onHiddenChange, defaultHiddenSeries,
   references: given = [], domainMin, domainMax, size = 'md', isLoading = false, error, emptyLabel, emptyHint, onRetry, retryLabel, className, 'data-testid': testId,
 }: LineChartProps<Row>) {
@@ -135,10 +139,15 @@ export function LineChart<Row extends ChartRecord<Row>>({
   const all = seriesOf(y).map((series, index) => ({ ...series, color: colorOf(index, series.color), dash: dashes[index % dashes.length] }));
   const shown = all.filter(series => !hiddenSeries.includes(series.field));
   const facts = shown.flatMap(series => seriesFacts(data, x, series, formatValue) ?? []);
+  const isStacked = layout === 'stacked' && shown.length > 1;
+  // Stacked, each series is drawn at the running total, a gap counting as nothing.
   const columns = shown.map(series => data.map(row => numberOf(row, series.field)));
-  const isArea = hasArea && shown.length === 1;
+  const drawnColumns = isStacked
+    ? columns.map((_, index) => data.map((__, row) => columns.slice(0, index + 1).reduce((sum, column) => sum + (Number.isFinite(column[row]) ? column[row] : 0), 0)))
+    : columns;
+  const isArea = hasArea || isStacked;
   const isScaled = hasScale ?? size !== 'xs';
-  const fitted = domain([...columns.flat(), ...references.map(each => each.value)], isArea, domainMin, domainMax);
+  const fitted = domain([...drawnColumns.flat(), ...references.map(each => each.value)], isArea, domainMin, domainMax);
   // With the scale written out, the plot's lines sit on round numbers: fewer of them in a short plot.
   const scaled = isScaled && facts.length ? niceTicks(fitted, size === 'sm' ? 2 : 4) : undefined;
   const range = scaled?.range ?? fitted;
@@ -160,15 +169,21 @@ export function LineChart<Row extends ChartRecord<Row>>({
   const picked = chosen >= 0 ? data[chosen] : undefined;
 
   // The lines depend on the data and the encoding, never on the theme or the chosen row, so a scrub redraws only the marker.
-  const paths = remember(data, 'lines', JSON.stringify([shown.map(series => [series.field, series.color, series.dash]), range, curve, isArea, hasEndDot]), () => {
+  const paths = remember(data, 'lines', JSON.stringify([shown.map(series => [series.field, series.color, series.dash]), range, curve, isArea, isStacked, hasEndDot]), () => {
     const paths: VectorPath[] = [];
     const trace = (points: readonly Point[]) => traced(points, curve);
     const round = { fill: 'none', strokeLinecap: 'round', strokeLinejoin: 'round', vectorEffect: 'non-scaling-stroke' } as const;
     shown.forEach((series, index) => {
       const stroke = roleOf(series.color);
-      const lines = runs(thin(columns[index]), range);
+      const lines = runs(thin(drawnColumns[index]), range);
       const joined = lines.filter(points => points.length > 1);
-      if (isArea && joined.length) paths.push({ key: `${series.field}-area`, d: joined.map(points => closed(trace(points), points, scaleY(0, range))).join(''), fill: `${stroke}/16` });
+      // A stacked band lies between this total and the one under it, a shade firmer so neighbours part.
+      const floor = index > 0 && isStacked ? runs(thin(drawnColumns[index - 1]), range)[0] : undefined;
+      if (isArea && joined.length) paths.push({
+        key: `${series.field}-area`,
+        d: floor ? joined.map(points => between(points, floor, curve)).join('') : joined.map(points => closed(trace(points), points, scaleY(0, range))).join(''),
+        fill: `${stroke}/${isStacked ? 24 : 16}`,
+      });
       if (joined.length) paths.push({
         key: `${series.field}-line`, d: joined.map(trace).join(''), stroke, strokeWidth, ...round,
         ...(series.dash.length ? { strokeDasharray: series.dash, strokeLinecap: 'butt' } : {}),
@@ -189,10 +204,10 @@ export function LineChart<Row extends ChartRecord<Row>>({
     const round = { fill: 'none', strokeLinecap: 'round', vectorEffect: 'non-scaling-stroke' } as const;
     // Keyed by the row: another row is a new marker, drawn at once; new data under the same row moves it with the lines.
     marker.push({ key: `rule-${chosen}`, d: `M${at} 0V${box}`, stroke: 'text/20', strokeWidth: 1, fill: 'none', vectorEffect: 'non-scaling-stroke' });
-    for (const series of shown) {
+    shown.forEach((series, index) => {
       const value = numberOf(picked, series.field);
-      if (Number.isFinite(value)) marker.push({ key: `${series.field}-${chosen}`, d: dot([at, scaleY(value, range)]), stroke: roleOf(series.color), strokeWidth: selectedWidth, ...round });
-    }
+      if (Number.isFinite(value)) marker.push({ key: `${series.field}-${chosen}`, d: dot([at, scaleY(drawnColumns[index][chosen], range)]), stroke: roleOf(series.color), strokeWidth: selectedWidth, ...round });
+    });
   }
 
   // A drawing is cut at its viewBox, so the viewBox reaches half a marker past the data on each
@@ -203,7 +218,7 @@ export function LineChart<Row extends ChartRecord<Row>>({
   const height = (value: number) => edge + (scaleY(value, range) / box) * ((plot.value?.height ?? 0) - edge - foot);
   // Each line's last point, as a box a reference label keeps clear of.
   const laid = plot.value;
-  const lastPoints = laid ? columns.flatMap(column => {
+  const lastPoints = laid ? drawnColumns.flatMap(column => {
     const last = column.reduce((found, value, index) => (Number.isFinite(value) ? index : found), -1);
     if (last < 0) return [];
     const across = data.length > 1 ? edge + (last / (data.length - 1)) * (laid.width - edge * 2) : laid.width / 2;

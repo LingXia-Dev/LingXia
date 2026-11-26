@@ -61,7 +61,7 @@ export const doc: ComponentDoc = {
   },
   guidance: {
     do: [
-      'Use a line for a level (a weight, a price, a rate) and `hasArea` for an amount that adds up (visits, sales).',
+      'Use a line for a level (a weight, a price, a rate) and `hasArea` for an amount that adds up (visits, sales); `layout="stacked"` when the series are parts of one total.',
       'Pass `null` or leave the field out for a missing reading.',
       'Give charts that are compared the same `domainMin` and `domainMax`.',
       'Pass `summarize`; past 60 rows it is all a screen reader gets.',
@@ -79,6 +79,7 @@ export const doc: ComponentDoc = {
     { name: 'Area', title: 'An area, from zero' },
     { name: 'Smooth', title: 'A smoothed line' },
     { name: 'Steps', title: 'A count that holds between changes' },
+    { name: 'Stacked', title: 'Series stacked into bands, the top line their total' },
     { name: 'Series', title: 'Three series, with a legend that hides them' },
     { name: 'Selected', title: 'Scrubbing chooses a row' },
     { name: 'Gaps', title: 'Missing readings' },
