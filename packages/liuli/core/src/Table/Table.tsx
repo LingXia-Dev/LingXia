@@ -1,4 +1,4 @@
-import { cx, useBox, useContext, useLocal, useView, type Child, type Local } from '@lingxia/view';
+import { cx, List, useBox, useContext, useLocal, useView, type Child, type Local } from '@lingxia/view';
 import { Button } from '../Button/Button';
 import { CheckboxInput } from '../CheckboxInput/CheckboxInput';
 import { checkboxInputRecipe } from '../CheckboxInput/CheckboxInput.recipe';
@@ -271,7 +271,7 @@ export function Table({
     </view>
   );
 
-  const body = ordered.map((row, index) => {
+  const rowAt = (row: TableRow, index: number) => {
     const key = keys[index];
     const isSelected = selectedKey === key;
     const drawn = (column: TableColumn, isRead: boolean, className: string) => (column.cell
@@ -336,7 +336,7 @@ export function Table({
         </button>
       </view>
     );
-  });
+  };
 
   // Placeholder rows keep the table's shape: a bar per column, varied in width, the number's at the end.
   const placeholders = Array.from({ length: loadingRows }, (_, row) => (
@@ -371,8 +371,16 @@ export function Table({
       {isLoading && <SkeletonGroup label={liuliText('@liuli.loadingNamed', { name: label })} className={cx(r.body.base, r.loading.group)}>{placeholders}</SkeletonGroup>}
       {!isLoading && rows.length === 0 && emptyLabel !== undefined && <text className={r.empty.base}>{emptyLabel}</text>}
       {!isLoading && rows.length > 0 && (maxHeight === undefined
-        ? <view className={r.body.base}>{body}</view>
-        : <scroll style={{ maxHeight }} className={r.body.base}>{body}</scroll>)}
+        ? <view className={r.body.base}>{ordered.map(rowAt)}</view>
+        // Capped, only the rows near the screen are built, so a long table scrolls as lightly as a short one.
+        : <List
+            role="group"
+            items={ordered}
+            getKey={(_, index) => keys[index]}
+            renderItem={(row, index) => <view className={cx(r.body.row, index < ordered.length - 1 && r.body.divided)}>{rowAt(row, index)}</view>}
+            style={{ maxHeight }}
+            className={r.body.list}
+          />)}
       <view aria-hidden className={r.measure.base}>
         <text box={measured} className={r.measure.sample}>{sample}</text>
         {columns.map((column, at) => isFigure(column) && <text key={column.field} box={figureBoxes[at]} className={r.measure.sample}>{longestText(column)}</text>)}

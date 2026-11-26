@@ -314,6 +314,38 @@ export function Scrolling() {
 }
 ```
 
+### Two thousand rows, built as they come into view
+
+```tsx
+import { Table, type TableColumn } from '@liulidesign/core/Table';
+
+const columns: TableColumn[] = [
+  { field: 'customer', header: 'Customer', width: '2fr' },
+  { field: 'due', header: 'Due' },
+  { field: 'amount', header: 'Amount', align: 'end', format: money },
+];
+const orders = Array.from({ length: 2000 }, (_, index) => ({
+  id: `ORD-${String(index + 1).padStart(4, '0')}`,
+  customer: ['Kestrel & Co', 'Northwind', 'Blue Harbour', 'Atlas Supply', 'Juniper Ltd'][index % 5],
+  total: ((index * 7919) % 50000) / 100 + 12,
+}));
+
+/** Two thousand rows under a cap: only the rows near the screen are built, so it scrolls as lightly as ten. */
+export function Long() {
+  return (
+    <Table
+      label="Orders"
+      columns={[{ field: 'id', header: 'Order', width: 96 }, { field: 'customer', header: 'Customer' }, { field: 'total', header: 'Total', align: 'end', format: value => `$${Number(value).toFixed(2)}` }]}
+      rows={orders}
+      keyField="id"
+      density="compact"
+      maxHeight={288}
+      data-testid="orders"
+    />
+  );
+}
+```
+
 ### Four columns, stacked where they do not fit
 
 ```tsx
@@ -476,7 +508,6 @@ Ratios are computed from @lingxia/view/theme and rounded down.
 | Columns as wide as their content. | text measurement before layout | A width in points or a share of the table; rows are separate grids, so a track sized by content would not line up. |
 | A sorted column read as sorted by its header role. | a column header role with `aria-sort` | A sortable heading is a button whose name carries the order: "Amount, sorted ascending". |
 | Sideways scrolling with the first column held. | a sticky box on the horizontal axis | Columns share the table's width, and the table stacks its records where they would be too narrow. |
-| Rows drawn only while in view. | grid rows inside a `<List>` | Every row is laid out; page a long set. |
 | Column headings read as headers by a screen reader. | a column header role | Each cell is named with its heading. |
 
 Related: Item, Card, Badge.

@@ -94,6 +94,10 @@ export const tableRecipe = {
   },
   body: {
     base: 'self-stretch divide-y divide-line',
+    /** A capped body builds only the rows near the screen; each but the last draws its rule below, as a list has no dividers and a rule above would double the heading's. */
+    list: 'self-stretch',
+    row: 'self-stretch',
+    divided: 'border-b border-line',
   },
   rowgroup: {
     base: 'self-stretch',

@@ -20014,6 +20014,11 @@
           "source": "import { Table, type TableColumn } from '@liulidesign/core/Table';\n\nconst columns: TableColumn[] = [\n  { field: 'customer', header: 'Customer', width: '2fr' },\n  { field: 'due', header: 'Due' },\n  { field: 'amount', header: 'Amount', align: 'end', format: money },\n];\nconst cities = [\n  ['Lagos', 'Nigeria', 15.4], ['Cairo', 'Egypt', 10.0], ['Kinshasa', 'DR Congo', 9.5], ['Johannesburg', 'South Africa', 5.6], ['Nairobi', 'Kenya', 4.4],\n  ['Addis Ababa', 'Ethiopia', 3.9], ['Casablanca', 'Morocco', 3.7], ['Accra', 'Ghana', 2.6], ['Dakar', 'Senegal', 1.3], ['Kigali', 'Rwanda', 1.2],\n].map(([city, country, people]) => ({ city, country, people }));\n\n/** Compact rows that scroll under a heading that stays. */\nexport function Scrolling() {\n  return (\n    <Table\n      label=\"Cities by population\"\n      columns={[{ field: 'city', header: 'City' }, { field: 'country', header: 'Country' }, { field: 'people', header: 'Millions', align: 'end', width: 72, format: value => Number(value).toFixed(1) }]}\n      rows={cities}\n      density=\"compact\"\n      maxHeight={216}\n      data-testid=\"cities\"\n    />\n  );\n}"
         },
         {
+          "name": "Long",
+          "title": "Two thousand rows, built as they come into view",
+          "source": "import { Table, type TableColumn } from '@liulidesign/core/Table';\n\nconst columns: TableColumn[] = [\n  { field: 'customer', header: 'Customer', width: '2fr' },\n  { field: 'due', header: 'Due' },\n  { field: 'amount', header: 'Amount', align: 'end', format: money },\n];\nconst orders = Array.from({ length: 2000 }, (_, index) => ({\n  id: `ORD-${String(index + 1).padStart(4, '0')}`,\n  customer: ['Kestrel & Co', 'Northwind', 'Blue Harbour', 'Atlas Supply', 'Juniper Ltd'][index % 5],\n  total: ((index * 7919) % 50000) / 100 + 12,\n}));\n\n/** Two thousand rows under a cap: only the rows near the screen are built, so it scrolls as lightly as ten. */\nexport function Long() {\n  return (\n    <Table\n      label=\"Orders\"\n      columns={[{ field: 'id', header: 'Order', width: 96 }, { field: 'customer', header: 'Customer' }, { field: 'total', header: 'Total', align: 'end', format: value => `$${Number(value).toFixed(2)}` }]}\n      rows={orders}\n      keyField=\"id\"\n      density=\"compact\"\n      maxHeight={288}\n      data-testid=\"orders\"\n    />\n  );\n}"
+        },
+        {
           "name": "Members",
           "title": "Four columns, stacked where they do not fit",
           "source": "import { Table, type TableColumn } from '@liulidesign/core/Table';\n\nconst columns: TableColumn[] = [\n  { field: 'customer', header: 'Customer', width: '2fr' },\n  { field: 'due', header: 'Due' },\n  { field: 'amount', header: 'Amount', align: 'end', format: money },\n];\nconst members = [\n  { name: 'Alexandra Papadopoulou-Vandersteen', role: 'Engineering manager', joined: '12 Jan 2021', hours: 1642.5 },\n  { name: 'Ben Okafor', role: 'Designer', joined: '3 Mar 2023', hours: 918 },\n  { name: 'Chloé Martin', role: 'Support', joined: '28 Oct 2024', hours: 86.25 },\n];\nconst memberColumns: TableColumn[] = [\n  { field: 'name', header: 'Name', width: '2fr' },\n  { field: 'role', header: 'Role', width: '1.5fr' },\n  { field: 'joined', header: 'Joined', width: 84 },\n  { field: 'hours', header: 'Hours', align: 'end', width: 64, format: value => grouped(value, 1) },\n];\n\n/** Four columns do not fit a phone, so each record is stacked: its name and number on one line, the rest under them. */\nexport function Members() {\n  return <Table label=\"Members\" columns={memberColumns} rows={members} data-testid=\"members\" />;\n}"
@@ -20039,11 +20044,6 @@
           "missing": "Sideways scrolling with the first column held.",
           "needs": "a sticky box on the horizontal axis",
           "today": "Columns share the table's width, and the table stacks its records where they would be too narrow."
-        },
-        {
-          "missing": "Rows drawn only while in view.",
-          "needs": "grid rows inside a `<List>`",
-          "today": "Every row is laid out; page a long set."
         },
         {
           "missing": "Column headings read as headers by a screen reader.",

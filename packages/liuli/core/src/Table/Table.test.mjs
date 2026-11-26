@@ -48,10 +48,10 @@ test('Pressable: each row is one button read as its cells in order; pressing one
 test('Scrolling: the rows scroll under a heading that stays outside the scroll; compact rows are 36 px', async () => {
   const screen = await renderExample('Table/Table', 'Scrolling');
   const [header, body] = screen.getByTestId('cities').children;
-  assert.equal(body.tag, 'scroll');
+  assert.equal(body.tag, 'list', 'a capped body builds only the rows near the screen');
   assert.equal(body.props.maxHeight, 216);
   assert.equal(header.props.position, undefined, 'nothing sticky is needed');
-  assert.equal(rows(screen).length, 10);
+  assert.ok(rows(screen).length >= 1, 'the rows near the screen are built');
   assert.equal(rows(screen)[0].props.minHeight, 36);
   assert.match(header.props.gridTemplateColumns, /72px$/, 'a width in points is a fixed track');
 });
@@ -255,4 +255,11 @@ test('a number column named past the 64 characters a box name holds still measur
     }
   `);
   assert.equal(order(screen, 't').length, 2);
+});
+
+test('Long: two thousand rows under a cap build only those near the screen', async () => {
+  const screen = await renderExample('Table/Table', 'Long');
+  const built = rows(screen);
+  assert.ok(built.length > 0 && built.length < 100, `${built.length} rows built`);
+  assert.equal(screen.getByTestId('orders').children[1].tag, 'list');
 });

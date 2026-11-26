@@ -140,6 +140,27 @@ export function Scrolling() {
   );
 }
 
+const orders = Array.from({ length: 2000 }, (_, index) => ({
+  id: `ORD-${String(index + 1).padStart(4, '0')}`,
+  customer: ['Kestrel & Co', 'Northwind', 'Blue Harbour', 'Atlas Supply', 'Juniper Ltd'][index % 5],
+  total: ((index * 7919) % 50000) / 100 + 12,
+}));
+
+/** Two thousand rows under a cap: only the rows near the screen are built, so it scrolls as lightly as ten. */
+export function Long() {
+  return (
+    <Table
+      label="Orders"
+      columns={[{ field: 'id', header: 'Order', width: 96 }, { field: 'customer', header: 'Customer' }, { field: 'total', header: 'Total', align: 'end', format: value => `$${Number(value).toFixed(2)}` }]}
+      rows={orders}
+      keyField="id"
+      density="compact"
+      maxHeight={288}
+      data-testid="orders"
+    />
+  );
+}
+
 export function StateEmpty() {
   return <Table label="Invoices" columns={columns} rows={[]} emptyLabel="No invoices yet" data-testid="empty" />;
 }
