@@ -4,6 +4,7 @@ import { CheckboxInput } from '../CheckboxInput/CheckboxInput';
 import { useLargeText } from '../internal/largeText';
 import { DropdownMenu, DropdownMenuRadioGroup, DropdownMenuRadioItem } from '../DropdownMenu/DropdownMenu';
 import { IconButton } from '../IconButton/IconButton';
+import { Skeleton, SkeletonGroup } from '../Skeleton/Skeleton';
 import { liuliText } from '../i18n/text';
 import { Glyph } from '../internal/Glyph';
 import { useDensity } from '../density';
@@ -87,6 +88,8 @@ export type TableProps = TableBinding & {
   isHeaderSticky?: boolean;
   /** Shown in place of the rows when there are none: "No invoices yet". */
   emptyLabel?: string;
+  /** Draws placeholder rows under the headings, in place of `rows`, while they load. @default false */
+  isLoading?: boolean;
   /**
    * The order the rows are shown in; the table sorts `rows` by it. Leave it out to let the headings own it,
    * starting from `rows` as given.
@@ -112,6 +115,10 @@ const minText = 11;
 const [inset, gap] = [16, 12];
 // A row's checkbox and its cell take about this much of the row from the columns: 16 inset, a 16-point box, 12 to the first column, less the 16 the row's own inset no longer takes.
 const selectWidth = 28;
+// Enough placeholder rows to read as a table without promising how many will come.
+const loadingRows = 4;
+// The bars' widths, in turn down the rows and across the columns.
+const barWidths = ['long', 'half', 'most', 'short'] as const;
 // Measured for a character's width at the reader's text size; taken as 8 points until it is.
 const sample = 'abcdefghijklmnopqrstuvwxyz';
 const share = (column: TableColumn) => (typeof column.width === 'number' ? 0 : parseFloat(column.width ?? '1fr'));
@@ -160,7 +167,7 @@ const track = (column: TableColumn) => (typeof column.width === 'number' ? `${co
 
 /** Records in rows and fields in columns, under headings that stay in view. */
 export function Table({
-  label, columns, rows, keyField, layout = 'auto', density: ownDensity, maxHeight, isHeaderSticky = false, bind, onChange: ownChange, value: own, emptyLabel, sort: ownSort, onSortChange, checkedRows = [], onCheckedRowsChange, className, 'data-testid': testId, ...attributes
+  label, columns, rows, keyField, layout = 'auto', density: ownDensity, maxHeight, isHeaderSticky = false, bind, onChange: ownChange, value: own, emptyLabel, isLoading = false, sort: ownSort, onSortChange, checkedRows = [], onCheckedRowsChange, className, 'data-testid': testId, ...attributes
 }: TableProps) {
   const selectedKey = bind ? bind.value : own;
   const localSort = useLocal<TableSort | null>('sort', null);
@@ -206,7 +213,7 @@ export function Table({
   const selectAll = isMulti && (
     <view className={r.select.base}>
       <CheckboxInput label={liuliText('@liuli.selectAll')} isLabelHidden size="sm" value={keys.length > 0 && checkedCount === keys.length}
-        isIndeterminate={checkedCount > 0} isDisabled={keys.length === 0} onChange={isOn => onCheckedRowsChange?.(isOn ? keys : [])} data-testid={testId && `${testId}-select-all`} />
+        isIndeterminate={checkedCount > 0} isDisabled={isLoading || keys.length === 0} onChange={isOn => onCheckedRowsChange?.(isOn ? keys : [])} data-testid={testId && `${testId}-select-all`} />
     </view>
   );
 
@@ -330,12 +337,39 @@ export function Table({
     );
   });
 
+  // Placeholder rows keep the table's shape: a bar per column, varied in width, the number's at the end.
+  const placeholders = Array.from({ length: loadingRows }, (_, row) => (
+    <view key={String(row)} className={isMulti ? r.selectable.base : r.rowgroup.base}>
+      {isMulti && <view className={r.select.base}><Skeleton shape="block" className={r.loading.box} /></view>}
+      {isStacked
+        ? (
+          <view className={cx(r.block.base, sides, r.block.density[density], isMulti && r.selectable.rest)}>
+            <view className={isLarge ? r.lead.large : r.lead.base}>
+              <view className={r.leadCell.base}><Skeleton className={r.loading.width[barWidths[row % barWidths.length]]} /></view>
+              {figure && <Skeleton className={isLarge ? r.loading.figureUnder : r.loading.figure} />}
+            </view>
+            {rest.length > 0 && <Skeleton className={r.loading.width[barWidths[(row + 1) % barWidths.length]]} />}
+          </view>
+        )
+        : (
+          <view style={tracks} className={cx(line, isMulti && r.selectable.rest)}>
+            {columns.map((column, at) => (
+              <view key={column.field} className={r.cell.base}>
+                <Skeleton className={column.align === 'end' ? r.loading.end : r.loading.width[barWidths[(row + at) % barWidths.length]]} />
+              </view>
+            ))}
+          </view>
+        )}
+    </view>
+  ));
+
   return (
-    <view box={box} role="grid" aria-label={label} data-testid={testId} {...dataOf(attributes)} className={cx(r.root.base, r.root.layer[layer], className)}>
+    <view box={box} role="grid" aria-label={label} aria-busy={isLoading || undefined} data-testid={testId} {...dataOf(attributes)} className={cx(r.root.base, r.root.layer[layer], className)}>
       {/* Stacked, every field is beside its own heading or needs none. */}
       {isStacked ? sortBar : header}
-      {rows.length === 0 && emptyLabel !== undefined && <text className={r.empty.base}>{emptyLabel}</text>}
-      {rows.length > 0 && (maxHeight === undefined
+      {isLoading && <SkeletonGroup label={liuliText('@liuli.loadingNamed', { name: label })} className={cx(r.body.base, r.loading.group)}>{placeholders}</SkeletonGroup>}
+      {!isLoading && rows.length === 0 && emptyLabel !== undefined && <text className={r.empty.base}>{emptyLabel}</text>}
+      {!isLoading && rows.length > 0 && (maxHeight === undefined
         ? <view className={r.body.base}>{body}</view>
         : <scroll style={{ maxHeight }} className={r.body.base}>{body}</scroll>)}
       <view aria-hidden className={r.measure.base}>

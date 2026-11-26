@@ -235,5 +235,8 @@
   },
   "@liuli.selectRow": {
     "defaultMessage": "选择{row}"
+  },
+  "@liuli.loadingNamed": {
+    "defaultMessage": "正在加载{name}"
   }
 }

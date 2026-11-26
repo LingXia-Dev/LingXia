@@ -232,6 +232,58 @@ export function SelectableStacked() {
 }
 ```
 
+### Rows still loading
+
+```tsx
+import { Table, type TableColumn } from '@liulidesign/core/Table';
+
+const invoices = [
+  { id: 'INV-1042', customer: 'Northwind', due: '3 Nov', amount: 1280, status: 'Paid' },
+  { id: 'INV-1043', customer: 'Blue Harbor', due: '9 Nov', amount: 420.5, status: 'Due' },
+  { id: 'INV-1044', customer: 'Kestrel & Co', due: '12 Nov', amount: 96, status: 'Overdue' },
+  { id: 'INV-1045', customer: 'Lumen Studio', due: '20 Nov', amount: 3150, status: 'Due' },
+];
+const columns: TableColumn[] = [
+  { field: 'customer', header: 'Customer', width: '2fr' },
+  { field: 'due', header: 'Due' },
+  { field: 'amount', header: 'Amount', align: 'end', format: money },
+];
+const sortableColumns: TableColumn[] = [
+  { field: 'customer', header: 'Customer', width: '2fr', isSortable: true },
+  { field: 'dueOn', header: 'Due', format: day, isSortable: true },
+  { field: 'amount', header: 'Amount', align: 'end', format: value => (value === null ? '—' : money(value)), isSortable: true },
+];
+
+/** While the rows load: placeholder bars under the headings, the table already its final shape. */
+export function Loading() {
+  return <Table label="Invoices" columns={sortableColumns} rows={[]} keyField="id" isLoading emptyLabel="No invoices yet" data-testid="loading" />;
+}
+```
+
+### Stacked records still loading
+
+```tsx
+import { useLocal } from '@lingxia/view';
+import { Table, type TableColumn } from '@liulidesign/core/Table';
+
+const columns: TableColumn[] = [
+  { field: 'customer', header: 'Customer', width: '2fr' },
+  { field: 'due', header: 'Due' },
+  { field: 'amount', header: 'Amount', align: 'end', format: money },
+];
+const sortableColumns: TableColumn[] = [
+  { field: 'customer', header: 'Customer', width: '2fr', isSortable: true },
+  { field: 'dueOn', header: 'Due', format: day, isSortable: true },
+  { field: 'amount', header: 'Amount', align: 'end', format: value => (value === null ? '—' : money(value)), isSortable: true },
+];
+
+/** Loading stacked records, each checkbox already in its place. */
+export function LoadingStacked() {
+  const picked = useLocal<string[]>('picked', []);
+  return <Table label="Invoices" columns={sortableColumns} rows={[]} keyField="id" layout="stacked" isLoading checkedRows={picked.value} onCheckedRowsChange={picked.set} data-testid="loading-stacked" />;
+}
+```
+
 ### Compact rows under a heading that stays
 
 ```tsx
@@ -334,6 +386,7 @@ export function MembersColumns() {
 | `maxHeight` | `number` |  | Caps the rows' height in points: the rows scroll under a heading that stays. |
 | `isHeaderSticky` | `boolean` | `false` | Holds the heading at the top of the scroll the table sits in while its rows pass under it. The table must be inside a `<scroll>`; without `maxHeight`. |
 | `emptyLabel` | `string` |  | Shown in place of the rows when there are none: "No invoices yet". |
+| `isLoading` | `boolean` | `false` | Draws placeholder rows under the headings, in place of `rows`, while they load. |
 | `sort` | `TableSort \| null` |  | The order the rows are shown in; the table sorts `rows` by it. Leave it out to let the headings own it, starting from `rows` as given. |
 | `onSortChange` | `((sort: TableSort) => void)` |  | Runs when a heading asks for another order, with it. |
 | `checkedRows` | `readonly string[]` | `[]` | The rows checked, by key. |
@@ -375,7 +428,7 @@ export function MembersColumns() {
 
 - `className`: classes merged after the recipe's, so they win.
 - The recipe, `tableRecipe` from `@liulidesign/core/Table/recipe`: the classes of each part, to style an element of your own to match. The component does not read a changed copy.
-- Scale tokens it reads, set in the app's stylesheet under `@theme`: `--spacing-control-sm`, `--spacing-control-md`, `--text-footnote`, `--text-body`, `--radius-control`, `--radius-container`.
+- Scale tokens it reads, set in the app's stylesheet under `@theme`: `--spacing-control-sm`, `--spacing-control-md`, `--text-footnote`, `--text-body`, `--radius-control`, `--radius-container`, `--radius-checkbox`.
 - Colour roles it paints with, set by the theme pack: `accent`, `accent-soft`, `focus`, `line`, `surface`, `surface-overlay`, `text`, `text-faint`, `text-muted`.
 
 ## Accessibility

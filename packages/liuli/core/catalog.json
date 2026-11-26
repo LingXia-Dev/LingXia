@@ -18983,6 +18983,13 @@
           "description": "Shown in place of the rows when there are none: \"No invoices yet\"."
         },
         {
+          "name": "isLoading",
+          "type": "boolean",
+          "required": false,
+          "description": "Draws placeholder rows under the headings, in place of `rows`, while they load.",
+          "default": "false"
+        },
+        {
           "name": "sort",
           "type": "TableSort | null",
           "required": false,
@@ -19101,6 +19108,7 @@
         "select": "view",
         "selectable": "view",
         "inset": "view",
+        "loading": "view",
         "body": "view",
         "rowgroup": "view",
         "row": "view",
@@ -19216,6 +19224,16 @@
           "source": "import { useLocal } from '@lingxia/view';\nimport { Table, type TableColumn } from '@liulidesign/core/Table';\n\nconst columns: TableColumn[] = [\n  { field: 'customer', header: 'Customer', width: '2fr' },\n  { field: 'due', header: 'Due' },\n  { field: 'amount', header: 'Amount', align: 'end', format: money },\n];\nconst bills = [\n  { id: 'INV-1042', customer: 'Northwind', dueOn: '2026-11-03', amount: 1280 },\n  { id: 'INV-1043', customer: 'Blue Harbor', dueOn: '2026-11-09', amount: 420.5 },\n  { id: 'INV-1044', customer: 'Kestrel & Co', dueOn: '2026-10-28', amount: 96 },\n  { id: 'INV-1045', customer: 'Lumen Studio', dueOn: '2026-11-20', amount: 3150 },\n  { id: 'INV-1046', customer: 'Atlas Freight', dueOn: '2026-11-14', amount: null },\n];\nconst sortableColumns: TableColumn[] = [\n  { field: 'customer', header: 'Customer', width: '2fr', isSortable: true },\n  { field: 'dueOn', header: 'Due', format: day, isSortable: true },\n  { field: 'amount', header: 'Amount', align: 'end', format: value => (value === null ? '—' : money(value)), isSortable: true },\n];\n\n/** Stacked, the checkbox for all sits beside the sort menu, and each record's at its start. */\nexport function SelectableStacked() {\n  const picked = useLocal<string[]>('picked', []);\n  return <Table label=\"Invoices\" columns={sortableColumns} rows={bills} keyField=\"id\" layout=\"stacked\" checkedRows={picked.value} onCheckedRowsChange={picked.set} data-testid=\"selectable-stacked\" />;\n}"
         },
         {
+          "name": "Loading",
+          "title": "Rows still loading",
+          "source": "import { Table, type TableColumn } from '@liulidesign/core/Table';\n\nconst invoices = [\n  { id: 'INV-1042', customer: 'Northwind', due: '3 Nov', amount: 1280, status: 'Paid' },\n  { id: 'INV-1043', customer: 'Blue Harbor', due: '9 Nov', amount: 420.5, status: 'Due' },\n  { id: 'INV-1044', customer: 'Kestrel & Co', due: '12 Nov', amount: 96, status: 'Overdue' },\n  { id: 'INV-1045', customer: 'Lumen Studio', due: '20 Nov', amount: 3150, status: 'Due' },\n];\nconst columns: TableColumn[] = [\n  { field: 'customer', header: 'Customer', width: '2fr' },\n  { field: 'due', header: 'Due' },\n  { field: 'amount', header: 'Amount', align: 'end', format: money },\n];\nconst sortableColumns: TableColumn[] = [\n  { field: 'customer', header: 'Customer', width: '2fr', isSortable: true },\n  { field: 'dueOn', header: 'Due', format: day, isSortable: true },\n  { field: 'amount', header: 'Amount', align: 'end', format: value => (value === null ? '—' : money(value)), isSortable: true },\n];\n\n/** While the rows load: placeholder bars under the headings, the table already its final shape. */\nexport function Loading() {\n  return <Table label=\"Invoices\" columns={sortableColumns} rows={[]} keyField=\"id\" isLoading emptyLabel=\"No invoices yet\" data-testid=\"loading\" />;\n}"
+        },
+        {
+          "name": "LoadingStacked",
+          "title": "Stacked records still loading",
+          "source": "import { useLocal } from '@lingxia/view';\nimport { Table, type TableColumn } from '@liulidesign/core/Table';\n\nconst columns: TableColumn[] = [\n  { field: 'customer', header: 'Customer', width: '2fr' },\n  { field: 'due', header: 'Due' },\n  { field: 'amount', header: 'Amount', align: 'end', format: money },\n];\nconst sortableColumns: TableColumn[] = [\n  { field: 'customer', header: 'Customer', width: '2fr', isSortable: true },\n  { field: 'dueOn', header: 'Due', format: day, isSortable: true },\n  { field: 'amount', header: 'Amount', align: 'end', format: value => (value === null ? '—' : money(value)), isSortable: true },\n];\n\n/** Loading stacked records, each checkbox already in its place. */\nexport function LoadingStacked() {\n  const picked = useLocal<string[]>('picked', []);\n  return <Table label=\"Invoices\" columns={sortableColumns} rows={[]} keyField=\"id\" layout=\"stacked\" isLoading checkedRows={picked.value} onCheckedRowsChange={picked.set} data-testid=\"loading-stacked\" />;\n}"
+        },
+        {
           "name": "Scrolling",
           "title": "Compact rows under a heading that stays",
           "source": "import { Table, type TableColumn } from '@liulidesign/core/Table';\n\nconst columns: TableColumn[] = [\n  { field: 'customer', header: 'Customer', width: '2fr' },\n  { field: 'due', header: 'Due' },\n  { field: 'amount', header: 'Amount', align: 'end', format: money },\n];\nconst cities = [\n  ['Lagos', 'Nigeria', 15.4], ['Cairo', 'Egypt', 10.0], ['Kinshasa', 'DR Congo', 9.5], ['Johannesburg', 'South Africa', 5.6], ['Nairobi', 'Kenya', 4.4],\n  ['Addis Ababa', 'Ethiopia', 3.9], ['Casablanca', 'Morocco', 3.7], ['Accra', 'Ghana', 2.6], ['Dakar', 'Senegal', 1.3], ['Kigali', 'Rwanda', 1.2],\n].map(([city, country, people]) => ({ city, country, people }));\n\n/** Compact rows that scroll under a heading that stays. */\nexport function Scrolling() {\n  return (\n    <Table\n      label=\"Cities by population\"\n      columns={[{ field: 'city', header: 'City' }, { field: 'country', header: 'Country' }, { field: 'people', header: 'Millions', align: 'end', width: 72, format: value => Number(value).toFixed(1) }]}\n      rows={cities}\n      density=\"compact\"\n      maxHeight={216}\n      data-testid=\"cities\"\n    />\n  );\n}"
@@ -19279,7 +19297,8 @@
           "--text-footnote",
           "--text-body",
           "--radius-control",
-          "--radius-container"
+          "--radius-container",
+          "--radius-checkbox"
         ],
         "roles": [
           "accent",
@@ -19330,6 +19349,14 @@
             {
               "name": "SelectableStacked",
               "title": "Stacked records, each with its checkbox at the start"
+            },
+            {
+              "name": "Loading",
+              "title": "Placeholder rows while the rows load"
+            },
+            {
+              "name": "LoadingStacked",
+              "title": "Stacked placeholders, checkboxes in place"
             },
             {
               "name": "Scrolling",

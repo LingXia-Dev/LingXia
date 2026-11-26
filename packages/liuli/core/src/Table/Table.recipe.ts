@@ -12,6 +12,7 @@ export const tableParts = {
   select: 'view',
   selectable: 'view',
   inset: 'view',
+  loading: 'view',
   body: 'view',
   rowgroup: 'view',
   row: 'view',
@@ -148,6 +149,17 @@ export const tableRecipe = {
   },
   pairValue: {
     base: 'shrink text-footnote text-text',
+  },
+  /** Placeholder bars while the rows load: text bars of varied widths, a number's short and at the end. */
+  loading: {
+    width: { long: 'w-3/4', half: 'w-1/2', most: 'w-2/3', short: 'w-2/5' },
+    end: 'self-end w-14',
+    /** The rows divide themselves, as the loaded ones do, without the placeholder group's own gap. */
+    group: 'gap-0',
+    figure: 'shrink-0 w-16',
+    /** At accessibility text sizes, under the name bar, as the loaded figure goes. */
+    figureUnder: 'self-start w-16',
+    box: 'size-4 rounded-checkbox',
   },
   empty: {
     base: 'px-4 py-6 text-body text-muted text-center',

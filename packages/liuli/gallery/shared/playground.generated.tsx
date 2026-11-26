@@ -4264,6 +4264,11 @@ export const playgroundEntries: PlaygroundEntry[] = [
         "name": "emptyLabel",
         "required": false,
         "kind": "text"
+      },
+      {
+        "name": "isLoading",
+        "required": false,
+        "kind": "boolean"
       }
     ],
     "fixed": [

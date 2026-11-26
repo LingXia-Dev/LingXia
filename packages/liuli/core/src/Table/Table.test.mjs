@@ -217,3 +217,27 @@ test('Stacked at accessibility text sizes: the figure goes under the name, start
   const small = (await renderExample('Table/Table', 'SortStacked')).getByTestId('sort-stacked-INV-1044').children[0];
   assert.equal(small.props.flexDirection, 'row');
 });
+
+test('Loading: the grid is busy, placeholder rows say what loads, and the empty label waits', async () => {
+  const screen = await renderExample('Table/Table', 'Loading');
+  const grid = screen.getByTestId('loading');
+  assert.equal(grid.props.stateBusy, 1);
+  const status = screen.queryAll(node => node.props.role === 'status' && node.props.accessibilityLabel === 'Loading Invoices')[0];
+  assert.ok(status);
+  assert.equal(status.children.length, 4);
+  assert.ok(!JSON.stringify(grid).includes('No invoices yet'));
+});
+
+test('LoadingStacked: the checkbox for all is off while the rows load', async () => {
+  const screen = await renderExample('Table/Table', 'LoadingStacked');
+  assert.equal(screen.getByTestId('loading-stacked-select-all').props.enabled, 0);
+});
+
+test('LoadingStacked at accessibility text sizes: the figure bar goes under the name bar, as the loaded figure does', async () => {
+  const lead = screen => screen.queryAll(node => node.props.accessibilityLabel === 'Loading Invoices')[0].children[0].children[1].children[0];
+  const large = lead(await renderExample('Table/Table', 'LoadingStacked', { env: { textScale: 2 } }));
+  assert.notEqual(large.props.flexDirection, 'row');
+  assert.equal(large.children.length, 2);
+  const small = lead(await renderExample('Table/Table', 'LoadingStacked'));
+  assert.equal(small.props.flexDirection, 'row');
+});

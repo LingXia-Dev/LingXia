@@ -98,6 +98,17 @@ export function SortStacked() {
   return <Table label="Invoices" columns={sortableColumns} rows={bills} keyField="id" layout="stacked" data-testid="sort-stacked" />;
 }
 
+/** While the rows load: placeholder bars under the headings, the table already its final shape. */
+export function Loading() {
+  return <Table label="Invoices" columns={sortableColumns} rows={[]} keyField="id" isLoading emptyLabel="No invoices yet" data-testid="loading" />;
+}
+
+/** Loading stacked records, each checkbox already in its place. */
+export function LoadingStacked() {
+  const picked = useLocal<string[]>('picked', []);
+  return <Table label="Invoices" columns={sortableColumns} rows={[]} keyField="id" layout="stacked" isLoading checkedRows={picked.value} onCheckedRowsChange={picked.set} data-testid="loading-stacked" />;
+}
+
 /** A checkbox on each row and one for all; the rows checked are the page's, here counted above the table. */
 export function Selectable() {
   const picked = useLocal<string[]>('picked', ['INV-1043']);

@@ -314,5 +314,9 @@
   "@liuli.selectRow": {
     "defaultMessage": "Select {row}",
     "description": "A selectable Table row's checkbox; `row` is the row's first field."
+  },
+  "@liuli.loadingNamed": {
+    "defaultMessage": "Loading {name}",
+    "description": "Said while a component's content loads; `name` is the component's label."
   }
 }

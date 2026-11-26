@@ -1,5 +1,5 @@
 // Generated from the doc file by scripts/generate.mjs; do not edit.
-import { Invoices, Pressable, Sortable, SortControlled, SortStacked, Selectable, SelectableStacked, Scrolling, Members, MembersColumns, StateEmpty } from '../../core/src/Table/Table.examples';
+import { Invoices, Pressable, Sortable, SortControlled, SortStacked, Selectable, SelectableStacked, Loading, LoadingStacked, Scrolling, Members, MembersColumns, StateEmpty } from '../../core/src/Table/Table.examples';
 import { Lead, PageSection, Stage, StageGrid } from '../shared/Layout';
 
 export function Content() {
@@ -26,6 +26,12 @@ export function Content() {
         </Stage>
         <Stage caption={"Stacked records, each with its checkbox at the start"} bare>
           <SelectableStacked />
+        </Stage>
+        <Stage caption={"Placeholder rows while the rows load"} bare>
+          <Loading />
+        </Stage>
+        <Stage caption={"Stacked placeholders, checkboxes in place"} bare>
+          <LoadingStacked />
         </Stage>
         <Stage caption={"Compact rows that scroll under the headings"} bare>
           <Scrolling />
