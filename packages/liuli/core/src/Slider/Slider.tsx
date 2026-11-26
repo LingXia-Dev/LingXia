@@ -122,14 +122,7 @@ export function Slider(props: SliderProps) {
       {...shared}
     />
   ) : (() => {
-    const { onChangeEnd } = props;
-    const single = {
-      ...shared,
-      'aria-valuetext': valueLabel,
-      secondaryValue,
-      // The primitive reports the finger leaving; the value it ended on is the one in hand.
-      onPressChange: onChangeEnd && ((pressed: boolean) => { if (!pressed) onChangeEnd(props.bind ? props.bind.value : props.value); }),
-    };
+    const single = { ...shared, 'aria-valuetext': valueLabel, secondaryValue, onChangeEnd: props.onChangeEnd };
     return props.bind ? <slider bind={props.bind} {...single} /> : <slider value={props.value} onChange={props.onChange} {...single} />;
   })();
   return (

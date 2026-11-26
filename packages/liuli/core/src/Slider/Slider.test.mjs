@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { textOf } from '@lingxia/view/testing';
-import { described, renderExample } from '../testing/harness.mjs';
+import { described, renderExample, renderPage } from '../testing/harness.mjs';
 
 test('Volume: named by its label, the words are its value, and they follow the slider', async () => {
   const screen = await renderExample('Slider/Slider', 'Volume');
@@ -85,4 +85,21 @@ test('StateDisabled: the thumb takes the surface, not the white knob, so it does
   assert.match(slider.props.thumbStyle, /"surface"/);
   assert.doesNotMatch(slider.props.thumbStyle, /"knob"/);
   assert.equal(screen.getByText('Connect to Wi-Fi to change the quality.').props.color, 'text-muted', 'the reason is read, so it is not dimmed with the label');
+});
+
+test('onChangeEnd hears a change made without a finger, such as a key', async () => {
+  const screen = await renderPage(`
+    import { useLocal } from '@lingxia/view';
+    import { Slider } from '@liulidesign/core/Slider';
+    export function render() {
+      const level = useLocal('level', 20);
+      const ended = useLocal('ended', 'none');
+      return <page>
+        <Slider label="Level" bind={level} onChangeEnd={value => ended.set(String(value))} data-testid="level" />
+        <text data-testid="ended">{ended.value}</text>
+      </page>;
+    }
+  `);
+  screen.slide(screen.getByTestId('level'), 40);
+  assert.equal(textOf(screen.getByTestId('ended')), '40');
 });
