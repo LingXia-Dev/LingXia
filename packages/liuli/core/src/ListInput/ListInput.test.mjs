@@ -40,3 +40,12 @@ test('At large text: a row of controls wraps, the kind at a least width and the 
   assert.deepEqual([kind.props.minWidth, kind.props.width], [112, undefined], 'the kind grows with its words from 112 pt');
   assert.equal(row.children[1].props.flexBasis, 128, 'the number wraps under it below 128 pt');
 });
+
+test('with no rows the field still carries its test id and data-* props', async () => {
+  const { renderPage } = await import('../testing/harness.mjs');
+  const screen = await renderPage(`
+    import { ListInput } from '@liulidesign/core/ListInput';
+    export function render() { return <page><ListInput label="Guests" rowKeys={[]} renderRow={() => null} onAdd={() => {}} onRemove={() => {}} data-testid="guests" data-field="guests" /></page>; }`);
+  assert.deepEqual(JSON.parse(screen.getByTestId('guests').props.dataAttributes), { field: 'guests' });
+  assert.equal(screen.getByTestId('guests-add').tag, 'button');
+});

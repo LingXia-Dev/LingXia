@@ -137,3 +137,10 @@ test('ShareLink: endContent sits inside the box after the value', async () => {
   screen.press(copy);
   assert.equal(screen.queryAll(node => node.text === 'Copied.').length, 1);
 });
+
+test('the clear button carries <id>-clear, as the password button carries <id>-reveal', async () => {
+  const screen = await renderPage(`
+    import { TextInput } from '@liulidesign/core/TextInput';
+    export function render() { return <page><TextInput label="Name" value="Ana" onChange={() => {}} hasClear data-testid="name" /></page>; }`);
+  assert.equal(screen.getByTestId('name-clear').props.accessibilityLabel, 'Clear');
+});

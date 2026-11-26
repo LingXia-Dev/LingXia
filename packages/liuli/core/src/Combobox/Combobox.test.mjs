@@ -238,3 +238,11 @@ test('with a keyboard, no option that can be chosen leaves nothing active; Down 
   some.key(some.getByTestId('plan'), 'ArrowDown');
   assert.equal(active(some, 'plan'), 'Beta', 'the disabled choice is passed over');
 });
+
+test('with a keyboard, the editor carries the field\'s data-* props', async () => {
+  const screen = await renderPage(`
+    import { Combobox } from '@liulidesign/core/Combobox';
+    export function render() { return <page><Combobox label="City" value="" onChange={() => {}} items={[{ value: 'a', label: 'Arles' }]} data-testid="city" data-field="city" /></page>; }`, fine);
+  assert.equal(screen.getByTestId('city').tag, 'input');
+  assert.deepEqual(JSON.parse(screen.getByTestId('city').props.dataAttributes), { field: 'city' });
+});

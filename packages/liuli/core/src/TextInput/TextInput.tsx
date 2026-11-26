@@ -176,7 +176,7 @@ export function TextInput(props: TextInputProps) {
           {endContent !== undefined && <view className={r.end.base}>{endContent}</view>}
           {isLoading && <SpinnerMark style={mark} className={r.spinner.base} />}
           {props.hasClear && text !== '' && !isDisabled && !isReadOnly && (
-            <button aria-label={props.clearLabel ?? liuliText('@liuli.clear')} onClick={clear} className={r.clear.base}>
+            <button aria-label={props.clearLabel ?? liuliText('@liuli.clear')} onClick={clear} data-testid={testId !== undefined ? `${testId}-clear` : undefined} className={r.clear.base}>
               <Glyph name="close" side={16} className={r.clearIcon.base} />
             </button>
           )}

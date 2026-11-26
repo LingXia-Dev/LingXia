@@ -74,3 +74,10 @@ test('Anchored: with `anchor` there is no trigger; the caller opens the panel ag
   screen.press(screen.getByTestId('explain'));
   assert.equal(screen.queryAll(node => node.props.role === 'dialog').length, 1, 'and it opens again');
 });
+
+test('anchored, with no trigger, the panel carries the popover\'s data-* props', async () => {
+  const screen = await renderPage(`
+    import { Popover } from '@liulidesign/core/Popover';
+    export function render() { return <page><view id="spot" /><Popover label="Tip" anchor="spot" isOpen onOpenChange={() => {}} data-testid="tip" data-kind="hint" content={<text>Hi</text>} /></page>; }`);
+  assert.deepEqual(JSON.parse(screen.getByTestId('tip-panel').props.dataAttributes), { kind: 'hint' });
+});

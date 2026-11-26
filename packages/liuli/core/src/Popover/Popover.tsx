@@ -82,6 +82,8 @@ export function Popover({
           onToggle={onOpenChange}
           anchor={anchor}
           data-testid={testId && `${testId}-panel`}
+          // With no trigger the panel is all there is to mark.
+          {...(anchor === undefined ? {} : dataOf(attributes))}
           style={{ positionArea: areas[placement][alignment] }}
           className={cx(r.panel.base, r.panel.offset[placement], panelClassName)}
         >

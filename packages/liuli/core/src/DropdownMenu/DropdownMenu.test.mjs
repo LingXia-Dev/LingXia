@@ -402,3 +402,20 @@ test('drilled, a menu named in the other direction is isolated once in the back 
   screen.press(screen.getByTestId('move'));
   assert.equal(screen.getByTestId('move-back').props.accessibilityLabel, 'Back to \u2068\u05ea\u05e4\u05e8\u05d9\u05d8\u2069');
 });
+
+test('checkbox and radio items keep their data-* props', async () => {
+  const screen = await renderPage(`
+    import { DropdownMenu, DropdownMenuCheckboxItem, DropdownMenuRadioGroup, DropdownMenuRadioItem } from '@liulidesign/core/DropdownMenu';
+    import { Button } from '@liulidesign/core/Button';
+    export function render() {
+      return (
+        <page>
+          <DropdownMenu label="View" isOpen onOpenChange={() => {}} menu={<>
+            <DropdownMenuCheckboxItem label="Grid" value onChange={() => {}} data-testid="grid" data-option="grid" />
+            <DropdownMenuRadioGroup label="Sort" value="name" onChange={() => {}}><DropdownMenuRadioItem value="name" label="Name" data-testid="name" data-option="name" /></DropdownMenuRadioGroup>
+          </>}><Button label="View" /></DropdownMenu>
+        </page>
+      );
+    }`);
+  for (const id of ['grid', 'name']) assert.deepEqual(JSON.parse(screen.getByTestId(id).props.dataAttributes), { option: id });
+});

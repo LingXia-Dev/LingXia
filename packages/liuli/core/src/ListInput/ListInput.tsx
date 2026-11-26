@@ -36,7 +36,8 @@ export function ListInput(props: ListInputProps) {
   return (
     <Field {...field} className={className}>
       {control => (
-        <view className={r.root.base}>
+        // With no rows there is no list, so the field's box carries its test id and data-* props.
+        <view className={r.root.base} {...(rowKeys.length === 0 ? { 'data-testid': testId, ...dataOf(field) } : {})}>
           {rowKeys.length > 0 && (
             <view role="list" aria-label={control['aria-label']} aria-describedby={control['aria-describedby']} data-testid={testId} {...dataOf(field)} className={r.list.base}>
               {rowKeys.map((key, index) => (

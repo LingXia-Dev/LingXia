@@ -202,6 +202,8 @@ interface TypeaheadProps {
   onQueryChange?: (query: string) => void;
   isLoading: boolean;
   testId?: string;
+  /** The field's own `data-*` props, for the editor that carries its test id. */
+  data: Record<string, unknown>;
   hasClear: boolean;
   clearLabel?: string;
   onChange: (value: string) => void;
@@ -212,7 +214,7 @@ interface TypeaheadProps {
  * under it while focus stays in the text; the arrow keys move through the list and Return chooses.
  */
 function ComboboxTypeahead({
-  control, label, items, current, size, statusType, isDisabled, placeholder, emptyLabel, moreLabel, onQueryChange, isLoading, testId, hasClear, clearLabel, onChange,
+  control, label, items, current, size, statusType, isDisabled, placeholder, emptyLabel, moreLabel, onQueryChange, isLoading, testId, data, hasClear, clearLabel, onChange,
 }: TypeaheadProps) {
   const id = useId();
   const [boxId, listId, panelId] = [`${id}-box`, `${id}-list`, `${id}-panel`];
@@ -273,7 +275,7 @@ function ComboboxTypeahead({
           onBlur={() => { if (query.value !== null && query.value.trim() === '' && current !== '') onChange(''); close(); }}
           onKeyDown={keys}
           disabled={control.disabled}
-          data-testid={testId}
+          data-testid={testId} {...data}
           className={cx(r.editor.base, r.value.size[size])}
         />
         {hasClear && current !== '' && !isDisabled && (
@@ -356,6 +358,7 @@ export function Combobox(props: ComboboxProps) {
       {control => (!isSheet ? (
         <ComboboxTypeahead
           control={control}
+          data={dataOf(props)}
           label={label}
           items={items}
           current={current}

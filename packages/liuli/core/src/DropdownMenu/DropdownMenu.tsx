@@ -347,11 +347,11 @@ export function DropdownMenuItem(props: DropdownMenuItemProps) {
 }
 
 /** An item that turns one option on or off, checked at its end. */
-export function DropdownMenuCheckboxItem({ label, description, value: isChecked, isIndeterminate = false, onChange: onCheckedChange, isDisabled = false, 'data-testid': testId }: DropdownMenuCheckboxItemProps) {
+export function DropdownMenuCheckboxItem({ label, description, value: isChecked, isIndeterminate = false, onChange: onCheckedChange, isDisabled = false, 'data-testid': testId, ...attributes }: DropdownMenuCheckboxItemProps) {
   const isMixed = isIndeterminate && !isChecked;
   return (
     <CheckableItem role="menuitemcheckbox" label={label} description={description} isChecked={isChecked} isMixed={isMixed} isDisabled={isDisabled}
-      onClick={() => onCheckedChange(isMixed || !isChecked)} testId={testId} owner="DropdownMenuCheckboxItem" />
+      onClick={() => onCheckedChange(isMixed || !isChecked)} testId={testId} data={dataOf(attributes)} owner="DropdownMenuCheckboxItem" />
   );
 }
 
@@ -384,12 +384,12 @@ export function DropdownMenuRadioGroup(props: DropdownMenuRadioGroupProps) {
 }
 
 /** One choice in a DropdownMenuRadioGroup, checked at its end while it is the group's value. */
-export function DropdownMenuRadioItem({ value, label, description, isDisabled = false, 'data-testid': testId }: DropdownMenuRadioItemProps) {
+export function DropdownMenuRadioItem({ value, label, description, isDisabled = false, 'data-testid': testId, ...attributes }: DropdownMenuRadioItemProps) {
   const group = useContext(RadioGroup);
   if (group === null) throw Error('DropdownMenuRadioItem: place it inside a DropdownMenuRadioGroup');
   return (
     <CheckableItem role="menuitemradio" label={label} description={description} isChecked={group.value === value} isDisabled={isDisabled}
-      onClick={() => { if (group.value !== value) group.onChange(value); }} testId={testId} owner="DropdownMenuRadioItem" />
+      onClick={() => { if (group.value !== value) group.onChange(value); }} testId={testId} data={dataOf(attributes)} owner="DropdownMenuRadioItem" />
   );
 }
 
@@ -402,6 +402,8 @@ function CheckableItem(props: {
   isDisabled: boolean;
   onClick: () => void;
   testId: string | undefined;
+  /** The item's own `data-*` props. */
+  data: Record<string, unknown>;
   owner: string;
 }) {
   const size = useContext(MenuSize);
@@ -417,7 +419,7 @@ function CheckableItem(props: {
       aria-describedby={props.description !== undefined ? descriptionId : undefined}
       disabled={props.isDisabled}
       onClick={props.onClick}
-      data-testid={props.testId}
+      data-testid={props.testId} {...props.data}
       className={cx(r.item.base, r.item.size[size])}
     >
       <Lead icon={undefined} className={r.itemIcon.base} />
