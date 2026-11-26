@@ -530,7 +530,7 @@
         {
           "name": "Group",
           "title": "A group with a count",
-          "source": "import { Avatar, AvatarGroup } from '@liulidesign/core/Avatar';\n\nconst photo = (n: number) => `public/avatars/avatar-${n}.png`;\n\n/** Overlapping, with the rest folded into a count. */\nexport function Group() {\n  return (\n    <AvatarGroup label=\"Editors\" max={4} overflowLabel={count => `${count} more editors`} onOverflowClick={() => {}} data-testid=\"editors\">\n      <Avatar name=\"Ana Lima\" src={photo(1)} />\n      <Avatar name=\"Kai Chen\" />\n      <Avatar name=\"Mira Patel\" src={photo(2)} />\n      <Avatar name=\"Tomás Ruiz\" />\n      <Avatar name=\"Lena Vogel\" />\n      <Avatar name=\"Sam Okafor\" />\n    </AvatarGroup>\n  );\n}"
+          "source": "import { Said } from '../example';\nimport { Avatar, AvatarGroup } from '@liulidesign/core/Avatar';\n\nconst photo = (n: number) => `public/avatars/avatar-${n}.png`;\n\n/** Overlapping, with the rest folded into a count. */\nexport function Group() {\n  return (\n    <Said>\n      {say => (\n        <AvatarGroup label=\"Editors\" max={4} overflowLabel={count => `${count} more editors`} onOverflowClick={() => say('Showing all six editors')} data-testid=\"editors\">\n          <Avatar name=\"Ana Lima\" src={photo(1)} />\n          <Avatar name=\"Kai Chen\" />\n          <Avatar name=\"Mira Patel\" src={photo(2)} />\n          <Avatar name=\"Tomás Ruiz\" />\n          <Avatar name=\"Lena Vogel\" />\n          <Avatar name=\"Sam Okafor\" />\n        </AvatarGroup>\n      )}\n    </Said>\n  );\n}"
         },
         {
           "name": "WithName",
@@ -14849,6 +14849,182 @@
             }
           ],
           "statesLayout": "stack"
+        }
+      }
+    },
+    {
+      "name": "OverflowList",
+      "import": "@liulidesign/core/OverflowList",
+      "exports": [
+        "OverflowList"
+      ],
+      "category": "content",
+      "status": "preview",
+      "since": "2026-11-26",
+      "summary": "A line of items that keeps to one row, folding what does not fit into one element",
+      "description": "OverflowList lays out items on one line and measures them: when they do not all fit, the ones that do stay and the rest are handed to `renderOverflow`, which draws one element for them, a \"+3\" token or a More menu. It folds from the end, or from the start to keep the end of a path. Widths are remembered by key, so a line that widens brings items back without a second look.",
+      "keywords": [
+        "overflow list",
+        "overflow",
+        "more menu",
+        "collapse",
+        "plus n",
+        "truncate list",
+        "priority plus",
+        "toolbar overflow",
+        "tags"
+      ],
+      "props": [
+        {
+          "name": "items",
+          "type": "readonly Item[]",
+          "required": true,
+          "description": "Everything the line could show, in reading order."
+        },
+        {
+          "name": "renderItem",
+          "type": "(item: Item, index: number) => Child",
+          "required": true,
+          "description": "One item as it stands on the line: a Token, a Button, a link."
+        },
+        {
+          "name": "renderOverflow",
+          "type": "(hidden: readonly Item[]) => Child",
+          "required": true,
+          "description": "What stands for the items that do not fit, given them in order: a \"+3\" token, a More menu. Not drawn when all fit."
+        },
+        {
+          "name": "keyOf",
+          "type": "((item: Item, index: number) => string)",
+          "required": false,
+          "description": "An item's stable key, so its measured width outlives a change of the list. By default its place in `items`."
+        },
+        {
+          "name": "collapseFrom",
+          "type": "OverflowListCollapse",
+          "required": false,
+          "description": "The end the items fold away from: `start` keeps the last ones, as a path keeps where you are.",
+          "values": [
+            "start",
+            "end"
+          ],
+          "default": "'end'"
+        },
+        {
+          "name": "minVisible",
+          "type": "number",
+          "required": false,
+          "description": "The fewest items shown, even when they do not fit.",
+          "default": "0"
+        },
+        {
+          "name": "label",
+          "type": "string",
+          "required": false,
+          "description": "The line's name for assistive tech, when it is a group of its own."
+        },
+        {
+          "name": "className",
+          "type": "string",
+          "required": false,
+          "description": ""
+        },
+        {
+          "name": "data-testid",
+          "type": "string",
+          "required": false,
+          "description": ""
+        }
+      ],
+      "otherProps": {},
+      "choices": [],
+      "parts": {
+        "root": "view",
+        "item": "view",
+        "overflow": "view"
+      },
+      "accessibility": {
+        "pattern": null,
+        "name": "label",
+        "description": [],
+        "states": [],
+        "keyboard": [
+          {
+            "keys": "Tab",
+            "effect": "Reaches the items on the line, then the overflow element"
+          }
+        ],
+        "contrast": [],
+        "notes": [
+          "Items that do not fit are not on the line at all, so a screen reader reaches them only through the overflow element: make it a menu or say how many it holds.",
+          "The first frame lays out every item, clipped, to measure them; the overflow element stands in unseen and unread until the fit is known."
+        ]
+      },
+      "examples": [
+        {
+          "name": "Tags",
+          "title": "Tags, then a count",
+          "source": "import { Token } from '@liulidesign/core/Token';\nimport { OverflowList } from '@liulidesign/core/OverflowList';\n\nconst tags = ['Design', 'Research', 'Mobile', 'Accessibility', 'Performance', 'Charts', 'Localisation', 'Testing'];\n\n/** Tags on one line: those that do not fit become a count. */\nexport function Tags() {\n  return (\n    <OverflowList\n      label=\"Tags\"\n      items={tags}\n      keyOf={tag => tag}\n      renderItem={tag => <Token label={tag} size=\"sm\" />}\n      renderOverflow={hidden => <Token label={`+${hidden.length}`} size=\"sm\" data-testid=\"tags-more\" />}\n      data-testid=\"tags\"\n    />\n  );\n}"
+        },
+        {
+          "name": "Actions",
+          "title": "Actions, then a More menu",
+          "source": "import { Said } from '../example';\nimport { Button } from '@liulidesign/core/Button';\nimport { DropdownMenu } from '@liulidesign/core/DropdownMenu';\nimport { IconButton } from '@liulidesign/core/IconButton';\nimport { OverflowList } from '@liulidesign/core/OverflowList';\n\nconst actions = [\n  { id: 'reply', label: 'Reply', icon: 'reply' },\n  { id: 'forward', label: 'Forward', icon: 'forward' },\n  { id: 'archive', label: 'Archive', icon: 'archive' },\n  { id: 'pin', label: 'Pin', icon: 'pin' },\n  { id: 'delete', label: 'Delete', icon: 'delete' },\n] as const;\n\n/** A toolbar narrower than its actions: the last ones move into a More menu, in the same order. */\nexport function Actions() {\n  return (\n    <Said>\n      {say => (\n        <OverflowList\n          label=\"Message actions\"\n          items={actions}\n          keyOf={action => action.id}\n          renderItem={action => <Button label={action.label} startIcon={action.icon} size=\"sm\" variant=\"secondary\" onClick={() => say(action.label)} data-testid={`action-${action.id}`} />}\n          renderOverflow={hidden => (\n            <DropdownMenu label=\"More actions\" size=\"sm\" items={hidden.map(action => ({ id: action.id, label: action.label, icon: action.icon, onClick: () => say(action.label) }))}>\n              <IconButton label=\"More actions\" icon=\"more\" size=\"sm\" data-testid=\"actions-more\" />\n            </DropdownMenu>\n          )}\n          data-testid=\"actions\"\n        />\n      )}\n    </Said>\n  );\n}"
+        },
+        {
+          "name": "FromStart",
+          "title": "Folding from the start of a path",
+          "source": "import { OverflowList } from '@liulidesign/core/OverflowList';\n\nconst path = ['Home', 'Projects', 'LingXia', 'Design', 'Components', 'OverflowList'];\n\n/** Folding from the start keeps the end of a path, where you are. */\nexport function FromStart() {\n  return (\n    <OverflowList\n      items={path}\n      keyOf={step => step}\n      collapseFrom=\"start\"\n      minVisible={1}\n      renderItem={(step, index) => (\n        <view className=\"flex-row items-center gap-2\">\n          {index > 0 && <text aria-hidden className=\"text-footnote text-faint\">/</text>}\n          <text className={index === path.length - 1 ? 'text-footnote font-medium text-text' : 'text-footnote text-muted'}>{step}</text>\n        </view>\n      )}\n      renderOverflow={hidden => <text aria-label={`${hidden.length} more`} className=\"text-footnote text-muted\">…</text>}\n      data-testid=\"path\"\n    />\n  );\n}"
+        }
+      ],
+      "gaps": [
+        {
+          "missing": "Re-measuring an item whose width changes while it is folded away.",
+          "needs": "nothing from the View",
+          "today": "Its width is the one last measured; a new key measures it again."
+        }
+      ],
+      "playground": {
+        "props": {},
+        "fixture": true
+      },
+      "theming": {
+        "classProps": [
+          {
+            "name": "className",
+            "on": "",
+            "description": ""
+          }
+        ],
+        "tokens": [],
+        "roles": []
+      },
+      "related": [
+        "ButtonGroup",
+        "Token",
+        "DropdownMenu",
+        "Breadcrumb"
+      ],
+      "gallery": {
+        "specimen": "Specimen",
+        "tagline": "One line, the rest",
+        "order": 21,
+        "page": {
+          "lead": "Use an overflow list when a line of tags or actions must keep to one row at any width.",
+          "hero": "Actions",
+          "variants": [
+            {
+              "name": "Tags",
+              "title": "Tags, then a count"
+            },
+            {
+              "name": "FromStart",
+              "title": "Folding from the start of a path"
+            }
+          ],
+          "sizes": [],
+          "states": [],
+          "inContext": []
         }
       }
     },

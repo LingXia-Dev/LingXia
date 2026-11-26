@@ -133,6 +133,8 @@
     "./InputGroup": "./src/InputGroup/InputGroup.tsx",
     "./InputGroup/recipe": "./src/InputGroup/InputGroup.recipe.ts",
     "./InputGroupText": "./src/InputGroup/InputGroup.tsx",
+    "./OverflowList": "./src/OverflowList/OverflowList.tsx",
+    "./OverflowList/recipe": "./src/OverflowList/OverflowList.recipe.ts",
     "./Combobox": "./src/Combobox/Combobox.tsx",
     "./Combobox/recipe": "./src/Combobox/Combobox.recipe.ts",
     "./SearchField": "./src/SearchField/SearchField.tsx",

@@ -1237,6 +1237,23 @@ export const entries: GalleryEntry[] = [
     ]
   },
   {
+    "name": "OverflowList",
+    "page": "overflow-list",
+    "category": "content",
+    "summary": "A line of items that keeps to one row, folding what does not fit into one element",
+    "keywords": [
+      "overflow list",
+      "overflow",
+      "more menu",
+      "collapse",
+      "plus n",
+      "truncate list",
+      "priority plus",
+      "toolbar overflow",
+      "tags"
+    ]
+  },
+  {
     "name": "Stat",
     "page": "stat",
     "category": "charts",
@@ -1605,7 +1622,7 @@ export const galleryCategories: GalleryCategory[] = [
     "icon": "rows",
     "description": "Cards, rows and tables",
     "page": "category-content",
-    "count": 18
+    "count": 19
   },
   {
     "id": "charts",

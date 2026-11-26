@@ -17,13 +17,14 @@ import { Specimen as MessageBubbleSpecimen } from '../../core/src/MessageBubble/
 import { Specimen as ListDetailSpecimen } from '../../core/src/ListDetail/ListDetail.examples';
 import { Specimen as SplitSpecimen } from '../../core/src/Split/Split.examples';
 import { Specimen as QRCodeSpecimen } from '../../core/src/QRCode/QRCode.examples';
+import { Specimen as OverflowListSpecimen } from '../../core/src/OverflowList/OverflowList.examples';
 import { Category, Tile } from '../shared/Layout';
 
 export function Content({ onOpen }: { onOpen: (page: string) => void }) {
   return (
     <>
       <text className="text-body text-muted">{"Containers, rows and tables that hold what the app shows."}</text>
-      <Category title={"18 components"}>
+      <Category title={"19 components"}>
         <Tile
           name={"Card"}
           tagline={"Related content"}
@@ -167,6 +168,15 @@ export function Content({ onOpen }: { onOpen: (page: string) => void }) {
           testId={"open-qrcode"}
         >
           <QRCodeSpecimen />
+        </Tile>
+        <Tile
+          name={"OverflowList"}
+          tagline={"One line, the rest"}
+          isWide
+          onOpen={() => onOpen("overflow-list")}
+          testId={"open-overflow-list"}
+        >
+          <OverflowListSpecimen />
         </Tile>
       </Category>
     </>

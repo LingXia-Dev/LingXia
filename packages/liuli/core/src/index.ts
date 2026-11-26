@@ -95,6 +95,8 @@ export { NavList } from './NavList/NavList';
 export type * from './NavList/NavList';
 export { NumberInput } from './NumberInput/NumberInput';
 export type * from './NumberInput/NumberInput';
+export { OverflowList } from './OverflowList/OverflowList';
+export type * from './OverflowList/OverflowList';
 export { PageControl } from './PageControl/PageControl';
 export type * from './PageControl/PageControl';
 export { pagesShown, Pagination } from './Pagination/Pagination';

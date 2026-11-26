@@ -95,6 +95,7 @@ import { Content as MessageBubble } from '../content/message-bubble';
 import { Content as ListDetail } from '../content/list-detail';
 import { Content as Split } from '../content/split';
 import { Content as Qrcode } from '../content/qrcode';
+import { Content as OverflowList } from '../content/overflow-list';
 import { Content as Stat } from '../content/stat';
 import { Content as Sparkline } from '../content/sparkline';
 import { Content as BarChart } from '../content/bar-chart';
@@ -217,6 +218,7 @@ export const contents: Record<string, GalleryContent> = {
   "list-detail": ListDetail,
   "split": Split,
   "qrcode": Qrcode,
+  "overflow-list": OverflowList,
   "stat": Stat,
   "sparkline": Sparkline,
   "bar-chart": BarChart,

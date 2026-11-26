@@ -45,6 +45,7 @@ import { MetadataList } from '@liulidesign/core/MetadataList';
 import { MultiSelect } from '@liulidesign/core/MultiSelect';
 import { NavList } from '@liulidesign/core/NavList';
 import { NumberInput } from '@liulidesign/core/NumberInput';
+import { OverflowList } from '@liulidesign/core/OverflowList';
 import { PageControl } from '@liulidesign/core/PageControl';
 import { Pagination } from '@liulidesign/core/Pagination';
 import { Popover } from '@liulidesign/core/Popover';
@@ -101,6 +102,7 @@ import { playground as ListInputFixture } from '../../core/src/ListInput/ListInp
 import { playground as MetadataListFixture } from '../../core/src/MetadataList/MetadataList.examples';
 import { playground as MultiSelectFixture } from '../../core/src/MultiSelect/MultiSelect.examples';
 import { playground as NavListFixture } from '../../core/src/NavList/NavList.examples';
+import { playground as OverflowListFixture } from '../../core/src/OverflowList/OverflowList.examples';
 import { playground as PageControlFixture } from '../../core/src/PageControl/PageControl.examples';
 import { playground as PaginationFixture } from '../../core/src/Pagination/Pagination.examples';
 import { playground as PopoverFixture } from '../../core/src/Popover/Popover.examples';
@@ -3687,6 +3689,38 @@ export const playgroundEntries: PlaygroundEntry[] = [
     }
   },
   {
+    "name": "OverflowList",
+    "component": "OverflowList",
+    "defaults": {},
+    "controls": [
+      {
+        "name": "collapseFrom",
+        "required": false,
+        "kind": "choice",
+        "options": [
+          "end",
+          "start"
+        ]
+      },
+      {
+        "name": "minVisible",
+        "required": false,
+        "kind": "number"
+      },
+      {
+        "name": "label",
+        "required": false,
+        "kind": "text"
+      }
+    ],
+    "fixed": [
+      "items",
+      "renderItem",
+      "renderOverflow"
+    ],
+    "binds": {}
+  },
+  {
     "name": "PageControl",
     "component": "PageControl",
     "defaults": {
@@ -6014,6 +6048,7 @@ export function PlaygroundSubject({ name, props, set }: { name: string; props: P
   if (name === "MultiSelect") return <MultiSelect {...(MultiSelectFixture() as any)} {...(props as any)} onChange={(next: unknown) => set("value", next as PlaygroundValue)} />;
   if (name === "NavList") return <NavList {...(NavListFixture() as any)} {...(props as any)} onChange={(next: unknown) => set("value", next as PlaygroundValue)} />;
   if (name === "NumberInput") return <NumberInput {...(props as any)} onChange={(next: unknown) => set("value", next as PlaygroundValue)} />;
+  if (name === "OverflowList") return <OverflowList {...(OverflowListFixture() as any)} {...(props as any)} />;
   if (name === "PageControl") return <PageControl {...(PageControlFixture() as any)} {...(props as any)} onChange={(next: unknown) => set("value", next as PlaygroundValue)} />;
   if (name === "Pagination") return <Pagination {...(PaginationFixture() as any)} {...(props as any)} onChange={(next: unknown) => set("value", next as PlaygroundValue)} />;
   if (name === "Popover") return <Popover {...(PopoverFixture() as any)} {...(props as any)} onOpenChange={(next: unknown) => set("isOpen", next as PlaygroundValue)} />;

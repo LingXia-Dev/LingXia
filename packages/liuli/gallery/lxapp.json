@@ -103,6 +103,7 @@
     { "name": "list-detail", "path": "pages/list-detail/index" },
     { "name": "split", "path": "pages/split/index" },
     { "name": "qrcode", "path": "pages/qrcode/index" },
+    { "name": "overflow-list", "path": "pages/overflow-list/index" },
     { "name": "stat", "path": "pages/stat/index" },
     { "name": "sparkline", "path": "pages/sparkline/index" },
     { "name": "bar-chart", "path": "pages/bar-chart/index" },
