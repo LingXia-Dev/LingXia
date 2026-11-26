@@ -202,6 +202,38 @@ export function Target() {
 }
 ```
 
+### A range to stay in, behind the bars
+
+```tsx
+import { BarChart } from '@liulidesign/charts/BarChart';
+
+const week = [
+  { day: 'Mon', orders: 132 }, { day: 'Tue', orders: 148 }, { day: 'Wed', orders: 121 }, { day: 'Thu', orders: 163 },
+  { day: 'Fri', orders: 187 }, { day: 'Sat', orders: 96 }, { day: 'Sun', orders: 74 },
+];
+const sleep = [
+  { night: 'Mon', hours: 6.4 }, { night: 'Tue', hours: 7.2 }, { night: 'Wed', hours: 7.8 }, { night: 'Thu', hours: 5.9 },
+  { night: 'Fri', hours: 8.3 }, { night: 'Sat', hours: 9.1 }, { night: 'Sun', hours: 7.5 },
+];
+
+/** A zone behind the bars: the range to stay in, named with both ends. */
+export function Zone() {
+  return (
+    <BarChart
+      rows={sleep}
+      x="night"
+      y="hours"
+      label="Hours slept by night"
+      title="Sleep"
+      description="This week, hours"
+      formatValue={value => value.toFixed(1)}
+      references={[{ value: 7, to: 9, label: 'Goal' }]}
+      data-testid="sleep"
+    />
+  );
+}
+```
+
 ### Thirty bars
 
 ```tsx

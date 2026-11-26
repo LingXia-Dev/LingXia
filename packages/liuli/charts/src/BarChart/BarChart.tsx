@@ -1,9 +1,9 @@
 import { cx, useBox, useLocal, useView, type PointerEvent, type VectorPath, type Local } from '@lingxia/view';
 import { Chart, ChartLegend, ChartReadout, type ChartLegendPosition, type ChartField, type ChartRecord, type ChartReference, type ChartRow, type ChartSeries, type ChartSize, type ChartSummarize } from '../Chart/Chart';
-import { colorOf, keysOf, numberOf, numberIn, roleOf, seriesFacts, seriesOf, textOf, type ChartColor } from '../internal/data';
+import { colorOf, keysOf, numberOf, numberIn, referenceEnds, referenceTop, roleOf, seriesFacts, seriesOf, textOf, type ChartColor } from '../internal/data';
 import { leftPressed, pressed, pressedIndex, pressedKey, scrubbing } from '../internal/gesture';
 import { box, indexAt, knockOuts, roundUp } from '../internal/geometry';
-import { ReferenceLabels, ReferenceReading, referencePath, useReferences } from '../internal/References';
+import { ReferenceLabels, ReferenceReading, referencePath, useReferences, zonePath } from '../internal/References';
 import { Ticks } from '../internal/Ticks';
 import { laidOutOnce, remember } from '../internal/memo';
 import { barChartRecipe as r } from './BarChart.recipe';
@@ -309,7 +309,7 @@ export function BarChart<Row extends ChartRecord<Row>>({
   const scale = isNone ? 'none' : isFigured && !isCrowded ? 'each' : 'ends';
   // The figures' line is as tall as a figure, so a large one still sits on its bar.
   const lane = Math.max(figureLine, Math.ceil(widest.value?.height ?? 0));
-  const levels = references.map(each => each.value);
+  const levels = references.flatMap(referenceEnds);
   const [upTo, downTo] = [domainMax, domainMin].map(each => (each !== undefined && Number.isFinite(each) ? each : 0));
   const reach = [Math.max(0, upTo, ...values, ...levels), Math.max(0, -downTo, ...[...values, ...levels].map(value => -value))];
   // With the ends of the scale written out, the plot's edges are round numbers. All zeros still
@@ -427,8 +427,12 @@ export function BarChart<Row extends ChartRecord<Row>>({
   });
   const toBox = (at: number) => (at / (plotSize?.width || 1)) * box;
   // One gap per bar, empty where no figure is crossed, so the line morphs with the bars.
-  const referenceLines = references.map((each, index) => referencePath(index, Math.round(fall(each.value) * box * 100) / 100, 0, box,
-    knockOuts(down(each.value), figureTexts, middles, knockOutPad).map(([start, end]) => [toBox(start), toBox(end)] as const)));
+  const level = (value: number) => Math.round(fall(value) * box * 100) / 100;
+  const referenceLines = [
+    ...references.flatMap((each, index) => (referenceEnds(each).length > 1 ? [zonePath(index, level(each.value), level(each.to!), 0, box)] : [])),
+    ...references.flatMap((each, index) => referenceEnds(each).map((end, at) => referencePath(at ? index + references.length : index, level(end), 0, box,
+      knockOuts(down(end), figureTexts, middles, knockOutPad).map(([start, end]) => [toBox(start), toBox(end)] as const)))),
+  ];
 
   const row = (which: 'all' | 'ends', className: string) => (which === 'all' ? (
     <view className={cx(className, r.labels.all)}>
@@ -543,7 +547,7 @@ export function BarChart<Row extends ChartRecord<Row>>({
           {drawing(paths.full, false)}
           {drawing(paths.dimmed, true)}
           <view className={cx(r.zero.base, r.motion.base)} style={{ translate: [0, `${zero}%`] }}><view className={r.baseline.base} /></view>
-          <ReferenceLabels texts={refs.texts} places={refs.places} shares={references.map(each => fall(each.value) * 100)} />
+          <ReferenceLabels texts={refs.texts} places={refs.places} shares={references.map(each => fall(referenceTop(each)) * 100)} />
         </view>
         {refs.ghost}
         <view

@@ -64,6 +64,31 @@ const seats = [
   { month: 'May', seats: 25 }, { month: 'Jun', seats: 22 }, { month: 'Jul', seats: 30 },
 ];
 
+const glucose = [
+  { time: '07:00', mmol: 5.1 }, { time: '08:00', mmol: 8.6 }, { time: '09:00', mmol: 10.8 }, { time: '10:00', mmol: 7.9 },
+  { time: '11:00', mmol: 6.2 }, { time: '12:00', mmol: 5.4 }, { time: '13:00', mmol: 9.4 }, { time: '14:00', mmol: 7.1 },
+  { time: '15:00', mmol: 5.8 }, { time: '16:00', mmol: 3.6 }, { time: '17:00', mmol: 4.9 },
+];
+
+/** A reference with `to` is a zone: the range the readings should stay in, shaded under the line and named with both ends. */
+export function Zone() {
+  return (
+    <LineChart
+      rows={glucose}
+      x="time"
+      y="mmol"
+      label="Blood glucose through the day, mmol/L"
+      title="Glucose"
+      description="Today, mmol/L"
+      curve="smooth"
+      formatValue={value => value.toFixed(1)}
+      references={[{ value: 3.9, to: 10, label: 'Target' }]}
+      summarize={summarize}
+      data-testid="glucose"
+    />
+  );
+}
+
 /** Steps suit a count that changes at set moments and holds between them: seats on a plan, a price, a limit. */
 export function Steps() {
   return <LineChart rows={seats} x="month" y="seats" label="Seats on the plan by month" title="Seats" description="This year" curve="step" hasArea summarize={summarize} data-testid="seats" />;

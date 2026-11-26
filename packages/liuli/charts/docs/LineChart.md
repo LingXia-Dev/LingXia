@@ -127,6 +127,47 @@ export function Steps() {
 }
 ```
 
+### A target range shaded under the line
+
+```tsx
+import { summarize } from '@liulidesign/charts/summary';
+import { LineChart } from '@liulidesign/charts/LineChart';
+
+const day = [
+  { hour: '00:00', c: 11.2 }, { hour: '02:00', c: 10.4 }, { hour: '04:00', c: 9.8 }, { hour: '06:00', c: 10.1 }, { hour: '08:00', c: 12.6 },
+  { hour: '10:00', c: 15.9 }, { hour: '12:00', c: 18.7 }, { hour: '14:00', c: 20.3 }, { hour: '16:00', c: 19.6 }, { hour: '18:00', c: 17.0 },
+  { hour: '20:00', c: 14.4 }, { hour: '22:00', c: 12.5 },
+];
+const glucose = [
+  { time: '07:00', mmol: 5.1 }, { time: '08:00', mmol: 8.6 }, { time: '09:00', mmol: 10.8 }, { time: '10:00', mmol: 7.9 },
+  { time: '11:00', mmol: 6.2 }, { time: '12:00', mmol: 5.4 }, { time: '13:00', mmol: 9.4 }, { time: '14:00', mmol: 7.1 },
+  { time: '15:00', mmol: 5.8 }, { time: '16:00', mmol: 3.6 }, { time: '17:00', mmol: 4.9 },
+];
+const readings = [
+  { hour: '06:00', c: 14.2 }, { hour: '07:00', c: 15.1 }, { hour: '08:00', c: null }, { hour: '09:00', c: null }, { hour: '10:00', c: 19.4 },
+  { hour: '11:00', c: 20.8 }, { hour: '12:00', c: 22.1 }, { hour: '13:00', c: null }, { hour: '14:00', c: 23.0 }, { hour: '15:00', c: 22.4 },
+];
+
+/** A reference with `to` is a zone: the range the readings should stay in, shaded under the line and named with both ends. */
+export function Zone() {
+  return (
+    <LineChart
+      rows={glucose}
+      x="time"
+      y="mmol"
+      label="Blood glucose through the day, mmol/L"
+      title="Glucose"
+      description="Today, mmol/L"
+      curve="smooth"
+      formatValue={value => value.toFixed(1)}
+      references={[{ value: 3.9, to: 10, label: 'Target' }]}
+      summarize={summarize}
+      data-testid="glucose"
+    />
+  );
+}
+```
+
 ### Series stacked into bands, the top line their total
 
 ```tsx

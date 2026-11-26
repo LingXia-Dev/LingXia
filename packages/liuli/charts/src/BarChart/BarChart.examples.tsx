@@ -42,6 +42,28 @@ export function Target() {
   );
 }
 
+const sleep = [
+  { night: 'Mon', hours: 6.4 }, { night: 'Tue', hours: 7.2 }, { night: 'Wed', hours: 7.8 }, { night: 'Thu', hours: 5.9 },
+  { night: 'Fri', hours: 8.3 }, { night: 'Sat', hours: 9.1 }, { night: 'Sun', hours: 7.5 },
+];
+
+/** A zone behind the bars: the range to stay in, named with both ends. */
+export function Zone() {
+  return (
+    <BarChart
+      rows={sleep}
+      x="night"
+      y="hours"
+      label="Hours slept by night"
+      title="Sleep"
+      description="This week, hours"
+      formatValue={value => value.toFixed(1)}
+      references={[{ value: 7, to: 9, label: 'Goal' }]}
+      data-testid="sleep"
+    />
+  );
+}
+
 const channels = [
   { quarter: 'Q1', online: 42, store: 31 }, { quarter: 'Q2', online: 48, store: 29 },
   { quarter: 'Q3', online: 55, store: 33 }, { quarter: 'Q4', online: 67, store: 38 },

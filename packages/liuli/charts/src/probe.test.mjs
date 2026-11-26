@@ -9,7 +9,7 @@ const found = await probe(fileURLToPath(new URL('..', import.meta.url)));
 /** Lengths the data sets, in points by design. */
 const dataGeometry = new Set([
   // The figures' lane above each bar: the widest figure's measured line, at least 20 points.
-  ...['Orders', 'Signed', 'Sizes', 'StateSelected', 'Target'].map(example => `BarChart/${example}: height=20`),
+  ...['Orders', 'Signed', 'Sizes', 'StateSelected', 'Target', 'Zone'].map(example => `BarChart/${example}: height=20`),
   // A signed bar's slot leaves the figure lane on the side its bar grows away from.
   'BarChart/Signed: paddingTop=20',
   'BarChart/Signed: paddingBottom=20',

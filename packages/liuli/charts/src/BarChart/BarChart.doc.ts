@@ -89,6 +89,7 @@ export const doc: ComponentDoc = {
     { name: 'HorizontalStacked', title: 'Stacked and lying down' },
     { name: 'Signed', title: 'Values above and below zero' },
     { name: 'Target', title: 'A target and an average across the bars' },
+    { name: 'Zone', title: 'A range to stay in, behind the bars' },
     { name: 'Month', title: 'Thirty bars' },
   ],
   gaps: [

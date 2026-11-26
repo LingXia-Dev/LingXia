@@ -30,7 +30,15 @@ export interface ChartReference {
   value: number;
   /** What the level is: "Target". The chart writes its value after it. */
   label: string;
+  /** Makes the reference a zone from `value` to `to`, shaded between its two edges: a healthy range, a target band. */
+  to?: number;
 }
+
+/** A reference's ends: one value for a level, both for a zone. */
+export const referenceEnds = (each: ChartReference): number[] => (each.to !== undefined && Number.isFinite(each.to) ? [each.value, each.to] : [each.value]);
+
+/** Where a reference's label sits: on a level, or on a zone's upper edge. */
+export const referenceTop = (each: ChartReference): number => Math.max(...referenceEnds(each));
 
 export interface ChartPointFact {
   /** The row's category or slice name. */

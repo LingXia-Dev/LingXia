@@ -536,3 +536,13 @@ test('Stacked: each series a band on the ones below, the top line the total; the
   screen.pointer(screen.getByTestId('stacked-plot'), { phase: 'up', x: 0, y: 20, width: 300, height: 160 });
   assert.match(textOf(screen.getByTestId('stacked')), /Free 410.*Team 120.*Pro 64/, 'the readout reads each plan, not the running total');
 });
+
+test('Zone: a reference with `to` shades its range under the line, draws both edges, and names both ends', async () => {
+  const screen = laidOut(await renderExample('LineChart/LineChart', 'Zone'));
+  const zone = screen.queryAll(node => node.tag === 'vector').flatMap(node => JSON.parse(node.props.vectorSource).paths).find(path => path.key === 'zone-0');
+  assert.equal(zone.fill, 'text/6');
+  assert.deepEqual(referencePaths(screen).map(path => path.key), ['reference-0', 'reference-1'], 'an edge at each end');
+  const order = screen.queryAll(node => node.tag === 'vector').map(node => JSON.parse(node.props.vectorSource).paths.map(path => path.key).join());
+  assert.ok(order.findIndex(keys => keys.includes('zone-0')) < order.findIndex(keys => keys.includes('mmol-line')), 'the shade lies under the line');
+  assert.match(textOf(screen.getByTestId('glucose')), /Target, 3\.9–10\.0/);
+});

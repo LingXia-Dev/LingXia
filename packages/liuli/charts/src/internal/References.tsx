@@ -1,6 +1,6 @@
 import { cx, useBox, type VectorPath } from '@lingxia/view';
 import { chartRecipe as r } from '../Chart/Chart.recipe';
-import type { ChartReference } from './data';
+import { referenceEnds, referenceTop, type ChartReference } from './data';
 import { placeReferences, type Extent, type ReferencePlace } from './geometry';
 
 // The space between a label and its line, in points: `pb-0.5` and `pt-0.5`.
@@ -16,13 +16,14 @@ export function useReferences(
   references: readonly ChartReference[], format: (value: number) => string, lines: (value: number) => number,
   plot: { width: number; height: number } | null, taken: readonly Extent[] = [],
 ) {
-  const texts: ReferenceTexts[] = references.map(each => ({
-    full: `${each.label} ${format(each.value)}`, short: format(each.value), spoken: `${each.label}, ${format(each.value)}`,
-  }));
+  const texts: ReferenceTexts[] = references.map(each => {
+    const value = referenceEnds(each).sort((a, b) => a - b).map(format).join('–');
+    return { full: `${each.label} ${value}`, short: value, spoken: `${each.label}, ${value}` };
+  });
   const boxes = texts.map((_, index) => [useBox(`reference-${index}`), useBox(`reference-${index}-value`)] as const);
   const height = boxes[0]?.[0].value?.height ?? 0;
   const places: ReferencePlace[] = plot && height > 0
-    ? placeReferences(references.map(each => lines(each.value)), plot, {
+    ? placeReferences(references.map(each => lines(referenceTop(each))), plot, {
       full: boxes.map(([full]) => full.value?.width ?? 0), short: boxes.map(([, short]) => short.value?.width ?? 0), height,
     }, taken, gap)
     : texts.map(() => ({ side: 'above', inset: 0, isShort: false }));
@@ -64,6 +65,11 @@ export function ReferenceReading({ texts }: { texts: readonly ReferenceTexts[] }
   if (!texts.length) return null;
   return <view className={r.referenceReading.base}>{texts.map((text, index) => <text key={`reference-${index}`}>{text.spoken}</text>)}</view>;
 }
+
+/** A zone's shade between heights `y` and `bottom`, from `from` to `to` in the drawing's units. */
+export const zonePath = (index: number, y: number, bottom: number, from: number, to: number): VectorPath => ({
+  key: `zone-${index}`, d: `M${from} ${round(Math.min(y, bottom))}H${to}V${round(Math.max(y, bottom))}H${from}Z`, fill: 'text/6',
+});
 
 /** A dashed hairline across the drawing at height `y`, from `from` to `to` in its units, broken at each of `gaps` (in order). */
 export const referencePath = (index: number, y: number, from: number, to: number, gaps: ReadonlyArray<readonly [number, number]> = []): VectorPath => ({

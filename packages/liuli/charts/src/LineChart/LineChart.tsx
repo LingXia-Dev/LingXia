@@ -1,9 +1,9 @@
 import { cx, useBox, useLocal, useView, type Child, type PointerEvent, type VectorPath, type Local } from '@lingxia/view';
 import { Chart, ChartLegend, ChartReadout, type ChartLegendPosition, type ChartField, type ChartRecord, type ChartReference, type ChartRow, type ChartSeries, type ChartSize, type ChartSummarize } from '../Chart/Chart';
-import { colorOf, keysOf, numberOf, numberIn, roleOf, seriesFacts, seriesOf, textOf } from '../internal/data';
+import { colorOf, keysOf, numberOf, numberIn, referenceEnds, referenceTop, roleOf, seriesFacts, seriesOf, textOf } from '../internal/data';
 import { pressed, pressedKey, scrubbing } from '../internal/gesture';
 import { between, box, closed, domain, dot, indexAt, niceTicks, reach, runs, scaleY, thin, traced, type ChartCurve, type Point } from '../internal/geometry';
-import { ReferenceLabels, ReferenceReading, referencePath, useReferences } from '../internal/References';
+import { ReferenceLabels, ReferenceReading, referencePath, useReferences, zonePath } from '../internal/References';
 import { Ticks } from '../internal/Ticks';
 import { laidOutOnce, remember } from '../internal/memo';
 import { lineChartRecipe as r } from './LineChart.recipe';
@@ -147,7 +147,7 @@ export function LineChart<Row extends ChartRecord<Row>>({
     : columns;
   const isArea = hasArea || isStacked;
   const isScaled = hasScale ?? size !== 'xs';
-  const fitted = domain([...drawnColumns.flat(), ...references.map(each => each.value)], isArea, domainMin, domainMax);
+  const fitted = domain([...drawnColumns.flat(), ...references.flatMap(referenceEnds)], isArea, domainMin, domainMax);
   // With the scale written out, the plot's lines sit on round numbers: fewer of them in a short plot.
   const scaled = isScaled && facts.length ? niceTicks(fitted, size === 'sm' ? 2 : 4) : undefined;
   const range = scaled?.range ?? fitted;
@@ -226,7 +226,9 @@ export function LineChart<Row extends ChartRecord<Row>>({
     return [{ start: across - endClear, end: across + endClear, top: y - endClear, bottom: y + endClear }];
   }) : [];
   const refs = useReferences(references, formatValue, height, laid, lastPoints);
-  const referenceLines = references.map((each, index) => referencePath(index, scaleY(each.value, range), frame[0], frame[0] + frame[2]));
+  const referenceLines = references.flatMap((each, index) => referenceEnds(each).map((end, at) => referencePath(at ? index + references.length : index, scaleY(end, range), frame[0], frame[0] + frame[2])));
+  // A zone's shade lies under the lines; its edges, like a level, over them.
+  const zones = references.flatMap((each, index) => (referenceEnds(each).length > 1 ? [zonePath(index, scaleY(each.value, range), scaleY(each.to!, range), frame[0], frame[0] + frame[2])] : []));
 
   // A line draws in along its length; a fill cannot follow it, so fills, and the dots that end the
   // lines, wait in their own layers and fade in as the line arrives.
@@ -330,13 +332,14 @@ export function LineChart<Row extends ChartRecord<Row>>({
             // A hairline on each tick; the one the values stand on is firmer.
             ? <view aria-hidden className={cx(r.grid.base, r.inset.base, !isArea && r.inset.open)}>{rungs(tick => <view className={tick.value === range[0] ? r.rule.foot : r.rule.line} />)}</view>
             : <view aria-hidden className={cx(r.rule.bottom, !isArea && r.rule.open)} />}
+          {zones.length > 0 && <vector aria-hidden paths={zones} viewBox={frame} className={cx(r.drawing.base, r.drawing.moves, r.drawing.over)} />}
           {referenceLines.length > 0 && <vector aria-hidden paths={referenceLines} viewBox={frame} className={cx(r.drawing.base, r.drawing.moves, r.drawing.over)} />}
           {layer(under, 'under')}
           {lines.length > 0 && <vector aria-hidden paths={drawIn(lines, drawn)} viewBox={frame} className={cx(r.drawing.base, r.drawing.moves)} />}
           {layer(over, 'over')}
           {marker.length > 0 && <vector aria-hidden paths={marker} viewBox={frame} className={cx(r.drawing.base, r.drawing.moves, r.drawing.over)} />}
           {refs.ghost}
-          <ReferenceLabels texts={refs.texts} places={refs.places} shares={references.map(each => (scaleY(each.value, range) / box) * 100)} frame={cx(r.grid.base, r.inset.base, !isArea && r.inset.open)} />
+          <ReferenceLabels texts={refs.texts} places={refs.places} shares={references.map(each => (scaleY(referenceTop(each), range) / box) * 100)} frame={cx(r.grid.base, r.inset.base, !isArea && r.inset.open)} />
           {/* Over the marks: it hears the pointer, and is the stop the arrow keys and a screen reader step. */}
           {scrub && (
             <view

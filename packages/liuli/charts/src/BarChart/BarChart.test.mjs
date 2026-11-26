@@ -649,3 +649,11 @@ test('HorizontalStacked: one bar per line, its pieces end to end with a seam, on
   assert.equal(pile.length, 2);
 });
 
+
+test('Zone: the shade lies behind the bars, with an edge at each end and both ends named', async () => {
+  const screen = await renderExample('BarChart/BarChart', 'Zone');
+  const keys = screen.queryAll(node => node.tag === 'vector').map(node => JSON.parse(node.props.vectorSource).paths.map(path => path.key));
+  const references = keys.find(each => each.includes('zone-0'));
+  assert.deepEqual(references, ['zone-0', 'reference-0', 'reference-1']);
+  assert.match(textOf(screen.getByTestId('sleep')), /Goal, 7\.0–9\.0/);
+});
