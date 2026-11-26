@@ -5640,6 +5640,7 @@
         "optionLabel": "text",
         "optionDescription": "text",
         "optionEnd": "text",
+        "optionShortcut": "view",
         "note": "text"
       },
       "accessibility": {
@@ -5697,7 +5698,8 @@
         ],
         "notes": [
           "Focus stays in the search line, a combobox that names the highlighted row as it moves.",
-          "The results are a listbox in named groups; a row with `endText` is read as \"label, end text\".",
+          "The results are a listbox in named groups; a row with `endText` or a `shortcut` is read as \"label, end text, shortcut\".",
+          "A `shortcut` is drawn as key caps on a wide screen only; a phone has no keyboard to press it on.",
           "When nothing matches, the note is a status and is read.",
           "A long list is cut by the bottom edge of the panel on purpose: a row cut in half says there is more to scroll.",
           "Closing returns focus to what had it."
@@ -5707,7 +5709,7 @@
         {
           "name": "Commands",
           "title": "Commands and places",
-          "source": "import { useLocal } from '@lingxia/view';\nimport { Button } from '@liulidesign/core/Button';\nimport { CommandPalette, type CommandGroup } from '@liulidesign/core/CommandPalette';\n\nconst groups: CommandGroup[] = [\n  { label: 'Go to', items: [\n    { id: 'all', label: 'All notes', icon: 'file', endText: 'G then A' },\n    { id: 'shared', label: 'Shared with me', icon: 'users', endText: 'G then S' },\n    { id: 'archive', label: 'Archive', icon: 'folder' },\n    { id: 'settings', label: 'Settings', icon: 'settings', description: 'Account, appearance, sync' },\n  ] },\n  { label: 'Actions', items: [\n    { id: 'new', label: 'New note', icon: 'add', endText: 'Ctrl N' },\n    { id: 'share', label: 'Share this note', icon: 'share' },\n    { id: 'export', label: 'Export as PDF', icon: 'upload', isDisabled: true },\n  ] },\n];\n\n/** Opened from a button here; an app also opens it from its own shortcut. Type to narrow, arrows to move, Return to run. */\nexport function Commands() {\n  const open = useLocal('open', false);\n  const ran = useLocal('ran', '');\n  return (\n    <view className=\"items-start gap-2\">\n      <Button label=\"Search commands\" startIcon=\"search\" onClick={() => open.set(true)} data-testid=\"palette-open\" />\n      {ran.value !== '' && <text role=\"status\" className=\"text-footnote text-muted\">{`Last run: ${ran.value}`}</text>}\n      <CommandPalette\n        isOpen={open.value}\n        onOpenChange={next => open.set(next)}\n        label=\"Search commands\"\n        placeholder=\"Type a command or a place\"\n        groups={groups}\n        onSelect={id => ran.set(id)}\n        emptyLabel=\"No commands match\"\n        data-testid=\"palette\"\n      />\n    </view>\n  );\n}"
+          "source": "import { useLocal } from '@lingxia/view';\nimport { Button } from '@liulidesign/core/Button';\nimport { CommandPalette, type CommandGroup } from '@liulidesign/core/CommandPalette';\n\nconst groups: CommandGroup[] = [\n  { label: 'Go to', items: [\n    { id: 'all', label: 'All notes', icon: 'file', endText: 'G then A' },\n    { id: 'shared', label: 'Shared with me', icon: 'users', endText: 'G then S' },\n    { id: 'archive', label: 'Archive', icon: 'folder', keywords: ['old', 'hidden'] },\n    { id: 'settings', label: 'Settings', icon: 'settings', description: 'Account, appearance, sync' },\n  ] },\n  { label: 'Actions', items: [\n    { id: 'new', label: 'New note', icon: 'add', shortcut: { keys: ['Ctrl', 'N'], label: 'Control N' } },\n    { id: 'share', label: 'Share this note', icon: 'share', keywords: ['send', 'invite'] },\n    { id: 'export', label: 'Export as PDF', icon: 'upload', isDisabled: true },\n  ] },\n];\n\n/** Opened from a button here; an app also opens it from its own shortcut. Type to narrow, arrows to move, Return to run. */\nexport function Commands() {\n  const open = useLocal('open', false);\n  const ran = useLocal('ran', '');\n  return (\n    <view className=\"items-start gap-2\">\n      <Button label=\"Search commands\" startIcon=\"search\" onClick={() => open.set(true)} data-testid=\"palette-open\" />\n      {ran.value !== '' && <text role=\"status\" className=\"text-footnote text-muted\">{`Last run: ${ran.value}`}</text>}\n      <CommandPalette\n        isOpen={open.value}\n        onOpenChange={next => open.set(next)}\n        label=\"Search commands\"\n        placeholder=\"Type a command or a place\"\n        groups={groups}\n        onSelect={id => ran.set(id)}\n        emptyLabel=\"No commands match\"\n        data-testid=\"palette\"\n      />\n    </view>\n  );\n}"
         }
       ],
       "gaps": [],

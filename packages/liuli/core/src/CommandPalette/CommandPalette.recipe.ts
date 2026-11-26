@@ -13,6 +13,7 @@ export const commandPaletteParts = {
   optionLabel: 'text',
   optionDescription: 'text',
   optionEnd: 'text',
+  optionShortcut: 'view',
   note: 'text',
 } as const;
 
@@ -66,6 +67,9 @@ export const commandPaletteRecipe = {
   },
   optionEnd: {
     base: 'shrink-0 text-footnote text-muted tabular-nums',
+  },
+  optionShortcut: {
+    base: 'shrink-0',
   },
   note: {
     base: 'px-4 py-6 text-center text-footnote text-muted',

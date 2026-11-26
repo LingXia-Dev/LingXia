@@ -3,6 +3,7 @@ import { liuliText } from '../i18n/text';
 import type { IconRef } from '../Icon/Icon';
 import { Glyph } from '../internal/Glyph';
 import { SpinnerMark } from '../internal/spinner';
+import { Kbd } from '../Kbd/Kbd';
 import { commandPaletteRecipe as r } from './CommandPalette.recipe';
 import { dataOf } from '../internal/data';
 
@@ -13,8 +14,12 @@ export interface CommandItem {
   /** A second line: where it leads, what it changes. */
   description?: string;
   icon?: IconRef;
-  /** Quiet text at the end of the row: a shortcut, a kind. Read after the label. */
+  /** Other words it is found by, not shown: "remove" and "trash" for "Delete". A match here ranks after every match on a label. */
+  keywords?: readonly string[];
+  /** Quiet text at the end of the row: a kind, a count. Read after the label. */
   endText?: string;
+  /** Its keyboard shortcut, drawn as key caps at the end of the row and read after the label; left out on a phone. */
+  shortcut?: { keys: readonly string[]; label?: string };
   /** @default false */
   isDisabled?: boolean;
 }
@@ -58,12 +63,19 @@ function rank(label: string, typed: string): number {
   return best;
 }
 
+/** The label's rank, else 3 when a keyword matches from the start of one of its words. */
+function itemRank(item: CommandItem, typed: string): number {
+  const own = rank(item.label, typed);
+  if (own >= 0) return own;
+  return item.keywords?.some(word => { const at = rank(word, typed); return at === 0 || at === 1; }) ? 3 : -1;
+}
+
 function filtered(groups: readonly CommandGroup[], typed: string): readonly CommandGroup[] {
   if (typed === '') return groups;
   return groups
     .map(group => {
-      const tiers: CommandItem[][] = [[], [], []];
-      for (const item of group.items) tiers[rank(item.label, typed)]?.push(item);
+      const tiers: CommandItem[][] = [[], [], [], []];
+      for (const item of group.items) tiers[itemRank(item, typed)]?.push(item);
       return { label: group.label, items: tiers.flat() };
     })
     .filter(group => group.items.length > 0);
@@ -142,13 +154,15 @@ export function CommandPalette({ isOpen, onOpenChange, label, placeholder, group
                 {group.items.map(item => {
                   index += 1;
                   const mine = index;
+                  const shortcut = isCompact ? undefined : item.shortcut;
+                  const spoken = [item.endText, shortcut && (shortcut.label ?? shortcut.keys.join(' '))].filter(part => part !== undefined);
                   return (
                     <button
                       key={item.id}
                       id={rowId(mine)}
                       role="option"
                       aria-selected={mine === at}
-                      aria-label={item.endText === undefined ? undefined : `${item.label}, ${item.endText}`}
+                      aria-label={spoken.length === 0 ? undefined : [item.label, ...spoken].join(', ')}
                       disabled={item.isDisabled}
                       onClick={() => choose(item)}
                       data-testid={testId && `${testId}-${item.id}`}
@@ -160,6 +174,7 @@ export function CommandPalette({ isOpen, onOpenChange, label, placeholder, group
                         {item.description !== undefined && <text className={r.optionDescription.base}>{item.description}</text>}
                       </view>
                       {item.endText !== undefined && <text aria-hidden className={r.optionEnd.base}>{item.endText}</text>}
+                      {shortcut !== undefined && <Kbd keys={shortcut.keys} className={r.optionShortcut.base} />}
                     </button>
                   );
                 })}

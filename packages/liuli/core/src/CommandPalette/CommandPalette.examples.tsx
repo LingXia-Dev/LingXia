@@ -7,12 +7,12 @@ const groups: CommandGroup[] = [
   { label: 'Go to', items: [
     { id: 'all', label: 'All notes', icon: 'file', endText: 'G then A' },
     { id: 'shared', label: 'Shared with me', icon: 'users', endText: 'G then S' },
-    { id: 'archive', label: 'Archive', icon: 'folder' },
+    { id: 'archive', label: 'Archive', icon: 'folder', keywords: ['old', 'hidden'] },
     { id: 'settings', label: 'Settings', icon: 'settings', description: 'Account, appearance, sync' },
   ] },
   { label: 'Actions', items: [
-    { id: 'new', label: 'New note', icon: 'add', endText: 'Ctrl N' },
-    { id: 'share', label: 'Share this note', icon: 'share' },
+    { id: 'new', label: 'New note', icon: 'add', shortcut: { keys: ['Ctrl', 'N'], label: 'Control N' } },
+    { id: 'share', label: 'Share this note', icon: 'share', keywords: ['send', 'invite'] },
     { id: 'export', label: 'Export as PDF', icon: 'upload', isDisabled: true },
   ] },
 ];

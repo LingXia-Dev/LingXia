@@ -41,7 +41,8 @@ export const doc: ComponentDoc = {
     ],
     notes: [
       'Focus stays in the search line, a combobox that names the highlighted row as it moves.',
-      'The results are a listbox in named groups; a row with `endText` is read as "label, end text".',
+      'The results are a listbox in named groups; a row with `endText` or a `shortcut` is read as "label, end text, shortcut".',
+      'A `shortcut` is drawn as key caps on a wide screen only; a phone has no keyboard to press it on.',
       'When nothing matches, the note is a status and is read.',
       'A long list is cut by the bottom edge of the panel on purpose: a row cut in half says there is more to scroll.',
       'Closing returns focus to what had it.',

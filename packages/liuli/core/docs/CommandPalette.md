@@ -23,12 +23,12 @@ const groups: CommandGroup[] = [
   { label: 'Go to', items: [
     { id: 'all', label: 'All notes', icon: 'file', endText: 'G then A' },
     { id: 'shared', label: 'Shared with me', icon: 'users', endText: 'G then S' },
-    { id: 'archive', label: 'Archive', icon: 'folder' },
+    { id: 'archive', label: 'Archive', icon: 'folder', keywords: ['old', 'hidden'] },
     { id: 'settings', label: 'Settings', icon: 'settings', description: 'Account, appearance, sync' },
   ] },
   { label: 'Actions', items: [
-    { id: 'new', label: 'New note', icon: 'add', endText: 'Ctrl N' },
-    { id: 'share', label: 'Share this note', icon: 'share' },
+    { id: 'new', label: 'New note', icon: 'add', shortcut: { keys: ['Ctrl', 'N'], label: 'Control N' } },
+    { id: 'share', label: 'Share this note', icon: 'share', keywords: ['send', 'invite'] },
     { id: 'export', label: 'Export as PDF', icon: 'upload', isDisabled: true },
   ] },
 ];
@@ -101,7 +101,8 @@ export function Commands() {
 - Escape: Closes.
 - Press target: lg 48 px.
 - Focus stays in the search line, a combobox that names the highlighted row as it moves.
-- The results are a listbox in named groups; a row with `endText` is read as "label, end text".
+- The results are a listbox in named groups; a row with `endText` or a `shortcut` is read as "label, end text, shortcut".
+- A `shortcut` is drawn as key caps on a wide screen only; a phone has no keyboard to press it on.
 - When nothing matches, the note is a status and is read.
 - A long list is cut by the bottom edge of the panel on purpose: a row cut in half says there is more to scroll.
 - Closing returns focus to what had it.

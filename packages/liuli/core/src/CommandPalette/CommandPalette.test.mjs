@@ -35,6 +35,28 @@ test('Commands: typing narrows the list, best match first; the arrows move the h
   screen.getByText('Last run: share');
 });
 
+test('Commands: a keyword finds a row its label does not, ranked after every label match', async () => {
+  const screen = await open();
+  const search = () => screen.getByTestId('palette-search');
+  screen.type(search(), 'inv');
+  assert.deepEqual(rows(screen).map(row => row.testId), ['palette-share']);
+  screen.type(search(), 'se');
+  assert.deepEqual(rows(screen).map(row => row.testId), ['palette-settings', 'palette-share'], 'Settings by its label, then Share by "send"');
+  screen.type(search(), 'idd');
+  assert.equal(rows(screen).length, 0, 'a keyword matches from the start of a word only');
+});
+
+test('Commands: a shortcut is drawn as key caps and read after the label; on a phone it is left out', async () => {
+  const wide = await renderExample('CommandPalette/CommandPalette', 'Commands', { env: { sizeClass: 'regular', viewport: { width: 1024, height: 768 } } });
+  wide.press(wide.getByTestId('palette-open'));
+  assert.equal(wide.getByTestId('palette-new').props.accessibilityLabel, 'New note, Control N');
+  assert.ok(wide.queryAll(node => textOf(node) === 'Ctrl').length > 0);
+  const phone = await renderExample('CommandPalette/CommandPalette', 'Commands', { env: { sizeClass: 'compact', viewport: { width: 393, height: 852 } } });
+  phone.press(phone.getByTestId('palette-open'));
+  assert.equal(phone.getByTestId('palette-new').props.accessibilityLabel, undefined);
+  assert.equal(phone.queryAll(node => textOf(node) === 'Ctrl').length, 0);
+});
+
 test('Commands: nothing matching is said', async () => {
   const screen = await open();
   screen.type(screen.getByTestId('palette-search'), 'zzz');
