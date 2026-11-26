@@ -377,6 +377,7 @@ export type JinshuOp = OpCommon & (
     }
   | { readonly op: 'delete'; readonly id: string }
   | { readonly op: 'move'; readonly id: string; readonly to: Position }
+  /** `meta` is merged key by key; a key set to `null` is removed. */
   | { readonly op: 'setMeta'; readonly title?: string; readonly lang?: string; readonly meta?: Readonly<Record<string, unknown>> }
   | { readonly op: 'rewrite'; readonly markup: string }
 );

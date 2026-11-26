@@ -772,3 +772,17 @@ test('find and replace: Replace All changes every match Find counts, any case, a
   assert.ok(p.runs.some(run => run.text === 'a<b> & c' && run.bold), JSON.stringify(p.runs));
   assert.equal(k.code, 'const a<b> & c = 1;');
 });
+
+test('source mode: deleting the front matter removes it, and replacing every block leaves no blank paragraph', async () => {
+  const source = createJinshuSource({ key: 'w3', format: 'markdown', initialText: '---\ntag: a\n---\n# Week 3\n\nFirst.\n\nSecond.\n' });
+  const { screen, settle } = await mountLive(source);
+  screen.press(byLabel(screen, 'Edit as Markdown'));
+  await settle();
+  screen.type(byLabel(screen, 'Markdown source'), '# Week 3\n\nOther.\n');
+  await settle();
+  screen.press(byLabel(screen, 'Back to blocks'));
+  await settle();
+  const { doc } = source.getState();
+  assert.equal(doc.meta?.frontMatter, undefined);
+  assert.deepEqual(doc.blocks.map(b => plainText(b.runs)), ['Other.']);
+});

@@ -992,7 +992,15 @@ function applyOne(
       if (op.meta !== undefined && !isRecord(op.meta)) return fail({ code: 'INVALID', message: 'setMeta meta must be an object.' });
       if (op.title !== undefined) mut.title = op.title;
       if (op.lang !== undefined) mut.lang = op.lang;
-      if (op.meta !== undefined) mut.meta = { ...(mut.meta ?? {}), ...op.meta };
+      if (op.meta !== undefined) {
+        // Merged key by key; a `null` value removes the key.
+        const meta: Record<string, unknown> = { ...(mut.meta ?? {}) };
+        for (const [key, value] of Object.entries(op.meta)) {
+          if (value === null) delete meta[key];
+          else meta[key] = value;
+        }
+        mut.meta = meta;
+      }
       return false;
     }
 

@@ -276,11 +276,11 @@ function sourceEditOps(prev: JinshuDocument, next: JinshuDocument): AnyJinshuOp[
   const ops: AnyJinshuOp[] = [];
   if ((next.title ?? '') !== (prev.title ?? '')) ops.push({ op: 'setMeta', title: next.title ?? '' });
   const frontMatter = (d: JinshuDocument) => (d.meta as { frontMatter?: unknown } | undefined)?.frontMatter;
-  if (frontMatter(next) !== frontMatter(prev)) ops.push({ op: 'setMeta', meta: { frontMatter: frontMatter(next) } });
+  // `null` removes it: an absent value would not survive the channel.
+  if (frontMatter(next) !== frontMatter(prev)) ops.push({ op: 'setMeta', meta: { frontMatter: frontMatter(next) ?? null } });
   const before = new Map(prev.blocks.map(b => [b.id, b]));
   const kept = new Set(next.blocks.map(b => b.id).filter(id => before.has(id)));
   const order = prev.blocks.map(b => b.id).filter(id => kept.has(id));
-  for (const b of prev.blocks) if (!kept.has(b.id)) ops.push({ op: 'delete', id: b.id });
   let anchor: string | null = null;
   for (const block of next.blocks) {
     const at: Position = anchor ? { after: anchor } : { start: 'doc' };
@@ -299,6 +299,8 @@ function sourceEditOps(prev: JinshuDocument, next: JinshuDocument): AnyJinshuOp[
     }
     anchor = block.id;
   }
+  // Deletes go last: emptying the document first would leave the blank paragraph it then gets.
+  for (const b of prev.blocks) if (!kept.has(b.id)) ops.push({ op: 'delete', id: b.id });
   return ops;
 }
 
