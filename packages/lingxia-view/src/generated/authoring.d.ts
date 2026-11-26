@@ -515,7 +515,7 @@ export interface VectorGradient {
   /** Conic start angle, degrees clockwise from the top. */
   from?: number;
   units?: "objectBoundingBox" | "userSpaceOnUse"; spread?: "pad" | "reflect" | "repeat";
-  stops: ReadonlyArray<{ offset: number; color: ColorValue; opacity?: number }>;
+  stops: ReadonlyArray<{ offset: number; color: ColorValue | `#${string}`; opacity?: number }>;
 }
 /** One choice of a `<radio>` or `<select>`. */
 export interface ChoiceOption { readonly value: string; readonly label: string; readonly disabled?: boolean; readonly "data-testid"?: string }
