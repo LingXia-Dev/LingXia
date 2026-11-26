@@ -32,7 +32,8 @@ export function Tones() {
     <view className="grid grid-cols-2 gap-x-4 gap-y-5">
       <Stat
         label="Response time"
-        value="3.2 s"
+        value="3.2"
+        unit="s"
         delta="0.9 s"
         deltaDirection="down"
         deltaTone="positive"
@@ -57,8 +58,8 @@ export function Tones() {
 export function Sizes() {
   return (
     <view className="grid grid-cols-2 items-end gap-x-4">
-      <Stat label="Small" value="1,204" size="sm" delta="3.1%" deltaDirection="up" data-testid="small" />
-      <Stat label="Medium" value="1,204" delta="3.1%" deltaDirection="up" data-testid="medium" />
+      <Stat label="Small" value="1,204" unit="users" size="sm" delta="3.1%" deltaDirection="up" data-testid="small" />
+      <Stat label="Medium" value="1,204" unit="users" delta="3.1%" deltaDirection="up" data-testid="medium" />
     </view>
   );
 }

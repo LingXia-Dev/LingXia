@@ -3,7 +3,9 @@ import type { StatSize, StatTone } from './Stat';
 export const statParts = {
   root: 'view',
   label: 'text',
+  figure: 'view',
   value: 'text',
+  unit: 'text',
   change: 'view',
   delta: 'view',
   deltaGlyph: 'vector',
@@ -25,9 +27,16 @@ export const statRecipe = {
   label: {
     base: 'text-footnote font-medium text-muted',
   },
+  figure: {
+    base: 'flex-row flex-wrap items-baseline gap-x-1',
+  },
   value: {
     base: 'font-semibold tracking-tight text-text tabular-nums',
     size: { sm: 'text-title', md: 'text-display' } satisfies Record<StatSize, string>,
+  },
+  unit: {
+    base: 'font-medium text-muted',
+    size: { sm: 'text-footnote', md: 'text-callout' } satisfies Record<StatSize, string>,
   },
   change: {
     base: 'flex-row flex-wrap items-center gap-x-1.5',

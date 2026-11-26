@@ -11,6 +11,8 @@ export interface StatProps {
   label: string;
   /** The figure as the app formats it: "$48,250", "3.2 s". Liuli formats no numbers. */
   value: string;
+  /** The figure's unit, set smaller and quieter on its baseline: "kg", "ms", "users". */
+  unit?: string;
   /** The change since the last period, as the app formats it: "12.4%". Drawn after an arrow. */
   delta?: string;
   /** Which way the figure moved; picks the arrow. @default 'flat' */
@@ -45,6 +47,7 @@ const toneOf = { up: 'positive', down: 'negative', flat: 'neutral' } as const sa
 export function Stat({
   label,
   value,
+  unit,
   delta,
   deltaDirection = 'flat',
   deltaTone,
@@ -61,7 +64,12 @@ export function Stat({
     <view role="group" aria-label={label} aria-busy={isLoading || undefined} data-testid={testId} className={cx(r.root.base, className)}>
       {/* The group carries the label as its name, so it is not read a second time. */}
       <text aria-hidden className={r.label.base}>{label}</text>
-      {isLoading ? <Skeleton textSize={size === 'sm' ? 'title' : 'display'} className={r.skeleton.size[size]} /> : <text className={cx(r.value.base, r.value.size[size])}>{value}</text>}
+      {isLoading ? <Skeleton textSize={size === 'sm' ? 'title' : 'display'} className={r.skeleton.size[size]} /> : unit === undefined ? <text className={cx(r.value.base, r.value.size[size])}>{value}</text> : (
+        <view className={r.figure.base}>
+          <text className={cx(r.value.base, r.value.size[size])}>{value}</text>
+          <text className={cx(r.unit.base, r.unit.size[size])}>{unit}</text>
+        </view>
+      )}
       {(delta !== undefined || description !== undefined) && (
         <view className={r.change.base}>
           {/* Loading, a bar holds the change's line, so the figure's card keeps its height when the data comes. */}

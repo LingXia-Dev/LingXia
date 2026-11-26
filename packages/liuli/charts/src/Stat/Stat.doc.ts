@@ -17,6 +17,8 @@ export const doc: ComponentDoc = {
     { part: 'root', required: true, description: 'The group, named by `label`.' },
     { part: 'label', required: true, description: 'What the figure measures; hidden from assistive tech, since the group carries it as its name.' },
     { part: 'value', required: true, description: 'The figure, in tabular figures so it does not shift as it updates.' },
+    { part: 'figure', required: false, description: 'With a `unit`, the row that sets the figure and its unit on one baseline.' },
+    { part: 'unit', required: false, description: 'The unit after the figure, smaller and muted, read straight after it.' },
     { part: 'change', required: false, description: 'The line under the figure: the change, then the note.' },
     { part: 'delta', required: false, description: 'The arrow and `delta`, in the tone\'s colour.' },
     { part: 'deltaSpoken', required: false, description: '`deltaLabel`, read in place of the arrow and `delta`; not drawn.' },

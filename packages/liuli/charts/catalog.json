@@ -2486,6 +2486,12 @@
           "description": "The figure as the app formats it: \"$48,250\", \"3.2 s\". Liuli formats no numbers."
         },
         {
+          "name": "unit",
+          "type": "string",
+          "required": false,
+          "description": "The figure's unit, set smaller and quieter on its baseline: \"kg\", \"ms\", \"users\"."
+        },
+        {
           "name": "delta",
           "type": "string",
           "required": false,
@@ -2568,7 +2574,9 @@
       "parts": {
         "root": "view",
         "label": "text",
+        "figure": "view",
         "value": "text",
+        "unit": "text",
         "change": "view",
         "delta": "view",
         "deltaGlyph": "vector",
@@ -2685,12 +2693,12 @@
         {
           "name": "Tones",
           "title": "Tone set apart from direction",
-          "source": "import { Sparkline } from '@liulidesign/charts/Sparkline';\nimport { Stat } from '@liulidesign/charts/Stat';\n\nconst latency = [4.1, 3.9, 4.0, 3.6, 3.7, 3.4, 3.3, 3.2];\nconst errors = [12, 11, 14, 13, 17, 19, 18, 23];\n\n/** Down is good news for a wait, and up is bad news for errors: the tone is set apart from the direction. */\nexport function Tones() {\n  return (\n    <view className=\"grid grid-cols-2 gap-x-4 gap-y-5\">\n      <Stat\n        label=\"Response time\"\n        value=\"3.2 s\"\n        delta=\"0.9 s\"\n        deltaDirection=\"down\"\n        deltaTone=\"positive\"\n        deltaLabel=\"Down 0.9 seconds, an improvement\"\n        chart={<Sparkline values={latency} tone=\"positive\" label=\"Response time by day: down from 4.1 to 3.2 seconds\" />}\n        data-testid=\"latency\"\n      />\n      <Stat\n        label=\"Errors\"\n        value=\"23\"\n        delta=\"5\"\n        deltaDirection=\"up\"\n        deltaTone=\"negative\"\n        deltaLabel=\"Up 5 from yesterday, worse\"\n        chart={<Sparkline values={errors} tone=\"negative\" label=\"Errors by day: up from 12 to 23\" />}\n        data-testid=\"errors\"\n      />\n    </view>\n  );\n}"
+          "source": "import { Sparkline } from '@liulidesign/charts/Sparkline';\nimport { Stat } from '@liulidesign/charts/Stat';\n\nconst latency = [4.1, 3.9, 4.0, 3.6, 3.7, 3.4, 3.3, 3.2];\nconst errors = [12, 11, 14, 13, 17, 19, 18, 23];\n\n/** Down is good news for a wait, and up is bad news for errors: the tone is set apart from the direction. */\nexport function Tones() {\n  return (\n    <view className=\"grid grid-cols-2 gap-x-4 gap-y-5\">\n      <Stat\n        label=\"Response time\"\n        value=\"3.2\"\n        unit=\"s\"\n        delta=\"0.9 s\"\n        deltaDirection=\"down\"\n        deltaTone=\"positive\"\n        deltaLabel=\"Down 0.9 seconds, an improvement\"\n        chart={<Sparkline values={latency} tone=\"positive\" label=\"Response time by day: down from 4.1 to 3.2 seconds\" />}\n        data-testid=\"latency\"\n      />\n      <Stat\n        label=\"Errors\"\n        value=\"23\"\n        delta=\"5\"\n        deltaDirection=\"up\"\n        deltaTone=\"negative\"\n        deltaLabel=\"Up 5 from yesterday, worse\"\n        chart={<Sparkline values={errors} tone=\"negative\" label=\"Errors by day: up from 12 to 23\" />}\n        data-testid=\"errors\"\n      />\n    </view>\n  );\n}"
         },
         {
           "name": "Sizes",
           "title": "Small and medium",
-          "source": "import { Stat } from '@liulidesign/charts/Stat';\n\nexport function Sizes() {\n  return (\n    <view className=\"grid grid-cols-2 items-end gap-x-4\">\n      <Stat label=\"Small\" value=\"1,204\" size=\"sm\" delta=\"3.1%\" deltaDirection=\"up\" data-testid=\"small\" />\n      <Stat label=\"Medium\" value=\"1,204\" delta=\"3.1%\" deltaDirection=\"up\" data-testid=\"medium\" />\n    </view>\n  );\n}"
+          "source": "import { Stat } from '@liulidesign/charts/Stat';\n\nexport function Sizes() {\n  return (\n    <view className=\"grid grid-cols-2 items-end gap-x-4\">\n      <Stat label=\"Small\" value=\"1,204\" unit=\"users\" size=\"sm\" delta=\"3.1%\" deltaDirection=\"up\" data-testid=\"small\" />\n      <Stat label=\"Medium\" value=\"1,204\" unit=\"users\" delta=\"3.1%\" deltaDirection=\"up\" data-testid=\"medium\" />\n    </view>\n  );\n}"
         },
         {
           "name": "Dashboard",
@@ -2720,6 +2728,7 @@
         ],
         "tokens": [
           "--text-footnote",
+          "--text-callout",
           "--text-title",
           "--text-display"
         ],

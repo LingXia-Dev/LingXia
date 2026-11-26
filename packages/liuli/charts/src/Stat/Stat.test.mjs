@@ -84,3 +84,15 @@ test('Dashboard: four groups, each read by its label, figure and change', async 
     ['Avg. order', '$40.07', 'No change'],
   ]);
 });
+
+test('unit: set after the figure on its baseline, smaller and muted, and read straight after it', async () => {
+  const screen = await renderExample('Stat/Stat', 'Tones');
+  const figure = screen.getByText('3.2');
+  const unit = screen.getByText('s');
+  assert.equal(unit.parent, figure.parent, 'one row');
+  assert.equal(figure.parent.props.align, 'baseline');
+  assert.equal(unit.props.color, 'text-muted');
+  assert.ok(unit.props.fontSize < figure.props.fontSize);
+  assert.equal(unit.props['aria-hidden'], undefined, 'the unit is read, not only seen');
+});
+

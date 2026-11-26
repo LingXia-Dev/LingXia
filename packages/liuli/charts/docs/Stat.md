@@ -62,7 +62,8 @@ export function Tones() {
     <view className="grid grid-cols-2 gap-x-4 gap-y-5">
       <Stat
         label="Response time"
-        value="3.2 s"
+        value="3.2"
+        unit="s"
         delta="0.9 s"
         deltaDirection="down"
         deltaTone="positive"
@@ -93,8 +94,8 @@ import { Stat } from '@liulidesign/charts/Stat';
 export function Sizes() {
   return (
     <view className="grid grid-cols-2 items-end gap-x-4">
-      <Stat label="Small" value="1,204" size="sm" delta="3.1%" deltaDirection="up" data-testid="small" />
-      <Stat label="Medium" value="1,204" delta="3.1%" deltaDirection="up" data-testid="medium" />
+      <Stat label="Small" value="1,204" unit="users" size="sm" delta="3.1%" deltaDirection="up" data-testid="small" />
+      <Stat label="Medium" value="1,204" unit="users" delta="3.1%" deltaDirection="up" data-testid="medium" />
     </view>
   );
 }
@@ -133,6 +134,7 @@ export function Dashboard() {
 | --- | --- | --- | --- |
 | `label` (required) | `string` |  | What the figure measures: "Revenue". Also names the group for assistive tech. |
 | `value` (required) | `string` |  | The figure as the app formats it: "$48,250", "3.2 s". Liuli formats no numbers. |
+| `unit` | `string` |  | The figure's unit, set smaller and quieter on its baseline: "kg", "ms", "users". |
 | `delta` | `string` |  | The change since the last period, as the app formats it: "12.4%". Drawn after an arrow. |
 | `deltaDirection` | `StatDirection` | `'flat'` | Which way the figure moved; picks the arrow. |
 | `deltaTone` | `StatTone` |  | Whether the change is good news. By default up is positive, down negative and flat neutral; set it when up is bad (errors, cost). |
@@ -151,6 +153,8 @@ export function Dashboard() {
 | root | `<view>` | yes | The group, named by `label`. |
 | label | `<text>` | yes | What the figure measures; hidden from assistive tech, since the group carries it as its name. |
 | value | `<text>` | yes | The figure, in tabular figures so it does not shift as it updates. |
+| figure | `<view>` | no | With a `unit`, the row that sets the figure and its unit on one baseline. |
+| unit | `<text>` | no | The unit after the figure, smaller and muted, read straight after it. |
 | change | `<view>` | no | The line under the figure: the change, then the note. |
 | delta | `<view>` | no | The arrow and `delta`, in the tone's colour. |
 | deltaSpoken | `<text>` | no | `deltaLabel`, read in place of the arrow and `delta`; not drawn. |
@@ -162,7 +166,7 @@ export function Dashboard() {
 
 - `className`: classes merged after the recipe's, so they win.
 - The recipe, `statRecipe` from `@liulidesign/charts/Stat/recipe`: the classes of each part, to style an element of your own to match. The component does not read a changed copy.
-- Scale tokens it reads, set in the app's stylesheet under `@theme`: `--text-footnote`, `--text-title`, `--text-display`.
+- Scale tokens it reads, set in the app's stylesheet under `@theme`: `--text-footnote`, `--text-callout`, `--text-title`, `--text-display`.
 - Colour roles it paints with, set by the theme pack: `danger`, `success`, `text`, `text-muted`.
 
 ## Accessibility
