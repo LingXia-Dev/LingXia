@@ -2226,8 +2226,8 @@ true
     /**
      * Which instance of the declaration: a declaration can be opened more than
      * once, and a new key creates one. Find it again with
-     * `lx.surface.declared(id, { key })`. 1 to 128 UTF-8 bytes. Declarations
-     * without instantiable native providers reject with `E_CAPABILITY_MISSING`.
+     * `lx.surface.declared(id, { key })`. 1 to 128 UTF-8 bytes; only
+     * declarations whose native provider can make instances take one.
      */
     key?: string;
     /**
@@ -2311,6 +2311,7 @@ true
      * keyed instance or override the placement; `as` and `edge` also move a
      * live instance. A declaration that shows an lxapp resolves to that app's
      * `AppSurface`.
+     * @throws {E_CAPABILITY_MISSING} A `key` for a declaration whose native provider cannot make instances.
      */
     openDeclared(id: string, options?: OpenDeclaredOptions): Promise<DeclaredSurface | AppSurface>;
     /**

@@ -75,7 +75,7 @@ pub struct I18nConfig {
     /// Generate a component package's words instead of LingXia's: read
     /// `<dir>/messages/<language>.json` (`en` is the source, every key under one
     /// `@namespace.`) and write `<dir>/src/i18n/words.ts`. With `--check`, fail on drift.
-    #[arg(long, conflicts_with_all = ["rust_out", "android_out", "ios_out", "harmony_out", "ts_out", "view_out", "liuli_out"])]
+    #[arg(long, conflicts_with_all = ["rust_out", "android_out", "ios_out", "harmony_out", "view_out", "liuli_out"])]
     pub package: Option<PathBuf>,
 }
 

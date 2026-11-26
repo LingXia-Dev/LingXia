@@ -768,18 +768,6 @@ export type AnySurface = PageSurface | DeclaredSurface | AppSurface | TabSurface
  */
 export type AppAppearanceApi = Live<ResolvedAppearance>;
 
-/** Outcome of `lx.host.cache.clear`. */
-export type AppCacheClearResult = {
-    /** Estimated file bytes successfully removed; excludes WebView cache. */
-    freedBytes: number;
-    /** Protected usercache/session paths skipped, not a count of apps. */
-    skippedActivePaths: number;
-    /** What happened to the WebView's own cache. */
-    webview: 'cleared' | 'unsupported' | 'failed';
-    /** Categories that could not be cleared. */
-    failures: readonly string[];
-};
-
 /**
  * The product-wide cache a settings screen reports and clears.
  * App-scoped, not lxapp-scoped: the figure covers every lxapp the host
@@ -800,6 +788,18 @@ export type AppCacheApi = {
      * @throws {E_INTERNAL} The clear could not start.
      */
     clear(): Promise<AppCacheClearResult>;
+};
+
+/** Outcome of `lx.host.cache.clear`. */
+export type AppCacheClearResult = {
+    /** Estimated file bytes successfully removed; excludes WebView cache. */
+    freedBytes: number;
+    /** Protected usercache/session paths skipped, not a count of apps. */
+    skippedActivePaths: number;
+    /** What happened to the WebView's own cache. */
+    webview: 'cleared' | 'unsupported' | 'failed';
+    /** Categories that could not be cleared. */
+    failures: readonly string[];
 };
 
 /** What `App({...})` takes: the lxapp's lifecycle hooks. */
@@ -1054,6 +1054,21 @@ export type BadgeResult = {
     painted: boolean;
 };
 
+/** A button on a desktop banner shown by `lx.host.banner.show`. */
+export type BannerAction = {
+    /** What `action` reports when this button is picked. */
+    id: string;
+    /** Button text. */
+    label: string;
+    /** Emphasis: `primary` for the expected choice, `danger` for a destructive one. */
+    tone?: 'default' | 'primary' | 'danger';
+    /**
+     * Where picking this action goes, as a notification target, checked
+     * before the banner shows; absent, picking it only resolves `show`.
+     */
+    target?: HostTarget;
+};
+
 /**
  * Product-drawn desktop banner, top-right. Not an OS notification and
  * not bound to App Link. Desktop only, in every lxapp: elsewhere every
@@ -1068,19 +1083,28 @@ export type BadgeResult = {
  * dismiss, timeout, or replace. User outcomes resolve; presentation
  * failures reject.
  */
-/** A button on a desktop banner shown by `lx.host.banner.show`. */
-export type BannerAction = {
-    /** What `action` reports when this button is picked. */
-    id: string;
-    /** Button text. */
-    label: string;
-    /** Emphasis: `primary` for the expected choice, `danger` for a destructive one. */
-    tone?: 'default' | 'primary' | 'danger';
+export type BannerApi = {
     /**
-     * Where picking this action goes, as a notification target, checked
-     * before the banner shows; absent, picking it only resolves `show`.
+     * Show a banner, or replace the one with the same `id`; resolves with what the person did.
+     * @example
+     * ```ts
+     * const picked = await lx.host.banner.show({
+     *   title: 'Run finished',
+     *   actions: [{ id: 'open', label: 'Open', target: { page: 'run', params: { id: '42' } } }],
+     * });
+     * ```
+     * @throws {E_INVALID_ARG} No `title`, more than two actions, a bad `background`, or an invalid action `target`.
+     * @supports host.banner
+     * @throws {E_NOT_SUPPORTED} Off the desktop.
      */
-    target?: HostTarget;
+    show(options: BannerOptions): Promise<BannerResult>;
+    /**
+     * Close the banner under `id`; it resolves `dismissed`. Unknown ids are fine.
+     * @throws {E_INVALID_ARG} An empty `id`.
+     * @supports host.banner
+     * @throws {E_NOT_SUPPORTED} Off the desktop.
+     */
+    dismiss(id: string): Promise<void>;
 };
 
 /** Options for `lx.host.banner.show`. */
@@ -1106,46 +1130,21 @@ export type BannerOptions = {
 };
 
 /** Outcome of `lx.host.banner.show`. */
-export type BannerResult =
-    | {
-        /** A button was picked. */
-        status: 'ok';
-        /** The banner's replace key. */
-        id: string;
-        /** The picked button's `id`. */
-        action: string;
-    }
-    | {
-        /** It closed without a choice. */
-        status: 'canceled';
-        /** The banner's replace key. */
-        id: string;
-        /** Closed by the person, by `durationMs`, or by a banner with the same `id`. */
-        reason: 'dismissed' | 'timeout' | 'replaced';
-    };
-
-export type BannerApi = {
-    /**
-     * Show a banner, or replace the one with the same `id`; resolves with what the person did.
-     * @example
-     * ```ts
-     * const picked = await lx.host.banner.show({
-     *   title: 'Run finished',
-     *   actions: [{ id: 'open', label: 'Open', target: { page: 'run', params: { id: '42' } } }],
-     * });
-     * ```
-     * @throws {E_INVALID_ARG} No `title`, more than two actions, a bad `background`, or an invalid action `target`.
-     * @supports host.banner
-     * @throws {E_NOT_SUPPORTED} Off the desktop.
-     */
-    show(options: BannerOptions): Promise<BannerResult>;
-    /**
-     * Close the banner under `id`; it resolves `dismissed`. Unknown ids are fine.
-     * @throws {E_INVALID_ARG} An empty `id`.
-     * @supports host.banner
-     * @throws {E_NOT_SUPPORTED} Off the desktop.
-     */
-    dismiss(id: string): Promise<void>;
+export type BannerResult = | {
+    /** A button was picked. */
+    status: 'ok';
+    /** The banner's replace key. */
+    id: string;
+    /** The picked button's `id`. */
+    action: string;
+}
+| {
+    /** It closed without a choice. */
+    status: 'canceled';
+    /** The banner's replace key. */
+    id: string;
+    /** Closed by the person, by `durationMs`, or by a banner with the same `id`. */
+    reason: 'dismissed' | 'timeout' | 'replaced';
 };
 
 /** Bytes `lx.fs.write` and the clipboard accept. */
@@ -1858,13 +1857,34 @@ export type NetworkType = 'none' | 'unknown' | 'wifi' | '2g' | '3g' | '4g' | '5g
  * may hold 32 live notifications, and it may cause at most one
  * permission prompt per launch, only while it is open on screen.
  */
-/** When `lx.host.notification.show` presents a scheduled notification. */
-export type NotificationSchedule = {
-    /** Epoch milliseconds. */
-    at: number;
-} | {
-    /** Milliseconds from now. */
-    delayMs: number;
+export type NotificationApi = {
+    /**
+     * Post a local notification now or at `schedule`, replacing any under the same `id`.
+     * An invalid target, unknown page or route, or an unconfigured host rejects here,
+     * before anything is posted. A tap whose target is gone by then brings the
+     * product forward and says it is unavailable.
+     * @example
+     * ```ts
+     * await lx.host.notification.show({ title: 'Upload finished', target: { page: 'files' } });
+     * ```
+     * @throws {E_PERMISSION_DENIED} A guest lxapp's `target` names anything but itself.
+     */
+    show(options: NotificationOptions): Promise<NotificationResult>;
+    /**
+     * Remove what is pending or delivered under `id`, and retire its tap
+     * target. Unknown ids are fine.
+     * @throws {E_INVALID_ARG} An empty `id`.
+     * @supports host.notification
+     * @throws {E_NOT_SUPPORTED} The host does not declare notifications.
+     */
+    cancel(id: string): Promise<void>;
+    /**
+     * Remove every local notification this API posted or scheduled. A guest
+     * lxapp's call removes only its own.
+     * @supports host.notification
+     * @throws {E_NOT_SUPPORTED} The host does not declare notifications.
+     */
+    cancelAll(): Promise<void>;
 };
 
 /** Options for `lx.host.notification.show`. */
@@ -1915,34 +1935,13 @@ export type NotificationResult = {
     delivery: 'posted' | 'scheduled' | 'presented' | 'suppressed';
 };
 
-export type NotificationApi = {
-    /**
-     * Post a local notification now or at `schedule`, replacing any under the same `id`.
-     * An invalid target, unknown page or route, or an unconfigured host rejects here,
-     * before anything is posted. A tap whose target is gone by then brings the
-     * product forward and says it is unavailable.
-     * @example
-     * ```ts
-     * await lx.host.notification.show({ title: 'Upload finished', target: { page: 'files' } });
-     * ```
-     * @throws {E_PERMISSION_DENIED} A guest lxapp's `target` names anything but itself.
-     */
-    show(options: NotificationOptions): Promise<NotificationResult>;
-    /**
-     * Remove what is pending or delivered under `id`, and retire its tap
-     * target. Unknown ids are fine.
-     * @throws {E_INVALID_ARG} An empty `id`.
-     * @supports host.notification
-     * @throws {E_NOT_SUPPORTED} The host does not declare notifications.
-     */
-    cancel(id: string): Promise<void>;
-    /**
-     * Remove every local notification this API posted or scheduled. A guest
-     * lxapp's call removes only its own.
-     * @supports host.notification
-     * @throws {E_NOT_SUPPORTED} The host does not declare notifications.
-     */
-    cancelAll(): Promise<void>;
+/** When `lx.host.notification.show` presents a scheduled notification. */
+export type NotificationSchedule = {
+    /** Epoch milliseconds. */
+    at: number;
+} | {
+    /** Milliseconds from now. */
+    delayMs: number;
 };
 
 /** Options of `lx.surface.openApp`. Control app only. */
@@ -1984,8 +1983,8 @@ export type OpenDeclaredOptions = {
     /**
      * Which instance of the declaration: a declaration can be opened more than
      * once, and a new key creates one. Find it again with
-     * `lx.surface.declared(id, { key })`. 1 to 128 UTF-8 bytes. Declarations
-     * without instantiable native providers reject with `E_CAPABILITY_MISSING`.
+     * `lx.surface.declared(id, { key })`. 1 to 128 UTF-8 bytes; only
+     * declarations whose native provider can make instances take one.
      */
     key?: string;
     /**
@@ -2768,6 +2767,7 @@ export type SurfaceApi = {
      * keyed instance or override the placement; `as` and `edge` also move a
      * live instance. A declaration that shows an lxapp resolves to that app's
      * `AppSurface`.
+     * @throws {E_CAPABILITY_MISSING} A `key` for a declaration whose native provider cannot make instances.
      */
     openDeclared(id: string, options?: OpenDeclaredOptions): Promise<DeclaredSurface | AppSurface>;
     /**
