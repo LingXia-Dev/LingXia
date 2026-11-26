@@ -3,41 +3,6 @@ use std::future::Future;
 use lingxia_error::Error;
 use lingxia_surface::LayoutPresentationPlan;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ToastIcon {
-    Success,
-    Error,
-    Loading,
-    None,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ToastPosition {
-    Top,
-    Center,
-    Bottom,
-}
-
-#[derive(Debug, Clone)]
-pub struct ToastOptions {
-    pub title: String,
-    pub icon: ToastIcon,
-    pub image: Option<String>,
-    pub duration: f64,
-    pub mask: bool,
-    pub position: ToastPosition,
-}
-
-#[derive(Debug, Clone)]
-pub struct ModalOptions {
-    pub title: String,
-    pub content: String,
-    pub show_cancel: bool,
-    pub cancel_text: String,
-    pub cancel_color: Option<String>,
-    pub confirm_text: String,
-    pub confirm_color: Option<String>,
-}
 
 #[repr(i32)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -374,29 +339,5 @@ pub trait UIUpdate: Send + Sync + 'static {
             self.update_navbar_ui(appid.clone())?;
             self.update_tabbar_ui_async(appid).await
         }
-    }
-}
-
-pub trait UserFeedback: Send + Sync + 'static {
-    fn show_toast(&self, options: ToastOptions) -> Result<(), Error>;
-    fn hide_toast(&self) -> Result<(), Error>;
-
-    fn show_modal(
-        &self,
-        options: ModalOptions,
-    ) -> impl Future<Output = Result<String, Error>> + Send;
-
-    fn show_action_sheet(
-        &self,
-        options: Vec<String>,
-        cancel_text: String,
-        item_color: String,
-    ) -> impl Future<Output = Result<String, Error>> + Send;
-
-    /// Close the modal or action sheet on screen, settling its pending `show_*`
-    /// as dismissed; nothing on screen is a no-op. A View-drawn dialog closes
-    /// through `ui.dismissDialog` instead.
-    fn dismiss_dialog(&self) -> Result<(), Error> {
-        Err(Error::not_supported("dismiss_dialog".to_string()))
     }
 }

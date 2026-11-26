@@ -594,7 +594,11 @@ object Lingxia {
             override fun onActivityDestroyed(activity: Activity) {
                 com.lingxia.lxapp.DevServiceMark.detach(activity)
                 if (lastResumedActivity === activity) lastResumedActivity = null
-                if (activity is LxAppActivity) LxApp.clearCurrentActivity(activity)
+                if (activity is LxAppActivity) {
+                    // Overlay panels leave its window before the window goes.
+                    com.lingxia.lxapp.GpuOverlays.activityDestroyed(activity)
+                    LxApp.clearCurrentActivity(activity)
+                }
             }
             // Process-level foreground for lingxia::app::is_foreground. A
             // configuration change stops and restarts the activity; that is

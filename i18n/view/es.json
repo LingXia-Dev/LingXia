@@ -5,9 +5,6 @@
   "@view.done": {
     "defaultMessage": "Listo"
   },
-  "@view.ok": {
-    "defaultMessage": "Aceptar"
-  },
   "@view.previousMonth": {
     "defaultMessage": "Mes anterior"
   },
@@ -25,12 +22,6 @@
   },
   "@view.options": {
     "defaultMessage": "Opciones"
-  },
-  "@view.dialog": {
-    "defaultMessage": "Cuadro de diálogo"
-  },
-  "@view.actions": {
-    "defaultMessage": "Acciones"
   },
   "@view.error.failed": {
     "defaultMessage": "No ha funcionado. Inténtalo de nuevo."

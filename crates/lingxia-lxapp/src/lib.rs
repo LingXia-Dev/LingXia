@@ -16,14 +16,15 @@ mod delegate;
 pub mod device;
 /// A test run's view of Logic's toasts, modals and action sheets.
 pub mod dialogs;
-pub mod feedback;
 mod error;
 mod executor;
+pub mod feedback;
 pub mod host;
 pub mod lifecycle;
 pub mod log {
     pub use lingxia_log::{LogLevel, LogMessage, LogProvider};
 }
+pub(crate) mod gpu_request;
 #[cfg(feature = "js-appservice")]
 pub mod lx;
 mod lxapp;
@@ -43,7 +44,6 @@ mod test_authority_harness;
 #[cfg(all(feature = "test-utils", feature = "js-appservice"))]
 pub mod test_context;
 mod update;
-pub(crate) mod view_call;
 
 /// SDK/runtime version of lingxia-lxapp.
 /// This is used for update compatibility checks and can be reported to update services.
@@ -148,15 +148,14 @@ pub use page::embedded_document::{
     EmbeddedDocumentOptions, EmbeddedErrorCode, EmbeddedSourceError, OpenEmbeddedError,
 };
 pub use page::{
-    GpuActionSheet, GpuBridgeError, GpuChunkReader, GpuModal, GpuPageView, GpuPageViewFactory,
-    GpuPatchOp, GpuStateSignal, GpuStateWrite, GpuToast, GpuUiRequest, GpuVideoCommand,
-    GpuVideoRequest, GpuViewCreation, GpuViewEvent, GpuViewGeneration, GpuViewMessage,
-    GpuViewRequest, PageViewEnvironment, register_gpu_page_view_factory,
+    GpuBridgeError, GpuChunkReader, GpuPageView, GpuPageViewFactory, GpuPatchOp, GpuStateSignal,
+    GpuStateWrite, GpuVideoCommand, GpuVideoRequest, GpuViewCreation, GpuViewEvent,
+    GpuViewGeneration, GpuViewMessage, GpuViewRequest, PageViewEnvironment,
+    register_gpu_page_view_factory,
 };
 pub use page::{
     LeaveReason, NavigationType, PageAutomationState, PageInstance, PageInstanceId,
-    PageWebViewAwait, ViewCallOptions, register_page_resolver, resolve_page_path,
-    set_relaunch_observer,
+    PageWebViewAwait, register_page_resolver, resolve_page_path, set_relaunch_observer,
 };
 pub use plugin::{build_plugin_page_path, parse_plugin_page_path, parse_plugin_url};
 pub use provider::{

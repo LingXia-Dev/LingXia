@@ -87,15 +87,6 @@ pub struct StateAckMsg {
 }
 
 #[derive(Deserialize, Debug, Clone)]
-pub struct ResMsg {
-    pub id: String,
-    #[serde(default)]
-    pub ok: bool,
-    pub result: Option<Value>,
-    pub error: Option<ResError>,
-}
-
-#[derive(Deserialize, Debug, Clone)]
 pub struct ResError {
     pub code: Value,
     pub message: Option<String>,
@@ -129,7 +120,6 @@ pub struct UnknownMsg {
 pub enum IncomingMessage {
     Hello(HelloMsg),
     Req(ReqMsg),
-    Res(ResMsg),
     Notify(NotifyMsg),
     Cancel(CancelMsg),
     ChOpen(ChOpenMsg),
@@ -163,7 +153,6 @@ impl IncomingMessage {
         match kind_str {
             "hello" => serde_json::from_str::<HelloMsg>(json_str).map(Self::Hello),
             "req" => serde_json::from_str::<ReqMsg>(json_str).map(Self::Req),
-            "res" => serde_json::from_str::<ResMsg>(json_str).map(Self::Res),
             "notify" => serde_json::from_str::<NotifyMsg>(json_str).map(Self::Notify),
             "cancel" => serde_json::from_str::<CancelMsg>(json_str).map(Self::Cancel),
             "ch.open" => serde_json::from_str::<ChOpenMsg>(json_str).map(Self::ChOpen),

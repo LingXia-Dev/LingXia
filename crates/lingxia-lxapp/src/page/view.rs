@@ -156,7 +156,6 @@ pub enum GpuViewMessage {
 /// Logic requests a GPU View serves, one variant per family; replies route by id.
 #[derive(Clone, Debug, PartialEq)]
 pub enum GpuViewRequest {
-    Ui(GpuUiRequest),
     Video(GpuVideoRequest),
 }
 
@@ -181,77 +180,6 @@ pub enum GpuVideoCommand {
     SetPlaybackRate { rate: f64 },
     SetMuted { muted: bool },
     SetVolume { volume: f64 },
-}
-
-/// The feedback overlays a desktop GPU View draws for `lx.ui.toast` and its siblings.
-#[derive(Clone, Debug, PartialEq)]
-pub enum GpuUiRequest {
-    ShowToast(GpuToast),
-    HideToast,
-    ShowModal(GpuModal),
-    /// Close the modal and action sheet on screen, each settling as cancelled.
-    DismissDialog,
-    ShowActionSheet(GpuActionSheet),
-}
-
-#[derive(Clone, Debug, Default, PartialEq, serde::Deserialize)]
-#[serde(default, rename_all = "camelCase")]
-pub struct GpuToast {
-    pub title: String,
-    pub icon: Option<String>,
-    pub duration: Option<f64>,
-    pub mask: bool,
-    pub position: Option<String>,
-}
-
-#[derive(Clone, Debug, Default, PartialEq, serde::Deserialize)]
-#[serde(default, rename_all = "camelCase")]
-pub struct GpuModal {
-    pub title: String,
-    pub content: String,
-    pub show_cancel: Option<bool>,
-    pub cancel_text: Option<String>,
-    pub confirm_text: Option<String>,
-}
-
-#[derive(Clone, Debug, Default, PartialEq, serde::Deserialize)]
-#[serde(default, rename_all = "camelCase")]
-pub struct GpuActionSheet {
-    pub item_list: Vec<String>,
-    pub cancel_text: Option<String>,
-}
-
-impl GpuViewRequest {
-    /// The `ui.*` request a desktop `call_view(method, params)` makes of a GPU View:
-    /// `Err((code, message))` when no family serves `method` or its params do not fit.
-    pub(crate) fn from_call(
-        method: &str,
-        params: Option<serde_json::Value>,
-    ) -> Result<Self, (&'static str, String)> {
-        let params = params
-            .filter(|params| !params.is_null())
-            .unwrap_or_else(|| serde_json::json!({}));
-        fn fit<T: serde::de::DeserializeOwned>(
-            method: &str,
-            params: serde_json::Value,
-        ) -> Result<T, (&'static str, String)> {
-            serde_json::from_value(params)
-                .map_err(|error| ("E_INVALID_ARG", format!("{method}: {error}")))
-        }
-        Ok(match method {
-            "ui.showToast" => Self::Ui(GpuUiRequest::ShowToast(fit(method, params)?)),
-            "ui.hideToast" => Self::Ui(GpuUiRequest::HideToast),
-            "ui.dismissDialog" => Self::Ui(GpuUiRequest::DismissDialog),
-            "ui.showModal" => Self::Ui(GpuUiRequest::ShowModal(fit(method, params)?)),
-            "ui.showActionSheet" => Self::Ui(GpuUiRequest::ShowActionSheet(fit(method, params)?)),
-            _ => {
-                return Err((
-                    "E_NOT_SUPPORTED",
-                    format!("{method} is not served by a GPU View"),
-                ));
-            }
-        })
-    }
 }
 
 /// What a GPU View sends Logic. Payloads are owned trees, moved, never serialized.
@@ -408,49 +336,5 @@ impl PageView {
         if let Self::Gpu(view) = self {
             view.dispose();
         }
-    }
-}
-
-#[cfg(test)]
-mod gpu_request_tests {
-    use super::*;
-
-    #[test]
-    fn view_calls_become_typed_requests_and_unknown_methods_are_refused() {
-        let toast = GpuViewRequest::from_call(
-            "ui.showToast",
-            Some(serde_json::json!({"title":"Saved","icon":"success","duration":1500.0,"image":null})),
-        )
-        .unwrap();
-        assert_eq!(
-            toast,
-            GpuViewRequest::Ui(GpuUiRequest::ShowToast(GpuToast {
-                title: "Saved".into(),
-                icon: Some("success".into()),
-                duration: Some(1500.0),
-                ..Default::default()
-            }))
-        );
-        assert_eq!(
-            GpuViewRequest::from_call("ui.hideToast", None).unwrap(),
-            GpuViewRequest::Ui(GpuUiRequest::HideToast)
-        );
-        assert_eq!(
-            GpuViewRequest::from_call("ui.dismissDialog", None).unwrap(),
-            GpuViewRequest::Ui(GpuUiRequest::DismissDialog)
-        );
-        assert_eq!(
-            GpuViewRequest::from_call("ui.unknown", None).unwrap_err().0,
-            "E_NOT_SUPPORTED"
-        );
-        assert_eq!(
-            GpuViewRequest::from_call(
-                "ui.showActionSheet",
-                Some(serde_json::json!({"itemList": 3}))
-            )
-            .unwrap_err()
-            .0,
-            "E_INVALID_ARG"
-        );
     }
 }

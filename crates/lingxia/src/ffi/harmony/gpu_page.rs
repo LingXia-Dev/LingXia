@@ -12,6 +12,10 @@ use std::cell::RefCell;
 use std::collections::HashMap;
 use std::sync::Arc;
 
+#[cfg(feature = "standard")]
+#[path = "overlay.rs"]
+mod overlay;
+
 thread_local! {
     /// Main thread only: every page call is posted there.
     static PAGES: RefCell<HashMap<Token, Page>> = RefCell::new(HashMap::new());
@@ -94,6 +98,8 @@ pub(super) fn install(env: &Env, data_dir: &str) {
         ),
     ));
     lingxia_platform::harmony::set_gesture_driver(Arc::new(Gestures));
+    #[cfg(feature = "standard")]
+    overlay::install();
     if lxapp::register_gpu_page_view_factory(Arc::new(gpu_page::Binding(Arc::new(Factory))))
         .is_err()
     {
@@ -116,6 +122,10 @@ impl Shell for Bridge {
         connection: u64,
         messages: Vec<lingxia_view_harmony::lingxia_view::session::logic::ToLogic>,
     ) {
+        #[cfg(feature = "standard")]
+        if let Some(logic) = overlay::logic_of(token) {
+            return logic(messages);
+        }
         gpu_page::view_events(token, connection, messages);
     }
     fn state(

@@ -13,7 +13,6 @@ mod pull_to_refresh;
 mod screenshot;
 mod surface;
 mod ui_update;
-mod user_feedback;
 pub mod video_player;
 mod wifi;
 pub use app::Platform;

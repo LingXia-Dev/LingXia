@@ -272,9 +272,7 @@ final class LxAppCore {
         if initResult.ok {
             LxAppHostFormFactor.applyPadFlag()
             LxAppAppearanceRegistry.observeHostLocale()
-            #if os(macOS)
             GpuOverlays.start()
-            #endif
             instance = LxAppCore()
             let rawHomeAppId = initResult.home_app_id.toString()
             let homeAppId = rawHomeAppId.isEmpty ? nil : rawHomeAppId

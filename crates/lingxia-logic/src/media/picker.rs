@@ -138,7 +138,7 @@ async fn choose_route(
         .iter()
         .map(|route| t(route_label(*route, split)))
         .collect();
-    let chosen = crate::ui::action_sheet(ctx, &lxapp, labels, None, signal).await?;
+    let chosen = crate::ui::action_sheet(ctx, &lxapp, labels, false, signal).await?;
     Ok(chosen.and_then(|index| routes.get(index).copied()))
 }
 

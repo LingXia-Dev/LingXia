@@ -13,7 +13,7 @@ use super::media_runtime::MediaRuntime;
 use super::network::Network;
 use super::secure_store::SecureStore;
 use super::share::ShareService;
-use super::ui::{Appearance, LaunchFace, SurfacePresenter, UIUpdate, UserFeedback};
+use super::ui::{Appearance, LaunchFace, SurfacePresenter, UIUpdate};
 use super::update::UpdateService;
 use super::wifi::Wifi;
 use lingxia_error::Error;
@@ -335,7 +335,6 @@ pub trait AppRuntime:
     + Location
     + UIUpdate
     + UpdateService
-    + UserFeedback
     + Wifi
     + 'static
 {

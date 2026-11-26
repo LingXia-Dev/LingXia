@@ -16,11 +16,11 @@
 -keep class com.lingxia.view.GpuView { *; }
 -keep class com.lingxia.view.GpuVideo { *; }
 -keep class com.lingxia.lxapp.GpuPage { *; }
+-keep class com.lingxia.lxapp.GpuOverlays { *; }
 -keep class com.lingxia.app.AppScreenshot { public static !synthetic <methods>; }
 -keep class com.lingxia.app.UpdateManager { public static !synthetic <methods>; }
 -keep class com.lingxia.lxapp.LxApp { public static !synthetic <methods>; }
 -keep class com.lingxia.lxapp.NativeComponents.ComponentRouter { public static !synthetic <methods>; }
--keep class com.lingxia.lxapp.APIs.LxAppActionSheet { public static !synthetic <methods>; }
 -keep class com.lingxia.lxapp.APIs.LxAppCapsule { public static !synthetic <methods>; }
 -keep class com.lingxia.lxapp.APIs.LxAppClipboard { public static !synthetic <methods>; }
 -keep class com.lingxia.lxapp.APIs.LxAppDevice { public static !synthetic <methods>; }
@@ -28,13 +28,11 @@
 -keep class com.lingxia.lxapp.APIs.LxAppGesture { public static !synthetic <methods>; }
 -keep class com.lingxia.lxapp.APIs.LxAppLocation { public static !synthetic <methods>; }
 -keep class com.lingxia.lxapp.APIs.LxAppMedia { public static !synthetic <methods>; }
--keep class com.lingxia.lxapp.APIs.LxAppModal { public static !synthetic <methods>; }
 -keep class com.lingxia.lxapp.APIs.LxAppNetwork { public static !synthetic <methods>; }
 -keep class com.lingxia.lxapp.APIs.LxAppNotification { public static !synthetic <methods>; }
 -keep class com.lingxia.lxapp.APIs.LxAppPullToRefresh { public static !synthetic <methods>; }
 -keep class com.lingxia.lxapp.APIs.LxAppShare { public static !synthetic <methods>; }
 -keep class com.lingxia.lxapp.APIs.LxAppSurface { public static !synthetic <methods>; }
--keep class com.lingxia.lxapp.APIs.LxAppToast { public static !synthetic <methods>; }
 -keep class com.lingxia.lxapp.APIs.LxAppWifi { public static !synthetic <methods>; }
 
 # Objects the Rust runtime constructs and hands back across JNI.

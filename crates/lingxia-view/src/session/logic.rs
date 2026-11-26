@@ -206,7 +206,6 @@ pub enum ToView {
 /// Logic requests the View serves, one variant per family; replies route by request id.
 #[derive(Clone, Debug, PartialEq)]
 pub enum ViewRequest {
-    Ui(UiRequest),
     /// `page.video(player)`: answered by the View's players, not its runtime.
     Video {
         player: String,
@@ -228,32 +227,6 @@ pub enum VideoCommand {
     SetPlaybackRate(f64),
     SetMuted(bool),
     SetVolume(f64),
-}
-
-/// The feedback overlays a desktop page draws for `lx.ui.toast` and its siblings.
-#[derive(Clone, Debug, PartialEq)]
-pub enum UiRequest {
-    ShowToast {
-        title: String,
-        icon: Option<String>,
-        duration: Option<f64>,
-        mask: bool,
-        position: Option<String>,
-    },
-    HideToast,
-    /// Close the modal and action sheet on screen, each settling as cancelled.
-    DismissDialog,
-    ShowModal {
-        title: String,
-        content: String,
-        show_cancel: Option<bool>,
-        cancel_text: Option<String>,
-        confirm_text: Option<String>,
-    },
-    ShowActionSheet {
-        items: Vec<String>,
-        cancel_text: Option<String>,
-    },
 }
 
 /// Builds plain JS objects field by field.
@@ -343,70 +316,6 @@ impl ToView {
     }
 }
 
-impl ViewRequest {
-    /// The `{id, method, params}` call the View runtime's request handler takes.
-    pub(crate) fn to_js(&self, ctx: &JSContext, id: &str) -> JSResult<JSValue> {
-        let ViewRequest::Ui(request) = self else {
-            return Err(invalid("a video request is not a runtime call"));
-        };
-        let (method, params) = match request {
-            UiRequest::ShowToast {
-                title,
-                icon,
-                duration,
-                mask,
-                position,
-            } => (
-                "ui.showToast",
-                Build::new(ctx)
-                    .set("title", title.as_str())?
-                    .some("icon", icon.as_deref())?
-                    .some("duration", *duration)?
-                    .set("mask", *mask)?
-                    .some("position", position.as_deref())?,
-            ),
-            UiRequest::HideToast => ("ui.hideToast", Build::new(ctx)),
-            UiRequest::DismissDialog => ("ui.dismissDialog", Build::new(ctx)),
-            UiRequest::ShowModal {
-                title,
-                content,
-                show_cancel,
-                cancel_text,
-                confirm_text,
-            } => (
-                "ui.showModal",
-                Build::new(ctx)
-                    .set("title", title.as_str())?
-                    .set("content", content.as_str())?
-                    .some("showCancel", *show_cancel)?
-                    .some("cancelText", cancel_text.as_deref())?
-                    .some("confirmText", confirm_text.as_deref())?,
-            ),
-            UiRequest::ShowActionSheet { items, cancel_text } => {
-                let list = rong::quickjs::JSArray::new(ctx)?;
-                for (index, item) in items.iter().enumerate() {
-                    list.set_value(index as u32, item.as_str().into_js_value(ctx))?;
-                }
-                let params = Build::new(ctx).some("cancelText", cancel_text.as_deref())?;
-                params.object.set("itemList", list)?;
-                ("ui.showActionSheet", params)
-            }
-        };
-        let params = params.done();
-        Build::new(ctx)
-            .set("id", id)?
-            .set("method", method)?
-            .done_with("params", params)
-    }
-}
-
-impl Build<'_> {
-    fn done_with(self, key: &str, value: JSValue) -> JSResult<JSValue> {
-        self.object.set(key, value)?;
-        Ok(self.done())
-    }
-}
-
 #[cfg(test)]
 impl ToView {
     /// The typed message a bridge frame stands for, for tests written as frames.
@@ -455,42 +364,6 @@ impl ToView {
                     .filter(|error| !error.is_null())
                     .map(|_| error()),
             },
-            "req" => {
-                let params = &frame["params"];
-                let text = |key: &str| params[key].as_str().map(str::to_owned);
-                let request = match frame["method"].as_str().unwrap_or_default() {
-                    "ui.showToast" => UiRequest::ShowToast {
-                        title: text("title").unwrap_or_default(),
-                        icon: text("icon"),
-                        duration: params["duration"].as_f64(),
-                        mask: params["mask"] == true,
-                        position: text("position"),
-                    },
-                    "ui.hideToast" => UiRequest::HideToast,
-                    "ui.dismissDialog" => UiRequest::DismissDialog,
-                    "ui.showModal" => UiRequest::ShowModal {
-                        title: text("title").unwrap_or_default(),
-                        content: text("content").unwrap_or_default(),
-                        show_cancel: params["showCancel"].as_bool(),
-                        cancel_text: text("cancelText"),
-                        confirm_text: text("confirmText"),
-                    },
-                    "ui.showActionSheet" => UiRequest::ShowActionSheet {
-                        items: params["itemList"]
-                            .as_array()
-                            .into_iter()
-                            .flatten()
-                            .filter_map(|item| item.as_str().map(str::to_owned))
-                            .collect(),
-                        cancel_text: text("cancelText"),
-                    },
-                    other => panic!("no View request {other}"),
-                };
-                Self::Request {
-                    id,
-                    request: ViewRequest::Ui(request),
-                }
-            }
             other => panic!("not a Logic message: {other}"),
         }
     }

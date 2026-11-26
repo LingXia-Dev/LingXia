@@ -376,6 +376,15 @@ impl Page {
         self.token
     }
 
+    /// A window overlay: frames are clear wherever the page draws nothing. Before `mount`.
+    pub fn set_see_through(&self) {
+        pages::with(self.token, |host| {
+            host.adapter()
+                .see_through
+                .store(true, std::sync::atomic::Ordering::Relaxed)
+        });
+    }
+
     /// Runs `work` on this page's host.
     pub fn with_host<T>(&self, work: impl FnOnce(&ViewHost<HarmonyAdapter>) -> T) -> Option<T> {
         pages::with(self.token, work)

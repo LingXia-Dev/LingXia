@@ -3,7 +3,7 @@ import { render as rendering, page } from './runtime/state.js';
 import { describe, prepare, prepareWindows, takeMovedAnchors, takeThrown, commit, discard, reset, dispatch, probeListRow } from './runtime/tree.js';
 import { createView, syncData, hasLocalUpdates, readsHostContext, envReads, envOf } from './runtime/hooks.js';
 import { configureActions, setActionPage, takeViewEvents, receiveActionResponse, takeActionErrors, takeHandlerFailure, setLoudFailures, requestLeave, automationAction, takeAutomationResults } from './runtime/actions.js';
-import { viewCall, overlayTimer, takeOverlayTimers, escapeOverlay, cancelSheets } from './runtime/overlay.js';
+import { overlayTimer, takeOverlayTimers, escapeOverlay } from './runtime/overlay.js';
 import { openPicker, pickerKey, closePicker, takePickerResults, pickerIdentity, hasPicker } from './runtime/picker.js';
 import { takeFonts } from './runtime/fonts.js';
 import { takeReveals } from './runtime/reveal.js';
@@ -32,13 +32,12 @@ function unboundFieldText(kind, iso, opts) {
 }
 
 // Pushed over, switched away from or closed inside the app: the passing layers close as a tap
-// outside would. Dialogs, manual popovers and toasts stay. True when anything closed.
+// outside would. Dialogs and manual popovers stay. True when anything closed.
 function pageLeft() {
   const picker = hasPicker();
   if (picker) closePicker();
   const popovers = closePassing();
-  const sheets = cancelSheets();
-  return picker || popovers || sheets;
+  return picker || popovers;
 }
 
 // The native session calls only these globals; module code stays unreachable from the host.
@@ -53,7 +52,7 @@ export function publishHost(render, catalog, page) {
     __lingxiaHasLocalUpdates: hasLocalUpdates, __lingxiaReleasePress: releasePress, __lingxiaRequestLeave: requestLeave,
     __lingxiaReadsHostContext: readsHostContext, __lingxiaEnvReads: envReads, __lingxiaSetNow: setNow,
     __lingxiaAutomationAction: automationAction, __lingxiaTakeAutomationResults: takeAutomationResults,
-    __lingxiaViewCall: viewCall, __lingxiaOverlayTimer: overlayTimer, __lingxiaTakeOverlayTimers: takeOverlayTimers,
+    __lingxiaOverlayTimer: overlayTimer, __lingxiaTakeOverlayTimers: takeOverlayTimers,
     __lingxiaEscape: escapeOverlay, __lingxiaPageLeft: pageLeft, __lingxiaInterest: interest, __lingxiaDismissHints: dismissHints, __lingxiaCloseAfter: closeAfterExpired, __lingxiaFonts: takeFonts, __lingxiaProbeListRow: probeListRow,
     __lingxiaOpenPicker: openPicker, __lingxiaPickerKey: pickerKey, __lingxiaClosePicker: closePicker,
     __lingxiaTakePickerResults: takePickerResults, __lingxiaPickerIdentity: pickerIdentity,

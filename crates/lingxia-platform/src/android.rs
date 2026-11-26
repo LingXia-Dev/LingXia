@@ -19,7 +19,6 @@ mod pull_to_refresh;
 mod screenshot;
 mod surface;
 mod ui_update;
-mod user_feedback;
 mod video_player;
 mod wifi;
 pub use app::Platform;
@@ -81,25 +80,22 @@ pub enum CachedClass {
     LxAppDevice = 3,
     LxAppLocation = 4,
     LxAppSurface = 5,
-    LxAppToast = 6,
-    LxAppModal = 7,
-    LxAppActionSheet = 8,
-    LxAppFile = 9,
-    ComponentRouter = 10,
-    LxAppPullToRefresh = 11,
-    UpdateManager = 12,
-    LxAppCapsule = 13,
-    LxAppWifi = 14,
-    LxAppNetwork = 15,
-    AppScreenshot = 16,
-    LxApp = 17,
-    LxAppShare = 18,
-    LxAppClipboard = 19,
-    LxAppNotification = 20,
+    LxAppFile = 6,
+    ComponentRouter = 7,
+    LxAppPullToRefresh = 8,
+    UpdateManager = 9,
+    LxAppCapsule = 10,
+    LxAppWifi = 11,
+    LxAppNetwork = 12,
+    AppScreenshot = 13,
+    LxApp = 14,
+    LxAppShare = 15,
+    LxAppClipboard = 16,
+    LxAppNotification = 17,
 }
 
 impl CachedClass {
-    const COUNT: usize = 21;
+    const COUNT: usize = 18;
 
     pub const fn class_path(self) -> &'static str {
         match self {
@@ -110,9 +106,6 @@ impl CachedClass {
             CachedClass::LxAppDevice => "com/lingxia/lxapp/APIs/LxAppDevice",
             CachedClass::LxAppLocation => "com/lingxia/lxapp/APIs/LxAppLocation",
             CachedClass::LxAppSurface => "com/lingxia/lxapp/APIs/LxAppSurface",
-            CachedClass::LxAppToast => "com/lingxia/lxapp/APIs/LxAppToast",
-            CachedClass::LxAppModal => "com/lingxia/lxapp/APIs/LxAppModal",
-            CachedClass::LxAppActionSheet => "com/lingxia/lxapp/APIs/LxAppActionSheet",
             CachedClass::LxAppFile => "com/lingxia/lxapp/APIs/LxAppFile",
             CachedClass::ComponentRouter => "com/lingxia/lxapp/NativeComponents/ComponentRouter",
             CachedClass::LxAppPullToRefresh => "com/lingxia/lxapp/APIs/LxAppPullToRefresh",
@@ -156,18 +149,6 @@ impl CachedClass {
             CachedClass::LxAppSurface => concat!(
                 "Global class reference not found: ",
                 "com/lingxia/lxapp/APIs/LxAppSurface"
-            ),
-            CachedClass::LxAppToast => concat!(
-                "Global class reference not found: ",
-                "com/lingxia/lxapp/APIs/LxAppToast"
-            ),
-            CachedClass::LxAppModal => concat!(
-                "Global class reference not found: ",
-                "com/lingxia/lxapp/APIs/LxAppModal"
-            ),
-            CachedClass::LxAppActionSheet => concat!(
-                "Global class reference not found: ",
-                "com/lingxia/lxapp/APIs/LxAppActionSheet"
             ),
             CachedClass::LxAppFile => concat!(
                 "Global class reference not found: ",
@@ -218,30 +199,8 @@ impl CachedClass {
 }
 
 fn cached_slot(kind: CachedClass) -> &'static OnceLock<Global<JClass<'static>>> {
-    static CLASS_CACHE: [OnceLock<Global<JClass<'static>>>; CachedClass::COUNT] = [
-        OnceLock::new(),
-        OnceLock::new(),
-        OnceLock::new(),
-        OnceLock::new(),
-        OnceLock::new(),
-        OnceLock::new(),
-        OnceLock::new(),
-        OnceLock::new(),
-        OnceLock::new(),
-        OnceLock::new(),
-        OnceLock::new(),
-        OnceLock::new(),
-        OnceLock::new(),
-        OnceLock::new(),
-        OnceLock::new(),
-        OnceLock::new(),
-        OnceLock::new(),
-        OnceLock::new(),
-        OnceLock::new(),
-        OnceLock::new(),
-        OnceLock::new(),
-        OnceLock::new(),
-    ];
+    static CLASS_CACHE: [OnceLock<Global<JClass<'static>>>; CachedClass::COUNT] =
+        [const { OnceLock::new() }; CachedClass::COUNT];
     &CLASS_CACHE[kind as usize]
 }
 

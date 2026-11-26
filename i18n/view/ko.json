@@ -5,9 +5,6 @@
   "@view.done": {
     "defaultMessage": "완료"
   },
-  "@view.ok": {
-    "defaultMessage": "확인"
-  },
   "@view.previousMonth": {
     "defaultMessage": "이전 달"
   },
@@ -25,12 +22,6 @@
   },
   "@view.options": {
     "defaultMessage": "옵션"
-  },
-  "@view.dialog": {
-    "defaultMessage": "대화상자"
-  },
-  "@view.actions": {
-    "defaultMessage": "작업"
   },
   "@view.error.failed": {
     "defaultMessage": "작업을 완료하지 못했습니다. 다시 시도하세요."

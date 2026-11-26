@@ -212,8 +212,7 @@ impl NativePage for AndroidPage {
         .map_err(runtime)
     }
     fn automation(&self, request: serde_json::Value, reply: AutomationReply) {
-        let id = NEXT_REPLY.fetch_add(1, Ordering::Relaxed);
-        replies().insert(id, reply);
+        let id = keep_reply(reply);
         let token = self.token;
         let sent = with_env(|env| {
             let request = env.new_string(request.to_string())?;
@@ -226,7 +225,7 @@ impl NativePage for AndroidPage {
             Ok::<_, jni::errors::Error>(())
         });
         if let Err(error) = sent
-            && let Some(reply) = replies().remove(&id)
+            && let Some(reply) = take_reply(id)
         {
             reply(Err(format!("page is not active: {error}")));
         }
@@ -236,7 +235,6 @@ impl NativePage for AndroidPage {
     }
 }
 
-#[cfg_attr(not(feature = "automation"), allow(dead_code))]
 static NEXT_REPLY: AtomicI64 = AtomicI64::new(1);
 
 /// Automation replies awaiting their page's UI thread.
@@ -244,6 +242,18 @@ fn replies() -> std::sync::MutexGuard<'static, HashMap<i64, AutomationReply>> {
     static REPLIES: LazyLock<Mutex<HashMap<i64, AutomationReply>>> =
         LazyLock::new(Default::default);
     REPLIES.lock().unwrap_or_else(|p| p.into_inner())
+}
+
+/// Keeps `reply` for `GpuPage.automationReply`; the id Java answers with.
+pub(super) fn keep_reply(reply: AutomationReply) -> i64 {
+    let id = NEXT_REPLY.fetch_add(1, Ordering::Relaxed);
+    replies().insert(id, reply);
+    id
+}
+
+/// A kept reply Java will never answer.
+pub(super) fn take_reply(id: i64) -> Option<AutomationReply> {
+    replies().remove(&id)
 }
 
 extern "system" fn automation_reply<'a>(
@@ -282,6 +292,10 @@ impl lingxia_view_android::StateListener for States {
         connection: u64,
         messages: Vec<lingxia_view_android::lingxia_view::session::logic::ToLogic>,
     ) {
+        #[cfg(feature = "standard")]
+        if let Some(logic) = super::overlay::logic_of(owner) {
+            return logic(messages);
+        }
         gpu_page::view_events(owner, connection, messages);
     }
     fn video_orientation(

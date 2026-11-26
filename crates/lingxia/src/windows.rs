@@ -13,6 +13,9 @@ use lingxia_webview::{
 
 #[path = "ffi/windows/gpu_page.rs"]
 mod gpu_page;
+#[cfg(feature = "standard")]
+#[path = "ffi/windows/overlay.rs"]
+mod overlay;
 
 type AppVisibilityKey = (String, Option<u64>);
 static WINDOWS_APP_VISIBLE_WEBTAGS: LazyLock<Mutex<HashMap<AppVisibilityKey, HashSet<String>>>> =
@@ -52,6 +55,8 @@ pub fn init(platform: Platform) -> crate::Result<crate::RuntimeInfo> {
     install_url_surface_bridge();
     install_aside_panel_bridge();
     gpu_page::install();
+    #[cfg(feature = "standard")]
+    overlay::install();
     lingxia_platform::set_toast_activate_handler(|token| {
         let _ = crate::navigation::activate_notification(token);
     });

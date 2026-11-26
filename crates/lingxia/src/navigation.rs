@@ -209,18 +209,21 @@ pub(crate) fn install_handlers() {
 /// The feedback handler: `lingxia_service` has already logged the reason, so
 /// this only has to put it in front of the user.
 fn show_unavailable(_detail: &str) {
-    let Ok(platform) = crate::runtime::platform() else {
+    use lxapp::feedback::{FeedbackPosition, FeedbackToast, FeedbackTone};
+    let Some(layer) = lxapp::feedback::feedback_layer() else {
         return;
     };
-    use lingxia_platform::traits::ui::{ToastIcon, ToastOptions, ToastPosition, UserFeedback};
-    let _ = platform.show_toast(ToastOptions {
-        title: unavailable_message(),
-        icon: ToastIcon::Error,
-        image: None,
-        duration: 2.5,
-        mask: false,
-        position: ToastPosition::Center,
-    });
+    // No lxapp asked: the layer shows it over the shell's window.
+    let _ = layer.toast(
+        "",
+        FeedbackToast {
+            title: unavailable_message(),
+            tone: FeedbackTone::Danger,
+            loading: false,
+            position: FeedbackPosition::Center,
+            duration: Some(std::time::Duration::from_millis(2500)),
+        },
+    );
 }
 
 #[cfg(feature = "standard")]

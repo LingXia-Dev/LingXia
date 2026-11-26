@@ -9,6 +9,7 @@ import { gpuPageFocusByKey, gpuPageReveal, gpuPageScreenshotReply, gpuPageWebVie
 import { webview } from '@kit.ArkWeb';
 import { WebViewManager } from '../lxapp/WebViewBridge';
 import { GpuRect } from './GpuEnvironment';
+import { GpuOverlays } from './GpuOverlays';
 
 const TAG = 'LingXia.GpuPages';
 
@@ -208,12 +209,31 @@ export class GpuPages {
       GpuPages.created.forEach((listener: GpuPageListener) => listener(page));
       return true;
     }
+    if (kind === 'overlayOpen') {
+      // A window overlay's page: it shows in its own sub-window, never in an lxapp's container.
+      const page = new GpuPageModel(token, new GpuPageIdentity());
+      GpuPages.pages.set(token, page);
+      GpuOverlays.open(page);
+      return true;
+    }
+    if (kind === 'overlayClose') {
+      // After the page's own dispose, so it closes even when the page is already gone.
+      GpuPages.pages.delete(token);
+      GpuOverlays.close(token);
+      return true;
+    }
     const page = GpuPages.pages.get(token);
     if (page === undefined) {
       LxLog.w(TAG, `${kind} for unknown GPU page ${tokenText}`);
       return false;
     }
     switch (kind) {
+      case 'overlayInput':
+        GpuOverlays.input(token, payload === 'true');
+        return true;
+      case 'overlayFocus':
+        GpuOverlays.focus(token, payload === 'true');
+        return true;
       case 'dispose':
         GpuPages.pages.delete(token);
         GpuPages.dropRecovery(page);

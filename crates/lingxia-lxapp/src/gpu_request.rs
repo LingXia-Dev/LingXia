@@ -1,6 +1,4 @@
-use crate::bridge::{
-    OutboundContext, PageBridge, RpcError, SessionWorkId, required_cap_for_name,
-};
+use crate::bridge::{OutboundContext, PageBridge, RpcError, SessionWorkId};
 use crate::page::{GpuVideoRequest, GpuViewRequest, PageInstance};
 use lingxia_error::code;
 use serde_json::Value;
@@ -11,14 +9,15 @@ use std::time::Duration;
 use tokio::sync::oneshot;
 use tokio::time;
 
-static REGISTRY: OnceLock<ViewCallRegistry> = OnceLock::new();
+/// Requests Logic sent a GPU View, waiting on their replies.
+static REGISTRY: OnceLock<Registry> = OnceLock::new();
 
-struct ViewCallRegistry {
-    pending: Mutex<HashMap<String, PendingViewCallEntry>>,
+struct Registry {
+    pending: Mutex<HashMap<String, PendingEntry>>,
     counter: AtomicU64,
 }
 
-struct PendingViewCallEntry {
+struct PendingEntry {
     page_instance_id: String,
     work_id: SessionWorkId,
     /// Kept with the pending call so a future explicit cancel frame has the
@@ -28,12 +27,12 @@ struct PendingViewCallEntry {
     sent_us: u64,
 }
 
-pub(crate) struct PendingViewCall {
+pub(crate) struct PendingRequest {
     pub id: String,
     pub rx: oneshot::Receiver<Result<Value, RpcError>>,
 }
 
-impl ViewCallRegistry {
+impl Registry {
     fn new() -> Self {
         Self {
             pending: Mutex::new(HashMap::new()),
@@ -42,35 +41,15 @@ impl ViewCallRegistry {
     }
 }
 
-fn registry() -> &'static ViewCallRegistry {
-    REGISTRY.get_or_init(ViewCallRegistry::new)
-}
-
-/// Send a request to the View (WebView) and return a receiver for the response.
-pub(crate) fn call_view(
-    page: &PageInstance,
-    method: &str,
-    params: Option<Value>,
-) -> Result<PendingViewCall, lingxia_error::Error> {
-    let cap = required_cap_for_name(method);
-    pending_call(page, |bridge, work_id, outbound, id| {
-        bridge.send_view_request_for_context(
-            page,
-            Some(work_id),
-            outbound,
-            id,
-            method.to_string(),
-            params,
-            cap,
-        )
-    })
+fn registry() -> &'static Registry {
+    REGISTRY.get_or_init(Registry::new)
 }
 
 /// Send a typed video command to a GPU page's player and return a receiver for the reply.
 pub(crate) fn call_gpu_video(
     page: &PageInstance,
     request: GpuVideoRequest,
-) -> Result<PendingViewCall, lingxia_error::Error> {
+) -> Result<PendingRequest, lingxia_error::Error> {
     pending_call(page, |bridge, work_id, outbound, id| {
         bridge.send_gpu_request_for_context(
             Some(work_id),
@@ -90,12 +69,12 @@ fn pending_call(
         Option<&OutboundContext>,
         String,
     ) -> Result<(), lingxia_error::Error>,
-) -> Result<PendingViewCall, lingxia_error::Error> {
+) -> Result<PendingRequest, lingxia_error::Error> {
     let reg = registry();
     let seq = reg
         .counter
         .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |id| id.checked_add(1))
-        .expect("view-call id space exhausted");
+        .expect("GPU request id space exhausted");
     let id = format!("lv_{}", seq);
     let page_instance_id = page.instance_id_string();
     let bridge = page.bridge();
@@ -106,7 +85,7 @@ fn pending_call(
     let (tx, rx) = oneshot::channel();
     reg.pending.lock().unwrap().insert(
         id.clone(),
-        PendingViewCallEntry {
+        PendingEntry {
             page_instance_id,
             work_id,
             sent_us: crate::bridge::probe::now_us(),
@@ -130,18 +109,18 @@ fn pending_call(
         return Err(e);
     }
 
-    Ok(PendingViewCall { id, rx })
+    Ok(PendingRequest { id, rx })
 }
 
-pub(crate) async fn await_pending_view_call(
-    pending: PendingViewCall,
+pub(crate) async fn await_pending(
+    pending: PendingRequest,
     timeout: Duration,
 ) -> Result<Value, lingxia_error::Error> {
     match time::timeout(timeout, pending.rx).await {
         Ok(Ok(result)) => result.map_err(|rpc_err| {
             let message = rpc_err
                 .message
-                .unwrap_or_else(|| "View call failed".to_string());
+                .unwrap_or_else(|| "GPU View request failed".to_string());
             let mut error = lingxia_error::Error::new(rpc_err.code, message);
             if let Some(reason) = rpc_err.reason {
                 error = error.with_reason(String::from(reason));
@@ -151,22 +130,21 @@ pub(crate) async fn await_pending_view_call(
             }
             error
         }),
-        Ok(Err(_)) => Err(lingxia_error::Error::internal("View call channel closed")),
+        Ok(Err(_)) => Err(lingxia_error::Error::internal("GPU View request channel closed")),
         Err(_) => {
-            cancel_view_call(
+            cancel(
                 &pending.id,
-                Some(format!("View call timed out after {:?}", timeout)),
+                Some(format!("GPU View request timed out after {:?}", timeout)),
             );
             Err(lingxia_error::Error::timeout(format!(
-                "View call timed out after {timeout:?}"
+                "GPU View request timed out after {timeout:?}"
             )))
         }
     }
 }
 
-/// Resolve a pending view call with the result from the View.
-/// Returns `true` if a matching pending call was found and resolved.
-pub(crate) fn resolve_view_call(
+/// Resolve a pending request with the View's reply; `true` when one matched.
+pub(crate) fn resolve(
     id: &str,
     source_page_instance_id: Option<&str>,
     source_work_id: Option<SessionWorkId>,
@@ -204,7 +182,7 @@ pub(crate) fn resolve_view_call(
     false
 }
 
-pub(crate) fn cancel_view_call(id: &str, message: Option<String>) {
+pub(crate) fn cancel(id: &str, message: Option<String>) {
     let reg = registry();
     let entry = reg.pending.lock().unwrap().remove(id);
     if let Some(entry) = entry {
@@ -212,11 +190,7 @@ pub(crate) fn cancel_view_call(id: &str, message: Option<String>) {
     }
 }
 
-pub(crate) fn cancel_view_calls_for_work(
-    work_id: SessionWorkId,
-    page_instance_id: &str,
-    reason: &str,
-) {
+pub(crate) fn cancel_for_work(work_id: SessionWorkId, page_instance_id: &str, reason: &str) {
     let entries = {
         let mut pending = registry().pending.lock().unwrap();
         // Work ids restart at 1 on every bridge. This map is process-wide, so
@@ -240,7 +214,7 @@ pub(crate) fn cancel_view_calls_for_work(
     }
 }
 
-pub(crate) fn cancel_view_calls_for_page_instances(instance_ids: &[String], reason: &str) {
+pub(crate) fn cancel_for_page_instances(instance_ids: &[String], reason: &str) {
     if instance_ids.is_empty() {
         return;
     }
@@ -272,16 +246,16 @@ mod tests {
     use super::*;
 
     #[tokio::test]
-    async fn await_pending_view_call_returns_value() {
+    async fn await_pending_returns_value() {
         let (tx, rx) = oneshot::channel();
-        let pending = PendingViewCall {
+        let pending = PendingRequest {
             id: "lv_test_ok".to_string(),
             rx,
         };
 
         tx.send(Ok(serde_json::json!({ "ok": true }))).unwrap();
 
-        let value = await_pending_view_call(pending, Duration::from_millis(50))
+        let value = await_pending(pending, Duration::from_millis(50))
             .await
             .unwrap();
 
@@ -289,9 +263,9 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn await_pending_view_call_maps_rpc_error() {
+    async fn await_pending_maps_rpc_error() {
         let (tx, rx) = oneshot::channel();
-        let pending = PendingViewCall {
+        let pending = PendingRequest {
             id: "lv_test_err".to_string(),
             rx,
         };
@@ -304,7 +278,7 @@ mod tests {
         }))
         .unwrap();
 
-        let err = await_pending_view_call(pending, Duration::from_millis(50))
+        let err = await_pending(pending, Duration::from_millis(50))
             .await
             .unwrap_err();
 
@@ -315,14 +289,14 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn await_pending_view_call_times_out() {
+    async fn await_pending_times_out() {
         let (_tx, rx) = oneshot::channel();
-        let pending = PendingViewCall {
+        let pending = PendingRequest {
             id: "lv_test_timeout".to_string(),
             rx,
         };
 
-        let err = await_pending_view_call(pending, Duration::from_millis(1))
+        let err = await_pending(pending, Duration::from_millis(1))
             .await
             .unwrap_err();
 
@@ -330,12 +304,12 @@ mod tests {
     }
 
     #[test]
-    fn stale_document_work_cannot_resolve_successor_view_call() {
+    fn stale_document_work_cannot_resolve_successor_request() {
         let id = "lv_work_isolation";
         let (tx, mut rx) = oneshot::channel();
         registry().pending.lock().unwrap().insert(
             id.to_string(),
-            PendingViewCallEntry {
+            PendingEntry {
                 page_instance_id: "page-1".to_string(),
                 work_id: SessionWorkId::for_test(22),
                 _outbound: None,
@@ -344,14 +318,14 @@ mod tests {
             },
         );
 
-        assert!(!resolve_view_call(
+        assert!(!resolve(
             id,
             Some("page-1"),
             Some(SessionWorkId::for_test(21)),
             Ok(Value::Null),
         ));
         assert!(rx.try_recv().is_err());
-        assert!(resolve_view_call(
+        assert!(resolve(
             id,
             Some("page-1"),
             Some(SessionWorkId::for_test(22)),
@@ -361,7 +335,7 @@ mod tests {
     }
 
     #[test]
-    fn canceling_retired_work_leaves_successor_view_call_pending() {
+    fn canceling_retired_work_leaves_successor_request_pending() {
         let old_id = "lv_old_work";
         let new_id = "lv_new_work";
         let (old_tx, mut old_rx) = oneshot::channel();
@@ -369,7 +343,7 @@ mod tests {
         let mut pending = registry().pending.lock().unwrap();
         pending.insert(
             old_id.to_string(),
-            PendingViewCallEntry {
+            PendingEntry {
                 page_instance_id: "page-1".to_string(),
                 work_id: SessionWorkId::for_test(31),
                 _outbound: None,
@@ -379,7 +353,7 @@ mod tests {
         );
         pending.insert(
             new_id.to_string(),
-            PendingViewCallEntry {
+            PendingEntry {
                 page_instance_id: "page-1".to_string(),
                 work_id: SessionWorkId::for_test(32),
                 _outbound: None,
@@ -389,7 +363,7 @@ mod tests {
         );
         drop(pending);
 
-        cancel_view_calls_for_work(SessionWorkId::for_test(31), "page-1", "session reset");
+        cancel_for_work(SessionWorkId::for_test(31), "page-1", "session reset");
 
         assert!(matches!(old_rx.try_recv(), Ok(Err(_))));
         assert!(new_rx.try_recv().is_err());
@@ -405,7 +379,7 @@ mod tests {
         let mut pending = registry().pending.lock().unwrap();
         pending.insert(
             foreground_id.to_string(),
-            PendingViewCallEntry {
+            PendingEntry {
                 page_instance_id: "foreground".to_string(),
                 work_id: SessionWorkId::for_test(1),
                 _outbound: None,
@@ -415,7 +389,7 @@ mod tests {
         );
         pending.insert(
             hidden_id.to_string(),
-            PendingViewCallEntry {
+            PendingEntry {
                 page_instance_id: "hidden".to_string(),
                 work_id: SessionWorkId::for_test(1),
                 _outbound: None,
@@ -425,7 +399,7 @@ mod tests {
         );
         drop(pending);
 
-        cancel_view_calls_for_work(
+        cancel_for_work(
             SessionWorkId::for_test(1),
             "hidden",
             "Document session revoked",

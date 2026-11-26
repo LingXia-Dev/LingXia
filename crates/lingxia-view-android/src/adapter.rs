@@ -131,6 +131,8 @@ pub(super) struct AndroidAdapter {
     /// The bar-snapshot generation the last presented frame draws; 0 when none.
     chrome_snapshot: AtomicU64,
     orientation: Mutex<Option<lingxia_view::scene::video::Orientation>>,
+    /// A window overlay: frames are clear wherever the page draws nothing.
+    pub(super) see_through: AtomicBool,
     /// Display frames keep coming for a playing video's new frames.
     #[cfg(all(feature = "gpu", target_os = "android"))]
     ticking: Arc<AtomicBool>,
@@ -194,6 +196,7 @@ impl AndroidAdapter {
             modal: Default::default(),
             chrome_snapshot: AtomicU64::new(0),
             orientation: Default::default(),
+            see_through: Default::default(),
             #[cfg(all(feature = "gpu", target_os = "android"))]
             ticking: Default::default(),
         }
@@ -265,10 +268,13 @@ impl Presenter for AndroidAdapter {
 
     fn prepare(
         &self,
-        display: DisplayList,
+        mut display: DisplayList,
         _: SurfaceTicket,
         generation: CommitTicket,
     ) -> Result<Option<Frame>, String> {
+        if self.see_through.load(Ordering::Relaxed) {
+            display.set_see_through();
+        }
         let gpu_built = cfg!(all(feature = "gpu", target_os = "android"));
         match route(gpu_built, self.gpu.load(Ordering::Acquire), self.target()) {
             Route::Wait => return Ok(None),

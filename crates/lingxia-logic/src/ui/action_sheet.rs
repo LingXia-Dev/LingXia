@@ -1,16 +1,10 @@
 use crate::dismissal::{canceled, completed};
-#[cfg(not(any(target_os = "macos", target_os = "windows")))]
-use crate::i18n::js_error;
 use crate::i18n::{
     js_internal_error, js_invalid_parameter_error, js_service_unavailable_error, js_state_error,
 };
-use crate::{I18nKey, i18n::t};
-#[cfg(not(any(target_os = "macos", target_os = "windows")))]
-use lingxia_platform::traits::ui::UserFeedback;
 use lxapp::LxApp;
 use lxapp::dialogs::{ActionSheetShown, DialogDecision};
 use rong::{FromJSObject, JSContext, JSObject, JSResult, RongJSError};
-use serde::Deserialize;
 use std::sync::Arc;
 
 /// Action sheet options from JavaScript
@@ -29,15 +23,7 @@ struct JSActionItem {
     label: String,
 }
 
-#[derive(Debug, Deserialize)]
-struct ViewActionSheetResult {
-    #[serde(rename = "tapIndex")]
-    tap_index: i64,
-}
-
-/// The desktop path never sees business code 2000: it goes through the WebView,
-/// which reports dismissal as this index instead. Two spellings of one contract,
-/// so both are named.
+/// The index that means the sheet was dismissed without a choice.
 const DISMISSED_TAP_INDEX: i64 = -1;
 
 fn classify_action_sheet_index(index: i64, item_len: usize) -> Result<Option<usize>, RongJSError> {
@@ -83,7 +69,7 @@ async fn show_action_sheet(
         signal,
     } = options;
     crate::task_object::validate_abort_signal(signal.as_ref())?;
-    let item_color = super::tone_color(tone.as_deref())?;
+    let destructive = super::destructive(tone.as_deref())?;
     let mut ids = std::collections::HashSet::new();
     for item in &items {
         if item.id.is_empty() || item.label.is_empty() || !ids.insert(item.id.as_str()) {
@@ -94,7 +80,7 @@ async fn show_action_sheet(
     }
     let item_list: Vec<String> = items.iter().map(|item| item.label.clone()).collect();
     let lxapp = LxApp::from_ctx(&ctx)?;
-    let selection = action_sheet(&ctx, &lxapp, item_list, item_color, signal).await?;
+    let selection = action_sheet(&ctx, &lxapp, item_list, destructive, signal).await?;
     let Some(index) = selection else {
         return canceled(&ctx);
     };
@@ -117,10 +103,10 @@ pub(crate) async fn action_sheet(
     ctx: &JSContext,
     lxapp: &Arc<LxApp>,
     item_list: Vec<String>,
-    item_color: Option<String>,
+    destructive: bool,
     signal: Option<JSObject>,
 ) -> Result<Option<usize>, RongJSError> {
-    let work = hooked_action_sheet(lxapp, item_list, item_color);
+    let work = hooked_action_sheet(lxapp, item_list, destructive);
     let owner = super::owner_end(lxapp);
     super::dismissable(ctx, signal, owner, work, || {
         super::dismiss_dialog(lxapp.clone())
@@ -131,7 +117,7 @@ pub(crate) async fn action_sheet(
 async fn hooked_action_sheet(
     lxapp: &Arc<LxApp>,
     item_list: Vec<String>,
-    item_color: Option<String>,
+    destructive: bool,
 ) -> Result<Option<usize>, RongJSError> {
     let decision = match lxapp::dialogs::dialog_hook() {
         Some(hook) if lxapp.is_opened() && !item_list.is_empty() => hook.action_sheet(
@@ -143,9 +129,9 @@ async fn hooked_action_sheet(
         _ => DialogDecision::Present,
     };
     match decision {
-        DialogDecision::Present => present_action_sheet(lxapp, item_list, None, item_color).await,
+        DialogDecision::Present => present_action_sheet(lxapp, item_list, destructive).await,
         DialogDecision::Draw(id) => {
-            let result = present_action_sheet(lxapp, item_list, None, item_color).await;
+            let result = present_action_sheet(lxapp, item_list, destructive).await;
             if let Some(hook) = lxapp::dialogs::dialog_hook() {
                 hook.action_sheet_closed(&lxapp.appid, id, result.as_ref().ok().copied());
             }
@@ -159,8 +145,7 @@ async fn hooked_action_sheet(
 async fn present_action_sheet(
     lxapp: &Arc<LxApp>,
     item_list: Vec<String>,
-    cancel_text: Option<String>,
-    item_color: Option<String>,
+    destructive: bool,
 ) -> Result<Option<usize>, RongJSError> {
     if !lxapp.is_opened() {
         return Err(js_state_error(
@@ -171,33 +156,15 @@ async fn present_action_sheet(
     if item_list.is_empty() {
         return Err(js_invalid_parameter_error("items cannot be empty"));
     }
-
-    if lxapp::feedback::LAYER {
-        let language = lxapp.content_language(&lxapp::display_language());
-        return present_action_sheet_layer(
-            super::feedback_layer()?,
-            &lxapp.appid,
-            &language,
-            item_list,
-            item_color.is_some(),
-        )
-        .await;
-    }
-
-    let cancel_text = cancel_text.unwrap_or_else(|| t(I18nKey::CommonCancel));
-    let item_color = item_color.unwrap_or_else(|| "#007AFF".to_string());
-    let item_len = item_list.len();
-
-    #[cfg(any(target_os = "macos", target_os = "windows"))]
-    {
-        return present_action_sheet_webview(lxapp, item_list, cancel_text, item_color, item_len)
-            .await;
-    }
-
-    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
-    {
-        present_action_sheet_native(lxapp, item_list, cancel_text, item_color, item_len).await
-    }
+    let language = lxapp.content_language(&lxapp::display_language());
+    present_action_sheet_layer(
+        super::feedback_layer()?,
+        &lxapp.appid,
+        &language,
+        item_list,
+        destructive,
+    )
+    .await
 }
 
 /// The window feedback layer: its cancel word is in `language`, the lxapp's page language.
@@ -225,55 +192,6 @@ async fn present_action_sheet_layer(
     }
 }
 
-/// macOS: render action sheet inside the WebView via Logic→View RPC.
-#[cfg(any(target_os = "macos", target_os = "windows"))]
-async fn present_action_sheet_webview(
-    lxapp: &Arc<LxApp>,
-    item_list: Vec<String>,
-    cancel_text: String,
-    item_color: String,
-    item_len: usize,
-) -> Result<Option<usize>, RongJSError> {
-    let params = serde_json::json!({
-        "itemList": item_list,
-        "cancelText": cancel_text,
-        "itemColor": item_color,
-    });
-
-    let result: ViewActionSheetResult =
-        lxapp
-            .call_view_with("ui.showActionSheet", &params)
-            .await
-            .map_err(|e| js_internal_error(format!("WebView action sheet failed: {}", e)))?;
-
-    classify_action_sheet_index(result.tap_index, item_len)
-}
-
-/// Non-macOS: show action sheet via native platform UI.
-#[cfg(not(any(target_os = "macos", target_os = "windows")))]
-async fn present_action_sheet_native(
-    lxapp: &Arc<LxApp>,
-    item_list: Vec<String>,
-    cancel_text: String,
-    item_color: String,
-    item_len: usize,
-) -> Result<Option<usize>, RongJSError> {
-    let data = match lxapp
-        .runtime
-        .show_action_sheet(item_list, cancel_text, item_color)
-        .await
-    {
-        Ok(data) => data,
-        Err(error) if lingxia_platform::error::is_user_dismissed(&error) => return Ok(None),
-        Err(e) => return Err(js_error(e)),
-    };
-
-    let result: ViewActionSheetResult = serde_json::from_str(&data).map_err(|error| {
-        js_internal_error(format!("ActionSheet callback invalid payload: {error}"))
-    })?;
-    classify_action_sheet_index(result.tap_index, item_len)
-}
-
 /// Initialize action sheet functions
 pub(crate) fn init(ctx: &JSContext) -> JSResult<()> {
     register_api(ctx)
@@ -293,8 +211,8 @@ rong::js_api! {
 mod tests {
     use super::classify_action_sheet_index;
 
-    /// A sheet that reaches the platform or the View any other way skips the test hook, the
-    /// cancel text and the dismissal the app's own sheets get.
+    /// A sheet that reaches the layer any other way skips the test hook and the dismissal the
+    /// app's own sheets get.
     #[test]
     fn every_sheet_goes_through_action_sheet() {
         let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
@@ -315,11 +233,7 @@ mod tests {
                 }
                 let text = std::fs::read_to_string(&path).unwrap();
                 let code = text.split("#[cfg(test)]").next().unwrap();
-                for direct in [
-                    "present_action_sheet",
-                    ".show_action_sheet(",
-                    "\"ui.showActionSheet\"",
-                ] {
+                for direct in ["present_action_sheet", "FeedbackDialog::Sheet"] {
                     assert!(
                         !code.contains(direct),
                         "{} presents a sheet with `{direct}`; call `crate::ui::action_sheet`",

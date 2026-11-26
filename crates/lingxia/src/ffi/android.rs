@@ -19,6 +19,9 @@ use std::sync::OnceLock;
 static JAVA_VM: OnceLock<JavaVM> = OnceLock::new();
 #[path = "android/gpu_page.rs"]
 mod gpu_page;
+#[cfg(feature = "standard")]
+#[path = "android/overlay.rs"]
+mod overlay;
 
 fn initialize_jni(vm: JavaVM) {
     let _ = JAVA_VM.set(vm);
@@ -94,9 +97,6 @@ fn init_cached_java_classes(env: &mut Env<'_>) {
         CachedClass::LxAppDevice,
         CachedClass::LxAppLocation,
         CachedClass::LxAppSurface,
-        CachedClass::LxAppToast,
-        CachedClass::LxAppModal,
-        CachedClass::LxAppActionSheet,
         CachedClass::LxAppFile,
         CachedClass::ComponentRouter,
         CachedClass::LxAppPullToRefresh,
@@ -151,6 +151,8 @@ pub extern "system" fn Java_com_lingxia_app_NativeApi_lingxiaInit<'a>(
 
         let data_dir_str: String = data_dir.try_to_string(env)?;
         gpu_page::initialize(env)?;
+        #[cfg(feature = "standard")]
+        overlay::initialize(env)?;
         let cache_dir_str: String = cache_dir.try_to_string(env)?;
         let locale_str: String = locale.try_to_string(env)?;
 

@@ -47,10 +47,9 @@ test('a handler calls t after an await, in the shown language', async () => {
 
 test("the View's words follow the language; an lxapp's @view key overrides one", async () => {
   const { word } = await import('../src/runtime/words.js');
-  registerCatalogues({ source: 'en-US', formatter, languages: { 'en-US': { '@view.ok': () => 'Got it' }, 'zh-CN': { '@view.done': () => '好了' } } });
-  assert.equal(word('@view.ok', 'en-US'), 'Got it');
-  assert.equal(word('@view.ok', 'zh-CN'), '确定', 'an override in one language leaves the others');
-  assert.equal(word('@view.cancel', 'zh-CN'), '取消');
+  registerCatalogues({ source: 'en-US', formatter, languages: { 'en-US': { '@view.cancel': () => 'Never mind' }, 'zh-CN': { '@view.done': () => '好了' } } });
+  assert.equal(word('@view.cancel', 'en-US'), 'Never mind');
+  assert.equal(word('@view.cancel', 'zh-CN'), '取消', 'an override in one language leaves the others');
   assert.equal(word('@view.done', 'zh-CN'), '好了');
   assert.equal(word('@view.done', 'de-AT'), 'Fertig');
   assert.equal(word('@view.done', 'sw'), 'Done', 'a language LingXia does not translate reads English');

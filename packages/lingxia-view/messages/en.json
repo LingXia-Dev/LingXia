@@ -7,10 +7,6 @@
     "defaultMessage": "Done",
     "description": "Button that confirms a picker's choice."
   },
-  "@view.ok": {
-    "defaultMessage": "OK",
-    "description": "Button that confirms an alert or dialog."
-  },
   "@view.previousMonth": {
     "defaultMessage": "Previous month",
     "description": "Date picker button that shows the month before."
@@ -34,14 +30,6 @@
   "@view.options": {
     "defaultMessage": "Options",
     "description": "Accessible name of a list of choices that has no label."
-  },
-  "@view.dialog": {
-    "defaultMessage": "Dialog",
-    "description": "Accessible name of a dialog that has no title."
-  },
-  "@view.actions": {
-    "defaultMessage": "Actions",
-    "description": "Accessible name of an action sheet."
   },
   "@view.error.failed": {
     "defaultMessage": "That didn't work. Try again.",

@@ -74,6 +74,8 @@ pub struct WindowsAdapter {
     highlights: Mutex<[Option<usize>; 2]>,
     /// The presented frame's feedback colours.
     feedback: Mutex<Option<lingxia_view::interaction::chrome::FeedbackStyle>>,
+    /// A window overlay: frames leave clear what the page does not draw.
+    pub(crate) see_through: AtomicBool,
 }
 
 impl WindowsAdapter {
@@ -101,6 +103,7 @@ impl WindowsAdapter {
             fling: Mutex::new(None),
             highlights: Mutex::new([None; 2]),
             feedback: Mutex::new(None),
+            see_through: AtomicBool::new(false),
         }
     }
 
@@ -259,6 +262,9 @@ impl Presenter for WindowsAdapter {
         self.decorate(&mut display);
         if let Some(scale) = *self.raster_scale.lock().unwrap_or_else(|p| p.into_inner()) {
             display.raster_at(scale);
+        }
+        if self.see_through.load(Ordering::Relaxed) {
+            display.set_see_through();
         }
         Ok(match self.route() {
             Route::Wait => None,

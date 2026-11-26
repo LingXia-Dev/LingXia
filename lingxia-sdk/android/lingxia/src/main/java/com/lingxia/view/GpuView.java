@@ -41,6 +41,7 @@ public final class GpuView extends FrameLayout implements SurfaceHolder.Callback
     static native void nativeReload(long host);
     static native void nativePark(long host);
     static native void nativeSetVisible(long host, boolean visible);
+    static native void nativeSetSeeThrough(long host);
     static native void nativeReveal(long host, boolean surfaceHoldsFrame);
     static native void nativeTransition(long host, int kind, float x);
     static native long nativeChromeSnapshot(long host, int edge, java.nio.ByteBuffer rows, int width, int height, float x, float y, float w, float h);
@@ -219,6 +220,8 @@ public final class GpuView extends FrameLayout implements SurfaceHolder.Callback
     private final View feedback;
     // CPU frames are drawn from a raster thread, which reads these too.
     private volatile boolean active, destroyed, attaching, gpuAttached;
+    /** A window overlay's page: its CPU frames clear the surface first. */
+    private volatile boolean seeThrough;
     private boolean hasSurfaceFrame;
     private final String worker;
     private long refusedInputLoggedAt = -1000;
@@ -297,7 +300,10 @@ public final class GpuView extends FrameLayout implements SurfaceHolder.Callback
     public GpuView(Context context, String source, String worker, Listener listener) {
         this(context, source, worker, 0, listener, false);
     }
-    /** {@code imageOwner} names this page to the host's image loader; 0 loads no images. */
+    /**
+     * {@code imageOwner} names this page to the host's image loader; 0 loads no images. A null
+     * {@code source} leaves loading to the native host, for a module that never crosses JNI.
+     */
     public GpuView(Context context, String source, String worker, long imageOwner, Listener listener, boolean logic) {
         super(context);
         this.worker = worker;
@@ -378,7 +384,7 @@ public final class GpuView extends FrameLayout implements SurfaceHolder.Callback
         addView(webviews, new FrameLayout.LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT));
         addView(surface, new FrameLayout.LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT));
         addView(feedback, new FrameLayout.LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT));
-        load(source);
+        if (source != null) load(source);
     }
 
     public void reload() {
@@ -649,6 +655,21 @@ public final class GpuView extends FrameLayout implements SurfaceHolder.Callback
     }
 
     public void connect(long generation) { if (!destroyed) nativeConnect(host, generation); }
+    /**
+     * A window overlay: clear wherever the page draws nothing, its surface over the window that
+     * holds it. Before the view is attached.
+     */
+    public void setSeeThrough() {
+        if (destroyed || seeThrough) return;
+        seeThrough = true;
+        nativeSetSeeThrough(host);
+        surface.setZOrderOnTop(true);
+        surface.getHolder().setFormat(android.graphics.PixelFormat.TRANSLUCENT);
+    }
+    /** Escape for the page: closes what its own Escape closes; false when nothing took it. */
+    public boolean escape() {
+        return !destroyed && nativeKey(host, key(KeyEvent.KEYCODE_ESCAPE, 0), false, false);
+    }
     public void requestLeave(long generation, String reason) { if (!destroyed) nativeRequestLeave(host, generation, reason); }
 
     private final android.database.ContentObserver animatorScale = new android.database.ContentObserver(main) {
@@ -961,7 +982,11 @@ public final class GpuView extends FrameLayout implements SurfaceHolder.Callback
                 cpuFrame.copyPixelsFromBuffer(rgba);
                 Canvas canvas = surface.getHolder().lockCanvas();
                 if (canvas == null) return false;
-                try { canvas.drawBitmap(cpuFrame, 0, 0, null); }
+                try {
+                    // A see-through frame blends nothing over the last one.
+                    if (seeThrough) canvas.drawColor(0, android.graphics.PorterDuff.Mode.CLEAR);
+                    canvas.drawBitmap(cpuFrame, 0, 0, null);
+                }
                 finally { surface.getHolder().unlockCanvasAndPost(canvas); }
             }
             return true;

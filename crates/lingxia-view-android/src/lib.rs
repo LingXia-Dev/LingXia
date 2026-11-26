@@ -139,6 +139,7 @@ pub fn register_natives(env: &mut Env, class: &JClass) -> jni::errors::Result<()
         method!("nativeReload", "(J)V", reload),
         method!("nativePark", "(J)V", park),
         method!("nativeSetVisible", "(JZ)V", set_visible),
+        method!("nativeSetSeeThrough", "(J)V", set_see_through),
         method!("nativeSurfaceChanged", "(J)V", surface_changed),
         method!("nativeSurfaceLost", "(J)V", surface_lost),
         method!("nativeRequestFrame", "(J)V", request_frame),
@@ -293,6 +294,18 @@ pub fn write_state(owner: i64, connection: u64, write: StateWrite) -> bool {
 pub fn deliver(owner: i64, connection: u64, message: lingxia_view::session::logic::ToView) -> bool {
     let port = ports().get(&owner).map(|(port, ..)| port.clone());
     port.is_some_and(|port| port.deliver(ConnectionTicket::new(connection), message))
+}
+
+/// Main thread: load `source` into the page `owner` names and connect it, for a host whose
+/// module never crosses JNI; false when it has no host.
+pub fn load_and_connect(owner: i64, source: String, connection: u64) -> bool {
+    let weak = ports().get(&owner).map(|(_, _, weak)| weak.clone());
+    let Some(host) = weak.and_then(|w| w.upgrade()) else {
+        return false;
+    };
+    host.load(source);
+    host.connect(ConnectionTicket::new(connection));
+    true
 }
 
 /// Any thread: the page `owner` names was covered or left inside the app.
@@ -483,6 +496,17 @@ extern "system" fn set_visible<'a>(
 ) {
     run(&mut env, |_| {
         host(handle)?.set_visible(visible);
+        Ok(())
+    })
+}
+
+/// A window overlay: frames are clear wherever the page draws nothing. Before `nativeLoad`.
+extern "system" fn set_see_through<'a>(mut env: EnvUnowned<'a>, _: JClass<'a>, handle: jlong) {
+    run(&mut env, |_| {
+        host(handle)?
+            .adapter()
+            .see_through
+            .store(true, std::sync::atomic::Ordering::Relaxed);
         Ok(())
     })
 }

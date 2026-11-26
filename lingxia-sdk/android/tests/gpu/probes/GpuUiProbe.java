@@ -53,6 +53,24 @@ public class GpuUiProbe {
   check(tap.waitFor(10,java.util.concurrent.TimeUnit.SECONDS)&&tap.exitValue()==0,"physical tab-bar-adjacent tap");Thread.sleep(400);
   System.out.println("PASS physical "+id+" bounds "+button+" above native tab "+bar);
  }
+ /** A node of the window feedback layer, whose panel window is not the active one while it shows a toast. */
+ static AccessibilityNodeInfo findOverlay(String id){
+  for(android.view.accessibility.AccessibilityWindowInfo w:GpuApiProbe.a.getWindows()){
+   AccessibilityNodeInfo found=GpuRadioProbe.find(w.getRoot(),id);if(found!=null)return found;
+  }
+  return null;
+ }
+ static AccessibilityNodeInfo overlay(String id)throws Exception{
+  for(int i=0;i<30;i++){AccessibilityNodeInfo n=findOverlay(id);if(n!=null)return n;Thread.sleep(150);}
+  throw new AssertionError("overlay node missing: "+id);
+ }
+ static void clickOverlay(String id)throws Exception{
+  AccessibilityNodeInfo n=overlay(id);check(n.performAction(AccessibilityNodeInfo.ACTION_CLICK),"overlay click "+id);n.recycle();Thread.sleep(400);
+ }
+ static void absentOverlay(String id)throws Exception{
+  for(int i=0;i<20;i++){AccessibilityNodeInfo n=findOverlay(id);if(n==null)return;n.recycle();Thread.sleep(150);}
+  throw new AssertionError("overlay node still shown: "+id);
+ }
  static void enter(String type)throws Exception{click("api-ui-"+type);}
  static void back()throws Exception{GpuChromeProbe.back();}
  public static void main(String[] args)throws Exception{
@@ -63,7 +81,7 @@ public class GpuUiProbe {
   try{
    UiAutomation.class.getMethod("connect").invoke(automation);
    android.accessibilityservice.AccessibilityServiceInfo info=automation.getServiceInfo();
-   info.flags|=android.accessibilityservice.AccessibilityServiceInfo.FLAG_REPORT_VIEW_IDS;automation.setServiceInfo(info);Thread.sleep(700);
+   info.flags|=android.accessibilityservice.AccessibilityServiceInfo.FLAG_REPORT_VIEW_IDS|android.accessibilityservice.AccessibilityServiceInfo.FLAG_RETRIEVE_INTERACTIVE_WINDOWS;automation.setServiceInfo(info);Thread.sleep(700);
    GpuChromeProbe.tab("API");
    if(args.length==0||!args[0].equals("controls")){
    enter("navigation");
@@ -85,18 +103,18 @@ public class GpuUiProbe {
    }
    if(args.length>0&&args[0].equals("navigation"))return;
 
-   enter("actionsheet");click("actionsheet-show");clickNative("\u67e5\u770b\u65e5\u5fd7");contains("actionsheet-result","\"id\":\"1\"");
+   enter("actionsheet");click("actionsheet-show");clickOverlay("lx-action-sheet-item-1");contains("actionsheet-result","\"id\":\"1\"");
    click("actionsheet-show");GpuRadioProbe.key(4);contains("actionsheet-result","canceled");back();
    enter("modal");set("modal-title","GPU confirmation");set("modal-content","A native dialog from a GPU page");
-   click("modal-show");waitNative("GPU confirmation").recycle();GpuRadioProbe.screenshot("gpu-independent-ui-modal");clickNative("Cancel");contains("modal-result","canceled");
-   click("modal-show");clickNative("OK");contains("modal-result","\"status\":\"ok\"");click("modal-clear");waitText("modal-result","No result yet");
-   click("modal-show-cancel");click("modal-show");absentNative("Cancel");clickNative("OK");contains("modal-result","\"status\":\"ok\"");back();
-   System.out.println("PASS native action sheet selection/cancel and modal confirm/cancel/no-cancel");
+   click("modal-show");overlay("lx-modal").recycle();GpuRadioProbe.screenshot("gpu-independent-ui-modal");clickOverlay("lx-modal-cancel");contains("modal-result","canceled");
+   click("modal-show");clickOverlay("lx-modal-confirm");contains("modal-result","\"status\":\"ok\"");click("modal-clear");waitText("modal-result","No result yet");
+   click("modal-show-cancel");click("modal-show");overlay("lx-modal").recycle();absentOverlay("lx-modal-cancel");clickOverlay("lx-modal-confirm");contains("modal-result","\"status\":\"ok\"");back();
+   System.out.println("PASS window-layer action sheet selection/cancel and modal confirm/cancel/no-cancel");
 
    enter("toast");set("toast-title","GPU toast");set("toast-duration","10000");
    click("toast-style");clickNative("Default");contains("toast-style","Default");
    click("toast-position");clickNative("Top");contains("toast-position","Top");
-   click("toast-show");waitNative("GPU toast").recycle();GpuRadioProbe.screenshot("gpu-independent-ui-toast");click("toast-hide");absentNative("GPU toast");back();
+   click("toast-show");overlay("lx-toast").recycle();GpuRadioProbe.screenshot("gpu-independent-ui-toast");click("toast-hide");absentOverlay("lx-toast");back();
    enter("navbar");set("navbar-title-input","GPU native chrome");click("navbar-set-title");waitNative("GPU native chrome").recycle();
    click("navbar-preset-blue");GpuRadioProbe.screenshot("gpu-independent-ui-navbar");
    set("navbar-bg-input","not-a-color");click("navbar-set-colors");contains("ui-chrome-error","Navigation bar update");

@@ -316,7 +316,7 @@ pub mod host_app {
             let package_id = runtime_package_id();
             let info =
                 lingxia_service::update::store_update_info_json(&update, package_id.as_deref());
-            let shown = service.present_store_update(&info);
+            let shown = present_store_update(&service, &info);
             if shown {
                 record_store_prompt(&update.version, now);
             }
@@ -465,6 +465,72 @@ pub mod host_app {
         if let Some(handler) = handler {
             handler(event);
         }
+    }
+
+    #[cfg(not(all(target_env = "ohos", feature = "standard")))]
+    fn present_store_update(service: &HostAppUpdateService, info: &str) -> bool {
+        service.present_store_update(info)
+    }
+
+    /// Harmony has no store sheet of its own: the window feedback layer asks, and confirming
+    /// opens the AppGallery listing.
+    #[cfg(all(target_env = "ohos", feature = "standard"))]
+    fn present_store_update(service: &HostAppUpdateService, info: &str) -> bool {
+        use lingxia_platform::i18n::text;
+        use lxapp::feedback::{FeedbackAnswer, FeedbackDialog};
+        let Some(layer) = lxapp::feedback::feedback_layer() else {
+            return false;
+        };
+        let language = lxapp::display_language();
+        let dialog = FeedbackDialog::Confirm {
+            title: text("update.store_title", "Update available"),
+            message: store_update_message(info),
+            confirm: Some(text("update.open_store", "Open store")),
+            cancel: None,
+            destructive: false,
+        };
+        let answer = match layer.dialog("", &language, dialog) {
+            Ok(answer) => answer,
+            Err(error) => {
+                log::warn!("[lingxia] store update prompt not shown: {error}");
+                return false;
+            }
+        };
+        let service = service.clone();
+        let info = info.to_string();
+        std::mem::drop(lingxia::task::spawn(async move {
+            if matches!(answer.await, Ok(FeedbackAnswer::Confirmed))
+                && !service.open_update_store(&info)
+            {
+                log::warn!("[lingxia] the store listing did not open");
+            }
+        }));
+        true
+    }
+
+    /// The update's release notes, or a generic line when it has none.
+    #[cfg(all(target_env = "ohos", feature = "standard"))]
+    fn store_update_message(info: &str) -> String {
+        let notes = serde_json::from_str::<serde_json::Value>(info)
+            .ok()
+            .and_then(|value| {
+                let notes: Vec<String> = value
+                    .get("releaseNotes")?
+                    .as_array()?
+                    .iter()
+                    .filter_map(|note| note.as_str())
+                    .map(str::trim)
+                    .filter(|note| !note.is_empty())
+                    .map(str::to_string)
+                    .collect();
+                (!notes.is_empty()).then(|| notes.join("\n"))
+            });
+        notes.unwrap_or_else(|| {
+            lingxia_platform::i18n::text(
+                "update.store_message",
+                "A new version is available. Update it from the store?",
+            )
+        })
     }
 
     fn service() -> crate::Result<HostAppUpdateService> {

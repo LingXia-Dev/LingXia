@@ -30,7 +30,6 @@ mod ui_update;
 mod update;
 mod update_callout;
 mod update_card;
-mod user_feedback;
 mod video_compress;
 mod video_info;
 mod video_player;

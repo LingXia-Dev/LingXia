@@ -1,5 +1,3 @@
-import { LxAppActionSheet } from './APIs/LxAppActionSheet';
-import { LxAppModal } from './APIs/LxAppModal';
 import { hilog } from '@kit.PerformanceAnalysisKit';
 import { DevServiceMarkWindow } from './DevServiceMarkWindow';
 import { common, ConfigurationConstant } from '@kit.AbilityKit';
@@ -11,9 +9,6 @@ import { LxAppContainer } from './LxAppContainer';
 import { SplashResources } from './SplashOverlay';
 import { extractWebTag, pauseAllComponentsByAppId } from './WebViewBridge';
 import { onLxappOpened, onLxappClosed, getTabBar, TabBarItem, TabBarState, getCurrentLxapp, CurrentLxApp, onLxappEvent, UiEventType, splashMarkLaunchFace } from 'liblingxia.so';
-import { ToastManager } from './APIs/LxAppToast';
-import { ModalManager } from './APIs/LxAppModal';
-import { ActionSheetManager } from './APIs/LxAppActionSheet';
 import { LxAppSurface, SurfaceManager } from './APIs/LxAppSurface';
 import { AsidePart, AsideRegion, AsideRegionModel, AsideState, NO_TOUCH } from './AsideRegion';
 import { MediaPreviewOverlay, MediaPreviewOverlayManager } from './APIs/media/MediaPreviewOverlay';
@@ -541,10 +536,6 @@ export struct LxAppNavigation {
 
       // Pause native components (video players, etc.) after close is accepted.
       pauseAllComponentsByAppId(appId);
-      // Its host dialogs go with it: they would cover the app shown next.
-      LxAppModal.dismiss();
-      LxAppActionSheet.dismiss();
-
       // UI cleanup: hide the closed app
       if (appId === this.homeAppId) {
         hilog.info(DOMAIN, TAG, `Hiding home app: ${appId}`);
@@ -716,14 +707,6 @@ export struct LxAppNavigation {
         this.buildModalLxApp();
       }
 
-      ToastManager()
-        .zIndex(10000)
-
-      ModalManager()
-        .zIndex(10001)
-
-      ActionSheetManager()
-        .zIndex(10002)
 
       // Surfaces and the side panel sit above the app containers and below toast and dialogs,
       // so a toast or modal raised from a page in them shows over it. The panel's chrome is

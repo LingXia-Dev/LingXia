@@ -6,10 +6,9 @@ pub(crate) mod runtime;
 pub(crate) mod view_limits;
 mod view;
 pub use view::{
-    GpuActionSheet, GpuBridgeError, GpuModal, GpuPageView, GpuPageViewFactory, GpuPatchOp,
-    GpuStateSignal, GpuStateWrite, GpuToast, GpuUiRequest, GpuVideoCommand, GpuVideoRequest,
-    GpuViewCreation, GpuViewEvent, GpuViewGeneration, GpuViewMessage, GpuViewRequest,
-    PageViewEnvironment, register_gpu_page_view_factory,
+    GpuBridgeError, GpuPageView, GpuPageViewFactory, GpuPatchOp, GpuStateSignal, GpuStateWrite,
+    GpuVideoCommand, GpuVideoRequest, GpuViewCreation, GpuViewEvent, GpuViewGeneration,
+    GpuViewMessage, GpuViewRequest, PageViewEnvironment, register_gpu_page_view_factory,
 };
 pub(crate) use view::{PageView, gpu_app_closed};
 #[cfg(all(test, feature = "js-appservice"))]
@@ -27,7 +26,6 @@ use crate::plugin;
 use crate::startup::parse_query_string;
 use crate::{LxApp, debug, error, info, warn};
 use base64::Engine;
-use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
@@ -152,7 +150,7 @@ impl Drop for GpuSetupLease {
     }
 }
 
-const DEFAULT_VIEW_CALL_TIMEOUT: Duration = Duration::from_secs(15);
+const GPU_REQUEST_TIMEOUT: Duration = Duration::from_secs(15);
 
 /// Inner state of a page that can be shared across threads
 pub(crate) struct PageInstanceInner {
@@ -447,61 +445,6 @@ impl std::fmt::Display for PageInstanceId {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.write_str(&self.0)
     }
-}
-
-/// Options for Rust-side calls into `window.LingXiaBridge`.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct ViewCallOptions {
-    timeout: Duration,
-}
-
-impl Default for ViewCallOptions {
-    fn default() -> Self {
-        Self {
-            timeout: DEFAULT_VIEW_CALL_TIMEOUT,
-        }
-    }
-}
-
-impl ViewCallOptions {
-    /// Create default call options.
-    pub fn new() -> Self {
-        Self::default()
-    }
-
-    /// Override the response timeout for this call.
-    pub fn with_timeout(mut self, timeout: Duration) -> Self {
-        self.timeout = timeout;
-        self
-    }
-
-    /// Return the configured timeout.
-    pub fn timeout(self) -> Duration {
-        self.timeout
-    }
-}
-
-fn serialize_view_call_params<P>(params: &P) -> Result<Option<Value>, lingxia_error::Error>
-where
-    P: Serialize + ?Sized,
-{
-    let value = serde_json::to_value(params)?;
-    if value.is_null() {
-        return Ok(None);
-    }
-    Ok(Some(value))
-}
-
-fn decode_view_call_result<R>(method: &str, value: Value) -> Result<R, lingxia_error::Error>
-where
-    R: DeserializeOwned,
-{
-    serde_json::from_value(value).map_err(|err| {
-        lingxia_error::Error::internal(format!(
-            "Failed to decode view response for '{}': {}",
-            method, err
-        ))
-    })
 }
 
 impl PageInstance {
@@ -2916,115 +2859,10 @@ impl PageInstance {
         )
     }
 
-    /// Call a View method on this page without a payload and deserialize the response.
-    pub async fn call_view<R>(&self, method: &str) -> Result<R, lingxia_error::Error>
-    where
-        R: DeserializeOwned,
-    {
-        self.call_view_in(method, ViewCallOptions::default()).await
-    }
-
-    /// Call a View method on this page without a payload using explicit call options.
-    pub async fn call_view_in<R>(
-        &self,
-        method: &str,
-        options: ViewCallOptions,
-    ) -> Result<R, lingxia_error::Error>
-    where
-        R: DeserializeOwned,
-    {
-        let value = self.call_view_json_in(method, options).await?;
-        decode_view_call_result(method, value)
-    }
-
-    /// Call a View method on this page with a typed payload and deserialize the response.
-    pub async fn call_view_with<P, R>(
-        &self,
-        method: &str,
-        params: &P,
-    ) -> Result<R, lingxia_error::Error>
-    where
-        P: Serialize + ?Sized,
-        R: DeserializeOwned,
-    {
-        self.call_view_with_in(method, params, ViewCallOptions::default())
-            .await
-    }
-
-    /// Call a View method on this page with a typed payload using explicit call options.
-    pub async fn call_view_with_in<P, R>(
-        &self,
-        method: &str,
-        params: &P,
-        options: ViewCallOptions,
-    ) -> Result<R, lingxia_error::Error>
-    where
-        P: Serialize + ?Sized,
-        R: DeserializeOwned,
-    {
-        let value = self.call_view_json_with_in(method, params, options).await?;
-        decode_view_call_result(method, value)
-    }
-
-    /// Call a View method on this page and return the raw JSON response.
-    pub async fn call_view_json(&self, method: &str) -> Result<Value, lingxia_error::Error> {
-        self.call_view_json_in(method, ViewCallOptions::default())
-            .await
-    }
-
-    /// Call a View method on this page and return the raw JSON response using explicit options.
-    pub async fn call_view_json_in(
-        &self,
-        method: &str,
-        options: ViewCallOptions,
-    ) -> Result<Value, lingxia_error::Error> {
-        self.call_view_json_value(method, None, options).await
-    }
-
-    /// Call a View method on this page with a typed payload and return the raw JSON response.
-    pub async fn call_view_json_with<P>(
-        &self,
-        method: &str,
-        params: &P,
-    ) -> Result<Value, lingxia_error::Error>
-    where
-        P: Serialize + ?Sized,
-    {
-        self.call_view_json_with_in(method, params, ViewCallOptions::default())
-            .await
-    }
-
-    /// Call a View method on this page with a typed payload and return the raw JSON response.
-    pub async fn call_view_json_with_in<P>(
-        &self,
-        method: &str,
-        params: &P,
-        options: ViewCallOptions,
-    ) -> Result<Value, lingxia_error::Error>
-    where
-        P: Serialize + ?Sized,
-    {
-        self.call_view_json_value(method, serialize_view_call_params(params)?, options)
-            .await
-    }
-
-    async fn call_view_json_value(
-        &self,
-        method: &str,
-        params: Option<Value>,
-        options: ViewCallOptions,
-    ) -> Result<Value, lingxia_error::Error> {
-        let pending = crate::view_call::call_view(self, method, params)?;
-        crate::view_call::await_pending_view_call(pending, options.timeout()).await
-    }
-
     /// Send a typed video playback command to this GPU page's player and wait for its reply.
-    pub async fn send_gpu_video_command(
-        &self,
-        request: GpuVideoRequest,
-    ) -> Result<(), lingxia_error::Error> {
-        let pending = crate::view_call::call_gpu_video(self, request)?;
-        crate::view_call::await_pending_view_call(pending, DEFAULT_VIEW_CALL_TIMEOUT)
+    pub async fn send_gpu_video_command(&self, request: GpuVideoRequest) -> Result<(), lingxia_error::Error> {
+        let pending = crate::gpu_request::call_gpu_video(self, request)?;
+        crate::gpu_request::await_pending(pending, GPU_REQUEST_TIMEOUT)
             .await
             .map(|_| ())
     }
@@ -3242,11 +3080,6 @@ fn keeps_query(requested_empty: bool, tab: bool) -> bool {
 mod tests {
     use super::*;
 
-    #[derive(Debug, serde::Deserialize)]
-    struct ViewReply {
-        ok: bool,
-    }
-
     fn test_page_state() -> PageState {
         PageState {
             renderer: PageRenderer::Webview,
@@ -3430,35 +3263,6 @@ mod tests {
         assert_eq!(events[0].0, PageLifecycleEvent::OnLoad);
         assert!(state.accepts_view_state_patches());
         assert!(!state.document_is_departing());
-    }
-
-    #[test]
-    fn serialize_view_call_params_skips_null() {
-        assert_eq!(serialize_view_call_params(&()).unwrap(), None);
-        assert_eq!(
-            serialize_view_call_params(&serde_json::json!({ "topic": "status" })).unwrap(),
-            Some(serde_json::json!({ "topic": "status" }))
-        );
-    }
-
-    #[test]
-    fn decode_view_call_result_deserializes_typed_payload() {
-        let reply: ViewReply =
-            decode_view_call_result("example.echo", serde_json::json!({ "ok": true })).unwrap();
-        assert!(reply.ok);
-    }
-
-    #[test]
-    fn decode_view_call_result_reports_method_name() {
-        let err = decode_view_call_result::<ViewReply>("example.echo", serde_json::json!({}))
-            .unwrap_err();
-
-        assert!(err.message().contains("example.echo"), "{err}");
-    }
-
-    #[test]
-    fn view_call_options_default_timeout_is_positive() {
-        assert!(ViewCallOptions::default().timeout() > Duration::ZERO);
     }
 
     #[test]

@@ -6,7 +6,7 @@ import { encodeTree, copyTree, retainCells, renderRow, wireReset } from './encod
 import { validInputText, isFrozen } from './data.js';
 import { report, failHandler, loudFailures, resetActions, actionEpochNow, hasActionEpoch, syncPageTitle } from './actions.js';
 import { sited } from './errors.js';
-import { overlayNode, decorateOverlay, resetOverlays } from './overlay.js';
+import { resetOverlays } from './overlay.js';
 import { resetFrameMeasures } from './frames.js';
 import { resetReveals } from './reveal.js';
 import { pickerNode, pickerAnchor, resetPicker } from './picker.js';
@@ -86,10 +86,7 @@ export function prepare(renderPage, view, windows = {}, deferAnchors = false) {
     if (candidate.tree.lifted) throw Error('UI_ROOT: a <text> page root has no place for a popover it holds; wrap it in <view>');
     // The root may be a recalled subtree the committed page shares; layers go into a copy.
     candidate.tree = { ...candidate.tree, children: [...candidate.tree.children] };
-    // Logic-requested feedback (toast, modal, action sheet) draws above the page's own children.
-    const env = envOf(view), overlay = overlayNode(env);
-    if (overlay) candidate.tree.children.push(decorateOverlay(resolveNode(overlay, `root/${candidate.tree.element}/key:"lx-overlay"`, 1,
-      { tag: candidate.tree.element, typography: candidate.tree.typography }), env));
+    const env = envOf(view);
     // A player shown full screen that the page draws no dialog for: the bare picture, in the top layer.
     const fallback = fullscreenFallback();
     const bare = fallback && resolveBare(() => resolveNode(fallback, `root/${candidate.tree.element}/key:"lx-fullscreen"`, 1,

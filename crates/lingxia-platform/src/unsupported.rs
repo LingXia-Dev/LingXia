@@ -32,9 +32,7 @@ use crate::traits::screenshot::AppScreenshot;
 use crate::traits::secure_store::SecureStore;
 use crate::traits::share::{ShareRequest, ShareResult, ShareService};
 use crate::traits::stream_decoder::{VideoStreamDecoderHandle, VideoStreamDecoderManager};
-use crate::traits::ui::{
-    Appearance, LaunchFace, ModalOptions, SurfacePresenter, ToastOptions, UIUpdate, UserFeedback,
-};
+use crate::traits::ui::{Appearance, LaunchFace, SurfacePresenter, UIUpdate};
 use crate::traits::update::UpdateService;
 use crate::traits::video_player::{VideoPlayerHandle, VideoPlayerManager};
 use crate::traits::wifi::Wifi;
@@ -288,32 +286,6 @@ impl UIUpdate for Platform {
 
     fn update_tabbar_ui(&self, _appid: String) -> Result<(), Error> {
         not_supported("update_tabbar_ui")
-    }
-}
-
-impl UserFeedback for Platform {
-    fn show_toast(&self, _options: ToastOptions) -> Result<(), Error> {
-        not_supported("show_toast")
-    }
-
-    fn hide_toast(&self) -> Result<(), Error> {
-        not_supported("hide_toast")
-    }
-
-    fn show_modal(
-        &self,
-        _options: ModalOptions,
-    ) -> impl Future<Output = Result<String, Error>> + Send {
-        async { not_supported("show_modal") }
-    }
-
-    fn show_action_sheet(
-        &self,
-        _options: Vec<String>,
-        _cancel_text: String,
-        _item_color: String,
-    ) -> impl Future<Output = Result<String, Error>> + Send {
-        async { not_supported("show_action_sheet") }
     }
 }
 

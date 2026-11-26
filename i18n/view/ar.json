@@ -5,9 +5,6 @@
   "@view.done": {
     "defaultMessage": "تم"
   },
-  "@view.ok": {
-    "defaultMessage": "حسنًا"
-  },
   "@view.previousMonth": {
     "defaultMessage": "الشهر السابق"
   },
@@ -25,12 +22,6 @@
   },
   "@view.options": {
     "defaultMessage": "خيارات"
-  },
-  "@view.dialog": {
-    "defaultMessage": "مربع حوار"
-  },
-  "@view.actions": {
-    "defaultMessage": "إجراءات"
   },
   "@view.error.failed": {
     "defaultMessage": "لم تنجح العملية. حاول مرة أخرى."

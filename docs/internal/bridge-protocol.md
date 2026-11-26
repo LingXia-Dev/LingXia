@@ -55,14 +55,13 @@ The renderer is fixed per lxapp at build time; a page cannot choose or negotiate
 | Family | Started by | Pattern | Data pushed by | Ended by |
 | --- | --- | --- | --- | --- |
 | **Notification** | View | `notify` | — | — |
-| **Unary request** | either side | `req → res` | responder | responder (`res`) |
+| **Unary request** | View | `req → res` | Bridge | Bridge (`res`) |
 | **Streaming request** | View | `req → event* → res` | Bridge (`event`) | Bridge (`res`) |
 | **Channel** | View | `ch.open → ch.ack → ch.data* / ch.close` | both | either (`ch.close`) |
 | **State replication** | Logic, via Bridge | `state.snapshot` / `state.patch` / `state.ack` | Bridge | — (lives with the page) |
 
-`req`/`res` is the only symmetric family (Bridge invokes View-owned handlers with the same shape).
-Use state replication for durable, recoverable UI state; use `event` and `ch.data` for transient or
-high-frequency payloads.
+Only the View sends `req`. Use state replication for durable, recoverable UI state; use `event`
+and `ch.data` for transient or high-frequency payloads.
 
 ---
 

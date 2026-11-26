@@ -1,5 +1,6 @@
 // The window feedback layer: `lx.ui.toast` and its dialogs, drawn over every LingXia surface in a
 // window. Rust owns the queue and the words; this page draws its `data` and answers with `answer`.
+import { ActionSheet } from '@liulidesign/core/ActionSheet';
 import { Button } from '@liulidesign/core/Button';
 import { Dialog } from '@liulidesign/core/Dialog';
 import { Toast } from '@liulidesign/core/Toast';
@@ -20,9 +21,9 @@ const place = { top: 'justify-start pt-20', center: 'justify-center', bottom: 'j
 function toastLayer(toast: ToastData) {
   return (
     <view key={`toast-${toast.key}`} className={`absolute inset-0 items-center px-4 ${place[toast.position]}`}>
-      <view role="status" aria-live="polite" aria-label={toast.title} aria-busy={toast.loading}
+      <view role="status" aria-live="polite" aria-label={toast.title}
         className="transition duration-base ease-standard starting:opacity-0 exit:opacity-0">
-        <Toast message={toast.title} tone={toast.tone} data-testid="lx-toast" />
+        <Toast message={toast.title} tone={toast.tone} isBusy={toast.loading} data-testid="lx-toast" />
       </view>
     </view>
   );
@@ -31,18 +32,17 @@ function toastLayer(toast: ToastData) {
 function dialogLayer(dialog: DialogData, answer: (choice: Choice) => void) {
   const variant = dialog.destructive ? 'destructive' : 'primary';
   if (dialog.kind === 'sheet') {
+    // The sheet closes before an item's onClick runs: the cancel waits a turn so a choice wins.
+    let chosen = false;
+    const choose = (index: number) => () => { chosen = true; answer(index); };
+    const cancel = () => { void Promise.resolve().then(() => { if (!chosen) answer('cancel'); }); };
     return (
-      <Dialog key={`sheet-${dialog.key}`} isOpen onOpenChange={() => answer('cancel')} label={dialog.label} isLabelHidden
-        hasCloseButton={false} size="sm" data-testid="lx-action-sheet"
-        actions={
-          <view className="w-full gap-2">
-            {dialog.items.map((item, index) => (
-              <Button key={`item-${index}`} label={item} variant={dialog.destructive ? 'destructive' : 'tonal'}
-                onClick={() => answer(index)} data-testid={`lx-action-sheet-item-${index}`} />
-            ))}
-            <Button label={dialog.cancel} onClick={() => answer('cancel')} data-testid="lx-action-sheet-cancel" />
-          </view>
-        } />
+      <ActionSheet key={`sheet-${dialog.key}`} isOpen onOpenChange={cancel} label={dialog.label} isLabelHidden
+        cancelLabel={dialog.cancel} data-testid="lx-action-sheet"
+        items={dialog.items.map((item, index) => ({
+          id: `item-${index}`, label: item, variant: dialog.destructive ? 'destructive' : 'default',
+          onClick: choose(index), 'data-testid': `lx-action-sheet-item-${index}`,
+        }))} />
     );
   }
   // Escape and back cancel; an alert's only answer is its button.

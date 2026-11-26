@@ -69,11 +69,21 @@ final class GpuPageView: UIView {
     /// The colours the page asks its host to paint around it; nil before its first frame.
     var hostChrome: GpuHostChrome? {
         didSet {
-            layer.backgroundColor = hostChrome?.canvas.cgColor
+            layer.backgroundColor = seeThrough ? nil : hostChrome?.canvas.cgColor
             recolorRecovery()
             NotificationCenter.default.post(name: GpuHostChrome.changed, object: self)
             // The bars take the page's colours: the snapshots under a dialog follow.
             recaptureBars()
+        }
+    }
+
+    /// A window overlay: clear wherever the page draws nothing, never painted with its canvas.
+    var seeThrough = false {
+        didSet {
+            isOpaque = !seeThrough
+            backgroundColor = seeThrough ? .clear : nil
+            layer.backgroundColor = seeThrough ? nil : hostChrome?.canvas.cgColor
+            syncOpacity(hasWeb: webContainer.hasActiveMounts)
         }
     }
 
@@ -261,14 +271,18 @@ final class GpuPageView: UIView {
 
     func syncWebViews(_ json: String) {
         let hasWeb = webContainer.sync(json: json)
-        let opaque = !hasWeb
+        syncOpacity(hasWeb: hasWeb)
+        // A frame with web views presents in the main thread's transaction, with their moves.
+        (metalView.layer as? CAMetalLayer)?.presentsWithTransaction = hasWeb
+    }
+
+    private func syncOpacity(hasWeb: Bool) {
+        let opaque = !hasWeb && !seeThrough
         if metalView.isOpaque != opaque {
             metalView.isOpaque = opaque
             (metalView.layer as? CAMetalLayer)?.isOpaque = opaque
             metalView.backgroundColor = opaque ? nil : .clear
         }
-        // A frame with web views presents in the main thread's transaction, with their moves.
-        (metalView.layer as? CAMetalLayer)?.presentsWithTransaction = hasWeb
     }
 
     func closeRequest() -> Bool {

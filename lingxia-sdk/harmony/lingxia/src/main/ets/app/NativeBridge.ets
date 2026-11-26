@@ -3,9 +3,6 @@ import { setComponentCallback } from '../lxapp/NativeComponents/NativeCallbackRe
 import { LxApp } from '../lxapp/LxApp';
 import { Lingxia } from './Lingxia';
 import { LxLog } from './LxLog';
-import { LxAppToast, ToastIcon, ToastPosition } from '../lxapp/APIs/LxAppToast';
-import { LxAppModal } from '../lxapp/APIs/LxAppModal';
-import { LxAppActionSheet } from '../lxapp/APIs/LxAppActionSheet';
 import { LxAppDevice } from '../lxapp/APIs/LxAppDevice';
 import { LxAppMedia } from '../lxapp/APIs/LxAppMedia';
 import { LxAppScan } from '../lxapp/APIs/LxAppScan';
@@ -292,52 +289,6 @@ class NativeBridge {
       return completeWebFileChooserRequest(requestId, selectedJson);
     });
 
-    // Toast APIs
-    this.register('showToast', (title: string, icon: number = 0, image?: string, duration: number = 1.5, mask: boolean = false, position: number = 1) => {
-      LxAppToast.showToast(title, icon as ToastIcon, image, duration, mask, position as ToastPosition);
-      return true;
-    });
-
-    this.register('hideToast', () => {
-      LxAppToast.hideToast();
-      return true;
-    });
-
-    // Each dismiss settles its own pending call and is a no-op when nothing is shown.
-    this.register('dismissDialog', () => {
-      LxAppModal.dismiss();
-      LxAppActionSheet.dismiss();
-      return true;
-    });
-
-    // Modal APIs
-    this.register('showModal', (
-      title: string,
-      content: string,
-      showCancel: string,
-      cancelText: string,
-      confirmText: string,
-      confirmColor: string,
-      callbackId: string
-    ): void => {
-      try {
-        LxAppModal.showModal(
-          title,
-          content,
-          showCancel,
-          cancelText,
-          confirmText,
-          confirmColor,
-          callbackId
-        );
-      } catch (error) {
-        LxLog.e(TAG, `Error showing modal: ${error}`);
-      }
-    });
-
-    // ActionSheet APIs
-    this.register('showActionSheet', (options: string, cancelText: string, itemColor: string, callbackId: string): boolean => {
-      return LxAppActionSheet.showActionSheetFromJson(options, cancelText, itemColor, callbackId);
     });
 
     this.register('presentSurface', (
@@ -745,15 +696,7 @@ export function getNativeCallbackFunction(): (data: string) => Object | null {
       const functionName = parts[0];
       const rawArgs = parts.slice(1); // Get all arguments after function name
 
-      // Convert arguments based on function type
-      let args: Object[] = rawArgs;
-      if (functionName === 'showToast') {
-        args = LxAppToast.normalizeNativeArgs(rawArgs) ?? rawArgs;
-      } else if (functionName === 'showModal') {
-        args = LxAppModal.normalizeNativeArgs(rawArgs) ?? rawArgs;
-      }
-
-      const result = NativeBridge.call(functionName, ...args);
+      const result = NativeBridge.call(functionName, ...rawArgs);
       return result;
     }
     return null;

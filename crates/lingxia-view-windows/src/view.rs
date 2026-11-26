@@ -26,13 +26,13 @@ use windows::Win32::UI::Input::Pointer::GetPointerType;
 use windows::Win32::UI::WindowsAndMessaging::{
     CS_DBLCLKS, CreateWindowExW, DLGC_WANTALLKEYS, DefWindowProcW, GetClientRect, GetMessageTime,
     GetSystemMetrics, IDC_ARROW, IsWindowVisible, LoadCursorW, PT_PEN, PT_TOUCH, RegisterClassW,
-    RegisterWindowMessageW, SM_CXDRAG, WINDOW_EX_STYLE, WM_CAPTURECHANGED, WM_CHAR, WM_DESTROY,
-    WM_DPICHANGED_AFTERPARENT, WM_ERASEBKGND, WM_GETDLGCODE, WM_GETOBJECT, WM_IME_COMPOSITION,
-    WM_IME_ENDCOMPOSITION, WM_IME_SETCONTEXT, WM_IME_STARTCOMPOSITION, WM_KEYDOWN, WM_KILLFOCUS,
-    WM_LBUTTONDBLCLK, WM_LBUTTONDOWN, WM_LBUTTONUP, WM_MOUSEHWHEEL, WM_MOUSEMOVE, WM_MOUSEWHEEL,
-    WM_PAINT, WM_POINTERCAPTURECHANGED, WM_POINTERDOWN, WM_POINTERUP, WM_POINTERUPDATE,
-    WM_RBUTTONUP, WM_SETFOCUS, WM_SIZE, WM_TIMER, WNDCLASSW, WS_CHILD, WS_CLIPCHILDREN,
-    WS_CLIPSIBLINGS, WS_VISIBLE,
+    RegisterWindowMessageW, SM_CXDRAG, WINDOW_EX_STYLE, WINDOW_STYLE, WM_CAPTURECHANGED, WM_CHAR,
+    WM_DESTROY, WM_DPICHANGED_AFTERPARENT, WM_ERASEBKGND, WM_GETDLGCODE, WM_GETOBJECT,
+    WM_IME_COMPOSITION, WM_IME_ENDCOMPOSITION, WM_IME_SETCONTEXT, WM_IME_STARTCOMPOSITION,
+    WM_KEYDOWN, WM_KILLFOCUS, WM_LBUTTONDBLCLK, WM_LBUTTONDOWN, WM_LBUTTONUP, WM_MOUSEHWHEEL,
+    WM_MOUSEMOVE, WM_MOUSEWHEEL, WM_PAINT, WM_POINTERCAPTURECHANGED, WM_POINTERDOWN, WM_POINTERUP,
+    WM_POINTERUPDATE, WM_RBUTTONUP, WM_SETFOCUS, WM_SIZE, WM_TIMER, WNDCLASSW, WS_CHILD,
+    WS_CLIPCHILDREN, WS_CLIPSIBLINGS, WS_POPUP, WS_VISIBLE,
 };
 use windows::core::w;
 
@@ -104,6 +104,19 @@ fn page_of(hwnd: HWND) -> Option<Rc<Page>> {
 
 /// A visible child of `parent` on this thread.
 pub(crate) fn create(parent: isize) -> Result<isize, String> {
+    make(
+        parent,
+        WINDOW_EX_STYLE(0),
+        WS_CHILD | WS_VISIBLE | WS_CLIPSIBLINGS | WS_CLIPCHILDREN,
+    )
+}
+
+/// A page window as a hidden top-level popup owned by `owner`, for a window overlay.
+pub(crate) fn create_popup(owner: isize, ex_style: WINDOW_EX_STYLE) -> Result<isize, String> {
+    make(owner, ex_style, WS_POPUP | WS_CLIPCHILDREN)
+}
+
+fn make(parent: isize, ex_style: WINDOW_EX_STYLE, style: WINDOW_STYLE) -> Result<isize, String> {
     let class = w!("LingXiaGpuPage");
     // SAFETY: plain Win32 calls; a repeat class registration fails harmlessly.
     unsafe {
@@ -117,10 +130,10 @@ pub(crate) fn create(parent: isize) -> Result<isize, String> {
             ..Default::default()
         });
         CreateWindowExW(
-            WINDOW_EX_STYLE(0),
+            ex_style,
             class,
             None,
-            WS_CHILD | WS_VISIBLE | WS_CLIPSIBLINGS | WS_CLIPCHILDREN,
+            style,
             0,
             0,
             0,

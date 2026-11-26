@@ -27,19 +27,19 @@ impl ViewSession {
         self.state.data().is_some()
     }
 
-    /// A typed message from Logic for this connection: a reply, stream or channel
-    /// message for the runtime, or a request the overlays answer.
+    /// A typed message from Logic for this connection: a reply, stream or channel message for
+    /// the runtime, or a request the page's players answer.
     pub fn receive_logic(
         &mut self,
         message: crate::session::logic::ToView,
     ) -> Result<crate::session::state::StateUpdate, String> {
-        use crate::session::logic::{ToLogic, ToView};
+        use crate::session::logic::{ToLogic, ToView, ViewRequest};
         if !self.connected {
             return Err("UI_BRIDGE: message outside a connection".into());
         }
         if let ToView::Request {
             id,
-            request: crate::session::logic::ViewRequest::Video { player, command },
+            request: ViewRequest::Video { player, command },
         } = &message
         {
             let outcome = self.video_request(player, command);
@@ -51,34 +51,17 @@ impl ViewSession {
                 ..Default::default()
             });
         }
-        let (changed, outbound) = self.execute(|| {
+        let changed = self.execute(|| {
             let ctx = &self.context;
-            let global = ctx.global();
             let fail = |e: rong::RongJSError| crate::engine::js_error(ctx, e);
-            if let ToView::Request { id, request } = &message {
-                let call = request.to_js(ctx, id).map_err(fail)?;
-                let answer: rong::quickjs::JSObject = global
-                    .get::<_, rong::quickjs::JSFunc>("__lingxiaViewCall")
-                    .and_then(|handler| handler.call(None, (call,)))
-                    .map_err(fail)?;
-                let changed = answer.get::<_, bool>("changed").map_err(fail)?;
-                let replies: rong::quickjs::JSArray = answer.get("replies").map_err(fail)?;
-                let replies = (0..replies.len().map_err(fail)?)
-                    .map(|index| replies.get_value(index).and_then(ToLogic::from_js))
-                    .collect::<Result<Vec<_>, _>>()
-                    .map_err(fail)?;
-                return Ok((changed, replies));
-            }
             let frame = message.to_js(ctx).map_err(fail)?;
-            let changed = global
+            ctx.global()
                 .get::<_, rong::quickjs::JSFunc>("__lingxiaReceiveActionResponse")
                 .and_then(|receive| receive.call::<_, bool>(None, (frame,)))
-                .map_err(fail)?;
-            Ok((changed, Vec::new()))
+                .map_err(fail)
         })?;
         Ok(crate::session::state::StateUpdate {
             changed: changed && self.ready_to_render(),
-            outbound,
             ..Default::default()
         })
     }

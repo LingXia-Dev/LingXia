@@ -5,9 +5,6 @@
   "@view.done": {
     "defaultMessage": "完成"
   },
-  "@view.ok": {
-    "defaultMessage": "确定"
-  },
   "@view.previousMonth": {
     "defaultMessage": "上个月"
   },
@@ -25,12 +22,6 @@
   },
   "@view.options": {
     "defaultMessage": "选项"
-  },
-  "@view.dialog": {
-    "defaultMessage": "对话框"
-  },
-  "@view.actions": {
-    "defaultMessage": "操作"
   },
   "@view.error.failed": {
     "defaultMessage": "操作没有成功，请重试。"

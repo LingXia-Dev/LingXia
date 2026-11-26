@@ -765,9 +765,9 @@
     return value.trim().replace(/\s+/g, " ");
   }
   function gridEdge(name, value) {
-    const text2 = typeof value === "number" ? String(value) : typeof value === "string" ? value.trim().replace(/\s+/g, " ") : "";
-    if (!/^(?:auto|-?[1-9]\d?|span [1-9]\d?)$/.test(text2)) invalid(name, value, "auto, a line from -99 to 99 (not 0), or span 1 to 99");
-    return text2;
+    const text = typeof value === "number" ? String(value) : typeof value === "string" ? value.trim().replace(/\s+/g, " ") : "";
+    if (!/^(?:auto|-?[1-9]\d?|span [1-9]\d?)$/.test(text)) invalid(name, value, "auto, a line from -99 to 99 (not 0), or span 1 to 99");
+    return text;
   }
   function gridLine(name, value, lines) {
     const axis = name.startsWith("gridColumn") ? "Column" : "Row";
@@ -1368,6 +1368,460 @@
     return result;
   }
 
+  // src/runtime/errors.js
+  function located(error, frame) {
+    const base = error instanceof Error ? error : Error(String(error));
+    if (!base.uiFrames) {
+      base.uiFrames = [];
+      base.uiMessage = base.message;
+      const site = authorSite(base.stack);
+      if (site) base.uiFrames.push(site);
+    }
+    if (base.uiFrames.length < 12) base.uiFrames.push(frame);
+    base.message = [base.uiMessage, ...base.uiFrames.map((line) => `  at ${line}`)].join("\n");
+    return base;
+  }
+  function bridgeError(code, message, data, reason) {
+    const error = new Error(message ?? code);
+    error.name = "LxBridgeError";
+    error.code = code;
+    if (reason !== void 0) error.reason = reason;
+    if (data !== void 0) error.data = data;
+    return error;
+  }
+  function resourceError(error) {
+    if (typeof error?.code === "string") return Object.freeze({
+      code: error.code,
+      message: String(error.message ?? error.code),
+      ...typeof error.reason === "string" ? { reason: error.reason } : {},
+      ...error.data !== void 0 ? { data: error.data } : {}
+    });
+    const text = String(error?.uiMessage ?? error?.message ?? error);
+    const match = text.match(/^([A-Z][A-Z0-9_]+): ([\s\S]*)$/);
+    return Object.freeze(match ? { code: match[1], message: match[2] } : { code: "UI_ERROR", message: text });
+  }
+  var sourceMap = null;
+  var decoded = null;
+  function configureSourceMap(map) {
+    sourceMap = map;
+    decoded = null;
+  }
+  var base64 = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+  function decode() {
+    const lines = [];
+    let source3 = 0, line = 0, column = 0;
+    for (const text of sourceMap.mappings.split(";")) {
+      const segments = [];
+      let generated = 0;
+      for (const segment of text.split(",")) {
+        if (!segment) continue;
+        const values = [];
+        let value = 0, shift = 0;
+        for (const char of segment) {
+          const digit = base64.indexOf(char);
+          value += (digit & 31) << shift;
+          if (digit & 32) shift += 5;
+          else {
+            values.push(value & 1 ? -(value >>> 1) : value >>> 1);
+            value = 0;
+            shift = 0;
+          }
+        }
+        generated += values[0];
+        if (values.length < 4) continue;
+        source3 += values[1];
+        line += values[2];
+        column += values[3];
+        segments.push([generated, source3, line, column]);
+      }
+      lines.push(segments);
+    }
+    return lines;
+  }
+  function authorSite(stack) {
+    if (!sourceMap || typeof stack !== "string") return void 0;
+    decoded ?? (decoded = decode());
+    for (const match of stack.matchAll(/:(\d+):(\d+)\)?\s*$/gm)) {
+      const segments = decoded[Number(match[1]) - 1];
+      if (!segments?.length) continue;
+      const column = Number(match[2]) - 1;
+      let best = segments[0];
+      for (const segment of segments) if (segment[0] <= column) best = segment;
+      const file = sourceMap.sources[best[1]];
+      if (file) return `${file}:${best[2] + 1}:${best[3] + 1 + Math.max(0, column - best[0])}`;
+    }
+    return void 0;
+  }
+  function sited(error) {
+    if (!(error instanceof Error) || error.uiFrames) return error;
+    const site = authorSite(error.stack);
+    if (!site) return error;
+    error.uiFrames = [site];
+    error.uiMessage = error.message;
+    error.message = `${error.message}
+  at ${site}`;
+    return error;
+  }
+
+  // src/runtime/stream.js
+  function createStream(id, cancel, report2, error) {
+    let done = false, failure2, finalValue, iterator = false, bytes = 0;
+    const queue = [], reads = [];
+    const listeners = { data: /* @__PURE__ */ new Set(), end: /* @__PURE__ */ new Set(), error: /* @__PURE__ */ new Set() };
+    let resolve, reject;
+    const result = new Promise((yes, no) => {
+      resolve = yes;
+      reject = no;
+    });
+    result.catch(() => {
+    });
+    const emit = (kind, value) => {
+      for (const fn of [...listeners[kind]]) {
+        try {
+          fn(value);
+        } catch (cause) {
+          report2(cause);
+        }
+      }
+    };
+    const finish = (ok, value) => {
+      if (done) return;
+      done = true;
+      if (ok) {
+        finalValue = value;
+        resolve(value);
+      } else {
+        failure2 = value;
+        queue.length = 0;
+        bytes = 0;
+        reject(value);
+      }
+      for (const read of reads.splice(0)) {
+        if (ok) read.resolve({ done: true, value });
+        else read.reject(value);
+      }
+      emit(ok ? "end" : "error", value);
+      for (const bucket of Object.values(listeners)) bucket.clear();
+    };
+    const handle2 = Object.freeze({
+      id,
+      result,
+      on(kind, fn) {
+        if (!Object.prototype.hasOwnProperty.call(listeners, kind) || typeof fn !== "function")
+          throw Error("UI_STREAM: invalid listener");
+        if (!done) {
+          if (listeners[kind].size >= 256) throw Error("UI_LIMIT: too many stream listeners");
+          listeners[kind].add(fn);
+        }
+        return handle2;
+      },
+      cancel() {
+        if (!done) cancel();
+      },
+      [Symbol.asyncIterator]() {
+        if (iterator) throw Error("UI_STREAM: only one iterator is allowed");
+        iterator = true;
+        return {
+          next() {
+            if (queue.length) {
+              const item = queue.shift();
+              bytes -= item.bytes;
+              return Promise.resolve({ done: false, value: item.value });
+            }
+            if (done) return failure2 ? Promise.reject(failure2) : Promise.resolve({ done: true, value: finalValue });
+            if (reads.length >= 256) return Promise.reject(error("UI_LIMIT", "Too many pending stream reads"));
+            return new Promise((resolve2, reject2) => reads.push({ resolve: resolve2, reject: reject2 }));
+          },
+          return() {
+            queue.length = 0;
+            bytes = 0;
+            handle2.cancel();
+            return Promise.resolve({ done: true, value: void 0 });
+          }
+        };
+      }
+    });
+    return {
+      handle: handle2,
+      resolve: (value) => finish(true, value),
+      reject: (cause) => finish(false, cause),
+      push(value) {
+        if (done) return;
+        if (reads.length) reads.shift().resolve({ done: false, value });
+        else if (iterator) {
+          const size = JSON.stringify(value).length * 2;
+          if (queue.length >= 256 || bytes + size > 1048576) {
+            cancel(error("UI_LIMIT", "Stream consumer queue exceeded"));
+            return;
+          }
+          queue.push({ value, bytes: size });
+          bytes += size;
+        }
+        emit("data", value);
+      }
+    };
+  }
+
+  // src/runtime/channel.js
+  function createChannel(id, send, close, report2, error) {
+    let closed = false, failure2, iterator = false, bytes = 0;
+    const queue = [], reads = [];
+    const listeners = { data: /* @__PURE__ */ new Set(), close: /* @__PURE__ */ new Set(), error: /* @__PURE__ */ new Set() };
+    const invoke = (fn, ...values) => {
+      try {
+        fn(...values);
+      } catch (cause) {
+        report2(cause);
+      }
+    };
+    const finish = (cause, failed, discard2 = false) => {
+      if (closed) return;
+      closed = true;
+      failure2 = cause;
+      if (cause || discard2) {
+        queue.length = 0;
+        bytes = 0;
+      }
+      for (const read of reads.splice(0)) {
+        if (cause) read.reject(cause);
+        else read.resolve({ done: true, value: void 0 });
+      }
+      if (cause) for (const fn of [...listeners.error]) invoke(fn, cause);
+      const event = Object.freeze(failed === void 0 ? {} : { error: failed });
+      for (const fn of [...listeners.close]) invoke(fn, event);
+      for (const bucket of Object.values(listeners)) bucket.clear();
+    };
+    const handle2 = Object.freeze({
+      id,
+      send(payload2) {
+        if (closed) throw error("STREAM_CLOSED", "Channel is closed");
+        send(payload2);
+      },
+      close(failed) {
+        if (!closed) close(failed);
+      },
+      on(kind, fn) {
+        if (!Object.prototype.hasOwnProperty.call(listeners, kind) || typeof fn !== "function")
+          throw Error("UI_CHANNEL: invalid listener");
+        if (!closed) {
+          if (listeners[kind].size >= 256) throw Error("UI_LIMIT: too many channel listeners");
+          listeners[kind].add(fn);
+          if (kind === "data" && !iterator && queue.length) {
+            const buffered = queue.splice(0);
+            bytes = 0;
+            for (const item of buffered) {
+              if (closed) break;
+              invoke(fn, item.value);
+            }
+          }
+        }
+        return handle2;
+      },
+      [Symbol.asyncIterator]() {
+        if (iterator) throw Error("UI_CHANNEL: only one iterator is allowed");
+        iterator = true;
+        return {
+          next() {
+            if (queue.length) {
+              const item = queue.shift();
+              bytes -= item.bytes;
+              return Promise.resolve({ done: false, value: item.value });
+            }
+            if (closed) return failure2 ? Promise.reject(failure2) : Promise.resolve({ done: true, value: void 0 });
+            if (reads.length >= 256) return Promise.reject(error("UI_LIMIT", "Too many pending channel reads"));
+            return new Promise((resolve, reject) => reads.push({ resolve, reject }));
+          },
+          return() {
+            handle2.close();
+            return Promise.resolve({ done: true, value: void 0 });
+          }
+        };
+      }
+    });
+    return {
+      handle: handle2,
+      finish: (failed, discard2) => finish(void 0, failed, discard2),
+      reject: (cause) => finish(cause, cause),
+      push(value) {
+        if (closed) return;
+        if (reads.length) reads.shift().resolve({ done: false, value });
+        else if (iterator || !listeners.data.size) {
+          const size = JSON.stringify(value).length * 2;
+          if (queue.length >= 256 || bytes + size > 1048576) {
+            const limit = error("UI_LIMIT", "Channel consumer queue exceeded");
+            close(limit, limit);
+            return;
+          }
+          queue.push({ value, bytes: size });
+          bytes += size;
+        }
+        for (const fn of [...listeners.data]) {
+          if (closed) break;
+          invoke(fn, value);
+        }
+      }
+    };
+  }
+
+  // src/runtime/leave-guard.js
+  function createLeaveGuards(callHost, report2, fail) {
+    const holders = /* @__PURE__ */ new Set(), backHolders = /* @__PURE__ */ new Set();
+    let epoch2 = 0, sent = false, sentBack = false, asking = false, tail = Promise.resolve();
+    const sync = () => {
+      const current2 = epoch2;
+      tail = tail.then(async () => {
+        if (current2 !== epoch2) return;
+        const want = holders.size > 0, wantBack = backHolders.size > 0;
+        if (want === sent && wantBack === sentBack) return;
+        try {
+          await callHost("navigation.setLeaveGuard", wantBack ? { enabled: want, back: true } : { enabled: want });
+          if (current2 === epoch2) {
+            sent = want;
+            sentBack = wantBack;
+          }
+        } catch (error) {
+          if (current2 !== epoch2) return;
+          for (const holder of holders) holder.fail(error);
+          report2(error);
+        }
+      });
+    };
+    const request = (reason) => {
+      if (!["back", "home"].includes(reason)) throw Error("UI_LEAVE: invalid reason");
+      if (asking) return;
+      asking = true;
+      const current2 = epoch2, pending3 = [...holders].reverse();
+      (async () => {
+        try {
+          for (const holder of pending3) {
+            if (current2 !== epoch2 || !holders.has(holder) || !await holder.ask(reason)) return;
+          }
+          if (current2 === epoch2) await callHost("navigation.leave", { reason });
+        } catch (error) {
+          if (current2 === epoch2) report2(error);
+        } finally {
+          if (current2 === epoch2) asking = false;
+        }
+      })();
+    };
+    return {
+      request,
+      reset() {
+        epoch2++;
+        for (const holder of holders) holder.cancel();
+        holders.clear();
+        backHolders.clear();
+        sent = false;
+        sentBack = false;
+        asking = false;
+        tail = Promise.resolve();
+      },
+      resource(state) {
+        let snapshot = state.value, answer, enabled = false, mounted = false, registeredEpoch = epoch2;
+        const update = (patch) => {
+          snapshot = { ...snapshot, ...patch };
+          state.set(snapshot);
+        };
+        const decide = (leave2) => {
+          if (typeof leave2 !== "boolean") throw Error("UI_LEAVE: expected boolean answer");
+          const resolve = answer;
+          answer = void 0;
+          if (!resolve) return;
+          update({ pending: null });
+          resolve(leave2);
+        };
+        const holder = {
+          cancel() {
+            decide(false);
+          },
+          ask(reason) {
+            if (!enabled) return Promise.resolve(false);
+            update({ pending: reason, requests: snapshot.requests + 1 });
+            return new Promise((resolve) => {
+              answer = resolve;
+            });
+          },
+          fail(error) {
+            update({ error: resourceError(error) });
+          }
+        };
+        return {
+          get state() {
+            return snapshot;
+          },
+          answer: decide,
+          request(reason) {
+            if (!mounted || registeredEpoch !== epoch2) throw Error("UI_LEAVE: stale guard");
+            request(reason);
+          },
+          commit(next) {
+            mounted = true;
+            if (enabled === next.enabled && registeredEpoch === epoch2) return;
+            registeredEpoch = epoch2;
+            enabled = next.enabled;
+            if (enabled) {
+              update({ error: null });
+              holders.add(holder);
+            } else {
+              decide(false);
+              holders.delete(holder);
+            }
+            sync();
+          },
+          dispose() {
+            mounted = false;
+            enabled = false;
+            decide(false);
+            if (holders.delete(holder)) sync();
+          }
+        };
+      },
+      backHandler() {
+        let enabled = false, callback = null, registeredEpoch = epoch2;
+        const holder = {
+          cancel() {
+          },
+          ask(reason) {
+            if (!enabled || reason !== "back") return Promise.resolve(true);
+            const failed = (verb, error) => fail(`UI_HANDLER: onBack ${verb}: ${error instanceof Error ? error.message : String(error)}`);
+            try {
+              const result = callback?.();
+              if (result && typeof result.then === "function") Promise.resolve(result).catch((error) => failed("rejected", error));
+            } catch (error) {
+              failed("threw", error);
+            }
+            return Promise.resolve(false);
+          },
+          fail(error) {
+            report2(error);
+          }
+        };
+        return {
+          commit(next) {
+            callback = next.onBack;
+            if (enabled === next.enabled && registeredEpoch === epoch2) return;
+            registeredEpoch = epoch2;
+            enabled = next.enabled;
+            if (enabled) {
+              holders.add(holder);
+              backHolders.add(holder);
+            } else {
+              holders.delete(holder);
+              backHolders.delete(holder);
+            }
+            sync();
+          },
+          dispose() {
+            enabled = false;
+            callback = null;
+            backHolders.delete(holder);
+            if (holders.delete(holder)) sync();
+          }
+        };
+      }
+    };
+  }
+
   // src/runtime/keys.js
   var made = /* @__PURE__ */ new WeakSet();
   var parents = /* @__PURE__ */ new WeakMap();
@@ -1489,9 +1943,9 @@
     return children === node.children ? node : { ...node, children };
   }
   function retainCells(cells2) {
-    for (const [key, cell2] of cells2) {
-      render.candidate.locals.set(key, cell2);
-      for (const collector of render.collectors) collector.set(key, cell2);
+    for (const [key, cell] of cells2) {
+      render.candidate.locals.set(key, cell);
+      for (const collector of render.collectors) collector.set(key, cell);
     }
   }
   var initialWindow = (count) => ({ start: 0, end: Math.min(1, count), leading: 0, trailing: Math.max(0, count - 1) * 64 });
@@ -1820,30 +2274,30 @@
   var cells = Object.fromEntries(Object.entries(steps).map(([name, step]) => [name, { value: null, clockStep: step }]));
   var now2 = null;
   var floored = (ms, step) => Math.floor(ms / step) * step;
-  var current = (cell2) => page.updates.has(cell2) ? page.updates.get(cell2) : cell2.value;
-  function noteClock(cell2) {
-    if (cell2.clockStep && !(render.clockStep > 0 && render.clockStep <= cell2.clockStep)) render.clockStep = cell2.clockStep;
+  var current = (cell) => page.updates.has(cell) ? page.updates.get(cell) : cell.value;
+  function noteClock(cell) {
+    if (cell.clockStep && !(render.clockStep > 0 && render.clockStep <= cell.clockStep)) render.clockStep = cell.clockStep;
   }
   function useNow(granularity) {
-    const cell2 = cells[granularity];
-    if (!cell2) throw Error('UI_PROP: useNow takes "second" or "minute"');
+    const cell = cells[granularity];
+    if (!cell) throw Error('UI_PROP: useNow takes "second" or "minute"');
     if (!render.active) throw Error("UI_SCOPE: useNow is called during render");
     if (now2 === null) setNow(Date.now());
-    noteRead(cell2);
-    noteClock(cell2);
-    return current(cell2);
+    noteRead(cell);
+    noteClock(cell);
+    return current(cell);
   }
   function setNow(ms) {
     if (typeof ms !== "number" || !Number.isFinite(ms)) return false;
     now2 = ms;
     let moved = false;
-    for (const cell2 of Object.values(cells)) {
-      const next = floored(ms, cell2.clockStep);
-      if (current(cell2) === next) continue;
-      const shown = cell2.value !== null && clockStep() > 0 && cell2.clockStep >= clockStep();
-      if (!shown) cell2.value = next;
+    for (const cell of Object.values(cells)) {
+      const next = floored(ms, cell.clockStep);
+      if (current(cell) === next) continue;
+      const shown = cell.value !== null && clockStep() > 0 && cell.clockStep >= clockStep();
+      if (!shown) cell.value = next;
       else {
-        page.updates.set(cell2, next);
+        page.updates.set(cell, next);
         moved = true;
       }
     }
@@ -1851,11 +2305,11 @@
   }
   var clockStep = () => render.clockStep ?? 0;
   function commitClock() {
-    for (const cell2 of Object.values(cells)) if (page.updates.has(cell2)) cell2.value = page.updates.get(cell2);
+    for (const cell of Object.values(cells)) if (page.updates.has(cell)) cell.value = page.updates.get(cell);
   }
   function resetClock() {
     now2 = null;
-    for (const cell2 of Object.values(cells)) cell2.value = null;
+    for (const cell of Object.values(cells)) cell.value = null;
   }
 
   // src/runtime/memo.js
@@ -1943,8 +2397,8 @@
   function recallTimed(scope, tag, props, children, parent) {
     const record = render.recall?.get(scope);
     if (!record || record.tag !== tag || tag.__lxVolatile || !sameView(record.view, viewStamp(render.view)) || !sameEnv(record.env, render.view)) return void 0;
-    for (const cell2 of record.reads) if (page.updates.has(cell2)) return void 0;
-    for (const cell2 of record.cells.values()) if (page.updates.has(cell2)) return void 0;
+    for (const cell of record.reads) if (page.updates.has(cell)) return void 0;
+    for (const cell of record.cells.values()) if (page.updates.has(cell)) return void 0;
     const budget = { left: compareBudget };
     if (!sameFields(props, record.props, record.arena, budget) || !same(children, record.children, record.arena, budget) || !sameContext(parent, record.parent, record.arena) || !sameContexts(record.contextReads, parent.contexts, record.arena, budget) || record.lists && !sameChain(parent.contexts, record.parent.contexts, record.arena, budget)) return void 0;
     const fresh2 = { ...record, props, children, parent, arena: currentArena(), result: record.lists ? reuse(record.result) : record.result };
@@ -1952,14 +2406,14 @@
     const frame = render.frames[render.frames.length - 1];
     if (frame) {
       frame.nested.push(fresh2);
-      for (const cell2 of record.reads) frame.reads.add(cell2);
+      for (const cell of record.reads) frame.reads.add(cell);
       for (const key of record.env.keys()) frame.env.add(key);
       passContexts(record.contextReads, parent.contexts, frame);
     }
-    for (const cell2 of record.reads) noteClock(cell2);
-    for (const [key, cell2] of record.cells) {
-      render.candidate.locals.set(key, cell2);
-      for (const collector of render.collectors) collector.set(key, cell2);
+    for (const cell of record.reads) noteClock(cell);
+    for (const [key, cell] of record.cells) {
+      render.candidate.locals.set(key, cell);
+      for (const collector of render.collectors) collector.set(key, cell);
     }
     if (record.handles) skipHandle();
     if (record.lists) render.lists++;
@@ -1997,10 +2451,10 @@
     render.collectors.push(frame.cells);
     return frame;
   }
-  function noteRead(cell2) {
+  function noteRead(cell) {
     render.cellReads++;
     const frame = render.frames[render.frames.length - 1];
-    if (frame) frame.reads.add(cell2);
+    if (frame) frame.reads.add(cell);
   }
   function noteContext(id, context, value) {
     render.contextReads++;
@@ -2022,7 +2476,7 @@
     render.collectors.splice(render.collectors.lastIndexOf(frame.cells), 1);
     const outer = render.frames[render.frames.length - 1];
     if (outer) {
-      for (const cell2 of frame.reads) outer.reads.add(cell2);
+      for (const cell of frame.reads) outer.reads.add(cell);
       for (const key of frame.env) outer.env.add(key);
       outer.view || (outer.view = frame.view);
       passContexts(frame.contextReads, frame.contexts, outer);
@@ -2435,339 +2889,18 @@
     return true;
   }
 
-  // src/generated/words.js
-  var source = "en";
-  var words = {
-    "ar": {
-      "@view.actions": (a, f) => "\u0625\u062C\u0631\u0627\u0621\u0627\u062A",
-      "@view.cancel": (a, f) => "\u0625\u0644\u063A\u0627\u0621",
-      "@view.dialog": (a, f) => "\u0645\u0631\u0628\u0639 \u062D\u0648\u0627\u0631",
-      "@view.done": (a, f) => "\u062A\u0645",
-      "@view.error.failed": (a, f) => "\u0644\u0645 \u062A\u0646\u062C\u062D \u0627\u0644\u0639\u0645\u0644\u064A\u0629. \u062D\u0627\u0648\u0644 \u0645\u0631\u0629 \u0623\u062E\u0631\u0649.",
-      "@view.error.limit": (a, f) => "\u0644\u0642\u062F \u0628\u0644\u063A\u062A \u0627\u0644\u062D\u062F \u0627\u0644\u0645\u0633\u0645\u0648\u062D. \u062D\u0627\u0648\u0644 \u0645\u0631\u0629 \u0623\u062E\u0631\u0649 \u0644\u0627\u062D\u0642\u064B\u0627.",
-      "@view.error.network": (a, f) => "\u062A\u0639\u0630\u0651\u0631 \u0627\u0644\u0627\u062A\u0635\u0627\u0644. \u062A\u062D\u0642\u0642 \u0645\u0646 \u0627\u062A\u0635\u0627\u0644\u0643 \u0648\u062D\u0627\u0648\u0644 \u0645\u0631\u0629 \u0623\u062E\u0631\u0649.",
-      "@view.error.notFound": (a, f) => "\u0644\u0645 \u064A\u0639\u062F \u0647\u0630\u0627 \u0645\u062A\u0627\u062D\u064B\u0627.",
-      "@view.error.permission": (a, f) => "\u064A\u0644\u0632\u0645 \u0627\u0644\u062D\u0635\u0648\u0644 \u0639\u0644\u0649 \u0625\u0630\u0646\u0643. \u064A\u0645\u0643\u0646\u0643 \u0645\u0646\u062D\u0647 \u0645\u0646 \u0627\u0644\u0625\u0639\u062F\u0627\u062F\u0627\u062A.",
-      "@view.error.timeout": (a, f) => "\u064A\u0633\u062A\u063A\u0631\u0642 \u0630\u0644\u0643 \u0648\u0642\u062A\u064B\u0627 \u0637\u0648\u064A\u0644\u0627\u064B. \u062D\u0627\u0648\u0644 \u0645\u0631\u0629 \u0623\u062E\u0631\u0649.",
-      "@view.error.unsupported": (a, f) => "\u063A\u064A\u0631 \u0645\u062A\u0627\u062D \u0639\u0644\u0649 \u0647\u0630\u0627 \u0627\u0644\u062C\u0647\u0627\u0632.",
-      "@view.hour": (a, f) => "\u0627\u0644\u0633\u0627\u0639\u0629",
-      "@view.minute": (a, f) => "\u0627\u0644\u062F\u0642\u064A\u0642\u0629",
-      "@view.nextMonth": (a, f) => "\u0627\u0644\u0634\u0647\u0631 \u0627\u0644\u062A\u0627\u0644\u064A",
-      "@view.ok": (a, f) => "\u062D\u0633\u0646\u064B\u0627",
-      "@view.options": (a, f) => "\u062E\u064A\u0627\u0631\u0627\u062A",
-      "@view.period": (a, f) => "\u0635/\u0645",
-      "@view.previousMonth": (a, f) => "\u0627\u0644\u0634\u0647\u0631 \u0627\u0644\u0633\u0627\u0628\u0642"
-    },
-    "de": {
-      "@view.actions": (a, f) => "Aktionen",
-      "@view.cancel": (a, f) => "Abbrechen",
-      "@view.dialog": (a, f) => "Dialog",
-      "@view.done": (a, f) => "Fertig",
-      "@view.error.failed": (a, f) => "Das hat nicht geklappt. Versuche es noch einmal.",
-      "@view.error.limit": (a, f) => "Du hast ein Limit erreicht. Versuche es sp\xE4ter noch einmal.",
-      "@view.error.network": (a, f) => "Keine Verbindung. Pr\xFCfe deine Verbindung und versuche es noch einmal.",
-      "@view.error.notFound": (a, f) => "Das ist nicht mehr verf\xFCgbar.",
-      "@view.error.permission": (a, f) => "Daf\xFCr ist deine Erlaubnis n\xF6tig. Du kannst sie in den Einstellungen erteilen.",
-      "@view.error.timeout": (a, f) => "Das dauert zu lange. Versuche es noch einmal.",
-      "@view.error.unsupported": (a, f) => "Auf diesem Ger\xE4t nicht verf\xFCgbar.",
-      "@view.hour": (a, f) => "Stunde",
-      "@view.minute": (a, f) => "Minute",
-      "@view.nextMonth": (a, f) => "N\xE4chster Monat",
-      "@view.ok": (a, f) => "OK",
-      "@view.options": (a, f) => "Optionen",
-      "@view.period": (a, f) => "AM/PM",
-      "@view.previousMonth": (a, f) => "Vorheriger Monat"
-    },
-    "en": {
-      "@view.actions": (a, f) => "Actions",
-      "@view.cancel": (a, f) => "Cancel",
-      "@view.dialog": (a, f) => "Dialog",
-      "@view.done": (a, f) => "Done",
-      "@view.error.failed": (a, f) => "That didn't work. Try again.",
-      "@view.error.limit": (a, f) => "You've reached a limit. Try again later.",
-      "@view.error.network": (a, f) => "Can't connect. Check your connection and try again.",
-      "@view.error.notFound": (a, f) => "This is no longer available.",
-      "@view.error.permission": (a, f) => "This needs your permission. You can allow it in Settings.",
-      "@view.error.timeout": (a, f) => "This is taking too long. Try again.",
-      "@view.error.unsupported": (a, f) => "This isn't available on this device.",
-      "@view.hour": (a, f) => "Hour",
-      "@view.minute": (a, f) => "Minute",
-      "@view.nextMonth": (a, f) => "Next month",
-      "@view.ok": (a, f) => "OK",
-      "@view.options": (a, f) => "Options",
-      "@view.period": (a, f) => "AM/PM",
-      "@view.previousMonth": (a, f) => "Previous month"
-    },
-    "es": {
-      "@view.actions": (a, f) => "Acciones",
-      "@view.cancel": (a, f) => "Cancelar",
-      "@view.dialog": (a, f) => "Cuadro de di\xE1logo",
-      "@view.done": (a, f) => "Listo",
-      "@view.error.failed": (a, f) => "No ha funcionado. Int\xE9ntalo de nuevo.",
-      "@view.error.limit": (a, f) => "Has alcanzado un l\xEDmite. Int\xE9ntalo m\xE1s tarde.",
-      "@view.error.network": (a, f) => "No se puede conectar. Comprueba tu conexi\xF3n e int\xE9ntalo de nuevo.",
-      "@view.error.notFound": (a, f) => "Ya no est\xE1 disponible.",
-      "@view.error.permission": (a, f) => "Se necesita tu permiso. Puedes concederlo en Ajustes.",
-      "@view.error.timeout": (a, f) => "Est\xE1 tardando demasiado. Int\xE9ntalo de nuevo.",
-      "@view.error.unsupported": (a, f) => "No est\xE1 disponible en este dispositivo.",
-      "@view.hour": (a, f) => "Hora",
-      "@view.minute": (a, f) => "Minuto",
-      "@view.nextMonth": (a, f) => "Mes siguiente",
-      "@view.ok": (a, f) => "Aceptar",
-      "@view.options": (a, f) => "Opciones",
-      "@view.period": (a, f) => "a. m./p. m.",
-      "@view.previousMonth": (a, f) => "Mes anterior"
-    },
-    "fr": {
-      "@view.actions": (a, f) => "Actions",
-      "@view.cancel": (a, f) => "Annuler",
-      "@view.dialog": (a, f) => "Bo\xEEte de dialogue",
-      "@view.done": (a, f) => "OK",
-      "@view.error.failed": (a, f) => "Cela n'a pas fonctionn\xE9. R\xE9essayez.",
-      "@view.error.limit": (a, f) => "Vous avez atteint une limite. R\xE9essayez plus tard.",
-      "@view.error.network": (a, f) => "Connexion impossible. V\xE9rifiez votre connexion et r\xE9essayez.",
-      "@view.error.notFound": (a, f) => "Ce contenu n'est plus disponible.",
-      "@view.error.permission": (a, f) => "Votre autorisation est n\xE9cessaire. Vous pouvez l'accorder dans les R\xE9glages.",
-      "@view.error.timeout": (a, f) => "Cela prend trop de temps. R\xE9essayez.",
-      "@view.error.unsupported": (a, f) => "Non disponible sur cet appareil.",
-      "@view.hour": (a, f) => "Heure",
-      "@view.minute": (a, f) => "Minute",
-      "@view.nextMonth": (a, f) => "Mois suivant",
-      "@view.ok": (a, f) => "OK",
-      "@view.options": (a, f) => "Options",
-      "@view.period": (a, f) => "AM/PM",
-      "@view.previousMonth": (a, f) => "Mois pr\xE9c\xE9dent"
-    },
-    "ja": {
-      "@view.actions": (a, f) => "\u30A2\u30AF\u30B7\u30E7\u30F3",
-      "@view.cancel": (a, f) => "\u30AD\u30E3\u30F3\u30BB\u30EB",
-      "@view.dialog": (a, f) => "\u30C0\u30A4\u30A2\u30ED\u30B0",
-      "@view.done": (a, f) => "\u5B8C\u4E86",
-      "@view.error.failed": (a, f) => "\u3046\u307E\u304F\u3044\u304D\u307E\u305B\u3093\u3067\u3057\u305F\u3002\u3082\u3046\u4E00\u5EA6\u304A\u8A66\u3057\u304F\u3060\u3055\u3044\u3002",
-      "@view.error.limit": (a, f) => "\u4E0A\u9650\u306B\u9054\u3057\u307E\u3057\u305F\u3002\u3057\u3070\u3089\u304F\u3057\u3066\u304B\u3089\u304A\u8A66\u3057\u304F\u3060\u3055\u3044\u3002",
-      "@view.error.network": (a, f) => "\u63A5\u7D9A\u3067\u304D\u307E\u305B\u3093\u3002\u30CD\u30C3\u30C8\u30EF\u30FC\u30AF\u3092\u78BA\u8A8D\u3057\u3066\u3001\u3082\u3046\u4E00\u5EA6\u304A\u8A66\u3057\u304F\u3060\u3055\u3044\u3002",
-      "@view.error.notFound": (a, f) => "\u3053\u306E\u30B3\u30F3\u30C6\u30F3\u30C4\u306F\u5229\u7528\u3067\u304D\u306A\u304F\u306A\u308A\u307E\u3057\u305F\u3002",
-      "@view.error.permission": (a, f) => "\u8A31\u53EF\u304C\u5FC5\u8981\u3067\u3059\u3002\u300C\u8A2D\u5B9A\u300D\u3067\u8A31\u53EF\u3067\u304D\u307E\u3059\u3002",
-      "@view.error.timeout": (a, f) => "\u6642\u9593\u304C\u304B\u304B\u308A\u3059\u304E\u3066\u3044\u307E\u3059\u3002\u3082\u3046\u4E00\u5EA6\u304A\u8A66\u3057\u304F\u3060\u3055\u3044\u3002",
-      "@view.error.unsupported": (a, f) => "\u3053\u306E\u30C7\u30D0\u30A4\u30B9\u3067\u306F\u3054\u5229\u7528\u3044\u305F\u3060\u3051\u307E\u305B\u3093\u3002",
-      "@view.hour": (a, f) => "\u6642",
-      "@view.minute": (a, f) => "\u5206",
-      "@view.nextMonth": (a, f) => "\u6B21\u306E\u6708",
-      "@view.ok": (a, f) => "OK",
-      "@view.options": (a, f) => "\u30AA\u30D7\u30B7\u30E7\u30F3",
-      "@view.period": (a, f) => "\u5348\u524D/\u5348\u5F8C",
-      "@view.previousMonth": (a, f) => "\u524D\u306E\u6708"
-    },
-    "ko": {
-      "@view.actions": (a, f) => "\uC791\uC5C5",
-      "@view.cancel": (a, f) => "\uCDE8\uC18C",
-      "@view.dialog": (a, f) => "\uB300\uD654\uC0C1\uC790",
-      "@view.done": (a, f) => "\uC644\uB8CC",
-      "@view.error.failed": (a, f) => "\uC791\uC5C5\uC744 \uC644\uB8CC\uD558\uC9C0 \uBABB\uD588\uC2B5\uB2C8\uB2E4. \uB2E4\uC2DC \uC2DC\uB3C4\uD558\uC138\uC694.",
-      "@view.error.limit": (a, f) => "\uD55C\uB3C4\uC5D0 \uB3C4\uB2EC\uD588\uC2B5\uB2C8\uB2E4. \uB098\uC911\uC5D0 \uB2E4\uC2DC \uC2DC\uB3C4\uD558\uC138\uC694.",
-      "@view.error.network": (a, f) => "\uC5F0\uACB0\uD560 \uC218 \uC5C6\uC2B5\uB2C8\uB2E4. \uB124\uD2B8\uC6CC\uD06C\uB97C \uD655\uC778\uD55C \uD6C4 \uB2E4\uC2DC \uC2DC\uB3C4\uD558\uC138\uC694.",
-      "@view.error.notFound": (a, f) => "\uB354 \uC774\uC0C1 \uC0AC\uC6A9\uD560 \uC218 \uC5C6\uC2B5\uB2C8\uB2E4.",
-      "@view.error.permission": (a, f) => "\uAD8C\uD55C\uC774 \uD544\uC694\uD569\uB2C8\uB2E4. \uC124\uC815\uC5D0\uC11C \uD5C8\uC6A9\uD560 \uC218 \uC788\uC2B5\uB2C8\uB2E4.",
-      "@view.error.timeout": (a, f) => "\uC2DC\uAC04\uC774 \uB108\uBB34 \uC624\uB798 \uAC78\uB9BD\uB2C8\uB2E4. \uB2E4\uC2DC \uC2DC\uB3C4\uD558\uC138\uC694.",
-      "@view.error.unsupported": (a, f) => "\uC774 \uAE30\uAE30\uC5D0\uC11C\uB294 \uC0AC\uC6A9\uD560 \uC218 \uC5C6\uC2B5\uB2C8\uB2E4.",
-      "@view.hour": (a, f) => "\uC2DC",
-      "@view.minute": (a, f) => "\uBD84",
-      "@view.nextMonth": (a, f) => "\uB2E4\uC74C \uB2EC",
-      "@view.ok": (a, f) => "\uD655\uC778",
-      "@view.options": (a, f) => "\uC635\uC158",
-      "@view.period": (a, f) => "\uC624\uC804/\uC624\uD6C4",
-      "@view.previousMonth": (a, f) => "\uC774\uC804 \uB2EC"
-    },
-    "pt": {
-      "@view.actions": (a, f) => "A\xE7\xF5es",
-      "@view.cancel": (a, f) => "Cancelar",
-      "@view.dialog": (a, f) => "Caixa de di\xE1logo",
-      "@view.done": (a, f) => "OK",
-      "@view.error.failed": (a, f) => "N\xE3o funcionou. Tente novamente.",
-      "@view.error.limit": (a, f) => "Voc\xEA atingiu um limite. Tente novamente mais tarde.",
-      "@view.error.network": (a, f) => "N\xE3o foi poss\xEDvel conectar. Verifique sua conex\xE3o e tente novamente.",
-      "@view.error.notFound": (a, f) => "Isto n\xE3o est\xE1 mais dispon\xEDvel.",
-      "@view.error.permission": (a, f) => "\xC9 necess\xE1ria sua permiss\xE3o. Voc\xEA pode conced\xEA-la em Ajustes.",
-      "@view.error.timeout": (a, f) => "Est\xE1 demorando demais. Tente novamente.",
-      "@view.error.unsupported": (a, f) => "N\xE3o dispon\xEDvel neste dispositivo.",
-      "@view.hour": (a, f) => "Hora",
-      "@view.minute": (a, f) => "Minuto",
-      "@view.nextMonth": (a, f) => "Pr\xF3ximo m\xEAs",
-      "@view.ok": (a, f) => "OK",
-      "@view.options": (a, f) => "Op\xE7\xF5es",
-      "@view.period": (a, f) => "AM/PM",
-      "@view.previousMonth": (a, f) => "M\xEAs anterior"
-    },
-    "ru": {
-      "@view.actions": (a, f) => "\u0414\u0435\u0439\u0441\u0442\u0432\u0438\u044F",
-      "@view.cancel": (a, f) => "\u041E\u0442\u043C\u0435\u043D\u0430",
-      "@view.dialog": (a, f) => "\u0414\u0438\u0430\u043B\u043E\u0433\u043E\u0432\u043E\u0435 \u043E\u043A\u043D\u043E",
-      "@view.done": (a, f) => "\u0413\u043E\u0442\u043E\u0432\u043E",
-      "@view.error.failed": (a, f) => "\u041D\u0435 \u043F\u043E\u043B\u0443\u0447\u0438\u043B\u043E\u0441\u044C. \u041F\u043E\u043F\u0440\u043E\u0431\u0443\u0439\u0442\u0435 \u0435\u0449\u0451 \u0440\u0430\u0437.",
-      "@view.error.limit": (a, f) => "\u0414\u043E\u0441\u0442\u0438\u0433\u043D\u0443\u0442 \u043B\u0438\u043C\u0438\u0442. \u041F\u043E\u043F\u0440\u043E\u0431\u0443\u0439\u0442\u0435 \u043F\u043E\u0437\u0436\u0435.",
-      "@view.error.network": (a, f) => "\u041D\u0435\u0442 \u043F\u043E\u0434\u043A\u043B\u044E\u0447\u0435\u043D\u0438\u044F. \u041F\u0440\u043E\u0432\u0435\u0440\u044C\u0442\u0435 \u0441\u043E\u0435\u0434\u0438\u043D\u0435\u043D\u0438\u0435 \u0438 \u043F\u043E\u043F\u0440\u043E\u0431\u0443\u0439\u0442\u0435 \u0435\u0449\u0451 \u0440\u0430\u0437.",
-      "@view.error.notFound": (a, f) => "\u042D\u0442\u043E \u0431\u043E\u043B\u044C\u0448\u0435 \u043D\u0435\u0434\u043E\u0441\u0442\u0443\u043F\u043D\u043E.",
-      "@view.error.permission": (a, f) => "\u0422\u0440\u0435\u0431\u0443\u0435\u0442\u0441\u044F \u0432\u0430\u0448\u0435 \u0440\u0430\u0437\u0440\u0435\u0448\u0435\u043D\u0438\u0435. \u0415\u0433\u043E \u043C\u043E\u0436\u043D\u043E \u0434\u0430\u0442\u044C \u0432 \u043D\u0430\u0441\u0442\u0440\u043E\u0439\u043A\u0430\u0445.",
-      "@view.error.timeout": (a, f) => "\u042D\u0442\u043E \u0437\u0430\u043D\u0438\u043C\u0430\u0435\u0442 \u0441\u043B\u0438\u0448\u043A\u043E\u043C \u043C\u043D\u043E\u0433\u043E \u0432\u0440\u0435\u043C\u0435\u043D\u0438. \u041F\u043E\u043F\u0440\u043E\u0431\u0443\u0439\u0442\u0435 \u0435\u0449\u0451 \u0440\u0430\u0437.",
-      "@view.error.unsupported": (a, f) => "\u041D\u0435\u0434\u043E\u0441\u0442\u0443\u043F\u043D\u043E \u043D\u0430 \u044D\u0442\u043E\u043C \u0443\u0441\u0442\u0440\u043E\u0439\u0441\u0442\u0432\u0435.",
-      "@view.hour": (a, f) => "\u0427\u0430\u0441",
-      "@view.minute": (a, f) => "\u041C\u0438\u043D\u0443\u0442\u0430",
-      "@view.nextMonth": (a, f) => "\u0421\u043B\u0435\u0434\u0443\u044E\u0449\u0438\u0439 \u043C\u0435\u0441\u044F\u0446",
-      "@view.ok": (a, f) => "\u041E\u041A",
-      "@view.options": (a, f) => "\u041F\u0430\u0440\u0430\u043C\u0435\u0442\u0440\u044B",
-      "@view.period": (a, f) => "AM/PM",
-      "@view.previousMonth": (a, f) => "\u041F\u0440\u0435\u0434\u044B\u0434\u0443\u0449\u0438\u0439 \u043C\u0435\u0441\u044F\u0446"
-    },
-    "zh": {
-      "@view.actions": (a, f) => "\u64CD\u4F5C",
-      "@view.cancel": (a, f) => "\u53D6\u6D88",
-      "@view.dialog": (a, f) => "\u5BF9\u8BDD\u6846",
-      "@view.done": (a, f) => "\u5B8C\u6210",
-      "@view.error.failed": (a, f) => "\u64CD\u4F5C\u6CA1\u6709\u6210\u529F\uFF0C\u8BF7\u91CD\u8BD5\u3002",
-      "@view.error.limit": (a, f) => "\u5DF2\u8FBE\u5230\u4F7F\u7528\u4E0A\u9650\uFF0C\u8BF7\u7A0D\u540E\u518D\u8BD5\u3002",
-      "@view.error.network": (a, f) => "\u65E0\u6CD5\u8FDE\u63A5\uFF0C\u8BF7\u68C0\u67E5\u7F51\u7EDC\u540E\u91CD\u8BD5\u3002",
-      "@view.error.notFound": (a, f) => "\u5185\u5BB9\u5DF2\u4E0D\u5B58\u5728\u3002",
-      "@view.error.permission": (a, f) => "\u9700\u8981\u4F60\u7684\u6388\u6743\uFF0C\u53EF\u4EE5\u5728\u201C\u8BBE\u7F6E\u201D\u4E2D\u5F00\u542F\u3002",
-      "@view.error.timeout": (a, f) => "\u7B49\u5F85\u65F6\u95F4\u8FC7\u957F\uFF0C\u8BF7\u91CD\u8BD5\u3002",
-      "@view.error.unsupported": (a, f) => "\u6B64\u8BBE\u5907\u4E0D\u652F\u6301\u8BE5\u529F\u80FD\u3002",
-      "@view.hour": (a, f) => "\u65F6",
-      "@view.minute": (a, f) => "\u5206",
-      "@view.nextMonth": (a, f) => "\u4E0B\u4E2A\u6708",
-      "@view.ok": (a, f) => "\u786E\u5B9A",
-      "@view.options": (a, f) => "\u9009\u9879",
-      "@view.period": (a, f) => "\u4E0A\u5348/\u4E0B\u5348",
-      "@view.previousMonth": (a, f) => "\u4E0A\u4E2A\u6708"
-    }
-  };
-
-  // src/runtime/i18n.js
-  var catalogues = null;
-  function registerCatalogues(compiled) {
-    catalogues = compiled;
-    formatters.clear();
-  }
-  function registerLanguageCatalogue(tag, messages, formatter2, source3, declared2) {
-    catalogues ?? (catalogues = { source: source3, declared: declared2, languages: {}, formatter: formatter2 });
-    catalogues.languages[tag] = messages;
-    formatters.delete(tag);
-  }
-  function catalogueFor(language) {
-    const tags2 = catalogues.declared ?? Object.keys(catalogues.languages);
-    const lower = String(language ?? "").toLowerCase();
-    const exact = tags2.find((tag2) => tag2.toLowerCase() === lower);
-    const primary = lower.split("-")[0];
-    const tag = exact ?? tags2.find((tag2) => tag2.toLowerCase().split("-")[0] === primary) ?? catalogues.source;
-    return { tag, messages: catalogues.languages[tag] };
-  }
-  var join = (text2) => Array.isArray(text2) ? text2.join("") : String(text2);
-  function lxappText(key, language, args) {
-    if (!catalogues) return void 0;
-    const { tag, messages } = catalogueFor(language);
-    const message = messages?.[key];
-    return message ? join(message(args ?? {}, formatter(tag))) : void 0;
-  }
-  var formatters = /* @__PURE__ */ new Map();
-  function formatter(tag) {
-    let f = formatters.get(tag);
-    if (!f) formatters.set(tag, f = catalogues.formatter(tag));
-    return f;
-  }
-
-  // src/runtime/words.js
-  function word(key, language) {
-    const own2 = lxappText(key, language);
-    if (own2 !== void 0) return own2;
-    const table = words[String(language ?? "").split(/[-_]/)[0].toLowerCase()] ?? words[source];
-    return (table[key] ?? words[source][key])({}, null);
-  }
-
   // src/runtime/overlay.js
-  var toast = null;
-  var modals = [];
-  var sheets = [];
   var timers = [];
   var nextToken = 1;
   var wakes = /* @__PURE__ */ new Map();
-  var ENTER_MS = 200;
-  var reply = (id, ok, payload2) => ok ? { kind: "res", id, ok: true, result: payload2 ?? null } : { kind: "res", id, ok: false, error: payload2 };
-  var text = (value, fallback = "") => typeof value === "string" ? value.slice(0, 4096) : fallback;
-  function viewCall(call) {
-    const { id, method } = call, params = call.params ?? {};
-    const replies = [];
-    let changed2 = false;
-    switch (method) {
-      case "ui.showToast": {
-        const icon = ["success", "error", "loading"].includes(params.icon) ? params.icon : "none";
-        const position = ["top", "bottom"].includes(params.position) ? params.position : "center";
-        const mask = params.mask === true;
-        const duration = Number.isFinite(params.duration) ? Math.max(0, Math.min(params.duration, 6e5)) : 1500;
-        const same4 = toast && toast.icon === icon && toast.position === position && toast.mask === mask;
-        toast = { token: nextToken++, title: text(params.title), icon, position, mask, key: same4 ? toast.key : nextToken };
-        if (duration > 0) timers.push([toast.token, Math.round(duration)]);
-        replies.push(reply(id, true, null));
-        changed2 = true;
-        break;
-      }
-      case "ui.hideToast":
-        changed2 = toast !== null;
-        toast = null;
-        replies.push(reply(id, true, null));
-        break;
-      case "ui.dismissDialog":
-        if (modals.length) {
-          replies.push(reply(modals.shift().id, true, { confirm: false, cancel: true }));
-          changed2 = true;
-        }
-        if (sheets.length) {
-          replies.push(reply(sheets.shift().id, true, { tapIndex: -1 }));
-          changed2 = true;
-        }
-        replies.push(reply(id, true, null));
-        break;
-      case "ui.showModal":
-        modals.push({
-          id,
-          key: nextToken++,
-          title: text(params.title),
-          content: text(params.content),
-          showCancel: params.showCancel !== false,
-          cancelText: text(params.cancelText, null),
-          confirmText: text(params.confirmText, null)
-        });
-        changed2 = modals.length === 1;
-        break;
-      case "ui.showActionSheet": {
-        const items = Array.isArray(params.itemList) ? params.itemList.slice(0, 32).map((item) => text(item)) : [];
-        if (!items.length) {
-          replies.push(reply(id, false, { code: "E_INVALID_ARG", message: "showActionSheet needs itemList" }));
-          break;
-        }
-        sheets.push({ id, key: nextToken++, items, cancelText: text(params.cancelText, null) });
-        changed2 = sheets.length === 1;
-        break;
-      }
-      default:
-        replies.push(reply(id, false, { code: "E_NOT_SUPPORTED", message: `${String(method)} is not served by a GPU View` }));
-    }
-    return { changed: changed2, replies };
-  }
   function overlayTimer(token) {
     const wake = wakes.get(token);
-    if (wake) {
-      wakes.delete(token);
-      return wake() === true;
-    }
-    if (!toast || toast.token !== token) return false;
-    toast = null;
-    return true;
+    if (!wake) return false;
+    wakes.delete(token);
+    return wake() === true;
   }
   function escapeOverlay() {
-    if (closeTopmost()) return true;
-    if (toast) {
-      toast = null;
-      return true;
-    }
-    return false;
+    return closeTopmost();
   }
   function requestWake(ms, fire) {
     const token = nextToken++;
@@ -2779,653 +2912,9 @@
     timers = [];
     return JSON.stringify(result);
   }
-  var outbound = [];
-  function takeOverlayReplies() {
-    const result = outbound;
-    outbound = [];
-    return result;
-  }
-  function settleModal(confirm) {
-    const modal = modals.shift();
-    if (modal) outbound.push(reply(modal.id, true, { confirm, cancel: !confirm }));
-  }
-  function settleSheet(tapIndex) {
-    const sheet = sheets.shift();
-    if (sheet) outbound.push(reply(sheet.id, true, { tapIndex }));
-  }
-  function cancelSheets() {
-    const had = sheets.length > 0;
-    while (sheets.length) settleSheet(-1);
-    return had;
-  }
   function resetOverlays() {
-    toast = null;
-    modals = [];
-    sheets = [];
     timers = [];
-    outbound = [];
     wakes = /* @__PURE__ */ new Map();
-  }
-  var hasOverlay = () => Boolean(toast || modals.length || sheets.length);
-  var RING = "M14 0a14 14 0 0 1 14 14a14 14 0 0 1-14 14a14 14 0 0 1-14-14a14 14 0 0 1 14-14z";
-  var icons = {
-    success: [{ d: RING, fill: "success" }, { d: "M8.5 14.5l3.5 3.5 7.5-7.5", fill: "none", stroke: "#ffffff", strokeWidth: 2.5, strokeLinecap: "round", strokeLinejoin: "round" }],
-    error: [{ d: RING, fill: "danger-solid" }, { d: "M10 10l8 8M18 10l-8 8", fill: "none", stroke: "on-danger-solid", strokeWidth: 2.5, strokeLinecap: "round" }],
-    loading: [{ d: "M14 3a11 11 0 0 1 11 11", fill: "none", stroke: "accent", strokeWidth: 2.5, strokeLinecap: "round" }]
-  };
-  var spin = {
-    name: "lx-overlay-spin",
-    durationMs: 800,
-    delayMs: 0,
-    iterations: null,
-    whenReduced: "base",
-    easing: "linear",
-    opacity: null,
-    transforms: [{ kind: "rotate", angle: [{ offset: 0, value: 0 }, { offset: 1, value: 360 }] }]
-  };
-  var fade = { properties: ["opacity", "transform"], durationMs: ENTER_MS, delayMs: 0, easing: [0.4, 0, 0.2, 1] };
-  var toastFade = { properties: ["opacity", "transform"], durationMs: 200, delayMs: 0, easing: [0, 0, 0.58, 1] };
-  var fill = { position: "absolute", top: 0, left: 0, right: 0, bottom: 0 };
-  var cell = { gridColumn: 1, gridRow: 1 };
-  function toastNode() {
-    const { title, icon, position, mask } = toast;
-    const bare = icon === "none";
-    const box = h(
-      "view",
-      {
-        "data-testid": "lx-toast",
-        key: `toast-${toast.key}`,
-        role: "status",
-        "aria-live": "polite",
-        "aria-label": title,
-        style: {
-          alignItems: "center",
-          justifyContent: "center",
-          gap: 12,
-          minWidth: 120,
-          maxWidth: 280,
-          minHeight: bare ? 60 : 100,
-          paddingLeft: 20,
-          paddingRight: 20,
-          paddingTop: bare ? 16 : 20,
-          paddingBottom: bare ? 16 : 20,
-          borderRadius: 12,
-          backgroundColor: "shadow/80",
-          transition: toastFade
-        }
-      },
-      !bare && h("vector", { "data-testid": "lx-toast-icon", "aria-hidden": true, paths: icons[icon], viewBox: [0, 0, 28, 28], style: { width: 28, height: 28 } }),
-      h("text", { style: { color: "#ffffff", fontSize: 16, fontWeight: 500, textAlign: "center", lineClamp: bare ? 3 : 2 } }, title)
-    );
-    return h(
-      "view",
-      { id: "lx-toast", popover: "manual", open: true, style: { display: "grid", ...fill, marginTop: 0, marginBottom: 0, marginLeft: 0, marginRight: 0 } },
-      mask && h("button", { "data-testid": "lx-toast-mask", "aria-hidden": true, onClick() {
-      }, style: { ...fill, ...cell, zIndex: 0, backgroundColor: "shadow/30" } }),
-      h("view", { style: {
-        ...fill,
-        ...cell,
-        zIndex: 1,
-        alignItems: "center",
-        justifyContent: position === "top" ? "start" : position === "bottom" ? "end" : "center",
-        paddingTop: position === "top" ? 80 : 0,
-        paddingBottom: position === "bottom" ? 80 : 0
-      } }, box)
-    );
-  }
-  function modalNode(env) {
-    const modal = modals[0];
-    const language = env?.language;
-    const button = (testId, label2, confirm, color) => h("button", { "data-testid": testId, onClick: () => settleModal(confirm), style: {
-      flexGrow: 1,
-      flexBasis: 0,
-      minWidth: 0,
-      paddingTop: 12,
-      paddingBottom: 12,
-      backgroundColor: "transparent",
-      color,
-      fontSize: 16,
-      fontWeight: confirm ? 600 : 400
-    } }, label2);
-    return h(
-      "dialog",
-      {
-        "data-testid": "lx-modal",
-        role: "alertdialog",
-        key: `modal-${modal.key}`,
-        open: true,
-        onClose: () => settleModal(false),
-        "aria-label": modal.title || modal.content || word("@view.dialog", language),
-        style: { width: 320, maxWidth: "86%", borderRadius: 14, backgroundColor: "surface-overlay", overflow: "hidden", transition: fade }
-      },
-      h(
-        "view",
-        { style: { padding: 20, gap: 8, alignItems: "center" } },
-        modal.title && h("text", { role: "heading", style: { fontSize: 17, fontWeight: 600, textAlign: "center", color: "text" } }, modal.title),
-        modal.content && h("text", { style: { fontSize: 15, textAlign: "center", color: "text-muted" } }, modal.content)
-      ),
-      h(
-        "view",
-        { style: { flexDirection: "row", borderTopWidth: 1, borderColor: "line" } },
-        modal.showCancel && button("lx-modal-cancel", modal.cancelText ?? word("@view.cancel", language), false, "text-muted"),
-        button("lx-modal-confirm", modal.confirmText ?? word("@view.ok", language), true, "accent")
-      )
-    );
-  }
-  function sheetNode(env) {
-    const sheet = sheets[0];
-    const compact = (env?.sizeClass ?? "compact") === "compact" || (env?.viewport?.height ?? 0) < 600;
-    const bottom = compact && env?.pointer !== "fine";
-    const item = (testId, label2, index, color) => h("button", { "data-testid": testId, onClick: () => settleSheet(index), style: {
-      paddingTop: 14,
-      paddingBottom: 14,
-      backgroundColor: "transparent",
-      color,
-      fontSize: 17
-    } }, label2);
-    const place = bottom ? { marginTop: "auto", marginBottom: 8, marginLeft: 8, marginRight: 8 } : { width: 320 };
-    return h(
-      "dialog",
-      {
-        "data-testid": "lx-action-sheet",
-        key: `sheet-${sheet.key}`,
-        open: true,
-        closedby: "any",
-        onClose: () => settleSheet(-1),
-        "aria-label": word("@view.actions", env?.language),
-        style: { ...place, gap: 8, transition: fade }
-      },
-      h(
-        "view",
-        { style: { borderRadius: 14, backgroundColor: "surface-overlay", overflow: "hidden" } },
-        ...sheet.items.map((label2, index) => h(
-          "view",
-          { key: `item-${index}`, style: index ? { borderTopWidth: 1, borderColor: "line" } : {} },
-          item(`lx-action-sheet-item-${index}`, label2, index, "accent")
-        ))
-      ),
-      h(
-        "view",
-        { style: { borderRadius: 14, backgroundColor: "surface-overlay", overflow: "hidden" } },
-        item("lx-action-sheet-cancel", sheet.cancelText ?? word("@view.cancel", env?.language), -1, "text")
-      )
-    );
-  }
-  function overlayNode(env) {
-    if (!hasOverlay()) return null;
-    return h(
-      "view",
-      { key: "lx-overlay", style: { position: "absolute", top: 0, left: 0, width: 0, height: 0 } },
-      sheets.length > 0 && sheetNode(env),
-      modals.length > 0 && modalNode(env),
-      toast && toastNode()
-    );
-  }
-  function decorateOverlay(node, env) {
-    const enter2 = lowerStyle("view", { opacity: 0, scale: [0.94, 0.94] }, env).fields;
-    const toastEnter = lowerStyle("view", { opacity: 0, scale: [0.8, 0.8] }, env).fields;
-    const walk = (item) => {
-      if (["lx-modal", "lx-action-sheet"].includes(item.props?.testId)) item.states = { ...item.states, startingStyle: enter2, exitStyle: enter2 };
-      if (item.props?.testId === "lx-toast") item.states = { ...item.states, startingStyle: toastEnter, exitStyle: toastEnter };
-      if (item.props?.testId === "lx-toast-icon" && toast?.icon === "loading") item.fields = { ...item.fields, animation: spin };
-      for (const child of item.children ?? []) walk(child);
-    };
-    walk(node);
-    return node;
-  }
-
-  // src/runtime/errors.js
-  function located(error, frame) {
-    const base = error instanceof Error ? error : Error(String(error));
-    if (!base.uiFrames) {
-      base.uiFrames = [];
-      base.uiMessage = base.message;
-      const site = authorSite(base.stack);
-      if (site) base.uiFrames.push(site);
-    }
-    if (base.uiFrames.length < 12) base.uiFrames.push(frame);
-    base.message = [base.uiMessage, ...base.uiFrames.map((line) => `  at ${line}`)].join("\n");
-    return base;
-  }
-  function bridgeError(code, message, data, reason) {
-    const error = new Error(message ?? code);
-    error.name = "LxBridgeError";
-    error.code = code;
-    if (reason !== void 0) error.reason = reason;
-    if (data !== void 0) error.data = data;
-    return error;
-  }
-  function resourceError(error) {
-    if (typeof error?.code === "string") return Object.freeze({
-      code: error.code,
-      message: String(error.message ?? error.code),
-      ...typeof error.reason === "string" ? { reason: error.reason } : {},
-      ...error.data !== void 0 ? { data: error.data } : {}
-    });
-    const text2 = String(error?.uiMessage ?? error?.message ?? error);
-    const match = text2.match(/^([A-Z][A-Z0-9_]+): ([\s\S]*)$/);
-    return Object.freeze(match ? { code: match[1], message: match[2] } : { code: "UI_ERROR", message: text2 });
-  }
-  var sourceMap = null;
-  var decoded = null;
-  function configureSourceMap(map) {
-    sourceMap = map;
-    decoded = null;
-  }
-  var base64 = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
-  function decode() {
-    const lines = [];
-    let source3 = 0, line = 0, column = 0;
-    for (const text2 of sourceMap.mappings.split(";")) {
-      const segments = [];
-      let generated = 0;
-      for (const segment of text2.split(",")) {
-        if (!segment) continue;
-        const values = [];
-        let value = 0, shift = 0;
-        for (const char of segment) {
-          const digit = base64.indexOf(char);
-          value += (digit & 31) << shift;
-          if (digit & 32) shift += 5;
-          else {
-            values.push(value & 1 ? -(value >>> 1) : value >>> 1);
-            value = 0;
-            shift = 0;
-          }
-        }
-        generated += values[0];
-        if (values.length < 4) continue;
-        source3 += values[1];
-        line += values[2];
-        column += values[3];
-        segments.push([generated, source3, line, column]);
-      }
-      lines.push(segments);
-    }
-    return lines;
-  }
-  function authorSite(stack) {
-    if (!sourceMap || typeof stack !== "string") return void 0;
-    decoded ?? (decoded = decode());
-    for (const match of stack.matchAll(/:(\d+):(\d+)\)?\s*$/gm)) {
-      const segments = decoded[Number(match[1]) - 1];
-      if (!segments?.length) continue;
-      const column = Number(match[2]) - 1;
-      let best = segments[0];
-      for (const segment of segments) if (segment[0] <= column) best = segment;
-      const file = sourceMap.sources[best[1]];
-      if (file) return `${file}:${best[2] + 1}:${best[3] + 1 + Math.max(0, column - best[0])}`;
-    }
-    return void 0;
-  }
-  function sited(error) {
-    if (!(error instanceof Error) || error.uiFrames) return error;
-    const site = authorSite(error.stack);
-    if (!site) return error;
-    error.uiFrames = [site];
-    error.uiMessage = error.message;
-    error.message = `${error.message}
-  at ${site}`;
-    return error;
-  }
-
-  // src/runtime/stream.js
-  function createStream(id, cancel, report2, error) {
-    let done = false, failure2, finalValue, iterator = false, bytes = 0;
-    const queue = [], reads = [];
-    const listeners = { data: /* @__PURE__ */ new Set(), end: /* @__PURE__ */ new Set(), error: /* @__PURE__ */ new Set() };
-    let resolve, reject;
-    const result = new Promise((yes, no) => {
-      resolve = yes;
-      reject = no;
-    });
-    result.catch(() => {
-    });
-    const emit = (kind, value) => {
-      for (const fn of [...listeners[kind]]) {
-        try {
-          fn(value);
-        } catch (cause) {
-          report2(cause);
-        }
-      }
-    };
-    const finish = (ok, value) => {
-      if (done) return;
-      done = true;
-      if (ok) {
-        finalValue = value;
-        resolve(value);
-      } else {
-        failure2 = value;
-        queue.length = 0;
-        bytes = 0;
-        reject(value);
-      }
-      for (const read of reads.splice(0)) {
-        if (ok) read.resolve({ done: true, value });
-        else read.reject(value);
-      }
-      emit(ok ? "end" : "error", value);
-      for (const bucket of Object.values(listeners)) bucket.clear();
-    };
-    const handle2 = Object.freeze({
-      id,
-      result,
-      on(kind, fn) {
-        if (!Object.prototype.hasOwnProperty.call(listeners, kind) || typeof fn !== "function")
-          throw Error("UI_STREAM: invalid listener");
-        if (!done) {
-          if (listeners[kind].size >= 256) throw Error("UI_LIMIT: too many stream listeners");
-          listeners[kind].add(fn);
-        }
-        return handle2;
-      },
-      cancel() {
-        if (!done) cancel();
-      },
-      [Symbol.asyncIterator]() {
-        if (iterator) throw Error("UI_STREAM: only one iterator is allowed");
-        iterator = true;
-        return {
-          next() {
-            if (queue.length) {
-              const item = queue.shift();
-              bytes -= item.bytes;
-              return Promise.resolve({ done: false, value: item.value });
-            }
-            if (done) return failure2 ? Promise.reject(failure2) : Promise.resolve({ done: true, value: finalValue });
-            if (reads.length >= 256) return Promise.reject(error("UI_LIMIT", "Too many pending stream reads"));
-            return new Promise((resolve2, reject2) => reads.push({ resolve: resolve2, reject: reject2 }));
-          },
-          return() {
-            queue.length = 0;
-            bytes = 0;
-            handle2.cancel();
-            return Promise.resolve({ done: true, value: void 0 });
-          }
-        };
-      }
-    });
-    return {
-      handle: handle2,
-      resolve: (value) => finish(true, value),
-      reject: (cause) => finish(false, cause),
-      push(value) {
-        if (done) return;
-        if (reads.length) reads.shift().resolve({ done: false, value });
-        else if (iterator) {
-          const size = JSON.stringify(value).length * 2;
-          if (queue.length >= 256 || bytes + size > 1048576) {
-            cancel(error("UI_LIMIT", "Stream consumer queue exceeded"));
-            return;
-          }
-          queue.push({ value, bytes: size });
-          bytes += size;
-        }
-        emit("data", value);
-      }
-    };
-  }
-
-  // src/runtime/channel.js
-  function createChannel(id, send, close, report2, error) {
-    let closed = false, failure2, iterator = false, bytes = 0;
-    const queue = [], reads = [];
-    const listeners = { data: /* @__PURE__ */ new Set(), close: /* @__PURE__ */ new Set(), error: /* @__PURE__ */ new Set() };
-    const invoke = (fn, ...values) => {
-      try {
-        fn(...values);
-      } catch (cause) {
-        report2(cause);
-      }
-    };
-    const finish = (cause, failed, discard2 = false) => {
-      if (closed) return;
-      closed = true;
-      failure2 = cause;
-      if (cause || discard2) {
-        queue.length = 0;
-        bytes = 0;
-      }
-      for (const read of reads.splice(0)) {
-        if (cause) read.reject(cause);
-        else read.resolve({ done: true, value: void 0 });
-      }
-      if (cause) for (const fn of [...listeners.error]) invoke(fn, cause);
-      const event = Object.freeze(failed === void 0 ? {} : { error: failed });
-      for (const fn of [...listeners.close]) invoke(fn, event);
-      for (const bucket of Object.values(listeners)) bucket.clear();
-    };
-    const handle2 = Object.freeze({
-      id,
-      send(payload2) {
-        if (closed) throw error("STREAM_CLOSED", "Channel is closed");
-        send(payload2);
-      },
-      close(failed) {
-        if (!closed) close(failed);
-      },
-      on(kind, fn) {
-        if (!Object.prototype.hasOwnProperty.call(listeners, kind) || typeof fn !== "function")
-          throw Error("UI_CHANNEL: invalid listener");
-        if (!closed) {
-          if (listeners[kind].size >= 256) throw Error("UI_LIMIT: too many channel listeners");
-          listeners[kind].add(fn);
-          if (kind === "data" && !iterator && queue.length) {
-            const buffered = queue.splice(0);
-            bytes = 0;
-            for (const item of buffered) {
-              if (closed) break;
-              invoke(fn, item.value);
-            }
-          }
-        }
-        return handle2;
-      },
-      [Symbol.asyncIterator]() {
-        if (iterator) throw Error("UI_CHANNEL: only one iterator is allowed");
-        iterator = true;
-        return {
-          next() {
-            if (queue.length) {
-              const item = queue.shift();
-              bytes -= item.bytes;
-              return Promise.resolve({ done: false, value: item.value });
-            }
-            if (closed) return failure2 ? Promise.reject(failure2) : Promise.resolve({ done: true, value: void 0 });
-            if (reads.length >= 256) return Promise.reject(error("UI_LIMIT", "Too many pending channel reads"));
-            return new Promise((resolve, reject) => reads.push({ resolve, reject }));
-          },
-          return() {
-            handle2.close();
-            return Promise.resolve({ done: true, value: void 0 });
-          }
-        };
-      }
-    });
-    return {
-      handle: handle2,
-      finish: (failed, discard2) => finish(void 0, failed, discard2),
-      reject: (cause) => finish(cause, cause),
-      push(value) {
-        if (closed) return;
-        if (reads.length) reads.shift().resolve({ done: false, value });
-        else if (iterator || !listeners.data.size) {
-          const size = JSON.stringify(value).length * 2;
-          if (queue.length >= 256 || bytes + size > 1048576) {
-            const limit = error("UI_LIMIT", "Channel consumer queue exceeded");
-            close(limit, limit);
-            return;
-          }
-          queue.push({ value, bytes: size });
-          bytes += size;
-        }
-        for (const fn of [...listeners.data]) {
-          if (closed) break;
-          invoke(fn, value);
-        }
-      }
-    };
-  }
-
-  // src/runtime/leave-guard.js
-  function createLeaveGuards(callHost, report2, fail) {
-    const holders = /* @__PURE__ */ new Set(), backHolders = /* @__PURE__ */ new Set();
-    let epoch2 = 0, sent = false, sentBack = false, asking = false, tail = Promise.resolve();
-    const sync = () => {
-      const current2 = epoch2;
-      tail = tail.then(async () => {
-        if (current2 !== epoch2) return;
-        const want = holders.size > 0, wantBack = backHolders.size > 0;
-        if (want === sent && wantBack === sentBack) return;
-        try {
-          await callHost("navigation.setLeaveGuard", wantBack ? { enabled: want, back: true } : { enabled: want });
-          if (current2 === epoch2) {
-            sent = want;
-            sentBack = wantBack;
-          }
-        } catch (error) {
-          if (current2 !== epoch2) return;
-          for (const holder of holders) holder.fail(error);
-          report2(error);
-        }
-      });
-    };
-    const request = (reason) => {
-      if (!["back", "home"].includes(reason)) throw Error("UI_LEAVE: invalid reason");
-      if (asking) return;
-      asking = true;
-      const current2 = epoch2, pending3 = [...holders].reverse();
-      (async () => {
-        try {
-          for (const holder of pending3) {
-            if (current2 !== epoch2 || !holders.has(holder) || !await holder.ask(reason)) return;
-          }
-          if (current2 === epoch2) await callHost("navigation.leave", { reason });
-        } catch (error) {
-          if (current2 === epoch2) report2(error);
-        } finally {
-          if (current2 === epoch2) asking = false;
-        }
-      })();
-    };
-    return {
-      request,
-      reset() {
-        epoch2++;
-        for (const holder of holders) holder.cancel();
-        holders.clear();
-        backHolders.clear();
-        sent = false;
-        sentBack = false;
-        asking = false;
-        tail = Promise.resolve();
-      },
-      resource(state) {
-        let snapshot = state.value, answer, enabled = false, mounted = false, registeredEpoch = epoch2;
-        const update = (patch) => {
-          snapshot = { ...snapshot, ...patch };
-          state.set(snapshot);
-        };
-        const decide = (leave2) => {
-          if (typeof leave2 !== "boolean") throw Error("UI_LEAVE: expected boolean answer");
-          const resolve = answer;
-          answer = void 0;
-          if (!resolve) return;
-          update({ pending: null });
-          resolve(leave2);
-        };
-        const holder = {
-          cancel() {
-            decide(false);
-          },
-          ask(reason) {
-            if (!enabled) return Promise.resolve(false);
-            update({ pending: reason, requests: snapshot.requests + 1 });
-            return new Promise((resolve) => {
-              answer = resolve;
-            });
-          },
-          fail(error) {
-            update({ error: resourceError(error) });
-          }
-        };
-        return {
-          get state() {
-            return snapshot;
-          },
-          answer: decide,
-          request(reason) {
-            if (!mounted || registeredEpoch !== epoch2) throw Error("UI_LEAVE: stale guard");
-            request(reason);
-          },
-          commit(next) {
-            mounted = true;
-            if (enabled === next.enabled && registeredEpoch === epoch2) return;
-            registeredEpoch = epoch2;
-            enabled = next.enabled;
-            if (enabled) {
-              update({ error: null });
-              holders.add(holder);
-            } else {
-              decide(false);
-              holders.delete(holder);
-            }
-            sync();
-          },
-          dispose() {
-            mounted = false;
-            enabled = false;
-            decide(false);
-            if (holders.delete(holder)) sync();
-          }
-        };
-      },
-      backHandler() {
-        let enabled = false, callback = null, registeredEpoch = epoch2;
-        const holder = {
-          cancel() {
-          },
-          ask(reason) {
-            if (!enabled || reason !== "back") return Promise.resolve(true);
-            const failed = (verb, error) => fail(`UI_HANDLER: onBack ${verb}: ${error instanceof Error ? error.message : String(error)}`);
-            try {
-              const result = callback?.();
-              if (result && typeof result.then === "function") Promise.resolve(result).catch((error) => failed("rejected", error));
-            } catch (error) {
-              failed("threw", error);
-            }
-            return Promise.resolve(false);
-          },
-          fail(error) {
-            report2(error);
-          }
-        };
-        return {
-          commit(next) {
-            callback = next.onBack;
-            if (enabled === next.enabled && registeredEpoch === epoch2) return;
-            registeredEpoch = epoch2;
-            enabled = next.enabled;
-            if (enabled) {
-              holders.add(holder);
-              backHolders.add(holder);
-            } else {
-              holders.delete(holder);
-              backHolders.delete(holder);
-            }
-            sync();
-          },
-          dispose() {
-            enabled = false;
-            callback = null;
-            backHolders.delete(holder);
-            if (holders.delete(holder)) sync();
-          }
-        };
-      }
-    };
   }
 
   // src/runtime/snap.js
@@ -3748,7 +3237,7 @@
     leaveGuards.request(reason);
   }
   function takeViewEvents() {
-    const result = requests.concat(takeOverlayReplies());
+    const result = requests;
     requests = [];
     return result;
   }
@@ -4118,57 +3607,57 @@
     const key = JSON.stringify(order !== void 0 ? [scope, order] : resource ? [scope, resource, name] : [scope, name]);
     if (!resource && candidate.declarations.has(key)) throw Error(`UI_LOCAL: duplicate declaration ${JSON.stringify(name)} in ${scope}`);
     candidate.declarations.add(key);
-    const cell2 = candidate.locals.get(key) ?? render.lookupLocals?.get(key) ?? page.locals.get(key) ?? { value: immutable(initial, 0, true) };
-    candidate.locals.set(key, cell2);
-    for (const collector of render.collectors) collector.set(key, cell2);
-    if (cell2.binding) return cell2.binding;
-    const binding = cell2.binding = Object.freeze({
+    const cell = candidate.locals.get(key) ?? render.lookupLocals?.get(key) ?? page.locals.get(key) ?? { value: immutable(initial, 0, true) };
+    candidate.locals.set(key, cell);
+    for (const collector of render.collectors) collector.set(key, cell);
+    if (cell.binding) return cell.binding;
+    const binding = cell.binding = Object.freeze({
       get value() {
-        if (render.active) noteRead(cell2);
-        return page.updates.has(cell2) ? page.updates.get(cell2) : cell2.value;
+        if (render.active) noteRead(cell);
+        return page.updates.has(cell) ? page.updates.get(cell) : cell.value;
       },
       set(value) {
         outsideRender("state mutation");
-        if (page.locals.get(key) !== cell2 && render.candidate?.locals.get(key) !== cell2)
+        if (page.locals.get(key) !== cell && render.candidate?.locals.get(key) !== cell)
           throw Error(`UI_LOCAL: ${JSON.stringify(name)} in ${scope} is no longer mounted`);
-        if (typeof value === "function") value = value(page.updates.has(cell2) ? page.updates.get(cell2) : cell2.value);
-        page.updates.set(cell2, immutable(value, 0, true));
+        if (typeof value === "function") value = value(page.updates.has(cell) ? page.updates.get(cell) : cell.value);
+        page.updates.set(cell, immutable(value, 0, true));
       },
       focus() {
         outsideRender("focus");
-        if (page.locals.get(key) !== cell2) throw Error(`UI_LOCAL: ${JSON.stringify(name)} in ${scope} is no longer mounted`);
-        cell2.focus = (cell2.focus ?? 0) + 1;
-        page.updates.set(cell2, page.updates.has(cell2) ? page.updates.get(cell2) : cell2.value);
+        if (page.locals.get(key) !== cell) throw Error(`UI_LOCAL: ${JSON.stringify(name)} in ${scope} is no longer mounted`);
+        cell.focus = (cell.focus ?? 0) + 1;
+        page.updates.set(cell, page.updates.has(cell) ? page.updates.get(cell) : cell.value);
       },
       showPicker() {
         outsideRender("showPicker");
-        if (page.locals.get(key) !== cell2) throw Error(`UI_LOCAL: ${JSON.stringify(name)} in ${scope} is no longer mounted`);
-        cell2.picker = (cell2.picker ?? 0) + 1;
-        page.updates.set(cell2, page.updates.has(cell2) ? page.updates.get(cell2) : cell2.value);
+        if (page.locals.get(key) !== cell) throw Error(`UI_LOCAL: ${JSON.stringify(name)} in ${scope} is no longer mounted`);
+        cell.picker = (cell.picker ?? 0) + 1;
+        page.updates.set(cell, page.updates.has(cell) ? page.updates.get(cell) : cell.value);
       },
       setSelection(start, end) {
         outsideRender("setSelection");
-        const value = editorValue(key, cell2, name, scope, "setSelection");
+        const value = editorValue(key, cell, name, scope, "setSelection");
         selectionRange(value, start, end, "setSelection");
-        cell2.selection = [(cell2.selection?.[0] ?? 0) + 1, start, end];
-        page.updates.set(cell2, value);
+        cell.selection = [(cell.selection?.[0] ?? 0) + 1, start, end];
+        page.updates.set(cell, value);
       },
-      replaceRange(start, end, text2) {
+      replaceRange(start, end, text) {
         outsideRender("replaceRange");
-        const value = editorValue(key, cell2, name, scope, "replaceRange");
+        const value = editorValue(key, cell, name, scope, "replaceRange");
         selectionRange(value, start, end, "replaceRange");
-        if (typeof text2 !== "string") throw Error("UI_LOCAL: replaceRange takes (start, end, text) with text a string");
-        const at = start + text2.length;
-        cell2.selection = [(cell2.selection?.[0] ?? 0) + 1, at, at];
-        page.updates.set(cell2, immutable(value.slice(0, start) + text2 + value.slice(end), 0, true));
+        if (typeof text !== "string") throw Error("UI_LOCAL: replaceRange takes (start, end, text) with text a string");
+        const at = start + text.length;
+        cell.selection = [(cell.selection?.[0] ?? 0) + 1, at, at];
+        page.updates.set(cell, immutable(value.slice(0, start) + text + value.slice(end), 0, true));
       }
     });
-    bindings.set(binding, { key, cell: cell2 });
+    bindings.set(binding, { key, cell });
     return binding;
   }
-  function editorValue(key, cell2, name, scope, call) {
-    if (page.locals.get(key) !== cell2) throw Error(`UI_LOCAL: ${JSON.stringify(name)} in ${scope} is no longer mounted`);
-    const value = page.updates.has(cell2) ? page.updates.get(cell2) : cell2.value;
+  function editorValue(key, cell, name, scope, call) {
+    if (page.locals.get(key) !== cell) throw Error(`UI_LOCAL: ${JSON.stringify(name)} in ${scope} is no longer mounted`);
+    const value = page.updates.has(cell) ? page.updates.get(cell) : cell.value;
     if (typeof value !== "string") throw Error(`UI_LOCAL: ${call} belongs to a text cell bound to an editor`);
     return value;
   }
@@ -4187,10 +3676,10 @@
     counts.set(render.scope, order + 1);
     return local(`#${order}`, args[0], "", order);
   }
-  function hashId(text2) {
+  function hashId(text) {
     let a = 2166136261, b = 2538058380;
-    for (let i = 0; i < text2.length; i++) {
-      const c = text2.charCodeAt(i);
+    for (let i = 0; i < text.length; i++) {
+      const c = text.charCodeAt(i);
       a = Math.imul(a ^ c, 16777619) >>> 0;
       b = Math.imul(b ^ c, 16777619) >>> 0;
     }
@@ -4265,17 +3754,17 @@
   }
   function own(name, initial, kind, code, create, definition) {
     const binding = local(name, initial, kind);
-    const { key, cell: cell2 } = bindings.get(binding);
+    const { key, cell } = bindings.get(binding);
     const state = { get value() {
       return binding.value;
     }, set(value) {
-      if (page.locals.get(key) === cell2 || render.candidate?.locals.get(key) === cell2) binding.set(value);
+      if (page.locals.get(key) === cell || render.candidate?.locals.get(key) === cell) binding.set(value);
     } };
     const { candidate } = render;
-    if (candidate.resourceNames.has(cell2)) throw Error(`${code}: duplicate resource name`);
-    candidate.resourceNames.add(cell2);
-    const resource = page.resources.get(cell2) ?? create(state);
-    candidate.resources.set(cell2, { resource, definition });
+    if (candidate.resourceNames.has(cell)) throw Error(`${code}: duplicate resource name`);
+    candidate.resourceNames.add(cell);
+    const resource = page.resources.get(cell) ?? create(state);
+    candidate.resources.set(cell, { resource, definition });
     return resource;
   }
   var guard = (what, fn) => (...args) => {
@@ -4628,15 +4117,15 @@
       throw Error("UI_IMAGE: invalid placeholder source");
     for (const name of ["onLoad", "onError"]) if (props[name] !== void 0 && typeof props[name] !== "function") throw Error("UI_IMAGE: invalid callback");
   }
-  var source2 = (value) => typeof value === "string" && value.length > 0 && value.length <= limits.sourceBytes && !value.includes("\0");
+  var source = (value) => typeof value === "string" && value.length > 0 && value.length <= limits.sourceBytes && !value.includes("\0");
   function video(props) {
-    if (props.src !== void 0 && !source2(props.src)) throw Error("UI_VIDEO: invalid source");
-    if (props.poster !== void 0 && !source2(props.poster)) throw Error("UI_VIDEO: invalid poster");
+    if (props.src !== void 0 && !source(props.src)) throw Error("UI_VIDEO: invalid source");
+    if (props.poster !== void 0 && !source(props.poster)) throw Error("UI_VIDEO: invalid poster");
     if (props.sources !== void 0) {
       const labels = /* @__PURE__ */ new Set();
       if (!Array.isArray(props.sources) || props.sources.length < 1 || props.sources.length > 8) throw Error("UI_VIDEO: sources takes 1..8 { src, label } entries");
       for (const entry of props.sources) {
-        if (!entry || !source2(entry.src)) throw Error("UI_VIDEO: each of sources needs a valid src");
+        if (!entry || !source(entry.src)) throw Error("UI_VIDEO: each of sources needs a valid src");
         if (typeof entry.label !== "string" || !/^[^\s].{0,31}$/.test(entry.label) || entry.label === "auto" || labels.has(entry.label))
           throw Error('UI_VIDEO: each of sources needs a unique label of 1..32 characters other than "auto"');
         labels.add(entry.label);
@@ -4648,7 +4137,7 @@
     for (const [name, value] of Object.entries(props)) if (/^on[A-Z]/.test(name) && value !== void 0 && typeof value !== "function") throw Error(`UI_VIDEO: ${name} takes a function`);
   }
   function webview(props) {
-    if (props.src !== void 0 && !source2(props.src)) throw Error("UI_WEBVIEW: invalid source");
+    if (props.src !== void 0 && !source(props.src)) throw Error("UI_WEBVIEW: invalid source");
     label(props.accessibilityLabel, "UI_WEBVIEW", true);
     if (props.handlesDrags !== void 0 && typeof props.handlesDrags !== "boolean") throw Error("UI_WEBVIEW: handlesDrags takes a boolean");
     for (const name of ["onFullscreenChange", "onLoad", "onMessage", "onBlocked", "onError"])
@@ -4881,8 +4370,8 @@
     page.invalidated = true;
     syncOrientation();
     for (const each of touched) for (const reader of readers.get(each) ?? []) {
-      const { key, cell: cell2 } = cellOf(reader.binding);
-      if (page.locals.get(key) === cell2) reader.binding.set({ ...reader.binding.value, fullscreen: fullscreenName === each });
+      const { key, cell } = cellOf(reader.binding);
+      if (page.locals.get(key) === cell) reader.binding.set({ ...reader.binding.value, fullscreen: fullscreenName === each });
     }
     for (const each of touched) for (const handler of page.committed?.fullscreenHandlers?.get(each) ?? []) {
       try {
@@ -4896,10 +4385,10 @@
   function useVideo(name) {
     if (typeof name !== "string" || !NAME.test(name)) throw Error('UI_VIDEO: useVideo takes a name of 1..64 letters, digits, "_", "." or "-"');
     const binding = local(name, latest2.get(name) ?? empty, "video");
-    const { cell: cell2 } = cellOf(binding);
-    let reader = cell2.videoReader;
+    const { cell } = cellOf(binding);
+    let reader = cell.videoReader;
     if (!reader) {
-      reader = cell2.videoReader = { binding, read: /* @__PURE__ */ new Set() };
+      reader = cell.videoReader = { binding, read: /* @__PURE__ */ new Set() };
       if (!readers.has(name)) readers.set(name, /* @__PURE__ */ new Set());
       readers.get(name).add(reader);
     }
@@ -4957,14 +4446,14 @@
     if (name === fullscreenName) syncOrientation();
     const named = readers.get(name);
     for (const reader of named ?? []) {
-      const { key, cell: cell2 } = cellOf(reader.binding);
-      if (page.locals.get(key) !== cell2) {
+      const { key, cell } = cellOf(reader.binding);
+      if (page.locals.get(key) !== cell) {
         named.delete(reader);
         continue;
       }
       const current2 = reader.binding.value;
       if ([...reader.read].some((field2) => !same2(current2[field2], next[field2]))) reader.binding.set(next);
-      else cell2.value = next;
+      else cell.value = next;
     }
   }
 
@@ -4975,13 +4464,13 @@
   function useBox(name) {
     if (typeof name !== "string" || !name.length || name.length > 64) throw Error("UI_PROP: useBox takes a name of 1..64 characters");
     const binding = local(name, null, "box");
-    const { cell: cell2 } = cellOf(binding);
-    let handle2 = handles.get(cell2);
+    const { cell } = cellOf(binding);
+    let handle2 = handles.get(cell);
     if (!handle2) {
       handle2 = Object.freeze({ get value() {
         return binding.value;
       } });
-      handles.set(cell2, handle2);
+      handles.set(cell, handle2);
       written.set(handle2, binding);
     }
     return handle2;
@@ -5038,6 +4527,222 @@
   function fullscreenFallback() {
     const name = fullscreenPlayer();
     return name === null || fullscreenDrawn() ? null : h(BareFullscreen, { name, key: `lx-fullscreen:${name}` });
+  }
+
+  // src/generated/words.js
+  var source2 = "en";
+  var words = {
+    "ar": {
+      "@view.cancel": (a, f) => "\u0625\u0644\u063A\u0627\u0621",
+      "@view.done": (a, f) => "\u062A\u0645",
+      "@view.error.failed": (a, f) => "\u0644\u0645 \u062A\u0646\u062C\u062D \u0627\u0644\u0639\u0645\u0644\u064A\u0629. \u062D\u0627\u0648\u0644 \u0645\u0631\u0629 \u0623\u062E\u0631\u0649.",
+      "@view.error.limit": (a, f) => "\u0644\u0642\u062F \u0628\u0644\u063A\u062A \u0627\u0644\u062D\u062F \u0627\u0644\u0645\u0633\u0645\u0648\u062D. \u062D\u0627\u0648\u0644 \u0645\u0631\u0629 \u0623\u062E\u0631\u0649 \u0644\u0627\u062D\u0642\u064B\u0627.",
+      "@view.error.network": (a, f) => "\u062A\u0639\u0630\u0651\u0631 \u0627\u0644\u0627\u062A\u0635\u0627\u0644. \u062A\u062D\u0642\u0642 \u0645\u0646 \u0627\u062A\u0635\u0627\u0644\u0643 \u0648\u062D\u0627\u0648\u0644 \u0645\u0631\u0629 \u0623\u062E\u0631\u0649.",
+      "@view.error.notFound": (a, f) => "\u0644\u0645 \u064A\u0639\u062F \u0647\u0630\u0627 \u0645\u062A\u0627\u062D\u064B\u0627.",
+      "@view.error.permission": (a, f) => "\u064A\u0644\u0632\u0645 \u0627\u0644\u062D\u0635\u0648\u0644 \u0639\u0644\u0649 \u0625\u0630\u0646\u0643. \u064A\u0645\u0643\u0646\u0643 \u0645\u0646\u062D\u0647 \u0645\u0646 \u0627\u0644\u0625\u0639\u062F\u0627\u062F\u0627\u062A.",
+      "@view.error.timeout": (a, f) => "\u064A\u0633\u062A\u063A\u0631\u0642 \u0630\u0644\u0643 \u0648\u0642\u062A\u064B\u0627 \u0637\u0648\u064A\u0644\u0627\u064B. \u062D\u0627\u0648\u0644 \u0645\u0631\u0629 \u0623\u062E\u0631\u0649.",
+      "@view.error.unsupported": (a, f) => "\u063A\u064A\u0631 \u0645\u062A\u0627\u062D \u0639\u0644\u0649 \u0647\u0630\u0627 \u0627\u0644\u062C\u0647\u0627\u0632.",
+      "@view.hour": (a, f) => "\u0627\u0644\u0633\u0627\u0639\u0629",
+      "@view.minute": (a, f) => "\u0627\u0644\u062F\u0642\u064A\u0642\u0629",
+      "@view.nextMonth": (a, f) => "\u0627\u0644\u0634\u0647\u0631 \u0627\u0644\u062A\u0627\u0644\u064A",
+      "@view.options": (a, f) => "\u062E\u064A\u0627\u0631\u0627\u062A",
+      "@view.period": (a, f) => "\u0635/\u0645",
+      "@view.previousMonth": (a, f) => "\u0627\u0644\u0634\u0647\u0631 \u0627\u0644\u0633\u0627\u0628\u0642"
+    },
+    "de": {
+      "@view.cancel": (a, f) => "Abbrechen",
+      "@view.done": (a, f) => "Fertig",
+      "@view.error.failed": (a, f) => "Das hat nicht geklappt. Versuche es noch einmal.",
+      "@view.error.limit": (a, f) => "Du hast ein Limit erreicht. Versuche es sp\xE4ter noch einmal.",
+      "@view.error.network": (a, f) => "Keine Verbindung. Pr\xFCfe deine Verbindung und versuche es noch einmal.",
+      "@view.error.notFound": (a, f) => "Das ist nicht mehr verf\xFCgbar.",
+      "@view.error.permission": (a, f) => "Daf\xFCr ist deine Erlaubnis n\xF6tig. Du kannst sie in den Einstellungen erteilen.",
+      "@view.error.timeout": (a, f) => "Das dauert zu lange. Versuche es noch einmal.",
+      "@view.error.unsupported": (a, f) => "Auf diesem Ger\xE4t nicht verf\xFCgbar.",
+      "@view.hour": (a, f) => "Stunde",
+      "@view.minute": (a, f) => "Minute",
+      "@view.nextMonth": (a, f) => "N\xE4chster Monat",
+      "@view.options": (a, f) => "Optionen",
+      "@view.period": (a, f) => "AM/PM",
+      "@view.previousMonth": (a, f) => "Vorheriger Monat"
+    },
+    "en": {
+      "@view.cancel": (a, f) => "Cancel",
+      "@view.done": (a, f) => "Done",
+      "@view.error.failed": (a, f) => "That didn't work. Try again.",
+      "@view.error.limit": (a, f) => "You've reached a limit. Try again later.",
+      "@view.error.network": (a, f) => "Can't connect. Check your connection and try again.",
+      "@view.error.notFound": (a, f) => "This is no longer available.",
+      "@view.error.permission": (a, f) => "This needs your permission. You can allow it in Settings.",
+      "@view.error.timeout": (a, f) => "This is taking too long. Try again.",
+      "@view.error.unsupported": (a, f) => "This isn't available on this device.",
+      "@view.hour": (a, f) => "Hour",
+      "@view.minute": (a, f) => "Minute",
+      "@view.nextMonth": (a, f) => "Next month",
+      "@view.options": (a, f) => "Options",
+      "@view.period": (a, f) => "AM/PM",
+      "@view.previousMonth": (a, f) => "Previous month"
+    },
+    "es": {
+      "@view.cancel": (a, f) => "Cancelar",
+      "@view.done": (a, f) => "Listo",
+      "@view.error.failed": (a, f) => "No ha funcionado. Int\xE9ntalo de nuevo.",
+      "@view.error.limit": (a, f) => "Has alcanzado un l\xEDmite. Int\xE9ntalo m\xE1s tarde.",
+      "@view.error.network": (a, f) => "No se puede conectar. Comprueba tu conexi\xF3n e int\xE9ntalo de nuevo.",
+      "@view.error.notFound": (a, f) => "Ya no est\xE1 disponible.",
+      "@view.error.permission": (a, f) => "Se necesita tu permiso. Puedes concederlo en Ajustes.",
+      "@view.error.timeout": (a, f) => "Est\xE1 tardando demasiado. Int\xE9ntalo de nuevo.",
+      "@view.error.unsupported": (a, f) => "No est\xE1 disponible en este dispositivo.",
+      "@view.hour": (a, f) => "Hora",
+      "@view.minute": (a, f) => "Minuto",
+      "@view.nextMonth": (a, f) => "Mes siguiente",
+      "@view.options": (a, f) => "Opciones",
+      "@view.period": (a, f) => "a. m./p. m.",
+      "@view.previousMonth": (a, f) => "Mes anterior"
+    },
+    "fr": {
+      "@view.cancel": (a, f) => "Annuler",
+      "@view.done": (a, f) => "OK",
+      "@view.error.failed": (a, f) => "Cela n'a pas fonctionn\xE9. R\xE9essayez.",
+      "@view.error.limit": (a, f) => "Vous avez atteint une limite. R\xE9essayez plus tard.",
+      "@view.error.network": (a, f) => "Connexion impossible. V\xE9rifiez votre connexion et r\xE9essayez.",
+      "@view.error.notFound": (a, f) => "Ce contenu n'est plus disponible.",
+      "@view.error.permission": (a, f) => "Votre autorisation est n\xE9cessaire. Vous pouvez l'accorder dans les R\xE9glages.",
+      "@view.error.timeout": (a, f) => "Cela prend trop de temps. R\xE9essayez.",
+      "@view.error.unsupported": (a, f) => "Non disponible sur cet appareil.",
+      "@view.hour": (a, f) => "Heure",
+      "@view.minute": (a, f) => "Minute",
+      "@view.nextMonth": (a, f) => "Mois suivant",
+      "@view.options": (a, f) => "Options",
+      "@view.period": (a, f) => "AM/PM",
+      "@view.previousMonth": (a, f) => "Mois pr\xE9c\xE9dent"
+    },
+    "ja": {
+      "@view.cancel": (a, f) => "\u30AD\u30E3\u30F3\u30BB\u30EB",
+      "@view.done": (a, f) => "\u5B8C\u4E86",
+      "@view.error.failed": (a, f) => "\u3046\u307E\u304F\u3044\u304D\u307E\u305B\u3093\u3067\u3057\u305F\u3002\u3082\u3046\u4E00\u5EA6\u304A\u8A66\u3057\u304F\u3060\u3055\u3044\u3002",
+      "@view.error.limit": (a, f) => "\u4E0A\u9650\u306B\u9054\u3057\u307E\u3057\u305F\u3002\u3057\u3070\u3089\u304F\u3057\u3066\u304B\u3089\u304A\u8A66\u3057\u304F\u3060\u3055\u3044\u3002",
+      "@view.error.network": (a, f) => "\u63A5\u7D9A\u3067\u304D\u307E\u305B\u3093\u3002\u30CD\u30C3\u30C8\u30EF\u30FC\u30AF\u3092\u78BA\u8A8D\u3057\u3066\u3001\u3082\u3046\u4E00\u5EA6\u304A\u8A66\u3057\u304F\u3060\u3055\u3044\u3002",
+      "@view.error.notFound": (a, f) => "\u3053\u306E\u30B3\u30F3\u30C6\u30F3\u30C4\u306F\u5229\u7528\u3067\u304D\u306A\u304F\u306A\u308A\u307E\u3057\u305F\u3002",
+      "@view.error.permission": (a, f) => "\u8A31\u53EF\u304C\u5FC5\u8981\u3067\u3059\u3002\u300C\u8A2D\u5B9A\u300D\u3067\u8A31\u53EF\u3067\u304D\u307E\u3059\u3002",
+      "@view.error.timeout": (a, f) => "\u6642\u9593\u304C\u304B\u304B\u308A\u3059\u304E\u3066\u3044\u307E\u3059\u3002\u3082\u3046\u4E00\u5EA6\u304A\u8A66\u3057\u304F\u3060\u3055\u3044\u3002",
+      "@view.error.unsupported": (a, f) => "\u3053\u306E\u30C7\u30D0\u30A4\u30B9\u3067\u306F\u3054\u5229\u7528\u3044\u305F\u3060\u3051\u307E\u305B\u3093\u3002",
+      "@view.hour": (a, f) => "\u6642",
+      "@view.minute": (a, f) => "\u5206",
+      "@view.nextMonth": (a, f) => "\u6B21\u306E\u6708",
+      "@view.options": (a, f) => "\u30AA\u30D7\u30B7\u30E7\u30F3",
+      "@view.period": (a, f) => "\u5348\u524D/\u5348\u5F8C",
+      "@view.previousMonth": (a, f) => "\u524D\u306E\u6708"
+    },
+    "ko": {
+      "@view.cancel": (a, f) => "\uCDE8\uC18C",
+      "@view.done": (a, f) => "\uC644\uB8CC",
+      "@view.error.failed": (a, f) => "\uC791\uC5C5\uC744 \uC644\uB8CC\uD558\uC9C0 \uBABB\uD588\uC2B5\uB2C8\uB2E4. \uB2E4\uC2DC \uC2DC\uB3C4\uD558\uC138\uC694.",
+      "@view.error.limit": (a, f) => "\uD55C\uB3C4\uC5D0 \uB3C4\uB2EC\uD588\uC2B5\uB2C8\uB2E4. \uB098\uC911\uC5D0 \uB2E4\uC2DC \uC2DC\uB3C4\uD558\uC138\uC694.",
+      "@view.error.network": (a, f) => "\uC5F0\uACB0\uD560 \uC218 \uC5C6\uC2B5\uB2C8\uB2E4. \uB124\uD2B8\uC6CC\uD06C\uB97C \uD655\uC778\uD55C \uD6C4 \uB2E4\uC2DC \uC2DC\uB3C4\uD558\uC138\uC694.",
+      "@view.error.notFound": (a, f) => "\uB354 \uC774\uC0C1 \uC0AC\uC6A9\uD560 \uC218 \uC5C6\uC2B5\uB2C8\uB2E4.",
+      "@view.error.permission": (a, f) => "\uAD8C\uD55C\uC774 \uD544\uC694\uD569\uB2C8\uB2E4. \uC124\uC815\uC5D0\uC11C \uD5C8\uC6A9\uD560 \uC218 \uC788\uC2B5\uB2C8\uB2E4.",
+      "@view.error.timeout": (a, f) => "\uC2DC\uAC04\uC774 \uB108\uBB34 \uC624\uB798 \uAC78\uB9BD\uB2C8\uB2E4. \uB2E4\uC2DC \uC2DC\uB3C4\uD558\uC138\uC694.",
+      "@view.error.unsupported": (a, f) => "\uC774 \uAE30\uAE30\uC5D0\uC11C\uB294 \uC0AC\uC6A9\uD560 \uC218 \uC5C6\uC2B5\uB2C8\uB2E4.",
+      "@view.hour": (a, f) => "\uC2DC",
+      "@view.minute": (a, f) => "\uBD84",
+      "@view.nextMonth": (a, f) => "\uB2E4\uC74C \uB2EC",
+      "@view.options": (a, f) => "\uC635\uC158",
+      "@view.period": (a, f) => "\uC624\uC804/\uC624\uD6C4",
+      "@view.previousMonth": (a, f) => "\uC774\uC804 \uB2EC"
+    },
+    "pt": {
+      "@view.cancel": (a, f) => "Cancelar",
+      "@view.done": (a, f) => "OK",
+      "@view.error.failed": (a, f) => "N\xE3o funcionou. Tente novamente.",
+      "@view.error.limit": (a, f) => "Voc\xEA atingiu um limite. Tente novamente mais tarde.",
+      "@view.error.network": (a, f) => "N\xE3o foi poss\xEDvel conectar. Verifique sua conex\xE3o e tente novamente.",
+      "@view.error.notFound": (a, f) => "Isto n\xE3o est\xE1 mais dispon\xEDvel.",
+      "@view.error.permission": (a, f) => "\xC9 necess\xE1ria sua permiss\xE3o. Voc\xEA pode conced\xEA-la em Ajustes.",
+      "@view.error.timeout": (a, f) => "Est\xE1 demorando demais. Tente novamente.",
+      "@view.error.unsupported": (a, f) => "N\xE3o dispon\xEDvel neste dispositivo.",
+      "@view.hour": (a, f) => "Hora",
+      "@view.minute": (a, f) => "Minuto",
+      "@view.nextMonth": (a, f) => "Pr\xF3ximo m\xEAs",
+      "@view.options": (a, f) => "Op\xE7\xF5es",
+      "@view.period": (a, f) => "AM/PM",
+      "@view.previousMonth": (a, f) => "M\xEAs anterior"
+    },
+    "ru": {
+      "@view.cancel": (a, f) => "\u041E\u0442\u043C\u0435\u043D\u0430",
+      "@view.done": (a, f) => "\u0413\u043E\u0442\u043E\u0432\u043E",
+      "@view.error.failed": (a, f) => "\u041D\u0435 \u043F\u043E\u043B\u0443\u0447\u0438\u043B\u043E\u0441\u044C. \u041F\u043E\u043F\u0440\u043E\u0431\u0443\u0439\u0442\u0435 \u0435\u0449\u0451 \u0440\u0430\u0437.",
+      "@view.error.limit": (a, f) => "\u0414\u043E\u0441\u0442\u0438\u0433\u043D\u0443\u0442 \u043B\u0438\u043C\u0438\u0442. \u041F\u043E\u043F\u0440\u043E\u0431\u0443\u0439\u0442\u0435 \u043F\u043E\u0437\u0436\u0435.",
+      "@view.error.network": (a, f) => "\u041D\u0435\u0442 \u043F\u043E\u0434\u043A\u043B\u044E\u0447\u0435\u043D\u0438\u044F. \u041F\u0440\u043E\u0432\u0435\u0440\u044C\u0442\u0435 \u0441\u043E\u0435\u0434\u0438\u043D\u0435\u043D\u0438\u0435 \u0438 \u043F\u043E\u043F\u0440\u043E\u0431\u0443\u0439\u0442\u0435 \u0435\u0449\u0451 \u0440\u0430\u0437.",
+      "@view.error.notFound": (a, f) => "\u042D\u0442\u043E \u0431\u043E\u043B\u044C\u0448\u0435 \u043D\u0435\u0434\u043E\u0441\u0442\u0443\u043F\u043D\u043E.",
+      "@view.error.permission": (a, f) => "\u0422\u0440\u0435\u0431\u0443\u0435\u0442\u0441\u044F \u0432\u0430\u0448\u0435 \u0440\u0430\u0437\u0440\u0435\u0448\u0435\u043D\u0438\u0435. \u0415\u0433\u043E \u043C\u043E\u0436\u043D\u043E \u0434\u0430\u0442\u044C \u0432 \u043D\u0430\u0441\u0442\u0440\u043E\u0439\u043A\u0430\u0445.",
+      "@view.error.timeout": (a, f) => "\u042D\u0442\u043E \u0437\u0430\u043D\u0438\u043C\u0430\u0435\u0442 \u0441\u043B\u0438\u0448\u043A\u043E\u043C \u043C\u043D\u043E\u0433\u043E \u0432\u0440\u0435\u043C\u0435\u043D\u0438. \u041F\u043E\u043F\u0440\u043E\u0431\u0443\u0439\u0442\u0435 \u0435\u0449\u0451 \u0440\u0430\u0437.",
+      "@view.error.unsupported": (a, f) => "\u041D\u0435\u0434\u043E\u0441\u0442\u0443\u043F\u043D\u043E \u043D\u0430 \u044D\u0442\u043E\u043C \u0443\u0441\u0442\u0440\u043E\u0439\u0441\u0442\u0432\u0435.",
+      "@view.hour": (a, f) => "\u0427\u0430\u0441",
+      "@view.minute": (a, f) => "\u041C\u0438\u043D\u0443\u0442\u0430",
+      "@view.nextMonth": (a, f) => "\u0421\u043B\u0435\u0434\u0443\u044E\u0449\u0438\u0439 \u043C\u0435\u0441\u044F\u0446",
+      "@view.options": (a, f) => "\u041F\u0430\u0440\u0430\u043C\u0435\u0442\u0440\u044B",
+      "@view.period": (a, f) => "AM/PM",
+      "@view.previousMonth": (a, f) => "\u041F\u0440\u0435\u0434\u044B\u0434\u0443\u0449\u0438\u0439 \u043C\u0435\u0441\u044F\u0446"
+    },
+    "zh": {
+      "@view.cancel": (a, f) => "\u53D6\u6D88",
+      "@view.done": (a, f) => "\u5B8C\u6210",
+      "@view.error.failed": (a, f) => "\u64CD\u4F5C\u6CA1\u6709\u6210\u529F\uFF0C\u8BF7\u91CD\u8BD5\u3002",
+      "@view.error.limit": (a, f) => "\u5DF2\u8FBE\u5230\u4F7F\u7528\u4E0A\u9650\uFF0C\u8BF7\u7A0D\u540E\u518D\u8BD5\u3002",
+      "@view.error.network": (a, f) => "\u65E0\u6CD5\u8FDE\u63A5\uFF0C\u8BF7\u68C0\u67E5\u7F51\u7EDC\u540E\u91CD\u8BD5\u3002",
+      "@view.error.notFound": (a, f) => "\u5185\u5BB9\u5DF2\u4E0D\u5B58\u5728\u3002",
+      "@view.error.permission": (a, f) => "\u9700\u8981\u4F60\u7684\u6388\u6743\uFF0C\u53EF\u4EE5\u5728\u201C\u8BBE\u7F6E\u201D\u4E2D\u5F00\u542F\u3002",
+      "@view.error.timeout": (a, f) => "\u7B49\u5F85\u65F6\u95F4\u8FC7\u957F\uFF0C\u8BF7\u91CD\u8BD5\u3002",
+      "@view.error.unsupported": (a, f) => "\u6B64\u8BBE\u5907\u4E0D\u652F\u6301\u8BE5\u529F\u80FD\u3002",
+      "@view.hour": (a, f) => "\u65F6",
+      "@view.minute": (a, f) => "\u5206",
+      "@view.nextMonth": (a, f) => "\u4E0B\u4E2A\u6708",
+      "@view.options": (a, f) => "\u9009\u9879",
+      "@view.period": (a, f) => "\u4E0A\u5348/\u4E0B\u5348",
+      "@view.previousMonth": (a, f) => "\u4E0A\u4E2A\u6708"
+    }
+  };
+
+  // src/runtime/i18n.js
+  var catalogues = null;
+  function registerCatalogues(compiled) {
+    catalogues = compiled;
+    formatters.clear();
+  }
+  function registerLanguageCatalogue(tag, messages, formatter2, source3, declared2) {
+    catalogues ?? (catalogues = { source: source3, declared: declared2, languages: {}, formatter: formatter2 });
+    catalogues.languages[tag] = messages;
+    formatters.delete(tag);
+  }
+  function catalogueFor(language) {
+    const tags2 = catalogues.declared ?? Object.keys(catalogues.languages);
+    const lower = String(language ?? "").toLowerCase();
+    const exact = tags2.find((tag2) => tag2.toLowerCase() === lower);
+    const primary = lower.split("-")[0];
+    const tag = exact ?? tags2.find((tag2) => tag2.toLowerCase().split("-")[0] === primary) ?? catalogues.source;
+    return { tag, messages: catalogues.languages[tag] };
+  }
+  var join = (text) => Array.isArray(text) ? text.join("") : String(text);
+  function lxappText(key, language, args) {
+    if (!catalogues) return void 0;
+    const { tag, messages } = catalogueFor(language);
+    const message = messages?.[key];
+    return message ? join(message(args ?? {}, formatter(tag))) : void 0;
+  }
+  var formatters = /* @__PURE__ */ new Map();
+  function formatter(tag) {
+    let f = formatters.get(tag);
+    if (!f) formatters.set(tag, f = catalogues.formatter(tag));
+    return f;
+  }
+
+  // src/runtime/words.js
+  function word(key, language) {
+    const own2 = lxappText(key, language);
+    if (own2 !== void 0) return own2;
+    const table = words[String(language ?? "").split(/[-_]/)[0].toLowerCase()] ?? words[source2];
+    return (table[key] ?? words[source2][key])({}, null);
   }
 
   // src/runtime/calendar.js
@@ -5317,14 +5022,14 @@
     latest3.set(name, next);
     const named = readers2.get(name);
     for (const reader of named ?? []) {
-      const { key, cell: cell2 } = cellOf(reader.binding);
-      if (page.locals.get(key) !== cell2) {
+      const { key, cell } = cellOf(reader.binding);
+      if (page.locals.get(key) !== cell) {
         named.delete(reader);
         continue;
       }
       const current2 = reader.binding.value;
-      if (page.updates.has(cell2) || [...reader.read].some((field2) => !same3(current2[field2], next[field2]))) reader.binding.set(next);
-      else cell2.value = next;
+      if (page.updates.has(cell) || [...reader.read].some((field2) => !same3(current2[field2], next[field2]))) reader.binding.set(next);
+      else cell.value = next;
     }
   }
   function setWebFullscreen(session) {
@@ -5339,8 +5044,8 @@
         const next = Object.freeze({ ...prev, fullscreen: fullscreenSession === each });
         latest3.set(name, next);
         for (const reader of readers2.get(name) ?? []) {
-          const { key, cell: cell2 } = cellOf(reader.binding);
-          if (page.locals.get(key) === cell2) reader.binding.set(next);
+          const { key, cell } = cellOf(reader.binding);
+          if (page.locals.get(key) === cell) reader.binding.set(next);
         }
       }
       for (const handler of page.committed?.webFullscreenHandlers?.get(each) ?? []) {
@@ -5357,10 +5062,10 @@
       throw Error('UI_WEBVIEW: useWebView takes a name of 1..64 letters, digits, "_", "." or "-"');
     const session = `name:${name}`;
     const binding = local(name, latest3.get(name) ?? empty2, "webview");
-    const { cell: cell2 } = cellOf(binding);
-    let reader = cell2.webReader;
+    const { cell } = cellOf(binding);
+    let reader = cell.webReader;
     if (!reader) {
-      reader = cell2.webReader = { binding, read: /* @__PURE__ */ new Set() };
+      reader = cell.webReader = { binding, read: /* @__PURE__ */ new Set() };
       if (!readers2.has(name)) readers2.set(name, /* @__PURE__ */ new Set());
       readers2.get(name).add(reader);
     }
@@ -5612,8 +5317,8 @@
     const { type, event } = element.binding;
     const code = bindCodes[tag];
     if (props.bind !== void 0) {
-      const cell2 = cellOf(props.bind);
-      if (!cell2 || render.candidate.locals.get(cell2.key) !== cell2.cell || typeof props.bind.value !== type || props.value !== void 0)
+      const cell = cellOf(props.bind);
+      if (!cell || render.candidate.locals.get(cell.key) !== cell.cell || typeof props.bind.value !== type || props.value !== void 0)
         throw Error(`${code}: bind requires a mounted ${type} useLocal cell without value`);
       if (props[event] !== void 0 && typeof props[event] !== "function") throw Error(`${code}: ${event}`);
       const binding = props.bind, heard = props[event];
@@ -5672,10 +5377,10 @@
     if (typeof value !== "object" || Object.getPrototypeOf(value) !== Object.prototype) return false;
     return Object.values(value).every(plainJson);
   }
-  function seedLowered(text2) {
+  function seedLowered(text) {
     let value;
     try {
-      value = JSON.parse(text2);
+      value = JSON.parse(text);
     } catch {
       return false;
     }
@@ -6009,13 +5714,13 @@
       }, "text");
     }
     if (tag === "scroll" && props.bind !== void 0) {
-      const cell2 = props.bind, bound = cellOf(cell2);
-      if (!bound || render.candidate.locals.get(bound.key) !== bound.cell || !Number.isInteger(cell2.value) || cell2.value < 0)
+      const cell = props.bind, bound = cellOf(cell);
+      if (!bound || render.candidate.locals.get(bound.key) !== bound.cell || !Number.isInteger(cell.value) || cell.value < 0)
         throw Error("UI_PROP: bind on a <scroll> takes a mounted useLocal cell holding a snap index");
-      wire("snapIndex", cell2.value);
+      wire("snapIndex", cell.value);
       on("onSnapChange", (payload2) => {
         const index = Number(payload2);
-        if (Number.isInteger(index) && index >= 0 && cell2.value !== index) cell2.set(index);
+        if (Number.isInteger(index) && index >= 0 && cell.value !== index) cell.set(index);
       }, "text");
     }
     if (props[scrimMark]) wire("dragScrim", 1);
@@ -6482,16 +6187,16 @@
     return out;
   }
   function progressValues(role, props, wire, tag) {
-    const { ariaValueNow: now3, ariaValueMin: min, ariaValueMax: max, ariaValueText: text2 } = props;
-    if (now3 === void 0 && min === void 0 && max === void 0 && text2 === void 0) return;
+    const { ariaValueNow: now3, ariaValueMin: min, ariaValueMax: max, ariaValueText: text } = props;
+    if (now3 === void 0 && min === void 0 && max === void 0 && text === void 0) return;
     if (tag === "slider" && now3 === void 0 && min === void 0 && max === void 0) {
-      if (typeof text2 !== "string") throw Error("UI_PROP: aria-valuetext must be a string");
-      wire("ariaValueText", text2);
+      if (typeof text !== "string") throw Error("UI_PROP: aria-valuetext must be a string");
+      wire("ariaValueText", text);
       return;
     }
     if (role === "combobox") {
-      if (typeof text2 !== "string") throw Error("UI_PROP: aria-valuetext must be a string");
-      wire("ariaValueText", text2);
+      if (typeof text !== "string") throw Error("UI_PROP: aria-valuetext must be a string");
+      wire("ariaValueText", text);
       return;
     }
     const number = (value, name) => {
@@ -6501,11 +6206,11 @@
     number(min, "aria-valuemin");
     number(max, "aria-valuemax");
     if ((min ?? 0) >= (max ?? 100)) throw Error("UI_PROP: aria-valuemin must be below aria-valuemax");
-    if (text2 !== void 0 && typeof text2 !== "string") throw Error("UI_PROP: aria-valuetext must be a string");
+    if (text !== void 0 && typeof text !== "string") throw Error("UI_PROP: aria-valuetext must be a string");
     if (now3 !== void 0) wire("ariaValueNow", now3);
     if (min !== void 0) wire("ariaValueMin", min);
     if (max !== void 0) wire("ariaValueMax", max);
-    if (text2 !== void 0) wire("ariaValueText", text2);
+    if (text !== void 0) wire("ariaValueText", text);
   }
   var present = (value) => value !== void 0 && value !== false && !(typeof value === "string" && !value.trim());
   var breaks = (rule, kind, role, props) => rule.tags && !rule.tags.includes(kind) || rule.role && !rule.role.includes(role) || rule.with?.some((name) => !present(props[name])) || rule.not && Object.keys(rule.not).some((name) => rule.not[name].includes(props[name])) || rule.any?.every((alternative) => breaks(alternative, kind, role, props)) || rule.without?.some((name) => present(props[name]));
@@ -6604,7 +6309,7 @@
   }
   var dragPoint = /^-?\d+(\.\d+)?%$/;
   function dragElement(tag, props, wire, on, release, key) {
-    const { drag: axis, dragSnapPoints: points = [0], bind: cell2, snapIndex, onSnapChange, onDragStart, onDragEnd } = props;
+    const { drag: axis, dragSnapPoints: points = [0], bind: cell, snapIndex, onSnapChange, onDragStart, onDragEnd } = props;
     if (axis !== "x" && axis !== "y") throw Error('UI_PROP: drag is "x" or "y"');
     if (!Array.isArray(points) || !points.length || points.length > limits.dragSnapPoints || points.some((point) => typeof point === "number" ? !Number.isFinite(point) || Math.abs(point) > limits.styleNumber : typeof point !== "string" || !dragPoint.test(point) || Math.abs(parseFloat(point)) > 1e3))
       throw Error(`UI_PROP: dragSnapPoints are 1..${limits.dragSnapPoints} offsets in px or %`);
@@ -6613,14 +6318,14 @@
     for (const [name, value] of [["onDragStart", onDragStart], ["onDragEnd", onDragEnd], ["onSnapChange", onSnapChange]])
       if (value !== void 0 && typeof value !== "function") throw Error(`UI_PROP: ${name}`);
     let index = 0;
-    if (cell2 !== void 0) {
-      const bound = cellOf(cell2);
-      if (!bound || render.candidate.locals.get(bound.key) !== bound.cell || typeof cell2.value !== "number")
+    if (cell !== void 0) {
+      const bound = cellOf(cell);
+      if (!bound || render.candidate.locals.get(bound.key) !== bound.cell || typeof cell.value !== "number")
         throw Error("UI_PROP: bind on a drag element takes a mounted number useLocal cell");
-      index = cell2.value;
+      index = cell.value;
     } else if (snapIndex !== void 0) index = snapIndex;
     if (!Number.isInteger(index) || index < 0 || index >= points.length) throw Error("UI_PROP: the bound snap index is out of range");
-    const sent = cell2 === void 0 && snapIndex !== void 0 ? controlledSnap(key, index) : index;
+    const sent = cell === void 0 && snapIndex !== void 0 ? controlledSnap(key, index) : index;
     wire("drag", JSON.stringify({ axis, points, index: sent, ...release ? { release } : {} }));
     const close = props[dragClose];
     on("onDragEvent", (payload2) => {
@@ -6628,7 +6333,7 @@
       if (event.phase === "start") onDragStart?.();
       else if (event.phase === "end") onDragEnd?.({ index: event.index, velocity: event.velocity });
       else if (event.phase === "settle" && Number.isInteger(event.index) && event.index >= 0 && event.index < points.length) {
-        if (cell2 !== void 0 && cell2.value !== event.index) cell2.set(event.index);
+        if (cell !== void 0 && cell.value !== event.index) cell.set(event.index);
         else if (snapIndex !== void 0) {
           snapSettled(key, event.index, index, onSnapChange && event.index !== index ? () => onSnapChange(event.index) : void 0);
         } else if (onSnapChange && event.index !== index) onSnapChange(event.index);
@@ -6927,7 +6632,7 @@
     const title = words2.title(words2.months[focus.month - 1], focus.year);
     const cells2 = monthGrid(focus, first);
     const rows = Array.from({ length: 6 }, (_, week) => cells2.slice(week * 7, week * 7 + 7));
-    const cell2 = ({ date, inMonth }) => {
+    const cell = ({ date, inMonth }) => {
       const id = iso2(date), enabled = within(date, min, max);
       const selected = titled ? value && compare(date, value) === 0 : picker.pick !== null && compare(date, picker.pick) === 0;
       const focused = (titled || picker.keyed) && compare(date, focus) === 0, isToday = compare(date, now3) === 0;
@@ -6979,7 +6684,7 @@
           key: `w${day}`,
           style: { width: 36, textAlign: "center", fontSize: 12, color: "text-muted" }
         }, words2.days[day]))),
-        ...rows.map((week, index) => h("view", { key: `r${index}`, style: { flexDirection: "row", gap: 2 } }, ...week.map(cell2)))
+        ...rows.map((week, index) => h("view", { key: `r${index}`, style: { flexDirection: "row", gap: 2 } }, ...week.map(cell)))
       )
     );
   }
@@ -7118,11 +6823,11 @@
       style: unpicked ? { ...style2, color: "text-faint" } : style2
     }, words2.done);
     const monthTitle = picker.kind === "date" && words2.title(words2.months[picker.focus.month - 1], picker.focus.year);
-    const text2 = { paddingTop: 8, paddingBottom: 8, paddingLeft: 4, paddingRight: 4, fontSize: 16, backgroundColor: "transparent" };
+    const text = { paddingTop: 8, paddingBottom: 8, paddingLeft: 4, paddingRight: 4, fontSize: 16, backgroundColor: "transparent" };
     const toolbar = touch && h(
       "view",
       { style: { flexDirection: "row", alignItems: "center", gap: 8 } },
-      cancel({ ...text2, color: "text-muted" }),
+      cancel({ ...text, color: "text-muted" }),
       h(
         "text",
         {
@@ -7132,7 +6837,7 @@
         },
         monthTitle || (picker.kind === "time" ? clock3(picker.value, words2, env) : picker.label || "")
       ),
-      done({ ...text2, color: "accent", fontWeight: 600 })
+      done({ ...text, color: "accent", fontWeight: 600 })
     );
     const button = { paddingTop: 8, paddingBottom: 8, paddingLeft: 14, paddingRight: 14, borderRadius: 8, fontSize: 15 };
     const footer = !touch && picker.kind === "time" && h(
@@ -7269,13 +6974,7 @@
       if (!candidate.tree || candidate.tree.fragment) throw Error("UI_ROOT: page must return one layout node");
       if (candidate.tree.lifted) throw Error("UI_ROOT: a <text> page root has no place for a popover it holds; wrap it in <view>");
       candidate.tree = { ...candidate.tree, children: [...candidate.tree.children] };
-      const env = envOf(view), overlay = overlayNode(env);
-      if (overlay) candidate.tree.children.push(decorateOverlay(resolveNode(
-        overlay,
-        `root/${candidate.tree.element}/key:"lx-overlay"`,
-        1,
-        { tag: candidate.tree.element, typography: candidate.tree.typography }
-      ), env));
+      const env = envOf(view);
       const fallback = fullscreenFallback();
       const bare = fallback && resolveBare(() => resolveNode(
         fallback,
@@ -7358,7 +7057,7 @@
     const { candidate } = render;
     if (!candidate) throw Error("UI_COMMIT: no candidate");
     const previous = page.committed;
-    for (const cell2 of candidate.locals.values()) if (page.updates.has(cell2)) cell2.value = page.updates.get(cell2);
+    for (const cell of candidate.locals.values()) if (page.updates.has(cell)) cell.value = page.updates.get(cell);
     commitClock();
     page.locals = candidate.locals;
     page.callbacks = candidate.callbacks;
@@ -7366,18 +7065,18 @@
     render.candidate = null;
     page.updates.clear();
     page.invalidated = candidate.invalidateAfterCommit === true;
-    for (const { key, cell: cell2, index } of candidate.dragResets ?? []) {
-      if (page.locals.get(key) !== cell2 || cell2.value === index) continue;
-      page.updates.set(cell2, index);
+    for (const { key, cell, index } of candidate.dragResets ?? []) {
+      if (page.locals.get(key) !== cell || cell.value === index) continue;
+      page.updates.set(cell, index);
       page.invalidated = true;
     }
     const retained = new Set(page.locals.values()), next = /* @__PURE__ */ new Map(), definitions = /* @__PURE__ */ new Map();
-    for (const [cell2, resource] of page.resources) if (!retained.has(cell2)) resource.dispose();
-    for (const cell2 of retained) {
-      const entry = candidate.resources.get(cell2) ?? previous?.resources.get(cell2);
+    for (const [cell, resource] of page.resources) if (!retained.has(cell)) resource.dispose();
+    for (const cell of retained) {
+      const entry = candidate.resources.get(cell) ?? previous?.resources.get(cell);
       if (!entry) continue;
-      definitions.set(cell2, entry);
-      next.set(cell2, entry.resource);
+      definitions.set(cell, entry);
+      next.set(cell, entry.resource);
       entry.resource.commit(entry.definition);
     }
     candidate.resources = definitions;
@@ -7455,10 +7154,10 @@
   var accepts2 = (kind, value) => kind === "number" ? typeof value === "number" && Number.isFinite(value) && Math.abs(value) <= 1e9 : kind === "text" ? validInputText(value) : kind === "paste" ? typeof value === "string" : kind === "check" ? value === void 0 || typeof value === "boolean" : value === void 0;
   var pressEvent = (timeStamp) => Object.freeze({ timeStamp: typeof timeStamp === "number" ? timeStamp : Date.now() });
   function pasteEvent(payload2, timeStamp) {
-    const { text: text2, html, selection, plain: plain3, omitted = [] } = JSON.parse(payload2);
+    const { text, html, selection, plain: plain3, omitted = [] } = JSON.parse(payload2);
     const state = { prevented: false, open: true };
     const event = Object.freeze({
-      text: text2,
+      text,
       ...typeof html === "string" ? { html } : {},
       files: Object.freeze([]),
       omitted: Object.freeze([...omitted]),
@@ -7502,7 +7201,7 @@
         report(error instanceof Error ? error.message : String(error));
         return true;
       }
-      for (const [cell2, kept2] of previous) page.updates.set(cell2, kept2);
+      for (const [cell, kept2] of previous) page.updates.set(cell, kept2);
       report(error);
       return true;
     }
@@ -7516,12 +7215,12 @@
   // src/runtime/hot-swap.js
   function exportState() {
     const locals = [];
-    for (const [key, cell2] of page.locals)
-      if (JSON.parse(key).length === 2) locals.push([key, page.updates.has(cell2) ? page.updates.get(cell2) : cell2.value]);
+    for (const [key, cell] of page.locals)
+      if (JSON.parse(key).length === 2) locals.push([key, page.updates.has(cell) ? page.updates.get(cell) : cell.value]);
     return JSON.stringify(locals);
   }
-  function importState(text2) {
-    for (const [key, value] of JSON.parse(text2)) page.locals.set(key, { value: immutable(value, 0, true) });
+  function importState(text) {
+    for (const [key, value] of JSON.parse(text)) page.locals.set(key, { value: immutable(value, 0, true) });
   }
   function enableHotSwap() {
     Object.assign(globalThis, { __lingxiaExportState: exportState, __lingxiaImportState: importState });
@@ -7547,8 +7246,7 @@
     const picker2 = hasPicker();
     if (picker2) closePicker();
     const popovers = closePassing();
-    const sheets2 = cancelSheets();
-    return picker2 || popovers || sheets2;
+    return picker2 || popovers;
   }
   function publishHost(render2, catalog2, page2) {
     setActionPage(page2);
@@ -7578,7 +7276,6 @@
       __lingxiaSetNow: setNow,
       __lingxiaAutomationAction: automationAction,
       __lingxiaTakeAutomationResults: takeAutomationResults,
-      __lingxiaViewCall: viewCall,
       __lingxiaOverlayTimer: overlayTimer,
       __lingxiaTakeOverlayTimers: takeOverlayTimers,
       __lingxiaEscape: escapeOverlay,

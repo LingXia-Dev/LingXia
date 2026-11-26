@@ -171,17 +171,6 @@ pub(crate) const BRIDGE_MALFORMED_MESSAGE: &str = "BRIDGE_MALFORMED_MESSAGE";
 pub(crate) const BRIDGE_METHOD_NOT_FOUND: &str = "BRIDGE_METHOD_NOT_FOUND";
 pub(crate) const BRIDGE_TOPIC_NOT_FOUND: &str = "BRIDGE_TOPIC_NOT_FOUND";
 
-#[derive(Serialize)]
-struct ViewReqOut {
-    v: u8,
-    kind: &'static str,
-    id: String,
-    method: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    params: Option<Value>,
-    cap: String,
-}
-
 // ViewTransport — posting messages back to the WebView
 pub(crate) trait ViewTransport {
     fn post_message_to_view(&self, message_json: String) -> Result<(), lingxia_error::Error>;
@@ -864,7 +853,7 @@ impl PageBridge {
         // replacement that wins the race before this code runs.
         self.inner.pending_requests.cancel_work(connection.work_id);
         self.cancel_host_notifies_for_work(connection.work_id);
-        crate::view_call::cancel_view_calls_for_work(
+        crate::gpu_request::cancel_for_work(
             connection.work_id,
             page.instance_id_string().as_str(),
             "Document session revoked",
@@ -1108,12 +1097,7 @@ impl PageBridge {
                 }
                 let result = outcome.map_err(RpcError::from);
                 let page_instance_id = page.instance_id_string();
-                crate::view_call::resolve_view_call(
-                    &id,
-                    Some(&page_instance_id),
-                    work.work_id,
-                    result,
-                );
+                crate::gpu_request::resolve(&id, Some(&page_instance_id), work.work_id, result);
                 Ok(())
             }
         }
@@ -1136,7 +1120,6 @@ impl PageBridge {
             IncomingMessage::Req(msg) => {
                 self.handle_req(page, context, msg, &decoded.work, decoded.ready)
             }
-            IncomingMessage::Res(msg) => self.handle_res(page, context, msg, &decoded.work),
             IncomingMessage::Notify(msg) => {
                 self.handle_notify(page, context, msg, &decoded.work, decoded.ready)
             }
@@ -1209,35 +1192,6 @@ impl PageBridge {
                 "GPU Views must invoke host APIs through Logic actions",
             ));
         }
-        Ok(())
-    }
-
-    fn handle_res(
-        &self,
-        page: &PageInstance,
-        _context: &BridgeMessageContext,
-        msg: &ResMsg,
-        work: &CapturedSessionWork,
-    ) -> Result<(), lingxia_error::Error> {
-        if !self.is_current_work(work.work_id) {
-            return Ok(());
-        }
-
-        let result = if msg.ok {
-            Ok(msg.result.clone().unwrap_or(Value::Null))
-        } else {
-            let err = msg.error.as_ref();
-            Err(RpcError {
-                code: err
-                    .map(|e| e.normalized_code())
-                    .unwrap_or_else(|| code::INTERNAL.to_string()),
-                message: err.and_then(|e| e.message.clone()),
-                reason: err.and_then(|e| e.reason.clone()),
-                data: err.and_then(|e| e.data.clone()),
-            })
-        };
-        let page_instance_id = page.instance_id_string();
-        crate::view_call::resolve_view_call(&msg.id, Some(&page_instance_id), work.work_id, result);
         Ok(())
     }
 
@@ -1817,32 +1771,6 @@ impl PageBridge {
             ok: true,
             result: Some(result),
             error: None,
-        };
-        self.send_json_for_context(transport, work_id, outbound, &msg)
-    }
-
-    pub(crate) fn send_view_request_for_context<T: ViewTransport>(
-        &self,
-        transport: &T,
-        work_id: Option<SessionWorkId>,
-        outbound: Option<&OutboundContext>,
-        id: String,
-        method: String,
-        params: Option<Value>,
-        cap: String,
-    ) -> Result<(), lingxia_error::Error> {
-        if let Some(outbound) = gpu(outbound) {
-            let request = crate::GpuViewRequest::from_call(&method, params)
-                .map_err(|(code, message)| lingxia_error::Error::new(code, message))?;
-            return self.send_gpu_request_for_context(work_id, Some(outbound), id, request);
-        }
-        let msg = ViewReqOut {
-            v: 2,
-            kind: "req",
-            id,
-            method,
-            params,
-            cap,
         };
         self.send_json_for_context(transport, work_id, outbound, &msg)
     }
@@ -3215,23 +3143,6 @@ mod tests {
         assert_eq!(
             serialize_seq_frame_with_payload("ch.data", "ch-1".to_string(), 3, "true").unwrap(),
             r#"{"v":2,"kind":"ch.data","id":"ch-1","seq":3,"payload":true}"#
-        );
-    }
-
-    #[test]
-    fn v2_view_request_wire_is_byte_stable() {
-        let frame = serde_json::to_string(&ViewReqOut {
-            v: 2,
-            kind: "req",
-            id: "lv_1".to_string(),
-            method: "view.confirm".to_string(),
-            params: Some(serde_json::json!({ "title": "Confirm" })),
-            cap: "view".to_string(),
-        })
-        .unwrap();
-        assert_eq!(
-            frame,
-            r#"{"v":2,"kind":"req","id":"lv_1","method":"view.confirm","params":{"title":"Confirm"},"cap":"view"}"#
         );
     }
 

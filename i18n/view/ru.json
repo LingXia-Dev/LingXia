@@ -5,9 +5,6 @@
   "@view.done": {
     "defaultMessage": "Готово"
   },
-  "@view.ok": {
-    "defaultMessage": "ОК"
-  },
   "@view.previousMonth": {
     "defaultMessage": "Предыдущий месяц"
   },
@@ -25,12 +22,6 @@
   },
   "@view.options": {
     "defaultMessage": "Параметры"
-  },
-  "@view.dialog": {
-    "defaultMessage": "Диалоговое окно"
-  },
-  "@view.actions": {
-    "defaultMessage": "Действия"
   },
   "@view.error.failed": {
     "defaultMessage": "Не получилось. Попробуйте ещё раз."

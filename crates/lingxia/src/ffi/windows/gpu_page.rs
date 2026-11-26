@@ -697,24 +697,31 @@ impl NativePage for WindowsPage {
         dispatcher.post(Box::new(move || {
             let mut answer = None;
             with_page(token, |page| {
-                answer = Some(if request["op"] != "screenshot" {
-                    page.host().automation_request(&request)
-                } else {
-                    use base64::Engine;
-                    match page.screenshot_png() {
-                        Ok(Some(png)) => Ok(serde_json::json!({
-                            "png": base64::engine::general_purpose::STANDARD.encode(png)
-                        })),
-                        Ok(None) => Err("E_PAGE_NOT_READY: no presented frame".into()),
-                        Err(error) => Err(error),
-                    }
-                });
+                answer = Some(automation_answer(page, &request))
             });
             reply(answer.unwrap_or_else(|| Err("page is not active".into())));
         }));
     }
     fn as_any(&self) -> &dyn std::any::Any {
         self
+    }
+}
+
+/// A page's answer to automation `request`, on its thread after the presented frame.
+pub(super) fn automation_answer(
+    page: &Page,
+    request: &serde_json::Value,
+) -> Result<serde_json::Value, String> {
+    if request["op"] != "screenshot" {
+        return page.host().automation_request(request);
+    }
+    use base64::Engine;
+    match page.screenshot_png() {
+        Ok(Some(png)) => Ok(serde_json::json!({
+            "png": base64::engine::general_purpose::STANDARD.encode(png)
+        })),
+        Ok(None) => Err("E_PAGE_NOT_READY: no presented frame".into()),
+        Err(error) => Err(error),
     }
 }
 

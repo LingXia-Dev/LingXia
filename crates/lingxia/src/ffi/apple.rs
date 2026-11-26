@@ -893,11 +893,6 @@ mod bridge {
         #[swift_bridge(swift_name = "LxApp.lxappRegistryChanged")]
         fn lxapp_registry_changed();
 
-        // Pin / App Link refused to open because the registry said maintain or
-        // suspended. Host chrome shows the notice; there is no JS catch here.
-        #[swift_bridge(swift_name = "LxApp.showLxappUnavailable")]
-        fn show_lxapp_unavailable(status: &str);
-
         // The page an `awaitPageWebView` call waits for has its WebView
         // (`ready`), or never will (failed, or no longer there).
         #[swift_bridge(swift_name = "LxApp.pageWebViewReady")]
@@ -987,13 +982,44 @@ pub fn lingxia_prepare_dev_bundles(data_dir: &str, cache_dir: &str, locale: &str
     let _ = (data_dir, cache_dir, locale);
 }
 
+/// An lxapp the user opened is under maintenance or suspended: an alert on the feedback layer
+/// over the shell says so, since the open did nothing else.
+#[cfg(feature = "standard")]
+fn show_lxapp_unavailable(status: lxapp::LxAppStatus) {
+    use lingxia_logic::I18nKey;
+    use lxapp::feedback::FeedbackDialog;
+    let key = match status {
+        lxapp::LxAppStatus::Maintain => I18nKey::LxappUnavailableMaintain,
+        lxapp::LxAppStatus::Suspended => I18nKey::LxappUnavailableSuspended,
+        _ => return,
+    };
+    let Some(layer) = lxapp::feedback::feedback_layer() else {
+        return;
+    };
+    let language = lxapp::display_language();
+    let alert = FeedbackDialog::Alert {
+        title: I18nKey::LxappUnavailableTitle.get(&language).to_string(),
+        message: key.get(&language).to_string(),
+        confirm: None,
+        destructive: false,
+    };
+    if let Err(error) = layer.dialog("", &language, alert) {
+        log::warn!("lxapp unavailable notice not shown: {error}");
+    }
+}
+
+#[cfg(not(feature = "standard"))]
+fn show_lxapp_unavailable(status: lxapp::LxAppStatus) {
+    log::warn!("lxapp unavailable: {}", status.as_str());
+}
+
 /// Initialize the Lingxia SDK for iOS/macOS
 pub fn lingxia_init(data_dir: &str, cache_dir: &str, locale: &str) -> bridge::LingxiaInitResult {
     crate::logging::init();
     install_browser_native_input_host();
     install_browser_present_handler();
     gpu_page::install();
-    #[cfg(all(target_os = "macos", feature = "standard"))]
+    #[cfg(feature = "standard")]
     gpu_page::install_overlays();
     lxapp::add_display_language_effective_listener(Box::new(|_| {
         self::bridge::display_language_changed();
@@ -1001,9 +1027,7 @@ pub fn lingxia_init(data_dir: &str, cache_dir: &str, locale: &str) -> bridge::Li
     lxapp::set_lxapp_registry_change_listener(Box::new(|_appids| {
         self::bridge::lxapp_registry_changed();
     }));
-    lxapp::set_lxapp_open_blocked_listener(Box::new(|status| {
-        self::bridge::show_lxapp_unavailable(status.as_str());
-    }));
+    lxapp::set_lxapp_open_blocked_listener(Box::new(show_lxapp_unavailable));
 
     log::info!(
         "Initializing Lingxia SDK with data_dir: {}, cache_dir: {}",

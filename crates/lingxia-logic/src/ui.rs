@@ -122,38 +122,18 @@ where
     outcome
 }
 
-/// The window feedback layer on the platforms [`lxapp::feedback::LAYER`] marks.
+/// The window feedback layer, which shows every toast, dialog and action sheet.
 fn feedback_layer() -> JSResult<&'static dyn lxapp::feedback::FeedbackLayer> {
     lxapp::feedback::feedback_layer().ok_or_else(|| {
         crate::i18n::js_service_unavailable_error("the window feedback layer is not installed")
     })
 }
 
-/// Close the modal and action sheet on screen, natively or in the View that drew them.
+/// Close the lxapp's modal and action sheet, shown or queued.
 async fn dismiss_dialog(lxapp: Arc<LxApp>) {
-    if lxapp::feedback::LAYER {
-        match feedback_layer() {
-            Ok(layer) => layer.dismiss(&lxapp.appid),
-            Err(error) => log::warn!("dismissing a dialog failed: {error:?}"),
-        }
-        return;
-    }
-    #[cfg(any(target_os = "macos", target_os = "windows"))]
-    let result = lxapp
-        .call_view::<serde_json::Value>("ui.dismissDialog")
-        .await
-        .map(|_| ())
-        .map_err(|error| error.to_string());
-    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
-    let result = {
-        use lingxia_platform::traits::ui::UserFeedback;
-        lxapp
-            .runtime
-            .dismiss_dialog()
-            .map_err(|error| error.to_string())
-    };
-    if let Err(error) = result {
-        log::warn!("dismissing a dialog failed: {error}");
+    match feedback_layer() {
+        Ok(layer) => layer.dismiss(&lxapp.appid),
+        Err(error) => log::warn!("dismissing a dialog failed: {error:?}"),
     }
 }
 
@@ -170,11 +150,11 @@ fn ui_namespace(ctx: &JSContext) -> JSResult<JSObject> {
     }
 }
 
-/// `tone: 'danger'` marks a destructive choice; the host draws it in red.
-fn tone_color(tone: Option<&str>) -> JSResult<Option<String>> {
+/// `tone: 'danger'` marks a destructive choice; the layer draws it in red.
+fn destructive(tone: Option<&str>) -> JSResult<bool> {
     match tone {
-        None | Some("default") => Ok(None),
-        Some("danger") => Ok(Some("#FF3B30".to_string())),
+        None | Some("default") => Ok(false),
+        Some("danger") => Ok(true),
         Some(other) => Err(crate::i18n::js_invalid_parameter_error(format!(
             "tone must be 'default' or 'danger', got '{other}'"
         ))),
@@ -253,12 +233,6 @@ mod test_layer {
         fn dismiss(&self, _: &str) {}
         fn forget(&self, _: &str) {}
     }
-
-    /// The desktop switched first: macOS takes the layer, the rest keep their presenters.
-    #[test]
-    fn the_layer_is_switched_on_for_macos_only() {
-        assert_eq!(lxapp::feedback::LAYER, cfg!(target_os = "macos"));
-    }
 }
 
 #[cfg(test)]
@@ -266,7 +240,6 @@ mod dismiss_tests {
     use super::dismissable;
     use crate::dismissal::USER_DISMISSED;
     use lingxia_error::Error;
-    use lingxia_platform::traits::ui::{ModalOptions, ToastOptions, UserFeedback};
     use rong::{JSContext, JSEngine, JSObject, JSResult, Source};
     use std::future::Future;
     use std::sync::atomic::{AtomicUsize, Ordering};
@@ -311,19 +284,9 @@ mod dismiss_tests {
         }
     }
 
-    impl UserFeedback for FakeFeedback {
-        fn show_toast(&self, _: ToastOptions) -> Result<(), Error> {
-            Ok(())
-        }
-
-        fn hide_toast(&self) -> Result<(), Error> {
-            Ok(())
-        }
-
-        fn show_modal(
-            &self,
-            _: ModalOptions,
-        ) -> impl Future<Output = Result<String, Error>> + Send {
+    impl FakeFeedback {
+        /// A dialog that stays up until answered or dismissed.
+        fn show_modal(&self) -> impl Future<Output = Result<String, Error>> + use<> {
             let this = self.clone();
             async move {
                 let delay = *this.present_after.lock().unwrap();
@@ -335,33 +298,11 @@ mod dismiss_tests {
             }
         }
 
-        async fn show_action_sheet(
-            &self,
-            _: Vec<String>,
-            _: String,
-            _: String,
-        ) -> Result<String, Error> {
-            Err(Error::not_supported("sheet"))
-        }
-
-        fn dismiss_dialog(&self) -> Result<(), Error> {
+        fn dismiss_dialog(&self) {
             self.dismissed.fetch_add(1, Ordering::SeqCst);
             if let Some(answer) = self.on_screen.lock().unwrap().take() {
                 let _ = answer.send(Err(Error::business(USER_DISMISSED, "dismissed")));
             }
-            Ok(())
-        }
-    }
-
-    fn options() -> ModalOptions {
-        ModalOptions {
-            title: "Delete?".into(),
-            content: String::new(),
-            show_cancel: true,
-            cancel_text: "Cancel".into(),
-            cancel_color: None,
-            confirm_text: "OK".into(),
-            confirm_color: None,
         }
     }
 
@@ -381,7 +322,7 @@ mod dismiss_tests {
         signal: Option<JSObject>,
         owner: Option<super::OwnerEnd>,
     ) -> impl Future<Output = JSResult<bool>> {
-        let shown = feedback.show_modal(options());
+        let shown = feedback.show_modal();
         let work = async move {
             match shown.await {
                 Ok(payload) => Ok(payload.contains("true")),
@@ -395,7 +336,7 @@ mod dismiss_tests {
             dismissable(&ctx, signal, owner, work, || {
                 let host = host.clone();
                 async move {
-                    let _ = host.dismiss_dialog();
+                    host.dismiss_dialog();
                 }
             })
             .await

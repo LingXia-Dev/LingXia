@@ -50,6 +50,7 @@ object LxApp {
         currentActivity = activity
         UpdateManager.init(activity)
         if (activity == null) return
+        GpuOverlays.restack()
         if (activityWaiters.isNotEmpty()) {
             val prompts = activityWaiters.toList()
             activityWaiters.clear()

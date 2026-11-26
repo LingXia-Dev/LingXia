@@ -6,7 +6,6 @@ use lingxia_platform::traits::ui::{Appearance, UIUpdate};
 #[cfg(feature = "js-appservice")]
 use rong::{JSContext, JSResult, Source, error::HostError};
 use serde::Serialize;
-use serde::de::DeserializeOwned;
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::fs;
 use std::hash::{DefaultHasher, Hash, Hasher};
@@ -27,7 +26,7 @@ use self::page_chrome::{
 };
 use crate::appservice::{LxAppWorkers, WorkerTermination};
 use crate::page::config::{OrientationConfig, PageConfig, resolve_orientation};
-use crate::page::{PageInstance, PageInstanceId, ViewCallOptions};
+use crate::page::{PageInstance, PageInstanceId};
 use crate::startup::{LxAppStartupOptions, Scene};
 use crate::update::UpdateManager;
 use crate::{debug, error, info, warn};
@@ -2369,7 +2368,7 @@ impl LxApp {
             .iter()
             .map(|page| page.instance_id_string())
             .collect::<Vec<_>>();
-        crate::view_call::cancel_view_calls_for_page_instances(
+        crate::gpu_request::cancel_for_page_instances(
             &page_instance_ids,
             "PageInstance removed while waiting for view response",
         );

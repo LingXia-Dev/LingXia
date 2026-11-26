@@ -566,7 +566,7 @@ impl LxApp {
         let webview = page.webview();
         page.detach_webview();
 
-        crate::view_call::cancel_view_calls_for_page_instances(
+        crate::gpu_request::cancel_for_page_instances(
             &[id.to_string()],
             "PageInstance disposed while waiting for view response",
         );
@@ -855,7 +855,7 @@ impl LxApp {
                         .with_appid(self.appid.clone())
                         .with_path(removed_page.path())
                 });
-            crate::view_call::cancel_view_calls_for_page_instances(
+            crate::gpu_request::cancel_for_page_instances(
                 std::slice::from_ref(&id),
                 "PageInstance evicted while waiting for view response",
             );
@@ -914,7 +914,7 @@ impl LxApp {
 
     /// Remove specific page instances and terminate their PageSvc.
     pub fn remove_pages(&self, instance_ids: &[String]) {
-        crate::view_call::cancel_view_calls_for_page_instances(
+        crate::gpu_request::cancel_for_page_instances(
             instance_ids,
             "PageInstance removed while waiting for view response",
         );
@@ -1210,55 +1210,6 @@ impl LxApp {
                 .then_with(|| left.instance_id.cmp(&right.instance_id))
         });
         infos
-    }
-
-    /// Call the current page View method without a payload and deserialize the response.
-    pub async fn call_view<R>(&self, method: &str) -> Result<R, lingxia_error::Error>
-    where
-        R: DeserializeOwned,
-    {
-        self.current_page()?.call_view(method).await
-    }
-
-    /// Call the current page View method without a payload using explicit call options.
-    pub async fn call_view_in<R>(
-        &self,
-        method: &str,
-        options: ViewCallOptions,
-    ) -> Result<R, lingxia_error::Error>
-    where
-        R: DeserializeOwned,
-    {
-        self.current_page()?.call_view_in(method, options).await
-    }
-
-    /// Call the current page View method with a typed payload and deserialize the response.
-    pub async fn call_view_with<P, R>(
-        &self,
-        method: &str,
-        params: &P,
-    ) -> Result<R, lingxia_error::Error>
-    where
-        P: Serialize + ?Sized,
-        R: DeserializeOwned,
-    {
-        self.current_page()?.call_view_with(method, params).await
-    }
-
-    /// Call the current page View method with explicit call options.
-    pub async fn call_view_with_in<P, R>(
-        &self,
-        method: &str,
-        params: &P,
-        options: ViewCallOptions,
-    ) -> Result<R, lingxia_error::Error>
-    where
-        P: Serialize + ?Sized,
-        R: DeserializeOwned,
-    {
-        self.current_page()?
-            .call_view_with_in(method, params, options)
-            .await
     }
 
     pub(crate) fn recover_terminated_renderers(&self) {

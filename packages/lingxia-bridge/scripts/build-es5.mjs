@@ -49,7 +49,6 @@ function runRolldown() {
         shell: process.platform === "win32",
         env: {
           ...process.env,
-          LX_RUNTIME_PLATFORM: "mobile",
           RUNTIME_OUTPUT: path.basename(tempFile),
         },
       },

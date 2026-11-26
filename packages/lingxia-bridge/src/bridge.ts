@@ -764,7 +764,6 @@ type Incoming =
   | HelloAck
   | Ready
   | Res
-  | Req
   | StreamEventMsg
   | StateSnapshot
   | StatePatch
@@ -1125,19 +1124,6 @@ let stateRev = -1;
 let pageData: Record<string, unknown> = {};
 const dataSubscribers = new Set<DataSubscriber>();
 const subscriberInitStatus = new WeakMap<DataSubscriber, boolean>();
-
-// Logic→View method handlers (for incoming req from native side)
-const viewMethodHandlers = new Map<
-  string,
-  (params: unknown) => unknown | Promise<unknown>
->();
-
-export function registerViewMethodHandler(
-  method: string,
-  handler: (params: unknown) => unknown | Promise<unknown>,
-): void {
-  viewMethodHandlers.set(method, handler);
-}
 
 function inferCap(method: string): string {
   if (method.startsWith("host.")) return "host";
@@ -1720,53 +1706,6 @@ function handleIncomingMessage(msg: unknown): void {
       channel._emitClose(
         message.error === undefined ? {} : { error: toBridgeError(message.error) },
       );
-      return;
-    }
-
-    case "req": {
-      const reqMsg = message as Req;
-      const requiredCap = inferCap(reqMsg.method);
-      if (!reqMsg.cap || reqMsg.cap !== requiredCap) {
-        send({
-          v: 2,
-          kind: "res",
-          id: reqMsg.id,
-          ok: false,
-          error: {
-            code: BRIDGE_ERROR.CAPABILITY_DENIED,
-            message: `Invalid cap for ${reqMsg.method}`,
-          },
-        } as Res);
-        return;
-      }
-      const handler = viewMethodHandlers.get(reqMsg.method);
-      if (!handler) {
-        send({
-          v: 2,
-          kind: "res",
-          id: reqMsg.id,
-          ok: false,
-          error: {
-            code: BRIDGE_ERROR.METHOD_NOT_FOUND,
-            message: `View handler not found: ${reqMsg.method}`,
-          },
-        } as Res);
-        return;
-      }
-      Promise.resolve()
-        .then(() => handler(reqMsg.params))
-        .then((result) => {
-          send({ v: 2, kind: "res", id: reqMsg.id, ok: true, result } as Res);
-        })
-        .catch((err) => {
-          send({
-            v: 2,
-            kind: "res",
-            id: reqMsg.id,
-            ok: false,
-            error: toBridgeError(err),
-          } as Res);
-        });
       return;
     }
   }

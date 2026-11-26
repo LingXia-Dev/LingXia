@@ -1,6 +1,8 @@
-//! The macOS window overlay surface: a borderless transparent child window over the window that
-//! holds the caller's presentation (the shell, or an lxapp's own window or float), holding a
-//! see-through GPU page whose Logic is Rust. Every page call runs on the main thread.
+//! The Apple window overlay surface: a see-through GPU page whose Logic is Rust, over the window
+//! that holds the caller's presentation. macOS hosts it in a borderless transparent child window
+//! (the shell, or an lxapp's own window or float); iOS in a view over the scene's topmost LingXia
+//! presentation, whose one window Swift reports as window 1. Every page call runs on the main
+//! thread.
 use super::live::{self, Bridge};
 use crate::feedback::Feedback;
 use lingxia_view_apple::Page;
@@ -76,9 +78,9 @@ fn overlays() -> MutexGuard<'static, HashMap<i64, (WindowId, OverlayLogic)>> {
     OVERLAYS.lock().unwrap_or_else(|p| p.into_inner())
 }
 
-/// Install the window feedback layer over macOS overlays; called once at startup.
+/// Install the window feedback layer over Apple overlays; called once at startup.
 pub(crate) fn install() {
-    let _ = FEEDBACK.set(crate::feedback::install(Arc::new(MacOverlays)));
+    let _ = FEEDBACK.set(crate::feedback::install(Arc::new(AppleOverlays)));
 }
 
 /// View worker: overlay `token`'s Logic, or `None` when `token` is an lxapp page.
@@ -99,9 +101,9 @@ pub(super) fn window_closed(window: u64) {
     }
 }
 
-struct MacOverlays;
+struct AppleOverlays;
 
-impl WindowOverlays for MacOverlays {
+impl WindowOverlays for AppleOverlays {
     fn window_of(&self, appid: Option<&str>) -> Option<WindowId> {
         presentations().window_of(appid).map(WindowId)
     }
@@ -131,7 +133,7 @@ impl WindowOverlays for MacOverlays {
                 }
             }
         }));
-        Ok(Box::new(MacSurface { token }))
+        Ok(Box::new(AppleSurface { token }))
     }
 
     fn after(&self, delay: Duration, task: Task) {
@@ -139,7 +141,7 @@ impl WindowOverlays for MacOverlays {
     }
 }
 
-struct MacSurface {
+struct AppleSurface {
     token: i64,
 }
 
@@ -148,7 +150,7 @@ fn on_overlay(token: i64, work: impl FnOnce(&Page) + Send + 'static) {
     lingxia_view_apple::post_main(Box::new(move || live::with_page(token, work)));
 }
 
-impl OverlaySurface for MacSurface {
+impl OverlaySurface for AppleSurface {
     fn write_state(&self, write: StateWrite) {
         on_overlay(self.token, move |page| {
             page.host().write_state(ConnectionTicket::new(1), write)
@@ -180,7 +182,7 @@ impl OverlaySurface for MacSurface {
     }
 }
 
-impl Drop for MacSurface {
+impl Drop for AppleSurface {
     fn drop(&mut self) {
         let token = self.token;
         overlays().remove(&token);

@@ -69,38 +69,6 @@ extension LxApp {
         }
     }
 
-    nonisolated static func showLxappUnavailable(status: RustStr) {
-        let status = status.toString()
-        executeOnMain {
-            let message: String
-            switch status {
-            case "maintain":
-                message = L10n.string("lx_lxapp_unavailable_maintain")
-            case "suspended":
-                message = L10n.string("lx_lxapp_unavailable_suspended")
-            default:
-                return
-            }
-            #if os(macOS)
-            let alert = NSAlert()
-            alert.alertStyle = .informational
-            alert.messageText = L10n.string("lx_lxapp_unavailable_title")
-            alert.informativeText = message
-            alert.addButton(withTitle: L10n.string("lx_common_ok"))
-            alert.runModal()
-            #else
-            LxAppToast.showToast(
-                title: message,
-                icon: .None,
-                image: nil,
-                duration: 2,
-                mask: false,
-                position: .Center
-            )
-            #endif
-        }
-    }
-
     nonisolated static func openExternalUrlString(_ urlString: String) -> Bool {
         guard let url = URL(string: urlString) else { return false }
         #if os(iOS)
@@ -1227,42 +1195,6 @@ extension LxApp {
         #endif
     }
 
-    nonisolated static func showToast(options: ToastOptions) {
-        let title = options.title.toString()
-        let image = options.image.toString()
-        let icon = options.icon
-        let duration = options.duration
-        let mask = options.mask
-        let position = options.position
-
-        executeOnMain {
-            LxAppToast.showToast(
-                title: title,
-                icon: icon,
-                image: image.isEmpty ? nil : image,
-                duration: duration,
-                mask: mask,
-                position: position
-            )
-        }
-    }
-
-    nonisolated static func showModal(options: ModalOptions, callback_id: UInt64) {
-        LxAppModal.showModal(options: options, callback_id: callback_id)
-    }
-
-    @MainActor static func showModal(_ options: [String: Any], callback_id: UInt64) {
-        LxAppModal.showModal(options, callback_id: callback_id)
-    }
-
-    nonisolated static func showActionSheet(options: ActionSheetOptions, callback_id: UInt64) {
-        LxAppActionSheet.showActionSheet(options: options, callback_id: callback_id)
-    }
-
-    @MainActor static func showActionSheet(_ options: [String: Any], callback_id: UInt64) {
-        LxAppActionSheet.showActionSheet(options, callback_id: callback_id)
-    }
-
     nonisolated static func reviewDocument(file_path filePath: RustStr, mime_type mimeType: RustStr, show_menu showMenu: Bool) -> Bool {
         let pathString = filePath.toString()
         let mimeString = mimeType.toString()
@@ -1351,20 +1283,6 @@ extension LxApp {
         return false
         #endif
     }
-
-    nonisolated static func hideToast() {
-        executeOnMain { LxAppToast.hideToast() }
-    }
-
-    /// Closes the alert and action sheet on screen, each settling as dismissed.
-    nonisolated static func dismissDialog() {
-        #if os(iOS)
-        executeOnMain {
-            LxAppModal.dismissForClosedApp()
-            LxAppActionSheet.dismissForClosedApp()
-        }
-        #endif
-    }
 }
 
 #if os(iOS)
@@ -1372,7 +1290,3 @@ typealias LxAppPlatform = iOSLxApp
 #elseif os(macOS)
 typealias LxAppPlatform = macOSLxApp
 #endif
-
-// Sendable Conformance for FFI Types
-extension ToastIcon: @unchecked Sendable {}
-extension ToastPosition: @unchecked Sendable {}

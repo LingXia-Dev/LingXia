@@ -3,59 +3,6 @@
 // The generated Swift ABI includes fixed, wide bridge signatures.
 #[swift_bridge::bridge]
 mod bridge {
-    // Toast icon types
-    pub enum ToastIcon {
-        Success,
-        Error,
-        Loading,
-        None,
-    }
-
-    // Toast position types
-    pub enum ToastPosition {
-        Top,
-        Center,
-        Bottom,
-    }
-
-    // Toast configuration for Swift
-    #[swift_bridge(swift_repr = "struct")]
-    pub struct ToastOptions {
-        pub title: String,
-        pub icon: ToastIcon,
-        pub image: String,
-        pub duration: f64,
-        pub mask: bool,
-        pub position: ToastPosition,
-    }
-
-    // Modal configuration for Swift
-    #[swift_bridge(swift_repr = "struct")]
-    pub struct ModalOptions {
-        pub title: String,
-        pub content: String,
-        pub show_cancel: bool,
-        pub cancel_text: String,
-        pub cancel_color: String,
-        pub confirm_text: String,
-        pub confirm_color: String,
-    }
-
-    // ActionSheet configuration for Swift
-    #[swift_bridge(swift_repr = "struct")]
-    pub struct ActionSheetOptions {
-        pub options: Vec<String>,
-        pub cancel_text: String,
-        pub item_color: String,
-    }
-
-    // Modal result for Swift
-    #[swift_bridge(swift_repr = "struct")]
-    pub struct ModalResult {
-        pub confirm: bool,
-        pub cancel: bool,
-    }
-
     #[swift_bridge(swift_repr = "struct")]
     pub struct SwiftImageInfoResult {
         pub success: bool,
@@ -290,24 +237,6 @@ mod bridge {
         #[swift_bridge(swift_name = "LxApp.isPushEnabled")]
         fn is_push_enabled() -> bool;
 
-        // Toast functions
-        #[swift_bridge(swift_name = "LxApp.showToast")]
-        fn show_toast(options: ToastOptions);
-
-        #[swift_bridge(swift_name = "LxApp.hideToast")]
-        fn hide_toast();
-
-        // Modal functions (synchronous with callback)
-        #[swift_bridge(swift_name = "LxApp.showModal")]
-        fn show_modal(options: ModalOptions, callback_id: u64);
-
-        // Action sheet functions (synchronous with callback)
-        #[swift_bridge(swift_name = "LxApp.showActionSheet")]
-        fn show_action_sheet(options: ActionSheetOptions, callback_id: u64);
-
-        #[swift_bridge(swift_name = "LxApp.dismissDialog")]
-        fn dismiss_dialog();
-
         #[swift_bridge(swift_name = "LxApp.presentSurface")]
         fn present_surface(
             id: &str,
@@ -539,16 +468,13 @@ mod bridge {
 // `reveal_in_file_manager` / control-session indicator stay macOS-only.
 #[cfg(target_os = "macos")]
 pub use bridge::autostart_is_supported;
-#[cfg(target_os = "ios")]
-pub use bridge::dismiss_dialog;
 pub use bridge::get_capsule_rect;
 #[cfg(any(target_os = "ios", target_os = "macos"))]
 pub use bridge::notify_app_update_ready;
 pub use bridge::{
-    ActionSheetOptions, ModalOptions, ToastIcon, ToastOptions, ToastPosition, activate_browser_tab,
-    apply_appearance, autostart_is_enabled, autostart_set_enabled, cancel_preview_media,
-    clipboard_clear, clipboard_read, clipboard_types, clipboard_write, close_browser_tab,
-    close_lxapp, close_surface, destroy_managed_surface, exit_app, hide_surface, hide_toast,
+    activate_browser_tab, apply_appearance, autostart_is_enabled, autostart_set_enabled,
+    cancel_preview_media, clipboard_clear, clipboard_read, clipboard_types, clipboard_write,
+    close_browser_tab, close_lxapp, close_surface, destroy_managed_surface, exit_app, hide_surface,
     host_appearance_dark, navigate, notification_cancel, notification_cancel_all,
     notification_last_error, notification_permission, notification_request_permission,
     notification_show, on_home_first_ready, open_document_external, open_lxapp,
@@ -556,9 +482,8 @@ pub use bridge::{
     request_lxapp_main_activation, review_document, set_app_badge, set_host_color_mode,
     set_managed_surface_visible, set_shell_pins, set_sidebar_actions, set_tray_badge,
     set_tray_click_intercept, set_tray_icon, set_tray_menu, set_tray_title, set_tray_visible,
-    share, show_action_sheet, show_modal, show_splash_campaign, show_surface, show_toast,
-    take_opened_url_tab_id, update_navbar_ui, update_orientation_ui, update_tabbar_ui,
-    update_tabbar_ui_async,
+    share, show_splash_campaign, show_surface, take_opened_url_tab_id, update_navbar_ui,
+    update_orientation_ui, update_tabbar_ui, update_tabbar_ui_async,
 };
 #[cfg(all(target_os = "macos", not(test)))]
 pub(crate) use bridge::{desktop_banner_hide, desktop_banner_show};

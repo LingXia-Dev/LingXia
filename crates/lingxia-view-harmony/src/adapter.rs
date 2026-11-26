@@ -74,6 +74,9 @@ pub struct HarmonyAdapter {
     selection: Mutex<Option<(String, String, String)>>,
     orientation: Mutex<Option<lingxia_view::scene::video::Orientation>>,
     texture: AtomicBool,
+    /// A window overlay: frames are clear wherever the page draws nothing, on a texture node,
+    /// which blends with what is under it.
+    pub(crate) see_through: AtomicBool,
     vsync: AtomicBool,
     long_press: AtomicU64,
     claimed: AtomicBool,
@@ -143,6 +146,7 @@ impl HarmonyAdapter {
             selection: Mutex::new(None),
             orientation: Mutex::new(None),
             texture: AtomicBool::new(false),
+            see_through: AtomicBool::new(false),
             vsync: AtomicBool::new(false),
             long_press: AtomicU64::new(0),
             claimed: AtomicBool::new(false),
@@ -303,7 +307,7 @@ impl HarmonyAdapter {
     }
 
     pub(crate) fn wants_texture(&self) -> bool {
-        self.texture.load(Ordering::Acquire)
+        self.texture.load(Ordering::Acquire) || self.see_through.load(Ordering::Relaxed)
     }
 }
 
@@ -460,10 +464,13 @@ impl Presenter for HarmonyAdapter {
 
     fn prepare(
         &self,
-        display: DisplayList,
+        mut display: DisplayList,
         _: SurfaceTicket,
         generation: CommitTicket,
     ) -> Result<Option<Frame>, String> {
+        if self.see_through.load(Ordering::Relaxed) {
+            display.set_see_through();
+        }
         match self.route() {
             Route::Wait => Ok(None),
             Route::Gpu(surface) => Ok(Some(Frame::Gpu {

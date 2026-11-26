@@ -444,24 +444,24 @@ mod bridge {
     }
 }
 
-#[cfg(all(target_os = "macos", feature = "standard"))]
+#[cfg(feature = "standard")]
 #[path = "overlay.rs"]
 mod overlay;
 
-#[cfg(all(target_os = "macos", feature = "standard"))]
+#[cfg(feature = "standard")]
 pub(super) use overlay::install as install_overlays;
 
 fn gpu_overlay_presents(app_id: &str, window: u64, touched: bool) {
-    #[cfg(all(target_os = "macos", feature = "standard"))]
+    #[cfg(feature = "standard")]
     overlay::presents((!app_id.is_empty()).then_some(app_id), window, touched);
-    #[cfg(not(all(target_os = "macos", feature = "standard")))]
+    #[cfg(not(feature = "standard"))]
     let _ = (app_id, window, touched);
 }
 
 fn gpu_overlay_window_closed(window: u64) {
-    #[cfg(all(target_os = "macos", feature = "standard"))]
+    #[cfg(feature = "standard")]
     overlay::window_closed(window);
-    #[cfg(not(all(target_os = "macos", feature = "standard")))]
+    #[cfg(not(feature = "standard"))]
     let _ = window;
 }
 
@@ -1044,12 +1044,12 @@ mod live {
         });
     }
 
-    #[cfg(all(target_os = "macos", feature = "standard"))]
+    #[cfg(feature = "standard")]
     pub(super) fn insert_page(token: Token, page: Page) {
         PAGES.with(|pages| pages.borrow_mut().insert(token, page));
     }
 
-    #[cfg(all(target_os = "macos", feature = "standard"))]
+    #[cfg(feature = "standard")]
     pub(super) fn remove_page(token: Token) -> Option<Page> {
         PAGES.with(|pages| pages.borrow_mut().remove(&token))
     }
@@ -1215,7 +1215,7 @@ mod live {
             connection: u64,
             messages: Vec<lingxia_view_apple::lingxia_view::session::logic::ToLogic>,
         ) {
-            #[cfg(all(target_os = "macos", feature = "standard"))]
+            #[cfg(feature = "standard")]
             if let Some(logic) = super::overlay::logic_of(token) {
                 return logic(messages);
             }

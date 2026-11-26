@@ -1,12 +1,8 @@
 //! `lx.ui.toast` and its dialogs as the window feedback layer takes them. The host registers the
-//! layer; Logic routes to it on the platforms [`LAYER`] marks.
+//! layer; Logic shows every toast, dialog and action sheet on it.
 use std::sync::OnceLock;
 use std::time::Duration;
 use tokio::sync::oneshot;
-
-/// Whether this platform's `lx.ui` feedback goes to the window feedback layer instead of the
-/// page-drawn overlay (desktop) or the native presenters (phones).
-pub const LAYER: bool = cfg!(target_os = "macos");
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum FeedbackTone {

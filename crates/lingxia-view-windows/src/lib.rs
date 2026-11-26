@@ -28,6 +28,7 @@ mod dispatch;
 mod environment;
 mod fonts;
 mod ime;
+mod overlay;
 mod pull;
 mod recovery;
 mod surface;
@@ -44,6 +45,7 @@ pub use web_input::adopt_web_surfaces;
 pub use adapter::WindowsAdapter;
 pub use dispatch::Dispatcher;
 pub use lingxia_view;
+pub use overlay::{Gone, Overlay, active_window, root_window};
 
 /// The embedding host's half: the lxapp page binding and the chrome around the page.
 pub trait Shell: Send + Sync + 'static {
@@ -363,10 +365,27 @@ impl Page {
         parent: isize,
         scheme: Scheme,
     ) -> Result<Rc<Self>, String> {
+        let (width, height) = view::client_size(parent);
+        let bounds = [0, 0, width as i32, height as i32];
+        Self::with_window(token, shell, worker, logic, scheme, bounds, || {
+            view::create(parent)
+        })
+    }
+
+    /// A page whose window `create` makes, placed at `[left, top, width, height]`.
+    fn with_window(
+        token: i64,
+        shell: Arc<dyn Shell>,
+        worker: &str,
+        logic: bool,
+        scheme: Scheme,
+        [left, top, width, height]: [i32; 4],
+        create: impl FnOnce() -> Result<isize, String>,
+    ) -> Result<Rc<Self>, String> {
         lingxia_view::text::fonts::set_system_fonts(fonts::system_fonts);
         let dispatcher = Dispatcher::current()?;
         let worker = ViewWorker::shared(worker)?;
-        let hwnd = view::create(parent)?;
+        let hwnd = create()?;
         video::install();
         let host = ViewHost::new(WindowsAdapter::new(token, shell, dispatcher), worker, logic);
         let _ = host.adapter().host.set(host.downgrade());
@@ -399,10 +418,18 @@ impl Page {
             .push((hwnd, dispatcher));
         page.host.set_visible(true);
         page.show_window(false);
-        let (width, height) = view::client_size(parent);
-        page.set_bounds(0, 0, width as i32, height as i32, [0; 4]);
+        page.set_bounds(left, top, width, height, [0; 4]);
         page.arrive();
         Ok(page)
+    }
+
+    /// A window overlay: frames are clear wherever the page draws nothing. Before `load`.
+    pub fn set_see_through(&self) {
+        let adapter = self.host.adapter();
+        adapter.see_through.store(true, Ordering::Relaxed);
+        // Frames wait for the GPU presenter: a see-through window cannot show CPU frames.
+        *adapter.target.lock().unwrap_or_else(|p| p.into_inner()) =
+            lingxia_view::renderer::surfaces::Target::Waiting;
     }
 
     pub fn host(&self) -> &ViewHost<WindowsAdapter> {
@@ -931,6 +958,10 @@ impl Page {
                             "backend={backend} surface={id} attachMs={ms} adapter={record}"
                         ));
                         Target::Ready
+                    }
+                    Err(error) if adapter.see_through.load(Ordering::Relaxed) => {
+                        overlay::gpu_unavailable(adapter.hwnd.load(Ordering::Acquire), &error);
+                        return;
                     }
                     Err(error) => {
                         adapter::log(&format!("GPU unavailable; using CPU renderer: {error}"));
