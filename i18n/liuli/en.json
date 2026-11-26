@@ -350,5 +350,9 @@
   "@liuli.tryAgain": {
     "defaultMessage": "Try again",
     "description": "Button that loads something again after it failed."
+  },
+  "@liuli.datePresets": {
+    "defaultMessage": "Quick ranges",
+    "description": "Name of the row of preset spans (\"Last 7 days\") over a date range calendar."
   }
 }

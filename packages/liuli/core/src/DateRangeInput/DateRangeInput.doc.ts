@@ -10,13 +10,15 @@ export const doc: ComponentDoc = {
     'DateRangeInput asks for a first and a last day: a stay, time off, a report\'s period. The field shows the span as the app formats it; pressing it opens a Calendar, ' +
     'in a panel under the field for a mouse and in a sheet from the bottom edge for a finger. The first press sets the start, the second the end, and the calendar closes. ' +
     'It takes Field\'s label, help text and status. For one day, use DateInput.',
-  keywords: ['date range', 'date range picker', 'period', 'stay', 'from to', 'range input', 'calendar field'],
+  keywords: ['date range', 'presets', 'quick ranges', 'last 7 days', 'date range picker', 'period', 'stay', 'from to', 'range input', 'calendar field'],
   propsType: 'DateRangeInputProps',
   recipe: { map: 'dateRangeInputRecipe', parts: 'dateRangeInputParts' },
   anatomy: [
     { part: 'value', required: true, description: 'The span in the field, "18 Nov – 24 Nov", or the placeholder; in tabular figures.' },
     { part: 'icon', required: true, description: 'The calendar mark at the field\'s end, the size of DateInput\'s.' },
     { part: 'popover', required: false, description: 'With a mouse or trackpad: a panel under the field holding the calendar.' },
+    { part: 'presets', required: false, description: 'With `presets`: named spans over the calendar, a group a screen reader names "Quick ranges".' },
+    { part: 'preset', required: false, description: 'A named span: pressed, it fills the field and closes the calendar; the one the field holds reports pressed.' },
   ],
   accessibility: {
     pattern: 'button',
@@ -57,11 +59,11 @@ export const doc: ComponentDoc = {
   examples: [
     { name: 'Stay', title: 'A span of days' },
     { name: 'Clearable', title: 'Clearable: the clear button empties the span' },
+    { name: 'Presets', title: 'Named spans over the calendar' },
     { name: 'Empty', title: 'Nothing chosen yet' },
   ],
   gaps: [
     { missing: 'Typing the dates into the field.', needs: 'nothing from the View', today: 'The days are pressed in the calendar.' },
-    { missing: 'Ready-made spans beside the calendar: this week, last month.', needs: 'nothing from the View', today: 'An app puts its own buttons beside the field.' },
     { missing: 'Arrow keys through the days.', needs: 'a grid whose cells take one Tab stop and move by arrows in two directions', today: 'Every day is its own Tab stop, as in Calendar.' },
   ],
   playground: { props: { label: 'Stay', today: '2026-11-15' }, fixture: true },

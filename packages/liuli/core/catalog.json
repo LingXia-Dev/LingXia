@@ -6650,6 +6650,9 @@
       "description": "DateRangeInput asks for a first and a last day: a stay, time off, a report's period. The field shows the span as the app formats it; pressing it opens a Calendar, in a panel under the field for a mouse and in a sheet from the bottom edge for a finger. The first press sets the start, the second the end, and the calendar closes. It takes Field's label, help text and status. For one day, use DateInput.",
       "keywords": [
         "date range",
+        "presets",
+        "quick ranges",
+        "last 7 days",
         "date range picker",
         "period",
         "stay",
@@ -6825,6 +6828,13 @@
           "default": "true"
         },
         {
+          "name": "presets",
+          "type": "readonly DateRangePreset[]",
+          "required": false,
+          "description": "Spans offered by name over the calendar; one pressed fills the field and closes it. The one the field holds shows pressed.",
+          "default": "[]"
+        },
+        {
           "name": "closeLabel",
           "type": "string",
           "required": false,
@@ -6858,7 +6868,9 @@
       "parts": {
         "value": "text",
         "icon": "vector",
-        "popover": "view"
+        "popover": "view",
+        "presets": "view",
+        "preset": "button"
       },
       "accessibility": {
         "pattern": "button",
@@ -6962,6 +6974,11 @@
           "source": "import { useLocal } from '@lingxia/view';\nimport type { CalendarRange } from '@liulidesign/core/Calendar';\nimport { DateRangeInput } from '@liulidesign/core/DateRangeInput';\n\nconst today = '2026-11-15';\nconst short = (date: string) => `${Number(date.slice(8))} ${months[Number(date.slice(5, 7)) - 1]}`;\n\n/** A span that can be taken back: the clear button empties it. */\nexport function Clearable() {\n  const stay = useLocal<CalendarRange>('stay', { start: '2026-11-18', end: '2026-11-24' });\n  return <DateRangeInput label=\"Stay\" bind={stay} format={short} today={today} placeholder=\"Any dates\" hasClear data-testid=\"clearable\" />;\n}"
         },
         {
+          "name": "Presets",
+          "title": "Named spans over the calendar",
+          "source": "import { useLocal } from '@lingxia/view';\nimport type { CalendarRange } from '@liulidesign/core/Calendar';\nimport { DateRangeInput } from '@liulidesign/core/DateRangeInput';\n\nconst today = '2026-11-15';\nconst short = (date: string) => `${Number(date.slice(8))} ${months[Number(date.slice(5, 7)) - 1]}`;\n\n/** Named spans over the calendar: one pressed fills the field and closes the calendar. */\nexport function Presets() {\n  const period = useLocal<CalendarRange>('period', { start: '2026-11-09', end: '2026-11-15' });\n  return (\n    <DateRangeInput\n      label=\"Report period\"\n      bind={period}\n      format={short}\n      today={today}\n      max={today}\n      presets={[\n        { label: 'Last 7 days', range: { start: '2026-11-09', end: '2026-11-15' } },\n        { label: 'Last 30 days', range: { start: '2026-10-17', end: '2026-11-15' } },\n        { label: 'This month', range: { start: '2026-11-01', end: '2026-11-15' } },\n        { label: 'Last month', range: { start: '2026-10-01', end: '2026-10-31' } },\n      ]}\n      data-testid=\"period\"\n    />\n  );\n}"
+        },
+        {
           "name": "Empty",
           "title": "Nothing chosen yet",
           "source": "import { useLocal } from '@lingxia/view';\nimport type { CalendarRange } from '@liulidesign/core/Calendar';\nimport { DateRangeInput } from '@liulidesign/core/DateRangeInput';\n\nconst today = '2026-11-15';\nconst short = (date: string) => `${Number(date.slice(8))} ${months[Number(date.slice(5, 7)) - 1]}`;\n\n/** Nothing chosen yet, and required. */\nexport function Empty() {\n  const leave = useLocal<CalendarRange>('leave', { start: null, end: null });\n  return (\n    <DateRangeInput\n      label=\"Time off\"\n      placeholder=\"First and last day\"\n      isRequired\n      bind={leave}\n      format={short}\n      today={today}\n      data-testid=\"leave\"\n    />\n  );\n}"
@@ -6972,11 +6989,6 @@
           "missing": "Typing the dates into the field.",
           "needs": "nothing from the View",
           "today": "The days are pressed in the calendar."
-        },
-        {
-          "missing": "Ready-made spans beside the calendar: this week, last month.",
-          "needs": "nothing from the View",
-          "today": "An app puts its own buttons beside the field."
         },
         {
           "missing": "Arrow keys through the days.",
@@ -7000,12 +7012,18 @@
           }
         ],
         "tokens": [
+          "--text-footnote",
           "--shadow-raised",
           "--radius-container"
         ],
         "roles": [
+          "accent",
+          "accent-soft",
+          "focus",
           "line",
+          "line-strong",
           "surface-overlay",
+          "text",
           "text-muted"
         ]
       },

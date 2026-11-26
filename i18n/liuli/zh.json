@@ -262,5 +262,8 @@
   },
   "@liuli.tryAgain": {
     "defaultMessage": "重试"
+  },
+  "@liuli.datePresets": {
+    "defaultMessage": "快捷范围"
   }
 }

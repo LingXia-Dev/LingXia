@@ -81,3 +81,20 @@ test('Clearable: a clear button named "Clear Stay" empties the field, and is gon
   screen.press(clear);
   assert.equal(screen.queryAll(node => node.testId === 'clearable-clear').length, 0, 'gone once empty');
 });
+
+test('Presets: named spans over the calendar; the one held reports pressed, and another pressed fills the field and closes the calendar', async () => {
+  const screen = await renderExample('DateRangeInput/DateRangeInput', 'Presets');
+  screen.press(screen.getByTestId('period'));
+  const group = screen.getByTestId('period-presets');
+  assert.equal(group.props.role, 'group');
+  assert.equal(group.props.accessibilityLabel, 'Quick ranges');
+  const preset = name => screen.getByTestId(`period-preset-${name}`);
+  assert.equal(preset('Last 7 days').props.statePressed, 1, 'the field holds this span');
+  assert.equal(preset('Last month').props.statePressed, 0);
+  screen.press(preset('Last month'));
+  assert.equal(panel(screen, 'period').length, 0, 'a finished span closes the sheet');
+  assert.equal(textOf(screen.getByTestId('period')), '1 Oct – 31 Oct');
+  screen.press(screen.getByTestId('period'));
+  assert.deepEqual(['Last 7 days', 'Last month'].map(name => preset(name).props.statePressed), [0, 1], 'the held span reports pressed');
+});
+

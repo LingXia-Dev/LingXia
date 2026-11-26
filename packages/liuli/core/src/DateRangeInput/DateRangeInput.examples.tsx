@@ -57,6 +57,27 @@ export function Clearable() {
   return <DateRangeInput label="Stay" bind={stay} format={short} today={today} placeholder="Any dates" hasClear data-testid="clearable" />;
 }
 
+/** Named spans over the calendar: one pressed fills the field and closes the calendar. */
+export function Presets() {
+  const period = useLocal<CalendarRange>('period', { start: '2026-11-09', end: '2026-11-15' });
+  return (
+    <DateRangeInput
+      label="Report period"
+      bind={period}
+      format={short}
+      today={today}
+      max={today}
+      presets={[
+        { label: 'Last 7 days', range: { start: '2026-11-09', end: '2026-11-15' } },
+        { label: 'Last 30 days', range: { start: '2026-10-17', end: '2026-11-15' } },
+        { label: 'This month', range: { start: '2026-11-01', end: '2026-11-15' } },
+        { label: 'Last month', range: { start: '2026-10-01', end: '2026-10-31' } },
+      ]}
+      data-testid="period"
+    />
+  );
+}
+
 /** The home tile. */
 export function Specimen() {
   return <DateRangeInput label="Stay" isLabelHidden size="sm" value={set} onChange={unused} format={short} today={today} className="w-36" />;

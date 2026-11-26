@@ -25,6 +25,12 @@ export type DateRangeInputBinding =
       onChange: (range: CalendarRange) => void;
     };
 
+/** A span offered by name over the calendar: "Last 7 days". The app works out its days. */
+export interface DateRangePreset {
+  label: string;
+  range: CalendarRange;
+}
+
 export type DateRangeInputProps = FieldOwnProps & DateRangeInputBinding & {
   /** Turns a day into the text the field shows: "18 Nov". The app formats dates. */
   format: (date: CalendarDate) => string;
@@ -43,6 +49,8 @@ export type DateRangeInputProps = FieldOwnProps & DateRangeInputBinding & {
   firstWeekday?: CalendarWeekday;
   /** Shows a close button in the calendar's sheet; without it the sheet closes by a tap outside, a drag or Back. @default true */
   hasCloseButton?: boolean;
+  /** Spans offered by name over the calendar; one pressed fills the field and closes it. The one the field holds shows pressed. @default [] */
+  presets?: readonly DateRangePreset[];
   /** Names the close button. Defaults to "Close" in the page's language. */
   closeLabel?: string;
   className?: string;
@@ -54,7 +62,7 @@ export type DateRangeInputProps = FieldOwnProps & DateRangeInputBinding & {
 export function DateRangeInput(props: DateRangeInputProps) {
   const {
     label, isLabelHidden, description, status, isRequired, hasRequiredMark, optionalLabel, info, isDisabled = false, disabledMessage, size: ownSize,
-    format, today, placeholder, hasClear = false, clearLabel, min, max, isDateDisabled, firstWeekday, hasCloseButton = true, closeLabel = liuliText('@liuli.close'), className, 'data-testid': testId,
+    format, today, placeholder, hasClear = false, clearLabel, min, max, isDateDisabled, firstWeekday, hasCloseButton = true, closeLabel = liuliText('@liuli.close'), presets = [], className, 'data-testid': testId,
   } = props;
   const range = props.bind ? props.bind.value : props.value;
   const onRangeChange = (next: CalendarRange) => props.bind ? props.bind.set(next) : props.onChange(next);
@@ -72,21 +80,39 @@ export function DateRangeInput(props: DateRangeInputProps) {
     onRangeChange(next);
     if (next.end !== null) open.set(false);
   };
+  const isPreset = (preset: DateRangePreset) => preset.range.start === range.start && preset.range.end === range.end;
   const calendar = (
-    <LayerContext.Provider value="overlay">
-      <Calendar
-        label={label}
-        today={today}
-        isRange
-        value={range}
-        onChange={choose}
-        min={min}
-        max={max}
-        isDateDisabled={isDateDisabled}
-        firstWeekday={firstWeekday}
-        data-testid={testId && `${testId}-calendar`}
-      />
-    </LayerContext.Provider>
+    <>
+      {presets.length > 0 && (
+        <view role="group" aria-label={liuliText('@liuli.datePresets')} data-testid={testId && `${testId}-presets`} className={r.presets.base}>
+          {presets.map(preset => (
+            <button
+              key={preset.label}
+              aria-pressed={isPreset(preset)}
+              onClick={() => choose(preset.range)}
+              data-testid={testId && `${testId}-preset-${preset.label}`}
+              className={cx(r.preset.base, isPreset(preset) && r.preset.chosen)}
+            >
+              <text className={r.preset.label}>{preset.label}</text>
+            </button>
+          ))}
+        </view>
+      )}
+      <LayerContext.Provider value="overlay">
+        <Calendar
+          label={label}
+          today={today}
+          isRange
+          value={range}
+          onChange={choose}
+          min={min}
+          max={max}
+          isDateDisabled={isDateDisabled}
+          firstWeekday={firstWeekday}
+          data-testid={testId && `${testId}-calendar`}
+        />
+      </LayerContext.Provider>
+    </>
   );
   const dock = useClearDock(16);
   const trigger = (control: FieldControl, clearable: boolean) => (

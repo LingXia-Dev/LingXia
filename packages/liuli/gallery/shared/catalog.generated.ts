@@ -275,6 +275,9 @@ export const entries: GalleryEntry[] = [
     "summary": "A span of days in a form: a field that opens a calendar",
     "keywords": [
       "date range",
+      "presets",
+      "quick ranges",
+      "last 7 days",
       "date range picker",
       "period",
       "stay",

@@ -56,6 +56,38 @@ export function Clearable() {
 }
 ```
 
+### Named spans over the calendar
+
+```tsx
+import { useLocal } from '@lingxia/view';
+import type { CalendarRange } from '@liulidesign/core/Calendar';
+import { DateRangeInput } from '@liulidesign/core/DateRangeInput';
+
+const today = '2026-11-15';
+const short = (date: string) => `${Number(date.slice(8))} ${months[Number(date.slice(5, 7)) - 1]}`;
+
+/** Named spans over the calendar: one pressed fills the field and closes the calendar. */
+export function Presets() {
+  const period = useLocal<CalendarRange>('period', { start: '2026-11-09', end: '2026-11-15' });
+  return (
+    <DateRangeInput
+      label="Report period"
+      bind={period}
+      format={short}
+      today={today}
+      max={today}
+      presets={[
+        { label: 'Last 7 days', range: { start: '2026-11-09', end: '2026-11-15' } },
+        { label: 'Last 30 days', range: { start: '2026-10-17', end: '2026-11-15' } },
+        { label: 'This month', range: { start: '2026-11-01', end: '2026-11-15' } },
+        { label: 'Last month', range: { start: '2026-10-01', end: '2026-10-31' } },
+      ]}
+      data-testid="period"
+    />
+  );
+}
+```
+
 ### Nothing chosen yet
 
 ```tsx
@@ -111,6 +143,7 @@ export function Empty() {
 | `isDateDisabled` | `((date: string) => boolean)` |  |  |
 | `firstWeekday` | `Weekday` | `the user's first weekday` | The calendar's first day of the week, as Calendar's `firstWeekday`: 1 is Monday to 7 is Sunday. |
 | `hasCloseButton` | `boolean` | `true` | Shows a close button in the calendar's sheet; without it the sheet closes by a tap outside, a drag or Back. |
+| `presets` | `readonly DateRangePreset[]` | `[]` | Spans offered by name over the calendar; one pressed fills the field and closes it. The one the field holds shows pressed. |
 | `closeLabel` | `string` |  | Names the close button. Defaults to "Close" in the page's language. |
 | `className` | `string` |  |  |
 | `data-testid` | `string` |  | On the field's button; the calendar is `<id>-calendar`. |
@@ -124,13 +157,15 @@ export function Empty() {
 | value | `<text>` | yes | The span in the field, "18 Nov – 24 Nov", or the placeholder; in tabular figures. |
 | icon | `<vector>` | yes | The calendar mark at the field's end, the size of DateInput's. |
 | popover | `<view>` | no | With a mouse or trackpad: a panel under the field holding the calendar. |
+| presets | `<view>` | no | With `presets`: named spans over the calendar, a group a screen reader names "Quick ranges". |
+| preset | `<button>` | no | A named span: pressed, it fills the field and closes the calendar; the one the field holds reports pressed. |
 
 ## What an app may override
 
 - `className`: classes merged after the recipe's, so they win.
 - The recipe, `dateRangeInputRecipe` from `@liulidesign/core/DateRangeInput/recipe`: the classes of each part, to style an element of your own to match. The component does not read a changed copy.
-- Scale tokens it reads, set in the app's stylesheet under `@theme`: `--shadow-raised`, `--radius-container`.
-- Colour roles it paints with, set by the theme pack: `line`, `surface-overlay`, `text-muted`.
+- Scale tokens it reads, set in the app's stylesheet under `@theme`: `--text-footnote`, `--shadow-raised`, `--radius-container`.
+- Colour roles it paints with, set by the theme pack: `accent`, `accent-soft`, `focus`, `line`, `line-strong`, `surface-overlay`, `text`, `text-muted`.
 
 ## Accessibility
 
@@ -170,7 +205,6 @@ Ratios are computed from @lingxia/view/theme and rounded down.
 | Missing | Needs | Meanwhile |
 | --- | --- | --- |
 | Typing the dates into the field. | nothing from the View | The days are pressed in the calendar. |
-| Ready-made spans beside the calendar: this week, last month. | nothing from the View | An app puts its own buttons beside the field. |
 | Arrow keys through the days. | a grid whose cells take one Tab stop and move by arrows in two directions | Every day is its own Tab stop, as in Calendar. |
 
 Related: Calendar, DateInput, Combobox.
