@@ -149,7 +149,7 @@ export function LineChart<Row extends ChartRecord<Row>>({
       const stroke = roleOf(series.color);
       const lines = runs(thin(columns[index]), range);
       const joined = lines.filter(points => points.length > 1);
-      if (isArea && joined.length) paths.push({ key: `${series.field}-area`, d: joined.map(points => closed(trace(points), points, box)).join(''), fill: `${stroke}/16` });
+      if (isArea && joined.length) paths.push({ key: `${series.field}-area`, d: joined.map(points => closed(trace(points), points, scaleY(0, range))).join(''), fill: `${stroke}/16` });
       if (joined.length) paths.push({
         key: `${series.field}-line`, d: joined.map(trace).join(''), stroke, strokeWidth, ...round,
         ...(series.dash.length ? { strokeDasharray: series.dash, strokeLinecap: 'butt' } : {}),
@@ -165,7 +165,8 @@ export function LineChart<Row extends ChartRecord<Row>>({
   // The chosen row: a rule down the plot and a dot on each line.
   const marker: VectorPath[] = [];
   if (picked) {
-    const at = (chosen / Math.max(1, data.length - 1)) * box;
+    // One row sits in the middle, where its point is drawn.
+    const at = data.length > 1 ? (chosen / (data.length - 1)) * box : box / 2;
     const round = { fill: 'none', strokeLinecap: 'round', vectorEffect: 'non-scaling-stroke' } as const;
     // Keyed by the row: another row is a new marker, drawn at once; new data under the same row moves it with the lines.
     marker.push({ key: `rule-${chosen}`, d: `M${at} 0V${box}`, stroke: 'text/20', strokeWidth: 1, fill: 'none', vectorEffect: 'non-scaling-stroke' });
@@ -213,7 +214,8 @@ export function LineChart<Row extends ChartRecord<Row>>({
   const named = (row: ChartRow) => (reading(row) === '' ? textOf(row, x) : `${textOf(row, x)}: ${reading(row)}`);
   // With nothing chosen the scrubber rests on the latest row, which is what the line's end shows.
   const rest = chosen >= 0 ? chosen : data.length - 1;
-  const scrub = onSelect && facts.length > 0 ? (event: PointerEvent) => {
+  // One row has nowhere to scrub to; the readout still names it.
+  const scrub = onSelect && facts.length > 0 && data.length > 1 ? (event: PointerEvent) => {
     const { phase } = event;
     if (phase === 'leave') return chosen >= 0 ? onSelect(null) : undefined;
     const current = chosen >= 0 ? keyOf(data[chosen], keyField ?? x, chosen) : null;

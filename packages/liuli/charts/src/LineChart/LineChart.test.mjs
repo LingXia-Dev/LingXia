@@ -484,3 +484,17 @@ test('right to left, the plot keeps time left to right: the line, its x labels, 
   const title = screen.getByText('Weight');
   assert.equal(direction(title), 'page', 'the heading keeps the page\'s direction');
 });
+
+test('an area over negative values closes at the zero line; one chosen row is marked where its point is', async () => {
+  const area = await renderPage(`
+    import { LineChart } from '@liulidesign/charts/LineChart';
+    const rows = [{ t: 'a', v: -2 }, { t: 'b', v: 1 }, { t: 'c', v: -1 }];
+    export function render() { return <page><LineChart rows={rows} x="t" y="v" label="V" hasArea hasScale={false} /></page>; }`);
+  const fill = drawing(area).paths.find(path => path.fill?.endsWith('/16'));
+  assert.match(fill.d, /L100 33\.33L0 33\.33Z$/);
+  const one = await renderPage(`
+    import { LineChart } from '@liulidesign/charts/LineChart';
+    const rows = [{ t: 'a', v: 4 }];
+    export function render() { return <page><LineChart rows={rows} x="t" y="v" label="V" value="a" onChange={() => {}} /></page>; }`);
+  assert.equal(marker(one)[0].d, 'M50 0V100', 'in the middle, with the point');
+});

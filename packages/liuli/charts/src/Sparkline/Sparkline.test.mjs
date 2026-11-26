@@ -128,3 +128,9 @@ test('bars: a value that is not finite leaves its slot empty', async () => {
   const [bars] = drawing((await renderPage(page('variant="bar"', '[4, NaN, 2]'))).getByTestId('spark')).paths;
   assert.equal(bars.d.split('Z').filter(Boolean).length, 2);
 });
+
+test('an area over negative values closes at the zero line, not at the bottom of the box', async () => {
+  const screen = await renderPage(page('variant="area"', '[-2, 1, -1]'));
+  const [fill] = drawing(screen.getByTestId('spark')).paths;
+  assert.match(fill.d, /L100 33\.33L0 33\.33Z$/, 'zero is a third of the way down a range from -2 to 1');
+});

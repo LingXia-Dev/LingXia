@@ -1,5 +1,5 @@
 import { cx, useBox, type VectorPath } from '@lingxia/view';
-import { bars, box, closed, domain, dot, monotone, polyline, reach, runs, thin, type Point } from '../internal/geometry';
+import { bars, box, closed, domain, dot, monotone, polyline, reach, runs, scaleY, thin, type Point } from '../internal/geometry';
 import { remember } from '../internal/memo';
 import { sparklineRecipe as r } from './Sparkline.recipe';
 
@@ -70,7 +70,7 @@ export function Sparkline({
       const trace = (points: readonly Point[]) => (isSmooth ? monotone(points) : polyline(points));
       const joined = lines.filter(points => points.length > 1);
       if (variant === 'area' && joined.length)
-        paths.push({ d: joined.map(points => closed(trace(points), points, box)).join(''), fill: `${role}/16` });
+        paths.push({ d: joined.map(points => closed(trace(points), points, scaleY(0, range))).join(''), fill: `${role}/16` });
       if (joined.length) paths.push({ d: joined.map(trace).join(''), strokeWidth, ...stroke });
       // A value with a gap on both sides has no segment, so it is drawn as a dot of the line's width.
       const alone = lines.filter(points => points.length === 1);
