@@ -37,25 +37,31 @@ impl Engine for QuickJs {
 fn drain_jobs(context: &super::JSContext) -> Result<(), String> {
     use rong_core::engine::JSContextImpl;
     use rong_quickjs_sys as qjs;
+    // Charged by this thread's CPU time, as the budget is: host load or a frozen process
+    // must not fail a page that computed little.
     let started = std::time::Instant::now();
+    let clock = super::thread_clock::ThreadClock::current()
+        .and_then(|clock| Some((clock, clock.elapsed()?)));
+    let spent = || {
+        clock
+            .and_then(|(clock, from)| Some(clock.elapsed()?.saturating_sub(from)))
+            .unwrap_or_else(|| started.elapsed())
+    };
     unsafe {
         let runtime = qjs::JS_GetRuntime(*context.as_ref().as_raw());
         while qjs::JS_IsJobPending(runtime) {
-            if started.elapsed() >= crate::session::eval_budget() {
+            if spent() >= crate::session::eval_budget() {
                 return Err("UI_TIMEOUT: microtask budget exceeded".into());
             }
             let mut owner = std::ptr::null_mut();
             if qjs::JS_ExecutePendingJob(runtime, &mut owner) < 0 {
-                let mut aborted = false;
-                if !owner.is_null() {
-                    let error = qjs::JS_GetException(owner);
-                    aborted = qjs::JS_IsUncatchableError(error);
-                    qjs::JS_FreeValue(owner, error);
+                if owner.is_null() {
+                    return Err("UI_ACTION: microtask execution failed".into());
                 }
-                if aborted {
-                    return Err(interrupted());
-                }
-                return Err("UI_ACTION: microtask execution failed".into());
+                return Err(match describe(owner, qjs::JS_GetException(owner)) {
+                    Some(text) => format!("UI_ACTION: a microtask threw {text}"),
+                    None => interrupted(),
+                });
             }
         }
     }
@@ -205,6 +211,22 @@ unsafe extern "C" fn load_module(
     ctx: *mut rong_quickjs_sys::JSContext,
     module_name: *const std::os::raw::c_char,
     _opaque: *mut std::ffi::c_void,
+) -> *mut rong_quickjs_sys::JSModuleDef {
+    // A panic must not unwind into QuickJS: the host's chunk loader runs in here.
+    std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| unsafe {
+        load_module_inner(ctx, module_name)
+    }))
+    .unwrap_or_else(|_| {
+        let err = "UI_MODULE: the chunk loader panicked".to_string();
+        unsafe { throw_loader_error(ctx, &err) };
+        super::chunks::record_error(err);
+        std::ptr::null_mut()
+    })
+}
+
+unsafe fn load_module_inner(
+    ctx: *mut rong_quickjs_sys::JSContext,
+    module_name: *const std::os::raw::c_char,
 ) -> *mut rong_quickjs_sys::JSModuleDef {
     use super::bytecode::{self, Outcome};
     use rong_quickjs_sys as qjs;
@@ -377,26 +399,49 @@ unsafe fn message(
     ctx: *mut rong_quickjs_sys::JSContext,
     error: rong_quickjs_sys::JSValue,
 ) -> String {
+    match unsafe { describe(ctx, error) } {
+        Some(text) => format!("UI_MODULE: {text}"),
+        None => interrupted(),
+    }
+}
+
+/// What a thrown value says, with its stack when it has one; `None` when the engine
+/// interrupted the script. Consumes `error`.
+unsafe fn describe(
+    ctx: *mut rong_quickjs_sys::JSContext,
+    error: rong_quickjs_sys::JSValue,
+) -> Option<String> {
     use rong_quickjs_sys as qjs;
     unsafe {
         if qjs::JS_IsUncatchableError(error) {
             qjs::JS_FreeValue(ctx, error);
-            return interrupted();
+            return None;
         }
-        let text = qjs::JS_ToCStringLen2(ctx, std::ptr::null_mut(), error, false);
-        let message = if text.is_null() {
-            let secondary = qjs::JS_GetException(ctx);
-            qjs::JS_FreeValue(ctx, secondary);
-            "module evaluation failed".into()
-        } else {
-            let message = std::ffi::CStr::from_ptr(text)
+        let string = |value: qjs::JSValue| {
+            let text = qjs::JS_ToCStringLen2(ctx, std::ptr::null_mut(), value, false);
+            if text.is_null() {
+                qjs::JS_FreeValue(ctx, qjs::JS_GetException(ctx));
+                return None;
+            }
+            let owned = std::ffi::CStr::from_ptr(text)
                 .to_string_lossy()
                 .into_owned();
             qjs::JS_FreeCString(ctx, text);
-            message
+            Some(owned)
         };
+        let mut text = string(error).unwrap_or_else(|| "a value that cannot be printed".into());
+        if qjs::JS_IsError(error) {
+            let stack = qjs::JS_GetPropertyStr(ctx, error, c"stack".as_ptr());
+            if qjs::QJS_IsString(ctx, stack)
+                && let Some(stack) = string(stack).filter(|stack| !stack.trim().is_empty())
+            {
+                text.push('\n');
+                text.push_str(stack.trim_end());
+            }
+            qjs::JS_FreeValue(ctx, stack);
+        }
         qjs::JS_FreeValue(ctx, error);
-        format!("UI_MODULE: {message}")
+        Some(text)
     }
 }
 

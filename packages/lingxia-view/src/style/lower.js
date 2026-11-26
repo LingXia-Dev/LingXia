@@ -83,7 +83,7 @@ function invalid(name, value, takes) {
 
 // A theme step the host resolves: `[slot, times, plus]`.
 const isStep = value => Array.isArray(value) && value.length === 3 && Number.isInteger(value[0]) && scales[value[0]] !== undefined && finite(value[1]) && finite(value[2]);
-// A step where the host cannot resolve one (a slider part) takes the built-in pack's value.
+// A step where the host cannot resolve one (a slider part's size) takes the built-in pack's value.
 const fold = value => isStep(value) && finite(scaleDefaults[value[0]]) ? value[1] * scaleDefaults[value[0]] + value[2] : value;
 // `value` scaled by `factor`, a step staying a step.
 const times = (value, factor) => isStep(value) ? [value[0], value[1] * factor, value[2] * factor] : value * factor;
@@ -452,7 +452,8 @@ export function lowerStyle(tag, style, env, inherited = { fontSize: 14 }, warn) 
 // A slider part as `[field, value, …]` pairs; sizes are plain points, as the part has no box to resolve against.
 function partRecord(name, value, env) {
   if (!value || typeof value !== 'object' || Array.isArray(value)) invalid(name, value, 'a style object');
-  value = Object.fromEntries(Object.entries(value).map(([key, item]) => [key, fold(item)]));
+  // The host resolves a part's other steps against the page's theme.
+  value = Object.fromEntries(Object.entries(value).map(([key, item]) => [key, key === 'width' || key === 'height' ? fold(item) : item]));
   for (const key of ['width', 'height']) if (value[key] !== undefined && !(finite(value[key]) && value[key] >= 0 && value[key] <= 1024)) invalid(`${name}.${key}`, value[key], 'a number from 0 to 1024');
   const pairs = [];
   for (const [key, lowered] of Object.entries(lowerStyle('view', value, env).fields))

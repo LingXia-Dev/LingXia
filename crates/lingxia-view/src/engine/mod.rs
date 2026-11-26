@@ -68,11 +68,14 @@ pub(crate) fn supports(feature: Feature) -> bool {
     features().contains(&feature)
 }
 
-use rong::{JSEngine, Source};
+use rong::Source;
+#[cfg(test)]
+use rong::JSEngine;
 
-/// Called on a dedicated View thread. No host capabilities are installed.
-/// `environment` is the platform's View `env`; the viewport is added to it.
-pub fn evaluate(
+/// A bare classic-script render for engine tests: no budget, console or microtask drain, so
+/// pages run through [`crate::ViewSession`]. `environment` gains the viewport.
+#[cfg(test)]
+pub(crate) fn evaluate(
     module: &str,
     environment: &crate::platform::FrameEnvironment,
 ) -> Result<Vec<crate::protocol::Record>, String> {
@@ -98,6 +101,7 @@ pub fn evaluate(
     decode_context(&context, &invoke).map(|records| records.to_vec())
 }
 
+#[cfg(test)]
 pub(crate) fn decode_context(
     context: &JSContext,
     invoke: &str,
@@ -117,7 +121,8 @@ pub(crate) fn js_error(context: &JSContext, error: rong::RongJSError) -> String 
     error.to_string()
 }
 
-pub(crate) fn decode_context_timed(
+#[cfg(test)]
+fn decode_context_timed(
     context: &JSContext,
     invoke: &str,
 ) -> Result<
@@ -155,15 +160,30 @@ pub(crate) fn collect_between_frames(context: &JSContext) {
 
 static DEV_GLOBALS: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 
-/// Dev diagnostics the View runtime raised through `__lingxiaWarn`, for the host to log.
-static DEV_WARNINGS: std::sync::Mutex<Vec<String>> = std::sync::Mutex::new(Vec::new());
+/// Dev diagnostics one isolate raised through `__lingxiaWarn`, kept for its own page to log.
+#[derive(Clone, Default)]
+pub(crate) struct DevWarnings(std::sync::Arc<std::sync::Mutex<(Vec<String>, usize)>>);
 const DEV_WARNINGS_KEPT: usize = 32;
 
-pub(crate) fn take_dev_warnings() -> Vec<String> {
-    DEV_WARNINGS
-        .lock()
-        .map(|mut warnings| std::mem::take(&mut *warnings))
-        .unwrap_or_default()
+impl DevWarnings {
+    fn push(&self, message: String) {
+        let mut kept = self.0.lock().unwrap_or_else(|p| p.into_inner());
+        if kept.0.len() < DEV_WARNINGS_KEPT {
+            kept.0.push(message);
+        } else {
+            kept.1 += 1;
+        }
+    }
+
+    /// The warnings since the last call, and how many did not fit.
+    pub(crate) fn take(&self) -> Vec<String> {
+        let (mut warnings, dropped) =
+            std::mem::take(&mut *self.0.lock().unwrap_or_else(|p| p.into_inner()));
+        if dropped > 0 {
+            warnings.push(format!("UI_LIMIT: {dropped} more dev warnings were left out"));
+        }
+        warnings
+    }
 }
 
 /// Isolates created from now on carry the dev-session globals (`__lingxiaClock`, `__lingxiaWarn`).
@@ -176,7 +196,10 @@ pub(crate) fn dev_globals() -> bool {
 }
 
 /// Installs the dev-session globals when a dev session asked for them before this isolate.
-pub(crate) fn install_dev_globals(context: &JSContext) -> Result<(), String> {
+pub(crate) fn install_dev_globals(
+    context: &JSContext,
+    warnings: &DevWarnings,
+) -> Result<(), String> {
     if !DEV_GLOBALS.load(std::sync::atomic::Ordering::Acquire) {
         return Ok(());
     }
@@ -184,14 +207,9 @@ pub(crate) fn install_dev_globals(context: &JSContext) -> Result<(), String> {
     let started = *STARTED.get_or_init(std::time::Instant::now);
     let clock = rong::quickjs::JSFunc::new(context, move || started.elapsed().as_secs_f64() * 1e6)
         .map_err(|e| e.to_string())?;
-    let warn = rong::quickjs::JSFunc::new(context, |message: String| {
-        if let Ok(mut warnings) = DEV_WARNINGS.lock()
-            && warnings.len() < DEV_WARNINGS_KEPT
-        {
-            warnings.push(message);
-        }
-    })
-    .map_err(|e| e.to_string())?;
+    let warnings = warnings.clone();
+    let warn = rong::quickjs::JSFunc::new(context, move |message: String| warnings.push(message))
+        .map_err(|e| e.to_string())?;
     let global = context.global();
     global
         .set("__lingxiaClock", clock)
@@ -310,6 +328,22 @@ pub(crate) fn decode_buffer(
 
 #[cfg(test)]
 mod tests {
+
+    #[test]
+    fn dev_warnings_belong_to_their_isolate_and_count_what_did_not_fit() {
+        let (first, second) = (super::DevWarnings::default(), super::DevWarnings::default());
+        for n in 0..super::DEV_WARNINGS_KEPT + 3 {
+            first.push(format!("w{n}"));
+        }
+        assert!(second.take().is_empty());
+        let taken = first.take();
+        assert_eq!(taken.len(), super::DEV_WARNINGS_KEPT + 1);
+        assert_eq!(
+            taken.last().unwrap(),
+            "UI_LIMIT: 3 more dev warnings were left out"
+        );
+        assert!(first.take().is_empty());
+    }
     use super::*;
     use crate::Renderer;
 

@@ -13,7 +13,6 @@ pub mod text;
 pub mod theme;
 
 pub use engine::chunks::{ChunkLoadError, ChunkLoader, set_app_chunks};
-pub use engine::evaluate;
 pub use interaction::input_state::InputReply;
 pub use layout::Renderer;
 pub use scene::cost::FrameCost;

@@ -321,6 +321,24 @@ mod tests {
     }
 
     #[test]
+    fn a_panicking_chunk_loader_fails_the_page_instead_of_the_process() {
+        let loader: ChunkLoader = Arc::new(|_| panic!("loader broke"));
+        let page = page_importing_chunk(
+            "lx:view/abc123",
+            "globalThis.__lingxiaRender = () => h('text', {}, 'hi');",
+            None,
+            None,
+        );
+        let err = ViewSession::new_with_chunks(&page, false, loader)
+            .err()
+            .expect("the page must fail");
+        assert!(
+            err.contains("UI_MODULE: the chunk loader panicked"),
+            "{err}"
+        );
+    }
+
+    #[test]
     fn missing_integrity_and_stale_dev_chunk_return_exact_diagnostics() {
         let missing: ChunkLoader = Arc::new(|_| Err(ChunkLoadError::NotFound));
         let page = page_importing_chunk(

@@ -28,6 +28,8 @@ pub enum Step {
     },
     /// A transition as encoded, with its motion steps.
     Transition(String),
+    /// A slider part as encoded, with its number steps.
+    Part(String),
 }
 
 static BUILTIN: LazyLock<Arc<Scales>> = LazyLock::new(|| {
@@ -161,6 +163,13 @@ pub(crate) fn resolve(
     value: &Value,
     scales: &Scales,
 ) -> Result<Option<(Value, Step)>, String> {
+    if super::PARTS.contains(&id) {
+        let Some(encoded) = value.as_str() else {
+            return Ok(None);
+        };
+        return Ok(part(tag, encoded, scales)?
+            .map(|resolved| (Value::String(resolved), Step::Part(encoded.to_owned()))));
+    }
     if id == field::TRANSITION {
         let Some(encoded) = value.as_str() else {
             return Ok(None);
@@ -200,6 +209,30 @@ fn number(tag: usize, id: usize, step: &Step, scales: &Scales) -> Result<Value, 
         .ok_or("UI_STYLE: invalid length")?;
     values::check(tag, id, &resolved)?;
     Ok(resolved)
+}
+
+/// A slider part's `[field, value, …]` with its number steps replaced by their values; `None`
+/// when it has none. The part has no box, so an `em` step keeps the built-in value it decodes to.
+fn part(tag: usize, encoded: &str, scales: &Scales) -> Result<Option<String>, String> {
+    let mut pairs: Vec<Value> =
+        serde_json::from_str(encoded).map_err(|_| "UI_STYLE: invalid slider part")?;
+    let mut changed = false;
+    for pair in pairs.chunks_exact_mut(2) {
+        let (Some(id), Some(step)) = (pair[0].as_u64().map(|id| id as usize), pair[1].as_array())
+        else {
+            continue;
+        };
+        if !super::SCALE_STEP_FIELDS.contains(&id) {
+            continue;
+        }
+        let (slot, times, plus) = values::scale_step(id, step)?;
+        if SCALES[slot].1 == "em" {
+            continue;
+        }
+        pair[1] = number(tag, id, &Step::Number { slot, times, plus }, scales)?;
+        changed = true;
+    }
+    Ok(changed.then(|| Value::Array(pairs).to_string()))
 }
 
 /// A transition with its motion steps replaced by their values; `None` when it has none.
@@ -254,6 +287,9 @@ pub(crate) fn rescale(
                 Step::Number { .. } => number(tag, id, &step, scales)?,
                 Step::Transition(encoded) => {
                     Value::String(transition(encoded, scales)?.unwrap_or_else(|| encoded.clone()))
+                }
+                Step::Part(encoded) => {
+                    Value::String(part(tag, encoded, scales)?.unwrap_or_else(|| encoded.clone()))
                 }
             };
             if let Some((_, old)) = record.fields.iter_mut().find(|(field, _)| *field == id) {

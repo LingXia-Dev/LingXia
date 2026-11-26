@@ -53,6 +53,7 @@ impl ViewSession {
         std::mem::swap(&mut self.context, &mut other.context);
         std::mem::swap(&mut self._runtime, &mut other._runtime);
         std::mem::swap(&mut self.budget, &mut other.budget);
+        std::mem::swap(&mut self.dev_warnings, &mut other.dev_warnings);
         std::mem::swap(&mut self.chunk_build_id, &mut other.chunk_build_id);
         std::mem::swap(&mut self.catalogue_chunk, &mut other.catalogue_chunk);
         std::mem::swap(&mut self.catalogue_source, &mut other.catalogue_source);

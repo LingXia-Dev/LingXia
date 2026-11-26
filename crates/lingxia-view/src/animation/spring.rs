@@ -17,7 +17,10 @@ impl Spring {
     /// `bounce` 0 is critically damped; towards 1 it oscillates longer.
     pub fn new(duration: Duration, bounce: f64) -> Result<Self, String> {
         let seconds = duration.as_secs_f64();
-        if !(bounce.is_finite() && (0.0..=0.9).contains(&bounce)) || seconds <= 0.0 {
+        if seconds <= 0.0 {
+            return Err("UI_TRANSITION: a spring's duration must be more than 0".into());
+        }
+        if !(bounce.is_finite() && (0.0..=0.9).contains(&bounce)) {
             return Err("UI_TRANSITION: spring bounce is 0..0.9".into());
         }
         Ok(Self {
@@ -90,6 +93,18 @@ impl Spring {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_spring_refusal_names_what_is_wrong() {
+        assert_eq!(
+            Spring::new(Duration::ZERO, 0.2).err().unwrap(),
+            "UI_TRANSITION: a spring's duration must be more than 0"
+        );
+        assert_eq!(
+            Spring::new(Duration::from_millis(200), 1.5).err().unwrap(),
+            "UI_TRANSITION: spring bounce is 0..0.9"
+        );
+    }
 
     #[test]
     fn a_spring_starts_where_it_is_with_its_velocity_and_settles_on_target() {

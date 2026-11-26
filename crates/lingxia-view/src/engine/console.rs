@@ -9,10 +9,11 @@ pub type ConsoleSink = Arc<dyn Fn(log::Level, &str) + Send + Sync>;
 /// Longer lines are cut, so a logged blob cannot flood the pipeline.
 const LINE_BYTES: usize = 8 * 1024;
 
-/// Levels past the logger's maximum return before formatting their arguments.
+/// Levels past the logger's maximum return before formatting their arguments; the maximum is
+/// read on each call, so a level the host raises later reaches pages already open.
 const SCRIPT: &str = r#"(()=>{const g=globalThis,sink=g.__lingxiaConsole,max=g.__lingxiaConsoleMax;delete g.__lingxiaConsole;delete g.__lingxiaConsoleMax;
 const text=v=>{try{switch(typeof v){case'string':return v;case'symbol':return v.toString();case'function':return'[function '+(v.name||'anonymous')+']';case'object':{if(v===null)return'null';if(v instanceof Error)return v.stack?String(v)+'\n'+v.stack:String(v);let s;try{s=JSON.stringify(v)}catch{}return s===undefined?Object.prototype.toString.call(v):s}default:return String(v)}}catch{return'[unprintable]'}};
-const method=level=>level>max?()=>{}:(...args)=>{try{sink(level,args.map(text).join(' '))}catch{}};
+const method=level=>(...args)=>{try{if(level<=max())sink(level,args.map(text).join(' '))}catch{}};
 g.console=Object.freeze({error:method(1),warn:method(2),info:method(3),log:method(3),debug:method(4)});return true})()"#;
 
 /// Installs `console` (`error`, `warn`, `info`, `log`, `debug`); without a sink lines go to the
@@ -27,7 +28,7 @@ pub(crate) fn install(context: &JSContext, sink: Option<ConsoleSink>) -> Result<
         };
         let message = cut(&message);
         match &sink {
-            Some(sink) => sink(level, message),
+            Some(sink) => sink(level, &message),
             None => log::log!(target: "lingxia_view::console", level, "{message}"),
         }
     })
@@ -36,8 +37,10 @@ pub(crate) fn install(context: &JSContext, sink: Option<ConsoleSink>) -> Result<
     global
         .set("__lingxiaConsole", sink)
         .map_err(|e| e.to_string())?;
+    let max = rong::quickjs::JSFunc::new(context, || log::max_level() as usize as f64)
+        .map_err(|e| e.to_string())?;
     global
-        .set("__lingxiaConsoleMax", log::max_level() as usize as f64)
+        .set("__lingxiaConsoleMax", max)
         .map_err(|e| e.to_string())?;
     context
         .eval::<bool>(Source::from_bytes(SCRIPT))
@@ -45,15 +48,16 @@ pub(crate) fn install(context: &JSContext, sink: Option<ConsoleSink>) -> Result<
         .map_err(|e| e.to_string())
 }
 
-fn cut(message: &str) -> &str {
+/// The line, or its first [`LINE_BYTES`] and how much was left out.
+fn cut(message: &str) -> std::borrow::Cow<'_, str> {
     if message.len() <= LINE_BYTES {
-        return message;
+        return message.into();
     }
     let mut end = LINE_BYTES;
     while !message.is_char_boundary(end) {
         end -= 1;
     }
-    &message[..end]
+    format!("{}… [+{} bytes]", &message[..end], message.len() - end).into()
 }
 
 #[cfg(test)]
@@ -120,7 +124,29 @@ mod tests {
             lines[0].1,
             "[object Object] [object Object] 10 {} [unprintable]"
         );
-        assert_eq!(lines[1].1.len(), LINE_BYTES);
+        assert_eq!(
+            lines[1].1,
+            format!(
+                "{}… [+{} bytes]",
+                "x".repeat(LINE_BYTES),
+                20000 - LINE_BYTES
+            )
+        );
+    }
+
+    #[test]
+    fn a_level_raised_after_the_page_opened_reaches_its_console() {
+        log::set_max_level(log::LevelFilter::Off);
+        let lines = Arc::new(Mutex::new(Vec::new()));
+        let (_runtime, context) = page(&lines);
+        log::set_max_level(log::LevelFilter::Trace);
+        context
+            .eval::<bool>(Source::from_bytes("console.debug('late');true"))
+            .unwrap();
+        assert_eq!(
+            lines.lock().unwrap().last(),
+            Some(&(log::Level::Debug, "late".to_owned()))
+        );
     }
 
     #[test]

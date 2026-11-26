@@ -33,6 +33,21 @@ fn reused_subtrees_share_fields_with_the_buffer_they_reference() {
 }
 
 #[test]
+fn a_reuse_count_past_the_held_buffer_is_stale_not_a_panic() {
+    let (_, held) = decode_wire(&text(1), None).unwrap();
+    for count in [json!(2), json!(1u64 << 32), json!(u64::MAX)] {
+        #[rustfmt::skip]
+        let buffer = wire(json!([
+            tag::COLUMN, -1, "", "", "", 0,
+            -2, 0, 1, 6, count, 0,
+            -3, 2, 0, 0, 0, 0
+        ]));
+        let error = decode_wire(&buffer, Some(&held)).err().expect("stale");
+        assert!(error.starts_with("UI_BUFFER:"), "{error}");
+    }
+}
+
+#[test]
 fn editing_shared_fields_copies_only_the_edited_record() {
     let (decoded, _) = decode_wire(&text(1), None).unwrap();
     let mut edited = decoded.to_vec();

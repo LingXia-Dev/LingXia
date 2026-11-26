@@ -158,7 +158,7 @@ impl crate::ViewSession {
     /// Budget warnings and dev diagnostics since the last call, for the host to log.
     pub fn take_budget_warnings(&mut self) -> Vec<String> {
         let mut warnings = std::mem::take(&mut self.budget_warnings);
-        warnings.extend(crate::engine::take_dev_warnings());
+        warnings.extend(self.dev_warnings.take());
         warnings
     }
 }

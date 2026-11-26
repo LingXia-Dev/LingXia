@@ -77,7 +77,7 @@ impl Budget {
                 .name("ui-js-budget".into())
                 .spawn(move || {
                     let (lock, wake) = &*shared;
-                    let mut state = lock.lock().unwrap();
+                    let mut state = lock.lock().unwrap_or_else(|p| p.into_inner());
                     loop {
                         if state.stopped {
                             break;
@@ -128,20 +128,22 @@ impl Budget {
             budget: limit,
             clock: ThreadClock::current().and_then(|clock| Some((clock, clock.elapsed()?))),
         };
-        {
-            let mut state = self.shared.0.lock().unwrap();
-            assert!(
-                state.evaluating.is_none(),
-                "View evaluations must be serial"
-            );
-            state.evaluating = Some(evaluating);
-            self.shared.1.notify_one();
-        }
+        let nested = {
+            let mut state = self.shared.0.lock().unwrap_or_else(|p| p.into_inner());
+            let nested = state.evaluating.is_some();
+            if !nested {
+                state.evaluating = Some(evaluating);
+                self.shared.1.notify_one();
+            }
+            nested
+        };
+        // Outside the lock, so the panic cannot poison it for the Drops that follow.
+        assert!(!nested, "View evaluations must be serial");
         let guard = Evaluation { budget: self };
         let result = work();
         // Wall time alone fails only through the watchdog, which leaves out a frozen process.
         let (interrupted, evaluating) = {
-            let state = self.shared.0.lock().unwrap();
+            let state = self.shared.0.lock().unwrap_or_else(|p| p.into_inner());
             (
                 state.interrupt.is_some(),
                 state.evaluating.unwrap_or(evaluating),
@@ -195,7 +197,12 @@ struct Evaluation<'a> {
 }
 impl Drop for Evaluation<'_> {
     fn drop(&mut self) {
-        let mut state = self.budget.shared.0.lock().unwrap();
+        let mut state = self
+            .budget
+            .shared
+            .0
+            .lock()
+            .unwrap_or_else(|p| p.into_inner());
         state.evaluating = None;
         state.interrupt = None;
         self.budget.shared.1.notify_one();
@@ -204,7 +211,7 @@ impl Drop for Evaluation<'_> {
 impl Drop for Budget {
     fn drop(&mut self) {
         {
-            let mut state = self.shared.0.lock().unwrap();
+            let mut state = self.shared.0.lock().unwrap_or_else(|p| p.into_inner());
             state.stopped = true;
             self.shared.1.notify_one();
         }
@@ -218,6 +225,26 @@ impl Drop for Budget {
 mod tests {
     use super::*;
     use rong::JSEngine;
+
+    /// A nested evaluation is refused by a panic that leaves the budget usable, not an abort.
+    #[test]
+    fn a_nested_evaluation_panics_without_poisoning_the_budget() {
+        if !<crate::engine::Active as crate::engine::Engine>::PREEMPTIBLE {
+            return;
+        }
+        let runtime = crate::engine::RongJS::runtime();
+        let budget = Budget::new(&runtime);
+        let limit = Duration::from_secs(5);
+        let nested = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            budget.run(limit, limit, || {
+                let _ = budget.run(limit, limit, || Ok(()));
+                Ok(())
+            })
+        }));
+        assert!(nested.is_err());
+        let (after, _) = budget.run(limit, limit, || Ok(7));
+        assert_eq!(after, Ok(7));
+    }
 
     /// Time the worker spends descheduled (host load, other threads) is not charged; time it
     /// computes is, and a hang that computes nothing still ends at ten times the budget.

@@ -112,6 +112,9 @@ pub fn color(value: &str) -> Result<[u8; 4], String> {
 
 /// The `[x, y]` box fractions an image aligns to, bounded like CSS percentages.
 pub(crate) fn image_position(text: &str) -> Option<[f32; 2]> {
+    if text.len() > 64 {
+        return None;
+    }
     let [x, y] = serde_json::from_str::<[f32; 2]>(text).ok()?;
     [x, y]
         .iter()
@@ -284,6 +287,8 @@ pub(super) fn check(tag: usize, id: usize, value: &Value) -> Result<(), String> 
         field::DATA_ATTRIBUTES => ensure(
             value
                 .as_str()
+                // One node's attributes never exceed the page's budget for all of them.
+                .filter(|source| source.len() <= limits::DATA_ATTRIBUTE_BYTES)
                 .and_then(|source| {
                     serde_json::from_str::<std::collections::BTreeMap<String, String>>(source).ok()
                 })
@@ -582,6 +587,7 @@ pub(super) fn check(tag: usize, id: usize, value: &Value) -> Result<(), String> 
         field::KEY_MAP => ensure(
             value.as_str().is_some_and(|keys| {
                 !keys.is_empty()
+                    && keys.len() <= 1024
                     && keys
                         .split(' ')
                         .all(|key| crate::interaction::view::Key::from_editor_name(key).is_some())

@@ -185,6 +185,8 @@ pub struct ViewSession {
     /// Limits this page has come near, each warned once; drained by the host.
     budget_warned: std::collections::BTreeSet<&'static str>,
     budget_warnings: Vec<String>,
+    /// What this page's isolate raised through `__lingxiaWarn`.
+    dev_warnings: crate::engine::DevWarnings,
     /// The host's bars, drawn under the top layer while the page is raised over them.
     chrome: chrome::ChromeSnapshots,
 }
@@ -357,12 +359,13 @@ impl ViewSession {
             .map(|m| m.catalogue_languages.clone())
             .unwrap_or_default();
         let context = runtime.context();
+        let dev_warnings = crate::engine::DevWarnings::default();
         let renderer = Renderer::default();
         let video_scope = renderer.videos.scope();
         let video_orientation = renderer.videos.orientation_writer();
         let (initialized, _) = budget.run(Duration::from_secs(1), Duration::from_secs(1), || {
             crate::engine::compatibility::install(&context)?;
-            crate::engine::install_dev_globals(&context)?;
+            crate::engine::install_dev_globals(&context, &dev_warnings)?;
             crate::engine::console::install(&context, console.clone())?;
             crate::engine::intl::install(&context)?;
             video::install(&context, video_scope, video_orientation)?;
@@ -473,6 +476,7 @@ impl ViewSession {
             focused_control: None,
             budget_warned: Default::default(),
             budget_warnings: Vec::new(),
+            dev_warnings,
             chrome: Default::default(),
             environment: serde_json::json!({"theme":"light","insets":{"top":0,"right":0,"bottom":0,"left":0},"safeArea":{"top":0,"right":0,"bottom":0,"left":0},"keyboard":{"height":0},"os":"unknown","canDock":false,"language":"en","pointer":"coarse"}),
             state: if logic {

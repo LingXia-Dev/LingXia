@@ -1076,7 +1076,7 @@
   }
   function partRecord(name, value, env) {
     if (!value || typeof value !== "object" || Array.isArray(value)) invalid(name, value, "a style object");
-    value = Object.fromEntries(Object.entries(value).map(([key, item]) => [key, fold(item)]));
+    value = Object.fromEntries(Object.entries(value).map(([key, item]) => [key, key === "width" || key === "height" ? fold(item) : item]));
     for (const key of ["width", "height"]) if (value[key] !== void 0 && !(finite(value[key]) && value[key] >= 0 && value[key] <= 1024)) invalid(`${name}.${key}`, value[key], "a number from 0 to 1024");
     const pairs = [];
     for (const [key, lowered2] of Object.entries(lowerStyle("view", value, env).fields))

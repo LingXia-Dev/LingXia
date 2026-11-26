@@ -21,6 +21,31 @@ fn malformed_wire_names_the_broken_part() {
 }
 
 #[test]
+fn string_fields_parsed_again_are_bounded_before_parsing() {
+    use crate::protocol::{field, limits};
+    let padded = |body: &str, len: usize| format!("{}{body}", " ".repeat(len));
+    let data = |source: String| {
+        wire(json!([
+            0,
+            -1,
+            "",
+            "",
+            "",
+            1,
+            field::DATA_ATTRIBUTES,
+            source
+        ]))
+    };
+    assert!(data(padded(r#"{"x":"1"}"#, 8)).is_ok());
+    assert_eq!(
+        code(data(padded(r#"{"x":"1"}"#, limits::DATA_ATTRIBUTE_BYTES))),
+        "UI_PROP"
+    );
+    assert!(crate::protocol::image_position(&padded("[0.5,0.5]", 8)).is_some());
+    assert!(crate::protocol::image_position(&padded("[0.5,0.5]", 64)).is_none());
+}
+
+#[test]
 fn host_inputs_outside_their_contract_fail_by_code() {
     let mut page = crate::ViewSession::new(&crate::session::tests::source(
         "function render(){return h('text',{},'x')}",
@@ -154,7 +179,15 @@ fn a_scale_step_decodes_on_the_fields_its_family_lists() {
 #[test]
 fn a_scale_step_outside_its_family_fails_with_the_slot_name() {
     use crate::protocol::field;
-    let error = |id, value| styled(id, value).unwrap_err();
+    // The element and field the refusal names follow its own text.
+    assert_eq!(
+        styled(field::PADDING_TOP, step("radius.lg", 1.0, 0.0)).unwrap_err(),
+        "UI_SCALE: paddingTop does not take radius.lg (at <column>, field paddingTop)"
+    );
+    let error = |id, value| {
+        let error = styled(id, value).unwrap_err();
+        error.split(" (at <").next().unwrap().to_owned()
+    };
     assert_eq!(
         error(field::PADDING_TOP, step("radius.lg", 1.0, 0.0)),
         "UI_SCALE: paddingTop does not take radius.lg"
@@ -261,6 +294,52 @@ fn size_keywords_decimal_keyboards_and_the_scale_flag_decode() {
     }
     wire(json!([8, -1, "", "", "", 1, field::KEYBOARD, "decimal"])).unwrap();
     wire(json!([20, -1, "", "", "", 1, field::SCALE_REFS, 1])).unwrap();
+}
+
+#[test]
+fn radius_steps_in_a_slider_part_resolve_and_follow_new_scales() {
+    use crate::protocol::{field, scales, tag};
+    let thumb = json!([field::RADIUS, step("radius.md", 1.0, 0.0), field::WIDTH, 20]).to_string();
+    let records = wire(json!([
+        tag::SLIDER,
+        -1,
+        "",
+        "",
+        "",
+        2,
+        field::ACCESSIBILITY_LABEL,
+        "Volume",
+        field::THUMB_STYLE,
+        thumb
+    ]))
+    .unwrap();
+    let radius = |records: &[crate::protocol::Record]| {
+        let (_, value) = records[0]
+            .fields
+            .iter()
+            .find(|(id, _)| *id == field::THUMB_STYLE)
+            .unwrap();
+        let part = crate::protocol::part_style(value).unwrap();
+        part.iter()
+            .find(|(id, _)| *id == field::RADIUS)
+            .unwrap()
+            .1
+            .as_f64()
+            .unwrap()
+    };
+    let builtin = scales::Scales::builtin().named("radius.md").unwrap();
+    assert_eq!(radius(&records), builtin);
+
+    let mut pushed = scales::Scales::builtin().push();
+    let md = crate::protocol::SCALES
+        .iter()
+        .position(|(slot, _, _)| *slot == "radius.md")
+        .unwrap();
+    pushed["values"][md] = json!(builtin + 5.0);
+    let rescaled = scales::rescale(&records, &scales::Scales::decode(&pushed).unwrap())
+        .unwrap()
+        .expect("the part holds a step");
+    assert_eq!(radius(&rescaled), builtin + 5.0);
 }
 
 #[test]

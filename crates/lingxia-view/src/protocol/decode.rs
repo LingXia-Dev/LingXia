@@ -152,7 +152,10 @@ fn walk(
         }
         depths.push(depth);
         if !key.is_empty() && !keys.insert((parent, key.clone())) {
-            return Err("UI_KEY: duplicate sibling".into());
+            return Err(format!(
+                "UI_KEY: duplicate sibling key {key:?} under <{}>",
+                TAGS[tag]
+            ));
         }
         let test_id = header[3]
             .as_str()
@@ -179,45 +182,64 @@ fn walk(
             .ok_or("UI_BUFFER: truncated fields")?;
         let mut fields = Vec::new();
         let mut steps = Vec::new();
+        // A refused field names the element and the field, after the error's own code.
+        let place = |error: String, id: Option<usize>| {
+            let mut placed = format!("{error} (at <{}>", TAGS[tag]);
+            if !test_id.is_empty() {
+                placed.push_str(&format!(" data-testid={test_id:?}"));
+            } else if !key.is_empty() {
+                placed.push_str(&format!(" key={key:?}"));
+            }
+            if let Some(id) = id {
+                placed.push_str(&format!(", field {}", FIELDS[id].0));
+            }
+            placed.push(')');
+            placed
+        };
         for pair in pairs.chunks_exact(2) {
             let id = pair[0]
                 .as_u64()
                 .filter(|v| *v < FIELDS.len() as u64)
-                .ok_or("UI_FIELD: unknown field id")? as usize;
-            if fields.iter().any(|(old, _)| *old == id) {
-                return Err("UI_FIELD: duplicate".into());
-            }
-            admission::field(tag, parent_tag, id)?;
-            let value = &pair[1];
-            match id {
-                field::LIST_ITEM_KEYS => page.item_keys(records.len(), value)?,
-                field::ANIMATION => page.animation(value)?,
-                field::LIST_ID => page.list(value)?,
-                field::LIST_ROW_INDEX => {
-                    let count = parent
-                        .and_then(|p| records[p].number(field::LIST_COUNT))
-                        .unwrap_or(0.0) as u64;
-                    value
-                        .as_u64()
-                        .filter(|n| *n < count)
-                        .ok_or("UI_LIST: invalid row index")?;
+                .ok_or_else(|| place("UI_FIELD: unknown field id".into(), None))?
+                as usize;
+            let mut decode_field = || -> Result<(), String> {
+                if fields.iter().any(|(old, _)| *old == id) {
+                    return Err("UI_FIELD: duplicate".into());
                 }
-                _ => values::check(tag, id, value)?,
-            }
-            let resolved = if SCALE_STEP_FIELDS.contains(&id) {
-                scales::resolve(tag, id, value, scales)?
-            } else {
-                None
+                admission::field(tag, parent_tag, id)?;
+                let value = &pair[1];
+                match id {
+                    field::LIST_ITEM_KEYS => page.item_keys(records.len(), value)?,
+                    field::ANIMATION => page.animation(value)?,
+                    field::LIST_ID => page.list(value)?,
+                    field::LIST_ROW_INDEX => {
+                        let count = parent
+                            .and_then(|p| records[p].number(field::LIST_COUNT))
+                            .unwrap_or(0.0) as u64;
+                        value
+                            .as_u64()
+                            .filter(|n| *n < count)
+                            .ok_or("UI_LIST: invalid row index")?;
+                    }
+                    _ => values::check(tag, id, value)?,
+                }
+                let resolved = if SCALE_STEP_FIELDS.contains(&id) || super::PARTS.contains(&id) {
+                    scales::resolve(tag, id, value, scales)?
+                } else {
+                    None
+                };
+                match resolved {
+                    Some((resolved, step)) => {
+                        fields.push((id, resolved));
+                        steps.push((id, step));
+                    }
+                    None => fields.push((id, value.clone())),
+                }
+                Ok(())
             };
-            match resolved {
-                Some((resolved, step)) => {
-                    fields.push((id, resolved));
-                    steps.push((id, step));
-                }
-                None => fields.push((id, value.clone())),
-            }
+            decode_field().map_err(|error| place(error, Some(id)))?;
         }
-        admission::record(tag, parent_tag, &key, &fields)?;
+        admission::record(tag, parent_tag, &key, &fields).map_err(|error| place(error, None))?;
         page.rows(records.len(), parent, &key, &fields)?;
         offsets.insert(start as i64, records.len());
         records.push(Record {
@@ -279,9 +301,16 @@ fn reuse(
         .and_then(|offset| previous.offsets.get(&offset))
         .copied()
         .ok_or_else(stale)?;
-    let count = header[4].as_u64().filter(|n| *n > 0).ok_or_else(stale)? as usize;
-    let nodes = previous.records.get(from..from + count).ok_or_else(stale)?;
-    if records.len() + count > limits::NODES {
+    let count = header[4]
+        .as_u64()
+        .and_then(|n| usize::try_from(n).ok())
+        .filter(|n| *n > 0)
+        .ok_or_else(stale)?;
+    let nodes = from
+        .checked_add(count)
+        .and_then(|end| previous.records.get(from..end))
+        .ok_or_else(stale)?;
+    if records.len().saturating_add(count) > limits::NODES {
         return Err("UI_LIMIT: too many nodes".into());
     }
     let parent_offset = header[1]
