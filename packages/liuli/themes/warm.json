@@ -45,6 +45,6 @@
     "leading": { "xs": 16, "sm": 20, "base": 26, "lg": 28, "xl": 30, "2xl": 34, "3xl": 40, "4xl": 44 }
   },
   "shape": {
-    "radius": { "sm": 6, "DEFAULT": 12, "md": 14, "lg": 16, "xl": 20, "2xl": 24, "3xl": 28, "full": 9999 }
+    "radius": { "sm": 6, "DEFAULT": 12, "md": 14, "lg": 16, "xl": 20, "2xl": 24, "3xl": 28 }
   }
 }

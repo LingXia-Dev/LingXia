@@ -1,3 +1,5 @@
+import type { ColorRole } from '@lingxia/view';
+
 // The data model every chart shares: rows of fields, an encoding that names fields, and the
 // facts a summary is written from.
 
@@ -65,7 +67,7 @@ export type ChartSummarize = (facts: ChartFacts) => string;
 
 export const colorCount = 8;
 export const colorOf = (index: number, color?: ChartColor): ChartColor => color ?? (((index % colorCount) + 1) as ChartColor);
-const roles = { 1: 'chart-1', 2: 'chart-2', 3: 'chart-3', 4: 'chart-4', 5: 'chart-5', 6: 'chart-6', 7: 'chart-7', 8: 'chart-8' } as const satisfies Record<ChartColor, string>;
+const roles = { 1: 'chart-1', 2: 'chart-2', 3: 'chart-3', 4: 'chart-4', 5: 'chart-5', 6: 'chart-6', 7: 'chart-7', 8: 'chart-8' } as const satisfies Record<ChartColor, ColorRole>;
 export const roleOf = (color: ChartColor) => roles[color];
 
 /** The field as a number; anything that is not a finite number is a gap. */

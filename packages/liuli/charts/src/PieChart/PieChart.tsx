@@ -1,4 +1,4 @@
-import { cx, useBox, type VectorPath } from '@lingxia/view';
+import { cx, useBox, type ColorAlpha, type ColorRole, type VectorPath } from '@lingxia/view';
 import { Chart, ChartLegend, type ChartColor, type ChartField, type ChartLegendPosition, type ChartRecord, type ChartRow, type ChartSize, type ChartSummarize } from '../Chart/Chart';
 import { colorOf, keyOf, numberOf, plain, roleOf, seriesFacts, textOf } from '../internal/data';
 import { box, circle, sector } from '../internal/geometry';
@@ -98,8 +98,8 @@ export function PieChart<Row extends ChartRecord<Row>>({
     return parts.map((part): VectorPath => {
       const [from, to] = [turned, turned + (part.amount / total) * 2 * Math.PI];
       turned = to;
-      const role = part.color ? roleOf(part.color) : 'line-strong';
-      const fill = chosen && chosen !== part ? `${role}/35` : role;
+      const role: ColorRole = part.color ? roleOf(part.color) : 'line-strong';
+      const fill: ColorRole | ColorAlpha = chosen && chosen !== part ? `${role}/35` : role;
       const rim = chosen === part ? grown : outer;
       if (parts.length > 1) return { d: sector(inner, rim, from, to, gap), fill };
       return inner ? { d: circle((rim + inner) / 2), fill: 'none', stroke: fill, strokeWidth: rim - inner } : { d: circle(rim), fill };

@@ -23,7 +23,9 @@ export interface QRCodeProps {
 // The largest version whose paths stay well inside the View's vector budget.
 const maxVersion = 15;
 const quiet = 4;
-const cache = new Map<string, { viewBox: [number, number, number, number]; paths: { d: string; fill: string }[] }>();
+// The quiet zone and modules are always white and black, whatever the theme: a scanner needs that contrast.
+type QRPath = { d: string; fill: '#ffffff' | '#000000' };
+const cache = new Map<string, { viewBox: [number, number, number, number]; paths: QRPath[] }>();
 
 /** The code's modules as filled rectangles: runs along each row, merged down while the rows below repeat them. */
 function source(value: string, level: QRLevel) {
@@ -47,7 +49,7 @@ function source(value: string, level: QRLevel) {
     pieces.push(`M${x + quiet} ${y + quiet}h${width}v${height}h-${width}z`);
   }
   // A path holds at most 1,024 commands; five per rectangle.
-  const paths = [{ d: `M0 0h${size + 2 * quiet}v${size + 2 * quiet}H0z`, fill: '#ffffff' }];
+  const paths: QRPath[] = [{ d: `M0 0h${size + 2 * quiet}v${size + 2 * quiet}H0z`, fill: '#ffffff' }];
   for (let i = 0; i < pieces.length; i += 200) paths.push({ d: pieces.slice(i, i + 200).join(''), fill: '#000000' });
   const result = { viewBox: [0, 0, size + 2 * quiet, size + 2 * quiet] as [number, number, number, number], paths };
   if (cache.size > 32) cache.delete(cache.keys().next().value as string);
