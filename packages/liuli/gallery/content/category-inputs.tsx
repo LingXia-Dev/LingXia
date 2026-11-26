@@ -15,13 +15,14 @@ import { Specimen as FileInputSpecimen } from '../../core/src/FileInput/FileInpu
 import { Specimen as ComposerSpecimen } from '../../core/src/Composer/Composer.examples';
 import { Specimen as ListInputSpecimen } from '../../core/src/ListInput/ListInput.examples';
 import { Specimen as InputGroupSpecimen } from '../../core/src/InputGroup/InputGroup.examples';
+import { Specimen as TokenizerSpecimen } from '../../core/src/Tokenizer/Tokenizer.examples';
 import { Category, Tile } from '../shared/Layout';
 
 export function Content({ onOpen }: { onOpen: (page: string) => void }) {
   return (
     <>
       <text className="text-body text-muted">{"Fields a person types into or sets: text, dates, times and amounts."}</text>
-      <Category title={"16 components"}>
+      <Category title={"17 components"}>
         <Tile
           name={"TextInput"}
           tagline={"One line of text"}
@@ -149,6 +150,15 @@ export function Content({ onOpen }: { onOpen: (page: string) => void }) {
           testId={"open-input-group"}
         >
           <InputGroupSpecimen />
+        </Tile>
+        <Tile
+          name={"Tokenizer"}
+          tagline={"Words into tokens"}
+          isWide
+          onOpen={() => onOpen("tokenizer")}
+          testId={"open-tokenizer"}
+        >
+          <TokenizerSpecimen />
         </Tile>
       </Category>
     </>

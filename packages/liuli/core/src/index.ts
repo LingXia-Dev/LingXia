@@ -153,6 +153,8 @@ export { ToggleButtonGroup } from './ToggleButtonGroup/ToggleButtonGroup';
 export type * from './ToggleButtonGroup/ToggleButtonGroup';
 export { Token, TokenList } from './Token/Token';
 export type * from './Token/Token';
+export { Tokenizer } from './Tokenizer/Tokenizer';
+export type * from './Tokenizer/Tokenizer';
 export { Tooltip } from './Tooltip/Tooltip';
 export type * from './Tooltip/Tooltip';
 export { TopBar } from './TopBar/TopBar';

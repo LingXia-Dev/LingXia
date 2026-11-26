@@ -23727,6 +23727,314 @@
       }
     },
     {
+      "name": "Tokenizer",
+      "import": "@liulidesign/core/Tokenizer",
+      "exports": [
+        "Tokenizer"
+      ],
+      "category": "inputs",
+      "status": "preview",
+      "since": "2026-11-26",
+      "summary": "Typed entries that become tokens",
+      "description": "Tokenizer is a field whose value is a list of words the user types: addresses, tags, keywords. Enter, a comma, a semicolon or a line break turns the text into a token, a pasted list splits into one token each, and leaving the field keeps what was typed. An entry already there is not added twice. With `validate`, a refused entry stays in the editor with the reason as the field's error. It carries Field's label, help text and status.",
+      "keywords": [
+        "tokenizer",
+        "tags",
+        "chips",
+        "token input",
+        "recipients",
+        "emails",
+        "keywords",
+        "free text",
+        "multiple"
+      ],
+      "props": [
+        {
+          "name": "label",
+          "type": "string",
+          "required": true,
+          "description": "The visible label and the control's accessible name."
+        },
+        {
+          "name": "isLabelHidden",
+          "type": "boolean",
+          "required": false,
+          "description": "Hides the visible label; the control keeps it as its name.",
+          "default": "false"
+        },
+        {
+          "name": "description",
+          "type": "string",
+          "required": false,
+          "description": "Help text under the control, read as the control's description."
+        },
+        {
+          "name": "status",
+          "type": "FieldStatus",
+          "required": false,
+          "description": "An `error` status marks the control invalid; its message is read as the control's description."
+        },
+        {
+          "name": "isRequired",
+          "type": "boolean",
+          "required": false,
+          "description": "Marks the label with an asterisk and the control as required. Validation is the app's.",
+          "default": "false"
+        },
+        {
+          "name": "hasRequiredMark",
+          "type": "boolean",
+          "required": false,
+          "description": "Draws the asterisk on a required label; turn it off on a form where every field is required.",
+          "default": "true"
+        },
+        {
+          "name": "optionalLabel",
+          "type": "string",
+          "required": false,
+          "description": "A word after the label for a field that may be left empty, as the app writes it: \"optional\". Read before the help text."
+        },
+        {
+          "name": "info",
+          "type": "FieldInfo",
+          "required": false,
+          "description": "An info button after the label that opens a note. For what most people need, use `description`: it is always in view."
+        },
+        {
+          "name": "isDisabled",
+          "type": "boolean",
+          "required": false,
+          "description": "",
+          "default": "false"
+        },
+        {
+          "name": "disabledMessage",
+          "type": "string",
+          "required": false,
+          "description": "Shown in place of `description` while disabled."
+        },
+        {
+          "name": "size",
+          "type": "FieldSize",
+          "required": false,
+          "description": "",
+          "values": [
+            "sm",
+            "md",
+            "lg"
+          ],
+          "default": "'md'"
+        },
+        {
+          "name": "bind",
+          "type": "Local<readonly string[]>",
+          "required": false,
+          "description": "A View-local cell holding the entries; use it or `value` with `onChange`."
+        },
+        {
+          "name": "value",
+          "type": "readonly string[]",
+          "required": false,
+          "description": "The entries, in the order they were typed."
+        },
+        {
+          "name": "onChange",
+          "type": "((value: readonly string[]) => void)",
+          "required": false,
+          "description": "Runs with the entries after one is added or removed."
+        },
+        {
+          "name": "placeholder",
+          "type": "string",
+          "required": false,
+          "description": "Shown in the editor while nothing is typed and nothing is entered."
+        },
+        {
+          "name": "validate",
+          "type": "((text: string) => string | undefined)",
+          "required": false,
+          "description": "Checks an entry before it becomes a token: return the reason it is refused, shown as the field's error, and the text stays in the editor to be corrected: `text => text.includes('@') ? undefined : 'Not an email address'`."
+        },
+        {
+          "name": "removeLabel",
+          "type": "((entry: string) => string)",
+          "required": false,
+          "description": "Each token's remove button, named with what it removes. Defaults to \"Remove <entry>\" in the page's language."
+        },
+        {
+          "name": "className",
+          "type": "string",
+          "required": false,
+          "description": ""
+        },
+        {
+          "name": "data-testid",
+          "type": "string",
+          "required": false,
+          "description": "On the editor; the box gets `<testid>-box`, each token `<testid>-token-<index>`."
+        }
+      ],
+      "otherProps": {},
+      "choices": [
+        [
+          [
+            "bind"
+          ],
+          [
+            "value",
+            "onChange"
+          ]
+        ]
+      ],
+      "parts": {
+        "box": "view",
+        "editor": "input"
+      },
+      "accessibility": {
+        "pattern": null,
+        "name": "label",
+        "description": [
+          "description",
+          "status"
+        ],
+        "states": [
+          {
+            "state": "disabled",
+            "from": "isDisabled"
+          },
+          {
+            "state": "invalid",
+            "from": "status, or an entry validate refused"
+          }
+        ],
+        "keyboard": [
+          {
+            "keys": "Enter",
+            "effect": "Turns the typed text into a token"
+          },
+          {
+            "keys": ", or ;",
+            "effect": "Ends the entry before it, which becomes a token"
+          },
+          {
+            "keys": "Tab",
+            "effect": "To each token's remove button, then the editor; leaving the editor keeps what was typed"
+          }
+        ],
+        "target": {
+          "sm": 24
+        },
+        "contrast": [
+          {
+            "what": "boundary",
+            "pair": [
+              "line-strong",
+              "surface"
+            ],
+            "minimum": "3:1"
+          },
+          {
+            "what": "placeholder",
+            "pair": [
+              "text-muted",
+              "surface"
+            ],
+            "minimum": "4.5:1"
+          }
+        ],
+        "notes": [
+          "The editor is named by the field's label and described by its help and status; a refused entry is announced as the field's error.",
+          "Each token's remove button says what it removes."
+        ]
+      },
+      "examples": [
+        {
+          "name": "Recipients",
+          "title": "Email addresses, checked as they are entered",
+          "source": "import { useLocal } from '@lingxia/view';\nimport { Tokenizer } from '@liulidesign/core/Tokenizer';\n\nconst isAddress = (text: string) => (/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(text) ? undefined : `\"${text}\" is not an email address.`);\n\n/** Who an invitation goes to: type or paste addresses, separated by commas; one that is not an address stays to be fixed. */\nexport function Recipients() {\n  const to = useLocal<readonly string[]>('to', ['mira@harbour.co']);\n  return (\n    <Tokenizer\n      bind={to}\n      label=\"Invite\"\n      placeholder=\"name@example.com\"\n      description=\"Press Enter or type a comma after each address.\"\n      validate={isAddress}\n      data-testid=\"invite\"\n    />\n  );\n}"
+        },
+        {
+          "name": "Tags",
+          "title": "Free tags, small",
+          "source": "import { useLocal } from '@lingxia/view';\nimport { Tokenizer } from '@liulidesign/core/Tokenizer';\n\n/** Tags for a post: free words, a comma ends each one. */\nexport function Tags() {\n  const tags = useLocal<readonly string[]>('tags', ['ferries', 'summer']);\n  return <Tokenizer bind={tags} label=\"Tags\" placeholder=\"Add a tag\" size=\"sm\" data-testid=\"tags\" />;\n}"
+        },
+        {
+          "name": "Empty",
+          "title": "Nothing entered, with an error",
+          "source": "import { useLocal } from '@lingxia/view';\nimport { Tokenizer } from '@liulidesign/core/Tokenizer';\n\n/** Empty and required, after a failed send. */\nexport function Empty() {\n  const words = useLocal<readonly string[]>('words', []);\n  return (\n    <Tokenizer\n      bind={words}\n      label=\"Keywords\"\n      placeholder=\"Words a search should match\"\n      isRequired\n      status={words.value.length === 0 ? { type: 'error', message: 'Add at least one keyword.' } : undefined}\n      data-testid=\"keywords\"\n    />\n  );\n}"
+        }
+      ],
+      "gaps": [],
+      "limits": [
+        "Backspace in an empty editor does not remove the last token; its own button does.",
+        "It suggests nothing while typing; a Combobox suggests from a list."
+      ],
+      "playground": {
+        "props": {
+          "label": "Tags",
+          "placeholder": "Add a tag"
+        },
+        "fixture": true
+      },
+      "theming": {
+        "classProps": [
+          {
+            "name": "className",
+            "on": "",
+            "description": ""
+          }
+        ],
+        "tokens": [
+          "--spacing-control-sm",
+          "--spacing-control-md",
+          "--spacing-control-lg",
+          "--text-footnote",
+          "--text-body",
+          "--text-callout",
+          "--radius-control"
+        ],
+        "roles": [
+          "accent",
+          "danger",
+          "line-strong",
+          "surface",
+          "text",
+          "text-faint",
+          "text-muted",
+          "warning"
+        ]
+      },
+      "related": [
+        "MultiSelect",
+        "Token",
+        "TextInput",
+        "Combobox"
+      ],
+      "gallery": {
+        "specimen": "Specimen",
+        "tagline": "Words into tokens",
+        "order": 17,
+        "page": {
+          "lead": "Use a tokenizer to enter several words of the user's own.",
+          "hero": "Recipients",
+          "variants": [
+            {
+              "name": "Tags",
+              "title": "Free tags, in the small size"
+            },
+            {
+              "name": "Empty",
+              "title": "Empty and required, with an error"
+            },
+            {
+              "name": "StateDisabled",
+              "title": "Disabled, with the reason"
+            }
+          ]
+        }
+      }
+    },
+    {
       "name": "Tooltip",
       "import": "@liulidesign/core/Tooltip",
       "exports": [

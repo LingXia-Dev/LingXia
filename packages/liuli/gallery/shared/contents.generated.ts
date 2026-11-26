@@ -39,6 +39,7 @@ import { Content as FileInput } from '../content/file-input';
 import { Content as Composer } from '../content/composer';
 import { Content as ListInput } from '../content/list-input';
 import { Content as InputGroup } from '../content/input-group';
+import { Content as Tokenizer } from '../content/tokenizer';
 import { Content as CheckboxInput } from '../content/checkbox-input';
 import { Content as RadioGroup } from '../content/radio-group';
 import { Content as Switch } from '../content/switch';
@@ -162,6 +163,7 @@ export const contents: Record<string, GalleryContent> = {
   "composer": Composer,
   "list-input": ListInput,
   "input-group": InputGroup,
+  "tokenizer": Tokenizer,
   "checkbox-input": CheckboxInput,
   "radio-group": RadioGroup,
   "switch": Switch,

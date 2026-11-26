@@ -191,6 +191,8 @@
     "./Token/recipe": "./src/Token/Token.recipe.ts",
     "./MultiSelect": "./src/MultiSelect/MultiSelect.tsx",
     "./MultiSelect/recipe": "./src/MultiSelect/MultiSelect.recipe.ts",
+    "./Tokenizer": "./src/Tokenizer/Tokenizer.tsx",
+    "./Tokenizer/recipe": "./src/Tokenizer/Tokenizer.recipe.ts",
     "./DateTimeInput": "./src/DateTimeInput/DateTimeInput.tsx",
     "./DateTimeInput/recipe": "./src/DateTimeInput/DateTimeInput.recipe.ts",
     "./TreeList": "./src/TreeList/TreeList.tsx",

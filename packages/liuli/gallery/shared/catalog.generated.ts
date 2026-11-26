@@ -377,6 +377,23 @@ export const entries: GalleryEntry[] = [
     ]
   },
   {
+    "name": "Tokenizer",
+    "page": "tokenizer",
+    "category": "inputs",
+    "summary": "Typed entries that become tokens",
+    "keywords": [
+      "tokenizer",
+      "tags",
+      "chips",
+      "token input",
+      "recipients",
+      "emails",
+      "keywords",
+      "free text",
+      "multiple"
+    ]
+  },
+  {
     "name": "CheckboxInput",
     "page": "checkbox-input",
     "category": "selection",
@@ -1582,7 +1599,7 @@ export const galleryCategories: GalleryCategory[] = [
     "icon": "text-input",
     "description": "Text, dates and amounts",
     "page": "category-inputs",
-    "count": 16
+    "count": 17
   },
   {
     "id": "selection",

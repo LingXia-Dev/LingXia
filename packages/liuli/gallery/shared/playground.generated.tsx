@@ -73,6 +73,7 @@ import { Toast } from '@liulidesign/core/Toast';
 import { ToggleButton } from '@liulidesign/core/ToggleButton';
 import { ToggleButtonGroup } from '@liulidesign/core/ToggleButtonGroup';
 import { Token } from '@liulidesign/core/Token';
+import { Tokenizer } from '@liulidesign/core/Tokenizer';
 import { Tooltip } from '@liulidesign/core/Tooltip';
 import { TreeList } from '@liulidesign/core/TreeList';
 import { playground as ActionSheetFixture } from '../../core/src/ActionSheet/ActionSheet.examples';
@@ -114,6 +115,7 @@ import { playground as StepperFixture } from '../../core/src/Stepper/Stepper.exa
 import { playground as TableFixture } from '../../core/src/Table/Table.examples';
 import { playground as TabsFixture } from '../../core/src/Tabs/Tabs.examples';
 import { playground as ToggleButtonGroupFixture } from '../../core/src/ToggleButtonGroup/ToggleButtonGroup.examples';
+import { playground as TokenizerFixture } from '../../core/src/Tokenizer/Tokenizer.examples';
 import { playground as TooltipFixture } from '../../core/src/Tooltip/Tooltip.examples';
 import { playground as TreeListFixture } from '../../core/src/TreeList/TreeList.examples';
 
@@ -5943,6 +5945,78 @@ export const playgroundEntries: PlaygroundEntry[] = [
     "binds": {}
   },
   {
+    "name": "Tokenizer",
+    "component": "Tokenizer",
+    "defaults": {
+      "label": "Tags",
+      "placeholder": "Add a tag"
+    },
+    "controls": [
+      {
+        "name": "label",
+        "required": true,
+        "kind": "text"
+      },
+      {
+        "name": "isLabelHidden",
+        "required": false,
+        "kind": "boolean"
+      },
+      {
+        "name": "description",
+        "required": false,
+        "kind": "text"
+      },
+      {
+        "name": "isRequired",
+        "required": false,
+        "kind": "boolean"
+      },
+      {
+        "name": "hasRequiredMark",
+        "required": false,
+        "kind": "boolean"
+      },
+      {
+        "name": "optionalLabel",
+        "required": false,
+        "kind": "text"
+      },
+      {
+        "name": "isDisabled",
+        "required": false,
+        "kind": "boolean"
+      },
+      {
+        "name": "disabledMessage",
+        "required": false,
+        "kind": "text"
+      },
+      {
+        "name": "size",
+        "required": false,
+        "kind": "choice",
+        "options": [
+          "sm",
+          "md",
+          "lg"
+        ]
+      },
+      {
+        "name": "placeholder",
+        "required": false,
+        "kind": "text"
+      }
+    ],
+    "fixed": [
+      "value",
+      "removeLabel"
+    ],
+    "binds": {
+      "value": "onChange"
+    }
+  },
+  {
     "name": "Tooltip",
     "component": "Tooltip",
     "defaults": {
@@ -6076,6 +6150,7 @@ export function PlaygroundSubject({ name, props, set }: { name: string; props: P
   if (name === "ToggleButton") return <ToggleButton {...(props as any)} onChange={(next: unknown) => set("value", next as PlaygroundValue)} />;
   if (name === "ToggleButtonGroup") return <ToggleButtonGroup {...(ToggleButtonGroupFixture() as any)} {...(props as any)} onChange={(next: unknown) => set("value", next as PlaygroundValue)} />;
   if (name === "Token") return <Token {...(props as any)} />;
+  if (name === "Tokenizer") return <Tokenizer {...(TokenizerFixture() as any)} {...(props as any)} onChange={(next: unknown) => set("value", next as PlaygroundValue)} />;
   if (name === "Tooltip") return <Tooltip {...(TooltipFixture() as any)} {...(props as any)} />;
   if (name === "TreeList") return <TreeList {...(TreeListFixture() as any)} {...(props as any)} onChange={(next: unknown) => set("value", next as PlaygroundValue)} />;
   return null;

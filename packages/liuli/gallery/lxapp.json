@@ -47,6 +47,7 @@
     { "name": "composer", "path": "pages/composer/index" },
     { "name": "list-input", "path": "pages/list-input/index" },
     { "name": "input-group", "path": "pages/input-group/index" },
+    { "name": "tokenizer", "path": "pages/tokenizer/index" },
     { "name": "checkbox-input", "path": "pages/checkbox-input/index" },
     { "name": "radio-group", "path": "pages/radio-group/index" },
     { "name": "switch", "path": "pages/switch/index" },
