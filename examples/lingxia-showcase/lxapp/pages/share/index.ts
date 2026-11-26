@@ -1,5 +1,5 @@
 import { definePage, lx, type ShareOptions } from '@lingxia/logic';
-import { errorMessage } from "../../shared/lib/errors";
+import { failureText } from "../../shared/lib/errors";
 function mediaPath(entry: unknown): string {
   if (!entry) return "";
   if (typeof entry === "string") return entry;
@@ -27,7 +27,7 @@ export default definePage({
                   : "share.state.opened";
           });
         } catch (error) {
-          const message = errorMessage(error, "share failed");
+          const message = failureText(error, lx.app.t('share.failed'));
           page.update(d => { d.statusText = message; });
           lx.ui.toast(message);
         }
@@ -62,7 +62,7 @@ export default definePage({
             d.statusText = "share.state.image";
           });
         } catch (error) {
-          const message = errorMessage(error, "pick.media failed");
+          const message = failureText(error, lx.app.t('media.pickFailed'));
           page.update(d => { d.statusText = message; });
           lx.ui.toast(message);
         }
@@ -86,7 +86,7 @@ export default definePage({
             d.statusText = (result.status === 'canceled') ? "share.state.fileCanceled" : "share.state.file";
           });
         } catch (error) {
-          const message = errorMessage(error, "chooseFile failed");
+          const message = failureText(error, lx.app.t('file.pickFailed'));
           page.update(d => { d.statusText = message; });
           lx.ui.toast(message);
         }

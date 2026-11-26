@@ -100,7 +100,7 @@ export function render({ data, actions, env }: View) {
             <InfoRow label={t('system.supported')} value={yesNo(data.autostartSupported)} testId="system-autostart-status" />
             <InfoRow label={t('system.enabledOs')} value={yesNo(data.autostartEnabled)} />
           </InfoList>
-          <ErrorState error={data.autostartError ? String(data.autostartError) : null} />
+          <ErrorState error={data.autostartError || null} />
           <Button variant="secondary" size="sm" testId="system-autostart-refresh" onClick={() => actions.refreshAutostart()}>
             {t('system.reReadOsState')}
           </Button>
@@ -122,7 +122,7 @@ export function render({ data, actions, env }: View) {
             <InfoRow label={t('system.lastFreedEstimate')} value={bytes(data.cacheFreedBytes)} />
             {!!data.cacheNotice && <InfoRow label={t('system.result')} value={data.cacheNotice} testId="system-cache-status" />}
           </InfoList>
-          <ErrorState testId="system-cache-error" error={data.cacheError ? String(data.cacheError) : null} />
+          <ErrorState testId="system-cache-error" error={data.cacheError || null} />
           <text className="text-xs text-muted">{t('system.runningAppsKeepTheir')}</text>
           <Button variant="secondary" size="sm" testId="system-cache-refresh" disabled={!!data.cacheBusy} onClick={() => actions.refreshCacheSize()}>
             {t('system.reReadSize')}
@@ -155,7 +155,7 @@ export function render({ data, actions, env }: View) {
             <InfoRow label={t('system.permission')} value={data.notificationPermission} testId="system-notification-status" />
             <InfoRow label={t('system.lastId')} value={data.notificationLastId} testId="system-notification-result" />
           </InfoList>
-          <ErrorState error={data.notificationError ? String(data.notificationError) : null} />
+          <ErrorState error={data.notificationError || null} />
           <view className="grid gap-2 grid-cols-2">
             <Button variant="secondary" size="sm" testId="system-notification-refresh" onClick={() => actions.refreshNotification()}>
               {t('system.reReadPermission')}
@@ -176,7 +176,7 @@ export function render({ data, actions, env }: View) {
             <InfoRow label={t('system.supported')} value={yesNo(data.bannerSupported)} />
             <InfoRow label={t('system.lastResult')} value={data.bannerLast} testId="system-banner-last" />
           </InfoList>
-          <ErrorState error={data.bannerError ? String(data.bannerError) : null} />
+          <ErrorState error={data.bannerError || null} />
           <Button variant="secondary" size="sm" testId="system-banner-reread" onClick={() => actions.refreshBanner()}>
             {t('system.reReadSupport')}
           </Button>

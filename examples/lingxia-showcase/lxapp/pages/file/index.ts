@@ -1,5 +1,5 @@
 import { definePage, lx, type DownloadTask, type TransferProgress } from '@lingxia/logic';
-import { errorMessage } from "../../shared/lib/errors";
+import { failureText } from "../../shared/lib/errors";
 
 function detectFileType(url: string | undefined) {
   if (!url) return "";
@@ -134,8 +134,8 @@ export default definePage({
             d.chooseFileSelectedType = fileType || "unknown";
           });
         } catch (error) {
-          lx.ui.toast(errorMessage(error, lx.app.t('file.pickFailed')));
-          page.update(d => { d.chooseFileStatusText = errorMessage(error, lx.app.t('file.pickFailed')); });
+          lx.ui.toast(failureText(error, lx.app.t('file.pickFailed')));
+          page.update(d => { d.chooseFileStatusText = failureText(error, lx.app.t('file.pickFailed')); });
         }
       },
       async openChosenFile() {
@@ -148,7 +148,7 @@ export default definePage({
         try {
           await lx.openFile(filePath, { mode: "auto" });
         } catch (error) {
-          lx.ui.toast(errorMessage(error, "openFile failed"));
+          lx.ui.toast(failureText(error, lx.app.t('common.requestFailed')));
         }
       },
       async openOffice() {
@@ -183,8 +183,8 @@ export default definePage({
           await lx.openFile(filePath, { mode: "auto" });
           page.update(d => { d.officeStatusText = lx.app.t('file.opened', { path: filePath }); });
         } catch (error) {
-          page.update(d => { d.officeStatusText = errorMessage(error, lx.app.t('file.fetchFailed')); });
-          lx.ui.toast(errorMessage(error, lx.app.t('file.fetchFailed')));
+          page.update(d => { d.officeStatusText = failureText(error, lx.app.t('file.fetchFailed')); });
+          lx.ui.toast(failureText(error, lx.app.t('file.fetchFailed')));
         } finally {
           page.update(d => { d.isOfficeFetching = false; });
         }

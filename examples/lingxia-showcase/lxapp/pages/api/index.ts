@@ -1,5 +1,5 @@
 import { cloudProviderAvailable } from '../../shared/lib/provider';
-import { errorMessage } from '../../shared/lib/errors';
+import { failureText } from '../../shared/lib/errors';
 import { openFeedback } from '../../shared/lib/feedback';
 import { definePage, lx } from '@lingxia/logic';
 
@@ -9,7 +9,7 @@ export default definePage({
     const actions = {
       async openOtherApp() {
         try { await lx.nav.go({ app: 'lingxia-showcase-web', page: 'chat' }); }
-        catch (error) { await lx.ui.toast(errorMessage(error, lx.app.t('api.openAppFailed'))); }
+        catch (error) { await lx.ui.toast(failureText(error, lx.app.t('api.openAppFailed'))); }
       },
       async openDeepSeek() {
         const choice = await lx.ui.actionSheet({
@@ -22,7 +22,7 @@ export default definePage({
           else if (choice.id === 'aside') await lx.surface.openUrl(url, { as: 'aside' });
           else await lx.surface.openUrl(url);
         } catch (error) {
-          await lx.ui.toast(errorMessage(error, lx.app.t('api.openPageFailed')));
+          await lx.ui.toast(failureText(error, lx.app.t('api.openPageFailed')));
         }
       },
       async exitApp() {

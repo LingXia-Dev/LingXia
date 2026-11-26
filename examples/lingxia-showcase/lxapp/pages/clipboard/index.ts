@@ -1,4 +1,3 @@
-import { errorMessage } from "../../shared/lib/errors";
 import { definePage, lx } from '@lingxia/logic';
 
 const SAMPLE_PNG =
@@ -21,8 +20,9 @@ export default definePage({
   },
   setup(page) {
     const helpers = {
-      async fail(error: unknown, fallback: string) {
-        const message = errorMessage(error, fallback);
+      async fail(error: unknown, call: string) {
+        console.warn(`clipboard.${call}:`, error);
+        const message = lx.app.t("clipboard.failed");
         page.update(d => { d.statusText = message; });
         lx.ui.toast(message);
       },
@@ -50,7 +50,7 @@ export default definePage({
           await helpers.peekTypes();
           page.update(d => { d.statusText = text === "" ? "clipboard.state.wroteEmptyString" : "clipboard.state.wroteText"; });
         } catch (error) {
-          await helpers.fail(error, "writeText failed");
+          await helpers.fail(error, "writeText");
         }
       },
       async readText() {
@@ -79,7 +79,7 @@ export default definePage({
           });
           await helpers.peekTypes();
         } catch (error) {
-          await helpers.fail(error, "readText failed");
+          await helpers.fail(error, "readText");
           await helpers.showTypesAfterRead();
         }
       },
@@ -90,7 +90,7 @@ export default definePage({
           await helpers.peekTypes();
           page.update(d => { d.statusText = "clipboard.state.wroteTypedTextItem"; });
         } catch (error) {
-          await helpers.fail(error, "write failed");
+          await helpers.fail(error, "write");
         }
       },
       async writeSampleImage() {
@@ -147,7 +147,7 @@ export default definePage({
           });
           await helpers.peekTypes();
         } catch (error) {
-          await helpers.fail(error, "read failed");
+          await helpers.fail(error, "read");
           await helpers.showTypesAfterRead();
         }
       },
@@ -156,7 +156,7 @@ export default definePage({
           await helpers.peekTypes();
           page.update(d => { d.statusText = "clipboard.state.peekedTypes"; });
         } catch (error) {
-          await helpers.fail(error, "types failed");
+          await helpers.fail(error, "types");
         }
       },
       async clearClipboard() {
@@ -169,7 +169,7 @@ export default definePage({
             d.imagePath = "";
           });
         } catch (error) {
-          await helpers.fail(error, "clear failed");
+          await helpers.fail(error, "clear");
         }
       },
     };

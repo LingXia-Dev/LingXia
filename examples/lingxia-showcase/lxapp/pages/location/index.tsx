@@ -1,4 +1,4 @@
-import { t } from '@lingxia/view';
+import { errorText, t } from '@lingxia/view';
 import '../../theme/index.css';
 import { Button, Card, Icon, Page } from '../../shared/ui';
 import type { View } from './$types';
@@ -56,7 +56,7 @@ export function render({ data, actions }: View) {
           </view>
         ) : (
           <text data-testid="location-status" className={data.locationError ? 'py-8 text-base text-danger' : 'py-8 text-base text-muted'}>
-            {String(data.locationError || t('location.none'))}
+            {data.locationError ? errorText(data.locationError) : t('location.none')}
           </text>
         )}
       </Card>

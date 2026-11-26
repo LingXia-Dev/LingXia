@@ -1,12 +1,17 @@
-// `catch` binds `unknown`, so a rejection's message has to be read defensively.
-// `lx` APIs reject with an Error, but a page also awaits plain promises and
-// third-party code, and neither is guaranteed to.
-export function errorMessage(error: unknown, fallback: string): string {
-  if (error instanceof Error && error.message) return error.message;
-  if (typeof error === "string" && error) return error;
-  if (typeof error === "object" && error !== null) {
-    const message = (error as { message?: unknown }).message;
-    if (typeof message === "string" && message) return message;
-  }
+/** A failure as page data keeps it: `code` picks what a person reads (`errorText` in the View); `message` is English for the log. */
+export type Failure = { readonly code: string; readonly message: string };
+
+/** `catch` binds `unknown`; `lx` rejects with a coded error, other promises may not. */
+export function failure(error: unknown): Failure {
+  const e = error as { code?: unknown; message?: unknown } | null;
+  return {
+    code: typeof e?.code === 'string' ? e.code : 'E_INTERNAL',
+    message: typeof e?.message === 'string' ? e.message : String(error),
+  };
+}
+
+/** Logic's words for a failed action: the page's own text; the error's English message goes to the log. */
+export function failureText(error: unknown, fallback: string): string {
+  console.warn(fallback, error);
   return fallback;
 }

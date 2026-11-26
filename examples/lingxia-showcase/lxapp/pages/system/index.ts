@@ -6,6 +6,7 @@ import {
   type SystemSettingInfo,
   type PageLoadOptions,
 } from '@lingxia/logic';
+import { failure, type Failure } from "../../shared/lib/errors";
 
 export default definePage({
   data: {
@@ -15,20 +16,20 @@ export default definePage({
     systemSetting: null as SystemSettingInfo | null,
     autostartSupported: false,
     autostartEnabled: null as boolean | null,
-    autostartError: '',
+    autostartError: "" as string | Failure,
     cacheBytes: null as number | null,
     cacheFreedBytes: null as number | null,
     cacheBusy: false,
-    cacheError: '',
+    cacheError: "" as string | Failure,
     cacheNotice: '',
     notificationSupported: false,
     notificationPermission: '',
     notificationLastId: '',
     notificationTarget: 'activate',
-    notificationError: '',
+    notificationError: "" as string | Failure,
     bannerSupported: false,
     bannerLast: '',
-    bannerError: '',
+    bannerError: "" as string | Failure,
     bannerBusy: false,
     bannerBackground: 'system',
     bannerActiveId: '',
@@ -99,7 +100,7 @@ export default definePage({
           page.update(d => {
             d.autostartSupported = true;
             d.autostartEnabled = null;
-            d.autostartError = String(error);
+            d.autostartError = failure(error);
           });
         }
       },
@@ -126,7 +127,7 @@ export default definePage({
           console.error('Failed to read cache size:', error);
           page.update(d => {
             d.cacheBytes = null;
-            d.cacheError = String(error);
+            d.cacheError = failure(error);
           });
         }
       },
@@ -170,7 +171,7 @@ export default definePage({
           console.error('Failed to clear cache:', error);
           page.update(d => {
             d.cacheBusy = false;
-            d.cacheError = String(error);
+            d.cacheError = failure(error);
           });
         }
       },
@@ -199,7 +200,7 @@ export default definePage({
           page.update(d => {
             d.notificationSupported = true;
             d.notificationPermission = '';
-            d.notificationError = String(error);
+            d.notificationError = failure(error);
           });
         }
       },
@@ -227,7 +228,7 @@ export default definePage({
           });
         } catch (error) {
           console.error('Failed to show notification:', error);
-          page.update(d => { d.notificationError = String(error); });
+          page.update(d => { d.notificationError = failure(error); });
         }
       },
       async cancelNotification() {
@@ -247,7 +248,7 @@ export default definePage({
           });
         } catch (error) {
           console.error('Failed to cancel notification:', error);
-          page.update(d => { d.notificationError = String(error); });
+          page.update(d => { d.notificationError = failure(error); });
         }
       },
       refreshBanner() {
@@ -294,7 +295,7 @@ export default definePage({
           console.error('Failed to show banner toast:', error);
           page.update(d => {
             d.bannerBusy = false;
-            d.bannerError = String(error);
+            d.bannerError = failure(error);
           });
         }
       },
@@ -335,7 +336,7 @@ export default definePage({
           console.error('Failed to show banner prompt:', error);
           page.update(d => {
             d.bannerBusy = false;
-            d.bannerError = String(error);
+            d.bannerError = failure(error);
           });
         }
       },
@@ -355,7 +356,7 @@ export default definePage({
           }
         } catch (error) {
           console.error('Failed to dismiss banner:', error);
-          page.update(d => { d.bannerError = String(error); });
+          page.update(d => { d.bannerError = failure(error); });
         }
       },
       async toggleAutostart() {
@@ -380,7 +381,7 @@ export default definePage({
           });
         } catch (error) {
           console.error('Failed to toggle autostart:', error);
-          page.update(d => { d.autostartError = String(error); });
+          page.update(d => { d.autostartError = failure(error); });
         }
       },
       getSystemSetting() {

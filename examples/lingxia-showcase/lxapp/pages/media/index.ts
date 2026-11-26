@@ -1,5 +1,5 @@
 import type { LxAppMessageKey } from '@lingxia/types';
-import { errorMessage } from "../../shared/lib/errors";
+import { failureText } from "../../shared/lib/errors";
 import {
   definePage,
   lx,
@@ -510,11 +510,11 @@ export default definePage({
           const isAbort = abortLike?.name === "AbortError" || abortLike?.code === "E_ABORT";
           page.update(d => {
             d.previewSessionBusy = false;
-            d.previewSessionError = isAbort ? "" : (errorMessage(error, lx.app.t('media.previewFailed')));
+            d.previewSessionError = isAbort ? "" : (failureText(error, lx.app.t('media.previewFailed')));
           });
           if (!isAbort) {
             console.error("[media-demo] media.preview failed:", error);
-            lx.ui.toast(errorMessage(error, lx.app.t('media.previewFailed')));
+            lx.ui.toast(failureText(error, lx.app.t('media.previewFailed')));
           }
           return null;
         } finally {
@@ -542,7 +542,7 @@ export default definePage({
           return (result.status === 'canceled') ? null : result.files[0].path;
         } catch (error) {
           console.error("[media-demo] pickSingleMedia failed:", error);
-          lx.ui.toast(errorMessage(error, lx.app.t('media.pickFailed')));
+          lx.ui.toast(failureText(error, lx.app.t('media.pickFailed')));
           return null;
         }
       },
@@ -707,7 +707,7 @@ export default definePage({
           page.update(d => { d.selectedMedia = enrichedList; });
         } catch (error) {
           console.error("[media-demo] pick.media failed:", error);
-          lx.ui.toast(errorMessage(error, lx.app.t('media.operationFailed')));
+          lx.ui.toast(failureText(error, lx.app.t('media.operationFailed')));
         } finally {
           page.update(d => { d.isRunning = false; });
         }
@@ -741,7 +741,7 @@ export default definePage({
         } catch (error) {
           console.error("pick.code failed:", error);
           page.update(d => { d.scanBusy = false; });
-          lx.ui.toast(errorMessage(error, lx.app.t('media.pickCodeFailed')));
+          lx.ui.toast(failureText(error, lx.app.t('media.pickCodeFailed')));
         }
       },
       async openScanSourcePicker() {
@@ -817,7 +817,7 @@ export default definePage({
             d.imageInfoBusy = false;
           });
         } catch (error) {
-          const message = errorMessage(error, lx.app.t('media.imageInfoFailed'));
+          const message = failureText(error, lx.app.t('media.imageInfoFailed'));
           page.update(d => {
             d.imageInfoError = message;
             d.imageInfoResult = null;
@@ -853,7 +853,7 @@ export default definePage({
             d.thumbnailSourceInfo = info;
           });
         } catch (error) {
-          const message = errorMessage(error, lx.app.t('media.videoInfoFailed'));
+          const message = failureText(error, lx.app.t('media.videoInfoFailed'));
           page.update(d => {
             d.videoInfoBusy = false;
             d.videoInfoError = message;
@@ -915,7 +915,7 @@ export default definePage({
             d.thumbnailBusy = false;
           });
         } catch (error) {
-          const message = errorMessage(error, lx.app.t('media.thumbnailFailed'));
+          const message = failureText(error, lx.app.t('media.thumbnailFailed'));
           page.update(d => {
             d.thumbnailError = message;
             d.thumbnailResult = null;
@@ -1003,7 +1003,7 @@ export default definePage({
           if (disposed || epoch !== compressionEpoch) return;
           const abortLike = error as { name?: string; code?: string } | null;
           const isAbort = abortLike?.name === "AbortError" || abortLike?.code === "E_ABORT";
-          const message = errorMessage(error, lx.app.t('media.compressVideoFailed'));
+          const message = failureText(error, lx.app.t('media.compressVideoFailed'));
           page.update(d => {
             d.videoCompressError = isAbort ? "" : message;
             d.videoCompressResult = null;
@@ -1099,7 +1099,7 @@ export default definePage({
           });
         } catch (error) {
           if (disposed || epoch !== compressionEpoch) return;
-          const message = errorMessage(error, lx.app.t('media.compressImageFailed'));
+          const message = failureText(error, lx.app.t('media.compressImageFailed'));
           page.update(d => {
             d.compressError = message;
             d.compressResult = null;
@@ -1131,7 +1131,7 @@ export default definePage({
           await lx.media.saveToLibrary(result.file.path);
           lx.ui.toast(lx.app.t('media.imageSaved'), { tone: "success" });
         } catch (error) {
-          lx.ui.toast(errorMessage(error, lx.app.t('media.saveImageFailed')));
+          lx.ui.toast(failureText(error, lx.app.t('media.saveImageFailed')));
         } finally {
           page.update(d => { d.saveToAlbumBusy = false; });
         }
@@ -1145,7 +1145,7 @@ export default definePage({
           await lx.media.saveToLibrary(result.file.path);
           lx.ui.toast(lx.app.t('media.videoSaved'), { tone: "success" });
         } catch (error) {
-          lx.ui.toast(errorMessage(error, lx.app.t('media.saveVideoFailed')));
+          lx.ui.toast(failureText(error, lx.app.t('media.saveVideoFailed')));
         } finally {
           page.update(d => { d.saveToAlbumBusy = false; });
         }

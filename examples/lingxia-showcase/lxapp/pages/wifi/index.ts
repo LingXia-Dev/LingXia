@@ -1,5 +1,5 @@
 import { definePage, lx, type ConnectWifiOptions, type WifiInfo } from '@lingxia/logic';
-import { errorMessage } from "../../shared/lib/errors";
+import { failureText } from "../../shared/lib/errors";
 
 export default definePage({
   data: {
@@ -68,8 +68,8 @@ export default definePage({
           });
         } catch (error) {
           console.error("Failed to get WiFi list:", error);
-          page.update(d => { d.statusText = errorMessage(error, lx.app.t('wifi.scanFailed')); });
-          lx.ui.toast(errorMessage(error, lx.app.t('wifi.requestFailed')));
+          page.update(d => { d.statusText = failureText(error, lx.app.t('wifi.scanFailed')); });
+          lx.ui.toast(failureText(error, lx.app.t('wifi.requestFailed')));
         } finally {
           page.update(d => { d.scanning = false; });
         }
@@ -84,7 +84,7 @@ export default definePage({
           });
         } catch (error) {
           console.error("Failed to get connected WiFi:", error);
-          page.update(d => { d.statusText = errorMessage(error, lx.app.t('wifi.readFailed')); });
+          page.update(d => { d.statusText = failureText(error, lx.app.t('wifi.readFailed')); });
         }
       },
       async connectWifi(options: ConnectWifiOptions) {
@@ -94,7 +94,7 @@ export default definePage({
           console.log("WiFi connection requested:", options?.ssid);
         } catch (error) {
           console.error("Failed to connect to WiFi:", error);
-          page.update(d => { d.statusText = errorMessage(error, lx.app.t('wifi.connectFailed')); });
+          page.update(d => { d.statusText = failureText(error, lx.app.t('wifi.connectFailed')); });
         }
       },
       onWifiConnected() {

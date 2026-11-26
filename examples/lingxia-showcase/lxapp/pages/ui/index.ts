@@ -1,5 +1,5 @@
 import type { LxAppMessageKey } from '@lingxia/types';
-import { errorMessage } from "../../shared/lib/errors";
+import { failure } from "../../shared/lib/errors";
 import {
   definePage,
   isLxError,
@@ -426,7 +426,7 @@ export default definePage({
           });
         } catch (error) {
           console.warn("surface.show failed:", error);
-          thisPage.update(d => { d.surfaceDemo.message = lx.app.t("ui.showFailed", { reason: errorMessage(error, "unknown error") }); });
+          thisPage.update(d => { d.surfaceDemo.message = lx.app.t("ui.showFailed", { reason: failure(error).code }); });
         }
       },
       async hideActiveSurface() {
@@ -445,7 +445,7 @@ export default definePage({
           });
         } catch (error) {
           console.warn("surface.hide failed:", error);
-          thisPage.update(d => { d.surfaceDemo.message = lx.app.t("ui.hideFailed", { reason: errorMessage(error, "unknown error") }); });
+          thisPage.update(d => { d.surfaceDemo.message = lx.app.t("ui.hideFailed", { reason: failure(error).code }); });
         }
       },
       async closeActiveSurface() {

@@ -1,8 +1,9 @@
 import { definePage, lx, type LocationInfo } from '@lingxia/logic';
+import { failure, type Failure } from "../../shared/lib/errors";
 export default definePage({
   data: {
     location: null as LocationInfo | null,
-    locationError: "",
+    locationError: null as Failure | null,
     isLoading: false,
   },
   setup(page) {
@@ -14,7 +15,7 @@ export default definePage({
 
         page.update(d => {
           d.isLoading = true;
-          d.locationError = "";
+          d.locationError = null;
         });
 
         try {
@@ -30,7 +31,7 @@ export default definePage({
           console.warn("Failed to get location:", error);
 
           page.update(d => {
-            d.locationError = error instanceof Error ? error.message : String(error);
+            d.locationError = failure(error);
             d.isLoading = false;
           });
         }
@@ -39,7 +40,7 @@ export default definePage({
       async clearLocation() {
         page.update(d => {
           d.location = null;
-          d.locationError = "";
+          d.locationError = null;
         });
       },
     };
