@@ -2,6 +2,7 @@
 
 //! Windows platform implementation for LingXia.
 
+use lingxia_error::Error;
 mod app;
 mod badge;
 pub(crate) mod banner;
@@ -86,10 +87,8 @@ pub use update_card::{
 };
 pub use video_player::{WindowsVideoCommandDispatcher, register_windows_video_command_dispatcher};
 
-use crate::error::PlatformError;
-
-pub(crate) fn not_supported<T>(name: &str) -> Result<T, PlatformError> {
-    Err(PlatformError::NotSupported(format!(
+pub(crate) fn not_supported<T>(name: &str) -> Result<T, Error> {
+    Err(Error::not_supported(format!(
         "{name} is not supported on Windows yet"
     )))
 }

@@ -4,7 +4,6 @@ use std::ptr::null_mut;
 use std::sync::{Condvar, Mutex, OnceLock};
 use std::time::Duration;
 
-use crate::error::PlatformError;
 use crate::traits::wifi::{Wifi, WifiConnectRequest, WifiGetConnectedRequest};
 use lingxia_messaging::invoke_callback;
 use serde::Serialize;
@@ -30,6 +29,7 @@ use windows::Win32::NetworkManagement::WiFi::{
 use windows::core::{GUID, IUnknown, Interface, PCWSTR, Type};
 
 use super::Platform;
+use lingxia_error::Error;
 
 const CALLBACK_ERR_INTERNAL: u32 = 1000;
 const WLAN_SUCCESS: u32 = 0;
@@ -78,15 +78,15 @@ fn wifi_listeners() -> &'static Mutex<HashMap<u64, i64>> {
     WIFI_LISTENERS.get_or_init(|| Mutex::new(HashMap::new()))
 }
 
-fn map_windows_error(context: &str, err: windows::core::Error) -> PlatformError {
-    PlatformError::Platform(format!("{context}: {err}"))
+fn map_windows_error(context: &str, err: windows::core::Error) -> Error {
+    Error::internal(format!("{context}: {err}"))
 }
 
-fn wlan_error(context: &str, code: u32) -> PlatformError {
-    PlatformError::Platform(format!("{context} failed with Win32 code {code}"))
+fn wlan_error(context: &str, code: u32) -> Error {
+    Error::internal(format!("{context} failed with Win32 code {code}"))
 }
 
-fn check_wlan(context: &str, code: u32) -> Result<(), PlatformError> {
+fn check_wlan(context: &str, code: u32) -> Result<(), Error> {
     if code == WLAN_SUCCESS {
         Ok(())
     } else {
@@ -210,7 +210,7 @@ fn connect_and_wait(
     client: &WlanClient,
     interface_id: &GUID,
     params: &WLAN_CONNECTION_PARAMETERS,
-) -> Result<(), PlatformError> {
+) -> Result<(), Error> {
     let waiter = ConnectWaiter {
         interface_id: *interface_id,
         result: Mutex::new(None),
@@ -259,7 +259,7 @@ fn connect_and_wait(
                     .ok()
                     .and_then(|(result, _)| *result)
             })
-            .ok_or_else(|| PlatformError::Platform("WlanConnect timed out".into()))
+            .ok_or_else(|| Error::internal("WlanConnect timed out"))
     } else {
         Ok(true)
     };
@@ -280,9 +280,7 @@ fn connect_and_wait(
 
     match result {
         Ok(true) => Ok(()),
-        Ok(false) => Err(PlatformError::Platform(
-            "WlanConnect connection attempt failed".into(),
-        )),
+        Ok(false) => Err(Error::internal("WlanConnect connection attempt failed")),
         Err(err) => Err(err),
     }
 }
@@ -292,7 +290,7 @@ struct WlanClient {
 }
 
 impl WlanClient {
-    fn open() -> Result<Self, PlatformError> {
+    fn open() -> Result<Self, Error> {
         let mut negotiated = 0u32;
         let mut handle = HANDLE::default();
         let code =
@@ -328,7 +326,7 @@ impl<T> Drop for WlanMemory<T> {
     }
 }
 
-fn wlan_interfaces(client: &WlanClient) -> Result<Vec<WLAN_INTERFACE_INFO>, PlatformError> {
+fn wlan_interfaces(client: &WlanClient) -> Result<Vec<WLAN_INTERFACE_INFO>, Error> {
     let mut raw = null_mut::<WLAN_INTERFACE_INFO_LIST>();
     let code = unsafe { WlanEnumInterfaces(client.handle, None, &mut raw) };
     check_wlan("WlanEnumInterfaces", code)?;
@@ -348,10 +346,10 @@ fn ssid_from_dot11(ssid: &DOT11_SSID) -> String {
     String::from_utf8_lossy(&ssid.ucSSID[..len]).to_string()
 }
 
-fn dot11_from_ssid(value: &str) -> Result<DOT11_SSID, PlatformError> {
+fn dot11_from_ssid(value: &str) -> Result<DOT11_SSID, Error> {
     let bytes = value.as_bytes();
     if bytes.is_empty() || bytes.len() > 32 {
-        return Err(PlatformError::InvalidParameter(
+        return Err(Error::invalid_arg(
             "Wi-Fi SSID must be 1..32 bytes".to_string(),
         ));
     }
@@ -387,10 +385,7 @@ fn escape_xml(value: &str) -> String {
         .replace('\'', "&apos;")
 }
 
-fn available_networks(
-    client: &WlanClient,
-    interface_id: &GUID,
-) -> Result<Vec<WlanNetwork>, PlatformError> {
+fn available_networks(client: &WlanClient, interface_id: &GUID) -> Result<Vec<WlanNetwork>, Error> {
     let mut raw = null_mut::<WLAN_AVAILABLE_NETWORK_LIST>();
     let flags = WLAN_AVAILABLE_NETWORK_INCLUDE_ALL_ADHOC_PROFILES
         | WLAN_AVAILABLE_NETWORK_INCLUDE_ALL_MANUAL_HIDDEN_PROFILES;
@@ -432,7 +427,7 @@ fn available_networks(
     Ok(by_ssid.into_values().collect())
 }
 
-fn scan_available_networks() -> Result<Vec<WlanNetwork>, PlatformError> {
+fn scan_available_networks() -> Result<Vec<WlanNetwork>, Error> {
     let client = WlanClient::open()?;
     let interfaces = wlan_interfaces(&client)?;
     let mut networks = Vec::new();
@@ -449,7 +444,7 @@ fn scan_available_networks() -> Result<Vec<WlanNetwork>, PlatformError> {
     Ok(networks)
 }
 
-fn wifi_list_json() -> Result<String, PlatformError> {
+fn wifi_list_json() -> Result<String, Error> {
     let items: Vec<WindowsWifiInfo> = scan_available_networks()?
         .into_iter()
         .map(|network| WindowsWifiInfo {
@@ -463,10 +458,10 @@ fn wifi_list_json() -> Result<String, PlatformError> {
         })
         .collect();
     serde_json::to_string(&items)
-        .map_err(|err| PlatformError::Platform(format!("serialize Wi-Fi list: {err}")))
+        .map_err(|err| Error::internal(format!("serialize Wi-Fi list: {err}")))
 }
 
-fn profile_xml(network: &WlanNetwork, password: Option<&str>) -> Result<String, PlatformError> {
+fn profile_xml(network: &WlanNetwork, password: Option<&str>) -> Result<String, Error> {
     let name = escape_xml(&network.ssid);
     if !network.secure {
         return Ok(format!(
@@ -481,12 +476,11 @@ fn profile_xml(network: &WlanNetwork, password: Option<&str>) -> Result<String, 
         ));
     }
 
-    let password = password.ok_or_else(|| {
-        PlatformError::InvalidParameter("connectWifi requires password for secure network".into())
-    })?;
+    let password = password
+        .ok_or_else(|| Error::invalid_arg("connectWifi requires password for secure network"))?;
     if password.len() < 8 || password.len() > 63 {
-        return Err(PlatformError::InvalidParameter(
-            "connectWifi WPA/WPA2 password must be 8..63 characters".into(),
+        return Err(Error::invalid_arg(
+            "connectWifi WPA/WPA2 password must be 8..63 characters",
         ));
     }
 
@@ -495,7 +489,7 @@ fn profile_xml(network: &WlanNetwork, password: Option<&str>) -> Result<String, 
     } else if network.auth == DOT11_AUTH_ALGO_WPA_PSK {
         "WPAPSK"
     } else {
-        return Err(PlatformError::NotSupported(format!(
+        return Err(Error::not_supported(format!(
             "connectWifi only supports open/WPA/WPA2-PSK networks on Windows; auth={:?}",
             network.auth
         )));
@@ -505,7 +499,7 @@ fn profile_xml(network: &WlanNetwork, password: Option<&str>) -> Result<String, 
     } else if network.cipher == DOT11_CIPHER_ALGO_TKIP {
         "TKIP"
     } else {
-        return Err(PlatformError::NotSupported(format!(
+        return Err(Error::not_supported(format!(
             "connectWifi only supports AES/TKIP Wi-Fi encryption on Windows; cipher={:?}",
             network.cipher
         )));
@@ -523,7 +517,7 @@ fn profile_xml(network: &WlanNetwork, password: Option<&str>) -> Result<String, 
     ))
 }
 
-fn connect_wifi_request(request: &WifiConnectRequest) -> Result<(), PlatformError> {
+fn connect_wifi_request(request: &WifiConnectRequest) -> Result<(), Error> {
     let client = WlanClient::open()?;
     let target_ssid = request.ssid.trim();
     let target_dot11 = dot11_from_ssid(target_ssid)?;
@@ -556,7 +550,7 @@ fn connect_wifi_request(request: &WifiConnectRequest) -> Result<(), PlatformErro
                 )
             };
             if code != WLAN_SUCCESS {
-                return Err(PlatformError::Platform(format!(
+                return Err(Error::internal(format!(
                     "WlanSetProfile failed with Win32 code {code}, reason {reason}"
                 )));
             }
@@ -576,7 +570,7 @@ fn connect_wifi_request(request: &WifiConnectRequest) -> Result<(), PlatformErro
         return Ok(());
     }
 
-    Err(PlatformError::Platform(format!(
+    Err(Error::internal(format!(
         "Wi-Fi network `{target_ssid}` not found"
     )))
 }
@@ -686,43 +680,43 @@ fn connected_wifi_info() -> WindowsWifiInfo {
     }
 }
 
-fn connected_wifi_json() -> Result<String, PlatformError> {
+fn connected_wifi_json() -> Result<String, Error> {
     serde_json::to_string(&connected_wifi_info())
-        .map_err(|err| PlatformError::Platform(format!("serialize Wi-Fi info: {err}")))
+        .map_err(|err| Error::internal(format!("serialize Wi-Fi info: {err}")))
 }
 
-fn invoke_success(callback_id: u64, payload: impl Into<String>) -> Result<(), PlatformError> {
+fn invoke_success(callback_id: u64, payload: impl Into<String>) -> Result<(), Error> {
     let _ = invoke_callback(callback_id, Ok(payload.into()));
     Ok(())
 }
 
 impl Wifi for Platform {
-    fn start_wifi(&self, callback_id: u64) -> Result<(), PlatformError> {
+    fn start_wifi(&self, callback_id: u64) -> Result<(), Error> {
         invoke_success(callback_id, "{}")
     }
 
-    fn connect_wifi(&self, request: WifiConnectRequest) -> Result<(), PlatformError> {
+    fn connect_wifi(&self, request: WifiConnectRequest) -> Result<(), Error> {
         connect_wifi_request(&request)?;
         invoke_success(request.callback_id, "{}")
     }
 
-    fn get_wifi_list(&self, callback_id: u64) -> Result<(), PlatformError> {
+    fn get_wifi_list(&self, callback_id: u64) -> Result<(), Error> {
         invoke_success(callback_id, wifi_list_json()?)
     }
 
-    fn get_connected_wifi(&self, request: WifiGetConnectedRequest) -> Result<(), PlatformError> {
+    fn get_connected_wifi(&self, request: WifiGetConnectedRequest) -> Result<(), Error> {
         invoke_success(request.callback_id, connected_wifi_json()?)
     }
 
-    fn is_wifi_enabled(&self) -> Result<bool, PlatformError> {
+    fn is_wifi_enabled(&self) -> Result<bool, Error> {
         Ok(has_wlan_interface())
     }
 
-    fn add_wifi_state_listener(&self, callback_id: u64) -> Result<(), PlatformError> {
+    fn add_wifi_state_listener(&self, callback_id: u64) -> Result<(), Error> {
         {
             let listeners = wifi_listeners()
                 .lock()
-                .map_err(|_| PlatformError::Platform("Wi-Fi listener registry poisoned".into()))?;
+                .map_err(|_| Error::internal("Wi-Fi listener registry poisoned"))?;
             if listeners.contains_key(&callback_id) {
                 return Ok(());
             }
@@ -749,16 +743,16 @@ impl Wifi for Platform {
 
         let mut listeners = wifi_listeners()
             .lock()
-            .map_err(|_| PlatformError::Platform("Wi-Fi listener registry poisoned".into()))?;
+            .map_err(|_| Error::internal("Wi-Fi listener registry poisoned"))?;
         listeners.insert(callback_id, token);
         Ok(())
     }
 
-    fn remove_wifi_state_listener(&self, callback_id: u64) -> Result<(), PlatformError> {
+    fn remove_wifi_state_listener(&self, callback_id: u64) -> Result<(), Error> {
         let token = {
             let mut listeners = wifi_listeners()
                 .lock()
-                .map_err(|_| PlatformError::Platform("Wi-Fi listener registry poisoned".into()))?;
+                .map_err(|_| Error::internal("Wi-Fi listener registry poisoned"))?;
             listeners.remove(&callback_id)
         };
         if let Some(token) = token {

@@ -1,7 +1,7 @@
 use super::app::Platform;
 use super::ffi;
-use crate::error::PlatformError;
 use crate::traits::ui::{Appearance, LaunchFace, UIUpdate};
+use lingxia_error::Error;
 
 impl Appearance for Platform {
     fn host_appearance_dark(&self) -> bool {
@@ -16,11 +16,11 @@ impl Appearance for Platform {
         });
     }
 
-    fn apply_lxapp_appearance(&self, appid: &str, dark: bool) -> Result<(), PlatformError> {
+    fn apply_lxapp_appearance(&self, appid: &str, dark: bool) -> Result<(), Error> {
         if ffi::apply_appearance(appid, dark) {
             Ok(())
         } else {
-            Err(PlatformError::Platform(format!(
+            Err(Error::internal(format!(
                 "Failed to apply appearance for appId: {appid}"
             )))
         }
@@ -38,10 +38,7 @@ impl LaunchFace for Platform {
 }
 
 impl UIUpdate for Platform {
-    async fn measure_page_chrome_capsule(
-        &self,
-        appid: String,
-    ) -> Result<Option<String>, PlatformError> {
+    async fn measure_page_chrome_capsule(&self, appid: String) -> Result<Option<String>, Error> {
         // One path for iOS and macOS: on macOS the SDK answers "null" unless a
         // host (the Runner's simulated phone chrome) registered a capsule
         // provider, so plain macOS hosts still report no capsule.
@@ -53,33 +50,33 @@ impl UIUpdate for Platform {
         Ok((payload != "null").then_some(payload))
     }
 
-    fn update_navbar_ui(&self, appid: String) -> Result<(), PlatformError> {
+    fn update_navbar_ui(&self, appid: String) -> Result<(), Error> {
         // Use existing updateNavBarUI API (it will get current path internally)
         let success = ffi::update_navbar_ui(&appid);
         if success {
             Ok(())
         } else {
-            Err(PlatformError::Platform(format!(
+            Err(Error::internal(format!(
                 "Failed to update NavigationBar UI for appId: {}",
                 appid
             )))
         }
     }
 
-    fn update_tabbar_ui(&self, appid: String) -> Result<(), PlatformError> {
+    fn update_tabbar_ui(&self, appid: String) -> Result<(), Error> {
         // Use existing updateTabBarUI API
         let success = ffi::update_tabbar_ui(&appid);
         if success {
             Ok(())
         } else {
-            Err(PlatformError::Platform(format!(
+            Err(Error::internal(format!(
                 "Failed to update TabBar UI for appId: {}",
                 appid
             )))
         }
     }
 
-    async fn update_tabbar_ui_async(&self, appid: String) -> Result<(), PlatformError> {
+    async fn update_tabbar_ui_async(&self, appid: String) -> Result<(), Error> {
         crate::rt::native_call_ui(|callback_id| {
             ffi::update_tabbar_ui_async(&appid, callback_id);
             Ok(())
@@ -87,12 +84,12 @@ impl UIUpdate for Platform {
         .await
     }
 
-    fn update_orientation_ui(&self, appid: String) -> Result<(), PlatformError> {
+    fn update_orientation_ui(&self, appid: String) -> Result<(), Error> {
         let success = ffi::update_orientation_ui(&appid);
         if success {
             Ok(())
         } else {
-            Err(PlatformError::Platform(format!(
+            Err(Error::internal(format!(
                 "Failed to update orientation UI for appId: {}",
                 appid
             )))

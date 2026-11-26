@@ -1,5 +1,6 @@
 use crate::authorization::{self, AttentionScope, LogicRoute};
-use crate::i18n::{js_error_from_platform_error, js_invalid_parameter_error};
+use crate::i18n::{js_error, js_invalid_parameter_error};
+use lingxia_error::Error;
 use lingxia_platform::traits::app_runtime::{
     AppRuntime, DesktopBannerAction, DesktopBannerActionStyle, DesktopBannerBackground,
     DesktopBannerOutcome, DesktopBannerShow, DesktopBannerSource,
@@ -297,7 +298,7 @@ mod call_order {
 async fn spawn_blocking<T, F>(work: F) -> JSResult<T>
 where
     T: Send + 'static,
-    F: FnOnce() -> Result<T, lingxia_platform::error::PlatformError> + Send + 'static,
+    F: FnOnce() -> Result<T, Error> + Send + 'static,
 {
     tokio::task::spawn_blocking(work)
         .await
@@ -307,7 +308,7 @@ where
                 format!("banner task failed: {error}"),
             )
         })?
-        .map_err(|error| js_error_from_platform_error(&error))
+        .map_err(js_error)
 }
 
 type ActionTargets = Vec<(String, serde_json::Value)>;

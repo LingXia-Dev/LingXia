@@ -1,5 +1,5 @@
-use crate::error::PlatformError;
 use async_trait::async_trait;
+use lingxia_error::Error;
 use serde::{Deserialize, Serialize};
 
 /// Keyboard modifier used by app-level devtool input.
@@ -69,9 +69,9 @@ pub trait AppKeyboard: Send + Sync {
     async fn perform_app_keyboard(
         &self,
         request: AppKeyboardRequest,
-    ) -> Result<AppKeyboardResult, PlatformError> {
+    ) -> Result<AppKeyboardResult, Error> {
         let _ = request;
-        Err(PlatformError::NotSupported(
+        Err(Error::not_supported(
             "app keyboard input is not implemented for this platform".to_string(),
         ))
     }

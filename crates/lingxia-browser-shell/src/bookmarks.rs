@@ -8,7 +8,6 @@
 
 use crate::bookmarks_html::{ImportedBookmark, export_netscape_html, parse_netscape_html};
 use crate::host::{HostCancel, StreamContext, await_or_cancel};
-use crate::platform_error::map_platform_error;
 use crate::url_match::normalize_url;
 use lingxia_platform::traits::app_runtime::AppRuntime;
 use lingxia_service::file::{FileDialogFilter, PickFileRequest};
@@ -1122,7 +1121,6 @@ async fn import_html_bookmarks(
             },
         )
         .await
-        .map_err(|error| map_platform_error("bookmarks.importHtml", error))
     })
     .await?;
     if selected.canceled {

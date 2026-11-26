@@ -1,8 +1,8 @@
 use super::app::Platform;
-use crate::error::PlatformError;
 use crate::traits::screenshot::{AppScreenshot, CapturedSurface, WindowInfo, composite_surfaces};
 use async_trait::async_trait;
 use base64::Engine as _;
+use lingxia_error::Error;
 use serde::Deserialize;
 
 /// Envelope shape emitted by `AppScreenshot.ets`. The ArkTS side always
@@ -24,7 +24,7 @@ struct ScreenshotEnvelope {
 
 #[async_trait]
 impl AppScreenshot for Platform {
-    async fn list_app_windows(&self) -> Result<Vec<WindowInfo>, PlatformError> {
+    async fn list_app_windows(&self) -> Result<Vec<WindowInfo>, Error> {
         // Harmony apps typically have a single window per ability; surface
         // a single "main" entry so the cross-platform API is consistent.
         // (Enumerating via `window.getAllWindows` is feasible if we ever
@@ -40,28 +40,25 @@ impl AppScreenshot for Platform {
         }])
     }
 
-    async fn take_app_screenshot(&self, window_id: Option<&str>) -> Result<Vec<u8>, PlatformError> {
+    async fn take_app_screenshot(&self, window_id: Option<&str>) -> Result<Vec<u8>, Error> {
         let _ = window_id;
         let envelope_json = crate::rt::native_call(|callback_id| {
             let id = callback_id.to_string();
             lingxia_webview::platform::harmony::tsfn::call_arkts("captureAppScreenshot", &[&id])
                 .map_err(|e| {
-                    PlatformError::Platform(format!(
-                        "Failed to dispatch captureAppScreenshot: {}",
-                        e
-                    ))
+                    Error::internal(format!("Failed to dispatch captureAppScreenshot: {}", e))
                 })
         })
         .await?;
 
         let envelope: ScreenshotEnvelope = serde_json::from_str(&envelope_json).map_err(|e| {
-            PlatformError::Platform(format!(
+            Error::internal(format!(
                 "Failed to parse app screenshot envelope: {} (payload: {})",
                 e, envelope_json
             ))
         })?;
         if !envelope.ok {
-            return Err(PlatformError::Platform(
+            return Err(Error::internal(
                 envelope
                     .error
                     .unwrap_or_else(|| "unknown error".to_string()),
@@ -69,11 +66,11 @@ impl AppScreenshot for Platform {
         }
         let data = envelope
             .data
-            .ok_or_else(|| PlatformError::Platform("envelope ok=true but no data".to_string()))?;
+            .ok_or_else(|| Error::internal("envelope ok=true but no data".to_string()))?;
         let capture = base64::engine::general_purpose::STANDARD
             .decode(data.trim())
             .map_err(|e| {
-                PlatformError::Platform(format!("Failed to decode app screenshot base64: {}", e))
+                Error::internal(format!("Failed to decode app screenshot base64: {}", e))
             })?;
         composite_surfaces(capture, &envelope.surfaces)
     }

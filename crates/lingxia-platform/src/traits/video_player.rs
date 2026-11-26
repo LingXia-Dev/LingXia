@@ -1,5 +1,4 @@
-use crate::error::PlatformError;
-
+use lingxia_error::Error;
 #[derive(Debug, Clone, PartialEq)]
 pub enum VideoPlayerCommand {
     Play,
@@ -34,21 +33,21 @@ pub enum VideoPlayerCommand {
 /// Note: Native component lifecycle is owned by the UI layer, not Rust.
 pub trait VideoPlayerHandle: Send + Sync {
     /// Dispatch a control command to this player.
-    fn dispatch(&self, command: VideoPlayerCommand) -> Result<(), PlatformError>;
+    fn dispatch(&self, command: VideoPlayerCommand) -> Result<(), Error>;
 }
 
 /// Generic video player handle implementation.
 /// Platform implementations provide a dispatch callback.
 pub struct VideoPlayerHandleImpl<D>
 where
-    D: Fn(VideoPlayerCommand) -> Result<(), PlatformError> + Send + Sync,
+    D: Fn(VideoPlayerCommand) -> Result<(), Error> + Send + Sync,
 {
     dispatch_fn: D,
 }
 
 impl<D> VideoPlayerHandleImpl<D>
 where
-    D: Fn(VideoPlayerCommand) -> Result<(), PlatformError> + Send + Sync,
+    D: Fn(VideoPlayerCommand) -> Result<(), Error> + Send + Sync,
 {
     pub fn new(dispatch_fn: D) -> Self {
         Self { dispatch_fn }
@@ -57,9 +56,9 @@ where
 
 impl<D> VideoPlayerHandle for VideoPlayerHandleImpl<D>
 where
-    D: Fn(VideoPlayerCommand) -> Result<(), PlatformError> + Send + Sync,
+    D: Fn(VideoPlayerCommand) -> Result<(), Error> + Send + Sync,
 {
-    fn dispatch(&self, command: VideoPlayerCommand) -> Result<(), PlatformError> {
+    fn dispatch(&self, command: VideoPlayerCommand) -> Result<(), Error> {
         (self.dispatch_fn)(command)
     }
 }
@@ -71,16 +70,12 @@ pub trait VideoPlayerManager: Send + Sync + 'static {
     ///
     /// Returns a handle for dispatching commands to the player.
     /// The native player must already be created by the UI layer (native component).
-    fn bind_player(&self, component_id: &str) -> Result<Box<dyn VideoPlayerHandle>, PlatformError>;
+    fn bind_player(&self, component_id: &str) -> Result<Box<dyn VideoPlayerHandle>, Error>;
 
     /// Set (or update) the callback ID for video player events for a component.
     ///
     /// Default implementation is a no-op for platforms that don't support callbacks.
-    fn set_player_callback(
-        &self,
-        _component_id: &str,
-        _callback_id: u64,
-    ) -> Result<(), PlatformError> {
+    fn set_player_callback(&self, _component_id: &str, _callback_id: u64) -> Result<(), Error> {
         Ok(())
     }
 }

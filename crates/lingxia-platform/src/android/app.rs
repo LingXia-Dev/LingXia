@@ -1,11 +1,11 @@
 use super::with_env;
 use crate::AssetFileEntry;
-use crate::error::PlatformError;
 use crate::traits::app_runtime::AppRuntime;
 use crate::traits::app_runtime::ShowLxApp;
 use jni::objects::{Global, JClass, JObject, JString, JValue};
 use jni::sys::jobject;
 use jni::{Env, jni_sig, jni_str};
+use lingxia_error::Error;
 use std::ffi::CString;
 use std::io::{Read, Result as IoResult};
 use std::path::{Path, PathBuf};
@@ -46,7 +46,7 @@ fn android_installed_from_store() -> bool {
     else {
         return false;
     };
-    with_env(|env| -> Result<bool, PlatformError> {
+    with_env(|env| -> Result<bool, Error> {
         let result = env.call_static_method(
             update_manager_class,
             jni_str!("installedFromStore"),
@@ -58,10 +58,10 @@ fn android_installed_from_store() -> bool {
     .unwrap_or(false)
 }
 
-fn android_update_manager_bool(open_store: bool, info_json: &str) -> Result<bool, PlatformError> {
+fn android_update_manager_bool(open_store: bool, info_json: &str) -> Result<bool, Error> {
     let update_manager_class: &JClass = super::get_cached_class(super::CachedClass::UpdateManager)
-        .map_err(|e| PlatformError::Platform(e.to_string()))?;
-    with_env(|env| -> Result<bool, PlatformError> {
+        .map_err(|e| Error::internal(e.to_string()))?;
+    with_env(|env| -> Result<bool, Error> {
         let info_jstring = env.new_string(info_json)?;
         let result = if open_store {
             env.call_static_method(
@@ -80,7 +80,7 @@ fn android_update_manager_bool(open_store: bool, info_json: &str) -> Result<bool
         };
         Ok(result.z()?)
     })
-    .map_err(|e| PlatformError::Platform(format!("Failed to call UpdateManager: {e}")))
+    .map_err(|e| Error::internal(format!("Failed to call UpdateManager: {e}")))
 }
 
 impl crate::traits::update::UpdateService for Platform {
@@ -93,23 +93,23 @@ impl crate::traits::update::UpdateService for Platform {
         android_installed_from_store()
     }
 
-    fn open_update_store(&self, info_json: &str) -> Result<bool, PlatformError> {
+    fn open_update_store(&self, info_json: &str) -> Result<bool, Error> {
         android_update_manager_bool(true, info_json)
     }
 
-    fn present_store_update(&self, info_json: &str) -> Result<bool, PlatformError> {
+    fn present_store_update(&self, info_json: &str) -> Result<bool, Error> {
         android_update_manager_bool(false, info_json)
     }
 
-    fn install_update(&self, apk_path: &Path, info_json: &str) -> Result<(), PlatformError> {
+    fn install_update(&self, apk_path: &Path, info_json: &str) -> Result<(), Error> {
         let update_manager_class: &JClass =
             super::get_cached_class(super::CachedClass::UpdateManager)
-                .map_err(|e| PlatformError::Platform(e.to_string()))?;
+                .map_err(|e| Error::internal(e.to_string()))?;
 
-        with_env(|env| -> Result<(), PlatformError> {
+        with_env(|env| -> Result<(), Error> {
             let path_str = apk_path
                 .to_str()
-                .ok_or_else(|| PlatformError::Platform("Invalid APK path".to_string()))?;
+                .ok_or_else(|| Error::internal("Invalid APK path".to_string()))?;
             let path_jstring = env.new_string(path_str)?;
             let info_jstring = env.new_string(info_json)?;
 
@@ -120,13 +120,11 @@ impl crate::traits::update::UpdateService for Platform {
                 &[JValue::Object(&path_jstring), JValue::Object(&info_jstring)],
             )?;
             if !result.z()? {
-                return Err(PlatformError::Platform(
-                    "installUpdate returned false".to_string(),
-                ));
+                return Err(Error::internal("installUpdate returned false".to_string()));
             }
             Ok(())
         })
-        .map_err(|e| PlatformError::Platform(format!("Failed to install update: {}", e)))
+        .map_err(|e| Error::internal(format!("Failed to install update: {}", e)))
     }
 }
 
@@ -178,17 +176,14 @@ impl<'a> RecursiveAssetIterator<'a> {
     }
 
     // Helper function to simplify error handling for JNI operations
-    fn handle_jni_error<T>(
-        result: Result<T, jni::errors::Error>,
-        path: &str,
-    ) -> Result<T, PlatformError> {
+    fn handle_jni_error<T>(result: Result<T, jni::errors::Error>, path: &str) -> Result<T, Error> {
         result.map_err(|e| {
-            PlatformError::Platform(format!("JNI operation failed for path '{}': {:?}", path, e))
+            Error::internal(format!("JNI operation failed for path '{}': {:?}", path, e))
         })
     }
 
-    fn list_via_jni(&self, path_to_list: &str) -> Result<Option<Vec<String>>, PlatformError> {
-        with_env(|env| -> Result<Option<Vec<String>>, PlatformError> {
+    fn list_via_jni(&self, path_to_list: &str) -> Result<Option<Vec<String>>, Error> {
+        with_env(|env| -> Result<Option<Vec<String>>, Error> {
             let path_jstring = Self::handle_jni_error(env.new_string(path_to_list), path_to_list)?;
 
             let java_am_obj = self.app.java_asset_manager.as_ref();
@@ -241,12 +236,12 @@ impl<'a> RecursiveAssetIterator<'a> {
                 }
             }
         })
-        .map_err(|e| PlatformError::Platform(format!("Failed to get JNIEnv: {}", e)))
+        .map_err(|e| Error::internal(format!("Failed to get JNIEnv: {}", e)))
     }
 }
 
 impl<'a> Iterator for RecursiveAssetIterator<'a> {
-    type Item = Result<AssetFileEntry<'a>, PlatformError>;
+    type Item = Result<AssetFileEntry<'a>, Error>;
 
     fn next(&mut self) -> Option<Self::Item> {
         loop {
@@ -254,7 +249,7 @@ impl<'a> Iterator for RecursiveAssetIterator<'a> {
                 let c_path = match CString::new(file_path_to_yield.clone()) {
                     Ok(c) => c,
                     Err(e) => {
-                        return Some(Err(PlatformError::Platform(format!(
+                        return Some(Err(Error::internal(format!(
                             "Invalid CString for asset path '{}': {}",
                             file_path_to_yield, e
                         ))));
@@ -267,7 +262,7 @@ impl<'a> Iterator for RecursiveAssetIterator<'a> {
                         ndk_sys::AASSET_MODE_STREAMING as i32,
                     );
                     if asset_ptr.is_null() {
-                        return Some(Err(PlatformError::Platform(format!(
+                        return Some(Err(Error::internal(format!(
                             "Asset '{}' was in file_queue, but NDK AAssetManager_open failed.",
                             file_path_to_yield
                         ))));
@@ -370,9 +365,9 @@ impl Platform {
         })
     }
 
-    fn resolve_app_identifier(jni_env: &mut Env) -> Result<String, PlatformError> {
+    fn resolve_app_identifier(jni_env: &mut Env) -> Result<String, Error> {
         let context = super::application_context(jni_env).ok_or_else(|| {
-            PlatformError::Platform(
+            Error::internal(
                 "Application context not registered via set_application_context".to_string(),
             )
         })?;
@@ -385,15 +380,15 @@ impl Platform {
                 &[],
             )
             .and_then(|val| val.l())
-            .map_err(|e| PlatformError::Platform(format!("Failed to get package name: {:?}", e)))?;
+            .map_err(|e| Error::internal(format!("Failed to get package name: {:?}", e)))?;
         if package_obj.is_null() {
-            return Err(PlatformError::Platform("Package name is null".to_string()));
+            return Err(Error::internal("Package name is null".to_string()));
         }
 
         let package_jstring = unsafe { JString::from_raw(jni_env, package_obj.into_raw() as _) };
-        let package_name = package_jstring.try_to_string(jni_env).map_err(|e| {
-            PlatformError::Platform(format!("Failed to read package name: {:?}", e))
-        })?;
+        let package_name = package_jstring
+            .try_to_string(jni_env)
+            .map_err(|e| Error::internal(format!("Failed to read package name: {:?}", e)))?;
 
         Ok(package_name)
     }
@@ -401,11 +396,11 @@ impl Platform {
 
 impl AppRuntime for Platform {
     /// Read asset file from platform-specific location as a streaming reader
-    fn read_asset<'a>(&'a self, path: &str) -> Result<Box<dyn Read + 'a>, PlatformError> {
+    fn read_asset<'a>(&'a self, path: &str) -> Result<Box<dyn Read + 'a>, Error> {
         unsafe {
             // Convert path to CString to ensure proper null-termination
             let c_path = std::ffi::CString::new(path)
-                .map_err(|e| PlatformError::Platform(format!("Invalid path: {}", e)))?;
+                .map_err(|e| Error::internal(format!("Invalid path: {}", e)))?;
 
             let asset = ndk_sys::AAssetManager_open(
                 self.asset_manager,
@@ -414,10 +409,7 @@ impl AppRuntime for Platform {
             );
 
             if asset.is_null() {
-                return Err(PlatformError::AssetNotFound(format!(
-                    "Failed to open asset: {}",
-                    path
-                )));
+                return Err(Error::not_found(format!("Failed to open asset: {}", path)));
             }
 
             // Return a reader instead of reading the entire asset into memory
@@ -429,7 +421,7 @@ impl AppRuntime for Platform {
     fn asset_dir_iter<'a>(
         &'a self,
         asset_dir: &str,
-    ) -> Box<dyn Iterator<Item = Result<AssetFileEntry<'a>, PlatformError>> + 'a> {
+    ) -> Box<dyn Iterator<Item = Result<AssetFileEntry<'a>, Error>> + 'a> {
         Box::new(RecursiveAssetIterator::new(self, asset_dir))
     }
 
@@ -443,9 +435,9 @@ impl AppRuntime for Platform {
         PathBuf::from(&self.cache_dir)
     }
 
-    fn get_app_identifier(&self) -> Result<String, PlatformError> {
+    fn get_app_identifier(&self) -> Result<String, Error> {
         with_env(Platform::resolve_app_identifier)
-            .map_err(|e| PlatformError::Platform(format!("Failed to get app identifier: {}", e)))
+            .map_err(|e| Error::internal(format!("Failed to get app identifier: {}", e)))
     }
 
     fn copy_album_media_to_file(
@@ -453,7 +445,7 @@ impl AppRuntime for Platform {
         uri: &str,
         dest_path: &Path,
         kind: crate::traits::media_interaction::MediaKind,
-    ) -> Result<(), PlatformError> {
+    ) -> Result<(), Error> {
         crate::traits::media_runtime::MediaRuntime::copy_album_media_to_file(
             self, uri, dest_path, kind,
         )
@@ -463,7 +455,7 @@ impl AppRuntime for Platform {
         &self.locale
     }
 
-    fn show_lxapp(&self, request: ShowLxApp) -> Result<(), PlatformError> {
+    fn show_lxapp(&self, request: ShowLxApp) -> Result<(), Error> {
         let ShowLxApp {
             appid,
             webtag,
@@ -473,8 +465,8 @@ impl AppRuntime for Platform {
             ..
         } = request;
         let bridge_class: &JClass = super::get_cached_class(super::CachedClass::LxApp)
-            .map_err(|e| PlatformError::Platform(e.to_string()))?;
-        with_env(|env| -> Result<(), PlatformError> {
+            .map_err(|e| Error::internal(e.to_string()))?;
+        with_env(|env| -> Result<(), Error> {
             let appid_jstring = env.new_string(&appid)?;
             let webtag_jstring = env.new_string(&webtag)?;
             let panel_jstring = env.new_string(&panel_id)?;
@@ -493,17 +485,17 @@ impl AppRuntime for Platform {
             )?;
             Ok(())
         })
-        .map_err(|e| PlatformError::Platform(format!("Failed to show lxapp: {}", e)))
+        .map_err(|e| Error::internal(format!("Failed to show lxapp: {}", e)))
     }
 
     fn lxapp_region_moves(&self) -> crate::traits::app_runtime::LxAppRegionMoves {
         crate::traits::app_runtime::LxAppRegionMoves::FromPlan
     }
 
-    fn hide_lxapp(&self, appid: String, session_id: u64) -> Result<(), PlatformError> {
+    fn hide_lxapp(&self, appid: String, session_id: u64) -> Result<(), Error> {
         let bridge_class: &JClass = super::get_cached_class(super::CachedClass::LxApp)
-            .map_err(|e| PlatformError::Platform(e.to_string()))?;
-        with_env(|env| -> Result<(), PlatformError> {
+            .map_err(|e| Error::internal(e.to_string()))?;
+        with_env(|env| -> Result<(), Error> {
             let appid_jstring = env.new_string(&appid)?;
             env.call_static_method(
                 bridge_class,
@@ -516,23 +508,21 @@ impl AppRuntime for Platform {
             )?;
             Ok(())
         })
-        .map_err(|e| PlatformError::Platform(format!("Failed to hide lxapp: {}", e)))
+        .map_err(|e| Error::internal(format!("Failed to hide lxapp: {}", e)))
     }
 
-    fn exit(&self) -> Result<(), PlatformError> {
+    fn exit(&self) -> Result<(), Error> {
         let host_class: &JClass = super::get_cached_class(super::CachedClass::Lingxia)
-            .map_err(|e| PlatformError::Platform(e.to_string()))?;
-        with_env(|env| -> Result<(), PlatformError> {
+            .map_err(|e| Error::internal(e.to_string()))?;
+        with_env(|env| -> Result<(), Error> {
             let result =
                 env.call_static_method(host_class, jni_str!("exitApp"), jni_sig!("()Z"), &[])?;
             if !result.z()? {
-                return Err(PlatformError::Platform(
-                    "exitApp returned false".to_string(),
-                ));
+                return Err(Error::internal("exitApp returned false".to_string()));
             }
             Ok(())
         })
-        .map_err(|e| PlatformError::Platform(format!("Failed to exit app: {}", e)))
+        .map_err(|e| Error::internal(format!("Failed to exit app: {}", e)))
     }
 
     fn navigate(
@@ -540,11 +530,11 @@ impl AppRuntime for Platform {
         appid: String,
         webtag: String,
         animation_type: crate::traits::app_runtime::AnimationType,
-    ) -> Result<(), PlatformError> {
+    ) -> Result<(), Error> {
         let bridge_class: &JClass = super::get_cached_class(super::CachedClass::LxApp)
-            .map_err(|e| PlatformError::Platform(e.to_string()))?;
+            .map_err(|e| Error::internal(e.to_string()))?;
 
-        with_env(|env| -> Result<(), PlatformError> {
+        with_env(|env| -> Result<(), Error> {
             let appid_jstring = env.new_string(&appid)?;
             let webtag_jstring = env.new_string(&webtag)?;
             let anim_type_int = animation_type as i32;
@@ -560,7 +550,7 @@ impl AppRuntime for Platform {
                 ],
             )?;
             if !result.z()? {
-                return Err(PlatformError::Platform(format!(
+                return Err(Error::internal(format!(
                     "Navigation returned false: appid={}, webtag={}, animation_type={:?}",
                     appid, webtag, animation_type
                 )));
@@ -568,7 +558,7 @@ impl AppRuntime for Platform {
             Ok(())
         })
         .map_err(|_| {
-            PlatformError::Platform(format!(
+            Error::internal(format!(
                 "Failed to navigate: appid={}, webtag={}, animation_type={:?}",
                 appid, webtag, animation_type
             ))
@@ -578,9 +568,9 @@ impl AppRuntime for Platform {
     fn open_url(
         &self,
         req: crate::traits::app_runtime::OpenUrlRequest,
-    ) -> Result<crate::traits::app_runtime::OpenUrlResult, PlatformError> {
+    ) -> Result<crate::traits::app_runtime::OpenUrlResult, Error> {
         let host_class: &JClass = super::get_cached_class(super::CachedClass::Lingxia)
-            .map_err(|e| PlatformError::Platform(e.to_string()))?;
+            .map_err(|e| Error::internal(e.to_string()))?;
 
         let target_str = match req.target {
             crate::traits::app_runtime::OpenUrlTarget::SelfTarget => "self",
@@ -590,7 +580,7 @@ impl AppRuntime for Platform {
         };
 
         with_env(
-            |env| -> Result<crate::traits::app_runtime::OpenUrlResult, PlatformError> {
+            |env| -> Result<crate::traits::app_runtime::OpenUrlResult, Error> {
                 let url_jstring = env.new_string(req.url)?;
                 let target_jstring = env.new_string(target_str)?;
                 let owner_appid_jstring = env.new_string(req.owner_appid)?;
@@ -614,19 +604,19 @@ impl AppRuntime for Platform {
                 let tab_jstring = unsafe { JString::from_raw(env, tab_obj.into_raw() as _) };
                 let tab_id = tab_jstring
                     .try_to_string(env)
-                    .map_err(|e| PlatformError::Platform(e.to_string()))?;
+                    .map_err(|e| Error::internal(e.to_string()))?;
                 Ok(crate::traits::app_runtime::OpenUrlResult {
                     tab_id: (!tab_id.is_empty()).then_some(tab_id),
                 })
             },
         )
-        .map_err(|e| PlatformError::Platform(format!("Failed to open_url: {}", e)))
+        .map_err(|e| Error::internal(format!("Failed to open_url: {}", e)))
     }
 
-    fn close_browser_tab(&self, tab_id: &str) -> Result<(), PlatformError> {
+    fn close_browser_tab(&self, tab_id: &str) -> Result<(), Error> {
         let host_class: &JClass = super::get_cached_class(super::CachedClass::Lingxia)
-            .map_err(|e| PlatformError::Platform(e.to_string()))?;
-        with_env(|env| -> Result<(), PlatformError> {
+            .map_err(|e| Error::internal(e.to_string()))?;
+        with_env(|env| -> Result<(), Error> {
             let tab_jstring = env.new_string(tab_id)?;
             let result = env.call_static_method(
                 host_class,
@@ -637,29 +627,29 @@ impl AppRuntime for Platform {
             if result.z()? {
                 Ok(())
             } else {
-                Err(PlatformError::Platform(format!(
+                Err(Error::internal(format!(
                     "Failed to close browser tab: {tab_id}"
                 )))
             }
         })
-        .map_err(|e| PlatformError::Platform(format!("Failed to close_browser_tab: {}", e)))
+        .map_err(|e| Error::internal(format!("Failed to close_browser_tab: {}", e)))
     }
 
-    fn notification_permission(&self) -> Result<String, PlatformError> {
+    fn notification_permission(&self) -> Result<String, Error> {
         notification_word_call(false)
     }
 
-    fn notification_request_permission(&self) -> Result<String, PlatformError> {
+    fn notification_request_permission(&self) -> Result<String, Error> {
         notification_word_call(true)
     }
 
     fn notification_show(
         &self,
         request: &crate::traits::app_runtime::LocalNotificationShow,
-    ) -> Result<crate::traits::app_runtime::LocalNotificationStatus, PlatformError> {
-        with_env(|env| -> Result<_, PlatformError> {
+    ) -> Result<crate::traits::app_runtime::LocalNotificationStatus, Error> {
+        with_env(|env| -> Result<_, Error> {
             let class: &JClass = super::get_cached_class(super::CachedClass::LxAppNotification)
-                .map_err(|e| PlatformError::Platform(e.to_string()))?;
+                .map_err(|e| Error::internal(e.to_string()))?;
             let id = env.new_string(&request.id)?;
             let title = env.new_string(&request.title)?;
             let body = env.new_string(&request.body)?;
@@ -682,18 +672,18 @@ impl AppRuntime for Platform {
             )?;
             let status = jstring_from_result(env, result)?;
             if status.is_empty() {
-                return Err(PlatformError::Platform(notification_last_error(env, class)));
+                return Err(Error::internal(notification_last_error(env, class)));
             }
             crate::traits::app_runtime::LocalNotificationStatus::from_native(&status)
-                .ok_or_else(|| PlatformError::Platform(format!("unexpected show status: {status}")))
+                .ok_or_else(|| Error::internal(format!("unexpected show status: {status}")))
         })
-        .map_err(|e| PlatformError::Platform(format!("Failed to show notification: {e}")))
+        .map_err(|e| Error::internal(format!("Failed to show notification: {e}")))
     }
 
-    fn notification_cancel(&self, id: &str) -> Result<(), PlatformError> {
-        with_env(|env| -> Result<(), PlatformError> {
+    fn notification_cancel(&self, id: &str) -> Result<(), Error> {
+        with_env(|env| -> Result<(), Error> {
             let class: &JClass = super::get_cached_class(super::CachedClass::LxAppNotification)
-                .map_err(|e| PlatformError::Platform(e.to_string()))?;
+                .map_err(|e| Error::internal(e.to_string()))?;
             let id = env.new_string(id)?;
             let result = env.call_static_method(
                 class,
@@ -704,32 +694,32 @@ impl AppRuntime for Platform {
             if result.z()? {
                 Ok(())
             } else {
-                Err(PlatformError::Platform(notification_last_error(env, class)))
+                Err(Error::internal(notification_last_error(env, class)))
             }
         })
-        .map_err(|e| PlatformError::Platform(format!("Failed to cancel notification: {e}")))
+        .map_err(|e| Error::internal(format!("Failed to cancel notification: {e}")))
     }
 
-    fn notification_cancel_all(&self) -> Result<(), PlatformError> {
-        with_env(|env| -> Result<(), PlatformError> {
+    fn notification_cancel_all(&self) -> Result<(), Error> {
+        with_env(|env| -> Result<(), Error> {
             let class: &JClass = super::get_cached_class(super::CachedClass::LxAppNotification)
-                .map_err(|e| PlatformError::Platform(e.to_string()))?;
+                .map_err(|e| Error::internal(e.to_string()))?;
             let result =
                 env.call_static_method(class, jni_str!("cancelAll"), jni_sig!("()Z"), &[])?;
             if result.z()? {
                 Ok(())
             } else {
-                Err(PlatformError::Platform(notification_last_error(env, class)))
+                Err(Error::internal(notification_last_error(env, class)))
             }
         })
-        .map_err(|e| PlatformError::Platform(format!("Failed to cancel all notifications: {e}")))
+        .map_err(|e| Error::internal(format!("Failed to cancel all notifications: {e}")))
     }
 
     fn activate_browser_tab(&self, tab_id: String) -> crate::traits::PlatformFuture {
         Box::pin(async move {
             let host_class: &JClass = super::get_cached_class(super::CachedClass::Lingxia)
-                .map_err(|e| PlatformError::Platform(e.to_string()))?;
-            with_env(|env| -> Result<(), PlatformError> {
+                .map_err(|e| Error::internal(e.to_string()))?;
+            with_env(|env| -> Result<(), Error> {
                 let tab_jstring = env.new_string(&tab_id)?;
                 let result = env.call_static_method(
                     host_class,
@@ -740,12 +730,12 @@ impl AppRuntime for Platform {
                 if result.z()? {
                     Ok(())
                 } else {
-                    Err(PlatformError::Platform(format!(
+                    Err(Error::internal(format!(
                         "Failed to activate browser tab: {tab_id}"
                     )))
                 }
             })
-            .map_err(|e| PlatformError::Platform(format!("Failed to activate_browser_tab: {}", e)))
+            .map_err(|e| Error::internal(format!("Failed to activate_browser_tab: {}", e)))
         })
     }
 }
@@ -754,10 +744,9 @@ impl crate::traits::share::ShareService for Platform {
     async fn share(
         &self,
         request: crate::traits::share::ShareRequest,
-    ) -> Result<crate::traits::share::ShareResult, PlatformError> {
-        let files_json = serde_json::to_string(&request.files).map_err(|e| {
-            PlatformError::Platform(format!("Failed to serialize share files: {e}"))
-        })?;
+    ) -> Result<crate::traits::share::ShareResult, Error> {
+        let files_json = serde_json::to_string(&request.files)
+            .map_err(|e| Error::internal(format!("Failed to serialize share files: {e}")))?;
 
         let payload =
             crate::rt::native_call(|callback_id| share_impl(&request, &files_json, callback_id))
@@ -766,7 +755,7 @@ impl crate::traits::share::ShareService for Platform {
             return Ok(crate::traits::share::ShareResult { completed: None });
         }
         serde_json::from_str(&payload)
-            .map_err(|e| PlatformError::Platform(format!("Failed to parse share result: {e}")))
+            .map_err(|e| Error::internal(format!("Failed to parse share result: {e}")))
     }
 }
 
@@ -774,10 +763,10 @@ fn share_impl(
     request: &crate::traits::share::ShareRequest,
     files_json: &str,
     callback_id: u64,
-) -> Result<(), PlatformError> {
-    with_env(|env| -> Result<(), PlatformError> {
+) -> Result<(), Error> {
+    with_env(|env| -> Result<(), Error> {
         let class: &JClass = super::get_cached_class(super::CachedClass::LxAppShare)
-            .map_err(|e| PlatformError::Platform(e.to_string()))?;
+            .map_err(|e| Error::internal(e.to_string()))?;
         let title = env.new_string(request.title.as_deref().unwrap_or_default())?;
         let text = env.new_string(request.text.as_deref().unwrap_or_default())?;
         let url = env.new_string(request.url.as_deref().unwrap_or_default())?;
@@ -799,52 +788,45 @@ fn share_impl(
         )?;
         if env.exception_check() {
             env.exception_clear();
-            return Err(PlatformError::Platform(
+            return Err(Error::internal(
                 "Android share JNI call threw an exception".to_string(),
             ));
         }
         if !result.z()? {
-            return Err(PlatformError::Platform(
-                "Android share returned false".to_string(),
-            ));
+            return Err(Error::internal("Android share returned false".to_string()));
         }
         Ok(())
     })
-    .map_err(|e| PlatformError::Platform(format!("Failed to call Android share: {e}")))
+    .map_err(|e| Error::internal(format!("Failed to call Android share: {e}")))
 }
 
-fn jstring_from_result(
-    env: &mut Env,
-    result: impl JniStringResult,
-) -> Result<String, PlatformError> {
+fn jstring_from_result(env: &mut Env, result: impl JniStringResult) -> Result<String, Error> {
     result.into_string(env)
 }
 
 trait JniStringResult {
-    fn into_string(self, env: &mut Env) -> Result<String, PlatformError>;
+    fn into_string(self, env: &mut Env) -> Result<String, Error>;
 }
 
 impl JniStringResult for jni::objects::JValueOwned<'_> {
-    fn into_string(self, env: &mut Env) -> Result<String, PlatformError> {
-        let object = self
-            .l()
-            .map_err(|e| PlatformError::Platform(e.to_string()))?;
+    fn into_string(self, env: &mut Env) -> Result<String, Error> {
+        let object = self.l().map_err(|e| Error::internal(e.to_string()))?;
         if object.is_null() {
             return Ok(String::new());
         }
         let value = unsafe { JString::from_raw(env, object.into_raw() as _) };
         value
             .try_to_string(env)
-            .map_err(|e| PlatformError::Platform(e.to_string()))
+            .map_err(|e| Error::internal(e.to_string()))
     }
 }
 
 /// `permission` / `requestPermission`: a status word, or empty with the reason
 /// left in `takeLastError`.
-fn notification_word_call(prompt: bool) -> Result<String, PlatformError> {
-    with_env(|env| -> Result<String, PlatformError> {
+fn notification_word_call(prompt: bool) -> Result<String, Error> {
+    with_env(|env| -> Result<String, Error> {
         let class: &JClass = super::get_cached_class(super::CachedClass::LxAppNotification)
-            .map_err(|e| PlatformError::Platform(e.to_string()))?;
+            .map_err(|e| Error::internal(e.to_string()))?;
         let result = if prompt {
             env.call_static_method(
                 class,
@@ -862,11 +844,11 @@ fn notification_word_call(prompt: bool) -> Result<String, PlatformError> {
         };
         let word = jstring_from_result(env, result)?;
         if word.is_empty() {
-            return Err(PlatformError::Platform(notification_last_error(env, class)));
+            return Err(Error::internal(notification_last_error(env, class)));
         }
         Ok(word)
     })
-    .map_err(|e| PlatformError::Platform(format!("Failed to read notification permission: {e}")))
+    .map_err(|e| Error::internal(format!("Failed to read notification permission: {e}")))
 }
 
 fn notification_last_error(env: &mut Env, class: &JClass) -> String {

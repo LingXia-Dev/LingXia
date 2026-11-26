@@ -18,8 +18,8 @@ use windows::Foundation::IReference;
 use windows::Win32::Foundation::E_ACCESSDENIED;
 
 use super::Platform;
-use crate::error::PlatformError;
 use crate::traits::location::{Location, LocationRequestConfig};
+use lingxia_error::Error;
 
 // Business error codes shared with the other backends (see apple/location.rs).
 const CODE_PERMISSION_DENIED: u32 = 3002;
@@ -27,13 +27,12 @@ const CODE_SERVICES_DISABLED: u32 = 4001;
 const CODE_TIMEOUT: u32 = 5002;
 
 impl Location for Platform {
-    fn is_location_enabled(&self) -> Result<bool, PlatformError> {
-        let geolocator = Geolocator::new().map_err(|err| {
-            PlatformError::Platform(format!("failed to create Geolocator: {err}"))
-        })?;
-        let status = geolocator.LocationStatus().map_err(|err| {
-            PlatformError::Platform(format!("failed to query location status: {err}"))
-        })?;
+    fn is_location_enabled(&self) -> Result<bool, Error> {
+        let geolocator = Geolocator::new()
+            .map_err(|err| Error::internal(format!("failed to create Geolocator: {err}")))?;
+        let status = geolocator
+            .LocationStatus()
+            .map_err(|err| Error::internal(format!("failed to query location status: {err}")))?;
         // Before the first position request the status is NotInitialized
         // (unknown); only a definitive "switched off"/"no hardware" answer
         // maps to false.
@@ -43,7 +42,7 @@ impl Location for Platform {
     fn request_location(
         &self,
         config: LocationRequestConfig,
-    ) -> impl Future<Output = Result<String, PlatformError>> + Send {
+    ) -> impl Future<Output = Result<String, Error>> + Send {
         async move {
             match config.high_accuracy_expire_time {
                 Some(timeout_ms) if timeout_ms > 0 => tokio::time::timeout(
@@ -51,14 +50,14 @@ impl Location for Platform {
                     request_location_once(config),
                 )
                 .await
-                .map_err(|_| PlatformError::BusinessError(CODE_TIMEOUT))?,
+                .map_err(|_| Error::business(CODE_TIMEOUT, "location request timed out"))?,
                 _ => request_location_once(config).await,
             }
         }
     }
 }
 
-async fn request_location_once(config: LocationRequestConfig) -> Result<String, PlatformError> {
+async fn request_location_once(config: LocationRequestConfig) -> Result<String, Error> {
     // For unpackaged desktop apps RequestAccessAsync cannot show a consent
     // prompt; it reflects the system-wide location privacy switch. A hard
     // Denied is authoritative, but transient failures fall through to the
@@ -66,7 +65,10 @@ async fn request_location_once(config: LocationRequestConfig) -> Result<String, 
     match Geolocator::RequestAccessAsync() {
         Ok(operation) => match operation.await {
             Ok(status) if status == GeolocationAccessStatus::Denied => {
-                return Err(PlatformError::BusinessError(CODE_PERMISSION_DENIED));
+                return Err(Error::business(
+                    CODE_PERMISSION_DENIED,
+                    "location access denied",
+                ));
             }
             Ok(_) => {}
             Err(err) => log::warn!(
@@ -79,7 +81,7 @@ async fn request_location_once(config: LocationRequestConfig) -> Result<String, 
     }
 
     let geolocator = Geolocator::new()
-        .map_err(|err| PlatformError::Platform(format!("failed to create Geolocator: {err}")))?;
+        .map_err(|err| Error::internal(format!("failed to create Geolocator: {err}")))?;
     let accuracy = if config.is_high_accuracy {
         PositionAccuracy::High
     } else {
@@ -89,7 +91,10 @@ async fn request_location_once(config: LocationRequestConfig) -> Result<String, 
         log::warn!("Windows Location: SetDesiredAccuracy failed: {err}");
     }
     if matches!(geolocator.LocationStatus(), Ok(status) if status == PositionStatus::Disabled) {
-        return Err(PlatformError::BusinessError(CODE_SERVICES_DISABLED));
+        return Err(Error::business(
+            CODE_SERVICES_DISABLED,
+            "location services are off",
+        ));
     }
 
     let operation = geolocator
@@ -99,28 +104,25 @@ async fn request_location_once(config: LocationRequestConfig) -> Result<String, 
     build_location_payload(&position, config.include_altitude)
 }
 
-fn map_geoposition_error(err: windows::core::Error) -> PlatformError {
+fn map_geoposition_error(err: windows::core::Error) -> Error {
     if err.code() == E_ACCESSDENIED {
-        PlatformError::BusinessError(CODE_PERMISSION_DENIED)
+        Error::business(CODE_PERMISSION_DENIED, "location access denied")
     } else {
-        PlatformError::Platform(format!("location request failed: {err}"))
+        Error::internal(format!("location request failed: {err}"))
     }
 }
 
 /// Payload shape matches the other backends (see apple/location.rs).
-fn build_location_payload(
-    position: &Geoposition,
-    include_altitude: bool,
-) -> Result<String, PlatformError> {
-    let coordinate = position.Coordinate().map_err(|err| {
-        PlatformError::Platform(format!("location result missing coordinate: {err}"))
-    })?;
+fn build_location_payload(position: &Geoposition, include_altitude: bool) -> Result<String, Error> {
+    let coordinate = position
+        .Coordinate()
+        .map_err(|err| Error::internal(format!("location result missing coordinate: {err}")))?;
     let latitude = coordinate
         .Latitude()
-        .map_err(|err| PlatformError::Platform(format!("failed to read latitude: {err}")))?;
+        .map_err(|err| Error::internal(format!("failed to read latitude: {err}")))?;
     let longitude = coordinate
         .Longitude()
-        .map_err(|err| PlatformError::Platform(format!("failed to read longitude: {err}")))?;
+        .map_err(|err| Error::internal(format!("failed to read longitude: {err}")))?;
     let horizontal_accuracy = sanitize_measurement(coordinate.Accuracy().unwrap_or(0.0));
     let vertical_accuracy = nullable_measurement(coordinate.AltitudeAccuracy());
     let speed = nullable_measurement(coordinate.Speed());

@@ -1606,14 +1606,16 @@ impl LxApp {
         let revision = self.next_page_chrome_revision();
         // Before an activity mounts there is nothing to update; it reads the state then.
         match self.runtime.update_navbar_ui(self.appid.clone()) {
-            Ok(()) | Err(lingxia_platform::error::PlatformError::PresenterUnavailable) => {}
+            Ok(()) => {}
+            Err(err) if lingxia_platform::error::is_presenter_unavailable(&err) => {}
             Err(err) => {
                 warn!("Failed to update host NavigationBar UI: {}", err)
                     .with_appid(self.appid.clone());
             }
         }
         match self.runtime.update_tabbar_ui(self.appid.clone()) {
-            Ok(()) | Err(lingxia_platform::error::PlatformError::PresenterUnavailable) => {}
+            Ok(()) => {}
+            Err(err) if lingxia_platform::error::is_presenter_unavailable(&err) => {}
             Err(err) => {
                 warn!("Failed to update host TabBar UI: {}", err).with_appid(self.appid.clone());
             }

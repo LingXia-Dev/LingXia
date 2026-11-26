@@ -1,6 +1,5 @@
 use crate::host::{HostCancel, StreamContext, await_or_cancel};
-use crate::platform_error::map_platform_error;
-use lingxia_platform::PlatformError;
+use lingxia_error::Error;
 use lingxia_platform::traits::app_runtime::{AppRuntime, OpenUrlRequest, OpenUrlTarget};
 use lingxia_service::downloads::{
     DownloadEvent, DownloadRecord, DownloadStatus, DownloadsError, DownloadsSnapshot,
@@ -75,7 +74,7 @@ fn download_fallback_dir(path: &Path) -> Result<PathBuf, lingxia_error::Error> {
         .ok_or_else(|| lingxia_error::Error::invalid_arg("download has no parent directory"))
 }
 
-async fn open_file_for_user(app: &LxApp, request: OpenFileRequest) -> Result<(), PlatformError> {
+async fn open_file_for_user(app: &LxApp, request: OpenFileRequest) -> Result<(), Error> {
     match lingxia_service::file::review_file(&*app.runtime, request.clone()).await {
         Ok(()) => Ok(()),
         Err(_review_error) => lingxia_service::file::open_external(&*app.runtime, request).await,
@@ -198,7 +197,6 @@ async fn open_download_route(
             },
         )
         .await
-        .map_err(|e| map_platform_error("downloads.open", e))
     })
     .await
 }
@@ -233,7 +231,7 @@ async fn reveal_download_route(
         .await
         {
             Ok(()) => Ok(()),
-            Err(PlatformError::NotSupported(_)) => app
+            Err(e) if e.is(lingxia_error::code::NOT_SUPPORTED) => app
                 .runtime
                 .open_url(OpenUrlRequest {
                     owner_appid: app.appid.clone(),
@@ -242,9 +240,8 @@ async fn reveal_download_route(
                     target: OpenUrlTarget::External,
                     want_tab_id: false,
                 })
-                .map(|_| ())
-                .map_err(|e| map_platform_error("downloads.reveal", e)),
-            Err(e) => Err(map_platform_error("downloads.reveal", e)),
+                .map(|_| ()),
+            Err(e) => Err(e),
         }
     })
     .await

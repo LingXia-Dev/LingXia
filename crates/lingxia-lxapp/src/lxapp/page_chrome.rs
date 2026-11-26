@@ -3,7 +3,6 @@ use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use super::navbar::NavigationBarPatch;
 use super::tabbar::TabBarPatch;
 use crate::{LxApp, PageInstance, debug, warn};
-use lingxia_platform::PlatformError;
 use lingxia_platform::traits::ui::{Appearance, UIUpdate};
 use lingxia_webview::WebViewController;
 
@@ -333,7 +332,9 @@ impl LxApp {
             {
                 Ok(measured) => measured,
                 // The first presenter publishes once it mounts.
-                Err(PlatformError::PresenterUnavailable) => return Ok(()),
+                Err(error) if lingxia_platform::error::is_presenter_unavailable(&error) => {
+                    return Ok(());
+                }
                 Err(error) => return Err(error.into()),
             };
             measured
@@ -398,7 +399,7 @@ impl LxApp {
             .await
         {
             Ok(()) => {}
-            Err(PlatformError::PresenterUnavailable) => {
+            Err(error) if lingxia_platform::error::is_presenter_unavailable(&error) => {
                 debug!("page chrome paint deferred until a presenter mounts")
                     .with_appid(self.appid.clone());
                 return Ok(());

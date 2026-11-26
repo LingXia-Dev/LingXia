@@ -1,4 +1,4 @@
-use lingxia_platform::PlatformError;
+use lingxia_error::Error;
 use lingxia_platform::traits::stream_decoder::{
     AudioFrame, AudioStreamConfig, VideoFrame, VideoStreamConfig, VideoStreamDecoderHandle,
 };
@@ -29,8 +29,8 @@ impl fmt::Display for StreamError {
 
 impl std::error::Error for StreamError {}
 
-impl From<PlatformError> for StreamError {
-    fn from(err: PlatformError) -> Self {
+impl From<Error> for StreamError {
+    fn from(err: Error) -> Self {
         StreamError::new(err.to_string())
     }
 }

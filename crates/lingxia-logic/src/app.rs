@@ -1,6 +1,7 @@
 use crate::authorization::{self, LogicRoute};
-use crate::i18n::{js_error_from_platform_error, js_service_unavailable_error};
+use crate::i18n::{js_error, js_service_unavailable_error};
 use lingxia_app_context::{app_config, env};
+use lingxia_error::Error;
 use lingxia_platform::traits::app_runtime::AppRuntime;
 use rong::{IntoJSObject, JSContext, JSFunc, JSObject, JSResult, JSValue, function::Optional};
 
@@ -60,10 +61,7 @@ fn exit_app(ctx: JSContext) -> JSResult<()> {
     let invocation = authorization::require(&ctx, LogicRoute::AppExit)?;
     let lxapp = invocation.lxapp();
     lxapp::clear_active_display_language_session_override();
-    lxapp
-        .runtime
-        .exit()
-        .map_err(|e| js_error_from_platform_error(&e))
+    lxapp.runtime.exit().map_err(js_error)
 }
 
 /// `lx.host.badge`: a mark on the product's own system chrome, such as an unread count.
@@ -159,7 +157,7 @@ async fn paint_badge(
 
 async fn blocking<F>(work: F) -> JSResult<bool>
 where
-    F: FnOnce() -> Result<bool, lingxia_platform::error::PlatformError> + Send + 'static,
+    F: FnOnce() -> Result<bool, Error> + Send + 'static,
 {
     tokio::task::spawn_blocking(work)
         .await
@@ -169,7 +167,7 @@ where
                 format!("lx.host.badge task failed: {error}"),
             )
         })?
-        .map_err(|error| js_error_from_platform_error(&error))
+        .map_err(js_error)
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

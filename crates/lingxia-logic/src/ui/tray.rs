@@ -1,5 +1,5 @@
 use crate::authorization::{self, LogicRoute};
-use crate::i18n::js_error_from_platform_error;
+use crate::i18n::js_error;
 use lingxia_platform::traits::app_runtime::AppRuntime;
 use lxapp::{app_handler_unsub, register_app_handler, unregister_app_handler};
 use rong::{FromJSObject, JSContext, JSFunc, JSObject, JSResult, JSValue, function::Optional};
@@ -59,22 +59,13 @@ fn update(ctx: JSContext, patch: JSTrayPatch) -> JSResult<()> {
         })?),
     };
     if let Some(icon) = patch.icon {
-        lxapp
-            .runtime
-            .set_tray_icon(&icon)
-            .map_err(|e| js_error_from_platform_error(&e))?;
+        lxapp.runtime.set_tray_icon(&icon).map_err(js_error)?;
     }
     if let Some(title) = title {
-        lxapp
-            .runtime
-            .set_tray_title(&title)
-            .map_err(|e| js_error_from_platform_error(&e))?;
+        lxapp.runtime.set_tray_title(&title).map_err(js_error)?;
     }
     if let Some(visible) = patch.visible {
-        lxapp
-            .runtime
-            .set_tray_visible(visible)
-            .map_err(|e| js_error_from_platform_error(&e))?;
+        lxapp.runtime.set_tray_visible(visible).map_err(js_error)?;
     }
     Ok(())
 }
@@ -146,10 +137,7 @@ fn replace_menu(ctx: JSContext, items: Vec<JSObject>) -> JSResult<()> {
     }
 
     let json = serde_json::to_string(&specs).unwrap_or_else(|_| "[]".to_string());
-    lxapp
-        .runtime
-        .set_tray_menu(&json)
-        .map_err(|e| js_error_from_platform_error(&e))
+    lxapp.runtime.set_tray_menu(&json).map_err(js_error)
 }
 
 pub(crate) fn init(ctx: &JSContext) -> JSResult<()> {

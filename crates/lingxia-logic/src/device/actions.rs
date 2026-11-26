@@ -1,4 +1,4 @@
-use crate::i18n::{js_error_from_platform_error, js_invalid_parameter_error};
+use crate::i18n::{js_error, js_invalid_parameter_error};
 use lingxia_platform::traits::device::Device;
 use lxapp::LxApp;
 use rong::{JSContext, JSResult, function::Optional};
@@ -30,8 +30,5 @@ fn haptics(ctx: JSContext, kind: Optional<String>) -> JSResult<()> {
         }
     };
     let lxapp = LxApp::from_ctx(&ctx)?;
-    lxapp
-        .runtime
-        .vibrate(long)
-        .map_err(|e| js_error_from_platform_error(&e))
+    lxapp.runtime.vibrate(long).map_err(js_error)
 }

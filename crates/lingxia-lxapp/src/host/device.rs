@@ -1,5 +1,4 @@
 use crate::LxApp;
-use lingxia_platform::PlatformError;
 use lingxia_platform::traits::app_runtime::{AppRuntime, OpenUrlRequest, OpenUrlTarget};
 use lingxia_platform::traits::device::Device;
 use serde::Deserialize;
@@ -11,23 +10,11 @@ struct MakePhoneCallParams {
     phone_number: String,
 }
 
-fn map_platform_error(api: &str, error: PlatformError) -> lingxia_error::Error {
-    match error {
-        PlatformError::BusinessError(number) => {
-            lingxia_error::Error::business(number, format!("{api} failed"))
-        }
-        other => other.into(),
-    }
-}
-
 fn make_phone_call_impl(
     lxapp: &LxApp,
     params: &MakePhoneCallParams,
 ) -> Result<(), lingxia_error::Error> {
-    lxapp
-        .runtime
-        .make_phone_call(&params.phone_number)
-        .map_err(|e| map_platform_error("makePhoneCall", e))
+    lxapp.runtime.make_phone_call(&params.phone_number)
 }
 
 host_api!(MakePhoneCall, MakePhoneCallParams, (), |lxapp, params| {
@@ -49,16 +36,13 @@ fn open_url_impl(lxapp: &LxApp, options: &OpenUrlOptions) -> Result<(), lingxia_
     }
 
     let target = OpenUrlTarget::parse(options.target.as_deref());
-    lxapp
-        .runtime
-        .open_url(OpenUrlRequest {
-            owner_appid: lxapp.appid.clone(),
-            owner_session_id: lxapp.session_id(),
-            url: options.url.clone(),
-            target,
-            want_tab_id: false,
-        })
-        .map_err(|e| map_platform_error("openUrl", e))?;
+    lxapp.runtime.open_url(OpenUrlRequest {
+        owner_appid: lxapp.appid.clone(),
+        owner_session_id: lxapp.session_id(),
+        url: options.url.clone(),
+        target,
+        want_tab_id: false,
+    })?;
     Ok(())
 }
 

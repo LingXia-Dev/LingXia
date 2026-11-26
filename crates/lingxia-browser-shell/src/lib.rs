@@ -17,7 +17,6 @@ mod downloads;
 mod facade;
 mod history;
 mod panel;
-mod platform_error;
 mod privacy;
 #[cfg(all(any(target_os = "macos", target_os = "windows"), feature = "proxy"))]
 mod proxy;

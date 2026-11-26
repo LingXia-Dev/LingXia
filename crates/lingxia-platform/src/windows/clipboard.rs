@@ -24,13 +24,13 @@ use windows::Win32::System::Memory::{
 use windows::Win32::System::Ole::{CF_DIB, CF_DIBV5, CF_UNICODETEXT};
 use windows::core::w;
 
-use crate::error::PlatformError;
 use crate::traits::clipboard::{
     ClipboardContents, ClipboardKind, ClipboardReadRequest, ClipboardService, ClipboardTypes,
     ClipboardWrite,
 };
 
 use super::Platform;
+use lingxia_error::Error;
 
 const CLIPBOARD_RETRIES: u32 = 8;
 
@@ -57,7 +57,7 @@ fn cf_png() -> u32 {
     unsafe { RegisterClipboardFormatW(w!("PNG")) }
 }
 
-fn with_clipboard<T>(f: impl FnOnce() -> Result<T, PlatformError>) -> Result<T, PlatformError> {
+fn with_clipboard<T>(f: impl FnOnce() -> Result<T, Error>) -> Result<T, Error> {
     unsafe {
         let mut last = None;
         for _ in 0..CLIPBOARD_RETRIES {
@@ -71,7 +71,7 @@ fn with_clipboard<T>(f: impl FnOnce() -> Result<T, PlatformError>) -> Result<T, 
             }
             std::thread::sleep(std::time::Duration::from_millis(8));
         }
-        Err(PlatformError::Platform(format!(
+        Err(Error::internal(format!(
             "OpenClipboard failed: {}",
             last.map(|e| e.to_string())
                 .unwrap_or_else(|| "unknown".into())
@@ -101,22 +101,20 @@ fn read_global_bytes(format: u32) -> Option<Vec<u8>> {
 
 /// Hands a byte block to the clipboard; ownership moves to the system on
 /// success and is released here on failure.
-fn set_global_bytes(format: u32, bytes: &[u8]) -> Result<(), PlatformError> {
+fn set_global_bytes(format: u32, bytes: &[u8]) -> Result<(), Error> {
     unsafe {
         let hmem: HGLOBAL = GlobalAlloc(GMEM_MOVEABLE, bytes.len())
-            .map_err(|e| PlatformError::Platform(format!("GlobalAlloc failed: {e}")))?;
+            .map_err(|e| Error::internal(format!("GlobalAlloc failed: {e}")))?;
         let dst = GlobalLock(hmem) as *mut u8;
         if dst.is_null() {
             let _ = GlobalFree(Some(hmem));
-            return Err(PlatformError::Platform("GlobalLock failed".into()));
+            return Err(Error::internal("GlobalLock failed"));
         }
         std::ptr::copy_nonoverlapping(bytes.as_ptr(), dst, bytes.len());
         let _ = GlobalUnlock(hmem);
         if let Err(e) = SetClipboardData(format, Some(HANDLE(hmem.0))) {
             let _ = GlobalFree(Some(hmem));
-            return Err(PlatformError::Platform(format!(
-                "SetClipboardData failed: {e}"
-            )));
+            return Err(Error::internal(format!("SetClipboardData failed: {e}")));
         }
     }
     Ok(())
@@ -134,27 +132,24 @@ fn read_unicode_text() -> Option<String> {
     Some(String::from_utf16_lossy(&units))
 }
 
-fn set_unicode_text(text: &str) -> Result<(), PlatformError> {
+fn set_unicode_text(text: &str) -> Result<(), Error> {
     let utf16: Vec<u16> = text.encode_utf16().chain(std::iter::once(0)).collect();
     let bytes: Vec<u8> = utf16.iter().flat_map(|unit| unit.to_le_bytes()).collect();
     set_global_bytes(cf_unicode(), &bytes)
 }
 
-fn decode_image(path: &str) -> Result<image::RgbaImage, PlatformError> {
-    let bytes = fs::read(path).map_err(|e| {
-        PlatformError::InvalidParameter(format!("clipboard image is not readable: {e}"))
-    })?;
+fn decode_image(path: &str) -> Result<image::RgbaImage, Error> {
+    let bytes = fs::read(path)
+        .map_err(|e| Error::invalid_arg(format!("clipboard image is not readable: {e}")))?;
     image::load_from_memory(&bytes)
         .map(|decoded| decoded.to_rgba8())
-        .map_err(|e| {
-            PlatformError::InvalidParameter(format!("clipboard image is not an image: {e}"))
-        })
+        .map_err(|e| Error::invalid_arg(format!("clipboard image is not an image: {e}")))
 }
 
-fn encode_png(rgba: &image::RgbaImage) -> Result<Vec<u8>, PlatformError> {
+fn encode_png(rgba: &image::RgbaImage) -> Result<Vec<u8>, Error> {
     let mut png = Vec::new();
     rgba.write_to(&mut Cursor::new(&mut png), image::ImageFormat::Png)
-        .map_err(|e| PlatformError::Platform(format!("failed to encode clipboard PNG: {e}")))?;
+        .map_err(|e| Error::internal(format!("failed to encode clipboard PNG: {e}")))?;
     Ok(png)
 }
 
@@ -306,7 +301,7 @@ fn decode_dib(bytes: &[u8]) -> Option<image::RgbaImage> {
     Some(rgba)
 }
 
-fn read_image_png() -> Result<Option<Vec<u8>>, PlatformError> {
+fn read_image_png() -> Result<Option<Vec<u8>>, Error> {
     let png_format = cf_png();
     if png_format != 0
         && let Some(png) = read_global_bytes(png_format)
@@ -332,18 +327,17 @@ fn image_available() -> bool {
     }
 }
 
-fn write_png_file(dest: &str, png: &[u8]) -> Result<String, PlatformError> {
+fn write_png_file(dest: &str, png: &[u8]) -> Result<String, Error> {
     if let Some(parent) = Path::new(dest).parent() {
-        fs::create_dir_all(parent).map_err(|e| {
-            PlatformError::Platform(format!("failed to prepare clipboard image dir: {e}"))
-        })?;
+        fs::create_dir_all(parent)
+            .map_err(|e| Error::internal(format!("failed to prepare clipboard image dir: {e}")))?;
     }
     fs::write(dest, png)
-        .map_err(|e| PlatformError::Platform(format!("failed to write clipboard image: {e}")))?;
+        .map_err(|e| Error::internal(format!("failed to write clipboard image: {e}")))?;
     Ok(dest.to_string())
 }
 
-fn write_blocking(item: ClipboardWrite) -> Result<(), PlatformError> {
+fn write_blocking(item: ClipboardWrite) -> Result<(), Error> {
     match item {
         ClipboardWrite::Text(text) => with_clipboard(|| {
             unsafe {
@@ -370,7 +364,7 @@ fn write_blocking(item: ClipboardWrite) -> Result<(), PlatformError> {
     }
 }
 
-fn read_blocking(request: ClipboardReadRequest) -> Result<ClipboardContents, PlatformError> {
+fn read_blocking(request: ClipboardReadRequest) -> Result<ClipboardContents, Error> {
     with_clipboard(|| {
         let want_text = request.kind.is_none() || request.kind == Some(ClipboardKind::Text);
         let want_image = request.kind.is_none() || request.kind == Some(ClipboardKind::Image);
@@ -379,9 +373,7 @@ fn read_blocking(request: ClipboardReadRequest) -> Result<ClipboardContents, Pla
             match read_image_png()? {
                 Some(png) => {
                     let dest = request.image_output_path.as_deref().ok_or_else(|| {
-                        PlatformError::InvalidParameter(
-                            "clipboard image read requires an output path".into(),
-                        )
+                        Error::invalid_arg("clipboard image read requires an output path")
                     })?;
                     Some((write_png_file(dest, &png)?, "image/png".to_string()))
                 }
@@ -399,7 +391,7 @@ fn read_blocking(request: ClipboardReadRequest) -> Result<ClipboardContents, Pla
     })
 }
 
-fn types_blocking() -> Result<ClipboardTypes, PlatformError> {
+fn types_blocking() -> Result<ClipboardTypes, Error> {
     with_clipboard(|| {
         let mut kinds = Vec::new();
         if unsafe { IsClipboardFormatAvailable(cf_unicode()) }.is_ok() {
@@ -416,18 +408,18 @@ fn types_blocking() -> Result<ClipboardTypes, PlatformError> {
 }
 
 impl ClipboardService for Platform {
-    async fn clipboard_write(&self, item: ClipboardWrite) -> Result<(), PlatformError> {
+    async fn clipboard_write(&self, item: ClipboardWrite) -> Result<(), Error> {
         crate::rt::blocking(move || write_blocking(item)).await
     }
 
     async fn clipboard_read(
         &self,
         request: ClipboardReadRequest,
-    ) -> Result<ClipboardContents, PlatformError> {
+    ) -> Result<ClipboardContents, Error> {
         crate::rt::blocking(move || read_blocking(request)).await
     }
 
-    async fn clipboard_clear(&self) -> Result<(), PlatformError> {
+    async fn clipboard_clear(&self) -> Result<(), Error> {
         crate::rt::blocking(|| {
             with_clipboard(|| {
                 unsafe {
@@ -439,7 +431,7 @@ impl ClipboardService for Platform {
         .await
     }
 
-    async fn clipboard_types(&self) -> Result<ClipboardTypes, PlatformError> {
+    async fn clipboard_types(&self) -> Result<ClipboardTypes, Error> {
         crate::rt::blocking(types_blocking).await
     }
 }

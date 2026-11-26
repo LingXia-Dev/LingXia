@@ -1,11 +1,7 @@
 #[cfg(not(any(target_os = "macos", target_os = "windows")))]
-use crate::dismissal::USER_DISMISSED;
-#[cfg(not(any(target_os = "macos", target_os = "windows")))]
-use crate::i18n::js_error_from_platform_error;
+use crate::i18n::js_error;
 use crate::i18n::{js_internal_error, js_service_unavailable_error, js_state_error};
 use crate::{I18nKey, i18n::t};
-#[cfg(not(any(target_os = "macos", target_os = "windows")))]
-use lingxia_platform::error::PlatformError;
 #[cfg(not(any(target_os = "macos", target_os = "windows")))]
 use lingxia_platform::traits::ui::{ModalOptions, UserFeedback};
 use lxapp::LxApp;
@@ -217,8 +213,8 @@ async fn present_modal_native(
                 .map_err(|e| js_internal_error(format!("Modal callback invalid payload: {}", e)))?;
             Ok(result.confirm)
         }
-        Err(PlatformError::BusinessError(USER_DISMISSED)) => Ok(false),
-        Err(e) => Err(js_error_from_platform_error(&e)),
+        Err(error) if lingxia_platform::error::is_user_dismissed(&error) => Ok(false),
+        Err(e) => Err(js_error(e)),
     }
 }
 

@@ -221,15 +221,11 @@ impl WindowsApp {
 #[derive(Debug, thiserror::Error)]
 #[cfg(feature = "runtime")]
 pub enum WindowsHostError {
-    /// The LingXia platform layer failed to initialize.
-    #[cfg(all(target_os = "windows", feature = "runtime"))]
-    #[error(transparent)]
-    Platform(#[from] lingxia::windows::PlatformError),
     /// The host crate was built for a target other than Windows.
     #[cfg(not(target_os = "windows"))]
     #[error("{0}")]
     Platform(String),
-    /// The shared LingXia runtime failed to initialize.
+    /// The LingXia platform layer or the shared runtime failed to initialize.
     #[error(transparent)]
     Runtime(#[from] lingxia::Error),
     /// A caller that requires an lxapp was started without one.

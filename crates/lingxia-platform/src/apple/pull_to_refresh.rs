@@ -1,30 +1,30 @@
-use crate::error::PlatformError;
 use crate::traits::pull_to_refresh::PullToRefresh;
 
 use super::Platform;
 
 #[cfg(any(target_os = "ios", target_os = "macos"))]
 use super::ffi::{start_pull_down_refresh, stop_pull_down_refresh};
+use lingxia_error::Error;
 
 #[cfg(any(target_os = "ios", target_os = "macos"))]
 impl PullToRefresh for Platform {
-    fn start_pull_down_refresh(&self, app_id: &str, webtag: &str) -> Result<(), PlatformError> {
+    fn start_pull_down_refresh(&self, app_id: &str, webtag: &str) -> Result<(), Error> {
         let success = start_pull_down_refresh(app_id, webtag);
         if success {
             Ok(())
         } else {
-            Err(PlatformError::Platform(
+            Err(Error::internal(
                 "Failed to start pull down refresh".to_string(),
             ))
         }
     }
 
-    fn stop_pull_down_refresh(&self, app_id: &str, webtag: &str) -> Result<(), PlatformError> {
+    fn stop_pull_down_refresh(&self, app_id: &str, webtag: &str) -> Result<(), Error> {
         let success = stop_pull_down_refresh(app_id, webtag);
         if success {
             Ok(())
         } else {
-            Err(PlatformError::Platform(
+            Err(Error::internal(
                 "Failed to stop pull down refresh".to_string(),
             ))
         }
@@ -33,14 +33,14 @@ impl PullToRefresh for Platform {
 
 #[cfg(not(any(target_os = "ios", target_os = "macos")))]
 impl PullToRefresh for Platform {
-    fn start_pull_down_refresh(&self, _app_id: &str, _webtag: &str) -> Result<(), PlatformError> {
-        Err(PlatformError::NotSupported(
+    fn start_pull_down_refresh(&self, _app_id: &str, _webtag: &str) -> Result<(), Error> {
+        Err(Error::not_supported(
             "Pull-to-refresh not supported on this platform".to_string(),
         ))
     }
 
-    fn stop_pull_down_refresh(&self, _app_id: &str, _webtag: &str) -> Result<(), PlatformError> {
-        Err(PlatformError::NotSupported(
+    fn stop_pull_down_refresh(&self, _app_id: &str, _webtag: &str) -> Result<(), Error> {
+        Err(Error::not_supported(
             "Pull-to-refresh not supported on this platform".to_string(),
         ))
     }

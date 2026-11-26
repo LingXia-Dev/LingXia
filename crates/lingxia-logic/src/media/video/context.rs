@@ -1,6 +1,7 @@
 use super::events::handle_player_event;
 use super::stream::seek_stream_session_sync_shared;
-use crate::i18n::{js_error_from_platform_error, js_internal_error, js_invalid_parameter_error};
+use crate::i18n::{js_error, js_internal_error, js_invalid_parameter_error};
+use lingxia_error::Error;
 use lingxia_media::playback::StreamSession;
 use lingxia_messaging::{CallbackResult, register_handler, remove_callback};
 use lingxia_platform::Platform;
@@ -174,8 +175,8 @@ impl JSVideoContext {
                 shared: Arc::new(VideoContextSharedState::new(runtime.clone())),
                 player_handle: Arc::new(
                     lingxia_platform::traits::video_player::VideoPlayerHandleImpl::new(|_| {
-                        Err(lingxia_platform::error::PlatformError::NotSupported(
-                            "a GPU page's player takes commands through its View".into(),
+                        Err(Error::not_supported(
+                            "a GPU page's player takes commands through its View",
                         ))
                     }),
                 ),
@@ -190,11 +191,9 @@ impl JSVideoContext {
             && let Err(e) = runtime.set_player_callback(&component_id, callback_id)
         {
             shared.callback_bound.store(false, Ordering::Release);
-            return Err(js_error_from_platform_error(&e));
+            return Err(js_error(e));
         }
-        let handle = runtime
-            .bind_player(&component_id)
-            .map_err(|e| js_error_from_platform_error(&e))?;
+        let handle = runtime.bind_player(&component_id).map_err(js_error)?;
 
         // Register stream seek callback so FFI layer can trigger seek without depending on logic layer.
         // Only register once per shared state to avoid callback being lost when JSVideoContext is GC'd.

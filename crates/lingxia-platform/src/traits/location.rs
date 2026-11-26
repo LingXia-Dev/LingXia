@@ -1,6 +1,5 @@
+use lingxia_error::Error;
 use std::future::Future;
-
-use crate::error::PlatformError;
 
 pub const DEFAULT_LOCATION_TIMEOUT_MS: u32 = 10_000;
 
@@ -19,12 +18,12 @@ impl LocationRequestConfig {
 }
 
 pub trait Location: Send + Sync + 'static {
-    fn is_location_enabled(&self) -> Result<bool, PlatformError>;
+    fn is_location_enabled(&self) -> Result<bool, Error>;
 
     fn request_location(
         &self,
         config: LocationRequestConfig,
-    ) -> impl Future<Output = Result<String, PlatformError>> + Send;
+    ) -> impl Future<Output = Result<String, Error>> + Send;
 }
 
 #[cfg(test)]

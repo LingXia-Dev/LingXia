@@ -1,11 +1,11 @@
 use super::app::Platform;
-use crate::error::PlatformError;
 use crate::traits::mouse::{AppMouse, AppMouseRequest, AppMouseResult};
 // Mouse synthesis is macOS-only; iOS has no pointer to drive.
 #[cfg(target_os = "macos")]
 use crate::traits::mouse::{AppMouseAction, AppMouseButton};
 use async_trait::async_trait;
 
+use lingxia_error::Error;
 #[cfg(target_os = "macos")]
 use std::time::Duration;
 #[cfg(target_os = "macos")]
@@ -15,10 +15,7 @@ use tokio::time::timeout;
 
 #[async_trait]
 impl AppMouse for Platform {
-    async fn perform_app_mouse(
-        &self,
-        request: AppMouseRequest,
-    ) -> Result<AppMouseResult, PlatformError> {
+    async fn perform_app_mouse(&self, request: AppMouseRequest) -> Result<AppMouseResult, Error> {
         #[cfg(target_os = "macos")]
         {
             perform_app_mouse_macos(request).await
@@ -27,7 +24,7 @@ impl AppMouse for Platform {
         #[cfg(not(target_os = "macos"))]
         {
             let _ = request;
-            Err(PlatformError::NotSupported(
+            Err(Error::not_supported(
                 "app mouse input is not implemented on this Apple target".to_string(),
             ))
         }
@@ -35,9 +32,7 @@ impl AppMouse for Platform {
 }
 
 #[cfg(target_os = "macos")]
-async fn perform_app_mouse_macos(
-    request: AppMouseRequest,
-) -> Result<AppMouseResult, PlatformError> {
+async fn perform_app_mouse_macos(request: AppMouseRequest) -> Result<AppMouseResult, Error> {
     use dispatch2::DispatchQueue;
 
     const MOUSE_TIMEOUT: Duration = Duration::from_secs(2);
@@ -55,13 +50,13 @@ async fn perform_app_mouse_macos(
 
     let window_id = match timeout(MOUSE_TIMEOUT, rx).await {
         Ok(Ok(Ok(id))) => id,
-        Ok(Ok(Err(err))) => return Err(PlatformError::Platform(err)),
+        Ok(Ok(Err(err))) => return Err(Error::internal(err)),
         Ok(Err(_)) => {
-            return Err(PlatformError::Platform(
+            return Err(Error::internal(
                 "app mouse request was canceled".to_string(),
             ));
         }
-        Err(_) => return Err(PlatformError::Platform("app mouse timed out".to_string())),
+        Err(_) => return Err(Error::internal("app mouse timed out".to_string())),
     };
 
     Ok(AppMouseResult {
@@ -71,10 +66,10 @@ async fn perform_app_mouse_macos(
 }
 
 #[cfg(target_os = "macos")]
-pub(super) fn parse_window_id(raw: Option<&str>) -> Result<Option<i64>, PlatformError> {
+pub(super) fn parse_window_id(raw: Option<&str>) -> Result<Option<i64>, Error> {
     match raw {
         Some(value) => value.parse::<i64>().map(Some).map_err(|_| {
-            PlatformError::InvalidParameter(format!(
+            Error::invalid_arg(format!(
                 "window id must be a numeric NSWindow.windowNumber, got: {value}"
             ))
         }),
@@ -83,9 +78,9 @@ pub(super) fn parse_window_id(raw: Option<&str>) -> Result<Option<i64>, Platform
 }
 
 #[cfg(target_os = "macos")]
-fn validate_point(x: f64, y: f64) -> Result<(), PlatformError> {
+fn validate_point(x: f64, y: f64) -> Result<(), Error> {
     if !x.is_finite() || !y.is_finite() {
-        return Err(PlatformError::InvalidParameter(
+        return Err(Error::invalid_arg(
             "mouse coordinates must be finite numbers".to_string(),
         ));
     }
@@ -93,9 +88,9 @@ fn validate_point(x: f64, y: f64) -> Result<(), PlatformError> {
 }
 
 #[cfg(target_os = "macos")]
-fn validate_delta(dx: f64, dy: f64) -> Result<(), PlatformError> {
+fn validate_delta(dx: f64, dy: f64) -> Result<(), Error> {
     if !dx.is_finite() || !dy.is_finite() {
-        return Err(PlatformError::InvalidParameter(
+        return Err(Error::invalid_arg(
             "mouse scroll deltas must be finite numbers".to_string(),
         ));
     }
@@ -103,7 +98,7 @@ fn validate_delta(dx: f64, dy: f64) -> Result<(), PlatformError> {
 }
 
 #[cfg(target_os = "macos")]
-fn validate_action(action: &AppMouseAction) -> Result<(), PlatformError> {
+fn validate_action(action: &AppMouseAction) -> Result<(), Error> {
     match action {
         AppMouseAction::Move { x, y }
         | AppMouseAction::Down { x, y, .. }
@@ -113,7 +108,7 @@ fn validate_action(action: &AppMouseAction) -> Result<(), PlatformError> {
         } => {
             validate_point(*x, *y)?;
             if *click_count == 0 {
-                return Err(PlatformError::InvalidParameter(
+                return Err(Error::invalid_arg(
                     "click_count must be greater than zero".to_string(),
                 ));
             }

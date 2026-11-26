@@ -1,22 +1,21 @@
-use crate::error::PlatformError;
 use crate::traits::media_runtime::{CompressImageRequest, ImageInfo};
+use lingxia_error::Error;
 use std::fs::File;
 use std::io::BufReader;
 use std::path::PathBuf;
 
 /// Desktop unified implementation for get_image_info using imagesize crate.
 /// Used by macOS, Windows, and other desktop platforms.
-pub fn get_image_info_desktop(uri: &str) -> Result<ImageInfo, PlatformError> {
+pub fn get_image_info_desktop(uri: &str) -> Result<ImageInfo, Error> {
     let path = normalize_uri_to_path(uri)?;
 
-    let file = File::open(&path).map_err(|e| {
-        PlatformError::Platform(format!("Failed to open image file {}: {}", path, e))
-    })?;
+    let file = File::open(&path)
+        .map_err(|e| Error::internal(format!("Failed to open image file {}: {}", path, e)))?;
 
     let reader = BufReader::new(file);
 
     let size = imagesize::reader_size(reader)
-        .map_err(|e| PlatformError::Platform(format!("Failed to read image dimensions: {}", e)))?;
+        .map_err(|e| Error::internal(format!("Failed to read image dimensions: {}", e)))?;
 
     let mime_type = infer_mime_type(&path);
 
@@ -27,11 +26,11 @@ pub fn get_image_info_desktop(uri: &str) -> Result<ImageInfo, PlatformError> {
     })
 }
 
-fn normalize_uri_to_path(uri: &str) -> Result<String, PlatformError> {
+fn normalize_uri_to_path(uri: &str) -> Result<String, Error> {
     let trimmed = uri.trim();
 
     if trimmed.is_empty() {
-        return Err(PlatformError::Platform("URI is empty".to_string()));
+        return Err(Error::internal("URI is empty".to_string()));
     }
 
     // Strip file:// prefix if present
@@ -43,10 +42,7 @@ fn normalize_uri_to_path(uri: &str) -> Result<String, PlatformError> {
 
     // Reject non-file URIs
     if path.contains("://") {
-        return Err(PlatformError::Platform(format!(
-            "Unsupported URI scheme: {}",
-            path
-        )));
+        return Err(Error::internal(format!("Unsupported URI scheme: {}", path)));
     }
 
     Ok(path.to_string())
@@ -81,7 +77,7 @@ fn infer_mime_type(path: &str) -> String {
 
 /// Desktop unified implementation for compress_image using image crate.
 /// Supports resizing and quality compression.
-pub fn compress_image_desktop(request: &CompressImageRequest) -> Result<PathBuf, PlatformError> {
+pub fn compress_image_desktop(request: &CompressImageRequest) -> Result<PathBuf, Error> {
     use image::ImageReader;
     use image::codecs::jpeg::JpegEncoder;
 
@@ -90,9 +86,9 @@ pub fn compress_image_desktop(request: &CompressImageRequest) -> Result<PathBuf,
 
     // Open and decode image
     let img = ImageReader::open(&source_path)
-        .map_err(|e| PlatformError::Platform(format!("Failed to open image: {}", e)))?
+        .map_err(|e| Error::internal(format!("Failed to open image: {}", e)))?
         .decode()
-        .map_err(|e| PlatformError::Platform(format!("Failed to decode image: {}", e)))?;
+        .map_err(|e| Error::internal(format!("Failed to decode image: {}", e)))?;
 
     // Resize if needed
     let processed_img = if request.max_width.is_some() || request.max_height.is_some() {
@@ -119,14 +115,13 @@ pub fn compress_image_desktop(request: &CompressImageRequest) -> Result<PathBuf,
 
     // Prepare output directory
     if let Some(parent) = request.output_path.parent() {
-        std::fs::create_dir_all(parent).map_err(|e| {
-            PlatformError::Platform(format!("Failed to create output directory: {}", e))
-        })?;
+        std::fs::create_dir_all(parent)
+            .map_err(|e| Error::internal(format!("Failed to create output directory: {}", e)))?;
     }
 
     // Save as JPEG with specified quality
     let output_file = File::create(&request.output_path)
-        .map_err(|e| PlatformError::Platform(format!("Failed to create output file: {}", e)))?;
+        .map_err(|e| Error::internal(format!("Failed to create output file: {}", e)))?;
 
     let quality = request.quality.clamp(1, 100);
     let mut encoder = JpegEncoder::new_with_quality(output_file, quality);
@@ -138,7 +133,7 @@ pub fn compress_image_desktop(request: &CompressImageRequest) -> Result<PathBuf,
             processed_img.height(),
             processed_img.color().into(),
         )
-        .map_err(|e| PlatformError::Platform(format!("Failed to encode JPEG: {}", e)))?;
+        .map_err(|e| Error::internal(format!("Failed to encode JPEG: {}", e)))?;
 
     Ok(request.output_path.clone())
 }

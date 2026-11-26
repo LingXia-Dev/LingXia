@@ -200,7 +200,7 @@ pub(crate) fn init(ctx: &JSContext) -> JSResult<()> {
 mod dismiss_tests {
     use super::dismissable;
     use crate::dismissal::USER_DISMISSED;
-    use lingxia_platform::error::PlatformError;
+    use lingxia_error::Error;
     use lingxia_platform::traits::ui::{ModalOptions, ToastOptions, UserFeedback};
     use rong::{JSContext, JSEngine, JSObject, JSResult, Source};
     use std::future::Future;
@@ -209,7 +209,7 @@ mod dismiss_tests {
     use std::time::Duration;
     use tokio::sync::oneshot;
 
-    type Answer = oneshot::Sender<Result<String, PlatformError>>;
+    type Answer = oneshot::Sender<Result<String, Error>>;
 
     /// A host whose dialog stays up until the user answers or Logic dismisses it.
     #[derive(Default, Clone)]
@@ -247,18 +247,18 @@ mod dismiss_tests {
     }
 
     impl UserFeedback for FakeFeedback {
-        fn show_toast(&self, _: ToastOptions) -> Result<(), PlatformError> {
+        fn show_toast(&self, _: ToastOptions) -> Result<(), Error> {
             Ok(())
         }
 
-        fn hide_toast(&self) -> Result<(), PlatformError> {
+        fn hide_toast(&self) -> Result<(), Error> {
             Ok(())
         }
 
         fn show_modal(
             &self,
             _: ModalOptions,
-        ) -> impl Future<Output = Result<String, PlatformError>> + Send {
+        ) -> impl Future<Output = Result<String, Error>> + Send {
             let this = self.clone();
             async move {
                 let delay = *this.present_after.lock().unwrap();
@@ -275,14 +275,14 @@ mod dismiss_tests {
             _: Vec<String>,
             _: String,
             _: String,
-        ) -> Result<String, PlatformError> {
-            Err(PlatformError::NotSupported("sheet".into()))
+        ) -> Result<String, Error> {
+            Err(Error::not_supported("sheet"))
         }
 
-        fn dismiss_dialog(&self) -> Result<(), PlatformError> {
+        fn dismiss_dialog(&self) -> Result<(), Error> {
             self.dismissed.fetch_add(1, Ordering::SeqCst);
             if let Some(answer) = self.on_screen.lock().unwrap().take() {
-                let _ = answer.send(Err(PlatformError::BusinessError(USER_DISMISSED)));
+                let _ = answer.send(Err(Error::business(USER_DISMISSED, "dismissed")));
             }
             Ok(())
         }
@@ -320,7 +320,7 @@ mod dismiss_tests {
         let work = async move {
             match shown.await {
                 Ok(payload) => Ok(payload.contains("true")),
-                Err(PlatformError::BusinessError(USER_DISMISSED)) => Ok(false),
+                Err(error) if lingxia_platform::error::is_user_dismissed(&error) => Ok(false),
                 Err(error) => Err(crate::i18n::js_internal_error(error.to_string())),
             }
         };

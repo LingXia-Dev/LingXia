@@ -1,10 +1,10 @@
 use super::ffi;
 use crate::AssetFileEntry;
-use crate::error::PlatformError;
 use crate::traits::app_runtime::AppRuntime;
 use crate::traits::app_runtime::ShowLxApp;
 use crate::traits::media_runtime::MediaRuntime;
 use crate::traits::share::{ShareRequest, ShareResult, ShareService};
+use lingxia_error::Error;
 #[cfg(target_os = "macos")]
 use std::fs;
 #[cfg(target_os = "macos")]
@@ -64,11 +64,11 @@ impl crate::traits::update::UpdateService for Platform {
         apple_store_receipt_present()
     }
 
-    fn open_update_store(&self, info_json: &str) -> Result<bool, PlatformError> {
+    fn open_update_store(&self, info_json: &str) -> Result<bool, Error> {
         Ok(open_apple_store_listing(info_json))
     }
 
-    fn present_store_update(&self, info_json: &str) -> Result<bool, PlatformError> {
+    fn present_store_update(&self, info_json: &str) -> Result<bool, Error> {
         // Only arm the click handler when a prompt is actually on screen;
         // a stale slot would hijack a later direct-install restart click.
         set_pending_store_update(Some(info_json));
@@ -79,7 +79,7 @@ impl crate::traits::update::UpdateService for Platform {
         Ok(shown)
     }
 
-    fn install_update(&self, package_path: &Path, info_json: &str) -> Result<(), PlatformError> {
+    fn install_update(&self, package_path: &Path, info_json: &str) -> Result<(), Error> {
         #[cfg(target_os = "macos")]
         {
             install_update_on_macos(self, package_path, info_json)
@@ -87,7 +87,7 @@ impl crate::traits::update::UpdateService for Platform {
         #[cfg(not(target_os = "macos"))]
         {
             let _ = (package_path, info_json);
-            Err(PlatformError::NotSupported(
+            Err(Error::not_supported(
                 "install_update is only supported on macOS".to_string(),
             ))
         }
@@ -96,7 +96,7 @@ impl crate::traits::update::UpdateService for Platform {
 
 impl Platform {
     /// Create a new Platform instance
-    pub fn new(data_dir: String, cache_dir: String, locale: String) -> Result<Self, PlatformError> {
+    pub fn new(data_dir: String, cache_dir: String, locale: String) -> Result<Self, Error> {
         super::device::prewarm_platform_market_name();
         Ok(Platform {
             data_dir,
@@ -115,13 +115,13 @@ impl AppRuntime for Platform {
         PathBuf::from(&self.cache_dir)
     }
 
-    fn get_app_identifier(&self) -> Result<String, PlatformError> {
+    fn get_app_identifier(&self) -> Result<String, Error> {
         use objc2_foundation::NSBundle;
         let bundle = NSBundle::mainBundle();
         if let Some(identifier) = bundle.bundleIdentifier() {
             Ok(identifier.to_string())
         } else {
-            Err(PlatformError::Platform(
+            Err(Error::internal(
                 "Failed to get bundle identifier".to_string(),
             ))
         }
@@ -133,15 +133,15 @@ impl AppRuntime for Platform {
         uri: &str,
         dest_path: &std::path::Path,
         kind: crate::traits::media_interaction::MediaKind,
-    ) -> Result<(), PlatformError> {
+    ) -> Result<(), Error> {
         MediaRuntime::copy_album_media_to_file(self, uri, dest_path, kind)
     }
 
-    fn read_asset<'a>(&'a self, path: &str) -> Result<Box<dyn Read + 'a>, PlatformError> {
+    fn read_asset<'a>(&'a self, path: &str) -> Result<Box<dyn Read + 'a>, Error> {
         let data = super::resources::read_asset_data(path);
 
         if data.is_empty() {
-            Err(PlatformError::AssetNotFound(path.to_string()))
+            Err(Error::not_found(path.to_string()))
         } else {
             Ok(Box::new(Cursor::new(data)))
         }
@@ -150,7 +150,7 @@ impl AppRuntime for Platform {
     fn asset_dir_iter<'a>(
         &'a self,
         asset_dir: &str,
-    ) -> Box<dyn Iterator<Item = Result<AssetFileEntry<'a>, PlatformError>> + 'a> {
+    ) -> Box<dyn Iterator<Item = Result<AssetFileEntry<'a>, Error>> + 'a> {
         let entries = self.collect_files_recursively(asset_dir);
         Box::new(entries.into_iter())
     }
@@ -159,7 +159,7 @@ impl AppRuntime for Platform {
         &self.locale
     }
 
-    fn show_lxapp(&self, request: ShowLxApp) -> Result<(), PlatformError> {
+    fn show_lxapp(&self, request: ShowLxApp) -> Result<(), Error> {
         if ffi::open_lxapp(
             &request.appid,
             &request.webtag,
@@ -169,55 +169,53 @@ impl AppRuntime for Platform {
         ) {
             Ok(())
         } else {
-            Err(PlatformError::Platform(format!(
+            Err(Error::internal(format!(
                 "Failed to show lxapp: {request:?}"
             )))
         }
     }
 
-    fn hide_lxapp(&self, appid: String, session_id: u64) -> Result<(), PlatformError> {
+    fn hide_lxapp(&self, appid: String, session_id: u64) -> Result<(), Error> {
         if ffi::close_lxapp(&appid, session_id) {
             Ok(())
         } else {
-            Err(PlatformError::Platform(format!(
+            Err(Error::internal(format!(
                 "Failed to hide lxapp: appid={}, session_id={}",
                 appid, session_id
             )))
         }
     }
 
-    fn exit(&self) -> Result<(), PlatformError> {
+    fn exit(&self) -> Result<(), Error> {
         if ffi::exit_app() {
             Ok(())
         } else {
-            Err(PlatformError::Platform("Failed to exit app".to_string()))
+            Err(Error::internal("Failed to exit app".to_string()))
         }
     }
 
-    fn set_tray_badge(&self, text: &str) -> Result<bool, PlatformError> {
+    fn set_tray_badge(&self, text: &str) -> Result<bool, Error> {
         // False is "no visible status item", not a failure: a declared tray
         // stays hidden until `lx.host.tray.update({ visible: true })`.
         Ok(ffi::set_tray_badge(text))
     }
 
-    fn set_tray_icon(&self, icon: &str) -> Result<(), PlatformError> {
+    fn set_tray_icon(&self, icon: &str) -> Result<(), Error> {
         if ffi::set_tray_icon(icon) {
             Ok(())
         } else {
-            Err(PlatformError::Platform(
-                "Failed to set tray icon".to_string(),
-            ))
+            Err(Error::internal("Failed to set tray icon".to_string()))
         }
     }
 
     fn set_shell_sidebar_actions(
         &self,
         items: &[lingxia_shell::ResolvedShellSidebarAction],
-    ) -> Result<(), PlatformError> {
+    ) -> Result<(), Error> {
         // A shell-less host (runner phone shape) answers false; that is a
         // cosmetic absence, not an error.
-        let json = serde_json::to_string(items)
-            .map_err(|error| PlatformError::Platform(error.to_string()))?;
+        let json =
+            serde_json::to_string(items).map_err(|error| Error::internal(error.to_string()))?;
         let _ = ffi::set_sidebar_actions(&json);
         Ok(())
     }
@@ -231,31 +229,29 @@ impl AppRuntime for Platform {
         crate::traits::app_runtime::LxAppRegionMoves::FromPlan
     }
 
-    fn set_shell_pins(&self, items: &[lingxia_shell::ShellPin]) -> Result<(), PlatformError> {
-        let json = serde_json::to_string(items)
-            .map_err(|error| PlatformError::Platform(error.to_string()))?;
+    fn set_shell_pins(&self, items: &[lingxia_shell::ShellPin]) -> Result<(), Error> {
+        let json =
+            serde_json::to_string(items).map_err(|error| Error::internal(error.to_string()))?;
         let _ = ffi::set_shell_pins(&json);
         Ok(())
     }
 
     #[cfg(target_os = "macos")]
-    fn set_control_session_indicator(&self, active: bool) -> Result<(), PlatformError> {
+    fn set_control_session_indicator(&self, active: bool) -> Result<(), Error> {
         // No shell (headless) is not an error: there is nothing to show it on.
         let _ = ffi::set_control_session_indicator(active);
         Ok(())
     }
 
-    fn set_tray_title(&self, text: &str) -> Result<(), PlatformError> {
+    fn set_tray_title(&self, text: &str) -> Result<(), Error> {
         if ffi::set_tray_title(text) {
             Ok(())
         } else {
-            Err(PlatformError::Platform(
-                "Failed to set tray title".to_string(),
-            ))
+            Err(Error::internal("Failed to set tray title".to_string()))
         }
     }
 
-    fn set_app_badge(&self, text: &str) -> Result<bool, PlatformError> {
+    fn set_app_badge(&self, text: &str) -> Result<bool, Error> {
         // iOS returns false when the notification system refuses the count.
         let written = ffi::set_app_badge(text);
         #[cfg(target_os = "macos")]
@@ -270,28 +266,28 @@ impl AppRuntime for Platform {
         Ok(written)
     }
 
-    fn autostart_is_enabled(&self) -> Result<bool, PlatformError> {
+    fn autostart_is_enabled(&self) -> Result<bool, Error> {
         match ffi::autostart_is_enabled() {
             0 => Ok(false),
             1 => Ok(true),
-            _ => Err(PlatformError::NotSupported(
+            _ => Err(Error::not_supported(
                 "autostart requires a macOS 13+ app shell".to_string(),
             )),
         }
     }
 
-    fn notification_permission(&self) -> Result<String, PlatformError> {
+    fn notification_permission(&self) -> Result<String, Error> {
         notification_word(ffi::notification_permission())
     }
 
-    fn notification_request_permission(&self) -> Result<String, PlatformError> {
+    fn notification_request_permission(&self) -> Result<String, Error> {
         notification_word(ffi::notification_request_permission())
     }
 
     fn notification_show(
         &self,
         request: &crate::traits::app_runtime::LocalNotificationShow,
-    ) -> Result<crate::traits::app_runtime::LocalNotificationStatus, PlatformError> {
+    ) -> Result<crate::traits::app_runtime::LocalNotificationStatus, Error> {
         let status = notification_word(ffi::notification_show(
             &request.id,
             &request.title,
@@ -301,22 +297,22 @@ impl AppRuntime for Platform {
             request.silent,
         ))?;
         crate::traits::app_runtime::LocalNotificationStatus::from_native(&status)
-            .ok_or_else(|| PlatformError::Platform(format!("unexpected show status: {status}")))
+            .ok_or_else(|| Error::internal(format!("unexpected show status: {status}")))
     }
 
-    fn notification_cancel(&self, id: &str) -> Result<(), PlatformError> {
+    fn notification_cancel(&self, id: &str) -> Result<(), Error> {
         if ffi::notification_cancel(id) {
             Ok(())
         } else {
-            Err(PlatformError::Platform(ffi::notification_last_error()))
+            Err(Error::internal(ffi::notification_last_error()))
         }
     }
 
-    fn notification_cancel_all(&self) -> Result<(), PlatformError> {
+    fn notification_cancel_all(&self) -> Result<(), Error> {
         if ffi::notification_cancel_all() {
             Ok(())
         } else {
-            Err(PlatformError::Platform(ffi::notification_last_error()))
+            Err(Error::internal(ffi::notification_last_error()))
         }
     }
 
@@ -324,7 +320,7 @@ impl AppRuntime for Platform {
     fn banner_show(
         &self,
         request: &crate::traits::app_runtime::DesktopBannerShow,
-    ) -> Result<crate::traits::app_runtime::DesktopBannerOutcome, PlatformError> {
+    ) -> Result<crate::traits::app_runtime::DesktopBannerOutcome, Error> {
         crate::desktop::banner::show(request.clone())
     }
 
@@ -332,7 +328,7 @@ impl AppRuntime for Platform {
     fn banner_enqueue(
         &self,
         request: &crate::traits::app_runtime::DesktopBannerShow,
-    ) -> Result<crate::traits::app_runtime::DesktopBannerPending, PlatformError> {
+    ) -> Result<crate::traits::app_runtime::DesktopBannerPending, Error> {
         crate::desktop::banner::enqueue_show(request.clone())
     }
 
@@ -341,51 +337,47 @@ impl AppRuntime for Platform {
         &self,
         request: &crate::traits::app_runtime::DesktopBannerShow,
         source: &crate::traits::app_runtime::DesktopBannerSource,
-    ) -> Result<crate::traits::app_runtime::DesktopBannerPending, PlatformError> {
+    ) -> Result<crate::traits::app_runtime::DesktopBannerPending, Error> {
         crate::desktop::banner::enqueue_show_from(request.clone(), Some(source.clone()))
     }
 
     #[cfg(target_os = "macos")]
-    fn banner_dismiss(&self, id: &str) -> Result<(), PlatformError> {
+    fn banner_dismiss(&self, id: &str) -> Result<(), Error> {
         crate::desktop::banner::dismiss(id);
         Ok(())
     }
 
-    fn autostart_set_enabled(&self, enabled: bool) -> Result<(), PlatformError> {
+    fn autostart_set_enabled(&self, enabled: bool) -> Result<(), Error> {
         if ffi::autostart_set_enabled(enabled) {
             Ok(())
         } else {
-            Err(PlatformError::Platform(
+            Err(Error::internal(
                 "Failed to update login item registration".to_string(),
             ))
         }
     }
 
-    fn set_tray_menu(&self, items_json: &str) -> Result<(), PlatformError> {
+    fn set_tray_menu(&self, items_json: &str) -> Result<(), Error> {
         if ffi::set_tray_menu(items_json) {
             Ok(())
         } else {
-            Err(PlatformError::Platform(
-                "Failed to set tray menu".to_string(),
-            ))
+            Err(Error::internal("Failed to set tray menu".to_string()))
         }
     }
 
-    fn set_tray_visible(&self, visible: bool) -> Result<(), PlatformError> {
+    fn set_tray_visible(&self, visible: bool) -> Result<(), Error> {
         if ffi::set_tray_visible(visible) {
             Ok(())
         } else {
-            Err(PlatformError::Platform(
-                "Failed to set tray visibility".to_string(),
-            ))
+            Err(Error::internal("Failed to set tray visibility".to_string()))
         }
     }
 
-    fn set_tray_click_intercept(&self, intercept: bool) -> Result<(), PlatformError> {
+    fn set_tray_click_intercept(&self, intercept: bool) -> Result<(), Error> {
         if ffi::set_tray_click_intercept(intercept) {
             Ok(())
         } else {
-            Err(PlatformError::Platform(
+            Err(Error::internal(
                 "Failed to set tray click intercept".to_string(),
             ))
         }
@@ -396,11 +388,11 @@ impl AppRuntime for Platform {
         appid: String,
         webtag: String,
         animation_type: crate::traits::app_runtime::AnimationType,
-    ) -> Result<(), PlatformError> {
+    ) -> Result<(), Error> {
         if ffi::navigate(&appid, &webtag, animation_type as i32) {
             Ok(())
         } else {
-            Err(PlatformError::Platform(format!(
+            Err(Error::internal(format!(
                 "Failed to navigate: appid={}, webtag={}, animation_type={:?}",
                 appid, webtag, animation_type
             )))
@@ -410,7 +402,7 @@ impl AppRuntime for Platform {
     fn open_url(
         &self,
         req: crate::traits::app_runtime::OpenUrlRequest,
-    ) -> Result<crate::traits::app_runtime::OpenUrlResult, PlatformError> {
+    ) -> Result<crate::traits::app_runtime::OpenUrlResult, Error> {
         if ffi::open_url(
             &req.owner_appid,
             req.owner_session_id,
@@ -422,18 +414,18 @@ impl AppRuntime for Platform {
                 tab_id: (!tab_id.is_empty()).then_some(tab_id),
             })
         } else {
-            Err(PlatformError::Platform(format!(
+            Err(Error::internal(format!(
                 "Failed to open URL: owner_appid={}, owner_session_id={}, url={}, target={:?}",
                 req.owner_appid, req.owner_session_id, req.url, req.target
             )))
         }
     }
 
-    fn close_browser_tab(&self, tab_id: &str) -> Result<(), PlatformError> {
+    fn close_browser_tab(&self, tab_id: &str) -> Result<(), Error> {
         if ffi::close_browser_tab(tab_id) {
             Ok(())
         } else {
-            Err(PlatformError::Platform(format!(
+            Err(Error::internal(format!(
                 "Failed to close browser tab: {tab_id}"
             )))
         }
@@ -444,7 +436,7 @@ impl AppRuntime for Platform {
             if ffi::activate_browser_tab(&tab_id) {
                 Ok(())
             } else {
-                Err(PlatformError::Platform(format!(
+                Err(Error::internal(format!(
                     "Failed to activate browser tab: {tab_id}"
                 )))
             }
@@ -453,9 +445,9 @@ impl AppRuntime for Platform {
 }
 
 impl ShareService for Platform {
-    async fn share(&self, request: ShareRequest) -> Result<ShareResult, PlatformError> {
+    async fn share(&self, request: ShareRequest) -> Result<ShareResult, Error> {
         let files_json = serde_json::to_string(&request.files)
-            .map_err(|e| PlatformError::Platform(format!("Failed to encode share files: {}", e)))?;
+            .map_err(|e| Error::internal(format!("Failed to encode share files: {}", e)))?;
 
         let data = crate::rt::native_call(|callback_id| {
             if ffi::share(
@@ -467,15 +459,13 @@ impl ShareService for Platform {
             ) {
                 Ok(())
             } else {
-                Err(PlatformError::Platform(
-                    "Failed to present share sheet".to_string(),
-                ))
+                Err(Error::internal("Failed to present share sheet".to_string()))
             }
         })
         .await?;
 
         serde_json::from_str(&data)
-            .map_err(|e| PlatformError::Platform(format!("share returned invalid payload: {}", e)))
+            .map_err(|e| Error::internal(format!("share returned invalid payload: {}", e)))
     }
 }
 
@@ -484,7 +474,7 @@ impl Platform {
     fn collect_files_recursively<'a>(
         &'a self,
         dir_path: &str,
-    ) -> Vec<Result<AssetFileEntry<'a>, PlatformError>> {
+    ) -> Vec<Result<AssetFileEntry<'a>, Error>> {
         let mut all_files = Vec::new();
         let mut dirs_to_process = vec![dir_path.to_string()];
 
@@ -528,9 +518,9 @@ fn install_update_on_macos(
     platform: &Platform,
     package_path: &Path,
     info_json: &str,
-) -> Result<(), PlatformError> {
+) -> Result<(), Error> {
     if !package_path.exists() {
-        return Err(PlatformError::InvalidParameter(format!(
+        return Err(Error::invalid_arg(format!(
             "Update package does not exist: {}",
             package_path.display()
         )));
@@ -612,7 +602,7 @@ fn staged_macos_update_slot() -> &'static std::sync::Mutex<Option<StagedMacosUpd
 }
 
 #[cfg(target_os = "macos")]
-fn spawn_and_exit_macos_update(staged: StagedMacosUpdate) -> Result<(), PlatformError> {
+fn spawn_and_exit_macos_update(staged: StagedMacosUpdate) -> Result<(), Error> {
     spawn_macos_update_helper(&staged.helper)?;
     request_current_process_exit(staged.pid, staged.bundle_id);
     Ok(())
@@ -707,15 +697,15 @@ struct MacosUpdateHelper {
 }
 
 #[cfg(target_os = "macos")]
-fn current_macos_app_bundle_path() -> Result<PathBuf, PlatformError> {
+fn current_macos_app_bundle_path() -> Result<PathBuf, Error> {
     let current_exe = std::env::current_exe().map_err(|e| {
-        PlatformError::Platform(format!("Failed to resolve current executable path: {}", e))
+        Error::internal(format!("Failed to resolve current executable path: {}", e))
     })?;
 
     for ancestor in current_exe.ancestors() {
         if is_app_bundle(ancestor) {
             return fs::canonicalize(ancestor).map_err(|e| {
-                PlatformError::Platform(format!(
+                Error::internal(format!(
                     "Failed to resolve current app bundle path {}: {}",
                     ancestor.display(),
                     e
@@ -724,7 +714,7 @@ fn current_macos_app_bundle_path() -> Result<PathBuf, PlatformError> {
         }
     }
 
-    Err(PlatformError::NotSupported(format!(
+    Err(Error::not_supported(format!(
         "Current process is not running from a macOS app bundle: {}",
         current_exe.display()
     )))
@@ -739,9 +729,9 @@ const CPU_TYPE_ARM64: u32 = 0x0100_000c;
 /// the old bundle, so installing it would leave an app that neither launches
 /// nor updates again; staying on the current version is recoverable.
 #[cfg(target_os = "macos")]
-fn ensure_update_runs_on_this_mac(source_app: &Path) -> Result<(), PlatformError> {
+fn ensure_update_runs_on_this_mac(source_app: &Path) -> Result<(), Error> {
     let executable = bundle_executable_path(source_app).ok_or_else(|| {
-        PlatformError::InvalidParameter(format!(
+        Error::invalid_arg(format!(
             "Update bundle has no executable: {}",
             source_app.display()
         ))
@@ -750,14 +740,14 @@ fn ensure_update_runs_on_this_mac(source_app: &Path) -> Result<(), PlatformError
     fs::File::open(&executable)
         .and_then(|file| file.take(4096).read_to_end(&mut header))
         .map_err(|e| {
-            PlatformError::Platform(format!(
+            Error::internal(format!(
                 "Failed to read update executable {}: {}",
                 executable.display(),
                 e
             ))
         })?;
     let slices = macho_cpu_types(&header).ok_or_else(|| {
-        PlatformError::InvalidParameter(format!(
+        Error::invalid_arg(format!(
             "Update executable is not Mach-O: {}",
             executable.display()
         ))
@@ -765,7 +755,7 @@ fn ensure_update_runs_on_this_mac(source_app: &Path) -> Result<(), PlatformError
     if mac_can_run(&slices, mac_has_apple_silicon()) {
         return Ok(());
     }
-    Err(PlatformError::NotSupported(format!(
+    Err(Error::not_supported(format!(
         "Update {} has no slice this Mac can run; keeping the installed version",
         source_app.display()
     )))
@@ -852,11 +842,11 @@ fn prepare_macos_update_source(
     platform: &Platform,
     package_path: &Path,
     current_app: &Path,
-) -> Result<PreparedMacosUpdate, PlatformError> {
+) -> Result<PreparedMacosUpdate, Error> {
     if is_app_bundle(package_path) {
         return Ok(PreparedMacosUpdate {
             source_app: fs::canonicalize(package_path).map_err(|e| {
-                PlatformError::Platform(format!(
+                Error::internal(format!(
                     "Failed to resolve update app bundle {}: {}",
                     package_path.display(),
                     e
@@ -875,7 +865,7 @@ fn prepare_macos_update_source(
         .map(|ext| ext.to_ascii_lowercase());
     let is_zip = matches!(ext.as_deref(), Some("zip")) || file_has_zip_magic(package_path);
     if !is_zip {
-        return Err(PlatformError::InvalidParameter(format!(
+        return Err(Error::invalid_arg(format!(
             "Unsupported macOS update package {}. Expected a signed .zip or a staged .app bundle.",
             package_path.display()
         )));
@@ -890,7 +880,7 @@ fn prepare_macos_update_source(
         .join(stamp);
     let extract_root = staging_root.join("expanded");
     fs::create_dir_all(&extract_root).map_err(|e| {
-        PlatformError::Platform(format!(
+        Error::internal(format!(
             "Failed to create update staging directory {}: {}",
             extract_root.display(),
             e
@@ -903,14 +893,14 @@ fn prepare_macos_update_source(
         .arg(&extract_root)
         .status()
         .map_err(|e| {
-            PlatformError::Platform(format!(
+            Error::internal(format!(
                 "Failed to extract update archive {}: {}",
                 package_path.display(),
                 e
             ))
         })?;
     if !status.success() {
-        return Err(PlatformError::Platform(format!(
+        return Err(Error::internal(format!(
             "Failed to extract update archive {}: {}",
             package_path.display(),
             status
@@ -927,13 +917,13 @@ fn prepare_macos_update_source(
 fn find_single_app_bundle(
     root: &Path,
     preferred_bundle_name: Option<&std::ffi::OsStr>,
-) -> Result<PathBuf, PlatformError> {
+) -> Result<PathBuf, Error> {
     let mut candidates = Vec::new();
     let mut stack = vec![root.to_path_buf()];
 
     while let Some(dir) = stack.pop() {
         let entries = fs::read_dir(&dir).map_err(|e| {
-            PlatformError::Platform(format!(
+            Error::internal(format!(
                 "Failed to inspect extracted update bundle {}: {}",
                 dir.display(),
                 e
@@ -943,7 +933,7 @@ fn find_single_app_bundle(
         for entry in entries {
             let path = entry
                 .map_err(|e| {
-                    PlatformError::Platform(format!(
+                    Error::internal(format!(
                         "Failed to inspect extracted update entry in {}: {}",
                         dir.display(),
                         e
@@ -963,7 +953,7 @@ fn find_single_app_bundle(
     }
 
     if candidates.is_empty() {
-        return Err(PlatformError::InvalidParameter(format!(
+        return Err(Error::invalid_arg(format!(
             "Update archive does not contain a .app bundle: {}",
             root.display()
         )));
@@ -979,14 +969,14 @@ fn find_single_app_bundle(
         match matching.len() {
             1 => matching.remove(0),
             0 => {
-                return Err(PlatformError::InvalidParameter(format!(
+                return Err(Error::invalid_arg(format!(
                     "Update archive contains multiple .app bundles and none matches current app '{}': {}",
                     bundle_name.to_string_lossy(),
                     root.display()
                 )));
             }
             _ => {
-                return Err(PlatformError::InvalidParameter(format!(
+                return Err(Error::invalid_arg(format!(
                     "Update archive contains multiple .app bundles matching current app '{}': {}",
                     bundle_name.to_string_lossy(),
                     root.display()
@@ -994,14 +984,14 @@ fn find_single_app_bundle(
             }
         }
     } else {
-        return Err(PlatformError::InvalidParameter(format!(
+        return Err(Error::invalid_arg(format!(
             "Update archive contains multiple .app bundles: {}",
             root.display()
         )));
     };
 
     fs::canonicalize(&selected).map_err(|e| {
-        PlatformError::Platform(format!(
+        Error::internal(format!(
             "Failed to resolve extracted app bundle {}: {}",
             selected.display(),
             e
@@ -1014,14 +1004,14 @@ fn write_macos_update_helper(
     platform: &Platform,
     current_app: &Path,
     prepared: &PreparedMacosUpdate,
-) -> Result<MacosUpdateHelper, PlatformError> {
+) -> Result<MacosUpdateHelper, Error> {
     let helper_dir = platform
         .app_cache_dir()
         .join("LingXia")
         .join("app_updates")
         .join("helper");
     fs::create_dir_all(&helper_dir).map_err(|e| {
-        PlatformError::Platform(format!(
+        Error::internal(format!(
             "Failed to create update helper directory {}: {}",
             helper_dir.display(),
             e
@@ -1142,7 +1132,7 @@ fi
     );
 
     fs::write(&script_path, script).map_err(|e| {
-        PlatformError::Platform(format!(
+        Error::internal(format!(
             "Failed to write update helper script {}: {}",
             script_path.display(),
             e
@@ -1151,7 +1141,7 @@ fi
 
     let mut perms = fs::metadata(&script_path)
         .map_err(|e| {
-            PlatformError::Platform(format!(
+            Error::internal(format!(
                 "Failed to inspect update helper script {}: {}",
                 script_path.display(),
                 e
@@ -1160,7 +1150,7 @@ fi
         .permissions();
     perms.set_mode(0o700);
     fs::set_permissions(&script_path, perms).map_err(|e| {
-        PlatformError::Platform(format!(
+        Error::internal(format!(
             "Failed to mark update helper script executable {}: {}",
             script_path.display(),
             e
@@ -1174,20 +1164,20 @@ fi
 }
 
 #[cfg(target_os = "macos")]
-fn spawn_macos_update_helper(helper: &MacosUpdateHelper) -> Result<(), PlatformError> {
+fn spawn_macos_update_helper(helper: &MacosUpdateHelper) -> Result<(), Error> {
     let stdout = OpenOptions::new()
         .create(true)
         .append(true)
         .open(&helper.log_path)
         .map_err(|e| {
-            PlatformError::Platform(format!(
+            Error::internal(format!(
                 "Failed to create update helper log {}: {}",
                 helper.log_path.display(),
                 e
             ))
         })?;
     let stderr = stdout.try_clone().map_err(|e| {
-        PlatformError::Platform(format!(
+        Error::internal(format!(
             "Failed to duplicate update helper log handle {}: {}",
             helper.log_path.display(),
             e
@@ -1202,7 +1192,7 @@ fn spawn_macos_update_helper(helper: &MacosUpdateHelper) -> Result<(), PlatformE
         .stderr(Stdio::from(stderr))
         .spawn()
         .map_err(|e| {
-            PlatformError::Platform(format!(
+            Error::internal(format!(
                 "Failed to launch update helper {}: {}",
                 helper.script_path.display(),
                 e
@@ -1275,12 +1265,12 @@ fn apple_script_quote_str(value: &str) -> String {
 }
 
 /// The Swift side answers with a word, or empty after recording why it failed.
-fn notification_word(word: String) -> Result<String, PlatformError> {
+fn notification_word(word: String) -> Result<String, Error> {
     if !word.is_empty() {
         return Ok(word);
     }
     let detail = ffi::notification_last_error();
-    Err(PlatformError::Platform(if detail.is_empty() {
+    Err(Error::internal(if detail.is_empty() {
         "notification request failed".into()
     } else {
         detail

@@ -1,13 +1,12 @@
-use crate::error::PlatformError;
-
+use lingxia_error::Error;
 /// Programmatic control of a page's pull-to-refresh indicator.
 ///
 /// `webtag` is the page instance's full webview tag: two instances of one
 /// route each have their own indicator.
 pub trait PullToRefresh: Send + Sync {
     /// Show the refresh indicator and run the page's `onRefresh`.
-    fn start_pull_down_refresh(&self, app_id: &str, webtag: &str) -> Result<(), PlatformError>;
+    fn start_pull_down_refresh(&self, app_id: &str, webtag: &str) -> Result<(), Error>;
 
     /// Hide the refresh indicator once the refresh is done.
-    fn stop_pull_down_refresh(&self, app_id: &str, webtag: &str) -> Result<(), PlatformError>;
+    fn stop_pull_down_refresh(&self, app_id: &str, webtag: &str) -> Result<(), Error>;
 }

@@ -1,5 +1,4 @@
 use super::app::Platform;
-use crate::error::PlatformError;
 use crate::traits::media_interaction::{
     CameraFacing, MediaInteraction, MediaKind, MediaObjectFit, MediaSource, PickMediaMode,
     PickMediaRequest, PreviewMediaRequest, SaveMediaRequest, ScanCodeRequest, ScanType,
@@ -8,6 +7,7 @@ use crate::traits::media_runtime::{
     CompressImageRequest, CompressVideoRequest, ExtractVideoThumbnailRequest, ImageInfo,
     MediaRuntime, VideoInfo, VideoThumbnail,
 };
+use lingxia_error::Error;
 use serde::Serialize;
 use std::path::{Path, PathBuf};
 
@@ -51,9 +51,9 @@ struct ScanCodePayload {
 }
 
 impl MediaInteraction for Platform {
-    fn preview_media(&self, request: PreviewMediaRequest) -> Result<(), PlatformError> {
+    fn preview_media(&self, request: PreviewMediaRequest) -> Result<(), Error> {
         if request.items.is_empty() {
-            return Err(PlatformError::Platform(
+            return Err(Error::internal(
                 "previewMedia requires at least one item".to_string(),
             ));
         }
@@ -90,25 +90,25 @@ impl MediaInteraction for Platform {
         };
 
         let json = serde_json::to_string(&payload).map_err(|e| {
-            PlatformError::Platform(format!("Failed to serialize preview media payload: {}", e))
+            Error::internal(format!("Failed to serialize preview media payload: {}", e))
         })?;
 
         lingxia_webview::platform::harmony::tsfn::call_arkts("previewMedia", &[json.as_str()])
-            .map_err(|e| PlatformError::Platform(format!("Failed to preview media: {}", e)))
+            .map_err(|e| Error::internal(format!("Failed to preview media: {}", e)))
     }
 
-    fn cancel_preview(&self, callback_id: u64) -> Result<(), PlatformError> {
+    fn cancel_preview(&self, callback_id: u64) -> Result<(), Error> {
         let callback_id_str = callback_id.to_string();
         lingxia_webview::platform::harmony::tsfn::call_arkts(
             "closePreview",
             &[callback_id_str.as_str()],
         )
-        .map_err(|e| PlatformError::Platform(format!("Failed to cancel preview media: {}", e)))
+        .map_err(|e| Error::internal(format!("Failed to cancel preview media: {}", e)))
     }
 
-    async fn pick_media(&self, request: PickMediaRequest) -> Result<String, PlatformError> {
+    async fn pick_media(&self, request: PickMediaRequest) -> Result<String, Error> {
         if request.max_count == 0 {
-            return Err(PlatformError::Platform(
+            return Err(Error::internal(
                 "pickMedia requires max_count to be greater than 0".to_string(),
             ));
         }
@@ -142,19 +142,19 @@ impl MediaInteraction for Platform {
             };
 
             let payload_json = serde_json::to_string(&payload).map_err(|e| {
-                PlatformError::Platform(format!("Failed to serialize pickMedia payload: {}", e))
+                Error::internal(format!("Failed to serialize pickMedia payload: {}", e))
             })?;
 
             lingxia_webview::platform::harmony::tsfn::call_arkts(
                 "chooseMedia",
                 &[payload_json.as_str()],
             )
-            .map_err(|e| PlatformError::Platform(format!("Failed to start pickMedia flow: {}", e)))
+            .map_err(|e| Error::internal(format!("Failed to start pickMedia flow: {}", e)))
         })
         .await
     }
 
-    async fn scan_code(&self, request: ScanCodeRequest) -> Result<String, PlatformError> {
+    async fn scan_code(&self, request: ScanCodeRequest) -> Result<String, Error> {
         crate::rt::native_call(|callback_id| {
             let scan_types: Vec<String> = request
                 .scan_types
@@ -174,22 +174,19 @@ impl MediaInteraction for Platform {
             };
 
             let payload_json = serde_json::to_string(&payload).map_err(|e| {
-                PlatformError::Platform(format!("Failed to serialize scanCode payload: {}", e))
+                Error::internal(format!("Failed to serialize scanCode payload: {}", e))
             })?;
 
             lingxia_webview::platform::harmony::tsfn::call_arkts(
                 "scanCode",
                 &[payload_json.as_str()],
             )
-            .map_err(|e| PlatformError::Platform(format!("Failed to start scanCode flow: {}", e)))
+            .map_err(|e| Error::internal(format!("Failed to start scanCode flow: {}", e)))
         })
         .await
     }
 
-    async fn save_image_to_photos_album(
-        &self,
-        request: SaveMediaRequest,
-    ) -> Result<(), PlatformError> {
+    async fn save_image_to_photos_album(&self, request: SaveMediaRequest) -> Result<(), Error> {
         crate::rt::native_call(|callback_id| {
             save_media_resource(&request.file_uri, MEDIA_LIBRARY_IMAGE_RESOURCE, callback_id)
         })
@@ -197,10 +194,7 @@ impl MediaInteraction for Platform {
         .map(|_| ())
     }
 
-    async fn save_video_to_photos_album(
-        &self,
-        request: SaveMediaRequest,
-    ) -> Result<(), PlatformError> {
+    async fn save_video_to_photos_album(&self, request: SaveMediaRequest) -> Result<(), Error> {
         crate::rt::native_call(|callback_id| {
             save_media_resource(&request.file_uri, MEDIA_LIBRARY_VIDEO_RESOURCE, callback_id)
         })
@@ -215,43 +209,39 @@ impl MediaRuntime for Platform {
         uri: &str,
         dest_path: &Path,
         kind: MediaKind,
-    ) -> Result<(), PlatformError> {
+    ) -> Result<(), Error> {
         self.copy_album_media_to_file_impl(uri, dest_path, kind)
     }
 
-    fn get_image_info(&self, uri: &str) -> Result<ImageInfo, PlatformError> {
+    fn get_image_info(&self, uri: &str) -> Result<ImageInfo, Error> {
         image_native::get_image_info(uri)
     }
 
-    fn compress_image(&self, request: &CompressImageRequest) -> Result<PathBuf, PlatformError> {
+    fn compress_image(&self, request: &CompressImageRequest) -> Result<PathBuf, Error> {
         image_native::compress_image(request)
     }
 
-    fn get_video_info(&self, uri: &str) -> Result<VideoInfo, PlatformError> {
+    fn get_video_info(&self, uri: &str) -> Result<VideoInfo, Error> {
         video_native::get_video_info(uri)
     }
 
     fn extract_video_thumbnail(
         &self,
         request: &ExtractVideoThumbnailRequest,
-    ) -> Result<VideoThumbnail, PlatformError> {
+    ) -> Result<VideoThumbnail, Error> {
         video_native::extract_video_thumbnail(request)
     }
 
-    fn compress_video(&self, request: &CompressVideoRequest) -> Result<(), PlatformError> {
+    fn compress_video(&self, request: &CompressVideoRequest) -> Result<(), Error> {
         video_native::compress_video(request)
     }
 
-    fn cancel_compress_video(&self, callback_id: u64) -> Result<(), PlatformError> {
+    fn cancel_compress_video(&self, callback_id: u64) -> Result<(), Error> {
         video_native::cancel_compress_video(callback_id)
     }
 }
 
-fn save_media_resource(
-    file_uri: &str,
-    resource_type: i32,
-    callback_id: u64,
-) -> Result<(), PlatformError> {
+fn save_media_resource(file_uri: &str, resource_type: i32, callback_id: u64) -> Result<(), Error> {
     let media_type_str = resource_type.to_string();
     let callback_id_str = callback_id.to_string();
     lingxia_webview::platform::harmony::tsfn::call_arkts(
@@ -260,7 +250,7 @@ fn save_media_resource(
     )
     .map_err(|e| {
         let _ = lingxia_messaging::invoke_callback(callback_id, Err(1000));
-        PlatformError::Platform(format!("Failed to start save media: {}", e))
+        Error::internal(format!("Failed to start save media: {}", e))
     })
 }
 
@@ -282,9 +272,9 @@ struct PickMediaPayload {
 }
 
 mod image_native {
-    use super::PlatformError;
     use crate::traits::media_runtime::{CompressImageRequest, ImageInfo};
     use core::ffi::c_char;
+    use lingxia_error::Error;
     use std::ffi::CString;
     use std::fs::{self, OpenOptions};
     use std::os::fd::{AsRawFd, RawFd};
@@ -338,7 +328,7 @@ mod image_native {
         _private: [u8; 0],
     }
 
-    pub(super) fn get_image_info(uri: &str) -> Result<ImageInfo, PlatformError> {
+    pub(super) fn get_image_info(uri: &str) -> Result<ImageInfo, Error> {
         // Harmony image native APIs are not guaranteed to be thread-safe.
         let _guard = image_lock().lock().unwrap_or_else(|e| e.into_inner());
 
@@ -364,12 +354,12 @@ mod image_native {
 
     pub(super) fn compress_image(
         request: &CompressImageRequest,
-    ) -> Result<std::path::PathBuf, PlatformError> {
+    ) -> Result<std::path::PathBuf, Error> {
         // Harmony image native APIs are not guaranteed to be thread-safe.
         let _guard = image_lock().lock().unwrap_or_else(|e| e.into_inner());
 
         if request.source_uri.is_empty() {
-            return Err(PlatformError::Platform("source_uri is empty".to_string()));
+            return Err(Error::internal("source_uri is empty".to_string()));
         }
 
         // Avoid crashing native decoders/packers on invalid absolute filesystem paths.
@@ -381,7 +371,7 @@ mod image_native {
             .unwrap_or(&request.source_uri);
         let source_path_ref = Path::new(source_path);
         if source_path_ref.is_absolute() && !source_path_ref.exists() {
-            return Err(PlatformError::AssetNotFound(format!(
+            return Err(Error::not_found(format!(
                 "source image does not exist: {}",
                 source_path
             )));
@@ -416,7 +406,7 @@ mod image_native {
 
         if let Some(parent) = request.output_path.parent() {
             fs::create_dir_all(parent).map_err(|err| {
-                PlatformError::Platform(format!(
+                Error::internal(format!(
                     "Failed to prepare directory {}: {}",
                     parent.display(),
                     err
@@ -430,7 +420,7 @@ mod image_native {
             .truncate(true)
             .open(&request.output_path)
             .map_err(|err| {
-                PlatformError::Platform(format!(
+                Error::internal(format!(
                     "Failed to open {}: {}",
                     request.output_path.display(),
                     err
@@ -449,9 +439,9 @@ mod image_native {
     struct NativeImageSource(*mut OH_ImageSourceNative);
 
     impl NativeImageSource {
-        fn from_uri(uri: &str) -> Result<Self, PlatformError> {
+        fn from_uri(uri: &str) -> Result<Self, Error> {
             let c_uri = CString::new(uri).map_err(|_| {
-                PlatformError::Platform("Image URI contains invalid characters".to_string())
+                Error::internal("Image URI contains invalid characters".to_string())
             })?;
             let mut handle = ptr::null_mut();
             // Some Harmony native APIs expect the buffer length to include the trailing NUL.
@@ -465,9 +455,7 @@ mod image_native {
             };
             check(code, "OH_ImageSourceNative_CreateFromUri")?;
             if handle.is_null() {
-                return Err(PlatformError::Platform(
-                    "ImageSource handle is null".to_string(),
-                ));
+                return Err(Error::internal("ImageSource handle is null".to_string()));
             }
             Ok(NativeImageSource(handle))
         }
@@ -476,10 +464,7 @@ mod image_native {
             self.0
         }
 
-        fn create_pixelmap(
-            &self,
-            options: &DecodingOptions,
-        ) -> Result<NativePixelMap, PlatformError> {
+        fn create_pixelmap(&self, options: &DecodingOptions) -> Result<NativePixelMap, Error> {
             let mut pixelmap = ptr::null_mut();
             check(
                 unsafe {
@@ -488,9 +473,7 @@ mod image_native {
                 "OH_ImageSourceNative_CreatePixelmap",
             )?;
             if pixelmap.is_null() {
-                return Err(PlatformError::Platform(
-                    "Pixelmap handle is null".to_string(),
-                ));
+                return Err(Error::internal("Pixelmap handle is null".to_string()));
             }
             Ok(NativePixelMap(pixelmap))
         }
@@ -509,14 +492,14 @@ mod image_native {
     struct NativeImageInfo(*mut OH_ImageSource_Info);
 
     impl NativeImageInfo {
-        fn new() -> Result<Self, PlatformError> {
+        fn new() -> Result<Self, Error> {
             let mut ptr = ptr::null_mut();
             check(
                 unsafe { OH_ImageSourceInfo_Create(&mut ptr) },
                 "OH_ImageSourceInfo_Create",
             )?;
             if ptr.is_null() {
-                return Err(PlatformError::Platform(
+                return Err(Error::internal(
                     "ImageSourceInfo handle is null".to_string(),
                 ));
             }
@@ -527,7 +510,7 @@ mod image_native {
             self.0
         }
 
-        fn width(&self) -> Result<u32, PlatformError> {
+        fn width(&self) -> Result<u32, Error> {
             let mut width = 0;
             check(
                 unsafe { OH_ImageSourceInfo_GetWidth(self.0, &mut width) },
@@ -536,7 +519,7 @@ mod image_native {
             Ok(width)
         }
 
-        fn height(&self) -> Result<u32, PlatformError> {
+        fn height(&self) -> Result<u32, Error> {
             let mut height = 0;
             check(
                 unsafe { OH_ImageSourceInfo_GetHeight(self.0, &mut height) },
@@ -572,14 +555,14 @@ mod image_native {
     struct DecodingOptions(*mut OH_DecodingOptions);
 
     impl DecodingOptions {
-        fn new() -> Result<Self, PlatformError> {
+        fn new() -> Result<Self, Error> {
             let mut ptr = ptr::null_mut();
             check(
                 unsafe { OH_DecodingOptions_Create(&mut ptr) },
                 "OH_DecodingOptions_Create",
             )?;
             if ptr.is_null() {
-                return Err(PlatformError::Platform(
+                return Err(Error::internal(
                     "DecodingOptions handle is null".to_string(),
                 ));
             }
@@ -590,7 +573,7 @@ mod image_native {
             self.0
         }
 
-        fn set_desired_size(&self, size: ImageSize) -> Result<(), PlatformError> {
+        fn set_desired_size(&self, size: ImageSize) -> Result<(), Error> {
             let mut desired = size;
             check(
                 unsafe {
@@ -632,16 +615,14 @@ mod image_native {
     struct ImagePacker(*mut OH_ImagePackerNative);
 
     impl ImagePacker {
-        fn new() -> Result<Self, PlatformError> {
+        fn new() -> Result<Self, Error> {
             let mut ptr = ptr::null_mut();
             check(
                 unsafe { OH_ImagePackerNative_Create(&mut ptr) },
                 "OH_ImagePackerNative_Create",
             )?;
             if ptr.is_null() {
-                return Err(PlatformError::Platform(
-                    "ImagePacker handle is null".to_string(),
-                ));
+                return Err(Error::internal("ImagePacker handle is null".to_string()));
             }
             Ok(ImagePacker(ptr))
         }
@@ -651,7 +632,7 @@ mod image_native {
             pixelmap: &NativePixelMap,
             options: &PackingOptions,
             fd: RawFd,
-        ) -> Result<(), PlatformError> {
+        ) -> Result<(), Error> {
             check(
                 unsafe {
                     OH_ImagePackerNative_PackToFileFromPixelmap(
@@ -683,16 +664,14 @@ mod image_native {
     }
 
     impl PackingOptions {
-        fn new() -> Result<Self, PlatformError> {
+        fn new() -> Result<Self, Error> {
             let mut ptr = ptr::null_mut();
             check(
                 unsafe { OH_PackingOptions_Create(&mut ptr) },
                 "OH_PackingOptions_Create",
             )?;
             if ptr.is_null() {
-                return Err(PlatformError::Platform(
-                    "PackingOptions handle is null".to_string(),
-                ));
+                return Err(Error::internal("PackingOptions handle is null".to_string()));
             }
             Ok(PackingOptions {
                 handle: ptr,
@@ -704,16 +683,16 @@ mod image_native {
             self.handle
         }
 
-        fn set_quality(&self, quality: u32) -> Result<(), PlatformError> {
+        fn set_quality(&self, quality: u32) -> Result<(), Error> {
             check(
                 unsafe { OH_PackingOptions_SetQuality(self.handle, quality) },
                 "OH_PackingOptions_SetQuality",
             )
         }
 
-        fn set_mime_type(&mut self, mime: &str) -> Result<(), PlatformError> {
+        fn set_mime_type(&mut self, mime: &str) -> Result<(), Error> {
             let c_mime = CString::new(mime).map_err(|_| {
-                PlatformError::Platform("Mime type contains invalid characters".to_string())
+                Error::internal("Mime type contains invalid characters".to_string())
             })?;
             // Without the NUL: the encoder compares the whole buffer to its format names.
             let mut mime_string = ImageString {
@@ -825,11 +804,11 @@ mod image_native {
         }
     }
 
-    fn check(code: i32, context: &str) -> Result<(), PlatformError> {
+    fn check(code: i32, context: &str) -> Result<(), Error> {
         if code == IMAGE_SUCCESS {
             Ok(())
         } else {
-            Err(PlatformError::Platform(format!(
+            Err(Error::internal(format!(
                 "{} failed: code {}",
                 context, code
             )))
@@ -899,7 +878,6 @@ mod image_native {
 }
 
 mod video_native {
-    use super::PlatformError;
     use crate::traits::media_runtime::{
         CompressVideoRequest, CompressedVideo, ExtractVideoThumbnailRequest, VideoInfo,
         VideoThumbnail,
@@ -908,6 +886,7 @@ mod video_native {
     use image::{
         ExtendedColorType, ImageBuffer, Rgba, codecs::jpeg::JpegEncoder, imageops::FilterType,
     };
+    use lingxia_error::Error;
     use std::collections::HashMap;
     use std::collections::HashSet;
     use std::ffi::{CStr, CString};
@@ -1045,26 +1024,24 @@ mod video_native {
             }
         }
 
-        fn wait(&self, timeout: Duration) -> Result<(), PlatformError> {
+        fn wait(&self, timeout: Duration) -> Result<(), Error> {
             let state = self
                 .state
                 .lock()
-                .map_err(|_| PlatformError::Platform("transcode state poisoned".to_string()))?;
+                .map_err(|_| Error::internal("transcode state poisoned".to_string()))?;
             let (state, timeout_result) = self
                 .cv
                 .wait_timeout_while(state, timeout, |s| matches!(*s, TranscodeState::Pending))
-                .map_err(|_| PlatformError::Platform("transcode wait failed".to_string()))?;
+                .map_err(|_| Error::internal("transcode wait failed".to_string()))?;
 
             if timeout_result.timed_out() && matches!(*state, TranscodeState::Pending) {
-                return Err(PlatformError::Platform(
-                    "compressVideo timed out".to_string(),
-                ));
+                return Err(Error::internal("compressVideo timed out".to_string()));
             }
 
             match &*state {
                 TranscodeState::Completed => Ok(()),
-                TranscodeState::Error(message) => Err(PlatformError::Platform(message.clone())),
-                TranscodeState::Pending => Err(PlatformError::Platform(
+                TranscodeState::Error(message) => Err(Error::internal(message.clone())),
+                TranscodeState::Pending => Err(Error::internal(
                     "compressVideo wait aborted unexpectedly".to_string(),
                 )),
             }
@@ -1101,10 +1078,10 @@ mod video_native {
     }
 
     impl NativeTranscoderConfig {
-        fn new() -> Result<Self, PlatformError> {
+        fn new() -> Result<Self, Error> {
             let handle = unsafe { OH_AVTranscoderConfig_Create() };
             if handle.is_null() {
-                return Err(PlatformError::Platform(
+                return Err(Error::internal(
                     "OH_AVTranscoderConfig_Create returned null".to_string(),
                 ));
             }
@@ -1119,31 +1096,30 @@ mod video_native {
             self.handle
         }
 
-        fn set_src_fd(&self, fd: i32, size: i64) -> Result<(), PlatformError> {
+        fn set_src_fd(&self, fd: i32, size: i64) -> Result<(), Error> {
             check_av(
                 unsafe { OH_AVTranscoderConfig_SetSrcFD(self.as_ptr(), fd, 0, size) },
                 "OH_AVTranscoderConfig_SetSrcFD",
             )
         }
 
-        fn set_dst_fd(&self, fd: i32) -> Result<(), PlatformError> {
+        fn set_dst_fd(&self, fd: i32) -> Result<(), Error> {
             check_av(
                 unsafe { OH_AVTranscoderConfig_SetDstFD(self.as_ptr(), fd) },
                 "OH_AVTranscoderConfig_SetDstFD",
             )
         }
 
-        fn set_dst_file_type(&self, file_type: i32) -> Result<(), PlatformError> {
+        fn set_dst_file_type(&self, file_type: i32) -> Result<(), Error> {
             check_av(
                 unsafe { OH_AVTranscoderConfig_SetDstFileType(self.as_ptr(), file_type) },
                 "OH_AVTranscoderConfig_SetDstFileType",
             )
         }
 
-        fn set_dst_video_type_avc(&mut self) -> Result<(), PlatformError> {
-            let c_mime = CString::new("video/avc").map_err(|_| {
-                PlatformError::Platform("video codec mime contains null byte".to_string())
-            })?;
+        fn set_dst_video_type_avc(&mut self) -> Result<(), Error> {
+            let c_mime = CString::new("video/avc")
+                .map_err(|_| Error::internal("video codec mime contains null byte".to_string()))?;
             check_av(
                 unsafe { OH_AVTranscoderConfig_SetDstVideoType(self.as_ptr(), c_mime.as_ptr()) },
                 "OH_AVTranscoderConfig_SetDstVideoType",
@@ -1153,13 +1129,12 @@ mod video_native {
             Ok(())
         }
 
-        fn set_dst_audio_type_aac(&mut self) -> Result<(), PlatformError> {
+        fn set_dst_audio_type_aac(&mut self) -> Result<(), Error> {
             // NOTE: ArkTS uses `media.CodecMimeType.AUDIO_AAC`; OpenHarmony reports AAC as
             // `audio/mp4a-latm` in many places. Empirically, `audio/aac` also works on recent
             // releases, but `audio/mp4a-latm` is more broadly compatible.
-            let c_mime = CString::new("audio/mp4a-latm").map_err(|_| {
-                PlatformError::Platform("audio codec mime contains null byte".to_string())
-            })?;
+            let c_mime = CString::new("audio/mp4a-latm")
+                .map_err(|_| Error::internal("audio codec mime contains null byte".to_string()))?;
             check_av(
                 unsafe { OH_AVTranscoderConfig_SetDstAudioType(self.as_ptr(), c_mime.as_ptr()) },
                 "OH_AVTranscoderConfig_SetDstAudioType",
@@ -1168,21 +1143,21 @@ mod video_native {
             Ok(())
         }
 
-        fn set_video_bitrate(&self, bitrate: i32) -> Result<(), PlatformError> {
+        fn set_video_bitrate(&self, bitrate: i32) -> Result<(), Error> {
             check_av(
                 unsafe { OH_AVTranscoderConfig_SetDstVideoBitrate(self.as_ptr(), bitrate) },
                 "OH_AVTranscoderConfig_SetDstVideoBitrate",
             )
         }
 
-        fn set_audio_bitrate(&self, bitrate: i32) -> Result<(), PlatformError> {
+        fn set_audio_bitrate(&self, bitrate: i32) -> Result<(), Error> {
             check_av(
                 unsafe { OH_AVTranscoderConfig_SetDstAudioBitrate(self.as_ptr(), bitrate) },
                 "OH_AVTranscoderConfig_SetDstAudioBitrate",
             )
         }
 
-        fn set_video_resolution(&self, width: i32, height: i32) -> Result<(), PlatformError> {
+        fn set_video_resolution(&self, width: i32, height: i32) -> Result<(), Error> {
             check_av(
                 unsafe {
                     OH_AVTranscoderConfig_SetDstVideoResolution(self.as_ptr(), width, height)
@@ -1206,10 +1181,10 @@ mod video_native {
     struct NativeAvTranscoder(*mut OH_AVTranscoder);
 
     impl NativeAvTranscoder {
-        fn new() -> Result<Self, PlatformError> {
+        fn new() -> Result<Self, Error> {
             let handle = unsafe { OH_AVTranscoder_Create() };
             if handle.is_null() {
-                return Err(PlatformError::Platform(
+                return Err(Error::internal(
                     "OH_AVTranscoder_Create returned null".to_string(),
                 ));
             }
@@ -1220,7 +1195,7 @@ mod video_native {
             self.0
         }
 
-        fn set_callbacks(&self, user_data: *mut c_void) -> Result<(), PlatformError> {
+        fn set_callbacks(&self, user_data: *mut c_void) -> Result<(), Error> {
             check_av(
                 unsafe {
                     OH_AVTranscoder_SetStateCallback(
@@ -1253,28 +1228,28 @@ mod video_native {
             )
         }
 
-        fn prepare(&self, config: &NativeTranscoderConfig) -> Result<(), PlatformError> {
+        fn prepare(&self, config: &NativeTranscoderConfig) -> Result<(), Error> {
             check_av(
                 unsafe { OH_AVTranscoder_Prepare(self.as_ptr(), config.as_ptr()) },
                 "OH_AVTranscoder_Prepare",
             )
         }
 
-        fn start(&self) -> Result<(), PlatformError> {
+        fn start(&self) -> Result<(), Error> {
             check_av(
                 unsafe { OH_AVTranscoder_Start(self.as_ptr()) },
                 "OH_AVTranscoder_Start",
             )
         }
 
-        fn cancel(&self) -> Result<(), PlatformError> {
+        fn cancel(&self) -> Result<(), Error> {
             check_av(
                 unsafe { OH_AVTranscoder_Cancel(self.as_ptr()) },
                 "OH_AVTranscoder_Cancel",
             )
         }
 
-        fn release(&mut self) -> Result<(), PlatformError> {
+        fn release(&mut self) -> Result<(), Error> {
             if self.0.is_null() {
                 return Ok(());
             }
@@ -1378,7 +1353,7 @@ mod video_native {
         REGISTRY.get_or_init(|| Mutex::new(HashMap::new()))
     }
 
-    pub(super) fn cancel_compress_video(callback_id: u64) -> Result<(), PlatformError> {
+    pub(super) fn cancel_compress_video(callback_id: u64) -> Result<(), Error> {
         let token = compress_cancel_registry()
             .lock()
             .ok()
@@ -1394,7 +1369,7 @@ mod video_native {
         Ok(())
     }
 
-    pub(super) fn compress_video(request: &CompressVideoRequest) -> Result<(), PlatformError> {
+    pub(super) fn compress_video(request: &CompressVideoRequest) -> Result<(), Error> {
         let request = request.clone();
         let callback_id = request.callback_id;
         let token = Arc::new(CompressCancelToken {
@@ -1442,25 +1417,23 @@ mod video_native {
                 };
                 let _ = lingxia_messaging::invoke_callback(callback_id, Ok(payload.to_string()));
             })
-            .map_err(|err| {
-                PlatformError::Platform(format!("Failed to spawn compress thread: {}", err))
-            })?;
+            .map_err(|err| Error::internal(format!("Failed to spawn compress thread: {}", err)))?;
         Ok(())
     }
 
     fn run_compress_video(
         request: &CompressVideoRequest,
         token: &Arc<CompressCancelToken>,
-    ) -> Result<CompressedVideo, PlatformError> {
+    ) -> Result<CompressedVideo, Error> {
         if request.source_uri.trim().is_empty() {
-            return Err(PlatformError::Platform("source_uri is empty".to_string()));
+            return Err(Error::internal("source_uri is empty".to_string()));
         }
 
         let source_path = normalize_to_path(&request.source_uri)?;
         let output_path = request.output_path.clone();
         if let Some(parent) = output_path.parent() {
             fs::create_dir_all(parent).map_err(|err| {
-                PlatformError::Platform(format!(
+                Error::internal(format!(
                     "Failed to prepare output directory {}: {}",
                     parent.display(),
                     err
@@ -1534,7 +1507,7 @@ mod video_native {
             attempts.len()
         );
 
-        let mut last_error: Option<PlatformError> = None;
+        let mut last_error: Option<Error> = None;
         let mut transcode_ok = false;
         for (index, (include_audio, attempt_bitrate, attempt_resolution)) in
             attempts.iter().enumerate()
@@ -1548,9 +1521,7 @@ mod video_native {
                 attempt_resolution
             );
             if token.cancelled.load(Ordering::SeqCst) {
-                return Err(PlatformError::Platform(
-                    "compressVideo cancelled".to_string(),
-                ));
+                return Err(Error::internal("compressVideo cancelled".to_string()));
             }
             match run_transcode_attempt(
                 src_fd.raw(),
@@ -1583,9 +1554,7 @@ mod video_native {
         drop(src_fd);
 
         if token.cancelled.load(Ordering::SeqCst) {
-            return Err(PlatformError::Platform(
-                "compressVideo cancelled".to_string(),
-            ));
+            return Err(Error::internal("compressVideo cancelled".to_string()));
         }
 
         if !transcode_ok {
@@ -1746,7 +1715,7 @@ mod video_native {
         resolution: Option<(i32, i32)>,
         progress_callback_id: u64,
         token: &Arc<CompressCancelToken>,
-    ) -> Result<(), PlatformError> {
+    ) -> Result<(), Error> {
         let dst_fd = open_output_descriptor(output_path)?;
         let dst_fd = ScopedFd(dst_fd);
 
@@ -1779,9 +1748,7 @@ mod video_native {
 
         let transcode_result = (|| {
             if token.cancelled.load(Ordering::SeqCst) {
-                return Err(PlatformError::Platform(
-                    "compressVideo cancelled".to_string(),
-                ));
+                return Err(Error::internal("compressVideo cancelled".to_string()));
             }
             transcoder.set_callbacks(callback_ptr as *mut c_void)?;
             transcoder.prepare(&config)?;
@@ -1809,13 +1776,13 @@ mod video_native {
         release_result
     }
 
-    fn copy_source_to_output(source_path: &str, output_path: &Path) -> Result<(), PlatformError> {
+    fn copy_source_to_output(source_path: &str, output_path: &Path) -> Result<(), Error> {
         let source = Path::new(source_path);
         if source == output_path {
             return Ok(());
         }
         fs::copy(source, output_path).map_err(|err| {
-            PlatformError::Platform(format!(
+            Error::internal(format!(
                 "Failed to copy source video to {}: {}",
                 output_path.display(),
                 err
@@ -1845,11 +1812,11 @@ mod video_native {
         if value % 2 == 0 { value } else { value - 1 }
     }
 
-    pub(super) fn get_video_info(uri: &str) -> Result<VideoInfo, PlatformError> {
+    pub(super) fn get_video_info(uri: &str) -> Result<VideoInfo, Error> {
         let source_path = normalize_to_path(uri)?;
         let size = fs::metadata(&source_path)
             .map_err(|err| {
-                PlatformError::Platform(format!(
+                Error::internal(format!(
                     "Failed to read video size for {}: {}",
                     source_path, err
                 ))
@@ -1937,9 +1904,7 @@ mod video_native {
             return Err(player_error
                 .or(generator_error)
                 .or(metadata_error)
-                .unwrap_or_else(|| {
-                    PlatformError::Platform("Failed to read video metadata".to_string())
-                }));
+                .unwrap_or_else(|| Error::internal("Failed to read video metadata".to_string())));
         }
 
         Ok(info)
@@ -1957,7 +1922,7 @@ mod video_native {
         audio_codec: Option<String>,
     }
 
-    fn read_video_metadata(path: &str) -> Result<RawVideoMetadata, PlatformError> {
+    fn read_video_metadata(path: &str) -> Result<RawVideoMetadata, Error> {
         let source = NativeAvSource::open(path)?;
         let source_format = source.source_format()?;
         let duration_ms = source_format
@@ -1970,9 +1935,7 @@ mod video_native {
             .get_int_compatible(unsafe { OH_MD_KEY_TRACK_COUNT })
             .filter(|count| *count > 0)
             .map(|count| count as u32)
-            .ok_or_else(|| {
-                PlatformError::Platform("Video source is missing its track count".to_string())
-            })?
+            .ok_or_else(|| Error::internal("Video source is missing its track count".to_string()))?
             .min(MAX_MEDIA_TRACKS);
 
         let mut width = None;
@@ -2040,7 +2003,7 @@ mod video_native {
         })
     }
 
-    fn read_basic_video_info_with_player(path: &str) -> Result<(u32, u32, u64), PlatformError> {
+    fn read_basic_video_info_with_player(path: &str) -> Result<(u32, u32, u64), Error> {
         let mut player = NativeAvPlayer::new()?;
         player.set_file_source(path)?;
         player.prepare()?;
@@ -2054,7 +2017,7 @@ mod video_native {
         ))
     }
 
-    fn read_video_dimensions_with_generator(path: &str) -> Result<(u32, u32), PlatformError> {
+    fn read_video_dimensions_with_generator(path: &str) -> Result<(u32, u32), Error> {
         let mut generator = NativeAvImageGenerator::new()?;
         generator.set_file_source(path)?;
         let pixelmap = generator.fetch_frame_by_time(0)?;
@@ -2096,12 +2059,12 @@ mod video_native {
 
     pub(super) fn extract_video_thumbnail(
         request: &ExtractVideoThumbnailRequest,
-    ) -> Result<VideoThumbnail, PlatformError> {
+    ) -> Result<VideoThumbnail, Error> {
         // Harmony image/pixelmap native APIs are not guaranteed to be thread-safe.
         let _guard = video_image_lock().lock().unwrap_or_else(|e| e.into_inner());
 
         if request.source_uri.is_empty() {
-            return Err(PlatformError::Platform("source_uri is empty".to_string()));
+            return Err(Error::internal("source_uri is empty".to_string()));
         }
 
         let source_path = normalize_to_path(&request.source_uri)?;
@@ -2133,7 +2096,7 @@ mod video_native {
                 ) {
                     Ok(size) => size,
                     Err(rust_jpeg_err) => {
-                        return Err(PlatformError::Platform(format!(
+                        return Err(Error::internal(format!(
                             "extractVideoThumbnail failed; pack(native): {}; jpeg(rust): {}",
                             primary_err, rust_jpeg_err
                         )));
@@ -2155,7 +2118,7 @@ mod video_native {
         desired_size: Option<ImageSize>,
         quality: u8,
         output_path: &Path,
-    ) -> Result<(u32, u32), PlatformError> {
+    ) -> Result<(u32, u32), Error> {
         let (source_width, source_height) = pixelmap.dimensions()?;
         let mut scaled_pixelmap = None;
         if let Some(size) = desired_size
@@ -2175,7 +2138,7 @@ mod video_native {
 
         if let Some(parent) = output_path.parent() {
             fs::create_dir_all(parent).map_err(|err| {
-                PlatformError::Platform(format!(
+                Error::internal(format!(
                     "Failed to prepare directory {}: {}",
                     parent.display(),
                     err
@@ -2190,11 +2153,7 @@ mod video_native {
             .truncate(true)
             .open(output_path)
             .map_err(|err| {
-                PlatformError::Platform(format!(
-                    "Failed to open {}: {}",
-                    output_path.display(),
-                    err
-                ))
+                Error::internal(format!("Failed to open {}: {}", output_path.display(), err))
             })?;
 
         if let Err(err) = packer.pack_to_file(pixelmap_for_pack, &packing_options, file.as_raw_fd())
@@ -2212,7 +2171,7 @@ mod video_native {
         desired_size: Option<ImageSize>,
         quality: u8,
         output_path: &Path,
-    ) -> Result<(u32, u32), PlatformError> {
+    ) -> Result<(u32, u32), Error> {
         let (source_width, source_height) = pixelmap.dimensions()?;
         // Use OH_PixelmapNative_GetArgbPixels so Harmony handles source format
         // conversion (e.g. NV12/YUV -> ARGB), then normalize to RGBA.
@@ -2221,7 +2180,7 @@ mod video_native {
         let source_image =
             ImageBuffer::<Rgba<u8>, Vec<u8>>::from_raw(source_width, source_height, source_rgba)
                 .ok_or_else(|| {
-                    PlatformError::Platform(
+                    Error::internal(
                         "Failed to create RGBA image buffer for thumbnail encoding".to_string(),
                     )
                 })?;
@@ -2246,7 +2205,7 @@ mod video_native {
 
         if let Some(parent) = output_path.parent() {
             fs::create_dir_all(parent).map_err(|err| {
-                PlatformError::Platform(format!(
+                Error::internal(format!(
                     "Failed to prepare directory {}: {}",
                     parent.display(),
                     err
@@ -2260,11 +2219,7 @@ mod video_native {
             .truncate(true)
             .open(output_path)
             .map_err(|err| {
-                PlatformError::Platform(format!(
-                    "Failed to open {}: {}",
-                    output_path.display(),
-                    err
-                ))
+                Error::internal(format!("Failed to open {}: {}", output_path.display(), err))
             })?;
 
         let clamped_quality = quality.clamp(1, 100);
@@ -2277,7 +2232,7 @@ mod video_native {
                 ExtendedColorType::Rgb8,
             )
             .map_err(|err| {
-                PlatformError::Platform(format!(
+                Error::internal(format!(
                     "Rust JPEG encoder failed for {}: {}",
                     output_path.display(),
                     err
@@ -2314,19 +2269,19 @@ mod video_native {
     }
 
     impl NativeAvSource {
-        fn open(path: &str) -> Result<Self, PlatformError> {
+        fn open(path: &str) -> Result<Self, Error> {
             let (source_fd, size) = open_file_descriptor(path)?;
             let handle = unsafe { OH_AVSource_CreateWithFD(source_fd, 0, size) };
             if handle.is_null() {
                 unsafe { libc::close(source_fd) };
-                return Err(PlatformError::Platform(
+                return Err(Error::internal(
                     "OH_AVSource_CreateWithFD returned null".to_string(),
                 ));
             }
             Ok(Self { handle, source_fd })
         }
 
-        fn source_format(&self) -> Result<NativeAvFormat, PlatformError> {
+        fn source_format(&self) -> Result<NativeAvFormat, Error> {
             NativeAvFormat::from_owned(
                 unsafe { OH_AVSource_GetSourceFormat(self.handle) },
                 "OH_AVSource_GetSourceFormat",
@@ -2358,9 +2313,9 @@ mod video_native {
     struct NativeAvFormat(*mut OH_AVFormat);
 
     impl NativeAvFormat {
-        fn from_owned(handle: *mut OH_AVFormat, context: &str) -> Result<Self, PlatformError> {
+        fn from_owned(handle: *mut OH_AVFormat, context: &str) -> Result<Self, Error> {
             if handle.is_null() {
-                return Err(PlatformError::Platform(format!("{context} returned null")));
+                return Err(Error::internal(format!("{context} returned null")));
             }
             Ok(Self(handle))
         }
@@ -2443,10 +2398,10 @@ mod video_native {
     }
 
     impl NativeAvPlayer {
-        fn new() -> Result<Self, PlatformError> {
+        fn new() -> Result<Self, Error> {
             let handle = unsafe { OH_AVPlayer_Create() };
             if handle.is_null() {
-                return Err(PlatformError::Platform(
+                return Err(Error::internal(
                     "OH_AVPlayer_Create returned null".to_string(),
                 ));
             }
@@ -2456,7 +2411,7 @@ mod video_native {
             })
         }
 
-        fn set_file_source(&mut self, path: &str) -> Result<(), PlatformError> {
+        fn set_file_source(&mut self, path: &str) -> Result<(), Error> {
             let (fd, size) = open_file_descriptor(path)?;
 
             if let Err(err) = check_av(
@@ -2474,14 +2429,14 @@ mod video_native {
             Ok(())
         }
 
-        fn prepare(&self) -> Result<(), PlatformError> {
+        fn prepare(&self) -> Result<(), Error> {
             check_av(
                 unsafe { OH_AVPlayer_Prepare(self.handle) },
                 "OH_AVPlayer_Prepare",
             )
         }
 
-        fn get_video_size(&self) -> Result<(i32, i32), PlatformError> {
+        fn get_video_size(&self) -> Result<(i32, i32), Error> {
             let mut width = 0i32;
             let mut height = 0i32;
             check_av(
@@ -2495,7 +2450,7 @@ mod video_native {
             Ok((width, height))
         }
 
-        fn get_duration(&self) -> Result<i32, PlatformError> {
+        fn get_duration(&self) -> Result<i32, Error> {
             let mut duration = 0i32;
             check_av(
                 unsafe { OH_AVPlayer_GetDuration(self.handle, &mut duration) },
@@ -2504,7 +2459,7 @@ mod video_native {
             Ok(duration)
         }
 
-        fn release(&mut self) -> Result<(), PlatformError> {
+        fn release(&mut self) -> Result<(), Error> {
             let result = if self.handle.is_null() {
                 Ok(())
             } else {
@@ -2542,10 +2497,10 @@ mod video_native {
     }
 
     impl NativeAvImageGenerator {
-        fn new() -> Result<Self, PlatformError> {
+        fn new() -> Result<Self, Error> {
             let handle = unsafe { OH_AVImageGenerator_Create() };
             if handle.is_null() {
-                return Err(PlatformError::Platform(
+                return Err(Error::internal(
                     "OH_AVImageGenerator_Create returned null".to_string(),
                 ));
             }
@@ -2555,7 +2510,7 @@ mod video_native {
             })
         }
 
-        fn set_file_source(&mut self, path: &str) -> Result<(), PlatformError> {
+        fn set_file_source(&mut self, path: &str) -> Result<(), Error> {
             let (fd, size) = open_file_descriptor(path)?;
             if let Err(err) = check_av(
                 unsafe { OH_AVImageGenerator_SetFDSource(self.handle, fd, 0, size) },
@@ -2572,7 +2527,7 @@ mod video_native {
             Ok(())
         }
 
-        fn fetch_frame_by_time(&self, time_ms: u64) -> Result<NativePixelMap, PlatformError> {
+        fn fetch_frame_by_time(&self, time_ms: u64) -> Result<NativePixelMap, Error> {
             let time_us = time_ms.saturating_mul(1000) as i64;
             let mut pixelmap = ptr::null_mut();
             let primary = unsafe {
@@ -2599,9 +2554,7 @@ mod video_native {
             }
 
             if pixelmap.is_null() {
-                return Err(PlatformError::Platform(
-                    "Fetched pixelmap is null".to_string(),
-                ));
+                return Err(Error::internal("Fetched pixelmap is null".to_string()));
             }
             Ok(NativePixelMap(pixelmap))
         }
@@ -2624,14 +2577,14 @@ mod video_native {
     struct NativePixelMapInfo(*mut OH_Pixelmap_ImageInfo);
 
     impl NativePixelMapInfo {
-        fn new() -> Result<Self, PlatformError> {
+        fn new() -> Result<Self, Error> {
             let mut ptr = ptr::null_mut();
             check_image(
                 unsafe { OH_PixelmapImageInfo_Create(&mut ptr) },
                 "OH_PixelmapImageInfo_Create(video)",
             )?;
             if ptr.is_null() {
-                return Err(PlatformError::Platform(
+                return Err(Error::internal(
                     "PixelmapImageInfo handle is null".to_string(),
                 ));
             }
@@ -2642,7 +2595,7 @@ mod video_native {
             self.0
         }
 
-        fn width(&self) -> Result<u32, PlatformError> {
+        fn width(&self) -> Result<u32, Error> {
             let mut width = 0;
             check_image(
                 unsafe { OH_PixelmapImageInfo_GetWidth(self.0, &mut width) },
@@ -2651,7 +2604,7 @@ mod video_native {
             Ok(width)
         }
 
-        fn height(&self) -> Result<u32, PlatformError> {
+        fn height(&self) -> Result<u32, Error> {
             let mut height = 0;
             check_image(
                 unsafe { OH_PixelmapImageInfo_GetHeight(self.0, &mut height) },
@@ -2660,7 +2613,7 @@ mod video_native {
             Ok(height)
         }
 
-        fn row_stride(&self) -> Result<u32, PlatformError> {
+        fn row_stride(&self) -> Result<u32, Error> {
             let mut row_stride = 0;
             check_image(
                 unsafe { OH_PixelmapImageInfo_GetRowStride(self.0, &mut row_stride) },
@@ -2687,7 +2640,7 @@ mod video_native {
             self.0
         }
 
-        fn dimensions(&self) -> Result<(u32, u32), PlatformError> {
+        fn dimensions(&self) -> Result<(u32, u32), Error> {
             let info = NativePixelMapInfo::new()?;
             check_image(
                 unsafe { OH_PixelmapNative_GetImageInfo(self.0, info.as_ptr()) },
@@ -2696,7 +2649,7 @@ mod video_native {
             Ok((info.width()?, info.height()?))
         }
 
-        fn create_scaled(&self, scale_x: f32, scale_y: f32) -> Result<Self, PlatformError> {
+        fn create_scaled(&self, scale_x: f32, scale_y: f32) -> Result<Self, Error> {
             let mut dst = ptr::null_mut();
             check_image(
                 unsafe {
@@ -2705,14 +2658,14 @@ mod video_native {
                 "OH_PixelmapNative_CreateScaledPixelMap(video)",
             )?;
             if dst.is_null() {
-                return Err(PlatformError::Platform(
+                return Err(Error::internal(
                     "Scaled pixelmap handle is null".to_string(),
                 ));
             }
             Ok(Self(dst))
         }
 
-        fn read_pixels_argb(&self) -> Result<Vec<u8>, PlatformError> {
+        fn read_pixels_argb(&self) -> Result<Vec<u8>, Error> {
             let info = NativePixelMapInfo::new()?;
             check_image(
                 unsafe { OH_PixelmapNative_GetImageInfo(self.0, info.as_ptr()) },
@@ -2721,14 +2674,14 @@ mod video_native {
             let width = info.width()? as usize;
             let height = info.height()? as usize;
             let row_stride = info.row_stride()? as usize;
-            let tight_stride = width.checked_mul(4).ok_or_else(|| {
-                PlatformError::Platform("Pixelmap width is too large".to_string())
-            })?;
-            let tight_size = tight_stride.checked_mul(height).ok_or_else(|| {
-                PlatformError::Platform("Pixelmap dimensions are too large".to_string())
-            })?;
+            let tight_stride = width
+                .checked_mul(4)
+                .ok_or_else(|| Error::internal("Pixelmap width is too large".to_string()))?;
+            let tight_size = tight_stride
+                .checked_mul(height)
+                .ok_or_else(|| Error::internal("Pixelmap dimensions are too large".to_string()))?;
             if tight_size == 0 {
-                return Err(PlatformError::Platform(
+                return Err(Error::internal(
                     "Cannot read pixels from 0-sized pixelmap".to_string(),
                 ));
             }
@@ -2737,7 +2690,7 @@ mod video_native {
             // capacity and then pack down to tight ARGB rows.
             let alloc_stride = tight_stride.max(row_stride);
             let alloc_size = alloc_stride.checked_mul(height).ok_or_else(|| {
-                PlatformError::Platform("Pixel buffer allocation size overflow".to_string())
+                Error::internal("Pixel buffer allocation size overflow".to_string())
             })?;
             let mut buf = vec![0u8; alloc_size];
             let mut actual_size = alloc_size;
@@ -2749,7 +2702,7 @@ mod video_native {
             )?;
 
             if actual_size < tight_size {
-                return Err(PlatformError::Platform(format!(
+                return Err(Error::internal(format!(
                     "OH_PixelmapNative_GetArgbPixels(video) returned truncated buffer: actual={}, expected_at_least={}",
                     actual_size, tight_size
                 )));
@@ -2789,16 +2742,14 @@ mod video_native {
     struct ImagePacker(*mut OH_ImagePackerNative);
 
     impl ImagePacker {
-        fn new() -> Result<Self, PlatformError> {
+        fn new() -> Result<Self, Error> {
             let mut ptr = ptr::null_mut();
             check_image(
                 unsafe { OH_ImagePackerNative_Create(&mut ptr) },
                 "OH_ImagePackerNative_Create(video)",
             )?;
             if ptr.is_null() {
-                return Err(PlatformError::Platform(
-                    "ImagePacker handle is null".to_string(),
-                ));
+                return Err(Error::internal("ImagePacker handle is null".to_string()));
             }
             Ok(ImagePacker(ptr))
         }
@@ -2808,7 +2759,7 @@ mod video_native {
             pixelmap: &NativePixelMap,
             options: &PackingOptions,
             fd: RawFd,
-        ) -> Result<(), PlatformError> {
+        ) -> Result<(), Error> {
             check_image(
                 unsafe {
                     OH_ImagePackerNative_PackToFileFromPixelmap(
@@ -2840,16 +2791,14 @@ mod video_native {
     }
 
     impl PackingOptions {
-        fn new() -> Result<Self, PlatformError> {
+        fn new() -> Result<Self, Error> {
             let mut ptr = ptr::null_mut();
             check_image(
                 unsafe { OH_PackingOptions_Create(&mut ptr) },
                 "OH_PackingOptions_Create(video)",
             )?;
             if ptr.is_null() {
-                return Err(PlatformError::Platform(
-                    "PackingOptions handle is null".to_string(),
-                ));
+                return Err(Error::internal("PackingOptions handle is null".to_string()));
             }
             Ok(PackingOptions {
                 handle: ptr,
@@ -2861,16 +2810,16 @@ mod video_native {
             self.handle
         }
 
-        fn set_quality(&self, quality: u32) -> Result<(), PlatformError> {
+        fn set_quality(&self, quality: u32) -> Result<(), Error> {
             check_image(
                 unsafe { OH_PackingOptions_SetQuality(self.handle, quality) },
                 "OH_PackingOptions_SetQuality(video)",
             )
         }
 
-        fn set_mime_type(&mut self, mime: &str) -> Result<(), PlatformError> {
+        fn set_mime_type(&mut self, mime: &str) -> Result<(), Error> {
             let c_mime = CString::new(mime).map_err(|_| {
-                PlatformError::Platform("Mime type contains invalid characters".to_string())
+                Error::internal("Mime type contains invalid characters".to_string())
             })?;
             // Without the NUL: the encoder compares the whole buffer to its format names.
             let mut mime_string = ImageString {
@@ -2949,16 +2898,16 @@ mod video_native {
         }
     }
 
-    fn normalize_to_path(uri: &str) -> Result<String, PlatformError> {
+    fn normalize_to_path(uri: &str) -> Result<String, Error> {
         let trimmed = uri.trim();
         if trimmed.is_empty() {
-            return Err(PlatformError::Platform("URI is empty".to_string()));
+            return Err(Error::internal("URI is empty".to_string()));
         }
         if let Some(path) = trimmed.strip_prefix("file://") {
             return Ok(path.to_string());
         }
         if trimmed.contains("://") {
-            return Err(PlatformError::Platform(format!(
+            return Err(Error::internal(format!(
                 "Unsupported URI scheme: {}",
                 trimmed
             )));
@@ -2966,19 +2915,18 @@ mod video_native {
         Ok(trimmed.to_string())
     }
 
-    fn open_file_descriptor(path: &str) -> Result<(i32, i64), PlatformError> {
-        let c_path = CString::new(path).map_err(|_| {
-            PlatformError::Platform("Video path contains invalid characters".to_string())
-        })?;
+    fn open_file_descriptor(path: &str) -> Result<(i32, i64), Error> {
+        let c_path = CString::new(path)
+            .map_err(|_| Error::internal("Video path contains invalid characters".to_string()))?;
 
         let fd = unsafe { libc::open(c_path.as_ptr(), libc::O_RDONLY) };
         if fd < 0 {
             let detail = format!("Failed to open video file: {}", path);
             return Err(
                 if std::io::Error::last_os_error().kind() == std::io::ErrorKind::NotFound {
-                    PlatformError::AssetNotFound(detail)
+                    Error::not_found(detail)
                 } else {
-                    PlatformError::Platform(detail)
+                    Error::internal(detail)
                 },
             );
         }
@@ -2986,7 +2934,7 @@ mod video_native {
         let mut stat: libc::stat = unsafe { std::mem::zeroed() };
         if unsafe { libc::fstat(fd, &mut stat) } < 0 {
             unsafe { libc::close(fd) };
-            return Err(PlatformError::Platform(format!(
+            return Err(Error::internal(format!(
                 "Failed to stat video file: {}",
                 path
             )));
@@ -2995,15 +2943,15 @@ mod video_native {
         Ok((fd, stat.st_size))
     }
 
-    fn open_output_descriptor(path: &Path) -> Result<i32, PlatformError> {
+    fn open_output_descriptor(path: &Path) -> Result<i32, Error> {
         let path_str = path.to_str().ok_or_else(|| {
-            PlatformError::Platform(format!(
+            Error::internal(format!(
                 "Output path contains invalid UTF-8: {}",
                 path.display()
             ))
         })?;
         let c_path = CString::new(path_str)
-            .map_err(|_| PlatformError::Platform("Output path contains null byte".to_string()))?;
+            .map_err(|_| Error::internal("Output path contains null byte".to_string()))?;
 
         let fd = unsafe {
             libc::open(
@@ -3013,7 +2961,7 @@ mod video_native {
             )
         };
         if fd < 0 {
-            return Err(PlatformError::Platform(format!(
+            return Err(Error::internal(format!(
                 "Failed to create output file: {}",
                 path.display()
             )));
@@ -3039,30 +2987,28 @@ mod video_native {
         Some(mime.to_string())
     }
 
-    fn check_av(code: i32, context: &str) -> Result<(), PlatformError> {
+    fn check_av(code: i32, context: &str) -> Result<(), Error> {
         // AV_ERR_UNSUPPORT, AV_ERR_UNSUPPORTED_FORMAT: a source the device's decoders refuse.
         const AV_ERR_UNSUPPORT: i32 = 9;
         const AV_ERR_UNSUPPORTED_FORMAT: i32 = 11;
         match code {
             AV_SUCCESS => Ok(()),
-            AV_ERR_UNSUPPORT | AV_ERR_UNSUPPORTED_FORMAT => {
-                Err(PlatformError::NotSupported(format!(
-                    "{} failed: this device cannot decode the source (code {})",
-                    context, code
-                )))
-            }
-            _ => Err(PlatformError::Platform(format!(
+            AV_ERR_UNSUPPORT | AV_ERR_UNSUPPORTED_FORMAT => Err(Error::not_supported(format!(
+                "{} failed: this device cannot decode the source (code {})",
+                context, code
+            ))),
+            _ => Err(Error::internal(format!(
                 "{} failed: code {}",
                 context, code
             ))),
         }
     }
 
-    fn check_image(code: i32, context: &str) -> Result<(), PlatformError> {
+    fn check_image(code: i32, context: &str) -> Result<(), Error> {
         if code == IMAGE_SUCCESS {
             Ok(())
         } else {
-            Err(PlatformError::Platform(format!(
+            Err(Error::internal(format!(
                 "{} failed: code {}",
                 context, code
             )))

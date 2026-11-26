@@ -24,8 +24,8 @@ use windows::Win32::System::Com::{COINIT_MULTITHREADED, CoInitializeEx};
 use windows::Win32::System::Variant::{VT_I8, VT_UI8};
 use windows::core::{GUID, PCWSTR};
 
-use crate::error::PlatformError;
 use crate::traits::media_runtime::{ExtractVideoThumbnailRequest, VideoInfo, VideoThumbnail};
+use lingxia_error::Error;
 
 /// `MFSTARTUP_NOSOCKET` — the lite startup without the RTSP stack.
 const MFSTARTUP_LITE: u32 = 0x1;
@@ -45,7 +45,7 @@ pub(super) fn ensure_media_foundation() {
 
 /// Opens a source reader; `with_processing` inserts the video processor
 /// so the output can be converted to RGB32 (thumbnails).
-fn open_reader(path: &Path, with_processing: bool) -> Result<IMFSourceReader, PlatformError> {
+fn open_reader(path: &Path, with_processing: bool) -> Result<IMFSourceReader, Error> {
     ensure_media_foundation();
     let wide: Vec<u16> = path
         .to_string_lossy()
@@ -57,7 +57,7 @@ fn open_reader(path: &Path, with_processing: bool) -> Result<IMFSourceReader, Pl
         let mut attributes = None;
         unsafe {
             MFCreateAttributes(&mut attributes, 2)
-                .map_err(|err| PlatformError::Platform(format!("attributes: {err}")))?;
+                .map_err(|err| Error::internal(format!("attributes: {err}")))?;
         }
         if let Some(attributes) = attributes.as_ref() {
             unsafe {
@@ -74,7 +74,7 @@ fn open_reader(path: &Path, with_processing: bool) -> Result<IMFSourceReader, Pl
         None
     };
     unsafe { MFCreateSourceReaderFromURL(PCWSTR(wide.as_ptr()), attributes.as_ref()) }
-        .map_err(|err| PlatformError::Platform(format!("failed to open {}: {err}", path.display())))
+        .map_err(|err| Error::internal(format!("failed to open {}: {err}", path.display())))
 }
 
 fn hundred_ns(variant: &PROPVARIANT) -> u64 {
@@ -153,7 +153,7 @@ fn audio_codec_mime(subtype: &GUID) -> Option<String> {
     Some(mime.to_string())
 }
 
-pub(super) fn read_video_info(path: &Path) -> Result<VideoInfo, PlatformError> {
+pub(super) fn read_video_info(path: &Path) -> Result<VideoInfo, Error> {
     let reader = open_reader(path, false)?;
     let duration_ms = unsafe {
         reader.GetPresentationAttribute(MF_SOURCE_READER_MEDIASOURCE.0 as u32, &MF_PD_DURATION)
@@ -163,7 +163,7 @@ pub(super) fn read_video_info(path: &Path) -> Result<VideoInfo, PlatformError> {
 
     let native =
         unsafe { reader.GetNativeMediaType(MF_SOURCE_READER_FIRST_VIDEO_STREAM.0 as u32, 0) }
-            .map_err(|err| PlatformError::Platform(format!("no video stream: {err}")))?;
+            .map_err(|err| Error::internal(format!("no video stream: {err}")))?;
 
     let frame = unsafe { native.GetUINT64(&MF_MT_FRAME_SIZE) }.unwrap_or(0);
     let (width, height) = ((frame >> 32) as u32, frame as u32);
@@ -190,9 +190,7 @@ pub(super) fn read_video_info(path: &Path) -> Result<VideoInfo, PlatformError> {
         .and_then(|media_type| unsafe { media_type.GetGUID(&MF_MT_SUBTYPE) }.ok())
         .and_then(|subtype| audio_codec_mime(&subtype));
     let size = std::fs::metadata(path)
-        .map_err(|err| {
-            PlatformError::Platform(format!("failed to read {} size: {err}", path.display()))
-        })?
+        .map_err(|err| Error::internal(format!("failed to read {} size: {err}", path.display())))?
         .len();
 
     Ok(VideoInfo {
@@ -213,20 +211,18 @@ pub(super) fn read_video_info(path: &Path) -> Result<VideoInfo, PlatformError> {
 pub(super) fn extract_thumbnail(
     request: &ExtractVideoThumbnailRequest,
     source: &Path,
-) -> Result<VideoThumbnail, PlatformError> {
+) -> Result<VideoThumbnail, Error> {
     let reader = open_reader(source, true)?;
     let stream = MF_SOURCE_READER_FIRST_VIDEO_STREAM.0 as u32;
 
     // Have the reader's chain decode and convert to RGB32.
     unsafe {
-        let rgb = MFCreateMediaType()
-            .map_err(|err| PlatformError::Platform(format!("media type: {err}")))?;
+        let rgb =
+            MFCreateMediaType().map_err(|err| Error::internal(format!("media type: {err}")))?;
         rgb.SetGUID(&MF_MT_MAJOR_TYPE, &MFMediaType_Video)
             .and_then(|_| rgb.SetGUID(&MF_MT_SUBTYPE, &MFVideoFormat_RGB32))
             .and_then(|_| reader.SetCurrentMediaType(stream, None, &rgb))
-            .map_err(|err| {
-                PlatformError::Platform(format!("RGB32 conversion unavailable: {err}"))
-            })?;
+            .map_err(|err| Error::internal(format!("RGB32 conversion unavailable: {err}")))?;
     }
 
     let requested_100ns = request
@@ -254,7 +250,7 @@ pub(super) fn extract_thumbnail(
             let mut current = None;
             reader
                 .ReadSample(stream, 0, None, Some(&mut flags), None, Some(&mut current))
-                .map_err(|err| PlatformError::Platform(format!("decode failed: {err}")))?;
+                .map_err(|err| Error::internal(format!("decode failed: {err}")))?;
             if let Some(current) = current {
                 let reached = match requested_100ns {
                     Some(target) => {
@@ -273,17 +269,17 @@ pub(super) fn extract_thumbnail(
                 break;
             }
         }
-        sample.ok_or_else(|| PlatformError::Platform("no decodable video frame".to_string()))?
+        sample.ok_or_else(|| Error::internal("no decodable video frame".to_string()))?
     };
 
     // Actual (decoder-aligned) frame geometry.
     let current_type = unsafe { reader.GetCurrentMediaType(stream) }
-        .map_err(|err| PlatformError::Platform(format!("media type: {err}")))?;
+        .map_err(|err| Error::internal(format!("media type: {err}")))?;
     let frame = unsafe { current_type.GetUINT64(&MF_MT_FRAME_SIZE) }
-        .map_err(|err| PlatformError::Platform(format!("frame size: {err}")))?;
+        .map_err(|err| Error::internal(format!("frame size: {err}")))?;
     let (width, height) = ((frame >> 32) as u32, frame as u32);
     if width == 0 || height == 0 {
-        return Err(PlatformError::Platform("empty video frame".to_string()));
+        return Err(Error::internal("empty video frame".to_string()));
     }
     let stride = unsafe { current_type.GetUINT32(&MF_MT_DEFAULT_STRIDE) }
         .map(|stride| stride as i32)
@@ -294,12 +290,12 @@ pub(super) fn extract_thumbnail(
     unsafe {
         let buffer = sample
             .ConvertToContiguousBuffer()
-            .map_err(|err| PlatformError::Platform(format!("frame buffer: {err}")))?;
+            .map_err(|err| Error::internal(format!("frame buffer: {err}")))?;
         let mut data: *mut u8 = std::ptr::null_mut();
         let mut length = 0u32;
         buffer
             .Lock(&mut data, None, Some(&mut length))
-            .map_err(|err| PlatformError::Platform(format!("frame lock: {err}")))?;
+            .map_err(|err| Error::internal(format!("frame lock: {err}")))?;
         let row_bytes = (width * 4) as usize;
         let abs_stride = stride.unsigned_abs() as usize;
         for row in 0..height as usize {
@@ -326,7 +322,7 @@ pub(super) fn extract_thumbnail(
     }
 
     let image = image::RgbaImage::from_raw(width, height, pixels)
-        .ok_or_else(|| PlatformError::Platform("frame conversion failed".to_string()))?;
+        .ok_or_else(|| Error::internal("frame conversion failed".to_string()))?;
     let mut dynamic = image::DynamicImage::ImageRgba8(image);
 
     // Fit within the requested bounds, keeping the aspect ratio.
@@ -338,7 +334,7 @@ pub(super) fn extract_thumbnail(
 
     if let Some(parent) = request.output_path.parent() {
         std::fs::create_dir_all(parent).map_err(|err| {
-            PlatformError::Platform(format!("failed to create {}: {err}", parent.display()))
+            Error::internal(format!("failed to create {}: {err}", parent.display()))
         })?;
     }
     let is_png = request
@@ -349,10 +345,10 @@ pub(super) fn extract_thumbnail(
         dynamic
             .to_rgba8()
             .save_with_format(&request.output_path, image::ImageFormat::Png)
-            .map_err(|err| PlatformError::Platform(format!("thumbnail encode: {err}")))?;
+            .map_err(|err| Error::internal(format!("thumbnail encode: {err}")))?;
     } else {
         let file = std::fs::File::create(&request.output_path).map_err(|err| {
-            PlatformError::Platform(format!(
+            Error::internal(format!(
                 "failed to create {}: {err}",
                 request.output_path.display()
             ))
@@ -363,7 +359,7 @@ pub(super) fn extract_thumbnail(
         dynamic
             .to_rgb8()
             .write_with_encoder(encoder)
-            .map_err(|err| PlatformError::Platform(format!("thumbnail encode: {err}")))?;
+            .map_err(|err| Error::internal(format!("thumbnail encode: {err}")))?;
     }
 
     Ok(VideoThumbnail {

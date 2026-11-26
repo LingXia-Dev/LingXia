@@ -1,9 +1,7 @@
-use crate::dismissal::{USER_DISMISSED, canceled, completed};
-use crate::i18n::{
-    js_error, js_error_from_platform_error, js_internal_error, js_invalid_parameter_error,
-};
+use crate::dismissal::{canceled, completed};
+use crate::i18n::{js_error, js_internal_error, js_invalid_parameter_error};
 use crate::share::is_platform_file_reference;
-use lingxia_platform::error::PlatformError;
+use lingxia_error::Error;
 use lingxia_platform::traits::clipboard::{
     ClipboardContents, ClipboardKind, ClipboardReadRequest, ClipboardService, ClipboardWrite,
 };
@@ -118,8 +116,8 @@ async fn types(ctx: JSContext) -> JSResult<rong::JSArray> {
     // Every host peeks without a prompt; one that claims a dismissal here has
     // failed, and must not read as an empty clipboard.
     if peeked.canceled {
-        return Err(js_error_from_platform_error(&PlatformError::Platform(
-            "clipboard host reported dismissal for a type peek".into(),
+        return Err(js_error(Error::internal(
+            "clipboard host reported dismissal for a type peek",
         )));
     }
     let list = rong::JSArray::new(&ctx)?;
@@ -157,7 +155,9 @@ async fn read_contents(
         .await
     {
         Ok(contents) => Ok(contents),
-        Err(PlatformError::BusinessError(USER_DISMISSED)) => Ok(ClipboardContents::canceled()),
+        Err(error) if lingxia_platform::error::is_user_dismissed(&error) => {
+            Ok(ClipboardContents::canceled())
+        }
         Err(error) => Err(map_platform_error(error)),
     }
 }
@@ -294,15 +294,16 @@ fn to_managed_uri(lxapp: &LxApp, path: &Path) -> JSResult<String> {
         .map(|uri| uri.into_string())
 }
 
-fn map_platform_error(error: PlatformError) -> rong::RongJSError {
-    match error {
-        // Reads map dismissal to `{ status: 'canceled' }` before reaching here.
-        // Writes, clear and the type peek have no prompt to dismiss, so a host
-        // sending 2000 for one is a real failure — never "the user said no".
-        PlatformError::BusinessError(USER_DISMISSED) => js_error_from_platform_error(
-            &PlatformError::Platform("clipboard host reported dismissal without a prompt".into()),
-        ),
-        other => js_error_from_platform_error(&other),
+fn map_platform_error(error: Error) -> rong::RongJSError {
+    // Reads map dismissal to `{ status: 'canceled' }` before reaching here.
+    // Writes, clear and the type peek have no prompt to dismiss, so a host
+    // sending 2000 for one is a real failure, never "the user said no".
+    if lingxia_platform::error::is_user_dismissed(&error) {
+        js_error(Error::internal(
+            "clipboard host reported dismissal without a prompt",
+        ))
+    } else {
+        js_error(error)
     }
 }
 

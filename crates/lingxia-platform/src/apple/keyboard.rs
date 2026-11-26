@@ -1,11 +1,11 @@
 use super::app::Platform;
-use crate::error::PlatformError;
 use crate::traits::keyboard::{AppKeyboard, AppKeyboardRequest, AppKeyboardResult};
 // Keyboard synthesis is macOS-only; iOS has no hardware keyboard to drive.
 #[cfg(target_os = "macos")]
 use crate::traits::keyboard::{AppKeyboardAction, AppKeyboardModifier};
 use async_trait::async_trait;
 
+use lingxia_error::Error;
 #[cfg(target_os = "macos")]
 use std::time::Duration;
 #[cfg(target_os = "macos")]
@@ -18,7 +18,7 @@ impl AppKeyboard for Platform {
     async fn perform_app_keyboard(
         &self,
         request: AppKeyboardRequest,
-    ) -> Result<AppKeyboardResult, PlatformError> {
+    ) -> Result<AppKeyboardResult, Error> {
         #[cfg(target_os = "macos")]
         {
             perform_app_keyboard_macos(request).await
@@ -27,7 +27,7 @@ impl AppKeyboard for Platform {
         #[cfg(not(target_os = "macos"))]
         {
             let _ = request;
-            Err(PlatformError::NotSupported(
+            Err(Error::not_supported(
                 "app keyboard input is not implemented on this Apple target".to_string(),
             ))
         }
@@ -37,7 +37,7 @@ impl AppKeyboard for Platform {
 #[cfg(target_os = "macos")]
 async fn perform_app_keyboard_macos(
     request: AppKeyboardRequest,
-) -> Result<AppKeyboardResult, PlatformError> {
+) -> Result<AppKeyboardResult, Error> {
     use super::mouse::parse_window_id;
     use dispatch2::DispatchQueue;
 
@@ -61,16 +61,14 @@ async fn perform_app_keyboard_macos(
 
     let window_id = match timeout(KEYBOARD_TIMEOUT, rx).await {
         Ok(Ok(Ok(id))) => id,
-        Ok(Ok(Err(err))) => return Err(PlatformError::Platform(err)),
+        Ok(Ok(Err(err))) => return Err(Error::internal(err)),
         Ok(Err(_)) => {
-            return Err(PlatformError::Platform(
+            return Err(Error::internal(
                 "app keyboard request was canceled".to_string(),
             ));
         }
         Err(_) => {
-            return Err(PlatformError::Platform(
-                "app keyboard timed out".to_string(),
-            ));
+            return Err(Error::internal("app keyboard timed out".to_string()));
         }
     };
 

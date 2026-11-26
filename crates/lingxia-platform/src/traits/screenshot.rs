@@ -1,4 +1,3 @@
-use crate::error::PlatformError;
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 
@@ -39,25 +38,22 @@ pub trait AppScreenshot: Send + Sync {
     ///
     /// Mobile platforms typically return a single "main" entry. Desktop
     /// platforms return one entry per open NSWindow / HWND.
-    async fn list_app_windows(&self) -> Result<Vec<WindowInfo>, PlatformError> {
-        Err(PlatformError::NotSupported(
+    async fn list_app_windows(&self) -> Result<Vec<WindowInfo>, Error> {
+        Err(Error::not_supported(
             "list_app_windows is not implemented for this platform".to_string(),
         ))
     }
 
     /// Resolve an optional id using the same default-window policy as capture
     /// and input, returning the concrete target for automation metadata.
-    async fn resolve_app_window(
-        &self,
-        window_id: Option<&str>,
-    ) -> Result<WindowInfo, PlatformError> {
+    async fn resolve_app_window(&self, window_id: Option<&str>) -> Result<WindowInfo, Error> {
         let windows = self.list_app_windows().await?;
         if let Some(window_id) = window_id {
             return windows
                 .into_iter()
                 .find(|window| window.id == window_id)
                 .ok_or_else(|| {
-                    PlatformError::InvalidParameter(format!(
+                    Error::invalid_arg(format!(
                         "window id does not belong to this app: {window_id}"
                     ))
                 });
@@ -69,16 +65,16 @@ pub trait AppScreenshot: Send + Sync {
             .or_else(|| windows.iter().find(|window| window.visible))
             .or_else(|| windows.first())
             .cloned()
-            .ok_or_else(|| PlatformError::Platform("no app window is available".to_string()))
+            .ok_or_else(|| Error::internal("no app window is available".to_string()))
     }
 
     /// Capture and return PNG-encoded bytes of the app's window.
     ///
     /// When `window_id` is `None`, the platform picks a sensible default
     /// (key/focused window on desktop; the sole window on mobile).
-    async fn take_app_screenshot(&self, window_id: Option<&str>) -> Result<Vec<u8>, PlatformError> {
+    async fn take_app_screenshot(&self, window_id: Option<&str>) -> Result<Vec<u8>, Error> {
         let _ = window_id;
-        Err(PlatformError::NotSupported(
+        Err(Error::not_supported(
             "app screenshot is not implemented for this platform".to_string(),
         ))
     }
@@ -93,17 +89,17 @@ pub trait AppScreenshot: Send + Sync {
         &self,
         window_id: Option<&str>,
         focus: bool,
-    ) -> Result<WindowInfo, PlatformError> {
+    ) -> Result<WindowInfo, Error> {
         let _ = (window_id, focus);
-        Err(PlatformError::NotSupported(
+        Err(Error::not_supported(
             "raising an app window is not implemented for this platform".to_string(),
         ))
     }
 
     /// Order the app's page window in front of other apps' windows only when it is minimized or
     /// nothing of it can be seen, without activating the app. Returns why it raised, or `None`.
-    async fn raise_app_window_if_hidden(&self) -> Result<Option<&'static str>, PlatformError> {
-        Err(PlatformError::NotSupported(
+    async fn raise_app_window_if_hidden(&self) -> Result<Option<&'static str>, Error> {
+        Err(Error::not_supported(
             "raising an app window is not implemented for this platform".to_string(),
         ))
     }
@@ -111,6 +107,7 @@ pub trait AppScreenshot: Send + Sync {
 
 #[cfg(any(target_os = "android", target_env = "ohos", test))]
 use image::ImageEncoder as _;
+use lingxia_error::Error;
 
 /// A GPU surface inside a window capture, in the capture's pixels. Window captures leave the
 /// surface out (it is composited by the system), so its newest frame is drawn in beneath.
@@ -141,7 +138,7 @@ pub fn set_surface_frames(source: SurfaceFrames) {
 pub(crate) fn composite_surfaces(
     capture: Vec<u8>,
     surfaces: &[CapturedSurface],
-) -> Result<Vec<u8>, PlatformError> {
+) -> Result<Vec<u8>, Error> {
     let Some(source) = SURFACE_FRAMES.get() else {
         return Ok(capture);
     };
@@ -154,7 +151,7 @@ pub(crate) fn composite_surfaces(
         return Ok(capture);
     }
     let window = image::load_from_memory_with_format(&capture, image::ImageFormat::Png)
-        .map_err(|e| PlatformError::Platform(format!("app screenshot decode: {e}")))?
+        .map_err(|e| Error::internal(format!("app screenshot decode: {e}")))?
         .into_rgba8();
     let mut composed = image::RgbaImage::new(window.width(), window.height());
     for (surface, (width, height, rgba)) in frames {
@@ -183,7 +180,7 @@ pub(crate) fn composite_surfaces(
             composed.height(),
             image::ExtendedColorType::Rgba8,
         )
-        .map_err(|e| PlatformError::Platform(format!("app screenshot encode: {e}")))?;
+        .map_err(|e| Error::internal(format!("app screenshot encode: {e}")))?;
     Ok(png)
 }
 

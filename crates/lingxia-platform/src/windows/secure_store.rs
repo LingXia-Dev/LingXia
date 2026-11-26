@@ -14,20 +14,20 @@ use windows::Win32::Security::Credentials::{
 use windows::core::{HSTRING, PWSTR};
 
 use super::Platform;
-use crate::error::PlatformError;
 use crate::traits::secure_store::SecureStore;
+use lingxia_error::Error;
 
 impl Platform {
-    fn credential_target(&self, key: &str) -> Result<HSTRING, PlatformError> {
+    fn credential_target(&self, key: &str) -> Result<HSTRING, Error> {
         if key.is_empty() {
-            return Err(PlatformError::InvalidParameter(
+            return Err(Error::invalid_arg(
                 "secure store key must not be empty".to_string(),
             ));
         }
         let target = format!("{}/{}", self.app_identifier(), key);
         if target.encode_utf16().count() >= 32767 {
             // CRED_MAX_GENERIC_TARGET_NAME_LENGTH
-            return Err(PlatformError::InvalidParameter(format!(
+            return Err(Error::invalid_arg(format!(
                 "secure store key is too long: {key}"
             )));
         }
@@ -36,7 +36,7 @@ impl Platform {
 }
 
 impl SecureStore for Platform {
-    fn read(&self, key: &str) -> Result<Option<Vec<u8>>, PlatformError> {
+    fn read(&self, key: &str) -> Result<Option<Vec<u8>>, Error> {
         let target = self.credential_target(key)?;
         let mut credential: *mut CREDENTIALW = std::ptr::null_mut();
         let result = unsafe { CredReadW(&target, CRED_TYPE_GENERIC, None, &mut credential) };
@@ -58,15 +58,15 @@ impl SecureStore for Platform {
                 Ok(Some(value))
             }
             Err(err) if err.code() == ERROR_NOT_FOUND.to_hresult() => Ok(None),
-            Err(err) => Err(PlatformError::Platform(format!(
+            Err(err) => Err(Error::internal(format!(
                 "CredReadW failed for key {key}: {err}"
             ))),
         }
     }
 
-    fn write(&self, key: &str, value: &[u8]) -> Result<(), PlatformError> {
+    fn write(&self, key: &str, value: &[u8]) -> Result<(), Error> {
         if value.len() > CRED_MAX_CREDENTIAL_BLOB_SIZE as usize {
-            return Err(PlatformError::InvalidParameter(format!(
+            return Err(Error::invalid_arg(format!(
                 "secure store value exceeds the Credential Manager blob limit \
                  ({} > {CRED_MAX_CREDENTIAL_BLOB_SIZE} bytes)",
                 value.len()
@@ -85,18 +85,17 @@ impl SecureStore for Platform {
             UserName: PWSTR(user_name.as_ptr().cast_mut()),
             ..Default::default()
         };
-        unsafe { CredWriteW(&credential, 0) }.map_err(|err| {
-            PlatformError::Platform(format!("CredWriteW failed for key {key}: {err}"))
-        })
+        unsafe { CredWriteW(&credential, 0) }
+            .map_err(|err| Error::internal(format!("CredWriteW failed for key {key}: {err}")))
     }
 
-    fn delete(&self, key: &str) -> Result<(), PlatformError> {
+    fn delete(&self, key: &str) -> Result<(), Error> {
         let target = self.credential_target(key)?;
         match unsafe { CredDeleteW(&target, CRED_TYPE_GENERIC, None) } {
             Ok(()) => Ok(()),
             // Deleting an absent key is a no-op, matching the other backends.
             Err(err) if err.code() == ERROR_NOT_FOUND.to_hresult() => Ok(()),
-            Err(err) => Err(PlatformError::Platform(format!(
+            Err(err) => Err(Error::internal(format!(
                 "CredDeleteW failed for key {key}: {err}"
             ))),
         }

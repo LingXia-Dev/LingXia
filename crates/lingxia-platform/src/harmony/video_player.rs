@@ -1,7 +1,6 @@
 //! HarmonyOS native video player (OH_AVPlayer C API)
 
 use super::app::Platform;
-use crate::error::PlatformError;
 use crate::traits::stream_decoder::{
     AudioCodec, AudioFrame, AudioStreamConfig, VideoFrame, VideoStreamConfig,
     VideoStreamDecoderHandle, VideoStreamDecoderManager,
@@ -10,6 +9,7 @@ use crate::traits::video_player::{
     VideoPlayerCommand, VideoPlayerHandle, VideoPlayerHandleImpl, VideoPlayerManager,
 };
 use core::ffi::{c_char, c_void};
+use lingxia_error::Error;
 use std::collections::{HashMap, VecDeque};
 use std::ffi::CString;
 use std::fs::File;
@@ -809,12 +809,10 @@ unsafe impl Send for NativeVideoPlayer {}
 unsafe impl Sync for NativeVideoPlayer {}
 
 impl NativeVideoPlayer {
-    pub fn new(component_id: &str, _callback_id: u64) -> Result<Self, PlatformError> {
+    pub fn new(component_id: &str, _callback_id: u64) -> Result<Self, Error> {
         let player = unsafe { OH_AVPlayer_Create() };
         if player.is_null() {
-            return Err(PlatformError::Platform(
-                "Failed to create OH_AVPlayer".to_string(),
-            ));
+            return Err(Error::internal("Failed to create OH_AVPlayer".to_string()));
         }
 
         let callback_data = Box::new(InfoCallbackData {
@@ -891,7 +889,7 @@ impl NativeVideoPlayer {
         self.callback_state().unwrap_or(self.state)
     }
 
-    pub fn set_source(&mut self, source: &str) -> Result<(), PlatformError> {
+    pub fn set_source(&mut self, source: &str) -> Result<(), Error> {
         // Same source can be sent again during component remount/rebind. In that case,
         // skip resetting AVPlayer source to avoid invalid-state failures.
         if self.source_set
@@ -919,9 +917,9 @@ impl NativeVideoPlayer {
         result
     }
 
-    fn set_url_source(&mut self, url: &str) -> Result<(), PlatformError> {
+    fn set_url_source(&mut self, url: &str) -> Result<(), Error> {
         let c_url = CString::new(url)
-            .map_err(|_| PlatformError::Platform("URL contains invalid characters".to_string()))?;
+            .map_err(|_| Error::internal("URL contains invalid characters".to_string()))?;
         check_av_result(
             unsafe { OH_AVPlayer_SetURLSource(self.player, c_url.as_ptr()) },
             "OH_AVPlayer_SetURLSource",
@@ -930,18 +928,15 @@ impl NativeVideoPlayer {
         Ok(())
     }
 
-    fn set_file_source(&mut self, path: &str) -> Result<(), PlatformError> {
-        let file = File::open(path).map_err(|error| {
-            PlatformError::Platform(format!("Failed to open file {path}: {error}"))
-        })?;
+    fn set_file_source(&mut self, path: &str) -> Result<(), Error> {
+        let file = File::open(path)
+            .map_err(|error| Error::internal(format!("Failed to open file {path}: {error}")))?;
         let size = i64::try_from(
             file.metadata()
-                .map_err(|error| {
-                    PlatformError::Platform(format!("Failed to stat file {path}: {error}"))
-                })?
+                .map_err(|error| Error::internal(format!("Failed to stat file {path}: {error}")))?
                 .len(),
         )
-        .map_err(|_| PlatformError::Platform(format!("File is too large: {path}")))?;
+        .map_err(|_| Error::internal(format!("File is too large: {path}")))?;
         check_av_result(
             unsafe { OH_AVPlayer_SetFDSource(self.player, file.as_raw_fd(), 0, size) },
             "OH_AVPlayer_SetFDSource",
@@ -950,7 +945,7 @@ impl NativeVideoPlayer {
         Ok(())
     }
 
-    pub fn set_video_surface(&mut self, window: *mut OHNativeWindow) -> Result<(), PlatformError> {
+    pub fn set_video_surface(&mut self, window: *mut OHNativeWindow) -> Result<(), Error> {
         self.set_video_surface_internal(window)
     }
 
@@ -960,7 +955,7 @@ impl NativeVideoPlayer {
         window: *mut OHNativeWindow,
         position_ms: i32,
         should_play: bool,
-    ) -> Result<(), PlatformError> {
+    ) -> Result<(), Error> {
         log::info!(
             "[VideoPlayer] rebind_surface: pos={}, should_play={}, state={:?}",
             position_ms,
@@ -1042,7 +1037,7 @@ impl NativeVideoPlayer {
         Ok(())
     }
 
-    pub fn prepare(&mut self) -> Result<(), PlatformError> {
+    pub fn prepare(&mut self) -> Result<(), Error> {
         match self.current_state() {
             AVPlayerState::Prepared
             | AVPlayerState::Playing
@@ -1056,7 +1051,7 @@ impl NativeVideoPlayer {
         )
     }
 
-    pub fn play(&mut self) -> Result<(), PlatformError> {
+    pub fn play(&mut self) -> Result<(), Error> {
         // Handle states that require prepare before playing
         match self.current_state() {
             AVPlayerState::Stopped | AVPlayerState::Idle | AVPlayerState::Initialized => {
@@ -1119,14 +1114,14 @@ impl NativeVideoPlayer {
                 // Already playing
                 Ok(())
             }
-            _ => Err(PlatformError::Platform(format!(
+            _ => Err(Error::internal(format!(
                 "Cannot play from state: {:?}",
                 self.state
             ))),
         }
     }
 
-    pub fn pause(&mut self) -> Result<(), PlatformError> {
+    pub fn pause(&mut self) -> Result<(), Error> {
         let result = check_av_result(
             unsafe { OH_AVPlayer_Pause(self.player) },
             "OH_AVPlayer_Pause",
@@ -1137,7 +1132,7 @@ impl NativeVideoPlayer {
         result
     }
 
-    pub fn stop(&mut self) -> Result<(), PlatformError> {
+    pub fn stop(&mut self) -> Result<(), Error> {
         let result = check_av_result(unsafe { OH_AVPlayer_Stop(self.player) }, "OH_AVPlayer_Stop");
         if result.is_ok() {
             self.state = AVPlayerState::Stopped;
@@ -1145,12 +1140,12 @@ impl NativeVideoPlayer {
         result
     }
 
-    pub fn seek(&mut self, position_ms: i32, mode: AVPlayerSeekMode) -> Result<(), PlatformError> {
+    pub fn seek(&mut self, position_ms: i32, mode: AVPlayerSeekMode) -> Result<(), Error> {
         unsafe { OH_AVPlayer_Seek(self.player, position_ms, mode as i32) };
         Ok(())
     }
 
-    pub fn set_volume(&mut self, volume: f32) -> Result<(), PlatformError> {
+    pub fn set_volume(&mut self, volume: f32) -> Result<(), Error> {
         self.volume = volume.clamp(0.0, 1.0);
         check_av_result(
             unsafe { OH_AVPlayer_SetVolume(self.player, self.volume, self.volume) },
@@ -1158,7 +1153,7 @@ impl NativeVideoPlayer {
         )
     }
 
-    pub fn set_looping(&mut self, looping: bool) -> Result<(), PlatformError> {
+    pub fn set_looping(&mut self, looping: bool) -> Result<(), Error> {
         self.is_looping = looping;
         check_av_result(
             unsafe { OH_AVPlayer_SetLooping(self.player, looping) },
@@ -1166,14 +1161,14 @@ impl NativeVideoPlayer {
         )
     }
 
-    pub fn set_speed(&mut self, speed: AVPlaybackSpeed) -> Result<(), PlatformError> {
+    pub fn set_speed(&mut self, speed: AVPlaybackSpeed) -> Result<(), Error> {
         check_av_result(
             unsafe { OH_AVPlayer_SetPlaybackSpeed(self.player, speed as i32) },
             "OH_AVPlayer_SetPlaybackSpeed",
         )
     }
 
-    pub fn get_current_time(&mut self) -> Result<i32, PlatformError> {
+    pub fn get_current_time(&mut self) -> Result<i32, Error> {
         let mut position = 0i32;
         check_av_result(
             unsafe { OH_AVPlayer_GetCurrentTime(self.player, &mut position) },
@@ -1182,7 +1177,7 @@ impl NativeVideoPlayer {
         Ok(position)
     }
 
-    pub fn get_duration(&self) -> Result<i32, PlatformError> {
+    pub fn get_duration(&self) -> Result<i32, Error> {
         let mut duration = 0i32;
         check_av_result(
             unsafe { OH_AVPlayer_GetDuration(self.player, &mut duration) },
@@ -1195,7 +1190,7 @@ impl NativeVideoPlayer {
         unsafe { OH_AVPlayer_IsPlaying(self.player) }
     }
 
-    pub fn get_video_size(&self) -> Result<(i32, i32), PlatformError> {
+    pub fn get_video_size(&self) -> Result<(i32, i32), Error> {
         let mut width = 0i32;
         let mut height = 0i32;
         check_av_result(
@@ -1209,7 +1204,7 @@ impl NativeVideoPlayer {
         Ok((width, height))
     }
 
-    pub fn release(&mut self) -> Result<(), PlatformError> {
+    pub fn release(&mut self) -> Result<(), Error> {
         let mut release_result = Ok(());
         if !self.player.is_null() {
             unsafe { OH_AVPlayer_SetOnInfoCallback(self.player, None, ptr::null_mut()) };
@@ -1234,10 +1229,7 @@ impl NativeVideoPlayer {
         self.player
     }
 
-    fn set_video_surface_internal(
-        &mut self,
-        window: *mut OHNativeWindow,
-    ) -> Result<(), PlatformError> {
+    fn set_video_surface_internal(&mut self, window: *mut OHNativeWindow) -> Result<(), Error> {
         if !self.window.is_null() && self.window != window {
             unsafe { OH_NativeWindow_DestroyNativeWindow(self.window) };
             self.window = ptr::null_mut();
@@ -1384,16 +1376,13 @@ pub fn has_stream_decoder(component_id: &str) -> bool {
     lookup_stream_decoder(component_id).is_some()
 }
 
-pub fn set_stream_volume(component_id: &str, volume: f32) -> Result<(), PlatformError> {
-    let wrapper = lookup_stream_decoder(component_id).ok_or_else(|| {
-        PlatformError::Platform(format!("Stream decoder not found: {}", component_id))
-    })?;
+pub fn set_stream_volume(component_id: &str, volume: f32) -> Result<(), Error> {
+    let wrapper = lookup_stream_decoder(component_id)
+        .ok_or_else(|| Error::internal(format!("Stream decoder not found: {}", component_id)))?;
     if let Ok(mut guard) = wrapper.state.lock() {
         guard.set_volume(volume)
     } else {
-        Err(PlatformError::Platform(
-            "Stream decoder lock poisoned".to_string(),
-        ))
+        Err(Error::internal("Stream decoder lock poisoned".to_string()))
     }
 }
 
@@ -1620,7 +1609,7 @@ impl StreamDecoderState {
         }
     }
 
-    fn set_volume(&mut self, volume: f32) -> Result<(), PlatformError> {
+    fn set_volume(&mut self, volume: f32) -> Result<(), Error> {
         let volume = volume.clamp(0.0, 1.0);
         self.volume = volume;
         if let Some(audio_state) = self.audio.as_mut()
@@ -1628,7 +1617,7 @@ impl StreamDecoderState {
         {
             let result = unsafe { OH_AudioRenderer_SetVolume(audio_state.renderer, volume) };
             if result != AUDIOSTREAM_SUCCESS {
-                return Err(PlatformError::Platform(format!(
+                return Err(Error::internal(format!(
                     "OH_AudioRenderer_SetVolume failed: {}",
                     result
                 )));
@@ -1737,7 +1726,7 @@ impl StreamDecoderState {
         &mut self,
         config: VideoStreamConfig,
         user_data: *mut c_void,
-    ) -> Result<(), PlatformError> {
+    ) -> Result<(), Error> {
         self.user_data = user_data;
         let should_notify = !self.started;
         let config_is_unchanged = self
@@ -1758,7 +1747,7 @@ impl StreamDecoderState {
             crate::traits::stream_decoder::VideoFormat::AnnexB
                 | crate::traits::stream_decoder::VideoFormat::Avcc
         ) {
-            return Err(PlatformError::Platform(
+            return Err(Error::internal(
                 "Harmony decoder expects AnnexB/Avcc format".to_string(),
             ));
         }
@@ -1805,7 +1794,7 @@ impl StreamDecoderState {
         let codec = unsafe { OH_VideoDecoder_CreateByMime(video_mime(config.codec)) };
         if codec.is_null() {
             unsafe { OH_NativeWindow_DestroyNativeWindow(window) };
-            return Err(PlatformError::Platform(
+            return Err(Error::internal(
                 "Failed to create video decoder".to_string(),
             ));
         }
@@ -1840,9 +1829,7 @@ impl StreamDecoderState {
                 OH_VideoDecoder_Destroy(codec);
                 OH_NativeWindow_DestroyNativeWindow(window);
             }
-            return Err(PlatformError::Platform(
-                "Failed to create video format".to_string(),
-            ));
+            return Err(Error::internal("Failed to create video format".to_string()));
         }
 
         let pixel_format_set = unsafe {
@@ -1945,7 +1932,7 @@ impl StreamDecoderState {
         &mut self,
         config: AudioStreamConfig,
         user_data: *mut c_void,
-    ) -> Result<(), PlatformError> {
+    ) -> Result<(), Error> {
         self.user_data = user_data;
         if let Some(prev) = self.last_audio_config.as_ref()
             && self.audio.is_some()
@@ -2042,7 +2029,7 @@ impl StreamDecoderState {
 
         let codec = unsafe { OH_AudioCodec_CreateByMime(OH_AVCODEC_MIMETYPE_AUDIO_AAC, false) };
         if codec.is_null() {
-            return Err(PlatformError::Platform(
+            return Err(Error::internal(
                 "Failed to create audio decoder".to_string(),
             ));
         }
@@ -2070,9 +2057,7 @@ impl StreamDecoderState {
             unsafe {
                 let _ = OH_AudioCodec_Destroy(codec);
             }
-            return Err(PlatformError::Platform(
-                "Failed to create audio format".to_string(),
-            ));
+            return Err(Error::internal("Failed to create audio format".to_string()));
         }
 
         let adts_flag = if config.aac_is_adts {
@@ -2187,10 +2172,7 @@ impl StreamDecoderState {
         Ok(())
     }
 
-    fn enqueue_video(
-        &mut self,
-        frame: VideoFrame,
-    ) -> Result<Option<*mut OH_AVCodec>, PlatformError> {
+    fn enqueue_video(&mut self, frame: VideoFrame) -> Result<Option<*mut OH_AVCodec>, Error> {
         if frame.data.is_empty() {
             return Ok(None);
         }
@@ -2296,7 +2278,7 @@ impl StreamDecoderState {
                 q.len()
             }
             Err(_) => {
-                return Err(PlatformError::Platform(
+                return Err(Error::internal(
                     "Stream decoder video queue lock poisoned".to_string(),
                 ));
             }
@@ -2331,10 +2313,7 @@ impl StreamDecoderState {
         Ok(None)
     }
 
-    fn enqueue_audio(
-        &mut self,
-        frame: AudioFrame,
-    ) -> Result<Option<*mut OH_AVCodec>, PlatformError> {
+    fn enqueue_audio(&mut self, frame: AudioFrame) -> Result<Option<*mut OH_AVCodec>, Error> {
         if frame.data.is_empty() {
             return Ok(None);
         }
@@ -2400,7 +2379,7 @@ impl StreamDecoderState {
                 q.len()
             }
             Err(_) => {
-                return Err(PlatformError::Platform(
+                return Err(Error::internal(
                     "Stream decoder audio queue lock poisoned".to_string(),
                 ));
             }
@@ -2774,13 +2753,13 @@ fn fill_input_buffer(
     index: u32,
     buffer: *mut OH_AVBuffer,
     frame: QueuedFrame,
-) -> Result<(), PlatformError> {
+) -> Result<(), Error> {
     if buffer.is_null() {
-        return Err(PlatformError::Platform("Input buffer is null".to_string()));
+        return Err(Error::internal("Input buffer is null".to_string()));
     }
     let capacity = unsafe { OH_AVBuffer_GetCapacity(buffer) };
     if capacity <= 0 || frame.data.len() > capacity as usize {
-        return Err(PlatformError::Platform(format!(
+        return Err(Error::internal(format!(
             "Input buffer too small: {} < {}",
             capacity,
             frame.data.len()
@@ -2788,9 +2767,7 @@ fn fill_input_buffer(
     }
     let addr = unsafe { OH_AVBuffer_GetAddr(buffer) };
     if addr.is_null() {
-        return Err(PlatformError::Platform(
-            "Input buffer addr is null".to_string(),
-        ));
+        return Err(Error::internal("Input buffer addr is null".to_string()));
     }
 
     unsafe {
@@ -2819,15 +2796,13 @@ fn fill_audio_input_buffer(
     index: u32,
     buffer: *mut OH_AVBuffer,
     frame: QueuedFrame,
-) -> Result<(), PlatformError> {
+) -> Result<(), Error> {
     if buffer.is_null() {
-        return Err(PlatformError::Platform(
-            "Audio input buffer is null".to_string(),
-        ));
+        return Err(Error::internal("Audio input buffer is null".to_string()));
     }
     let capacity = unsafe { OH_AVBuffer_GetCapacity(buffer) };
     if capacity <= 0 || frame.data.len() > capacity as usize {
-        return Err(PlatformError::Platform(format!(
+        return Err(Error::internal(format!(
             "Audio input buffer too small: {} < {}",
             capacity,
             frame.data.len()
@@ -2835,7 +2810,7 @@ fn fill_audio_input_buffer(
     }
     let addr = unsafe { OH_AVBuffer_GetAddr(buffer) };
     if addr.is_null() {
-        return Err(PlatformError::Platform(
+        return Err(Error::internal(
             "Audio input buffer addr is null".to_string(),
         ));
     }
@@ -2922,7 +2897,7 @@ fn video_mime(codec: crate::traits::stream_decoder::VideoCodec) -> *const c_char
     }
 }
 
-pub fn create_player(component_id: &str, callback_id: u64) -> Result<i64, PlatformError> {
+pub fn create_player(component_id: &str, callback_id: u64) -> Result<i64, Error> {
     // Check if player already exists (created by native component)
     if let Some(existing) = get_player(component_id)
         && let Ok(p) = existing.lock()
@@ -2955,9 +2930,9 @@ pub fn create_player(component_id: &str, callback_id: u64) -> Result<i64, Platfo
     }
     let ptr = player.as_ptr() as i64;
     let manager = get_player_manager();
-    let mut players = manager.write().map_err(|_| {
-        PlatformError::Platform("Failed to acquire player manager lock".to_string())
-    })?;
+    let mut players = manager
+        .write()
+        .map_err(|_| Error::internal("Failed to acquire player manager lock".to_string()))?;
     players.insert(component_id.to_string(), Arc::new(Mutex::new(player)));
     Ok(ptr)
 }
@@ -2968,11 +2943,11 @@ pub fn get_player(component_id: &str) -> Option<Arc<Mutex<NativeVideoPlayer>>> {
     players.get(component_id).cloned()
 }
 
-pub fn destroy_player(component_id: &str) -> Result<(), PlatformError> {
+pub fn destroy_player(component_id: &str) -> Result<(), Error> {
     let manager = get_player_manager();
-    let mut players = manager.write().map_err(|_| {
-        PlatformError::Platform("Failed to acquire player manager lock".to_string())
-    })?;
+    let mut players = manager
+        .write()
+        .map_err(|_| Error::internal("Failed to acquire player manager lock".to_string()))?;
     if let Some(player) = players.remove(component_id)
         && let Ok(mut p) = player.lock()
     {
@@ -2982,14 +2957,11 @@ pub fn destroy_player(component_id: &str) -> Result<(), PlatformError> {
     Ok(())
 }
 
-fn check_av_result(code: i32, context: &str) -> Result<(), PlatformError> {
+fn check_av_result(code: i32, context: &str) -> Result<(), Error> {
     if code == AV_ERR_OK {
         Ok(())
     } else {
-        Err(PlatformError::Platform(format!(
-            "{} failed: {}",
-            context, code
-        )))
+        Err(Error::internal(format!("{} failed: {}", context, code)))
     }
 }
 
@@ -2997,7 +2969,7 @@ fn set_decoder_surface_with_retry(
     codec: *mut OH_AVCodec,
     window: *mut OHNativeWindow,
     component_id: &str,
-) -> Result<(), PlatformError> {
+) -> Result<(), Error> {
     let mut attempt = 0u32;
     loop {
         let result = unsafe { OH_VideoDecoder_SetSurface(codec, window) };
@@ -3018,7 +2990,7 @@ fn set_decoder_surface_with_retry(
             return Ok(());
         }
         if result != AV_ERR_INVALID_STATE || attempt >= 5 {
-            return Err(PlatformError::Platform(format!(
+            return Err(Error::internal(format!(
                 "OH_VideoDecoder_SetSurface failed: {}",
                 result
             )));
@@ -3034,7 +3006,7 @@ fn set_decoder_surface_with_retry(
     }
 }
 
-fn refresh_stream_decoder_surface(component_id: &str) -> Result<(), PlatformError> {
+fn refresh_stream_decoder_surface(component_id: &str) -> Result<(), Error> {
     let Some(wrapper) = lookup_stream_decoder(component_id) else {
         return Ok(());
     };
@@ -3046,7 +3018,7 @@ fn refresh_stream_decoder_surface(component_id: &str) -> Result<(), PlatformErro
         let state = wrapper
             .state
             .lock()
-            .map_err(|_| PlatformError::Platform("Stream decoder lock poisoned".to_string()))?;
+            .map_err(|_| Error::internal("Stream decoder lock poisoned".to_string()))?;
         let Some(video_state) = state.video.as_ref() else {
             return Ok(());
         };
@@ -3065,7 +3037,7 @@ fn refresh_stream_decoder_surface(component_id: &str) -> Result<(), PlatformErro
     let mut state = wrapper
         .state
         .lock()
-        .map_err(|_| PlatformError::Platform("Stream decoder lock poisoned".to_string()))?;
+        .map_err(|_| Error::internal("Stream decoder lock poisoned".to_string()))?;
     let Some(video_state) = state.video.as_mut() else {
         unsafe { OH_NativeWindow_DestroyNativeWindow(new_window) };
         return Ok(());
@@ -3081,14 +3053,11 @@ fn refresh_stream_decoder_surface(component_id: &str) -> Result<(), PlatformErro
     Ok(())
 }
 
-fn check_audio_result(code: i32, context: &str) -> Result<(), PlatformError> {
+fn check_audio_result(code: i32, context: &str) -> Result<(), Error> {
     if code == AUDIOSTREAM_SUCCESS {
         Ok(())
     } else {
-        Err(PlatformError::Platform(format!(
-            "{} failed: {}",
-            context, code
-        )))
+        Err(Error::internal(format!("{} failed: {}", context, code)))
     }
 }
 
@@ -3096,16 +3065,14 @@ fn create_audio_renderer(
     sample_rate: i32,
     channels: i32,
     user_data: *mut c_void,
-) -> Result<*mut OH_AudioRenderer, PlatformError> {
+) -> Result<*mut OH_AudioRenderer, Error> {
     let mut builder: *mut OH_AudioStreamBuilder = ptr::null_mut();
     check_audio_result(
         unsafe { OH_AudioStreamBuilder_Create(&mut builder, AUDIOSTREAM_TYPE_RENDERER) },
         "OH_AudioStreamBuilder_Create",
     )?;
     if builder.is_null() {
-        return Err(PlatformError::Platform(
-            "Audio stream builder is null".to_string(),
-        ));
+        return Err(Error::internal("Audio stream builder is null".to_string()));
     }
 
     if let Err(err) = check_audio_result(
@@ -3162,9 +3129,7 @@ fn create_audio_renderer(
     unsafe { OH_AudioStreamBuilder_Destroy(builder) };
     check_audio_result(result, "OH_AudioStreamBuilder_GenerateRenderer")?;
     if renderer.is_null() {
-        return Err(PlatformError::Platform(
-            "Audio renderer not created".to_string(),
-        ));
+        return Err(Error::internal("Audio renderer not created".to_string()));
     }
     let volume_result = unsafe { OH_AudioRenderer_SetVolume(renderer, 1.0) };
     if volume_result != AUDIOSTREAM_SUCCESS {
@@ -3375,15 +3340,15 @@ unsafe extern "C" {
 
 pub fn create_native_window_from_surface_id(
     surface_id: &str,
-) -> Result<*mut OHNativeWindow, PlatformError> {
+) -> Result<*mut OHNativeWindow, Error> {
     let surface_id_u64: u64 = surface_id
         .parse()
-        .map_err(|_| PlatformError::Platform(format!("Invalid surface ID: {}", surface_id)))?;
+        .map_err(|_| Error::internal(format!("Invalid surface ID: {}", surface_id)))?;
     let mut window: *mut OHNativeWindow = ptr::null_mut();
     let result =
         unsafe { OH_NativeWindow_CreateNativeWindowFromSurfaceId(surface_id_u64, &mut window) };
     if result != 0 || window.is_null() {
-        return Err(PlatformError::Platform(format!(
+        return Err(Error::internal(format!(
             "Failed to create native window: {}, error: {}",
             surface_id, result
         )));
@@ -3396,10 +3361,7 @@ pub fn create_native_window_from_surface_id(
     Ok(window)
 }
 
-pub fn set_video_surface_from_id(
-    component_id: &str,
-    surface_id: &str,
-) -> Result<(), PlatformError> {
+pub fn set_video_surface_from_id(component_id: &str, surface_id: &str) -> Result<(), Error> {
     store_surface_id(component_id, surface_id);
 
     // If a stream decoder is already created, surface binds may arrive after the stream provider
@@ -3447,7 +3409,7 @@ pub fn set_video_surface_from_id(
             }
             Err(_) => {
                 unsafe { OH_NativeWindow_DestroyNativeWindow(window) };
-                result = Err(PlatformError::Platform(format!(
+                result = Err(Error::internal(format!(
                     "Failed to acquire player lock: {}",
                     component_id
                 )));
@@ -3463,7 +3425,7 @@ pub fn rebind_surface_from_id(
     surface_id: &str,
     position_ms: i32,
     should_play: bool,
-) -> Result<(), PlatformError> {
+) -> Result<(), Error> {
     store_surface_id(component_id, surface_id);
     let window = create_native_window_from_surface_id(surface_id)?;
     if let Some(player) = get_player(component_id)
@@ -3471,13 +3433,13 @@ pub fn rebind_surface_from_id(
     {
         return p.rebind_surface_and_resume(window, position_ms.max(0), should_play);
     }
-    Err(PlatformError::Platform(format!(
+    Err(Error::internal(format!(
         "Player not found: {}",
         component_id
     )))
 }
 
-pub fn rebind_stream_surface(component_id: &str, surface_id: &str) -> Result<(), PlatformError> {
+pub fn rebind_stream_surface(component_id: &str, surface_id: &str) -> Result<(), Error> {
     store_surface_id(component_id, surface_id);
     let Some(wrapper) = lookup_stream_decoder(component_id) else {
         // Decoder may not exist yet; surface ID is persisted and will be picked up at configure time.
@@ -3489,7 +3451,7 @@ pub fn rebind_stream_surface(component_id: &str, surface_id: &str) -> Result<(),
         let mut state = wrapper
             .state
             .lock()
-            .map_err(|_| PlatformError::Platform("Stream decoder lock poisoned".to_string()))?;
+            .map_err(|_| Error::internal("Stream decoder lock poisoned".to_string()))?;
 
         let is_first_surface = state
             .video
@@ -3524,7 +3486,7 @@ pub fn rebind_stream_surface(component_id: &str, surface_id: &str) -> Result<(),
     let mut state = wrapper
         .state
         .lock()
-        .map_err(|_| PlatformError::Platform("Stream decoder lock poisoned".to_string()))?;
+        .map_err(|_| Error::internal("Stream decoder lock poisoned".to_string()))?;
 
     let Some(video_state) = state.video.as_mut() else {
         return Ok(());
@@ -3562,23 +3524,20 @@ fn rate_to_speed(rate: f64) -> AVPlaybackSpeed {
     }
 }
 
-pub fn set_speed_from_rate(component_id: &str, rate: f64) -> Result<(), PlatformError> {
+pub fn set_speed_from_rate(component_id: &str, rate: f64) -> Result<(), Error> {
     let speed = rate_to_speed(rate);
     if let Some(player) = get_player(component_id)
         && let Ok(mut p) = player.lock()
     {
         return p.set_speed(speed);
     }
-    Err(PlatformError::Platform(format!(
+    Err(Error::internal(format!(
         "Player not found: {}",
         component_id
     )))
 }
 
-fn dispatch_command_harmony(
-    component_id: &str,
-    command: VideoPlayerCommand,
-) -> Result<(), PlatformError> {
+fn dispatch_command_harmony(component_id: &str, command: VideoPlayerCommand) -> Result<(), Error> {
     match &command {
         VideoPlayerCommand::SetDuration { duration } => {
             let duration_ms = if duration.is_finite() && *duration > 0.0 {
@@ -3741,7 +3700,7 @@ fn dispatch_command_harmony(
                 return Ok(());
             }
             Err(std::sync::TryLockError::Poisoned(_)) => {
-                return Err(PlatformError::Platform(
+                return Err(Error::internal(
                     "Failed to acquire stream decoder lock (poisoned)".to_string(),
                 ));
             }
@@ -3793,10 +3752,10 @@ fn dispatch_command_harmony(
         return Ok(());
     }
     let player = get_player(component_id)
-        .ok_or_else(|| PlatformError::Platform(format!("Player not found: {}", component_id)))?;
+        .ok_or_else(|| Error::internal(format!("Player not found: {}", component_id)))?;
     let mut p = player
         .lock()
-        .map_err(|_| PlatformError::Platform("Failed to acquire player lock".to_string()))?;
+        .map_err(|_| Error::internal("Failed to acquire player lock".to_string()))?;
 
     if matches!(
         command,
@@ -3842,16 +3801,13 @@ fn dispatch_command_harmony(
     }
 }
 
-pub fn dispatch_command(
-    component_id: &str,
-    command: VideoPlayerCommand,
-) -> Result<(), PlatformError> {
+pub fn dispatch_command(component_id: &str, command: VideoPlayerCommand) -> Result<(), Error> {
     dispatch_command_harmony(component_id, command)
 }
 
 // VideoPlayerManager Implementation
 impl VideoPlayerManager for Platform {
-    fn bind_player(&self, component_id: &str) -> Result<Box<dyn VideoPlayerHandle>, PlatformError> {
+    fn bind_player(&self, component_id: &str) -> Result<Box<dyn VideoPlayerHandle>, Error> {
         // List all registered players for debugging
         let manager = get_player_manager();
         if let Ok(players) = manager.read() {
@@ -3879,18 +3835,14 @@ impl VideoPlayerManager for Platform {
         Ok(Box::new(handle))
     }
 
-    fn set_player_callback(
-        &self,
-        component_id: &str,
-        callback_id: u64,
-    ) -> Result<(), PlatformError> {
+    fn set_player_callback(&self, component_id: &str, callback_id: u64) -> Result<(), Error> {
         store_video_callback_id(component_id, callback_id);
         let callback_str = callback_id.to_string();
         lingxia_webview::platform::harmony::tsfn::call_arkts(
             "setVideoPlayerCallback",
             &[component_id, &callback_str],
         )
-        .map_err(|e| PlatformError::Platform(format!("Failed to set video callback: {}", e)))?;
+        .map_err(|e| Error::internal(format!("Failed to set video callback: {}", e)))?;
         Ok(())
     }
 }
@@ -3910,17 +3862,17 @@ impl VideoStreamDecoderHandle for HarmonyStreamDecoderHandle {
         false
     }
 
-    fn flush(&self) -> Result<(), PlatformError> {
+    fn flush(&self) -> Result<(), Error> {
         let mut state = self
             .wrapper
             .state
             .lock()
-            .map_err(|_| PlatformError::Platform("Stream decoder lock poisoned".to_string()))?;
+            .map_err(|_| Error::internal("Stream decoder lock poisoned".to_string()))?;
         state.reset_soft();
         Ok(())
     }
 
-    fn reset_stream(&self, hard: bool) -> Result<(), PlatformError> {
+    fn reset_stream(&self, hard: bool) -> Result<(), Error> {
         notify_arkts(&self.component_id, "waiting", None);
 
         match self.wrapper.state.try_lock() {
@@ -3934,9 +3886,9 @@ impl VideoStreamDecoderHandle for HarmonyStreamDecoderHandle {
                 state.reset_soft();
                 Ok(())
             }
-            Err(std::sync::TryLockError::Poisoned(_)) => Err(PlatformError::Platform(
-                "Stream decoder lock poisoned".to_string(),
-            )),
+            Err(std::sync::TryLockError::Poisoned(_)) => {
+                Err(Error::internal("Stream decoder lock poisoned".to_string()))
+            }
             Err(std::sync::TryLockError::WouldBlock) => {
                 // Don't block the JS worker thread. Schedule the reset in the background so that
                 // stream switching (live/playback/camera) can proceed without view call timeouts,
@@ -3952,7 +3904,7 @@ impl VideoStreamDecoderHandle for HarmonyStreamDecoderHandle {
                     let _ = crate::rt::spawn_blocking(move || {
                         let result = (|| {
                             let mut guard = wrapper.state.lock().map_err(|_| {
-                                PlatformError::Platform("Stream decoder lock poisoned".to_string())
+                                Error::internal("Stream decoder lock poisoned".to_string())
                             })?;
                             if hard {
                                 guard.stop_without_notify();
@@ -3961,7 +3913,7 @@ impl VideoStreamDecoderHandle for HarmonyStreamDecoderHandle {
                             } else {
                                 guard.reset_soft();
                             }
-                            Ok::<(), PlatformError>(())
+                            Ok::<(), Error>(())
                         })();
 
                         if let Err(err) = result {
@@ -3984,33 +3936,34 @@ impl VideoStreamDecoderHandle for HarmonyStreamDecoderHandle {
         }
     }
 
-    fn configure_video(&self, config: VideoStreamConfig) -> Result<(), PlatformError> {
+    fn configure_video(&self, config: VideoStreamConfig) -> Result<(), Error> {
         let user_data = Arc::as_ptr(&self.wrapper) as *mut c_void;
         let mut state = self
             .wrapper
             .state
             .lock()
-            .map_err(|_| PlatformError::Platform("Stream decoder lock poisoned".to_string()))?;
+            .map_err(|_| Error::internal("Stream decoder lock poisoned".to_string()))?;
         state.configure_video(config, user_data)?;
         Ok(())
     }
 
-    fn configure_audio(&self, config: AudioStreamConfig) -> Result<(), PlatformError> {
+    fn configure_audio(&self, config: AudioStreamConfig) -> Result<(), Error> {
         let user_data = Arc::as_ptr(&self.wrapper) as *mut c_void;
         let mut state = self
             .wrapper
             .state
             .lock()
-            .map_err(|_| PlatformError::Platform("Stream decoder lock poisoned".to_string()))?;
+            .map_err(|_| Error::internal("Stream decoder lock poisoned".to_string()))?;
         state.configure_audio(config, user_data)
     }
 
-    fn push_video(&self, frame: VideoFrame) -> Result<(), PlatformError> {
+    fn push_video(&self, frame: VideoFrame) -> Result<(), Error> {
         let codec_to_start = {
-            let mut state =
-                self.wrapper.state.lock().map_err(|_| {
-                    PlatformError::Platform("Stream decoder lock poisoned".to_string())
-                })?;
+            let mut state = self
+                .wrapper
+                .state
+                .lock()
+                .map_err(|_| Error::internal("Stream decoder lock poisoned".to_string()))?;
             state.enqueue_video(frame)?
         };
         if let Some(codec) = codec_to_start {
@@ -4139,12 +4092,13 @@ impl VideoStreamDecoderHandle for HarmonyStreamDecoderHandle {
         Ok(())
     }
 
-    fn push_audio(&self, frame: AudioFrame) -> Result<(), PlatformError> {
+    fn push_audio(&self, frame: AudioFrame) -> Result<(), Error> {
         let codec_to_start = {
-            let mut state =
-                self.wrapper.state.lock().map_err(|_| {
-                    PlatformError::Platform("Stream decoder lock poisoned".to_string())
-                })?;
+            let mut state = self
+                .wrapper
+                .state
+                .lock()
+                .map_err(|_| Error::internal("Stream decoder lock poisoned".to_string()))?;
             state.enqueue_audio(frame)?
         };
         if let Some(codec) = codec_to_start {
@@ -4167,12 +4121,12 @@ impl VideoStreamDecoderHandle for HarmonyStreamDecoderHandle {
         Ok(())
     }
 
-    fn stop(&self) -> Result<(), PlatformError> {
+    fn stop(&self) -> Result<(), Error> {
         let mut state = self
             .wrapper
             .state
             .lock()
-            .map_err(|_| PlatformError::Platform("Stream decoder lock poisoned".to_string()))?;
+            .map_err(|_| Error::internal("Stream decoder lock poisoned".to_string()))?;
         // Stopping the low-level decoder should not reset the UI state; UI-level "stop" is
         // emitted via VideoPlayerCommand::Stop (dispatch_command_harmony).
         state.stop_without_notify();
@@ -4186,7 +4140,7 @@ impl VideoStreamDecoderManager for Platform {
     fn create_stream_decoder(
         &self,
         component_id: &str,
-    ) -> Result<Box<dyn VideoStreamDecoderHandle>, PlatformError> {
+    ) -> Result<Box<dyn VideoStreamDecoderHandle>, Error> {
         log::info!(
             "[Harmony.StreamDecoder] create_stream_decoder component_id={}",
             component_id

@@ -1,5 +1,6 @@
-use crate::i18n::{js_error_from_business_code, js_error_from_platform_error};
+use crate::i18n::{js_error, js_error_from_business_code};
 use crate::i18n::{js_internal_error, js_timeout_error};
+use lingxia_error::Error;
 use lingxia_messaging::{CallbackResult, get_callback, register_handler, remove_callback};
 use lingxia_platform::traits::wifi::{Wifi, WifiConnectRequest, WifiGetConnectedRequest};
 use lxapp::{LxApp, publish_app_event, register_app_handler, unregister_app_handler_token};
@@ -106,7 +107,7 @@ fn ensure_wifi_connected_callback(ctx: &JSContext) -> JSResult<()> {
 
     if let Err(err) = lxapp.runtime.add_wifi_state_listener(callback_id) {
         remove_callback(callback_id);
-        return Err(js_error_from_platform_error(&err));
+        return Err(js_error(err));
     }
 
     info!(
@@ -126,7 +127,7 @@ fn clear_wifi_connected_callback(ctx: &JSContext) -> JSResult<()> {
     lxapp
         .runtime
         .remove_wifi_state_listener(callback_id)
-        .map_err(|err| js_error_from_platform_error(&err))?;
+        .map_err(js_error)?;
     remove_callback(callback_id);
     info!(
         "WifiConnected callback cleared appid={} callback_id={}",
@@ -206,12 +207,12 @@ async fn handle_wifi_callback<F>(
     operation_name: &str,
 ) -> JSResult<()>
 where
-    F: FnOnce(u64) -> Result<(), lingxia_platform::error::PlatformError>,
+    F: FnOnce(u64) -> Result<(), Error>,
 {
     let _lxapp = LxApp::from_ctx(ctx)?;
     let (callback_id, receiver) = get_callback();
 
-    platform_call(callback_id).map_err(|e| js_error_from_platform_error(&e))?;
+    platform_call(callback_id).map_err(js_error)?;
 
     match receiver.await {
         Ok(CallbackResult::Success(_)) => Ok(()),
@@ -231,13 +232,13 @@ async fn handle_wifi_callback_with_data<T, F, P>(
     operation_name: &str,
 ) -> JSResult<T>
 where
-    F: FnOnce(u64) -> Result<(), lingxia_platform::error::PlatformError>,
+    F: FnOnce(u64) -> Result<(), Error>,
     P: FnOnce(String) -> Result<T, RongJSError>,
 {
     let _lxapp = LxApp::from_ctx(ctx)?;
     let (callback_id, receiver) = get_callback();
 
-    platform_call(callback_id).map_err(|e| js_error_from_platform_error(&e))?;
+    platform_call(callback_id).map_err(js_error)?;
 
     match receiver.await {
         Ok(CallbackResult::Success(data)) => parser(data),
@@ -283,10 +284,7 @@ async fn ensure_wifi_started(ctx: &JSContext) -> JSResult<()> {
         return Ok(());
     }
     let lxapp = LxApp::from_ctx(ctx)?;
-    let wifi_enabled = lxapp
-        .runtime
-        .is_wifi_enabled()
-        .map_err(|e| js_error_from_platform_error(&e))?;
+    let wifi_enabled = lxapp.runtime.is_wifi_enabled().map_err(js_error)?;
     if !wifi_enabled {
         return Err(js_error_from_business_code(12009));
     }

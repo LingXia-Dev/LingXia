@@ -1,6 +1,6 @@
 //! Display and screen orientation APIs.
 
-use crate::i18n::{js_error_from_platform_error, js_invalid_parameter_error};
+use crate::i18n::{js_error, js_invalid_parameter_error};
 use lingxia_platform::traits::device::Device;
 use lingxia_platform::traits::ui::UIUpdate;
 use lxapp::{
@@ -100,7 +100,7 @@ pub(crate) fn apply_page_orientation_lock(
     lxapp
         .runtime
         .update_orientation_ui(lxapp.appid.clone())
-        .map_err(|e| js_error_from_platform_error(&e))?;
+        .map_err(js_error)?;
 
     // A page that follows the screen waits for the host's report: the screen
     // size read here predates the window turning.

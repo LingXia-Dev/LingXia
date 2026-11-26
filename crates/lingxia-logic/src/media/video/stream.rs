@@ -1,5 +1,5 @@
 use super::context::VideoContextSharedState;
-use crate::i18n::{js_error_from_platform_error, js_internal_error, js_resource_not_found_error};
+use crate::i18n::{js_error, js_internal_error, js_resource_not_found_error};
 use lingxia_media::playback::{FrameSink, get_stream_provider};
 use lingxia_platform::traits::stream_decoder::{
     VideoStreamDecoderHandle, VideoStreamDecoderManager,
@@ -46,7 +46,7 @@ fn ensure_stream_decoder_shared(
     let decoder = shared
         .runtime
         .create_stream_decoder(component_id)
-        .map_err(|e| js_error_from_platform_error(&e))?;
+        .map_err(js_error)?;
     let decoder: Arc<dyn VideoStreamDecoderHandle> = decoder.into();
     *guard = Some(decoder.clone());
     Ok(decoder)
@@ -57,9 +57,7 @@ pub(super) fn reset_decoder_soft_shared(
     component_id: &str,
 ) -> Result<(), RongJSError> {
     let decoder = ensure_stream_decoder_shared(shared, component_id)?;
-    decoder
-        .reset_stream(false)
-        .map_err(|e| js_error_from_platform_error(&e))
+    decoder.reset_stream(false).map_err(js_error)
 }
 
 pub(super) fn reset_decoder_soft_if_present_shared(
@@ -74,9 +72,7 @@ pub(super) fn reset_decoder_soft_if_present_shared(
     let Some(decoder) = decoder else {
         return Ok(());
     };
-    decoder
-        .reset_stream(false)
-        .map_err(|e| js_error_from_platform_error(&e))
+    decoder.reset_stream(false).map_err(js_error)
 }
 
 pub(super) fn stop_stream_session_async_shared(shared: &Arc<VideoContextSharedState>) {

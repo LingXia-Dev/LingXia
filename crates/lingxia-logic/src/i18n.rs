@@ -1,5 +1,4 @@
 use crate::I18nKey;
-use lingxia_platform::error::PlatformError;
 use rong::{HostError, RongJSError, error::ErrorData};
 use serde_json::Value;
 use std::collections::BTreeMap;
@@ -172,17 +171,6 @@ pub fn host_error_of(error: impl Into<lingxia_error::Error>) -> HostError {
 
 pub fn js_error(error: impl Into<lingxia_error::Error>) -> RongJSError {
     host_error_of(error).into()
-}
-
-pub fn host_error_from_platform_error(error: &PlatformError) -> HostError {
-    match error {
-        PlatformError::BusinessError(code) => host_error_from_business_code(*code),
-        other => host_error(&other.into()),
-    }
-}
-
-pub fn js_error_from_platform_error(error: &PlatformError) -> RongJSError {
-    host_error_from_platform_error(error).into()
 }
 
 #[cfg(test)]

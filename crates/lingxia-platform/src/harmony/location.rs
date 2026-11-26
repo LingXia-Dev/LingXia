@@ -7,12 +7,12 @@ use std::ffi::c_void;
 use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard, OnceLock};
 
-use crate::error::PlatformError;
 use crate::traits::location::Location;
 use lingxia_messaging::{CallbackResult, invoke_callback, register_handler, remove_callback};
 use lingxia_webview::platform::harmony::tsfn;
 
 use super::Platform;
+use lingxia_error::Error;
 
 #[allow(non_camel_case_types)]
 type Location_ResultCode = i32;
@@ -191,13 +191,13 @@ unsafe extern "C" fn handle_location_update(location: *mut Location_Info, user_d
 }
 
 impl Location for Platform {
-    fn is_location_enabled(&self) -> Result<bool, PlatformError> {
+    fn is_location_enabled(&self) -> Result<bool, Error> {
         let mut enabled = false;
         let result = unsafe { OH_Location_IsLocatingEnabled(&mut enabled as *mut bool) };
         if result == LOCATION_SUCCESS {
             Ok(enabled)
         } else {
-            Err(PlatformError::Platform(format!(
+            Err(Error::internal(format!(
                 "OH_Location_IsLocatingEnabled failed with code {}",
                 result
             )))
@@ -207,7 +207,7 @@ impl Location for Platform {
     async fn request_location(
         &self,
         config: crate::traits::location::LocationRequestConfig,
-    ) -> Result<String, PlatformError> {
+    ) -> Result<String, Error> {
         let platform = self.clone();
         crate::rt::native_call(|callback_id| {
             let request_config = config.clone();
@@ -259,7 +259,7 @@ impl Platform {
         &self,
         callback_id: u64,
         config: crate::traits::location::LocationRequestConfig,
-    ) -> Result<(), PlatformError> {
+    ) -> Result<(), Error> {
         unsafe {
             let request_config = OH_Location_CreateRequestConfig();
             if request_config.is_null() {

@@ -9,13 +9,13 @@ use lingxia_webview::WebTag;
 
 use super::{file, not_supported, surface, ui_update};
 use crate::AssetFileEntry;
-use crate::error::PlatformError;
 use crate::traits::app_runtime::{
     AnimationType, AppRuntime, DesktopBannerOutcome, DesktopBannerShow, LocalNotificationShow,
     LxAppOpenMode, OpenUrlRequest, OpenUrlResult, ShowLxApp,
 };
 use crate::traits::share::{ShareRequest, ShareResult, ShareService};
 use crate::traits::stream_decoder::{VideoStreamDecoderHandle, VideoStreamDecoderManager};
+use lingxia_error::Error;
 
 const DEFAULT_APP_IDENTIFIER: &str = "app.lingxia.windows";
 
@@ -138,7 +138,7 @@ fn read_autostart_run_entry(name: &str) -> Option<String> {
     super::registry::read_string(HKEY_CURRENT_USER, AUTOSTART_RUN_KEY, name)
 }
 
-fn write_autostart_run_entry(name: &str, exe: &Path) -> Result<(), PlatformError> {
+fn write_autostart_run_entry(name: &str, exe: &Path) -> Result<(), Error> {
     use windows::Win32::System::Registry::{
         HKEY, HKEY_CURRENT_USER, KEY_SET_VALUE, REG_OPTION_NON_VOLATILE, REG_SZ, RegCloseKey,
         RegCreateKeyExW, RegSetValueExW,
@@ -167,16 +167,16 @@ fn write_autostart_run_entry(name: &str, exe: &Path) -> Result<(), PlatformError
             None,
         )
         .ok()
-        .map_err(|err| PlatformError::Platform(format!("cannot open Run key: {err}")))?;
+        .map_err(|err| Error::internal(format!("cannot open Run key: {err}")))?;
         let status = RegSetValueExW(key, &value, None, REG_SZ, Some(&data));
         let _ = RegCloseKey(key);
         status
             .ok()
-            .map_err(|err| PlatformError::Platform(format!("cannot write Run entry: {err}")))
+            .map_err(|err| Error::internal(format!("cannot write Run entry: {err}")))
     }
 }
 
-fn remove_autostart_run_entry(name: &str) -> Result<(), PlatformError> {
+fn remove_autostart_run_entry(name: &str) -> Result<(), Error> {
     use windows::Win32::Foundation::ERROR_FILE_NOT_FOUND;
     use windows::Win32::System::Registry::{
         HKEY, HKEY_CURRENT_USER, KEY_SET_VALUE, RegCloseKey, RegDeleteValueW, RegOpenKeyExW,
@@ -192,7 +192,7 @@ fn remove_autostart_run_entry(name: &str) -> Result<(), PlatformError> {
             return Ok(());
         }
         open.ok()
-            .map_err(|err| PlatformError::Platform(format!("cannot open Run key: {err}")))?;
+            .map_err(|err| Error::internal(format!("cannot open Run key: {err}")))?;
         let status = RegDeleteValueW(key, &value);
         let _ = RegCloseKey(key);
         if status == ERROR_FILE_NOT_FOUND {
@@ -200,7 +200,7 @@ fn remove_autostart_run_entry(name: &str) -> Result<(), PlatformError> {
         }
         status
             .ok()
-            .map_err(|err| PlatformError::Platform(format!("cannot delete Run entry: {err}")))
+            .map_err(|err| Error::internal(format!("cannot delete Run entry: {err}")))
     }
 }
 
@@ -208,7 +208,7 @@ fn remove_autostart_run_entry(name: &str) -> Result<(), PlatformError> {
 /// `Some` when the request was handled (e.g. routed into an in-app browser
 /// tab); `None` falls back to the OS shell handler.
 type WindowsOpenUrlHandler =
-    Arc<dyn Fn(&OpenUrlRequest) -> Result<Option<OpenUrlResult>, PlatformError> + Send + Sync>;
+    Arc<dyn Fn(&OpenUrlRequest) -> Result<Option<OpenUrlResult>, Error> + Send + Sync>;
 static WINDOWS_OPEN_URL_HANDLER: Mutex<Option<WindowsOpenUrlHandler>> = Mutex::new(None);
 type WindowsBrowserTabHandler = Arc<dyn Fn(&str) -> bool + Send + Sync>;
 static WINDOWS_CLOSE_BROWSER_TAB_HANDLER: Mutex<Option<WindowsBrowserTabHandler>> =
@@ -228,9 +228,7 @@ pub fn set_windows_open_url_handler(handler: WindowsOpenUrlHandler) {
     }
 }
 
-fn invoke_windows_open_url_handler(
-    req: &OpenUrlRequest,
-) -> Result<Option<OpenUrlResult>, PlatformError> {
+fn invoke_windows_open_url_handler(req: &OpenUrlRequest) -> Result<Option<OpenUrlResult>, Error> {
     let Some(handler) = WINDOWS_OPEN_URL_HANDLER
         .lock()
         .ok()
@@ -262,7 +260,7 @@ fn invoke_windows_activate_browser_tab_handler(tab_id: String) -> crate::traits:
         .and_then(|slot| slot.clone());
     match handler {
         Some(handler) => handler(tab_id),
-        None => Box::pin(async { Err(PlatformError::NotSupported("browser tab".to_string())) }),
+        None => Box::pin(async { Err(Error::not_supported("browser tab".to_string())) }),
     }
 }
 
@@ -369,7 +367,7 @@ impl Default for Platform {
 impl Platform {
     /// Test/host helper matching the Apple constructor. Production Windows
     /// hosts use [`from_env`] / [`from_asset_dir`].
-    pub fn new(data_dir: String, cache_dir: String, locale: String) -> Result<Self, PlatformError> {
+    pub fn new(data_dir: String, cache_dir: String, locale: String) -> Result<Self, Error> {
         Ok(Self {
             data_dir: PathBuf::from(data_dir),
             cache_dir: PathBuf::from(cache_dir),
@@ -380,11 +378,11 @@ impl Platform {
         })
     }
 
-    pub fn from_env() -> Result<Self, PlatformError> {
+    pub fn from_env() -> Result<Self, Error> {
         Self::from_asset_dir(default_asset_dir())
     }
 
-    pub fn from_asset_dir(asset_dir: impl Into<PathBuf>) -> Result<Self, PlatformError> {
+    pub fn from_asset_dir(asset_dir: impl Into<PathBuf>) -> Result<Self, Error> {
         let asset_dir = asset_dir.into();
         let config = GeneratedAppConfig::read_from_assets(&asset_dir);
         let product_name = config.product_name.unwrap_or_else(|| "LingXia".to_string());
@@ -457,7 +455,7 @@ impl Platform {
         &self.data_dir
     }
 
-    fn resolve_asset_path(&self, path: &str) -> Result<PathBuf, PlatformError> {
+    fn resolve_asset_path(&self, path: &str) -> Result<PathBuf, Error> {
         let normalized = normalize_relative_path(path)?;
         Ok(self.asset_dir.join(normalized))
     }
@@ -465,7 +463,7 @@ impl Platform {
     fn collect_files_recursively<'a>(
         &'a self,
         asset_dir: &str,
-    ) -> Vec<Result<AssetFileEntry<'a>, PlatformError>> {
+    ) -> Vec<Result<AssetFileEntry<'a>, Error>> {
         let root = match self.resolve_asset_path(asset_dir) {
             Ok(path) => path,
             Err(err) => return vec![Err(err)],
@@ -478,13 +476,13 @@ impl Platform {
 }
 
 impl AppRuntime for Platform {
-    fn read_asset<'a>(&'a self, path: &str) -> Result<Box<dyn Read + 'a>, PlatformError> {
+    fn read_asset<'a>(&'a self, path: &str) -> Result<Box<dyn Read + 'a>, Error> {
         let path = self.resolve_asset_path(path)?;
         let file = File::open(&path).map_err(|err| {
             if err.kind() == std::io::ErrorKind::NotFound {
-                PlatformError::AssetNotFound(path.display().to_string())
+                Error::not_found(path.display().to_string())
             } else {
-                PlatformError::Platform(format!("failed to open asset {}: {err}", path.display()))
+                Error::internal(format!("failed to open asset {}: {err}", path.display()))
             }
         })?;
         Ok(Box::new(file))
@@ -493,7 +491,7 @@ impl AppRuntime for Platform {
     fn asset_dir_iter<'a>(
         &'a self,
         asset_dir: &str,
-    ) -> Box<dyn Iterator<Item = Result<AssetFileEntry<'a>, PlatformError>> + 'a> {
+    ) -> Box<dyn Iterator<Item = Result<AssetFileEntry<'a>, Error>> + 'a> {
         Box::new(self.collect_files_recursively(asset_dir).into_iter())
     }
 
@@ -505,7 +503,7 @@ impl AppRuntime for Platform {
         self.cache_dir.clone()
     }
 
-    fn get_app_identifier(&self) -> Result<String, PlatformError> {
+    fn get_app_identifier(&self) -> Result<String, Error> {
         Ok(self.app_identifier.clone())
     }
 
@@ -513,7 +511,7 @@ impl AppRuntime for Platform {
         &self.locale
     }
 
-    fn show_lxapp(&self, request: ShowLxApp) -> Result<(), PlatformError> {
+    fn show_lxapp(&self, request: ShowLxApp) -> Result<(), Error> {
         let ShowLxApp {
             appid,
             title,
@@ -562,21 +560,20 @@ impl AppRuntime for Platform {
         handler.is_some_and(|handler| handler(appid, to_main, edge))
     }
 
-    fn hide_lxapp(&self, appid: String, session_id: u64) -> Result<(), PlatformError> {
+    fn hide_lxapp(&self, appid: String, session_id: u64) -> Result<(), Error> {
         surface::hide_lxapp_window(&appid, session_id);
         invoke_windows_lxapp_hidden_handler(&appid, session_id);
         Ok(())
     }
 
-    fn exit(&self) -> Result<(), PlatformError> {
+    fn exit(&self) -> Result<(), Error> {
         request_windows_app_exit();
         Ok(())
     }
 
-    fn autostart_is_enabled(&self) -> Result<bool, PlatformError> {
-        let exe = launch_executable().map_err(|err| {
-            PlatformError::Platform(format!("cannot resolve app executable: {err}"))
-        })?;
+    fn autostart_is_enabled(&self) -> Result<bool, Error> {
+        let exe = launch_executable()
+            .map_err(|err| Error::internal(format!("cannot resolve app executable: {err}")))?;
         // Enabled means the entry points at *this* executable: after a
         // reinstall to a new path the stale entry no longer launches the app,
         // so it must read as disabled (re-enabling then rewrites the path).
@@ -584,41 +581,38 @@ impl AppRuntime for Platform {
             .is_some_and(|cmd| cmd.eq_ignore_ascii_case(&autostart_command(&exe))))
     }
 
-    fn notification_permission(&self) -> Result<String, PlatformError> {
+    fn notification_permission(&self) -> Result<String, Error> {
         super::notification::permission(self)
     }
 
     // Windows has no prompt: the Settings toggle is the answer.
-    fn notification_request_permission(&self) -> Result<String, PlatformError> {
+    fn notification_request_permission(&self) -> Result<String, Error> {
         super::notification::permission(self)
     }
 
     fn notification_show(
         &self,
         request: &LocalNotificationShow,
-    ) -> Result<crate::traits::app_runtime::LocalNotificationStatus, PlatformError> {
+    ) -> Result<crate::traits::app_runtime::LocalNotificationStatus, Error> {
         super::notification::show(self, request)
     }
 
-    fn notification_cancel(&self, id: &str) -> Result<(), PlatformError> {
+    fn notification_cancel(&self, id: &str) -> Result<(), Error> {
         super::notification::cancel(self, id)
     }
 
-    fn notification_cancel_all(&self) -> Result<(), PlatformError> {
+    fn notification_cancel_all(&self) -> Result<(), Error> {
         super::notification::cancel_all(self)
     }
 
-    fn banner_show(
-        &self,
-        request: &DesktopBannerShow,
-    ) -> Result<DesktopBannerOutcome, PlatformError> {
+    fn banner_show(&self, request: &DesktopBannerShow) -> Result<DesktopBannerOutcome, Error> {
         crate::desktop::banner::show(request.clone())
     }
 
     fn banner_enqueue(
         &self,
         request: &DesktopBannerShow,
-    ) -> Result<crate::traits::app_runtime::DesktopBannerPending, PlatformError> {
+    ) -> Result<crate::traits::app_runtime::DesktopBannerPending, Error> {
         crate::desktop::banner::enqueue_show(request.clone())
     }
 
@@ -626,21 +620,20 @@ impl AppRuntime for Platform {
         &self,
         request: &DesktopBannerShow,
         source: &crate::traits::app_runtime::DesktopBannerSource,
-    ) -> Result<crate::traits::app_runtime::DesktopBannerPending, PlatformError> {
+    ) -> Result<crate::traits::app_runtime::DesktopBannerPending, Error> {
         crate::desktop::banner::enqueue_show_from(request.clone(), Some(source.clone()))
     }
 
-    fn banner_dismiss(&self, id: &str) -> Result<(), PlatformError> {
+    fn banner_dismiss(&self, id: &str) -> Result<(), Error> {
         crate::desktop::banner::dismiss(id);
         Ok(())
     }
 
-    fn autostart_set_enabled(&self, enabled: bool) -> Result<(), PlatformError> {
+    fn autostart_set_enabled(&self, enabled: bool) -> Result<(), Error> {
         let name = self.autostart_value_name();
         if enabled {
-            let exe = launch_executable().map_err(|err| {
-                PlatformError::Platform(format!("cannot resolve app executable: {err}"))
-            })?;
+            let exe = launch_executable()
+                .map_err(|err| Error::internal(format!("cannot resolve app executable: {err}")))?;
             write_autostart_run_entry(&name, &exe)
         } else {
             remove_autostart_run_entry(&name)
@@ -652,44 +645,39 @@ impl AppRuntime for Platform {
     // SDK registers handlers we forward to. No registered handler => no-op,
     // honoring the "tray APIs never throw off-support" contract.
 
-    fn set_app_badge(&self, text: &str) -> Result<bool, PlatformError> {
+    fn set_app_badge(&self, text: &str) -> Result<bool, Error> {
         super::badge::set_app_badge(text)
     }
 
-    fn set_tray_menu(&self, items_json: &str) -> Result<(), PlatformError> {
+    fn set_tray_menu(&self, items_json: &str) -> Result<(), Error> {
         invoke_windows_tray_menu_handler(items_json);
         Ok(())
     }
 
-    fn set_shell_sidebar_actions(
-        &self,
-        items: &[ResolvedShellSidebarAction],
-    ) -> Result<(), PlatformError> {
+    fn set_shell_sidebar_actions(&self, items: &[ResolvedShellSidebarAction]) -> Result<(), Error> {
         if invoke_windows_sidebar_actions_handler(items) {
             Ok(())
         } else {
-            Err(PlatformError::Platform(
+            Err(Error::internal(
                 "Windows shell rejected resolved sidebar actions".to_string(),
             ))
         }
     }
 
-    fn set_shell_pins(&self, items: &[ShellPin]) -> Result<(), PlatformError> {
+    fn set_shell_pins(&self, items: &[ShellPin]) -> Result<(), Error> {
         if invoke_windows_shell_pins_handler(items) {
             Ok(())
         } else {
-            Err(PlatformError::Platform(
-                "Windows shell rejected Pins".to_string(),
-            ))
+            Err(Error::internal("Windows shell rejected Pins".to_string()))
         }
     }
 
-    fn set_tray_click_intercept(&self, intercept: bool) -> Result<(), PlatformError> {
+    fn set_tray_click_intercept(&self, intercept: bool) -> Result<(), Error> {
         invoke_windows_tray_click_intercept_handler(intercept);
         Ok(())
     }
 
-    fn set_control_session_indicator(&self, active: bool) -> Result<(), PlatformError> {
+    fn set_control_session_indicator(&self, active: bool) -> Result<(), Error> {
         if active {
             super::control_session_indicator::show(self.get_system_locale());
         } else {
@@ -703,7 +691,7 @@ impl AppRuntime for Platform {
         appid: String,
         webtag: String,
         animation_type: AnimationType,
-    ) -> Result<(), PlatformError> {
+    ) -> Result<(), Error> {
         // Page webtags are per-instance; the runtime hands us the exact
         // destination tag instead of a route to reconstruct.
         let webtag = WebTag::from(webtag.as_str());
@@ -712,7 +700,7 @@ impl AppRuntime for Platform {
         Ok(())
     }
 
-    fn open_url(&self, req: OpenUrlRequest) -> Result<OpenUrlResult, PlatformError> {
+    fn open_url(&self, req: OpenUrlRequest) -> Result<OpenUrlResult, Error> {
         // In-app targets (browser tabs) are owned by the registered product
         // shell handler; only unhandled requests reach the OS shell.
         if let Some(result) = invoke_windows_open_url_handler(&req)? {
@@ -723,11 +711,11 @@ impl AppRuntime for Platform {
         Ok(OpenUrlResult::default())
     }
 
-    fn close_browser_tab(&self, tab_id: &str) -> Result<(), PlatformError> {
+    fn close_browser_tab(&self, tab_id: &str) -> Result<(), Error> {
         if invoke_windows_close_browser_tab_handler(tab_id) {
             Ok(())
         } else {
-            Err(PlatformError::NotSupported("browser tab".to_string()))
+            Err(Error::not_supported("browser tab".to_string()))
         }
     }
 
@@ -745,26 +733,23 @@ impl crate::traits::ui::SurfacePresenter for Platform {
         &self,
         window_id: &str,
         plan: &lingxia_surface::LayoutPresentationPlan,
-    ) -> Result<(), PlatformError> {
+    ) -> Result<(), Error> {
         surface::present_layout(window_id, plan, &self.product_name)
     }
 
-    fn present_surface(
-        &self,
-        request: crate::traits::ui::SurfaceRequest,
-    ) -> Result<(), PlatformError> {
+    fn present_surface(&self, request: crate::traits::ui::SurfaceRequest) -> Result<(), Error> {
         surface::present_surface(request, &self.product_name)
     }
 
-    fn close_surface(&self, app_id: &str, id: &str, reason: &str) -> Result<(), PlatformError> {
+    fn close_surface(&self, app_id: &str, id: &str, reason: &str) -> Result<(), Error> {
         surface::close_surface(app_id, id, reason)
     }
 
-    fn show_surface(&self, app_id: &str, id: &str) -> Result<(), PlatformError> {
+    fn show_surface(&self, app_id: &str, id: &str) -> Result<(), Error> {
         surface::show_surface(app_id, id)
     }
 
-    fn hide_surface(&self, app_id: &str, id: &str) -> Result<(), PlatformError> {
+    fn hide_surface(&self, app_id: &str, id: &str) -> Result<(), Error> {
         surface::hide_surface(app_id, id)
     }
 
@@ -789,7 +774,7 @@ impl ShareService for Platform {
     fn share(
         &self,
         _request: ShareRequest,
-    ) -> impl Future<Output = Result<ShareResult, PlatformError>> + Send {
+    ) -> impl Future<Output = Result<ShareResult, Error>> + Send {
         async { not_supported("share") }
     }
 }
@@ -799,19 +784,19 @@ impl VideoStreamDecoderManager for Platform {
     fn create_stream_decoder(
         &self,
         _component_id: &str,
-    ) -> Result<Box<dyn VideoStreamDecoderHandle>, PlatformError> {
+    ) -> Result<Box<dyn VideoStreamDecoderHandle>, Error> {
         not_supported("create_stream_decoder")
     }
 }
 
-fn normalize_relative_path(path: &str) -> Result<PathBuf, PlatformError> {
+fn normalize_relative_path(path: &str) -> Result<PathBuf, Error> {
     let mut out = PathBuf::new();
     for component in Path::new(path.trim_start_matches(['/', '\\'])).components() {
         match component {
             Component::Normal(part) => out.push(part),
             Component::CurDir => {}
             Component::RootDir | Component::Prefix(_) | Component::ParentDir => {
-                return Err(PlatformError::InvalidParameter(format!(
+                return Err(Error::invalid_arg(format!(
                     "asset path must be relative and stay inside assets: {path}"
                 )));
             }
@@ -823,12 +808,12 @@ fn normalize_relative_path(path: &str) -> Result<PathBuf, PlatformError> {
 fn collect_asset_files<'a>(
     base: &Path,
     dir: &Path,
-    out: &mut Vec<Result<AssetFileEntry<'a>, PlatformError>>,
+    out: &mut Vec<Result<AssetFileEntry<'a>, Error>>,
 ) {
     let entries = match fs::read_dir(dir) {
         Ok(entries) => entries,
         Err(err) => {
-            out.push(Err(PlatformError::Platform(format!(
+            out.push(Err(Error::internal(format!(
                 "failed to read asset directory {}: {err}",
                 dir.display()
             ))));
@@ -840,7 +825,7 @@ fn collect_asset_files<'a>(
         let entry = match entry {
             Ok(entry) => entry,
             Err(err) => {
-                out.push(Err(PlatformError::Platform(format!(
+                out.push(Err(Error::internal(format!(
                     "failed to read asset directory entry: {err}"
                 ))));
                 continue;
@@ -864,7 +849,7 @@ fn collect_asset_files<'a>(
                 path: relative,
                 reader: Box::new(file),
             })),
-            Err(err) => out.push(Err(PlatformError::Platform(format!(
+            Err(err) => out.push(Err(Error::internal(format!(
                 "failed to open asset {}: {err}",
                 path.display()
             )))),

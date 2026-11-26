@@ -4,45 +4,45 @@ use super::ffi::reveal_in_file_manager;
 use super::ffi::{open_document_external, review_document};
 #[cfg(target_os = "ios")]
 use super::ffi::{pick_directory, pick_file};
-use crate::error::PlatformError;
 use crate::traits::file::{
     FileDialogResult, FileService, OpenFileRequest, PickDirectoryRequest, PickFileRequest,
     RevealInFileManagerRequest,
 };
+use lingxia_error::Error;
 #[cfg(target_os = "ios")]
 use serde::Deserialize;
 
-fn review_file_sync(request: OpenFileRequest) -> Result<(), PlatformError> {
+fn review_file_sync(request: OpenFileRequest) -> Result<(), Error> {
     let mime = request.mime_type.unwrap_or_default();
     let show_menu = request.show_menu.unwrap_or(true);
     if review_document(&request.path, &mime, show_menu) {
         Ok(())
     } else {
-        Err(PlatformError::Platform(
+        Err(Error::internal(
             "Failed to review file on Apple platform".to_string(),
         ))
     }
 }
 
-fn open_external_sync(request: OpenFileRequest) -> Result<(), PlatformError> {
+fn open_external_sync(request: OpenFileRequest) -> Result<(), Error> {
     let mime = request.mime_type.unwrap_or_default();
     let show_menu = request.show_menu.unwrap_or(true);
     if open_document_external(&request.path, &mime, show_menu) {
         Ok(())
     } else {
-        Err(PlatformError::Platform(
+        Err(Error::internal(
             "Failed to open file externally on Apple platform".to_string(),
         ))
     }
 }
 
-fn reveal_in_file_manager_sync(request: RevealInFileManagerRequest) -> Result<(), PlatformError> {
+fn reveal_in_file_manager_sync(request: RevealInFileManagerRequest) -> Result<(), Error> {
     #[cfg(target_os = "macos")]
     {
         if reveal_in_file_manager(&request.path) {
             Ok(())
         } else {
-            Err(PlatformError::Platform(
+            Err(Error::internal(
                 "Failed to reveal path in file manager on Apple platform".to_string(),
             ))
         }
@@ -50,7 +50,7 @@ fn reveal_in_file_manager_sync(request: RevealInFileManagerRequest) -> Result<()
     #[cfg(target_os = "ios")]
     {
         let _ = request;
-        Err(PlatformError::NotSupported(
+        Err(Error::not_supported(
             "reveal_in_file_manager is not supported on iOS".to_string(),
         ))
     }
@@ -66,14 +66,14 @@ struct AppleFileDialogResult {
 }
 
 #[cfg(target_os = "ios")]
-fn parse_file_dialog_result(payload: &str) -> Result<FileDialogResult, PlatformError> {
+fn parse_file_dialog_result(payload: &str) -> Result<FileDialogResult, Error> {
     let parsed: AppleFileDialogResult = serde_json::from_str(payload)
-        .map_err(|e| PlatformError::Platform(format!("parse file dialog result failed: {e}")))?;
+        .map_err(|e| Error::internal(format!("parse file dialog result failed: {e}")))?;
     FileDialogResult::from_wire(parsed.canceled, parsed.paths, parsed.names)
 }
 
 #[cfg(target_os = "ios")]
-async fn pick_file_ios(request: PickFileRequest) -> Result<FileDialogResult, PlatformError> {
+async fn pick_file_ios(request: PickFileRequest) -> Result<FileDialogResult, Error> {
     let payload = crate::rt::native_call(|callback_id| {
         let title = request.title.clone().unwrap_or_default();
         let default_path = request.default_path.clone().unwrap_or_default();
@@ -84,7 +84,7 @@ async fn pick_file_ios(request: PickFileRequest) -> Result<FileDialogResult, Pla
                 .flat_map(|filter| filter.extensions.iter().cloned())
                 .collect::<Vec<String>>(),
         )
-        .map_err(|e| PlatformError::Platform(format!("serialize filters failed: {e}")))?;
+        .map_err(|e| Error::internal(format!("serialize filters failed: {e}")))?;
         if pick_file(
             &title,
             &default_path,
@@ -94,7 +94,7 @@ async fn pick_file_ios(request: PickFileRequest) -> Result<FileDialogResult, Pla
         ) {
             Ok(())
         } else {
-            Err(PlatformError::Platform(
+            Err(Error::internal(
                 "Failed to start pick_file on Apple platform".to_string(),
             ))
         }
@@ -104,16 +104,14 @@ async fn pick_file_ios(request: PickFileRequest) -> Result<FileDialogResult, Pla
 }
 
 #[cfg(target_os = "ios")]
-async fn pick_directory_ios(
-    request: PickDirectoryRequest,
-) -> Result<FileDialogResult, PlatformError> {
+async fn pick_directory_ios(request: PickDirectoryRequest) -> Result<FileDialogResult, Error> {
     let payload = crate::rt::native_call(|callback_id| {
         let title = request.title.clone().unwrap_or_default();
         let default_path = request.default_path.clone().unwrap_or_default();
         if pick_directory(&title, &default_path, callback_id) {
             Ok(())
         } else {
-            Err(PlatformError::Platform(
+            Err(Error::internal(
                 "Failed to start pick_directory on Apple platform".to_string(),
             ))
         }
@@ -123,28 +121,28 @@ async fn pick_directory_ios(
 }
 
 impl FileService for Platform {
-    async fn review_file(&self, request: OpenFileRequest) -> Result<(), PlatformError> {
+    async fn review_file(&self, request: OpenFileRequest) -> Result<(), Error> {
         crate::rt::blocking(move || review_file_sync(request)).await
     }
 
-    async fn open_external(&self, request: OpenFileRequest) -> Result<(), PlatformError> {
+    async fn open_external(&self, request: OpenFileRequest) -> Result<(), Error> {
         crate::rt::blocking(move || open_external_sync(request)).await
     }
 
     async fn reveal_in_file_manager(
         &self,
         request: RevealInFileManagerRequest,
-    ) -> Result<(), PlatformError> {
+    ) -> Result<(), Error> {
         crate::rt::blocking(move || reveal_in_file_manager_sync(request)).await
     }
 
     #[cfg(target_os = "macos")]
-    async fn pick_file(&self, request: PickFileRequest) -> Result<FileDialogResult, PlatformError> {
+    async fn pick_file(&self, request: PickFileRequest) -> Result<FileDialogResult, Error> {
         crate::desktop::file_dialog::pick_file_desktop(request).await
     }
 
     #[cfg(target_os = "ios")]
-    async fn pick_file(&self, request: PickFileRequest) -> Result<FileDialogResult, PlatformError> {
+    async fn pick_file(&self, request: PickFileRequest) -> Result<FileDialogResult, Error> {
         pick_file_ios(request).await
     }
 
@@ -152,7 +150,7 @@ impl FileService for Platform {
     async fn pick_directory(
         &self,
         request: PickDirectoryRequest,
-    ) -> Result<FileDialogResult, PlatformError> {
+    ) -> Result<FileDialogResult, Error> {
         crate::desktop::file_dialog::pick_directory_desktop(request).await
     }
 
@@ -160,7 +158,7 @@ impl FileService for Platform {
     async fn pick_directory(
         &self,
         request: PickDirectoryRequest,
-    ) -> Result<FileDialogResult, PlatformError> {
+    ) -> Result<FileDialogResult, Error> {
         pick_directory_ios(request).await
     }
 }

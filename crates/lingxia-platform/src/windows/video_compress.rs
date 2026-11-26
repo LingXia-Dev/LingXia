@@ -27,8 +27,8 @@ use windows::Win32::Media::MediaFoundation::{
 use windows::Win32::System::Variant::{VT_I8, VT_UI8};
 use windows::core::PCWSTR;
 
-use crate::error::PlatformError;
 use crate::traits::media_runtime::{CompressVideoRequest, CompressedVideo, VideoCompressQuality};
+use lingxia_error::Error;
 
 /// Cooperative controls for a running transcode: a cancellation flag polled
 /// during the sample pump, and a progress sink invoked with 0..=100 percent.
@@ -183,13 +183,13 @@ fn plan_encode(
     }
 }
 
-fn create_reader(path: &Path) -> Result<IMFSourceReader, PlatformError> {
+fn create_reader(path: &Path) -> Result<IMFSourceReader, Error> {
     super::video_info::ensure_media_foundation();
     let wide = wide_path(path);
     let mut attributes: Option<windows::Win32::Media::MediaFoundation::IMFAttributes> = None;
     unsafe {
         MFCreateAttributes(&mut attributes, 2)
-            .map_err(|err| PlatformError::Platform(format!("reader attributes: {err}")))?;
+            .map_err(|err| Error::internal(format!("reader attributes: {err}")))?;
     }
     if let Some(attributes) = attributes.as_ref() {
         unsafe {
@@ -198,15 +198,15 @@ fn create_reader(path: &Path) -> Result<IMFSourceReader, PlatformError> {
         }
     }
     unsafe { MFCreateSourceReaderFromURL(PCWSTR(wide.as_ptr()), attributes.as_ref()) }
-        .map_err(|err| PlatformError::Platform(format!("open source {}: {err}", path.display())))
+        .map_err(|err| Error::internal(format!("open source {}: {err}", path.display())))
 }
 
-fn create_sink(path: &Path) -> Result<IMFSinkWriter, PlatformError> {
+fn create_sink(path: &Path) -> Result<IMFSinkWriter, Error> {
     let wide = wide_path(path);
     let mut attributes: Option<windows::Win32::Media::MediaFoundation::IMFAttributes> = None;
     unsafe {
         MFCreateAttributes(&mut attributes, 1)
-            .map_err(|err| PlatformError::Platform(format!("sink attributes: {err}")))?;
+            .map_err(|err| Error::internal(format!("sink attributes: {err}")))?;
     }
     if let Some(attributes) = attributes.as_ref() {
         unsafe {
@@ -214,7 +214,7 @@ fn create_sink(path: &Path) -> Result<IMFSinkWriter, PlatformError> {
         }
     }
     unsafe { MFCreateSinkWriterFromURL(PCWSTR(wide.as_ptr()), None, attributes.as_ref()) }
-        .map_err(|err| PlatformError::Platform(format!("create sink {}: {err}", path.display())))
+        .map_err(|err| Error::internal(format!("create sink {}: {err}", path.display())))
 }
 
 fn duration_ms(reader: &IMFSourceReader) -> u64 {
@@ -240,7 +240,7 @@ struct Streams {
     audio: Option<u32>,
 }
 
-fn classify_streams(reader: &IMFSourceReader) -> Result<Streams, PlatformError> {
+fn classify_streams(reader: &IMFSourceReader) -> Result<Streams, Error> {
     unsafe {
         // Deselect everything, then re-enable just the streams we transcode.
         let _ = reader.SetStreamSelection(MF_SOURCE_READER_ALL_STREAMS.0 as u32, false);
@@ -267,7 +267,7 @@ fn classify_streams(reader: &IMFSourceReader) -> Result<Streams, PlatformError> 
         }
         index += 1;
     }
-    let video = video.ok_or_else(|| PlatformError::Platform("no video stream".to_string()))?;
+    let video = video.ok_or_else(|| Error::internal("no video stream".to_string()))?;
     Ok(Streams { video, audio })
 }
 
@@ -279,9 +279,9 @@ type NativeVideoParams = (u32, u32, f64, Option<u64>, (u32, u32));
 fn native_video_params(
     reader: &IMFSourceReader,
     video_index: u32,
-) -> Result<NativeVideoParams, PlatformError> {
+) -> Result<NativeVideoParams, Error> {
     let native = unsafe { reader.GetNativeMediaType(video_index, 0) }
-        .map_err(|err| PlatformError::Platform(format!("native video type: {err}")))?;
+        .map_err(|err| Error::internal(format!("native video type: {err}")))?;
     let frame = unsafe { native.GetUINT64(&MF_MT_FRAME_SIZE) }.unwrap_or(0);
     let (w, h) = unpack(frame);
     let rate = unsafe { native.GetUINT64(&MF_MT_FRAME_RATE) }.unwrap_or(pack(30, 1));
@@ -305,10 +305,10 @@ fn configure_video_output(
     reader: &IMFSourceReader,
     video_index: u32,
     plan: &EncodePlan,
-) -> Result<(u32, u32), PlatformError> {
+) -> Result<(u32, u32), Error> {
     let scaled = unsafe {
-        let media = MFCreateMediaType()
-            .map_err(|err| PlatformError::Platform(format!("nv12 type: {err}")))?;
+        let media =
+            MFCreateMediaType().map_err(|err| Error::internal(format!("nv12 type: {err}")))?;
         media.SetGUID(&MF_MT_MAJOR_TYPE, &MFMediaType_Video).ok();
         media.SetGUID(&MF_MT_SUBTYPE, &MFVideoFormat_NV12).ok();
         media
@@ -325,8 +325,8 @@ fn configure_video_output(
     if !scaled {
         // Scaling unavailable — decode at native size and only reduce bitrate.
         let media = unsafe {
-            let media = MFCreateMediaType()
-                .map_err(|err| PlatformError::Platform(format!("nv12 type: {err}")))?;
+            let media =
+                MFCreateMediaType().map_err(|err| Error::internal(format!("nv12 type: {err}")))?;
             media.SetGUID(&MF_MT_MAJOR_TYPE, &MFMediaType_Video).ok();
             media.SetGUID(&MF_MT_SUBTYPE, &MFVideoFormat_NV12).ok();
             media
@@ -337,12 +337,12 @@ fn configure_video_output(
         unsafe {
             reader
                 .SetCurrentMediaType(video_index, None, &media)
-                .map_err(|err| PlatformError::Platform(format!("set nv12 output: {err}")))?;
+                .map_err(|err| Error::internal(format!("set nv12 output: {err}")))?;
         }
     }
 
     let current = unsafe { reader.GetCurrentMediaType(video_index) }
-        .map_err(|err| PlatformError::Platform(format!("current video type: {err}")))?;
+        .map_err(|err| Error::internal(format!("current video type: {err}")))?;
     let frame =
         unsafe { current.GetUINT64(&MF_MT_FRAME_SIZE) }.unwrap_or(pack(plan.width, plan.height));
     let (w, h) = unpack(frame);
@@ -367,10 +367,10 @@ fn build_h264_type(
     height: u32,
     bitrate_bps: u32,
     frame_rate: (u32, u32),
-) -> Result<IMFMediaType, PlatformError> {
+) -> Result<IMFMediaType, Error> {
     unsafe {
-        let media = MFCreateMediaType()
-            .map_err(|err| PlatformError::Platform(format!("h264 type: {err}")))?;
+        let media =
+            MFCreateMediaType().map_err(|err| Error::internal(format!("h264 type: {err}")))?;
         media.SetGUID(&MF_MT_MAJOR_TYPE, &MFMediaType_Video).ok();
         media.SetGUID(&MF_MT_SUBTYPE, &MFVideoFormat_H264).ok();
         media.SetUINT32(&MF_MT_AVG_BITRATE, bitrate_bps).ok();
@@ -388,7 +388,7 @@ fn build_h264_type(
     }
 }
 
-fn build_aac_type(pcm: &IMFMediaType) -> Result<IMFMediaType, PlatformError> {
+fn build_aac_type(pcm: &IMFMediaType) -> Result<IMFMediaType, Error> {
     unsafe {
         let sample_rate = pcm
             .GetUINT32(&MF_MT_AUDIO_SAMPLES_PER_SECOND)
@@ -396,8 +396,8 @@ fn build_aac_type(pcm: &IMFMediaType) -> Result<IMFMediaType, PlatformError> {
         let channels = pcm.GetUINT32(&MF_MT_AUDIO_NUM_CHANNELS).unwrap_or(2).max(1);
         // 128 kbps stereo, 96 kbps mono — both valid MS AAC encoder rates.
         let bytes_per_sec = if channels <= 1 { 12000 } else { 16000 };
-        let media = MFCreateMediaType()
-            .map_err(|err| PlatformError::Platform(format!("aac type: {err}")))?;
+        let media =
+            MFCreateMediaType().map_err(|err| Error::internal(format!("aac type: {err}")))?;
         media.SetGUID(&MF_MT_MAJOR_TYPE, &MFMediaType_Audio).ok();
         media.SetGUID(&MF_MT_SUBTYPE, &MFAudioFormat_AAC).ok();
         media.SetUINT32(&MF_MT_AUDIO_BITS_PER_SAMPLE, 16).ok();
@@ -429,7 +429,7 @@ fn pump_samples(
     drop_interval_100ns: Option<i64>,
     total_duration_ms: u64,
     ctrl: &CompressControl,
-) -> Result<(), PlatformError> {
+) -> Result<(), Error> {
     let total_streams = 1 + audio_index.is_some() as u32;
     let mut ended = 0u32;
     let mut last_kept_video: Option<i64> = None;
@@ -442,9 +442,7 @@ fn pump_samples(
         // Cooperative cancellation: stop before reading the next sample so a
         // cancel during a long transcode takes effect promptly.
         if ctrl.cancel.load(Ordering::Relaxed) {
-            return Err(PlatformError::Platform(
-                "compress_video cancelled".to_string(),
-            ));
+            return Err(Error::internal("compress_video cancelled".to_string()));
         }
 
         let mut actual_index = 0u32;
@@ -461,7 +459,7 @@ fn pump_samples(
                     Some(&mut timestamp),
                     Some(&mut sample),
                 )
-                .map_err(|err| PlatformError::Platform(format!("read sample: {err}")))?;
+                .map_err(|err| Error::internal(format!("read sample: {err}")))?;
         }
 
         if let Some(sample) = sample {
@@ -476,9 +474,8 @@ fn pump_samples(
                 if keep {
                     last_kept_video = Some(timestamp);
                     unsafe {
-                        sink.WriteSample(video_sink, &sample).map_err(|err| {
-                            PlatformError::Platform(format!("write video: {err}"))
-                        })?;
+                        sink.WriteSample(video_sink, &sample)
+                            .map_err(|err| Error::internal(format!("write video: {err}")))?;
                     }
                 }
                 if total_100ns > 0 && timestamp > 0 {
@@ -514,7 +511,7 @@ fn transcode(
     request: &CompressVideoRequest,
     source: &Path,
     ctrl: &CompressControl,
-) -> Result<CompressedVideo, PlatformError> {
+) -> Result<CompressedVideo, Error> {
     let reader = create_reader(source)?;
     let total_duration_ms = duration_ms(&reader);
     let streams = classify_streams(&reader)?;
@@ -525,7 +522,7 @@ fn transcode(
 
     let (out_w, out_h) = configure_video_output(&reader, streams.video, &plan)?;
     let video_input = unsafe { reader.GetCurrentMediaType(streams.video) }
-        .map_err(|err| PlatformError::Platform(format!("video input type: {err}")))?;
+        .map_err(|err| Error::internal(format!("video input type: {err}")))?;
 
     // Output frame rate: the decimated rate when dropping, else the source rate.
     let out_rate = match plan.drop_to_fps {
@@ -546,10 +543,10 @@ fn transcode(
 
     let h264 = build_h264_type(out_w, out_h, plan.bitrate_bps, out_rate)?;
     let video_sink = unsafe { sink.AddStream(&h264) }
-        .map_err(|err| PlatformError::Platform(format!("add video stream: {err}")))?;
+        .map_err(|err| Error::internal(format!("add video stream: {err}")))?;
     unsafe {
         sink.SetInputMediaType(video_sink, &video_input, None)
-            .map_err(|err| PlatformError::Platform(format!("video input: {err}")))?;
+            .map_err(|err| Error::internal(format!("video input: {err}")))?;
     }
 
     let (audio_index, audio_sink) = match &audio_input {
@@ -588,7 +585,7 @@ fn transcode(
 
     unsafe {
         sink.BeginWriting()
-            .map_err(|err| PlatformError::Platform(format!("begin writing: {err}")))?;
+            .map_err(|err| Error::internal(format!("begin writing: {err}")))?;
     }
 
     pump_samples(
@@ -605,7 +602,7 @@ fn transcode(
 
     unsafe {
         sink.Finalize()
-            .map_err(|err| PlatformError::Platform(format!("finalize: {err}")))?;
+            .map_err(|err| Error::internal(format!("finalize: {err}")))?;
     }
 
     let size = fs::metadata(&request.output_path)
@@ -622,12 +619,9 @@ fn transcode(
 }
 
 /// Copy the source verbatim into the output slot and report it as the result.
-fn copy_source(
-    request: &CompressVideoRequest,
-    source: &Path,
-) -> Result<CompressedVideo, PlatformError> {
+fn copy_source(request: &CompressVideoRequest, source: &Path) -> Result<CompressedVideo, Error> {
     fs::copy(source, &request.output_path).map_err(|err| {
-        PlatformError::Platform(format!(
+        Error::internal(format!(
             "fallback copy {} -> {}: {err}",
             source.display(),
             request.output_path.display()
@@ -651,16 +645,16 @@ pub(super) fn compress_video(
     request: &CompressVideoRequest,
     source: &Path,
     ctrl: &CompressControl,
-) -> Result<CompressedVideo, PlatformError> {
+) -> Result<CompressedVideo, Error> {
     if paths_refer_to_same_file(source, &request.output_path) {
-        return Err(PlatformError::InvalidParameter(
+        return Err(Error::invalid_arg(
             "compress_video output path must be different from source path".to_string(),
         ));
     }
 
     if let Some(parent) = request.output_path.parent() {
         fs::create_dir_all(parent).map_err(|err| {
-            PlatformError::Platform(format!("failed to create {}: {err}", parent.display()))
+            Error::internal(format!("failed to create {}: {err}", parent.display()))
         })?;
     }
 

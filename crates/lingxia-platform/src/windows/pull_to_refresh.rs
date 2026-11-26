@@ -1,10 +1,10 @@
 use std::sync::{Arc, Mutex};
 
-use crate::error::PlatformError;
 use crate::traits::gesture::PullRefreshIndicator;
 use crate::traits::pull_to_refresh::PullToRefresh;
 
 use super::Platform;
+use lingxia_error::Error;
 
 /// `(page webtag, refreshing)`; returns whether the indicator took the state.
 type WindowsPullToRefreshHandler = Arc<dyn Fn(&str, bool) -> bool + Send + Sync>;
@@ -55,16 +55,12 @@ pub fn report_windows_page_pull(webtag: &str, pull: PagePull) {
 }
 
 /// Unsupported when no host reads indicators.
-pub fn windows_pull_refresh_indicator(
-    webtag: &str,
-) -> Result<Option<PullRefreshIndicator>, PlatformError> {
+pub fn windows_pull_refresh_indicator(webtag: &str) -> Result<Option<PullRefreshIndicator>, Error> {
     let reader = INDICATOR_READER
         .lock()
         .unwrap_or_else(|p| p.into_inner())
         .clone()
-        .ok_or_else(|| {
-            PlatformError::NotSupported("this host has no pull-to-refresh indicator".into())
-        })?;
+        .ok_or_else(|| Error::not_supported("this host has no pull-to-refresh indicator"))?;
     Ok(reader(webtag))
 }
 
@@ -84,21 +80,21 @@ fn invoke_windows_pull_to_refresh_handler(webtag: &str, refreshing: bool) -> boo
 }
 
 impl PullToRefresh for Platform {
-    fn start_pull_down_refresh(&self, _app_id: &str, webtag: &str) -> Result<(), PlatformError> {
+    fn start_pull_down_refresh(&self, _app_id: &str, webtag: &str) -> Result<(), Error> {
         if invoke_windows_pull_to_refresh_handler(webtag, true) {
             Ok(())
         } else {
-            Err(PlatformError::Platform(
+            Err(Error::internal(
                 "Failed to start pull down refresh".to_string(),
             ))
         }
     }
 
-    fn stop_pull_down_refresh(&self, _app_id: &str, webtag: &str) -> Result<(), PlatformError> {
+    fn stop_pull_down_refresh(&self, _app_id: &str, webtag: &str) -> Result<(), Error> {
         if invoke_windows_pull_to_refresh_handler(webtag, false) {
             Ok(())
         } else {
-            Err(PlatformError::Platform(
+            Err(Error::internal(
                 "Failed to stop pull down refresh".to_string(),
             ))
         }

@@ -1,26 +1,26 @@
 use super::app::Platform;
-use crate::error::PlatformError;
 use crate::traits::file::{
     FileDialogResult, FileService, OpenFileRequest, PickDirectoryRequest, PickFileRequest,
 };
+use lingxia_error::Error;
 use serde::Deserialize;
 use std::path::Path;
 
 impl FileService for Platform {
-    async fn review_file(&self, request: OpenFileRequest) -> Result<(), PlatformError> {
+    async fn review_file(&self, request: OpenFileRequest) -> Result<(), Error> {
         if !supports_native_review(&request) {
-            return Err(PlatformError::NotSupported(
+            return Err(Error::not_supported(
                 "review_file is only supported for PDF and images on HarmonyOS".to_string(),
             ));
         }
         crate::rt::blocking(move || review_file_sync(request)).await
     }
 
-    async fn open_external(&self, request: OpenFileRequest) -> Result<(), PlatformError> {
+    async fn open_external(&self, request: OpenFileRequest) -> Result<(), Error> {
         crate::rt::blocking(move || open_external_sync(request)).await
     }
 
-    async fn pick_file(&self, request: PickFileRequest) -> Result<FileDialogResult, PlatformError> {
+    async fn pick_file(&self, request: PickFileRequest) -> Result<FileDialogResult, Error> {
         let payload = crate::rt::native_call(|callback_id| {
             let callback_id = callback_id.to_string();
             let multiple = if request.multiple { "1" } else { "0" };
@@ -33,12 +33,12 @@ impl FileService for Platform {
                     .flat_map(|filter| filter.extensions.iter().cloned())
                     .collect::<Vec<String>>(),
             )
-            .map_err(|e| PlatformError::Platform(format!("serialize filters failed: {e}")))?;
+            .map_err(|e| Error::internal(format!("serialize filters failed: {e}")))?;
             lingxia_webview::platform::harmony::tsfn::call_arkts(
                 "chooseFile",
                 &[&callback_id, multiple, &title, &default_path, &filters_json],
             )
-            .map_err(|e| PlatformError::Platform(format!("Failed to choose file: {}", e)))
+            .map_err(|e| Error::internal(format!("Failed to choose file: {}", e)))
         })
         .await?;
         parse_file_dialog_result(&payload)
@@ -47,7 +47,7 @@ impl FileService for Platform {
     async fn pick_directory(
         &self,
         request: PickDirectoryRequest,
-    ) -> Result<FileDialogResult, PlatformError> {
+    ) -> Result<FileDialogResult, Error> {
         let payload = crate::rt::native_call(|callback_id| {
             let callback_id = callback_id.to_string();
             let title = request.title.clone().unwrap_or_default();
@@ -56,16 +56,19 @@ impl FileService for Platform {
                 "chooseDirectory",
                 &[&callback_id, &title, &default_path],
             )
-            .map_err(|e| PlatformError::Platform(format!("Failed to choose directory: {}", e)))
+            .map_err(|e| Error::internal(format!("Failed to choose directory: {}", e)))
         })
         .await
-        .map_err(|err| match err {
-            PlatformError::BusinessError(6000) => PlatformError::NotSupported(
-                "pickDirectory on this HarmonyOS device needs a defaultPath in lxapp storage: \
-                 the system folder picker is 2-in-1 only"
-                    .to_string(),
-            ),
-            other => other,
+        .map_err(|err| {
+            if err.is(lingxia_error::code::NOT_SUPPORTED) {
+                Error::not_supported(
+                    "pickDirectory on this HarmonyOS device needs a defaultPath in lxapp storage: \
+                     the system folder picker is 2-in-1 only"
+                        .to_string(),
+                )
+            } else {
+                err
+            }
         })?;
         parse_file_dialog_result(&payload)
     }
@@ -102,7 +105,7 @@ fn supports_native_review(request: &OpenFileRequest) -> bool {
         .unwrap_or(false)
 }
 
-fn review_file_sync(request: OpenFileRequest) -> Result<(), PlatformError> {
+fn review_file_sync(request: OpenFileRequest) -> Result<(), Error> {
     let mime = request.mime_type.unwrap_or_default();
     let show_menu_flag = request.show_menu.unwrap_or(true);
     let show_menu = if show_menu_flag { "1" } else { "0" };
@@ -111,10 +114,10 @@ fn review_file_sync(request: OpenFileRequest) -> Result<(), PlatformError> {
         &[request.path.as_str(), mime.as_str(), show_menu],
     )
     .map(|_| ())
-    .map_err(|e| PlatformError::Platform(format!("Failed to review file on HarmonyOS: {}", e)))
+    .map_err(|e| Error::internal(format!("Failed to review file on HarmonyOS: {}", e)))
 }
 
-fn open_external_sync(request: OpenFileRequest) -> Result<(), PlatformError> {
+fn open_external_sync(request: OpenFileRequest) -> Result<(), Error> {
     let mime = request.mime_type.unwrap_or_default();
     let show_menu_flag = request.show_menu.unwrap_or(true);
     let show_menu = if show_menu_flag { "1" } else { "0" };
@@ -123,12 +126,12 @@ fn open_external_sync(request: OpenFileRequest) -> Result<(), PlatformError> {
         &[request.path.as_str(), mime.as_str(), show_menu],
     )
     .map(|_| ())
-    .map_err(|e| PlatformError::Platform(format!("Failed to open file externally: {}", e)))
+    .map_err(|e| Error::internal(format!("Failed to open file externally: {}", e)))
 }
 
-fn parse_file_dialog_result(payload: &str) -> Result<FileDialogResult, PlatformError> {
+fn parse_file_dialog_result(payload: &str) -> Result<FileDialogResult, Error> {
     let parsed: HarmonyFileDialogResult = serde_json::from_str(payload)
-        .map_err(|e| PlatformError::Platform(format!("parse file dialog result failed: {e}")))?;
+        .map_err(|e| Error::internal(format!("parse file dialog result failed: {e}")))?;
     // The system picker reports URIs whose tail is the percent-encoded file
     // name; the in-app chooser overlay reports plain paths, named by their tail
     // in the logic layer.

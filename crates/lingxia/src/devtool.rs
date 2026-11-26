@@ -255,8 +255,9 @@ pub(crate) fn prepare_host_app_config(
         {
             let mut config = match runtime.read_asset("app.json") {
                 Ok(_) => load_bundled(runtime)?,
-                Err(lingxia_platform::error::PlatformError::AssetNotFound(path))
-                    if path == "app.json" =>
+                Err(error)
+                    if error.is(lingxia_error::code::NOT_FOUND)
+                        && error.message() == "app.json" =>
                 {
                     build_web_runner_app_config(runtime.as_ref())
                 }
@@ -274,7 +275,7 @@ pub(crate) fn prepare_host_app_config(
 
     let mut app_config = match runtime.read_asset("app.json") {
         Ok(_) => load_bundled(runtime)?,
-        Err(lingxia_platform::error::PlatformError::AssetNotFound(path)) if path == "app.json" => {
+        Err(error) if error.is(lingxia_error::code::NOT_FOUND) && error.message() == "app.json" => {
             log::info!(
                 "Bootstrapping host in explicit lxapp dev mode using host defaults for {}",
                 dev_config.identity.appid

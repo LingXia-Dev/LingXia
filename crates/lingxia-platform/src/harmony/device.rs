@@ -1,5 +1,4 @@
 //! Harmony platform device implementation
-use crate::error::PlatformError;
 use crate::traits::device::{Device, DeviceHardware};
 use crate::traits::secure_store::SecureStore;
 use crate::{DeviceInfo, ScreenInfo};
@@ -10,6 +9,7 @@ use std::os::raw::c_char;
 use std::sync::Once;
 
 use super::Platform;
+use lingxia_error::Error;
 
 #[allow(non_camel_case_types)]
 #[repr(C)]
@@ -316,7 +316,7 @@ impl Device for Platform {
         }
     }
 
-    fn vibrate(&self, long: bool) -> Result<(), PlatformError> {
+    fn vibrate(&self, long: bool) -> Result<(), Error> {
         let duration = if long {
             VIBRATION_DURATION_LONG_MS
         } else {
@@ -332,21 +332,21 @@ impl Device for Platform {
         if result == 0 {
             Ok(())
         } else {
-            Err(PlatformError::Platform(format!(
+            Err(Error::internal(format!(
                 "Failed to vibrate via OH_Vibrator_PlayVibration: error code {}",
                 result
             )))
         }
     }
 
-    fn make_phone_call(&self, phone_number: &str) -> Result<(), PlatformError> {
+    fn make_phone_call(&self, phone_number: &str) -> Result<(), Error> {
         lingxia_webview::platform::harmony::tsfn::call_arkts("makePhoneCall", &[phone_number])
-            .map_err(|e| PlatformError::Platform(format!("Failed to make phone call: {}", e)))
+            .map_err(|e| Error::internal(format!("Failed to make phone call: {}", e)))
     }
 }
 
 impl SecureStore for Platform {
-    fn read(&self, key: &str) -> Result<Option<Vec<u8>>, PlatformError> {
+    fn read(&self, key: &str) -> Result<Option<Vec<u8>>, Error> {
         let alias_attr = asset_attr_bytes(ASSET_TAG_ALIAS, key.as_bytes());
         let return_type_attr = asset_attr_u32(ASSET_TAG_RETURN_TYPE, ASSET_RETURN_ALL);
         let query = [alias_attr, return_type_attr];
@@ -359,7 +359,7 @@ impl SecureStore for Platform {
             return Ok(None);
         }
         if code != ASSET_SUCCESS {
-            return Err(PlatformError::Platform(format!(
+            return Err(Error::internal(format!(
                 "OH_Asset_Query failed for key {}: code {}",
                 key, code
             )));
@@ -374,7 +374,7 @@ impl SecureStore for Platform {
 
         // Take the first result.
         let first_result = unsafe { guard.inner.results.as_ref() }
-            .ok_or_else(|| PlatformError::Platform("Asset result pointer is null".to_string()))?;
+            .ok_or_else(|| Error::internal("Asset result pointer is null".to_string()))?;
 
         let attr_ptr =
             unsafe { OH_Asset_ParseAttr(first_result as *const Asset_Result, ASSET_TAG_SECRET) };
@@ -392,7 +392,7 @@ impl SecureStore for Platform {
         Ok(Some(data.to_vec()))
     }
 
-    fn write(&self, key: &str, value: &[u8]) -> Result<(), PlatformError> {
+    fn write(&self, key: &str, value: &[u8]) -> Result<(), Error> {
         let query = [asset_attr_bytes(ASSET_TAG_ALIAS, key.as_bytes())];
         let mut used_non_persistent_mode = false;
         let success_with_warning = |used_non_persistent_mode: bool| {
@@ -459,26 +459,26 @@ impl SecureStore for Platform {
             if retry_code == ASSET_SUCCESS {
                 return success_with_warning(used_non_persistent_mode);
             }
-            return Err(PlatformError::Platform(format!(
+            return Err(Error::internal(format!(
                 "OH_Asset_Update after duplicate failed for key {}: code {}",
                 key, retry_code
             )));
         }
 
-        Err(PlatformError::Platform(format!(
+        Err(Error::internal(format!(
             "OH_Asset_Add failed for key {}: code {}",
             key, add_code
         )))
     }
 
-    fn delete(&self, key: &str) -> Result<(), PlatformError> {
+    fn delete(&self, key: &str) -> Result<(), Error> {
         let query = [asset_attr_bytes(ASSET_TAG_ALIAS, key.as_bytes())];
         let code = unsafe { OH_Asset_Remove(query.as_ptr(), query.len() as u32) };
         if code == ASSET_SUCCESS || code == ASSET_NOT_FOUND {
             return Ok(());
         }
 
-        Err(PlatformError::Platform(format!(
+        Err(Error::internal(format!(
             "OH_Asset_Remove failed for key {}: code {}",
             key, code
         )))
@@ -486,11 +486,11 @@ impl SecureStore for Platform {
 }
 
 impl DeviceHardware for Platform {
-    fn get_memory_info(&self) -> Result<u64, PlatformError> {
+    fn get_memory_info(&self) -> Result<u64, Error> {
         let pages = unsafe { libc::sysconf(libc::_SC_PHYS_PAGES) };
         let page_size = unsafe { libc::sysconf(libc::_SC_PAGESIZE) };
         if pages <= 0 || page_size <= 0 {
-            return Err(PlatformError::Platform(
+            return Err(Error::internal(
                 "sysconf failed to read memory info".to_string(),
             ));
         }
@@ -508,12 +508,10 @@ impl DeviceHardware for Platform {
         }
     }
 
-    fn get_storage_total_bytes(&self) -> Result<u64, PlatformError> {
+    fn get_storage_total_bytes(&self) -> Result<u64, Error> {
         let total_bytes = get_total_storage_bytes(&self.data_dir)
             .or_else(|| get_total_storage_bytes("/"))
-            .ok_or_else(|| {
-                PlatformError::Platform("statvfs failed to read storage size".to_string())
-            })?;
+            .ok_or_else(|| Error::internal("statvfs failed to read storage size".to_string()))?;
         Ok(total_bytes)
     }
 }

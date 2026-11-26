@@ -1,5 +1,5 @@
-use crate::error::PlatformError;
 use async_trait::async_trait;
+use lingxia_error::Error;
 use serde::{Deserialize, Serialize};
 
 /// Mouse button used by app-level devtool input.
@@ -97,12 +97,9 @@ pub struct AppMouseResult {
 /// native chrome, overlays, WebViews, and future desktop shells consistently.
 #[async_trait]
 pub trait AppMouse: Send + Sync {
-    async fn perform_app_mouse(
-        &self,
-        request: AppMouseRequest,
-    ) -> Result<AppMouseResult, PlatformError> {
+    async fn perform_app_mouse(&self, request: AppMouseRequest) -> Result<AppMouseResult, Error> {
         let _ = request;
-        Err(PlatformError::NotSupported(
+        Err(Error::not_supported(
             "app mouse input is not implemented for this platform".to_string(),
         ))
     }

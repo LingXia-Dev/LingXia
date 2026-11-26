@@ -1,16 +1,16 @@
 use super::app::Platform;
 use super::with_env;
-use crate::error::PlatformError;
 use crate::traits::ui::{ModalOptions, ToastOptions, UserFeedback};
 use jni::objects::{JClass, JObject, JValue};
 use jni::{jni_sig, jni_str};
+use lingxia_error::Error;
 
 impl UserFeedback for Platform {
-    fn show_toast(&self, options: ToastOptions) -> Result<(), PlatformError> {
+    fn show_toast(&self, options: ToastOptions) -> Result<(), Error> {
         let toast_class: &JClass = super::get_cached_class(super::CachedClass::LxAppToast)
-            .map_err(|e| PlatformError::Platform(e.to_string()))?;
+            .map_err(|e| Error::internal(e.to_string()))?;
 
-        with_env(|env| -> Result<(), PlatformError> {
+        with_env(|env| -> Result<(), Error> {
             let title_jstring = env.new_string(&options.title)?;
             let title_obj: JObject = title_jstring.into();
 
@@ -35,26 +35,26 @@ impl UserFeedback for Platform {
             )?;
             Ok(())
         })
-        .map_err(|e| PlatformError::Platform(format!("Failed to show toast: {}", e)))
+        .map_err(|e| Error::internal(format!("Failed to show toast: {}", e)))
     }
 
-    fn hide_toast(&self) -> Result<(), PlatformError> {
+    fn hide_toast(&self) -> Result<(), Error> {
         let toast_class: &JClass = super::get_cached_class(super::CachedClass::LxAppToast)
-            .map_err(|e| PlatformError::Platform(e.to_string()))?;
+            .map_err(|e| Error::internal(e.to_string()))?;
 
-        with_env(|env| -> Result<(), PlatformError> {
+        with_env(|env| -> Result<(), Error> {
             env.call_static_method(toast_class, jni_str!("hideToast"), jni_sig!("()V"), &[])?;
             Ok(())
         })
-        .map_err(|e| PlatformError::Platform(format!("Failed to hide toast: {}", e)))
+        .map_err(|e| Error::internal(format!("Failed to hide toast: {}", e)))
     }
 
-    async fn show_modal(&self, options: ModalOptions) -> Result<String, PlatformError> {
+    async fn show_modal(&self, options: ModalOptions) -> Result<String, Error> {
         crate::rt::native_call(|callback_id| {
             let modal_class: &JClass = super::get_cached_class(super::CachedClass::LxAppModal)
-                .map_err(|e| PlatformError::Platform(e.to_string()))?;
+                .map_err(|e| Error::internal(e.to_string()))?;
 
-            with_env(|env| -> Result<(), PlatformError> {
+            with_env(|env| -> Result<(), Error> {
                 let title_jstring = env.new_string(&options.title)?;
                 let content_jstring = env.new_string(&options.content)?;
                 let cancel_text_jstring = env.new_string(&options.cancel_text)?;
@@ -91,7 +91,7 @@ impl UserFeedback for Platform {
                 )?;
                 Ok(())
             })
-            .map_err(|e| PlatformError::Platform(format!("Failed to show modal: {}", e)))
+            .map_err(|e| Error::internal(format!("Failed to show modal: {}", e)))
         }).await
     }
 
@@ -100,13 +100,13 @@ impl UserFeedback for Platform {
         options: Vec<String>,
         cancel_text: String,
         item_color: String,
-    ) -> Result<String, PlatformError> {
+    ) -> Result<String, Error> {
         crate::rt::native_call(|callback_id| {
             let action_sheet_class: &JClass =
                 super::get_cached_class(super::CachedClass::LxAppActionSheet)
-                    .map_err(|e| PlatformError::Platform(e.to_string()))?;
+                    .map_err(|e| Error::internal(e.to_string()))?;
 
-            with_env(|env| -> Result<(), PlatformError> {
+            with_env(|env| -> Result<(), Error> {
                 let string_class = env.find_class(jni_str!("java/lang/String"))?;
                 let options_array =
                     env.new_object_array(options.len() as i32, string_class, JObject::null())?;
@@ -132,19 +132,19 @@ impl UserFeedback for Platform {
                 )?;
                 Ok(())
             })
-            .map_err(|e| PlatformError::Platform(format!("Failed to show action sheet: {}", e)))
+            .map_err(|e| Error::internal(format!("Failed to show action sheet: {}", e)))
         })
         .await
     }
 
-    fn dismiss_dialog(&self) -> Result<(), PlatformError> {
+    fn dismiss_dialog(&self) -> Result<(), Error> {
         let modal_class: &JClass = super::get_cached_class(super::CachedClass::LxAppModal)
-            .map_err(|e| PlatformError::Platform(e.to_string()))?;
+            .map_err(|e| Error::internal(e.to_string()))?;
         let sheet_class: &JClass = super::get_cached_class(super::CachedClass::LxAppActionSheet)
-            .map_err(|e| PlatformError::Platform(e.to_string()))?;
+            .map_err(|e| Error::internal(e.to_string()))?;
 
         // Each hide settles its own pending call and is a no-op when nothing is shown.
-        with_env(|env| -> Result<(), PlatformError> {
+        with_env(|env| -> Result<(), Error> {
             env.call_static_method(modal_class, jni_str!("hideModal"), jni_sig!("()V"), &[])?;
             env.call_static_method(
                 sheet_class,
@@ -154,6 +154,6 @@ impl UserFeedback for Platform {
             )?;
             Ok(())
         })
-        .map_err(|e| PlatformError::Platform(format!("Failed to dismiss dialog: {}", e)))
+        .map_err(|e| Error::internal(format!("Failed to dismiss dialog: {}", e)))
     }
 }

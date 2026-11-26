@@ -1,8 +1,8 @@
 use super::app::Platform;
-use crate::error::PlatformError;
 use crate::traits::screenshot::{AppScreenshot, WindowInfo};
 use async_trait::async_trait;
 
+use lingxia_error::Error;
 #[cfg(any(target_os = "ios", target_os = "macos"))]
 use std::sync::{Arc, Mutex};
 #[cfg(any(target_os = "ios", target_os = "macos"))]
@@ -14,7 +14,7 @@ use tokio::time::timeout;
 
 #[async_trait]
 impl AppScreenshot for Platform {
-    async fn list_app_windows(&self) -> Result<Vec<WindowInfo>, PlatformError> {
+    async fn list_app_windows(&self) -> Result<Vec<WindowInfo>, Error> {
         #[cfg(target_os = "macos")]
         {
             list_app_windows_macos().await
@@ -25,7 +25,7 @@ impl AppScreenshot for Platform {
         }
         #[cfg(not(any(target_os = "ios", target_os = "macos")))]
         {
-            Err(PlatformError::NotSupported(
+            Err(Error::not_supported(
                 "list_app_windows is not implemented on this Apple target".to_string(),
             ))
         }
@@ -35,7 +35,7 @@ impl AppScreenshot for Platform {
         &self,
         window_id: Option<&str>,
         focus: bool,
-    ) -> Result<WindowInfo, PlatformError> {
+    ) -> Result<WindowInfo, Error> {
         #[cfg(target_os = "macos")]
         {
             let window = self.resolve_app_window(window_id).await?;
@@ -44,18 +44,18 @@ impl AppScreenshot for Platform {
                 .await?
                 .into_iter()
                 .find(|listed| listed.id == window.id)
-                .ok_or_else(|| PlatformError::Platform(format!("window {} closed", window.id)))
+                .ok_or_else(|| Error::internal(format!("window {} closed", window.id)))
         }
         #[cfg(not(target_os = "macos"))]
         {
             let _ = (window_id, focus);
-            Err(PlatformError::NotSupported(
+            Err(Error::not_supported(
                 "raising an app window is macOS-only on Apple platforms".to_string(),
             ))
         }
     }
 
-    async fn raise_app_window_if_hidden(&self) -> Result<Option<&'static str>, PlatformError> {
+    async fn raise_app_window_if_hidden(&self) -> Result<Option<&'static str>, Error> {
         #[cfg(target_os = "macos")]
         {
             let window = self.resolve_app_window(None).await?;
@@ -63,13 +63,13 @@ impl AppScreenshot for Platform {
         }
         #[cfg(not(target_os = "macos"))]
         {
-            Err(PlatformError::NotSupported(
+            Err(Error::not_supported(
                 "raising an app window is macOS-only on Apple platforms".to_string(),
             ))
         }
     }
 
-    async fn take_app_screenshot(&self, window_id: Option<&str>) -> Result<Vec<u8>, PlatformError> {
+    async fn take_app_screenshot(&self, window_id: Option<&str>) -> Result<Vec<u8>, Error> {
         #[cfg(target_os = "ios")]
         {
             // iOS apps are effectively single-window; ignore selector.
@@ -83,7 +83,7 @@ impl AppScreenshot for Platform {
         #[cfg(not(any(target_os = "ios", target_os = "macos")))]
         {
             let _ = window_id;
-            Err(PlatformError::NotSupported(
+            Err(Error::not_supported(
                 "app screenshot is not yet implemented on this Apple target".to_string(),
             ))
         }
@@ -101,7 +101,7 @@ unsafe extern "C" {
 /// `CALayer.render(in:)` skips hardware video layers, which is why a playing
 /// preview used to come back as a black PNG.
 #[cfg(target_os = "ios")]
-async fn take_app_screenshot_ios() -> Result<Vec<u8>, PlatformError> {
+async fn take_app_screenshot_ios() -> Result<Vec<u8>, Error> {
     use dispatch2::DispatchQueue;
 
     const SNAPSHOT_TIMEOUT: Duration = Duration::from_secs(8);
@@ -132,20 +132,18 @@ async fn take_app_screenshot_ios() -> Result<Vec<u8>, PlatformError> {
 
     match timeout(SNAPSHOT_TIMEOUT, rx).await {
         Ok(Ok(Ok(bytes))) => Ok(bytes),
-        Ok(Ok(Err(err))) => Err(PlatformError::Platform(err)),
-        Ok(Err(_)) => Err(PlatformError::Platform(
+        Ok(Ok(Err(err))) => Err(Error::internal(err)),
+        Ok(Err(_)) => Err(Error::internal(
             "app screenshot request was canceled".to_string(),
         )),
-        Err(_) => Err(PlatformError::Platform(
-            "app screenshot timed out".to_string(),
-        )),
+        Err(_) => Err(Error::internal("app screenshot timed out".to_string())),
     }
 }
 
 /// Enumerate this app's top-level NSWindows. No privacy permission needed
 /// since `NSApplication.windows` only sees the calling app's own windows.
 #[cfg(target_os = "macos")]
-async fn list_app_windows_macos() -> Result<Vec<WindowInfo>, PlatformError> {
+async fn list_app_windows_macos() -> Result<Vec<WindowInfo>, Error> {
     use dispatch2::DispatchQueue;
     use objc2::runtime::AnyObject;
     use objc2::{class, msg_send};
@@ -222,13 +220,11 @@ async fn list_app_windows_macos() -> Result<Vec<WindowInfo>, PlatformError> {
 
     match timeout(ENUMERATE_TIMEOUT, rx).await {
         Ok(Ok(Ok(list))) => Ok(list),
-        Ok(Ok(Err(err))) => Err(PlatformError::Platform(err)),
-        Ok(Err(_)) => Err(PlatformError::Platform(
+        Ok(Ok(Err(err))) => Err(Error::internal(err)),
+        Ok(Err(_)) => Err(Error::internal(
             "list_app_windows request was canceled".to_string(),
         )),
-        Err(_) => Err(PlatformError::Platform(
-            "list_app_windows timed out".to_string(),
-        )),
+        Err(_) => Err(Error::internal("list_app_windows timed out".to_string())),
     }
 }
 
@@ -245,7 +241,7 @@ async fn bring_to_front_macos(
     id: &str,
     focus: bool,
     only_if_hidden: bool,
-) -> Result<Option<&'static str>, PlatformError> {
+) -> Result<Option<&'static str>, Error> {
     use dispatch2::DispatchQueue;
     use objc2::runtime::AnyObject;
     use objc2::{class, msg_send};
@@ -253,7 +249,7 @@ async fn bring_to_front_macos(
     const RAISE_TIMEOUT: Duration = Duration::from_secs(2);
     let number: i64 = id
         .parse()
-        .map_err(|_| PlatformError::InvalidParameter(format!("not a window id: {id}")))?;
+        .map_err(|_| Error::invalid_arg(format!("not a window id: {id}")))?;
     let (tx, rx) = oneshot::channel::<Result<Option<&'static str>, String>>();
     let tx_state = Arc::new(Mutex::new(Some(tx)));
     let tx_state_for_block = Arc::clone(&tx_state);
@@ -315,20 +311,18 @@ async fn bring_to_front_macos(
     });
 
     match timeout(RAISE_TIMEOUT, rx).await {
-        Ok(Ok(result)) => result.map_err(PlatformError::Platform),
-        Ok(Err(_)) => Err(PlatformError::Platform(
+        Ok(Ok(result)) => result.map_err(Error::internal),
+        Ok(Err(_)) => Err(Error::internal(
             "raising the window was canceled".to_string(),
         )),
-        Err(_) => Err(PlatformError::Platform(
-            "raising the window timed out".to_string(),
-        )),
+        Err(_) => Err(Error::internal("raising the window timed out".to_string())),
     }
 }
 
 /// iOS apps have a single key window in practice. Return a single entry
 /// derived from the key UIWindow so the API surface is consistent.
 #[cfg(target_os = "ios")]
-async fn list_app_windows_ios() -> Result<Vec<WindowInfo>, PlatformError> {
+async fn list_app_windows_ios() -> Result<Vec<WindowInfo>, Error> {
     // The iOS app-screenshot path captures the key window unconditionally;
     // surface a single-element list here so `lxdev host windows` has a
     // useful answer on iOS too.
@@ -353,7 +347,7 @@ async fn list_app_windows_ios() -> Result<Vec<WindowInfo>, PlatformError> {
 /// When `window_id` is `Some`, looks up the NSWindow with that
 /// `windowNumber`. When `None`, falls back to key → main → first window.
 #[cfg(target_os = "macos")]
-async fn take_app_screenshot_macos(window_id: Option<&str>) -> Result<Vec<u8>, PlatformError> {
+async fn take_app_screenshot_macos(window_id: Option<&str>) -> Result<Vec<u8>, Error> {
     use dispatch2::DispatchQueue;
     use objc2::runtime::AnyObject;
     use objc2::{class, msg_send};
@@ -369,7 +363,7 @@ async fn take_app_screenshot_macos(window_id: Option<&str>) -> Result<Vec<u8>, P
         Some(raw) => match raw.parse::<i64>() {
             Ok(n) => Some(n),
             Err(_) => {
-                return Err(PlatformError::InvalidParameter(format!(
+                return Err(Error::invalid_arg(format!(
                     "window id must be a numeric NSWindow.windowNumber, got: {raw}"
                 )));
             }
@@ -515,12 +509,10 @@ async fn take_app_screenshot_macos(window_id: Option<&str>) -> Result<Vec<u8>, P
 
     match timeout(SNAPSHOT_TIMEOUT, rx).await {
         Ok(Ok(Ok(bytes))) => Ok(bytes),
-        Ok(Ok(Err(err))) => Err(PlatformError::Platform(err)),
-        Ok(Err(_)) => Err(PlatformError::Platform(
+        Ok(Ok(Err(err))) => Err(Error::internal(err)),
+        Ok(Err(_)) => Err(Error::internal(
             "app screenshot request was canceled".to_string(),
         )),
-        Err(_) => Err(PlatformError::Platform(
-            "app screenshot timed out".to_string(),
-        )),
+        Err(_) => Err(Error::internal("app screenshot timed out".to_string())),
     }
 }

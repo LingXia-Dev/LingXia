@@ -3,10 +3,9 @@ mod parser;
 mod types;
 
 use crate::I18nKey;
-use crate::dismissal::{USER_DISMISSED, canceled};
-use crate::i18n::{js_error_from_platform_error, js_internal_error, t};
+use crate::dismissal::canceled;
+use crate::i18n::{js_error, js_internal_error, t};
 use cache::ensure_temp_media_path;
-use lingxia_platform::error::PlatformError;
 use lingxia_platform::traits::app_runtime::AppRuntime;
 use lingxia_platform::traits::media_interaction::PickMediaMode;
 use lingxia_service::media::{MediaKind, MediaSource, PickMediaRequest};
@@ -222,8 +221,8 @@ async fn run_pick(
         Ok(data) => data,
         // Business code 2000 is the platform's "user dismissed the picker";
         // every other platform error stays a rejection.
-        Err(PlatformError::BusinessError(USER_DISMISSED)) => return Ok(None),
-        Err(err) => return Err(js_error_from_platform_error(&err)),
+        Err(error) if lingxia_platform::error::is_user_dismissed(&error) => return Ok(None),
+        Err(err) => return Err(js_error(err)),
     };
 
     let parsed: Value = serde_json::from_str(&data)
@@ -327,7 +326,7 @@ async fn run_pick(
             };
             let path = ensure_temp_media_path(lxapp.as_ref(), &key, &ext, None, |dest_path| {
                 AppRuntime::copy_album_media_to_file(&*lxapp.runtime, uri, dest_path, media_kind)
-                    .map_err(|err| js_error_from_platform_error(&err))
+                    .map_err(js_error)
             })?;
             (response_path_for_media(&lxapp, &path)?, path)
         };

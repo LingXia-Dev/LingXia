@@ -1,10 +1,10 @@
 use crate::AssetFileEntry;
-use crate::error::PlatformError;
 use crate::traits::app_runtime::AppRuntime;
 use crate::traits::app_runtime::ShowLxApp;
 use crate::traits::media_interaction::MediaKind;
 use crate::traits::media_runtime::MediaRuntime;
 use libc::free;
+use lingxia_error::Error;
 use log::warn;
 use napi_ohos::JsValue;
 use napi_ohos::bindgen_prelude::{Env, Object};
@@ -40,11 +40,11 @@ pub struct Platform {
 }
 
 impl crate::traits::update::UpdateService for Platform {
-    fn open_update_store(&self, info_json: &str) -> Result<bool, PlatformError> {
+    fn open_update_store(&self, info_json: &str) -> Result<bool, Error> {
         open_harmony_store(self, info_json)
     }
 
-    fn present_store_update(&self, info_json: &str) -> Result<bool, PlatformError> {
+    fn present_store_update(&self, info_json: &str) -> Result<bool, Error> {
         let platform = self.clone();
         let info_json = info_json.to_string();
         // `show_modal` resolves only when the user taps, so it cannot run on
@@ -103,7 +103,7 @@ fn store_update_message(info_json: &str) -> String {
     })
 }
 
-fn open_harmony_store(platform: &Platform, info_json: &str) -> Result<bool, PlatformError> {
+fn open_harmony_store(platform: &Platform, info_json: &str) -> Result<bool, Error> {
     let Some(url) = harmony_store_open_url(platform, info_json) else {
         return Ok(false);
     };
@@ -247,7 +247,7 @@ impl Platform {
         env: Env,
         resource_manager: Option<Object>,
         locale: String,
-    ) -> Result<Self, PlatformError> {
+    ) -> Result<Self, Error> {
         let resource_manager_ptr = if let Some(resource_manager) = resource_manager {
             // Extract the native ResourceManager pointer from the JS object once during
             // NAPI initialization. Reinitializing it from cloned Platform values can crash
@@ -257,7 +257,7 @@ impl Platform {
             };
 
             if native_mgr.is_null() {
-                return Err(PlatformError::Platform(
+                return Err(Error::internal(
                     "Failed to initialize NativeResourceManager".to_string(),
                 ));
             }
@@ -279,14 +279,14 @@ impl Platform {
     fn collect_files_recursively<'a>(
         &'a self,
         dir_path: &str,
-    ) -> Vec<Result<AssetFileEntry<'a>, PlatformError>> {
+    ) -> Vec<Result<AssetFileEntry<'a>, Error>> {
         let mut all_files = Vec::new();
 
         if let Some(resource_manager) = self.resource_manager {
             // Use ResourceManager to list rawfile directory
             self.collect_files_from_rawfile(resource_manager, dir_path, &mut all_files);
         } else {
-            all_files.push(Err(PlatformError::AssetNotFound(
+            all_files.push(Err(Error::not_found(
                 "ResourceManager not available".to_string(),
             )));
         }
@@ -299,7 +299,7 @@ impl Platform {
         &'a self,
         resource_manager: *mut NativeResourceManager,
         dir_path: &str,
-        all_files: &mut Vec<Result<AssetFileEntry<'a>, PlatformError>>,
+        all_files: &mut Vec<Result<AssetFileEntry<'a>, Error>>,
     ) {
         let mut dirs_to_process = vec![dir_path.to_string()];
 
@@ -393,20 +393,20 @@ impl Platform {
         uri: &str,
         dest_path: &Path,
         kind: MediaKind,
-    ) -> Result<(), PlatformError> {
+    ) -> Result<(), Error> {
         if uri.is_empty() {
-            return Err(PlatformError::Platform("URI must not be empty".to_string()));
+            return Err(Error::internal("URI must not be empty".to_string()));
         }
 
         if dest_path.as_os_str().is_empty() {
-            return Err(PlatformError::Platform(
+            return Err(Error::internal(
                 "Destination path must not be empty".to_string(),
             ));
         }
 
         if let Some(parent) = dest_path.parent() {
             fs::create_dir_all(parent).map_err(|e| {
-                PlatformError::Platform(format!(
+                Error::internal(format!(
                     "Failed to create destination directory {}: {}",
                     parent.display(),
                     e
@@ -416,7 +416,7 @@ impl Platform {
 
         let manager_ptr = unsafe { ffi::OH_MediaAssetManager_Create() };
         if manager_ptr.is_null() {
-            return Err(PlatformError::Platform(
+            return Err(Error::internal(
                 "Failed to create OH_MediaAssetManager".to_string(),
             ));
         }
@@ -424,10 +424,10 @@ impl Platform {
         let manager = ManagerGuard(manager_ptr);
 
         let uri_cstr = CString::new(uri)
-            .map_err(|_| PlatformError::Platform("URI contains interior null byte".to_string()))?;
+            .map_err(|_| Error::internal("URI contains interior null byte".to_string()))?;
         let dest_string = dest_path.to_string_lossy();
         let dest_cstr = CString::new(dest_string.as_bytes()).map_err(|_| {
-            PlatformError::Platform("Destination path contains interior null byte".to_string())
+            Error::internal("Destination path contains interior null byte".to_string())
         })?;
 
         let request_options = ffi::MediaLibrary_RequestOptions {
@@ -457,9 +457,7 @@ impl Platform {
 
         let request_key = request_id_to_string(&request_id);
         if request_key.is_empty() || request_key == ZERO_REQUEST_ID {
-            return Err(PlatformError::Platform(
-                "Media request failed to start".to_string(),
-            ));
+            return Err(Error::internal("Media request failed to start".to_string()));
         }
 
         insert_request_channel(&request_key, tx.clone());
@@ -468,7 +466,7 @@ impl Platform {
             Ok(code) => code,
             Err(_) => {
                 cleanup_request_channel(&request_key);
-                return Err(PlatformError::Platform(
+                return Err(Error::internal(
                     "Timed out waiting for media request".to_string(),
                 ));
             }
@@ -476,7 +474,7 @@ impl Platform {
 
         if result_code != ffi::MEDIA_LIBRARY_OK {
             cleanup_request_channel(&request_key);
-            return Err(PlatformError::Platform(format!(
+            return Err(Error::internal(format!(
                 "Media request failed with code {}",
                 result_code
             )));
@@ -485,7 +483,7 @@ impl Platform {
         cleanup_request_channel(&request_key);
 
         if !dest_path.exists() {
-            return Err(PlatformError::Platform(
+            return Err(Error::internal(
                 "Destination file was not created".to_string(),
             ));
         }
@@ -495,13 +493,13 @@ impl Platform {
 }
 
 impl AppRuntime for Platform {
-    fn read_asset<'a>(&'a self, path: &str) -> Result<Box<dyn Read + 'a>, PlatformError> {
+    fn read_asset<'a>(&'a self, path: &str) -> Result<Box<dyn Read + 'a>, Error> {
         if let Some(raw_file) = self.open_raw_file(path) {
             let file_size = unsafe { OH_ResourceManager_GetRawFileSize(raw_file) };
 
             if file_size <= 0 {
                 unsafe { OH_ResourceManager_CloseRawFile(raw_file) };
-                return Err(PlatformError::AssetNotFound(format!(
+                return Err(Error::not_found(format!(
                     "Asset '{}' is empty or not found",
                     path
                 )));
@@ -521,7 +519,7 @@ impl AppRuntime for Platform {
             unsafe { OH_ResourceManager_CloseRawFile(raw_file) };
 
             if bytes_read != file_size as i32 {
-                return Err(PlatformError::AssetNotFound(format!(
+                return Err(Error::not_found(format!(
                     "Failed to read complete asset '{}': expected {} bytes, got {} bytes",
                     path, file_size, bytes_read
                 )));
@@ -531,7 +529,7 @@ impl AppRuntime for Platform {
             buffer.truncate(bytes_read as usize);
             Ok(Box::new(Cursor::new(buffer)))
         } else {
-            Err(PlatformError::AssetNotFound(format!(
+            Err(Error::not_found(format!(
                 "Asset '{}' not found or ResourceManager not available",
                 path
             )))
@@ -541,7 +539,7 @@ impl AppRuntime for Platform {
     fn asset_dir_iter<'a>(
         &'a self,
         asset_dir: &str,
-    ) -> Box<dyn Iterator<Item = Result<AssetFileEntry<'a>, PlatformError>> + 'a> {
+    ) -> Box<dyn Iterator<Item = Result<AssetFileEntry<'a>, Error>> + 'a> {
         // Collect all files recursively from the directory
         let files = self.collect_files_recursively(asset_dir);
         Box::new(files.into_iter())
@@ -555,7 +553,7 @@ impl AppRuntime for Platform {
         PathBuf::from(&self.cache_dir)
     }
 
-    fn get_app_identifier(&self) -> Result<String, PlatformError> {
+    fn get_app_identifier(&self) -> Result<String, Error> {
         unsafe {
             let element = ffi::OH_NativeBundle_GetMainElementName();
 
@@ -565,7 +563,7 @@ impl AppRuntime for Platform {
 
             // Copy out the bundle name first.
             let identifier_res = if bundle_ptr.is_null() {
-                Err(PlatformError::Platform(
+                Err(Error::internal(
                     "Failed to get main element name: bundleName is null".to_string(),
                 ))
             } else {
@@ -592,7 +590,7 @@ impl AppRuntime for Platform {
         uri: &str,
         dest_path: &Path,
         kind: MediaKind,
-    ) -> Result<(), PlatformError> {
+    ) -> Result<(), Error> {
         MediaRuntime::copy_album_media_to_file(self, uri, dest_path, kind)
     }
 
@@ -600,38 +598,38 @@ impl AppRuntime for Platform {
         &self.locale
     }
 
-    fn show_lxapp(&self, request: ShowLxApp) -> Result<(), PlatformError> {
+    fn show_lxapp(&self, request: ShowLxApp) -> Result<(), Error> {
         let session = request.session_id.to_string();
         lingxia_webview::platform::harmony::tsfn::call_arkts(
             "openLxApp",
             &[&request.appid, &request.webtag, &session],
         )
-        .map_err(|e| PlatformError::Platform(format!("Failed to show lxapp: {}", e)))
+        .map_err(|e| Error::internal(format!("Failed to show lxapp: {}", e)))
     }
 
-    fn hide_lxapp(&self, appid: String, session_id: u64) -> Result<(), PlatformError> {
+    fn hide_lxapp(&self, appid: String, session_id: u64) -> Result<(), Error> {
         let session = session_id.to_string();
         lingxia_webview::platform::harmony::tsfn::call_arkts("closeLxApp", &[&appid, &session])
-            .map_err(|e| PlatformError::Platform(format!("Failed to hide lxapp: {}", e)))
+            .map_err(|e| Error::internal(format!("Failed to hide lxapp: {}", e)))
     }
 
-    fn exit(&self) -> Result<(), PlatformError> {
+    fn exit(&self) -> Result<(), Error> {
         lingxia_webview::platform::harmony::tsfn::call_arkts("exitApp", &[])
-            .map_err(|e| PlatformError::Platform(format!("Failed to exit app: {}", e)))
+            .map_err(|e| Error::internal(format!("Failed to exit app: {}", e)))
     }
 
-    fn notification_permission(&self) -> Result<String, PlatformError> {
+    fn notification_permission(&self) -> Result<String, Error> {
         notification_call("notificationPermission", &[])
     }
 
-    fn notification_request_permission(&self) -> Result<String, PlatformError> {
+    fn notification_request_permission(&self) -> Result<String, Error> {
         notification_call("notificationRequestPermission", &[])
     }
 
     fn notification_show(
         &self,
         request: &crate::traits::app_runtime::LocalNotificationShow,
-    ) -> Result<crate::traits::app_runtime::LocalNotificationStatus, PlatformError> {
+    ) -> Result<crate::traits::app_runtime::LocalNotificationStatus, Error> {
         let deliver_at = request.deliver_at_ms.unwrap_or(0).to_string();
         // `silent` has no counterpart here: the slot decides sound.
         let status = notification_call(
@@ -645,19 +643,19 @@ impl AppRuntime for Platform {
             ],
         )?;
         crate::traits::app_runtime::LocalNotificationStatus::from_native(&status)
-            .ok_or_else(|| PlatformError::Platform(format!("unexpected show status: {status}")))
+            .ok_or_else(|| Error::internal(format!("unexpected show status: {status}")))
     }
 
-    fn set_app_badge(&self, text: &str) -> Result<bool, PlatformError> {
+    fn set_app_badge(&self, text: &str) -> Result<bool, Error> {
         // The home-screen badge takes a count; Logic rejected anything else.
         notification_call("setAppBadge", &[text]).map(|_| true)
     }
 
-    fn notification_cancel(&self, id: &str) -> Result<(), PlatformError> {
+    fn notification_cancel(&self, id: &str) -> Result<(), Error> {
         notification_call("notificationCancel", &[id]).map(|_| ())
     }
 
-    fn notification_cancel_all(&self) -> Result<(), PlatformError> {
+    fn notification_cancel_all(&self) -> Result<(), Error> {
         notification_call("notificationCancelAll", &[]).map(|_| ())
     }
 
@@ -666,14 +664,14 @@ impl AppRuntime for Platform {
         appid: String,
         webtag: String,
         animation_type: crate::traits::app_runtime::AnimationType,
-    ) -> Result<(), PlatformError> {
+    ) -> Result<(), Error> {
         let anim_type_int = animation_type as i32;
         lingxia_webview::platform::harmony::tsfn::call_arkts(
             "navigate",
             &[&appid, &webtag, &anim_type_int.to_string()],
         )
         .map_err(|_| {
-            PlatformError::Platform(format!(
+            Error::internal(format!(
                 "Failed to navigate: webtag={}, animation_type={:?}",
                 webtag, animation_type
             ))
@@ -688,9 +686,7 @@ impl AppRuntime for Platform {
                     "activateBrowserTab",
                     &[&tab_id, &callback_id],
                 )
-                .map_err(|e| {
-                    PlatformError::Platform(format!("Failed to activate browser tab: {e}"))
-                })
+                .map_err(|e| Error::internal(format!("Failed to activate browser tab: {e}")))
             })
             .await?;
             Ok(())
@@ -700,7 +696,7 @@ impl AppRuntime for Platform {
     fn open_url(
         &self,
         req: crate::traits::app_runtime::OpenUrlRequest,
-    ) -> Result<crate::traits::app_runtime::OpenUrlResult, PlatformError> {
+    ) -> Result<crate::traits::app_runtime::OpenUrlResult, Error> {
         let target_str = match req.target {
             crate::traits::app_runtime::OpenUrlTarget::SelfTarget => "self",
             crate::traits::app_runtime::OpenUrlTarget::NewBrowserTab => "new_browser_tab",
@@ -712,7 +708,7 @@ impl AppRuntime for Platform {
             "launchWithUrl",
             &[&req.url, target_str, &req.owner_appid, &owner_session],
         )
-        .map_err(|e| PlatformError::Platform(format!("Failed to open url: {}", e)))?;
+        .map_err(|e| Error::internal(format!("Failed to open url: {}", e)))?;
         // ArkTS `call_arkts` is fire-and-forget for the return value, so this
         // host cannot name the tab. The JS handle reports `scope: 'group'`.
         Ok(crate::traits::app_runtime::OpenUrlResult { tab_id: None })
@@ -723,10 +719,9 @@ impl crate::traits::share::ShareService for Platform {
     async fn share(
         &self,
         request: crate::traits::share::ShareRequest,
-    ) -> Result<crate::traits::share::ShareResult, PlatformError> {
-        let files_json = serde_json::to_string(&request.files).map_err(|e| {
-            PlatformError::Platform(format!("Failed to serialize share files: {e}"))
-        })?;
+    ) -> Result<crate::traits::share::ShareResult, Error> {
+        let files_json = serde_json::to_string(&request.files)
+            .map_err(|e| Error::internal(format!("Failed to serialize share files: {e}")))?;
 
         let payload = crate::rt::native_call(|callback_id| {
             let callback_id = callback_id.to_string();
@@ -740,14 +735,14 @@ impl crate::traits::share::ShareService for Platform {
                     &callback_id,
                 ],
             )
-            .map_err(|e| PlatformError::Platform(format!("Failed to share: {e}")))
+            .map_err(|e| Error::internal(format!("Failed to share: {e}")))
         })
         .await?;
         if payload.trim().is_empty() {
             return Ok(crate::traits::share::ShareResult { completed: None });
         }
         serde_json::from_str(&payload)
-            .map_err(|e| PlatformError::Platform(format!("Failed to parse share result: {e}")))
+            .map_err(|e| Error::internal(format!("Failed to parse share result: {e}")))
     }
 }
 
@@ -824,7 +819,7 @@ pub(super) mod ffi {
 /// ArkTS answers through the callback once the system has: a word,
 /// `unsupported:<why>`, or `error:<why>`. Returning before that would report
 /// work that never happened.
-fn notification_call(name: &'static str, args: &[&str]) -> Result<String, PlatformError> {
+fn notification_call(name: &'static str, args: &[&str]) -> Result<String, Error> {
     let args: Vec<String> = args.iter().map(|arg| arg.to_string()).collect();
     let word =
         tokio::runtime::Handle::current().block_on(crate::rt::native_call(move |callback_id| {
@@ -832,13 +827,13 @@ fn notification_call(name: &'static str, args: &[&str]) -> Result<String, Platfo
             let mut call: Vec<&str> = vec![&callback_id];
             call.extend(args.iter().map(String::as_str));
             lingxia_webview::platform::harmony::tsfn::call_arkts(name, &call)
-                .map_err(|e| PlatformError::Platform(format!("{name} failed: {e}")))
+                .map_err(|e| Error::internal(format!("{name} failed: {e}")))
         }))?;
     if let Some(why) = word.strip_prefix("unsupported:") {
-        return Err(PlatformError::NotSupported(why.to_string()));
+        return Err(Error::not_supported(why.to_string()));
     }
     match word.strip_prefix("error:") {
-        Some(why) => Err(PlatformError::Platform(why.to_string())),
+        Some(why) => Err(Error::internal(why.to_string())),
         None => Ok(word),
     }
 }

@@ -1,7 +1,6 @@
 use std::collections::HashMap;
 use std::sync::{Mutex, OnceLock};
 
-use crate::error::PlatformError;
 use crate::traits::network::Network;
 use lingxia_messaging::invoke_callback;
 use serde::Serialize;
@@ -12,6 +11,7 @@ use windows::Networking::Connectivity::{
 use windows::Networking::HostNameType;
 
 use super::Platform;
+use lingxia_error::Error;
 
 const CALLBACK_ERR_INTERNAL: u32 = 1000;
 
@@ -30,8 +30,8 @@ fn network_listeners() -> &'static Mutex<HashMap<u64, i64>> {
     NETWORK_LISTENERS.get_or_init(|| Mutex::new(HashMap::new()))
 }
 
-fn map_windows_error(context: &str, err: windows::core::Error) -> PlatformError {
-    PlatformError::Platform(format!("{context}: {err}"))
+fn map_windows_error(context: &str, err: windows::core::Error) -> Error {
+    Error::internal(format!("{context}: {err}"))
 }
 
 fn current_profile() -> Option<ConnectionProfile> {
@@ -153,21 +153,21 @@ fn current_network_info() -> WindowsNetworkInfo {
     }
 }
 
-fn current_network_info_json() -> Result<String, PlatformError> {
+fn current_network_info_json() -> Result<String, Error> {
     serde_json::to_string(&current_network_info())
-        .map_err(|err| PlatformError::Platform(format!("serialize network info: {err}")))
+        .map_err(|err| Error::internal(format!("serialize network info: {err}")))
 }
 
 impl Network for Platform {
-    async fn get_network_info(&self) -> Result<String, PlatformError> {
+    async fn get_network_info(&self) -> Result<String, Error> {
         current_network_info_json()
     }
 
-    fn add_network_change_listener(&self, callback_id: u64) -> Result<(), PlatformError> {
+    fn add_network_change_listener(&self, callback_id: u64) -> Result<(), Error> {
         {
-            let listeners = network_listeners().lock().map_err(|_| {
-                PlatformError::Platform("network listener registry poisoned".into())
-            })?;
+            let listeners = network_listeners()
+                .lock()
+                .map_err(|_| Error::internal("network listener registry poisoned"))?;
             if listeners.contains_key(&callback_id) {
                 return Ok(());
             }
@@ -194,16 +194,16 @@ impl Network for Platform {
 
         let mut listeners = network_listeners()
             .lock()
-            .map_err(|_| PlatformError::Platform("network listener registry poisoned".into()))?;
+            .map_err(|_| Error::internal("network listener registry poisoned"))?;
         listeners.insert(callback_id, token);
         Ok(())
     }
 
-    fn remove_network_change_listener(&self, callback_id: u64) -> Result<(), PlatformError> {
+    fn remove_network_change_listener(&self, callback_id: u64) -> Result<(), Error> {
         let token = {
-            let mut listeners = network_listeners().lock().map_err(|_| {
-                PlatformError::Platform("network listener registry poisoned".into())
-            })?;
+            let mut listeners = network_listeners()
+                .lock()
+                .map_err(|_| Error::internal("network listener registry poisoned"))?;
             listeners.remove(&callback_id)
         };
         if let Some(token) = token {

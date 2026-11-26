@@ -1,7 +1,6 @@
 //! Android platform device implementation
 
 use super::with_env;
-use crate::error::PlatformError;
 use crate::traits::device::{Device, DeviceHardware};
 use crate::traits::secure_store::SecureStore;
 use crate::{DeviceInfo, ScreenInfo};
@@ -14,6 +13,7 @@ use std::fs;
 use std::process::Command;
 
 use super::Platform;
+use lingxia_error::Error;
 
 fn host_context<'a>(env: &mut Env<'a>) -> Result<JObject<'a>, Box<dyn std::error::Error>> {
     super::application_context(env)
@@ -124,11 +124,11 @@ impl Device for Platform {
         })
     }
 
-    fn vibrate(&self, long: bool) -> Result<(), PlatformError> {
+    fn vibrate(&self, long: bool) -> Result<(), Error> {
         let device_class: &jni::objects::JClass =
             super::get_cached_class(super::CachedClass::LxAppDevice)
-                .map_err(|e| PlatformError::Platform(e.to_string()))?;
-        with_env(|env| -> Result<(), PlatformError> {
+                .map_err(|e| Error::internal(e.to_string()))?;
+        with_env(|env| -> Result<(), Error> {
             env.call_static_method(
                 device_class,
                 jni_str!("vibrate"),
@@ -137,14 +137,14 @@ impl Device for Platform {
             )?;
             Ok(())
         })
-        .map_err(|e| PlatformError::Platform(format!("Failed to vibrate via JNI: {}", e)))
+        .map_err(|e| Error::internal(format!("Failed to vibrate via JNI: {}", e)))
     }
 
-    fn make_phone_call(&self, phone_number: &str) -> Result<(), PlatformError> {
+    fn make_phone_call(&self, phone_number: &str) -> Result<(), Error> {
         let device_class: &jni::objects::JClass =
             super::get_cached_class(super::CachedClass::LxAppDevice)
-                .map_err(|e| PlatformError::Platform(e.to_string()))?;
-        with_env(|env| -> Result<(), PlatformError> {
+                .map_err(|e| Error::internal(e.to_string()))?;
+        with_env(|env| -> Result<(), Error> {
             let phone_number_jstring = env.new_string(phone_number)?;
             env.call_static_method(
                 device_class,
@@ -154,7 +154,7 @@ impl Device for Platform {
             )?;
             Ok(())
         })
-        .map_err(|e| PlatformError::Platform(format!("Failed to make phone call: {}", e)))
+        .map_err(|e| Error::internal(format!("Failed to make phone call: {}", e)))
     }
 }
 
@@ -211,10 +211,10 @@ pub fn get_android_id() -> Option<String> {
 /// Read text from shared external storage via Android SDK bridge.
 ///
 /// The SDK resolves `storage_key` to `/sdcard/.lingxia/<appid>/<storage_key>`.
-pub fn read_external_storage_text(storage_key: &str) -> Result<Option<String>, PlatformError> {
+pub fn read_external_storage_text(storage_key: &str) -> Result<Option<String>, Error> {
     let device_class: &jni::objects::JClass =
         super::get_cached_class(super::CachedClass::LxAppDevice)
-            .map_err(|e| PlatformError::Platform(e.to_string()))?;
+            .map_err(|e| Error::internal(e.to_string()))?;
 
     with_env(
         |env| -> Result<Option<String>, Box<dyn std::error::Error>> {
@@ -236,16 +236,16 @@ pub fn read_external_storage_text(storage_key: &str) -> Result<Option<String>, P
             Ok(Some(text))
         },
     )
-    .map_err(|e| PlatformError::Platform(format!("Failed to read external storage text: {}", e)))
+    .map_err(|e| Error::internal(format!("Failed to read external storage text: {}", e)))
 }
 
 /// Write text to shared external storage via Android SDK bridge.
 ///
 /// Returns `Ok(true)` on success, `Ok(false)` on denied/unavailable, and `Err` for JNI failure.
-pub fn write_external_storage_text(storage_key: &str, value: &str) -> Result<bool, PlatformError> {
+pub fn write_external_storage_text(storage_key: &str, value: &str) -> Result<bool, Error> {
     let device_class: &jni::objects::JClass =
         super::get_cached_class(super::CachedClass::LxAppDevice)
-            .map_err(|e| PlatformError::Platform(e.to_string()))?;
+            .map_err(|e| Error::internal(e.to_string()))?;
 
     with_env(|env| -> Result<bool, Box<dyn std::error::Error>> {
         let storage_key_jstring = env.new_string(storage_key)?;
@@ -262,11 +262,11 @@ pub fn write_external_storage_text(storage_key: &str, value: &str) -> Result<boo
 
         Ok(result.z()?)
     })
-    .map_err(|e| PlatformError::Platform(format!("Failed to write external storage text: {}", e)))
+    .map_err(|e| Error::internal(format!("Failed to write external storage text: {}", e)))
 }
 
 impl DeviceHardware for Platform {
-    fn get_memory_info(&self) -> Result<u64, PlatformError> {
+    fn get_memory_info(&self) -> Result<u64, Error> {
         // Read /proc/meminfo
         if let Ok(contents) = fs::read_to_string("/proc/meminfo") {
             for line in contents.lines() {
@@ -281,9 +281,7 @@ impl DeviceHardware for Platform {
                 }
             }
         }
-        Err(PlatformError::Platform(
-            "Failed to read /proc/meminfo".to_string(),
-        ))
+        Err(Error::internal("Failed to read /proc/meminfo".to_string()))
     }
 
     fn get_cpu_count(&self) -> usize {
@@ -336,7 +334,7 @@ impl DeviceHardware for Platform {
         1
     }
 
-    fn get_storage_total_bytes(&self) -> Result<u64, PlatformError> {
+    fn get_storage_total_bytes(&self) -> Result<u64, Error> {
         // Use JNI to get StatFs for data directory
         match with_env(|env| -> Result<u64, Box<dyn std::error::Error>> {
             let env_class = env.find_class(jni_str!("android/os/Environment"))?;
@@ -374,7 +372,7 @@ impl DeviceHardware for Platform {
             Ok(total_bytes as u64)
         }) {
             Ok(bytes) => Ok(bytes),
-            Err(e) => Err(PlatformError::Platform(format!(
+            Err(e) => Err(Error::internal(format!(
                 "Failed to get storage info: {}",
                 e
             ))),
@@ -382,10 +380,10 @@ impl DeviceHardware for Platform {
     }
 }
 
-fn get_lxapp_device_class() -> Result<&'static JClass<'static>, PlatformError> {
+fn get_lxapp_device_class() -> Result<&'static JClass<'static>, Error> {
     super::get_cached_class(super::CachedClass::LxAppDevice)
         .map(|class| class.as_ref())
-        .map_err(|e| PlatformError::Platform(e.to_string()))
+        .map_err(|e| Error::internal(e.to_string()))
 }
 
 fn call_lxapp_device_string_method<'sig, 'sig_args, N, S>(
@@ -393,7 +391,7 @@ fn call_lxapp_device_string_method<'sig, 'sig_args, N, S>(
     signature: S,
     error_context: &str,
     storage_key: &str,
-) -> Result<Option<String>, PlatformError>
+) -> Result<Option<String>, Error>
 where
     N: AsRef<JNIStr>,
     S: AsRef<MethodSignature<'sig, 'sig_args>>,
@@ -420,7 +418,7 @@ where
             Ok(Some(text))
         },
     )
-    .map_err(|e| PlatformError::Platform(format!("Failed to {}: {}", error_context, e)))
+    .map_err(|e| Error::internal(format!("Failed to {}: {}", error_context, e)))
 }
 
 fn call_lxapp_device_void_method<'sig, 'sig_args, N, S>(
@@ -429,7 +427,7 @@ fn call_lxapp_device_void_method<'sig, 'sig_args, N, S>(
     error_context: &str,
     storage_key: &str,
     value_base64: Option<&str>,
-) -> Result<(), PlatformError>
+) -> Result<(), Error>
 where
     N: AsRef<JNIStr>,
     S: AsRef<MethodSignature<'sig, 'sig_args>>,
@@ -450,10 +448,10 @@ where
         env.call_static_method(device_class, method_name, signature, &args)?;
         Ok(())
     })
-    .map_err(|e| PlatformError::Platform(format!("Failed to {}: {}", error_context, e)))
+    .map_err(|e| Error::internal(format!("Failed to {}: {}", error_context, e)))
 }
 
-fn read_secure_store_base64(storage_key: &str) -> Result<Option<String>, PlatformError> {
+fn read_secure_store_base64(storage_key: &str) -> Result<Option<String>, Error> {
     call_lxapp_device_string_method(
         jni_str!("readSecureStoreValueBase64"),
         jni_sig!("(Ljava/lang/String;)Ljava/lang/String;"),
@@ -462,7 +460,7 @@ fn read_secure_store_base64(storage_key: &str) -> Result<Option<String>, Platfor
     )
 }
 
-fn write_secure_store_base64(storage_key: &str, value_base64: &str) -> Result<(), PlatformError> {
+fn write_secure_store_base64(storage_key: &str, value_base64: &str) -> Result<(), Error> {
     call_lxapp_device_void_method(
         jni_str!("writeSecureStoreValueBase64"),
         jni_sig!("(Ljava/lang/String;Ljava/lang/String;)V"),
@@ -472,7 +470,7 @@ fn write_secure_store_base64(storage_key: &str, value_base64: &str) -> Result<()
     )
 }
 
-fn delete_secure_store_value(storage_key: &str) -> Result<(), PlatformError> {
+fn delete_secure_store_value(storage_key: &str) -> Result<(), Error> {
     call_lxapp_device_void_method(
         jni_str!("deleteSecureStoreValue"),
         jni_sig!("(Ljava/lang/String;)V"),
@@ -483,24 +481,24 @@ fn delete_secure_store_value(storage_key: &str) -> Result<(), PlatformError> {
 }
 
 impl SecureStore for Platform {
-    fn read(&self, key: &str) -> Result<Option<Vec<u8>>, PlatformError> {
+    fn read(&self, key: &str) -> Result<Option<Vec<u8>>, Error> {
         let Some(encoded) = read_secure_store_base64(key)? else {
             return Ok(None);
         };
 
         STANDARD.decode(encoded).map(Some).map_err(|e| {
-            PlatformError::Platform(format!(
+            Error::internal(format!(
                 "Failed to decode Android secure store value for key {}: {}",
                 key, e
             ))
         })
     }
 
-    fn write(&self, key: &str, value: &[u8]) -> Result<(), PlatformError> {
+    fn write(&self, key: &str, value: &[u8]) -> Result<(), Error> {
         write_secure_store_base64(key, &STANDARD.encode(value))
     }
 
-    fn delete(&self, key: &str) -> Result<(), PlatformError> {
+    fn delete(&self, key: &str) -> Result<(), Error> {
         delete_secure_store_value(key)
     }
 }

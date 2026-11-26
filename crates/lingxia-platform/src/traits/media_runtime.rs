@@ -1,8 +1,7 @@
 use std::path::{Path, PathBuf};
 
-use crate::error::PlatformError;
-
 use super::media_interaction::MediaKind;
+use lingxia_error::Error;
 
 #[derive(Debug, Clone)]
 pub struct ImageInfo {
@@ -109,25 +108,25 @@ pub trait MediaRuntime: Send + Sync + 'static {
         uri: &str,
         dest_path: &Path,
         kind: MediaKind,
-    ) -> Result<(), PlatformError>;
+    ) -> Result<(), Error>;
 
-    fn get_image_info(&self, uri: &str) -> Result<ImageInfo, PlatformError>;
+    fn get_image_info(&self, uri: &str) -> Result<ImageInfo, Error>;
 
-    fn compress_image(&self, request: &CompressImageRequest) -> Result<PathBuf, PlatformError>;
+    fn compress_image(&self, request: &CompressImageRequest) -> Result<PathBuf, Error>;
 
     /// Start a video transcode. Returns as soon as the job is accepted;
     /// progress and the final result arrive on the request's callbacks.
-    fn compress_video(&self, request: &CompressVideoRequest) -> Result<(), PlatformError>;
+    fn compress_video(&self, request: &CompressVideoRequest) -> Result<(), Error>;
 
     /// Cancel a running transcode by its completion `callback_id`. Native
     /// stops the job and SHOULD delete any partial output; it MUST NOT fire
     /// the completion callback afterwards (the caller already removed it).
-    fn cancel_compress_video(&self, callback_id: u64) -> Result<(), PlatformError>;
+    fn cancel_compress_video(&self, callback_id: u64) -> Result<(), Error>;
 
-    fn get_video_info(&self, uri: &str) -> Result<VideoInfo, PlatformError>;
+    fn get_video_info(&self, uri: &str) -> Result<VideoInfo, Error>;
 
     fn extract_video_thumbnail(
         &self,
         request: &ExtractVideoThumbnailRequest,
-    ) -> Result<VideoThumbnail, PlatformError>;
+    ) -> Result<VideoThumbnail, Error>;
 }

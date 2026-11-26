@@ -1,8 +1,8 @@
 use super::app::Platform;
-use crate::error::PlatformError;
 use crate::traits::gesture::PullRefreshIndicator;
 use crate::traits::gesture::{AppGesture, AppGestureRequest, AppGestureResult};
 use async_trait::async_trait;
+use lingxia_error::Error;
 
 #[async_trait]
 impl AppGesture for Platform {
@@ -46,7 +46,7 @@ impl AppGesture for Platform {
     async fn chrome_elements(
         &self,
         scope: Option<String>,
-    ) -> Result<Vec<crate::traits::gesture::ChromeElement>, PlatformError> {
+    ) -> Result<Vec<crate::traits::gesture::ChromeElement>, Error> {
         ios::chrome_elements(scope).await
     }
 
@@ -55,14 +55,14 @@ impl AppGesture for Platform {
         &self,
         app_id: &str,
         webtag: &str,
-    ) -> Result<Option<PullRefreshIndicator>, PlatformError> {
+    ) -> Result<Option<PullRefreshIndicator>, Error> {
         ios::pull_refresh_indicator(app_id, webtag).await
     }
 
     async fn perform_app_gesture(
         &self,
         request: AppGestureRequest,
-    ) -> Result<AppGestureResult, PlatformError> {
+    ) -> Result<AppGestureResult, Error> {
         #[cfg(target_os = "macos")]
         {
             mac::perform(request).await
@@ -77,7 +77,7 @@ impl AppGesture for Platform {
     async fn gesture_viewport(
         &self,
         target: crate::traits::gesture::GestureTarget,
-    ) -> Result<[f64; 4], PlatformError> {
+    ) -> Result<[f64; 4], Error> {
         mac::viewport(target).await
     }
 
@@ -85,7 +85,7 @@ impl AppGesture for Platform {
     async fn gesture_window_frame(
         &self,
         target: crate::traits::gesture::GestureTarget,
-    ) -> Result<crate::traits::gesture::WindowFrame, PlatformError> {
+    ) -> Result<crate::traits::gesture::WindowFrame, Error> {
         mac::window_frame(target).await
     }
 
@@ -93,12 +93,12 @@ impl AppGesture for Platform {
     async fn gesture_viewport(
         &self,
         target: crate::traits::gesture::GestureTarget,
-    ) -> Result<[f64; 4], PlatformError> {
+    ) -> Result<[f64; 4], Error> {
         ios::viewport(target).await
     }
 
     #[cfg(target_os = "macos")]
-    async fn orient_window(&self, landscape: bool) -> Result<[f64; 2], PlatformError> {
+    async fn orient_window(&self, landscape: bool) -> Result<[f64; 2], Error> {
         mac::orient_window(landscape).await
     }
 
@@ -106,7 +106,7 @@ impl AppGesture for Platform {
     async fn chrome_elements(
         &self,
         scope: Option<String>,
-    ) -> Result<Vec<crate::traits::gesture::ChromeElement>, PlatformError> {
+    ) -> Result<Vec<crate::traits::gesture::ChromeElement>, Error> {
         mac::chrome_elements(scope).await
     }
 
@@ -115,7 +115,7 @@ impl AppGesture for Platform {
         &self,
         app_id: &str,
         webtag: &str,
-    ) -> Result<Option<PullRefreshIndicator>, PlatformError> {
+    ) -> Result<Option<PullRefreshIndicator>, Error> {
         mac::pull_refresh_indicator(app_id, webtag).await
     }
 }
@@ -125,12 +125,12 @@ mod mac {
     use super::super::mouse::{
         content_point_to_window_point, parse_window_id, resolve_page_window, resolve_window,
     };
-    use crate::error::PlatformError;
     use crate::traits::gesture::{
         AppGestureRequest, AppGestureResult, GestureDelivery, GestureEnd, GestureInput,
         GesturePoint, GestureShape, GestureTarget, PullRefreshIndicator,
     };
     use dispatch2::DispatchQueue;
+    use lingxia_error::Error;
     use objc2::msg_send;
     use objc2::runtime::AnyObject;
     use std::collections::HashMap;
@@ -186,15 +186,15 @@ mod mac {
 
     async fn on_main<T: Send + 'static>(
         work: impl FnOnce() -> Result<T, String> + Send + 'static,
-    ) -> Result<T, PlatformError> {
+    ) -> Result<T, Error> {
         let (tx, rx) = oneshot::channel();
         DispatchQueue::main().exec_async(move || {
             let _ = tx.send(work());
         });
         match tokio::time::timeout(Duration::from_secs(2), rx).await {
-            Ok(Ok(result)) => result.map_err(PlatformError::Platform),
-            Ok(Err(_)) => Err(PlatformError::Platform("gesture event was dropped".into())),
-            Err(_) => Err(PlatformError::Platform("main thread did not answer".into())),
+            Ok(Ok(result)) => result.map_err(Error::internal),
+            Ok(Err(_)) => Err(Error::internal("gesture event was dropped")),
+            Err(_) => Err(Error::internal("main thread did not answer")),
         }
     }
 
@@ -211,7 +211,7 @@ mod mac {
         }
     }
 
-    pub(super) async fn viewport(target: GestureTarget) -> Result<[f64; 4], PlatformError> {
+    pub(super) async fn viewport(target: GestureTarget) -> Result<[f64; 4], Error> {
         on_main(move || {
             let (_, _, size, _) = resolve(&target)?;
             Ok([0.0, 0.0, size.0, size.1])
@@ -221,7 +221,7 @@ mod mac {
 
     pub(super) async fn window_frame(
         target: GestureTarget,
-    ) -> Result<crate::traits::gesture::WindowFrame, PlatformError> {
+    ) -> Result<crate::traits::gesture::WindowFrame, Error> {
         on_main(move || {
             let (window, origin, _, scale) = resolve(&target)?;
             Ok(crate::traits::gesture::WindowFrame {
@@ -468,22 +468,15 @@ mod mac {
     const ENDED: u32 = 4;
     const CANCELLED: u32 = 8;
 
-    pub(super) async fn perform(
-        request: AppGestureRequest,
-    ) -> Result<AppGestureResult, PlatformError> {
-        let points = request
-            .shape
-            .points()
-            .map_err(PlatformError::InvalidParameter)?;
+    pub(super) async fn perform(request: AppGestureRequest) -> Result<AppGestureResult, Error> {
+        let points = request.shape.points().map_err(Error::invalid_arg)?;
         let fling = matches!(request.shape, GestureShape::Fling { .. });
         let continued = match request.finger {
             Some(id) => Some(
                 held()
                     .as_mut()
                     .and_then(|fingers| fingers.remove(&id))
-                    .ok_or_else(|| {
-                        PlatformError::InvalidParameter(format!("finger {id} is not held"))
-                    })?,
+                    .ok_or_else(|| Error::invalid_arg(format!("finger {id} is not held")))?,
             ),
             None => None,
         };
@@ -492,13 +485,13 @@ mod mac {
             .or(request.input)
             .unwrap_or(GestureInput::Trackpad);
         if input == GestureInput::Touch {
-            return Err(PlatformError::NotSupported(
-                "macOS has no touch screen; use mouse or trackpad".into(),
+            return Err(Error::not_supported(
+                "macOS has no touch screen; use mouse or trackpad",
             ));
         }
         if input == GestureInput::Mouse && request.end == GestureEnd::Cancel {
-            return Err(PlatformError::InvalidParameter(
-                "a mouse gesture cannot be cancelled; end it with up".into(),
+            return Err(Error::invalid_arg(
+                "a mouse gesture cannot be cancelled; end it with up",
             ));
         }
         let (window, origin, scale) = match continued {
@@ -628,11 +621,7 @@ mod mac {
 
     /// The momentum a trackpad reports after a flick: per-frame deltas
     /// decaying from the release velocity.
-    async fn momentum(
-        window: i64,
-        at: (f64, f64),
-        velocity: (f64, f64),
-    ) -> Result<u32, PlatformError> {
+    async fn momentum(window: i64, at: (f64, f64), velocity: (f64, f64)) -> Result<u32, Error> {
         const FRAME: f64 = 1.0 / 60.0;
         // AppKit's normal deceleration: velocity keeps 0.998 of itself per millisecond.
         let decay = 0.998f64.powf(FRAME * 1000.0);
@@ -684,7 +673,7 @@ mod mac {
         }
     }
 
-    pub(super) async fn orient_window(landscape: bool) -> Result<[f64; 2], PlatformError> {
+    pub(super) async fn orient_window(landscape: bool) -> Result<[f64; 2], Error> {
         use objc2_foundation::{NSRect, NSSize};
         on_main(move || unsafe {
             let app: *mut AnyObject = msg_send![objc2::class!(NSApplication), sharedApplication];
@@ -713,7 +702,7 @@ mod mac {
     /// Page views (WebKit, GPU) are not searched, except the host recovery panel over a GPU page.
     pub(super) async fn chrome_elements(
         scope: Option<String>,
-    ) -> Result<Vec<crate::traits::gesture::ChromeElement>, PlatformError> {
+    ) -> Result<Vec<crate::traits::gesture::ChromeElement>, Error> {
         use crate::traits::gesture::ChromeElement;
         use objc2_foundation::NSRect;
 
@@ -987,7 +976,7 @@ mod mac {
     pub(super) async fn pull_refresh_indicator(
         app_id: &str,
         webtag: &str,
-    ) -> Result<Option<PullRefreshIndicator>, PlatformError> {
+    ) -> Result<Option<PullRefreshIndicator>, Error> {
         use std::ffi::{CString, c_char, c_void};
         type StateFn = unsafe extern "C" fn(
             *const c_char,
@@ -1000,10 +989,8 @@ mod mac {
             fn dlsym(handle: *mut c_void, symbol: *const c_char) -> *mut c_void;
         }
         const RTLD_DEFAULT: *mut c_void = -2isize as *mut c_void;
-        let app =
-            CString::new(app_id).map_err(|e| PlatformError::InvalidParameter(e.to_string()))?;
-        let tag =
-            CString::new(webtag).map_err(|e| PlatformError::InvalidParameter(e.to_string()))?;
+        let app = CString::new(app_id).map_err(|e| Error::invalid_arg(e.to_string()))?;
+        let tag = CString::new(webtag).map_err(|e| Error::invalid_arg(e.to_string()))?;
         on_main(move || {
             let symbol = unsafe { dlsym(RTLD_DEFAULT, c"lx_mac_pull_refresh_state".as_ptr()) };
             if symbol.is_null() {
@@ -1037,12 +1024,12 @@ mod mac {
 /// into its view's touch path; WebView pages and window gestures stay out of reach.
 #[cfg(target_os = "ios")]
 mod ios {
-    use crate::error::PlatformError;
     use crate::traits::gesture::{
         AppGestureRequest, AppGestureResult, GestureDelivery, GestureEnd, GestureInput,
         GesturePoint, GestureTarget,
     };
     use dispatch2::DispatchQueue;
+    use lingxia_error::Error;
     use objc2::msg_send;
     use objc2::runtime::AnyObject;
     use objc2_core_foundation::{CGPoint, CGRect};
@@ -1068,15 +1055,15 @@ mod ios {
 
     async fn on_main<T: Send + 'static>(
         work: impl FnOnce() -> Result<T, String> + Send + 'static,
-    ) -> Result<T, PlatformError> {
+    ) -> Result<T, Error> {
         let (tx, rx) = oneshot::channel();
         DispatchQueue::main().exec_async(move || {
             let _ = tx.send(work());
         });
         match tokio::time::timeout(Duration::from_secs(2), rx).await {
-            Ok(Ok(result)) => result.map_err(PlatformError::Platform),
-            Ok(Err(_)) => Err(PlatformError::Platform("gesture event was dropped".into())),
-            Err(_) => Err(PlatformError::Platform("main thread did not answer".into())),
+            Ok(Ok(result)) => result.map_err(Error::internal),
+            Ok(Err(_)) => Err(Error::internal("gesture event was dropped")),
+            Err(_) => Err(Error::internal("main thread did not answer")),
         }
     }
 
@@ -1135,7 +1122,7 @@ mod ios {
         }
     }
 
-    pub(super) async fn viewport(target: GestureTarget) -> Result<[f64; 4], PlatformError> {
+    pub(super) async fn viewport(target: GestureTarget) -> Result<[f64; 4], Error> {
         on_main(move || {
             // Reading a size needs no touch injection: a window target is the key window,
             // in the points chrome bounds and chrome taps use.
@@ -1164,28 +1151,21 @@ mod ios {
         Ok(unsafe { msg_send![view as *mut AnyObject, automationTouch: phase, x: x, y: y] })
     }
 
-    pub(super) async fn perform(
-        request: AppGestureRequest,
-    ) -> Result<AppGestureResult, PlatformError> {
+    pub(super) async fn perform(request: AppGestureRequest) -> Result<AppGestureResult, Error> {
         if let Some(input) = request.input
             && input != GestureInput::Touch
         {
-            return Err(PlatformError::NotSupported(format!(
+            return Err(Error::not_supported(format!(
                 "{input:?} gestures are not available on iOS; use touch"
             )));
         }
-        let points = request
-            .shape
-            .points()
-            .map_err(PlatformError::InvalidParameter)?;
+        let points = request.shape.points().map_err(Error::invalid_arg)?;
         let continued = match request.finger {
             Some(id) => Some(
                 held()
                     .as_mut()
                     .and_then(|fingers| fingers.remove(&id))
-                    .ok_or_else(|| {
-                        PlatformError::InvalidParameter(format!("finger {id} is not held"))
-                    })?,
+                    .ok_or_else(|| Error::invalid_arg(format!("finger {id} is not held")))?,
             ),
             None => None,
         };
@@ -1208,13 +1188,13 @@ mod ios {
             let phase = if last.is_none() { DOWN } else { MOVE };
             last = Some((x, y));
             if !on_main(move || touch(view, phase, (x, y))).await? {
-                return Err(PlatformError::Platform(
-                    "the page is not taking input (behind a dialog or leaving)".into(),
+                return Err(Error::internal(
+                    "the page is not taking input (behind a dialog or leaving)",
                 ));
             }
             events += 1;
         }
-        let at = last.ok_or_else(|| PlatformError::InvalidParameter("no points".into()))?;
+        let at = last.ok_or_else(|| Error::invalid_arg("no points"))?;
         let finger = match request.end {
             GestureEnd::Hold => {
                 let id = NEXT.fetch_add(1, Ordering::Relaxed);
@@ -1248,14 +1228,14 @@ mod ios {
     async fn press_control(
         points: &[GesturePoint],
         end: GestureEnd,
-    ) -> Result<AppGestureResult, PlatformError> {
+    ) -> Result<AppGestureResult, Error> {
         let (Some(first), Some(last)) = (points.first(), points.last()) else {
-            return Err(PlatformError::InvalidParameter("no points".into()));
+            return Err(Error::invalid_arg("no points"));
         };
         if end != GestureEnd::Up || (first.x - last.x).abs() > 1.0 || (first.y - last.y).abs() > 1.0
         {
-            return Err(PlatformError::NotSupported(
-                "iOS presses host chrome with a tap only; drags reach GPU pages".into(),
+            return Err(Error::not_supported(
+                "iOS presses host chrome with a tap only; drags reach GPU pages",
             ));
         }
         let started = Instant::now();
@@ -1479,7 +1459,7 @@ mod ios {
     /// Page content (WebKit, a GPU page's own nodes) is not read.
     pub(super) async fn chrome_elements(
         scope: Option<String>,
-    ) -> Result<Vec<crate::traits::gesture::ChromeElement>, PlatformError> {
+    ) -> Result<Vec<crate::traits::gesture::ChromeElement>, Error> {
         use crate::traits::gesture::ChromeElement;
         unsafe fn visible(view: *mut AnyObject) -> bool {
             unsafe {
@@ -1671,7 +1651,7 @@ mod ios {
     pub(super) async fn pull_refresh_indicator(
         app_id: &str,
         webtag: &str,
-    ) -> Result<Option<crate::traits::gesture::PullRefreshIndicator>, PlatformError> {
+    ) -> Result<Option<crate::traits::gesture::PullRefreshIndicator>, Error> {
         use crate::traits::gesture::PullRefreshIndicator;
         use std::ffi::{CString, c_char, c_void};
         type StateFn = unsafe extern "C" fn(
@@ -1685,10 +1665,8 @@ mod ios {
             fn dlsym(handle: *mut c_void, symbol: *const c_char) -> *mut c_void;
         }
         const RTLD_DEFAULT: *mut c_void = -2isize as *mut c_void;
-        let app =
-            CString::new(app_id).map_err(|e| PlatformError::InvalidParameter(e.to_string()))?;
-        let tag =
-            CString::new(webtag).map_err(|e| PlatformError::InvalidParameter(e.to_string()))?;
+        let app = CString::new(app_id).map_err(|e| Error::invalid_arg(e.to_string()))?;
+        let tag = CString::new(webtag).map_err(|e| Error::invalid_arg(e.to_string()))?;
         on_main(move || {
             let symbol = unsafe { dlsym(RTLD_DEFAULT, c"lx_ios_pull_refresh_state".as_ptr()) };
             if symbol.is_null() {

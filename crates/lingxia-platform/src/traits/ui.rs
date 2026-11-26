@@ -1,8 +1,7 @@
 use std::future::Future;
 
+use lingxia_error::Error;
 use lingxia_surface::LayoutPresentationPlan;
-
-use crate::error::PlatformError;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ToastIcon {
@@ -207,7 +206,7 @@ pub struct SurfaceRequest {
 
 /// Callback adapter used by platform SDK handlers that cannot return a Rust
 /// future directly. `SurfacePresenter` exposes only `ManagedSurfaceFuture`.
-pub type ManagedSurfaceCompletion = Box<dyn FnOnce(Result<(), PlatformError>) + Send + 'static>;
+pub type ManagedSurfaceCompletion = Box<dyn FnOnce(Result<(), Error>) + Send + 'static>;
 
 pub type ManagedSurfaceFuture = crate::traits::PlatformFuture;
 
@@ -243,32 +242,32 @@ pub trait SurfacePresenter: Send + Sync + 'static {
         &self,
         _window_id: &str,
         _plan: &LayoutPresentationPlan,
-    ) -> Result<(), PlatformError> {
-        Err(PlatformError::NotSupported(
+    ) -> Result<(), Error> {
+        Err(Error::not_supported(
             "present_layout is not supported on this platform".to_string(),
         ))
     }
 
-    fn present_surface(&self, _request: SurfaceRequest) -> Result<(), PlatformError> {
-        Err(PlatformError::NotSupported(
+    fn present_surface(&self, _request: SurfaceRequest) -> Result<(), Error> {
+        Err(Error::not_supported(
             "surface is not supported on this platform".to_string(),
         ))
     }
 
-    fn close_surface(&self, _app_id: &str, _id: &str, _reason: &str) -> Result<(), PlatformError> {
-        Err(PlatformError::NotSupported(
+    fn close_surface(&self, _app_id: &str, _id: &str, _reason: &str) -> Result<(), Error> {
+        Err(Error::not_supported(
             "surface close is not supported on this platform".to_string(),
         ))
     }
 
-    fn show_surface(&self, _app_id: &str, _id: &str) -> Result<(), PlatformError> {
-        Err(PlatformError::NotSupported(
+    fn show_surface(&self, _app_id: &str, _id: &str) -> Result<(), Error> {
+        Err(Error::not_supported(
             "surface show is not supported on this platform".to_string(),
         ))
     }
 
-    fn hide_surface(&self, _app_id: &str, _id: &str) -> Result<(), PlatformError> {
-        Err(PlatformError::NotSupported(
+    fn hide_surface(&self, _app_id: &str, _id: &str) -> Result<(), Error> {
+        Err(Error::not_supported(
             "surface hide is not supported on this platform".to_string(),
         ))
     }
@@ -281,7 +280,7 @@ pub trait SurfacePresenter: Send + Sync + 'static {
         _request: ManagedSurfaceProviderRequest,
     ) -> ManagedSurfaceFuture {
         Box::pin(async {
-            Err(PlatformError::NotSupported(
+            Err(Error::not_supported(
                 "managed surface providers are not supported on this platform".to_string(),
             ))
         })
@@ -293,7 +292,7 @@ pub trait SurfacePresenter: Send + Sync + 'static {
         _request: ManagedSurfaceProviderDestroyRequest,
     ) -> ManagedSurfaceFuture {
         Box::pin(async {
-            Err(PlatformError::NotSupported(
+            Err(Error::not_supported(
                 "managed surface providers are not supported on this platform".to_string(),
             ))
         })
@@ -309,7 +308,7 @@ pub trait Appearance: Send + Sync + 'static {
 
     /// Apply an lxapp-scoped scheme to native Page Chrome and every matching
     /// WebView. Shared shell and unrelated browser/lxapp WebViews are excluded.
-    fn apply_lxapp_appearance(&self, _appid: &str, _dark: bool) -> Result<(), PlatformError> {
+    fn apply_lxapp_appearance(&self, _appid: &str, _dark: bool) -> Result<(), Error> {
         Ok(())
     }
 
@@ -337,18 +336,18 @@ pub trait LaunchFace: Send + Sync + 'static {
 }
 
 pub trait UIUpdate: Send + Sync + 'static {
-    fn update_navbar_ui(&self, appid: String) -> Result<(), PlatformError>;
-    fn update_tabbar_ui(&self, appid: String) -> Result<(), PlatformError>;
+    fn update_navbar_ui(&self, appid: String) -> Result<(), Error>;
+    fn update_tabbar_ui(&self, appid: String) -> Result<(), Error>;
 
     fn update_tabbar_ui_async(
         &self,
         appid: String,
-    ) -> impl Future<Output = Result<(), PlatformError>> + Send {
+    ) -> impl Future<Output = Result<(), Error>> + Send {
         async move { self.update_tabbar_ui(appid) }
     }
 
-    fn update_orientation_ui(&self, _appid: String) -> Result<(), PlatformError> {
-        Err(PlatformError::NotSupported(
+    fn update_orientation_ui(&self, _appid: String) -> Result<(), Error> {
+        Err(Error::not_supported(
             "update_orientation_ui not implemented for this platform".to_string(),
         ))
     }
@@ -359,7 +358,7 @@ pub trait UIUpdate: Send + Sync + 'static {
     fn measure_page_chrome_capsule(
         &self,
         _appid: String,
-    ) -> impl Future<Output = Result<Option<String>, PlatformError>> + Send {
+    ) -> impl Future<Output = Result<Option<String>, Error>> + Send {
         async { Ok(None) }
     }
 
@@ -370,7 +369,7 @@ pub trait UIUpdate: Send + Sync + 'static {
         &self,
         appid: String,
         _revision: u64,
-    ) -> impl Future<Output = Result<(), PlatformError>> + Send {
+    ) -> impl Future<Output = Result<(), Error>> + Send {
         async move {
             self.update_navbar_ui(appid.clone())?;
             self.update_tabbar_ui_async(appid).await
@@ -379,25 +378,25 @@ pub trait UIUpdate: Send + Sync + 'static {
 }
 
 pub trait UserFeedback: Send + Sync + 'static {
-    fn show_toast(&self, options: ToastOptions) -> Result<(), PlatformError>;
-    fn hide_toast(&self) -> Result<(), PlatformError>;
+    fn show_toast(&self, options: ToastOptions) -> Result<(), Error>;
+    fn hide_toast(&self) -> Result<(), Error>;
 
     fn show_modal(
         &self,
         options: ModalOptions,
-    ) -> impl Future<Output = Result<String, PlatformError>> + Send;
+    ) -> impl Future<Output = Result<String, Error>> + Send;
 
     fn show_action_sheet(
         &self,
         options: Vec<String>,
         cancel_text: String,
         item_color: String,
-    ) -> impl Future<Output = Result<String, PlatformError>> + Send;
+    ) -> impl Future<Output = Result<String, Error>> + Send;
 
     /// Close the modal or action sheet on screen, settling its pending `show_*`
     /// as dismissed; nothing on screen is a no-op. A View-drawn dialog closes
     /// through `ui.dismissDialog` instead.
-    fn dismiss_dialog(&self) -> Result<(), PlatformError> {
-        Err(PlatformError::NotSupported("dismiss_dialog".to_string()))
+    fn dismiss_dialog(&self) -> Result<(), Error> {
+        Err(Error::not_supported("dismiss_dialog".to_string()))
     }
 }

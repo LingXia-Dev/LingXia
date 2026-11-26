@@ -16,7 +16,7 @@ use lingxia_browser_shell::{
     BrowserAddressInputContext, BrowserAddressInputRequest, BrowserAddressInputTrigger,
     resolve_input,
 };
-use lingxia_platform::error::PlatformError;
+use lingxia_error::Error;
 use lingxia_platform::traits::app_runtime::{
     AppRuntime, LxAppOpenMode, OpenUrlRequest, OpenUrlTarget,
 };
@@ -82,7 +82,7 @@ const DEFAULT_LIVE_BROWSER_TABS: usize = 8;
 struct PresentationCompletion(Option<ManagedSurfaceCompletion>);
 
 impl PresentationCompletion {
-    fn finish(&mut self, result: Result<(), PlatformError>) {
+    fn finish(&mut self, result: Result<(), Error>) {
         if let Some(completion) = self.0.take() {
             completion(result);
         }
@@ -91,14 +91,14 @@ impl PresentationCompletion {
 
 impl Drop for PresentationCompletion {
     fn drop(&mut self) {
-        self.finish(Err(PlatformError::CallbackDropped));
+        self.finish(Err(Error::internal("platform callback dropped")));
     }
 }
 
 fn accept_managed_request(
     completion: ManagedSurfaceCompletion,
     start: impl FnOnce(ManagedSurfaceCompletion) -> bool,
-    rejected: PlatformError,
+    rejected: Error,
 ) -> bool {
     let completion = Arc::new(Mutex::new(PresentationCompletion(Some(completion))));
     let completion_for_result = completion.clone();
@@ -1551,7 +1551,7 @@ fn current_sidebar_width(group_appid: &str) -> f64 {
 /// for explicit external targets or when no shell/browser is available.
 fn handle_open_url_request(
     req: &OpenUrlRequest,
-) -> Result<Option<lingxia_platform::traits::app_runtime::OpenUrlResult>, PlatformError> {
+) -> Result<Option<lingxia_platform::traits::app_runtime::OpenUrlResult>, Error> {
     match req.target {
         OpenUrlTarget::External => Ok(None),
         // In-app targets are routed into the internal browser; without the
@@ -1579,9 +1579,7 @@ fn handle_open_url_request(
                 let owner_session_id = lxapp::try_get(&owner_appid)
                     .map(|owner| owner.session_id())
                     .ok_or_else(|| {
-                        PlatformError::Platform(format!(
-                            "shell owner app is not active: {owner_appid}"
-                        ))
+                        Error::internal(format!("shell owner app is not active: {owner_appid}"))
                     })?;
                 // JS is waiting for an identity; create on this thread (the
                 // Logic executor, not a WebView UI thread) so close() can
@@ -1602,7 +1600,7 @@ fn handle_open_url_request(
                             tab_id: Some(tab_id),
                         }))
                     }
-                    Err(err) => Err(PlatformError::Platform(format!(
+                    Err(err) => Err(Error::internal(format!(
                         "failed to open browser tab for {url}: {err}"
                     ))),
                 };
@@ -1641,8 +1639,8 @@ fn handle_close_browser_tab(tab_id: &str) -> bool {
 
 fn handle_activate_browser_tab(tab_id: String) -> ManagedSurfaceFuture {
     Box::pin(async move {
-        let owner_appid = shell_owner_appid()
-            .ok_or_else(|| PlatformError::NotSupported("browser tab".to_string()))?;
+        let owner_appid =
+            shell_owner_appid().ok_or_else(|| Error::not_supported("browser tab".to_string()))?;
         #[cfg(feature = "browser-runtime")]
         {
             let (sender, receiver) = tokio::sync::oneshot::channel();
@@ -1656,14 +1654,14 @@ fn handle_activate_browser_tab(tab_id: String) -> ManagedSurfaceFuture {
                 None,
                 Some(completion),
             );
-            receiver.await.map_err(|_| {
-                PlatformError::Platform("browser presentation was cancelled".to_string())
-            })?
+            receiver
+                .await
+                .map_err(|_| Error::internal("browser presentation was cancelled".to_string()))?
         }
         #[cfg(not(feature = "browser-runtime"))]
         {
             let _ = (owner_appid, tab_id);
-            Err(PlatformError::NotSupported("browser tab".to_string()))
+            Err(Error::not_supported("browser tab".to_string()))
         }
     })
 }
@@ -6608,7 +6606,7 @@ fn present_main_surface_inner(
             result
                 .as_ref()
                 .map(|_| ())
-                .map_err(|error| PlatformError::Platform(error.clone())),
+                .map_err(|error| Error::internal(error.clone())),
         );
     }
     result
@@ -7218,7 +7216,7 @@ fn present_browser_tab_when_ready_inner(
     let mut completion = PresentationCompletion(completion);
     if let Err(err) = reactivate_browser_tab_if_needed(&tab_id) {
         log::warn!("failed to reactivate browser tab {tab_id}: {err}");
-        completion.finish(Err(PlatformError::Platform(err.to_string())));
+        completion.finish(Err(Error::internal(err.to_string())));
         return;
     }
     let owner_appid = appid.to_string();
@@ -7229,14 +7227,14 @@ fn present_browser_tab_when_ready_inner(
         let previous_group = presented_browser_group_appid();
         for attempt in 0..PRESENT_BROWSER_TAB_MAX_RETRY {
             if BROWSER_PRESENT_EPOCH.load(Ordering::Relaxed) != epoch {
-                completion.finish(Err(PlatformError::Platform(
+                completion.finish(Err(Error::internal(
                     "browser presentation was superseded".to_string(),
                 )));
                 return;
             }
             let Some(tab) = browser_tab_summary(&tab_id) else {
                 // Tab was closed while waiting.
-                completion.finish(Err(PlatformError::AssetNotFound(format!(
+                completion.finish(Err(Error::not_found(format!(
                     "browser tab closed before presentation: {tab_id}"
                 ))));
                 return;
@@ -7256,7 +7254,7 @@ fn present_browser_tab_when_ready_inner(
             if find_webview_handler(&webtag).is_none() {
                 if attempt + 1 == PRESENT_BROWSER_TAB_MAX_RETRY {
                     log::error!("failed to present browser tab {tab_id}: WebView not ready");
-                    completion.finish(Err(PlatformError::Platform(format!(
+                    completion.finish(Err(Error::internal(format!(
                         "browser WebView was not ready: {tab_id}"
                     ))));
                     return;
@@ -7281,7 +7279,7 @@ fn present_browser_tab_when_ready_inner(
                 true
             };
             if BROWSER_PRESENT_EPOCH.load(Ordering::Relaxed) != epoch {
-                completion.finish(Err(PlatformError::Platform(
+                completion.finish(Err(Error::internal(
                     "browser presentation was superseded".to_string(),
                 )));
                 return;
@@ -7311,7 +7309,7 @@ fn present_browser_tab_when_ready_inner(
                 set_presented_browser_tab(previous_tab.clone());
                 set_presented_browser_group_appid(previous_group.clone());
                 log::error!("failed to prime shell layout for browser tab {tab_id}");
-                completion.finish(Err(PlatformError::Platform(format!(
+                completion.finish(Err(Error::internal(format!(
                     "failed to prime browser shell layout: {tab_id}"
                 ))));
                 return;
@@ -7329,7 +7327,7 @@ fn present_browser_tab_when_ready_inner(
                 Ok(()) => {
                     if let Some(surface_id) = activate_surface_id.as_deref() {
                         let Some(owner) = lxapp::try_get(&owner_appid) else {
-                            completion.finish(Err(PlatformError::AssetNotFound(format!(
+                            completion.finish(Err(Error::not_found(format!(
                                 "surface owner closed before presentation: {owner_appid}"
                             ))));
                             return;
@@ -7348,7 +7346,7 @@ fn present_browser_tab_when_ready_inner(
                                     "failed to restore previous main after browser activation race: {error}"
                                 );
                             }
-                            completion.finish(Err(PlatformError::InvalidParameter(format!(
+                            completion.finish(Err(Error::invalid_arg(format!(
                                 "unknown declared browser surface: {surface_id}"
                             ))));
                             return;
@@ -7368,7 +7366,7 @@ fn present_browser_tab_when_ready_inner(
                     sync_shell_layout(&owner_appid);
                     if attempt + 1 == PRESENT_BROWSER_TAB_MAX_RETRY {
                         log::error!("failed to present browser tab {tab_id}: {err}");
-                        completion.finish(Err(PlatformError::Platform(format!(
+                        completion.finish(Err(Error::internal(format!(
                             "failed to present browser tab {tab_id}: {err}"
                         ))));
                         return;
@@ -8111,7 +8109,7 @@ fn set_managed_surface_visible_for_api(
         |completion| {
             set_managed_surface_visible_inner(panel_id, visible, role, edge, Some(completion))
         },
-        PlatformError::AssetNotFound(format!("managed surface request rejected: {panel_id}")),
+        Error::not_found(format!("managed surface request rejected: {panel_id}")),
     )
 }
 
@@ -8201,7 +8199,7 @@ fn set_managed_surface_visible_inner(
             completion.finish(if closed {
                 Ok(())
             } else {
-                Err(PlatformError::Platform(format!(
+                Err(Error::internal(format!(
                     "failed to close managed main surface '{panel_id}'"
                 )))
             });
@@ -8237,7 +8235,7 @@ fn set_managed_surface_visible_inner(
             result
                 .as_ref()
                 .map(|_| ())
-                .map_err(|error| PlatformError::Platform(error.clone())),
+                .map_err(|error| Error::internal(error.clone())),
         );
         return result.is_ok();
     }
@@ -8283,7 +8281,7 @@ fn open_managed_native_surface_for_api(
             }
             opened
         },
-        PlatformError::AssetNotFound(format!("unsupported managed native surface: {capability}")),
+        Error::not_found(format!("unsupported managed native surface: {capability}")),
     )
 }
 
@@ -8515,7 +8513,7 @@ fn show_panel_target_inner(
                     result
                         .as_ref()
                         .map(|_| ())
-                        .map_err(|error| PlatformError::Platform(error.clone())),
+                        .map_err(|error| Error::internal(error.clone())),
                 );
             }
             result.is_ok()
@@ -8630,7 +8628,7 @@ fn show_lxapp_panel(
                 result
                     .as_ref()
                     .map(|_| ())
-                    .map_err(|error| PlatformError::Platform(error.to_string())),
+                    .map_err(|error| Error::internal(error.to_string())),
             );
         }
         if let Err(err) = result {
@@ -8864,7 +8862,7 @@ mod tests {
             calls_for_callback.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
         })));
         completion.finish(Ok(()));
-        completion.finish(Err(lingxia_platform::error::PlatformError::CallbackDropped));
+        completion.finish(Err(Error::internal("platform callback dropped")));
         drop(completion);
         assert_eq!(calls.load(std::sync::atomic::Ordering::Relaxed), 1);
     }
@@ -8907,10 +8905,7 @@ mod tests {
         let cancelled_for_callback = cancelled.clone();
         drop(PresentationCompletion(Some(Box::new(move |result| {
             cancelled_for_callback.store(
-                matches!(
-                    result,
-                    Err(lingxia_platform::error::PlatformError::CallbackDropped)
-                ),
+                matches!(result, Err(Error::internal("platform callback dropped"))),
                 std::sync::atomic::Ordering::Relaxed,
             );
         }))));

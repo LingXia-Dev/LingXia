@@ -10,7 +10,6 @@ use serde::Serialize;
 
 use super::file_dialog::{self, DialogFilter, DialogKind, OpenDialog};
 use super::{Platform, file, not_supported};
-use crate::error::PlatformError;
 use crate::traits::media_interaction::{
     MediaInteraction, MediaSource, PickMediaMode, PickMediaRequest, PreviewMediaRequest,
     SaveMediaRequest, ScanCodeRequest,
@@ -19,20 +18,21 @@ use crate::traits::media_runtime::{
     CompressImageRequest, CompressVideoRequest, ExtractVideoThumbnailRequest, ImageInfo,
     MediaRuntime, VideoInfo, VideoThumbnail,
 };
+use lingxia_error::Error;
 
 impl MediaInteraction for Platform {
-    fn preview_media(&self, request: PreviewMediaRequest) -> Result<(), PlatformError> {
-        super::media_preview::open_preview(request).map_err(PlatformError::Platform)
+    fn preview_media(&self, request: PreviewMediaRequest) -> Result<(), Error> {
+        super::media_preview::open_preview(request).map_err(Error::internal)
     }
 
-    fn cancel_preview(&self, callback_id: u64) -> Result<(), PlatformError> {
-        super::media_preview::cancel_preview(callback_id).map_err(PlatformError::Platform)
+    fn cancel_preview(&self, callback_id: u64) -> Result<(), Error> {
+        super::media_preview::cancel_preview(callback_id).map_err(Error::internal)
     }
 
     fn pick_media(
         &self,
         request: PickMediaRequest,
-    ) -> impl Future<Output = Result<String, PlatformError>> + Send {
+    ) -> impl Future<Output = Result<String, Error>> + Send {
         async move {
             // No camera capture pipeline on Windows.
             if matches!(request.source_types.as_slice(), [MediaSource::Camera]) {
@@ -45,21 +45,21 @@ impl MediaInteraction for Platform {
     fn scan_code(
         &self,
         request: ScanCodeRequest,
-    ) -> impl Future<Output = Result<String, PlatformError>> + Send {
+    ) -> impl Future<Output = Result<String, Error>> + Send {
         crate::desktop::scan::scan_code_desktop(request)
     }
 
     fn save_image_to_photos_album(
         &self,
         _request: SaveMediaRequest,
-    ) -> impl Future<Output = Result<(), PlatformError>> + Send {
+    ) -> impl Future<Output = Result<(), Error>> + Send {
         async { not_supported("save_image_to_photos_album") }
     }
 
     fn save_video_to_photos_album(
         &self,
         _request: SaveMediaRequest,
-    ) -> impl Future<Output = Result<(), PlatformError>> + Send {
+    ) -> impl Future<Output = Result<(), Error>> + Send {
         async { not_supported("save_video_to_photos_album") }
     }
 }
@@ -70,7 +70,7 @@ const VIDEO_EXTENSIONS: [&str; 7] = ["mp4", "mov", "avi", "mkv", "webm", "m4v", 
 /// Album picking on Windows is a file dialog over the media types; the
 /// chosen paths go back as the `[{uri, fileType, isOriginal}]` array the
 /// logic layer copies into the app cache. Cancel yields an empty list.
-async fn pick_media_files(request: PickMediaRequest) -> Result<String, PlatformError> {
+async fn pick_media_files(request: PickMediaRequest) -> Result<String, Error> {
     let filter = |name: &str, extensions: &[&str]| DialogFilter {
         name: name.to_string(),
         extensions: extensions.iter().map(|ext| ext.to_string()).collect(),
@@ -128,8 +128,7 @@ async fn pick_media_files(request: PickMediaRequest) -> Result<String, PlatformE
             })
         })
         .collect();
-    serde_json::to_string(&entries)
-        .map_err(|err| PlatformError::Platform(format!("pick_media: {err}")))
+    serde_json::to_string(&entries).map_err(|err| Error::internal(format!("pick_media: {err}")))
 }
 
 impl MediaRuntime for Platform {
@@ -138,18 +137,18 @@ impl MediaRuntime for Platform {
         uri: &str,
         dest_path: &Path,
         _kind: crate::traits::media_interaction::MediaKind,
-    ) -> Result<(), PlatformError> {
+    ) -> Result<(), Error> {
         let source = file::normalize_file_uri(uri)?;
         if let Some(parent) = dest_path.parent() {
             fs::create_dir_all(parent).map_err(|err| {
-                PlatformError::Platform(format!(
+                Error::internal(format!(
                     "failed to create destination directory {}: {err}",
                     parent.display()
                 ))
             })?;
         }
         fs::copy(&source, dest_path).map_err(|err| {
-            PlatformError::Platform(format!(
+            Error::internal(format!(
                 "failed to copy media {} -> {}: {err}",
                 source.display(),
                 dest_path.display()
@@ -158,15 +157,15 @@ impl MediaRuntime for Platform {
         Ok(())
     }
 
-    fn get_image_info(&self, uri: &str) -> Result<ImageInfo, PlatformError> {
+    fn get_image_info(&self, uri: &str) -> Result<ImageInfo, Error> {
         crate::desktop::image::get_image_info_desktop(uri)
     }
 
-    fn compress_image(&self, request: &CompressImageRequest) -> Result<PathBuf, PlatformError> {
+    fn compress_image(&self, request: &CompressImageRequest) -> Result<PathBuf, Error> {
         crate::desktop::image::compress_image_desktop(request)
     }
 
-    fn compress_video(&self, request: &CompressVideoRequest) -> Result<(), PlatformError> {
+    fn compress_video(&self, request: &CompressVideoRequest) -> Result<(), Error> {
         // Resolve the source up front so a bad URI fails synchronously (the
         // caller treats `Err` as "job rejected"); the transcode itself runs on
         // a worker thread and reports back through the request's callbacks.
@@ -190,21 +189,21 @@ impl MediaRuntime for Platform {
                 .lock()
                 .unwrap()
                 .remove(&callback_id);
-            return Err(PlatformError::Platform(format!(
+            return Err(Error::internal(format!(
                 "failed to start compress_video worker: {err}"
             )));
         }
         Ok(())
     }
 
-    fn cancel_compress_video(&self, callback_id: u64) -> Result<(), PlatformError> {
+    fn cancel_compress_video(&self, callback_id: u64) -> Result<(), Error> {
         if let Some(cancel) = compress_cancel_registry().lock().unwrap().get(&callback_id) {
             cancel.store(true, Ordering::SeqCst);
         }
         Ok(())
     }
 
-    fn get_video_info(&self, uri: &str) -> Result<VideoInfo, PlatformError> {
+    fn get_video_info(&self, uri: &str) -> Result<VideoInfo, Error> {
         let path = file::normalize_file_uri(uri)?;
         super::video_info::read_video_info(&path)
     }
@@ -212,7 +211,7 @@ impl MediaRuntime for Platform {
     fn extract_video_thumbnail(
         &self,
         request: &ExtractVideoThumbnailRequest,
-    ) -> Result<VideoThumbnail, PlatformError> {
+    ) -> Result<VideoThumbnail, Error> {
         let source = file::normalize_file_uri(&request.source_uri)?;
         super::video_info::extract_thumbnail(request, &source).inspect_err(|err| {
             log::warn!("extract_video_thumbnail({}): {err}", source.display());

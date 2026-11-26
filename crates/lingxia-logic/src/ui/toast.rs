@@ -1,5 +1,5 @@
 #[cfg(not(any(target_os = "macos", target_os = "windows")))]
-use crate::i18n::js_error_from_platform_error;
+use crate::i18n::js_error;
 #[cfg(any(target_os = "macos", target_os = "windows"))]
 use crate::i18n::js_internal_error;
 use crate::i18n::{js_invalid_parameter_error, js_state_error};
@@ -282,10 +282,7 @@ async fn present_toast(ctx: &JSContext, request: ToastRequest) -> JSResult<()> {
     #[cfg(not(any(target_os = "macos", target_os = "windows")))]
     {
         let toast_options: ToastOptions = request.into();
-        lxapp
-            .runtime
-            .show_toast(toast_options)
-            .map_err(|e| js_error_from_platform_error(&e))?;
+        lxapp.runtime.show_toast(toast_options).map_err(js_error)?;
 
         Ok(())
     }
@@ -360,10 +357,7 @@ async fn hide_toast(ctx: &JSContext) -> JSResult<()> {
 
     #[cfg(not(any(target_os = "macos", target_os = "windows")))]
     {
-        lxapp
-            .runtime
-            .hide_toast()
-            .map_err(|e| js_error_from_platform_error(&e))?;
+        lxapp.runtime.hide_toast().map_err(js_error)?;
 
         Ok(())
     }

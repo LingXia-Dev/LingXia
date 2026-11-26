@@ -1,8 +1,8 @@
-use crate::error::PlatformError;
 use crate::traits::wifi::{Wifi, WifiConnectRequest, WifiGetConnectedRequest};
 use std::os::raw::c_int;
 
 use super::Platform;
+use lingxia_error::Error;
 
 mod ffi {
     use super::*;
@@ -17,13 +17,13 @@ mod ffi {
 }
 
 impl Wifi for Platform {
-    fn start_wifi(&self, callback_id: u64) -> Result<(), PlatformError> {
+    fn start_wifi(&self, callback_id: u64) -> Result<(), Error> {
         let callback_id_str = callback_id.to_string();
         lingxia_webview::platform::harmony::tsfn::call_arkts("startWifi", &[&callback_id_str])
-            .map_err(|e| PlatformError::Platform(format!("Failed to start WiFi: {}", e)))
+            .map_err(|e| Error::internal(format!("Failed to start WiFi: {}", e)))
     }
 
-    fn connect_wifi(&self, request: WifiConnectRequest) -> Result<(), PlatformError> {
+    fn connect_wifi(&self, request: WifiConnectRequest) -> Result<(), Error> {
         let callback_id_str = request.callback_id.to_string();
         let password = request.password.unwrap_or_default();
 
@@ -31,55 +31,53 @@ impl Wifi for Platform {
             "connectWifi",
             &[&callback_id_str, &request.ssid, &password],
         )
-        .map_err(|e| PlatformError::Platform(format!("Failed to connect WiFi: {}", e)))
+        .map_err(|e| Error::internal(format!("Failed to connect WiFi: {}", e)))
     }
 
-    fn get_wifi_list(&self, callback_id: u64) -> Result<(), PlatformError> {
+    fn get_wifi_list(&self, callback_id: u64) -> Result<(), Error> {
         let callback_id_str = callback_id.to_string();
         lingxia_webview::platform::harmony::tsfn::call_arkts("getWifiList", &[&callback_id_str])
-            .map_err(|e| PlatformError::Platform(format!("Failed to get WiFi list: {}", e)))
+            .map_err(|e| Error::internal(format!("Failed to get WiFi list: {}", e)))
     }
 
-    fn get_connected_wifi(&self, request: WifiGetConnectedRequest) -> Result<(), PlatformError> {
+    fn get_connected_wifi(&self, request: WifiGetConnectedRequest) -> Result<(), Error> {
         let callback_id_str = request.callback_id.to_string();
         lingxia_webview::platform::harmony::tsfn::call_arkts(
             "getConnectedWifi",
             &[&callback_id_str],
         )
-        .map_err(|e| PlatformError::Platform(format!("Failed to get connected WiFi: {}", e)))
+        .map_err(|e| Error::internal(format!("Failed to get connected WiFi: {}", e)))
     }
 
-    fn is_wifi_enabled(&self) -> Result<bool, PlatformError> {
+    fn is_wifi_enabled(&self) -> Result<bool, Error> {
         let mut enabled = false;
         let result = unsafe { ffi::OH_Wifi_IsWifiEnabled(&mut enabled) };
 
         if result == ffi::WIFI_SUCCESS {
             Ok(enabled)
         } else {
-            Err(PlatformError::Platform(format!(
+            Err(Error::internal(format!(
                 "Failed to check WiFi status: {}",
                 result
             )))
         }
     }
 
-    fn add_wifi_state_listener(&self, callback_id: u64) -> Result<(), PlatformError> {
+    fn add_wifi_state_listener(&self, callback_id: u64) -> Result<(), Error> {
         let callback_id_str = callback_id.to_string();
         lingxia_webview::platform::harmony::tsfn::call_arkts(
             "addWifiStateListener",
             &[&callback_id_str],
         )
-        .map_err(|e| PlatformError::Platform(format!("Failed to add WiFi state listener: {}", e)))
+        .map_err(|e| Error::internal(format!("Failed to add WiFi state listener: {}", e)))
     }
 
-    fn remove_wifi_state_listener(&self, callback_id: u64) -> Result<(), PlatformError> {
+    fn remove_wifi_state_listener(&self, callback_id: u64) -> Result<(), Error> {
         let callback_id_str = callback_id.to_string();
         lingxia_webview::platform::harmony::tsfn::call_arkts(
             "removeWifiStateListener",
             &[&callback_id_str],
         )
-        .map_err(|e| {
-            PlatformError::Platform(format!("Failed to remove WiFi state listener: {}", e))
-        })
+        .map_err(|e| Error::internal(format!("Failed to remove WiFi state listener: {}", e)))
     }
 }

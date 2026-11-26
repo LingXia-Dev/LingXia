@@ -4,12 +4,12 @@
 use super::Platform;
 use super::mouse::deepest_child_at;
 use super::screenshot::resolve_screenshot_window;
-use crate::error::PlatformError;
 use crate::traits::gesture::{
     AppGesture, AppGestureRequest, AppGestureResult, ChromeElement, GestureDelivery, GestureEnd,
     GestureInput, GesturePoint, GestureTarget, HostCapability, PullRefreshIndicator,
 };
 use async_trait::async_trait;
+use lingxia_error::Error;
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, OnceLock};
@@ -164,15 +164,12 @@ impl AppGesture for Platform {
         &self,
         _app_id: &str,
         webtag: &str,
-    ) -> Result<Option<PullRefreshIndicator>, PlatformError> {
+    ) -> Result<Option<PullRefreshIndicator>, Error> {
         super::pull_to_refresh::windows_pull_refresh_indicator(webtag)
     }
 
     // Bounds are host client pixels: the unit a window gesture takes here.
-    async fn chrome_elements(
-        &self,
-        scope: Option<String>,
-    ) -> Result<Vec<ChromeElement>, PlatformError> {
+    async fn chrome_elements(&self, scope: Option<String>) -> Result<Vec<ChromeElement>, Error> {
         let window = resolve_screenshot_window(None)?.0 as isize;
         let provider = CHROME_PROVIDER
             .lock()
@@ -206,11 +203,11 @@ impl AppGesture for Platform {
     async fn perform_app_gesture(
         &self,
         request: AppGestureRequest,
-    ) -> Result<AppGestureResult, PlatformError> {
+    ) -> Result<AppGestureResult, Error> {
         perform(request).await
     }
 
-    async fn orient_window(&self, landscape: bool) -> Result<[f64; 2], PlatformError> {
+    async fn orient_window(&self, landscape: bool) -> Result<[f64; 2], Error> {
         let window = resolve_screenshot_window(None)?.0 as isize;
         // The page decides the orientation, not the window: the sidebar and title bar make a
         // squarish window's page portrait. Resizing can also change that chrome (a narrow
@@ -231,7 +228,7 @@ impl AppGesture for Platform {
                 unsafe {
                     let hwnd = HWND(window as *mut _);
                     GetWindowRect(hwnd, &mut frame)
-                        .map_err(|e| PlatformError::Platform(format!("window rect: {e}")))?;
+                        .map_err(|e| Error::internal(format!("window rect: {e}")))?;
                     let _ = GetMonitorInfoW(
                         MonitorFromWindow(hwnd, MONITOR_DEFAULTTONEAREST),
                         &mut monitor,
@@ -259,7 +256,7 @@ impl AppGesture for Platform {
                         height,
                         SWP_NOZORDER | SWP_NOACTIVATE,
                     )
-                    .map_err(|e| PlatformError::Platform(format!("resize window: {e}")))?;
+                    .map_err(|e| Error::internal(format!("resize window: {e}")))?;
                 }
             }
             // The shell lays out the resized window on its own thread.
@@ -272,7 +269,7 @@ impl AppGesture for Platform {
         Ok([width / scale, height / scale])
     }
 
-    async fn gesture_viewport(&self, target: GestureTarget) -> Result<[f64; 4], PlatformError> {
+    async fn gesture_viewport(&self, target: GestureTarget) -> Result<[f64; 4], Error> {
         if let GestureTarget::Page { webtag, .. } = &target
             && let Some([width, height]) = lingxia_webview::platform::windows::find_webview_handler(
                 &lingxia_webview::WebTag::from(webtag.as_str()),
@@ -288,7 +285,7 @@ impl AppGesture for Platform {
 }
 
 /// The window a target's points are in, and its device pixels per point.
-fn resolve(target: &GestureTarget) -> Result<(isize, f64), PlatformError> {
+fn resolve(target: &GestureTarget) -> Result<(isize, f64), Error> {
     match target {
         GestureTarget::Window { window_id } => {
             let window = resolve_screenshot_window(window_id.as_deref())?;
@@ -297,7 +294,7 @@ fn resolve(target: &GestureTarget) -> Result<(isize, f64), PlatformError> {
         GestureTarget::Page { webtag, .. } => {
             let tag = lingxia_webview::WebTag::from(webtag.as_str());
             let handler = lingxia_webview::platform::windows::find_webview_handler(&tag)
-                .ok_or_else(|| PlatformError::Platform(format!("no page window for {webtag}")))?;
+                .ok_or_else(|| Error::internal(format!("no page window for {webtag}")))?;
             // A GPU page's window moves between host parents; its points are its own.
             let window = handler
                 .content_window()
@@ -369,7 +366,7 @@ fn lparam(x: f64, y: f64) -> LPARAM {
     LPARAM((((y as u16) as isize) << 16) | ((x as u16) as isize))
 }
 
-fn post(window: isize, message: u32, wparam: usize, at: (f64, f64)) -> Result<(), PlatformError> {
+fn post(window: isize, message: u32, wparam: usize, at: (f64, f64)) -> Result<(), Error> {
     // SAFETY: posts to a window handle; a stale one fails.
     unsafe {
         PostMessageW(
@@ -379,13 +376,13 @@ fn post(window: isize, message: u32, wparam: usize, at: (f64, f64)) -> Result<()
             lparam(at.0, at.1),
         )
     }
-    .map_err(|err| PlatformError::Platform(format!("PostMessageW failed: {err}")))
+    .map_err(|err| Error::internal(format!("PostMessageW failed: {err}")))
 }
 
 /// Scroll `held`'s window by fingers travelling `delta` window pixels in `phase` (0 began,
 /// 1 changed, 2 ended, 3 momentum): its content follows them. A window that is not a GPU page
 /// reads it as the wheel.
-fn scroll(held: &Held, phase: usize, delta: (f64, f64)) -> Result<(), PlatformError> {
+fn scroll(held: &Held, phase: usize, delta: (f64, f64)) -> Result<(), Error> {
     let at = client_point(held, held.anchor);
     if is_gpu_page(HWND(held.window as *mut _)) {
         let pack = |v: f64| usize::from(v.clamp(-32768.0, 32767.0) as i16 as u16);
@@ -426,7 +423,7 @@ fn fling_velocity(shape: &crate::traits::gesture::GestureShape) -> (f64, f64) {
 /// The momentum a precision touchpad's driver posts after a flick: per-frame deltas decaying
 /// from the release velocity (target points per second), one per display refresh. A timer
 /// sleep is no pacer here: Windows wakes it on a 15.6 ms tick, every other refresh.
-async fn momentum(held: &Held, velocity: (f64, f64)) -> Result<u32, PlatformError> {
+async fn momentum(held: &Held, velocity: (f64, f64)) -> Result<u32, Error> {
     let held = *held;
     tokio::task::spawn_blocking(move || {
         use windows::Win32::Graphics::Dwm::DwmFlush;
@@ -452,7 +449,7 @@ async fn momentum(held: &Held, velocity: (f64, f64)) -> Result<u32, PlatformErro
         Ok(events)
     })
     .await
-    .map_err(|err| PlatformError::Platform(format!("momentum thread failed: {err}")))?
+    .map_err(|err| Error::internal(format!("momentum thread failed: {err}")))?
 }
 
 /// Point `at` (target points) in `held`'s window client pixels.
@@ -464,11 +461,7 @@ fn client_point(held: &Held, at: (f64, f64)) -> (f64, f64) {
 }
 
 /// The window under the gesture's first point, which takes the whole gesture.
-fn begin(
-    target: &GestureTarget,
-    input: GestureInput,
-    at: (f64, f64),
-) -> Result<Held, PlatformError> {
+fn begin(target: &GestureTarget, input: GestureInput, at: (f64, f64)) -> Result<Held, Error> {
     let (window, scale) = resolve(target)?;
     let (base, at_px) = popup_at(window, target, (at.0 * scale, at.1 * scale));
     let (child, _) = deepest_child_at(base, at_px);
@@ -547,7 +540,7 @@ fn popup_at(window: isize, target: &GestureTarget, at: (f64, f64)) -> (isize, (f
     (popup.0 as isize, (f64::from(client.x), f64::from(client.y)))
 }
 
-fn send(held: &Held, phase: usize, at: (f64, f64)) -> Result<(), PlatformError> {
+fn send(held: &Held, phase: usize, at: (f64, f64)) -> Result<(), Error> {
     let client = client_point(held, at);
     if held.touch {
         return post(held.window, touch_message(), phase, client);
@@ -560,41 +553,41 @@ fn send(held: &Held, phase: usize, at: (f64, f64)) -> Result<(), PlatformError> 
     }
 }
 
-async fn perform(request: AppGestureRequest) -> Result<AppGestureResult, PlatformError> {
-    let points = request
-        .shape
-        .points()
-        .map_err(PlatformError::InvalidParameter)?;
-    let held_input =
-        match request.finger {
-            Some(id) => Some(held().get(&id).map(|held| held.input).ok_or_else(|| {
-                PlatformError::InvalidParameter(format!("finger {id} is not held"))
-            })?),
-            None => None,
-        };
+async fn perform(request: AppGestureRequest) -> Result<AppGestureResult, Error> {
+    let points = request.shape.points().map_err(Error::invalid_arg)?;
+    let held_input = match request.finger {
+        Some(id) => Some(
+            held()
+                .get(&id)
+                .map(|held| held.input)
+                .ok_or_else(|| Error::invalid_arg(format!("finger {id} is not held")))?,
+        ),
+        None => None,
+    };
     let input = held_input
         .or(request.input)
         .unwrap_or(GestureInput::Trackpad);
     if input == GestureInput::Mouse && request.end == GestureEnd::Cancel {
-        return Err(PlatformError::InvalidParameter(
-            "a mouse gesture cannot be cancelled; end it with up".into(),
+        return Err(Error::invalid_arg(
+            "a mouse gesture cannot be cancelled; end it with up",
         ));
     }
     // A rejected continuation keeps its finger held.
-    let continued =
-        match request.finger {
-            Some(id) => Some(held().remove(&id).ok_or_else(|| {
-                PlatformError::InvalidParameter(format!("finger {id} is not held"))
-            })?),
-            None => None,
-        };
+    let continued = match request.finger {
+        Some(id) => Some(
+            held()
+                .remove(&id)
+                .ok_or_else(|| Error::invalid_arg(format!("finger {id} is not held")))?,
+        ),
+        None => None,
+    };
     let mut state = match continued {
         Some(held) => held,
         None => {
             let first = points
                 .first()
                 .map(|p| (p.x, p.y))
-                .ok_or_else(|| PlatformError::InvalidParameter("empty gesture".into()))?;
+                .ok_or_else(|| Error::invalid_arg("empty gesture"))?;
             let state = begin(&request.target, input, first)?;
             if input != GestureInput::Trackpad {
                 send(&state, 0, first)?;

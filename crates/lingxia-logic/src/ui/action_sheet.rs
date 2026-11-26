@@ -1,14 +1,10 @@
-#[cfg(not(any(target_os = "macos", target_os = "windows")))]
-use crate::dismissal::USER_DISMISSED;
 use crate::dismissal::{canceled, completed};
 #[cfg(not(any(target_os = "macos", target_os = "windows")))]
-use crate::i18n::js_error_from_platform_error;
+use crate::i18n::js_error;
 use crate::i18n::{
     js_internal_error, js_invalid_parameter_error, js_service_unavailable_error, js_state_error,
 };
 use crate::{I18nKey, i18n::t};
-#[cfg(not(any(target_os = "macos", target_os = "windows")))]
-use lingxia_platform::error::PlatformError;
 #[cfg(not(any(target_os = "macos", target_os = "windows")))]
 use lingxia_platform::traits::ui::UserFeedback;
 use lxapp::LxApp;
@@ -231,8 +227,8 @@ async fn present_action_sheet_native(
         .await
     {
         Ok(data) => data,
-        Err(PlatformError::BusinessError(USER_DISMISSED)) => return Ok(None),
-        Err(e) => return Err(js_error_from_platform_error(&e)),
+        Err(error) if lingxia_platform::error::is_user_dismissed(&error) => return Ok(None),
+        Err(e) => return Err(js_error(e)),
     };
 
     let result: ViewActionSheetResult = serde_json::from_str(&data).map_err(|error| {

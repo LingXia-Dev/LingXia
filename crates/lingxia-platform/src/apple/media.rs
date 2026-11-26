@@ -2,7 +2,6 @@ use super::app::Platform;
 use super::ffi::cancel_preview_media;
 use super::ffi::pick_media;
 use super::ffi::preview_media;
-use crate::error::PlatformError;
 use crate::traits::media_interaction::{CameraFacing, MediaSource, PickMediaMode};
 use crate::traits::media_interaction::{
     MediaInteraction, MediaKind, MediaObjectFit, PickMediaRequest, PreviewMediaRequest,
@@ -12,6 +11,7 @@ use crate::traits::media_runtime::{
     CompressImageRequest, CompressVideoRequest, ExtractVideoThumbnailRequest, ImageInfo,
     MediaRuntime, VideoInfo, VideoThumbnail,
 };
+use lingxia_error::Error;
 use serde::Serialize;
 use std::path::{Path, PathBuf};
 
@@ -36,9 +36,9 @@ struct PreviewMediaRequestPayload {
 }
 
 impl MediaInteraction for Platform {
-    fn preview_media(&self, request: PreviewMediaRequest) -> Result<(), PlatformError> {
+    fn preview_media(&self, request: PreviewMediaRequest) -> Result<(), Error> {
         if request.items.is_empty() {
-            return Err(PlatformError::Platform(
+            return Err(Error::internal(
                 "previewMedia requires at least one item".to_string(),
             ));
         }
@@ -71,9 +71,8 @@ impl MediaInteraction for Platform {
             show_index_indicator: request.show_index_indicator,
         };
 
-        let items_json = serde_json::to_string(&request_payload).map_err(|e| {
-            PlatformError::Platform(format!("Failed to serialize media items: {}", e))
-        })?;
+        let items_json = serde_json::to_string(&request_payload)
+            .map_err(|e| Error::internal(format!("Failed to serialize media items: {}", e)))?;
 
         if preview_media(
             &items_json,
@@ -83,27 +82,27 @@ impl MediaInteraction for Platform {
         ) {
             Ok(())
         } else {
-            Err(PlatformError::Platform(
+            Err(Error::internal(
                 "Failed to preview media on Apple platform".to_string(),
             ))
         }
     }
 
-    fn cancel_preview(&self, callback_id: u64) -> Result<(), PlatformError> {
+    fn cancel_preview(&self, callback_id: u64) -> Result<(), Error> {
         if cancel_preview_media(callback_id) {
             Ok(())
         } else {
-            Err(PlatformError::Platform(
+            Err(Error::internal(
                 "Failed to cancel preview media on Apple platform".to_string(),
             ))
         }
     }
 
-    async fn pick_media(&self, request: PickMediaRequest) -> Result<String, PlatformError> {
+    async fn pick_media(&self, request: PickMediaRequest) -> Result<String, Error> {
         crate::rt::native_call(|callback_id| pick_media_impl(request, callback_id)).await
     }
 
-    async fn scan_code(&self, request: ScanCodeRequest) -> Result<String, PlatformError> {
+    async fn scan_code(&self, request: ScanCodeRequest) -> Result<String, Error> {
         #[cfg(target_os = "ios")]
         {
             crate::rt::native_call(|callback_id| ios::scan_code_impl(request, callback_id)).await
@@ -115,10 +114,7 @@ impl MediaInteraction for Platform {
         }
     }
 
-    async fn save_image_to_photos_album(
-        &self,
-        request: SaveMediaRequest,
-    ) -> Result<(), PlatformError> {
+    async fn save_image_to_photos_album(&self, request: SaveMediaRequest) -> Result<(), Error> {
         #[cfg(target_os = "ios")]
         {
             ios::save_image_to_album(&request.file_uri).await
@@ -127,16 +123,13 @@ impl MediaInteraction for Platform {
         #[cfg(not(target_os = "ios"))]
         {
             let _ = request;
-            Err(PlatformError::Platform(
+            Err(Error::internal(
                 "save_image_to_photos_album is only supported on iOS".to_string(),
             ))
         }
     }
 
-    async fn save_video_to_photos_album(
-        &self,
-        request: SaveMediaRequest,
-    ) -> Result<(), PlatformError> {
+    async fn save_video_to_photos_album(&self, request: SaveMediaRequest) -> Result<(), Error> {
         #[cfg(target_os = "ios")]
         {
             ios::save_video_to_album(&request.file_uri).await
@@ -145,7 +138,7 @@ impl MediaInteraction for Platform {
         #[cfg(not(target_os = "ios"))]
         {
             let _ = request;
-            Err(PlatformError::Platform(
+            Err(Error::internal(
                 "save_video_to_photos_album is only supported on iOS".to_string(),
             ))
         }
@@ -158,7 +151,7 @@ impl MediaRuntime for Platform {
         uri: &str,
         dest_path: &Path,
         kind: MediaKind,
-    ) -> Result<(), PlatformError> {
+    ) -> Result<(), Error> {
         #[cfg(target_os = "ios")]
         {
             let kind_code = match kind {
@@ -168,7 +161,7 @@ impl MediaRuntime for Platform {
             let dest_str = dest_path
                 .to_str()
                 .ok_or_else(|| {
-                    PlatformError::Platform(format!(
+                    Error::internal(format!(
                         "Destination path contains invalid UTF-8: {}",
                         dest_path.display()
                     ))
@@ -178,7 +171,7 @@ impl MediaRuntime for Platform {
             if super::ffi::copy_album_media_to_file(uri, &dest_str, kind_code) {
                 Ok(())
             } else {
-                Err(PlatformError::Platform(format!(
+                Err(Error::internal(format!(
                     "Failed to copy media to {}",
                     dest_path.display()
                 )))
@@ -190,18 +183,18 @@ impl MediaRuntime for Platform {
             let _ = uri;
             let _ = dest_path;
             let _ = kind;
-            Err(PlatformError::Platform(
+            Err(Error::internal(
                 "copy_album_media_to_file is only supported on iOS".to_string(),
             ))
         }
     }
 
-    fn get_image_info(&self, uri: &str) -> Result<ImageInfo, PlatformError> {
+    fn get_image_info(&self, uri: &str) -> Result<ImageInfo, Error> {
         #[cfg(target_os = "ios")]
         {
             let info = super::ffi::get_image_info(uri);
             if !info.success {
-                return Err(PlatformError::Platform(if info.error.is_empty() {
+                return Err(Error::internal(if info.error.is_empty() {
                     "get_image_info failed".to_string()
                 } else {
                     info.error
@@ -224,7 +217,7 @@ impl MediaRuntime for Platform {
         }
     }
 
-    fn compress_image(&self, request: &CompressImageRequest) -> Result<PathBuf, PlatformError> {
+    fn compress_image(&self, request: &CompressImageRequest) -> Result<PathBuf, Error> {
         #[cfg(target_os = "ios")]
         {
             let output_path = request.output_path.to_string_lossy();
@@ -236,7 +229,7 @@ impl MediaRuntime for Platform {
                 output_path.as_ref(),
             );
             if !result.success || result.path.is_empty() {
-                return Err(PlatformError::Platform(if result.error.is_empty() {
+                return Err(Error::internal(if result.error.is_empty() {
                     "compress_image failed".to_string()
                 } else {
                     result.error
@@ -251,12 +244,12 @@ impl MediaRuntime for Platform {
         }
     }
 
-    fn get_video_info(&self, uri: &str) -> Result<VideoInfo, PlatformError> {
+    fn get_video_info(&self, uri: &str) -> Result<VideoInfo, Error> {
         #[cfg(any(target_os = "ios", target_os = "macos"))]
         {
             let info = super::ffi::get_video_info(uri);
             if !info.success {
-                return Err(PlatformError::Platform(if info.error.is_empty() {
+                return Err(Error::internal(if info.error.is_empty() {
                     "get_video_info failed".to_string()
                 } else {
                     info.error
@@ -301,7 +294,7 @@ impl MediaRuntime for Platform {
     fn extract_video_thumbnail(
         &self,
         request: &ExtractVideoThumbnailRequest,
-    ) -> Result<VideoThumbnail, PlatformError> {
+    ) -> Result<VideoThumbnail, Error> {
         #[cfg(any(target_os = "ios", target_os = "macos"))]
         {
             let output_path = request.output_path.to_string_lossy();
@@ -314,7 +307,7 @@ impl MediaRuntime for Platform {
                 output_path.as_ref(),
             );
             if !result.success || result.path.is_empty() {
-                return Err(PlatformError::Platform(if result.error.is_empty() {
+                return Err(Error::internal(if result.error.is_empty() {
                     "extract_video_thumbnail failed".to_string()
                 } else {
                     result.error
@@ -334,7 +327,7 @@ impl MediaRuntime for Platform {
         }
     }
 
-    fn compress_video(&self, request: &CompressVideoRequest) -> Result<(), PlatformError> {
+    fn compress_video(&self, request: &CompressVideoRequest) -> Result<(), Error> {
         #[cfg(any(target_os = "ios", target_os = "macos"))]
         {
             let output_path = request.output_path.to_string_lossy();
@@ -356,20 +349,20 @@ impl MediaRuntime for Platform {
             ) {
                 Ok(())
             } else {
-                Err(PlatformError::Platform(
+                Err(Error::internal(
                     "compress_video failed to start".to_string(),
                 ))
             }
         }
     }
 
-    fn cancel_compress_video(&self, callback_id: u64) -> Result<(), PlatformError> {
+    fn cancel_compress_video(&self, callback_id: u64) -> Result<(), Error> {
         #[cfg(any(target_os = "ios", target_os = "macos"))]
         {
             if super::ffi::cancel_compress_video(callback_id) {
                 Ok(())
             } else {
-                Err(PlatformError::Platform(
+                Err(Error::internal(
                     "cancel_compress_video: no running job".to_string(),
                 ))
             }
@@ -377,7 +370,7 @@ impl MediaRuntime for Platform {
     }
 }
 
-fn pick_media_impl(request: PickMediaRequest, callback_id: u64) -> Result<(), PlatformError> {
+fn pick_media_impl(request: PickMediaRequest, callback_id: u64) -> Result<(), Error> {
     let max_count = request.max_count;
     let mode = match request.mode {
         PickMediaMode::Images => "image",
@@ -399,7 +392,7 @@ fn pick_media_impl(request: PickMediaRequest, callback_id: u64) -> Result<(), Pl
     let max_duration = request.max_duration_seconds;
 
     let source_types_json = serde_json::to_string(&source_types)
-        .map_err(|e| PlatformError::Platform(format!("Failed to serialize source types: {}", e)))?;
+        .map_err(|e| Error::internal(format!("Failed to serialize source types: {}", e)))?;
 
     let camera_facing_str = camera_facing.unwrap_or("back");
 
@@ -414,7 +407,7 @@ fn pick_media_impl(request: PickMediaRequest, callback_id: u64) -> Result<(), Pl
     if success {
         Ok(())
     } else {
-        Err(PlatformError::Platform(
+        Err(Error::internal(
             "Failed to start media selection on Apple platform".to_string(),
         ))
     }
@@ -437,19 +430,19 @@ mod ios {
 
     const PHOTOS_PERMISSION_DENIED: &str = "Photos permission denied";
 
-    pub(super) async fn save_image_to_album(file_uri: &str) -> Result<(), PlatformError> {
+    pub(super) async fn save_image_to_album(file_uri: &str) -> Result<(), Error> {
         let path = resolve_file_uri(file_uri)?;
         ensure_photo_authorization().await?;
         perform_photo_library_change(path, false).await
     }
 
-    pub(super) async fn save_video_to_album(file_uri: &str) -> Result<(), PlatformError> {
+    pub(super) async fn save_video_to_album(file_uri: &str) -> Result<(), Error> {
         let path = resolve_file_uri(file_uri)?;
         ensure_photo_authorization().await?;
         perform_photo_library_change(path, true).await
     }
 
-    async fn ensure_photo_authorization() -> Result<(), PlatformError> {
+    async fn ensure_photo_authorization() -> Result<(), Error> {
         let access_level = PHAccessLevel::AddOnly;
         let initial_status = run_on_main(move |_| unsafe {
             PHPhotoLibrary::authorizationStatusForAccessLevel(access_level)
@@ -463,16 +456,14 @@ mod ios {
         std::thread::spawn(move || {
             let _ = tx.send(crate::apple::ffi::request_photo_add_access());
         });
-        let granted = rx.await.map_err(|_| {
-            PlatformError::Platform("Photos permission request was canceled".to_string())
-        })?;
+        let granted = rx
+            .await
+            .map_err(|_| Error::internal("Photos permission request was canceled".to_string()))?;
 
         if granted {
             Ok(())
         } else {
-            Err(PlatformError::Platform(
-                PHOTOS_PERMISSION_DENIED.to_string(),
-            ))
+            Err(Error::internal(PHOTOS_PERMISSION_DENIED.to_string()))
         }
     }
 
@@ -483,7 +474,7 @@ mod ios {
         )
     }
 
-    fn resolve_file_uri(input: &str) -> Result<String, PlatformError> {
+    fn resolve_file_uri(input: &str) -> Result<String, Error> {
         if let Some(stripped) = input.strip_prefix("file://") {
             Ok(stripped.to_string())
         } else {
@@ -491,10 +482,7 @@ mod ios {
         }
     }
 
-    async fn perform_photo_library_change(
-        path: String,
-        is_video: bool,
-    ) -> Result<(), PlatformError> {
+    async fn perform_photo_library_change(path: String, is_video: bool) -> Result<(), Error> {
         let (tx, rx) = oneshot::channel();
         let sender = Arc::new(Mutex::new(Some(tx)));
         run_on_main(move |_| {
@@ -549,18 +537,15 @@ mod ios {
         });
 
         rx.await
-            .map_err(|_| PlatformError::Platform("Photo library change was canceled".to_string()))?
-            .map_err(PlatformError::Platform)
+            .map_err(|_| Error::internal("Photo library change was canceled".to_string()))?
+            .map_err(Error::internal)
     }
 
     fn ns_error_to_string(error: &NSError) -> String {
         error.localizedDescription().to_string()
     }
 
-    pub(super) fn scan_code_impl(
-        request: ScanCodeRequest,
-        callback_id: u64,
-    ) -> Result<(), PlatformError> {
+    pub(super) fn scan_code_impl(request: ScanCodeRequest, callback_id: u64) -> Result<(), Error> {
         let type_codes: Vec<i32> = request
             .scan_types
             .iter()
@@ -573,13 +558,13 @@ mod ios {
             .collect();
 
         let types_json = serde_json::to_string(&type_codes)
-            .map_err(|e| PlatformError::Platform(format!("Failed to encode scan types: {}", e)))?;
+            .map_err(|e| Error::internal(format!("Failed to encode scan types: {}", e)))?;
 
         let started = scan_code(&types_json, request.only_from_camera, callback_id);
         if started {
             Ok(())
         } else {
-            Err(PlatformError::Platform(
+            Err(Error::internal(
                 "Failed to initiate scanCode on Apple platform".to_string(),
             ))
         }

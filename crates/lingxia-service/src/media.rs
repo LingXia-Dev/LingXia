@@ -1,11 +1,11 @@
-pub use lingxia_platform::PlatformError;
+use lingxia_error::Error;
 pub use lingxia_platform::traits::media_interaction::{
     CameraFacing, MediaInteraction, MediaKind, MediaObjectFit, MediaQuality, MediaSource,
     PickMediaMode, PickMediaRequest, PreviewMediaAdvance, PreviewMediaItem, PreviewMediaRequest,
     SaveMediaRequest, ScanCodeRequest, ScanType,
 };
 
-pub type Result<T> = std::result::Result<T, PlatformError>;
+pub type Result<T> = std::result::Result<T, Error>;
 
 pub async fn pick_media(
     runtime: &(impl MediaInteraction + ?Sized),

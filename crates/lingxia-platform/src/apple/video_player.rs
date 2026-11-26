@@ -1,4 +1,3 @@
-use crate::error::PlatformError;
 #[cfg(target_os = "ios")]
 use crate::traits::stream_decoder::{AudioFrame, AudioStreamConfig, VideoFrame, VideoStreamConfig};
 use crate::traits::stream_decoder::{VideoStreamDecoderHandle, VideoStreamDecoderManager};
@@ -14,31 +13,28 @@ use super::ffi;
 
 #[cfg(target_os = "ios")]
 use base64::{Engine as _, engine::general_purpose};
+use lingxia_error::Error;
 #[cfg(any(target_os = "ios", target_os = "macos"))]
 use serde_json::json;
 
 #[cfg(any(target_os = "ios", target_os = "macos"))]
 impl VideoPlayerManager for Platform {
-    fn bind_player(&self, component_id: &str) -> Result<Box<dyn VideoPlayerHandle>, PlatformError> {
+    fn bind_player(&self, component_id: &str) -> Result<Box<dyn VideoPlayerHandle>, Error> {
         let cid = component_id.to_string();
         let handle = VideoPlayerHandleImpl::new(move |command| {
             let (name, params_json) = map_command_to_apple(command);
             ffi::dispatch_video_command(&cid, &name, &params_json)
                 .then_some(())
-                .ok_or_else(|| PlatformError::Platform(format!("Failed to dispatch {}", name)))
+                .ok_or_else(|| Error::internal(format!("Failed to dispatch {}", name)))
         });
         Ok(Box::new(handle))
     }
 
-    fn set_player_callback(
-        &self,
-        component_id: &str,
-        callback_id: u64,
-    ) -> Result<(), PlatformError> {
+    fn set_player_callback(&self, component_id: &str, callback_id: u64) -> Result<(), Error> {
         ffi::set_video_player_callback(component_id, callback_id)
             .then_some(())
             .ok_or_else(|| {
-                PlatformError::Platform(format!(
+                Error::internal(format!(
                     "Failed to set video player callback for {}",
                     component_id
                 ))
@@ -68,7 +64,7 @@ fn map_command_to_apple(command: VideoPlayerCommand) -> (String, String) {
 }
 
 #[cfg(target_os = "ios")]
-fn ios_video_config_json(config: &VideoStreamConfig) -> Result<String, PlatformError> {
+fn ios_video_config_json(config: &VideoStreamConfig) -> Result<String, Error> {
     let codec = match config.codec {
         crate::traits::stream_decoder::VideoCodec::H264 => "h264",
         crate::traits::stream_decoder::VideoCodec::H265 => "h265",
@@ -92,11 +88,11 @@ fn ios_video_config_json(config: &VideoStreamConfig) -> Result<String, PlatformE
         "width": config.width,
         "height": config.height,
     }))
-    .map_err(|e| PlatformError::Platform(format!("Failed to serialize video config: {}", e)))
+    .map_err(|e| Error::internal(format!("Failed to serialize video config: {}", e)))
 }
 
 #[cfg(target_os = "ios")]
-fn ios_audio_config_json(config: &AudioStreamConfig) -> Result<String, PlatformError> {
+fn ios_audio_config_json(config: &AudioStreamConfig) -> Result<String, Error> {
     let codec = match config.codec {
         crate::traits::stream_decoder::AudioCodec::Aac => "aac",
         crate::traits::stream_decoder::AudioCodec::PcmS16le => "pcm_s16le",
@@ -111,7 +107,7 @@ fn ios_audio_config_json(config: &AudioStreamConfig) -> Result<String, PlatformE
         "channels": config.channels,
         "aacIsAdts": config.aac_is_adts,
     }))
-    .map_err(|e| PlatformError::Platform(format!("Failed to serialize audio config: {}", e)))
+    .map_err(|e| Error::internal(format!("Failed to serialize audio config: {}", e)))
 }
 
 #[cfg(target_os = "ios")]
@@ -129,42 +125,41 @@ impl VideoStreamDecoderHandle for IosStreamDecoderHandle {
         true
     }
 
-    fn reset_stream(&self, hard: bool) -> Result<(), PlatformError> {
-        let params_json = serde_json::to_string(&json!({ "hard": hard })).map_err(|e| {
-            PlatformError::Platform(format!("Failed to serialize reset params: {}", e))
-        })?;
+    fn reset_stream(&self, hard: bool) -> Result<(), Error> {
+        let params_json = serde_json::to_string(&json!({ "hard": hard }))
+            .map_err(|e| Error::internal(format!("Failed to serialize reset params: {}", e)))?;
         ffi::dispatch_video_command(&self.component_id, "resetStream", &params_json)
             .then_some(())
             .ok_or_else(|| {
-                PlatformError::Platform(format!("resetStream rejected for {}", self.component_id))
+                Error::internal(format!("resetStream rejected for {}", self.component_id))
             })
     }
 
-    fn configure_video(&self, config: VideoStreamConfig) -> Result<(), PlatformError> {
+    fn configure_video(&self, config: VideoStreamConfig) -> Result<(), Error> {
         let config_json = ios_video_config_json(&config)?;
         ffi::configure_stream_video(&self.component_id, &config_json)
             .then_some(())
             .ok_or_else(|| {
-                PlatformError::Platform(format!(
+                Error::internal(format!(
                     "configureStreamVideo rejected for {}",
                     self.component_id
                 ))
             })
     }
 
-    fn configure_audio(&self, config: AudioStreamConfig) -> Result<(), PlatformError> {
+    fn configure_audio(&self, config: AudioStreamConfig) -> Result<(), Error> {
         let config_json = ios_audio_config_json(&config)?;
         ffi::configure_stream_audio(&self.component_id, &config_json)
             .then_some(())
             .ok_or_else(|| {
-                PlatformError::Platform(format!(
+                Error::internal(format!(
                     "configureStreamAudio rejected for {}",
                     self.component_id
                 ))
             })
     }
 
-    fn push_video(&self, frame: VideoFrame) -> Result<(), PlatformError> {
+    fn push_video(&self, frame: VideoFrame) -> Result<(), Error> {
         ffi::push_stream_video(
             &self.component_id,
             frame.data,
@@ -174,29 +169,29 @@ impl VideoStreamDecoderHandle for IosStreamDecoderHandle {
         )
         .then_some(())
         .ok_or_else(|| {
-            PlatformError::Platform(format!(
+            Error::internal(format!(
                 "pushStreamVideo rejected for {}",
                 self.component_id
             ))
         })
     }
 
-    fn push_audio(&self, frame: AudioFrame) -> Result<(), PlatformError> {
+    fn push_audio(&self, frame: AudioFrame) -> Result<(), Error> {
         ffi::push_stream_audio(&self.component_id, frame.data, frame.dts_ms, frame.pts_ms)
             .then_some(())
             .ok_or_else(|| {
-                PlatformError::Platform(format!(
+                Error::internal(format!(
                     "pushStreamAudio rejected for {}",
                     self.component_id
                 ))
             })
     }
 
-    fn stop(&self) -> Result<(), PlatformError> {
+    fn stop(&self) -> Result<(), Error> {
         ffi::stop_stream_decoder(&self.component_id)
             .then_some(())
             .ok_or_else(|| {
-                PlatformError::Platform(format!(
+                Error::internal(format!(
                     "stopStreamDecoder rejected for {}",
                     self.component_id
                 ))
@@ -206,11 +201,8 @@ impl VideoStreamDecoderHandle for IosStreamDecoderHandle {
 
 #[cfg(not(any(target_os = "ios", target_os = "macos")))]
 impl VideoPlayerManager for Platform {
-    fn bind_player(
-        &self,
-        _component_id: &str,
-    ) -> Result<Box<dyn VideoPlayerHandle>, PlatformError> {
-        Err(PlatformError::Platform(
+    fn bind_player(&self, _component_id: &str) -> Result<Box<dyn VideoPlayerHandle>, Error> {
+        Err(Error::internal(
             "Video player control is not supported on this platform".to_string(),
         ))
     }
@@ -221,9 +213,9 @@ impl VideoStreamDecoderManager for Platform {
     fn create_stream_decoder(
         &self,
         component_id: &str,
-    ) -> Result<Box<dyn VideoStreamDecoderHandle>, PlatformError> {
+    ) -> Result<Box<dyn VideoStreamDecoderHandle>, Error> {
         if !ffi::create_stream_decoder(component_id) {
-            return Err(PlatformError::Platform(format!(
+            return Err(Error::internal(format!(
                 "Failed to create stream decoder for {}",
                 component_id
             )));
@@ -239,8 +231,8 @@ impl VideoStreamDecoderManager for Platform {
     fn create_stream_decoder(
         &self,
         _component_id: &str,
-    ) -> Result<Box<dyn VideoStreamDecoderHandle>, PlatformError> {
-        Err(PlatformError::Platform(
+    ) -> Result<Box<dyn VideoStreamDecoderHandle>, Error> {
+        Err(Error::internal(
             "Stream decoder is not supported on this platform".to_string(),
         ))
     }

@@ -1,5 +1,4 @@
-use crate::error::PlatformError;
-
+use lingxia_error::Error;
 #[derive(Debug, Clone)]
 pub struct ShareRequest {
     pub title: Option<String>,
@@ -17,5 +16,5 @@ pub trait ShareService: Send + Sync + 'static {
     fn share(
         &self,
         request: ShareRequest,
-    ) -> impl std::future::Future<Output = Result<ShareResult, PlatformError>> + Send;
+    ) -> impl std::future::Future<Output = Result<ShareResult, Error>> + Send;
 }

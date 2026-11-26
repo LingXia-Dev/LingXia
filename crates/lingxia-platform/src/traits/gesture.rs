@@ -1,8 +1,8 @@
 //! Real pointer gestures: a timed path injected into the host window, so page
 //! chrome (pull to refresh, scroll edges, flings, edge back) handles it as it
 //! would a user's.
-use crate::error::PlatformError;
 use async_trait::async_trait;
+use lingxia_error::Error;
 use serde::{Deserialize, Serialize};
 
 /// The device a gesture imitates; `None` in a request picks the platform's own.
@@ -312,50 +312,44 @@ pub trait AppGesture: Send + Sync {
     async fn perform_app_gesture(
         &self,
         request: AppGestureRequest,
-    ) -> Result<AppGestureResult, PlatformError> {
+    ) -> Result<AppGestureResult, Error> {
         let _ = request;
-        Err(PlatformError::NotSupported(
+        Err(Error::not_supported(
             "gestures are not implemented for this platform".to_string(),
         ))
     }
 
     /// The visible part of the target as `[left, top, width, height]` in its
     /// own coordinates, so a gesture can start on screen.
-    async fn gesture_viewport(&self, target: GestureTarget) -> Result<[f64; 4], PlatformError> {
+    async fn gesture_viewport(&self, target: GestureTarget) -> Result<[f64; 4], Error> {
         let _ = target;
-        Err(PlatformError::NotSupported(
+        Err(Error::not_supported(
             "gestures are not implemented for this platform".to_string(),
         ))
     }
 
     /// Where the target sits in its window, so a point of the target can be sent as window
     /// input.
-    async fn gesture_window_frame(
-        &self,
-        target: GestureTarget,
-    ) -> Result<WindowFrame, PlatformError> {
+    async fn gesture_window_frame(&self, target: GestureTarget) -> Result<WindowFrame, Error> {
         let _ = target;
-        Err(PlatformError::NotSupported(
+        Err(Error::not_supported(
             "this platform does not map page points into a window".to_string(),
         ))
     }
 
     /// Turn the host window to `landscape` (wider than tall) or portrait, as
     /// a desktop user resizes it; returns the new content size in points.
-    async fn orient_window(&self, landscape: bool) -> Result<[f64; 2], PlatformError> {
+    async fn orient_window(&self, landscape: bool) -> Result<[f64; 2], Error> {
         let _ = landscape;
-        Err(PlatformError::NotSupported(
+        Err(Error::not_supported(
             "this host turns with its device: rotate it through the device fixture".to_string(),
         ))
     }
 
     /// Pressable host chrome, optionally limited to one `scope`.
-    async fn chrome_elements(
-        &self,
-        scope: Option<String>,
-    ) -> Result<Vec<ChromeElement>, PlatformError> {
+    async fn chrome_elements(&self, scope: Option<String>) -> Result<Vec<ChromeElement>, Error> {
         let _ = scope;
-        Err(PlatformError::NotSupported(
+        Err(Error::not_supported(
             "host chrome is not readable on this platform".to_string(),
         ))
     }
@@ -365,9 +359,9 @@ pub trait AppGesture: Send + Sync {
         &self,
         app_id: &str,
         webtag: &str,
-    ) -> Result<Option<PullRefreshIndicator>, PlatformError> {
+    ) -> Result<Option<PullRefreshIndicator>, Error> {
         let _ = (app_id, webtag);
-        Err(PlatformError::NotSupported(
+        Err(Error::not_supported(
             "the pull-to-refresh indicator is not readable on this platform".to_string(),
         ))
     }
@@ -377,9 +371,9 @@ pub trait AppGesture: Send + Sync {
         &self,
         window_id: Option<String>,
         edge: FlingDirection,
-    ) -> Result<AppGestureResult, PlatformError> {
+    ) -> Result<AppGestureResult, Error> {
         let _ = (window_id, edge);
-        Err(PlatformError::NotSupported(
+        Err(Error::not_supported(
             "edge back is not available on this platform".to_string(),
         ))
     }

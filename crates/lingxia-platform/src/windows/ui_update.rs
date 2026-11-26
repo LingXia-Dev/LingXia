@@ -2,8 +2,8 @@ use std::sync::atomic::{AtomicBool, AtomicU8, Ordering};
 use std::sync::{Arc, Mutex};
 
 use super::Platform;
-use crate::error::PlatformError;
 use crate::traits::ui::{Appearance, LaunchFace, UIUpdate};
+use lingxia_error::Error;
 
 type WindowsUiUpdateHandler = Arc<dyn Fn(String) + Send + Sync>;
 static WINDOWS_UI_UPDATE_HANDLER: Mutex<Option<WindowsUiUpdateHandler>> = Mutex::new(None);
@@ -127,7 +127,7 @@ impl Appearance for Platform {
         }
     }
 
-    fn apply_lxapp_appearance(&self, appid: &str, dark: bool) -> Result<(), PlatformError> {
+    fn apply_lxapp_appearance(&self, appid: &str, dark: bool) -> Result<(), Error> {
         use lingxia_webview::platform::windows::{
             WindowsPreferredColorScheme, find_webview_handler,
             set_windows_lxapp_preferred_color_scheme,
@@ -167,15 +167,12 @@ impl LaunchFace for Platform {
 }
 
 impl UIUpdate for Platform {
-    fn update_navbar_ui(&self, appid: String) -> Result<(), PlatformError> {
+    fn update_navbar_ui(&self, appid: String) -> Result<(), Error> {
         invoke_windows_ui_update_handler(appid);
         Ok(())
     }
 
-    async fn measure_page_chrome_capsule(
-        &self,
-        appid: String,
-    ) -> Result<Option<String>, PlatformError> {
+    async fn measure_page_chrome_capsule(&self, appid: String) -> Result<Option<String>, Error> {
         let provider = WINDOWS_CAPSULE_RECT_PROVIDER
             .lock()
             .ok()
@@ -183,12 +180,12 @@ impl UIUpdate for Platform {
         Ok(provider.and_then(|provider| provider(&appid)))
     }
 
-    fn update_tabbar_ui(&self, appid: String) -> Result<(), PlatformError> {
+    fn update_tabbar_ui(&self, appid: String) -> Result<(), Error> {
         invoke_windows_ui_update_handler(appid);
         Ok(())
     }
 
-    async fn update_tabbar_ui_async(&self, appid: String) -> Result<(), PlatformError> {
+    async fn update_tabbar_ui_async(&self, appid: String) -> Result<(), Error> {
         let handler = WINDOWS_UI_UPDATE_ASYNC_HANDLER
             .lock()
             .ok()

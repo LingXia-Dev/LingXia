@@ -5,34 +5,31 @@ use async_trait::async_trait;
 use lingxia_webview::runtime as webview_runtime;
 
 use super::Platform;
-use crate::error::PlatformError;
 use crate::traits::screenshot::{AppScreenshot, WindowInfo};
+use lingxia_error::Error;
 
 #[async_trait]
 impl AppScreenshot for Platform {
-    async fn list_app_windows(&self) -> Result<Vec<WindowInfo>, PlatformError> {
+    async fn list_app_windows(&self) -> Result<Vec<WindowInfo>, Error> {
         list_app_windows()
     }
 
-    async fn take_app_screenshot(&self, window_id: Option<&str>) -> Result<Vec<u8>, PlatformError> {
+    async fn take_app_screenshot(&self, window_id: Option<&str>) -> Result<Vec<u8>, Error> {
         let hwnd = resolve_screenshot_window(window_id)?;
         capture_window_png(hwnd.0 as usize).await
     }
 
-    async fn resolve_app_window(
-        &self,
-        window_id: Option<&str>,
-    ) -> Result<WindowInfo, PlatformError> {
+    async fn resolve_app_window(&self, window_id: Option<&str>) -> Result<WindowInfo, Error> {
         let hwnd = resolve_screenshot_window(window_id)?;
         let id = (hwnd.0 as usize).to_string();
         list_app_windows()?
             .into_iter()
             .find(|window| window.id == id)
-            .ok_or_else(|| PlatformError::Platform(format!("resolved window {id} disappeared")))
+            .ok_or_else(|| Error::internal(format!("resolved window {id} disappeared")))
     }
 }
 
-fn list_app_windows() -> Result<Vec<WindowInfo>, PlatformError> {
+fn list_app_windows() -> Result<Vec<WindowInfo>, Error> {
     use windows::Win32::Foundation::{HWND, LPARAM};
     use windows::Win32::UI::WindowsAndMessaging::{
         EnumWindows, GetForegroundWindow, GetWindowThreadProcessId, IsIconic, IsWindowVisible,
@@ -96,7 +93,7 @@ fn list_app_windows() -> Result<Vec<WindowInfo>, PlatformError> {
             LPARAM((&mut state as *mut EnumState) as isize),
         )
     }
-    .map_err(|err| PlatformError::Platform(format!("EnumWindows failed: {err}")))?;
+    .map_err(|err| Error::internal(format!("EnumWindows failed: {err}")))?;
 
     state.windows.sort_by(|a, b| {
         b.focused
@@ -118,7 +115,7 @@ fn is_automation_window(title: &str, width: u32, height: u32) -> bool {
 
 pub(super) fn resolve_screenshot_window(
     window_id: Option<&str>,
-) -> Result<windows::Win32::Foundation::HWND, PlatformError> {
+) -> Result<windows::Win32::Foundation::HWND, Error> {
     if let Some(window_id) = window_id {
         return hwnd_from_window_id(window_id);
     }
@@ -151,9 +148,7 @@ pub(super) fn resolve_screenshot_window(
                 .iter()
                 .find(|window| window.visible && window.width > 0 && window.height > 0)
         })
-        .ok_or_else(|| {
-            PlatformError::Platform("no visible Windows app window available to screenshot".into())
-        })?;
+        .ok_or_else(|| Error::internal("no visible Windows app window available to screenshot"))?;
     hwnd_from_window_id(&selected.id)
 }
 
@@ -174,18 +169,18 @@ fn webview_host_window_ids() -> std::collections::HashSet<usize> {
     ids
 }
 
-fn hwnd_from_window_id(raw: &str) -> Result<windows::Win32::Foundation::HWND, PlatformError> {
+fn hwnd_from_window_id(raw: &str) -> Result<windows::Win32::Foundation::HWND, Error> {
     use windows::Win32::Foundation::HWND;
     use windows::Win32::UI::WindowsAndMessaging::{GetWindowThreadProcessId, IsWindow};
 
     let id = raw.trim().parse::<usize>().map_err(|err| {
-        PlatformError::InvalidParameter(format!(
+        Error::invalid_arg(format!(
             "window id must be a numeric HWND, got {raw}: {err}"
         ))
     })?;
     let hwnd = HWND(id as *mut c_void);
     if hwnd.0.is_null() || !unsafe { IsWindow(Some(hwnd)).as_bool() } {
-        return Err(PlatformError::InvalidParameter(format!(
+        return Err(Error::invalid_arg(format!(
             "window id is not a live HWND: {raw}"
         )));
     }
@@ -195,14 +190,14 @@ fn hwnd_from_window_id(raw: &str) -> Result<windows::Win32::Foundation::HWND, Pl
         GetWindowThreadProcessId(hwnd, Some(&mut owner_pid));
     }
     if owner_pid != std::process::id() {
-        return Err(PlatformError::InvalidParameter(format!(
+        return Err(Error::invalid_arg(format!(
             "window id {raw} does not belong to this process"
         )));
     }
     Ok(hwnd)
 }
 
-async fn capture_window_png(window_id: usize) -> Result<Vec<u8>, PlatformError> {
+async fn capture_window_png(window_id: usize) -> Result<Vec<u8>, Error> {
     let (width, height, mut image) = capture_window_native_rgba(hwnd_from_usize(window_id))?;
     for (snapshot, webview_png) in visible_webview_screenshots_for_window(window_id).await {
         overlay_webview_screenshot(&mut image, &snapshot, &webview_png)?;
@@ -361,7 +356,7 @@ fn hwnd_from_usize(window_id: usize) -> windows::Win32::Foundation::HWND {
 
 fn capture_window_native_rgba(
     hwnd: windows::Win32::Foundation::HWND,
-) -> Result<(u32, u32, image::RgbaImage), PlatformError> {
+) -> Result<(u32, u32, image::RgbaImage), Error> {
     use windows::Win32::Graphics::Gdi::{
         BI_RGB, BITMAPINFO, BITMAPINFOHEADER, BitBlt, CreateCompatibleDC, CreateDIBSection,
         DIB_RGB_COLORS, DeleteDC, DeleteObject, GetDC, HGDIOBJ, ReleaseDC, SRCCOPY, SelectObject,
@@ -371,7 +366,7 @@ fn capture_window_native_rgba(
     let width = rect.right - rect.left;
     let height = rect.bottom - rect.top;
     if width <= 0 || height <= 0 {
-        return Err(PlatformError::Platform(format!(
+        return Err(Error::internal(format!(
             "window has empty bounds: {width}x{height}"
         )));
     }
@@ -383,15 +378,13 @@ fn capture_window_native_rgba(
     unsafe {
         let window_dc = GetDC(Some(hwnd));
         if window_dc.is_invalid() {
-            return Err(PlatformError::Platform("GetDC failed".to_string()));
+            return Err(Error::internal("GetDC failed".to_string()));
         }
 
         let memory_dc = CreateCompatibleDC(Some(window_dc));
         if memory_dc.is_invalid() {
             let _ = ReleaseDC(Some(hwnd), window_dc);
-            return Err(PlatformError::Platform(
-                "CreateCompatibleDC failed".to_string(),
-            ));
+            return Err(Error::internal("CreateCompatibleDC failed".to_string()));
         }
 
         let bitmap_info = BITMAPINFO {
@@ -422,9 +415,7 @@ fn capture_window_native_rgba(
             Err(err) => {
                 let _ = DeleteDC(memory_dc);
                 let _ = ReleaseDC(Some(hwnd), window_dc);
-                return Err(PlatformError::Platform(format!(
-                    "CreateDIBSection failed: {err}"
-                )));
+                return Err(Error::internal(format!("CreateDIBSection failed: {err}")));
             }
         };
 
@@ -443,7 +434,7 @@ fn capture_window_native_rgba(
         .is_ok();
 
         let result = if !copied || bits_ptr.is_null() {
-            Err(PlatformError::Platform("BitBlt failed".to_string()))
+            Err(Error::internal("BitBlt failed".to_string()))
         } else {
             let byte_len = (width as usize)
                 .saturating_mul(height as usize)
@@ -465,7 +456,7 @@ fn capture_window_native_rgba(
 
 fn visible_window_rect(
     hwnd: windows::Win32::Foundation::HWND,
-) -> Result<windows::Win32::Foundation::RECT, PlatformError> {
+) -> Result<windows::Win32::Foundation::RECT, Error> {
     use windows::Win32::Foundation::RECT;
     use windows::Win32::Graphics::Dwm::{DWMWA_EXTENDED_FRAME_BOUNDS, DwmGetWindowAttribute};
     use windows::Win32::UI::WindowsAndMessaging::GetWindowRect;
@@ -485,7 +476,7 @@ fn visible_window_rect(
             return Ok(rect);
         }
         GetWindowRect(hwnd, &mut rect)
-            .map_err(|err| PlatformError::Platform(format!("GetWindowRect failed: {err}")))?;
+            .map_err(|err| Error::internal(format!("GetWindowRect failed: {err}")))?;
     }
     Ok(rect)
 }
@@ -494,7 +485,7 @@ fn visible_window_rect(
 /// origin are the same coordinates accepted by app mouse messages.
 fn content_window_rect(
     hwnd: windows::Win32::Foundation::HWND,
-) -> Result<windows::Win32::Foundation::RECT, PlatformError> {
+) -> Result<windows::Win32::Foundation::RECT, Error> {
     use windows::Win32::Foundation::{POINT, RECT};
     use windows::Win32::Graphics::Gdi::ClientToScreen;
     use windows::Win32::UI::WindowsAndMessaging::GetClientRect;
@@ -502,14 +493,14 @@ fn content_window_rect(
     let mut client = RECT::default();
     unsafe {
         GetClientRect(hwnd, &mut client)
-            .map_err(|err| PlatformError::Platform(format!("GetClientRect failed: {err}")))?;
+            .map_err(|err| Error::internal(format!("GetClientRect failed: {err}")))?;
     }
     let mut origin = POINT {
         x: client.left,
         y: client.top,
     };
     if !unsafe { ClientToScreen(hwnd, &mut origin).as_bool() } {
-        return Err(PlatformError::Platform("ClientToScreen failed".to_string()));
+        return Err(Error::internal("ClientToScreen failed".to_string()));
     }
     Ok(RECT {
         left: origin.x,
@@ -592,7 +583,7 @@ fn overlay_webview_screenshot(
     base: &mut image::RgbaImage,
     snapshot: &lingxia_windows_contract::WindowsWebViewWindowSnapshot,
     webview_png: &[u8],
-) -> Result<(), PlatformError> {
+) -> Result<(), Error> {
     if snapshot.content_left < 0 || snapshot.content_top < 0 {
         return Ok(());
     }
@@ -608,7 +599,7 @@ fn overlay_webview_screenshot(
     }
 
     let webview = image::load_from_memory(webview_png)
-        .map_err(|err| PlatformError::Platform(format!("failed to decode WebView PNG: {err}")))?
+        .map_err(|err| Error::internal(format!("failed to decode WebView PNG: {err}")))?
         .into_rgba8();
     let mut webview = image::imageops::resize(
         &webview,
@@ -654,7 +645,7 @@ fn mask_corner_alpha(image: &mut image::RgbaImage, radii: [i32; 4]) {
 fn overlay_window_screenshots(
     base: &mut image::RgbaImage,
     hwnd: windows::Win32::Foundation::HWND,
-) -> Result<(), PlatformError> {
+) -> Result<(), Error> {
     let base_rect = content_window_rect(hwnd)?;
     let mut overlays = overlay_windows_for_window(hwnd, base_rect)?;
     overlays.reverse();
@@ -676,7 +667,7 @@ struct OverlayWindow {
 fn overlay_windows_for_window(
     base_window: windows::Win32::Foundation::HWND,
     base_rect: windows::Win32::Foundation::RECT,
-) -> Result<Vec<OverlayWindow>, PlatformError> {
+) -> Result<Vec<OverlayWindow>, Error> {
     use windows::Win32::Foundation::{HWND, LPARAM, RECT};
     use windows::Win32::UI::WindowsAndMessaging::{
         EnumWindows, GW_OWNER, GetWindow, GetWindowThreadProcessId, IsIconic, IsWindowVisible,
@@ -735,13 +726,13 @@ fn overlay_windows_for_window(
             LPARAM((&mut state as *mut EnumState) as isize),
         )
     }
-    .map_err(|err| PlatformError::Platform(format!("EnumWindows failed: {err}")))?;
+    .map_err(|err| Error::internal(format!("EnumWindows failed: {err}")))?;
     Ok(state.overlays)
 }
 
 fn capture_screen_rect_rgba(
     rect: windows::Win32::Foundation::RECT,
-) -> Result<image::RgbaImage, PlatformError> {
+) -> Result<image::RgbaImage, Error> {
     use windows::Win32::Graphics::Gdi::{
         BI_RGB, BITMAPINFO, BITMAPINFOHEADER, BitBlt, CreateCompatibleDC, CreateDIBSection,
         DIB_RGB_COLORS, DeleteDC, DeleteObject, GetDC, HGDIOBJ, ReleaseDC, SRCCOPY, SelectObject,
@@ -750,7 +741,7 @@ fn capture_screen_rect_rgba(
     let width = rect.right - rect.left;
     let height = rect.bottom - rect.top;
     if width <= 0 || height <= 0 {
-        return Err(PlatformError::Platform(format!(
+        return Err(Error::internal(format!(
             "screen rect has empty bounds: {width}x{height}"
         )));
     }
@@ -758,14 +749,12 @@ fn capture_screen_rect_rgba(
     unsafe {
         let screen_dc = GetDC(None);
         if screen_dc.is_invalid() {
-            return Err(PlatformError::Platform("GetDC(None) failed".to_string()));
+            return Err(Error::internal("GetDC(None) failed".to_string()));
         }
         let memory_dc = CreateCompatibleDC(Some(screen_dc));
         if memory_dc.is_invalid() {
             let _ = ReleaseDC(None, screen_dc);
-            return Err(PlatformError::Platform(
-                "CreateCompatibleDC failed".to_string(),
-            ));
+            return Err(Error::internal("CreateCompatibleDC failed".to_string()));
         }
 
         let bitmap_info = BITMAPINFO {
@@ -794,9 +783,7 @@ fn capture_screen_rect_rgba(
             Err(err) => {
                 let _ = DeleteDC(memory_dc);
                 let _ = ReleaseDC(None, screen_dc);
-                return Err(PlatformError::Platform(format!(
-                    "CreateDIBSection failed: {err}"
-                )));
+                return Err(Error::internal(format!("CreateDIBSection failed: {err}")));
             }
         };
         let old_bitmap = SelectObject(memory_dc, HGDIOBJ(bitmap.0));
@@ -814,7 +801,7 @@ fn capture_screen_rect_rgba(
         .is_ok();
 
         let result = if !copied || bits_ptr.is_null() {
-            Err(PlatformError::Platform("BitBlt failed".to_string()))
+            Err(Error::internal("BitBlt failed".to_string()))
         } else {
             let byte_len = (width as usize)
                 .saturating_mul(height as usize)
@@ -868,27 +855,19 @@ fn window_class_name(hwnd: windows::Win32::Foundation::HWND) -> String {
     String::from_utf16_lossy(&buffer[..copied as usize])
 }
 
-fn bgra_top_down_image(
-    width: u32,
-    height: u32,
-    bgra: &[u8],
-) -> Result<image::RgbaImage, PlatformError> {
+fn bgra_top_down_image(width: u32, height: u32, bgra: &[u8]) -> Result<image::RgbaImage, Error> {
     let mut rgba = Vec::with_capacity(bgra.len());
     for pixel in bgra.chunks_exact(4) {
         rgba.extend_from_slice(&[pixel[2], pixel[1], pixel[0], 255]);
     }
 
     image::ImageBuffer::<image::Rgba<u8>, Vec<u8>>::from_raw(width, height, rgba)
-        .ok_or_else(|| PlatformError::Platform("failed to build screenshot image".to_string()))
+        .ok_or_else(|| Error::internal("failed to build screenshot image".to_string()))
 }
 
-fn encode_rgba_png(
-    width: u32,
-    height: u32,
-    image: image::RgbaImage,
-) -> Result<Vec<u8>, PlatformError> {
+fn encode_rgba_png(width: u32, height: u32, image: image::RgbaImage) -> Result<Vec<u8>, Error> {
     if image.width() != width || image.height() != height {
-        return Err(PlatformError::Platform(format!(
+        return Err(Error::internal(format!(
             "screenshot image dimensions changed during composition: expected {width}x{height}, got {}x{}",
             image.width(),
             image.height()
@@ -897,7 +876,7 @@ fn encode_rgba_png(
     let mut out = Cursor::new(Vec::new());
     image::DynamicImage::ImageRgba8(image)
         .write_to(&mut out, image::ImageFormat::Png)
-        .map_err(|err| PlatformError::Platform(format!("failed to encode PNG: {err}")))?;
+        .map_err(|err| Error::internal(format!("failed to encode PNG: {err}")))?;
     Ok(out.into_inner())
 }
 

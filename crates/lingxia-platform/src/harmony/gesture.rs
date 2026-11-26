@@ -2,12 +2,12 @@
 //! dispatcher, so a gesture goes straight to the page's own touch handling ("view"
 //! delivery) through the driver the page host installs: GPU pages take timed touches.
 use super::app::Platform;
-use crate::error::PlatformError;
 use crate::traits::gesture::{
     AppGesture, AppGestureRequest, AppGestureResult, ChromeElement, GestureDelivery, GestureEnd,
     GestureInput, GesturePoint, GestureTarget, HostCapability, PullRefreshIndicator,
 };
 use async_trait::async_trait;
+use lingxia_error::Error;
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex, OnceLock};
 
@@ -109,12 +109,9 @@ pub fn set_host_overlays(elements: &str) {
 }
 
 /// A tap at window point `at` on a host overlay element: the shell runs that element's press.
-fn overlay_tap(
-    points: &[GesturePoint],
-    end: GestureEnd,
-) -> Result<AppGestureResult, PlatformError> {
+fn overlay_tap(points: &[GesturePoint], end: GestureEnd) -> Result<AppGestureResult, Error> {
     let unsupported = || {
-        PlatformError::NotSupported(
+        Error::not_supported(
             "window gestures reach only the host's own overlays on HarmonyOS; apps cannot inject input"
                 .into(),
         )
@@ -138,7 +135,7 @@ fn overlay_tap(
         .map(|(key, _)| key.clone())
         .ok_or_else(unsupported)?;
     lingxia_webview::platform::harmony::tsfn::call_arkts("hostOverlayPress", &[&key])
-        .map_err(|e| PlatformError::Platform(format!("host overlay press: {e}")))?;
+        .map_err(|e| Error::internal(format!("host overlay press: {e}")))?;
     Ok(AppGestureResult {
         input: GestureInput::Touch,
         delivered: GestureDelivery::View,
@@ -148,18 +145,18 @@ fn overlay_tap(
     })
 }
 
-fn driver() -> Result<Arc<dyn GestureDriver>, PlatformError> {
+fn driver() -> Result<Arc<dyn GestureDriver>, Error> {
     DRIVER
         .get()
         .cloned()
-        .ok_or_else(|| PlatformError::NotSupported("gestures need a page host".into()))
+        .ok_or_else(|| Error::not_supported("gestures need a page host"))
 }
 
-fn page(target: GestureTarget) -> Result<(String, String), PlatformError> {
+fn page(target: GestureTarget) -> Result<(String, String), Error> {
     match target {
         GestureTarget::Page { app_id, webtag, .. } => Ok((app_id, webtag)),
-        GestureTarget::Window { .. } => Err(PlatformError::NotSupported(
-            "window gestures need system input injection, which HarmonyOS keeps from apps".into(),
+        GestureTarget::Window { .. } => Err(Error::not_supported(
+            "window gestures need system input injection, which HarmonyOS keeps from apps",
         )),
     }
 }
@@ -188,35 +185,29 @@ impl AppGesture for Platform {
     async fn perform_app_gesture(
         &self,
         request: AppGestureRequest,
-    ) -> Result<AppGestureResult, PlatformError> {
+    ) -> Result<AppGestureResult, Error> {
         if let Some(input) = request.input
             && input != GestureInput::Touch
         {
-            return Err(PlatformError::NotSupported(format!(
+            return Err(Error::not_supported(format!(
                 "{input:?} gestures are not available on HarmonyOS; use touch"
             )));
         }
         if matches!(request.target, GestureTarget::Window { .. }) {
-            let points = request
-                .shape
-                .points()
-                .map_err(PlatformError::InvalidParameter)?;
+            let points = request.shape.points().map_err(Error::invalid_arg)?;
             return overlay_tap(&points, request.end);
         }
         let driver = driver()?;
         let (app_id, webtag) = page(request.target)?;
-        let points = request
-            .shape
-            .points()
-            .map_err(PlatformError::InvalidParameter)?;
+        let points = request.shape.points().map_err(Error::invalid_arg)?;
         let duration_ms = points.last().map_or(0.0, |p| p.at_ms);
         let (end, finger) = (request.end, request.finger);
         let (events, finger) = tokio::task::spawn_blocking(move || {
             driver.perform(&app_id, &webtag, &points, end, finger)
         })
         .await
-        .map_err(|e| PlatformError::Platform(format!("gesture worker: {e}")))?
-        .map_err(PlatformError::Platform)?;
+        .map_err(|e| Error::internal(format!("gesture worker: {e}")))?
+        .map_err(Error::internal)?;
         Ok(AppGestureResult {
             input: GestureInput::Touch,
             delivered: GestureDelivery::View,
@@ -226,7 +217,7 @@ impl AppGesture for Platform {
         })
     }
 
-    async fn gesture_viewport(&self, target: GestureTarget) -> Result<[f64; 4], PlatformError> {
+    async fn gesture_viewport(&self, target: GestureTarget) -> Result<[f64; 4], Error> {
         // Reading a size injects nothing: a phone's window is the display, in the vp overlay
         // bounds use.
         if matches!(target, GestureTarget::Window { .. }) {
@@ -237,19 +228,19 @@ impl AppGesture for Platform {
         let (app_id, webtag) = page(target)?;
         tokio::task::spawn_blocking(move || driver.viewport(&app_id, &webtag))
             .await
-            .map_err(|e| PlatformError::Platform(format!("gesture worker: {e}")))?
-            .map_err(PlatformError::Platform)
+            .map_err(|e| Error::internal(format!("gesture worker: {e}")))?
+            .map_err(Error::internal)
     }
 
     async fn pull_refresh_indicator(
         &self,
         app_id: &str,
         webtag: &str,
-    ) -> Result<Option<PullRefreshIndicator>, PlatformError> {
+    ) -> Result<Option<PullRefreshIndicator>, Error> {
         let indicators = INDICATORS.lock().unwrap_or_else(|p| p.into_inner());
         match indicators.as_ref().and_then(|all| all.get(app_id)) {
             Some((shown, indicator)) if shown == webtag => Ok(indicator.clone()),
-            Some(_) => Err(PlatformError::Platform(format!(
+            Some(_) => Err(Error::internal(format!(
                 "page {webtag} is not the presented page"
             ))),
             None => Ok(None),
@@ -257,15 +248,12 @@ impl AppGesture for Platform {
     }
 
     // Only what the shell reports is readable: its overlays and the tab bar.
-    async fn chrome_elements(
-        &self,
-        scope: Option<String>,
-    ) -> Result<Vec<ChromeElement>, PlatformError> {
+    async fn chrome_elements(&self, scope: Option<String>) -> Result<Vec<ChromeElement>, Error> {
         if let Some(other) = scope
             .as_deref()
             .filter(|s| !matches!(*s, "window" | "tabBar"))
         {
-            return Err(PlatformError::NotSupported(format!(
+            return Err(Error::not_supported(format!(
                 "HarmonyOS reads only the host's overlays and tab bar, not {other}"
             )));
         }

@@ -1,7 +1,4 @@
-use crate::i18n::{
-    js_error, js_error_from_business_code_with_detail, js_error_from_platform_error,
-    js_invalid_parameter_error,
-};
+use crate::i18n::{js_error, js_error_from_business_code_with_detail, js_invalid_parameter_error};
 use lingxia_platform::traits::share::{
     ShareRequest, ShareResult as PlatformShareResult, ShareService,
 };
@@ -74,7 +71,7 @@ async fn share(ctx: JSContext, options: JSValue) -> JSResult<JSShareResult> {
             files,
         })
         .await
-        .map_err(|e| js_error_from_platform_error(&e))?;
+        .map_err(js_error)?;
 
     Ok(result.into())
 }

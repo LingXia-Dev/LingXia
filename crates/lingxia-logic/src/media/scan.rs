@@ -1,6 +1,6 @@
 use crate::dismissal::{USER_DISMISSED, canceled, completed};
-use crate::i18n::{js_error_from_platform_error, js_internal_error, js_invalid_parameter_error};
-use lingxia_platform::error::PlatformError;
+use crate::i18n::{js_error, js_internal_error, js_invalid_parameter_error};
+use lingxia_error::Error;
 use lingxia_service::media::{ScanCodeRequest, ScanType};
 use lxapp::LxApp;
 use rong::{FromJSObject, JSContext, JSObject, JSResult, function::Optional};
@@ -57,7 +57,7 @@ async fn scan(ctx: JSContext, options: Optional<JSScanOptions>) -> JSResult<JSOb
         opts.signal.clone(),
         owner,
         work,
-        || Err(PlatformError::BusinessError(USER_DISMISSED)),
+        || Err(Error::business(USER_DISMISSED, "scan canceled")),
         |_| {},
     )
     .await?;
@@ -65,8 +65,8 @@ async fn scan(ctx: JSContext, options: Optional<JSScanOptions>) -> JSResult<JSOb
         Ok(data) => data,
         // Business code 2000 is the platform's "user dismissed the scanner";
         // every other platform error stays a rejection.
-        Err(PlatformError::BusinessError(USER_DISMISSED)) => return canceled(&ctx),
-        Err(err) => return Err(js_error_from_platform_error(&err)),
+        Err(error) if lingxia_platform::error::is_user_dismissed(&error) => return canceled(&ctx),
+        Err(err) => return Err(js_error(err)),
     };
 
     let payload: Value = serde_json::from_str(&data)

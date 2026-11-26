@@ -1,9 +1,10 @@
 use super::app::Platform;
-use crate::error::{PlatformError, unmounted_presenter_or};
+use crate::error::{chrome_callback_error, is_presenter_unavailable, presenter_unavailable};
 use crate::traits::ui::{Appearance, LaunchFace, UIUpdate};
 use jni::objects::{JClass, JValue};
 use jni::sys::jlong;
 use jni::{jni_sig, jni_str};
+use lingxia_error::Error;
 
 impl Appearance for Platform {
     fn host_appearance_dark(&self) -> bool {
@@ -43,10 +44,10 @@ impl Appearance for Platform {
         });
     }
 
-    fn apply_lxapp_appearance(&self, appid: &str, dark: bool) -> Result<(), PlatformError> {
+    fn apply_lxapp_appearance(&self, appid: &str, dark: bool) -> Result<(), Error> {
         let lxapp_class: &JClass = super::get_cached_class(super::CachedClass::LxApp)
-            .map_err(|error| PlatformError::Platform(error.to_string()))?;
-        super::with_env(|env| -> Result<(), PlatformError> {
+            .map_err(|error| Error::internal(error.to_string()))?;
+        super::with_env(|env| -> Result<(), Error> {
             let appid = env.new_string(appid)?;
             let applied = env.call_static_method(
                 lxapp_class,
@@ -57,7 +58,7 @@ impl Appearance for Platform {
             if applied.z()? {
                 Ok(())
             } else {
-                Err(PlatformError::Platform(
+                Err(Error::internal(
                     "applyAppearance returned false".to_string(),
                 ))
             }
@@ -99,34 +100,34 @@ impl LaunchFace for Platform {
 }
 
 impl UIUpdate for Platform {
-    async fn measure_page_chrome_capsule(
-        &self,
-        appid: String,
-    ) -> Result<Option<String>, PlatformError> {
-        let payload = crate::rt::native_call(|callback_id| {
-            let capsule_class: &JClass = super::get_cached_class(super::CachedClass::LxAppCapsule)
-                .map_err(|error| PlatformError::Platform(error.to_string()))?;
-            super::with_env(|env| -> Result<(), PlatformError> {
-                let appid = env.new_string(&appid)?;
-                env.call_static_method(
-                    capsule_class,
-                    jni_str!("getCapsuleRect"),
-                    jni_sig!("(JLjava/lang/String;)V"),
-                    &[JValue::Long(callback_id as jlong), JValue::Object(&appid)],
-                )?;
-                Ok(())
-            })
-        })
-        .await
-        .map_err(crate::error::unmounted_presenter_or)?;
+    async fn measure_page_chrome_capsule(&self, appid: String) -> Result<Option<String>, Error> {
+        let payload = crate::rt::native_call_with(
+            |callback_id| {
+                let capsule_class: &JClass =
+                    super::get_cached_class(super::CachedClass::LxAppCapsule)
+                        .map_err(|error| Error::internal(error.to_string()))?;
+                super::with_env(|env| -> Result<(), Error> {
+                    let appid = env.new_string(&appid)?;
+                    env.call_static_method(
+                        capsule_class,
+                        jni_str!("getCapsuleRect"),
+                        jni_sig!("(JLjava/lang/String;)V"),
+                        &[JValue::Long(callback_id as jlong), JValue::Object(&appid)],
+                    )?;
+                    Ok(())
+                })
+            },
+            chrome_callback_error,
+        )
+        .await?;
         Ok((payload != "null").then_some(payload))
     }
 
-    fn update_navbar_ui(&self, appid: String) -> Result<(), PlatformError> {
+    fn update_navbar_ui(&self, appid: String) -> Result<(), Error> {
         let lxapp_class: &JClass = super::get_cached_class(super::CachedClass::LxApp)
-            .map_err(|e| PlatformError::Platform(e.to_string()))?;
+            .map_err(|e| Error::internal(e.to_string()))?;
 
-        super::with_env(|env| -> Result<(), PlatformError> {
+        super::with_env(|env| -> Result<(), Error> {
             let appid_jstring = env.new_string(&appid)?;
             let result = env.call_static_method(
                 lxapp_class,
@@ -139,23 +140,23 @@ impl UIUpdate for Platform {
             if result.z()? {
                 Ok(())
             } else {
-                Err(PlatformError::PresenterUnavailable)
+                Err(presenter_unavailable())
             }
         })
         .map_err(|e| match e {
-            PlatformError::PresenterUnavailable => e,
-            e => PlatformError::Platform(format!(
+            e if is_presenter_unavailable(&e) => e,
+            e => Error::internal(format!(
                 "Failed to update NavigationBar UI for appId: {}: {}",
                 appid, e
             )),
         })
     }
 
-    fn update_tabbar_ui(&self, appid: String) -> Result<(), PlatformError> {
+    fn update_tabbar_ui(&self, appid: String) -> Result<(), Error> {
         let lxapp_class: &JClass = super::get_cached_class(super::CachedClass::LxApp)
-            .map_err(|e| PlatformError::Platform(e.to_string()))?;
+            .map_err(|e| Error::internal(e.to_string()))?;
 
-        super::with_env(|env| -> Result<(), PlatformError> {
+        super::with_env(|env| -> Result<(), Error> {
             let appid_jstring = env.new_string(&appid)?;
             let result = env.call_static_method(
                 lxapp_class,
@@ -167,52 +168,54 @@ impl UIUpdate for Platform {
             if result.z()? {
                 Ok(())
             } else {
-                Err(PlatformError::PresenterUnavailable)
+                Err(presenter_unavailable())
             }
         })
         .map_err(|e| match e {
-            PlatformError::PresenterUnavailable => e,
-            e => PlatformError::Platform(format!(
+            e if is_presenter_unavailable(&e) => e,
+            e => Error::internal(format!(
                 "Failed to update TabBar UI for appId: {}: {}",
                 appid, e
             )),
         })
     }
 
-    async fn update_tabbar_ui_async(&self, appid: String) -> Result<(), PlatformError> {
-        crate::rt::native_call_ui(|callback_id| {
-            let lxapp_class: &JClass = super::get_cached_class(super::CachedClass::LxApp)
-                .map_err(|e| PlatformError::Platform(e.to_string()))?;
+    async fn update_tabbar_ui_async(&self, appid: String) -> Result<(), Error> {
+        crate::rt::native_call_ui_with(
+            |callback_id| {
+                let lxapp_class: &JClass = super::get_cached_class(super::CachedClass::LxApp)
+                    .map_err(|e| Error::internal(e.to_string()))?;
 
-            super::with_env(|env| -> Result<(), PlatformError> {
-                let appid_jstring = env.new_string(&appid)?;
-                env.call_static_method(
-                    lxapp_class,
-                    jni_str!("updateTabBarUIAsync"),
-                    jni_sig!("(JLjava/lang/String;)V"),
-                    &[
-                        JValue::Long(callback_id as jlong),
-                        JValue::Object(&appid_jstring),
-                    ],
-                )?;
-                Ok(())
-            })
-            .map_err(|e| {
-                PlatformError::Platform(format!(
-                    "Failed to update TabBar UI for appId: {}: {}",
-                    appid, e
-                ))
-            })
-        })
+                super::with_env(|env| -> Result<(), Error> {
+                    let appid_jstring = env.new_string(&appid)?;
+                    env.call_static_method(
+                        lxapp_class,
+                        jni_str!("updateTabBarUIAsync"),
+                        jni_sig!("(JLjava/lang/String;)V"),
+                        &[
+                            JValue::Long(callback_id as jlong),
+                            JValue::Object(&appid_jstring),
+                        ],
+                    )?;
+                    Ok(())
+                })
+                .map_err(|e| {
+                    Error::internal(format!(
+                        "Failed to update TabBar UI for appId: {}: {}",
+                        appid, e
+                    ))
+                })
+            },
+            chrome_callback_error,
+        )
         .await
-        .map_err(unmounted_presenter_or)
     }
 
-    fn update_orientation_ui(&self, appid: String) -> Result<(), PlatformError> {
+    fn update_orientation_ui(&self, appid: String) -> Result<(), Error> {
         let lxapp_class: &JClass = super::get_cached_class(super::CachedClass::LxApp)
-            .map_err(|e| PlatformError::Platform(e.to_string()))?;
+            .map_err(|e| Error::internal(e.to_string()))?;
 
-        super::with_env(|env| -> Result<(), PlatformError> {
+        super::with_env(|env| -> Result<(), Error> {
             let appid_jstring = env.new_string(&appid)?;
             let result = env.call_static_method(
                 lxapp_class,
@@ -223,13 +226,13 @@ impl UIUpdate for Platform {
             if result.z()? {
                 Ok(())
             } else {
-                Err(PlatformError::Platform(
+                Err(Error::internal(
                     "updateOrientationUI returned false".to_string(),
                 ))
             }
         })
         .map_err(|e| {
-            PlatformError::Platform(format!(
+            Error::internal(format!(
                 "Failed to update orientation UI for appId: {}: {}",
                 appid, e
             ))

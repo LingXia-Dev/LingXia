@@ -5,9 +5,9 @@ use windows::Win32::System::Registry::HKEY_LOCAL_MACHINE;
 use windows::core::HSTRING;
 
 use super::{Platform, not_supported};
-use crate::error::PlatformError;
 use crate::traits::device::{Device, DeviceHardware};
 use crate::{DeviceInfo, ScreenInfo};
+use lingxia_error::Error;
 
 const BIOS_KEY: &str = r"HARDWARE\DESCRIPTION\System\BIOS";
 const CURRENT_VERSION_KEY: &str = r"SOFTWARE\Microsoft\Windows NT\CurrentVersion";
@@ -39,33 +39,32 @@ impl Device for Platform {
         }
     }
 
-    fn vibrate(&self, _long: bool) -> Result<(), PlatformError> {
+    fn vibrate(&self, _long: bool) -> Result<(), Error> {
         // Genuinely N/A: desktop PCs have no vibration actuator to drive.
         not_supported("vibrate")
     }
 
-    fn make_phone_call(&self, _phone_number: &str) -> Result<(), PlatformError> {
-        Err(PlatformError::NotSupported(
+    fn make_phone_call(&self, _phone_number: &str) -> Result<(), Error> {
+        Err(Error::not_supported(
             "makePhoneCall is not supported on Windows".to_string(),
         ))
     }
 }
 
 impl DeviceHardware for Platform {
-    fn get_memory_info(&self) -> Result<u64, PlatformError> {
+    fn get_memory_info(&self) -> Result<u64, Error> {
         use windows::Win32::System::SystemInformation::{GlobalMemoryStatusEx, MEMORYSTATUSEX};
 
         let mut status = MEMORYSTATUSEX {
             dwLength: std::mem::size_of::<MEMORYSTATUSEX>() as u32,
             ..Default::default()
         };
-        unsafe { GlobalMemoryStatusEx(&mut status) }.map_err(|err| {
-            PlatformError::Platform(format!("GlobalMemoryStatusEx failed: {err}"))
-        })?;
+        unsafe { GlobalMemoryStatusEx(&mut status) }
+            .map_err(|err| Error::internal(format!("GlobalMemoryStatusEx failed: {err}")))?;
         Ok(status.ullTotalPhys)
     }
 
-    fn get_storage_total_bytes(&self) -> Result<u64, PlatformError> {
+    fn get_storage_total_bytes(&self) -> Result<u64, Error> {
         use windows::Win32::Storage::FileSystem::GetDiskFreeSpaceExW;
 
         // Report the volume hosting the app data directory; the volume root
@@ -75,7 +74,7 @@ impl DeviceHardware for Platform {
         let mut total_bytes = 0u64;
         unsafe { GetDiskFreeSpaceExW(&root_name, None, Some(&mut total_bytes), None) }.map_err(
             |err| {
-                PlatformError::Platform(format!(
+                Error::internal(format!(
                     "GetDiskFreeSpaceExW failed for {}: {err}",
                     root.display()
                 ))

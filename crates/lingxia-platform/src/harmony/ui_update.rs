@@ -1,6 +1,7 @@
 use super::app::Platform;
-use crate::error::{PlatformError, unmounted_presenter_or};
+use crate::error::chrome_callback_error;
 use crate::traits::ui::{Appearance, LaunchFace, UIUpdate};
+use lingxia_error::Error;
 use std::sync::atomic::{AtomicBool, Ordering};
 
 static HOST_APPEARANCE_DARK: AtomicBool = AtomicBool::new(false);
@@ -14,10 +15,10 @@ impl Appearance for Platform {
         HOST_APPEARANCE_DARK.load(Ordering::Acquire)
     }
 
-    fn apply_lxapp_appearance(&self, appid: &str, dark: bool) -> Result<(), PlatformError> {
+    fn apply_lxapp_appearance(&self, appid: &str, dark: bool) -> Result<(), Error> {
         let dark = if dark { "true" } else { "false" };
         lingxia_webview::platform::harmony::tsfn::call_arkts("applyLxAppAppearance", &[appid, dark])
-            .map_err(|error| PlatformError::Platform(error.to_string()))
+            .map_err(|error| Error::internal(error.to_string()))
     }
 
     fn set_host_color_mode(&self, dark: Option<bool>) {
@@ -45,27 +46,24 @@ impl LaunchFace for Platform {
 }
 
 impl UIUpdate for Platform {
-    async fn measure_page_chrome_capsule(
-        &self,
-        appid: String,
-    ) -> Result<Option<String>, PlatformError> {
+    async fn measure_page_chrome_capsule(&self, appid: String) -> Result<Option<String>, Error> {
         let payload = crate::rt::native_call(|callback_id| {
             let callback_id = callback_id.to_string();
             lingxia_webview::platform::harmony::tsfn::call_arkts(
                 "getCapsuleRect",
                 &[&callback_id, &appid],
             )
-            .map_err(|error| PlatformError::Platform(error.to_string()))
+            .map_err(|error| Error::internal(error.to_string()))
         })
         .await?;
         Ok((payload != "null").then_some(payload))
     }
 
-    fn update_navbar_ui(&self, appid: String) -> Result<(), PlatformError> {
+    fn update_navbar_ui(&self, appid: String) -> Result<(), Error> {
         // Use existing refreshNavBar function via TSFN (it will get current path internally)
         lingxia_webview::platform::harmony::tsfn::call_arkts("refreshNavBar", &[&appid]).map_err(
             |e| {
-                PlatformError::Platform(format!(
+                Error::internal(format!(
                     "Failed to update NavigationBar UI for appId: {}: {}",
                     appid, e
                 ))
@@ -73,11 +71,11 @@ impl UIUpdate for Platform {
         )
     }
 
-    fn update_tabbar_ui(&self, appid: String) -> Result<(), PlatformError> {
+    fn update_tabbar_ui(&self, appid: String) -> Result<(), Error> {
         // Call ArkTS updateTabBarUI function via TSFN
         lingxia_webview::platform::harmony::tsfn::call_arkts("updateTabBarUI", &[&appid]).map_err(
             |e| {
-                PlatformError::Platform(format!(
+                Error::internal(format!(
                     "Failed to update TabBar UI for appId: {}: {}",
                     appid, e
                 ))
@@ -85,28 +83,30 @@ impl UIUpdate for Platform {
         )
     }
 
-    async fn update_tabbar_ui_async(&self, appid: String) -> Result<(), PlatformError> {
-        crate::rt::native_call_ui(|callback_id| {
-            let callback_id = callback_id.to_string();
-            lingxia_webview::platform::harmony::tsfn::call_arkts(
-                "updateTabBarUIAsync",
-                &[&callback_id, &appid],
-            )
-            .map_err(|e| {
-                PlatformError::Platform(format!(
-                    "Failed to update TabBar UI for appId: {}: {}",
-                    appid, e
-                ))
-            })
-        })
+    async fn update_tabbar_ui_async(&self, appid: String) -> Result<(), Error> {
+        crate::rt::native_call_ui_with(
+            |callback_id| {
+                let callback_id = callback_id.to_string();
+                lingxia_webview::platform::harmony::tsfn::call_arkts(
+                    "updateTabBarUIAsync",
+                    &[&callback_id, &appid],
+                )
+                .map_err(|e| {
+                    Error::internal(format!(
+                        "Failed to update TabBar UI for appId: {}: {}",
+                        appid, e
+                    ))
+                })
+            },
+            chrome_callback_error,
+        )
         .await
-        .map_err(unmounted_presenter_or)
     }
 
-    fn update_orientation_ui(&self, appid: String) -> Result<(), PlatformError> {
+    fn update_orientation_ui(&self, appid: String) -> Result<(), Error> {
         lingxia_webview::platform::harmony::tsfn::call_arkts("updateOrientationUI", &[&appid])
             .map_err(|e| {
-                PlatformError::Platform(format!(
+                Error::internal(format!(
                     "Failed to update orientation UI for appId: {}: {}",
                     appid, e
                 ))

@@ -1,4 +1,4 @@
-use crate::error::PlatformError;
+use lingxia_error::Error;
 use std::ffi::{CString, c_char};
 use std::ptr;
 use std::slice;
@@ -254,7 +254,7 @@ fn state() -> &'static Mutex<CamState> {
     STATE.get_or_init(|| Mutex::new(CamState::new()))
 }
 
-pub fn camera_init(_surface_id: &str, _facing: &str) -> Result<bool, PlatformError> {
+pub fn camera_init(_surface_id: &str, _facing: &str) -> Result<bool, Error> {
     // Initialize manager and capture session and attach preview to provided surface
     let mut st = state().lock().unwrap();
     unsafe {
@@ -268,9 +268,7 @@ pub fn camera_init(_surface_id: &str, _facing: &str) -> Result<bool, PlatformErr
                 rc1,
                 mgr.is_null()
             );
-            return Err(PlatformError::Platform(
-                "OH_Camera_GetCameraManager failed".into(),
-            ));
+            return Err(Error::internal("OH_Camera_GetCameraManager failed"));
         }
         st.manager = mgr;
 
@@ -301,13 +299,13 @@ pub fn camera_init(_surface_id: &str, _facing: &str) -> Result<bool, PlatformErr
                 rci,
                 input.is_null()
             );
-            return Err(PlatformError::Platform("CreateCameraInput failed".into()));
+            return Err(Error::internal("CreateCameraInput failed"));
         }
         st.camera_input = input;
         let rco = OH_CameraInput_Open(input);
         if rco != 0 {
             log::error!("[Harmony.Camera] CameraInput_Open failed: rc={}", rco);
-            return Err(PlatformError::Platform("CameraInput_Open failed".into()));
+            return Err(Error::internal("CameraInput_Open failed"));
         }
 
         // Create session
@@ -322,9 +320,7 @@ pub fn camera_init(_surface_id: &str, _facing: &str) -> Result<bool, PlatformErr
                 OH_CaptureSession_Release(sess);
             }
             cleanup_state(&mut st);
-            return Err(PlatformError::Platform(
-                "CreateCaptureSession failed".into(),
-            ));
+            return Err(Error::internal("CreateCaptureSession failed"));
         }
         st.session = sess;
 
@@ -334,8 +330,8 @@ pub fn camera_init(_surface_id: &str, _facing: &str) -> Result<bool, PlatformErr
         // Remember preview surface for future reconfigure
         st.preview_surface_id = _surface_id.to_string();
 
-        let c_surface = CString::new(_surface_id)
-            .map_err(|_| PlatformError::InvalidParameter("surfaceId null".into()))?;
+        let c_surface =
+            CString::new(_surface_id).map_err(|_| Error::invalid_arg("surfaceId null"))?;
 
         // Try preconfig path first
         let mut bound = false;
@@ -390,9 +386,7 @@ pub fn camera_init(_surface_id: &str, _facing: &str) -> Result<bool, PlatformErr
         }
 
         if !bound {
-            return Err(PlatformError::Platform(
-                "Failed to bind preview output to surface".into(),
-            ));
+            return Err(Error::internal("Failed to bind preview output to surface"));
         }
 
         st.preview_output = prev;
@@ -401,13 +395,13 @@ pub fn camera_init(_surface_id: &str, _facing: &str) -> Result<bool, PlatformErr
         let rc_commit = OH_CaptureSession_CommitConfig(sess);
         if rc_commit != 0 {
             log::error!("[Harmony.Camera] CommitConfig failed: {}", rc_commit);
-            return Err(PlatformError::Platform("CommitConfig failed".into()));
+            return Err(Error::internal("CommitConfig failed"));
         }
 
         let rc_start = OH_CaptureSession_Start(sess);
         if rc_start != 0 {
             log::error!("[Harmony.Camera] Start session failed: {}", rc_start);
-            return Err(PlatformError::Platform("Start session failed".into()));
+            return Err(Error::internal("Start session failed"));
         }
     }
     Ok(true)
@@ -418,7 +412,7 @@ pub fn camera_release() {
     unsafe { cleanup_state(&mut st) }
 }
 
-pub fn camera_switch_facing(is_back: bool) -> Result<bool, PlatformError> {
+pub fn camera_switch_facing(is_back: bool) -> Result<bool, Error> {
     // Re-init session with stored preview surface and new facing
     let (preview_surface, new_facing);
     {
@@ -440,7 +434,7 @@ pub fn camera_switch_facing(is_back: bool) -> Result<bool, PlatformError> {
 
 /// Set camera flash mode
 /// flash_on: true to enable flash (FLASH_MODE_OPEN), false to disable (FLASH_MODE_CLOSE)
-pub fn camera_set_flash_mode(flash_on: bool) -> Result<bool, PlatformError> {
+pub fn camera_set_flash_mode(flash_on: bool) -> Result<bool, Error> {
     let st = state().lock().unwrap();
     unsafe {
         if st.session.is_null() {
@@ -484,10 +478,7 @@ pub fn camera_set_flash_mode(flash_on: bool) -> Result<bool, PlatformError> {
         let rc = OH_CaptureSession_SetFlashMode(st.session, target_mode);
         if rc != 0 {
             log::error!("[Harmony.Camera] SetFlashMode failed: rc={}", rc);
-            return Err(PlatformError::Platform(format!(
-                "SetFlashMode failed: {}",
-                rc
-            )));
+            return Err(Error::internal(format!("SetFlashMode failed: {}", rc)));
         }
 
         log::info!(
@@ -498,22 +489,18 @@ pub fn camera_set_flash_mode(flash_on: bool) -> Result<bool, PlatformError> {
     Ok(true)
 }
 
-pub fn camera_take_photo() -> Result<(), PlatformError> {
+pub fn camera_take_photo() -> Result<(), Error> {
     let st = state().lock().unwrap();
 
     unsafe {
         if st.photo_output.is_null() {
             log::error!("[Harmony.Camera] photo_output is null");
-            return Err(PlatformError::Platform(
-                "photo output not configured".into(),
-            ));
+            return Err(Error::internal("photo output not configured"));
         }
 
         if st.session.is_null() {
             log::error!("[Harmony.Camera] session is null");
-            return Err(PlatformError::Platform(
-                "capture session not initialized".into(),
-            ));
+            return Err(Error::internal("capture session not initialized"));
         }
 
         let rc = OH_PhotoOutput_Capture(st.photo_output);
@@ -536,7 +523,7 @@ pub fn camera_take_photo() -> Result<(), PlatformError> {
                 rc,
                 error_msg
             );
-            return Err(PlatformError::Platform(format!(
+            return Err(Error::internal(format!(
                 "OH_PhotoOutput_Capture failed: {} ({})",
                 rc, error_msg
             )));
@@ -549,16 +536,14 @@ pub fn camera_start_photo_with_surface(
     photo_surface_id: &str,
     _callback_id: &str,
     _cache_dir: &str,
-) -> Result<bool, PlatformError> {
+) -> Result<bool, Error> {
     let mut st = state().lock().unwrap();
     // start photo with provided surface
 
     unsafe {
         if st.manager.is_null() {
             log::error!("[Harmony.Camera] manager is null");
-            return Err(PlatformError::Platform(
-                "camera manager not initialized".into(),
-            ));
+            return Err(Error::internal("camera manager not initialized"));
         }
 
         // Setup cameras/capability/session/input/preview once lazily
@@ -572,9 +557,7 @@ pub fn camera_start_photo_with_surface(
             let rc = OH_CameraManager_CreateCaptureSession(st.manager, &mut sess);
             if rc != 0 || sess.is_null() {
                 log::error!("[Harmony.Camera] CreateCaptureSession failed: rc={}", rc);
-                return Err(PlatformError::Platform(
-                    "CreateCaptureSession failed".into(),
-                ));
+                return Err(Error::internal("CreateCaptureSession failed"));
             }
             st.session = sess;
         }
@@ -587,13 +570,13 @@ pub fn camera_start_photo_with_surface(
             let rc = OH_CameraManager_CreateCameraInput(st.manager, device, &mut input);
             if rc != 0 || input.is_null() {
                 log::error!("[Harmony.Camera] CreateCameraInput failed: rc={}", rc);
-                return Err(PlatformError::Platform("CreateCameraInput failed".into()));
+                return Err(Error::internal("CreateCameraInput failed"));
             }
             st.camera_input = input;
             let rc = OH_CameraInput_Open(input);
             if rc != 0 {
                 log::error!("[Harmony.Camera] CameraInput_Open failed: rc={}", rc);
-                return Err(PlatformError::Platform("CameraInput_Open failed".into()));
+                return Err(Error::internal("CameraInput_Open failed"));
             }
         }
 
@@ -609,10 +592,7 @@ pub fn camera_start_photo_with_surface(
         let rc_begin = OH_CaptureSession_BeginConfig(st.session);
         if rc_begin != 0 {
             log::error!("[Harmony.Camera] BeginConfig failed: {}", rc_begin);
-            return Err(PlatformError::Platform(format!(
-                "BeginConfig failed: {}",
-                rc_begin
-            )));
+            return Err(Error::internal(format!("BeginConfig failed: {}", rc_begin)));
         }
 
         // Remove old photo_output if exists
@@ -623,8 +603,8 @@ pub fn camera_start_photo_with_surface(
         }
 
         // Create photo output with ImageReceiver surface id
-        let cstr = CString::new(photo_surface_id)
-            .map_err(|_| PlatformError::InvalidParameter("surfaceId null".into()))?;
+        let cstr =
+            CString::new(photo_surface_id).map_err(|_| Error::invalid_arg("surfaceId null"))?;
         let mut photo_out: *mut Camera_PhotoOutput = ptr::null_mut();
         let profile = choose_photo_profile(st.capability)?;
         let rc =
@@ -636,7 +616,7 @@ pub fn camera_start_photo_with_surface(
                 &mut photo_out,
             );
             if fallback != 0 || photo_out.is_null() {
-                return Err(PlatformError::Platform("CreatePhotoOutput failed".into()));
+                return Err(Error::internal("CreatePhotoOutput failed"));
             }
         }
 
@@ -647,7 +627,7 @@ pub fn camera_start_photo_with_surface(
             log::error!("[Harmony.Camera] AddPhotoOutput failed: {}", rc_add_photo);
             OH_PhotoOutput_Release(photo_out);
             st.photo_output = ptr::null_mut();
-            return Err(PlatformError::Platform(format!(
+            return Err(Error::internal(format!(
                 "AddPhotoOutput failed: {}",
                 rc_add_photo
             )));
@@ -658,7 +638,7 @@ pub fn camera_start_photo_with_surface(
         let rc_commit = OH_CaptureSession_CommitConfig(st.session);
         if rc_commit != 0 {
             log::error!("[Harmony.Camera] CommitConfig failed: {}", rc_commit);
-            return Err(PlatformError::Platform(format!(
+            return Err(Error::internal(format!(
                 "CommitConfig failed: {}",
                 rc_commit
             )));
@@ -667,7 +647,7 @@ pub fn camera_start_photo_with_surface(
         let rc_start = OH_CaptureSession_Start(st.session);
         if rc_start != 0 {
             log::error!("[Harmony.Camera] Start session failed: {}", rc_start);
-            return Err(PlatformError::Platform(format!(
+            return Err(Error::internal(format!(
                 "Start session failed: {}",
                 rc_start
             )));
@@ -676,13 +656,11 @@ pub fn camera_start_photo_with_surface(
     Ok(true)
 }
 
-pub fn camera_start_video_with_surface(video_surface_id: &str) -> Result<bool, PlatformError> {
+pub fn camera_start_video_with_surface(video_surface_id: &str) -> Result<bool, Error> {
     let mut st = state().lock().unwrap();
     unsafe {
         if st.manager.is_null() {
-            return Err(PlatformError::Platform(
-                "camera manager not initialized".into(),
-            ));
+            return Err(Error::internal("camera manager not initialized"));
         }
         if st.cameras.is_null() || st.capability.is_null() {
             setup_camera_base(&mut st)?;
@@ -691,9 +669,7 @@ pub fn camera_start_video_with_surface(video_surface_id: &str) -> Result<bool, P
             let mut sess: *mut Camera_CaptureSession = ptr::null_mut();
             let rc = OH_CameraManager_CreateCaptureSession(st.manager, &mut sess);
             if rc != 0 || sess.is_null() {
-                return Err(PlatformError::Platform(
-                    "CreateCaptureSession failed".into(),
-                ));
+                return Err(Error::internal("CreateCaptureSession failed"));
             }
             st.session = sess;
         }
@@ -702,12 +678,12 @@ pub fn camera_start_video_with_surface(video_surface_id: &str) -> Result<bool, P
             let mut input: *mut Camera_Input = ptr::null_mut();
             let rc = OH_CameraManager_CreateCameraInput(st.manager, device, &mut input);
             if rc != 0 || input.is_null() {
-                return Err(PlatformError::Platform("CreateCameraInput failed".into()));
+                return Err(Error::internal("CreateCameraInput failed"));
             }
             st.camera_input = input;
             let rc = OH_CameraInput_Open(input);
             if rc != 0 {
-                return Err(PlatformError::Platform("CameraInput_Open failed".into()));
+                return Err(Error::internal("CameraInput_Open failed"));
             }
         }
 
@@ -720,13 +696,13 @@ pub fn camera_start_video_with_surface(video_surface_id: &str) -> Result<bool, P
             st.video_output = ptr::null_mut();
         }
         let vprof = choose_video_profile(st.capability)?;
-        let cstr = CString::new(video_surface_id)
-            .map_err(|_| PlatformError::InvalidParameter("surfaceId null".into()))?;
+        let cstr =
+            CString::new(video_surface_id).map_err(|_| Error::invalid_arg("surfaceId null"))?;
         let mut video_out: *mut Camera_VideoOutput = ptr::null_mut();
         let rc =
             OH_CameraManager_CreateVideoOutput(st.manager, vprof, cstr.as_ptr(), &mut video_out);
         if rc != 0 || video_out.is_null() {
-            return Err(PlatformError::Platform("CreateVideoOutput failed".into()));
+            return Err(Error::internal("CreateVideoOutput failed"));
         }
         st.video_output = video_out;
         OH_CaptureSession_AddVideoOutput(st.session, video_out);
@@ -736,17 +712,15 @@ pub fn camera_start_video_with_surface(video_surface_id: &str) -> Result<bool, P
     Ok(true)
 }
 
-pub fn camera_video_output_start() -> Result<bool, PlatformError> {
+pub fn camera_video_output_start() -> Result<bool, Error> {
     let st = state().lock().unwrap();
     unsafe {
         if st.video_output.is_null() {
-            return Err(PlatformError::Platform(
-                "video output not configured".into(),
-            ));
+            return Err(Error::internal("video output not configured"));
         }
         let rc = OH_VideoOutput_Start(st.video_output);
         if rc != 0 {
-            return Err(PlatformError::Platform(format!(
+            return Err(Error::internal(format!(
                 "OH_VideoOutput_Start failed: {}",
                 rc
             )));
@@ -755,7 +729,7 @@ pub fn camera_video_output_start() -> Result<bool, PlatformError> {
     Ok(true)
 }
 
-pub fn camera_video_output_stop_and_release() -> Result<bool, PlatformError> {
+pub fn camera_video_output_stop_and_release() -> Result<bool, Error> {
     let mut st = state().lock().unwrap();
     unsafe {
         if !st.video_output.is_null() {
@@ -770,7 +744,7 @@ pub fn camera_video_output_stop_and_release() -> Result<bool, PlatformError> {
     Ok(true)
 }
 
-unsafe fn setup_camera_base(st: &mut CamState) -> Result<(), PlatformError> {
+unsafe fn setup_camera_base(st: &mut CamState) -> Result<(), Error> {
     if !st.capability.is_null() {
         unsafe {
             OH_CameraManager_DeleteSupportedCameraOutputCapability(st.manager, st.capability);
@@ -793,7 +767,7 @@ unsafe fn setup_camera_base(st: &mut CamState) -> Result<(), PlatformError> {
     let rc =
         unsafe { OH_CameraManager_GetSupportedCameras(st.manager, &mut cameras_ptr, &mut size) };
     if rc != 0 || cameras_ptr.is_null() || size == 0 {
-        return Err(PlatformError::Platform("GetSupportedCameras failed".into()));
+        return Err(Error::internal("GetSupportedCameras failed"));
     }
     // Capability
     let mut cap: *mut Camera_OutputCapability = ptr::null_mut();
@@ -810,9 +784,7 @@ unsafe fn setup_camera_base(st: &mut CamState) -> Result<(), PlatformError> {
         unsafe {
             OH_CameraManager_DeleteSupportedCameras(st.manager, cameras_ptr, size);
         }
-        return Err(PlatformError::Platform(
-            "GetSupportedCameraOutputCapability failed".into(),
-        ));
+        return Err(Error::internal("GetSupportedCameraOutputCapability failed"));
     }
     st.cameras = cameras_ptr;
     st.cameras_len = size;
@@ -821,36 +793,28 @@ unsafe fn setup_camera_base(st: &mut CamState) -> Result<(), PlatformError> {
     Ok(())
 }
 
-fn choose_preview_profile(
-    cap: *mut Camera_OutputCapability,
-) -> Result<*mut Camera_Profile, PlatformError> {
+fn choose_preview_profile(cap: *mut Camera_OutputCapability) -> Result<*mut Camera_Profile, Error> {
     if cap.is_null() {
-        return Err(PlatformError::Platform(
-            "camera output capability is null".into(),
-        ));
+        return Err(Error::internal("camera output capability is null"));
     }
     unsafe {
         let caps = &*cap;
         if caps.preview_profiles_size == 0 || caps.preview_profiles.is_null() {
-            return Err(PlatformError::Platform("no preview profiles".into()));
+            return Err(Error::internal("no preview profiles"));
         }
         let arr = slice::from_raw_parts(caps.preview_profiles, caps.preview_profiles_size as usize);
         let first = *arr
             .first()
-            .ok_or_else(|| PlatformError::Platform("empty preview profiles".into()))?;
+            .ok_or_else(|| Error::internal("empty preview profiles"))?;
         if first.is_null() {
-            return Err(PlatformError::Platform("invalid preview profile".into()));
+            return Err(Error::internal("invalid preview profile"));
         }
         Ok(first)
     }
 }
-fn choose_photo_profile(
-    cap: *mut Camera_OutputCapability,
-) -> Result<*mut Camera_Profile, PlatformError> {
+fn choose_photo_profile(cap: *mut Camera_OutputCapability) -> Result<*mut Camera_Profile, Error> {
     if cap.is_null() {
-        return Err(PlatformError::Platform(
-            "camera output capability is null".into(),
-        ));
+        return Err(Error::internal("camera output capability is null"));
     }
     unsafe {
         let caps = &*cap;
@@ -860,32 +824,30 @@ fn choose_photo_profile(
         let arr = slice::from_raw_parts(caps.photo_profiles, caps.photo_profiles_size as usize);
         let first = *arr
             .first()
-            .ok_or_else(|| PlatformError::Platform("empty photo profiles".into()))?;
+            .ok_or_else(|| Error::internal("empty photo profiles"))?;
         if first.is_null() {
-            return Err(PlatformError::Platform("invalid photo profile".into()));
+            return Err(Error::internal("invalid photo profile"));
         }
         Ok(first)
     }
 }
 fn choose_video_profile(
     cap: *mut Camera_OutputCapability,
-) -> Result<*mut Camera_VideoProfile, PlatformError> {
+) -> Result<*mut Camera_VideoProfile, Error> {
     if cap.is_null() {
-        return Err(PlatformError::Platform(
-            "camera output capability is null".into(),
-        ));
+        return Err(Error::internal("camera output capability is null"));
     }
     unsafe {
         let caps = &*cap;
         if caps.video_profiles_size == 0 || caps.video_profiles.is_null() {
-            return Err(PlatformError::Platform("no video profiles".into()));
+            return Err(Error::internal("no video profiles"));
         }
         let arr = slice::from_raw_parts(caps.video_profiles, caps.video_profiles_size as usize);
         let first = *arr
             .first()
-            .ok_or_else(|| PlatformError::Platform("empty video profiles".into()))?;
+            .ok_or_else(|| Error::internal("empty video profiles"))?;
         if first.is_null() {
-            return Err(PlatformError::Platform("invalid video profile".into()));
+            return Err(Error::internal("invalid video profile"));
         }
         Ok(first)
     }

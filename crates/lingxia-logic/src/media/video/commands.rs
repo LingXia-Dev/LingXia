@@ -5,8 +5,7 @@ use super::stream::{
     seek_stream_session_async_shared, stop_stream_session_async_shared,
 };
 use crate::i18n::{
-    js_error_from_platform_error, js_internal_error, js_invalid_parameter_error,
-    js_resource_not_found_error,
+    js_error, js_internal_error, js_invalid_parameter_error, js_resource_not_found_error,
 };
 use lingxia_media::playback::get_stream_provider;
 use lingxia_platform::traits::stream_decoder::{
@@ -47,9 +46,7 @@ fn parse_stream_params(params: Option<JSObject>) -> JSResult<Value> {
 
 impl JSVideoContext {
     fn dispatch(&self, command: VideoPlayerCommand) -> JSResult<()> {
-        self.player_handle
-            .dispatch(command)
-            .map_err(|e| js_error_from_platform_error(&e))
+        self.player_handle.dispatch(command).map_err(js_error)
     }
 
     fn stop_stream_session_async(&self) -> JSResult<()> {
@@ -84,7 +81,7 @@ impl JSVideoContext {
         let decoder = self
             .runtime
             .create_stream_decoder(&self.component_id)
-            .map_err(|e| js_error_from_platform_error(&e))?;
+            .map_err(js_error)?;
         let decoder: Arc<dyn VideoStreamDecoderHandle> = decoder.into();
         *guard = Some(decoder.clone());
         Ok(decoder)

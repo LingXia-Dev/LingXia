@@ -2,7 +2,6 @@ use std::io::Read;
 use std::path::{Path, PathBuf};
 
 use crate::AssetFileEntry;
-use crate::error::PlatformError;
 
 use super::PlatformFuture;
 use super::clipboard::ClipboardService;
@@ -17,6 +16,7 @@ use super::share::ShareService;
 use super::ui::{Appearance, LaunchFace, SurfacePresenter, UIUpdate, UserFeedback};
 use super::update::UpdateService;
 use super::wifi::Wifi;
+use lingxia_error::Error;
 
 /// The envelope an activation token travels in when the OS gives us one
 /// opaque string and hands it back on tap: a Windows toast's `launch`, a
@@ -180,7 +180,7 @@ impl DesktopBannerOutcome {
 /// `banner_dismiss` for the same id finds the banner.
 #[derive(Debug)]
 pub struct DesktopBannerPending {
-    outcome: std::sync::mpsc::Receiver<Result<DesktopBannerOutcome, PlatformError>>,
+    outcome: std::sync::mpsc::Receiver<Result<DesktopBannerOutcome, Error>>,
 }
 
 impl DesktopBannerPending {
@@ -189,16 +189,16 @@ impl DesktopBannerPending {
         allow(dead_code)
     )]
     pub(crate) fn new(
-        outcome: std::sync::mpsc::Receiver<Result<DesktopBannerOutcome, PlatformError>>,
+        outcome: std::sync::mpsc::Receiver<Result<DesktopBannerOutcome, Error>>,
     ) -> Self {
         Self { outcome }
     }
 
     /// Block until the banner is answered, dismissed, timed out, or replaced.
-    pub fn wait(self) -> Result<DesktopBannerOutcome, PlatformError> {
+    pub fn wait(self) -> Result<DesktopBannerOutcome, Error> {
         self.outcome
             .recv()
-            .map_err(|_| PlatformError::Platform("banner waiter dropped".into()))?
+            .map_err(|_| Error::internal("banner waiter dropped"))?
     }
 }
 
@@ -340,13 +340,13 @@ pub trait AppRuntime:
     + 'static
 {
     /// Reads an asset file as a streaming reader.
-    fn read_asset<'a>(&'a self, path: &str) -> Result<Box<dyn Read + 'a>, PlatformError>;
+    fn read_asset<'a>(&'a self, path: &str) -> Result<Box<dyn Read + 'a>, Error>;
 
     /// Iterates over files in an asset directory.
     fn asset_dir_iter<'a>(
         &'a self,
         asset_dir: &str,
-    ) -> Box<dyn Iterator<Item = Result<AssetFileEntry<'a>, PlatformError>> + 'a>;
+    ) -> Box<dyn Iterator<Item = Result<AssetFileEntry<'a>, Error>> + 'a>;
 
     /// Returns the app's data directory path.
     fn app_data_dir(&self) -> PathBuf;
@@ -355,7 +355,7 @@ pub trait AppRuntime:
     fn app_cache_dir(&self) -> PathBuf;
 
     /// Obtains the application identifier.
-    fn get_app_identifier(&self) -> Result<String, PlatformError>;
+    fn get_app_identifier(&self) -> Result<String, Error>;
 
     /// Copies media from the system album to a local file.
     fn copy_album_media_to_file(
@@ -363,7 +363,7 @@ pub trait AppRuntime:
         uri: &str,
         dest_path: &Path,
         kind: MediaKind,
-    ) -> Result<(), PlatformError> {
+    ) -> Result<(), Error> {
         MediaRuntime::copy_album_media_to_file(self, uri, dest_path, kind)
     }
 
@@ -371,7 +371,7 @@ pub trait AppRuntime:
     fn get_system_locale(&self) -> &str;
 
     /// Show the UI container for an lxapp, presenting the page `request` names.
-    fn show_lxapp(&self, request: ShowLxApp) -> Result<(), PlatformError>;
+    fn show_lxapp(&self, request: ShowLxApp) -> Result<(), Error>;
 
     /// Notify the desktop skin that the next layout publication is an explicit
     /// request to put this lxapp in front. Most skins reconcile directly from
@@ -393,10 +393,10 @@ pub trait AppRuntime:
     }
 
     /// Hide the UI container for the given LxApp (does not destroy its runtime state).
-    fn hide_lxapp(&self, appid: String, session_id: u64) -> Result<(), PlatformError>;
+    fn hide_lxapp(&self, appid: String, session_id: u64) -> Result<(), Error>;
 
     /// Exits the host app.
-    fn exit(&self) -> Result<(), PlatformError>;
+    fn exit(&self) -> Result<(), Error>;
 
     // Tray / badge chrome. These are cosmetic enhancements, so platforms that
     // lack the chrome (e.g. no menu-bar tray on mobile) no-op rather than error —
@@ -407,12 +407,12 @@ pub trait AppRuntime:
     /// `Ok(false)` means there was nothing to paint on — no tray at all, or a
     /// status item the product has not shown. Only a malfunction is an `Err`,
     /// so a caller never needs to catch "this platform has no such chrome".
-    fn set_tray_badge(&self, _text: &str) -> Result<bool, PlatformError> {
+    fn set_tray_badge(&self, _text: &str) -> Result<bool, Error> {
         Ok(false)
     }
 
     /// Set the tray icon (a resource path). Desktop only; no-op elsewhere.
-    fn set_tray_icon(&self, _icon: &str) -> Result<(), PlatformError> {
+    fn set_tray_icon(&self, _icon: &str) -> Result<(), Error> {
         Ok(())
     }
 
@@ -421,57 +421,57 @@ pub trait AppRuntime:
     fn set_shell_sidebar_actions(
         &self,
         _items: &[lingxia_shell::ResolvedShellSidebarAction],
-    ) -> Result<(), PlatformError> {
+    ) -> Result<(), Error> {
         Ok(())
     }
 
     /// Replace the ordered mixed user Pin list. Platform skins resolve visual
     /// metadata only; target identity and the eight-item limit are shell-owned.
-    fn set_shell_pins(&self, _items: &[lingxia_shell::ShellPin]) -> Result<(), PlatformError> {
+    fn set_shell_pins(&self, _items: &[lingxia_shell::ShellPin]) -> Result<(), Error> {
         Ok(())
     }
 
     /// Show or hide the shell's "an AI assistant is in control" indicator.
     /// Its Stop button calls [`crate::request_control_session_stop`]. Desktop
     /// shells only; no-op elsewhere.
-    fn set_control_session_indicator(&self, _active: bool) -> Result<(), PlatformError> {
+    fn set_control_session_indicator(&self, _active: bool) -> Result<(), Error> {
         Ok(())
     }
 
     /// Set the tray title (text beside the icon, macOS). Desktop only; no-op elsewhere.
-    fn set_tray_title(&self, _text: &str) -> Result<(), PlatformError> {
+    fn set_tray_title(&self, _text: &str) -> Result<(), Error> {
         Ok(())
     }
 
     /// Set the app-icon badge: dock (macOS) / taskbar (Windows) / launcher icon
     /// (iOS, Android). No-op on platforms where it is not yet wired.
     /// `Ok(false)` means there was nothing to paint on. See [`Self::set_tray_badge`].
-    fn set_app_badge(&self, _text: &str) -> Result<bool, PlatformError> {
+    fn set_app_badge(&self, _text: &str) -> Result<bool, Error> {
         Ok(false)
     }
 
     /// Whether the app is registered to launch at system startup. Only reached
     /// on macOS/Windows — `lx.host.autostart` is not registered elsewhere — so
     /// the default is an error, not a no-op: a false answer here would be a lie.
-    fn autostart_is_enabled(&self) -> Result<bool, PlatformError> {
-        Err(PlatformError::NotSupported("autostart".to_string()))
+    fn autostart_is_enabled(&self) -> Result<bool, Error> {
+        Err(Error::not_supported("autostart".to_string()))
     }
 
     /// Register or unregister the app as a per-user startup item.
-    fn autostart_set_enabled(&self, _enabled: bool) -> Result<(), PlatformError> {
-        Err(PlatformError::NotSupported("autostart".to_string()))
+    fn autostart_set_enabled(&self, _enabled: bool) -> Result<(), Error> {
+        Err(Error::not_supported("autostart".to_string()))
     }
 
     /// Current OS permission without prompting: `"granted"`, `"denied"`, or
     /// `"default"` (not yet asked).
-    fn notification_permission(&self) -> Result<String, PlatformError> {
-        Err(PlatformError::NotSupported("notification".to_string()))
+    fn notification_permission(&self) -> Result<String, Error> {
+        Err(Error::not_supported("notification".to_string()))
     }
 
     /// Prompt where the OS has a prompt. `"granted"` or `"denied"`; an
     /// unanswered prompt is an error, never a status.
-    fn notification_request_permission(&self) -> Result<String, PlatformError> {
-        Err(PlatformError::NotSupported("notification".to_string()))
+    fn notification_request_permission(&self) -> Result<String, Error> {
+        Err(Error::not_supported("notification".to_string()))
     }
 
     /// Upsert a local notification: anything pending or delivered under `id`
@@ -484,34 +484,28 @@ pub trait AppRuntime:
     fn notification_show(
         &self,
         _request: &LocalNotificationShow,
-    ) -> Result<LocalNotificationStatus, PlatformError> {
-        Err(PlatformError::NotSupported("notification".to_string()))
+    ) -> Result<LocalNotificationStatus, Error> {
+        Err(Error::not_supported("notification".to_string()))
     }
 
-    fn notification_cancel(&self, _id: &str) -> Result<(), PlatformError> {
-        Err(PlatformError::NotSupported("notification".to_string()))
+    fn notification_cancel(&self, _id: &str) -> Result<(), Error> {
+        Err(Error::not_supported("notification".to_string()))
     }
 
-    fn notification_cancel_all(&self) -> Result<(), PlatformError> {
-        Err(PlatformError::NotSupported("notification".to_string()))
+    fn notification_cancel_all(&self) -> Result<(), Error> {
+        Err(Error::not_supported("notification".to_string()))
     }
 
     /// Present a desktop banner and block until it resolves. Desktop only.
-    fn banner_show(
-        &self,
-        _request: &DesktopBannerShow,
-    ) -> Result<DesktopBannerOutcome, PlatformError> {
-        Err(PlatformError::NotSupported("banner".to_string()))
+    fn banner_show(&self, _request: &DesktopBannerShow) -> Result<DesktopBannerOutcome, Error> {
+        Err(Error::not_supported("banner".to_string()))
     }
 
     /// Queue a desktop banner and return without waiting for it. When this
     /// returns the banner is visible or queued, so a `banner_dismiss` issued
     /// afterwards finds it. Desktop only.
-    fn banner_enqueue(
-        &self,
-        _request: &DesktopBannerShow,
-    ) -> Result<DesktopBannerPending, PlatformError> {
-        Err(PlatformError::NotSupported("banner".to_string()))
+    fn banner_enqueue(&self, _request: &DesktopBannerShow) -> Result<DesktopBannerPending, Error> {
+        Err(Error::not_supported("banner".to_string()))
     }
 
     /// [`Self::banner_enqueue`] for a banner a guest lxapp posted; the card
@@ -520,31 +514,31 @@ pub trait AppRuntime:
         &self,
         _request: &DesktopBannerShow,
         _source: &DesktopBannerSource,
-    ) -> Result<DesktopBannerPending, PlatformError> {
-        Err(PlatformError::NotSupported("banner".to_string()))
+    ) -> Result<DesktopBannerPending, Error> {
+        Err(Error::not_supported("banner".to_string()))
     }
 
     /// Dismiss a visible or queued banner. Unknown ids are fine.
-    fn banner_dismiss(&self, _id: &str) -> Result<(), PlatformError> {
-        Err(PlatformError::NotSupported("banner".to_string()))
+    fn banner_dismiss(&self, _id: &str) -> Result<(), Error> {
+        Err(Error::not_supported("banner".to_string()))
     }
 
     /// Replace the tray dropdown menu. `items_json` is a JSON array of
     /// `{ label?, separator?, enabled?, checked? }`. Item clicks are delivered
     /// back to JS by index. Desktop only; no-op elsewhere.
-    fn set_tray_menu(&self, _items_json: &str) -> Result<(), PlatformError> {
+    fn set_tray_menu(&self, _items_json: &str) -> Result<(), Error> {
         Ok(())
     }
 
     /// Show or hide the tray status item itself. Desktop only; no-op elsewhere.
-    fn set_tray_visible(&self, _visible: bool) -> Result<(), PlatformError> {
+    fn set_tray_visible(&self, _visible: bool) -> Result<(), Error> {
         Ok(())
     }
 
     /// When intercepting, a left-click on the tray is delivered only to JS
     /// (`lx.host.tray.onClick`) and does not run the tray's configured surface action.
     /// Desktop only; no-op elsewhere.
-    fn set_tray_click_intercept(&self, _intercept: bool) -> Result<(), PlatformError> {
+    fn set_tray_click_intercept(&self, _intercept: bool) -> Result<(), Error> {
         Ok(())
     }
 
@@ -558,21 +552,21 @@ pub trait AppRuntime:
         appid: String,
         webtag: String,
         animation_type: AnimationType,
-    ) -> Result<(), PlatformError>;
+    ) -> Result<(), Error>;
 
     /// Opens the given URL according to the host policy for the requested target.
-    fn open_url(&self, req: OpenUrlRequest) -> Result<OpenUrlResult, PlatformError>;
+    fn open_url(&self, req: OpenUrlRequest) -> Result<OpenUrlResult, Error>;
 
     /// Close a tab previously named by [`Self::open_url`]. Platforms that
     /// cannot name tabs leave this unimplemented — the JS handle then reports
     /// `scope: 'group'` and never calls it.
-    fn close_browser_tab(&self, _tab_id: &str) -> Result<(), PlatformError> {
-        Err(PlatformError::NotSupported("browser tab".to_string()))
+    fn close_browser_tab(&self, _tab_id: &str) -> Result<(), Error> {
+        Err(Error::not_supported("browser tab".to_string()))
     }
 
     /// Bring a tab previously named by [`Self::open_url`] to the front.
     fn activate_browser_tab(&self, _tab_id: String) -> PlatformFuture {
-        Box::pin(async { Err(PlatformError::NotSupported("browser tab".to_string())) })
+        Box::pin(async { Err(Error::not_supported("browser tab".to_string())) })
     }
 }
 

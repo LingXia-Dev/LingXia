@@ -1,7 +1,6 @@
+use lingxia_error::Error;
 use std::future::Future;
 use std::path::Path;
-
-use crate::error::PlatformError;
 
 #[derive(Debug, Clone)]
 pub struct OpenFileRequest {
@@ -84,11 +83,11 @@ impl FileDialogResult {
         canceled: bool,
         paths: Vec<String>,
         names: Option<Vec<Option<String>>>,
-    ) -> Result<Self, PlatformError> {
+    ) -> Result<Self, Error> {
         let names = match names {
             Some(names) if names.len() == paths.len() => names,
             Some(names) => {
-                return Err(PlatformError::Platform(format!(
+                return Err(Error::internal(format!(
                     "file dialog returned {} paths but {} names",
                     paths.len(),
                     names.len()
@@ -111,12 +110,12 @@ impl FileDialogResult {
     }
 
     /// Attaches the sizes a native payload reported, parallel to the paths.
-    pub fn with_sizes(mut self, sizes: Option<Vec<Option<u64>>>) -> Result<Self, PlatformError> {
+    pub fn with_sizes(mut self, sizes: Option<Vec<Option<u64>>>) -> Result<Self, Error> {
         let Some(sizes) = sizes else {
             return Ok(self);
         };
         if sizes.len() != self.entries.len() {
-            return Err(PlatformError::Platform(format!(
+            return Err(Error::internal(format!(
                 "file dialog returned {} paths but {} sizes",
                 self.entries.len(),
                 sizes.len()
@@ -137,15 +136,15 @@ pub trait FileService: Send + Sync + 'static {
     fn review_file(
         &self,
         _request: OpenFileRequest,
-    ) -> impl Future<Output = Result<(), PlatformError>> + Send;
+    ) -> impl Future<Output = Result<(), Error>> + Send;
 
     fn open_external(
         &self,
         _request: OpenFileRequest,
-    ) -> impl Future<Output = Result<(), PlatformError>> + Send {
+    ) -> impl Future<Output = Result<(), Error>> + Send {
         async {
-            Err(PlatformError::NotSupported(
-                "open_external is not supported on this platform".into(),
+            Err(Error::not_supported(
+                "open_external is not supported on this platform",
             ))
         }
     }
@@ -153,10 +152,10 @@ pub trait FileService: Send + Sync + 'static {
     fn reveal_in_file_manager(
         &self,
         _request: RevealInFileManagerRequest,
-    ) -> impl Future<Output = Result<(), PlatformError>> + Send {
+    ) -> impl Future<Output = Result<(), Error>> + Send {
         async {
-            Err(PlatformError::NotSupported(
-                "reveal_in_file_manager is not supported on this platform".into(),
+            Err(Error::not_supported(
+                "reveal_in_file_manager is not supported on this platform",
             ))
         }
     }
@@ -164,10 +163,10 @@ pub trait FileService: Send + Sync + 'static {
     fn pick_file(
         &self,
         _request: PickFileRequest,
-    ) -> impl Future<Output = Result<FileDialogResult, PlatformError>> + Send {
+    ) -> impl Future<Output = Result<FileDialogResult, Error>> + Send {
         async {
-            Err(PlatformError::NotSupported(
-                "pick_file is not supported on this platform".into(),
+            Err(Error::not_supported(
+                "pick_file is not supported on this platform",
             ))
         }
     }
@@ -175,10 +174,10 @@ pub trait FileService: Send + Sync + 'static {
     fn pick_directory(
         &self,
         _request: PickDirectoryRequest,
-    ) -> impl Future<Output = Result<FileDialogResult, PlatformError>> + Send {
+    ) -> impl Future<Output = Result<FileDialogResult, Error>> + Send {
         async {
-            Err(PlatformError::NotSupported(
-                "pick_directory is not supported on this platform".into(),
+            Err(Error::not_supported(
+                "pick_directory is not supported on this platform",
             ))
         }
     }

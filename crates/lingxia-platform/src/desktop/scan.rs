@@ -1,12 +1,12 @@
-use crate::error::PlatformError;
 use crate::traits::media_interaction::{ScanCodeRequest, ScanType};
+use lingxia_error::Error;
 use rxing::BarcodeFormat;
 
 /// Desktop implementation of scan_code: opens a file dialog to pick an image, then scans it.
-pub async fn scan_code_desktop(request: ScanCodeRequest) -> Result<String, PlatformError> {
+pub async fn scan_code_desktop(request: ScanCodeRequest) -> Result<String, Error> {
     let scan_types = request.scan_types.clone();
     let result = crate::rt::blocking(move || pick_and_scan(&scan_types)).await?;
-    let (scan_result, scan_type) = result.ok_or(PlatformError::BusinessError(2000))?;
+    let (scan_result, scan_type) = result.ok_or_else(|| Error::business(2000, "scan canceled"))?;
     Ok(format!(
         r#"{{"scanResult":"{}","scanType":"{}"}}"#,
         escape_json(&scan_result),
@@ -14,7 +14,7 @@ pub async fn scan_code_desktop(request: ScanCodeRequest) -> Result<String, Platf
     ))
 }
 
-fn pick_and_scan(scan_types: &[ScanType]) -> Result<Option<(String, String)>, PlatformError> {
+fn pick_and_scan(scan_types: &[ScanType]) -> Result<Option<(String, String)>, Error> {
     let file = rfd::FileDialog::new()
         .add_filter(
             "Images",
@@ -30,7 +30,7 @@ fn pick_and_scan(scan_types: &[ScanType]) -> Result<Option<(String, String)>, Pl
 
     let hints = build_hints(scan_types);
     let results = rxing::helpers::detect_multiple_in_file(path.to_string_lossy().as_ref())
-        .map_err(|e| PlatformError::Platform(format!("Failed to scan image: {}", e)))?;
+        .map_err(|e| Error::internal(format!("Failed to scan image: {}", e)))?;
 
     for result in &results {
         let format = result.getBarcodeFormat();
@@ -43,12 +43,12 @@ fn pick_and_scan(scan_types: &[ScanType]) -> Result<Option<(String, String)>, Pl
     }
 
     if hints.is_empty() {
-        return Err(PlatformError::Platform(
+        return Err(Error::internal(
             "No barcode or QR code found in image".to_string(),
         ));
     }
 
-    Err(PlatformError::Platform(
+    Err(Error::internal(
         "No code matching requested scan types found in image".to_string(),
     ))
 }

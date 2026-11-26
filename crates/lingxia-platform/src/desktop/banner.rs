@@ -3,10 +3,10 @@
 //! The presenter is platform-owned. This module only decides what is showing
 //! and who is waiting.
 
-use crate::error::PlatformError;
 use crate::traits::app_runtime::{
     DesktopBannerOutcome, DesktopBannerPending, DesktopBannerShow, DesktopBannerSource,
 };
+use lingxia_error::Error;
 use std::collections::VecDeque;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::mpsc::{self, Sender};
@@ -22,7 +22,7 @@ pub const MAX_PER_SOURCE: usize = 3;
 /// one slot while the product's wait.
 pub const GUEST_MAX_MS: u64 = 60_000;
 
-type Reply = Sender<Result<DesktopBannerOutcome, PlatformError>>;
+type Reply = Sender<Result<DesktopBannerOutcome, Error>>;
 
 struct Waiter {
     request: DesktopBannerShow,
@@ -53,12 +53,12 @@ fn lock() -> std::sync::MutexGuard<'static, State> {
 }
 
 /// Block until this banner is answered, dismissed, timed out, or replaced.
-pub fn show(request: DesktopBannerShow) -> Result<DesktopBannerOutcome, PlatformError> {
+pub fn show(request: DesktopBannerShow) -> Result<DesktopBannerOutcome, Error> {
     enqueue_show(request)?.wait()
 }
 
 /// Queue this banner (or put it on screen) and hand back its waiter.
-pub fn enqueue_show(request: DesktopBannerShow) -> Result<DesktopBannerPending, PlatformError> {
+pub fn enqueue_show(request: DesktopBannerShow) -> Result<DesktopBannerPending, Error> {
     enqueue_show_from(request, None)
 }
 
@@ -66,33 +66,29 @@ pub fn enqueue_show(request: DesktopBannerShow) -> Result<DesktopBannerPending, 
 pub fn enqueue_show_from(
     request: DesktopBannerShow,
     source: Option<DesktopBannerSource>,
-) -> Result<DesktopBannerPending, PlatformError> {
+) -> Result<DesktopBannerPending, Error> {
     validate(&request)?;
     let (tx, rx) = mpsc::channel();
     enqueue(request, source, tx)?;
     Ok(DesktopBannerPending::new(rx))
 }
 
-fn validate(request: &DesktopBannerShow) -> Result<(), PlatformError> {
+fn validate(request: &DesktopBannerShow) -> Result<(), Error> {
     if request.id.is_empty() || request.id.chars().count() > MAX_ID_CHARS {
-        return Err(PlatformError::InvalidParameter(format!(
+        return Err(Error::invalid_arg(format!(
             "banner id must be 1–{MAX_ID_CHARS} characters"
         )));
     }
     if request.title.is_empty() {
-        return Err(PlatformError::InvalidParameter(
-            "banner title must not be empty".into(),
-        ));
+        return Err(Error::invalid_arg("banner title must not be empty"));
     }
     if request.actions.len() > 2 {
-        return Err(PlatformError::InvalidParameter(
-            "banner accepts at most two actions".into(),
-        ));
+        return Err(Error::invalid_arg("banner accepts at most two actions"));
     }
     for action in &request.actions {
         if action.id.is_empty() || action.label.is_empty() {
-            return Err(PlatformError::InvalidParameter(
-                "banner action id and label must not be empty".into(),
+            return Err(Error::invalid_arg(
+                "banner action id and label must not be empty",
             ));
         }
     }
@@ -116,10 +112,10 @@ pub(crate) fn complete(id: &str, outcome: DesktopBannerOutcome) {
 
 /// Unblock the waiter when the presenter could not show the card.
 pub(crate) fn fail(id: &str, message: impl Into<String>) {
-    finish(id, Err(PlatformError::Platform(message.into())));
+    finish(id, Err(Error::internal(message.into())));
 }
 
-fn finish(id: &str, result: Result<DesktopBannerOutcome, PlatformError>) {
+fn finish(id: &str, result: Result<DesktopBannerOutcome, Error>) {
     let next = {
         let mut state = lock();
         if state
@@ -152,7 +148,7 @@ fn enqueue(
     request: DesktopBannerShow,
     source: Option<DesktopBannerSource>,
     tx: Reply,
-) -> Result<(), PlatformError> {
+) -> Result<(), Error> {
     let next = {
         let mut state = lock();
         if let Some(source) = &source {
@@ -169,7 +165,7 @@ fn enqueue(
                 })
                 .count();
             if held >= MAX_PER_SOURCE {
-                return Err(PlatformError::Platform(format!(
+                return Err(Error::internal(format!(
                     "this lxapp already has {MAX_PER_SOURCE} banners showing or waiting; dismiss one first"
                 )));
             }

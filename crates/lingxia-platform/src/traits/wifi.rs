@@ -1,5 +1,4 @@
-use crate::error::PlatformError;
-
+use lingxia_error::Error;
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct WifiInfo {
@@ -40,9 +39,9 @@ pub trait Wifi: Send + Sync + 'static {
     /// - Android: Requires ACCESS_WIFI_STATE and CHANGE_WIFI_STATE permissions
     /// - iOS: Requires NEHotspotConfiguration API (iOS 11+)
     /// - HarmonyOS: Requires ohos.permission.GET_WIFI_INFO
-    fn start_wifi(&self, callback_id: u64) -> Result<(), PlatformError> {
+    fn start_wifi(&self, callback_id: u64) -> Result<(), Error> {
         let _ = callback_id;
-        Err(PlatformError::NotSupported(
+        Err(Error::not_supported(
             "start_wifi not implemented".to_string(),
         ))
     }
@@ -52,9 +51,9 @@ pub trait Wifi: Send + Sync + 'static {
     /// # Platform Limitations
     /// - iOS: Only works for pre-configured networks or hotspot networks
     /// - Android: May require location permissions on Android 6.0+
-    fn connect_wifi(&self, request: WifiConnectRequest) -> Result<(), PlatformError> {
+    fn connect_wifi(&self, request: WifiConnectRequest) -> Result<(), Error> {
         let _ = request;
-        Err(PlatformError::NotSupported(
+        Err(Error::not_supported(
             "connect_wifi not implemented".to_string(),
         ))
     }
@@ -66,9 +65,9 @@ pub trait Wifi: Send + Sync + 'static {
     ///
     /// Callback receives: JSON array of WifiInfo objects
     /// Example: [{"ssid":"MyWiFi","bssid":"aa:bb:cc:dd:ee:ff","secure":true,"signalStrength":80,"frequency":2412}]
-    fn get_wifi_list(&self, callback_id: u64) -> Result<(), PlatformError> {
+    fn get_wifi_list(&self, callback_id: u64) -> Result<(), Error> {
         let _ = callback_id;
-        Err(PlatformError::NotSupported(
+        Err(Error::not_supported(
             "get_wifi_list not implemented".to_string(),
         ))
     }
@@ -76,9 +75,9 @@ pub trait Wifi: Send + Sync + 'static {
     /// Get current connected Wi-Fi (wx.getConnectedWifi).
     ///
     /// Always returns full WiFi information (SSID, BSSID, secure, signalStrength).
-    fn get_connected_wifi(&self, request: WifiGetConnectedRequest) -> Result<(), PlatformError> {
+    fn get_connected_wifi(&self, request: WifiGetConnectedRequest) -> Result<(), Error> {
         let _ = request;
-        Err(PlatformError::NotSupported(
+        Err(Error::not_supported(
             "get_connected_wifi not implemented".to_string(),
         ))
     }
@@ -91,8 +90,8 @@ pub trait Wifi: Send + Sync + 'static {
     /// - Android: Checks WifiManager.isWifiEnabled()
     /// - iOS: Always returns true (WiFi state not accessible)
     /// - HarmonyOS: Checks OH_Wifi_IsWifiEnabled()
-    fn is_wifi_enabled(&self) -> Result<bool, PlatformError> {
-        Err(PlatformError::NotSupported(
+    fn is_wifi_enabled(&self) -> Result<bool, Error> {
+        Err(Error::not_supported(
             "is_wifi_enabled not implemented".to_string(),
         ))
     }
@@ -107,7 +106,7 @@ pub trait Wifi: Send + Sync + 'static {
     /// - Platform maintains a set of callback_ids
     /// - First listener triggers system WiFi state monitoring
     /// - Each new listener immediately receives current WiFi state
-    fn add_wifi_state_listener(&self, callback_id: u64) -> Result<(), PlatformError> {
+    fn add_wifi_state_listener(&self, callback_id: u64) -> Result<(), Error> {
         let _ = callback_id;
         Ok(())
     }
@@ -117,7 +116,7 @@ pub trait Wifi: Send + Sync + 'static {
     /// # Multi-LxApp Support
     /// - Removes the specific callback_id from the listener set
     /// - Last listener stops system WiFi state monitoring
-    fn remove_wifi_state_listener(&self, callback_id: u64) -> Result<(), PlatformError> {
+    fn remove_wifi_state_listener(&self, callback_id: u64) -> Result<(), Error> {
         let _ = callback_id;
         Ok(())
     }

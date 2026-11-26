@@ -4,6 +4,7 @@
 
 use std::path::PathBuf;
 
+use lingxia_error::Error;
 use lingxia_webview::WebTag;
 use windows::Win32::Foundation::{ERROR_CANCELLED, HWND};
 use windows::Win32::System::Com::{
@@ -18,8 +19,6 @@ use windows::Win32::UI::Shell::{
 };
 use windows::Win32::UI::WindowsAndMessaging::{GA_ROOT, GetAncestor, IsWindowVisible};
 use windows::core::{HSTRING, PCWSTR};
-
-use crate::error::PlatformError;
 
 pub(crate) enum DialogKind {
     File { multiple: bool },
@@ -44,7 +43,7 @@ pub(crate) struct OpenDialog {
 ///
 /// Runs on its own thread: the dialog needs an STA, and a pooled thread may
 /// already be in the MTA (Media Foundation joins it).
-pub(crate) async fn show(dialog: OpenDialog) -> Result<Option<Vec<PathBuf>>, PlatformError> {
+pub(crate) async fn show(dialog: OpenDialog) -> Result<Option<Vec<PathBuf>>, Error> {
     let owner = owner_window(dialog.owner.as_deref()).map(|hwnd| hwnd.0 as isize);
     let (tx, rx) = tokio::sync::oneshot::channel();
     std::thread::Builder::new()
@@ -53,9 +52,9 @@ pub(crate) async fn show(dialog: OpenDialog) -> Result<Option<Vec<PathBuf>>, Pla
             let owner = owner.map(|raw| HWND(raw as *mut _));
             let _ = tx.send(show_on_sta(&dialog, owner));
         })
-        .map_err(|err| PlatformError::Platform(format!("failed to start file dialog: {err}")))?;
+        .map_err(|err| Error::internal(format!("failed to start file dialog: {err}")))?;
     rx.await
-        .map_err(|_| PlatformError::Platform("file dialog thread exited".to_string()))?
+        .map_err(|_| Error::internal("file dialog thread exited".to_string()))?
 }
 
 fn owner_window(owner: Option<&str>) -> Option<HWND> {
@@ -66,15 +65,11 @@ fn owner_window(owner: Option<&str>) -> Option<HWND> {
         .or_else(super::update_card::find_main_window)
 }
 
-fn show_on_sta(
-    dialog: &OpenDialog,
-    owner: Option<HWND>,
-) -> Result<Option<Vec<PathBuf>>, PlatformError> {
+fn show_on_sta(dialog: &OpenDialog, owner: Option<HWND>) -> Result<Option<Vec<PathBuf>>, Error> {
     let initialized =
         unsafe { CoInitializeEx(None, COINIT_APARTMENTTHREADED | COINIT_DISABLE_OLE1DDE) }.is_ok();
-    let result = run(dialog, owner).map_err(|err| {
-        PlatformError::Platform(format!("system file dialog failed: {}", err.message()))
-    });
+    let result = run(dialog, owner)
+        .map_err(|err| Error::internal(format!("system file dialog failed: {}", err.message())));
     if initialized {
         unsafe { CoUninitialize() };
     }

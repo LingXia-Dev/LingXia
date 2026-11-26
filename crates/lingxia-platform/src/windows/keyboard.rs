@@ -13,11 +13,11 @@ use async_trait::async_trait;
 
 use super::Platform;
 use super::screenshot::resolve_screenshot_window;
-use crate::error::PlatformError;
 use crate::traits::keyboard::{
     AppKeyboard, AppKeyboardAction, AppKeyboardModifier, AppKeyboardRequest, AppKeyboardResult,
 };
 
+use lingxia_error::Error;
 use windows::Win32::Foundation::{HWND, LPARAM, WPARAM};
 use windows::Win32::UI::Input::KeyboardAndMouse::{
     MAPVK_VK_TO_VSC, MapVirtualKeyW, VIRTUAL_KEY, VK_BACK, VK_CONTROL, VK_DELETE, VK_DOWN, VK_END,
@@ -33,7 +33,7 @@ impl AppKeyboard for Platform {
     async fn perform_app_keyboard(
         &self,
         request: AppKeyboardRequest,
-    ) -> Result<AppKeyboardResult, PlatformError> {
+    ) -> Result<AppKeyboardResult, Error> {
         let hwnd = resolve_screenshot_window(request.window_id.as_deref())?;
         // HWND is not Send; carry the raw handle (no awaits below need it back).
         let window = hwnd.0 as isize;
@@ -54,7 +54,7 @@ impl AppKeyboard for Platform {
     }
 }
 
-fn dispatch_key(window: isize, action: &AppKeyboardAction) -> Result<(), PlatformError> {
+fn dispatch_key(window: isize, action: &AppKeyboardAction) -> Result<(), Error> {
     let target = focus_target(window);
     match action {
         AppKeyboardAction::Type { text, .. } => {
@@ -64,8 +64,8 @@ fn dispatch_key(window: isize, action: &AppKeyboardAction) -> Result<(), Platfor
             Ok(())
         }
         AppKeyboardAction::Press { key, modifiers } => {
-            let (vk, ch) = resolve_key(key)
-                .ok_or_else(|| PlatformError::Platform(format!("unknown key '{key}'")))?;
+            let (vk, ch) =
+                resolve_key(key).ok_or_else(|| Error::internal(format!("unknown key '{key}'")))?;
             let mods: Vec<u16> = modifiers.iter().map(|m| modifier_vk(*m)).collect();
             // Modifier downs, key down (+ char), key up, modifier ups (reverse).
             for &m in &mods {
@@ -105,7 +105,7 @@ fn focus_target(window: isize) -> HWND {
 
 /// Post a WM_KEYDOWN/WM_KEYUP for a virtual-key, with a realistic lParam
 /// (scan code + transition flags) so key-aware controls accept it.
-fn key_event(target: HWND, vk: u16, down: bool) -> Result<(), PlatformError> {
+fn key_event(target: HWND, vk: u16, down: bool) -> Result<(), Error> {
     let scan = unsafe { MapVirtualKeyW(vk as u32, MAPVK_VK_TO_VSC) } & 0xFF;
     let mut lparam = (scan << 16) | 1;
     let msg = if down {
@@ -118,10 +118,10 @@ fn key_event(target: HWND, vk: u16, down: bool) -> Result<(), PlatformError> {
     post(target, msg, vk as usize, lparam as isize)
 }
 
-fn post(target: HWND, msg: u32, wparam: usize, lparam: isize) -> Result<(), PlatformError> {
+fn post(target: HWND, msg: u32, wparam: usize, lparam: isize) -> Result<(), Error> {
     unsafe {
         PostMessageW(Some(target), msg, WPARAM(wparam), LPARAM(lparam))
-            .map_err(|err| PlatformError::Platform(format!("PostMessageW failed: {err}")))
+            .map_err(|err| Error::internal(format!("PostMessageW failed: {err}")))
     }
 }
 

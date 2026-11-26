@@ -1,8 +1,8 @@
 //! Apple platform location services implementation
 
 use super::Platform;
-use crate::error::PlatformError;
 use crate::traits::location::Location;
+use lingxia_error::Error;
 
 #[cfg(any(target_os = "ios", target_os = "macos"))]
 pub(crate) mod ios {
@@ -256,7 +256,7 @@ pub(crate) mod ios {
         }
     }
 
-    pub(crate) fn is_location_enabled() -> Result<bool, PlatformError> {
+    pub(crate) fn is_location_enabled() -> Result<bool, Error> {
         let enabled = unsafe { CLLocationManager::locationServicesEnabled_class() };
         Ok(enabled)
     }
@@ -264,12 +264,12 @@ pub(crate) mod ios {
     pub(super) fn request_location_with_config(
         callback_id: u64,
         config: crate::traits::location::LocationRequestConfig,
-    ) -> Result<(), PlatformError> {
+    ) -> Result<(), Error> {
         let services_enabled = unsafe { CLLocationManager::locationServicesEnabled_class() };
         if !services_enabled {
             log::warn!("Apple Location: Services disabled");
             lingxia_messaging::invoke_callback(callback_id, Err(4001));
-            // Error is fully reported via callback; no additional PlatformError needed.
+            // Error is fully reported via callback; no additional Error needed.
             return Ok(());
         }
 
@@ -428,14 +428,14 @@ pub(crate) mod ios {
 }
 
 impl Location for Platform {
-    fn is_location_enabled(&self) -> Result<bool, PlatformError> {
+    fn is_location_enabled(&self) -> Result<bool, Error> {
         ios::is_location_enabled()
     }
 
     async fn request_location(
         &self,
         config: crate::traits::location::LocationRequestConfig,
-    ) -> Result<String, PlatformError> {
+    ) -> Result<String, Error> {
         crate::rt::native_call(|callback_id| ios::request_location_with_config(callback_id, config))
             .await
     }

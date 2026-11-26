@@ -339,7 +339,7 @@ async fn schemes_import_file(
     let work = async move {
         lingxia_service::file::pick_file(&*picker.runtime, request)
             .await
-            .map_err(|error| crate::i18n::js_error_from_platform_error(&error))
+            .map_err(|error| crate::i18n::js_error(error))
     };
     let picked = crate::pick::abortable(
         &ctx,

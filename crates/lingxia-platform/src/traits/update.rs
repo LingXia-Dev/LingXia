@@ -1,6 +1,5 @@
+use lingxia_error::Error;
 use std::path::Path;
-
-use crate::error::PlatformError;
 
 pub trait UpdateService: Send + Sync + 'static {
     /// Whether this platform installs host-app updates itself (download +
@@ -24,14 +23,14 @@ pub trait UpdateService: Send + Sync + 'static {
     /// through the store. Used on store-delivered platforms when an update is
     /// available. Returns `true` if a store page was opened. Defaults to
     /// `false` (no in-app redirect; rely on the store's own update prompts).
-    fn open_update_store(&self, _update_info_json: &str) -> Result<bool, PlatformError> {
+    fn open_update_store(&self, _update_info_json: &str) -> Result<bool, Error> {
         Ok(false)
     }
 
     /// Show a "new version — open the store" prompt (card / callout / tray /
     /// alert). Confirm opens the store; the package is never downloaded.
     /// Returns `true` when a UI was presented.
-    fn present_store_update(&self, _update_info_json: &str) -> Result<bool, PlatformError> {
+    fn present_store_update(&self, _update_info_json: &str) -> Result<bool, Error> {
         Ok(false)
     }
 
@@ -53,9 +52,9 @@ pub trait UpdateService: Send + Sync + 'static {
     ///   "ready to update" callout, and relaunches on the user's click.
     /// - iOS: Not supported (App Store only).
     /// - HarmonyOS: Not implemented (returns error).
-    fn install_update(&self, package_path: &Path, info_json: &str) -> Result<(), PlatformError> {
+    fn install_update(&self, package_path: &Path, info_json: &str) -> Result<(), Error> {
         let _ = (package_path, info_json);
-        Err(PlatformError::NotSupported(
+        Err(Error::not_supported(
             "install_update not implemented for this platform".to_string(),
         ))
     }

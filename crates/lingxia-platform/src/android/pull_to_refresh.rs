@@ -1,35 +1,35 @@
-use crate::error::PlatformError;
 use crate::traits::pull_to_refresh::PullToRefresh;
 use jni::jni_sig;
 use jni::objects::{JClass, JValue};
 use jni::strings::JNIString;
 
 use super::Platform;
+use lingxia_error::Error;
 
 impl PullToRefresh for Platform {
-    fn start_pull_down_refresh(&self, app_id: &str, webtag: &str) -> Result<(), PlatformError> {
+    fn start_pull_down_refresh(&self, app_id: &str, webtag: &str) -> Result<(), Error> {
         call_pull_to_refresh("startPullDownRefresh", app_id, webtag)
     }
 
-    fn stop_pull_down_refresh(&self, app_id: &str, webtag: &str) -> Result<(), PlatformError> {
+    fn stop_pull_down_refresh(&self, app_id: &str, webtag: &str) -> Result<(), Error> {
         call_pull_to_refresh("stopPullDownRefresh", app_id, webtag)
     }
 }
 
-fn call_pull_to_refresh(method: &str, app_id: &str, webtag: &str) -> Result<(), PlatformError> {
+fn call_pull_to_refresh(method: &str, app_id: &str, webtag: &str) -> Result<(), Error> {
     let method_name = method.to_string();
     let clazz: &JClass = super::get_cached_class(super::CachedClass::LxAppPullToRefresh)
-        .map_err(|e| PlatformError::Platform(e.to_string()))?;
+        .map_err(|e| Error::internal(e.to_string()))?;
     let method = JNIString::new(method_name.as_str());
 
     super::with_env(|env| {
-        let app_id_jstring = env.new_string(app_id).map_err(|e| {
-            PlatformError::Platform(format!("Failed to create app_id string: {:?}", e))
-        })?;
+        let app_id_jstring = env
+            .new_string(app_id)
+            .map_err(|e| Error::internal(format!("Failed to create app_id string: {:?}", e)))?;
 
-        let webtag_jstring = env.new_string(webtag).map_err(|e| {
-            PlatformError::Platform(format!("Failed to create webtag string: {:?}", e))
-        })?;
+        let webtag_jstring = env
+            .new_string(webtag)
+            .map_err(|e| Error::internal(format!("Failed to create webtag string: {:?}", e)))?;
 
         if let Err(e) = env.call_static_method(
             clazz,
@@ -41,7 +41,7 @@ fn call_pull_to_refresh(method: &str, app_id: &str, webtag: &str) -> Result<(), 
             ],
         ) {
             env.exception_clear();
-            return Err(PlatformError::Platform(format!(
+            return Err(Error::internal(format!(
                 "Failed to call {}: {:?}",
                 method_name, e
             )));

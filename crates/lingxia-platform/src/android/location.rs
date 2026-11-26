@@ -1,15 +1,15 @@
 //! Android platform location implementation
 
-use crate::error::PlatformError;
 use crate::traits::location::Location;
 use jni::objects::JValue;
 use jni::sys::{JNI_FALSE, JNI_TRUE};
 use jni::{jni_sig, jni_str};
 
 use super::Platform;
+use lingxia_error::Error;
 
 impl Location for Platform {
-    fn is_location_enabled(&self) -> Result<bool, PlatformError> {
+    fn is_location_enabled(&self) -> Result<bool, Error> {
         match || -> Result<bool, Box<dyn std::error::Error>> {
             let location_class: &jni::objects::JClass =
                 super::get_cached_class(super::CachedClass::LxAppLocation)?.as_ref();
@@ -25,7 +25,7 @@ impl Location for Platform {
             })
         }() {
             Ok(value) => Ok(value),
-            Err(e) => Err(PlatformError::Platform(format!(
+            Err(e) => Err(Error::internal(format!(
                 "Failed to determine location availability via JNI: {}",
                 e
             ))),
@@ -35,7 +35,7 @@ impl Location for Platform {
     async fn request_location(
         &self,
         config: crate::traits::location::LocationRequestConfig,
-    ) -> Result<String, PlatformError> {
+    ) -> Result<String, Error> {
         crate::rt::native_call(
             |callback_id| match || -> Result<(), Box<dyn std::error::Error>> {
                 let location_class: &jni::objects::JClass =
@@ -65,7 +65,7 @@ impl Location for Platform {
                 })
             }() {
                 Ok(()) => Ok(()),
-                Err(e) => Err(PlatformError::Platform(format!(
+                Err(e) => Err(Error::internal(format!(
                     "Failed to request location via JNI: {}",
                     e
                 ))),

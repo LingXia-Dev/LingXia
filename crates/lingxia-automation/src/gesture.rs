@@ -5,7 +5,7 @@
 use crate::error::{E_UNSUPPORTED, coded};
 use crate::resolve::{js_object_to_json, json_to_js, upgrade_authorized};
 use crate::{auto_err, require_host_context};
-use lingxia_platform::error::PlatformError;
+use lingxia_error::Error;
 use lingxia_platform::traits::gesture::{
     AppGesture, AppGestureRequest, FlingDirection, GestureEnd, GestureInput, GestureShape,
     GestureTarget,
@@ -21,10 +21,11 @@ fn illegal_ctor() -> RongJSError {
     rong::HostError::new(rong::error::E_ILLEGAL_CONSTRUCTOR, "Use lx.automation()").into()
 }
 
-fn platform_err(err: PlatformError) -> RongJSError {
-    match err {
-        PlatformError::NotSupported(msg) => coded(E_UNSUPPORTED, msg).into(),
-        other => auto_err(other.to_string()),
+fn platform_err(err: Error) -> RongJSError {
+    if err.is(lingxia_error::code::NOT_SUPPORTED) {
+        coded(E_UNSUPPORTED, err.message().to_string()).into()
+    } else {
+        auto_err(err.to_string())
     }
 }
 

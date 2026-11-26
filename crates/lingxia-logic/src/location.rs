@@ -1,17 +1,9 @@
-use crate::i18n::{
-    js_error_from_business_code, js_error_from_platform_error, js_internal_error,
-    js_invalid_parameter_error,
-};
-use lingxia_platform::error::PlatformError;
+use crate::i18n::{js_error, js_internal_error, js_invalid_parameter_error};
 use lingxia_platform::traits::location::{Location, LocationRequestConfig};
 use lxapp::LxApp;
 use rong::function::Optional;
 use rong::{FromJSObject, IntoJSObject, JSContext, JSObject, JSResult, RongJSError};
 use serde_json::Value;
-
-fn handle_location_error(code: u32) -> RongJSError {
-    js_error_from_business_code(code)
-}
 
 /// Coordinate conversion: WGS84 to GCJ02 (Mars coordinate system)
 /// Reference: https://github.com/wandergis/coordtransform
@@ -187,10 +179,7 @@ async fn get_location(
             .runtime
             .request_location(config)
             .await
-            .map_err(|error| match error {
-                PlatformError::BusinessError(code) => handle_location_error(code),
-                other => js_error_from_platform_error(&other),
-            })
+            .map_err(js_error)
     };
     match crate::task_object::abortable(&ctx, signal, request).await {
         Ok(data) => {

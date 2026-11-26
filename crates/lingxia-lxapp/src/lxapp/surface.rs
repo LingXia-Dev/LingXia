@@ -337,7 +337,8 @@ impl WindowSurfaceController {
     fn commit(&self) -> bool {
         let plan = self.manager.lock().unwrap().commit_plan();
         match self.runtime.present_layout(&self.window_id, &plan) {
-            Ok(()) | Err(lingxia_platform::PlatformError::NotSupported(_)) => {}
+            Ok(()) => {}
+            Err(err) if err.is(lingxia_error::code::NOT_SUPPORTED) => {}
             Err(_) => return false,
         }
         self.publish_collapsed_lxapp_visibility(&plan);

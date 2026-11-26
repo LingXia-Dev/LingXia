@@ -1,10 +1,10 @@
 //! Apple platform device implementation
 use super::Platform;
-use crate::error::PlatformError;
 use crate::traits::device::{Device, DeviceHardware};
 use crate::traits::secure_store::SecureStore;
 use crate::{DeviceInfo, ScreenInfo};
 
+use lingxia_error::Error;
 #[cfg(target_os = "ios")]
 use objc2::rc::Retained;
 #[cfg(target_os = "ios")]
@@ -117,7 +117,7 @@ impl Device for Platform {
     }
 
     #[cfg(target_os = "ios")]
-    fn vibrate(&self, long: bool) -> Result<(), PlatformError> {
+    fn vibrate(&self, long: bool) -> Result<(), Error> {
         use objc2_foundation::MainThreadMarker;
 
         if MainThreadMarker::new().is_some() {
@@ -140,25 +140,25 @@ impl Device for Platform {
     }
 
     #[cfg(target_os = "macos")]
-    fn vibrate(&self, _long: bool) -> Result<(), PlatformError> {
+    fn vibrate(&self, _long: bool) -> Result<(), Error> {
         // macOS doesn't have haptic feedback like iOS
-        Err(PlatformError::NotSupported(
+        Err(Error::not_supported(
             "Vibration not available on macOS".to_string(),
         ))
     }
 
     #[cfg(not(any(target_os = "ios", target_os = "macos")))]
-    fn vibrate(&self, _long: bool) -> Result<(), PlatformError> {
+    fn vibrate(&self, _long: bool) -> Result<(), Error> {
         log::warn!("Vibration not supported on this platform");
         Ok(())
     }
 
-    fn make_phone_call(&self, phone_number: &str) -> Result<(), PlatformError> {
+    fn make_phone_call(&self, phone_number: &str) -> Result<(), Error> {
         #[cfg(target_os = "ios")]
         {
             let phone_number = phone_number.trim();
             if phone_number.is_empty() {
-                return Err(PlatformError::InvalidParameter(
+                return Err(Error::invalid_arg(
                     "Invalid phone number format".to_string(),
                 ));
             }
@@ -172,7 +172,7 @@ impl Device for Platform {
             ) {
                 Ok(())
             } else {
-                Err(PlatformError::Platform(
+                Err(Error::internal(
                     "Cannot open tel: URL on this device".to_string(),
                 ))
             }
@@ -180,7 +180,7 @@ impl Device for Platform {
         #[cfg(target_os = "macos")]
         {
             let _ = phone_number;
-            Err(PlatformError::NotSupported(
+            Err(Error::not_supported(
                 "makePhoneCall is not supported on macOS".to_string(),
             ))
         }
@@ -506,21 +506,21 @@ unsafe fn main_dispatch_queue() -> DispatchQueue {
 }
 
 impl SecureStore for Platform {
-    fn read(&self, key: &str) -> Result<Option<Vec<u8>>, PlatformError> {
+    fn read(&self, key: &str) -> Result<Option<Vec<u8>>, Error> {
         keychain_read(key)
     }
 
-    fn write(&self, key: &str, value: &[u8]) -> Result<(), PlatformError> {
+    fn write(&self, key: &str, value: &[u8]) -> Result<(), Error> {
         keychain_write(key, value)
     }
 
-    fn delete(&self, key: &str) -> Result<(), PlatformError> {
+    fn delete(&self, key: &str) -> Result<(), Error> {
         keychain_delete(key)
     }
 }
 
 impl DeviceHardware for Platform {
-    fn get_memory_info(&self) -> Result<u64, PlatformError> {
+    fn get_memory_info(&self) -> Result<u64, Error> {
         get_physical_memory()
     }
 
@@ -577,7 +577,7 @@ impl DeviceHardware for Platform {
         1
     }
 
-    fn get_storage_total_bytes(&self) -> Result<u64, PlatformError> {
+    fn get_storage_total_bytes(&self) -> Result<u64, Error> {
         get_total_storage_bytes()
     }
 }
@@ -590,13 +590,13 @@ impl DeviceHardware for Platform {
 const KEYCHAIN_SERVICE: &str = "com.lingxia.sdk";
 
 #[cfg(any(target_os = "ios", target_os = "macos"))]
-fn keychain_read(key: &str) -> Result<Option<Vec<u8>>, PlatformError> {
+fn keychain_read(key: &str) -> Result<Option<Vec<u8>>, Error> {
     use security_framework::passwords::get_generic_password;
 
     match get_generic_password(KEYCHAIN_SERVICE, key) {
         Ok(data) => Ok(Some(data.to_vec())),
         Err(e) if e.code() == -25300 => Ok(None), // errSecItemNotFound
-        Err(e) => Err(PlatformError::Platform(format!(
+        Err(e) => Err(Error::internal(format!(
             "Keychain read failed (OSStatus {}: {}): {}",
             e.code(),
             keychain_status_name(e.code()),
@@ -606,14 +606,14 @@ fn keychain_read(key: &str) -> Result<Option<Vec<u8>>, PlatformError> {
 }
 
 #[cfg(any(target_os = "ios", target_os = "macos"))]
-fn keychain_write(key: &str, value: &[u8]) -> Result<(), PlatformError> {
+fn keychain_write(key: &str, value: &[u8]) -> Result<(), Error> {
     use security_framework::passwords::{delete_generic_password, set_generic_password};
 
     // Delete existing item first (if any)
     let _ = delete_generic_password(KEYCHAIN_SERVICE, key);
 
     set_generic_password(KEYCHAIN_SERVICE, key, value).map_err(|e| {
-        PlatformError::Platform(format!(
+        Error::internal(format!(
             "Keychain write failed (OSStatus {}: {}): {}",
             e.code(),
             keychain_status_name(e.code()),
@@ -623,13 +623,13 @@ fn keychain_write(key: &str, value: &[u8]) -> Result<(), PlatformError> {
 }
 
 #[cfg(any(target_os = "ios", target_os = "macos"))]
-fn keychain_delete(key: &str) -> Result<(), PlatformError> {
+fn keychain_delete(key: &str) -> Result<(), Error> {
     use security_framework::passwords::delete_generic_password;
 
     match delete_generic_password(KEYCHAIN_SERVICE, key) {
         Ok(()) => Ok(()),
         Err(e) if e.code() == -25300 => Ok(()), // errSecItemNotFound - not an error
-        Err(e) => Err(PlatformError::Platform(format!(
+        Err(e) => Err(Error::internal(format!(
             "Keychain delete failed (OSStatus {}: {}): {}",
             e.code(),
             keychain_status_name(e.code()),
@@ -651,22 +651,22 @@ fn keychain_status_name(code: i32) -> &'static str {
 }
 
 #[cfg(not(any(target_os = "ios", target_os = "macos")))]
-fn keychain_read(_key: &str) -> Result<Option<Vec<u8>>, PlatformError> {
-    Err(PlatformError::Platform(
+fn keychain_read(_key: &str) -> Result<Option<Vec<u8>>, Error> {
+    Err(Error::internal(
         "Keychain not available on this platform".to_string(),
     ))
 }
 
 #[cfg(not(any(target_os = "ios", target_os = "macos")))]
-fn keychain_write(_key: &str, _value: &[u8]) -> Result<(), PlatformError> {
-    Err(PlatformError::Platform(
+fn keychain_write(_key: &str, _value: &[u8]) -> Result<(), Error> {
+    Err(Error::internal(
         "Keychain not available on this platform".to_string(),
     ))
 }
 
 #[cfg(not(any(target_os = "ios", target_os = "macos")))]
-fn keychain_delete(_key: &str) -> Result<(), PlatformError> {
-    Err(PlatformError::Platform(
+fn keychain_delete(_key: &str) -> Result<(), Error> {
+    Err(Error::internal(
         "Keychain not available on this platform".to_string(),
     ))
 }
@@ -676,7 +676,7 @@ fn keychain_delete(_key: &str) -> Result<(), PlatformError> {
 // ============================================================================
 
 #[cfg(any(target_os = "ios", target_os = "macos"))]
-fn get_physical_memory() -> Result<u64, PlatformError> {
+fn get_physical_memory() -> Result<u64, Error> {
     use std::mem;
 
     unsafe extern "C" {
@@ -712,21 +712,19 @@ fn get_physical_memory() -> Result<u64, PlatformError> {
     if result == 0 {
         Ok(mem_size)
     } else {
-        Err(PlatformError::Platform(
-            "Failed to get physical memory".to_string(),
-        ))
+        Err(Error::internal("Failed to get physical memory".to_string()))
     }
 }
 
 #[cfg(not(any(target_os = "ios", target_os = "macos")))]
-fn get_physical_memory() -> Result<u64, PlatformError> {
-    Err(PlatformError::Platform(
+fn get_physical_memory() -> Result<u64, Error> {
+    Err(Error::internal(
         "get_physical_memory not implemented".to_string(),
     ))
 }
 
 #[cfg(any(target_os = "ios", target_os = "macos"))]
-fn get_total_storage_bytes() -> Result<u64, PlatformError> {
+fn get_total_storage_bytes() -> Result<u64, Error> {
     #[cfg(target_os = "ios")]
     {
         use objc2::{ClassType, msg_send};
@@ -736,9 +734,7 @@ fn get_total_storage_bytes() -> Result<u64, PlatformError> {
             let file_manager: *mut NSFileManager =
                 msg_send![NSFileManager::class(), defaultManager];
             if file_manager.is_null() {
-                return Err(PlatformError::Platform(
-                    "Failed to get NSFileManager".to_string(),
-                ));
+                return Err(Error::internal("Failed to get NSFileManager".to_string()));
             }
 
             // Get attributes of root filesystem
@@ -746,7 +742,7 @@ fn get_total_storage_bytes() -> Result<u64, PlatformError> {
             let attrs: *mut NSDictionary<NSString, objc2_foundation::NSObject> = msg_send![file_manager, attributesOfFileSystemForPath: &*path, error: std::ptr::null_mut::<*mut objc2_foundation::NSError>()];
 
             if attrs.is_null() {
-                return Err(PlatformError::Platform(
+                return Err(Error::internal(
                     "Failed to get filesystem attributes".to_string(),
                 ));
             }
@@ -756,9 +752,7 @@ fn get_total_storage_bytes() -> Result<u64, PlatformError> {
                 msg_send![attrs, objectForKey: &*size_key];
 
             if size_obj.is_null() {
-                return Err(PlatformError::Platform(
-                    "Failed to get filesystem size".to_string(),
-                ));
+                return Err(Error::internal("Failed to get filesystem size".to_string()));
             }
 
             let total_bytes: u64 = msg_send![size_obj, unsignedLongLongValue];
@@ -774,10 +768,10 @@ fn get_total_storage_bytes() -> Result<u64, PlatformError> {
             .arg("-k")
             .arg("/")
             .output()
-            .map_err(|e| PlatformError::Platform(format!("Failed to run df: {}", e)))?;
+            .map_err(|e| Error::internal(format!("Failed to run df: {}", e)))?;
 
         if !output.status.success() {
-            return Err(PlatformError::Platform("df command failed".to_string()));
+            return Err(Error::internal("df command failed".to_string()));
         }
 
         let stdout = String::from_utf8_lossy(&output.stdout);
@@ -791,8 +785,6 @@ fn get_total_storage_bytes() -> Result<u64, PlatformError> {
             }
         }
 
-        Err(PlatformError::Platform(
-            "Failed to parse df output".to_string(),
-        ))
+        Err(Error::internal("Failed to parse df output".to_string()))
     }
 }

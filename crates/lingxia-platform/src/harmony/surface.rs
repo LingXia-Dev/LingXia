@@ -1,28 +1,23 @@
 use super::app::Platform;
-use crate::error::PlatformError;
 use crate::traits::ui::{SurfaceKind, SurfacePresenter, SurfaceRequest};
+use lingxia_error::Error;
 use lingxia_surface::LayoutPresentationPlan;
 use lingxia_webview::WebTag;
 
 impl SurfacePresenter for Platform {
-    fn present_layout(
-        &self,
-        window_id: &str,
-        plan: &LayoutPresentationPlan,
-    ) -> Result<(), PlatformError> {
-        let plan_json = serde_json::to_string(plan).map_err(|e| {
-            PlatformError::Platform(format!("failed to serialize layout plan: {e}"))
-        })?;
+    fn present_layout(&self, window_id: &str, plan: &LayoutPresentationPlan) -> Result<(), Error> {
+        let plan_json = serde_json::to_string(plan)
+            .map_err(|e| Error::internal(format!("failed to serialize layout plan: {e}")))?;
         lingxia_webview::platform::harmony::tsfn::call_arkts(
             "presentLayout",
             &[window_id, &plan_json],
         )
-        .map_err(|e| PlatformError::Platform(format!("Failed to present layout: {e}")))
+        .map_err(|e| Error::internal(format!("Failed to present layout: {e}")))
     }
 
-    fn present_surface(&self, request: SurfaceRequest) -> Result<(), PlatformError> {
+    fn present_surface(&self, request: SurfaceRequest) -> Result<(), Error> {
         if request.kind == SurfaceKind::Window {
-            return Err(PlatformError::NotSupported(
+            return Err(Error::not_supported(
                 "lx.surface window is not supported on this platform".to_string(),
             ));
         }
@@ -52,22 +47,22 @@ impl SurfacePresenter for Platform {
         let arg_refs = args.iter().map(String::as_str).collect::<Vec<_>>();
 
         lingxia_webview::platform::harmony::tsfn::call_arkts("presentSurface", &arg_refs)
-            .map_err(|e| PlatformError::Platform(format!("Failed to present surface: {e}")))
+            .map_err(|e| Error::internal(format!("Failed to present surface: {e}")))
     }
 
-    fn close_surface(&self, app_id: &str, id: &str, reason: &str) -> Result<(), PlatformError> {
+    fn close_surface(&self, app_id: &str, id: &str, reason: &str) -> Result<(), Error> {
         lingxia_webview::platform::harmony::tsfn::call_arkts("closeSurface", &[id, app_id, reason])
-            .map_err(|e| PlatformError::Platform(format!("Failed to close surface: {e}")))
+            .map_err(|e| Error::internal(format!("Failed to close surface: {e}")))
     }
 
-    fn show_surface(&self, app_id: &str, id: &str) -> Result<(), PlatformError> {
+    fn show_surface(&self, app_id: &str, id: &str) -> Result<(), Error> {
         lingxia_webview::platform::harmony::tsfn::call_arkts("showSurface", &[id, app_id])
-            .map_err(|e| PlatformError::Platform(format!("Failed to show surface: {e}")))
+            .map_err(|e| Error::internal(format!("Failed to show surface: {e}")))
     }
 
-    fn hide_surface(&self, app_id: &str, id: &str) -> Result<(), PlatformError> {
+    fn hide_surface(&self, app_id: &str, id: &str) -> Result<(), Error> {
         lingxia_webview::platform::harmony::tsfn::call_arkts("hideSurface", &[id, app_id])
-            .map_err(|e| PlatformError::Platform(format!("Failed to hide surface: {e}")))
+            .map_err(|e| Error::internal(format!("Failed to hide surface: {e}")))
     }
 }
 

@@ -1,4 +1,4 @@
-use crate::i18n::{js_error, js_error_from_platform_error, js_invalid_parameter_error};
+use crate::i18n::{js_error, js_invalid_parameter_error};
 use lingxia_service::media::SaveMediaRequest;
 use lxapp::LxApp;
 use rong::{JSContext, JSResult};
@@ -39,5 +39,5 @@ async fn save_to_library(ctx: JSContext, path: String) -> JSResult<()> {
     } else {
         lingxia_service::media::save_video_to_photos_album(&*lxapp.runtime, request).await
     };
-    saved.map_err(|e| js_error_from_platform_error(&e))
+    saved.map_err(js_error)
 }

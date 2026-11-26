@@ -1,79 +1,43 @@
-use thiserror::Error;
+use lingxia_error::{Error, code};
 
-/// Platform-specific error types
-#[derive(Error, Debug)]
-pub enum PlatformError {
-    #[error("Platform error: {0}")]
-    Platform(String),
-
-    #[error("Not supported: {0}")]
-    NotSupported(String),
-
-    #[error("Asset not found: {0}")]
-    AssetNotFound(String),
-
-    #[error("Invalid parameter: {0}")]
-    InvalidParameter(String),
-
-    #[error("Business error: code {0}")]
-    BusinessError(u32),
-
-    #[error("Callback dropped")]
-    CallbackDropped,
-
-    /// The lxapp's native chrome host is not mounted, so nothing painted.
-    /// Not a failure: rust keeps the patch and the first presenter reads it.
-    #[error("Page chrome presenter not mounted")]
-    PresenterUnavailable,
-}
-
-/// Callback wire code for [`PlatformError::PresenterUnavailable`]. Mirrored by
-/// the Android and HarmonyOS SDKs, the only platforms whose chrome update can
-/// run before a presenter exists; the rest always have one or answer inline.
+/// Callback wire code for an unmounted chrome presenter. Mirrored by the Android and HarmonyOS
+/// SDKs, the only platforms whose chrome update can run before a presenter exists.
 pub const PRESENTER_UNAVAILABLE_CODE: u32 = 1001;
 
-/// A chrome update that ran before its presenter existed answers with the
-/// shared wire code; recover the variant so callers can tell a deferred paint
-/// from one that genuinely failed.
+/// Internal `reason` only: callers keep the patch and return `Ok`, so it never reaches the wire.
+const PRESENTER_UNAVAILABLE: &str = "presenterUnavailable";
+
+/// The lxapp's native chrome host is not mounted, so nothing painted. Not a failure: rust keeps
+/// the patch and the first presenter reads it.
+pub fn presenter_unavailable() -> Error {
+    Error::invalid_state("page chrome presenter not mounted").with_reason(PRESENTER_UNAVAILABLE)
+}
+
+pub fn is_presenter_unavailable(error: &Error) -> bool {
+    error.reason() == Some(PRESENTER_UNAVAILABLE)
+}
+
+/// The user dismissed the platform UI (business code 2000): an outcome, not a failure.
+pub fn is_user_dismissed(error: &Error) -> bool {
+    error.is(code::ABORT) && error.reason() == Some("userCanceled")
+}
+
+/// A native callback's numeric code, as its code and `reason`.
+pub(crate) fn callback_error(number: u32) -> Error {
+    Error::business(number, "platform call failed")
+}
+
+/// [`callback_error`] for a chrome update, where [`PRESENTER_UNAVAILABLE_CODE`] means a deferred
+/// paint rather than an internal failure.
 #[cfg(any(target_os = "android", target_env = "ohos"))]
-pub(crate) fn unmounted_presenter_or(error: PlatformError) -> PlatformError {
-    match error {
-        PlatformError::BusinessError(PRESENTER_UNAVAILABLE_CODE) => {
-            PlatformError::PresenterUnavailable
-        }
-        other => other,
+pub(crate) fn chrome_callback_error(number: u32) -> Error {
+    if number == PRESENTER_UNAVAILABLE_CODE {
+        presenter_unavailable()
+    } else {
+        callback_error(number)
     }
 }
 
-/// Result type for platform operations
-pub type PlatformResult<T> = Result<T, PlatformError>;
-
-#[cfg(target_os = "android")]
-impl From<jni::errors::Error> for PlatformError {
-    fn from(value: jni::errors::Error) -> Self {
-        PlatformError::Platform(format!("JNI error: {}", value))
-    }
-}
-
-impl From<&PlatformError> for lingxia_error::Error {
-    fn from(error: &PlatformError) -> Self {
-        use lingxia_error::Error;
-        match error {
-            PlatformError::Platform(detail) => Error::internal(detail.clone()),
-            PlatformError::NotSupported(detail) => Error::not_supported(detail.clone()),
-            PlatformError::AssetNotFound(detail) => Error::not_found(detail.clone()),
-            PlatformError::InvalidParameter(detail) => Error::invalid_arg(detail.clone()),
-            PlatformError::BusinessError(number) => Error::business(*number, error.to_string()),
-            PlatformError::CallbackDropped => Error::internal("platform callback dropped"),
-            PlatformError::PresenterUnavailable => {
-                Error::internal("page chrome presenter not mounted")
-            }
-        }
-    }
-}
-
-impl From<PlatformError> for lingxia_error::Error {
-    fn from(error: PlatformError) -> Self {
-        Self::from(&error)
-    }
+pub(crate) fn callback_dropped() -> Error {
+    Error::internal("platform callback dropped")
 }

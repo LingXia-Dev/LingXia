@@ -9,12 +9,12 @@
 
 use std::sync::{Arc, OnceLock};
 
-use crate::error::PlatformError;
 use crate::traits::video_player::{
     VideoPlayerCommand, VideoPlayerHandle, VideoPlayerHandleImpl, VideoPlayerManager,
 };
 
 use super::app::Platform;
+use lingxia_error::Error;
 
 /// Routes one command to the native video component with the given id.
 /// Returns a human-readable error when the component does not exist.
@@ -33,18 +33,16 @@ pub fn register_windows_video_command_dispatcher(dispatcher: WindowsVideoCommand
 }
 
 impl VideoPlayerManager for Platform {
-    fn bind_player(&self, component_id: &str) -> Result<Box<dyn VideoPlayerHandle>, PlatformError> {
+    fn bind_player(&self, component_id: &str) -> Result<Box<dyn VideoPlayerHandle>, Error> {
         let dispatcher = DISPATCHER
             .get()
             .ok_or_else(|| {
-                PlatformError::NotSupported(
-                    "no native video host is registered on Windows".to_string(),
-                )
+                Error::not_supported("no native video host is registered on Windows".to_string())
             })?
             .clone();
         let component_id = component_id.to_string();
         Ok(Box::new(VideoPlayerHandleImpl::new(move |command| {
-            dispatcher(&component_id, &command).map_err(PlatformError::Platform)
+            dispatcher(&component_id, &command).map_err(Error::internal)
         })))
     }
 }

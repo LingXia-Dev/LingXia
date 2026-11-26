@@ -1,14 +1,14 @@
-use crate::error::PlatformError;
 use crate::traits::wifi::{Wifi, WifiConnectRequest, WifiGetConnectedRequest};
 
 use super::Platform;
 
 #[cfg(any(target_os = "ios", target_os = "macos"))]
 use super::ffi;
+use lingxia_error::Error;
 
 #[cfg(not(any(target_os = "ios", target_os = "macos")))]
-fn wifi_api_not_supported_error(api: &str) -> PlatformError {
-    PlatformError::NotSupported(format!(
+fn wifi_api_not_supported_error(api: &str) -> Error {
+    Error::not_supported(format!(
         "WiFi capability `{}` is not supported by Apple platform module on this target. Supported targets: `ios`, `macos`.",
         api
     ))
@@ -31,11 +31,11 @@ macro_rules! apple_only {
 }
 
 impl Wifi for Platform {
-    fn start_wifi(&self, callback_id: u64) -> Result<(), PlatformError> {
+    fn start_wifi(&self, callback_id: u64) -> Result<(), Error> {
         apple_only!("start_wifi", callback_id, ffi::start_wifi(callback_id))
     }
 
-    fn connect_wifi(&self, request: WifiConnectRequest) -> Result<(), PlatformError> {
+    fn connect_wifi(&self, request: WifiConnectRequest) -> Result<(), Error> {
         #[cfg(any(target_os = "ios", target_os = "macos"))]
         {
             ffi::connect_wifi(
@@ -52,7 +52,7 @@ impl Wifi for Platform {
         }
     }
 
-    fn get_wifi_list(&self, callback_id: u64) -> Result<(), PlatformError> {
+    fn get_wifi_list(&self, callback_id: u64) -> Result<(), Error> {
         apple_only!(
             "get_wifi_list",
             callback_id,
@@ -60,7 +60,7 @@ impl Wifi for Platform {
         )
     }
 
-    fn get_connected_wifi(&self, request: WifiGetConnectedRequest) -> Result<(), PlatformError> {
+    fn get_connected_wifi(&self, request: WifiGetConnectedRequest) -> Result<(), Error> {
         let callback_id = request.callback_id;
         apple_only!(
             "get_connected_wifi",
@@ -69,7 +69,7 @@ impl Wifi for Platform {
         )
     }
 
-    fn is_wifi_enabled(&self) -> Result<bool, PlatformError> {
+    fn is_wifi_enabled(&self) -> Result<bool, Error> {
         #[cfg(any(target_os = "ios", target_os = "macos"))]
         {
             Ok(ffi::is_wifi_enabled())
@@ -80,7 +80,7 @@ impl Wifi for Platform {
         }
     }
 
-    fn add_wifi_state_listener(&self, callback_id: u64) -> Result<(), PlatformError> {
+    fn add_wifi_state_listener(&self, callback_id: u64) -> Result<(), Error> {
         apple_only!(
             "add_wifi_state_listener",
             callback_id,
@@ -88,7 +88,7 @@ impl Wifi for Platform {
         )
     }
 
-    fn remove_wifi_state_listener(&self, callback_id: u64) -> Result<(), PlatformError> {
+    fn remove_wifi_state_listener(&self, callback_id: u64) -> Result<(), Error> {
         apple_only!(
             "remove_wifi_state_listener",
             callback_id,

@@ -7,8 +7,8 @@
 
 use super::app::Platform;
 use super::toast_activator;
-use crate::error::PlatformError;
 use crate::traits::app_runtime::{LocalNotificationShow, LocalNotificationStatus};
+use lingxia_error::Error;
 use std::sync::Mutex;
 use windows::Data::Xml::Dom::XmlDocument;
 use windows::Foundation::DateTime;
@@ -58,7 +58,7 @@ pub(super) fn aumid_from_identity(identity: &str) -> String {
         .collect()
 }
 
-pub(super) fn permission(platform: &Platform) -> Result<String, PlatformError> {
+pub(super) fn permission(platform: &Platform) -> Result<String, Error> {
     ensure_start_menu_shortcut(platform);
     // Unpackaged Win32 often reports DisabledForApplication even when Show
     // still posts. Only treat explicit user / policy blocks as denied.
@@ -76,14 +76,14 @@ pub(super) fn permission(platform: &Platform) -> Result<String, PlatformError> {
     }
 }
 
-fn toast_setting(platform: &Platform) -> Result<NotificationSetting, PlatformError> {
+fn toast_setting(platform: &Platform) -> Result<NotificationSetting, Error> {
     notifier(platform)?.Setting().map_err(win_err)
 }
 
 pub(super) fn show(
     platform: &Platform,
     request: &LocalNotificationShow,
-) -> Result<LocalNotificationStatus, PlatformError> {
+) -> Result<LocalNotificationStatus, Error> {
     let now_ms = unix_now_ms();
     let scheduled = request.deliver_at_ms.filter(|at| *at > now_ms + 500);
     let id = request.id.clone();
@@ -93,8 +93,8 @@ pub(super) fn show(
         return Ok(LocalNotificationStatus::Suppressed);
     }
     if permission(platform)? != "granted" {
-        return Err(PlatformError::Platform(
-            "notifications are disabled for this app in Windows Settings".into(),
+        return Err(Error::internal(
+            "notifications are disabled for this app in Windows Settings",
         ));
     }
     // Before anything is posted: a deployment that cannot take the tap back
@@ -127,7 +127,7 @@ pub(super) fn show(
     Ok(LocalNotificationStatus::Scheduled)
 }
 
-fn toast_document(request: &LocalNotificationShow) -> Result<XmlDocument, PlatformError> {
+fn toast_document(request: &LocalNotificationShow) -> Result<XmlDocument, Error> {
     let xml = toast_xml(
         &request.title,
         &request.body,
@@ -139,7 +139,7 @@ fn toast_document(request: &LocalNotificationShow) -> Result<XmlDocument, Platfo
     Ok(document)
 }
 
-fn show_now(platform: &Platform, request: &LocalNotificationShow) -> Result<(), PlatformError> {
+fn show_now(platform: &Platform, request: &LocalNotificationShow) -> Result<(), Error> {
     let toast =
         ToastNotification::CreateToastNotification(&toast_document(request)?).map_err(win_err)?;
     toast.SetTag(&HSTRING::from(&request.id)).map_err(win_err)?;
@@ -164,7 +164,7 @@ fn schedule_id() -> String {
     )
 }
 
-pub(super) fn cancel(platform: &Platform, id: &str) -> Result<(), PlatformError> {
+pub(super) fn cancel(platform: &Platform, id: &str) -> Result<(), Error> {
     let aumid = aumid_from_identity(&platform.autostart_value_name());
     if let Ok(history) = ToastNotificationManager::History() {
         let _ = history.RemoveGroupedTagWithId(
@@ -188,7 +188,7 @@ pub(super) fn cancel(platform: &Platform, id: &str) -> Result<(), PlatformError>
     Ok(())
 }
 
-pub(super) fn cancel_all(platform: &Platform) -> Result<(), PlatformError> {
+pub(super) fn cancel_all(platform: &Platform) -> Result<(), Error> {
     let aumid = aumid_from_identity(&platform.autostart_value_name());
     if let Ok(history) = ToastNotificationManager::History() {
         let _ = history.RemoveGroupWithId(&HSTRING::from(TOAST_GROUP), &HSTRING::from(&aumid));
@@ -208,9 +208,7 @@ pub(super) fn cancel_all(platform: &Platform) -> Result<(), PlatformError> {
     Ok(())
 }
 
-fn notifier(
-    platform: &Platform,
-) -> Result<windows::UI::Notifications::ToastNotifier, PlatformError> {
+fn notifier(platform: &Platform) -> Result<windows::UI::Notifications::ToastNotifier, Error> {
     if let Ok(notifier) = ToastNotificationManager::CreateToastNotifier() {
         return Ok(notifier);
     }
@@ -228,7 +226,7 @@ fn ensure_start_menu_shortcut(platform: &Platform) {
 /// Called from the host bootstrap when the product declared notifications:
 /// COM starts the exe for a tap and then waits for the class object, which a
 /// registration deferred to the first `show` would never reach.
-pub fn ensure_toast_activator(platform: &Platform) -> Result<(), PlatformError> {
+pub fn ensure_toast_activator(platform: &Platform) -> Result<(), Error> {
     ensure_start_menu_shortcut(platform);
     toast_activator::ensure_registered(&aumid_from_identity(&platform.autostart_value_name()))
 }
@@ -421,8 +419,8 @@ fn unix_ms_to_winrt(ms: u64) -> i64 {
     ((ms.saturating_add(UNIX_MS_TO_WINRT)) * 10_000) as i64
 }
 
-fn win_err(error: windows::core::Error) -> PlatformError {
-    PlatformError::Platform(error.to_string())
+fn win_err(error: windows::core::Error) -> Error {
+    Error::internal(error.to_string())
 }
 
 fn process_is_frontmost() -> bool {

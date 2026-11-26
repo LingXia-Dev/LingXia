@@ -6,11 +6,11 @@ use lingxia_webview::{FileChooserFile, FileChooserResponse};
 
 use super::Platform;
 use super::file_dialog::{self, DialogFilter, DialogKind, OpenDialog};
-use crate::error::PlatformError;
 use crate::traits::file::{
     FileDialogFilter, FileDialogResult, FileService, OpenFileRequest, PickDirectoryRequest,
     PickFileRequest, PickedPath, RevealInFileManagerRequest,
 };
+use lingxia_error::Error;
 
 impl Platform {
     pub fn file_chooser_handler(
@@ -81,21 +81,21 @@ impl FileService for Platform {
     fn review_file(
         &self,
         request: OpenFileRequest,
-    ) -> impl Future<Output = Result<(), PlatformError>> + Send {
+    ) -> impl Future<Output = Result<(), Error>> + Send {
         async move { crate::rt::blocking(move || open_with_shell(&request.path)).await }
     }
 
     fn open_external(
         &self,
         request: OpenFileRequest,
-    ) -> impl Future<Output = Result<(), PlatformError>> + Send {
+    ) -> impl Future<Output = Result<(), Error>> + Send {
         async move { crate::rt::blocking(move || open_with_shell(&request.path)).await }
     }
 
     fn reveal_in_file_manager(
         &self,
         request: RevealInFileManagerRequest,
-    ) -> impl Future<Output = Result<(), PlatformError>> + Send {
+    ) -> impl Future<Output = Result<(), Error>> + Send {
         async move {
             // explorer /select, requires backslashes and exits non-zero even on
             // success, so only spawn failures are reported.
@@ -104,14 +104,14 @@ impl FileService for Platform {
                 .arg(format!("/select,{path}"))
                 .spawn()
                 .map(drop)
-                .map_err(|err| PlatformError::Platform(format!("failed to start explorer: {err}")))
+                .map_err(|err| Error::internal(format!("failed to start explorer: {err}")))
         }
     }
 
     fn pick_file(
         &self,
         request: PickFileRequest,
-    ) -> impl Future<Output = Result<FileDialogResult, PlatformError>> + Send {
+    ) -> impl Future<Output = Result<FileDialogResult, Error>> + Send {
         pick(OpenDialog {
             kind: DialogKind::File {
                 multiple: request.multiple,
@@ -133,7 +133,7 @@ impl FileService for Platform {
     fn pick_directory(
         &self,
         request: PickDirectoryRequest,
-    ) -> impl Future<Output = Result<FileDialogResult, PlatformError>> + Send {
+    ) -> impl Future<Output = Result<FileDialogResult, Error>> + Send {
         pick(OpenDialog {
             kind: DialogKind::Folder,
             title: request.title,
@@ -144,7 +144,7 @@ impl FileService for Platform {
     }
 }
 
-async fn pick(dialog: OpenDialog) -> Result<FileDialogResult, PlatformError> {
+async fn pick(dialog: OpenDialog) -> Result<FileDialogResult, Error> {
     let Some(paths) = file_dialog::show(dialog).await? else {
         return Ok(FileDialogResult::canceled());
     };
@@ -204,15 +204,15 @@ fn filters_from_accept_types(accept_types: &[String]) -> Vec<FileDialogFilter> {
 }
 
 /// Blocking shell open; call via `crate::rt::blocking` from async contexts.
-pub(super) fn open_with_shell(target: &str) -> Result<(), PlatformError> {
+pub(super) fn open_with_shell(target: &str) -> Result<(), Error> {
     let status = Command::new("rundll32")
         .args(["url.dll,FileProtocolHandler", target])
         .status()
-        .map_err(|err| PlatformError::Platform(format!("failed to launch shell open: {err}")))?;
+        .map_err(|err| Error::internal(format!("failed to launch shell open: {err}")))?;
     if status.success() {
         Ok(())
     } else {
-        Err(PlatformError::Platform(format!(
+        Err(Error::internal(format!(
             "shell open exited with status {status}"
         )))
     }
@@ -220,28 +220,24 @@ pub(super) fn open_with_shell(target: &str) -> Result<(), PlatformError> {
 
 /// Shell open for sync trait methods that cannot offload to a blocking task:
 /// launch without waiting so the executor thread never blocks on the child.
-pub(super) fn open_with_shell_detached(target: &str) -> Result<(), PlatformError> {
+pub(super) fn open_with_shell_detached(target: &str) -> Result<(), Error> {
     Command::new("rundll32")
         .args(["url.dll,FileProtocolHandler", target])
         .spawn()
         .map(drop)
-        .map_err(|err| PlatformError::Platform(format!("failed to launch shell open: {err}")))
+        .map_err(|err| Error::internal(format!("failed to launch shell open: {err}")))
 }
 
-pub(super) fn normalize_file_uri(uri: &str) -> Result<PathBuf, PlatformError> {
+pub(super) fn normalize_file_uri(uri: &str) -> Result<PathBuf, Error> {
     let trimmed = uri.trim();
     if trimmed.is_empty() {
-        return Err(PlatformError::InvalidParameter(
-            "file uri is empty".to_string(),
-        ));
+        return Err(Error::invalid_arg("file uri is empty".to_string()));
     }
     let path = if let Some(rest) = trimmed.strip_prefix("file://") {
         if let Some(local) = rest.strip_prefix('/') {
             percent_decode(local)
         } else if rest.is_empty() {
-            return Err(PlatformError::InvalidParameter(format!(
-                "file uri has no path: {uri}"
-            )));
+            return Err(Error::invalid_arg(format!("file uri has no path: {uri}")));
         } else {
             // file://server/share -> \\server\share UNC path.
             format!("\\\\{}", percent_decode(rest))

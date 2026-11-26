@@ -8,6 +8,7 @@
 
 use std::path::{Path, PathBuf};
 
+use lingxia_error::Error;
 use lingxia_platform::traits::media_runtime::{
     CompressImageRequest as PlatformCompressImageRequest,
     CompressVideoRequest as PlatformCompressVideoRequest,
@@ -55,20 +56,15 @@ pub enum MediaSelection {
     Selected(Vec<PickedMedia>),
 }
 
-/// The business code every platform picker reports for a user dismissal.
-const USER_DISMISSED: u32 = 2000;
-
 /// Presents the media picker and distinguishes user cancellation from a failure.
 pub async fn pick_with_status(request: PickMediaRequest) -> crate::Result<MediaSelection> {
     let runtime = crate::runtime::platform()?;
     decode_media_selection(lingxia_service::media::pick_media(&*runtime, request).await)
 }
 
-fn decode_media_selection(
-    result: Result<String, lingxia_platform::PlatformError>,
-) -> crate::Result<MediaSelection> {
+fn decode_media_selection(result: Result<String, Error>) -> crate::Result<MediaSelection> {
     let json = match result {
-        Err(lingxia_platform::PlatformError::BusinessError(USER_DISMISSED)) => {
+        Err(error) if lingxia_platform::error::is_user_dismissed(&error) => {
             return Ok(MediaSelection::Canceled);
         }
         Err(error) => return Err(error.into()),
@@ -427,16 +423,15 @@ mod selection_tests {
 
     #[test]
     fn cancellation_is_distinct_from_permissions_and_invalid_payloads() {
-        use lingxia_platform::PlatformError;
         assert!(matches!(
-            decode_media_selection(Err(PlatformError::BusinessError(USER_DISMISSED))).unwrap(),
+            decode_media_selection(Err(Error::business(2000, "canceled"))).unwrap(),
             MediaSelection::Canceled
         ));
         assert!(matches!(
             decode_media_selection(Ok("[]".to_string())).unwrap(),
             MediaSelection::Canceled
         ));
-        assert!(decode_media_selection(Err(PlatformError::BusinessError(3001))).is_err());
+        assert!(decode_media_selection(Err(Error::business(3001, "denied"))).is_err());
         for json in ["null", "{}", r#"[{"uri":"","fileType":"image"}]"#] {
             assert!(decode_media_selection(Ok(json.to_string())).is_err());
         }

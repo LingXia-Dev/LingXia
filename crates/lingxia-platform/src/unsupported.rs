@@ -4,7 +4,6 @@ use std::future::Future;
 use std::io::Read;
 use std::path::{Path, PathBuf};
 
-use crate::error::PlatformError;
 use crate::traits::app_runtime::{
     AnimationType, AppRuntime, OpenUrlRequest, OpenUrlResult, ShowLxApp,
 };
@@ -40,6 +39,7 @@ use crate::traits::update::UpdateService;
 use crate::traits::video_player::{VideoPlayerHandle, VideoPlayerManager};
 use crate::traits::wifi::Wifi;
 use crate::{AssetFileEntry, DeviceInfo, ScreenInfo};
+use lingxia_error::Error;
 
 #[derive(Debug, Clone)]
 pub struct Platform {
@@ -64,7 +64,7 @@ impl Platform {
         data_dir: impl Into<PathBuf>,
         cache_dir: impl Into<PathBuf>,
         locale: impl Into<String>,
-    ) -> Result<Self, PlatformError> {
+    ) -> Result<Self, Error> {
         Ok(Self {
             data_dir: data_dir.into(),
             cache_dir: cache_dir.into(),
@@ -73,8 +73,8 @@ impl Platform {
     }
 }
 
-fn not_supported<T>(name: &str) -> Result<T, PlatformError> {
-    Err(PlatformError::NotSupported(format!(
+fn not_supported<T>(name: &str) -> Result<T, Error> {
+    Err(Error::not_supported(format!(
         "{name} is not supported on this platform"
     )))
 }
@@ -98,11 +98,11 @@ impl Device for Platform {
         }
     }
 
-    fn vibrate(&self, _long: bool) -> Result<(), PlatformError> {
+    fn vibrate(&self, _long: bool) -> Result<(), Error> {
         not_supported("vibrate")
     }
 
-    fn make_phone_call(&self, _phone_number: &str) -> Result<(), PlatformError> {
+    fn make_phone_call(&self, _phone_number: &str) -> Result<(), Error> {
         not_supported("make_phone_call")
     }
 }
@@ -122,86 +122,86 @@ impl FileService for Platform {
     fn review_file(
         &self,
         _request: OpenFileRequest,
-    ) -> impl Future<Output = Result<(), PlatformError>> + Send {
+    ) -> impl Future<Output = Result<(), Error>> + Send {
         async { not_supported("review_file") }
     }
 
     fn open_external(
         &self,
         _request: OpenFileRequest,
-    ) -> impl Future<Output = Result<(), PlatformError>> + Send {
+    ) -> impl Future<Output = Result<(), Error>> + Send {
         async { not_supported("open_external") }
     }
 
     fn reveal_in_file_manager(
         &self,
         _request: RevealInFileManagerRequest,
-    ) -> impl Future<Output = Result<(), PlatformError>> + Send {
+    ) -> impl Future<Output = Result<(), Error>> + Send {
         async { not_supported("reveal_in_file_manager") }
     }
 
     fn pick_file(
         &self,
         _request: PickFileRequest,
-    ) -> impl Future<Output = Result<FileDialogResult, PlatformError>> + Send {
+    ) -> impl Future<Output = Result<FileDialogResult, Error>> + Send {
         async { not_supported("pick_file") }
     }
 
     fn pick_directory(
         &self,
         _request: PickDirectoryRequest,
-    ) -> impl Future<Output = Result<FileDialogResult, PlatformError>> + Send {
+    ) -> impl Future<Output = Result<FileDialogResult, Error>> + Send {
         async { not_supported("pick_directory") }
     }
 }
 
 impl Location for Platform {
-    fn is_location_enabled(&self) -> Result<bool, PlatformError> {
+    fn is_location_enabled(&self) -> Result<bool, Error> {
         not_supported("is_location_enabled")
     }
 
     fn request_location(
         &self,
         _config: LocationRequestConfig,
-    ) -> impl Future<Output = Result<String, PlatformError>> + Send {
+    ) -> impl Future<Output = Result<String, Error>> + Send {
         async { not_supported("request_location") }
     }
 }
 
 impl MediaInteraction for Platform {
-    fn preview_media(&self, _request: PreviewMediaRequest) -> Result<(), PlatformError> {
+    fn preview_media(&self, _request: PreviewMediaRequest) -> Result<(), Error> {
         not_supported("preview_media")
     }
 
-    fn cancel_preview(&self, _callback_id: u64) -> Result<(), PlatformError> {
+    fn cancel_preview(&self, _callback_id: u64) -> Result<(), Error> {
         not_supported("cancel_preview")
     }
 
     fn pick_media(
         &self,
         _request: PickMediaRequest,
-    ) -> impl Future<Output = Result<String, PlatformError>> + Send {
+    ) -> impl Future<Output = Result<String, Error>> + Send {
         async { not_supported("pick_media") }
     }
 
     fn scan_code(
         &self,
         _request: ScanCodeRequest,
-    ) -> impl Future<Output = Result<String, PlatformError>> + Send {
+    ) -> impl Future<Output = Result<String, Error>> + Send {
         async { not_supported("scan_code") }
     }
 
     fn save_image_to_photos_album(
         &self,
         _request: SaveMediaRequest,
-    ) -> impl Future<Output = Result<(), PlatformError>> + Send {
+    ) -> impl Future<Output = Result<(), Error>> + Send {
         async { not_supported("save_image_to_photos_album") }
     }
 
     fn save_video_to_photos_album(
         &self,
         _request: SaveMediaRequest,
-    ) -> impl Future<Output = Result<(), PlatformError>> + Send {
+    ) -> impl Future<Output = Result<(), Error>> + Send {
         async { not_supported("save_video_to_photos_album") }
     }
 }
@@ -212,34 +212,34 @@ impl MediaRuntime for Platform {
         _uri: &str,
         _dest_path: &Path,
         _kind: crate::traits::media_interaction::MediaKind,
-    ) -> Result<(), PlatformError> {
+    ) -> Result<(), Error> {
         not_supported("copy_album_media_to_file")
     }
 
-    fn get_image_info(&self, _uri: &str) -> Result<ImageInfo, PlatformError> {
+    fn get_image_info(&self, _uri: &str) -> Result<ImageInfo, Error> {
         not_supported("get_image_info")
     }
 
-    fn compress_image(&self, _request: &CompressImageRequest) -> Result<PathBuf, PlatformError> {
+    fn compress_image(&self, _request: &CompressImageRequest) -> Result<PathBuf, Error> {
         not_supported("compress_image")
     }
 
-    fn compress_video(&self, _request: &CompressVideoRequest) -> Result<(), PlatformError> {
+    fn compress_video(&self, _request: &CompressVideoRequest) -> Result<(), Error> {
         not_supported("compress_video")
     }
 
-    fn cancel_compress_video(&self, _callback_id: u64) -> Result<(), PlatformError> {
+    fn cancel_compress_video(&self, _callback_id: u64) -> Result<(), Error> {
         not_supported("cancel_compress_video")
     }
 
-    fn get_video_info(&self, _uri: &str) -> Result<VideoInfo, PlatformError> {
+    fn get_video_info(&self, _uri: &str) -> Result<VideoInfo, Error> {
         not_supported("get_video_info")
     }
 
     fn extract_video_thumbnail(
         &self,
         _request: &ExtractVideoThumbnailRequest,
-    ) -> Result<VideoThumbnail, PlatformError> {
+    ) -> Result<VideoThumbnail, Error> {
         not_supported("extract_video_thumbnail")
     }
 }
@@ -248,24 +248,22 @@ impl ClipboardService for Platform {
     fn clipboard_write(
         &self,
         _item: ClipboardWrite,
-    ) -> impl Future<Output = Result<(), PlatformError>> + Send {
+    ) -> impl Future<Output = Result<(), Error>> + Send {
         async { not_supported("clipboard.write") }
     }
 
     fn clipboard_read(
         &self,
         _request: ClipboardReadRequest,
-    ) -> impl Future<Output = Result<ClipboardContents, PlatformError>> + Send {
+    ) -> impl Future<Output = Result<ClipboardContents, Error>> + Send {
         async { not_supported("clipboard.read") }
     }
 
-    fn clipboard_clear(&self) -> impl Future<Output = Result<(), PlatformError>> + Send {
+    fn clipboard_clear(&self) -> impl Future<Output = Result<(), Error>> + Send {
         async { not_supported("clipboard.clear") }
     }
 
-    fn clipboard_types(
-        &self,
-    ) -> impl Future<Output = Result<ClipboardTypes, PlatformError>> + Send {
+    fn clipboard_types(&self) -> impl Future<Output = Result<ClipboardTypes, Error>> + Send {
         async { not_supported("clipboard.types") }
     }
 }
@@ -274,7 +272,7 @@ impl ShareService for Platform {
     fn share(
         &self,
         _request: ShareRequest,
-    ) -> impl Future<Output = Result<ShareResult, PlatformError>> + Send {
+    ) -> impl Future<Output = Result<ShareResult, Error>> + Send {
         async { not_supported("share") }
     }
 }
@@ -284,28 +282,28 @@ impl Appearance for Platform {}
 impl LaunchFace for Platform {}
 
 impl UIUpdate for Platform {
-    fn update_navbar_ui(&self, _appid: String) -> Result<(), PlatformError> {
+    fn update_navbar_ui(&self, _appid: String) -> Result<(), Error> {
         not_supported("update_navbar_ui")
     }
 
-    fn update_tabbar_ui(&self, _appid: String) -> Result<(), PlatformError> {
+    fn update_tabbar_ui(&self, _appid: String) -> Result<(), Error> {
         not_supported("update_tabbar_ui")
     }
 }
 
 impl UserFeedback for Platform {
-    fn show_toast(&self, _options: ToastOptions) -> Result<(), PlatformError> {
+    fn show_toast(&self, _options: ToastOptions) -> Result<(), Error> {
         not_supported("show_toast")
     }
 
-    fn hide_toast(&self) -> Result<(), PlatformError> {
+    fn hide_toast(&self) -> Result<(), Error> {
         not_supported("hide_toast")
     }
 
     fn show_modal(
         &self,
         _options: ModalOptions,
-    ) -> impl Future<Output = Result<String, PlatformError>> + Send {
+    ) -> impl Future<Output = Result<String, Error>> + Send {
         async { not_supported("show_modal") }
     }
 
@@ -314,26 +312,23 @@ impl UserFeedback for Platform {
         _options: Vec<String>,
         _cancel_text: String,
         _item_color: String,
-    ) -> impl Future<Output = Result<String, PlatformError>> + Send {
+    ) -> impl Future<Output = Result<String, Error>> + Send {
         async { not_supported("show_action_sheet") }
     }
 }
 
 impl PullToRefresh for Platform {
-    fn start_pull_down_refresh(&self, _app_id: &str, _webtag: &str) -> Result<(), PlatformError> {
+    fn start_pull_down_refresh(&self, _app_id: &str, _webtag: &str) -> Result<(), Error> {
         not_supported("start_pull_down_refresh")
     }
 
-    fn stop_pull_down_refresh(&self, _app_id: &str, _webtag: &str) -> Result<(), PlatformError> {
+    fn stop_pull_down_refresh(&self, _app_id: &str, _webtag: &str) -> Result<(), Error> {
         not_supported("stop_pull_down_refresh")
     }
 }
 
 impl VideoPlayerManager for Platform {
-    fn bind_player(
-        &self,
-        _component_id: &str,
-    ) -> Result<Box<dyn VideoPlayerHandle>, PlatformError> {
+    fn bind_player(&self, _component_id: &str) -> Result<Box<dyn VideoPlayerHandle>, Error> {
         not_supported("bind_player")
     }
 }
@@ -342,20 +337,20 @@ impl VideoStreamDecoderManager for Platform {
     fn create_stream_decoder(
         &self,
         _component_id: &str,
-    ) -> Result<Box<dyn VideoStreamDecoderHandle>, PlatformError> {
+    ) -> Result<Box<dyn VideoStreamDecoderHandle>, Error> {
         not_supported("create_stream_decoder")
     }
 }
 
 impl AppRuntime for Platform {
-    fn read_asset<'a>(&'a self, _path: &str) -> Result<Box<dyn Read + 'a>, PlatformError> {
+    fn read_asset<'a>(&'a self, _path: &str) -> Result<Box<dyn Read + 'a>, Error> {
         not_supported("read_asset")
     }
 
     fn asset_dir_iter<'a>(
         &'a self,
         _asset_dir: &str,
-    ) -> Box<dyn Iterator<Item = Result<AssetFileEntry<'a>, PlatformError>> + 'a> {
+    ) -> Box<dyn Iterator<Item = Result<AssetFileEntry<'a>, Error>> + 'a> {
         Box::new(std::iter::once(not_supported("asset_dir_iter")))
     }
 
@@ -367,7 +362,7 @@ impl AppRuntime for Platform {
         self.cache_dir.clone()
     }
 
-    fn get_app_identifier(&self) -> Result<String, PlatformError> {
+    fn get_app_identifier(&self) -> Result<String, Error> {
         not_supported("get_app_identifier")
     }
 
@@ -375,15 +370,15 @@ impl AppRuntime for Platform {
         &self.locale
     }
 
-    fn show_lxapp(&self, _request: ShowLxApp) -> Result<(), PlatformError> {
+    fn show_lxapp(&self, _request: ShowLxApp) -> Result<(), Error> {
         not_supported("show_lxapp")
     }
 
-    fn hide_lxapp(&self, _appid: String, _session_id: u64) -> Result<(), PlatformError> {
+    fn hide_lxapp(&self, _appid: String, _session_id: u64) -> Result<(), Error> {
         not_supported("hide_lxapp")
     }
 
-    fn exit(&self) -> Result<(), PlatformError> {
+    fn exit(&self) -> Result<(), Error> {
         not_supported("exit")
     }
 
@@ -392,11 +387,11 @@ impl AppRuntime for Platform {
         _appid: String,
         _webtag: String,
         _animation_type: AnimationType,
-    ) -> Result<(), PlatformError> {
+    ) -> Result<(), Error> {
         not_supported("navigate")
     }
 
-    fn open_url(&self, _req: OpenUrlRequest) -> Result<OpenUrlResult, PlatformError> {
+    fn open_url(&self, _req: OpenUrlRequest) -> Result<OpenUrlResult, Error> {
         not_supported("open_url")
     }
 }

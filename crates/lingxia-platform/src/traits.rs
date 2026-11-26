@@ -1,12 +1,11 @@
+use lingxia_error::Error;
 use std::future::Future;
 use std::pin::Pin;
-
-use crate::error::PlatformError;
 
 /// A platform operation that finishes asynchronously and reports only success
 /// or failure. Named for its shape rather than for the first caller that
 /// needed one, so a second caller does not have to borrow an unrelated alias.
-pub type PlatformFuture = Pin<Box<dyn Future<Output = Result<(), PlatformError>> + Send + 'static>>;
+pub type PlatformFuture = Pin<Box<dyn Future<Output = Result<(), Error>> + Send + 'static>>;
 
 pub mod app_runtime;
 pub mod clipboard;

@@ -1,5 +1,5 @@
 use crate::authorization::{self, LogicRoute};
-use crate::i18n::js_error_from_platform_error;
+use crate::i18n::js_error;
 use lingxia_platform::traits::app_runtime::AppRuntime;
 use rong::{HostError, JSContext, JSFunc, JSObject, JSResult};
 
@@ -40,7 +40,7 @@ async fn autostart_is_enabled(ctx: JSContext) -> JSResult<bool> {
                 format!("autostart query task failed: {error}"),
             )
         })?
-        .map_err(|error| js_error_from_platform_error(&error))
+        .map_err(js_error)
 }
 
 async fn autostart_set(ctx: JSContext, enabled: bool) -> JSResult<()> {
@@ -60,5 +60,5 @@ async fn autostart_set(ctx: JSContext, enabled: bool) -> JSResult<()> {
                 format!("autostart update task failed: {error}"),
             )
         })?
-        .map_err(|error| js_error_from_platform_error(&error))
+        .map_err(js_error)
 }

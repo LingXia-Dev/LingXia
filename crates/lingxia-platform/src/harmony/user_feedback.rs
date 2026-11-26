@@ -1,9 +1,9 @@
 use super::app::Platform;
-use crate::error::PlatformError;
 use crate::traits::ui::{ModalOptions, ToastIcon, ToastOptions, ToastPosition, UserFeedback};
+use lingxia_error::Error;
 
 impl UserFeedback for Platform {
-    fn show_toast(&self, options: ToastOptions) -> Result<(), PlatformError> {
+    fn show_toast(&self, options: ToastOptions) -> Result<(), Error> {
         let icon_str = convert_toast_icon_to_string(options.icon);
         let position_str = convert_toast_position_to_string(options.position);
         let image_str = options.image.unwrap_or_default();
@@ -22,21 +22,21 @@ impl UserFeedback for Platform {
                 &position_str,
             ],
         )
-        .map_err(|e| PlatformError::Platform(format!("Failed to show toast: {}", e)))
+        .map_err(|e| Error::internal(format!("Failed to show toast: {}", e)))
     }
 
-    fn dismiss_dialog(&self) -> Result<(), PlatformError> {
+    fn dismiss_dialog(&self) -> Result<(), Error> {
         lingxia_webview::platform::harmony::tsfn::call_arkts("dismissDialog", &[])
-            .map_err(|e| PlatformError::Platform(format!("Failed to dismiss dialog: {}", e)))
+            .map_err(|e| Error::internal(format!("Failed to dismiss dialog: {}", e)))
     }
 
-    fn hide_toast(&self) -> Result<(), PlatformError> {
+    fn hide_toast(&self) -> Result<(), Error> {
         // Call ArkTS hideToast function via TSFN
         lingxia_webview::platform::harmony::tsfn::call_arkts("hideToast", &[])
-            .map_err(|e| PlatformError::Platform(format!("Failed to hide toast: {}", e)))
+            .map_err(|e| Error::internal(format!("Failed to hide toast: {}", e)))
     }
 
-    async fn show_modal(&self, options: ModalOptions) -> Result<String, PlatformError> {
+    async fn show_modal(&self, options: ModalOptions) -> Result<String, Error> {
         crate::rt::native_call(|callback_id| {
             // Convert ModalOptions to individual string parameters for TSFN call
             let title = &options.title;
@@ -60,7 +60,7 @@ impl UserFeedback for Platform {
                     &callback_id_str,
                 ],
             )
-            .map_err(|e| PlatformError::Platform(format!("Failed to show modal: {}", e)))
+            .map_err(|e| Error::internal(format!("Failed to show modal: {}", e)))
         })
         .await
     }
@@ -70,12 +70,11 @@ impl UserFeedback for Platform {
         options: Vec<String>,
         cancel_text: String,
         item_color: String,
-    ) -> Result<String, PlatformError> {
+    ) -> Result<String, Error> {
         crate::rt::native_call(|callback_id| {
             // Convert options to JSON string
-            let options_json = serde_json::to_string(&options).map_err(|e| {
-                PlatformError::Platform(format!("Failed to serialize options: {}", e))
-            })?;
+            let options_json = serde_json::to_string(&options)
+                .map_err(|e| Error::internal(format!("Failed to serialize options: {}", e)))?;
 
             // Call ArkTS showActionSheet function via TSFN with individual parameters
             lingxia_webview::platform::harmony::tsfn::call_arkts(
@@ -87,7 +86,7 @@ impl UserFeedback for Platform {
                     &callback_id.to_string(),
                 ],
             )
-            .map_err(|e| PlatformError::Platform(format!("Failed to show action sheet: {}", e)))
+            .map_err(|e| Error::internal(format!("Failed to show action sheet: {}", e)))
         })
         .await
     }

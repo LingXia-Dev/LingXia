@@ -1,6 +1,6 @@
 use crate::i18n::{
     js_error, js_error_from_business_code, js_error_from_business_code_with_detail,
-    js_error_from_platform_error, js_internal_error, js_invalid_parameter_error,
+    js_internal_error, js_invalid_parameter_error,
 };
 use crate::url::{is_http_url, split_url_scheme_host};
 use futures::channel::oneshot;
@@ -173,7 +173,7 @@ fn preview_media(ctx: JSContext, options: JSValue) -> JSResult<JSObject> {
         let _ = remove_callback(completed_cb_id);
         let _ = remove_callback(presented_cb_id);
         let _ = remove_callback(change_cb_id);
-        return Err(js_error_from_platform_error(&err));
+        return Err(js_error(err));
     }
 
     let handle = JSObject::new(&ctx);

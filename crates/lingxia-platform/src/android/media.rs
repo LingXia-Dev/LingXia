@@ -1,6 +1,5 @@
 use super::app::Platform;
 use super::with_env;
-use crate::error::PlatformError;
 use crate::traits::media_interaction::{
     MediaInteraction, MediaKind, MediaObjectFit, PickMediaRequest, PreviewMediaRequest,
     SaveMediaRequest, ScanCodeRequest, ScanType,
@@ -13,27 +12,22 @@ use jni::objects::{JClass, JObject, JString, JValue};
 use jni::strings::JNIString;
 use jni::sys::{jboolean, jint, jlong};
 use jni::{jni_sig, jni_str};
+use lingxia_error::Error;
 use serde::Deserialize;
 use std::path::{Path, PathBuf};
 
 impl MediaInteraction for Platform {
-    fn preview_media(&self, request: PreviewMediaRequest) -> Result<(), PlatformError> {
+    fn preview_media(&self, request: PreviewMediaRequest) -> Result<(), Error> {
         match preview_media_impl(request) {
             Ok(()) => Ok(()),
-            Err(e) => Err(PlatformError::Platform(format!(
-                "Failed to preview media: {}",
-                e
-            ))),
+            Err(e) => Err(Error::internal(format!("Failed to preview media: {}", e))),
         }
     }
 
-    fn cancel_preview(&self, callback_id: u64) -> Result<(), PlatformError> {
+    fn cancel_preview(&self, callback_id: u64) -> Result<(), Error> {
         let media_class_ref =
             super::get_cached_class(super::CachedClass::LxAppMedia).map_err(|e| {
-                PlatformError::Platform(format!(
-                    "Failed to get cached Java class LxAppMedia: {}",
-                    e
-                ))
+                Error::internal(format!("Failed to get cached Java class LxAppMedia: {}", e))
             })?;
 
         with_env(|env| {
@@ -47,29 +41,26 @@ impl MediaInteraction for Platform {
 
             Ok::<(), jni::errors::Error>(())
         })
-        .map_err(|err| PlatformError::Platform(format!("Failed to cancel previewMedia: {}", err)))
+        .map_err(|err| Error::internal(format!("Failed to cancel previewMedia: {}", err)))
     }
 
-    async fn pick_media(&self, request: PickMediaRequest) -> Result<String, PlatformError> {
+    async fn pick_media(&self, request: PickMediaRequest) -> Result<String, Error> {
         crate::rt::native_call(|callback_id| {
             pick_media_impl(request, callback_id)
-                .map_err(|e| PlatformError::Platform(format!("Failed to choose media: {}", e)))
+                .map_err(|e| Error::internal(format!("Failed to choose media: {}", e)))
         })
         .await
     }
 
-    async fn scan_code(&self, request: ScanCodeRequest) -> Result<String, PlatformError> {
+    async fn scan_code(&self, request: ScanCodeRequest) -> Result<String, Error> {
         crate::rt::native_call(|callback_id| {
             scan_code_impl(request, callback_id)
-                .map_err(|e| PlatformError::Platform(format!("Failed to start scanCode: {}", e)))
+                .map_err(|e| Error::internal(format!("Failed to start scanCode: {}", e)))
         })
         .await
     }
 
-    async fn save_image_to_photos_album(
-        &self,
-        request: SaveMediaRequest,
-    ) -> Result<(), PlatformError> {
+    async fn save_image_to_photos_album(&self, request: SaveMediaRequest) -> Result<(), Error> {
         crate::rt::native_call(|callback_id| {
             save_media_impl(request, "saveImageToPhotosAlbum", callback_id)
         })
@@ -77,10 +68,7 @@ impl MediaInteraction for Platform {
         .map(|_| ())
     }
 
-    async fn save_video_to_photos_album(
-        &self,
-        request: SaveMediaRequest,
-    ) -> Result<(), PlatformError> {
+    async fn save_video_to_photos_album(&self, request: SaveMediaRequest) -> Result<(), Error> {
         crate::rt::native_call(|callback_id| {
             save_media_impl(request, "saveVideoToPhotosAlbum", callback_id)
         })
@@ -237,13 +225,9 @@ fn scan_code_impl(
     Ok(())
 }
 
-fn save_media_impl(
-    request: SaveMediaRequest,
-    method: &str,
-    callback_id: u64,
-) -> Result<(), PlatformError> {
+fn save_media_impl(request: SaveMediaRequest, method: &str, callback_id: u64) -> Result<(), Error> {
     let media_class_ref = super::get_cached_class(super::CachedClass::LxAppMedia).map_err(|e| {
-        PlatformError::Platform(format!("Failed to get cached Java class LxAppMedia: {}", e))
+        Error::internal(format!("Failed to get cached Java class LxAppMedia: {}", e))
     })?;
 
     let method_str = method.to_string();
@@ -267,7 +251,7 @@ fn save_media_impl(
 
         Ok::<(), jni::errors::Error>(())
     })
-    .map_err(|err| PlatformError::Platform(format!("Failed to start {}: {}", method, err)))?;
+    .map_err(|err| Error::internal(format!("Failed to start {}: {}", method, err)))?;
 
     Ok(())
 }
@@ -341,43 +325,42 @@ impl MediaRuntime for Platform {
         uri: &str,
         dest_path: &Path,
         _kind: MediaKind,
-    ) -> Result<(), PlatformError> {
-        copy_album_media_to_file_impl(uri, dest_path).map_err(|e| {
-            PlatformError::Platform(format!("Android copy_album_media_to_file failed: {}", e))
-        })
+    ) -> Result<(), Error> {
+        copy_album_media_to_file_impl(uri, dest_path)
+            .map_err(|e| Error::internal(format!("Android copy_album_media_to_file failed: {}", e)))
     }
 
-    fn get_image_info(&self, uri: &str) -> Result<ImageInfo, PlatformError> {
+    fn get_image_info(&self, uri: &str) -> Result<ImageInfo, Error> {
         get_image_info_impl(uri)
-            .map_err(|e| PlatformError::Platform(format!("get_image_info failed: {}", e)))
+            .map_err(|e| Error::internal(format!("get_image_info failed: {}", e)))
     }
 
-    fn compress_image(&self, request: &CompressImageRequest) -> Result<PathBuf, PlatformError> {
+    fn compress_image(&self, request: &CompressImageRequest) -> Result<PathBuf, Error> {
         compress_image_impl(request)
-            .map_err(|e| PlatformError::Platform(format!("compress_image failed: {}", e)))
+            .map_err(|e| Error::internal(format!("compress_image failed: {}", e)))
     }
 
-    fn get_video_info(&self, uri: &str) -> Result<VideoInfo, PlatformError> {
+    fn get_video_info(&self, uri: &str) -> Result<VideoInfo, Error> {
         get_video_info_impl(uri)
-            .map_err(|e| PlatformError::Platform(format!("get_video_info failed: {}", e)))
+            .map_err(|e| Error::internal(format!("get_video_info failed: {}", e)))
     }
 
     fn extract_video_thumbnail(
         &self,
         request: &ExtractVideoThumbnailRequest,
-    ) -> Result<VideoThumbnail, PlatformError> {
+    ) -> Result<VideoThumbnail, Error> {
         extract_video_thumbnail_impl(request)
-            .map_err(|e| PlatformError::Platform(format!("extract_video_thumbnail failed: {}", e)))
+            .map_err(|e| Error::internal(format!("extract_video_thumbnail failed: {}", e)))
     }
 
-    fn compress_video(&self, request: &CompressVideoRequest) -> Result<(), PlatformError> {
+    fn compress_video(&self, request: &CompressVideoRequest) -> Result<(), Error> {
         compress_video_impl(request)
-            .map_err(|e| PlatformError::Platform(format!("compress_video failed: {}", e)))
+            .map_err(|e| Error::internal(format!("compress_video failed: {}", e)))
     }
 
-    fn cancel_compress_video(&self, callback_id: u64) -> Result<(), PlatformError> {
+    fn cancel_compress_video(&self, callback_id: u64) -> Result<(), Error> {
         cancel_compress_video_impl(callback_id)
-            .map_err(|e| PlatformError::Platform(format!("cancel_compress_video failed: {}", e)))
+            .map_err(|e| Error::internal(format!("cancel_compress_video failed: {}", e)))
     }
 }
 

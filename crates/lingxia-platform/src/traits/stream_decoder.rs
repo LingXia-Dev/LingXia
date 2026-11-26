@@ -1,5 +1,4 @@
-use crate::error::PlatformError;
-
+use lingxia_error::Error;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum VideoCodec {
     H264,
@@ -63,16 +62,16 @@ pub trait VideoStreamDecoderHandle: Send + Sync {
         false
     }
 
-    fn reset_stream(&self, _hard: bool) -> Result<(), PlatformError> {
+    fn reset_stream(&self, _hard: bool) -> Result<(), Error> {
         Ok(())
     }
 
-    fn configure_video(&self, config: VideoStreamConfig) -> Result<(), PlatformError>;
-    fn configure_audio(&self, config: AudioStreamConfig) -> Result<(), PlatformError>;
-    fn push_video(&self, frame: VideoFrame) -> Result<(), PlatformError>;
-    fn push_audio(&self, frame: AudioFrame) -> Result<(), PlatformError>;
-    fn stop(&self) -> Result<(), PlatformError>;
-    fn flush(&self) -> Result<(), PlatformError> {
+    fn configure_video(&self, config: VideoStreamConfig) -> Result<(), Error>;
+    fn configure_audio(&self, config: AudioStreamConfig) -> Result<(), Error>;
+    fn push_video(&self, frame: VideoFrame) -> Result<(), Error>;
+    fn push_audio(&self, frame: AudioFrame) -> Result<(), Error>;
+    fn stop(&self) -> Result<(), Error>;
+    fn flush(&self) -> Result<(), Error> {
         Ok(())
     }
 }
@@ -81,5 +80,5 @@ pub trait VideoStreamDecoderManager: Send + Sync + 'static {
     fn create_stream_decoder(
         &self,
         component_id: &str,
-    ) -> Result<Box<dyn VideoStreamDecoderHandle>, PlatformError>;
+    ) -> Result<Box<dyn VideoStreamDecoderHandle>, Error>;
 }

@@ -1,6 +1,6 @@
 //! System information and OS-level operations.
 
-use crate::i18n::host_error_from_platform_error;
+use crate::i18n::host_error;
 use lingxia_platform::traits::location::Location;
 use lingxia_platform::traits::wifi::Wifi;
 use lxapp::LxApp;
@@ -23,11 +23,11 @@ fn get_system_setting(ctx: JSContext) -> JSResult<SystemSettingInfo> {
     let location_enabled = lxapp
         .runtime
         .is_location_enabled()
-        .map_err(|e| host_error_from_platform_error(&e))?;
+        .map_err(|e| host_error(&e))?;
     let wifi_enabled = lxapp
         .runtime
         .is_wifi_enabled()
-        .map_err(|e| host_error_from_platform_error(&e))?;
+        .map_err(|e| host_error(&e))?;
 
     Ok(SystemSettingInfo {
         location_enabled,

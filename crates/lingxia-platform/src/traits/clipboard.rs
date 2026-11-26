@@ -1,5 +1,4 @@
-use crate::error::PlatformError;
-
+use lingxia_error::Error;
 /// Representations the product clipboard can round-trip.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ClipboardKind {
@@ -93,7 +92,7 @@ pub struct NativeClipboardReply {
     pub detail: Option<String>,
 }
 
-pub fn parse_native_reply(payload: &str) -> Result<NativeClipboardReply, PlatformError> {
+pub fn parse_native_reply(payload: &str) -> Result<NativeClipboardReply, Error> {
     let trimmed = payload.trim();
     if trimmed.is_empty() {
         return Ok(NativeClipboardReply {
@@ -102,16 +101,16 @@ pub fn parse_native_reply(payload: &str) -> Result<NativeClipboardReply, Platfor
         });
     }
     serde_json::from_str(trimmed)
-        .map_err(|e| PlatformError::Platform(format!("clipboard returned invalid payload: {e}")))
+        .map_err(|e| Error::internal(format!("clipboard returned invalid payload: {e}")))
 }
 
 impl NativeClipboardReply {
-    pub fn into_unit(self) -> Result<(), PlatformError> {
+    pub fn into_unit(self) -> Result<(), Error> {
         self.ensure_ok()?;
         Ok(())
     }
 
-    pub fn into_contents(self) -> Result<ClipboardContents, PlatformError> {
+    pub fn into_contents(self) -> Result<ClipboardContents, Error> {
         self.ensure_ok()?;
         if self.canceled {
             return Ok(ClipboardContents::canceled());
@@ -124,7 +123,7 @@ impl NativeClipboardReply {
         })
     }
 
-    pub fn into_types(self) -> Result<ClipboardTypes, PlatformError> {
+    pub fn into_types(self) -> Result<ClipboardTypes, Error> {
         self.ensure_ok()?;
         if self.canceled {
             return Ok(ClipboardTypes {
@@ -146,12 +145,12 @@ impl NativeClipboardReply {
         })
     }
 
-    fn ensure_ok(&self) -> Result<(), PlatformError> {
+    fn ensure_ok(&self) -> Result<(), Error> {
         if let Some(code) = self.error {
-            return Err(PlatformError::BusinessError(code));
+            return Err(Error::business(code, "clipboard call failed"));
         }
         if self.ok == Some(false) {
-            return Err(PlatformError::Platform(
+            return Err(Error::internal(
                 self.detail
                     .clone()
                     .unwrap_or_else(|| "clipboard operation failed".to_string()),
@@ -165,20 +164,18 @@ pub trait ClipboardService: Send + Sync + 'static {
     fn clipboard_write(
         &self,
         item: ClipboardWrite,
-    ) -> impl std::future::Future<Output = Result<(), PlatformError>> + Send;
+    ) -> impl std::future::Future<Output = Result<(), Error>> + Send;
 
     fn clipboard_read(
         &self,
         request: ClipboardReadRequest,
-    ) -> impl std::future::Future<Output = Result<ClipboardContents, PlatformError>> + Send;
+    ) -> impl std::future::Future<Output = Result<ClipboardContents, Error>> + Send;
 
-    fn clipboard_clear(
-        &self,
-    ) -> impl std::future::Future<Output = Result<(), PlatformError>> + Send;
+    fn clipboard_clear(&self) -> impl std::future::Future<Output = Result<(), Error>> + Send;
 
     fn clipboard_types(
         &self,
-    ) -> impl std::future::Future<Output = Result<ClipboardTypes, PlatformError>> + Send;
+    ) -> impl std::future::Future<Output = Result<ClipboardTypes, Error>> + Send;
 }
 
 #[cfg(test)]
@@ -195,10 +192,12 @@ mod tests {
     #[test]
     fn permission_error_is_business_code() {
         let reply = parse_native_reply(r#"{"ok":false,"error":3008,"detail":"denied"}"#).unwrap();
-        match reply.into_unit() {
-            Err(crate::error::PlatformError::BusinessError(3008)) => {}
-            other => panic!("expected business 3008, got {other:?}"),
-        }
+        let error = reply.into_unit().unwrap_err();
+        assert_eq!(
+            error.reason(),
+            Some("clipboardPermissionDenied"),
+            "{error:?}"
+        );
     }
 
     #[test]

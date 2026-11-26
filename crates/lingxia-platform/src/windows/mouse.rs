@@ -10,11 +10,11 @@ use async_trait::async_trait;
 
 use super::Platform;
 use super::screenshot::resolve_screenshot_window;
-use crate::error::PlatformError;
 use crate::traits::mouse::{
     AppMouse, AppMouseAction, AppMouseButton, AppMouseRequest, AppMouseResult,
 };
 
+use lingxia_error::Error;
 use windows::Win32::Foundation::{HWND, LPARAM, POINT, WPARAM};
 use windows::Win32::UI::WindowsAndMessaging::{
     self, CWP_SKIPDISABLED, CWP_SKIPINVISIBLE, CWP_SKIPTRANSPARENT, ChildWindowFromPointEx,
@@ -23,10 +23,7 @@ use windows::Win32::UI::WindowsAndMessaging::{
 
 #[async_trait]
 impl AppMouse for Platform {
-    async fn perform_app_mouse(
-        &self,
-        request: AppMouseRequest,
-    ) -> Result<AppMouseResult, PlatformError> {
+    async fn perform_app_mouse(&self, request: AppMouseRequest) -> Result<AppMouseResult, Error> {
         let hwnd = resolve_screenshot_window(request.window_id.as_deref())?;
         // HWND is not Send; carry the raw handle across awaits instead.
         let window = hwnd.0 as isize;
@@ -40,7 +37,7 @@ impl AppMouse for Platform {
     }
 }
 
-async fn dispatch_action(window: isize, action: &AppMouseAction) -> Result<(), PlatformError> {
+async fn dispatch_action(window: isize, action: &AppMouseAction) -> Result<(), Error> {
     match *action {
         AppMouseAction::Move { x, y } => {
             post_mouse_message(window, (x, y), WindowsAndMessaging::WM_MOUSEMOVE, 0)
@@ -128,13 +125,13 @@ fn post_mouse_message(
     point: (f64, f64),
     message: u32,
     extra_mk: usize,
-) -> Result<(), PlatformError> {
+) -> Result<(), Error> {
     let marked_keys = extra_mk | lingxia_webview::platform::windows::SYNTHETIC_MOUSE_WPARAM_MARKER;
     let (target, client) = deepest_child_at(window, point);
     let lparam = LPARAM(((client.y as isize) << 16) | (client.x as isize & 0xFFFF));
     unsafe {
         WindowsAndMessaging::PostMessageW(Some(target), message, WPARAM(marked_keys), lparam)
-            .map_err(|err| PlatformError::Platform(format!("PostMessageW failed: {err}")))
+            .map_err(|err| Error::internal(format!("PostMessageW failed: {err}")))
     }
 }
 
@@ -145,7 +142,7 @@ fn post_wheel_message(
     point: (f64, f64),
     message: u32,
     amount: f64,
-) -> Result<(), PlatformError> {
+) -> Result<(), Error> {
     use windows::Win32::Graphics::Gdi::ClientToScreen;
 
     let (target, client) = deepest_child_at(window, point);
@@ -158,7 +155,7 @@ fn post_wheel_message(
     let lparam = LPARAM(((screen.y as isize) << 16) | (screen.x as isize & 0xFFFF));
     unsafe {
         WindowsAndMessaging::PostMessageW(Some(target), message, wparam, lparam)
-            .map_err(|err| PlatformError::Platform(format!("PostMessageW failed: {err}")))
+            .map_err(|err| Error::internal(format!("PostMessageW failed: {err}")))
     }
 }
 

@@ -1,10 +1,10 @@
-pub use lingxia_platform::PlatformError;
+use lingxia_error::Error;
 pub use lingxia_platform::traits::file::{
     FileDialogFilter, FileDialogResult, FileService, OpenFileRequest, PickDirectoryRequest,
     PickFileRequest, PickedPath, RevealInFileManagerRequest,
 };
 
-pub type Result<T> = std::result::Result<T, PlatformError>;
+pub type Result<T> = std::result::Result<T, Error>;
 
 pub async fn review_file(
     runtime: &(impl FileService + ?Sized),

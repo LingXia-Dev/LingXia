@@ -21,9 +21,9 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use super::Platform;
 use super::app::request_windows_app_exit;
-use crate::error::PlatformError;
 use crate::traits::app_runtime::AppRuntime;
 use crate::traits::update::UpdateService;
+use lingxia_error::Error;
 
 /// `CREATE_NO_WINDOW` — run a child as a hidden background console process
 /// (no console window). Used both for tar and for the detached update helper.
@@ -47,16 +47,16 @@ impl UpdateService for Platform {
         windows_installed_from_store()
     }
 
-    fn open_update_store(&self, info_json: &str) -> Result<bool, PlatformError> {
+    fn open_update_store(&self, info_json: &str) -> Result<bool, Error> {
         Ok(open_windows_store_listing(info_json))
     }
 
-    fn present_store_update(&self, info_json: &str) -> Result<bool, PlatformError> {
+    fn present_store_update(&self, info_json: &str) -> Result<bool, Error> {
         present_windows_store_update(self, info_json);
         Ok(true)
     }
 
-    fn install_update(&self, package_path: &Path, info_json: &str) -> Result<(), PlatformError> {
+    fn install_update(&self, package_path: &Path, info_json: &str) -> Result<(), Error> {
         install_update_on_windows(self, package_path, info_json)
     }
 }
@@ -132,26 +132,25 @@ fn install_update_on_windows(
     platform: &Platform,
     package_path: &Path,
     info_json: &str,
-) -> Result<(), PlatformError> {
+) -> Result<(), Error> {
     if windows::ApplicationModel::Package::Current().is_ok() {
-        return Err(PlatformError::NotSupported(
-            "MSIX updates must use Microsoft Store or App Installer".into(),
+        return Err(Error::not_supported(
+            "MSIX updates must use Microsoft Store or App Installer",
         ));
     }
     if !package_path.exists() {
-        return Err(PlatformError::InvalidParameter(format!(
+        return Err(Error::invalid_arg(format!(
             "Update package does not exist: {}",
             package_path.display()
         )));
     }
 
-    let current_exe = std::env::current_exe().map_err(|e| {
-        PlatformError::Platform(format!("Failed to resolve current executable path: {e}"))
-    })?;
+    let current_exe = std::env::current_exe()
+        .map_err(|e| Error::internal(format!("Failed to resolve current executable path: {e}")))?;
     let install_dir = current_exe
         .parent()
         .ok_or_else(|| {
-            PlatformError::Platform(format!(
+            Error::internal(format!(
                 "Current executable has no parent directory: {}",
                 current_exe.display()
             ))
@@ -164,15 +163,13 @@ fn install_update_on_windows(
             write_packaged_update_helper(platform, &kind, &current_exe, &prepared, info_json)?
         }
         Ok(_) => {
-            return Err(PlatformError::InvalidParameter(
-                "Unknown Windows distribution kind".into(),
-            ));
+            return Err(Error::invalid_arg("Unknown Windows distribution kind"));
         }
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
             write_windows_update_helper(platform, &install_dir, &current_exe, &prepared)?
         }
         Err(e) => {
-            return Err(PlatformError::Platform(format!(
+            return Err(Error::internal(format!(
                 "Failed to read distribution marker: {e}"
             )));
         }
@@ -286,7 +283,7 @@ fn prepare_windows_update_source(
     platform: &Platform,
     package_path: &Path,
     current_exe: &Path,
-) -> Result<PreparedWindowsUpdate, PlatformError> {
+) -> Result<PreparedWindowsUpdate, Error> {
     let exe_name = current_exe.file_name();
 
     if package_path.is_dir() {
@@ -303,7 +300,7 @@ fn prepare_windows_update_source(
         .map(|ext| ext.to_ascii_lowercase());
     let is_zip = matches!(ext.as_deref(), Some("zip")) || file_has_zip_magic(package_path);
     if !is_zip {
-        return Err(PlatformError::InvalidParameter(format!(
+        return Err(Error::invalid_arg(format!(
             "Unsupported Windows update package {}. Expected a .zip of the install directory.",
             package_path.display()
         )));
@@ -313,7 +310,7 @@ fn prepare_windows_update_source(
     let staging_root = update_root(platform).join("staged").join(&stamp);
     let extract_root = staging_root.join("expanded");
     fs::create_dir_all(&extract_root).map_err(|e| {
-        PlatformError::Platform(format!(
+        Error::internal(format!(
             "Failed to create update staging directory {}: {e}",
             extract_root.display()
         ))
@@ -329,13 +326,13 @@ fn prepare_windows_update_source(
         .creation_flags(NO_WINDOW)
         .status()
         .map_err(|e| {
-            PlatformError::Platform(format!(
+            Error::internal(format!(
                 "Failed to extract update archive {}: {e}",
                 package_path.display()
             ))
         })?;
     if !status.success() {
-        return Err(PlatformError::Platform(format!(
+        return Err(Error::internal(format!(
             "Failed to extract update archive {}: exit {status}",
             package_path.display()
         )));
@@ -354,14 +351,14 @@ fn prepare_windows_update_source(
 fn find_install_root(
     root: &Path,
     preferred_exe: Option<&std::ffi::OsStr>,
-) -> Result<PathBuf, PlatformError> {
+) -> Result<PathBuf, Error> {
     let mut exe_dirs: Vec<PathBuf> = Vec::new();
     let mut preferred: Option<PathBuf> = None;
     let mut stack = vec![root.to_path_buf()];
 
     while let Some(dir) = stack.pop() {
         let entries = fs::read_dir(&dir).map_err(|e| {
-            PlatformError::Platform(format!(
+            Error::internal(format!(
                 "Failed to inspect extracted update {}: {e}",
                 dir.display()
             ))
@@ -369,7 +366,7 @@ fn find_install_root(
         for entry in entries {
             let path = entry
                 .map_err(|e| {
-                    PlatformError::Platform(format!(
+                    Error::internal(format!(
                         "Failed to read extracted update entry in {}: {e}",
                         dir.display()
                     ))
@@ -397,8 +394,8 @@ fn find_install_root(
 
     if let Some(dir) = preferred {
         if !dir.join("assets/app.json").is_file() {
-            return Err(PlatformError::InvalidParameter(
-                "Update payload is missing assets/app.json".into(),
+            return Err(Error::invalid_arg(
+                "Update payload is missing assets/app.json",
             ));
         }
         return Ok(dir);
@@ -407,11 +404,11 @@ fn find_install_root(
     exe_dirs.dedup();
     match exe_dirs.len() {
         1 => Ok(exe_dirs.remove(0)),
-        0 => Err(PlatformError::InvalidParameter(format!(
+        0 => Err(Error::invalid_arg(format!(
             "Update archive does not contain an .exe: {}",
             root.display()
         ))),
-        _ => Err(PlatformError::InvalidParameter(format!(
+        _ => Err(Error::invalid_arg(format!(
             "Update archive contains multiple .exe directories and none matches the current app: {}",
             root.display()
         ))),
@@ -423,10 +420,10 @@ fn write_windows_update_helper(
     install_dir: &Path,
     current_exe: &Path,
     prepared: &PreparedWindowsUpdate,
-) -> Result<WindowsUpdateHelper, PlatformError> {
+) -> Result<WindowsUpdateHelper, Error> {
     let helper_dir = update_root(platform).join("helper");
     fs::create_dir_all(&helper_dir).map_err(|e| {
-        PlatformError::Platform(format!(
+        Error::internal(format!(
             "Failed to create update helper directory {}: {e}",
             helper_dir.display()
         ))
@@ -446,7 +443,7 @@ fn write_windows_update_helper(
     );
 
     fs::write(&script_path, script).map_err(|e| {
-        PlatformError::Platform(format!(
+        Error::internal(format!(
             "Failed to write update helper script {}: {e}",
             script_path.display()
         ))
@@ -562,7 +559,7 @@ L "done"
 Remove-Item -Force $self -ErrorAction SilentlyContinue
 "#;
 
-fn spawn_windows_update_helper(helper: &WindowsUpdateHelper) -> Result<(), PlatformError> {
+fn spawn_windows_update_helper(helper: &WindowsUpdateHelper) -> Result<(), Error> {
     // `CREATE_BREAKAWAY_FROM_JOB`: if a launcher placed the app in a
     // kill-on-close job object, the helper must escape it to outlive this
     // process. Not all jobs permit breakaway, so fall back without it.
@@ -589,7 +586,7 @@ fn spawn_windows_update_helper(helper: &WindowsUpdateHelper) -> Result<(), Platf
     spawn_with(NO_WINDOW | BREAKAWAY)
         .or_else(|_| spawn_with(NO_WINDOW))
         .map_err(|e| {
-            PlatformError::Platform(format!(
+            Error::internal(format!(
                 "Failed to launch update helper {}: {e}",
                 helper.script_path.display()
             ))
@@ -619,9 +616,9 @@ fn write_packaged_update_helper(
     current_exe: &Path,
     prepared: &PreparedWindowsUpdate,
     info_json: &str,
-) -> Result<WindowsUpdateHelper, PlatformError> {
+) -> Result<WindowsUpdateHelper, Error> {
     use self::installer::Installer;
-    let fail = |message: String| PlatformError::InvalidParameter(message);
+    let fail = |message: String| Error::invalid_arg(message);
     let update_dir = prepared.source_dir.join(".lingxia-update");
     let metadata = fs::read(update_dir.join("manifest.json"))
         .map_err(|e| fail(format!("Update has no distribution manifest: {e}. Publish a package built with --format {kind}.")))?;

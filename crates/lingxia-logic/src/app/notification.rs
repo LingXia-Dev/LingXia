@@ -1,8 +1,6 @@
 use crate::authorization::{self, AttentionScope, LogicRoute};
-use crate::i18n::{
-    js_error_from_business_code_with_detail, js_error_from_platform_error,
-    js_invalid_parameter_error,
-};
+use crate::i18n::{js_error, js_error_from_business_code_with_detail, js_invalid_parameter_error};
+use lingxia_error::Error;
 use lingxia_platform::traits::app_runtime::{AppRuntime, LocalNotificationShow};
 use lingxia_service::navigation::{self, NavigationError, intent};
 use lxapp::LxApp;
@@ -291,7 +289,7 @@ async fn cancel_all(ctx: JSContext) -> JSResult<()> {
 async fn spawn_blocking<T, F>(work: F) -> JSResult<T>
 where
     T: Send + 'static,
-    F: FnOnce() -> Result<T, lingxia_platform::error::PlatformError> + Send + 'static,
+    F: FnOnce() -> Result<T, Error> + Send + 'static,
 {
     tokio::task::spawn_blocking(work)
         .await
@@ -301,7 +299,7 @@ where
                 format!("notification task failed: {error}"),
             )
         })?
-        .map_err(|error| js_error_from_platform_error(&error))
+        .map_err(js_error)
 }
 
 /// What `show` asked for. The target is resolved against the caller's scope

@@ -21,13 +21,13 @@ use lingxia_windows_contract::{
 };
 
 use super::request_windows_app_exit;
-use crate::error::PlatformError;
 use crate::traits::app_runtime::{AnimationType, LxAppOpenMode};
 use crate::traits::ui::{
     ManagedSurfaceFuture, ManagedSurfaceProvider, ManagedSurfaceProviderDestroyRequest,
     ManagedSurfaceProviderRequest, SurfaceContent, SurfaceKind, SurfaceRequest, SurfaceRole,
     WindowChrome,
 };
+use lingxia_error::Error;
 
 /// Waits until the page named by a webtag has its WebView ready, then calls
 /// the callback once with whether it is (false: failed or gone). May call it
@@ -568,13 +568,13 @@ pub(super) fn close_managed_surface(
     id: &str,
     provider: &ManagedSurfaceProvider,
     role: Option<SurfaceRole>,
-) -> Result<(), PlatformError> {
+) -> Result<(), Error> {
     let handler = MANAGED_SURFACE_CLOSE_HANDLER
         .lock()
         .ok()
         .and_then(|slot| slot.clone())
         .ok_or_else(|| {
-            PlatformError::NotSupported(
+            Error::not_supported(
                 "managed surface close is not supported on this Windows host".to_string(),
             )
         })?;
@@ -585,9 +585,7 @@ pub(super) fn close_managed_surface(
     if handler(id, capability, role.map_or("", SurfaceRole::as_str)) {
         Ok(())
     } else {
-        Err(PlatformError::AssetNotFound(format!(
-            "unknown managed surface: {id}"
-        )))
+        Err(Error::not_found(format!("unknown managed surface: {id}")))
     }
 }
 
@@ -619,13 +617,13 @@ pub(super) fn open_managed_native_surface(
     role: SurfaceRole,
     edge: Option<&str>,
     completion: crate::traits::ui::ManagedSurfaceCompletion,
-) -> Result<(), PlatformError> {
+) -> Result<(), Error> {
     let handler = MANAGED_NATIVE_SURFACE_OPEN_HANDLER
         .lock()
         .ok()
         .and_then(|slot| slot.clone())
         .ok_or_else(|| {
-            PlatformError::NotSupported(
+            Error::not_supported(
                 "managed native surfaces are not supported on this Windows host".to_string(),
             )
         })?;
@@ -639,7 +637,7 @@ pub(super) fn open_managed_native_surface(
     ) {
         Ok(())
     } else {
-        Err(PlatformError::AssetNotFound(format!(
+        Err(Error::not_found(format!(
             "unsupported managed native surface: {capability}"
         )))
     }
@@ -651,13 +649,13 @@ pub(super) fn set_managed_surface_visible(
     role: Option<SurfaceRole>,
     edge: Option<&str>,
     completion: crate::traits::ui::ManagedSurfaceCompletion,
-) -> Result<(), PlatformError> {
+) -> Result<(), Error> {
     let handler = MANAGED_SURFACE_VISIBLE_HANDLER
         .lock()
         .ok()
         .and_then(|slot| slot.clone())
         .ok_or_else(|| {
-            PlatformError::NotSupported(
+            Error::not_supported(
                 "managed surfaces are not supported on this Windows host".to_string(),
             )
         })?;
@@ -670,9 +668,7 @@ pub(super) fn set_managed_surface_visible(
     ) {
         Ok(())
     } else {
-        Err(PlatformError::AssetNotFound(format!(
-            "unknown managed surface: {id}"
-        )))
+        Err(Error::not_found(format!("unknown managed surface: {id}")))
     }
 }
 
@@ -705,7 +701,7 @@ pub(super) fn ensure_managed_surface_provider(
             )?,
         }
         receiver.await.map_err(|_| {
-            PlatformError::Platform("managed surface provider completion dropped".to_string())
+            Error::internal("managed surface provider completion dropped".to_string())
         })?
     })
 }
@@ -1416,10 +1412,7 @@ fn with_active_aside_webview(
     }
 }
 
-pub(super) fn present_surface(
-    request: SurfaceRequest,
-    product_name: &str,
-) -> Result<(), PlatformError> {
+pub(super) fn present_surface(request: SurfaceRequest, product_name: &str) -> Result<(), Error> {
     let mut cleanup = None;
     let mut browser_tab_id = None;
     let (webtag, title, is_web) = match &request.content {
@@ -1516,7 +1509,7 @@ pub(super) fn present_layout(
     _window_id: &str,
     plan: &LayoutPresentationPlan,
     _product_name: &str,
-) -> Result<(), PlatformError> {
+) -> Result<(), Error> {
     if let Ok(mut last) = LAST_LAYOUT_PLAN.lock() {
         // A commit from another thread that lost the race to a newer one
         // must not put the newer state back.
@@ -1673,7 +1666,7 @@ pub(super) fn present_layout(
     Ok(())
 }
 
-pub(super) fn close_surface(_app_id: &str, id: &str, reason: &str) -> Result<(), PlatformError> {
+pub(super) fn close_surface(_app_id: &str, id: &str, reason: &str) -> Result<(), Error> {
     PENDING_PRESENTS
         .lock()
         .unwrap_or_else(|poisoned| poisoned.into_inner())
@@ -1688,11 +1681,9 @@ pub(super) fn close_surface(_app_id: &str, id: &str, reason: &str) -> Result<(),
     Ok(())
 }
 
-pub(super) fn show_surface(_app_id: &str, id: &str) -> Result<(), PlatformError> {
+pub(super) fn show_surface(_app_id: &str, id: &str) -> Result<(), Error> {
     let Some(entry) = surface_entry(id) else {
-        return Err(PlatformError::InvalidParameter(format!(
-            "unknown surface: {id}"
-        )));
+        return Err(Error::invalid_arg(format!("unknown surface: {id}")));
     };
     if find_webview_handler(&entry.webtag).is_none() {
         present_surface_when_ready(entry.webtag, id.to_string(), PresentationTarget::Stored);
@@ -1704,14 +1695,12 @@ pub(super) fn show_surface(_app_id: &str, id: &str) -> Result<(), PlatformError>
     {
         notify_page_visibility_when_ready(page_instance_id.clone(), true);
     }
-    result.map_err(|err| PlatformError::Platform(format!("failed to show surface {id}: {err}")))
+    result.map_err(|err| Error::internal(format!("failed to show surface {id}: {err}")))
 }
 
-pub(super) fn hide_surface(_app_id: &str, id: &str) -> Result<(), PlatformError> {
+pub(super) fn hide_surface(_app_id: &str, id: &str) -> Result<(), Error> {
     let Some(entry) = surface_entry(id) else {
-        return Err(PlatformError::InvalidParameter(format!(
-            "unknown surface: {id}"
-        )));
+        return Err(Error::invalid_arg(format!("unknown surface: {id}")));
     };
     // Both kinds own their host window; hiding it keeps the webview alive so a
     // later show re-presents it.

@@ -1,6 +1,6 @@
 use crate::authorization::{self, LogicRoute};
 use crate::i18n::{
-    js_error_from_business_code_with_detail, js_error_from_platform_error, js_internal_error,
+    js_error, js_error_from_business_code_with_detail, js_internal_error,
     js_service_unavailable_error,
 };
 use lingxia_platform::traits::screenshot::AppScreenshot;
@@ -73,7 +73,7 @@ async fn app_screenshot(
     let bytes = platform
         .take_app_screenshot(window_id.as_deref())
         .await
-        .map_err(|e| js_error_from_platform_error(&e))?;
+        .map_err(js_error)?;
 
     let (width, height) = match png_dimensions(&bytes) {
         Some((w, h)) => (Some(w), Some(h)),

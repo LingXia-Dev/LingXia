@@ -4,6 +4,7 @@
 //! the count has to be drawn. The drawn icon replaces whatever overlay was
 //! there, and a cleared badge removes it.
 
+use lingxia_error::Error;
 use windows::Win32::Foundation::{HWND, LPARAM, SIZE};
 use windows::Win32::Graphics::Gdi::{
     BI_RGB, BITMAPINFO, BITMAPINFOHEADER, CreateCompatibleDC, CreateDIBSection,
@@ -21,15 +22,13 @@ use windows::Win32::UI::WindowsAndMessaging::{
 };
 use windows::core::{BOOL, PCWSTR};
 
-use crate::error::PlatformError;
-
 /// Overlay icons are small; anything wider than three glyphs is unreadable, so
 /// a larger count becomes `99+` the way every other platform's badge does.
 const MAX_GLYPHS: usize = 3;
 const ICON_SIZE: i32 = 32;
 
 /// `Ok(false)` when this process has no taskbar button to overlay yet.
-pub(super) fn set_app_badge(text: &str) -> Result<bool, PlatformError> {
+pub(super) fn set_app_badge(text: &str) -> Result<bool, Error> {
     let label = badge_label(text);
     let windows = top_level_windows();
     for hwnd in &windows {
@@ -56,22 +55,21 @@ fn badge_label(text: &str) -> Option<String> {
     }
 }
 
-fn apply_overlay(hwnd: HWND, label: Option<&str>) -> Result<(), PlatformError> {
+fn apply_overlay(hwnd: HWND, label: Option<&str>) -> Result<(), Error> {
     // Tokio's blocking workers do not inherit the UI thread's COM apartment.
     unsafe { CoInitializeEx(None, COINIT_MULTITHREADED) }
         .ok()
-        .map_err(|error| PlatformError::Platform(format!("badge COM initialization: {error}")))?;
+        .map_err(|error| Error::internal(format!("badge COM initialization: {error}")))?;
     let _com = ComApartment;
-    let taskbar: ITaskbarList3 = unsafe {
-        CoCreateInstance(&TaskbarList, None, CLSCTX_INPROC_SERVER)
-    }
-    .map_err(|error| PlatformError::Platform(format!("taskbar overlay unavailable: {error}")))?;
+    let taskbar: ITaskbarList3 =
+        unsafe { CoCreateInstance(&TaskbarList, None, CLSCTX_INPROC_SERVER) }
+            .map_err(|error| Error::internal(format!("taskbar overlay unavailable: {error}")))?;
     unsafe { taskbar.HrInit() }
-        .map_err(|error| PlatformError::Platform(format!("taskbar init failed: {error}")))?;
+        .map_err(|error| Error::internal(format!("taskbar init failed: {error}")))?;
 
     let Some(label) = label else {
         unsafe { taskbar.SetOverlayIcon(hwnd, HICON::default(), PCWSTR::null()) }
-            .map_err(|error| PlatformError::Platform(format!("clearing the badge: {error}")))?;
+            .map_err(|error| Error::internal(format!("clearing the badge: {error}")))?;
         return Ok(());
     };
 
@@ -80,7 +78,7 @@ fn apply_overlay(hwnd: HWND, label: Option<&str>) -> Result<(), PlatformError> {
     let outcome = unsafe { taskbar.SetOverlayIcon(hwnd, icon, PCWSTR(description.as_ptr())) };
     // The shell copies the icon, so it is ours to release either way.
     let _ = unsafe { DestroyIcon(icon) };
-    outcome.map_err(|error| PlatformError::Platform(format!("painting the badge: {error}")))
+    outcome.map_err(|error| Error::internal(format!("painting the badge: {error}")))
 }
 
 struct ComApartment;
@@ -92,7 +90,7 @@ impl Drop for ComApartment {
 }
 
 /// A filled circle with the count centred in it, on a 32×32 ARGB surface.
-fn draw_badge_icon(label: &str) -> Result<HICON, PlatformError> {
+fn draw_badge_icon(label: &str) -> Result<HICON, Error> {
     unsafe {
         let screen = GetDC(None);
         let dc = CreateCompatibleDC(Some(screen));
@@ -112,10 +110,10 @@ fn draw_badge_icon(label: &str) -> Result<HICON, PlatformError> {
         };
         let mut bits: *mut std::ffi::c_void = std::ptr::null_mut();
         let bitmap = CreateDIBSection(Some(dc), &header, DIB_RGB_COLORS, &mut bits, None, 0)
-            .map_err(|error| PlatformError::Platform(format!("badge bitmap: {error}")))?;
+            .map_err(|error| Error::internal(format!("badge bitmap: {error}")))?;
         if bits.is_null() {
             cleanup(dc, screen, Some(bitmap.into()));
-            return Err(PlatformError::Platform("badge bitmap has no pixels".into()));
+            return Err(Error::internal("badge bitmap has no pixels"));
         }
 
         let previous = SelectObject(dc, bitmap.into());
@@ -134,7 +132,7 @@ fn draw_badge_icon(label: &str) -> Result<HICON, PlatformError> {
         SelectObject(dc, previous);
         let _ = DeleteObject(mask.into());
         cleanup(dc, screen, Some(bitmap.into()));
-        icon.map_err(|error| PlatformError::Platform(format!("badge icon: {error}")))
+        icon.map_err(|error| Error::internal(format!("badge icon: {error}")))
     }
 }
 

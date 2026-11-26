@@ -15,6 +15,7 @@ playback = ["dep:lingxia-platform", "dep:serde_json", "dep:log"]
 capture = ["dep:lingxia-platform", "lingxia-platform/capture-contract"]
 
 [dependencies]
+lingxia-error = { workspace = true }
 lingxia-platform = { workspace = true, optional = true }
 serde_json = { workspace = true, optional = true }
 log = { workspace = true, optional = true }

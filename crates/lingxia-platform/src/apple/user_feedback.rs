@@ -1,10 +1,10 @@
 use super::app::Platform;
 use super::ffi;
-use crate::error::PlatformError;
 use crate::traits::ui::{ModalOptions, ToastIcon, ToastOptions, ToastPosition, UserFeedback};
+use lingxia_error::Error;
 
 impl UserFeedback for Platform {
-    fn show_toast(&self, options: ToastOptions) -> Result<(), PlatformError> {
+    fn show_toast(&self, options: ToastOptions) -> Result<(), Error> {
         // Convert our ToastOptions to the FFI ToastOptions
         let ffi_options = ffi::ToastOptions {
             title: options.title,
@@ -20,10 +20,10 @@ impl UserFeedback for Platform {
         Ok(())
     }
 
-    fn dismiss_dialog(&self) -> Result<(), PlatformError> {
+    fn dismiss_dialog(&self) -> Result<(), Error> {
         // macOS dialogs are View-drawn; Logic closes them with `ui.dismissDialog`.
         #[cfg(target_os = "macos")]
-        return Err(PlatformError::NotSupported("dismiss_dialog".to_string()));
+        return Err(Error::not_supported("dismiss_dialog".to_string()));
         #[cfg(not(target_os = "macos"))]
         {
             ffi::dismiss_dialog();
@@ -31,13 +31,13 @@ impl UserFeedback for Platform {
         }
     }
 
-    fn hide_toast(&self) -> Result<(), PlatformError> {
+    fn hide_toast(&self) -> Result<(), Error> {
         // Call the Swift FFI function
         ffi::hide_toast();
         Ok(())
     }
 
-    async fn show_modal(&self, options: ModalOptions) -> Result<String, PlatformError> {
+    async fn show_modal(&self, options: ModalOptions) -> Result<String, Error> {
         crate::rt::native_call(|callback_id| {
             // Convert our ModalOptions to the FFI ModalOptions
             let ffi_options = ffi::ModalOptions {
@@ -62,7 +62,7 @@ impl UserFeedback for Platform {
         options: Vec<String>,
         cancel_text: String,
         item_color: String,
-    ) -> Result<String, PlatformError> {
+    ) -> Result<String, Error> {
         crate::rt::native_call(|callback_id| {
             // Convert our options to the FFI ActionSheetOptions
             let ffi_options = ffi::ActionSheetOptions {

@@ -16,9 +16,9 @@
 
 use std::sync::Arc;
 
+use lingxia_error::Error;
 use lingxia_messaging::CallbackResult;
 use lingxia_platform::Platform;
-use lingxia_platform::PlatformError;
 use lingxia_platform::traits::wifi::{Wifi, WifiConnectRequest, WifiGetConnectedRequest, WifiInfo};
 use serde::Deserialize;
 
@@ -72,7 +72,7 @@ impl Drop for CallbackGuard {
 
 async fn native_callback<F>(init: F) -> crate::Result<String>
 where
-    F: FnOnce(u64) -> Result<(), PlatformError>,
+    F: FnOnce(u64) -> Result<(), Error>,
 {
     let (callback_id, rx) = lingxia_messaging::get_callback();
     let mut guard = CallbackGuard::new(callback_id);
@@ -88,10 +88,11 @@ where
             guard.disarm();
             result
                 .into_result()
-                .map_err(PlatformError::BusinessError)
-                .map_err(crate::Error::from)
+                .map_err(|code| Error::business(code, "wifi call failed"))
         }
-        Err(_) => Err(crate::Error::from(PlatformError::CallbackDropped)),
+        Err(_) => Err(crate::Error::from(Error::internal(
+            "platform callback dropped",
+        ))),
     }
 }
 

@@ -325,7 +325,6 @@ fn executor_main(runtime: Weak<RuntimeInner>, receiver: mpsc::Receiver<RunReques
 /// ordered in front of other apps' windows, never activated or made key, and
 /// the run says why.
 async fn raise_app_window() {
-    use lingxia_platform::error::PlatformError;
     use lingxia_platform::traits::screenshot::AppScreenshot;
     if !webview_lxapp_open() {
         return;
@@ -338,9 +337,10 @@ async fn raise_app_window() {
             info!("automation run: raised the app window for its WebView pages ({reason})")
         }
         Ok(None) => {}
-        Err(PlatformError::NotSupported(_)) => {
+        Err(err) if err.is(lingxia_error::code::NOT_SUPPORTED) => {
             match platform.bring_app_window_to_front(None, false).await {
-                Ok(_) | Err(PlatformError::NotSupported(_)) => {}
+                Ok(_) => {}
+                Err(err) if err.is(lingxia_error::code::NOT_SUPPORTED) => {}
                 Err(err) => warn!("could not raise the app window for the run: {err}"),
             }
         }

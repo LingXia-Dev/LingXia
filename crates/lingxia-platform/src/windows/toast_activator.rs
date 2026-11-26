@@ -16,6 +16,7 @@ use std::ffi::c_void;
 use std::sync::Mutex;
 use std::sync::atomic::{AtomicU32, Ordering};
 
+use lingxia_error::Error;
 use windows::Win32::Foundation::{CLASS_E_NOAGGREGATION, E_NOINTERFACE, E_POINTER};
 use windows::Win32::System::Com::{
     CLSCTX_LOCAL_SERVER, COINIT_MULTITHREADED, CoInitializeEx, CoRegisterClassObject,
@@ -30,8 +31,6 @@ use windows::Win32::UI::Notifications::{
     NOTIFICATION_USER_INPUT_DATA,
 };
 use windows::core::{BOOL, GUID, IUnknown, Interface, PCWSTR, Ref, Result as WinResult, implement};
-
-use crate::error::PlatformError;
 
 static REGISTRATION: AtomicU32 = AtomicU32::new(0);
 
@@ -89,7 +88,7 @@ pub(super) fn token_from_launch(args: &str) -> Option<&str> {
 /// The registration lives on a thread of its own that enters the MTA and
 /// parks: the class table entry is only as durable as the apartment, and the
 /// callers here are pool threads that come and go.
-pub(super) fn ensure_registered(aumid: &str) -> Result<(), PlatformError> {
+pub(super) fn ensure_registered(aumid: &str) -> Result<(), Error> {
     static ONCE: std::sync::Once = std::sync::Once::new();
     static OUTCOME: Mutex<Option<Result<(), String>>> = Mutex::new(None);
 
@@ -145,8 +144,8 @@ pub(super) fn ensure_registered(aumid: &str) -> Result<(), PlatformError> {
         .clone()
     {
         Some(Ok(())) => Ok(()),
-        Some(Err(message)) => Err(PlatformError::Platform(message)),
-        None => Err(PlatformError::Platform(
+        Some(Err(message)) => Err(Error::internal(message)),
+        None => Err(Error::internal(
             "toast activator registration did not complete".to_string(),
         )),
     }
@@ -167,9 +166,9 @@ fn clsid_key_path(clsid: &GUID) -> String {
     format!("SOFTWARE\\Classes\\CLSID\\{{{clsid:?}}}\\LocalServer32")
 }
 
-fn write_local_server(clsid: &GUID) -> Result<(), PlatformError> {
+fn write_local_server(clsid: &GUID) -> Result<(), Error> {
     let exe = super::app::launch_executable()
-        .map_err(|error| PlatformError::Platform(format!("current exe: {error}")))?;
+        .map_err(|error| Error::internal(format!("current exe: {error}")))?;
     let command = format!("\"{}\"", exe.display());
     let key_path = wide(&clsid_key_path(clsid));
     let value = wide(&command);
@@ -187,16 +186,16 @@ fn write_local_server(clsid: &GUID) -> Result<(), PlatformError> {
             None,
         )
         .ok()
-        .map_err(|error| PlatformError::Platform(format!("toast activator CLSID key: {error}")))?;
+        .map_err(|error| Error::internal(format!("toast activator CLSID key: {error}")))?;
         let bytes = std::slice::from_raw_parts(
             value.as_ptr().cast::<u8>(),
             std::mem::size_of_val(value.as_slice()),
         );
         let result = RegSetValueExW(key, None, None, REG_SZ, Some(bytes));
         let _ = RegCloseKey(key);
-        result.ok().map_err(|error| {
-            PlatformError::Platform(format!("toast activator LocalServer32: {error}"))
-        })
+        result
+            .ok()
+            .map_err(|error| Error::internal(format!("toast activator LocalServer32: {error}")))
     }
 }
 

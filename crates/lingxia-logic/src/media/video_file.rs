@@ -1,6 +1,6 @@
 use crate::i18n::{
-    js_error, js_error_from_business_code_with_detail, js_error_from_platform_error,
-    js_internal_error, js_invalid_parameter_error,
+    js_error, js_error_from_business_code_with_detail, js_internal_error,
+    js_invalid_parameter_error,
 };
 use lingxia_messaging::{CallbackResult, get_callback, get_stream_callback, remove_callback};
 use lingxia_platform::traits::media_runtime::{
@@ -214,7 +214,7 @@ async fn get_video_info_api(ctx: JSContext, path: String) -> JSResult<JSVideoInf
     runtime
         .get_video_info(&normalized_path)
         .map(|info| platform_video_info_to_js(info, response_path))
-        .map_err(|e| js_error_from_platform_error(&e))
+        .map_err(js_error)
 }
 
 /// Write one frame of a video out as an image file.
@@ -255,7 +255,7 @@ async fn extract_video_thumbnail_api(
 
     let thumbnail = runtime
         .extract_video_thumbnail(&request)
-        .map_err(|e| js_error_from_platform_error(&e))?;
+        .map_err(js_error)?;
     ensure_output_quota(&lxapp, &output_path, &thumbnail.path)?;
 
     let path = match explicit_output_uri {
@@ -346,7 +346,7 @@ fn compress_video_api(
     if let Err(err) = runtime.compress_video(&request) {
         remove_callback(progress_callback_id);
         remove_callback(callback_id);
-        return Err(js_error_from_platform_error(&err));
+        return Err(js_error(err));
     }
 
     let cancelled = Arc::new(AtomicBool::new(false));

@@ -1,5 +1,4 @@
 use crate::host::{HostCancel, await_or_cancel};
-use crate::platform_error::map_platform_error;
 use lingxia_app_context::app_config;
 use lingxia_service::file::PickDirectoryRequest;
 use lxapp::LxApp;
@@ -86,7 +85,6 @@ async fn choose_download_directory(
             },
         )
         .await
-        .map_err(|e| map_platform_error("downloads.chooseDirectory", e))
     })
     .await?;
 

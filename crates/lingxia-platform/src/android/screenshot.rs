@@ -1,11 +1,11 @@
 use super::app::Platform;
 use super::with_env;
-use crate::error::PlatformError;
 use crate::traits::screenshot::{AppScreenshot, CapturedSurface, WindowInfo, composite_surfaces};
 use async_trait::async_trait;
 use base64::Engine as _;
 use jni::objects::{JClass, JValue};
 use jni::{jni_sig, jni_str};
+use lingxia_error::Error;
 use serde::Deserialize;
 
 /// Envelope shape emitted by `AppScreenshot.kt`. The Java side always
@@ -26,7 +26,7 @@ struct ScreenshotEnvelope {
 
 #[async_trait]
 impl AppScreenshot for Platform {
-    async fn list_app_windows(&self) -> Result<Vec<WindowInfo>, PlatformError> {
+    async fn list_app_windows(&self) -> Result<Vec<WindowInfo>, Error> {
         // Android apps are activity-per-window; tracking richer info requires
         // ActivityLifecycleCallbacks instrumentation. For now report a single
         // "main" entry so the cross-platform API stays consistent — the
@@ -42,14 +42,14 @@ impl AppScreenshot for Platform {
         }])
     }
 
-    async fn take_app_screenshot(&self, window_id: Option<&str>) -> Result<Vec<u8>, PlatformError> {
+    async fn take_app_screenshot(&self, window_id: Option<&str>) -> Result<Vec<u8>, Error> {
         // Mobile is single-window; selector is informational only.
         let _ = window_id;
         let envelope_json = crate::rt::native_call(|callback_id| {
             let screenshot_class: &JClass =
                 super::get_cached_class(super::CachedClass::AppScreenshot)
-                    .map_err(|e| PlatformError::Platform(e.to_string()))?;
-            with_env(|env| -> Result<(), PlatformError> {
+                    .map_err(|e| Error::internal(e.to_string()))?;
+            with_env(|env| -> Result<(), Error> {
                 env.call_static_method(
                     screenshot_class,
                     jni_str!("captureWindow"),
@@ -58,20 +58,18 @@ impl AppScreenshot for Platform {
                 )?;
                 Ok(())
             })
-            .map_err(|e| {
-                PlatformError::Platform(format!("Failed to dispatch captureWindow: {}", e))
-            })
+            .map_err(|e| Error::internal(format!("Failed to dispatch captureWindow: {}", e)))
         })
         .await?;
 
         let envelope: ScreenshotEnvelope = serde_json::from_str(&envelope_json).map_err(|e| {
-            PlatformError::Platform(format!(
+            Error::internal(format!(
                 "Failed to parse app screenshot envelope: {} (payload: {})",
                 e, envelope_json
             ))
         })?;
         if !envelope.ok {
-            return Err(PlatformError::Platform(
+            return Err(Error::internal(
                 envelope
                     .error
                     .unwrap_or_else(|| "unknown error".to_string()),
@@ -79,11 +77,11 @@ impl AppScreenshot for Platform {
         }
         let data = envelope
             .data
-            .ok_or_else(|| PlatformError::Platform("envelope ok=true but no data".to_string()))?;
+            .ok_or_else(|| Error::internal("envelope ok=true but no data".to_string()))?;
         let capture = base64::engine::general_purpose::STANDARD
             .decode(data.trim())
             .map_err(|e| {
-                PlatformError::Platform(format!("Failed to decode app screenshot base64: {}", e))
+                Error::internal(format!("Failed to decode app screenshot base64: {}", e))
             })?;
         composite_surfaces(capture, &envelope.surfaces)
     }

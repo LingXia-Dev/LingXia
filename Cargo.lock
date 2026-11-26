@@ -4296,6 +4296,7 @@ name = "lingxia-error"
 version = "0.30.0"
 dependencies = [
  "anyhow",
+ "jni",
  "serde",
  "serde_json",
 ]
@@ -4408,6 +4409,7 @@ dependencies = [
 name = "lingxia-media"
 version = "0.30.0"
 dependencies = [
+ "lingxia-error",
  "lingxia-platform",
  "log",
  "serde_json",
@@ -4583,6 +4585,7 @@ version = "0.30.0"
 dependencies = [
  "http",
  "lingxia-app-context",
+ "lingxia-error",
  "lingxia-messaging",
  "lingxia-platform",
  "lingxia-provider",

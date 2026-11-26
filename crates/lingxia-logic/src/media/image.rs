@@ -1,7 +1,4 @@
-use crate::i18n::{
-    js_error, js_error_from_business_code_with_detail, js_error_from_platform_error,
-    js_internal_error,
-};
+use crate::i18n::{js_error, js_error_from_business_code_with_detail, js_internal_error};
 use lingxia_platform::traits::media_runtime::{CompressImageRequest, MediaRuntime};
 use lingxia_service::storage;
 use lxapp::LxApp;
@@ -106,7 +103,7 @@ async fn get_image_info_api(ctx: JSContext, path: String) -> JSResult<ImageInfo>
                 path: response_path,
             }
         })
-        .map_err(|e| js_error_from_platform_error(&e))
+        .map_err(js_error)
 }
 
 /// Re-encode an image as JPEG at a lower quality or size, writing a new temporary file.
@@ -143,9 +140,7 @@ async fn compress_image_api(
         output_path,
     };
 
-    let output = runtime
-        .compress_image(&request)
-        .map_err(|e| js_error_from_platform_error(&e))?;
+    let output = runtime.compress_image(&request).map_err(js_error)?;
     ensure_temp_output_quota(&lxapp, &output)?;
 
     let path = lxapp

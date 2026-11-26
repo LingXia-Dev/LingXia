@@ -1,7 +1,7 @@
 use crate::dismissal::{canceled, completed};
 use crate::i18n::{
-    js_error, js_error_from_business_code_with_detail, js_error_from_platform_error,
-    js_internal_error, js_invalid_parameter_error, js_resource_not_found_error,
+    js_error, js_error_from_business_code_with_detail, js_internal_error,
+    js_invalid_parameter_error, js_resource_not_found_error,
 };
 use base64::{Engine as _, engine::general_purpose};
 use lingxia_service::file::{
@@ -111,7 +111,7 @@ async fn open_file_with_mode(
                     Ok(()) => Ok(()),
                     Err(open_external_error) => {
                         let _ = review_error;
-                        Err(js_error_from_platform_error(&open_external_error))
+                        Err(js_error(open_external_error))
                     }
                 }
             } else {
@@ -120,10 +120,10 @@ async fn open_file_with_mode(
         }
         OpenFileMode::Review => lingxia_service::file::review_file(&*lxapp.runtime, request)
             .await
-            .map_err(|e| js_error_from_platform_error(&e)),
+            .map_err(js_error),
         OpenFileMode::External => lingxia_service::file::open_external(&*lxapp.runtime, request)
             .await
-            .map_err(|e| js_error_from_platform_error(&e)),
+            .map_err(js_error),
     }
 }
 
@@ -479,7 +479,7 @@ async fn run_file_picker(
     let work = async move {
         lingxia_service::file::pick_file(&*app.runtime, request)
             .await
-            .map_err(|e| js_error_from_platform_error(&e))
+            .map_err(js_error)
     };
     let temp_dir = lxapp.temp_dir.clone();
     let owner = crate::ui::owner_end(&lxapp);
@@ -560,7 +560,7 @@ async fn pick_directory(
     let work = async move {
         lingxia_service::file::pick_directory(&*app.runtime, request)
             .await
-            .map_err(|e| js_error_from_platform_error(&e))
+            .map_err(js_error)
     };
     let owner = crate::ui::owner_end(&lxapp);
     let result = crate::pick::abortable(

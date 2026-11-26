@@ -381,6 +381,14 @@ impl<T> From<std::sync::mpsc::SendError<T>> for Error {
     }
 }
 
+/// The JNI failure's text, with the error kept as the source.
+#[cfg(target_os = "android")]
+impl From<jni::errors::Error> for Error {
+    fn from(error: jni::errors::Error) -> Self {
+        Self::internal(format!("JNI error: {error}")).with_source(error)
+    }
+}
+
 /// A `lingxia::Error` inside comes back as it was; anything else is `E_INTERNAL`.
 impl From<anyhow::Error> for Error {
     fn from(error: anyhow::Error) -> Self {

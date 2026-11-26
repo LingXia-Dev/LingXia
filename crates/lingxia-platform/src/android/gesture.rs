@@ -6,23 +6,23 @@ use jni::{jni_sig, jni_str};
 use serde_json::{Value, json};
 
 use super::{Platform, with_env};
-use crate::error::PlatformError;
 use crate::traits::gesture::{
     AppGesture, AppGestureRequest, AppGestureResult, ChromeElement, FlingDirection,
     GestureDelivery, GestureEnd, GestureInput, GestureTarget, PullRefreshIndicator,
 };
+use lingxia_error::Error;
 
 const CLASS: &str = "com.lingxia.lxapp.APIs.LxAppGesture";
 
 /// Loaded through the SDK's class loader: JNI threads started from Rust
 /// resolve `FindClass` against the system loader, which has no app classes.
-fn gesture_class(env: &mut jni::Env) -> Result<&'static Global<JClass<'static>>, PlatformError> {
+fn gesture_class(env: &mut jni::Env) -> Result<&'static Global<JClass<'static>>, Error> {
     static CLASS_REF: OnceLock<Global<JClass<'static>>> = OnceLock::new();
     if let Some(class) = CLASS_REF.get() {
         return Ok(class);
     }
     let anchor: &JClass = super::get_cached_class(super::CachedClass::Lingxia)
-        .map_err(|e| PlatformError::Platform(e.to_string()))?;
+        .map_err(|e| Error::internal(e.to_string()))?;
     let loader = env
         .call_method(
             anchor,
@@ -45,8 +45,8 @@ fn gesture_class(env: &mut jni::Env) -> Result<&'static Global<JClass<'static>>,
     Ok(CLASS_REF.get_or_init(|| global))
 }
 
-fn call(method: &'static str, args: [&str; 3], arity3: bool) -> Result<Value, PlatformError> {
-    with_env(|env| -> Result<Value, PlatformError> {
+fn call(method: &'static str, args: [&str; 3], arity3: bool) -> Result<Value, Error> {
+    with_env(|env| -> Result<Value, Error> {
         let class = gesture_class(env)?;
         let a = env.new_string(args[0])?;
         let b = env.new_string(args[1])?;
@@ -70,39 +70,37 @@ fn call(method: &'static str, args: [&str; 3], arity3: bool) -> Result<Value, Pl
         };
         if env.exception_check() {
             env.exception_clear();
-            return Err(PlatformError::Platform(format!("{CLASS}.{method} threw")));
+            return Err(Error::internal(format!("{CLASS}.{method} threw")));
         }
         let obj: JObject = result?.l()?;
         if obj.is_null() {
-            return Err(PlatformError::Platform(format!(
-                "{CLASS}.{method} returned null"
-            )));
+            return Err(Error::internal(format!("{CLASS}.{method} returned null")));
         }
         let text = unsafe { JString::from_raw(env, obj.into_raw() as _) }
             .try_to_string(env)
-            .map_err(|e| PlatformError::Platform(e.to_string()))?;
+            .map_err(|e| Error::internal(e.to_string()))?;
         let value: Value = serde_json::from_str(&text)
-            .map_err(|e| PlatformError::Platform(format!("{CLASS}.{method}: {e}")))?;
+            .map_err(|e| Error::internal(format!("{CLASS}.{method}: {e}")))?;
         match value["error"].as_str() {
-            Some(error) => Err(PlatformError::Platform(error.to_owned())),
+            Some(error) => Err(Error::internal(error.to_owned())),
             None => Ok(value),
         }
     })
 }
 
 async fn blocking<T: Send + 'static>(
-    work: impl FnOnce() -> Result<T, PlatformError> + Send + 'static,
-) -> Result<T, PlatformError> {
+    work: impl FnOnce() -> Result<T, Error> + Send + 'static,
+) -> Result<T, Error> {
     tokio::task::spawn_blocking(work)
         .await
-        .map_err(|e| PlatformError::Platform(format!("gesture worker: {e}")))?
+        .map_err(|e| Error::internal(format!("gesture worker: {e}")))?
 }
 
-fn perform(request: AppGestureRequest) -> Result<AppGestureResult, PlatformError> {
+fn perform(request: AppGestureRequest) -> Result<AppGestureResult, Error> {
     if let Some(input) = request.input
         && input != GestureInput::Touch
     {
-        return Err(PlatformError::NotSupported(format!(
+        return Err(Error::not_supported(format!(
             "{input:?} gestures are not available on Android; use touch"
         )));
     }
@@ -111,10 +109,7 @@ fn perform(request: AppGestureRequest) -> Result<AppGestureResult, PlatformError
         // Window gestures land in the presenting activity, whatever lxapp it shows.
         GestureTarget::Window { .. } => (String::new(), String::new()),
     };
-    let points = request
-        .shape
-        .points()
-        .map_err(PlatformError::InvalidParameter)?;
+    let points = request.shape.points().map_err(Error::invalid_arg)?;
     let end = match request.end {
         GestureEnd::Up => "up",
         GestureEnd::Cancel => "cancel",
@@ -157,11 +152,11 @@ impl AppGesture for Platform {
     async fn perform_app_gesture(
         &self,
         request: AppGestureRequest,
-    ) -> Result<AppGestureResult, PlatformError> {
+    ) -> Result<AppGestureResult, Error> {
         blocking(move || perform(request)).await
     }
 
-    async fn gesture_viewport(&self, target: GestureTarget) -> Result<[f64; 4], PlatformError> {
+    async fn gesture_viewport(&self, target: GestureTarget) -> Result<[f64; 4], Error> {
         let (app_id, webtag) = match target {
             GestureTarget::Page { app_id, webtag, .. } => (app_id, webtag),
             GestureTarget::Window { .. } => (String::new(), String::new()),
@@ -171,21 +166,18 @@ impl AppGesture for Platform {
         Ok([field("left"), field("top"), field("width"), field("height")])
     }
 
-    async fn chrome_elements(
-        &self,
-        scope: Option<String>,
-    ) -> Result<Vec<ChromeElement>, PlatformError> {
+    async fn chrome_elements(&self, scope: Option<String>) -> Result<Vec<ChromeElement>, Error> {
         let scope = scope.unwrap_or_default();
         let reply = blocking(move || call("chrome", ["", &scope, ""], false)).await?;
         serde_json::from_value(reply["elements"].clone())
-            .map_err(|e| PlatformError::Platform(format!("chrome elements: {e}")))
+            .map_err(|e| Error::internal(format!("chrome elements: {e}")))
     }
 
     async fn pull_refresh_indicator(
         &self,
         app_id: &str,
         webtag: &str,
-    ) -> Result<Option<PullRefreshIndicator>, PlatformError> {
+    ) -> Result<Option<PullRefreshIndicator>, Error> {
         let (app_id, webtag) = (app_id.to_owned(), webtag.to_owned());
         let reply =
             blocking(move || call("pullRefreshState", [&app_id, &webtag, ""], false)).await?;
@@ -199,10 +191,10 @@ impl AppGesture for Platform {
         &self,
         window_id: Option<String>,
         edge: FlingDirection,
-    ) -> Result<AppGestureResult, PlatformError> {
+    ) -> Result<AppGestureResult, Error> {
         let _ = (window_id, edge);
-        Err(PlatformError::NotSupported(
-            "edge back is a system gesture on Android; an app cannot inject into System UI".into(),
+        Err(Error::not_supported(
+            "edge back is a system gesture on Android; an app cannot inject into System UI",
         ))
     }
 }

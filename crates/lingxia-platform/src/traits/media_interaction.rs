@@ -1,6 +1,5 @@
+use lingxia_error::Error;
 use std::future::Future;
-
-use crate::error::PlatformError;
 
 #[derive(Debug, Clone)]
 pub struct PreviewMediaItem {
@@ -150,26 +149,26 @@ pub struct SaveMediaRequest {
 
 pub trait MediaInteraction: Send + Sync + 'static {
     /// Preview media. Keeps callback_id pattern for AbortSignal support.
-    fn preview_media(&self, request: PreviewMediaRequest) -> Result<(), PlatformError>;
-    fn cancel_preview(&self, callback_id: u64) -> Result<(), PlatformError>;
+    fn preview_media(&self, request: PreviewMediaRequest) -> Result<(), Error>;
+    fn cancel_preview(&self, callback_id: u64) -> Result<(), Error>;
 
     fn pick_media(
         &self,
         request: PickMediaRequest,
-    ) -> impl Future<Output = Result<String, PlatformError>> + Send;
+    ) -> impl Future<Output = Result<String, Error>> + Send;
 
     fn scan_code(
         &self,
         request: ScanCodeRequest,
-    ) -> impl Future<Output = Result<String, PlatformError>> + Send;
+    ) -> impl Future<Output = Result<String, Error>> + Send;
 
     fn save_image_to_photos_album(
         &self,
         request: SaveMediaRequest,
-    ) -> impl Future<Output = Result<(), PlatformError>> + Send;
+    ) -> impl Future<Output = Result<(), Error>> + Send;
 
     fn save_video_to_photos_album(
         &self,
         request: SaveMediaRequest,
-    ) -> impl Future<Output = Result<(), PlatformError>> + Send;
+    ) -> impl Future<Output = Result<(), Error>> + Send;
 }

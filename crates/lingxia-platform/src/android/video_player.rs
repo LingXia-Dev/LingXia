@@ -1,5 +1,4 @@
 use super::with_env;
-use crate::error::PlatformError;
 use crate::traits::stream_decoder::{
     AudioCodec, AudioFrame, AudioStreamConfig, VideoCodec, VideoFormat, VideoFrame,
     VideoStreamConfig, VideoStreamDecoderHandle, VideoStreamDecoderManager,
@@ -15,15 +14,16 @@ use jni::{Env, jni_sig, jni_str};
 use serde_json::json;
 
 use super::Platform;
+use lingxia_error::Error;
 
-fn platform_error(context: &str, err: impl std::fmt::Display) -> PlatformError {
-    PlatformError::Platform(format!("{}: {}", context, err))
+fn platform_error(context: &str, err: impl std::fmt::Display) -> Error {
+    Error::internal(format!("{}: {}", context, err))
 }
 
 fn with_env_and_class<T>(
     context: &str,
-    f: impl FnOnce(&mut Env, &JClass) -> Result<T, PlatformError>,
-) -> Result<T, PlatformError> {
+    f: impl FnOnce(&mut Env, &JClass) -> Result<T, Error>,
+) -> Result<T, Error> {
     with_env(|env| {
         let class: &JClass = super::get_cached_class(super::CachedClass::ComponentRouter)
             .map_err(|e| platform_error(context, e))?;
@@ -67,7 +67,7 @@ fn call_video_static_method<'sig, 'sig_args>(
     signature: MethodSignature<'sig, 'sig_args>,
     args: &[JValue],
     failure_context: &str,
-) -> Result<(), PlatformError> {
+) -> Result<(), Error> {
     env.call_static_method(lxapp_video_class, method, signature, args)
         .map_err(|e| platform_error(failure_context, e))?;
 
@@ -88,7 +88,7 @@ fn call_component_router_bool<'sig, 'sig_args>(
     signature: MethodSignature<'sig, 'sig_args>,
     args: &[JValue],
     failure_context: &str,
-) -> Result<bool, PlatformError> {
+) -> Result<bool, Error> {
     let result = env
         .call_static_method(lxapp_video_class, method, signature, args)
         .map_err(|e| platform_error(failure_context, e))?;
@@ -105,11 +105,11 @@ fn call_component_router_bool<'sig, 'sig_args>(
         .map_err(|e| platform_error(failure_context, format!("Bad result: {}", e)))
 }
 
-fn ensure_component_ok(component_id: &str, method: &str, ok: bool) -> Result<(), PlatformError> {
+fn ensure_component_ok(component_id: &str, method: &str, ok: bool) -> Result<(), Error> {
     if ok {
         Ok(())
     } else {
-        Err(PlatformError::Platform(format!(
+        Err(Error::internal(format!(
             "{} rejected for {}",
             method, component_id
         )))
@@ -119,8 +119,8 @@ fn ensure_component_ok(component_id: &str, method: &str, ok: bool) -> Result<(),
 fn with_component_id<T>(
     component_id: &str,
     context: &str,
-    f: impl FnOnce(&mut Env, &JClass, &jni::objects::JString) -> Result<T, PlatformError>,
-) -> Result<T, PlatformError> {
+    f: impl FnOnce(&mut Env, &JClass, &jni::objects::JString) -> Result<T, Error>,
+) -> Result<T, Error> {
     with_env_and_class(context, |env, lxapp_video_class| {
         let component_id_jstring = env
             .new_string(component_id)
@@ -129,10 +129,7 @@ fn with_component_id<T>(
     })
 }
 
-fn dispatch_command_android(
-    component_id: &str,
-    command: VideoPlayerCommand,
-) -> Result<(), PlatformError> {
+fn dispatch_command_android(component_id: &str, command: VideoPlayerCommand) -> Result<(), Error> {
     let (name, params_json) = map_command_to_android(command);
 
     let failure_context = format!(
@@ -143,7 +140,7 @@ fn dispatch_command_android(
     dispatch_video_command(component_id, &name, &params_json, &failure_context)
 }
 
-fn json_video_config(config: &VideoStreamConfig) -> Result<String, PlatformError> {
+fn json_video_config(config: &VideoStreamConfig) -> Result<String, Error> {
     let codec = match config.codec {
         VideoCodec::H264 => "h264",
         VideoCodec::H265 => "h265",
@@ -162,10 +159,10 @@ fn json_video_config(config: &VideoStreamConfig) -> Result<String, PlatformError
         "width": config.width,
         "height": config.height,
     }))
-    .map_err(|e| PlatformError::Platform(format!("Failed to serialize video config: {}", e)))
+    .map_err(|e| Error::internal(format!("Failed to serialize video config: {}", e)))
 }
 
-fn json_audio_config(config: &AudioStreamConfig) -> Result<String, PlatformError> {
+fn json_audio_config(config: &AudioStreamConfig) -> Result<String, Error> {
     let codec = match config.codec {
         AudioCodec::Aac => "aac",
         AudioCodec::PcmS16le => "pcm_s16le",
@@ -177,13 +174,12 @@ fn json_audio_config(config: &AudioStreamConfig) -> Result<String, PlatformError
         "channels": config.channels,
         "aacIsAdts": config.aac_is_adts,
     }))
-    .map_err(|e| PlatformError::Platform(format!("Failed to serialize audio config: {}", e)))
+    .map_err(|e| Error::internal(format!("Failed to serialize audio config: {}", e)))
 }
 
-fn to_i32(value: u32, field: &str) -> Result<i32, PlatformError> {
-    i32::try_from(value).map_err(|_| {
-        PlatformError::Platform(format!("Stream decoder {} out of range: {}", field, value))
-    })
+fn to_i32(value: u32, field: &str) -> Result<i32, Error> {
+    i32::try_from(value)
+        .map_err(|_| Error::internal(format!("Stream decoder {} out of range: {}", field, value)))
 }
 
 struct AndroidStreamDecoderHandle {
@@ -199,10 +195,9 @@ impl VideoStreamDecoderHandle for AndroidStreamDecoderHandle {
         false
     }
 
-    fn reset_stream(&self, hard: bool) -> Result<(), PlatformError> {
-        let params_json = serde_json::to_string(&json!({"hard": hard})).map_err(|e| {
-            PlatformError::Platform(format!("Failed to serialize reset params: {}", e))
-        })?;
+    fn reset_stream(&self, hard: bool) -> Result<(), Error> {
+        let params_json = serde_json::to_string(&json!({"hard": hard}))
+            .map_err(|e| Error::internal(format!("Failed to serialize reset params: {}", e)))?;
         let failure_context = format!(
             "dispatchVideoCommand(resetStream) for component {}",
             self.component_id
@@ -215,7 +210,7 @@ impl VideoStreamDecoderHandle for AndroidStreamDecoderHandle {
         )
     }
 
-    fn configure_video(&self, config: VideoStreamConfig) -> Result<(), PlatformError> {
+    fn configure_video(&self, config: VideoStreamConfig) -> Result<(), Error> {
         let config_json = json_video_config(&config)?;
         let method = "configureStreamVideo";
         let ok = with_component_id(
@@ -241,7 +236,7 @@ impl VideoStreamDecoderHandle for AndroidStreamDecoderHandle {
         ensure_component_ok(&self.component_id, method, ok)
     }
 
-    fn configure_audio(&self, config: AudioStreamConfig) -> Result<(), PlatformError> {
+    fn configure_audio(&self, config: AudioStreamConfig) -> Result<(), Error> {
         let config_json = json_audio_config(&config)?;
         let method = "configureStreamAudio";
         let ok = with_component_id(
@@ -267,7 +262,7 @@ impl VideoStreamDecoderHandle for AndroidStreamDecoderHandle {
         ensure_component_ok(&self.component_id, method, ok)
     }
 
-    fn push_video(&self, frame: VideoFrame) -> Result<(), PlatformError> {
+    fn push_video(&self, frame: VideoFrame) -> Result<(), Error> {
         let VideoFrame {
             data,
             dts_ms,
@@ -303,7 +298,7 @@ impl VideoStreamDecoderHandle for AndroidStreamDecoderHandle {
         ensure_component_ok(&self.component_id, method, ok)
     }
 
-    fn push_audio(&self, frame: AudioFrame) -> Result<(), PlatformError> {
+    fn push_audio(&self, frame: AudioFrame) -> Result<(), Error> {
         let AudioFrame {
             data,
             dts_ms,
@@ -337,7 +332,7 @@ impl VideoStreamDecoderHandle for AndroidStreamDecoderHandle {
         ensure_component_ok(&self.component_id, method, ok)
     }
 
-    fn stop(&self) -> Result<(), PlatformError> {
+    fn stop(&self) -> Result<(), Error> {
         let method = "stopStreamDecoder";
         let ok = with_component_id(
             &self.component_id,
@@ -358,7 +353,7 @@ impl VideoStreamDecoderHandle for AndroidStreamDecoderHandle {
 }
 
 impl VideoPlayerManager for Platform {
-    fn bind_player(&self, component_id: &str) -> Result<Box<dyn VideoPlayerHandle>, PlatformError> {
+    fn bind_player(&self, component_id: &str) -> Result<Box<dyn VideoPlayerHandle>, Error> {
         let failure_context = format!("hasComponent for component {}", component_id);
         let exists = with_env_and_class(&failure_context, |env, component_router_class| {
             let component_id_jstring = env
@@ -387,7 +382,7 @@ impl VideoPlayerManager for Platform {
         })?;
 
         if !exists {
-            return Err(PlatformError::Platform(format!(
+            return Err(Error::internal(format!(
                 "Video component not found: {}",
                 component_id
             )));
@@ -399,11 +394,7 @@ impl VideoPlayerManager for Platform {
         Ok(Box::new(handle))
     }
 
-    fn set_player_callback(
-        &self,
-        component_id: &str,
-        callback_id: u64,
-    ) -> Result<(), PlatformError> {
+    fn set_player_callback(&self, component_id: &str, callback_id: u64) -> Result<(), Error> {
         let failure_context = format!("setVideoPlayerCallback for component {}", component_id);
         with_env_and_class(&failure_context, |env, component_router_class| {
             let component_id_jstring = env
@@ -460,7 +451,7 @@ impl VideoStreamDecoderManager for Platform {
     fn create_stream_decoder(
         &self,
         component_id: &str,
-    ) -> Result<Box<dyn VideoStreamDecoderHandle>, PlatformError> {
+    ) -> Result<Box<dyn VideoStreamDecoderHandle>, Error> {
         let ok = with_component_id(
             component_id,
             "createStreamDecoder",
@@ -476,7 +467,7 @@ impl VideoStreamDecoderManager for Platform {
             },
         )?;
         if !ok {
-            return Err(PlatformError::Platform(format!(
+            return Err(Error::internal(format!(
                 "Failed to create stream decoder for {}",
                 component_id
             )));
@@ -492,7 +483,7 @@ fn dispatch_video_command(
     name: &str,
     params_json: &str,
     failure_context: &str,
-) -> Result<(), PlatformError> {
+) -> Result<(), Error> {
     with_env_and_class(failure_context, |env, lxapp_video_class| {
         let component_id_jstring = env
             .new_string(component_id)
