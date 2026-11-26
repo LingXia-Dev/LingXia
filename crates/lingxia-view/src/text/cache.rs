@@ -180,6 +180,7 @@ impl TextCache {
             let entry = self.entries.remove(&oldest).unwrap();
             self.text_bytes -= oldest.text.len();
             self.broken.retain(|(id, _), _| *id != entry.id);
+            self.cuts.retain(|(id, ..), _| *id != entry.id);
         }
         self.next += 1;
         let layout = Arc::new(layout);
@@ -516,5 +517,30 @@ mod tests {
             2,
             "an uncached text leaves nothing behind"
         );
+    }
+
+    #[test]
+    fn an_evicted_text_takes_its_ellipsis_cuts_along() {
+        let key = |text: &str| {
+            Key::new(
+                text,
+                (16.0, 0.0),
+                400.0,
+                None,
+                (crate::text::style::Family::Sans, false),
+                (0, 0, false, ""),
+                false,
+            )
+            .unwrap()
+        };
+        let mut cache = TextCache::default();
+        let first = cache.insert(key("0"), Layout::default(), None);
+        let shape = first.shape.unwrap();
+        cache.keep_cut((shape, 40.0, Some(1), false), None);
+        for i in 1..=MAX_ENTRIES {
+            cache.insert(key(&i.to_string()), Layout::default(), None);
+        }
+        assert!(cache.get(&key("0")).is_none());
+        assert!(cache.cut((shape, 40.0, Some(1), false)).is_none());
     }
 }

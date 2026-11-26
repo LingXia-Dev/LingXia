@@ -423,3 +423,12 @@ fn renderers_share_one_font_set_and_keep_their_own_faces() {
     assert!(other.collection.family_by_name(&name).is_none());
     assert!(context().collection.family_by_name(&name).is_none());
 }
+
+#[test]
+fn a_collection_claiming_more_faces_than_it_holds_is_read_within_the_file() {
+    let mut data = b"ttcf".to_vec();
+    data.extend([0, 1, 0, 0]);
+    data.extend(u32::MAX.to_be_bytes());
+    data.extend(u32::MAX.to_be_bytes());
+    assert!(super::hvgl_records(&data).is_empty());
+}

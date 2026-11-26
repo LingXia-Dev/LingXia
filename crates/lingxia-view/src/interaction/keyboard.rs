@@ -15,14 +15,25 @@ fn enabled_option(node: &NodeSnapshot) -> bool {
     node.on_click.is_some_and(|handle| handle != 0)
 }
 
-pub fn tab_stop(frame: &PresentedFrame, index: usize) -> bool {
+/// Whether `index` is its radio group's one Tab stop: the checked option, else the first.
+/// Only options focus can reach count, so a hidden checked one leaves the group reachable.
+pub fn tab_stop(
+    frame: &PresentedFrame,
+    index: usize,
+    revealable: impl Fn(&NodeSnapshot) -> bool,
+) -> bool {
     let node = &frame.nodes[index];
     let Some(group) = node.radio_group.as_deref().filter(|_| option(node)) else {
         return true;
     };
+    let scope = active_dialog(frame);
     let mut first = None;
     for (candidate_index, candidate) in frame.nodes.iter().enumerate() {
-        if !member(candidate, group) || !enabled_option(candidate) {
+        if !member(candidate, group)
+            || !enabled_option(candidate)
+            || !inside(frame, scope, candidate_index)
+            || !self::candidate(frame, candidate_index, &revealable)
+        {
             continue;
         }
         first.get_or_insert(candidate_index);
@@ -91,7 +102,7 @@ pub fn first_inside(
     (container + 1..frame.nodes.len()).find(|index| {
         inside(frame, Some(container), *index)
             && candidate(frame, *index, &revealable)
-            && tab_stop(frame, *index)
+            && tab_stop(frame, *index, &revealable)
             && composites.tab_stop(frame, *index, &remembered, &revealable)
     })
 }
@@ -141,7 +152,7 @@ pub fn next(
                     || composites.container_of(*index).map(|(c, _)| c) != current_composite)
                 && inside(frame, scope, *index)
                 && candidate(frame, *index, &revealable)
-                && tab_stop(frame, *index)
+                && tab_stop(frame, *index, &revealable)
                 && composites.tab_stop(frame, *index, &remembered, &revealable)
         })
 }

@@ -72,7 +72,8 @@ struct Lease {
 impl Drop for Lease {
     fn drop(&mut self) {
         if let Some(pool) = self.pool.upgrade() {
-            let mut pool = pool.lock().unwrap();
+            // Dropped while unwinding too: a poisoned pool must not panic a second time.
+            let mut pool = pool.lock().unwrap_or_else(|p| p.into_inner());
             if pool.generation == self.generation {
                 pool.free.push(self.resource.clone());
             } else {

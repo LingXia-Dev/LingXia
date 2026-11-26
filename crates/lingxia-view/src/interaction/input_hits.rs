@@ -131,7 +131,14 @@ impl InputHitMap {
         let mut selection = if word {
             let hit = Selection::word_from_point(&shaped.layout, x, y).text_range();
             let at = parley::editing::Cursor::from_point(&shaped.layout, x, y).index();
-            let range = crate::text::words::snap(&input.value, hit, at);
+            // The layout's byte offsets index the painted text, where a single-line editor
+            // shows each line break as one space.
+            let shown = if matches!(node.tag, "input" | "search") {
+                std::borrow::Cow::Owned(crate::text::style::single_line(&input.value))
+            } else {
+                std::borrow::Cow::Borrowed(input.value.as_str())
+            };
+            let range = crate::text::words::snap(&shown, hit, at);
             Selection::new(
                 parley::editing::Cursor::from_byte_index(
                     &shaped.layout,

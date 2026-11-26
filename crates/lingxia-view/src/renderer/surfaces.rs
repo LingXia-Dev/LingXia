@@ -318,6 +318,7 @@ fn rebuild() -> Result<(), String> {
         .map(|(id, presenter)| (*id, presenter.clone()))
         .collect();
     let mut context: Option<super::gpu::Context> = None;
+    let mut failed = None;
     for (id, presenter) in presenters {
         let binding = {
             // The panic that lost the device may have poisoned it; only its window is read.
@@ -330,11 +331,21 @@ fn rebuild() -> Result<(), String> {
             registry()?.remove(&id);
             continue;
         };
-        let rebuilt = open(context.clone().unwrap_or_default(), source, width, height)?;
+        // One window that cannot move drops out like a suspended one; the rest still move,
+        // so none is left on the lost device.
+        let rebuilt = match open(context.clone().unwrap_or_default(), source, width, height) {
+            Ok(rebuilt) => rebuilt,
+            Err(error) => {
+                log::error!(target: "lingxia_view", "GPU rebuild of surface {id} failed: {error}");
+                registry()?.remove(&id);
+                failed.get_or_insert(error);
+                continue;
+            }
+        };
         context.get_or_insert_with(|| rebuilt.context());
         registry()?.insert(id, Arc::new(Mutex::new(rebuilt)));
     }
-    Ok(())
+    failed.map_or(Ok(()), Err)
 }
 
 /// Encode `display`; `None` while the presenter is suspended or detached.
@@ -492,6 +503,7 @@ pub(crate) fn rebind(id: u64) -> Result<(), String> {
         && device
             .as_ref()
             .is_ok_and(|(device, _)| super::gpu::timing::start(device));
+    let _abandon = sampled.then_some(super::gpu::timing::Abandon);
     let started = std::time::Instant::now();
     let quads = lock(&presenter)?.redraw_video(revision, &display);
     let drawn = match quads {

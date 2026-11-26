@@ -121,6 +121,17 @@ fn file_store_round_trips_a_record() {
     assert_eq!(store.read(), None);
     store.write(VULKAN).unwrap();
     assert_eq!(store.read().as_deref(), Some(VULKAN));
+    store.write(GLES).unwrap();
+    assert_eq!(store.read().as_deref(), Some(GLES), "replaced whole");
+    assert!(
+        !path
+            .with_file_name(format!(
+                "{}.new",
+                path.file_name().unwrap().to_str().unwrap()
+            ))
+            .exists(),
+        "nothing staged is left behind"
+    );
     store.clear();
     assert!(!path.exists());
 }

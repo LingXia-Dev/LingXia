@@ -20,7 +20,10 @@ static POOL: LazyLock<Mutex<Sender<Job>>> = LazyLock::new(|| {
                 loop {
                     let job = queue.lock().unwrap_or_else(|p| p.into_inner()).recv();
                     match job {
-                        Ok(job) => job(),
+                        // A panicking job must not take one of the pool's threads with it.
+                        Ok(job) => {
+                            let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(job));
+                        }
                         Err(_) => return,
                     }
                 }
@@ -74,7 +77,13 @@ impl<T: Send + 'static> Mailbox<T> {
                         }
                     }
                 };
-                (mailbox.render)(frame);
+                // A frame that panics is dropped; the page's later frames still render.
+                let rendered = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                    (mailbox.render)(frame)
+                }));
+                if rendered.is_err() {
+                    log::error!(target: "lingxia_view", "a CPU frame panicked while rasterizing; dropped");
+                }
             }
         });
         let _ = POOL.lock().unwrap_or_else(|p| p.into_inner()).send(job);
@@ -87,6 +96,25 @@ impl<T: Send + 'static> Mailbox<T> {
 
 #[cfg(test)]
 mod tests {
+
+    #[test]
+    fn a_frame_that_panics_leaves_the_page_and_the_pool_rendering() {
+        let (rendered, frames) = channel();
+        let rendered = Mutex::new(rendered);
+        let mailbox = Mailbox::new(move |frame: u32| {
+            if frame == 0 {
+                panic!("test fault while rasterizing");
+            }
+            rendered.lock().unwrap().send(frame).unwrap();
+        });
+        // More panics than the pool has threads.
+        for _ in 0..=THREADS {
+            mailbox.submit(0);
+            std::thread::sleep(Duration::from_millis(20));
+        }
+        mailbox.submit(1);
+        assert_eq!(frames.recv_timeout(Duration::from_secs(5)), Ok(1));
+    }
     use super::*;
     use std::time::Duration;
 

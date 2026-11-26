@@ -187,12 +187,17 @@ pub(crate) fn display_texts(records: &[Record], styles: &[TextStyle]) -> Vec<Str
                 value.to_owned()
             };
             if matches!(record.tag, tag::INPUT | tag::SEARCH) {
-                text.replace(['\r', '\n', '\u{2028}', '\u{2029}'], " ")
+                single_line(&text)
             } else {
                 text
             }
         })
         .collect()
+}
+
+/// A single-line editor's painted text: each line break shows as one space.
+pub(crate) fn single_line(text: &str) -> String {
+    text.replace(['\r', '\n', '\u{2028}', '\u{2029}'], " ")
 }
 
 pub(crate) fn computed(records: &[Record], directions: &[bool]) -> Vec<TextStyle> {

@@ -355,9 +355,10 @@ impl Projection<'_> {
     /// The topmost meaningful, visible node under a logical point, or the small control a
     /// finger there presses (`minimum` as in `press_hit`) when it lies inside it.
     pub fn hit(&self, point: [f32; 2], minimum: f32) -> Option<u32> {
-        let exact = self.frame.hit_order().find(|(_, node)| {
+        let exact = self.frame.reachable(point).find(|(_, node)| {
             meaningful(node)
                 && visible(node)
+                && !self.covered(node)
                 && crate::interaction::frame::contains(node, point, false)
         });
         let reached = self
@@ -367,6 +368,7 @@ impl Projection<'_> {
             .filter(|index| {
                 let node = &self.frame.nodes[*index];
                 meaningful(node)
+                    && !self.covered(node)
                     && exact
                         .is_none_or(|(_, exact)| crate::interaction::frame::descends(node, exact))
             });

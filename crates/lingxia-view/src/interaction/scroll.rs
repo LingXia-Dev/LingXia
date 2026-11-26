@@ -54,10 +54,14 @@ fn ease_in_out(t: f32) -> f32 {
 }
 
 impl ScrollModel {
+    /// Forgets every region; only the host's obscured edges outlive the page.
     pub fn clear(&mut self) {
-        self.offsets.clear();
-        self.regions.clear();
-        self.revision += 1;
+        *self = Self {
+            revision: self.revision + 1,
+            obscured: self.obscured,
+            obscured_by_system: self.obscured_by_system,
+            ..Self::default()
+        };
     }
 
     pub fn revision(&self) -> u64 {
@@ -645,4 +649,41 @@ fn nearest(points: &[f32], at: f32) -> Option<f32> {
         .iter()
         .copied()
         .min_by(|a, b| (a - at).abs().total_cmp(&(b - at).abs()))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn clear_forgets_snap_and_glide_state() {
+        let mut scroll = ScrollModel::default();
+        scroll.set_obscured([1.0; 4], [2.0; 4]);
+        scroll.moved_snaps.insert("s".into());
+        scroll.goals.insert("s".into(), 10.0);
+        scroll.reported.insert("s".into(), 1);
+        scroll.wheeled_from.insert("s".into(), 5.0);
+        scroll.glides.insert(
+            "s".into(),
+            GlideRun {
+                key: "k".into(),
+                from: 0.0,
+                to: 10.0,
+                duration_ms: 100.0,
+                started: None,
+            },
+        );
+        scroll.started_glides.push("s".into());
+        let revision = scroll.revision();
+        scroll.clear();
+        assert!(scroll.take_moved_snaps().is_empty());
+        assert!(scroll.take_started_glides().is_empty());
+        assert!(scroll.goals.is_empty() && scroll.reported.is_empty());
+        assert!(scroll.wheeled_from.is_empty() && scroll.glides.is_empty());
+        assert_eq!(scroll.revision(), revision + 1);
+        assert_eq!(
+            (scroll.obscured, scroll.obscured_by_system),
+            ([1.0; 4], [2.0; 4])
+        );
+    }
 }

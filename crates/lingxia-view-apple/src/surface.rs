@@ -47,7 +47,8 @@ impl AppleLayer {
     }
 }
 
-impl MetalLayer for AppleLayer {
+// SAFETY: the layer is held retained by this value.
+unsafe impl MetalLayer for AppleLayer {
     fn layer(&self) -> NonNull<c_void> {
         self.0
     }

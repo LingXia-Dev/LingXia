@@ -50,6 +50,16 @@ pub(crate) fn start(device: &wgpu::Device) -> bool {
     true
 }
 
+/// Drops a measurement [`finish`] did not end, so its query set never reaches a later
+/// redraw, which may be on another device.
+pub(crate) struct Abandon;
+
+impl Drop for Abandon {
+    fn drop(&mut self) {
+        ACTIVE.lock().unwrap_or_else(|p| p.into_inner()).take();
+    }
+}
+
 /// Opens a timed span in `encoder` while a redraw is measured; pass it to [`end`].
 pub(crate) fn begin(encoder: &mut wgpu::CommandEncoder) -> Option<u32> {
     let mut active = ACTIVE.lock().unwrap_or_else(|p| p.into_inner());
@@ -148,12 +158,22 @@ pub(crate) fn finish(device: &wgpu::Device, queue: &wgpu::Queue) {
             let mut gpu = GPU_US.lock().unwrap_or_else(|p| p.into_inner());
             *gpu = [gpu[0] + 1, gpu[1] + us, gpu[2].max(us)];
         });
+    // One waiter at a time: a sample finished while it waits is read back by the device's
+    // next poll.
+    static POLLING: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+    if POLLING.swap(true, std::sync::atomic::Ordering::AcqRel) {
+        return;
+    }
     let device = device.clone();
-    let _ = std::thread::Builder::new()
+    let spawned = std::thread::Builder::new()
         .name("lingxia-gpu-timing".into())
         .spawn(move || {
             let _ = device.poll(wgpu::PollType::wait_indefinitely());
+            POLLING.store(false, std::sync::atomic::Ordering::Release);
         });
+    if spawned.is_err() {
+        POLLING.store(false, std::sync::atomic::Ordering::Release);
+    }
 }
 
 /// GPU µs per sampled redraw: `{samples, avg, max}`.

@@ -112,11 +112,19 @@ static QUEUE: LazyLock<Arc<(Mutex<VecDeque<Job>>, Condvar)>> = LazyLock::new(|| 
                 });
             }
         });
-    if let Err(error) = spawned {
-        log::error!(target: "lingxia_view", "GPU render thread did not start: {error}");
+    match spawned {
+        Ok(handle) => {
+            let _ = THREAD.set(handle.thread().id());
+        }
+        Err(error) => {
+            log::error!(target: "lingxia_view", "GPU render thread did not start: {error}");
+        }
     }
     queue
 });
+
+/// The render thread, once it started; unset when it could not.
+static THREAD: std::sync::OnceLock<std::thread::ThreadId> = std::sync::OnceLock::new();
 
 /// One job's Objective-C temporaries end with it. This thread has no run loop to drain them,
 /// and Metal hands some out autoreleased (a layer's delegate is its view): without a pool
@@ -307,6 +315,14 @@ pub fn run(task: impl FnOnce() + Send + 'static) {
 
 /// Runs `task` on the render thread ahead of queued work and waits for it.
 pub fn run_now<T: Send + 'static>(task: impl FnOnce() -> T + Send + 'static) -> Option<T> {
+    LazyLock::force(&QUEUE);
+    match THREAD.get() {
+        // Waiting on itself would never return.
+        Some(thread) if *thread == std::thread::current().id() => return Some(task()),
+        // No thread to run it: waiting would never return either.
+        None => return None,
+        Some(_) => {}
+    }
     let (sender, receiver) = std::sync::mpsc::channel();
     push(
         Job::Run(Box::new(move || {
@@ -319,6 +335,12 @@ pub fn run_now<T: Send + 'static>(task: impl FnOnce() -> T + Send + 'static) -> 
 
 #[cfg(test)]
 mod tests {
+
+    #[test]
+    fn run_now_from_the_render_thread_runs_inline_instead_of_waiting_on_itself() {
+        let nested = run_now(|| run_now(|| 7));
+        assert_eq!(nested, Some(Some(7)));
+    }
     use super::*;
     use std::collections::HashSet;
     use std::sync::atomic::AtomicBool;

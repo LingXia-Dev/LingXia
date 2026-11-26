@@ -7,10 +7,11 @@ pub(crate) fn snap(text: &str, range: Range<usize>, at: usize) -> Range<usize> {
     if gap.chars().any(|c| !c.is_whitespace()) || text.trim().is_empty() {
         return range;
     }
-    let start = range.start.min(text.len());
-    let end = range.end.min(text.len());
-    let before = text[..start].trim_end();
-    let after_start = end + (text[end..].len() - text[end..].trim_start().len());
+    let (Some(head), Some(tail)) = (text.get(..range.start), text.get(range.end..)) else {
+        return range;
+    };
+    let before = head.trim_end();
+    let after_start = range.end + (tail.len() - tail.trim_start().len());
     let previous = (!before.is_empty()).then(|| {
         let word_start = before
             .char_indices()

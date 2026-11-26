@@ -321,9 +321,15 @@ impl SentinelStore for FileStore {
     }
     fn write(&self, record: &str) -> Result<(), String> {
         use std::io::Write;
-        let mut file = std::fs::File::create(&self.0).map_err(|e| e.to_string())?;
+        // Written beside and renamed over: a process killed mid-write keeps the old record,
+        // blocked drivers included.
+        let mut staged = self.0.clone().into_os_string();
+        staged.push(".new");
+        let staged = std::path::PathBuf::from(staged);
+        let mut file = std::fs::File::create(&staged).map_err(|e| e.to_string())?;
         file.write_all(record.as_bytes())
             .and_then(|()| file.sync_all())
+            .and_then(|()| std::fs::rename(&staged, &self.0))
             .map_err(|e| e.to_string())
     }
     fn clear(&self) {

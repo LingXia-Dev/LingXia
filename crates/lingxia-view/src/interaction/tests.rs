@@ -621,6 +621,35 @@ fn placeholder_tint_is_local_and_does_not_recolor_value_or_caret() {
 }
 
 #[test]
+fn word_hit_on_a_folded_line_break_snaps_on_the_painted_text() {
+    let module = crate::session::tests::source(
+        "function render(){return h('view',{},h('input',{value:'\\u2028 \u{4f60}\u{597d}',style:{width:200,height:40,fontSize:20,padding:8}}))}",
+    );
+    let mut page = crate::ViewSession::new(&module).unwrap();
+    let display = page.prepare_native(300, 100, 1.0, true, None, Ok).unwrap();
+    let hits = InputHitMap::capture(&display);
+    let node = &display.nodes[1];
+    assert_eq!(
+        node.input.as_ref().unwrap().value,
+        "\u{2028} \u{4f60}\u{597d}"
+    );
+    for step in 0..40 {
+        let point = [node.bounds[0] + step as f32 * 5.0, node.bounds[1] + 20.0];
+        let hit = hits.hit(&node.identity, point, true);
+        assert!(hit.is_none_or(|[a, b]| a <= b && b <= 4), "{step}: {hit:?}");
+    }
+    // The leading folded break and space are whitespace: the hit snaps to the word.
+    assert_eq!(
+        hits.hit(
+            &node.identity,
+            [node.bounds[0] + 9.0, node.bounds[1] + 20.0],
+            true
+        ),
+        Some([2, 4])
+    );
+}
+
+#[test]
 fn word_hit_testing_and_empty_placeholder_do_not_use_character_width_estimates() {
     let module = crate::session::tests::source(
         "function render(){return h('view',{},h('input',{value:'hello world',style:{height:40,fontSize:20,padding:8}}),h('input',{placeholder:'not editable text',style:{height:40}}))}",

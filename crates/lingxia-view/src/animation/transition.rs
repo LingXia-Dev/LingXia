@@ -452,7 +452,11 @@ impl Instance {
         to: Value,
         velocity: Option<Vec<f64>>,
     ) -> Result<Self, String> {
-        let duration = definition.duration.mul_f64(policy.scale);
+        // A faster animator scale must not round a valid duration down to none.
+        let duration = definition
+            .duration
+            .mul_f64(policy.scale)
+            .max(Duration::from_nanos(1));
         let delay = definition.delay.mul_f64(policy.scale);
         // Paths morph only between sources of the same commands; others jump, already finished.
         let from = match (&from, &to) {
@@ -1189,6 +1193,25 @@ mod tests {
             .unwrap();
         slow.start(ms(0));
         assert_eq!(slow.overrides("a", ms(200)).unwrap().opacity, Some(0.5));
+    }
+
+    #[test]
+    fn a_tiny_spring_under_a_fast_animator_scale_still_runs() {
+        let def = TransitionDef::decode(
+            r#"{"properties":["opacity"],"durationMs":0.000001,"delayMs":0,"easing":{"spring":0.2}}"#,
+        )
+        .unwrap();
+        let input = |o: f64| [("a".to_owned(), def, style(o))];
+        let fast = Policy {
+            scale: 0.01,
+            ..MOVE
+        };
+        let first = Transitions::default()
+            .reconcile(input(1.0), ms(0), fast)
+            .unwrap();
+        let mut fading = first.reconcile(input(0.0), ms(0), fast).unwrap();
+        fading.start(ms(0));
+        assert!(fading.overrides("a", ms(1)).unwrap().is_empty());
     }
 
     #[test]

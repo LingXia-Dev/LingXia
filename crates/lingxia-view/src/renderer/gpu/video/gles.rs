@@ -91,7 +91,16 @@ impl Frames {
             if pending != 0 && !std::mem::replace(&mut self.drained, true) {
                 log::debug!(target: "lingxia_view", "video frame path: GL error {pending:#x} pending before the latch");
             }
-            image.latch()?
+            match image.latch() {
+                Ok(latched) => latched,
+                Err(error) => {
+                    // Not yet handed to wgpu: nothing else deletes them.
+                    for name in &created {
+                        unsafe { glDeleteTextures(1, name) };
+                    }
+                    return Err(error);
+                }
+            }
         };
         if !created.is_empty() {
             for name in created {

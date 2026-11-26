@@ -320,22 +320,28 @@ pub(crate) fn hide_hvgl(data: &mut [u8]) {
 
 /// Offsets of the `hvgl` table records in each face's table directory.
 fn hvgl_records(data: &[u8]) -> Vec<usize> {
-    let u16_at = |at: usize| Some(u16::from_be_bytes(data.get(at..at + 2)?.try_into().ok()?));
-    let u32_at = |at: usize| Some(u32::from_be_bytes(data.get(at..at + 4)?.try_into().ok()?));
+    let field = |at: usize, len: usize| data.get(at..at.checked_add(len)?);
+    let u16_at = |at: usize| Some(u16::from_be_bytes(field(at, 2)?.try_into().ok()?));
+    let u32_at = |at: usize| Some(u32::from_be_bytes(field(at, 4)?.try_into().ok()?));
+    // A damaged collection header can claim any count: only offsets inside the file are read.
     let faces: Vec<usize> = if data.get(..4) == Some(b"ttcf") {
-        let count = u32_at(8).unwrap_or(0) as usize;
+        let count = (u32_at(8).unwrap_or(0) as usize).min(data.len().saturating_sub(12) / 4);
         (0..count)
-            .filter_map(|i| u32_at(12 + 4 * i).map(|offset| offset as usize))
+            .filter_map(|i| u32_at(12 + 4 * i).and_then(|offset| usize::try_from(offset).ok()))
             .collect()
     } else {
         vec![0]
     };
     let mut records = Vec::new();
     for face in faces {
-        let tables = u16_at(face + 4).unwrap_or(0) as usize;
-        for i in 0..tables {
-            let record = face + 12 + 16 * i;
-            if data.get(record..record + 4) == Some(b"hvgl") {
+        let Some(tables) = face.checked_add(4).and_then(u16_at) else {
+            continue;
+        };
+        for i in 0..usize::from(tables) {
+            let Some(record) = face.checked_add(12 + 16 * i) else {
+                break;
+            };
+            if field(record, 4) == Some(b"hvgl".as_slice()) {
                 records.push(record);
             }
         }

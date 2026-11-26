@@ -84,6 +84,10 @@ impl DragModel {
             }
             self.regions.insert(node.identity.to_string(), drag.clone());
         }
+        // A finger or spring on an element that left cannot hold the one that enters in its place.
+        let regions = &self.regions;
+        self.moving.retain(|id| regions.contains_key(id));
+        self.held.retain(|id| regions.contains_key(id));
         if self.offsets.len() > KEPT {
             let regions = &self.regions;
             self.offsets.retain(|id, _| regions.contains_key(id));
@@ -114,14 +118,10 @@ impl DragModel {
     /// The innermost drag element under `point` on `axis`, by paint order.
     pub fn hit(&self, frame: &PresentedFrame, point: [f32; 2]) -> Option<String> {
         frame
-            .hit_order()
+            .reachable(point)
             .find(|(_, node)| {
                 node.drag.as_ref().is_some_and(|drag| !drag.ghost)
-                    && super::frame::visible(node)
-                    && point[0] >= node.bounds[0]
-                    && point[0] <= node.bounds[0] + node.bounds[2]
-                    && point[1] >= node.bounds[1]
-                    && point[1] <= node.bounds[1] + node.bounds[3]
+                    && super::frame::contains(node, point, false)
             })
             .map(|(_, node)| node.identity.to_string())
     }

@@ -630,7 +630,7 @@ impl DisplayList {
 
 #[cfg(feature = "gpu")]
 fn push_clip(context: &mut vello_gpu::Scene, shape: &ClipSnapshot) {
-    if shape.radius == 0.0 && shape.radii.is_none() {
+    if shape.radius == 0.0 && shape.radii.is_none() && shape.transform.is_none() {
         let [x, y, w, h] = shape.bounds;
         context.push_clip_rect(&PaintRect::new(
             x as f64,
@@ -658,6 +658,10 @@ fn trace_texture(player: &str, bounds: &[f32; 4], fit: crate::scene::image::Fit)
     let seen = seen.get_or_insert_with(Default::default);
     if seen.get(player) != Some(&state) {
         log::info!(target: "lingxia_view", "webview texture {player}: {state}");
+        // Players come and go for the process's life; at worst a closed one logs once more.
+        if seen.len() >= 64 {
+            seen.clear();
+        }
         seen.insert(player.to_owned(), state);
     }
 }

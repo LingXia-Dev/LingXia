@@ -584,17 +584,36 @@ pub enum SurfaceSource {
 }
 
 /// Owns a DirectComposition visual for as long as it lives.
+///
+/// # Safety
+/// `visual` returns a live `IDCompositionVisual` that stays valid while `self` lives.
 #[cfg(windows)]
-pub trait CompositionVisual: Send + Sync {
+pub unsafe trait CompositionVisual: Send + Sync {
     /// The `IDCompositionVisual`.
     fn visual(&self) -> std::ptr::NonNull<std::ffi::c_void>;
     /// The visual took a new swapchain, which shows only once its device commits.
     fn commit(&self);
 }
 
+/// Refuses a surface no page can draw: empty, or past the largest texture side.
+fn surface_size(width: u32, height: u32) -> Result<(), String> {
+    if width == 0 || height == 0 {
+        return Err(format!("UI_SURFACE: empty size {width}x{height}"));
+    }
+    if width > 4096 || height > 4096 {
+        return Err(format!(
+            "UI_SURFACE: {width}x{height} is larger than 4096 on a side"
+        ));
+    }
+    Ok(())
+}
+
 /// Keeps a CAMetalLayer retained for as long as it lives.
+///
+/// # Safety
+/// `layer` returns a live `CAMetalLayer` that stays retained while `self` lives.
 #[cfg(target_vendor = "apple")]
-pub trait MetalLayer: Send + Sync {
+pub unsafe trait MetalLayer: Send + Sync {
     fn layer(&self) -> std::ptr::NonNull<std::ffi::c_void>;
 }
 
@@ -610,14 +629,14 @@ impl SurfaceSource {
     fn create(&self, instance: &wgpu::Instance) -> Result<wgpu::Surface<'static>, String> {
         match self {
             Self::Window(target) => instance.create_surface(target()),
-            // SAFETY: the source retains the layer, and the surface retains it too.
+            // SAFETY: `MetalLayer` keeps the layer alive with the source; the surface retains it too.
             #[cfg(target_vendor = "apple")]
             Self::Layer(layer) => unsafe {
                 instance.create_surface_unsafe(wgpu::SurfaceTargetUnsafe::CoreAnimationLayer(
                     layer.layer().as_ptr(),
                 ))
             },
-            // SAFETY: the source retains the visual, and the surface retains it too.
+            // SAFETY: `CompositionVisual` keeps the visual alive with the source; the surface retains it too.
             #[cfg(windows)]
             Self::Visual(visual) => unsafe {
                 instance.create_surface_unsafe(wgpu::SurfaceTargetUnsafe::CompositionVisual(
@@ -729,9 +748,7 @@ impl Presenter {
         width: u32,
         height: u32,
     ) -> Result<Self, String> {
-        if width == 0 || height == 0 || width > 4096 || height > 4096 {
-            return Err("UI_SURFACE: empty size".into());
-        }
+        surface_size(width, height)?;
         let mut shared = context.lock()?;
         let surface = pollster::block_on(shared.create_surface(&source, width, height))?;
         let info = shared.devices[surface.dev_id].adapter().get_info();
@@ -849,9 +866,7 @@ impl Presenter {
     }
 
     fn bind(&mut self, width: u32, height: u32) -> Result<(), String> {
-        if width == 0 || height == 0 || width > 4096 || height > 4096 {
-            return Err("UI_SURFACE: empty size".into());
-        }
+        surface_size(width, height)?;
         let source = self.target.clone().ok_or("UI_SURFACE: no target")?;
         // A window carries one EGL surface at a time; release the old one, and everything drawn
         // for it, before binding anew.
@@ -1307,6 +1322,10 @@ impl Presenter {
                 log::debug!(target: "lingxia_view", "gpu present refused: surface outdated, resized to {width}x{height}");
                 context.resize_surface(surface, width, height)?;
                 self.depth = Some(depth_view(surface, &context.devices[self.device_id].device));
+                // The resize allocated blank targets: nothing held is drawn in them any more.
+                self.prepared = [None; 2];
+                self.drawn = [None; 2];
+                self.composed = [None, None];
                 return Ok(false);
             }
             wgpu::CurrentSurfaceTexture::Timeout => {

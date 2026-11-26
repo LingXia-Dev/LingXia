@@ -30,8 +30,9 @@ fn simple(source: &str) -> Result<Simple, String> {
     let mut attributes = Vec::new();
     let mut rest = &source[tag_end..];
     while !rest.is_empty() {
-        let close = rest.find(']').ok_or_else(|| unsupported(source))?;
-        let body = rest.strip_prefix('[').ok_or_else(|| unsupported(source))?[..close - 1].trim();
+        let inner = rest.strip_prefix('[').ok_or_else(|| unsupported(source))?;
+        let close = closing_bracket(inner).ok_or_else(|| unsupported(source))?;
+        let body = inner[..close].trim();
         let (name, value) = match body.split_once('=') {
             Some((name, value)) => {
                 let value = value.trim();
@@ -40,10 +41,7 @@ fn simple(source: &str) -> Result<Simple, String> {
                     .and_then(|v| v.strip_suffix('"'))
                     .or_else(|| value.strip_prefix('\'').and_then(|v| v.strip_suffix('\'')))
                     .unwrap_or(value);
-                (
-                    name.trim(),
-                    Some(unquoted.replace("\\\"", "\"").replace("\\\\", "\\")),
-                )
+                (name.trim(), Some(unescape(unquoted)))
             }
             None => (body, None),
         };
@@ -58,12 +56,46 @@ fn simple(source: &str) -> Result<Simple, String> {
             return Err(unsupported(source));
         }
         attributes.push((name.to_owned(), value));
-        rest = &rest[close + 1..];
+        rest = &inner[close + 1..];
     }
     Ok(Simple {
         tag: (!tag.is_empty()).then(|| tag.to_ascii_lowercase()),
         attributes,
     })
+}
+
+/// The byte offset of the `]` that ends an attribute body, skipping any inside quotes.
+fn closing_bracket(body: &str) -> Option<usize> {
+    let (mut quote, mut escaped) = (None, false);
+    for (at, c) in body.char_indices() {
+        match (quote, c) {
+            _ if escaped => escaped = false,
+            (Some(_), '\\') => escaped = true,
+            (Some(q), c) if c == q => quote = None,
+            (Some(_), _) => {}
+            (None, '"' | '\'') => quote = Some(c),
+            (None, ']') => return Some(at),
+            _ => {}
+        }
+    }
+    None
+}
+
+/// Drops the backslash of each `\"`, `\'` and `\\` in one pass, so `\\"` stays a backslash
+/// then a quote.
+fn unescape(value: &str) -> String {
+    let mut out = String::with_capacity(value.len());
+    let mut chars = value.chars();
+    while let Some(c) = chars.next() {
+        match (c, chars.clone().next()) {
+            ('\\', Some(next @ ('"' | '\'' | '\\'))) => {
+                out.push(next);
+                chars.next();
+            }
+            _ => out.push(c),
+        }
+    }
+    out
 }
 
 /// `data-testid` and the authored `data-*` props.
@@ -761,6 +793,15 @@ mod tests {
             Some("input")
         );
         assert!(parse("a[href]").is_ok());
+        let quoted = &parse("[data-testid=\"item[0]\"] [role='x]']").unwrap()[0];
+        assert_eq!(quoted[0].attributes[0].1.as_deref(), Some("item[0]"));
+        assert_eq!(quoted[1].attributes[0].1.as_deref(), Some("x]"));
+        assert_eq!(
+            parse(r#"[aria-label="a\\"]"#).unwrap()[0][0].attributes[0]
+                .1
+                .as_deref(),
+            Some("a\\")
+        );
         assert_eq!(
             parse("[aria-label=\"Pay, now\"], button").unwrap()[0][0].attributes[0]
                 .1

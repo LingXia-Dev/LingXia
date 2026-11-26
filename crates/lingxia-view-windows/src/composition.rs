@@ -110,7 +110,8 @@ impl Tree {
     }
 }
 
-impl lingxia_view::renderer::gpu::CompositionVisual for Tree {
+// SAFETY: the visual is owned by this value's composition tree.
+unsafe impl lingxia_view::renderer::gpu::CompositionVisual for Tree {
     fn visual(&self) -> std::ptr::NonNull<std::ffi::c_void> {
         std::ptr::NonNull::new(self.frames.as_raw()).expect("a live visual")
     }

@@ -24,7 +24,8 @@ unsafe extern "C" {
 struct Layer(NonNull<c_void>);
 unsafe impl Send for Layer {}
 unsafe impl Sync for Layer {}
-impl MetalLayer for Layer {
+// SAFETY: the layer is held retained by this value.
+unsafe impl MetalLayer for Layer {
     fn layer(&self) -> NonNull<c_void> {
         self.0
     }

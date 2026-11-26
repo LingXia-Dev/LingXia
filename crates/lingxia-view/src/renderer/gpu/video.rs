@@ -240,6 +240,14 @@ enum State {
 static SOURCES: LazyLock<Mutex<HashMap<String, Result<Source, VideoError>>>> =
     LazyLock::new(Default::default);
 
+/// Closing a player can block on its decoder, so it ends off the caller's thread; when no
+/// thread can be started it ends here instead of panicking.
+fn drop_elsewhere<T: Send + 'static>(value: T) {
+    let _ = std::thread::Builder::new()
+        .name("lingxia-video-close".into())
+        .spawn(move || drop(value));
+}
+
 fn sources() -> MutexGuard<'static, HashMap<String, Result<Source, VideoError>>> {
     SOURCES.lock().unwrap_or_else(|p| p.into_inner())
 }
@@ -466,7 +474,7 @@ fn landed(key: &str) {
     if !satisfied {
         if matches!(entry.state, State::Ready(_)) {
             let closed = std::mem::replace(&mut entry.state, State::Opening);
-            std::thread::spawn(move || drop(closed));
+            drop_elsewhere(closed);
         }
         request(key, &mut entry.state, Reason::Again);
     }
@@ -526,7 +534,7 @@ pub(crate) fn status(key: &str) -> Option<Status> {
         entry.switch = None;
         let closed = std::mem::replace(&mut entry.state, State::Failed(error));
         // Closing a player can wait on its decoder; the render thread does not.
-        std::thread::spawn(move || drop(closed));
+        drop_elsewhere(closed);
     }
     let mut status = match &entry.state {
         State::Ready(player) => player.status(),
@@ -978,7 +986,7 @@ static OPENER: LazyLock<Mutex<mpsc::Sender<(Instant, Job)>>> = LazyLock::new(|| 
                         .collect()
                 };
                 if !idle.is_empty() {
-                    std::thread::spawn(move || drop(idle));
+                    drop_elsewhere(idle);
                 }
             }
         });
@@ -1149,7 +1157,7 @@ pub(crate) fn forget(scope: u64) {
     };
     if !closed.is_empty() {
         // A platform release can block; the page's teardown must not wait on it.
-        std::thread::spawn(move || drop(closed));
+        drop_elsewhere(closed);
     }
 }
 
@@ -1163,7 +1171,7 @@ pub(crate) fn forget_key(key: &str) {
         .remove(key);
     flights().tries.remove(key);
     if let Some(closed) = players().remove(key) {
-        std::thread::spawn(move || drop(closed));
+        drop_elsewhere(closed);
     }
 }
 
@@ -1483,7 +1491,7 @@ fn advance_switch(key: &str, entry: &mut Entry, device: &wgpu::Device, queue: &w
     entry.quality = switch.label;
     let previous = std::mem::replace(&mut entry.state, State::Ready(switch.player.unwrap()));
     // Closing a player can wait on its decoder; the render thread does not.
-    std::thread::spawn(move || drop(previous));
+    drop_elsewhere(previous);
 }
 
 fn keys(display: &crate::DisplayList) -> Vec<&str> {
@@ -1738,7 +1746,7 @@ pub(crate) fn import_frames(
                 if let Some(failed) = frame_failed(&mut entry.frame_errors, key, &error) {
                     let closed = std::mem::replace(&mut entry.state, State::Failed(failed));
                     // Closing a player can wait on its decoder; the render thread does not.
-                    std::thread::spawn(move || drop(closed));
+                    drop_elsewhere(closed);
                 }
             }
         }
@@ -2033,7 +2041,7 @@ mod platform {
     //! AVPlayer → AVPlayerItemVideoOutput (BGRA, Metal-compatible) → CVMetalTextureCache.
     use crate::scene::video::{Settings, Status, VideoError, VideoOp};
     use objc2::rc::Retained;
-    use objc2::runtime::ProtocolObject;
+    use objc2::runtime::{Bool, ProtocolObject};
     use objc2_metal::{MTLTexture, MTLTextureType};
     use std::ffi::{c_char, c_void};
 
@@ -2246,10 +2254,11 @@ mod platform {
         unsafe { f(object, sel(name)) }
     }
 
+    // Objective-C `BOOL` is a signed char on x86_64: read and written as `Bool`, never `bool`.
     unsafe fn set_bool(object: Id, name: &std::ffi::CStr, value: bool) {
-        let f: unsafe extern "C" fn(Id, *const c_void, bool) =
+        let f: unsafe extern "C" fn(Id, *const c_void, Bool) =
             unsafe { std::mem::transmute(objc_msgSend as unsafe extern "C" fn()) };
-        unsafe { f(object, sel(name), value) }
+        unsafe { f(object, sel(name), Bool::new(value)) }
     }
 
     unsafe fn set_float(object: Id, name: &std::ffi::CStr, value: f32) {
@@ -2265,9 +2274,9 @@ mod platform {
     }
 
     unsafe fn get_bool(object: Id, name: &std::ffi::CStr) -> bool {
-        let f: unsafe extern "C" fn(Id, *const c_void) -> bool =
+        let f: unsafe extern "C" fn(Id, *const c_void) -> Bool =
             unsafe { std::mem::transmute(objc_msgSend as unsafe extern "C" fn()) };
-        unsafe { f(object, sel(name)) }
+        unsafe { f(object, sel(name)).as_bool() }
     }
 
     unsafe fn get_float(object: Id, name: &std::ffi::CStr) -> f32 {
@@ -2323,6 +2332,8 @@ mod platform {
         item: Id,
         output: Id,
         cache: *mut c_void,
+        /// The Metal device `cache` makes textures for.
+        cache_device: *const c_void,
         renditions: Vec<Rendition>,
         /// An HLS stream's URL and master playlist, read at open.
         master: Option<(String, String)>,
@@ -2529,9 +2540,10 @@ mod platform {
         unsafe {
             let asset = send0(item, c"asset");
             let selector = sel(c"variants");
-            let responds: unsafe extern "C" fn(Id, *const c_void, *const c_void) -> bool =
+            let responds: unsafe extern "C" fn(Id, *const c_void, *const c_void) -> Bool =
                 std::mem::transmute(objc_msgSend as unsafe extern "C" fn());
-            if asset.is_null() || !responds(asset, sel(c"respondsToSelector:"), selector) {
+            if asset.is_null() || !responds(asset, sel(c"respondsToSelector:"), selector).as_bool()
+            {
                 return Vec::new();
             }
             let variants = send0(asset, c"variants");
@@ -2598,6 +2610,13 @@ mod platform {
                 track,
                 attributes as Id,
             );
+            // `addOutput:` raises on nil or a refused output, and an exception must not
+            // unwind into Rust.
+            let can_add: unsafe extern "C" fn(Id, *const c_void, Id) -> Bool =
+                std::mem::transmute(objc_msgSend as unsafe extern "C" fn());
+            if output.is_null() || !can_add(reader, sel(c"canAddOutput:"), output).as_bool() {
+                return std::ptr::null_mut();
+            }
             send1(reader, c"addOutput:", output);
             let mut image = std::ptr::null_mut();
             if get_bool(reader, c"startReading") {
@@ -2708,6 +2727,7 @@ mod platform {
                     item,
                     output,
                     cache: std::ptr::null_mut(),
+                    cache_device: std::ptr::null(),
                     renditions,
                     master,
                     loader: None,
@@ -2867,9 +2887,11 @@ mod platform {
                     c"itemTimeForHostTime:",
                     Some(CACurrentMediaTime()),
                 );
-                let has_new: unsafe extern "C" fn(Id, *const c_void, CMTime) -> bool =
+                let has_new: unsafe extern "C" fn(Id, *const c_void, CMTime) -> Bool =
                     std::mem::transmute(objc_msgSend as unsafe extern "C" fn());
-                has_new(self.output, sel(c"hasNewPixelBufferForItemTime:"), time).then_some(time)
+                has_new(self.output, sel(c"hasNewPixelBufferForItemTime:"), time)
+                    .as_bool()
+                    .then_some(time)
             }
         }
 
@@ -2950,9 +2972,14 @@ mod platform {
                 let hal = device
                     .as_hal::<wgpu::hal::api::Metal>()
                     .ok_or("not a Metal device")?;
+                let raw: *const ProtocolObject<dyn objc2_metal::MTLDevice> = &**hal.raw_device();
+                // A rebuilt device may sit on another MTLDevice; textures from the old cache
+                // would not belong to it. Frames already handed out keep their own retain.
+                if !self.cache.is_null() && self.cache_device != raw.cast() {
+                    CFRelease(self.cache);
+                    self.cache = std::ptr::null_mut();
+                }
                 if self.cache.is_null() {
-                    let raw: *const ProtocolObject<dyn objc2_metal::MTLDevice> =
-                        &**hal.raw_device();
                     let status = CVMetalTextureCacheCreate(
                         std::ptr::null(),
                         std::ptr::null(),
@@ -2961,13 +2988,18 @@ mod platform {
                         &mut self.cache,
                     );
                     if status != 0 {
+                        self.cache = std::ptr::null_mut();
                         return Err(format!("CVMetalTextureCacheCreate {status}"));
                     }
+                    self.cache_device = raw.cast();
                 }
                 let (width, height) = (
                     CVPixelBufferGetWidth(buffer),
                     CVPixelBufferGetHeight(buffer),
                 );
+                if width == 0 || height == 0 {
+                    return Err("empty video frame".into());
+                }
                 let mut metal = std::ptr::null_mut();
                 let status = CVMetalTextureCacheCreateTextureFromImage(
                     std::ptr::null(),
@@ -2986,8 +3018,12 @@ mod platform {
                     ));
                 }
                 let raw = CVMetalTextureGetTexture(metal);
-                let texture: Retained<ProtocolObject<dyn MTLTexture>> =
-                    Retained::retain(raw.cast()).ok_or("no Metal texture")?;
+                let Some(texture): Option<Retained<ProtocolObject<dyn MTLTexture>>> =
+                    Retained::retain(raw.cast())
+                else {
+                    CFRelease(metal);
+                    return Err("no Metal texture".into());
+                };
                 // The CVMetalTexture keeps the IOSurface checked out until wgpu is done with it,
                 // and its cache must outlive it, even when the player closes first.
                 let held = Held(metal);

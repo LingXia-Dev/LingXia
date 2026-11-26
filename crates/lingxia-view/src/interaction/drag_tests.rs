@@ -703,3 +703,37 @@ fn a_step_before_a_view_set_page_lands_reports_where_it_rests() {
         "the View heard page 2 last, so 1 is news"
     );
 }
+
+#[test]
+fn a_drag_hit_respects_clips_and_an_open_panel() {
+    let frame = |nodes| PresentedFrame::new(CommitTicket::new(1), 1.0, nodes);
+    let model = DragModel::default();
+    // Clipped to its top half: the bottom half is not there to grab.
+    let mut clipped = panel(0);
+    clipped.visible_bounds = [0.0, 0.0, 100.0, 100.0];
+    let clipped = frame(vec![clipped]);
+    assert_eq!(model.hit(&clipped, [50.0, 50.0]).as_deref(), Some("sheet"));
+    assert_eq!(model.hit(&clipped, [50.0, 150.0]), None);
+    // A dialog panel over the sheet keeps the finger from it.
+    let mut dialog = node("dialog", "column", [0.0, 0.0, 100.0, 200.0]);
+    dialog.panel = true;
+    let covered = frame(vec![panel(0), dialog]);
+    assert_eq!(model.hit(&covered, [50.0, 50.0]), None);
+}
+
+#[test]
+fn an_element_that_leaves_under_a_finger_reenters_at_rest() {
+    let frame = |nodes| PresentedFrame::new(CommitTicket::new(1), 1.0, nodes);
+    let mut model = DragModel::default();
+    model.accept(&frame(vec![panel(0)]));
+    model.hold("sheet");
+    model.drag_by("sheet", 40.0);
+    model.accept(&frame(Vec::new()));
+    model.accept(&frame(vec![panel(2)]));
+    assert_eq!(model.offset("sheet"), 180.0);
+    // No finger holds the new element: the View moving its index springs it.
+    model.accept(&frame(vec![panel(0)]));
+    let released = model.take_released();
+    assert_eq!(released.len(), 1);
+    assert_eq!(released[0].to, 0.0);
+}

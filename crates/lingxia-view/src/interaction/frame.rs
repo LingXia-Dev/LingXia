@@ -72,11 +72,7 @@ impl PresentedFrame {
     /// The topmost interactive node under a logical point; an open top-layer panel over the
     /// point keeps it from everything beneath, its own backdrop included.
     pub fn hit(&self, point: [f32; 2]) -> Option<usize> {
-        let mut panel: Option<&NodeSnapshot> = None;
-        for (index, node) in self.hit_order() {
-            if panel.is_some_and(|panel| !descends(node, panel)) {
-                continue;
-            }
+        for (index, node) in self.reachable(point) {
             if hit_target(node)
                 && contains(node, point, false)
                 && super::slider::takes(node, point[0])
@@ -89,11 +85,26 @@ impl PresentedFrame {
             {
                 return None;
             }
-            if node.panel && panel.is_none() && contains(node, point, false) {
-                panel = Some(node);
-            }
         }
         None
+    }
+
+    /// [`Self::hit_order`] as a point reaches it: below an open top-layer panel over `point`
+    /// only that panel's own subtree remains.
+    pub(crate) fn reachable(
+        &self,
+        point: [f32; 2],
+    ) -> impl Iterator<Item = (usize, &NodeSnapshot)> {
+        let mut panel: Option<&NodeSnapshot> = None;
+        self.hit_order().filter(move |(_, node)| {
+            if panel.is_some_and(|panel| !descends(node, panel)) {
+                return false;
+            }
+            if node.panel && panel.is_none() && contains(node, point, false) {
+                panel = Some(*node);
+            }
+            true
+        })
     }
 
     /// The live `<webview>` that owns a pointer gesture starting at logical `point`, or `None`
@@ -169,14 +180,14 @@ impl PresentedFrame {
 
     /// The topmost node with a `hover:` delta under a logical point.
     pub fn hover_hit(&self, point: [f32; 2]) -> Option<usize> {
-        self.hit_order()
+        self.reachable(point)
             .find(|(_, node)| node.hover_style && contains(node, point, false))
             .map(|(index, _)| index)
     }
 
     /// The topmost `interestFor` trigger under a logical point, or the popover with id `hint`.
     pub fn interest_hit(&self, point: [f32; 2], hint: Option<&str>) -> Option<usize> {
-        self.hit_order()
+        self.reachable(point)
             .find(|(_, node)| {
                 (node.interest_for.is_some()
                     || (hint.is_some() && node.element_id.as_deref() == hint))
@@ -187,14 +198,14 @@ impl PresentedFrame {
 
     /// The topmost selectable static text under a logical point.
     pub fn selectable_hit(&self, point: [f32; 2]) -> Option<usize> {
-        self.hit_order()
+        self.reachable(point)
             .find(|(_, node)| node.selectable.is_some() && contains(node, point, false))
             .map(|(index, _)| index)
     }
 
     /// The innermost element with `onContextMenu` under a logical point.
     pub fn context_menu_hit(&self, point: [f32; 2]) -> Option<usize> {
-        self.hit_order()
+        self.reachable(point)
             .find(|(_, node)| node.on_context_menu.is_some() && contains(node, point, false))
             .map(|(index, _)| index)
     }
@@ -205,7 +216,7 @@ impl PresentedFrame {
 
     /// The topmost scroll region that can move under a logical point.
     pub fn scroll_hit(&self, point: [f32; 2]) -> Option<String> {
-        self.hit_order()
+        self.reachable(point)
             .find(|(_, node)| {
                 node.scroll.as_ref().is_some_and(|s| s.max_offset > 0.0)
                     && contains(node, point, true)

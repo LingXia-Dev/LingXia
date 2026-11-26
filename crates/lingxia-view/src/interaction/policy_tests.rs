@@ -526,12 +526,37 @@ fn radios() -> PresentedFrame {
 }
 
 #[test]
+fn a_checked_radio_focus_cannot_reach_leaves_the_stop_to_the_first() {
+    let mut presented = radios();
+    presented.nodes[2].visible_bounds = [0.0, 0.0, 0.0, 0.0];
+    assert!(keyboard::tab_stop(&presented, 1, |_| false));
+    // Scrolled out of view but revealable, it keeps the stop.
+    assert!(keyboard::tab_stop(&presented, 2, |_| true));
+    assert!(!keyboard::tab_stop(&presented, 1, |_| true));
+    let mut presented = radios();
+    presented.nodes[2].accessibility_hidden = Some(true);
+    assert!(keyboard::tab_stop(&presented, 1, |_| false));
+    assert_eq!(
+        keyboard::next(&presented, None, 1, |_| false, |_| None),
+        Some(1)
+    );
+    // An open dialog scopes focus: the checked option behind it no longer claims the stop.
+    let mut presented = radios();
+    let mut dialog = node("dlg", "column", [0.0, 0.0, 100.0, 100.0]);
+    dialog.modal = true;
+    let mut inside = presented.nodes[1].clone();
+    inside.identity = "dlg/late".into();
+    presented.nodes.extend([dialog, inside]);
+    assert!(keyboard::tab_stop(&presented, 7, |_| false));
+}
+
+#[test]
 fn radio_groups_take_one_tab_stop_and_arrows_wrap_inside_the_group() {
     let presented = radios();
-    assert!(!keyboard::tab_stop(&presented, 1));
-    assert!(keyboard::tab_stop(&presented, 2));
-    assert!(!keyboard::tab_stop(&presented, 3));
-    assert!(keyboard::tab_stop(&presented, 5));
+    assert!(!keyboard::tab_stop(&presented, 1, |_| false));
+    assert!(keyboard::tab_stop(&presented, 2, |_| false));
+    assert!(!keyboard::tab_stop(&presented, 3, |_| false));
+    assert!(keyboard::tab_stop(&presented, 5, |_| false));
     assert_eq!(keyboard::adjacent_option(&presented, 1, 1), Some(2));
     assert_eq!(keyboard::adjacent_option(&presented, 2, 1), Some(1));
     assert_eq!(keyboard::adjacent_option(&presented, 5, 1), Some(5));
@@ -1124,4 +1149,71 @@ fn a_long_press_on_a_link_selects_in_selectable_text_and_presses_otherwise() {
     assert!(!effects.contains(&Effect::ArmLongPress));
     let (_, effects) = interaction.pointer(press(PointerPhase::Up, 100.0, 20.0), page);
     assert!(effects.contains(&Effect::Clicked));
+}
+
+#[test]
+fn an_open_panel_keeps_pointer_queries_from_what_lies_beneath() {
+    let mut below = node("page/b", "column", [0.0, 0.0, 100.0, 100.0]);
+    below.hover_style = true;
+    below.interest_for = Some("tip".into());
+    below.selectable = Some("text");
+    below.on_context_menu = Some(3);
+    below.scroll = Some(region("s", None, 0.0, 50.0));
+    let mut dialog = node("layer/d", "column", [0.0, 0.0, 100.0, 100.0]);
+    dialog.panel = true;
+    let open = frame(vec![below.clone(), dialog]);
+    let point = [50.0, 50.0];
+    assert_eq!(open.hover_hit(point), None);
+    assert_eq!(open.interest_hit(point, None), None);
+    assert_eq!(open.selectable_hit(point), None);
+    assert_eq!(open.context_menu_hit(point), None);
+    assert_eq!(open.scroll_hit(point), None);
+    let mut ids = SemanticIds::default();
+    ids.update(open.nodes.iter().map(|n| n.identity.as_ref()));
+    let semantics = Projection {
+        frame: &open,
+        ids: &ids,
+        keyboard_focus: None,
+        inert: false,
+        drags: None,
+        obscured: [0.0; 4],
+        touch_target: 0.0,
+    };
+    assert_eq!(semantics.hit(point, 0.0), None);
+    let closed = frame(vec![below]);
+    assert_eq!(closed.hover_hit(point), Some(0));
+    assert_eq!(closed.scroll_hit(point).as_deref(), Some("s"));
+}
+
+#[test]
+fn touch_exploration_skips_actions_a_swipe_row_covers() {
+    let mut row = node("row", "column", [0.0, 0.0, 100.0, 40.0]);
+    row.text = "Message".into();
+    row.aria_actions = vec!["del".into()];
+    row.drag = Some(crate::scene::node::DragSnapshot {
+        axis: ScrollAxis::Horizontal,
+        points: vec![0.0, -40.0],
+        index: 0,
+        handle: 1,
+        duration: std::time::Duration::from_millis(200),
+        bounce: 0.0,
+        hides: Vec::new(),
+        ghost: false,
+    });
+    let mut delete = node("actions/del", "button", [60.0, 0.0, 40.0, 40.0]);
+    delete.text = "Delete".into();
+    delete.element_id = Some("del".into());
+    let presented = frame(vec![row, delete]);
+    let mut ids = SemanticIds::default();
+    ids.update(presented.nodes.iter().map(|n| n.identity.as_ref()));
+    let semantics = Projection {
+        frame: &presented,
+        ids: &ids,
+        keyboard_focus: None,
+        inert: false,
+        drags: None,
+        obscured: [0.0; 4],
+        touch_target: 0.0,
+    };
+    assert_eq!(semantics.hit([80.0, 20.0], 0.0), ids.id(0));
 }

@@ -2,7 +2,7 @@ use crate::protocol::{field, tag};
 use crate::{
     DisplayList, Renderer,
     protocol::{Record, identities},
-    text::input::{Edit, Editor, Snapshot},
+    text::input::{Edit, Editor, MAX_BATCH_EDITS, Snapshot},
 };
 use serde::Serialize;
 use std::collections::{HashMap, HashSet};
@@ -99,6 +99,9 @@ impl Inputs {
         self.focused = None;
         self.token = self.token.saturating_add(1);
         self.keyboard_held = false;
+        self.text_selection = None;
+        self.committed.clear();
+        self.selection_due.clear();
     }
     /// The platform blurred (`true`) or the user focused (`false`) an editor.
     pub fn hold_keyboard(&mut self, held: bool) {
@@ -612,50 +615,75 @@ impl Inputs {
         {
             return Err("UI_INPUT: host edit cannot change control state".into());
         }
-        let entry = self.entries.get_mut(id).ok_or("UI_INPUT: missing editor")?;
-        let before = entry.editor.clone();
-        let mut input = None;
-        let numeric = matches!(entry.rules.keyboard.as_str(), "number" | "decimal");
-        if entry.rules.max_length.is_none() && !numeric {
-            input = renderer.edit_text(&mut entry.editor, edits)?.input;
-        } else {
-            for edit in edits {
-                // maxLength and a numeric keyboard trim what an edit inserts; neither
-                // removes existing text.
-                let edit = match edit {
-                    Edit::Replace {
-                        text,
-                        cursor,
-                        composing,
-                    } => {
-                        let before = entry.editor.snapshot();
-                        let kept = entry.rules.filter(&before, text);
-                        // A rejected character over a selection leaves the selection as it was.
-                        if kept.is_empty() && !text.is_empty() && before.composition.is_none() {
-                            continue;
-                        }
-                        Edit::Replace {
-                            text: entry.rules.fit(&before, &kept),
-                            cursor: *cursor,
-                            composing: *composing,
-                        }
-                    }
-                    edit => edit.clone(),
-                };
-                let change = renderer.edit_text(&mut entry.editor, std::slice::from_ref(&edit))?;
-                input = change.input.or(input);
-            }
-        }
-        let text = entry.editor.snapshot().text;
-        if !entry.rules.accepts(&text) {
-            entry.editor = before;
+        // Edits go one at a time below when rules trim them, so the batch limit is checked here.
+        if edits.len() > MAX_BATCH_EDITS {
             return Err(format!(
-                "UI_INPUT: {} inputs take an ISO value",
-                entry.rules.keyboard
+                "UI_INPUT: {:?}",
+                crate::text::input::Error::TooManyEdits
             ));
         }
-        self.check_budget()?;
-        Ok(input)
+        let entry = self.entries.get_mut(id).ok_or("UI_INPUT: missing editor")?;
+        let before = entry.editor.clone();
+        let applied = Self::apply(entry, edits, renderer);
+        let applied = applied.and_then(|input| self.check_budget().map(|()| input));
+        if applied.is_err()
+            && let Some(entry) = self.entries.get_mut(id)
+        {
+            entry.editor = before;
+        }
+        applied
+    }
+
+    /// `edits` on `entry`'s editor, trimmed by its rules; the caller restores it on failure.
+    fn apply(
+        entry: &mut Entry,
+        edits: &[Edit],
+        renderer: &mut Renderer,
+    ) -> Result<Option<String>, String> {
+        let numeric = matches!(entry.rules.keyboard.as_str(), "number" | "decimal");
+        if entry.rules.max_length.is_none() && !numeric {
+            let input = renderer.edit_text(&mut entry.editor, edits)?.input;
+            return Self::accepted(entry).map(|()| input);
+        }
+        let mut input = None;
+        for edit in edits {
+            // maxLength and a numeric keyboard trim what an edit inserts; neither
+            // removes existing text.
+            let edit = match edit {
+                Edit::Replace {
+                    text,
+                    cursor,
+                    composing,
+                } => {
+                    let before = entry.editor.snapshot();
+                    let kept = entry.rules.filter(&before, text);
+                    // A rejected character over a selection leaves the selection as it was.
+                    if kept.is_empty() && !text.is_empty() && before.composition.is_none() {
+                        continue;
+                    }
+                    Edit::Replace {
+                        text: entry.rules.fit(&before, &kept),
+                        cursor: *cursor,
+                        composing: *composing,
+                    }
+                }
+                edit => edit.clone(),
+            };
+            let change = renderer.edit_text(&mut entry.editor, std::slice::from_ref(&edit))?;
+            input = change.input.or(input);
+        }
+        Self::accepted(entry).map(|()| input)
+    }
+
+    fn accepted(entry: &Entry) -> Result<(), String> {
+        if entry.rules.accepts(&entry.editor.snapshot().text) {
+            Ok(())
+        } else {
+            Err(format!(
+                "UI_INPUT: {} inputs take an ISO value",
+                entry.rules.keyboard
+            ))
+        }
     }
     fn check_budget(&self) -> Result<(), String> {
         if self
@@ -916,4 +944,116 @@ pub(crate) fn apply_state_style(
         }
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn editors(count: usize, max_length: Option<u32>) -> (Inputs, Vec<String>, Renderer) {
+        let mut records = vec![Record {
+            tag: tag::COLUMN,
+            parent: None,
+            key: String::new(),
+            test_id: String::new(),
+            text: String::new(),
+            fields: Vec::new().into(),
+        }];
+        for _ in 0..count {
+            let fields = max_length
+                .map(|n| vec![(field::MAX_LENGTH, serde_json::json!(n))])
+                .unwrap_or_default();
+            records.push(Record {
+                tag: tag::INPUT,
+                parent: Some(0),
+                key: String::new(),
+                test_id: String::new(),
+                text: String::new(),
+                fields: fields.into(),
+            });
+        }
+        let mut renderer = Renderer::default();
+        let mut inputs = Inputs::default();
+        inputs.reconcile(&records, &mut renderer).unwrap();
+        let ids: Vec<String> = identities(&records).into_iter().skip(1).collect();
+        for id in &ids {
+            inputs.entries.get_mut(id).unwrap().sized = true;
+        }
+        (inputs, ids, renderer)
+    }
+
+    fn replace(text: &str) -> Edit {
+        Edit::Replace {
+            text: text.into(),
+            cursor: 1,
+            composing: false,
+        }
+    }
+
+    fn text(inputs: &Inputs, id: &str) -> String {
+        inputs.entries[id].editor.snapshot().text
+    }
+
+    #[test]
+    fn a_trimmed_batch_that_fails_midway_leaves_the_editor_as_it_was() {
+        let (mut inputs, ids, mut renderer) = editors(1, Some(10));
+        inputs.focus(&ids[0], &mut renderer).unwrap();
+        let edits = [
+            replace("ab"),
+            Edit::Selection {
+                anchor: 99,
+                focus: 99,
+            },
+        ];
+        assert!(inputs.edit(&ids[0], &edits, &mut renderer).is_err());
+        assert_eq!(text(&inputs, &ids[0]), "");
+    }
+
+    #[test]
+    fn a_trimmed_batch_keeps_the_batch_limit() {
+        let (mut inputs, ids, mut renderer) = editors(1, Some(10));
+        inputs.focus(&ids[0], &mut renderer).unwrap();
+        let mut edits = vec![replace("a")];
+        edits.extend((0..MAX_BATCH_EDITS).map(|_| Edit::Selection {
+            anchor: 0,
+            focus: 0,
+        }));
+        assert!(inputs.edit(&ids[0], &edits, &mut renderer).is_err());
+        assert_eq!(text(&inputs, &ids[0]), "");
+    }
+
+    #[test]
+    fn an_edit_over_the_text_budget_is_undone() {
+        let (mut inputs, ids, mut renderer) = editors(32, None);
+        let chunk = "x".repeat(crate::text::input::MAX_TEXT_BYTES);
+        let mut refused = None;
+        for id in &ids {
+            inputs.focus(id, &mut renderer).unwrap();
+            if let Err(error) = inputs.edit(id, &[replace(&chunk)], &mut renderer) {
+                assert!(error.contains("budget"), "{error}");
+                refused = Some(id);
+                break;
+            }
+        }
+        let refused = refused.expect("the budget refuses an edit");
+        assert_eq!(text(&inputs, refused), "");
+        assert!(inputs.check_budget().is_ok());
+    }
+
+    #[test]
+    fn clear_drops_the_text_selection_and_queued_reports() {
+        let (mut inputs, _, _) = editors(1, None);
+        inputs.text_selection = Some(TextSelection {
+            identity: "t".into(),
+            text: "text".into(),
+            anchor: 0,
+            focus: 2,
+        });
+        inputs.committed.push((1, "v".into()));
+        inputs.selection_due.push((2, "{}".into()));
+        inputs.clear();
+        assert!(inputs.text_selection.is_none());
+        assert!(inputs.take_committed().is_empty());
+        assert!(!inputs.selection_due());
+    }
 }

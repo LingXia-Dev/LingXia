@@ -230,7 +230,9 @@ impl Devices {
     /// Opens a device on `adapter`; None when it falls short of the renderer's limits.
     pub async fn open(&mut self, adapter: wgpu::Adapter) -> Option<usize> {
         let available = adapter.limits();
-        if !shortfall(&available).is_empty() {
+        let missing = shortfall(&available);
+        if !missing.is_empty() {
+            log::warn!(target: "lingxia_view", "GPU adapter {} falls short: {}", adapter.get_info().name, missing.join(", "));
             return None;
         }
         // Texture size and alignment follow the adapter: the image atlas scales with them.
@@ -250,7 +252,13 @@ impl Devices {
         let opened = None;
         let (device, queue) = match opened {
             Some(opened) => opened,
-            None => adapter.request_device(&descriptor).await.ok()?,
+            None => match adapter.request_device(&descriptor).await {
+                Ok(opened) => opened,
+                Err(error) => {
+                    log::warn!(target: "lingxia_view", "GPU device on {} refused: {error}", adapter.get_info().name);
+                    return None;
+                }
+            },
         };
         self.devices.push(DeviceHandle {
             adapter,
