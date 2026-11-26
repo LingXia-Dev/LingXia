@@ -33,3 +33,17 @@ test('Navigation: from the start edge, narrow, described by the line under its t
   screen.press(screen.getByTestId('nav-all'));
   assert.equal(dialogs(screen).length, 0);
 });
+
+test('isLabelHidden keeps the label as the name without a title, the close button at the end, marked <id>-close', async () => {
+  const { renderPage } = await import('../testing/harness.mjs');
+  const { textOf } = await import('@lingxia/view/testing');
+  const screen = await renderPage(`
+    import { Drawer } from '@liulidesign/core/Drawer';
+    export function render() { return <page><Drawer isOpen onOpenChange={() => {}} label="Filters" isLabelHidden data-testid="filters"><text>Body</text></Drawer></page>; }`);
+  const panel = screen.getByTestId('filters');
+  assert.equal(panel.props.accessibilityLabel, 'Filters');
+  assert.equal(screen.queryAll(node => node.props.role === 'heading').length, 0);
+  assert.ok(!textOf(panel).includes('Filters'));
+  const close = screen.getByTestId('filters-close');
+  assert.equal(close.parent.props.justify, 'end');
+});

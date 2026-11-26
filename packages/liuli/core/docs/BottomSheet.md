@@ -181,7 +181,7 @@ export function Form() {
 | `description` | `string` |  | One or two sentences under the title, read as the sheet's description. |
 | `children` | `Child` |  | The body; it scrolls when the sheet reaches its height. |
 | `headerAction` | `Child` |  | Beside the title, before the close button: one small control that acts on the whole sheet, such as Refresh. |
-| `actions` | `Child` |  |  |
+| `actions` | `Child` |  | The footer, typically Buttons, the main action last. |
 | `hasCloseButton` | `boolean` | `false` | Shows a close button. Without it Escape, a click or tap outside, Back or a drag closes the sheet, so a mouse and keyboard on a wide window still have a way out. |
 | `closeLabel` | `string` |  | Names the close button. Defaults to "Close" in the page's language. |
 | `dismissOn` | `DialogDismissOn` | `'any'` | Which requests close it; with `none` it cannot be dragged off either. |

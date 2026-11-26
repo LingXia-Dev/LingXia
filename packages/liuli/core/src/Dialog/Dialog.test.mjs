@@ -152,3 +152,18 @@ test('AlertDialog: an action that fails after the dialog has gone settles quietl
   assert.equal(shown(screen, 'gone'), 0);
   assert.ok(errors.every(line => !line.includes('UI_LOCAL')), errors.join('\n'));
 });
+
+test('a close button carries <id>-close, over media too, and an AlertDialog keeps its data-* props', async () => {
+  const screen = await renderPage(`
+    import { Dialog, AlertDialog } from '@liulidesign/core/Dialog';
+    export function render() {
+      return (
+        <page>
+          <Dialog isOpen onOpenChange={() => {}} label="Plain" hasCloseButton data-testid="plain"><text>Body</text></Dialog>
+          <AlertDialog isOpen onOpenChange={() => {}} label="Delete?" confirmLabel="Delete" confirmAction={async () => {}} data-testid="alert" data-kind="delete" />
+        </page>
+      );
+    }`);
+  assert.equal(screen.getByTestId('plain-close').tag, 'button');
+  assert.deepEqual(JSON.parse(screen.getByTestId('alert').props.dataAttributes), { kind: 'delete' });
+});

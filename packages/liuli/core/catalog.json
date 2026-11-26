@@ -1542,7 +1542,7 @@
           "name": "actions",
           "type": "Child",
           "required": false,
-          "description": ""
+          "description": "The footer, typically Buttons, the main action last."
         },
         {
           "name": "hasCloseButton",
@@ -8154,6 +8154,13 @@
           "type": "string",
           "required": true,
           "description": "The title, and the drawer's accessible name."
+        },
+        {
+          "name": "isLabelHidden",
+          "type": "boolean",
+          "required": false,
+          "description": "Keeps `label` as the name without drawing it as a title.",
+          "default": "false"
         },
         {
           "name": "description",

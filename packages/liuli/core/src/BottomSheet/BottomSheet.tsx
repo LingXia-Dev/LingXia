@@ -24,9 +24,9 @@ export interface BottomSheetProps {
   description?: string;
   /** The body; it scrolls when the sheet reaches its height. */
   children?: Child;
-  /** The footer, typically Buttons, the main action last. */
   /** Beside the title, before the close button: one small control that acts on the whole sheet, such as Refresh. */
   headerAction?: Child;
+  /** The footer, typically Buttons, the main action last. */
   actions?: Child;
   /** Shows a close button. Without it Escape, a click or tap outside, Back or a drag closes the sheet, so a mouse and keyboard on a wide window still have a way out. @default false */
   hasCloseButton?: boolean;
@@ -100,7 +100,7 @@ export function BottomSheet({
     >
       <view aria-hidden className={r.grabber.base} />
       {(!isLabelHidden || hasCloseButton || headerAction !== undefined) && (
-        <view className={r.header.base}>
+        <view className={cx(r.header.base, isLabelHidden && r.header.bare)}>
           {!isLabelHidden && <text role="heading" headingLevel={2} className={r.title.base}>{label}</text>}
           {headerAction !== undefined && <view className={r.headerAction.base}>{headerAction}</view>}
           {hasCloseButton && (

@@ -18,6 +18,8 @@ export interface DrawerProps {
   onOpenChange: (isOpen: boolean) => void;
   /** The title, and the drawer's accessible name. */
   label: string;
+  /** Keeps `label` as the name without drawing it as a title. @default false */
+  isLabelHidden?: boolean;
   /** A sentence under the title, read as the drawer's description. */
   description?: string;
   /** The body; it scrolls when it is taller than the drawer. */
@@ -48,6 +50,7 @@ export function Drawer({
   isOpen,
   onOpenChange,
   label,
+  isLabelHidden = false,
   description,
   children,
   actions,
@@ -76,15 +79,17 @@ export function Drawer({
       data-testid={testId} {...dataOf(attributes)}
       className={cx(r.panel.base, r.panel.side[side], r.panel.size[size], className)}
     >
-      <view className={r.header.base}>
-        <text role="heading" headingLevel={2} className={r.title.base}>{label}</text>
-        {headerAction !== undefined && <view className={r.headerAction.base}>{headerAction}</view>}
-        {hasCloseButton && (
-          <button aria-label={closeLabel} onClick={close} className={r.close.base}>
-            <Glyph name="close" className={r.closeIcon.base} />
-          </button>
-        )}
-      </view>
+      {(!isLabelHidden || hasCloseButton || headerAction !== undefined) && (
+        <view className={cx(r.header.base, isLabelHidden && r.header.bare)}>
+          {!isLabelHidden && <text role="heading" headingLevel={2} className={r.title.base}>{label}</text>}
+          {headerAction !== undefined && <view className={r.headerAction.base}>{headerAction}</view>}
+          {hasCloseButton && (
+            <button aria-label={closeLabel} onClick={close} data-testid={testId && `${testId}-close`} className={r.close.base}>
+              <Glyph name="close" className={r.closeIcon.base} />
+            </button>
+          )}
+        </view>
+      )}
       {description !== undefined && <text id={descriptionId} className={r.description.base}>{description}</text>}
       <LayerContext.Provider value="overlay"><scroll className={cx(r.body.base, bodyEdges.className)} onScrollEdge={bodyEdges.onScrollEdge}>{children}</scroll></LayerContext.Provider>
       {actions !== undefined && <Footer className={r.footer.base}>{actions}</Footer>}

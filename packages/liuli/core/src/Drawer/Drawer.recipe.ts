@@ -27,6 +27,9 @@ export const drawerRecipe = {
   },
   header: {
     base: 'flex-row items-start gap-3',
+
+    /** No title drawn: the close button and any header action keep to the end. */
+    bare: 'justify-end',
   },
   title: {
     base: 'grow basis-0 text-title font-semibold tracking-tight text-text',

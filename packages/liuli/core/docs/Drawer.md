@@ -88,6 +88,7 @@ export function Navigation() {
 | `isOpen` (required) | `boolean` |  | Whether it is shown. A closed drawer renders nothing, so local state inside starts over. |
 | `onOpenChange` (required) | `(isOpen: boolean) => void` |  | Called with `false` on a close request: Escape, back, the backdrop per `dismissOn`, the close button. |
 | `label` (required) | `string` |  | The title, and the drawer's accessible name. |
+| `isLabelHidden` | `boolean` | `false` | Keeps `label` as the name without drawing it as a title. |
 | `description` | `string` |  | A sentence under the title, read as the drawer's description. |
 | `children` | `Child` |  | The body; it scrolls when it is taller than the drawer. |
 | `actions` | `Child` |  | The footer, typically Buttons, the main action last. |

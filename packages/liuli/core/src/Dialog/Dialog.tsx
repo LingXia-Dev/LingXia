@@ -104,18 +104,18 @@ export function Dialog({
         <view className={cx(r.media.base, size !== 'full' && r.media.floating)}>
           <view aria-hidden className={r.media.picture}>{media}</view>
           {hasCloseButton && (
-            <button aria-label={closeLabel} onClick={close} className={r.mediaClose.base}>
+            <button aria-label={closeLabel} onClick={close} data-testid={testId && `${testId}-close`} className={r.mediaClose.base}>
               <Glyph name="close" className={r.closeIcon.base} />
             </button>
           )}
         </view>
       )}
       {(!isLabelHidden || headerAction !== undefined || (hasCloseButton && media === undefined)) && (
-        <view className={r.header.base}>
+        <view className={cx(r.header.base, isLabelHidden && r.header.bare)}>
           {!isLabelHidden && <text role="heading" headingLevel={2} className={r.title.base}>{label}</text>}
           {headerAction !== undefined && <view className={r.headerAction.base}>{headerAction}</view>}
           {hasCloseButton && media === undefined && (
-            <button aria-label={closeLabel} onClick={close} className={r.close.base}>
+            <button aria-label={closeLabel} onClick={close} data-testid={testId && `${testId}-close`} className={r.close.base}>
               <Glyph name="close" className={r.closeIcon.base} />
             </button>
           )}
@@ -165,6 +165,7 @@ export function AlertDialog({
   cancelLabel = liuliText('@liuli.cancel'),
   failedMessage = liuliText('@liuli.actionFailed'),
   'data-testid': testId,
+  ...attributes
 }: AlertDialogProps) {
   const pending = useLocal('pending', false);
   const failed = useLocal('failed', false);
@@ -196,7 +197,7 @@ export function AlertDialog({
       isAlert
       dismissOn={pending.value ? 'none' : 'closeRequest'}
       size="sm"
-      data-testid={testId}
+      data-testid={testId} {...dataOf(attributes)}
       actions={
         <>
           <Button label={cancelLabel} isDisabled={pending.value} onClick={() => change(false)} data-testid={testId && `${testId}-cancel`} />
