@@ -387,10 +387,11 @@ function usePlaybackTracking(blockId: string, src: string, ctx: BlockRenderConte
       onPlay: () => segStartMs.set(player.currentTime * 1000),
       onTimeUpdate: (e: { readonly currentTime: number }) => {
         const ms = e.currentTime * 1000;
+        // Played means reached from the previous update: a jump past it is a seek, not watching.
+        const playedOn = ms - lastMs.value < 2000;
         lastMs.set(ms);
         if (segStartMs.value === null && !player.paused) segStartMs.set(ms);
-        if (ms > maxPlayedMs.value && ms - lastMs.value < 2000) maxPlayedMs.set(ms);
-        else if (ms > maxPlayedMs.value && policy?.seek !== 'played-only') maxPlayedMs.set(ms);
+        if (ms > maxPlayedMs.value && (playedOn || policy?.seek !== 'played-only')) maxPlayedMs.set(ms);
       },
       onPause: () => closeSegment(player.currentTime * 1000),
       onEnded: () => closeSegment(durationMs || player.currentTime * 1000, true),

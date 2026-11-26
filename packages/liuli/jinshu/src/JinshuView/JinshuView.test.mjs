@@ -82,3 +82,16 @@ export function render() {
   // The nav's scope names the blocks it scrolls to.
   assert.equal(ids.filter(id => id === 'jinshu-lesson-nav-b-p').length, 1);
 });
+
+test('Course: with played-only, a chapter unlocks when the video plays up to it, not when it jumps there', async () => {
+  const screen = await renderExample('JinshuView/JinshuView', 'Course');
+  const status = { readyState: 'ready', currentTime: 0, duration: 10, paused: false, ended: false, buffering: false, seeking: false,
+    buffered: 10, videoWidth: 1280, videoHeight: 720, playbackRate: 1, volume: 1, muted: false, quality: 'auto', qualities: [], error: null };
+  const at = s => screen.video(screen.queryAll(node => node.tag === 'video')[0], { ...status, currentTime: s }, [{ type: 'timeupdate', currentTime: s }]);
+  const open = title => screen.queryAll(node => labelOf(node)?.endsWith(title))[0].props.enabled !== 0;
+  at(9);
+  assert.equal(open('Worked examples'), false, 'a jump is not watching');
+  for (let s = 0; s <= 3.5; s += 0.5) at(s);
+  assert.equal(open('Three conditions'), true);
+  assert.equal(open('Worked examples'), false);
+});
