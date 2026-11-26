@@ -5,6 +5,24 @@ use crate::ALIKE;
 use crate::color::{Oklch, Rgba, contrast, distance, ensure_contrast, over};
 use crate::generated::{ROLE_COUNT, Role};
 
+/// The tinted fills a separator may sit on. `neutral-soft` is left out: under high contrast it is
+/// itself an edge 3:1 off the floors.
+const SOFT_FILLS: [Role; 13] = [
+    Role::AccentSoft,
+    Role::DangerSoft,
+    Role::SuccessSoft,
+    Role::WarningSoft,
+    Role::InfoSoft,
+    Role::Hue1Soft,
+    Role::Hue2Soft,
+    Role::Hue3Soft,
+    Role::Hue4Soft,
+    Role::Hue5Soft,
+    Role::Hue6Soft,
+    Role::Hue7Soft,
+    Role::Hue8Soft,
+];
+
 const WHITE: Rgba = Rgba([255, 255, 255, 255]);
 
 /// A categorical colour, light then dark: hue angle, chroma, and contrast with the surface.
@@ -552,7 +570,43 @@ impl Build<'_> {
         self.info(seed);
         self.categorical(seed, sides);
         self.neutral_soft();
+        self.line_on_tints();
         self.surface_lines();
+    }
+
+    /// Under high contrast a separator stands 3:1 off every ground it is drawn on: the floors,
+    /// each soft fill and a `text/8` wash laid over surface or canvas. Moves only a boosted line.
+    fn line_on_tints(&mut self) {
+        if !(self.strong && self.movable) {
+            return;
+        }
+        let floors = [Role::Surface, Role::Canvas, Role::SurfaceSunken].map(|role| self.get(role));
+        let text = self.get(Role::Text);
+        let mut grounds: Vec<Rgba> = floors.to_vec();
+        for floor in [self.get(Role::Surface), self.get(Role::Canvas)] {
+            for soft in SOFT_FILLS {
+                grounds.push(over(self.get(soft), floor));
+            }
+            grounds.push(over(Rgba([text.0[0], text.0[1], text.0[2], 0x14]), floor));
+        }
+        let need = crate::boosted(1.2);
+        let passes = |line: Rgba| grounds.iter().all(|&ground| contrast(line, ground) >= need);
+        let line = self.get(Role::Line);
+        if passes(line) {
+            return;
+        }
+        // Away from the grounds, by bisection in OKLCH lightness: darker in light, lighter in dark.
+        let tone = line.oklch();
+        let (mut near, mut far) = (tone.l, if self.dark { 1.0 } else { 0.0 });
+        for _ in 0..40 {
+            let mid = (near + far) / 2.0;
+            if passes(Oklch { l: mid, ..tone }.rgba(255)) {
+                far = mid;
+            } else {
+                near = mid;
+            }
+        }
+        self.palette[Role::Line as usize] = Oklch { l: far, ..tone }.rgba(255);
     }
 
     /// The roles each lifted surface hands its contents: a line, or `danger` as text, keeps the

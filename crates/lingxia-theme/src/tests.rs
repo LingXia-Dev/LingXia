@@ -1979,3 +1979,39 @@ fn danger_holds_text_contrast_inside_each_lifted_surface() {
         }
     }
 }
+
+#[test]
+fn under_high_contrast_a_separator_stands_off_every_tint_it_sits_on() {
+    let tints = [
+        Role::AccentSoft,
+        Role::DangerSoft,
+        Role::SuccessSoft,
+        Role::WarningSoft,
+        Role::InfoSoft,
+        Role::Hue1Soft,
+        Role::Hue8Soft,
+    ];
+    for pack in shipped_packs() {
+        for appearance in [Appearance::Light, Appearance::Dark] {
+            let prefs = Prefs {
+                appearance,
+                high_contrast: true,
+                ..Prefs::default()
+            };
+            let theme = resolve(&pack, &prefs).unwrap();
+            let line = theme.color(Role::Line);
+            let text = theme.color(Role::Text);
+            for floor in [Role::Surface, Role::Canvas] {
+                let floor = theme.color(floor);
+                let wash = Rgba([text.0[0], text.0[1], text.0[2], 0x14]);
+                for ground in tints.map(|tint| theme.color(tint)).into_iter().chain([wash]) {
+                    let ratio = contrast(line, over(ground, floor));
+                    assert!(ratio >= 3.0 - 1e-9, "{} {appearance:?}: line {ratio:.2}", pack.name);
+                }
+            }
+            // A separator stays lighter than an interactive boundary.
+            let surface = theme.color(Role::Surface);
+            assert!(contrast(line, surface) < contrast(theme.color(Role::LineStrong), surface));
+        }
+    }
+}
