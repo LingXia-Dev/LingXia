@@ -2076,6 +2076,13 @@
           ]
         },
         {
+          "name": "isFocusKept",
+          "type": "boolean",
+          "required": false,
+          "description": "A press leaves the focused editor editing, its caret, selection and keyboard kept: for a format bar.",
+          "default": "false"
+        },
+        {
           "name": "isDisabled",
           "type": "boolean",
           "required": false,
@@ -22240,6 +22247,13 @@
             "ghost"
           ],
           "default": "'secondary'"
+        },
+        {
+          "name": "isFocusKept",
+          "type": "boolean",
+          "required": false,
+          "description": "A press leaves the focused editor editing, its caret, selection and keyboard kept: for a format bar.",
+          "default": "false"
         },
         {
           "name": "isDisabled",

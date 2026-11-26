@@ -43,6 +43,8 @@ export type ToggleButtonProps = ToggleButtonBinding & ToggleButtonLook & {
   size?: ToggleButtonSize;
   /** `ghost` for a toolbar beside icon buttons: no edge, the fill alone shows it on. @default 'secondary' */
   variant?: 'secondary' | 'ghost';
+  /** A press leaves the focused editor editing, its caret, selection and keyboard kept: for a format bar. @default false */
+  isFocusKept?: boolean;
   /** @default false */
   isDisabled?: boolean;
   className?: string;
@@ -50,7 +52,7 @@ export type ToggleButtonProps = ToggleButtonBinding & ToggleButtonLook & {
 };
 
 /** A button that turns one option on or off and shows which: a filter, a view option, a toolbar's bold. */
-export function ToggleButton({ label, bind, value: own, onChange: ownChange, size = 'md', variant, isDisabled = false, icon, pressedIcon, isLabelHidden, className, 'data-testid': testId, ...attributes }: ToggleButtonProps) {
+export function ToggleButton({ label, bind, value: own, onChange: ownChange, size = 'md', variant, isFocusKept, isDisabled = false, icon, pressedIcon, isLabelHidden, className, 'data-testid': testId, ...attributes }: ToggleButtonProps) {
   const isPressed = bind ? bind.value : own;
   const onPressedChange = (next: boolean) => bind ? bind.set(next) : ownChange?.(next);
   const trigger = useTrigger();
@@ -64,6 +66,7 @@ export function ToggleButton({ label, bind, value: own, onChange: ownChange, siz
       interestFor={trigger?.interestFor}
       data-state={isPressed ? 'on' : 'off'}
       disabled={isDisabled}
+      keepsFocus={isFocusKept || undefined}
       {...identityOf(testId, attributes, trigger)}
       onClick={() => onPressedChange(!isPressed)}
       style={face.style}

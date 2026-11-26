@@ -222,6 +222,7 @@ export function ToPage() {
 | `isFloating` | `boolean` | `false` | Lifts the button off the page with a shadow, for the one action that floats over scrolling content. |
 | `width` | `ButtonWidth` |  | `content` keeps its own width in a column; `fill` stretches across. Unset follows the parent. |
 | `edge` | `ButtonEdge` |  | For a ghost or link button at the edge of a row: its padding hangs past that side, so the label or the icon's drawing lines up with the content edge, as the text above and below does. |
+| `isFocusKept` | `boolean` | `false` | A press leaves the focused editor editing, its caret, selection and keyboard kept: for a format bar. |
 | `isDisabled` | `boolean` | `false` |  |
 | `disabledMessage` | `string` |  | Why it is disabled: read as the button's description while disabled; not drawn. |
 | `isLoading` | `boolean` | `false` | Shows a spinner and ignores presses; the button stays focusable and reports busy. |

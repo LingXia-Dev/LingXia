@@ -203,3 +203,18 @@ test('clickAction: a rejection is logged with the component and label, and the b
   ]);
   assert.deepEqual(['publish', 'refresh'].map(id => screen.getByTestId(id).props.stateBusy), [undefined, undefined]);
 });
+
+test('isFocusKept: a format bar button, an icon button or a toggle, leaves the editor editing', async () => {
+  const screen = await renderPage(`
+    import { Button } from '@liulidesign/core/Button';
+    import { IconButton } from '@liulidesign/core/IconButton';
+    import { ToggleButton } from '@liulidesign/core/ToggleButton';
+    export function render() { return <page>
+      <Button label="Plain" onClick={() => {}} data-testid="plain" />
+      <IconButton label="Link" icon="link" isFocusKept onClick={() => {}} data-testid="icon" />
+      <ToggleButton label="Bold" icon="bold" isLabelHidden isFocusKept value={false} onChange={() => {}} data-testid="toggle" />
+    </page>; }`);
+  assert.ok(!screen.getByTestId('plain').props.keepsFocus, 'a button takes focus as usual');
+  assert.equal(screen.getByTestId('icon').props.keepsFocus, 1);
+  assert.equal(screen.getByTestId('toggle').props.keepsFocus, 1);
+});

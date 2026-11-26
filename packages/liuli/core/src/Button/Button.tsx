@@ -44,6 +44,8 @@ export interface ButtonOwnProps {
   width?: ButtonWidth;
   /** For a ghost or link button at the edge of a row: its padding hangs past that side, so the label or the icon's drawing lines up with the content edge, as the text above and below does. */
   edge?: ButtonEdge;
+  /** A press leaves the focused editor editing, its caret, selection and keyboard kept: for a format bar. @default false */
+  isFocusKept?: boolean;
   /** @default false */
   isDisabled?: boolean;
   /** Why it is disabled: read as the button's description while disabled; not drawn. */
@@ -84,6 +86,7 @@ const squareSides = { sm: 32, md: 40, lg: 48 } satisfies Record<ButtonSize, numb
 
 export function Button({
   label,
+  isFocusKept,
   variant: ownVariant,
   size: ownSize,
   startIcon,
@@ -171,6 +174,7 @@ export function Button({
       aria-describedby={hasReason ? reasonId : trigger?.describedBy}
       aria-busy={busy || undefined}
       disabled={isDisabled}
+      keepsFocus={isFocusKept || undefined}
       popoverTarget={trigger?.popoverTarget}
       interestFor={trigger?.interestFor}
       onClick={press}

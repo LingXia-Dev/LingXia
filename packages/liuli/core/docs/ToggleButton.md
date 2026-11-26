@@ -113,6 +113,7 @@ export function Sizes() {
 | `label` (required) | `string` |  | The text and the accessible name; it stays the same on and off ("Unread", not "Show unread"/"Hide unread"). |
 | `size` | `ToggleButtonSize` | `'md'` |  |
 | `variant` | `"ghost" \| "secondary"` | `'secondary'` | `ghost` for a toolbar beside icon buttons: no edge, the fill alone shows it on. |
+| `isFocusKept` | `boolean` | `false` | A press leaves the focused editor editing, its caret, selection and keyboard kept: for a format bar. |
 | `isDisabled` | `boolean` | `false` |  |
 | `className` | `string` |  |  |
 | `data-testid` | `string` |  |  |
