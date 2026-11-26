@@ -1,5 +1,5 @@
 // Generated from the doc file by scripts/generate.mjs; do not edit.
-import { Filters, Icons, Sizes, StateOff, StateOn, StateDisabled, StateDisabledOn, WordWrap } from '../../core/src/ToggleButton/ToggleButton.examples';
+import { Filters, Icons, Toolbar, Sizes, StateOff, StateOn, StateDisabled, StateDisabledOn, WordWrap } from '../../core/src/ToggleButton/ToggleButton.examples';
 import { Lead, PageSection, Stage, StageGrid } from '../shared/Layout';
 
 export function Content() {
@@ -11,6 +11,9 @@ export function Content() {
       <PageSection title={"Variants"}>
         <Stage caption={"An icon beside the label, an icon that changes when on, and icon-only"}>
           <Icons />
+        </Stage>
+        <Stage caption={"Ghost, in a toolbar beside icon buttons"}>
+          <Toolbar />
         </Stage>
       </PageSection>
       <PageSection title={"Sizes"}>

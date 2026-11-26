@@ -1,5 +1,5 @@
 import { useLocal } from '@lingxia/view';
-import { Held, unused } from '../example';
+import { Held, Said, unused } from '../example';
 import { IconButton } from '../IconButton/IconButton';
 import { ToggleButton } from './ToggleButton';
 
@@ -45,11 +45,15 @@ export function Toolbar() {
   const bold = useLocal('bold', true);
   const italic = useLocal('italic', false);
   return (
-    <view className="flex-row items-center gap-1">
-      <ToggleButton label="Bold" icon="bold" isLabelHidden variant="ghost" size="sm" bind={bold} data-testid="toolbar-bold" />
-      <ToggleButton label="Italic" icon="italic" isLabelHidden variant="ghost" size="sm" bind={italic} data-testid="toolbar-italic" />
-      <IconButton label="Link" icon="link" size="sm" data-testid="toolbar-link" />
-    </view>
+    <Said>
+      {say => (
+        <view className="flex-row items-center gap-1">
+          <ToggleButton label="Bold" icon="bold" isLabelHidden variant="ghost" size="sm" bind={bold} data-testid="toolbar-bold" />
+          <ToggleButton label="Italic" icon="italic" isLabelHidden variant="ghost" size="sm" bind={italic} data-testid="toolbar-italic" />
+          <IconButton label="Link" icon="link" size="sm" onClick={() => say('Added a link')} data-testid="toolbar-link" />
+        </view>
+      )}
+    </Said>
   );
 }
 

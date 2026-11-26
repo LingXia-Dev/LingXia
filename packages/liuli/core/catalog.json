@@ -21993,6 +21993,17 @@
           "default": "'md'"
         },
         {
+          "name": "variant",
+          "type": "\"ghost\" | \"secondary\"",
+          "required": false,
+          "description": "`ghost` for a toolbar beside icon buttons: no edge, the fill alone shows it on.",
+          "values": [
+            "secondary",
+            "ghost"
+          ],
+          "default": "'secondary'"
+        },
+        {
           "name": "isDisabled",
           "type": "boolean",
           "required": false,
@@ -22214,23 +22225,16 @@
             {
               "name": "StateDisabledOn",
               "title": "Disabled, on"
-        {
-          "name": "variant",
-          "type": "\"ghost\" | \"secondary\"",
-          "required": false,
-          "description": "`ghost` for a toolbar beside icon buttons: no edge, the fill alone shows it on.",
-          "values": [
-            "secondary",
-            "ghost"
-          ],
-          "default": "'secondary'"
-        },
             }
           ],
           "variants": [
             {
               "name": "Icons",
               "title": "An icon beside the label, an icon that changes when on, and icon-only"
+            },
+            {
+              "name": "Toolbar",
+              "title": "Ghost, in a toolbar beside icon buttons"
             }
           ],
           "inContext": [
@@ -22453,10 +22457,6 @@
           "hero": "Filters",
           "variants": [
             {
-            },
-            {
-              "name": "Toolbar",
-              "title": "Ghost, in a toolbar beside icon buttons"
               "name": "Layout",
               "title": "One on at a time, icon-only, read as a radio group"
             },
