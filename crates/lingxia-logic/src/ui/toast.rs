@@ -464,3 +464,37 @@ mod tests {
         assert!(run(&[], 1, &[]).0.is_err());
     }
 }
+
+#[cfg(test)]
+mod layer_tests {
+    use super::ToastRequest;
+    use lxapp::feedback::{FeedbackPosition, FeedbackTone};
+    use std::time::Duration;
+
+    fn request(duration_ms: f64) -> ToastRequest {
+        ToastRequest {
+            title: "Saved".into(),
+            tone: "success",
+            loading: false,
+            icon: "success",
+            duration_ms,
+            position: "bottom",
+        }
+    }
+
+    #[test]
+    fn a_toast_reaches_the_layer_with_its_tone_place_and_time() {
+        let toast = request(1500.0).into_feedback();
+        assert_eq!(toast.title, "Saved");
+        assert_eq!(toast.tone, FeedbackTone::Success);
+        assert_eq!(toast.position, FeedbackPosition::Bottom);
+        assert_eq!(toast.duration, Some(Duration::from_millis(1500)));
+    }
+
+    #[test]
+    fn a_toast_without_a_finite_time_stays_until_hidden() {
+        for duration in [0.0, -1.0, f64::INFINITY, f64::NAN] {
+            assert_eq!(request(duration).into_feedback().duration, None);
+        }
+    }
+}

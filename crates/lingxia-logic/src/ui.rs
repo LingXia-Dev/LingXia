@@ -211,6 +211,57 @@ pub(crate) fn init(ctx: &JSContext) -> JSResult<()> {
 }
 
 #[cfg(test)]
+mod test_layer {
+    use lxapp::feedback::{FeedbackAnswer, FeedbackDialog, FeedbackLayer, FeedbackToast};
+    use std::sync::Mutex;
+    use tokio::sync::oneshot;
+
+    /// A window feedback layer that records each dialog and answers it with `answer`.
+    pub(super) struct FakeLayer {
+        pub(super) answer: FeedbackAnswer,
+        pub(super) dialogs: Mutex<Vec<(String, String, FeedbackDialog)>>,
+    }
+
+    impl FakeLayer {
+        pub(super) fn answering(answer: FeedbackAnswer) -> Self {
+            Self {
+                answer,
+                dialogs: Mutex::default(),
+            }
+        }
+    }
+
+    impl FeedbackLayer for FakeLayer {
+        fn toast(&self, _: &str, _: FeedbackToast) -> Result<(), String> {
+            Ok(())
+        }
+        fn hide_toast(&self, _: &str) {}
+        fn dialog(
+            &self,
+            appid: &str,
+            language: &str,
+            dialog: FeedbackDialog,
+        ) -> Result<oneshot::Receiver<FeedbackAnswer>, String> {
+            self.dialogs
+                .lock()
+                .unwrap()
+                .push((appid.into(), language.into(), dialog));
+            let (answer, settled) = oneshot::channel();
+            answer.send(self.answer).unwrap();
+            Ok(settled)
+        }
+        fn dismiss(&self, _: &str) {}
+        fn forget(&self, _: &str) {}
+    }
+
+    /// The desktop switched first: macOS takes the layer, the rest keep their presenters.
+    #[test]
+    fn the_layer_is_switched_on_for_macos_only() {
+        assert_eq!(lxapp::feedback::LAYER, cfg!(target_os = "macos"));
+    }
+}
+
+#[cfg(test)]
 mod dismiss_tests {
     use super::dismissable;
     use crate::dismissal::USER_DISMISSED;

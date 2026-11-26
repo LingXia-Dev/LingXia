@@ -33,8 +33,11 @@ static PAGE: &str = include_str!("page.js");
 const CLOSE_AFTER: Duration = Duration::from_millis(400);
 
 /// The platform hands over its overlays once, at startup; Logic reaches the layer through lxapp.
-pub(crate) fn install(overlays: Arc<dyn WindowOverlays>) {
-    lxapp::feedback::register_feedback_layer(Box::new(Installed(Feedback::new(overlays))));
+/// The platform keeps the layer to report closed windows.
+pub(crate) fn install(overlays: Arc<dyn WindowOverlays>) -> Arc<Feedback> {
+    let feedback = Feedback::new(overlays);
+    lxapp::feedback::register_feedback_layer(Box::new(Installed(feedback.clone())));
+    feedback
 }
 
 struct Installed(Arc<Feedback>);

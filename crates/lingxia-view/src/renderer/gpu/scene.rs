@@ -211,7 +211,9 @@ fn cheap(commands: &[Paint], cost: PassCost) -> bool {
 /// the outermost group, since a group's pixels only combine correctly in one scene.
 fn segments(display: &DisplayList, cost: PassCost) -> Option<Vec<Segment>> {
     let spans = display.animated_spans();
-    if spans.is_empty()
+    // Kept bases are opaque: a see-through page draws whole, as a web hole's does.
+    if display.see_through
+        || spans.is_empty()
         || spans.len() > MAX_SPANS
         || !SceneKey::eligible(display, 2048, 32768)
         || display

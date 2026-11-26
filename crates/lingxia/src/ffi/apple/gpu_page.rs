@@ -292,6 +292,10 @@ mod bridge {
         // A PNG picture of `web_id`, answering `GpuPages.pictureWebViews`; empty when it failed.
         #[swift_bridge(swift_name = "gpuPageWebViewPicture")]
         fn gpu_page_webview_picture(token: i64, web_id: &str, png: &[u8]);
+
+        // Window overlay `token`'s window closed, or there was none to put it over.
+        #[swift_bridge(swift_name = "gpuOverlayGone")]
+        fn gpu_overlay_gone(token: i64);
     }
 
     extern "Swift" {
@@ -419,7 +423,34 @@ mod bridge {
         // answering each with `gpuPageWebViewPicture`.
         #[swift_bridge(swift_name = "GpuPages.pictureWebViews")]
         fn gpu_pages_picture_webviews(token: i64, web_ids: &str, scale: f32);
+
+        // Show overlay page `token` in a transparent window over the shell window, passing
+        // input through and unfocused; false when there is no window to cover.
+        #[swift_bridge(swift_name = "GpuOverlays.open")]
+        fn gpu_overlays_open(token: i64) -> bool;
+        // `block` takes every click over the window; otherwise they reach the window below.
+        #[swift_bridge(swift_name = "GpuOverlays.input")]
+        fn gpu_overlays_input(token: i64, block: bool);
+        // Take key focus, or give it back to the window below.
+        #[swift_bridge(swift_name = "GpuOverlays.focus")]
+        fn gpu_overlays_focus(token: i64, focused: bool);
+        #[swift_bridge(swift_name = "GpuOverlays.close")]
+        fn gpu_overlays_close(token: i64);
     }
+}
+
+#[cfg(all(target_os = "macos", feature = "standard"))]
+#[path = "overlay.rs"]
+mod overlay;
+
+#[cfg(all(target_os = "macos", feature = "standard"))]
+pub(super) use overlay::install as install_overlays;
+
+fn gpu_overlay_gone(token: i64) {
+    #[cfg(all(target_os = "macos", feature = "standard"))]
+    overlay::gone(token);
+    #[cfg(not(all(target_os = "macos", feature = "standard")))]
+    let _ = token;
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -1001,6 +1032,16 @@ mod live {
         });
     }
 
+    #[cfg(all(target_os = "macos", feature = "standard"))]
+    pub(super) fn insert_page(token: Token, page: Page) {
+        PAGES.with(|pages| pages.borrow_mut().insert(token, page));
+    }
+
+    #[cfg(all(target_os = "macos", feature = "standard"))]
+    pub(super) fn remove_page(token: Token) -> Option<Page> {
+        PAGES.with(|pages| pages.borrow_mut().remove(&token))
+    }
+
     fn on_page(token: Token, work: impl FnOnce(&Page) + Send + 'static) {
         lingxia_view_apple::post_main(Box::new(move || with_page(token, work)));
     }
@@ -1012,7 +1053,7 @@ mod live {
             .unwrap_or(0)
     }
 
-    struct Bridge;
+    pub(super) struct Bridge;
 
     impl Shell for Bridge {
         fn present_pixels(&self, token: i64, pixels: &[u8], width: u32, height: u32) -> bool {
@@ -1162,6 +1203,10 @@ mod live {
             connection: u64,
             messages: Vec<lingxia_view_apple::lingxia_view::session::logic::ToLogic>,
         ) {
+            #[cfg(all(target_os = "macos", feature = "standard"))]
+            if let Some(logic) = super::overlay::logic_of(token) {
+                return logic(messages);
+            }
             gpu_page::view_events(token, connection, messages);
         }
         fn state(

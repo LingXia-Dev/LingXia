@@ -993,6 +993,8 @@ pub fn lingxia_init(data_dir: &str, cache_dir: &str, locale: &str) -> bridge::Li
     install_browser_native_input_host();
     install_browser_present_handler();
     gpu_page::install();
+    #[cfg(all(target_os = "macos", feature = "standard"))]
+    gpu_page::install_overlays();
     lxapp::add_display_language_effective_listener(Box::new(|_| {
         self::bridge::display_language_changed();
     }));

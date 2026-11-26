@@ -29,6 +29,8 @@ pub struct DisplayList {
     pub(crate) device_raster: Option<(u16, u16, f32)>,
     /// A capture: every `<webview>` draws its picture instead of a hole to the native view.
     pub(crate) web_pictures: bool,
+    /// A window overlay: no frame fill, and the surface composites with alpha.
+    pub(crate) see_through: bool,
     pub(crate) retained: Arc<RetainedLayout>,
     /// Anchored popovers this composition placed on another side than authored, by identity.
     pub(crate) flipped: HashMap<String, crate::scene::anchor::LogicalSide>,

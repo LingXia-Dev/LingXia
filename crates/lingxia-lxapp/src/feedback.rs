@@ -6,7 +6,7 @@ use tokio::sync::oneshot;
 
 /// Whether this platform's `lx.ui` feedback goes to the window feedback layer instead of the
 /// page-drawn overlay (desktop) or the native presenters (phones).
-pub const LAYER: bool = false;
+pub const LAYER: bool = cfg!(target_os = "macos");
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum FeedbackTone {

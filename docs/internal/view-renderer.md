@@ -228,6 +228,8 @@ below the system viewers, with an input pass-through/block toggle and a focus
 toggle. The overlay knows nothing of its page; Rust is that page's Logic. The
 window feedback layer (`lx.ui.toast` and its dialogs, `lingxia::feedback`) is
 its user; its page is built by `node crates/lingxia/feedback/build.mjs`.
+An overlay's frames are see-through (`DisplayList::set_see_through`): no frame
+fill, a surface that composites with alpha, and no kept opaque bases.
 
 Pages of one `appId:session` share a worker by key, so nothing slow runs on it:
 decode and CPU raster use process pools (a newer CPU frame replaces one not

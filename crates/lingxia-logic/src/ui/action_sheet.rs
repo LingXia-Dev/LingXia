@@ -173,7 +173,15 @@ async fn present_action_sheet(
     }
 
     if lxapp::feedback::LAYER {
-        return present_action_sheet_layer(lxapp, item_list, item_color.is_some()).await;
+        let language = lxapp.content_language(&lxapp::display_language());
+        return present_action_sheet_layer(
+            super::feedback_layer()?,
+            &lxapp.appid,
+            &language,
+            item_list,
+            item_color.is_some(),
+        )
+        .await;
     }
 
     let cancel_text = cancel_text.unwrap_or_else(|| t(I18nKey::CommonCancel));
@@ -192,19 +200,20 @@ async fn present_action_sheet(
     }
 }
 
-/// The window feedback layer: its cancel word is in the lxapp's page language.
+/// The window feedback layer: its cancel word is in `language`, the lxapp's page language.
 async fn present_action_sheet_layer(
-    lxapp: &Arc<LxApp>,
+    layer: &dyn lxapp::feedback::FeedbackLayer,
+    appid: &str,
+    language: &str,
     items: Vec<String>,
     destructive: bool,
 ) -> Result<Option<usize>, RongJSError> {
     use lxapp::feedback::{FeedbackAnswer, FeedbackDialog};
     let item_len = items.len();
-    let language = lxapp.content_language(&lxapp::display_language());
-    let answer = super::feedback_layer()?
+    let answer = layer
         .dialog(
-            &lxapp.appid,
-            &language,
+            appid,
+            language,
             FeedbackDialog::Sheet { items, destructive },
         )
         .map_err(|e| js_internal_error(format!("action sheet failed: {e}")))?
@@ -334,5 +343,47 @@ mod tests {
         assert_eq!(classify_action_sheet_index(0, 2).unwrap(), Some(0));
         assert_eq!(classify_action_sheet_index(1, 2).unwrap(), Some(1));
         assert!(classify_action_sheet_index(2, 2).is_err());
+    }
+}
+
+#[cfg(test)]
+mod layer_tests {
+    use super::present_action_sheet_layer;
+    use crate::ui::test_layer::FakeLayer;
+    use lxapp::feedback::{FeedbackAnswer, FeedbackDialog};
+
+    fn sheet(answer: FeedbackAnswer) -> (Option<usize>, Vec<(String, String, FeedbackDialog)>) {
+        let layer = FakeLayer::answering(answer);
+        let chosen = futures::executor::block_on(present_action_sheet_layer(
+            &layer,
+            "app",
+            "en-US",
+            vec!["Copy".into(), "Delete".into()],
+            true,
+        ))
+        .unwrap();
+        (chosen, layer.dialogs.into_inner().unwrap())
+    }
+
+    #[test]
+    fn a_sheet_goes_to_the_layer_and_resolves_the_chosen_item() {
+        let (chosen, dialogs) = sheet(FeedbackAnswer::Chose(1));
+        assert_eq!(chosen, Some(1));
+        assert_eq!(
+            dialogs,
+            [(
+                "app".to_string(),
+                "en-US".to_string(),
+                FeedbackDialog::Sheet {
+                    items: vec!["Copy".into(), "Delete".into()],
+                    destructive: true,
+                }
+            )]
+        );
+    }
+
+    #[test]
+    fn a_cancelled_sheet_resolves_no_item() {
+        assert_eq!(sheet(FeedbackAnswer::Cancelled).0, None);
     }
 }

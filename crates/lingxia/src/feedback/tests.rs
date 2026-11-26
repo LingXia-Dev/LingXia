@@ -440,6 +440,15 @@ fn the_built_page_draws_a_dialog_and_answers_its_buttons() {
     );
     let toast = frame.nodes.iter().find(|node| node.test_id == "lx-toast");
     assert!(toast.is_some(), "the toast is drawn");
+    // Over a window, only the toast covers it: the corner shows the window beneath.
+    let mut clear = frame.clone();
+    clear.set_see_through();
+    let pixels = clear.rasterize().unwrap().pixels;
+    assert_eq!(
+        pixels.data_as_u8_slice()[..4],
+        [0, 0, 0, 0],
+        "the corner is clear"
+    );
     assert!(
         frame
             .nodes

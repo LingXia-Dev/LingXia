@@ -946,13 +946,13 @@ impl Presenter {
         };
         let context = self.context.lock()?;
         if surface.config.width != width || surface.config.height != height {
-            surface.config.alpha_mode = surface.alpha_mode(display.has_web_hole());
+            surface.config.alpha_mode = surface.alpha_mode(display.composites_with_alpha());
             context.resize_surface(surface, width, height)?;
             self.depth = Some(depth_view(surface, &context.devices[surface.dev_id].device));
             self.prepared = [None; 2];
             self.drawn = [None; 2];
         } else {
-            context.set_surface_transparent(surface, display.has_web_hole())?;
+            context.set_surface_transparent(surface, display.composites_with_alpha())?;
         }
         if self.depth.is_none() {
             self.depth = Some(depth_view(surface, &context.devices[surface.dev_id].device));

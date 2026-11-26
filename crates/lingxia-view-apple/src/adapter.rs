@@ -41,6 +41,8 @@ pub struct AppleAdapter {
     modal: std::sync::atomic::AtomicBool,
     chrome_snapshot: std::sync::atomic::AtomicU64,
     orientation: std::sync::Mutex<Option<lingxia_view::scene::video::Orientation>>,
+    /// A window overlay: frames leave clear what the page does not draw.
+    pub(crate) see_through: AtomicBool,
 }
 
 impl AppleAdapter {
@@ -67,6 +69,7 @@ impl AppleAdapter {
             modal: Default::default(),
             chrome_snapshot: Default::default(),
             orientation: Default::default(),
+            see_through: Default::default(),
         }
     }
 
@@ -140,6 +143,9 @@ impl Presenter for AppleAdapter {
     ) -> Result<Option<Frame>, String> {
         if let Some(scale) = *self.raster_scale.lock().unwrap_or_else(|p| p.into_inner()) {
             display.raster_at(scale);
+        }
+        if self.see_through.load(Ordering::Relaxed) {
+            display.set_see_through();
         }
         #[cfg(feature = "gpu")]
         {

@@ -1627,6 +1627,7 @@ impl RetainedLayout {
             scale: self.scale,
             device_raster: None,
             web_pictures: false,
+            see_through: false,
             retained: Arc::clone(self),
             flipped,
             popover_caps,

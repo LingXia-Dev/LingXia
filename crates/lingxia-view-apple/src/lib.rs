@@ -24,6 +24,11 @@ pub fn post_main(task: lingxia_view::platform::Task) {
     dispatch::post_after(std::time::Duration::ZERO, task);
 }
 
+/// Runs `task` on the main thread after `delay`, exactly once.
+pub fn post_main_after(delay: std::time::Duration, task: lingxia_view::platform::Task) {
+    dispatch::post_after(delay, task);
+}
+
 thread_local! {
     /// The main-thread turn that presented a frame in its layer transaction, numbered.
     static PRESENT_TURN: std::cell::Cell<Option<u64>> = const { std::cell::Cell::new(None) };
@@ -206,6 +211,14 @@ impl Page {
 
     pub fn host(&self) -> &ViewHost<AppleAdapter> {
         &self.host
+    }
+
+    /// A window overlay: frames are clear wherever the page draws nothing. Before `load`.
+    pub fn set_see_through(&self) {
+        self.host
+            .adapter()
+            .see_through
+            .store(true, std::sync::atomic::Ordering::Relaxed);
     }
 
     /// The view's measurement after layout or a trait change.

@@ -24,10 +24,19 @@ final class GpuPageView: NSView {
     /// The colours the page asks its host to paint around it; nil before its first frame.
     var chrome: GpuHostChrome? {
         didSet {
-            layer?.backgroundColor = chrome?.canvas.cgColor
+            layer?.backgroundColor = seeThrough ? nil : chrome?.canvas.cgColor
             paintCanvas()
             recolorRecovery()
             NotificationCenter.default.post(name: GpuHostChrome.changed, object: self)
+        }
+    }
+    /// A window overlay: clear wherever the page draws nothing, never painted with its canvas.
+    var seeThrough = false {
+        didSet {
+            layer?.isOpaque = !seeThrough
+            layer?.backgroundColor = nil
+            metalView.layer?.isOpaque = !seeThrough
+            paintCanvas()
         }
     }
     /// The text menu on screen, closed when the core takes it away.
@@ -171,7 +180,7 @@ final class GpuPageView: NSView {
 
     func syncWebViews(_ json: String) {
         let hasWeb = webContainer.sync(json: json)
-        let opaque = !hasWeb
+        let opaque = !hasWeb && !seeThrough
         if metalView.layer?.isOpaque != opaque {
             metalView.layer?.isOpaque = opaque
         }
@@ -181,7 +190,7 @@ final class GpuPageView: NSView {
     /// The surface shows the page's canvas until its first frame, not black; with web views
     /// mounted it stays clear, since their holes must show through.
     private func paintCanvas() {
-        let canvas = webContainer.hasActiveMounts ? nil : chrome?.canvas.cgColor
+        let canvas = webContainer.hasActiveMounts || seeThrough ? nil : chrome?.canvas.cgColor
         if metalView.layer?.backgroundColor != canvas {
             metalView.layer?.backgroundColor = canvas
         }
@@ -957,6 +966,7 @@ public enum GpuPages {
             cg.restoreGState()
             drawViewsAbove(view, upTo: contentView)
         }
+        GpuOverlays.capture(over: contentView, into: context.cgContext)
         context.flushGraphics()
     }
 

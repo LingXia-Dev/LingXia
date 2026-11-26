@@ -38,7 +38,7 @@ impl DisplayList {
         origin: (u16, u16),
     ) -> Result<(), String> {
         let (background, paints) = self.composition_span(span)?;
-        if background {
+        if background && !self.see_through {
             context.set_paint(AlphaColor::<Srgb>::from_rgb8(246, 247, 251));
             context.fill_rect(&PaintRect::new(
                 0.0,

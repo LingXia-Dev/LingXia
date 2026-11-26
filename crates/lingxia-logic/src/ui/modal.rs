@@ -165,7 +165,9 @@ async fn confirm(ctx: JSContext, options: JSValue) -> JSResult<bool> {
 /// Resolves true when the user confirmed.
 async fn present_modal(lxapp: &Arc<LxApp>, options: JSModalOptions) -> Result<bool, RongJSError> {
     if lxapp::feedback::LAYER {
-        return present_modal_layer(lxapp, options).await;
+        let language = lxapp.content_language(&lxapp::display_language());
+        return present_modal_layer(super::feedback_layer()?, &lxapp.appid, &language, options)
+            .await;
     }
     #[cfg(any(target_os = "macos", target_os = "windows"))]
     {
@@ -178,9 +180,11 @@ async fn present_modal(lxapp: &Arc<LxApp>, options: JSModalOptions) -> Result<bo
     }
 }
 
-/// The window feedback layer: default words in the lxapp's page language.
+/// The window feedback layer: default words in `language`, the lxapp's page language.
 async fn present_modal_layer(
-    lxapp: &Arc<LxApp>,
+    layer: &dyn lxapp::feedback::FeedbackLayer,
+    appid: &str,
+    language: &str,
     options: JSModalOptions,
 ) -> Result<bool, RongJSError> {
     use lxapp::feedback::{FeedbackAnswer, FeedbackDialog};
@@ -203,9 +207,8 @@ async fn present_modal_layer(
             destructive,
         }
     };
-    let language = lxapp.content_language(&lxapp::display_language());
-    let answer = super::feedback_layer()?
-        .dialog(&lxapp.appid, &language, dialog)
+    let answer = layer
+        .dialog(appid, language, dialog)
         .map_err(|e| js_internal_error(format!("modal failed: {e}")))?
         .await
         .map_err(|_| js_internal_error("the feedback layer dropped the modal"))?;
@@ -268,5 +271,74 @@ rong::js_api! {
             ts_params = "options: string | ConfirmOptions",
             ts_return = "Promise<boolean>"
         ) = confirm;
+    }
+}
+
+#[cfg(test)]
+mod layer_tests {
+    use super::{JSModalOptions, present_modal_layer};
+    use crate::ui::test_layer::FakeLayer;
+    use lxapp::feedback::{FeedbackAnswer, FeedbackDialog};
+
+    fn options(show_cancel: bool, danger: bool) -> JSModalOptions {
+        JSModalOptions {
+            title: Some("Delete?".into()),
+            content: Some("It cannot be undone.".into()),
+            show_cancel: Some(show_cancel),
+            cancel_text: None,
+            cancel_color: None,
+            confirm_text: Some("Delete".into()),
+            confirm_color: danger.then(|| "#FF3B30".into()),
+        }
+    }
+
+    #[test]
+    fn a_confirm_goes_to_the_layer_in_the_page_language_and_resolves_its_answer() {
+        for (answer, confirmed) in [
+            (FeedbackAnswer::Confirmed, true),
+            (FeedbackAnswer::Cancelled, false),
+        ] {
+            let layer = FakeLayer::answering(answer);
+            let result = futures::executor::block_on(present_modal_layer(
+                &layer,
+                "app",
+                "zh-CN",
+                options(true, true),
+            ));
+            assert_eq!(result.unwrap(), confirmed);
+            assert_eq!(
+                layer.dialogs.lock().unwrap().as_slice(),
+                [(
+                    "app".to_string(),
+                    "zh-CN".to_string(),
+                    FeedbackDialog::Confirm {
+                        title: "Delete?".into(),
+                        message: "It cannot be undone.".into(),
+                        confirm: Some("Delete".into()),
+                        cancel: None,
+                        destructive: true,
+                    }
+                )]
+            );
+        }
+    }
+
+    #[test]
+    fn a_modal_without_cancel_is_an_alert() {
+        let layer = FakeLayer::answering(FeedbackAnswer::Confirmed);
+        let result = futures::executor::block_on(present_modal_layer(
+            &layer,
+            "app",
+            "en-US",
+            options(false, false),
+        ));
+        assert!(result.unwrap());
+        assert!(matches!(
+            layer.dialogs.lock().unwrap()[0].2,
+            FeedbackDialog::Alert {
+                destructive: false,
+                ..
+            }
+        ));
     }
 }

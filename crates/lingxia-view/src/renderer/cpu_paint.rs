@@ -15,7 +15,7 @@ impl DisplayList {
         let mut backend = crate::renderer::cpu::Cpu::new(
             |span, context: &mut RenderContext, resources: &mut Resources| {
                 let (background, paints) = self.composition_span(span)?;
-                if background {
+                if background && !self.see_through {
                     context.set_paint(AlphaColor::<Srgb>::from_rgb8(246, 247, 251));
                     context.fill_rect(&PaintRect::new(
                         0.0,
@@ -52,6 +52,16 @@ impl DisplayList {
         self.commands
             .iter()
             .any(|p| matches!(p, Paint::WebHole { .. }))
+    }
+
+    /// Draw no frame fill: what the page leaves clear shows the window beneath.
+    pub fn set_see_through(&mut self) {
+        self.see_through = true;
+    }
+
+    /// Whether the surface must composite with alpha: a see-through page or a live web hole.
+    pub fn composites_with_alpha(&self) -> bool {
+        self.see_through || self.has_web_hole()
     }
 
     pub fn has_web_hole(&self) -> bool {
@@ -119,13 +129,15 @@ impl DisplayList {
         }
         let mut context = RenderContext::new(self.width, self.height);
         let mut resources = Resources::new();
-        context.set_paint(AlphaColor::<Srgb>::from_rgb8(246, 247, 251));
-        context.fill_rect(&PaintRect::new(
-            0.0,
-            0.0,
-            self.width as f64,
-            self.height as f64,
-        ));
+        if !self.see_through {
+            context.set_paint(AlphaColor::<Srgb>::from_rgb8(246, 247, 251));
+            context.fill_rect(&PaintRect::new(
+                0.0,
+                0.0,
+                self.width as f64,
+                self.height as f64,
+            ));
+        }
         let commands = std::mem::take(&mut self.commands);
         self.paint_cpu(&mut context, &mut resources, Affine::IDENTITY, commands)?;
         context.flush();

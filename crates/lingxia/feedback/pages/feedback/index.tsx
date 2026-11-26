@@ -62,7 +62,7 @@ function dialogLayer(dialog: DialogData, answer: (choice: Choice) => void) {
 export function render({ data, actions }: View) {
   const { toast, dialog } = data;
   return (
-    <view className="absolute inset-0">
+    <view className="absolute inset-0 bg-transparent">
       {dialog && dialogLayer(dialog, choice => { void actions.answer({ key: dialog.key, choice }); })}
       {toast && toastLayer(toast)}
     </view>
