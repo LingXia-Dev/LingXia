@@ -345,7 +345,7 @@ mod tests {
 
     #[test]
     fn bootstrap_scripts_stay_non_empty() {
-        assert!(APPLE_BOOTSTRAP_SCRIPT.contains("LingXiaEmbed"));
+        assert!(APPLE_BOOTSTRAP_SCRIPT.contains(APPLE_EMBED_HANDLER));
         assert!(ANDROID_BOOTSTRAP_SCRIPT.contains(ANDROID_EMBED_OBJECT));
         assert!(HARMONY_BOOTSTRAP_SCRIPT.contains(HARMONY_EMBED_PORT_INIT));
         assert!(HARMONY_BOOTSTRAP_SCRIPT.contains("!ev.source"));
