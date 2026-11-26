@@ -47,6 +47,29 @@ test('Sections: a named group the app controls; a row carries an icon and a seco
   assert.equal(summary('billing').props.onClick, undefined);
 });
 
+test('bind: a row opens from the cell it is bound to and writes back to it when pressed', async () => {
+  const { renderPage } = await import('../testing/harness.mjs');
+  const screen = await renderPage(`
+    import { useLocal } from '@lingxia/view';
+    import { Details } from '@liulidesign/core/Details';
+    export function render() {
+      const open = useLocal('open', false);
+      return <page>
+        <button onClick={() => open.set(true)} data-testid="show"><text>Show</text></button>
+        <text data-testid="state">{open.value ? 'open' : 'closed'}</text>
+        <Details label="More" bind={open} data-testid="more"><text>Inside</text></Details>
+      </page>;
+    }
+  `);
+  const summary = () => screen.getByTestId('more-summary');
+  assert.equal(summary().props.stateExpanded, 0);
+  screen.press(screen.getByTestId('show'));
+  assert.equal(summary().props.stateExpanded, 1, 'opened from outside');
+  screen.press(summary());
+  assert.equal(summary().props.stateExpanded, 0);
+  screen.getByText('closed');
+});
+
 test('WithForm: what is typed inside a row is kept while the row is closed', async () => {
   const screen = await renderExample('Details/Details', 'WithForm');
   screen.press(screen.getByTestId('form-summary'));

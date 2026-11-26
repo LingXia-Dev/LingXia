@@ -1,4 +1,4 @@
-import { createContext, cx, useContext, useLocal, type Child } from '@lingxia/view';
+import { createContext, cx, useContext, useLocal, type Child, type Local } from '@lingxia/view';
 import type { IconRef } from '../Icon/Icon';
 import { Glyph } from '../internal/Glyph';
 import { LayerContext } from '../internal/layer';
@@ -30,6 +30,8 @@ export interface DetailsProps {
   /** Controlled open state; pass `onOpenChange` with it. */
   isOpen?: boolean;
   onOpenChange?: (isOpen: boolean) => void;
+  /** A View-local cell the row reads and writes its open state in, instead of `isOpen` with `onOpenChange`. */
+  bind?: Local<boolean>;
   /** Cannot be opened or closed. @default false */
   isDisabled?: boolean;
   className?: string;
@@ -38,13 +40,14 @@ export interface DetailsProps {
 }
 
 /** A summary row that shows and hides the content under it. */
-export function Details({ label, description, startIcon, children, value, isDefaultOpen = false, isOpen, onOpenChange, isDisabled = false, className, 'data-testid': testId, ...attributes }: DetailsProps) {
+export function Details({ label, description, startIcon, children, value, isDefaultOpen = false, isOpen, onOpenChange, bind, isDisabled = false, className, 'data-testid': testId, ...attributes }: DetailsProps) {
   const group = useContext(Group);
   const local = useLocal(isDefaultOpen);
   const exclusive = group?.isExclusive && value !== undefined;
-  const open = exclusive ? group.open === value : isOpen ?? local.value;
+  const open = exclusive ? group.open === value : bind ? bind.value : isOpen ?? local.value;
   const toggle = (next: boolean) => {
     if (exclusive) group.set(next ? value : group.open === value ? null : group.open);
+    else if (bind) bind.set(next);
     else if (isOpen === undefined) local.set(next);
     onOpenChange?.(next);
   };
@@ -85,6 +88,8 @@ export interface DetailsGroupProps {
   /** In an exclusive group, the open row, controlled: its value, or `null` for none. Pass `onChange` with it. */
   value?: string | null;
   onChange?: (value: string | null) => void;
+  /** In an exclusive group, a View-local cell holding the open row's value, or `null`; instead of `value` with `onChange`. */
+  bind?: Local<string | null>;
   /** Names the group for assistive tech: "Questions". */
   label?: string;
   className?: string;
@@ -92,10 +97,14 @@ export interface DetailsGroupProps {
 }
 
 /** Details rows in one bordered list: an accordion. */
-export function DetailsGroup({ children, isExclusive = false, defaultValue, value, onChange, label, className, 'data-testid': testId, ...attributes }: DetailsGroupProps) {
+export function DetailsGroup({ children, isExclusive = false, defaultValue, value, onChange, bind, label, className, 'data-testid': testId, ...attributes }: DetailsGroupProps) {
   const own = useLocal<string | null>(defaultValue ?? null);
-  const current = value === undefined ? own.value : value;
-  const set = (next: string | null) => { if (value === undefined) own.set(next); onChange?.(next); };
+  const current = bind ? bind.value : value === undefined ? own.value : value;
+  const set = (next: string | null) => {
+    if (bind) bind.set(next);
+    else if (value === undefined) own.set(next);
+    onChange?.(next);
+  };
   const layer = useContext(LayerContext);
   return (
     <Group.Provider value={{ open: current, isExclusive, set }}>

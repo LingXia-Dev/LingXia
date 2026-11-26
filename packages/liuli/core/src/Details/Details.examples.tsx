@@ -37,7 +37,7 @@ export function Accordion() {
 export function Sections() {
   const open = useLocal<string | null>('open', 'notifications');
   return (
-    <DetailsGroup isExclusive label="Settings" value={open.value} onChange={open.set} data-testid="sections">
+    <DetailsGroup isExclusive label="Settings" bind={open} data-testid="sections">
       <Details value="notifications" label="Notifications" description="Mentions and the weekly digest" startIcon="notifications" data-testid="section-notifications">
         <text className="text-body text-muted">You are told about mentions at once and get a digest on Mondays.</text>
       </Details>

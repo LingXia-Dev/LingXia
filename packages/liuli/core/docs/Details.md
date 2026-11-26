@@ -85,7 +85,7 @@ import { Details, DetailsGroup } from '@liulidesign/core/Details';
 export function Sections() {
   const open = useLocal<string | null>('open', 'notifications');
   return (
-    <DetailsGroup isExclusive label="Settings" value={open.value} onChange={open.set} data-testid="sections">
+    <DetailsGroup isExclusive label="Settings" bind={open} data-testid="sections">
       <Details value="notifications" label="Notifications" description="Mentions and the weekly digest" startIcon="notifications" data-testid="section-notifications">
         <text className="text-body text-muted">You are told about mentions at once and get a digest on Mondays.</text>
       </Details>
@@ -130,6 +130,7 @@ export function WithForm() {
 | `isDefaultOpen` | `boolean` | `false` | Open on first render, uncontrolled. |
 | `isOpen` | `boolean` |  | Controlled open state; pass `onOpenChange` with it. |
 | `onOpenChange` | `((isOpen: boolean) => void)` |  |  |
+| `bind` | `Local<boolean>` |  | A View-local cell the row reads and writes its open state in, instead of `isOpen` with `onOpenChange`. |
 | `isDisabled` | `boolean` | `false` | Cannot be opened or closed. |
 | `className` | `string` |  |  |
 | `data-testid` | `string` |  | On the disclosure. |

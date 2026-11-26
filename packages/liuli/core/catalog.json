@@ -7419,6 +7419,12 @@
           "description": ""
         },
         {
+          "name": "bind",
+          "type": "Local<boolean>",
+          "required": false,
+          "description": "A View-local cell the row reads and writes its open state in, instead of `isOpen` with `onOpenChange`."
+        },
+        {
           "name": "isDisabled",
           "type": "boolean",
           "required": false,
@@ -7507,7 +7513,7 @@
         {
           "name": "Sections",
           "title": "Sections with an icon and a second line",
-          "source": "import { useLocal } from '@lingxia/view';\nimport { Details, DetailsGroup } from '@liulidesign/core/Details';\n\n/** Sections of a settings page: an icon and a second line say what is inside; one cannot be opened. */\nexport function Sections() {\n  const open = useLocal<string | null>('open', 'notifications');\n  return (\n    <DetailsGroup isExclusive label=\"Settings\" value={open.value} onChange={open.set} data-testid=\"sections\">\n      <Details value=\"notifications\" label=\"Notifications\" description=\"Mentions and the weekly digest\" startIcon=\"notifications\" data-testid=\"section-notifications\">\n        <text className=\"text-body text-muted\">You are told about mentions at once and get a digest on Mondays.</text>\n      </Details>\n      <Details value=\"privacy\" label=\"Privacy\" description=\"Who can see your profile\" startIcon=\"lock\" data-testid=\"section-privacy\">\n        <text className=\"text-body text-muted\">Only members of your workspace can see your profile.</text>\n      </Details>\n      <Details value=\"billing\" label=\"Billing\" description=\"Managed by your workspace owner\" startIcon=\"payment\" isDisabled data-testid=\"section-billing\">\n        <text className=\"text-body text-muted\">Ask the owner for an invoice.</text>\n      </Details>\n    </DetailsGroup>\n  );\n}"
+          "source": "import { useLocal } from '@lingxia/view';\nimport { Details, DetailsGroup } from '@liulidesign/core/Details';\n\n/** Sections of a settings page: an icon and a second line say what is inside; one cannot be opened. */\nexport function Sections() {\n  const open = useLocal<string | null>('open', 'notifications');\n  return (\n    <DetailsGroup isExclusive label=\"Settings\" bind={open} data-testid=\"sections\">\n      <Details value=\"notifications\" label=\"Notifications\" description=\"Mentions and the weekly digest\" startIcon=\"notifications\" data-testid=\"section-notifications\">\n        <text className=\"text-body text-muted\">You are told about mentions at once and get a digest on Mondays.</text>\n      </Details>\n      <Details value=\"privacy\" label=\"Privacy\" description=\"Who can see your profile\" startIcon=\"lock\" data-testid=\"section-privacy\">\n        <text className=\"text-body text-muted\">Only members of your workspace can see your profile.</text>\n      </Details>\n      <Details value=\"billing\" label=\"Billing\" description=\"Managed by your workspace owner\" startIcon=\"payment\" isDisabled data-testid=\"section-billing\">\n        <text className=\"text-body text-muted\">Ask the owner for an invoice.</text>\n      </Details>\n    </DetailsGroup>\n  );\n}"
         },
         {
           "name": "WithForm",
