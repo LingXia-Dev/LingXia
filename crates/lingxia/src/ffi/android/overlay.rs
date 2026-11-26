@@ -211,6 +211,23 @@ impl OverlaySurface for AndroidSurface {
         call(jni_str!("focus"), self.token, Some(focused));
     }
 
+    fn update_environment(&self, update: serde_json::Value) {
+        let Some(class) = CLASS.get() else { return };
+        let sent = with_env(|env| {
+            let update = env.new_string(update.to_string())?;
+            env.call_static_method(
+                class,
+                jni_str!("updateEnvironment"),
+                jni_sig!("(JLjava/lang/String;)V"),
+                &[self.token.into(), (&update).into()],
+            )?;
+            Ok::<_, jni::errors::Error>(())
+        });
+        if let Err(error) = sent {
+            log::warn!("window overlay environment: {error}");
+        }
+    }
+
     fn automation(&self, request: serde_json::Value, reply: OverlayAutomationReply) {
         let id = super::gpu_page::keep_reply(reply);
         let sent = CLASS

@@ -17,6 +17,7 @@ struct Surface {
     inputs: Mutex<Vec<OverlayInput>>,
     focus: Mutex<Vec<bool>>,
     replies: Mutex<Vec<(String, bool)>>,
+    environment: Mutex<Vec<Value>>,
 }
 
 /// Dropping the boxed surface is the platform closing it.
@@ -46,6 +47,9 @@ impl OverlaySurface for Handle {
     }
     fn set_focus(&self, focused: bool) {
         self.0.focus.lock().unwrap().push(focused);
+    }
+    fn update_environment(&self, update: serde_json::Value) {
+        self.0.environment.lock().unwrap().push(update);
     }
     fn automation(
         &self,
@@ -230,6 +234,19 @@ fn a_toast_opens_the_layer_passing_input_through_and_closes_it_after_its_time() 
 
     f.feedback.toast("app.a", toast("Again", None)).unwrap();
     assert_eq!(f.opened(), 2, "the next item opens a fresh layer");
+}
+
+#[test]
+fn the_layer_takes_the_products_contrast_when_it_opens_and_when_it_changes() {
+    let f = Fixture::new();
+    f.feedback.toast("app.a", toast("Saved", None)).unwrap();
+    let surface = f.surface(0);
+    let pushed = |surface: &Surface| surface.environment.lock().unwrap().clone();
+    let first = pushed(&surface);
+    assert_eq!(first.len(), 1);
+    assert_eq!(first[0]["kind"], "contrast");
+    f.feedback.contrast_changed();
+    assert_eq!(pushed(&surface).len(), 2, "an open layer takes the change");
 }
 
 #[test]

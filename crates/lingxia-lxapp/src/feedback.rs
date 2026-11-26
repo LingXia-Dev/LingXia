@@ -75,6 +75,8 @@ pub trait FeedbackLayer: Send + Sync {
     fn dismiss(&self, appid: &str);
     /// `appid` closed: its toast and dialogs go.
     fn forget(&self, appid: &str);
+    /// The product's contrast preference changed; every open layer takes it.
+    fn contrast_changed(&self);
     /// The layer over `appid`'s window, automated as a GPU page is; `None` while none is open.
     #[cfg(feature = "automation")]
     fn automation(

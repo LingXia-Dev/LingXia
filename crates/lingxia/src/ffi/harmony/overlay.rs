@@ -134,6 +134,14 @@ impl OverlaySurface for HarmonySurface {
         lingxia_view_harmony::post_main(Box::new(move || arkts(token, "overlayFocus", focused)));
     }
 
+    fn update_environment(&self, update: serde_json::Value) {
+        on_overlay(self.token, move |page| {
+            if let Some(Err(error)) = page.with_host(|host| host.update_environment(&update.to_string())) {
+                log::warn!("window overlay environment: {error}");
+            }
+        });
+    }
+
     fn automation(&self, request: serde_json::Value, reply: OverlayAutomationReply) {
         let token = self.token;
         lingxia_view_harmony::post_main(Box::new(move || {

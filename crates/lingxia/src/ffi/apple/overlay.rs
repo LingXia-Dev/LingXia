@@ -180,6 +180,14 @@ impl OverlaySurface for AppleSurface {
             super::bridge::gpu_overlays_focus(token, focused)
         }));
     }
+
+    fn update_environment(&self, update: serde_json::Value) {
+        on_overlay(self.token, move |page| {
+            if let Err(error) = page.host().update_environment(&update.to_string()) {
+                log::warn!("window overlay environment: {error}");
+            }
+        });
+    }
 }
 
 impl Drop for AppleSurface {

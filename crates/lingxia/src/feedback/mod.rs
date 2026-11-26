@@ -63,6 +63,9 @@ impl FeedbackLayer for Installed {
     fn forget(&self, appid: &str) {
         self.0.forget(appid)
     }
+    fn contrast_changed(&self) {
+        self.0.contrast_changed()
+    }
     #[cfg(feature = "automation")]
     fn automation(
         &self,
@@ -186,6 +189,16 @@ impl Feedback {
     }
 
     /// The window closed, and its overlay with it: everything pending settles as dismissed.
+    /// Every open layer takes the product's new contrast.
+    pub(crate) fn contrast_changed(&self) {
+        let surfaces: Vec<_> = (self.windows.lock().unwrap().values())
+            .filter_map(|layer| layer.surface.clone())
+            .collect();
+        for surface in surfaces {
+            surface.update_environment(contrast());
+        }
+    }
+
     pub(crate) fn window_closed(&self, window: WindowId) {
         let layer = self.windows.lock().unwrap().remove(&window);
         if let Some(mut layer) = layer {
@@ -222,7 +235,11 @@ impl Feedback {
                 }
             });
             match self.overlays.open(window, PAGE, logic) {
-                Ok(surface) => layer.surface = Some(Arc::from(surface)),
+                Ok(surface) => {
+                    // The window gives the page its appearance; the product's contrast is ours.
+                    surface.update_environment(contrast());
+                    layer.surface = Some(Arc::from(surface));
+                }
                 Err(error) => {
                     windows.remove(&window);
                     return Err(error);
@@ -348,4 +365,14 @@ fn run(surface: Option<Arc<dyn OverlaySurface>>, calls: Vec<Call>) {
             Call::Reply(id, outcome) => surface.send(ToView::Reply { id, outcome }),
         }
     }
+}
+
+/// The product's contrast preference as a View environment push.
+fn contrast() -> serde_json::Value {
+    let update = lxapp::host_contrast_update();
+    serde_json::json!({
+        "kind": "contrast",
+        "revision": update.revision,
+        "more": update.preference == lxapp::ContrastPreference::More,
+    })
 }

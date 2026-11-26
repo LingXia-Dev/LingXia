@@ -98,6 +98,9 @@ pub fn set_host_contrast_preference(
 }
 
 fn publish(update: HostContrastUpdate) {
+    if let Some(layer) = crate::feedback::feedback_layer() {
+        layer.contrast_changed();
+    }
     let Some(manager) = get_lxapps_manager() else {
         return;
     };

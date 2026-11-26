@@ -187,6 +187,14 @@ impl OverlaySurface for WinSurface {
         on_overlay(self.token, move |overlay| overlay.focus(focused));
     }
 
+    fn update_environment(&self, update: serde_json::Value) {
+        on_overlay(self.token, move |overlay| {
+            if let Err(error) = overlay.page().host().update_environment(&update.to_string()) {
+                log::warn!("window overlay environment: {error}");
+            }
+        });
+    }
+
     fn automation(&self, request: serde_json::Value, reply: OverlayAutomationReply) {
         let token = self.token;
         let Some(dispatcher) = thread() else {

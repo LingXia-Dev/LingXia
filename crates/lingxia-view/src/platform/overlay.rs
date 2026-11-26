@@ -53,6 +53,8 @@ pub trait OverlaySurface: Send + Sync {
     /// An automation request as a GPU page answers it (`ViewHost::automation_request`, plus
     /// `{op: "screenshot"}`), answered once from any thread after the presented frame.
     fn automation(&self, request: serde_json::Value, reply: OverlayAutomationReply);
+    /// A runtime environment push, as a page takes one (`{"kind": "contrast", …}`).
+    fn update_environment(&self, update: serde_json::Value);
 }
 
 /// Answers one overlay automation request.

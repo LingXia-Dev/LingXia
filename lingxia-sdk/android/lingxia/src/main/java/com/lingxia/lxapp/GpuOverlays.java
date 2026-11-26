@@ -63,6 +63,11 @@ public final class GpuOverlays {
         MAIN.post(() -> { Overlay overlay = OVERLAYS.get(token); if (overlay != null) overlay.focus(focused); });
     }
 
+    /** A runtime environment push for the overlay's page, as a GPU page takes one. */
+    public static void updateEnvironment(long token, String update) {
+        MAIN.post(() -> { Overlay overlay = OVERLAYS.get(token); if (overlay != null) overlay.page.updateEnvironment(update); });
+    }
+
     public static void close(long token) {
         MAIN.post(() -> { Overlay overlay = OVERLAYS.remove(token); if (overlay != null) overlay.close(); });
     }
