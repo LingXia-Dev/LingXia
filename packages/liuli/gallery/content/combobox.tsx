@@ -1,5 +1,5 @@
 // Generated from the doc file by scripts/generate.mjs; do not edit.
-import { Country, Clearable, Assignee, OwnMatching, Sizes, StateEmpty, StateChosen, StateInvalid, StateDisabled, Shipping } from '../../core/src/Combobox/Combobox.examples';
+import { Country, Clearable, Assignee, OwnMatching, WithIcons, Sizes, StateEmpty, StateChosen, StateInvalid, StateDisabled, Shipping } from '../../core/src/Combobox/Combobox.examples';
 import { Lead, PageSection, Stage, StageGrid } from '../shared/Layout';
 
 export function Content() {
@@ -17,6 +17,9 @@ export function Content() {
         </Stage>
         <Stage caption={"The app matches by its own rule: a code finds its airport"}>
           <OwnMatching />
+        </Stage>
+        <Stage caption={"An icon before each option, found by its mark as well as its name"}>
+          <WithIcons />
         </Stage>
       </PageSection>
       <PageSection title={"Sizes"}>

@@ -489,6 +489,7 @@ export function InSentence() {
 | --- | --- | --- | --- |
 | `label` (required) | `string` |  | The item's text and its accessible name. |
 | `description` | `string` |  | A second line, read as the item's description. |
+| `icon` | `IconRef` |  | An icon by name from the set, or a definition, before the label; hidden from assistive tech. |
 | `value` (required) | `boolean` |  |  |
 | `isIndeterminate` | `boolean` | `false` | Stands for a set that is partly on, such as "All labels": draws a dash and is read as mixed. A press asks for all. |
 | `onChange` (required) | `(isChecked: boolean) => void` |  | Runs with the new state; the menu stays open. |

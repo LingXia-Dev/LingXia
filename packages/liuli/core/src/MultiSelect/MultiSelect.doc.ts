@@ -53,6 +53,7 @@ export const doc: ComponentDoc = {
   examples: [
     { name: 'Labels', title: 'Labels for a note' },
     { name: 'Empty', title: 'Nothing chosen, with an error' },
+    { name: 'WithIconsAndDescriptions', title: 'Options with an icon and a second line' },
   ],
   gaps: [],
   limits: [
@@ -70,6 +71,7 @@ export const doc: ComponentDoc = {
       hero: 'Labels',
       variants: [
         { name: 'Empty', title: 'Empty and required, with an error' },
+        { name: 'WithIconsAndDescriptions', title: 'An icon and a second line in the list; the token keeps the name' },
         { name: 'StateDisabled', title: 'Disabled, with the reason' },
       ],
     },

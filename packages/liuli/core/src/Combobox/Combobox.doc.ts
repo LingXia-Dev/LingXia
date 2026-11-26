@@ -80,6 +80,7 @@ export const doc: ComponentDoc = {
     { name: 'Country', title: 'A long list, found by typing' },
     { name: 'Clearable', title: 'Clearable: the clear button takes the choice back' },
     { name: 'Assignee', title: 'Options with a second line' },
+    { name: 'WithIcons', title: 'Options with an icon' },
     { name: 'OwnMatching', title: 'The app does the matching' },
     { name: 'Sizes', title: 'Sizes' },
     { name: 'Shipping', title: 'In a form' },
@@ -113,6 +114,7 @@ export const doc: ComponentDoc = {
       variants: [{ name: 'Clearable', title: 'Clearable: the clear button takes the choice back' }, 
         { name: 'Assignee', title: 'A second line for options with similar names; one that cannot be chosen is dimmed' },
         { name: 'OwnMatching', title: 'The app matches by its own rule: a code finds its airport' },
+        { name: 'WithIcons', title: 'An icon before each option, found by its mark as well as its name' },
       ],
       sizes: [{ name: 'Sizes', title: 'Small, medium and large' }],
       states: [

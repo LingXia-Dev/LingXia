@@ -93,6 +93,34 @@ export function Assignee() {
 }
 ```
 
+### Options with an icon
+
+```tsx
+import { useLocal } from '@lingxia/view';
+import { Combobox } from '@liulidesign/core/Combobox';
+
+/** Each option with its icon, so a kind is found by its mark as well as its name. */
+export function WithIcons() {
+  const kind = useLocal('kind', 'document');
+  return (
+    <Combobox
+      label="Attach"
+      bind={kind}
+      items={[
+        { value: 'document', label: 'Document', icon: 'document' },
+        { value: 'image', label: 'Photo', icon: 'image' },
+        { value: 'video', label: 'Video', icon: 'video' },
+        { value: 'location', label: 'Location', icon: 'location' },
+        { value: 'contact', label: 'Contact', icon: 'user' },
+      ]}
+      searchLabel="Search kinds"
+      emptyLabel="No kind matches"
+      data-testid="attach"
+    />
+  );
+}
+```
+
 ### The app does the matching
 
 ```tsx

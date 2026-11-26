@@ -4,6 +4,7 @@ import { useControlSize } from '../density';
 import { Field, type FieldOwnProps, type FieldSize } from '../Field/Field';
 import { TextInput } from '../TextInput/TextInput';
 import { Glyph } from '../internal/Glyph';
+import type { IconRef } from '../Icon/Icon';
 import { LayerContext } from '../internal/layer';
 import { SpinnerMark } from '../internal/spinner';
 import { comboboxRecipe as r } from './Combobox.recipe';
@@ -17,6 +18,8 @@ export interface ComboboxOption {
   label: string;
   /** A second, quieter line in the list. */
   description?: string;
+  /** An icon by name from the set, or a definition, before the label in the list; hidden from assistive tech. */
+  icon?: IconRef;
   /** @default false */
   isDisabled?: boolean;
 }
@@ -123,6 +126,7 @@ function Options({ label, items, current, size, testId, onChoose, listId, active
           data-testid={testId && `${testId}-${option.value}`}
           className={cx(r.option.base, r.option.size[size], index === active && r.option.active)}
         >
+          {option.icon !== undefined && <Glyph name={option.icon} className={r.optionIcon.base} />}
           <view className={r.optionText.base}>
             <text className={r.optionLabel.base}>{option.label}</text>
             {option.description !== undefined && <text className={r.optionDescription.base}>{option.description}</text>}

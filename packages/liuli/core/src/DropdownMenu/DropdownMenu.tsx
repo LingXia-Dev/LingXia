@@ -66,6 +66,8 @@ export interface DropdownMenuCheckboxItemProps {
   label: string;
   /** A second line, read as the item's description. */
   description?: string;
+  /** An icon by name from the set, or a definition, before the label; hidden from assistive tech. */
+  icon?: IconRef;
   value: boolean;
   /** Stands for a set that is partly on, such as "All labels": draws a dash and is read as mixed. A press asks for all. @default false */
   isIndeterminate?: boolean;
@@ -347,10 +349,10 @@ export function DropdownMenuItem(props: DropdownMenuItemProps) {
 }
 
 /** An item that turns one option on or off, checked at its end. */
-export function DropdownMenuCheckboxItem({ label, description, value: isChecked, isIndeterminate = false, onChange: onCheckedChange, isDisabled = false, 'data-testid': testId, ...attributes }: DropdownMenuCheckboxItemProps) {
+export function DropdownMenuCheckboxItem({ label, description, icon, value: isChecked, isIndeterminate = false, onChange: onCheckedChange, isDisabled = false, 'data-testid': testId, ...attributes }: DropdownMenuCheckboxItemProps) {
   const isMixed = isIndeterminate && !isChecked;
   return (
-    <CheckableItem role="menuitemcheckbox" label={label} description={description} isChecked={isChecked} isMixed={isMixed} isDisabled={isDisabled}
+    <CheckableItem role="menuitemcheckbox" label={label} description={description} icon={icon} isChecked={isChecked} isMixed={isMixed} isDisabled={isDisabled}
       onClick={() => onCheckedChange(isMixed || !isChecked)} testId={testId} data={dataOf(attributes)} owner="DropdownMenuCheckboxItem" />
   );
 }
@@ -397,6 +399,7 @@ function CheckableItem(props: {
   role: 'menuitemcheckbox' | 'menuitemradio';
   label: string;
   description: string | undefined;
+  icon?: IconRef;
   isChecked: boolean;
   isMixed?: boolean;
   isDisabled: boolean;
@@ -422,7 +425,7 @@ function CheckableItem(props: {
       data-testid={props.testId} {...props.data}
       className={cx(r.item.base, r.item.size[size])}
     >
-      <Lead icon={undefined} className={r.itemIcon.base} />
+      <Lead icon={props.icon} className={cx(r.itemIcon.base, r.itemIcon.variant.default)} />
       <view className={r.itemText.base}>
         <text className={r.itemLabel.base}>{props.label}</text>
         {props.description !== undefined && <text id={descriptionId} className={r.itemDescription.base}>{props.description}</text>}

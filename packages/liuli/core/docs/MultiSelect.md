@@ -67,6 +67,31 @@ export function Empty() {
 }
 ```
 
+### Options with an icon and a second line
+
+```tsx
+import { useLocal } from '@lingxia/view';
+import { MultiSelect } from '@liulidesign/core/MultiSelect';
+
+/** Channels with an icon and a second line each in the list; the tokens keep only the name. */
+export function WithIconsAndDescriptions() {
+  const chosen = useLocal<readonly string[]>('channels', ['mail']);
+  return (
+    <MultiSelect
+      bind={chosen}
+      label="Notify by"
+      items={[
+        { value: 'mail', label: 'Email', description: 'A summary each morning', icon: 'mail' },
+        { value: 'push', label: 'Push', description: 'As it happens', icon: 'notifications' },
+        { value: 'sms', label: 'Text message', description: 'Urgent only', icon: 'phone' },
+      ]}
+      addLabel="Add a channel"
+      data-testid="channels"
+    />
+  );
+}
+```
+
 ## Props
 
 | Prop | Type | Default | Description |

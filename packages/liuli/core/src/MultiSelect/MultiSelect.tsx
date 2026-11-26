@@ -5,6 +5,7 @@ import { DropdownMenu, DropdownMenuCheckboxItem } from '../DropdownMenu/Dropdown
 import { IconButton } from '../IconButton/IconButton';
 import { Field, type FieldOwnProps } from '../Field/Field';
 import { Token } from '../Token/Token';
+import type { IconRef } from '../Icon/Icon';
 import { multiSelectRecipe as r } from './MultiSelect.recipe';
 import { dataOf } from '../internal/data';
 
@@ -13,6 +14,10 @@ export interface MultiSelectOption {
   value: string;
   /** The text on the token and in the list. */
   label: string;
+  /** A second, quieter line in the list, read as the option's description. */
+  description?: string;
+  /** An icon by name from the set, or a definition, before the label in the list; hidden from assistive tech. */
+  icon?: IconRef;
   /** @default false */
   isDisabled?: boolean;
 }
@@ -105,6 +110,8 @@ export function MultiSelect(props: MultiSelectProps) {
               <DropdownMenuCheckboxItem
                 key={option.value}
                 label={option.label}
+                description={option.description}
+                icon={option.icon}
                 value={chosen.includes(option.value)}
                 isDisabled={option.isDisabled}
                 onChange={isOn => toggle(option.value, isOn)}

@@ -5245,6 +5245,7 @@
         "close": "button",
         "list": "scroll",
         "option": "button",
+        "optionIcon": "vector",
         "optionText": "view",
         "optionLabel": "text",
         "optionDescription": "text",
@@ -5393,6 +5394,11 @@
           "source": "import { useLocal } from '@lingxia/view';\nimport { Combobox } from '@liulidesign/core/Combobox';\n\nconst people = [\n  { value: 'ana', label: 'Ana Lee', description: 'Design' },\n  { value: 'ben', label: 'Ben Okafor', description: 'Engineering' },\n  { value: 'chloe', label: 'Chloé Martin', description: 'Engineering' },\n  { value: 'dev', label: 'Dev Patel', description: 'On leave until June', isDisabled: true },\n  { value: 'emi', label: 'Emi Sato', description: 'Research' },\n];\n\n/** A second line tells apart options with similar names; one that cannot be chosen stays in the list, dimmed. */\nexport function Assignee() {\n  const person = useLocal('person', 'ben');\n  return (\n    <Combobox\n      label=\"Assignee\"\n      description=\"They are notified when the task changes.\"\n      bind={person}\n      items={people}\n      searchLabel=\"Search people\"\n      emptyLabel=\"Nobody by that name\"\n      data-testid=\"assignee\"\n    />\n  );\n}"
         },
         {
+          "name": "WithIcons",
+          "title": "Options with an icon",
+          "source": "import { useLocal } from '@lingxia/view';\nimport { Combobox } from '@liulidesign/core/Combobox';\n\n/** Each option with its icon, so a kind is found by its mark as well as its name. */\nexport function WithIcons() {\n  const kind = useLocal('kind', 'document');\n  return (\n    <Combobox\n      label=\"Attach\"\n      bind={kind}\n      items={[\n        { value: 'document', label: 'Document', icon: 'document' },\n        { value: 'image', label: 'Photo', icon: 'image' },\n        { value: 'video', label: 'Video', icon: 'video' },\n        { value: 'location', label: 'Location', icon: 'location' },\n        { value: 'contact', label: 'Contact', icon: 'user' },\n      ]}\n      searchLabel=\"Search kinds\"\n      emptyLabel=\"No kind matches\"\n      data-testid=\"attach\"\n    />\n  );\n}"
+        },
+        {
           "name": "OwnMatching",
           "title": "The app does the matching",
           "source": "import { useLocal } from '@lingxia/view';\nimport { Combobox } from '@liulidesign/core/Combobox';\n\nconst airports = [\n  { value: 'LIS', label: 'Lisbon', description: 'LIS · Humberto Delgado' },\n  { value: 'LHR', label: 'London', description: 'LHR · Heathrow' },\n  { value: 'LGW', label: 'London', description: 'LGW · Gatwick' },\n  { value: 'NBO', label: 'Nairobi', description: 'NBO · Jomo Kenyatta' },\n  { value: 'OSL', label: 'Oslo', description: 'OSL · Gardermoen' },\n];\n\n/** The app does the matching itself: here a code finds its airport as well as a city does. */\nexport function OwnMatching() {\n  const airport = useLocal('airport', '');\n  const typed = useLocal('typed', '');\n  const text = typed.value.trim().toLowerCase();\n  return (\n    <Combobox\n      label=\"Airport\"\n      bind={airport}\n      items={airports.filter(each => each.label.toLowerCase().includes(text) || each.value.toLowerCase().includes(text))}\n      placeholder=\"City or code\"\n      searchLabel=\"Search airports\"\n      emptyLabel=\"No airport matches\"\n      onQueryChange={typed.set}\n      data-testid=\"airport\"\n    />\n  );\n}"
@@ -5495,6 +5501,10 @@
             {
               "name": "OwnMatching",
               "title": "The app matches by its own rule: a code finds its airport"
+            },
+            {
+              "name": "WithIcons",
+              "title": "An icon before each option, found by its mark as well as its name"
             }
           ],
           "sizes": [
@@ -8666,6 +8676,12 @@
             "type": "string",
             "required": false,
             "description": "A second line, read as the item's description."
+          },
+          {
+            "name": "icon",
+            "type": "IconRef",
+            "required": false,
+            "description": "An icon by name from the set, or a definition, before the label; hidden from assistive tech."
           },
           {
             "name": "value",
@@ -13864,6 +13880,11 @@
           "name": "Empty",
           "title": "Nothing chosen, with an error",
           "source": "import { useLocal } from '@lingxia/view';\nimport { MultiSelect } from '@liulidesign/core/MultiSelect';\n\n/** Nothing chosen yet, on a required field after a failed send. */\nexport function Empty() {\n  const chosen = useLocal<readonly string[]>('none', []);\n  return (\n    <MultiSelect\n      bind={chosen}\n      label=\"Share with teams\"\n      items={[{ value: 'design', label: 'Design' }, { value: 'eng', label: 'Engineering' }, { value: 'support', label: 'Support' }]}\n      placeholder=\"No teams yet\"\n      addLabel=\"Add a team\"\n      isRequired\n      status={chosen.value.length === 0 ? { type: 'error', message: 'Choose at least one team.' } : undefined}\n      data-testid=\"teams\"\n    />\n  );\n}"
+        },
+        {
+          "name": "WithIconsAndDescriptions",
+          "title": "Options with an icon and a second line",
+          "source": "import { useLocal } from '@lingxia/view';\nimport { MultiSelect } from '@liulidesign/core/MultiSelect';\n\n/** Channels with an icon and a second line each in the list; the tokens keep only the name. */\nexport function WithIconsAndDescriptions() {\n  const chosen = useLocal<readonly string[]>('channels', ['mail']);\n  return (\n    <MultiSelect\n      bind={chosen}\n      label=\"Notify by\"\n      items={[\n        { value: 'mail', label: 'Email', description: 'A summary each morning', icon: 'mail' },\n        { value: 'push', label: 'Push', description: 'As it happens', icon: 'notifications' },\n        { value: 'sms', label: 'Text message', description: 'Urgent only', icon: 'phone' },\n      ]}\n      addLabel=\"Add a channel\"\n      data-testid=\"channels\"\n    />\n  );\n}"
         }
       ],
       "gaps": [],
@@ -13919,6 +13940,10 @@
             {
               "name": "Empty",
               "title": "Empty and required, with an error"
+            },
+            {
+              "name": "WithIconsAndDescriptions",
+              "title": "An icon and a second line in the list; the token keeps the name"
             },
             {
               "name": "StateDisabled",

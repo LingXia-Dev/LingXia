@@ -14,6 +14,7 @@ export const comboboxParts = {
   close: 'button',
   list: 'scroll',
   option: 'button',
+  optionIcon: 'vector',
   optionText: 'view',
   optionLabel: 'text',
   optionDescription: 'text',
@@ -96,6 +97,9 @@ export const comboboxRecipe = {
     size: { sm: 'min-h-control-sm', md: 'min-h-control-md', lg: 'min-h-control-lg' } satisfies Record<FieldSize, string>,
     // The option the arrow keys are on, while focus stays in the text.
     active: 'bg-text/8',
+  },
+  optionIcon: {
+    base: 'size-4 shrink-0 text-muted',
   },
   optionText: {
     base: 'min-w-0 grow basis-0',
