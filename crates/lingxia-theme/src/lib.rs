@@ -85,6 +85,8 @@ pub struct Pack {
     pub version: u32,
     #[serde(default)]
     pub appearance: Appearances,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub colors: BTreeMap<String, AppColor>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub accent: Option<Accent>,
     #[serde(default, rename = "type")]
@@ -118,6 +120,62 @@ pub struct Appearances {
         skip_serializing_if = "Option::is_none"
     )]
     pub high_contrast_dark: Option<Colors>,
+}
+
+/// At most this many app colours, so each look's map stays small.
+pub const APP_COLOR_LIMIT: usize = 32;
+
+/// A colour an app names for itself, proven against the surface roles it is drawn on.
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
+#[serde(deny_unknown_fields)]
+pub struct AppColor {
+    pub light: Rgba,
+    pub dark: Rgba,
+    /// Without one, high contrast boosts the colour as it does an authored role.
+    #[serde(
+        default,
+        rename = "high-contrast-light",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub high_contrast_light: Option<Rgba>,
+    #[serde(
+        default,
+        rename = "high-contrast-dark",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub high_contrast_dark: Option<Rgba>,
+    #[serde(rename = "use")]
+    pub usage: ColorUse,
+    /// The surface roles it appears on; a fill is held to its label and advised on these.
+    #[serde(default = "default_grounds")]
+    pub on: Vec<String>,
+    /// A fill's label colour; without one, the look's `text` or `on-accent`, whichever reads more.
+    #[serde(default, rename = "on-color", skip_serializing_if = "Option::is_none")]
+    pub on_color: Option<Rgba>,
+}
+
+fn default_grounds() -> Vec<String> {
+    vec![Role::Surface.name().to_owned()]
+}
+
+#[derive(Clone, Copy, Debug, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub enum ColorUse {
+    /// Marks and edges, 3:1 against each surface it is on.
+    Graphic,
+    /// Text, 4.5:1 against each surface it is on.
+    Text,
+    /// A solid that carries a label, named `on-<name>`, at 4.5:1.
+    Fill,
+}
+
+impl ColorUse {
+    fn ratio(self) -> f32 {
+        match self {
+            ColorUse::Graphic => 3.0,
+            ColorUse::Text | ColorUse::Fill => 4.5,
+        }
+    }
 }
 
 /// The colour every derived role starts from. Accent roles the pack wrote are used as written and
@@ -252,6 +310,8 @@ pub struct ResolvedTheme {
     pub appearance: Appearance,
     pub high_contrast: bool,
     pub palette: [Rgba; ROLE_COUNT],
+    /// App colours by name, with `on-<name>` for each fill's label.
+    pub app: BTreeMap<String, Rgba>,
     pub typography: Typography,
     pub shape: Shape,
     pub space: Space,
@@ -366,16 +426,215 @@ pub fn resolve(pack: &Pack, prefs: &Prefs) -> Result<ResolvedTheme, String> {
     if !written[Role::Selection as usize] {
         palette[Role::Selection as usize] = derive_selection(&palette);
     }
+    let app = resolve_app_colors(pack, prefs, &palette);
     Ok(ResolvedTheme {
         appearance: prefs.appearance,
         high_contrast: prefs.high_contrast,
         palette,
+        app,
         typography: pack.typography.clone(),
         shape: pack.shape.clone(),
         space: pack.space.clone(),
         motion: pack.motion.clone(),
         text_scale: prefs.text_scale,
     })
+}
+
+/// Each app colour for `prefs`, boosted under high contrast unless it wrote its own value there,
+/// and each fill's label chosen after the boost.
+fn resolve_app_colors(
+    pack: &Pack,
+    prefs: &Prefs,
+    palette: &[Rgba; ROLE_COUNT],
+) -> BTreeMap<String, Rgba> {
+    let mut app = BTreeMap::new();
+    for (name, color) in &pack.colors {
+        let written = match (prefs.appearance, prefs.high_contrast) {
+            (Appearance::Light, true) => color.high_contrast_light,
+            (Appearance::Dark, true) => color.high_contrast_dark,
+            _ => None,
+        };
+        let mut value = written.unwrap_or(match prefs.appearance {
+            Appearance::Light => color.light,
+            Appearance::Dark => color.dark,
+        });
+        let boost = prefs.high_contrast && written.is_none();
+        if color.usage == ColorUse::Fill {
+            let ink = color.on_color.unwrap_or_else(|| auto_ink(value, palette));
+            if boost {
+                value = ensure_contrast(value, ink, boosted(4.5));
+            }
+            app.insert(name.clone(), value);
+            app.insert(format!("on-{name}"), ink);
+            continue;
+        }
+        if boost {
+            for ground in grounds(color, palette) {
+                value = ensure_contrast(value, ground, boosted(color.usage.ratio()));
+            }
+        }
+        app.insert(name.clone(), value);
+    }
+    app
+}
+
+/// The palette's dark or light ink, whichever stands further off `fill`.
+fn auto_ink(fill: Rgba, palette: &[Rgba; ROLE_COUNT]) -> Rgba {
+    let [text, on_accent] = [Role::Text, Role::OnAccent].map(|role| palette[role as usize]);
+    if contrast(text, fill) >= contrast(on_accent, fill) {
+        text
+    } else {
+        on_accent
+    }
+}
+
+/// The resolved surfaces an app colour declares; unknown names are left to [`check`].
+fn grounds(color: &AppColor, palette: &[Rgba; ROLE_COUNT]) -> Vec<Rgba> {
+    color
+        .on
+        .iter()
+        .filter_map(|name| Role::from_name(name))
+        .map(|role| palette[role as usize])
+        .collect()
+}
+
+fn is_kebab(name: &str) -> bool {
+    name.split('-').all(|part| {
+        !part.is_empty()
+            && part
+                .bytes()
+                .all(|byte| byte.is_ascii_lowercase() || byte.is_ascii_digit())
+    }) && name.starts_with(|first: char| first.is_ascii_lowercase())
+}
+
+/// Every reason the pack's app colours would not stand as declared: their names and surfaces,
+/// and each pair in light, dark and both high-contrast looks.
+fn check_app_colors(pack: &Pack, problems: &mut Vec<Problem>) {
+    let mut problem = |appearance, message: String| {
+        problems.push(Problem {
+            appearance,
+            message,
+        })
+    };
+    if pack.colors.len() > APP_COLOR_LIMIT {
+        problem(
+            "pack",
+            format!(
+                "{} app colours; a theme names at most {APP_COLOR_LIMIT}",
+                pack.colors.len()
+            ),
+        );
+    }
+    for (name, color) in &pack.colors {
+        if !is_kebab(name) {
+            problem("pack", format!("colour {name} must be a kebab-case name"));
+        } else if Role::from_name(name).is_some() {
+            problem(
+                "pack",
+                format!("colour {name} is a role; name it for what it marks"),
+            );
+        } else if name.starts_with("on-") {
+            problem(
+                "pack",
+                format!("colour {name}: on- names a fill's label and is made for each fill"),
+            );
+        }
+        for ground in &color.on {
+            if Role::from_name(ground).is_none() {
+                problem(
+                    "pack",
+                    format!("colour {name} is on {ground}, which is not a role"),
+                );
+            }
+        }
+        if color.on_color.is_some() && color.usage != ColorUse::Fill {
+            problem(
+                "pack",
+                format!("colour {name}: on-color labels a fill only"),
+            );
+        }
+    }
+    if pack.colors.is_empty() {
+        return;
+    }
+    for (look, appearance, high_contrast) in [
+        ("light", Appearance::Light, false),
+        ("dark", Appearance::Dark, false),
+        ("high-contrast-light", Appearance::Light, true),
+        ("high-contrast-dark", Appearance::Dark, true),
+    ] {
+        let prefs = Prefs {
+            appearance,
+            high_contrast,
+            ..Prefs::default()
+        };
+        // A pack that does not resolve is reported by the role checks.
+        let Ok(theme) = resolve(pack, &prefs) else {
+            continue;
+        };
+        for (name, color) in &pack.colors {
+            let value = theme.app[name];
+            let base = color.usage.ratio();
+            let needed = if high_contrast {
+                boosted(base)
+            } else {
+                f64::from(base)
+            };
+            if color.usage == ColorUse::Fill {
+                let label = theme.app[&format!("on-{name}")];
+                let actual = contrast(label, value);
+                if actual + 1e-9 < needed {
+                    let near = ensure_contrast(value, label, needed);
+                    let nearest = if contrast(near, label) + 1e-9 >= needed {
+                        format!("; {name} {} is the nearest that passes", near.hex())
+                    } else {
+                        String::new()
+                    };
+                    problem(
+                        look,
+                        format!(
+                            "on-{name} {} on {name} {} is {actual:.2}:1, needs {needed:.1}:1{nearest}",
+                            label.hex(),
+                            value.hex()
+                        ),
+                    );
+                }
+                continue;
+            }
+            for ground_name in &color.on {
+                let Some(ground) = Role::from_name(ground_name) else {
+                    continue;
+                };
+                let ground = theme.color(ground);
+                let ink = if value.0[3] < 255 {
+                    over(value, ground)
+                } else {
+                    value
+                };
+                let actual = contrast(ink, ground);
+                if actual + 1e-9 >= needed {
+                    continue;
+                }
+                let near = ensure_contrast(value, ground, needed);
+                let nearest = if value.0[3] == 255 && contrast(near, ground) + 1e-9 >= needed {
+                    format!("; {name} {} is the nearest that passes", near.hex())
+                } else {
+                    String::new()
+                };
+                let graphic = if color.usage == ColorUse::Text {
+                    "; if it carries no text, declare use: graphic (3:1)"
+                } else {
+                    ""
+                };
+                problem(
+                    look,
+                    format!(
+                        "{name} on {ground_name} is {actual:.2}:1, needs {needed:.1}:1{nearest}{graphic}"
+                    ),
+                );
+            }
+        }
+    }
 }
 
 fn colors_for(pack: &Pack, appearance: Appearance, high_contrast: bool) -> (&Colors, bool) {
@@ -692,6 +951,7 @@ pub fn check(pack: &Pack) -> Vec<Problem> {
     if !(0.0..=0.9).contains(&motion.spring) {
         problem("pack", "motion.spring is a bounce of 0-0.9".into());
     }
+    check_app_colors(pack, &mut problems);
     problems
 }
 
@@ -749,6 +1009,26 @@ pub fn advise(pack: &Pack) -> Vec<Problem> {
         }
         for solid in [Role::AccentSolid, Role::DangerSolid] {
             weak(solid, Role::Surface, 3.0, "a filled control's edge");
+        }
+        for (color_name, color) in &pack.colors {
+            if color.usage != ColorUse::Fill {
+                continue;
+            }
+            let fill = theme.app[color_name];
+            for ground_name in &color.on {
+                let Some(ground) = Role::from_name(ground_name) else {
+                    continue;
+                };
+                let ratio = contrast(fill, theme.color(ground));
+                if ratio + 1e-9 < 3.0 {
+                    advice.push(Problem {
+                        appearance: name,
+                        message: format!(
+                            "{color_name} is {ratio:.2}:1 on {ground_name}; a filled control's edge needs 3.0:1"
+                        ),
+                    });
+                }
+            }
         }
     }
     advice

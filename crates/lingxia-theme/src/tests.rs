@@ -1755,3 +1755,187 @@ fn a_composite_pair_is_measured_against_its_ground_laid_over_the_floor() {
         "{misses:?}"
     );
 }
+
+fn app_colors_pack() -> Pack {
+    let mut pack = default_pack();
+    pack.colors = serde_json::from_value(serde_json::json!({
+        "net-ethernet": { "light": "#1f7a4d", "dark": "#4cc38a", "use": "graphic", "on": ["surface", "surface-sunken"] },
+        "trend-up": { "light": "#0f7b3f", "dark": "#5bd28a", "use": "text" },
+        "brand-band": { "light": "#1d4ed8", "dark": "#1e40af", "use": "fill" }
+    }))
+    .unwrap();
+    pack
+}
+
+#[test]
+fn app_colours_resolve_per_look_and_a_fill_gets_its_label() {
+    let pack = app_colors_pack();
+    assert_eq!(check(&pack), vec![]);
+    let light = resolve(&pack, &Prefs::default()).unwrap();
+    let dark = resolve(
+        &pack,
+        &Prefs {
+            appearance: Appearance::Dark,
+            ..Prefs::default()
+        },
+    )
+    .unwrap();
+    assert_eq!(light.app["net-ethernet"], hex("#1f7a4d"));
+    assert_eq!(dark.app["net-ethernet"], hex("#4cc38a"));
+    for theme in [&light, &dark] {
+        let label = theme.app["on-brand-band"];
+        assert!(contrast(label, theme.app["brand-band"]) >= 4.5);
+        assert!(
+            [Role::Text, Role::OnAccent]
+                .iter()
+                .any(|role| theme.color(*role) == label),
+            "the label is one of the palette's inks"
+        );
+    }
+    assert_eq!(light.app.len(), 4, "three colours and one label");
+}
+
+#[test]
+fn high_contrast_boosts_an_app_colour_unless_it_wrote_its_own() {
+    let mut pack = app_colors_pack();
+    for appearance in [Appearance::Light, Appearance::Dark] {
+        let theme = resolve(
+            &pack,
+            &Prefs {
+                appearance,
+                high_contrast: true,
+                ..Prefs::default()
+            },
+        )
+        .unwrap();
+        let surface = theme.color(Role::Surface);
+        assert!(contrast(theme.app["trend-up"], surface) + 1e-9 >= 7.0);
+        for ground in [Role::Surface, Role::SurfaceSunken] {
+            assert!(contrast(theme.app["net-ethernet"], theme.color(ground)) + 1e-9 >= 4.5);
+        }
+        assert!(contrast(theme.app["on-brand-band"], theme.app["brand-band"]) + 1e-9 >= 7.0);
+    }
+    pack.colors.get_mut("trend-up").unwrap().high_contrast_light = Some(hex("#0f7b3f"));
+    let strong = Prefs {
+        high_contrast: true,
+        ..Prefs::default()
+    };
+    assert_eq!(
+        resolve(&pack, &strong).unwrap().app["trend-up"],
+        hex("#0f7b3f")
+    );
+    let problems: Vec<String> = check(&pack).iter().map(ToString::to_string).collect();
+    assert!(
+        problems.iter().any(
+            |p| p.starts_with("high-contrast-light: trend-up on surface is ")
+                && p.contains("needs 7.0:1")
+        ),
+        "{problems:?}"
+    );
+}
+
+#[test]
+fn an_app_colour_that_misses_names_the_nearest_value_and_the_graphic_way_out() {
+    let mut pack = app_colors_pack();
+    pack.colors.get_mut("trend-up").unwrap().light = hex("#7fbf9f");
+    let missed = |pack: &Pack| {
+        check(pack)
+            .into_iter()
+            .find(|p| p.appearance == "light" && p.message.starts_with("trend-up on surface "))
+    };
+    let message = missed(&pack).expect("trend-up misses on surface").message;
+    assert!(
+        message.ends_with("; if it carries no text, declare use: graphic (3:1)"),
+        "{message}"
+    );
+    let nearest = message
+        .split_once("; trend-up ")
+        .and_then(|(_, tail)| tail.split_once(" is the nearest that passes"))
+        .map(|(value, _)| hex(value))
+        .expect(&message);
+    pack.colors.get_mut("trend-up").unwrap().light = nearest;
+    assert_eq!(missed(&pack), None, "the suggested value passes");
+}
+
+#[test]
+fn a_fill_under_an_unreadable_label_names_the_nearest_fill() {
+    let mut pack = app_colors_pack();
+    let band = pack.colors.get_mut("brand-band").unwrap();
+    band.light = hex("#9ec5ff");
+    band.on_color = Some(hex("#ffffff"));
+    let missed = |pack: &Pack| {
+        check(pack).into_iter().find(|p| {
+            p.appearance == "light"
+                && p.message
+                    .starts_with("on-brand-band #ffffff on brand-band ")
+        })
+    };
+    let message = missed(&pack).expect("the label misses").message;
+    let nearest = message
+        .rsplit_once("; brand-band ")
+        .and_then(|(_, tail)| tail.strip_suffix(" is the nearest that passes"))
+        .map(hex)
+        .expect(&message);
+    pack.colors.get_mut("brand-band").unwrap().light = nearest;
+    assert_eq!(missed(&pack), None, "the suggested fill passes");
+}
+
+#[test]
+fn check_refuses_app_colour_names_surfaces_and_labels_it_cannot_honour() {
+    let mut pack = app_colors_pack();
+    let mut extra: BTreeMap<String, AppColor> = serde_json::from_value(serde_json::json!({
+        "accent": { "light": "#1f7a4d", "dark": "#4cc38a", "use": "graphic" },
+        "on-band": { "light": "#1f7a4d", "dark": "#4cc38a", "use": "graphic" },
+        "Trend_Down": { "light": "#1f7a4d", "dark": "#4cc38a", "use": "graphic" },
+        "home-mode": { "light": "#1f7a4d", "dark": "#4cc38a", "use": "graphic", "on": ["paper"] },
+        "series-up": { "light": "#1f7a4d", "dark": "#4cc38a", "use": "graphic", "on-color": "#ffffff" }
+    }))
+    .unwrap();
+    pack.colors.append(&mut extra);
+    let problems: Vec<String> = check(&pack).iter().map(ToString::to_string).collect();
+    for expected in [
+        "pack: colour accent is a role; name it for what it marks",
+        "pack: colour on-band: on- names a fill's label and is made for each fill",
+        "pack: colour Trend_Down must be a kebab-case name",
+        "pack: colour home-mode is on paper, which is not a role",
+        "pack: colour series-up: on-color labels a fill only",
+    ] {
+        assert!(
+            problems.contains(&expected.to_string()),
+            "{expected}: {problems:?}"
+        );
+    }
+    for index in 0..APP_COLOR_LIMIT {
+        pack.colors.insert(
+            format!("series-{index}"),
+            pack.colors["net-ethernet"].clone(),
+        );
+    }
+    let problems: Vec<String> = check(&pack).iter().map(ToString::to_string).collect();
+    assert!(
+        problems
+            .iter()
+            .any(|p| p.ends_with("app colours; a theme names at most 32")),
+        "{problems:?}"
+    );
+    assert!(
+        serde_json::from_value::<AppColor>(
+            serde_json::json!({ "light": "#000000", "dark": "#ffffff" })
+        )
+        .is_err(),
+        "use is required"
+    );
+}
+
+#[test]
+fn a_fill_lost_on_its_surface_is_advice() {
+    let advice: Vec<String> = advise(&app_colors_pack())
+        .iter()
+        .map(ToString::to_string)
+        .collect();
+    assert!(
+        advice.iter().any(|a| a.starts_with("dark: brand-band is ")
+            && a.ends_with("on surface; a filled control's edge needs 3.0:1")),
+        "{advice:?}"
+    );
+}
