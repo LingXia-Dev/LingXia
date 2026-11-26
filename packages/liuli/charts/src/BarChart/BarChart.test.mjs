@@ -541,3 +541,20 @@ test('right to left, the plot keeps time left to right: bars, figures, press slo
     for (const [index, start, end] of openGaps(line.d)) assert.ok(Math.abs((start + end) / 2 / 3.2 - middles[index]) < 0.05, `gap ${index}`);
   }
 });
+
+test('eight series side by side still give every bar a width', async () => {
+  const fields = Array.from({ length: 8 }, (_, index) => `s${index}`);
+  const screen = await renderPage(`
+    import { BarChart } from '@liulidesign/charts/BarChart';
+    const rows = [{ k: 'a', ${fields.map((field, index) => `${field}: ${index + 1}`).join(', ')} }, { k: 'b', ${fields.map(field => `${field}: 2`).join(', ')} }];
+    export function render() { return <page><BarChart rows={rows} x="k" y={${JSON.stringify(fields.map(field => ({ field })))}} label="Chart" data-testid="chart" /></page>; }
+  `);
+  laidOut(screen);
+  const paths = drawings(screen.getByTestId('chart')).flatMap(drawing => drawing.paths);
+  assert.equal(paths.length, 8);
+  for (const path of paths) {
+    const shapes = bars(path.d);
+    assert.equal(shapes.length, 2, `${path.key}: a bar in each category`);
+    assert.ok(shapes.every(([, , width]) => width > 0), `${path.key}: ${path.d}`);
+  }
+});

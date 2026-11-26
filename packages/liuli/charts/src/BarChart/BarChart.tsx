@@ -115,7 +115,8 @@ function barPaths(
   const slot = box / rows.length;
   const isSolo = series.length === 1;
   const inner = slot * (isSolo ? share.solo : share.group);
-  const gap = isSolo ? 0 : slot * share.gap;
+  // The gaps take at most a third of the group, so many series still leave every bar a width.
+  const gap = isSolo ? 0 : Math.min(slot * share.gap, inner / 3 / (series.length - 1));
   const width = (inner - (series.length - 1) * gap) / series.length;
   const span = high + depth > 0 ? high + depth : 1;
   const level = (value: number) => at(((high - value) / span) * box);
@@ -172,8 +173,8 @@ export function BarChart<Row extends ChartRecord<Row>>({
   const isPressable = onSelect !== undefined && data.length <= maxPressable;
   const labels = xLabels ?? 'fit';
   const chosen = data.findIndex((row, index) => keyOf(row, keyField ?? x, index) === selectedKey);
-  // Narrow bars take the small corner: many bars, or the smallest plot, where a slot is a few points wide.
-  const density = data.length >= denseFrom || size === 'xs' ? 'dense' : 'regular';
+  // Narrow bars take the small corner: many bars, counting each of a group, or the smallest plot, where a bar is a few points wide.
+  const density = data.length * Math.max(1, shown.length) >= denseFrom || size === 'xs' ? 'dense' : 'regular';
   // Colours are role names, so the outlines outlive a theme change; they are rebuilt only for new data, encoding or choice.
   // Until the plot is first laid out the bars stand at zero; a chart that comes back does not grow them again.
   const grown = laidOutOnce(data, `bar:${label}`, plot.value !== null);
