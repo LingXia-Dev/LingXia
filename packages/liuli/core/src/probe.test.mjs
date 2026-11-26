@@ -30,27 +30,10 @@ test('every length Liuli draws is a theme step, so a pack reaches it', () => {
   assert.deepEqual(found.lengths.filter(line => !appPoints.has(line) && !mixedScales.has(line)), []);
 });
 
-/**
- * Edges the default theme leaves under 3:1 in high contrast: the input to the theme's high-contrast work, not a
- * Liuli fix. `accent-solid` dims there so white text on it reaches 7:1, and `line` meets 3:1 on the bare surfaces
- * only, so a tint under it takes it below.
- */
-const themeGaps = new Set([
-  'border accent-solid on canvas (high-contrast-dark)',
-  'border accent-solid on surface (high-contrast-dark)',
-  'border accent-solid on accent-soft over surface (high-contrast-dark)',
-  'border line on text/6 over canvas (high-contrast-light)',
-  'border line on accent-soft over canvas (high-contrast-dark)',
-  'rule line on accent-soft over canvas (high-contrast-dark)',
-]);
-
 test('every colour drawn is a theme role', () => {
   assert.deepEqual(found.colours, []);
 });
 
-test('in high contrast every edge stands 3:1 off what it lies on, except the listed theme gaps', () => {
-  const short = found.edges.filter(({ edge }) => !themeGaps.has(edge)).map(({ example, edge, ratio }) => `${example}: ${edge}: ${ratio}`);
-  assert.deepEqual(short, []);
-  const seen = new Set(found.edges.map(({ edge }) => edge));
-  assert.deepEqual([...themeGaps].filter(edge => !seen.has(edge)), [], 'a theme gap closed: take it off the list');
+test('in high contrast every edge stands 3:1 off what it lies on', () => {
+  assert.deepEqual(found.edges.map(({ example, edge, ratio }) => `${example}: ${edge}: ${ratio}`), []);
 });
