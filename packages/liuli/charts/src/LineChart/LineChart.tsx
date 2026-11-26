@@ -1,6 +1,6 @@
-import { cx, useBox, useLocal, type Child, type PointerEvent, type VectorPath, type Local } from '@lingxia/view';
+import { cx, useBox, useLocal, useView, type Child, type PointerEvent, type VectorPath, type Local } from '@lingxia/view';
 import { Chart, ChartLegend, ChartReadout, type ChartLegendPosition, type ChartField, type ChartRecord, type ChartReference, type ChartRow, type ChartSeries, type ChartSize, type ChartSummarize } from '../Chart/Chart';
-import { colorOf, keysOf, numberOf, plain, roleOf, seriesFacts, seriesOf, textOf } from '../internal/data';
+import { colorOf, keysOf, numberOf, numberIn, roleOf, seriesFacts, seriesOf, textOf } from '../internal/data';
 import { pressed, pressedKey, scrubbing } from '../internal/gesture';
 import { box, closed, domain, dot, indexAt, niceTicks, reach, runs, scaleY, thin, traced, type ChartCurve, type Point } from '../internal/geometry';
 import { ReferenceLabels, ReferenceReading, referencePath, useReferences } from '../internal/References';
@@ -25,7 +25,7 @@ export interface LineChartProps<Row extends ChartRecord<Row> = ChartRow> {
   label: string;
   title?: string;
   description?: string;
-  /** Turns a number into the text shown and read. By default the bare number. */
+  /** Turns a number into the text shown and read. By default the number as the page's language writes it, grouped (`Intl.NumberFormat`). */
   formatValue?: (value: number) => string;
   /** Writes the summary a screen reader hears from the chart's facts; see `@liulidesign/charts/summary/en`. */
   summarize?: ChartSummarize;
@@ -129,7 +129,8 @@ export function LineChart<Row extends ChartRecord<Row>>({
   const onHiddenSeriesChange = isOwnHidden ? (fields: readonly string[]) => { ownHidden.set(fields); onHiddenChange?.(fields); } : onHiddenChange;
   // Only the fields named are read, and each of those holds a datum.
   const data = rows as readonly ChartRow[];
-  const formatValue = format ?? plain;
+  // Without the app's own, values are written as the page's language writes numbers.
+  const formatValue = format ?? numberIn(useView().env.language);
   const references = given.filter(each => Number.isFinite(each.value));
   const all = seriesOf(y).map((series, index) => ({ ...series, color: colorOf(index, series.color), dash: dashes[index % dashes.length] }));
   const shown = all.filter(series => !hiddenSeries.includes(series.field));

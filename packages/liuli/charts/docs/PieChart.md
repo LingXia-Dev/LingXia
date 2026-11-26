@@ -107,7 +107,7 @@ export function Merged() {
 | `label` (required) | `string` |  | The chart's accessible name: "Spending by category". |
 | `title` | `string` |  |  |
 | `description` | `string` |  |  |
-| `formatValue` | `((value: number) => string)` |  | Turns an amount into the text shown and read. By default the bare number. |
+| `formatValue` | `((value: number) => string)` |  | Turns an amount into the text shown and read. By default the number as the page's language writes it, grouped (`Intl.NumberFormat`). |
 | `formatShare` | `((share: number) => string)` |  | Turns a part of the whole, 0 to 1, into text for the legend: "32%". Without it the legend shows amounts only. |
 | `summarize` | `ChartSummarize` |  | Writes the summary a screen reader hears from the chart's facts; see `@liulidesign/charts/summary/en`. |
 | `variant` | `PieChartVariant` | `'donut'` | `donut` has a hole for the total; `pie` is solid. |

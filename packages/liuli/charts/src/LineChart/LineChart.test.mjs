@@ -97,10 +97,10 @@ test('the scale fits the data: an area from zero stops just past its highest val
   `;
   const scaleOf = screen => lineVector(screen).parent.parent.children[0];
   const medium = scaleOf(await renderPage(page('')));
-  assert.deepEqual(ticks(medium).map(textOf), ['6000', '4000', '2000', '0'], 'two thousand apart');
+  assert.deepEqual(ticks(medium).map(textOf), ['6,000', '4,000', '2,000', '0'], 'two thousand apart, grouped as the page language writes them');
   assert.deepEqual(levels(medium), [7.69, 38.46, 69.23, 100], 'the plot ends at 6500, a quarter step past 6130, not at 8000');
   const small = scaleOf(await renderPage(page('size="sm"')));
-  assert.deepEqual(ticks(small).map(textOf), ['5000', '0'], 'two ticks in 112 pt');
+  assert.deepEqual(ticks(small).map(textOf), ['5,000', '0'], 'two ticks in 112 pt');
   assert.deepEqual(levels(small), [20, 100]);
 });
 

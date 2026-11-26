@@ -100,7 +100,17 @@ export function keysOf(rows: readonly ChartRow[], field: string, taken: readonly
 type AnySeries = Omit<ChartSeries, 'field'> & { field: string };
 export const seriesOf = (y: string | readonly AnySeries[]): readonly ChartSeries[] => (typeof y === 'string' ? [{ field: y, label: '' }] : y);
 
-export const plain = (value: number) => String(value);
+const numberFormats = new Map<string, (value: number) => string>();
+/** A number as the page's language writes it, with its own grouping and decimal marks, by the standard `Intl`. */
+export function numberIn(language: string): (value: number) => string {
+  let format = numberFormats.get(language);
+  if (!format) {
+    const intl = new Intl.NumberFormat(language);
+    format = value => intl.format(value);
+    numberFormats.set(language, format);
+  }
+  return format;
+}
 
 export function seriesFacts(
   rows: readonly ChartRow[], x: string, series: ChartSeries, format: (value: number) => string, hasShares = false,

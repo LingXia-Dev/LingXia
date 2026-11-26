@@ -209,7 +209,7 @@ export function Gaps() {
 | `label` (required) | `string` |  | The chart's accessible name: "Weight by week". |
 | `title` | `string` |  |  |
 | `description` | `string` |  |  |
-| `formatValue` | `((value: number) => string)` |  | Turns a number into the text shown and read. By default the bare number. |
+| `formatValue` | `((value: number) => string)` |  | Turns a number into the text shown and read. By default the number as the page's language writes it, grouped (`Intl.NumberFormat`). |
 | `summarize` | `ChartSummarize` |  | Writes the summary a screen reader hears from the chart's facts; see `@liulidesign/charts/summary/en`. |
 | `curve` | `ChartCurve` | `'straight'` | How the line goes between points: `smooth` rounds it without passing above or below them; `step` holds each value level across its point and changes halfway to the next. |
 | `hasArea` | `boolean` | `false` | Fills under the line and measures it from zero. One series only. |

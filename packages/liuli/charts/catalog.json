@@ -70,7 +70,7 @@
           "name": "formatValue",
           "type": "((value: number) => string)",
           "required": false,
-          "description": "Turns a number into the text shown and read: units, separators, the locale. By default the bare number."
+          "description": "Turns a number into the text shown and read: units, separators, the locale. By default the number as the page's language writes it, grouped (`Intl.NumberFormat`)."
         },
         {
           "name": "summarize",
@@ -1199,7 +1199,7 @@
           "name": "formatValue",
           "type": "((value: number) => string)",
           "required": false,
-          "description": "Turns a number into the text shown and read. By default the bare number."
+          "description": "Turns a number into the text shown and read. By default the number as the page's language writes it, grouped (`Intl.NumberFormat`)."
         },
         {
           "name": "summarize",
@@ -1758,7 +1758,7 @@
           "name": "formatValue",
           "type": "((value: number) => string)",
           "required": false,
-          "description": "Turns an amount into the text shown and read. By default the bare number."
+          "description": "Turns an amount into the text shown and read. By default the number as the page's language writes it, grouped (`Intl.NumberFormat`)."
         },
         {
           "name": "formatShare",

@@ -158,7 +158,7 @@ test('Month: thirty bars are still buttons, with a smaller corner, the top of th
   assert.deepEqual([chosen.paths[0].strokeWidth, chosen.marks.insetTop], [2, 1]);
   const labels = screen.queryAll(node => node.tag === 'text' && / Jun$/.test(node.text ?? '') && node.props.fontSize === 12 && node.props.opacity !== 0);
   assert.deepEqual(labels.map(label => label.text), ['1 Jun', '30 Jun']);
-  screen.getByText('15000');
+  screen.getByText('15,000');
 });
 
 test('a chart costs one element per bar and a fixed handful more, however many bars it has', async () => {

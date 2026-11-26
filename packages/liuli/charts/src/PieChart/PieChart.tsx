@@ -1,7 +1,7 @@
-import { cx, useBox, useLocal, type ColorAlpha, type ColorRole, type PointerEvent, type VectorPath, type Local } from '@lingxia/view';
+import { cx, useBox, useLocal, useView, type ColorAlpha, type ColorRole, type PointerEvent, type VectorPath, type Local } from '@lingxia/view';
 import { Chart, ChartLegend, type ChartColor, type ChartField, type ChartLegendPosition, type ChartRecord, type ChartRow, type ChartSize, type ChartSummarize } from '../Chart/Chart';
 import { liuliText } from '@liulidesign/core/internal/text';
-import { colorOf, keysOf, numberOf, plain, roleOf, seriesFacts, textOf } from '../internal/data';
+import { colorOf, keysOf, numberOf, numberIn, roleOf, seriesFacts, textOf } from '../internal/data';
 import { box, circle, sector } from '../internal/geometry';
 import { remember } from '../internal/memo';
 import { pieChartRecipe as r } from './PieChart.recipe';
@@ -22,7 +22,7 @@ export interface PieChartProps<Row extends ChartRecord<Row> = ChartRow> {
   label: string;
   title?: string;
   description?: string;
-  /** Turns an amount into the text shown and read. By default the bare number. */
+  /** Turns an amount into the text shown and read. By default the number as the page's language writes it, grouped (`Intl.NumberFormat`). */
   formatValue?: (value: number) => string;
   /** Turns a part of the whole, 0 to 1, into text for the legend: "32%". Without it the legend shows amounts only. */
   formatShare?: (share: number) => string;
@@ -91,7 +91,8 @@ export function PieChart<Row extends ChartRecord<Row>>({
   const onSelect = bind ? (key: string | null) => { bind.set(key); onChange?.(key); } : isOwn ? (key: string | null) => { own.set(key); onChange?.(key); } : onChange;
   // Only the fields named are read, and each of those holds a datum.
   const data = rows as readonly ChartRow[];
-  const formatValue = format ?? plain;
+  // Without the app's own, values are written as the page's language writes numbers.
+  const formatValue = format ?? numberIn(useView().env.language);
   const keys = keysOf(data, keyField ?? name, [otherKey]);
   const listed = data
     .map((row, index) => ({ key: keys[index], name: textOf(row, name), amount: numberOf(row, value) }))
