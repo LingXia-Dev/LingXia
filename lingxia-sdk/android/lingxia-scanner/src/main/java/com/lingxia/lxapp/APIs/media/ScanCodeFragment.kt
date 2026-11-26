@@ -25,6 +25,7 @@ import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
 import androidx.fragment.app.Fragment
+import androidx.lifecycle.Lifecycle
 import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.camera.core.CameraSelector
 import androidx.camera.core.ImageAnalysis
@@ -110,6 +111,7 @@ internal class ScanCodeFragment : Fragment() {
     private var barcodeScanner: BarcodeScanner? = null
     private var hasReportedResult = false
     private var hasStreamed = false
+    private var cameraStartRequested = false
 
     private val mainHandler = Handler(Looper.getMainLooper())
     private val showLoadingRunnable = Runnable {
@@ -317,11 +319,11 @@ internal class ScanCodeFragment : Fragment() {
     }
 
     // The watchdog only guards the first-ever frame: binding can "succeed" yet never stream
-    // (e.g. camera held by another app on some devices). Paused while backgrounded so a
-    // startup interrupted by Home doesn't count the time away against the deadline.
+    // (e.g. camera held by another app on some devices). Reading a host consent dialog
+    // or waiting for system permission is not camera startup. Pause while backgrounded.
     override fun onStart() {
         super.onStart()
-        if (!hasStreamed) {
+        if (cameraStartRequested && !hasStreamed) {
             mainHandler.postDelayed(streamWatchdogRunnable, STREAM_WATCHDOG_MS)
         }
     }
@@ -422,6 +424,11 @@ internal class ScanCodeFragment : Fragment() {
         val ctx = context ?: return
         val preview = previewView ?: return
         val executor = ContextCompat.getMainExecutor(ctx)
+        cameraStartRequested = true
+        if (!hasStreamed && lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)) {
+            mainHandler.removeCallbacks(streamWatchdogRunnable)
+            mainHandler.postDelayed(streamWatchdogRunnable, STREAM_WATCHDOG_MS)
+        }
 
         val cameraProviderFuture = ProcessCameraProvider.getInstance(ctx)
         cameraProviderFuture.addListener({
