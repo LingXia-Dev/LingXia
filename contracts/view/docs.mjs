@@ -137,7 +137,7 @@ function styles(schema) {
     'prefix (`text-muted`, not `text-text-muted`). The theme pack resolves each role per appearance and proves the',
     'listed contrast minimums. `defaultPalette` from `@lingxia/view/theme` holds the default pack resolved for light,', 'dark, `high-contrast-light` and `high-contrast-dark`, derived accent roles included, for proving contrast in code.',
     'In TypeScript a role is `ColorRole`, a style colour `ColorValue` (a role, `role/NN` or `transparent`) and a `<plot>`',
-    'series `ColorSeries`.', '',
+    'series `ColorSeries`. A theme\'s own `colors` add role-shaped classes and `app.<name>` values beside the roles.', '',
     'A pack writes the authored roles. Fixed roles are the same in every pack, and derived roles are computed from the',
     'authored ones and the accent seed, unless a pack sets them.', '',
     table(['Role', 'Set by', 'Minimum contrast', 'Use'], schema.roles.filter(role => !role.internal).map(role => [code(role.name), { authored: 'the pack', fixed: 'fixed', derived: 'derived' }[role.tier],

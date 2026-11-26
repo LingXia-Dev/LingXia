@@ -29,8 +29,10 @@ pub(super) fn build(project: &Project, options: &BuildOptions, dev: bool) -> Res
     // A theme the lxapp ships must prove its contrast before any page builds against it; it
     // ships completed, so the runtime resolves it without the defaults it was written against.
     let theme = project.root.join(crate::theme::THEME_PATH);
+    let mut looks = serde_json::Value::Null;
     if theme.exists() {
         let pack = crate::theme::load(Some(&theme))?;
+        looks = crate::theme::looks(&pack);
         let output = project.output_dir.join(crate::theme::THEME_PATH);
         std::fs::create_dir_all(output.parent().context("theme output")?)?;
         std::fs::write(&output, serde_json::to_string(&pack)?)
@@ -50,7 +52,11 @@ pub(super) fn build(project: &Project, options: &BuildOptions, dev: bool) -> Res
             .join(mode)
             .join("gpu-inputs.json")
     });
-    let paths = serde_json::json!({ "messages": options.messages, "inputsRecord": inputs_record });
+    let paths = serde_json::json!({
+        "messages": options.messages,
+        "inputsRecord": inputs_record,
+        "looks": looks,
+    });
     let script = "import { buildPages } from '@lingxia/view/compiler'; await buildPages(process.cwd(), JSON.parse(process.argv[1]), process.argv[2], JSON.parse(process.argv[3]), { dev: process.argv[4] === 'dev', ...JSON.parse(process.argv[5]) });";
     let result = Command::new("node")
         .args(["--input-type=module", "--eval", script])

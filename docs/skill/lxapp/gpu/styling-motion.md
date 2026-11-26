@@ -22,6 +22,8 @@
   for light and dark, and `type`, `shape.radius`, `space.unit` and `motion` retune the steps. Every other role
   is derived to pass its contrast pairs.
 - `lingxia build` checks every role pair in light, dark and high contrast and fails listing each pair that misses.
+- App-owned colours go in `colors` (≤32): `{"trend-up":{"light":"#…","dark":"#…","use":"text|graphic|fill","on":["surface"]}}`;
+  classes are role-shaped (`text-trend-up`, a fill's label `text-on-<name>`), style values and plot series `app.<name>`.
 - A palette the host pushes wins over the pack. `env.highContrast` picks the high-contrast palette;
   `shadow-*` layers use the `shadow` role. Host chrome around the page (bars, window floor) takes the page's palette.
 

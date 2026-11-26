@@ -127,11 +127,11 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 for await (const line of createInterface({ input: process.stdin })) {
-  const { pages, output, catalogs, prime, messages, inputsRecord } = JSON.parse(line);
+  const { pages, output, catalogs, prime, messages, inputsRecord, looks } = JSON.parse(line);
   const target = prime ? await mkdtemp(join(tmpdir(), 'lingxia-prime-')) : output;
   try {
     const { warm, analysed } = await buildPages(process.cwd(), pages, target, catalogs, {
-      dev: true, messages, inputsRecord: prime ? join(target, 'gpu-inputs.json') : inputsRecord,
+      dev: true, messages, looks, inputsRecord: prime ? join(target, 'gpu-inputs.json') : inputsRecord,
     });
     console.log(JSON.stringify({ ok: true, warm, analysed }));
   } catch (error) { console.log(JSON.stringify({ ok: false, error: String(error?.message ?? error) })); }
@@ -228,6 +228,7 @@ impl Compiler {
             "catalogs": catalogs,
             "messages": crate::lxapp::dev_messages(&self.dir),
             "inputsRecord": self.record,
+            "looks": crate::theme::project_looks(&self.dir),
         });
         writeln!(self.stdin, "{request}").context("GPU page compiler exited")?;
         let mut line = String::new();

@@ -15,6 +15,7 @@ import { moduleBanner } from './compatibility.mjs';
 import { fieldFloor } from './field-floor.mjs';
 import { resolveChunkPolicy, discoverSharedPackages, buildSharedChunk, packageProxySource } from './chunks.mjs';
 import { compileUtilities, tailwindWarm, appColorTheme, appColorClashes } from './tailwind.mjs';
+import { gradientTextProblems } from './gradient-text.mjs';
 import { nearestSupported } from './suggest.mjs';
 import { loadStylesheet, validateTokens, fontFaces } from './stylesheets.mjs';
 import { checkerOptions, viewTsconfig } from './tsconfig.mjs';
@@ -549,8 +550,10 @@ async function packageTokens(root, packages, problems) {
  * `literalColors` admits hex and palette colours for renderer test fixtures whose probes read exact
  * pixels; app builds never set it. Required: `messages`, the compiled i18n `index.js` to bundle
  * (`null` without catalogues), and `inputsRecord`, the file a dev build records its inputs in.
+ * `looks`, the theme's four resolved looks as wire colour names to hex, lets text on a gradient
+ * be measured against its stops.
  */
-export async function buildPages(root, pages, output, catalogs = {}, { dev = false, literalColors = false, messages: messagesPath, inputsRecord, chunks, minRuntime } = {}) {
+export async function buildPages(root, pages, output, catalogs = {}, { dev = false, literalColors = false, messages: messagesPath, inputsRecord, chunks, minRuntime, looks } = {}) {
   if (messagesPath === undefined || (messagesPath !== null && typeof messagesPath !== 'string')) throw TypeError('buildPages: `messages` is required: the compiled i18n index.js, or null');
   if (typeof inputsRecord !== 'string') throw TypeError('buildPages: `inputsRecord` is required: the file a dev build records its inputs in');
   const { version } = JSON.parse(await readFile(new URL('../package.json', import.meta.url), 'utf8'));
@@ -753,6 +756,7 @@ export async function buildPages(root, pages, output, catalogs = {}, { dev = fal
         const tint = !disabled && found.map(rule => rule && !rule.error && !disabledEdge(rule, name) && edgeRole(rule.style)).find(Boolean);
         if (tint && !softFilled(tint, names, rulesByName)) edges.push(`${location}: UI_CLASS_EDGE: ${name} tints an edge ${tint}, which high contrast does not strengthen; use border-line for a separator or border-line-strong for an interactive boundary`);
       }
+      for (const problem of gradientTextProblems(names, rulesByName, looks)) problems.push(`${location}: ${problem}`);
     }
     const ownFile = file => !file.fileName.includes(`${sep}node_modules${sep}`);
     const transformed = transformedHolderProblems(sourceFiles, checker, rulesByName, ownFile);

@@ -709,6 +709,29 @@ test("an app's own colours from theme.json are classes, style values and plot se
   });
 });
 
+test('text on a gradient over an app colour names its pair and reads against every stop in each look', async () => {
+  const theme = JSON.stringify({ name: 'h', version: 1, colors: { 'brand-band': { light: '#1d4ed8', dark: '#1e40af', use: 'fill' } } });
+  const page = className => `export function render() { return <view className="${className}"><text>A</text></view>; }`;
+  const looks = {
+    light: { 'app.brand-band': '#1d4ed8', 'app.on-brand-band': '#ffffff', accent: '#2a55e0', 'accent-soft': '#fff6a0', text: '#172033' },
+    dark: { 'app.brand-band': '#1e40af', 'app.on-brand-band': '#e6e9f0', accent: '#1e3a8a', 'accent-soft': '#1e3a8a', text: '#e6e9f0' },
+  };
+  await project({ 'theme.json': theme, 'page.tsx': page('bg-linear-to-r from-brand-band to-accent text-on-brand-band') }, async root => {
+    const build = options => buildPages(root, ['page.tsx'], join(root, 'dist'), {}, { messages: null, inputsRecord: join(root, 'inputs.json'), looks, ...options });
+    await build();
+    const fails = async (className, message) => {
+      await writeFile(join(root, 'page.tsx'), page(className));
+      await assert.rejects(build(), error => { assert.ok(error.message.includes(message), error.message); return true; });
+    };
+    await fails('bg-linear-to-r from-brand-band to-accent-soft text-on-brand-band',
+      'UI_COLOR: text-on-brand-band is 1.11:1 on to-accent-soft in light; text on a gradient needs 4.5:1 against every stop');
+    await fails('bg-linear-to-r from-brand-band to-accent text-text',
+      "UI_COLOR: text-text on a gradient over an app colour cannot be checked; name the stop's pair, such as text-on-brand-band");
+    await writeFile(join(root, 'page.tsx'), 'export function render() { return <text className="bg-clip-text text-transparent bg-linear-to-r from-brand-band to-accent">A</text>; }');
+    await build();
+  });
+});
+
 test('renderer test fixtures may keep literal colours only through the build option', async () => {
   await project({ 'page.tsx': `export function render() { return <view className="bg-[#ff0000] dark:bg-white" style={{ borderColor: '#0000ff' }} />; }` }, async root => {
     await assert.rejects(build(root, ['page.tsx'], join(root, 'dist')), /UI_COLOR/);

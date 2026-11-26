@@ -67,6 +67,9 @@ pub fn run(command: ThemeCommand) -> Result<()> {
                 file.display(),
                 pack.name
             );
+            for line in app_color_pairs(&pack) {
+                println!("  {line}");
+            }
             Ok(())
         }
         ThemeCommand::Preview => preview::run(),
@@ -89,6 +92,97 @@ pub fn load_from(path: &Path, base: &Pack) -> Result<Pack> {
     let pack = serde_json::from_str(&text)
         .with_context(|| format!("{} is not a theme", path.display()))?;
     checked(lingxia_theme::complete_from(pack, base))
+}
+
+/// Each app colour's pairs with their ratio in every look, one line per pair.
+fn app_color_pairs(pack: &Pack) -> Vec<String> {
+    use lingxia_theme::Appearance::{Dark, Light};
+    let themes: Vec<(&str, lingxia_theme::ResolvedTheme)> = [
+        ("light", Light, false),
+        ("dark", Dark, false),
+        ("high-contrast-light", Light, true),
+        ("high-contrast-dark", Dark, true),
+    ]
+    .into_iter()
+    .filter_map(|(look, appearance, high_contrast)| {
+        let prefs = lingxia_theme::Prefs {
+            appearance,
+            high_contrast,
+            ..Default::default()
+        };
+        lingxia_theme::resolve(pack, &prefs)
+            .ok()
+            .map(|theme| (look, theme))
+    })
+    .collect();
+    let mut lines = Vec::new();
+    for (name, color) in &pack.colors {
+        let pairs: Vec<(String, String)> = if color.usage == lingxia_theme::ColorUse::Fill {
+            vec![(format!("on-{name}"), name.clone())]
+        } else {
+            color
+                .on
+                .iter()
+                .map(|ground| (name.clone(), ground.clone()))
+                .collect()
+        };
+        for (ink, ground) in pairs {
+            let ratios: Vec<String> = themes
+                .iter()
+                .filter_map(|(look, theme)| {
+                    let pick = |key: &str| {
+                        theme.app.get(key).copied().or_else(|| {
+                            lingxia_theme::Role::from_name(key).map(|role| theme.color(role))
+                        })
+                    };
+                    let ratio = lingxia_theme::contrast(pick(&ink)?, pick(&ground)?);
+                    Some(format!("{look} {ratio:.2}:1"))
+                })
+                .collect();
+            lines.push(format!("{ink} on {ground}: {}", ratios.join(", ")));
+        }
+    }
+    lines
+}
+
+/// The lxapp theme at `root` in its four looks, as wire colour names to hex, for the page
+/// compiler to measure text on gradients; null without a theme or one that does not parse.
+pub fn project_looks(root: &Path) -> Value {
+    let Ok(text) = fs::read_to_string(root.join(THEME_PATH)) else {
+        return Value::Null;
+    };
+    serde_json::from_str::<Pack>(&text)
+        .map_or(Value::Null, |pack| looks(&lingxia_theme::complete(pack)))
+}
+
+/// `pack` resolved for light, dark and both high-contrast looks: each role and `app.<name>`.
+pub fn looks(pack: &Pack) -> Value {
+    use lingxia_theme::Appearance::{Dark, Light};
+    let mut looks = serde_json::Map::new();
+    for (look, appearance, high_contrast) in [
+        ("light", Light, false),
+        ("dark", Dark, false),
+        ("high-contrast-light", Light, true),
+        ("high-contrast-dark", Dark, true),
+    ] {
+        let prefs = lingxia_theme::Prefs {
+            appearance,
+            high_contrast,
+            ..Default::default()
+        };
+        let Ok(theme) = lingxia_theme::resolve(pack, &prefs) else {
+            continue;
+        };
+        let mut colors: serde_json::Map<String, Value> = lingxia_theme::Role::ALL
+            .into_iter()
+            .map(|role| (role.name().to_owned(), theme.color(role).hex().into()))
+            .collect();
+        for (name, color) in &theme.app {
+            colors.insert(format!("app.{name}"), color.hex().into());
+        }
+        looks.insert(look.to_owned(), colors.into());
+    }
+    looks.into()
 }
 
 fn checked(pack: Pack) -> Result<Pack> {

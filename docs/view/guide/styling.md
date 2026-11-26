@@ -106,6 +106,25 @@ opens:
 { "name": "brand", "version": 1, "accent": { "seed": "#0f9d58", "derive": true } }
 ```
 
+Colours the app owns, such as a connection type, a data series or a brand band, go in the theme's `colors`
+(at most 32). Each has a light and a dark value, a `use` and the surface roles it sits `on`:
+
+```json
+"colors": {
+  "net-ethernet": { "light": "#1f7a4d", "dark": "#4cc38a", "use": "graphic", "on": ["surface", "surface-sunken"] },
+  "trend-up":     { "light": "#0f7b3f", "dark": "#5bd28a", "use": "text" },
+  "brand-band":   { "light": "#1d4ed8", "dark": "#1e40af", "use": "fill" }
+}
+```
+
+`graphic` holds 3:1 against each surface, `text` 4.5:1, and a `fill` gets a label colour `on-<name>` at 4.5:1
+(the palette's own dark or light ink unless `on-color` pins it). High contrast boosts each one unless it writes
+`high-contrast-light` or `high-contrast-dark`. They become role-shaped classes (`bg-brand-band`,
+`text-on-brand-band`, `border-net-ethernet/40`, `from-brand-band`) and `app.<name>` in `style` values and
+`<plot colors>`. A name may not be a role, start with `on-`, or complete a Tailwind utility (`center` would make
+`bg-center`). Text on a gradient that has an app colour among its stops names a stop's pair and is measured
+against every stop in each look. `lingxia theme check` lists every app colour's pairs and ratios.
+
 ```tsx error UI_COLOR
 export function render() {
   return <page className="bg-white"><text className="text-gray-500">Hex and ladders fail</text></page>;
