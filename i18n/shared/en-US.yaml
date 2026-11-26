@@ -26,6 +26,8 @@ lxapp:
   unavailable_title: "Can't open this mini app"
   unavailable_maintain: "It's under maintenance. Try again later."
   unavailable_suspended: "It's no longer available."
+  page_config_error_title: "This page can't open"
+  page_config_error_message: "Its settings in this app have a problem. Try again, or update the app."
 
 # A notification whose target was removed, replaced, or already opened
 notification:

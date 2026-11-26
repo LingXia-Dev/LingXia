@@ -2249,11 +2249,16 @@ impl PageInstance {
             .lock()
             .ok()
             .and_then(|state| state.config_load_error.clone());
-        let html_string = if let Some(message) = config_load_error {
+        // The detail is a developer's; it was logged when the config failed to load.
+        let html_string = if config_load_error.is_some() {
+            use lingxia_platform::i18n::text;
             lingxia_webview::render_load_error_page(lingxia_webview::LoadErrorPage {
-                title: "Page configuration error",
-                message: &message,
-                retry_label: "Retry",
+                title: &text("lxapp.page_config_error_title", "This page can't open"),
+                message: &text(
+                    "lxapp.page_config_error_message",
+                    "Its settings in this app have a problem. Try again, or update the app.",
+                ),
+                retry_label: &text("webview.retry", "Retry"),
                 retry_url: &self.base_url(),
             })
         } else {

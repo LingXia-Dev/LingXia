@@ -761,21 +761,6 @@ struct ExportResult {
     count: usize,
 }
 
-/// File-picker labels follow the product display language:
-/// `lxapp::display_language` resolves the shared display-language service —
-/// exactly like the webui i18n resolution.
-fn display_locale_is_chinese() -> bool {
-    is_chinese_locale(&lxapp::display_language())
-}
-
-fn is_chinese_locale(language: &str) -> bool {
-    // Mirrors the webui's /^zh(?:-|$)/ test (plus "_" for POSIX locale ids).
-    let bytes = language.trim().as_bytes();
-    bytes.len() >= 2
-        && bytes[..2].eq_ignore_ascii_case(b"zh")
-        && (bytes.len() == 2 || matches!(bytes[2], b'-' | b'_'))
-}
-
 fn merge_imported(
     snapshot: &mut BookmarksSnapshot,
     bookmarks: Vec<ImportedBookmark>,
@@ -1091,31 +1076,18 @@ async fn import_html_bookmarks(
     mut cancel: HostCancel,
 ) -> lingxia_error::Result<Option<ImportResult>> {
     let app_for_picker = app.clone();
-    let is_chinese = display_locale_is_chinese();
+    let filter_name = lingxia_platform::i18n::text("browser.bookmark_html_filter", "Bookmark HTML");
+    let title = lingxia_platform::i18n::text("browser.import_bookmarks", "Import Bookmarks");
     let selected = await_or_cancel(&mut cancel, async move {
         lingxia_service::file::pick_file(
             &*app_for_picker.runtime,
             PickFileRequest {
                 multiple: false,
                 filters: vec![FileDialogFilter {
-                    name: Some(
-                        if is_chinese {
-                            "书签 HTML"
-                        } else {
-                            "Bookmark HTML"
-                        }
-                        .to_string(),
-                    ),
+                    name: Some(filter_name),
                     extensions: vec!["html".to_string(), "htm".to_string()],
                 }],
-                title: Some(
-                    if is_chinese {
-                        "导入书签"
-                    } else {
-                        "Import Bookmarks"
-                    }
-                    .to_string(),
-                ),
+                title: Some(title),
                 default_path: None,
                 owner: app_for_picker.dialog_owner(),
             },
@@ -1356,16 +1328,6 @@ mod tests {
         let error = rename_group_op(&mut snapshot, "g2", "Work").unwrap_err();
         assert!(error.is(lingxia_error::code::INVALID_ARG));
         assert_eq!(snapshot.groups[1].name, "Personal");
-    }
-
-    #[test]
-    fn chinese_locale_matches_webui_resolution() {
-        for locale in ["zh", "zh-CN", "zh_CN", "ZH-Hans-CN"] {
-            assert!(is_chinese_locale(locale), "expected Chinese: {locale}");
-        }
-        for locale in ["en-US", "zho", "ja-JP", ""] {
-            assert!(!is_chinese_locale(locale), "expected non-Chinese: {locale}");
-        }
     }
 
     #[test]

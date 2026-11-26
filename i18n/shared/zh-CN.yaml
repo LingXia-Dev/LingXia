@@ -26,6 +26,8 @@ lxapp:
   unavailable_title: "无法打开该小程序"
   unavailable_maintain: "该小程序正在维护中，请稍后再试。"
   unavailable_suspended: "该小程序已停止提供服务。"
+  page_config_error_title: "无法打开此页面"
+  page_config_error_message: "应用中此页面的配置有问题，请重试或更新应用。"
 
 # A notification whose target was removed, replaced, or already opened
 notification:
