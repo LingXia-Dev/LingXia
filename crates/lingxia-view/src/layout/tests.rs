@@ -1032,6 +1032,9 @@ mod box_model {
 #[path = "tests/display.rs"]
 mod display;
 
+#[path = "tests/flex_text.rs"]
+mod flex_text;
+
 #[path = "tests/grid.rs"]
 mod grid;
 

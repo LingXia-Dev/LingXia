@@ -272,6 +272,10 @@ where
     pub(crate) taffy: &'t mut TaffyTree<NodeContext>,
     /// The context provided for passing to measure functions if layout is run over this struct
     pub(crate) measure_function: MeasureFunction,
+    /// How many `ComputeSize` calls enclose the current one. Flexbox baseline alignment lays out
+    /// children even while only sizing; that layout must not be kept, or a later cache hit on an
+    /// ancestor's final layout leaves the sizing pass's geometry in place.
+    pub(crate) sizing: u32,
 }
 
 impl<NodeContext, MeasureFunction> TaffyView<'_, NodeContext, MeasureFunction>
@@ -294,12 +298,15 @@ where
             return compute_hidden_layout(self, node_id);
         }
 
+        let sizing = inputs.run_mode == RunMode::ComputeSize;
+        self.sizing += u32::from(sizing);
+
         // We run the following wrapped in "compute_cached_layout", which will check the cache for an entry matching the node and inputs and:
         //   - Return that entry if exists
         //   - Else call the passed closure (below) to compute the result
         //
         // If there was no cache match and a new result needs to be computed then that result will be added to the cache
-        compute_cached_layout(self, node_id, inputs, |tree, node_id, inputs| {
+        let output = compute_cached_layout(self, node_id, inputs, |tree, node_id, inputs| {
             let display_mode = tree.taffy.nodes[node_id.into()].style.display;
             let has_children = tree.child_count(node_id) > 0;
 
@@ -325,7 +332,9 @@ where
                     (tree.measure_function)(inputs, node_id, node_context, style)
                 }
             }
-        })
+        });
+        self.sizing -= u32::from(sizing);
+        output
     }
 }
 
@@ -380,7 +389,9 @@ where
 
     #[inline(always)]
     fn set_unrounded_layout(&mut self, node_id: NodeId, layout: &Layout) {
-        self.taffy.nodes[node_id.into()].unrounded_layout = *layout;
+        if self.sizing == 0 {
+            self.taffy.nodes[node_id.into()].unrounded_layout = *layout;
+        }
     }
 
     #[inline(always)]
@@ -408,7 +419,10 @@ where
     }
 
     fn cache_store(&mut self, node_id: NodeId, input: &LayoutInput, layout_output: LayoutOutput) {
-        self.taffy.nodes[node_id.into()].cache.store(input, layout_output)
+        // A final layout made while sizing was not kept, so it must not satisfy a later one.
+        if self.sizing == 0 || input.run_mode != RunMode::PerformLayout {
+            self.taffy.nodes[node_id.into()].cache.store(input, layout_output)
+        }
     }
 
     fn cache_clear(&mut self, node_id: NodeId) {
@@ -904,7 +918,7 @@ impl<NodeContext> TaffyTree<NodeContext> {
         MeasureFunction: FnMut(LayoutInput, NodeId, Option<&mut NodeContext>, &Style) -> LayoutOutput,
     {
         let use_rounding = self.config.use_rounding;
-        let mut taffy_view = TaffyView { taffy: self, measure_function };
+        let mut taffy_view = TaffyView { taffy: self, measure_function, sizing: 0 };
         compute_root_layout(&mut taffy_view, node_id, available_space);
         if use_rounding {
             round_layout(&mut taffy_view, node_id);
@@ -922,7 +936,7 @@ impl<NodeContext> TaffyTree<NodeContext> {
     where
         MeasureFunction: FnMut(LayoutInput, NodeId, Option<&mut NodeContext>, &Style) -> LayoutOutput,
     {
-        let mut taffy_view = TaffyView { taffy: self, measure_function };
+        let mut taffy_view = TaffyView { taffy: self, measure_function, sizing: 0 };
         nodes
             .iter()
             .map(|&node| {
@@ -960,6 +974,7 @@ impl<NodeContext> TaffyTree<NodeContext> {
         TaffyView {
             taffy: self,
             measure_function: |inputs, _, _, style| compute_leaf_layout(inputs, style, |_, _| 0.0, |_, _| Size::ZERO),
+            sizing: 0,
         }
     }
 }
