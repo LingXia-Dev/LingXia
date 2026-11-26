@@ -158,8 +158,7 @@ export default definePage({
         size: { width?: OverlaySurfaceSizeValue; height?: OverlaySurfaceSizeValue },
       ) {
         if (verb === "lxapp") {
-          // Compose another lxapp into the aside slot — home-lxapp privilege, so
-          // it lives on lx.shell rather than lx.surface. A live app is reused.
+          // Another lxapp docked beside the main page; a live app is reused.
           return lx.surface.openApp("lingxia-showcase-web", {
             as: "aside",
             edge: cfg.edge ?? "right",

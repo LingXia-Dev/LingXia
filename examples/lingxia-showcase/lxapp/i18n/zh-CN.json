@@ -3500,6 +3500,24 @@
   "ui.content": {
     "defaultMessage": "内容"
   },
+  "ui.content.app": {
+    "defaultMessage": "另一个应用"
+  },
+  "ui.content.page": {
+    "defaultMessage": "页面"
+  },
+  "ui.content.web": {
+    "defaultMessage": "网页"
+  },
+  "ui.contentHint.app": {
+    "defaultMessage": "按 id 打开的网页版示例应用。"
+  },
+  "ui.contentHint.page": {
+    "defaultMessage": "本应用的一个页面。"
+  },
+  "ui.contentHint.web": {
+    "defaultMessage": "在浏览器标签页中打开的网页。"
+  },
   "ui.dismissed": {
     "defaultMessage": "已关闭"
   },
@@ -3566,17 +3584,11 @@
   "ui.jumpToTabPage": {
     "defaultMessage": "跳转到标签页"
   },
-  "ui.kind": {
-    "defaultMessage": "类型"
-  },
   "ui.kind.aside": {
     "defaultMessage": "侧栏"
   },
   "ui.kind.float": {
     "defaultMessage": "浮层"
-  },
-  "ui.kind.lxapp": {
-    "defaultMessage": "Lxapp"
   },
   "ui.kind.window": {
     "defaultMessage": "窗口"
@@ -3586,9 +3598,6 @@
   },
   "ui.kindHint.float": {
     "defaultMessage": "浮在主页面上方的弹窗，类似对话框，不占布局空间。"
-  },
-  "ui.kindHint.lxapp": {
-    "defaultMessage": "以侧栏打开聊天应用，需要主应用权限。"
   },
   "ui.kindHint.window": {
     "defaultMessage": "没有侧栏和外壳的独立窗口，仅限桌面端。"
@@ -3650,6 +3659,9 @@
   "ui.openASurface": {
     "defaultMessage": "打开一个界面"
   },
+  "ui.openSurface": {
+    "defaultMessage": "打开"
+  },
   "ui.openViewPopup": {
     "defaultMessage": "打开 View 弹窗"
   },
@@ -3673,6 +3685,9 @@
   },
   "ui.option.top": {
     "defaultMessage": "上"
+  },
+  "ui.placement": {
+    "defaultMessage": "位置"
   },
   "ui.position": {
     "defaultMessage": "位置"
@@ -3766,6 +3781,9 @@
   },
   "ui.style": {
     "defaultMessage": "样式"
+  },
+  "ui.surfaceOpen": {
+    "defaultMessage": "已打开"
   },
   "ui.text": {
     "defaultMessage": "文字"

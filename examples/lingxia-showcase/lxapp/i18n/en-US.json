@@ -4665,7 +4665,31 @@
   },
   "ui.content": {
     "defaultMessage": "Content",
-    "description": "Text on the ui page."
+    "description": "Label above the choice of what a surface shows."
+  },
+  "ui.content.app": {
+    "defaultMessage": "Another app",
+    "description": "Surface content: another lxapp."
+  },
+  "ui.content.page": {
+    "defaultMessage": "Page",
+    "description": "Surface content: a page of this app."
+  },
+  "ui.content.web": {
+    "defaultMessage": "Web page",
+    "description": "Surface content: a web page."
+  },
+  "ui.contentHint.app": {
+    "defaultMessage": "The web showcase app, opened by its id.",
+    "description": "Hint for another-app content."
+  },
+  "ui.contentHint.page": {
+    "defaultMessage": "A page of this app.",
+    "description": "Hint for page content."
+  },
+  "ui.contentHint.web": {
+    "defaultMessage": "A web page in a browser tab.",
+    "description": "Hint for web content."
   },
   "ui.dismissed": {
     "defaultMessage": "Dismissed",
@@ -4755,20 +4779,12 @@
     "defaultMessage": "Jump to Tab page",
     "description": "Text on the ui page."
   },
-  "ui.kind": {
-    "defaultMessage": "Kind",
-    "description": "Text on the ui page."
-  },
   "ui.kind.aside": {
     "defaultMessage": "Aside",
     "description": "A surface kind."
   },
   "ui.kind.float": {
     "defaultMessage": "Float",
-    "description": "A surface kind."
-  },
-  "ui.kind.lxapp": {
-    "defaultMessage": "Lxapp",
     "description": "A surface kind."
   },
   "ui.kind.window": {
@@ -4781,10 +4797,6 @@
   },
   "ui.kindHint.float": {
     "defaultMessage": "A popup above the main page, like a dialog. It does not take layout space.",
-    "description": "What a surface kind does."
-  },
-  "ui.kindHint.lxapp": {
-    "defaultMessage": "Opens the chat app as an aside. Requires home-app privilege.",
     "description": "What a surface kind does."
   },
   "ui.kindHint.window": {
@@ -4867,6 +4879,10 @@
     "defaultMessage": "Open a surface",
     "description": "Text on the ui page."
   },
+  "ui.openSurface": {
+    "defaultMessage": "Open",
+    "description": "Button that opens the surface."
+  },
   "ui.openViewPopup": {
     "defaultMessage": "Open View popup",
     "description": "Text on the ui page."
@@ -4898,6 +4914,10 @@
   "ui.option.top": {
     "defaultMessage": "Top",
     "description": "A surface edge, position or chrome."
+  },
+  "ui.placement": {
+    "defaultMessage": "Placement",
+    "description": "Label above the choice of where a surface goes."
   },
   "ui.position": {
     "defaultMessage": "Position",
@@ -5022,6 +5042,10 @@
   "ui.style": {
     "defaultMessage": "Style",
     "description": "Text on the ui page."
+  },
+  "ui.surfaceOpen": {
+    "defaultMessage": "Open (already open)",
+    "description": "The open button while a surface is open."
   },
   "ui.text": {
     "defaultMessage": "Text",

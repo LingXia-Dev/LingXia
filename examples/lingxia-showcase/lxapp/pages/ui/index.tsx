@@ -430,8 +430,16 @@ function Navigation({ data, actions }: Pane) {
   );
 }
 
-const kinds = () =>
-  ['aside', 'float', 'window', 'lxapp'].map(value => ({ value, label: t(`ui.kind.${value}` as MessageKey), hint: t(`ui.kindHint.${value}` as MessageKey) }));
+// What opens decides where it can go: a page floats or gets a window, a web page or another
+// lxapp docks beside the main page.
+const contents = { page: ['float', 'window'], web: ['aside'], app: ['aside'] } as const;
+type Content = keyof typeof contents;
+const contentOptions = () =>
+  (Object.keys(contents) as Content[]).map(value => ({ value, label: t(`ui.content.${value}` as MessageKey), hint: t(`ui.contentHint.${value}` as MessageKey) }));
+const placementOptions = (content: Content) =>
+  contents[content].map(value => ({ value, label: t(`ui.kind.${value}` as MessageKey), hint: t(`ui.kindHint.${value}` as MessageKey) }));
+/** The Logic action's verb for a content and placement. */
+const verbOf = (content: Content, placement: string) => (content === 'app' ? 'lxapp' : placement);
 const titled = (values: string[]) => values.map(value => ({ value, label: t(`ui.option.${value}` as MessageKey) }));
 
 function parseSize(raw: string, label: string): number | string | undefined {
@@ -449,13 +457,15 @@ function parseSize(raw: string, label: string): number | string | undefined {
 function Options({
   label,
   testId,
-  bind,
+  value,
+  onSelect,
   options,
   disabled,
 }: {
   label: string;
   testId: string;
-  bind: Local<string>;
+  value: string;
+  onSelect: (value: string) => void;
   options: { value: string; label: string }[];
   disabled?: boolean;
 }) {
@@ -467,10 +477,10 @@ function Options({
           <Button
             key={option.value}
             size="sm"
-            variant={bind.value === option.value ? 'primary' : 'secondary'}
+            variant={value === option.value ? 'primary' : 'secondary'}
             testId={`${testId}-${option.value}`}
             disabled={disabled}
-            onClick={() => bind.set(option.value)}
+            onClick={() => onSelect(option.value)}
           >
             {option.label}
           </Button>
@@ -481,7 +491,11 @@ function Options({
 }
 
 function Surface({ data, actions }: Pane) {
-  const kind = useLocal('surfaceKind', 'aside');
+  const content = useLocal('surfaceContent', 'web');
+  const chosen = useLocal('surfacePlacement', 'aside');
+  const places = placementOptions(content.value as Content);
+  // A content that cannot go where the last one went takes its first placement.
+  const kind = places.some(place => place.value === chosen.value) ? chosen.value : places[0].value;
   const edge = useLocal('surfaceEdge', 'right');
   const position = useLocal('surfacePosition', 'center');
   const chrome = useLocal('surfaceChrome', 'full');
@@ -503,22 +517,25 @@ function Surface({ data, actions }: Pane) {
     attempted.set(true);
     if (!sizeError)
       void actions.openSurfaceDemo({
-        verb: kind.value,
+        verb: verbOf(content.value as Content, kind),
         edge: edge.value,
         position: position.value,
-        ...(kind.value === 'window' ? { chrome: chrome.value } : {}),
+        ...(kind === 'window' ? { chrome: chrome.value } : {}),
         ...size,
       });
   };
   return (
     <Page testId="ui-page" title={data.navTitle ?? undefined} data={{ 'data-instance-tag': String(data.instanceTag ?? '') }}>
-      <Section title={t('ui.openASurface')} description={kinds().find(item => item.value === kind.value)?.hint}>
-        <Options label={t('ui.kind')} testId="surface-kind" bind={kind} options={kinds()} disabled={active} />
-        {kind.value === 'aside' && <Options label={t('ui.edge')} testId="surface-edge" bind={edge} options={titled(['left', 'right', 'top', 'bottom'])} />}
-        {kind.value === 'float' && (
-          <Options label={t('ui.position')} testId="surface-position" bind={position} options={titled(['center', 'top', 'bottom', 'left', 'right'])} />
+      <Section title={t('ui.openASurface')}
+        description={`${contentOptions().find(item => item.value === content.value)?.hint} ${places.find(item => item.value === kind)?.hint}`}>
+        <Options label={t('ui.content')} testId="surface-content" value={content.value} onSelect={v => content.set(v)} options={contentOptions()} disabled={active} />
+        <Options label={t('ui.placement')} testId="surface-placement" value={kind} onSelect={v => chosen.set(v)}
+          options={places} disabled={active} />
+        {kind === 'aside' && <Options label={t('ui.edge')} testId="surface-edge" value={edge.value} onSelect={v => edge.set(v)} options={titled(['left', 'right', 'top', 'bottom'])} />}
+        {kind === 'float' && (
+          <Options label={t('ui.position')} testId="surface-position" value={position.value} onSelect={v => position.set(v)} options={titled(['center', 'top', 'bottom', 'left', 'right'])} />
         )}
-        {kind.value === 'window' && <Options label={t('ui.chrome')} testId="surface-chrome" bind={chrome} options={titled(['system', 'full'])} />}
+        {kind === 'window' && <Options label={t('ui.chrome')} testId="surface-chrome" value={chrome.value} onSelect={v => chrome.set(v)} options={titled(['system', 'full'])} />}
         <view className="grid gap-2 grid-cols-2">
           <Field testId="surface-width" label={t('ui.widthPxOr')} bind={width} placeholder={t('ui.widthPxOr2')} />
           <Field testId="surface-height" label={t('ui.heightPxOr')} bind={height} placeholder={t('ui.heightPxOr2')} />
@@ -528,7 +545,7 @@ function Surface({ data, actions }: Pane) {
             {sizeError}
           </text>
         )}
-        <Button testId="open-surface" data={{ 'data-surface-width': width.value, 'data-surface-height': height.value }} disabled={active} onClick={open}>{`Open ${kind.value}${active ? ' (already open)' : ''}`}</Button>
+        <Button testId="open-surface" data={{ 'data-surface-width': width.value, 'data-surface-height': height.value }} disabled={active} onClick={open}>{active ? t('ui.surfaceOpen') : t('ui.openSurface')}</Button>
         <text className="text-xs text-muted">
           Placement applies when the surface opens; hiding and showing keeps it. Close and reopen to change it.
         </text>
