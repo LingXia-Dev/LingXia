@@ -46,7 +46,7 @@ that directory.
 ## Components
 
 <!-- components:start -->
-81 components. Import any of them from `@liulidesign/core`, or from its own path; a second component in a row (`AvatarGroup`, `Spinner`) has a path of its own too:
+82 components. Import any of them from `@liulidesign/core`, or from its own path; a second component in a row (`AvatarGroup`, `Spinner`) has a path of its own too:
 
 | Import | Exports | What it is |
 | --- | --- | --- |
@@ -101,6 +101,7 @@ that directory.
 | `@liulidesign/core/Tooltip` | Tooltip | A short hint naming its trigger, shown on hover, focus or a long press |
 | `@liulidesign/core/InfoTip` | InfoTip | An info button that opens a short note about what is beside it |
 | `@liulidesign/core/BottomSheet` | BottomSheet | A modal panel on the bottom edge that drags between detents and off to close |
+| `@liulidesign/core/ActionSheet` | ActionSheet | A short list of actions about one thing, with Cancel apart from them |
 | `@liulidesign/core/Popover` | Popover | A panel of content that opens beside its trigger, closed by a tap outside |
 | `@liulidesign/core/Drawer` | Drawer | A panel that slides in from a side edge |
 | `@liulidesign/core/HoverCard` | HoverCard | A preview of what a word names |

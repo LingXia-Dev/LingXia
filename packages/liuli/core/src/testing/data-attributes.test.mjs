@@ -7,7 +7,7 @@ const playground = fileURLToPath(new URL('../../../gallery/shared/playground.gen
 const core = fileURLToPath(new URL('..', import.meta.url));
 
 // Overlays draw nothing while closed, so they are rendered open.
-const opened = ['BottomSheet', 'CommandPalette', 'Dialog', 'Drawer', 'DropdownMenu', 'Lightbox', 'Popover', 'Tooltip'];
+const opened = ['ActionSheet', 'BottomSheet', 'CommandPalette', 'Dialog', 'Drawer', 'DropdownMenu', 'Lightbox', 'Popover', 'Tooltip'];
 // Entries that still put no test id on screen, each with why. Keep it short.
 const unseen = {};
 // Components with no playground entry, given here directly.

@@ -69,7 +69,7 @@ export const doc: ComponentDoc = {
   gallery: {
     specimen: 'Specimen',
     tagline: 'Find and run',
-    order: 10,
+    order: 11,
     page: {
       lead: 'Use a command palette to reach any command or place by typing.',
       hero: 'Commands',

@@ -73,7 +73,7 @@ export const doc: ComponentDoc = {
   gallery: {
     specimen: 'Specimen',
     tagline: 'A panel beside it',
-    order: 6,
+    order: 7,
     page: {
       lead: 'Use a popover for a few controls or lines that belong to the button that opens them.',
       hero: 'ViewOptions',

@@ -104,6 +104,8 @@
     "./Toast/recipe": "./src/Toast/Toast.recipe.ts",
     "./SegmentedControl": "./src/SegmentedControl/SegmentedControl.tsx",
     "./SegmentedControl/recipe": "./src/SegmentedControl/SegmentedControl.recipe.ts",
+    "./ActionSheet": "./src/ActionSheet/ActionSheet.tsx",
+    "./ActionSheet/recipe": "./src/ActionSheet/ActionSheet.recipe.ts",
     "./BottomSheet": "./src/BottomSheet/BottomSheet.tsx",
     "./BottomSheet/recipe": "./src/BottomSheet/BottomSheet.recipe.ts",
     "./Popover": "./src/Popover/Popover.tsx",

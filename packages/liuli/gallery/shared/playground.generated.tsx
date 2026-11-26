@@ -1,4 +1,5 @@
 // Generated from the doc file by scripts/generate.mjs; do not edit.
+import { ActionSheet } from '@liulidesign/core/ActionSheet';
 import { Avatar } from '@liulidesign/core/Avatar';
 import { Badge } from '@liulidesign/core/Badge';
 import { Banner } from '@liulidesign/core/Banner';
@@ -72,6 +73,7 @@ import { ToggleButtonGroup } from '@liulidesign/core/ToggleButtonGroup';
 import { Token } from '@liulidesign/core/Token';
 import { Tooltip } from '@liulidesign/core/Tooltip';
 import { TreeList } from '@liulidesign/core/TreeList';
+import { playground as ActionSheetFixture } from '../../core/src/ActionSheet/ActionSheet.examples';
 import { playground as BottomSheetFixture } from '../../core/src/BottomSheet/BottomSheet.examples';
 import { playground as BreadcrumbFixture } from '../../core/src/Breadcrumb/Breadcrumb.examples';
 import { playground as ButtonGroupFixture } from '../../core/src/ButtonGroup/ButtonGroup.examples';
@@ -121,6 +123,48 @@ export type PlaygroundProps = Record<string, PlaygroundValue>;
 export interface PlaygroundEntry { name: string; component: string; defaults: PlaygroundProps; controls: PlaygroundControl[]; fixed: string[]; binds: Record<string, string>; opener?: string }
 
 export const playgroundEntries: PlaygroundEntry[] = [
+  {
+    "name": "ActionSheet",
+    "component": "ActionSheet",
+    "defaults": {
+      "isOpen": false,
+      "label": "This photo"
+    },
+    "controls": [
+      {
+        "name": "isOpen",
+        "required": true,
+        "kind": "boolean"
+      },
+      {
+        "name": "label",
+        "required": true,
+        "kind": "text"
+      },
+      {
+        "name": "isLabelHidden",
+        "required": false,
+        "kind": "boolean"
+      },
+      {
+        "name": "description",
+        "required": false,
+        "kind": "text"
+      },
+      {
+        "name": "cancelLabel",
+        "required": false,
+        "kind": "text"
+      }
+    ],
+    "fixed": [
+      "items"
+    ],
+    "binds": {
+      "isOpen": "onOpenChange"
+    },
+    "opener": "Photo options"
+  },
   {
     "name": "Avatar",
     "component": "Avatar",
@@ -5700,6 +5744,7 @@ export const playgroundEntries: PlaygroundEntry[] = [
 
 /** The chosen component, drawn from the props in hand; `set` keeps a state prop it reports. */
 export function PlaygroundSubject({ name, props, set }: { name: string; props: PlaygroundProps; set: (prop: string, value: PlaygroundValue) => void }) {
+  if (name === "ActionSheet") return <ActionSheet {...(ActionSheetFixture() as any)} {...(props as any)} onOpenChange={(next: unknown) => set("isOpen", next as PlaygroundValue)} />;
   if (name === "Avatar") return <Avatar {...(props as any)} />;
   if (name === "Badge") return <Badge {...(props as any)} />;
   if (name === "Banner") return <Banner {...(props as any)} />;

@@ -69,6 +69,7 @@ import { Content as DropdownMenu } from '../content/dropdown-menu';
 import { Content as Tooltip } from '../content/tooltip';
 import { Content as InfoTip } from '../content/info-tip';
 import { Content as BottomSheet } from '../content/bottom-sheet';
+import { Content as ActionSheet } from '../content/action-sheet';
 import { Content as Popover } from '../content/popover';
 import { Content as Drawer } from '../content/drawer';
 import { Content as HoverCard } from '../content/hover-card';
@@ -189,6 +190,7 @@ export const contents: Record<string, GalleryContent> = {
   "tooltip": Tooltip,
   "info-tip": InfoTip,
   "bottom-sheet": BottomSheet,
+  "action-sheet": ActionSheet,
   "popover": Popover,
   "drawer": Drawer,
   "hover-card": HoverCard,

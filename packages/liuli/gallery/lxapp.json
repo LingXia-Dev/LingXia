@@ -77,6 +77,7 @@
     { "name": "tooltip", "path": "pages/tooltip/index" },
     { "name": "info-tip", "path": "pages/info-tip/index" },
     { "name": "bottom-sheet", "path": "pages/bottom-sheet/index" },
+    { "name": "action-sheet", "path": "pages/action-sheet/index" },
     { "name": "popover", "path": "pages/popover/index" },
     { "name": "drawer", "path": "pages/drawer/index" },
     { "name": "hover-card", "path": "pages/hover-card/index" },

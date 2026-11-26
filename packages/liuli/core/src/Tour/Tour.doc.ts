@@ -62,7 +62,7 @@ export const doc: ComponentDoc = {
   gallery: {
     specimen: 'Specimen',
     tagline: 'Point things out',
-    order: 11,
+    order: 12,
     page: {
       lead: 'Use a tour to point out a few things the first time someone arrives.',
       hero: 'Welcome',

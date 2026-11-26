@@ -61,7 +61,7 @@ export const doc: ComponentDoc = {
   gallery: {
     specimen: 'Specimen',
     tagline: 'Hold for actions',
-    order: 9,
+    order: 10,
     page: {
       lead: 'Use a context menu as a shortcut to the actions for one thing.',
       hero: 'Rows',

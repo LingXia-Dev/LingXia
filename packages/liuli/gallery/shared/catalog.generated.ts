@@ -838,6 +838,22 @@ export const entries: GalleryEntry[] = [
     ]
   },
   {
+    "name": "ActionSheet",
+    "page": "action-sheet",
+    "category": "overlays",
+    "summary": "A short list of actions about one thing, with Cancel apart from them",
+    "keywords": [
+      "action sheet",
+      "actions",
+      "choice",
+      "sheet",
+      "menu",
+      "modal",
+      "overlay",
+      "destructive"
+    ]
+  },
+  {
     "name": "Popover",
     "page": "popover",
     "category": "overlays",
@@ -1562,7 +1578,7 @@ export const galleryCategories: GalleryCategory[] = [
     "icon": "layers",
     "description": "Dialogs, sheets and menus",
     "page": "category-overlays",
-    "count": 11
+    "count": 12
   },
   {
     "id": "content",

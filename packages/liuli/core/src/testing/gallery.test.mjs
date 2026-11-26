@@ -64,7 +64,7 @@ test('gallery home: search lists matches by name, summary or category, and says 
   assert.ok(results().includes('date-input'));
   assert.equal(screen.queryAll(node => node.testId?.startsWith('open-category-')).length, 0);
   screen.type(screen.getByTestId('home-search'), 'overlays');
-  assert.deepEqual(results(), ['dialog', 'dropdown-menu', 'tooltip', 'info-tip', 'bottom-sheet', 'popover', 'drawer', 'hover-card', 'context-menu', 'command-palette', 'tour']);
+  assert.deepEqual(results(), ['dialog', 'dropdown-menu', 'tooltip', 'info-tip', 'bottom-sheet', 'action-sheet', 'popover', 'drawer', 'hover-card', 'context-menu', 'command-palette', 'tour']);
   screen.type(screen.getByTestId('home-search'), 'zzzz');
   assert.equal(results().length, 0);
   screen.getByTestId('home-no-results');

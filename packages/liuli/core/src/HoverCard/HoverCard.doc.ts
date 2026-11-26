@@ -61,7 +61,7 @@ export const doc: ComponentDoc = {
   gallery: {
     specimen: 'Specimen',
     tagline: 'More, on rest',
-    order: 8,
+    order: 9,
     page: {
       lead: 'Use a hover card to preview what a word names without leaving the page.',
       hero: 'Person',

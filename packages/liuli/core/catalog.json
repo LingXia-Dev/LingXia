@@ -2,6 +2,227 @@
   "generated": "Generated from the doc file by scripts/generate.mjs; do not edit.",
   "components": [
     {
+      "name": "ActionSheet",
+      "import": "@liulidesign/core/ActionSheet",
+      "exports": [
+        "ActionSheet"
+      ],
+      "category": "overlays",
+      "status": "preview",
+      "since": "2026-11-25",
+      "summary": "A short list of actions about one thing, with Cancel apart from them",
+      "description": "ActionSheet asks what to do with one thing: a photo, a draft, a message. Its rows are the answers, each a verb, a destructive one in the danger colour; Cancel stands apart under a hairline. On a phone it is a sheet on the bottom edge, in reach of a thumb, that drags off to cancel; on a wide window it is a small panel in the middle. Choosing a row closes the sheet and runs its action. The window feedback layer draws `lx.ui.actionSheet` with it.",
+      "keywords": [
+        "action sheet",
+        "actions",
+        "choice",
+        "sheet",
+        "menu",
+        "modal",
+        "overlay",
+        "destructive"
+      ],
+      "props": [
+        {
+          "name": "isOpen",
+          "type": "boolean",
+          "required": true,
+          "description": "Whether it is shown."
+        },
+        {
+          "name": "onOpenChange",
+          "type": "(isOpen: boolean) => void",
+          "required": true,
+          "description": "Called with `false` on Cancel, Escape, back, a tap outside or a drag off, and when an action is chosen."
+        },
+        {
+          "name": "label",
+          "type": "string",
+          "required": true,
+          "description": "The title, and the sheet's accessible name: what the actions act on (\"This photo\")."
+        },
+        {
+          "name": "isLabelHidden",
+          "type": "boolean",
+          "required": false,
+          "description": "Keeps `label` as the name without drawing it.",
+          "default": "false"
+        },
+        {
+          "name": "description",
+          "type": "string",
+          "required": false,
+          "description": "One or two sentences under the title, read as the sheet's description."
+        },
+        {
+          "name": "items",
+          "type": "readonly ActionSheetItem[]",
+          "required": true,
+          "description": "The actions, in order."
+        },
+        {
+          "name": "cancelLabel",
+          "type": "string",
+          "required": false,
+          "description": "Names the cancel row. Defaults to \"Cancel\" in the page's language."
+        },
+        {
+          "name": "data-testid",
+          "type": "string",
+          "required": false,
+          "description": ""
+        }
+      ],
+      "otherProps": {},
+      "choices": [],
+      "parts": {
+        "panel": "dialog",
+        "grabber": "view",
+        "header": "view",
+        "title": "text",
+        "description": "text",
+        "actions": "view",
+        "item": "button",
+        "itemIcon": "vector",
+        "itemLabel": "text",
+        "cancel": "view"
+      },
+      "accessibility": {
+        "pattern": "dialog",
+        "name": "label",
+        "description": [
+          "description"
+        ],
+        "states": [
+          {
+            "state": "modal",
+            "from": "isOpen"
+          },
+          {
+            "state": "disabled",
+            "from": "items[].isDisabled"
+          }
+        ],
+        "keyboard": [
+          {
+            "keys": "Tab, Shift+Tab",
+            "effect": "Moves between the rows and Cancel; focus stays in the sheet."
+          },
+          {
+            "keys": "Enter, Space",
+            "effect": "Chooses the focused row: the sheet closes and its action runs."
+          },
+          {
+            "keys": "Escape",
+            "effect": "onOpenChange(false): cancels."
+          }
+        ],
+        "contrast": [
+          {
+            "what": "row label",
+            "pair": [
+              "text",
+              "surface-overlay"
+            ],
+            "minimum": "4.5:1"
+          },
+          {
+            "what": "destructive row label",
+            "pair": [
+              "danger",
+              "surface-overlay"
+            ],
+            "minimum": "4.5:1"
+          },
+          {
+            "what": "description",
+            "pair": [
+              "text-muted",
+              "surface-overlay"
+            ],
+            "minimum": "4.5:1"
+          }
+        ],
+        "notes": [
+          "Android back, the screen reader dismiss gesture, a tap outside and, on a phone, a drag off screen all cancel, like Escape.",
+          "The sheet pads its bottom by the safe area, so Cancel clears the home indicator."
+        ]
+      },
+      "examples": [
+        {
+          "name": "Basic",
+          "title": "Actions on a photo, with icons, the destructive one last",
+          "source": "import { useLocal } from '@lingxia/view';\nimport { Button } from '@liulidesign/core/Button';\nimport { ActionSheet } from '@liulidesign/core/ActionSheet';\n\n/** What to do with a photo: a few actions with icons, the destructive one last, Cancel apart. */\nexport function Basic() {\n  const open = useLocal('open', false);\n  const done = useLocal('done', 'Nothing yet');\n  const act = (what: string) => () => done.set(what);\n  return (\n    <view className=\"gap-3\">\n      <Button label=\"Photo options\" width=\"content\" onClick={() => open.set(true)} data-testid=\"photo-open\" />\n      <text role=\"status\" className=\"text-footnote text-muted\" data-testid=\"photo-done\">{done.value}</text>\n      <ActionSheet isOpen={open.value} onOpenChange={next => open.set(next)} label=\"This photo\"\n        items={[\n          { label: 'Share', icon: 'share', onClick: act('Shared'), 'data-testid': 'photo-share' },\n          { label: 'Duplicate', icon: 'copy', onClick: act('Duplicated'), 'data-testid': 'photo-duplicate' },\n          { label: 'Add to album', icon: 'folder', onClick: act('Added to an album'), 'data-testid': 'photo-album' },\n          { label: 'Delete', icon: 'delete', variant: 'destructive', onClick: act('Deleted'), 'data-testid': 'photo-delete' },\n        ]}\n        data-testid=\"photo\"\n      />\n    </view>\n  );\n}"
+        },
+        {
+          "name": "WithMessage",
+          "title": "A question with its consequence under the title",
+          "source": "import { useLocal } from '@lingxia/view';\nimport { Button } from '@liulidesign/core/Button';\nimport { ActionSheet } from '@liulidesign/core/ActionSheet';\n\n/** A question with its consequence spelled out under the title; the rows are its answers. */\nexport function WithMessage() {\n  const open = useLocal('open', false);\n  const done = useLocal('done', 'Draft open');\n  return (\n    <view className=\"gap-3\">\n      <Button label=\"Close draft\" width=\"content\" onClick={() => open.set(true)} data-testid=\"draft-open\" />\n      <text role=\"status\" className=\"text-footnote text-muted\" data-testid=\"draft-done\">{done.value}</text>\n      <ActionSheet isOpen={open.value} onOpenChange={next => open.set(next)} label=\"Close this draft?\"\n        description=\"Unsaved changes are lost if you discard it.\"\n        items={[\n          { label: 'Save draft', onClick: () => done.set('Draft saved'), 'data-testid': 'draft-save' },\n          { label: 'Discard', variant: 'destructive', onClick: () => done.set('Draft discarded'), 'data-testid': 'draft-discard' },\n        ]}\n        data-testid=\"draft\"\n      />\n    </view>\n  );\n}"
+        },
+        {
+          "name": "Untitled",
+          "title": "No drawn title: the rows speak for themselves",
+          "source": "import { useLocal } from '@lingxia/view';\nimport { Button } from '@liulidesign/core/Button';\nimport { ActionSheet } from '@liulidesign/core/ActionSheet';\n\n/** No title to draw: the sheet keeps it as its name, and the rows speak for themselves. */\nexport function Untitled() {\n  const open = useLocal('open', false);\n  const sort = useLocal('sort', 'Newest first');\n  return (\n    <view className=\"gap-3\">\n      <Button label={sort.value} endIcon=\"chevron-down\" width=\"content\" onClick={() => open.set(true)} data-testid=\"order-open\" />\n      <ActionSheet isOpen={open.value} onOpenChange={next => open.set(next)} label=\"Order\" isLabelHidden\n        items={['Newest first', 'Oldest first', 'By name'].map(name => ({ label: name, onClick: () => sort.set(name), 'data-testid': `order-${name}` }))}\n        data-testid=\"order\"\n      />\n    </view>\n  );\n}"
+        }
+      ],
+      "gaps": [],
+      "playground": {
+        "props": {
+          "isOpen": false,
+          "label": "This photo"
+        },
+        "fixture": true,
+        "opener": "Photo options"
+      },
+      "theming": {
+        "classProps": [],
+        "tokens": [
+          "--spacing-control-md",
+          "--spacing-control-lg",
+          "--text-footnote",
+          "--text-body",
+          "--shadow-modal",
+          "--radius-control",
+          "--radius-dialog"
+        ],
+        "roles": [
+          "danger",
+          "line",
+          "surface-overlay",
+          "text",
+          "text-muted"
+        ]
+      },
+      "related": [
+        "BottomSheet",
+        "DropdownMenu",
+        "AlertDialog"
+      ],
+      "gallery": {
+        "specimen": "Specimen",
+        "tagline": "Pick what to do",
+        "order": 6,
+        "page": {
+          "lead": "Use an action sheet to ask what to do with one thing; Cancel is always there.",
+          "hero": "Basic",
+          "parts": {
+            "name": "Parts",
+            "title": "The title, the actions, then Cancel apart"
+          },
+          "variants": [
+            {
+              "name": "WithMessage",
+              "title": "A question with its consequence spelled out"
+            },
+            {
+              "name": "Untitled",
+              "title": "No drawn title"
+            }
+          ]
+        }
+      }
+    },
+    {
       "name": "Avatar",
       "import": "@liulidesign/core/Avatar",
       "exports": [
@@ -5494,7 +5715,7 @@
       "gallery": {
         "specimen": "Specimen",
         "tagline": "Find and run",
-        "order": 10,
+        "order": 11,
         "page": {
           "lead": "Use a command palette to reach any command or place by typing.",
           "hero": "Commands"
@@ -5961,7 +6182,7 @@
       "gallery": {
         "specimen": "Specimen",
         "tagline": "Hold for actions",
-        "order": 9,
+        "order": 10,
         "page": {
           "lead": "Use a context menu as a shortcut to the actions for one thing.",
           "hero": "Rows",
@@ -8121,7 +8342,7 @@
       "gallery": {
         "specimen": "Specimen",
         "tagline": "A side panel",
-        "order": 7,
+        "order": 8,
         "page": {
           "lead": "Use a drawer for a panel of its own beside the page it came from.",
           "hero": "Filters",
@@ -9925,7 +10146,7 @@
       "gallery": {
         "specimen": "Specimen",
         "tagline": "More, on rest",
-        "order": 8,
+        "order": 9,
         "page": {
           "lead": "Use a hover card to preview what a word names without leaving the page.",
           "hero": "Person",
@@ -15118,7 +15339,7 @@
       "gallery": {
         "specimen": "Specimen",
         "tagline": "A panel beside it",
-        "order": 6,
+        "order": 7,
         "page": {
           "lead": "Use a popover for a few controls or lines that belong to the button that opens them.",
           "hero": "ViewOptions",
@@ -23390,7 +23611,7 @@
       "gallery": {
         "specimen": "Specimen",
         "tagline": "Point things out",
-        "order": 11,
+        "order": 12,
         "page": {
           "lead": "Use a tour to point out a few things the first time someone arrives.",
           "hero": "Welcome"
