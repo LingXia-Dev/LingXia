@@ -95,25 +95,28 @@ export function validateJsonSchema(value: unknown, schema: JsonSchema<unknown>, 
           return errors;
         }
         const record = value as Record<string, unknown>;
+        // Own keys only: `in` would find `constructor` or `toString` on any object.
+        const has = (owner: object | undefined, key: string) => owner !== undefined && Object.prototype.hasOwnProperty.call(owner, key);
         if (schema.required) {
           for (const key of schema.required) {
-            if (!(key in record) || record[key] === undefined) {
+            if (!has(record, key) || record[key] === undefined) {
               errors.push(`${path}.${key}: required property is missing`);
             }
           }
         }
         if (schema.properties) {
           for (const [key, propSchema] of Object.entries(schema.properties)) {
-            if (key in record && record[key] !== undefined) {
+            if (has(record, key) && record[key] !== undefined) {
               errors.push(...validateJsonSchema(record[key], propSchema, `${path}.${key}`));
             }
           }
         }
-        if (schema.additionalProperties === false && schema.properties) {
+        const extra = schema.additionalProperties;
+        if (extra !== undefined && extra !== true) {
           for (const key of Object.keys(record)) {
-            if (!(key in schema.properties)) {
-              errors.push(`${path}.${key}: unexpected property`);
-            }
+            if (has(schema.properties, key)) continue;
+            if (extra === false) errors.push(`${path}.${key}: unexpected property`);
+            else errors.push(...validateJsonSchema(record[key], extra, `${path}.${key}`));
           }
         }
         return errors;

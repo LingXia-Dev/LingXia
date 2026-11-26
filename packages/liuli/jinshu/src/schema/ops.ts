@@ -53,6 +53,7 @@ import type {
   TableBlock,
   TableRow,
   VideoBlock,
+  CheckOptions,
 } from './types';
 
 function hydrateBlockInput(input: BlockInput, registry: JinshuRegistry): JinshuBlock {
@@ -94,12 +95,13 @@ function resolveNewBlocks(
   registry: JinshuRegistry,
   opIndex: number,
   existingAtoms: ReadonlyMap<string, InlineAtom>,
+  check: CheckOptions | undefined,
 ): { blocks: JinshuBlock[]; problems: Problem[] } {
   if (op.markup !== undefined) {
     if (typeof op.markup !== 'string') {
       return { blocks: [], problems: [{ code: 'INVALID', severity: 'error', opIndex, message: 'markup must be a string.' }] };
     }
-    const parsed = parseAgentMarkup(op.markup, { registry, existingAtoms });
+    const parsed = parseAgentMarkup(op.markup, { registry, existingAtoms, check });
     const problems = parsed.problems.map(p => ({ ...p, opIndex }));
     const hasError = problems.some(p => p.severity === 'error');
     if (hasError || parsed.blocks.length === 0) {
@@ -704,7 +706,7 @@ function applyOne(
 
   switch (op.op) {
     case 'insert': {
-      const res = resolveNewBlocks(op, registry, opIndex, collectAtoms(blocks));
+      const res = resolveNewBlocks(op, registry, opIndex, collectAtoms(blocks), options);
       problems.push(...res.problems);
       if (res.problems.some(p => p.severity === 'error')) return true;
       if (!isRecord(op.at)) return fail({ code: 'INVALID', message: 'insert needs at: { before } | { after } | { start } | { end }.' });
@@ -719,7 +721,7 @@ function applyOne(
     case 'replace': {
       const loc = findBlockLocation(blocks, op.id);
       if (!loc) return fail({ code: 'NOT_FOUND', id: op.id, message: `Block "${op.id}" not found.` });
-      const res = resolveNewBlocks(op, registry, opIndex, collectAtoms(blocks));
+      const res = resolveNewBlocks(op, registry, opIndex, collectAtoms(blocks), options);
       problems.push(...res.problems);
       if (res.problems.some(p => p.severity === 'error')) return true;
       // First replacement block inherits the original `id`; remaining blocks keep new ids.
@@ -781,7 +783,7 @@ function applyOne(
       if (matches.length > 1 && !op.all) {
         return fail({ code: 'AMBIGUOUS_MATCH', id: op.id, message: `Text matched ${matches.length} times in "${op.id}". Provide more context or set all: true.`, current });
       }
-      const parsed = parseInlineMarkup(op.replace, { existingAtoms: collectAtoms(blocks), inHeading: fieldRef.inHeading, registry });
+      const parsed = parseInlineMarkup(op.replace, { existingAtoms: collectAtoms(blocks), inHeading: fieldRef.inHeading, registry, check: options });
       const parseErrors = parsed.problems.filter(p => p.severity === 'error');
       if (parseErrors.length > 0) {
         problems.push(...parseErrors.map(p => ({ ...p, opIndex, id: op.id, current })));
@@ -974,7 +976,7 @@ function applyOne(
 
     case 'rewrite': {
       if (typeof op.markup !== 'string') return fail({ code: 'INVALID', message: 'rewrite needs a markup string.' });
-      const parsed = parseAgentMarkup(op.markup, { registry, existingAtoms: collectAtoms(blocks) });
+      const parsed = parseAgentMarkup(op.markup, { registry, existingAtoms: collectAtoms(blocks), check: options });
       problems.push(...parsed.problems.map(p => ({ ...p, opIndex })));
       if (parsed.problems.some(p => p.severity === 'error')) return true;
       // Align blocks without explicit IDs by content fingerprint

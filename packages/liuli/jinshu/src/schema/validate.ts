@@ -391,10 +391,29 @@ function migrateBlock(block: JinshuBlock, registry: JinshuRegistry): JinshuBlock
   return next as unknown as JinshuBlock;
 }
 
-/** Runs registered extension `migrate` functions up to their spec versions, then normalizes. Never throws. */
+/** Runs registered extension `migrate` functions, of blocks and inline atoms, up to their spec versions, then normalizes. Never throws. */
 export function migrateDocument(doc: JinshuDocument, registry: JinshuRegistry = emptyRegistry): JinshuDocument {
   if (!isRecord(doc) || !Array.isArray(doc.blocks)) return normalizeDocument(doc, registry);
-  return normalizeDocument({ ...doc, blocks: doc.blocks.map(b => migrateBlock(b, registry)) }, registry);
+  const out = normalizeDocument({ ...doc, blocks: doc.blocks.map(b => migrateBlock(b, registry)) }, registry);
+  // The normalized atoms are the document's own copies, so they are migrated in place.
+  visitBlocks(out.blocks, {
+    inlines: list => {
+      for (const item of list) {
+        if (inlineKind(item) !== 'atom') continue;
+        const atom = item as Rec;
+        const spec = typeof atom.inline === 'string' ? registry.inlines.get(atom.inline) : undefined;
+        const from = typeof atom.version === 'number' ? atom.version : 1;
+        if (!spec?.migrate || from >= spec.version) continue;
+        try {
+          atom.attrs = spec.migrate(atom.attrs, from);
+          atom.version = spec.version;
+        } catch {
+          // Left at its old version; validation reports the attrs.
+        }
+      }
+    },
+  });
+  return out;
 }
 
 // ============================================================================
@@ -407,6 +426,10 @@ export function validateSrc(src: string, options?: CheckOptions): string | null 
     return 'src must be a non-empty string';
   }
   const trimmed = src.trim();
+  // `//host/x` (or with backslashes, which browsers read as slashes) takes the page's scheme and another host.
+  if (/^[\\/]{2}/.test(trimmed) && options?.allowedSrcSchemes) {
+    return `protocol-relative src "${src}" names no scheme; give one of allowedSrcSchemes`;
+  }
   const schemeMatch = /^([a-zA-Z][a-zA-Z0-9+.-]*):/.exec(trimmed);
   if (schemeMatch) {
     const scheme = schemeMatch[1].toLowerCase();

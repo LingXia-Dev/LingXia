@@ -24,6 +24,7 @@ import type {
   JinshuDocument,
   JinshuRegistry,
   Problem,
+  CheckOptions,
 } from './types';
 
 type Rec = Record<string, unknown>;
@@ -629,6 +630,8 @@ interface ParseContext {
   readonly problems: Problem[];
   readonly registry: JinshuRegistry;
   readonly existingAtoms?: ReadonlyMap<string, InlineAtom>;
+  /** The document's link and src rules, so an allowed `lx:` link is kept. */
+  readonly check?: CheckOptions;
 }
 
 function textOf(nodes: readonly XmlNode[]): string {
@@ -707,7 +710,7 @@ function nodesToInlines(
       nested(children, { ...marks, highlight: (attrs.tone || 'accent') as InlineRun['highlight'] });
     } else if (tag === 'a') {
       const href = attrs.href;
-      const linkError = href ? validateLink(href) : null;
+      const linkError = href ? validateLink(href, ctx.check) : null;
       if (!href) {
         ctx.problems.push({ code: 'PARSE', severity: 'error', message: '<a> tag requires an href attribute.' });
       } else if (linkError) {
@@ -936,13 +939,13 @@ export interface ParseMarkupResult {
 /** Parses a Jinshu Markup fragment (or `<doc>...</doc>`) into `JinshuBlock[]`. */
 export function parseAgentMarkup(
   markup: string,
-  options?: { readonly registry?: JinshuRegistry; readonly existingAtoms?: ReadonlyMap<string, InlineAtom> },
+  options?: { readonly registry?: JinshuRegistry; readonly existingAtoms?: ReadonlyMap<string, InlineAtom>; readonly check?: CheckOptions },
 ): ParseMarkupResult {
   const normalized = String(markup ?? '').replace(/\r\n?/g, '\n');
   const parser = new XmlParser(normalized);
   const nodes = parser.parseNodes();
   const problems: Problem[] = [...parser.problems];
-  const ctx: ParseContext = { problems, registry: options?.registry ?? emptyRegistry, existingAtoms: options?.existingAtoms };
+  const ctx: ParseContext = { problems, registry: options?.registry ?? emptyRegistry, existingAtoms: options?.existingAtoms, check: options?.check };
 
   let rootElements = elementNodes(nodes);
   const docFields: Rec = {};
@@ -978,13 +981,13 @@ export function parseAgentMarkup(
 /** Parses an inline Jinshu Markup fragment (used by `edit` op). Rejects block tags. */
 export function parseInlineMarkup(
   markup: string,
-  options?: { readonly existingAtoms?: ReadonlyMap<string, InlineAtom>; readonly inHeading?: boolean; readonly registry?: JinshuRegistry },
+  options?: { readonly existingAtoms?: ReadonlyMap<string, InlineAtom>; readonly inHeading?: boolean; readonly registry?: JinshuRegistry; readonly check?: CheckOptions },
 ): { readonly runs: readonly Inline[]; readonly problems: readonly Problem[] } {
   const normalized = String(markup ?? '').replace(/\r\n?/g, '\n');
   const parser = new XmlParser(normalized);
   const nodes = parser.parseNodes();
   const problems: Problem[] = [...parser.problems];
-  const ctx: ParseContext = { problems, registry: options?.registry ?? emptyRegistry, existingAtoms: options?.existingAtoms };
+  const ctx: ParseContext = { problems, registry: options?.registry ?? emptyRegistry, existingAtoms: options?.existingAtoms, check: options?.check };
   const runs = nodesToInlines(nodes, {}, ctx, options?.inHeading);
   return { runs, problems };
 }
