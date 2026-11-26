@@ -1218,15 +1218,18 @@ function radioOptions(props, identity, fields, disabled) {
 }
 
 /** The committed list's pure rows a full render may reuse, when nothing they were built from changed:
- *  over new items (a patched data array), a row whose frozen item is the same object stands. */
+ *  over new items (a patched, filtered or grown array), a row whose frozen item is the same object
+ *  at the same index stands. */
 function reusableRows(old, props, rowEnv, direction) {
   const source = props.row?.__lxRows, before = old?.rowSource;
-  if (!source || !before || before.site !== source.site || before.height !== source.height || old.count !== props.count ||
+  if (!source || !before || before.site !== source.site || before.height !== source.height ||
       old.rowEnv !== rowEnv || old.direction !== direction || !old.pure?.size) return null;
   const same = before.items === source.items;
   const rows = new Map();
+  // Under a new count, the old and new last rows change `last:`/`only:`, so they render again.
+  const recount = old.count !== props.count;
   for (const i of old.pure) {
-    if (!old.cache.has(i)) continue;
+    if (!old.cache.has(i) || i >= props.count || (recount && (i === old.count - 1 || i === props.count - 1))) continue;
     const item = source.items[i];
     if (same || (item === before.items[i] && isFrozen(item))) rows.set(i, old.cache.get(i));
   }

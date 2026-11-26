@@ -92,6 +92,44 @@ test('a pure row is reused while its items and environment are unchanged',()=>{
  assert.deepEqual(built,['b','c','d'],'a new environment renders them again');
 });
 
+test('a filtered array of frozen items reuses the rows whose item stands at the same index',()=>{
+ reset();let built=[],query='',extra=0;
+ const rows=Object.freeze(['apple','avocado','banana','cherry'].map(name=>Object.freeze({name})));
+ const renderItem=item=>{built.push(item.name);return h('text',{},item.name);};
+ const page=()=>h('view',{},h('text',{},String(extra)),h(List,{items:rows.filter(r=>r.name.includes(query)),getKey:r=>r.name,renderItem}));
+ const id=records(prepare(page,{})).find(r=>r.tag==='list').fields.get('listId');commit();
+ const win=n=>({[id]:{start:0,end:n,leading:0,trailing:0}});
+ prepare(page,{},win(4));commit();
+ built=[];extra=1;prepare(page,{},win(4));commit();
+ assert.deepEqual(built,[],'a new filtered array over the same items keeps every row');
+ built=[];query='a';prepare(page,{},win(3));commit();
+ assert.deepEqual(built,['banana'],'apple and avocado stand; banana is now last, so it renders again');
+});
+
+test('an unfrozen array changed in place renders the changed row again',()=>{
+ reset();let built=[],extra=0;
+ const items=[Object.freeze({n:'a'}),Object.freeze({n:'b'})];
+ const renderItem=item=>{built.push(item.n);return h('text',{},item.n);};
+ const page=()=>h('view',{},h('text',{},String(extra)),h(List,{items,getKey:(r,i)=>String(i),renderItem}));
+ const id=records(prepare(page,{})).find(r=>r.tag==='list').fields.get('listId');commit();
+ const win={[id]:{start:0,end:2,leading:0,trailing:0}};
+ prepare(page,{},win);commit();
+ built=[];items[0]=Object.freeze({n:'z'});extra=1;prepare(page,{},win);commit();
+ assert.deepEqual(built,['z']);
+});
+
+test('a grown frozen array keeps its rows but renders the old and new last rows again',()=>{
+ reset();let built=[];
+ let items=Object.freeze(['a','b','c'].map(n=>Object.freeze({n})));
+ const renderItem=item=>{built.push(item.n);return h('text',{},item.n);};
+ const page=()=>h(List,{items,getKey:r=>r.n,renderItem});
+ const id=records(prepare(page,{})).find(r=>r.tag==='list').fields.get('listId');commit();
+ prepare(page,{},{[id]:{start:0,end:3,leading:0,trailing:0}});commit();
+ built=[];items=Object.freeze([...items,Object.freeze({n:'d'})]);
+ prepare(page,{},{[id]:{start:0,end:4,leading:0,trailing:0}});commit();
+ assert.deepEqual(built,['c','d']);
+});
+
 test('rows with getItemHeight are reused while the height function is the same',()=>{
  reset();let built=[],extra=0;
  const items=Object.freeze(['a','b','c']);
@@ -411,18 +449,18 @@ test('a patched frozen array under the same keys reuses the earlier keys',()=>{
  assert.throws(()=>prepare(page,{},{root:{start:0,end:3,leading:0,trailing:0}}),/duplicate itemKey/,'a changed key is checked again');
 });
 
-test('a dev session hears once per List that a mutable items array re-renders every row',()=>{
+test('a dev session hears once per List that mutable items re-render every row',()=>{
  reset();const warnings=[];globalThis.__lingxiaWarn=message=>warnings.push(message);
  try {
-  let items=['a','b'];const frozen=Object.freeze(['x','y']);
+  let items=[{id:'a'},{id:'b'}];const frozen=Object.freeze(['x','y']);
   const page=()=>h('page',{},
-   h(List,{'data-testid':'mutable',items,getKey:item=>item,renderItem:item=>h('text',{},item)}),
+   h(List,{'data-testid':'mutable',items,getKey:item=>item.id,renderItem:item=>h('text',{},item.id)}),
    h(List,{'data-testid':'frozen',items:frozen,getKey:item=>item,renderItem:item=>h('text',{},item)}));
   prepare(page,{},window(0,2));commit();
-  items=['a','b','c'];prepare(page,{},window(0,3));commit();
+  items=[...items,{id:'c'}];prepare(page,{},window(0,3));commit();
   assert.equal(warnings.length,1,warnings.join('\n'));
-  assert.match(warnings[0],/^UI_LIST: <List> "mutable" got an items array that is not frozen/);
-  assert.match(warnings[0],/Object\.freeze/);
+  assert.match(warnings[0],/^UI_LIST: <List> "mutable" got items that are not frozen/);
+  assert.match(warnings[0],/Object\.freeze each item/);
  } finally { delete globalThis.__lingxiaWarn; }
 });
 

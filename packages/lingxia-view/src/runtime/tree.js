@@ -23,27 +23,28 @@ import { commitClock, resetClock } from './clock.js';
 // Candidate transactions: prepare renders and encodes without touching the
 // committed page; commit adopts the candidate, discard drops it.
 export function List({ items, getKey, renderItem, getItemHeight, ...props }) {
-  if (!isFrozen(items) && typeof globalThis.__lingxiaWarn === 'function') warnUnfrozen(props, renderItem);
+  if (!isFrozen(items) && items.length && !isFrozen(items[0]) && typeof globalThis.__lingxiaWarn === 'function') warnUnfrozen(props, renderItem);
   const itemKeys = keysOf(items, getKey);
   const row = index => renderItem(items[index], index);
-  // The same renderItem over the same frozen items builds the same rows, save those that read state;
-  // a row carries its height, so getItemHeight must be the same function too.
-  if (typeof renderItem === 'function' && isFrozen(items)) row.__lxRows = { items, site: renderItem, height: getItemHeight };
+  // The same renderItem builds the same row for the same frozen item at the same index, save rows that
+  // read state; a row carries its height, so getItemHeight must be the same function too. A filtered
+  // or mapped array is new each render, so an unfrozen one is kept as a copy to compare item by item.
+  if (typeof renderItem === 'function') row.__lxRows = { items: isFrozen(items) ? items : items.slice(), site: renderItem, height: getItemHeight };
   return h(listTag, { ...props, count: items.length,
     itemKeys, row,
     ...(getItemHeight ? { height: index => getItemHeight(items[index], index) } : {}) });
 }
 List.__lxid = '@lingxia/view#List';
 
-// Dev sessions only: rows are reused only over a frozen array, so say so once per List.
+// Dev sessions only: rows are reused only over frozen items, so say so once per List.
 const warnedLists = new Set();
 function warnUnfrozen(props, renderItem) {
   const site = props['data-testid'] ?? String(renderItem).slice(0, 120);
   if (warnedLists.has(site)) return;
   warnedLists.add(site);
   const name = props['data-testid'] ? ` "${props['data-testid']}"` : '';
-  globalThis.__lingxiaWarn(`UI_LIST: <List>${name} got an items array that is not frozen, so every row renders again on every render; ` +
-    'Object.freeze the array the View builds, or pass the Logic data array through unchanged');
+  globalThis.__lingxiaWarn(`UI_LIST: <List>${name} got items that are not frozen, so every row renders again on every render; ` +
+    'pass the Logic data rows through (filtering or slicing them keeps reuse), or Object.freeze each item the View builds');
 }
 
 function runCandidate(view, lookup, build, recall = null) {

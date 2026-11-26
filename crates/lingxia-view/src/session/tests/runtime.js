@@ -6397,11 +6397,12 @@
   }
   function reusableRows(old, props, rowEnv, direction) {
     const source3 = props.row?.__lxRows, before = old?.rowSource;
-    if (!source3 || !before || before.site !== source3.site || before.height !== source3.height || old.count !== props.count || old.rowEnv !== rowEnv || old.direction !== direction || !old.pure?.size) return null;
+    if (!source3 || !before || before.site !== source3.site || before.height !== source3.height || old.rowEnv !== rowEnv || old.direction !== direction || !old.pure?.size) return null;
     const same4 = before.items === source3.items;
     const rows = /* @__PURE__ */ new Map();
+    const recount = old.count !== props.count;
     for (const i of old.pure) {
-      if (!old.cache.has(i)) continue;
+      if (!old.cache.has(i) || i >= props.count || recount && (i === old.count - 1 || i === props.count - 1)) continue;
       const item = source3.items[i];
       if (same4 || item === before.items[i] && isFrozen(item)) rows.set(i, old.cache.get(i));
     }
@@ -6988,10 +6989,10 @@
 
   // src/runtime/tree.js
   function List({ items, getKey, renderItem, getItemHeight, ...props }) {
-    if (!isFrozen(items) && typeof globalThis.__lingxiaWarn === "function") warnUnfrozen(props, renderItem);
+    if (!isFrozen(items) && items.length && !isFrozen(items[0]) && typeof globalThis.__lingxiaWarn === "function") warnUnfrozen(props, renderItem);
     const itemKeys2 = keysOf(items, getKey);
     const row = (index) => renderItem(items[index], index);
-    if (typeof renderItem === "function" && isFrozen(items)) row.__lxRows = { items, site: renderItem, height: getItemHeight };
+    if (typeof renderItem === "function") row.__lxRows = { items: isFrozen(items) ? items : items.slice(), site: renderItem, height: getItemHeight };
     return h(listTag, {
       ...props,
       count: items.length,
@@ -7007,7 +7008,7 @@
     if (warnedLists.has(site)) return;
     warnedLists.add(site);
     const name = props["data-testid"] ? ` "${props["data-testid"]}"` : "";
-    globalThis.__lingxiaWarn(`UI_LIST: <List>${name} got an items array that is not frozen, so every row renders again on every render; Object.freeze the array the View builds, or pass the Logic data array through unchanged`);
+    globalThis.__lingxiaWarn(`UI_LIST: <List>${name} got items that are not frozen, so every row renders again on every render; pass the Logic data rows through (filtering or slicing them keeps reuse), or Object.freeze each item the View builds`);
   }
   function runCandidate(view, lookup2, build, recall2 = null) {
     if (render.active) throw Error("UI_RENDER: recursive render");
