@@ -23,7 +23,8 @@ import type { InlineAtomRenderer } from '../internal/InlineRuns';
 import { blockElementId, type JinshuNavHandle } from '../internal/nav';
 import { useJinshuChannelContext, type JinshuChannelAction } from '../internal/channel';
 import { jinshuText } from '../i18n/text';
-import { BlockBody, JinshuSkeleton, selectCost, type BlockRenderContext, type CustomBlockRenderer } from '../internal/Blocks';
+import { BlockBody, JinshuSkeleton, type BlockRenderContext, type CustomBlockRenderer } from '../internal/Blocks';
+import { selectCost } from '../internal/select';
 import { stableCallbacks } from '../internal/stable';
 import { jinshuViewRecipe as r } from './JinshuView.recipe';
 

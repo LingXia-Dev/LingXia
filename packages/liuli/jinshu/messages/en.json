@@ -555,6 +555,10 @@
     "defaultMessage": "Media",
     "description": "Insert panel section heading over media types."
   },
+  "@jinshu.editor.insert.quick": {
+    "defaultMessage": "Insert {kind}",
+    "description": "Accessible name and tooltip of a toolbar button that inserts one kind of block, such as a list or a table."
+  },
   "@jinshu.editor.insert.tableSize": {
     "defaultMessage": "Insert a table, {rows} by {columns}",
     "description": "Accessible name of a cell of the table size picker."

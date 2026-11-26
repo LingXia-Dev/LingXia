@@ -1,6 +1,7 @@
 import { cx, useLocal, useView } from '@lingxia/view';
 import { Button } from '@liulidesign/core/Button';
 import { Icon } from '@liulidesign/core/Icon';
+import { Tooltip } from '@liulidesign/core/Tooltip';
 import { IconButton } from '@liulidesign/core/IconButton';
 import { editorIcons } from './editorIcons';
 import { newBlockId, paragraph, plainText, tableColumnCount } from '../schema/helpers';
@@ -51,6 +52,10 @@ export interface BlockEditorCallbacks {
   readonly onEditParagraph?: (blockId: string) => void;
   /** A block a line-start rule just made from the paragraph being typed: its editor opens holding `text`. */
   readonly opening?: { readonly id: string; readonly text: string };
+  /** An editor holding a field open hands over how to save and close it, and `null` once closed: a toolbar insert closes it first. */
+  readonly holdOpen?: (blockId: string, close: (() => void) | null, save?: () => void) => void;
+  /** The person typed in a field whose text is not in the document yet. */
+  readonly onTyping?: () => void;
 }
 
 /** The text a just-made block opens with, when `block` is it. */
@@ -136,11 +141,29 @@ export function ListBlockEditor({ block, cb }: { readonly block: ListBlock; read
   const itemDraft = useLocal<string>(`ed-li-txt-${block.id}`, opening ?? '');
   const start = block.start ?? 1;
 
+  // Left with one empty item, the list was only started: it goes, as an empty quote or code block does.
+  const isAbandoned = () => block.items.length === 1 && itemDraft.value.trim() === '' && !block.items[0].blocks?.length;
+  const drop = () => cb.dispatchOps([{ op: 'delete', id: block.id, noteWord: { key: '@jinshu.note.delete' } }]);
   const commitItem = (itemId: string, text: string) => {
     const item = block.items.find(it => it.id === itemId);
     if (!item || inlinesToShorthand(item.runs, cb.format) === text) return;
     cb.dispatchOps([{ op: 'replace', id: block.id, blocks: [{ ...block, items: block.items.map(it => (it.id === itemId ? { ...it, runs: shorthandToInlines(text, cb.format, { existingAtoms: atomsIn(it.runs) }) } : it)) }] }]);
   };
+
+  cb.holdOpen?.(
+    block.id,
+    activeItemId.value === null
+      ? null
+      : () => {
+          if (isAbandoned()) drop();
+          else if (activeItemId.value !== null) commitItem(activeItemId.value, itemDraft.value);
+          activeItemId.set(null);
+          cb.onBlurBlock();
+        },
+    () => {
+      if (activeItemId.value !== null) commitItem(activeItemId.value, itemDraft.value);
+    },
+  );
 
   const focusItem = (idx: number) => {
     const target = block.items[idx];
@@ -207,9 +230,11 @@ export function ListBlockEditor({ block, cb }: { readonly block: ListBlock; read
                         return;
                       }
                       itemDraft.set(v);
+                      cb.onTyping?.();
                     }}
                     onBlur={() => {
-                      commitItem(item.id, itemDraft.value);
+                      if (activeItemId.value === item.id && isAbandoned()) drop();
+                      else commitItem(item.id, itemDraft.value);
                       if (activeItemId.value === item.id) activeItemId.set(null);
                       cb.onBlurBlock();
                     }}
@@ -335,7 +360,7 @@ export function CalloutBlockEditor({ block, cb }: { readonly block: CalloutBlock
     editing.set(true);
   };
 
-  const commit = () => {
+  const save = () => {
     const nextTitle = titleDraft.value.trim() ? shorthandToInlines(titleDraft.value, cb.format, { existingAtoms: atomsIn(block.title) }) : undefined;
     const sameTitle = (block.title ? inlinesToShorthand(block.title, cb.format) : '') === titleDraft.value.trim();
     if (!sameTitle || bodyDraft.value !== body.text) {
@@ -344,9 +369,15 @@ export function CalloutBlockEditor({ block, cb }: { readonly block: CalloutBlock
       else delete next.title;
       cb.dispatchOps([{ op: 'replace', id: block.id, blocks: [next as unknown as CalloutBlock], noteWord: { key: '@jinshu.note.editCallout' } }]);
     }
+  };
+  const commit = () => {
+    // Closed with nothing in it, the block was only started: it goes.
+    if (!titleDraft.value.trim() && !bodyDraft.value.trim()) cb.dispatchOps([{ op: 'delete', id: block.id, noteWord: { key: '@jinshu.note.delete' } }]);
+    else save();
     editing.set(false);
     cb.onBlurBlock();
   };
+  cb.holdOpen?.(block.id, editing.value ? commit : null, save);
 
   if (!editing.value) {
     return (
@@ -370,7 +401,7 @@ export function CalloutBlockEditor({ block, cb }: { readonly block: CalloutBlock
             aria-label={jinshuText('@jinshu.editor.block.calloutTitle')}
             value={titleDraft.value}
             placeholder={jinshuText('@jinshu.calloutTone', { tone: block.tone })}
-            onInput={v => titleDraft.set(v)}
+            onInput={v => { titleDraft.set(v); cb.onTyping?.(); }}
             className={cx(b.callout.titleInput, r.callout.title[block.tone])}
           />
         ) : (
@@ -395,7 +426,7 @@ export function CalloutBlockEditor({ block, cb }: { readonly block: CalloutBlock
         rows={2}
         maxRows={18}
         placeholder={jinshuText('@jinshu.editor.block.calloutBodyPlaceholder')}
-        onInput={v => bodyDraft.set(v)}
+        onInput={v => { bodyDraft.set(v); cb.onTyping?.(); }}
         onKeyDown={{ Escape: () => { commit(); return true; } }}
         className={cx(b.callout.body, r.paragraph.base)}
       />
@@ -414,13 +445,19 @@ export function QuoteBlockEditor({ block, cb }: { readonly block: QuoteBlock; re
   const draft = useLocal(`ed-q-t-${block.id}`, opening ?? '');
   const body = containerBodyText(block.blocks, cb.format);
 
-  const commit = () => {
+  const save = () => {
     if (draft.value !== body.text) {
       cb.dispatchOps([{ op: 'replace', id: block.id, blocks: [{ ...block, blocks: rebuildContainerBody(block.blocks, draft.value, cb.format) }], noteWord: { key: '@jinshu.note.editQuote' } }]);
     }
+  };
+  const commit = () => {
+    // Closed with nothing in it, the block was only started: it goes.
+    if (!draft.value.trim()) cb.dispatchOps([{ op: 'delete', id: block.id, noteWord: { key: '@jinshu.note.delete' } }]);
+    else save();
     editing.set(false);
     cb.onBlurBlock();
   };
+  cb.holdOpen?.(block.id, editing.value ? commit : null, save);
 
   if (!editing.value) {
     return (
@@ -448,7 +485,7 @@ export function QuoteBlockEditor({ block, cb }: { readonly block: QuoteBlock; re
         rows={1}
         maxRows={18}
         placeholder={jinshuText('@jinshu.editor.block.quoteBodyPlaceholder')}
-        onInput={v => draft.set(v)}
+        onInput={v => { draft.set(v); cb.onTyping?.(); }}
         onBlur={commit}
         onKeyDown={{ Escape: () => { commit(); return true; } }}
         className={cx(b.quote.body, r.paragraph.base, b.quote.bodyText)}
@@ -528,7 +565,8 @@ export function CodeBlockEditor({ block, cb }: { readonly block: CodeBlock; read
   const fileDraft = useLocal(`ed-code-f-${block.id}`, block.filename ?? '');
   const codeDraft = useLocal(`ed-code-c-${block.id}`, block.code);
 
-  const commit = () => {
+  const save = () => {
+    if (langDraft.value.trim() === block.language && codeDraft.value === block.code && fileDraft.value.trim() === (block.filename ?? '')) return;
     cb.dispatchOps([
       {
         op: 'update',
@@ -541,9 +579,15 @@ export function CodeBlockEditor({ block, cb }: { readonly block: CodeBlock; read
         noteWord: { key: '@jinshu.note.editCode' },
       },
     ]);
+  };
+  const commit = () => {
+    // Closed with nothing in it, the block was only started: it goes.
+    if (!codeDraft.value.trim()) cb.dispatchOps([{ op: 'delete', id: block.id, noteWord: { key: '@jinshu.note.delete' } }]);
+    else save();
     editing.set(false);
     cb.onBlurBlock();
   };
+  cb.holdOpen?.(block.id, editing.value ? commit : null, save);
 
   if (!editing.value) {
     return (
@@ -580,7 +624,7 @@ export function CodeBlockEditor({ block, cb }: { readonly block: CodeBlock; read
                 aria-label={jinshuText('@jinshu.editor.block.codeFilename')}
                 value={fileDraft.value}
                 placeholder={jinshuText('@jinshu.editor.block.codeFilenamePlaceholder')}
-                onInput={v => fileDraft.set(v)}
+                onInput={v => { fileDraft.set(v); cb.onTyping?.(); }}
                 className={b.code.filename}
               />
               <text aria-hidden className={r.code.lang}>·</text>
@@ -590,7 +634,7 @@ export function CodeBlockEditor({ block, cb }: { readonly block: CodeBlock; read
             aria-label={jinshuText('@jinshu.editor.block.codeLanguage')}
             value={langDraft.value}
             placeholder={jinshuText('@jinshu.editor.block.codeLanguagePlaceholder')}
-            onInput={v => langDraft.set(v)}
+            onInput={v => { langDraft.set(v); cb.onTyping?.(); }}
             className={b.code.language}
           />
         </view>
@@ -605,7 +649,7 @@ export function CodeBlockEditor({ block, cb }: { readonly block: CodeBlock; read
             autoFocus
             rows={3}
             maxRows={24}
-            onInput={v => codeDraft.set(v)}
+            onInput={v => { codeDraft.set(v); cb.onTyping?.(); }}
             onKeyDown={{ Escape: () => { commit(); return true; } }}
             className={b.code.input}
           />
@@ -677,6 +721,19 @@ export function TableBlockEditor({ block, cb }: { readonly block: TableBlock; re
     cb.dispatchOps([{ op: 'replace', id: block.id, blocks: [{ ...block, rows }], noteWord: { key: row === -1 ? '@jinshu.note.tableHeader' : '@jinshu.note.tableCell' } }]);
   };
 
+  cb.holdOpen?.(
+    block.id,
+    pos === null
+      ? null
+      : () => {
+          if (activePos.value) commitCell(activePos.value.row, activePos.value.col, cellDraft.value);
+          activePos.set(null);
+        },
+    () => {
+      if (activePos.value) commitCell(activePos.value.row, activePos.value.col, cellDraft.value);
+    },
+  );
+
   const selectLine = (kind: 'row' | 'col', index: number) => {
     if (pos) commitCell(pos.row, pos.col, cellDraft.value);
     activePos.set(null);
@@ -714,14 +771,13 @@ export function TableBlockEditor({ block, cb }: { readonly block: TableBlock; re
         <view className={b.table.toolbarRow}>
           <text className={b.table.toolbarLabel}>{jinshuText('@jinshu.editor.block.column', { index: selection.index + 1 })}</text>
           {(['start', 'center', 'end'] as TableAlign[]).map(al => (
-            <IconButton
-              key={al}
+            <Tooltip key={al} content={jinshuText('@jinshu.editor.block.align', { align: al })} placement="bottom"><IconButton
               label={jinshuText('@jinshu.editor.block.align', { align: al })}
               icon={ALIGN_ICON[al]}
               size="sm"
               variant={(block.align?.[selection.index] ?? 'start') === al ? 'tonal' : 'ghost'}
               onClick={() => setColAlign(selection.index, al)}
-            />
+            /></Tooltip>
           ))}
           <view aria-hidden className={b.table.toolbarSeparator} />
           <Button label={jinshuText('@jinshu.editor.block.insertLeft')} size="sm" variant="ghost" onClick={() => { insertCol(selection.index); sel.set({ kind: 'col', index: selection.index + 1 }); }} />
@@ -843,7 +899,7 @@ export function TableBlockEditor({ block, cb }: { readonly block: TableBlock; re
             autoFocus
             rows={1}
             maxRows={6}
-            onInput={v => cellDraft.set(v)}
+            onInput={v => { cellDraft.set(v); cb.onTyping?.(); }}
             onBlur={() => {
               commitCell(row, col, cellDraft.value);
               if (activePos.value?.row === row && activePos.value?.col === col) activePos.set(null);

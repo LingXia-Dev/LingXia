@@ -416,6 +416,9 @@
   "@jinshu.editor.insert.media": {
     "defaultMessage": "媒体"
   },
+  "@jinshu.editor.insert.quick": {
+    "defaultMessage": "插入{kind}"
+  },
   "@jinshu.editor.insert.tableSize": {
     "defaultMessage": "插入 {rows} 行 {columns} 列表格"
   },

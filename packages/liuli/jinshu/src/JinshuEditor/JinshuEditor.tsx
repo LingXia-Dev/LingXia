@@ -13,7 +13,9 @@ import { Button } from '@liulidesign/core/Button';
 import { Dialog } from '@liulidesign/core/Dialog';
 import { Lightbox } from '@liulidesign/core/Lightbox';
 import { DropdownMenu, type DropdownMenuEntry } from '@liulidesign/core/DropdownMenu';
-import { IconButton } from '@liulidesign/core/IconButton';
+import { Tooltip } from '@liulidesign/core/Tooltip';
+import { ToggleButton } from '@liulidesign/core/ToggleButton';
+import { IconButton, type IconButtonProps } from '@liulidesign/core/IconButton';
 import { Popover } from '@liulidesign/core/Popover';
 import { ProgressBar } from '@liulidesign/core/ProgressBar';
 import {
@@ -195,6 +197,21 @@ const SLASH_ITEMS: readonly SlashItem[] = [
   { id: 'math', keywords: 'math latex formula 公式 gs', badge: '∑' },
   { id: 'columns', keywords: 'columns grid 双栏 分栏 fl', badge: '▥' },
   { id: 'divider', keywords: 'hr divider line 分割线 fgx', badge: '—' },
+];
+
+// The block the person last worked in, per editor: a toolbar insert lands there, not at the end.
+const lastWorked = new WeakMap<object, string>();
+// Block editors holding a field open, per editor, with how to save and close each.
+const openEditors = new WeakMap<object, Map<string, { readonly close: () => void; readonly save: () => void }>>();
+
+/** The blocks a wide toolbar offers in one tap; the rest stay in the insert palette. */
+const QUICK_INSERTS: readonly { readonly id: string; readonly icon: IconButtonProps['icon'] }[] = [
+  { id: 'h2', icon: editorIcons.heading },
+  { id: 'bullet', icon: 'list' },
+  { id: 'task', icon: 'checklist' },
+  { id: 'quote', icon: editorIcons.quote },
+  { id: 'table', icon: editorIcons.table },
+  { id: 'image', icon: 'image' },
 ];
 
 /** The callout tone each `> [!KIND]` line start makes. */
@@ -526,39 +543,6 @@ function ToolbarSep() {
 }
 
 /** Crisp 32×32 typographic mark button matching icon buttons in the sticky ribbon. */
-function MarkGlyphButton({
-  glyph,
-  label,
-  active,
-  disabled,
-  textClass,
-  onClick,
-}: {
-  readonly glyph: string;
-  readonly label: string;
-  readonly active?: boolean;
-  readonly disabled?: boolean;
-  readonly textClass?: string;
-  readonly onClick: () => void;
-}) {
-  return (
-    <button
-      aria-label={label}
-      aria-pressed={active || undefined}
-      disabled={disabled}
-      onClick={onClick}
-      className={cx(
-        e.markButton.base,
-        disabled ? e.markButton.disabled : active ? e.markButton.active : e.markButton.idle,
-      )}
-    >
-      <text className={cx(e.markGlyph.base, active ? e.markGlyph.active : disabled ? e.markGlyph.disabled : e.markGlyph.idle, textClass)}>
-        {glyph}
-      </text>
-    </button>
-  );
-}
-
 function PaletteButton({ badge, label, onClick }: { readonly badge: string; readonly label: string; readonly onClick: () => void }) {
   return (
     <button onClick={onClick} className={e.insertPanel.item}>
@@ -673,6 +657,8 @@ export function JinshuEditor(props: JinshuEditorProps) {
   const hoveredId = useLocal<string | null>(`jinshu-ed-hover-${docKey}`, null);
   const openedAt = useLocal(`jinshu-ed-opened-at-${docKey}`, '');
   const selectedNonTextId = useLocal<string | null>(`jinshu-ed-sel-nt-${docKey}`, null);
+  /** A block just made from the toolbar, scrolled to once it is laid out. */
+  const revealing = useLocal<string | null>(`jinshu-ed-revealing-${docKey}`, null);
   const slashAfterId = useLocal<string | null>(`jinshu-ed-slash-${docKey}`, null);
   const slashQuery = useLocal<string>(`jinshu-ed-slash-q-${docKey}`, '');
   const slashIndex = useLocal<number>(`jinshu-ed-slash-idx-${docKey}`, 0);
@@ -745,6 +731,14 @@ export function JinshuEditor(props: JinshuEditorProps) {
             if (block && (block.type === 'paragraph' || block.type === 'heading') && slashAfterId.value !== block.id) {
               commitActiveDraft(block, draftText.value, cur.revision);
             }
+            // An open list, quote, callout, code block or table cell saves too, and stays open.
+            for (const { save } of openEditors.get(activeId)?.values() ?? []) {
+              try {
+                save();
+              } catch {
+                // Its block left the document; nothing is left to save.
+              }
+            }
           } else if (msg.t === 'uploadProgress') {
             const uploads = { ...(cur.uploads ?? {}) };
             if (msg.ratio >= 1) delete uploads[msg.blockId];
@@ -788,6 +782,8 @@ export function JinshuEditor(props: JinshuEditorProps) {
   const stickyToolbar = props.isToolbarSticky !== false;
   const isDesktop = env.pointer === 'fine' && env.sizeClass === 'regular';
   const isCoarse = env.pointer === 'coarse';
+  // A large screen, touch or not: room for the common inserts in the bar.
+  const isWide = env.sizeClass === 'regular';
   const docFormat: JinshuFormat = props.format ?? liveState.format ?? 'json';
   const allows = (what: Parameters<typeof formatAllows>[1]) => formatAllows(docFormat, what);
   const dialect: Dialect = { dialect: docFormat === 'markdown' ? 'markdown' : 'jinshu' };
@@ -1010,6 +1006,7 @@ export function JinshuEditor(props: JinshuEditorProps) {
       const newId = newBlockId('b');
       const pos = afterBlockId && doc?.blocks.some(b => b.id === afterBlockId) ? { after: afterBlockId } : ({ end: 'doc' } as const);
       dispatchOps([{ op: 'insert', at: pos, blocks: [{ ...blk, id: newId }], noteWord: note('@jinshu.note.insert', kindOf(blk)) }]);
+      revealing.set(newId);
       if (blk.type === 'paragraph' || blk.type === 'heading' || blk.type === 'math') {
         activeId.set(newId);
         draftText.set(blk.type === 'math' ? blk.latex : '');
@@ -1064,6 +1061,15 @@ export function JinshuEditor(props: JinshuEditorProps) {
     ...(opening.value ? { opening: opening.value } : {}),
     ...stableCallbacks(opening, {
       dispatchOps,
+      holdOpen(blockId: string, close: (() => void) | null, save?: () => void) {
+        let held = openEditors.get(activeId);
+        if (!held) openEditors.set(activeId, (held = new Map()));
+        if (close) held.set(blockId, { close, save: save ?? (() => {}) });
+        else held.delete(blockId);
+      },
+      onTyping() {
+        if ((live.value as EditorLiveState).autoSave) sendMsg({ t: 'typing' });
+      },
       onFocusBlock(blockId: string) {
         if (opening.value?.id !== blockId) opening.set(null);
         activeId.set(blockId);
@@ -1119,6 +1125,7 @@ export function JinshuEditor(props: JinshuEditorProps) {
   };
 
   const activeBlock = doc && activeId.value ? doc.blocks.find(b => b.id === activeId.value) ?? null : null;
+  if (activeId.value || selectedNonTextId.value) lastWorked.set(activeId, (activeId.value ?? selectedNonTextId.value)!);
   const canFormatInline = Boolean(activeBlock && (activeBlock.type === 'paragraph' || activeBlock.type === 'heading'));
   const outlineHeadings = doc ? extractOutline(doc) : [];
 
@@ -1337,15 +1344,18 @@ export function JinshuEditor(props: JinshuEditorProps) {
     },
   }));
 
-  const markButton = (glyph: string, label: string, mark: string, textClass: string, close = mark) => (
-    <MarkGlyphButton
-      glyph={glyph}
-      label={label}
-      disabled={!canFormatInline}
-      active={canFormatInline && hasTrailingShorthandMark(draftText.value, mark)}
-      textClass={textClass}
-      onClick={() => applyFormatButton(mark, close)}
-    />
+  const markButton = (icon: IconButtonProps['icon'], label: string, mark: string, close = mark) => (
+    <Tooltip content={label} placement="bottom">
+      <ToggleButton
+        label={label}
+        icon={icon}
+        isLabelHidden
+        size="sm"
+        isDisabled={!canFormatInline}
+        value={canFormatInline && hasTrailingShorthandMark(draftText.value, mark)}
+        onChange={() => applyFormatButton(mark, close)}
+      />
+    </Tooltip>
   );
 
   const insertPanel = (key: string, afterId: string | null) => (
@@ -1354,6 +1364,7 @@ export function JinshuEditor(props: JinshuEditorProps) {
       hasMedia={hasMedia}
       allows={kind => allows({ block: blockOfKind(kind) })}
       onPickBlock={kind => {
+        closeOpenEditors();
         insertBlockAt(afterId, makeBlockForSlash(kind, seed));
         gutterAddId.set(null);
         popEpoch.set(popEpoch.value + 1);
@@ -1364,12 +1375,72 @@ export function JinshuEditor(props: JinshuEditorProps) {
         popEpoch.set(popEpoch.value + 1);
       }}
       onPickTable={(rows, cols) => {
+        closeOpenEditors();
         insertBlockAt(afterId, makeBlockForSlash('table', seed, rows, cols));
         gutterAddId.set(null);
         popEpoch.set(popEpoch.value + 1);
       }}
     />
   );
+
+  // Like a line-start rule: an empty line becomes the block, else it goes below; text blocks open empty.
+  const workedId = lastWorked.get(activeId);
+  const insertAfter = activeBlock?.id ?? (workedId && doc?.blocks.some(b => b.id === workedId) ? workedId : null);
+  // A toolbar press leaves focus where it was: an open block saves and closes before the insert.
+  const closeOpenEditors = () => {
+    const held = openEditors.get(activeId);
+    if (!held) return;
+    for (const [blockId, { close }] of [...held]) {
+      held.delete(blockId);
+      try {
+        close();
+      } catch {
+        // Its block left the document since it opened; nothing is left to save.
+      }
+    }
+  };
+  const quickInsert = (kind: string) => {
+    closeOpenEditors();
+    if (kind === 'image') {
+      pickMedia('image', insertAfter);
+      return;
+    }
+    const at = activeBlock;
+    const lineEmpty = at?.type === 'paragraph' && draftText.value.trim() === '';
+    if (at && isInlineTextBlock(at) && !lineEmpty) commitActiveDraft(at, draftText.value);
+    const made: BlockInput =
+      kind === 'bullet' ? list('bullet', [listItem('')])
+      : kind === 'task' ? list('task', [listItem('', { checked: false })])
+      : kind === 'quote' ? quote([paragraph('')])
+      : kind === 'code' ? codeBlock('text', '')
+      : makeBlockForSlash(kind, seed);
+    const id = lineEmpty && at ? at.id : newBlockId('b');
+    const blk = { ...fitFormat(made), id } as BlockInput;
+    dispatchOps([
+      lineEmpty
+        ? { op: 'replace', id, blocks: [blk], noteWord: note('@jinshu.note.turnInto', kindOf(blk)) }
+        : { op: 'insert', at: insertAfter ? { after: insertAfter } : { end: 'doc' }, blocks: [blk], noteWord: note('@jinshu.note.insert', kindOf(blk)) },
+    ]);
+    revealing.set(id);
+    if (blk.type === 'heading') {
+      activeId.set(id);
+      draftText.set('');
+    } else if (blk.type === 'list' || blk.type === 'quote' || blk.type === 'code') {
+      openMade(id, '');
+    } else {
+      activeId.set(null);
+    }
+  };
+  const quickInserts = QUICK_INSERTS.filter(item => (item.id === 'image' ? hasMedia : true) && allows({ block: blockOfKind(item.id) })).map(item => (
+    <Tooltip key={item.id} content={jinshuText('@jinshu.editor.insert.quick', { kind: item.id === 'h2' ? jinshuText('@jinshu.blockType', { type: 'heading', level: '' }).trim() : blockTypeLabel(item.id) })} placement="bottom"><IconButton
+      // The bar's heading is just "heading": its level is the person's next choice, not this button's.
+      label={jinshuText('@jinshu.editor.insert.quick', { kind: item.id === 'h2' ? jinshuText('@jinshu.blockType', { type: 'heading', level: '' }).trim() : blockTypeLabel(item.id) })}
+      icon={item.icon}
+      size="sm"
+      onClick={() => quickInsert(item.id)}
+      data-testid={props['data-testid'] && `${props['data-testid']}-quick-${item.id}`}
+    /></Tooltip>
+  ));
 
   const linkPopover = (
     <Popover
@@ -1429,7 +1500,7 @@ export function JinshuEditor(props: JinshuEditorProps) {
         </view>
       }
     >
-      <IconButton label={jinshuText('@jinshu.editor.link.title')} icon="link" size="sm" isDisabled={!canFormatInline} />
+      <Tooltip content={jinshuText('@jinshu.editor.link.title')} placement="bottom"><IconButton label={jinshuText('@jinshu.editor.link.title')} icon="link" size="sm" isDisabled={!canFormatInline} /></Tooltip>
     </Popover>
   );
 
@@ -1476,7 +1547,7 @@ export function JinshuEditor(props: JinshuEditorProps) {
         </view>
       }
     >
-      <IconButton label={blockTypeLabel('math')} icon={editorIcons.math} size="sm" />
+      <Tooltip content={blockTypeLabel('math')} placement="bottom"><IconButton label={blockTypeLabel('math')} icon={editorIcons.math} size="sm" /></Tooltip>
     </Popover>
   );
 
@@ -1487,25 +1558,25 @@ export function JinshuEditor(props: JinshuEditorProps) {
         <Button label={turnIntoLabel} endIcon="chevron-down" size="sm" variant="ghost" isDisabled={!canTurnInto} data-testid={props['data-testid'] && `${props['data-testid']}-turn-into`} />
       </DropdownMenu>
       <ToolbarSep />
-      {allows({ mark: 'bold' }) && markButton('B', jinshuText('@jinshu.editor.format.bold'), '**', e.markGlyph.mark.bold)}
-      {allows({ mark: 'italic' }) && markButton('I', jinshuText('@jinshu.editor.format.italic'), '*', e.markGlyph.mark.italic)}
-      {allows({ mark: 'underline' }) && markButton('U', jinshuText('@jinshu.editor.format.underline'), '++', e.markGlyph.mark.underline)}
-      {allows({ mark: 'strike' }) && markButton('S', jinshuText('@jinshu.editor.format.strike'), '~~', e.markGlyph.mark.strike)}
-      {allows({ mark: 'code' }) && markButton('</>', jinshuText('@jinshu.editor.format.code'), '`', e.markGlyph.mark.code)}
+      {allows({ mark: 'bold' }) && markButton(editorIcons.bold, jinshuText('@jinshu.editor.format.bold'), '**')}
+      {allows({ mark: 'italic' }) && markButton(editorIcons.italic, jinshuText('@jinshu.editor.format.italic'), '*')}
+      {allows({ mark: 'underline' }) && markButton(editorIcons.underline, jinshuText('@jinshu.editor.format.underline'), '++')}
+      {allows({ mark: 'strike' }) && markButton(editorIcons.strike, jinshuText('@jinshu.editor.format.strike'), '~~')}
+      {allows({ mark: 'code' }) && markButton(editorIcons.code, jinshuText('@jinshu.editor.format.code'), '`')}
       {allows({ mark: 'highlight' }) && (
-        <IconButton
+        <Tooltip content={jinshuText('@jinshu.editor.format.highlight')} placement="bottom"><IconButton
           label={jinshuText('@jinshu.editor.format.highlight')}
           icon={editorIcons.highlight}
           size="sm"
           isDisabled={!canFormatInline}
           variant={canFormatInline && hasTrailingShorthandMark(draftText.value, '==') ? 'tonal' : 'ghost'}
           onClick={() => applyFormatButton('==')}
-        />
+        /></Tooltip>
       )}
       {allows({ mark: 'link' }) && linkPopover}
       <ToolbarSep />
-      {allows({ mark: 'script' }) && markButton('x²', jinshuText('@jinshu.editor.format.superscript'), '^', e.markGlyph.mark.superscript)}
-      {allows({ mark: 'script' }) && markButton('x₂', jinshuText('@jinshu.editor.format.subscript'), '~', e.markGlyph.mark.subscript)}
+      {allows({ mark: 'script' }) && markButton(editorIcons.superscript, jinshuText('@jinshu.editor.format.superscript'), '^')}
+      {allows({ mark: 'script' }) && markButton(editorIcons.subscript, jinshuText('@jinshu.editor.format.subscript'), '~')}
       {mathPopover}
     </>
   );
@@ -1571,16 +1642,21 @@ export function JinshuEditor(props: JinshuEditorProps) {
             <view className={e.toolbarStart.base}>
               {chan && (
                 <>
-                  <IconButton label={jinshuText('@jinshu.editor.undo')} icon="undo" size="sm" isDisabled={!liveState.canUndo} onClick={() => sendMsg({ t: 'history', action: 'undo' })} />
-                  <IconButton label={jinshuText('@jinshu.editor.redo')} icon="redo" size="sm" isDisabled={!liveState.canRedo} onClick={() => sendMsg({ t: 'history', action: 'redo' })} />
+                  <Tooltip content={jinshuText('@jinshu.editor.undo')} placement="bottom"><IconButton label={jinshuText('@jinshu.editor.undo')} icon="undo" size="sm" isDisabled={!liveState.canUndo} onClick={() => sendMsg({ t: 'history', action: 'undo' })} /></Tooltip>
+                  <Tooltip content={jinshuText('@jinshu.editor.redo')} placement="bottom"><IconButton label={jinshuText('@jinshu.editor.redo')} icon="redo" size="sm" isDisabled={!liveState.canRedo} onClick={() => sendMsg({ t: 'history', action: 'redo' })} /></Tooltip>
                   <ToolbarSep />
                 </>
               )}
-              <Popover key={`add-pop-${popEpoch.value}`} label={jinshuText('@jinshu.editor.insert')} content={insertPanel(`top-${docKey}`, activeBlock?.id ?? null)}>
-                <Button label={jinshuText('@jinshu.editor.insert')} startIcon="add" size="sm" variant="ghost" data-testid={props['data-testid'] && `${props['data-testid']}-toolbar-add`} />
+              {isWide && quickInserts}
+              <Popover key={`add-pop-${popEpoch.value}`} label={jinshuText('@jinshu.editor.insert')} content={insertPanel(`top-${docKey}`, insertAfter)}>
+                <Tooltip content={jinshuText('@jinshu.editor.insert')} placement="bottom"><IconButton label={jinshuText('@jinshu.editor.insert')} icon="add" size="sm" data-testid={props['data-testid'] && `${props['data-testid']}-toolbar-add`} /></Tooltip>
               </Popover>
+            </view>
+
+            <view className={e.toolbarEnd.base}>
+              {props.toolbarActions}
               {doc && (
-                <IconButton
+                <Tooltip content={jinshuText(sourceState ? '@jinshu.editor.source.leave' : '@jinshu.editor.source.enter')} placement="bottom"><IconButton
                   label={jinshuText(sourceState ? '@jinshu.editor.source.leave' : '@jinshu.editor.source.enter')}
                   icon={editorIcons.code}
                   size="sm"
@@ -1590,13 +1666,9 @@ export function JinshuEditor(props: JinshuEditorProps) {
                   isLoading={sourceState?.pending !== undefined}
                   onClick={() => (sourceState ? leaveSource() : enterSource())}
                   data-testid={props['data-testid'] && `${props['data-testid']}-source`}
-                />
+                /></Tooltip>
               )}
-            </view>
-
-            <view className={e.toolbarEnd.base}>
-              {props.toolbarActions}
-              <IconButton label={jinshuText('@jinshu.editor.find.toggle')} icon="search" size="sm" variant={showFind.value ? 'tonal' : 'ghost'} onClick={() => showFind.set(!showFind.value)} />
+              <Tooltip content={jinshuText('@jinshu.editor.find.toggle')} placement="bottom"><IconButton label={jinshuText('@jinshu.editor.find.toggle')} icon="search" size="sm" variant={showFind.value ? 'tonal' : 'ghost'} onClick={() => showFind.set(!showFind.value)} /></Tooltip>
               {chan && (
                 <>
                   <Popover
@@ -1629,7 +1701,7 @@ export function JinshuEditor(props: JinshuEditorProps) {
                       </view>
                     }
                   >
-                    <IconButton label={jinshuText('@jinshu.editor.history')} icon="clock" size="sm" />
+                    <Tooltip content={jinshuText('@jinshu.editor.history')} placement="bottom"><IconButton label={jinshuText('@jinshu.editor.history')} icon="clock" size="sm" /></Tooltip>
                   </Popover>
                   {wordCount}
                   {!savesItself && (hasChanges || props.saveStatus === 'failed' || props.saveStatus === 'saving') ? (
@@ -1674,7 +1746,7 @@ export function JinshuEditor(props: JinshuEditorProps) {
           />
           {findQuery.value !== '' && <text className={e.findBar.count}>{jinshuText('@jinshu.editor.find.count', { count: matchingBlockIds.size })}</text>}
           <Button label={jinshuText('@jinshu.editor.find.replaceAll')} size="sm" variant="tonal" isDisabled={!findQuery.value || matchingBlockIds.size === 0} onClick={runReplaceAll} />
-          <IconButton label={jinshuText('@jinshu.editor.find.close')} icon="close" size="sm" onClick={() => showFind.set(false)} />
+          <Tooltip content={jinshuText('@jinshu.editor.find.close')} placement="bottom"><IconButton label={jinshuText('@jinshu.editor.find.close')} icon="close" size="sm" onClick={() => showFind.set(false)} /></Tooltip>
         </view>
       )}
 
@@ -1706,7 +1778,7 @@ export function JinshuEditor(props: JinshuEditorProps) {
                 dropBatch(latestBatch.batchId);
               }}
             />
-            <IconButton label={jinshuText('@jinshu.editor.agent.dismiss')} icon="close" size="sm" onClick={() => dropBatch(latestBatch.batchId)} />
+            <Tooltip content={jinshuText('@jinshu.editor.agent.dismiss')} placement="bottom"><IconButton label={jinshuText('@jinshu.editor.agent.dismiss')} icon="close" size="sm" onClick={() => dropBatch(latestBatch.batchId)} /></Tooltip>
           </view>
         </view>
       )}
@@ -1721,8 +1793,8 @@ export function JinshuEditor(props: JinshuEditorProps) {
               <text className={e.queue.count}>{jinshuText('@jinshu.editor.queue.count', { count: queue.length })}</text>
               {queue.length > 1 && (
                 <>
-                  <IconButton label={jinshuText('@jinshu.editor.queue.previous')} icon="chevron-up" size="sm" onClick={() => stepQueue(-1)} />
-                  <IconButton label={jinshuText('@jinshu.editor.queue.next')} icon="chevron-down" size="sm" onClick={() => stepQueue(1)} />
+                  <Tooltip content={jinshuText('@jinshu.editor.queue.previous')} placement="bottom"><IconButton label={jinshuText('@jinshu.editor.queue.previous')} icon="chevron-up" size="sm" onClick={() => stepQueue(-1)} /></Tooltip>
+                  <Tooltip content={jinshuText('@jinshu.editor.queue.next')} placement="bottom"><IconButton label={jinshuText('@jinshu.editor.queue.next')} icon="chevron-down" size="sm" onClick={() => stepQueue(1)} /></Tooltip>
                 </>
               )}
             </view>
@@ -1796,10 +1868,12 @@ export function JinshuEditor(props: JinshuEditorProps) {
         >
           <scroll className={e.keyboardBar.scroll}>
             <view className={e.keyboardBar.controls}>
+              {quickInserts}
+              <ToolbarSep />
               {formatControls}
               <ToolbarSep />
-              <Popover key={`kb-add-${popEpoch.value}`} label={jinshuText('@jinshu.editor.insert')} content={insertPanel(`kb-${docKey}`, activeBlock?.id ?? null)}>
-                <IconButton label={jinshuText('@jinshu.editor.insert.block')} icon="add" size="sm" />
+              <Popover key={`kb-add-${popEpoch.value}`} label={jinshuText('@jinshu.editor.insert')} content={insertPanel(`kb-${docKey}`, insertAfter)}>
+                <Tooltip content={jinshuText('@jinshu.editor.insert.block')} placement="bottom"><IconButton label={jinshuText('@jinshu.editor.insert.block')} icon="add" size="sm" /></Tooltip>
               </Popover>
             </view>
           </scroll>
@@ -1986,13 +2060,18 @@ export function JinshuEditor(props: JinshuEditorProps) {
                 key={block.id}
                 id={`jinshu-${scope}-r-${block.id}`}
                 onLayout={
-                  block.id === props.openAt && openedAt.value !== block.id
+                  block.id === revealing.value
                     ? () => {
-                        if (openedAt.value === block.id) return;
-                        openedAt.set(block.id);
+                        revealing.set(null);
                         revealBlock(block.id);
                       }
-                    : undefined
+                    : block.id === props.openAt && openedAt.value !== block.id
+                      ? () => {
+                          if (openedAt.value === block.id) return;
+                          openedAt.set(block.id);
+                          revealBlock(block.id);
+                        }
+                      : undefined
                 }
                 onPointerEnter={isDesktop ? () => hoveredId.set(block.id) : undefined}
                 onPointerLeave={isDesktop ? () => { if (hoveredId.value === block.id) hoveredId.set(null); } : undefined}
@@ -2011,11 +2090,11 @@ export function JinshuEditor(props: JinshuEditorProps) {
                             onOpenChange={open => gutterAddId.set(open ? block.id : null)}
                             content={insertPanel(`g-${block.id}`, block.id)}
                           >
-                            <IconButton label={jinshuText('@jinshu.editor.insert.below')} icon="add" size="sm" />
+                            <Tooltip content={jinshuText('@jinshu.editor.insert.below')} placement="bottom"><IconButton label={jinshuText('@jinshu.editor.insert.below')} icon="add" size="sm" /></Tooltip>
                           </Popover>
 
                           <DropdownMenu label={jinshuText('@jinshu.editor.blockMenu')} size="sm" items={blockMenuEntries}>
-                            <IconButton label={jinshuText('@jinshu.editor.blockMenu')} icon="more-vertical" size="sm" />
+                            <Tooltip content={jinshuText('@jinshu.editor.blockMenu')} placement="bottom"><IconButton label={jinshuText('@jinshu.editor.blockMenu')} icon="more-vertical" size="sm" /></Tooltip>
                           </DropdownMenu>
                         </>
                       )}
@@ -2196,27 +2275,27 @@ export function JinshuEditor(props: JinshuEditorProps) {
                         {isNonTextSelected && (
                           <view role="toolbar" aria-label={jinshuText('@jinshu.editor.selection.toolbar')} className={e.selectionBar.base} data-testid={props['data-testid'] && `${props['data-testid']}-selection-bar`}>
                             {idx > 0 && (
-                              <IconButton label={jinshuText('@jinshu.editor.object.moveUp')} icon="arrow-up" size="sm" onClick={() => dispatchOps([{ op: 'move', id: block.id, to: { before: doc.blocks[idx - 1].id }, noteWord: note('@jinshu.note.moveUp') }])} />
+                              <Tooltip content={jinshuText('@jinshu.editor.object.moveUp')} placement="bottom"><IconButton label={jinshuText('@jinshu.editor.object.moveUp')} icon="arrow-up" size="sm" onClick={() => dispatchOps([{ op: 'move', id: block.id, to: { before: doc.blocks[idx - 1].id }, noteWord: note('@jinshu.note.moveUp') }])} /></Tooltip>
                             )}
                             {idx < doc.blocks.length - 1 && (
-                              <IconButton label={jinshuText('@jinshu.editor.object.moveDown')} icon="arrow-down" size="sm" onClick={() => dispatchOps([{ op: 'move', id: block.id, to: { after: doc.blocks[idx + 1].id }, noteWord: note('@jinshu.note.moveDown') }])} />
+                              <Tooltip content={jinshuText('@jinshu.editor.object.moveDown')} placement="bottom"><IconButton label={jinshuText('@jinshu.editor.object.moveDown')} icon="arrow-down" size="sm" onClick={() => dispatchOps([{ op: 'move', id: block.id, to: { after: doc.blocks[idx + 1].id }, noteWord: note('@jinshu.note.moveDown') }])} /></Tooltip>
                             )}
                             {isMediaBlock(block) && hasMedia && (
-                              <IconButton label={jinshuText('@jinshu.editor.selection.replace')} icon="refresh" size="sm" onClick={() => pickMedia(block.type as MediaKind, null, block.id)} />
+                              <Tooltip content={jinshuText('@jinshu.editor.selection.replace')} placement="bottom"><IconButton label={jinshuText('@jinshu.editor.selection.replace')} icon="refresh" size="sm" onClick={() => pickMedia(block.type as MediaKind, null, block.id)} /></Tooltip>
                             )}
                             {isMediaBlock(block) && (
-                              <IconButton
+                              <Tooltip content={jinshuText('@jinshu.editor.blockMenu.properties')} placement="bottom"><IconButton
                                 label={jinshuText('@jinshu.editor.blockMenu.properties')}
                                 icon="edit"
                                 size="sm"
                                 variant={inspecting.value ? 'tonal' : 'ghost'}
                                 onClick={() => inspecting.set(!inspecting.value)}
-                              />
+                              /></Tooltip>
                             )}
                             {block.type === 'image' && (
-                              <IconButton label={jinshuText('@jinshu.editor.selection.preview')} icon="expand" size="sm" onClick={() => previewId.set(block.id)} />
+                              <Tooltip content={jinshuText('@jinshu.editor.selection.preview')} placement="bottom"><IconButton label={jinshuText('@jinshu.editor.selection.preview')} icon="expand" size="sm" onClick={() => previewId.set(block.id)} /></Tooltip>
                             )}
-                            <IconButton
+                            <Tooltip content={jinshuText('@jinshu.editor.object.delete')} placement="bottom"><IconButton
                               label={jinshuText('@jinshu.editor.object.delete')}
                               icon="delete"
                               size="sm"
@@ -2224,12 +2303,12 @@ export function JinshuEditor(props: JinshuEditorProps) {
                                 dispatchOps([{ op: 'delete', id: block.id, noteWord: note('@jinshu.note.delete') }]);
                                 selectBlock(null);
                               }}
-                            />
+                            /></Tooltip>
                             <view aria-hidden className={e.selectionBar.sep} />
                             <DropdownMenu label={jinshuText('@jinshu.editor.blockMenu')} size="sm" items={blockMenuEntries.filter(entry => !('id' in entry) || !['mv-up', 'mv-dn', 'del', 'sel'].includes(entry.id ?? ''))}>
-                              <IconButton label={jinshuText('@jinshu.editor.blockMenu')} icon="more" size="sm" />
+                              <Tooltip content={jinshuText('@jinshu.editor.blockMenu')} placement="bottom"><IconButton label={jinshuText('@jinshu.editor.blockMenu')} icon="more" size="sm" /></Tooltip>
                             </DropdownMenu>
-                            <IconButton label={jinshuText('@jinshu.editor.selection.clear')} icon="close" size="sm" onClick={() => selectBlock(null)} />
+                            <Tooltip content={jinshuText('@jinshu.editor.selection.clear')} placement="bottom"><IconButton label={jinshuText('@jinshu.editor.selection.clear')} icon="close" size="sm" onClick={() => selectBlock(null)} /></Tooltip>
                           </view>
                         )}
                         {isNonTextSelected && inspecting.value && block.type === 'image' && <ImageBlockInspector block={block} cb={blockCb} />}

@@ -439,8 +439,6 @@
         "toolbarStart": "view",
         "toolbarEnd": "view",
         "toolbarSep": "view",
-        "markButton": "button",
-        "markGlyph": "text",
         "history": "view",
         "saved": "view",
         "wordCount": "text",

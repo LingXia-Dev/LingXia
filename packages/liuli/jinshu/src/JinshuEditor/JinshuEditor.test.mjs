@@ -29,7 +29,7 @@ test('ReadOnly: no toolbar', async () => {
 // The editor on a live source, through the same channel messages Logic sends.
 
 import { renderPage } from '../testing/harness.mjs';
-import { callout, codeBlock, createDocument, details, fileBlock, heading, list, listItem, paragraph, plainText, table, video } from '../schema/index.ts';
+import { callout, codeBlock, createDocument, details, fileBlock, heading, list, listItem, paragraph, plainText, quote, table, video } from '../schema/index.ts';
 import { createJinshuSource } from '../source/index.ts';
 import { agentCall, toolsOver } from '../testing/agent.mjs';
 
@@ -565,4 +565,103 @@ export function render() { return <page><Doc /></page>; }
     await failed.settle();
     assert.ok(hasText(failed, "This document isn't available"), `${name}: a failed channel says so`);
   }
+});
+
+test('toolbar inserts: a wide bar offers common blocks; an empty line becomes the block, an open block saves and closes first', async () => {
+  const doc = createDocument({ blocks: [heading(2, 'Notes', 'h'), paragraph('Intro', 'p'), paragraph('', 'e')] });
+  const source = createJinshuSource({ key: 'w3', initialDoc: doc });
+  const { screen, settle } = await mountLive(source);
+  screen.press(byLabel(screen, 'Edit block e'));
+  await settle();
+  screen.press(byLabel(screen, 'Insert Quote'));
+  await settle();
+  assert.equal(source.getState().doc.blocks[2].type, 'quote', 'the empty line became the quote');
+  screen.type(byLabel(screen, 'Quote text'), 'Said');
+  await settle();
+  screen.press(byLabel(screen, 'Insert Table'));
+  await settle();
+  const blocks = source.getState().doc.blocks;
+  assert.deepEqual(blocks.map(b => b.type), ['heading', 'paragraph', 'quote', 'table']);
+  assert.equal(plainText(blocks[2].blocks[0].runs), 'Said', 'the open quote saved, with no starter text');
+  assert.ok(!hasLabel(screen, 'Quote text'), 'and closed, so the next field takes focus');
+
+  const phone = await mountLive(createJinshuSource({ key: 'w3', initialDoc: doc }), { sizeClass: 'compact', pointer: 'coarse', viewport: { width: 390, height: 844 } });
+  assert.ok(!hasLabel(phone.screen, 'Insert Quote'), 'a phone keeps the top bar short');
+  assert.ok(hasLabel(phone.screen, 'Insert'));
+});
+
+test('auto-save: text typed in an open quote saves after a pause, and the quote stays open', async () => {
+  const saves = [];
+  const doc = createDocument({ blocks: [quote([paragraph('Said')], 'q')] });
+  const source = createJinshuSource({
+    key: 'w3',
+    initialDoc: doc,
+    format: 'markdown',
+    saveMode: 'auto',
+    save: async (_next, _base, file) => (saves.push(file.text), { ok: true, version: `v${saves.length + 1}` }),
+  });
+  const { screen, settle } = await mountLive(source);
+  screen.press(byLabel(screen, 'Edit quote q'));
+  await settle();
+  screen.type(byLabel(screen, 'Quote text'), 'Said twice');
+  await settle();
+  await new Promise(resolve => setTimeout(resolve, 1700));
+  await settle();
+  assert.deepEqual(saves, ['> Said twice\n']);
+  assert.ok(hasLabel(screen, 'Quote text'), 'still typing in the quote');
+});
+
+test('toolbars: every button that shows only an icon names itself in a hint', async () => {
+  const doc = createDocument({ blocks: [paragraph('Intro', 'p'), table(['A', 'B'], [['1', '2']], { id: 't' })] });
+  const { screen, settle } = await mountLive(createJinshuSource({ key: 'w3', initialDoc: doc }));
+  screen.press(byLabel(screen, 'Edit block p'));
+  await settle();
+  const inToolbar = node => {
+    for (let at = node.parent; at; at = at.parent) if (at.props.role === 'toolbar' || at.props.accessibilityRole === 'toolbar') return true;
+    return false;
+  };
+  const hasWords = node => (node.children ?? []).some(child => child.tag === 'text' && /\S/.test(child.props.text ?? child.text ?? ''));
+  const iconOnly = screen.queryAll(node => node.tag === 'button' && inToolbar(node) && labelOf(node) && !hasWords(node));
+  assert.ok(iconOnly.length >= 15, `the document and format bars hold their icon buttons (found ${iconOnly.length})`);
+  const bare = iconOnly.filter(node => !node.props.interestFor).map(labelOf);
+  assert.deepEqual(bare, [], 'each shows its name while a pointer rests on it');
+  for (const label of ['Undo', 'Insert Quote', 'Insert', 'Bold', 'Highlight']) assert.ok(byLabel(screen, label).props.interestFor, label);
+});
+
+test('toolbar inserts with no block open land below the block last worked in, not at the end', async () => {
+  const doc = createDocument({ blocks: [heading(2, 'Notes', 'h'), paragraph('Intro', 'p'), paragraph('Last', 'z')] });
+  const source = createJinshuSource({ key: 'w3', initialDoc: doc });
+  const { screen, settle } = await mountLive(source);
+  screen.press(byLabel(screen, 'Edit block h'));
+  await settle();
+  screen.key(byLabel(screen, 'Edit heading'), 'Escape');
+  await settle();
+  assert.ok(!hasLabel(screen, 'Edit heading'), 'nothing is open');
+  screen.press(byLabel(screen, 'Insert Table'));
+  await settle();
+  assert.deepEqual(source.getState().doc.blocks.map(b => b.type), ['heading', 'table', 'paragraph', 'paragraph']);
+});
+
+test('a block only started (a quote, list or code block closed with nothing in it) goes; one with text stays', async () => {
+  const doc = createDocument({ blocks: [paragraph('Intro', 'p')] });
+  const source = createJinshuSource({ key: 'w3', initialDoc: doc });
+  const { screen, settle } = await mountLive(source);
+  for (const [button, field] of [['Insert Quote', 'Quote text'], ['Insert Bulleted list', 'Edit item 1']]) {
+    screen.press(byLabel(screen, 'Edit block p'));
+    await settle();
+    screen.press(byLabel(screen, button));
+    await settle();
+    assert.equal(source.getState().doc.blocks.length, 2, `${button} made a block`);
+    screen.blur(byLabel(screen, field));
+    await settle();
+    assert.deepEqual(source.getState().doc.blocks.map(b => b.id), ['p'], `${button}: left empty, it went`);
+  }
+  screen.press(byLabel(screen, 'Edit block p'));
+  await settle();
+  screen.press(byLabel(screen, 'Insert Quote'));
+  await settle();
+  screen.type(byLabel(screen, 'Quote text'), 'Kept');
+  screen.key(byLabel(screen, 'Quote text'), 'Escape');
+  await settle();
+  assert.deepEqual(source.getState().doc.blocks.map(b => b.type), ['paragraph', 'quote']);
 });

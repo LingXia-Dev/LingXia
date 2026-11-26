@@ -5,8 +5,6 @@ export const jinshuEditorParts = {
   toolbarStart: 'view',
   toolbarEnd: 'view',
   toolbarSep: 'view',
-  markButton: 'button',
-  markGlyph: 'text',
   history: 'view',
   saved: 'view',
   wordCount: 'text',
@@ -76,27 +74,6 @@ export const jinshuEditorRecipe = {
   },
   toolbarSep: {
     base: 'w-px h-4 bg-text/12 mx-1 shrink-0',
-  },
-  markButton: {
-    base: 'size-8 shrink-0 rounded-control items-center justify-center transition-colors duration-fast',
-    disabled: 'text-faint',
-    active: 'bg-accent-soft text-accent',
-    idle: 'text-text hover:bg-text/6 active:bg-text/10',
-  },
-  markGlyph: {
-    base: 'text-footnote leading-none',
-    active: 'text-accent',
-    disabled: 'text-faint',
-    idle: 'text-text',
-    mark: {
-      bold: 'font-bold',
-      italic: 'italic font-serif',
-      underline: 'underline',
-      strike: 'line-through',
-      code: 'font-mono text-caption',
-      superscript: 'text-caption font-medium',
-      subscript: 'text-caption font-medium',
-    },
   },
   history: {
     base: 'w-72 gap-2',
