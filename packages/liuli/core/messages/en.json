@@ -323,6 +323,10 @@
     "defaultMessage": "Loading {name}",
     "description": "Said while a component's content loads; `name` is the component's label."
   },
+  "@liuli.chart.total": {
+    "defaultMessage": "Total",
+    "description": "Names the total in a donut chart's hole."
+  },
   "@liuli.chart.other": {
     "defaultMessage": "Other",
     "description": "The slice of a pie chart that gathers the parts past those drawn on their own."

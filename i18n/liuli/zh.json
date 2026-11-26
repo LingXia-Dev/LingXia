@@ -242,6 +242,9 @@
   "@liuli.loadingNamed": {
     "defaultMessage": "正在加载{name}"
   },
+  "@liuli.chart.total": {
+    "defaultMessage": "总计"
+  },
   "@liuli.chart.other": {
     "defaultMessage": "其他"
   },

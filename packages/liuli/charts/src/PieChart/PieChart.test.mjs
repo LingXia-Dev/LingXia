@@ -169,3 +169,18 @@ test('with defaultValue the chart keeps its own choice, and the legend rows choo
   screen.press(row('Food'));
   assert.deepEqual([row('Rent').props.statePressed, row('Food').props.statePressed], [0, 1]);
 });
+
+test('totalLabel: a donut names its total "Total" by default; null leaves the hole empty until a part is chosen', async () => {
+  const screen = await renderPage(`
+    import { PieChart } from '@liulidesign/charts/PieChart';
+    const rows = [{ kind: 'Apps', gb: 21 }, { kind: 'Photos', gb: 9 }];
+    export function render() {
+      return <page>
+        <PieChart rows={rows} nameField="kind" valueField="gb" label="Storage" size="sm" legendPosition="none" data-testid="plain" />
+        <PieChart rows={rows} nameField="kind" valueField="gb" label="Storage" size="sm" legendPosition="none" totalLabel={null} data-testid="bare" />
+      </page>;
+    }
+  `);
+  const statuses = screen.queryAll(node => node.props.role === 'status').map(textOf);
+  assert.deepEqual(statuses, ['Total30']);
+});

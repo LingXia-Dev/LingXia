@@ -24,7 +24,6 @@ export function Spending() {
       description="October"
       formatValue={dollars}
       formatShare={percent}
-      totalLabel="Total"
       summarize={summarize}
       value={part.value}
       onChange={part.set}

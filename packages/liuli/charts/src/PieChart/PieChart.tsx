@@ -30,8 +30,8 @@ export interface PieChartProps<Row extends ChartRecord<Row> = ChartRow> {
   summarize?: ChartSummarize;
   /** `donut` has a hole for the total; `pie` is solid. @default 'donut' */
   variant?: PieChartVariant;
-  /** Names the total shown in a donut's hole: "Total". Without it the hole is empty until a part is chosen. */
-  totalLabel?: string;
+  /** Names the total shown in a donut's hole. `null` leaves the hole empty until a part is chosen. A donut's defaults to "Total" in the page's language; a solid pie shows no total without one. */
+  totalLabel?: string | null;
   /** Names one part that gathers every part after the first `maxParts`: "Other". Without it every part is drawn up to 24, and any past those are one part named "Other" in the page's language. */
   otherLabel?: string;
   /** How many parts keep their own slice when `otherLabel` is set. @default 5 */
@@ -75,7 +75,7 @@ export const otherKey = '__other';
 
 /** Parts of one whole, as a ring with the total in its hole and the parts listed under it. */
 export function PieChart<Row extends ChartRecord<Row>>({
-  rows, nameField: name, valueField: value, keyField, label, title, description, formatValue: format, formatShare, summarize, variant = 'donut', totalLabel,
+  rows, nameField: name, valueField: value, keyField, label, title, description, formatValue: format, formatShare, summarize, variant = 'donut', totalLabel: ownTotalLabel,
   otherLabel, maxParts = 5, legendPosition = 'bottom', legendLabel, value: given, onChange, defaultValue, size = 'md',
   isLoading = false, error, emptyLabel, emptyHint, onRetry, retryLabel, className, 'data-testid': testId,
 }: PieChartProps<Row>) {
@@ -118,7 +118,8 @@ export function PieChart<Row extends ChartRecord<Row>>({
   });
 
   const facts = seriesFacts(parts.map(part => ({ name: part.name, amount: part.amount })), 'name', { field: 'amount', label: '' }, formatValue, true);
-  const centre = chosen ? [chosen.name, formatValue(chosen.amount)] : totalLabel !== undefined ? [totalLabel, formatValue(total)] : undefined;
+  const totalLabel = ownTotalLabel !== undefined ? ownTotalLabel : variant === 'donut' ? liuliText('@liuli.chart.total') : null;
+  const centre = chosen ? [chosen.name, formatValue(chosen.amount)] : totalLabel !== null ? [totalLabel, formatValue(total)] : undefined;
   const ring = useBox('ring');
   const centreBox = useBox('centre');
   const figure = useBox('figure');

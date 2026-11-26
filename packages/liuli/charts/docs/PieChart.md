@@ -39,7 +39,6 @@ export function Spending() {
       description="October"
       formatValue={dollars}
       formatShare={percent}
-      totalLabel="Total"
       summarize={summarize}
       value={part.value}
       onChange={part.set}
@@ -113,7 +112,7 @@ export function Merged() {
 | `formatShare` | `((share: number) => string)` |  | Turns a part of the whole, 0 to 1, into text for the legend: "32%". Without it the legend shows amounts only. |
 | `summarize` | `ChartSummarize` |  | Writes the summary a screen reader hears from the chart's facts; see `@liulidesign/charts/summary/en`. |
 | `variant` | `PieChartVariant` | `'donut'` | `donut` has a hole for the total; `pie` is solid. |
-| `totalLabel` | `string` |  | Names the total shown in a donut's hole: "Total". Without it the hole is empty until a part is chosen. |
+| `totalLabel` | `string \| null` |  | Names the total shown in a donut's hole. `null` leaves the hole empty until a part is chosen. A donut's defaults to "Total" in the page's language; a solid pie shows no total without one. |
 | `otherLabel` | `string` |  | Names one part that gathers every part after the first `maxParts`: "Other". Without it every part is drawn up to 24, and any past those are one part named "Other" in the page's language. |
 | `maxParts` | `number` | `5` | How many parts keep their own slice when `otherLabel` is set. |
 | `legendPosition` | `ChartLegendPosition` | `'bottom'` | The legend lists each part with its amount and share. |

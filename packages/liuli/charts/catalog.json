@@ -1747,9 +1747,9 @@
         },
         {
           "name": "totalLabel",
-          "type": "string",
+          "type": "string | null",
           "required": false,
-          "description": "Names the total shown in a donut's hole: \"Total\". Without it the hole is empty until a part is chosen."
+          "description": "Names the total shown in a donut's hole. `null` leaves the hole empty until a part is chosen. A donut's defaults to \"Total\" in the page's language; a solid pie shows no total without one."
         },
         {
           "name": "otherLabel",
@@ -2003,7 +2003,7 @@
         {
           "name": "Spending",
           "title": "A ring with the total, selected through its legend",
-          "source": "import { useLocal } from '@lingxia/view';\nimport { summarize } from '@liulidesign/charts/summary';\nimport { PieChart } from '@liulidesign/charts/PieChart';\n\nconst spending = [\n  { category: 'Rent', amount: 1450 }, { category: 'Food', amount: 620 }, { category: 'Transport', amount: 210 },\n  { category: 'Leisure', amount: 180 }, { category: 'Savings', amount: 400 },\n];\nconst dollars = (value: number) => `$${grouped(value)}`;\nconst percent = (share: number) => `${Math.round(share * 100)}%`;\n\n/** A row in the legend chooses its part; the hole then shows that part in place of the total. */\nexport function Spending() {\n  const part = useLocal<string | null>('part', null);\n  return (\n    <PieChart\n      rows={spending}\n      nameField=\"category\"\n      valueField=\"amount\"\n      label=\"Spending by category\"\n      title=\"Spending\"\n      description=\"October\"\n      formatValue={dollars}\n      formatShare={percent}\n      totalLabel=\"Total\"\n      summarize={summarize}\n      value={part.value}\n      onChange={part.set}\n      data-testid=\"spending\"\n    />\n  );\n}"
+          "source": "import { useLocal } from '@lingxia/view';\nimport { summarize } from '@liulidesign/charts/summary';\nimport { PieChart } from '@liulidesign/charts/PieChart';\n\nconst spending = [\n  { category: 'Rent', amount: 1450 }, { category: 'Food', amount: 620 }, { category: 'Transport', amount: 210 },\n  { category: 'Leisure', amount: 180 }, { category: 'Savings', amount: 400 },\n];\nconst dollars = (value: number) => `$${grouped(value)}`;\nconst percent = (share: number) => `${Math.round(share * 100)}%`;\n\n/** A row in the legend chooses its part; the hole then shows that part in place of the total. */\nexport function Spending() {\n  const part = useLocal<string | null>('part', null);\n  return (\n    <PieChart\n      rows={spending}\n      nameField=\"category\"\n      valueField=\"amount\"\n      label=\"Spending by category\"\n      title=\"Spending\"\n      description=\"October\"\n      formatValue={dollars}\n      formatShare={percent}\n      summarize={summarize}\n      value={part.value}\n      onChange={part.set}\n      data-testid=\"spending\"\n    />\n  );\n}"
         },
         {
           "name": "Solid",
