@@ -1025,7 +1025,7 @@ fn every_shipped_chart_colour_is_a_colour_apart_from_the_other_seven() {
 }
 
 #[test]
-fn solid_fills_are_the_plain_roles_in_light_and_deeper_under_white_in_dark() {
+fn solid_fills_are_the_plain_roles_in_light_and_high_contrast_and_deeper_under_white_in_dark() {
     let pairs = [
         (
             Role::Accent,
@@ -1046,15 +1046,15 @@ fn solid_fills_are_the_plain_roles_in_light_and_deeper_under_white_in_dark() {
             let theme = resolve(&pack, &prefs).unwrap();
             for (plain, on_plain, solid, on_solid) in pairs {
                 let label = format!("{} {label} {}", pack.name, solid.name());
-                if prefs.appearance == Appearance::Light {
+                // Light, and dark high contrast, keep the plain role and its text.
+                if prefs.appearance == Appearance::Light || prefs.high_contrast {
                     assert_eq!(theme.color(solid), theme.color(plain), "{label}");
                     assert_eq!(theme.color(on_solid), theme.color(on_plain), "{label}");
                     continue;
                 }
                 let (fill, tone) = (theme.color(solid), theme.color(solid).oklch());
-                let need = if prefs.high_contrast { 7.0 } else { 4.6 };
                 assert_eq!(theme.color(on_solid), hex("#ffffff"), "{label}");
-                assert!(contrast(hex("#ffffff"), fill) >= need, "{label}");
+                assert!(contrast(hex("#ffffff"), fill) >= 4.6, "{label}");
                 assert!(tone.c >= 0.12, "{label}: chroma {:.3}", tone.c);
                 let hue = theme.color(plain).oklch().h;
                 assert!(derive::apart(tone.h, hue) < 12.0, "{label}: hue");
@@ -1363,7 +1363,7 @@ fn motion_defaults_are_the_default_packs_and_bad_values_are_named() {
 }
 
 #[test]
-fn hover_and_pressed_solids_go_deeper_and_a_pack_cannot_write_them() {
+fn hover_and_pressed_solids_step_away_from_their_text_and_a_pack_cannot_write_them() {
     let shades = [
         (
             Role::AccentSolid,
@@ -1390,20 +1390,24 @@ fn hover_and_pressed_solids_go_deeper_and_a_pack_cannot_write_them() {
                 let tag = format!("{} {name} {}", pack.name, solid.name());
                 let [fill, hover, pressed] = [solid, hover, pressed].map(|role| theme.color(role));
                 let lightness = |color: Rgba| color.oklch().l;
+                // Each state steps away from its text: deeper under white, lighter under a dark ink.
+                let away = if theme.color(label(solid)).oklch().l > 0.5 { 1.0 } else { -1.0 };
                 for (from, to) in [(fill, hover), (hover, pressed)] {
-                    let step = lightness(from) - lightness(to);
-                    assert!(step >= 0.04, "{tag}: a state steps {step:.4} deeper");
+                    let step = away * (lightness(from) - lightness(to));
+                    assert!(step >= 0.04, "{tag}: a state steps {step:.4} away from its text");
                 }
                 let chroma = |color: Rgba| color.oklch().c / color.oklch().l;
                 for shade in [hover, pressed] {
                     let hue = (fill.oklch().h - shade.oklch().h).abs();
                     assert!(hue.min(360.0 - hue) < 2.0, "{tag}: hue held");
+                    // Deepening keeps the fill's colourfulness; lightening toward white cannot.
                     let ratio = chroma(shade) / chroma(fill);
                     assert!(
-                        (ratio - 1.0).abs() < 0.04,
+                        away < 0.0 || (ratio - 1.0).abs() < 0.04,
                         "{tag}: chroma {ratio:.3} of the fill's"
                     );
-                    assert!(contrast(theme.color(label(solid)), shade) >= 4.5, "{tag}");
+                    let need = if prefs.high_contrast { 7.0 } else { 4.5 };
+                    assert!(contrast(theme.color(label(solid)), shade) >= need, "{tag}");
                 }
             }
         });

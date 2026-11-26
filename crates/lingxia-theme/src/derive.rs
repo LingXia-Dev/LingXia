@@ -795,11 +795,12 @@ impl Build<'_> {
         shade_states(fill, label, &grounds, need).unwrap_or(deeper)
     }
 
-    /// The fill of a control that carries white marks and its text. In light the plain role is
-    /// already that; in dark, where the plain role is a pastel for text and rings, a fill at
-    /// `source`'s hue and chroma, as light as white on it allows.
+    /// The fill of a control and its text. In light the plain role is already that; in dark, where
+    /// the plain role is a pastel for text and rings, a fill at `source`'s hue and chroma, as light
+    /// as white on it allows. Dark high contrast keeps the pastel with its dark text: white cannot
+    /// reach 7:1 on a fill that still stands 3:1 off the dark surfaces.
     fn solid(&mut self, [plain, on_plain]: [Role; 2], [solid, on_solid]: [Role; 2], source: Rgba) {
-        if !self.dark && !self.has(solid) && !self.has(on_solid) {
+        if (!self.dark || self.strong) && !self.has(solid) && !self.has(on_solid) {
             self.put(solid, self.get(plain));
             self.put(on_solid, self.get(on_plain));
             return;
