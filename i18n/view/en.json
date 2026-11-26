@@ -23,6 +23,10 @@
     "defaultMessage": "Minute",
     "description": "Time picker column of minutes, read by screen readers."
   },
+  "@view.second": {
+    "defaultMessage": "Second",
+    "description": "Time picker column of seconds, read by screen readers."
+  },
   "@view.period": {
     "defaultMessage": "AM/PM",
     "description": "Time picker column choosing morning or afternoon on a 12-hour clock."

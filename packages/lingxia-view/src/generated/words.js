@@ -18,6 +18,7 @@ export const words = {
   "@view.options": (a, f) => "خيارات",
   "@view.period": (a, f) => "ص/م",
   "@view.previousMonth": (a, f) => "الشهر السابق",
+  "@view.second": (a, f) => "ثانية",
 },
 "de": {
   "@view.cancel": (a, f) => "Abbrechen",
@@ -35,6 +36,7 @@ export const words = {
   "@view.options": (a, f) => "Optionen",
   "@view.period": (a, f) => "AM/PM",
   "@view.previousMonth": (a, f) => "Vorheriger Monat",
+  "@view.second": (a, f) => "Sekunde",
 },
 "en": {
   "@view.cancel": (a, f) => "Cancel",
@@ -52,6 +54,7 @@ export const words = {
   "@view.options": (a, f) => "Options",
   "@view.period": (a, f) => "AM/PM",
   "@view.previousMonth": (a, f) => "Previous month",
+  "@view.second": (a, f) => "Second",
 },
 "es": {
   "@view.cancel": (a, f) => "Cancelar",
@@ -69,6 +72,7 @@ export const words = {
   "@view.options": (a, f) => "Opciones",
   "@view.period": (a, f) => "a. m./p. m.",
   "@view.previousMonth": (a, f) => "Mes anterior",
+  "@view.second": (a, f) => "Segundo",
 },
 "fr": {
   "@view.cancel": (a, f) => "Annuler",
@@ -86,6 +90,7 @@ export const words = {
   "@view.options": (a, f) => "Options",
   "@view.period": (a, f) => "AM/PM",
   "@view.previousMonth": (a, f) => "Mois précédent",
+  "@view.second": (a, f) => "Seconde",
 },
 "ja": {
   "@view.cancel": (a, f) => "キャンセル",
@@ -103,6 +108,7 @@ export const words = {
   "@view.options": (a, f) => "オプション",
   "@view.period": (a, f) => "午前/午後",
   "@view.previousMonth": (a, f) => "前の月",
+  "@view.second": (a, f) => "秒",
 },
 "ko": {
   "@view.cancel": (a, f) => "취소",
@@ -120,6 +126,7 @@ export const words = {
   "@view.options": (a, f) => "옵션",
   "@view.period": (a, f) => "오전/오후",
   "@view.previousMonth": (a, f) => "이전 달",
+  "@view.second": (a, f) => "초",
 },
 "pt": {
   "@view.cancel": (a, f) => "Cancelar",
@@ -137,6 +144,7 @@ export const words = {
   "@view.options": (a, f) => "Opções",
   "@view.period": (a, f) => "AM/PM",
   "@view.previousMonth": (a, f) => "Mês anterior",
+  "@view.second": (a, f) => "Segundo",
 },
 "ru": {
   "@view.cancel": (a, f) => "Отмена",
@@ -154,6 +162,7 @@ export const words = {
   "@view.options": (a, f) => "Параметры",
   "@view.period": (a, f) => "AM/PM",
   "@view.previousMonth": (a, f) => "Предыдущий месяц",
+  "@view.second": (a, f) => "Секунда",
 },
 "zh": {
   "@view.cancel": (a, f) => "取消",
@@ -171,5 +180,6 @@ export const words = {
   "@view.options": (a, f) => "选项",
   "@view.period": (a, f) => "上午/下午",
   "@view.previousMonth": (a, f) => "上个月",
+  "@view.second": (a, f) => "秒",
 },
 };

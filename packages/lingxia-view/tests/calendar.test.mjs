@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { addDays, addMonths, monthGrid, moveDate, weekday, weekdayOrder, parseDate, parseTime, iso, wordsFor, minuteValues, hourValues, within, dateFormat, fieldText } from '../src/runtime/calendar.js';
+import { addDays, addMonths, monthGrid, moveDate, weekday, weekdayOrder, parseDate, parseTime, iso, wordsFor, minuteValues, secondValues, hourValues, within, dateFormat, fieldText } from '../src/runtime/calendar.js';
 
 test('day arithmetic crosses months, years and leap days', () => {
   assert.equal(iso(addDays({ year: 2024, month: 2, day: 28 }, 1)), '2024-02-29');
@@ -34,7 +34,11 @@ test('keys move by day, week and month, mirrored in RTL', () => {
 
 test('values parse strictly; bounds, steps and words follow the inputs', () => {
   assert.equal(parseDate('2026-02-30'), null);
-  assert.deepEqual(parseTime('07:05:30'), { hour: 7, minute: 5 });
+  assert.deepEqual(parseTime('07:05:30'), { hour: 7, minute: 5, second: 30 });
+  assert.deepEqual(parseTime('07:05'), { hour: 7, minute: 5 });
+  assert.equal(parseTime('07:05:60'), null);
+  assert.deepEqual(secondValues(15), [0, 15, 30, 45]);
+  assert.equal(secondValues(60), null);
   assert.equal(within({ year: 2026, month: 1, day: 1 }, parseDate('2026-01-02'), null), false);
   assert.deepEqual(minuteValues(900), [0, 15, 30, 45]);
   assert.equal(hourValues('h12')[0], 12);

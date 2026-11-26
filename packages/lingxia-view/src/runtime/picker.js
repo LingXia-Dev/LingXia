@@ -5,7 +5,7 @@
 import { h } from './nodes.js';
 import { listTag } from './elements.js';
 import { monthGrid, weekday, weekdayOrder, moveDate, within, clampDate, compare, addMonths, parseDate, parseTime, iso, timeIso,
-  hourValues, minuteValues, wordsFor, clockText } from './calendar.js';
+  hourValues, minuteValues, secondValues, wordsFor, clockText } from './calendar.js';
 
 let picker = null, results = [], nextKey = 1;
 
@@ -41,10 +41,40 @@ export function openPicker({ identity, kind, value, min, max, step, today: day, 
     picker = { kind, key, identity, min: low, max: high, value: parseDate(value), pick: parseDate(value), keyed: false,
       focus: clampDate(parseDate(value) ?? today(), low, high) };
   } else {
-    picker = { kind, key, identity, step: Number(step), value: parseTime(value) ?? { hour: 9, minute: 0 }, min: parseTime(min), max: parseTime(max) };
+    const seconds = secondValues(Number(step));
+    const { hour, minute, second } = parseTime(value) ?? { hour: 9, minute: 0 };
+    picker = { kind, key, identity, step: Number(step), minutes: minuteValues(Number(step)), seconds,
+      value: seconds ? { hour, minute, second: second ?? 0 } : { hour, minute }, min: parseTime(min), max: parseTime(max) };
+    if (!timeAllowed(picker.value)) picker.value = firstAllowed(picker.value) ?? picker.value;
   }
   return true;
 }
+
+const daySeconds = ({ hour, minute, second = 0 }) => hour * 3600 + minute * 60 + second;
+
+// `min` after `max` is a range across midnight, as an HTML time field reads it.
+function timeAllowed(time) {
+  const { min, max } = picker;
+  if (!min && !max) return true;
+  const at = daySeconds(time), low = min ? daySeconds(min) : 0, high = max ? daySeconds(max) : 86399;
+  return low <= high ? at >= low && at <= high : at >= low || at <= high;
+}
+
+// The times the columns offer within one hour, in order; `second` only with a seconds column.
+const hourTimes = hour => picker.minutes.flatMap(minute =>
+  picker.seconds ? picker.seconds.map(second => ({ hour, minute, second })) : [{ hour, minute }]);
+
+/** The first offered time in range from `from` onward, wrapping past midnight; null when none is. */
+function firstAllowed(from) {
+  for (let offset = 0; offset < 25; offset++) {
+    const hour = (from.hour + offset) % 24;
+    const found = hourTimes(hour).find(time => (offset > 0 || daySeconds(time) >= daySeconds(from)) && timeAllowed(time));
+    if (found) return found;
+  }
+  return null;
+}
+
+const hourAllowed = hour => hourTimes(hour).some(timeAllowed);
 
 export const hasPicker = () => picker !== null;
 export const pickerIdentity = () => picker?.identity ?? null;
@@ -108,24 +138,36 @@ export function pickerKey(key, rtl = false) {
     picker.keyed = true;
     return true;
   }
-  if (key === 'Enter') { settle(timeIso(picker.value)); return true; }
+  if (key === 'Enter') { if (timeAllowed(picker.value)) settle(timeIso(picker.value)); return true; }
   if (/^[0-9]$/.test(key)) {
-    // Typed digits fill HH then MM, as a desktop time field does.
-    picker.typed = ((picker.typed ?? '') + key).slice(-4);
-    const digits = picker.typed.padStart(4, '0');
-    const hour = Number(digits.slice(0, 2)), minute = Number(digits.slice(2));
-    if (hour < 24 && minute < 60) picker.value = { hour, minute };
+    // Typed digits fill HH, MM (and SS), as a desktop time field does; an out-of-range time waits.
+    const width = picker.seconds ? 6 : 4;
+    picker.typed = ((picker.typed ?? '') + key).slice(-width);
+    const digits = picker.typed.padStart(width, '0');
+    const hour = Number(digits.slice(0, 2)), minute = Number(digits.slice(2, 4)), second = Number(digits.slice(4) || 0);
+    if (hour < 24 && minute < 60 && second < 60) picker.value = picker.seconds ? { hour, minute, second } : { hour, minute };
     return true;
   }
   const delta = { ArrowUp: -1, ArrowDown: 1 }[key];
   if (delta === undefined) return false;
-  const minutes = minuteValues(picker.step);
-  const at = Math.max(0, minutes.indexOf(picker.value.minute));
-  const index = at + delta;
-  if (index < 0) picker.value = { hour: (picker.value.hour + 23) % 24, minute: minutes.at(-1) };
-  else if (index >= minutes.length) picker.value = { hour: (picker.value.hour + 1) % 24, minute: minutes[0] };
-  else picker.value = { ...picker.value, minute: minutes[index] };
+  // The minute moves by the step, across hours; it stops at the edge of the range.
+  const { minutes } = picker;
+  let { hour, minute } = picker.value;
+  const index = Math.max(0, minutes.indexOf(minute)) + delta;
+  if (index < 0) { hour = (hour + 23) % 24; minute = minutes.at(-1); }
+  else if (index >= minutes.length) { hour = (hour + 1) % 24; minute = minutes[0]; }
+  else minute = minutes[index];
+  picker.value = minuteTime(hour, minute) ?? picker.value;
   return true;
+}
+
+// The time at this hour and minute, keeping the second when it is in range: null when none is.
+function minuteTime(hour, minute) {
+  if (!picker.seconds) return timeAllowed({ hour, minute }) ? { hour, minute } : null;
+  const kept = { hour, minute, second: picker.value.second };
+  if (timeAllowed(kept)) return kept;
+  const second = picker.seconds.find(value => timeAllowed({ hour, minute, second: value }));
+  return second === undefined ? null : { hour, minute, second };
 }
 
 // On touch the sheet's toolbar carries the month title; the body keeps the month arrows.
@@ -170,7 +212,7 @@ const ROW = 40, VISIBLE = 5;
 
 // A column of choices whose selected row starts in the middle band; scrolling snaps row by row. A
 // cyclic column (hours, minutes) repeats its values around the middle copy, so it never shows blanks.
-function timeColumn(testId, label, values, selected, format, choose, cyclic = false) {
+function timeColumn(testId, label, values, selected, format, choose, cyclic = false, enabled = () => true) {
   const copies = cyclic ? 3 : 1, middle = cyclic ? 1 : 0;
   const index = middle * values.length + Math.max(0, values.indexOf(selected));
   const pad = cyclic ? 0 : ROW * Math.floor(VISIBLE / 2);
@@ -180,29 +222,46 @@ function timeColumn(testId, label, values, selected, format, choose, cyclic = fa
       height: () => ROW, anchor: { index: Math.max(0, index - offset), align: 'start', seq: index },
       style: { height: ROW * VISIBLE, paddingTop: pad, paddingBottom: pad, scrollSnapType: 'y' },
       row: i => {
-        const value = values[i % values.length], copy = Math.floor(i / values.length), on = value === selected;
+        const value = values[i % values.length], copy = Math.floor(i / values.length), on = value === selected, live = enabled(value);
         // Automation names the middle copy's rows; the others are its repeats.
         const id = copy === middle ? `${testId}-${value}` : `${testId}-${value}-${copy}`;
         return h('button', { key: `${copy}:${value}`, 'data-testid': id, role: 'option', 'aria-selected': on && copy === middle,
-          'aria-hidden': copy !== middle, onClick: () => choose(value),
+          'aria-hidden': copy !== middle, disabled: !live, onClick: () => choose(value),
           style: { height: ROW, alignItems: 'center', justifyContent: 'center', borderRadius: 8, scrollSnapAlign: 'center',
-            backgroundColor: on ? 'accent/12' : 'transparent', color: on ? 'accent' : 'text',
+            backgroundColor: on ? 'accent/12' : 'transparent', color: on ? 'accent' : live ? 'text' : 'text-faint',
             fontSize: 17, fontWeight: on ? 600 : 400, fontVariantNumeric: 'tabular-nums' } }, format(value));
       } }));
 }
 
 function timeBody(words, env) {
   const cycle = env?.hourCycle === 'h12' ? 'h12' : 'h23';
-  const { hour, minute } = picker.value;
+  const { hour, minute, second } = picker.value;
   const two = value => String(value).padStart(2, '0');
-  const set = next => { picker.value = { ...picker.value, ...next }; picker.typed = ''; };
+  // A choice that leaves the range moves the smaller columns to the first time in range under it.
+  const set = next => {
+    const wanted = { ...picker.value, ...next };
+    picker.value = timeAllowed(wanted) ? wanted
+      : 'second' in next ? picker.value
+        : 'minute' in next ? minuteTime(wanted.hour, wanted.minute) ?? picker.value
+          : hourTimes(wanted.hour).find(timeAllowed) ?? picker.value;
+    picker.typed = '';
+  };
+  const hour12 = value => (value % 12) + (hour >= 12 ? 12 : 0);
   const columns = [
     timeColumn('lx-picker-hour', words.hour, hourValues(cycle), cycle === 'h12' ? (hour % 12 || 12) : hour, cycle === 'h12' ? String : two,
-      value => set({ hour: cycle === 'h12' ? (value % 12) + (hour >= 12 ? 12 : 0) : value }), true),
-    timeColumn('lx-picker-minute', words.minute, minuteValues(picker.step), minute, two, value => set({ minute: value }), true),
+      value => set({ hour: cycle === 'h12' ? hour12(value) : value }), true, value => hourAllowed(cycle === 'h12' ? hour12(value) : value)),
+    timeColumn('lx-picker-minute', words.minute, picker.minutes, minute, two, value => set({ minute: value }), true,
+      value => minuteTime(hour, value) !== null),
   ];
+  if (picker.seconds) columns.push(timeColumn('lx-picker-second', words.second, picker.seconds, second, two, value => set({ second: value }), true,
+    value => timeAllowed({ hour, minute, second: value })));
+  // The day period keeps the hour on the clock face; a half with nothing in range is inert.
+  const halfHours = period => Array.from({ length: 12 }, (_, index) => index + (period === 'pm' ? 12 : 0));
   if (cycle === 'h12') columns.push(timeColumn('lx-picker-period', words.period, ['am', 'pm'], hour >= 12 ? 'pm' : 'am', period => words[period],
-    period => set({ hour: (hour % 12) + (period === 'pm' ? 12 : 0) })));
+    period => {
+      const moved = (hour % 12) + (period === 'pm' ? 12 : 0);
+      set({ hour: hourAllowed(moved) ? moved : halfHours(period).find(hourAllowed) ?? moved });
+    }, false, period => halfHours(period).some(hourAllowed)));
   return h('view', { style: { flexDirection: 'row', gap: 8, justifyContent: 'center' } }, ...columns);
 }
 
@@ -229,7 +288,7 @@ function selectBody(touch, words) {
 export const pickerAnchor = env => picker && (env?.pointer ?? 'coarse') !== 'coarse' ? picker.identity : null;
 
 const sheetStyle = ({ borderRadius, ...rest }) => rest;
-const clock = ({ hour, minute }, words, env) => clockText({ hour, minute }, words, env?.hourCycle);
+const clock = (time, words, env) => clockText(time, words, env?.hourCycle);
 
 /** The open picker above the page, or null. */
 export function pickerNode(env) {
@@ -237,11 +296,11 @@ export function pickerNode(env) {
   const words = wordsFor(env?.language);
   const touch = (env?.pointer ?? 'coarse') === 'coarse';
   const body = picker.kind === 'date' ? dateBody(words, env, !touch) : picker.kind === 'time' ? timeBody(words, env) : selectBody(touch, words);
-  const unpicked = picker.kind === 'date' && picker.pick === null;
-  const commit = () => picker.kind === 'date' ? (picker.pick !== null && settle(iso(picker.pick)))
+  // Done waits for a day on an empty date field, and for a time in range.
+  const unpicked = picker.kind === 'date' ? picker.pick === null : picker.kind === 'time' && !timeAllowed(picker.value);
+  const commit = () => unpicked ? undefined : picker.kind === 'date' ? settle(iso(picker.pick))
     : picker.kind === 'time' ? settle(timeIso(picker.value)) : picker.pick >= 0 ? settleSelect(picker.pick) : settle(null);
   const cancel = style => h('button', { 'data-testid': 'lx-picker-cancel', onClick: () => settle(null), style }, words.cancel);
-  // Done waits for a day on an empty date field.
   const done = style => h('button', { 'data-testid': 'lx-picker-done', onClick: commit, disabled: unpicked,
     style: unpicked ? { ...style, color: 'text-faint' } : style }, words.done);
   const monthTitle = picker.kind === 'date' && words.title(words.months[picker.focus.month - 1], picker.focus.year);

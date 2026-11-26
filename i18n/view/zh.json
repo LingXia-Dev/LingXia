@@ -17,6 +17,9 @@
   "@view.minute": {
     "defaultMessage": "分"
   },
+  "@view.second": {
+    "defaultMessage": "秒"
+  },
   "@view.period": {
     "defaultMessage": "上午/下午"
   },

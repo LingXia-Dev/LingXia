@@ -17,6 +17,9 @@
   "@view.minute": {
     "defaultMessage": "분"
   },
+  "@view.second": {
+    "defaultMessage": "초"
+  },
   "@view.period": {
     "defaultMessage": "오전/오후"
   },

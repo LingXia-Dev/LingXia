@@ -4547,7 +4547,8 @@
       "@view.nextMonth": (a, f) => "\u0627\u0644\u0634\u0647\u0631 \u0627\u0644\u062A\u0627\u0644\u064A",
       "@view.options": (a, f) => "\u062E\u064A\u0627\u0631\u0627\u062A",
       "@view.period": (a, f) => "\u0635/\u0645",
-      "@view.previousMonth": (a, f) => "\u0627\u0644\u0634\u0647\u0631 \u0627\u0644\u0633\u0627\u0628\u0642"
+      "@view.previousMonth": (a, f) => "\u0627\u0644\u0634\u0647\u0631 \u0627\u0644\u0633\u0627\u0628\u0642",
+      "@view.second": (a, f) => "\u062B\u0627\u0646\u064A\u0629"
     },
     "de": {
       "@view.cancel": (a, f) => "Abbrechen",
@@ -4564,7 +4565,8 @@
       "@view.nextMonth": (a, f) => "N\xE4chster Monat",
       "@view.options": (a, f) => "Optionen",
       "@view.period": (a, f) => "AM/PM",
-      "@view.previousMonth": (a, f) => "Vorheriger Monat"
+      "@view.previousMonth": (a, f) => "Vorheriger Monat",
+      "@view.second": (a, f) => "Sekunde"
     },
     "en": {
       "@view.cancel": (a, f) => "Cancel",
@@ -4581,7 +4583,8 @@
       "@view.nextMonth": (a, f) => "Next month",
       "@view.options": (a, f) => "Options",
       "@view.period": (a, f) => "AM/PM",
-      "@view.previousMonth": (a, f) => "Previous month"
+      "@view.previousMonth": (a, f) => "Previous month",
+      "@view.second": (a, f) => "Second"
     },
     "es": {
       "@view.cancel": (a, f) => "Cancelar",
@@ -4598,7 +4601,8 @@
       "@view.nextMonth": (a, f) => "Mes siguiente",
       "@view.options": (a, f) => "Opciones",
       "@view.period": (a, f) => "a. m./p. m.",
-      "@view.previousMonth": (a, f) => "Mes anterior"
+      "@view.previousMonth": (a, f) => "Mes anterior",
+      "@view.second": (a, f) => "Segundo"
     },
     "fr": {
       "@view.cancel": (a, f) => "Annuler",
@@ -4615,7 +4619,8 @@
       "@view.nextMonth": (a, f) => "Mois suivant",
       "@view.options": (a, f) => "Options",
       "@view.period": (a, f) => "AM/PM",
-      "@view.previousMonth": (a, f) => "Mois pr\xE9c\xE9dent"
+      "@view.previousMonth": (a, f) => "Mois pr\xE9c\xE9dent",
+      "@view.second": (a, f) => "Seconde"
     },
     "ja": {
       "@view.cancel": (a, f) => "\u30AD\u30E3\u30F3\u30BB\u30EB",
@@ -4632,7 +4637,8 @@
       "@view.nextMonth": (a, f) => "\u6B21\u306E\u6708",
       "@view.options": (a, f) => "\u30AA\u30D7\u30B7\u30E7\u30F3",
       "@view.period": (a, f) => "\u5348\u524D/\u5348\u5F8C",
-      "@view.previousMonth": (a, f) => "\u524D\u306E\u6708"
+      "@view.previousMonth": (a, f) => "\u524D\u306E\u6708",
+      "@view.second": (a, f) => "\u79D2"
     },
     "ko": {
       "@view.cancel": (a, f) => "\uCDE8\uC18C",
@@ -4649,7 +4655,8 @@
       "@view.nextMonth": (a, f) => "\uB2E4\uC74C \uB2EC",
       "@view.options": (a, f) => "\uC635\uC158",
       "@view.period": (a, f) => "\uC624\uC804/\uC624\uD6C4",
-      "@view.previousMonth": (a, f) => "\uC774\uC804 \uB2EC"
+      "@view.previousMonth": (a, f) => "\uC774\uC804 \uB2EC",
+      "@view.second": (a, f) => "\uCD08"
     },
     "pt": {
       "@view.cancel": (a, f) => "Cancelar",
@@ -4666,7 +4673,8 @@
       "@view.nextMonth": (a, f) => "Pr\xF3ximo m\xEAs",
       "@view.options": (a, f) => "Op\xE7\xF5es",
       "@view.period": (a, f) => "AM/PM",
-      "@view.previousMonth": (a, f) => "M\xEAs anterior"
+      "@view.previousMonth": (a, f) => "M\xEAs anterior",
+      "@view.second": (a, f) => "Segundo"
     },
     "ru": {
       "@view.cancel": (a, f) => "\u041E\u0442\u043C\u0435\u043D\u0430",
@@ -4683,7 +4691,8 @@
       "@view.nextMonth": (a, f) => "\u0421\u043B\u0435\u0434\u0443\u044E\u0449\u0438\u0439 \u043C\u0435\u0441\u044F\u0446",
       "@view.options": (a, f) => "\u041F\u0430\u0440\u0430\u043C\u0435\u0442\u0440\u044B",
       "@view.period": (a, f) => "AM/PM",
-      "@view.previousMonth": (a, f) => "\u041F\u0440\u0435\u0434\u044B\u0434\u0443\u0449\u0438\u0439 \u043C\u0435\u0441\u044F\u0446"
+      "@view.previousMonth": (a, f) => "\u041F\u0440\u0435\u0434\u044B\u0434\u0443\u0449\u0438\u0439 \u043C\u0435\u0441\u044F\u0446",
+      "@view.second": (a, f) => "\u0421\u0435\u043A\u0443\u043D\u0434\u0430"
     },
     "zh": {
       "@view.cancel": (a, f) => "\u53D6\u6D88",
@@ -4700,7 +4709,8 @@
       "@view.nextMonth": (a, f) => "\u4E0B\u4E2A\u6708",
       "@view.options": (a, f) => "\u9009\u9879",
       "@view.period": (a, f) => "\u4E0A\u5348/\u4E0B\u5348",
-      "@view.previousMonth": (a, f) => "\u4E0A\u4E2A\u6708"
+      "@view.previousMonth": (a, f) => "\u4E0A\u4E2A\u6708",
+      "@view.second": (a, f) => "\u79D2"
     }
   };
 
@@ -4851,8 +4861,7 @@
       return { displayValue: date ? format(date) : value, sizeText: sizeText2 };
     }
     const words2 = wordsFor(language);
-    const time = parseTime(value);
-    const shown = /:\d{2}:\d{2}$/.test(value) ? { ...time, second: Number(value.slice(-2)) } : time;
+    const shown = parseTime(value);
     const widest = (second) => [words2.am, words2.pm].map((period) => clockText({ hour: 12, minute: 0, second }, { am: period, pm: period }, hourCycle).replace(/\d/g, "0"));
     const sizeText = [...new Set(widest(seconds || shown?.second !== void 0 ? 0 : void 0))].join("\n");
     return { displayValue: shown ? clockText(shown, words2, hourCycle) : value, sizeText };
@@ -4903,6 +4912,7 @@
       next: w("nextMonth"),
       hour: w("hour"),
       minute: w("minute"),
+      second: w("second"),
       period: w("period"),
       options: w("options")
     };
@@ -4923,10 +4933,13 @@
     return month >= 1 && month <= 12 && day >= 1 && day <= daysIn(year, month) ? { year, month, day } : null;
   }
   function parseTime(value) {
-    const match = /^(\d{2}):(\d{2})(?::\d{2})?$/.exec(value ?? "");
+    const match = /^(\d{2}):(\d{2})(?::(\d{2}))?$/.exec(value ?? "");
     if (!match) return null;
-    const [hour, minute] = match.slice(1).map(Number);
-    return hour < 24 && minute < 60 ? { hour, minute } : null;
+    const [hour, minute] = match.slice(1, 3).map(Number);
+    if (hour > 23 || minute > 59) return null;
+    if (match[3] === void 0) return { hour, minute };
+    const second = Number(match[3]);
+    return second < 60 ? { hour, minute, second } : null;
   }
   function addDays({ year, month, day }, days) {
     let ordinal = toOrdinal(year, month, day) + days;
@@ -4989,7 +5002,12 @@
     const every = Number.isFinite(step) && step >= 60 ? Math.max(1, Math.round(step / 60)) : 1;
     return Array.from({ length: Math.ceil(60 / every) }, (_, index) => index * every).filter((minute) => minute < 60);
   }
-  var timeIso = ({ hour, minute }) => `${pad(hour)}:${pad(minute)}`;
+  function secondValues(step) {
+    if (!Number.isFinite(step) || step <= 0 || step >= 60) return null;
+    const every = Math.max(1, Math.round(step));
+    return Array.from({ length: Math.ceil(60 / every) }, (_, index) => index * every).filter((second) => second < 60);
+  }
+  var timeIso = ({ hour, minute, second }) => `${pad(hour)}:${pad(minute)}${second === void 0 ? "" : `:${pad(second)}`}`;
 
   // src/runtime/webview.js
   var fields2 = ["url", "title", "error", "fullscreen"];
@@ -6515,10 +6533,40 @@
         focus: clampDate(parseDate(value) ?? today(), low, high)
       };
     } else {
-      picker = { kind, key, identity: identity2, step: Number(step), value: parseTime(value) ?? { hour: 9, minute: 0 }, min: parseTime(min), max: parseTime(max) };
+      const seconds = secondValues(Number(step));
+      const { hour, minute, second } = parseTime(value) ?? { hour: 9, minute: 0 };
+      picker = {
+        kind,
+        key,
+        identity: identity2,
+        step: Number(step),
+        minutes: minuteValues(Number(step)),
+        seconds,
+        value: seconds ? { hour, minute, second: second ?? 0 } : { hour, minute },
+        min: parseTime(min),
+        max: parseTime(max)
+      };
+      if (!timeAllowed(picker.value)) picker.value = firstAllowed(picker.value) ?? picker.value;
     }
     return true;
   }
+  var daySeconds = ({ hour, minute, second = 0 }) => hour * 3600 + minute * 60 + second;
+  function timeAllowed(time) {
+    const { min, max } = picker;
+    if (!min && !max) return true;
+    const at = daySeconds(time), low = min ? daySeconds(min) : 0, high = max ? daySeconds(max) : 86399;
+    return low <= high ? at >= low && at <= high : at >= low || at <= high;
+  }
+  var hourTimes = (hour) => picker.minutes.flatMap((minute) => picker.seconds ? picker.seconds.map((second) => ({ hour, minute, second })) : [{ hour, minute }]);
+  function firstAllowed(from) {
+    for (let offset = 0; offset < 25; offset++) {
+      const hour = (from.hour + offset) % 24;
+      const found = hourTimes(hour).find((time) => (offset > 0 || daySeconds(time) >= daySeconds(from)) && timeAllowed(time));
+      if (found) return found;
+    }
+    return null;
+  }
+  var hourAllowed = (hour) => hourTimes(hour).some(timeAllowed);
   var hasPicker = () => picker !== null;
   var pickerIdentity = () => picker?.identity ?? null;
   function settle(value) {
@@ -6589,25 +6637,38 @@
       return true;
     }
     if (key === "Enter") {
-      settle(timeIso(picker.value));
+      if (timeAllowed(picker.value)) settle(timeIso(picker.value));
       return true;
     }
     if (/^[0-9]$/.test(key)) {
-      picker.typed = ((picker.typed ?? "") + key).slice(-4);
-      const digits = picker.typed.padStart(4, "0");
-      const hour = Number(digits.slice(0, 2)), minute = Number(digits.slice(2));
-      if (hour < 24 && minute < 60) picker.value = { hour, minute };
+      const width = picker.seconds ? 6 : 4;
+      picker.typed = ((picker.typed ?? "") + key).slice(-width);
+      const digits = picker.typed.padStart(width, "0");
+      const hour2 = Number(digits.slice(0, 2)), minute2 = Number(digits.slice(2, 4)), second = Number(digits.slice(4) || 0);
+      if (hour2 < 24 && minute2 < 60 && second < 60) picker.value = picker.seconds ? { hour: hour2, minute: minute2, second } : { hour: hour2, minute: minute2 };
       return true;
     }
     const delta = { ArrowUp: -1, ArrowDown: 1 }[key];
     if (delta === void 0) return false;
-    const minutes = minuteValues(picker.step);
-    const at = Math.max(0, minutes.indexOf(picker.value.minute));
-    const index = at + delta;
-    if (index < 0) picker.value = { hour: (picker.value.hour + 23) % 24, minute: minutes.at(-1) };
-    else if (index >= minutes.length) picker.value = { hour: (picker.value.hour + 1) % 24, minute: minutes[0] };
-    else picker.value = { ...picker.value, minute: minutes[index] };
+    const { minutes } = picker;
+    let { hour, minute } = picker.value;
+    const index = Math.max(0, minutes.indexOf(minute)) + delta;
+    if (index < 0) {
+      hour = (hour + 23) % 24;
+      minute = minutes.at(-1);
+    } else if (index >= minutes.length) {
+      hour = (hour + 1) % 24;
+      minute = minutes[0];
+    } else minute = minutes[index];
+    picker.value = minuteTime(hour, minute) ?? picker.value;
     return true;
+  }
+  function minuteTime(hour, minute) {
+    if (!picker.seconds) return timeAllowed({ hour, minute }) ? { hour, minute } : null;
+    const kept2 = { hour, minute, second: picker.value.second };
+    if (timeAllowed(kept2)) return kept2;
+    const second = picker.seconds.find((value) => timeAllowed({ hour, minute, second: value }));
+    return second === void 0 ? null : { hour, minute, second };
   }
   function dateBody(words2, env, titled) {
     const { focus, value, min, max } = picker;
@@ -6690,7 +6751,7 @@
   }
   var ROW = 40;
   var VISIBLE = 5;
-  function timeColumn(testId, label2, values, selected, format, choose, cyclic = false) {
+  function timeColumn(testId, label2, values, selected, format, choose, cyclic = false, enabled = () => true) {
     const copies = cyclic ? 3 : 1, middle = cyclic ? 1 : 0;
     const index = middle * values.length + Math.max(0, values.indexOf(selected));
     const pad2 = cyclic ? 0 : ROW * Math.floor(VISIBLE / 2);
@@ -6705,7 +6766,7 @@
         anchor: { index: Math.max(0, index - offset), align: "start", seq: index },
         style: { height: ROW * VISIBLE, paddingTop: pad2, paddingBottom: pad2, scrollSnapType: "y" },
         row: (i) => {
-          const value = values[i % values.length], copy2 = Math.floor(i / values.length), on = value === selected;
+          const value = values[i % values.length], copy2 = Math.floor(i / values.length), on = value === selected, live = enabled(value);
           const id = copy2 === middle ? `${testId}-${value}` : `${testId}-${value}-${copy2}`;
           return h("button", {
             key: `${copy2}:${value}`,
@@ -6713,6 +6774,7 @@
             role: "option",
             "aria-selected": on && copy2 === middle,
             "aria-hidden": copy2 !== middle,
+            disabled: !live,
             onClick: () => choose(value),
             style: {
               height: ROW,
@@ -6721,7 +6783,7 @@
               borderRadius: 8,
               scrollSnapAlign: "center",
               backgroundColor: on ? "accent/12" : "transparent",
-              color: on ? "accent" : "text",
+              color: on ? "accent" : live ? "text" : "text-faint",
               fontSize: 17,
               fontWeight: on ? 600 : 400,
               fontVariantNumeric: "tabular-nums"
@@ -6733,12 +6795,14 @@
   }
   function timeBody(words2, env) {
     const cycle = env?.hourCycle === "h12" ? "h12" : "h23";
-    const { hour, minute } = picker.value;
+    const { hour, minute, second } = picker.value;
     const two = (value) => String(value).padStart(2, "0");
     const set = (next) => {
-      picker.value = { ...picker.value, ...next };
+      const wanted = { ...picker.value, ...next };
+      picker.value = timeAllowed(wanted) ? wanted : "second" in next ? picker.value : "minute" in next ? minuteTime(wanted.hour, wanted.minute) ?? picker.value : hourTimes(wanted.hour).find(timeAllowed) ?? picker.value;
       picker.typed = "";
     };
+    const hour12 = (value) => value % 12 + (hour >= 12 ? 12 : 0);
     const columns = [
       timeColumn(
         "lx-picker-hour",
@@ -6746,18 +6810,44 @@
         hourValues(cycle),
         cycle === "h12" ? hour % 12 || 12 : hour,
         cycle === "h12" ? String : two,
-        (value) => set({ hour: cycle === "h12" ? value % 12 + (hour >= 12 ? 12 : 0) : value }),
-        true
+        (value) => set({ hour: cycle === "h12" ? hour12(value) : value }),
+        true,
+        (value) => hourAllowed(cycle === "h12" ? hour12(value) : value)
       ),
-      timeColumn("lx-picker-minute", words2.minute, minuteValues(picker.step), minute, two, (value) => set({ minute: value }), true)
+      timeColumn(
+        "lx-picker-minute",
+        words2.minute,
+        picker.minutes,
+        minute,
+        two,
+        (value) => set({ minute: value }),
+        true,
+        (value) => minuteTime(hour, value) !== null
+      )
     ];
+    if (picker.seconds) columns.push(timeColumn(
+      "lx-picker-second",
+      words2.second,
+      picker.seconds,
+      second,
+      two,
+      (value) => set({ second: value }),
+      true,
+      (value) => timeAllowed({ hour, minute, second: value })
+    ));
+    const halfHours = (period) => Array.from({ length: 12 }, (_, index) => index + (period === "pm" ? 12 : 0));
     if (cycle === "h12") columns.push(timeColumn(
       "lx-picker-period",
       words2.period,
       ["am", "pm"],
       hour >= 12 ? "pm" : "am",
       (period) => words2[period],
-      (period) => set({ hour: hour % 12 + (period === "pm" ? 12 : 0) })
+      (period) => {
+        const moved = hour % 12 + (period === "pm" ? 12 : 0);
+        set({ hour: hourAllowed(moved) ? moved : halfHours(period).find(hourAllowed) ?? moved });
+      },
+      false,
+      (period) => halfHours(period).some(hourAllowed)
     ));
     return h("view", { style: { flexDirection: "row", gap: 8, justifyContent: "center" } }, ...columns);
   }
@@ -6807,14 +6897,14 @@
   }
   var pickerAnchor = (env) => picker && (env?.pointer ?? "coarse") !== "coarse" ? picker.identity : null;
   var sheetStyle = ({ borderRadius, ...rest }) => rest;
-  var clock3 = ({ hour, minute }, words2, env) => clockText({ hour, minute }, words2, env?.hourCycle);
+  var clock3 = (time, words2, env) => clockText(time, words2, env?.hourCycle);
   function pickerNode(env) {
     if (!picker) return null;
     const words2 = wordsFor(env?.language);
     const touch = (env?.pointer ?? "coarse") === "coarse";
     const body = picker.kind === "date" ? dateBody(words2, env, !touch) : picker.kind === "time" ? timeBody(words2, env) : selectBody(touch, words2);
-    const unpicked = picker.kind === "date" && picker.pick === null;
-    const commit2 = () => picker.kind === "date" ? picker.pick !== null && settle(iso2(picker.pick)) : picker.kind === "time" ? settle(timeIso(picker.value)) : picker.pick >= 0 ? settleSelect(picker.pick) : settle(null);
+    const unpicked = picker.kind === "date" ? picker.pick === null : picker.kind === "time" && !timeAllowed(picker.value);
+    const commit2 = () => unpicked ? void 0 : picker.kind === "date" ? settle(iso2(picker.pick)) : picker.kind === "time" ? settle(timeIso(picker.value)) : picker.pick >= 0 ? settleSelect(picker.pick) : settle(null);
     const cancel = (style2) => h("button", { "data-testid": "lx-picker-cancel", onClick: () => settle(null), style: style2 }, words2.cancel);
     const done = (style2) => h("button", {
       "data-testid": "lx-picker-done",

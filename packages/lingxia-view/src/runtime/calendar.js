@@ -67,8 +67,7 @@ export function fieldText(kind, value, { seconds, language, hourCycle }) {
     return { displayValue: date ? format(date) : value, sizeText };
   }
   const words = wordsFor(language);
-  const time = parseTime(value);
-  const shown = /:\d{2}:\d{2}$/.test(value) ? { ...time, second: Number(value.slice(-2)) } : time;
+  const shown = parseTime(value);
   const widest = second => [words.am, words.pm].map(period =>
     clockText({ hour: 12, minute: 0, second }, { am: period, pm: period }, hourCycle).replace(/\d/g, '0'));
   const sizeText = [...new Set(widest(seconds || shown?.second !== undefined ? 0 : undefined))].join('\n');
@@ -116,7 +115,7 @@ export function wordsFor(language) {
   const table = names[String(language ?? '').split(/[-_]/)[0].toLowerCase()] ?? names.en;
   const w = key => word(`@view.${key}`, language);
   return { ...table, cancel: w('cancel'), done: w('done'), previous: w('previousMonth'), next: w('nextMonth'),
-    hour: w('hour'), minute: w('minute'), period: w('period'), options: w('options') };
+    hour: w('hour'), minute: w('minute'), second: w('second'), period: w('period'), options: w('options') };
 }
 
 const pad = (value, width = 2) => String(value).padStart(width, '0');
@@ -137,11 +136,15 @@ export function parseDate(value) {
   const [year, month, day] = match.slice(1).map(Number);
   return month >= 1 && month <= 12 && day >= 1 && day <= daysIn(year, month) ? { year, month, day } : null;
 }
+/** `HH:MM` or `HH:MM:SS`; `second` only when the text has one. */
 export function parseTime(value) {
-  const match = /^(\d{2}):(\d{2})(?::\d{2})?$/.exec(value ?? '');
+  const match = /^(\d{2}):(\d{2})(?::(\d{2}))?$/.exec(value ?? '');
   if (!match) return null;
-  const [hour, minute] = match.slice(1).map(Number);
-  return hour < 24 && minute < 60 ? { hour, minute } : null;
+  const [hour, minute] = match.slice(1, 3).map(Number);
+  if (hour > 23 || minute > 59) return null;
+  if (match[3] === undefined) return { hour, minute };
+  const second = Number(match[3]);
+  return second < 60 ? { hour, minute, second } : null;
 }
 
 /** The date `days` after `date` (negative before). */
@@ -211,4 +214,10 @@ export function minuteValues(step) {
   const every = Number.isFinite(step) && step >= 60 ? Math.max(1, Math.round(step / 60)) : 1;
   return Array.from({ length: Math.ceil(60 / every) }, (_, index) => index * every).filter(minute => minute < 60);
 }
-export const timeIso = ({ hour, minute }) => `${pad(hour)}:${pad(minute)}`;
+/** Seconds a `step` under a minute allows, or null when the step is whole minutes. */
+export function secondValues(step) {
+  if (!Number.isFinite(step) || step <= 0 || step >= 60) return null;
+  const every = Math.max(1, Math.round(step));
+  return Array.from({ length: Math.ceil(60 / every) }, (_, index) => index * every).filter(second => second < 60);
+}
+export const timeIso = ({ hour, minute, second }) => `${pad(hour)}:${pad(minute)}${second === undefined ? '' : `:${pad(second)}`}`;

@@ -17,6 +17,9 @@
   "@view.minute": {
     "defaultMessage": "Minute"
   },
+  "@view.second": {
+    "defaultMessage": "Sekunde"
+  },
   "@view.period": {
     "defaultMessage": "AM/PM"
   },

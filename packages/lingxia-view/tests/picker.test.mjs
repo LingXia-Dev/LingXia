@@ -7,6 +7,12 @@ import { publishHost } from '../src/host.js';
 
 const open = request => openPicker({ identity: '/i:0:0/i:0:0', ...request });
 const render = (view, env) => { const out = decode(prepare(view, { env })); commit(); return out; };
+// Every row of the picker's columns, not only the first window.
+const renderAll = (view, env) => {
+  const lists = decode(prepare(view, { env })).filter(n => n.props?.listId !== undefined);
+  const windows = Object.fromEntries(lists.map(n => [n.props.listId, { start: 0, end: n.props.listCount, leading: 0, trailing: 0 }]));
+  const out = decode(prepare(view, { env }, windows)); commit(); return out;
+};
 
 test('a date picker opens on its editor, moves by keys and commits an ISO date', () => {
   reset();
@@ -76,6 +82,71 @@ test('a time picker honours the step and the hour cycle, and takes typed digits'
   for (const key of ['0', '7', '4', '5']) pickerKey(key);
   pickerKey('Enter');
   assert.equal(JSON.parse(takePickerResults())[0].value, '07:45');
+});
+
+test('a time picker keeps to min and max: out-of-range rows are inert, a choice moves into range, Done waits', () => {
+  reset();
+  const view = () => h('view', {});
+  const env = { pointer: 'fine', hourCycle: 'h23', language: 'en' };
+  open({ kind: 'time', value: '08:00', min: '09:30', max: '17:15', step: 900 });
+  let nodes = renderAll(view, env);
+  const row = id => nodes.find(n => n.testId === id);
+  assert.equal(row('lx-picker-hour-9').props.stateSelected, 1, 'a value before min opens on the first time in range');
+  assert.equal(row('lx-picker-minute-30').props.stateSelected, 1);
+  assert.equal(row('lx-picker-hour-8').props.enabled === 0, true, 'an hour with no time in range is inert');
+  assert.equal(row('lx-picker-hour-18').props.enabled === 0, true);
+  assert.equal(row('lx-picker-minute-15').props.enabled === 0, true, 'in 9 o\'clock, minutes before :30 are inert');
+  dispatch(row('lx-picker-hour-17').props.onClick);
+  nodes = renderAll(view, env);
+  assert.equal(row('lx-picker-minute-0').props.stateSelected, 1, '17:30 is past max, so the minute moves to 17:00');
+  assert.equal(row('lx-picker-minute-30').props.enabled === 0, true);
+  pickerKey('ArrowDown'); pickerKey('ArrowDown');
+  pickerKey('Enter');
+  assert.equal(JSON.parse(takePickerResults())[0].value, '17:15', 'arrows stop at the last time in range');
+
+  open({ kind: 'time', value: '12:00', min: '09:00', max: '10:00' });
+  for (const key of ['1', '1', '0', '0']) pickerKey(key);
+  nodes = renderAll(view, env);
+  assert.equal(row('lx-picker-done').props.enabled === 0, true, 'a typed time past max cannot be committed');
+  pickerKey('Enter');
+  assert.equal(hasPicker(), true, 'Enter waits too');
+  pickerKey('Escape'); takePickerResults();
+});
+
+test('a time range across midnight and a 12-hour period column', () => {
+  reset();
+  const view = () => h('view', {});
+  open({ kind: 'time', value: '23:00', min: '22:00', max: '02:00', step: 3600 });
+  let nodes = renderAll(view, { pointer: 'fine', hourCycle: 'h12', language: 'en-US' });
+  const row = id => nodes.find(n => n.testId === id);
+  assert.equal(row('lx-picker-hour-10').props.enabled === 0, false, '10 PM is in range');
+  assert.equal(row('lx-picker-hour-1').props.enabled === 0, true, '1 PM is not');
+  dispatch(row('lx-picker-period-am').props.onClick);
+  nodes = renderAll(view, { pointer: 'fine', hourCycle: 'h12', language: 'en-US' });
+  assert.equal(row('lx-picker-hour-1').props.enabled === 0, false, '1 AM is');
+  assert.equal(row('lx-picker-hour-5').props.enabled === 0, true);
+  pickerKey('Enter');
+  assert.equal(JSON.parse(takePickerResults())[0].value, '00:00', '11 PM to AM has no 11 AM in range, so it takes the first AM hour');
+});
+
+test('a step under a minute adds a seconds column and commits HH:MM:SS', () => {
+  reset();
+  const view = () => h('view', {});
+  const env = { pointer: 'coarse', hourCycle: 'h23', language: 'en' };
+  open({ kind: 'time', value: '10:20:45', step: 15 });
+  let nodes = renderAll(view, env);
+  const row = id => nodes.find(n => n.testId === id);
+  assert.ok(nodes.some(n => n.testId === 'lx-picker-second'), 'a seconds column');
+  assert.equal(row('lx-picker-second-45').props.stateSelected, 1);
+  assert.equal(row('lx-picker-title').text, '10:20:45');
+  dispatch(row('lx-picker-second-15').props.onClick);
+  nodes = renderAll(view, env);
+  dispatch(row('lx-picker-done').props.onClick);
+  assert.equal(JSON.parse(takePickerResults())[0].value, '10:20:15');
+  open({ kind: 'time', value: '10:20', step: 1 });
+  for (const key of ['0', '7', '0', '8', '0', '9']) pickerKey(key);
+  pickerKey('Enter');
+  assert.equal(JSON.parse(takePickerResults())[0].value, '07:08:09');
 });
 
 test('a select picker lists options, skips disabled ones and types ahead', () => {

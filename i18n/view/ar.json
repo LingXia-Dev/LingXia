@@ -17,6 +17,9 @@
   "@view.minute": {
     "defaultMessage": "الدقيقة"
   },
+  "@view.second": {
+    "defaultMessage": "ثانية"
+  },
   "@view.period": {
     "defaultMessage": "ص/م"
   },
