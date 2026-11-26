@@ -45,6 +45,67 @@ test('pairs on roles the engine derives wait for the resolved palette', t => {
   t.diagnostic(`${waiting.length} pair-appearances wait for the resolved palette (${theme.source})`);
 });
 
+/** High contrast holds text to 7:1 and a 3:1 mark to 4.5:1, as the theme boosts its own pairs. */
+const boosted = pair => (needed(pair) >= 4.5 ? 7 : 4.5);
+
+/** Pairs the high-contrast looks miss today: the theme's accessibility work, named so none is added. */
+const highContrastGaps = new Set([
+  'Avatar: initials (high-contrast-light)',
+  'Banner: action on neutral (high-contrast-light)',
+  'Banner: action on info (high-contrast-light)',
+  'Banner: action on success (high-contrast-light)',
+  'Banner: action on warning (high-contrast-light)',
+  'Banner: action on danger (high-contrast-light)',
+  'Button: disabled label on its 6% ink fill, on the page (high-contrast-light)',
+  'Button: disabled label on its 6% ink fill, on a card (high-contrast-light)',
+  'Code: title and line numbers (high-contrast-light)',
+  'Code: a sign and number on an added line (high-contrast-light)',
+  'Code: a sign and number on a removed line (high-contrast-light)',
+  'Code: a number on a marked line (high-contrast-light)',
+  'Code: a hunk or file header on its tint, over the block (high-contrast-light)',
+  'Code: a keyword (high-contrast-light)',
+  'Code: a string (high-contrast-light)',
+  'Code: a number or literal (high-contrast-light)',
+  'Item: second line and end values, selected (high-contrast-light)',
+  'MessageBubble: failure words (high-contrast-light)',
+  'NavList: current row count (high-contrast-light)',
+  'SegmentedControl: other labels (high-contrast-light)',
+  'SegmentedControl: thumb edge, with icon-only segments (high-contrast-light)',
+  'Slider: thumb rim against the track (high-contrast-light)',
+  "Tabs: other segments' text (high-contrast-light)",
+  'ToggleButton: disabled label, off, on a card (high-contrast-light)',
+  'ToggleButton: disabled label, on (high-contrast-light)',
+  'VideoControls: progress against the unplayed track (high-contrast-light)',
+  'Avatar: initials (high-contrast-dark)',
+  'Banner: action on neutral (high-contrast-dark)',
+  'Banner: action on info (high-contrast-dark)',
+  'Banner: action on success (high-contrast-dark)',
+  'Banner: action on warning (high-contrast-dark)',
+  'Banner: action on danger (high-contrast-dark)',
+  'Code: a sign and number on an added line (high-contrast-dark)',
+  'Code: a sign and number on a removed line (high-contrast-dark)',
+  'Code: a hunk or file header on its tint, over the block (high-contrast-dark)',
+  'Code: a keyword (high-contrast-dark)',
+  'Code: a number or literal (high-contrast-dark)',
+  'FileInput: failure line (high-contrast-dark)',
+  'MessageBubble: failure words (high-contrast-dark)',
+  'Slider: thumb rim against the track (high-contrast-dark)',
+  'Toast: action (high-contrast-dark)',
+  'VideoControls: progress against the unplayed track (high-contrast-dark)',
+]);
+
+test('the high-contrast looks reach every computable pair at the boosted minimum, except the listed gaps', () => {
+  assert.equal(theme.source, '@lingxia/view/theme', 'the resolved palette, which carries the high-contrast looks');
+  const failing = [];
+  for (const pair of pairs)
+    for (const look of ['high-contrast-light', 'high-contrast-dark']) {
+      const result = ratio(theme.roles[look], pair);
+      if (!result.missing && result.value < boosted(pair)) failing.push({ key: key(pair, look), line: `${format(result.value)}, needs ${boosted(pair)}:1` });
+    }
+  const report = failing.map(f => `${f.key}: ${f.line}`).join('\n');
+  assert.deepEqual(failing.map(f => f.key).sort(), [...highContrastGaps].sort(), report);
+});
+
 /** Pairs that clear their minimum by under 0.1: a palette nudge can tip them, so each is named. */
 const tight = new Set(['Code: a sign and number on a removed line (light)', 'Item: chevron (light)', 'SegmentedControl: thumb edge, with icon-only segments (light)', 'Toast: action (dark)']);
 
