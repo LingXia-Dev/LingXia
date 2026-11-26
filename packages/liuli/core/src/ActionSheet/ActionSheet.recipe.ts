@@ -8,6 +8,7 @@ export const actionSheetParts = {
   description: 'text',
   actions: 'view',
   item: 'button',
+  itemContent: 'view',
   itemIcon: 'vector',
   itemLabel: 'text',
   cancel: 'view',
@@ -43,19 +44,24 @@ export const actionSheetRecipe = {
   },
   /** A row: touch height on a phone, a menu's height wider. */
   item: {
-    base: 'flex-row items-center gap-3 self-stretch px-3 py-2 rounded-control text-body text-start transition-colors duration-fast ease-standard hover:bg-text/5 active:bg-text/8 focus-visible:bg-text/8 disabled:opacity-40',
+    base: 'flex-row items-center self-stretch px-3 py-2 rounded-control text-body text-start transition-colors duration-fast ease-standard hover:bg-text/5 active:bg-text/8 focus-visible:bg-text/8 disabled:opacity-40',
     size: { sheet: 'min-h-control-lg', floating: 'min-h-control-md' },
     variant: {
       default: 'text-text',
       destructive: 'text-danger',
     } satisfies Record<ActionSheetItemVariant, string>,
   },
-  /** In the row's type, so it grows with the reader's text; a row without one gets an empty box of the same size, so the labels line up. */
+  /** The icon and label, centred in the row as one, so the icon keeps to the label's first line. */
+  itemContent: {
+    base: 'grow shrink min-w-0 flex-row items-start gap-3',
+  },
+  /** On the label's first line, growing with the reader's text; a row without one gets an empty box of the same size, so the labels line up. */
   itemIcon: {
-    base: 'size-[1.33em] shrink-0',
+    base: 'size-5 shrink-0',
   },
   itemLabel: {
-    base: 'grow shrink min-w-0 text-body',
+    base: 'grow shrink min-w-0',
+    type: 'text-body',
   },
   /** Cancel stands apart, under a hairline. */
   cancel: {

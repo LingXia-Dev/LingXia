@@ -83,6 +83,7 @@
         "description": "text",
         "actions": "view",
         "item": "button",
+        "itemContent": "view",
         "itemIcon": "vector",
         "itemLabel": "text",
         "cancel": "view"

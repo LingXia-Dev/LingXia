@@ -1,4 +1,4 @@
-import { useLocal } from '@lingxia/view';
+import { cx, useLocal } from '@lingxia/view';
 import { Button } from '../Button/Button';
 import { actionSheetRecipe } from './ActionSheet.recipe';
 import { ActionSheet, type ActionSheetProps } from './ActionSheet';
@@ -74,18 +74,18 @@ export function Parts() {
         </view>
         <view className={r.actions.base}>
           <view className="flex-row items-center gap-3 self-stretch px-3 min-h-control-lg text-text">
-            <Glyph name="share" className={r.itemIcon.base} />
-            <text className={r.itemLabel.base}>Share</text>
+            <Glyph name="share" side={20} className={r.itemIcon.base} />
+            <text className={cx(r.itemLabel.base, r.itemLabel.type)}>Share</text>
           </view>
           <view className="flex-row items-center gap-3 self-stretch px-3 min-h-control-lg text-danger">
-            <Glyph name="delete" className={r.itemIcon.base} />
-            <text className={r.itemLabel.base}>Delete</text>
+            <Glyph name="delete" side={20} className={r.itemIcon.base} />
+            <text className={cx(r.itemLabel.base, r.itemLabel.type)}>Delete</text>
           </view>
         </view>
         <view className={r.cancel.base}>
           <view className="flex-row items-center gap-3 self-stretch px-3 min-h-control-lg text-text">
             <view className={r.itemIcon.base} />
-            <text className={r.itemLabel.base}>Cancel</text>
+            <text className={cx(r.itemLabel.base, r.itemLabel.type)}>Cancel</text>
           </view>
         </view>
       </view>

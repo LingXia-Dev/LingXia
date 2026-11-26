@@ -1,6 +1,7 @@
 import { cx, useId, useLocal, useView } from '@lingxia/view';
 import type { IconRef } from '../Icon/Icon';
-import { Glyph } from '../internal/Glyph';
+import { FirstLine } from '../internal/firstLine';
+import { Glyph, useTextGrowth } from '../internal/Glyph';
 import { liuliText } from '../i18n/text';
 import { actionSheetRecipe as r } from './ActionSheet.recipe';
 import { dataOf } from '../internal/data';
@@ -61,6 +62,7 @@ export function ActionSheet({
 }: ActionSheetProps) {
   const form = useView().env.sizeClass === 'compact' ? 'sheet' : 'floating';
   const hasIcons = items.some(item => item.icon !== undefined);
+  const blankIcon = useTextGrowth(hasIcons ? 20 : undefined, 1.5);
   const descriptionId = `${useId()}-description`;
   // On a phone the sheet sits at its one detent, or leaves by a drag; the next open starts in place.
   const detent = useLocal('detent', 0);
@@ -70,8 +72,14 @@ export function ActionSheet({
   };
   const row = (key: string, text: string, onClick: () => void, variant: ActionSheetItemVariant, icon: IconRef | undefined, isDisabled: boolean, id: string | undefined) => (
     <button key={key} disabled={isDisabled} onClick={onClick} data-testid={id} className={cx(r.item.base, r.item.size[form], r.item.variant[variant])}>
-      {hasIcons && (icon === undefined ? <view aria-hidden className={r.itemIcon.base} /> : <Glyph name={icon} className={r.itemIcon.base} />)}
-      <text className={r.itemLabel.base}>{text}</text>
+      <view className={r.itemContent.base}>
+        {hasIcons && (
+          <FirstLine strut={r.itemLabel.type}>
+            {icon === undefined ? <view aria-hidden style={blankIcon} className={r.itemIcon.base} /> : <Glyph name={icon} side={20} className={r.itemIcon.base} />}
+          </FirstLine>
+        )}
+        <text className={cx(r.itemLabel.base, r.itemLabel.type)}>{text}</text>
+      </view>
     </button>
   );
   const content = (
