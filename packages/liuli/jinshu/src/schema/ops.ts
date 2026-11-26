@@ -67,6 +67,7 @@ function hydrateBlockInput(input: BlockInput, registry: JinshuRegistry): JinshuB
   if (Array.isArray(input.blocks)) {
     raw.blocks = input.blocks.map(b => hydrateBlockInput(b, registry));
   }
+  if (Array.isArray(input.transcript)) raw.transcript = input.transcript.map(b => hydrateBlockInput(b, registry));
   if (Array.isArray(input.items)) {
     raw.items = input.items.map(item => (!isRecord(item) ? item : {
       ...item,

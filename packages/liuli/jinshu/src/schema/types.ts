@@ -297,12 +297,13 @@ export interface BlockProps<TSpec extends BlockSpec<any> = BlockSpec<any>> {
 /** Distributive Omit preserving union variants. */
 export type DistributiveOmit<T, K extends keyof any> = T extends any ? Omit<T, K> : never;
 
-export type BlockInput = DistributiveOmit<JinshuBlock, 'id' | 'fallback' | 'version' | 'blocks' | 'items' | 'columns' | 'rows'> & {
+export type BlockInput = DistributiveOmit<JinshuBlock, 'id' | 'fallback' | 'version' | 'blocks' | 'items' | 'columns' | 'rows' | 'transcript'> & {
   readonly id?: string;
   readonly fallback?: string;
   readonly version?: number;
   readonly rows?: readonly { readonly id?: string; readonly cells: readonly (readonly Inline[])[] }[];
   readonly blocks?: readonly BlockInput[];
+  readonly transcript?: readonly BlockInput[];
   readonly items?: readonly {
     readonly id?: string;
     readonly checked?: boolean;

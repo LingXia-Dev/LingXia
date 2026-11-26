@@ -29,7 +29,7 @@ test('ReadOnly: no toolbar', async () => {
 // The editor on a live source, through the same channel messages Logic sends.
 
 import { renderPage } from '../testing/harness.mjs';
-import { callout, codeBlock, createDocument, details, fileBlock, heading, list, listItem, paragraph, plainText, quote, table, video } from '../schema/index.ts';
+import { audio, callout, codeBlock, columns, createDocument, details, fileBlock, heading, image, list, listItem, mathBlock, paragraph, plainText, quote, table, video } from '../schema/index.ts';
 import { createJinshuSource } from '../source/index.ts';
 import { agentCall, toolsOver } from '../testing/agent.mjs';
 
@@ -785,4 +785,75 @@ test('source mode: deleting the front matter removes it, and replacing every blo
   const { doc } = source.getState();
   assert.equal(doc.meta?.frontMatter, undefined);
   assert.deepEqual(doc.blocks.map(b => plainText(b.runs)), ['Other.']);
+});
+
+test('block menu: duplicating an audio block gives its transcript new ids', async () => {
+  const doc = createDocument({ blocks: [paragraph('Intro', 'p'), audio('https://cdn.example/a.mp3', { id: 'a', title: 'Recap', transcript: [paragraph('Said.', 't1')] })] });
+  const source = createJinshuSource({ key: 'w3', initialDoc: doc });
+  const { screen, settle } = await mountLive(source, { pointer: 'coarse', sizeClass: 'compact' });
+  screen.press(byLabel(screen, 'Select block'));
+  await settle();
+  screen.press(byLabel(screen, 'Block actions'));
+  await settle();
+  pressText(screen, 'Duplicate block');
+  await settle();
+  const { doc: after, problems } = source.getState();
+  assert.deepEqual(problems.filter(p => p.severity === 'error'), []);
+  const copies = after.blocks.filter(b => b.type === 'audio');
+  assert.equal(copies.length, 2);
+  assert.notEqual(copies[1].transcript[0].id, 't1');
+  assert.equal(plainText(copies[1].transcript[0].runs), 'Said.');
+});
+
+test('auto-save: an open fold, column paragraph and formula save what they hold, and stay open', async () => {
+  const doc = createDocument({
+    blocks: [
+      details('Hint', [paragraph('Look closer.')], { id: 'd' }),
+      columns([{ id: 'c1', blocks: [paragraph('Left', 'l')] }, { id: 'c2', blocks: [paragraph('Right', 'r')] }], { id: 'cols' }),
+      mathBlock('x^2', 'm'),
+    ],
+  });
+  const source = createJinshuSource({ key: 'w3', initialDoc: doc, saveMode: 'auto', save: async () => ({ ok: true, version: 'v2' }) });
+  const { screen, settle } = await mountLive(source);
+  const pause = async () => {
+    await new Promise(resolve => setTimeout(resolve, 1700));
+    await settle();
+  };
+  screen.type(byLabel(screen, 'Summary'), 'Hint, again');
+  await settle();
+  await pause();
+  assert.equal(plainText(source.getState().doc.blocks[0].summary), 'Hint, again');
+
+  screen.press(byLabel(screen, 'Edit column block l'));
+  await settle();
+  screen.type(byLabel(screen, 'Edit paragraph in column'), 'Left side');
+  await settle();
+  await pause();
+  assert.equal(plainText(source.getState().doc.blocks[1].columns[0].blocks[0].runs), 'Left side');
+  assert.ok(hasLabel(screen, 'Edit paragraph in column'), 'still typing in the column');
+
+  screen.press(byLabel(screen, 'Edit block m'));
+  await settle();
+  screen.type(byLabel(screen, 'Edit math'), 'x^3');
+  await settle();
+  await pause();
+  assert.equal(source.getState().doc.blocks[2].latex, 'x^3');
+  assert.ok(hasLabel(screen, 'Edit math'), 'still typing in the formula');
+});
+
+test('inspector: a change made elsewhere shows in an untouched field, and leaving it does not undo that change', async () => {
+  const doc = createDocument({ blocks: [paragraph('Intro', 'p'), image('https://cdn.example/a.png', { alt: 'A chart', id: 'img' })] });
+  const source = createJinshuSource({ key: 'w3', initialDoc: doc });
+  const { screen, settle } = await mountLive(source, { pointer: 'coarse', sizeClass: 'compact' });
+  screen.press(byLabel(screen, 'Select block'));
+  await settle();
+  screen.press(byLabel(screen, 'Edit properties'));
+  await settle();
+  assert.equal(byLabel(screen, 'Alt text').props.inputValue, 'A chart');
+  await toolsOver({ w3: source }).call('jinshu_edit', { doc: 'w3', base: source.getState().revision, ops: [{ op: 'update', id: 'img', attrs: { alt: 'Sales by month' } }] });
+  await settle();
+  assert.equal(byLabel(screen, 'Alt text').props.inputValue, 'Sales by month');
+  screen.blur(byLabel(screen, 'Alt text'));
+  await settle();
+  assert.equal(source.getState().doc.blocks[1].alt, 'Sales by month');
 });

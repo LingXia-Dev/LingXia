@@ -493,6 +493,9 @@ function duplicateBlockInput(block: JinshuBlock): BlockInput {
   if (Array.isArray(copy.blocks)) {
     copy.blocks = (copy.blocks as JinshuBlock[]).map(duplicateBlockInput);
   }
+  if (Array.isArray(copy.transcript)) {
+    copy.transcript = (copy.transcript as JinshuBlock[]).map(duplicateBlockInput);
+  }
   if (Array.isArray(copy.items)) {
     copy.items = (copy.items as { id?: string; blocks?: JinshuBlock[] }[]).map(it => {
       const next = { ...it };
@@ -763,7 +766,7 @@ export function JinshuEditor(props: JinshuEditorProps) {
           } else if (msg.t === 'flush') {
             // Auto-save is due mid-typing: the field's text goes into the document and the field stays open.
             const block = cur.doc?.blocks.find(b => b.id === activeId.value);
-            if (block && (block.type === 'paragraph' || block.type === 'heading') && slashAfterId.value !== block.id) {
+            if (block && (block.type === 'paragraph' || block.type === 'heading' || block.type === 'math') && slashAfterId.value !== block.id) {
               commitActiveDraft(block, draftText.value, cur.revision);
             }
             // An open list, quote, callout, code block or table cell saves too, and stays open.
@@ -2216,7 +2219,10 @@ export function JinshuEditor(props: JinshuEditorProps) {
                             rows={1}
                             maxRows={6}
                             placeholder={jinshuText('@jinshu.editor.math.editPlaceholder', { example: '\\int_0^\\infty e^{-x^2}\\,dx = \\frac{\\sqrt{\\pi}}{2}' })}
-                            onInput={val => draftText.set(val)}
+                            onInput={val => {
+                              draftText.set(val);
+                              if (liveState.autoSave) sendMsg({ t: 'typing' });
+                            }}
                             onBlur={() => commitOnBlur(block)}
                             onKeyDown={{
                               Escape: () => blurActive(block),

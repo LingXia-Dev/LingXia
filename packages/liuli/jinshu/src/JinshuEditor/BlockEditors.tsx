@@ -512,6 +512,8 @@ export function DetailsBlockEditor({ block, cb }: { readonly block: DetailsBlock
       },
     ]);
   };
+  // Its fields are always open: an auto-save or a toolbar press takes what they hold.
+  cb.holdOpen?.(block.id, commit, commit);
 
   // The reader's geometry: the summary row with its chevron at the end; whether it starts open is a block-menu choice.
   return (
@@ -521,7 +523,7 @@ export function DetailsBlockEditor({ block, cb }: { readonly block: DetailsBlock
           aria-label={jinshuText('@jinshu.editor.block.detailsSummary')}
           value={summaryDraft.value}
           placeholder={jinshuText('@jinshu.editor.block.detailsSummaryPlaceholder')}
-          onInput={v => summaryDraft.set(v)}
+          onInput={v => { summaryDraft.set(v); cb.onTyping?.(); }}
           onBlur={commit}
           className={b.details.summary}
         />
@@ -542,7 +544,7 @@ export function DetailsBlockEditor({ block, cb }: { readonly block: DetailsBlock
             rows={2}
             maxRows={18}
             placeholder={jinshuText('@jinshu.editor.block.detailsBodyPlaceholder')}
-            onInput={v => bodyDraft.set(v)}
+            onInput={v => { bodyDraft.set(v); cb.onTyping?.(); }}
             onBlur={commit}
             className={cx(b.details.bodyInput, r.paragraph.base)}
           />
@@ -1010,6 +1012,22 @@ export function ColumnsBlockEditor({
       },
     ]);
   };
+  const activeChild = () => block.columns.flatMap(col => col.blocks).find(child => child.id === activeChildId.value);
+  const saveChild = () => {
+    const child = activeChild();
+    if (child) commitInlineChild(child, childDraft.value);
+  };
+  cb.holdOpen?.(
+    block.id,
+    activeChildId.value === null
+      ? null
+      : () => {
+          saveChild();
+          activeChildId.set(null);
+          cb.onBlurBlock();
+        },
+    saveChild,
+  );
 
   return (
     <view className={shouldStack ? b.columns.stacked : b.columns.side}>
@@ -1032,7 +1050,7 @@ export function ColumnsBlockEditor({
                     autoFocus
                     rows={1}
                     maxRows={18}
-                    onInput={v => childDraft.set(v)}
+                    onInput={v => { childDraft.set(v); cb.onTyping?.(); }}
                     onBlur={() => {
                       commitInlineChild(child, childDraft.value);
                       activeChildId.set(null);
@@ -1084,12 +1102,25 @@ export function ColumnsBlockEditor({
 // Inspectors
 // ---------------------------------------------------------------------------
 
+/**
+ * A field's draft that follows the block until the person types: a change made elsewhere meanwhile
+ * shows, and leaving the field does not write the old text back over it.
+ */
+function useFieldDraft(name: string, current: string): { readonly value: string; set(next: string): void } {
+  const draft = useLocal(name, { seed: current, text: current });
+  const { seed, text } = draft.value;
+  return { value: text === seed ? current : text, set: next => draft.set({ seed: current, text: next }) };
+}
+
 /** Inline inspector for Image blocks (alt, caption, display size). */
 export function ImageBlockInspector({ block, cb }: { readonly block: ImageBlock; readonly cb: BlockEditorCallbacks }) {
-  const altDraft = useLocal(`ed-img-alt-${block.id}`, block.alt ?? '');
-  const capDraft = useLocal(`ed-img-cap-${block.id}`, block.caption ? inlinesToShorthand(block.caption, cb.format) : '');
+  const alt = block.alt ?? '';
+  const caption = block.caption ? inlinesToShorthand(block.caption, cb.format) : '';
+  const altDraft = useFieldDraft(`ed-img-alt-${block.id}`, alt);
+  const capDraft = useFieldDraft(`ed-img-cap-${block.id}`, caption);
 
   const commit = () => {
+    if (altDraft.value === alt && capDraft.value === caption) return;
     cb.dispatchOps([
       {
         op: 'update',
@@ -1135,8 +1166,8 @@ export function MediaBlockInspector({ block, cb }: { readonly block: VideoBlock 
   const primary =
     block.type === 'video' ? (block.caption ? inlinesToShorthand(block.caption, cb.format) : '') : block.type === 'audio' ? block.title ?? '' : block.name;
   const secondary = block.type === 'file' ? block.description ?? '' : '';
-  const primaryDraft = useLocal(`ed-media-p-${block.id}`, primary);
-  const secondaryDraft = useLocal(`ed-media-s-${block.id}`, secondary);
+  const primaryDraft = useFieldDraft(`ed-media-p-${block.id}`, primary);
+  const secondaryDraft = useFieldDraft(`ed-media-s-${block.id}`, secondary);
 
   const commit = () => {
     if (primaryDraft.value === primary && secondaryDraft.value === secondary) return;
