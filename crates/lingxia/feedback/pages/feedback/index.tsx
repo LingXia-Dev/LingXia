@@ -3,7 +3,6 @@
 import { ActionSheet } from '@liulidesign/core/ActionSheet';
 import { Button } from '@liulidesign/core/Button';
 import { Dialog } from '@liulidesign/core/Dialog';
-import { Toast } from '@liulidesign/core/Toast';
 
 type ToastData = { key: number; title: string; tone: 'neutral' | 'success' | 'danger'; loading: boolean; position: 'top' | 'center' | 'bottom' };
 type DialogData =
@@ -18,12 +17,23 @@ type View = {
 
 const place = { top: 'justify-start pt-20', center: 'justify-center', bottom: 'justify-end pb-20' } as const;
 
+// The system toast: a dark HUD in every theme, its status mark above the words.
+const RING = 'M14 0a14 14 0 1 1 0 28a14 14 0 1 1 0-28';
+const marks = {
+  success: [{ d: RING, fill: 'success' }, { d: 'M8.5 14.5l3.5 3.5 7.5-7.5', fill: 'none', stroke: 'on-media', strokeWidth: 2.5, strokeLinecap: 'round', strokeLinejoin: 'round' }],
+  danger: [{ d: RING, fill: 'danger-solid' }, { d: 'M10 10l8 8M18 10l-8 8', fill: 'none', stroke: 'on-danger-solid', strokeWidth: 2.5, strokeLinecap: 'round' }],
+  loading: [{ d: 'M14 3a11 11 0 1 1 0 22a11 11 0 1 1 0-22', fill: 'none', stroke: 'on-media/25', strokeWidth: 2.5 },
+    { d: 'M14 3a11 11 0 0 1 11 11', fill: 'none', stroke: 'on-media', strokeWidth: 2.5, strokeLinecap: 'round' }],
+} as const;
+
 function toastLayer(toast: ToastData) {
+  const mark = toast.loading ? 'loading' : toast.tone === 'neutral' ? null : toast.tone;
   return (
     <view key={`toast-${toast.key}`} className={`absolute inset-0 items-center px-4 ${place[toast.position]}`}>
-      <view role="status" aria-live="polite" aria-label={toast.title}
-        className="transition duration-base ease-standard starting:opacity-0 exit:opacity-0">
-        <Toast message={toast.title} tone={toast.tone} isBusy={toast.loading} data-testid="lx-toast" />
+      <view role="status" aria-live="polite" aria-label={toast.title} aria-busy={toast.loading || undefined} data-testid="lx-toast"
+        className={`items-center justify-center gap-3 min-w-30 max-w-70 rounded-xl bg-media/80 px-5 ${mark ? 'min-h-25 py-5' : 'min-h-15 py-4'} transition duration-base ease-standard starting:opacity-0 starting:scale-90 exit:opacity-0`}>
+        {mark && <vector aria-hidden paths={marks[mark]} viewBox={[0, 0, 28, 28]} className={`size-7 ${mark === 'loading' ? 'motion-safe:animate-spin' : ''}`} />}
+        <text className={`text-center text-base font-medium text-on-media ${mark ? 'line-clamp-2' : 'line-clamp-3'}`}>{toast.title}</text>
       </view>
     </view>
   );

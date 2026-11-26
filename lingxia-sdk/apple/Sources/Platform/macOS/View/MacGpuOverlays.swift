@@ -16,14 +16,19 @@ public enum GpuOverlays {
     }
 
     /// `window` came forward (`touched`) or on screen: Rust learns whose presentation it holds.
-    @MainActor static func presents(_ window: NSWindow, touched: Bool) {
-        if window is GpuOverlayWindow { return }
+    /// False when the window holds no lxapp (yet).
+    @MainActor @discardableResult
+    static func presents(_ window: NSWindow, touched: Bool) -> Bool {
+        if window is GpuOverlayWindow { return false }
         let number = UInt64(max(window.windowNumber, 0))
         if let appId = LxAppSurface.appId(of: window) {
             gpuOverlayPresents(appId, number, touched)
         } else if isShell(window) {
             gpuOverlayPresents("", number, touched)
+        } else {
+            return false
         }
+        return true
     }
 
     /// The shell window, or with none (a custom host) the window showing the host's pages.
@@ -76,6 +81,17 @@ final class GpuPresentationTracker: NSObject {
         center.addObserver(self, selector: #selector(becameKey), name: NSWindow.didBecomeKeyNotification, object: nil)
         center.addObserver(self, selector: #selector(occlusion), name: NSWindow.didChangeOcclusionStateNotification, object: nil)
         center.addObserver(self, selector: #selector(closing), name: NSWindow.willCloseNotification, object: nil)
+        center.addObserver(self, selector: #selector(updated), name: NSApplication.didUpdateNotification, object: nil)
+    }
+
+    private var seen = Set<Int>()
+
+    /// A window first shown without focus or a visibility change (an app launched in the
+    /// background, a window on another Space) still holds its lxapp.
+    @objc private func updated(_ note: Notification) {
+        for window in NSApp.windows where window.isVisible && !seen.contains(window.windowNumber) {
+            if GpuOverlays.presents(window, touched: false) { seen.insert(window.windowNumber) }
+        }
     }
 
     @objc private func becameKey(_ note: Notification) {
@@ -83,14 +99,15 @@ final class GpuPresentationTracker: NSObject {
         GpuOverlays.presents(window, touched: true)
     }
 
-    /// A window shown without focus (a dev session in the background) still holds its lxapp.
+    /// A window shown without focus still holds its lxapp, covered or on another Space too.
     @objc private func occlusion(_ note: Notification) {
-        guard let window = note.object as? NSWindow, window.occlusionState.contains(.visible) else { return }
+        guard let window = note.object as? NSWindow, window.isVisible else { return }
         GpuOverlays.presents(window, touched: false)
     }
 
     @objc private func closing(_ note: Notification) {
         guard let window = note.object as? NSWindow, !(window is GpuOverlayWindow) else { return }
+        seen.remove(window.windowNumber)
         gpuOverlayWindowClosed(UInt64(max(window.windowNumber, 0)))
     }
 }
@@ -167,7 +184,10 @@ final class GpuOverlayHost: NSObject {
         if block, controls == nil {
             controls = NSEvent.addLocalMonitorForEvents(matching: [.leftMouseDown, .leftMouseDragged, .leftMouseUp]) {
                 [weak self] event in
-                MainActor.assumeIsolated { self?.handOver(event) ?? event }
+                // NSEvent isn't Sendable, so it can't be assumeIsolated's return value.
+                var out: NSEvent? = event
+                MainActor.assumeIsolated { out = self?.handOver(event) ?? event }
+                return out
             }
         } else if !block, let controls {
             NSEvent.removeMonitor(controls)
