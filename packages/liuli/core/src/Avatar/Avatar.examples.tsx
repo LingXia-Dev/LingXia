@@ -48,7 +48,7 @@ export function Unread() {
 /** Overlapping, with the rest folded into a count. */
 export function Group() {
   return (
-    <AvatarGroup label="Editors" max={4} overflowLabel={count => `${count} more editors`} data-testid="editors">
+    <AvatarGroup label="Editors" max={4} overflowLabel={count => `${count} more editors`} onOverflowClick={() => {}} data-testid="editors">
       <Avatar name="Ana Lima" src={photo(1)} />
       <Avatar name="Kai Chen" />
       <Avatar name="Mira Patel" src={photo(2)} />

@@ -97,6 +97,8 @@ export interface AvatarGroupProps {
   max?: number;
   /** The count's accessible name, written by the app: "4 more people". */
   overflowLabel?: (count: number) => string;
+  /** Makes the count a button, named by `overflowLabel`: show everyone, in a list or a sheet. */
+  onOverflowClick?: () => void;
   /** @default 'md' */
   size?: AvatarSize;
   /** The shape of every avatar in the group, and of the count. @default 'circle' */
@@ -108,7 +110,7 @@ export interface AvatarGroupProps {
 }
 
 /** Avatars overlapping in a row, with the rest as a count. */
-export function AvatarGroup({ label, children, max, overflowLabel, size = 'md', shape = 'circle', surface = 'surface', className, 'data-testid': testId, ...attributes }: AvatarGroupProps) {
+export function AvatarGroup({ label, children, max, overflowLabel, onOverflowClick, size = 'md', shape = 'circle', surface = 'surface', className, 'data-testid': testId, ...attributes }: AvatarGroupProps) {
   const all = childrenToArray(children);
   const shown = max === undefined ? all : all.slice(0, max);
   const rest = all.length - shown.length;
@@ -121,9 +123,15 @@ export function AvatarGroup({ label, children, max, overflowLabel, size = 'md', 
         ))}
         {rest > 0 && (
           <view className={cx(r.overlap.size[size], r.slot[surface], r.root.shape[shape][size])}>
-            <view data-testid={testId && `${testId}-overflow`} style={scaled.box} className={cx(r.root.base, r.root.shape[shape][size], r.root.size[size], r.root.inGroup[surface])}>
-              <text aria-label={overflowLabel?.(rest)} style={scaled.letters} className={cx(r.initials.base, r.initials.size[size], r.overflow.text)}>{`+${rest}`}</text>
-            </view>
+            {onOverflowClick ? (
+              <button aria-label={overflowLabel?.(rest) ?? `+${rest}`} onClick={onOverflowClick} data-testid={testId && `${testId}-overflow`} style={scaled.box} className={cx(r.root.base, r.root.shape[shape][size], r.root.size[size], r.root.inGroup[surface], r.overflow.button)}>
+                <text aria-hidden style={scaled.letters} className={cx(r.initials.base, r.initials.size[size], r.overflow.text)}>{`+${rest}`}</text>
+              </button>
+            ) : (
+              <view data-testid={testId && `${testId}-overflow`} style={scaled.box} className={cx(r.root.base, r.root.shape[shape][size], r.root.size[size], r.root.inGroup[surface])}>
+                <text aria-label={overflowLabel?.(rest)} style={scaled.letters} className={cx(r.initials.base, r.initials.size[size], r.overflow.text)}>{`+${rest}`}</text>
+              </view>
+            )}
           </view>
         )}
       </view>

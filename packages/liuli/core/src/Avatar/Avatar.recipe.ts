@@ -74,5 +74,7 @@ export const avatarRecipe = {
   /** The count past `max`, on the initials' neutral fill. */
   overflow: {
     text: 'text-text',
+    /** With `onOverflowClick`: it rises a little under a pointer and sinks on a press, whatever the fill; and the focus ring. */
+    button: 'transition-transform duration-fast ease-standard hover:scale-105 active:scale-95 focus-visible:ring-2 focus-visible:ring-focus focus-visible:ring-offset-2',
   },
 } as const;

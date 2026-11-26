@@ -530,7 +530,7 @@
         {
           "name": "Group",
           "title": "A group with a count",
-          "source": "import { Avatar, AvatarGroup } from '@liulidesign/core/Avatar';\n\nconst photo = (n: number) => `public/avatars/avatar-${n}.png`;\n\n/** Overlapping, with the rest folded into a count. */\nexport function Group() {\n  return (\n    <AvatarGroup label=\"Editors\" max={4} overflowLabel={count => `${count} more editors`} data-testid=\"editors\">\n      <Avatar name=\"Ana Lima\" src={photo(1)} />\n      <Avatar name=\"Kai Chen\" />\n      <Avatar name=\"Mira Patel\" src={photo(2)} />\n      <Avatar name=\"Tomás Ruiz\" />\n      <Avatar name=\"Lena Vogel\" />\n      <Avatar name=\"Sam Okafor\" />\n    </AvatarGroup>\n  );\n}"
+          "source": "import { Avatar, AvatarGroup } from '@liulidesign/core/Avatar';\n\nconst photo = (n: number) => `public/avatars/avatar-${n}.png`;\n\n/** Overlapping, with the rest folded into a count. */\nexport function Group() {\n  return (\n    <AvatarGroup label=\"Editors\" max={4} overflowLabel={count => `${count} more editors`} onOverflowClick={() => {}} data-testid=\"editors\">\n      <Avatar name=\"Ana Lima\" src={photo(1)} />\n      <Avatar name=\"Kai Chen\" />\n      <Avatar name=\"Mira Patel\" src={photo(2)} />\n      <Avatar name=\"Tomás Ruiz\" />\n      <Avatar name=\"Lena Vogel\" />\n      <Avatar name=\"Sam Okafor\" />\n    </AvatarGroup>\n  );\n}"
         },
         {
           "name": "WithName",
@@ -587,6 +587,7 @@
         ],
         "roles": [
           "danger-mark",
+          "focus",
           "hue-1-soft",
           "hue-2-soft",
           "hue-3-soft",

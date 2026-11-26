@@ -21,8 +21,9 @@ test('People: a photo is named by alt; without one, the initials are a picture n
 test('Group: a named group showing four, the rest as a count with the app\'s words', async () => {
   const screen = await renderExample('Avatar/Avatar', 'Group');
   assert.equal(screen.getByTestId('editors').props.accessibilityLabel, 'Editors');
-  const more = screen.getByText('+2');
-  assert.equal(more.props.accessibilityLabel, '2 more editors');
+  const more = screen.getByTestId('editors-overflow');
+  assert.deepEqual([more.tag, more.props.accessibilityLabel], ['button', '2 more editors'], 'with onOverflowClick the count is a button');
+  assert.equal(screen.getByText('+2').props.accessibilityHidden, 1);
 });
 
 test('WithName: a decorative avatar is hidden from assistive tech', async () => {
