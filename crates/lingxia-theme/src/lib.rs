@@ -226,8 +226,8 @@ impl Default for Space {
 }
 
 /// Durations in milliseconds, three easings as CSS timing functions (`easing` is the
-/// standard one, for a change in place; `enter` and `exit` for what arrives and leaves) and
-/// the bounce of the pack's spring. Pages name them: `duration-fast`, `ease-enter`.
+/// standard one, for a change in place; `enter` and `exit` for what arrives and leaves).
+/// Pages name them: `duration-fast`, `ease-enter`.
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
 #[serde(deny_unknown_fields, default)]
 pub struct Motion {
@@ -237,7 +237,6 @@ pub struct Motion {
     pub easing: String,
     pub enter: String,
     pub exit: String,
-    pub spring: f32,
 }
 
 impl Default for Motion {
@@ -249,7 +248,6 @@ impl Default for Motion {
             easing: "cubic-bezier(0, 0, 0.2, 1)".into(),
             enter: "cubic-bezier(0, 0, 0.2, 1)".into(),
             exit: "cubic-bezier(0.4, 0, 1, 1)".into(),
-            spring: 0.0,
         }
     }
 }
@@ -947,9 +945,6 @@ pub fn check(pack: &Pack) -> Vec<Problem> {
                 ),
             );
         }
-    }
-    if !(0.0..=0.9).contains(&motion.spring) {
-        problem("pack", "motion.spring is a bounce of 0-0.9".into());
     }
     check_app_colors(pack, &mut problems);
     problems

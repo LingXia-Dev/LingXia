@@ -50,5 +50,4 @@
   --ease-standard: cubic-bezier(0, 0, 0.2, 1);
   --ease-enter: cubic-bezier(0, 0, 0.2, 1);
   --ease-exit: cubic-bezier(0.4, 0, 1, 1);
-  --ease-spring: spring(0);
 }

@@ -95,10 +95,7 @@ pub fn stylesheet(pack: &Pack, names: Option<&Names>) -> Result<String> {
         _ => format!("--radius-{step}"),
     };
     for (step, value) in &pack.shape.radius {
-        // `full` is Tailwind's built-in pill.
-        if step != "full" {
-            lines.push(format!("  {}: {};", radius(step), px(*value)));
-        }
+        lines.push(format!("  {}: {};", radius(step), px(*value)));
     }
     // A design system's names point at the steps, so they follow the theme wherever it resolves.
     if let Some(names) = names {
@@ -132,7 +129,7 @@ pub fn stylesheet(pack: &Pack, names: Option<&Names>) -> Result<String> {
             );
         }
     }
-    // `duration-fast`, `ease-enter` and `ease-spring` in a page are these.
+    // `duration-fast` and `ease-enter` in a page are these.
     let motion = &pack.motion;
     for (step, duration) in [
         ("fast", motion.fast),
@@ -148,7 +145,6 @@ pub fn stylesheet(pack: &Pack, names: Option<&Names>) -> Result<String> {
     ] {
         lines.push(format!("  --ease-{name}: {easing};"));
     }
-    lines.push(format!("  --ease-spring: spring({});", motion.spring));
     lines.push("}".into());
     Ok(lines.join("\n") + "\n")
 }
@@ -173,7 +169,7 @@ mod tests {
         assert!(!css.contains("--color") && !css.contains("--radius-full"));
         assert!(!css.contains("--radius-control") && !css.contains("--spacing-control"));
         assert!(css.contains(
-            "  --transition-duration-fast: 150ms;\n  --transition-duration-base: 200ms;\n  --transition-duration-slow: 300ms;\n  --ease-standard: cubic-bezier(0, 0, 0.2, 1);\n  --ease-enter: cubic-bezier(0, 0, 0.2, 1);\n  --ease-exit: cubic-bezier(0.4, 0, 1, 1);\n  --ease-spring: spring(0);\n}"
+            "  --transition-duration-fast: 150ms;\n  --transition-duration-base: 200ms;\n  --transition-duration-slow: 300ms;\n  --ease-standard: cubic-bezier(0, 0, 0.2, 1);\n  --ease-enter: cubic-bezier(0, 0, 0.2, 1);\n  --ease-exit: cubic-bezier(0.4, 0, 1, 1);\n}"
         ));
     }
 

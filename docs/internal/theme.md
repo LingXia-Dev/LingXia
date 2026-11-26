@@ -22,7 +22,7 @@ in the compiler, or the environment's `palette` / `scales` keys. Authoring rules
 
 One JSON document: `appearance` (role colours for light and dark), `accent` (seed, derive), `type`
 (scale, leading, family), `shape.radius`, `space.unit`, `motion` (fast, base, slow, easing, enter,
-exit, spring). Completion fills what a pack leaves out from the default pack built into
+exit). Completion fills what a pack leaves out from the default pack built into
 `lingxia-theme`.
 
 ## Roles
