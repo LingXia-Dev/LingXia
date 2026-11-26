@@ -1,6 +1,6 @@
 import { cx, useBox, type Child, type PointerEvent, type VectorPath } from '@lingxia/view';
 import { Chart, ChartLegend, ChartReadout, type ChartLegendPosition, type ChartField, type ChartRecord, type ChartReference, type ChartRow, type ChartSeries, type ChartSize, type ChartSummarize } from '../Chart/Chart';
-import { colorOf, keyOf, numberOf, plain, roleOf, seriesFacts, seriesOf, textOf } from '../internal/data';
+import { colorOf, keysOf, numberOf, plain, roleOf, seriesFacts, seriesOf, textOf } from '../internal/data';
 import { pressed, pressedKey, scrubbing } from '../internal/gesture';
 import { box, closed, domain, dot, indexAt, monotone, niceTicks, polyline, reach, runs, scaleY, thin, type Point } from '../internal/geometry';
 import { ReferenceLabels, ReferenceReading, referencePath, useReferences } from '../internal/References';
@@ -137,7 +137,8 @@ export function LineChart<Row extends ChartRecord<Row>>({
       {scale.map(tick => <view key={`tick-${tick.value}`} className={cx(r.mover.base, r.mover.tick)} style={level(tick.value)}><view className={r.tick.base}>{mark(tick)}</view></view>)}
     </view>
   );
-  const chosen = data.findIndex((row, index) => keyOf(row, keyField ?? x, index) === selectedKey);
+  const keys = keysOf(data, keyField ?? x);
+  const chosen = selectedKey == null ? -1 : keys.indexOf(selectedKey);
   const picked = chosen >= 0 ? data[chosen] : undefined;
 
   // The lines depend on the data and the encoding, never on the theme or the chosen row, so a scrub redraws only the marker.
@@ -218,7 +219,7 @@ export function LineChart<Row extends ChartRecord<Row>>({
   const scrub = onSelect && facts.length > 0 && data.length > 1 ? (event: PointerEvent) => {
     const { phase } = event;
     if (phase === 'leave') return chosen >= 0 ? onSelect(null) : undefined;
-    const current = chosen >= 0 ? keyOf(data[chosen], keyField ?? x, chosen) : null;
+    const current = chosen >= 0 ? keys[chosen] : null;
     if (phase === 'down') pressed(event, -1, current);
     // The page took the press for a scroll: what it chose on the way is put back.
     if (phase === 'cancel') return pressedKey() === current ? undefined : onSelect(pressedKey());
@@ -227,7 +228,7 @@ export function LineChart<Row extends ChartRecord<Row>>({
     const index = phase === 'increment' ? Math.min(data.length - 1, rest + 1)
       : phase === 'decrement' ? Math.max(0, rest - 1)
         : indexAt(event.x, event.width, data.length, 'points', edge);
-    return index === chosen ? undefined : onSelect(keyOf(data[index], keyField ?? x, index));
+    return index === chosen ? undefined : onSelect(keys[index]);
   } : undefined;
 
   const ends = (className: string) => (
@@ -319,7 +320,7 @@ export function LineChart<Row extends ChartRecord<Row>>({
           )}
           {data.length <= maxRead && (
             <view role="list" aria-label={label} className={r.reading.base}>
-              {data.map((row, index) => reading(row) !== '' && <text key={keyOf(row, keyField ?? x, index)} role="listitem">{named(row)}</text>)}
+              {data.map((row, index) => reading(row) !== '' && <text key={keys[index]} role="listitem">{named(row)}</text>)}
             </view>
           )}
           <ReferenceReading texts={refs.texts} />

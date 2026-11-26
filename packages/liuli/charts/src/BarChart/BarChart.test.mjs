@@ -580,3 +580,10 @@ test('a domain that is not a number is ignored; a missing value is never formatt
   const gap = await renderPage(page(`valueLabels="always" ${marked}`, '[{ k: "a", v: 4 }, { k: "b" }]'));
   assert.equal(gap.queryAll(node => node.tag === 'text' && textOf(node) === 'unformattable').length, 0);
 });
+
+test('rows that share a key, have none, or have an empty one each keep their own button; a choice finds the first', async () => {
+  const screen = await renderPage(page('keyField="id" onChange={() => {}} value="a"', '[{ k: "x", id: "a", v: 1 }, { k: "y", id: "a", v: 2 }, { k: "z", id: "", v: 3 }, { k: "w", v: 4 }]'));
+  const buttons = slots(screen.getByTestId('chart'));
+  assert.deepEqual(buttons.map(node => node.props.accessibilityLabel), ['x: 1', 'y: 2', 'z: 3', 'w: 4']);
+  assert.deepEqual(buttons.map(node => node.props.statePressed), [1, 0, 0, 0]);
+});

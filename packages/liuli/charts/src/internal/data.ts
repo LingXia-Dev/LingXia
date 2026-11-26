@@ -78,8 +78,20 @@ export function numberOf(row: ChartRow, field: string): number {
 
 export const textOf = (row: ChartRow, field: string): string => String(row[field] ?? '');
 
-/** A row's identity across updates: its key field, or its position when the field is empty. */
-export const keyOf = (row: ChartRow, field: string, index: number): string => String(row[field] ?? index);
+/**
+ * Each row's identity across updates: its key field, or its position when the field is empty. A key
+ * met before or `taken` gains its position, so two rows never share one; a choice finds the first.
+ */
+export function keysOf(rows: readonly ChartRow[], field: string, taken: readonly string[] = []): string[] {
+  const seen = new Set(taken);
+  return rows.map((row, index) => {
+    const own = row[field] === undefined || row[field] === null || row[field] === '' ? String(index) : String(row[field]);
+    let key = own;
+    for (let n = 0; seen.has(key); n += 1) key = `${own}#${index}${n ? `.${n}` : ''}`;
+    seen.add(key);
+    return key;
+  });
+}
 
 // A series of any row type, its field a plain name; `ChartSeries<ChartRow>` would refuse one typed to a narrower row.
 type AnySeries = Omit<ChartSeries, 'field'> & { field: string };

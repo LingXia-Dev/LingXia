@@ -148,3 +148,12 @@ test('without a legend each part is still read with its amount and share', async
   const list = screen.queryAll(node => node.props.role === 'list' && node.props.accessibilityLabel === 'Spending')[0];
   assert.deepEqual(list.children.map(textOf), ['Rent: 3, 75%', 'Food: 1, 25%']);
 });
+
+test('rows that share a key, or are keyed like the remainder, each keep a slice and a legend row', async () => {
+  const screen = await renderPage(`
+    import { PieChart } from '@liulidesign/charts/PieChart';
+    const rows = [{ k: 'a', id: 'same', v: 1 }, { k: 'b', id: 'same', v: 2 }, { k: 'c', id: '__other', v: 3 }, { k: 'd', id: '', v: 4 }, { k: 'e', v: 1 }, { k: 'f', v: 1 }, { k: 'g', v: 1 }];
+    export function render() { return <page><PieChart rows={rows} nameField="k" valueField="v" keyField="id" otherLabel="Rest" maxParts={4} data-testid="pie" /></page>; }
+  `);
+  assert.deepEqual(screen.getByTestId('pie-legend').children.map(textOf), ['a1', 'b2', 'c3', 'd4', 'Rest3']);
+});

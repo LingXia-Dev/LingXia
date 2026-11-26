@@ -21,3 +21,14 @@ test('remember builds once per data array and key, and again when the key change
   remember([{ v: 1 }], 'bars', 'b', build);
   assert.equal(built, 4, 'new rows rebuild, even when equal');
 });
+
+test('two charts that share one rows array keep their own geometry as they render in turn', () => {
+  const rows = [{ v: 1, w: 2 }];
+  let built = 0;
+  const build = () => { built += 1; return {}; };
+  for (let round = 0; round < 3; round += 1) {
+    remember(rows, 'bars', 'v', build);
+    remember(rows, 'bars', 'w', build);
+  }
+  assert.equal(built, 2);
+});

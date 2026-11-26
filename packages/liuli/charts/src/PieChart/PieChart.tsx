@@ -1,7 +1,7 @@
 import { cx, useBox, type ColorAlpha, type ColorRole, type VectorPath } from '@lingxia/view';
 import { Chart, ChartLegend, type ChartColor, type ChartField, type ChartLegendPosition, type ChartRecord, type ChartRow, type ChartSize, type ChartSummarize } from '../Chart/Chart';
 import { liuliText } from '@liulidesign/core/internal/text';
-import { colorOf, keyOf, numberOf, plain, roleOf, seriesFacts, textOf } from '../internal/data';
+import { colorOf, keysOf, numberOf, plain, roleOf, seriesFacts, textOf } from '../internal/data';
 import { box, circle, sector } from '../internal/geometry';
 import { remember } from '../internal/memo';
 import { pieChartRecipe as r } from './PieChart.recipe';
@@ -79,8 +79,9 @@ export function PieChart<Row extends ChartRecord<Row>>({
 }: PieChartProps<Row>) {
   const data: readonly ChartRow[] = rows;
   const formatValue = format ?? plain;
+  const keys = keysOf(data, keyField ?? name, [otherKey]);
   const listed = data
-    .map((row, index) => ({ key: keyOf(row, keyField ?? name, index), name: textOf(row, name), amount: numberOf(row, value) }))
+    .map((row, index) => ({ key: keys[index], name: textOf(row, name), amount: numberOf(row, value) }))
     .filter(part => part.amount > 0);
   const parted = Number.isFinite(maxParts) ? Math.floor(maxParts) : 5;
   const keep = otherLabel !== undefined ? Math.max(1, Math.min(parted, maxSlices - 1)) : maxSlices - 1;

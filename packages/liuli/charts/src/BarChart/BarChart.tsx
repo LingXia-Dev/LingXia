@@ -1,6 +1,6 @@
 import { cx, useBox, type PointerEvent, type VectorPath } from '@lingxia/view';
 import { Chart, ChartLegend, ChartReadout, type ChartLegendPosition, type ChartField, type ChartRecord, type ChartReference, type ChartRow, type ChartSeries, type ChartSize, type ChartSummarize } from '../Chart/Chart';
-import { colorOf, keyOf, numberOf, plain, roleOf, seriesFacts, seriesOf, textOf, type ChartColor } from '../internal/data';
+import { colorOf, keysOf, numberOf, plain, roleOf, seriesFacts, seriesOf, textOf, type ChartColor } from '../internal/data';
 import { leftPressed, pressed, pressedIndex, pressedKey, scrubbing } from '../internal/gesture';
 import { box, indexAt, knockOuts, roundUp } from '../internal/geometry';
 import { ReferenceLabels, ReferenceReading, referencePath, useReferences } from '../internal/References';
@@ -175,7 +175,8 @@ export function BarChart<Row extends ChartRecord<Row>>({
   const zero = high + depth > 0 ? (high / (high + depth)) * 100 : 100;
   const isPressable = onSelect !== undefined && data.length <= maxPressable;
   const labels = xLabels ?? 'fit';
-  const chosen = data.findIndex((row, index) => keyOf(row, keyField ?? x, index) === selectedKey);
+  const keys = keysOf(data, keyField ?? x);
+  const chosen = selectedKey == null ? -1 : keys.indexOf(selectedKey);
   // Narrow bars take the small corner: many bars, counting each of a group, or the smallest plot, where a bar is a few points wide.
   const density = data.length * Math.max(1, shown.length) >= denseFrom || size === 'xs' ? 'dense' : 'regular';
   // Colours are role names, so the outlines outlive a theme change; they are rebuilt only for new data, encoding or choice.
@@ -190,7 +191,7 @@ export function BarChart<Row extends ChartRecord<Row>>({
     .map(series => (series.label ? `${series.label} ${formatValue(numberOf(row, series.field))}` : formatValue(numberOf(row, series.field))))
     .join(', ');
 
-  const keyAt = (index: number) => keyOf(data[index], keyField ?? x, index);
+  const keyAt = (index: number) => keys[index];
   // With nothing chosen a plot too dense for buttons rests on its last category.
   const rest = chosen >= 0 ? chosen : data.length - 1;
   const scrub = onSelect && data.length > 0 ? (event: PointerEvent) => {
@@ -216,7 +217,7 @@ export function BarChart<Row extends ChartRecord<Row>>({
   // One element per category: its name and values for assistive tech, and its press target.
   // With figures over the bars it also holds the figure, level with its bar's free end.
   const slots = data.map((row, index) => {
-    const key = keyOf(row, keyField ?? x, index);
+    const key = keys[index];
     const name = `${textOf(row, x)}: ${reading(row)}`;
     const value = numberOf(row, shown[0]?.field ?? '');
     // The figure's place: the bar's free end, as a share of a box as tall as the plot less the

@@ -1,16 +1,25 @@
 // Geometry kept between renders. A page re-renders whole when the theme changes, and a chart's
 // paths depend on its data and encoding, never on the theme: colours are role names.
 
-const kept = new WeakMap<object, Map<string, { key: string; value: unknown }>>();
+const kept = new WeakMap<object, Map<string, Map<string, unknown>>>();
+// Charts that share one rows array each keep their own geometry; the oldest goes past this many.
+const perSlot = 8;
 
-/** `build()` once per `data` array and `key`; `slot` separates the things one chart keeps. */
+/** `build()` once per `data` array, `slot` and `key`; `slot` separates the things one chart keeps. */
 export function remember<T>(data: object, slot: string, key: string, build: () => T): T {
   let slots = kept.get(data);
   if (!slots) kept.set(data, (slots = new Map()));
-  const held = slots.get(slot);
-  if (held && held.key === key) return held.value as T;
+  let held = slots.get(slot);
+  if (!held) slots.set(slot, (held = new Map()));
+  if (held.has(key)) {
+    const value = held.get(key) as T;
+    held.delete(key);
+    held.set(key, value);
+    return value;
+  }
   const value = build();
-  slots.set(slot, { key, value });
+  held.set(key, value);
+  if (held.size > perSlot) held.delete(held.keys().next().value as string);
   return value;
 }
 
