@@ -154,9 +154,13 @@ pub enum Role {
     LineOnOverlay = 73,
     /// `line-strong` as drawn inside an overlay: the contrast `line-strong` has on surface, at least 3:1.
     LineStrongOnOverlay = 74,
+    /// `danger` as drawn inside a raised surface: the contrast `danger` has on surface, at least 4.5:1, so destructive text reads there. `under` maps by role, so a `danger` fill there takes it too; destructive fills use `danger-solid`.
+    DangerOnRaised = 75,
+    /// `danger` as drawn inside an overlay: the contrast `danger` has on surface, at least 4.5:1, so destructive text reads there. `under` maps by role, so a `danger` fill there takes it too; destructive fills use `danger-solid`.
+    DangerOnOverlay = 76,
 }
 
-pub const ROLE_COUNT: usize = 75;
+pub const ROLE_COUNT: usize = 77;
 
 impl Role {
     pub const ALL: [Role; ROLE_COUNT] = [
@@ -235,6 +239,8 @@ impl Role {
         Role::LineStrongOnRaised,
         Role::LineOnOverlay,
         Role::LineStrongOnOverlay,
+        Role::DangerOnRaised,
+        Role::DangerOnOverlay,
     ];
 
     pub const fn name(self) -> &'static str {
@@ -314,6 +320,8 @@ impl Role {
             Role::LineStrongOnRaised => "line-strong-on-raised",
             Role::LineOnOverlay => "line-on-overlay",
             Role::LineStrongOnOverlay => "line-strong-on-overlay",
+            Role::DangerOnRaised => "danger-on-raised",
+            Role::DangerOnOverlay => "danger-on-overlay",
         }
     }
 
@@ -329,16 +337,20 @@ impl Role {
                 | Role::LineStrongOnRaised
                 | Role::LineOnOverlay
                 | Role::LineStrongOnOverlay
+                | Role::DangerOnRaised
+                | Role::DangerOnOverlay
         )
     }
 
-    /// The role this one draws as inside `surface`: a line keeps its contrast on a lifted surface.
+    /// The role this one draws as inside `surface`: a line or `danger` keeps its contrast on a lifted surface.
     pub const fn under(self, surface: Role) -> Role {
         match (surface, self) {
             (Role::SurfaceRaised, Role::Line) => Role::LineOnRaised,
             (Role::SurfaceRaised, Role::LineStrong) => Role::LineStrongOnRaised,
+            (Role::SurfaceRaised, Role::Danger) => Role::DangerOnRaised,
             (Role::SurfaceOverlay, Role::Line) => Role::LineOnOverlay,
             (Role::SurfaceOverlay, Role::LineStrong) => Role::LineStrongOnOverlay,
+            (Role::SurfaceOverlay, Role::Danger) => Role::DangerOnOverlay,
             _ => self,
         }
     }
@@ -488,6 +500,8 @@ pub const CONTRAST: &[(Role, Role, f32)] = &[
     (Role::LineStrongOnRaised, Role::SurfaceRaised, 3.0),
     (Role::LineOnOverlay, Role::SurfaceOverlay, 1.3),
     (Role::LineStrongOnOverlay, Role::SurfaceOverlay, 3.0),
+    (Role::DangerOnRaised, Role::SurfaceRaised, 4.5),
+    (Role::DangerOnOverlay, Role::SurfaceOverlay, 4.5),
 ];
 
 /// (foreground, ground, the ground's alpha percent, what it is laid over, minimum WCAG contrast).

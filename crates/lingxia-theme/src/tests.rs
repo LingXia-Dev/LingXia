@@ -1954,3 +1954,28 @@ fn check_names_every_unknown_and_missing_scale_step() {
         );
     }
 }
+
+#[test]
+fn danger_holds_text_contrast_inside_each_lifted_surface() {
+    for appearance in [Appearance::Light, Appearance::Dark] {
+        for high_contrast in [false, true] {
+            let prefs = Prefs {
+                appearance,
+                high_contrast,
+                ..Prefs::default()
+            };
+            let theme = resolve(&default_pack(), &prefs).unwrap();
+            let needed = if high_contrast { 7.0 } else { 4.5 };
+            for surface in [Role::SurfaceRaised, Role::SurfaceOverlay] {
+                let drawn = Role::Danger.under(surface);
+                assert_ne!(drawn, Role::Danger);
+                let ratio = contrast(theme.color(drawn), theme.color(surface));
+                assert!(
+                    ratio + 1e-9 >= needed,
+                    "{appearance:?} high_contrast={high_contrast} danger in {}: {ratio:.2}",
+                    surface.name()
+                );
+            }
+        }
+    }
+}

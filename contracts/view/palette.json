@@ -74,7 +74,9 @@
     "line-on-raised": "#dce1ecff",
     "line-strong-on-raised": "#828a99ff",
     "line-on-overlay": "#dce1ecff",
-    "line-strong-on-overlay": "#828a99ff"
+    "line-strong-on-overlay": "#828a99ff",
+    "danger-on-raised": "#c93434ff",
+    "danger-on-overlay": "#c93434ff"
   },
   "dark": {
     "canvas": "#0f131aff",
@@ -151,7 +153,9 @@
     "line-on-raised": "#384151ff",
     "line-strong-on-raised": "#737f95ff",
     "line-on-overlay": "#424b5bff",
-    "line-strong-on-overlay": "#7f8aa1ff"
+    "line-strong-on-overlay": "#7f8aa1ff",
+    "danger-on-raised": "#ff7371ff",
+    "danger-on-overlay": "#ff8b87ff"
   },
   "high-contrast-light": {
     "canvas": "#f6f7fbff",
@@ -228,7 +232,9 @@
     "line-on-raised": "#868a94ff",
     "line-strong-on-raised": "#69717fff",
     "line-on-overlay": "#868a94ff",
-    "line-strong-on-overlay": "#69717fff"
+    "line-strong-on-overlay": "#69717fff",
+    "danger-on-raised": "#b0151fff",
+    "danger-on-overlay": "#b0151fff"
   },
   "high-contrast-dark": {
     "canvas": "#0f131aff",
@@ -305,6 +311,8 @@
     "line-on-raised": "#758092ff",
     "line-strong-on-raised": "#8592a8ff",
     "line-on-overlay": "#818b9eff",
-    "line-strong-on-overlay": "#919eb4ff"
+    "line-strong-on-overlay": "#919eb4ff",
+    "danger-on-raised": "#ff9994ff",
+    "danger-on-overlay": "#ffafaaff"
   }
 }

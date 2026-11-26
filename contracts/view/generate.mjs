@@ -194,7 +194,7 @@ ${roles.map(role => `            Role::${roleVariant(role.name)} => ${JSON.strin
         )` : 'true'}
     }
 
-    /// The role this one draws as inside \`surface\`: a line keeps its contrast on a lifted surface.
+    /// The role this one draws as inside \`surface\`: a line or \`danger\` keeps its contrast on a lifted surface.
     pub const fn under(self, surface: Role) -> Role {
         match (surface, self) {
 ${Object.entries(surfaceLines(schema)).flatMap(([surface, bases]) => Object.entries(bases).map(([base, internal]) => `            (Role::${roleVariant(surface)}, Role::${roleVariant(base)}) => Role::${roleVariant(internal)},`)).join('\n')}

@@ -555,23 +555,32 @@ impl Build<'_> {
         self.surface_lines();
     }
 
-    /// The line pair each lifted surface hands its contents: a line keeps the contrast it has on
-    /// `surface`, at least its floor, so a divider or outline on a dialog or menu reads as it does
-    /// in the page. Light surfaces that equal `surface` keep the line itself.
+    /// The roles each lifted surface hands its contents: a line, or `danger` as text, keeps the
+    /// contrast it has on `surface`, at least its floor, so a divider or a destructive label on a
+    /// dialog or menu reads as it does in the page. Light surfaces that equal `surface` keep the
+    /// role itself.
     fn surface_lines(&mut self) {
         let home = self.get(Role::Surface);
-        for (line, floor) in [(Role::Line, 1.3), (Role::LineStrong, 3.0)] {
-            let base = self.get(line);
-            let floor = if self.strong { 3.0 } else { floor };
+        for (base_role, floor, strong_floor) in [
+            (Role::Line, 1.3, 3.0),
+            (Role::LineStrong, 3.0, 3.0),
+            (Role::Danger, 4.5, crate::boosted(4.5)),
+        ] {
+            let base = self.get(base_role);
+            let floor = if self.strong { strong_floor } else { floor };
             let want = contrast(base, home).max(floor);
-            let targets = match line {
+            let targets = match base_role {
                 Role::Line => [
                     (Role::SurfaceRaised, Role::LineOnRaised),
                     (Role::SurfaceOverlay, Role::LineOnOverlay),
                 ],
-                _ => [
+                Role::LineStrong => [
                     (Role::SurfaceRaised, Role::LineStrongOnRaised),
                     (Role::SurfaceOverlay, Role::LineStrongOnOverlay),
+                ],
+                _ => [
+                    (Role::SurfaceRaised, Role::DangerOnRaised),
+                    (Role::SurfaceOverlay, Role::DangerOnOverlay),
                 ],
             };
             for (surface, target) in targets {
