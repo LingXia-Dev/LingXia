@@ -1451,36 +1451,39 @@ mod live {
             Ok(())
         }
         fn automation(&self, request: serde_json::Value, reply: AutomationReply) {
-            let token = self.token;
-            lingxia_view_apple::post_main(Box::new(move || {
-                let mut answer = None;
-                with_page(token, |page| {
-                    answer = Some(if request["op"] != "screenshot" {
-                        page.host().automation_request(&request)
-                    } else {
-                        use base64::Engine;
-                        let allow = request["allowNotReady"] == true;
-                        page.host().prepare_web_capture(allow).and_then(|()| {
-                            match page.screenshot_png() {
-                                Ok(Some(png)) => Ok(serde_json::json!({
-                                    "png": base64::engine::general_purpose::STANDARD.encode(png)
-                                })),
-                                Ok(None) => {
-                                    Err(page.host().first_frame_failure().unwrap_or_else(|| {
-                                        "E_PAGE_NOT_READY: no presented frame".into()
-                                    }))
-                                }
-                                Err(error) => Err(error),
-                            }
-                        })
-                    });
-                });
-                reply(answer.unwrap_or_else(|| Err("page is not active".into())));
-            }));
+            automate(self.token, request, reply);
         }
         fn as_any(&self) -> &dyn std::any::Any {
             self
         }
+    }
+
+    /// Answers automation `request` on page `token` after its presented frame.
+    pub(super) fn automate(token: Token, request: serde_json::Value, reply: AutomationReply) {
+        lingxia_view_apple::post_main(Box::new(move || {
+            let mut answer = None;
+            with_page(token, |page| {
+                answer = Some(if request["op"] != "screenshot" {
+                    page.host().automation_request(&request)
+                } else {
+                    use base64::Engine;
+                    let allow = request["allowNotReady"] == true;
+                    page.host().prepare_web_capture(allow).and_then(|()| {
+                        match page.screenshot_png() {
+                            Ok(Some(png)) => Ok(serde_json::json!({
+                                "png": base64::engine::general_purpose::STANDARD.encode(png)
+                            })),
+                            Ok(None) => Err(page
+                                .host()
+                                .first_frame_failure()
+                                .unwrap_or_else(|| "E_PAGE_NOT_READY: no presented frame".into())),
+                            Err(error) => Err(error),
+                        }
+                    })
+                });
+            });
+            reply(answer.unwrap_or_else(|| Err("page is not active".into())));
+        }));
     }
 
     struct Factory;

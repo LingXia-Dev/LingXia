@@ -18,6 +18,36 @@ use std::time::Duration;
 #[path = "automation_gpu.rs"]
 pub mod gpu;
 
+/// The window feedback layer over `app`'s window (its toast and dialogs), automated as a GPU
+/// page is. Not a page: no page name reaches it.
+pub fn feedback(app: &Arc<LxApp>) -> Result<Arc<dyn gpu::GpuPageAutomation>, String> {
+    crate::feedback::feedback_layer()
+        .and_then(|layer| layer.automation(&app.appid))
+        .ok_or_else(|| "E_PAGE_NOT_READY: no feedback layer is open over the app's window".into())
+}
+
+/// Query the feedback layer. With none open nothing matches, so absence reads as absence while
+/// actions on it wait.
+pub async fn feedback_query(
+    app: &Arc<LxApp>,
+    css: &str,
+    index: Option<usize>,
+    all: bool,
+    max_text: Option<usize>,
+) -> Result<Value, String> {
+    let Ok(layer) = feedback(app) else {
+        return Ok(if all {
+            serde_json::json!({ "count": 0, "renderer": "gpu", "items": [] })
+        } else {
+            serde_json::json!({
+                "exists": false, "renderer": "gpu", "index": index.unwrap_or(0), "count": 0,
+                "visible": false, "inViewport": false, "enabled": false, "editable": false,
+            })
+        });
+    };
+    layer.query(css, index, all, max_text).await
+}
+
 /// Default bound for [`wait_page_runtime_ready`].
 pub const PAGE_READY_TIMEOUT: Duration = Duration::from_secs(15);
 

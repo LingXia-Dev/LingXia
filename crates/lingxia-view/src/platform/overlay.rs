@@ -50,4 +50,10 @@ pub trait OverlaySurface: Send + Sync {
     /// Focused, the overlay takes key focus and the soft keyboard goes; unfocused, focus returns
     /// to what had it.
     fn set_focus(&self, focused: bool);
+    /// An automation request as a GPU page answers it (`ViewHost::automation_request`, plus
+    /// `{op: "screenshot"}`), answered once from any thread after the presented frame.
+    fn automation(&self, request: serde_json::Value, reply: OverlayAutomationReply);
 }
+
+/// Answers one overlay automation request.
+pub type OverlayAutomationReply = Box<dyn FnOnce(Result<serde_json::Value, String>) + Send>;

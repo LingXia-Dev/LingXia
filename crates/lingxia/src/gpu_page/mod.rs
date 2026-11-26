@@ -19,7 +19,7 @@ use std::{
 use tokio::sync::oneshot;
 
 #[cfg(feature = "automation")]
-mod automation;
+pub(crate) mod automation;
 mod images;
 pub(crate) use images::{load_image, video_url};
 #[cfg(any(
@@ -230,7 +230,7 @@ pub(crate) struct Endpoint {
     generation: Mutex<Option<GpuViewGeneration>>,
     /// Registered with lingxia-automation; unregisters when the endpoint drops.
     #[cfg(feature = "automation")]
-    _automation: Arc<automation::GpuAutomation>,
+    _automation: Arc<automation::GpuAutomation<dyn NativePage>>,
 }
 
 impl Endpoint {

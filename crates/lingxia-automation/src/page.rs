@@ -938,6 +938,213 @@ impl JSPageDriver {
     }
 }
 
+/// The window feedback layer over one lxapp's window (its toast and dialogs), driven as a GPU
+/// page is. It is no page: an option naming one is refused.
+/// With no layer open a query matches nothing (absence asserts pass); other calls reject
+/// `E_PAGE_NOT_READY`.
+#[js_class(clone)]
+pub(crate) struct JSFeedbackDriver {
+    lxapp: Weak<LxApp>,
+}
+
+impl JSFeedbackDriver {
+    pub(crate) fn new(lxapp: Weak<LxApp>) -> Self {
+        Self { lxapp }
+    }
+
+    fn app(&self, ctx: &JSContext, page: &Option<String>) -> JSResult<Arc<LxApp>> {
+        if page.is_some() {
+            return Err(auto_err(
+                "the feedback layer is not a page: drop the page option",
+            ));
+        }
+        upgrade_authorized(ctx, &self.lxapp)
+    }
+
+    /// The open layer, or `E_PAGE_NOT_READY` while none is.
+    fn layer(
+        &self,
+        ctx: &JSContext,
+        page: &Option<String>,
+    ) -> JSResult<Arc<dyn lxapp::automation::gpu::GpuPageAutomation>> {
+        auto::feedback(&self.app(ctx, page)?).map_err(auto_err)
+    }
+}
+
+fn act_on(
+    layer: Arc<dyn lxapp::automation::gpu::GpuPageAutomation>,
+    css: &str,
+    index: Option<usize>,
+    action: auto::gpu::GpuAction,
+) -> impl std::future::Future<Output = JSResult<()>> {
+    let reply = layer.act(css, index, action);
+    async move { reply.await.map_err(auto_err) }
+}
+
+#[js_class(rename = "FeedbackDriver")]
+impl JSFeedbackDriver {
+    #[js_method(constructor)]
+    fn _ctor() -> JSResult<()> {
+        Err(HostError::new(rong::error::E_ILLEGAL_CONSTRUCTOR, "Use lx.automation()").into())
+    }
+
+    #[js_method]
+    async fn query(&self, ctx: JSContext, options: JSQueryOptions) -> JSResult<JSValue> {
+        let app = self.app(&ctx, &options.page)?;
+        let all = options.all.unwrap_or(false);
+        if all && options.index.is_some() {
+            return Err(auto_err("pass either all or index, not both"));
+        }
+        let max_text = if options.full.unwrap_or(false) {
+            None
+        } else {
+            Some(options.max_text.unwrap_or(DEFAULT_MAX_TEXT))
+        };
+        let value = auto::feedback_query(&app, &options.css, options.index, all, max_text)
+            .await
+            .map_err(auto_err)?;
+        json_to_js(&ctx, &crate::js_payload::page_query(value))
+    }
+
+    #[js_method]
+    async fn click(&self, ctx: JSContext, options: JSClickOptions) -> JSResult<()> {
+        let layer = self.layer(&ctx, &options.page)?;
+        let force = options.force.unwrap_or(false);
+        act_on(
+            layer,
+            &options.css,
+            options.index,
+            auto::gpu::GpuAction::Click { force },
+        )
+        .await
+    }
+
+    #[js_method]
+    async fn dblclick(&self, ctx: JSContext, options: JSClickOptions) -> JSResult<()> {
+        let layer = self.layer(&ctx, &options.page)?;
+        act_on(
+            layer,
+            &options.css,
+            options.index,
+            auto::gpu::GpuAction::DoubleClick,
+        )
+        .await
+    }
+
+    #[js_method]
+    async fn blur(&self, ctx: JSContext, options: JSClickOptions) -> JSResult<()> {
+        let layer = self.layer(&ctx, &options.page)?;
+        act_on(
+            layer,
+            &options.css,
+            options.index,
+            auto::gpu::GpuAction::Blur,
+        )
+        .await
+    }
+
+    #[js_method(rename = "semanticAction")]
+    async fn semantic_action(&self, ctx: JSContext, options: JSSemanticOptions) -> JSResult<()> {
+        let layer = self.layer(&ctx, &options.page)?;
+        let action = auto::gpu::GpuAction::Action { name: options.name };
+        act_on(layer, &options.css, options.index, action).await
+    }
+
+    #[js_method(rename = "type")]
+    async fn type_text(&self, ctx: JSContext, options: JSTypeOptions) -> JSResult<()> {
+        let layer = self.layer(&ctx, &options.page)?;
+        let action = auto::gpu::GpuAction::Type { text: options.text };
+        act_on(layer, &options.css, options.index, action).await
+    }
+
+    #[js_method]
+    async fn fill(&self, ctx: JSContext, options: JSTypeOptions) -> JSResult<()> {
+        let layer = self.layer(&ctx, &options.page)?;
+        let action = auto::gpu::GpuAction::Fill {
+            text: options.text,
+            force: options.force.unwrap_or(false),
+        };
+        act_on(layer, &options.css, options.index, action).await
+    }
+
+    #[js_method]
+    async fn press(&self, ctx: JSContext, options: JSPressOptions) -> JSResult<()> {
+        let layer = self.layer(&ctx, &options.page)?;
+        let action = auto::gpu::GpuAction::Press { key: options.key };
+        act_on(
+            layer,
+            options.css.as_deref().unwrap_or(""),
+            options.index,
+            action,
+        )
+        .await
+    }
+
+    #[js_method(rename = "selectOption")]
+    async fn select_option(&self, ctx: JSContext, options: JSSelectOptionOptions) -> JSResult<()> {
+        let layer = self.layer(&ctx, &options.page)?;
+        let action = auto::gpu::GpuAction::SelectOption {
+            value: options.value,
+        };
+        act_on(layer, &options.css, options.index, action).await
+    }
+
+    #[js_method(rename = "scrollTo")]
+    async fn scroll_to(&self, ctx: JSContext, options: JSScrollToOptions) -> JSResult<()> {
+        let layer = self.layer(&ctx, &options.page)?;
+        act_on(
+            layer,
+            &options.css,
+            options.index,
+            auto::gpu::GpuAction::ScrollIntoView,
+        )
+        .await
+    }
+
+    #[js_method]
+    async fn tree(
+        &self,
+        ctx: JSContext,
+        options: Optional<JSScreenshotOptions>,
+    ) -> JSResult<JSValue> {
+        let options = options.0.unwrap_or_default();
+        let layer = self.layer(&ctx, &options.page)?;
+        let value = layer.tree().await.map_err(auto_err)?;
+        json_to_js(&ctx, &value)
+    }
+
+    #[js_method(rename = "uiFrame")]
+    async fn ui_frame(
+        &self,
+        ctx: JSContext,
+        options: Optional<JSFrameOptions>,
+    ) -> JSResult<JSValue> {
+        let options = options.0.unwrap_or_default();
+        let layer = self.layer(&ctx, &options.page)?;
+        let value = layer.metrics(options.window_ms).await.map_err(auto_err)?;
+        json_to_js(&ctx, &value)
+    }
+
+    #[js_method]
+    async fn screenshot(
+        &self,
+        ctx: JSContext,
+        options: Optional<JSScreenshotOptions>,
+    ) -> JSResult<JSScreenshot> {
+        let options = options.0.unwrap_or_default();
+        let layer = self.layer(&ctx, &options.page)?;
+        let allow = options.allow_not_ready.unwrap_or(false);
+        let bytes = layer.screenshot(allow).await.map_err(auto_err)?;
+        let (width, height) = png_dimensions(&bytes).unwrap_or((0, 0));
+        Ok(JSScreenshot {
+            format: "png".to_string(),
+            base64: general_purpose::STANDARD.encode(&bytes),
+            width,
+            height,
+        })
+    }
+}
+
 /// Read width/height from a PNG's IHDR chunk (bytes 16..24, big-endian).
 pub(crate) fn png_dimensions(bytes: &[u8]) -> Option<(u32, u32)> {
     if bytes.len() < 24 || &bytes[0..8] != b"\x89PNG\r\n\x1a\n" {

@@ -1194,6 +1194,11 @@ export class LiveFixture implements Fixture {
       page: <C extends PageDefinition & JsonPageData<C>>(selector?: PageSelector, options?: PageBindOptions) =>
         this.bindPage<C>(driver, selector, options),
       view: this.wrapView(() => driver().page, undefined),
+      feedback: (() => {
+        const { testId, getByRole, css, screenshot, settled } =
+          this.wrapView(() => driver().feedback as unknown as PageDriver, undefined);
+        return { view: { testId, getByRole, css, screenshot, settled } };
+      })(),
       window: {
         get pointer() { return input.pointer; },
         // A bare key name is `{ key }`, also on a host whose binding predates it.

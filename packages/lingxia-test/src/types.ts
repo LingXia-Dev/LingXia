@@ -1073,6 +1073,8 @@ export interface TestApp {
   page<C extends PageDefinition & JsonPageData<C> = PageDefinition>(selector?: PageSelector, options?: PageBindOptions): Promise<TestPage<C>>;
   /** The View of whichever page is current at each call. */
   readonly view: TestView;
+  /** The window feedback layer over the app's window (toast, dialogs); its actions wait while none is open. */
+  readonly feedback: { readonly view: Pick<TestView, "testId" | "getByRole" | "css" | "screenshot" | "settled"> };
   /** Native app-window input, independent of pages and DOM focus. */
   readonly window: TestWindow;
   /** Real gestures on the host window: edge back, tab bar. */

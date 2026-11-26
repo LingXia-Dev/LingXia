@@ -161,6 +161,13 @@ impl JSLxAppDriver {
         )
     }
 
+    /// The window feedback layer over this lxapp's window: its toast and dialogs.
+    #[js_method(getter, enumerable)]
+    fn feedback(&self, ctx: JSContext) -> JSResult<JSObject> {
+        Ok(Class::lookup::<page::JSFeedbackDriver>(&ctx)?
+            .instance(page::JSFeedbackDriver::new(self.lxapp.clone())))
+    }
+
     #[js_method(getter, enumerable)]
     fn nav(&self, ctx: JSContext) -> JSResult<JSObject> {
         Ok(Class::lookup::<nav::JSNavDriver>(&ctx)?

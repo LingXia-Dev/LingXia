@@ -47,6 +47,13 @@ impl OverlaySurface for Handle {
     fn set_focus(&self, focused: bool) {
         self.0.focus.lock().unwrap().push(focused);
     }
+    fn automation(
+        &self,
+        request: serde_json::Value,
+        reply: lingxia_view::platform::OverlayAutomationReply,
+    ) {
+        reply(Ok(serde_json::json!({ "asked": request })));
+    }
 }
 
 #[derive(Default)]
@@ -174,6 +181,30 @@ fn alert(title: &str) -> DialogRequest {
         confirm: None,
         destructive: false,
     }
+}
+
+/// Automation reaches the layer over the app's window while it is open, and nothing after.
+#[cfg(feature = "automation")]
+#[test]
+fn automation_reaches_the_layer_over_the_apps_window_while_it_is_open() {
+    let f = Fixture::new();
+    assert!(f.feedback.automation("app.a").is_none());
+    f.feedback
+        .toast("app.a", toast("Saved", Some(1500)))
+        .unwrap();
+    let layer = f.feedback.automation("app.a").expect("the open layer");
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .build()
+        .unwrap();
+    let tree = runtime.block_on(layer.tree()).unwrap();
+    assert_eq!(tree, json!({ "asked": { "op": "tree" } }));
+    f.fire(Duration::from_millis(1500));
+    f.fire(CLOSE_AFTER);
+    assert!(f.feedback.automation("app.a").is_none());
+    assert!(
+        runtime.block_on(layer.tree()).is_err(),
+        "the closed layer is not active"
+    );
 }
 
 #[test]

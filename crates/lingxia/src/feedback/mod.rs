@@ -63,6 +63,20 @@ impl FeedbackLayer for Installed {
     fn forget(&self, appid: &str) {
         self.0.forget(appid)
     }
+    #[cfg(feature = "automation")]
+    fn automation(
+        &self,
+        appid: &str,
+    ) -> Option<Arc<dyn lingxia_automation::gpu::GpuPageAutomation>> {
+        self.0.automation(appid)
+    }
+}
+
+#[cfg(feature = "automation")]
+impl crate::gpu_page::automation::Automated for dyn OverlaySurface {
+    fn automation(&self, request: serde_json::Value, reply: crate::gpu_page::AutomationReply) {
+        OverlaySurface::automation(self, request, reply)
+    }
 }
 
 pub(crate) struct Feedback {
@@ -146,6 +160,19 @@ impl Feedback {
             Some(model.dialog(appid, request, words))
         })?
         .ok_or_else(|| "feedback layer closed".to_string())
+    }
+
+    /// The layer over `appid`'s window for automation, while one is open.
+    #[cfg(feature = "automation")]
+    pub(crate) fn automation(
+        &self,
+        appid: &str,
+    ) -> Option<Arc<dyn lingxia_automation::gpu::GpuPageAutomation>> {
+        let window = self.overlays.window_of(Some(appid))?;
+        let surface = self.windows.lock().unwrap().get(&window)?.surface.clone()?;
+        Some(Arc::new(crate::gpu_page::automation::GpuAutomation {
+            native: Arc::downgrade(&surface),
+        }))
     }
 
     /// `lx.ui.dismissDialog`: `appid`'s dialogs, shown or queued, settle as dismissed.

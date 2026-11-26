@@ -321,6 +321,9 @@ pub enum PageCommand {
         /// Page name or runtime instance id; defaults to current page
         #[arg(long)]
         page: Option<String>,
+        /// The window feedback layer over the app's window (toast, dialogs) instead of a page
+        #[arg(long, conflicts_with = "page")]
+        feedback: bool,
         /// LxApp context; defaults to current
         #[arg(long, default_value = "current")]
         app: String,
@@ -396,6 +399,9 @@ pub enum PageCommand {
         /// Page name or runtime instance id; defaults to current page
         #[arg(long)]
         page: Option<String>,
+        /// The window feedback layer over the app's window (toast, dialogs) instead of a page
+        #[arg(long, conflicts_with = "page")]
+        feedback: bool,
         /// LxApp context; defaults to current
         #[arg(long, default_value = "current")]
         app: String,
@@ -417,6 +423,9 @@ pub enum PageCommand {
         /// Page name or runtime instance id; defaults to current page
         #[arg(long)]
         page: Option<String>,
+        /// The window feedback layer over the app's window (toast, dialogs) instead of a page
+        #[arg(long, conflicts_with = "page")]
+        feedback: bool,
         /// LxApp context; defaults to current
         #[arg(long, default_value = "current")]
         app: String,
@@ -459,6 +468,9 @@ pub enum PageCommand {
         /// Page name or runtime instance id; defaults to current page
         #[arg(long)]
         page: Option<String>,
+        /// The window feedback layer over the app's window (toast, dialogs) instead of a page
+        #[arg(long, conflicts_with = "page")]
+        feedback: bool,
         /// LxApp context; defaults to current
         #[arg(long, default_value = "current")]
         app: String,
@@ -519,6 +531,9 @@ pub enum PageCommand {
         /// Page name or runtime instance id; defaults to current
         #[arg(long, default_value = "current")]
         page: String,
+        /// The window feedback layer over the app's window (toast, dialogs) instead of a page
+        #[arg(long, conflicts_with = "page")]
+        feedback: bool,
         /// Output path; use `-` for stdout. Default: .lingxia/screenshots/<app>-<page>-<ts>.png
         #[arg(long, short = 'o')]
         output: Option<String>,
@@ -898,6 +913,7 @@ fn execute_page(ws_url: &str, options: PageOptions) -> Result<()> {
             full,
             max_text,
             page,
+            feedback,
             app,
             pretty,
         } => {
@@ -910,6 +926,7 @@ fn execute_page(ws_url: &str, options: PageOptions) -> Result<()> {
                 Some(json!({
                     "appid": app,
                     "page": page,
+                    "feedback": feedback,
                     "selector": selector,
                     "all": all,
                     "index": index,
@@ -924,6 +941,7 @@ fn execute_page(ws_url: &str, options: PageOptions) -> Result<()> {
             selector,
             index,
             page,
+            feedback,
             app,
             json,
         } => {
@@ -933,6 +951,7 @@ fn execute_page(ws_url: &str, options: PageOptions) -> Result<()> {
                 Some(json!({
                     "appid": app,
                     "page": page,
+                    "feedback": feedback,
                     "selector": selector,
                     "index": index,
                 })),
@@ -944,6 +963,7 @@ fn execute_page(ws_url: &str, options: PageOptions) -> Result<()> {
             text,
             index,
             page,
+            feedback,
             app,
             json,
         } => {
@@ -953,6 +973,7 @@ fn execute_page(ws_url: &str, options: PageOptions) -> Result<()> {
                 Some(json!({
                     "appid": app,
                     "page": page,
+                    "feedback": feedback,
                     "selector": selector,
                     "text": text,
                     "index": index,
@@ -986,6 +1007,7 @@ fn execute_page(ws_url: &str, options: PageOptions) -> Result<()> {
             selector,
             index,
             page,
+            feedback,
             app,
             json,
         } => {
@@ -995,6 +1017,7 @@ fn execute_page(ws_url: &str, options: PageOptions) -> Result<()> {
                 Some(json!({
                     "appid": app,
                     "page": page,
+                    "feedback": feedback,
                     "key": key,
                     "selector": selector,
                     "index": index,
@@ -1049,10 +1072,11 @@ fn execute_page(ws_url: &str, options: PageOptions) -> Result<()> {
         PageCommand::Screenshot {
             app,
             page,
+            feedback,
             output,
             json,
         } => {
-            execute_page_screenshot(ws_url, app, page, output, json)?;
+            execute_page_screenshot(ws_url, app, (!feedback).then_some(page), output, json)?;
         }
     }
 
@@ -1062,14 +1086,15 @@ fn execute_page(ws_url: &str, options: PageOptions) -> Result<()> {
 fn execute_page_screenshot(
     ws_url: &str,
     app: String,
-    page: String,
+    page: Option<String>,
     output: Option<String>,
     json: bool,
 ) -> Result<()> {
+    let feedback = page.is_none();
     let data = client::execute_command(
         ws_url,
         methods::lxapp_page::SCREENSHOT,
-        Some(json!({ "appid": app, "page": page })),
+        Some(json!({ "appid": app, "page": page, "feedback": feedback })),
     )?
     .unwrap_or(Value::Null);
 
@@ -1086,7 +1111,7 @@ fn execute_page_screenshot(
         .and_then(Value::as_str)
         .filter(|page| !page.is_empty())
         .or_else(|| data.get("path").and_then(Value::as_str))
-        .unwrap_or(&page);
+        .unwrap_or(page.as_deref().unwrap_or("feedback"));
     let app = screenshot::safe_component(app);
     let page = screenshot::safe_component(page);
     screenshot::write_png(output, format!("{app}-{page}-{ts}.png"), &bytes)
@@ -1400,6 +1425,14 @@ mod tests {
             page_command(&["page", "press", "Escape"]),
             PageCommand::Press { selector: None, .. }
         ));
+        // The feedback layer is no page: `--feedback` stands in for `--page`.
+        assert!(matches!(
+            page_command(&["page", "press", "Escape", "--feedback"]),
+            PageCommand::Press { feedback: true, .. }
+        ));
+        assert!(
+            parse_lxapp_cli(args(&["page", "click", "x", "--feedback", "--page", "ui"])).is_err()
+        );
         // `--index` picks among a selector's matches, so it needs one.
         assert!(parse_lxapp_cli(args(&["page", "press", "Enter", "--index", "1"])).is_err());
     }

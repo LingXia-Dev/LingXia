@@ -16,8 +16,10 @@ mod chrome;
 mod environment;
 mod overlay;
 pub use chrome::HostChrome;
-pub use overlay::{OverlayInput, OverlayLogic, OverlaySurface, WindowId, WindowOverlays};
 pub use environment::{DeviceFacts, obscured, touch_target};
+pub use overlay::{
+    OverlayAutomationReply, OverlayInput, OverlayLogic, OverlaySurface, WindowId, WindowOverlays,
+};
 
 pub type Task = Box<dyn FnOnce() + Send>;
 

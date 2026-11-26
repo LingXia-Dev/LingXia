@@ -22,6 +22,7 @@ import type {
   NetworkDriver,
   NetworkRoute,
   Scenario,
+  FeedbackDriver,
   PageDriver,
   ProfileDriver,
   PageKey,
@@ -225,7 +226,7 @@ const AUTOMATION_API = [
 ] as const;
 const SHELL_DRIVER_API = ['pins', 'setPin', 'reorderPins'] as const;
 const TERMINAL_DRIVER_API = ['input', 'newTab', 'setMaximized', 'snapshot', 'split'] as const;
-const LXAPP_DRIVER_API = ['clock', 'dialogs', 'eval', 'info', 'mock', 'nav', 'network', 'page', 'pages', 'profile', 'surfaceLayout'] as const;
+const LXAPP_DRIVER_API = ['clock', 'dialogs', 'eval', 'feedback', 'info', 'mock', 'nav', 'network', 'page', 'pages', 'profile', 'surfaceLayout'] as const;
 const MOCK_DRIVER_API = ['reset', 'use'] as const;
 const CLOCK_DRIVER_API = ['install', 'runAll', 'setSystemTime', 'tick', 'uninstall'] as const;
 const DIALOG_DRIVER_API = [
@@ -278,6 +279,21 @@ const PAGE_DRIVER_API = [
   'type',
   'uiFrame',
   'waitFor',
+] as const;
+const FEEDBACK_DRIVER_API = [
+  'blur',
+  'click',
+  'dblclick',
+  'fill',
+  'press',
+  'query',
+  'screenshot',
+  'scrollTo',
+  'selectOption',
+  'semanticAction',
+  'tree',
+  'type',
+  'uiFrame',
 ] as const;
 const PAGE_POINTER_API = ['click', 'down', 'drag', 'move', 'scroll', 'up'] as const;
 const PAGE_KEY_API = ['press', 'type'] as const;
@@ -940,6 +956,7 @@ export type LxApiManifestGate = [
   AssertTrue<Exact<LxAppDriver, typeof LXAPP_DRIVER_API>>,
   AssertTrue<Exact<LxAppManager, typeof LXAPP_MANAGER_API>>,
   AssertTrue<Exact<PageDriver, typeof PAGE_DRIVER_API>>,
+  AssertTrue<Exact<FeedbackDriver, typeof FEEDBACK_DRIVER_API>>,
   AssertTrue<Exact<PagePointer, typeof PAGE_POINTER_API>>,
   AssertTrue<Exact<PageGesture, typeof PAGE_GESTURE_API>>,
   AssertTrue<Exact<PageKey, typeof PAGE_KEY_API>>,

@@ -21,11 +21,22 @@ const FRAME_WAIT: std::time::Duration = std::time::Duration::from_secs(1);
 const WEB_WAIT: std::time::Duration = std::time::Duration::from_secs(4);
 const WEB_NOT_READY: &str = "E_WEBVIEW_NOT_READY";
 
-pub(super) struct GpuAutomation {
-    pub native: Weak<dyn NativePage>,
+/// What answers automation requests: a GPU page's native shell, or a window overlay.
+pub(crate) trait Automated: Send + Sync + 'static {
+    fn automation(&self, request: Value, reply: super::AutomationReply);
 }
 
-impl GpuAutomation {
+impl Automated for dyn NativePage {
+    fn automation(&self, request: Value, reply: super::AutomationReply) {
+        NativePage::automation(self, request, reply)
+    }
+}
+
+pub(crate) struct GpuAutomation<T: ?Sized + Automated> {
+    pub native: Weak<T>,
+}
+
+impl<T: ?Sized + Automated> GpuAutomation<T> {
     fn request(&self, request: Value) -> GpuFuture<Value> {
         let native = self.native.upgrade();
         Box::pin(async move {
@@ -43,7 +54,7 @@ impl GpuAutomation {
     }
 }
 
-impl GpuPageAutomation for GpuAutomation {
+impl<T: ?Sized + Automated> GpuPageAutomation for GpuAutomation<T> {
     fn query(
         &self,
         css: &str,

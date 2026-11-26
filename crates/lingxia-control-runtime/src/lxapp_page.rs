@@ -1,7 +1,10 @@
 use crate::util::{png_response, run_async};
 use lingxia_control_protocol::methods;
+use lxapp::automation as auto;
+use lxapp::automation::gpu::{GpuAction, GpuPageAutomation};
 use serde::Deserialize;
 use serde_json::{Value, json};
+use std::sync::Arc;
 use std::time::Duration;
 
 const DEFAULT_EVAL_TIMEOUT: Duration = Duration::from_secs(5);
@@ -113,6 +116,13 @@ fn handle_lxapp_page_command_impl(
             let max_text = args
                 .max_text
                 .or_else(|| (!args.full).then_some(DEFAULT_QUERY_TEXT_LIMIT));
+            if args.feedback {
+                let app = feedback_app(args.appid.as_deref(), args.page.as_deref())?;
+                return run_async(async move {
+                    auto::feedback_query(&app, &args.selector, args.index, args.all, max_text).await
+                })
+                .map(Some);
+            }
             run_async(crate::devtool::lxapp_dev_page_query(
                 args.appid.as_deref(),
                 args.page.as_deref(),
@@ -125,6 +135,12 @@ fn handle_lxapp_page_command_impl(
         }
         methods::lxapp_page::CLICK => {
             let args: SelectorActionArgs = parse_args(handler, args)?;
+            if args.feedback {
+                let (appid, layer) = feedback_layer(args.appid.as_deref(), args.page.as_deref())?;
+                let click = GpuAction::Click { force: false };
+                run_async(layer.act(&args.selector, args.index, click))?;
+                return Ok(Some(feedback_action_response("click", appid)));
+            }
             let info =
                 crate::devtool::lxapp_dev_page_info(args.appid.as_deref(), args.page.as_deref())?;
             run_async(crate::devtool::lxapp_dev_page_click(
@@ -137,6 +153,12 @@ fn handle_lxapp_page_command_impl(
         }
         methods::lxapp_page::TYPE => {
             let args: TextActionArgs = parse_args(handler, args)?;
+            if args.feedback {
+                let (appid, layer) = feedback_layer(args.appid.as_deref(), args.page.as_deref())?;
+                let typing = GpuAction::Type { text: args.text };
+                run_async(layer.act(&args.selector, args.index, typing))?;
+                return Ok(Some(feedback_action_response("type", appid)));
+            }
             let info =
                 crate::devtool::lxapp_dev_page_info(args.appid.as_deref(), args.page.as_deref())?;
             run_async(crate::devtool::lxapp_dev_page_type(
@@ -163,6 +185,13 @@ fn handle_lxapp_page_command_impl(
         }
         methods::lxapp_page::PRESS => {
             let args: PressArgs = parse_args(handler, args)?;
+            if args.feedback {
+                let (appid, layer) = feedback_layer(args.appid.as_deref(), args.page.as_deref())?;
+                let press = GpuAction::Press { key: args.key };
+                let selector = args.selector.as_deref().unwrap_or("");
+                run_async(layer.act(selector, args.index, press))?;
+                return Ok(Some(feedback_action_response("press", appid)));
+            }
             let info =
                 crate::devtool::lxapp_dev_page_info(args.appid.as_deref(), args.page.as_deref())?;
             run_async(crate::devtool::lxapp_dev_page_press(
@@ -207,6 +236,17 @@ fn handle_lxapp_page_command_impl(
         }
         methods::lxapp_page::SCREENSHOT => {
             let parsed: PageTargetArgs = parse_args(handler, args)?;
+            if parsed.feedback {
+                let (appid, layer) =
+                    feedback_layer(parsed.appid.as_deref(), parsed.page.as_deref())?;
+                let bytes = run_async(layer.screenshot(true))?;
+                return Ok(Some(png_response(
+                    "feedback",
+                    "css_pixels",
+                    &bytes,
+                    [("appid", json!(appid))],
+                )));
+            }
             let (info, bytes) = run_async(crate::devtool::lxapp_dev_page_screenshot_with_info(
                 parsed.appid.as_deref(),
                 parsed.page.as_deref(),
@@ -243,6 +283,28 @@ fn page_list_response(pages: Vec<crate::devtool::LxAppDevPageInfo>) -> Value {
         "opened_pages_count": pages.iter().filter(|page| page.opened).count(),
         "pages": pages,
     })
+}
+
+/// `--feedback`: the app whose window feedback layer is meant; no page name reaches it.
+fn feedback_app(appid: Option<&str>, page: Option<&str>) -> Result<Arc<lxapp::LxApp>, String> {
+    if page.is_some() {
+        return Err("--feedback targets the feedback layer, not a page: drop --page".into());
+    }
+    auto::resolve_lxapp(appid.unwrap_or("current"))
+}
+
+/// The open feedback layer over the app's window, or `E_PAGE_NOT_READY`.
+fn feedback_layer(
+    appid: Option<&str>,
+    page: Option<&str>,
+) -> Result<(String, Arc<dyn GpuPageAutomation>), String> {
+    let app = feedback_app(appid, page)?;
+    let layer = auto::feedback(&app)?;
+    Ok((app.appid.clone(), layer))
+}
+
+fn feedback_action_response(action: &'static str, appid: String) -> Value {
+    json!({ "ok": true, "action": action, "feedback": { "appid": appid } })
 }
 
 fn page_action_response(action: &'static str, page: crate::devtool::LxAppDevPageInfo) -> Value {
@@ -289,6 +351,8 @@ struct PageTargetArgs {
     appid: Option<String>,
     #[serde(default)]
     page: Option<String>,
+    #[serde(default)]
+    feedback: bool,
 }
 
 #[derive(Deserialize)]
@@ -333,6 +397,8 @@ struct QueryArgs {
     full: bool,
     #[serde(default)]
     max_text: Option<usize>,
+    #[serde(default)]
+    feedback: bool,
 }
 
 #[derive(Deserialize)]
@@ -344,6 +410,8 @@ struct SelectorActionArgs {
     selector: String,
     #[serde(default)]
     index: Option<usize>,
+    #[serde(default)]
+    feedback: bool,
 }
 
 #[derive(Deserialize)]
@@ -356,6 +424,8 @@ struct TextActionArgs {
     text: String,
     #[serde(default)]
     index: Option<usize>,
+    #[serde(default)]
+    feedback: bool,
 }
 
 #[derive(Deserialize)]
@@ -381,6 +451,8 @@ struct PressArgs {
     selector: Option<String>,
     #[serde(default)]
     index: Option<usize>,
+    #[serde(default)]
+    feedback: bool,
 }
 
 #[derive(Deserialize)]

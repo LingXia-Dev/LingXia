@@ -6,7 +6,6 @@ import type { LxAppRuntimeNavigationBarInfo, LxAppRuntimeTabBarInfo } from '@lin
 import { bindFixture, eventually, relaunchFromLogic, type Caught } from '../helpers/poll.js';
 import { SHOWCASE_APP_ID } from '../helpers/app.js';
 import { waitForCurrentPage } from '../helpers/page.js';
-import { runtimePlatform } from '../helpers/platform.js';
 import { pinEnglish } from '../helpers/language.js';
 
 // Labels below are the English ones.
@@ -226,47 +225,17 @@ test("round-trip appearance preference through the ui controls", {
   });
 });
 
-/**
- * Where the feedback overlays live differs by host, so the scenario is one and
- * the difference is a profile: a desktop draws them in the page from
- * `@lingxia/bridge`, a phone draws native ones the page cannot see and only a
- * system tap can answer.
- */
-const OVERLAY_SURFACE: Record<string, 'dom' | 'native'> = {
-  macos: 'dom',
-  windows: 'dom',
-  android: 'native',
-  ios: 'native',
-  harmony: 'native',
-};
-
 test("show, hide, confirm, and cancel in-app feedback overlays", {
   id: "UI-FEEDBACK-001",
   covers: ['lx.ui.toast', 'lx.ui.alert', 'lx.ui.confirm', 'lx.ui.actionSheet'],
   app: SHOWCASE_APP_ID,
-  reason: 'Mobile hosts render feedback through native overlays rather than DOM elements.',
   timeout: 60_000,
 }, async (t) => {
   const { app } = bindFixture(t, "UI-FEEDBACK-001");
-  const platform = await runtimePlatform(app);
-  // Desktop hosts draw Logic's overlays in the page (the WebView document, or
-  // the GPU View); mobile hosts draw them natively over the page.
-  const overlays = OVERLAY_SURFACE[platform] ?? 'dom';
-  const hostShows = async (label: string) =>
-    (await app.chrome.elements({ scope: 'window' })).some((element) => element.label === label);
-  if (overlays === 'native') {
-    const unreadable = await app.chrome.elements({ scope: 'window' }).then(
-      () => false,
-      (error: { code?: string }) => {
-        if (error?.code === 'E_UNSUPPORTED') return true;
-        throw error;
-      },
-    );
-    if (unreadable) t.skip('native feedback overlays need readable host chrome');
-  }
+  // Every host draws Logic's feedback on the layer over the app's window.
+  const layer = app.feedback.view;
 
-  // Desktop overlays are drawn in the ui page's own document.
-  const ui = await t.step('show and hide a toast', async () => {
+  await t.step('show and hide a toast', async () => {
     await app.nav.reset({ page: 'ui', params: { type: 'toast' } });
     const page = await app.page({ name: 'ui' }, { timeout: 30_000 });
     await page.view.testId('toast-show').waitFor({ state: 'visible', timeout: 30_000 });
@@ -275,57 +244,35 @@ test("show, hide, confirm, and cancel in-app feedback overlays", {
       (globalThis as { coverageToast?: ToastHandle }).coverageToast =
         lx.ui.toast('Coverage toast', { durationMs: 8000 });
     });
-    if (overlays === 'dom') {
-      await expect(page.view.testId('lx-toast')).toContainText('Coverage toast', { timeout: 30_000 });
-    } else {
-      // A native toast is over the page, not in it.
-      await expect.poll(() => hostShows('Coverage toast'), { timeout: 10_000 }).toBe(true);
-      await expect(page.view.testId('lx-toast')).toHaveCount(0);
-    }
+    await expect(layer.testId('lx-toast')).toContainText('Coverage toast', { timeout: 30_000 });
+    // The layer is over the page, not in it.
+    await expect(page.view.testId('lx-toast')).toHaveCount(0);
     await app.logic.eval(async () => {
       (globalThis as { coverageToast?: ToastHandle }).coverageToast?.dismiss();
     });
-    if (overlays === 'dom') {
-      await expect(page.view.testId('lx-toast')).toHaveCount(0, { timeout: 10_000 });
-    } else {
-      await expect.poll(() => hostShows('Coverage toast'), { timeout: 10_000 }).toBe(false);
-    }
-    return page;
+    await expect(layer.testId('lx-toast')).toHaveCount(0, { timeout: 10_000 });
   });
 
-  // Dialog buttons: by test id in the page, by label on a native dialog.
-  const press = async (testId: string, label: string) => {
-    if (overlays === 'dom') {
-      await ui.view.testId(testId).first().waitFor({ state: 'visible', timeout: 30_000 });
-      await ui.view.testId(testId).click();
-    } else {
-      await app.chrome.tap({ label, scope: 'window' }, { timeout: 30_000 });
-    }
+  const press = async (testId: string) => {
+    await layer.testId(testId).first().waitFor({ state: 'visible', timeout: 30_000 });
+    await layer.testId(testId).click();
   };
-
-  // A dialog without confirmText shows the host's default label (en).
-  const DEFAULT_CONFIRM = 'Confirm';
 
   await t.step('confirm and cancel a modal', async () => {
     const confirmed = app.logic.eval(({ lx }) =>
       lx.ui.confirm({ title: 'Coverage', message: 'Confirm this', confirmText: 'OK', cancelText: 'Cancel' }));
-    await press('lx-modal-confirm', 'OK');
+    await press('lx-modal-confirm');
     expect(await confirmed).toBe(true);
 
     const canceled = app.logic.eval(({ lx }) =>
       lx.ui.confirm({ title: 'Coverage', message: 'Cancel this' }));
-    await press('lx-modal-cancel', 'Cancel');
+    await press('lx-modal-cancel');
     expect(await canceled).toBe(false);
 
     const noCancel = app.logic.eval(async ({ lx }) => { await lx.ui.alert('No cancel'); return true; });
-    if (overlays === 'dom') {
-      await ui.view.testId('lx-modal-confirm').first().waitFor({ state: 'visible', timeout: 30_000 });
-      await expect(ui.view.testId('lx-modal-cancel')).toHaveCount(0);
-    } else {
-      await expect.poll(() => hostShows(DEFAULT_CONFIRM), { timeout: 30_000 }).toBe(true);
-      expect(await hostShows('Cancel')).toBe(false);
-    }
-    await press('lx-modal-confirm', DEFAULT_CONFIRM);
+    await layer.testId('lx-modal-confirm').first().waitFor({ state: 'visible', timeout: 30_000 });
+    await expect(layer.testId('lx-modal-cancel')).toHaveCount(0);
+    await press('lx-modal-confirm');
     expect(await noCancel).toBe(true);
   });
 
@@ -341,11 +288,7 @@ test("show, hide, confirm, and cancel in-app feedback overlays", {
         return (error as { code?: string }).code ?? String(error);
       }
     });
-    if (overlays === 'dom') {
-      await ui.view.testId('lx-modal-confirm').first().waitFor({ state: 'visible', timeout: 30_000 });
-    } else {
-      await expect.poll(() => hostShows('Abort me'), { timeout: 30_000 }).toBe(true);
-    }
+    await layer.testId('lx-modal-confirm').first().waitFor({ state: 'visible', timeout: 30_000 });
     await app.logic.eval(() => {
       const held = globalThis as Held;
       const controller = held.coverageAbort;
@@ -354,11 +297,7 @@ test("show, hide, confirm, and cancel in-app feedback overlays", {
     });
     expect(await aborted).toBe('E_ABORT');
     // The dialog closes with the call: nothing is left for the user to answer.
-    if (overlays === 'dom') {
-      await expect(ui.view.testId('lx-modal-confirm')).toHaveCount(0, { timeout: 10_000 });
-    } else {
-      await expect.poll(() => hostShows('Abort me'), { timeout: 10_000 }).toBe(false);
-    }
+    await expect(layer.testId('lx-modal-confirm')).toHaveCount(0, { timeout: 10_000 });
   });
 
   await t.step('use acknowledgement and boolean dialogs', async () => {
@@ -366,27 +305,27 @@ test("show, hide, confirm, and cancel in-app feedback overlays", {
       await lx.ui.alert({ title: 'Notice' });
       return 'acknowledged';
     });
-    await press('lx-modal-confirm', DEFAULT_CONFIRM);
+    await press('lx-modal-confirm');
     expect(await alert).toBe('acknowledged');
     const confirmed = app.logic.eval(({ lx }) => lx.ui.confirm({ title: 'Continue?' }));
-    await press('lx-modal-confirm', DEFAULT_CONFIRM);
+    await press('lx-modal-confirm');
     expect(await confirmed).toBe(true);
     const canceled = app.logic.eval(({ lx }) => lx.ui.confirm({ title: 'Continue?' }));
-    await press('lx-modal-cancel', 'Cancel');
+    await press('lx-modal-cancel');
     expect(await canceled).toBe(false);
   });
 
   await t.step('pick and dismiss an action sheet', async () => {
     const picked = app.logic.eval(({ lx }) =>
       lx.ui.actionSheet({ items: ['View Details', '查看日志', 'Send Email', '删除'].map((label) => ({ id: label, label })) }));
-    await press('lx-action-sheet-item-1', '查看日志');
+    await press('lx-action-sheet-item-1');
     const selected = await picked;
     expect(selected.status === 'canceled').toBeFalsy();
     expect(selected.status === 'ok' ? selected.id : null).toBe('查看日志');
 
     const dismissed = app.logic.eval(({ lx }) =>
       lx.ui.actionSheet({ items: ['One', 'Two'].map((label) => ({ id: label, label })) }));
-    await press('lx-action-sheet-cancel', 'Cancel');
+    await press('lx-action-sheet-cancel');
     expect((await dismissed).status === 'canceled').toBeTruthy();
   });
 

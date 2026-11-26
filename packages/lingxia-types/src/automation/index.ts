@@ -695,6 +695,9 @@ export interface PageTestEnvironment {
   language: string | null;
 }
 
+/** {@link LxAppDriver.feedback}. With no layer open a query matches nothing; other calls reject `E_PAGE_NOT_READY`. */
+export type FeedbackDriver = Pick<PageDriver, "query" | "click" | "dblclick" | "blur" | "semanticAction" | "type" | "fill" | "press" | "selectOption" | "scrollTo" | "tree" | "uiFrame" | "screenshot">;
+
 /** Element-level automation of the selected lxapp's page WebViews. */
 export interface PageDriver {
   /** Evaluate in the page WebView. T describes the expected JSON result; it is not runtime validation. */
@@ -1671,6 +1674,8 @@ export interface LogicLxAppDriver {
  */
 export interface LxAppDriver extends LogicLxAppDriver {
   readonly nav: NavDriver;
+  /** The window feedback layer over the app's window (toast, dialogs), driven as a GPU page; no `page` option. */
+  readonly feedback: FeedbackDriver;
   /**
    * Test-only Logic `fetch` routing, scoped to the host automation run.
    *

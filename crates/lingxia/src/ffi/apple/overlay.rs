@@ -5,7 +5,8 @@ use super::live::{self, Bridge};
 use crate::feedback::Feedback;
 use lingxia_view_apple::Page;
 use lingxia_view_apple::lingxia_view::platform::{
-    OverlayInput, OverlayLogic, OverlaySurface, Task, WindowId, WindowOverlays,
+    OverlayAutomationReply, OverlayInput, OverlayLogic, OverlaySurface, Task, WindowId,
+    WindowOverlays,
 };
 use lingxia_view_apple::lingxia_view::session::lifecycle::ConnectionTicket;
 use lingxia_view_apple::lingxia_view::session::logic::ToView;
@@ -165,6 +166,10 @@ impl OverlaySurface for MacSurface {
         lingxia_view_apple::post_main(Box::new(move || {
             super::bridge::gpu_overlays_input(token, input == OverlayInput::Block)
         }));
+    }
+
+    fn automation(&self, request: serde_json::Value, reply: OverlayAutomationReply) {
+        live::automate(self.token, request, reply);
     }
 
     fn set_focus(&self, focused: bool) {

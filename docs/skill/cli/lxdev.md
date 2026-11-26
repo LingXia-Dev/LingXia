@@ -52,6 +52,7 @@ The lxapps and pages in the session. Commands target the current lxapp
   detached, visible, hidden, enabled, or editable
 - `page query|click|scroll-to SELECTOR`, `page type|fill SELECTOR TEXT`,
   `page press KEY [SELECTOR]`, `page scroll|back`
+- `page query|click|type|press|screenshot --feedback` — the toast and dialogs over the app's window, in place of `--page`
 - `page tree`, `page find ROLE [--name NAME]` — the accessibility tree (role, name, test id,
   state, bounds); every page command reaches GPU pages too
 - `page frame` — a GPU page's presentation counters and frame pacing; `failure` and `stalled`
