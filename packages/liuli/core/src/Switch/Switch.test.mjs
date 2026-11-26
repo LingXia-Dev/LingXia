@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { described, renderExample, renderPage } from '../testing/harness.mjs';
+import { described, renderExample, renderPage, isSpinner } from '../testing/harness.mjs';
 
 test('Basic: named by its label, described by its help text, and a toggle reaches the bound cell', async () => {
   const screen = await renderExample('Switch/Switch', 'Basic');
@@ -43,7 +43,7 @@ test('Applying: busy, takes no press, and shows a spinner beside the words', asy
   const screen = await renderExample('Switch/Switch', 'Applying');
   const control = screen.getByTestId('applying');
   assert.deepEqual([control.props.stateBusy, control.props.enabled, control.props.checked], [1, 0, 1]);
-  assert.equal(screen.queryAll(node => node.tag === 'vector').length, 1);
+  assert.equal(screen.queryAll(isSpinner).length, 1);
 });
 
 test('LabelHidden: named by its label, which is not drawn', async () => {
@@ -77,7 +77,7 @@ test('changeAction: flips at once, busy but not disabled, holds further presses,
   screen.toggle(screen.getByTestId('saved'), true);
   const busy = screen.getByTestId('saved');
   assert.deepEqual([busy.props.checked, busy.props.stateBusy, busy.props.enabled], [1, 1, undefined]);
-  assert.equal(screen.queryAll(node => node.tag === 'vector').length, 0, 'no spinner: the row does not reflow');
+  assert.equal(screen.queryAll(isSpinner).length, 0, 'no spinner: the row does not reflow');
   assert.throws(() => screen.toggle(screen.getByTestId('saved'), false), /did not update value/, 'a press while saving is held off');
   assert.equal(screen.getByTestId('saved').props.checked, 1);
   screen.press(screen.getByTestId('ok'));

@@ -5,7 +5,7 @@ import { Field, type FieldOwnProps } from '../Field/Field';
 import type { IconRef } from '../Icon/Icon';
 import { describedBy } from '../internal/describedBy';
 import { Glyph, glyphGrowth, useTextGrowth } from '../internal/Glyph';
-import { spinner, spinnerBox } from '../internal/spinner';
+import { SpinnerMark } from '../internal/spinner';
 import { textInputRecipe as r } from './TextInput.recipe';
 import { dataOf } from '../internal/data';
 
@@ -174,7 +174,7 @@ export function TextInput(props: TextInputProps) {
           )}
           {suffix !== undefined && <text id={suffixId} className={cx(r.adornment.base, r.input.size[size])}>{suffix}</text>}
           {endContent !== undefined && <view className={r.end.base}>{endContent}</view>}
-          {isLoading && <vector aria-hidden paths={spinner} viewBox={spinnerBox} style={mark} className={r.spinner.base} />}
+          {isLoading && <SpinnerMark style={mark} className={r.spinner.base} />}
           {props.hasClear && text !== '' && !isDisabled && !isReadOnly && (
             <button aria-label={props.clearLabel ?? liuliText('@liuli.clear')} onClick={clear} className={r.clear.base}>
               <Glyph name="close" side={16} className={r.clearIcon.base} />

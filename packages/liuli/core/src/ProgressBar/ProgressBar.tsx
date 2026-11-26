@@ -1,6 +1,6 @@
 import { cx, useBox, useView } from '@lingxia/view';
 import { amount } from '../internal/amount';
-import { spinner, spinnerBox } from '../internal/spinner';
+import { SpinnerMark } from '../internal/spinner';
 import { progressBarRecipe as r } from './ProgressBar.recipe';
 import { dataOf } from '../internal/data';
 
@@ -141,7 +141,7 @@ export interface SpinnerProps {
 export function Spinner({ label, isLabelHidden = false, size = 'md', tone = 'accent', className, 'data-testid': testId, ...attributes }: SpinnerProps) {
   return (
     <view role="progressbar" aria-label={label} data-testid={testId} {...dataOf(attributes)} className={cx(!isLabelHidden && r.loading.base, className)}>
-      <vector aria-hidden paths={spinner} viewBox={spinnerBox} className={cx(r.spinner.base, r.spinner.tone[tone], r.spinner.size[size])} />
+      <SpinnerMark ring={tone === 'on-media' ? 'on-media/30' : undefined} className={cx(r.spinner.base, r.spinner.tone[tone], r.spinner.size[size])} />
       {/* Read once, as the name; the drawn words are for the eye. */}
       {!isLabelHidden && <text aria-hidden className={cx(r.loading.label, r.loading.tone[tone])}>{label}</text>}
     </view>

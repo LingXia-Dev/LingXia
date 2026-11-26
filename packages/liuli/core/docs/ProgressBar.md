@@ -205,7 +205,7 @@ export function SpinnerTones() {
 | track | `<view>` | yes | The bar itself, and the element assistive tech reports as a progress bar. |
 | fill | `<view>` | yes | The amount done, as a share of the track width. |
 | dashes | `<view>` | no | While the amount is unknown: whole dashes half a dash apart, a pattern no amount draws; three track heights long, at most 12, longer on a wide track. |
-| spinner | `<vector>` | no | Spinner's spinning arc. |
+| spinner | `<view>` | no | Spinner's spinning arc. |
 | loading | `<view>` | no | A Spinner with its label shown: the ring over its label, centred; the words are drawn only, the name is read once. |
 
 ## What an app may override

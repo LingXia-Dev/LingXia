@@ -2,7 +2,7 @@ import type { FieldSize } from '../Field/Field';
 
 export const searchFieldParts = {
   root: 'view',
-  spinner: 'vector',
+  spinner: 'view',
   results: 'text',
   natural: 'text',
 } as const;

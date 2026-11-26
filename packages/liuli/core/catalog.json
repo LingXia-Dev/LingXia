@@ -2140,7 +2140,7 @@
         "root": "button",
         "glyph": "vector",
         "icon": "view",
-        "spinner": "vector",
+        "spinner": "view",
         "label": "text",
         "reason": "text"
       },
@@ -5223,7 +5223,7 @@
         "optionDescription": "text",
         "optionCheck": "vector",
         "note": "text",
-        "spinner": "vector"
+        "spinner": "view"
       },
       "accessibility": {
         "pattern": "button",
@@ -5593,7 +5593,7 @@
         "search": "view",
         "searchIcon": "vector",
         "input": "input",
-        "spinner": "vector",
+        "spinner": "view",
         "list": "scroll",
         "group": "view",
         "groupLabel": "text",
@@ -13228,7 +13228,7 @@
         "statusIcon": "vector",
         "reasoning": "view",
         "reasoningToggle": "button",
-        "reasoningSpinner": "vector",
+        "reasoningSpinner": "view",
         "reasoningLabel": "text",
         "reasoningChevron": "vector",
         "reasoningBox": "view",
@@ -15538,7 +15538,7 @@
         "track": "view",
         "fill": "view",
         "dashes": "view",
-        "spinner": "vector",
+        "spinner": "view",
         "loading": "view"
       },
       "accessibility": {
@@ -16476,7 +16476,7 @@
       ],
       "parts": {
         "root": "view",
-        "spinner": "vector",
+        "spinner": "view",
         "results": "text",
         "natural": "text"
       },
@@ -18921,7 +18921,7 @@
         "control": "switch",
         "text": "view",
         "loading": "view",
-        "spinner": "vector",
+        "spinner": "view",
         "label": "text",
         "description": "text",
         "failed": "view",

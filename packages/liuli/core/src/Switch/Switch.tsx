@@ -3,7 +3,7 @@ import { describedBy } from '../internal/describedBy';
 import { StatusRegion } from '../internal/StatusRegion';
 import { Glyph } from '../internal/Glyph';
 import { ItemStatusContext } from '../internal/itemStatus';
-import { spinner, spinnerBox } from '../internal/spinner';
+import { SpinnerMark } from '../internal/spinner';
 import { switchRecipe as r } from './Switch.recipe';
 import { dataOf } from '../internal/data';
 import { useChangeAction } from '../internal/changeAction';
@@ -84,11 +84,11 @@ export function Switch(props: SwitchProps) {
       {changeAction && <StatusRegion id={failedId} status={failure === undefined ? undefined : { type: 'error', message: failure }} className={r.failed.base} />}
     </view>
   );
-  const spinnerOnly = <vector aria-hidden paths={spinner} viewBox={spinnerBox} className={r.spinner.base} />;
+  const spinnerOnly = <SpinnerMark className={r.spinner.base} />;
   const content = isLabelHidden ? (isLoading ? spinnerOnly : undefined) : isLoading ? (
     <view className={r.loading.base}>
       <view className={r.loading.words}>{words}</view>
-      <vector aria-hidden paths={spinner} viewBox={spinnerBox} className={r.spinner.base} />
+      <SpinnerMark className={r.spinner.base} />
     </view>
   ) : words;
   const control = props.bind && !changeAction ? (

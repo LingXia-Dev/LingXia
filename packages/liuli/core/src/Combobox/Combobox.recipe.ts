@@ -19,7 +19,7 @@ export const comboboxParts = {
   optionDescription: 'text',
   optionCheck: 'vector',
   note: 'text',
-  spinner: 'vector',
+  spinner: 'view',
 } as const;
 
 /**

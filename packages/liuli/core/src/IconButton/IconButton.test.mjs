@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { textOf } from '@lingxia/view/testing';
-import { described, renderExample, renderPage } from '../testing/harness.mjs';
+import { described, renderExample, renderPage, isSpinner } from '../testing/harness.mjs';
 
 const icon = node => node.children.find(child => child.tag === 'vector');
 
@@ -38,7 +38,7 @@ test('states: busy shows the spinner under the same name; disabled reads its rea
   const busy = (await renderExample('IconButton/IconButton', 'StateBusy')).getByTestId('busy');
   assert.equal(busy.props.accessibilityLabel, 'Refresh');
   assert.equal(busy.props.stateBusy, 1);
-  assert.match(icon(busy).props.animation, /"name":"spin"/);
+  assert.equal(busy.children.filter(isSpinner).length, 1);
   const screen = await renderExample('IconButton/IconButton', 'StateDisabled');
   const disabled = screen.getByTestId('disabled');
   assert.equal(disabled.props.onClick, undefined, 'a disabled button takes no press');

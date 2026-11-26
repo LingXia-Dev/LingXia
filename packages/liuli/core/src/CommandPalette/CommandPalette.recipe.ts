@@ -3,7 +3,7 @@ export const commandPaletteParts = {
   search: 'view',
   searchIcon: 'vector',
   input: 'input',
-  spinner: 'vector',
+  spinner: 'view',
   list: 'scroll',
   group: 'view',
   groupLabel: 'text',

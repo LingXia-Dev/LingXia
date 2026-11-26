@@ -13,7 +13,7 @@ export const messageBubbleParts = {
   statusIcon: 'vector',
   reasoning: 'view',
   reasoningToggle: 'button',
-  reasoningSpinner: 'vector',
+  reasoningSpinner: 'view',
   reasoningLabel: 'text',
   reasoningChevron: 'vector',
   reasoningBox: 'view',

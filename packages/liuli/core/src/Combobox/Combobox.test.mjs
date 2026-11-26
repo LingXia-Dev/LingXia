@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { textOf } from '@lingxia/view/testing';
-import { described, renderExample, renderPage } from '../testing/harness.mjs';
+import { described, renderExample, renderPage, isSpinner } from '../testing/harness.mjs';
 
 const fine = { env: { pointer: 'fine' } };
 const options = screen => screen.queryAll(node => node.props.role === 'option');
@@ -186,7 +186,7 @@ test('a long list shows fifty options and says there are more; loading shows a s
   loading.press(loading.getByTestId('item'));
   assert.equal(options(loading).length, 0);
   assert.equal(loading.queryAll(node => node.text === 'None').length, 0);
-  assert.equal(loading.queryAll(node => node.tag === 'vector' && /"name":"spin"/.test(node.props.animation ?? '')).length, 1);
+  assert.equal(loading.queryAll(isSpinner).length, 1);
 });
 
 test('states: the sizes; an error is read after the choice and marks the edge; disabled takes no press', async () => {

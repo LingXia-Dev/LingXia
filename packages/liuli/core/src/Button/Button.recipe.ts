@@ -1,7 +1,7 @@
 import type { ButtonEdge, ButtonSize, ButtonVariant, ButtonWidth } from './Button';
 
 /** The element each part lands on. */
-export const buttonParts = { root: 'button', glyph: 'vector', icon: 'view', spinner: 'vector', label: 'text', reason: 'text' } as const;
+export const buttonParts = { root: 'button', glyph: 'vector', icon: 'view', spinner: 'view', label: 'text', reason: 'text' } as const;
 
 /**
  * Button classes by part, then by prop value. Exported so an app can style a raw `<button>` (a

@@ -3,7 +3,10 @@ import type { Press } from '../internal/press';
 import type { IconRef } from '../Icon/Icon';
 import { Glyph, glyphGrowth, useTextGrowth } from '../internal/Glyph';
 import { ActionEdge } from '../internal/actionEdge';
-import { spinner, spinnerBox } from '../internal/spinner';
+import { SpinnerMark } from '../internal/spinner';
+
+// On a solid fill the spinner's ring is the fill's own on-colour, faint.
+const spinnerRing: Partial<Record<ButtonVariant, string>> = { primary: 'on-accent-solid/30', destructive: 'on-danger-solid/30' };
 import { reportFailure, settleFlag } from '../internal/settle';
 import { registerPressable, identityOf, useTrigger } from '../internal/trigger';
 import { dataOf } from '../internal/data';
@@ -142,7 +145,7 @@ export function Button({
   const content = (
     <>
       {busy ? (
-        <vector aria-hidden paths={spinner} viewBox={spinnerBox} className={cx(r.spinner.base, r.spinner.size[size])} />
+        <SpinnerMark ring={spinnerRing[variant]} className={cx(r.spinner.base, r.spinner.size[size])} />
       ) : (
         startIcon !== undefined && <Glyph name={startIcon} side={glyphSides[size]} className={r.glyph.size[size]} />
       )}

@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { textOf } from '@lingxia/view/testing';
-import { renderExample, renderPage } from '../testing/harness.mjs';
+import { renderExample, renderPage, isSpinner } from '../testing/harness.mjs';
 
 test('Variants: each button is named by its label and is not busy at rest', async () => {
   const screen = await renderExample('Button/Button', 'Variants');
@@ -50,7 +50,7 @@ test('clickAction: busy with a spinner until the action settles, and presses mea
   `);
   screen.press(screen.getByTestId('publish'));
   assert.equal(screen.getByTestId('publish').props.stateBusy, 1);
-  assert.ok(screen.getByTestId('publish').children.some(node => node.tag === 'vector'), 'spinner');
+  assert.ok(screen.getByTestId('publish').children.some(isSpinner), 'spinner');
   assert.equal(screen.getByTestId('publish').props.accessibilityLabel, 'Publish', 'the name holds while busy');
   screen.press(screen.getByTestId('publish'));
   screen.press(screen.getByTestId('settle'));

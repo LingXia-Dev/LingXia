@@ -3,7 +3,7 @@ import { liuliText } from '../i18n/text';
 import { useControlSize } from '../density';
 import type { FieldSize } from '../Field/Field';
 import { TextInput } from '../TextInput/TextInput';
-import { spinner, spinnerBox } from '../internal/spinner';
+import { SpinnerMark } from '../internal/spinner';
 import { glyphGrowth, useTextGrowth } from '../internal/Glyph';
 import { searchFieldRecipe as r } from './SearchField.recipe';
 import { dataOf } from '../internal/data';
@@ -69,7 +69,7 @@ export function SearchField(props: SearchFieldProps) {
     placeholder,
     hasClear: true,
     clearLabel,
-    startContent: isLoading ? <vector aria-hidden paths={spinner} viewBox={spinnerBox} style={mark} className={r.spinner.base} /> : undefined,
+    startContent: isLoading ? <SpinnerMark style={mark} className={r.spinner.base} /> : undefined,
     onSubmit,
     hasAutoFocus,
     size,

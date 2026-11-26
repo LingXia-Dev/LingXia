@@ -5,7 +5,7 @@ export const switchParts = {
   control: 'switch',
   text: 'view',
   loading: 'view',
-  spinner: 'vector',
+  spinner: 'view',
   label: 'text',
   description: 'text',
   failed: 'view',

@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { textOf } from '@lingxia/view/testing';
-import { renderExample, renderPage } from '../testing/harness.mjs';
+import { renderExample, renderPage, isSpinner } from '../testing/harness.mjs';
 
 const results = (screen, id) => screen.getByTestId(`${id}-results`);
 const rows = screen => screen.queryAll(node => node.props.role === 'listitem').length;
@@ -35,8 +35,7 @@ test('Loading: busy, with a spinner where the magnifier was', async () => {
   const field = screen.getByTestId('catalogue');
   const root = screen.queryAll(node => node.props.stateBusy === 1)[0];
   assert.ok(root, 'the field is reported busy');
-  const marks = screen.queryAll(node => node.tag === 'vector');
-  assert.equal(marks.filter(mark => /"name":"spin"/.test(mark.props.animation ?? '')).length, 1);
+  assert.equal(screen.queryAll(isSpinner).length, 1);
   assert.equal(textOf(results(screen, 'catalogue')), 'Searching');
   assert.equal(field.props.accessibilityLabel, 'Search the catalogue');
 });

@@ -68,3 +68,6 @@ export function described(screen, node) {
     return target.length === 1 ? readable(target[0]) : `<${target.length} elements with id ${id}>`;
   });
 }
+
+/** The spinner mark: the box that turns, whatever draws inside it. */
+export const isSpinner = node => /"name":"spin"/.test(node.props.animation ?? '');

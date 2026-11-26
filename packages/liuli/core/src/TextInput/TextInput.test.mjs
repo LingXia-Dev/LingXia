@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { textOf } from '@lingxia/view/testing';
-import { described, renderExample, renderPage } from '../testing/harness.mjs';
+import { described, renderExample, renderPage, isSpinner } from '../testing/harness.mjs';
 
 const status = screen => screen.queryAll(node => node.props.role === 'status')[0];
 
@@ -97,7 +97,7 @@ test('Adornments: fixed text sits inside the box around the editor and is read b
 
 test('Checking: busy with a spinner at the end, and still editable', async () => {
   const input = (await renderExample('TextInput/TextInput', 'Checking')).getByTestId('handle');
-  assert.deepEqual([input.props.stateBusy, input.props.enabled, input.parent.children.at(-1).tag], [1, undefined, 'vector']);
+  assert.deepEqual([input.props.stateBusy, input.props.enabled, isSpinner(input.parent.children.at(-1))], [1, undefined, true]);
 });
 
 test('ReadOnly: read-only on a sunken box, with no clear button', async () => {

@@ -240,7 +240,7 @@ export function ToPage() {
 | root | `<button>` | yes | The pressable box: fill, border, press and hover paint. |
 | glyph | `<vector>` | no | `startIcon`, replaced by the spinner while loading, and `endIcon`; from the icon set in use, hidden from assistive tech. |
 | icon | `<view>` | no | The trailing slot that holds `endContent`. |
-| spinner | `<vector>` | no | Spins while `isLoading` or a `clickAction` is pending. |
+| spinner | `<view>` | no | Spins while `isLoading` or a `clickAction` is pending. |
 | label | `<text>` | yes | The text; never truncated, so keep it short. |
 
 ## What an app may override

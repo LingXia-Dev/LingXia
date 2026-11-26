@@ -8,7 +8,7 @@ export const progressBarParts = {
   track: 'view',
   fill: 'view',
   dashes: 'view',
-  spinner: 'vector',
+  spinner: 'view',
   loading: 'view',
 } as const;
 

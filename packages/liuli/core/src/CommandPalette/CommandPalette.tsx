@@ -2,7 +2,7 @@ import { cx, reveal, useId, useLocal, useView } from '@lingxia/view';
 import { liuliText } from '../i18n/text';
 import type { IconRef } from '../Icon/Icon';
 import { Glyph } from '../internal/Glyph';
-import { spinner, spinnerBox } from '../internal/spinner';
+import { SpinnerMark } from '../internal/spinner';
 import { commandPaletteRecipe as r } from './CommandPalette.recipe';
 import { dataOf } from '../internal/data';
 
@@ -126,7 +126,7 @@ export function CommandPalette({ isOpen, onOpenChange, label, placeholder, group
           data-testid={testId && `${testId}-search`}
           className={r.input.base}
         />
-        {isLoading && <vector aria-hidden paths={spinner} viewBox={spinnerBox} className={r.spinner.base} />}
+        {isLoading && <SpinnerMark className={r.spinner.base} />}
       </view>
       {flat.length === 0 ? (
         <text role="status" className={r.note.base}>{emptyLabel}</text>

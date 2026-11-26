@@ -1,6 +1,6 @@
 import { cx, useLocal, type Child } from '@lingxia/view';
 import { Glyph } from '../internal/Glyph';
-import { spinner, spinnerBox } from '../internal/spinner';
+import { SpinnerMark } from '../internal/spinner';
 import { messageBubbleRecipe as r } from './MessageBubble.recipe';
 import { dataOf } from '../internal/data';
 
@@ -94,7 +94,7 @@ export function MessageReasoning({ label, text, isStreaming = false, hasAvatarSp
   return (
     <view className={cx(r.reasoning.base, hasAvatarSpace && r.reasoning.afterAvatar, className)}>
       <button aria-label={label} aria-expanded={open} aria-busy={isStreaming || undefined} onClick={toggle} data-testid={testId} {...dataOf(attributes)} className={r.reasoningToggle.base}>
-        {isStreaming && <vector aria-hidden paths={spinner} viewBox={spinnerBox} className={r.reasoningSpinner.base} />}
+        {isStreaming && <SpinnerMark className={r.reasoningSpinner.base} />}
         <text className={r.reasoningLabel.base}>{label}</text>
         <Glyph name="chevron-down" className={cx(r.reasoningChevron.base, open && r.reasoningChevron.open)} />
       </button>

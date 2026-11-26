@@ -5,7 +5,7 @@ import { Field, type FieldOwnProps, type FieldSize } from '../Field/Field';
 import { TextInput } from '../TextInput/TextInput';
 import { Glyph } from '../internal/Glyph';
 import { LayerContext } from '../internal/layer';
-import { spinner, spinnerBox } from '../internal/spinner';
+import { SpinnerMark } from '../internal/spinner';
 import { comboboxRecipe as r } from './Combobox.recipe';
 import { dataOf } from '../internal/data';
 import { ClearButton, useClearDock } from '../internal/ClearButton';
@@ -176,7 +176,7 @@ function ComboboxPanel({
         />
         <scroll className={listClass}>
           {!isLoading && shown.length > 0 && <Options label={label} items={shown} current={current} size={size} testId={testId} onChoose={onChoose} />}
-          {isLoading && <vector aria-hidden paths={spinner} viewBox={spinnerBox} className={r.spinner.base} />}
+          {isLoading && <SpinnerMark className={r.spinner.base} />}
           {!isLoading && shown.length === 0 && <text role="status" className={r.note.base}>{emptyLabel}</text>}
           {!isLoading && matches.length > shown.length && moreLabel !== undefined && <text className={r.note.base}>{moreLabel}</text>}
         </scroll>
@@ -291,7 +291,7 @@ function ComboboxTypeahead({
         <LayerContext.Provider value="overlay">
           <scroll className={r.list.popover}>
             {!isLoading && shown.length > 0 && <Options label={label} items={shown} current={current} size={size} testId={testId} onChoose={choose} listId={listId} active={active.value} />}
-            {isLoading && <vector aria-hidden paths={spinner} viewBox={spinnerBox} className={r.spinner.base} />}
+            {isLoading && <SpinnerMark className={r.spinner.base} />}
             {!isLoading && shown.length === 0 && <text role="status" className={r.note.base}>{emptyLabel}</text>}
             {!isLoading && matches.length > shown.length && moreLabel !== undefined && <text className={r.note.base}>{moreLabel}</text>}
           </scroll>

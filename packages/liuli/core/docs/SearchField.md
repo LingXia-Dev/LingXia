@@ -115,7 +115,7 @@ export function Sizes() {
 | Part | Element | Required | Description |
 | --- | --- | --- | --- |
 | root | `<view>` | yes | The column: the field, then the results line. It is reported busy while loading. |
-| spinner | `<vector>` | no | Takes the magnifier's place while `isLoading`. |
+| spinner | `<view>` | no | Takes the magnifier's place while `isLoading`. |
 | results | `<text>` | yes | `resultsLabel`: drawn under the field, or kept for assistive tech only; a status region, always mounted. |
 
 ## What an app may override
