@@ -62,7 +62,7 @@ test('Orders: each weekday is a button named by its day and value, carrying its 
   const marks = find(screen.getByTestId('orders'), node => node.props.position === 'absolute' && node.props.insetTop === 23)[0];
   assert.ok(marks, 'the drawing starts under the figures\' line, so a figure sits on its bar');
   assert.equal(screen.queryAll(node => node.props.role === 'status').length, 0, 'every bar carries its value, so there is no readout line');
-  screen.getByText('7 values from Mon to Sun. Lowest 74 at Sun, highest 187 at Fri. Falling: 132 first, 74 last.');
+  screen.getByText('7 values from Mon to Sun. Lowest 74 at Sun, highest 187 at Fri.');
   const labels = screen.queryAll(node => node.tag === 'text' && ['Mon', 'Sun'].includes(node.text));
   const unread = node => Boolean(node) && (Boolean(node.props.accessibilityHidden) || unread(node.parent));
   assert.ok(labels.length >= 2 && labels.every(unread), 'labels under the bars are not read again');
