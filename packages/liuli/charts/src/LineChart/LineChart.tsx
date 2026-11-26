@@ -1,4 +1,4 @@
-import { cx, useBox, useLocal, type Child, type PointerEvent, type VectorPath } from '@lingxia/view';
+import { cx, useBox, useLocal, type Child, type PointerEvent, type VectorPath, type Local } from '@lingxia/view';
 import { Chart, ChartLegend, ChartReadout, type ChartLegendPosition, type ChartField, type ChartRecord, type ChartReference, type ChartRow, type ChartSeries, type ChartSize, type ChartSummarize } from '../Chart/Chart';
 import { colorOf, keysOf, numberOf, plain, roleOf, seriesFacts, seriesOf, textOf } from '../internal/data';
 import { pressed, pressedKey, scrubbing } from '../internal/gesture';
@@ -62,6 +62,8 @@ export interface LineChartProps<Row extends ChartRecord<Row> = ChartRow> {
   onChange?: (key: string | null) => void;
   /** Where the choice starts when the chart keeps it itself: give this instead of `value`; `onChange` still hears each choice. */
   defaultValue?: string | null;
+  /** A View-local cell holding the chosen key, read and written instead of `value` with `onChange`; `onChange` still hears each choice. */
+  bind?: Local<string | null>;
   /** Series fields not drawn at present. @default [] */
   hiddenSeries?: readonly string[];
   /** Makes each legend entry a button that shows or hides its series. */
@@ -112,14 +114,14 @@ const maxRead = 60;
 /** A number over time, as a line that fits its data, or as an area measured from zero. */
 export function LineChart<Row extends ChartRecord<Row>>({
   rows, x, y, keyField, label, title, description, formatValue: format, summarize, isSmooth = false, hasArea = false,
-  hasScale, hasEndLabel = false, hasEndDot = hasEndLabel, xLabels, legendPosition = 'bottom', legendLabel, value, onChange, defaultValue, hiddenSeries: givenHidden, onHiddenSeriesChange: onHiddenChange, defaultHiddenSeries,
+  hasScale, hasEndLabel = false, hasEndDot = hasEndLabel, xLabels, legendPosition = 'bottom', legendLabel, value, onChange, defaultValue, bind, hiddenSeries: givenHidden, onHiddenSeriesChange: onHiddenChange, defaultHiddenSeries,
   references: given = [], domainMin, domainMax, size = 'md', isLoading = false, error, emptyLabel, emptyHint, onRetry, retryLabel, className, 'data-testid': testId,
 }: LineChartProps<Row>) {
   // Without `value`, a `defaultValue` makes the choice the chart's own.
   const own = useLocal<string | null>('chosen', defaultValue ?? null);
   const isOwn = value === undefined && defaultValue !== undefined;
-  const selectedKey = isOwn ? own.value : value;
-  const onSelect = isOwn ? (key: string | null) => { own.set(key); onChange?.(key); } : onChange;
+  const selectedKey = bind ? bind.value : isOwn ? own.value : value;
+  const onSelect = bind ? (key: string | null) => { bind.set(key); onChange?.(key); } : isOwn ? (key: string | null) => { own.set(key); onChange?.(key); } : onChange;
   const ownHidden = useLocal<readonly string[]>('hidden', defaultHiddenSeries ?? []);
   const isOwnHidden = givenHidden === undefined && defaultHiddenSeries !== undefined;
   const hiddenSeries = isOwnHidden ? ownHidden.value : givenHidden ?? [];

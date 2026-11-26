@@ -36,8 +36,7 @@ export function Orders() {
       title="Orders"
       description="This week"
       summarize={summarize}
-      value={day.value}
-      onChange={day.set}
+      bind={day}
       data-testid="orders"
     />
   );
@@ -133,7 +132,7 @@ const days = Array.from({ length: 30 }, (_, index) => ({ day: `${index + 1} Jun`
 /** Thirty bars at phone width: the bars narrow, and only the first and last are labelled. */
 export function Month() {
   const day = useLocal<string | null>('day', '14 Jun');
-  return <BarChart rows={days} x="day" y="steps" label="Steps by day in June" title="Steps" description="June" value={day.value} onChange={day.set} data-testid="steps" />;
+  return <BarChart rows={days} x="day" y="steps" label="Steps by day in June" title="Steps" description="June" bind={day} data-testid="steps" />;
 }
 ```
 
@@ -157,6 +156,7 @@ export function Month() {
 | `value` | `string \| null` |  | The chosen row's key; its bars keep their colour and the rest step back. |
 | `onChange` | `((key: string \| null) => void)` |  | Makes each category a button, up to 36 of them; runs with its key, or `null` when the chosen one is pressed again. A drag across the bars chooses each it passes. |
 | `defaultValue` | `string \| null` |  | Where the choice starts when the chart keeps it itself: give this instead of `value`; `onChange` still hears each choice. |
+| `bind` | `Local<string \| null>` |  | A View-local cell holding the chosen key, read and written instead of `value` with `onChange`; `onChange` still hears each choice. |
 | `hiddenSeries` | `readonly string[]` | `[]` | Series fields not drawn at present. |
 | `onHiddenSeriesChange` | `((fields: readonly string[]) => void)` |  | Makes each legend entry a button that shows or hides its series. |
 | `defaultHiddenSeries` | `readonly string[]` |  | The series hidden at first when the chart keeps them itself: give this instead of `hiddenSeries`; the legend entries then toggle them, and `onHiddenSeriesChange` still hears each change. |

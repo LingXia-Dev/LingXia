@@ -91,7 +91,7 @@ export function Series() {
 /** Dragging across the plot, a mouse over it or the arrow keys choose the month the readout shows. */
 export function Selected() {
   const month = useLocal<string | null>('month', 'Apr');
-  return <LineChart rows={plans} x="month" y={series} label="Accounts by plan and month" value={month.value} onChange={month.set} legendPosition="none" size="sm" data-testid="picked" />;
+  return <LineChart rows={plans} x="month" y={series} label="Accounts by plan and month" bind={month} legendPosition="none" size="sm" data-testid="picked" />;
 }
 
 const readings = [

@@ -1,4 +1,4 @@
-import { cx, useBox, useLocal, type ColorAlpha, type ColorRole, type VectorPath } from '@lingxia/view';
+import { cx, useBox, useLocal, type ColorAlpha, type ColorRole, type VectorPath, type Local } from '@lingxia/view';
 import { Chart, ChartLegend, type ChartColor, type ChartField, type ChartLegendPosition, type ChartRecord, type ChartRow, type ChartSize, type ChartSummarize } from '../Chart/Chart';
 import { liuliText } from '@liulidesign/core/internal/text';
 import { colorOf, keysOf, numberOf, plain, roleOf, seriesFacts, textOf } from '../internal/data';
@@ -46,6 +46,8 @@ export interface PieChartProps<Row extends ChartRecord<Row> = ChartRow> {
   onChange?: (key: string | null) => void;
   /** Where the choice starts when the chart keeps it itself: give this instead of `value`; `onChange` still hears each choice. */
   defaultValue?: string | null;
+  /** A View-local cell holding the chosen key, read and written instead of `value` with `onChange`; `onChange` still hears each choice. */
+  bind?: Local<string | null>;
   /** @default 'md' */
   size?: ChartSize;
   /** @default false */
@@ -76,14 +78,14 @@ export const otherKey = '__other';
 /** Parts of one whole, as a ring with the total in its hole and the parts listed under it. */
 export function PieChart<Row extends ChartRecord<Row>>({
   rows, nameField: name, valueField: value, keyField, label, title, description, formatValue: format, formatShare, summarize, variant = 'donut', totalLabel: ownTotalLabel,
-  otherLabel, maxParts = 5, legendPosition = 'bottom', legendLabel, value: given, onChange, defaultValue, size = 'md',
+  otherLabel, maxParts = 5, legendPosition = 'bottom', legendLabel, value: given, onChange, defaultValue, bind, size = 'md',
   isLoading = false, error, emptyLabel, emptyHint, onRetry, retryLabel, className, 'data-testid': testId,
 }: PieChartProps<Row>) {
   // Without `value`, a `defaultValue` makes the choice the chart's own.
   const own = useLocal<string | null>('chosen', defaultValue ?? null);
   const isOwn = given === undefined && defaultValue !== undefined;
-  const selectedKey = isOwn ? own.value : given;
-  const onSelect = isOwn ? (key: string | null) => { own.set(key); onChange?.(key); } : onChange;
+  const selectedKey = bind ? bind.value : isOwn ? own.value : given;
+  const onSelect = bind ? (key: string | null) => { bind.set(key); onChange?.(key); } : isOwn ? (key: string | null) => { own.set(key); onChange?.(key); } : onChange;
   // Only the fields named are read, and each of those holds a datum.
   const data = rows as readonly ChartRow[];
   const formatValue = format ?? plain;

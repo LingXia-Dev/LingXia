@@ -20,8 +20,7 @@ export function Orders() {
       title="Orders"
       description="This week"
       summarize={summarize}
-      value={day.value}
-      onChange={day.set}
+      bind={day}
       data-testid="orders"
     />
   );
@@ -83,7 +82,7 @@ const days = Array.from({ length: 30 }, (_, index) => ({ day: `${index + 1} Jun`
 /** Thirty bars at phone width: the bars narrow, and only the first and last are labelled. */
 export function Month() {
   const day = useLocal<string | null>('day', '14 Jun');
-  return <BarChart rows={days} x="day" y="steps" label="Steps by day in June" title="Steps" description="June" value={day.value} onChange={day.set} data-testid="steps" />;
+  return <BarChart rows={days} x="day" y="steps" label="Steps by day in June" title="Steps" description="June" bind={day} data-testid="steps" />;
 }
 
 export function Sizes() {

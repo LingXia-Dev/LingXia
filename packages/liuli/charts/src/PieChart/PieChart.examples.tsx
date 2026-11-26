@@ -25,8 +25,7 @@ export function Spending() {
       formatValue={dollars}
       formatShare={percent}
       summarize={summarize}
-      value={part.value}
-      onChange={part.set}
+      bind={part}
       data-testid="spending"
     />
   );

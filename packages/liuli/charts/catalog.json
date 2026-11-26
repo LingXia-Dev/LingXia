@@ -140,6 +140,12 @@
           "description": "Where the choice starts when the chart keeps it itself: give this instead of `value`; `onChange` still hears each choice."
         },
         {
+          "name": "bind",
+          "type": "Local<string | null>",
+          "required": false,
+          "description": "A View-local cell holding the chosen key, read and written instead of `value` with `onChange`; `onChange` still hears each choice."
+        },
+        {
           "name": "hiddenSeries",
           "type": "readonly string[]",
           "required": false,
@@ -416,7 +422,7 @@
         {
           "name": "Orders",
           "title": "One series, with selection",
-          "source": "import { useLocal } from '@lingxia/view';\nimport { summarize } from '@liulidesign/charts/summary';\nimport { BarChart } from '@liulidesign/charts/BarChart';\n\nconst week = [\n  { day: 'Mon', orders: 132 }, { day: 'Tue', orders: 148 }, { day: 'Wed', orders: 121 }, { day: 'Thu', orders: 163 },\n  { day: 'Fri', orders: 187 }, { day: 'Sat', orders: 96 }, { day: 'Sun', orders: 74 },\n];\n\n/** Tap a bar to choose it, or drag across the bars; tap the chosen bar again to let go. */\nexport function Orders() {\n  const day = useLocal<string | null>('day', null);\n  return (\n    <BarChart\n      rows={week}\n      x=\"day\"\n      y=\"orders\"\n      label=\"Orders by weekday\"\n      title=\"Orders\"\n      description=\"This week\"\n      summarize={summarize}\n      value={day.value}\n      onChange={day.set}\n      data-testid=\"orders\"\n    />\n  );\n}"
+          "source": "import { useLocal } from '@lingxia/view';\nimport { summarize } from '@liulidesign/charts/summary';\nimport { BarChart } from '@liulidesign/charts/BarChart';\n\nconst week = [\n  { day: 'Mon', orders: 132 }, { day: 'Tue', orders: 148 }, { day: 'Wed', orders: 121 }, { day: 'Thu', orders: 163 },\n  { day: 'Fri', orders: 187 }, { day: 'Sat', orders: 96 }, { day: 'Sun', orders: 74 },\n];\n\n/** Tap a bar to choose it, or drag across the bars; tap the chosen bar again to let go. */\nexport function Orders() {\n  const day = useLocal<string | null>('day', null);\n  return (\n    <BarChart\n      rows={week}\n      x=\"day\"\n      y=\"orders\"\n      label=\"Orders by weekday\"\n      title=\"Orders\"\n      description=\"This week\"\n      summarize={summarize}\n      bind={day}\n      data-testid=\"orders\"\n    />\n  );\n}"
         },
         {
           "name": "Grouped",
@@ -436,7 +442,7 @@
         {
           "name": "Month",
           "title": "Thirty bars",
-          "source": "import { useLocal } from '@lingxia/view';\nimport { BarChart } from '@liulidesign/charts/BarChart';\n\nconst days = Array.from({ length: 30 }, (_, index) => ({ day: `${index + 1} Jun`, steps: 4200 + ((index * 37) % 11) * 610 + (index % 7 === 5 ? 3800 : 0) }));\n\n/** Thirty bars at phone width: the bars narrow, and only the first and last are labelled. */\nexport function Month() {\n  const day = useLocal<string | null>('day', '14 Jun');\n  return <BarChart rows={days} x=\"day\" y=\"steps\" label=\"Steps by day in June\" title=\"Steps\" description=\"June\" value={day.value} onChange={day.set} data-testid=\"steps\" />;\n}"
+          "source": "import { useLocal } from '@lingxia/view';\nimport { BarChart } from '@liulidesign/charts/BarChart';\n\nconst days = Array.from({ length: 30 }, (_, index) => ({ day: `${index + 1} Jun`, steps: 4200 + ((index * 37) % 11) * 610 + (index % 7 === 5 ? 3800 : 0) }));\n\n/** Thirty bars at phone width: the bars narrow, and only the first and last are labelled. */\nexport function Month() {\n  const day = useLocal<string | null>('day', '14 Jun');\n  return <BarChart rows={days} x=\"day\" y=\"steps\" label=\"Steps by day in June\" title=\"Steps\" description=\"June\" bind={day} data-testid=\"steps\" />;\n}"
         }
       ],
       "gaps": [
@@ -1267,6 +1273,12 @@
           "description": "Where the choice starts when the chart keeps it itself: give this instead of `value`; `onChange` still hears each choice."
         },
         {
+          "name": "bind",
+          "type": "Local<string | null>",
+          "required": false,
+          "description": "A View-local cell holding the chosen key, read and written instead of `value` with `onChange`; `onChange` still hears each choice."
+        },
+        {
           "name": "hiddenSeries",
           "type": "readonly string[]",
           "required": false,
@@ -1532,7 +1544,7 @@
         {
           "name": "Selected",
           "title": "Scrubbing chooses a row",
-          "source": "import { useLocal } from '@lingxia/view';\nimport type { ChartSeries } from '@liulidesign/charts/Chart';\nimport { LineChart } from '@liulidesign/charts/LineChart';\n\nconst plans = [\n  { month: 'Jan', free: 410, team: 120, pro: 64 }, { month: 'Feb', free: 455, team: 131, pro: 71 }, { month: 'Mar', free: 440, team: 150, pro: 83 },\n  { month: 'Apr', free: 492, team: 171, pro: 88 }, { month: 'May', free: 530, team: 204, pro: 97 }, { month: 'Jun', free: 561, team: 236, pro: 121 },\n];\nconst series: readonly ChartSeries<(typeof plans)[number]>[] = [{ field: 'free', label: 'Free' }, { field: 'team', label: 'Team' }, { field: 'pro', label: 'Pro' }];\n\n/** Dragging across the plot, a mouse over it or the arrow keys choose the month the readout shows. */\nexport function Selected() {\n  const month = useLocal<string | null>('month', 'Apr');\n  return <LineChart rows={plans} x=\"month\" y={series} label=\"Accounts by plan and month\" value={month.value} onChange={month.set} legendPosition=\"none\" size=\"sm\" data-testid=\"picked\" />;\n}"
+          "source": "import { useLocal } from '@lingxia/view';\nimport type { ChartSeries } from '@liulidesign/charts/Chart';\nimport { LineChart } from '@liulidesign/charts/LineChart';\n\nconst plans = [\n  { month: 'Jan', free: 410, team: 120, pro: 64 }, { month: 'Feb', free: 455, team: 131, pro: 71 }, { month: 'Mar', free: 440, team: 150, pro: 83 },\n  { month: 'Apr', free: 492, team: 171, pro: 88 }, { month: 'May', free: 530, team: 204, pro: 97 }, { month: 'Jun', free: 561, team: 236, pro: 121 },\n];\nconst series: readonly ChartSeries<(typeof plans)[number]>[] = [{ field: 'free', label: 'Free' }, { field: 'team', label: 'Team' }, { field: 'pro', label: 'Pro' }];\n\n/** Dragging across the plot, a mouse over it or the arrow keys choose the month the readout shows. */\nexport function Selected() {\n  const month = useLocal<string | null>('month', 'Apr');\n  return <LineChart rows={plans} x=\"month\" y={series} label=\"Accounts by plan and month\" bind={month} legendPosition=\"none\" size=\"sm\" data-testid=\"picked\" />;\n}"
         },
         {
           "name": "Gaps",
@@ -1801,6 +1813,12 @@
           "description": "Where the choice starts when the chart keeps it itself: give this instead of `value`; `onChange` still hears each choice."
         },
         {
+          "name": "bind",
+          "type": "Local<string | null>",
+          "required": false,
+          "description": "A View-local cell holding the chosen key, read and written instead of `value` with `onChange`; `onChange` still hears each choice."
+        },
+        {
           "name": "size",
           "type": "ChartSize",
           "required": false,
@@ -2003,7 +2021,7 @@
         {
           "name": "Spending",
           "title": "A ring with the total, selected through its legend",
-          "source": "import { useLocal } from '@lingxia/view';\nimport { summarize } from '@liulidesign/charts/summary';\nimport { PieChart } from '@liulidesign/charts/PieChart';\n\nconst spending = [\n  { category: 'Rent', amount: 1450 }, { category: 'Food', amount: 620 }, { category: 'Transport', amount: 210 },\n  { category: 'Leisure', amount: 180 }, { category: 'Savings', amount: 400 },\n];\nconst dollars = (value: number) => `$${grouped(value)}`;\nconst percent = (share: number) => `${Math.round(share * 100)}%`;\n\n/** A row in the legend chooses its part; the hole then shows that part in place of the total. */\nexport function Spending() {\n  const part = useLocal<string | null>('part', null);\n  return (\n    <PieChart\n      rows={spending}\n      nameField=\"category\"\n      valueField=\"amount\"\n      label=\"Spending by category\"\n      title=\"Spending\"\n      description=\"October\"\n      formatValue={dollars}\n      formatShare={percent}\n      summarize={summarize}\n      value={part.value}\n      onChange={part.set}\n      data-testid=\"spending\"\n    />\n  );\n}"
+          "source": "import { useLocal } from '@lingxia/view';\nimport { summarize } from '@liulidesign/charts/summary';\nimport { PieChart } from '@liulidesign/charts/PieChart';\n\nconst spending = [\n  { category: 'Rent', amount: 1450 }, { category: 'Food', amount: 620 }, { category: 'Transport', amount: 210 },\n  { category: 'Leisure', amount: 180 }, { category: 'Savings', amount: 400 },\n];\nconst dollars = (value: number) => `$${grouped(value)}`;\nconst percent = (share: number) => `${Math.round(share * 100)}%`;\n\n/** A row in the legend chooses its part; the hole then shows that part in place of the total. */\nexport function Spending() {\n  const part = useLocal<string | null>('part', null);\n  return (\n    <PieChart\n      rows={spending}\n      nameField=\"category\"\n      valueField=\"amount\"\n      label=\"Spending by category\"\n      title=\"Spending\"\n      description=\"October\"\n      formatValue={dollars}\n      formatShare={percent}\n      summarize={summarize}\n      bind={part}\n      data-testid=\"spending\"\n    />\n  );\n}"
         },
         {
           "name": "Solid",

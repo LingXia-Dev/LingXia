@@ -40,8 +40,7 @@ export function Spending() {
       formatValue={dollars}
       formatShare={percent}
       summarize={summarize}
-      value={part.value}
-      onChange={part.set}
+      bind={part}
       data-testid="spending"
     />
   );
@@ -120,6 +119,7 @@ export function Merged() {
 | `value` | `string \| null` |  | The chosen part's key; its slice grows a little and keeps its colour, the rest step back. |
 | `onChange` | `((key: string \| null) => void)` |  | Makes each legend row a button; runs with its part's key, or `null` when the chosen one is pressed again. |
 | `defaultValue` | `string \| null` |  | Where the choice starts when the chart keeps it itself: give this instead of `value`; `onChange` still hears each choice. |
+| `bind` | `Local<string \| null>` |  | A View-local cell holding the chosen key, read and written instead of `value` with `onChange`; `onChange` still hears each choice. |
 | `size` | `ChartSize` | `'md'` |  |
 | `isLoading` | `boolean` | `false` |  |
 | `error` | `string` |  |  |
