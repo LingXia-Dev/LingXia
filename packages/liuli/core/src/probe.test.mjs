@@ -21,6 +21,7 @@ const appPoints = new Set([
   'ListDetail/Workspace: width=200',
   'Split/DocumentSheetSplit: width=300',
   'Split/LiveStreamSplit: width=300',
+  'Split/Resizable: width=300',
 ]);
 
 /** Lengths Liuli cannot state in a step yet: the info button centred on a label's line mixes a space step and a type leading. */

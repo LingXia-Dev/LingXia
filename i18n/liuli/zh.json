@@ -236,6 +236,9 @@
   "@liuli.selectAll": {
     "defaultMessage": "全选"
   },
+  "@liuli.resizePane": {
+    "defaultMessage": "调整{name}宽度"
+  },
   "@liuli.selectRow": {
     "defaultMessage": "选择{row}"
   },

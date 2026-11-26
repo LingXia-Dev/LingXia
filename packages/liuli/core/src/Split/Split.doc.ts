@@ -45,6 +45,7 @@ export const doc: ComponentDoc = {
     ],
   },
   examples: [
+    { name: 'Resizable', title: 'An aside whose edge drags' },
     { name: 'LiveStreamSplit', title: 'A live stream and its chat' },
     { name: 'DocumentSheetSplit', title: 'A document and its comments' },
   ],

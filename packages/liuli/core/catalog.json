@@ -18572,8 +18572,35 @@
           "name": "asideWidth",
           "type": "number",
           "required": false,
-          "description": "The aside's width in pt beside the main content, when no fold crosses the page.",
+          "description": "The aside's width in pt beside the main content, when no fold crosses the page; with `isResizable`, where it starts.",
           "default": "320"
+        },
+        {
+          "name": "isResizable",
+          "type": "boolean",
+          "required": false,
+          "description": "The aside's edge can be dragged, or stepped with the arrow keys, to widen or narrow it beside the main content, which keeps at least 320 pt. Not on a phone or at a fold.",
+          "default": "false"
+        },
+        {
+          "name": "minAsideWidth",
+          "type": "number",
+          "required": false,
+          "description": "The narrowest the aside is dragged to.",
+          "default": "240"
+        },
+        {
+          "name": "maxAsideWidth",
+          "type": "number",
+          "required": false,
+          "description": "The widest the aside is dragged to.",
+          "default": "480"
+        },
+        {
+          "name": "onAsideWidthChange",
+          "type": "((width: number) => void)",
+          "required": false,
+          "description": "Runs with the aside's width when a drag or a key step ends: to keep it for the next visit."
         },
         {
           "name": "className",
@@ -18604,7 +18631,9 @@
         "root": "view",
         "primary": "view",
         "aside": "view",
-        "hingeGap": "view"
+        "hingeGap": "view",
+        "handle": "view",
+        "handleLine": "view"
       },
       "accessibility": {
         "pattern": null,
@@ -18619,6 +18648,11 @@
         ]
       },
       "examples": [
+        {
+          "name": "Resizable",
+          "title": "An aside whose edge drags",
+          "source": "import { Avatar } from '@liulidesign/core/Avatar';\nimport { Said } from '../example';\nimport { Split } from '@liulidesign/core/Split';\n\nconst comments = [\n  { name: 'Ana Lima', time: '09:12', text: 'Can the legend sit under the map on a phone? It covers the north loop.' },\n  { name: 'Kai Chen', time: '10:40', text: 'Agree. And the closed paths need more than colour to tell them apart.' },\n  { name: 'Mira Patel', time: 'Yesterday', text: 'The elevation numbers read well at this size.' },\n];\nconst notes = [\n  { name: 'Mira Patel', text: 'Can the second paragraph lead? It is the news.' },\n  { name: 'Sam Ortiz', text: 'Agreed, and the quote fits better after it.' },\n  { name: 'Ana Lima', text: 'Checked the figures in the table, all match the report.' },\n];\n\n/** A document and its comments: drag the comments' edge, or step it with the arrow keys, to give either more room. */\nexport function Resizable() {\n  return (\n    <Said>\n      {say => (\n        <view className=\"h-100 overflow-hidden rounded-container border border-line\">\n          <Split\n            isResizable\n            asideWidth={300}\n            asideLabel=\"Comments\"\n            onAsideWidthChange={width => say(`Comments kept at ${width} pt`)}\n            aside={\n              <view className=\"grow min-h-0\">\n                <text role=\"heading\" headingLevel={2} className=\"px-4 pt-3 pb-2 text-callout font-semibold text-text\">Comments</text>\n                <scroll className=\"grow min-h-0\">\n                  <view className=\"px-4 pb-3 gap-3\">\n                    {notes.map(each => (\n                      <view key={each.name} className=\"flex-row gap-2\">\n                        <Avatar name={each.name} size=\"sm\" isDecorative />\n                        <view className=\"grow basis-0 min-w-0 gap-0.5\">\n                          <text className=\"text-footnote font-medium text-text\">{each.name}</text>\n                          <text className=\"text-footnote text-muted\">{each.text}</text>\n                        </view>\n                      </view>\n                    ))}\n                  </view>\n                </scroll>\n              </view>\n            }\n            data-testid=\"resizable\"\n          >\n            <scroll className=\"grow min-h-0\">\n              <view className=\"px-6 py-5 gap-3\">\n                <text role=\"heading\" headingLevel={1} className=\"text-title font-semibold text-text\">Harbour ferries return for the summer</text>\n                <text className=\"text-body text-text\">The north pier reopens on Monday, with boats leaving every half hour from seven until dusk.</text>\n                <text className=\"text-body text-text\">Crossings to the island take twenty minutes; the last boat back leaves at nine.</text>\n              </view>\n            </scroll>\n          </Split>\n        </view>\n      )}\n    </Said>\n  );\n}"
+        },
         {
           "name": "LiveStreamSplit",
           "title": "A live stream and its chat",
@@ -18641,8 +18675,10 @@
         ],
         "tokens": [],
         "roles": [
+          "accent",
           "canvas",
-          "line"
+          "line",
+          "line-strong"
         ]
       },
       "related": [

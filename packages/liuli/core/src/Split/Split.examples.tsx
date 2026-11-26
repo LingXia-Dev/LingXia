@@ -6,6 +6,7 @@ import { Composer } from '../Composer/Composer';
 import { Icon } from '../Icon/Icon';
 import { IconButton } from '../IconButton/IconButton';
 import { MessageBubble } from '../MessageBubble/MessageBubble';
+import { Said } from '../example';
 import { Split } from './Split';
 
 const chat = [
@@ -154,5 +155,56 @@ export function Specimen() {
         <text className="text-caption text-muted">Live</text>
       </view>
     </view>
+  );
+}
+
+const notes = [
+  { name: 'Mira Patel', text: 'Can the second paragraph lead? It is the news.' },
+  { name: 'Sam Ortiz', text: 'Agreed, and the quote fits better after it.' },
+  { name: 'Ana Lima', text: 'Checked the figures in the table, all match the report.' },
+];
+
+/** A document and its comments: drag the comments' edge, or step it with the arrow keys, to give either more room. */
+export function Resizable() {
+  return (
+    <Said>
+      {say => (
+        <view className="h-100 overflow-hidden rounded-container border border-line">
+          <Split
+            isResizable
+            asideWidth={300}
+            asideLabel="Comments"
+            onAsideWidthChange={width => say(`Comments kept at ${width} pt`)}
+            aside={
+              <view className="grow min-h-0">
+                <text role="heading" headingLevel={2} className="px-4 pt-3 pb-2 text-callout font-semibold text-text">Comments</text>
+                <scroll className="grow min-h-0">
+                  <view className="px-4 pb-3 gap-3">
+                    {notes.map(each => (
+                      <view key={each.name} className="flex-row gap-2">
+                        <Avatar name={each.name} size="sm" isDecorative />
+                        <view className="grow basis-0 min-w-0 gap-0.5">
+                          <text className="text-footnote font-medium text-text">{each.name}</text>
+                          <text className="text-footnote text-muted">{each.text}</text>
+                        </view>
+                      </view>
+                    ))}
+                  </view>
+                </scroll>
+              </view>
+            }
+            data-testid="resizable"
+          >
+            <scroll className="grow min-h-0">
+              <view className="px-6 py-5 gap-3">
+                <text role="heading" headingLevel={1} className="text-title font-semibold text-text">Harbour ferries return for the summer</text>
+                <text className="text-body text-text">The north pier reopens on Monday, with boats leaving every half hour from seven until dusk.</text>
+                <text className="text-body text-text">Crossings to the island take twenty minutes; the last boat back leaves at nine.</text>
+              </view>
+            </scroll>
+          </Split>
+        </view>
+      )}
+    </Said>
   );
 }

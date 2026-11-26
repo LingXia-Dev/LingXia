@@ -61,3 +61,22 @@ test('the sheet is named by asideLabel and draws no title of its own: the compan
   assert.deepEqual(headings, ['Comments'], 'one heading, the companion\'s own');
 });
 
+
+test("Resizable: the aside's edge drags its width between its bounds, steps with the keys, and reports where it ended", async () => {
+  const screen = await renderExample('Split/Split', 'Resizable', regularWide);
+  screen.layout(screen.getByTestId('resizable'), { width: 900, height: 400 });
+  const handle = () => screen.getByTestId('resizable-handle');
+  const aside = () => screen.getByTestId('resizable-aside');
+  assert.equal(aside().props.width, 300);
+  assert.equal(handle().props.accessibilityLabel, 'Resize Comments');
+  const at = { width: 12, height: 400, y: 100 };
+  screen.pointer(handle(), { ...at, phase: 'down', x: 6, pointer: 'mouse' });
+  screen.pointer(handle(), { ...at, phase: 'move', x: -54, pointer: 'mouse' });
+  assert.equal(aside().props.width, 360, 'a drag toward the main content widens the aside');
+  screen.pointer(handle(), { ...at, phase: 'move', x: -900, pointer: 'mouse' });
+  assert.equal(aside().props.width, 480, 'no wider than its bound');
+  screen.pointer(handle(), { ...at, phase: 'up', x: 206, pointer: 'mouse' });
+  assert.ok(screen.getByText('Comments kept at 240 pt'), 'no narrower than its bound, reported on release');
+  screen.pointer(handle(), { ...at, phase: 'increment', x: 0, pointer: 'keyboard' });
+  assert.equal(aside().props.width, 256, 'a key steps it by 16 pt');
+});

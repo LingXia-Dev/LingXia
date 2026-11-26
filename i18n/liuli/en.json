@@ -315,6 +315,10 @@
     "defaultMessage": "Select all rows",
     "description": "The checkbox above a selectable Table's rows; checked when every row is, mixed when some are."
   },
+  "@liuli.resizePane": {
+    "defaultMessage": "Resize {name}",
+    "description": "The handle on a Split's edge that a drag or the arrow keys widen or narrow; `name` is the aside's label, such as Comments."
+  },
   "@liuli.selectRow": {
     "defaultMessage": "Select {row}",
     "description": "A selectable Table row's checkbox; `row` is the row's first field."

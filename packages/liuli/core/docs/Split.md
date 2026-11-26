@@ -12,6 +12,70 @@ Split pairs the main content (a video, a document, a basket) with a companion `a
 
 ## Examples
 
+### An aside whose edge drags
+
+```tsx
+import { Avatar } from '@liulidesign/core/Avatar';
+import { Said } from '../example';
+import { Split } from '@liulidesign/core/Split';
+
+const comments = [
+  { name: 'Ana Lima', time: '09:12', text: 'Can the legend sit under the map on a phone? It covers the north loop.' },
+  { name: 'Kai Chen', time: '10:40', text: 'Agree. And the closed paths need more than colour to tell them apart.' },
+  { name: 'Mira Patel', time: 'Yesterday', text: 'The elevation numbers read well at this size.' },
+];
+const notes = [
+  { name: 'Mira Patel', text: 'Can the second paragraph lead? It is the news.' },
+  { name: 'Sam Ortiz', text: 'Agreed, and the quote fits better after it.' },
+  { name: 'Ana Lima', text: 'Checked the figures in the table, all match the report.' },
+];
+
+/** A document and its comments: drag the comments' edge, or step it with the arrow keys, to give either more room. */
+export function Resizable() {
+  return (
+    <Said>
+      {say => (
+        <view className="h-100 overflow-hidden rounded-container border border-line">
+          <Split
+            isResizable
+            asideWidth={300}
+            asideLabel="Comments"
+            onAsideWidthChange={width => say(`Comments kept at ${width} pt`)}
+            aside={
+              <view className="grow min-h-0">
+                <text role="heading" headingLevel={2} className="px-4 pt-3 pb-2 text-callout font-semibold text-text">Comments</text>
+                <scroll className="grow min-h-0">
+                  <view className="px-4 pb-3 gap-3">
+                    {notes.map(each => (
+                      <view key={each.name} className="flex-row gap-2">
+                        <Avatar name={each.name} size="sm" isDecorative />
+                        <view className="grow basis-0 min-w-0 gap-0.5">
+                          <text className="text-footnote font-medium text-text">{each.name}</text>
+                          <text className="text-footnote text-muted">{each.text}</text>
+                        </view>
+                      </view>
+                    ))}
+                  </view>
+                </scroll>
+              </view>
+            }
+            data-testid="resizable"
+          >
+            <scroll className="grow min-h-0">
+              <view className="px-6 py-5 gap-3">
+                <text role="heading" headingLevel={1} className="text-title font-semibold text-text">Harbour ferries return for the summer</text>
+                <text className="text-body text-text">The north pier reopens on Monday, with boats leaving every half hour from seven until dusk.</text>
+                <text className="text-body text-text">Crossings to the island take twenty minutes; the last boat back leaves at nine.</text>
+              </view>
+            </scroll>
+          </Split>
+        </view>
+      )}
+    </Said>
+  );
+}
+```
+
 ### A live stream and its chat
 
 ```tsx
@@ -180,7 +244,11 @@ export function DocumentSheetSplit() {
 | `children` | `Child` |  | The main content: a video, a document, a canvas. |
 | `aside` (required) | `Child` |  | The companion beside it: a live chat, comments, an inspector. |
 | `asideLabel` (required) | `string` |  | Names the companion for a screen reader in every form, beside, below or in a sheet: "Live chat", "Comments". Not drawn; start `aside` with its own heading. |
-| `asideWidth` | `number` | `320` | The aside's width in pt beside the main content, when no fold crosses the page. |
+| `asideWidth` | `number` | `320` | The aside's width in pt beside the main content, when no fold crosses the page; with `isResizable`, where it starts. |
+| `isResizable` | `boolean` | `false` | The aside's edge can be dragged, or stepped with the arrow keys, to widen or narrow it beside the main content, which keeps at least 320 pt. Not on a phone or at a fold. |
+| `minAsideWidth` | `number` | `240` | The narrowest the aside is dragged to. |
+| `maxAsideWidth` | `number` | `480` | The widest the aside is dragged to. |
+| `onAsideWidthChange` | `((width: number) => void)` |  | Runs with the aside's width when a drag or a key step ends: to keep it for the next visit. |
 | `className` | `string` |  |  |
 | `data-testid` | `string` |  | On the root; the panes get `<testid>-primary` and `<testid>-aside`, the sheet `<testid>-sheet`. |
 
@@ -200,7 +268,7 @@ export function DocumentSheetSplit() {
 - `className`: classes merged after the recipe's, so they win.
 - The recipe, `splitRecipe` from `@liulidesign/core/Split/recipe`: the classes of each part, to style an element of your own to match. The component does not read a changed copy.
 - It reads no Liuli scale token.
-- Colour roles it paints with, set by the theme pack: `canvas`, `line`.
+- Colour roles it paints with, set by the theme pack: `accent`, `canvas`, `line`, `line-strong`.
 
 ## Accessibility
 
