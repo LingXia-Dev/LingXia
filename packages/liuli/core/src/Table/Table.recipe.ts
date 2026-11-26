@@ -126,14 +126,12 @@ export const tableRecipe = {
     density: { comfortable: 'min-h-[44px] py-2.5 justify-center', compact: 'min-h-[36px] py-1.5 justify-center' } satisfies Record<TableDensity, string>,
   },
   lead: {
-    // items-start, not items-baseline: View bug, a wrapped <text> in a baseline row is painted on one line.
-    base: 'flex-row items-start gap-x-3 self-stretch',
+    base: 'flex-row items-baseline gap-x-3 self-stretch',
     /** At accessibility text sizes: the name, then the figure under it. */
     large: 'gap-1 self-stretch',
   },
   leadCell: {
-    // No basis-0: View bug, a zero-basis grow child keeps no width after its keyed row moves.
-    base: 'grow shrink min-w-0 items-stretch',
+    base: 'grow shrink basis-0 min-w-0 items-stretch',
   },
   figure: {
     base: 'shrink-0',
