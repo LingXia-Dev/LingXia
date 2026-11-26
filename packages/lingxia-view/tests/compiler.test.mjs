@@ -970,7 +970,7 @@ export function render() {
   });
 });
 
-test('UI_CLASS_EDGE warns on an edge tinted from a non-line role at an opacity; disabled looks, on-media edges and a tone or accent edge on its soft fill stay quiet', async () => {
+test('UI_CLASS_EDGE fails a border, divide or ring tinted from a non-line role at an opacity; disabled looks, on-media edges, a tone edge on its soft fill and a pressed inset-ring fill pass', async () => {
   await project({
     'page.tsx': `export function render() {
   return <view className="divide-y divide-text/10">
@@ -988,15 +988,19 @@ test('UI_CLASS_EDGE warns on an edge tinted from a non-line role at an opacity; 
     <view className="bg-info-soft border border-info/20" />
     <view className="bg-accent-soft border-2 border-accent/40" />
     <view className="bg-surface border border-accent/20" />
+    <button className="ring-1 ring-text/10 inset-ring inset-ring-muted/20" onClick={() => {}}><text>ring</text></button>
+    <button className="ring-1 ring-line-strong active:inset-ring-[999px] inset-ring-text/7 disabled:ring-text/10" onClick={() => {}}><text>card</text></button>
   </view>;
 }
 const field = { disabled: 'border border-text/8', offDisabled: 'border border-text/12', quiet: 'border border-muted/30' };
 const tone = { danger: 'bg-surface border border-danger/25' };`,
   }, async (root, build) => {
-    const { warnings } = await build();
-    await load(root);
-    assert.deepEqual(warnings.map(line => line.replace(/: UI_CLASS_EDGE: .*/, '')), ['page.tsx:2:26', 'page.tsx:3:21', 'page.tsx:16:21', 'page.tsx:19:96', 'page.tsx:20:24']);
-    assert.match(warnings[1], /border-text\/12 tints an edge text\/12.*use border-line for a separator or border-line-strong/);
+    const { message } = await build().catch(error => error);
+    const edges = message.split('\n').filter(line => line.includes('UI_CLASS_EDGE'));
+    const places = edges.flatMap(line => line.match(/^page\.tsx:(.*?): UI_CLASS_EDGE/)[1].split(', ')).sort();
+    assert.deepEqual(places, ['16:21', '17:23', '17:23', '21:96', '22:24', '2:26', '3:21'], message);
+    assert.ok(edges.some(line => /border-text\/12 tints an edge text\/12.*use a line role: border-line or ring-line/.test(line)), message);
+    assert.ok(edges.some(line => /ring-text\/10 tints an edge text\/10/.test(line)) && edges.some(line => /inset-ring-muted\/20/.test(line)), message);
   });
 });
 

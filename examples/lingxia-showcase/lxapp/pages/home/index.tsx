@@ -40,7 +40,7 @@ export function render({ data, actions, env }: View) {
               disabled={send.pending}
               placeholder={t('home.namePlaceholder')}
               onSubmit={greet}
-              className="min-h-11 px-4 py-2 rounded-lg bg-surface-sunken text-[17px] placeholder:text-muted focus:ring-2 focus:ring-focus/30"
+              className="min-h-11 px-4 py-2 rounded-lg bg-surface-sunken text-[17px] placeholder:text-muted focus:ring-2 focus:ring-focus"
             />
             <Button testId="home-greet" onClick={greet} disabled={!trimmed || send.pending} className="min-h-12 text-[17px] font-semibold">
               {send.pending ? t('home.sending') : t('home.sayHello')}

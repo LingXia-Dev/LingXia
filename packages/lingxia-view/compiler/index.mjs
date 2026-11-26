@@ -335,7 +335,7 @@ export function identify(source, filename, label) {
 }
 
 // An edge tinted from a non-line role misses the high-contrast boost the line roles carry.
-const edgeColor = /^(?:border|outline)\w*Color$/;
+const edgeColor = /^(?:border\w*|outline\w*|ring|insetRing)Color$/;
 // `on-media` edges sit over video or a picture, where the theme's line roles do not apply.
 const lineRoles = new Set(['line', 'line-strong', 'on-media']);
 function edgeRole(style) {
@@ -357,6 +357,8 @@ const softFilled = (tint, names, rulesByName) => {
   const tone = tint.split('/')[0];
   return tones.has(tone) && names.some(name => (rulesByName.get(name) ?? []).some(rule => !Object.keys(rule.when ?? {}).length && rule.style?.backgroundColor === `${tone}-soft`));
 };
+// A wide inset ring is a pressed fill (`active:inset-ring-[999px] inset-ring-text/7`), not an edge.
+const pressedFill = (names, rulesByName) => names.some(name => (rulesByName.get(name) ?? []).some(rule => (rule.shadow?.insetRingWidth ?? 0) >= 100));
 const disabledEdge = (rule, name) => rule.when?.state === 'disabled' || rule.when?.state === 'hasDisabled' || /(?:^|:)aria-disabled:/.test(name);
 
 function classProblems(rule, name, tag, suggestions, grid, focusable = false) {
@@ -741,7 +743,6 @@ export async function buildPages(root, pages, output, catalogs = {}, { dev = fal
     const suggestions = await nearestSupported(unknown, theme);
     // A name the checks reach but the collection missed is a valid utility the table lacks, not a typo.
     const uncollected = new Map(unknown.length ? (await compileUtilities(new Set(unknown), theme, { literalColors, appColors: appColors.list })).map(rule => [rule.name, rule]) : []);
-    const edges = [];
     for (const { value, location, tag, focusable, disabled } of usages) {
       const names = value.split(/\s+/).filter(Boolean);
       const grid = names.includes('grid');
@@ -753,8 +754,9 @@ export async function buildPages(root, pages, output, catalogs = {}, { dev = fal
         }
         const found = rulesByName.get(name) ?? [late];
         for (const problem of new Set(found.flatMap(rule => classProblems(rule, name, tag, suggestions, grid, focusable)))) problems.push(`${location}: ${problem}`);
-        const tint = !disabled && found.map(rule => rule && !rule.error && !disabledEdge(rule, name) && edgeRole(rule.style)).find(Boolean);
-        if (tint && !softFilled(tint, names, rulesByName)) edges.push(`${location}: UI_CLASS_EDGE: ${name} tints an edge ${tint}, which high contrast does not strengthen; use border-line for a separator or border-line-strong for an interactive boundary`);
+        const tint = !disabled && found.map(rule => rule && !rule.error && !disabledEdge(rule, name) && edgeRole({ ...rule.style, ...rule.shadow })).find(Boolean);
+        const fill = tint && found.some(rule => rule?.shadow?.insetRingColor) && pressedFill(names, rulesByName);
+        if (tint && !fill && !softFilled(tint, names, rulesByName)) problems.push(`${location}: UI_CLASS_EDGE: ${name} tints an edge ${tint}, which high contrast does not strengthen; use a line role: border-line or ring-line for a separator, border-line-strong or ring-line-strong for an interactive boundary`);
       }
       for (const problem of gradientTextProblems(names, rulesByName, looks)) problems.push(`${location}: ${problem}`);
     }
@@ -781,7 +783,7 @@ export async function buildPages(root, pages, output, catalogs = {}, { dev = fal
       warnings.push(...lines.text.split('\n'));
       console.warn(`${page}: ${lines.count} control warning${lines.count === 1 ? '' : 's'}\n${lines.text}`);
     }
-    const statics = [...staticStyleWarnings(own), ...new Set(edges)];
+    const statics = staticStyleWarnings(own);
     if (statics.length) {
       const lines = report(statics.map(line => packageRelative(root, line)), rel);
       warnings.push(...lines.text.split('\n'));
