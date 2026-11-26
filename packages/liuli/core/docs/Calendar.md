@@ -5,7 +5,7 @@
 A month of days in the page, to choose one day or a span. Status: preview.
 
 ```ts
-import { Calendar } from '@liulidesign/core/Calendar';
+import { calendarWeekday, Calendar } from '@liulidesign/core/Calendar';
 ```
 
 Calendar draws a month in the page and lets people press a day, or two days for a span: a due date beside its task, the nights of a stay. Days are `YYYY-MM-DD` text. The chosen day is a filled circle, a span is a soft band between its ends, and today is ringed. Its words follow the page's language and its weeks start on the user's first weekday. For a date typed into a form, DateInput opens the platform's own picker.

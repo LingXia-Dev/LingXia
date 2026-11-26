@@ -63,7 +63,7 @@ that directory.
 | `@liulidesign/core/Field` | Field | Label, help text and validation status around one form control |
 | `@liulidesign/core/SearchField` | SearchField | A field for searching what is on the page, with a clear button and a line that says what was found |
 | `@liulidesign/core/NumberInput` | NumberInput | A number typed or nudged by steps, kept between a minimum and a maximum |
-| `@liulidesign/core/Calendar` | Calendar | A month of days in the page, to choose one day or a span |
+| `@liulidesign/core/Calendar` | calendarWeekday, Calendar | A month of days in the page, to choose one day or a span |
 | `@liulidesign/core/DateRangeInput` | DateRangeInput | A span of days in a form: a field that opens a calendar |
 | `@liulidesign/core/FormLayout` | FormLayout, FormSpan | A form's fields at one rhythm: a column on a phone, two where there is room |
 | `@liulidesign/core/DateTimeInput` | DateTimeInput | A day and a time of day as one value |

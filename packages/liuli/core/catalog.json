@@ -2669,6 +2669,7 @@
       "name": "Calendar",
       "import": "@liulidesign/core/Calendar",
       "exports": [
+        "calendarWeekday",
         "Calendar"
       ],
       "category": "inputs",

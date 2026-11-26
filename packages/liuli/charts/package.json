@@ -18,6 +18,7 @@
     "catalog": "./catalog.json"
   },
   "exports": {
+    ".": "./src/index.ts",
     "./Stat": "./src/Stat/Stat.tsx",
     "./Stat/recipe": "./src/Stat/Stat.recipe.ts",
     "./Sparkline": "./src/Sparkline/Sparkline.tsx",

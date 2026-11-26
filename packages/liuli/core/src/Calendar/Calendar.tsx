@@ -7,7 +7,7 @@ import { dataOf } from '../internal/data';
 
 export type { CalendarDate } from './dates';
 
-/** A day of the week as the environment counts it: 1 is Sunday, 7 is Saturday. */
+/** A day of the week, 1 for Monday to 7 for Sunday, as the environment's `firstWeekday` counts it. */
 export type CalendarWeekday = Weekday;
 
 export interface CalendarRange {
@@ -68,7 +68,9 @@ export type CalendarProps = CalendarSelection & {
 };
 
 /** A day's weekday, 1 for Monday to 7 for Sunday: for an `isDateDisabled` that rules out weekends. */
-export const calendarWeekday = (date: CalendarDate) => ((weekdayOf(...parts(date)) + 6) % 7 + 1) as CalendarWeekday;
+export function calendarWeekday(date: CalendarDate): CalendarWeekday {
+  return ((weekdayOf(...parts(date)) + 6) % 7 + 1) as CalendarWeekday;
+}
 
 /**
  * A month of days to choose one day or a span from, drawn in the page. Its words follow the page's
