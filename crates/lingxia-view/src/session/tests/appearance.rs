@@ -45,7 +45,7 @@ fn set_theme(platform: &Platform, host: &ViewHost<Fake>, theme: &str) {
         .unwrap()
         .as_mut()
         .unwrap()
-        .value.theme = crate::protocol::env::Theme::parse(theme).unwrap();
+        .value.appearance = crate::protocol::env::Appearance::parse(theme).unwrap();
     host.environment_changed();
     platform.settle(&[host]);
     run_frames(platform, host, 4);
@@ -91,9 +91,9 @@ fn a_page_of_role_colours_repaints_a_theme_change_without_running_its_view() {
 fn a_page_that_reads_the_theme_or_has_a_theme_class_still_renders_on_a_theme_change() {
     for (name, body, classes) in [
         (
-            "env.theme",
+            "env.appearance",
             format!(
-                "return h('page',{{}},{BOX},h('text',{{'data-testid':'look'}},'look '+env.theme),h('text',{{'data-testid':'runs'}},'runs '+globalThis.runs))"
+                "return h('page',{{}},{BOX},h('text',{{'data-testid':'look'}},'look '+env.appearance),h('text',{{'data-testid':'runs'}},'runs '+globalThis.runs))"
             ),
             "[]",
         ),
@@ -102,7 +102,7 @@ fn a_page_that_reads_the_theme_or_has_a_theme_class_still_renders_on_a_theme_cha
             format!(
                 "return h('page',{{}},{BOX},h('view',{{className:'dark:mark',style:{{width:20,height:20}}}}),h('text',{{'data-testid':'runs'}},'runs '+globalThis.runs))"
             ),
-            "[{name:'dark:mark',when:{theme:'dark'},style:{backgroundColor:'#ff0000'}}]",
+            "[{name:'dark:mark',when:{appearance:'dark'},style:{backgroundColor:'#ff0000'}}]",
         ),
     ] {
         let worker = ViewWorker::spawn("test-appearance-reads").unwrap();
@@ -136,7 +136,7 @@ fn a_page_that_starts_reading_the_theme_renders_on_the_next_change() {
         &worker,
         &page_source(
             &format!(
-                "const on=useLocal('on',false);return h('page',{{}},{BOX},h('button',{{'data-testid':'on',onClick(){{on.set(true)}}}},'On'),h('text',{{'data-testid':'look'}},on.value?'look '+env.theme:'look -'),h('text',{{'data-testid':'runs'}},'runs '+globalThis.runs))"
+                "const on=useLocal('on',false);return h('page',{{}},{BOX},h('button',{{'data-testid':'on',onClick(){{on.set(true)}}}},'On'),h('text',{{'data-testid':'look'}},on.value?'look '+env.appearance:'look -'),h('text',{{'data-testid':'runs'}},'runs '+globalThis.runs))"
             ),
             "[]",
         ),
@@ -180,7 +180,7 @@ fn a_hot_swap_changes_whether_a_theme_change_runs_the_view() {
     ) + dev;
     let reading = page_source(
         &format!(
-            "return h('page',{{}},{BOX},h('text',{{'data-testid':'look'}},'look '+env.theme),h('text',{{'data-testid':'runs'}},'runs '+globalThis.runs))"
+            "return h('page',{{}},{BOX},h('text',{{'data-testid':'look'}},'look '+env.appearance),h('text',{{'data-testid':'runs'}},'runs '+globalThis.runs))"
         ),
         "[]",
     ) + dev;
@@ -219,7 +219,7 @@ fn a_theme_change_racing_a_render_leaves_the_page_reading_the_new_theme() {
             &worker,
             &page_source(
                 &format!(
-                    "const n=useLocal('n',0);return h('page',{{}},{BOX},h('button',{{'data-testid':'pick',onClick(){{n.set(n.value+1)}}}},'Pick'),h('text',{{'data-testid':'look'}},'look '+env.theme+' '+n.value))"
+                    "const n=useLocal('n',0);return h('page',{{}},{BOX},h('button',{{'data-testid':'pick',onClick(){{n.set(n.value+1)}}}},'Pick'),h('text',{{'data-testid':'look'}},'look '+env.appearance+' '+n.value))"
                 ),
                 "[]",
             ),
@@ -237,7 +237,7 @@ fn a_theme_change_racing_a_render_leaves_the_page_reading_the_new_theme() {
                 .unwrap()
                 .as_mut()
                 .unwrap()
-                .value.theme = crate::protocol::env::Theme::parse(value).unwrap();
+                .value.appearance = crate::protocol::env::Appearance::parse(value).unwrap();
             host.environment_changed();
         };
         for (step, value) in ["dark", "light", "dark"].into_iter().enumerate() {

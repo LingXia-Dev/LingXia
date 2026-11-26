@@ -75,7 +75,7 @@ test('a deferred render reports moved anchors and encodes once into their window
 });
 
 test('a pure row is reused while its items and environment are unchanged',()=>{
- reset();let built=[],env={theme:'light'},extra=0;
+ reset();let built=[],env={appearance:'light'},extra=0;
  const items=Object.freeze(['a','b','c','d','e']);
  const renderItem=Object.assign(item=>{built.push(item);return h('text',{'data-testid':item},item);},{__lxRow:'site'});
  const page=()=>h('view',{},h('text',{},String(extra)),h(List,{items,getKey:String,renderItem}));
@@ -88,7 +88,7 @@ test('a pure row is reused while its items and environment are unchanged',()=>{
  assert.deepEqual(again.filter(r=>r.id).map(r=>r.text),['a','b','c']);
  built=[];prepare(page,view(),win(1,4));commit();
  assert.deepEqual(built,['d'],'only the row entering the window renders');
- built=[];env={theme:'dark'};prepare(page,view(),win(1,4));commit();
+ built=[];env={appearance:'dark'};prepare(page,view(),win(1,4));commit();
  assert.deepEqual(built,['b','c','d'],'a new environment renders them again');
 });
 

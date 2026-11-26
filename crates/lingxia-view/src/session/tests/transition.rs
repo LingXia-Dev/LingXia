@@ -338,7 +338,7 @@ fn reduced_motion_lands_on_the_final_state_in_one_frame() {
         "opacity:0",
         "''",
     );
-    let mut environment = json!({"theme":"light","insets":{"top":0,"right":0,"bottom":0,"left":0},"keyboard":{"height":0},"os":"android","language":"en","canDock":false,"reducedMotion":true});
+    let mut environment = json!({"appearance":"light","insets":{"top":0,"right":0,"bottom":0,"left":0},"keyboard":{"height":0},"os":"android","language":"en","canDock":false,"reducedMotion":true});
     page.set_environment(environment.clone()).unwrap();
     let (display, _) = page_frame(&mut page, 0);
     press(&mut page, &display, true);
@@ -397,7 +397,7 @@ fn hidden_pages_park_running_transitions_and_jump_new_ones_to_their_end() {
 }
 
 fn environment(reduced: bool, scale: f64) -> serde_json::Value {
-    json!({"theme":"light","insets":{"top":0,"right":0,"bottom":0,"left":0},"keyboard":{"height":0},"os":"android","language":"en","canDock":false,"reducedMotion":reduced,"animatorDurationScale":scale})
+    json!({"appearance":"light","insets":{"top":0,"right":0,"bottom":0,"left":0},"keyboard":{"height":0},"os":"android","language":"en","canDock":false,"reducedMotion":reduced,"animatorDurationScale":scale})
 }
 
 #[test]
@@ -678,7 +678,7 @@ fn a_ring_strokes_past_a_real_gap_beside_a_shadow_and_an_inset_ring_sits_inside_
     );
     for theme in ["light", "dark"] {
         let mut page = ViewSession::new(&module).unwrap();
-        page.set_environment(json!({"theme":theme,"insets":{"top":0,"right":0,"bottom":0,"left":0},"keyboard":{"height":0},"os":"android","language":"en","canDock":false}))
+        page.set_environment(json!({"appearance":theme,"insets":{"top":0,"right":0,"bottom":0,"left":0},"keyboard":{"height":0},"os":"android","language":"en","canDock":false}))
             .unwrap();
         let shot = shoot(page.layout(200, 100, 1.0).unwrap(), false);
         let role = |role| page.renderer.palette.role(role);

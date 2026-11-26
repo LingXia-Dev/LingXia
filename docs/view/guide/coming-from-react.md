@@ -145,7 +145,7 @@ The View has no `window`, `document`, `localStorage`, `fetch`, `XMLHttpRequest`,
 | Browser | View |
 | --- | --- |
 | `fetch`, storage, timers | Logic, reached through actions, streams and channels |
-| `matchMedia('(prefers-color-scheme: dark)')` | `env.theme`, `dark:` |
+| `matchMedia('(prefers-color-scheme: dark)')` | `env.appearance`, `dark:` |
 | `window.innerWidth`, media queries | `env.viewport`, `sm:`/`md:`/… |
 | `navigator.language`, `Intl` | `env.language`; format in Logic |
 | an element's size (`getBoundingClientRect`, `ResizeObserver`) | `useBox(name)` and `box={box}`, or `onLayout` |

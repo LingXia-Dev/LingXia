@@ -180,7 +180,7 @@ A page imports at most one stylesheet (it may `@import` relative token files). I
 - `@font-face` declares a bundled face ([text](text.md#fonts)).
 
 Rules, selectors, nested rules in `@utility` and `@apply` are refused (`UI_CSS`). A token that differs
-between the two blocks compiles into a light and a dark rule; the View picks one from `env.theme`. A font
+between the two blocks compiles into a light and a dark rule; the View picks one from `env.appearance`. A font
 stack lowers to its declared face, or to the generic of a system stack (`system-ui, …, sans-serif`,
 `ui-serif, …, serif`).
 
@@ -193,7 +193,7 @@ Colours and faces stay the app's; two packages giving one token different values
 
 | Variant | Matches |
 | --- | --- |
-| `dark:` | `env.theme === 'dark'`; not on colours, which follow appearance |
+| `dark:` | `env.appearance === 'dark'`; not on colours, which follow appearance |
 | `sm:` … `xl:`, `min-[…]:`, `max-*:` | the View viewport width (`sm` = 640 px, `md` = 768, `lg` = 1024, `xl` = 1280) |
 | `rtl:`, `ltr:` | the node's inline direction ([RTL and i18n](rtl-and-i18n.md)) |
 | `first:` `last:` `only:` `odd:` `even:` `empty:` | the node's position among its rendered siblings; `empty:` a node with no children |

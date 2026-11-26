@@ -40,7 +40,7 @@ fn the_builder_emits_the_device_keys_and_no_session_key() {
     assert_eq!((env["canDock"].as_bool(), env.get("sizeClass")), (Some(false), None));
     assert!(check_environment(&env));
     let mut wrong = env.clone();
-    wrong["theme"] = "sepia".into();
+    wrong["appearance"] = "sepia".into();
     assert!(!check_environment(&wrong));
 }
 

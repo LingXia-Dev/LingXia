@@ -81,7 +81,7 @@ fn stall_key(environment: &FrameEnvironment) -> Stall {
     (
         environment.width,
         environment.height,
-        environment.value.theme == crate::protocol::env::Theme::Dark,
+        environment.value.appearance == crate::protocol::env::Appearance::Dark,
         environment.value.high_contrast == Some(true),
     )
 }

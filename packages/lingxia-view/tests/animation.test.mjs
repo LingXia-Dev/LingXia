@@ -21,15 +21,15 @@ test('utility lowering carries exact showcase effects through the existing rule 
   assert.ok(rules.length >= 2);
   assert.ok(rules.every(rule=>!rule.error),JSON.stringify(rules));
   configureClasses(rules);
-  for (const theme of ['light','dark']) for (const name of ['blink','chart-in']) {
-    assert.deepEqual(resolveClasses(`animate-${name}`,{theme}).base.animation,fixture[name]);
+  for (const appearance of ['light','dark']) for (const name of ['blink','chart-in']) {
+    assert.deepEqual(resolveClasses(`animate-${name}`,{appearance}).base.animation,fixture[name]);
   }
 });
 
 test('animation shorthand reset obeys Tailwind order, viewport and theme rather than class string order', async () => {
   const names = new Set(['animate-enter','animate-none','md:animate-none','dark:animate-none']);
   configureClasses(await compileUtilities(names,theme));
-  const style = (name,theme='light',width=400) => resolveClasses(name,{theme,viewport:{width}}).base.animation;
+  const style = (name,appearance='light',width=400) => resolveClasses(name,{appearance,viewport:{width}}).base.animation;
   assert.equal(style('animate-enter animate-none'),null);
   assert.equal(style('animate-none animate-enter'),null);
   assert.equal(style('animate-enter').opacity[0].value,0);
@@ -44,11 +44,11 @@ test('nested animation tracks are isolated across rule configuration, cache hits
   const rules = await compileUtilities(new Set(['animate-enter']),theme);
   configureClasses(rules);
   rules[0].style.animation.opacity[0].value = 0.9;
-  const first = resolveClasses('animate-enter',{theme:'light'}).base.animation;
+  const first = resolveClasses('animate-enter',{appearance:'light'}).base.animation;
   first.opacity[0].value = 0.8;
-  assert.equal(resolveClasses('animate-enter',{theme:'light'}).base.animation.opacity[0].value,0);
-  assert.equal(resolveClasses('animate-enter',{theme:'dark'}).base.animation.opacity[0].value,0.25);
-  assert.equal(resolveClasses('animate-enter',{theme:'light'}).base.animation.opacity[0].value,0);
+  assert.equal(resolveClasses('animate-enter',{appearance:'light'}).base.animation.opacity[0].value,0);
+  assert.equal(resolveClasses('animate-enter',{appearance:'dark'}).base.animation.opacity[0].value,0.25);
+  assert.equal(resolveClasses('animate-enter',{appearance:'light'}).base.animation.opacity[0].value,0);
 });
 
 test('invalid effects report diagnostics and animate-none clears an animation', async () => {

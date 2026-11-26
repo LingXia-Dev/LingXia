@@ -12,7 +12,7 @@ after(() => configureClasses([]));
 const page = () => h('view', { className: 'flex flex-col gap-2 p-4' },
   h('text', { className: 'text-sm font-bold' }, 'title'),
   h('button', { className: 'flex items-center rounded-lg disabled:opacity-40', disabled: true }, h('text', { className: 'text-muted bg-surface' }, 'row')));
-const env = width => ({ env: { theme: 'light', viewport: { width, height: 800 } } });
+const env = width => ({ env: { appearance: 'light', viewport: { width, height: 800 } } });
 const wire = view => decode(describe(page, view)).map(({ tag, text, props }) => ({ tag, text, props }));
 
 test('a seed from another isolate renders the same wire without lowering again', () => {

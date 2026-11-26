@@ -6,7 +6,7 @@ _Generated from the View schema (`schema.json`) and the compiler; do not edit._
 
 | Field | Type | Notes |
 | --- | --- | --- |
-| `theme` | `"light" \| "dark"` |  |
+| `appearance` | `"light" \| "dark"` | The effective appearance: the lxapp's fixed one, else the user's preference, else the product default, else the system. |
 | `viewport` | `Readonly<{ width: number; height: number }>` | The page surface in logical pixels. |
 | `insets` | `Readonly<Edges>` | System bars and host chrome over the surface, logical pixels. |
 | `safeArea` | `Readonly<Edges>` | The system bars alone (status bar, cutout, home indicator), as CSS `env(safe-area-inset-*)`; a dialog covering host chrome pads by these, logical pixels. |

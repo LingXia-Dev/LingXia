@@ -13,7 +13,7 @@ export function ThemeDemo() {
   const { env } = useView();
   const t = useSay();
   runs += 1;
-  const theme = reads.value ? env.theme : null;
+  const theme = reads.value ? env.appearance : null;
   return (
     <>
       <Readout testId="lab-appearance-runs" state={`runs=${runs} theme=${theme ?? 'unread'}`}>{t(readouts.theme(runs, theme))}</Readout>

@@ -724,7 +724,7 @@ pub mod limits {
 
 /// Environment keys and where each comes from: `device` facts, a host `push`, or the `session`.
 pub const ENVIRONMENT_KEYS: &[(&str, &str)] = &[
-    ("theme", "device"),
+    ("appearance", "device"),
     ("viewport", "session"),
     ("insets", "device"),
     ("safeArea", "device"),
@@ -751,7 +751,7 @@ pub const ENVIRONMENT_KEYS: &[(&str, &str)] = &[
 /// Whether a native environment snapshot (device facts plus pushes) is well formed.
 pub fn check_environment(value: &serde_json::Value) -> bool {
     value.is_object()
-        && matches!(value["theme"].as_str(), Some("light") | Some("dark"))
+        && matches!(value["appearance"].as_str(), Some("light") | Some("dark"))
         && ["top", "right", "bottom", "left"].iter().all(|edge| value["insets"][edge].as_f64().is_some_and(|n| n.is_finite() && (0.0..=16384.0).contains(&n)))
         && (value.get("safeArea").is_none() || ["top", "right", "bottom", "left"].iter().all(|edge| value["safeArea"][edge].as_f64().is_some_and(|n| n.is_finite() && (0.0..=16384.0).contains(&n))))
         && (value.get("hinge").is_none() || (value["hinge"].is_null() || (value["hinge"].is_object() && ["x", "y", "width", "height"].iter().all(|k| value["hinge"][k].as_f64().is_some_and(|n| n.is_finite() && (0.0..=16384.0).contains(&n))) && matches!(value["hinge"]["orientation"].as_str(), Some("vertical" | "horizontal")) && matches!(value["hinge"]["posture"].as_str(), Some("flat" | "half-opened")))))
@@ -777,7 +777,8 @@ pub mod env {
     #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
     #[serde(rename_all = "camelCase")]
     pub struct Environment {
-        pub theme: Theme,
+        /// The effective appearance: the lxapp's fixed one, else the user's preference, else the product default, else the system.
+        pub appearance: Appearance,
         /// System bars and host chrome over the surface, logical pixels.
         pub insets: Edges,
         /// The system bars alone (status bar, cutout, home indicator), as CSS `env(safe-area-inset-*)`; a dialog covering host chrome pads by these, logical pixels.
@@ -864,14 +865,14 @@ pub mod env {
     }
 
     #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
-    pub enum Theme {
+    pub enum Appearance {
         #[serde(rename = "light")]
         Light,
         #[serde(rename = "dark")]
         Dark,
     }
 
-    impl Theme {
+    impl Appearance {
         pub fn as_str(self) -> &'static str {
             match self {
                 Self::Light => "light",

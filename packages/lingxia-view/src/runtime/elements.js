@@ -154,7 +154,7 @@ let loweredEnv = null, loweredClasses = classGeneration;
 const fresh = new Set();
 let seeded = null;
 // The only env fields lowering may read: each is in the key, so a seed from another isolate holds.
-const loweringFields = ['theme', 'viewport', 'pointer', 'reducedMotion', 'insets', 'keyboard', 'sizeClass'];
+const loweringFields = ['appearance', 'viewport', 'pointer', 'reducedMotion', 'insets', 'keyboard', 'sizeClass'];
 const loweringEnv = (env, scoped) => {
   const base = Object.fromEntries(loweringFields.map(name => [name, env?.[name]]));
   if (scoped) base.sizeClass = scoped;

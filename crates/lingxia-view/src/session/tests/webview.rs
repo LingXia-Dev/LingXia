@@ -405,7 +405,7 @@ fn a_web_view_takes_the_page_appearance_live() {
     };
     assert!(!dark(&mut page));
     let mut environment = page.environment.clone();
-    environment["theme"] = serde_json::json!("dark");
+    environment["appearance"] = serde_json::json!("dark");
     page.set_environment(environment).unwrap();
     assert!(
         dark(&mut page),

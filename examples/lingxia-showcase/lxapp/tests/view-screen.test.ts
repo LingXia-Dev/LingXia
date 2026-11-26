@@ -5,7 +5,7 @@ const state = async (t: Fixture, id: string) => (await t.app.view.testId(id).get
 
 /** Every value the screen readout shows, checked for shape; the capsule's raw value is returned. */
 async function wellFormed(t: Fixture): Promise<{ capsule: string; safeTop: number }> {
-  await expect(t.app.view.testId('lab-env-theme')).toBeVisible();
+  await expect(t.app.view.testId('lab-env-appearance')).toBeVisible();
   for (const key of ['safe', 'insets']) {
     for (const edge of ['top', 'right', 'bottom', 'left']) {
       const value = Number(await state(t, `lab-env-${key}-${edge}`));
@@ -15,7 +15,7 @@ async function wellFormed(t: Fixture): Promise<{ capsule: string; safeTop: numbe
   expect(['compact', 'regular']).toContain(await state(t, 'lab-env-size-class'));
   expect(Number(await state(t, 'lab-env-text-scale'))).toBeGreaterThan(0);
   expect(['standard', 'high']).toContain(await state(t, 'lab-env-contrast'));
-  expect(['light', 'dark']).toContain(await state(t, 'lab-env-theme'));
+  expect(['light', 'dark']).toContain(await state(t, 'lab-env-appearance'));
   expect(['reduce', 'full']).toContain(await state(t, 'lab-env-reduced-motion'));
   const scale = Number(await state(t, 'lab-env-duration-scale'));
   expect(scale >= 0 && scale <= 10, `animator duration scale ${scale}`).toBe(true);
@@ -64,11 +64,11 @@ test('a pinned environment reaches the readout: still motion reads as reduced, t
 }, async (t) => {
   await t.app.view.environment({ theme: 'dark', still: true, contrast: 'high' });
   // The run may already be still, so wait on the theme, which the pin does change.
-  await expect.poll(() => state(t, 'lab-env-theme')).toBe('dark');
+  await expect.poll(() => state(t, 'lab-env-appearance')).toBe('dark');
   expect(await state(t, 'lab-env-reduced-motion')).toBe('reduce');
   expect(await state(t, 'lab-env-contrast')).toBe('high');
   await t.app.view.environment({ theme: 'light', still: false, contrast: 'standard' });
-  await expect.poll(() => state(t, 'lab-env-theme')).toBe('light');
+  await expect.poll(() => state(t, 'lab-env-appearance')).toBe('light');
   expect(await state(t, 'lab-env-contrast')).toBe('standard');
 });
 

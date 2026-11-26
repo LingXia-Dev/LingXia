@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { h, prepare, commit, reset, createView, configureClasses } from '../src/internal.js';
 import { envReads } from '../src/runtime/hooks.js';
 
-const env = { theme: 'light', highContrast: false, sizeClass: 'compact', viewport: { width: 300, height: 500 } };
+const env = { appearance: 'light', highContrast: false, sizeClass: 'compact', viewport: { width: 300, height: 500 } };
 const run = page => { prepare(page, createView({}, env, 0)); commit(); return envReads(); };
 
 test('a page of role colours reads neither the appearance nor the host context', () => {
@@ -11,9 +11,9 @@ test('a page of role colours reads neither the appearance nor the host context',
   assert.equal(run(() => h('page', {}, h('view', { className: 'card' }), h('text', {}, 'x'))), 0);
 });
 
-test('reading env.theme or env.highContrast marks the appearance, and stays marked while the page lives', () => {
+test('reading env.appearance or env.highContrast marks the appearance, and stays marked while the page lives', () => {
   reset(); configureClasses([]);
-  assert.equal(run(({ env }) => h('page', {}, h('text', {}, env.theme))), 2);
+  assert.equal(run(({ env }) => h('page', {}, h('text', {}, env.appearance))), 2);
   // A later render that does not reach the read (a recalled component would not) keeps the mark.
   assert.equal(run(() => h('page', {}, h('text', {}, 'x'))), 2);
   reset();
@@ -32,8 +32,8 @@ test('env.capsule is null when the host does not send it, and the host\'s box wh
   assert.deepEqual({ ...shown(createView({}, { ...env, capsule }, 0)) }, capsule);
 });
 
-test('a class with a theme condition marks the appearance whether or not it applies', () => {
-  reset(); configureClasses([{ name: 'dark:mark', when: { theme: 'dark' }, style: { backgroundColor: '#ff0000' } }]);
+test('a class with an appearance condition marks the appearance whether or not it applies', () => {
+  reset(); configureClasses([{ name: 'dark:mark', when: { appearance: 'dark' }, style: { backgroundColor: '#ff0000' } }]);
   assert.equal(run(() => h('page', {}, h('text', {}, 'x'))), 2);
   configureClasses([]);
   assert.equal(run(() => h('page', {}, h('text', {}, 'x'))), 0);

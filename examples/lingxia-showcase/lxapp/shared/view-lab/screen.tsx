@@ -47,7 +47,7 @@ export function ScreenFacts() {
       </view>
       <view className={row}>
         <text className={name}>{t(labels.envTheme)}</text>
-        <Readout testId="lab-env-theme" state={env.theme}>{env.theme}</Readout>
+        <Readout testId="lab-env-appearance" state={env.appearance}>{env.appearance}</Readout>
       </view>
       <view className={row}>
         <text className={name}>{t(labels.envMotion)}</text>

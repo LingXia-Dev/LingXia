@@ -5,7 +5,7 @@ export function render() {
   const { env } = useView();
   const count = useLocal('count', 0);
   const greet = (step: number) => count.set(count.value + step);
-  const dark = useLocal('dark', env.theme === 'dark');
+  const dark = useLocal('dark', env.appearance === 'dark');
   const tab = useLocal('tab', 'hello');
   const latest = useLocal('latest', false);
   const query = useLocal('query', '');
@@ -98,7 +98,7 @@ export function render() {
             <button data-testid="stack-front" onClick={() => greet(2)} style={{ width: 200, height: 64, left:24,top:48, backgroundColor: '#435DD9', color: '#FFFFFF', borderRadius: 16 }}>Pass it on</button>
           </view>
           <button data-testid="reset-count" disabled={!(count.value > 0)} onClick={() => count.set(0)} style={{ backgroundColor: count.value > 0 ? '#435DD9' : background, color: count.value > 0 ? '#FFFFFF' : muted, padding: 16 }}>Reset greetings</button>
-          {!compact && <button data-testid="appearance-auto" onClick={() => dark.set(env.theme === 'dark')} style={{ backgroundColor: background, color: ink, padding: 12 }}>Use device theme</button>}
+          {!compact && <button data-testid="appearance-auto" onClick={() => dark.set(env.appearance === 'dark')} style={{ backgroundColor: background, color: ink, padding: 12 }}>Use device theme</button>}
           <checkbox data-testid="keep-notes" bind={keepNotes} style={{ color: ink, backgroundColor: background, borderRadius: 12, fontSize: 16 }}>Keep my little notes</checkbox>
           <switch data-testid="reminders" bind={reminders} style={{ color: ink, backgroundColor: background, borderRadius: 12, fontSize: 16 }}>A daily moment</switch>
           <switch data-testid="reminders-disabled" value={true} disabled style={{ color: muted, backgroundColor: background, borderRadius: 12, fontSize: 16 }}>Coming soon</switch>

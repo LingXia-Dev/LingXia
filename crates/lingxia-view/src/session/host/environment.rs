@@ -45,7 +45,7 @@ pub(super) const TEXT_SCALES: std::ops::RangeInclusive<f64> = 0.5..=3.0;
 /// The environment without what only changes colours, which the renderer resolves.
 fn without_appearance(env: &Environment) -> Environment {
     Environment {
-        theme: env::Theme::Light,
+        appearance: env::Appearance::Light,
         high_contrast: None,
         palette: None,
         ..env.clone()
@@ -54,7 +54,7 @@ fn without_appearance(env: &Environment) -> Environment {
 
 /// Whether two environments show the same scheme, contrast and palette.
 pub(super) fn same_appearance(a: &Environment, b: &Environment) -> bool {
-    (a.theme, a.high_contrast, &a.palette) == (b.theme, b.high_contrast, &b.palette)
+    (a.appearance, a.high_contrast, &a.palette) == (b.appearance, b.high_contrast, &b.palette)
 }
 
 /// The appearance an environment shows, for logs.
@@ -64,7 +64,7 @@ pub(super) fn appearance_label(env: &Environment) -> String {
     } else {
         ""
     };
-    format!("{}{contrast}", env.theme.as_str())
+    format!("{}{contrast}", env.appearance.as_str())
 }
 
 /// The environment without what a surface push sets and only the View reads.
@@ -288,14 +288,14 @@ impl HostEnvironment {
     pub(super) fn apply(&self, env: &mut Environment) {
         if let Some(test) = self.test {
             if let Some(dark) = test.dark {
-                let theme = if dark {
-                    env::Theme::Dark
+                let appearance = if dark {
+                    env::Appearance::Dark
                 } else {
-                    env::Theme::Light
+                    env::Appearance::Light
                 };
-                if env.theme != theme {
-                    env.theme = theme;
-                    // A pushed palette was resolved for the measured theme.
+                if env.appearance != appearance {
+                    env.appearance = appearance;
+                    // A pushed palette was resolved for the measured appearance.
                     env.palette = None;
                 }
             }
@@ -338,7 +338,7 @@ impl HostEnvironment {
         if let Some((_, palettes, _)) = &self.theme
             && env.palette.is_none()
         {
-            let look = usize::from(env.theme == env::Theme::Dark)
+            let look = usize::from(env.appearance == env::Appearance::Dark)
                 + 2 * usize::from(env.high_contrast == Some(true));
             env.palette = Some(palettes[look].clone());
         }
@@ -440,7 +440,7 @@ mod tests {
     fn a_test_override_pins_the_theme_and_stills_motion_until_cleared() {
         let mut host = HostEnvironment::default();
         let measured = env_with(
-            json!({"theme": "light", "reducedMotion": false, "palette": {"revision": 1, "colors": []}}),
+            json!({"appearance": "light", "reducedMotion": false, "palette": {"revision": 1, "colors": []}}),
         );
         let applied = |host: &HostEnvironment| {
             let mut env = measured.clone();
@@ -457,8 +457,8 @@ mod tests {
         assert!(!host.set_test(Some(dark)));
         let env = applied(&host);
         assert_eq!(
-            (env.theme, env.reduced_motion),
-            (env::Theme::Dark, Some(true))
+            (env.appearance, env.reduced_motion),
+            (env::Appearance::Dark, Some(true))
         );
         // The platform's palette was for light; the dark look resolves its own.
         assert!(env.palette.is_none());
@@ -471,14 +471,14 @@ mod tests {
         let env = applied(&host);
         assert_eq!(
             (
-                env.theme,
+                env.appearance,
                 env.reduced_motion,
                 env.palette.unwrap()["revision"].as_i64()
             ),
-            (env::Theme::Light, Some(false), Some(1))
+            (env::Appearance::Light, Some(false), Some(1))
         );
         assert!(host.set_test(None));
-        assert_eq!(applied(&host).theme, env::Theme::Light);
+        assert_eq!(applied(&host).appearance, env::Appearance::Light);
         assert!(!host.still());
     }
 
@@ -561,29 +561,29 @@ mod tests {
                 value: env_with(value),
             };
         let mut host = HostEnvironment::default();
-        let mut built = frame(400, 2.0, json!({"theme": "light"}));
+        let mut built = frame(400, 2.0, json!({"appearance": "light"}));
         host.apply(&mut built.value);
         assert!(host.still_fits(
             Some(&built),
-            Some(frame(400, 2.0, json!({"theme": "light"})))
+            Some(frame(400, 2.0, json!({"appearance": "light"})))
         ));
         assert!(!host.still_fits(
             Some(&built),
-            Some(frame(401, 2.0, json!({"theme": "light"})))
+            Some(frame(401, 2.0, json!({"appearance": "light"})))
         ));
         assert!(!host.still_fits(
             Some(&built),
-            Some(frame(400, 3.0, json!({"theme": "light"})))
+            Some(frame(400, 3.0, json!({"appearance": "light"})))
         ));
         assert!(!host.still_fits(
             Some(&built),
-            Some(frame(400, 2.0, json!({"theme": "dark"})))
+            Some(frame(400, 2.0, json!({"appearance": "dark"})))
         ));
         assert!(
             !host.still_fits(Some(&built), None),
             "an unmeasured target fits nothing"
         );
-        assert!(!host.still_fits(None, Some(frame(400, 2.0, json!({"theme": "light"})))));
+        assert!(!host.still_fits(None, Some(frame(400, 2.0, json!({"appearance": "light"})))));
 
         let push = |dock: bool| {
             json!({"kind": "surface", "revision": u64::from(dock) + 1,
@@ -591,7 +591,7 @@ mod tests {
             .to_string()
         };
         assert!(host.update(&push(false)).unwrap());
-        let now = || Some(frame(400, 2.0, json!({"theme": "light"})));
+        let now = || Some(frame(400, 2.0, json!({"appearance": "light"})));
         assert!(
             !host.still_fits(Some(&built), now()),
             "a View that reads host context needs the pushed values"
@@ -602,7 +602,7 @@ mod tests {
             "a push this View never read leaves its frame current"
         );
         host.set_reads_host_context(true);
-        let mut rebuilt = frame(400, 2.0, json!({"theme": "light"}));
+        let mut rebuilt = frame(400, 2.0, json!({"appearance": "light"}));
         host.apply(&mut rebuilt.value);
         assert!(
             host.still_fits(Some(&rebuilt), now()),
@@ -634,7 +634,7 @@ mod tests {
         assert!(host.update(&pack.to_string()).unwrap());
         let slot = lingxia_theme::Role::Accent as usize;
         for theme in ["light", "dark"] {
-            let mut env = env_with(json!({"theme": theme}));
+            let mut env = env_with(json!({"appearance": theme}));
             host.apply(&mut env);
             let palette = crate::theme::Palette::decode(&env.palette.unwrap()).unwrap();
             assert_ne!(
@@ -647,13 +647,13 @@ mod tests {
             );
         }
         // The increased-contrast preference picks the pack's high-contrast look.
-        let mut base = env_with(json!({"theme": "light"}));
-        let mut high = env_with(json!({"theme": "light", "highContrast": true}));
+        let mut base = env_with(json!({"appearance": "light"}));
+        let mut high = env_with(json!({"appearance": "light", "highContrast": true}));
         host.apply(&mut base);
         host.apply(&mut high);
         assert_ne!(base.palette, high.palette);
         let mut env =
-            env_with(json!({"theme": "light", "palette": {"revision": 9, "colors": ["#000000"]}}));
+            env_with(json!({"appearance": "light", "palette": {"revision": 9, "colors": ["#000000"]}}));
         host.apply(&mut env);
         assert_eq!(env.palette.unwrap()["revision"], 9, "the platform's palette wins");
     }
@@ -668,7 +668,7 @@ mod tests {
             ("light", [0x0f, 0x7b, 0x3f, 255]),
             ("dark", [0x5b, 0xd2, 0x8a, 255]),
         ] {
-            let mut env = env_with(json!({"theme": theme}));
+            let mut env = env_with(json!({"appearance": theme}));
             host.apply(&mut env);
             let palette = crate::theme::Palette::decode(&env.palette.unwrap()).unwrap();
             assert_eq!(

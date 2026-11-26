@@ -471,7 +471,7 @@ globalThis.__lingxiaRender = ({{ env }}) => h('text', {{}}, (globalThis.__cat[en
         let mut session = ViewSession::new_with_chunks(&page, false, loader).unwrap();
         let env = |lang: &str| {
             serde_json::json!({
-                "theme": "light",
+                "appearance": "light",
                 "language": lang,
                 "insets": { "top": 0, "right": 0, "bottom": 0, "left": 0 },
                 "keyboard": { "height": 0 },
@@ -526,7 +526,7 @@ globalThis.__lingxiaRender = () => h('text', {{}}, (globalThis.__cat['zh-CN']?.g
         let mut session = ViewSession::new_with_chunks(&page, false, loader).unwrap();
         let env = |lang: &str| {
             serde_json::json!({
-                "theme": "light",
+                "appearance": "light",
                 "language": lang,
                 "insets": { "top": 0, "right": 0, "bottom": 0, "left": 0 },
                 "keyboard": { "height": 0 },

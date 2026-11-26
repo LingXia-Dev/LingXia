@@ -11,7 +11,7 @@ fn lines_inside_a_lifted_surface_take_its_pair_until_another_surface() {
         "function render(){const b=(w,c)=>h('view',{style:{width:w,height:10,borderWidth:1,borderColor:c||'line'}});return h('page',{},b(10),h('view',{style:{backgroundColor:'surface-overlay'}},b(20),h('view',{style:{backgroundColor:'accent'}},b(30)),h('view',{style:{backgroundColor:'surface'}},b(40))),h('view',{style:{backgroundColor:'surface-raised/90'}},b(50,'line-strong/50')))}",
     );
     let mut page = ViewSession::new(&module).unwrap();
-    page.set_environment(json!({"theme":"dark","insets":{"top":0,"right":0,"bottom":0,"left":0},"keyboard":{"height":0},"os":"android","language":"en","canDock":false}))
+    page.set_environment(json!({"appearance":"dark","insets":{"top":0,"right":0,"bottom":0,"left":0},"keyboard":{"height":0},"os":"android","language":"en","canDock":false}))
         .unwrap();
     let display = page.layout(300, 300, 1.0).unwrap();
     let border = |width: f32| {
@@ -69,7 +69,7 @@ fn a_line_entering_inside_an_overlay_eases_between_the_overlay_pair() {
         "configureClasses([{name:'starting:edge',when:{state:'starting'},style:{borderColor:'line-strong'}}]);__lingxiaPublish(render);",
     );
     let mut page = ViewSession::new(&module).unwrap();
-    page.set_environment(json!({"theme":"dark","insets":{"top":0,"right":0,"bottom":0,"left":0},"keyboard":{"height":0},"os":"android","language":"en","canDock":false}))
+    page.set_environment(json!({"appearance":"dark","insets":{"top":0,"right":0,"bottom":0,"left":0},"keyboard":{"height":0},"os":"android","language":"en","canDock":false}))
         .unwrap();
     page.set_animation_surface(Some(SURFACE), Duration::ZERO)
         .unwrap();

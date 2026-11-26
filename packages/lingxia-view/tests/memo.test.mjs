@@ -19,7 +19,7 @@ test('a component re-runs only when its props, place, state or environment chang
   assert.deepEqual(runs, { Static: 1, Shown: 2 });
   assert.deepEqual(texts(describe(render, view({ n: 3 }))), ['fixed', '3']);
   assert.deepEqual(runs, { Static: 1, Shown: 3 });
-  describe(render, view({ n: 3 }, { theme: 'dark' }));
+  describe(render, view({ n: 3 }, { appearance: 'dark' }));
   assert.deepEqual(runs, { Static: 1, Shown: 3 }, 'an environment field nothing read re-runs nothing');
 });
 
@@ -54,12 +54,12 @@ test('a component reading the View, or marked volatile, re-runs on every render'
 
 test('a component reading only useEnv() is kept across data changes and re-runs on a new environment', () => {
   let runs = 0, seen;
-  function Theme() { runs++; seen = useEnv(); return h('text', {}, seen.theme); }
+  function Theme() { runs++; seen = useEnv(); return h('text', {}, seen.appearance); }
   const render = ({ data }) => h('view', {}, h(Theme), h('text', {}, String(data.n)));
-  describe(render, view({ n: 1 }, { theme: 'light' }));
-  assert.deepEqual(texts(describe(render, view({ n: 2 }, { theme: 'light' }))), ['light', '2']);
+  describe(render, view({ n: 1 }, { appearance: 'light' }));
+  assert.deepEqual(texts(describe(render, view({ n: 2 }, { appearance: 'light' }))), ['light', '2']);
   assert.equal(runs, 1, 'a data change leaves it');
-  assert.deepEqual(texts(describe(render, view({ n: 2 }, { theme: 'dark' }))), ['dark', '2']);
+  assert.deepEqual(texts(describe(render, view({ n: 2 }, { appearance: 'dark' }))), ['dark', '2']);
   assert.equal(runs, 2);
   assert.ok(Object.isFrozen(seen));
   assert.throws(() => useEnv(), /UI_SCOPE/);
@@ -67,20 +67,20 @@ test('a component reading only useEnv() is kept across data changes and re-runs 
 
 test('a useEnv() reader re-runs only when a field it read changes', () => {
   const runs = { Theme: 0, Spread: 0 };
-  function Theme() { runs.Theme++; return h('text', {}, useEnv().theme ?? 'light'); }
+  function Theme() { runs.Theme++; return h('text', {}, useEnv().appearance ?? 'light'); }
   function Spread() { runs.Spread++; return h('text', {}, String(Object.keys({ ...useEnv() }).length)); }
   const render = () => h('view', {}, h(Theme), h(Spread));
-  describe(render, view({}, { theme: 'light', keyboard: { height: 0 } }));
-  describe(render, view({}, { theme: 'light', keyboard: { height: 300 } }));
+  describe(render, view({}, { appearance: 'light', keyboard: { height: 0 } }));
+  describe(render, view({}, { appearance: 'light', keyboard: { height: 300 } }));
   assert.deepEqual(runs, { Theme: 1, Spread: 2 }, 'a keyboard change leaves the theme reader; a spread read every field');
-  assert.equal(texts(describe(render, view({}, { theme: 'dark', keyboard: { height: 300 } })))[0], 'dark');
+  assert.equal(texts(describe(render, view({}, { appearance: 'dark', keyboard: { height: 300 } })))[0], 'dark');
   assert.deepEqual(runs, { Theme: 2, Spread: 3 });
 });
 
 test('a component re-runs when an environment field its classes lower against changes', () => {
   configureClasses([
     { name: 'card', when: {}, style: { backgroundColor: 'surface' } },
-    { name: 'dark:card-dark', when: { theme: 'dark' }, style: { borderWidth: 1 } },
+    { name: 'dark:card-dark', when: { appearance: 'dark' }, style: { borderWidth: 1 } },
     { name: 'md:wide', when: { minWidth: 768 }, style: { paddingTop: 8 } },
     { name: 'half', when: {}, style: { height: '50vh' } },
   ]);
@@ -88,16 +88,16 @@ test('a component re-runs when an environment field its classes lower against ch
   const part = (name, className) => function () { runs[name]++; return h('view', { className, 'data-testid': name }); };
   const Plain = part('Plain', 'card'), Themed = part('Themed', 'card dark:card-dark'), Wide = part('Wide', 'md:wide'), Half = part('Half', 'half');
   const render = () => h('view', {}, h(Plain), h(Themed), h(Wide), h(Half));
-  const env = { theme: 'light', viewport: { width: 400, height: 800 }, insets: { top: 0, right: 0, bottom: 0, left: 0 }, keyboard: { height: 0 } };
+  const env = { appearance: 'light', viewport: { width: 400, height: 800 }, insets: { top: 0, right: 0, bottom: 0, left: 0 }, keyboard: { height: 0 } };
   const node = (buffer, id) => decode(buffer).find(candidate => candidate.testId === id);
   describe(render, view({}, env));
-  const dark = describe(render, view({}, { ...env, theme: 'dark' }));
+  const dark = describe(render, view({}, { ...env, appearance: 'dark' }));
   assert.deepEqual(runs, { Plain: 1, Themed: 2, Wide: 1, Half: 1 });
   assert.equal(node(dark, 'Themed').props.borderTopWidth, 1);
-  const keyboard = describe(render, view({}, { ...env, theme: 'dark', keyboard: { height: 400 } }));
+  const keyboard = describe(render, view({}, { ...env, appearance: 'dark', keyboard: { height: 400 } }));
   assert.deepEqual(runs, { Plain: 1, Themed: 2, Wide: 1, Half: 2 }, 'a vh length lowers against the keyboard');
   assert.equal(node(keyboard, 'Half').props.height, 200);
-  describe(render, view({}, { ...env, theme: 'dark', keyboard: { height: 400 }, viewport: { width: 900, height: 800 } }));
+  describe(render, view({}, { ...env, appearance: 'dark', keyboard: { height: 400 }, viewport: { width: 900, height: 800 } }));
   assert.deepEqual(runs, { Plain: 1, Themed: 2, Wide: 2, Half: 3 });
 });
 

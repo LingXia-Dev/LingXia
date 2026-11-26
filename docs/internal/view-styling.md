@@ -144,7 +144,7 @@ A page imports one stylesheet; it may `@import` relative token files, expanded
 in source order (cycles rejected, ≤128 files). Use `@theme`/`@theme inline` for
 Tailwind tokens and `:root` / `[data-theme='light'|'dark']` blocks for palette
 custom properties. Appearance-specific values compile into separate rules;
-the isolate selects them from `View.env.theme`. Palette blocks accept only
+the isolate selects them from `View.env.appearance`. Palette blocks accept only
 custom properties and a matching `color-scheme`.
 
 Colours are roles from `contracts/view/schema.json` (`roles`). The compiler injects

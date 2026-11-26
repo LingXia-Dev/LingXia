@@ -609,7 +609,7 @@ test('a textarea takes rows and maxRows as an autosizing range', () => {
 });
 
 test('a View reading env.sizeClass or env.canDock is marked as reading the host context; runtime lowering is not', () => {
-  const env = { theme: 'light', viewport: { width: 400, height: 800 }, sizeClass: 'compact', canDock: false };
+  const env = { appearance: 'light', viewport: { width: 400, height: 800 }, sizeClass: 'compact', canDock: false };
   const quiet = () => h('view', { style: { padding: 4 } }, h('text', {}, 'A'));
   prepare(quiet, createView({}, env));
   assert.equal(readsHostContext(), false);

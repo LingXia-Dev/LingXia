@@ -169,7 +169,7 @@ test('every event the elements define is reachable from the screen, with a phone
     assert.equal(screen.escape(), true);
     assert.equal(screen.escape(), false);
     assert.equal(typeof screen.host.__lingxiaDispatch, 'function');
-    screen.rerender({ env: { viewport: { width: 800, height: 600 }, theme: 'dark' } });
+    screen.rerender({ env: { viewport: { width: 800, height: 600 }, appearance: 'dark' } });
   } finally { await rm(root, { recursive: true, force: true }); }
 });
 

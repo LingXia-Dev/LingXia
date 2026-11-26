@@ -567,7 +567,7 @@
     }
   },
   "environment": {
-    "theme": {"type": "\"light\" | \"dark\"", "check": "enum", "values": ["light", "dark"], "origin": "device"},
+    "appearance": {"type": "\"light\" | \"dark\"", "check": "enum", "values": ["light", "dark"], "origin": "device", "doc": "The effective appearance: the lxapp's fixed one, else the user's preference, else the product default, else the system."},
     "viewport": {"type": "Readonly<{ width: number; height: number }>", "check": "none", "origin": "session", "doc": "The page surface in logical pixels."},
     "insets": {"type": "Readonly<Edges>", "check": "edges", "origin": "device", "doc": "System bars and host chrome over the surface, logical pixels."},
     "safeArea": {"type": "Readonly<Edges>", "check": "edges", "origin": "device", "optional": true, "doc": "The system bars alone (status bar, cutout, home indicator), as CSS `env(safe-area-inset-*)`; a dialog covering host chrome pads by these, logical pixels."},

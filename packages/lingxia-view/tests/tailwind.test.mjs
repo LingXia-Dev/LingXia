@@ -12,7 +12,7 @@ const decode = (...args) => points(decodeSteps(...args));
 // Tailwind rules lower to CSS-named style; rendering then lowers that to the native box.
 const classStyle = (name, env) => points(resolveClasses(name, env)?.base ?? {});
 const use = async (names, theme) => configureClasses(await compileUtilities(new Set(names), theme));
-const env = (theme = 'light', width = 400) => ({ theme, viewport: { width, height: 800 } });
+const env = (appearance = 'light', width = 400) => ({ appearance, viewport: { width, height: 800 } });
 const node = (tag, props, view = {}) => rendered(() => h(tag, props, ...(tag === 'text' ? ['x'] : [])), view).props;
 
 test('flex direction follows utility cascade, responsive rules and explicit style', async () => {
@@ -615,7 +615,7 @@ test('stylesheets cannot silently discard browser selectors or imports', async (
 test('role classes keep their role in every appearance and refuse dark: and palette colours', async () => {
   await use(['bg-surface/80', 'text-muted', 'text-accent', 'dark:text-on-accent', 'text-white', 'bg-[#123456]'], '@theme inline { --color-surface: #ffffff; }');
   for (const theme of ['light', 'dark']) assert.deepEqual(classStyle('bg-surface/80 text-muted', { theme }), { backgroundColor: 'surface/80', color: 'text-muted' });
-  assert.equal(classStyle('text-accent', { theme: 'dark' }).color, 'accent');
+  assert.equal(classStyle('text-accent', { appearance: 'dark' }).color, 'accent');
   assert.throws(() => classStyle('dark:text-on-accent'), /UI_CLASS: dark:text-on-accent: roles follow appearance; drop dark:/);
   for (const name of ['text-white', 'bg-[#123456]']) assert.throws(() => classStyle(name), /not a role; use a role class such as bg-surface/);
 });
@@ -627,11 +627,11 @@ test('palette rules obey source order and diagnose invalid variables in either a
     :root { --round: 4px; }
     [data-theme="light"] { --round: 6px; }
   `);
-  assert.equal(classStyle('rounded-card', { theme: 'dark' }).borderRadius, 4);
-  assert.equal(classStyle('rounded-card', { theme: 'light' }).borderRadius, 6);
+  assert.equal(classStyle('rounded-card', { appearance: 'dark' }).borderRadius, 4);
+  assert.equal(classStyle('rounded-card', { appearance: 'light' }).borderRadius, 6);
   for (const value of ['var(--missing)', 'var(--round)']) {
     await use(['rounded-card'], `@theme inline { --radius-card: var(--round); } :root { --round: 4px; } [data-theme="dark"] { --round: ${value}; }`);
-    assert.throws(() => classStyle('rounded-card', { theme: 'light' }), /UI_CLASS.*(?:unresolved|cyclic)/);
+    assert.throws(() => classStyle('rounded-card', { appearance: 'light' }), /UI_CLASS.*(?:unresolved|cyclic)/);
   }
   for (const css of ['[data-theme="dark"] { color-scheme: light; }', '[data-theme="dark"] { --fill: black !important; }'])
     await assert.rejects(compileUtilities(new Set(['p-4']), css), /UI_CSS/);
@@ -765,7 +765,7 @@ test('theme @utility classes lower like utilities, with background and border sh
 @utility numeric { font-variant-numeric: tabular-nums; }
 @utility density-compact {}`;
   const rules = await compileUtilities(new Set(['hero', 'brand', 'ring-soft', 'numeric', 'density-compact', 'group', 'shadow-[var(--card-shadow)]', 'unknown-marker']), theme);
-  const rule = (name, when) => rules.find(r => r.name === name && (!when || r.when?.theme === when));
+  const rule = (name, when) => rules.find(r => r.name === name && (!when || r.when?.appearance === when));
   assert.equal(rule('hero').style.backgroundColor, 'surface');
   assert.deepEqual(rule('hero').gradient.fixed, { kind: 'radial', at: [0.5, 0], radii: [1.2, 0.9], colorSpace: 'srgb', stops: [{ offset: 0, color: 'accent/10' }, { offset: 0.58, color: '#00000000' }] });
   assert.deepEqual(rule('brand').gradient.fixed.stops.map(stop => stop.color), ['accent', 'chart-1']);

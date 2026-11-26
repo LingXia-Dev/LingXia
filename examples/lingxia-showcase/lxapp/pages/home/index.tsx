@@ -54,7 +54,7 @@ export function render({ data, actions, env }: View) {
               <view className="flex-row justify-between">
                 <text className="text-[11px] font-medium text-muted">{t('home.appearance')}</text>
                 <text data-testid="home-appearance-resolved" className="text-[11px] text-muted">
-                  {env.theme === 'dark' ? t('home.appearanceDark') : t('home.appearanceLight')}
+                  {env.appearance === 'dark' ? t('home.appearanceDark') : t('home.appearanceLight')}
                 </text>
               </view>
               <Segmented

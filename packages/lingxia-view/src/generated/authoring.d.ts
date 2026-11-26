@@ -524,7 +524,8 @@ export type AutoComplete = "off" | "on" | "username" | "current-password" | "new
 
 /** The page's environment (`view.env`): read-only, and a change re-renders the page. */
 export interface Env {
-  readonly theme: "light" | "dark";
+  /** The effective appearance: the lxapp's fixed one, else the user's preference, else the product default, else the system. */
+  readonly appearance: "light" | "dark";
   /** The page surface in logical pixels. */
   readonly viewport: Readonly<{ width: number; height: number }>;
   /** System bars and host chrome over the surface, logical pixels. */

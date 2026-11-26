@@ -1364,7 +1364,7 @@ fn a_parked_page_renders_nothing_after_it_left() {
     let platform = Platform::new(&[&worker]);
     let host = platform.host(
         &worker,
-        &source("function render({env}){return h('text',{'data-testid':'t'},`page ${env.theme}`)}"),
+        &source("function render({env}){return h('text',{'data-testid':'t'},`page ${env.appearance}`)}"),
         false,
     );
     host.set_visible(true);
@@ -1381,7 +1381,7 @@ fn a_parked_page_renders_nothing_after_it_left() {
         .unwrap()
         .as_mut()
         .unwrap()
-        .value.theme = crate::protocol::env::Theme::Dark;
+        .value.appearance = crate::protocol::env::Appearance::Dark;
     host.surface_changed();
     host.request_frame();
     platform.settle(&[&host]);
@@ -1401,7 +1401,7 @@ fn a_click_that_changes_the_look_logs_one_input_line() {
     let host = platform.host(
         &worker,
         &source(
-            "function render({env}){const n=useLocal('n',0),l=useLocal('l','-');return h('view',{},h('button',{'data-testid':'look',onClick:()=>n.set(n.value+1),style:{width:100,height:40}},`${env.theme} ${n.value} ${l.value}`),h('image',{src:'lx://look.png',alt:'',onLoad:()=>l.set('L'),style:{width:10,height:10}}))}",
+            "function render({env}){const n=useLocal('n',0),l=useLocal('l','-');return h('view',{},h('button',{'data-testid':'look',onClick:()=>n.set(n.value+1),style:{width:100,height:40}},`${env.appearance} ${n.value} ${l.value}`),h('image',{src:'lx://look.png',alt:'',onLoad:()=>l.set('L'),style:{width:10,height:10}}))}",
         ),
         false,
     );
@@ -1416,7 +1416,7 @@ fn a_click_that_changes_the_look_logs_one_input_line() {
         .unwrap()
         .as_mut()
         .unwrap()
-        .value.theme = crate::protocol::env::Theme::Dark;
+        .value.appearance = crate::protocol::env::Appearance::Dark;
     host.surface_changed();
     platform.settle(&[&host]);
     // An image load lands afterwards: its callback is not an input and logs nothing.
@@ -2565,7 +2565,7 @@ fn a_cover_stays_until_a_frame_in_the_new_scheme() {
         .unwrap()
         .as_mut()
         .unwrap()
-        .value.theme = crate::protocol::env::Theme::Dark;
+        .value.appearance = crate::protocol::env::Appearance::Dark;
     platform.settle(&[&host]);
     assert!(
         uncovered(&host).is_empty(),
@@ -5387,7 +5387,7 @@ fn host_chrome_takes_the_page_palette_before_its_first_frame_and_follows_the_loo
     platform.settle(&[&host]);
     assert_eq!(pushes().len(), 1, "an unchanged look pushes nothing");
     if let Some(environment) = host.adapter().environment.lock().unwrap().as_mut() {
-        environment.value.theme = crate::protocol::env::Theme::Dark;
+        environment.value.appearance = crate::protocol::env::Appearance::Dark;
     }
     host.redraw();
     platform.settle(&[&host]);

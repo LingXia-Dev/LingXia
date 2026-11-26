@@ -131,7 +131,7 @@ import { useEnv, type Child } from '@lingxia/view';
 function Section({ title, children }: { title: string; children?: Child }) {
   const env = useEnv();
   return (
-    <view className={env.theme === 'dark' ? 'gap-2 p-4 bg-text' : 'gap-2 p-4 bg-surface-sunken'}>
+    <view className={env.appearance === 'dark' ? 'gap-2 p-4 bg-text' : 'gap-2 p-4 bg-surface-sunken'}>
       <text className="text-sm font-semibold">{title}</text>
       {children}
     </view>

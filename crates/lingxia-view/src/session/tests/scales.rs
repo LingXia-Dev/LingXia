@@ -10,7 +10,7 @@ fn slot(name: &str) -> usize {
 
 fn env(scales: Option<Value>, text_scale: f64) -> Value {
     let mut value = json!({
-        "theme": "light",
+        "appearance": "light",
         "insets": {"top": 0, "right": 0, "bottom": 0, "left": 0},
         "keyboard": {"height": 0},
         "pointer": "coarse",

@@ -39,7 +39,7 @@ impl HostChrome {
     /// The chrome for an environment the host has applied its pushes to: its palette push,
     /// or the built-in palette for its look, the same palette the page renders with.
     pub fn from_environment(env: &crate::protocol::env::Environment) -> HostChrome {
-        let dark = env.theme == crate::protocol::env::Theme::Dark;
+        let dark = env.appearance == crate::protocol::env::Appearance::Dark;
         let high_contrast = env.high_contrast == Some(true);
         let palette = env
             .palette
@@ -72,7 +72,7 @@ mod tests {
         for (dark, high_contrast) in [(false, false), (true, false), (false, true), (true, true)] {
             let palette = Palette::builtin_for(dark, high_contrast);
             let env = crate::platform::test_environment(serde_json::json!({
-                "theme": if dark { "dark" } else { "light" },
+                "appearance": if dark { "dark" } else { "light" },
                 "highContrast": high_contrast,
             }));
             let chrome = HostChrome::from_environment(&env);
@@ -96,7 +96,7 @@ mod tests {
             .collect();
         colors[Role::Canvas as usize] = "#123456".into();
         let env = crate::platform::test_environment(serde_json::json!({
-            "theme": "light",
+            "appearance": "light",
             "palette": {"revision": 1, "colors": colors},
         }));
         assert_eq!(

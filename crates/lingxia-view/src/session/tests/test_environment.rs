@@ -7,7 +7,7 @@ fn a_test_override_pins_the_theme_stills_the_caret_and_clears() {
     let platform = Platform::new(&[&worker]);
     let host = platform.host(
         &worker,
-        &source("function render({env}){return h('text',{},`${env.theme} ${env.reducedMotion}`)}"),
+        &source("function render({env}){return h('text',{},`${env.appearance} ${env.reducedMotion}`)}"),
         false,
     );
     host.set_visible(true);

@@ -958,7 +958,7 @@ function conditions(rule) {
     // `starting:` is Tailwind's @starting-style: the values an element enters from.
     if (parent.type === 'atrule' && parent.name === 'starting-style') { result.starting = true; continue; }
     if (parent.type !== 'atrule' || parent.name !== 'media') unsupported('nested selector');
-    if (parent.params === '(prefers-color-scheme: dark)') result.theme = 'dark';
+    if (parent.params === '(prefers-color-scheme: dark)') result.appearance = 'dark';
     else if (parent.params === '(hover: hover)') result.hoverMedia = true;
     else if (parent.params === '(prefers-reduced-motion: reduce)') result.reducedMotion = true;
     else if (parent.params === '(prefers-reduced-motion: no-preference)') result.reducedMotion = false;
@@ -1178,11 +1178,11 @@ export async function compileUtilities(candidates, theme = '', { literalColors: 
           unsupported('placeholder supports only color');
         return { style: { placeholderColor: result.style.color } };
       };
-      const light = when.theme === 'dark' ? undefined : lower(palettes.light);
+      const light = when.appearance === 'dark' ? undefined : lower(palettes.light);
       const dark = lower(palettes.dark);
-      if (when.theme === 'dark' && !literal && paintsColor(dark)) throw new RoleError('roles follow appearance; drop dark:');
-      if (when.theme || JSON.stringify(light) === JSON.stringify(dark)) rules.push({ name, when, ...dark });
-      else rules.push({ name, when: { ...when, theme: 'light' }, ...light }, { name, when: { ...when, theme: 'dark' }, ...dark });
+      if (when.appearance === 'dark' && !literal && paintsColor(dark)) throw new RoleError('roles follow appearance; drop dark:');
+      if (when.appearance || JSON.stringify(light) === JSON.stringify(dark)) rules.push({ name, when, ...dark });
+      else rules.push({ name, when: { ...when, appearance: 'light' }, ...light }, { name, when: { ...when, appearance: 'dark' }, ...dark });
     } catch (error) {
       if (!(error instanceof Unsupported) && !String(error.message).startsWith('UI_ANIMATION')) throw error;
       rules.push({ name, error: { category: error instanceof RoleError ? 'color' : 'unsupported', message: error.message } });

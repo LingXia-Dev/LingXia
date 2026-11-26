@@ -1124,7 +1124,7 @@
     const out = /* @__PURE__ */ new Set();
     for (const name of className.split(/\s+/)) for (const rule of byName.get(name) ?? []) {
       const when = rule.when;
-      if (when?.theme !== void 0) out.add("theme");
+      if (when?.appearance !== void 0) out.add("appearance");
       if (when?.sizeClass !== void 0) out.add("sizeClass");
       if (when?.reducedMotion !== void 0) out.add("reducedMotion");
       if (when?.minWidth !== void 0 || when?.maxWidth !== void 0) out.add("viewport");
@@ -1141,7 +1141,7 @@
     cache.clear();
     sizedNames.clear();
     fieldsByClass.clear();
-    themed = compiled.some((rule) => rule.when?.theme !== void 0);
+    themed = compiled.some((rule) => rule.when?.appearance !== void 0);
     sized = compiled.some((rule) => rule.when?.sizeClass !== void 0);
     compiled.forEach((rule, order) => {
       if (!byName.has(rule.name)) byName.set(rule.name, []);
@@ -1149,8 +1149,8 @@
     });
   }
   function applies(rule, env, checked2) {
-    const { theme, minWidth, maxWidth, direction, sizeClass } = rule.when ?? {};
-    if (theme && (env.theme ?? "light") !== theme) return false;
+    const { appearance, minWidth, maxWidth, direction, sizeClass } = rule.when ?? {};
+    if (appearance && (env.appearance ?? "light") !== appearance) return false;
     if (direction && (env.direction ?? "ltr") !== direction) return false;
     if (sizeClass && (env.sizeClass ?? "compact") !== sizeClass) return false;
     if (rule.when?.structure && !(env.structure ?? []).includes(rule.when.structure)) return false;
@@ -1271,7 +1271,7 @@
     if (className === void 0) return void 0;
     if (typeof className !== "string") throw Error("UI_CLASS: className must be a string");
     if (className.length > 16384) throw Error("UI_CLASS: className exceeds 16384 characters");
-    const environment = `${env.theme ?? "light"}|${env.viewport?.width}|${env.viewport?.height}|${env.sizeClass ?? ""}|${env.direction ?? "ltr"}|${(env.structure ?? []).join(",")}|${env.reducedMotion === true}|${env.data ? JSON.stringify(env.data) : ""}|${env.indeterminate === true}`;
+    const environment = `${env.appearance ?? "light"}|${env.viewport?.width}|${env.viewport?.height}|${env.sizeClass ?? ""}|${env.direction ?? "ltr"}|${(env.structure ?? []).join(",")}|${env.reducedMotion === true}|${env.data ? JSON.stringify(env.data) : ""}|${env.indeterminate === true}`;
     const key = `${environment}\0${className}`;
     if (cache.has(key)) return copy(cache.get(key));
     const result = cascadeFor(className, env, false);
@@ -3909,7 +3909,7 @@
   }
   var hostContextKeys = /* @__PURE__ */ new Set(["sizeClass", "canDock"]);
   var hostContextRead = false;
-  var appearanceKeys = /* @__PURE__ */ new Set(["theme", "highContrast"]);
+  var appearanceKeys = /* @__PURE__ */ new Set(["appearance", "highContrast"]);
   var appearanceRead = false;
   var rawEnvs = /* @__PURE__ */ new WeakMap();
   var lastData;
@@ -5354,7 +5354,7 @@
   var loweredClasses = classGeneration;
   var fresh = /* @__PURE__ */ new Set();
   var seeded = null;
-  var loweringFields = ["theme", "viewport", "pointer", "reducedMotion", "insets", "keyboard", "sizeClass"];
+  var loweringFields = ["appearance", "viewport", "pointer", "reducedMotion", "insets", "keyboard", "sizeClass"];
   var loweringEnv = (env, scoped) => {
     const base = Object.fromEntries(loweringFields.map((name) => [name, env?.[name]]));
     if (scoped) base.sizeClass = scoped;

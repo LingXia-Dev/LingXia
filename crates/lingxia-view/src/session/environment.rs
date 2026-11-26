@@ -78,7 +78,7 @@ impl ViewSession {
             self.input_dirty = true;
             crate::layout::list_layout::invalidate_measurements(&mut self.lists);
         }
-        let dark = typed.theme == crate::protocol::env::Theme::Dark;
+        let dark = typed.appearance == crate::protocol::env::Appearance::Dark;
         let high_contrast = typed.high_contrast == Some(true);
         // Pages never read colours: the palette is taken out before the View sees the snapshot.
         let palette = match value

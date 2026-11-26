@@ -7,7 +7,7 @@ fn scaling_reflows_text_and_input_once_and_invalidates_retained_geometry() {
     );
     let mut page = crate::ViewSession::new(&module).unwrap();
     let baseline = page.layout(220, 600, 1.0).unwrap();
-    let mut environment = json!({"theme":"light","insets":{"top":0,"right":0,"bottom":0,"left":0},"keyboard":{"height":0},"os":"android","language":"en","canDock":false,"textScale":[[0,0],[16384,32768]]});
+    let mut environment = json!({"appearance":"light","insets":{"top":0,"right":0,"bottom":0,"left":0},"keyboard":{"height":0},"os":"android","language":"en","canDock":false,"textScale":[[0,0],[16384,32768]]});
     page.set_environment(environment.clone()).unwrap();
     let enlarged = page.layout(220, 600, 1.0).unwrap();
     let first = &enlarged.retained.inputs[1].as_ref().unwrap().layout;
@@ -51,7 +51,7 @@ fn a_grown_select_cuts_a_long_word_short_of_its_chevron() {
         "function render(){return h('view',{style:{alignItems:'flex-start'}},h('select',{'data-testid':'s','aria-label':'Billing',value:'q',options:[{value:'q',label:'Quarterly billing'}],style:{width:160,fontSize:14,paddingLeft:12,paddingRight:12,borderWidth:1}}))}",
     );
     let mut page = crate::ViewSession::new(&module).unwrap();
-    page.set_environment(json!({"theme":"light","insets":{"top":0,"right":0,"bottom":0,"left":0},"keyboard":{"height":0},"os":"ios","language":"en","canDock":false,"textScale":[[0,0],[16384,32768]]}))
+    page.set_environment(json!({"appearance":"light","insets":{"top":0,"right":0,"bottom":0,"left":0},"keyboard":{"height":0},"os":"ios","language":"en","canDock":false,"textScale":[[0,0],[16384,32768]]}))
         .unwrap();
     let display = page.layout(400, 200, 1.0).unwrap();
     let chevron_start = display
@@ -100,7 +100,7 @@ fn a_select_chevron_and_its_room_grow_with_the_text_to_one_and_a_half() {
     };
     let (narrow, inset) = chevron(&mut page);
     assert_eq!(narrow, 10.0);
-    let mut environment = json!({"theme":"light","insets":{"top":0,"right":0,"bottom":0,"left":0},"keyboard":{"height":0},"os":"android","language":"en","canDock":false,"textScale":[[0,0],[16384,32768]]});
+    let mut environment = json!({"appearance":"light","insets":{"top":0,"right":0,"bottom":0,"left":0},"keyboard":{"height":0},"os":"android","language":"en","canDock":false,"textScale":[[0,0],[16384,32768]]});
     page.set_environment(environment.clone()).unwrap();
     let (grown, grown_inset) = chevron(&mut page);
     // Text doubles; the chevron stops at 1.5×.
@@ -128,7 +128,7 @@ fn a_page_reads_the_applied_text_scale_and_rerenders_when_it_changes() {
             .clone()
     };
     assert_eq!(read(&mut page), "1");
-    let mut environment = json!({"theme":"light","insets":{"top":0,"right":0,"bottom":0,"left":0},"keyboard":{"height":0},"os":"android","language":"en","canDock":false,"textScale":[[0,0],[16384,32768]]});
+    let mut environment = json!({"appearance":"light","insets":{"top":0,"right":0,"bottom":0,"left":0},"keyboard":{"height":0},"os":"android","language":"en","canDock":false,"textScale":[[0,0],[16384,32768]]});
     page.set_environment(environment.clone()).unwrap();
     assert_eq!(read(&mut page), "2", "twice the size");
     // A curve that grows small text more than body text: the page reads body text's factor.

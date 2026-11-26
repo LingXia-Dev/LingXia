@@ -17,7 +17,7 @@ const docs = join(packageRoot, '../../docs/view');
 globalThis.__lingxiaViewHost = { uiAbi: 1, maxField, features: ['candidate-transactions', 'bounded-jobs'] };
 
 const env = {
-  theme: 'light', viewport: { width: 390, height: 844 }, insets: { top: 47, right: 0, bottom: 34, left: 0 },
+  appearance: 'light', viewport: { width: 390, height: 844 }, insets: { top: 47, right: 0, bottom: 34, left: 0 },
   keyboard: { height: 0 }, pointer: 'coarse', os: 'android', sizeClass: 'compact',
   language: 'en-US', reducedMotion: false, direction: 'ltr', canDock: false, runner: false, renderer: { fallback: null },
 };

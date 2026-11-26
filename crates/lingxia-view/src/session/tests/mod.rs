@@ -1852,7 +1852,7 @@ fn environment_is_atomic_immutable_and_survives_reset() {
         "function render({env}){if(!Object.isFrozen(env.insets))throw Error('mutable');return h('text',{},JSON.stringify(env))}",
     );
     let mut page = ViewSession::new(&source).unwrap();
-    let environment = serde_json::json!({"theme":"dark","insets":{"top":24,"right":0,"bottom":16,"left":0},"keyboard":{"height":0},"os":"android","canDock":false,"language":"zh-CN","viewport":{"width":999}});
+    let environment = serde_json::json!({"appearance":"dark","insets":{"top":24,"right":0,"bottom":16,"left":0},"keyboard":{"height":0},"os":"android","canDock":false,"language":"zh-CN","viewport":{"width":999}});
     page.set_environment(environment.clone()).unwrap();
     let mut invalid = environment.clone();
     invalid["insets"]["top"] = serde_json::json!(-1);
@@ -1860,7 +1860,7 @@ fn environment_is_atomic_immutable_and_survives_reset() {
     page.reset().unwrap();
     let frame = page.layout(900, 1200, 3.0).unwrap();
     let actual: serde_json::Value = serde_json::from_str(&frame.nodes[0].text).unwrap();
-    assert_eq!(actual["theme"], "dark");
+    assert_eq!(actual["appearance"], "dark");
     assert_eq!(
         actual["insets"],
         serde_json::json!({"top":24,"right":0,"bottom":16,"left":0,"inlineStart":0,"inlineEnd":0})
@@ -1883,7 +1883,7 @@ fn environment_is_atomic_immutable_and_survives_reset() {
     let mut other = ViewSession::new(&source).unwrap();
     let frame = other.layout(300, 500, 1.0).unwrap();
     let actual: serde_json::Value = serde_json::from_str(&frame.nodes[0].text).unwrap();
-    assert_eq!(actual["theme"], "light");
+    assert_eq!(actual["appearance"], "light");
 }
 
 #[test]
@@ -2555,7 +2555,7 @@ fn a_render_an_environment_change_caused_gets_the_warm_up_budget_once() {
     assert_eq!(over(&mut page, &mut per_ms, 1), Err(true), "steady state");
     // Appearance: the whole page renders again by design.
     let mut environment = page.environment.clone();
-    environment["theme"] = "dark".into();
+    environment["appearance"] = "dark".into();
     page.set_environment(environment.clone()).unwrap();
     assert_eq!(over(&mut page, &mut per_ms, 2).as_deref(), Ok("slow"));
     assert_eq!(
@@ -2898,7 +2898,7 @@ fn a_pressed_opaque_fill_deepens_in_light_and_dark_and_a_clear_one_takes_the_lay
         );
         let mut page = crate::ViewSession::new(&source).unwrap();
         let mut environment = page.environment.clone();
-        environment["theme"] = serde_json::json!(if dark { "dark" } else { "light" });
+        environment["appearance"] = serde_json::json!(if dark { "dark" } else { "light" });
         page.set_environment(environment).unwrap();
         let display = page.layout(300, 300, 1.0).unwrap();
         let node = |id: &str| {

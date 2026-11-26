@@ -316,7 +316,7 @@ export function useBackHandler(enabled, onBack) {
 const hostContextKeys = new Set(['sizeClass', 'canDock']);
 let hostContextRead = false;
 // Whether page code ever read the appearance; kept across renders, since a recalled component does not read again.
-const appearanceKeys = new Set(['theme', 'highContrast']);
+const appearanceKeys = new Set(['appearance', 'highContrast']);
 let appearanceRead = false;
 const rawEnvs = new WeakMap();
 // The data the last view froze: a new one shares its unchanged parts.
@@ -398,7 +398,7 @@ export function createView(data, env, revision) {
 export const envOf = view => (view && rawEnvs.get(view)) ?? view?.env;
 /** Whether the View read a host-context key since its view was created. */
 export const readsHostContext = () => hostContextRead;
-/** What of the environment the page depends on, for the host: 1 host context, 2 the appearance (page code read `theme` or `highContrast`, or a class has a theme condition), 4 the clock by the second, 8 by the minute. */
+/** What of the environment the page depends on, for the host: 1 host context, 2 the appearance (page code read `appearance` or `highContrast`, or a class has a theme condition), 4 the clock by the second, 8 by the minute. */
 export const envReads = () => ((hostContextRead || classesReadSizeClass()) ? 1 : 0) | (appearanceRead || classesReadTheme() ? 2 : 0)
   | (clockStep() === 1000 ? 4 : clockStep() ? 8 : 0);
 export function resetEnvReads() { appearanceRead = false; }

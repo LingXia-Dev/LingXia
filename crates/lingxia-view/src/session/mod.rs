@@ -148,7 +148,7 @@ pub struct ViewSession {
     pointer_dirty: bool,
     /// The View's last run read a host-context key (`env.sizeClass`, `env.canDock`).
     reads_host_context: bool,
-    /// The View depends on the appearance: its code read `env.theme` or `env.highContrast`, or a
+    /// The View depends on the appearance: its code read `env.appearance` or `env.highContrast`, or a
     /// class has a theme condition. True until it has run.
     reads_appearance: bool,
     /// The finest `useNow` step the View's last run read, in ms; 0 when none.
@@ -474,7 +474,7 @@ impl ViewSession {
             budget_warnings: Vec::new(),
             dev_warnings,
             chrome: Default::default(),
-            environment: serde_json::json!({"theme":"light","insets":{"top":0,"right":0,"bottom":0,"left":0},"safeArea":{"top":0,"right":0,"bottom":0,"left":0},"keyboard":{"height":0},"os":"unknown","canDock":false,"language":"en","pointer":"coarse"}),
+            environment: serde_json::json!({"appearance":"light","insets":{"top":0,"right":0,"bottom":0,"left":0},"safeArea":{"top":0,"right":0,"bottom":0,"left":0},"keyboard":{"height":0},"os":"unknown","canDock":false,"language":"en","pointer":"coarse"}),
             state: if logic {
                 crate::session::state::StateReplica::default()
             } else {

@@ -79,10 +79,10 @@ impl DeviceFacts {
         let covered: [f32; 4] =
             std::array::from_fn(|i| self.system_insets[i].max(self.chrome_insets[i]));
         let value = env::Environment {
-            theme: if self.dark {
-                env::Theme::Dark
+            appearance: if self.dark {
+                env::Appearance::Dark
             } else {
-                env::Theme::Light
+                env::Appearance::Light
             },
             insets: edges(covered),
             safe_area: Some(edges(self.system_insets)),
@@ -164,7 +164,7 @@ pub fn obscured(env: &env::Environment) -> [[f32; 4]; 2] {
 /// A well-formed environment with `fields` over a plain light phone's.
 #[cfg(test)]
 pub(crate) fn test_environment(fields: serde_json::Value) -> env::Environment {
-    let mut value = json!({"theme": "light", "insets": {"top": 0.0, "right": 0.0, "bottom": 0.0, "left": 0.0},
+    let mut value = json!({"appearance": "light", "insets": {"top": 0.0, "right": 0.0, "bottom": 0.0, "left": 0.0},
         "keyboard": {"height": 0.0}, "os": "unknown", "language": "en", "canDock": false});
     for (key, field) in fields.as_object().expect("fields are an object") {
         value[key] = field.clone();
@@ -213,7 +213,7 @@ mod tests {
         );
         assert_eq!(env.value.keyboard.height, 896.0, "clamped to the surface");
         assert_eq!(env.value.pointer, env::Pointer::Coarse);
-        assert_eq!(env.value.theme, env::Theme::Light);
+        assert_eq!(env.value.appearance, env::Appearance::Light);
         assert!(env.value.text_scale.is_none());
     }
 

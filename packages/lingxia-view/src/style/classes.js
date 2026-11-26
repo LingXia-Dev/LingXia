@@ -1,5 +1,5 @@
 // Compiled Tailwind rules, matched per node. Rules carry CSS-named style;
-// `when` narrows them by theme, viewport width, interaction state or the
+// `when` narrows them by appearance, viewport width, interaction state or the
 // children a `space-*`/`divide-*` rule targets, or every child (`*:` grid placement).
 import { resetLonghands } from './lower.js';
 
@@ -19,7 +19,7 @@ function copy(value) {
 /** Bumped with each class table: anything lowered under an older one is stale. */
 export let classGeneration = 0;
 
-// A class with a theme condition (`dark:`) lowers differently per appearance.
+// A class with an appearance condition (`dark:`) lowers differently per appearance.
 let themed = false;
 export const classesReadTheme = () => themed;
 // A class with a `regular:` condition depends on the host/scoped sizeClass.
@@ -48,7 +48,7 @@ export function classEnvFields(className) {
   const out = new Set();
   for (const name of className.split(/\s+/)) for (const rule of byName.get(name) ?? []) {
     const when = rule.when;
-    if (when?.theme !== undefined) out.add('theme');
+    if (when?.appearance !== undefined) out.add('appearance');
     if (when?.sizeClass !== undefined) out.add('sizeClass');
     if (when?.reducedMotion !== undefined) out.add('reducedMotion');
     if (when?.minWidth !== undefined || when?.maxWidth !== undefined) out.add('viewport');
@@ -66,7 +66,7 @@ export function configureClasses(compiled) {
   cache.clear();
   sizedNames.clear();
   fieldsByClass.clear();
-  themed = compiled.some(rule => rule.when?.theme !== undefined);
+  themed = compiled.some(rule => rule.when?.appearance !== undefined);
   sized = compiled.some(rule => rule.when?.sizeClass !== undefined);
   compiled.forEach((rule, order) => {
     if (!byName.has(rule.name)) byName.set(rule.name, []);
@@ -75,8 +75,8 @@ export function configureClasses(compiled) {
 }
 
 function applies(rule, env, checked) {
-  const { theme, minWidth, maxWidth, direction, sizeClass } = rule.when ?? {};
-  if (theme && (env.theme ?? 'light') !== theme) return false;
+  const { appearance, minWidth, maxWidth, direction, sizeClass } = rule.when ?? {};
+  if (appearance && (env.appearance ?? 'light') !== appearance) return false;
   if (direction && (env.direction ?? 'ltr') !== direction) return false;
   if (sizeClass && (env.sizeClass ?? 'compact') !== sizeClass) return false;
   if (rule.when?.structure && !(env.structure ?? []).includes(rule.when.structure)) return false;
@@ -217,7 +217,7 @@ export function resolveClasses(className, env = {}) {
   if (className === undefined) return undefined;
   if (typeof className !== 'string') throw Error('UI_CLASS: className must be a string');
   if (className.length > 16384) throw Error('UI_CLASS: className exceeds 16384 characters');
-  const environment = `${env.theme ?? 'light'}|${env.viewport?.width}|${env.viewport?.height}|${env.sizeClass ?? ''}|${env.direction ?? 'ltr'}|${(env.structure ?? []).join(',')}|${env.reducedMotion === true}|${env.data ? JSON.stringify(env.data) : ''}|${env.indeterminate === true}`;
+  const environment = `${env.appearance ?? 'light'}|${env.viewport?.width}|${env.viewport?.height}|${env.sizeClass ?? ''}|${env.direction ?? 'ltr'}|${(env.structure ?? []).join(',')}|${env.reducedMotion === true}|${env.data ? JSON.stringify(env.data) : ''}|${env.indeterminate === true}`;
   // Keyed by environment too: sibling structure changes it node to node, so clearing on change thrashed.
   const key = `${environment}\u0000${className}`;
   if (cache.has(key)) return copy(cache.get(key));
