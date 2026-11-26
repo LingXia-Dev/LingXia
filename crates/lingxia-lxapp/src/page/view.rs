@@ -57,6 +57,8 @@ pub enum PageViewEnvironment {
     },
     /// The largest factor the system text size may scale this page's text by.
     TextScaleLimit { max: f64 },
+    /// The product asks for more contrast than the system's.
+    Contrast { more: bool, revision: u64 },
 }
 
 /// Runtime-issued connection identity; the native worker must preserve it through queues.
@@ -293,6 +295,8 @@ impl PageView {
                     PageViewEnvironment::PageChrome { .. } => return Ok(()),
                     // The web page's text size follows the WebView's own setting.
                     PageViewEnvironment::TextScaleLimit { .. } => return Ok(()),
+                    // Web pages follow the system's contrast.
+                    PageViewEnvironment::Contrast { .. } => return Ok(()),
                 };
                 view.exec_js(&script).map_err(lingxia_error::Error::from)
             }

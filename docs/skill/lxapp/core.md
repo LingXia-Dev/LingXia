@@ -87,8 +87,8 @@ No lxapp keeps its own copy or offers its own picker.
 - What this lxapp renders in is on `lx.app`: `language` and `appearance`; every
   lxapp has them. Re-set the strings you hand to native chrome (modals, action
   sheets) when they change.
-- `lx.host.displayLanguage` / `lx.host.appearance` are the user's choice
-  (`'auto'` or a value) and can be set. Only the Control app may call them;
+- `lx.host.languagePreference` / `lx.host.appearancePreference` / `lx.host.contrastPreference`
+  are the user's choice (`'auto'` or a value; contrast `'more'` puts View pages in `env.highContrast`) and can be set. Only the Control app may call them;
   elsewhere they reject `E_PERMISSION_DENIED`. A system change under `'auto'`
   moves only the first pair.
 

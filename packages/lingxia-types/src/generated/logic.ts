@@ -408,13 +408,19 @@ declare global {
      * The product's language preference. Only the Control app may read or set
      * it; an lxapp reads the language it renders in from `lx.app.language`.
      */
-    readonly displayLanguage: HostDisplayLanguageApi;
+    readonly languagePreference: HostLanguagePreferenceApi;
 
     /**
      * The product's light/dark preference. Only the Control app may read or set
      * it; an lxapp reads the scheme it renders in from `lx.app.appearance`.
      */
-    readonly appearance: HostAppearanceApi;
+    readonly appearancePreference: HostAppearancePreferenceApi;
+
+    /**
+     * The product's contrast preference. Only the Control app may read or set
+     * it; a page reads the contrast in effect from `env.highContrast`.
+     */
+    readonly contrastPreference: HostContrastPreferenceApi;
 
     /**
      * The product-wide cache, reported and cleared for a settings screen.
@@ -1405,6 +1411,12 @@ export type ConptyStatus = {
 };
 
 /**
+ * What the product's contrast is set to: `'auto'` follows the system, `'more'` is
+ * high contrast whatever the system says.
+ */
+export type ContrastPreference = 'auto' | 'more';
+
+/**
  * A surface declared by the host in `lingxia.yaml`. A declaration that
  * shows an lxapp is that app's `AppSurface` instead.
  */
@@ -1417,13 +1429,6 @@ export type DeviceApi = globalThis.DeviceApi;
 
 /** The screen's orientation. */
 export type DeviceOrientation = "portrait" | "landscape";
-
-/**
- * What the product's language is set to: `'auto'` follows the system,
- * or any canonical BCP-47 tag. `string & {}` keeps `'auto'` in
- * autocomplete while still accepting a tag.
- */
-export type DisplayLanguagePreference = 'auto' | (string & {});
 
 /** Options every download takes: headers and an abort signal. */
 export type DownloadOptionsBase = {
@@ -1631,11 +1636,11 @@ export type HostAppUpdateResult = {
 export type HostAppUpdateTask = Task<HostAppUpdateResult>;
 
 /**
- * `lx.host.appearance` — the product's scheme preference; only the Control
+ * `lx.host.appearancePreference` — the product's scheme preference; only the Control
  * app and control surfaces get past it. A system flip under `'auto'` moves
  * `lx.app.appearance` and leaves this quiet.
  */
-export type HostAppearanceApi = Live<AppearancePreference> & {
+export type HostAppearancePreferenceApi = Live<AppearancePreference> & {
     /**
      * Pin the product to `'light'` or `'dark'`, or follow the system with
      * `'auto'`. An lxapp that pinned a scheme in its manifest keeps it. Resolves
@@ -1647,18 +1652,33 @@ export type HostAppearanceApi = Live<AppearancePreference> & {
 };
 
 /**
- * `lx.host.displayLanguage` — the product's language preference: `'auto'`
+ * `lx.host.contrastPreference` — the product's contrast preference; only the Control
+ * app and control surfaces get past it. Pages read the contrast in effect as
+ * `env.highContrast`.
+ */
+export type HostContrastPreferenceApi = Live<ContrastPreference> & {
+    /**
+     * Raise every View page to high contrast with `'more'`, or follow the system with
+     * `'auto'`. Web pages keep following the system.
+     * @throws {E_INVALID_ARG} Any other value.
+     * @throws {E_PERMISSION_DENIED} From an lxapp other than the Control app or a control surface.
+     */
+    set(preference: ContrastPreference): Promise<void>;
+};
+
+/**
+ * `lx.host.languagePreference` — the product's language preference: `'auto'`
  * or a canonical BCP-47 tag; only the Control app and control surfaces get
  * past it. A system locale change under `'auto'` moves `lx.app.language` and
  * leaves this quiet.
  */
-export type HostDisplayLanguageApi = Live<DisplayLanguagePreference> & {
+export type HostLanguagePreferenceApi = Live<LanguagePreference> & {
     /**
      * Persist the product's language.
      * @throws {E_INVALID_ARG} A tag that is not valid BCP-47.
      * @throws {E_PERMISSION_DENIED} From an lxapp other than the Control app or a control surface.
      */
-    set(preference: DisplayLanguagePreference): Promise<void>;
+    set(preference: LanguagePreference): Promise<void>;
 };
 
 /**
@@ -1724,6 +1744,13 @@ export type KeyEvent = {
 
 /** Receives each hardware key event. */
 export type KeyEventCallback = (event: KeyEvent) => void;
+
+/**
+ * What the product's language is set to: `'auto'` follows the system,
+ * or any canonical BCP-47 tag. `string & {}` keeps `'auto'` in
+ * autocomplete while still accepting a tag.
+ */
+export type LanguagePreference = 'auto' | (string & {});
 
 export type LxAppApi = globalThis.LxAppApi;
 

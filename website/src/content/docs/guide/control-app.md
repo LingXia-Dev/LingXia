@@ -20,19 +20,19 @@ The classes are disjoint. Re-opening the home lxapp as a guest somewhere else yi
 ## Check before offering product chrome
 
 ```ts
-const appearance = lx.host.appearance
+const appearance = lx.host.appearancePreference
 if (!appearance) return
 await appearance.set('dark')
 ```
 
-`lx.host.displayLanguage` and `lx.host.appearance` exist only in the Control app; elsewhere they are `undefined`, and the types say so. Bind the handle once; do not write `lx.host.appearance!` at every call.
+`lx.host.languagePreference` and `lx.host.appearancePreference` exist only in the Control app; elsewhere they are `undefined`, and the types say so. Bind the handle once; do not write `lx.host.appearancePreference!` at every call.
 
 ## What only the Control app may call
 
 These act on the product, not on the calling lxapp:
 
 - `lx.host.exit()`, `lx.host.badge.*`, `lx.host.cache`, `lx.host.checkUpdate()`, `lx.host.claimCustomUpdate()`, `lx.host.screenshot()`, `lx.host.autostart.*`
-- `lx.host.displayLanguage` / `lx.host.appearance` — `get` / `set` of the product's preference
+- `lx.host.languagePreference` / `lx.host.appearancePreference` / `lx.host.contrastPreference` — `get` / `set` of the product's preference
 - `lx.shell.*` — `sidebarActions`, `appDisplay` (the app's displayed name and icon), opening, moving or finding apps and declared surfaces
 
 Every lxapp reads what it renders in from `lx.app.language` and `lx.app.appearance` (`get` / `watch`), and should follow those values. Bundle updates for this lxapp stay on `lx.app.onUpdateReady` / `applyUpdate`.

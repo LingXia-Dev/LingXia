@@ -846,10 +846,10 @@ rong::js_api! {
         /// `lxapp.json` pins, else the product's.
         type AppAppearanceApi = r###"Live<ResolvedAppearance>"###;
 
-        /// `lx.host.appearance` — the product's scheme preference; only the Control
+        /// `lx.host.appearancePreference` — the product's scheme preference; only the Control
         /// app and control surfaces get past it. A system flip under `'auto'` moves
         /// `lx.app.appearance` and leaves this quiet.
-        type HostAppearanceApi = r###"Live<AppearancePreference> & {
+        type HostAppearancePreferenceApi = r###"Live<AppearancePreference> & {
     /**
      * Pin the product to `'light'` or `'dark'`, or follow the system with
      * `'auto'`. An lxapp that pinned a scheme in its manifest keeps it. Resolves
@@ -860,10 +860,27 @@ rong::js_api! {
     set(preference: AppearancePreference): Promise<void>;
 }"###;
 
+        /// What the product's contrast is set to: `'auto'` follows the system, `'more'` is
+        /// high contrast whatever the system says.
+        type ContrastPreference = r###"'auto' | 'more'"###;
+
+        /// `lx.host.contrastPreference` — the product's contrast preference; only the Control
+        /// app and control surfaces get past it. Pages read the contrast in effect as
+        /// `env.highContrast`.
+        type HostContrastPreferenceApi = r###"Live<ContrastPreference> & {
+    /**
+     * Raise every View page to high contrast with `'more'`, or follow the system with
+     * `'auto'`. Web pages keep following the system.
+     * @throws {E_INVALID_ARG} Any other value.
+     * @throws {E_PERMISSION_DENIED} From an lxapp other than the Control app or a control surface.
+     */
+    set(preference: ContrastPreference): Promise<void>;
+}"###;
+
         /// What the product's language is set to: `'auto'` follows the system,
         /// or any canonical BCP-47 tag. `string & {}` keeps `'auto'` in
         /// autocomplete while still accepting a tag.
-        type DisplayLanguagePreference = r###"'auto' | (string & {})"###;
+        type LanguagePreference = r###"'auto' | (string & {})"###;
 
         /// `lx.app.language` — the language this lxapp renders in, as a BCP-47 tag:
         /// the product's language narrowed to the `languages` its lxapp.json lists
@@ -873,17 +890,17 @@ rong::js_api! {
         /// re-renders on its behalf.
         type AppLanguageApi = r###"Live<string>"###;
 
-        /// `lx.host.displayLanguage` — the product's language preference: `'auto'`
+        /// `lx.host.languagePreference` — the product's language preference: `'auto'`
         /// or a canonical BCP-47 tag; only the Control app and control surfaces get
         /// past it. A system locale change under `'auto'` moves `lx.app.language` and
         /// leaves this quiet.
-        type HostDisplayLanguageApi = r###"Live<DisplayLanguagePreference> & {
+        type HostLanguagePreferenceApi = r###"Live<LanguagePreference> & {
     /**
      * Persist the product's language.
      * @throws {E_INVALID_ARG} A tag that is not valid BCP-47.
      * @throws {E_PERMISSION_DENIED} From an lxapp other than the Control app or a control surface.
      */
-    set(preference: DisplayLanguagePreference): Promise<void>;
+    set(preference: LanguagePreference): Promise<void>;
 }"###;
 
         /// The scheme in effect: light or dark.

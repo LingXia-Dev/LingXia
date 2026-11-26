@@ -2204,7 +2204,7 @@ mod eval_script_shape_tests {
     #[test]
     fn await_without_semicolon_is_a_function_body() {
         assert!(script_looks_like_function_body(
-            r#"await lx.host.displayLanguage.set("zh-CN")"#
+            r#"await lx.host.languagePreference.set("zh-CN")"#
         ));
         assert!(script_looks_like_function_body(
             "await(lx.host.cache.clear())"
@@ -2214,7 +2214,7 @@ mod eval_script_shape_tests {
     #[test]
     fn return_and_declarations_are_function_bodies() {
         assert!(script_looks_like_function_body(
-            "return lx.host.displayLanguage.get()"
+            "return lx.host.languagePreference.get()"
         ));
         assert!(script_looks_like_function_body("const x = 1; return x"));
     }

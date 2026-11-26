@@ -42,3 +42,11 @@ pub fn host_appearance(app_data_dir: &std::path::Path) -> Result<Option<String>>
 pub fn set_host_appearance(app_data_dir: &std::path::Path, preference: Option<&str>) -> Result<()> {
     lingxia_settings::set_host_appearance(app_data_dir, preference)
 }
+
+pub fn host_contrast(app_data_dir: &std::path::Path) -> Result<Option<String>> {
+    lingxia_settings::get_host_contrast(app_data_dir)
+}
+
+pub fn set_host_contrast(app_data_dir: &std::path::Path, preference: Option<&str>) -> Result<()> {
+    lingxia_settings::set_host_contrast(app_data_dir, preference)
+}

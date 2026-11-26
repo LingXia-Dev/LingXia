@@ -440,7 +440,7 @@ translation, an argument a translation adds or drops, and a catalogue for an und
   language, not the app's); the lxapp's catalogue overrides those words as it does in a View.
 - A dev session also builds `en-XA`: the source accented, ~40% longer and bracketed, to find
   clipped or untranslated text; and `ar-XB`: the source forced right-to-left on a right-to-left
-  page, to check mirroring. Pick one with `lx.host.displayLanguage.set('ar-XB')` from
+  page, to check mirroring. Pick one with `lx.host.languagePreference.set('ar-XB')` from
   the Control app (`lxdev lxapp eval`); neither ships.
 - Keys and arguments are typed from the source catalogue: an unknown key, or a missing or wrong-kind
   argument, fails `tsc`, and a literal key the catalogue lacks fails the build. A key built at run
@@ -459,7 +459,7 @@ The language is the host's display language narrowed to the declared ones: the e
 same language, else the source. A runtime value from `lx.app.tabBar.update` /
 `page.navigationBar.update` wins until reset with `null`, so do not also translate the declared text
 through those calls. A host app that keeps its own language setting must forward it with
-`lingxia::app::set_display_language_preference` (or `lx.host.displayLanguage.set` from the
+`lingxia::app::set_display_language_preference` (or `lx.host.languagePreference.set` from the
 Control app's Logic).
 
 ### Runtime updates

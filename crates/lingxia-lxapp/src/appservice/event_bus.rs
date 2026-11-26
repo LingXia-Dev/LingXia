@@ -13,6 +13,8 @@ pub const APPEARANCE_CHANGE_EVENT: &str = "AppearanceChange";
 pub const NAV_CURRENT_CHANGE_EVENT: &str = "NavCurrentChange";
 /// App-scoped event carrying the product's light/dark preference.
 pub const HOST_APPEARANCE_CHANGE_EVENT: &str = "HostAppearanceChange";
+/// App-scoped event carrying the product's contrast preference.
+pub const HOST_CONTRAST_CHANGE_EVENT: &str = "HostContrastChange";
 /// App-scoped event carrying the host's effective display language.
 pub const DISPLAY_LANGUAGE_CHANGE_EVENT: &str = "DisplayLanguageChange";
 /// App-scoped event carrying the complete host display-language state.

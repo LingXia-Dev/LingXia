@@ -39,8 +39,9 @@ import type {
   BadgeApi,
   BannerApi,
   CompressVideoTask,
-  HostAppearanceApi,
-  HostDisplayLanguageApi,
+  HostAppearancePreferenceApi,
+  HostContrastPreferenceApi,
+  HostLanguagePreferenceApi,
   DownloadTask,
   ClipboardApi,
   FileSystemApi,
@@ -102,15 +103,16 @@ export const LX_API_NAMES = [
 ] as const;
 
 const HOST_APP_API = [
-  'appearance',
+  'appearancePreference',
   'autostart',
   'badge',
   'banner',
   'cache',
-  'displayLanguage',
+  'contrastPreference',
   'env',
   'exit',
   'info',
+  'languagePreference',
   'notification',
   'screenshot',
   'serviceEnv',
@@ -417,7 +419,7 @@ export const LX_RUNTIME_SURFACES = [
     layer: 'logic',
     expression: 'lx.host',
     members: HOST_APP_RUNTIME_API,
-    properties: ['appearance', 'badge', 'displayLanguage', 'env', 'info', 'serviceEnv', 'tray', 'update'],
+    properties: ['appearancePreference', 'badge', 'contrastPreference', 'env', 'info', 'languagePreference', 'serviceEnv', 'tray', 'update'],
   },
   {
     name: 'lx.host.serviceEnv',
@@ -462,16 +464,22 @@ export const LX_RUNTIME_SURFACES = [
     members: APP_CACHE_API,
   },
   {
-    name: 'lx.host.displayLanguage',
+    name: 'lx.host.languagePreference',
     layer: 'logic',
-    expression: 'lx.host.displayLanguage',
+    expression: 'lx.host.languagePreference',
     members: HOST_PREFERENCE_API,
   },
 
   {
-    name: 'lx.host.appearance',
+    name: 'lx.host.appearancePreference',
     layer: 'logic',
-    expression: 'lx.host.appearance',
+    expression: 'lx.host.appearancePreference',
+    members: HOST_PREFERENCE_API,
+  },
+  {
+    name: 'lx.host.contrastPreference',
+    layer: 'logic',
+    expression: 'lx.host.contrastPreference',
     members: HOST_PREFERENCE_API,
   },
   {
@@ -915,8 +923,9 @@ export type LxApiManifestGate = [
   AssertTrue<Exact<BannerApi, typeof BANNER_API>>,
   AssertTrue<Exact<NotificationApi, typeof NOTIFICATION_API>>,
   AssertTrue<Exact<AppCacheApi, typeof APP_CACHE_API>>,
-  AssertTrue<Exact<HostDisplayLanguageApi, typeof HOST_PREFERENCE_API>>,
-  AssertTrue<Exact<HostAppearanceApi, typeof HOST_PREFERENCE_API>>,
+  AssertTrue<Exact<HostLanguagePreferenceApi, typeof HOST_PREFERENCE_API>>,
+  AssertTrue<Exact<HostAppearancePreferenceApi, typeof HOST_PREFERENCE_API>>,
+  AssertTrue<Exact<HostContrastPreferenceApi, typeof HOST_PREFERENCE_API>>,
   AssertTrue<Exact<AppLanguageApi, typeof APP_FOLLOW_API>>,
   AssertTrue<Exact<AppAppearanceApi, typeof APP_FOLLOW_API>>,
   AssertTrue<Exact<TabBarApi, typeof TAB_BAR_API>>,
@@ -1006,8 +1015,9 @@ type RuntimeSurfaceTypes = {
   'lx.host.banner': BannerApi;
   'lx.host.notification': NotificationApi;
   'lx.host.cache': AppCacheApi;
-  'lx.host.displayLanguage': HostDisplayLanguageApi;
-  'lx.host.appearance': HostAppearanceApi;
+  'lx.host.languagePreference': HostLanguagePreferenceApi;
+  'lx.host.appearancePreference': HostAppearancePreferenceApi;
+  'lx.host.contrastPreference': HostContrastPreferenceApi;
   'lx.app.language': AppLanguageApi;
   'lx.app.appearance': AppAppearanceApi;
   'lx.app.tabBar': TabBarApi;

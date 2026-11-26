@@ -20,19 +20,19 @@ sidebar:
 ## 提供产品级界面前先检查
 
 ```ts
-const appearance = lx.host.appearance
+const appearance = lx.host.appearancePreference
 if (!appearance) return
 await appearance.set('dark')
 ```
 
-`lx.host.displayLanguage` 与 `lx.host.appearance` 只存在于 Control app，其他 lxapp 中为 `undefined`，类型上也如此。绑定一次即可，不要到处写 `lx.host.appearance!`。
+`lx.host.languagePreference` 与 `lx.host.appearancePreference` 只存在于 Control app，其他 lxapp 中为 `undefined`，类型上也如此。绑定一次即可，不要到处写 `lx.host.appearancePreference!`。
 
 ## 只有 Control app 能调用的接口
 
 这些作用于产品本身，而不是调用方 lxapp：
 
 - `lx.host.exit()`、`lx.host.badge.*`、`lx.host.cache`、`lx.host.checkUpdate()`、`lx.host.claimCustomUpdate()`、`lx.host.screenshot()`、`lx.host.autostart.*`
-- `lx.host.displayLanguage` / `lx.host.appearance` —— 产品偏好的 `get` / `set`
+- `lx.host.languagePreference` / `lx.host.appearancePreference` / `lx.host.contrastPreference` —— 产品偏好的 `get` / `set`
 - `lx.shell.*` —— `sidebarActions`、`appDisplay`（应用显示的名称和图标）、打开、移动或查找应用与已声明 surface
 
 每个 lxapp 从 `lx.app.language` 与 `lx.app.appearance`（`get` / `watch`）读取自己实际的语言与配色，并应跟随这些值。本 lxapp 自己的包更新走 `lx.app.onUpdateReady` / `applyUpdate`。

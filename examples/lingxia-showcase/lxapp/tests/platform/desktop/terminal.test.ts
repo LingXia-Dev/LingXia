@@ -173,7 +173,7 @@ test('applies a chosen color scheme to native chrome at once', {
   const terminal = t.automation.terminal;
   const settingsApp = t.automation.lxapp(SETTINGS_APP_ID);
   let initial: TerminalWorkspaceSnapshot | undefined;
-  const previousAppearance = await app.logic.eval(({ lx }) => lx.host.appearance.get() ?? null);
+  const previousAppearance = await app.logic.eval(({ lx }) => lx.host.appearancePreference.get() ?? null);
 
   try {
     await expect(settingsApp.view.testId('schemes')).toBeVisible({ timeout: 10_000 });
@@ -202,7 +202,7 @@ test('applies a chosen color scheme to native chrome at once', {
     let cards = await shown();
     if (cards.length < 2) {
       await app.logic.eval(async ({ lx }) => {
-        await lx.host.appearance.set('dark');
+        await lx.host.appearancePreference.set('dark');
         return true;
       });
       cards = await waitFor(async () => {
@@ -232,7 +232,7 @@ test('applies a chosen color scheme to native chrome at once', {
     await expect(settingsApp.view.testId(`scheme-${target.name}`)).toBeChecked();
   } finally {
     await app.logic.eval(async ({ lx }, previous) => {
-      if (previous !== null) await lx.host.appearance.set(previous);
+      if (previous !== null) await lx.host.appearancePreference.set(previous);
       return true;
     }, previousAppearance).catch(() => undefined);
     if (initial) {

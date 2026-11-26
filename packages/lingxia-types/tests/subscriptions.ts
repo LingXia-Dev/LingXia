@@ -1,4 +1,4 @@
-import type { AppearancePreference, DeviceOrientation, Live, Lx, NetworkInfo, ResolvedAppearance } from "../src/index.js";
+import type { AppearancePreference, ContrastPreference, DeviceOrientation, Live, Lx, NetworkInfo, ResolvedAppearance } from "../src/index.js";
 
 declare const lx: Lx;
 
@@ -41,14 +41,17 @@ export type SubscriptionGate = [
 // Every subscription takes `{ signal }`.
 const lifetime = new AbortController();
 lx.network.status.watch(() => {}, { signal: lifetime.signal });
-lx.host.appearance.watch(() => {}, { signal: lifetime.signal });
+lx.host.appearancePreference.watch(() => {}, { signal: lifetime.signal });
 lx.device.orientation.watch(() => {}, { signal: lifetime.signal });
 // @ts-expect-error options carry only a signal
 lx.network.status.watch(() => {}, { once: true });
 
 // Every value that changes is one `Live<T>`: `get()` and `watch()` agree on the value type.
 const appearance: Live<ResolvedAppearance> = lx.app.appearance;
-const appearancePreference: Live<AppearancePreference> = lx.host.appearance;
+const appearancePreference: Live<AppearancePreference> = lx.host.appearancePreference;
+const contrastPreference: Live<ContrastPreference> = lx.host.contrastPreference;
+// @ts-expect-error contrast is 'auto' or 'more'
+void lx.host.contrastPreference.set('high');
 const language: Live<string> = lx.app.language;
 const orientation: Live<DeviceOrientation> = lx.device.orientation;
 const orientationNow: DeviceOrientation = lx.device.orientation.get();
@@ -66,4 +69,4 @@ lx.network.status().then(() => {});
 // @ts-expect-error follow connectivity through status.watch
 lx.network.watch(() => {});
 export type NetworkGate = [typeof network, typeof networkNow];
-export type LiveGate = [typeof appearance, typeof appearancePreference, typeof language, typeof orientation, typeof orientationNow];
+export type LiveGate = [typeof appearance, typeof appearancePreference, typeof contrastPreference, typeof language, typeof orientation, typeof orientationNow];

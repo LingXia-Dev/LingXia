@@ -40,6 +40,7 @@ use config::{LxAppConfig, LxAppLogicEntry, LxAppPageEntry};
 mod content;
 mod display_language;
 pub mod host_appearance;
+pub mod host_contrast;
 pub mod localized_text;
 mod messages;
 pub(crate) mod metadata;
@@ -88,6 +89,10 @@ pub use display_language::{
     refresh_display_language_system, set_display_language_preference,
     set_display_language_preference_in, subscribe_display_language_effective,
     subscribe_display_language_state,
+};
+pub use host_contrast::{
+    ContrastPreference, HostContrastUpdate, host_contrast_update, initialize_host_contrast,
+    set_host_contrast_preference,
 };
 pub use host_appearance::{
     HostAppearanceState, HostAppearanceUpdate, host_appearance_dark, host_appearance_state,
@@ -6015,10 +6020,12 @@ mod manifest_reload_tests {
             page.attach_gpu_view(endpoint.clone()).unwrap();
             // The created View already holds its module: the cold open does not reload it.
             page.reload_view().unwrap();
-            // Attaching hands the View its text-scale limit; nothing else reaches it.
+            // Attaching hands the View its text-scale limit and the host's contrast; nothing else.
             let calls = std::mem::take(&mut *endpoint.0.lock().unwrap());
             assert!(
-                calls.len() == 1 && calls[0].starts_with("TextScaleLimit"),
+                calls.len() == 2
+                    && calls[0].starts_with("TextScaleLimit")
+                    && calls[1].starts_with("Contrast"),
                 "{calls:?}"
             );
             assert!(page.has_live_view());

@@ -19,6 +19,9 @@ pub(crate) enum LogicRoute {
     AppAppearancePreferenceGet,
     AppAppearancePreferenceSet,
     AppAppearancePreferenceWatch,
+    AppContrastPreferenceGet,
+    AppContrastPreferenceSet,
+    AppContrastPreferenceWatch,
     AppDisplayLanguagePreferenceGet,
     AppDisplayLanguagePreferenceSet,
     AppDisplayLanguagePreferenceWatch,
@@ -80,6 +83,9 @@ impl LogicRoute {
         Self::AppAppearancePreferenceGet,
         Self::AppAppearancePreferenceSet,
         Self::AppAppearancePreferenceWatch,
+        Self::AppContrastPreferenceGet,
+        Self::AppContrastPreferenceSet,
+        Self::AppContrastPreferenceWatch,
         Self::AppDisplayLanguagePreferenceGet,
         Self::AppDisplayLanguagePreferenceSet,
         Self::AppDisplayLanguagePreferenceWatch,
@@ -130,8 +136,8 @@ impl LogicRoute {
     ];
 
     /// `lx.host.terminal.*` serves the host-bundled Settings surface;
-    /// `lx.host.appearance.*` and `lx.host.displayLanguage.*` serve home and
-    /// every control surface. The
+    /// `lx.host.appearancePreference.*`, `lx.host.contrastPreference.*` and
+    /// `lx.host.languagePreference.*` serve home and every control surface. The
     /// attention routes (`lx.host.notification.*`, `lx.host.banner.*`)
     /// admit every lxapp session and then scope
     /// what each may touch with [`AttentionScope`]. Every other direct route
@@ -175,6 +181,9 @@ impl LogicRoute {
             Self::AppAppearancePreferenceGet
             | Self::AppAppearancePreferenceSet
             | Self::AppAppearancePreferenceWatch
+            | Self::AppContrastPreferenceGet
+            | Self::AppContrastPreferenceSet
+            | Self::AppContrastPreferenceWatch
             | Self::AppDisplayLanguagePreferenceGet
             | Self::AppDisplayLanguagePreferenceSet
             | Self::AppDisplayLanguagePreferenceWatch => RouteAudience::ControlAppOrSurface,
@@ -212,12 +221,15 @@ impl LogicRoute {
             Self::AppBadgeClear => "lx.host.badge.clear",
             Self::AppCacheSize => "lx.host.cache.size",
             Self::AppCacheClear => "lx.host.cache.clear",
-            Self::AppAppearancePreferenceGet => "lx.host.appearance.get",
-            Self::AppAppearancePreferenceSet => "lx.host.appearance.set",
-            Self::AppAppearancePreferenceWatch => "lx.host.appearance.watch",
-            Self::AppDisplayLanguagePreferenceGet => "lx.host.displayLanguage.get",
-            Self::AppDisplayLanguagePreferenceSet => "lx.host.displayLanguage.set",
-            Self::AppDisplayLanguagePreferenceWatch => "lx.host.displayLanguage.watch",
+            Self::AppAppearancePreferenceGet => "lx.host.appearancePreference.get",
+            Self::AppAppearancePreferenceSet => "lx.host.appearancePreference.set",
+            Self::AppAppearancePreferenceWatch => "lx.host.appearancePreference.watch",
+            Self::AppContrastPreferenceGet => "lx.host.contrastPreference.get",
+            Self::AppContrastPreferenceSet => "lx.host.contrastPreference.set",
+            Self::AppContrastPreferenceWatch => "lx.host.contrastPreference.watch",
+            Self::AppDisplayLanguagePreferenceGet => "lx.host.languagePreference.get",
+            Self::AppDisplayLanguagePreferenceSet => "lx.host.languagePreference.set",
+            Self::AppDisplayLanguagePreferenceWatch => "lx.host.languagePreference.watch",
             Self::AppCheckUpdate => "lx.host.update.check",
             Self::AppClaimUpdate => "lx.host.update.claim",
             Self::AppApplyUpdate => "lx.host.update.check.apply",
@@ -627,18 +639,19 @@ mod tests {
 
     /// The preferences home and the control surfaces both own; a guest never reaches them.
     fn is_shared_preference_route(route: LogicRoute) -> bool {
-        route.name().starts_with("lx.host.appearance.")
-            || route.name().starts_with("lx.host.displayLanguage.")
+        route.name().starts_with("lx.host.appearancePreference.")
+            || route.name().starts_with("lx.host.contrastPreference.")
+            || route.name().starts_with("lx.host.languagePreference.")
     }
 
     #[test]
-    fn appearance_and_display_language_serve_home_and_control_surfaces_only() {
+    fn host_preferences_serve_home_and_control_surfaces_only() {
         let shared: Vec<LogicRoute> = LogicRoute::ALL
             .iter()
             .copied()
             .filter(|route| route.audience() == RouteAudience::ControlAppOrSurface)
             .collect();
-        assert_eq!(shared.len(), 6);
+        assert_eq!(shared.len(), 9);
         assert!(
             shared
                 .iter()

@@ -100,18 +100,18 @@ test('read, revise, reset, and preview terminal settings inside the bundled sett
   await t.step('the ControlSurface follows host language updates', async () => {
     const settings = await terminal.page({ name: 'settings' }, { timeout: 30_000 });
     await expect(settings.view.testId('settings-type')).toBeVisible({ timeout: 30_000 });
-    const preference = await app.logic.eval(({ lx }) => lx.host.displayLanguage.get());
+    const preference = await app.logic.eval(({ lx }) => lx.host.languagePreference.get());
     try {
       for (const language of ['zh-CN', 'en-US']) {
         await app.logic.eval(async ({ lx }, language) => {
-          await lx.host.displayLanguage.set(language);
+          await lx.host.languagePreference.set(language);
         }, language);
         const heading = language === 'zh-CN' ? '字体' : 'Type';
         await expect(settings.view.getByRole('heading', { name: heading })).toBeVisible({ timeout: 10_000 });
       }
     } finally {
       await app.logic.eval(async ({ lx }, preference) => {
-        await lx.host.displayLanguage.set(preference);
+        await lx.host.languagePreference.set(preference);
       }, preference);
     }
   });

@@ -353,6 +353,7 @@ pub(crate) fn init_with_platform(
             .and_then(|theme| theme.default_appearance)
             .unwrap_or_default(),
     );
+    lxapp::initialize_host_contrast(runtime.as_ref());
     install_global_executor();
     lingxia_app_context::set_host_build(crate::capabilities::host_build());
     lingxia_app_context::set_product_name_locale(lxapp::display_language);

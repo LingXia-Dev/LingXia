@@ -20,6 +20,8 @@ pub(super) struct HostEnvironment {
     test: Option<TestOverride>,
     /// The largest factor the system text size may scale text by, as the lxapp and page allow.
     max_text_scale: Option<f32>,
+    /// Revision and whether the user asked the product for more contrast than the system's.
+    contrast: Option<(u64, bool)>,
 }
 
 /// The text scale held to before the lxapp's limit arrives, and when it names none.
@@ -119,6 +121,10 @@ enum Update {
     },
     #[serde(rename = "textScaleLimit")]
     TextScaleLimit { max: f32 },
+    Contrast {
+        revision: u64,
+        more: bool,
+    },
 }
 
 impl HostEnvironment {
@@ -193,6 +199,15 @@ impl HostEnvironment {
                     self.theme = Some(theme(&pack, revision)?);
                 }
                 newer
+            }
+            Update::Contrast { revision, more } => {
+                let held = self.contrast;
+                let newer = newer(held.map(|c| c.0), revision);
+                if newer {
+                    self.contrast = Some((revision, more));
+                }
+                // No setting yet asks for no more contrast than the system's.
+                newer && held.is_some_and(|c| c.1) != more
             }
         })
     }
@@ -286,6 +301,11 @@ impl HostEnvironment {
 
     /// Overlays pushed values on the measured `env`; `canDock` is false until a surface push.
     pub(super) fn apply(&self, env: &mut Environment) {
+        if self.contrast.is_some_and(|c| c.1) && env.high_contrast != Some(true) {
+            env.high_contrast = Some(true);
+            // A pushed palette was resolved for the measured contrast.
+            env.palette = None;
+        }
         if let Some(test) = self.test {
             if let Some(dark) = test.dark {
                 let appearance = if dark {
@@ -677,6 +697,29 @@ mod tests {
                 "{theme}"
             );
         }
+    }
+
+    #[test]
+    fn more_contrast_from_the_product_raises_the_page_above_the_system() {
+        let mut host = HostEnvironment::default();
+        let contrast = |revision: u64, more: bool| {
+            json!({"kind": "contrast", "revision": revision, "more": more}).to_string()
+        };
+        let applied = |host: &HostEnvironment| {
+            let mut env = env_with(json!({"appearance": "light", "highContrast": false,
+                "palette": {"revision": 1, "colors": []}}));
+            host.apply(&mut env);
+            env
+        };
+        assert!(!host.update(&contrast(1, false)).unwrap(), "auto redraws nothing");
+        assert!(host.update(&contrast(2, true)).unwrap());
+        let env = applied(&host);
+        assert_eq!(env.high_contrast, Some(true));
+        assert!(env.palette.is_none(), "the measured palette was for standard contrast");
+        assert!(!host.update(&contrast(1, false)).unwrap(), "an older revision is dropped");
+        assert_eq!(applied(&host).high_contrast, Some(true));
+        assert!(host.update(&contrast(3, false)).unwrap());
+        assert_eq!(applied(&host).high_contrast, Some(false));
     }
 
     #[test]

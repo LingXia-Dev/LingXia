@@ -65,6 +65,7 @@ pub(crate) mod event_bus {
     pub const APPEARANCE_CHANGE_EVENT: &str = "AppearanceChange";
     pub const NAV_CURRENT_CHANGE_EVENT: &str = "NavCurrentChange";
     pub const HOST_APPEARANCE_CHANGE_EVENT: &str = "HostAppearanceChange";
+    pub const HOST_CONTRAST_CHANGE_EVENT: &str = "HostContrastChange";
     pub const DISPLAY_LANGUAGE_CHANGE_EVENT: &str = "DisplayLanguageChange";
     pub const DISPLAY_LANGUAGE_STATE_CHANGE_EVENT: &str = "DisplayLanguageStateChange";
 

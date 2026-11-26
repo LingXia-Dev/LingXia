@@ -1603,6 +1603,15 @@ impl PageInstance {
         self.push_view_environment(PageViewEnvironment::TextScaleLimit { max });
     }
 
+    /// Hand the View the product's contrast preference.
+    pub(crate) fn push_contrast(&self) {
+        let update = crate::lxapp::host_contrast_update();
+        self.push_view_environment(PageViewEnvironment::Contrast {
+            more: update.preference == crate::lxapp::ContrastPreference::More,
+            revision: update.revision,
+        });
+    }
+
     pub(crate) fn push_view_environment(&self, update: PageViewEnvironment) {
         if let Some(view) = self.page_view()
             && let Err(error) = view.update_environment(update)
@@ -1868,6 +1877,7 @@ impl PageInstance {
         self.inner.discarded.store(false, Ordering::SeqCst);
         self.inner.gpu_module_fresh.store(true, Ordering::SeqCst);
         self.push_text_scale_limit();
+        self.push_contrast();
         // Navigation may have queued Load/Show while the asynchronous factory ran.
         // As with the first WebView attachment, those entry requests must survive.
         Ok(())

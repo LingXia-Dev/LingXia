@@ -33,14 +33,14 @@ pub(super) fn init_app(ctx: &JSContext, app: &JSObject) -> JSResult<()> {
     Ok(())
 }
 
-/// `lx.host.appearance` — the product's light/dark preference. Every context gets it; each call
+/// `lx.host.appearancePreference` — the product's light/dark preference. Every context gets it; each call
 /// authorizes, so only the Control app and control surfaces get past it.
 pub(super) fn init_host(ctx: &JSContext, host: &JSObject) -> JSResult<()> {
     let namespace = JSObject::new(ctx);
     namespace.set("get", JSFunc::new(ctx, get_preference)?.name("get")?)?;
     namespace.set("set", JSFunc::new(ctx, set_preference)?.name("set")?)?;
     namespace.set("watch", JSFunc::new(ctx, watch_preference)?.name("watch")?)?;
-    host.set("appearance", namespace)?;
+    host.set("appearancePreference", namespace)?;
     Ok(())
 }
 

@@ -405,13 +405,19 @@ declare global {
      * The product's language preference. Only the Control app may read or set
      * it; an lxapp reads the language it renders in from `lx.app.language`.
      */
-    readonly displayLanguage: HostDisplayLanguageApi;
+    readonly languagePreference: HostLanguagePreferenceApi;
 
     /**
      * The product's light/dark preference. Only the Control app may read or set
      * it; an lxapp reads the scheme it renders in from `lx.app.appearance`.
      */
-    readonly appearance: HostAppearanceApi;
+    readonly appearancePreference: HostAppearancePreferenceApi;
+
+    /**
+     * The product's contrast preference. Only the Control app may read or set
+     * it; a page reads the contrast in effect from `env.highContrast`.
+     */
+    readonly contrastPreference: HostContrastPreferenceApi;
 
     /**
      * The product-wide cache, reported and cleared for a settings screen.

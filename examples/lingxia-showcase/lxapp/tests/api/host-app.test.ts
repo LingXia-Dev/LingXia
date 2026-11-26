@@ -237,18 +237,18 @@ test('answer update.check with an update or null instead of throwing', {
 
 test('reject an invalid host display language', {
   id: 'HOSTAPP-LANG-002',
-  covers: ['lx.host.displayLanguage.set'],
+  covers: ['lx.host.languagePreference.set'],
   app: SHOWCASE_APP_ID,
 }, async (t) => {
   const { app } = bindFixture(t, 'HOSTAPP-LANG-002');
 
-  const offered = await app.logic.eval(({ lx }) => typeof lx.host.displayLanguage.set);
+  const offered = await app.logic.eval(({ lx }) => typeof lx.host.languagePreference.set);
   expect(offered).toBe('function');
 
   for (const language of ['', 'en--US']) {
     const rejected = await app.logic.eval(async ({ lx }, language): Promise<Caught> => {
       try {
-        await lx.host.displayLanguage.set(language);
+        await lx.host.languagePreference.set(language);
         return { ok: true };
       } catch (error) {
         const { code, message, data } = error as { code?: string; message?: string; data?: unknown };

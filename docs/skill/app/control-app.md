@@ -23,7 +23,7 @@ separate from class: see [Permissions](../native/permissions.md).
 
 ```ts
 if (lx.app.info.role !== 'control') return; // offer nothing that needs it
-await lx.host.appearance.set('dark');
+await lx.host.appearancePreference.set('dark');
 ```
 
 `role` is `'control'`, `'control_surface'` or `'guest'`. Control-only members

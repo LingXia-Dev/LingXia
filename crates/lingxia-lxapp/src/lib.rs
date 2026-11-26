@@ -53,8 +53,8 @@ pub const SDK_RUNTIME_VERSION: &str = env!("CARGO_PKG_VERSION");
 pub use appservice::PageSvc;
 pub use appservice::event_bus::{
     APPEARANCE_CHANGE_EVENT, BROWSER_TAB_CLOSED_EVENT, DISPLAY_LANGUAGE_CHANGE_EVENT,
-    DISPLAY_LANGUAGE_STATE_CHANGE_EVENT, HOST_APPEARANCE_CHANGE_EVENT, NAV_CURRENT_CHANGE_EVENT,
-    publish_app_event, publish_page_event,
+    DISPLAY_LANGUAGE_STATE_CHANGE_EVENT, HOST_APPEARANCE_CHANGE_EVENT, HOST_CONTRAST_CHANGE_EVENT,
+    NAV_CURRENT_CHANGE_EVENT, publish_app_event, publish_page_event,
 };
 #[cfg(feature = "js-appservice")]
 pub use appservice::event_bus::{
@@ -89,6 +89,10 @@ pub use lxapp::data_profile;
 #[cfg(feature = "dev-bundles")]
 pub use lxapp::set_dev_bundle_preparer;
 pub use lxapp::set_num_workers;
+pub use lxapp::{
+    ContrastPreference, HostContrastUpdate, host_contrast_update, initialize_host_contrast,
+    set_host_contrast_preference,
+};
 pub use lxapp::{
     AppSessionClass, CloseReason, CreatePageInstanceRequest, CreatedPageInstance,
     DisplayLanguageEffectiveSource, DisplayLanguageEffectiveUpdate, DisplayLanguagePreference,

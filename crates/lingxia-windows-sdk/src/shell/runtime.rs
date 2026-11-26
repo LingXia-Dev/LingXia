@@ -1194,7 +1194,7 @@ fn apply_windows_host_color_mode() {
         }
     };
     lingxia_webview::platform::windows::set_windows_preferred_color_scheme_for_new_webviews(scheme);
-    // Posted, not awaited. This runs inside `lx.host.appearance.set`,
+    // Posted, not awaited. This runs inside `lx.host.appearancePreference.set`,
     // and a hidden WebView can hold the reply for the whole command timeout
     // after the preference is already on disk. The settings page then reports
     // a failed save for a choice that did take effect.

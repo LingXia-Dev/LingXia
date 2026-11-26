@@ -6,6 +6,7 @@ use lingxia_platform::traits::app_runtime::AppRuntime;
 use rong::{IntoJSObject, JSContext, JSFunc, JSObject, JSResult, JSValue, function::Optional};
 
 mod appearance;
+mod contrast;
 #[cfg(any(target_os = "macos", target_os = "windows"))]
 mod autostart;
 mod banner;
@@ -276,6 +277,7 @@ pub(crate) fn init_base(ctx: &JSContext) -> JSResult<()> {
     appearance::init_app(ctx, &lxapp_namespace)?;
     let host = app_namespace(ctx)?;
     display_language::init_host(ctx, &host)?;
+    contrast::init_host(ctx, &host)?;
     appearance::init_host(ctx, &host)
 }
 

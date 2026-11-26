@@ -16,7 +16,7 @@ import type {
 type Section = 'appearance' | 'downloads' | 'privacy' | 'proxy' | 'about';
 /** A toast's text and tone, translated here: the View's `t` works only while rendering. */
 type Notice = { message: string; tone?: 'success' | 'warning' };
-type AppearancePreference = Parameters<typeof lx.host.appearance.set>[0];
+type AppearancePreference = Parameters<typeof lx.host.appearancePreference.set>[0];
 
 /** An Auto Switch rule as the View edits it; the route leaves out an empty pattern and the default action. */
 type ProxyRule = Required<AutoSwitchRule>;
@@ -171,10 +171,10 @@ export default definePage({
         });
 
         // Each watch calls back with the current value at once.
-        lx.host.appearance.watch((pref) => {
+        lx.host.appearancePreference.watch((pref) => {
           page.update((d) => { d.appearance = pref; });
         }, { signal: page.signal });
-        lx.host.displayLanguage.watch((pref) => {
+        lx.host.languagePreference.watch((pref) => {
           page.update((d) => { d.language = pref; });
         }, { signal: page.signal });
         // Proxy routes exist only where the local proxy runs; without them the section stays hidden.
@@ -201,10 +201,10 @@ export default definePage({
         async setAppearance({ preference }: { preference: string }) {
           const next = APPEARANCES.find((each) => each === preference);
           if (!next) return;
-          await lx.host.appearance.set(next);
+          await lx.host.appearancePreference.set(next);
         },
         async setLanguage({ preference }: { preference: string }) {
-          await lx.host.displayLanguage.set(preference);
+          await lx.host.languagePreference.set(preference);
         },
         async chooseDownloadDir() {
           const download = await page.native.downloads.chooseDirectory();

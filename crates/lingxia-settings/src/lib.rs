@@ -41,6 +41,9 @@ pub struct Settings {
     /// keeps it.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub host_appearance: Option<String>,
+    /// User override for contrast: `more` raises it everywhere; `None` follows the system.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub host_contrast: Option<String>,
 }
 
 static SETTINGS_CACHE: OnceLock<DashMap<String, Settings>> = OnceLock::new();
@@ -207,6 +210,21 @@ pub fn set_host_appearance(
     save(app_data_dir, &settings)
 }
 
+pub fn get_host_contrast(app_data_dir: &Path) -> Result<Option<String>, SettingsError> {
+    Ok(load(app_data_dir)?
+        .host_contrast
+        .filter(|value| !value.trim().is_empty()))
+}
+
+pub fn set_host_contrast(app_data_dir: &Path, preference: Option<&str>) -> Result<(), SettingsError> {
+    let _guard = store_lock()
+        .lock()
+        .unwrap_or_else(|error| error.into_inner());
+    let mut settings = load(app_data_dir)?;
+    settings.host_contrast = preference.map(str::to_string);
+    save(app_data_dir, &settings)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -225,6 +243,15 @@ mod tests {
             get_download_dir(dir.path()).unwrap(),
             Some(dir.path().join("downloads"))
         );
+    }
+
+    #[test]
+    fn contrast_and_appearance_keep_each_other() {
+        let dir = tempfile::tempdir().unwrap();
+        set_host_appearance(dir.path(), Some("dark")).unwrap();
+        set_host_contrast(dir.path(), Some("more")).unwrap();
+        assert_eq!(get_host_appearance(dir.path()).unwrap().as_deref(), Some("dark"));
+        assert_eq!(get_host_contrast(dir.path()).unwrap().as_deref(), Some("more"));
     }
 
     /// A file written before the product owned light/dark carries per-lxapp

@@ -41,7 +41,7 @@ export default definePage({
         try {
           page.update(d => {
             d.appearance = {
-              preference: lx.host.appearance.get() ?? "auto",
+              preference: lx.host.appearancePreference.get() ?? "auto",
               resolved: lx.app.appearance.get(),
             };
           });
@@ -51,7 +51,7 @@ export default definePage({
       },
       syncLanguage() {
         try {
-          const preference = lx.host.displayLanguage.get() ?? "auto";
+          const preference = lx.host.languagePreference.get() ?? "auto";
           page.update(d => { d.languagePreference = preference; });
         } catch (error) {
           console.warn("[Home] Display language unavailable:", error);
@@ -66,7 +66,7 @@ export default definePage({
       async setAppearance(options: { preference?: AppearancePreference } = {}) {
         const preference = options.preference || "auto";
         try {
-          await lx.host.appearance.set(preference);
+          await lx.host.appearancePreference.set(preference);
         } catch (error) {
           console.warn("[Home] Failed to set appearance:", error);
           lx.ui.toast(lx.app.t("home.appearanceUnavailable"));
@@ -80,7 +80,7 @@ export default definePage({
       ) {
         const preference = options.preference || "auto";
         try {
-          await lx.host.displayLanguage.set(preference);
+          await lx.host.languagePreference.set(preference);
         } catch (error) {
           console.warn("[Home] Failed to set display language:", error);
           lx.ui.toast(lx.app.t("home.languageUnavailable"));
@@ -126,7 +126,7 @@ export default definePage({
         stopWatchingAppearance = lx.app.appearance.watch(() => helpers.syncAppearance());
         stopWatchingLanguage = lx.app.language.watch(() => helpers.syncLanguage());
         stopWatchingLanguagePreference =
-          lx.host.displayLanguage.watch(() => helpers.syncLanguage());
+          lx.host.languagePreference.watch(() => helpers.syncLanguage());
         try {
           const info = lx.app.info;
           const suffix =

@@ -37,7 +37,7 @@ function Page() {
   const workspace = host.sizeClass === "regular" && host.formFactor === "desktop";
   const language: string = host.language;
   // @ts-expect-error folded into `language`, the narrowed tag
-  void host.displayLanguage;
+  void host.languagePreference;
   // @ts-expect-error the size class is `compact` or `regular`, nothing wider
   const wide = host.sizeClass === "wide";
   // @ts-expect-error form factor is a word, not a boolean pair
