@@ -228,16 +228,20 @@ function ComboboxTypeahead({
   const close = () => { open.set(false); query.set(null); active.set(-1); };
   const choose = (value: string) => { onChange(value); close(); };
   const show = (index: number) => { open.set(true); active.set(index); if (index >= 0) reveal(optionId(listId, index)); };
-  // The next option that can be chosen, from `from` in `direction`, stopping at the ends.
+  // The next option that can be chosen, from `from` in `direction`, stopping at the ends; -1 when none is.
   const step = (from: number, direction: 1 | -1) => {
     for (let index = from + direction; index >= 0 && index < shown.length; index += direction) if (!shown[index].isDisabled) return index;
-    return from;
+    return from >= 0 && from < shown.length ? from : -1;
   };
   const first = () => step(-1, 1);
   const last = () => step(shown.length, -1);
   const isShowing = open.value && !isDisabled;
   const keys = {
-    ArrowDown: () => show(isShowing ? step(active.value, 1) : Math.max(first(), shown.findIndex(option => option.value === current))),
+    ArrowDown: () => {
+      if (isShowing) return show(step(active.value, 1));
+      const at = shown.findIndex(option => option.value === current && !option.isDisabled);
+      show(at >= 0 ? at : first());
+    },
     ArrowUp: () => show(isShowing && active.value >= 0 ? step(active.value, -1) : last()),
     // Listed only while the list is open: closed, they belong to the text.
     ...(isShowing ? {

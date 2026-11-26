@@ -219,3 +219,22 @@ test('Clearable: a clear button named "Clear Country" empties the field, and is 
     assert.equal(screen.queryAll(node => node.testId === 'clearable-clear').length, 0, 'gone once empty');
   }
 });
+
+test('with a keyboard, no option that can be chosen leaves nothing active; Down never lands on a disabled choice', async () => {
+  const page = items => `
+    import { Combobox } from '@liulidesign/core/Combobox';
+    export function render() { return <page><Combobox label="Plan" value="a" onChange={() => {}} items={${items}} searchLabel="Search" emptyLabel="None" data-testid="plan" /></page>; }
+  `;
+  const none = await renderPage(page(`[{ value: 'a', label: 'Alpha', isDisabled: true }, { value: 'b', label: 'Beta', isDisabled: true }]`), fine);
+  const field = () => none.getByTestId('plan');
+  none.focus(field());
+  for (const name of ['ArrowDown', 'End', 'ArrowUp', 'Home']) {
+    none.key(field(), name);
+    assert.equal(field().props.ariaActiveDescendant, undefined, `${name} points at no option`);
+  }
+  const some = await renderPage(page(`[{ value: 'a', label: 'Alpha', isDisabled: true }, { value: 'b', label: 'Beta' }]`), fine);
+  some.focus(some.getByTestId('plan'));
+  some.key(some.getByTestId('plan'), 'Escape');
+  some.key(some.getByTestId('plan'), 'ArrowDown');
+  assert.equal(active(some, 'plan'), 'Beta', 'the disabled choice is passed over');
+});
