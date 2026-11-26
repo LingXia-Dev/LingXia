@@ -130,6 +130,20 @@ test('a grown frozen array keeps its rows but renders the old and new last rows 
  assert.deepEqual(built,['c','d']);
 });
 
+test('a recalled List keeps the rows its window pass built',()=>{
+ reset();let built=[],extra=0;
+ const rows=Object.freeze(Array.from({length:6},(_,i)=>Object.freeze({n:'r'+i})));
+ const renderItem=item=>{built.push(item.n);return h('text',{},item.n);},getKey=item=>item.n;
+ const page=()=>h('view',{},h('text',{},String(extra)),h(List,{items:rows,getKey,renderItem}));
+ const id=records(prepare(page,{})).find(r=>r.tag==='list').fields.get('listId');
+ prepareWindows({[id]:{start:0,end:6,leading:0,trailing:0}});commit();
+ assert.deepEqual(built,['r0','r1','r2','r3','r4','r5']);
+ built=[];extra=1;
+ const output=records(prepare(page,{},{[id]:{start:0,end:6,leading:0,trailing:0}}));commit();
+ assert.deepEqual(built,[],'every row the window pass built stands');
+ assert.deepEqual(output.filter(r=>r.tag==='text').map(r=>r.text),['1','r0','r1','r2','r3','r4','r5']);
+});
+
 test('rows with getItemHeight are reused while the height function is the same',()=>{
  reset();let built=[],extra=0;
  const items=Object.freeze(['a','b','c']);

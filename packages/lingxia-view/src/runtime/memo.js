@@ -147,9 +147,11 @@ function reuse(node) {
     children[i] = child;
   }
   if (!node.list) return children === node.children ? node : { ...node, children };
-  const { pure } = node.list, cache = new Map();
-  for (const [i, row] of node.list.cache) if (pure.has(i)) cache.set(i, row);
-  return { ...node, children, list: { ...node.list, states: new Map(node.list.states), cache, pure: new Set(cache.keys()),
+  // A window pass encodes a copy of the tree, so the rows it built are in the committed list, not this node's.
+  const list = page.committed?.lists.get(node.identity) ?? node.list;
+  const { pure } = list, cache = new Map();
+  for (const [i, row] of list.cache) if (pure.has(i)) cache.set(i, row);
+  return { ...node, children, list: { ...list, states: new Map(list.states), cache, pure: new Set(cache.keys()),
     reusable: null, anchorChanged: false, anchorCache: null } };
 }
 

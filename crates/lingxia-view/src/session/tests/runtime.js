@@ -2428,11 +2428,12 @@
       children[i] = child;
     }
     if (!node.list) return children === node.children ? node : { ...node, children };
-    const { pure } = node.list, cache2 = /* @__PURE__ */ new Map();
-    for (const [i, row] of node.list.cache) if (pure.has(i)) cache2.set(i, row);
+    const list = page.committed?.lists.get(node.identity) ?? node.list;
+    const { pure } = list, cache2 = /* @__PURE__ */ new Map();
+    for (const [i, row] of list.cache) if (pure.has(i)) cache2.set(i, row);
     return { ...node, children, list: {
-      ...node.list,
-      states: new Map(node.list.states),
+      ...list,
+      states: new Map(list.states),
       cache: cache2,
       pure: new Set(cache2.keys()),
       reusable: null,
