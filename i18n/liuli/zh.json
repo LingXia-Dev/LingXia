@@ -238,5 +238,8 @@
   },
   "@liuli.loadingNamed": {
     "defaultMessage": "正在加载{name}"
+  },
+  "@liuli.chart.other": {
+    "defaultMessage": "其他"
   }
 }

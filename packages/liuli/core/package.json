@@ -222,6 +222,7 @@
     "./hue": "./src/hue.ts",
     "./internal/example": "./src/example.tsx",
     "./internal/doc": "./src/doc.ts",
+    "./internal/text": "./src/i18n/text.ts",
     "./internal/contrast": "./scripts/contrast.mjs",
     "./internal/testing": "./src/testing/harness.mjs",
     "./QRCode": "./src/QRCode/QRCode.tsx",

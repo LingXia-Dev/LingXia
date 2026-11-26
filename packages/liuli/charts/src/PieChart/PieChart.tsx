@@ -1,5 +1,6 @@
 import { cx, useBox, type ColorAlpha, type ColorRole, type VectorPath } from '@lingxia/view';
 import { Chart, ChartLegend, type ChartColor, type ChartField, type ChartLegendPosition, type ChartRecord, type ChartRow, type ChartSize, type ChartSummarize } from '../Chart/Chart';
+import { liuliText } from '@liulidesign/core/internal/text';
 import { colorOf, keyOf, numberOf, plain, roleOf, seriesFacts, textOf } from '../internal/data';
 import { box, circle, sector } from '../internal/geometry';
 import { remember } from '../internal/memo';
@@ -31,7 +32,7 @@ export interface PieChartProps<Row extends ChartRecord<Row> = ChartRow> {
   variant?: PieChartVariant;
   /** Names the total shown in a donut's hole: "Total". Without it the hole is empty until a part is chosen. */
   totalLabel?: string;
-  /** Names one part that gathers every part after the first `maxParts`: "Other". Without it every part is drawn, up to 24. */
+  /** Names one part that gathers every part after the first `maxParts`: "Other". Without it every part is drawn up to 24, and any past those are one part named "Other" in the page's language. */
   otherLabel?: string;
   /** How many parts keep their own slice when `otherLabel` is set. @default 5 */
   maxParts?: number;
@@ -81,12 +82,13 @@ export function PieChart<Row extends ChartRecord<Row>>({
   const listed = data
     .map((row, index) => ({ key: keyOf(row, keyField ?? name, index), name: textOf(row, name), amount: numberOf(row, value) }))
     .filter(part => part.amount > 0);
-  const keep = otherLabel !== undefined ? Math.max(1, Math.min(maxParts, maxSlices - 1)) : maxSlices - 1;
+  const parted = Number.isFinite(maxParts) ? Math.floor(maxParts) : 5;
+  const keep = otherLabel !== undefined ? Math.max(1, Math.min(parted, maxSlices - 1)) : maxSlices - 1;
   const rest = listed.slice(keep);
   // The remainder has no colour of its own: it is not one thing.
   const parts: { key: string; name: string; amount: number; color?: ChartColor }[] = [
     ...listed.slice(0, rest.length > 1 ? keep : listed.length).map((part, index) => ({ ...part, color: colorOf(index) })),
-    ...(rest.length > 1 ? [{ key: otherKey, name: otherLabel ?? '', amount: rest.reduce((sum, part) => sum + part.amount, 0) }] : []),
+    ...(rest.length > 1 ? [{ key: otherKey, name: otherLabel ?? liuliText('@liuli.chart.other'), amount: rest.reduce((sum, part) => sum + part.amount, 0) }] : []),
   ];
   const total = parts.reduce((sum, part) => sum + part.amount, 0);
   const chosen = parts.find(part => part.key === selectedKey);
@@ -158,6 +160,12 @@ export function PieChart<Row extends ChartRecord<Row>>({
         {!isUnder && words}
       </view>
       {isUnder && words}
+      {/* Without a legend the parts are still read, each with its amount. */}
+      {legend === 'none' && (
+        <view role="list" aria-label={legendLabel ?? label} className={r.reading.base}>
+          {parts.map(part => <text key={part.key} role="listitem">{`${part.name}: ${formatValue(part.amount)}${formatShare ? `, ${formatShare(part.amount / total)}` : ''}`}</text>)}
+        </view>
+      )}
     </Chart>
   );
 }

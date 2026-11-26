@@ -114,7 +114,7 @@ export function Merged() {
 | `summarize` | `ChartSummarize` |  | Writes the summary a screen reader hears from the chart's facts; see `@liulidesign/charts/summary/en`. |
 | `variant` | `PieChartVariant` | `'donut'` | `donut` has a hole for the total; `pie` is solid. |
 | `totalLabel` | `string` |  | Names the total shown in a donut's hole: "Total". Without it the hole is empty until a part is chosen. |
-| `otherLabel` | `string` |  | Names one part that gathers every part after the first `maxParts`: "Other". Without it every part is drawn, up to 24. |
+| `otherLabel` | `string` |  | Names one part that gathers every part after the first `maxParts`: "Other". Without it every part is drawn up to 24, and any past those are one part named "Other" in the page's language. |
 | `maxParts` | `number` | `5` | How many parts keep their own slice when `otherLabel` is set. |
 | `legend` | `ChartLegendPosition` | `'bottom'` | The legend lists each part with its amount and share. |
 | `legendLabel` | `string` |  | The legend's accessible name; by default the chart's `label`. |

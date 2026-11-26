@@ -7,6 +7,7 @@ export const pieChartParts = {
   centre: 'view',
   centreLabel: 'text',
   centreValue: 'text',
+  reading: 'view',
 } as const;
 
 /**
@@ -37,5 +38,8 @@ export const pieChartRecipe = {
     base: 'text-callout font-semibold text-text tabular-nums',
     // The figure laid out unseen at its own width, to tell whether the words fit in the hole.
     ghost: 'absolute top-0 start-0 opacity-0 whitespace-nowrap',
+  },
+  reading: {
+    base: 'sr-only',
   },
 } as const;

@@ -151,7 +151,7 @@ export function Month() {
 | `formatValue` | `((value: number) => string)` |  | Turns a number into the text shown and read: units, separators, the locale. By default the bare number. |
 | `summarize` | `ChartSummarize` |  | Writes the summary a screen reader hears from the chart's facts; see `@liulidesign/charts/summary/en`. |
 | `xLabels` | `BarChartLabels` | `'fit'` | Category labels under the bars: `fit` writes as many as fit side by side, each under its bar; `all` every one, cut short where it is too long; `ends` the first and last. |
-| `valueLabels` | `BarChartValueLabels` | `'auto'` | How the chart shows its scale. `auto` writes each value over its bar up to eight bars of one series, and otherwise the top of the scale, a round number, above the plot; `always` writes every value; `none` shows neither. |
+| `valueLabels` | `BarChartValueLabels` | `'auto'` | How the chart shows its scale. `auto` writes each value over its bar up to eight bars of one series, and otherwise the top of the scale, a round number, above the plot; `always` writes every value of one series; `none` shows neither. |
 | `legend` | `ChartLegendPosition` | `'bottom'` | Shown when there is more than one series. |
 | `legendLabel` | `string` |  | The legend's accessible name; by default the chart's `label`. |
 | `value` | `string \| null` |  | The chosen row's key; its bars keep their colour and the rest step back. |

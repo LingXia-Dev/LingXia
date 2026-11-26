@@ -122,3 +122,29 @@ test('At large text: words that would cross the ring go under it, and the plot g
   assert.equal(status().parent.props.height, undefined, 'the plot takes the height of the ring and the words');
   assert.equal(centre(screen), 'Total$2,860');
 });
+
+test('past 24 parts without otherLabel the rest are one part named Other; a maxParts that is not a number keeps five', async () => {
+  const many = await renderPage(`
+    import { PieChart } from '@liulidesign/charts/PieChart';
+    const rows = Array.from({ length: 30 }, (_, index) => ({ k: 'p' + index, v: 1 }));
+    export function render() { return <page><PieChart rows={rows} nameField="k" valueField="v" label="Parts" data-testid="pie" /></page>; }
+  `);
+  const rows = many.getByTestId('pie-legend').children.map(textOf);
+  assert.deepEqual([rows.length, rows.at(-1)], [24, 'Other7']);
+  const odd = await renderPage(`
+    import { PieChart } from '@liulidesign/charts/PieChart';
+    const rows = Array.from({ length: 8 }, (_, index) => ({ k: 'p' + index, v: 1 }));
+    export function render() { return <page><PieChart rows={rows} nameField="k" valueField="v" label="Parts" otherLabel="Rest" maxParts={NaN} data-testid="pie" /></page>; }
+  `);
+  assert.deepEqual(odd.getByTestId('pie-legend').children.map(textOf), ['p01', 'p11', 'p21', 'p31', 'p41', 'Rest3']);
+});
+
+test('without a legend each part is still read with its amount and share', async () => {
+  const screen = await renderPage(`
+    import { PieChart } from '@liulidesign/charts/PieChart';
+    const rows = [{ k: 'Rent', v: 3 }, { k: 'Food', v: 1 }];
+    export function render() { return <page><PieChart rows={rows} nameField="k" valueField="v" label="Spending" legend="none" formatShare={share => Math.round(share * 100) + '%'} /></page>; }
+  `);
+  const list = screen.queryAll(node => node.props.role === 'list' && node.props.accessibilityLabel === 'Spending')[0];
+  assert.deepEqual(list.children.map(textOf), ['Rent: 3, 75%', 'Food: 1, 25%']);
+});

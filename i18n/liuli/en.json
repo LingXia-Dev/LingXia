@@ -318,5 +318,9 @@
   "@liuli.loadingNamed": {
     "defaultMessage": "Loading {name}",
     "description": "Said while a component's content loads; `name` is the component's label."
+  },
+  "@liuli.chart.other": {
+    "defaultMessage": "Other",
+    "description": "The slice of a pie chart that gathers the parts past those drawn on their own."
   }
 }
