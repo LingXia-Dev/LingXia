@@ -109,13 +109,13 @@ test('states: a part chosen from outside; one part is a whole ring; loading, emp
 test('At large text: words that would cross the ring go under it, and the plot grows to hold them', async () => {
   const screen = await renderExample('PieChart/PieChart', 'Spending');
   const status = () => screen.queryAll(node => node.props.role === 'status')[0];
-  const ghost = screen.queryAll(node => node.tag === 'text' && node.props.opacity === 0 && node.text === '$2,860')[0];
-  assert.ok(ghost, 'the figure is laid out unseen at its own width');
+  const ghost = () => screen.queryAll(node => node.tag === 'text' && node.props.opacity === 0 && node.text === '$2,860')[0];
+  assert.ok(ghost(), 'the figure is laid out unseen at its own width');
   screen.layout(ring(screen), { width: 176, height: 176 });
-  screen.layout(ghost, { width: 50, height: 21 });
+  screen.layout(ghost(), { width: 50, height: 21 });
   screen.layout(status(), { width: 50, height: 37 });
   assert.equal(status().parent, ring(screen).parent, 'it fits in the 102 pt hole');
-  screen.layout(ghost, { width: 96, height: 40 });
+  screen.layout(ghost(), { width: 96, height: 40 });
   screen.layout(status(), { width: 96, height: 72 });
   assert.equal(status().parent, ring(screen).parent.parent, 'under the ring, out of its cell');
   assert.equal(status().props.paddingTop, 8);
@@ -183,4 +183,23 @@ test('totalLabel: a donut names its total "Total" by default; null leaves the ho
   `);
   const statuses = screen.queryAll(node => node.props.role === 'status').map(textOf);
   assert.deepEqual(statuses, ['Total30']);
+});
+
+test('a tap on a slice chooses it and a second tap clears it; a tap in the hole or past the rim chooses nothing; a vertical drag stays with the page', async () => {
+  const screen = await renderExample('PieChart/PieChart', 'Spending');
+  const plate = () => screen.getByTestId('spending-ring');
+  assert.equal(plate().props.pointerAxis, 'x');
+  // The ring is 176 pt square: the first slice, Rent at 51%, runs clockwise from the top.
+  const tap = (x, y) => screen.pointer(plate(), { phase: 'up', x, y, width: 176, height: 176 });
+  tap(118, 40);
+  assert.equal(centre(screen), 'Rent$1,450');
+  tap(118, 40);
+  assert.equal(centre(screen), 'Total$2,860', 'the chosen slice tapped again clears the choice');
+  tap(60, 40);
+  assert.notEqual(centre(screen), 'Total$2,860', 'a slice left of the top is a later part');
+  const later = centre(screen);
+  tap(88, 88);
+  assert.equal(centre(screen), later, 'the hole chooses nothing');
+  tap(2, 2);
+  assert.equal(centre(screen), later, 'nor does the corner past the rim');
 });

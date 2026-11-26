@@ -10,13 +10,13 @@ export const doc: ComponentDoc = {
     'PieChart shows how one total divides into a few parts: spending by category, storage by kind. ' +
     'Its `nameField`, `valueField` and `keyField` are fields of the rows\' own type (`Row`), so a misspelt one fails to compile. ' +
     'By default it is a ring with the total in its hole. The parts are named in a legend under it, with their amounts and shares, ' +
-    'and a legend row chooses its part: the slice grows, the others step back, and the hole shows the chosen part.',
+    'and a legend row or a tap on its slice chooses the part: the slice grows, the others step back, and the hole shows the chosen part; tapped again, the choice clears.',
   keywords: ['pie chart', 'donut', 'doughnut', 'ring', 'share', 'proportion', 'parts of a whole', 'chart', 'graph'],
   propsType: 'PieChartProps',
   recipe: { map: 'pieChartRecipe', parts: 'pieChartParts' },
   anatomy: [
     { part: 'plot', required: true, description: 'The box that centres the ring.' },
-    { part: 'drawing', required: false, description: 'The slices, clockwise from the top with a constant gap between them; hidden from assistive tech.' },
+    { part: 'drawing', required: false, description: 'The slices, clockwise from the top with a constant gap between them; with `onChange` a tap chooses a slice. Hidden from assistive tech, which chooses in the legend.' },
     { part: 'centre', required: false, description: 'A donut\'s hole: the total under `totalLabel`, or the chosen part; announced when it changes.' },
   ],
   accessibility: {

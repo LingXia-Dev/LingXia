@@ -1,4 +1,4 @@
-import { cx, useBox, useLocal, type ColorAlpha, type ColorRole, type VectorPath, type Local } from '@lingxia/view';
+import { cx, useBox, useLocal, type ColorAlpha, type ColorRole, type PointerEvent, type VectorPath, type Local } from '@lingxia/view';
 import { Chart, ChartLegend, type ChartColor, type ChartField, type ChartLegendPosition, type ChartRecord, type ChartRow, type ChartSize, type ChartSummarize } from '../Chart/Chart';
 import { liuliText } from '@liulidesign/core/internal/text';
 import { colorOf, keysOf, numberOf, plain, roleOf, seriesFacts, textOf } from '../internal/data';
@@ -73,6 +73,9 @@ const hole = 29;
 const gap = 1.6;
 // One path per slice, and a vector holds 32.
 const maxSlices = 24;
+// How far past the rim, and into the hole, a tap still counts: a finger is wider than the ring's edge.
+const reachPast = 4;
+const reachIn = 6;
 export const otherKey = '__other';
 
 /** Parts of one whole, as a ring with the total in its hole and the parts listed under it. */
@@ -123,6 +126,28 @@ export function PieChart<Row extends ChartRecord<Row>>({
   const totalLabel = ownTotalLabel !== undefined ? ownTotalLabel : variant === 'donut' ? liuliText('@liuli.chart.total') : null;
   const centre = chosen ? [chosen.name, formatValue(chosen.amount)] : totalLabel !== null ? [totalLabel, formatValue(total)] : undefined;
   const ring = useBox('ring');
+  // A tap on a slice chooses it, as its legend entry does; the legend stays the way in for a keyboard and a screen reader.
+  const partAt = (event: PointerEvent) => {
+    const side = Math.min(event.width, event.height);
+    if (!(side > 0) || !total) return undefined;
+    const [dx, dy] = [(event.x - event.width / 2) * (box / side), (event.y - event.height / 2) * (box / side)];
+    const radius = Math.hypot(dx, dy);
+    if (radius > grown + reachPast || radius < (inner ? inner - reachIn : 0)) return undefined;
+    // Clockwise from the top, as the slices are laid.
+    const turn = (Math.atan2(dy, dx) + Math.PI / 2 + 2 * Math.PI) % (2 * Math.PI);
+    let turned = 0;
+    return parts.find(part => (turned += (part.amount / total) * 2 * Math.PI) > turn) ?? parts[parts.length - 1];
+  };
+  const ringPointer = onSelect ? {
+    // A drag up or down stays with the page.
+    pointerAxis: 'x' as const,
+    onPointer: (event: PointerEvent) => {
+      if (event.phase !== 'up') return;
+      const part = partAt(event);
+      if (part) onSelect(part.key === selectedKey ? null : part.key);
+    },
+    'data-testid': testId === undefined ? undefined : `${testId}-ring`,
+  } : {};
   const centreBox = useBox('centre');
   const figure = useBox('figure');
   // Words whose corners would cross the ring, as at large text, go under it instead.
@@ -167,7 +192,7 @@ export function PieChart<Row extends ChartRecord<Row>>({
       )}
     >
       <view className={r.plot.base}>
-        {paths.length > 0 && <vector box={ring} aria-hidden paths={paths} viewBox={[0, 0, box, box]} className={cx(r.drawing.base, r.drawing.size[size])} />}
+        {paths.length > 0 && <vector box={ring} aria-hidden {...ringPointer} paths={paths} viewBox={[0, 0, box, box]} className={cx(r.drawing.base, r.drawing.size[size])} />}
         {centre && variant === 'donut' && size !== 'xs' && <text aria-hidden box={figure} className={cx(r.centreValue.base, r.centreValue.ghost)}>{centre[1]}</text>}
         {!isUnder && words}
       </view>
