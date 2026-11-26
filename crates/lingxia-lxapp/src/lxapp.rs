@@ -2338,6 +2338,9 @@ impl LxApp {
         self.cancel_all_page_resets();
         self.close_all_surfaces(CloseReason::AppClosed);
         crate::lifecycle::key_events::clear(&self.appid, self.session.id);
+        if let Some(layer) = crate::feedback::feedback_layer() {
+            layer.forget(&self.appid);
+        }
 
         // Close UI window
         if !skip_hide {

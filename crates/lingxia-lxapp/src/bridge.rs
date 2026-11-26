@@ -1834,9 +1834,7 @@ impl PageBridge {
         if let Some(outbound) = gpu(outbound) {
             let request = crate::GpuViewRequest::from_call(&method, params)
                 .map_err(|(code, message)| lingxia_error::Error::new(code, message))?;
-            return self.post_gpu(work_id, outbound, || {
-                Ok(crate::GpuViewMessage::Request { id, request })
-            });
+            return self.send_gpu_request_for_context(work_id, Some(outbound), id, request);
         }
         let msg = ViewReqOut {
             v: 2,
@@ -1847,6 +1845,23 @@ impl PageBridge {
             cap,
         };
         self.send_json_for_context(transport, work_id, outbound, &msg)
+    }
+
+    pub(crate) fn send_gpu_request_for_context(
+        &self,
+        work_id: Option<SessionWorkId>,
+        outbound: Option<&OutboundContext>,
+        id: String,
+        request: crate::GpuViewRequest,
+    ) -> Result<(), lingxia_error::Error> {
+        let Some(outbound) = gpu(outbound) else {
+            return Err(lingxia_error::Error::internal(
+                "GPU View request requires a GPU page",
+            ));
+        };
+        self.post_gpu(work_id, outbound, || {
+            Ok(crate::GpuViewMessage::Request { id, request })
+        })
     }
 
     pub(crate) fn send_res_err_for_context<T: ViewTransport>(

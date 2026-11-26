@@ -1,62 +1,12 @@
 //! One window's feedback: at most one toast, and dialogs shown one at a time in arrival order.
 use super::words::Words;
+use lxapp::feedback::{
+    FeedbackAnswer as Answer, FeedbackDialog as DialogRequest, FeedbackPosition as Position,
+    FeedbackToast as ToastRequest, FeedbackTone as Tone,
+};
 use serde_json::{Value, json};
 use std::collections::VecDeque;
-use std::time::Duration;
 use tokio::sync::oneshot;
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum Tone {
-    Neutral,
-    Success,
-    Danger,
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum Position {
-    Top,
-    Center,
-    Bottom,
-}
-
-#[derive(Clone, Debug, PartialEq)]
-pub(crate) struct ToastRequest {
-    pub title: String,
-    pub tone: Tone,
-    pub loading: bool,
-    pub position: Position,
-    /// `None` stays until hidden or replaced.
-    pub duration: Option<Duration>,
-}
-
-#[derive(Clone, Debug, PartialEq)]
-pub(crate) enum DialogRequest {
-    /// One button; every way out answers [`Answer::Confirmed`].
-    Alert {
-        title: String,
-        message: String,
-        confirm: Option<String>,
-        destructive: bool,
-    },
-    Confirm {
-        title: String,
-        message: String,
-        confirm: Option<String>,
-        cancel: Option<String>,
-        destructive: bool,
-    },
-    Sheet {
-        items: Vec<String>,
-        destructive: bool,
-    },
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum Answer {
-    Confirmed,
-    Cancelled,
-    Chose(usize),
-}
 
 /// What the page sends back for the dialog it shows.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Deserialize)]

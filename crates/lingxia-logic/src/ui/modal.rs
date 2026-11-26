@@ -164,6 +164,9 @@ async fn confirm(ctx: JSContext, options: JSValue) -> JSResult<bool> {
 
 /// Resolves true when the user confirmed.
 async fn present_modal(lxapp: &Arc<LxApp>, options: JSModalOptions) -> Result<bool, RongJSError> {
+    if lxapp::feedback::LAYER {
+        return present_modal_layer(lxapp, options).await;
+    }
     #[cfg(any(target_os = "macos", target_os = "windows"))]
     {
         return present_modal_webview(lxapp, options).await;
@@ -173,6 +176,40 @@ async fn present_modal(lxapp: &Arc<LxApp>, options: JSModalOptions) -> Result<bo
     {
         present_modal_native(lxapp, options).await
     }
+}
+
+/// The window feedback layer: default words in the lxapp's page language.
+async fn present_modal_layer(
+    lxapp: &Arc<LxApp>,
+    options: JSModalOptions,
+) -> Result<bool, RongJSError> {
+    use lxapp::feedback::{FeedbackAnswer, FeedbackDialog};
+    let title = options.title.unwrap_or_default();
+    let message = options.content.unwrap_or_default();
+    let destructive = options.confirm_color.is_some();
+    let dialog = if options.show_cancel.unwrap_or(true) {
+        FeedbackDialog::Confirm {
+            title,
+            message,
+            confirm: options.confirm_text,
+            cancel: options.cancel_text,
+            destructive,
+        }
+    } else {
+        FeedbackDialog::Alert {
+            title,
+            message,
+            confirm: options.confirm_text,
+            destructive,
+        }
+    };
+    let language = lxapp.content_language(&lxapp::display_language());
+    let answer = super::feedback_layer()?
+        .dialog(&lxapp.appid, &language, dialog)
+        .map_err(|e| js_internal_error(format!("modal failed: {e}")))?
+        .await
+        .map_err(|_| js_internal_error("the feedback layer dropped the modal"))?;
+    Ok(answer == FeedbackAnswer::Confirmed)
 }
 
 /// macOS: render modal inside the WebView via Logic→View RPC.

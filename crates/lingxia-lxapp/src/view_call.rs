@@ -1,5 +1,7 @@
-use crate::bridge::{OutboundContext, RpcError, SessionWorkId, required_cap_for_name};
-use crate::page::PageInstance;
+use crate::bridge::{
+    OutboundContext, PageBridge, RpcError, SessionWorkId, required_cap_for_name,
+};
+use crate::page::{GpuVideoRequest, GpuViewRequest, PageInstance};
 use lingxia_error::code;
 use serde_json::Value;
 use std::collections::{HashMap, HashSet};
@@ -50,6 +52,45 @@ pub(crate) fn call_view(
     method: &str,
     params: Option<Value>,
 ) -> Result<PendingViewCall, lingxia_error::Error> {
+    let cap = required_cap_for_name(method);
+    pending_call(page, |bridge, work_id, outbound, id| {
+        bridge.send_view_request_for_context(
+            page,
+            Some(work_id),
+            outbound,
+            id,
+            method.to_string(),
+            params,
+            cap,
+        )
+    })
+}
+
+/// Send a typed video command to a GPU page's player and return a receiver for the reply.
+pub(crate) fn call_gpu_video(
+    page: &PageInstance,
+    request: GpuVideoRequest,
+) -> Result<PendingViewCall, lingxia_error::Error> {
+    pending_call(page, |bridge, work_id, outbound, id| {
+        bridge.send_gpu_request_for_context(
+            Some(work_id),
+            outbound,
+            id,
+            GpuViewRequest::Video(request),
+        )
+    })
+}
+
+/// Registers a pending call under a fresh id for the page's current document, then `send`s it.
+fn pending_call(
+    page: &PageInstance,
+    send: impl FnOnce(
+        &PageBridge,
+        SessionWorkId,
+        Option<&OutboundContext>,
+        String,
+    ) -> Result<(), lingxia_error::Error>,
+) -> Result<PendingViewCall, lingxia_error::Error> {
     let reg = registry();
     let seq = reg
         .counter
@@ -62,7 +103,6 @@ pub(crate) fn call_view(
         lingxia_error::Error::internal("View bridge has no active document session")
     })?;
 
-    let cap = required_cap_for_name(method);
     let (tx, rx) = oneshot::channel();
     reg.pending.lock().unwrap().insert(
         id.clone(),
@@ -84,15 +124,7 @@ pub(crate) fn call_view(
         ));
     }
 
-    if let Err(e) = bridge.send_view_request_for_context(
-        page,
-        Some(work_id),
-        outbound.as_ref(),
-        id.clone(),
-        method.to_string(),
-        params,
-        cap,
-    ) {
+    if let Err(e) = send(&bridge, work_id, outbound.as_ref(), id.clone()) {
         // Remove pending entry on send failure
         reg.pending.lock().unwrap().remove(&id);
         return Err(e);

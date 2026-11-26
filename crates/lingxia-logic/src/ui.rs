@@ -122,8 +122,22 @@ where
     outcome
 }
 
+/// The window feedback layer on the platforms [`lxapp::feedback::LAYER`] marks.
+fn feedback_layer() -> JSResult<&'static dyn lxapp::feedback::FeedbackLayer> {
+    lxapp::feedback::feedback_layer().ok_or_else(|| {
+        crate::i18n::js_service_unavailable_error("the window feedback layer is not installed")
+    })
+}
+
 /// Close the modal and action sheet on screen, natively or in the View that drew them.
 async fn dismiss_dialog(lxapp: Arc<LxApp>) {
+    if lxapp::feedback::LAYER {
+        match feedback_layer() {
+            Ok(layer) => layer.dismiss(&lxapp.appid),
+            Err(error) => log::warn!("dismissing a dialog failed: {error:?}"),
+        }
+        return;
+    }
     #[cfg(any(target_os = "macos", target_os = "windows"))]
     let result = lxapp
         .call_view::<serde_json::Value>("ui.dismissDialog")

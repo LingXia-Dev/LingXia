@@ -1,8 +1,6 @@
 #[cfg(not(any(target_os = "macos", target_os = "windows")))]
 use crate::i18n::js_error;
-#[cfg(any(target_os = "macos", target_os = "windows"))]
-use crate::i18n::js_internal_error;
-use crate::i18n::{js_invalid_parameter_error, js_state_error};
+use crate::i18n::{js_internal_error, js_invalid_parameter_error, js_state_error};
 #[cfg(not(any(target_os = "macos", target_os = "windows")))]
 use lingxia_platform::traits::ui::{ToastIcon, ToastOptions, ToastPosition, UserFeedback};
 use lxapp::LxApp;
@@ -98,6 +96,29 @@ impl ToastRequest {
             duration_ms: options.duration.unwrap_or(1500.0),
             position,
         })
+    }
+}
+
+impl ToastRequest {
+    fn into_feedback(self) -> lxapp::feedback::FeedbackToast {
+        use lxapp::feedback::{FeedbackPosition, FeedbackTone};
+        lxapp::feedback::FeedbackToast {
+            title: self.title,
+            tone: match self.tone {
+                "success" => FeedbackTone::Success,
+                "danger" => FeedbackTone::Danger,
+                _ => FeedbackTone::Neutral,
+            },
+            loading: self.loading,
+            position: match self.position {
+                "top" => FeedbackPosition::Top,
+                "bottom" => FeedbackPosition::Bottom,
+                _ => FeedbackPosition::Center,
+            },
+            duration: (self.duration_ms.is_finite() && self.duration_ms > 0.0).then(|| {
+                std::time::Duration::from_secs_f64(self.duration_ms.min(600_000.0) / 1000.0)
+            }),
+        }
     }
 }
 
@@ -241,6 +262,11 @@ async fn present_toast(ctx: &JSContext, request: ToastRequest) -> JSResult<()> {
             "LxApp is closed; toast suppressed",
         ));
     }
+    if lxapp::feedback::LAYER {
+        return super::feedback_layer()?
+            .toast(&lxapp.appid, request.into_feedback())
+            .map_err(|e| js_internal_error(format!("toast failed: {e}")));
+    }
 
     #[cfg(any(target_os = "macos", target_os = "windows"))]
     {
@@ -343,6 +369,10 @@ async fn hide_toast(ctx: &JSContext) -> JSResult<()> {
             "appClosed",
             "LxApp is closed; toast dismissal suppressed",
         ));
+    }
+    if lxapp::feedback::LAYER {
+        super::feedback_layer()?.hide_toast(&lxapp.appid);
+        return Ok(());
     }
 
     #[cfg(any(target_os = "macos", target_os = "windows"))]

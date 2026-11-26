@@ -16,6 +16,7 @@ mod delegate;
 pub mod device;
 /// A test run's view of Logic's toasts, modals and action sheets.
 pub mod dialogs;
+pub mod feedback;
 mod error;
 mod executor;
 pub mod host;

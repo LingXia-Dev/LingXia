@@ -1,6 +1,6 @@
 //! The window feedback layer: `lx.ui.toast` and its dialogs, one GPU View page per window on the
 //! platform's window overlay surface. It opens with the first item and closes after the last.
-// Logic routes to it as each platform gains the overlay surface.
+// Each platform installs it as it gains the overlay surface.
 #![allow(dead_code)]
 #[cfg(target_os = "android")]
 use lingxia_view_android::lingxia_view;
@@ -19,10 +19,10 @@ mod words;
 use lingxia_view::platform::{OverlayInput, OverlaySurface, WindowId, WindowOverlays};
 use lingxia_view::session::logic::{BridgeError, ToLogic, ToView};
 use lingxia_view::session::state::StateWrite;
-pub(crate) use model::{Answer, DialogRequest, ToastRequest};
+use lxapp::feedback::{FeedbackAnswer, FeedbackDialog, FeedbackLayer, FeedbackToast};
 use model::{Choice, WindowFeedback};
 use std::collections::HashMap;
-use std::sync::{Arc, Mutex, OnceLock, Weak};
+use std::sync::{Arc, Mutex, Weak};
 use std::time::Duration;
 use tokio::sync::oneshot;
 use words::Words;
@@ -32,15 +32,34 @@ static PAGE: &str = include_str!("page.js");
 /// Longer than the page's exit transition, so the last item leaves before the surface does.
 const CLOSE_AFTER: Duration = Duration::from_millis(400);
 
-static FEEDBACK: OnceLock<Arc<Feedback>> = OnceLock::new();
-
-/// The platform hands over its overlays once, at startup.
+/// The platform hands over its overlays once, at startup; Logic reaches the layer through lxapp.
 pub(crate) fn install(overlays: Arc<dyn WindowOverlays>) {
-    let _ = FEEDBACK.set(Feedback::new(overlays));
+    lxapp::feedback::register_feedback_layer(Box::new(Installed(Feedback::new(overlays))));
 }
 
-pub(crate) fn feedback() -> Option<&'static Arc<Feedback>> {
-    FEEDBACK.get()
+struct Installed(Arc<Feedback>);
+
+impl FeedbackLayer for Installed {
+    fn toast(&self, appid: &str, toast: FeedbackToast) -> Result<(), String> {
+        self.0.toast(appid, toast)
+    }
+    fn hide_toast(&self, appid: &str) {
+        self.0.hide_toast(appid)
+    }
+    fn dialog(
+        &self,
+        appid: &str,
+        language: &str,
+        dialog: FeedbackDialog,
+    ) -> Result<oneshot::Receiver<FeedbackAnswer>, String> {
+        self.0.dialog(appid, language, dialog)
+    }
+    fn dismiss(&self, appid: &str) {
+        self.0.dismiss(appid)
+    }
+    fn forget(&self, appid: &str) {
+        self.0.forget(appid)
+    }
 }
 
 pub(crate) struct Feedback {
@@ -82,7 +101,7 @@ impl Feedback {
     }
 
     /// Shows `request` over `appid`'s window, replacing the toast showing there.
-    pub(crate) fn toast(&self, appid: &str, request: ToastRequest) -> Result<(), String> {
+    pub(crate) fn toast(&self, appid: &str, request: FeedbackToast) -> Result<(), String> {
         let window = self.window(appid)?;
         let duration = request.duration;
         let key = self.change(window, true, |model| Some(model.toast(appid, request)))?;
@@ -116,8 +135,8 @@ impl Feedback {
         &self,
         appid: &str,
         language: &str,
-        request: DialogRequest,
-    ) -> Result<oneshot::Receiver<Answer>, String> {
+        request: FeedbackDialog,
+    ) -> Result<oneshot::Receiver<FeedbackAnswer>, String> {
         let window = self.window(appid)?;
         let words = Words::new(language);
         self.change(window, true, |model| {

@@ -3017,6 +3017,17 @@ impl PageInstance {
         let pending = crate::view_call::call_view(self, method, params)?;
         crate::view_call::await_pending_view_call(pending, options.timeout()).await
     }
+
+    /// Send a typed video playback command to this GPU page's player and wait for its reply.
+    pub async fn send_gpu_video_command(
+        &self,
+        request: GpuVideoRequest,
+    ) -> Result<(), lingxia_error::Error> {
+        let pending = crate::view_call::call_gpu_video(self, request)?;
+        crate::view_call::await_pending_view_call(pending, DEFAULT_VIEW_CALL_TIMEOUT)
+            .await
+            .map(|_| ())
+    }
 }
 
 /// Owned form of a `NavigationOutcome`, so the progress lock is released

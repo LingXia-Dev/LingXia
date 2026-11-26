@@ -1,6 +1,9 @@
-use super::model::{Position, Tone};
 use super::*;
 use lingxia_view::platform::{OverlayLogic, Task};
+use lxapp::feedback::{
+    FeedbackAnswer as Answer, FeedbackDialog as DialogRequest, FeedbackPosition as Position,
+    FeedbackToast as ToastRequest, FeedbackTone as Tone,
+};
 use serde_json::{Value, json};
 use std::time::Instant;
 use tokio::sync::oneshot::error::TryRecvError;

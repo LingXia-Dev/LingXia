@@ -153,8 +153,7 @@ pub enum GpuViewMessage {
     Request { id: String, request: GpuViewRequest },
 }
 
-/// Logic requests a GPU View serves, one variant per family. A new family is a variant here,
-/// an arm in [`GpuViewRequest::from_call`] and a handler in the View; replies route by id.
+/// Logic requests a GPU View serves, one variant per family; replies route by id.
 #[derive(Clone, Debug, PartialEq)]
 pub enum GpuViewRequest {
     Ui(GpuUiRequest),
@@ -163,15 +162,13 @@ pub enum GpuViewRequest {
 
 /// `page.video(name)`: one command to the page's player `name`, which is a
 /// `useVideo` name or a `<video id>`.
-#[derive(Clone, Debug, PartialEq, serde::Deserialize)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct GpuVideoRequest {
     pub player: String,
-    #[serde(flatten)]
     pub command: GpuVideoCommand,
 }
 
-#[derive(Clone, Debug, PartialEq, serde::Deserialize)]
-#[serde(tag = "op", rename_all = "camelCase")]
+#[derive(Clone, Debug, PartialEq)]
 pub enum GpuVideoCommand {
     Play,
     Pause,
@@ -225,8 +222,8 @@ pub struct GpuActionSheet {
 }
 
 impl GpuViewRequest {
-    /// The request a `call_view(method, params)` makes of a GPU View: `Err((code, message))`
-    /// when no family serves `method` or its params do not fit.
+    /// The `ui.*` request a desktop `call_view(method, params)` makes of a GPU View:
+    /// `Err((code, message))` when no family serves `method` or its params do not fit.
     pub(crate) fn from_call(
         method: &str,
         params: Option<serde_json::Value>,
@@ -247,7 +244,6 @@ impl GpuViewRequest {
             "ui.dismissDialog" => Self::Ui(GpuUiRequest::DismissDialog),
             "ui.showModal" => Self::Ui(GpuUiRequest::ShowModal(fit(method, params)?)),
             "ui.showActionSheet" => Self::Ui(GpuUiRequest::ShowActionSheet(fit(method, params)?)),
-            "video.command" => Self::Video(fit(method, params)?),
             _ => {
                 return Err((
                     "E_NOT_SUPPORTED",
@@ -451,32 +447,6 @@ mod gpu_request_tests {
             GpuViewRequest::from_call(
                 "ui.showActionSheet",
                 Some(serde_json::json!({"itemList": 3}))
-            )
-            .unwrap_err()
-            .0,
-            "E_INVALID_ARG"
-        );
-    }
-
-    #[test]
-    fn a_video_command_names_its_player_and_op() {
-        assert_eq!(
-            GpuViewRequest::from_call(
-                "video.command",
-                Some(serde_json::json!({"player": "hero", "op": "setQuality", "quality": "720p"}))
-            )
-            .unwrap(),
-            GpuViewRequest::Video(GpuVideoRequest {
-                player: "hero".into(),
-                command: GpuVideoCommand::SetQuality {
-                    quality: "720p".into()
-                },
-            })
-        );
-        assert_eq!(
-            GpuViewRequest::from_call(
-                "video.command",
-                Some(serde_json::json!({"player": "hero", "op": "seek"}))
             )
             .unwrap_err()
             .0,

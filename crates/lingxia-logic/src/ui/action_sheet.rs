@@ -172,6 +172,10 @@ async fn present_action_sheet(
         return Err(js_invalid_parameter_error("items cannot be empty"));
     }
 
+    if lxapp::feedback::LAYER {
+        return present_action_sheet_layer(lxapp, item_list, item_color.is_some()).await;
+    }
+
     let cancel_text = cancel_text.unwrap_or_else(|| t(I18nKey::CommonCancel));
     let item_color = item_color.unwrap_or_else(|| "#007AFF".to_string());
     let item_len = item_list.len();
@@ -185,6 +189,30 @@ async fn present_action_sheet(
     #[cfg(not(any(target_os = "macos", target_os = "windows")))]
     {
         present_action_sheet_native(lxapp, item_list, cancel_text, item_color, item_len).await
+    }
+}
+
+/// The window feedback layer: its cancel word is in the lxapp's page language.
+async fn present_action_sheet_layer(
+    lxapp: &Arc<LxApp>,
+    items: Vec<String>,
+    destructive: bool,
+) -> Result<Option<usize>, RongJSError> {
+    use lxapp::feedback::{FeedbackAnswer, FeedbackDialog};
+    let item_len = items.len();
+    let language = lxapp.content_language(&lxapp::display_language());
+    let answer = super::feedback_layer()?
+        .dialog(
+            &lxapp.appid,
+            &language,
+            FeedbackDialog::Sheet { items, destructive },
+        )
+        .map_err(|e| js_internal_error(format!("action sheet failed: {e}")))?
+        .await
+        .map_err(|_| js_internal_error("the feedback layer dropped the action sheet"))?;
+    match answer {
+        FeedbackAnswer::Chose(index) => classify_action_sheet_index(index as i64, item_len),
+        FeedbackAnswer::Confirmed | FeedbackAnswer::Cancelled => Ok(None),
     }
 }
 
