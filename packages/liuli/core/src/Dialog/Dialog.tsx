@@ -183,7 +183,7 @@ export function AlertDialog({
       onOpenChange(false);
     } catch (error) {
       reportFailure('AlertDialog', label, error);
-      failed.set(true);
+      settleFlag(failed, true);
       settleFlag(pending, false);
     }
   };

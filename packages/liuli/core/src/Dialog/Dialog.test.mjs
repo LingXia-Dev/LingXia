@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { textOf } from '@lingxia/view/testing';
-import { described, renderExample } from '../testing/harness.mjs';
+import { described, renderExample, renderPage } from '../testing/harness.mjs';
 
 const dialogs = screen => screen.queryAll(node => node.tag === 'dialog');
 // The scrim fades in from nothing and back out to it on the panel's own timing.
@@ -121,4 +121,34 @@ test('Alert: Cancel comes first; while the action runs the button loads and noth
   await turn(); await turn();
   screen.rerender({});
   assert.equal(shown(screen, 'alert'), 0, 'success closes it');
+});
+
+test('AlertDialog: an action that fails after the dialog has gone settles quietly', async () => {
+  let pending;
+  const screen = await renderPage(`
+    import { useLocal, useView } from '@lingxia/view';
+    import { AlertDialog } from '@liulidesign/core/AlertDialog';
+    export function render() {
+      const { actions } = useView();
+      const shown = useLocal('shown', true);
+      return <page>
+        <button data-testid="drop" onClick={() => shown.set(false)}><text>Drop</text></button>
+        {shown.value && <AlertDialog isOpen onOpenChange={() => {}} label="Delete?" confirmLabel="Delete" confirmAction={() => actions.publish()} data-testid="gone" />}
+      </page>;
+    }
+  `, { actions: { publish: () => (pending = deferred()).promise } });
+  screen.press(screen.getByTestId('gone-confirm'));
+  await turn();
+  screen.press(screen.getByTestId('drop'));
+  const errors = [];
+  const original = console.error;
+  console.error = (...parts) => errors.push(parts.join(' '));
+  try {
+    pending.reject(Error('offline'));
+    await turn(); await turn();
+  } finally {
+    console.error = original;
+  }
+  assert.equal(shown(screen, 'gone'), 0);
+  assert.ok(errors.every(line => !line.includes('UI_LOCAL')), errors.join('\n'));
 });
