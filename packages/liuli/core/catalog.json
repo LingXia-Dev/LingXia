@@ -2359,6 +2359,7 @@
           "danger-solid-pressed",
           "focus",
           "line",
+          "line-strong",
           "on-accent-solid",
           "on-danger-solid",
           "surface",
@@ -11159,6 +11160,197 @@
               "title": "Next to a field label"
             }
           ]
+        }
+      }
+    },
+    {
+      "name": "InputGroup",
+      "import": "@liulidesign/core/InputGroup",
+      "exports": [
+        "InputGroup",
+        "InputGroupText"
+      ],
+      "category": "inputs",
+      "status": "preview",
+      "since": "2026-11-26",
+      "summary": "A field joined edge to edge with fixed text, a select or a button, as one control",
+      "description": "InputGroup joins a TextInput with what completes it: fixed text such as a scheme or a unit (InputGroupText), a Select such as a currency, or the Button that acts on it. Neighbours share an edge and only the group's two ends are round; the text field takes the room the others leave. Each control keeps its own name, and the group is named once.",
+      "keywords": [
+        "input group",
+        "input addon",
+        "prefix",
+        "suffix",
+        "unit",
+        "currency",
+        "joined field",
+        "attached input",
+        "field with button"
+      ],
+      "props": [
+        {
+          "name": "label",
+          "type": "string",
+          "required": true,
+          "description": "What the joined controls enter together, read once as the group's name: \"Website\", \"Price\". Each control keeps its own name."
+        },
+        {
+          "name": "children",
+          "type": "Child",
+          "required": true,
+          "description": "TextInput, Select, Button, IconButton and InputGroupText elements, in reading order."
+        },
+        {
+          "name": "size",
+          "type": "FieldSize",
+          "required": false,
+          "description": "The size of every control that sets none. By default `md`, or `sm` where the screen is compact.",
+          "values": [
+            "sm",
+            "md",
+            "lg"
+          ]
+        },
+        {
+          "name": "className",
+          "type": "string",
+          "required": false,
+          "description": ""
+        },
+        {
+          "name": "data-testid",
+          "type": "string",
+          "required": false,
+          "description": ""
+        }
+      ],
+      "otherProps": {},
+      "choices": [],
+      "parts": {
+        "root": "view",
+        "text": "view",
+        "textLabel": "text"
+      },
+      "accessibility": {
+        "pattern": null,
+        "name": "label",
+        "description": [],
+        "states": [],
+        "keyboard": [
+          {
+            "keys": "Tab",
+            "effect": "Moves through the controls in the group in reading order"
+          }
+        ],
+        "contrast": [
+          {
+            "what": "the fixed text",
+            "pair": [
+              "text-muted",
+              "surface-sunken"
+            ],
+            "minimum": "4.5:1"
+          },
+          {
+            "what": "the joined edges",
+            "pair": [
+              "line-strong",
+              "surface"
+            ],
+            "minimum": "3:1"
+          }
+        ],
+        "notes": [
+          "Role group, named by `label`; each control keeps its own name, so its visible label is left out and read instead.",
+          "A focused field keeps its accent on the edge it shares: the second pixel of its focus edge is drawn inside it."
+        ]
+      },
+      "examples": [
+        {
+          "name": "Website",
+          "title": "Fixed text before the field",
+          "source": "import { useLocal } from '@lingxia/view';\nimport { TextInput } from '@liulidesign/core/TextInput';\nimport { InputGroup, InputGroupText } from '@liulidesign/core/InputGroup';\n\n/** Fixed text before the field: the scheme is part of the address, never typed. */\nexport function Website() {\n  const site = useLocal('site', '');\n  return (\n    <InputGroup label=\"Website\" data-testid=\"website\">\n      <InputGroupText>https://</InputGroupText>\n      <TextInput bind={site} label=\"Website\" placeholder=\"example.com\" type=\"text\" inputMode=\"text\" autoCapitalize=\"none\" data-testid=\"site\" />\n    </InputGroup>\n  );\n}"
+        },
+        {
+          "name": "Price",
+          "title": "A currency and an amount",
+          "source": "import { useLocal } from '@lingxia/view';\nimport { Select } from '@liulidesign/core/Select';\nimport { TextInput } from '@liulidesign/core/TextInput';\nimport { InputGroup } from '@liulidesign/core/InputGroup';\n\nconst currencies = [{ value: 'usd', label: 'USD' }, { value: 'eur', label: 'EUR' }, { value: 'jpy', label: 'JPY' }];\n\n/** A currency and an amount entered as one price. */\nexport function Price() {\n  const currency = useLocal('currency', 'usd');\n  const amount = useLocal('amount', '');\n  return (\n    <InputGroup label=\"Price\" data-testid=\"price\">\n      <Select bind={currency} label=\"Currency\" items={currencies} data-testid=\"currency\" />\n      <TextInput bind={amount} label=\"Amount\" placeholder=\"0.00\" inputMode=\"decimal\" data-testid=\"amount\" />\n    </InputGroup>\n  );\n}"
+        },
+        {
+          "name": "Invite",
+          "title": "A field and its action",
+          "source": "import { useLocal } from '@lingxia/view';\nimport { Said } from '../example';\nimport { Button } from '@liulidesign/core/Button';\nimport { TextInput } from '@liulidesign/core/TextInput';\nimport { InputGroup } from '@liulidesign/core/InputGroup';\n\n/** A field and the action it feeds: the button ends the group. */\nexport function Invite() {\n  const email = useLocal('email', '');\n  return (\n    <Said>\n      {say => (\n        <InputGroup label=\"Invite by email\" data-testid=\"invite\">\n          <TextInput bind={email} label=\"Email\" placeholder=\"name@example.com\" type=\"email\" autoCapitalize=\"none\" data-testid=\"email\" />\n          <Button label=\"Invite\" onClick={() => say(email.value ? `Invited ${email.value}` : 'Add an email first')} data-testid=\"send\" />\n        </InputGroup>\n      )}\n    </Said>\n  );\n}"
+        },
+        {
+          "name": "Sizes",
+          "title": "A unit after the value, at two sizes",
+          "source": "import { useLocal } from '@lingxia/view';\nimport { TextInput } from '@liulidesign/core/TextInput';\nimport { InputGroup, InputGroupText } from '@liulidesign/core/InputGroup';\n\n/** A unit after the value, and a size for the whole group. */\nexport function Sizes() {\n  const [small, large] = [useLocal('small', '72.4'), useLocal('large', '72.4')];\n  return (\n    <view className=\"gap-4\">\n      <InputGroup label=\"Weight, small\" size=\"sm\" data-testid=\"small\">\n        <TextInput bind={small} label=\"Weight\" inputMode=\"decimal\" />\n        <InputGroupText>kg</InputGroupText>\n      </InputGroup>\n      <InputGroup label=\"Weight\" data-testid=\"medium\">\n        <TextInput bind={large} label=\"Weight\" inputMode=\"decimal\" />\n        <InputGroupText>kg</InputGroupText>\n      </InputGroup>\n    </view>\n  );\n}"
+        }
+      ],
+      "gaps": [
+        {
+          "missing": "A status message under the whole group.",
+          "needs": "nothing from the View",
+          "today": "A control in the group shows its error edge; say what is wrong in text near the group."
+        }
+      ],
+      "playground": {
+        "props": {
+          "label": "Price"
+        },
+        "fixture": true
+      },
+      "theming": {
+        "classProps": [
+          {
+            "name": "className",
+            "on": "",
+            "description": ""
+          }
+        ],
+        "tokens": [
+          "--spacing-control-sm",
+          "--spacing-control-md",
+          "--spacing-control-lg",
+          "--text-footnote",
+          "--text-body",
+          "--text-callout"
+        ],
+        "roles": [
+          "line-strong",
+          "surface-sunken",
+          "text-muted"
+        ]
+      },
+      "related": [
+        "TextInput",
+        "Select",
+        "ButtonGroup"
+      ],
+      "gallery": {
+        "specimen": "Specimen",
+        "tagline": "Joined fields",
+        "order": 16,
+        "page": {
+          "lead": "Use an input group when a field needs fixed text, a choice or an action joined to it to make one value.",
+          "hero": "Price",
+          "variants": [
+            {
+              "name": "Website",
+              "title": "Fixed text before the field"
+            },
+            {
+              "name": "Invite",
+              "title": "A field and its action"
+            }
+          ],
+          "sizes": [
+            {
+              "name": "Sizes",
+              "title": "The group sets the size of its controls"
+            }
+          ],
+          "states": [],
+          "inContext": []
         }
       }
     },

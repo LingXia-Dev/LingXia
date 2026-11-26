@@ -34,6 +34,7 @@ import { HoverCard } from '@liulidesign/core/HoverCard';
 import { Icon } from '@liulidesign/core/Icon';
 import { IconButton } from '@liulidesign/core/IconButton';
 import { InfoTip } from '@liulidesign/core/InfoTip';
+import { InputGroup } from '@liulidesign/core/InputGroup';
 import { Item } from '@liulidesign/core/Item';
 import { Kbd } from '@liulidesign/core/Kbd';
 import { Lightbox } from '@liulidesign/core/Lightbox';
@@ -93,6 +94,7 @@ import { playground as FieldFixture } from '../../core/src/Field/Field.examples'
 import { playground as FileInputFixture } from '../../core/src/FileInput/FileInput.examples';
 import { playground as FormLayoutFixture } from '../../core/src/FormLayout/FormLayout.examples';
 import { playground as HoverCardFixture } from '../../core/src/HoverCard/HoverCard.examples';
+import { playground as InputGroupFixture } from '../../core/src/InputGroup/InputGroup.examples';
 import { playground as KbdFixture } from '../../core/src/Kbd/Kbd.examples';
 import { playground as LightboxFixture } from '../../core/src/Lightbox/Lightbox.examples';
 import { playground as ListInputFixture } from '../../core/src/ListInput/ListInput.examples';
@@ -2970,6 +2972,34 @@ export const playgroundEntries: PlaygroundEntry[] = [
     "binds": {
       "isOpen": "onOpenChange"
     }
+  },
+  {
+    "name": "InputGroup",
+    "component": "InputGroup",
+    "defaults": {
+      "label": "Price"
+    },
+    "controls": [
+      {
+        "name": "label",
+        "required": true,
+        "kind": "text"
+      },
+      {
+        "name": "size",
+        "required": false,
+        "kind": "choice",
+        "options": [
+          "sm",
+          "md",
+          "lg"
+        ]
+      }
+    ],
+    "fixed": [
+      "children"
+    ],
+    "binds": {}
   },
   {
     "name": "Item",
@@ -5973,6 +6003,7 @@ export function PlaygroundSubject({ name, props, set }: { name: string; props: P
   if (name === "Icon") return <Icon {...(props as any)} />;
   if (name === "IconButton") return <IconButton {...(props as any)} />;
   if (name === "InfoTip") return <InfoTip {...(props as any)} onOpenChange={(next: unknown) => set("isOpen", next as PlaygroundValue)} />;
+  if (name === "InputGroup") return <InputGroup {...(InputGroupFixture() as any)} {...(props as any)} />;
   if (name === "Item") return <Item {...(props as any)} />;
   if (name === "Kbd") return <Kbd {...(KbdFixture() as any)} {...(props as any)} />;
   if (name === "Lightbox") return <Lightbox {...(LightboxFixture() as any)} {...(props as any)} onOpenChange={(next: unknown) => set("isOpen", next as PlaygroundValue)} />;

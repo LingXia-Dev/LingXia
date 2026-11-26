@@ -73,6 +73,8 @@ export interface ButtonGroupState {
   size?: ButtonSize;
   variant?: ButtonVariant;
   isDisabled: boolean;
+  /** Joined to a field in an InputGroup: the field's 3:1 edge and no shadow, so the row is one shape. */
+  isFieldEdge?: boolean;
 }
 
 /** Set by ButtonGroup for the buttons inside it. */
@@ -143,7 +145,7 @@ export function Button({
   };
   const classes = cx(
     r.root.base, r.root.variant[variant], variant === 'secondary' && layer === 'overlay' && r.root.overlay, r.root.disabled[variant], isIconOnly ? r.root.square[size] : r.root.size[size],
-    flush && r.root.flush[flush], group?.isAttached && r.root.attached, isFloating && !isDisabled && r.root.floating, width && r.root.width[width], shares && r.root.share, edge && r.root.edge[edge][isIconOnly ? 'square' : (edge === 'end' ? endIcon : startIcon) ? 'icon' : 'label'][size], className,
+    flush && r.root.flush[flush], group?.isAttached && r.root.attached, group?.isFieldEdge && r.root.fieldEdge, isFloating && !isDisabled && r.root.floating, width && r.root.width[width], shares && r.root.share, edge && r.root.edge[edge][isIconOnly ? 'square' : (edge === 'end' ? endIcon : startIcon) ? 'icon' : 'label'][size], className,
   );
   const content = (
     <>

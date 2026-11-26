@@ -46,7 +46,7 @@ that directory.
 ## Components
 
 <!-- components:start -->
-82 components. Import any of them from `@liulidesign/core`, or from its own path; a second component in a row (`AvatarGroup`, `Spinner`) has a path of its own too:
+83 components. Import any of them from `@liulidesign/core`, or from its own path; a second component in a row (`AvatarGroup`, `Spinner`) has a path of its own too:
 
 | Import | Exports | What it is |
 | --- | --- | --- |
@@ -70,6 +70,7 @@ that directory.
 | `@liulidesign/core/FileInput` | FileInput | Files the user chose, and a way to choose more |
 | `@liulidesign/core/Composer` | Composer | Where a message is written and sent |
 | `@liulidesign/core/ListInput` | ListInput | A field of rows the user adds and removes |
+| `@liulidesign/core/InputGroup` | InputGroup, InputGroupText | A field joined edge to edge with fixed text, a select or a button, as one control |
 | `@liulidesign/core/CheckboxInput` | CheckboxInput | One on/off choice with a label, help text and status |
 | `@liulidesign/core/RadioGroup` | RadioGroup | One choice from a short list, every option in view |
 | `@liulidesign/core/Switch` | Switch | A setting that turns on or off the moment it flips |

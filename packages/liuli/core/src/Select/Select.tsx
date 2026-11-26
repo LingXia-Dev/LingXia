@@ -2,6 +2,7 @@ import { cx, type Local } from '@lingxia/view';
 import { useControlSize } from '../density';
 import { Field, type FieldOwnProps } from '../Field/Field';
 import { selectRecipe as r } from './Select.recipe';
+import { joinedCorners, joinedPlace, useJoined } from '../internal/joined';
 import { dataOf } from '../internal/data';
 
 export interface SelectOption {
@@ -44,13 +45,15 @@ export function Select(props: SelectProps) {
     label, isLabelHidden, description, status, isRequired, hasRequiredMark, optionalLabel, info, isDisabled = false, disabledMessage, size: ownSize,
     items, placeholder, className, 'data-testid': testId,
   } = props;
-  const size = useControlSize(ownSize);
+  const group = useJoined();
+  const joined = group?.edge ?? null;
+  const size = useControlSize(ownSize ?? group?.size);
   const choices = items.map(option => ({ value: option.value, label: option.label, disabled: option.isDisabled }));
-  const controlClass = cx(r.control.base, r.control.size[size], status && r.control.status[status.type]);
+  const controlClass = cx(r.control.base, r.control.size[size], joined && joinedCorners[joined], status && r.control.status[status.type]);
   return (
     <Field
       label={label}
-      isLabelHidden={isLabelHidden}
+      isLabelHidden={isLabelHidden || (joined !== null && joined !== 'only')}
       description={description}
       status={status}
       isRequired={isRequired}
@@ -60,7 +63,7 @@ export function Select(props: SelectProps) {
       isDisabled={isDisabled}
       disabledMessage={disabledMessage}
       size={size}
-      className={className}
+      className={cx(joined && joinedPlace[joined], className)}
     >
       {control =>
         props.bind ? (

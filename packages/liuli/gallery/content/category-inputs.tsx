@@ -14,13 +14,14 @@ import { Specimen as DateTimeInputSpecimen } from '../../core/src/DateTimeInput/
 import { Specimen as FileInputSpecimen } from '../../core/src/FileInput/FileInput.examples';
 import { Specimen as ComposerSpecimen } from '../../core/src/Composer/Composer.examples';
 import { Specimen as ListInputSpecimen } from '../../core/src/ListInput/ListInput.examples';
+import { Specimen as InputGroupSpecimen } from '../../core/src/InputGroup/InputGroup.examples';
 import { Category, Tile } from '../shared/Layout';
 
 export function Content({ onOpen }: { onOpen: (page: string) => void }) {
   return (
     <>
       <text className="text-body text-muted">{"Fields a person types into or sets: text, dates, times and amounts."}</text>
-      <Category title={"15 components"}>
+      <Category title={"16 components"}>
         <Tile
           name={"TextInput"}
           tagline={"One line of text"}
@@ -136,11 +137,18 @@ export function Content({ onOpen }: { onOpen: (page: string) => void }) {
         <Tile
           name={"ListInput"}
           tagline={"Rows to add"}
-          isWide
           onOpen={() => onOpen("list-input")}
           testId={"open-list-input"}
         >
           <ListInputSpecimen />
+        </Tile>
+        <Tile
+          name={"InputGroup"}
+          tagline={"Joined fields"}
+          onOpen={() => onOpen("input-group")}
+          testId={"open-input-group"}
+        >
+          <InputGroupSpecimen />
         </Tile>
       </Category>
     </>

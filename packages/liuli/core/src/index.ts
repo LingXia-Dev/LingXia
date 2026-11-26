@@ -69,6 +69,8 @@ export { IconButton } from './IconButton/IconButton';
 export type * from './IconButton/IconButton';
 export { InfoTip } from './InfoTip/InfoTip';
 export type * from './InfoTip/InfoTip';
+export { InputGroup, InputGroupText } from './InputGroup/InputGroup';
+export type * from './InputGroup/InputGroup';
 export { Item, ItemList } from './Item/Item';
 export type * from './Item/Item';
 export { Kbd } from './Kbd/Kbd';

@@ -74,6 +74,8 @@ export const buttonRecipe = {
      * ring is drawn inside the button, where the next button cannot cover it.
      */
     attached: 'rounded-none first:rounded-s-control last:rounded-e-control -ms-px first:ms-0 focus-visible:ring-0 focus-visible:inset-ring-2 focus-visible:inset-ring-focus',
+    /** Joined to a field: its edge and no lift, so the button reads as the row's end. */
+    fieldEdge: 'border-line-strong shadow-none',
   },
   glyph: {
     size: { sm: 'size-4 shrink-0', md: 'size-4.5 shrink-0', lg: 'size-5 shrink-0' } satisfies Record<ButtonSize, string>,

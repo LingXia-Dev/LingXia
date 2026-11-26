@@ -7,6 +7,7 @@ import { describedBy } from '../internal/describedBy';
 import { Glyph, glyphGrowth, useTextGrowth } from '../internal/Glyph';
 import { SpinnerMark } from '../internal/spinner';
 import { textInputRecipe as r } from './TextInput.recipe';
+import { joinedCorners, joinedPlace, useJoined } from '../internal/joined';
 import { dataOf } from '../internal/data';
 
 /** Controlled by the app (`value` + `onChange`), or bound to a View-local cell (`bind`). */
@@ -85,7 +86,10 @@ export function TextInput(props: TextInputProps) {
     placeholder, type, inputMode, autoComplete, enterKeyHint, autoCapitalize, hasSpellCheck, hasAutoFocus = false, maxLength, isReadOnly = false, isLoading = false,
     startIcon, startContent, prefix, suffix, endContent, onSubmit, onFocus, onBlur, className, controlClassName, 'data-testid': testId,
   } = props;
-  const size = useControlSize(ownSize);
+  // In an InputGroup the group is named, placed and sized; the field takes the room the others leave.
+  const group = useJoined();
+  const joined = group?.edge ?? null;
+  const size = useControlSize(ownSize ?? group?.size);
   const text = props.bind ? props.bind.value : props.value;
   // The platform search field draws its own magnifier at its own size and colour, so search is a
   // plain editor with Liuli's icon.
@@ -104,7 +108,7 @@ export function TextInput(props: TextInputProps) {
   return (
     <Field
       label={label}
-      isLabelHidden={isLabelHidden}
+      isLabelHidden={isLabelHidden || (joined !== null && joined !== 'only')}
       description={description}
       status={status}
       isRequired={isRequired}
@@ -114,10 +118,10 @@ export function TextInput(props: TextInputProps) {
       isDisabled={isDisabled}
       disabledMessage={disabledMessage}
       size={size}
-      className={className}
+      className={cx(joined && joinedPlace[joined], joined && joined !== 'only' && 'grow basis-0 min-w-0', className)}
     >
       {control => (
-        <view className={cx(r.box.base, r.box.size[size], status && r.box.status[status.type], isReadOnly && r.box.readOnly, isDisabled && r.box.disabled, controlClassName)}>
+        <view className={cx(r.box.base, r.box.size[size], joined && joinedCorners[joined], status && r.box.status[status.type], isReadOnly && r.box.readOnly, isDisabled && r.box.disabled, controlClassName)}>
           {leading !== undefined && <view aria-hidden style={mark} className={r.icon.base}>{leading}</view>}
           {prefix !== undefined && <text id={prefixId} className={cx(r.adornment.base, r.input.size[size])}>{prefix}</text>}
           {props.bind ? (

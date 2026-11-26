@@ -357,6 +357,23 @@ export const entries: GalleryEntry[] = [
     ]
   },
   {
+    "name": "InputGroup",
+    "page": "input-group",
+    "category": "inputs",
+    "summary": "A field joined edge to edge with fixed text, a select or a button, as one control",
+    "keywords": [
+      "input group",
+      "input addon",
+      "prefix",
+      "suffix",
+      "unit",
+      "currency",
+      "joined field",
+      "attached input",
+      "field with button"
+    ]
+  },
+  {
     "name": "CheckboxInput",
     "page": "checkbox-input",
     "category": "selection",
@@ -1545,7 +1562,7 @@ export const galleryCategories: GalleryCategory[] = [
     "icon": "text-input",
     "description": "Text, dates and amounts",
     "page": "category-inputs",
-    "count": 15
+    "count": 16
   },
   {
     "id": "selection",

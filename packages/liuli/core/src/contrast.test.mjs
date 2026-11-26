@@ -88,6 +88,8 @@ const highContrastGaps = new Set([
   'Code: a keyword (high-contrast-dark)',
   'Code: a number or literal (high-contrast-dark)',
   'FileInput: failure line (high-contrast-dark)',
+  // Muted fixed text on its sunken box: 6.7:1, the field's own adornment on surface is 7.6:1.
+  'InputGroup: the fixed text (high-contrast-light)',
   'MessageBubble: failure words (high-contrast-dark)',
   'Slider: thumb rim against the track (high-contrast-dark)',
   'Toast: action (high-contrast-dark)',
