@@ -241,3 +241,18 @@ test('LoadingStacked at accessibility text sizes: the figure bar goes under the 
   const small = lead(await renderExample('Table/Table', 'LoadingStacked'));
   assert.equal(small.props.flexDirection, 'row');
 });
+
+test('a number column named past the 64 characters a box name holds still measures its figures', async () => {
+  const field = `amount_${'x'.repeat(70)}`;
+  const screen = await renderPage(`
+    import { Table } from '@liulidesign/core/Table';
+    const rows = [{ id: 'a', ${field}: 1200 }, { id: 'b', ${field}: 7 }];
+    export function render() {
+      return <page><Table label="Totals" data-testid="t" layout="columns" columns={[
+        { field: 'id', header: 'Id' },
+        { field: '${field}', header: 'Amount', align: 'end' },
+      ]} rows={rows} keyField="id" /></page>;
+    }
+  `);
+  assert.equal(order(screen, 't').length, 2);
+});

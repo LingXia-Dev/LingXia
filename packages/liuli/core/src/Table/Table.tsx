@@ -189,7 +189,7 @@ export function Table({
   const measured = useBox('sample');
   const char = measured.value ? measured.value.width / sample.length : 8;
   // A number column's longest value or heading, set in the cells' type and measured.
-  const figureBoxes = columns.map(column => useBox(`figure-${column.field}`));
+  const figureBoxes = columns.map((_, at) => useBox(`figure-${at}`));
   const textOf = (row: TableRow, column: TableColumn) => (column.format ? column.format(row[column.field], row) : String(row[column.field] ?? ''));
   const longest = (column: TableColumn) => rows.reduce((most, row) => Math.max(most, textOf(row, column).length), column.header.length);
   const longestText = (column: TableColumn) => rows.reduce((most, row) => (textOf(row, column).length > most.length ? textOf(row, column) : most), column.header);
