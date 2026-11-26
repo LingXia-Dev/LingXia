@@ -1,4 +1,4 @@
-import { createContext, cx, useContext, useId, useLocal, type Child, type LinkTarget } from '@lingxia/view';
+import { createContext, cx, useContext, useId, useLocal, type Child, type ColorValue, type LinkTarget } from '@lingxia/view';
 import type { Press } from '../internal/press';
 import type { IconRef } from '../Icon/Icon';
 import { Glyph, glyphGrowth, useTextGrowth } from '../internal/Glyph';
@@ -6,7 +6,7 @@ import { ActionEdge } from '../internal/actionEdge';
 import { SpinnerMark } from '../internal/spinner';
 
 // On a solid fill the spinner's ring is the fill's own on-colour, faint.
-const spinnerRing: Partial<Record<ButtonVariant, string>> = { primary: 'on-accent-solid/30', destructive: 'on-danger-solid/30' };
+const spinnerRing: Partial<Record<ButtonVariant, ColorValue>> = { primary: 'on-accent-solid/30', destructive: 'on-danger-solid/30' };
 import { reportFailure, settleFlag } from '../internal/settle';
 import { registerPressable, identityOf, useTrigger } from '../internal/trigger';
 import { dataOf } from '../internal/data';
