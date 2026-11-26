@@ -78,13 +78,13 @@ export interface LineChartProps<Row extends ChartRecord<Row> = ChartRow> {
   /** @default false */
   isLoading?: boolean;
   error?: string;
-  /** What to say when no row has a number. */
+  /** What to say when no row has a number. Defaults to "No data" in the page's language. */
   emptyLabel?: string;
   /** A second, quieter line under `emptyLabel`: what to do next. */
   emptyHint?: string;
-  /** With `error`: tries again. Pass `retryLabel` with it. */
+  /** With `error`: tries again. */
   onRetry?: () => void;
-  /** The words on the retry button: "Try again". */
+  /** The words on the retry button. Defaults to "Try again" in the page's language. */
   retryLabel?: string;
   className?: string;
   /** On the chart. */

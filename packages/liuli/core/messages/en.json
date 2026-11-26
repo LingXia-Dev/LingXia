@@ -322,5 +322,25 @@
   "@liuli.chart.other": {
     "defaultMessage": "Other",
     "description": "The slice of a pie chart that gathers the parts past those drawn on their own."
+  },
+  "@liuli.pageSize": {
+    "defaultMessage": "Items per page",
+    "description": "The page-size choice beside a Pagination."
+  },
+  "@liuli.previousItem": {
+    "defaultMessage": "Previous",
+    "description": "Carousel button to the item before."
+  },
+  "@liuli.nextItem": {
+    "defaultMessage": "Next",
+    "description": "Carousel button to the next item."
+  },
+  "@liuli.chart.empty": {
+    "defaultMessage": "No data",
+    "description": "Shown in place of a chart with nothing to draw."
+  },
+  "@liuli.tryAgain": {
+    "defaultMessage": "Try again",
+    "description": "Button that loads something again after it failed."
   }
 }

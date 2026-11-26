@@ -40,9 +40,9 @@ export type CarouselProps = CarouselIndex & {
   hasButtons?: boolean;
   /** With the buttons: past the last page comes the first, and before the first the last. @default false */
   hasLoop?: boolean;
-  /** The previous button's accessible name: "Previous photo". Needed with `hasButtons`. */
+  /** The previous button's accessible name: "Previous photo". Defaults to "Previous" in the page's language. */
   previousLabel?: string;
-  /** The next button's accessible name: "Next photo". Needed with `hasButtons`. */
+  /** The next button's accessible name: "Next photo". Defaults to "Next" in the page's language. */
   nextLabel?: string;
   className?: string;
   /** On the root; the dots get `<testid>-dots`, the buttons `<testid>-previous` and `<testid>-next`. */
@@ -54,7 +54,7 @@ const railGap = 12;
 
 /** A few pages to swipe through, one at a time, with dots that follow; or a rail of cards. */
 export function Carousel({
-  label, children, bind, index, onIndexChange, defaultIndex = 0, pageLabel = (page: number, count: number) => liuliText('@liuli.itemOf', { page: page + 1, count }), dots = 'below', itemWidth, hasButtons = false, hasLoop = false, previousLabel, nextLabel, className, 'data-testid': testId, ...attributes
+  label, children, bind, index, onIndexChange, defaultIndex = 0, pageLabel = (page: number, count: number) => liuliText('@liuli.itemOf', { page: page + 1, count }), dots = 'below', itemWidth, hasButtons = false, hasLoop = false, previousLabel = liuliText('@liuli.previousItem'), nextLabel = liuliText('@liuli.nextItem'), className, 'data-testid': testId, ...attributes
 }: CarouselProps) {
   const local = useLocal('page', defaultIndex);
   const cell = bind ?? local;
@@ -80,7 +80,7 @@ export function Carousel({
       <view className={cx(r.button.base, direction < 0 ? r.button.start : r.button.end)}>
         <view className={r.button.chip}>
           <IconButton
-            label={(direction < 0 ? previousLabel : nextLabel) ?? ''}
+            label={direction < 0 ? previousLabel : nextLabel}
             icon={direction < 0 ? 'chevron-start' : 'chevron-end'}
             variant="ghost"
             size="sm"

@@ -3532,13 +3532,13 @@
           "name": "previousLabel",
           "type": "string",
           "required": false,
-          "description": "The previous button's accessible name: \"Previous photo\". Needed with `hasButtons`."
+          "description": "The previous button's accessible name: \"Previous photo\". Defaults to \"Previous\" in the page's language."
         },
         {
           "name": "nextLabel",
           "type": "string",
           "required": false,
-          "description": "The next button's accessible name: \"Next photo\". Needed with `hasButtons`."
+          "description": "The next button's accessible name: \"Next photo\". Defaults to \"Next\" in the page's language."
         },
         {
           "name": "className",
@@ -14910,7 +14910,7 @@
           "name": "pageSizeLabel",
           "type": "string",
           "required": false,
-          "description": "The page-size choice's accessible name: \"Rows per page\". Needed with `pageSizes`."
+          "description": "The page-size choice's accessible name: \"Rows per page\". Defaults to \"Items per page\" in the page's language."
         },
         {
           "name": "className",

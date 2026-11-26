@@ -123,10 +123,10 @@ export function Merged() {
 | `size` | `ChartSize` | `'md'` |  |
 | `isLoading` | `boolean` | `false` |  |
 | `error` | `string` |  |  |
-| `emptyLabel` | `string` |  | What to say when no part has an amount. |
+| `emptyLabel` | `string` |  | What to say when no part has an amount. Defaults to "No data" in the page's language. |
 | `emptyHint` | `string` |  | A second, quieter line under `emptyLabel`: what to do next. |
-| `onRetry` | `(() => void)` |  | With `error`: tries again. Pass `retryLabel` with it. |
-| `retryLabel` | `string` |  | The words on the retry button: "Try again". |
+| `onRetry` | `(() => void)` |  | With `error`: tries again. |
+| `retryLabel` | `string` |  | The words on the retry button. Defaults to "Try again" in the page's language. |
 | `className` | `string` |  |  |
 | `data-testid` | `string` |  | On the chart; a legend row's button is `<id>-legend-<key>`. |
 

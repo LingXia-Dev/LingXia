@@ -92,3 +92,10 @@ test('a count of no pages still shows one page, never page 0', async () => {
   const pages = await renderPage(page('pages'), fine);
   assert.deepEqual(shown(pages, 'p'), ['1']);
 });
+
+test('without pageSizeLabel the page-size choice is named in the page\'s language, never blank', async () => {
+  const screen = await renderPage(`
+    import { Pagination } from '@liulidesign/core/Pagination';
+    export function render() { return <page><Pagination label="Pages" value={1} onChange={() => {}} totalItems={100} pageSizes={[10, 20]} pageSize={20} data-testid="pages" /></page>; }`);
+  assert.equal(screen.getByTestId('pages-size').props.accessibilityLabel, 'Items per page');
+});

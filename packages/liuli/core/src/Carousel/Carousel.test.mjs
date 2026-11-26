@@ -54,3 +54,12 @@ test('Welcome: a page held by the caller drives the snap, and a dot reports its 
   screen.press(screen.queryAll(node => node.tag === 'button' && node.parent?.parent === dots || node.tag === 'button' && node.parent === dots)[2]);
   assert.equal(scroller().props.snapIndex, 2, 'a dot goes through onIndexChange');
 });
+
+test('without previousLabel and nextLabel the buttons are named in the page\'s language, never blank', async () => {
+  const { renderPage } = await import('../testing/harness.mjs');
+  const screen = await renderPage(`
+    import { Carousel } from '@liulidesign/core/Carousel';
+    export function render() { return <page><Carousel label="Photos" hasButtons hasLoop data-testid="photos"><view /><view /><view /></Carousel></page>; }`);
+  const names = screen.queryAll(node => node.tag === 'button').map(node => node.props.accessibilityLabel);
+  assert.ok(names.includes('Previous') && names.includes('Next'), String(names));
+});

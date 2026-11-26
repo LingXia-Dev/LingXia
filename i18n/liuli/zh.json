@@ -241,5 +241,20 @@
   },
   "@liuli.chart.other": {
     "defaultMessage": "其他"
+  },
+  "@liuli.pageSize": {
+    "defaultMessage": "每页条数"
+  },
+  "@liuli.previousItem": {
+    "defaultMessage": "上一项"
+  },
+  "@liuli.nextItem": {
+    "defaultMessage": "下一项"
+  },
+  "@liuli.chart.empty": {
+    "defaultMessage": "暂无数据"
+  },
+  "@liuli.tryAgain": {
+    "defaultMessage": "重试"
   }
 }

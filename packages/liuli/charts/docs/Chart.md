@@ -146,10 +146,10 @@ export function Readout() {
 | `isLoading` | `boolean` | `false` | Stands a skeleton in for the plot; the chart is reported busy. |
 | `plotShape` | `ChartPlotShape` | `'block'` | What the plot is: the loading skeleton takes its outline and the empty state its mark, so a chart with nothing to draw still looks like itself. |
 | `error` | `string` |  | Why the data could not be shown; drawn in place of the plot with an error mark, and announced. |
-| `onRetry` | `(() => void)` |  | With `error`: tries again. Pass `retryLabel` with it. |
-| `retryLabel` | `string` |  | The words on the retry button: "Try again". |
+| `onRetry` | `(() => void)` |  | With `error`: tries again. |
+| `retryLabel` | `string` |  | The words on the retry button. Defaults to "Try again" in the page's language. |
 | `isEmpty` | `boolean` | `false` | Shows `emptyLabel` in place of the plot. |
-| `emptyLabel` | `string` |  | What to say when there is nothing to draw: "No sales yet". |
+| `emptyLabel` | `string` |  | What to say when there is nothing to draw: "No sales yet". Defaults to "No data" in the page's language. |
 | `emptyHint` | `string` |  | A second, quieter line under `emptyLabel`: what to do next. |
 | `className` | `string` |  |  |
 | `data-testid` | `string` |  | On the chart. |

@@ -89,3 +89,19 @@ test('states: loading draws a skeleton shaped like the plot; empty has a mark an
   failed.press(retry);
   failed.getByText('Still not loaded after 2 tries.');
 });
+
+test('an empty chart and a failed one with onRetry say so in the page\'s language when the app gives no words', async () => {
+  const { renderPage } = await import('../testing/harness.mjs');
+  const screen = await renderPage(`
+    import { BarChart } from '@liulidesign/charts/BarChart';
+    export function render() {
+      return (
+        <page>
+          <BarChart rows={[]} x="k" y="v" label="Empty" data-testid="empty" />
+          <BarChart rows={[]} x="k" y="v" label="Failed" error="Could not load." onRetry={() => {}} data-testid="failed" />
+        </page>
+      );
+    }`);
+  assert.ok(textOf(screen.getByTestId('empty')).includes('No data'));
+  assert.equal(textOf(screen.getByTestId('failed-retry')), 'Try again');
+});

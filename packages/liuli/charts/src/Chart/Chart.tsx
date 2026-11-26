@@ -2,6 +2,7 @@ import { cx, type Child, type VectorPath } from '@lingxia/view';
 import { Button } from '@liulidesign/core/Button';
 import { Icon } from '@liulidesign/core/Icon';
 import { Skeleton } from '@liulidesign/core/Skeleton';
+import { liuliText } from '@liulidesign/core/internal/text';
 import { roleOf, type ChartColor } from '../internal/data';
 import { circle } from '../internal/geometry';
 import { chartRecipe as r } from './Chart.recipe';
@@ -41,13 +42,13 @@ export interface ChartProps {
   plotShape?: ChartPlotShape;
   /** Why the data could not be shown; drawn in place of the plot with an error mark, and announced. */
   error?: string;
-  /** With `error`: tries again. Pass `retryLabel` with it. */
+  /** With `error`: tries again. */
   onRetry?: () => void;
-  /** The words on the retry button: "Try again". */
+  /** The words on the retry button. Defaults to "Try again" in the page's language. */
   retryLabel?: string;
   /** Shows `emptyLabel` in place of the plot. @default false */
   isEmpty?: boolean;
-  /** What to say when there is nothing to draw: "No sales yet". */
+  /** What to say when there is nothing to draw: "No sales yet". Defaults to "No data" in the page's language. */
   emptyLabel?: string;
   /** A second, quieter line under `emptyLabel`: what to do next. */
   emptyHint?: string;
@@ -114,9 +115,9 @@ export function Chart({
   plotShape = 'block',
   error,
   onRetry,
-  retryLabel,
+  retryLabel = liuliText('@liuli.tryAgain'),
   isEmpty = false,
-  emptyLabel,
+  emptyLabel = liuliText('@liuli.chart.empty'),
   emptyHint,
   className,
   'data-testid': testId,
@@ -145,14 +146,14 @@ export function Chart({
           <view className={cx(r.state.base, isSmall && r.state.small)}>
             <Icon name="error" size={isSmall ? 'sm' : 'md'} className={r.stateIcon.error} />
             <text role="alert" className={r.message.base}>{error}</text>
-            {!isSmall && onRetry !== undefined && retryLabel !== undefined && (
+            {!isSmall && onRetry !== undefined && (
               <view className={r.stateAction.base}>
                 <Button label={retryLabel} size="sm" width="content" onClick={onRetry} data-testid={testId && `${testId}-retry`} />
               </view>
             )}
           </view>
         )}
-        {!isLoading && error === undefined && isEmpty && emptyLabel !== undefined && (
+        {!isLoading && error === undefined && isEmpty && (
           <view className={cx(r.state.base, isSmall && r.state.small)}>
             {plotShape === 'line' || plotShape === 'ring' || plotShape === 'disc'
               ? <Icon icon={marks[plotShape]} size={isSmall ? 'sm' : 'md'} className={r.stateIcon.empty} />

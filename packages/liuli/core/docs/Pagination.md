@@ -159,7 +159,7 @@ export function PageSize() {
 | `pageSize` | `number` | `20` | Items to a page, with `totalItems` and the page-size choice. |
 | `pageSizes` | `readonly number[]` |  | The page sizes to choose between; with them a choice shows before the arrows. |
 | `onPageSizeChange` | `((pageSize: number) => void)` |  | Runs with the size chosen, then `onChange` with the page that keeps the first item of this one in view. |
-| `pageSizeLabel` | `string` |  | The page-size choice's accessible name: "Rows per page". Needed with `pageSizes`. |
+| `pageSizeLabel` | `string` |  | The page-size choice's accessible name: "Rows per page". Defaults to "Items per page" in the page's language. |
 | `className` | `string` |  |  |
 | `data-testid` | `string` |  | On the control; a page is `<id>-<n>`, the arrows `<id>-previous` and `<id>-next`. |
 

@@ -195,7 +195,7 @@
           "name": "emptyLabel",
           "type": "string",
           "required": false,
-          "description": "What to say when no row has a number."
+          "description": "What to say when no row has a number. Defaults to \"No data\" in the page's language."
         },
         {
           "name": "emptyHint",
@@ -207,13 +207,13 @@
           "name": "onRetry",
           "type": "(() => void)",
           "required": false,
-          "description": "With `error`: tries again. Pass `retryLabel` with it."
+          "description": "With `error`: tries again."
         },
         {
           "name": "retryLabel",
           "type": "string",
           "required": false,
-          "description": "The words on the retry button: \"Try again\"."
+          "description": "The words on the retry button. Defaults to \"Try again\" in the page's language."
         },
         {
           "name": "className",
@@ -664,13 +664,13 @@
           "name": "onRetry",
           "type": "(() => void)",
           "required": false,
-          "description": "With `error`: tries again. Pass `retryLabel` with it."
+          "description": "With `error`: tries again."
         },
         {
           "name": "retryLabel",
           "type": "string",
           "required": false,
-          "description": "The words on the retry button: \"Try again\"."
+          "description": "The words on the retry button. Defaults to \"Try again\" in the page's language."
         },
         {
           "name": "isEmpty",
@@ -683,7 +683,7 @@
           "name": "emptyLabel",
           "type": "string",
           "required": false,
-          "description": "What to say when there is nothing to draw: \"No sales yet\"."
+          "description": "What to say when there is nothing to draw: \"No sales yet\". Defaults to \"No data\" in the page's language."
         },
         {
           "name": "emptyHint",
@@ -1310,7 +1310,7 @@
           "name": "emptyLabel",
           "type": "string",
           "required": false,
-          "description": "What to say when no row has a number."
+          "description": "What to say when no row has a number. Defaults to \"No data\" in the page's language."
         },
         {
           "name": "emptyHint",
@@ -1322,13 +1322,13 @@
           "name": "onRetry",
           "type": "(() => void)",
           "required": false,
-          "description": "With `error`: tries again. Pass `retryLabel` with it."
+          "description": "With `error`: tries again."
         },
         {
           "name": "retryLabel",
           "type": "string",
           "required": false,
-          "description": "The words on the retry button: \"Try again\"."
+          "description": "The words on the retry button. Defaults to \"Try again\" in the page's language."
         },
         {
           "name": "className",
@@ -1800,7 +1800,7 @@
           "name": "emptyLabel",
           "type": "string",
           "required": false,
-          "description": "What to say when no part has an amount."
+          "description": "What to say when no part has an amount. Defaults to \"No data\" in the page's language."
         },
         {
           "name": "emptyHint",
@@ -1812,13 +1812,13 @@
           "name": "onRetry",
           "type": "(() => void)",
           "required": false,
-          "description": "With `error`: tries again. Pass `retryLabel` with it."
+          "description": "With `error`: tries again."
         },
         {
           "name": "retryLabel",
           "type": "string",
           "required": false,
-          "description": "The words on the retry button: \"Try again\"."
+          "description": "The words on the retry button. Defaults to \"Try again\" in the page's language."
         },
         {
           "name": "className",

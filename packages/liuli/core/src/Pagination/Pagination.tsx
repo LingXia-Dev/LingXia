@@ -46,7 +46,7 @@ export type PaginationProps = PaginationBinding & {
   pageSizes?: readonly number[];
   /** Runs with the size chosen, then `onChange` with the page that keeps the first item of this one in view. */
   onPageSizeChange?: (pageSize: number) => void;
-  /** The page-size choice's accessible name: "Rows per page". Needed with `pageSizes`. */
+  /** The page-size choice's accessible name: "Rows per page". Defaults to "Items per page" in the page's language. */
   pageSizeLabel?: string;
   className?: string;
   /** On the control; a page is `<id>-<n>`, the arrows `<id>-previous` and `<id>-next`. */
@@ -69,7 +69,7 @@ const [arrows, pageWidth, gapWidth, between] = [88, 40, 24, 4];
 /** Moves through a long set a page at a time. */
 export function Pagination({
   label, bind, value: own, pageCount: counted, totalItems, hasMore = false, onChange: ownChange, pageLabel = (page: number) => liuliText('@liuli.page', { page }), previousLabel = liuliText('@liuli.previousPage'), nextLabel = liuliText('@liuli.nextPage'), siblings = 1, variant = 'auto', positionLabel,
-  pageSize = 20, pageSizes, onPageSizeChange, pageSizeLabel, className, 'data-testid': testId, ...attributes
+  pageSize = 20, pageSizes, onPageSizeChange, pageSizeLabel = liuliText('@liuli.pageSize'), className, 'data-testid': testId, ...attributes
 }: PaginationProps) {
   const page = bind ? bind.value : own;
   const onChange = (next: number) => bind ? bind.set(next) : ownChange?.(next);
@@ -137,7 +137,7 @@ export function Pagination({
   return (
     <view role="group" aria-label={label} data-testid={testId} {...dataOf(attributes)} className={cx(r.sized.base, className)}>
       <Select
-        label={pageSizeLabel ?? ''}
+        label={pageSizeLabel}
         isLabelHidden
         size="sm"
         items={pageSizes.map(size => ({ value: String(size), label: String(size) }))}

@@ -164,8 +164,8 @@ export function Rail() {
 | `itemWidth` | `number` |  | Each item's width in points: a rail of cards, several in view, that stops on each. Without it a page fills the carousel. |
 | `hasButtons` | `boolean` | `false` | Round buttons over the side edges that move a page; with a pointer, where a swipe is not to hand. |
 | `hasLoop` | `boolean` | `false` | With the buttons: past the last page comes the first, and before the first the last. |
-| `previousLabel` | `string` |  | The previous button's accessible name: "Previous photo". Needed with `hasButtons`. |
-| `nextLabel` | `string` |  | The next button's accessible name: "Next photo". Needed with `hasButtons`. |
+| `previousLabel` | `string` |  | The previous button's accessible name: "Previous photo". Defaults to "Previous" in the page's language. |
+| `nextLabel` | `string` |  | The next button's accessible name: "Next photo". Defaults to "Next" in the page's language. |
 | `className` | `string` |  |  |
 | `data-testid` | `string` |  | On the root; the dots get `<testid>-dots`, the buttons `<testid>-previous` and `<testid>-next`. |
 
