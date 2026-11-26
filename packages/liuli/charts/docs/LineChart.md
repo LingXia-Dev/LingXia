@@ -127,6 +127,44 @@ export function Steps() {
 }
 ```
 
+### Readings placed by their day
+
+```tsx
+import { useLocal } from '@lingxia/view';
+import { LineChart } from '@liulidesign/charts/LineChart';
+
+const kilos = (value: number) => `${value.toFixed(1)} kg`;
+const visits = Array.from({ length: 30 }, (_, index) => ({ day: `${index + 1} Sep`, visits: Math.round(1800 + index * 46 + ((index * 53) % 17) * 38 - (index % 7 > 4 ? 520 : 0)) }));
+const day = [
+  { hour: '00:00', c: 11.2 }, { hour: '02:00', c: 10.4 }, { hour: '04:00', c: 9.8 }, { hour: '06:00', c: 10.1 }, { hour: '08:00', c: 12.6 },
+  { hour: '10:00', c: 15.9 }, { hour: '12:00', c: 18.7 }, { hour: '14:00', c: 20.3 }, { hour: '16:00', c: 19.6 }, { hour: '18:00', c: 17.0 },
+  { hour: '20:00', c: 14.4 }, { hour: '22:00', c: 12.5 },
+];
+const checkups = [
+  { date: '3 Jan', day: 2, kg: 74.8 }, { date: '17 Jan', day: 16, kg: 74.1 }, { date: '2 Mar', day: 60, kg: 72.9 },
+  { date: '9 Mar', day: 67, kg: 72.6 }, { date: '20 May', day: 139, kg: 71.4 }, { date: '1 Sep', day: 243, kg: 70.2 },
+];
+
+/** Readings taken on uneven days: `xValue` places each by its day, so a long gap between visits shows as one. */
+export function Spaced() {
+  const visit = useLocal<string | null>('visit', null);
+  return (
+    <LineChart
+      rows={checkups}
+      x="date"
+      xValue="day"
+      y="kg"
+      label="Weight at each check-up this year"
+      title="Weight"
+      description="At each check-up"
+      formatValue={kilos}
+      bind={visit}
+      data-testid="spaced"
+    />
+  );
+}
+```
+
 ### Each day's range shaded behind its mean
 
 ```tsx
@@ -333,6 +371,7 @@ export function Gaps() {
 | `hasScale` | `boolean` |  | Shows the scale: round numbers at the start edge, each with a hairline across the plot. The range reaches just past the data, so the plot is filled. By default on, except at the `xs` size. |
 | `hasEndLabel` | `boolean` | `false` | Writes the latest value at the end of the line. One series only. |
 | `xLabels` | `LineChartLabels` |  | Category labels under the plot: `fit` writes as many as fit side by side, each under its point; `ends` the first and last. By default `fit`, except at the `xs` size. |
+| `xValue` | `ChartField<Row>` |  | A numeric field, a time in milliseconds or a measure, that places each row along the plot by its value rather than one step apart, so uneven gaps show. Rows go in its order. `x` still names them. |
 | `legendPosition` | `ChartLegendPosition` | `'bottom'` | Shown when there is more than one series. |
 | `legendLabel` | `string` |  | The legend's accessible name; by default the chart's `label`. |
 | `value` | `string \| null` |  | The row to mark with a rule and a dot on each line, and to read out above the plot. |

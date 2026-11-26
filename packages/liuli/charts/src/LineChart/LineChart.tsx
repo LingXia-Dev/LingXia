@@ -2,7 +2,7 @@ import { cx, useBox, useLocal, useView, type Child, type PointerEvent, type Vect
 import { Chart, ChartLegend, ChartReadout, type ChartLegendPosition, type ChartField, type ChartRecord, type ChartReference, type ChartRow, type ChartSeries, type ChartSize, type ChartSummarize } from '../Chart/Chart';
 import { colorOf, keysOf, numberOf, numberIn, referenceEnds, referenceTop, roleOf, seriesFacts, seriesOf, textOf, type ChartColor } from '../internal/data';
 import { pressed, pressedKey, scrubbing } from '../internal/gesture';
-import { between, box, closed, domain, dot, indexAt, niceTicks, reach, runs, scaleY, thin, traced, type ChartCurve, type Point } from '../internal/geometry';
+import { between, box, closed, domain, dot, indexAt, nearestAt, niceTicks, reach, runs, scaleY, thin, traced, type ChartCurve, type Point } from '../internal/geometry';
 import { ReferenceLabels, ReferenceReading, referencePath, useReferences, zonePath } from '../internal/References';
 import { Ticks } from '../internal/Ticks';
 import { laidOutOnce, remember } from '../internal/memo';
@@ -54,6 +54,11 @@ export interface LineChartProps<Row extends ChartRecord<Row> = ChartRow> {
    * point; `ends` the first and last. By default `fit`, except at the `xs` size.
    */
   xLabels?: LineChartLabels;
+  /**
+   * A numeric field, a time in milliseconds or a measure, that places each row along the plot by
+   * its value rather than one step apart, so uneven gaps show. Rows go in its order. `x` still names them.
+   */
+  xValue?: ChartField<Row>;
   /** Shown when there is more than one series. @default 'bottom' */
   legendPosition?: ChartLegendPosition;
   /** The legend's accessible name; by default the chart's `label`. */
@@ -129,7 +134,7 @@ export interface LineChartBand<Row = ChartRow> {
 
 /** A number over time, as a line that fits its data, or as an area measured from zero. */
 export function LineChart<Row extends ChartRecord<Row>>({
-  rows, x, y, keyField, label, title, description, formatValue: format, summarize, curve = 'straight', hasArea = false, band, layout = 'overlaid',
+  rows, x, y, keyField, label, title, description, formatValue: format, summarize, curve = 'straight', hasArea = false, band, xValue, layout = 'overlaid',
   hasScale, hasEndLabel = false, hasEndDot = hasEndLabel, xLabels, legendPosition = 'bottom', legendLabel, value, onChange, defaultValue, bind, hiddenSeries: givenHidden, onHiddenSeriesChange: onHiddenChange, defaultHiddenSeries,
   references: given = [], domainMin, domainMax, size = 'md', isLoading = false, error, emptyLabel, emptyHint, onRetry, retryLabel, className, 'data-testid': testId,
 }: LineChartProps<Row>) {
@@ -151,6 +156,15 @@ export function LineChart<Row extends ChartRecord<Row>>({
   const shown = all.filter(series => !hiddenSeries.includes(series.field));
   const facts = shown.flatMap(series => seriesFacts(data, x, series, formatValue) ?? []);
   const isStacked = layout === 'stacked' && shown.length > 1;
+  // Each row's place across the plot by its `xValue`; placed rows are drawn as they are, not thinned.
+  const places = (() => {
+    if (!xValue || data.length < 2) return undefined;
+    const at = data.map(row => numberOf(row, xValue));
+    const [first, last] = [at[0], at[at.length - 1]];
+    if (!at.every(Number.isFinite) || !(last > first)) return undefined;
+    return at.map(value => (value - first) / (last - first));
+  })();
+  const thinned = (values: readonly number[]) => (places ? values : thin(values));
   // Stacked, each series is drawn at the running total, a gap counting as nothing.
   const columns = shown.map(series => data.map(row => numberOf(row, series.field)));
   const drawnColumns = isStacked
@@ -186,21 +200,21 @@ export function LineChart<Row extends ChartRecord<Row>>({
   const picked = chosen >= 0 ? data[chosen] : undefined;
 
   // The lines depend on the data and the encoding, never on the theme or the chosen row, so a scrub redraws only the marker.
-  const paths = remember(data, 'lines', JSON.stringify([shown.map(series => [series.field, series.color, series.dash]), range, curve, isArea, isStacked, hasEndDot, band && [band.low, band.high, band.color ?? all[0]?.color]]), () => {
+  const paths = remember(data, 'lines', JSON.stringify([shown.map(series => [series.field, series.color, series.dash]), range, curve, isArea, isStacked, hasEndDot, xValue, band && [band.low, band.high, band.color ?? all[0]?.color]]), () => {
     const paths: VectorPath[] = [];
     const trace = (points: readonly Point[]) => traced(points, curve);
     const round = { fill: 'none', strokeLinecap: 'round', strokeLinejoin: 'round', vectorEffect: 'non-scaling-stroke' } as const;
     if (band) {
-      const [lows, highs] = bandColumns.map(column => runs(thin(column), range));
+      const [lows, highs] = bandColumns.map(column => runs(thinned(column), range, places));
       const d = highs.map((top, index) => (top.length > 1 ? between(top, lows[index], curve) : '')).join('');
       if (d) paths.push({ key: 'band-area', d, fill: `${roleOf(band.color ?? all[0]?.color ?? 1)}/16` });
     }
     shown.forEach((series, index) => {
       const stroke = roleOf(series.color);
-      const lines = runs(thin(drawnColumns[index]), range);
+      const lines = runs(thinned(drawnColumns[index]), range, places);
       const joined = lines.filter(points => points.length > 1);
       // A stacked band lies between this total and the one under it, a shade firmer so neighbours part.
-      const floor = index > 0 && isStacked ? runs(thin(drawnColumns[index - 1]), range)[0] : undefined;
+      const floor = index > 0 && isStacked ? runs(thinned(drawnColumns[index - 1]), range, places)[0] : undefined;
       if (isArea && joined.length) paths.push({
         key: `${series.field}-area`,
         d: floor ? joined.map(points => between(points, floor, curve)).join('') : joined.map(points => closed(trace(points), points, scaleY(0, range))).join(''),
@@ -222,7 +236,7 @@ export function LineChart<Row extends ChartRecord<Row>>({
   const marker: VectorPath[] = [];
   if (picked) {
     // One row sits in the middle, where its point is drawn.
-    const at = data.length > 1 ? (chosen / (data.length - 1)) * box : box / 2;
+    const at = places ? places[chosen] * box : data.length > 1 ? (chosen / (data.length - 1)) * box : box / 2;
     const round = { fill: 'none', strokeLinecap: 'round', vectorEffect: 'non-scaling-stroke' } as const;
     // Keyed by the row: another row is a new marker, drawn at once; new data under the same row moves it with the lines.
     marker.push({ key: `rule-${chosen}`, d: `M${at} 0V${box}`, stroke: 'text/20', strokeWidth: 1, fill: 'none', vectorEffect: 'non-scaling-stroke' });
@@ -243,7 +257,7 @@ export function LineChart<Row extends ChartRecord<Row>>({
   const lastPoints = laid ? drawnColumns.flatMap(column => {
     const last = column.reduce((found, value, index) => (Number.isFinite(value) ? index : found), -1);
     if (last < 0) return [];
-    const across = data.length > 1 ? edge + (last / (data.length - 1)) * (laid.width - edge * 2) : laid.width / 2;
+    const across = data.length > 1 ? edge + (places ? places[last] : last / (data.length - 1)) * (laid.width - edge * 2) : laid.width / 2;
     const y = height(column[last]);
     return [{ start: across - endClear, end: across + endClear, top: y - endClear, bottom: y + endClear }];
   }) : [];
@@ -287,7 +301,7 @@ export function LineChart<Row extends ChartRecord<Row>>({
     if ((phase === 'down' && event.pointer === 'touch') || (phase === 'move' && !scrubbing(event))) return undefined;
     const index = phase === 'increment' ? Math.min(data.length - 1, rest + 1)
       : phase === 'decrement' ? Math.max(0, rest - 1)
-        : indexAt(event.x, event.width, data.length, 'points', edge);
+        : places ? nearestAt(event.x, event.width, places, edge) : indexAt(event.x, event.width, data.length, 'points', edge);
     return index === chosen ? undefined : onSelect(keys[index]);
   } : undefined;
 
@@ -339,7 +353,7 @@ export function LineChart<Row extends ChartRecord<Row>>({
         <view className={r.labels.base}>
           {/* The plot is narrower than the chart by the scale and the end figure; the same text, unseen, insets these labels as much. */}
           {scale && <view className={cx(r.scale.base, r.ghost.base)}>{scale.map((tick, index) => <text key={String(index)} className={r.scaleLabel.base}>{tick.text}</text>)}</view>}
-          {labels === 'fit' ? <Ticks texts={data.map(row => textOf(row, x))} layout="points" inset={edge}>{ends(r.labels.cover)}</Ticks> : ends(r.labels.ends)}
+          {labels === 'fit' ? <Ticks texts={data.map(row => textOf(row, x))} layout="points" inset={edge} places={places}>{ends(r.labels.cover)}</Ticks> : ends(r.labels.ends)}
           {latest && <view className={cx(r.end.base, r.ghost.base)}><text className={r.endLabel.base}>{latest.text}</text></view>}
         </view>
       ) : undefined}

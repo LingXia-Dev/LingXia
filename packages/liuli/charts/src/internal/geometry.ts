@@ -61,13 +61,13 @@ export function scaleY(value: number, [low, high]: readonly [number, number]): n
   return high > low ? ((high - value) / (high - low)) * box : box / 2;
 }
 
-/** Each run of consecutive finite values as points spread edge to edge; a gap ends a run. */
-export function runs(values: readonly number[], range: readonly [number, number]): Point[][] {
+/** Each run of consecutive finite values as points spread edge to edge, or at `places` (0 to 1) when given; a gap ends a run. */
+export function runs(values: readonly number[], range: readonly [number, number], places?: readonly number[]): Point[][] {
   const step = values.length > 1 ? box / (values.length - 1) : 0;
   const out: Point[][] = [];
   let run: Point[] = [];
   values.forEach((value, index) => {
-    if (Number.isFinite(value)) run.push([values.length > 1 ? index * step : box / 2, scaleY(value, range)]);
+    if (Number.isFinite(value)) run.push([places ? places[index] * box : values.length > 1 ? index * step : box / 2, scaleY(value, range)]);
     else if (run.length) { out.push(run); run = []; }
   });
   if (run.length) out.push(run);
@@ -218,6 +218,22 @@ export function fitTicks(count: number, pitch: number, need: number, anchor: 'st
   for (let each = least; each <= Math.min(least * 2 - 1, count - 1); each++) if ((count - 1) % each === 0) { step = each; break; }
   const out: number[] = [];
   for (let index = from % step; index < count; index += step) out.push(index);
+  return out;
+}
+
+/** The row whose place (0 to 1) is nearest a pointer `x` across `width`, inside `inset`. */
+export function nearestAt(x: number, width: number, places: readonly number[], inset = 0): number {
+  const at = (x - inset) / Math.max(1, width - inset * 2);
+  return places.reduce((best, place, index) => (Math.abs(place - at) < Math.abs(places[best] - at) ? index : best), 0);
+}
+
+/** Which labels at `places` (0 to 1 across `span` points) to write when a label needs `need`: from the end back, each clear of the last kept. */
+export function fitPlaced(places: readonly number[], span: number, need: number): number[] {
+  const out: number[] = [];
+  for (let index = places.length - 1; index >= 0; index--) {
+    if (out.length && (places[out[0]] - places[index]) * span < need) continue;
+    out.unshift(index);
+  }
   return out;
 }
 

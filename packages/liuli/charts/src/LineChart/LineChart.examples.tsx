@@ -115,6 +115,30 @@ export function Band() {
   );
 }
 
+const checkups = [
+  { date: '3 Jan', day: 2, kg: 74.8 }, { date: '17 Jan', day: 16, kg: 74.1 }, { date: '2 Mar', day: 60, kg: 72.9 },
+  { date: '9 Mar', day: 67, kg: 72.6 }, { date: '20 May', day: 139, kg: 71.4 }, { date: '1 Sep', day: 243, kg: 70.2 },
+];
+
+/** Readings taken on uneven days: `xValue` places each by its day, so a long gap between visits shows as one. */
+export function Spaced() {
+  const visit = useLocal<string | null>('visit', null);
+  return (
+    <LineChart
+      rows={checkups}
+      x="date"
+      xValue="day"
+      y="kg"
+      label="Weight at each check-up this year"
+      title="Weight"
+      description="At each check-up"
+      formatValue={kilos}
+      bind={visit}
+      data-testid="spaced"
+    />
+  );
+}
+
 /** Steps suit a count that changes at set moments and holds between them: seats on a plan, a price, a limit. */
 export function Steps() {
   return <LineChart rows={seats} x="month" y="seats" label="Seats on the plan by month" title="Seats" description="This year" curve="step" hasArea summarize={summarize} data-testid="seats" />;

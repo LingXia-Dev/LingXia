@@ -556,3 +556,13 @@ test('Band: the range between two fields is one shade behind the line, the scale
   assert.ok(!paths.some(path => path.key === 'mean-area'), 'the line itself is not filled');
   assert.match(textOf(screen.getByTestId('forecast')), /Wed: Mean 13\.8°, Range 9\.0°–19\.0°/);
 });
+
+test('Spaced: rows sit at their xValue, so an uneven gap shows; a scrub chooses the nearest reading', async () => {
+  const screen = laidOut(await renderExample('LineChart/LineChart', 'Spaced'));
+  const line = screen.queryAll(node => node.tag === 'vector').flatMap(node => JSON.parse(node.props.vectorSource).paths).find(path => path.key === 'kg-line');
+  const xs = [...line.d.matchAll(/[ML]([\d.]+) /g)].map(match => Number(match[1]));
+  const at = day => ((day - 2) / (243 - 2)) * 100;
+  assert.deepEqual(xs.map(value => Math.round(value)), [2, 16, 60, 67, 139, 243].map(day => Math.round(at(day))));
+  screen.pointer(screen.getByTestId('spaced-plot'), { phase: 'up', x: 230, y: 40, width: 300, height: 160 });
+  assert.match(textOf(screen.getByTestId('spaced')), /20 May/, 'about three quarters across is May, not the fifth of six steps');
+});
