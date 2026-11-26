@@ -716,7 +716,7 @@ fn motion_step(value: Option<&Value>, family: &str) -> bool {
             [slot, times, plus] => {
                 slot.as_u64()
                     .and_then(|s| SCALES.get(s as usize))
-                    .is_some_and(|(_, listed)| *listed == family)
+                    .is_some_and(|(_, listed, _)| *listed == family)
                     && times.as_f64() == Some(1.0)
                     && plus.as_f64() == Some(0.0)
             }

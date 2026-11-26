@@ -229,6 +229,11 @@ ${pairs}
 
 /// (foreground, ground, the ground's alpha percent, what it is laid over, minimum WCAG contrast).
 pub const COMPOSITE_CONTRAST: &[(Role, Role, u8, Role, f32)] = &[${composites && `\n${composites}\n`}];
+
+/// (keyed scale, step): the steps each keyed scale of a pack must have, and the only ones it may have.
+pub const SCALE_STEPS: &[(&str, &str)] = &[
+${['type.scale', 'type.leading', 'shape.radius'].flatMap(group => schema.scales.filter(slot => slot.pack.startsWith(`${group}.`)).map(slot => `    (${JSON.stringify(group)}, ${JSON.stringify(slot.pack.slice(group.length + 1))}),`)).join('\n')}
+];
 `;
 }
 
@@ -332,9 +337,10 @@ pub struct FieldAdmission {
 }
 
 /// Indexed by field id.
-/// Scale slots by wire index, with their family; append-only like field ids.
-pub const SCALES: &[(&str, &str)] = &[
-${schema.scales.map(slot => `    (${JSON.stringify(slot.name)}, ${JSON.stringify(slot.family)}),`).join('\n')}
+/// Scale slots by wire index, with their family and their JSON pointer into a serialized pack
+/// (empty for none); append-only like field ids.
+pub const SCALES: &[(&str, &str, &str)] = &[
+${schema.scales.map(slot => `    (${JSON.stringify(slot.name)}, ${JSON.stringify(slot.family)}, ${JSON.stringify(slot.pack ? `/${slot.pack.replaceAll('.', '/')}` : '')}),`).join('\n')}
 ];
 
 /// What a slider part record may carry: the wire fields of the \`part\` style group.

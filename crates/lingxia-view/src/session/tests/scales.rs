@@ -5,7 +5,7 @@ use crate::protocol::scales::Scales;
 use serde_json::{Value, json};
 
 fn slot(name: &str) -> usize {
-    SCALES.iter().position(|(slot, _)| *slot == name).unwrap()
+    SCALES.iter().position(|(slot, _, _)| *slot == name).unwrap()
 }
 
 fn env(scales: Option<Value>, text_scale: f64) -> Value {

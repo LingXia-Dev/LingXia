@@ -34,21 +34,6 @@ static BUILTIN: LazyLock<Arc<Scales>> = LazyLock::new(|| {
     Arc::new(Scales::from_pack(&lingxia_theme::default_pack(), 0).expect("default pack scales"))
 });
 
-/// Where a slot's value sits in a serialized `lingxia_theme::Pack`.
-fn pack_path(name: &str, family: &str) -> Option<String> {
-    let step = name.split_once('.').map(|(_, step)| step);
-    Some(match (family, step) {
-        ("type", Some(step)) => format!("/type/scale/{step}"),
-        ("leading", Some(step)) => format!("/type/leading/{step}"),
-        ("radius", Some(step)) => format!("/shape/radius/{step}"),
-        ("space", _) => "/space/unit".into(),
-        ("duration", Some(step)) => format!("/motion/{step}"),
-        ("ease", Some("standard")) => "/motion/easing".into(),
-        ("ease", Some(step)) => format!("/motion/{step}"),
-        _ => return None,
-    })
-}
-
 /// A CSS timing function as cubic-bezier control points.
 fn easing(css: &str) -> Option<[f64; 4]> {
     Some(match css {
@@ -81,8 +66,10 @@ impl Scales {
             .map_err(|e| e.to_string())?;
         let slots = SCALES
             .iter()
-            .map(|(name, family)| {
-                let value = pack_path(name, family).and_then(|path| pack.pointer(&path));
+            .map(|(name, family, pointer)| {
+                let value = (!pointer.is_empty())
+                    .then(|| pack.pointer(pointer))
+                    .flatten();
                 let missing = || format!("UI_ENVIRONMENT: theme pack has no {name}");
                 Ok(match (*family, value) {
                     ("em", _) => Slot::None,
@@ -127,7 +114,7 @@ impl Scales {
         let slots = SCALES
             .iter()
             .zip(values)
-            .map(|((_, family), value)| match (*family, value) {
+            .map(|((_, family, _), value)| match (*family, value) {
                 ("em", Value::Null) => Some(Slot::None),
                 ("ease", Value::Array(points)) if points.len() == 4 => {
                     let points: Vec<f64> = points
@@ -155,7 +142,7 @@ impl Scales {
 
     /// The value of the slot named `name` (`radius.sm`).
     pub fn named(&self, name: &str) -> Option<f64> {
-        self.number(SCALES.iter().position(|(slot, _)| *slot == name)?)
+        self.number(SCALES.iter().position(|(slot, ..)| *slot == name)?)
     }
 
     fn number(&self, slot: usize) -> Option<f64> {

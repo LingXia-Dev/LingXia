@@ -94,7 +94,7 @@ fn a_page_title_is_text_not_a_colour() {
 fn step(name: &str, times: f64, plus: f64) -> Value {
     let slot = crate::protocol::SCALES
         .iter()
-        .position(|(slot, _)| *slot == name)
+        .position(|(slot, ..)| *slot == name)
         .unwrap();
     json!([slot, times, plus])
 }
@@ -275,7 +275,7 @@ fn motion_steps_in_a_transition_resolve_and_follow_new_scales() {
     let mut pushed = scales::Scales::builtin().push();
     let base = crate::protocol::SCALES
         .iter()
-        .position(|(slot, _)| *slot == "duration.base")
+        .position(|(slot, _, _)| *slot == "duration.base")
         .unwrap();
     pushed["values"][base] = json!(400);
     let rescaled = scales::rescale(&records, &scales::Scales::decode(&pushed).unwrap())

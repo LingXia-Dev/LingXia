@@ -11,7 +11,7 @@ use std::sync::{LazyLock, Mutex};
 use serde::{Deserialize, Serialize};
 
 pub use color::{Oklch, Rgba, contrast, distance, ensure_contrast, over};
-pub use generated::{COMPOSITE_CONTRAST, CONTRAST, ROLE_COUNT, Role, Tier};
+pub use generated::{COMPOSITE_CONTRAST, CONTRAST, ROLE_COUNT, Role, SCALE_STEPS, Tier};
 
 /// The pack shipped when a host names none.
 pub fn default_pack() -> Pack {
@@ -913,9 +913,24 @@ pub fn check(pack: &Pack) -> Vec<Problem> {
         ("type.leading", &pack.typography.leading),
         ("shape.radius", &pack.shape.radius),
     ] {
+        let steps: Vec<&str> = SCALE_STEPS
+            .iter()
+            .filter(|(name, _)| *name == group)
+            .map(|(_, step)| *step)
+            .collect();
         for (key, value) in values {
-            if !(value.is_finite() && *value >= 0.0 && *value <= 16384.0) {
+            if !steps.contains(&key.as_str()) {
+                problem(
+                    "pack",
+                    format!("{group}.{key} is not a step; use {}", steps.join(", ")),
+                );
+            } else if !(value.is_finite() && *value >= 0.0 && *value <= 16384.0) {
                 problem("pack", format!("{group}.{key} must be 0-16384"));
+            }
+        }
+        for step in &steps {
+            if !values.contains_key(*step) {
+                problem("pack", format!("{group} has no {step}"));
             }
         }
     }

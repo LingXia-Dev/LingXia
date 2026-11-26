@@ -492,3 +492,30 @@ pub const CONTRAST: &[(Role, Role, f32)] = &[
 
 /// (foreground, ground, the ground's alpha percent, what it is laid over, minimum WCAG contrast).
 pub const COMPOSITE_CONTRAST: &[(Role, Role, u8, Role, f32)] = &[];
+
+/// (keyed scale, step): the steps each keyed scale of a pack must have, and the only ones it may have.
+pub const SCALE_STEPS: &[(&str, &str)] = &[
+    ("type.scale", "xs"),
+    ("type.scale", "sm"),
+    ("type.scale", "base"),
+    ("type.scale", "lg"),
+    ("type.scale", "xl"),
+    ("type.scale", "2xl"),
+    ("type.scale", "3xl"),
+    ("type.scale", "4xl"),
+    ("type.leading", "xs"),
+    ("type.leading", "sm"),
+    ("type.leading", "base"),
+    ("type.leading", "lg"),
+    ("type.leading", "xl"),
+    ("type.leading", "2xl"),
+    ("type.leading", "3xl"),
+    ("type.leading", "4xl"),
+    ("shape.radius", "sm"),
+    ("shape.radius", "DEFAULT"),
+    ("shape.radius", "md"),
+    ("shape.radius", "lg"),
+    ("shape.radius", "xl"),
+    ("shape.radius", "2xl"),
+    ("shape.radius", "3xl"),
+];

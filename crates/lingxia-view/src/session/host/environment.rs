@@ -395,10 +395,13 @@ fn theme(
 /// light, dark, high-contrast light, high-contrast dark.
 fn palettes(pack: &lingxia_theme::Pack, revision: u64) -> Result<[serde_json::Value; 4], String> {
     let pack = lingxia_theme::complete(pack.clone());
-    if let Some(problem) = lingxia_theme::check(&pack).first() {
+    let problems = lingxia_theme::check(&pack);
+    if !problems.is_empty() {
+        let list: Vec<String> = problems.iter().map(ToString::to_string).collect();
         return Err(format!(
-            "UI_ENVIRONMENT: theme pack {}: {problem}",
-            pack.name
+            "UI_ENVIRONMENT: theme pack {}: {}",
+            pack.name,
+            list.join("; ")
         ));
     }
     let resolve = |appearance, high_contrast| {

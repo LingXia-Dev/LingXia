@@ -1935,3 +1935,22 @@ fn a_fill_lost_on_its_surface_is_advice() {
         "{advice:?}"
     );
 }
+
+#[test]
+fn check_names_every_unknown_and_missing_scale_step() {
+    let mut pack = default_pack();
+    pack.shape.radius.insert("full".into(), 9999.0);
+    pack.typography.scale.remove("xs");
+    pack.typography.leading.insert("huge".into(), 60.0);
+    let problems: Vec<String> = check(&pack).iter().map(ToString::to_string).collect();
+    for expected in [
+        "pack: shape.radius.full is not a step; use sm, DEFAULT, md, lg, xl, 2xl, 3xl",
+        "pack: type.scale has no xs",
+        "pack: type.leading.huge is not a step; use xs, sm, base, lg, xl, 2xl, 3xl, 4xl",
+    ] {
+        assert!(
+            problems.contains(&expected.to_string()),
+            "{expected}: {problems:?}"
+        );
+    }
+}
