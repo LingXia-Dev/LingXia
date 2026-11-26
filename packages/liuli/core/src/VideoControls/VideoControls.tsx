@@ -1,4 +1,4 @@
-import { cx, Fragment, useLocal, useView, type Video, type VectorPath } from '@lingxia/view';
+import { cx, errorText, Fragment, useLocal, useView, type Video, type VectorPath } from '@lingxia/view';
 import { liuliText } from '../i18n/text';
 import { dataOf } from '../internal/data';
 import { glyphGrowth, useTextGrowth } from '../internal/Glyph';
@@ -223,7 +223,7 @@ function Controls({ player, labels: say, variant, isFull = false, className, tes
       <view className={cx(r.root.bar, className)} data-testid={testId} {...data}>
         {error && (
           <view data-testid={id('error')} role="alert" className={r.barRow.error}>
-            <text className={r.barRow.errorText}>{error.message}</text>
+            <text className={r.barRow.errorText}>{errorText(error, say.failed)}</text>
             {error.recoverable && <button data-testid={id('retry')} onClick={() => player.retry()}><text>{say.retry}</text></button>}
           </view>
         )}
