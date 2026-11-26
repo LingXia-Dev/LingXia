@@ -1,5 +1,5 @@
+use crate::LxApp;
 use crate::lxapp::Channel;
-use crate::{LxApp, LxAppError};
 use lingxia_platform::traits::app_runtime::LxAppOpenMode;
 use lingxia_update::default_channel;
 use serde::{Deserialize, Serialize, Serializer};
@@ -210,11 +210,11 @@ impl LxAppStartupOptions {
 
     /// Resolves an author-facing page selector into the internal URL consumed
     /// by native renderers. Query stays separate until this boundary.
-    pub fn resolved_url(&self, app: &LxApp) -> Result<String, LxAppError> {
+    pub fn resolved_url(&self, app: &LxApp) -> Result<String, lingxia_error::Error> {
         let path = match self.page.as_deref() {
             Some(page) => app
                 .find_page_path_by_name(page)
-                .ok_or_else(|| LxAppError::ResourceNotFound(format!("page name: {page}")))?,
+                .ok_or_else(|| lingxia_error::Error::not_found(format!("page name: {page}")))?,
             None if self.path.is_empty() => app.initial_route(),
             None => self.path.clone(),
         };

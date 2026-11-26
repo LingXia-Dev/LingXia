@@ -13,7 +13,6 @@ use crate::url_match::normalize_url;
 use lingxia_platform::traits::app_runtime::AppRuntime;
 use lingxia_service::file::{FileDialogFilter, PickFileRequest};
 use lxapp::LxApp;
-use lxapp::LxAppError;
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -130,7 +129,7 @@ fn channel() -> &'static broadcast::Sender<BookmarksSnapshot> {
     CHANNEL.get_or_init(|| broadcast::channel(32).0)
 }
 
-fn load(app_data_dir: &Path) -> Result<BookmarksSnapshot, LxAppError> {
+fn load(app_data_dir: &Path) -> Result<BookmarksSnapshot, lingxia_error::Error> {
     let path = bookmarks_path(app_data_dir);
     if !path.is_file() {
         return Ok(BookmarksSnapshot {
@@ -139,7 +138,7 @@ fn load(app_data_dir: &Path) -> Result<BookmarksSnapshot, LxAppError> {
         });
     }
     let content = std::fs::read_to_string(&path)
-        .map_err(|e| LxAppError::IoError(format!("read {}: {e}", path.display())))?;
+        .map_err(|e| lingxia_error::Error::io(format!("read {}: {e}", path.display())))?;
     match serde_json::from_str(&content) {
         Ok(snapshot) => Ok(snapshot),
         Err(e) => {
@@ -158,44 +157,44 @@ fn load(app_data_dir: &Path) -> Result<BookmarksSnapshot, LxAppError> {
     }
 }
 
-fn save(app_data_dir: &Path, snapshot: &BookmarksSnapshot) -> Result<(), LxAppError> {
+fn save(app_data_dir: &Path, snapshot: &BookmarksSnapshot) -> Result<(), lingxia_error::Error> {
     let path = bookmarks_path(app_data_dir);
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent)
-            .map_err(|e| LxAppError::IoError(format!("mkdir {}: {e}", parent.display())))?;
+            .map_err(|e| lingxia_error::Error::io(format!("mkdir {}: {e}", parent.display())))?;
     }
     let json = serde_json::to_string_pretty(snapshot)
-        .map_err(|e| LxAppError::Bridge(format!("JSON Processing Error: {e}")))?;
+        .map_err(|e| lingxia_error::Error::internal(format!("JSON Processing Error: {e}")))?;
     let tmp = path.with_extension("json.tmp");
     std::fs::write(&tmp, json)
-        .map_err(|e| LxAppError::IoError(format!("write {}: {e}", tmp.display())))?;
+        .map_err(|e| lingxia_error::Error::io(format!("write {}: {e}", tmp.display())))?;
     replace_saved_file(&tmp, &path)?;
     Ok(())
 }
 
 #[cfg(not(windows))]
-fn replace_saved_file(tmp: &Path, path: &Path) -> Result<(), LxAppError> {
+fn replace_saved_file(tmp: &Path, path: &Path) -> Result<(), lingxia_error::Error> {
     std::fs::rename(tmp, path)
-        .map_err(|e| LxAppError::IoError(format!("rename {}: {e}", path.display())))
+        .map_err(|e| lingxia_error::Error::io(format!("rename {}: {e}", path.display())))
 }
 
 #[cfg(windows)]
-fn replace_saved_file(tmp: &Path, path: &Path) -> Result<(), LxAppError> {
+fn replace_saved_file(tmp: &Path, path: &Path) -> Result<(), lingxia_error::Error> {
     let backup = path.with_extension("json.bak");
     if backup.exists() {
         std::fs::remove_file(&backup)
-            .map_err(|e| LxAppError::IoError(format!("remove {}: {e}", backup.display())))?;
+            .map_err(|e| lingxia_error::Error::io(format!("remove {}: {e}", backup.display())))?;
     }
     let had_previous = path.exists();
     if had_previous {
         std::fs::rename(path, &backup)
-            .map_err(|e| LxAppError::IoError(format!("backup {}: {e}", path.display())))?;
+            .map_err(|e| lingxia_error::Error::io(format!("backup {}: {e}", path.display())))?;
     }
     if let Err(error) = std::fs::rename(tmp, path) {
         if had_previous {
             let _ = std::fs::rename(&backup, path);
         }
-        return Err(LxAppError::IoError(format!(
+        return Err(lingxia_error::Error::io(format!(
             "replace {}: {error}",
             path.display()
         )));
@@ -220,8 +219,8 @@ pub fn set_change_listener(listener: Box<dyn Fn() + Send + Sync>) {
 /// Load → mutate → save → broadcast, under the store lock.
 fn mutate<T>(
     app_data_dir: &Path,
-    op: impl FnOnce(&mut BookmarksSnapshot) -> Result<T, LxAppError>,
-) -> Result<T, LxAppError> {
+    op: impl FnOnce(&mut BookmarksSnapshot) -> Result<T, lingxia_error::Error>,
+) -> Result<T, lingxia_error::Error> {
     let out = {
         let _guard = store_lock().lock().unwrap_or_else(|e| e.into_inner());
         let mut snapshot = load(app_data_dir)?;
@@ -252,16 +251,16 @@ fn add_entry(
     url: &str,
     title: Option<&str>,
     group_id: Option<&str>,
-) -> Result<(BookmarkEntry, bool), LxAppError> {
+) -> Result<(BookmarkEntry, bool), lingxia_error::Error> {
     let url = url.trim();
     if url.is_empty() {
-        return Err(LxAppError::InvalidParameter(
-            "bookmark url must not be empty".to_string(),
+        return Err(lingxia_error::Error::invalid_arg(
+            "bookmark url must not be empty",
         ));
     }
     if !crate::address_bar::is_valid_explicit_http_url(url) {
-        return Err(LxAppError::InvalidParameter(
-            "bookmark url must be an http or https URL with a host".to_string(),
+        return Err(lingxia_error::Error::invalid_arg(
+            "bookmark url must be an http or https URL with a host",
         ));
     }
     let normalized = normalize_url(url);
@@ -271,7 +270,7 @@ fn add_entry(
     if let Some(gid) = group_id
         && !snapshot.groups.iter().any(|g| g.id == gid)
     {
-        return Err(LxAppError::ResourceNotFound(format!(
+        return Err(lingxia_error::Error::not_found(format!(
             "bookmark group not found: {gid}"
         )));
     }
@@ -299,13 +298,13 @@ fn rename_entry_op(
     snapshot: &mut BookmarksSnapshot,
     id: &str,
     title: &str,
-) -> Result<BookmarkEntry, LxAppError> {
+) -> Result<BookmarkEntry, lingxia_error::Error> {
     let title = validated_name(title, "bookmark title")?;
     let entry = snapshot
         .entries
         .iter_mut()
         .find(|e| e.id == id)
-        .ok_or_else(|| LxAppError::ResourceNotFound(format!("bookmark not found: {id}")))?;
+        .ok_or_else(|| lingxia_error::Error::not_found(format!("bookmark not found: {id}")))?;
     entry.title = title;
     Ok(entry.clone())
 }
@@ -314,11 +313,11 @@ fn move_entry_op(
     snapshot: &mut BookmarksSnapshot,
     id: &str,
     group_id: Option<String>,
-) -> Result<BookmarkEntry, LxAppError> {
+) -> Result<BookmarkEntry, lingxia_error::Error> {
     if let Some(gid) = group_id.as_deref()
         && !snapshot.groups.iter().any(|g| g.id == gid)
     {
-        return Err(LxAppError::ResourceNotFound(format!(
+        return Err(lingxia_error::Error::not_found(format!(
             "bookmark group not found: {gid}"
         )));
     }
@@ -326,7 +325,7 @@ fn move_entry_op(
         .entries
         .iter_mut()
         .find(|e| e.id == id)
-        .ok_or_else(|| LxAppError::ResourceNotFound(format!("bookmark not found: {id}")))?;
+        .ok_or_else(|| lingxia_error::Error::not_found(format!("bookmark not found: {id}")))?;
     entry.group_id = group_id;
     Ok(entry.clone())
 }
@@ -335,14 +334,14 @@ fn rename_group_op(
     snapshot: &mut BookmarksSnapshot,
     id: &str,
     name: &str,
-) -> Result<BookmarkGroup, LxAppError> {
+) -> Result<BookmarkGroup, lingxia_error::Error> {
     let name = validated_name(name, "group name")?;
     if snapshot
         .groups
         .iter()
         .any(|group| group.name == name && group.id != id)
     {
-        return Err(LxAppError::InvalidParameter(format!(
+        return Err(lingxia_error::Error::invalid_arg(format!(
             "group already exists: {name}"
         )));
     }
@@ -350,16 +349,18 @@ fn rename_group_op(
         .groups
         .iter_mut()
         .find(|g| g.id == id)
-        .ok_or_else(|| LxAppError::ResourceNotFound(format!("bookmark group not found: {id}")))?;
+        .ok_or_else(|| {
+            lingxia_error::Error::not_found(format!("bookmark group not found: {id}"))
+        })?;
     group.name = name;
     Ok(group.clone())
 }
 
-fn delete_group_op(snapshot: &mut BookmarksSnapshot, id: &str) -> Result<(), LxAppError> {
+fn delete_group_op(snapshot: &mut BookmarksSnapshot, id: &str) -> Result<(), lingxia_error::Error> {
     let before = snapshot.groups.len();
     snapshot.groups.retain(|g| g.id != id);
     if snapshot.groups.len() == before {
-        return Err(LxAppError::ResourceNotFound(format!(
+        return Err(lingxia_error::Error::not_found(format!(
             "bookmark group not found: {id}"
         )));
     }
@@ -471,7 +472,7 @@ pub fn store_favicon(url: &str, bytes: &[u8]) -> bool {
 /// Pin `url` to the sidebar grid ("Pin to Sidebar" on a tab). Bookmarks the
 /// page first when needed, keeping the pinned ⊆ bookmarked invariant without
 /// forcing a two-step flow on the user.
-fn set_bookmark_pinned(id: &str, pinned: bool) -> Result<(), LxAppError> {
+fn set_bookmark_pinned(id: &str, pinned: bool) -> Result<(), lingxia_error::Error> {
     lingxia_shell::set_pinned(
         lingxia_shell::ShellPinTarget::Bookmark {
             key: id.to_string(),
@@ -845,10 +846,10 @@ fn unique_export_path(directory: &Path) -> PathBuf {
     directory.join(format!("bookmarks-{}.html", now_ms()))
 }
 
-fn validated_name(name: &str, what: &str) -> Result<String, LxAppError> {
+fn validated_name(name: &str, what: &str) -> Result<String, lingxia_error::Error> {
     let name = name.trim();
     if name.is_empty() {
-        return Err(LxAppError::InvalidParameter(format!(
+        return Err(lingxia_error::Error::invalid_arg(format!(
             "{what} must not be empty"
         )));
     }
@@ -871,7 +872,7 @@ fn reorder_entries(
     snapshot: &mut BookmarksSnapshot,
     group_id: Option<&str>,
     ordered_ids: &[String],
-) -> Result<(), LxAppError> {
+) -> Result<(), lingxia_error::Error> {
     // Reorder only the entries in the given group scope; entries in other
     // scopes keep their relative positions.
     let in_scope = |e: &BookmarkEntry| e.group_id.as_deref() == group_id;
@@ -882,8 +883,8 @@ fn reorder_entries(
         .map(|e| e.id.as_str())
         .collect();
     if !is_id_permutation(&scope_ids, ordered_ids) {
-        return Err(LxAppError::InvalidParameter(
-            "orderedIds must be a permutation of the group's bookmarks".to_string(),
+        return Err(lingxia_error::Error::invalid_arg(
+            "orderedIds must be a permutation of the group's bookmarks",
         ));
     }
     // Queue per id so duplicated ids in a damaged store still pop one entry each.
@@ -932,7 +933,7 @@ fn remove_bookmark(app: Arc<LxApp>, input: IdInput) -> HostResult<()> {
         let before = snapshot.entries.len();
         snapshot.entries.retain(|e| e.id != input.id);
         if snapshot.entries.len() == before {
-            return Err(LxAppError::ResourceNotFound(format!(
+            return Err(lingxia_error::Error::not_found(format!(
                 "bookmark not found: {}",
                 input.id
             )));
@@ -1022,7 +1023,7 @@ fn set_pinned(app: Arc<LxApp>, input: SetPinnedInput) -> HostResult<PinStatus> {
             .any(|entry| entry.id == input.id)
     };
     if !exists {
-        return Err(LxAppError::ResourceNotFound(format!(
+        return Err(lingxia_error::Error::not_found(format!(
             "bookmark not found: {}",
             input.id
         )));
@@ -1038,7 +1039,7 @@ fn create_group(app: Arc<LxApp>, input: GroupNameInput) -> HostResult<BookmarkGr
     let name = validated_name(&input.name, "group name")?;
     mutate(&app.app_data_dir(), |snapshot| {
         if snapshot.groups.iter().any(|g| g.name == name) {
-            return Err(LxAppError::InvalidParameter(format!(
+            return Err(lingxia_error::Error::invalid_arg(format!(
                 "group already exists: {name}"
             )));
         }
@@ -1070,8 +1071,8 @@ fn reorder_groups(app: Arc<LxApp>, input: OrderedIdsInput) -> HostResult<()> {
     mutate(&app.app_data_dir(), |snapshot| {
         let ids: Vec<&str> = snapshot.groups.iter().map(|g| g.id.as_str()).collect();
         if !is_id_permutation(&ids, &input.ordered_ids) {
-            return Err(LxAppError::InvalidParameter(
-                "orderedIds must be a permutation of all group ids".to_string(),
+            return Err(lingxia_error::Error::invalid_arg(
+                "orderedIds must be a permutation of all group ids",
             ));
         }
         snapshot.groups.sort_by_key(|g| {
@@ -1128,26 +1129,26 @@ async fn import_html_bookmarks(
         return Ok(None);
     }
     let path = selected.paths().next().ok_or_else(|| {
-        LxAppError::InvalidParameter("bookmark import did not return a file".to_string())
+        lingxia_error::Error::invalid_arg("bookmark import did not return a file")
     })?;
     let metadata = std::fs::metadata(path)
-        .map_err(|error| LxAppError::IoError(format!("read {path}: {error}")))?;
+        .map_err(|error| lingxia_error::Error::io(format!("read {path}: {error}")))?;
     if metadata.len() > MAX_IMPORT_FILE_BYTES {
-        return Err(LxAppError::InvalidParameter(format!(
+        return Err(lingxia_error::Error::invalid_arg(format!(
             "bookmark file exceeds the {} MB limit",
             MAX_IMPORT_FILE_BYTES / 1024 / 1024
         )));
     }
     let html = std::fs::read_to_string(path)
-        .map_err(|error| LxAppError::IoError(format!("read {path}: {error}")))?;
+        .map_err(|error| lingxia_error::Error::io(format!("read {path}: {error}")))?;
     if !html
         .get(..html.len().min(1024))
         .unwrap_or(&html)
         .to_ascii_lowercase()
         .contains("netscape-bookmark-file-1")
     {
-        return Err(LxAppError::InvalidParameter(
-            "select a Netscape-format bookmark HTML file".to_string(),
+        return Err(lingxia_error::Error::invalid_arg(
+            "select a Netscape-format bookmark HTML file",
         ));
     }
     let bookmarks = parse_netscape_html(&html);
@@ -1166,12 +1167,13 @@ fn export_html_bookmarks(app: Arc<LxApp>) -> HostResult<ExportResult> {
         load(&app.app_data_dir())?
     };
     let directory = lingxia_service::downloads::dir(&app.app_data_dir());
-    std::fs::create_dir_all(&directory)
-        .map_err(|error| LxAppError::IoError(format!("mkdir {}: {error}", directory.display())))?;
+    std::fs::create_dir_all(&directory).map_err(|error| {
+        lingxia_error::Error::io(format!("mkdir {}: {error}", directory.display()))
+    })?;
     let path = unique_export_path(&directory);
     let (html, count) = export_netscape_html(&snapshot, now_ms());
     std::fs::write(&path, html)
-        .map_err(|error| LxAppError::IoError(format!("write {}: {error}", path.display())))?;
+        .map_err(|error| lingxia_error::Error::io(format!("write {}: {error}", path.display())))?;
     Ok(ExportResult {
         path: path.to_string_lossy().to_string(),
         file_name: path
@@ -1326,7 +1328,7 @@ mod tests {
             None,
             &["a".to_string(), "b".to_string(), "b".to_string()],
         );
-        assert!(matches!(result, Err(LxAppError::InvalidParameter(_))));
+        assert!(matches!(result, Err(error) if error.is(lingxia_error::code::INVALID_ARG)));
         // A matching multiset still reorders cleanly.
         reorder_entries(
             &mut snapshot,
@@ -1354,7 +1356,7 @@ mod tests {
             entries: Vec::new(),
         };
         let error = rename_group_op(&mut snapshot, "g2", "Work").unwrap_err();
-        assert!(matches!(error, LxAppError::InvalidParameter(_)));
+        assert!(error.is(lingxia_error::code::INVALID_ARG));
         assert_eq!(snapshot.groups[1].name, "Personal");
     }
 

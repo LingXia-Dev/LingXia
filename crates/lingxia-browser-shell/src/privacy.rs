@@ -8,7 +8,6 @@
 use crate::host::HostResult;
 use lingxia_webview::WebViewError;
 use lxapp::LxApp;
-use lxapp::LxAppError;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -101,12 +100,12 @@ struct SiteDataContext {
     host: String,
 }
 
-fn map_webview_error(action: &str, err: WebViewError) -> LxAppError {
+fn map_webview_error(action: &str, err: WebViewError) -> lingxia_error::Error {
     match err {
         WebViewError::Unsupported(_) => {
-            LxAppError::UnsupportedOperation(format!("{action}: {err}"))
+            lingxia_error::Error::not_supported(format!("{action}: {err}"))
         }
-        _ => LxAppError::Runtime(format!("{action}: {err}")),
+        _ => lingxia_error::Error::internal(format!("{action}: {err}")),
     }
 }
 
@@ -148,18 +147,18 @@ async fn clear_browsing_data(
     input: ClearBrowsingDataInput,
 ) -> HostResult<ClearBrowsingDataResult> {
     if !input.history && !input.cache && !input.site_data {
-        return Err(LxAppError::InvalidParameter(
-            "select at least one browsing data category".to_string(),
+        return Err(lingxia_error::Error::invalid_arg(
+            "select at least one browsing data category",
         ));
     }
     // Clearing runs sequentially; when a later category fails, say which
     // earlier ones already succeeded so the error is not misread as "nothing
     // was cleared".
-    fn with_progress(cleared: &[&str], error: LxAppError) -> LxAppError {
+    fn with_progress(cleared: &[&str], error: lingxia_error::Error) -> lingxia_error::Error {
         if cleared.is_empty() {
             error
         } else {
-            LxAppError::Runtime(format!("{} cleared; {error}", cleared.join(", ")))
+            lingxia_error::Error::internal(format!("{} cleared; {error}", cleared.join(", ")))
         }
     }
     let since_ms = input.time_range.since_ms();
@@ -204,8 +203,8 @@ async fn clear_site_data(
     input: ClearSiteDataInput,
 ) -> HostResult<ClearSiteDataResult> {
     if !input.cache && !input.site_data {
-        return Err(LxAppError::InvalidParameter(
-            "select site data or cache to clear".to_string(),
+        return Err(lingxia_error::Error::invalid_arg(
+            "select site data or cache to clear",
         ));
     }
     let result = lingxia_browser::clear_site_data(
@@ -220,9 +219,9 @@ async fn clear_site_data(
         // Bad tab state is caller input, not a runtime fault — matches
         // getSiteDataContext's mapping for the same conditions.
         lingxia_browser::BrowserAutomationError::NativeInput(message) => {
-            LxAppError::InvalidParameter(message)
+            lingxia_error::Error::invalid_arg(message)
         }
-        other => LxAppError::Runtime(format!("privacy.clearSiteData: {other}")),
+        other => lingxia_error::Error::internal(format!("privacy.clearSiteData: {other}")),
     })?;
     // Best-effort: the data is already cleared, so a reload failure must not
     // fail the route (the page would report the clear itself as failed).
@@ -242,22 +241,22 @@ async fn get_site_data_context(
 ) -> HostResult<SiteDataContext> {
     let url = lingxia_browser::current_url(&input.tab_id)
         .await
-        .map_err(|error| LxAppError::Runtime(format!("privacy.getSiteDataContext: {error}")))?
-        .ok_or_else(|| {
-            LxAppError::InvalidParameter("current tab has no website URL".to_string())
-        })?;
-    let uri = url.parse::<http::Uri>().map_err(|_| {
-        LxAppError::InvalidParameter("current tab URL is not a website".to_string())
-    })?;
+        .map_err(|error| {
+            lingxia_error::Error::internal(format!("privacy.getSiteDataContext: {error}"))
+        })?
+        .ok_or_else(|| lingxia_error::Error::invalid_arg("current tab has no website URL"))?;
+    let uri = url
+        .parse::<http::Uri>()
+        .map_err(|_| lingxia_error::Error::invalid_arg("current tab URL is not a website"))?;
     if !matches!(uri.scheme_str(), Some("http" | "https")) {
-        return Err(LxAppError::InvalidParameter(
-            "current tab URL is not a website".to_string(),
+        return Err(lingxia_error::Error::invalid_arg(
+            "current tab URL is not a website",
         ));
     }
     let host = uri
         .host()
         .filter(|host| !host.is_empty())
-        .ok_or_else(|| LxAppError::InvalidParameter("current tab URL has no host".to_string()))?
+        .ok_or_else(|| lingxia_error::Error::invalid_arg("current tab URL has no host"))?
         .to_string();
     Ok(SiteDataContext { url, host })
 }
@@ -265,8 +264,9 @@ async fn get_site_data_context(
 fn clear_favicons(since_ms: Option<u64>) -> HostResult<()> {
     use lingxia_platform::traits::app_runtime::AppRuntime;
     if let Some(runtime) = lxapp::get_platform() {
-        lingxia_service::favicon::clear_since(&runtime.app_cache_dir(), since_ms)
-            .map_err(|error| LxAppError::Runtime(format!("clear favicon cache: {error}")))?;
+        lingxia_service::favicon::clear_since(&runtime.app_cache_dir(), since_ms).map_err(
+            |error| lingxia_error::Error::internal(format!("clear favicon cache: {error}")),
+        )?;
     }
     Ok(())
 }

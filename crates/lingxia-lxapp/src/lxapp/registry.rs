@@ -214,9 +214,8 @@ pub fn set_open_blocked_listener(listener: OpenBlockedListener) {
 }
 
 /// Tell host chrome a blocked open happened. Logs when nothing is registered.
-pub fn notify_open_blocked<E: Clone + Into<lingxia_error::Error>>(error: &E) {
-    let error: lingxia_error::Error = error.clone().into();
-    if let Some(status) = registry_unavailable_status(&error) {
+pub fn notify_open_blocked(error: &lingxia_error::Error) {
+    if let Some(status) = registry_unavailable_status(error) {
         let guard = open_blocked_listener()
             .lock()
             .unwrap_or_else(|e| e.into_inner());
@@ -492,7 +491,7 @@ pub(crate) async fn fetch_records(
         provider.fetch_registry_info(LxAppRegistryRequest::new(appid, channel)),
     )
     .await
-    .map_err(|err| crate::provider::provider_error_to_lxapp_error(&err))?;
+    .map_err(|err| crate::provider::provider_error(&err))?;
     mark_attempted(appid);
 
     let previous = record(appid);

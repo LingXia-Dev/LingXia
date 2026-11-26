@@ -2,14 +2,13 @@ mod error_bridge;
 mod lxapp;
 
 use crate::archive;
-use crate::error::LxAppError;
 use crate::lxapp::config::LxAppConfig;
 use crate::lxapp::metadata::LxAppRecord;
 use crate::lxapp::{
     self as lxapp_runtime, Channel, LINGXIA_DIR, LXAPPS_DIR, STORAGE_DIR, USER_CACHE_DIR,
     USER_DATA_DIR, lxapp_fingermark, metadata, version::Version,
 };
-use crate::provider::provider_error_to_lxapp_error;
+use crate::provider::provider_error;
 use crate::publish_app_event;
 use lingxia_platform::Platform;
 use lingxia_platform::traits::app_runtime::AppRuntime;
@@ -112,7 +111,7 @@ impl UpdateManager {
         &self,
         lxappid: &str,
         release_type: Channel,
-    ) -> Result<Option<DownloadedUpdateInfo>, LxAppError> {
+    ) -> Result<Option<DownloadedUpdateInfo>, lingxia_error::Error> {
         Ok(
             metadata::downloaded_get(lxappid, release_type)?.map(|rec| DownloadedUpdateInfo {
                 version: rec.version.to_version_string(),
@@ -127,7 +126,7 @@ impl UpdateManager {
         &self,
         lxappid: &str,
         release_type: Channel,
-    ) -> Result<Option<String>, LxAppError> {
+    ) -> Result<Option<String>, lingxia_error::Error> {
         Ok(metadata::get(lxappid, release_type)?.map(|rec| rec.version_string()))
     }
 
@@ -136,7 +135,7 @@ impl UpdateManager {
         &self,
         lxappid: &str,
         release_type: Channel,
-    ) -> Result<Option<String>, LxAppError> {
+    ) -> Result<Option<String>, lingxia_error::Error> {
         Ok(metadata::get(lxappid, release_type)?.and_then(|rec| rec.checksum_sha256))
     }
 
@@ -146,7 +145,7 @@ impl UpdateManager {
         release_type: Channel,
         version: &str,
         checksum_sha256: &str,
-    ) -> Result<bool, LxAppError> {
+    ) -> Result<bool, lingxia_error::Error> {
         let Some(info) = self.has_downloaded_update(lxappid, release_type)? else {
             return Ok(false);
         };
@@ -169,7 +168,11 @@ impl UpdateManager {
     }
 
     /// Returns whether the given lxappid+release_type is already installed.
-    pub fn is_installed(&self, lxappid: &str, release_type: Channel) -> Result<bool, LxAppError> {
+    pub fn is_installed(
+        &self,
+        lxappid: &str,
+        release_type: Channel,
+    ) -> Result<bool, lingxia_error::Error> {
         let Some(record) = metadata::get(lxappid, release_type)? else {
             return Ok(false);
         };
@@ -199,7 +202,7 @@ impl UpdateManager {
         runtime: Arc<Platform>,
         lxappid: &str,
         version: &str,
-    ) -> Result<PathBuf, LxAppError> {
+    ) -> Result<PathBuf, lingxia_error::Error> {
         let dir_name = lxapp_fingermark(lxappid, crate::default_channel());
         let destination = runtime
             .app_data_dir()
@@ -254,7 +257,7 @@ impl UpdateManager {
         release_type: Channel,
         version: &str,
         archive_path: &Path,
-    ) -> Result<(), LxAppError> {
+    ) -> Result<(), lingxia_error::Error> {
         let previous_path =
             metadata::get(lxappid, release_type)?.map(|rec| PathBuf::from(rec.install_path));
 
@@ -330,7 +333,7 @@ impl UpdateManager {
         release_type: Channel,
         version: &str,
         archive_path: &Path,
-    ) -> Result<(PathBuf, crate::cache::CleanupProtection), LxAppError> {
+    ) -> Result<(PathBuf, crate::cache::CleanupProtection), lingxia_error::Error> {
         let dir_name = Self::versioned_install_dir_name(lxappid, release_type, version)?;
         let destination = runtime
             .app_data_dir()
@@ -350,9 +353,9 @@ impl UpdateManager {
         lxappid: &str,
         release_type: Channel,
         version: &str,
-    ) -> Result<String, LxAppError> {
+    ) -> Result<String, lingxia_error::Error> {
         let parsed_version = Version::parse(version).map_err(|_| {
-            LxAppError::InvalidParameter(format!("Invalid semantic version: {}", version))
+            lingxia_error::Error::invalid_arg(format!("Invalid semantic version: {}", version))
         })?;
         let installed_at = SystemTime::now()
             .duration_since(UNIX_EPOCH)
@@ -374,10 +377,10 @@ impl UpdateManager {
         lxappid: &str,
         version: &str,
         install_path: &Path,
-    ) -> Result<(), LxAppError> {
+    ) -> Result<(), lingxia_error::Error> {
         let manifest = Self::validate_installed_lxapp_manifest(install_path)?;
         if manifest.appId != lxappid {
-            return Err(LxAppError::InvalidParameter(format!(
+            return Err(lingxia_error::Error::invalid_arg(format!(
                 "package lxapp.json appId '{}' does not match '{lxappid}'",
                 manifest.appId
             )));
@@ -385,31 +388,38 @@ impl UpdateManager {
         if lingxia_update::Version::parse(version).ok()
             != lingxia_update::Version::parse(&manifest.version).ok()
         {
-            return Err(LxAppError::InvalidParameter(format!(
+            return Err(lingxia_error::Error::invalid_arg(format!(
                 "package lxapp.json version '{}' does not match '{version}' for {lxappid}",
                 manifest.version
             )));
         }
-        Ok(manifest.ensure_runtime_satisfies(lxappid, crate::SDK_RUNTIME_VERSION)?)
+        manifest.ensure_runtime_satisfies(lxappid, crate::SDK_RUNTIME_VERSION)
     }
 
-    fn validate_installed_lxapp_manifest(install_path: &Path) -> Result<LxAppConfig, LxAppError> {
+    fn validate_installed_lxapp_manifest(
+        install_path: &Path,
+    ) -> Result<LxAppConfig, lingxia_error::Error> {
         let manifest_path = install_path.join("lxapp.json");
         let manifest = fs::read_to_string(&manifest_path).map_err(|e| {
-            LxAppError::InvalidJsonFile(format!("{}: {}", manifest_path.display(), e))
+            lingxia_error::Error::invalid_data(format!("{}: {}", manifest_path.display(), e))
         })?;
         let manifest_json: serde_json::Value = serde_json::from_str(&manifest).map_err(|e| {
-            LxAppError::InvalidJsonFile(format!("{}: {}", manifest_path.display(), e))
+            lingxia_error::Error::invalid_data(format!("{}: {}", manifest_path.display(), e))
         })?;
-        LxAppConfig::from_value(manifest_json)
-            .map_err(|e| LxAppError::InvalidJsonFile(format!("{}: {}", manifest_path.display(), e)))
+        LxAppConfig::from_value(manifest_json).map_err(|e| {
+            lingxia_error::Error::invalid_data(format!("{}: {}", manifest_path.display(), e))
+        })
     }
 
     /// Uninstall on-disk contents for a specific (lxappid, release_type) and clear metadata.
-    fn uninstall_installed(&self, lxappid: &str, release_type: Channel) -> Result<(), LxAppError> {
+    fn uninstall_installed(
+        &self,
+        lxappid: &str,
+        release_type: Channel,
+    ) -> Result<(), lingxia_error::Error> {
         if crate::lxapp::is_lxapp_open(lxappid) {
-            return Err(LxAppError::UnsupportedOperation(
-                "cannot uninstall an opened app".to_string(),
+            return Err(lingxia_error::Error::not_supported(
+                "cannot uninstall an opened app",
             ));
         }
 
@@ -461,10 +471,10 @@ impl UpdateManager {
 
     /// Uninstall all releases and all per-app data for the given lxappid under
     /// the running service env scope.
-    pub fn uninstall_all(&self, lxappid: &str) -> Result<(), LxAppError> {
+    pub fn uninstall_all(&self, lxappid: &str) -> Result<(), lingxia_error::Error> {
         if crate::lxapp::is_lxapp_open(lxappid) {
-            return Err(LxAppError::UnsupportedOperation(
-                "cannot uninstall an opened app".to_string(),
+            return Err(lingxia_error::Error::not_supported(
+                "cannot uninstall an opened app",
             ));
         }
 
@@ -483,7 +493,7 @@ impl UpdateManager {
         url: &str,
         checksum_sha256: &str,
         version: &str,
-    ) -> Result<PathBuf, LxAppError> {
+    ) -> Result<PathBuf, lingxia_error::Error> {
         let dest = self.dest_path_for_url(url);
         let _cleanup_protection =
             crate::cache::protect_from_cleanup([dest.clone(), dest.with_extension("part")]);
@@ -495,7 +505,7 @@ impl UpdateManager {
         // resumes from where it stopped.
         lingxia_service::package_download::download_package(url, &dest, checksum_sha256, None)
             .await
-            .map_err(|e| LxAppError::IoError(e.to_string()))?;
+            .map_err(|e| lingxia_error::Error::io(e.to_string()))?;
 
         if let Err(e) = metadata::downloaded_upsert(
             lxappid,
@@ -505,7 +515,7 @@ impl UpdateManager {
             Some(checksum_sha256),
         ) {
             let _ = fs::remove_file(&dest);
-            return Err(LxAppError::IoError(format!(
+            return Err(lingxia_error::Error::io(format!(
                 "failed to record downloaded update: {}",
                 e
             )));
@@ -547,7 +557,7 @@ impl UpdateManager {
         version: &str,
         install_path: &Path,
         checksum_sha256: Option<&str>,
-    ) -> Result<(), LxAppError> {
+    ) -> Result<(), lingxia_error::Error> {
         let installed_at = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .map(|duration| duration.as_secs() as i64)
@@ -555,7 +565,7 @@ impl UpdateManager {
 
         let fingermark = lxapp_fingermark(lxappid, release_type);
         let parsed_version = Version::parse(version).map_err(|_| {
-            LxAppError::InvalidParameter(format!("Invalid semantic version: {}", version))
+            lingxia_error::Error::invalid_arg(format!("Invalid semantic version: {}", version))
         })?;
         let mut record = LxAppRecord::new(
             lxappid,
@@ -570,7 +580,7 @@ impl UpdateManager {
             .filter(|value| !value.is_empty())
             .map(|value| value.to_ascii_lowercase());
 
-        Ok(metadata::upsert(&record)?)
+        metadata::upsert(&record)
     }
 }
 

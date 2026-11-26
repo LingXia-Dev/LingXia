@@ -15,11 +15,10 @@
 //!   Tracks which logic.js files have been evaluated in each context.
 
 use crate::archive;
-use crate::error::LxAppError;
 use crate::lxapp::config::LxPlugin;
 use crate::lxapp::uri as lx_uri;
 use crate::lxapp::{LINGXIA_DIR, PLUGINS_DIR};
-use crate::provider::provider_error_to_lxapp_error;
+use crate::provider::provider_error;
 use crate::warn;
 use dashmap::DashMap;
 use lingxia_platform::Platform;
@@ -266,10 +265,13 @@ pub fn resolve_plugin_page(
     plugins: &BTreeMap<String, LxPlugin>,
     plugin_name: &str,
     page_path: &str,
-) -> Result<String, LxAppError> {
-    let plugin_cfg = plugins
-        .get(plugin_name)
-        .ok_or_else(|| LxAppError::PluginNotConfigured(plugin_name.to_string()))?;
+) -> Result<String, lingxia_error::Error> {
+    let plugin_cfg = plugins.get(plugin_name).ok_or_else(|| {
+        lingxia_error::Error::new(
+            lingxia_error::code::CAPABILITY_MISSING,
+            plugin_name.to_string(),
+        )
+    })?;
 
     if !plugin_cfg.pages.is_empty() {
         return Ok(resolve_plugin_page_path(plugin_cfg, page_path));
@@ -285,10 +287,13 @@ pub fn resolve_plugin_resource_path(
     plugins: &BTreeMap<String, LxPlugin>,
     plugin_name: &str,
     relative_path: &str,
-) -> Result<PathBuf, LxAppError> {
-    let plugin_cfg = plugins
-        .get(plugin_name)
-        .ok_or_else(|| LxAppError::PluginNotConfigured(plugin_name.to_string()))?;
+) -> Result<PathBuf, lingxia_error::Error> {
+    let plugin_cfg = plugins.get(plugin_name).ok_or_else(|| {
+        lingxia_error::Error::new(
+            lingxia_error::code::CAPABILITY_MISSING,
+            plugin_name.to_string(),
+        )
+    })?;
     let plugins_dir = get_plugins_dir(runtime);
     let plugin_dir = get_plugin_dir(runtime, plugin_name, &plugin_cfg.version);
     if let Some(canonical) =
@@ -298,13 +303,13 @@ pub fn resolve_plugin_resource_path(
     }
 
     if relative_path.is_empty() {
-        return Err(LxAppError::ResourceNotFound(format!(
+        return Err(lingxia_error::Error::not_found(format!(
             "Plugin directory not found: {}",
             plugin_name
         )));
     }
 
-    Err(LxAppError::ResourceNotFound(format!(
+    Err(lingxia_error::Error::not_found(format!(
         "Plugin resource not found: plugin/{}/{}",
         plugin_name, relative_path
     )))
@@ -331,7 +336,7 @@ pub fn resolve_plugin_resource_path_from_internal_path(
     runtime: &Arc<Platform>,
     plugins: &BTreeMap<String, LxPlugin>,
     path: &str,
-) -> Result<Option<PathBuf>, LxAppError> {
+) -> Result<Option<PathBuf>, lingxia_error::Error> {
     let Some((plugin_name, rel_path)) = parse_plugin_page_path(path) else {
         return Ok(None);
     };
@@ -349,7 +354,7 @@ pub async fn download_and_install(
     runtime: Arc<Platform>,
     plugin_name: &str,
     config: &LxPlugin,
-) -> Result<PathBuf, LxAppError> {
+) -> Result<PathBuf, lingxia_error::Error> {
     let version = &config.version;
     let key = plugin_key(plugin_name, version);
     let install_dir = get_plugin_dir(&runtime, plugin_name, version);
@@ -372,17 +377,17 @@ pub async fn download_and_install(
                         return Ok(get_plugin_dir(&runtime, plugin_name, version));
                     }
                     PluginDownloadState::Failed(err) => {
-                        return Err(LxAppError::PluginDownloadFailed(err.clone()));
+                        return Err(lingxia_error::Error::network(err.clone()));
                     }
                     PluginDownloadState::Downloading => continue,
                 }
             }
-            return Err(LxAppError::PluginDownloadFailed(
-                "Plugin download tracking closed unexpectedly".to_string(),
+            return Err(lingxia_error::Error::network(
+                "Plugin download tracking closed unexpectedly",
             ));
         } else {
-            return Err(LxAppError::PluginDownloadFailed(
-                "Plugin download already in progress".to_string(),
+            return Err(lingxia_error::Error::network(
+                "Plugin download already in progress",
             ));
         }
     }
@@ -405,7 +410,7 @@ async fn download_and_install_internal(
     plugin_name: &str,
     version: &str,
     config: &LxPlugin,
-) -> Result<PathBuf, LxAppError> {
+) -> Result<PathBuf, lingxia_error::Error> {
     let plugin_id = &config.lx_plugin_id;
     let required_version = &config.version;
 
@@ -413,8 +418,8 @@ async fn download_and_install_internal(
     let channel = lingxia_update::default_channel();
     let keys = lingxia_update::embedded_update_public_keys();
     if !lingxia_update::check_package_update_enabled("lxplugin", &keys) {
-        return Err(LxAppError::InvalidParameter(
-            "plugin updates require update.trustedPublicKeys".to_string(),
+        return Err(lingxia_error::Error::invalid_arg(
+            "plugin updates require update.trustedPublicKeys",
         ));
     }
     let target = UpdateTarget::Plugin {
@@ -425,9 +430,9 @@ async fn download_and_install_internal(
     let package =
         lingxia_transfer::scope_host_network_owner("update", provider.check_update(target))
             .await
-            .map_err(|e| provider_error_to_lxapp_error(&e))?
+            .map_err(|e| provider_error(&e))?
             .ok_or_else(|| {
-                LxAppError::IoError(format!(
+                lingxia_error::Error::io(format!(
                     "Plugin {} (lxPluginId: {}) not found on server",
                     plugin_name, plugin_id
                 ))
@@ -443,7 +448,7 @@ async fn download_and_install_internal(
         },
         &keys,
     )
-    .map_err(|e| LxAppError::InvalidParameter(e.to_string()))?;
+    .map_err(|e| lingxia_error::Error::invalid_arg(e.to_string()))?;
 
     let plugins_dir = get_plugins_dir(&runtime);
     let download_dir = plugins_dir.join("download");
@@ -462,7 +467,7 @@ async fn download_and_install_internal(
         None,
     )
     .await
-    .map_err(|e| LxAppError::IoError(format!("Plugin download failed: {e}")))?;
+    .map_err(|e| lingxia_error::Error::io(format!("Plugin download failed: {e}")))?;
 
     // 3. Install the archive
     let install_path = install_plugin_archive(&runtime, plugin_name, version, &archive_path)?;
@@ -479,7 +484,7 @@ fn install_plugin_archive(
     plugin_name: &str,
     version: &str,
     archive_path: &Path,
-) -> Result<PathBuf, LxAppError> {
+) -> Result<PathBuf, lingxia_error::Error> {
     let destination = get_plugin_dir(runtime, plugin_name, version);
     archive::extract_tar_zst(archive_path, &destination)?;
     Ok(destination)

@@ -1,31 +1,16 @@
-use crate::error::LxAppError;
+use lingxia_error::code;
 use lingxia_update::UpdateError;
 
-pub(super) fn lxapp_error_to_update_error(error: LxAppError) -> UpdateError {
-    let is_runtime_gate = error.is_requires_runtime_upgrade();
-    match error {
-        LxAppError::InvalidParameter(detail) => UpdateError::invalid_parameter(detail),
-        LxAppError::UnsupportedOperation(detail) | LxAppError::SurfaceRoleLocked(detail) => {
-            UpdateError::unsupported(detail)
-        }
-        LxAppError::ResourceNotFound(detail) => UpdateError::not_found(detail),
-        LxAppError::IoError(detail) => UpdateError::io(detail),
-        LxAppError::WebView(detail)
-        | LxAppError::Runtime(detail)
-        | LxAppError::ChannelError(detail)
-        | LxAppError::ResourceExhausted(detail)
-        | LxAppError::SurfaceConflict(detail)
-        | LxAppError::Bridge(detail)
-        | LxAppError::RongJS(detail)
-        | LxAppError::PluginNotConfigured(detail)
-        | LxAppError::PluginDownloadFailed(detail)
-        | LxAppError::InvalidJsonFile(detail) => UpdateError::runtime(detail),
-        LxAppError::Coded(error) if is_runtime_gate => {
-            UpdateError::requires_runtime_upgrade(error.message())
-        }
-        LxAppError::RongJSHost { code, message, .. } => {
-            UpdateError::runtime(format!("{code}: {message}"))
-        }
-        LxAppError::Coded(error) => UpdateError::runtime(error.to_string()),
+pub(super) fn update_error(error: lingxia_error::Error) -> UpdateError {
+    if crate::error::is_requires_runtime_upgrade(&error) {
+        return UpdateError::requires_runtime_upgrade(error.message());
+    }
+    let message = error.message().to_string();
+    match error.code() {
+        code::INVALID_ARG => UpdateError::invalid_parameter(message),
+        code::NOT_SUPPORTED | code::SURFACE_ROLE_LOCKED => UpdateError::unsupported(message),
+        code::NOT_FOUND => UpdateError::not_found(message),
+        code::IO => UpdateError::io(message),
+        _ => UpdateError::runtime(message),
     }
 }

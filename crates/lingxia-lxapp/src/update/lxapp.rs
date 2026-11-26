@@ -1,6 +1,6 @@
 use super::*;
 use crate::archive;
-use crate::update::error_bridge::lxapp_error_to_update_error;
+use crate::update::error_bridge::update_error;
 use lingxia_provider::BoxFuture;
 use lingxia_update::{LxAppUpdateHost, UpdateError};
 
@@ -85,7 +85,7 @@ impl LxAppUpdateHost for BoundLxAppUpdateHost {
         Box::pin(async move {
             self.manager()
                 .installed_version(&self.target_appid, self.release_type)
-                .map_err(lxapp_error_to_update_error)
+                .map_err(update_error)
         })
     }
 
@@ -93,7 +93,7 @@ impl LxAppUpdateHost for BoundLxAppUpdateHost {
         Box::pin(async move {
             self.manager()
                 .installed_checksum(&self.target_appid, self.release_type)
-                .map_err(lxapp_error_to_update_error)
+                .map_err(update_error)
         })
     }
 
@@ -101,7 +101,7 @@ impl LxAppUpdateHost for BoundLxAppUpdateHost {
         Box::pin(async move {
             self.manager()
                 .is_installed(&self.target_appid, self.release_type)
-                .map_err(lxapp_error_to_update_error)
+                .map_err(update_error)
         })
     }
 
@@ -113,7 +113,7 @@ impl LxAppUpdateHost for BoundLxAppUpdateHost {
             self.manager()
                 .check_latest_update(&self.target_appid, self.release_type, current_version)
                 .await
-                .map_err(lxapp_error_to_update_error)
+                .map_err(update_error)
         })
     }
 
@@ -125,7 +125,7 @@ impl LxAppUpdateHost for BoundLxAppUpdateHost {
             self.manager()
                 .check_exact_update(&self.target_appid, self.release_type, target_version)
                 .await
-                .map_err(lxapp_error_to_update_error)
+                .map_err(update_error)
         })
     }
 
@@ -142,7 +142,7 @@ impl LxAppUpdateHost for BoundLxAppUpdateHost {
                     version,
                     checksum_sha256,
                 )
-                .map_err(lxapp_error_to_update_error)
+                .map_err(update_error)
         })
     }
 
@@ -162,7 +162,7 @@ impl LxAppUpdateHost for BoundLxAppUpdateHost {
             lingxia_transfer::scope_host_network_owner("update", download)
                 .await
                 .map(|_| ())
-                .map_err(lxapp_error_to_update_error)
+                .map_err(update_error)
         })
     }
 
@@ -225,7 +225,7 @@ impl UpdateManager {
         lxappid: &str,
         release_type: Channel,
         query: LxAppUpdateQuery,
-    ) -> Result<Option<UpdatePackageInfo>, LxAppError> {
+    ) -> Result<Option<UpdatePackageInfo>, lingxia_error::Error> {
         let provider = crate::get_provider();
         let keys = lingxia_update::embedded_update_public_keys();
         if !lingxia_update::check_package_update_enabled("lxapp", &keys) {
@@ -240,7 +240,7 @@ impl UpdateManager {
             lingxia_transfer::scope_host_network_owner("update", provider.check_update(target));
         let package = checked.await.map_err(|e| {
             crate::error!("check_update failed: {}", e).with_appid(lxappid);
-            provider_error_to_lxapp_error(&e)
+            provider_error(&e)
         })?;
         let Some(package) = package else {
             return Ok(None);
@@ -257,7 +257,7 @@ impl UpdateManager {
             &keys,
         )
         .map(Some)
-        .map_err(|e| LxAppError::InvalidParameter(e.to_string()))
+        .map_err(|e| lingxia_error::Error::invalid_arg(e.to_string()))
     }
 
     async fn check_latest_update(
@@ -265,7 +265,7 @@ impl UpdateManager {
         lxappid: &str,
         release_type: Channel,
         current_version: Option<&str>,
-    ) -> Result<Option<UpdatePackageInfo>, LxAppError> {
+    ) -> Result<Option<UpdatePackageInfo>, lingxia_error::Error> {
         self.check_update(
             lxappid,
             release_type,
@@ -279,7 +279,7 @@ impl UpdateManager {
         lxappid: &str,
         release_type: Channel,
         target_version: &str,
-    ) -> Result<Option<UpdatePackageInfo>, LxAppError> {
+    ) -> Result<Option<UpdatePackageInfo>, lingxia_error::Error> {
         self.check_update(
             lxappid,
             release_type,
@@ -360,7 +360,7 @@ impl UpdateManager {
         runtime: Arc<Platform>,
         lxappid: &str,
         release_type: Channel,
-    ) -> Result<(), LxAppError> {
+    ) -> Result<(), lingxia_error::Error> {
         let downloaded = match metadata::downloaded_get(lxappid, release_type)? {
             Some(rec) => rec,
             None => return Ok(()),
@@ -453,7 +453,7 @@ pub async fn ensure_first_install(
     current_lxapp: &Arc<lxapp_runtime::LxApp>,
     target_appid: &str,
     release_type: Channel,
-) -> Result<(), LxAppError> {
+) -> Result<(), lingxia_error::Error> {
     // A dev-served app id is installed once its source is registered. Instance
     // creation registers it too, but after this check would have refused it.
     // The fetch blocks, so it runs off the opener's thread.
@@ -492,7 +492,7 @@ pub async fn ensure_target_version_ready(
     target_appid: &str,
     release_type: Channel,
     target_version: &str,
-) -> Result<(), LxAppError> {
+) -> Result<(), lingxia_error::Error> {
     lingxia_update::ensure_lxapp_target_version_ready(
         &BoundLxAppUpdateHost::new(
             current_lxapp.clone(),
@@ -510,10 +510,10 @@ pub async fn ensure_target_version_ready(
 pub async fn prepare_lxapp_open(
     target_appid: &str,
     release_type: Channel,
-) -> Result<(), LxAppError> {
+) -> Result<(), lingxia_error::Error> {
     let home_appid = lingxia_app_context::home_app_id()
         .map(str::to_string)
-        .ok_or_else(|| LxAppError::Runtime("host app config is not initialized".to_string()))?;
+        .ok_or_else(|| lingxia_error::Error::internal("host app config is not initialized"))?;
 
     let Some(home_lxapp) = lxapp_runtime::try_get(&home_appid) else {
         // Opening the home app itself after its session failed to load
@@ -523,7 +523,7 @@ pub async fn prepare_lxapp_open(
             lxapp_runtime::ensure_lxapp_ready(target_appid, release_type).await?;
             return Ok(());
         }
-        return Err(LxAppError::ResourceNotFound(format!(
+        return Err(lingxia_error::Error::not_found(format!(
             "home lxapp '{home_appid}' not found"
         )));
     };

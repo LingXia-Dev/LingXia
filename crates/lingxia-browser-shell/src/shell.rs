@@ -2,7 +2,7 @@
 use crate::host::HostResult;
 use lingxia_platform::traits::app_runtime::AppRuntime;
 use lingxia_shell::{MAX_SHELL_PINS, ShellPin};
-use lxapp::{LxApp, LxAppError};
+use lxapp::LxApp;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -17,17 +17,17 @@ use std::sync::Arc;
 pub const SHELL_PIN_LIMIT_CODE: &str = "SHELL_PIN_LIMIT";
 
 /// Map a Pin mutation failure, giving the full-sidebar case its own code.
-pub(crate) fn map_pin_error(error: lingxia_shell::ShellError) -> LxAppError {
+pub(crate) fn map_pin_error(error: lingxia_shell::ShellError) -> lingxia_error::Error {
     match error {
-        lingxia_shell::ShellError::LimitReached { max } => LxAppError::RongJSHost {
-            code: SHELL_PIN_LIMIT_CODE.to_string(),
-            message: format!("the sidebar holds {max} Pins"),
-            data: Some(serde_json::json!({ "max": max })),
-        },
+        lingxia_shell::ShellError::LimitReached { max } => lingxia_error::Error::new(
+            SHELL_PIN_LIMIT_CODE,
+            format!("the sidebar holds {max} Pins"),
+        )
+        .with_data(serde_json::json!({ "max": max })),
         lingxia_shell::ShellError::InvalidState(_) => {
-            LxAppError::InvalidParameter(error.to_string())
+            lingxia_error::Error::invalid_arg(error.to_string())
         }
-        other => LxAppError::Runtime(other.to_string()),
+        other => lingxia_error::Error::internal(other.to_string()),
     }
 }
 
@@ -50,7 +50,8 @@ struct ShellPins {
 
 fn shell_pins() -> HostResult<ShellPins> {
     Ok(ShellPins {
-        items: lingxia_shell::pins().map_err(|error| LxAppError::Runtime(error.to_string()))?,
+        items: lingxia_shell::pins()
+            .map_err(|error| lingxia_error::Error::internal(error.to_string()))?,
         max: MAX_SHELL_PINS,
     })
 }
@@ -102,7 +103,7 @@ fn site_icons_for(
     publish: impl Fn(&Path) -> Option<String>,
 ) -> HostResult<HashMap<String, String>> {
     if urls.len() > MAX_SITE_ICON_URLS {
-        return Err(LxAppError::InvalidParameter(format!(
+        return Err(lingxia_error::Error::invalid_arg(format!(
             "shell.siteIcons takes at most {MAX_SITE_ICON_URLS} urls"
         )));
     }
@@ -142,25 +143,21 @@ mod tests {
 
     #[test]
     fn a_full_sidebar_is_a_code_and_a_number_not_a_sentence() {
-        match map_pin_error(lingxia_shell::ShellError::LimitReached { max: 8 }) {
-            LxAppError::RongJSHost { code, data, .. } => {
-                assert_eq!(code, SHELL_PIN_LIMIT_CODE);
-                assert_eq!(data.and_then(|data| data["max"].as_u64()), Some(8));
-            }
-            other => panic!("expected a coded host error, got {other:?}"),
-        }
+        let error = map_pin_error(lingxia_shell::ShellError::LimitReached { max: 8 });
+        assert_eq!(error.code(), SHELL_PIN_LIMIT_CODE);
+        assert_eq!(error.data().and_then(|data| data["max"].as_u64()), Some(8));
         // Everything else stays an ordinary failure the caller cannot act on.
-        assert!(matches!(
-            map_pin_error(lingxia_shell::ShellError::InvalidState("x".into())),
-            LxAppError::InvalidParameter(_)
-        ));
+        assert!(
+            map_pin_error(lingxia_shell::ShellError::InvalidState("x".into()))
+                .is(lingxia_error::code::INVALID_ARG)
+        );
     }
 
     #[test]
     fn site_icons_refuse_more_urls_than_a_screenful() {
         let urls = vec!["https://a.example/".to_string(); MAX_SITE_ICON_URLS + 1];
         let result = site_icons_for(urls, |_| panic!("not looked up"), |_| None);
-        assert!(matches!(result, Err(LxAppError::InvalidParameter(_))));
+        assert!(matches!(result, Err(error) if error.is(lingxia_error::code::INVALID_ARG)));
     }
 
     #[test]

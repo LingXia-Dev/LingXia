@@ -3878,8 +3878,7 @@ fn validate_url_callback_target(target: &str, dev_mode: bool) -> Result<(), ling
         Some("https") => Ok(()),
         Some("http") if dev_mode || uri.host().is_some_and(is_url_callback_loopback_host) => Ok(()),
         Some("http") => Err(lingxia_error::Error::invalid_arg(
-            "a URL callback surface requires HTTPS or a loopback HTTP URL outside dev mode"
-                .to_string(),
+            "a URL callback surface requires HTTPS or a loopback HTTP URL outside dev mode",
         )),
         _ => Err(lingxia_error::Error::invalid_arg(
             "a URL callback surface requires an absolute HTTPS URL",

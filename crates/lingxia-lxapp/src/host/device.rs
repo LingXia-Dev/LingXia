@@ -1,5 +1,4 @@
 use crate::LxApp;
-use crate::LxAppError;
 use lingxia_platform::PlatformError;
 use lingxia_platform::traits::app_runtime::{AppRuntime, OpenUrlRequest, OpenUrlTarget};
 use lingxia_platform::traits::device::Device;
@@ -12,16 +11,19 @@ struct MakePhoneCallParams {
     phone_number: String,
 }
 
-fn map_platform_error(api: &str, error: PlatformError) -> LxAppError {
-    LxAppError::Coded(match error {
+fn map_platform_error(api: &str, error: PlatformError) -> lingxia_error::Error {
+    match error {
         PlatformError::BusinessError(number) => {
             lingxia_error::Error::business(number, format!("{api} failed"))
         }
         other => other.into(),
-    })
+    }
 }
 
-fn make_phone_call_impl(lxapp: &LxApp, params: &MakePhoneCallParams) -> Result<(), LxAppError> {
+fn make_phone_call_impl(
+    lxapp: &LxApp,
+    params: &MakePhoneCallParams,
+) -> Result<(), lingxia_error::Error> {
     lxapp
         .runtime
         .make_phone_call(&params.phone_number)
@@ -41,11 +43,9 @@ struct OpenUrlOptions {
     target: Option<String>,
 }
 
-fn open_url_impl(lxapp: &LxApp, options: &OpenUrlOptions) -> Result<(), LxAppError> {
+fn open_url_impl(lxapp: &LxApp, options: &OpenUrlOptions) -> Result<(), lingxia_error::Error> {
     if options.url.trim().is_empty() {
-        return Err(LxAppError::InvalidParameter(
-            "openUrl requires url".to_string(),
-        ));
+        return Err(lingxia_error::Error::invalid_arg("openUrl requires url"));
     }
 
     let target = OpenUrlTarget::parse(options.target.as_deref());

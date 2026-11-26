@@ -2537,8 +2537,7 @@ impl PageBridge {
                     host::HostInvocationContext::for_dispatch(self.lxapp(), caller, Some(page))
                         .ok_or_else(|| {
                             lingxia_error::Error::internal(
-                                "authenticated caller does not match the native lxapp session"
-                                    .to_string(),
+                                "authenticated caller does not match the native lxapp session",
                             )
                         })?;
                 HOST_EFFECT_WORK.sync_scope(work.clone(), || {
@@ -2591,8 +2590,7 @@ impl PageBridge {
                     host::HostInvocationContext::for_dispatch(self.lxapp(), caller, Some(page))
                         .ok_or_else(|| {
                             lingxia_error::Error::internal(
-                                "authenticated caller does not match the native lxapp session"
-                                    .to_string(),
+                                "authenticated caller does not match the native lxapp session",
                             )
                         })?;
                 let page = page.clone();
@@ -2637,7 +2635,7 @@ impl PageBridge {
                                 res = &mut host_fut => {
                                     match res {
                                         Ok(output) => Ok(output),
-                                        Err(err) => Err(RpcError::from(&lingxia_error::Error::from(err))),
+                                        Err(err) => Err(RpcError::from(&err)),
                                     }
                                 }
                             };
@@ -2750,8 +2748,7 @@ impl PageBridge {
                     host::HostInvocationContext::for_dispatch(self.lxapp(), caller, Some(page))
                         .ok_or_else(|| {
                             lingxia_error::Error::internal(
-                                "authenticated caller does not match the native lxapp session"
-                                    .to_string(),
+                                "authenticated caller does not match the native lxapp session",
                             )
                         })?;
                 let appid = page.appid();
@@ -2853,7 +2850,7 @@ impl PageBridge {
                             )
                         });
                 }
-                Some(Err(err)) => return Err(RpcError::from(&lingxia_error::Error::from(err))),
+                Some(Err(err)) => return Err(RpcError::from(&err)),
                 None => return Ok("null".to_string()),
             }
         }

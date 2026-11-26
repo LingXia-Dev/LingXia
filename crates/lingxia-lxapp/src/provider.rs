@@ -3,9 +3,7 @@
 //! Generic provider contracts live in `lingxia-provider`, `lingxia-update`,
 //! and `lingxia-log`.
 //! This module keeps only lxapp/runtime-specific pieces: provider aggregation,
-//! registration, and conversion into `LxAppError`.
-
-use crate::error::LxAppError;
+//! registration, and conversion into `lingxia::Error`.
 pub use lingxia_log::LogProvider;
 use std::sync::OnceLock;
 
@@ -18,21 +16,10 @@ pub use lingxia_update::{
     LxAppUpdateQuery, UpdateAuthentication, UpdatePackageInfo, UpdateProvider, UpdateTarget,
 };
 
-pub trait ProviderErrorExt {
-    fn to_lxapp_error(&self) -> LxAppError;
-}
-
-impl ProviderErrorExt for ProviderError {
-    fn to_lxapp_error(&self) -> LxAppError {
-        provider_error_to_lxapp_error(self)
-    }
-}
-
-pub(crate) fn provider_error_to_lxapp_error(error: &ProviderError) -> LxAppError {
-    LxAppError::Coded(
-        lingxia_error::Error::business(error.biz_code(), error.detail().to_string())
-            .with_data(serde_json::json!({ "providerCode": error.code().as_str() })),
-    )
+/// A provider failure as its business code, naming the provider code in `data`.
+pub(crate) fn provider_error(error: &ProviderError) -> lingxia_error::Error {
+    lingxia_error::Error::business(error.biz_code(), error.detail())
+        .with_data(serde_json::json!({ "providerCode": error.code().as_str() }))
 }
 
 /// Runtime provider aggregation used by lxapp host registration.

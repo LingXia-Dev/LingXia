@@ -7,7 +7,7 @@
 use crate::host::{HostResult, StreamContext};
 use crate::url_match::normalize_url;
 use lingxia_platform::traits::app_runtime::AppRuntime;
-use lxapp::{LxApp, LxAppError};
+use lxapp::LxApp;
 use rusqlite::{Connection, OptionalExtension, params};
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
@@ -99,15 +99,16 @@ fn channel() -> &'static broadcast::Sender<HistoryWatchEvent> {
     CHANNEL.get_or_init(|| broadcast::channel(32).0)
 }
 
-fn database_error(error: rusqlite::Error) -> LxAppError {
-    LxAppError::Runtime(format!("browser history database: {error}"))
+fn database_error(error: rusqlite::Error) -> lingxia_error::Error {
+    lingxia_error::Error::internal(format!("browser history database: {error}"))
 }
 
-fn open(app_data_dir: &Path) -> Result<Connection, LxAppError> {
+fn open(app_data_dir: &Path) -> Result<Connection, lingxia_error::Error> {
     let path = history_path(app_data_dir);
     if let Some(parent) = path.parent() {
-        std::fs::create_dir_all(parent)
-            .map_err(|error| LxAppError::IoError(format!("mkdir {}: {error}", parent.display())))?;
+        std::fs::create_dir_all(parent).map_err(|error| {
+            lingxia_error::Error::io(format!("mkdir {}: {error}", parent.display()))
+        })?;
     }
     let connection = Connection::open(&path).map_err(database_error)?;
     connection
@@ -133,7 +134,7 @@ fn open(app_data_dir: &Path) -> Result<Connection, LxAppError> {
     Ok(connection)
 }
 
-fn load_from(connection: &Connection) -> Result<HistorySnapshot, LxAppError> {
+fn load_from(connection: &Connection) -> Result<HistorySnapshot, lingxia_error::Error> {
     let mut statement = connection
         .prepare(
             "SELECT id, url, title, visited_at_ms
@@ -158,12 +159,12 @@ fn load_from(connection: &Connection) -> Result<HistorySnapshot, LxAppError> {
     Ok(HistorySnapshot { entries })
 }
 
-fn load(app_data_dir: &Path) -> Result<HistorySnapshot, LxAppError> {
+fn load(app_data_dir: &Path) -> Result<HistorySnapshot, lingxia_error::Error> {
     let connection = open(app_data_dir)?;
     load_from(&connection)
 }
 
-fn broadcast_snapshot(connection: &Connection) -> Result<(), LxAppError> {
+fn broadcast_snapshot(connection: &Connection) -> Result<(), lingxia_error::Error> {
     // Skip the full snapshot query when nobody is watching.
     if channel().receiver_count() == 0 {
         return Ok(());
@@ -175,7 +176,10 @@ fn broadcast_snapshot(connection: &Connection) -> Result<(), LxAppError> {
     Ok(())
 }
 
-fn load_entry(connection: &Connection, id: &str) -> Result<Option<HistoryEntry>, LxAppError> {
+fn load_entry(
+    connection: &Connection,
+    id: &str,
+) -> Result<Option<HistoryEntry>, lingxia_error::Error> {
     connection
         .query_row(
             "SELECT id, url, title, visited_at_ms FROM history WHERE id = ?1",
@@ -193,7 +197,7 @@ fn load_entry(connection: &Connection, id: &str) -> Result<Option<HistoryEntry>,
         .map_err(database_error)
 }
 
-fn broadcast_upsert(connection: &Connection, id: &str) -> Result<(), LxAppError> {
+fn broadcast_upsert(connection: &Connection, id: &str) -> Result<(), lingxia_error::Error> {
     if channel().receiver_count() == 0 {
         return Ok(());
     }
@@ -208,7 +212,7 @@ fn record_in(
     url: &str,
     title: &str,
     visited_at_ms: u64,
-) -> Result<bool, LxAppError> {
+) -> Result<bool, lingxia_error::Error> {
     let url = url.trim();
     if !is_recordable_url(url) {
         return Ok(false);
@@ -311,7 +315,11 @@ fn record_in(
     Ok(!coalesced)
 }
 
-fn update_title_in(app_data_dir: &Path, url: &str, title: &str) -> Result<bool, LxAppError> {
+fn update_title_in(
+    app_data_dir: &Path,
+    url: &str,
+    title: &str,
+) -> Result<bool, lingxia_error::Error> {
     let _guard = store_lock()
         .lock()
         .unwrap_or_else(|error| error.into_inner());
@@ -436,7 +444,7 @@ pub fn update_title(url: &str, title: &str) {
 pub(crate) fn clear_since_in(
     app_data_dir: &Path,
     since_ms: Option<u64>,
-) -> Result<usize, LxAppError> {
+) -> Result<usize, lingxia_error::Error> {
     let _guard = store_lock()
         .lock()
         .unwrap_or_else(|error| error.into_inner());
@@ -462,7 +470,7 @@ pub(crate) fn clear_since_in(
     Ok(removed)
 }
 
-pub(crate) fn count_in(app_data_dir: &Path) -> Result<usize, LxAppError> {
+pub(crate) fn count_in(app_data_dir: &Path) -> Result<usize, lingxia_error::Error> {
     let _guard = store_lock()
         .lock()
         .unwrap_or_else(|error| error.into_inner());
@@ -496,7 +504,7 @@ fn remove_history_entry(app: Arc<LxApp>, input: IdInput) -> HostResult<()> {
         .execute("DELETE FROM history WHERE id = ?1", [&input.id])
         .map_err(database_error)?;
     if removed == 0 {
-        return Err(LxAppError::ResourceNotFound(format!(
+        return Err(lingxia_error::Error::not_found(format!(
             "history entry not found: {}",
             input.id
         )));

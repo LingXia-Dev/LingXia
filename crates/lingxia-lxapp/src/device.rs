@@ -312,15 +312,15 @@ static LOGIC_CREATION_PAUSED: std::sync::Mutex<bool> = std::sync::Mutex::new(fal
 static DEVICE_CHANGE: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
 
 pub(crate) fn logic_creation_guard()
--> Result<std::sync::MutexGuard<'static, bool>, crate::LxAppError> {
+-> Result<std::sync::MutexGuard<'static, bool>, lingxia_error::Error> {
     // The guard is held across Logic creation, so a panicking creation must not
     // wedge every later one behind a poisoned lock.
     let guard = LOGIC_CREATION_PAUSED
         .lock()
         .unwrap_or_else(|poisoned| poisoned.into_inner());
     if *guard {
-        return Err(crate::LxAppError::Runtime(
-            "Runner device change is in progress".into(),
+        return Err(lingxia_error::Error::internal(
+            "Runner device change is in progress",
         ));
     }
     Ok(guard)

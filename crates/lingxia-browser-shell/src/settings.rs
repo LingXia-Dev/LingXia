@@ -28,7 +28,7 @@ struct DownloadSettingsResult {
 fn download_settings_result(app: &LxApp) -> HostResult<DownloadSettingsResult> {
     let effective = lingxia_service::downloads::dir(&app.app_data_dir());
     let configured = lingxia_service::settings::download_dir(&app.app_data_dir())
-        .map_err(|e| lxapp::LxAppError::Runtime(e.to_string()))?;
+        .map_err(|e| lingxia_error::Error::internal(e.to_string()))?;
     Ok(DownloadSettingsResult {
         download_dir: effective.to_string_lossy().to_string(),
         uses_default_dir: configured.is_none(),
@@ -94,7 +94,7 @@ async fn choose_download_directory(
         && let Some(path) = result.paths().next()
     {
         lingxia_service::downloads::set_dir(&app.app_data_dir(), PathBuf::from(path))
-            .map_err(|e| lxapp::LxAppError::Runtime(e.to_string()))?;
+            .map_err(|e| lingxia_error::Error::internal(e.to_string()))?;
     }
 
     download_settings_result(&app)
@@ -103,7 +103,7 @@ async fn choose_download_directory(
 #[lingxia::framework_native("downloads.resetDirectory", audience = "control-surface-only")]
 fn reset_download_directory(app: Arc<LxApp>) -> HostResult<DownloadSettingsResult> {
     lingxia_service::downloads::reset_dir(&app.app_data_dir())
-        .map_err(|e| lxapp::LxAppError::Runtime(e.to_string()))?;
+        .map_err(|e| lingxia_error::Error::internal(e.to_string()))?;
     download_settings_result(&app)
 }
 

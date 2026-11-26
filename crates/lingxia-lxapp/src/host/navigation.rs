@@ -1,6 +1,6 @@
 use super::{HostCancel, await_or_cancel};
 use crate::LxApp;
-use crate::{LxAppError, NavigationType};
+use crate::NavigationType;
 use serde::Deserialize;
 use serde_json::Value;
 use std::sync::Arc;
@@ -19,24 +19,27 @@ struct NavigateBackOptions {
     delta: Option<u32>,
 }
 
-fn current_page_path(lxapp: &LxApp) -> Result<String, LxAppError> {
+fn current_page_path(lxapp: &LxApp) -> Result<String, lingxia_error::Error> {
     lxapp
         .peek_current_page_path()
-        .ok_or_else(|| LxAppError::Runtime("No current page found".to_string()))
+        .ok_or_else(|| lingxia_error::Error::internal("No current page found"))
 }
 
-fn resolve_page_target(lxapp: &LxApp, options: &PageTargetOptions) -> Result<String, LxAppError> {
+fn resolve_page_target(
+    lxapp: &LxApp,
+    options: &PageTargetOptions,
+) -> Result<String, lingxia_error::Error> {
     let page = configured_page_name(options)?;
     let path = lxapp
         .find_page_path_by_name(page)
-        .ok_or_else(|| LxAppError::ResourceNotFound(format!("page name: {page}")))?;
+        .ok_or_else(|| lingxia_error::Error::not_found(format!("page name: {page}")))?;
     append_query(path, options.query.as_ref())
 }
 
-fn configured_page_name(options: &PageTargetOptions) -> Result<&str, LxAppError> {
+fn configured_page_name(options: &PageTargetOptions) -> Result<&str, lingxia_error::Error> {
     if options.path.is_some() {
-        return Err(LxAppError::InvalidParameter(
-            "path is not supported; pass the configured page name in page".to_string(),
+        return Err(lingxia_error::Error::invalid_arg(
+            "path is not supported; pass the configured page name in page",
         ));
     }
     options
@@ -45,17 +48,15 @@ fn configured_page_name(options: &PageTargetOptions) -> Result<&str, LxAppError>
         .map(str::trim)
         .filter(|page| !page.is_empty())
         .ok_or_else(|| {
-            LxAppError::InvalidParameter(
-                "page must be a non-empty configured page name".to_string(),
-            )
+            lingxia_error::Error::invalid_arg("page must be a non-empty configured page name")
         })
 }
 
-fn append_query(path: String, query: Option<&Value>) -> Result<String, LxAppError> {
+fn append_query(path: String, query: Option<&Value>) -> Result<String, lingxia_error::Error> {
     let Some(query) = query else {
         return Ok(path);
     };
-    crate::append_page_query(path, query).map_err(LxAppError::InvalidParameter)
+    crate::append_page_query(path, query).map_err(lingxia_error::Error::invalid_arg)
 }
 
 fn normalize_tabbar_path(url: &str) -> String {
@@ -86,7 +87,7 @@ async fn navigate_with_url(
     nav_type: NavigationType,
     wait_ready: bool,
     cancel: &mut HostCancel,
-) -> Result<(), LxAppError> {
+) -> Result<(), lingxia_error::Error> {
     lxapp.ensure_page_exists(&target_url)?;
 
     let target_page = if nav_type == NavigationType::Launch {
@@ -94,7 +95,7 @@ async fn navigate_with_url(
     } else {
         let current_path = current_page_path(&lxapp)?;
         let Some(page) = lxapp.get_page(&current_path) else {
-            return Err(LxAppError::Runtime("Current page not found".to_string()));
+            return Err(lingxia_error::Error::internal("Current page not found"));
         };
         page.navigate_to_url(&target_url, nav_type)?
     };
@@ -104,7 +105,7 @@ async fn navigate_with_url(
             target_page
                 .wait_webview_ready()
                 .await
-                .map_err(LxAppError::WebView)
+                .map_err(lingxia_error::Error::internal)
         })
         .await?;
     }
@@ -130,7 +131,7 @@ host_api_async!(
     |lxapp, options, cancel| async {
         let current_path = current_page_path(&lxapp)?;
         let Some(page) = lxapp.get_page(&current_path) else {
-            return Err(LxAppError::Runtime("Current page not found".to_string()));
+            return Err(lingxia_error::Error::internal("Current page not found"));
         };
         page.navigate_back(options.delta.unwrap_or(1))?;
 
@@ -143,7 +144,7 @@ host_api_async!(
                 dest_page
                     .wait_webview_ready()
                     .await
-                    .map_err(LxAppError::WebView)
+                    .map_err(lingxia_error::Error::internal)
             })
             .await?;
         }
@@ -158,8 +159,8 @@ host_api_async!(
     |lxapp, options, cancel| async {
         let url = resolve_page_target(&lxapp, &options)?;
         if is_tabbar_page_url(&lxapp, &url) {
-            return Err(LxAppError::UnsupportedOperation(
-                "a tab page cannot replace a page".to_string(),
+            return Err(lingxia_error::Error::not_supported(
+                "a tab page cannot replace a page",
             ));
         }
         navigate_with_url(lxapp, url, NavigationType::Replace, true, &mut cancel).await?;
@@ -272,10 +273,7 @@ impl super::HostHandler for SetTitle {
                         },
                         ..Default::default()
                     };
-                    Ok(invocation
-                        .lxapp()
-                        .commit_navigation_bar(page, patch)
-                        .await?)
+                    invocation.lxapp().commit_navigation_bar(page, patch).await
                 }
                 Err(error) => Err(error),
             };
@@ -287,9 +285,9 @@ impl super::HostHandler for SetTitle {
 fn calling_page(
     invocation: &super::HostInvocationContext,
     route: &str,
-) -> Result<crate::page::PageInstance, LxAppError> {
+) -> Result<crate::page::PageInstance, lingxia_error::Error> {
     invocation.page().ok_or_else(|| {
-        LxAppError::InvalidParameter(format!(
+        lingxia_error::Error::invalid_arg(format!(
             "navigation.{route} must be called from a page View"
         ))
     })

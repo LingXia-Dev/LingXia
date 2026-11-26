@@ -386,7 +386,7 @@ fn init_with_native_authority(
             home_app_version,
         ) {
             error!("Failed to install home LxApp: {}", e);
-            return Err(e.into());
+            return Err(e);
         }
         if let Some(hash) = &dev_bundle {
             let _ = fs::write(&marker, hash);

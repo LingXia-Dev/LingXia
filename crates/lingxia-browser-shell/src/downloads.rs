@@ -7,7 +7,6 @@ use lingxia_service::downloads::{
 };
 use lingxia_service::file::{OpenFileRequest, RevealInFileManagerRequest};
 use lxapp::LxApp;
-use lxapp::LxAppError;
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -67,13 +66,13 @@ fn download_reveal_path(record: &DownloadRecord) -> PathBuf {
         .unwrap_or(target_path)
 }
 
-fn download_fallback_dir(path: &Path) -> Result<PathBuf, LxAppError> {
+fn download_fallback_dir(path: &Path) -> Result<PathBuf, lingxia_error::Error> {
     if path.is_dir() {
         return Ok(path.to_path_buf());
     }
     path.parent()
         .map(Path::to_path_buf)
-        .ok_or_else(|| LxAppError::InvalidParameter("download has no parent directory".to_string()))
+        .ok_or_else(|| lingxia_error::Error::invalid_arg("download has no parent directory"))
 }
 
 async fn open_file_for_user(app: &LxApp, request: OpenFileRequest) -> Result<(), PlatformError> {
@@ -83,14 +82,18 @@ async fn open_file_for_user(app: &LxApp, request: OpenFileRequest) -> Result<(),
     }
 }
 
-fn map_downloads_error(err: DownloadsError) -> LxAppError {
+fn map_downloads_error(err: DownloadsError) -> lingxia_error::Error {
     match err {
-        DownloadsError::InvalidParameter(message) => LxAppError::InvalidParameter(message),
-        DownloadsError::ResourceNotFound(message) => LxAppError::ResourceNotFound(message),
-        DownloadsError::UnsupportedOperation(message) => LxAppError::UnsupportedOperation(message),
-        DownloadsError::Runtime(message) => LxAppError::Runtime(message),
-        DownloadsError::Io(err) => LxAppError::IoError(err.to_string()),
-        DownloadsError::Json(err) => LxAppError::Bridge(format!("JSON Processing Error: {err}")),
+        DownloadsError::InvalidParameter(message) => lingxia_error::Error::invalid_arg(message),
+        DownloadsError::ResourceNotFound(message) => lingxia_error::Error::not_found(message),
+        DownloadsError::UnsupportedOperation(message) => {
+            lingxia_error::Error::not_supported(message)
+        }
+        DownloadsError::Runtime(message) => lingxia_error::Error::internal(message),
+        DownloadsError::Io(err) => lingxia_error::Error::io(err.to_string()),
+        DownloadsError::Json(err) => {
+            lingxia_error::Error::internal(format!("JSON Processing Error: {err}"))
+        }
     }
 }
 
@@ -109,8 +112,8 @@ fn clear_completed_downloads(app: Arc<LxApp>) -> HostResult<ClearCompletedResult
 #[lingxia::framework_native("downloads.remove", audience = "control-surface-only")]
 fn remove_download_route(app: Arc<LxApp>, input: DownloadTaskIdInput) -> HostResult<()> {
     if input.task_id.trim().is_empty() {
-        return Err(LxAppError::InvalidParameter(
-            "downloads.remove requires taskId".to_string(),
+        return Err(lingxia_error::Error::invalid_arg(
+            "downloads.remove requires taskId",
         ));
     }
     lingxia_service::downloads::remove(&app.app_data_dir(), &input.task_id)
@@ -121,8 +124,8 @@ fn remove_download_route(app: Arc<LxApp>, input: DownloadTaskIdInput) -> HostRes
 #[lingxia::framework_native("downloads.cancel", audience = "control-surface-only")]
 fn cancel_download_route(app: Arc<LxApp>, input: DownloadTaskIdInput) -> HostResult<()> {
     if input.task_id.trim().is_empty() {
-        return Err(LxAppError::InvalidParameter(
-            "downloads.cancel requires taskId".to_string(),
+        return Err(lingxia_error::Error::invalid_arg(
+            "downloads.cancel requires taskId",
         ));
     }
     lingxia_service::downloads::cancel(&app.app_data_dir(), &input.task_id)
@@ -132,8 +135,8 @@ fn cancel_download_route(app: Arc<LxApp>, input: DownloadTaskIdInput) -> HostRes
 #[lingxia::framework_native("downloads.pause", audience = "control-surface-only")]
 fn pause_download_route(app: Arc<LxApp>, input: DownloadTaskIdInput) -> HostResult<()> {
     if input.task_id.trim().is_empty() {
-        return Err(LxAppError::InvalidParameter(
-            "downloads.pause requires taskId".to_string(),
+        return Err(lingxia_error::Error::invalid_arg(
+            "downloads.pause requires taskId",
         ));
     }
     lingxia_service::downloads::pause(&app.app_data_dir(), &input.task_id)
@@ -143,8 +146,8 @@ fn pause_download_route(app: Arc<LxApp>, input: DownloadTaskIdInput) -> HostResu
 #[lingxia::framework_native("downloads.retry", audience = "control-surface-only")]
 fn retry_download_route(app: Arc<LxApp>, input: DownloadTaskIdInput) -> HostResult<()> {
     if input.task_id.trim().is_empty() {
-        return Err(LxAppError::InvalidParameter(
-            "downloads.retry requires taskId".to_string(),
+        return Err(lingxia_error::Error::invalid_arg(
+            "downloads.retry requires taskId",
         ));
     }
     lingxia_service::downloads::retry(&app.app_data_dir(), &input.task_id)
@@ -154,8 +157,8 @@ fn retry_download_route(app: Arc<LxApp>, input: DownloadTaskIdInput) -> HostResu
 #[lingxia::framework_native("downloads.resume", audience = "control-surface-only")]
 fn resume_download_route(app: Arc<LxApp>, input: DownloadTaskIdInput) -> HostResult<()> {
     if input.task_id.trim().is_empty() {
-        return Err(LxAppError::InvalidParameter(
-            "downloads.resume requires taskId".to_string(),
+        return Err(lingxia_error::Error::invalid_arg(
+            "downloads.resume requires taskId",
         ));
     }
     lingxia_service::downloads::resume(&app.app_data_dir(), &input.task_id)
@@ -169,19 +172,19 @@ async fn open_download_route(
     mut cancel: HostCancel,
 ) -> HostResult<()> {
     if input.task_id.trim().is_empty() {
-        return Err(LxAppError::InvalidParameter(
-            "downloads.open requires taskId".to_string(),
+        return Err(lingxia_error::Error::invalid_arg(
+            "downloads.open requires taskId",
         ));
     }
 
     let record = lingxia_service::downloads::record(&app.app_data_dir(), &input.task_id)
         .map_err(map_downloads_error)?
         .ok_or_else(|| {
-            LxAppError::ResourceNotFound(format!("download not found: {}", input.task_id))
+            lingxia_error::Error::not_found(format!("download not found: {}", input.task_id))
         })?;
     if record.status != DownloadStatus::Completed {
-        return Err(LxAppError::UnsupportedOperation(
-            "download is not completed".to_string(),
+        return Err(lingxia_error::Error::not_supported(
+            "download is not completed",
         ));
     }
 
@@ -207,15 +210,15 @@ async fn reveal_download_route(
     mut cancel: HostCancel,
 ) -> HostResult<()> {
     if input.task_id.trim().is_empty() {
-        return Err(LxAppError::InvalidParameter(
-            "downloads.reveal requires taskId".to_string(),
+        return Err(lingxia_error::Error::invalid_arg(
+            "downloads.reveal requires taskId",
         ));
     }
 
     let record = lingxia_service::downloads::record(&app.app_data_dir(), &input.task_id)
         .map_err(map_downloads_error)?
         .ok_or_else(|| {
-            LxAppError::ResourceNotFound(format!("download not found: {}", input.task_id))
+            lingxia_error::Error::not_found(format!("download not found: {}", input.task_id))
         })?;
     let reveal_path = download_reveal_path(&record);
     let fallback_dir = download_fallback_dir(&reveal_path)?;
@@ -262,7 +265,7 @@ async fn watch_downloads(
                 match recv {
                     Ok(event) => stream.send(event)?,
                     Err(broadcast::error::RecvError::Lagged(skipped)) => {
-                        return Err(LxAppError::Bridge(format!(
+                        return Err(lingxia_error::Error::internal(format!(
                             "download stream lagged by {skipped} events"
                         )));
                     }

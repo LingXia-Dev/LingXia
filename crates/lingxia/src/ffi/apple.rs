@@ -2261,7 +2261,7 @@ pub fn resolve_lxapp_page_target(
     };
     let page = (!page.trim().is_empty()).then_some(page);
     match LxAppStartupOptions::for_page(page, query.as_ref())
-        .map_err(lxapp::LxAppError::InvalidParameter)
+        .map_err(lingxia_error::Error::invalid_arg)
         .and_then(|options| options.resolved_url(&app))
     {
         Ok(path) => self::bridge::ResolvePageTargetResult {
@@ -2272,7 +2272,7 @@ pub fn resolve_lxapp_page_target(
         Err(error) => self::bridge::ResolvePageTargetResult {
             ok: false,
             path: String::new(),
-            error: error.to_string(),
+            error: error.message().to_string(),
         },
     }
 }

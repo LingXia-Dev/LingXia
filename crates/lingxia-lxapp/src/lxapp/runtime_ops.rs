@@ -311,7 +311,7 @@ pub fn uninstall_lxapp(appid: &str) -> Result<(), lingxia_error::Error> {
             .ok_or_else(|| lingxia_error::Error::internal("No LxApp runtime available"))?
     };
     let updater = UpdateManager::new(app);
-    Ok(updater.uninstall_all(appid)?)
+    updater.uninstall_all(appid)
 }
 
 pub fn installed_lxapp_path(appid: &str, release_type: Channel) -> Option<String> {

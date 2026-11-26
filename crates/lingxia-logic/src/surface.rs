@@ -1504,7 +1504,6 @@ async fn open_declared_surface_spec(
         lxapp::prepare_lxapp_open(app_id, lxapp::resolve_open_channel(app_id, None))
             .await
             .map_err(|err| {
-                let err = lingxia_error::Error::from(err);
                 if lxapp::registry_unavailable_status(&err).is_some() {
                     js_error(err)
                 } else {

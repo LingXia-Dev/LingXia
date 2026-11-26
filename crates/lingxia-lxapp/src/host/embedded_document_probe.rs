@@ -8,8 +8,8 @@
 //! does not already reach.
 
 use super::HostCancel;
+use crate::PageInstance;
 use crate::page::embedded_document::{BlockedLoad, EmbeddedDocument, EmbeddedDocumentOptions};
-use crate::{LxAppError, PageInstance};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex, OnceLock};
@@ -24,22 +24,22 @@ fn blocked_logs() -> std::sync::MutexGuard<'static, HashMap<String, BlockedLog>>
         .unwrap_or_else(std::sync::PoisonError::into_inner)
 }
 
-fn calling_page(invocation: &super::HostInvocationContext) -> Result<PageInstance, LxAppError> {
+fn calling_page(
+    invocation: &super::HostInvocationContext,
+) -> Result<PageInstance, lingxia_error::Error> {
     if !crate::is_dev_session() {
-        return Err(LxAppError::UnsupportedOperation(
-            "embeddedDocumentProbe exists only in a dev session".to_string(),
+        return Err(lingxia_error::Error::not_supported(
+            "embeddedDocumentProbe exists only in a dev session",
         ));
     }
     invocation.page().ok_or_else(|| {
-        LxAppError::InvalidParameter(
-            "embeddedDocumentProbe must be called from a page View".to_string(),
-        )
+        lingxia_error::Error::invalid_arg("embeddedDocumentProbe must be called from a page View")
     })
 }
 
-fn document(page: &PageInstance, node: &str) -> Result<EmbeddedDocument, LxAppError> {
+fn document(page: &PageInstance, node: &str) -> Result<EmbeddedDocument, lingxia_error::Error> {
     page.embedded_document(node).ok_or_else(|| {
-        LxAppError::InvalidParameter(format!("no embedded document {node:?} on this page"))
+        lingxia_error::Error::invalid_arg(format!("no embedded document {node:?} on this page"))
     })
 }
 
@@ -86,8 +86,7 @@ impl super::HostHandler for Open {
                     let webtag = document.webtag().as_str().to_string();
                     blocked_logs().insert(webtag.clone(), log);
                     Opened { webtag }
-                })
-                .map_err(Into::into);
+                });
             super::serialize_result(result)
         })
     }
@@ -116,7 +115,7 @@ impl super::HostHandler for Eval {
                 .webview()
                 .evaluate_javascript(&input.script)
                 .await
-                .map_err(|error| LxAppError::Runtime(format!("{error:?}")));
+                .map_err(|error| lingxia_error::Error::internal(format!("{error:?}")));
             super::serialize_result(result)
         })
     }

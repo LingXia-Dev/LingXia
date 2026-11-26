@@ -2,8 +2,6 @@
 //!
 //! Built-in host capabilities and third-party host extensions share the same
 //! registry. External crates can define handlers and register them here.
-
-use crate::error::LxAppError;
 use crate::lxapp::{AppSessionClass, LxApp, LxAppSessionStatus};
 
 use futures::Stream;
@@ -29,13 +27,14 @@ mod embedded_document_probe;
 mod navigation;
 mod navigator;
 
-pub type HostResult<T> = Result<T, LxAppError>;
+pub type HostResult<T> = Result<T, lingxia_error::Error>;
 pub type JsonValue = serde_json::Value;
 
 pub type HostCancel = oneshot::Receiver<()>;
 pub type HostStream =
-    Pin<Box<dyn Stream<Item = Result<HostStreamItem, LxAppError>> + Send + 'static>>;
-pub type HostFuture<'a> = Pin<Box<dyn Future<Output = Result<HostOutput, LxAppError>> + Send + 'a>>;
+    Pin<Box<dyn Stream<Item = Result<HostStreamItem, lingxia_error::Error>> + Send + 'static>>;
+pub type HostFuture<'a> =
+    Pin<Box<dyn Future<Output = Result<HostOutput, lingxia_error::Error>> + Send + 'a>>;
 
 pub enum HostStreamItem {
     Event(String),
@@ -49,7 +48,7 @@ pub enum HostOutput {
 
 #[doc(hidden)]
 pub mod __native {
-    use super::{Future, HostResult, LxAppError};
+    use super::{Future, HostResult};
 
     pub fn spawn<F>(future: F) -> tokio::task::JoinHandle<F::Output>
     where
@@ -60,8 +59,8 @@ pub mod __native {
     }
 
     /// A route's own error, whatever type it returns.
-    pub fn route_error(error: impl Into<lingxia_error::Error>) -> LxAppError {
-        LxAppError::Coded(error.into())
+    pub fn route_error(error: impl Into<lingxia_error::Error>) -> lingxia_error::Error {
+        error.into()
     }
 
     pub async fn spawn_blocking<F, R>(f: F) -> HostResult<R>
@@ -72,7 +71,7 @@ pub mod __native {
         rong_rt::RongExecutor::global()
             .spawn_blocking(f)
             .await
-            .map_err(|err| LxAppError::Runtime(err.to_string()))
+            .map_err(|err| lingxia_error::Error::internal(err.to_string()))
     }
 }
 
@@ -399,9 +398,9 @@ impl fmt::Debug for AppResourceGrants {
 }
 
 impl AppResourceGrants {
-    fn live_owner(&self) -> Result<Arc<LxApp>, LxAppError> {
+    fn live_owner(&self) -> Result<Arc<LxApp>, lingxia_error::Error> {
         let app = self.owner.upgrade().ok_or_else(|| {
-            LxAppError::ResourceNotFound("lxapp resource scope is no longer live".to_string())
+            lingxia_error::Error::not_found("lxapp resource scope is no longer live")
         })?;
         if app.appid != self.app_id.as_ref()
             || app.session_id() != self.session_id
@@ -412,21 +411,21 @@ impl AppResourceGrants {
                     | LxAppSessionStatus::Restarting
             )
         {
-            return Err(LxAppError::ResourceNotFound(
-                "lxapp resource scope no longer matches its native session".to_string(),
+            return Err(lingxia_error::Error::not_found(
+                "lxapp resource scope no longer matches its native session",
             ));
         }
         Ok(app)
     }
 
     /// Resolve a native-issued transient `lx://temp/...` grant.
-    pub fn resolve_transient_file(&self, resource: &str) -> Result<PathBuf, LxAppError> {
+    pub fn resolve_transient_file(&self, resource: &str) -> Result<PathBuf, lingxia_error::Error> {
         if !resource.trim().starts_with("lx://temp/") {
-            return Err(LxAppError::InvalidParameter(
-                "expected a native-issued lx://temp resource grant".to_string(),
+            return Err(lingxia_error::Error::invalid_arg(
+                "expected a native-issued lx://temp resource grant",
             ));
         }
-        Ok(self.live_owner()?.resolve_accessible_path(resource)?)
+        self.live_owner()?.resolve_accessible_path(resource)
     }
 
     /// Test a native-issued opaque file reference for this exact app session.
@@ -493,11 +492,10 @@ impl AppScope {
 
     /// Resolve a path only within this app's native storage namespace or its
     /// native-issued transient grants.
-    pub fn resolve_accessible_path(&self, resource: &str) -> Result<PathBuf, LxAppError> {
-        Ok(self
-            .resource_grants
+    pub fn resolve_accessible_path(&self, resource: &str) -> Result<PathBuf, lingxia_error::Error> {
+        self.resource_grants
             .live_owner()?
-            .resolve_accessible_path(resource)?)
+            .resolve_accessible_path(resource)
     }
 
     fn belongs_to(&self, app: &Arc<LxApp>) -> bool {
@@ -1116,7 +1114,7 @@ pub fn dispatch_host_call_sync(
         registry.sync_host_for_caller(name, invocation.caller())
     };
     let Some(handler) = handler else {
-        return Err(LxAppError::ResourceNotFound(format!(
+        return Err(lingxia_error::Error::not_found(format!(
             "sync native route '{name}' is not registered or not authorized"
         )));
     };
@@ -1210,8 +1208,8 @@ pub fn route_policy(name: &str) -> Result<Option<EffectiveRoutePolicy>, RoutePol
 pub fn parse_input<T: DeserializeOwned>(input: Option<&str>) -> HostResult<T> {
     match input {
         Some(json) => serde_json::from_str(json)
-            .map_err(|e| LxAppError::InvalidParameter(format!("Invalid input JSON: {}", e))),
-        None => Err(LxAppError::InvalidParameter("Missing input".to_string())),
+            .map_err(|e| lingxia_error::Error::invalid_arg(format!("Invalid input JSON: {}", e))),
+        None => Err(lingxia_error::Error::invalid_arg("Missing input")),
     }
 }
 
@@ -1219,7 +1217,7 @@ pub fn serialize_result<T: Serialize>(result: HostResult<T>) -> HostResult<HostO
     let value = result?;
     serde_json::to_string(&value)
         .map(HostOutput::Json)
-        .map_err(|e| LxAppError::Bridge(e.to_string()))
+        .map_err(|e| lingxia_error::Error::internal(e.to_string()))
 }
 
 /// Imperative stream context passed to `#[native(..., stream)]` handlers.
@@ -1257,31 +1255,31 @@ where
 {
     /// Emit one event chunk to the view.
     pub fn send(&mut self, event: TEvent) -> HostResult<()> {
-        let payload =
-            serde_json::to_string(&event).map_err(|e| LxAppError::Bridge(e.to_string()))?;
+        let payload = serde_json::to_string(&event)
+            .map_err(|e| lingxia_error::Error::internal(e.to_string()))?;
         self.tx
             .send(Ok(HostStreamItem::Event(payload)))
-            .map_err(|_| LxAppError::Bridge("Stream closed".to_string()))
+            .map_err(|_| lingxia_error::Error::internal("Stream closed"))
     }
 
     /// Finish the stream with a final result.
     pub fn end(self, result: TResult) -> HostResult<()> {
-        let payload =
-            serde_json::to_string(&result).map_err(|e| LxAppError::Bridge(e.to_string()))?;
+        let payload = serde_json::to_string(&result)
+            .map_err(|e| lingxia_error::Error::internal(e.to_string()))?;
         self.tx
             .send(Ok(HostStreamItem::Return(payload)))
-            .map_err(|_| LxAppError::Bridge("Stream closed".to_string()))
+            .map_err(|_| lingxia_error::Error::internal("Stream closed"))
     }
 
     /// Finish the stream with a structured bridge error.
     pub fn error(self, code: impl Into<String>, message: impl Into<String>) -> HostResult<()> {
         self.tx
-            .send(Err(LxAppError::RongJSHost {
-                code: code.into(),
-                message: message.into(),
-                data: None,
-            }))
-            .map_err(|_| LxAppError::Bridge("Stream closed".to_string()))
+            .send(Err(crate::error::host_error(
+                code.into(),
+                message.into(),
+                None,
+            )))
+            .map_err(|_| lingxia_error::Error::internal("Stream closed"))
     }
 }
 
@@ -1318,7 +1316,7 @@ pub async fn await_or_cancel<T>(
     fut: impl Future<Output = HostResult<T>>,
 ) -> HostResult<T> {
     tokio::select! {
-        _ = cancel => Err(LxAppError::Bridge("Canceled".to_string()))?,
+        _ = cancel => Err(lingxia_error::Error::aborted("Canceled")),
         res = fut => res,
     }
 }
@@ -1456,7 +1454,7 @@ impl<TIn, TOut> ChannelContext<TIn, TOut> {
     pub(crate) fn send_raw_json(&self, payload_json: String) -> HostResult<()> {
         self.outbound_tx
             .send(ChannelOutbound::Data(payload_json))
-            .map_err(|_| LxAppError::Bridge("Channel closed".to_string()))
+            .map_err(|_| lingxia_error::Error::internal("Channel closed"))
     }
 
     #[doc(hidden)]
@@ -1485,7 +1483,10 @@ where
         match self.recv_raw().await {
             Some(RawChannelInbound::Data(payload_json)) => {
                 let payload = serde_json::from_str(&payload_json).map_err(|e| {
-                    LxAppError::InvalidParameter(format!("Invalid channel payload JSON: {}", e))
+                    lingxia_error::Error::invalid_arg(format!(
+                        "Invalid channel payload JSON: {}",
+                        e
+                    ))
                 })?;
                 Ok(Some(ChannelMessage::Data(payload)))
             }
@@ -1496,8 +1497,8 @@ where
 
     /// Send a JSON-serialisable payload to the view.
     pub fn send(&self, payload: TOut) -> HostResult<()> {
-        let payload_json =
-            serde_json::to_string(&payload).map_err(|e| LxAppError::Bridge(e.to_string()))?;
+        let payload_json = serde_json::to_string(&payload)
+            .map_err(|e| lingxia_error::Error::internal(e.to_string()))?;
         self.send_raw_json(payload_json)
     }
 }

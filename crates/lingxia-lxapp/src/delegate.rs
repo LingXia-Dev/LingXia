@@ -536,7 +536,7 @@ impl LxApp {
 
     /// Reset to the entry page in-session: SwitchTab when the initial route is
     /// a tab page, reLaunch otherwise. Clears the page stack either way.
-    fn go_home(self: &Arc<Self>) -> Result<(), crate::LxAppError> {
+    fn go_home(self: &Arc<Self>) -> Result<(), lingxia_error::Error> {
         let home_route = self.config().get_initial_route();
         let Some(path) = self.peek_current_page_path() else {
             return Ok(());
@@ -552,7 +552,7 @@ impl LxApp {
             .get_page(&path)
             .unwrap_or_else(|| self.get_or_create_page(&path));
         let target_page = self.get_or_create_page(&home_route);
-        Ok(page.navigate_to(target_page, navigate_type).map(drop)?)
+        page.navigate_to(target_page, navigate_type).map(drop)
     }
 
     /// Handle navigation bar button click
@@ -628,7 +628,7 @@ impl LxApp {
     /// Leave the top page the way the user does: a page whose View guards
     /// leaving is asked and stays (including `useBackHandler` on a root page
     /// for `Back`); otherwise the action happens.
-    pub fn user_leave(self: &Arc<Self>, reason: LeaveReason) -> Result<(), crate::LxAppError> {
+    pub fn user_leave(self: &Arc<Self>, reason: LeaveReason) -> Result<(), lingxia_error::Error> {
         let page = self.current_page()?;
         if (self.get_page_stack_size() > 1 || matches!(reason, LeaveReason::Back))
             && page.is_leave_guarded()
@@ -668,7 +668,7 @@ impl LxApp {
         self: &Arc<Self>,
         page: &crate::page::PageInstance,
         reason: LeaveReason,
-    ) -> Result<(), crate::LxAppError> {
+    ) -> Result<(), lingxia_error::Error> {
         if self.current_page()?.instance_id() != page.instance_id() {
             return Ok(());
         }
@@ -691,9 +691,9 @@ impl LxApp {
         self: &Arc<Self>,
         page: &crate::page::PageInstance,
         reason: LeaveReason,
-    ) -> Result<(), crate::LxAppError> {
+    ) -> Result<(), lingxia_error::Error> {
         match reason {
-            LeaveReason::Back => Ok(page.navigate_back(1)?),
+            LeaveReason::Back => page.navigate_back(1),
             LeaveReason::Home => self.go_home(),
         }
     }

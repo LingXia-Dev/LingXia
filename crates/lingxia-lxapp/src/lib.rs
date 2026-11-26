@@ -161,9 +161,9 @@ pub use plugin::{build_plugin_page_path, parse_plugin_page_path, parse_plugin_ur
 pub use provider::{
     BoxFuture, FingerprintProvider, LxAppChannel, LxAppNetworkPermission, LxAppPermissions,
     LxAppRegistryInfo, LxAppRegistryProvider, LxAppRegistryRequest, LxAppStatus, LxAppUpdateQuery,
-    NoOpProvider, Provider, ProviderError, ProviderErrorCode, ProviderErrorExt,
-    PushNotificationProvider, UpdateAuthentication, UpdatePackageInfo, UpdateProvider,
-    UpdateTarget, register_lxapp_registry_provider, register_provider,
+    NoOpProvider, Provider, ProviderError, ProviderErrorCode, PushNotificationProvider,
+    UpdateAuthentication, UpdatePackageInfo, UpdateProvider, UpdateTarget,
+    register_lxapp_registry_provider, register_provider,
 };
 pub use startup::{
     LxAppStartupOptions, Scene, append_page_query, parse_channel, parse_optional_channel,

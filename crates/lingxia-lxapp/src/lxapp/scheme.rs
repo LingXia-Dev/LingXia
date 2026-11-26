@@ -444,7 +444,7 @@ impl LxApp {
             Err(e) => e,
         };
 
-        Err(last_err.into())
+        Err(last_err)
     }
 
     /// Text resources carry `charset=utf-8`.

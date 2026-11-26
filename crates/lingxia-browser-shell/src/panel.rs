@@ -1,5 +1,4 @@
 use lingxia_platform::traits::app_runtime::LxAppOpenMode;
-use lxapp::LxAppError;
 use lxapp::startup::LxAppStartupOptions;
 
 pub fn panel_item_for_id(panel_id: &str) -> Option<(String, String)> {
@@ -33,7 +32,11 @@ pub fn open_panel_lxapp(panel_id: &str, appid: &str, path: &str) {
     }));
 }
 
-async fn do_open_panel_lxapp(panel_id: &str, appid: &str, path: &str) -> Result<(), LxAppError> {
+async fn do_open_panel_lxapp(
+    panel_id: &str,
+    appid: &str,
+    path: &str,
+) -> Result<(), lingxia_error::Error> {
     let channel = lxapp::resolve_open_channel(appid, None);
     lxapp::prepare_lxapp_open(appid, channel).await?;
 

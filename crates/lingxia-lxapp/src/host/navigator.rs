@@ -1,6 +1,5 @@
 use super::await_or_cancel;
 use crate::LxApp;
-use crate::LxAppError;
 use crate::lxapp::Channel;
 use crate::startup::LxAppStartupOptions;
 use serde::Deserialize;
@@ -24,7 +23,7 @@ struct NavigateToAppOptions {
 fn build_startup_options(
     target: &LxApp,
     options: &NavigateToAppOptions,
-) -> Result<(LxAppStartupOptions, Channel), LxAppError> {
+) -> Result<(LxAppStartupOptions, Channel), lingxia_error::Error> {
     let path = resolve_page_target(target, options)?;
     let mut startup_options = LxAppStartupOptions::new(&path);
 
@@ -37,29 +36,29 @@ fn build_startup_options(
     Ok((startup_options, channel))
 }
 
-fn parse_channel(channel: Option<&str>) -> Result<Channel, LxAppError> {
-    crate::parse_optional_channel(channel).map_err(LxAppError::InvalidParameter)
+fn parse_channel(channel: Option<&str>) -> Result<Channel, lingxia_error::Error> {
+    crate::parse_optional_channel(channel).map_err(lingxia_error::Error::invalid_arg)
 }
 
 fn resolve_page_target(
     target: &LxApp,
     options: &NavigateToAppOptions,
-) -> Result<String, LxAppError> {
+) -> Result<String, lingxia_error::Error> {
     validate_page_selector(options)?;
     let path = if let Some(page) = options.page.as_deref().map(str::trim) {
         target
             .find_page_path_by_name(page)
-            .ok_or_else(|| LxAppError::ResourceNotFound(format!("page name: {page}")))?
+            .ok_or_else(|| lingxia_error::Error::not_found(format!("page name: {page}")))?
     } else {
         String::new()
     };
     append_query(path, options.query.as_ref())
 }
 
-fn validate_page_selector(options: &NavigateToAppOptions) -> Result<(), LxAppError> {
+fn validate_page_selector(options: &NavigateToAppOptions) -> Result<(), lingxia_error::Error> {
     if options.path.is_some() {
-        return Err(LxAppError::InvalidParameter(
-            "path is not supported; pass the configured page name in page".to_string(),
+        return Err(lingxia_error::Error::invalid_arg(
+            "path is not supported; pass the configured page name in page",
         ));
     }
     if options
@@ -67,28 +66,28 @@ fn validate_page_selector(options: &NavigateToAppOptions) -> Result<(), LxAppErr
         .as_deref()
         .is_some_and(|page| page.trim().is_empty())
     {
-        return Err(LxAppError::InvalidParameter(
-            "page must be a non-empty configured page name".to_string(),
+        return Err(lingxia_error::Error::invalid_arg(
+            "page must be a non-empty configured page name",
         ));
     }
     Ok(())
 }
 
-fn append_query(path: String, query: Option<&Value>) -> Result<String, LxAppError> {
+fn append_query(path: String, query: Option<&Value>) -> Result<String, lingxia_error::Error> {
     let Some(query) = query else {
         return Ok(path);
     };
-    crate::append_page_query(path, query).map_err(LxAppError::InvalidParameter)
+    crate::append_page_query(path, query).map_err(lingxia_error::Error::invalid_arg)
 }
 
 fn should_navigate_to_app(
     lxapp: &LxApp,
     options: &NavigateToAppOptions,
-) -> Result<bool, LxAppError> {
+) -> Result<bool, lingxia_error::Error> {
     validate_page_selector(options)?;
     if options.appid.is_empty() {
-        return Err(LxAppError::InvalidParameter(
-            "navigateToApp requires appId".to_string(),
+        return Err(lingxia_error::Error::invalid_arg(
+            "navigateToApp requires appId",
         ));
     }
 
@@ -103,13 +102,13 @@ async fn do_navigate_to_app(
     lxapp: Arc<LxApp>,
     options: NavigateToAppOptions,
     cancel: &mut super::HostCancel,
-) -> Result<(), LxAppError> {
+) -> Result<(), lingxia_error::Error> {
     validate_page_selector(&options)?;
     let target_appid = options.appid.clone();
     let release_type = crate::resolve_open_channel(
         &target_appid,
         crate::parse_requested_channel(options.channel.as_deref())
-            .map_err(LxAppError::InvalidParameter)?,
+            .map_err(lingxia_error::Error::invalid_arg)?,
     );
     let target_version = options
         .target_version
@@ -117,10 +116,7 @@ async fn do_navigate_to_app(
         .map(str::trim)
         .filter(|v| !v.is_empty());
 
-    await_or_cancel(cancel, async {
-        Ok(crate::ensure_open_allowed(&target_appid).await?)
-    })
-    .await?;
+    await_or_cancel(cancel, crate::ensure_open_allowed(&target_appid)).await?;
 
     if let Some(target_version) = target_version {
         await_or_cancel(
@@ -141,9 +137,10 @@ async fn do_navigate_to_app(
         .await?;
     }
 
-    let target_app = await_or_cancel(cancel, async {
-        Ok(crate::ensure_lxapp_ready(&target_appid, release_type).await?)
-    })
+    let target_app = await_or_cancel(
+        cancel,
+        crate::ensure_lxapp_ready(&target_appid, release_type),
+    )
     .await?;
     let (startup_options, _) = build_startup_options(&target_app, &options)?;
     let release_type = startup_options.release_type;

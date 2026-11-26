@@ -128,7 +128,7 @@ fn stream(
         let _ = handler_cancel_tx.send(());
     });
 
-    let (ev_tx, ev_rx) = mpsc::unbounded_channel::<Result<HostStreamItem, lxapp::LxAppError>>();
+    let (ev_tx, ev_rx) = mpsc::unbounded_channel::<Result<HostStreamItem, lingxia_error::Error>>();
     let ev_rx = Arc::new(tokio::sync::Mutex::new(ev_rx));
 
     host::__native::spawn(async move {

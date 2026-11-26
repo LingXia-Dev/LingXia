@@ -96,7 +96,6 @@ fn remove_if_unprotected(path: &Path) -> std::io::Result<Option<u64>> {
 /// user's downloads, and installed lxapp packages are not caches — deleting any
 /// of them behind a "clear cache" button is data loss, not maintenance.
 pub mod product {
-    use crate::LxAppError;
     use crate::lxapp::{
         LINGXIA_DIR, LXAPPS_DIR, TEMP_DIR, USER_CACHE_DIR, metadata, runtime_registry,
     };
@@ -237,10 +236,12 @@ pub mod product {
     }
 
     /// Clear currently reclaimable caches, preserving live session storage.
-    pub async fn clear() -> Result<ClearReport, LxAppError> {
+    pub async fn clear() -> Result<ClearReport, lingxia_error::Error> {
         let mut report = tokio::task::spawn_blocking(clear_managed_files)
             .await
-            .map_err(|err| LxAppError::Runtime(format!("cache cleanup task failed: {err}")))??;
+            .map_err(|err| {
+                lingxia_error::Error::internal(format!("cache cleanup task failed: {err}"))
+            })??;
         record_webview_result(
             &mut report,
             lingxia_webview::data_store::clear_cache(None).await,
@@ -262,9 +263,9 @@ pub mod product {
         };
     }
 
-    fn clear_managed_files() -> Result<ClearReport, LxAppError> {
+    fn clear_managed_files() -> Result<ClearReport, lingxia_error::Error> {
         let roots = roots()
-            .ok_or_else(|| LxAppError::Runtime("app runtime is not initialized".to_string()))?;
+            .ok_or_else(|| lingxia_error::Error::internal("app runtime is not initialized"))?;
         Ok(clear_managed_roots(&roots))
     }
 

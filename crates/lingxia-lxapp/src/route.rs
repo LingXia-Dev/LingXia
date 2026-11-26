@@ -1,4 +1,3 @@
-use crate::error::LxAppError;
 use crate::lxapp::LxApp;
 use crate::lxapp::uri as lx_uri;
 use crate::{plugin, startup};
@@ -31,13 +30,16 @@ impl ResolvedRoute {
     }
 }
 
-pub(crate) fn resolve_route(lxapp: &LxApp, url: &str) -> Result<ResolvedRoute, LxAppError> {
+pub(crate) fn resolve_route(
+    lxapp: &LxApp,
+    url: &str,
+) -> Result<ResolvedRoute, lingxia_error::Error> {
     let original = url.to_string();
     let (path, query) = startup::split_path_query(url);
 
     if let Some((appid, page_path)) = lx_uri::parse_lxapp_url(&path) {
         if appid != lxapp.appid {
-            return Err(LxAppError::ResourceNotFound(path));
+            return Err(lingxia_error::Error::not_found(path));
         }
 
         let actual_path = lxapp.find_page_path(&page_path).unwrap_or(page_path);

@@ -1277,7 +1277,7 @@ pub(crate) fn create_app_svc(
         if free_workers_guard.is_empty() {
             return Err(lingxia_error::Error::new(
                 lingxia_error::code::QUOTA,
-                "No available workers for new mini-app".to_string(),
+                "No available workers for new mini-app",
             ));
         }
         free_workers_guard.pop_front().unwrap()

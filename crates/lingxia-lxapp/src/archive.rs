@@ -1,6 +1,4 @@
 //! Shared archive utilities for tar.zst extraction and SHA256 verification.
-
-use crate::error::LxAppError;
 use ring::digest::{Context, SHA256};
 use std::fs;
 use std::io::{Cursor, Read};
@@ -13,25 +11,28 @@ const ZSTD_MAGIC: [u8; 4] = [0x28, 0xB5, 0x2F, 0xFD];
 
 /// Extract a tar.zst archive to the destination directory.
 /// Cleans the destination if it exists before extraction.
-pub fn extract_tar_zst(archive_path: &Path, destination: &Path) -> Result<(), LxAppError> {
+pub fn extract_tar_zst(
+    archive_path: &Path,
+    destination: &Path,
+) -> Result<(), lingxia_error::Error> {
     // Read the whole file first. Harmony's cache File handle can fail a
     // streaming zstd+tar walk even when the bytes on disk are complete.
     let bytes = fs::read(archive_path).map_err(|e| {
-        LxAppError::IoError(format!(
+        lingxia_error::Error::io(format!(
             "Failed to read archive {}: {}",
             archive_path.display(),
             e
         ))
     })?;
     if bytes.len() < ZSTD_MAGIC.len() {
-        return Err(LxAppError::IoError(format!(
+        return Err(lingxia_error::Error::io(format!(
             "Failed to extract archive {}: empty or truncated ({} bytes)",
             archive_path.display(),
             bytes.len()
         )));
     }
     if bytes[..ZSTD_MAGIC.len()] != ZSTD_MAGIC {
-        return Err(LxAppError::IoError(format!(
+        return Err(lingxia_error::Error::io(format!(
             "Failed to extract archive {}: not zstd (magic {:02x}{:02x}{:02x}{:02x}, {} bytes)",
             archive_path.display(),
             bytes[0],
@@ -43,7 +44,7 @@ pub fn extract_tar_zst(archive_path: &Path, destination: &Path) -> Result<(), Lx
     }
 
     let mut zstd_decoder = ZstdDecoder::new(Cursor::new(bytes)).map_err(|e| {
-        LxAppError::IoError(format!(
+        lingxia_error::Error::io(format!(
             "Failed to create zstd decoder for {}: {}",
             archive_path.display(),
             e
@@ -57,7 +58,7 @@ pub fn extract_tar_zst(archive_path: &Path, destination: &Path) -> Result<(), Lx
         31
     };
     zstd_decoder.window_log_max(window_log_max).map_err(|e| {
-        LxAppError::IoError(format!(
+        lingxia_error::Error::io(format!(
             "Failed to configure zstd decoder for {}: {}",
             archive_path.display(),
             e
@@ -66,7 +67,7 @@ pub fn extract_tar_zst(archive_path: &Path, destination: &Path) -> Result<(), Lx
     // Reject unreadable or invalid downloads before touching a previous install.
     if destination.exists() {
         fs::remove_dir_all(destination).map_err(|e| {
-            LxAppError::IoError(format!(
+            lingxia_error::Error::io(format!(
                 "Failed to clean destination {}: {}",
                 destination.display(),
                 e
@@ -78,7 +79,7 @@ pub fn extract_tar_zst(archive_path: &Path, destination: &Path) -> Result<(), Lx
     archive.set_preserve_permissions(false);
     archive.set_unpack_xattrs(false);
     archive.unpack(destination).map_err(|e| {
-        LxAppError::IoError(format!(
+        lingxia_error::Error::io(format!(
             "Failed to extract archive {}: {}",
             archive_path.display(),
             e
@@ -89,7 +90,7 @@ pub fn extract_tar_zst(archive_path: &Path, destination: &Path) -> Result<(), Lx
 }
 
 /// Verify SHA256 checksum of a file. Returns Ok if matches or if expected is empty.
-pub fn verify_sha256(path: &Path, expected_hex: &str) -> Result<(), LxAppError> {
+pub fn verify_sha256(path: &Path, expected_hex: &str) -> Result<(), lingxia_error::Error> {
     if expected_hex.is_empty() {
         return Ok(());
     }
@@ -97,7 +98,7 @@ pub fn verify_sha256(path: &Path, expected_hex: &str) -> Result<(), LxAppError> 
     if actual.eq_ignore_ascii_case(expected_hex) {
         Ok(())
     } else {
-        Err(LxAppError::IoError(format!(
+        Err(lingxia_error::Error::io(format!(
             "checksum mismatch: expected {}, got {}",
             expected_hex, actual
         )))
@@ -105,7 +106,7 @@ pub fn verify_sha256(path: &Path, expected_hex: &str) -> Result<(), LxAppError> 
 }
 
 /// Compute SHA-256 of a file and return lowercase hex string.
-pub fn sha256_hex(path: &Path) -> Result<String, LxAppError> {
+pub fn sha256_hex(path: &Path) -> Result<String, lingxia_error::Error> {
     use std::fmt::Write;
 
     let mut file = fs::File::open(path)?;

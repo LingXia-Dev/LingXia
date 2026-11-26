@@ -54,7 +54,6 @@ pub use lingxia_native_macros::framework_native;
 use lingxia_platform::traits::app_runtime::AppRuntime;
 #[doc(hidden)]
 pub use lxapp::LxApp;
-use lxapp::LxAppError;
 #[doc(hidden)]
 pub use lxapp::host;
 pub use panel::{open_panel_lxapp, panel_item_for_id, panels_config_json};
@@ -71,12 +70,17 @@ struct BrowserWebUiManifest {
     version: Option<String>,
 }
 
-fn parse_browser_webui_manifest(manifest_json: &str) -> Result<BrowserWebUiManifest, LxAppError> {
+fn parse_browser_webui_manifest(
+    manifest_json: &str,
+) -> Result<BrowserWebUiManifest, lingxia_error::Error> {
     let manifest = serde_json::from_str::<BrowserWebUiManifest>(manifest_json).map_err(|err| {
-        LxAppError::InvalidJsonFile(format!("{}: {}", BROWSER_WEBUI_MANIFEST_ASSET_PATH, err))
+        lingxia_error::Error::invalid_data(format!(
+            "{}: {}",
+            BROWSER_WEBUI_MANIFEST_ASSET_PATH, err
+        ))
     })?;
     if manifest.app_id != lingxia_browser::BUILTIN_BROWSER_APPID {
-        return Err(LxAppError::InvalidJsonFile(format!(
+        return Err(lingxia_error::Error::invalid_data(format!(
             "{}: appId must be {}, got {}",
             BROWSER_WEBUI_MANIFEST_ASSET_PATH,
             lingxia_browser::BUILTIN_BROWSER_APPID,
@@ -86,19 +90,17 @@ fn parse_browser_webui_manifest(manifest_json: &str) -> Result<BrowserWebUiManif
     Ok(manifest)
 }
 
-fn read_browser_asset_text(asset_path: &str) -> Result<String, LxAppError> {
+fn read_browser_asset_text(asset_path: &str) -> Result<String, lingxia_error::Error> {
     let runtime = lxapp::get_platform().ok_or_else(|| {
-        LxAppError::Runtime(
-            "browser asset loading requires an initialized host runtime".to_string(),
-        )
+        lingxia_error::Error::internal("browser asset loading requires an initialized host runtime")
     })?;
     let mut reader = runtime.read_asset(asset_path).map_err(|err| {
-        LxAppError::ResourceNotFound(format!("browser asset {} ({})", asset_path, err))
+        lingxia_error::Error::not_found(format!("browser asset {} ({})", asset_path, err))
     })?;
     let mut content = String::new();
-    reader
-        .read_to_string(&mut content)
-        .map_err(|err| LxAppError::IoError(format!("failed to read {}: {}", asset_path, err)))?;
+    reader.read_to_string(&mut content).map_err(|err| {
+        lingxia_error::Error::io(format!("failed to read {}: {}", asset_path, err))
+    })?;
     Ok(content)
 }
 

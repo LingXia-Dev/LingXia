@@ -19,7 +19,7 @@ macro_rules! host_api {
                     // Wrap in a closure so `return` inside `$body` returns from the closure,
                     // not from this async block (which must return JSON string).
                     #[allow(clippy::redundant_closure_call)]
-                    let result: Result<$output, $crate::LxAppError> = (|| $body)();
+                    let result: Result<$output, lingxia_error::Error> = (|| $body)();
                     $crate::host::serialize_result(result)
                 })
             }
@@ -39,7 +39,7 @@ macro_rules! host_api {
             ) -> $crate::host::HostFuture<'a> {
                 Box::pin(async move {
                     let $lxapp = invocation.lxapp();
-                    let result: Result<$output, $crate::LxAppError> = (|| $body)();
+                    let result: Result<$output, lingxia_error::Error> = (|| $body)();
                     $crate::host::serialize_result(result)
                 })
             }
@@ -67,7 +67,8 @@ macro_rules! host_api_async {
                     let $param: $input = $crate::host::parse_input(input.as_deref())?;
                     // Wrap in an async block so `return` inside `$body` returns from the inner
                     // block, not from this async block (which must return JSON string).
-                    let result: Result<$output, $crate::LxAppError> = (async move { $body }).await;
+                    let result: Result<$output, lingxia_error::Error> =
+                        (async move { $body }).await;
                     $crate::host::serialize_result(result)
                 })
             }
@@ -87,7 +88,8 @@ macro_rules! host_api_async {
             ) -> $crate::host::HostFuture<'a> {
                 Box::pin(async move {
                     let $lxapp = invocation.lxapp();
-                    let result: Result<$output, $crate::LxAppError> = (async move { $body }).await;
+                    let result: Result<$output, lingxia_error::Error> =
+                        (async move { $body }).await;
                     $crate::host::serialize_result(result)
                 })
             }

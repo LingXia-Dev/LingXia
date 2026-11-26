@@ -13,7 +13,6 @@ use std::sync::{Arc, LazyLock, Mutex, MutexGuard};
 use tokio::sync::{Mutex as AsyncMutex, OwnedMutexGuard, oneshot};
 
 use super::{HostCancel, HostInvocationContext};
-use crate::LxAppError;
 
 static NEXT_CALL_ID: AtomicU64 = AtomicU64::new(1);
 
@@ -122,17 +121,18 @@ pub struct PageState<T: Send + 'static> {
 }
 
 impl<T: Default + Send + 'static> PageState<T> {
-    fn lookup_mutex(invocation: &HostInvocationContext) -> Result<Arc<AsyncMutex<T>>, LxAppError> {
+    fn lookup_mutex(
+        invocation: &HostInvocationContext,
+    ) -> Result<Arc<AsyncMutex<T>>, lingxia_error::Error> {
         let Some(page_id) = invocation.page_id() else {
-            return Err(LxAppError::InvalidParameter(
-                "PageState<T> requires a page context; call this native route via `page.native` instead of module-level `native`"
-                    .into(),
+            return Err(lingxia_error::Error::invalid_arg(
+                "PageState<T> requires a page context; call this native route via `page.native` instead of module-level `native`",
             ));
         };
         let mut buckets = buckets();
         // A bucket created after its page was removed would never be cleared.
         if invocation.page().is_none() {
-            return Err(LxAppError::ResourceNotFound(format!(
+            return Err(lingxia_error::Error::not_found(format!(
                 "page {page_id} has unloaded"
             )));
         }
@@ -149,7 +149,9 @@ impl<T: Default + Send + 'static> PageState<T> {
     }
 
     /// Acquires the page's `T`, waiting for a concurrent call on the same page to finish.
-    pub async fn acquire_async(invocation: &HostInvocationContext) -> Result<Self, LxAppError> {
+    pub async fn acquire_async(
+        invocation: &HostInvocationContext,
+    ) -> Result<Self, lingxia_error::Error> {
         let mutex = Self::lookup_mutex(invocation)?;
         Ok(Self {
             guard: mutex.lock_owned().await,
@@ -158,10 +160,10 @@ impl<T: Default + Send + 'static> PageState<T> {
 
     /// Acquires the page's `T` for a `sync` route, which runs on the Logic thread and so
     /// fails instead of waiting while an async call on the same page holds it.
-    pub fn acquire_sync(invocation: &HostInvocationContext) -> Result<Self, LxAppError> {
+    pub fn acquire_sync(invocation: &HostInvocationContext) -> Result<Self, lingxia_error::Error> {
         let mutex = Self::lookup_mutex(invocation)?;
         let guard = mutex.try_lock_owned().map_err(|_| {
-            LxAppError::Runtime(format!(
+            lingxia_error::Error::internal(format!(
                 "PageState<{}> is held by an in-flight call on this page",
                 std::any::type_name::<T>()
             ))

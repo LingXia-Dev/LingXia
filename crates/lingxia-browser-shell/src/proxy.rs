@@ -13,7 +13,7 @@ use lingxia_webview::runtime as webview_runtime;
 use lingxia_webview::{
     ProxyActivation, ProxyApplyReport, ProxyApplyStatus, ProxyConfig, WebViewError,
 };
-use lxapp::{LxApp, LxAppError};
+use lxapp::LxApp;
 use serde::{Deserialize, Serialize};
 use std::net::SocketAddr;
 use std::path::{Path, PathBuf};
@@ -132,11 +132,11 @@ impl AutoSwitchRouter {
         rules: Vec<AutoSwitchRule>,
         upstream: UpstreamConfig,
         rule_list_cache: Option<&GfwListCache>,
-    ) -> Result<Self, LxAppError> {
+    ) -> Result<Self, lingxia_error::Error> {
         let rule_list_router = match rule_list_cache {
             Some(cache) => Some(
                 RuleListRouter::from_encoded(&cache.encoded, upstream.clone())
-                    .map_err(|error| LxAppError::Runtime(error.to_string()))?,
+                    .map_err(|error| lingxia_error::Error::internal(error.to_string()))?,
             ),
             None => None,
         };
@@ -241,11 +241,11 @@ fn runtime_snapshot_for(settings: &ProxySettings, gfwlist: &GfwListMeta) -> Prox
     }
 }
 
-fn map_webview_error(error: WebViewError) -> LxAppError {
+fn map_webview_error(error: WebViewError) -> lingxia_error::Error {
     match error {
-        WebViewError::InvalidCreateOptions(message) => LxAppError::InvalidParameter(message),
-        WebViewError::WebView(message) => LxAppError::Runtime(message),
-        err @ WebViewError::Unsupported(_) => LxAppError::UnsupportedOperation(err.to_string()),
+        WebViewError::InvalidCreateOptions(message) => lingxia_error::Error::invalid_arg(message),
+        WebViewError::WebView(message) => lingxia_error::Error::internal(message),
+        err @ WebViewError::Unsupported(_) => lingxia_error::Error::not_supported(err.to_string()),
     }
 }
 
@@ -332,7 +332,7 @@ fn normalized_proxy_settings(input: ProxySettingsInput) -> ProxySettings {
     .normalized()
 }
 
-fn validate_proxy_settings(settings: &ProxySettings) -> Result<(), LxAppError> {
+fn validate_proxy_settings(settings: &ProxySettings) -> Result<(), lingxia_error::Error> {
     if matches!(settings.mode, ProxyMode::Direct) {
         return Ok(());
     }
@@ -340,20 +340,20 @@ fn validate_proxy_settings(settings: &ProxySettings) -> Result<(), LxAppError> {
     validate_upstream_settings(settings).and_then(|_| validate_auto_switch_rules(settings))
 }
 
-fn validate_upstream_settings(settings: &ProxySettings) -> Result<(), LxAppError> {
+fn validate_upstream_settings(settings: &ProxySettings) -> Result<(), lingxia_error::Error> {
     if settings.socks_host.is_empty() {
-        return Err(LxAppError::InvalidParameter(
-            "SOCKS host is required for the selected proxy mode".to_string(),
+        return Err(lingxia_error::Error::invalid_arg(
+            "SOCKS host is required for the selected proxy mode",
         ));
     }
     if settings.socks_host.contains(char::is_whitespace) {
-        return Err(LxAppError::InvalidParameter(
-            "SOCKS host must not contain whitespace".to_string(),
+        return Err(lingxia_error::Error::invalid_arg(
+            "SOCKS host must not contain whitespace",
         ));
     }
     if settings.socks_port == 0 {
-        return Err(LxAppError::InvalidParameter(
-            "SOCKS port must be greater than 0".to_string(),
+        return Err(lingxia_error::Error::invalid_arg(
+            "SOCKS port must be greater than 0",
         ));
     }
 
@@ -365,13 +365,13 @@ pub(crate) const LIST_FAILED_CODE: &str = "PROXY_LIST_FAILED";
 const GFWLIST_FETCH_TIMEOUT: Duration = Duration::from_secs(30);
 
 /// A rule-list download failure as a kind and the host it concerns; the raw error goes to the log only.
-fn list_failure(kind: &str, host: &str, error: &dyn std::fmt::Display) -> LxAppError {
+fn list_failure(kind: &str, host: &str, error: &dyn std::fmt::Display) -> lingxia_error::Error {
     log::warn!("[BrowserShellProxy] refreshGfwList failed ({kind}, {host}): {error}");
-    LxAppError::RongJSHost {
-        code: LIST_FAILED_CODE.to_string(),
-        message: format!("rule list download failed: {kind}"),
-        data: Some(serde_json::json!({ "failure": kind, "host": host })),
-    }
+    lingxia_error::Error::new(
+        LIST_FAILED_CODE,
+        format!("rule list download failed: {kind}"),
+    )
+    .with_data(serde_json::json!({ "failure": kind, "host": host }))
 }
 
 /// The host of a list address, for a failure a person can read.
@@ -391,21 +391,21 @@ fn host_of_source(url: &str) -> String {
         .to_string()
 }
 
-fn validate_gfwlist_source(settings: &ProxySettings) -> Result<(), LxAppError> {
+fn validate_gfwlist_source(settings: &ProxySettings) -> Result<(), lingxia_error::Error> {
     validate_source_url(&settings.gfwlist_source_url)
-        .map_err(|error| LxAppError::InvalidParameter(error.to_string()))
+        .map_err(|error| lingxia_error::Error::invalid_arg(error.to_string()))
 }
 
-fn validate_auto_switch_rules(settings: &ProxySettings) -> Result<(), LxAppError> {
+fn validate_auto_switch_rules(settings: &ProxySettings) -> Result<(), lingxia_error::Error> {
     for rule in &settings.auto_switch_rules {
         if rule.pattern.trim().is_empty() {
-            return Err(LxAppError::InvalidParameter(
-                "Auto Switch rules must have a domain pattern".to_string(),
+            return Err(lingxia_error::Error::invalid_arg(
+                "Auto Switch rules must have a domain pattern",
             ));
         }
         if rule.pattern.contains(char::is_whitespace) {
-            return Err(LxAppError::InvalidParameter(
-                "Auto Switch rule patterns must not contain whitespace".to_string(),
+            return Err(lingxia_error::Error::invalid_arg(
+                "Auto Switch rule patterns must not contain whitespace",
             ));
         }
     }
@@ -431,13 +431,13 @@ fn gfwlist_cache_path(app_data_dir: &Path) -> PathBuf {
     lingxia_app_context::app_state_file(app_data_dir, "proxy-gfwlist.json")
 }
 
-fn load_gfwlist_cache(app_data_dir: &Path) -> Result<Option<GfwListCache>, LxAppError> {
+fn load_gfwlist_cache(app_data_dir: &Path) -> Result<Option<GfwListCache>, lingxia_error::Error> {
     let path = gfwlist_cache_path(app_data_dir);
     let bytes = match std::fs::read(&path) {
         Ok(bytes) => bytes,
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
         Err(error) => {
-            return Err(LxAppError::Runtime(format!(
+            return Err(lingxia_error::Error::internal(format!(
                 "failed to read GFW List cache: {}",
                 error
             )));
@@ -446,24 +446,30 @@ fn load_gfwlist_cache(app_data_dir: &Path) -> Result<Option<GfwListCache>, LxApp
 
     serde_json::from_slice::<GfwListCache>(&bytes)
         .map(Some)
-        .map_err(|error| LxAppError::Runtime(format!("failed to parse GFW List cache: {}", error)))
+        .map_err(|error| {
+            lingxia_error::Error::internal(format!("failed to parse GFW List cache: {}", error))
+        })
 }
 
-fn save_gfwlist_cache(app_data_dir: &Path, cache: &GfwListCache) -> Result<(), LxAppError> {
+fn save_gfwlist_cache(
+    app_data_dir: &Path,
+    cache: &GfwListCache,
+) -> Result<(), lingxia_error::Error> {
     let path = gfwlist_cache_path(app_data_dir);
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent).map_err(|error| {
-            LxAppError::Runtime(format!(
+            lingxia_error::Error::internal(format!(
                 "failed to create GFW List cache directory: {}",
                 error
             ))
         })?;
     }
     let bytes = serde_json::to_vec_pretty(cache).map_err(|error| {
-        LxAppError::Runtime(format!("failed to encode GFW List cache: {}", error))
+        lingxia_error::Error::internal(format!("failed to encode GFW List cache: {}", error))
     })?;
-    std::fs::write(&path, bytes)
-        .map_err(|error| LxAppError::Runtime(format!("failed to write GFW List cache: {}", error)))
+    std::fs::write(&path, bytes).map_err(|error| {
+        lingxia_error::Error::internal(format!("failed to write GFW List cache: {}", error))
+    })
 }
 
 /// The rule list's domain count, parsed once per downloaded list.
@@ -484,7 +490,7 @@ fn rule_count_of(cache: &GfwListCache) -> Option<usize> {
 }
 
 fn gfwlist_meta_from_cache_result(
-    cache_result: Result<Option<GfwListCache>, LxAppError>,
+    cache_result: Result<Option<GfwListCache>, lingxia_error::Error>,
 ) -> (Option<GfwListCache>, GfwListMeta) {
     match cache_result {
         Ok(Some(cache)) => {
@@ -520,7 +526,7 @@ fn gfwlist_meta_from_cache_result(
     }
 }
 
-fn start_local_proxy() -> Result<RunningProxy, LxAppError> {
+fn start_local_proxy() -> Result<RunningProxy, lingxia_error::Error> {
     // Serialize startup: without this guard two concurrent callers can both
     // observe `running == None`, spawn two proxy threads, and the loser leaks
     // a bound listener forever. This function already blocks (recv_timeout),
@@ -581,12 +587,16 @@ fn start_local_proxy() -> Result<RunningProxy, LxAppError> {
                 proxy.run().await;
             });
         })
-        .map_err(|error| LxAppError::Runtime(format!("failed to start proxy thread: {}", error)))?;
+        .map_err(|error| {
+            lingxia_error::Error::internal(format!("failed to start proxy thread: {}", error))
+        })?;
 
     let running = rx
         .recv_timeout(Duration::from_secs(5))
-        .map_err(|error| LxAppError::Runtime(format!("failed to start local proxy: {}", error)))?
-        .map_err(LxAppError::Runtime)?;
+        .map_err(|error| {
+            lingxia_error::Error::internal(format!("failed to start local proxy: {}", error))
+        })?
+        .map_err(lingxia_error::Error::internal)?;
 
     // START_GUARD is held, so no concurrent starter can have raced us here.
     lock_state().running = Some(running.clone());
@@ -596,7 +606,7 @@ fn start_local_proxy() -> Result<RunningProxy, LxAppError> {
 fn apply_local_proxy_router(
     router: Arc<dyn ProxyRouter>,
     mode_label: &str,
-) -> Result<ProxyRuntimeSnapshot, LxAppError> {
+) -> Result<ProxyRuntimeSnapshot, lingxia_error::Error> {
     let running = start_local_proxy()?;
     log::info!(
         "[BrowserShellProxy] applying {} via local endpoint {}",
@@ -620,7 +630,7 @@ fn apply_local_proxy_router(
     ))
 }
 
-fn clear_webview_proxy() -> Result<ProxyRuntimeSnapshot, LxAppError> {
+fn clear_webview_proxy() -> Result<ProxyRuntimeSnapshot, lingxia_error::Error> {
     log::info!("[BrowserShellProxy] clearing desired webview proxy");
     webview_runtime::configure_proxy_for_new_webviews(None).map_err(map_webview_error)?;
     log::info!("[BrowserShellProxy] cleared desired webview proxy for new WebViews");
@@ -643,7 +653,7 @@ fn clear_webview_proxy() -> Result<ProxyRuntimeSnapshot, LxAppError> {
 fn apply_proxy_settings(
     settings: &ProxySettings,
     gfwlist_cache: Option<&GfwListCache>,
-) -> Result<ProxyRuntimeSnapshot, LxAppError> {
+) -> Result<ProxyRuntimeSnapshot, lingxia_error::Error> {
     log::info!(
         "[BrowserShellProxy] apply_proxy_settings mode={} host={} port={} gfwlist_source={}",
         mode_label(settings.mode),
@@ -759,13 +769,15 @@ fn saved_snapshot_for_save(
     }
 }
 
-fn load_proxy_settings(app_data_dir: &Path) -> Result<ProxySettings, LxAppError> {
+fn load_proxy_settings(app_data_dir: &Path) -> Result<ProxySettings, lingxia_error::Error> {
     crate::proxy_settings::load_proxy_settings(app_data_dir)
         .map(|settings| settings.normalized())
-        .map_err(|error| LxAppError::Runtime(error.to_string()))
+        .map_err(|error| lingxia_error::Error::internal(error.to_string()))
 }
 
-fn get_proxy_settings_result(app_data_dir: &Path) -> Result<ProxySettingsResult, LxAppError> {
+fn get_proxy_settings_result(
+    app_data_dir: &Path,
+) -> Result<ProxySettingsResult, lingxia_error::Error> {
     let settings = load_proxy_settings(app_data_dir)?;
     let (_, gfwlist_meta) = gfwlist_meta_from_cache_result(load_gfwlist_cache(app_data_dir));
     let snapshot = runtime_snapshot_for(&settings, &gfwlist_meta);
@@ -785,7 +797,7 @@ static PROXY_SETTINGS_SAVE_MUTEX: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::
 fn save_proxy_settings_and_schedule_apply(
     app_data_dir: PathBuf,
     input: ProxySettingsInput,
-) -> Result<ProxySettingsResult, LxAppError> {
+) -> Result<ProxySettingsResult, lingxia_error::Error> {
     let settings = normalized_proxy_settings(input);
     log::info!(
         "[BrowserShellProxy] updateSettings requested: mode={} host={} port={} gfwlist_source={}",
@@ -882,7 +894,9 @@ fn save_proxy_settings_and_schedule_apply(
     Ok(result)
 }
 
-async fn refresh_gfwlist_result(app_data_dir: &Path) -> Result<ProxySettingsResult, LxAppError> {
+async fn refresh_gfwlist_result(
+    app_data_dir: &Path,
+) -> Result<ProxySettingsResult, lingxia_error::Error> {
     let settings = load_proxy_settings(app_data_dir)?;
     log::info!(
         "[BrowserShellProxy] refreshGfwList requested: source={} host={} port={}",
@@ -1002,7 +1016,7 @@ async fn update_proxy_settings(
                 "[BrowserShellProxy] proxy.updateSettings task failed: {}",
                 error
             );
-            Err(LxAppError::Runtime(format!(
+            Err(lingxia_error::Error::internal(format!(
                 "proxy.updateSettings task failed: {}",
                 error
             )))
@@ -1047,7 +1061,7 @@ async fn watch_proxy_settings(
                 match recv {
                     Ok(event) => stream.send(event)?,
                     Err(broadcast::error::RecvError::Lagged(skipped)) => {
-                        return Err(LxAppError::Bridge(format!(
+                        return Err(lingxia_error::Error::internal(format!(
                             "proxy stream lagged by {skipped} events"
                         )));
                     }
@@ -1122,20 +1136,11 @@ mod tests {
             "127.0.0.1",
             &"SOCKS5 error: Host unreachable",
         );
-        match error {
-            LxAppError::RongJSHost {
-                code,
-                message,
-                data,
-            } => {
-                assert_eq!(code, LIST_FAILED_CODE);
-                assert!(!message.contains("SOCKS5"));
-                let data = data.unwrap();
-                assert_eq!(data["failure"], "sourceUnreachable");
-                assert_eq!(data["host"], "127.0.0.1");
-            }
-            other => panic!("expected a coded failure, got {other:?}"),
-        }
+        assert_eq!(error.code(), LIST_FAILED_CODE);
+        assert!(!error.message().contains("SOCKS5"));
+        let data = error.data().unwrap();
+        assert_eq!(data["failure"], "sourceUnreachable");
+        assert_eq!(data["host"], "127.0.0.1");
     }
 
     #[test]
