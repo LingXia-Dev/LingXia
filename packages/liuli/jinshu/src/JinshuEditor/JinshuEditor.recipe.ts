@@ -195,7 +195,7 @@ export const jinshuEditorRecipe = {
     indent: 'ps-16',
   },
   mathEditor: {
-    base: 'rounded-container border border-accent bg-surface-sunken p-4 gap-3 ring-1 ring-accent/25',
+    base: 'rounded-container border border-accent bg-surface-sunken p-4 gap-3',
     scroll: 'w-full overflow-x-auto',
     preview: 'min-w-full items-center justify-center py-1',
     source: 'border-t border-line pt-2.5 gap-1.5',
