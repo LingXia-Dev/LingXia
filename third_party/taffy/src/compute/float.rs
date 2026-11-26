@@ -26,9 +26,14 @@
 //!
 //! <https://www.w3.org/TR/CSS22/visuren.html#floats>
 
-use core::ops::Range;
+use core::ops::{Index, IndexMut, Range};
 
-use crate::{debug::debug_log, sys::Vec, AvailableSpace, Clear, Direction, FloatDirection, Point, Size};
+use crate::{AvailableSpace, Clear, Direction, FloatDirection, FloatInsets, Point, Size, debug::debug_log, sys::Vec};
+
+/// Tolerance used when checking whether a box fits in a horizontal space, to absorb `f32`
+/// rounding errors (e.g. percentage widths and margins that sum to exactly 100% may otherwise
+/// exceed the container width and spuriously wrap)
+pub(crate) const FIT_TOLERANCE: f32 = 0.001;
 
 /// An empty "slot" that avoids floats that is suitable for non-floated content
 /// to be laid out into
@@ -67,13 +72,16 @@ pub struct BfcSlot {
     /// the negative-margin lower bound). This differs from `border_width` in that the
     /// trailing margin is subtracted (except for any part of it that overlaps a float).
     pub stretch_width: f32,
+    /// How far down from the slot's top its widths stay valid: a box taller than this may be
+    /// beside further floats.
+    pub height: f32,
 }
 
 /// A floated box
 #[derive(Debug, Clone, Default)]
 pub struct PlacedFloatedBox {
-    /// A user defined ID for the box
-    // id: u64,
+    /// The caller-defined id that the box was placed with
+    pub id: u64,
     /// The width of the box
     pub width: f32,
     /// The height of the box
@@ -90,8 +98,8 @@ pub struct PlacedFloatedBox {
 struct Segment {
     /// The vertical start and end points of the segment
     y: Range<f32>,
-    /// Left inset in slot 0. Right inset in slot 1.
-    insets: [f32; 2],
+    /// The space taken up by floats on each side
+    insets: FloatInsets,
     /// Whether a float actually occupies the left (slot 0) / right (slot 1) inset.
     /// The insets of a segment created for a float are seeded with the float's containing
     /// block insets on both sides, so a non-zero inset alone does not imply a float.
@@ -107,9 +115,25 @@ impl Segment {
         floated_box: Size<f32>,
         direction: FloatDirection,
         bfc_width: f32,
-        cb_insets: [f32; 2],
+        cb_insets: FloatInsets,
     ) -> bool {
         float_fits_horizontally(floated_box.width, direction, bfc_width, self.insets, cb_insets)
+    }
+
+    /// Widen this segment's float insets and occupied sides to cover `other`'s
+    fn union(&mut self, other: &Segment) {
+        self.insets = self.insets.max(other.insets);
+        self.has_float = [self.has_float[0] || other.has_float[0], self.has_float[1] || other.has_float[1]];
+    }
+
+    /// Whether this segment is narrower than `other` on either side: a larger inset, or a float
+    /// on a side where `other` has none. The latter counts even if the inset doesn't grow, since
+    /// `find_bfc_slot` only applies the insets on sides that have a float.
+    fn is_narrower_than(&self, other: &Segment) -> bool {
+        self.insets.left > other.insets.left
+            || self.insets.right > other.insets.right
+            || (self.has_float[0] && !other.has_float[0])
+            || (self.has_float[1] && !other.has_float[1])
     }
 }
 
@@ -130,15 +154,40 @@ fn float_fits_horizontally(
     width: f32,
     direction: FloatDirection,
     bfc_width: f32,
-    float_insets: [f32; 2],
-    cb_insets: [f32; 2],
+    float_insets: FloatInsets,
+    cb_insets: FloatInsets,
 ) -> bool {
-    let lead = direction as usize;
-    let trail = 1 - lead;
+    let lead = direction;
+    let trail = direction.opposite();
     let x_inset = float_insets[lead].max(cb_insets[lead]);
-    let fits_opposite_floats = float_insets[trail] == 0.0 || x_inset + width <= bfc_width - float_insets[trail];
-    let fits_containing_block = float_insets[lead] == 0.0 || x_inset + width <= bfc_width - cb_insets[trail];
+    let fits_opposite_floats =
+        float_insets[trail] == 0.0 || x_inset + width <= bfc_width - float_insets[trail] + FIT_TOLERANCE;
+    let fits_containing_block =
+        float_insets[lead] == 0.0 || x_inset + width <= bfc_width - cb_insets[trail] + FIT_TOLERANCE;
     fits_opposite_floats && fits_containing_block
+}
+
+impl Index<FloatDirection> for FloatInsets {
+    type Output = f32;
+
+    /// The inset on the side that a box floated in `direction` is floated towards
+    #[inline(always)]
+    fn index(&self, direction: FloatDirection) -> &f32 {
+        match direction {
+            FloatDirection::Left => &self.left,
+            FloatDirection::Right => &self.right,
+        }
+    }
+}
+
+impl IndexMut<FloatDirection> for FloatInsets {
+    #[inline(always)]
+    fn index_mut(&mut self, direction: FloatDirection) -> &mut f32 {
+        match direction {
+            FloatDirection::Left => &mut self.left,
+            FloatDirection::Right => &mut self.right,
+        }
+    }
 }
 
 /// Helper type for placing a single floated box
@@ -152,30 +201,28 @@ struct FloatFitter {
     /// The total height of the set of segments currently being considered
     slot_height: f64,
     /// The union of the float insets of the set of segments currently being considered
-    float_insets: [f32; 2],
+    float_insets: FloatInsets,
     /// The insets of the box's containing block from the edges of the Block Formatting Context
-    cb_insets: [f32; 2],
+    cb_insets: FloatInsets,
 }
 
 impl FloatFitter {
     /// Create a new `FloatFitter`
-    fn new(bfc_width: f32, slot_height: f32, cb_insets: [f32; 2]) -> Self {
-        Self { bfc_width, slot_height: slot_height as f64, float_insets: [0.0, 0.0], cb_insets }
+    fn new(bfc_width: f32, slot_height: f32, cb_insets: FloatInsets) -> Self {
+        Self { bfc_width, slot_height: slot_height as f64, float_insets: FloatInsets::ZERO, cb_insets }
     }
 
     // Horizontal fitting
 
     /// Union the insets of another segment. This is a "max" of the insets on each side.
-    fn union_insets(&mut self, insets: [f32; 2]) {
-        self.float_insets[0] = self.float_insets[0].max(insets[0]);
-        self.float_insets[1] = self.float_insets[1].max(insets[1]);
+    fn union_insets(&mut self, insets: FloatInsets) {
+        self.float_insets = self.float_insets.max(insets);
     }
 
     /// The inset from the edge of the BFC (on the side the box is floated towards) that the
     /// box would be placed at given the currently accounted for insets
     fn placed_inset(&self, direction: FloatDirection) -> f32 {
-        let lead = direction as usize;
-        self.float_insets[lead].max(self.cb_insets[lead])
+        self.float_insets[direction].max(self.cb_insets[direction])
     }
 
     /// Given the currently accounted for insets, check whether there is an x position
@@ -259,7 +306,7 @@ impl FloatContext {
     /// Whether the float context contains any floats that extend to or below min_y
     #[inline(always)]
     pub fn has_active_floats(&self, min_y: f32) -> bool {
-        self.has_floats && self.segments.last().map(|seg| seg.y.end).unwrap_or(0.0) > min_y
+        self.has_floats && self.segments.last().is_some_and(|seg| seg.y.end > min_y)
     }
 
     /// Set the width of the `FloatContext`
@@ -293,6 +340,14 @@ impl FloatContext {
         self.segments.splice((idx + 1)..(idx + 1), core::iter::once(new_segment));
     }
 
+    /// The (x, y) coordinates of a box previously placed in the context on the `direction` side
+    pub(crate) fn placed_position(&self, placed: &PlacedFloatedBox, direction: FloatDirection) -> Point<f32> {
+        match direction {
+            FloatDirection::Left => Point { x: placed.x_inset, y: placed.y },
+            FloatDirection::Right => Point { x: self.available_width - placed.x_inset - placed.width, y: placed.y },
+        }
+    }
+
     /// Update the last placed float start and end values
     fn update_last_placed_float(&mut self, direction: FloatDirection, placement: Range<usize>) {
         let slot = direction as usize;
@@ -300,19 +355,21 @@ impl FloatContext {
         self.last_placed_floats[slot].end = self.last_placed_floats[slot].end.max(placement.end);
     }
 
-    /// Position a floated box with the context, returning the (x, y) coordinates
+    /// Position a floated box with the context, returning the (x, y) coordinates.
+    /// `id` is stored with the placed box and is not otherwise interpreted.
     pub fn place_floated_box(
         &mut self,
+        id: u64,
         floated_box: Size<f32>,
         min_y: f32,
-        containing_block_insets: [f32; 2],
+        containing_block_insets: FloatInsets,
         direction: FloatDirection,
         clear: Clear,
     ) -> Point<f32> {
         self.has_floats = true;
 
         let placed_floated_box =
-            self.place_floated_box_inner(floated_box, min_y, containing_block_insets, direction, clear);
+            self.place_floated_box_inner(id, floated_box, min_y, containing_block_insets, direction, clear);
 
         let slot = direction as usize;
         let bottom = placed_floated_box.y + placed_floated_box.height;
@@ -320,26 +377,21 @@ impl FloatContext {
         let y = placed_floated_box.y;
         self.float_ceiling = Some(self.float_ceiling.map_or(y, |ceiling| ceiling.max(y)));
 
-        let x_inset = placed_floated_box.x_inset;
-        let y = placed_floated_box.y;
+        let pos = self.placed_position(&placed_floated_box, direction);
         match direction {
-            FloatDirection::Left => {
-                self.left_floats.push(placed_floated_box);
-                Point { x: x_inset, y }
-            }
-            FloatDirection::Right => {
-                self.right_floats.push(placed_floated_box);
-                Point { x: self.available_width - x_inset - floated_box.width, y }
-            }
+            FloatDirection::Left => self.left_floats.push(placed_floated_box),
+            FloatDirection::Right => self.right_floats.push(placed_floated_box),
         }
+        pos
     }
 
     /// Inner implementation of float placement, split into a separate function so that it can early-return
     fn place_floated_box_inner(
         &mut self,
+        id: u64,
         floated_box: Size<f32>,
         min_y: f32,
-        containing_block_insets: [f32; 2],
+        containing_block_insets: FloatInsets,
         direction: FloatDirection,
         clear: Clear,
     ) -> PlacedFloatedBox {
@@ -397,7 +449,7 @@ impl FloatContext {
             // segment below all existing segments. A new segment will always have space for
             // the float, so we can exit the loop at this point.
             let Some(start_segment) = self.segments.get(start_idx) else {
-                break (None, None, containing_block_insets[slot]);
+                break (None, None, containing_block_insets[direction]);
             };
 
             // Candidate start segment doesn't have (horizontal) space for the float:
@@ -456,31 +508,27 @@ impl FloatContext {
             }
         };
 
-        // Short-circuit for zero-height boxes. Zero-width boxes are still recorded in segments:
-        // their edge acts as an obstacle that boxes establishing an independent formatting
-        // context may not be placed to the outside of (e.g. via a negative margin).
-        if floated_box.height == 0.0 {
-            // TODO: need to update last_placed_float?
-
-            return PlacedFloatedBox {
-                width: floated_box.width,
-                height: floated_box.height,
-                y: start_y,
-                x_inset: placed_inset,
-            };
-        }
-
         // Handle case where floated box is placed after all existing segments
         if start.is_none() {
-            let last_y_end = self.segments.last().map(|seg| seg.y.end).unwrap_or(0.0);
+            // Before the first float, the context is float-free all the way up: the first float
+            // gets an empty segment above it like any other float placed below all segments, so
+            // that content positioned above it (e.g. by a negative margin) is not moved down to
+            // it. The first float itself may be above the top of the block formatting context
+            // (`y < 0`): its containing block (CSS2 float rule 4) may be pulled up by a negative
+            // margin.
+            let last_y_end = self.segments.last().map(|seg| seg.y.end).unwrap_or(f32::NEG_INFINITY);
             if start_y > last_y_end {
-                self.segments.push(Segment { y: last_y_end..start_y, insets: [0.0, 0.0], has_float: [false; 2] });
+                self.segments.push(Segment {
+                    y: last_y_end..start_y,
+                    insets: FloatInsets::ZERO,
+                    has_float: [false; 2],
+                });
             }
 
             let start_y = last_y_end.max(start_y);
 
             let mut insets = containing_block_insets;
-            insets[slot] += floated_box.width;
+            insets[direction] += floated_box.width;
             let mut has_float = [false; 2];
             has_float[slot] = true;
             self.segments.push(Segment { y: start_y..(start_y + floated_box.height), insets, has_float });
@@ -491,10 +539,11 @@ impl FloatContext {
             self.update_last_placed_float(direction, start_idx..end_idx);
 
             return PlacedFloatedBox {
+                id,
                 width: floated_box.width,
                 height: floated_box.height,
                 y: start_y,
-                x_inset: containing_block_insets[slot],
+                x_inset: containing_block_insets[direction],
             };
         }
 
@@ -512,11 +561,23 @@ impl FloatContext {
             }
         }
 
+        // A zero-height float takes up no vertical space, but still narrows content and floats
+        // whose vertical extent crosses its position, so it gets its own zero-height segment
+        if floated_box.height == 0.0 {
+            let segment = self.segments[start_idx].clone();
+            self.segments.insert(start_idx, Segment { y: start_y..start_y, ..segment });
+            end = Some(start_idx);
+        }
+
         let end_idx = match end {
+            // The float extends below all existing segments: add a segment for the part of it
+            // below the last segment (its insets are set along with the other segments below)
             None => {
-                let last_y_end = self.segments.last().map(|seg| seg.y.end).unwrap_or(0.0);
-                if min_y > last_y_end {
-                    self.segments.push(Segment { y: last_y_end..min_y, insets: [0.0, 0.0], has_float: [false; 2] });
+                let last_y_end = self.segments[self.segments.len() - 1].y.end;
+                let end_y = start_y + floated_box.height;
+                if end_y > last_y_end {
+                    let insets = containing_block_insets;
+                    self.segments.push(Segment { y: last_y_end..end_y, insets, has_float: [false; 2] });
                 }
                 self.segments.len() - 1
             }
@@ -546,14 +607,14 @@ impl FloatContext {
         // Update inset for the range of segments that the float is placed in
         let placed_inset_plus_width = placed_inset + floated_box.width;
         for segment in &mut self.segments[start_idx..=end_idx] {
-            segment.insets[slot] = placed_inset_plus_width;
+            segment.insets[direction] = placed_inset_plus_width;
             segment.has_float[slot] = true;
         }
 
         // Update last_placed_float
         self.update_last_placed_float(direction, start_idx..(end_idx + 1));
 
-        PlacedFloatedBox { width: floated_box.width, height: floated_box.height, y: start_y, x_inset: placed_inset }
+        PlacedFloatedBox { id, width: floated_box.width, height: floated_box.height, y: start_y, x_inset: placed_inset }
     }
 
     /// Get the end segment of the last float on side(s) specified by the clear parameter (if any)
@@ -584,19 +645,26 @@ impl FloatContext {
     }
 
     /// Search for a space suitable for laying out non-floated content into
+    ///
+    /// The returned slot avoids the floats beside any part of `height` below its top edge (a line
+    /// box is shortened by every float its vertical extent intersects). The slot's `height` is
+    /// how far down from its top edge its width stays valid: content taller than that may be
+    /// beside further floats.
     pub fn find_content_slot(
         &self,
         min_y: f32,
-        containing_block_insets: [f32; 2],
+        height: f32,
+        containing_block_insets: FloatInsets,
         clear: Clear,
         after: Option<usize>,
     ) -> ContentSlot {
+        // Subtract each inset separately (here and below): `- insets.sum()` rounds differently for large values
         if !self.has_active_floats(min_y) {
             return ContentSlot {
                 segment_id: None,
-                x: containing_block_insets[0],
+                x: containing_block_insets.left,
                 y: min_y,
-                width: self.available_width - containing_block_insets[0] - containing_block_insets[1],
+                width: self.available_width - containing_block_insets.left - containing_block_insets.right,
                 height: f32::INFINITY,
             };
         }
@@ -617,21 +685,35 @@ impl FloatContext {
         let segment = self.segments.get(start_idx);
         match segment {
             Some(segment) => {
-                let inset_left = segment.insets[0].max(containing_block_insets[0]);
-                let inset_right = segment.insets[1].max(containing_block_insets[1]);
+                let y = segment.y.start.max(min_y);
+                let end_y = y + height;
+
+                // Combine the insets of every segment beside the content's height, then extend
+                // the slot down over any further segments that don't narrow it
+                let mut insets = containing_block_insets.max(segment.insets);
+                let mut slot_height = f32::INFINITY;
+                for segment in &self.segments[start_idx + 1..] {
+                    if segment.y.start < end_y {
+                        insets = insets.max(segment.insets);
+                    } else if segment.insets.left > insets.left || segment.insets.right > insets.right {
+                        slot_height = segment.y.start - y;
+                        break;
+                    }
+                }
+
                 ContentSlot {
                     segment_id: Some(start_idx),
-                    x: inset_left,
-                    y: segment.y.start.max(min_y),
-                    width: self.available_width - inset_left - inset_right,
-                    height: f32::INFINITY,
+                    x: insets.left,
+                    y,
+                    width: self.available_width - insets.left - insets.right,
+                    height: slot_height,
                 }
             }
             None => ContentSlot {
                 segment_id: None,
-                x: containing_block_insets[0],
+                x: containing_block_insets.left,
                 y: min_y,
-                width: self.available_width - containing_block_insets[0] - containing_block_insets[1],
+                width: self.available_width - containing_block_insets.left - containing_block_insets.right,
                 height: f32::INFINITY,
             },
         }
@@ -657,23 +739,30 @@ impl FloatContext {
     ///     negative margin lets the border box extend outside the containing block.
     ///
     /// When there are no floats beside the box, its (possibly negative) margins apply as usual.
+    ///
+    /// The box must not overlap floats beside any part of `min_height` (a lower bound on the
+    /// height of its border box) below its top edge: e.g. a box pulled up above a float by a
+    /// negative top margin may only stay there if it also fits beside that float.
+    #[allow(clippy::too_many_arguments)]
     pub fn find_bfc_slot(
         &self,
         min_y: f32,
-        containing_block_insets: [f32; 2],
-        margins: [f32; 2],
+        min_height: f32,
+        containing_block_insets: FloatInsets,
+        margins: FloatInsets,
         direction: Direction,
         clear: Clear,
         after: Option<usize>,
     ) -> BfcSlot {
-        let margin_insets = [containing_block_insets[0] + margins[0], containing_block_insets[1] + margins[1]];
-        let no_float_width = self.available_width - margin_insets[0] - margin_insets[1];
+        let margin_insets = containing_block_insets + margins;
+        let no_float_width = self.available_width - margin_insets.left - margin_insets.right;
         let no_float_slot = BfcSlot {
             segment_id: None,
-            x: margin_insets[0],
+            x: margin_insets.left,
             y: min_y,
             border_width: no_float_width,
             stretch_width: no_float_width,
+            height: f32::INFINITY,
         };
 
         if !self.has_active_floats(min_y) {
@@ -695,36 +784,48 @@ impl FloatContext {
         let start_idx = start_idx.unwrap_or(self.segments.len());
         match self.segments.get(start_idx) {
             Some(segment) => {
+                let y = segment.y.start.max(min_y);
+
+                // Combine the float insets of every segment beside the box's minimum height, then
+                // extend the slot down over any further segments that don't narrow it
+                let mut combined = segment.clone();
+                let mut lower_segments = self.segments[start_idx + 1..].iter().peekable();
+                while let Some(segment) = lower_segments.next_if(|seg| seg.y.start < y + min_height) {
+                    combined.union(segment);
+                }
+                let slot_height = lower_segments
+                    .find(|seg| seg.is_narrower_than(&combined))
+                    .map_or(f32::INFINITY, |seg| seg.y.start - y);
+                let Segment { insets, has_float, .. } = combined;
+
                 let lead = match direction {
-                    Direction::Ltr => 0,
-                    Direction::Rtl => 1,
+                    Direction::Ltr => FloatDirection::Left,
+                    Direction::Rtl => FloatDirection::Right,
                 };
-                let trail = 1 - lead;
-                let has_lead_float = segment.has_float[lead];
-                let has_trail_float = segment.has_float[trail];
-                let mut fit_insets = [0.0; 2];
-                let mut stretch_insets = [0.0; 2];
+                let trail = lead.opposite();
+                let has_lead_float = has_float[lead as usize];
+                let has_trail_float = has_float[trail as usize];
+                let mut fit_insets = FloatInsets::ZERO;
+                let mut stretch_insets = FloatInsets::ZERO;
                 fit_insets[lead] =
-                    if has_lead_float { segment.insets[lead].max(margin_insets[lead]) } else { margin_insets[lead] };
+                    if has_lead_float { insets[lead].max(margin_insets[lead]) } else { margin_insets[lead] };
                 stretch_insets[lead] = fit_insets[lead];
                 fit_insets[trail] = if has_trail_float {
-                    segment.insets[trail].max(containing_block_insets[trail])
+                    insets[trail].max(containing_block_insets[trail])
                 } else {
                     // A positive trailing margin may overflow the containing block edge (it does
                     // not affect fit), but a negative one widens the space for the border box
                     margin_insets[trail].min(containing_block_insets[trail])
                 };
-                stretch_insets[trail] = if has_trail_float {
-                    segment.insets[trail].max(margin_insets[trail])
-                } else {
-                    margin_insets[trail]
-                };
+                stretch_insets[trail] =
+                    if has_trail_float { insets[trail].max(margin_insets[trail]) } else { margin_insets[trail] };
                 BfcSlot {
                     segment_id: Some(start_idx),
-                    x: fit_insets[0],
-                    y: segment.y.start.max(min_y),
-                    border_width: self.available_width - fit_insets[0] - fit_insets[1],
-                    stretch_width: self.available_width - stretch_insets[0] - stretch_insets[1],
+                    x: fit_insets.left,
+                    y,
+                    border_width: self.available_width - fit_insets.left - fit_insets.right,
+                    stretch_width: self.available_width - stretch_insets.left - stretch_insets.right,
+                    height: slot_height,
                 }
             }
             // Below all floats

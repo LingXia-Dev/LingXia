@@ -149,7 +149,7 @@ glifo = "=0.4.0"
 wgpu = { version = "=30.0.0", default-features = false }
 raw-window-handle = "=0.6.2"
 parley = { version = "=0.12.0", default-features = false }
-taffy = "=0.14.0"
+taffy = "=0.16.0"
 pollster = "=0.4.0"
 rong_core = "=0.8.0"
 rong_quickjs_sys = "=0.7.0"
@@ -209,7 +209,7 @@ rong_timer = { git = "https://github.com/LingXia-Dev/Rong.git", rev = "44b96a2a3
 rong_typegen = { git = "https://github.com/LingXia-Dev/Rong.git", rev = "44b96a2a392f8bae64462c9a69c630b63ec10323" }
 rong_url = { git = "https://github.com/LingXia-Dev/Rong.git", rev = "44b96a2a392f8bae64462c9a69c630b63ec10323" }
 rong_worker = { git = "https://github.com/LingXia-Dev/Rong.git", rev = "44b96a2a392f8bae64462c9a69c630b63ec10323" }
-# taffy 0.14 with two flexbox fixes (third_party/taffy/LINGXIA-PATCHES.md), until upstream takes them.
+# taffy 0.16 with four layout fixes (third_party/taffy/LINGXIA-PATCHES.md), until upstream takes them.
 taffy = { path = "third_party/taffy" }
 portable-pty = { git = "https://github.com/LingXia-Dev/wezterm.git", rev = "59d0fb89c54a77c12afe2561dc6969d8dc55fc4f", package = "portable-pty" }
 

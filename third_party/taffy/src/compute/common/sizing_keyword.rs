@@ -2,6 +2,7 @@
 //! `fit-content(...)`, and `stretch`) on the `width`/`height` style properties
 use crate::geometry::{AbsoluteAxis, Line, Rect, Size};
 use crate::style::AvailableSpace;
+use crate::style::CalcHandle;
 use crate::tree::{LayoutPartialTree, LayoutPartialTreeExt, NodeId, SizingMode};
 use crate::util::sys::f32_max;
 use crate::{CompactLength, Dimension};
@@ -29,7 +30,10 @@ pub(crate) fn resolve_sizing_keyword(
     style: Dimension,
     stretch_size: Option<f32>,
     percent_resolution_basis: Option<f32>,
+    calc_resolver: impl Fn(CalcHandle, f32) -> f32,
 ) -> Option<SizingKeywordResolution> {
+    #[cfg(not(feature = "calc"))]
+    let _ = &calc_resolver;
     match style.tag() {
         CompactLength::MIN_CONTENT_TAG => Some(SizingKeywordResolution::Measure(AvailableSpace::MinContent)),
         CompactLength::MAX_CONTENT_TAG => Some(SizingKeywordResolution::Measure(AvailableSpace::MaxContent)),
@@ -41,6 +45,10 @@ pub(crate) fn resolve_sizing_keyword(
         CompactLength::FIT_CONTENT_KEYWORD_TAG => {
             stretch_size.map(|size| SizingKeywordResolution::Measure(AvailableSpace::Definite(size)))
         }
+        #[cfg(feature = "calc")]
+        _ if style.is_fit_content_calc() => percent_resolution_basis.map(|basis| {
+            SizingKeywordResolution::Measure(AvailableSpace::Definite(calc_resolver(style.calc_value(), basis)))
+        }),
         CompactLength::STRETCH_TAG => stretch_size.map(SizingKeywordResolution::Exact),
         _ => None,
     }
@@ -69,7 +77,7 @@ pub(crate) fn resolve_min_max_sizing_keyword(
     if !style.is_sizing_keyword() {
         return None;
     }
-    match resolve_sizing_keyword(style, stretch_size, percent_resolution_basis)? {
+    match resolve_sizing_keyword(style, stretch_size, percent_resolution_basis, |val, basis| tree.calc(val, basis))? {
         SizingKeywordResolution::Exact(size) => Some(size),
         SizingKeywordResolution::Measure(available) => {
             let (known_dimensions, available_space) = match axis {
@@ -115,12 +123,16 @@ pub(crate) fn resolve_absolute_sizing_keywords(
     let stretch_size = absolute_stretch_size(area_size, inset, margin);
 
     let keyword_width = if known_dimensions.width.is_none() {
-        resolve_sizing_keyword(size_style.width, Some(stretch_size.width), Some(area_size.width))
+        resolve_sizing_keyword(size_style.width, Some(stretch_size.width), Some(area_size.width), |val, basis| {
+            tree.calc(val, basis)
+        })
     } else {
         None
     };
     let keyword_height = if known_dimensions.height.is_none() {
-        resolve_sizing_keyword(size_style.height, Some(stretch_size.height), Some(area_size.height))
+        resolve_sizing_keyword(size_style.height, Some(stretch_size.height), Some(area_size.height), |val, basis| {
+            tree.calc(val, basis)
+        })
     } else {
         None
     };
@@ -300,8 +312,10 @@ mod min_max_keyword_tests {
     fn container(display: Display, width: f32, height: f32) -> Style {
         Style {
             display,
+            // Positioned, so that it is the containing block of an absolutely positioned item
+            position: Position::Relative,
             size: Size { width: length(width), height: length(height) },
-            align_items: Some(AlignItems::START),
+            align_items: AlignItems::START,
             ..Default::default()
         }
     }
@@ -426,7 +440,7 @@ mod min_max_keyword_tests {
     /// A stretched item is capped by its keyword max cross size
     #[test]
     fn flex_stretch_capped_by_keyword_max() {
-        let root = Style { align_items: Some(AlignItems::STRETCH), ..container(Display::Flex, 200.0, 200.0) };
+        let root = Style { align_items: AlignItems::STRETCH, ..container(Display::Flex, 200.0, 200.0) };
         let item = Style {
             size: Size { width: length(50.0), height: auto() },
             max_size: Size { width: auto(), height: Dimension::max_content() },
@@ -486,7 +500,7 @@ mod min_max_keyword_tests {
         let block = tree.new_with_children(Style { display: Display::Block, ..Default::default() }, &[item]).unwrap();
         let root = tree
             .new_with_children(
-                Style { display: Display::Flex, align_items: Some(AlignItems::START), ..Default::default() },
+                Style { display: Display::Flex, align_items: AlignItems::START, ..Default::default() },
                 &[block],
             )
             .unwrap();

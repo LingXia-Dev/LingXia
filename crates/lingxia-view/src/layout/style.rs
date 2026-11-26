@@ -752,23 +752,27 @@ pub(crate) fn node_style(
         },
         justify_items: record
             .string(field::JUSTIFY_ITEMS)
-            .map(|value| cross_alignment(value, safe_for(safe::JUSTIFY_ITEMS, scroll))),
+            .map_or(AlignItems::NORMAL, |value| {
+                cross_alignment(value, safe_for(safe::JUSTIFY_ITEMS, scroll))
+            }),
         justify_self: record
             .string(field::JUSTIFY_SELF)
             .map(|value| cross_alignment(value, safe_for(safe::JUSTIFY_SELF, in_scroll))),
-        align_content: record.string(field::ALIGN_CONTENT).map(|value| {
-            match (value, safe_for(safe::ALIGN_CONTENT, scroll)) {
-                ("center", true) => AlignContent::SAFE_CENTER,
-                ("center", false) => AlignContent::CENTER,
-                ("end", true) => AlignContent::SAFE_END,
-                ("end", false) => AlignContent::END,
-                ("between", _) => AlignContent::SPACE_BETWEEN,
-                ("around", _) => AlignContent::SPACE_AROUND,
-                ("evenly", _) => AlignContent::SPACE_EVENLY,
-                ("stretch", _) => AlignContent::STRETCH,
-                _ => AlignContent::START,
-            }
-        }),
+        align_content: record
+            .string(field::ALIGN_CONTENT)
+            .map_or(AlignContent::NORMAL, |value| {
+                match (value, safe_for(safe::ALIGN_CONTENT, scroll)) {
+                    ("center", true) => AlignContent::SAFE_CENTER,
+                    ("center", false) => AlignContent::CENTER,
+                    ("end", true) => AlignContent::SAFE_END,
+                    ("end", false) => AlignContent::END,
+                    ("between", _) => AlignContent::SPACE_BETWEEN,
+                    ("around", _) => AlignContent::SPACE_AROUND,
+                    ("evenly", _) => AlignContent::SPACE_EVENLY,
+                    ("stretch", _) => AlignContent::STRETCH,
+                    _ => AlignContent::START,
+                }
+            }),
         flex_direction: match record.string(field::FLEX_DIRECTION) {
             Some("row") => FlexDirection::Row,
             Some("row-reverse") => FlexDirection::RowReverse,
@@ -811,14 +815,16 @@ pub(crate) fn node_style(
         align_items: record
             .string(field::ALIGN)
             .map(|value| cross_alignment(value, safe_for(safe::ALIGN, scroll)))
-            .or(block.then_some(AlignItems::STRETCH)),
+            .or(block.then_some(AlignItems::STRETCH))
+            .unwrap_or(AlignItems::NORMAL),
         align_self: record
             .string(field::ALIGN_SELF)
             .map(|value| cross_alignment(value, safe_for(safe::ALIGN_SELF, in_scroll)))
             .or(inline.then_some(AlignItems::FLEX_START))
             .or(bleed_horizontal.then_some(AlignItems::STRETCH)),
-        justify_content: record.string(field::JUSTIFY).map(|value| {
-            match (value, safe_for(safe::JUSTIFY, scroll)) {
+        justify_content: record.string(field::JUSTIFY).map_or(
+            JustifyContent::NORMAL,
+            |value| match (value, safe_for(safe::JUSTIFY, scroll)) {
                 ("center", true) => JustifyContent::SAFE_CENTER,
                 ("center", false) => JustifyContent::CENTER,
                 ("end", true) => JustifyContent::SAFE_FLEX_END,
@@ -827,8 +833,8 @@ pub(crate) fn node_style(
                 ("around", _) => JustifyContent::SPACE_AROUND,
                 ("evenly", _) => JustifyContent::SPACE_EVENLY,
                 _ => JustifyContent::FLEX_START,
-            }
-        }),
+            },
+        ),
         overflow: if record.string(field::OVERFLOW) == Some("hidden") {
             Point {
                 x: Overflow::Hidden,

@@ -1,0 +1,236 @@
+From d5da4177f4aec1dd14d5342f802ed82420c6840f Mon Sep 17 00:00:00 2001
+From: Michael <michael@lingxia.app>
+Date: Wed, 25 Nov 2026 17:01:05 -0800
+Subject: [PATCH 5/6] fix(tree): keep no layout from a sizing pass
+
+Flexbox baseline alignment lays out a row's children with `RunMode::PerformLayout` even when
+the row itself is only being sized (`RunMode::ComputeSize` for the cross axis or both axes,
+as when a column measures a row's height at a min- or max-content width). Those layouts were
+stored, as was each child's final-layout cache entry. On a later layout the row's own
+final-layout cache hit skipped its subtree, so rounding published the sizing pass's geometry:
+a text laid out at max-content on one line inside a narrower cell, or a zero-basis cell at
+its min-content width.
+
+`TaffyView` now counts the `ComputeSize` calls enclosing the current one, and inside them
+stores no unrounded layout and no final-layout cache entry. Nothing reads stored layouts while
+computing, so sizing results are unchanged.
+---
+ src/tree/taffy_tree.rs            |  27 ++++++--
+ tests/hand_written.rs             |   1 +
+ tests/hand_written/sizing_pass.rs | 102 ++++++++++++++++++++++++++++++
+ 3 files changed, 124 insertions(+), 6 deletions(-)
+ create mode 100644 tests/hand_written/sizing_pass.rs
+
+diff --git a/src/tree/taffy_tree.rs b/src/tree/taffy_tree.rs
+index f939c1a6..8aba7aff 100644
+--- a/src/tree/taffy_tree.rs
++++ b/src/tree/taffy_tree.rs
+@@ -277,6 +277,10 @@ where
+     pub(crate) taffy: &'t mut TaffyTree<NodeContext>,
+     /// The context provided for passing to measure functions if layout is run over this struct
+     pub(crate) measure_function: MeasureFunction,
++    /// How many `ComputeSize` calls enclose the current one. Flexbox baseline alignment lays out
++    /// children even while only sizing; that layout must not be kept, or a later cache hit on an
++    /// ancestor's final layout leaves the sizing pass's geometry in place.
++    pub(crate) sizing: u32,
+ }
+ 
+ impl<NodeContext, MeasureFunction> TaffyView<'_, NodeContext, MeasureFunction>
+@@ -303,12 +307,15 @@ where
+             return compute_hidden_layout(self, node_id);
+         }
+ 
++        let sizing = inputs.run_mode == RunMode::ComputeSize;
++        self.sizing += u32::from(sizing);
++
+         // We run the following wrapped in "compute_cached_layout", which will check the cache for an entry matching the node and inputs and:
+         //   - Return that entry if exists
+         //   - Else call the passed closure (below) to compute the result
+         //
+         // If there was no cache match and a new result needs to be computed then that result will be added to the cache
+-        compute_cached_layout(self, node_id, inputs, |tree, node_id, inputs| {
++        let output = compute_cached_layout(self, node_id, inputs, |tree, node_id, inputs| {
+             let display_mode = tree.taffy.nodes[node_id.into()].style.display;
+             let has_children = tree.child_count(node_id) > 0;
+ 
+@@ -345,7 +352,9 @@ where
+             }
+ 
+             output
+-        })
++        });
++        self.sizing -= u32::from(sizing);
++        output
+     }
+ }
+ 
+@@ -400,7 +409,9 @@ where
+ 
+     #[inline(always)]
+     fn set_unrounded_layout(&mut self, node_id: NodeId, layout: &Layout) {
+-        self.taffy.nodes[node_id.into()].unrounded_layout = *layout;
++        if self.sizing == 0 {
++            self.taffy.nodes[node_id.into()].unrounded_layout = *layout;
++        }
+     }
+ 
+     #[inline(always)]
+@@ -458,7 +469,10 @@ where
+     }
+ 
+     fn cache_store(&mut self, node_id: NodeId, input: &LayoutInput, layout_output: LayoutOutput) {
+-        self.taffy.nodes[node_id.into()].cache.store(input, layout_output)
++        // A final layout made while sizing was not kept, so it must not satisfy a later one.
++        if self.sizing == 0 || input.run_mode != RunMode::PerformLayout {
++            self.taffy.nodes[node_id.into()].cache.store(input, layout_output)
++        }
+     }
+ 
+     fn cache_clear(&mut self, node_id: NodeId) {
+@@ -983,7 +997,7 @@ impl<NodeContext> TaffyTree<NodeContext> {
+         MeasureFunction: FnMut(LayoutInput, NodeId, Option<&mut NodeContext>, &Style) -> LayoutOutput,
+     {
+         let use_rounding = self.config.use_rounding;
+-        let mut taffy_view = TaffyView { taffy: self, measure_function };
++        let mut taffy_view = TaffyView { taffy: self, measure_function, sizing: 0 };
+         compute_root_layout(&mut taffy_view, node_id, available_space);
+         if use_rounding {
+             round_layout(&mut taffy_view, node_id);
+@@ -1001,7 +1015,7 @@ impl<NodeContext> TaffyTree<NodeContext> {
+     where
+         MeasureFunction: FnMut(LayoutInput, NodeId, Option<&mut NodeContext>, &Style) -> LayoutOutput,
+     {
+-        let mut taffy_view = TaffyView { taffy: self, measure_function };
++        let mut taffy_view = TaffyView { taffy: self, measure_function, sizing: 0 };
+         nodes
+             .iter()
+             .map(|&node| {
+@@ -1039,6 +1053,7 @@ impl<NodeContext> TaffyTree<NodeContext> {
+         TaffyView {
+             taffy: self,
+             measure_function: |inputs, _, _, style| compute_leaf_layout(inputs, style, |_, _| 0.0, |_, _| Size::ZERO),
++            sizing: 0,
+         }
+     }
+ }
+diff --git a/tests/hand_written.rs b/tests/hand_written.rs
+index 0de5ae51..81f2e6b6 100644
+--- a/tests/hand_written.rs
++++ b/tests/hand_written.rs
+@@ -29,4 +29,5 @@ mod hand_written {
+     mod scroll_size;
+     mod scrollable_overflow;
+     mod serde;
++    mod sizing_pass;
+ }
+diff --git a/tests/hand_written/sizing_pass.rs b/tests/hand_written/sizing_pass.rs
+new file mode 100644
+index 00000000..8b3409d0
+--- /dev/null
++++ b/tests/hand_written/sizing_pass.rs
+@@ -0,0 +1,102 @@
++//! A sizing pass keeps no layout: flexbox baseline alignment lays out a row's children even when
++//! the row is only being sized, and that layout must not outlive the pass.
++use taffy::prelude::*;
++use taffy::tree::LayoutOutput;
++
++/// Text whose min-content width is 30 and max-content width 100, 10 high per line.
++fn measure(known: Size<Option<f32>>, available: Size<AvailableSpace>) -> Size<f32> {
++    let width = known.width.unwrap_or(match available.width {
++        AvailableSpace::MinContent => 30.0,
++        AvailableSpace::MaxContent => 100.0,
++        AvailableSpace::Definite(width) => width.clamp(30.0, 100.0),
++    });
++    Size { width, height: known.height.unwrap_or((100.0 / width).ceil() * 10.0) }
++}
++
++fn layout(tree: &mut TaffyTree<bool>, root: NodeId) {
++    tree.compute_layout_with_measure(
++        root,
++        Size { width: AvailableSpace::Definite(120.0), height: AvailableSpace::MaxContent },
++        |inputs, _, context, _| {
++            LayoutOutput::from_outer_size(match context {
++                Some(&mut true) => measure(inputs.known_dimensions, inputs.available_space),
++                _ => Size::ZERO,
++            })
++        },
++    )
++    .unwrap();
++}
++
++/// A text beside a figure on one baseline, in a column that grows in a 120-wide row: to find the
++/// column's automatic minimum, the row sizes it at its min-content width, which sizes the text's
++/// row there too.
++#[test]
++fn a_baseline_rows_children_keep_their_layout_after_an_ancestor_is_sized_again() {
++    let mut tree: TaffyTree<bool> = TaffyTree::new();
++    let sibling = tree
++        .new_leaf(Style { size: Size { width: length(10.0), height: length(10.0) }, ..Default::default() })
++        .unwrap();
++    let text = tree.new_leaf_with_context(Style::default(), true).unwrap();
++    let cell = tree
++        .new_with_children(
++            Style {
++                flex_direction: FlexDirection::Column,
++                flex_grow: 1.0,
++                flex_shrink: 1.0,
++                min_size: Size { width: length(0.0), height: auto() },
++                ..Default::default()
++            },
++            &[text],
++        )
++        .unwrap();
++    let figure = tree
++        .new_leaf(Style {
++            flex_shrink: 0.0,
++            size: Size { width: length(40.0), height: length(10.0) },
++            ..Default::default()
++        })
++        .unwrap();
++    let line = tree
++        .new_with_children(
++            Style {
++                align_items: AlignItems::BASELINE,
++                gap: Size { width: length(12.0), height: zero() },
++                ..Default::default()
++            },
++            &[cell, figure],
++        )
++        .unwrap();
++    let column = tree
++        .new_with_children(
++            Style { flex_direction: FlexDirection::Column, flex_grow: 1.0, flex_shrink: 1.0, ..Default::default() },
++            &[sibling, line],
++        )
++        .unwrap();
++    let root = tree
++        .new_with_children(
++            Style { size: Size { width: length(120.0), height: auto() }, ..Default::default() },
++            &[column],
++        )
++        .unwrap();
++
++    for frame in 0..3 {
++        if frame > 0 {
++            // Only the sibling changes, so `line` keeps its cached final layout.
++            let width = 10.0 + frame as f32;
++            tree.set_style(
++                sibling,
++                Style { size: Size { width: length(width), height: length(10.0) }, ..Default::default() },
++            )
++            .unwrap();
++        }
++        layout(&mut tree, root);
++        let cell = tree.layout(cell).unwrap().size;
++        let text = tree.layout(text).unwrap().size;
++        assert_eq!(cell.width, 120.0 - 12.0 - 40.0, "frame {frame}: the cell takes the room beside the figure");
++        assert_eq!(
++            text,
++            Size { width: cell.width, height: 20.0 },
++            "frame {frame}: the text fills the cell on two lines"
++        );
++    }
++}
+-- 
+2.50.1 (Apple Git-155)
+

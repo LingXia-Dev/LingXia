@@ -2,11 +2,12 @@
 //! This mainly consists of evaluating GridAutoTracks
 use super::types::{GridTrack, GridTrackKind, TrackCounts};
 use crate::geometry::AbsoluteAxis;
+use crate::style::CalcHandle;
 use crate::style::{LengthPercentage, RepetitionCount, TrackSizingFunction};
 use crate::style_helpers::TaffyAuto;
-use crate::util::sys::{ceil, floor, Vec};
 use crate::util::MaybeMath;
 use crate::util::ResolveOrZero;
+use crate::util::sys::{Vec, ceil, floor};
 use core::cmp::min;
 
 use super::MAX_GRID_TRACKS;
@@ -28,7 +29,7 @@ pub(crate) fn compute_explicit_grid_size_in_axis(
     style: &impl GridContainerStyle,
     auto_fit_container_size: Option<f32>,
     auto_fit_strategy: AutoRepeatStrategy,
-    resolve_calc_value: impl Fn(*const (), f32) -> f32,
+    resolve_calc_value: impl Fn(CalcHandle, f32) -> f32,
     axis: AbsoluteAxis,
 ) -> (u16, u16) {
     let template = match axis {
@@ -126,7 +127,7 @@ pub(crate) fn compute_explicit_grid_size_in_axis(
             fn track_definite_value(
                 sizing_function: TrackSizingFunction,
                 parent_size: Option<f32>,
-                calc_resolver: impl Fn(*const (), f32) -> f32,
+                calc_resolver: impl Fn(CalcHandle, f32) -> f32,
             ) -> f32 {
                 let max_size = sizing_function.max.definite_value(parent_size, &calc_resolver);
                 let min_size = sizing_function.min.definite_value(parent_size, &calc_resolver);
@@ -205,7 +206,7 @@ pub(crate) fn compute_explicit_grid_size_in_axis(
     let num_repetitions = if remaining_tracks == 0 {
         0
     } else {
-        let max_repetitions = (remaining_tracks + repetition_track_count as u32 - 1) / repetition_track_count as u32;
+        let max_repetitions = remaining_tracks.div_ceil(repetition_track_count as u32);
         num_repetitions.clamp(1, max_repetitions) as u16
     };
 
@@ -391,6 +392,7 @@ mod test {
     use crate::compute::grid::util::*;
     use crate::geometry::AbsoluteAxis;
     use crate::prelude::*;
+    use crate::style::CalcHandle;
     use crate::sys::DefaultCheapStr;
 
     #[test]
@@ -741,6 +743,55 @@ mod test {
             AbsoluteAxis::Horizontal,
         );
         assert_eq!((repetitions, track_count), (0, 10_000));
+    }
+
+    /// `repeat(auto-fit, minmax(min(100%, 300px), 1fr))`: a `calc()` min track sizing function is a
+    /// fixed sizing function, so the template is valid and the repetition count uses its resolved
+    /// value (here two 300px tracks and a 8px gap fit in 800px).
+    #[test]
+    #[cfg(feature = "calc")]
+    fn explicit_grid_sizing_auto_fit_calc_min_track() {
+        use RepetitionCount::{AutoFill, AutoFit};
+
+        #[repr(align(8))]
+        struct Handle(#[allow(dead_code)] u64);
+        static MIN_100_PERCENT_300PX: Handle = Handle(0);
+        let calc_ptr = CalcHandle::from_ptr(&MIN_100_PERCENT_300PX as *const Handle as *const ());
+        let resolve_calc = |ptr: CalcHandle, basis: f32| {
+            assert_eq!(ptr, calc_ptr);
+            basis.min(300.0)
+        };
+
+        for count in [AutoFit, AutoFill] {
+            let grid_style: Style<DefaultCheapStr> = Style {
+                display: Display::Grid,
+                size: Size { width: length(800.0), height: auto() },
+                gap: Size { width: length(8.0), height: zero() },
+                grid_template_columns: vec![repeat(
+                    count,
+                    vec![minmax(MinTrackSizingFunction::calc(calc_ptr), fr(1.0))],
+                )],
+                ..Default::default()
+            };
+            let (auto_col_reps, col_count) = compute_explicit_grid_size_in_axis(
+                &grid_style,
+                Some(800.0),
+                AutoRepeatStrategy::MaxRepetitionsThatDoNotOverflow,
+                resolve_calc,
+                AbsoluteAxis::Horizontal,
+            );
+            assert_eq!((auto_col_reps, col_count), (2, 2), "{count:?}");
+
+            // The calc() resolves against the container: in a 250px container it is 250px, one track
+            let (auto_col_reps, col_count) = compute_explicit_grid_size_in_axis(
+                &grid_style,
+                Some(250.0),
+                AutoRepeatStrategy::MaxRepetitionsThatDoNotOverflow,
+                resolve_calc,
+                AbsoluteAxis::Horizontal,
+            );
+            assert_eq!((auto_col_reps, col_count), (1, 1), "{count:?}");
+        }
     }
 
     #[test]

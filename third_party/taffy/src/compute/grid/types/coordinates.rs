@@ -1,7 +1,7 @@
 //! Taffy uses two coordinate systems to refer to grid lines (the gaps/gutters between rows/columns):
 use super::super::types::TrackCounts;
 use crate::geometry::Line;
-use core::cmp::{max, Ordering};
+use core::cmp::{Ordering, max};
 use core::ops::{Add, AddAssign, Sub};
 
 /// The maximum number of tracks in each direction from the start of the explicit grid (line 0 in
@@ -47,13 +47,13 @@ impl GridLine {
     ///
     /// The result is clamped into the limited grid `[-MAX_GRID_TRACKS, MAX_GRID_TRACKS]`
     pub(crate) fn into_origin_zero_line(self, explicit_track_count: u16) -> OriginZeroLine {
-        let explicit_line_count = explicit_track_count + 1;
+        let explicit_line_count = explicit_track_count as i32 + 1;
         let oz_line = match self.0.cmp(&0) {
-            Ordering::Greater => self.0 - 1,
-            Ordering::Less => self.0 + explicit_line_count as i16,
+            Ordering::Greater => self.0 as i32 - 1,
+            Ordering::Less => self.0 as i32 + explicit_line_count,
             Ordering::Equal => panic!("Grid line of zero is invalid"),
         };
-        OriginZeroLine(oz_line.clamp(MIN_OZ_LINE, MAX_OZ_LINE))
+        OriginZeroLine::clamped(oz_line)
     }
 }
 
@@ -101,6 +101,19 @@ impl Sub<u16> for OriginZeroLine {
 }
 
 impl OriginZeroLine {
+    /// Create an `OriginZeroLine`, clamping the line into the limited grid `[-MAX_GRID_TRACKS, MAX_GRID_TRACKS]`
+    pub(crate) fn clamped(line: i32) -> Self {
+        OriginZeroLine(line.clamp(MIN_OZ_LINE as i32, MAX_OZ_LINE as i32) as i16)
+    }
+
+    /// Convert into "CSS Grid Line" coordinates using the specified explicit track count.
+    ///
+    /// The inverse of [`GridLine::into_origin_zero_line`]
+    pub(crate) fn into_grid_line(self, explicit_track_count: u16) -> GridLine {
+        let explicit_line_count = explicit_track_count + 1;
+        if self.0 >= 0 { GridLine(self.0 + 1) } else { GridLine(self.0 - explicit_line_count as i16) }
+    }
+
     /// Converts a grid line in OriginZero coordinates into the index of that same grid line in the GridTrackVec.
     pub(crate) fn into_track_vec_index(self, track_counts: TrackCounts) -> usize {
         self.try_into_track_vec_index(track_counts).unwrap_or_else(|| {
@@ -136,25 +149,18 @@ impl OriginZeroLine {
 
     /// The minimum number of negative implicit track there must be if a grid item starts at this line.
     pub(crate) fn implied_negative_implicit_tracks(self) -> u16 {
-        if self.0 < 0 {
-            self.0.unsigned_abs()
-        } else {
-            0
-        }
+        if self.0 < 0 { self.0.unsigned_abs() } else { 0 }
     }
 
     /// The minimum number of positive implicit track there must be if a grid item end at this line.
     pub(crate) fn implied_positive_implicit_tracks(self, explicit_track_count: u16) -> u16 {
-        if self.0 > explicit_track_count as i16 {
-            self.0 as u16 - explicit_track_count
-        } else {
-            0
-        }
+        if self.0 > explicit_track_count as i16 { self.0 as u16 - explicit_track_count } else { 0 }
     }
 }
 
 impl Line<OriginZeroLine> {
     /// The number of tracks between the start and end lines
+    #[inline(always)]
     pub(crate) fn span(self) -> u16 {
         max(self.end.0 - self.start.0, 0) as u16
     }

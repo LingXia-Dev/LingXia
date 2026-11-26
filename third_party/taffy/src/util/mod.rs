@@ -6,6 +6,11 @@ pub(crate) mod sys;
 pub use math::MaybeMath;
 pub use resolve::{MaybeResolve, ResolveOrZero};
 
+#[cfg(feature = "grid")]
+mod front_back_vec_builder;
+#[cfg(feature = "grid")]
+pub(crate) use front_back_vec_builder::FrontBackVecBuilder;
+
 #[doc(hidden)]
 #[macro_use]
 pub(crate) mod debug;
@@ -31,6 +36,6 @@ where
     S: for<'a> From<&'a str>,
     D: serde::Deserializer<'de>,
 {
-    let s: String = serde::Deserialize::deserialize(deserializer)?;
+    let s: crate::util::sys::String = serde::Deserialize::deserialize(deserializer)?;
     Ok(S::from(&s))
 }

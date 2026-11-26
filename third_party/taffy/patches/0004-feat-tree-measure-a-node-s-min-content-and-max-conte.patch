@@ -1,0 +1,141 @@
+From 7cf95ea51c7a59be74b7b75414897e12bb107e96 Mon Sep 17 00:00:00 2001
+From: Michael <michael@lingxia.app>
+Date: Wed, 25 Nov 2026 17:00:11 -0800
+Subject: [PATCH 4/6] feat(tree): measure a node's min-content and max-content
+ widths
+
+`TaffyTree::intrinsic_widths_with_measure` returns each given node's border-box width under
+min-content and under max-content available space, through the same measure function as
+layout. A host that reports a box's content widths to its page (to choose between a stacked
+and a side-by-side presentation, say) can read them after layout without a second tree.
+---
+ src/tree/taffy_tree.rs                 | 35 +++++++++++++++++--
+ tests/hand_written.rs                  |  1 +
+ tests/hand_written/intrinsic_widths.rs | 47 ++++++++++++++++++++++++++
+ 3 files changed, 80 insertions(+), 3 deletions(-)
+ create mode 100644 tests/hand_written/intrinsic_widths.rs
+
+diff --git a/src/tree/taffy_tree.rs b/src/tree/taffy_tree.rs
+index d1a50a26..f939c1a6 100644
+--- a/src/tree/taffy_tree.rs
++++ b/src/tree/taffy_tree.rs
+@@ -9,12 +9,12 @@ use slotmap::{DefaultKey, SlotMap};
+ 
+ #[cfg(feature = "block_layout")]
+ use crate::block::BlockContext;
+-use crate::geometry::Size;
++use crate::geometry::{AbsoluteAxis, Line, Size};
+ use crate::style::{AvailableSpace, Display, Style};
+ use crate::sys::DefaultCheapStr;
+ use crate::tree::{
+-    Cache, ClearState, Layout, LayoutContainingBlock, LayoutInput, LayoutOutput, LayoutPartialTree, NodeId, PrintTree,
+-    RoundTree, RunMode, TraversePartialTree, TraverseTree,
++    Cache, ClearState, Layout, LayoutContainingBlock, LayoutInput, LayoutOutput, LayoutPartialTree,
++    LayoutPartialTreeExt, NodeId, PrintTree, RoundTree, RunMode, SizingMode, TraversePartialTree, TraverseTree,
+ };
+ use crate::util::debug::{debug_log, debug_log_node};
+ use crate::util::sys::{Box, ChildrenVec, Vec, new_const_children_vec, new_vec_with_capacity};
+@@ -991,6 +991,35 @@ impl<NodeContext> TaffyTree<NodeContext> {
+         Ok(())
+     }
+ 
++    /// Each node's border-box width sized by its content alone, under min-content and then
++    /// max-content available space: `[min, max]` per node, in the order given.
++    pub fn intrinsic_widths_with_measure<MeasureFunction>(
++        &mut self,
++        nodes: &[NodeId],
++        measure_function: MeasureFunction,
++    ) -> Vec<[f32; 2]>
++    where
++        MeasureFunction: FnMut(LayoutInput, NodeId, Option<&mut NodeContext>, &Style) -> LayoutOutput,
++    {
++        let mut taffy_view = TaffyView { taffy: self, measure_function };
++        nodes
++            .iter()
++            .map(|&node| {
++                [AvailableSpace::MinContent, AvailableSpace::MaxContent].map(|width| {
++                    taffy_view.measure_child_size(
++                        node,
++                        Size::NONE,
++                        Size::NONE,
++                        Size { width, height: AvailableSpace::MaxContent },
++                        SizingMode::ContentSize,
++                        AbsoluteAxis::Horizontal,
++                        Line::FALSE,
++                    )
++                })
++            })
++            .collect()
++    }
++
+     /// Updates the stored layout of the provided `node` and its children
+     pub fn compute_layout(&mut self, node: NodeId, available_space: Size<AvailableSpace>) -> Result<(), TaffyError> {
+         self.compute_layout_with_measure(node, available_space, |inputs, _, _, style| {
+diff --git a/tests/hand_written.rs b/tests/hand_written.rs
+index 164d4a4b..0de5ae51 100644
+--- a/tests/hand_written.rs
++++ b/tests/hand_written.rs
+@@ -15,6 +15,7 @@ mod hand_written {
+     mod floats;
+     mod grid_percentage_rerun;
+     mod initial_containing_block;
++    mod intrinsic_widths;
+     mod measure;
+     mod min_max_overrides;
+     mod negative_available_space;
+diff --git a/tests/hand_written/intrinsic_widths.rs b/tests/hand_written/intrinsic_widths.rs
+new file mode 100644
+index 00000000..c3c89926
+--- /dev/null
++++ b/tests/hand_written/intrinsic_widths.rs
+@@ -0,0 +1,47 @@
++//! `TaffyTree::intrinsic_widths_with_measure`: a node's min-content and max-content widths.
++use taffy::prelude::*;
++use taffy::tree::LayoutOutput;
++
++/// Text whose min-content width is 30 and max-content width 100.
++fn measure(known: Size<Option<f32>>, available: Size<AvailableSpace>) -> Size<f32> {
++    let width = known.width.unwrap_or(match available.width {
++        AvailableSpace::MinContent => 30.0,
++        AvailableSpace::MaxContent => 100.0,
++        AvailableSpace::Definite(width) => width.clamp(30.0, 100.0),
++    });
++    Size { width, height: known.height.unwrap_or((100.0 / width).ceil() * 10.0) }
++}
++
++#[test]
++fn a_box_reports_its_content_widths_with_padding_and_border() {
++    let mut tree: TaffyTree<bool> = TaffyTree::new();
++    let text = tree.new_leaf_with_context(Style::default(), true).unwrap();
++    let other = tree.new_leaf_with_context(Style::default(), true).unwrap();
++    let row = tree
++        .new_with_children(
++            Style {
++                display: Display::Flex,
++                gap: Size { width: length(10.0), height: zero() },
++                padding: Rect { left: length(5.0), right: length(5.0), top: zero(), bottom: zero() },
++                ..Default::default()
++            },
++            &[text, other],
++        )
++        .unwrap();
++    let alone = tree.new_leaf_with_context(Style::default(), true).unwrap();
++    let column = tree
++        .new_with_children(
++            Style { display: Display::Flex, flex_direction: FlexDirection::Column, ..Default::default() },
++            &[alone],
++        )
++        .unwrap();
++    let widths = tree.intrinsic_widths_with_measure(&[row, column], |inputs, _, context, _| {
++        LayoutOutput::from_outer_size(match context {
++            Some(&mut true) => measure(inputs.known_dimensions, inputs.available_space),
++            _ => Size::ZERO,
++        })
++    });
++    // Two texts side by side: each at its own min or max, plus the gap and the padding.
++    assert_eq!(widths[0], [30.0 + 10.0 + 30.0 + 10.0, 100.0 + 10.0 + 100.0 + 10.0]);
++    assert_eq!(widths[1], [30.0, 100.0]);
++}
+-- 
+2.50.1 (Apple Git-155)
+

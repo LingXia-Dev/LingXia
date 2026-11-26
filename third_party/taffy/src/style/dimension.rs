@@ -1,9 +1,10 @@
 //! Style types for representing lengths / sizes
 use super::CompactLength;
 use crate::geometry::Rect;
+use crate::style::CalcHandle;
 use crate::style_helpers::{FromLength, FromPercent, TaffyAuto, TaffyZero};
 #[cfg(feature = "parse")]
-use crate::util::parse::{from_str_from_css, CssParseResult, FromCss, Parser, Token};
+use crate::util::parse::{CssParseError, CssParseResult, FromCss, Parser, Token, from_str_from_css};
 
 /// A unit of linear measurement
 ///
@@ -27,11 +28,11 @@ impl FromPercent for LengthPercentage {
 
 #[cfg(feature = "parse")]
 impl FromCss for LengthPercentage {
-    fn from_css<'i>(parser: &mut Parser<'i, '_>) -> CssParseResult<'i, Self> {
+    fn from_css<'i>(parser: &mut Parser<'i>) -> CssParseResult<'i, Self> {
         match parser.next()?.clone() {
             Token::Percentage { unit_value, .. } => Ok(Self::percent(unit_value)),
             Token::Dimension { unit, value, .. } if unit == "px" => Ok(Self::length(value)),
-            token => Err(parser.new_unexpected_token_error(token))?,
+            _ => Err(CssParseError::unexpected_token())?,
         }
     }
 }
@@ -60,8 +61,8 @@ impl LengthPercentage {
     /// The low 3 bits are used as a tag value and will be returned as 0.
     #[inline(always)]
     #[cfg(feature = "calc")]
-    pub fn calc(ptr: *const ()) -> Self {
-        Self(CompactLength::calc(ptr))
+    pub fn calc(handle: CalcHandle) -> Self {
+        Self(CompactLength::calc(handle))
     }
 
     /// Create a LengthPercentage from a raw `CompactLength`.
@@ -87,7 +88,7 @@ impl LengthPercentage {
             CompactLength::LENGTH_TAG => ExpandedLengthPercentage::Length(self.0.value()),
             CompactLength::PERCENT_TAG => ExpandedLengthPercentage::Percent(self.0.value()),
             #[cfg(feature = "calc")]
-            _ if self.0.is_calc() => ExpandedLengthPercentage::Calc(self.0.calc_value()),
+            _ if self.0.is_plain_calc() => ExpandedLengthPercentage::Calc(self.0.calc_value()),
             _ => unreachable!("LengthPercentage contains a value with an invalid tag"),
         }
     }
@@ -106,7 +107,7 @@ pub enum ExpandedLengthPercentage {
     /// A `calc()` value (see [`LengthPercentage::calc`]). The pointer is an opaque handle to the
     /// calc representation, exactly as passed to the constructor.
     #[cfg(feature = "calc")]
-    Calc(*const ()),
+    Calc(CalcHandle),
 }
 
 impl From<LengthPercentage> for ExpandedLengthPercentage {
@@ -121,7 +122,7 @@ impl From<ExpandedLengthPercentage> for LengthPercentage {
             ExpandedLengthPercentage::Length(val) => Self::length(val),
             ExpandedLengthPercentage::Percent(val) => Self::percent(val),
             #[cfg(feature = "calc")]
-            ExpandedLengthPercentage::Calc(ptr) => Self::calc(ptr),
+            ExpandedLengthPercentage::Calc(handle) => Self::calc(handle),
         }
     }
 }
@@ -172,12 +173,12 @@ impl From<LengthPercentage> for LengthPercentageAuto {
 
 #[cfg(feature = "parse")]
 impl FromCss for LengthPercentageAuto {
-    fn from_css<'i>(parser: &mut Parser<'i, '_>) -> CssParseResult<'i, Self> {
+    fn from_css<'i>(parser: &mut Parser<'i>) -> CssParseResult<'i, Self> {
         match parser.next()?.clone() {
             Token::Percentage { unit_value, .. } => Ok(Self::percent(unit_value)),
             Token::Dimension { unit, value, .. } if unit == "px" => Ok(Self::length(value)),
             Token::Ident(ident) if ident == "auto" => Ok(Self::auto()),
-            token => Err(parser.new_unexpected_token_error(token))?,
+            _ => Err(CssParseError::unexpected_token())?,
         }
     }
 }
@@ -213,8 +214,8 @@ impl LengthPercentageAuto {
     /// The low 3 bits are used as a tag value and will be returned as 0.
     #[inline]
     #[cfg(feature = "calc")]
-    pub fn calc(ptr: *const ()) -> Self {
-        Self(CompactLength::calc(ptr))
+    pub fn calc(handle: CalcHandle) -> Self {
+        Self(CompactLength::calc(handle))
     }
 
     /// Create a LengthPercentageAuto from a raw `CompactLength`.
@@ -235,13 +236,13 @@ impl LengthPercentageAuto {
     ///   - Some(resolved) using the provided context for Percent variants
     ///   - None for Auto variants
     #[inline(always)]
-    pub fn resolve_to_option(self, context: f32, calc_resolver: impl Fn(*const (), f32) -> f32) -> Option<f32> {
+    pub fn resolve_to_option(self, context: f32, calc_resolver: impl Fn(CalcHandle, f32) -> f32) -> Option<f32> {
         match self.0.tag() {
             CompactLength::LENGTH_TAG => Some(self.0.value()),
             CompactLength::PERCENT_TAG => Some(context * self.0.value()),
             CompactLength::AUTO_TAG => None,
             #[cfg(feature = "calc")]
-            _ if self.0.is_calc() => Some(calc_resolver(self.0.calc_value(), context)),
+            _ if self.0.is_plain_calc() => Some(calc_resolver(self.0.calc_value(), context)),
             _ => unreachable!("LengthPercentageAuto values cannot be constructed with other tags"),
         }
     }
@@ -263,7 +264,7 @@ impl LengthPercentageAuto {
             CompactLength::PERCENT_TAG => ExpandedLengthPercentageAuto::Percent(self.0.value()),
             CompactLength::AUTO_TAG => ExpandedLengthPercentageAuto::Auto,
             #[cfg(feature = "calc")]
-            _ if self.0.is_calc() => ExpandedLengthPercentageAuto::Calc(self.0.calc_value()),
+            _ if self.0.is_plain_calc() => ExpandedLengthPercentageAuto::Calc(self.0.calc_value()),
             _ => unreachable!("LengthPercentageAuto contains a value with an invalid tag"),
         }
     }
@@ -284,7 +285,7 @@ pub enum ExpandedLengthPercentageAuto {
     /// A `calc()` value (see [`LengthPercentageAuto::calc`]). The pointer is an opaque handle to
     /// the calc representation, exactly as passed to the constructor.
     #[cfg(feature = "calc")]
-    Calc(*const ()),
+    Calc(CalcHandle),
 }
 
 impl From<LengthPercentageAuto> for ExpandedLengthPercentageAuto {
@@ -300,7 +301,7 @@ impl From<ExpandedLengthPercentageAuto> for LengthPercentageAuto {
             ExpandedLengthPercentageAuto::Percent(val) => Self::percent(val),
             ExpandedLengthPercentageAuto::Auto => Self::auto(),
             #[cfg(feature = "calc")]
-            ExpandedLengthPercentageAuto::Calc(ptr) => Self::calc(ptr),
+            ExpandedLengthPercentageAuto::Calc(handle) => Self::calc(handle),
         }
     }
 }
@@ -356,7 +357,7 @@ impl From<LengthPercentageAuto> for Dimension {
 
 #[cfg(feature = "parse")]
 impl FromCss for Dimension {
-    fn from_css<'i>(parser: &mut Parser<'i, '_>) -> CssParseResult<'i, Self> {
+    fn from_css<'i>(parser: &mut Parser<'i>) -> CssParseResult<'i, Self> {
         let token = parser.next()?.clone();
         match token {
             Token::Percentage { unit_value, .. } => Ok(Self::percent(unit_value)),
@@ -368,17 +369,17 @@ impl FromCss for Dimension {
                 "fit-content" => Ok(Self::fit_content()),
                 "stretch" => Ok(Self::stretch()),
                 "content" => Ok(Self::content()),
-                _ => Err(parser.new_unexpected_token_error(token))?,
+                _ => Err(CssParseError::unexpected_token())?,
             },
             Token::Function(ref name) if name.as_ref() == "fit-content" => parser.parse_nested_block(|parser| {
                 let token = parser.next()?.clone();
                 match token {
                     Token::Percentage { unit_value, .. } => Ok(Self::fit_content_percent(unit_value)),
                     Token::Dimension { unit, value, .. } if unit == "px" => Ok(Self::fit_content_px(value)),
-                    token => Err(parser.new_unexpected_token_error(token))?,
+                    _ => Err(CssParseError::unexpected_token())?,
                 }
             }),
-            token => Err(parser.new_unexpected_token_error(token))?,
+            _ => Err(CssParseError::unexpected_token())?,
         }
     }
 }
@@ -469,8 +470,31 @@ impl Dimension {
     /// The low 3 bits are used as a tag value and will be returned as 0.
     #[inline]
     #[cfg(feature = "calc")]
-    pub fn calc(ptr: *const ()) -> Self {
-        Self(CompactLength::calc(ptr))
+    pub fn calc(handle: CalcHandle) -> Self {
+        Self(CompactLength::calc(handle))
+    }
+
+    /// A `fit-content()` value whose limit is a `calc()` value. The value passed here is treated as an opaque
+    /// handle to the actual calc representation and may be a pointer, index, etc.
+    ///
+    /// The low 3 bits are used as a tag value and will be returned as 0.
+    #[inline]
+    #[cfg(feature = "calc")]
+    pub fn fit_content_calc(handle: CalcHandle) -> Self {
+        Self(CompactLength::fit_content_calc(handle))
+    }
+
+    /// Returns true if the value is a `fit-content()` value with a `calc()` limit
+    #[inline(always)]
+    pub fn is_fit_content_calc(self) -> bool {
+        self.0.is_fit_content_calc()
+    }
+
+    /// Get the calc() handle (valid for `calc()` and `fit-content(calc())` values)
+    #[inline(always)]
+    #[cfg(feature = "calc")]
+    pub fn calc_value(self) -> CalcHandle {
+        self.0.calc_value()
     }
 
     /// Create a LengthPercentageAuto from a raw `CompactLength`.
@@ -543,10 +567,12 @@ impl Dimension {
             CompactLength::FIT_CONTENT_PX_TAG => ExpandedDimension::FitContentPx(self.0.value()),
             CompactLength::FIT_CONTENT_PERCENT_TAG => ExpandedDimension::FitContentPercent(self.0.value()),
             CompactLength::FIT_CONTENT_KEYWORD_TAG => ExpandedDimension::FitContent,
+            #[cfg(feature = "calc")]
+            _ if self.0.is_fit_content_calc() => ExpandedDimension::FitContentCalc(self.0.calc_value()),
             CompactLength::STRETCH_TAG => ExpandedDimension::Stretch,
             CompactLength::CONTENT_TAG => ExpandedDimension::Content,
             #[cfg(feature = "calc")]
-            _ if self.0.is_calc() => ExpandedDimension::Calc(self.0.calc_value()),
+            _ if self.0.is_plain_calc() => ExpandedDimension::Calc(self.0.calc_value()),
             _ => unreachable!("Dimension contains a value with an invalid tag"),
         }
     }
@@ -572,6 +598,9 @@ pub enum ExpandedDimension {
     FitContentPx(f32),
     /// A `fit-content(...)` value with a percentage limit (see [`Dimension::fit_content_percent`])
     FitContentPercent(f32),
+    /// The size is the fit-content size with a `calc()` limit (an opaque handle to the calc representation)
+    #[cfg(feature = "calc")]
+    FitContentCalc(CalcHandle),
     /// The `fit-content` keyword with no limit (see [`Dimension::fit_content`])
     FitContent,
     /// The `stretch` keyword (see [`Dimension::stretch`])
@@ -581,7 +610,7 @@ pub enum ExpandedDimension {
     /// A `calc()` value (see [`Dimension::calc`]). The pointer is an opaque handle to the calc
     /// representation, exactly as passed to the constructor.
     #[cfg(feature = "calc")]
-    Calc(*const ()),
+    Calc(CalcHandle),
 }
 
 impl From<Dimension> for ExpandedDimension {
@@ -601,10 +630,12 @@ impl From<ExpandedDimension> for Dimension {
             ExpandedDimension::FitContentPx(val) => Self::fit_content_px(val),
             ExpandedDimension::FitContentPercent(val) => Self::fit_content_percent(val),
             ExpandedDimension::FitContent => Self::fit_content(),
+            #[cfg(feature = "calc")]
+            ExpandedDimension::FitContentCalc(handle) => Self::fit_content_calc(handle),
             ExpandedDimension::Stretch => Self::stretch(),
             ExpandedDimension::Content => Self::content(),
             #[cfg(feature = "calc")]
-            ExpandedDimension::Calc(ptr) => Self::calc(ptr),
+            ExpandedDimension::Calc(handle) => Self::calc(handle),
         }
     }
 }
@@ -668,12 +699,12 @@ mod expand_tests {
     /// A helper that produces a valid `calc()` handle for tests: a non-null pointer whose low
     /// three bits are zero (as required by `CompactLength::calc`).
     #[cfg(feature = "calc")]
-    fn calc_handle() -> *const () {
+    fn calc_handle() -> CalcHandle {
         #[allow(dead_code)]
         #[repr(align(8))]
         struct Aligned(u64);
         static HANDLE: Aligned = Aligned(0);
-        &HANDLE as *const Aligned as *const ()
+        CalcHandle::from_ptr(&HANDLE as *const Aligned as *const ())
     }
 
     #[test]
@@ -725,6 +756,8 @@ mod expand_tests {
         assert_eq!(LengthPercentage::calc(handle).expand(), ExpandedLengthPercentage::Calc(handle));
         assert_eq!(LengthPercentage::from(ExpandedLengthPercentage::Calc(handle)), LengthPercentage::calc(handle));
         assert_eq!(Dimension::calc(handle).expand(), ExpandedDimension::Calc(handle));
+        assert_eq!(Dimension::fit_content_calc(handle).expand(), ExpandedDimension::FitContentCalc(handle));
+        assert_eq!(Dimension::from(ExpandedDimension::FitContentCalc(handle)), Dimension::fit_content_calc(handle));
         assert_eq!(LengthPercentageAuto::calc(handle).expand(), ExpandedLengthPercentageAuto::Calc(handle));
     }
 }

@@ -1,22 +1,23 @@
-From 5616126b08f8cd45f7d3a1405678f6e94a1092af Mon Sep 17 00:00:00 2001
+From 6177d68b3bebb0c677ea167695d77f27ac467c3c Mon Sep 17 00:00:00 2001
 From: Michael <michael@lingxia.app>
-Date: Wed, 28 Oct 2026 12:11:00 -0700
-Subject: [PATCH 2/2] fix(flexbox): transfer a definite max size through
+Date: Wed, 25 Nov 2026 16:59:23 -0800
+Subject: [PATCH 2/6] fix(flexbox): transfer a definite max size through
  aspect-ratio to an auto axis
 
-A flex item with width: 100%, max-width: 240px and aspect-ratio: 1 sized its height from
-the unclamped width. CSS transfers the max-width through the ratio to the auto height
-(CSS Sizing 4), so the item and its container are 240px tall.
+An item with aspect-ratio, an auto height and a definite max-width was laid out with the
+transferred height, but its flex base size and hypothetical main size ignored the transfer,
+so an auto-height column sized itself to the untransferred content. CSS Sizing 4 transfers a
+definite max size through the preferred aspect ratio when the other axis is auto.
 ---
- src/compute/flexbox.rs             | 24 ++++++++++++++++++++----
- tests/aspect_ratio_max_transfer.rs |  9 +++++++++
+ src/compute/flexbox.rs                        | 24 +++++++++++++++----
+ .../hand_written/aspect_ratio_max_transfer.rs |  9 +++++++
  2 files changed, 29 insertions(+), 4 deletions(-)
 
 diff --git a/src/compute/flexbox.rs b/src/compute/flexbox.rs
-index 3dd10fb6..5abed1e1 100644
+index f34e3431..b753959e 100644
 --- a/src/compute/flexbox.rs
 +++ b/src/compute/flexbox.rs
-@@ -687,10 +687,12 @@ fn generate_anonymous_flex_items(
+@@ -876,10 +876,12 @@ fn generate_anonymous_flex_items(
                      .min_size()
                      .maybe_resolve(percent_resolution_size, |val, basis| tree.calc(val, basis))
                      .maybe_add(box_sizing_adjustment),
@@ -32,12 +33,11 @@ index 3dd10fb6..5abed1e1 100644
 +                .maybe_add(box_sizing_adjustment),
                  aspect_ratio,
  
-                 inset: child_style
-@@ -3586,3 +3588,17 @@ mod balance {
-         }
+                 relative_inset: if child_style.position() == Position::Relative {
+@@ -3564,6 +3566,20 @@ mod balance {
      }
  }
-+
+ 
 +/// A definite max size transfers through `aspect-ratio` to an axis whose preferred size is
 +/// `auto` and has no max of its own (CSS Sizing 4, "transferred size suggestion").
 +fn transfer_max_size(
@@ -51,11 +51,15 @@ index 3dd10fb6..5abed1e1 100644
 +        height: max_size.height.or(transferred.height.filter(|_| size.height.is_auto())),
 +    }
 +}
-diff --git a/tests/aspect_ratio_max_transfer.rs b/tests/aspect_ratio_max_transfer.rs
-index cc589d69..e3b1ccee 100644
---- a/tests/aspect_ratio_max_transfer.rs
-+++ b/tests/aspect_ratio_max_transfer.rs
-@@ -32,6 +32,15 @@ fn column_height(shrink: f32, item_max_height: Option<f32>) -> (f32, Size<f32>)
++
+ #[cfg(feature = "content_size")]
+ impl AlgoConstants {
+     /// Map main/cross reversal to physical axes, including RTL inline progression.
+diff --git a/tests/hand_written/aspect_ratio_max_transfer.rs b/tests/hand_written/aspect_ratio_max_transfer.rs
+index 4dca6ea2..78b9b219 100644
+--- a/tests/hand_written/aspect_ratio_max_transfer.rs
++++ b/tests/hand_written/aspect_ratio_max_transfer.rs
+@@ -38,6 +38,15 @@ fn column_height(shrink: f32, item_max_height: Option<f32>) -> (f32, Size<f32>)
      (tree.layout(column).unwrap().size.height, tree.layout(item).unwrap().size)
  }
  

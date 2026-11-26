@@ -1,13 +1,10 @@
 //! Implements placing items in the grid and resolving the implicit grid.
 //! <https://www.w3.org/TR/css-grid-1/#placement>
 use super::types::{CellOccupancyMatrix, CellOccupancyState, GridItem};
-use super::{NamedLineResolver, OriginZeroLine, MAX_OZ_LINE, MIN_OZ_LINE};
+use super::{MAX_OZ_LINE, MIN_OZ_LINE, OriginZeroLine};
 use crate::geometry::Line;
 use crate::geometry::{AbsoluteAxis, InBothAbsAxis};
-use crate::style::{AlignItems, GridAutoFlow, OriginZeroGridPlacement};
-use crate::tree::NodeId;
-use crate::util::sys::Vec;
-use crate::{CoreStyle, GridItemStyle};
+use crate::style::{GridAutoFlow, OriginZeroGridPlacement};
 
 #[inline]
 /// Advances the cursor by one track.
@@ -24,97 +21,66 @@ fn resolve_indefinite_grid_span(position: OriginZeroLine, span: u16) -> Line<Ori
     Line { start: line(position), end: line(position + span) }
 }
 
+/// A grid item's `grid-row`/`grid-column` styles with named lines resolved, in origin-zero coordinates
+pub(super) type ItemPlacement = InBothAbsAxis<Line<OriginZeroGridPlacement>>;
+
 /// 8.5. Grid Item Placement Algorithm
 /// Place items into the grid, generating new rows/column into the implicit grid as required
 ///
+/// `items` and `placements` are parallel slices in document order: `placements[i]` holds the `grid-row`/`grid-column`
+/// styles of `items[i]`, with named lines already resolved. The placement passes run over these (small) values rather
+/// than re-reading the children's styles.
+///
 /// [Specification](https://www.w3.org/TR/css-grid-2/#auto-placement-algo)
-#[allow(clippy::too_many_arguments)]
-pub(super) fn place_grid_items<'a, S, ChildIter>(
+pub(super) fn place_grid_items(
     cell_occupancy_matrix: &mut CellOccupancyMatrix,
-    items: &mut Vec<GridItem>,
-    children_iter: impl Fn() -> ChildIter,
+    items: &mut [GridItem],
+    placements: &[ItemPlacement],
     grid_auto_flow: GridAutoFlow,
-    align_items: AlignItems,
-    justify_items: AlignItems,
-    named_line_resolver: &NamedLineResolver<<S as CoreStyle>::CustomIdent>,
-) where
-    S: GridItemStyle + 'a,
-    ChildIter: Iterator<Item = (usize, NodeId, S)>,
-{
+) {
+    debug_assert_eq!(items.len(), placements.len());
     let primary_axis = grid_auto_flow.primary_axis();
     let secondary_axis = primary_axis.other_axis();
-    let explicit_col_count = cell_occupancy_matrix.track_counts(AbsoluteAxis::Horizontal).explicit;
-
-    let map_child_style_to_origin_zero_placement = {
-        let explicit_row_count = cell_occupancy_matrix.track_counts(AbsoluteAxis::Vertical).explicit;
-        move |(index, node, style): (usize, NodeId, S)| -> (_, _, _, S) {
-            let origin_zero_placement = InBothAbsAxis {
-                horizontal: named_line_resolver
-                    .resolve_column_names(&style.grid_column())
-                    .map(|placement| placement.into_origin_zero_placement(explicit_col_count)),
-                vertical: named_line_resolver
-                    .resolve_row_names(&style.grid_row())
-                    .map(|placement| placement.into_origin_zero_placement(explicit_row_count)),
-            };
-            (index, node, origin_zero_placement, style)
-        }
-    };
 
     // 1. Place children with definite positions
-    let mut idx = 0;
-    children_iter()
-        .map(map_child_style_to_origin_zero_placement)
-        .filter(|(_, _, placement, _)| placement.horizontal.is_definite() && placement.vertical.is_definite())
-        .for_each(|(index, child_node, child_placement, style)| {
-            idx += 1;
-            #[cfg(test)]
-            println!("Definite Item {idx}\n==============");
+    for (item, &placement) in items.iter_mut().zip(placements.iter()) {
+        if !(placement.horizontal.is_definite() && placement.vertical.is_definite()) {
+            continue;
+        }
+        #[cfg(test)]
+        println!("Definite Item {}\n==============", item.source_order);
 
-            let (row_span, col_span) = place_definite_grid_item(child_placement, primary_axis);
-            record_grid_placement(
-                cell_occupancy_matrix,
-                items,
-                child_node,
-                index,
-                style,
-                align_items,
-                justify_items,
-                primary_axis,
-                row_span,
-                col_span,
-                CellOccupancyState::DefinitelyPlaced,
-            );
-        });
+        let (row_span, col_span) = place_definite_grid_item(placement, primary_axis);
+        record_grid_placement(
+            cell_occupancy_matrix,
+            item,
+            primary_axis,
+            row_span,
+            col_span,
+            CellOccupancyState::DefinitelyPlaced,
+        );
+    }
 
     // 2. Place remaining children with definite secondary axis positions
-    let mut idx = 0;
-    children_iter()
-        .map(map_child_style_to_origin_zero_placement)
-        .filter(|(_, _, placement, _)| {
-            placement.get(secondary_axis).is_definite() && !placement.get(primary_axis).is_definite()
-        })
-        .for_each(|(index, child_node, child_placement, style)| {
-            idx += 1;
-            #[cfg(test)]
-            println!("Definite Secondary Item {idx}\n==============");
+    for (item, &placement) in items.iter_mut().zip(placements.iter()) {
+        if !placement.get(secondary_axis).is_definite() || placement.get(primary_axis).is_definite() {
+            continue;
+        }
+        #[cfg(test)]
+        println!("Definite Secondary Item {}\n==============", item.source_order);
 
-            let (primary_span, secondary_span) =
-                place_definite_secondary_axis_item(&*cell_occupancy_matrix, child_placement, grid_auto_flow);
+        let (primary_span, secondary_span) =
+            place_definite_secondary_axis_item(&*cell_occupancy_matrix, placement, grid_auto_flow);
 
-            record_grid_placement(
-                cell_occupancy_matrix,
-                items,
-                child_node,
-                index,
-                style,
-                align_items,
-                justify_items,
-                primary_axis,
-                primary_span,
-                secondary_span,
-                CellOccupancyState::AutoPlaced,
-            );
-        });
+        record_grid_placement(
+            cell_occupancy_matrix,
+            item,
+            primary_axis,
+            primary_span,
+            secondary_span,
+            CellOccupancyState::AutoPlaced,
+        );
+    }
 
     // 3. Determine the number of columns in the implicit grid
     // By the time we get to this point in the execution, this is actually already accounted for:
@@ -141,51 +107,40 @@ pub(super) fn place_grid_items<'a, S, ChildIter>(
     let secondary_axis_grid_start_line = cell_occupancy_matrix.track_counts(secondary_axis).implicit_start_line();
     let grid_start_position = (primary_axis_grid_start_line, secondary_axis_grid_start_line);
     let mut grid_position = grid_start_position;
-    let mut idx = 0;
-    children_iter()
-        .map(map_child_style_to_origin_zero_placement)
-        .filter(|(_, _, placement, _)| !placement.get(secondary_axis).is_definite())
-        .for_each(|(index, child_node, child_placement, style)| {
-            idx += 1;
-            #[cfg(test)]
-            println!("\nAuto Item {idx}\n==============");
+    for (item, &placement) in items.iter_mut().zip(placements.iter()) {
+        if placement.get(secondary_axis).is_definite() {
+            continue;
+        }
+        #[cfg(test)]
+        println!("\nAuto Item {}\n==============", item.source_order);
 
-            // Compute placement
-            let (primary_span, secondary_span) = place_indefinitely_positioned_item(
-                &*cell_occupancy_matrix,
-                child_placement,
-                grid_auto_flow,
-                grid_position,
-            );
+        // Compute placement
+        let (primary_span, secondary_span) =
+            place_indefinitely_positioned_item(&*cell_occupancy_matrix, placement, grid_auto_flow, grid_position);
 
-            // Record item
-            record_grid_placement(
-                cell_occupancy_matrix,
-                items,
-                child_node,
-                index,
-                style,
-                align_items,
-                justify_items,
-                primary_axis,
-                primary_span,
-                secondary_span,
-                CellOccupancyState::AutoPlaced,
-            );
+        // Record item
+        record_grid_placement(
+            cell_occupancy_matrix,
+            item,
+            primary_axis,
+            primary_span,
+            secondary_span,
+            CellOccupancyState::AutoPlaced,
+        );
 
-            // If using the "dense" placement algorithm then reset the grid position back to grid_start_position ready for the next item
-            // Otherwise set it to the position of the current item so that the next item it placed after it.
-            grid_position = match grid_auto_flow.is_dense() {
-                true => grid_start_position,
-                false => (primary_span.end, secondary_span.start),
-            };
-        });
+        // If using the "dense" placement algorithm then reset the grid position back to grid_start_position ready for the next item
+        // Otherwise set it to the position of the current item so that the next item it placed after it.
+        grid_position = match grid_auto_flow.is_dense() {
+            true => grid_start_position,
+            false => (primary_span.end, secondary_span.start),
+        };
+    }
 }
 
 /// 8.5. Grid Item Placement Algorithm
 /// Place a single definitely placed item into the grid
 fn place_definite_grid_item(
-    placement: InBothAbsAxis<Line<OriginZeroGridPlacement>>,
+    placement: ItemPlacement,
     primary_axis: AbsoluteAxis,
 ) -> (Line<OriginZeroLine>, Line<OriginZeroLine>) {
     // Resolve spans to tracks
@@ -199,7 +154,7 @@ fn place_definite_grid_item(
 /// Step 2. Place remaining children with definite secondary axis positions
 fn place_definite_secondary_axis_item(
     cell_occupancy_matrix: &CellOccupancyMatrix,
-    placement: InBothAbsAxis<Line<OriginZeroGridPlacement>>,
+    placement: ItemPlacement,
     auto_flow: GridAutoFlow,
 ) -> (Line<OriginZeroLine>, Line<OriginZeroLine>) {
     let primary_axis = auto_flow.primary_axis();
@@ -210,7 +165,7 @@ fn place_definite_secondary_axis_item(
     let starting_position = match auto_flow.is_dense() {
         true => primary_axis_grid_start_line,
         false => cell_occupancy_matrix
-            .last_of_type(primary_axis, secondary_axis_placement.start, CellOccupancyState::AutoPlaced)
+            .auto_placement_cursor(primary_axis, secondary_axis_placement.start)
             .unwrap_or(primary_axis_grid_start_line),
     };
     let primary_axis_span = placement.get(primary_axis).indefinite_span();
@@ -236,7 +191,7 @@ fn place_definite_secondary_axis_item(
 /// Step 4. Position the remaining grid items.
 fn place_indefinitely_positioned_item(
     cell_occupancy_matrix: &CellOccupancyMatrix,
-    placement: InBothAbsAxis<Line<OriginZeroGridPlacement>>,
+    placement: ItemPlacement,
     auto_flow: GridAutoFlow,
     grid_position: (OriginZeroLine, OriginZeroLine),
 ) -> (Line<OriginZeroLine>, Line<OriginZeroLine>) {
@@ -352,17 +307,11 @@ fn clamp_span_to_limited_grid(span: Line<OriginZeroLine>) -> Line<OriginZeroLine
     Line { start: OriginZeroLine(start), end: OriginZeroLine(end) }
 }
 
-/// Record the grid item in both CellOccupancyMatric and the GridItems list
+/// Record the grid item's placement in both the CellOccupancyMatrix and the item itself
 /// once a definite placement has been determined
-#[allow(clippy::too_many_arguments)]
-fn record_grid_placement<S: GridItemStyle>(
+fn record_grid_placement(
     cell_occupancy_matrix: &mut CellOccupancyMatrix,
-    items: &mut Vec<GridItem>,
-    node: NodeId,
-    index: usize,
-    style: S,
-    parent_align_items: AlignItems,
-    parent_justify_items: AlignItems,
+    item: &mut GridItem,
     primary_axis: AbsoluteAxis,
     primary_span: Line<OriginZeroLine>,
     secondary_span: Line<OriginZeroLine>,
@@ -381,20 +330,13 @@ fn record_grid_placement<S: GridItemStyle>(
     // Mark area of grid as occupied
     cell_occupancy_matrix.mark_area_as(primary_axis, primary_span, secondary_span, placement_type);
 
-    // Create grid item
+    // Record placement on the item
     let (col_span, row_span) = match primary_axis {
         AbsoluteAxis::Horizontal => (primary_span, secondary_span),
         AbsoluteAxis::Vertical => (secondary_span, primary_span),
     };
-    items.push(GridItem::new_with_placement_style_and_order(
-        node,
-        col_span,
-        row_span,
-        style,
-        parent_align_items,
-        parent_justify_items,
-        index as u16,
-    ));
+    item.column = col_span;
+    item.row = row_span;
 
     #[cfg(test)]
     println!("AFTER placement:");
@@ -409,12 +351,13 @@ mod tests {
     use super::*;
 
     mod test_placement_algorithm {
-        use crate::compute::grid::implicit_grid::compute_grid_size_estimate;
-        use crate::compute::grid::types::TrackCounts;
-        use crate::compute::grid::util::*;
         use crate::compute::grid::CellOccupancyMatrix;
         use crate::compute::grid::NamedLineResolver;
         use crate::compute::grid::OriginZeroLine;
+        use crate::compute::grid::implicit_grid::compute_grid_size_estimate;
+        use crate::compute::grid::types::TrackCounts;
+        use crate::compute::grid::util::test_helpers::{grid_items, resolve_named_lines};
+        use crate::compute::grid::util::*;
         use crate::prelude::*;
         use crate::style::GridAutoFlow;
 
@@ -431,33 +374,26 @@ mod tests {
             flow: GridAutoFlow,
         ) {
             // Setup test
-            let children_iter = || children.iter().map(|(index, style, _)| (*index, NodeId::from(*index), style));
-            let child_styles_iter = children.iter().map(|(_, style, _)| style);
-            let estimated_sizes = compute_grid_size_estimate(explicit_col_count, explicit_row_count, child_styles_iter);
-            let mut items = Vec::new();
-            let mut cell_occupancy_matrix =
-                CellOccupancyMatrix::with_track_counts(estimated_sizes.0, estimated_sizes.1);
             let mut name_resolver = NamedLineResolver::new(&Style::DEFAULT, 0, 0);
             name_resolver.set_explicit_column_count(explicit_col_count);
             name_resolver.set_explicit_row_count(explicit_row_count);
+            let mut items = grid_items(children.iter().map(|(index, style, _)| (*index, style)));
+            let placements = resolve_named_lines(
+                children.iter().map(|(_, style, _)| style),
+                &name_resolver,
+                explicit_col_count,
+                explicit_row_count,
+            );
+            let estimated_sizes = compute_grid_size_estimate(explicit_col_count, explicit_row_count, &placements);
+            let mut cell_occupancy_matrix =
+                CellOccupancyMatrix::with_track_counts(estimated_sizes.0, estimated_sizes.1);
 
             // Run placement algorithm
-            place_grid_items(
-                &mut cell_occupancy_matrix,
-                &mut items,
-                children_iter,
-                flow,
-                AlignSelf::START,
-                AlignSelf::START,
-                // TODO: actually test named line resolution
-                &name_resolver,
-            );
+            place_grid_items(&mut cell_occupancy_matrix, &mut items, &placements, flow);
 
-            // Assert that each item has been placed in the right location
-            let mut sorted_children = children.clone();
-            sorted_children.sort_by_key(|child| child.0);
-            for (idx, ((id, _style, expected_placement), item)) in sorted_children.iter().zip(items.iter()).enumerate()
-            {
+            // Assert that each item has been placed in the right location (items are in the same order as children)
+            assert_eq!(items.len(), children.len());
+            for (idx, ((id, _style, expected_placement), item)) in children.iter().zip(items.iter()).enumerate() {
                 assert_eq!(item.node, NodeId::from(*id));
                 let actual_placement = (item.column.start, item.column.end, item.row.start, item.row.end);
                 assert_eq!(actual_placement, (*expected_placement).into_oz(), "Item {idx} (0-indexed)");
@@ -668,27 +604,21 @@ mod tests {
             let explicit_col_count = 9_000;
             let explicit_row_count = 0;
             let style = (line(-19_005), auto(), auto(), auto()).into_grid_child();
-            let children = [(0, style)];
-            let estimated_sizes = compute_grid_size_estimate(
-                explicit_col_count,
-                explicit_row_count,
-                children.iter().map(|(_, style)| style),
-            );
-            let mut items = Vec::new();
-            let mut cell_occupancy_matrix =
-                CellOccupancyMatrix::with_track_counts(estimated_sizes.0, estimated_sizes.1);
+            let children = [(0usize, style)];
             let mut name_resolver = NamedLineResolver::new(&Style::DEFAULT, 0, 0);
             name_resolver.set_explicit_column_count(explicit_col_count);
             name_resolver.set_explicit_row_count(explicit_row_count);
-            place_grid_items(
-                &mut cell_occupancy_matrix,
-                &mut items,
-                || children.iter().map(|(index, style)| (*index, NodeId::from(*index), style)),
-                GridAutoFlow::Row,
-                AlignSelf::START,
-                AlignSelf::START,
+            let mut items = grid_items(children.iter().map(|(index, style)| (*index, style)));
+            let placements = resolve_named_lines(
+                children.iter().map(|(_, style)| style),
                 &name_resolver,
+                explicit_col_count,
+                explicit_row_count,
             );
+            let estimated_sizes = compute_grid_size_estimate(explicit_col_count, explicit_row_count, &placements);
+            let mut cell_occupancy_matrix =
+                CellOccupancyMatrix::with_track_counts(estimated_sizes.0, estimated_sizes.1);
+            place_grid_items(&mut cell_occupancy_matrix, &mut items, &placements, GridAutoFlow::Row);
             assert_eq!(items[0].column, Line { start: OriginZeroLine(-10_000), end: OriginZeroLine(-9_999) });
         }
     }

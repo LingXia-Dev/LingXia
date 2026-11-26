@@ -9,11 +9,12 @@ mod common {
     pub mod image;
     pub mod text;
 }
-use common::image::{image_measure_function, ImageContext};
-use common::text::{text_measure_function, FontMetrics, TextContext, WritingMode, LOREM_IPSUM};
+use common::image::{ImageContext, image_measure_function};
+use common::text::{FontMetrics, LOREM_IPSUM, TextContext, WritingMode, text_measure_function};
+use taffy::CalcHandle;
 use taffy::{
-    compute_cached_layout, compute_flexbox_layout, compute_grid_layout, compute_leaf_layout, compute_root_layout,
-    prelude::*, Cache, CacheTree, Layout, Style,
+    Cache, CacheTree, Layout, Style, compute_cached_layout, compute_flexbox_layout, compute_grid_layout,
+    compute_leaf_layout, compute_oof_layout, compute_root_layout, prelude::*,
 };
 
 #[derive(Debug, Copy, Clone)]
@@ -33,6 +34,7 @@ struct Node {
     cache: Cache,
     layout: Layout,
     children: Vec<Node>,
+    hoisted_children: Vec<NodeId>,
 }
 
 impl Default for Node {
@@ -45,6 +47,7 @@ impl Default for Node {
             cache: Cache::new(),
             layout: Layout::with_order(0),
             children: Vec::new(),
+            hoisted_children: Vec::new(),
         }
     }
 }
@@ -91,20 +94,12 @@ impl Node {
     /// we use usize::MAX on the assumption that there will never be that many children.
     fn node_from_id(&self, node_id: NodeId) -> &Node {
         let idx = usize::from(node_id);
-        if idx == usize::MAX {
-            self
-        } else {
-            &self.children[idx]
-        }
+        if idx == usize::MAX { self } else { &self.children[idx] }
     }
 
     fn node_from_id_mut(&mut self, node_id: NodeId) -> &mut Node {
         let idx = usize::from(node_id);
-        if idx == usize::MAX {
-            self
-        } else {
-            &mut self.children[idx]
-        }
+        if idx == usize::MAX { self } else { &mut self.children[idx] }
     }
 }
 
@@ -148,7 +143,7 @@ impl taffy::LayoutPartialTree for Node {
         self.node_from_id_mut(node_id).layout = *layout
     }
 
-    fn resolve_calc_value(&self, _val: *const (), _basis: f32) -> f32 {
+    fn resolve_calc_value(&self, _val: CalcHandle, _basis: f32) -> f32 {
         0.0
     }
 
@@ -157,7 +152,7 @@ impl taffy::LayoutPartialTree for Node {
             let node = parent.node_from_id_mut(node_id);
             let font_metrics = FontMetrics { char_width: 10.0, char_height: 10.0 };
 
-            match node.kind {
+            let mut output = match node.kind {
                 NodeKind::Flexbox => compute_flexbox_layout(node, node_id, inputs),
                 NodeKind::Grid => compute_grid_layout(node, node_id, inputs),
                 NodeKind::Text => compute_leaf_layout(
@@ -181,14 +176,40 @@ impl taffy::LayoutPartialTree for Node {
                         image_measure_function(known_dimensions, node.image_data.as_ref().unwrap())
                     },
                 ),
+            };
+
+            // Lay out any out-of-flow (absolute/fixed) boxes for which this node is the containing block
+            if inputs.run_mode == taffy::RunMode::PerformLayout {
+                compute_oof_layout(node, node_id, &mut output);
             }
+
+            output
         })
     }
 }
 
+impl taffy::LayoutContainingBlock for Node {
+    type OofItemStyle<'a>
+        = &'a Style
+    where
+        Self: 'a;
+
+    fn get_oof_item_style(&self, node_id: NodeId) -> Self::OofItemStyle<'_> {
+        &self.node_from_id(node_id).style
+    }
+
+    fn clear_hoisted_children(&mut self, node_id: NodeId) {
+        self.node_from_id_mut(node_id).hoisted_children.clear();
+    }
+
+    fn add_hoisted_children(&mut self, node_id: NodeId, hoisted: &[NodeId]) {
+        self.node_from_id_mut(node_id).hoisted_children.extend_from_slice(hoisted);
+    }
+}
+
 impl CacheTree for Node {
-    fn cache_get(&mut self, node_id: NodeId, inputs: &taffy::LayoutInput) -> Option<taffy::LayoutOutput> {
-        self.node_from_id_mut(node_id).cache.get(inputs)
+    fn cache_get(&self, node_id: NodeId, inputs: &taffy::LayoutInput) -> Option<taffy::LayoutOutput> {
+        self.node_from_id(node_id).cache.get(inputs)
     }
 
     fn cache_store(&mut self, node_id: NodeId, inputs: &taffy::LayoutInput, layout_output: taffy::LayoutOutput) {

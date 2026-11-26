@@ -1,12 +1,11 @@
 //! Style type for representing available space as a sizing constraint
 use crate::{
-    prelude::{FromLength, TaffyMaxContent, TaffyMinContent, TaffyZero},
-    sys::abs,
     Size,
+    prelude::{FromLength, TaffyMaxContent, TaffyMinContent, TaffyZero},
 };
 
 #[cfg(feature = "parse")]
-use crate::util::parse::{from_str_from_css, CssParseResult, FromCss, Parser, Token};
+use crate::util::parse::{CssParseError, CssParseResult, FromCss, Parser, Token, from_str_from_css};
 
 /// The amount of space available to a node in a given axis
 /// <https://www.w3.org/TR/css-sizing-3/#available>
@@ -37,13 +36,13 @@ impl FromLength for AvailableSpace {
 
 #[cfg(feature = "parse")]
 impl FromCss for AvailableSpace {
-    fn from_css<'i>(parser: &mut Parser<'i, '_>) -> CssParseResult<'i, Self> {
+    fn from_css<'i>(parser: &mut Parser<'i>) -> CssParseResult<'i, Self> {
         match parser.next()?.clone() {
             Token::Number { value, .. } if value >= 0.0 => Ok(Self::Definite(value)),
             Token::Dimension { value, .. } if value >= 0.0 => Ok(Self::Definite(value)),
             Token::Ident(ident) if ident == "max-content" => Ok(Self::MaxContent),
             Token::Ident(ident) if ident == "min-content" => Ok(Self::MinContent),
-            token => Err(parser.new_unexpected_token_error(token))?,
+            _ => Err(CssParseError::unexpected_token())?,
         }
     }
 }
@@ -127,7 +126,7 @@ impl AvailableSpace {
     pub fn is_roughly_equal(self, other: AvailableSpace) -> bool {
         use AvailableSpace::*;
         match (self, other) {
-            (Definite(a), Definite(b)) => abs(a - b) < f32::EPSILON,
+            (Definite(a), Definite(b)) => (a - b).abs() < f32::EPSILON,
             (MinContent, MinContent) => true,
             (MaxContent, MaxContent) => true,
             _ => false,

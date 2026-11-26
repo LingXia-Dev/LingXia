@@ -1,0 +1,105 @@
+From 09525e2ee061cc547cf10f4b9ce5d3e000d21364 Mon Sep 17 00:00:00 2001
+From: Michael <michael@lingxia.app>
+Date: Wed, 25 Nov 2026 19:07:42 -0800
+Subject: [PATCH 6/6] fix(tree): clear a node's hoisted children when it stops
+ laying them out
+
+A node keeps the hoisted-children list from its last layout as a containing block after it
+becomes a leaf, becomes `display: none`, or sits inside a hidden ancestor. `round_layout` walks
+that list, so once a listed box is removed from the tree, the next layout panics on a freed
+node id. `compute_oof_layout` now clears the list when the node has no positioning area, and
+hidden layout clears it before laying out the hidden subtree.
+
+Refs #1354; extends #1425 to hidden nodes.
+---
+ src/compute/oof.rs                 | 10 +++++++--
+ src/tree/taffy_tree.rs             |  3 +++
+ tests/hand_written/oof_hoisting.rs | 34 ++++++++++++++++++++++++++++++
+ 3 files changed, 45 insertions(+), 2 deletions(-)
+
+diff --git a/src/compute/oof.rs b/src/compute/oof.rs
+index 06a8fa26..2d4d8430 100644
+--- a/src/compute/oof.rs
++++ b/src/compute/oof.rs
+@@ -334,13 +334,19 @@ impl OofAxis {
+ /// This should be called once per `RunMode::PerformLayout` container layout, after the layout
+ /// algorithm (block/flexbox/grid) has run, and *inside* any layout caching wrapper (such as
+ /// [`compute_cached_layout`](crate::compute_cached_layout)) so that cache hits do not re-run the
+-/// pass. It is a no-op when `output.oof_positioning_area` is `None` (leaf and size-only outputs).
++/// pass. When `output.oof_positioning_area` is `None` (leaf, hidden and size-only outputs) it
++/// only clears the node's hoisted children.
+ ///
+ /// Which candidates the node claims is determined by the node's style via
+ /// [`CoreStyle::is_containing_block`]. `position: fixed` boxes unclaimed by every ancestor are
+ /// claimed by the final root positioning pass in [`compute_root_layout`](crate::compute_root_layout).
+ pub fn compute_oof_layout(tree: &mut impl LayoutContainingBlock, node_id: NodeId, output: &mut LayoutOutput) {
+-    let Some(area) = output.oof_positioning_area else { return };
++    // A node with no positioning area (a leaf, or a hidden node) still clears its list, which
++    // may name boxes hoisted into it while it laid them out
++    let Some(area) = output.oof_positioning_area else {
++        tree.clear_hoisted_children(node_id);
++        return;
++    };
+     if output.oof_candidates.is_empty() {
+         tree.clear_hoisted_children(node_id);
+         return;
+diff --git a/src/tree/taffy_tree.rs b/src/tree/taffy_tree.rs
+index 8aba7aff..9d97e217 100644
+--- a/src/tree/taffy_tree.rs
++++ b/src/tree/taffy_tree.rs
+@@ -304,6 +304,9 @@ where
+             // hoisted child list, and a box inside a hidden subtree is in no such list. Write the
+             // final layout here so that it does not keep the layout from an earlier visible pass.
+             self.taffy.nodes[node_id.into()].final_layout = Layout::with_order(0);
++            // Nothing is hoisted into a hidden node; a list from a visible pass would name boxes
++            // `round_layout` must not reach.
++            self.taffy.nodes[node_id.into()].hoisted_children.clear();
+             return compute_hidden_layout(self, node_id);
+         }
+ 
+diff --git a/tests/hand_written/oof_hoisting.rs b/tests/hand_written/oof_hoisting.rs
+index c9e4c560..fcec9a09 100644
+--- a/tests/hand_written/oof_hoisting.rs
++++ b/tests/hand_written/oof_hoisting.rs
+@@ -547,4 +547,38 @@ mod oof_hoisting {
+             }
+         }
+     }
++
++    /// A containing block's hoisted list is cleared when it stops laying out out-of-flow boxes:
++    /// as a leaf, hidden itself, or inside a hidden ancestor. A stale list names a removed box
++    /// that `round_layout` would then visit.
++    #[test]
++    fn removing_a_hoisted_box_leaves_no_stale_hoisted_child() {
++        for case in ["leaf", "hidden", "hidden ancestor"] {
++            let mut tree: TaffyTree<()> = TaffyTree::new();
++            let abs = tree.new_leaf(Style { position: Position::Absolute, ..leaf_style(30.0, 30.0) }).unwrap();
++            let sibling = tree.new_leaf(leaf_style(10.0, 10.0)).unwrap();
++            let cb_style = Style { position: Position::Relative, ..leaf_style(50.0, 50.0) };
++            let cb = tree.new_with_children(cb_style.clone(), &[abs, sibling]).unwrap();
++            let wrapper = tree.new_with_children(leaf_style(100.0, 100.0), &[cb]).unwrap();
++            let root = tree.new_with_children(leaf_style(200.0, 200.0), &[wrapper]).unwrap();
++
++            tree.compute_layout(root, Size::MAX_CONTENT).unwrap();
++            assert_eq!(tree.hoisted_children(cb).unwrap(), &[abs]);
++
++            match case {
++                "leaf" => {
++                    tree.remove(sibling).unwrap();
++                }
++                "hidden" => {
++                    tree.set_style(cb, Style { display: Display::None, ..cb_style }).unwrap();
++                }
++                _ => {
++                    tree.set_style(wrapper, Style { display: Display::None, ..leaf_style(100.0, 100.0) }).unwrap();
++                }
++            }
++            tree.remove(abs).unwrap();
++            tree.compute_layout(root, Size::MAX_CONTENT).unwrap();
++            assert!(tree.hoisted_children(cb).unwrap().is_empty(), "{case}");
++        }
++    }
+ }
+-- 
+2.50.1 (Apple Git-155)
+

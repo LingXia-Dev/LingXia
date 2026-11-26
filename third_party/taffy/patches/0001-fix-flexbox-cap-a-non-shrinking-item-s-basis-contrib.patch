@@ -1,7 +1,7 @@
-From 96d9f83278ef657f5d6dc7345941bc2b2426dcf8 Mon Sep 17 00:00:00 2001
+From 2dbef113e680f2b9023799fd683bb54b0e91fadf Mon Sep 17 00:00:00 2001
 From: Michael <michael@lingxia.app>
-Date: Wed, 28 Oct 2026 12:10:55 -0700
-Subject: [PATCH 1/2] fix(flexbox): cap a non-shrinking item's basis
+Date: Wed, 25 Nov 2026 16:59:10 -0800
+Subject: [PATCH 1/6] fix(flexbox): cap a non-shrinking item's basis
  contribution by its max size
 
 With flex-shrink: 0 the flex basis became the item's minimum content contribution even
@@ -9,19 +9,20 @@ when it exceeded the item's max size, so an auto-sized container grew to the unc
 basis while the item itself was laid out at its max. Chrome and Firefox clamp the
 hypothetical main size first.
 ---
- src/compute/flexbox.rs             |  4 ++-
- tests/aspect_ratio_max_transfer.rs | 40 ++++++++++++++++++++++++++++++
- 2 files changed, 43 insertions(+), 1 deletion(-)
- create mode 100644 tests/aspect_ratio_max_transfer.rs
+ src/compute/flexbox.rs                        |  4 +-
+ tests/hand_written.rs                         |  1 +
+ .../hand_written/aspect_ratio_max_transfer.rs | 46 +++++++++++++++++++
+ 3 files changed, 50 insertions(+), 1 deletion(-)
+ create mode 100644 tests/hand_written/aspect_ratio_max_transfer.rs
 
 diff --git a/src/compute/flexbox.rs b/src/compute/flexbox.rs
-index 47797b43..3dd10fb6 100644
+index e7ed9a70..f34e3431 100644
 --- a/src/compute/flexbox.rs
 +++ b/src/compute/flexbox.rs
-@@ -1373,7 +1373,9 @@ fn determine_container_main_size(
-                         // Issue: https://github.com/w3c/csswg-drafts/issues/1435
-                         // Gentest: padding_border_overrides_size_flex_basis_0.html
-                         let clamping_basis = Some(item.flex_basis).maybe_max(style_preferred);
+@@ -1587,7 +1587,9 @@ fn determine_container_main_size(
+                         } else {
+                             Some(item.flex_basis)
+                         };
 -                        let flex_basis_min = clamping_basis.filter(|_| item.flex_shrink == 0.0);
 +                        // An item that cannot shrink contributes at least its basis, but never
 +                        // more than its max size (Chrome and Firefox clamp the hypothetical size).
@@ -29,12 +30,24 @@ index 47797b43..3dd10fb6 100644
                          let flex_basis_max = clamping_basis.filter(|_| item.flex_grow == 0.0);
  
                          let min_main_size = style_min
-diff --git a/tests/aspect_ratio_max_transfer.rs b/tests/aspect_ratio_max_transfer.rs
+diff --git a/tests/hand_written.rs b/tests/hand_written.rs
+index 28dafb3a..164d4a4b 100644
+--- a/tests/hand_written.rs
++++ b/tests/hand_written.rs
+@@ -1,6 +1,7 @@
+ mod hand_written {
+     mod absolute_replaced;
+     mod adversarial_styles;
++    mod aspect_ratio_max_transfer;
+     mod baseline;
+     mod block_margin;
+     mod block_replaced;
+diff --git a/tests/hand_written/aspect_ratio_max_transfer.rs b/tests/hand_written/aspect_ratio_max_transfer.rs
 new file mode 100644
-index 00000000..cc589d69
+index 00000000..4dca6ea2
 --- /dev/null
-+++ b/tests/aspect_ratio_max_transfer.rs
-@@ -0,0 +1,40 @@
++++ b/tests/hand_written/aspect_ratio_max_transfer.rs
+@@ -0,0 +1,46 @@
 +//! An auto-height flex column around an aspect-ratio item whose width is capped by `max-width`.
 +use taffy::prelude::*;
 +
@@ -51,13 +64,19 @@ index 00000000..cc589d69
 +        .unwrap();
 +    let column = tree
 +        .new_with_children(
-+            Style { flex_direction: FlexDirection::Column, flex_shrink: shrink, ..Default::default() },
++            Style {
++                display: Display::Flex,
++                flex_direction: FlexDirection::Column,
++                flex_shrink: shrink,
++                ..Default::default()
++            },
 +            &[item],
 +        )
 +        .unwrap();
 +    let root = tree
 +        .new_with_children(
 +            Style {
++                display: Display::Flex,
 +                flex_direction: FlexDirection::Column,
 +                size: Size { width: length(327.0), height: auto() },
 +                ..Default::default()

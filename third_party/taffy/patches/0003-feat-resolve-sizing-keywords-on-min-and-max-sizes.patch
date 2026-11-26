@@ -1,0 +1,1065 @@
+From 986a6cb038e205590255255703f94e008a720fe1 Mon Sep 17 00:00:00 2001
+From: Michael <michael@lingxia.app>
+Date: Wed, 25 Nov 2026 16:59:46 -0800
+Subject: [PATCH 3/6] feat: resolve sizing keywords on min and max sizes
+
+`min-width: min-content`, `max-height: fit-content` and the other sizing keywords are valid
+on the min/max size properties, but the style type was `LengthPercentageAuto`, so they could
+not be expressed. `min_size`/`max_size` are now `Size<Dimension>`. Flexbox, block and
+absolutely positioned layout measure the item under the keyword's constraint: a flex item's
+main axis when its flex base size is determined and its cross axis before its hypothetical
+cross size (stretched items included), a block item's width and, when definite, its height,
+and an absolutely positioned box against its containing block. Grid treats a keyword minimum
+as `auto` and a keyword maximum as `none`.
+---
+ src/compute/block.rs                    | 177 +++++++++-
+ src/compute/common/sizing_keyword.rs    | 419 +++++++++++++++++++++++-
+ src/compute/flexbox.rs                  | 109 +++++-
+ src/compute/grid/types/grid_item.rs     |   4 +-
+ src/compute/oof.rs                      |  36 +-
+ src/style/mod.rs                        |  16 +-
+ tests/hand_written/min_max_overrides.rs |  20 +-
+ 7 files changed, 700 insertions(+), 81 deletions(-)
+
+diff --git a/src/compute/block.rs b/src/compute/block.rs
+index ae57e3f1..fc7c799c 100644
+--- a/src/compute/block.rs
++++ b/src/compute/block.rs
+@@ -324,7 +324,7 @@ use super::common::alignment::{apply_alignment_fallback, child_first_baseline, c
+ use super::common::scrollable_overflow::{
+     ScrollableOverflowContainer, compute_scrollable_overflow_contribution, finalize_scrollable_overflow,
+ };
+-use super::common::sizing_keyword::{SizingKeywordResolution, resolve_sizing_keyword};
++use super::common::sizing_keyword::{SizingKeywordResolution, resolve_min_max_sizing_keyword, resolve_sizing_keyword};
+ 
+ /// Per-child data that is accumulated and modified over the course of the layout algorithm
+ struct BlockItem {
+@@ -370,6 +370,11 @@ struct BlockItem {
+     min_size: Size<Option<f32>>,
+     /// The maximum allowable size of this item
+     max_size: Size<Option<f32>>,
++    /// The min size style of this item. Sizing keywords leave `min_size` unset and are
++    /// resolved during layout (see `resolve_keyword_min_max_width`/`_height`)
++    min_size_style: Size<Dimension>,
++    /// The max size style of this item (sizing keywords as for `min_size_style`)
++    max_size_style: Size<Dimension>,
+ 
+     /// The overflow style of the item
+     overflow: Point<Overflow>,
+@@ -1011,6 +1016,8 @@ fn generate_item_list(
+                     .maybe_resolve(node_inner_size, |val, basis| tree.calc(val, basis))
+                     .maybe_apply_aspect_ratio(aspect_ratio)
+                     .maybe_add(box_sizing_adjustment),
++                min_size_style: child_style.min_size(),
++                max_size_style: child_style.max_size(),
+                 overflow,
+                 contain,
+                 scrollbar_width: child_style.scrollbar_width(),
+@@ -1090,6 +1097,110 @@ fn resolve_relative_offset(
+     Point { x: x.unwrap_or(0.0), y: inset.top.or(inset.bottom.map(|x| -x)).unwrap_or(0.0) }
+ }
+ 
++/// Resolve sizing keywords on an item's min/max width to border-box widths, measuring the item
++/// under the keyword's constraint. Axes without a keyword keep their resolved value, and nothing
++/// is measured unless a keyword is present.
++#[inline]
++fn resolve_keyword_min_max_width(
++    tree: &mut impl LayoutPartialTree,
++    item: &BlockItem,
++    parent_size: Size<Option<f32>>,
++    stretch_width: Option<f32>,
++    container_inner_width: Option<f32>,
++) -> (Option<f32>, Option<f32>) {
++    let resolve = |tree: &mut _, style: Dimension, value: Option<f32>| {
++        if !style.is_sizing_keyword() {
++            return value;
++        }
++        resolve_min_max_sizing_keyword(
++            tree,
++            item.node_id,
++            style,
++            crate::AbsoluteAxis::Horizontal,
++            Size::NONE,
++            parent_size,
++            Size { width: AvailableSpace::MaxContent, height: AvailableSpace::MaxContent },
++            stretch_width,
++            container_inner_width,
++            Line::TRUE,
++        )
++    };
++    let min_width = resolve(tree, item.min_size_style.width, item.min_size.width);
++    let max_width = resolve(tree, item.max_size_style.width, item.max_size.width);
++    (min_width, max_width)
++}
++
++/// Clamp an item's height by sizing keywords on its min/max height. In the block axis the
++/// intrinsic keywords are all the content height at the item's width, so they only matter when
++/// the height is definite; `stretch` resolves against the container height.
++/// Returns `height` unchanged (without measuring) when neither style is a keyword.
++#[inline]
++#[allow(clippy::too_many_arguments)]
++fn resolve_keyword_min_max_height(
++    tree: &mut impl LayoutPartialTree,
++    item: &BlockItem,
++    height: Option<f32>,
++    width: f32,
++    parent_size: Size<Option<f32>>,
++    container_inner_height: Option<f32>,
++    item_y_margin_sum: f32,
++) -> Option<f32> {
++    let min_style = item.min_size_style.height;
++    let max_style = item.max_size_style.height;
++    if !min_style.is_sizing_keyword() && !max_style.is_sizing_keyword() {
++        return height;
++    }
++    if height.is_none() && !min_style.is_stretch() && !max_style.is_stretch() {
++        return height;
++    }
++
++    let mut content_height = None;
++    let stretch_height = container_inner_height.maybe_sub(item_y_margin_sum);
++    let mut bounds = [None, None];
++    for (index, (style, value)) in
++        [(min_style, item.min_size.height), (max_style, item.max_size.height)].into_iter().enumerate()
++    {
++        bounds[index] = if !style.is_sizing_keyword() {
++            value
++        } else {
++            match resolve_sizing_keyword(style, stretch_height, container_inner_height, |val, basis| {
++                tree.calc(val, basis)
++            }) {
++                None => None,
++                Some(SizingKeywordResolution::Exact(size)) => Some(size),
++                Some(SizingKeywordResolution::Measure(_)) => Some(
++                    *content_height
++                        .get_or_insert_with(|| measure_content_height_at(tree, item.node_id, width, parent_size)),
++                ),
++            }
++        };
++    }
++    let [min_height, max_height] = bounds;
++    let height = height.unwrap_or_else(|| {
++        *content_height.get_or_insert_with(|| measure_content_height_at(tree, item.node_id, width, parent_size))
++    });
++    Some(height).maybe_clamp(min_height, max_height)
++}
++
++/// The content height of an item at a known width, which every intrinsic height keyword resolves to
++#[inline]
++fn measure_content_height_at(
++    tree: &mut impl LayoutPartialTree,
++    node: NodeId,
++    width: f32,
++    parent_size: Size<Option<f32>>,
++) -> f32 {
++    tree.measure_child_size(
++        node,
++        Size { width: Some(width), height: None },
++        parent_size,
++        Size { width: AvailableSpace::Definite(width), height: AvailableSpace::MaxContent },
++        SizingMode::ContentSize,
++        crate::AbsoluteAxis::Vertical,
++        Line::TRUE,
++    )
++}
++
+ /// Compute the content-based width in the case that the width of the container is not known
+ #[inline]
+ fn determine_content_based_container_width(
+@@ -1136,6 +1247,19 @@ fn determine_content_based_container_width(
+                 _ => width,
+             }
+         });
++        let width = if item.min_size_style.width.is_sizing_keyword() || item.max_size_style.width.is_sizing_keyword() {
++            let stretch_width = available_space.width.into_option().maybe_sub(item_x_margin_sum);
++            let (min_width, max_width) = resolve_keyword_min_max_width(
++                tree,
++                item,
++                Size::NONE,
++                stretch_width,
++                available_space.width.into_option(),
++            );
++            width.maybe_clamp(min_width, max_width)
++        } else {
++            width
++        };
+ 
+         let width = f32_max(width, item.padding_border_sum.width) + item_x_margin_sum;
+ 
+@@ -1211,17 +1335,20 @@ fn block_item_known_dimensions(
+             children_margins_adjoin_own_edges,
+         );
+ 
+-        item.size
+-            .map_width(|width| {
+-                Some(
+-                    width
+-                        .or(keyword_width)
+-                        .unwrap_or(stretch_width)
+-                        .maybe_clamp(item.min_size.width, item.max_size.width),
+-                )
+-            })
+-            .map_height(|height| height.or(keyword_height))
+-            .maybe_clamp(item.min_size, item.max_size)
++        let (min_width, max_width) =
++            resolve_keyword_min_max_width(tree, item, parent_size, Some(stretch_width), Some(container_inner_width));
++        let width = item.size.width.or(keyword_width).unwrap_or(stretch_width).maybe_clamp(min_width, max_width);
++        let height = item.size.height.or(keyword_height).maybe_clamp(item.min_size.height, item.max_size.height);
++        let height = resolve_keyword_min_max_height(
++            tree,
++            item,
++            height,
++            width,
++            parent_size,
++            container_percentage_resolution_height,
++            item_non_auto_margin.vertical_axis_sum(),
++        );
++        Size { width: Some(width), height }
+     }
+ }
+ 
+@@ -1341,6 +1468,32 @@ fn perform_final_layout_on_in_flow_children<Tree: LayoutBlockContainer>(
+                     Some(SizingKeywordResolution::Exact(width)) => (Some(width), AvailableSpace::Definite(width)),
+                     None => (None, AvailableSpace::Definite(available_width)),
+                 };
++                // A keyword min/max width clamps the float's shrink-to-fit width, which then
++                // has to be known up front
++                let item_known_width =
++                    if item.min_size_style.width.is_sizing_keyword() || item.max_size_style.width.is_sizing_keyword() {
++                        let (min_width, max_width) = resolve_keyword_min_max_width(
++                            tree,
++                            item,
++                            parent_size,
++                            Some(available_width),
++                            Some(container_inner_width),
++                        );
++                        let width = item_known_width.or(item.size.width).unwrap_or_else(|| {
++                            tree.measure_child_size(
++                                item.node_id,
++                                Size::NONE,
++                                parent_size,
++                                Size { width: item_available_width, height: AvailableSpace::MaxContent },
++                                SizingMode::InherentSize,
++                                crate::AbsoluteAxis::Horizontal,
++                                Line::FALSE,
++                            )
++                        });
++                        Some(width.maybe_clamp(min_width, max_width))
++                    } else {
++                        item_known_width
++                    };
+                 let item_known_height = resolve_stretch_height(
+                     item.size_style.height,
+                     container_percentage_resolution_height,
+diff --git a/src/compute/common/sizing_keyword.rs b/src/compute/common/sizing_keyword.rs
+index 522c111a..6ecb5eff 100644
+--- a/src/compute/common/sizing_keyword.rs
++++ b/src/compute/common/sizing_keyword.rs
+@@ -54,6 +54,53 @@ pub(crate) fn resolve_sizing_keyword(
+     }
+ }
+ 
++/// Resolve an item's `min-*` or `max-*` size style in one axis if it is a sizing keyword, to a
++/// border-box size. Intrinsic keywords measure the item's content size (ignoring its own size
++/// style) under the keyword's constraint in `axis`; `known_dimensions` and `available_space`
++/// supply the other axis.
++///
++/// Returns `None` without measuring if the style is not a sizing keyword, and `None` if it cannot
++/// be resolved in the current context (a minimum then behaves as `auto`, a maximum as `none`).
++#[allow(clippy::too_many_arguments)]
++pub(crate) fn resolve_min_max_sizing_keyword(
++    tree: &mut impl LayoutPartialTree,
++    node: NodeId,
++    style: Dimension,
++    axis: AbsoluteAxis,
++    known_dimensions: Size<Option<f32>>,
++    parent_size: Size<Option<f32>>,
++    available_space: Size<AvailableSpace>,
++    stretch_size: Option<f32>,
++    percent_resolution_basis: Option<f32>,
++    vertical_margins_are_collapsible: Line<bool>,
++) -> Option<f32> {
++    if !style.is_sizing_keyword() {
++        return None;
++    }
++    match resolve_sizing_keyword(style, stretch_size, percent_resolution_basis, |val, basis| tree.calc(val, basis))? {
++        SizingKeywordResolution::Exact(size) => Some(size),
++        SizingKeywordResolution::Measure(available) => {
++            let (known_dimensions, available_space) = match axis {
++                AbsoluteAxis::Horizontal => {
++                    (Size { width: None, ..known_dimensions }, Size { width: available, ..available_space })
++                }
++                AbsoluteAxis::Vertical => {
++                    (Size { height: None, ..known_dimensions }, Size { height: available, ..available_space })
++                }
++            };
++            Some(tree.measure_child_size(
++                node,
++                known_dimensions,
++                parent_size,
++                available_space,
++                SizingMode::ContentSize,
++                axis,
++                vertical_margins_are_collapsible,
++            ))
++        }
++    }
++}
++
+ /// Resolve the sizing keywords (`min-content`, `max-content`, `fit-content`, `fit-content(...)`,
+ /// and `stretch`) on the size styles of an absolutely positioned item, filling in the
+ /// corresponding `known_dimensions` axes.
+@@ -73,24 +120,7 @@ pub(crate) fn resolve_absolute_sizing_keywords(
+     margin: Rect<Option<f32>>,
+     sizing_mode: SizingMode,
+ ) {
+-    let stretch_size = Size {
+-        width: f32_max(
+-            area_size.width
+-                - inset.left.unwrap_or(0.0)
+-                - inset.right.unwrap_or(0.0)
+-                - margin.left.unwrap_or(0.0)
+-                - margin.right.unwrap_or(0.0),
+-            0.0,
+-        ),
+-        height: f32_max(
+-            area_size.height
+-                - inset.top.unwrap_or(0.0)
+-                - inset.bottom.unwrap_or(0.0)
+-                - margin.top.unwrap_or(0.0)
+-                - margin.bottom.unwrap_or(0.0),
+-            0.0,
+-        ),
+-    };
++    let stretch_size = absolute_stretch_size(area_size, inset, margin);
+ 
+     let keyword_width = if known_dimensions.width.is_none() {
+         resolve_sizing_keyword(size_style.width, Some(stretch_size.width), Some(area_size.width), |val, basis| {
+@@ -161,3 +191,356 @@ pub(crate) fn resolve_absolute_sizing_keywords(
+         }
+     }
+ }
++
++/// Resolve the sizing keywords on the min/max size styles of an absolutely positioned item,
++/// overwriting the corresponding `min_size`/`max_size` axes (with `None` if a keyword cannot be
++/// resolved). `size` is the item's definite style size, which fixes the other axis when
++/// measuring; otherwise that axis gets the stretch size, as in [`resolve_absolute_sizing_keywords`].
++#[allow(clippy::too_many_arguments)]
++pub(crate) fn resolve_absolute_min_max_sizing_keywords(
++    tree: &mut impl LayoutPartialTree,
++    node: NodeId,
++    min_size: &mut Size<Option<f32>>,
++    max_size: &mut Size<Option<f32>>,
++    min_size_style: Size<Dimension>,
++    max_size_style: Size<Dimension>,
++    size: Size<Option<f32>>,
++    area_size: Size<f32>,
++    inset: Rect<Option<f32>>,
++    margin: Rect<Option<f32>>,
++) {
++    let stretch_size = absolute_stretch_size(area_size, inset, margin);
++    let available_space = stretch_size.map(AvailableSpace::Definite);
++    let mut resolve = |style: Dimension, axis: AbsoluteAxis| {
++        resolve_min_max_sizing_keyword(
++            tree,
++            node,
++            style,
++            axis,
++            size,
++            area_size.map(Some),
++            available_space,
++            Some(stretch_size.get_abs(axis)),
++            Some(area_size.get_abs(axis)),
++            Line::FALSE,
++        )
++    };
++    if min_size_style.width.is_sizing_keyword() {
++        min_size.width = resolve(min_size_style.width, AbsoluteAxis::Horizontal);
++    }
++    if max_size_style.width.is_sizing_keyword() {
++        max_size.width = resolve(max_size_style.width, AbsoluteAxis::Horizontal);
++    }
++    if min_size_style.height.is_sizing_keyword() {
++        min_size.height = resolve(min_size_style.height, AbsoluteAxis::Vertical);
++    }
++    if max_size_style.height.is_sizing_keyword() {
++        max_size.height = resolve(max_size_style.height, AbsoluteAxis::Vertical);
++    }
++}
++
++/// The size an absolutely positioned item would take if stretched: the containing block minus
++/// the item's insets and margins
++fn absolute_stretch_size(area_size: Size<f32>, inset: Rect<Option<f32>>, margin: Rect<Option<f32>>) -> Size<f32> {
++    Size {
++        width: f32_max(
++            area_size.width
++                - inset.left.unwrap_or(0.0)
++                - inset.right.unwrap_or(0.0)
++                - margin.left.unwrap_or(0.0)
++                - margin.right.unwrap_or(0.0),
++            0.0,
++        ),
++        height: f32_max(
++            area_size.height
++                - inset.top.unwrap_or(0.0)
++                - inset.bottom.unwrap_or(0.0)
++                - margin.top.unwrap_or(0.0)
++                - margin.bottom.unwrap_or(0.0),
++            0.0,
++        ),
++    }
++}
++
++#[cfg(all(test, feature = "taffy_tree", feature = "flexbox", feature = "block_layout"))]
++mod min_max_keyword_tests {
++    use crate::prelude::*;
++    use crate::{AvailableSpace, Dimension, LayoutOutput};
++
++    /// Text whose min-content width is 30 and max-content width 100; each 10px line holds up to
++    /// the available width, so the content height is 10 per line.
++    #[derive(Clone, Copy)]
++    struct Text;
++
++    fn measure(known: Size<Option<f32>>, available: Size<AvailableSpace>) -> Size<f32> {
++        let width = known.width.unwrap_or(match available.width {
++            AvailableSpace::MinContent => 30.0,
++            AvailableSpace::MaxContent => 100.0,
++            AvailableSpace::Definite(width) => width.clamp(30.0, 100.0),
++        });
++        let lines = (100.0 / width).ceil();
++        Size { width, height: known.height.unwrap_or(lines * 10.0) }
++    }
++
++    struct Fixture {
++        tree: TaffyTree<Text>,
++        item: NodeId,
++        root: NodeId,
++    }
++
++    impl Fixture {
++        fn new(root_style: Style, item_style: Style) -> Self {
++            let mut tree: TaffyTree<Text> = TaffyTree::new();
++            let item = tree.new_leaf_with_context(item_style, Text).unwrap();
++            let root = tree.new_with_children(root_style, &[item]).unwrap();
++            Fixture { tree, item, root }
++        }
++
++        fn item_size(mut self) -> Size<f32> {
++            self.tree
++                .compute_layout_with_measure(self.root, Size::MAX_CONTENT, |inputs, _, ctx, _| {
++                    LayoutOutput::from_outer_size(match ctx {
++                        Some(Text) => measure(inputs.known_dimensions, inputs.available_space),
++                        None => Size::ZERO,
++                    })
++                })
++                .unwrap();
++            self.tree.layout(self.item).unwrap().size
++        }
++    }
++
++    fn container(display: Display, width: f32, height: f32) -> Style {
++        Style {
++            display,
++            // Positioned, so that it is the containing block of an absolutely positioned item
++            position: Position::Relative,
++            size: Size { width: length(width), height: length(height) },
++            align_items: AlignItems::START,
++            ..Default::default()
++        }
++    }
++
++    fn keyword(name: &str) -> Dimension {
++        match name {
++            "min" => Dimension::min_content(),
++            "max" => Dimension::max_content(),
++            "fit" => Dimension::fit_content(),
++            _ => unreachable!(),
++        }
++    }
++
++    // (keyword, container width, expected width) for `min-width` on a 10px-wide item
++    const MIN_WIDTH_CASES: [(&str, f32, f32); 4] =
++        [("min", 200.0, 30.0), ("max", 200.0, 100.0), ("fit", 60.0, 60.0), ("fit", 200.0, 100.0)];
++    // (keyword, container width, expected width) for `max-width` on an item that would be 500px
++    const MAX_WIDTH_CASES: [(&str, f32, f32); 4] =
++        [("min", 200.0, 30.0), ("max", 200.0, 100.0), ("fit", 60.0, 60.0), ("fit", 200.0, 100.0)];
++
++    fn width_cases(display: Display, position: Position) {
++        for (name, container_width, expected) in MIN_WIDTH_CASES {
++            let item = Style {
++                position,
++                flex_shrink: 0.0,
++                size: Size { width: length(10.0), height: auto() },
++                min_size: Size { width: keyword(name), height: auto() },
++                ..Default::default()
++            };
++            let size = Fixture::new(container(display, container_width, 200.0), item).item_size();
++            assert_eq!(size.width, expected, "{display:?} {position:?} min-width: {name} in {container_width}");
++        }
++        for (name, container_width, expected) in MAX_WIDTH_CASES {
++            let item = Style {
++                position,
++                flex_shrink: 0.0,
++                size: Size { width: length(500.0), height: auto() },
++                max_size: Size { width: keyword(name), height: auto() },
++                ..Default::default()
++            };
++            let size = Fixture::new(container(display, container_width, 200.0), item).item_size();
++            assert_eq!(size.width, expected, "{display:?} {position:?} max-width: {name} in {container_width}");
++        }
++    }
++
++    /// At a 50px width the text is 2 lines: every intrinsic height keyword is 20px
++    fn height_cases(display: Display, position: Position) {
++        for name in ["min", "max", "fit"] {
++            let item = Style {
++                position,
++                flex_shrink: 0.0,
++                size: Size { width: length(50.0), height: length(5.0) },
++                min_size: Size { width: auto(), height: keyword(name) },
++                ..Default::default()
++            };
++            let size = Fixture::new(container(display, 200.0, 200.0), item).item_size();
++            assert_eq!(size.height, 20.0, "{display:?} {position:?} min-height: {name}");
++
++            let item = Style {
++                position,
++                flex_shrink: 0.0,
++                size: Size { width: length(50.0), height: length(500.0) },
++                max_size: Size { width: auto(), height: keyword(name) },
++                ..Default::default()
++            };
++            let size = Fixture::new(container(display, 200.0, 200.0), item).item_size();
++            assert_eq!(size.height, 20.0, "{display:?} {position:?} max-height: {name}");
++        }
++    }
++
++    #[test]
++    fn flex_row_main_axis() {
++        width_cases(Display::Flex, Position::Relative);
++    }
++
++    #[test]
++    fn flex_row_cross_axis() {
++        height_cases(Display::Flex, Position::Relative);
++    }
++
++    #[test]
++    fn flex_column_main_axis() {
++        let column = |style: Style| Style { flex_direction: FlexDirection::Column, ..style };
++        for name in ["min", "max", "fit"] {
++            let item = Style {
++                flex_shrink: 0.0,
++                size: Size { width: length(50.0), height: length(5.0) },
++                min_size: Size { width: auto(), height: keyword(name) },
++                ..Default::default()
++            };
++            let size = Fixture::new(column(container(Display::Flex, 200.0, 200.0)), item).item_size();
++            assert_eq!(size.height, 20.0, "column min-height: {name}");
++
++            let item = Style {
++                flex_shrink: 0.0,
++                size: Size { width: length(50.0), height: length(500.0) },
++                max_size: Size { width: auto(), height: keyword(name) },
++                ..Default::default()
++            };
++            let size = Fixture::new(column(container(Display::Flex, 200.0, 200.0)), item).item_size();
++            assert_eq!(size.height, 20.0, "column max-height: {name}");
++        }
++    }
++
++    #[test]
++    fn flex_column_cross_axis() {
++        let column = |style: Style| Style { flex_direction: FlexDirection::Column, ..style };
++        let item = Style {
++            size: Size { width: length(10.0), height: auto() },
++            min_size: Size { width: Dimension::min_content(), height: auto() },
++            ..Default::default()
++        };
++        assert_eq!(Fixture::new(column(container(Display::Flex, 200.0, 200.0)), item).item_size().width, 30.0);
++        let item = Style {
++            size: Size { width: length(500.0), height: auto() },
++            max_size: Size { width: Dimension::max_content(), height: auto() },
++            ..Default::default()
++        };
++        assert_eq!(Fixture::new(column(container(Display::Flex, 200.0, 200.0)), item).item_size().width, 100.0);
++    }
++
++    /// A stretched item is capped by its keyword max cross size
++    #[test]
++    fn flex_stretch_capped_by_keyword_max() {
++        let root = Style { align_items: AlignItems::STRETCH, ..container(Display::Flex, 200.0, 200.0) };
++        let item = Style {
++            size: Size { width: length(50.0), height: auto() },
++            max_size: Size { width: auto(), height: Dimension::max_content() },
++            ..Default::default()
++        };
++        assert_eq!(Fixture::new(root, item).item_size().height, 20.0);
++    }
++
++    /// A keyword minimum overrides the automatic minimum, and a flexible item grows up to a
++    /// keyword maximum
++    #[test]
++    fn flex_grow_and_shrink_respect_keywords() {
++        let item = Style {
++            flex_grow: 1.0,
++            max_size: Size { width: Dimension::min_content(), height: auto() },
++            ..Default::default()
++        };
++        assert_eq!(Fixture::new(container(Display::Flex, 200.0, 200.0), item).item_size().width, 30.0);
++        let item = Style {
++            size: Size { width: length(500.0), height: auto() },
++            min_size: Size { width: Dimension::max_content(), height: auto() },
++            ..Default::default()
++        };
++        assert_eq!(Fixture::new(container(Display::Flex, 60.0, 200.0), item).item_size().width, 100.0);
++    }
++
++    #[test]
++    fn block_width() {
++        width_cases(Display::Block, Position::Relative);
++    }
++
++    #[test]
++    fn block_height() {
++        height_cases(Display::Block, Position::Relative);
++    }
++
++    /// An auto-width block item stretches, but no wider than its keyword maximum
++    #[test]
++    fn block_auto_width_capped_by_keyword_max() {
++        for (name, expected) in [("min", 30.0), ("max", 100.0), ("fit", 100.0)] {
++            let item = Style { max_size: Size { width: keyword(name), height: auto() }, ..Default::default() };
++            let size = Fixture::new(container(Display::Block, 200.0, 200.0), item).item_size();
++            assert_eq!(size.width, expected, "block auto width, max-width: {name}");
++        }
++    }
++
++    /// A shrink-to-fit block container's width includes an item's keyword minimum
++    #[test]
++    fn block_intrinsic_width_contribution() {
++        let item = Style {
++            size: Size { width: length(10.0), height: auto() },
++            min_size: Size { width: Dimension::max_content(), height: auto() },
++            ..Default::default()
++        };
++        let mut tree: TaffyTree<Text> = TaffyTree::new();
++        let item = tree.new_leaf_with_context(item, Text).unwrap();
++        let block = tree.new_with_children(Style { display: Display::Block, ..Default::default() }, &[item]).unwrap();
++        let root = tree
++            .new_with_children(
++                Style { display: Display::Flex, align_items: AlignItems::START, ..Default::default() },
++                &[block],
++            )
++            .unwrap();
++        tree.compute_layout_with_measure(root, Size::MAX_CONTENT, |inputs, _, ctx, _| {
++            LayoutOutput::from_outer_size(match ctx {
++                Some(Text) => measure(inputs.known_dimensions, inputs.available_space),
++                None => Size::ZERO,
++            })
++        })
++        .unwrap();
++        assert_eq!(tree.layout(block).unwrap().size.width, 100.0);
++        assert_eq!(tree.layout(item).unwrap().size.width, 100.0);
++    }
++
++    #[test]
++    fn absolute_in_flex() {
++        width_cases(Display::Flex, Position::Absolute);
++        height_cases(Display::Flex, Position::Absolute);
++    }
++
++    #[test]
++    fn absolute_in_block() {
++        width_cases(Display::Block, Position::Absolute);
++        height_cases(Display::Block, Position::Absolute);
++    }
++
++    /// Grid does not resolve keyword min/max sizes yet: a keyword minimum behaves as `auto` and
++    /// a keyword maximum as `none`
++    #[cfg(feature = "grid")]
++    #[test]
++    fn grid_ignores_keywords_without_panicking() {
++        for name in ["min", "max", "fit"] {
++            let item = Style {
++                size: Size { width: length(10.0), height: auto() },
++                min_size: Size { width: keyword(name), height: keyword(name) },
++                max_size: Size { width: keyword(name), height: keyword(name) },
++                ..Default::default()
++            };
++            let size = Fixture::new(container(Display::Grid, 200.0, 200.0), item).item_size();
++            assert_eq!(size.width, 10.0, "grid min/max-width: {name}");
++        }
++    }
++}
+diff --git a/src/compute/flexbox.rs b/src/compute/flexbox.rs
+index b753959e..4cfb01cf 100644
+--- a/src/compute/flexbox.rs
++++ b/src/compute/flexbox.rs
+@@ -25,7 +25,7 @@ use super::common::alignment::apply_alignment_fallback;
+ use super::common::scrollable_overflow::{
+     ScrollableOverflowContainer, compute_scrollable_overflow_contribution, finalize_scrollable_overflow,
+ };
+-use super::common::sizing_keyword::{SizingKeywordResolution, resolve_sizing_keyword};
++use super::common::sizing_keyword::{SizingKeywordResolution, resolve_min_max_sizing_keyword, resolve_sizing_keyword};
+ 
+ /// The intermediate results of a flexbox calculation for a single item
+ struct FlexItem {
+@@ -40,10 +40,16 @@ struct FlexItem {
+     /// The raw size style of this item. Used to detect and resolve sizing
+     /// keywords (`min-content`, `max-content`, `fit-content`, `fit-content(...)`, and `stretch`)
+     size_style: Size<Dimension>,
+-    /// The minimum allowable size of this item
++    /// The minimum allowable size of this item. A sizing keyword is filled in once the item can
++    /// be measured: the main axis when the flex base size is determined, the cross axis when
++    /// the hypothetical cross size is.
+     min_size: Size<Option<f32>>,
+-    /// The maximum allowable size of this item
++    /// The maximum allowable size of this item (sizing keywords as for `min_size`)
+     max_size: Size<Option<f32>>,
++    /// The raw min size style of this item. Used to detect and resolve sizing keywords
++    min_size_style: Size<Dimension>,
++    /// The raw max size style of this item. Used to detect and resolve sizing keywords
++    max_size_style: Size<Dimension>,
+     /// The aspect ratio of this item
+     aspect_ratio: Option<f32>,
+     /// The cross-alignment of this item
+@@ -882,6 +888,8 @@ fn generate_anonymous_flex_items(
+                     aspect_ratio,
+                 )
+                 .maybe_add(box_sizing_adjustment),
++                min_size_style: child_style.min_size(),
++                max_size_style: child_style.max_size(),
+                 aspect_ratio,
+ 
+                 relative_inset: if child_style.position() == Position::Relative {
+@@ -1018,8 +1026,8 @@ fn determine_flex_base_size(
+         // Available space for child sizing (excluding the child's margins)
+         // Min/max sizes transferred through the aspect ratio are taken into account here
+         // https://github.com/w3c/csswg-drafts/issues/10997
+-        let transferred_min_size = child.min_size.maybe_apply_aspect_ratio(child.aspect_ratio);
+-        let transferred_max_size = child.max_size.maybe_apply_aspect_ratio(child.aspect_ratio);
++        let mut transferred_min_size = child.min_size.maybe_apply_aspect_ratio(child.aspect_ratio);
++        let mut transferred_max_size = child.max_size.maybe_apply_aspect_ratio(child.aspect_ratio);
+         let child_min_cross = transferred_min_size.cross(dir);
+         let child_max_cross = transferred_max_size.cross(dir);
+ 
+@@ -1079,6 +1087,39 @@ fn determine_flex_base_size(
+ 
+         drop(child_style);
+ 
++        // A min/max main size that is a sizing keyword is the item's content size under the
++        // keyword's constraint, measured with the same cross-axis inputs as the flex base size
++        let min_main_style = child.min_size_style.main(dir);
++        let max_main_style = child.max_size_style.main(dir);
++        if min_main_style.is_sizing_keyword() || max_main_style.is_sizing_keyword() {
++            let stretch_size = percent_resolution_main_size.maybe_sub(child.margin.main_axis_sum(dir));
++            let available_space = Size::MAX_CONTENT.with_cross(dir, cross_axis_available_space);
++            for (style, is_min) in [(min_main_style, true), (max_main_style, false)] {
++                if !style.is_sizing_keyword() {
++                    continue;
++                }
++                let size = resolve_min_max_sizing_keyword(
++                    tree,
++                    child.node,
++                    style,
++                    dir.main_axis(),
++                    child_known_dimensions,
++                    child_parent_size,
++                    available_space,
++                    stretch_size,
++                    percent_resolution_main_size,
++                    Line::FALSE,
++                );
++                if is_min {
++                    child.min_size.set_main(dir, size);
++                } else {
++                    child.max_size.set_main(dir, size);
++                }
++            }
++            transferred_min_size = child.min_size.maybe_apply_aspect_ratio(child.aspect_ratio);
++            transferred_max_size = child.max_size.maybe_apply_aspect_ratio(child.aspect_ratio);
++        }
++
+         child.flex_basis = 'flex_basis: {
+             // A. If the item has a definite used flex basis, that’s the flex base size.
+ 
+@@ -2006,6 +2047,48 @@ fn determine_hypothetical_cross_size(
+     for child in line.items.iter_mut() {
+         let padding_border_sum = (child.padding + child.border).cross_axis_sum(constants.dir);
+ 
++        // The available space passed to the child excludes the child's margins
++        let child_available_main =
++            (constants.container_size.main(constants.dir) - child.margin.main_axis_sum(constants.dir)).max(0.0).into();
++
++        let cross_stretch_size = constants
++            .node_inner_size
++            .cross(constants.dir)
++            .map(|val| constants.divided_cross_space(val))
++            .maybe_sub(child.margin.cross_axis_sum(constants.dir))
++            .maybe_max(0.0);
++
++        // A min/max cross size that is a sizing keyword is the item's content size under the
++        // keyword's constraint at its used main size
++        let min_cross_style = child.min_size_style.cross(constants.dir);
++        let max_cross_style = child.max_size_style.cross(constants.dir);
++        if min_cross_style.is_sizing_keyword() || max_cross_style.is_sizing_keyword() {
++            let known_dimensions = Size::NONE.with_main(constants.dir, Some(child.target_size.main(constants.dir)));
++            let available_space = Size::MAX_CONTENT.with_main(constants.dir, child_available_main);
++            for (style, is_min) in [(min_cross_style, true), (max_cross_style, false)] {
++                if !style.is_sizing_keyword() {
++                    continue;
++                }
++                let size = resolve_min_max_sizing_keyword(
++                    tree,
++                    child.node,
++                    style,
++                    constants.dir.cross_axis(),
++                    known_dimensions,
++                    constants.node_inner_size,
++                    available_space,
++                    cross_stretch_size,
++                    constants.node_inner_size.cross(constants.dir),
++                    Line::FALSE,
++                );
++                if is_min {
++                    child.min_size.set_cross(constants.dir, size);
++                } else {
++                    child.max_size.set_cross(constants.dir, size);
++                }
++            }
++        }
++
+         // An item that will be stretched to a line whose cross size is already known is not measured: its
+         // hypothetical cross size would be used neither for the line nor for the item
+         // (see `calculate_cross_size` and `determine_used_cross_size`)
+@@ -2016,10 +2099,6 @@ fn determine_hypothetical_cross_size(
+             continue;
+         }
+ 
+-        // The available space passed to the child excludes the child's margins
+-        let child_available_main =
+-            (constants.container_size.main(constants.dir) - child.margin.main_axis_sum(constants.dir)).max(0.0).into();
+-
+         // Sizes transferred through the aspect ratio clamp the hypothetical cross size
+         // https://github.com/w3c/csswg-drafts/issues/10997
+         let transferred_min_cross = child.min_size.maybe_apply_aspect_ratio(child.aspect_ratio).cross(constants.dir);
+@@ -2043,12 +2122,6 @@ fn determine_hypothetical_cross_size(
+         // fit-content(...)) determines the available space constraint the item is measured under.
+         // The `stretch` keyword is not resolved here: it stretches to the flex line, which is
+         // handled in `determine_used_cross_size`
+-        let cross_stretch_size = constants
+-            .node_inner_size
+-            .cross(constants.dir)
+-            .map(|val| constants.divided_cross_space(val))
+-            .maybe_sub(child.margin.cross_axis_sum(constants.dir))
+-            .maybe_max(0.0);
+         let child_available_cross = match resolve_sizing_keyword(
+             child.size_style.cross(constants.dir),
+             cross_stretch_size,
+@@ -2297,10 +2370,14 @@ fn determine_used_cross_size(
+                     // (its width) on all four sides, not against its height for the top/bottom sides
+                     let box_sizing_adjustment = child.box_sizing_adjustment(&child_style);
+ 
+-                    let max_size_ignoring_aspect_ratio = child_style
++                    let mut max_size_ignoring_aspect_ratio = child_style
+                         .max_size()
+                         .maybe_resolve(constants.node_inner_size, |val, basis| tree.calc(val, basis))
+                         .maybe_add(box_sizing_adjustment);
++                    // A keyword max cross size was resolved (without aspect ratio) on the item
++                    if child.max_size_style.cross(constants.dir).is_sizing_keyword() {
++                        max_size_ignoring_aspect_ratio.set_cross(constants.dir, child.max_size.cross(constants.dir));
++                    }
+ 
+                     (line_cross_size - child.margin.cross_axis_sum(constants.dir)).max(0.0).maybe_clamp(
+                         child.min_size.cross(constants.dir),
+diff --git a/src/compute/grid/types/grid_item.rs b/src/compute/grid/types/grid_item.rs
+index 4a4e0a2c..4134c243 100644
+--- a/src/compute/grid/types/grid_item.rs
++++ b/src/compute/grid/types/grid_item.rs
+@@ -49,9 +49,9 @@ pub(in super::super) struct GridItem {
+     /// The item's size style
+     pub size: Size<Dimension>,
+     /// The item's min_size style
+-    pub min_size: Size<LengthPercentageAuto>,
++    pub min_size: Size<Dimension>,
+     /// The item's max_size style
+-    pub max_size: Size<LengthPercentageAuto>,
++    pub max_size: Size<Dimension>,
+     /// The item's aspect_ratio style
+     pub aspect_ratio: Option<f32>,
+     /// The item's padding style
+diff --git a/src/compute/oof.rs b/src/compute/oof.rs
+index 26f12ca6..06a8fa26 100644
+--- a/src/compute/oof.rs
++++ b/src/compute/oof.rs
+@@ -23,7 +23,7 @@ use crate::{AxisStaticEdge, BoxSizing, Direction};
+ use super::common::scrollable_overflow::{
+     ScrollableOverflowContainer, compute_scrollable_overflow_contribution, finalize_scrollable_overflow,
+ };
+-use super::common::sizing_keyword::resolve_absolute_sizing_keywords;
++use super::common::sizing_keyword::{resolve_absolute_min_max_sizing_keywords, resolve_absolute_sizing_keywords};
+ 
+ /// Resolve the final static offset of an out-of-flow box from its static position, given the
+ /// box's final size and resolved margins.
+@@ -551,19 +551,16 @@ pub(crate) fn layout_oof_box<Tree: LayoutContainingBlock>(
+         .maybe_resolve(area_size, |val, basis| tree.calc(val, basis))
+         .maybe_apply_aspect_ratio(aspect_ratio)
+         .maybe_add(box_sizing_adjustment);
+-    let mut min_size = child_style
+-        .min_size()
++    let min_size_style = child_style.min_size();
++    let max_size_style = child_style.max_size();
++    let mut min_size = min_size_style
+         .maybe_resolve(area_size, |val, basis| tree.calc(val, basis))
+         .maybe_apply_aspect_ratio(aspect_ratio)
+-        .maybe_add(box_sizing_adjustment)
+-        .or(padding_border_sum.map(Some))
+-        .maybe_max(padding_border_sum);
+-    let max_size = child_style
+-        .max_size()
++        .maybe_add(box_sizing_adjustment);
++    let mut max_size = max_size_style
+         .maybe_resolve(area_size, |val, basis| tree.calc(val, basis))
+         .maybe_apply_aspect_ratio(aspect_ratio)
+         .maybe_add(box_sizing_adjustment);
+-    let mut known_dimensions = style_size.maybe_clamp(min_size, max_size);
+ 
+     let is_replaced = child_style.is_replaced();
+     let is_table = child_style.is_table();
+@@ -582,6 +579,27 @@ pub(crate) fn layout_oof_box<Tree: LayoutContainingBlock>(
+ 
+     drop(child_style);
+ 
++    if min_size_style.width.is_sizing_keyword()
++        || min_size_style.height.is_sizing_keyword()
++        || max_size_style.width.is_sizing_keyword()
++        || max_size_style.height.is_sizing_keyword()
++    {
++        resolve_absolute_min_max_sizing_keywords(
++            tree,
++            candidate.node,
++            &mut min_size,
++            &mut max_size,
++            min_size_style,
++            max_size_style,
++            style_size,
++            area_size,
++            Rect { left, right, top, bottom },
++            margin,
++        );
++    }
++    let mut min_size = min_size.or(padding_border_sum.map(Some)).maybe_max(padding_border_sum);
++    let mut known_dimensions = style_size.maybe_clamp(min_size, max_size);
++
+     // Static positions are relative to the containing block's border box: make them relative to
+     // the inset-resolution area
+     let static_position = Point {
+diff --git a/src/style/mod.rs b/src/style/mod.rs
+index 5ccd1368..c302b6ee 100644
+--- a/src/style/mod.rs
++++ b/src/style/mod.rs
+@@ -167,12 +167,12 @@ pub trait CoreStyle {
+     }
+     /// Controls the minimum size of the item
+     #[inline(always)]
+-    fn min_size(&self) -> Size<LengthPercentageAuto> {
++    fn min_size(&self) -> Size<Dimension> {
+         Style::<Self::CustomIdent>::DEFAULT.min_size
+     }
+     /// Controls the maximum size of the item
+     #[inline(always)]
+-    fn max_size(&self) -> Size<LengthPercentageAuto> {
++    fn max_size(&self) -> Size<Dimension> {
+         Style::<Self::CustomIdent>::DEFAULT.max_size
+     }
+     /// Sets the preferred aspect ratio for the item
+@@ -754,10 +754,10 @@ pub struct Style<S: CheapCloneStr = DefaultCheapStr> {
+     pub size: Size<Dimension>,
+     /// Controls the minimum size of the item
+     #[cfg_attr(feature = "serde", serde(default = "style_helpers::auto"))]
+-    pub min_size: Size<LengthPercentageAuto>,
++    pub min_size: Size<Dimension>,
+     /// Controls the maximum size of the item
+     #[cfg_attr(feature = "serde", serde(default = "style_helpers::auto"))]
+-    pub max_size: Size<LengthPercentageAuto>,
++    pub max_size: Size<Dimension>,
+     /// Sets the preferred aspect ratio for the item
+     ///
+     /// The ratio is calculated as width divided by height.
+@@ -1008,11 +1008,11 @@ impl<S: CheapCloneStr> CoreStyle for Style<S> {
+         self.size
+     }
+     #[inline(always)]
+-    fn min_size(&self) -> Size<LengthPercentageAuto> {
++    fn min_size(&self) -> Size<Dimension> {
+         self.min_size
+     }
+     #[inline(always)]
+-    fn max_size(&self) -> Size<LengthPercentageAuto> {
++    fn max_size(&self) -> Size<Dimension> {
+         self.max_size
+     }
+     #[inline(always)]
+@@ -1116,11 +1116,11 @@ impl<T: CoreStyle> CoreStyle for &'_ T {
+         (*self).size()
+     }
+     #[inline(always)]
+-    fn min_size(&self) -> Size<LengthPercentageAuto> {
++    fn min_size(&self) -> Size<Dimension> {
+         (*self).min_size()
+     }
+     #[inline(always)]
+-    fn max_size(&self) -> Size<LengthPercentageAuto> {
++    fn max_size(&self) -> Size<Dimension> {
+         (*self).max_size()
+     }
+     #[inline(always)]
+diff --git a/tests/hand_written/min_max_overrides.rs b/tests/hand_written/min_max_overrides.rs
+index 1c23595a..4ffd39cd 100644
+--- a/tests/hand_written/min_max_overrides.rs
++++ b/tests/hand_written/min_max_overrides.rs
+@@ -10,14 +10,8 @@ mod min_max_overrides {
+         let child = taffy
+             .new_leaf(Style {
+                 size: Size { width: Dimension::from_length(50.0), height: Dimension::from_length(50.0) },
+-                min_size: Size {
+-                    width: LengthPercentageAuto::from_length(100.0),
+-                    height: LengthPercentageAuto::from_length(100.0),
+-                },
+-                max_size: Size {
+-                    width: LengthPercentageAuto::from_length(10.0),
+-                    height: LengthPercentageAuto::from_length(10.0),
+-                },
++                min_size: Size { width: Dimension::from_length(100.0), height: Dimension::from_length(100.0) },
++                max_size: Size { width: Dimension::from_length(10.0), height: Dimension::from_length(10.0) },
+                 ..Default::default()
+             })
+             .unwrap();
+@@ -39,10 +33,7 @@ mod min_max_overrides {
+         let child = taffy
+             .new_leaf(Style {
+                 size: Size { width: Dimension::from_length(50.0), height: Dimension::from_length(50.0) },
+-                max_size: Size {
+-                    width: LengthPercentageAuto::from_length(10.0),
+-                    height: LengthPercentageAuto::from_length(10.0),
+-                },
++                max_size: Size { width: Dimension::from_length(10.0), height: Dimension::from_length(10.0) },
+                 ..Default::default()
+             })
+             .unwrap();
+@@ -64,10 +55,7 @@ mod min_max_overrides {
+         let child = taffy
+             .new_leaf(Style {
+                 size: Size { width: Dimension::from_length(50.0), height: Dimension::from_length(50.0) },
+-                min_size: Size {
+-                    width: LengthPercentageAuto::from_length(100.0),
+-                    height: LengthPercentageAuto::from_length(100.0),
+-                },
++                min_size: Size { width: Dimension::from_length(100.0), height: Dimension::from_length(100.0) },
+                 ..Default::default()
+             })
+             .unwrap();
+-- 
+2.50.1 (Apple Git-155)
+

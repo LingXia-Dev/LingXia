@@ -1,22 +1,18 @@
 //! A cache for storing the results of layout computation
 
-#![allow(clippy::unusual_byte_groupings)]
-
+use crate::RequestedAxis;
 use crate::geometry::Size;
 use crate::style::AvailableSpace;
-use crate::tree::{CollapsibleMarginSet, LayoutInput, LayoutOutput, RunMode};
-use crate::RequestedAxis;
+use crate::tree::{CollapsibleMarginSet, LayoutInput, LayoutOutput, RunMode, SizingMode};
+use core::sync::atomic::{AtomicU16, Ordering};
 
 /// The number of cache entries for each node in the tree
 const CACHE_SIZE: usize = 9;
 
-// Manually written-out results of float to u32 bit casts because
-// `f32::to_bits` is not yet const at our MSRV.
-
 /// `f32::INFINITY` as a u32
-const INFINITY_BITS: u32 = 0b_0_11111111_00000000000000000000000_u32;
+const INFINITY_BITS: u32 = f32::INFINITY.to_bits();
 /// `f32::NEG_INFINITY` as a u32
-const NEG_INFINITY_BITS: u32 = 0b_1_11111111_00000000000000000000000_u32;
+const NEG_INFINITY_BITS: u32 = f32::NEG_INFINITY.to_bits();
 
 // The `CacheKey` encodes two f32s as a u64. We know that the f32s will always be
 // non-negative, so we pack two extra bits encoding the `RequestedAxis` into the
@@ -83,7 +79,6 @@ fn size_mixed_cache_key(kd: Size<Option<f32>>, avs: Size<AvailableSpace>) -> u64
 
 /// Space-optimised cache key that packs bits into as small a size as possible
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[cfg_attr(feature = "serde", derive(Serialize))]
 struct CacheKey {
     /// The initial cached size of the node itself
     kd_available_space: u64,
@@ -141,9 +136,64 @@ impl From<&LayoutInput> for CacheKey {
     }
 }
 
+/// The layout inputs that affect a node's layout but are not part of the [`CacheKey`]: the
+/// [`SizingMode`] and whether each of the node's vertical margins is collapsible, packed into a `u8`.
+///
+/// These are determined by the layout algorithm of the node's parent and by the node's own style,
+/// so they only change for a given node when one of those changes. Rather than keying every entry
+/// on them, a [`Cache`] records the single mode that all of its entries were computed with.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct CacheMode(u8);
+
+impl CacheMode {
+    /// Set if the sizing mode is `SizingMode::InherentSize`
+    const INHERENT_SIZE_BIT: u8 = 0b001;
+    /// Set if the node's top margin is collapsible
+    const COLLAPSIBLE_START_MARGIN_BIT: u8 = 0b010;
+    /// Set if the node's bottom margin is collapsible
+    const COLLAPSIBLE_END_MARGIN_BIT: u8 = 0b100;
+
+    /// The mode of a cache that has never been stored to. Which mode this is does not matter,
+    /// as such a cache has no entries.
+    const INITIAL: Self = Self(0);
+}
+
+impl From<&LayoutInput> for CacheMode {
+    #[inline(always)]
+    fn from(input: &LayoutInput) -> Self {
+        let inherent_size = matches!(input.sizing_mode, SizingMode::InherentSize) as u8;
+        let collapsible = input.vertical_margins_are_collapsible;
+        Self(
+            (inherent_size * Self::INHERENT_SIZE_BIT)
+                | (collapsible.start as u8 * Self::COLLAPSIBLE_START_MARGIN_BIT)
+                | (collapsible.end as u8 * Self::COLLAPSIBLE_END_MARGIN_BIT),
+        )
+    }
+}
+
+#[cfg(all(debug_assertions, feature = "std"))]
+std::thread_local! {
+    /// See [`cache_mode_change_evictions`]
+    static MODE_CHANGE_EVICTIONS: core::cell::Cell<usize> = const { core::cell::Cell::new(0) };
+}
+
+/// The number of times that the current thread has stored a result into a non-empty [`Cache`]
+/// whose entries were computed with a different `sizing_mode` or `vertical_margins_are_collapsible`,
+/// dropping those entries.
+///
+/// This is expected when the layout algorithm of a node's parent has changed since the node was
+/// last laid out. It must not happen while laying out a tree whose caches started out empty: that
+/// would mean that Taffy lays a node out with more than one mode in a single pass, with each
+/// change of mode throwing away the node's cache. Taffy's test suite uses this function to check
+/// that. Only available in debug builds.
+#[doc(hidden)]
+#[cfg(all(debug_assertions, feature = "std"))]
+pub fn cache_mode_change_evictions() -> usize {
+    MODE_CHANGE_EVICTIONS.with(|count| count.get())
+}
+
 /// Cached intermediate layout results
-#[derive(Debug, Clone, Copy, PartialEq)]
-#[cfg_attr(feature = "serde", derive(Serialize))]
+#[derive(Debug, Clone, PartialEq)]
 pub(crate) struct CacheEntry<T> {
     /// The key for the cache entry
     key: CacheKey,
@@ -152,19 +202,48 @@ pub(crate) struct CacheEntry<T> {
 }
 
 /// A cache for caching the results of a sizing a Grid Item or Flexbox Item
-#[derive(Debug, Clone, PartialEq)]
-#[cfg_attr(feature = "serde", derive(Serialize))]
+#[derive(Debug)]
 pub struct Cache {
     /// The cache entry for the node's final layout
     final_layout_entry: Option<CacheEntry<LayoutOutput>>,
     /// The cache entries for the node's preliminary size measurements
     measure_entries: [Option<CacheEntry<Size<f32>>>; CACHE_SIZE],
-    /// Tracks which measure entries have been used since the eviction cursor last passed them
-    recently_used_entries: u16,
+    /// Tracks which measure entries have been used since the eviction cursor last passed them.
+    /// Atomic so that [`Cache::get`] can take `&self`. Each flag is only ever written with a
+    /// plain (non read-modify-write) `Relaxed` store, so a racing write can at worst lose a hint.
+    recently_used_entries: AtomicU16,
     /// The next measure entry to consider replacing
     next_measure_entry: u8,
     /// Tracks if all cache entries are empty
     is_empty: bool,
+    /// The `sizing_mode` and `vertical_margins_are_collapsible` inputs that all of the cache's
+    /// entries were computed with. Results are only retrieved for inputs that have the same mode,
+    /// and storing a result that was computed with a different mode drops the existing entries.
+    mode: CacheMode,
+}
+
+impl Clone for Cache {
+    fn clone(&self) -> Self {
+        Self {
+            final_layout_entry: self.final_layout_entry.clone(),
+            measure_entries: self.measure_entries.clone(),
+            recently_used_entries: AtomicU16::new(self.recently_used_entries.load(Ordering::Relaxed)),
+            next_measure_entry: self.next_measure_entry,
+            is_empty: self.is_empty,
+            mode: self.mode,
+        }
+    }
+}
+
+impl PartialEq for Cache {
+    fn eq(&self, other: &Self) -> bool {
+        self.final_layout_entry == other.final_layout_entry
+            && self.measure_entries == other.measure_entries
+            && self.recently_used_entries.load(Ordering::Relaxed) == other.recently_used_entries.load(Ordering::Relaxed)
+            && self.next_measure_entry == other.next_measure_entry
+            && self.is_empty == other.is_empty
+            && self.mode == other.mode
+    }
 }
 
 impl Default for Cache {
@@ -176,21 +255,29 @@ impl Default for Cache {
 impl Cache {
     /// Create a new empty cache
     pub const fn new() -> Self {
+        /// Workaround for `Option<CacheEntry<_>>` not being `Copy` (required for array repeat expressions)
+        const NONE_MEASURE_ENTRY: Option<CacheEntry<Size<f32>>> = None;
         Self {
             final_layout_entry: None,
-            measure_entries: [None; CACHE_SIZE],
-            recently_used_entries: 0,
+            measure_entries: [NONE_MEASURE_ENTRY; CACHE_SIZE],
+            recently_used_entries: AtomicU16::new(0),
             next_measure_entry: 0,
             is_empty: true,
+            mode: CacheMode::INITIAL,
         }
     }
 
     /// Try to retrieve a cached result from the cache
     #[inline]
-    pub fn get(&mut self, input: &LayoutInput) -> Option<LayoutOutput> {
+    pub fn get(&self, input: &LayoutInput) -> Option<LayoutOutput> {
+        if self.mode != CacheMode::from(input) {
+            return None;
+        }
         let key = CacheKey::from(input);
         match input.run_mode {
-            RunMode::PerformLayout => self.final_layout_entry.filter(|entry| entry.key == key).map(|e| e.content),
+            RunMode::PerformLayout => {
+                self.final_layout_entry.as_ref().filter(|entry| entry.key == key).map(|e| e.content.clone())
+            }
             RunMode::ComputeSize => {
                 for (index, entry) in self.measure_entries.iter().enumerate() {
                     let Some(entry) = entry else { continue };
@@ -199,7 +286,8 @@ impl Cache {
                         && (entry.key.x_axis_parent_size() == key.x_axis_parent_size())
                         && entry.key.size_is_valid_for(&key)
                     {
-                        self.recently_used_entries |= 1 << index;
+                        let used = self.recently_used_entries.load(Ordering::Relaxed);
+                        self.recently_used_entries.store(used | 1 << index, Ordering::Relaxed);
                         return Some(LayoutOutput::from_outer_size(entry.content));
                     }
                 }
@@ -212,6 +300,18 @@ impl Cache {
 
     /// Store a computed size in the cache
     pub fn store(&mut self, input: &LayoutInput, layout_output: LayoutOutput) {
+        if input.run_mode == RunMode::PerformHiddenLayout {
+            return;
+        }
+        let mode = CacheMode::from(input);
+        if self.mode != mode {
+            #[cfg(all(debug_assertions, feature = "std"))]
+            if !self.is_empty {
+                MODE_CHANGE_EVICTIONS.with(|count| count.set(count.get() + 1));
+            }
+            self.clear();
+            self.mode = mode;
+        }
         let key = CacheKey::from(input);
         match input.run_mode {
             RunMode::PerformLayout => {
@@ -231,14 +331,14 @@ impl Cache {
                 }
                 self.is_empty = false;
                 if let Some(index) =
-                    self.measure_entries.iter().position(|entry| entry.is_some_and(|entry| entry.key == key))
+                    self.measure_entries.iter().position(|entry| entry.as_ref().is_some_and(|entry| entry.key == key))
                 {
                     self.measure_entries[index].as_mut().unwrap().content = layout_output.size;
-                    self.recently_used_entries |= 1 << index;
+                    *self.recently_used_entries.get_mut() |= 1 << index;
                     return;
                 }
-                while self.recently_used_entries & (1 << self.next_measure_entry) != 0 {
-                    self.recently_used_entries &= !(1 << self.next_measure_entry);
+                while *self.recently_used_entries.get_mut() & (1 << self.next_measure_entry) != 0 {
+                    *self.recently_used_entries.get_mut() &= !(1 << self.next_measure_entry);
                     self.next_measure_entry += 1;
                     if self.next_measure_entry == CACHE_SIZE as u8 {
                         self.next_measure_entry = 0;
@@ -246,7 +346,7 @@ impl Cache {
                 }
                 let entry_index = self.next_measure_entry as usize;
                 self.measure_entries[entry_index] = Some(CacheEntry { key, content: layout_output.size });
-                self.recently_used_entries |= 1 << entry_index;
+                *self.recently_used_entries.get_mut() |= 1 << entry_index;
                 self.next_measure_entry += 1;
                 if self.next_measure_entry == CACHE_SIZE as u8 {
                     self.next_measure_entry = 0;
@@ -263,8 +363,10 @@ impl Cache {
         }
         self.is_empty = true;
         self.final_layout_entry = None;
-        self.measure_entries = [None; CACHE_SIZE];
-        self.recently_used_entries = 0;
+        /// Workaround for `Option<CacheEntry<_>>` not being `Copy` (required for array repeat expressions)
+        const NONE_MEASURE_ENTRY: Option<CacheEntry<Size<f32>>> = None;
+        self.measure_entries = [NONE_MEASURE_ENTRY; CACHE_SIZE];
+        *self.recently_used_entries.get_mut() = 0;
         self.next_measure_entry = 0;
         ClearState::Cleared
     }
@@ -352,11 +454,121 @@ mod tests {
         let mut cache = Cache::new();
         cache.store(&input(1.0), output(1.0));
         cache.store(&input(2.0), output(2.0));
-        cache.recently_used_entries = 0;
-        let entries = cache.measure_entries;
+        cache.recently_used_entries = AtomicU16::new(0);
+        let entries = cache.measure_entries.clone();
 
         assert_eq!(cache.get(&input(1.0)), Some(output(1.0)));
         assert_eq!(cache.measure_entries, entries);
-        assert_ne!(cache.recently_used_entries, 0);
+        assert_ne!(cache.recently_used_entries.load(Ordering::Relaxed), 0);
+    }
+
+    fn perform_layout_input(width: f32, height: f32) -> LayoutInput {
+        LayoutInput {
+            run_mode: RunMode::PerformLayout,
+            known_dimensions: Size { width: Some(width), height: Some(height) },
+            parent_size: Size { width: Some(width), height: Some(height) },
+            ..input(width)
+        }
+    }
+
+    /// Inputs that differ from `input`/`perform_layout_input` only in their mode
+    fn other_modes(input: LayoutInput) -> [LayoutInput; 4] {
+        [
+            LayoutInput { sizing_mode: SizingMode::ContentSize, ..input },
+            LayoutInput { vertical_margins_are_collapsible: Line::TRUE, ..input },
+            LayoutInput { vertical_margins_are_collapsible: Line { start: true, end: false }, ..input },
+            LayoutInput { vertical_margins_are_collapsible: Line { start: false, end: true }, ..input },
+        ]
+    }
+
+    #[test]
+    fn cache_mode_distinguishes_every_combination_of_inputs() {
+        let mut modes = [CacheMode::INITIAL; 8];
+        for (index, mode) in modes.iter_mut().enumerate() {
+            *mode = CacheMode::from(&LayoutInput {
+                sizing_mode: if index & 1 == 0 { SizingMode::ContentSize } else { SizingMode::InherentSize },
+                vertical_margins_are_collapsible: Line { start: index & 2 != 0, end: index & 4 != 0 },
+                ..input(1.0)
+            });
+        }
+        for (index, mode) in modes.iter().enumerate() {
+            assert!(!modes[..index].contains(mode));
+        }
+    }
+
+    #[test]
+    fn retrieving_with_a_different_mode_misses_and_keeps_the_entries() {
+        let mut cache = Cache::new();
+        cache.store(&perform_layout_input(100.0, 50.0), output(1.0));
+        cache.store(&input(1.0), output(2.0));
+
+        for other in other_modes(perform_layout_input(100.0, 50.0)) {
+            assert_eq!(cache.get(&other), None);
+        }
+        for other in other_modes(input(1.0)) {
+            assert_eq!(cache.get(&other), None);
+        }
+
+        assert_eq!(cache.get(&perform_layout_input(100.0, 50.0)), Some(output(1.0)));
+        assert_eq!(cache.get(&input(1.0)), Some(output(2.0)));
+    }
+
+    #[test]
+    fn storing_with_a_different_mode_drops_the_existing_entries() {
+        for other in other_modes(input(3.0)) {
+            let mut cache = Cache::new();
+            cache.store(&perform_layout_input(100.0, 50.0), output(1.0));
+            cache.store(&input(1.0), output(2.0));
+
+            cache.store(&other, output(3.0));
+            assert_eq!(cache.get(&other), Some(output(3.0)));
+            assert!(cache.final_layout_entry.is_none());
+            assert_eq!(cache.measure_entries.iter().flatten().count(), 1);
+
+            // The old entries are gone, even for inputs that have the mode that the cache had before
+            cache.store(&input(4.0), output(4.0));
+            assert_eq!(cache.get(&perform_layout_input(100.0, 50.0)), None);
+            assert_eq!(cache.get(&input(1.0)), None);
+            assert_eq!(cache.get(&other), None);
+            assert_eq!(cache.get(&input(4.0)), Some(output(4.0)));
+        }
+
+        for other in other_modes(perform_layout_input(100.0, 50.0)) {
+            let mut cache = Cache::new();
+            cache.store(&perform_layout_input(100.0, 50.0), output(1.0));
+            cache.store(&input(1.0), output(2.0));
+
+            cache.store(&other, output(3.0));
+            assert_eq!(cache.get(&other), Some(output(3.0)));
+            assert!(cache.measure_entries.iter().all(|entry| entry.is_none()));
+            assert_eq!(cache.get(&perform_layout_input(100.0, 50.0)), None);
+        }
+    }
+
+    #[test]
+    fn hidden_layouts_do_not_affect_the_cache() {
+        let mut cache = Cache::new();
+        cache.store(&input(1.0), output(1.0));
+        cache.store(&LayoutInput::HIDDEN, output(2.0));
+        assert_eq!(cache.get(&input(1.0)), Some(output(1.0)));
+    }
+
+    #[test]
+    #[cfg(all(debug_assertions, feature = "std"))]
+    fn mode_change_evictions_are_counted_for_non_empty_caches_only() {
+        let content_size = LayoutInput { sizing_mode: SizingMode::ContentSize, ..input(1.0) };
+        let evictions = cache_mode_change_evictions();
+
+        let mut cache = Cache::new();
+        cache.store(&content_size, output(1.0));
+        cache.store(&LayoutInput { sizing_mode: SizingMode::ContentSize, ..input(2.0) }, output(2.0));
+        assert_eq!(cache_mode_change_evictions(), evictions);
+
+        cache.store(&input(1.0), output(1.0));
+        assert_eq!(cache_mode_change_evictions(), evictions + 1);
+
+        cache.clear();
+        cache.store(&content_size, output(1.0));
+        assert_eq!(cache_mode_change_evictions(), evictions + 1);
     }
 }

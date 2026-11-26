@@ -34,17 +34,17 @@ pub trait FlexboxContainerStyle: CoreStyle {
 
     /// How should content contained within this item be aligned in the cross/block axis
     #[inline(always)]
-    fn align_content(&self) -> Option<AlignContent> {
+    fn align_content(&self) -> AlignContent {
         Style::<Self::CustomIdent>::DEFAULT.align_content
     }
     /// How this node's children aligned in the cross/block axis?
     #[inline(always)]
-    fn align_items(&self) -> Option<AlignItems> {
+    fn align_items(&self) -> AlignItems {
         Style::<Self::CustomIdent>::DEFAULT.align_items
     }
     /// How this node's children should be aligned in the inline axis
     #[inline(always)]
-    fn justify_content(&self) -> Option<JustifyContent> {
+    fn justify_content(&self) -> JustifyContent {
         Style::<Self::CustomIdent>::DEFAULT.justify_content
     }
 }
@@ -76,6 +76,7 @@ pub trait FlexboxItemStyle: CoreStyle {
 }
 
 use crate::geometry::AbsoluteAxis;
+use crate::tree::RequestedAxis;
 
 /// Controls whether flex items are forced onto one line or can wrap onto multiple lines.
 ///
@@ -141,7 +142,7 @@ crate::util::parse::impl_parse_for_keyword_enum!(FlexWrap,
 
 #[cfg(all(feature = "parse", feature = "flexbox_balance"))]
 impl crate::util::parse::FromCss for FlexWrap {
-    fn from_css<'i>(input: &mut crate::util::parse::Parser<'i, '_>) -> crate::util::parse::CssParseResult<'i, Self> {
+    fn from_css<'i>(input: &mut crate::util::parse::Parser<'i>) -> crate::util::parse::CssParseResult<'i, Self> {
         let mut wrap: Option<Self> = None;
         let mut balance = false;
         let mut is_first = true;
@@ -167,7 +168,7 @@ impl crate::util::parse::FromCss for FlexWrap {
                 _ => false,
             };
             if !is_valid {
-                return Err(input.new_unexpected_token_error(crate::util::parse::Token::Ident(ident)));
+                return Err(crate::util::parse::CssParseError::unexpected_token());
             }
             is_first = false;
         }
@@ -240,6 +241,16 @@ impl FlexDirection {
     /// Is the direction [`FlexDirection::RowReverse`] or [`FlexDirection::ColumnReverse`]?
     pub(crate) const fn is_reverse(self) -> bool {
         matches!(self, Self::RowReverse | Self::ColumnReverse)
+    }
+
+    #[inline(always)]
+    /// Is the main axis the (single) axis that a size was requested for?
+    pub(crate) const fn main_axis_is_requested_axis(self, axis: RequestedAxis) -> bool {
+        match axis {
+            RequestedAxis::Horizontal => self.is_row(),
+            RequestedAxis::Vertical => self.is_column(),
+            RequestedAxis::Both => false,
+        }
     }
 
     #[inline]
