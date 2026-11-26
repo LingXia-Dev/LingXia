@@ -31,5 +31,26 @@
   },
   "@view.actions": {
     "defaultMessage": "Действия"
+  },
+  "@view.error.failed": {
+    "defaultMessage": "Не получилось. Попробуйте ещё раз."
+  },
+  "@view.error.network": {
+    "defaultMessage": "Нет подключения. Проверьте соединение и попробуйте ещё раз."
+  },
+  "@view.error.timeout": {
+    "defaultMessage": "Это занимает слишком много времени. Попробуйте ещё раз."
+  },
+  "@view.error.permission": {
+    "defaultMessage": "Требуется ваше разрешение. Его можно дать в настройках."
+  },
+  "@view.error.unsupported": {
+    "defaultMessage": "Недоступно на этом устройстве."
+  },
+  "@view.error.notFound": {
+    "defaultMessage": "Это больше недоступно."
+  },
+  "@view.error.limit": {
+    "defaultMessage": "Достигнут лимит. Попробуйте позже."
   }
 }

@@ -31,5 +31,26 @@
   },
   "@view.actions": {
     "defaultMessage": "إجراءات"
+  },
+  "@view.error.failed": {
+    "defaultMessage": "لم تنجح العملية. حاول مرة أخرى."
+  },
+  "@view.error.network": {
+    "defaultMessage": "تعذّر الاتصال. تحقق من اتصالك وحاول مرة أخرى."
+  },
+  "@view.error.timeout": {
+    "defaultMessage": "يستغرق ذلك وقتًا طويلاً. حاول مرة أخرى."
+  },
+  "@view.error.permission": {
+    "defaultMessage": "يلزم الحصول على إذنك. يمكنك منحه من الإعدادات."
+  },
+  "@view.error.unsupported": {
+    "defaultMessage": "غير متاح على هذا الجهاز."
+  },
+  "@view.error.notFound": {
+    "defaultMessage": "لم يعد هذا متاحًا."
+  },
+  "@view.error.limit": {
+    "defaultMessage": "لقد بلغت الحد المسموح. حاول مرة أخرى لاحقًا."
   }
 }

@@ -31,5 +31,26 @@
   },
   "@view.actions": {
     "defaultMessage": "작업"
+  },
+  "@view.error.failed": {
+    "defaultMessage": "작업을 완료하지 못했습니다. 다시 시도하세요."
+  },
+  "@view.error.network": {
+    "defaultMessage": "연결할 수 없습니다. 네트워크를 확인한 후 다시 시도하세요."
+  },
+  "@view.error.timeout": {
+    "defaultMessage": "시간이 너무 오래 걸립니다. 다시 시도하세요."
+  },
+  "@view.error.permission": {
+    "defaultMessage": "권한이 필요합니다. 설정에서 허용할 수 있습니다."
+  },
+  "@view.error.unsupported": {
+    "defaultMessage": "이 기기에서는 사용할 수 없습니다."
+  },
+  "@view.error.notFound": {
+    "defaultMessage": "더 이상 사용할 수 없습니다."
+  },
+  "@view.error.limit": {
+    "defaultMessage": "한도에 도달했습니다. 나중에 다시 시도하세요."
   }
 }

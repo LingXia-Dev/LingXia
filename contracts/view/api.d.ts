@@ -179,6 +179,15 @@ export interface PackageWords {
  * language. During render only.
  */
 export declare function packageText(words: PackageWords, key: string, args?: Readonly<Record<string, unknown>>): string;
+/**
+ * A failure as text for the person, in the page's language, chosen by its `code` (`E_*`, and a
+ * `VideoError` or `WebViewError` code): a network, timeout, permission, unsupported, not-found or
+ * limit failure says what to do; any other reads `fallback`, else "That didn't work. Try again.".
+ * `null` for `E_ABORT`, a cancel, so `{errorText(error)}` shows nothing. `message` stays English for
+ * logs. Override a word by naming its `@view.error.*` key in the lxapp's catalogue. In render or an
+ * event handler.
+ */
+export declare function errorText(error: { readonly code?: string } | null | undefined, fallback?: string): string | null;
 
 declare global {
   /**

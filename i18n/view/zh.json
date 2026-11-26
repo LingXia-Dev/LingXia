@@ -31,5 +31,26 @@
   },
   "@view.actions": {
     "defaultMessage": "操作"
+  },
+  "@view.error.failed": {
+    "defaultMessage": "操作没有成功，请重试。"
+  },
+  "@view.error.network": {
+    "defaultMessage": "无法连接，请检查网络后重试。"
+  },
+  "@view.error.timeout": {
+    "defaultMessage": "等待时间过长，请重试。"
+  },
+  "@view.error.permission": {
+    "defaultMessage": "需要你的授权，可以在“设置”中开启。"
+  },
+  "@view.error.unsupported": {
+    "defaultMessage": "此设备不支持该功能。"
+  },
+  "@view.error.notFound": {
+    "defaultMessage": "内容已不存在。"
+  },
+  "@view.error.limit": {
+    "defaultMessage": "已达到使用上限，请稍后再试。"
   }
 }

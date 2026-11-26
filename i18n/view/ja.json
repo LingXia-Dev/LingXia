@@ -31,5 +31,26 @@
   },
   "@view.actions": {
     "defaultMessage": "アクション"
+  },
+  "@view.error.failed": {
+    "defaultMessage": "うまくいきませんでした。もう一度お試しください。"
+  },
+  "@view.error.network": {
+    "defaultMessage": "接続できません。ネットワークを確認して、もう一度お試しください。"
+  },
+  "@view.error.timeout": {
+    "defaultMessage": "時間がかかりすぎています。もう一度お試しください。"
+  },
+  "@view.error.permission": {
+    "defaultMessage": "許可が必要です。「設定」で許可できます。"
+  },
+  "@view.error.unsupported": {
+    "defaultMessage": "このデバイスではご利用いただけません。"
+  },
+  "@view.error.notFound": {
+    "defaultMessage": "このコンテンツは利用できなくなりました。"
+  },
+  "@view.error.limit": {
+    "defaultMessage": "上限に達しました。しばらくしてからお試しください。"
   }
 }

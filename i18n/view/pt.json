@@ -31,5 +31,26 @@
   },
   "@view.actions": {
     "defaultMessage": "Ações"
+  },
+  "@view.error.failed": {
+    "defaultMessage": "Não funcionou. Tente novamente."
+  },
+  "@view.error.network": {
+    "defaultMessage": "Não foi possível conectar. Verifique sua conexão e tente novamente."
+  },
+  "@view.error.timeout": {
+    "defaultMessage": "Está demorando demais. Tente novamente."
+  },
+  "@view.error.permission": {
+    "defaultMessage": "É necessária sua permissão. Você pode concedê-la em Ajustes."
+  },
+  "@view.error.unsupported": {
+    "defaultMessage": "Não disponível neste dispositivo."
+  },
+  "@view.error.notFound": {
+    "defaultMessage": "Isto não está mais disponível."
+  },
+  "@view.error.limit": {
+    "defaultMessage": "Você atingiu um limite. Tente novamente mais tarde."
   }
 }

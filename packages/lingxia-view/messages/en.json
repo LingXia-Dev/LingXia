@@ -42,5 +42,33 @@
   "@view.actions": {
     "defaultMessage": "Actions",
     "description": "Accessible name of an action sheet."
+  },
+  "@view.error.failed": {
+    "defaultMessage": "That didn't work. Try again.",
+    "description": "Shown for a failed call whose error has no more specific word."
+  },
+  "@view.error.network": {
+    "defaultMessage": "Can't connect. Check your connection and try again.",
+    "description": "Shown when a call failed because the network is unreachable."
+  },
+  "@view.error.timeout": {
+    "defaultMessage": "This is taking too long. Try again.",
+    "description": "Shown when a call gave up waiting."
+  },
+  "@view.error.permission": {
+    "defaultMessage": "This needs your permission. You can allow it in Settings.",
+    "description": "Shown when the person or the system declined a permission the call needs."
+  },
+  "@view.error.unsupported": {
+    "defaultMessage": "This isn't available on this device.",
+    "description": "Shown when the device or platform cannot do what was asked."
+  },
+  "@view.error.notFound": {
+    "defaultMessage": "This is no longer available.",
+    "description": "Shown when what the call refers to does not exist any more."
+  },
+  "@view.error.limit": {
+    "defaultMessage": "You've reached a limit. Try again later.",
+    "description": "Shown when a quota or rate limit stopped the call."
   }
 }

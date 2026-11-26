@@ -1,7 +1,7 @@
 import { test, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { h, prepare, commit, reset, createView, registerCatalogues, dispatch, takeHandlerFailure } from '../src/internal.js';
-import { t } from '../src/index.js';
+import { t, errorText } from '../src/index.js';
 
 beforeEach(() => reset());
 
@@ -54,4 +54,22 @@ test("the View's words follow the language; an lxapp's @view key overrides one",
   assert.equal(word('@view.done', 'zh-CN'), '好了');
   assert.equal(word('@view.done', 'de-AT'), 'Fertig');
   assert.equal(word('@view.done', 'sw'), 'Done', 'a language LingXia does not translate reads English');
+});
+
+test('errorText says a failure by its code, in the page language; a cancel says nothing', () => {
+  const said = (env, error) => { let text; prepare(() => { text = errorText(error); return h('page', {}); }, createView({}, env), all); commit(); return text; };
+  const en = { language: 'en-US' };
+  assert.equal(said(en, { code: 'E_NETWORK', message: 'dns' }), "Can't connect. Check your connection and try again.");
+  assert.equal(said(en, { code: 'E_CAPABILITY_MISSING' }), "This isn't available on this device.");
+  assert.equal(said(en, { code: 'E_INTERNAL', message: 'boom' }), "That didn't work. Try again.", 'no code-specific word: the plain failure');
+  assert.equal(said(en, new Error('thrown')), "That didn't work. Try again.", 'a codeless error: the plain failure, never its message');
+  assert.equal(said({ language: 'zh-CN' }, { code: 'E_PERMISSION_DENIED' }), '需要你的授权，可以在“设置”中开启。');
+  assert.equal(said(en, { code: 'E_ABORT' }), null);
+  assert.equal(said(en, { code: 'VIDEO_NETWORK' }), "Can't connect. Check your connection and try again.", "a resource's own code maps too");
+  const saidOr = (error, fallback) => { let text; prepare(() => { text = errorText(error, fallback); return h('page', {}); }, createView({}, en), all); commit(); return text; };
+  assert.equal(saidOr({ code: 'VIDEO_DECODE' }, 'This video cannot play'), 'This video cannot play', 'no specific word: the caller\'s fallback');
+  assert.equal(saidOr({ code: 'VIDEO_NOT_GRANTED' }, 'This video cannot play'), 'This needs your permission. You can allow it in Settings.');
+  registerCatalogues({ source: 'en-US', formatter, languages: { 'en-US': { '@view.error.timeout': () => 'Still waiting on the server.' } } });
+  assert.equal(said(en, { code: 'E_TIMEOUT' }), 'Still waiting on the server.', "an lxapp's catalogue overrides the word");
+  assert.throws(() => { reset(); errorText({ code: 'E_IO' }); }, /UI_SCOPE: errorText before the page's first frame/);
 });

@@ -31,5 +31,26 @@
   },
   "@view.actions": {
     "defaultMessage": "Actions"
+  },
+  "@view.error.failed": {
+    "defaultMessage": "Cela n'a pas fonctionné. Réessayez."
+  },
+  "@view.error.network": {
+    "defaultMessage": "Connexion impossible. Vérifiez votre connexion et réessayez."
+  },
+  "@view.error.timeout": {
+    "defaultMessage": "Cela prend trop de temps. Réessayez."
+  },
+  "@view.error.permission": {
+    "defaultMessage": "Votre autorisation est nécessaire. Vous pouvez l'accorder dans les Réglages."
+  },
+  "@view.error.unsupported": {
+    "defaultMessage": "Non disponible sur cet appareil."
+  },
+  "@view.error.notFound": {
+    "defaultMessage": "Ce contenu n'est plus disponible."
+  },
+  "@view.error.limit": {
+    "defaultMessage": "Vous avez atteint une limite. Réessayez plus tard."
   }
 }
