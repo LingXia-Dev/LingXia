@@ -112,8 +112,8 @@ fn session(job: &Job, source: &str) -> Result<lingxia_view::ViewSession, String>
         ..Default::default()
     };
     let mut env = facts.environment().ok_or("environment")?.value;
-    env["canDock"] = false.into();
-    page.set_environment(env)?;
+    env.can_dock = false;
+    page.set_environment(serde_json::to_value(env).map_err(|e| e.to_string())?)?;
     if let Some(state) = &job.state {
         page.write_state(lingxia_view::session::state::StateWrite::Snapshot {
             rev: 0,

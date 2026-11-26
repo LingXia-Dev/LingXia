@@ -39,8 +39,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         ..Default::default()
     };
     let mut env = facts.environment().ok_or("environment")?.value;
-    env["canDock"] = false.into();
-    page.set_environment(env)?;
+    env.can_dock = false;
+    page.set_environment(serde_json::to_value(env)?)?;
     let (pw, ph) = (width * scale as u16, height * scale as u16);
     let names = [
         "total", "view", "eval", "decode", "transfer", "layout", "compose",
