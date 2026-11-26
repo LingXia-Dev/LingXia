@@ -638,10 +638,12 @@ ${Object.entries(schema.environment).filter(([, entry]) => !entry.internal).map(
 export type ColorRole = ${schema.roles.filter(role => !role.internal).map(role => JSON.stringify(role.name)).join(' | ')};
 /** A role at an alpha percent, 0 to 100 (\`'accent/12'\`). */
 export type ColorAlpha = \`\${ColorRole}/\${number}\`;
-/** A page colour: a role, a role at an alpha percent, or \`'transparent'\`. */
-export type ColorValue = ColorRole | ColorAlpha | "transparent";
-/** A \`<plot>\` series colour: a role, usually \`'chart-1'\` to \`'chart-8'\`, or one at an alpha percent. */
-export type ColorSeries = ColorRole | ColorAlpha;
+/** A colour the app's theme names, optionally at an alpha percent (\`'app.trend-up'\`, \`'app.trend-up/40'\`). */
+export type AppColor = \`app.\${string}\`;
+/** A page colour: a role or app colour, either at an alpha percent, or \`'transparent'\`. */
+export type ColorValue = ColorRole | ColorAlpha | AppColor | "transparent";
+/** A \`<plot>\` series colour: a role, usually \`'chart-1'\` to \`'chart-8'\`, or an app colour, either at an alpha percent. */
+export type ColorSeries = ColorRole | ColorAlpha | AppColor;
 
 /** CSS-named style; each element accepts the subset its \`*Style\` type lists. */
 export interface Style {
@@ -1121,9 +1123,12 @@ export const defaultPalette = Object.freeze({
 ${looks.map(look => `  ${JSON.stringify(look)}: Object.freeze(${JSON.stringify(resolved[look])}),`).join('\n')}
 });
 `;
-  const dts = `${head}export type Role = ${roles.map(role => JSON.stringify(role)).join(' | ')};
-/** The default theme resolved per look, high contrast included, derived roles too: role → #rrggbbaa. */
-export declare const defaultPalette: { readonly [look in ${looks.map(look => JSON.stringify(look)).join(' | ')}]: Readonly<Record<Role, string>> };
+  const internal = schema.roles.filter(role => role.internal).map(role => JSON.stringify(role.name));
+  const dts = `${head}import type { ColorRole } from './authoring.js';
+/** A palette slot: a role, or a line pair a lifted surface draws its contents with. */
+export type PaletteSlot = ColorRole | ${internal.join(' | ')};
+/** The default theme resolved per look, high contrast included, derived roles too: slot → #rrggbbaa. */
+export declare const defaultPalette: { readonly [look in ${looks.map(look => JSON.stringify(look)).join(' | ')}]: Readonly<Record<PaletteSlot, string>> };
 `;
   return { outputs: { 'packages/lingxia-view/src/generated/palette.js': js, 'packages/lingxia-view/src/generated/palette.d.ts': dts } };
 }

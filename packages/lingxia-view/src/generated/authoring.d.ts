@@ -474,26 +474,27 @@ export type ClassValue = string | number | false | null | undefined | readonly C
 export declare function cx(...values: ClassValue[]): string;
 
 export declare function List<T>(props: DataListProps<T>): JSX.Element;
-export interface BoxShadow { offsetX?: number; offsetY?: number; blur?: number; spread?: number; color?: string }
+export interface BoxShadow { offsetX?: number; offsetY?: number; blur?: number; spread?: number; color?: ColorValue | "currentColor" }
 /** Strokes around the box (`outer`, after an `offset` gap) and inside its border (`inner`); they never take layout space. */
 export interface Ring {
-  outer?: { width: number; offset?: number; color?: string; offsetColor?: string };
-  inner?: { width: number; color?: string };
+  outer?: { width: number; offset?: number; color?: ColorValue | "currentColor"; offsetColor?: ColorValue };
+  inner?: { width: number; color?: ColorValue | "currentColor" };
 }
-export interface GradientStop { offset: number; color: string }
+export interface GradientStop { offset: number; color: ColorValue }
 /** Positions are fractions of the box; conic angles are degrees clockwise from the top. */
 export type BackgroundGradient =
   | { kind?: "linear"; direction?: "top" | "right" | "bottom" | "left" | "top-right" | "bottom-right" | "bottom-left" | "top-left"; angle?: number; colorSpace?: "srgb" | "oklab"; stops: ReadonlyArray<GradientStop> }
   | { kind: "radial"; shape?: "circle" | "ellipse"; size?: "closest-side" | "closest-corner" | "farthest-side" | "farthest-corner"; at?: readonly [number, number]; colorSpace?: "srgb" | "oklab"; stops: ReadonlyArray<GradientStop> }
   | { kind: "conic"; from?: number; at?: readonly [number, number]; colorSpace?: "srgb" | "oklab"; stops: ReadonlyArray<GradientStop> };
 export interface PieLayout { center: readonly [number, number]; innerRadius: number; outerRadius: number; emphasisScale?: number }
-/** `fill`/`stroke` take a colour role (`'line-strong/65'`), a hex color, `currentColor`, `none` or `url(#id)` naming one of the vector's `gradients`. */
+/** A vector paint: a page colour, a hex colour, `currentColor`, `none` or `url(#id)` naming one of the vector's `gradients`. */
+export type VectorPaint = ColorValue | `#${string}` | "currentColor" | "none" | `url(#${string})`;
 export interface VectorPath {
   /** Pairs this path with the previous source's path of the same key for `transition-[d]`; unkeyed paths pair by position. */
   key?: string;
   /** What the path's whole length counts as for `strokeDasharray`/`strokeDashoffset`: with `1`, a dash of `[1]` offset from 1 to 0 under `transition-[d]` draws the line in. */
   pathLength?: number;
-  d: string; fill?: string; stroke?: string; strokeWidth?: number; strokeDasharray?: readonly number[]; strokeDashoffset?: number;
+  d: string; fill?: VectorPaint; stroke?: VectorPaint; strokeWidth?: number; strokeDasharray?: readonly number[]; strokeDashoffset?: number;
   strokeLinecap?: "butt" | "round" | "square"; strokeLinejoin?: "miter" | "round" | "bevel";
   /** An SVG transform list: matrix, translate, scale, rotate, skewX, skewY. */
   transform?: string; vectorEffect?: "none" | "non-scaling-stroke";
@@ -505,7 +506,7 @@ export interface VectorGradient {
   /** Conic start angle, degrees clockwise from the top. */
   from?: number;
   units?: "objectBoundingBox" | "userSpaceOnUse"; spread?: "pad" | "reflect" | "repeat";
-  stops: ReadonlyArray<{ offset: number; color: string; opacity?: number }>;
+  stops: ReadonlyArray<{ offset: number; color: ColorValue; opacity?: number }>;
 }
 /** One choice of a `<radio>` or `<select>`. */
 export interface ChoiceOption { readonly value: string; readonly label: string; readonly disabled?: boolean; readonly "data-testid"?: string }
@@ -558,10 +559,12 @@ export interface Env {
 export type ColorRole = "canvas" | "surface" | "surface-raised" | "surface-sunken" | "line" | "text" | "text-muted" | "text-faint" | "accent" | "on-accent" | "accent-soft" | "on-accent-soft" | "danger" | "on-danger" | "danger-soft" | "success" | "on-success" | "success-soft" | "warning" | "on-warning" | "warning-soft" | "focus" | "scrim" | "chart-1" | "chart-2" | "chart-3" | "chart-4" | "chart-5" | "line-strong" | "selection" | "shadow" | "media" | "on-media" | "surface-overlay" | "knob" | "success-mark" | "warning-mark" | "danger-mark" | "media-canvas" | "info" | "on-info" | "info-soft" | "info-mark" | "hue-1" | "hue-2" | "hue-3" | "hue-4" | "hue-5" | "hue-6" | "hue-7" | "hue-8" | "hue-1-soft" | "hue-2-soft" | "hue-3-soft" | "hue-4-soft" | "hue-5-soft" | "hue-6-soft" | "hue-7-soft" | "hue-8-soft" | "chart-6" | "chart-7" | "chart-8" | "accent-solid" | "on-accent-solid" | "danger-solid" | "on-danger-solid" | "accent-solid-hover" | "accent-solid-pressed" | "danger-solid-hover" | "danger-solid-pressed" | "neutral-soft";
 /** A role at an alpha percent, 0 to 100 (`'accent/12'`). */
 export type ColorAlpha = `${ColorRole}/${number}`;
-/** A page colour: a role, a role at an alpha percent, or `'transparent'`. */
-export type ColorValue = ColorRole | ColorAlpha | "transparent";
-/** A `<plot>` series colour: a role, usually `'chart-1'` to `'chart-8'`, or one at an alpha percent. */
-export type ColorSeries = ColorRole | ColorAlpha;
+/** A colour the app's theme names, optionally at an alpha percent (`'app.trend-up'`, `'app.trend-up/40'`). */
+export type AppColor = `app.${string}`;
+/** A page colour: a role or app colour, either at an alpha percent, or `'transparent'`. */
+export type ColorValue = ColorRole | ColorAlpha | AppColor | "transparent";
+/** A `<plot>` series colour: a role, usually `'chart-1'` to `'chart-8'`, or an app colour, either at an alpha percent. */
+export type ColorSeries = ColorRole | ColorAlpha | AppColor;
 
 /** CSS-named style; each element accepts the subset its `*Style` type lists. */
 export interface Style {

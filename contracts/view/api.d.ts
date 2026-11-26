@@ -475,26 +475,27 @@ export type ClassValue = string | number | false | null | undefined | readonly C
 export declare function cx(...values: ClassValue[]): string;
 
 export declare function List<T>(props: DataListProps<T>): JSX.Element;
-export interface BoxShadow { offsetX?: number; offsetY?: number; blur?: number; spread?: number; color?: string }
+export interface BoxShadow { offsetX?: number; offsetY?: number; blur?: number; spread?: number; color?: ColorValue | "currentColor" }
 /** Strokes around the box (`outer`, after an `offset` gap) and inside its border (`inner`); they never take layout space. */
 export interface Ring {
-  outer?: { width: number; offset?: number; color?: string; offsetColor?: string };
-  inner?: { width: number; color?: string };
+  outer?: { width: number; offset?: number; color?: ColorValue | "currentColor"; offsetColor?: ColorValue };
+  inner?: { width: number; color?: ColorValue | "currentColor" };
 }
-export interface GradientStop { offset: number; color: string }
+export interface GradientStop { offset: number; color: ColorValue }
 /** Positions are fractions of the box; conic angles are degrees clockwise from the top. */
 export type BackgroundGradient =
   | { kind?: "linear"; direction?: "top" | "right" | "bottom" | "left" | "top-right" | "bottom-right" | "bottom-left" | "top-left"; angle?: number; colorSpace?: "srgb" | "oklab"; stops: ReadonlyArray<GradientStop> }
   | { kind: "radial"; shape?: "circle" | "ellipse"; size?: "closest-side" | "closest-corner" | "farthest-side" | "farthest-corner"; at?: readonly [number, number]; colorSpace?: "srgb" | "oklab"; stops: ReadonlyArray<GradientStop> }
   | { kind: "conic"; from?: number; at?: readonly [number, number]; colorSpace?: "srgb" | "oklab"; stops: ReadonlyArray<GradientStop> };
 export interface PieLayout { center: readonly [number, number]; innerRadius: number; outerRadius: number; emphasisScale?: number }
-/** `fill`/`stroke` take a colour role (`'line-strong/65'`), a hex color, `currentColor`, `none` or `url(#id)` naming one of the vector's `gradients`. */
+/** A vector paint: a page colour, a hex colour, `currentColor`, `none` or `url(#id)` naming one of the vector's `gradients`. */
+export type VectorPaint = ColorValue | `#${string}` | "currentColor" | "none" | `url(#${string})`;
 export interface VectorPath {
   /** Pairs this path with the previous source's path of the same key for `transition-[d]`; unkeyed paths pair by position. */
   key?: string;
   /** What the path's whole length counts as for `strokeDasharray`/`strokeDashoffset`: with `1`, a dash of `[1]` offset from 1 to 0 under `transition-[d]` draws the line in. */
   pathLength?: number;
-  d: string; fill?: string; stroke?: string; strokeWidth?: number; strokeDasharray?: readonly number[]; strokeDashoffset?: number;
+  d: string; fill?: VectorPaint; stroke?: VectorPaint; strokeWidth?: number; strokeDasharray?: readonly number[]; strokeDashoffset?: number;
   strokeLinecap?: "butt" | "round" | "square"; strokeLinejoin?: "miter" | "round" | "bevel";
   /** An SVG transform list: matrix, translate, scale, rotate, skewX, skewY. */
   transform?: string; vectorEffect?: "none" | "non-scaling-stroke";
@@ -506,7 +507,7 @@ export interface VectorGradient {
   /** Conic start angle, degrees clockwise from the top. */
   from?: number;
   units?: "objectBoundingBox" | "userSpaceOnUse"; spread?: "pad" | "reflect" | "repeat";
-  stops: ReadonlyArray<{ offset: number; color: string; opacity?: number }>;
+  stops: ReadonlyArray<{ offset: number; color: ColorValue; opacity?: number }>;
 }
 /** One choice of a `<radio>` or `<select>`. */
 export interface ChoiceOption { readonly value: string; readonly label: string; readonly disabled?: boolean; readonly "data-testid"?: string }
